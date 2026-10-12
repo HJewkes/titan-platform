@@ -165,8 +165,9 @@ const brief = shapeBrief("adversary", {
   rerunning checks.
 - `reviewerBrief` asks every FIX_FIRST for a `Defect class:` section, first review included.
   Its `earlierFindings` (the run's earlier FIX_FIRSTs, oldest first) render between
-  `EARLIER-FINDINGS` and `END-EARLIER-FINDINGS` with verdict-block lines and both markers
-  stripped, cut from the oldest end at `MAX_FIX_FIRST_TEXT_CHARS`. The brief then asks for an
+  `EARLIER-FINDINGS` and `END-EARLIER-FINDINGS`, cut from the oldest end at
+  `MAX_FIX_FIRST_TEXT_CHARS` and only then stripped of verdict-block lines and both markers
+  (in any case), so a mid-line cut cannot recreate either. The brief then asks for an
   `Earlier findings:` checklist of `- fixed:` and `- not fixed:` lines, and for an earlier
   `Defect class:` line copied exactly when the class recurs.
 - `tests` is advisory in the plan. `aggregate` makes it block when `input.fixProof` is

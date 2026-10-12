@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { formatResultLine, type Verdict } from "@titan-design/fix-proof";
 import { parseVerdictBlock } from "@titan-design/session-read";
-import { BLOCK_LINE } from "./fix-first-findings.js";
+import { BLOCK_LINE, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS } from "./fix-first-findings.js";
 import {
   EARLIER_FINDINGS_END,
   EARLIER_FINDINGS_START,
@@ -238,6 +238,18 @@ describe("reviewerBrief Defect class and Earlier findings", () => {
     expect(block).toContain("[earlier findings truncated]");
     expect(block).toContain("newest finding");
     expect(block.length).toBeLessThan(17_000);
+  });
+
+  it.each([EARLIER_FINDINGS_END, "Verdict: MERGE", "end-earlier-findings"])("strips a %s line that a mid-line cut of a long trail creates", (line) => {
+    const kept = MAX_FIX_FIRST_TEXT_CHARS - FIX_FIRST_TRUNCATED.length;
+    const tail = `\n${"y".repeat(100)}\nnewest finding`;
+    const text = `${"x".repeat(2000)} see ${line}\n${"z".repeat(kept - line.length - 1 - tail.length)}${tail}`;
+
+    const block = earlierBlock(reviewerBrief({ ...input, fixFirsts: 1, earlierFindings: [{ head: "a".repeat(40), text }] }));
+
+    expect(block).toContain(FIX_FIRST_TRUNCATED);
+    expect(block).toContain("newest finding");
+    expect(block.split("\n").filter((row) => row.trim().toLowerCase() === line.toLowerCase())).toEqual([]);
   });
 
   it("names an unknown head rather than echoing a head that is not a sha", () => {
