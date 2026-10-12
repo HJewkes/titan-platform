@@ -9,6 +9,7 @@ import type { GateDecision, GatePolicy } from "../gate-policy.js";
 import { requireRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
 import { BaseCheckResult, BaseWaitResult, checkBase, mergeOnAllowedBase, waitForRetarget, type BaseCheck, type BaseCheckInput, type BaseWaitInput } from "./land-base.js";
+import { landedOf, type LandedPr } from "./land-landed.js";
 import { approveMergeGate, askedApproval, type AskApproval } from "./land-approval.js";
 import type { MergeInput } from "./land-merge-message.js";
 import type { CiInput, CiSnapshot, FailingCheck } from "./land-ci.js";
@@ -91,14 +92,6 @@ export interface LandOptions {
   askApproval?: AskApproval;
   /** Read at each base check; true lets a merge land in a base that is not the repo's default branch. Absent, only the default branch. */
   featureBase?: () => boolean;
-}
-
-/** The PR as the run's own merge left it, so the steps after a merge need not read it again. */
-export interface LandedPr {
-  baseRef: string;
-  headRef: string;
-  headRepo: string | null;
-  headSha: string;
 }
 
 export type LandOutcome =
@@ -269,11 +262,6 @@ async function onSettled(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot,
   if (merge.done || merge.skipped === "merged") return { kind: "merged", headSha: ci.headSha, mergeSha: merge.mergeSha || null, ...landedOf(check, ci.headSha) };
   if (merge.skipped === "closed") return stopped("closed", ci.headSha, "the pull request was closed before the merge");
   return undefined;
-}
-
-/** Only a merge of the head the base check read, at the base the merge step was held to, says where the PR landed. */
-function landedOf(check: BaseCheck, headSha: string): { landed?: LandedPr } {
-  return check.headRef === undefined || check.headRepo === undefined ? {} : { landed: { baseRef: check.base, headRef: check.headRef, headRepo: check.headRepo, headSha } };
 }
 
 /**
