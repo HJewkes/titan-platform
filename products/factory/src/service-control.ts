@@ -1,6 +1,7 @@
 import { dirname, join, resolve } from "node:path";
 import { DIRTY_SUFFIX, PROBE_PENDING } from "./build-info.js";
 import { drainForRestart, type DrainOptions } from "./restart-drain.js";
+import { fencedRestart, type RestartFencePorts } from "./restart-fence.js";
 import { plistPath, renderPlist, renderUnit, serviceLabel, UNIT_NAME, unitPath, type PlistOptions } from "./service.js";
 
 export interface CommandResult {
@@ -322,13 +323,43 @@ function buildSummary(build: unknown): string | undefined {
 
 export type RestartDrain = Omit<DrainOptions, "port">;
 
+const withInstallHint = (failure: string): string => `${failure}; titan-factory service install loads the job`;
+
+/** The unit's own cgroup scopes `systemctl kill`, so the fence never signals a pid it read itself. */
+function systemdFence(ports: ServicePorts, io: ServiceIo): RestartFencePorts {
+  return {
+    readMainPid: async () => (await unitState(ports)).pid,
+    requestRestart: async () => {
+      const failure = await runCommands(ports, [systemctl("restart", "--no-block", UNIT_NAME)]);
+      return failure === undefined ? undefined : withInstallHint(failure);
+    },
+    killUnit: () => runCommands(ports, [systemctl("kill", "--signal=SIGKILL", UNIT_NAME)]),
+    killVia: "systemctl kill",
+    unit: UNIT_NAME,
+    sleep: ports.sleep,
+    now: ports.now,
+    log: io.stdout,
+  };
+}
+
+/** Resolves the fenced pid, or a failure; launchd's kickstart -k returns only once the new process runs. */
+async function restartJob(ports: ServicePorts, io: ServiceIo): Promise<{ fenced?: number } | { why: string }> {
+  if (isSystemd(ports)) {
+    const fenced = await fencedRestart(systemdFence(ports, io));
+    return fenced.ok ? (fenced.fenced === undefined ? {} : { fenced: fenced.fenced }) : { why: fenced.why };
+  }
+  const failure = await runCommands(ports, [{ tool: "launchctl", args: ["kickstart", "-k", serviceTarget(ports)] }]);
+  return failure === undefined ? {} : { why: withInstallHint(failure) };
+}
+
+/** The /health budget starts only once the new main process exists, so a slow stop cannot spend it. */
 export async function restartService(ports: ServicePorts, io: ServiceIo, port: number, logDir: string, drain: RestartDrain): Promise<number> {
   const drained = await drainForRestart(ports, io.stdout, { ...drain, port });
   if (!drained.proceed) return fail(io, drained.why);
-  const restart: ServiceCommand = isSystemd(ports) ? systemctl("restart", UNIT_NAME) : { tool: "launchctl", args: ["kickstart", "-k", serviceTarget(ports)] };
-  const failure = await runCommands(ports, [restart]);
-  if (failure !== undefined) return fail(io, `${failure}; titan-factory service install loads the job`);
+  const restarted = await restartJob(ports, io);
+  if ("why" in restarted) return fail(io, restarted.why);
   if (!(await awaitHealthy(ports, io, port, logDir))) return FAILURE;
-  io.stdout(`restarted ${serviceName(ports)}; /health answers on port ${port}\n`);
+  const fenced = restarted.fenced === undefined ? "" : ` (fenced pid ${restarted.fenced})`;
+  io.stdout(`restarted ${serviceName(ports)}${fenced}; /health answers on port ${port}\n`);
   return 0;
 }
