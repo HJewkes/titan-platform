@@ -9,6 +9,9 @@ import { AuthorityDeniedError, AuthorityRefusedError, workflowStepRequestKey, ty
 /** The `StepResult.data` key the F3 trace projection reads gate-decision records from. */
 export const TRACE_GATES_KEY = "titan.trace.gates";
 
+/** The `StepResult.data` key the F3 trace projection reads artifact records (commits, PRs, files) from. */
+export const TRACE_ARTIFACTS_KEY = "titan.trace.artifacts";
+
 const NO_RULE_ROW_ID = "no-rule";
 
 /** The name every authorize gate records as its rule's table. */
