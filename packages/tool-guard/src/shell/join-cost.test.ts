@@ -16,7 +16,9 @@ const noFs: ReadFs = {
   realpath: () => {
     throw new Error("ENOENT");
   },
-  readHead: () => null,
+  readHead: () => {
+    throw new Error("ENOENT");
+  },
   isFile: () => false,
 };
 
