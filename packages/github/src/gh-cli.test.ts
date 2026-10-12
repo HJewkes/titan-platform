@@ -72,6 +72,22 @@ describe("gh api adapter", () => {
     expect(await ghCliWire(open.exec).getPr(REPO, 7)).toMatchObject({ merged: false, mergedAt: null });
   });
 
+  it("a pull request answering an unknown state fails the read rather than reading as closed", async () => {
+    const shouted = scriptedGh({ "compare/": JSON.stringify({ behind_by: 0 }), "pulls/7": JSON.stringify({ ...JSON.parse(openPr), state: "OPEN" }) });
+    const missing = scriptedGh({ "compare/": JSON.stringify({ behind_by: 0 }), "pulls/7": JSON.stringify({ ...JSON.parse(openPr), state: undefined }) });
+
+    await expect(ghCliWire(shouted.exec).getPr(REPO, 7)).rejects.toThrow(/state "OPEN", neither open nor closed/);
+    await expect(ghCliWire(missing.exec).getPr(REPO, 7)).rejects.toThrow(/neither open nor closed/);
+  });
+
+  it("an open and a closed pull request read as such", async () => {
+    const open = scriptedGh({ "compare/": JSON.stringify({ behind_by: 0 }), "pulls/7": openPr });
+    const closed = scriptedGh({ "pulls/7": JSON.stringify({ ...JSON.parse(openPr), state: "closed" }) });
+
+    expect((await ghCliWire(open.exec).getPr(REPO, 7)).state).toBe("open");
+    expect((await ghCliWire(closed.exec).getPr(REPO, 7)).state).toBe("closed");
+  });
+
   it("reads an armed auto_merge as autoMerge true, and an absent or null one as false", async () => {
     const armed = scriptedGh({ "compare/": JSON.stringify({ behind_by: 0 }), "pulls/7": JSON.stringify({ ...JSON.parse(openPr), auto_merge: { merge_method: "squash" } }) });
     const nulled = scriptedGh({ "compare/": JSON.stringify({ behind_by: 0 }), "pulls/7": JSON.stringify({ ...JSON.parse(openPr), auto_merge: null }) });

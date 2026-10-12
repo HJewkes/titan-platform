@@ -269,6 +269,29 @@ describe("sh-account-wait", () => {
     expect(s.db.prepare("SELECT run_id FROM shepherd_account_hold").all()).toEqual([]);
   });
 
+  it("a PR read whose state is neither open nor closed keeps the run's own hold and waits on", async () => {
+    const s = scene();
+    s.register("run-1", 1);
+    await s.hold("run-1");
+    s.fake.pr(1).state = "merged" as never;
+
+    expect(await s.wait("run-1")).toEqual({ resumed: "expired" });
+    expect(s.store().byRun("run-1")).toMatchObject({ held: true, holdReason: HELD });
+    expect(s.limits().holdsRun("run-1")).toBe(true);
+  });
+
+  it("a PR read that throws keeps the hold", async () => {
+    const s = scene();
+    s.register("run-1", 1);
+    await s.hold("run-1");
+    s.fake.onGetPr = () => {
+      throw new Error("the pull request answered state \"OPEN\", neither open nor closed");
+    };
+
+    expect(await s.wait("run-1")).toEqual({ resumed: "expired" });
+    expect(s.store().byRun("run-1")).toMatchObject({ held: true, holdReason: HELD });
+  });
+
   it("leaves an owner's hold standing when the PR closes during the hold", async () => {
     const s = scene();
     s.register("run-1", 1);
