@@ -209,6 +209,22 @@ describe("a registered head or base that is not the PR's", { timeout: 30_000 }, 
     expect(local.calls).toEqual([]);
   });
 
+  it("reads GitHub's list when the merge ref is still for an older head", async () => {
+    const small = feature(() => write("packages/x/src/a.ts", lines(10, 3)));
+    const { api, port, pr } = apiAnswering(LARGE);
+    openPr(pr, small);
+    git("checkout", "-q", "feature");
+    write("packages/x/src/big.ts", lines(450));
+    const large = commitAll("grow");
+    git("checkout", "-q", "main");
+    git("update-ref", `refs/pull/${pr}/head`, large);
+
+    const reason = await g10HoldAt(port, { repo: REPO, pr, kind: "feature", head: large, base: "main" }, gitRead);
+
+    expect(reason).toBe("g10-review: 452 changed lines");
+    expect(api.calls).toContain("listPrFiles");
+  });
+
   it("reads an empty diff as unread and holds it adversary", async () => {
     feature(growLarge);
     git("checkout", "-q", "-b", "empty-pr", "main");
