@@ -12,7 +12,7 @@ export type {
   ReviewClass,
   ReviewShape,
 } from "./types.js";
-export { changedLineCount, classifyPr, DEFAULT_CLASS_RULES, SECURITY_SLICE_LINES, securitySliceFlag } from "./classify.js";
+export { changedLineCount, classifyPr, DEFAULT_CLASS_RULES, SECURITY_SLICE_LINES, securitySliceFlag, touchesDependency } from "./classify.js";
 export type { ClassRules, SliceFlag, SliceInput } from "./classify.js";
 export {
   DEFAULT_CLASS_ROLES,

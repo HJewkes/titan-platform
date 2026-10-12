@@ -131,8 +131,8 @@ describe("classifyPr", () => {
 describe("securitySliceFlag", () => {
   const guard = "packages/tool-guard/src/x.ts";
 
-  it("leaves lockfile, changeset, API report and snapshot churn out of a guard slice's size", () => {
-    const changedFiles = [file(guard, 350, 0), file("pnpm-lock.yaml", 200, 0), file(".changeset/a.md", 5, 0), file("packages/tool-guard/api/index.d.ts", 40, 0), file("packages/tool-guard/src/__snapshots__/x.test.ts.snap", 30, 0), file(".codewatch/dead-exports.json", 20, 0)];
+  it("leaves changeset, API report and dead-export churn out of a guard slice's size", () => {
+    const changedFiles = [file(guard, 350, 0), file(".changeset/a.md", 5, 0), file("packages/tool-guard/api/index.d.ts", 40, 0), file(".codewatch/dead-exports.json", 20, 0)];
     expect(changedLineCount(changedFiles)).toBe(350);
     expect(securitySliceFlag({ changedFiles })).toBeUndefined();
   });
@@ -162,5 +162,27 @@ describe("securitySliceFlag", () => {
   it("flags nothing when a count is unreadable", () => {
     const bare = partialFake<ChangedFile>({ path: guard });
     expect(securitySliceFlag({ kind: "security", changedFiles: [file(guard, 900, 0), bare] })).toBeUndefined();
+  });
+});
+
+describe("classifyPr hand-editable paths", () => {
+  const std = (changedFiles: ChangedFile[]) => classifyPr(facts([], { kind: "correctness", changedFiles }));
+
+  it("classes a 300-line src change plus a lockfile change g10 with a dependency touch", () => {
+    const result = std([file("src/a.ts", 300, 0), file("pnpm-lock.yaml", 10, 0)]);
+    expect(result.class).toBe("g10");
+    expect(result.touches).toContain("dependency");
+  });
+
+  it("classes a package.json change g10", () => {
+    expect(std([file("packages/x/package.json", 1, 1)]).class).toBe("g10");
+  });
+
+  it("counts a lockfile as real lines rather than generated", () => {
+    expect(changedLineCount([file("src/a.ts", 300, 0), file("pnpm-lock.yaml", 200, 0)])).toBe(500);
+  });
+
+  it.each(["src/__snapshots__/evil.ts", "products/x/src/api/y.d.ts", "src/__snapshots__/x.snap"])("counts %s as real lines", (path) => {
+    expect(changedLineCount([file(path, 50, 0)])).toBe(50);
   });
 });
