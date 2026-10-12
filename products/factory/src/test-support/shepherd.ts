@@ -49,6 +49,7 @@ export function shepherdFixture(options: FixtureOptions = {}): ShepherdFixture {
     now: () => clock,
     sleep: options.frozen ? never : tick,
     registry: options.registry ?? (async () => "trusted"),
+    versions: async () => true,
     ...(options.seats && { seats: () => options.seats! }),
   });
   return { fake, routes, workflows: [shepherdPrWorkflow(IDLE_PHASES), landPrWorkflow()] };
