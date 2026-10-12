@@ -21,7 +21,7 @@ export interface GateRun {
 }
 
 /** What `liveEscalation` reads: the carried row, the per-head rows, and the last CI read. */
-export interface EscalationRun {
+interface EscalationRun {
   carried?: Escalated;
   escalations: Map<string, Escalated>;
   lastCi?: CiSnapshot;
