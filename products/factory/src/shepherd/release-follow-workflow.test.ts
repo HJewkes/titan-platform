@@ -46,7 +46,7 @@ function world(scene: Scene, headRef = VERSION_PACKAGES_BRANCH) {
   const tasks = { findByTag: async () => undefined, add: async (_initiative: string, fields: FixTaskFields) => `FX-${filed.push(fields)}` };
   let clock = 0;
   const store = shepherdStoreRef();
-  const routes = factoryRoutesFor({ port, store, now: () => clock, sleep: async (ms, signal) => (signal?.throwIfAborted(), void (clock += ms)), registry: async () => "trusted", versions: scene.registry ?? (async () => true), mainRed: { tasks } });
+  const routes = factoryRoutesFor({ port, store, now: () => clock, sleep: async (ms, signal) => (signal.throwIfAborted(), void (clock += ms)), registry: async () => "trusted", versions: scene.registry ?? (async () => true), mainRed: { tasks } });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, store, filed };
