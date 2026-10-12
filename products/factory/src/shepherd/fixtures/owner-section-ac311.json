@@ -17,7 +17,8 @@
   "gate": {
     "rule": { "table": "authority", "rowId": "MRG-AU" },
     "reason": "the authority policy did not allow an automated merge: MRG-AU gates merge by automation; MRG-AU-RV unmet: merge-tree-clean; MRG-AU-RC unmet: verdict-merge-carried-tree-equal, merge-tree-clean",
-    "head": "2bbd21a"
+    "head": "2bbd21a",
+    "mergeableState": "unknown"
   },
   "verdict": {
     "verdict": "MERGE",

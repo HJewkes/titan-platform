@@ -13,7 +13,7 @@ Shepherd wakes an implementer ("CI failed, fix it") through the same path your t
 - `agent-chat debug send <to> <text> --source shepherd` sends one by hand; an unknown source is refused by the CLI and dropped by the broker.
 
 #### Why it reaches you
-Not by design: when Shepherd judged the merge, GitHub was still recomputing mergeability, so `merge-tree-clean` read false and authority could only gate (accidental: transient merge-state read; TP-1688 fixes it). Rule `MRG-AU`. The gate is at 2bbd21a, but the PR head is 38d98b6; Shepherd has not reviewed the commits between them. The reviewer adds: It changes how every agent tells the owner's messages from automated ones.
+Not by design: GitHub was still recomputing mergeability (mergeable_state unknown), so `merge-tree-clean` read false; TP-1688 settles this transient merge-state read (accidental). Rule `MRG-AU`. The gate is at 2bbd21a, but the PR head is 38d98b6. The last review is at 2bbd21a; no reviewer has read the commits after it. The reviewer adds: It changes how every agent tells the owner's messages from automated ones.
 
 #### Pros
 - Agents stop mistaking Shepherd's automated wakes for your instructions, which today carry your authority.
@@ -21,7 +21,7 @@ Not by design: when Shepherd judged the merge, GitHub was still recomputing merg
 - It only narrows authority: a source label removes the "human typed this" reading and never adds provenance.
 
 #### Cons
-- The commits after 2bbd21a have had no Shepherd review; approving the gate as it stands would approve unreviewed code.
+- The commits after 2bbd21a have had no review; approving the gate as it stands would approve unreviewed code.
 - Any local process that can run `agent-chat debug send` can label a message `shepherd`. That lowers its trust rather than raising it.
 - It goes live only after a broker restart.
 
@@ -29,4 +29,4 @@ Not by design: when Shepherd judged the merge, GitHub was still recomputing merg
 No rendered change.
 
 #### If you say yes / If you say no
-Yes: Shepherd supersedes the stale gate, the reviewer reviews 38d98b6, and if MERGE holds it merges without asking you again. No: the seat closes the PR and CC-436 returns to the queue with your note.
+Yes: Shepherd supersedes the gate, a reviewer reviews 38d98b6, and if MERGE holds it merges without asking you again. No: the seat closes the PR and CC-436 returns to the queue with your note.

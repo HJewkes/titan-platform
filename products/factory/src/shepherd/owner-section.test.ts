@@ -34,8 +34,36 @@ describe("buildOwnerSection on the reviewed head", () => {
     const stale = buildOwnerSection(AC311).markdown;
     const current = buildOwnerSection(reviewedAtHead()).markdown;
 
-    expect(stale).toContain("- The commits after 2bbd21a have had no Shepherd review");
-    expect(current).not.toContain("have had no Shepherd review");
+    expect(stale).toContain("- The commits after 2bbd21a have had no review");
+    expect(current).not.toContain("have had no review");
+  });
+
+  it("says a PR with no verdict is not reviewed, never that it was reviewed at the gate head", () => {
+    const { markdown, question } = buildOwnerSection({ ...AC311, verdict: undefined });
+
+    expect(markdown).not.toContain("reviewed at");
+    expect(markdown).toContain("head 38d98b6 (not reviewed)");
+    expect(markdown).toContain("No reviewer has given a verdict on this PR.");
+    expect(markdown).toContain("- No reviewer has read 38d98b6");
+    expect(question.recommendation?.answer).toBe("Changes needed");
+  });
+
+  it("names the gate head and the review head apart when they differ", () => {
+    const { markdown } = buildOwnerSection({ ...AC311, verdict: { ...AC311.verdict!, head: "5e5e5e5" } });
+
+    expect(markdown).toContain("(reviewed at 5e5e5e5)");
+    expect(markdown).toContain("The gate is at 2bbd21a, but the PR head is 38d98b6.");
+    expect(markdown).toContain("The last review is at 5e5e5e5;");
+    expect(markdown).not.toContain("The gate is at 5e5e5e5");
+  });
+
+  it("does not recommend merge when MERGE is at the PR head but the gate sits at an older head", () => {
+    const { markdown, question } = buildOwnerSection({ ...AC311, verdict: { ...AC311.verdict!, head: HEAD } });
+
+    expect(markdown).not.toContain("**Recommendation: merge.**");
+    expect(markdown).toContain("The gate is at 2bbd21a, but the PR head is 38d98b6.");
+    expect(markdown).toContain("- The gate was opened at 2bbd21a, not at the PR head 38d98b6");
+    expect(question.recommendation?.answer).toBe("Defer");
   });
 
   it("recommends merge when MERGE is at the PR head and CI is green", () => {
