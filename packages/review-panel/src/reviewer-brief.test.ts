@@ -72,6 +72,17 @@ describe("reviewerBrief", () => {
     expect(brief).not.toMatch(/rm -rf \/Volumes/);
   });
 
+  it.each([
+    ["standard", reviewerBrief(target)],
+    ["g10", reviewerBrief({ ...target, ownerBrief: true })],
+  ])("confines a %s review's probes to a scratch repo with a local bare origin under its own run dir", (_kind, brief) => {
+    const runDir = `/data/titan-factory/checkouts/reviews/${reviewCheckoutName(target.pr, target.head)}`;
+
+    expect(brief).toContain(`\`"${runDir}/probe"\``);
+    expect(brief).toContain("git init --bare");
+    expect(brief).toContain("never against a real remote");
+  });
+
   it("never points the reviewer at TMPDIR as a place to extract", () => {
     expect(reviewerBrief(target)).not.toMatch(/dir="\$TMPDIR|-C "\/tmp/);
   });
