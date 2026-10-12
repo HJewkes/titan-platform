@@ -19,7 +19,7 @@ import {
   type RunFacts,
 } from "./coordinator-evidence.js";
 import type { FactoryHost } from "./host.js";
-import type { ShepherdServices } from "./shepherd/commands.js";
+import type { ShepherdServices } from "./shepherd/services.js";
 import { readRequiredChecks } from "./required-checks.js";
 import { actionsRunsAt, withoutSupersededCancels } from "./shepherd/freeze.js";
 import { judgeMain, readMainRules } from "./shepherd/main-verdict.js";

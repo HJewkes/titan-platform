@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import type { FactoryContext } from "../registry.js";
 import { codeRoute, step } from "../workflows/land.js";
-import type { ShepherdServices } from "./commands.js";
+import type { ShepherdServices } from "./services.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { LeaveLand } from "./leave-land.js";
 import { MERGE_EVIDENCE_STEP } from "./merge-facts.js";

@@ -20,7 +20,7 @@ import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
 import { mountResolveProof } from "./resolve-proof.js";
 import { startSweep, type Sweep } from "./sweep.js";
-import type { ShepherdServices } from "./shepherd/commands.js";
+import type { ShepherdServices } from "./shepherd/services.js";
 import { openFramedHost, type FramedHostOptions } from "./shepherd/frames.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 import { startHeadMovedSweep, type HeadMovedSweepOptions } from "./shepherd/head-moved-sweep.js";
