@@ -25,7 +25,7 @@ export function tokenize(src: string, trials = newTrials(src)): Token[] {
 }
 
 function newState(src: string, i: number, nested: boolean, trials: ArithTrials): LexState {
-  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], leftOpen: false, redirect: null, subscriptEnd: -1, looseSubscriptEnd: -1, looseSubscriptOpen: -1, arithStart: -1, arithEnd: -1, trials };
+  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], leftOpen: false, redirect: null, subscriptEnd: -1, looseSubscriptEnd: -1, arithOutsideLoose: true, arithEnd: -1, trials };
 }
 
 function lex(s: LexState): void {
@@ -74,25 +74,23 @@ function markSubscript(s: LexState): void {
   const w = s.word;
   if (!w || w.quoted || w.dynamic || s.redirect || !isNameSoFar(w)) return;
   s.subscriptEnd = assignmentSubscriptEnd(s.src, s.i, s.tokens);
-  const end = s.subscriptEnd === -1 ? looseSubscriptEnd(s.src, s.i, s.tokens) : -1;
-  if (end === -1) return;
-  // A `[` nested in a span neither shortens it nor moves its opening `[`, which only arithmetic begun before it encloses.
-  if (s.i >= s.looseSubscriptEnd) s.looseSubscriptOpen = s.i;
-  s.looseSubscriptEnd = Math.max(s.looseSubscriptEnd, end);
+  // A `[` nested in a span closes before the outer `]`, so it must not shorten the span.
+  if (s.subscriptEnd === -1) s.looseSubscriptEnd = Math.max(s.looseSubscriptEnd, looseSubscriptEnd(s.src, s.i, s.tokens));
 }
 
+/** Whether the arithmetic begins outside every loose span is settled here, once: no later `[` may requalify it. */
 function startArithmetic(s: LexState, body: number): void {
-  s.arithStart = s.i;
+  s.arithOutsideLoose = s.i >= s.looseSubscriptEnd;
   s.arithEnd = cachedEnd(s.trials, s.i, () => arithmeticEnd(s, body));
 }
 
 /**
- * Whether the current character sits in arithmetic begun before the loose span's `[`, as in `((a[1<<2]))`, where
- * bash reads `<<` as a shift and a newline as a blank in both readings. A `((` opened inside the span is only text
- * to bash's joined reading, so it switches nothing off.
+ * Whether the current character sits in arithmetic begun outside every loose span, as in `((a[1<<2]))`, where bash
+ * reads `<<` as a shift and a newline as a blank in both readings. A `((` opened inside a loose span is only text to
+ * bash's joined reading, so it switches nothing off, in that span or any span after it.
  */
 function arithmeticEncloses(s: LexState): boolean {
-  return s.i < s.arithEnd && s.arithStart < s.looseSubscriptOpen;
+  return s.i < s.arithEnd && s.arithOutsideLoose;
 }
 
 /**
