@@ -1,5 +1,5 @@
 import { defineCommand } from "@titan-design/registry";
-import { countNormalizedEvents, countNormalizedSessions } from "@titan-design/session-graph";
+import { countNormalizedEvents, countNormalizedSessions, type SessionGraph } from "@titan-design/session-graph";
 import { z } from "zod";
 import type { MinerContext } from "../context.js";
 import { hasMinerTables } from "../miner-tables.js";
@@ -18,6 +18,13 @@ export interface MinerStatus {
   lastIndexedAt: string | null;
 }
 
+/** The newest time any transcript was indexed: the miner's watermark. */
+export function lastIndexedAt(graph: SessionGraph): string | null {
+  let newest: string | null = null;
+  for (const row of graph.transcripts.list()) if (row.lastIndexedAt && (!newest || row.lastIndexedAt > newest)) newest = row.lastIndexedAt;
+  return newest;
+}
+
 export const status = defineCommand<Record<string, never>, MinerStatus, MinerContext>({
   name: "status",
   description: "Report what the index holds and how healthy it is",
@@ -27,11 +34,7 @@ export const status = defineCommand<Record<string, never>, MinerStatus, MinerCon
     const graph = ctx.graph();
     const count = (table: string) => (graph.db.prepare(`SELECT count(*) AS n FROM "${table}"`).get() as { n: number }).n;
     const transcripts: Record<string, number> = {};
-    let lastIndexedAt: string | null = null;
-    for (const row of graph.transcripts.list()) {
-      transcripts[row.status] = (transcripts[row.status] ?? 0) + 1;
-      if (row.lastIndexedAt && (!lastIndexedAt || row.lastIndexedAt > lastIndexedAt)) lastIndexedAt = row.lastIndexedAt;
-    }
+    for (const row of graph.transcripts.list()) transcripts[row.status] = (transcripts[row.status] ?? 0) + 1;
     return {
       dbPath: ctx.config.dbPath,
       corpusRoot: ctx.config.corpusRoot,
@@ -41,7 +44,7 @@ export const status = defineCommand<Record<string, never>, MinerStatus, MinerCon
       edges: count("edge"),
       templates: hasMinerTables(graph, ["template"]) ? count("template") : 0,
       ftsOrphanRatio: graph.spans.orphanRatio(),
-      lastIndexedAt,
+      lastIndexedAt: lastIndexedAt(graph),
     };
   },
 });

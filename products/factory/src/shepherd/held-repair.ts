@@ -1,4 +1,4 @@
-import type { RepoSlug } from "@titan-design/github";
+import type { PullRequest, RepoSlug } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
@@ -8,6 +8,7 @@ import { rerunFlakyHead } from "./flake-check.js";
 import { noticeHeldSeat } from "./gate-route.js";
 import type { GateRun } from "./gates.js";
 import type { ShepherdDeps, WakeRequest } from "./phases.js";
+import { PUSH_WATCH_TICK_MS, headPoll, leftHead } from "./push-signal.js";
 import type { Registration } from "./store.js";
 
 const HELD_CHECK_STEP = "sh-held-check";
@@ -16,8 +17,6 @@ export const HELD_REPAIR_STEPS: readonly StepDeclaration[] = [
   { id: HELD_CHECK_STEP, kind: "dispatch" },
   { id: HELD_WAIT_STEP, kind: "dispatch" },
 ];
-const DEFAULT_POLL_MS = 30_000;
-
 const HeldCheckResult = z.looseObject({ held: z.boolean(), reason: z.string().optional(), seat: z.string().optional() });
 const HeldWaitResult = z.looseObject({ moved: z.boolean(), headSha: z.string().optional() });
 const RedPayload = z.looseObject({ failing: z.array(z.looseObject({ name: z.string(), conclusion: z.string().nullish() })) });
@@ -40,20 +39,30 @@ function heldCheck(registration: Registration | undefined): z.infer<typeof HeldC
 }
 
 /**
- * Polls until the hold is released or replaced, or the PR leaves the held head; a failed read is polled again.
+ * Waits until the hold is released or replaced, or the PR leaves the held head. The store is read every tick and the PR
+ * only on a push to its branch or once per backstop; a failed read is read again.
  * A move records the open PR's new head, because shepherd status reads its head from completed results and the
  * next ci-wait has none while it runs.
  */
 async function awaitRelease(deps: ShepherdDeps, input: HeldInput & { reason: string }, signal: AbortSignal): Promise<z.infer<typeof HeldWaitResult>> {
+  const read = () => deps.port.getPr(input.repo, input.pr).catch(() => undefined);
+  const poll = headPoll({ pushes: deps.pushes, repo: input.repo, headSha: input.headSha, tickMs: PUSH_WATCH_TICK_MS, read });
   for (;;) {
     signal.throwIfAborted();
-    const pr = await deps.port.getPr(input.repo, input.pr).catch(() => undefined);
-    if (pr && (pr.headSha !== input.headSha || pr.state !== "open")) return { moved: true, ...(pr.state === "open" && { headSha: pr.headSha }) };
+    const polled = await poll.next();
+    const pr = polled.read ? polled.pr : undefined;
+    if (leftHead(pr, input.headSha)) return movedTo(pr);
     const now = heldCheck(deps.store.get().byRun(input.runId));
-    if (!now.held || now.reason !== input.reason) return { moved: false };
-    await deps.sleep(deps.pollMs ?? DEFAULT_POLL_MS, signal);
+    if (!now.held || now.reason !== input.reason) {
+      // A push from outside the clone while held is seen by no reflog, so the release reads the PR before a repair goes ahead.
+      const last = polled.read ? undefined : await read();
+      return leftHead(last, input.headSha) ? movedTo(last) : { moved: false };
+    }
+    await deps.sleep(poll.tickMs, signal);
   }
 }
+
+const movedTo = (pr: PullRequest): z.infer<typeof HeldWaitResult> => ({ moved: true, ...(pr.state === "open" && { headSha: pr.headSha }) });
 
 /** The check reads the store at the moment of the wake; the wait only reads, so each repeats safely after a crash. */
 export function heldRepairRoutes(deps: ShepherdDeps): StepRoute[] {

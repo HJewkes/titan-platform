@@ -1,7 +1,7 @@
 import { FakeHttpError, fakeGitHub, fakeSha, githubPort, successRun, type CheckRun, type FakeGitHub } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "./host.js";
-import { requireRequiredChecks } from "./required-checks.js";
+import { requireBaseRequiredChecks, requireRequiredChecks } from "./required-checks.js";
 import { H1, approveUntilSettled, landScenario } from "./test-support/land.js";
 import { decideAutoMerge, mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidenceInput } from "./shepherd/merge-facts.js";
 
@@ -156,5 +156,67 @@ describe("requireRequiredChecks on a 403", () => {
   it("refuses a Pro message that carries another status", async () => {
     const wrongStatus = new FakeHttpError(404, "Upgrade to GitHub Pro");
     await expect(requireRequiredChecks(port(wrongStatus, false), REPO, "main")).rejects.toThrow("unreadable: HTTP 404; land refuses");
+  });
+});
+
+describe("requireBaseRequiredChecks when the rulesets require nothing", () => {
+  const port = (classic: string[] | Error) => {
+    const fake = fakeGitHub({ repo: REPO });
+    fake.rules.contexts = [];
+    fake.wire.getClassicRequiredChecks = async () => {
+      if (classic instanceof Error) throw classic;
+      return { contexts: classic, strict: true };
+    };
+    return githubPort(fake.wire);
+  };
+
+  it("uses classic protection's required contexts", async () => {
+    await expect(requireBaseRequiredChecks(port(["check"]), REPO, "main")).resolves.toMatchObject({ contexts: ["check"], strict: true });
+  });
+
+  it("reads a classic 404 as no required checks", async () => {
+    await expect(requireBaseRequiredChecks(port(new FakeHttpError(404, "Branch not protected")), REPO, "main")).resolves.toMatchObject({ contexts: [] });
+  });
+
+  it("refuses when classic protection is unreadable", async () => {
+    await expect(requireBaseRequiredChecks(port(new FakeHttpError(500, "boom")), REPO, "main")).rejects.toThrow("classic protection of octo/demo@main is unreadable: HTTP 500; land refuses");
+  });
+
+  it("never reads classic protection when the rulesets name contexts", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    fake.wire.getClassicRequiredChecks = async () => {
+      throw new FakeHttpError(500, "must not be read");
+    };
+    await expect(requireBaseRequiredChecks(githubPort(fake.wire), REPO, "main")).resolves.toMatchObject({ contexts: fake.rules.contexts });
+  });
+});
+
+describe("land on a repo whose required contexts live in classic protection", () => {
+  function classicRepo(runs: CheckRun[], ciTimeoutMs?: number) {
+    const scenario = landScenario({ ciTimeoutMs });
+    scenario.fake.rules.contexts = [];
+    scenario.fake.classicRules = { contexts: ["validate"], strict: false };
+    scenario.fake.onGetPr = (pr) => scenario.fake.setRuns(pr.headSha, runs);
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [scenario.workflow], routes: scenario.routes, gatePollMs: 5 });
+    hosts.push(host);
+    return { scenario, host, runId: host.runtime.start("land-test") };
+  }
+
+  it("lands once the classic required context passes", async () => {
+    const { scenario, host, runId } = classicRepo([successRun("validate", 1)]);
+
+    await approveUntilSettled(host, runId, scenario.fake);
+
+    expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "merged", headSha: H1 });
+    expect(scenario.fake.effects.merge).toBe(1);
+  });
+
+  it("waits on the classic required context even while every other Actions run is green", async () => {
+    const { scenario, host, runId } = classicRepo([successRun("lint", 1), successRun("test", 2)], 60_000);
+
+    const result = await host.runtime.wait(runId).catch((failure: unknown) => failure);
+
+    expect(JSON.stringify([result, host.runtime.status(runId)])).toContain("waiting on validate");
+    expect(scenario.fake.effects.merge).toBe(0);
   });
 });
