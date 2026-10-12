@@ -183,6 +183,20 @@ describe("shepherd registration store", () => {
     expect([named.holdReviewer, released.holdReviewer, unnamed.holdReviewer]).toEqual(["sec-audit-review", null, null]);
   });
 
+  it("records a release's own reason on its event, and the lifted hold's reason when none is given", () => {
+    const store = openStore();
+    store.register(base);
+
+    store.hold("run-1", "owner review");
+    const released = store.release("run-1", { actor: "shepherd:cleanup" }, "merged on rv-sec's MERGE");
+    store.hold("run-1", "second look");
+    store.release("run-1");
+
+    const releases = store.eventsOf("run-1").filter((event) => event.kind === "release");
+    expect(releases.map((event) => [event.reason, event.actor])).toEqual([["merged on rv-sec's MERGE", "shepherd:cleanup"], ["second look", "shepherd"]]);
+    expect(released.holdReason).toBeNull();
+  });
+
   it("holds any PR whose head branch has a held registration still waiting for its PR", () => {
     const store = openStore();
     store.register({ ...base, pr: undefined, branch: "feat/a" });
