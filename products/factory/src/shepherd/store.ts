@@ -95,7 +95,7 @@ export function sliceMigration(version = 8): Migration {
   return { version, name: "factory:shepherd_registration_slice", up: (db) => db.exec("ALTER TABLE shepherd_registration ADD COLUMN slice TEXT") };
 }
 
-export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, reviewRequestMigration } from "./store-migrations.js";
+export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, parkSettledMigration, reviewRequestMigration } from "./store-migrations.js";
 
 import type { Author, AuthorInput, AuthorRow } from "./author-types.js";
 export type { Author, AuthorInput } from "./author-types.js";
@@ -203,12 +203,13 @@ export class ShepherdStore implements HoldLookup {
     return this.byRun(runId)!;
   }
 
-  /** Points a registration, and the authors, hold events, proofs and own account hold recorded for its run, at the run that replaces its failed one; the old run stays in the workflow database. */
+  /** Points a registration, and the authors, hold events, proofs, settled parks and own account hold recorded for its run, at the run that replaces its failed one; the old run stays in the workflow database. */
   repoint(runId: string, newRunId: string): Registration {
     const move = this.db.transaction(() => {
       const changed = this.db.prepare("UPDATE shepherd_registration SET run_id = ?, updated_at = ? WHERE run_id = ?").run(newRunId, this.stamp(), runId).changes;
       if (changed === 0) throw new Error(`shepherd-pr run ${runId} has no registration`);
       this.db.prepare("UPDATE shepherd_lineage SET run_id = ? WHERE run_id = ?").run(newRunId, runId);
+      this.db.prepare("UPDATE shepherd_park_settled SET run_id = ? WHERE run_id = ?").run(newRunId, runId);
       repointRunRows(this.db, runId, newRunId);
       moveAccountHold(this.db, runId, newRunId);
     });
@@ -320,6 +321,17 @@ export class ShepherdStore implements HoldLookup {
     this.db
       .prepare("INSERT INTO shepherd_lineage (run_id, agent_id, name, role, predecessor, at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (run_id, agent_id) DO NOTHING")
       .run(runId, agent.agentId, agent.name, agent.role, agent.predecessor ?? null, this.stamp());
+  }
+
+  /** Records that the exit retry of a refused park settled; a repeat keeps the first row. */
+  settlePark(runId: string, headSha: string, agent: string, outcome: { parked: boolean; detail: string }): void {
+    this.db
+      .prepare("INSERT INTO shepherd_park_settled (run_id, head_sha, agent, parked, detail, at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (run_id, head_sha, agent) DO NOTHING")
+      .run(runId, headSha, agent, outcome.parked ? 1 : 0, outcome.detail, this.stamp());
+  }
+
+  parkSettled(runId: string, headSha: string, agent: string): boolean {
+    return this.db.prepare("SELECT 1 FROM shepherd_park_settled WHERE run_id = ? AND head_sha = ? AND agent = ?").get(runId, headSha, agent) !== undefined;
   }
 
   /** Every author recorded for the run, earliest first, ties broken by agent id. */

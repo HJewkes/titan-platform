@@ -47,6 +47,22 @@ export function holdSlotsMigration(version = 19): Migration {
   return { version, name: "factory:shepherd_hold_slots_vouch", up: (db) => db.exec(TP2239_DDL) };
 }
 
+const TP2383_DDL = `
+  CREATE TABLE shepherd_park_settled (
+    run_id   TEXT NOT NULL,
+    head_sha TEXT NOT NULL,
+    agent    TEXT NOT NULL,
+    parked   INTEGER NOT NULL,
+    detail   TEXT NOT NULL,
+    at       TEXT NOT NULL,
+    PRIMARY KEY (run_id, head_sha, agent)
+  );`;
+
+/** A park refusal whose exit retry settled, per run, head and agent, so a replay after a restart does not arm it again. */
+export function parkSettledMigration(version = 21): Migration {
+  return { version, name: "factory:shepherd_park_settled", up: (db) => db.exec(TP2383_DDL) };
+}
+
 const LINEAGE_DDL = `
   CREATE TABLE shepherd_lineage (
     run_id      TEXT NOT NULL,
