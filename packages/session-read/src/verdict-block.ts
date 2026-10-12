@@ -15,6 +15,10 @@
  * - An optional fourth line `Closer: yes|no` (is this head closer to MERGE than the last reviewed one) is read
  *   only directly after Head and only on FIX_FIRST. Absent, on MERGE or WAIT, or any other value, a duplicate, or
  *   a line anywhere else, it leaves `closer` undefined and the block parses as it would without it.
+ * - An optional fourth line `CI-policy: unchanged` or `CI-policy: weakened <key>(, <key>)*` (TP-2407) is read only
+ *   directly after Head and only on MERGE. Keys come from a closed set, each at most once. An unknown or repeated key,
+ *   an empty list, a duplicate line anywhere, or a line anywhere else leaves `ciPolicy` undefined, which the merge
+ *   guard reads as missing: a `.github/` change then fails closed.
  * - Any visible line starting `Verdict:` is a block start, so a second one is refused, even
  *   when identical or malformed. A `Status:` line is ignored.
  */
@@ -22,6 +26,12 @@
 export type VerdictBlockVerdict = "MERGE" | "FIX_FIRST";
 
 type VerdictBlockCloser = "yes" | "no";
+
+export const CI_POLICY_KEYS = ["required-check", "permissions", "pull_request_target", "secrets", "ruleset", "other"] as const;
+
+export type CiPolicyKey = (typeof CI_POLICY_KEYS)[number];
+
+export type CiPolicy = { kind: "unchanged" } | { kind: "weakened"; keys: CiPolicyKey[] };
 
 export type VerdictBlockRefusal =
   | "no_block"
@@ -33,13 +43,14 @@ export type VerdictBlockRefusal =
   | "bad_head";
 
 export type VerdictBlockResult =
-  | { ok: true; verdict: VerdictBlockVerdict; repo: string; pr: number; head: string; lineOffset: number; closer?: VerdictBlockCloser }
+  | { ok: true; verdict: VerdictBlockVerdict; repo: string; pr: number; head: string; lineOffset: number; closer?: VerdictBlockCloser; ciPolicy?: CiPolicy }
   | { ok: false; reason: "wait"; repo: string; pr: number; head: string; lineOffset: number }
   | { ok: false; reason: VerdictBlockRefusal };
 
 const PR_LINE = /^PR: ([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)#([1-9][0-9]{0,15})$/;
 const HEAD_LINE = /^Head: ([0-9a-f]{40})$/;
 const CLOSER_LINE = /^Closer: (yes|no)$/;
+const CI_POLICY_LINE = /^CI-policy: (?:unchanged|weakened ([a-z_-]+(?:, [a-z_-]+)*))$/;
 const FENCE = /^(`{3,}|~{3,})/;
 const TRIMMED_SPACE = /[\s\uFEFF]/;
 const CONTAINER = /^(?:>\s*|[-*+]\s+|\d{1,9}[.)]\s+)/;
@@ -118,7 +129,10 @@ function readBlock(lines: (string | null)[], at: number): VerdictBlockResult {
   if (!head) return { ok: false, reason: "bad_head" };
   const named = { repo: `${pr[1]}/${pr[2]}`, pr: number, head: head[1]!, lineOffset: at };
   if (verdict === "Verdict: WAIT") return { ok: false, reason: "wait", ...named };
-  if (verdict === "Verdict: MERGE") return { ok: true, verdict: "MERGE", ...named };
+  if (verdict === "Verdict: MERGE") {
+    const ciPolicy = readCiPolicy(lines, at + 3);
+    return { ok: true, verdict: "MERGE", ...named, ...(ciPolicy && { ciPolicy }) };
+  }
   const closer = readCloser(lines, at + 3);
   return { ok: true, verdict: "FIX_FIRST", ...named, ...(closer && { closer }) };
 }
@@ -129,6 +143,18 @@ function readCloser(lines: (string | null)[], at: number): VerdictBlockCloser | 
   const duplicated = lines.some((line, index) => index !== at && line?.startsWith("Closer:"));
   if (!match || duplicated) return undefined;
   return match[1] as VerdictBlockCloser;
+}
+
+/** Like Closer, any second visible CI-policy line voids it, so a later `unchanged` never overrides a `weakened`. */
+function readCiPolicy(lines: (string | null)[], at: number): CiPolicy | undefined {
+  const match = CI_POLICY_LINE.exec(lines[at] ?? "");
+  const duplicated = lines.some((line, index) => index !== at && line?.startsWith("CI-policy:"));
+  if (!match || duplicated) return undefined;
+  if (match[1] === undefined) return { kind: "unchanged" };
+  const keys = match[1].split(", ");
+  const known = keys.every((key) => (CI_POLICY_KEYS as readonly string[]).includes(key));
+  if (!known || new Set(keys).size !== keys.length) return undefined;
+  return { kind: "weakened", keys: keys as CiPolicyKey[] };
 }
 
 function isDotName(name: string): boolean {

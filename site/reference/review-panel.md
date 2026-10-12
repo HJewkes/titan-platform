@@ -65,7 +65,8 @@ every caller plans, briefs and aggregates the same way:
   FIX_FIRST from a session with no investigative call (`isInvestigativeCall`) is `none`
   with `DEPTH_FLOOR_REASON`. A FIX_FIRST keeps its findings (`fixFirstFindings`, bounded
   by `boundedFindings`), and a verdict keeps the reviewer's OWNER-BRIEF block
-  (`parseOwnerBrief`). A short usage-limit notice the client wrote itself (a `synthetic`
+  (`parseOwnerBrief`). A MERGE carries the reviewer's `CI-policy:` line as `ciPolicy` when
+  `parseVerdictBlock` reads one. A short usage-limit notice the client wrote itself (a `synthetic`
   message) is `none` with `USAGE_LIMIT_REASON`, the notice and any recorded `resetsAt`;
   `isUsageLimit` tells that result apart. The same words from the reviewer are malformed.
 - `aggregate(plan, results, input)`: the pure panel verdict from the members' results
@@ -170,6 +171,10 @@ const brief = shapeBrief("adversary", {
   (in any case), so a mid-line cut cannot recreate either. The brief then asks for an
   `Earlier findings:` checklist of `- fixed:` and `- not fixed:` lines, and for an earlier
   `Defect class:` line copied exactly when the class recurs.
+- `reviewerBrief` asks every MERGE, on any diff, for a `CI-policy: unchanged` or
+  `CI-policy: weakened <keys>` line directly after `Head:` (`CI_POLICY_RULE`, which gives each
+  key a one-line meaning). `correctionPrompt` repeats it with the key names only, since it resumes
+  the session that already read the brief, and stays within `MAX_CORRECTION_PROMPT_CHARS`.
 - `tests` is advisory in the plan. `aggregate` makes it block when `input.fixProof` is
   `vacuous`, `no-tests` or `error`, and then its MERGE is needed too. When the plan has no `tests`
   member, that seat counts as missing, so the panel never says MERGE.
