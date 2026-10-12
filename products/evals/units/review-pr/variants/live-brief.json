@@ -27,5 +27,5 @@
       "onRestart": "repeat"
     }
   },
-  "notes": "Baseline: the live reviewer model on the production reviewer brief, checkout lines swapped for bundle paths (reviewPrBrief). Read-only: no Write, Edit, git push or gh."
+  "notes": "Baseline: the live reviewer model on the production reviewer brief, checkout lines swapped for bundle paths and the test rule for an offline one (reviewPrBrief). Read-only: no Write, Edit, git push or gh."
 }
