@@ -21,9 +21,12 @@ function filesOf(edges: readonly GraphEdge[]): GraphNode[] {
   return [...new Set(edges.flatMap((e) => [e.srcId, e.dstId]))].map((id) => file(id));
 }
 
+function storeOf(edges: GraphEdge[], nodes = filesOf(edges)): RuleStore {
+  return { listNodes: () => nodes, listEdges: () => edges, listMetrics: () => [] };
+}
+
 function cycles(edges: GraphEdge[], rule: NoImportCyclesRule = RULE, nodes = filesOf(edges)): string[][] {
-  const store: RuleStore = { listNodes: () => nodes, listEdges: () => edges, listMetrics: () => [] };
-  return snapshotViolations(store, 1, [rule]).map((v) => v.members!);
+  return snapshotViolations(storeOf(edges, nodes), 1, [rule]).map((v) => v.members!);
 }
 
 describe("no-import-cycles", () => {
@@ -66,6 +69,45 @@ describe("no-import-cycles", () => {
 
     expect(cycles(edges)).toEqual([]);
     expect(cycles(edges, { ...RULE, includeTypeOnly: true })).toEqual([["a.ts", "b.ts"]]);
+  });
+
+  it("labels a cycle closed only by type imports type-only and names the most type-imported member as hub", () => {
+    const edges = [
+      imports("a.ts", "b.ts"),
+      imports("b.ts", "a.ts", true),
+      imports("c.ts", "a.ts", true),
+      imports("b.ts", "c.ts"),
+    ];
+
+    const [cycle, ...rest] = snapshotViolations(storeOf(edges), 1, [{ ...RULE, includeTypeOnly: true }]);
+
+    expect(rest).toEqual([]);
+    expect(cycle).toMatchObject({ members: ["a.ts", "b.ts", "c.ts"], cycleKind: "type-only", hub: "a.ts" });
+    expect(cycle!.evidence).toBe("type-only import cycle of 3 file(s): a.ts, b.ts, c.ts; hub a.ts (2 type-only import(s) in)");
+  });
+
+  it("labels a cycle of value imports value with no hub", () => {
+    const [cycle] = snapshotViolations(storeOf([imports("c.ts", "d.ts"), imports("d.ts", "c.ts")]), 1, [RULE]);
+
+    expect(cycle).toMatchObject({ members: ["c.ts", "d.ts"], cycleKind: "value" });
+    expect(cycle!.hub).toBeUndefined();
+  });
+
+  it("labels a component value when a value sub-cycle sits inside it, even with type-only edges", () => {
+    const edges = [imports("a.ts", "b.ts"), imports("b.ts", "a.ts"), imports("b.ts", "c.ts"), imports("c.ts", "a.ts", true)];
+
+    const [cycle] = snapshotViolations(storeOf(edges), 1, [{ ...RULE, includeTypeOnly: true }]);
+
+    expect(cycle).toMatchObject({ members: ["a.ts", "b.ts", "c.ts"], cycleKind: "value" });
+    expect(cycle!.hub).toBeUndefined();
+  });
+
+  it("keys a type-only cycle by its members alone", () => {
+    const edges = [imports("a.ts", "b.ts"), imports("b.ts", "a.ts", true)];
+
+    const [cycle] = snapshotViolations(storeOf(edges), 1, [{ ...RULE, includeTypeOnly: true }]);
+
+    expect(violationKey(cycle!)).toBe("no-cycles|a.ts|b.ts");
   });
 
   it("reports a file that imports itself", () => {
