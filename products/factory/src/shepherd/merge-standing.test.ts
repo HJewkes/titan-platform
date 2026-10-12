@@ -65,6 +65,8 @@ describe("standingMerge", () => {
   it.each([
     ["evidence that is not whole", merge({ head: HEAD, merge: {}, record: {} })],
     ["evidence about another head", merge({ ...wholeEvidence, head: fakeSha("other") })],
+    ["a MERGE carried from another head", merge({ ...wholeEvidence, merge: { ...wholeEvidence.merge, verdict: { value: "MERGE", head: fakeSha("reviewed") } } })],
+    ["a MERGE whose evidence records a carry", merge({ ...wholeEvidence, merge: { ...wholeEvidence.merge, carry: { fromHead: fakeSha("reviewed"), head: HEAD, headTree: "t", mergeTree: "t" } } })],
     ["a FIX_FIRST", { kind: "FIX_FIRST", headSha: HEAD, text: "fix it" } satisfies Verdict],
   ])("reviews as before for %s", async (_name, verdict) => {
     const { ctx, dispatched } = contextAt(undefined);
