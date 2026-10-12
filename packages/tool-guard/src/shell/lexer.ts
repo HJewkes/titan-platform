@@ -25,7 +25,7 @@ export function tokenize(src: string, trials = newTrials(src)): Token[] {
 }
 
 function newState(src: string, i: number, nested: boolean, trials: ArithTrials): LexState {
-  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], leftOpen: false, redirect: null, subscriptEnd: -1, looseSubscriptEnd: -1, arithOutsideLoose: true, arithEnd: -1, trials };
+  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], leftOpen: false, redirect: null, subscriptEnd: -1, looseSubscriptEnd: -1, arithOutsideLoose: true, arithEnd: -1, wholeEnd: -1, trials };
 }
 
 function lex(s: LexState): void {
@@ -90,7 +90,7 @@ function markSubscript(s: LexState): void {
 /** Whether the arithmetic begins outside every loose span is settled here, once: no later `[` may requalify it. */
 function startArithmetic(s: LexState, body: number): void {
   s.arithOutsideLoose = s.i >= s.looseSubscriptEnd;
-  s.arithEnd = cachedEnd(s.trials, s.i, () => arithmeticEnd(s, body));
+  markDoubleParen(s, body);
 }
 
 /**
@@ -114,12 +114,21 @@ function refuseHidingOpener(s: LexState, c: string, ahead: string): void {
 }
 
 /**
- * Index of the `))` closing the `((` at `s.i`, or -1 when bash reads nested subshells instead:
- * like bash, it reads to the `)` matching the first `(` and wants another `)` right after it.
+ * Like bash, reads the `((` at `s.i` whole to the `)` matching its second `(`: an arithmetic command
+ * when another `)` follows, and otherwise nested subshells that bash lexes again from that text.
+ */
+function markDoubleParen(s: LexState, body: number): void {
+  const close = cachedEnd(s.trials, s.i, () => doubleParenClose(s, body));
+  s.arithEnd = close !== -1 && s.src[nextAfter(s.src, close)] === ")" ? close : -1;
+  s.wholeEnd = Math.max(s.wholeEnd, close);
+}
+
+/**
+ * Index of the `)` matching the second `(` of the `((` at `s.i`, or -1 when none closes it.
  * A trial lex with every `<<` a shift finds that `)` through the same quote readers; it fails
  * closed once the source's trials have spent their budget.
  */
-function arithmeticEnd(s: LexState, body: number): number {
+function doubleParenClose(s: LexState, body: number): number {
   const trial = newState(s.src, body, true, s.trials);
   trial.arithEnd = Number.POSITIVE_INFINITY;
   let reached = s.src.length;
@@ -130,7 +139,7 @@ function arithmeticEnd(s: LexState, body: number): number {
     if (!(error instanceof ParseError) || spent(s.trials)) throw error;
   }
   if (!chargeTrial(s.trials, reached - s.i)) throw new ParseError("arithmetic command too costly to scan");
-  return reached < s.src.length && s.src[nextAfter(s.src, reached)] === ")" ? reached : -1;
+  return reached < s.src.length ? reached : -1;
 }
 
 function appendShift(s: LexState, end: number): void {
@@ -143,13 +152,15 @@ function readBlank(s: LexState): void {
   s.i++;
 }
 
+/** A newline bash read inside a `((` span, arithmetic or reparsed as subshells, is not a line end and starts no heredoc body. */
 function readOperator(s: LexState, op: string, end: number): void {
+  const inWholeSpan = s.i < s.wholeEnd;
   endWord(s);
   s.i = end;
   if (op === "(") s.depth++;
   if (op === ")") s.depth--;
   s.tokens.push({ type: "op", value: op });
-  if (op === "\n") readLineEnd(s);
+  if (op === "\n" && !inWholeSpan) readLineEnd(s);
 }
 
 function readDouble(s: LexState): void {
@@ -269,7 +280,7 @@ function readBracketArithmetic(s: LexState, w: WordToken): void {
 
 /**
  * Last index of the `$((` at `dollar` when bash reads arithmetic, or -1 when it reads `$( (…) … )`:
- * as `arithmeticEnd` does for `((`, the `)` matching the second `(` must be followed by another.
+ * as `markDoubleParen` does for `((`, the `)` matching the second `(` must be followed by another.
  * Each decision is kept per position, so a subshell reading that lexes the text again stays polynomial.
  */
 function arithmeticExpansionEnd(at: Reading, dollar: number, found: Token[][]): number {
