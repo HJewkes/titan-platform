@@ -185,9 +185,13 @@ interface RunOptions {
  */
 declare function run(options: RunOptions): Promise<string>;
 
-declare const USAGE = "usage: fix-proof run --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]";
-/** Parses `fix-proof run` arguments and returns the one result line to print; bad arguments give a verdict error line too. */
-declare function runCli(argv: readonly string[], cwd: string, runner?: typeof run): Promise<string>;
+declare const USAGE = "usage: fix-proof run|exec|judge --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]";
+type Runner = typeof run;
+/**
+ * Parses `fix-proof run|exec|judge` arguments and returns the line to print: one result line for run and judge, and
+ * nothing for a successful exec, which writes its reports instead. Bad arguments and failures give a verdict error line.
+ */
+declare function runCli(argv: readonly string[], cwd: string, runner?: Runner): Promise<string>;
 
 /** Git calls only, so a short budget; the judge's CI job allows 8 minutes. */
 declare const DEFAULT_JUDGE_BUDGET_MS: number;
