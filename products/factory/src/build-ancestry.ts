@@ -3,7 +3,7 @@ import type { CommandResult } from "./service-control.js";
 import { runCommand } from "./service-ports.js";
 
 /** Whether the running build holds a target: yes, no, or why git could not tell. */
-export type Holds = boolean | { unknown: string };
+type Holds = boolean | { unknown: string };
 
 /** Answers `git merge-base --is-ancestor ancestor descendant` in the deploy checkout. */
 export type AncestryProbe = (ancestor: string, descendant: string) => Promise<Holds>;
