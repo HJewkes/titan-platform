@@ -192,6 +192,32 @@ describe("reviewerBrief Closer line", () => {
   });
 });
 
+describe("the CI-policy line", () => {
+  const input = { repo: "octo/demo", pr: 3, head: "0123456789abcdef0123456789abcdef01234567", checkoutRoot: "/data/reviews" };
+  const KEYS = ["required-check", "permissions", "pull_request_target", "secrets", "ruleset", "other"];
+  const asksForLine = (text: string, keyed: (key: string) => string) => {
+    expect(text).toContain("`CI-policy: unchanged`");
+    expect(text).toContain("`CI-policy: weakened <keys>`");
+    for (const key of KEYS) expect(text).toContain(keyed(key));
+  };
+
+  it.each([
+    ["a first review", {}],
+    ["a re-review", { fixFirsts: 1 }],
+    ["an owner-gated review", { ownerBrief: true }],
+  ])("is asked for on MERGE by %s, which still never parses as a verdict", (_name, extra) => {
+    const brief = reviewerBrief({ ...input, ...extra });
+
+    asksForLine(brief, (key) => `${key} (`);
+    expect(brief).toContain("the CI-policy line a MERGE adds");
+    expect(parseVerdictBlock(brief).ok).toBe(false);
+  });
+
+  it.each([false, true])("is asked for by the correction prompt, owner brief %s", (ownerBrief) => {
+    asksForLine(correctionPrompt({ ...input, refusal: "no_block", ownerBrief }), (key) => key);
+  });
+});
+
 describe("reviewerBrief Defect class and Earlier findings", () => {
   const input = { repo: "octo/demo", pr: 7, head: "c".repeat(40), checkoutRoot: "/data/reviews" };
   const earlier = [
