@@ -6,7 +6,8 @@ const FIX_PROOF_KINDS: ReadonlySet<TaskKind> = new Set(["correctness", "security
 
 /**
  * Why an explicit move from `from` to `to` is refused, or undefined when it applies. A security run never leaves security,
- * because only the other kinds may carry a reviewed MERGE across a tree-equal update (`CARRYING_KINDS`, MRG-AU-RC).
+ * because only the other kinds may carry a reviewed MERGE across a tree-equal update (`CARRYING_KINDS`, MRG-AU-RC). A security
+ * run's owner approval follows one thing only, Shepherd's own disjoint clean merge-up (`OWN_MERGE_UP_KINDS`).
  * A correctness run may not move to a kind outside `FIX_PROOF_KINDS`. Nothing reads the kind to run or skip fix-proof today;
  * these refusals are a guard on the stored kind, not a gate.
  */
