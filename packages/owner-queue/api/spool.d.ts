@@ -1,4 +1,4 @@
-import { O as OwnerItem, a as OwnerAnswer, A as Audience, f as OwnerItemDeposit } from './deposit.js';
+import { O as OwnerItem, a as OwnerAnswer, A as Audience, h as OwnerItemDeposit } from './deposit.js';
 import 'zod';
 
 /** The cap on one deposit file, so a runaway context cannot fill the spool or the console. */
@@ -63,6 +63,16 @@ declare const LENSES: readonly ["blocking-agent", "blocking-merge", "stuck", "pl
 declare const ROUTE_TARGETS: readonly ["owner-now", "owner-queue", "decider"];
 declare const AUDIENCES: readonly ["owner", "operator"];
 declare const ITEM_STATUSES: readonly ["open", "answered", "decided", "expired", "gone-elsewhere", "withdrawn"];
+declare const ON_SILENCE_ACTIONS: readonly ["wait", "apply-default", "expire"];
+declare const onSilenceSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    action: z.ZodLiteral<"wait">;
+}, z.core.$strict>, z.ZodObject<{
+    action: z.ZodEnum<{
+        "apply-default": "apply-default";
+        expire: "expire";
+    }>;
+    afterHours: z.ZodNumber;
+}, z.core.$strict>], "action">;
 declare const sourceRefSchema: z.ZodObject<{
     system: z.ZodEnum<{
         "agent-chat": "agent-chat";
@@ -117,6 +127,19 @@ declare const ownerItemSchema: z.ZodObject<{
         "one-way": "one-way";
         "two-way": "two-way";
     }>;
+    class: z.ZodOptional<z.ZodString>;
+    irreversible: z.ZodOptional<z.ZodString>;
+    shown: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    default: z.ZodOptional<z.ZodString>;
+    onSilence: z.ZodOptional<z.ZodDiscriminatedUnion<[z.ZodObject<{
+        action: z.ZodLiteral<"wait">;
+    }, z.core.$strict>, z.ZodObject<{
+        action: z.ZodEnum<{
+            "apply-default": "apply-default";
+            expire: "expire";
+        }>;
+        afterHours: z.ZodNumber;
+    }, z.core.$strict>], "action">>;
     category: z.ZodOptional<z.ZodString>;
     summary: z.ZodString;
     context: z.ZodString;
@@ -124,6 +147,7 @@ declare const ownerItemSchema: z.ZodObject<{
         id: z.ZodString;
         label: z.ZodString;
         description: z.ZodOptional<z.ZodString>;
+        consequence: z.ZodOptional<z.ZodString>;
     }, z.core.$strip>>>;
     recommended: z.ZodOptional<z.ZodObject<{
         optionId: z.ZodString;
@@ -201,6 +225,7 @@ type OwnerItem = z.infer<typeof ownerItemSchema>;
 type OwnerAnswer = z.infer<typeof answerSchema>;
 type ItemStatus = (typeof ITEM_STATUSES)[number];
 type Audience = (typeof AUDIENCES)[number];
+type OnSilence = z.infer<typeof onSilenceSchema>;
 
 /**
  * What an agent may file into the owner inbox. Strict at every level, so a deposit that tries
@@ -221,12 +246,26 @@ declare const ownerItemDepositSchema: z.ZodObject<{
         "one-way": "one-way";
         "two-way": "two-way";
     }>;
+    class: z.ZodOptional<z.ZodString>;
+    irreversible: z.ZodOptional<z.ZodString>;
+    shown: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    default: z.ZodOptional<z.ZodString>;
+    onSilence: z.ZodOptional<z.ZodDiscriminatedUnion<[z.ZodObject<{
+        action: z.ZodLiteral<"wait">;
+    }, z.core.$strict>, z.ZodObject<{
+        action: z.ZodEnum<{
+            "apply-default": "apply-default";
+            expire: "expire";
+        }>;
+        afterHours: z.ZodNumber;
+    }, z.core.$strict>], "action">>;
     summary: z.ZodString;
     context: z.ZodString;
     options: z.ZodOptional<z.ZodArray<z.ZodObject<{
         id: z.ZodString;
         label: z.ZodString;
         description: z.ZodOptional<z.ZodString>;
+        consequence: z.ZodOptional<z.ZodString>;
     }, z.core.$strict>>>;
     recommended: z.ZodOptional<z.ZodObject<{
         optionId: z.ZodString;
@@ -262,4 +301,4 @@ declare function depositItemId(asker: string, depositId: string): string;
 /** Parses an untrusted deposit and returns the open OwnerItem it files; throws on a refused deposit. */
 declare function fromDeposit(deposit: OwnerItemDeposit, now: Date): OwnerItem;
 
-export { type Audience as A, DEPOSIT_LENS as D, type ItemStatus as I, LENSES as L, type OwnerItem as O, ROUTE_TARGETS as R, type SourceRef as S, type OwnerAnswer as a, AUDIENCES as b, DOORS as c, ITEM_KINDS as d, ITEM_STATUSES as e, type OwnerItemDeposit as f, SOURCE_SYSTEMS as g, depositItemId as h, fromDeposit as i, ownerItemSchema as j, ownerItemDepositSchema as o, sourceRefSchema as s };
+export { type Audience as A, DEPOSIT_LENS as D, type ItemStatus as I, LENSES as L, type OwnerItem as O, ROUTE_TARGETS as R, type SourceRef as S, type OwnerAnswer as a, AUDIENCES as b, DOORS as c, ITEM_KINDS as d, ITEM_STATUSES as e, ON_SILENCE_ACTIONS as f, type OnSilence as g, type OwnerItemDeposit as h, SOURCE_SYSTEMS as i, depositItemId as j, fromDeposit as k, ownerItemSchema as l, ownerItemDepositSchema as o, sourceRefSchema as s };
