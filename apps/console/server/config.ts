@@ -10,6 +10,8 @@ import type { SeatPrefix } from "@titan-design/chat-protocol/agents";
 export const DEFAULT_CONSOLE_PORT = 7500;
 const ACTIVE_WORK_PORT = 7400;
 const AGENT_CHAT_PORT = 7600;
+/** titan-factory's `serve`, whose `needs.list` merges agent-chat, hitl, Morning and active-work asks. */
+const FACTORY_PORT = 7410;
 /** Codewatch's `CODE_REPORT_PORT`. */
 export const DEFAULT_CODEWATCH_URL = "http://127.0.0.1:7433";
 
@@ -18,9 +20,10 @@ export interface ConsoleConfig {
   port: number;
   /** Holds the console daemon's pid file. */
   stateDir: string;
-  /** Loopback ports of the two upstream daemons; the console never starts either. */
+  /** Loopback ports of the upstream daemons; the console never starts any of them. */
   activeWorkPort: number;
   agentChatPort: number;
+  factoryPort: number;
   /** agent-chat's `ui.token`; the broker's `/api/*` reads need it in a header. */
   agentChatTokenPath: string;
   /** agent-chat's event log, which agents.messages pages through read-only. */
@@ -85,6 +88,7 @@ export function resolveConfig(
     stateDir,
     activeWorkPort: portFrom(env, "TITAN_CONSOLE_ACTIVE_WORK_PORT", ACTIVE_WORK_PORT),
     agentChatPort: portFrom(env, "TITAN_CONSOLE_AGENT_CHAT_PORT", AGENT_CHAT_PORT),
+    factoryPort: portFrom(env, "TITAN_CONSOLE_FACTORY_PORT", FACTORY_PORT),
     agentChatTokenPath: expandHome(env.TITAN_CONSOLE_AGENT_CHAT_TOKEN ?? path.join(env.AGENT_CHAT_HOME ?? "~/.agent-chat", "ui.token"), home),
     agentChatEventsDbPath: expandHome(env.TITAN_CONSOLE_EVENTS_DB ?? path.join(env.AGENT_CHAT_HOME ?? "~/.agent-chat", "events.db"), home),
     seatPrefixes: seatPrefixesFrom(env.TITAN_CONSOLE_SEATS),
@@ -105,7 +109,7 @@ export function resolveConfig(
 /** Settings that are each valid but unsafe or ambiguous together. */
 function assertCoherent(config: ConsoleConfig): void {
   if (config.lanHost !== null && config.lanTls === null) throw new Error(LAN_NEEDS_TLS);
-  if (config.port === config.activeWorkPort || config.port === config.agentChatPort) {
+  if ([config.activeWorkPort, config.agentChatPort, config.factoryPort].includes(config.port)) {
     throw new Error(`TITAN_CONSOLE_PORT ${config.port} belongs to an upstream daemon; the console needs a port of its own`);
   }
 }
