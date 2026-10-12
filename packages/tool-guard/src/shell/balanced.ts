@@ -70,6 +70,18 @@ export const EXPANSION_OPENERS = "{[(";
 /** Inside double quotes `$'` and `$"` are a literal `$` and a quote, not the ANSI-C and locale openers. */
 export const QUOTED_LITERAL_OPENERS = "'\"";
 
+/** Where the `$` at `j` stands once bash drops the backslash-newlines after it, so `$\<NL>[` opens `$[`. */
+export function joinedDollar(src: string, j: number): number {
+  return pastJoins(src, j + 1) - 1;
+}
+
+/** The first index at or after `at` that does not start a backslash-newline. */
+export function pastJoins(src: string, at: number): number {
+  let past = at;
+  while (src.startsWith("\\\n", past)) past += 2;
+  return past;
+}
+
 /** The opener after the `$` at `j`, or null when bash reads that `$` as a name, a special parameter or text. */
 export function dollarOpener(src: string, j: number): DollarOpener | null {
   const next = src[j + 1] ?? "";
@@ -89,8 +101,9 @@ const DOLLAR_ENDS: Record<DollarOpener, (src: string, j: number, read: NestedRea
 };
 
 function dollarEnd(src: string, j: number, read: NestedReaders): number {
-  const opener = dollarOpener(src, j);
-  return opener ? DOLLAR_ENDS[opener](src, j, read) : j;
+  const at = joinedDollar(src, j);
+  const opener = dollarOpener(src, at);
+  return opener ? DOLLAR_ENDS[opener](src, at, read) : at;
 }
 
 function singleQuoteEnd(src: string, start: number, read: NestedReaders): number {
@@ -106,7 +119,7 @@ function doubleQuoteEnd(src: string, start: number, read: NestedReaders): number
     if (c === '"') return j;
     if (c === "\\") j++;
     else if (c === "`") j = read.backtick(j);
-    else if (c === "$" && !QUOTED_LITERAL_OPENERS.includes(src[j + 1] ?? "")) j = dollarEnd(src, j, read);
+    else if (c === "$" && !QUOTED_LITERAL_OPENERS.includes(src[joinedDollar(src, j) + 1] ?? "")) j = dollarEnd(src, j, read);
   }
   throw new ParseError('unterminated "');
 }

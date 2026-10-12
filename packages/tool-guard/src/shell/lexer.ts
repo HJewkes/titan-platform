@@ -1,18 +1,17 @@
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, sameSpend, spent } from "./arith-trials.js";
-import { backtickEnd, balancedEnd, type DollarOpener, dollarOpener, type NestedReaders, QUOTED_LITERAL_OPENERS } from "./balanced.js";
+import { backtickEnd, balancedEnd, type DollarOpener, dollarOpener, joinedDollar, type NestedReaders, QUOTED_LITERAL_OPENERS } from "./balanced.js";
 import { nested } from "./nesting.js";
 import { ParseError, refusingAs, SplitParseError } from "./parse-error.js";
 import { readLineEnd } from "./procsub-heredoc.js";
 import { assignmentSubscriptEnd } from "./subscript.js";
 import type { LexState, RedirectToken, Token, WordToken } from "./tokens.js";
-import { appendChar, endWord, ensureWord, markComputed, markCut, markQuoted, pushRef, readAnsiC, readEscape, readSingle } from "./word-build.js";
+import { appendChar, endWord, ensureWord, markComputed, markCut, markQuoted, pushRef, readAnsiC, readEscape, readSingle, variableName } from "./word-build.js";
 
 export { ParseError, SplitParseError } from "./parse-error.js";
 export type { LexState, OpToken, RedirectToken, SubsToken, Token, VarRef, WordToken } from "./tokens.js";
 
 const OPERATORS = ["&&", "||", ";;", "|&", "|", ";", "&", "(", ")", "\n"];
 const REDIRECT_RE = /&>>?|<<<|<<-?|<>|>>|>&|<&|>\||>|</y;
-const VARIABLE_RE = /[A-Za-z_][A-Za-z0-9_]*|[0-9@*#?$!-]/y;
 const BRACED_NAME_RE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
 const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** Characters that keep their meaning inside a subscript: quotes, escapes and expansions. */
@@ -123,7 +122,7 @@ function readDouble(s: LexState): void {
     if (c === "\\" && next !== undefined && '$`"\\\n'.includes(next)) {
       if (next !== "\n") w.value += next;
       s.i += 2;
-    } else if (c === "$" && !QUOTED_LITERAL_OPENERS.includes(next ?? "")) readDollar(s);
+    } else if (c === "$" && !QUOTED_LITERAL_OPENERS.includes(s.src[joinedDollar(s.src, s.i) + 1] ?? "")) readDollar(s);
     else if (c === "`") readBacktick(s);
     else appendChar(s, c);
   }
@@ -147,17 +146,17 @@ const DOLLAR_READERS: Record<DollarOpener, (s: LexState, w: WordToken) => void> 
 
 function readDollar(s: LexState): void {
   const w = ensureWord(s);
+  s.i = joinedDollar(s.src, s.i);
   const opener = dollarOpener(s.src, s.i);
   if (opener) return DOLLAR_READERS[opener](s, w);
   readVariable(s, w);
 }
 
 function readVariable(s: LexState, w: WordToken): void {
-  VARIABLE_RE.lastIndex = s.i + 1;
-  const name = VARIABLE_RE.exec(s.src)?.[0];
-  if (!name) return appendChar(s, "$");
-  pushRef(w, name, `$${name}`);
-  s.i += 1 + name.length;
+  const read = variableName(s.src, s.i + 1);
+  if (!read) return appendChar(s, "$");
+  pushRef(w, read.name, `$${read.name}`);
+  s.i = read.end;
 }
 
 /** Every substitution on a line is lexed here, so a heredoc it leaves open stays pending on `line`, where bash 5 reads its body. */
@@ -195,7 +194,7 @@ function lineReading(s: LexState): Reading {
 function readBraced(s: LexState, w: WordToken): void {
   const found: Token[][] = [];
   const end = balancedEnd(s.src, s.i + 1, nestedReaders(lineReading(s), found));
-  const text = s.src.slice(s.i, end + 1);
+  const text = dollarText(s, end);
   const name = BRACED_NAME_RE.exec(text)?.[1];
   if (name) pushRef(w, name, text);
   else {
@@ -209,16 +208,21 @@ function readArithmetic(s: LexState, w: WordToken): void {
   const found: Token[][] = [];
   const end = arithmeticExpansionEnd(lineReading(s), s.i, found);
   if (end === -1) return pushSubstitution(s, w, s.i + 2);
-  markComputed(w).value += s.src.slice(s.i, end + 1);
+  markComputed(w).value += dollarText(s, end);
   w.subs.push(...found);
   s.i = end + 1;
+}
+
+/** The expansion ending at `end`, spelled without the backslash-newlines bash dropped after its `$`. */
+function dollarText(s: LexState, end: number): string {
+  return `$${s.src.slice(s.i + 1, end + 1)}`;
 }
 
 /** Reads a `$[ ]`, bash's older spelling of `$(( ))`, through the same matching as `${ }`. */
 function readBracketArithmetic(s: LexState, w: WordToken): void {
   const found: Token[][] = [];
   const end = balancedEnd(s.src, s.i + 1, nestedReaders(lineReading(s), found));
-  markComputed(w).value += s.src.slice(s.i, end + 1);
+  markComputed(w).value += dollarText(s, end);
   w.subs.push(...found);
   s.i = end + 1;
 }
@@ -282,10 +286,14 @@ export function scanSubstitutions(src: string, from: number, to: number, trials 
   for (let j = from; j < to; j++) {
     const c = src[j];
     if (c === "\\") j++;
-    else if (c === "$" && src[j + 1] === "(") j = src[j + 2] === "(" ? read.dollarParens(j) : read.substitution(j + 2);
+    else if (c === "$" && src[joinedDollar(src, j) + 1] === "(") j = dollarParen(src, joinedDollar(src, j), read);
     else if (c === "`") j = read.backtick(j);
   }
   return found;
+}
+
+function dollarParen(src: string, dollar: number, read: NestedReaders): number {
+  return src[dollar + 2] === "(" ? read.dollarParens(dollar) : read.substitution(dollar + 2);
 }
 
 function scanBacktick(src: string, start: number, found: Token[][], trials: ArithTrials): number {

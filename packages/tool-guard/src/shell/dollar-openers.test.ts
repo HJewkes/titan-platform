@@ -43,6 +43,8 @@ function builtHookStdout(command: string): string {
 }
 
 const DENY = '"permissionDecision":"deny"';
+/** A backslash-newline, which bash drops before it reads the word. */
+const JOIN = "\\\n";
 
 const GUARDED: Array<[string, string]> = [
   ["a push", PUSH],
@@ -56,7 +58,19 @@ const HIDERS: Array<[string, (guarded: string) => string]> = [
   ["a substitution inside $[ ]", (g) => `echo $[ $(${g}) ]`],
   ["an unclosed $[", (g) => `: $[ 1 + ; ${g}`],
   ["a locale string as the subcommand", (g) => g.replace(/^(\S+) (\S+)/, '$1 $"$2"')],
+  ["a joined $[ ]", (g) => `true || : $${JOIN}[ #]; ${g}`],
+  ["a twice-joined $[ ]", (g) => `true || : $${JOIN}${JOIN}[ #]; ${g}`],
+  ["a joined $[ ] inside double quotes", (g) => `true || : "$${JOIN}[ #]"; ${g}`],
+  ["a joined $(( ))", (g) => `: $${JOIN}(( 1 #)); ${g}`],
+  ["a joined $( ) in a heredoc body", (g) => `cat <<EOF\n$${JOIN}(${g})\nEOF`],
+  ["a joined locale string as the subcommand", (g) => g.replace(/^(\S+) (\S+)/, `$1 $${JOIN}"$2"`)],
+  ["a joined ANSI-C string as the subcommand", (g) => g.replace(/^(\S+) (\S+)/, `$1 $${JOIN}'$2'`)],
+  ["a joined variable as the subcommand", (g) => g.replace(/^(\S+) (\S+)/, `ab=$2; a=x; $1 $${JOIN}ab`)],
+  ["a variable name joined in the middle", (g) => g.replace(/^(\S+) (\S+)/, `ab=$2; a=x; $1 $a${JOIN}b`)],
 ];
+
+/** The rows whose `$[` a reader without a `[` entry must refuse. */
+const BRACKET_HIDERS = HIDERS.filter(([name]) => name.includes("$[ ]"));
 
 describe("a guarded command next to a $-opener", () => {
   it.each(GUARDED.flatMap(([name, g]) => HIDERS.map(([hider, line]) => [name, hider, line(g)] as const)))("the hook denies %s after %s", async (_name, _hider, command) => {
@@ -80,6 +94,9 @@ describe("a harmless $-opener", () => {
     ["a lone $", "echo $ done"],
     ["a $' inside double quotes", `echo "cost $'5"`],
     ['a $" inside double quotes', 'echo "cost $"'],
+    ["a joined top-level $[ ]", `echo $${JOIN}[1+2] done`],
+    ["a joined $' inside double quotes", `echo "cost $${JOIN}'5"`],
+    ["a joined literal $", `echo $${JOIN}% done`],
   ])("the hook passes %s", async (_name, command) => {
     expect(await hookStdout(command)).toBe("");
   });
@@ -93,6 +110,16 @@ describe("where the lexer ends a $-opener", () => {
   it("reads a # inside $[ ] as part of the word, not a comment", () => {
     const words = tokenize("echo $[ #]; x").map((t) => (t.type === "word" || t.type === "op" ? t.value : t.type));
     expect(words).toEqual(["echo", "$[ #]", ";", "x"]);
+  });
+
+  it("reads a $[ ] joined by backslash-newlines as one word", () => {
+    const words = tokenize(`echo $${JOIN}${JOIN}[ #]; x`).map((t) => (t.type === "word" || t.type === "op" ? t.value : t.type));
+    expect(words).toEqual(["echo", "$[ #]", ";", "x"]);
+  });
+
+  it("joins a variable name across a backslash-newline", () => {
+    const [, word] = tokenize(`echo $a${JOIN}b`);
+    expect(word?.type === "word" && word.refs.map((r) => r.name)).toEqual(["ab"]);
   });
 
   it("collects a substitution inside $[ ]", () => {
@@ -115,12 +142,13 @@ describe("the shared $-opener table", () => {
     expect([...EXPANSION_OPENERS].filter((next) => !Object.hasOwn(DOLLAR_OPENERS, next))).toEqual([]);
   });
 
-  it("refuses an expansion opener the table does not list", () => {
+  it("refuses an expansion opener the table does not list, so each $[ hider still denies", async () => {
     const table = DOLLAR_OPENERS as Record<string, unknown>;
     const saved = table["["];
     delete table["["];
     try {
       expect(() => dollarOpener("$[1]", 0)).toThrow(SplitParseError);
+      for (const [, line] of BRACKET_HIDERS) for (const [, guarded] of GUARDED) expect(await hookStdout(line(guarded))).toContain(DENY);
     } finally {
       table["["] = saved;
     }

@@ -1,7 +1,10 @@
 import { decodeAnsiC } from "./ansi-c.js";
-import { ansiCEnd } from "./balanced.js";
+import { ansiCEnd, pastJoins } from "./balanced.js";
 import { ParseError } from "./parse-error.js";
 import type { LexState, WordToken } from "./tokens.js";
+
+const VARIABLE_RE = /[A-Za-z_][A-Za-z0-9_]*|[0-9@*#?$!-]/y;
+const NAME_TAIL_RE = /[A-Za-z0-9_]+/y;
 
 export function ensureWord(s: LexState): WordToken {
   s.word ??= { type: "word", value: "", dynamic: false, quoted: false, spliced: false, computed: false, refs: [], subs: [] };
@@ -75,4 +78,20 @@ export function readAnsiC(s: LexState, w: WordToken): void {
   w.quoted = true;
   w.spliced = true;
   s.i = end + 1;
+}
+
+/** The name a `$` at `from - 1` expands and where it ends; a backslash-newline inside a name joins it, so `$a\<NL>b` reads `$ab`. */
+export function variableName(src: string, from: number): { name: string; end: number } | null {
+  VARIABLE_RE.lastIndex = from;
+  let name = VARIABLE_RE.exec(src)?.[0];
+  if (name === undefined) return null;
+  let end = from + name.length;
+  while (/^[A-Za-z_]/.test(name) && pastJoins(src, end) > end) {
+    NAME_TAIL_RE.lastIndex = pastJoins(src, end);
+    const tail = NAME_TAIL_RE.exec(src)?.[0];
+    if (tail === undefined) break;
+    name += tail;
+    end = NAME_TAIL_RE.lastIndex;
+  }
+  return { name, end };
 }
