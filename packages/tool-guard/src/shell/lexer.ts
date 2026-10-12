@@ -105,13 +105,15 @@ function readBlank(s: LexState): void {
   s.i++;
 }
 
+/** Bash reads an arithmetic command's text whole, so a newline inside `(( ))` is not a line end and starts no heredoc body. */
 function readOperator(s: LexState, op: string, end: number): void {
+  const inArithmetic = s.i < s.arithEnd;
   endWord(s);
   s.i = end;
   if (op === "(") s.depth++;
   if (op === ")") s.depth--;
   s.tokens.push({ type: "op", value: op });
-  if (op === "\n") readLineEnd(s);
+  if (op === "\n" && !inArithmetic) readLineEnd(s);
 }
 
 function readDouble(s: LexState): void {
