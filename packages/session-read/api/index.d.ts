@@ -542,9 +542,13 @@ declare function parseReviewVerdicts(text: string): ReviewVerdictMatch[];
  *   only directly after Head and only on FIX_FIRST. Absent, on MERGE or WAIT, or any other value, a duplicate, or
  *   a line anywhere else, it leaves `closer` undefined and the block parses as it would without it.
  * - An optional fourth line `CI-policy: unchanged` or `CI-policy: weakened <key>(, <key>)*` (TP-2407) is read only
- *   directly after Head and only on MERGE. Keys come from a closed set, each at most once. An unknown or repeated key,
- *   an empty list, a duplicate line anywhere, or a line anywhere else leaves `ciPolicy` undefined, which the merge
- *   guard reads as missing: a `.github/` change then fails closed.
+ *   directly after Head and only on MERGE. Keys come from a closed set, each at most once. Unlike every other rule here,
+ *   the label is looked for on every raw line, fenced, indented, commented out or not, and a line is labelled when it
+ *   folds to `cipolicy...` (see `foldCiPolicyLine`: NFKC, lower case, every non-alphanumeric and any list number gone).
+ *   With no labelled line `ciPolicy` is undefined. A labelled line whose rest folds to `weakened` and known keys reads
+ *   weakened wherever it sits; the canonical unchanged line counts only as the one labelled line, exact and visible at
+ *   Head+1; any other labelled line reads `{ kind: "malformed" }`. Across lines the strictest reading wins: weakened
+ *   (keys merged) over malformed over unchanged. Both gate on any PR: a reviewer who wrote the line meant something.
  * - Any visible line starting `Verdict:` is a block start, so a second one is refused, even
  *   when identical or malformed. A `Status:` line is ignored.
  */
@@ -557,6 +561,8 @@ type CiPolicy = {
 } | {
     kind: "weakened";
     keys: CiPolicyKey[];
+} | {
+    kind: "malformed";
 };
 type VerdictBlockRefusal = "no_block" | "multiple_blocks" | "bad_verdict" | "missing_pr_line" | "bad_pr" | "missing_head_line" | "bad_head";
 type VerdictBlockResult = {
