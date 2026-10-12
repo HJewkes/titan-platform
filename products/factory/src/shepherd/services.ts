@@ -17,4 +17,6 @@ export interface ShepherdServices extends SnapshotServices {
   train?: MergeTrainRef;
   /** Read before a gate a freeze caused is superseded, and watched for thaws; absent means no repo is ever frozen. */
   freeze?: FreezeStoreRef;
+  /** The clock `shepherd.prs` dates its merged window by; absent means the wall clock. */
+  now?: () => number;
 }

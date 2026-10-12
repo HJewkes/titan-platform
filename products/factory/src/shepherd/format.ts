@@ -1,6 +1,7 @@
 import type { CommandMapOf } from "@titan-design/registry";
 import type { ZodType } from "zod";
 import { SHEPHERD_COMMAND_MAP, type MergeEvaluation, type Registered, type ShepherdCommandName } from "./commands.js";
+import type { PrRow } from "./prs.js";
 import type { ReviewAsk } from "./review-request.js";
 import type { ResyncReport } from "./resync.js";
 import { OVERDUE_HOURS, overdueOwnerGates, type Waiting, type WaitingGate } from "./waiting.js";
@@ -28,6 +29,7 @@ const FORMATTERS: Formatters = {
   "shepherd.merge": formatMerge,
   "shepherd.review": formatReviewAsk,
   "shepherd.resync": formatResync,
+  "shepherd.prs": formatPrs,
 };
 
 const RESULT_SCHEMAS: ResultSchemas = SHEPHERD_COMMAND_MAP;
@@ -48,6 +50,16 @@ function formatWaiting(waiting: Waiting): string {
   const overdue = overdueOwnerGates(waiting).length;
   const section = (title: string, gates: readonly WaitingGate[]): string[] => [`${title} (${gates.length}), oldest first:`, ...(gates.length === 0 ? ["  none"] : gates.map(waitingLine))];
   return `${[...section("waiting on the owner", owner), ...section("seat work", seat), ...(overdue > 0 ? [`${overdue} owner gate(s) over ${OVERDUE_HOURS} h`] : [])].join("\n")}\n`;
+}
+
+function prLine(row: PrRow): string {
+  const head = row.state === "merged" ? `merged ${row.mergeSha?.slice(0, 7) ?? "-"}` : (row.headSha?.slice(0, 7) ?? "-");
+  const run = row.runId === undefined ? "unregistered" : `${row.runId} ${row.phase}`;
+  return `${row.repo}#${row.number}  ${head}  ${row.branch ?? "-"}  ${run}  ci ${row.ci?.state ?? "-"}${row.draft ? "  [draft]" : ""}`;
+}
+
+function formatPrs(rows: PrRow[]): string {
+  return rows.length === 0 ? "no PRs\n" : `${rows.map(prLine).join("\n")}\n`;
 }
 
 function formatHold({ runId, held }: ShepherdResults["shepherd.hold"]): string {

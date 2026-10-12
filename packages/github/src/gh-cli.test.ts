@@ -520,6 +520,14 @@ describe("gh api adapter, conditional GETs", () => {
     expect(gh.calls[1]?.args.slice(-2)).toEqual(["-H", 'If-None-Match: W/"o1"']);
   });
 
+  it("carries each listed PR's title, and its empty body as an empty string", async () => {
+    const gh = scriptedGhSequence([included(200, { ETag: 'W/"o1"' }, [{ ...pull, title: "Add the widget", body: null }])]);
+
+    const read = await ghCliWire(gh.exec).revalidateOpenPrs(REPO, null);
+
+    expect(read).toMatchObject({ notModified: false, prs: [{ number: 7, title: "Add the widget", body: "" }] });
+  });
+
   it("answers a list longer than one page with every page and no ETag", async () => {
     const link = { Link: '<https://api.github.com/repositories/9/pulls?state=open&page=2>; rel="next"' };
     const gh = scriptedGhSequence([included(200, { ETag: '"p1"', ...link }, [pull]), included(200, { ETag: '"p2"' }, [{ ...pull, number: 8 }])]);

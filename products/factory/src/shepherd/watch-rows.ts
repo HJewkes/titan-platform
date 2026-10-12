@@ -17,6 +17,12 @@ const FINISHED_RUN: ReadonlySet<WorkflowStatus> = new Set(["completed", "failed"
 /** A run that ended, so its watch row reads done, failed or cancelled. */
 export const runFinished = (status: WorkflowStatus): boolean => FINISHED_RUN.has(status);
 
+export interface RowWithRun {
+  row: WatchRow;
+  run: WorkflowRun;
+  registration: Registration;
+}
+
 /** Which registrations a read wants, judged from the registration and its run's status before the run is loaded. */
 type RowFilter = (registration: Registration, status: WorkflowStatus) => boolean;
 
@@ -25,17 +31,17 @@ type RowFilter = (registration: Registration, status: WorkflowStatus) => boolean
  * Only the runs `keep` wants are loaded, since every run's step results together take most of a second to parse, and
  * the loop yields the event loop between slices so serve keeps answering while it reads.
  */
-export async function rowsWithRuns(host: FactoryHost, services: ShepherdServices, keep: RowFilter = () => true): Promise<{ row: WatchRow; run: WorkflowRun }[]> {
+export async function rowsWithRuns(host: FactoryHost, services: ShepherdServices, keep: RowFilter = () => true): Promise<RowWithRun[]> {
   const pause = sliceClock();
   const statuses = host.runs.statuses();
   const pendingGates = host.pendingGates();
-  const found: { row: WatchRow; run: WorkflowRun }[] = [];
+  const found: RowWithRun[] = [];
   for (const registration of services.store.get().all()) {
     const status = statuses.get(registration.runId);
     if (status === undefined || !keep(registration, status)) continue;
     await pause();
     const run = host.runtime.status(registration.runId);
-    if (run) found.push({ row: rowOf(host, services, registration, run, pendingGates), run });
+    if (run) found.push({ row: rowOf(host, services, registration, run, pendingGates), run, registration });
   }
   return found;
 }
