@@ -5,9 +5,10 @@ import type { SourceTextLocator } from "@titan-design/session-read";
 import { readRequiredChecks, statusOf } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import { errorClass } from "./error-class.js";
-import { VISUAL_REASON_PREFIX, evidenceComment, evidenceMarker } from "./evidence-comment.js";
+import { SKILL_REASON_PREFIX, VISUAL_REASON_PREFIX, evidenceComment, evidenceMarker } from "./evidence-comment.js";
 import { REVIEW_CHECK_NAME } from "./publish-review.js";
 import type { ShepherdStoreRef } from "./store.js";
+import { skillPathsIn } from "./skill-paths.js";
 import { remergeFact, type CarryRule, type RemergeResult } from "./remerge-carry.js";
 import type { CarryResult } from "./tree-carry.js";
 
@@ -114,8 +115,8 @@ export interface DecidableEvidence {
   changedFilesUnread?: string;
 }
 
-/** Every row the merge guard gates on; the owner section words each one (why-asked.ts). */
-export const MERGE_GUARD_ROWS = ["no-facts", "head-mismatch", "files-unread", "visual-path", "required-checks-unknown", "merge-state-unsettled"] as const;
+/** Every row the merge guard gates on; the owner section words each one (why-asked.ts), as do the evidence comment and the decision class. */
+export const MERGE_GUARD_ROWS = ["no-facts", "head-mismatch", "files-unread", "skill-path", "visual-path", "required-checks-unknown", "merge-state-unsettled"] as const;
 export type MergeGuardRow = (typeof MERGE_GUARD_ROWS)[number];
 
 function guardRule(rowId: MergeGuardRow): PolicyRule {
@@ -148,7 +149,8 @@ function withUnreadFacts(decision: GateDecision, evidence: DecidableEvidence | u
 
 /**
  * The pure decision both the evidence step and `decide` use; only MRG-AU-RV at this exact head, MRG-AU-RC for a
- * tree-equal carry of the verdict to it, or MRG-AU-RM for a remerge-clean one, allows. Under `visualPaths`, a head whose changed files match one gates.
+ * tree-equal carry of the verdict to it, or MRG-AU-RM for a remerge-clean one, allows. A head that changes a repo skill
+ * gates under any policy, and under `visualPaths` so does a head whose changed files match one.
  */
 export function decideAutoMerge(headSha: string, evidence: DecidableEvidence | undefined, visualPaths?: readonly string[]): GateDecision {
   return withUnreadFacts(decideOnFacts(headSha, evidence, visualPaths), evidence);
@@ -173,16 +175,24 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
 
 const SHOWN_VISUAL_PATHS = 10;
 
-/** Unread changed files gate under any policy; under visual paths they count as visual, as does an empty list. */
+function shownPaths(paths: readonly string[]): string {
+  return paths.slice(0, SHOWN_VISUAL_PATHS).join(", ") + (paths.length > SHOWN_VISUAL_PATHS ? ` and ${paths.length - SHOWN_VISUAL_PATHS} more` : "");
+}
+
+/**
+ * Unread changed files gate under any policy; under visual paths they count as visual, as does an empty list. A skill
+ * change gates under any policy too, with a guard row the coordinator-evidence resolve never admits, so only the owner clears it.
+ */
 function changedFilesGate(evidence: DecidableEvidence, visualPaths: readonly string[] | undefined): GateDecision | undefined {
   const asVisual = visualPaths === undefined ? "" : ", so the PR counts as visual";
   if (evidence.changedFilesUnread !== undefined) return { outcome: "gate", rule: guardRule("files-unread"), reason: `${evidence.changedFilesUnread}${asVisual}; the owner decides` };
+  const skills = skillPathsIn(evidence.merge.changedPaths);
+  if (skills.length > 0) return { outcome: "gate", rule: guardRule("skill-path"), reason: `${SKILL_REASON_PREFIX}${shownPaths(skills)}` };
   if (visualPaths === undefined) return undefined;
   if (evidence.merge.changedPaths.length === 0) return { outcome: "gate", rule: guardRule("files-unread"), reason: `no changed files were read at ${evidence.head}${asVisual}; the owner decides` };
   const visual = visualMatches(evidence.merge.changedPaths, visualPaths);
   if (visual.length === 0) return undefined;
-  const shown = visual.slice(0, SHOWN_VISUAL_PATHS).join(", ") + (visual.length > SHOWN_VISUAL_PATHS ? ` and ${visual.length - SHOWN_VISUAL_PATHS} more` : "");
-  return { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shown}` };
+  return { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shownPaths(visual)}` };
 }
 
 /**

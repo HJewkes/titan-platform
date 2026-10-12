@@ -31,6 +31,7 @@ const OWNER_GATE_WORDS: Readonly<Record<OwnerGateReason, string>> = {
 type Row = { gateClass: GateClass; words: string };
 
 const GUARD_ROWS: Readonly<Record<MergeGuardRow, Row>> = {
+  "skill-path": { gateClass: "deliberate", words: "it changes a repo skill under .claude/skills, and only you review skill diffs" },
   "visual-path": { gateClass: "deliberate", words: "Gate 2 visual: it changes a file the seat lists as rendered UI" },
   "merge-state-unsettled": { gateClass: "accidental", words: "GitHub had not finished computing mergeability on any read (transient merge-state read)" },
   "no-facts": { gateClass: "accidental", words: "Shepherd collected no merge facts at this head" },

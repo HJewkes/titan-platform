@@ -83,6 +83,7 @@ describe("whyAsked for Shepherd's own rows", () => {
   });
 
   it.each([
+    ["skill-path", "deliberate"],
     ["visual-path", "deliberate"],
     ["merge-state-unsettled", "accidental"],
     ["no-facts", "accidental"],
