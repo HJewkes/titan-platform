@@ -1,12 +1,12 @@
 import { compileGlobs } from "@titan-design/fix-proof";
 import { DEFAULT_TABLE, evaluate, type AgentIdentity, type CarryFact, type CheckRunFact, type MergeFacts } from "@titan-design/authority";
 import { FileListTruncatedError, GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PrFile, type PullRequest, type RepoSlug } from "@titan-design/github";
-import type { SourceTextLocator } from "@titan-design/session-read";
+import type { CiPolicy, SourceTextLocator } from "@titan-design/session-read";
 import { oneLine } from "../gate-brief.js";
 import { readRequiredChecks, statusOf } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import { errorClass } from "./error-class.js";
-import { SKILL_REASON_PREFIX, VISUAL_REASON_PREFIX, evidenceComment, evidenceMarker } from "./evidence-comment.js";
+import { CI_POLICY_WEAKENED_PREFIX, GITHUB_PATH_REASON_PREFIX, SKILL_REASON_PREFIX, VISUAL_REASON_PREFIX, evidenceComment, evidenceMarker } from "./evidence-comment.js";
 import { REVIEW_CHECK_NAME } from "./publish-review.js";
 import type { ShepherdStoreRef } from "./store.js";
 import { skillPathsIn } from "./skill-paths.js";
@@ -64,6 +64,8 @@ export interface MergeEvidenceInput {
   carry?: { fromHead: string; head: string; result: CarryResult; rule?: CarryRule; remerge?: RemergeResult };
   /** The run policy's visual globs, so the evidence comment records the same decision `decide` reaches. */
   visualPaths?: string[];
+  /** The reviewer's CI-policy line on the MERGE; absent gates a `.github/` change. */
+  ciPolicy?: CiPolicy;
 }
 
 export interface EvidenceCheckRun {
@@ -89,6 +91,7 @@ export interface EvidenceRecord {
   mergeableState: string;
   /** Set when the verdict was reviewed at another head and carried here: both heads and both trees. */
   carry?: CarryFact;
+  ciPolicy?: CiPolicy;
 }
 
 /** The facts observed at one head, and the record of what they decided there. */
@@ -103,6 +106,8 @@ export interface MergeEvidence {
   unreadFacts?: string[];
   /** Why the PR's changed files could not be read; set means the merge gates. */
   changedFilesUnread?: string;
+  /** The reviewer's CI-policy line, kept beside the facts because authority reads no reviewer text. */
+  ciPolicy?: CiPolicy;
 }
 
 /** Just what `decideAutoMerge` reads, so the evidence step can decide before its record exists. */
@@ -114,10 +119,11 @@ export interface DecidableEvidence {
   requiredChecksUnknown?: string;
   unreadFacts?: string[];
   changedFilesUnread?: string;
+  ciPolicy?: CiPolicy;
 }
 
 /** Every row the merge guard gates on; the owner section words each one (why-asked.ts), as do the evidence comment and the decision class. */
-export const MERGE_GUARD_ROWS = ["no-facts", "head-mismatch", "files-unread", "skill-path", "visual-path", "required-checks-unknown", "merge-state-unsettled"] as const;
+export const MERGE_GUARD_ROWS = ["no-facts", "head-mismatch", "files-unread", "skill-path", "visual-path", "required-checks-unknown", "merge-state-unsettled", "github-path", "ci-policy-weakened"] as const;
 export type MergeGuardRow = (typeof MERGE_GUARD_ROWS)[number];
 
 function guardRule(rowId: MergeGuardRow): PolicyRule {
@@ -164,6 +170,8 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
   }
   const pathGate = changedFilesGate(evidence, visualPaths);
   if (pathGate) return pathGate;
+  const policyGate = ciPolicyGate(evidence);
+  if (policyGate) return policyGate;
   if (evidence.requiredChecksUnknown !== undefined) return { outcome: "gate", rule: guardRule("required-checks-unknown"), reason: evidence.requiredChecksUnknown };
   if (evidence.mergeableState === "unknown") return { outcome: "gate", rule: guardRule(UNSETTLED_ROW), reason: `mergeable_state unknown after ${SETTLE_MAX_READS} reads` };
   const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject: { repo: evidence.record.repo, pr: String(evidence.record.pr) }, facts: { merge: evidence.merge } });
@@ -196,6 +204,19 @@ function changedFilesGate(evidence: DecidableEvidence, visualPaths: readonly str
   const visual = visualMatches(evidence.merge.changedPaths, visualPaths);
   if (visual.length === 0) return undefined;
   return { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shownPaths(visual)}` };
+}
+
+/**
+ * A reviewer who says CI policy is weakened gates any PR for the owner. A `.github/` change, rename sources included, with
+ * no well-formed line gates too, so a stored record from before the line existed fails closed.
+ */
+function ciPolicyGate(evidence: DecidableEvidence): GateDecision | undefined {
+  const { ciPolicy } = evidence;
+  if (ciPolicy?.kind === "weakened") return { outcome: "gate", rule: guardRule("ci-policy-weakened"), reason: `${CI_POLICY_WEAKENED_PREFIX}${shownPaths(ciPolicy.keys)}` };
+  if (ciPolicy?.kind === "unchanged") return undefined;
+  const github = evidence.merge.changedPaths.filter(isGithubPath);
+  if (github.length === 0) return undefined;
+  return { outcome: "gate", rule: guardRule("github-path"), reason: `${GITHUB_PATH_REASON_PREFIX}${shownPaths(github)}` };
 }
 
 /**
@@ -347,7 +368,8 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
   const { pr, merge, runs, requiredChecksUnknown, unreadFacts, changedFilesUnread } = await collectMergeFacts(port, input, isFrozen, kind, clock, reviewAppId);
   const mergeableState = pr.mergeableState;
   const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
-  const decision = decideAutoMerge(input.head, { head: input.head, merge, record: input, mergeableState, ...unknown }, input.visualPaths);
+  const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy };
+  const decision = decideAutoMerge(input.head, { head: input.head, merge, record: input, mergeableState, ...unknown, ...ciPolicy }, input.visualPaths);
   const record: EvidenceRecord = {
     runId: input.runId,
     repo: input.repo,
@@ -361,7 +383,8 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
     decision,
     mergeableState,
     ...(merge.carry && { carry: merge.carry }),
+    ...ciPolicy,
   };
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
-  return { head: input.head, merge, record, mergeableState, ...unknown, commentId: comment.id };
+  return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, commentId: comment.id };
 }

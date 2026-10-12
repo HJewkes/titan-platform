@@ -69,6 +69,22 @@ describe("carrying a MERGE to a tree-equal head", () => {
     expect(r.asked.find((step) => step.stepId.startsWith("sh-carry:"))!.input).toEqual({ repo: REPO, baseRef: "main", fromHead: REVIEWED, head: NEW_HEAD });
   });
 
+  it("hands the reviewed MERGE's CI-policy line to the evidence step, so a carried .github/ change keeps it", async () => {
+    const r = rig({ kind: "correctness", baseRef: "main" }, EQUAL);
+
+    await carried(r, reviews([REVIEWED, mergeAt(REVIEWED, REVIEWED, { ciPolicy: { kind: "unchanged" } })]));
+
+    expect(r.asked.find((step) => step.stepId.startsWith("sh-merge-evidence"))!.input.ciPolicy).toEqual({ kind: "unchanged" });
+  });
+
+  it("carries no CI-policy line from a MERGE whose recorded line is malformed", async () => {
+    const r = rig({ kind: "correctness", baseRef: "main" }, EQUAL);
+
+    await carried(r, reviews([REVIEWED, mergeAt(REVIEWED, REVIEWED, { ciPolicy: { kind: "weakened", keys: [] } })]));
+
+    expect(r.asked.find((step) => step.stepId.startsWith("sh-merge-evidence"))!.input).not.toHaveProperty("ciPolicy");
+  });
+
   it("publishes shepherd/review as success at the carried-to head, before the evidence step", async () => {
     const r = rig({ kind: "correctness", baseRef: "main" }, EQUAL);
 

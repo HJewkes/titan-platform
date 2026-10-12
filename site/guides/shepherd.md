@@ -1099,10 +1099,25 @@ hold at the exact head being merged (`packages/authority/src/table.json`):
 
 Shepherd adds its own guards before it asks authority
 (`products/factory/src/shepherd/merge-facts.ts`). No collected facts, facts collected at
-another head sends the merge to the owner. A changed path under `.github/` no longer does: by the owner decision of 2026-10-07 (TP-1886), Shepherd leaves `.github/` to the authority table and the required checks, like any other path. A file list
+another head sends the merge to the owner. A file list
 that GitHub truncated, or that failed to read, counts as no list and gates on `files-unread`. Every fact is read from GitHub or from the run's
 own step outputs, never from the reviewer's text. Any other authority rule that allows still
 gates: only `MRG-AU-RV` merges without the owner.
+
+The one reviewer line the guard reads is `CI-policy:` (TP-2407), which every MERGE carries
+directly after `Head:` as `CI-policy: unchanged` or `CI-policy: weakened <keys>`. It never
+allows a merge; it only gates one:
+
+- `weakened` gates any PR on `ci-policy-weakened` (class D21), because only the owner accepts
+  a weaker CI policy.
+- A PR whose changed paths, rename sources included, touch `.github/` gates on `github-path`
+  (class D6) when the line is missing, malformed or duplicated. Evidence stored before the
+  line existed reads as missing, so it fails closed; answer it with a fresh review.
+- `unchanged` leaves a `.github/` change to the authority table and the required checks, as
+  TP-1886 left every path.
+
+The line rides with the MERGE through an unsettled re-read, a carried verdict and an external
+review. A coordinator never resolves either gate.
 
 The `sh-merge-evidence` step collects those facts once per head and posts one comment on the
 pull request. The comment starts with the marker `<!-- shepherd-evidence:<head sha> -->`, so
