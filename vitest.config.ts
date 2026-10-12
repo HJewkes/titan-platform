@@ -1,5 +1,6 @@
 import { setFlagsFromString } from "node:v8";
 import { defineConfig } from "vitest/config";
+import { FORCE_RERUN_TRIGGERS, REPO_TIER_INCLUDE } from "./scripts/test-affected.mjs";
 
 // These stub HOME (os.homedir() ignores that in a worker thread), call process.chdir (unsupported in one) or set TZ
 // (a worker thread keeps the host zone).
@@ -35,6 +36,7 @@ export default defineConfig({
       exclude: ["**/*.test.{ts,tsx}", "**/index.ts"],
     },
     maxWorkers: 4,
+    forceRerunTriggers: FORCE_RERUN_TRIGGERS,
     projects: [
       {
         extends: true,
@@ -51,7 +53,15 @@ export default defineConfig({
             "scripts/**/*.test.mjs",
             ...heapProbe,
           ],
-          exclude: ["**/node_modules/**", ...needsProcess],
+          exclude: ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "repo",
+          pool: "threads",
+          include: REPO_TIER_INCLUDE,
         },
       },
       {

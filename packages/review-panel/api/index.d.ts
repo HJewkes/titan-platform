@@ -295,9 +295,21 @@ interface ReviewerBriefInput {
     fixProof?: string;
     /** Set by Shepherd when this head's fix-proof could not be verified; the brief then says the proof is blocking. */
     fixProofUnverified?: FixProofUnverified;
+    /** The run's earlier FIX_FIRST findings, oldest first; reviewer text, so it is rendered as data with every verdict-block line removed. */
+    earlierFindings?: readonly EarlierFinding[];
+}
+/** One earlier FIX_FIRST of this run: the head it was given at, the class its reviewer named, and its findings. */
+interface EarlierFinding {
+    head: string;
+    defectClass?: string;
+    text: string;
 }
 /** The line the fixer's structural brief finds the reviewer's defect-class section by. */
 declare const DEFECT_CLASS_HEADING = "Defect class:";
+declare const EARLIER_FINDINGS_START = "EARLIER-FINDINGS";
+declare const EARLIER_FINDINGS_END = "END-EARLIER-FINDINGS";
+/** The line a re-review's fixed/not-fixed checklist over the earlier findings starts with. */
+declare const EARLIER_FINDINGS_HEADING = "Earlier findings:";
 /** The closing block is a template with a placeholder verdict, so the brief itself never parses as a verdict. */
 declare function reviewerBrief(input: ReviewerBriefInput): string;
 /** The most a correction prompt may hold, owner block included. */
@@ -480,4 +492,4 @@ interface ShapeBriefInput extends ReviewerBriefInput {
 /** The overlay comes first so the base brief's verdict template stays the end of the prompt. */
 declare function shapeBrief(shape: OverlayShape, input: ShapeBriefInput): string;
 
-export { type AcceptedVerdict, type AggregateInput, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, type ChangedFile, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, type FixProofUnverified, type Headroom, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_REVIEWER_QUESTIONS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SECURITY_SLICE_LINES, SHAPE_BRIEFS, type ShapeBrief, type ShapeBriefInput, type ShapeRule, type SliceFlag, type SliceInput, USAGE_LIMIT_REASON, acceptVerdict, aggregate, boundedFindings, changedLineCount, classifyPr, correctionPrompt, findingsText, fixFirstFindings, isInvestigativeCall, isUsageLimit, namesPr, namesTarget, parseOwnerBrief, planPanel, readMalformed, reviewCheckoutName, reviewerBrief, securitySliceFlag, shapeBrief, touchesDependency };
+export { type AcceptedVerdict, type AggregateInput, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, type ChangedFile, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, EARLIER_FINDINGS_END, EARLIER_FINDINGS_HEADING, EARLIER_FINDINGS_START, type EarlierFinding, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, type FixProofUnverified, type Headroom, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_REVIEWER_QUESTIONS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SECURITY_SLICE_LINES, SHAPE_BRIEFS, type ShapeBrief, type ShapeBriefInput, type ShapeRule, type SliceFlag, type SliceInput, USAGE_LIMIT_REASON, acceptVerdict, aggregate, boundedFindings, changedLineCount, classifyPr, correctionPrompt, findingsText, fixFirstFindings, isInvestigativeCall, isUsageLimit, namesPr, namesTarget, parseOwnerBrief, planPanel, readMalformed, reviewCheckoutName, reviewerBrief, securitySliceFlag, shapeBrief, touchesDependency };

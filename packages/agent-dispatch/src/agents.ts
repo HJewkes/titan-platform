@@ -1,6 +1,6 @@
 /**
  * Read agent-chat's roster and retire an agent, through the same CLI boundary
- * and `execSafe` discipline as dispatch.ts: absolute binary, argv array,
+ * and `execSafeAsync` discipline as dispatch.ts: absolute binary, argv array,
  * minimal env, no shell.
  *
  * The roster comes from `agent-chat agent ls --json`, a fold over the broker's
@@ -21,7 +21,6 @@ import {
 import {
   ExecError,
   ExecTimeoutError,
-  execSafe,
   execSafeAsync,
   resolveBinaryPath,
   type SafeExecResult,
@@ -85,19 +84,20 @@ export async function listAgents(
 
 /**
  * Release the agent's isolation, end its process and free its name. `force`
- * discards uncommitted or unmerged work its worktree holds.
+ * discards uncommitted or unmerged work its worktree holds. Rejects with
+ * `DispatchError` when the broker refuses.
  */
-export function retire(
+export async function retire(
   agentChatBinPath: string,
   name: string,
   timeoutMs: number,
   options: { force?: boolean } = {},
-): RetireResult {
+): Promise<RetireResult> {
   if (!PEER_NAME_PATTERN.test(name)) {
     throw new DispatchError(`invalid peer name: '${name}'`);
   }
   const args = buildRetireArgs(name, options.force === true);
-  const result = runAgentChat(agentChatBinPath, args, timeoutMs);
+  const result = await runAgentChatAsync(agentChatBinPath, args, timeoutMs);
   if (result.status !== 0) throw refusal("agent retire", result);
   const lines = result.stdout.split("\n").map((line) => line.trim());
   return { name, caveats: lines.slice(1).filter((line) => line !== "") };
@@ -177,20 +177,7 @@ function toAgentRow(value: unknown): AgentRow | undefined {
   };
 }
 
-export function runAgentChat(
-  binPath: string,
-  args: string[],
-  timeoutMs: number,
-): SafeExecResult {
-  try {
-    const bin = resolveBinaryPath(binPath, "agent-chat");
-    return execSafe(bin, args, agentChatEnv(), timeoutMs);
-  } catch (err) {
-    throw mapExecError(err);
-  }
-}
-
-/** The roster is large (hundreds of rows), so its read must not block the caller's event loop. */
+/** Every agent-chat call goes through here, so none blocks a long-lived caller's event loop. */
 export async function runAgentChatAsync(
   binPath: string,
   args: string[],

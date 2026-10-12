@@ -26,6 +26,9 @@ export {
 export type { ClassRoles, Headroom, PanelPolicy, ShapeRule } from "./plan.js";
 export {
   DEFECT_CLASS_HEADING,
+  EARLIER_FINDINGS_END,
+  EARLIER_FINDINGS_HEADING,
+  EARLIER_FINDINGS_START,
   MAX_CORRECTION_PROMPT_CHARS,
   MAX_OWNER_BRIEF_CHARS,
   MAX_REVIEWER_QUESTIONS,
@@ -36,7 +39,7 @@ export {
   reviewCheckoutName,
   reviewerBrief,
 } from "./reviewer-brief.js";
-export type { MalformedRefusal, ReviewerBriefInput } from "./reviewer-brief.js";
+export type { EarlierFinding, MalformedRefusal, ReviewerBriefInput } from "./reviewer-brief.js";
 export { USAGE_LIMIT_REASON, acceptVerdict, isUsageLimit } from "./accept-verdict.js";
 export type { AcceptedVerdict, AwaitVerdictResult } from "./accept-verdict.js";
 export { DEPTH_FLOOR_REASON, INVESTIGATIVE_CALLS, isInvestigativeCall } from "./depth-floor.js";

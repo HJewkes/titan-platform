@@ -26,6 +26,13 @@ Zero lint warnings in files you touched. `pnpm build` has to precede `pnpm test`
 `dag:check`, because an import of a workspace package by its published name resolves
 through that package's built `dist/*.d.ts` entry.
 
+For a fast local signal, `pnpm test:affected` runs only the tests your change reaches
+(`vitest --changed` against `origin/main`; pass a base or set `TEST_AFFECTED_BASE` to
+override). A change to the lockfile, a vitest config, a `tsconfig*.json`, a `package.json`
+or `scripts/fixtures/` runs every test. Git-heavy tests are named `*.repo.test.ts` and sit in
+the `repo` project, which `test:affected` runs only when their package changed. CI's full
+`pnpm test` runs all of them and stays the required check.
+
 CI also runs `pnpm lint:types` as its own `lint-types` job. It applies the type-aware rules
 `no-unsafe-type-assertion`, `no-unnecessary-type-assertion` and `no-unnecessary-condition`
 (`eslint.typed.config.js`) to source and tests. It needs `pnpm build` first and takes about

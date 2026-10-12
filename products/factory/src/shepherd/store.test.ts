@@ -1,6 +1,7 @@
 import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
-import { holdSlotsMigration } from "./store-migrations.js";
+import { accountLimitMigration } from "./account-store.js";
+import { holdSlotsMigration, parkSettledMigration } from "./store-migrations.js";
 import { shepherdEventMigration } from "./events.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type AuthorInput, type RegistrationInput } from "./store.js";
@@ -448,5 +449,55 @@ describe("shepherd store ref", () => {
     expect(() => ref.bind(db)).toThrow(/already bound/);
     unbind();
     expect(() => ref.get()).toThrow(/not bound/);
+  });
+});
+
+describe("settled park markers", () => {
+  const db = () => {
+    const opened = openDatabase(":memory:");
+    runMigrations(opened, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), accountLimitMigration(17), holdSlotsMigration(19), parkSettledMigration(21)]);
+    return opened;
+  };
+  const openWithMarkers = (on = db()) => new ShepherdStore(on, () => Date.parse("2026-01-01T00:00:00Z"));
+  const H1 = "a".repeat(40);
+
+  it("finds a settle only at its own run, head and agent", () => {
+    const store = openWithMarkers();
+
+    store.settlePark("run-1", H1, "impl-a", { parked: false, detail: "dirty" });
+
+    expect(store.parkSettled("run-1", H1, "impl-a")).toBe(true);
+    expect(store.parkSettled("run-1", "b".repeat(40), "impl-a")).toBe(false);
+    expect(store.parkSettled("run-1", H1, "impl-b")).toBe(false);
+    expect(store.parkSettled("run-2", H1, "impl-a")).toBe(false);
+  });
+
+  it("keeps the first settle when the same refusal settles again", () => {
+    const opened = db();
+    const store = openWithMarkers(opened);
+
+    store.settlePark("run-1", H1, "impl-a", { parked: false, detail: "dirty" });
+    store.settlePark("run-1", H1, "impl-a", { parked: true, detail: "parked" });
+
+    const row = opened.prepare("SELECT parked, detail FROM shepherd_park_settled").all();
+    expect(row).toEqual([{ parked: 0, detail: "dirty" }]);
+  });
+
+  it("moves a settle to the run that replaces its failed one", () => {
+    const store = openWithMarkers();
+    store.register(base);
+    store.settlePark("run-1", H1, "impl-a", { parked: false, detail: "dirty" });
+
+    store.repoint("run-1", "run-2");
+
+    expect(store.parkSettled("run-2", H1, "impl-a")).toBe(true);
+    expect(store.parkSettled("run-1", H1, "impl-a")).toBe(false);
+  });
+
+  it("applies the settle migration after a gap at version 20", () => {
+    const versions = appliedVersions(db());
+
+    expect(versions).toContain(21);
+    expect(versions).not.toContain(20);
   });
 });

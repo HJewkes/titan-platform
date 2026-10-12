@@ -210,9 +210,9 @@ function heldWakeWait(run: WorkflowRun, steps: readonly StepResult[]): string | 
   return `no fixer could start (${wake.data.result.reason})${told ? "; the seat was told" : ""}, waiting for a new head`;
 }
 
-/** While a red head waits out a frozen main, the hold's own reason is the next action. */
+/** While a red head waits out a frozen main or a red base, the hold's own reason is the next action. */
 function freezeWait(run: WorkflowRun, steps: readonly StepResult[]): string | undefined {
-  if (run.currentStep === null || !stepIdMatches("sh-freeze-wait", run.currentStep)) return undefined;
+  if (!["sh-freeze-wait", "sh-base-wait"].some((id) => run.currentStep !== null && stepIdMatches(id, run.currentStep))) return undefined;
   const hold = FreezeHoldData.safeParse(steps.filter((result) => stepIdMatches("sh-freeze-hold", result.stepId)).at(-1)?.data);
   return hold.success ? hold.data.result.reason : undefined;
 }
