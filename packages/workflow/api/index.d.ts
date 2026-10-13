@@ -634,10 +634,14 @@ declare class WorkflowRuntime {
     private readonly baseDeps;
     private isQuiesced;
     constructor(options: WorkflowRuntimeOptions);
-    /** `version` pins each new run to this definition; hydrate parks a run pinned to another one instead of replaying it. */
+    /**
+     * `version` pins each new run to this definition; hydrate parks a run pinned to another one instead of replaying it.
+     * `strictReplay` parks a replay that makes a live call while results its prior drive recorded remain unread.
+     */
     register(name: string, fn: WorkflowFn, options?: {
         version?: string;
         abandonsOrphan?: AbandonsOrphan;
+        strictReplay?: boolean;
     }): void;
     registered(): string[];
     /** `options.onStart` commits with the run row, or its throw rolls the run back; a quiesced runtime leaves the row unclaimed for its successor. */
