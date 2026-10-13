@@ -99,6 +99,7 @@ it runs on the CLI, as the MCP tool `miner__insights__<question>`, and at
 | Q10 | `insights tool-adoption` | per flag or verb in the adoption registry, weekly uses of the new form against the old pipelines it replaces, flagged unadopted or unused two weeks after ship; an unshipped baseline counts the old pipelines alone | none |
 | Q11 | `insights probes` | one row per probe per local day: a named Q5 or Q6 measure against its target, HOLDING, REGRESSED or NO-DATA | `--probes <file>` (required, CLI only) |
 | Q12 | `insights data-quality` | faults to clear before any analysis, one row each with severity, evidence and a suggested task title: graph stale, transcripts discovered but not indexed, facet backlog, unpriced models, and with `--assignments` bad lines, unknown outcomes and agents with no session | `--max-lag <minutes>` (default 60), `--assignments <file>` (CLI only), `--known-outcome <word>` |
+| Q13 | `insights quality-guardrails` | review verdicts by the reviewer's context fill with changes-requested and verdict-error rates, and successor rework per role; with a before window, each row before and after with its change, after minus before | `--before-since <time>` and `--before-until <time>` (both or neither), `--boot-requests <n>` (default 30) |
 | Q14 | `insights seat-generations` | each agent that held a seat's name in the window, in start order, with its start, end, how it ended (`handoff`, `teleport`, `exit` or `open`) and its graph sessions, plus a ready `--session` argument string for the graph questions | `--seat <name>` (required), `--broker-log <file>` (CLI only) |
 
 Every question takes the same filters, which combine with AND: `--session <id>` and
@@ -142,6 +143,13 @@ before `--until`, not counting `resolution` rows, however long before `--since`;
 A prompt is skipped once its actor has an `agent_exited` or `agent_retired` row, or when the broker
 restarted after it and the actor never registered again. Each row cites its `broker.log:<line>` or `events#<id>`. Q8 is registered from
 `AGENT_CHAT_QUESTIONS`, because the shared tests run every other question against the graph.
+
+Q13 runs session-analytics' `reviewFillReport` and `successorReworkReport` over the window. With
+`--before-since` and `--before-until` it runs both again over the before window through
+`compareWindows`, and `comparison` pairs the rows by key with per-field deltas; it is null without
+them. A before window with one bound is a usage error, since it would compare against all history.
+Successor rework deltas are null when the graph holds no `file_read` signal. It refuses the session
+filters, because neither report is scoped by session. Q13 is registered from `GUARDRAIL_QUESTIONS`.
 
 Q14 resolves a seat to its generations through session-analytics' `seatGenerations`. It reads
 `agent_handoff` rows from the events table and spawn, exit and `teleport_completed` lines from the
