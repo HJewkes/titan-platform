@@ -45,7 +45,8 @@ describe("cascadeStack", () => {
 
   it("a child whose base will not merge in wakes its implementer and leaves the other child updated", async () => {
     const s = stack(2);
-    const [conflicted, clean] = s.children as [number, number];
+    const conflicted = s.children[0]!;
+    const clean = s.children[1]!;
     const conflictedHead = s.fake.pr(conflicted).headSha;
     s.fake.updateBranchFaults = [{ error: new FakeHttpError(422, "merge conflict between base and head") }];
 

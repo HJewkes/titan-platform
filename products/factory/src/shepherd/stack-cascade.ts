@@ -7,7 +7,7 @@ import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import { AWAIT_NEW_HEAD_STEP } from "./wake.js";
 
 /** Past this many fix rounds a parent is churning, so agent-chat stacks no new child on it; existing children keep cascading. */
-export const STACK_FREEZE_ROUNDS = 2;
+const STACK_FREEZE_ROUNDS = 2;
 
 /** A parent run whose head moved: `previousHead` is the head it held before the fix round, `newHead` the one it holds now. */
 export interface CascadeInput {
@@ -27,7 +27,7 @@ export interface ChildWake {
   reason: string;
 }
 
-export interface CascadeDeps {
+interface CascadeDeps {
   port: GitHubPort;
   /** Where the children are read from; absent means the port's open list. */
   snapshot?: PrSnapshot;
@@ -35,7 +35,7 @@ export interface CascadeDeps {
   wakeChild: (wake: ChildWake) => Promise<void>;
 }
 
-export type ChildCascade = { pr: number; outcome: "updated" } | { pr: number; outcome: "conflict"; reason: string } | { pr: number; outcome: "skipped"; detail: string };
+type ChildCascade = { pr: number; outcome: "updated" } | { pr: number; outcome: "conflict"; reason: string } | { pr: number; outcome: "skipped"; detail: string };
 
 /** A child is stacked on the parent when its base is the parent's head branch in the same repo; a fork's PR is never updated. */
 async function stackedChildren(deps: CascadeDeps, input: CascadeInput): Promise<PullRequest[]> {
@@ -72,7 +72,7 @@ export async function cascadeStack(deps: CascadeDeps, input: CascadeInput): Prom
 const NewHead = z.looseObject({ result: z.looseObject({ state: z.literal("open"), exited: z.literal(true).optional(), green: z.literal(true).optional() }) });
 
 /** A fix round is a wake whose wait ended on a pushed head: not on an exit with no push, nor on the same head turning green. */
-export function fixRounds(run: Pick<WorkflowRun, "stepResults">): number {
+function fixRounds(run: Pick<WorkflowRun, "stepResults">): number {
   return Object.values(run.stepResults).filter((result) => {
     if (!stepIdMatches(AWAIT_NEW_HEAD_STEP, result.stepId)) return false;
     const parsed = NewHead.safeParse(result.data);
