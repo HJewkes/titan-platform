@@ -4,6 +4,7 @@ import path from "node:path";
 import { LIST_PRICE_CAVEAT } from "@titan-design/session-analytics";
 import type { Db } from "@titan-design/store-sqlite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { runCli } from "../cli.js";
 import { resolveConfig } from "../config.js";
 import { createMinerContext } from "../context.js";
@@ -66,9 +67,7 @@ describe("insights quality-guardrails", () => {
   async function ask(flags: string[]): Promise<{ answer: QualityGuardrailsReport }> {
     const { code, stdout } = await cli(["--json", "insights", "quality-guardrails", ...flags]);
     expect(code).toBe(0);
-    const data = (JSON.parse(stdout) as { data: unknown }).data;
-    expect(insightResultSchema(qualityGuardrailsSchema).safeParse(data).success).toBe(true);
-    return data as { answer: QualityGuardrailsReport };
+    return z.object({ data: insightResultSchema(qualityGuardrailsSchema) }).parse(JSON.parse(stdout)).data;
   }
 
   it("reports the window's review fill and successor rework with no comparison when no before window is given", async () => {
