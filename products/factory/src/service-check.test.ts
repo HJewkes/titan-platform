@@ -40,7 +40,13 @@ interface Machine {
   lock?: IndexLock;
   /** True when the config sets no shepherd.hubSeat; one is set by default. */
   noHubSeat?: boolean;
+  /** The titan-factory on PATH, resolved; absent means none is on PATH. */
+  installed?: { path: string; sha: string | undefined };
+  /** The deploy checkout's HEAD; absent means the running build. */
+  head?: string;
 }
+
+const DEPLOY_BIN = "/srv/tester/.local/share/titan-factory/deploy/titan-platform/products/factory/dist/bin.js";
 
 const LOCK = "/srv/checkout/.git/index.lock";
 
@@ -93,6 +99,9 @@ function fakePorts(init: Machine) {
     tickStatus: () => ({ file: TICK_FILE, text: init.tick }),
     indexLock: async () => init.lock ?? { state: "absent", path: LOCK },
     hubSeat: () => (init.noHubSeat ? undefined : "hub"),
+    installedCli: async () => init.installed,
+    checkoutHead: async () => init.head ?? BUILD,
+    deployBin: DEPLOY_BIN,
   };
   return { ports, calls, elapsedMs: () => clock - NOW };
 }
@@ -581,6 +590,76 @@ describe("titan-factory service check", () => {
       const tick = await check({ print: running, health: healthy(), tick: tickFixture(), noHubSeat: true });
 
       expect(tick.out).toMatch(/^tick failing: /);
+    });
+  });
+
+  describe("a stale titan-factory CLI on PATH", () => {
+    const OLD = "c".repeat(40);
+    const NEW = "d".repeat(40);
+    const MAIN_CHECKOUT_BIN = "/srv/tester/projects/titan-platform/products/factory/dist/bin.js";
+    const sound = { print: running, health: healthy() };
+
+    it("names an installed build behind the deploy checkout HEAD, and still exits 0", async () => {
+      const { code, out } = await check({ ...sound, installed: { path: MAIN_CHECKOUT_BIN, sha: OLD }, head: NEW, ancestry: [[OLD, NEW]] });
+
+      expect(code).toBe(EXIT.OK);
+      expect(out).toMatch(/^stale CLI: /);
+      expect(out).toContain(MAIN_CHECKOUT_BIN);
+      expect(out).toContain(OLD);
+      expect(out).toContain(NEW);
+      expect(out).toContain(DEPLOY_BIN);
+    });
+
+    it("reports the finding as ok in --json, so callers that stop work on a failing check do not", async () => {
+      const { code, out } = await check({ ...sound, installed: { path: MAIN_CHECKOUT_BIN, sha: OLD }, head: NEW, ancestry: [[OLD, NEW]] }, "--json");
+
+      expect(code).toBe(EXIT.OK);
+      expect(JSON.parse(out)).toMatchObject({ ok: true, cause: "stale CLI", detail: { installedCli: MAIN_CHECKOUT_BIN, installedBuild: OLD, checkoutHead: NEW } });
+    });
+
+    it("stays quiet when the installed build equals the checkout HEAD", async () => {
+      const { code, out } = await check({ ...sound, installed: { path: MAIN_CHECKOUT_BIN, sha: NEW }, head: NEW, ancestry: [[NEW, NEW]] });
+
+      expect(code).toBe(EXIT.OK);
+      expect(out).not.toContain("stale CLI");
+    });
+
+    it("stays quiet when a dirty build sits at the checkout HEAD", async () => {
+      const { out } = await check({ ...sound, installed: { path: MAIN_CHECKOUT_BIN, sha: `${NEW}-dirty` }, head: NEW, ancestry: [[NEW, NEW]] });
+
+      expect(out).not.toContain("stale CLI");
+    });
+
+    it("stays quiet when the installed build is newer than or diverged from the checkout HEAD", async () => {
+      const { out } = await check({ ...sound, installed: { path: MAIN_CHECKOUT_BIN, sha: NEW }, head: OLD, ancestry: [[OLD, NEW]] });
+
+      expect(out).not.toContain("stale CLI");
+    });
+
+    it("stays quiet when the CLI on PATH is the deploy bin, which a rollback leaves behind HEAD on purpose", async () => {
+      const { out } = await check({ ...sound, installed: { path: DEPLOY_BIN, sha: OLD }, head: NEW, ancestry: [[OLD, NEW]] });
+
+      expect(out).not.toContain("stale CLI");
+    });
+
+    it.each([
+      ["no titan-factory is on PATH", undefined],
+      ["its dist carries no baked sha", { path: MAIN_CHECKOUT_BIN, sha: undefined }],
+      ["it was built without a sha", { path: MAIN_CHECKOUT_BIN, sha: "unknown" }],
+    ])("stays quiet when %s", async (_why, installed) => {
+      const { out } = await check({ ...sound, ...(installed && { installed }), head: NEW, ancestry: [["unknown", NEW]] });
+
+      expect(out).not.toContain("stale CLI");
+    });
+
+    it("comes after every server, tick and config cause", async () => {
+      const stale = { installed: { path: MAIN_CHECKOUT_BIN, sha: OLD }, head: NEW, ancestry: [[OLD, NEW], [BUILD, NEW]] as [string, string][] };
+
+      const seat = await check({ ...sound, ...stale, noHubSeat: true });
+      const build = await check({ ...sound, ...stale, target: NEW });
+
+      expect(seat.out).toMatch(/^no hub seat: /);
+      expect(build.out).toMatch(/^stale build: /);
     });
   });
 });

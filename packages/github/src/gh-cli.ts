@@ -58,10 +58,11 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     listCheckRuns: (repo, sha) => listCheckRuns(api, repo, sha),
     createCheckRun: async (repo, request) => createCheckRun(exec, options, repo, request),
     getCommit: async (repo, sha) => {
-      const commit = await api.get<{ sha: string; parents: { sha: string }[]; tree?: { sha: string }; committer?: { date?: string } }>(`repos/${repo}/git/commits/${sha}`);
+      const commit = await api.get<{ sha: string; parents: { sha: string }[]; tree?: { sha: string }; committer?: { date?: string }; message?: string }>(`repos/${repo}/git/commits/${sha}`);
       const committedAt = commit.committer?.date;
       const tree = commit.tree?.sha;
-      return { sha: commit.sha, parents: commit.parents.map((parent) => parent.sha), ...(tree ? { tree } : {}), ...(committedAt ? { committedAt } : {}) } satisfies Commit;
+      const message = commit.message;
+      return { sha: commit.sha, parents: commit.parents.map((parent) => parent.sha), ...(tree ? { tree } : {}), ...(committedAt ? { committedAt } : {}), ...(message !== undefined ? { message } : {}) } satisfies Commit;
     },
     resolveCommit: (repo, sha) => resolveCommit(api, repo, sha),
     listCommitStatuses: (repo, sha) => listCommitStatuses(api, repo, sha),

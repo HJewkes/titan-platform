@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { shepherdEventMigration } from "./events.js";
-import type { ShepherdDeps, Verdict } from "./phases.js";
+import type { SeatHeld, ShepherdDeps, Verdict } from "./phases.js";
 import type { Presence } from "./presence.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "./review.js";
 import { holdSlotsMigration } from "./store-migrations.js";
@@ -49,6 +49,8 @@ interface Scene {
   seat?: (now: number) => string;
   /** False leaves Shepherd's own reviewer silent and exited, so the round runs out. */
   ownMerges: boolean;
+  /** Review rounds at H; each round after a held MERGE carries it, as the run's round loop does. Default 1. */
+  rounds?: number;
 }
 
 /** One review of H under the real review routes; the clock moves only in sleeps. */
@@ -74,7 +76,15 @@ async function review(scene: Scene) {
   const store = shepherdStoreRef();
   const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined } };
   const verdicts: Verdict[] = [];
-  const run = async (ctx: Parameters<typeof reviewPhase>[0]) => void verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha: H }));
+  const run = async (ctx: Parameters<typeof reviewPhase>[0]) => {
+    let seatHeld: SeatHeld | undefined;
+    for (let round = 0; round < (scene.rounds ?? 1); round += 1) {
+      const verdict = await reviewPhase(ctx, { repo: REPO, pr: 1, round, headSha: H, ...(seatHeld && { seatHeld }) });
+      verdicts.push(verdict);
+      seatHeld = verdict.kind === "none" ? verdict.seatHeld : undefined;
+      if (!seatHeld) return;
+    }
+  };
   const recorded: StepRoute[] = [...reviewRoutes(deps, { reader, dispatch, timeoutMs: 5_000, lateVerdictMs: 5_000, seatWaitMs: SEAT_WAIT_MS })];
   const routes = Object.assign(recorded, { database: { extraMigrations: [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)], bind: store.bind } });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "seat-wait-test", steps: REVIEW_STEPS, run })], routes, gatePollMs: 5 });
@@ -96,7 +106,7 @@ describe("Shepherd's own MERGE meeting a seat reviewer's WAIT at the same head",
         kind: "none",
         cause: "external-hold",
         reason: expect.stringContaining(`said WAIT at ${H}`),
-        seatHeld: { head: H, locator: expect.any(Object), reviewer: expect.objectContaining({ agentId: `agent-${spawns[0]}` }), dispatchedReviewer: expect.objectContaining({ agentId: `agent-${spawns[0]}` }) },
+        seatHeld: { head: H, locator: expect.any(Object), reviewer: expect.objectContaining({ agentId: `agent-${spawns[0]}` }), dispatchedReviewer: expect.objectContaining({ agentId: `agent-${spawns[0]}` }), merge: expect.objectContaining({ kind: "verdict", verdict: "MERGE", head: H }) },
       },
     ]);
     expect(stepIds).not.toContain(`sh-late-verdict:${H}`);
@@ -128,5 +138,44 @@ describe("a silent own reviewer with no seat reviewer listed", () => {
 
     expect(verdicts).toEqual([{ kind: "none", cause: "timeout" }]);
     expect(stepIds).toContain(`sh-late-verdict:${H}`);
+  });
+});
+
+describe("the next round at a head whose own MERGE a seat held", () => {
+  const held = (verdict: Verdict) => verdict.kind === "none" && verdict.seatHeld !== undefined;
+  const count = (stepIds: string[], prefix: string) => stepIds.filter((id) => id.startsWith(`${prefix}:`)).length;
+
+  it("re-checks only the seat through three WAITs and lets the one reviewer's MERGE stand once the seat clears", async () => {
+    const clears = 10_000 + 3 * SEAT_WAIT_MS + 2_000;
+
+    const { verdicts, spawns, stepIds } = await review({ seat: (now) => (now < clears ? "WAIT" : "MERGE"), ownMerges: true, rounds: 6 });
+
+    expect(verdicts.slice(0, 3).every(held)).toBe(true);
+    expect(verdicts.at(-1)).toMatchObject({ kind: "MERGE", headSha: H });
+    expect(spawns).toHaveLength(1);
+    expect(count(stepIds, "sh-review")).toBe(1);
+    expect(count(stepIds, "sh-review-intent")).toBe(1);
+    expect(count(stepIds, "sh-seat-recheck")).toBe(verdicts.length - 1);
+    expect(count(stepIds, "sh-merge-evidence")).toBe(1);
+  });
+
+  it("sends the head back when the seat says FIX_FIRST after holding the own MERGE", async () => {
+    const turns = 10_000 + SEAT_WAIT_MS + 2_000;
+
+    const { verdicts, spawns, stepIds } = await review({ seat: (now) => (now < turns ? "WAIT" : "FIX_FIRST"), ownMerges: true, rounds: 4 });
+
+    expect(held(verdicts[0]!)).toBe(true);
+    expect(verdicts.at(-1)).toMatchObject({ kind: "FIX_FIRST", headSha: H, text: expect.stringContaining("FIX_FIRST") });
+    expect(spawns).toHaveLength(1);
+    expect(count(stepIds, "sh-merge-evidence")).toBe(0);
+  });
+
+  it("merges nothing while the seat still says WAIT at the recheck", async () => {
+    const { verdicts, spawns, stepIds } = await review({ seat: () => "WAIT", ownMerges: true, rounds: 3 });
+
+    expect(verdicts).toHaveLength(3);
+    expect(verdicts.every(held)).toBe(true);
+    expect(spawns).toHaveLength(1);
+    expect(count(stepIds, "sh-merge-evidence")).toBe(0);
   });
 });

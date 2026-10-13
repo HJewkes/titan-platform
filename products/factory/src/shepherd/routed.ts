@@ -4,7 +4,7 @@ import { z } from "zod";
 import { step, type LandOutcome } from "../workflows/land.js";
 import type { ObservedPr } from "./observe.js";
 import type { Verdict } from "./phases.js";
-import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_THROTTLED_ROUNDS, fixFirstEscalation, nextCloserStreak, roundKind, type CloserStreak, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
+import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_SEAT_HELD_ROUNDS, MAX_THROTTLED_ROUNDS, fixFirstEscalation, nextCloserStreak, roundKind, type CloserStreak, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { fixFirstEntry, type FixFirstTrail } from "./fix-first-trail.js";
 import { FIX_FIRST_STEP, fixFirstCount } from "./wake-brief.js";
 
@@ -23,6 +23,8 @@ interface RoundCounts extends FixFirstTrail {
   failedRounds: number;
   throttledRounds: number;
   closer: CloserStreak;
+  /** Rounds at each head that ended with Shepherd's own MERGE held by the seat. */
+  seatHeldRounds: Map<string, number>;
 }
 
 const FixFirstRecord = z.looseObject({ fixFirst: z.number().int().positive() });
@@ -41,12 +43,22 @@ export async function countRound(run: RoundCounts, routed: Routed): Promise<Esca
     run.fixFirstTrail.push(fixFirstEntry(headSha, routed.verdict.kind === "FIX_FIRST" ? routed.verdict.text : ""));
     return fixFirstEscalation(await recordFixFirst(run.ctx, { ...run.target, headSha }), run.closer.streak, headSha);
   }
+  // A held MERGE is a verdict waiting on the seat, not a failed review, and its next round starts nobody.
+  if (routed.verdict.kind === "none" && routed.verdict.seatHeld !== undefined) return seatHoldRunOut(run.seatHeldRounds, headSha, routed.verdict.reason);
   if (kind === "throttled" && ++run.throttledRounds <= MAX_THROTTLED_ROUNDS) return undefined;
   if (kind !== "stuck" && kind !== "throttled") return undefined;
   run.failedRounds += 1;
   if (route === "wake-fixer" || run.failedRounds < MAX_FAILED_ROUNDS) return undefined;
   const ended = (routed.verdict.kind === "none" && routed.verdict.reason) || (FAILED_ROUND_WORDS[outcome] ?? outcome);
   return { escalation: "failed-rounds", detail: `the last at ${headSha} ended with ${ended}` };
+}
+
+/** A seat that never settles, say one whose reviewer exited on a WAIT, still reaches the owner's failed-rounds gate. */
+function seatHoldRunOut(held: Map<string, number>, headSha: string, reason: string | undefined): Escalated | undefined {
+  const rounds = (held.get(headSha) ?? 0) + 1;
+  held.set(headSha, rounds);
+  if (rounds < MAX_SEAT_HELD_ROUNDS) return undefined;
+  return { escalation: "failed-rounds", detail: `the seat held Shepherd's MERGE at ${headSha} for ${rounds} rounds, the last with ${reason ?? "no reason given"}` };
 }
 
 export function endedOutcome({ observed, headSha }: Routed): LandOutcome {
