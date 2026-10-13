@@ -8,12 +8,12 @@ import { EXIT } from "@titan-design/registry";
 
 export const ReleaseHeadArg = z.string().regex(/^[0-9a-f]{40}$/, "must be the 40-character head sha the hold was reviewed at");
 
-const OWNER_ONLY = "only the owner releases an owner-asked hold, with the forthcoming titan-factory shepherd owner-release (TP-2408 b)";
+const OWNER_ONLY = "only the owner releases an owner-asked hold, from their own terminal: titan-factory shepherd owner-release <owner/repo#n> --head <sha>";
 
 const refused = (message: string, code: number): Error => Object.assign(new Error(message), { code });
 
 /** Which hold a release lifts: the one of `holdClass`, or the run's only hold when none is named. */
-interface ReleaseAt {
+export interface ReleaseAt {
   runId: string;
   repo: RepoSlug;
   pr: number;
@@ -31,7 +31,7 @@ const liftsAdversary = (registration: Registration, holdClass: string | undefine
  * PR at another head, unless the release lifts a `g10-adversary` hold and that head is Shepherd's own clean merge-up of the
  * reviewed one. Then the proof comes back, so the release records which head it carries to.
  */
-async function assertReleasableAt(port: GitHubPort, at: ReleaseAt, adversary: boolean, reads?: MergeUpReads): Promise<Vouch | undefined> {
+export async function assertReleasableAt(port: GitHubPort, at: ReleaseAt, adversary: boolean, reads?: MergeUpReads): Promise<Vouch | undefined> {
   const now = await port.getPr(at.repo, at.pr).catch(() => undefined);
   if (now === undefined) throw refused(`${at.repo}#${at.pr}: the PR's head could not be read, so the release is refused`, EXIT.UNAVAILABLE);
   if (now.headSha === at.head) return undefined;
