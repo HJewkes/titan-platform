@@ -5,6 +5,7 @@ import type { SeatHeld } from "./phases.js";
 import { MERGE_ON_GREEN_GRANT } from "./policy.js";
 import { reviewPhase } from "./review.js";
 import { recordsRecheck } from "./seat-recheck.js";
+import { recheckSeat } from "./take-verdict.js";
 
 /** Synthetic stand-in for a head whose own MERGE a seat WAIT held last round. */
 const HEAD = fakeSha("seat-recheck-head");
@@ -101,5 +102,13 @@ describe("the review of a head whose own MERGE a seat held, on replay", () => {
 
     expect(verified.inputs.get(`sh-merge-evidence:${HEAD}`)).toMatchObject({ seatGrants: [MERGE_ON_GREEN_GRANT] });
     expect(unverified.inputs.get(`sh-merge-evidence:${HEAD}`)).toMatchObject({ seatGrants: [] });
+  });
+
+  it("cannot re-check a seat without the round's fix-proof standing, since an empty one reads as verified", () => {
+    const omitted = (ctx: WorkflowContext, target: Parameters<typeof recheckSeat>[1], held: SeatHeld) =>
+      // @ts-expect-error recheckSeat takes the round's fix-proof standing; no default may stand in for it
+      recheckSeat(ctx, target, held);
+
+    expect(typeof omitted).toBe("function");
   });
 });
