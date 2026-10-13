@@ -57,8 +57,10 @@ describe("lineIfsValues on lines that keep only the default", () => {
     ["unset IFS", "unset IFS"],
     ["unset with an option", "unset -v IFS"],
     ["a local IFS with no value", "f(){ local IFS; }"],
+    ["a literal arithmetic command", "IFS=; (( i = 1 ))"],
+    ["a literal arithmetic expansion", "IFS=; : $((i + 1))"],
+    ["a literal arithmetic for", "IFS=; for (( i=0; i<3; i++ )); do :; done"],
     ["an export with a literal name and a dynamic value", "IFS=; export PATH=\"$HOME/bin\""],
-    ["eval of dynamic text that names no IFS", "eval \"$E\""],
   ])("gives only the default for %s", (_how, line) => {
     expect(values(line)).toEqual([DEFAULT_IFS]);
   });
@@ -99,6 +101,31 @@ describe("lineIfsValues on IFS writes it cannot resolve to a literal", () => {
     ["a nameref built from a variable", "declare -n r=${x}FS"],
     ["printf -v of a name built from a variable", "printf -v \"${x}S\" ,"],
     ["eval of dynamic text that may name IFS", "eval \"IFS=$V\""],
+  ])("gives null for %s", (_how, line) => {
+    expect(values(line)).toBeNull();
+  });
+});
+
+describe("lineIfsValues on code run from text it cannot read", () => {
+  it.each([
+    ["eval of a quoted variable", "v=IFS=,; eval \"$v\""],
+    ["eval of an unquoted variable", "eval $v"],
+    ["eval behind command", "command eval \"$v\""],
+    ["bash -c with a dynamic script", "bash -c \"$v; \\$E\""],
+    ["eval of a name built from parts", "a=I; b=FS=,; eval \"$a$b\""],
+    ["eval of a command substitution", "eval \"$(printf %sFS=, I)\""],
+    ["eval of an indirect expansion", "eval \"${!p}\""],
+    ["eval nested in literal text", "eval 'eval \"$v\"'"],
+    ["the done-when line, whose eval text comes from a variable", "E=gh,pr,merge,1; f(){ eval $E; }; IFS=,; f"],
+    ["source from a here-string", "source /dev/stdin <<< IFS=,"],
+    ["dot from a quoted here-string", ". /dev/stdin <<< 'IFS=,'"],
+    ["an array subscript that assigns IFS", "a[IFS=1]=x"],
+    ["a declared array subscript that assigns IFS", "declare a[IFS=1]=x"],
+    ["an array subscript with a dynamic name", "a[$n]=x"],
+    ["an arithmetic command with a dynamic name", "(( $n = 1 ))"],
+    ["an arithmetic expansion with a dynamic name", ": $(( $n = 1 ))"],
+    ["an old-style arithmetic expansion with a dynamic name", "x=$[ $n = 1 ]"],
+    ["an arithmetic for with a dynamic name", "for (( i=$n; i<3; i++ )); do :; done"],
   ])("gives null for %s", (_how, line) => {
     expect(values(line)).toBeNull();
   });
