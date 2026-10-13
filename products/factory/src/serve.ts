@@ -13,6 +13,8 @@ import { githubHealth, type GithubHealth } from "./github-health.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
 import { timestampConsole } from "./serve-log.js";
+import { startLoopDelayWatch } from "./serve-loop-delay.js";
+import { untilStopped } from "./serve-signal.js";
 import { recordServeStart, serveStartsHealth, type ServeStart } from "./serve-starts.js";
 import type { FactoryHost, FactoryHostOptions } from "./host.js";
 import type { NeedsSources } from "./needs/rpc.js";
@@ -20,7 +22,7 @@ import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
 import { mountResolveProof } from "./resolve-proof.js";
 import { startSweep, type Sweep } from "./sweep.js";
-import type { ShepherdServices } from "./shepherd/commands.js";
+import type { ShepherdServices } from "./shepherd/services.js";
 import { openFramedHost, type FramedHostOptions } from "./shepherd/frames.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 import { startHeadMovedSweep, type HeadMovedSweepOptions } from "./shepherd/head-moved-sweep.js";
@@ -107,6 +109,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const build = buildHealth(options);
   const log = options.logger ?? consoleLogger;
   const daemon = frames.started(await startCountedDaemon(host, options, github, build, log));
+  const loopDelay = startLoopDelayWatch({ log });
   const unbindCarry = bindCarryStateDir(stateDir);
   const services = options.routes.shepherd;
   const held = new Set<string>();
@@ -137,7 +140,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const close = async (): Promise<void> => {
     await sweep.stop();
     thaws.stop();
-    for (const later of [frames, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep]) await later?.stop();
+    for (const later of [frames, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep, loopDelay]) await later?.stop();
     mainWatch?.close();
     await daemon.close();
     unbindCarry();
@@ -157,22 +160,6 @@ export async function serveFactoryUntilSignal(options: FactoryServerOptions, sto
   } finally {
     restoreConsole();
   }
-}
-
-function untilStopped(stop?: AbortSignal): Promise<string> {
-  return new Promise((resolve) => {
-    const done = (reason: string): void => {
-      process.off("SIGTERM", done);
-      process.off("SIGINT", done);
-      stop?.removeEventListener("abort", aborted);
-      resolve(reason);
-    };
-    const aborted = (): void => done("abort");
-    process.once("SIGTERM", done);
-    process.once("SIGINT", done);
-    if (stop?.aborted) return done("abort");
-    stop?.addEventListener("abort", aborted, { once: true });
-  });
 }
 
 /** `dirname(":memory:")` is the working directory, so an in-memory database must name its state directory rather than leave the pid file and start record in the cwd. */

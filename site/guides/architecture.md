@@ -145,12 +145,16 @@ graph TD
   workflow --> authority
   workflow --> hitl
   workflow --> storeSqlite
+  evals --> agent
   evals --> authority
   evals --> evidence
   evals --> health
+  evals --> hitl
   evals --> reviewPanel
   evals --> sessionAnalytics
   evals --> sessionRead
+  evals --> storeSqlite
+  evals --> workflow
   factory --> agent
   factory --> agentDispatch
   factory --> appPaths
@@ -173,18 +177,21 @@ graph TD
   retrievalEval --> embed
   retrievalEval --> retrieval
   retrievalEval --> storeSqlite
+  sessionMiner --> appPaths
   sessionMiner --> clusterPkg
   sessionMiner --> daemon
   sessionMiner --> embed
   sessionMiner --> github
   sessionMiner --> locator
   sessionMiner --> memory
+  sessionMiner --> pm
   sessionMiner --> registry
   sessionMiner --> retrieval
   sessionMiner --> sessionAnalytics
   sessionMiner --> sessionGraph
   sessionMiner --> sessionRead
   sessionMiner --> storeSqlite
+  sessionMiner --> throughput
   titan --> daemon
   titan --> health
   codewatch --> codeRead
@@ -268,7 +275,7 @@ The usage guides are under [Guides](/guides/#running-the-products).
 
 ## What a product actually looks like
 
-The session miner composes <!-- generated:miner-count start -->twelve<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
+The session miner composes <!-- generated:miner-count start -->fifteen<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
 Its structure generalises: one context type, one registry, one binding of the daemon, and a
 set of commands.
 

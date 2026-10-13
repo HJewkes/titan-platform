@@ -2,7 +2,7 @@ import type { Command } from "commander";
 import type { Verbs } from "./cli.js";
 import { EXIT } from "./exit-codes.js";
 import type { FactoryRoutes } from "./host.js";
-import type { ShepherdServices } from "./shepherd/commands.js";
+import type { ShepherdServices } from "./shepherd/services.js";
 import { planAdoptions, sweepToolchain, type ToolchainPlans, type ToolchainSweepNote } from "./shepherd/toolchain-sweep.js";
 import { dryRunLines } from "./workflows/toolchain-fanout.js";
 

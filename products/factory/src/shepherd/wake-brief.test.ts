@@ -3,6 +3,7 @@ import { fakeGitHub, fakeSha, githubPort, successRun, type ReviewComment } from 
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
+import { panelFindingsText } from "./review-panel-step.js";
 import { suiteRules } from "./suite-host.js";
 import { COMMENTS_MAX_CHARS, COMMENT_MAX_CHARS, LOG_TAIL_LINES, defectClassSection, describeWake, reviewCommentSection, type WakeFacts } from "./wake-brief.js";
 
@@ -266,6 +267,86 @@ describe("review wake brief: a verdict with no findings", () => {
 
     expect(reason).toContain(`Shepherd found no findings in the reviewer's verdict for head ${H1}.`);
     expect(reason).toContain(`step sh-await-verdict:${H1} of run ${RUN}`);
+  });
+});
+
+describe("review wake brief: a panel's FIX_FIRST", () => {
+  it("hands a structural fixer both members' findings and the panel's defect class", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    const pr = fake.addPr({ headSha: H1 });
+    const text = panelFindingsText({
+      outcome: "FIX_FIRST",
+      head: H1,
+      findings: [
+        { shape: "correctness", text: "1. The parser drops the last token.\n\nDefect class: off-by-one at the buffer end", blocking: true },
+        { shape: "adversary", text: "1. A crafted header skips the token check.", blocking: true },
+      ],
+      defectClass: "off-by-one at the buffer end",
+      dissent: ["correctness", "adversary"],
+      degraded: [],
+      satisfiesG10: false,
+    });
+    const input: WakeFacts = { kind: "review", repo: REPO, pr: pr.number, headSha: H1, payload: { text }, fixFirst: 2 };
+
+    const { reason, payload } = await describeWake(githubPort(fake.wire), input, pr);
+
+    expect(reason).toContain("The reviewer's defect class follows, then every blocking item verbatim in the full findings.");
+    expect(payload).toContain(dataFence("defect class", "Defect class: off-by-one at the buffer end"));
+    expect(payload).toContain("correctness (blocking):\n1. The parser drops the last token.");
+    expect(payload).toContain("adversary (blocking):\n1. A crafted header skips the token check.");
+  });
+});
+
+describe("review wake brief: the run's earlier FIX_FIRSTs", () => {
+  const H0 = fakeSha("head-0");
+  const verdictAt = (head: string) => `Verdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${head}`;
+  const R1_ITEM = "1. The guard reads $1 unquoted, so a spaced path splits.";
+  const r1 = { headSha: H0, text: `${R1_ITEM}\n\nDefect class: unquoted shell words.\n\n${verdictAt(H0)}`, defectClass: "Defect class: unquoted shell words." };
+  const CORPUS = "Add one table-driven test over every form the class can take";
+
+  async function secondWake(currentClass: string, trail: { earlier?: unknown } = { earlier: [r1] }) {
+    const fake = fakeGitHub({ repo: REPO });
+    const pr = fake.addPr({ headSha: H1 });
+    const text = `1. The hook reads $@ unquoted.\n\n${currentClass}\n\n${verdictAt(H1)}`;
+    const input: WakeFacts = { kind: "review", repo: REPO, pr: pr.number, headSha: H1, payload: { kind: "FIX_FIRST", text, ...trail }, fixFirst: 2 };
+    return describeWake(githubPort(fake.wire), input, pr);
+  }
+
+  it("hands the fixer round 1's findings and class, fenced, before this round's findings", async () => {
+    const { reason, payload } = await secondWake("Defect class: stale cache reads.");
+
+    expect(reason).toContain("Every earlier FIX_FIRST of this run follows first");
+    expect(payload).toContain(dataFence("earlier review findings", [`FIX_FIRST 1 at head ${H0}`, r1.defectClass, "", `${R1_ITEM}\n\nDefect class: unquoted shell words.`].join("\n")));
+    expect(payload.indexOf(R1_ITEM)).toBeLessThan(payload.indexOf("1. The hook reads $@ unquoted."));
+    expect(payload.split(R1_ITEM)).toHaveLength(2);
+  });
+
+  it("strips the earlier round's verdict block, so the earlier text cannot read as a verdict", async () => {
+    const { payload } = await secondWake("Defect class: stale cache reads.");
+    const earlierFence = payload.slice(0, payload.indexOf("The review findings below"));
+
+    expect(earlierFence).not.toContain(`Head: ${H0}`);
+    expect(parseVerdictBlock(earlierFence).ok).toBe(false);
+  });
+
+  it("requires a class-level test corpus when this round names the same class as an earlier one", async () => {
+    const { reason } = await secondWake("Defect class: Unquoted shell words");
+
+    expect(reason).toContain(CORPUS);
+    expect(reason).toContain("name the corpus file in your final message");
+  });
+
+  it("asks for no corpus when the class is new, or when this round names none", async () => {
+    expect((await secondWake("Defect class: stale cache reads.")).reason).not.toContain(CORPUS);
+    expect((await secondWake("")).reason).not.toContain(CORPUS);
+  });
+
+  it("reads a payload recorded before the trail existed exactly as before", async () => {
+    const { reason, payload } = await secondWake("Defect class: unquoted shell words.", {});
+
+    expect(reason).not.toContain("Every earlier FIX_FIRST");
+    expect(reason).not.toContain(CORPUS);
+    expect(payload).not.toContain("earlier review findings");
   });
 });
 

@@ -49,6 +49,8 @@ export class RunContext implements WorkflowContext {
   readonly signal: AbortSignal;
   private readonly iterations: Record<string, number> = {};
   private readonly inFlight = new Set<Promise<unknown>>();
+  /** Recovered steps this drive's replay reached; the rest are orphans the workflow moved past. */
+  private readonly claimed = new Set<string>();
   /** A run with a result from before 0.5 keeps that release's keys: seeds apart from the call count, and no operation check. */
   private readonly legacyKeys: boolean;
   /** The step a resumed run was paused on; its next gate call must find the row it opened. */
@@ -85,11 +87,17 @@ export class RunContext implements WorkflowContext {
     while (this.inFlight.size > 0) await Promise.allSettled([...this.inFlight]);
   }
 
+  /** Active steps hydrate recovered that this drive never dispatched again. */
+  orphanedSteps(): ActiveStep[] {
+    return Object.values(this.run.activeSteps).filter((step) => this.deps.recovered.has(step.iterKey) && !this.claimed.has(step.iterKey));
+  }
+
   private async dispatchStep(stepId: string, template: string, options: DispatchOptions<unknown>): Promise<StepResult> {
     const { index: iteration, key: iterKey, cached } = this.recall("dispatch", stepId);
     if (cached) return this.bump(stepId, this.replayed(cached, iteration, options.schema));
     const recovered = this.deps.recovered.get(iterKey);
-    if (!recovered) this.throwIfCancelled();
+    if (recovered) this.claimed.add(iterKey);
+    else this.throwIfCancelled();
     const prompt = await this.deps.render(template, buildStepVars(this.run, options.vars));
     const completed = await this.runWithRetry(stepId, iteration, iterKey, prompt, options, recovered);
     const data = options.schema ? this.parsedData(stepId, iteration, completed, options.schema) : undefined;
@@ -103,6 +111,7 @@ export class RunContext implements WorkflowContext {
       output: completed.output,
       ...(data ? { data } : {}),
       ...(completed.usage ? { usage: completed.usage } : {}),
+      attempt: completed.attempt,
     };
     delete this.run.activeSteps[stepId];
     this.record(iterKey, result);
@@ -252,7 +261,7 @@ export class RunContext implements WorkflowContext {
       }
       const outcome = await this.awaitOutcome(active!, pending);
       pending = undefined;
-      if (outcome.kind === "succeeded") return { output: outcome.output, runnerRef: active!.runnerRef ?? null, usage: addUsage(failedUsage, outcome.usage) };
+      if (outcome.kind === "succeeded") return { output: outcome.output, runnerRef: active!.runnerRef ?? null, usage: addUsage(failedUsage, outcome.usage), attempt };
       if (outcome.kind === "cancelled") {
         this.consumeActive(active!);
         throw new WorkflowCancelledError(this.runId, outcome.reason);

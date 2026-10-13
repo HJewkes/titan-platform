@@ -145,6 +145,39 @@ describe("acceptVerdict FIX_FIRST findings", () => {
   });
 });
 
+describe("acceptVerdict follow-ups", () => {
+  const said = (text: string): ReviewerMessage => ({ ...verdictMessage(DISPATCHED_AT + 1), text });
+  const block = (verdict: string) => `Verdict: ${verdict}\nPR: octo/demo#7\nHead: ${HEAD}`;
+  const followUps = "Follow-ups:\n- Name the retry bound | The bound is a named constant | low";
+
+  it("keeps a MERGE a MERGE and carries its proposed tasks", () => {
+    const result = acceptVerdict(input, [said(`Fine.\n\n${followUps}\n\n${block("MERGE")}`)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE", followUps: [{ title: "Name the retry bound", doneWhen: "The bound is a named constant", severity: "low" }] });
+    expect(result).not.toHaveProperty("followUpsWarning");
+  });
+
+  it("carries a FIX_FIRST's proposed tasks too", () => {
+    const result = acceptVerdict(input, [said(`1. Broken.\n\n${followUps}\n\n${block("FIX_FIRST")}`)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST", followUps: [{ title: "Name the retry bound" }] });
+  });
+
+  it("still counts the verdict when the block is malformed, with the warning and no tasks", () => {
+    const result = acceptVerdict(input, [said(`Fine.\n\nFollow-ups:\n- Name the retry bound | critical\n\n${block("MERGE")}`)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE", followUpsWarning: "bad_item" });
+    expect(result).not.toHaveProperty("followUps");
+  });
+
+  it("carries neither field when the reviewer wrote no block", () => {
+    const result = acceptVerdict(input, [verdictMessage(DISPATCHED_AT + 1)]);
+
+    expect(result).not.toHaveProperty("followUps");
+    expect(result).not.toHaveProperty("followUpsWarning");
+  });
+});
+
 describe("acceptVerdict CI-policy line", () => {
   const said = (text: string): ReviewerMessage => ({ ...verdictMessage(DISPATCHED_AT + 1), text });
   const ciPolicyOf = (result: ReturnType<typeof acceptVerdict>) => (result.kind === "verdict" && result.verdict === "MERGE" ? result.ciPolicy : "not a MERGE");

@@ -6,7 +6,7 @@ import type { Command } from "commander";
 import type { CliIo } from "./cli.js";
 import { parseSinceOption } from "./digest/command.js";
 import { gateStats, type GateStatsRow } from "./shepherd/gate-stats.js";
-import { SHEPHERD_WORKFLOW } from "./shepherd/commands.js";
+import { SHEPHERD_WORKFLOW } from "./shepherd/services.js";
 import { eventsSince } from "./shepherd/events.js";
 import { readAllGates } from "./shepherd/owner-friction-read.js";
 import { ownerFriction, type FrictionDay } from "./shepherd/owner-friction.js";
@@ -49,7 +49,7 @@ function formatStages(weeks: readonly StageWeek[]): string[] {
 
 function mergeLine(r: StatsRow): string {
   const ups = r.mergeUps;
-  return `${r.repo}  ${r.week}  merges ${r.merges}  slow(>60m) ${r.slowMerges}  slow hours ${r.slowHours}  slow owner-gated ${r.slowOwnerGated}  outside Shepherd ${r.outsideMerges}  merge-ups land/strict/freeze/retry ${ups.landTime}/${ups.strictChase}/${ups.freezeHold}/${ups.retry}  strict rounds ${r.strictRounds}  foreign merge-ups ${r.foreignMergeUps}`;
+  return `${r.repo}  ${r.week}  merges ${r.merges}  slow(>60m) ${r.slowMerges}  slow hours ${r.slowHours}  slow owner-gated ${r.slowOwnerGated}  outside Shepherd ${r.outsideMerges}  merge-ups land/strict/freeze/base/retry ${ups.landTime}/${ups.strictChase}/${ups.freezeHold}/${ups.baseRed}/${ups.retry}  strict rounds ${r.strictRounds}  foreign merge-ups ${r.foreignMergeUps}`;
 }
 
 function formatStats(rows: readonly StatsRow[], friction: readonly FrictionDay[], stages: readonly StageWeek[], overrides: readonly OverrideRow[]): string {
@@ -162,7 +162,7 @@ function statsAction(opts: StatsOpts, io: CliIo, dbPath: () => string, setExit: 
 export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () => string, setExit: (code: number) => void, now: () => number = Date.now): void {
   shepherd
     .command("stats")
-    .description("per repo and ISO week: PRs whose reviewer MERGE-to-merged wait exceeded 60 minutes and how many an owner approve-merge gate held, merges made outside Shepherd, Shepherd's merge-ups by class (land time, strict chase, freeze hold, retry), strict land-rules rounds, and merges of the base pushed by others; per day: owner touches and the hours each gate kind waited on the owner; per repo and ISO week: median, p90 and max minutes per stage (queued, ci, review, re-review, hold, land); per repo and ISO week: merged runs whose main CI went red, and those since reverted; per repo and ISO week: review dispatches counted by why each was dispatched; with --gates --since: gates per policy row and resolver class")
+    .description("per repo and ISO week: PRs whose reviewer MERGE-to-merged wait exceeded 60 minutes and how many an owner approve-merge gate held, merges made outside Shepherd, Shepherd's merge-ups by class (land time, strict chase, freeze hold, base red, retry), strict land-rules rounds, and merges of the base pushed by others; per day: owner touches and the hours each gate kind waited on the owner; per repo and ISO week: median, p90 and max minutes per stage (queued, ci, review, re-review, hold, land); per repo and ISO week: merged runs whose main CI went red, and those since reverted; per repo and ISO week: review dispatches counted by why each was dispatched; with --gates --since: gates per policy row and resolver class")
     .option("--from <date>", "first day, YYYY-MM-DD (UTC)")
     .option("--to <date>", "last day, YYYY-MM-DD (UTC), inclusive")
     .option("--json", "print the rows as JSON")

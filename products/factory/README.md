@@ -718,6 +718,19 @@ lifts it, and none places it again, without a new alert. So however the wait end
 gets an account never leaves a stale hold in front of its MERGE.
 The restart drain does not wait on `sh-account-wait`, since a restart only re-reads the store.
 
+### A reviewer dispatch that is refused
+
+A broker that stays busy past its wait started nobody, so the review is retried (`not-started`).
+Any other refusal of `sh-review`, such as `ReviewCheckoutUnusable` for a repo that no seat or
+`shepherd.repos` entry binds to a checkout, is not counted as a failed round either.
+`sh-no-reviewer-hold` holds the run as `no-reviewer: <refusal class> at <head>; TP-2446` and alerts
+the repo's seat once. It never replaces another hold. `sh-no-reviewer-wait` then waits inside the
+review until the hold is released (`titan-factory shepherd release <pr> --head <sha> --class
+no-reviewer`), the head moves, the PR closes, or an hour passes. The head is then reviewed again.
+A refusal that still stands finds its own hold and waits again with no second alert. So a repo
+with no usable reviewer never reaches approve-merge unreviewed. The restart drain does not wait on
+`sh-no-reviewer-wait`.
+
 The config file is read when the routes are first built, so restart `serve` after a change to
 these keys. The seat book is read again on every spawn.
 

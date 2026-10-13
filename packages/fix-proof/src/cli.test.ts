@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCli } from "./cli.js";
 import { FIXED, makeRepo, parsed, REAL_TEST, removeRepos } from "./repo.test-helpers.js";
-import { MAX_ENCODED_BYTES } from "./transport.js";
+import { decodeReport, MAX_ENCODED_BYTES } from "./transport.js";
 
 const DIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist");
 const outs: string[] = [];
@@ -45,6 +45,23 @@ describe("fix-proof cli", { timeout: 120_000 }, () => {
 
     expect(result.verdict).toBe("error");
     expect(result.error).toContain("usage: fix-proof exec --side base|head");
+  });
+
+  it.each(["root; rm", "Root", ""])("exec --sandbox-user %j is a usage error line", async (user) => {
+    const result = parsed(await runCli(["exec", "--side", "base", "--base", "a", "--head", "b", "--out", "x", "--sandbox-user", user], os.tmpdir()));
+
+    expect(result).toMatchObject({ verdict: "error", error: expect.stringContaining("[--sandbox-user <name>]") });
+  });
+
+  it("exec passes --sandbox-user on to the base side, which fails closed for a user it cannot set up", async () => {
+    const repo = makeRepo();
+    const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
+    const out = outDir();
+
+    const line = await runCli(["exec", "--side", "base", "--base", repo.base, "--head", head, "--out", out, "--sandbox-user", "fix-proof-absent-user"], repo.dir);
+
+    expect(line).toBe("");
+    expect(decodeReport(fs.readFileSync(path.join(out, "base.report"), "utf-8"))).toMatchObject({ ok: false, reported: true });
   });
 
   it("an unknown subcommand is a usage error line", async () => {

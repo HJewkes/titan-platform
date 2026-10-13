@@ -26,7 +26,7 @@ function mergedRun(id: string, verdictAt: number, waitMinutes: number): Workflow
   return run;
 }
 
-const NO_MERGE_UPS = { mergeUps: { landTime: 0, strictChase: 0, freezeHold: 0, retry: 0 }, strictRounds: 0, slowOwnerGated: 0, foreignMergeUps: 0 };
+const NO_MERGE_UPS = { mergeUps: { landTime: 0, strictChase: 0, freezeHold: 0, baseRed: 0, retry: 0 }, strictRounds: 0, slowOwnerGated: 0, foreignMergeUps: 0 };
 const row = (counts: Partial<StatsRow>): StatsRow => ({ repo: REPO, week: "2026-W38", merges: 0, slowMerges: 0, slowHours: 0, outsideMerges: 0, ...NO_MERGE_UPS, ...counts });
 
 /** A run whose steps are `[id, minutes after T0, result]`, in that order, merged by its last step if that is `merge:0`. */
@@ -91,7 +91,7 @@ describe("shepherdStats merge-ups", () => {
       ["merge:0", 11, { done: true }],
     ]);
 
-    expect(shepherdStats([run])[0]?.mergeUps).toEqual({ landTime: 1, strictChase: 0, freezeHold: 0, retry: 0 });
+    expect(shepherdStats([run])[0]?.mergeUps).toEqual({ landTime: 1, strictChase: 0, freezeHold: 0, baseRed: 0, retry: 0 });
   });
 
   it("counts an update off a behind read without baseMoved as the strict chase", () => {
@@ -100,7 +100,7 @@ describe("shepherdStats merge-ups", () => {
       ["update-branch:0", 2, { headSha: "h2", own: true }],
     ]);
 
-    expect(shepherdStats([run])[0]?.mergeUps).toEqual({ landTime: 0, strictChase: 1, freezeHold: 0, retry: 0 });
+    expect(shepherdStats([run])[0]?.mergeUps).toEqual({ landTime: 0, strictChase: 1, freezeHold: 0, baseRed: 0, retry: 0 });
   });
 
   it("counts the update after a thaw as freeze-hold and the update after a backoff as a retry", () => {
@@ -111,7 +111,28 @@ describe("shepherdStats merge-ups", () => {
       ["update-branch:1", 4, { headSha: "h3", own: true }],
     ]);
 
-    expect(shepherdStats([run])[0]?.mergeUps).toEqual({ landTime: 0, strictChase: 0, freezeHold: 1, retry: 1 });
+    expect(shepherdStats([run])[0]?.mergeUps).toEqual({ landTime: 0, strictChase: 0, freezeHold: 1, baseRed: 0, retry: 1 });
+  });
+
+  it("counts the update after a red base moved as a base-red refresh, not a freeze hold or a foreign merge-up", () => {
+    const run = stepsRun("a", [
+      ["sh-freeze-hold:0", 1, { hold: true, reason: "base red", episode: null, baseRed: { baseRef: "main", baseSha: "b1", stale: true } }],
+      ["sh-base-wait:0", 2, { baseMoved: true, headSha: "h1" }],
+      ["update-branch:sh-freeze-hold:0", 2, { headSha: "h2", own: true }],
+    ]);
+
+    expect(shepherdStats([run])).toEqual([row({ mergeUps: { landTime: 0, strictChase: 0, freezeHold: 0, baseRed: 1, retry: 0 }, foreignMergeUps: 0 })]);
+  });
+
+  it("still counts the update after a thawed freeze as a freeze hold", () => {
+    const run = stepsRun("a", [
+      ["sh-freeze-hold:0", 1, { hold: true, reason: "frozen", episode: 3 }],
+      ["sh-freeze-wait:0", 2, { thawed: true, headSha: "h1" }],
+      ["update-branch:sh-freeze-hold:0", 3, { headSha: "h2", own: true }],
+      ["sh-base-wait:1", 4, { baseMoved: false, headSha: "h2" }],
+    ]);
+
+    expect(shepherdStats([run])[0]?.mergeUps).toEqual({ landTime: 0, strictChase: 0, freezeHold: 1, baseRed: 0, retry: 0 });
   });
 
   it("counts a land-rules read that found the repo strict as a strict round, and not a non-strict one", () => {
@@ -130,7 +151,7 @@ describe("shepherdStats merge-ups", () => {
       ["merge:0", 7 * 24 * 60, { done: true }],
     ]);
 
-    expect(shepherdStats([run])).toEqual([row({ week: "2026-W39", merges: 1, mergeUps: { landTime: 0, strictChase: 1, freezeHold: 0, retry: 0 } })]);
+    expect(shepherdStats([run])).toEqual([row({ week: "2026-W39", merges: 1, mergeUps: { landTime: 0, strictChase: 1, freezeHold: 0, baseRed: 0, retry: 0 } })]);
   });
 });
 

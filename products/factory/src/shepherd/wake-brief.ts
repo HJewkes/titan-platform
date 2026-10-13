@@ -4,7 +4,8 @@ import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
 import { failureOf } from "./error-class.js";
-import { BLOCK_LINE, DEFECT_CLASS_HEADING, findingsText } from "@titan-design/review-panel";
+import { boundedFindings, findingsText } from "@titan-design/review-panel";
+import { FixFirstEntrySchema, defectClassSection, fixFirstEntry, sameClassAsEarlier, type FixFirstEntry } from "./fix-first-trail.js";
 import { MAC_SUITE_RULES } from "./suite-host.js";
 
 /** Recorded once per FIX_FIRST round, woken or not, so the run's count of them survives a replay and a new head. */
@@ -142,17 +143,10 @@ function conflictReason(input: WakeFacts, conflict: Conflict): string {
   return `${intro} The files both sides changed follow.${registries}`;
 }
 
-const FixFirst = z.looseObject({ text: z.string().optional() });
-const isDefectHeading = (line: string): boolean => line.replace(/^[\s#*]+/, "").toLowerCase().startsWith(DEFECT_CLASS_HEADING.toLowerCase());
+/** `earlier` is the run's FIX_FIRSTs before this one, oldest first; a payload recorded before it existed has none. */
+const FixFirst = z.looseObject({ text: z.string().optional(), earlier: z.array(FixFirstEntrySchema).optional() });
 
-/** The reviewer's newest defect-class section, from its heading to the verdict block; undefined when the reviewer wrote none. */
-export function defectClassSection(text: string): string | undefined {
-  const lines = text.split("\n");
-  const start = lines.length - 1 - [...lines].reverse().findIndex(isDefectHeading);
-  if (start >= lines.length) return undefined;
-  const end = lines.findIndex((line, index) => index > start && BLOCK_LINE.test(line));
-  return lines.slice(start, end < 0 ? undefined : end).join("\n").trim();
-}
+export { defectClassSection };
 
 function ordinal(n: number): string {
   const suffix = n % 100 >= 11 && n % 100 <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th");
@@ -169,17 +163,29 @@ function noFindingsWake(input: WakeFacts, text: string): { reason: string; paylo
   return { reason, payload: dataFence("verdict as recorded", text === "" ? "(no verdict text)" : text) };
 }
 
-/** A repeat FIX_FIRST carries the reviewer's defect class and the findings whole, so no blocking item is summarised away. */
+const EARLIER = "Every earlier FIX_FIRST of this run follows first, oldest first, each with its defect class, then this review's: check that no earlier item has come back.";
+/** Point patches let the same class through twice; one corpus over the class's forms is what stops a third. */
+const CORPUS = "This review names the same defect class as an earlier FIX_FIRST of this run, so patching its instances has not held. Add one table-driven test over every form the class can take, run against the real implementation (for a shell guard, a table of bash and git spellings run through the real interpreter), not one row per finding, and name the corpus file in your final message.";
+
+/** Each earlier round fenced on its own, its class first; block lines are stripped so no earlier text parses as a verdict. */
+function earlierFence(entry: FixFirstEntry, index: number): string {
+  const heading = `FIX_FIRST ${index + 1} at head ${entry.headSha}`;
+  return dataFence("earlier review findings", [heading, entry.defectClass ?? "Defect class: not named", "", boundedFindings(findingsText(entry.text))].join("\n"));
+}
+
+/** A repeat FIX_FIRST carries every earlier round's findings and class, then the reviewer's defect class and the findings whole, so no blocking item is summarised away. */
 function reviewWake(input: WakeFacts): { reason: string; payload: string } {
-  const text = FixFirst.parse(input.payload).text ?? "";
+  const { text = "", earlier = [] } = FixFirst.parse(input.payload);
   if (findingsText(text) === "") return noFindingsWake(input, text);
   const nth = input.fixFirst ?? 1;
   const findings = dataFence("review findings", text);
   if (nth < STRUCTURAL_FIX_FIRST) return { reason: `An independent review of head ${input.headSha} returned FIX_FIRST. Its findings follow.`, payload: findings };
   const section = defectClassSection(text);
   const intro = `An independent review of head ${input.headSha} returned FIX_FIRST, the ${ordinal(nth)} on this PR, so this is a structural pass. ${STRUCTURAL}`;
-  const reason = `${intro} ${section === undefined ? NO_CLASS : "The reviewer's defect class follows, then every blocking item verbatim in the full findings."}`;
-  return { reason, payload: section === undefined ? findings : `${dataFence("defect class", section)}\n\n${findings}` };
+  const corpus = sameClassAsEarlier(earlier, fixFirstEntry(input.headSha, text)) ? [CORPUS] : [];
+  const reason = [intro, ...(earlier.length > 0 ? [EARLIER] : []), section === undefined ? NO_CLASS : "The reviewer's defect class follows, then every blocking item verbatim in the full findings.", ...corpus].join(" ");
+  const current = section === undefined ? findings : `${dataFence("defect class", section)}\n\n${findings}`;
+  return { reason, payload: [...earlier.map(earlierFence), current].join("\n\n") };
 }
 
 /** Caps, in characters, on one review comment and on all of them; the overflow is collapsed into a count. */

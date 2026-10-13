@@ -8,6 +8,11 @@ export class ReviewerBrokerDown extends Error {
   override readonly name = "ReviewerBrokerDown";
 }
 
+/** The port throws this when an agent-chat call outlasted its timeout; the call may still have landed, so it is never asked again blind. */
+export class ReviewerAskTimedOut extends Error {
+  override readonly name = "ReviewerAskTimedOut";
+}
+
 export interface PollTiming {
   now: () => number;
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
@@ -66,6 +71,12 @@ export const busyWaits = (waits: string[]): BusyWaits => (waits.length > 0 ? { b
 export function notStarted(error: unknown, waits: string[]): NotStarted {
   if (!(error instanceof ReviewerStillBusy)) throw error;
   return { kind: "none", reason: `the reviewer dispatch was refused: ${error.message}`, notStarted: true, ...busyWaits(waits) };
+}
+
+/** A timed-out ask whose reviewer never showed up started nobody; the reason is built from the class and the wait alone, since it becomes a stored step reason. */
+export function timedOutUnseen(waitedMs: number, waits: string[]): NotStarted {
+  const reason = `the reviewer dispatch was refused: ReviewerAskTimedOut (no reviewer seen after ${minutes(waitedMs)})`;
+  return { kind: "none", reason, notStarted: true, ...busyWaits(waits) };
 }
 
 /** The first wait after a busy refusal; each later wait doubles, up to the longest. */
