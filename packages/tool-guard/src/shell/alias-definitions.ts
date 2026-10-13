@@ -74,7 +74,7 @@ export class AliasDefinitionError extends ReadingLimitError {
 /** Whether the command defines or may define an alias that text the shell parses later in the same process would expand. */
 export function definesAlias(cmd: Unwrapped): boolean {
   return (
-    (cmd.name === "alias" && splitOptions(cmd.args).operands.some((w) => w.dynamic || w.value.includes("=")))
+    (cmd.name === "alias" && readOptions(cmd.args).operands.some((w) => w.dynamic || w.value.includes("=")))
     || (cmd.name === "enable" && enablesAliases(cmd.args))
     || cmd.assigned.some(([name]) => ALIAS_PARAMS.has(name))
     || cmd.args.some(expandsAliasParam)
@@ -84,23 +84,35 @@ export function definesAlias(cmd: Unwrapped): boolean {
 }
 
 /**
- * A store builtin whose target is an alias parameter, or may be one: a dynamic word where it reads the name, or a
- * nameref bound to one. A dynamic word elsewhere, as in `printf "$fmt"`, stores nothing.
+ * A store builtin whose target is an alias parameter, or may be one: a dynamic word where it reads the name, a dynamic
+ * word where options may still stand and a later word follows, since it may expand to a name-taking option with the
+ * name attached (`printf "$o" x`, o=-valiases[y]), or a nameref bound to one.
  */
 function storesAliasParam(name: string, args: WordToken[]): boolean {
   const spec = STORE_BUILTINS.get(name);
   if (!spec) return false;
   if (args.some((w) => STORED_PARAM_RE.test(w.value))) return true;
-  const { options, targets, operands } = readStoreWords(spec, args);
+  const { options, targets, operands, mayBeOption } = readOptions(args, spec);
   if (targets.some((w) => w.dynamic) || dynamicTargetOperand(spec, options, operands)) return true;
+  if (mayBeOption && operands.length > 1 && (spec.names ?? spec.stores) !== undefined) return true;
   return NAMEREF_DECLARERS.has(name) && options.some((w) => /^-.*n/s.test(w.value)) && operands.some(bindsAliasParam);
 }
 
+/** A builtin's words as the shell reads them once expanded. */
+interface OptionWords {
+  options: WordToken[];
+  /** The values `names` options take. */
+  targets: WordToken[];
+  operands: WordToken[];
+  /** The first operand is dynamic, so it may still expand to any option, a name-taking one with its name attached included. */
+  mayBeOption: boolean;
+}
+
 /**
- * Options up to `--`, a lone `-` or the first operand, the names `names` options take, and the operands. A word led by
- * `-` and a letter is an option even when part of it expands, so `-v$n` names its target.
+ * Options up to `--`, a lone `-` (both dropped) or the first operand, which every word after is too. A word led by `-`
+ * and a letter is an option even when part of it expands, so `-v$n` names its target.
  */
-function readStoreWords(spec: StoreSpec, args: WordToken[]) {
+function readOptions(args: WordToken[], spec: StoreSpec = {}): OptionWords {
   const options: WordToken[] = [];
   const targets: WordToken[] = [];
   let i = 0;
@@ -113,7 +125,7 @@ function readStoreWords(spec: StoreSpec, args: WordToken[]) {
     if (value && spec.names?.includes(w.value.charAt(at + 1))) targets.push(value);
   }
   const ends = args[i]?.dynamic === false && (args[i]?.value === "--" || args[i]?.value === "-");
-  return { options, targets, operands: args.slice(ends ? i + 1 : i) };
+  return { options, targets, operands: args.slice(ends ? i + 1 : i), mayBeOption: args[i]?.dynamic === true };
 }
 
 function dynamicTargetOperand(spec: StoreSpec, options: WordToken[], operands: WordToken[]): boolean {
@@ -139,22 +151,10 @@ function bindsAliasParam(w: WordToken): boolean {
   return eq === -1 || w.dynamic || BOUND_PARAM_RE.test(w.value.slice(eq + 1));
 }
 
-/**
- * Options and operands as zsh's builtins read them: options run up to `--`, a lone `-` (both dropped), or the first
- * operand, and every word after that is an operand. A dynamic word may expand to an operand, so it starts them.
- */
-function splitOptions(args: WordToken[]): { options: WordToken[]; operands: WordToken[] } {
-  const at = args.findIndex((w) => w.dynamic || !/^[-+]./.test(w.value) || w.value === "--");
-  const end = args[at];
-  if (!end) return { options: args, operands: [] };
-  const dropped = !end.dynamic && (end.value === "--" || end.value === "-");
-  return { options: args.slice(0, at), operands: args.slice(dropped ? at + 1 : at) };
-}
-
 /** `enable -a` turns disabled aliases back on; a dynamic word where options may still stand may be `-a`. */
 function enablesAliases(args: WordToken[]): boolean {
-  const { options, operands } = splitOptions(args);
-  return operands[0]?.dynamic === true || options.some((w) => w.value.startsWith("-") && w.value.includes("a"));
+  const { options, mayBeOption } = readOptions(args);
+  return mayBeOption || options.some((w) => w.value.startsWith("-") && w.value.includes("a"));
 }
 
 function expandsAliasParam(w: WordToken): boolean {
@@ -167,7 +167,7 @@ function expandsAliasParam(w: WordToken): boolean {
  * means the command is something else, as in `"$PY" -c x=1`.
  */
 function dynamicDefinition(args: WordToken[]): boolean {
-  const { options, operands } = splitOptions(args);
+  const { options, operands } = readOptions(args);
   if (!options.every((w) => ALIAS_OPTION_RE.test(w.value))) return false;
   return operands.some((w) => DEFINITION_RE.test(w.value));
 }
