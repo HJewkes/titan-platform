@@ -429,3 +429,55 @@ describe("arithmetic that mentions a hooked parameter", () => {
     expect(performance.now() - started).toBeLessThan(100);
   });
 });
+
+describe("an assignment whose bound name the shell computes", () => {
+  it.each([
+    ["a brace list before the =", "f PS{4,}=7"],
+    ["a brace list in a for list", "for x in PS{4,5}=7"],
+    ["a default value before the =", 'f "${v:-PS4}=7"'],
+    ["a command substitution before the =", 'f "$(echo PS4)=7"'],
+    ["an expansion joined to a literal tail", 'f "${x}4=7"'],
+    ["a variable before the =", 'f "$x=7"'],
+    ["a compound operator after an expansion", 'f "${x}+=7"'],
+    ["a subscript after an expansion", 'f "${x}[0]=7"'],
+    ["an escape printf decodes", "printf -v x 'PS\\x34=7'"],
+    ["a printf directive", "printf -v x '%s=7' PS4"],
+    ["an unquoted glob", "f P?4=7"],
+    ["a herestring with an expansion", 'read x <<< "${v}=7"'],
+  ])("counts: %s", (_how, line) => {
+    expect(hooked(line)).not.toBeNull();
+  });
+
+  it.each([
+    ["an echo of $k=$v, an accepted over-read", 'echo "$k=$v"'],
+    ["a printf of key=value pairs, an accepted over-read", "printf '%s=%s\\n' a b"],
+  ])("counts: %s", (_how, line) => {
+    expect(hooked(line)).not.toBeNull();
+  });
+
+  it.each([
+    ["a URL query after an expansion", 'curl "$BASE/api?x=1"'],
+    ["a quoted URL query", "gh api 'repos/o/r/pulls?state=open'"],
+    ["a literal name after a slash", 'curl -d "a=1&b=$v"'],
+    ["a value holding an expansion", 'export PATH="$HOME/bin:$PATH"'],
+    ["an option with a value", "git log --format=%H"],
+    ["a single-quoted awk program", "awk '{$1=\"\"; print}' f"],
+    ["a comparison after an expansion", '[[ "$a" == b ]]'],
+    ["a != after an expansion", 'f "$a!=b"'],
+    ["a <= after an expansion", 'f "$a<=b"'],
+    ["a double-quoted glob before the =", 'f "P?4=7"'],
+    ["a quoted brace list", "f 'PS{4,}=7'"],
+  ])("returns null: %s", (_how, line) => {
+    expect(hooked(line)).toBeNull();
+  });
+
+  it("reads a long word in linear time", () => {
+    const value = `${"]=".repeat(40_000)}`;
+    const word: WordToken = { type: "word", value, dynamic: false, quoted: false, spliced: false, computed: false, refs: [], subs: [] };
+    const started = performance.now();
+
+    writesHookedParam({ name: "f", path: "f", args: [word], assigned: [] }, [word]);
+
+    expect(performance.now() - started).toBeLessThan(100);
+  });
+});

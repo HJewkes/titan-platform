@@ -1,3 +1,5 @@
+import { bindsComputedName } from "./computed-binding.js";
+import type { HandedText } from "./computed-binding.js";
 import { assignedInMath, mentionedIn } from "./hooked-names.js";
 import type { RedirectToken, WordToken } from "./lexer.js";
 import type { Unwrapped } from "./unwrap.js";
@@ -32,10 +34,13 @@ export function arithmeticHookedIn(cmd: Unwrapped, words: WordToken[], slots: Wo
     const hooked = mentionedIn(text);
     if (hooked !== null) return hooked;
   }
-  for (const text of [...laterExpressions(cmd), ...handedTexts(cmd, words, redirects)]) {
+  const handed = handedTexts(cmd, words, redirects);
+  for (const text of [...laterExpressions(cmd), ...handed.map((h) => h.text)]) {
     const hooked = assignedInMath(text);
     if (hooked !== null) return hooked;
   }
+  const computed = handed.find(bindsComputedName);
+  if (computed !== undefined) return computed.text;
   const named = [...words.filter((w) => !w.dynamic && SUBSCRIPTED_ASSIGNMENT_RE.test(w.value)), ...slots];
   for (const word of [...words, ...cmd.args].filter((w) => w.dynamic).concat(named)) {
     const opener = arithmeticOpener(word.value, word.dynamic);
@@ -73,12 +78,14 @@ function laterExpressions({ name, args, assigned }: Unwrapped): string[] {
  * heredoc body. `[` and `test` evaluate none of theirs, apart from the name a `-v` test reads, whose subscript is
  * math.
  */
-function handedTexts({ name, args }: Unwrapped, words: WordToken[], redirects: RedirectToken[]): string[] {
-  const inputs = redirects.flatMap((r) => [...(r.target ? [r.target.value] : []), ...(r.body === null ? [] : [r.body])]);
-  if (name !== null && TEST_COMMANDS.has(name)) {
-    return [...args.filter((_, i) => args[i - 1]?.value === "-v").map((w) => w.value), ...inputs];
-  }
-  return [...[...words, ...args].map((w) => w.value), ...inputs];
+function handedTexts({ name, args }: Unwrapped, words: WordToken[], redirects: RedirectToken[]): HandedText[] {
+  const handed = (w: WordToken): HandedText => ({
+    text: w.value, dynamic: w.dynamic, braces: !w.quoted || w.spliced, globs: !w.quoted, cuts: (w.cuts ?? []).map((cut) => cut.at),
+  });
+  const body = (text: string): HandedText => ({ text, dynamic: true, braces: false, globs: false, cuts: [] });
+  const inputs = redirects.flatMap((r) => [...(r.target ? [handed(r.target)] : []), ...(r.body === null ? [] : [body(r.body)])]);
+  if (name !== null && TEST_COMMANDS.has(name)) return [...args.filter((_, i) => args[i - 1]?.value === "-v").map(handed), ...inputs];
+  return [...[...words, ...args].map(handed), ...inputs];
 }
 
 /** Where the first arithmetic in the text starts, or -1. A literal word opens only at a subscript. */
