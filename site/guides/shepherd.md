@@ -746,7 +746,8 @@ visual_paths:
 
 A seat with `visual_paths` resolves to `auto` even without `merge-on-green-approve`. At each
 head Shepherd decides, it matches the changed files the merge evidence read at that head
-(both sides of a rename) against the globs:
+(both sides of a rename) against the globs. Files that cannot render never match: names
+with `.test.` or `.spec.`, and names ending `.md` or `.d.ts`.
 
 - no file matches: the merge goes on to `MRG-AU-RV`, which still needs a `MERGE` at the head
   and green required checks;
