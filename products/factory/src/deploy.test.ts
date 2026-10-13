@@ -71,6 +71,8 @@ interface MachineInit {
   blobs?: Record<string, string>;
   /** `writeFile` throws for this path. */
   writeFails?: string;
+  /** The running serve ignores SIGTERM: `kickstart -k` leaves its pid in place until `launchctl kill SIGKILL`. */
+  wedged?: boolean;
 }
 
 const lockfile = (sqlite: string): string => `lockfileVersion: '9.0'\n\npackages:\n\n  better-sqlite3@${sqlite}:\n    resolution: {integrity: sha512-x}\n\n  zod@4.4.3:\n    resolution: {integrity: sha512-y}\n`;
@@ -123,7 +125,9 @@ function fakeMachine(init: MachineInit = {}) {
   const incidents: DeployIncident[] = [];
   const replaced = () => job.restarted && job.serving !== running;
   const git = fakeGit(state, init);
+  let stuck = init.wedged ?? false;
   const kickstart = (): CommandResult => {
+    if (stuck) return ok();
     const sha = trees.get(FACTORY_DIST)?.replace("build:", "") ?? null;
     job = { pid: job.pid + 1, serving: sha !== null && !init.crashes?.includes(sha) ? sha : null, restarted: true };
     silent = init.silentProbes ?? 0;
@@ -148,6 +152,10 @@ function fakeMachine(init: MachineInit = {}) {
     launchctl: async (args) => {
       if (args[0] !== "print") calls.push(`launchctl ${args.join(" ")}`);
       if (args[0] === "kickstart") return kickstart();
+      if (args[0] === "kill" && args[1] === "SIGKILL") {
+        stuck = false;
+        return kickstart();
+      }
       return ok(`${TARGET} = {\n\tpid = ${job.pid}\n}\n`);
     },
     systemctl: async (args) => {
@@ -585,6 +593,23 @@ describe("titan-factory service deploy", () => {
     expect(why).not.toContain(token);
     expect(why).not.toContain("line 0 ");
     expect(why.length).toBeLessThan(2_200);
+  });
+
+  it("fences a serve that ignores SIGTERM through launchctl kill and lands the target with no rollback", async () => {
+    const machine = fakeMachine({ wedged: true });
+
+    const { code, out, err } = await deploy(machine);
+
+    expect(err).toBe("");
+    expect(code).toBe(0);
+    expect(out).toContain(`fenced pid ${OLD_PID} (${SERVICE_LABEL} MainPID, alive 45 s after SIGTERM): SIGKILL via launchctl kill`);
+    expect(machine.mutations().filter((call) => call.startsWith("launchctl"))).toEqual([`launchctl kickstart -k ${TARGET}`, `launchctl kill SIGKILL ${TARGET}`]);
+    expect(machine.serving()).toBe(TIP);
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+    expect(machine.pause()).toEqual({ paused: false });
+    expect(out).toContain(`deployed ${TIP}`);
+    expect(out).not.toContain("rolled-back");
+    expect(machine.elapsed()).toBeGreaterThanOrEqual(45_000);
   });
 
   it("restores the old build when the new one never answers /health, and confirms the old sha answers", async () => {
