@@ -1,10 +1,12 @@
 import { execFile } from "node:child_process";
 import { accessSync, constants, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, isAbsolute, join } from "node:path";
 import { getProcessStartTime, isProcessAlive, probeHealth } from "@titan-design/daemon";
 import { distBuildSha } from "./dist-build.js";
 import { configPath, loadConfig } from "./config.js";
+import type { Listener, PortOwnerReaders, ProcessInfo } from "./port-owner.js";
 import type { CheckPorts } from "./service-check.js";
 import { inspectIndexLock, nodeLockProbe } from "./stale-lock.js";
 import type { CommandResult, ServicePorts } from "./service-control.js";
@@ -71,6 +73,78 @@ function configuredLabelPrefix(env: NodeJS.ProcessEnv): Pick<ServicePorts, "labe
   }
 }
 
+/** `ss -p` names the holder as `users:(("MainThread",pid=3571910,fd=27))`, and omits the field for another user's socket. */
+export function parseSsListeners(stdout: string): Listener[] {
+  return stdout.split("\n").filter((line) => line.trim() !== "").flatMap((line) => {
+    const pids = new Set([...line.matchAll(/pid=(\d+)/g)].map((match) => Number(match[1])));
+    return pids.size === 0 ? [{}] : [...pids].map((pid) => ({ pid }));
+  });
+}
+
+export const parseCmdline = (raw: string): string[] => (raw === "" ? [] : raw.replace(/\0$/, "").split("\0"));
+
+/** The innermost unit wins: a user service sits under `user@<uid>.service/app.slice/`. */
+export function parseCgroupUnit(text: string): string | undefined {
+  const path = /^0::(.*)$/m.exec(text)?.[1] ?? "";
+  return path.split("/").filter((segment) => segment.endsWith(".service")).at(-1);
+}
+
+/** Field 22 of /proc/<pid>/stat, counted after comm, which may itself hold spaces and parentheses. */
+export function parseStatStartTime(stat: string): string | undefined {
+  return stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19];
+}
+
+async function readProc(pid: number, file: string): Promise<string | undefined> {
+  try {
+    return await readFile(`/proc/${pid}/${file}`, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+async function linuxProcessInfo(pid: number): Promise<ProcessInfo | undefined> {
+  const [cmdline, cgroup, stat] = await Promise.all([readProc(pid, "cmdline"), readProc(pid, "cgroup"), readProc(pid, "stat")]);
+  if (cmdline === undefined) return undefined;
+  const cgroupUnit = cgroup === undefined ? undefined : parseCgroupUnit(cgroup);
+  const startedAt = stat === undefined ? undefined : parseStatStartTime(stat);
+  return { argv: parseCmdline(cmdline), ...(cgroupUnit ? { cgroupUnit } : {}), ...(startedAt ? { startedAt } : {}) };
+}
+
+async function linuxListeners(port: number): Promise<Listener[] | undefined> {
+  const listed = await runCommand("ss", ["-Hltnp", "sport", "=", `:${port}`]);
+  return listed?.code === 0 ? parseSsListeners(listed.stdout) : undefined;
+}
+
+/** lsof exits 1 with no output when nothing listens; runCommand fills an empty stderr with its own message, so stdout decides. */
+async function lsofListeners(port: number): Promise<Listener[] | undefined> {
+  const listed = await runCommand("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"]);
+  const nothingListens = listed?.code === 1 && listed.stdout.trim() === "";
+  if (listed === undefined || (listed.code !== 0 && !nothingListens)) return undefined;
+  return listed.stdout.split("\n").filter((line) => /^\d+$/.test(line.trim())).map((line) => ({ pid: Number(line.trim()) }));
+}
+
+/** ps joins argv with spaces, so a path holding one fails the identity check and the holder is refused, never signalled. */
+async function psProcessInfo(pid: number): Promise<ProcessInfo | undefined> {
+  const [command, started] = await Promise.all([runCommand("ps", ["-ww", "-o", "command=", "-p", String(pid)]), runCommand("ps", ["-o", "lstart=", "-p", String(pid)])]);
+  if (command?.code !== 0 || command.stdout.trim() === "") return undefined;
+  const startedAt = started?.code === 0 ? started.stdout.trim() : "";
+  return { argv: command.stdout.trim().split(/\s+/), ...(startedAt ? { startedAt } : {}) };
+}
+
+/** A pid that exited between the read and the signal is not an error. */
+function signalPid(pid: number, signal: "SIGTERM" | "SIGKILL"): void {
+  try {
+    process.kill(pid, signal);
+  } catch (err) {
+    if (!(err instanceof Error && "code" in err && err.code === "ESRCH")) throw err;
+  }
+}
+
+export function systemPortOwner(platform: NodeJS.Platform): PortOwnerReaders {
+  if (platform === "linux") return { listeners: linuxListeners, processInfo: linuxProcessInfo, signal: signalPid };
+  return { listeners: lsofListeners, processInfo: psProcessInfo, signal: signalPid };
+}
+
 export function systemServicePorts(): ServicePorts {
   return {
     ...configuredLabelPrefix(process.env),
@@ -91,6 +165,7 @@ export function systemServicePorts(): ServicePorts {
     remove: (path) => rmSync(path, { force: true }),
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     now: Date.now,
+    portOwner: systemPortOwner(process.platform),
   };
 }
 
