@@ -1,6 +1,6 @@
 import type { GitHubPort, RepoSlug } from "./port.js";
 
-export interface JobDigest {
+interface JobDigest {
   /** The first vitest failure line (`FAIL `, `×` or `✗`), or null when the log has none. */
   firstFailure: string | null;
   /** vitest's `Test Files` and `Tests` summary lines. */
@@ -12,7 +12,7 @@ export interface JobDigest {
   recognised: boolean;
 }
 
-export interface JobFailure {
+interface JobFailure {
   job: string;
   id: number;
   url: string;
@@ -21,7 +21,7 @@ export interface JobFailure {
 
 export type CiFailuresTarget = { repo: RepoSlug; number: number } | { repo: RepoSlug; jobId: number };
 
-export interface CiFailures {
+interface CiFailures {
   repo: RepoSlug;
   number?: number;
   headSha?: string;
@@ -30,7 +30,7 @@ export interface CiFailures {
   skipped: string[];
 }
 
-export const CI_FAILURES_JOB_CAP = 5;
+const CI_FAILURES_JOB_CAP = 5;
 export const DEFAULT_TAIL_LINES = 20;
 /** Enough of a vitest log to reach its first failure in the usual case without reading a whole job log. */
 const LOG_LINES = 400;
