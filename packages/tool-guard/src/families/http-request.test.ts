@@ -1,0 +1,122 @@
+import { describe, expect, it } from "vitest";
+import { extractCommands } from "../shell/commands.js";
+import { UNKNOWN_METHOD, httpRequest } from "./egress.js";
+import type { HttpRequest } from "./egress.js";
+
+function request(command: string): HttpRequest {
+  const [cmd] = extractCommands(command);
+  const read = cmd ? httpRequest(cmd) : null;
+  if (!read) throw new Error(`no request read from ${command}`);
+  return read;
+}
+
+const urls = (command: string) => request(command).urls.map((u) => ({ value: u.value, dynamic: u.dynamic }));
+const runtime = { value: "", dynamic: true };
+
+describe("a method known only at run time reads as UNKNOWN", () => {
+  it.each([
+    ['curl -X "$M" https://example.com/x', UNKNOWN_METHOD],
+    ["curl -X$M https://example.com/x", UNKNOWN_METHOD],
+    ["curl -X put https://example.com/x", "PUT"],
+    ['wget --method "$M" https://example.com/x', UNKNOWN_METHOD],
+    ["wget --method=put https://example.com/x", "PUT"],
+  ])("%s gives %s", (command, method) => {
+    expect(request(command).method).toBe(method);
+  });
+});
+
+describe("a config file, a templated --expand-* value or a raw request target hides the request", () => {
+  it.each([
+    ["curl -K cfg", [runtime]],
+    ["curl -Kcfg", [runtime]],
+    ["curl --config=cfg", [runtime]],
+    ["curl -K -", [runtime]],
+    ["curl --expand-url 'https://api.github.com/{{p}}'", [runtime]],
+    ['curl --expand-url "$U"', [runtime]],
+    ["curl --expand-request '{{m}}' https://example.com/", [{ value: "https://example.com/", dynamic: false }, runtime]],
+    ["curl --request-target /x https://api.github.com/", [{ value: "https://api.github.com/", dynamic: false }, runtime]],
+  ])("%s gives UNKNOWN and one run-time URL", (command, expected) => {
+    expect(request(command).method).toBe(UNKNOWN_METHOD);
+    expect(urls(command)).toEqual(expected);
+  });
+
+  it.each([
+    ["curl --expand-url https://example.com/", "GET"],
+    ["curl --variable a=b https://example.com/", "GET"],
+    ["curl --expand-request PUT https://example.com/", "PUT"],
+  ])("%s keeps a readable request", (command, method) => {
+    expect(request(command).method).toBe(method);
+    expect(urls(command)).toEqual([{ value: "https://example.com/", dynamic: false }]);
+  });
+});
+
+describe("curl's own URL globbing", () => {
+  it("expands a quoted glob into one URL per expansion", () => {
+    expect(urls("curl -X PUT 'https://api.github.com/repos/o/r/pulls/{1,2}/merge'")).toEqual([
+      { value: "https://api.github.com/repos/o/r/pulls/1/merge", dynamic: false },
+      { value: "https://api.github.com/repos/o/r/pulls/2/merge", dynamic: false },
+    ]);
+  });
+
+  it.each([
+    ["curl -g 'https://api.github.com/repos/o/r/pulls/{1,2}/merge'", "https://api.github.com/repos/o/r/pulls/{1,2}/merge"],
+    ["curl --globoff 'https://h/x[0]'", "https://h/x[0]"],
+    ["curl -d x 'http://[::1]:4000/'", "http://[::1]:4000/"],
+  ])("%s keeps its URL as typed", (command, url) => {
+    expect(urls(command)).toEqual([{ value: url, dynamic: false }]);
+  });
+
+  it.each([
+    "curl -X PUT 'https://h/x[0]'",
+    "curl -X PUT 'https://h/{a,b'",
+    "curl -X PUT 'https://h/[1-9][1-9]'",
+    'curl -X PUT "https://h/{pulls/1/merge,$X}"',
+  ])("%s gives a run-time URL for a glob it cannot expand", (command) => {
+    expect(urls(command)).toEqual([runtime]);
+  });
+
+  it("keeps a dynamic URL whose literal lead holds no glob", () => {
+    expect(urls('curl -d x "https://h/$P"')).toEqual([{ value: "https://h/$P", dynamic: true }]);
+  });
+});
+
+describe("the body texts curl and wget send", () => {
+  it.each([
+    ["curl -d a -d b https://h/", ["a", "b"]],
+    ["curl --data-raw @f https://h/", ["@f"]],
+    ["curl --data-urlencode 'q=a@b' https://h/", ["q=a@b"]],
+    ["curl -F 'q=text' --form-string 'r=@f' https://h/", ["q=text", "r=@f"]],
+    ["curl --json '{\"query\":\"q\"}' https://h/", ['{"query":"q"}']],
+    ["curl https://h/", []],
+    ["wget --post-data 'a=1' https://h/", ["a=1"]],
+    ["wget https://h/", []],
+  ])("%s gives %j", (command, bodies) => {
+    expect(request(command).bodies).toEqual(bodies);
+  });
+
+  it.each([
+    "curl -d @f https://h/",
+    "curl --json @f https://h/",
+    "curl -T f https://h/",
+    'curl -d "$Q" https://h/',
+    "curl -F 'q=@f' https://h/",
+    "curl -F 'q=<f' https://h/",
+    "curl --data-urlencode 'q@f' https://h/",
+    "curl -d a -d @f https://h/",
+    "wget --post-file=f https://h/",
+    'wget --body-data "$Q" https://h/',
+    "http POST https://h/ a=1",
+  ])("%s gives null", (command) => {
+    expect(request(command).bodies).toBeNull();
+  });
+});
+
+describe("-G and --next", () => {
+  it("does not let -G make a later --next part a GET", () => {
+    expect(request("curl -G https://x -: -T f https://y").method).toBe("PUT");
+  });
+
+  it("keeps -G a GET on a single request", () => {
+    expect(request("curl -G -d q=1 https://x").method).toBe("GET");
+  });
+});
