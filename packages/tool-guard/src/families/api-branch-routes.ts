@@ -1,5 +1,5 @@
 import type { WordToken } from "../shell/lexer.js";
-import { asciiDecoded, fieldKey, knownBranch, refBranch, routedPath } from "./api-branch-refs.js";
+import { asciiDecoded, fieldKey, knownBranch, placeholderRoutes, refBranch, routedPath } from "./api-branch-refs.js";
 
 type BranchRoute = "contents" | "rename" | "merge-upstream" | "protection" | "default-branch";
 
@@ -29,10 +29,6 @@ const LOOSE_ROUTES: [RegExp, BranchRoute][] = [
   [/\/contents(?:\/|$)/i, "contents"],
 ];
 const LOOSE_ROUTE_RE = /(?:^|\/)repos\/.*\/(?:contents|merge-upstream|branches|rename|protection)(?:\/|$)/i;
-/** gh's branch placeholder, which may fill in a name with slashes and so stand for any route. */
-const BRANCH_PLACEHOLDER_RE = /:branch\b|\{branch\}/i;
-/** Any gh placeholder; in the tail even `{owner}` or `{repo}` can fill in a route word such as `merge-upstream`. */
-const TAIL_PLACEHOLDER_RE = /:(?:owner|repo|branch)\b|\{(?:owner|repo|branch)\}/i;
 
 /** Fields whose key matches `key`, or whose key is not literal. */
 function candidates(fields: WordToken[], key: RegExp): WordToken[] {
@@ -97,26 +93,21 @@ function tailWrite(tail: string, verb: string | null, fields: Fields): BranchRou
   return rest === undefined ? null : branchesWrite(rest, fields);
 }
 
-/** An unsure path reads as the route its raw text loosely names, with the branch known only at run time. */
+/**
+ * An unsure path reads as the route its raw text loosely names, with the branch known only at run time. Dot segments
+ * only drop text, so without `repos/` they reach no route. A gh placeholder can supply any of it, so a write whose
+ * route a placeholder changes always denies: as protection under `branches`, else as contents.
+ */
 function unsureWrite(url: string, verb: string | null, fields: Fields): BranchRouteWrite | null {
-  const raw = asciiDecoded(url.replace(/[?#].*$/s, ""));
-  if (!/(?:^|\/)repos\//i.test(raw)) return null;
+  const unqueried = url.replace(/[?#].*$/s, "");
+  const filled = placeholderRoutes(unqueried);
+  const raw = asciiDecoded(unqueried);
+  if (!filled && !/(?:^|\/)repos\//i.test(raw)) return null;
   const guess = LOOSE_ROUTES.find(([re]) => re.test(raw));
   if (guess) return { route: guess[1], branches: [null] };
-  return defaultBranchWrite(verb, fields) && { route: "default-branch", branches: [null] };
-}
-
-/**
- * gh fills placeholders after the endpoint text is written, so a route read from that text is not the route sent:
- * `branches/{branch}` with `main/protection` checked out deletes main's protection. Any write whose route a
- * placeholder can change reads as the route its text loosely names, else protection under `branches`, else
- * contents, with the branch unknown.
- */
-function placeholderWrite(path: string, tail: string): BranchRouteWrite | null {
-  if (!BRANCH_PLACEHOLDER_RE.test(path) && !TAIL_PLACEHOLDER_RE.test(tail)) return null;
-  const loose = LOOSE_ROUTES.find(([re]) => re.test(path))?.[1];
-  const route = loose ?? (/\/branches(?:\/|$)/i.test(path) ? "protection" : "contents");
-  return { route, branches: [null] };
+  if (defaultBranchWrite(verb, fields)) return { route: "default-branch", branches: [null] };
+  if (!filled) return null;
+  return { route: /\/branches(?:\/|$)/i.test(raw) ? "protection" : "contents", branches: [null] };
 }
 
 /**
@@ -130,8 +121,6 @@ export function apiBranchRouteWrite(url: string, method: string | null, fields: 
   const path = routedPath(url, LOOSE_ROUTE_RE);
   if (path === null) return null;
   if (path === "unsure") return unsureWrite(url, verb, fields);
-  const tail = (REPO_ROUTE_RE.exec(path)?.[1] ?? "").replace(/\/+$/, "");
-  const filled = placeholderWrite(path, tail);
-  if (filled) return filled;
-  return REPO_ROUTE_RE.test(path) ? tailWrite(tail, verb, fields) : null;
+  const repo = REPO_ROUTE_RE.exec(path);
+  return repo ? tailWrite((repo[1] ?? "").replace(/\/+$/, ""), verb, fields) : null;
 }

@@ -26,6 +26,25 @@ const RUN_TIME_BRANCH_RE = /:(?:owner|repo|branch)\b|\{[a-z]+\}/i;
 /** A branch name as GitHub receives it; null when gh substitutes it at run time. */
 export const knownBranch = (name: string): string | null => (RUN_TIME_BRANCH_RE.test(name) ? null : name);
 
+/** gh's own placeholders. `{branch}` may fill in slashes; `{owner}` and `{repo}` fill in one segment. */
+const PLACEHOLDER_RE = /:(?:owner|repo|branch)\b|\{(?:owner|repo|branch)\}/i;
+const REPO_SLOTS_RE = /(^|\/)repos\/([^/]+)\/([^/]+)/i;
+const SLOT_PLACEHOLDER_RE = /^(?::owner|\{owner\}|:repo|\{repo\})$/i;
+const clearedSlot = (segment: string) => (SLOT_PLACEHOLDER_RE.test(segment) ? "x" : segment);
+
+/**
+ * True when gh fills a placeholder that can change the route. Only a whole `{owner}` or `{repo}` slot of the first
+ * `repos/<o>/<r>` cannot, since GH_REPO's owner and repo hold no slash; anywhere else either can name a route word
+ * (GH_REPO=repos/x turns `{owner}/o/r/…` into `repos/o/r/…`), and `{branch}` can name a whole route.
+ */
+export function placeholderRoutes(rawPath: string): boolean {
+  const slotsCleared = rawPath.replace(
+    REPO_SLOTS_RE,
+    (_, lead: string, owner: string, repo: string) => `${lead}repos/${clearedSlot(owner)}/${clearedSlot(repo)}`,
+  );
+  return PLACEHOLDER_RE.test(slotsCleared);
+}
+
 const hasDotSegment = (path: string) => path.split("/").some((s) => s === "." || s === "..");
 
 /** Decodes only the ASCII escapes, which always decode, so `%67it` reads as `git` beside an invalid `%E0`. */
@@ -33,12 +52,13 @@ export const asciiDecoded = (path: string) => path.replace(/%([0-7][0-9a-f])/gi,
 
 /**
  * The URL's path as GitHub routes it. "unsure" for any `.` or `..` segment, as written or decoded: curl resolves
- * them before sending and gh does not, so the route depends on the client. Also "unsure" for a path on `route` (by
- * default the git refs route) that cannot be fully percent-decoded.
+ * them before sending and gh does not, so the route depends on the client. "unsure" when a gh placeholder can
+ * change the route. Also "unsure" for a path on `route` (by default the git refs route) that cannot be fully
+ * percent-decoded.
  */
 export function routedPath(url: string, route: RegExp = GIT_REFS_RE): string | "unsure" | null {
   const raw = url.replace(/[?#].*$/s, "");
-  if (hasDotSegment(raw)) return "unsure";
+  if (hasDotSegment(raw) || placeholderRoutes(raw)) return "unsure";
   let path: string;
   try {
     path = decodeURIComponent(raw).replace(/\/{2,}/g, "/");

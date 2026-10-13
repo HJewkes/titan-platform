@@ -158,6 +158,12 @@ describe("gh's run-time {branch} placeholder names an unknown branch", () => {
     ["POST", "repos/o/r/branches/{branch}", "new_name=feat/y", "protection", [null]],
     ["PUT", "repos/o/r/{repo}", "branch=main", "contents", [null]],
     ["DELETE", "repos/o/{branch}", "", "contents", [null]],
+    ["DELETE", "{owner}/o/r/branches/main/protection", "", "protection", [null]],
+    ["DELETE", ":owner/o/r/branches/main/protection", "", "protection", [null]],
+    ["DELETE", "re{repo}/o/r/branches/main/protection", "", "protection", [null]],
+    ["PUT", "{owner}/o/r/contents/f", "branch=main", "contents", [null]],
+    ["PATCH", "{owner}/o/r", "default_branch=main", "default-branch", [null]],
+    ["POST", "{branch}", "", "contents", [null]],
   ])("%s %s %s reads as %s %j", (method, url, src, route, branches) => {
     expect(apiBranchRouteWrite(url, method, fields(src))).toEqual({ route, branches });
   });
@@ -194,6 +200,7 @@ describe("requests that change no branch", () => {
     ["GET", "repos/o/r/branches/{branch}/protection", ""],
     ["POST", "repos/{owner}/{repo}/issues", "title=x"],
     ["PATCH", "repos/:owner/:repo/pulls/1", "title=x"],
+    ["PUT", "repos/o/r/pulls/1/merge?x={branch}", ""],
   ])("%s %s %s", (method, url, src) => {
     expect(apiBranchRouteWrite(url, method, fields(src))).toBeNull();
   });
