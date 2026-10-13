@@ -246,10 +246,17 @@ function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, nex
   const aliased = aliasReadings(words, w.aliases);
   w.walked = new Set();
   for (const cmd of [...runs, ...(cut ? caseNamed(cut) : []), ...aliasedRuns(aliased)]) run(cmd, redirects, w, next);
-  for (const reading of aliased) if ("tokens" in reading) walk(reading.tokens, child(w, [...w.scope.wrapping, "eval"]));
+  for (const reading of aliased) if ("tokens" in reading) walkAliasScript(reading.tokens, reading.aliases, w);
   for (const reading of unsureReadings(runs[0], w.unsure)) walkAdded(reading, redirects, w, next);
   w.walked = null;
   return runs[0] ?? null;
+}
+
+/** The child walk is the one its stores report to, so it carries the narrowed table itself rather than a copy of it. */
+function walkAliasScript(tokens: Token[], aliases: AliasTable, w: Walk): void {
+  const into = child(w, [...w.scope.wrapping, "eval"]);
+  into.aliases = aliases;
+  walk(tokens, into);
 }
 
 function aliasedRuns(readings: AliasReading[]): Unwrapped[] {

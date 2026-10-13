@@ -9,7 +9,7 @@ export type AliasTable = ReadonlyMap<string, readonly string[]>;
  * What an aliased command word runs. Plain-word values splice into the command's words; a value with operators,
  * redirects, expansions or substitutions makes the line's tokens, which run as eval text does.
  */
-export type AliasReading = { words: WordToken[] } | { tokens: Token[] };
+export type AliasReading = { words: WordToken[] } | { tokens: Token[]; aliases: AliasTable };
 
 /** Bounds a table of aliases that each expand to several values, whose readings would otherwise multiply. */
 const MAX_EXPANSIONS = 64;
@@ -49,8 +49,13 @@ function expand(words: WordToken[], x: Expansion, out: AliasReading[]): void {
     if (--x.budget.left < 0) throw new ParseError("too many alias expansions");
     const tokens = tokenize(value);
     if (tokens.every(isPlainWord)) expand(spliced(words, at, tokens), next, out);
-    else out.push({ tokens: spliced(words, at, tokens) });
+    else out.push({ tokens: spliced(words, at, tokens), aliases: without(x.table, next.done) });
   }
+}
+
+/** The table eval text walks with: the names expanded on the way there never expand again inside it. */
+function without(table: AliasTable, done: ReadonlySet<string>): AliasTable {
+  return new Map([...table].filter(([name]) => !done.has(name)));
 }
 
 /** The index of the word that names the command, past assignments, keywords and wrappers; -1 when none is static. */

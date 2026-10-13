@@ -69,13 +69,29 @@ describe("alias reading of the command word", () => {
     expect(lines("cp ~/.npmrc /tmp/x")).toEqual(["cp ~/.npmrc /tmp/x", "nocorrect cp ~/.npmrc /tmp/x"]);
   });
 
+  it.each([
+    ["git push origin HEAD:main", new Map([["git", ["git --x | cat"]]]), "git push origin HEAD:main"],
+    ["x origin HEAD:main", new Map([["x", ["cd /r && git push"]]]), "git push origin HEAD:main"],
+    ["gp origin HEAD:main", new Map([["gp", ["g push"]], ["g", ["git"]], ["git", ["git $GIT_OPTS"]]]), "git $GIT_OPTS push origin HEAD:main"],
+  ])("still reads %s as a git push through a self-naming eval-text value", (src, aliases, push) => {
+    expect(lines(src, aliases)).toContain(push);
+  });
+
   it("refuses a command whose alias value the lexer rejects", () => {
     expect(() => lines("bad")).toThrow(ParseError);
     expect(lines("echo bad")).toEqual(["echo bad"]);
   });
 
   it("leaves a command xargs runs to PATH", () => {
-    expect(lines("echo x | xargs g push")).not.toContain("git push x");
+    expect(lines("echo x | xargs g push", new Map([["g", ["git"]]]))).toEqual(["echo x", "g push x"]);
+  });
+
+  it.each([
+    ["ls -la", new Map([["ls", ["ls --color=$X"]]]), ["ls -la", "ls --color=$X -la"]],
+    ["sr a", new Map([["sr", ["sr --x | cat"]]]), ["sr a", "sr --x", "cat a"]],
+    ["m1", new Map([["m1", ["m2; :"]], ["m2", ["m1; :"]]]), ["m1", "m2", "m1", ":", ":"]],
+  ])("expands %s once inside its own eval-text value", (src, aliases, expected) => {
+    expect(lines(src, aliases)).toEqual(expected);
   });
 
   it.each([
