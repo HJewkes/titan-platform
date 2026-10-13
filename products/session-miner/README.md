@@ -254,9 +254,12 @@ stale graph), check prices with Q0 `--published` (stopping on any mismatch), run
 as JSON, hand the JSON to a read-only analyst with `analyst-brief.md`, keep only the findings
 `verify-citations` passes, and file a task for any number the library cannot answer. A seat
 loads it from the installed package's `skills/session-insights/` or from a checkout.
+Step 2 also flags a file input written before `--until`, and step 7 scores each proposed lever on
+Q7's verdict-to-merge and open MERGE PRs (`--split-at`) and on `requestsPerFinished`.
 `src/session-insights-skill.test.ts` fails when the skill names an unregistered question, when
-the data-quality or price step moves after the questions, or when the brief's example stops
-parsing as `findingSchema`.
+the data-quality or price step moves after the questions, when step 7 drops a lever metric, when
+the brief's example stops parsing as `findingSchema` or still parses without its falsifier, or
+when the brief names an agent-chat command or tool.
 
 ## The playbook (TP-19)
 

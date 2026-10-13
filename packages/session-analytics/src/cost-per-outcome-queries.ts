@@ -28,9 +28,17 @@ function isTaskSession(row: unknown): row is { taskId: string; sessionId: string
   return "taskId" in row && typeof row.taskId === "string" && "sessionId" in row && typeof row.sessionId === "string";
 }
 
-/** List-price spend per session over requests in the window. */
-export function readSessionCosts(db: Db, window: ReportWindow): Map<string, number> {
-  const costs = new Map<string, number>();
-  for (const row of readCostRows(db, window)) costs.set(row.sessionId, (costs.get(row.sessionId) ?? 0) + row.costUsd);
-  return costs;
+export interface SessionSpend {
+  costUsd: number;
+  requests: number;
+}
+
+/** List-price spend and request count per session over requests in the window. */
+export function readSessionSpend(db: Db, window: ReportWindow): Map<string, SessionSpend> {
+  const spend = new Map<string, SessionSpend>();
+  for (const row of readCostRows(db, window)) {
+    const session = spend.get(row.sessionId) ?? { costUsd: 0, requests: 0 };
+    spend.set(row.sessionId, { costUsd: session.costUsd + row.costUsd, requests: session.requests + 1 });
+  }
+  return spend;
 }
