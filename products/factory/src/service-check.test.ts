@@ -19,6 +19,8 @@ interface Machine {
   platform?: NodeJS.Platform;
   /** `systemctl --user show` output on Linux. */
   unit?: string;
+  /** A failed `systemctl --user show`; overrides `unit`. */
+  unitFailure?: { code: number; stderr: string };
   /** launchctl print output; undefined means the job is not loaded. */
   print?: string;
   health?: Record<string, unknown> | null;
@@ -67,6 +69,7 @@ function fakePorts(init: Machine) {
     },
     systemctl: async (args) => {
       calls.push(`systemctl ${args.join(" ")}`);
+      if (init.unitFailure) return { ...init.unitFailure, stdout: "" };
       return init.unit === undefined ? { code: 127, stdout: "", stderr: "systemctl not found" } : { code: 0, stdout: init.unit, stderr: "" };
     },
     claude: async () => undefined,
@@ -409,6 +412,32 @@ describe("titan-factory service check", () => {
 
       expect(code).toBe(EXIT.FAILURE);
       expect(out).toBe(`not loaded: ${UNIT_NAME} is not loaded; run titan-factory service install\n`);
+    });
+
+    const NO_BUS =
+      "Failed to connect to user scope bus via local transport: $DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not defined (consider using --machine=<user>@.host --user to connect to bus of other user)\n";
+
+    it("reports unreadable with systemctl's stderr, not not loaded, when there is no user bus", async () => {
+      const { code, out, calls } = await linux({ unitFailure: { code: 1, stderr: NO_BUS }, health: healthy() });
+
+      expect(code).toBe(EXIT.FAILURE);
+      expect(out).toMatch(/^unreadable: systemctl --user show titan-factory\.service failed: .*XDG_RUNTIME_DIR not defined/);
+      expect(out).not.toContain("not loaded");
+      expect(out).not.toContain("service install");
+      expect(calls).toEqual([`systemctl --user show ${UNIT_NAME} --property=LoadState,ActiveState,MainPID,NRestarts,ExecMainStatus`]);
+    });
+
+    it("carries systemctl's exit code and stderr in --json", async () => {
+      const { out } = await linux({ unitFailure: { code: 1, stderr: NO_BUS }, health: healthy() }, "--json");
+
+      expect(JSON.parse(out)).toMatchObject({ ok: false, cause: "unreadable", health: null, detail: { exitCode: 1, stderr: expect.stringMatching(/XDG_RUNTIME_DIR/) } });
+    });
+
+    it("names the exit code when a failed systemctl prints no stderr", async () => {
+      const { code, out } = await linux({ unitFailure: { code: 124, stderr: "  \n" }, health: healthy() });
+
+      expect(code).toBe(EXIT.FAILURE);
+      expect(out).toMatch(/^unreadable: systemctl --user show titan-factory\.service failed: exit 124; /);
     });
 
     it("names systemd, never launchd, for a dead or foreign pid", async () => {

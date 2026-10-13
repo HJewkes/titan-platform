@@ -433,7 +433,7 @@ titan-factory service install --port 7411 --mcp
 | --- | --- | --- |
 | `service install [--port <n>] [--node <path>] [--mcp]` | The five steps above | the job answers `/health` with `github` `ok` |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers with `github` `ok` |
-| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`not loaded`, `stale pid`, `crash loop`, `unresponsive`, `stale build`, `GitHub down`, `stale index.lock`, `deploy stalled`, `no hub seat`); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, and a hub seat is configured |
+| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`unreadable`, `not loaded`, `stale pid`, `crash loop`, `unresponsive`, `stale build`, `GitHub down`, `stale index.lock`, `deploy stalled`, `no hub seat`); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, and a hub seat is configured |
 | `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, then `launchctl kickstart -k`, then the same wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>]` | Fast-forwards the service checkout, rebuilds the factory when the range touches it, restarts drained; see [below](#service-deploy-redeploy-from-main) | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
@@ -455,7 +455,8 @@ On Linux it reads `systemctl --user show titan-factory.service` instead: `MainPI
 (none unless `ActiveState` is `active`), `NRestarts` stands in for the run count and
 `ExecMainStatus` for the last exit code.
 
-- **not loaded**: `launchctl print` finds no `dev.hjewkes.titan-factory` job, or the unit's `LoadState` is not `loaded`.
+- **unreadable**: on Linux, `systemctl --user show` itself failed (no user bus, permission, timeout); the line carries its stderr, or `exit N` when it printed none, and `--json` puts both in `detail.exitCode` and `detail.stderr`.
+- **not loaded**: `launchctl print` finds no `dev.hjewkes.titan-factory` job, or the unit's `LoadState` is not `loaded` on a successful read.
 - **stale pid**: launchd's pid is dead, a different pid answers `/health` on the port, or launchd holds no process or one that gives no usable `/health` answer, such as a refused connection (and it is not crash-looping).
 - **crash loop**: launchd's last exit code is non-zero, the job has started at least 3 times, and it holds no process or its process started under 5 minutes ago and does not answer `/health` itself. `service restart` and `launchctl kickstart -k` leave a non-zero last exit and bump the run count, so a young process whose `/health` body names the launchd pid is a restart, not a crash loop.
 - **unresponsive**: launchd's or systemd's pid is alive but every `/health` probe timed out, as a hung or deadlocked serve does. `--json` lists each probe's latency in `detail.probeLatenciesMs`. Like `stale pid`, it means serve cannot take work.

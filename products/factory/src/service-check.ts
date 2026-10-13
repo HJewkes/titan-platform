@@ -10,7 +10,7 @@ import { describeIndexLock, type IndexLock } from "./stale-lock.js";
 import { judgeTick, type TickStatusRead } from "./tick-status.js";
 
 /** The causes in the order `check` tests them; the first that holds is the one reported. */
-type Cause = "not loaded" | "stale pid" | "crash loop" | "unresponsive" | "stale build" | "GitHub down" | "stale index.lock" | "deploy stalled" | "tick failing" | "tick stale" | "no hub seat";
+type Cause = "unreadable" | "not loaded" | "stale pid" | "crash loop" | "unresponsive" | "stale build" | "GitHub down" | "stale index.lock" | "deploy stalled" | "tick failing" | "tick stale" | "no hub seat";
 
 /** What `check` reads beyond `ServicePorts`; every one is read-only, so a fake never has to model a mutation. */
 export interface CheckPorts extends ServicePorts {
@@ -54,6 +54,8 @@ interface Job {
   pid?: number;
   runs?: number;
   lastExit?: number;
+  /** Set when the manager itself could not be read, so whether the job is loaded is unknown. */
+  unreadable?: { exitCode: number; stderr: string };
 }
 
 const field = (text: string, name: string): number | undefined => {
@@ -78,7 +80,9 @@ const integer = (text: string): number | undefined => (/^-?\d+$/.test(text) ? Nu
 async function readUnit(ports: CheckPorts): Promise<Job> {
   const shown = await ports.systemctl(["--user", "show", UNIT_NAME, `--property=${UNIT_PROPERTIES}`]);
   const value = (key: string): string => new RegExp(`^${key}=(.*)$`, "m").exec(shown.stdout)?.[1] ?? "";
-  if (shown.code !== 0 || value("LoadState") !== "loaded") return { manager: "systemd", loaded: false };
+  // A missing unit file reads as exit 0 with LoadState=not-found; a non-zero exit means systemctl could not answer at all (no user bus, permission, timeout).
+  if (shown.code !== 0) return { manager: "systemd", loaded: false, unreadable: { exitCode: shown.code, stderr: shown.stderr.trim() || `exit ${shown.code}` } };
+  if (value("LoadState") !== "loaded") return { manager: "systemd", loaded: false };
   const pid = integer(value("MainPID"));
   const running = value("ActiveState") === "active" && pid !== undefined && pid > 0;
   return loadedJob("systemd", running ? pid : undefined, integer(value("NRestarts")), integer(value("ExecMainStatus")));
@@ -123,6 +127,7 @@ function verdict(cause: Cause | null, message: string, job: Job, health: Record<
 async function diagnoseService(ports: CheckPorts, port: number): Promise<CheckResult> {
   const deadline = ports.now() + SERVICE_CHECK_BUDGET_MS - AFTER_PROBES_MS;
   const job = await readJob(ports);
+  if (job.unreadable) return unreadable(job, job.unreadable);
   if (!job.loaded) return verdict("not loaded", `${jobName(job, ports)} is not loaded; run titan-factory service install`, job, null);
   const probes = await probeHealth(ports, job, port, deadline);
   const { health } = probes;
@@ -136,6 +141,11 @@ async function diagnoseService(ports: CheckPorts, port: number): Promise<CheckRe
   if (!running.ok) return running;
   const judged = (await withDeploy(running, ports)) ?? withTick(running, ports);
   return judged.ok ? withHubSeat(judged, ports) : judged;
+}
+
+function unreadable(job: Job, failure: NonNullable<Job["unreadable"]>): CheckResult {
+  const message = `systemctl --user show ${UNIT_NAME} failed: ${failure.stderr}; run check as the service user in a session with a user bus (XDG_RUNTIME_DIR=/run/user/<uid>)`;
+  return verdict("unreadable", message, job, null, { exitCode: failure.exitCode, stderr: failure.stderr });
 }
 
 /** The whole check prints inside this, every probe included; agent-chat's reads of it wait 30 s (TP-2451). */
