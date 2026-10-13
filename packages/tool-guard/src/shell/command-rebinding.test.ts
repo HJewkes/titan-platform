@@ -43,6 +43,24 @@ describe("a command that rebinds a command name", () => {
     ["a := expansion", ": ${functions[y]:=x}"],
     ["a bash = expansion", ": ${BASH_CMDS[y]=/x}"],
     ["an expansion in a declared value", "local X=${commands[y]::=/x}"],
+    ["an append in a declaration", "typeset commands+=(y /x)"],
+    ["printf -v attached", "printf -vcommands x"],
+    ["read after a prompt", "read -p prompt -A commands"],
+    ["getopts", "getopts ab commands"],
+    ["zparseopts", "zparseopts -A commands a"],
+    ["a bash nameref", "declare -n r=BASH_CMDS"],
+    ["a nameref with no target yet", "local -n r"],
+    ["a typeset nameref in a cluster", "typeset -gn r=commands"],
+    ["printf -v a dynamic name", 'printf -v "$n" /x'],
+    ["read a dynamic name", 'read "$n"'],
+    ["typeset a dynamic name", 'typeset "$n"=/x'],
+    ["set -A a dynamic name", 'set -A "$n" y /x'],
+    ["declare -A a dynamic name", 'declare -A "$n"'],
+    ["a dynamic option word", "declare $F r=BASH_CMDS"],
+    ["a name spliced from a substitution", "export BASH$(echo _CMDS)[y]=/x"],
+    ["a name spliced from a variable", "export ${n}=x"],
+    ["a bash indirect expansion", ": ${!n=/x}"],
+    ["a zsh (P) expansion", ": ${(P)n::=/x}"],
   ])("is caught: %s", (_how, src) => {
     expect(rebinds(src)).toBe(true);
   });
@@ -64,6 +82,14 @@ describe("a command that rebinds a command name", () => {
     ["a git alias", "git config alias.y push"],
     ["a prefix assignment", "FOO=1 git status"],
     ["a declaration of another name", "typeset -A mycommands"],
+    ["a declared value naming a parameter", 'export PATH="$HOME/bin:$PATH"'],
+    ["a read into an ordinary name", 'read -r -p "$P" line'],
+    ["printf printing a parameter name", "printf '%s\\n' functions"],
+    ["print printing a parameter name", "print commands"],
+    ["set naming a parameter as a positional", "set -- commands"],
+    ["export -n, which unexports", "export -n FOO"],
+    ["an indirect read", "echo ${!n}"],
+    ["a hash lookup after --", "hash -- -p"],
   ])("is left alone: %s", (_how, src) => {
     expect(rebinds(src)).toBe(false);
   });
