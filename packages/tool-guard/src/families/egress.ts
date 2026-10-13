@@ -79,37 +79,48 @@ function isNextWord(word: WordToken): boolean {
   return [...word.value.slice(1, colon)].every((c) => !CURL_VALUES.has(`-${c}`));
 }
 
-/** A hidden input makes the method unknown and adds one URL word known only at run time; a config file may also hold a body. */
+/**
+ * Every check reads the normalized options, so a spelling such as `--expand-config` meets the same checks as `--config`.
+ * A hidden input makes the method unknown and adds one URL word known only at run time; a config file may also hold a body.
+ */
 function curlPart(args: WordToken[]): HttpRequest {
-  const raw = readOptions(args, CURL_VALUES);
-  const hidden = raw.opts.find(isHiddenInput);
-  const o = expandedOptions(raw);
+  const o = curlOptions(args);
   const body = hasFlag(o, ...CURL_BODY);
   const urls = curlUrls(o);
-  if (!hidden) {
+  const bodies = hasFlag(o, "-K", "--config") ? null : curlBodies(o);
+  if (!o.opts.some(isHiddenInput)) {
     const explicit = lastValue(o, "-X", "--request");
-    return { method: explicit ? explicitMethod(explicit) : curlImpliedMethod(o, body), body, bodies: curlBodies(o), urls };
+    return { method: explicit ? explicitMethod(explicit) : curlImpliedMethod(o, body), body, bodies, urls };
   }
-  const bodies = hidden.flag === "-K" || hidden.flag === "--config" ? null : curlBodies(o);
-  const base = hidden.value ?? args[0];
-  return { method: UNKNOWN_METHOD, body, bodies, urls: base ? [...urls, runtimeUrl(base)] : urls };
+  const base = o.opts.find((opt) => isHiddenInput(opt) && opt.flag !== "--url");
+  const hiddenUrl = base && (base.value ?? args[0]);
+  return { method: UNKNOWN_METHOD, body, bodies, urls: hiddenUrl ? [...urls, runtimeUrl(hiddenUrl)] : urls };
 }
 
-const isHiddenInput = (opt: Option) => CURL_HIDDEN.has(opt.flag) || (opt.flag.startsWith("--expand-") && !isLiteralValue(opt));
+interface CurlOption extends Option {
+  /** An `--expand-*` value holding `{{` or only known at run time; its value is already a run-time word. */
+  templated: boolean;
+}
+
+interface CurlOptions extends Options {
+  opts: CurlOption[];
+}
+
+/** A templated `--url` is itself the run-time URL, so it adds no second one. */
+const isHiddenInput = (opt: CurlOption) => CURL_HIDDEN.has(opt.flag) || opt.templated;
 const isLiteralValue = ({ value }: Option) => value !== null && !value.dynamic && !value.value.includes("{{");
 
-/**
- * `--expand-<option>` reads as `<option>`. A templated value is only known at run time, so it is kept as a dynamic
- * word: a templated body is a body that cannot be read, and a templated URL is the hidden input's run-time URL.
- */
-function expandedOptions(o: Options): Options {
-  const plain = (opt: Option): Option => {
-    if (!opt.flag.startsWith("--expand-")) return opt;
-    const flag = `--${opt.flag.slice("--expand-".length)}`;
-    if (isLiteralValue(opt)) return { ...opt, flag };
-    return flag === "--url" ? opt : { flag, value: opt.value && runtimeUrl(opt.value) };
-  };
-  return { opts: o.opts.map(plain), positionals: o.positionals };
+function curlOptions(args: WordToken[]): CurlOptions {
+  const raw = readOptions(args, CURL_VALUES);
+  return { opts: raw.opts.map(normalizedOption), positionals: raw.positionals };
+}
+
+/** `--expand-<option>` reads as `<option>`; a templated value becomes a run-time word, so a templated body cannot be read. */
+function normalizedOption(opt: Option): CurlOption {
+  if (!opt.flag.startsWith("--expand-")) return { ...opt, templated: false };
+  const flag = `--${opt.flag.slice("--expand-".length)}`;
+  if (isLiteralValue(opt)) return { flag, value: opt.value, templated: false };
+  return { flag, value: opt.value && runtimeUrl(opt.value), templated: true };
 }
 
 function curlImpliedMethod(o: Options, body: boolean): string {

