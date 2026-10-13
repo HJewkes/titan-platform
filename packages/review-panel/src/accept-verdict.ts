@@ -22,7 +22,7 @@ export interface AcceptedVerdict {
   reviewerProfile?: string;
 }
 
-/** Only a FIX_FIRST keeps the reviewer's words, because the implementer has to read them; only a MERGE carries the CI-policy line. */
+/** Only a FIX_FIRST keeps the reviewer's words, because the implementer has to read them; only a MERGE carries the CI-policy line, and only an unchanged or weakened one. */
 export type AwaitVerdictResult = (AcceptedVerdict & { verdict: "MERGE"; ciPolicy?: CiPolicy }) | (AcceptedVerdict & { verdict: "FIX_FIRST"; text: string; closer?: "yes" | "no" }) | { kind: "none"; reason?: string; notice?: string; resetsAt?: number };
 
 /** Why a final message was no verdict: the account's usage limit ended the reviewer's turn, so asking again is pointless until it resets. */
@@ -55,6 +55,8 @@ const malformedNone = (refusal: Malformed["refusal"], writtenAt: number): Malfor
  * A final message that passes those checks but whose block is refused, or names another repo, PR or head, is `none` with a
  * `malformed` record; silence, a foreign or earlier message, `WAIT` and the client's own usage-limit notice (which no correction can answer) carry none. A MERGE or FIX_FIRST from a session that
  * made no investigative call is `none` with the depth-floor reason; a message the reader did not count is judged as before.
+ * A MERGE whose CI-policy line reads malformed is refused for one correction; a weakened reading wins over malformed in the
+ * parser, so a weakening is never corrected away.
  */
 export function acceptVerdict(input: AwaitVerdictInput, messages: readonly ReviewerMessage[]): AwaitVerdictResult {
   const final = messages.at(-1);
@@ -69,6 +71,7 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   if (!namesTarget(block, input)) return malformedNone("wrong_target", final.writtenAt);
   if (!block.ok) return { kind: "none", reason: "wait" };
   if (final.investigativeCalls === 0) return { kind: "none", reason: DEPTH_FLOOR_REASON };
+  if (block.verdict === "MERGE" && block.ciPolicy?.kind === "malformed") return malformedNone("ci_policy_malformed", final.writtenAt);
   const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId }, ownerBrief: parseOwnerBrief(final.text), ...followUpsFields(final.text) };
   return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE", ...(block.ciPolicy && { ciPolicy: block.ciPolicy }) } : { ...accepted, verdict: "FIX_FIRST", text: fixFirstFindings(input, messages.filter((message) => fromDispatch(input, message)), final.text), ...(block.closer && { closer: block.closer }) };
 }

@@ -1,6 +1,7 @@
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
 import { acceptVerdict, isUsageLimit, USAGE_LIMIT_REASON } from "./accept-verdict.js";
+import { DEPTH_FLOOR_REASON } from "./depth-floor.js";
 import { FINDINGS_SEPARATOR } from "./fix-first-findings.js";
 import type { AwaitVerdictInput, ReviewerMessage } from "./ports.js";
 import { MALFORMED_REFUSALS, readMalformed } from "./verdict-schemas.js";
@@ -72,7 +73,7 @@ describe("acceptVerdict malformed record", () => {
   });
 
   it("covers every refusal the schema lists", () => {
-    const exercised = new Set(["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target"]);
+    const exercised = new Set(["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target", "ci_policy_malformed"]);
 
     expect(new Set(Object.keys(MALFORMED_REFUSALS))).toEqual(exercised);
   });
@@ -186,6 +187,32 @@ describe("acceptVerdict CI-policy line", () => {
     const result = acceptVerdict(input, [said(`Fine.\n\nVerdict: MERGE\nPR: octo/demo#7\nHead: ${HEAD}\nCI-policy: weakened ruleset`)]);
 
     expect(ciPolicyOf(result)).toEqual({ kind: "weakened", keys: ["ruleset"] });
+  });
+
+  const RV_1340_LINE = "CI-policy: no .github/ files changed and no required check was dropped, renamed or skipped.";
+  const merge = (ciPolicy: string) => `Fine.\n\nVerdict: MERGE\nPR: octo/demo#7\nHead: ${HEAD}\n${ciPolicy}`;
+
+  it("refuses a MERGE whose CI-policy line is prose, so the reviewer gets a correction", () => {
+    const result = acceptVerdict(input, [said(merge(RV_1340_LINE))]);
+
+    expect(result).toEqual({ kind: "none", malformed: { refusal: "ci_policy_malformed", writtenAt: DISPATCHED_AT + 1 } });
+    expect(readMalformed(result)?.refusal).toBe("ci_policy_malformed");
+  });
+
+  it("keeps a weakening that a malformed line sits beside, so no weakening is corrected away", () => {
+    const result = acceptVerdict(input, [said(merge("CI-policy: unchanged\n**CI-policy:** weakened secrets"))]);
+
+    expect(ciPolicyOf(result)).toEqual({ kind: "weakened", keys: ["secrets"] });
+  });
+
+  it("carries a MERGE's exact unchanged line", () => {
+    expect(ciPolicyOf(acceptVerdict(input, [said(merge("CI-policy: unchanged"))]))).toEqual({ kind: "unchanged" });
+  });
+
+  it("reads a prose CI-policy line from a session with no investigative call as below the depth floor", () => {
+    const result = acceptVerdict(input, [{ ...said(merge(RV_1340_LINE)), investigativeCalls: 0 }]);
+
+    expect(result).toEqual({ kind: "none", reason: DEPTH_FLOOR_REASON });
   });
 
   it("carries no ciPolicy on a MERGE without the line", () => {

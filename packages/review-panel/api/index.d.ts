@@ -271,8 +271,8 @@ type RepoSlug = string;
 declare const MAX_OWNER_BRIEF_CHARS = 2000;
 declare const OWNER_BRIEF_START = "OWNER-BRIEF";
 declare const OWNER_BRIEF_END = "END-OWNER-BRIEF";
-/** Why a reviewer's final message was no verdict: the parser refused its block, or the block named another repo, PR or head. */
-type MalformedRefusal = VerdictBlockRefusal | "wrong_target";
+/** Why a reviewer's final message was no verdict: the parser refused its block, the block named another repo, PR or head, or a MERGE's CI-policy line was off-format. */
+type MalformedRefusal = VerdictBlockRefusal | "wrong_target" | "ci_policy_malformed";
 /** The name a reviewer extracts into: `review-<pr>-<first 12 hex of the head sha>`. */
 declare function reviewCheckoutName(pr: number, head: string): string;
 declare const MAX_REVIEWER_QUESTIONS = 8;
@@ -320,8 +320,8 @@ declare const EARLIER_FINDINGS_HEADING = "Earlier findings:";
 declare const FOLLOW_UPS_RULE: string;
 /** The closing block is a template with a placeholder verdict, so the brief itself never parses as a verdict. */
 declare function reviewerBrief(input: ReviewerBriefInput): string;
-/** The most a correction prompt may hold, owner block included. */
-declare const MAX_CORRECTION_PROMPT_CHARS = 1500;
+/** The most a correction prompt may hold, owner block included; raised from 1500 when the CI-policy exactness sentence joined it. */
+declare const MAX_CORRECTION_PROMPT_CHARS = 1600;
 /** One fixed sentence per refusal; a closed map, so no reviewer text can reach the prompt. */
 declare const REFUSAL_SENTENCES: Record<MalformedRefusal, string>;
 interface CorrectionPromptInput {
@@ -416,7 +416,7 @@ interface AcceptedVerdict {
     /** The profile the accepted message's author was spawned with; absent when neither the dispatch nor the roster says. */
     reviewerProfile?: string;
 }
-/** Only a FIX_FIRST keeps the reviewer's words, because the implementer has to read them; only a MERGE carries the CI-policy line. */
+/** Only a FIX_FIRST keeps the reviewer's words, because the implementer has to read them; only a MERGE carries the CI-policy line, and only an unchanged or weakened one. */
 type AwaitVerdictResult = (AcceptedVerdict & {
     verdict: "MERGE";
     ciPolicy?: CiPolicy;
@@ -445,6 +445,8 @@ declare const isUsageLimit: (result: {
  * A final message that passes those checks but whose block is refused, or names another repo, PR or head, is `none` with a
  * `malformed` record; silence, a foreign or earlier message, `WAIT` and the client's own usage-limit notice (which no correction can answer) carry none. A MERGE or FIX_FIRST from a session that
  * made no investigative call is `none` with the depth-floor reason; a message the reader did not count is judged as before.
+ * A MERGE whose CI-policy line reads malformed is refused for one correction; a weakened reading wins over malformed in the
+ * parser, so a weakening is never corrected away.
  */
 declare function acceptVerdict(input: AwaitVerdictInput, messages: readonly ReviewerMessage[]): AwaitVerdictResult;
 
