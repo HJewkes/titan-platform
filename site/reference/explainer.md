@@ -93,3 +93,13 @@ type and come back.
 A beat that re-enters the map resumes the last map beat's camera, revealed boxes, focus and
 active set, and its own fields override them. Level checks and the new-box count run against
 that resumed state, so leaving the map never resets them.
+
+## Camera stations
+
+`cameraStation(beatId, layout, focusIds)` frames a beat's focus boxes for the camera. It
+returns the union of the boxes, padded by `DEFAULT_PADDING`, then widened to 16:9 and grown
+so the content sits inside the top `CAPTION_KEEP_OUT` (83 %) of the frame, where captions
+never cover it. `cameraStationFile` gives the `camera/<beat>.json` path and its JSON. Focus
+ids are sorted and deduplicated, so the file does not depend on their order. `projectBox`
+maps a layout box into 0..1 frame fractions. An unknown focus id throws. The module writes
+no files; the CLI step that lands later writes them.
