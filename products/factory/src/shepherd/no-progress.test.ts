@@ -22,7 +22,7 @@ const AUTO_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", fixe
 type Answer = "no" | "yes" | "absent" | "silent";
 
 /** Reviews answer from `answers` in order, then Closer: yes; each FIX_FIRST is answered by a fixer that pushes a new head. */
-async function runUntilGate(answers: Answer[]): Promise<{ prompt: string; reviews: number }> {
+async function runUntilGate(answers: Answer[]): Promise<{ prompt: string; reviews: number; wakes: number }> {
   const fake: FakeGitHub = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const asked: string[] = [];
@@ -32,7 +32,8 @@ async function runUntilGate(answers: Answer[]): Promise<{ prompt: string; review
     if (answer === "silent") return { kind: "none" } satisfies Verdict;
     return { kind: "FIX_FIRST", headSha: request.headSha, text: "again", ...(answer !== "absent" && { closer: answer }) } satisfies Verdict;
   };
-  const wake: ShepherdPhases["wake"] = async () => (fake.pushHead(1, fakeSha(`fix-${asked.length}`)), { kind: "woken", agent: "impl-a" });
+  let wakes = 0;
+  const wake: ShepherdPhases["wake"] = async () => (wakes++, fake.pushHead(1, fakeSha(`fix-${asked.length}`)), { kind: "woken", agent: "impl-a" });
   const store = shepherdStoreRef();
   const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review, wake })], routes, gatePollMs: 5 });
@@ -42,7 +43,7 @@ async function runUntilGate(answers: Answer[]): Promise<{ prompt: string; review
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(AUTO_POLICY) });
   store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: AUTO_POLICY });
   await gateOpened(host, gateId(runId, "approve-merge"));
-  return { prompt: host.gates.get(gateId(runId, "approve-merge"))?.prompt ?? "", reviews: asked.length };
+  return { prompt: host.gates.get(gateId(runId, "approve-merge"))?.prompt ?? "", reviews: asked.length, wakes };
 }
 
 describe("the no-progress escalation", () => {
@@ -57,7 +58,7 @@ describe("the no-progress escalation", () => {
     const gate = await runUntilGate(["no", "yes", "no"]);
 
     expect(gate.prompt).toContain("fix-first-runaway");
-    expect(gate.reviews).toBe(6);
+    expect(gate.reviews).toBe(3);
   });
 
   it("does not escalate when a round with no verdict sits between two no answers", async () => {
@@ -66,17 +67,26 @@ describe("the no-progress escalation", () => {
     expect(gate.prompt).toContain("fix-first-runaway");
   });
 
-  it("does not escalate when a FIX_FIRST carries no Closer line, and runs to the runaway at 6", async () => {
-    const gate = await runUntilGate(["no", "absent", "no", "absent", "absent", "absent"]);
+  it("does not escalate when a FIX_FIRST carries no Closer line, and runs to the runaway at 3", async () => {
+    const gate = await runUntilGate(["no", "absent", "no"]);
 
     expect(gate.prompt).toContain("fix-first-runaway");
-    expect(gate.reviews).toBe(6);
+    expect(gate.reviews).toBe(3);
   });
 
-  it("keeps fix-first-runaway at 6 when every FIX_FIRST has no Closer line", async () => {
-    const gate = await runUntilGate(Array<Answer>(6).fill("absent"));
+  it("stops at the third FIX_FIRST with the planner route when every FIX_FIRST has no Closer line, after two fixer wakes", async () => {
+    const gate = await runUntilGate(Array<Answer>(3).fill("absent"));
 
-    expect(gate.prompt).toContain(`Policy shepherd-route/fix-first-runaway: 6 FIX_FIRST reviews at this task`);
+    expect(gate.prompt).toContain("Policy shepherd-route/fix-first-runaway: 3 FIX_FIRST reviews at this task: route it to the planner to redesign or split it");
+    expect(gate.wakes).toBe(2);
+  });
+
+  it("names the planner route, not no-progress, when the third FIX_FIRST also completes a Closer: no streak", async () => {
+    const gate = await runUntilGate(["yes", "no", "no"]);
+
+    expect(gate.prompt).toContain("Policy shepherd-route/fix-first-runaway: 3 FIX_FIRST reviews at this task: route it to the planner");
+    expect(gate.prompt).not.toContain("no-progress");
+    expect(gate.wakes).toBe(2);
   });
 });
 

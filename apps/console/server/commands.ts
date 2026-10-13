@@ -8,6 +8,7 @@ import { inboxCommands, type InboxSource } from "./inbox.js";
 import { readCommand } from "./owner-guard.js";
 import { roundsCommands, type RoundsSource } from "./rounds.js";
 import { sessionsCommands, type SessionsSource } from "./sessions.js";
+import { shepherdCommands, type ShepherdSource } from "./shepherd.js";
 import { tasksCommands } from "./tasks.js";
 import { UPSTREAM_IDS, probeUpstreams, type Upstream } from "./upstreams.js";
 import { initiativeResult, knowledgeCommands, portfolioResult, readInitiative, readPortfolio, type WorkOptions } from "./work.js";
@@ -28,6 +29,7 @@ export interface ConsoleSources {
   activeWork: ActiveWork;
   inbox: InboxSource;
   rounds: RoundsSource;
+  shepherd: ShepherdSource;
   /** Optional so test sources need not build one; absent reads as a `factory:` gap in `approvals.flow`. */
   factory?: FactoryNeeds;
   work?: WorkOptions;
@@ -46,7 +48,7 @@ function upstreamsCommands(upstreams: readonly Upstream[]) {
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, factory, work }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, factory, work }: ConsoleSources) {
   return {
     ...upstreamsCommands(upstreams),
     ...agentsCommands(agents),
@@ -57,6 +59,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...inboxCommands(inbox),
     ...roundsCommands(rounds),
     ...approvalsCommands({ factory, rounds, inbox }),
+    ...shepherdCommands(shepherd),
     "work.portfolio": readCommand({
       name: "work.portfolio",
       description: "Every active-work initiative with its open-task rollup, note, source and session counts, newest activity and personal flag",

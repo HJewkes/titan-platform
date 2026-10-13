@@ -2,6 +2,7 @@ import type { GitHubPort } from "@titan-design/github";
 import { EXIT } from "@titan-design/registry";
 import { z } from "zod";
 import { RegistrationRefused, RequestedPolicyFields, resolveEffectivePolicy, type EffectivePolicy } from "./policy.js";
+import { HEAD } from "./await-verdict.js";
 import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
 import { TASK_KINDS, kindMoveRefusal, type Registration } from "./store.js";
 
@@ -17,6 +18,8 @@ export const RegisterArgs = z
     repo: RepoArg,
     pr: PrArg.optional(),
     branch: BranchArg.optional(),
+    head: z.string().regex(HEAD, "must be 40 lowercase hex characters").optional(),
+    base: BranchArg.optional(),
     task: z.string().min(1),
     implementer: z.string().min(1),
     reviewer: z.string().min(1).optional(),
@@ -40,9 +43,12 @@ export function policyFor(seats: () => SeatBook, args: RegisterArgs): EffectiveP
   }
 }
 
-/** A PR registration always learns its head branch, so a later branch registration finds it and vice versa. */
+/**
+ * A PR registration always learns its head branch, so a later branch registration finds it and vice versa. A caller that
+ * passes the head with the branch registers from facts it read itself, so the branch is trusted and GitHub is not asked.
+ */
 export async function headBranch(port: GitHubPort, args: RegisterArgs): Promise<string | undefined> {
-  if (args.pr === undefined) return args.branch;
+  if (args.pr === undefined || (args.branch !== undefined && args.head !== undefined)) return args.branch;
   const { headRef } = await port.getPr(args.repo, args.pr);
   if (args.branch !== undefined && args.branch !== headRef) throw coded(`${args.repo}#${args.pr} has head ${headRef}, not ${args.branch}`, EXIT.DATAERR);
   return headRef;

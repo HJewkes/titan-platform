@@ -326,10 +326,15 @@ ask for Shepherd's own review with [`shepherd review`](#own-review).
 - `shepherd-route/failed-rounds`: 3 review rounds failed at this task. Only a stuck round
   counts: a fresh reviewer after silence or a timeout, a re-read of a hold's reviewer, or a
   conflict. A `FIX_FIRST` that yields a new head is progress and does not count.
-- `shepherd-route/fix-first-runaway`: 6 `FIX_FIRST` reviews at this task.
+- `shepherd-route/fix-first-runaway`: 3 `FIX_FIRST` reviews at this task, for every kind of PR.
+  Two fix rounds that did not converge mean point fixes are not working, so Shepherd wakes no
+  third fixer. Route the task to the planner to redesign or split it; Shepherd files no planner
+  task itself. It is checked before `no-progress`, so a third `FIX_FIRST` always names this
+  route.
 - `shepherd-route/no-progress`: 2 `FIX_FIRST` reviews in a row ended with `Closer: no`, meaning
   the head is no closer to `MERGE` than the last one. A `FIX_FIRST` with `Closer: yes` or no
-  Closer line, and any other round, resets the count. It is checked before the runaway cap.
+  Closer line, and any other round, resets the count. Under the cap of 3 it can only fire at
+  the second `FIX_FIRST`.
 - a policy that did not allow an automated merge, such as an `owner-gate` seat or an unmet
   `MRG-AU-RV` fact. The prompt starts `the authority policy did not allow an automated merge`.
 
@@ -538,14 +543,15 @@ Reads the store read-only, so it is safe beside a running `serve`. Two reports, 
   - `mergeUps`: Shepherd's own update-branch steps, by the CI read before each one.
     `landTime` is a refresh after the merge decision, when the base had moved since the green.
     `strictChase` is an update before the decision, which only a strict repo forces.
-    `freezeHold` is an update from a freeze hold, and `retry` is an update after
+    `freezeHold` is an update from a freeze hold after a thaw, `baseRed` is an update from a
+    freeze hold after the red base it waited on moved, and `retry` is an update after
     `update-backoff`.
   - `strictRounds`: land rounds whose `land-rules` read found the repo requires up-to-date heads.
     Anything above 0 means the strict setting is back on.
   - `foreignMergeUps`: heads Shepherd did not make that are a merge of the base. It stays 0
     until Shepherd records the origin of foreign heads (`sh-head-origin`).
 
-  The text line prints them as `slow owner-gated`, `merge-ups land/strict/freeze/retry`,
+  The text line prints them as `slow owner-gated`, `merge-ups land/strict/freeze/base/retry`,
   `strict rounds` and `foreign merge-ups`.
 - Per day, the owner's friction. **Owner touches** counts the gates an owner class resolved that
   day. For each gate kind (the gate's step id without its iteration, such as `approve-merge`,
@@ -580,7 +586,7 @@ the minutes it has been there, and the minutes since registration. `status --jso
 as `stage` and `totalMinutes`.
 
 `--json` returns `{ "merges": [...], "ownerFriction": [...], "stageTimes": [...], "redAfterMerge": [...] }`;
-each `merges` row carries `mergeUps` (`{ landTime, strictChase, freezeHold, retry }`), `strictRounds`,
+each `merges` row carries `mergeUps` (`{ landTime, strictChase, freezeHold, baseRed, retry }`), `strictRounds`,
 `slowOwnerGated` and `foreignMergeUps`;
 each `redAfterMerge` row carries `merged`, `red`, `rate`, `redPrs`, `reverted` and `revertedPrs`. The morning digest shows today's
 two lines, "Owner touches" and "Owner wait (median/max hours)", under "Owner friction".
@@ -967,7 +973,8 @@ Agents (seats, implementers and fixers) merge the base into a registered PR only
 
 - A conflict wake, or a run that stopped with `conflict` or `not-mergeable`. The conflict brief
   tells the agent to merge the base and resolve the conflict.
-- A freeze hold that updates the branch is Shepherd's own step, counted as `mergeUps.freezeHold`.
+- A freeze hold that updates the branch is Shepherd's own step, counted as `mergeUps.freezeHold`,
+  or as `mergeUps.baseRed` when it waited on a red base.
 
 They do not merge the base in these cases:
 
@@ -1113,10 +1120,31 @@ hold at the exact head being merged (`packages/authority/src/table.json`):
 
 Shepherd adds its own guards before it asks authority
 (`products/factory/src/shepherd/merge-facts.ts`). No collected facts, facts collected at
-another head sends the merge to the owner. A changed path under `.github/` no longer does: by the owner decision of 2026-10-07 (TP-1886), Shepherd leaves `.github/` to the authority table and the required checks, like any other path. A file list
+another head sends the merge to the owner. A file list
 that GitHub truncated, or that failed to read, counts as no list and gates on `files-unread`. Every fact is read from GitHub or from the run's
 own step outputs, never from the reviewer's text. Any other authority rule that allows still
 gates: only `MRG-AU-RV` merges without the owner.
+
+The one reviewer line the guard reads is `CI-policy:` (TP-2407), which every MERGE carries
+directly after `Head:` as `CI-policy: unchanged` or `CI-policy: weakened <keys>`. It never
+allows a merge; it only gates one:
+
+- `weakened` gates any PR on `ci-policy-weakened` (class D21), because only the owner accepts
+  a weaker CI policy.
+- The label is read on every raw line, fenced, indented or commented out, and with any casing,
+  decoration or punctuation, so a hidden or decorated `weakened` still reads weakened. Across
+  several lines the strictest reading wins.
+- A line that is present but malformed, or an `unchanged` that is not the one exact line after
+  `Head:`, gates any PR on `ci-policy-malformed` (class D21), because a misspelt `weakened` must
+  not read as silence. So does a stored line of an unknown shape.
+- A PR whose changed paths, rename sources included, touch `.github/` gates on `github-path`
+  (class D6) when the line is missing. Evidence stored before the line existed reads as
+  missing, so it fails closed; answer it with a fresh review.
+- `unchanged` leaves a `.github/` change to the authority table and the required checks, as
+  TP-1886 left every path.
+
+The line rides with the MERGE through an unsettled re-read, a carried verdict and an external
+review. A coordinator never resolves any of these gates.
 
 The `sh-merge-evidence` step collects those facts once per head and posts one comment on the
 pull request. The comment starts with the marker `<!-- shepherd-evidence:<head sha> -->`, so

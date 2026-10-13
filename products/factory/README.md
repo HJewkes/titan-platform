@@ -268,11 +268,14 @@ Shepherd opens `approve-merge` for the owner for five reasons only, listed in `E
   owner can approve this one.
 - `failed-rounds`: `MAX_FAILED_ROUNDS` review rounds at one task ended with no verdict, a
   timeout or an unanswered hold. Retrying again would only repeat the stall.
-- `fix-first-runaway`: `MAX_FIX_FIRSTS` FIX_FIRST reviews at one task. Each one counts as
-  progress, so this cap only stops a loop between the reviewer and the fixer.
+- `fix-first-runaway`: the third FIX_FIRST review at one run (`MAX_FIX_FIRSTS` is 3, for every
+  kind of PR). Two fix rounds that did not converge mean point fixes are not working, so
+  Shepherd wakes no third fixer. The gate reason routes the task to the planner to redesign or
+  split it; coord or the owner acts on that, and Shepherd files no planner task itself
+  (TP-2394). It is checked before `no-progress`, so a third FIX_FIRST always names this route.
 - `no-progress`: two FIX_FIRST reviews in a row ended with `Closer: no`, meaning the head is no
   closer to MERGE than the last one. A FIX_FIRST with `Closer: yes` or no Closer line, and any
-  other round, resets the count. It is checked before `fix-first-runaway`.
+  other round, resets the count. Under the cap of 3 it can only fire at the second FIX_FIRST.
 - `repair-budget`: `MAX_REPAIRS` fixer wakes of any kind at one run, counted across heads. This
   caps what one PR can spend on agents before a human looks at it.
 
@@ -714,6 +717,19 @@ its account (`sh-review-intent`, and the failover in `sh-account-hold`): an acco
 lifts it, and none places it again, without a new alert. So however the wait ended, a review that
 gets an account never leaves a stale hold in front of its MERGE.
 The restart drain does not wait on `sh-account-wait`, since a restart only re-reads the store.
+
+### A reviewer dispatch that is refused
+
+A broker that stays busy past its wait started nobody, so the review is retried (`not-started`).
+Any other refusal of `sh-review`, such as `ReviewCheckoutUnusable` for a repo that no seat or
+`shepherd.repos` entry binds to a checkout, is not counted as a failed round either.
+`sh-no-reviewer-hold` holds the run as `no-reviewer: <refusal class> at <head>; TP-2446` and alerts
+the repo's seat once. It never replaces another hold. `sh-no-reviewer-wait` then waits inside the
+review until the hold is released (`titan-factory shepherd release <pr> --head <sha> --class
+no-reviewer`), the head moves, the PR closes, or an hour passes. The head is then reviewed again.
+A refusal that still stands finds its own hold and waits again with no second alert. So a repo
+with no usable reviewer never reaches approve-merge unreviewed. The restart drain does not wait on
+`sh-no-reviewer-wait`.
 
 The config file is read when the routes are first built, so restart `serve` after a change to
 these keys. The seat book is read again on every spawn.

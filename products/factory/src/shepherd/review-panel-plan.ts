@@ -1,6 +1,7 @@
 import type { PrFile } from "@titan-design/github";
 import { classifyPr, DEFAULT_CLASS_RULES, DEFAULT_PANEL_TABLE, planPanel } from "@titan-design/review-panel";
 import type { ChangedFile, ClassRules, Headroom, PanelPlan, PanelPolicy, PrClass, PrFacts, ReviewClass, ReviewTarget } from "@titan-design/review-panel";
+import { prFilesOf, registeredBase } from "./git-pr-files.js";
 import { registeredKind } from "./merge-facts.js";
 import type { ShepherdDeps } from "./phases.js";
 import { DEFAULT_REVIEWER_ROLES, prChangedLines, type ReviewerRoles } from "./reviewer-roles.js";
@@ -11,7 +12,7 @@ export type PanelMode = "off" | "shadow" | "on";
 /** Opus is always allowed until TP-1931 asks the spawn gate. */
 const OPEN_HEADROOM: Headroom = { opus: true };
 
-type PanelDeps = Pick<ShepherdDeps, "store" | "port">;
+type PanelDeps = Pick<ShepherdDeps, "store" | "port" | "prFiles">;
 
 /** The PR as classification sees it; `sizeUnread` means the file list or a line count could not be read. */
 export interface PanelFacts {
@@ -38,10 +39,10 @@ export function classRulesFor(roles: ReviewerRoles | undefined): ClassRules {
 
 const changedFileOf = ({ path, previousPath, additions, deletions }: PrFile): ChangedFile => ({ path, ...(previousPath !== undefined && { previousPath }), additions: additions ?? Number.NaN, deletions: deletions ?? Number.NaN });
 
-/** A list that cannot be read, or one `prChangedLines` cannot size, is an unread size. */
-async function readFiles(deps: PanelDeps, { repo, pr }: ReviewTarget, rules: ClassRules): Promise<{ files: ChangedFile[]; sizeUnread: boolean }> {
+/** A list that cannot be read, or one `prChangedLines` cannot size, is an unread size. A known base reads the head's diff from git. */
+async function readFiles(deps: PanelDeps, { repo, pr, head }: ReviewTarget, base: string | undefined, rules: ClassRules): Promise<{ files: ChangedFile[]; sizeUnread: boolean }> {
   try {
-    const files = await deps.port.listPrFiles(repo, pr);
+    const files = await prFilesOf(deps.port, { repo, pr, head, ...(base !== undefined && { base }) }, deps.prFiles);
     return { files: files.map(changedFileOf), sizeUnread: prChangedLines(files, rules.largeLines) === undefined };
   } catch {
     return { files: [], sizeUnread: true };
@@ -55,7 +56,7 @@ async function readFiles(deps: PanelDeps, { repo, pr }: ReviewTarget, rules: Cla
 export async function panelFacts(deps: PanelDeps, { repo, pr, head }: ReviewTarget, runId: string, rules: ClassRules = DEFAULT_CLASS_RULES): Promise<PanelFacts> {
   const read = registeredKind(deps.store, runId);
   const kind = read.unread === undefined ? read.kind : undefined;
-  const { files, sizeUnread } = await readFiles(deps, { repo, pr, head }, rules);
+  const { files, sizeUnread } = await readFiles(deps, { repo, pr, head }, registeredBase(deps.store, runId), rules);
   return { facts: { repo, pr, head, base: "", ...(kind !== undefined && { kind }), changedFiles: files }, sizeUnread };
 }
 

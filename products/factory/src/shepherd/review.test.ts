@@ -1061,7 +1061,7 @@ describe("sh-review", () => {
 
     const { result } = await shReview(dispatch);
 
-    expect(result).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: Error" });
+    expect(result).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: Error", refused: "Error" });
     expect(attempts).toBe(1);
   });
 
@@ -1077,7 +1077,7 @@ describe("sh-review", () => {
     const logged = warn.mock.calls.map(([line]) => line);
     warn.mockRestore();
 
-    expect(result).toEqual({ kind: "none", reason: `the reviewer dispatch was refused: ${kind}` });
+    expect(result).toEqual({ kind: "none", reason: `the reviewer dispatch was refused: ${kind}`, refused: kind });
     expect(JSON.stringify(result)).not.toMatch(/db\.example\.invalid|tok_FAKE0000SECRET/);
     expect(logged).toContain(`shepherd: the reviewer dispatch was refused (${kind}): ${refusal.message}`);
   });
@@ -1092,7 +1092,7 @@ describe("sh-review", () => {
     const { result } = await shReview(dispatch);
     warn.mockRestore();
 
-    expect(result).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: DispatchError" });
+    expect(result).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: DispatchError", refused: "DispatchError" });
   });
 
   describe("a broker whose machine guard refuses the spawn", () => {
@@ -1577,14 +1577,15 @@ describe("reviewPhase", () => {
     expect(dispatch.agents).toEqual([]);
   });
 
-  it("keeps a spawn refused for a reason that does not clear a no-verdict review", async () => {
+  it("holds a spawn refused for a reason that does not clear as no-reviewer, a review not started rather than a no-verdict round", async () => {
     const dispatch = fakeDispatch();
     dispatch.spawn = async () => Promise.reject(new Error("unknown profile: 'reviewer'"));
 
-    const { verdicts, resultOf } = await review({ dispatch, policy: AUTO });
+    const { verdicts, stepIds, resultOf } = await review({ dispatch, policy: AUTO });
 
-    expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict" }]);
-    expect(resultOf(`sh-review:${H1}`)).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: Error" });
+    expect(verdicts).toEqual([{ kind: "none", cause: "not-started", reason: `no-reviewer: Error at ${H1}; TP-2446` }]);
+    expect(resultOf(`sh-review:${H1}`)).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: Error", refused: "Error" });
+    expect(stepIds).toContain(`sh-no-reviewer-hold:${H1}`);
   });
 
   it("returns none after the intent step alone when the roster read is refused", async () => {
@@ -1595,7 +1596,7 @@ describe("reviewPhase", () => {
 
     expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict" }]);
     expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`]);
-    expect(resultOf(`sh-review-intent:${H1}`)).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: Error" });
+    expect(resultOf(`sh-review-intent:${H1}`)).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: Error", refused: "Error" });
   });
 
   /** Kills the host inside one step, before the step's body runs or after it ran and before its output is stored. */
@@ -2081,7 +2082,7 @@ describe("reviewPhase", () => {
       const { verdicts, stepIds, resultOf } = await review({ dispatch, read, policy: AUTO });
 
       expect(verdicts).toEqual([{ kind: "none", cause: "timeout", reason }]);
-      expect(resultOf(`sh-correct-verdict:${H1}`)).toEqual({ kind: "none", reason });
+      expect(resultOf(`sh-correct-verdict:${H1}`)).toMatchObject({ kind: "none", reason });
       expect(stepIds).not.toContain(`sh-await-verdict:${H1}:corrected`);
       expect(dispatch.resumes).toEqual([]);
     });
@@ -2316,13 +2317,13 @@ describe("reviewPhase", () => {
     expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual([freshReviewerBase(REPO, 1)]);
   });
 
-  it("returns none and starts nobody when the dispatch refuses", async () => {
+  it("returns a not-started none and starts nobody when the dispatch refuses", async () => {
     const dispatch = fakeDispatch();
     dispatch.spawn = async () => Promise.reject(new Error("spawn budget exhausted"));
 
     const { verdicts, stepIds } = await review({ dispatch });
 
-    expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict" }]);
+    expect(verdicts).toEqual([{ kind: "none", cause: "not-started", reason: `no-reviewer: Error at ${H1}; TP-2446` }]);
     expect(stepIds.filter((id) => id.startsWith("sh-await-verdict"))).toEqual([]);
   });
 });
