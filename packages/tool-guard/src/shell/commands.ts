@@ -2,8 +2,8 @@ import { ParseError, SplitParseError, tokenize } from "./lexer.js";
 import { NestingLimitError } from "./nesting.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
-import { printedReadings, printedText } from "./printed.js";
-import { catOperands, SPLICING_SHELLS, splicedWords, stdinScript } from "./sub-output.js";
+import { SPLICING_SHELLS, splicedWords, stdinScript } from "./sub-output.js";
+import { nextShellStdin, nextStdin, xargsStdin } from "./piped-stdin.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed, caseScripts } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
@@ -153,7 +153,7 @@ function walk(tokens: Token[], w: Walk): void {
       noteValues(token, words, w);
       const cmd = emit(words, redirects, w, token.value);
       const empty = words.length + redirects.length === 0;
-      w.shellStdin = nextShellStdin(token.value, cmd, empty, w);
+      w.shellStdin = nextShellStdin(token.value, cmd, empty, w.shellStdin);
       w.stdin = groupStdin(w, token.value, words, redirects, cmd, nextStdin(token.value, cmd, empty, w.stdin));
       words = [];
       redirects = [];
@@ -199,27 +199,6 @@ function walkSure(walkText: () => void): void {
   } catch (error) {
     throw error instanceof ParseError ? new ValueWalkError() : error;
   }
-}
-
-/** Text piped into the next command: printed by this one, passed on by `tee` or `cat`, or kept across a bare `(`. */
-function nextStdin(op: string, cmd: Unwrapped | null, empty: boolean, stdin: string | null): string | null {
-  if (op === "(" && empty) return stdin;
-  if (!cmd || (op !== "|" && op !== "|&")) return null;
-  return printedText(cmd.name, cmd.args) ?? (passesThrough(cmd) ? stdin : null);
-}
-
-/** Each splicing shell's text of a print piped on, so a push only bash or zsh prints still reaches the shell it feeds. */
-function nextShellStdin(op: string, cmd: Unwrapped | null, empty: boolean, w: Walk): string[] {
-  if (op === "(" && empty) return w.shellStdin;
-  if (!cmd || (op !== "|" && op !== "|&")) return [];
-  return printedReadings(cmd.name, cmd.args, SPLICING_SHELLS).slice(1);
-}
-
-function passesThrough(cmd: Unwrapped): boolean {
-  if (cmd.name === "tee") return true;
-  if (cmd.name !== "cat") return false;
-  const operands = catOperands(cmd.args.map((a) => a.value));
-  return operands.length === 0 || operands.includes("-");
 }
 
 function nestedLists(token: Token): Token[][] {
@@ -328,12 +307,6 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[]): void {
 
 function folded(words: WordToken[], w: Walk): WordToken[] {
   return w.foldCase ? foldCommandWords(words) : words;
-}
-
-/** A stdin redirect replaces the pipe; a file or descriptor it names has unknown text. */
-function xargsStdin(redirects: RedirectToken[], piped: string | null): string | null {
-  const feeds = redirects.some((r) => (r.fd === null || r.fd === "0") && ["<", "<<", "<<-", "<<<", "<&"].includes(r.op));
-  return feeds ? stdinScript(redirects) : piped;
 }
 
 function literalEnv(cmd: Unwrapped): Record<string, string> {
