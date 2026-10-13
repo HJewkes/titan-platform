@@ -52,7 +52,10 @@ scoreControls(
 
 ## What it deliberately does not do
 
-It does not read files: callers implement `LineSource` over disk, git or a snapshot. It
+It does not read files: callers implement `LineSource` over disk, git or a snapshot
+(`revisionLineSource` in `@titan-design/code-graph/history` reads blobs at a pinned commit).
+`parseAnchor` parses `head/`, `base/` and `diff/` anchors against 40-hex pins but does not
+check that the lines exist. It
 does not build excerpts, pick thresholds, or decide what a failed control means for a run.
 Those are product policy.
 

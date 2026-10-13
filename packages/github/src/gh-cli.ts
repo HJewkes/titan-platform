@@ -11,6 +11,7 @@ import type { SquashSource } from "./port-types.js";
 import type { OpenPrList } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import { restCaller, type Rest } from "./rest.js";
+import { sendMergeIntoBranch } from "./merge-into-branch.js";
 import { branchRules, classicRequiredChecks, type GhRule } from "./rules-read.js";
 
 export interface GhCliOptions {
@@ -31,8 +32,17 @@ export interface GhCliOptions {
 // eslint-disable-next-line no-control-regex
 const stripEscapes = (log: string): string => log.replace(/\u001b\[[0-9;]*[A-Za-z]/g, "");
 
+/** The `gh` CLI wire, for CLI processes; a long-running service uses `octokitWire` instead. */
 export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): GitHubWire {
   const api = restCaller(exec, options.budget ?? sharedRateBudget, options.etagCacheSize ?? 500, options.sleep);
+  return wireOver(api, (repo, request) => createCheckRun(exec, options, repo, request));
+}
+
+/** Posts a check run as the GitHub App, which is a different identity from the one `api` speaks as. */
+export type CheckRunPoster = (repo: string, request: CreateCheckRunRequest) => Promise<{ id: number }>;
+
+/** Every wire method over one `Rest`, whichever transport implements it. */
+export function wireOver(api: Rest, postCheckRun: CheckRunPoster): GitHubWire {
   return {
     getRef: async (repo, branch) => (await api.getOrNull<{ object: { sha: string } }>(`repos/${repo}/git/ref/heads/${branch}`))?.object.sha ?? null,
     createRef: async (repo, branch, sha) => void (await api.send("POST", `repos/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha })),
@@ -56,7 +66,7 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     reviewRulesBypassable: (repo, branch) => reviewRulesBypassable(api, repo, branch),
     getBranchProtected: (repo, branch) => branchProtected(api, repo, branch),
     listCheckRuns: (repo, sha) => listCheckRuns(api, repo, sha),
-    createCheckRun: async (repo, request) => createCheckRun(exec, options, repo, request),
+    createCheckRun: postCheckRun,
     getCommit: async (repo, sha) => {
       const commit = await api.get<{ sha: string; parents: { sha: string }[]; tree?: { sha: string }; committer?: { date?: string }; message?: string }>(`repos/${repo}/git/commits/${sha}`);
       const committedAt = commit.committer?.date;
@@ -74,6 +84,7 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
       const fields = { sha, merge_method: method, ...(message ? { commit_title: message.subject, commit_message: message.body } : {}) };
       return { sha: (await api.send<{ sha: string }>("PUT", `repos/${repo}/pulls/${number}/merge`, fields)).sha };
     },
+    mergeIntoBranch: (repo, request) => sendMergeIntoBranch(api, repo, request),
     getSquashSource: (repo, number) => getSquashSource(api, repo, number),
     rerunFailedJobs: async (repo, runId) => void (await api.send("POST", `repos/${repo}/actions/runs/${runId}/rerun-failed-jobs`)),
     listPrFiles: (repo, number) => listPrFiles(api, repo, number),
@@ -103,7 +114,7 @@ async function createCheckRun(exec: GhExec, options: GhCliOptions, repo: string,
 }
 
 /** Keeps `GhError.status` so callers can still branch on the HTTP status. */
-function redactedError(error: unknown, secrets: readonly string[]): Error {
+export function redactedError(error: unknown, secrets: readonly string[]): Error {
   if (error instanceof GhError) {
     const { code, stdout, stderr } = error.result;
     const [cleanOut, cleanErr] = redactStreams(stdout, stderr, secrets);

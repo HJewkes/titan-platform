@@ -1,4 +1,5 @@
-import { ghCliWire, githubPort, type GitHubPort } from "@titan-design/github";
+import { githubPort, octokitWire, sharedOctokit, type GitHubPort } from "@titan-design/github";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Db, Migration } from "@titan-design/store-sqlite";
 import type { AuditPorts } from "./audit/ports.js";
@@ -13,6 +14,7 @@ import type { CleanupPorts } from "./shepherd/cleanup.js";
 import { reviewCheckPort } from "./shepherd/publish-review.js";
 import { activeWorkFixTasks, activeWorkOrigin, activeWorkTasks, agentChatCleanupAgents } from "./shepherd/cleanup-ports.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
+import { ghGateway, type GhCallLine, type GhGateway } from "./shepherd/gh-gateway.js";
 import type { PrFilesRead } from "./shepherd/git-pr-files.js";
 import { freezeCancelOnlyMigration, freezeFixPrMigration, freezeGuard, freezeMigration, freezeStoreRef, isFixersPr, recheckedFrozen, type FreezeStoreRef } from "./shepherd/freeze.js";
 import { carry } from "./shepherd/tree-carry.js";
@@ -47,11 +49,14 @@ import { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, line
 import { reclassMarkMigration, shepherdEventMigration } from "./shepherd/events.js";
 import { reviewPendingAt } from "./shepherd/review-request.js";
 import { leaveTrainToWait, mergeTrainRef, rideTrain, trainLeaveRoute, trainMigration, type MergeTrainRef } from "./shepherd/train.js";
+import { shadowRefresh, trainShadowMigration, trainShadowRef } from "./shepherd/train-shadow.js";
+import { shadowHeldCheck } from "./shepherd/train-shadow-held.js";
 import { sleep } from "./workflows/land.js";
 import { landPrRoutes, landPrWorkflow, type LandPrDeps } from "./workflows/land-pr.js";
+import { systemChorePorts } from "./workflows/post-merge-chore.js";
 import { devicePrWorkflow } from "./workflows/device-pr.js";
 import { tickPacing, type TickPacing } from "./tick-pacing.js";
-import { prSnapshot } from "./workflows/pr-snapshot.js";
+import { portReads, prSnapshot } from "./workflows/pr-snapshot.js";
 import { pushSignal } from "./shepherd/push-signal.js";
 import { localBasementSuite, suiteRules, type SuiteRules } from "./shepherd/suite-host.js";
 
@@ -108,12 +113,14 @@ export interface FactoryRouteDeps extends LandPrDeps {
   audit?: AuditPorts;
   /** Repos whose merges, branch updates and pushes Shepherd never makes; defaults to none. */
   advisory?: IsAdvisory;
+  /** Serve's GitHub gateway for `shepherd.ghRead` and `shepherd.ghBudget`; absent means those refuse as unavailable. */
+  gateway?: GhGateway;
 }
 
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
 
 /** The shepherd tenant's versions follow the host's 1-3; the host's own later migrations take numbers above these. */
-export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), trainMigration(10), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), shepherdEventMigration(16), accountLimitMigration(17), reviewRequestMigration(18), holdSlotsMigration(19), parkSettledMigration(21), ownerHoldMigration(22), freezeFixPrMigration(23), registrationFactsMigration(24), reclassMarkMigration(25)];
+export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), trainMigration(10), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), shepherdEventMigration(16), accountLimitMigration(17), reviewRequestMigration(18), holdSlotsMigration(19), parkSettledMigration(21), ownerHoldMigration(22), freezeFixPrMigration(23), registrationFactsMigration(24), reclassMarkMigration(25), trainShadowMigration(26)];
 
 /**
  * Routes for every dispatch step of `factoryWorkflows`, each match once. Every merge goes through the hold, so a held
@@ -135,16 +142,17 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const train = deps.train ?? mergeTrainRef(deps.now);
   const accountLimits = deps.accountLimits ?? accountLimitStoreRef(deps.now);
   const timing = { sleep: pause, pollMs: deps.holdPollMs, now: deps.now };
+  const shadow = { shadow: trainShadowRef(), port: deps.port, reads: deps.snapshot ?? portReads(deps.port), held: shadowHeldCheck({ port: deps.port, holds, freezes: () => freeze.get(), advisory: isAdvisory, now: deps.now, snapshot: deps.snapshot }), advisory: isAdvisory, now: deps.now ?? Date.now };
   const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds, guard, satisfy) }).map((route) => {
     if (route.match === "base-wait") return leaveTrainToWait(route, train);
-    if (route.match === "update-branch") return advisoryUpdates(route, isAdvisory, timing);
+    if (route.match === "update-branch") return shadowRefresh(advisoryUpdates(route, isAdvisory, timing), shadow);
     return route.match === "merge" ? waitWhileHeld(rideTrain(route, { train, port: deps.port, held, timing }), held, timing, openHeadRead(deps.port, deps.snapshot), (repo, pr, sha) => reviewPendingAt(holds().byPr(repo, pr), sha), adversary.takeRehold) : route;
   });
   const shepherdDeps = { port: deps.port, advisory: isAdvisory, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, pushes: deps.pushes, reviewCheck: deps.reviewCheck, exitNotice: deps.exitNotice, suiteRules: deps.suiteRules, accountLimits, prFiles: deps.prFiles };
   const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? recheckedFrozen(deps.port, () => freeze.get(), holds, deps.now) };
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, versions: deps.versions, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
-  const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train, accountLimits) };
-  const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze, snapshot: deps.snapshot, pacing: deps.pacing, now: shepherdDeps.now, prFiles: deps.prFiles };
+  const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train, accountLimits, shadow.shadow) };
+  const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze, snapshot: deps.snapshot, pacing: deps.pacing, now: shepherdDeps.now, prFiles: deps.prFiles, gateway: deps.gateway, ...(deps.spawnGate && { reviewSlots: deps.spawnGate.reviewSlots }) };
   return Object.assign([...retryingGhServerErrors([...land, ...shepherd], { sleep: pause }), trainLeaveRoute(train, shepherdDeps.now), redeployRoute(shepherdDeps.now, deps.redeploy), ...auditRoutes(deps.audit ?? systemAuditPorts(ownCheckout()))], { database, shepherd: services });
 }
 
@@ -239,6 +247,8 @@ export function configuredSpawnLimits(shepherd: FactoryConfig["shepherd"]): Part
 
 /** The bin this bundle was built as: dist/bin.js sits beside the bundled routes. */
 const ownBin = (): string => fileURLToPath(new URL("./bin.js", import.meta.url));
+/** The post-merge chore wrapper, built beside bin.js as its own entry. */
+const ownChoreMain = (): string => fileURLToPath(new URL("./chore-main.js", import.meta.url));
 
 /**
  * The production route set: the post-merge chore and the reviewer come from the config file; the seat book is re-read per
@@ -260,11 +270,18 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const mainRed = configuredMainRed(shepherd, env, roster, gate);
   const exitNotice = agentChatBin ? configuredExitNotice(seats, agentChatAgents(agentChatBin, { roster }), shepherd?.hubSeat) : undefined;
   const redeploy = systemDeployer({ bin: ownBin(), stateDir: factoryStateDir(env) });
-  const port = overrides.port ?? githubPort(ghCliWire());
+  const client = sharedOctokit();
+  const port = overrides.port ?? githubPort(octokitWire({ client }));
   const pacing = tickPacing({ now: overrides.now });
   const snapshot = prSnapshot(port, { now: overrides.now, tickMs: pacing.tickMs });
+  const gateway = ghGateway({ client, snapshot, onCall: logGhCall });
   const pushes = pushSignal((repo) => boundCheckout(seats(), repo, repos()));
-  return factoryRoutesFor({ port, snapshot, pushes, pacing, store, freeze, postMerge, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), advisory: stickyAdvisory(configuredAdvisory(env), advisoryFile(factoryStateDir(env))), ...overrides, seats });
+  const chores = systemChorePorts({ dir: join(factoryStateDir(env), "chores"), wrapper: [process.execPath, ownChoreMain()] });
+  return factoryRoutesFor({ port, snapshot, pushes, pacing, gateway, store, freeze, postMerge, chores, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), advisory: stickyAdvisory(configuredAdvisory(env), advisoryFile(factoryStateDir(env))), ...overrides, seats });
+}
+
+function logGhCall(line: GhCallLine): void {
+  console.warn(`shepherd: gh-call ${JSON.stringify(line)}`);
 }
 
 /** Each read takes the file afresh; no file reads as undefined, never as a map with no advisory repo in it. */

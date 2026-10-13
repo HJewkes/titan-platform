@@ -47,6 +47,10 @@ interface ActiveStepBase {
     iterKey: string;
     attempt: number;
     startedAt: string;
+    /** When this step's first attempt started, kept across retries and restarts; absent on older rows, read `startedAt`. */
+    firstStartedAt?: string;
+    /** How many restarts re-dispatched this step; they raise `attempt` but spend no retry budget. Absent reads as 0. */
+    restarts?: number;
     runnerRef?: string;
     /** Summed cost of this step's earlier failed attempts, so a resumed run still reports every attempt once. */
     priorUsage?: StepUsage;
@@ -191,6 +195,9 @@ interface RecoverableStepDispatchInput extends StepRunInput {
     executionId: string;
     requestKey: string;
     attempt: number;
+    /** When the step's first attempt started, so a wait resumed after a restart can keep its original deadline. */
+    firstStartedAt: string;
+    restarts: number;
 }
 interface StepDispatchAck {
     executionId: string;
@@ -487,6 +494,13 @@ type RestartRule = "repeat" | "park";
 interface RoutedStepInput extends StepRunInput {
     attempt: number;
     requestKey: string;
+    /**
+     * When the step's first attempt started; a restart keeps it, so a wait can resume its deadline. The runtime always
+     * sets it and `restarts`; they are optional so an input built by hand, as in a route's own test, still type-checks.
+     */
+    firstStartedAt?: string;
+    /** How many restarts re-dispatched this step; 0 on a first run and on ordinary retries. */
+    restarts?: number;
 }
 interface RouteRunner {
     run(input: RoutedStepInput): Promise<StepRunOutcome>;
@@ -496,6 +510,8 @@ interface StepRoute {
     match: string;
     runner: RouteRunner;
     onRestart: RestartRule;
+    /** Decides a step a restart interrupted, ahead of `onRestart`; a rejection parks the run. */
+    reconcile?(step: RecoverableActiveStep, signal: AbortSignal): Promise<StepReconcileOutcome>;
 }
 interface RoutedRunner extends RecoverableStepRunner {
     routeFor(stepId: string): StepRoute | undefined;
@@ -616,14 +632,16 @@ declare class WorkflowRuntime {
     private readonly reconcileTimeoutMs;
     private readonly now;
     private readonly baseDeps;
+    private isQuiesced;
     constructor(options: WorkflowRuntimeOptions);
-    /** `version` pins each new run to this definition; hydrate parks a run pinned to another one instead of replaying it. */
+    /** `version` pins new runs to this definition (hydrate parks a run pinned to another); `strictReplay` parks a replay that goes live with recorded results unread. */
     register(name: string, fn: WorkflowFn, options?: {
         version?: string;
         abandonsOrphan?: AbandonsOrphan;
+        strictReplay?: boolean;
     }): void;
     registered(): string[];
-    /** `options.onStart` commits with the run row, or its throw rolls the run back and nothing launches. */
+    /** `options.onStart` commits with the run row, or its throw rolls the run back; a quiesced runtime leaves the row unclaimed for its successor. */
     start(name: string, params?: Record<string, string>, options?: WorkflowStartOptions): string;
     /** `exclude` leaves those runs unclaimed this call, for a caller that is not yet sure they are its to drive. */
     hydrate(options?: {
@@ -637,6 +655,9 @@ declare class WorkflowRuntime {
     private finishFromSuccess;
     private settleRejection;
     shutdown(): void;
+    /** Stops admission for a planned handoff: live runs are released and new ones are left for the successor to drive. */
+    quiesce(): void;
+    quiesced(): boolean;
     private finish;
     status(runId: string): WorkflowRun | undefined;
     list(statuses?: readonly WorkflowRun["status"][]): WorkflowRun[];

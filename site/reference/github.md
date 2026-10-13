@@ -138,6 +138,23 @@ or classic protection when the rulesets require none) and drops the `unapproved`
 approval lives in Shepherd. `pr-context` lists no files past GitHub's 3,000-file cap and gives
 the count instead. A bad verb or ref prints usage and exits 64.
 
+Why CI failed comes from `titan-gh ci-failures`, in place of `gh run view --log-failed | grep`:
+
+```sh
+titan-gh ci-failures octo/widgets#42             # every failing Actions job at the head, at most 5
+# FAILED unit https://github.com/octo/widgets/actions/runs/9/job/7
+# first failure: FAIL  src/widget.test.ts > widget > renders
+# Test Files  1 failed | 3 passed (4)
+# last 20 lines: ...
+titan-gh ci-failures octo/widgets --job 7 --lines 40   # one job by its check run id
+titan-gh ci-failures octo/widgets#42 --json      # { repo, number, headSha, jobs, skipped }
+```
+
+It strips ANSI codes and Actions timestamps, then picks the first vitest failure line, the
+`Test Files` and `Tests` summary, any `ERROR: Coverage` or obsolete-snapshot line, and the log
+tail. A log with none of those prints the tail, marked unrecognised. A PR with no failing job
+prints `no failing Actions job at <head7>` and exits 0; bad arguments exit 2.
+
 The gate before a merge is `titan-gh premerge`. The caller owns verdicts and passes the head its
 approval named:
 

@@ -1,5 +1,5 @@
 import { fakeGitHub, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
-import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
+import { inProcessCaller, type JsonEnvelope } from "@titan-design/registry";
 import type { WorkflowDefinition } from "../definition.js";
 import type { FactoryHost, FactoryRoutes } from "../host.js";
 import { createFactoryRegistry, factoryContext } from "../registry.js";
@@ -8,6 +8,7 @@ import type { ShepherdPhases } from "../shepherd/phases.js";
 import { shepherdPrWorkflow } from "../shepherd/pr.js";
 import type { PackageRegistry } from "../shepherd/release.js";
 import type { SeatBook } from "../shepherd/seats.js";
+import type { SpawnGate } from "../shepherd/spawn-gate.js";
 import { shepherdStoreRef } from "../shepherd/store.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
@@ -40,6 +41,8 @@ export interface FixtureOptions {
   prFiles?: PrFilesRead;
   /** Wires a PR snapshot over the port on the fixture's clock, as `configuredRoutes` does. */
   snapshot?: boolean;
+  /** The spawn gate whose reviewer reading `/health` reports; absent means no gate. */
+  spawnGate?: SpawnGate;
 }
 
 /** A fake GitHub whose checks pass on every head, and the factory routes over it on a fake clock. */
@@ -60,13 +63,13 @@ export function shepherdFixture(options: FixtureOptions = {}): ShepherdFixture {
     ...(options.seats && { seats: () => options.seats! }),
     ...(options.prFiles && { prFiles: options.prFiles }),
     ...(options.snapshot && { snapshot: prSnapshot(port, { now: () => clock }) }),
+    ...(options.spawnGate && { spawnGate: options.spawnGate }),
   });
   return { fake, routes, workflows: [shepherdPrWorkflow(IDLE_PHASES), landPrWorkflow()] };
 }
 
 export async function callCommand<T>(host: FactoryHost, routes: FactoryRoutes, name: string, args: unknown): Promise<JsonEnvelope<T>> {
-  const { envelope } = await invokeCommand(createFactoryRegistry().get(name)!, args, factoryContext(host, routes));
-  return envelope as JsonEnvelope<T>;
+  return (await inProcessCaller(createFactoryRegistry(), () => factoryContext(host, routes))(name, args)) as JsonEnvelope<T>;
 }
 
 export function shepherdRuns(host: FactoryHost): string[] {

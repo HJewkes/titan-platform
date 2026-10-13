@@ -38,6 +38,7 @@ export class WorkflowRuntime {
   private readonly reconcileTimeoutMs: number;
   private readonly now: () => number;
   private readonly baseDeps: Omit<ContextDeps, "save" | "recovered">;
+  private isQuiesced = false;
 
   constructor(private readonly options: WorkflowRuntimeOptions) {
     this.store = new WorkflowRunStore(options.db, options.runTable);
@@ -59,33 +60,35 @@ export class WorkflowRuntime {
     };
   }
 
-  /** `version` pins each new run to this definition; hydrate parks a run pinned to another one instead of replaying it. */
-  register(name: string, fn: WorkflowFn, options: { version?: string; abandonsOrphan?: AbandonsOrphan } = {}): void {
+  /** `version` pins new runs to this definition (hydrate parks a run pinned to another); `strictReplay` parks a replay that goes live with recorded results unread. */
+  register(name: string, fn: WorkflowFn, options: { version?: string; abandonsOrphan?: AbandonsOrphan; strictReplay?: boolean } = {}): void {
     if (this.workflows.has(name)) throw new Error(`workflow already registered: ${name}`);
-    this.workflows.set(name, { ...registration(name, fn, options.version), abandonsOrphan: options.abandonsOrphan });
+    this.workflows.set(name, { ...registration(name, fn, options.version), abandonsOrphan: options.abandonsOrphan, strictReplay: options.strictReplay });
   }
 
   registered(): string[] {
     return [...this.workflows.keys()];
   }
-  /** `options.onStart` commits with the run row, or its throw rolls the run back and nothing launches. */
+  /** `options.onStart` commits with the run row, or its throw rolls the run back; a quiesced runtime leaves the row unclaimed for its successor. */
   start(name: string, params: Record<string, string> = {}, options: WorkflowStartOptions = {}): string {
     const workflow = this.workflows.get(name);
     if (!workflow) throw new Error(`unknown workflow: ${name}`);
     const run = newRun(randomUUID(), name, params, workflow.version);
-    const insert = this.options.db.transaction((): WorkflowRun => {
+    const insert = this.options.db.transaction((): WorkflowRun | null => {
       this.store.create(run);
-      const claimed = this.claim(run.id);
-      if (!claimed) throw new Error(`could not claim new workflow ${run.id}`);
+      const claimed = this.isQuiesced ? null : this.claim(run.id);
+      if (claimed === undefined) throw new Error(`could not claim new workflow ${run.id}`);
       options.onStart?.(run.id);
       return claimed;
     });
-    this.launch(insert.immediate(), workflow, new Map());
+    const claimed = insert.immediate();
+    if (claimed) this.launch(claimed, workflow, new Map());
     return run.id;
   }
 
   /** `exclude` leaves those runs unclaimed this call, for a caller that is not yet sure they are its to drive. */
   async hydrate(options: { exclude?: ReadonlySet<string> } = {}): Promise<string[]> {
+    if (this.isQuiesced) return [];
     const candidates = this.store.listByStatus(ACTIVE_STATUSES).filter((run) => !options.exclude?.has(run.id) && !this.held.has(run));
     const settled = await Promise.allSettled(candidates.map((run) => this.hydrateOne(run)));
     return settled.flatMap((result) => result.status === "fulfilled" && result.value ? [result.value] : []);
@@ -145,7 +148,7 @@ export class WorkflowRuntime {
     controller = new AbortController(),
     renewTimer = this.startRenewal(run, controller),
   ): void {
-    const deps: ContextDeps = { ...this.baseDeps, recovered, save: (value) => this.save(value) };
+    const deps: ContextDeps = { ...this.baseDeps, recovered, save: (value) => this.save(value), strictReplay: workflow.strictReplay === true };
     const ctx = new RunContext(run, deps, controller);
     const done = this.drive(run, workflow, ctx, controller);
     this.live.set(run.id, { ctx, controller, done, renewTimer });
@@ -202,6 +205,16 @@ export class WorkflowRuntime {
     this.live.clear();
   }
 
+  /** Stops admission for a planned handoff: live runs are released and new ones are left for the successor to drive. */
+  quiesce(): void {
+    this.isQuiesced = true;
+    this.shutdown();
+  }
+
+  quiesced(): boolean {
+    return this.isQuiesced;
+  }
+
   private finish(run: WorkflowRun, status: "completed" | "failed" | "cancelled", error: string | null): void {
     this.dropLive(run.id);
     run.status = status;
@@ -240,7 +253,7 @@ export class WorkflowRuntime {
     const run = live?.ctx.run ?? this.claim(runId);
     if (!run) {
       const current = this.store.get(runId);
-      if (current && isTerminal(current.status)) return;
+      if (current && !ACTIVE_STATUSES.includes(current.status)) return;
       throw new WorkflowNotOwnedError(runId);
     }
     run.status = "cancelling";
@@ -248,7 +261,7 @@ export class WorkflowRuntime {
     this.save(run);
     this.cancelGates(runId, reason);
     if (live) live.controller.abort(new WorkflowCancelledError(runId, reason));
-    else if (Object.keys(run.activeSteps).length === 0) this.finish(run, "cancelled", reason);
+    else if (!this.isQuiesced && Object.keys(run.activeSteps).length === 0) this.finish(run, "cancelled", reason);
     else this.release(run);
   }
 
@@ -311,9 +324,9 @@ export class WorkflowRuntime {
     }
   }
 
-  private release(run: WorkflowRun): void {
+  private release(run: WorkflowRun, fence = fenceOf(run)): void {
     try {
-      this.store.release(run, fenceOf(run));
+      this.store.release(run, fence);
     } catch (error) {
       if (!(error instanceof WorkflowOwnershipLostError)) throw error;
     }
@@ -348,20 +361,14 @@ export class WorkflowRuntime {
     const step = authoritative && Object.values(authoritative.activeSteps)[0];
     if (!originalFence || !authoritative?.owner || !sameFence(authoritative.owner, originalFence)) return;
     if (step) this.markRecovery(authoritative, step, "unknown", failure.message);
-    else {
-      parkForRecovery(authoritative, failure.message);
-    }
+    else parkForRecovery(authoritative, failure.message);
     try {
       const lease = this.leaseWindow();
       this.store.save(authoritative, originalFence, lease.leaseUntil, lease.at);
     } catch {
       // A later owner can reconcile the unchanged active intent.
     }
-    try {
-      this.store.release(authoritative, originalFence);
-    } catch (error) {
-      if (!(error instanceof WorkflowOwnershipLostError)) throw error;
-    }
+    this.release(authoritative, originalFence);
   }
 
   private leaseWindow(): { leaseUntil: string; at: string } {
@@ -372,8 +379,4 @@ export class WorkflowRuntime {
   private isoNow(): string {
     return timestampAt(this.now(), "now");
   }
-}
-
-function isTerminal(status: WorkflowRun["status"]): boolean {
-  return !ACTIVE_STATUSES.includes(status);
 }
