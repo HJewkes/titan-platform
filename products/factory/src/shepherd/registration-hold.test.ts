@@ -115,6 +115,36 @@ describe("the G10 hold Shepherd places at registration", () => {
     expect(unreadable.store.byRun("run-1")?.held).toBe(true);
   });
 
+  it("classes the PR normally when the file read fails once and then succeeds", async () => {
+    const r = rig([file("packages/x/src/a.ts", 900)]);
+    const listPrFiles = r.port.listPrFiles;
+    let reads = 0;
+    r.port = { ...r.port, listPrFiles: (repo, pr) => (++reads === 1 ? Promise.reject(new Error("server error")) : listPrFiles(repo, pr)) };
+
+    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-review: 900 changed lines");
+    expect(reads).toBe(2);
+  });
+
+  it("still fails closed when the file read fails twice, reading no third time", async () => {
+    const r = rig([file("packages/x/src/a.ts", 5)]);
+    let reads = 0;
+    r.port = { ...r.port, listPrFiles: () => (reads++, Promise.reject(new Error("server error"))) };
+
+    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: changed files unread at registration (Error)");
+    expect(reads).toBe(2);
+  });
+
+  it("does not re-read a file list cut short at GitHub's cap", async () => {
+    const r = rig([file("packages/x/src/a.ts", 5)]);
+    r.fake.prChangedFiles.set(1, 5000);
+    const listPrFiles = r.port.listPrFiles;
+    let reads = 0;
+    r.port = { ...r.port, listPrFiles: (repo, pr) => (reads++, listPrFiles(repo, pr)) };
+
+    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: changed files unread at registration (FileListTruncatedError)");
+    expect(reads).toBe(1);
+  });
+
   it("stacks a g10-adversary hold over a hold the run already has, which gates again once it is released", async () => {
     const r = rig([file("packages/authority/src/x.ts", 10)]);
     r.store.hold("run-1", "stalled: seat away; TP-1");

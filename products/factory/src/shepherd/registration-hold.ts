@@ -1,4 +1,4 @@
-import type { GitHubPort, PrFile, RepoSlug } from "@titan-design/github";
+import { FileListTruncatedError, type GitHubPort, type PrFile, type RepoSlug } from "@titan-design/github";
 import { classifyPr, DEFAULT_CLASS_RULES, type ClassRules } from "@titan-design/review-panel";
 import { SHEPHERD_ACTOR } from "./events.js";
 import { holdClassOf } from "./g10-release.js";
@@ -68,14 +68,24 @@ function reasonFor(files: readonly PrFile[], kind: string): string | undefined {
   return touches.includes("migration") ? "g10-review: store migration" : undefined;
 }
 
+/** A failed read is tried once more, since a transient error would otherwise cost a seat review; a list past the cap stays past it. */
+async function filesWithRetry(port: GitHubPort, target: HoldTarget, local: PrFilesRead): Promise<PrFile[]> {
+  try {
+    return await prFilesOf(port, target, local);
+  } catch (error) {
+    if (error instanceof FileListTruncatedError) throw error;
+    return prFilesOf(port, target, local);
+  }
+}
+
 /**
- * The G10 hold a PR needs at registration, adversary before review. A file list Shepherd cannot read whole (an API error or
- * a list past GitHub's cap) could hide any touch, so it takes the adversary class: failing closed means the seat reviews it.
- * Git's `-M` diff names a rename's old path as GitHub's list does, so both class a rename alike.
+ * The G10 hold a PR needs at registration, adversary before review. A file list Shepherd cannot read whole (an API error
+ * twice, or a list past GitHub's cap) could hide any touch, so it takes the adversary class: failing closed means the seat
+ * reviews it. Git's `-M` diff names a rename's old path as GitHub's list does, so both class a rename alike.
  */
 export async function g10HoldAt(port: GitHubPort, target: HoldTarget, local: PrFilesRead = localPrFiles): Promise<string | undefined> {
   try {
-    return reasonFor(await prFilesOf(port, target, local), target.kind);
+    return reasonFor(await filesWithRetry(port, target, local), target.kind);
   } catch (error) {
     return `${UNREAD_FILES_PREFIX}${error instanceof Error ? error.name : "error"})`;
   }
