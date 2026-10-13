@@ -28,8 +28,8 @@ export interface ServicePorts {
   isDirectory: (path: string) => boolean;
   /** The absolute file a bare binary name runs on this machine, or undefined when it is not on PATH. */
   which: (binary: string) => string | undefined;
-  /** The `/health` body, or null when nothing answers. */
-  health: (port: number) => Promise<Record<string, unknown> | null>;
+  /** The `/health` body, or null when nothing answers within `timeoutMs` (the port's own default when omitted). */
+  health: (port: number, timeoutMs?: number) => Promise<Record<string, unknown> | null>;
   mkdir: (dir: string) => void;
   writeFile: (path: string, text: string) => void;
   readFile: (path: string) => string | undefined;
