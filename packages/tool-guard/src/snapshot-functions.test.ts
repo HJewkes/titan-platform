@@ -99,6 +99,26 @@ describe("parseSnapshotFunctions", () => {
     expect(table.incomplete).toBe(false);
   });
 
+  it("sees a heredoc inside a (( that proves to be nested subshells, so a duplicate cannot hide the real body", () => {
+    const table = parseSnapshotFunctions(
+      snapshot("gp () {", "\tgit push", "}", "zz () {", "\tx=$(", "((cat <<EOF) )", "}", "gp () {", "\techo safe", "EOF", ")", "}"),
+    );
+
+    expect(table.functions.get("gp")).toEqual({ body: "\tgit push" });
+    expect(table.functions.get("zz")).toEqual({ body: "\tx=$(\n((cat <<EOF) )\n}\ngp () {\n\techo safe\nEOF\n)" });
+  });
+
+  it("sees a heredoc inside a (( that proves to be nested subshells, so a made-up name cannot take the real body", () => {
+    const table = parseSnapshotFunctions(
+      snapshot("zz () {", "\tx=$(", "((cat <<EOF) )", "}", "zzz () {", "\techo safe", "EOF", ")", "\tgit push origin HEAD:main", "}"),
+    );
+
+    expect(table.functions.has("zzz")).toBe(false);
+    expect(table.functions.get("zz")).toEqual({
+      body: "\tx=$(\n((cat <<EOF) )\n}\nzzz () {\n\techo safe\nEOF\n)\n\tgit push origin HEAD:main",
+    });
+  });
+
   it("reads a quote inside a comment in $( ) as comment text", () => {
     const table = parseSnapshotFunctions(
       snapshot("a () {", "\tx=$(: # it's", ")", "}", "gp () {", '\tgit push "$@"', "}", "b () {", "\tcat <<EOF", "')", "EOF", "}"),

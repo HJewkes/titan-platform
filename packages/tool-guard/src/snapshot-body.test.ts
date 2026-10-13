@@ -22,6 +22,7 @@ describe("snapshot body scan", () => {
     ["a shift inside (( ))", ["\t(( y = x << n ))", "\tif (( a << 1 )) && (( b <<2 ))"]],
     ["a zsh case pattern opening with ((", ["\t\t((add-|)fpath) cat <<EOF ;;", "}", "EOF"]],
     ["a zsh glob opening with (( inside [[ ]]", ["\t[[ $x = ((#i)http|ftp)* ]] && cat <<EOF", "}", "EOF"]],
+    ["a heredoc inside a (( that is nested subshells", ["\tx=$(", "((cat <<EOF) )", "}", "EOF", ")"]],
     ["a comment holding a quote inside $( )", ["\tx=$(: # it's", ")"]],
     ["a comment holding a quote inside backticks", ["\tx=`: # it's", "`"]],
   ])("is at top level after %s", (_name, lines) => {
@@ -38,6 +39,8 @@ describe("snapshot body scan", () => {
     ["an open parameter", ["\tx=${y:-"]],
     ["a heredoc with no delimiter", ["\tcat <<"]],
     ["a delimiter with an open quote", ["\tcat <<'EOF"]],
+    ["a (( that proves not to be arithmetic on a later line", ["\t((cat", ") )"]],
+    ["a heredoc opened inside a (( read again as code", ["\t((cat <<EOF) )"]],
   ])("is not at top level inside %s", (_name, lines) => {
     expect(topLevelAfter(...lines)).toBe(false);
   });

@@ -3,6 +3,8 @@ type Kind = "code" | "cmdsub" | "backtick" | "arith" | "param" | "dq" | "sq" | "
 interface Context {
   kind: Kind;
   depth: number;
+  /** Where an arithmetic context's `((` or `$((` stands, so it can be read again as code. */
+  origin?: { line: number; at: number };
 }
 
 interface Heredoc {
@@ -12,13 +14,18 @@ interface Heredoc {
 
 /**
  * Quote, substitution and heredoc state carried across the lines of one function body. It tracks only what can hold
- * verbatim text, not the full grammar: the guard's lexer rejects some zsh syntax that `typeset -f` prints.
+ * verbatim text, not the full grammar: the guard's lexer rejects some zsh syntax that `typeset -f` prints. Where it
+ * is unsure it sees a heredoc (zsh reads none from a one-line substitution): a body that runs long swallows a `}`
+ * and header, which the parser flags, while one cut short would let verbatim text pose as a function.
  */
 interface BodyScan {
   stack: Context[];
   pending: Heredoc[];
   reading: Heredoc[];
   broken: boolean;
+  line: number;
+  /** A `((` or `$((` at this index of the current line is read as code: it proved not to be arithmetic. */
+  codeAt: number;
 }
 
 const HEREDOC_STARTERS: ReadonlySet<Kind> = new Set(["code", "cmdsub", "backtick"]);
@@ -28,7 +35,7 @@ const WORD_START = new Set([" ", "\t", ";", "|", "&"]);
 const COMMAND_KEYWORDS = new Set(["if", "elif", "while", "until", "then", "do", "else", "!", "{", "time"]);
 
 export function newBodyScan(): BodyScan {
-  return { stack: [{ kind: "code", depth: 0 }], pending: [], reading: [], broken: false };
+  return { stack: [{ kind: "code", depth: 0 }], pending: [], reading: [], broken: false, line: 0, codeAt: -1 };
 }
 
 /** True when the next line starts outside every quote, substitution and heredoc. */
@@ -37,6 +44,8 @@ export function atTopLevel(scan: BodyScan): boolean {
 }
 
 export function scanLine(scan: BodyScan, line: string): void {
+  scan.line++;
+  scan.codeAt = -1;
   const heredoc = scan.reading[0];
   if (heredoc) {
     if ((heredoc.stripTabs ? line.replace(/^\t+/, "") : line) === heredoc.delimiter) scan.reading.shift();
@@ -84,7 +93,7 @@ function quoteOpener(scan: BodyScan, line: string, i: number): number | null {
 }
 
 function opener(scan: BodyScan, line: string, i: number): number | null {
-  if (line.startsWith("$((", i)) return push(scan, "arith", i + 3);
+  if (line.startsWith("$((", i) && i !== scan.codeAt) return pushArith(scan, i, i + 3);
   if (line.startsWith("$(", i)) return push(scan, "cmdsub", i + 2);
   if (line.startsWith("${", i)) return push(scan, "param", i + 2);
   if (line[i] !== "`") return null;
@@ -98,20 +107,39 @@ function paramStep(scan: BodyScan, c: string | undefined, i: number): number {
   return i + 1;
 }
 
-/** A lone `)` at depth 0 means the `((` was a zsh case pattern such as `((a|)b)`, not arithmetic. */
+function pushArith(scan: BodyScan, at: number, next: number): number {
+  scan.stack.push({ kind: "arith", depth: 0, origin: { line: scan.line, at } });
+  return next;
+}
+
 function arithStep(scan: BodyScan, line: string, i: number): number {
   const ctx = top(scan);
   if (line[i] === "(") ctx.depth++;
   else if (line[i] === ")" && ctx.depth > 0) ctx.depth--;
-  else if (line[i] === ")") return pop(scan, line[i + 1] === ")" ? i + 2 : i + 1);
+  else if (line[i] === ")") return line[i + 1] === ")" ? pop(scan, i + 2) : notArithmetic(scan, ctx, i);
   return i + 1;
+}
+
+/**
+ * A lone `)` at depth 0 means the `((` was nested subshells or a zsh case pattern such as `((a|)b)`, as zsh's
+ * cmd_or_math decides. The line is read again from the `((` as code, so a heredoc inside it is seen; when the `((`
+ * stood on an earlier line, that cannot be redone and the scan is broken.
+ */
+function notArithmetic(scan: BodyScan, ctx: Context, i: number): number {
+  pop(scan, i);
+  if (ctx.origin?.line !== scan.line) {
+    scan.broken = true;
+    return i + 1;
+  }
+  scan.codeAt = ctx.origin.at;
+  return ctx.origin.at;
 }
 
 function codeStep(scan: BodyScan, line: string, i: number): number {
   const ctx = top(scan);
   const c = line[i];
   const wordStart = i === 0 || WORD_START.has(line[i - 1] ?? "");
-  if (line.startsWith("((", i) && atCommandStart(line, i)) return push(scan, "arith", i + 2);
+  if (line.startsWith("((", i) && i !== scan.codeAt && atCommandStart(line, i)) return pushArith(scan, i, i + 2);
   // `typeset -f` drops comments from code, but substitution text is printed verbatim, comments and all.
   if (wordStart && c === "#" && ctx.kind !== "code") return line.length;
   if (c === "(") ctx.depth++;
