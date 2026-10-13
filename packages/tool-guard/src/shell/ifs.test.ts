@@ -298,7 +298,7 @@ describe("namesIfs", () => {
     "read -r line",
     "read -r -p 'Name: ' n",
     "declare -n R=target; R=x",
-    "echo $((i + 1)) ${x:-$y} ${s:2}",
+    "i=0; echo $((i + 1)) ${x:-$y} ${s:2}",
     "[[ $x == y ]]",
     "cd $dir",
     "cd .. && ls ./src",
@@ -336,20 +336,40 @@ describe("namesIfs", () => {
     });
 
     it.each([
+      ["a default assignment", "a=IF; : ${x:=${a}S=1}; let x"],
+      ["a plain default assignment", "a=IF; : ${x=${a}S=1}; let x"],
+      ["a zsh unconditional assignment", "a=IF; : ${x::=${a}S=1}; let x"],
+      ["a default assignment over a number", "x=0; a=IF; : ${x:=${a}S=1}; let x"],
+      ["read into REPLY", "a=IF; read <<< ${a}S=1; let REPLY"],
+      ["read into REPLY set to a number", "REPLY=0; a=IF; read <<< ${a}S=1; let REPLY"],
+      ["getopts into OPTARG", "a=IF; getopts a: o -a ${a}S=1; let OPTARG"],
+      ["the last argument in _", "a=IF; : ${a}S=1; let _"],
+      ["the last argument in _ under (( ))", "a=IF; : ${a}S=1; (( _ ))"],
+      ["BASH_REMATCH", "a=IF; [[ ${a}S=1 =~ .* ]]; let BASH_REMATCH"],
+      ["MAPFILE", "a=IF; mapfile <<< ${a}S=1; let MAPFILE"],
+      ["zsh MATCH", "a=IF; [[ ${a}S=1 =~ .* ]]; let MATCH"],
+      ["zsh reply", "reply=0; a=IF; read -A <<< ${a}S=1; let reply"],
+      ["a name the line never writes", "let x"],
+      ["a loop bound the lexer reads as a redirect", "for ((i = 0; i < n; i++)); do :; done"],
       ["read from a file", "read x < f; let x; git push $R"],
       ["read inside eval", "eval 'read x' < f; let x; git push $R"],
       ["a loop over run-time words", "for x in $(cat f); do let x; done"],
     ])("matches a value given by %s", (_form, line) => {
-      expect(namesIfs(line)).toBe(true);
+      expect(namesIfs(`${line}; R=origin1HEAD:main; git push origin $R`)).toBe(true);
     });
 
     it.each([
       "i=0; while (( i < 3 )); do i=$((i+1)); done; git push origin $R",
       "for i in 1 2 {3..5}; do echo $((i*2)); done; git push origin $R",
-      "s=abc; echo ${s:1} ${s:n}; git push origin $R",
-      "arr[0]=a; arr[1]=b; echo ${arr[1]} $((i + 1)); git push origin $R",
+      "n=2; s=abc; echo ${s:1} ${s:n}; git push origin $R",
+      "i=4; arr[0]=a; arr[1]=b; echo ${arr[1]} $((i + 1)); git push origin $R",
       "local x; let x=1; git push origin $R",
-    ])("does not match arithmetic over numbers or unwritten names: %s", (line) => {
+      "i=0; (( i++ )); git push origin $R",
+      "for ((i = 0; i < 3; i++)); do git push origin $R; done",
+      "printf '%s\\n' a b; git push origin \"${R:-origin}\" $((1 + 2))",
+      "git commit -m 'arr[i] and $((x))' && ulimit -n 1024 && git push origin $R",
+      "cat <<'EOF'\n$((x))\nEOF\ngit push origin $R",
+    ])("does not match arithmetic over numbers the line writes: %s", (line) => {
       expect(namesIfs(line)).toBe(false);
     });
   });

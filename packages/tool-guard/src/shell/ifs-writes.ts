@@ -40,10 +40,14 @@ export const ARITH_TESTS = new Set(["-eq", "-ne", "-lt", "-le", "-gt", "-ge"]);
  */
 const RUN_TIME_WRITE_RES = [/\$\(\([^]*[$`]/, /\$\{[^}:]*:(?![-=+?])[^}]*[$`]/, /\[[^\]]*[$`]/, /\$\{[=~^#+]*[!(]/];
 
-/** A command segment and whether it sits inside `(( ))`, where any run-time word is arithmetic text. */
+/**
+ * A command segment and whether it sits inside `(( ))`, where any run-time word is arithmetic text, as are the
+ * operators and operands the lexer reads there as redirects (`i < n`).
+ */
 export interface Segment {
   words: WordToken[];
   arith: boolean;
+  redirects: string[];
 }
 
 /**
@@ -59,18 +63,21 @@ export function mayWriteRunTimeName(tokens: readonly Token[]): boolean {
 export function segments(tokens: readonly Token[]): Segment[] {
   const out: Segment[] = [];
   let words: WordToken[] = [];
+  let redirects: string[] = [];
   let arith = false;
   let afterOpen = false;
   for (const t of tokens) {
     if (t.type === "word") words.push(t);
+    if (t.type === "redirect") redirects.push(`${t.fd ?? ""}${t.op}${t.target?.value ?? ""}`);
     if (t.type !== "op") continue;
-    out.push({ words, arith });
+    out.push({ words, arith, redirects });
     words = [];
+    redirects = [];
     if (t.value === ")") arith = false;
     else if (t.value === "(" && afterOpen) arith = true;
     afterOpen = t.value === "(";
   }
-  out.push({ words, arith });
+  out.push({ words, arith, redirects });
   return out;
 }
 

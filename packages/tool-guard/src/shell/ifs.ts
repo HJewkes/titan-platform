@@ -1,6 +1,6 @@
 import { INERT_BUILTINS, SHELL_BUILTINS } from "./builtins.js";
 import { type Scripts, scriptsOf, selectsStartupFile, tokenLists } from "./ifs-scripts.js";
-import { arithReadsWrittenValue } from "./ifs-arith.js";
+import { arithReadsUnknownValue } from "./ifs-arith.js";
 import { mayWriteRunTimeName } from "./ifs-writes.js";
 import { tokenize } from "./lexer.js";
 import type { Token, WordToken } from "./tokens.js";
@@ -26,15 +26,15 @@ const RELEX_DEPTH = 8;
 
 /**
  * Whether the text may write IFS: a word spells IFS once quotes, escapes, line continuations and `$'…'` are
- * removed and braces expanded (`declare I\\FS=,`, `read {I,}FS`), a write slot's name is built at run time
- * (`declare $a$b$c=,`, `read ?FS`), arithmetic reads a value the line writes (`x=$v; let x`), a script the walk
- * runs does any of these, or such a script is only known at run time. Where this model of bash runs out, it
- * answers true.
+ * removed and braces expanded (`declare I\FS=,`, `read {I,}FS`), a write slot's name is built at run time
+ * (`declare $a$b$c=,`, `read ?FS`), arithmetic reads a value that may not be a number (`x=$v; let x`, `let
+ * REPLY`), a script the walk runs does any of these, or such a script is only known at run time. Where this
+ * model of bash runs out, it answers true.
  */
 export function namesIfs(text: string): boolean {
   if (!text.includes("IFS") && !maySpellIfs(text) && !RUN_TIME_TEXT_RE.test(text)) return false;
   const lists = readLists(text, 0);
-  return lists === true || arithReadsWrittenValue(lists);
+  return lists === true || arithReadsUnknownValue(lists);
 }
 
 /**
