@@ -471,9 +471,11 @@ declare function isPassingConclusion(conclusion: string | null): boolean;
 declare function isPassing(run: CheckRun): boolean;
 declare function isSucceeded(run: CheckRun): boolean;
 /**
- * One head can carry several runs per name (a superseded run is `cancelled`); only the newest counts. Newest is the
- * latest `startedAt`; a run not yet started (null) is newer than any started one, so a queued rerun shadows an old
- * result and reads pending; a tie goes to the higher id, which GitHub assigns later.
+ * One head can carry several runs per name (a superseded run is `cancelled`); only the newest counts. A run with no
+ * start that has not completed is newest, so a queued rerun shadows an old result and reads pending. A completed run
+ * with no start has no age to compare, so it and any equal start order by id, which GitHub assigns at creation;
+ * otherwise the later `startedAt` is newer. The rule is applied per name, not pairwise, because a pairwise mix of id and
+ * start order is not transitive and would make the pick depend on the order the API lists runs in.
  */
 declare function latestPerName(runs: readonly CheckRun[]): CheckRun[];
 

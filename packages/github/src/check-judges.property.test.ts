@@ -192,9 +192,12 @@ function* sampledSnapshots(count: number, seed: number): Generator<Snapshot> {
 
 const headInput = (snapshot: Snapshot): HeadChecksInput => ({ headSha: HEAD, contexts: snapshot.rules.contexts, runs: snapshot.runs, requiredApps: snapshot.requiredApps });
 
-/** Slice b's documented divergence: an unstarted run now sorts newest, where the oracle sorted it oldest. */
+/**
+ * The documented divergence: the oracle sorted a null start oldest and broke null ties by id; now a queued run with
+ * no start is newest, even beside a completed one, and a completed one orders by id (TP-2465 b, TP-2714).
+ */
 function unstartedBesideStarted(runs: readonly CheckRun[]): boolean {
-  return runs.some((unstarted) => unstarted.startedAt === null && runs.some((other) => other.name === unstarted.name && other.startedAt !== null));
+  return runs.some((unstarted) => unstarted.startedAt === null && runs.some((other) => other !== unstarted && other.name === unstarted.name && (other.startedAt !== null || other.status === "completed")));
 }
 
 /** Collects mismatches instead of asserting per case, so one failure reports its first few cases, not 50k. */
@@ -226,11 +229,13 @@ describe("check judges against their origin/main oracles", () => {
     expect(mismatches(sampledSnapshots(20_000, 2465))).toEqual({ count: 0, first: [] });
   });
 
-  it("latestPerName diverges on the documented unstarted-run inputs, picking the unstarted run", () => {
+  it("latestPerName diverges only on the documented null-start inputs, where a picked null start is incomplete or the highest id", () => {
     const diverged = Array.from(sampledSnapshots(20_000, 2465), (snapshot) => snapshot.runs).filter((runs) => JSON.stringify(latestPerName(runs)) !== JSON.stringify(oracleLatestPerName(runs)));
 
     expect(diverged.length).toBeGreaterThan(0);
-    expect(diverged.every((runs) => latestPerName(runs).some((picked) => picked.startedAt === null) && unstartedBesideStarted(runs))).toBe(true);
+    const highestId = (picked: CheckRun, runs: readonly CheckRun[]) => runs.every((other) => other.name !== picked.name || other.id <= picked.id);
+    const pickJustified = (runs: readonly CheckRun[]) => latestPerName(runs).every((picked) => picked.startedAt !== null || picked.status !== "completed" || highestId(picked, runs));
+    expect(diverged.every((runs) => unstartedBesideStarted(runs) && pickJustified(runs))).toBe(true);
   });
 });
 

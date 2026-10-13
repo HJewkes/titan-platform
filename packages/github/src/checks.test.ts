@@ -31,6 +31,38 @@ describe("latestPerName", () => {
     expect(latestPerName([queued, stale])).toEqual([queued]);
   });
 
+  it("a completed success with no start does not hide a later started failure", () => {
+    const unstartedSuccess = { ...successRun("validate", 1), startedAt: null };
+    const failure = successRun("validate", 2, "2026-01-01T00:05:00Z", "failure");
+
+    expect(latestPerName([unstartedSuccess, failure])).toEqual([failure]);
+    expect(latestPerName([failure, unstartedSuccess])).toEqual([failure]);
+  });
+
+  it("a completed failure with no start is not hidden by an older started success", () => {
+    const success = successRun("validate", 1, "2026-01-01T00:05:00Z");
+    const unstartedFailure = { ...successRun("validate", 2, undefined, "failure"), startedAt: null };
+
+    expect(latestPerName([success, unstartedFailure])).toEqual([unstartedFailure]);
+    expect(latestPerName([unstartedFailure, success])).toEqual([unstartedFailure]);
+  });
+
+  it("a completed run with no start and the higher id is the newer run", () => {
+    const unstartedSuccess = { ...successRun("validate", 2), startedAt: null };
+    const failure = successRun("validate", 1, "2026-01-01T00:05:00Z", "failure");
+
+    expect(latestPerName([failure, unstartedSuccess])).toEqual([unstartedSuccess]);
+  });
+
+  it("a completed run with no start makes the whole name order by id, whatever order the API lists them in", () => {
+    const unstarted = { ...successRun("validate", 2), startedAt: null };
+    const earlyHighId = successRun("validate", 3, "2026-01-01T00:00:00Z", "failure");
+    const lateLowId = successRun("validate", 1, "2026-01-01T00:05:00Z");
+    const orders = [[earlyHighId, lateLowId, unstarted], [lateLowId, unstarted, earlyHighId], [unstarted, earlyHighId, lateLowId]];
+
+    expect(orders.map((runs) => latestPerName(runs)[0]?.id)).toEqual([3, 3, 3]);
+  });
+
   it("two unstarted runs tie to the higher id", () => {
     const queued = (id: number) => ({ ...successRun("validate", id), status: "queued", conclusion: null, startedAt: null });
 
