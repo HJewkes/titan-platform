@@ -11,13 +11,16 @@ export function newRegexScan(): RegexScan {
 }
 
 /**
- * Tracks `NAME=( … )` after `op` moved `s.depth`. Inside it bash accepts only words, newlines and the closing `)`;
- * any other operator ends the line in a syntax error. In arithmetic or a `=~` operand `NAME=(` only groups.
+ * Moves `s.depth` for the operator at `s.i` and tracks `NAME=( … )`. Inside it bash accepts only words, newlines and
+ * the closing `)`; any other operator ends the line in a syntax error. In arithmetic or a `=~` operand `NAME=(` only
+ * groups.
  */
-export function noteCompoundParen(s: LexState, op: string, inArithmetic: boolean): void {
+export function noteParen(s: LexState, op: string): void {
+  if (op === "(") s.depth++;
+  if (op === ")") s.depth--;
   if (s.compoundDepth !== -1 && op !== ")" && op !== "\n") throw new ParseError(`\`${op}\` inside a compound assignment ( … ) is a bash syntax error`);
   if (op === ")" && s.depth < s.compoundDepth) s.compoundDepth = -1;
-  if (op !== "(" || s.compoundDepth !== -1 || inArithmetic) return;
+  if (op !== "(" || s.compoundDepth !== -1 || s.i < s.arithEnd) return;
   const before = s.tokens[s.tokens.length - 1];
   if (before?.type === "word" && ASSIGNMENT_HEAD_RE.test(before.value) && regexDepth(s) === -1) s.compoundDepth = s.depth;
 }
@@ -32,7 +35,8 @@ export function refuseRedirect(s: LexState): void {
 /** The paren depth of the `=~` whose operand the tokens so far end inside, or -1. Scans each token once. */
 function regexDepth(s: LexState): number {
   const r = s.regex;
-  for (; r.scanned < s.tokens.length; r.scanned++) scanToken(r, s.tokens[r.scanned] as Token);
+  for (const t of s.tokens.slice(r.scanned)) scanToken(r, t);
+  r.scanned = s.tokens.length;
   return r.regexAt;
 }
 

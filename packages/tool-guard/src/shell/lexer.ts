@@ -1,7 +1,7 @@
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, sameSpend, spent } from "./arith-trials.js";
 import { backtickEnd, balancedEnd, type DollarOpener, dollarOpener, type NestedReaders, QUOTED_LITERAL_OPENERS } from "./balanced.js";
 import { dropJoins, joinedDollar, nextAfter, pastJoins, readAhead } from "./joins.js";
-import { newRegexScan, noteCompoundParen, refuseRedirect } from "./compound.js";
+import { newRegexScan, noteParen, refuseRedirect } from "./compound.js";
 import { nested } from "./nesting.js";
 import { ParseError, refusingAs, SplitParseError } from "./parse-error.js";
 import { readLineEnd } from "./procsub-heredoc.js";
@@ -155,12 +155,9 @@ function readBlank(s: LexState): void {
 /** A newline bash read inside a `((` span, arithmetic or reparsed as subshells, is not a line end and starts no heredoc body. */
 function readOperator(s: LexState, op: string, end: number): void {
   const inWholeSpan = s.i < s.wholeEnd;
-  const inArithmetic = s.i < s.arithEnd;
   endWord(s);
+  noteParen(s, op);
   s.i = end;
-  if (op === "(") s.depth++;
-  if (op === ")") s.depth--;
-  noteCompoundParen(s, op, inArithmetic);
   s.tokens.push({ type: "op", value: op });
   if (op === "\n" && !inWholeSpan) readLineEnd(s);
 }
