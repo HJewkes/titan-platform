@@ -39,6 +39,33 @@ describe("ifsFields matches bash 5's field splitting under a custom IFS", () => 
   });
 });
 
+describe("ifsFields treats \\r, \\f and \\v in IFS as whitespace, as bash 5.3 does", () => {
+  it.each(["\r", "\f", "\v"])("drops leading, internal and trailing runs of %j", (c) => {
+    expect(ifsFields([exp(`${c}a${c}${c}b${c}`)], c)).toEqual(["a", "b"]);
+    expect(ifsFields([exp(`${c}${c}git${c}push${c}${c}`)], c)).toEqual(["git", "push"]);
+  });
+
+  it.each(["\r", "\f", "\v"])("joins %j around a comma into one delimiter", (c) => {
+    expect(ifsFields([exp(`a${c},${c}b`)], `,${c}`)).toEqual(["a", "b"]);
+  });
+});
+
+describe("ifsFields keeps the field a quoted part makes, even an empty one", () => {
+  const quoted = (text: string): WordPart => ({ text, splits: false, quoted: true });
+
+  it.each<[string, string, WordPart[], string[]]>([
+    ['$v"" with v="a,"', ",", [exp("a,"), quoted("")], ["a", ""]],
+    ['""$e with an empty e', ",", [quoted(""), exp("")], [""]],
+    ['"$e" with an empty e', ",", [quoted("")], [""]],
+    ['$e"" with e=" a "', DEFAULT_IFS, [exp(" a "), quoted("")], ["a", ""]],
+    ['""$e with e=" a "', DEFAULT_IFS, [quoted(""), exp(" a ")], ["", "a"]],
+    ['""$e with e=",a"', ",", [quoted(""), exp(",a")], ["", "a"]],
+    ["an unquoted empty literal", ",", [lit(""), exp("")], []],
+  ])("%s", (_how, ifs, parts, fields) => {
+    expect(ifsFields(parts, ifs)).toEqual(fields);
+  });
+});
+
 describe("ifsFields under the default IFS", () => {
   it.each<[string, WordPart[], string[]]>([
     ["drops leading and trailing blanks", [exp("  push   origin  ")], ["push", "origin"]],
