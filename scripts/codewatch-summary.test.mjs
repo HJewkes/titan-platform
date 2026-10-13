@@ -75,6 +75,17 @@ describe("security slice flag", () => {
     expect(renderSummary(report)).toContain("### Security slice size unknown\n\nThe report has no size block");
     expect(annotations(report)).toEqual([expect.stringMatching(/^::warning title=Security slice size unknown::The report has no size block/)]);
   });
+
+  it("renders neither for a main push report with no baseline and no size block", () => {
+    const report = { ...readFixture("pr-report-clean.json"), base: null };
+
+    expect(renderSummary(report)).not.toContain("Security slice");
+    expect(annotations(report)).toEqual([]);
+  });
+
+  it("still warns for a missing report", () => {
+    expect(annotations(undefined)).toEqual([expect.stringMatching(/^::warning title=Security slice size unknown::/)]);
+  });
 });
 
 describe("summarizeFile", () => {

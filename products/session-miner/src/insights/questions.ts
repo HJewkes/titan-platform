@@ -27,6 +27,7 @@ import { defineInsight, isoTime, refuseSessionScope, utc, type AnyInsight } from
 import { readBrokerLog } from "./liveness-sources.js";
 import { priceCheck } from "./price-check.js";
 import { probes } from "./probes.js";
+import { qualityGuardrails } from "./quality-guardrails.js";
 import { roundTrips } from "./round-trips.js";
 import { seatGenerations } from "./seat-generations.js";
 import { toolAdoption } from "./tool-adoption.js";
@@ -192,3 +193,6 @@ export const AGENT_CHAT_QUESTIONS: readonly AnyInsight[] = [roundTrips, liveness
 
 /** Questions that read tool calls or results back from transcripts, probes among them; their own tests cover them. */
 export const TRANSCRIPT_QUESTIONS: readonly AnyInsight[] = [toolErrors, toolGaps, toolAdoption, probes];
+
+/** Questions over the whole graph that carry no session totals and refuse session filters, so the shared tests skip them. */
+export const GUARDRAIL_QUESTIONS: readonly AnyInsight[] = [qualityGuardrails];
