@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { classify } from "../classify.js";
 import type { ClassifyContext } from "../types.js";
+import { ParseError } from "./lexer.js";
 
 const REPO = "/home/you/projects/app";
 
@@ -28,9 +29,12 @@ describe("a spaced subscript assignment followed by an unplaceable form", () => 
     ["((", `${PUSH}; (( 1 ))`],
     ["))", `${PUSH} # ))`],
     ["a here-doc", `${PUSH}; cat <<E\nx\nE`],
-    ["an extglob opener", `${PUSH}; echo @(a|b)`],
   ])("still reads the push to main with %s after it", (_form, command) => {
     expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  });
+
+  it("does not hide the push behind an extglob opener after it: the line is refused", () => {
+    expect(() => spellings(`${PUSH}; echo @(a|b)`)).toThrow(ParseError);
   });
 
   it.each([

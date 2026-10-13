@@ -155,8 +155,9 @@ function readBlank(s: LexState): void {
 /** A newline bash read inside a `((` span, arithmetic or reparsed as subshells, is not a line end and starts no heredoc body. */
 function readOperator(s: LexState, op: string, end: number): void {
   const inWholeSpan = s.i < s.wholeEnd;
+  const glued = op === "(" && s.word ? s.word.value.slice(-1) : null;
   endWord(s);
-  noteParen(s, op);
+  noteParen(s, op, glued);
   s.i = end;
   s.tokens.push({ type: "op", value: op });
   if (op === "\n" && !inWholeSpan) readLineEnd(s);

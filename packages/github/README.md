@@ -54,6 +54,25 @@ body. Lists follow `Link: rel="next"` page by page, each page conditional on its
 only to `api.github.com`. One `RateBudget` per process (`sharedRateBudget`, or pass `budget`)
 reads `x-ratelimit-*`; below 500 remaining core calls, each call waits the time left until
 reset divided by the calls left. `jobLogTail(repo, jobId, lines)` reads an Actions job log.
+
+`octokitWire({ client?, appToken? })` is the same port for a long-running service, over Octokit
+instead of one `gh` process per call. `octokitRest(client)` implements the `Rest` interface
+with the same ETag cache, 304 rules and next-page guard. The client, `octokitClient()`, or
+`sharedOctokit()` for one per process, behaves like this:
+- It reads its token from `gh auth token`, holds it in memory only, and re-reads it once on a 401.
+- `@octokit/plugin-throttling` waits out `retry-after` and `x-ratelimit-reset` and spaces writes.
+  A GET is retried once when the wait is a minute or less. A write is never retried.
+- `@octokit/plugin-retry` retries 5xx answers on GET and HEAD only, so a write that may have
+  landed is never sent twice.
+- Errors carry the status and a redacted message, with no body and no token.
+- It has the same two guards as `restCaller`:
+  - Every call first acquires `sharedRateBudget`, or the client's `budget`, so below `RATE_FLOOR` remaining, calls spread over the time left.
+  - A GraphQL call fails after `GRAPHQL_TIMEOUT_MS` (30 s).
+
+`client.budget()` reports the last `x-ratelimit-*` window per lane (`rest`, `graphql`), and the
+cooldowns the throttle is still waiting out. `createCheckRun` posts as the App on its own
+client and throttle key. `appInstallationTokenOverHttp` mints the App's token over that path.
+`ghCliWire` stays as the wire for CLI processes such as `titan-gh`.
 `listOpenPrs(repo, headPrefix?)` lists open PRs; list rows carry no `behind` or
 `mergeableState`.
 
