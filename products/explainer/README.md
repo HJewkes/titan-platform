@@ -27,3 +27,6 @@ The map track (`map-state.ts`, `map-lints.ts`, `map-timeline.ts`) parses each be
 optional `visual.map_state`, lints it against the layout's ids, and compiles it to timed
 segments. A beat without `map_state` is off the map; the next map beat resumes where the map
 last was.
+
+`camera.ts` computes each beat's `camera/<beat>.json` station: a 16:9 box around the beat's
+focus boxes that keeps them above the 83 % caption line.
