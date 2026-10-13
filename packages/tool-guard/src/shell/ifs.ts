@@ -8,8 +8,8 @@ const DEFAULT_IFS = " \t\n";
 const LETTER_RANGE_RE = /(?:^|[^0-9-])\.\.|\.\.(?:[^0-9-]|$)/;
 /** Quoting a word's value may still hold, so an `eval` or `sh -c` text re-lexes to IFS. */
 const REQUOTED_RE = /[\\'"$]/;
-/** Text that may build a name at run time: an expansion, a backquote or a glob. */
-const RUN_TIME_TEXT_RE = /[$`?*[]/;
+/** Text that may build a name at run time (an expansion, a backquote, a glob, a brace) or source a file. */
+const RUN_TIME_TEXT_RE = /[$`?*[{]|source|(?:^|[\s;&|(])\.\s/;
 /** The walk's own nesting limit (`MAX_DEPTH` in commands.ts); past it the value counts as naming IFS. */
 const RELEX_DEPTH = 8;
 
