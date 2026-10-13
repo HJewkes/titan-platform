@@ -90,14 +90,16 @@ export interface SliceInput {
 }
 
 /**
- * Flags a slice over the cap when it is kind `security` or touches a security or authority path outside the generated
- * set. Advisory only, so an unreadable count flags nothing.
+ * Flags a slice over the cap when it is kind `security` or touches, or renames out of, a security or authority path
+ * outside the generated set. Advisory only, so an unreadable count flags nothing.
  */
 export function securitySliceFlag(input: SliceInput, rules: ClassRules = DEFAULT_CLASS_RULES): SliceFlag | undefined {
   const lines = changedLineCount(input.changedFiles, rules);
   if (lines === undefined || lines <= SECURITY_SLICE_LINES) return undefined;
   const guards = [...rules.security, ...rules.authority];
-  const guardPaths = input.changedFiles.filter((f) => !isGenerated(f, rules.generated) && matchesAny(f.path, guards)).map((f) => f.path);
+  const guardPaths = input.changedFiles
+    .filter((f) => !isGenerated(f, rules.generated))
+    .flatMap((f) => [f.path, f.previousPath].find((p) => p !== undefined && matchesAny(p, guards)) ?? []);
   if (input.kind !== "security" && guardPaths.length === 0) return undefined;
   return { lines, cap: SECURITY_SLICE_LINES, guardPaths };
 }
