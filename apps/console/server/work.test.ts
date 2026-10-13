@@ -5,6 +5,7 @@ import { activeWorkClient } from "./active-work.js";
 import { brokerReader } from "./broker.js";
 import { fixtureActiveWork, fixtureAnswer, type FixtureOptions } from "./fixtures.js";
 import { createConsoleRegistry, recordFirstPaint } from "./registry.js";
+import { shepherdReader } from "./shepherd.js";
 import { closedPort, startFakeDaemon, type FakeDaemon } from "./test-support.js";
 import { readInitiative, readNotes, readPortfolio, readRecord, searchRecords, type Portfolio } from "./work.js";
 
@@ -186,7 +187,7 @@ describe("the knowledge reads", () => {
 
 describe("an export", () => {
   const exported = async (options: FixtureOptions = {}) =>
-    createConsoleRegistry({ upstreams: [], agents: NO_AGENTS, sessions: NO_SESSIONS, inbox: { dir: "/nonexistent/inbox" }, rounds: { dir: "/nonexistent/rounds" }, activeWork: await fakeActiveWork(options), work: { excludePersonal: true } });
+    createConsoleRegistry({ upstreams: [], agents: NO_AGENTS, sessions: NO_SESSIONS, inbox: { dir: "/nonexistent/inbox" }, rounds: { dir: "/nonexistent/rounds" }, shepherd: shepherdReader(1), activeWork: await fakeActiveWork(options), work: { excludePersonal: true } });
 
   it("records the portfolio without the personal initiative", async () => {
     const snapshot = await recordFirstPaint(await exported());

@@ -63,6 +63,16 @@ describe("acceptExternalVerdict", () => {
     expect(acceptExternalVerdict({ ...target, external: SEAT.name }, SEAT, [said(SEAT, verdictAt("MERGE"), 2)])).toMatchObject({ kind: "verdict", verdict: "MERGE" });
   });
 
+  it("keeps the CI-policy line of an external MERGE, and has none when the reviewer wrote none", () => {
+    const external = { ...target, external: SEAT.name };
+
+    const weakened = acceptExternalVerdict(external, SEAT, [said(SEAT, `${verdictAt("MERGE")}CI-policy: weakened permissions, secrets\n`, 2)]);
+    const plain = acceptExternalVerdict(external, SEAT, [said(SEAT, verdictAt("MERGE"), 2)]);
+
+    expect(weakened).toMatchObject({ verdict: "MERGE", ciPolicy: { kind: "weakened", keys: ["permissions", "secrets"] } });
+    expect(plain).not.toHaveProperty("ciPolicy");
+  });
+
   it("is no verdict when a WAIT strictly follows a MERGE at the same head", () => {
     const messages = [said(SEAT, verdictAt("MERGE"), 2), said(SEAT, verdictAt("WAIT"), 3)];
 
