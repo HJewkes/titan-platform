@@ -9,7 +9,7 @@
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer as createHttpsServer, type Server as HttpsServer } from "node:https";
-import { createAdaptorServer, serve, type ServerType } from "@hono/node-server";
+import type { ServerType } from "@hono/node-server";
 import type { Hono } from "hono";
 import type { BaseContext } from "@titan-design/registry";
 import { isLoopbackHost, NonLoopbackBindError } from "./bind-guard.js";
@@ -17,6 +17,7 @@ import { EventHub } from "./events.js";
 import { watchTree, type TreeWatcher } from "./file-watch.js";
 import { DEFAULT_ALLOWED_HOSTS, createRequestGuard, type RequestGuardOptions } from "./guards.js";
 import { buildHttpApp, type EventLimits, type HttpAppOptions, type RpcBodyLimit } from "./http.js";
+import { holdUntil, listenOn, readyLatch, type ListenTarget, type ServeOptions } from "./listen-target.js";
 import { DEFAULT_DAEMON_PORT, daemonPaths, getProcessStartTime, isProcessAlive, pidFileModifiedAt, probeHealth, readPidFile, removePidFile, writePidFile, type DaemonPaths, type PidFileContents } from "./lifecycle.js";
 import { consoleLogger, type Logger } from "./logger.js";
 import type { McpServerOptions } from "./mcp.js";
@@ -246,38 +247,6 @@ function mcpHandler<Ctx extends BaseContext>(
   return (req, res) => handleMcpRequest(mcpOptions, guard, req, res);
 }
 
-interface ReadyLatch {
-  isOpen: () => boolean;
-  opened: Promise<void>;
-  open: () => void;
-}
-
-function readyLatch(): ReadyLatch {
-  let isOpen = false;
-  let resolve!: () => void;
-  const opened = new Promise<void>((r) => (resolve = r));
-  const open = (): void => {
-    isOpen = true;
-    resolve();
-  };
-  return { isOpen: () => isOpen, opened, open };
-}
-
-/**
- * Clients queued on an inherited socket while no process listened reach this one the moment
- * it listens, before the pid file exists. Holding them until it does turns what would be a 503
- * "starting" into a few more milliseconds of the wait they were already in.
- */
-function holdUntil(fetch: Hono["fetch"], opened: Promise<void>): Hono["fetch"] {
-  return async (...args) => {
-    await opened;
-    return fetch(...args);
-  };
-}
-
-/** An inherited socket, or the address to bind. */
-type ListenTarget = { fd: number } | { hostname: string; port: number };
-
 function listenTarget<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>, port: number): ListenTarget {
   return options.listenFd === undefined ? { hostname: options.host ?? DEFAULT_HOST, port } : { fd: options.listenFd };
 }
@@ -302,7 +271,6 @@ async function listenRemote(app: Hono, remote: RemoteListener, port: number, log
   return server;
 }
 
-type ServeOptions = Parameters<typeof serve>[0];
 type ServerFactory = Pick<ServeOptions, "createServer" | "serverOptions">;
 
 function bind(fetch: Hono["fetch"], target: ListenTarget, factory: ServerFactory = {}): { server: ServerType; bound: Promise<ServerType> } {
@@ -321,13 +289,6 @@ function bind(fetch: Hono["fetch"], target: ListenTarget, factory: ServerFactory
     server.on("error", onBindError);
   });
   return { server, bound };
-}
-
-function listenOn(options: ServeOptions, target: ListenTarget, onListening: () => void): ServerType {
-  if ("port" in target) return serve({ ...options, hostname: target.hostname, port: target.port }, onListening);
-  const server = createAdaptorServer(options);
-  server.listen({ fd: target.fd }, onListening);
-  return server;
 }
 
 function boundPortOf(server: ServerType, requested: number): number {
