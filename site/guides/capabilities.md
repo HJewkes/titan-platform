@@ -511,7 +511,7 @@ Key exports:
 - `ci-verdict`: `ciVerdict`, `loadRequiredContexts`
 - `ci-wait`: `ciWait`
 - `readiness`: `headCheckFindings`, `mergeReadiness`
-- +98 more in the [reference page](/reference/github)
+- +100 more in the [reference page](/reference/github)
 
 <a id="cap-health"></a>
 
