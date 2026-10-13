@@ -20,7 +20,7 @@ function buildSha(): string {
 }
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/bin.ts"],
+  entry: ["src/index.ts", "src/bin.ts", "src/chore-main.ts"],
   format: ["esm"],
   dts: { entry: "src/index.ts" },
   clean: true,
