@@ -159,6 +159,7 @@ graph TD
   factory --> agentDispatch
   factory --> appPaths
   factory --> authority
+  factory --> coordinator
   factory --> daemon
   factory --> fixProof
   factory --> github
