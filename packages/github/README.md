@@ -32,7 +32,8 @@ relative, with no `.`, `..` or empty segment and no `?` or `#`. A bad value thro
 
 `requiredChecks` reads the branch's active rulesets (`rules/branches/<base>`), never a
 hardcoded list. `latestCheckRuns` keeps the newest run per check name, because one head can
-carry a success and a later superseded `cancelled` run. `behind` comes from the compare API.
+carry a success and a later superseded `cancelled` run; a run with no start is ordered by id
+unless it is still queued, which makes it newest. `behind` comes from the compare API.
 `mergeReadiness` (and `headCheckFindings` under it) is the one rule for whether a required check
 passed: a required name needs a completed `success` run, so a `skipped` or `neutral` run, or no run
 at all, never passes.

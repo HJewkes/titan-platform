@@ -1,16 +1,16 @@
 import { RESULT_PREFIX, parseResultLine, type FixProofResult } from "@titan-design/fix-proof";
 import { GITHUB_ACTIONS_APP_ID, PR_FILES_CAP, type CheckRun, type GitHubPort, type PrFile, type RepoSlug } from "@titan-design/github";
-import type { StepRoute } from "@titan-design/workflow";
+import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { CHECKS_RECHECK_MS } from "../workflows/await-head.js";
 import { deadline, type DeadlineTiming } from "../workflows/deadline.js";
-import { codeRoute } from "../workflows/land.js";
+import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 
-export const FIX_PROOF_STEP = "sh-fix-proof";
+const FIX_PROOF_STEP = "sh-fix-proof";
 export const FIX_PROOF_STEPS: readonly StepDeclaration[] = [{ id: FIX_PROOF_STEP, kind: "dispatch" }];
 export const FIX_PROOF_CHECK = "fix-proof";
 /** The judge sits behind `needs:` on these jobs, so GitHub creates it only after both have finished. */
@@ -250,6 +250,19 @@ export async function readFixProof(deps: Pick<ShepherdDeps, "port" | "store">, r
 
 export const fixProofRoute = (deps: ShepherdDeps): StepRoute =>
   codeRoute(FIX_PROOF_STEP, deps.now, (input: unknown, signal, clock) => readFixProof(deps, input, { now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs, startedAt: clock.firstStartedAtMs }, signal));
+
+/**
+ * The head's fix-proof read, taken once more when it failed (TP-2660 b), so a transient read error is not the head's standing.
+ * Only the round's first read is retried, and a replay whose record took another step after that read keeps the one read.
+ */
+export async function readFixProofAt(ctx: WorkflowContext, target: { repo: string; head: string }): Promise<z.infer<typeof FixProofReadSchema>> {
+  const stepId = `${FIX_PROOF_STEP}:${target.head}`;
+  const input = { repo: target.repo, head: target.head, runId: ctx.runId };
+  const first = await step(ctx, stepId, input, FixProofReadSchema);
+  const next = ctx.historyNext();
+  const rereads = first.kind === "error" && ctx.iteration(stepId) <= 1 && (next === undefined || next === stepId);
+  return rereads ? step(ctx, stepId, input, FixProofReadSchema) : first;
+}
 
 /** A vacuous or test-less proof at `head` is NO_REPRO, carrying the parsed result; anything else lets the review proceed. */
 export function fixProofVerdict(read: z.infer<typeof FixProofReadSchema>, head: string): Extract<Verdict, { kind: "NO_REPRO" }> | undefined {

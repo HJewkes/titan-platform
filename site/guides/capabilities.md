@@ -301,12 +301,12 @@ Tier 0, `@titan-design/evidence@0.2.1`. Citation verification, overlap grouping,
 
 Key exports:
 
-- `line-source`: `LineSource`, `lineSourceFromTexts`, `splitLines`
+- `line-source`: `lineSourceFromTexts`, `splitLines`
 - `citation`: `quoteFragments`, `quoteInRange`, `verifyCitation`
+- `anchor`: `isFullSha`, `parseAnchor`
 - `overlap`: `groupByOverlap`, `rangesOverlap`
 - `controls`: `pickControls`, `placeControls`, `scoreControls`
-- `seeded`: `seededRandom`
-- +12 more in the [reference page](/reference/evidence)
+- +21 more in the [reference page](/reference/evidence)
 
 <a id="cap-fix-proof"></a>
 
@@ -508,11 +508,10 @@ Key exports:
 - `port`: `FileListTruncatedError`, `GitHubConflictError`, `githubPort`
 - `write-read-back`: `WriteRetriesExhaustedError`
 - `force-pushes`: `ForcePushesTruncated`
-- `checks`: `isPassing`, `latestPerName`
+- `checks`: `isPassing`, `isPassingConclusion`, `isSucceeded`, `latestPerName`
 - `ci-verdict`: `ciVerdict`, `loadRequiredContexts`
 - `ci-wait`: `ciWait`
-- `readiness`: `headCheckFindings`, `mergeReadiness`
-- +101 more in the [reference page](/reference/github)
+- +103 more in the [reference page](/reference/github)
 
 <a id="cap-health"></a>
 

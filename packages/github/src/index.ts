@@ -5,7 +5,7 @@ export type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 export type { ReviewComment } from "./review-comment.js";
 export type { ForcePush, ForcePushPage } from "./force-pushes.js";
 export { FORCE_PUSHES_CAP, ForcePushesTruncated } from "./force-pushes.js";
-export { isPassing, latestPerName } from "./checks.js";
+export { isPassing, isPassingConclusion, isSucceeded, latestPerName } from "./checks.js";
 export type { CiVerdict, CiVerdictInput } from "./ci-verdict.js";
 export { ciVerdict, loadRequiredContexts } from "./ci-verdict.js";
 export type { CiWaitOptions, CiWaitOutcome, CiWaitResult } from "./ci-wait.js";

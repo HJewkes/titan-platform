@@ -93,6 +93,7 @@ graph TD
   agentLifecycle --> storeSqlite
   codeGraph --> codeParser
   codeGraph --> embed
+  codeGraph --> evidence
   codeGraph --> retrieval
   codeGraph --> storeSqlite
   codeRead --> codeGraph
