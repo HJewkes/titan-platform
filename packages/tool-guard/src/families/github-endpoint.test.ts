@@ -36,6 +36,11 @@ describe("mayReachGitHubApi", () => {
     ['https://api\\.github.com/repos/"$R"/pulls/1/merge'],
     ['"api.github.com/repos/$R/pulls/1/merge"'],
     ['"//api.github.com/repos/$R/pulls/1/merge"'],
+    ['"https://example.com\\@api.github.com/repos/$R/pulls/1/merge"'],
+    ["'http:\\\\api.github.com/repos/'\"$R\"'/pulls/1/merge'"],
+    ["'https:\\\\api.github.com/repos/'\"$R\"'/pulls/1/merge'"],
+    ['"https://api.github.com\\x/repos/$R/pulls/1/merge"'],
+    ['"https://example.com\\x/$P"'],
   ])("a URL whose host or GitHub API path is known only at run time may reach GitHub: %s", (url) => {
     expect(mayReachGitHubApi(urlWord(url))).toBe(true);
   });
