@@ -37,10 +37,21 @@ interface CascadeDeps {
 
 type ChildCascade = { pr: number; outcome: "updated" } | { pr: number; outcome: "conflict"; reason: string } | { pr: number; outcome: "skipped"; detail: string };
 
+/**
+ * A parent stacks children only from an open same-repo head branch other than the default branch: a fork's branch name, or
+ * the default branch, is the base of unrelated PRs, which must never be updated or woken for it.
+ */
+async function stacksChildren(deps: CascadeDeps, input: CascadeInput, open: readonly PullRequest[], sameRepo: (pr: PullRequest) => boolean): Promise<boolean> {
+  const parent = open.find((pr) => pr.number === input.parentPr);
+  if (parent === undefined || !sameRepo(parent) || parent.headRef !== input.parentHeadRef) return false;
+  return input.parentHeadRef !== (await deps.port.defaultBranch(input.repo));
+}
+
 /** A child is stacked on the parent when its base is the parent's head branch in the same repo; a fork's PR is never updated. */
 async function stackedChildren(deps: CascadeDeps, input: CascadeInput): Promise<PullRequest[]> {
   const open = deps.snapshot ? await deps.snapshot.openPrs(input.repo) : await deps.port.listOpenPrs(input.repo);
   const sameRepo = (pr: PullRequest) => pr.headRepo?.toLowerCase() === input.repo.toLowerCase();
+  if (!(await stacksChildren(deps, input, open, sameRepo))) return [];
   return open.filter((pr) => pr.baseRef === input.parentHeadRef && pr.number !== input.parentPr && sameRepo(pr));
 }
 

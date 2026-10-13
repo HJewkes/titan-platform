@@ -15,6 +15,8 @@ interface Stack {
   fake: FakeGitHub;
   parent: number;
   children: number[];
+  /** A same-repo PR on the default branch, behind it, so any update-branch it took would land. */
+  unrelated: number;
   wakes: ChildWake[];
   run: (input?: Partial<CascadeInput>) => ReturnType<typeof cascadeStack>;
 }
@@ -23,11 +25,11 @@ function stack(childCount: number): Stack {
   const fake = fakeGitHub({ repo: REPO });
   const parent = fake.addPr({ headSha: NEW_HEAD, headRef: PARENT_BRANCH }).number;
   const children = Array.from({ length: childCount }, (_, i) => fake.addPr({ headSha: fakeSha(`child-${i}`), headRef: `agent-chat/child-${i}`, baseRef: PARENT_BRANCH, behind: true }).number);
-  fake.addPr({ headSha: fakeSha("unrelated"), headRef: "agent-chat/unrelated" });
+  const unrelated = fake.addPr({ headSha: fakeSha("unrelated"), headRef: "agent-chat/unrelated", behind: true }).number;
   const wakes: ChildWake[] = [];
   const deps = { port: githubPort(fake.wire), wakeChild: async (wake: ChildWake) => void wakes.push(wake) };
   const base: CascadeInput = { repo: REPO, parentPr: parent, parentHeadRef: PARENT_BRANCH, previousHead: OLD_HEAD, newHead: NEW_HEAD };
-  return { fake, parent, children, wakes, run: (input = {}) => cascadeStack(deps, { ...base, ...input }) };
+  return { fake, parent, children, unrelated, wakes, run: (input = {}) => cascadeStack(deps, { ...base, ...input }) };
 }
 
 describe("cascadeStack", () => {
@@ -65,6 +67,35 @@ describe("cascadeStack", () => {
 
     expect(await s.run()).toEqual([]);
     expect(s.fake.calls).not.toContain("updateBranch");
+  });
+
+  it("a fork's PR based on the parent's branch name takes no update-branch", async () => {
+    const s = stack(1);
+    const fork = s.fake.addPr({ headSha: fakeSha("fork-child"), headRef: "agent-chat/fork-child", headRepo: "someone/fork", baseRef: PARENT_BRANCH, behind: true });
+
+    const results = await s.run();
+
+    expect(results).toEqual([{ pr: s.children[0], outcome: "updated" }]);
+    expect(s.fake.pr(fork.number).headSha).toBe(fork.headSha);
+    expect(s.fake.effects.updateBranch).toBe(1);
+  });
+
+  it("a parent from a fork cascades nothing, though same-repo PRs name its branch as their base", async () => {
+    const s = stack(2);
+    s.fake.pr(s.parent).headRepo = "someone/fork";
+
+    expect(await s.run()).toEqual([]);
+    expect(s.fake.calls).not.toContain("updateBranch");
+    expect(s.wakes).toEqual([]);
+  });
+
+  it("a parent whose head branch is the default branch cascades nothing to the PRs based on it", async () => {
+    const s = stack(0);
+    Object.assign(s.fake.pr(s.parent), { headRef: "main", baseRef: "release" });
+
+    expect(await s.run({ parentHeadRef: "main" })).toEqual([]);
+    expect(s.fake.calls).not.toContain("updateBranch");
+    expect(s.fake.pr(s.unrelated).behind).toBe(true);
   });
 
   it("a head equal to the last one seen cascades nothing", async () => {
