@@ -1,5 +1,5 @@
 import { ARITH_BUILTINS } from "./builtins.js";
-import { ARITH_TESTS, isRunTime, segments, splitCommand, TESTS, type Segment } from "./ifs-writes.js";
+import { ARITH_TESTS, expandedTexts, isRunTime, segments, splitCommand, TESTS, type Segment } from "./ifs-writes.js";
 import { DECLARERS, NAMEREF_DECLARERS, nameSlots } from "./name-slots.js";
 import type { Token, WordToken } from "./tokens.js";
 import { ASSIGNMENT_RE } from "./vars.js";
@@ -28,8 +28,6 @@ const SUBSCRIPT_RE = /(?<=[A-Za-z_]\w*)\[[^\]]*\]?/g;
 const BARE_NAME_RE = /(?<![\w$])(?<!\$\{[#!]?)[A-Za-z_]\w*/g;
 /** An assignment inside arithmetic, which stores a number. */
 const ARITH_ASSIGN_RE = /(?<![\w$])([A-Za-z_]\w*)\s*=(?!=)/g;
-/** zsh's unbraced `$+name`, `$^name`, `$=name` and `$~name`, which bash leaves as text. */
-const ZSH_FLAGGED_RE = new RegExp(`\\$[#+^=~]*[+^=~]${PARAM}`);
 /** A `${N=…}`, `${N:=…}` or zsh `${N::=…}` expansion, under any opening flag, which assigns N whatever text follows. */
 const DEFAULT_ASSIGN_RE = new RegExp(`${BRACED_OPEN}([A-Za-z_]\\w*)(?:\\[[^\\]]*\\])*:{0,2}=`, "g");
 /** The name a `declare -n NAME=TARGET` operand binds to, which any write through NAME reaches with any value. */
@@ -77,7 +75,7 @@ interface Writes {
  */
 export function arithReadsUnknownValue(lists: readonly Token[][]): boolean {
   const all = lists.flatMap((list) => segments(list));
-  const expanded = [...all.flatMap(expandedTexts), ...lists.flatMap(heredocBodies)];
+  const expanded = all.flatMap(expandedTexts);
   const texts = [...all.flatMap(arithTexts), ...expanded.flatMap(expansionTexts)];
   const read = texts.flatMap((text) => text.match(BARE_NAME_RE) ?? []);
   if (read.length === 0) return false;
@@ -86,19 +84,6 @@ export function arithReadsUnknownValue(lists: readonly Token[][]): boolean {
   for (const text of texts) for (const [, name = ""] of text.matchAll(ARITH_ASSIGN_RE)) writes.numeric.add(name);
   for (const text of expanded) for (const [, name = ""] of text.matchAll(DEFAULT_ASSIGN_RE)) writes.other.add(name);
   return read.some((name) => !LINE_OWNED_RE.test(name) || SHELL_SET_NAMES.has(name) || !writes.numeric.has(name) || writes.other.has(name));
-}
-
-/**
- * Every word and redirect target the shell expands at run time; a quoted `'$((x))'` evaluates nothing. bash's lexer
- * reads zsh's `$+arr[x]` as literal text, so a word holding one counts whatever its quoting.
- */
-function expandedTexts({ words, targets }: Segment): string[] {
-  return [...words, ...targets].filter((w) => isRunTime(w) || ZSH_FLAGGED_RE.test(w.value)).map((w) => w.value);
-}
-
-/** An unquoted heredoc expands its body, arithmetic and `${x:=…}` included. */
-function heredocBodies(list: readonly Token[]): string[] {
-  return list.flatMap((t) => (t.type === "redirect" && t.body !== null && t.target?.quoted !== true ? [t.body] : []));
 }
 
 /** Sorts the segment's explicit writes by whether each stores a number. */

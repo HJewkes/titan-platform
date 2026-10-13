@@ -274,6 +274,13 @@ describe("namesIfs", () => {
     ["a redirect target's arithmetic", ": >/dev/null$(( $a$b=1 ))"],
     ["a dup target's arithmetic", ": >&$(( $a$b=1 ))"],
     ["a here-string's arithmetic", ": <<< $(( $a$b=1 ))"],
+    ["a heredoc body's arithmetic expansion", "a=IF; v=${a}S=1; : <<E\n$(( $v ))\nE"],
+    ["a heredoc body's $[ ]", "a=IF; v=${a}S=1; : <<E\n$[ $v ]\nE"],
+    ["a heredoc body's subscript", "a=IF; v=${a}S=1; arr=(ab); : <<E\n${arr[$v]}\nE"],
+    ["a heredoc body's substring offset", "a=IF; v=${a}S=1; s=abc; : <<E\n${s:$v}\nE"],
+    ["a heredoc body's indirect expansion", "arr=(ab); v=$(cat f); : <<E\n${!v}\nE"],
+    ["a tab-stripped heredoc body", "a=IF; v=${a}S=1; : <<-E\n\t$(( $v ))\n\tE"],
+    ["a heredoc body in a function", "a=IF; v=${a}S=1; f() { : <<E\n$(( $v ))\nE\n}; f"],
     ["source", "source ./env.sh"],
     ["dot", ". ./env.sh"],
     ["BASH_ENV before bash -c", "BASH_ENV=./f bash -c 'R=origin,HEAD:main; git push $R'"],
@@ -315,6 +322,11 @@ describe("namesIfs", () => {
     "cd $dir && ls *.ts",
     "mapfile -t lines < <(ls $d)",
     "unset -f my-func",
+    ": <<'E'\n$(( $v ))\nE",
+    ': <<"E"\n${arr[$v]}\nE',
+    ": <<\\E\n$(( $v ))\nE",
+    ": <<-'E'\n\t${s:$v}\n\tE",
+    "git commit -F - <<EOF\nfix: push $(git rev-parse --short HEAD) to ${R:-origin}\nEOF\ngit push origin $R",
   ])("does not match a write whose name is literal: %s", (line) => {
     expect(namesIfs(line)).toBe(false);
   });

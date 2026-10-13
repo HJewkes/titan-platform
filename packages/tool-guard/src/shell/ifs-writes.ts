@@ -1,6 +1,6 @@
 import { ARITH_BUILTINS, INERT_BUILTINS, SHELL_BUILTINS } from "./builtins.js";
 import { DECLARERS, nameSlots, NAMEREF_DECLARERS, WRITERS } from "./name-slots.js";
-import type { Token, WordToken } from "./tokens.js";
+import type { RedirectToken, Token, WordToken } from "./tokens.js";
 import { ASSIGNMENT_RE } from "./vars.js";
 
 /** Builtins that evaluate an argument as shell or arithmetic text, so a run-time argument may assign any name. */
@@ -40,16 +40,31 @@ export const ARITH_TESTS = new Set(["-eq", "-ne", "-lt", "-le", "-gt", "-ge"]);
  */
 const RUN_TIME_WRITE_RES = [/\$\(\([^]*[$`]/, /\$\{[^}:]*:(?![-=+?])[^}]*[$`]/, /\[[^\]]*[$`]/, /\$\{[=~^#+]*[!(]/];
 
+/** zsh's unbraced `$+name`, `$^name`, `$=name` and `$~name`, which bash's lexer leaves as literal text. */
+const ZSH_FLAGGED_RE = /\$[#+^=~]*[+^=~](?:[A-Za-z_]\w*|[@*#?$!-]|\d+)/;
+
 /**
  * A command segment and whether it sits inside `(( ))`, where any run-time word is arithmetic text, as are the
  * operators and operands the lexer reads there as redirects (`i < n`). `targets` are the redirect and here-string
- * words the shell expands, heredoc delimiters aside.
+ * words the shell expands, heredoc delimiters aside; `bodies` are the heredoc bodies it expands, `<<-` included.
  */
 export interface Segment {
   words: WordToken[];
   arith: boolean;
   redirects: string[];
   targets: WordToken[];
+  bodies: string[];
+}
+
+/**
+ * Every text of the segment the shell expands at run time: run-time words and redirect or here-string targets, and
+ * unquoted heredoc bodies. A quoted `'$((x))'` or `<<'E'` body evaluates nothing. bash's lexer reads zsh's
+ * `$+arr[x]` as literal text, so a word holding one counts whatever its quoting. Every scan for run-time writes,
+ * arithmetic and default assignments reads expanded text through this one function.
+ */
+export function expandedTexts({ words, targets, bodies }: Segment): string[] {
+  const expanded = [...words, ...targets].filter((w) => isRunTime(w) || ZSH_FLAGGED_RE.test(w.value));
+  return [...expanded.map((w) => w.value), ...bodies];
 }
 
 /**
@@ -64,27 +79,32 @@ export function mayWriteRunTimeName(tokens: readonly Token[]): boolean {
 
 export function segments(tokens: readonly Token[]): Segment[] {
   const out: Segment[] = [];
-  let segment: Segment = { words: [], arith: false, redirects: [], targets: [] };
+  let segment: Segment = { words: [], arith: false, redirects: [], targets: [], bodies: [] };
   let afterOpen = false;
   for (const t of tokens) {
     if (t.type === "word") segment.words.push(t);
-    if (t.type === "redirect") {
-      segment.redirects.push(`${t.fd ?? ""}${t.op}${t.target?.value ?? ""}`);
-      if (t.target && t.body === null) segment.targets.push(t.target);
-    }
+    if (t.type === "redirect") addRedirect(segment, t);
     if (t.type !== "op") continue;
     out.push(segment);
     const arith = t.value === ")" ? false : t.value === "(" && afterOpen ? true : segment.arith;
-    segment = { words: [], arith, redirects: [], targets: [] };
+    segment = { words: [], arith, redirects: [], targets: [], bodies: [] };
     afterOpen = t.value === "(";
   }
   out.push(segment);
   return out;
 }
 
-function segmentMayWrite({ words, arith, targets }: Segment): boolean {
+function addRedirect(segment: Segment, t: RedirectToken): void {
+  segment.redirects.push(`${t.fd ?? ""}${t.op}${t.target?.value ?? ""}`);
+  if (t.body === null) {
+    if (t.target) segment.targets.push(t.target);
+  } else if (t.target?.quoted !== true) segment.bodies.push(t.body);
+}
+
+function segmentMayWrite(segment: Segment): boolean {
+  const { words, arith, targets } = segment;
   if (arith) return [...words, ...targets].some(isRunTime);
-  if ([...words, ...targets].some(holdsRunTimeWrite)) return true;
+  if (expandedTexts(segment).some(holdsRunTimeWrite)) return true;
   const { command, args } = splitCommand(words);
   return command ? commandMayWrite(command, args) : false;
 }
@@ -160,8 +180,8 @@ function nameMayBeRunTime(w: WordToken): boolean {
   return NAME_BUILDER_RE.test(w.value.slice(0, end)) || w.refs.some((r) => r.start < end) || (w.cuts ?? []).some((c) => c.at <= end);
 }
 
-function holdsRunTimeWrite(w: WordToken): boolean {
-  return isRunTime(w) && RUN_TIME_WRITE_RES.some((re) => re.test(w.value));
+function holdsRunTimeWrite(text: string): boolean {
+  return RUN_TIME_WRITE_RES.some((re) => re.test(text));
 }
 
 export function isRunTime(w: WordToken): boolean {
