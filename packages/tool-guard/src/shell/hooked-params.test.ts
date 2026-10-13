@@ -5,8 +5,9 @@ import type { WordToken } from "./lexer.js";
 import { unwrap } from "./unwrap.js";
 
 const hooked = (line: string) => {
-  const cmd = unwrap(tokenize(line).filter((t): t is WordToken => t.type === "word"));
-  return cmd && writesHookedParam(cmd);
+  const words = tokenize(line).filter((t): t is WordToken => t.type === "word");
+  const cmd = unwrap(words);
+  return cmd && writesHookedParam(cmd, words);
 };
 
 describe("a command that writes a parameter the shell later runs", () => {
@@ -38,6 +39,17 @@ describe("a command that writes a parameter the shell later runs", () => {
     ["a default-assign expansion", ": ${PS4:=x}", "PS4"],
     ["a plain default-assign expansion", ": ${PS4=x}", "PS4"],
     ["a zsh array default-assign expansion", ": ${(A)module_path::=/tmp/m}", "module_path"],
+    ["a default-assign in another assignment's value", "X=${PS4:=x}", "PS4"],
+    ["a default-assign in a prefix assignment's value", "X=${PS4:=x} true", "PS4"],
+    ["a default-assign of an element", ": ${PS4[0]:='$(x)'}", "PS4"],
+    ["a plain default-assign of an element", ": ${PS4[0]=x}", "PS4"],
+    ["printf -v of an element", "printf -v PS4[0] x", "PS4"],
+    ["printf -v of an element, attached", "printf -vPS4[0] x", "PS4"],
+    ["zsh print -v of an element", "print -v PS4[1] x", "PS4"],
+    ["a nameref to an element", "declare -n R=PS4[0]", "PS4"],
+    ["export of a brace-expanded name", "export {P,}S4=x", "PS4"],
+    ["read of a brace-expanded name", "read {P,}S4", "PS4"],
+    ["read of a sequence-expanded name", "read PS{1..9}", "PS4"],
   ])("names it: %s", (_how, line, name) => {
     expect(hooked(line)).toBe(name);
   });
@@ -58,7 +70,20 @@ describe("a command that only reads or mentions a hooked name", () => {
     ["a longer name", "export PS5=x"],
     ["a nameref to a longer name", "declare -n R=PS44"],
     ["a default-assign of another name", ": ${X:=PS4}"],
+    ["a quoted default-assign in a commit message", "git commit -m 'set ${PS4:=x}'"],
+    ["a brace list that spells no hooked name", "read {a,b}"],
+    ["printf of a sequence", "printf '%s\\n' {1..5}"],
   ])("returns null: %s", (_how, line) => {
     expect(hooked(line)).toBeNull();
+  });
+});
+
+describe("a brace expansion too large to read", () => {
+  it("counts as a hooked write in a command that names what it writes", () => {
+    expect(hooked("read {1..5000}")).toBe("{1..5000}");
+  });
+
+  it("is ignored in a command that writes no named parameter", () => {
+    expect(hooked("echo {1..5000}")).toBeNull();
   });
 });
