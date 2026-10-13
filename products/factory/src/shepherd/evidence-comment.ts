@@ -102,6 +102,7 @@ export function evidenceComment(record: EvidenceRecord): string {
   const reason = gated ? ruleInWords(decision.rule) : decision.reason;
   const carried = record.carry ? [``, `Carried the MERGE reviewed at \`${record.carry.fromHead}\` by ${record.carry.rule ?? "tree-equal"} (merge-tree \`${record.carry.mergeTree}\`) to a head whose tree is \`${record.carry.headTree}\`.`] : [];
   const rule = decision.outcome === "allow" ? [] : ["", `Rule: ${ruleInWords(decision.rule)} (${decision.rule.table}/${decision.rule.rowId}).`];
+  const proof = record.proofUnverified === undefined ? [] : ["", `Fix-proof unverified at this head: ${record.proofUnverified}.`];
   const posted = { ...record, verdictLocator: locatorReference(record.verdictLocator) };
   return [
     evidenceMarker(record.head),
@@ -111,6 +112,7 @@ export function evidenceComment(record: EvidenceRecord): string {
     "",
     ...checksTable(record),
     ...rule,
+    ...proof,
     ...pathsSection(decision),
     "",
     "<details><summary>Machine evidence</summary>",
