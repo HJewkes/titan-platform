@@ -89,8 +89,8 @@ function tailWrite(tail: string, verb: string | null, fields: Fields): BranchRou
   if (tail === "") return defaultBranchWrite(verb, fields);
   if (/^\/contents(?:\/.*)?$/i.test(tail)) return contentsWrite(fields);
   if (/^\/merge-upstream$/i.test(tail)) return mergeUpstreamWrite(fields);
-  const branch = /^\/branches\/(.+)$/i.exec(tail);
-  return branch ? branchesWrite(branch[1] as string, fields) : null;
+  const rest = /^\/branches\/(.+)$/i.exec(tail)?.[1];
+  return rest === undefined ? null : branchesWrite(rest, fields);
 }
 
 /** An unsure path reads as the route its raw text loosely names, with the branch known only at run time. */

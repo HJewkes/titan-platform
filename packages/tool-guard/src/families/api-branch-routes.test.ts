@@ -143,6 +143,10 @@ describe("gh's run-time {branch} placeholder names an unknown branch", () => {
     ["POST", "repos/o/r/branches/feat/x/rename", "new_name={branch}", "rename", ["feat/x", null]],
     ["POST", "repos/o/r/merge-upstream", "branch={branch}", "merge-upstream", [null]],
     ["PATCH", "repos/o/r", "default_branch={branch}", "default-branch", [null]],
+    ["DELETE", "repos/o/r/branches/m:branch/protection", "", "protection", [null]],
+    ["DELETE", "repos/o/r/branches/:branch-1.0/protection", "", "protection", [null]],
+    ["POST", "repos/o/r/branches/:branch.x/rename", "new_name=feat/y", "rename", [null, "feat/y"]],
+    ["PUT", "repos/o/r/contents/x", "branch=m:branch", "contents", [null]],
   ])("%s %s %s reads as %s %j", (method, url, src, route, branches) => {
     expect(apiBranchRouteWrite(url, method, fields(src))).toEqual({ route, branches });
   });

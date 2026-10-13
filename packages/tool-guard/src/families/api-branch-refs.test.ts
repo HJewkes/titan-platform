@@ -90,6 +90,8 @@ describe("gh's run-time {branch} placeholder names an unknown branch", () => {
     ["PATCH", "repos/{owner}/{repo}/git/refs/heads/{branch}", ""],
     ["DELETE", "repos/:owner/:repo/git/refs/heads/:branch", ""],
     ["POST", "repos/o/r/git/refs", "ref=refs/heads/{branch} sha=x"],
+    ["PATCH", "repos/o/r/git/refs/heads/m:branch", ""],
+    ["POST", "repos/o/r/git/refs", "ref=refs/heads/m:branch sha=x"],
   ])("%s %s %s", (method, url, src) => {
     expect(apiBranchRefWrite(url, method, fields(src))).toEqual({ branches: [null] });
   });

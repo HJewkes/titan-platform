@@ -16,8 +16,11 @@ const GIT_REFS_RE = /(?:^|\/)repos\/[^/]+\/[^/]+\/git\/refs?(\/.*)?$/i;
 const HEADS_RE = /^\/heads\/(.+)$/i;
 const REF_KEY_RE = /^ref(?:\[\])?$/;
 
-/** gh fills `{branch}` (and `:branch` in an endpoint) with the checked-out branch, so the name is known only at run time. */
-const RUN_TIME_BRANCH_RE = /\{branch\}|(?:^|\/):branch(?:\/|$)/i;
+/**
+ * gh fills `{branch}` and `:branch` with the checked-out branch anywhere in an endpoint or `-F` value, unanchored
+ * (its own pattern is `:(owner|repo|branch)\b|\{[a-z]+\}`), so `m:branch` may be `main` at run time.
+ */
+const RUN_TIME_BRANCH_RE = /\{branch\}|:branch\b/i;
 
 /** A branch name as GitHub receives it; null when gh substitutes it at run time. */
 export const knownBranch = (name: string): string | null => (RUN_TIME_BRANCH_RE.test(name) ? null : name);
