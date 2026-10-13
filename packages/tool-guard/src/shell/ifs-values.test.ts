@@ -347,3 +347,28 @@ describe("lineIfsValues on PS4 spelled through subscripts, braces and attached o
     expect(values("IFS=,; read -r line; printf -v out %s x; declare -n r=a; r=1; set -x; git $A")).toEqual([DEFAULT_IFS, ","]);
   });
 });
+
+describe("lineIfsValues on IFS values the shell rewrites at run time", () => {
+  it.each([
+    ["a bare tilde", "IFS=~; $A"],
+    ["a tilde-plus", "cd /; IFS=~+; A=echo/gh/pr/merge/1; $A"],
+    ["a tilde after a colon", "IFS=a:~; $A"],
+    ["a tilde-minus in a for list", "for IFS in ~-; do $A; done"],
+    ["an exported tilde", "export IFS=~; $A"],
+    ["a glob in a for list", "for IFS in *; do $A; done"],
+    ["a brace list in a for list", "for IFS in {a,b}; do $A; done"],
+    ["a brace range in a for list", "for IFS in {1..3}; do $A; done"],
+    ["a zsh equals expansion", "IFS==ls; $A"],
+    ["a declared glob", "declare IFS=*; $A"],
+    ["a quoted tilde, whose quoting the tokens do not keep", "IFS='~'; $A"],
+  ])("gives null for %s", (_how, line) => {
+    expect(values(line)).toBeNull();
+  });
+
+  it.each([
+    ["a tilde inside the value", "IFS=a~; $A", ["a~"]],
+    ["a for list of plain separators", "for IFS in , : /; do $A; done", [",", ":", "/"]],
+  ])("resolves %s", (_how, line, expected) => {
+    expect(values(line)).toEqual([DEFAULT_IFS, ...expected]);
+  });
+});

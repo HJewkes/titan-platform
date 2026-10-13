@@ -5,6 +5,7 @@ import {
   arithmeticUnknown,
   type Assignment,
   declaresPs4Spelling,
+  declaresRewrittenIfs,
   dynamicDeclarationKnown,
   elementSubscript,
   feedsDynamicText,
@@ -21,6 +22,8 @@ import {
   possiblyPs4,
   printfTargetDynamic,
   readsTextByName,
+  rewritesAssignedValue,
+  rewritesWord,
   subscriptUnknown,
 } from "./ifs-words.js";
 import type { RedirectToken, Token, WordToken } from "./tokens.js";
@@ -255,6 +258,7 @@ function scanDeclarer(args: WordToken[], scan: Scan): void {
     if (!word.dynamic && declaresPs4Spelling(word)) return markUnknown(scan);
     if (word.dynamic && !dynamicDeclarationKnown(word)) return markUnknown(scan);
     if (word.dynamic) noteRuntimeAssignment(word, scan);
+    if (!word.dynamic && declaresRewrittenIfs(word)) return markUnknown(scan);
     if (!word.dynamic && word.value !== "IFS" && isAssignment(word.value)) scanAssignment(word, scan);
     else if (!word.dynamic && word.value !== "IFS" && possiblyIfs(word.value)) return markUnknown(scan);
   }
@@ -271,7 +275,8 @@ function scanFor(args: WordToken[], scan: Scan): void {
   const [variable, keyword, ...list] = args;
   if (list.some((word) => possiblyIfs(word.value))) return markUnknown(scan);
   if (!variable || !possiblyIfs(variable.value)) return;
-  if (literal(variable) !== "IFS" || literal(keyword) !== "in" || list.some((word) => word.dynamic)) return markUnknown(scan);
+  if (literal(variable) !== "IFS" || literal(keyword) !== "in") return markUnknown(scan);
+  if (list.some((word) => word.dynamic || rewritesWord(word.value))) return markUnknown(scan);
   for (const word of list) add(word.value, scan);
 }
 
@@ -286,7 +291,7 @@ function scanAssignment(word: WordToken, scan: Scan): void {
     if (word.dynamic) noteRuntimeAssignment(word, scan);
     return;
   }
-  if (!assignment.plain || word.dynamic) return markUnknown(scan);
+  if (!assignment.plain || word.dynamic || rewritesAssignedValue(assignment.value)) return markUnknown(scan);
   add(assignment.value, scan);
 }
 

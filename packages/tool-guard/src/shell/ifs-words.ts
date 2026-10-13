@@ -25,6 +25,14 @@ const STARTUP_FILE_RE = /^(?:BASH_ENV|ENV)\+?=/;
 /** Shell options that source an rc or profile file: `--rcfile`, `--init-file`, `--login`, `-i`, `-l`, `-lc`. */
 const SOURCING_OPTION_RE = /^(?:--(?:rcfile|init-file|login|interactive)\b|-[A-Za-z]*[il])/;
 
+/**
+ * An assignment value bash rewrites after the lexer: `~`, `~+` or `~-` at the start or after a `:`
+ * (`IFS=a:~`), and zsh's leading `=cmd`. Tokens keep no record of which characters were quoted.
+ */
+const ASSIGNED_REWRITE_RE = /(?:^|:)~|^=/;
+/** A command word is also globbed and brace-expanded: `*`, `?`, `[`, `{a,b}`, `{1..3}`, and zsh's `^` and `#`. */
+const WORD_REWRITE_RE = /^[~=]|[*?[^#]|\{[^}]*(?:,|\.\.)[^}]*\}/;
+
 export interface Assignment {
   name: string;
   plain: boolean;
@@ -38,6 +46,16 @@ export function possiblyIfs(text: string): boolean {
 
 export function possiblyPs4(text: string): boolean {
   return POSSIBLY_PS4_RE.test(text);
+}
+
+/** The shell may turn this IFS value into other text at run time, so its literal reading is not the value. */
+export function rewritesAssignedValue(text: string): boolean {
+  return ASSIGNED_REWRITE_RE.test(text);
+}
+
+/** As `rewritesAssignedValue`, for a `for IFS in` word or a declarer operand, which glob and brace-expand too. */
+export function rewritesWord(text: string): boolean {
+  return ASSIGNED_REWRITE_RE.test(text) || WORD_REWRITE_RE.test(text);
 }
 
 export function isOption(text: string): boolean {
@@ -105,6 +123,12 @@ export function isPrefixAssignment(word: WordToken | undefined): boolean {
 export function declaresPs4Spelling(word: WordToken): boolean {
   const name = parseAssignment(word.value)?.name ?? word.value;
   return name !== "PS4" && possiblyPs4(name);
+}
+
+/** `export IFS=~` or `declare IFS=*`: a declarer operand may be expanded like a word, not only like a value. */
+export function declaresRewrittenIfs(word: WordToken): boolean {
+  const assignment = parseAssignment(word.value);
+  return assignment?.name === "IFS" && rewritesWord(assignment.value);
 }
 
 /** `export PATH="$HOME/bin"` names its variable literally; `declare "${x}S=,"` does not. */
