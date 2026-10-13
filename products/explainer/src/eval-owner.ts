@@ -2,7 +2,7 @@ import { randomInt } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { deriveEvalView, type EvalBeat } from "./eval-view.js";
-import { appendTsv, freezeScript, scriptSha, type BenchLayout } from "./eval-store.js";
+import { appendTsv, freezeScript, type BenchLayout } from "./eval-store.js";
 import type { MapLayout } from "./map-state.js";
 import type { ScriptBeat, ScriptV1 } from "./script-schema.js";
 
