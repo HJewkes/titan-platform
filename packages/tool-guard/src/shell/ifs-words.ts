@@ -26,16 +26,19 @@ const STARTUP_FILE_RE = /^(?:BASH_ENV|ENV)\+?=/;
 const SOURCING_OPTION_RE = /^(?:--(?:rcfile|init-file|login|interactive)\b|-[A-Za-z]*[il])/;
 
 /**
- * An assignment value bash rewrites after the lexer: `~`, `~+` or `~-` at the start or after a `:`
- * (`IFS=a:~`), and zsh's `=cmd` at the start or after a `:` (`IFS=a:=ls`). Tokens keep no record of which
- * characters were quoted.
+ * An assignment value the shell rewrites after the lexer: `~`, `~+` or `~-` at the start or after a `:`
+ * (`IFS=a:~`), zsh's `=cmd` at the start or after a `:` (`IFS=a:=ls`), and a glob under zsh's `globassign`
+ * (`IFS=/e*`). Tokens keep no record of which characters were quoted.
  */
-const ASSIGNED_REWRITE_RE = /(?:^|:)[~=]/;
+const ASSIGNED_REWRITE_RE = /(?:^|:)[~=]|[*?[]/;
 /**
- * Declarer attributes that transform every value the variable takes, now or later: bash `-u -l -c -i`, `-a -A`
- * (an array IFS splits on its first element), and zsh's `-E -F -L -R -Z -T`. `+u` clears one; it reads the same.
+ * The only declarer options known to leave IFS's value as written: readonly, export and global, set or
+ * cleared, and `--`. Any other option may transform it (`-u`, `-i`, `-a`, zsh `-Z3`, `-L3`, `-R3`, `-E`).
  */
-const TRANSFORMING_OPTION_RE = /^[-+][A-Za-z]*[ulciaAEFLRZT]/;
+const SAFE_DECLARER_OPTION_RE = /^(?:[-+][rxg]+|--)$/;
+const OPTION_WORD_RE = /^[-+]./s;
+/** zsh's `integer` and `float` are `typeset -i` and `typeset -E` under another name. */
+const TRANSFORMING_DECLARERS = new Set(["integer", "float"]);
 /** A command word is also globbed and brace-expanded: `*`, `?`, `[`, `{a,b}`, `{1..3}`, and zsh's `^` and `#`. */
 const WORD_REWRITE_RE = /^[~=]|[*?[^#]|\{[^}]*(?:,|\.\.)[^}]*\}/;
 
@@ -64,10 +67,14 @@ export function rewritesWord(text: string): boolean {
   return ASSIGNED_REWRITE_RE.test(text) || WORD_REWRITE_RE.test(text);
 }
 
-/** `declare -u IFS` or `local -i IFS=0x2f`: IFS holds a transformed value, not the text assigned. */
-export function transformsIfs(args: WordToken[]): boolean {
-  const transforming = args.some((word) => !word.dynamic && isOption(word.value) && TRANSFORMING_OPTION_RE.test(word.value));
-  return transforming && args.some((word) => !isOption(word.value) && possiblyIfs(parseAssignment(word.value)?.name ?? word.value));
+/**
+ * `declare -u IFS`, `local -i IFS=0x2f` or zsh `typeset -Z3 IFS=1`: IFS may hold a transformed value, not the
+ * text assigned. Only an allowlist of options counts as safe, so an unknown or attached-width option fails closed.
+ */
+export function transformsIfs(command: string, args: WordToken[]): boolean {
+  const options = args.filter((word) => OPTION_WORD_RE.test(word.value));
+  const unsafe = TRANSFORMING_DECLARERS.has(command) || options.some((word) => word.dynamic || !SAFE_DECLARER_OPTION_RE.test(word.value));
+  return unsafe && args.some((word) => !OPTION_WORD_RE.test(word.value) && possiblyIfs(parseAssignment(word.value)?.name ?? word.value));
 }
 
 /** `IFS=(a b)`: an array IFS splits on its first element, which this scan does not read. */

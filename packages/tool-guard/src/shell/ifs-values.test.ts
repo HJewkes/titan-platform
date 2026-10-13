@@ -419,3 +419,37 @@ describe("lineIfsValues on single glob characters in a for list", () => {
     expect(values(line)).toBeNull();
   });
 });
+
+describe("lineIfsValues on declarer options outside the safe set", () => {
+  it.each([
+    ["zsh zero padding with an attached width", "typeset -Z3 IFS=1; $A"],
+    ["an attached width declared before the value", "typeset -Z3 IFS; IFS=1; $A"],
+    ["zsh left padding with an attached width", "typeset -L3 IFS=x; $A"],
+    ["zsh right padding with an attached width", "typeset -R3 IFS=x; $A"],
+    ["an option mixing safe and unsafe letters", "declare -xu IFS=x; $A"],
+    ["an unknown option letter", "declare -q IFS=x; $A"],
+    ["zsh integer", "integer IFS=2+2; $A"],
+    ["zsh float", "float IFS=1; $A"],
+  ])("gives null for %s", (_how, line) => {
+    expect(values(line)).toBeNull();
+  });
+
+  it.each([
+    ["a global export", "declare -gx IFS=,; $A"],
+    ["a cleared export", "declare +x IFS=,; $A"],
+    ["an end of options", "declare -- IFS=,; $A"],
+  ])("resolves %s", (_how, line) => {
+    expect(values(line)).toEqual([DEFAULT_IFS, ","]);
+  });
+});
+
+describe("lineIfsValues on glob characters in an IFS value", () => {
+  it.each([
+    ["a star under zsh globassign", "IFS=/e*; $A"],
+    ["a question mark", "IFS=a?; $A"],
+    ["an open bracket", "IFS=[ab]; $A"],
+    ["an exported glob", "export IFS=x*; $A"],
+  ])("gives null for %s", (_how, line) => {
+    expect(values(line)).toBeNull();
+  });
+});

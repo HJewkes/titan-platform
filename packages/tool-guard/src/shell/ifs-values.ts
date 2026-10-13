@@ -37,7 +37,7 @@ export const DEFAULT_IFS = " \t\n";
 const MAX_RESCAN = 2;
 const RESERVED = new Set(["!", "{", "}", "if", "then", "elif", "else", "fi", "while", "until", "do", "done", "time"]);
 const PREFIXES = new Set(["command", "builtin"]);
-const DECLARERS = new Set(["local", "export", "declare", "typeset", "readonly"]);
+const DECLARERS = new Set(["local", "export", "declare", "typeset", "readonly", "integer", "float"]);
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "mksh"]);
 /** Builtins that write a variable named by an operand; a dynamic operand may name IFS. */
 const NAME_WRITERS = new Set(["read", "mapfile", "readarray", "getopts", "wait", "let", "select"]);
@@ -208,7 +208,7 @@ function scanArgs(command: WordToken, args: WordToken[], input: boolean, depth: 
   if (SHELLS.has(name.slice(name.lastIndexOf("/") + 1))) return input ? markUnknown(scan) : scanShell(args, depth, scan);
   if (RUNNERS.has(name) && (input || args.some((word) => word.dynamic))) return markUnknown(scan);
   noteCommandEffects(name, args, scan);
-  if (DECLARERS.has(name)) return scanDeclarer(args, scan);
+  if (DECLARERS.has(name)) return scanDeclarer(name, args, scan);
   if (name === "unset") return;
   if (name === "for") return scanFor(args, scan);
   if (NAME_WRITERS.has(name) && args.some((word) => word.dynamic)) return markUnknown(scan);
@@ -252,9 +252,9 @@ function scanShell(args: WordToken[], depth: number, scan: Scan): void {
   for (const word of args) if (!isOption(word.value)) rescan(word.value, depth, scan);
 }
 
-function scanDeclarer(args: WordToken[], scan: Scan): void {
+function scanDeclarer(name: string, args: WordToken[], scan: Scan): void {
   const nameref = args.some((word) => !word.dynamic && /^-[A-Za-z]*n/.test(word.value));
-  if (transformsIfs(args)) return markUnknown(scan);
+  if (transformsIfs(name, args)) return markUnknown(scan);
   for (const word of args) {
     if (!word.dynamic && isOption(word.value)) continue;
     if (nameref && (word.dynamic || possiblyIfs(word.value))) return markUnknown(scan);
