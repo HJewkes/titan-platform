@@ -33,8 +33,23 @@ interface LeafReading {
   slots: Slot[];
 }
 
-/** An unquoted dynamic word word-splits, so it can carry more words. */
-const splits = (word: WordToken | null | undefined) => Boolean(word?.dynamic && (!word.quoted || word.unquotedExpansion));
+/** Bash's default IFS whitespace; tool-guard does not track an IFS the line sets. */
+const IFS_WHITESPACE = /[ \t\n]/;
+
+/** A path gh or GitHub resolves to the graphql endpoint: bare, rooted, a full URL, GHES's `api/`, or with a query. */
+const GRAPHQL_RE = /^(?:[a-z][a-z0-9+.-]*:\/\/[^/]+)?\/*(?:api\/)?graphql\/*(?:[?#].*)?$/i;
+
+/**
+ * An unquoted expansion word-splits: an unknown one may carry more words, and a resolved one does when its value
+ * holds IFS whitespace or is empty, which drops the word.
+ */
+function splits(word: WordToken | null | undefined): boolean {
+  if (!word) return false;
+  if (word.dynamic) return !word.quoted || word.unquotedExpansion === true;
+  return word.unquotedExpansion === true && (word.value === "" || IFS_WHITESPACE.test(word.value));
+}
+
+export const isGraphqlEndpoint = (endpoint: string) => GRAPHQL_RE.test(endpoint);
 
 const unsure = (word: WordToken | null | undefined) => Boolean(word && (word.dynamic || isCaseUnsure(word)));
 
@@ -55,21 +70,19 @@ function suffix(word: WordToken, at: number): WordToken {
 }
 
 /** `--name=value` with a written name, else a long flag that takes the next word when `values` names it. */
-function readLong(leaf: WordToken[], i: number, opts: Option[]): number {
-  const word = leaf[i] as WordToken;
+function readLong(word: WordToken, next: WordToken | undefined, opts: Option[]): number {
   const eq = literalPrefix(word).indexOf("=");
   if (eq > 0) {
     opts.push({ flag: word.value.slice(0, eq), value: suffix(word, eq + 1) });
     return 0;
   }
   const takes = GH_API_VALUES.has(word.value);
-  opts.push({ flag: word.value, value: takes ? (leaf[i + 1] ?? null) : null });
+  opts.push({ flag: word.value, value: takes ? (next ?? null) : null });
   return takes ? 1 : 0;
 }
 
 /** A cluster such as `-iXPUT`: the first letter that takes a value consumes the rest, or the next word. */
-function readShort(leaf: WordToken[], i: number, opts: Option[]): number {
-  const word = leaf[i] as WordToken;
+function readShort(word: WordToken, next: WordToken | undefined, opts: Option[]): number {
   for (let j = 1; j < word.value.length; j++) {
     const flag = `-${word.value[j]}`;
     if (!GH_API_VALUES.has(flag)) {
@@ -80,7 +93,7 @@ function readShort(leaf: WordToken[], i: number, opts: Option[]): number {
       opts.push({ flag, value: suffix(word, j + 1) });
       return 0;
     }
-    opts.push({ flag, value: leaf[i + 1] ?? null });
+    opts.push({ flag, value: next ?? null });
     return 1;
   }
   return 0;
@@ -92,35 +105,46 @@ function readShort(leaf: WordToken[], i: number, opts: Option[]): number {
  */
 function readLeaf(leaf: WordToken[]): LeafReading {
   const out: LeafReading = { opts: [], slots: [] };
-  for (let i = 0; i < leaf.length; i++) {
-    const word = leaf[i] as WordToken;
+  let skip = 0;
+  for (const [i, word] of leaf.entries()) {
+    if (skip > 0) {
+      skip--;
+      continue;
+    }
     const prefix = literalPrefix(word);
     const known = !unsure(word) || /^--[^=]+=/.test(prefix) || /^[^-]/.test(prefix);
     if (!known) out.slots.push({ index: i, word, unknown: true });
     else if (word.value === "--") {
       out.slots.push(...leaf.slice(i + 1).map((w, k) => ({ index: i + 1 + k, word: w, unknown: false })));
       break;
-    } else if (word.value.startsWith("--")) i += readLong(leaf, i, out.opts);
-    else if (word.value.startsWith("-") && word.value.length > 1) i += readShort(leaf, i, out.opts);
+    } else if (word.value.startsWith("--")) skip = readLong(word, leaf[i + 1], out.opts);
+    else if (word.value.startsWith("-") && word.value.length > 1) skip = readShort(word, leaf[i + 1], out.opts);
     else out.slots.push({ index: i, word, unknown: false });
   }
   return out;
 }
 
-/** The first slot, unless it may be a flag or a splitting word before it may carry the endpoint. */
+/** The first slot, unless it may be a flag, splits, or a splitting word before it may carry the endpoint. */
 function endpointOf(reading: LeafReading, leaf: WordToken[]): string | null {
   const first = reading.slots[0];
-  if (!first || unsure(first.word) || leaf.slice(0, first.index).some(splits)) return null;
+  if (!first || unsure(first.word) || splits(first.word) || leaf.slice(0, first.index).some(splits)) return null;
   return first.word.value;
 }
 
 /** An unknown slot is the endpoint only when it is the one positional gh accepts; any other may be `-X PUT`. */
 const mayHoldFlag = (reading: LeafReading) => reading.slots.length > 1 && reading.slots.some((s) => s.unknown);
 
-/** The endpoint word's own splitting is `endpointSplits`; any other splitting word may carry `-X`. */
+/**
+ * A splitting word may carry `-X` or `-f query=…`. An unknown endpoint word's own splitting is `endpointSplits`
+ * instead; a resolved one is known to carry more words.
+ */
+function carriesWords(reading: LeafReading, leaf: WordToken[]): boolean {
+  const endpoint = reading.slots[0];
+  return leaf.some((w, i) => splits(w) && !(i === endpoint?.index && w.dynamic));
+}
+
 function methodOf(reading: LeafReading, leaf: WordToken[], fields: WordToken[]): string | null {
-  const endpointAt = reading.slots[0]?.index;
-  if (mayHoldFlag(reading) || leaf.some((w, i) => i !== endpointAt && splits(w))) return null;
+  if (mayHoldFlag(reading) || carriesWords(reading, leaf)) return null;
   const given = reading.opts.filter((o) => METHOD_FLAGS.includes(o.flag)).at(-1);
   if (given) return given.value && !unsure(given.value) ? given.value.value.toUpperCase() : null;
   return fields.length > 0 || reading.opts.some((o) => o.flag === "--input") ? "POST" : "GET";
@@ -137,7 +161,7 @@ function queryFieldUnknown(field: WordToken): boolean {
 
 /**
  * Reads a `gh api` call's leaf: its args with the command words removed, as cobra passes them to pflag.
- * On a possible graphql endpoint, a slot that may be a flag may also be `-f query=…`, so the query is unknown.
+ * On a possible graphql endpoint, a slot that may be a flag or a splitting word may carry `-f query=…`.
  */
 export function ghApiRequest(leaf: WordToken[]): GhApiRequest {
   const reading = readLeaf(leaf);
@@ -147,7 +171,7 @@ export function ghApiRequest(leaf: WordToken[]): GhApiRequest {
     endpoint,
     method: methodOf(reading, leaf, fields),
     fields,
-    queryUnknown: (endpoint === null || endpoint === "graphql") && (mayHoldFlag(reading) || fields.some(queryFieldUnknown)),
+    queryUnknown: (endpoint === null || isGraphqlEndpoint(endpoint)) && (mayHoldFlag(reading) || carriesWords(reading, leaf) || fields.some(queryFieldUnknown)),
     endpointSplits: splits(reading.slots[0]?.word),
   };
 }
