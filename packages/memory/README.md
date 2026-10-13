@@ -103,8 +103,10 @@ filesystem access and no model call; the caller reads the files.
 - `dedupeFacts(facts, { nearDup = 0.85 })` merges equal content keys, then near-duplicates at
   that Jaccard, but only when both have the same polarity (`Always X` never merges with
   `Never X`). The representative is the longest body, ties broken by path.
-- `groupFacts(deduped, { threshold = 0.3 })` is single-link grouping over the Jaccard of each
-  fact's name and description tokens minus a stop list, labelled by its three commonest tokens.
+- `groupFacts(deduped, { threshold = 0.03, maxGroupSize = 25 })` is average-linkage grouping over
+  the smoothed TF-IDF cosine of each fact's name and description tokens minus a stop list. No
+  group grows past `maxGroupSize`, and each is labelled by its three commonest tokens. The defaults
+  are exported as `DEFAULT_GROUP_THRESHOLD` and `MAX_GROUP_SIZE`.
 - `proposeDestination(group, skills, { now, staleDays = 30 })` takes the first rule that fits: a
   skill whose description reaches Jaccard 0.25 (`skill:<name>`), coordination feedback
   (`charter`), feedback or user facts across two or more projects (`claude-md:global`), project

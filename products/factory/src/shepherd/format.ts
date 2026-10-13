@@ -74,7 +74,12 @@ function formatRegistered(registered: Registered): string {
   const { runId, registration } = registered;
   const target = `${registration.repo}${registration.pr === null ? "" : `#${registration.pr}`}${registration.branch ? ` (${registration.branch})` : ""}`;
   const held = registered.g10Hold === undefined ? "" : `; held ${registered.g10Hold}`;
-  return `run ${runId} shepherd-pr ${target}: ${registerOutcome(registered)}; policy ${registration.policy.merge}${held}\n`;
+  return `run ${runId} shepherd-pr ${target}: ${registerOutcome(registered)}; policy ${registration.policy.merge}${held}\n${sizeWarning(registered)}`;
+}
+
+function sizeWarning({ sizeFlag }: Registered): string {
+  if (sizeFlag === undefined) return "";
+  return `warning: security or guard-area PR is ${sizeFlag.lines} non-generated lines, over the ${sizeFlag.cap}-line slice cap; split the parser or list change from its wiring\n`;
 }
 
 function registerOutcome({ created, previousRunId, previousStop }: Registered): string {

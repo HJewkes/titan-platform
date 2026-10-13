@@ -196,6 +196,16 @@ that sent it, per model. An approve counts as an error when the same PR later go
 `changes_requested`. GitHub-surface reviews have no issuing request and count as `unfilled`.
 It takes an open graph connection and never calls `gh`.
 
+### compareWindows
+
+`compareWindows(run, before, after, spec)` runs one guardrail report over a before and an after
+window and pairs the rows by `spec.key`. Each row has `before`, `after` and a `delta` per numeric
+field, after minus before. A delta is null, not zero, when the key is missing from one window,
+the field is null on either side, or either window fails `spec.hasData`. `run` is called once per
+window, before first, and closes over the connection and options.
+`REVIEW_FILL_COMPARISON` keys review-fill rows by band and model; `SUCCESSOR_REWORK_COMPARISON`
+keys successor-rework rows by role and treats a window with no `file_read` data as no data.
+
 ### costPerOutcome
 
 `costPerOutcome(db, assignments, { since, until })` costs generic assignment records
