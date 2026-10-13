@@ -9,7 +9,7 @@ import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
 import { correctOnce } from "./correct-verdict.js";
 import { evidenceOrGate } from "./merge-evidence-gate.js";
 import type { MergeEvidenceInput } from "./merge-facts.js";
-import { grantWithheldOf, type GrantStanding } from "./grant-withheld.js";
+import { grantWithheldOf, proofUnverifiedOf, type GrantStanding } from "./grant-withheld.js";
 import type { SeatHeld, Verdict } from "./phases.js";
 import { MERGE_ON_GREEN_GRANT, runPolicyCeiling } from "./policy.js";
 import { publishReview } from "./publish-review.js";
@@ -30,20 +30,18 @@ export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEviden
 
 /** The grant is read from the run's own policy param, the ceiling a registration can only narrow. */
 const effectivePolicy = (ctx: WorkflowContext) => runPolicyCeiling(ctx.param("policy"));
-/** Why a gated head's fix-proof proves nothing; such a head merges only through the owner gate, whatever the policy (TP-2434). */
+/** Why a gated head's fix-proof proves nothing; recorded on its MERGE, never a gate of its own (decision 303, TP-2660 b). */
 export type ProofStanding = GrantStanding;
-/**
- * Whether a visual-path gate will open is unknown until the evidence step, so a visual-ceiling run always asks for the brief.
- * `standing` is the round's read fix-proof standing and has no default, because `{}` reads as verified.
- */
-export const asksOwnerBrief = (ctx: WorkflowContext, standing: ProofStanding): boolean => {
+/** Whether a visual-path gate will open is unknown until the evidence step, so a visual-ceiling run always asks for the brief. */
+export const asksOwnerBrief = (ctx: WorkflowContext): boolean => {
   const policy = effectivePolicy(ctx);
-  return standing.unverified !== undefined || policy.merge === "owner-gate" || (policy.visualPaths?.length ?? 0) > 0;
+  return policy.merge === "owner-gate" || (policy.visualPaths?.length ?? 0) > 0;
 };
-/** The grant, or which half of it is withheld, so a gate on it can name the failing half (TP-2658). */
-function seatGrants(ctx: WorkflowContext, standing: ProofStanding): Pick<MergeEvidenceInput, "seatGrants" | "grantWithheld"> {
-  const grantWithheld = grantWithheldOf(effectivePolicy(ctx).merge, standing);
-  return grantWithheld ? { seatGrants: [], grantWithheld } : { seatGrants: [MERGE_ON_GREEN_GRANT] };
+/** The grant follows the run policy alone; a withheld one names its policy (TP-2658), and an unverified proof is only recorded. */
+function seatGrants(ctx: WorkflowContext, standing: ProofStanding): Pick<MergeEvidenceInput, "seatGrants" | "grantWithheld" | "proofUnverified"> {
+  const grantWithheld = grantWithheldOf(effectivePolicy(ctx).merge);
+  const proofUnverified = proofUnverifiedOf(standing);
+  return { ...(grantWithheld ? { seatGrants: [], grantWithheld } : { seatGrants: [MERGE_ON_GREEN_GRANT] }), ...(proofUnverified !== undefined && { proofUnverified }) };
 }
 
 type ExternalAwaiting = ReviewTarget & { external: string };
@@ -70,7 +68,7 @@ export const SEAT_RECHECK_STEP = "sh-seat-recheck";
  * The next round at a head whose own MERGE a seat WAIT or a seat read that can clear held: the seat check alone runs again,
  * so no reviewer is started. A clear seat lets the MERGE stand, a seat FIX_FIRST sends the head back, and a standing WAIT holds
  * it again. A check that fails for good is a round with no verdict, as a fresh review's would be. `standing` is the head's
- * fix-proof standing, read again this round, so an unverified proof's MERGE still reaches only the owner gate.
+ * fix-proof standing, read again this round, so the MERGE's evidence records an unverified proof.
  */
 export async function recheckSeat(ctx: WorkflowContext, target: ReviewTarget, held: SeatHeld, standing: ProofStanding): Promise<Verdict> {
   const { agentId, sessionId } = held.dispatchedReviewer;
@@ -92,13 +90,13 @@ function limitHeld(ctx: WorkflowContext, target: ReviewTarget, result: AwaitedRe
  * correction's reply, is held on `account` until the reset, never handed to a fresh reviewer. An own MERGE a seat WAIT held
  * has its verdict already, so it is neither read late nor corrected.
  */
-export async function takeAwaited(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account: string, standing: ProofStanding = {}): Promise<{ held: Verdict } | { awaited: AwaitedResult }> {
+export async function takeAwaited(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account: string): Promise<{ held: Verdict } | { awaited: AwaitedResult }> {
   const onTime = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}`, awaiting, Awaited);
   const heldOnTime = limitHeld(ctx, target, onTime, dispatchedReviewer, account);
   if (heldOnTime) return { held: await heldOnTime };
   if (heldMergeOf(onTime)) return { awaited: onTime };
   const late = onTime.kind === "none" && dispatchedReviewer ? await step(ctx, `${LATE_VERDICT_STEP}:${target.head}`, awaiting, Awaited) : onTime;
-  const correction = { ownerBrief: asksOwnerBrief(ctx, standing), replyStep: `${AWAIT_VERDICT_STEP}:${target.head}:corrected` };
+  const correction = { ownerBrief: asksOwnerBrief(ctx), replyStep: `${AWAIT_VERDICT_STEP}:${target.head}:corrected` };
   const awaited = dispatchedReviewer && !("external" in awaiting) && !heldMergeOf(late) ? await correctOnce(ctx, awaiting, late, correction) : late;
   const heldLate = limitHeld(ctx, target, awaited, dispatchedReviewer, account);
   return heldLate ? { held: await heldLate } : { awaited };
@@ -106,7 +104,7 @@ export async function takeAwaited(ctx: WorkflowContext, target: ReviewTarget, aw
 
 /** An external reviewer is both the dispatched reviewer and the resolver, because Shepherd started nobody else. */
 export async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account = DEFAULT_ACCOUNT, standing: ProofStanding = {}): Promise<Verdict> {
-  const taken = await takeAwaited(ctx, target, awaiting, dispatchedReviewer, account, standing);
+  const taken = await takeAwaited(ctx, target, awaiting, dispatchedReviewer, account);
   return "held" in taken ? taken.held : verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing);
 }
 
