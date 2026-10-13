@@ -45,7 +45,7 @@ interface ScriptMemo {
 
 function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
   const commands = extractCommands(src, extractOptions(cwd, ctx, scripts, false));
-  const line: ClassifyContext = choosesHttpConfig(src, commands) ? { ...ctx, httpConfigUnseen: true } : ctx;
+  const line: ClassifyContext = choosesHttpConfig(src, commands, ctx.home) ? { ...ctx, httpConfigUnseen: true } : ctx;
   const asWritten = classifyLine(commands, line, scripts);
   return ctx.foldCase ? unique([...asWritten, ...foldedActions(src, cwd, line, scripts)]) : asWritten;
 }

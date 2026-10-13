@@ -24,9 +24,9 @@ export type Assignment = [name: string, value: string | null, kind?: "append" | 
 export const ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[.*\])?\+?=/s;
 const ASSIGNMENT_PARTS_RE = /^([A-Za-z_][A-Za-z0-9_]*)(\[.*\])?(\+?)=/s;
 /** A name a declaration lists, with or without a subscript or a value. */
-const DECLARED_RE = /^([A-Za-z_][A-Za-z0-9_]*)(\[.*\])?(?:\+?=|$)/s;
+export const DECLARED_RE = /^([A-Za-z_][A-Za-z0-9_]*)(\[.*\])?(?:\+?=|$)/s;
 const ANY_READONLY = "readonly@*";
-const DECLARERS = new Set(["export", "declare", "typeset", "local", "readonly"]);
+export const DECLARERS = new Set(["export", "declare", "typeset", "local", "readonly"]);
 /** Bash rejects a subscripted name here as no valid identifier, so the variable keeps its value. */
 const SCALAR_DECLARERS = new Set(["export", "readonly"]);
 /** An `r` in an option word, even one bash must still expand, may make every name the declaration lists readonly. */

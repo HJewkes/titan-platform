@@ -1,22 +1,132 @@
 import type { SimpleCommand } from "../shell/commands.js";
+import type { RedirectToken, WordToken } from "../shell/lexer.js";
+import { basename, resolveValue } from "../shell/path.js";
+import { DECLARED_RE, DECLARERS, parseAssignment } from "../shell/vars.js";
+import { commandWrites, TARGET_RE } from "../shell/writers.js";
 
-/** Variables that choose which config file wget or curl reads. */
-const CONFIG_VARS = ["WGETRC", "SYSTEM_WGETRC", "CURL_HOME", "XDG_CONFIG_HOME", "HOME"];
-/** In the typed text, which still holds a prefix assignment with a run-time value that the extracted commands drop. */
-const TEXT_ASSIGNS_RE = new RegExp(`(?<![\\w$])(?:${CONFIG_VARS.join("|")})\\+?=`);
-/** In a word with quotes removed: an `export`, `declare -x` or `env` argument. */
-const WORD_ASSIGNS_RE = new RegExp(`^(?:${CONFIG_VARS.join("|")})\\+?=`);
-/** A wget or curl config file: `.wgetrc`, `/etc/wgetrc`, `.curlrc`, `$XDG_CONFIG_HOME/curlrc`. */
-const RC_FILE_RE = /(?:wget|curl)rc/;
+/** Variables that choose which config file wget, curl or httpie reads. */
+const CONFIG_VARS = new Set(["WGETRC", "SYSTEM_WGETRC", "CURL_HOME", "XDG_CONFIG_HOME", "HOME", "HTTPIE_CONFIG_DIR"]);
+const NAMES = [...CONFIG_VARS].join("|");
+/**
+ * In the typed text: a prefix, compound or arithmetic assignment, whose run-time value or `(( ))` the extracted
+ * commands drop. A name after `$` is a read.
+ */
+const TEXT_ASSIGNS_RE = new RegExp(
+  `(?<![\\w$])(?:${NAMES})\\s*(?:\\[[^\\]]*\\])?\\s*(?:<<|>>|[-+*/%&^|])?=(?!=)|(?<![\\w$])(?:${NAMES})\\s*(?:\\+\\+|--)|(?:\\+\\+|--)\\s*(?:${NAMES})\\b`,
+);
+/** In a word with quotes removed: an `env` argument. */
+const WORD_ASSIGNS_RE = new RegExp(`^(?:${NAMES})\\+?=`);
+/** A config file or directory: `.wgetrc`, `/etc/wgetrc`, `.curlrc`, `$XDG_CONFIG_HOME/curlrc`, `~/.config/httpie`. */
+const RC_TEXT_RE = /(?:wget|curl)rc|\/httpie\b/;
+/** Every name a config file, or a directory a recursive copy may plant one in, ends in. */
+const RC_NAMES = [".wgetrc", "wgetrc", ".curlrc", "curlrc", "_curlrc", "config.json", "httpie", ".config"];
+/** A declaration option that makes a nameref, through which a later plain assignment writes the named variable. */
+const NAMEREF_RE = /^-[a-zA-Z]*n/;
+/** Commands that write each operand they name: `tee` its files, a copy or link its destination or a file in it. */
+const FILE_WRITERS = new Set(["tee", "cp", "mv", "ln", "install"]);
+/** A pattern or brace character, which may expand to any name. */
+const PATTERN_RE = /[*?[{]/g;
+/** A `>&` or `<&` to a descriptor duplicates it and opens no file. */
+const DESCRIPTOR_RE = /^(?:\d+|-)$/;
 
 /**
- * Whether the line may choose or write the config file wget or curl reads, which can set any method and URL: it
- * assigns one of `CONFIG_VARS` in any form, or names an rc file anywhere, as a redirect, `tee` or `cp` would.
+ * Whether the line may choose or write the config file wget, curl or httpie reads, which can set any method and URL:
+ * it writes one of `CONFIG_VARS` in any form the variable tracker knows, or a run-time name, or names an rc file
+ * anywhere. A write target is an rc file unless its literal part rules that out.
  */
-export function choosesHttpConfig(src: string, commands: SimpleCommand[]): boolean {
-  if (TEXT_ASSIGNS_RE.test(src) || RC_FILE_RE.test(src)) return true;
-  return commands.some((cmd) => {
-    const words = [...Object.keys(cmd.env).map((k) => `${k}=`), ...cmd.args.map((a) => a.value), ...cmd.redirects.map((r) => r.target?.value ?? "")];
-    return words.some((w) => WORD_ASSIGNS_RE.test(w) || RC_FILE_RE.test(w));
-  });
+export function choosesHttpConfig(src: string, commands: SimpleCommand[], home: string | null): boolean {
+  if (TEXT_ASSIGNS_RE.test(src) || RC_TEXT_RE.test(src)) return true;
+  return commands.some((cmd) => setsConfigVar(cmd) || writeTargets(cmd).some((w) => mayBeRcPath(w, cmd.dir, home)));
+}
+
+function setsConfigVar(cmd: SimpleCommand): boolean {
+  if (Object.keys(cmd.env).some((k) => CONFIG_VARS.has(k)) || cmd.args.some((a) => WORD_ASSIGNS_RE.test(a.value))) return true;
+  const { name, args } = cmd;
+  if (name === null) return false;
+  if (DECLARERS.has(name)) return declaresConfigVar(args);
+  if (name === "printf") return printfSetsConfigVar(args);
+  if (runTimeTarget(name, args)) return true;
+  const writes = commandWrites(name, args, new Map());
+  return writes === null || writes.some(([target]) => CONFIG_VARS.has(target));
+}
+
+/** A run-time word may be any assignment or option, and a nameref may later write any variable. */
+function declaresConfigVar(args: WordToken[]): boolean {
+  return args.some((a) => (a.dynamic && parseAssignment(a) === null) || NAMEREF_RE.test(a.value) || CONFIG_VARS.has(DECLARED_RE.exec(a.value)?.[1] ?? ""));
+}
+
+/** `printf -v NAME`; a run-time first word may itself be `-v`. */
+function printfSetsConfigVar(args: WordToken[]): boolean {
+  const first = args[0];
+  if (!first?.value.startsWith("-v")) return first?.dynamic === true;
+  const target = first.value.length > 2 ? { ...first, value: first.value.slice(2) } : args[1];
+  return target === undefined || target.dynamic || CONFIG_VARS.has(TARGET_RE.exec(target.value)?.[1] ?? "");
+}
+
+/** `commandWrites` reads only literal names; a run-time one in a name slot may be any variable. */
+function runTimeTarget(name: string, args: WordToken[]): boolean {
+  if (name === "for" || name === "select") return args[0]?.dynamic === true;
+  if (name === "getopts") return args[1]?.dynamic === true;
+  return (name === "read" || name === "mapfile" || name === "readarray") && args.some((a) => a.dynamic);
+}
+
+/** Files the command may write: an output redirect's target, and every operand of a `FILE_WRITERS` command. */
+function writeTargets(cmd: SimpleCommand): WordToken[] {
+  const redirected = cmd.redirects.filter(opensForWrite).flatMap((r) => r.target ?? []);
+  if (cmd.name === null || !FILE_WRITERS.has(cmd.name)) return redirected;
+  return [...redirected, ...cmd.args.filter((a) => a.dynamic || !a.value.startsWith("-"))];
+}
+
+function opensForWrite(r: RedirectToken): boolean {
+  return r.op.includes(">") && !(r.op.endsWith("&") && DESCRIPTOR_RE.test(r.target?.value ?? ""));
+}
+
+/**
+ * A run-time part may hold any text, `/` included, so the name ends in the literal text after the last one: an rc
+ * name ending in it may be written, unless a `/` in it leaves a fully literal name. A literal path is resolved, and
+ * a destination directory that holds rc files counts as one.
+ */
+function mayBeRcPath(w: WordToken, dir: string | null, home: string | null): boolean {
+  const tail = w.value.slice(runTimeEnd(w));
+  if (tail !== w.value) return tail.includes("/") ? isRcName(basename(tail)) : RC_NAMES.some((n) => n.endsWith(tail));
+  const path = resolveValue(dir, w.value, home);
+  if (path === null) return isRcName(basename(w.value));
+  return RC_TEXT_RE.test(path) || rcDirs(home).includes(path);
+}
+
+function isRcName(name: string): boolean {
+  return RC_NAMES.includes(name) || RC_TEXT_RE.test(name);
+}
+
+function rcDirs(home: string | null): string[] {
+  return home === null ? ["/etc"] : ["/etc", home, `${home}/.config`, `${home}/.config/httpie`];
+}
+
+/** Where the word's last run-time part ends: a variable, a substitution's output, another expansion or a pattern. */
+function runTimeEnd(w: WordToken): number {
+  const patterns = [...w.value.matchAll(PATTERN_RE)].map((m) => m.index + 1);
+  const ends = [...w.refs.map((r) => r.end), ...(w.cuts ?? []).map((c) => c.at), ...expansionEnds(w), ...patterns];
+  if (w.computed && ends.length === 0) return w.value.length;
+  return Math.max(0, ...ends);
+}
+
+/** A computed word keeps a `${ }`, `$(( ))` or `$[ ]` as typed; each ends at its matching bracket. */
+function expansionEnds(w: WordToken): number[] {
+  if (!w.computed) return [];
+  const ends: number[] = [];
+  for (let i = w.value.indexOf("$"); i >= 0; i = w.value.indexOf("$", i + 1)) {
+    if (!w.refs.some((r) => r.start <= i && i < r.end)) ends.push(bracketEnd(w.value, i + 1));
+  }
+  return ends;
+}
+
+function bracketEnd(value: string, open: number): number {
+  const pair = { "{": "}", "(": ")", "[": "]" }[value[open] ?? ""];
+  if (pair === undefined) return open;
+  let depth = 0;
+  for (let i = open; i < value.length; i++) {
+    if (value[i] === value[open]) depth++;
+    else if (value[i] === pair && --depth === 0) return i + 1;
+  }
+  return value.length;
 }
