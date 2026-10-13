@@ -20,7 +20,7 @@ Domain-free building blocks. No titan dependencies.
 | [`code-parser`](/reference/code-parser) | Tree-sitter WASM parsing for TypeScript, TSX and Python, plus the source-file filter and the Extractor contract | none |
 | [`egress-scan`](/reference/egress-scan) | Scan git diff text for home paths, private-workspace paths, private terms and credential tokens, reporting location and rule id only | `fix-proof` |
 | [`embed`](/reference/embed) | Local embedding runtime (local/Ollama/remote) with a zero-download hash fallback | none |
-| [`eslint-plugin`](/reference/eslint-plugin) | ESLint rules that enforce the titan code-quality limits: functions of at most 30 non-blank lines, comments that hold code, and TODO comments without a tracking task | none |
+| [`eslint-plugin`](/reference/eslint-plugin) | ESLint rules that enforce the titan code-quality limits: functions of at most 30 non-blank lines, opt-in code lines of at most 200 characters, comments that hold code, and TODO comments without a tracking task | none |
 | [`evidence`](/reference/evidence) | Citation verification, overlap grouping, planted-control scoring and small-sample statistics for model-judged evidence | none |
 | [`fix-proof`](/reference/fix-proof) | Proves a fix PR's new tests fail on the merge base and pass at head: diff plan, vitest report classification, fix-proof/v1 result line | none |
 | [`locator`](/reference/locator) | Byte-offset provenance locators and raw-mirror durability helpers | none |
