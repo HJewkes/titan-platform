@@ -477,7 +477,7 @@ in `$XDG_CONFIG_HOME/systemd/user/`, else `~/.config/systemd/user/`, and mirrors
 | Plist | Unit |
 | --- | --- |
 | `ProgramArguments` | `ExecStart=`, the same argv, quoted where an argument holds a space |
-| `KeepAlive` | `Type=simple`, `Restart=always`, `RestartSec=5` |
+| `KeepAlive` `SuccessfulExit` false, `ThrottleInterval` 60 | `Type=simple`, `Restart=on-failure`, `RestartSec=5` |
 | `RunAtLoad` | `WantedBy=default.target`, enabled by install |
 | `EnvironmentVariables` `PATH` | `Environment=PATH=...`, the same `servicePath` value, since a user manager starts jobs with its own minimal `PATH` |
 | `StandardOutPath`, `StandardErrorPath` | `StandardOutput=append:`, `StandardError=append:` on the same log files |
@@ -582,9 +582,12 @@ or unread main, record no step. A replay reuses the recorded step, and a service
 built from the merge sha spawns nothing, so the run resumed after the restart is a no-op.
 
 The plist names `dev.hjewkes.titan-factory`: the absolute node path, the built `dist/bin.js`
-and `serve`, `RunAtLoad` and `KeepAlive` true, and logs at
+and `serve`, `RunAtLoad` true, and logs at
 `$XDG_STATE_HOME/titan-factory/serve.{out,err}.log`. `ProcessType` is `Interactive`; a
-`Background` job is throttled by macOS.
+`Background` job is throttled by macOS. `KeepAlive` restarts serve only after a failed exit
+(`SuccessfulExit` false), at most once every 60 seconds (`ThrottleInterval`). A serve started
+beside a live factory, one whose `/health` pid matches the pid file, logs that and exits 0, so
+the job does not loop on it; any other refused start still fails and is restarted.
 
 launchd starts a job with `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, and serve runs `gh`,
 `agent-chat` and `claude` by bare name. So the plist sets `EnvironmentVariables` to one

@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
-import { consoleLogger, daemonPaths, readPidFile, startDaemon, type DaemonHandle, type EventHub, type Logger, type StartDaemonOptions } from "@titan-design/daemon";
+import { consoleLogger, DaemonAlreadyRunningError, daemonPaths, readPidFile, startDaemon, type DaemonHandle, type EventHub, type Logger, type StartDaemonOptions } from "@titan-design/daemon";
 import { routedRunner, type RoutedRunner, type WorkflowStatus } from "@titan-design/workflow";
 import { behindMain, type BehindMain } from "./behind-main.js";
 import { buildSha } from "./build-info.js";
@@ -13,6 +13,7 @@ import { githubHealth, type GithubHealth } from "./github-health.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
 import { timestampConsole } from "./serve-log.js";
+import { probeServe, type ServeProbe } from "./serve-probe.js";
 import { startLoopDelayWatch } from "./serve-loop-delay.js";
 import { untilStopped } from "./serve-signal.js";
 import { recordServeStart, serveStartsHealth, type ServeStart } from "./serve-starts.js";
@@ -85,6 +86,8 @@ export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweep
   ownerKeys?: () => OwnerKeys;
   /** Replaces the live owner-queue adapters behind needs.list and needs.count; tests inject it. */
   needsSources?: NeedsSources;
+  /** Replaces the /health probe that tells a live factory from a refused start; tests inject it. */
+  probe?: (port: number) => Promise<ServeProbe>;
 }
 
 interface OwnerProofs {
@@ -153,12 +156,29 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
 export async function serveFactoryUntilSignal(options: FactoryServerOptions, stop?: AbortSignal): Promise<void> {
   const restoreConsole = timestampConsole();
   try {
-    const server = await startFactoryServer(options);
+    const server = await startBesideLiveFactory(options);
+    if (server === null) return;
     const reason = await untilStopped(stop);
     (options.logger ?? consoleLogger).info({ signal: reason }, "shutting down");
     await server.close();
   } finally {
     restoreConsole();
+  }
+}
+
+/**
+ * A second serve beside a live factory returns null, so it exits 0 and a supervisor that restarts only on failure leaves it be.
+ * Only a factory whose /health pid matches the pid file counts; anything else stays a failure.
+ */
+async function startBesideLiveFactory(options: FactoryServerOptions): Promise<FactoryServer | null> {
+  try {
+    return await startFactoryServer(options);
+  } catch (err) {
+    if (!(err instanceof DaemonAlreadyRunningError)) throw err;
+    const probe = await (options.probe ?? probeServe)(err.port);
+    if (probe.state !== "up" || probe.health.pid !== err.pid) throw err;
+    (options.logger ?? consoleLogger).info({ pid: err.pid, port: err.port }, `a live titan-factory, pid ${err.pid}, holds port ${err.port}; this serve exits 0`);
+    return null;
   }
 }
 
