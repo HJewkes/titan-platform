@@ -41,6 +41,7 @@ import { transcriptReviewerReader } from "./shepherd/reviewer-reader.js";
 import { boundCheckout, loadSeatBook, lookupSeat, type SeatBook } from "./shepherd/seats.js";
 import { advisoryGuard, advisoryPort, advisoryUpdates, stickyAdvisory, type AdvisoryRead, type IsAdvisory } from "./shepherd/advisory.js";
 import { advisoryFile } from "./shepherd/advisory-file.js";
+import { configuredStackRestack, type StackRestackOn } from "./shepherd/stack-land.js";
 import { accountLimitMigration, accountLimitStoreRef, type AccountLimitStoreRef } from "./shepherd/account-store.js";
 import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./shepherd/account-limit.js";
 import { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrationFactsMigration, reviewRequestMigration, shepherdMigration, sliceMigration, shepherdStoreRef, type ShepherdStoreRef } from "./shepherd/store.js";
@@ -108,6 +109,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   audit?: AuditPorts;
   /** Repos whose merges, branch updates and pushes Shepherd never makes; defaults to none. */
   advisory?: IsAdvisory;
+  /** Repos whose stacked children Shepherd restacks after its own merge; defaults to none. */
+  stackRestack?: StackRestackOn;
 }
 
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
@@ -140,7 +143,7 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
     if (route.match === "update-branch") return advisoryUpdates(route, isAdvisory, timing);
     return route.match === "merge" ? waitWhileHeld(rideTrain(route, { train, port: deps.port, held, timing }), held, timing, openHeadRead(deps.port, deps.snapshot), (repo, pr, sha) => reviewPendingAt(holds().byPr(repo, pr), sha), adversary.takeRehold) : route;
   });
-  const shepherdDeps = { port: deps.port, advisory: isAdvisory, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, pushes: deps.pushes, reviewCheck: deps.reviewCheck, exitNotice: deps.exitNotice, suiteRules: deps.suiteRules, accountLimits, prFiles: deps.prFiles };
+  const shepherdDeps = { port: deps.port, advisory: isAdvisory, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, pushes: deps.pushes, reviewCheck: deps.reviewCheck, exitNotice: deps.exitNotice, suiteRules: deps.suiteRules, accountLimits, prFiles: deps.prFiles, stackRestack: deps.stackRestack };
   const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? recheckedFrozen(deps.port, () => freeze.get(), holds, deps.now) };
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, versions: deps.versions, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train, accountLimits) };
@@ -264,7 +267,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const pacing = tickPacing({ now: overrides.now });
   const snapshot = prSnapshot(port, { now: overrides.now, tickMs: pacing.tickMs });
   const pushes = pushSignal((repo) => boundCheckout(seats(), repo, repos()));
-  return factoryRoutesFor({ port, snapshot, pushes, pacing, store, freeze, postMerge, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), advisory: stickyAdvisory(configuredAdvisory(env), advisoryFile(factoryStateDir(env))), ...overrides, seats });
+  return factoryRoutesFor({ port, snapshot, pushes, pacing, store, freeze, postMerge, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), advisory: stickyAdvisory(configuredAdvisory(env), advisoryFile(factoryStateDir(env))), stackRestack: configuredStackRestack(() => readConfig(configPath(env))?.shepherd?.repos), ...overrides, seats });
 }
 
 /** Each read takes the file afresh; no file reads as undefined, never as a map with no advisory repo in it. */

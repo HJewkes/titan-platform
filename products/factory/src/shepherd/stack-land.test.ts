@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, githubPort, type FakeGitHub } from "@titan-design/github";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { restackChild, stackChildren, type ChildWake, type RestackInput, type StackLandDeps } from "./stack-land.js";
+import { configuredStackRestack, restackChild, stackChildren, type ChildWake, type RestackInput, type StackLandDeps } from "./stack-land.js";
 import type { Git } from "./tree-carry.js";
 
 const REPO = "acme/widgets";
@@ -303,5 +303,18 @@ describe("stackChildren", () => {
 
     expect(await stackChildren(s.deps, { repo: REPO, parentPr: s.parentPr, parentHeadRef: PARENT, parentHeadRepo: "someone/fork" })).toEqual([]);
     expect(await stackChildren(s.deps, { repo: REPO, parentPr: s.parentPr, parentHeadRef: "main", parentHeadRepo: REPO })).toEqual([]);
+  });
+});
+
+describe("configuredStackRestack", () => {
+  it("is on only for a repo whose config says stackRestack: true, matching the key in any case", () => {
+    const on = configuredStackRestack(() => ({ "Acme/Widgets": { stackRestack: true }, "acme/other": { stackRestack: false }, "acme/plain": {} }));
+
+    expect([on("acme/widgets"), on("acme/other"), on("acme/plain"), on("acme/absent")]).toEqual([true, false, false, false]);
+  });
+
+  it("is off when there is no config file or the read throws", () => {
+    expect(configuredStackRestack(() => undefined)(REPO)).toBe(false);
+    expect(configuredStackRestack(() => { throw new Error("invalid config"); })(REPO)).toBe(false);
   });
 });

@@ -6,6 +6,7 @@ import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import { agentChatAgents } from "./agents.js";
+import { errorClass } from "./error-class.js";
 import type { ShepherdDeps } from "./phases.js";
 import { restackOnto } from "./stack-restack.js";
 import { BranchName, carryCacheDir, carryStateDir, ensureCache, githubRemote, must, reasonOf, serialized, systemGit, type Git } from "./tree-carry.js";
@@ -41,7 +42,7 @@ export interface RestackInput extends LandedParent {
 }
 
 const Child = z.object({ pr: z.number().int().positive(), headRef: z.string(), headSha: z.string() });
-const ChildrenResult = z.object({ children: z.array(Child) });
+const ChildrenResult = z.object({ children: z.array(Child), skipped: z.string().optional() });
 
 const RestackRecord = z.object({ parentPr: z.number(), squash: z.string(), parentFinal: z.string(), base: z.string(), tree: z.string(), newHead: z.string() });
 const RestackResult = z.discriminatedUnion("outcome", [
@@ -225,11 +226,38 @@ function wakeOver(deps: ShepherdDeps): (wake: ChildWake) => Promise<boolean> {
   };
 }
 
-/** An advisory repo is never written to, so it stacks no child to restack. */
+/** Whether Shepherd may restack a repo's stacked children; the restack is opt-in, so anything but a clear yes is off. */
+export type StackRestackOn = (repo: RepoSlug) => boolean;
+
+/** Reads `shepherd.repos.<repo>.stackRestack` afresh on each call; keys match in any case, and a read that throws is off. */
+export function configuredStackRestack(read: () => Readonly<Record<string, { stackRestack?: boolean }>> | undefined): StackRestackOn {
+  return (repo) => {
+    try {
+      return Object.entries(read() ?? {}).some(([key, config]) => key.toLowerCase() === repo.toLowerCase() && config.stackRestack === true);
+    } catch {
+      return false;
+    }
+  };
+}
+
+/**
+ * The child list never fails post-merge: the switch off, an advisory repo or a failed read all answer no children with
+ * a `skipped` caveat, so main CI, the unfreeze, cleanup and the release still follow the merge. The caveat names only
+ * the error class, since it is a stored step output that can reach a public PR.
+ */
+async function listChildren(deps: ShepherdDeps, land: StackLandDeps, input: LandedParent & { parentHeadRepo: string | null }): Promise<z.infer<typeof ChildrenResult>> {
+  if (deps.stackRestack?.(input.repo) !== true) return { children: [], skipped: `stack restack is off for ${input.repo}` };
+  if (deps.advisory?.(input.repo)) return { children: [], skipped: `${input.repo} is advisory` };
+  return stackChildren(land, input).then(
+    (children) => ({ children }),
+    (error: unknown) => ({ children: [], skipped: `the child list could not be read: ${errorClass(error)}` }),
+  );
+}
+
 export function stackLandRoutes(deps: ShepherdDeps): StepRoute[] {
   const land: StackLandDeps = { port: deps.port, wakeChild: wakeOver(deps), ...(deps.snapshot && { snapshot: deps.snapshot }) };
   return [
-    codeRoute(STACK_CHILDREN_STEP, deps.now, async (input: LandedParent & { parentHeadRepo: string | null }) => ({ children: deps.advisory?.(input.repo) ? [] : await stackChildren(land, input) })),
+    codeRoute(STACK_CHILDREN_STEP, deps.now, (input: LandedParent & { parentHeadRepo: string | null }) => listChildren(deps, land, input)),
     codeRoute(RESTACK_STEP, deps.now, (input: RestackInput) => restackChild(land, input)),
   ];
 }

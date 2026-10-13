@@ -55,6 +55,8 @@ export const ShepherdRepoConfigSchema = z.strictObject({
   path: z.string().min(1).optional(),
   /** Shepherd reviews, watches CI and notifies, but never merges, updates the branch or pushes. */
   advisory: z.boolean().optional(),
+  /** Opt-in: after Shepherd's own merge, restack the repo's stacked agent-chat children by a fast-forward push. Absent means off. */
+  stackRestack: z.boolean().optional(),
 });
 
 export type ShepherdRepoConfig = z.infer<typeof ShepherdRepoConfigSchema>;
