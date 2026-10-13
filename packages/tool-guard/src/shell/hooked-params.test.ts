@@ -224,3 +224,53 @@ describe("an option word the walk reads both ways", () => {
     expect(hooked(`stat -${"t".repeat(300)} f`)).toBe(`-${"t".repeat(300)}`);
   });
 });
+
+describe("an assign-on-expand through a name the shell resolves", () => {
+  it.each([
+    ["bash ${!N:=…}, as in N=PS4; unset PS4; : ${!N:=hooked}", ": ${!N:=hooked}"],
+    ["zsh ${(P)N::=…}, as in N=PS4; : ${(P)N::=hooked}", ": ${(P)N::=hooked}"],
+    ["bash ${!N=…}", ": ${!N=hooked}"],
+    ["zsh ${(P)N:=…}", ": ${(P)N:=hooked}"],
+    ["zsh ${(P)N=…}", ": ${(P)N=hooked}"],
+    ["zsh flags around P", ": ${(Pk)N::=hooked}"],
+    ["zsh flags with P last", ": ${(AP)N::=hooked}"],
+    ["zsh P over a nested name", ": ${(P)${N}::=hooked}"],
+    ["an indirect element", ": ${!N[0]:=hooked}"],
+    ["an indirect element whose subscript expands", ": ${!N[$i]:=hooked}"],
+    ["a hooked element whose subscript expands", ": ${PS4[$i]:=hooked}"],
+    ["inside another word", "echo x${!N:=hooked}y"],
+    ["in an assignment's value", "X=${(P)N::=hooked}"],
+    ["in a double-quoted word", 'echo "${!N:=hooked}"'],
+  ])("counts as a hooked write: %s", (_how, line) => {
+    expect(hooked(line)).not.toBeNull();
+  });
+
+  it.each([
+    ["bash ${!N:-…}, which only substitutes", ": ${!N:-x}"],
+    ["zsh ${(P)N:-…}, which only substitutes", ": ${(P)N:-x}"],
+    ["bash ${!N}", "echo ${!N}"],
+    ["bash name-prefix expansion", "echo ${!PS@}"],
+    ["bash array keys", 'echo "${!m[@]}"'],
+    ["zsh flags without P", ": ${(k)N::=x}"],
+    ["a quoted indirect assign in a commit message", "git commit -m 'set ${!N:=x}'"],
+  ])("returns null: %s", (_how, line) => {
+    expect(hooked(line)).toBeNull();
+  });
+});
+
+describe("reading assign-on-expand in a long word", () => {
+  it.each([
+    ["nested zsh flag openers", "${(".repeat(33_000)],
+    ["a zsh flag group that never closes", `\${(${"P".repeat(100_000)}`],
+    ["hooked subscripts that never close", "${PS4[".repeat(16_000)],
+    ["indirect subscripts that never close", "${!a[".repeat(20_000)],
+    ["P-flag subscripts that never close", "${(P)a[".repeat(14_000)],
+  ])("reads it in linear time: %s", (_how, value) => {
+    const word: WordToken = { type: "word", value, dynamic: true, quoted: false, spliced: false, computed: true, refs: [], subs: [] };
+    const started = performance.now();
+
+    writesHookedParam({ name: ":", path: ":", args: [word], assigned: [] }, [word]);
+
+    expect(performance.now() - started).toBeLessThan(100);
+  });
+});

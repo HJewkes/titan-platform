@@ -4,7 +4,6 @@ import { TARGET_RE } from "./writers.js";
 
 /** Parameters whose value a shell later runs as code: the bash/zsh trace prompt and zsh's module search path. */
 const HOOKED = new Set(["PS4", "PROMPT4", "module_path", "MODULE_PATH"]);
-const HOOKED_ALT = [...HOOKED].join("|");
 
 /**
  * How a name-writing builtin reads its words, as the union of bash and zsh. Each string lists option letters; a
@@ -61,8 +60,10 @@ const SPECS: Record<string, WriterSpec> = {
 
 const NAMEREF_DECLARERS = new Set(["declare", "typeset", "local", "private"]);
 
-/** `${PS4:=x}`, `${PS4[0]=x}` and zsh `${(A)module_path::=x}` assign while they expand. */
-const DEFAULT_ASSIGN_RE = new RegExp(`\\$\\{(?:\\([^)]*\\))?(${HOOKED_ALT})(?:\\[.*\\])?:{0,2}=`, "s");
+const IDENTIFIER_AT_RE = /[A-Za-z_][A-Za-z0-9_]*/y;
+const ASSIGN_OPERATOR_AT_RE = /:{0,2}=/y;
+/** What an assign-on-expand through a name the shell resolves writes: only known at run time. */
+const INDIRECT = Symbol("indirect");
 
 const IDENTIFIER_PREFIX_RE = /^[A-Za-z_][A-Za-z0-9_]*/;
 /** The only unquoted name a slot may hold: an identifier with an optional literal subscript. */
@@ -244,11 +245,68 @@ function namerefHooked({ name, args }: Unwrapped): string | null {
   return null;
 }
 
-/** Only a dynamic word expands: a quoted `'${PS4:=x}'` in a commit message is text. */
+/** Only a dynamic word expands: a quoted `'${PS4:=x}'` in a commit message is text. An indirect name returns the word. */
 function expansionHooked(words: WordToken[]): string | null {
-  for (const word of words) {
-    const name = word.dynamic ? DEFAULT_ASSIGN_RE.exec(word.value)?.[1] : undefined;
-    if (name !== undefined) return name;
+  for (const word of words.filter((w) => w.dynamic)) {
+    const hooked = assignOnExpand(word.value);
+    if (hooked !== null) return hooked;
   }
   return null;
+}
+
+/**
+ * The name a `${…}` in the text assigns while it expands: `${PS4:=x}`, `${PS4[0]=x}`, zsh `${(A)module_path::=x}`,
+ * or the whole text for an indirect name, bash `${!N:=x}` or zsh `${(P)N::=x}`. Each scan stops at the next `$`,
+ * where the next `${` is read, so the read is linear in the text.
+ */
+function assignOnExpand(text: string): string | null {
+  for (let at = text.indexOf("${"); at >= 0; at = text.indexOf("${", at + 2)) {
+    const target = assignedAt(text, at + 2);
+    if (target !== null) return target === INDIRECT ? text : target;
+  }
+  return null;
+}
+
+/** The target of the expansion whose body starts at `at`, if it assigns; a scan cut short by a `$` fails closed. */
+function assignedAt(text: string, at: number): string | typeof INDIRECT | null {
+  const head = expansionHead(text, at);
+  if (head === "cut") return INDIRECT;
+  if (head === null || head.target === null) return null;
+  let i = head.end;
+  if (text[i] === "[") {
+    const close = scanTo(text, i + 1, "]");
+    if (text[close] !== "]") return head.target;
+    i = close + 1;
+  }
+  ASSIGN_OPERATOR_AT_RE.lastIndex = i;
+  return ASSIGN_OPERATOR_AT_RE.test(text) ? head.target : null;
+}
+
+/**
+ * The `!` or zsh flags and the name after `${`: the hooked or indirect target, and where the name ends. "cut" when
+ * an indirect name cannot be read: zsh flags a `$` cuts short, or a nested `${…}` name.
+ */
+function expansionHead(text: string, at: number): { target: string | typeof INDIRECT | null; end: number } | "cut" | null {
+  let i = at;
+  let indirect = text[i] === "!";
+  if (indirect) i++;
+  else if (text[i] === "(") {
+    const close = scanTo(text, i + 1, ")");
+    indirect = text.slice(i + 1, close).includes("P");
+    if (text[close] !== ")") return indirect ? "cut" : null;
+    i = close + 1;
+  }
+  if (indirect && text.startsWith("${", i)) return "cut";
+  IDENTIFIER_AT_RE.lastIndex = i;
+  const name = IDENTIFIER_AT_RE.exec(text)?.[0];
+  if (name === undefined) return null;
+  const target = indirect ? INDIRECT : HOOKED.has(name) ? name : null;
+  return { target, end: i + name.length };
+}
+
+/** The index of `close`, or of the first `$` or the end of the text, whichever comes first. */
+function scanTo(text: string, from: number, close: string): number {
+  let i = from;
+  while (i < text.length && text[i] !== close && text[i] !== "$") i++;
+  return i;
 }
