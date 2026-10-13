@@ -1,7 +1,7 @@
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
 import type { ReviewerMessage } from "./ports.js";
-import { FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, fixFirstFindings } from "./fix-first-findings.js";
+import { FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, contradictedPicks, fixFirstFindings } from "./fix-first-findings.js";
 
 const HEAD = "a".repeat(40);
 const OLD_HEAD = "b".repeat(40);
@@ -34,5 +34,31 @@ describe("fixFirstFindings", () => {
     expect(findings).toHaveLength(MAX_FIX_FIRST_TEXT_CHARS);
     expect(findings.startsWith(`Heading.\n\n${FIX_FIRST_TRUNCATED}`)).toBe(true);
     expect(findings.endsWith(newest)).toBe(true);
+  });
+});
+
+describe("contradictedPicks", () => {
+  const ids = ["edge-colour", "density"];
+
+  it("returns each recorded pick a contradiction line names, once", () => {
+    const text = `1. Edges are under 3:1.\nOwner pick contradicted: edge-colour\n  Owner pick contradicted: density\nOwner pick contradicted: edge-colour\n\n${block("FIX_FIRST")}`;
+
+    expect(contradictedPicks(text, ids)).toEqual(["edge-colour", "density"]);
+  });
+
+  it("ignores ids that were not recorded and lookalike text", () => {
+    const text = [
+      "Owner pick contradicted: spacing",
+      "Owner pick contradicted: edge-colour-2",
+      "Owner pick contradicted: edge-colour because the contrast is low",
+      "The owner pick contradicted: density here",
+      "1. Owner pick contradicted: edge",
+    ].join("\n");
+
+    expect(contradictedPicks(text, ids)).toEqual([]);
+  });
+
+  it("finds nothing when no pick is recorded", () => {
+    expect(contradictedPicks("Owner pick contradicted: edge-colour", [])).toEqual([]);
   });
 });
