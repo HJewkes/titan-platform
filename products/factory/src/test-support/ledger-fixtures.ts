@@ -25,6 +25,13 @@ export interface HeadScript {
   seatFixFirst?: boolean;
   /** The first reads of this behind head report `mergeable_state` unknown, as GitHub does while it has not settled; the compare still says behind. */
   unknownReads?: number;
+  /** The owner holds the PR for the fixture's reviewer once Shepherd's own last review at this head has answered. */
+  holdAfterReview?: boolean;
+  /**
+   * What the hold's reviewer, still live, sends with `chat_send` at this head. Only a seat read sees it; the finished-turn
+   * read of a live session sees nothing.
+   */
+  liveSends?: "MERGE" | "no-verdict";
 }
 
 /** Main CI at the merge commit: red freezes and fixes, `cancelled-superseded` is read on the newer main push. */
@@ -149,7 +156,8 @@ export const LEDGER_FIXTURES: readonly LedgerFixture[] = [
     gate: "approve-merge",
     story: "three FIX_FIRSTs, update, MERGE, two tree-equal updates",
     heads: [{ reviews: ["FIX_FIRST"] }, { reviews: ["FIX_FIRST"] }, { reviews: ["FIX_FIRST"] }, { state: "behind" }, { reviews: ["MERGE"], goesBehind: true }, { treeEqual: true, goesBehind: true }, { treeEqual: true }],
-    today: merged(4),
+    // The third FIX_FIRST stops the run for a planner redesign or split (TP-2394), so the recorded merge is no longer reached.
+    today: { outcome: "gated", gates: ["fix-first-runaway"], reviewers: 3, fixers: 0 },
   },
   {
     id: 14,
@@ -180,5 +188,26 @@ export const LEDGER_FIXTURES: readonly LedgerFixture[] = [
     story: "three updates, MERGE, a fourth update across rounds is an automatic retry that lands",
     heads: [{ state: "behind" }, { state: "behind" }, { state: "behind" }, { reviews: ["MERGE"], goesBehind: true }, { treeEqual: true }],
     today: merged(1),
+  },
+];
+
+/**
+ * TP-737 regressions for a `--reviewer` hold, kept apart from the 17 gates: a hold placed after Shepherd's own MERGE at
+ * the head, whose named reviewer is still live, so only its `chat_send` can release the merge.
+ */
+export const HOLD_REGRESSION_FIXTURES: readonly LedgerFixture[] = [
+  {
+    id: 18,
+    gate: "approve-merge",
+    story: "Shepherd's MERGE, then held for a live named reviewer who sends MERGE at the same head",
+    heads: [{ reviews: ["MERGE"], holdAfterReview: true, liveSends: "MERGE" }],
+    today: merged(1),
+  },
+  {
+    id: 19,
+    gate: "approve-merge",
+    story: "Shepherd's MERGE, then held for a live named reviewer who never sends MERGE",
+    heads: [{ reviews: ["MERGE"], holdAfterReview: true, liveSends: "no-verdict" }],
+    today: { outcome: "held-in-merge", gates: [], reviewers: 1, fixers: 0 },
   },
 ];

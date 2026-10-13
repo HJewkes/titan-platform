@@ -1,8 +1,10 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { restackOnto } from "./stack-restack.js";
+import type { Git } from "./tree-carry.js";
 
 // TP-2528 slice a: proves that a stack of PRs (P <- C <- G) squash-merged one
 // level at a time takes a clean merge-up of main at each level, and that each
@@ -70,8 +72,7 @@ function squashLand(s: Scratch, branch: string): void {
   s.git("checkout", "-q", "main");
   s.git("merge", "--squash", branch);
   s.git("commit", "-q", "-m", `squash ${branch}`);
-  s.git("push", "-q", "origin", "main");
-  s.git("push", "-q", "origin", "--delete", branch);
+  s.git("push", "-q", "origin", "main", `:refs/heads/${branch}`);
   s.git("branch", "-q", "-D", branch);
 }
 
@@ -179,5 +180,217 @@ describe("a 3-deep stack squash-merged in order", () => {
     const diff = s.git("diff", "main", "c");
     expect(diff).toContain("+base 9 child");
     expect(diff).not.toContain("base 1 parent");
+  });
+});
+
+// TP-2528 slice b: the merge-onto restack. After a parent squash-lands, the child takes a
+// merge commit whose tree is `merge-tree --merge-base=<fork point> child main`, pushed as a
+// plain fast-forward. These cases are slice a's, run at depths 2 to 4.
+
+const testGit: Git = (gitDir, args) =>
+  new Promise((resolve) => {
+    execFile("git", ["--git-dir", gitDir, ...args], { encoding: "utf8", env: TEST_GIT_ENV }, (error, stdout, stderr) => {
+      resolve({ code: error ? (typeof error.code === "number" ? error.code : 128) : 0, stdout, stderr });
+    });
+  });
+
+const workGitDir = (): string => join(root, "work", ".git");
+
+function restackScratch(): Scratch {
+  const s = scratch();
+  execFileSync("git", ["--git-dir", join(root, "origin.git"), "config", "receive.denyNonFastForwards", "true"], { env: TEST_GIT_ENV });
+  return s;
+}
+
+type Read = (file: string) => string;
+const appendLine = (read: Read, file: string, level: number): string => `${read(file)}level ${level} line\n`;
+const editBaseLine = (read: Read, level: number): string => read("base.txt").replace(`base ${level * 3}\n`, `base ${level * 3} level ${level}\n`);
+
+function overBoth(level: number, read: Read): Record<string, string> {
+  if (level === 0) return { "p.txt": lines("parent") };
+  if (level === 1) return { "c.txt": lines("child"), "base.txt": editBaseLine(read, level) };
+  return { "p.txt": appendLine(read, "p.txt", level), "c.txt": appendLine(read, "c.txt", level) };
+}
+
+const STACK_CASES: { name: string; edit: (level: number, read: Read) => Record<string, string> }[] = [
+  { name: "each level adds its own file", edit: (level) => ({ [`l${level}.txt`]: lines(`level ${level}`) }) },
+  { name: "each child edits a file its parent created", edit: (level, read) => ({ "p.txt": level === 0 ? lines("parent") : appendLine(read, "p.txt", level) }) },
+  { name: "each level edits a file that existed before the stack", edit: (level, read) => ({ "base.txt": editBaseLine(read, level) }) },
+  { name: "a grandchild edits files from both its ancestors", edit: overBoth },
+];
+
+const LEVELS = ["p", "c", "g", "h"];
+
+function buildStack(s: Scratch, edit: (level: number, read: Read) => Record<string, string>, depth: number): string[] {
+  const names = LEVELS.slice(0, depth);
+  names.forEach((name, level) => {
+    branchFrom(s, names[level - 1] ?? "main", name);
+    const files = Object.entries(edit(level, s.read));
+    for (const [file, text] of files) writeFileSync(join(root, "work", file), text);
+    s.git("add", ...files.map(([file]) => file));
+    s.git("commit", "-q", "-m", `${name} edits its files`);
+  });
+  s.git("push", "-q", "origin", ...names);
+  return names;
+}
+
+/** The tree `rebase --onto main <upstream>` gives the child, built on a detached HEAD that is never pushed. */
+function rebaseOntoTree(s: Scratch, upstream: string, childHead: string): string {
+  s.git("rebase", "-q", "--onto", "main", upstream, childHead);
+  const tree = s.git("rev-parse", "HEAD^{tree}");
+  s.git("checkout", "-q", "main");
+  return tree;
+}
+
+/** Each origin branch's head, by branch name. */
+const originHeads = (s: Scratch): Map<string, string> =>
+  new Map(s.git("ls-remote", "--heads", "origin").split("\n").map((line) => { const [sha = "", ref = ""] = line.split("\t"); return [ref.replace("refs/heads/", ""), sha]; }));
+
+/** Squash-lands `parent`, restacks `child` onto main, pushes it plainly and checks every level property. */
+async function landAndRestack(s: Scratch, parent: string, child: string, next: string | undefined): Promise<void> {
+  const [parentFinal = "", childHead = ""] = s.git("rev-parse", parent, child).split("\n");
+  const ownDelta = s.git("diff", parent, child);
+  const nextView = next === undefined ? "" : s.git("diff", `${child}...${next}`);
+  const nextHead = next === undefined ? undefined : originHeads(s).get(next);
+  squashLand(s, parent);
+  const main = s.git("rev-parse", "main");
+
+  const result = await restackOnto(testGit, workGitDir(), { childHead, parentFinal, squash: main, main });
+
+  if (result.kind !== "restacked") throw new Error(`restack of ${child} was ${JSON.stringify(result)}`);
+  s.git("push", "-q", "origin", `${result.commit}:refs/heads/${child}`);
+  s.git("branch", "-q", "-f", child, result.commit);
+  const heads = originHeads(s);
+  expect(heads.get(child)).toBe(result.commit);
+  expect(s.git("rev-parse", `${result.commit}^1`, `${result.commit}^2`)).toBe(`${childHead}\n${main}`);
+  expect(s.git("diff", "main", result.commit)).toBe(ownDelta);
+  expect(result.tree).toBe(rebaseOntoTree(s, result.base, childHead));
+  if (next === undefined) return;
+  expect(s.git("diff", `${child}...${next}`)).toBe(nextView);
+  expect(heads.get(next)).toBe(nextHead);
+}
+
+describe("merge-onto restack of a stack landed level by level", { timeout: 30_000 }, () => {
+  for (const stackCase of STACK_CASES) {
+    for (const depth of [2, 3, 4]) {
+      it(`restacks cleanly at depth ${depth} when ${stackCase.name}`, async () => {
+        const s = restackScratch();
+        const names = buildStack(s, stackCase.edit, depth);
+        const stackTree = s.git("rev-parse", `${names[depth - 1]}^{tree}`);
+
+        for (let level = 1; level < depth; level += 1) await landAndRestack(s, names[level - 1] ?? "", names[level] ?? "", names[level + 1]);
+        squashLand(s, names[depth - 1] ?? "");
+
+        expect(s.git("rev-parse", "main^{tree}")).toBe(stackTree);
+      });
+    }
+  }
+
+  it("restacks the add/add case that a merge-tree without the explicit merge base conflicts on", async () => {
+    const s = restackScratch();
+    buildStack(s, STACK_CASES[1]?.edit ?? overBoth, 2);
+    const parentFinal = s.git("rev-parse", "p");
+    const childHead = s.git("rev-parse", "c");
+    squashLand(s, "p");
+    const main = s.git("rev-parse", "main");
+
+    const result = await restackOnto(testGit, workGitDir(), { childHead, parentFinal, squash: main, main });
+
+    expect(s.gitResult("merge-tree", "--write-tree", childHead, main).ok).toBe(false);
+    expect(result).toMatchObject({ kind: "restacked", base: parentFinal });
+  });
+
+  it("merges from the fork point after a cascade, not from the parent's first head", async () => {
+    const s = restackScratch();
+    branchFrom(s, "main", "p");
+    s.commitFile("p.txt", lines("parent"), "P adds p.txt");
+    branchFrom(s, "p", "c");
+    s.commitFile("c.txt", lines("child"), "C adds c.txt");
+    s.git("checkout", "-q", "p");
+    s.commitFile("p.txt", lines("parent").replace("parent 3\n", "parent 3 fix\n"), "P fix round");
+    const parentFinal = s.git("rev-parse", "p");
+    s.git("checkout", "-q", "c");
+    s.git("merge", "-q", "--no-edit", "p");
+    s.commitFile("p.txt", lines("parent").replace("parent 3\n", "parent 3 fix child\n"), "C edits the fixed line");
+    const childHead = s.git("rev-parse", "c");
+    const ownDelta = s.git("diff", "p", "c");
+    squashLand(s, "p");
+    const main = s.git("rev-parse", "main");
+
+    const result = await restackOnto(testGit, workGitDir(), { childHead, parentFinal, squash: main, main });
+
+    expect(result).toMatchObject({ kind: "restacked", base: parentFinal });
+    if (result.kind === "restacked") expect(s.git("diff", "main", result.commit)).toBe(ownDelta);
+  });
+
+  it("reports a conflict when the child edits lines the parent's unsynced last fix round also edited", async () => {
+    const s = restackScratch();
+    branchFrom(s, "main", "p");
+    s.commitFile("p.txt", lines("parent"), "P adds p.txt");
+    branchFrom(s, "p", "c");
+    s.commitFile("p.txt", lines("parent").replace("parent 3\n", "parent 3 child\n"), "C edits line 3");
+    const childHead = s.git("rev-parse", "c");
+    s.git("checkout", "-q", "p");
+    s.commitFile("p.txt", lines("parent").replace("parent 3\n", "parent 3 fix\n"), "P fix round edits line 3");
+    const parentFinal = s.git("rev-parse", "p");
+    squashLand(s, "p");
+    const main = s.git("rev-parse", "main");
+
+    const result = await restackOnto(testGit, workGitDir(), { childHead, parentFinal, squash: main, main });
+
+    expect(result).toEqual({ kind: "conflict", base: s.git("merge-base", childHead, parentFinal), files: ["p.txt"] });
+  });
+
+  it("refuses with a guard when the squash tree is not the parent's final tree or the squash is not on main", async () => {
+    const s = restackScratch();
+    branchFrom(s, "main", "p");
+    s.commitFile("p.txt", lines("parent"), "P adds p.txt");
+    const firstHead = s.git("rev-parse", "p");
+    s.commitFile("p.txt", lines("parent") + "fix\n", "P fix round");
+    const preStack = s.git("rev-parse", "main");
+    branchFrom(s, "p", "c");
+    s.commitFile("c.txt", lines("child"), "C adds c.txt");
+    const childHead = s.git("rev-parse", "c");
+    const parentFinal = s.git("rev-parse", "p");
+    squashLand(s, "p");
+    const main = s.git("rev-parse", "main");
+
+    const staleParent = await restackOnto(testGit, workGitDir(), { childHead, parentFinal: firstHead, squash: main, main });
+    const offMain = await restackOnto(testGit, workGitDir(), { childHead, parentFinal, squash: main, main: preStack });
+
+    expect(staleParent).toMatchObject({ kind: "guard", reason: expect.stringContaining("differs from parent final") });
+    expect(offMain).toMatchObject({ kind: "guard", reason: expect.stringContaining("is not on main") });
+  });
+
+  it("moves no ref and never builds a rebase, replay, push, force or + refspec argument", async () => {
+    const s = restackScratch();
+    buildStack(s, overBoth, 2);
+    const parentFinal = s.git("rev-parse", "p");
+    const childHead = s.git("rev-parse", "c");
+    squashLand(s, "p");
+    const main = s.git("rev-parse", "main");
+    const refsBefore = s.git("for-each-ref");
+    const calls: (readonly string[])[] = [];
+    const recording: Git = (gitDir, args) => {
+      calls.push(args);
+      return testGit(gitDir, args);
+    };
+
+    const result = await restackOnto(recording, workGitDir(), { childHead, parentFinal, squash: main, main, parentPr: 7 });
+
+    expect(result.kind).toBe("restacked");
+    expect(s.git("for-each-ref")).toBe(refsBefore);
+    expect(calls.flat().filter((arg) => /^(rebase|replay|push|update-ref|branch|-f|--force.*|\+.*)$/.test(arg))).toEqual([]);
+    if (result.kind === "restacked") expect(s.git("log", "-1", "--format=%s", result.commit)).toBe(`Restack onto main after #7 (merge-base ${parentFinal})`);
+  });
+
+  it("is checked against an origin that refuses a forced non-fast-forward", () => {
+    const s = restackScratch();
+    branchFrom(s, "main", "p");
+    s.commitFile("p.txt", lines("parent"), "P adds p.txt");
+
+    s.git("reset", "-q", "--hard", "main");
+
+    expect(s.gitResult("push", "-q", "--force", "origin", "p").ok).toBe(false);
   });
 });

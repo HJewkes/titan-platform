@@ -11,6 +11,7 @@ import type { SpawnGate } from "./spawn-gate.js";
 import type { AccountLimitStoreRef } from "./account-store.js";
 import type { ShepherdStoreRef } from "./store.js";
 import type { SuiteRules } from "./suite-host.js";
+import type { PrFilesRead } from "./git-pr-files.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { PushWatch } from "./push-signal.js";
 
@@ -46,6 +47,8 @@ export interface ReviewRequest extends PhaseTarget {
   fresh?: boolean;
   /** Why this head is reviewed; the intent step records it. */
   cause?: ReviewCause;
+  /** Shepherd's own MERGE at this head that a seat held last round; only the seat check runs again. */
+  seatHeld?: SeatHeld;
 }
 
 /**
@@ -61,12 +64,14 @@ export interface PanelMerge {
   members: readonly { shape: ReviewShape; agentId: string; sessionId: string; locator: unknown }[];
 }
 
-/** Shepherd's own MERGE at `head` that a seat reviewer's WAIT still held when the seat wait ran out. */
+/** Shepherd's own MERGE at `head` that a seat reviewer's WAIT, or a seat read that can clear, still held when the seat wait ran out. */
 export interface SeatHeld {
   head: string;
   locator: unknown;
   reviewer: AgentIdentity;
   dispatchedReviewer: AgentIdentity;
+  /** The verdict step's MERGE as recorded, which the next round's seat recheck holds or lets stand. */
+  merge: Readonly<Record<string, unknown>>;
 }
 
 export type Verdict =
@@ -113,4 +118,6 @@ export interface ShepherdDeps {
   reviewCheckouts?: { root?: string; remove?: RemoveDir };
   /** True for a repo where Shepherd never writes to a branch: no successor is spawned and no head ref deleted. */
   advisory?: (repo: string) => boolean;
+  /** Reads a head's changed files from Shepherd's git cache; absent means the serve process's cached reader. */
+  prFiles?: PrFilesRead;
 }

@@ -76,6 +76,13 @@ replaces the stored kind, unless it would move a `correctness` run to `feature`,
 reason naming both kinds. Moving `correctness` to `security`, or `feature`, `refactor` or
 `unknown` to any kind, still applies.
 
+On a `correctness` or `security` run, or any `fix/` branch, Shepherd reads the head's
+fix-proof result before the review. A vacuous or test-less proof ends the round as
+`NO_REPRO`. A proof that shows nothing about the head goes to the reviewer marked unverified.
+That covers an `error` verdict (a skipped base included), an untrusted run, and a result that
+could not be read although one was due. A MERGE on such a head carries no merge-on-green
+grant, so it waits at the owner gate even under an `auto` policy.
+
 A branch registered first and its pull request registered later share one run. A
 registration by number reads the pull request from GitHub to learn its head branch, so it
 needs `gh`. A `--branch` that is not the pull request's head is refused.
@@ -326,10 +333,15 @@ ask for Shepherd's own review with [`shepherd review`](#own-review).
 - `shepherd-route/failed-rounds`: 3 review rounds failed at this task. Only a stuck round
   counts: a fresh reviewer after silence or a timeout, a re-read of a hold's reviewer, or a
   conflict. A `FIX_FIRST` that yields a new head is progress and does not count.
-- `shepherd-route/fix-first-runaway`: 6 `FIX_FIRST` reviews at this task.
+- `shepherd-route/fix-first-runaway`: 3 `FIX_FIRST` reviews at this task, for every kind of PR.
+  Two fix rounds that did not converge mean point fixes are not working, so Shepherd wakes no
+  third fixer. Route the task to the planner to redesign or split it; Shepherd files no planner
+  task itself. It is checked before `no-progress`, so a third `FIX_FIRST` always names this
+  route.
 - `shepherd-route/no-progress`: 2 `FIX_FIRST` reviews in a row ended with `Closer: no`, meaning
   the head is no closer to `MERGE` than the last one. A `FIX_FIRST` with `Closer: yes` or no
-  Closer line, and any other round, resets the count. It is checked before the runaway cap.
+  Closer line, and any other round, resets the count. Under the cap of 3 it can only fire at
+  the second `FIX_FIRST`.
 - a policy that did not allow an automated merge, such as an `owner-gate` seat or an unmet
   `MRG-AU-RV` fact. The prompt starts `the authority policy did not allow an automated merge`.
 

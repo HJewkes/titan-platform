@@ -1,4 +1,4 @@
-import type { GitHubPort, RepoSlug } from "@titan-design/github";
+import type { GitHubPort, PullRequest, RepoSlug } from "@titan-design/github";
 import { OVERLAY_SHAPES } from "@titan-design/review-panel";
 import { z } from "zod";
 import { deadline, type Deadline } from "../workflows/deadline.js";
@@ -51,10 +51,26 @@ export interface CleanupDeps {
   advisory?: (repo: RepoSlug) => boolean;
 }
 
+/** What the run's own merge step knew of the PR it merged; with it, cleanup reads no PR. */
+export interface MergedPr {
+  headRef: string;
+  headRepo: RepoSlug | null;
+  headSha: string;
+  mergeSha: string;
+}
+
 export interface CleanupInput {
   repo: RepoSlug;
   pr: number;
   runId: string;
+  /** Absent for a PR merged outside the run, or a step recorded before the field: each part then reads the PR. */
+  merged?: MergedPr;
+}
+
+type PrAfterMerge = Pick<PullRequest, "merged" | "headRef" | "headRepo" | "headSha" | "mergeSha">;
+
+async function prAfterMerge(port: GitHubPort, input: CleanupInput): Promise<PrAfterMerge> {
+  return input.merged === undefined ? port.getPr(input.repo, input.pr) : { merged: true, ...input.merged };
 }
 
 export const CleanupResult = z.looseObject({
@@ -93,7 +109,7 @@ export async function runCleanup(deps: CleanupDeps, input: CleanupInput, signal:
 /** The ref lives in the head repo, so a fork's same-named branch in the base repo is never touched; the port skips forks and the default branch. */
 async function deleteHead({ port, advisory }: CleanupDeps, input: CleanupInput): Promise<string> {
   if (advisory?.(input.repo)) return "advisory";
-  const pr = await port.getPr(input.repo, input.pr);
+  const pr = await prAfterMerge(port, input);
   if (!pr.merged) return "not-merged";
   const result = await port.deleteRef(input.repo, { branch: pr.headRef, repo: pr.headRepo });
   return result.done ? "deleted" : result.skipped;
@@ -109,7 +125,7 @@ async function releaseLanded(deps: CleanupDeps, input: CleanupInput): Promise<vo
   const store = deps.store.get();
   const registration = store.byRun(input.runId);
   if (registration?.held !== true) return;
-  const pr = await deps.port.getPr(input.repo, input.pr);
+  const pr = await prAfterMerge(deps.port, input);
   if (!pr.merged) return;
   const by = { actor: CLEANUP_ACTOR, headSha: pr.headSha };
   if (registration.ownerHold) store.releaseOwnerHold(input.runId, by, `${OWNER_HOLD_BYPASSED} (${registration.ownerHold.reason})`);
@@ -131,7 +147,7 @@ function satisfiedReason(registration: Registration | undefined): string | undef
  */
 async function settleTask(deps: CleanupDeps, registration: Registration, input: CleanupInput, wait: Waiter): Promise<string> {
   const tasks = deps.cleanup!.tasks;
-  const pr = await retrying(`merge sha of #${input.pr}`, () => deps.port.getPr(input.repo, input.pr), wait);
+  const pr = await retrying(`merge sha of #${input.pr}`, () => prAfterMerge(deps.port, input), wait);
   const landing = `${input.repo}#${input.pr} at ${pr?.mergeSha ?? "unknown"}`;
   if (registration.slice === null) return closeTask(tasks, registration.task, `closed by Shepherd: ${landing} merged`, wait);
   if (pr === undefined) return "unread";

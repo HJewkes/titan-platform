@@ -9,10 +9,12 @@ import { factoryStateDir } from "./config.js";
 import { deployPendingHealth, startDeployPacer } from "./deploy-pacer-sweep.js";
 import { readLastDeploy } from "./deploy-ports.js";
 import { DEPLOY_WATCH_MS, type DeployWatch } from "./deploy-watch.js";
+import { gateNotifyWatch, type GateNotifyOptions, type GateNotifyWatch } from "./gate-notify-sweep.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
 import { timestampConsole } from "./serve-log.js";
+import { startUnlessLive, type HealthProbe } from "./serve-beside-live.js";
 import { startLoopDelayWatch } from "./serve-loop-delay.js";
 import { untilStopped } from "./serve-signal.js";
 import { recordServeStart, serveStartsHealth, type ServeStart } from "./serve-starts.js";
@@ -79,12 +81,16 @@ export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweep
   fixerRetire?: FixerRetirePorts;
   /** Where each seat's digest of open gates, told fix rounds and finished runs goes on a change; absent means serve sends none. */
   seatDigest?: SeatDigestPorts;
+  /** Posts pending decision gates to agent-chat's human queue and resolves them from the answers; absent means serve asks nothing. */
+  gateNotify?: GateNotifyOptions;
   /** The audience an owner proof must name; defaults to this machine's hostname. */
   aud?: string;
   /** Replaces the root-owned key directory read at start; tests inject it. No flag or config reaches this. */
   ownerKeys?: () => OwnerKeys;
   /** Replaces the live owner-queue adapters behind needs.list and needs.count; tests inject it. */
   needsSources?: NeedsSources;
+  /** Replaces the /health probe that tells a live factory from a refused start; tests inject it. */
+  probe?: HealthProbe;
 }
 
 interface OwnerProofs {
@@ -108,7 +114,8 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   void github.refresh();
   const build = buildHealth(options);
   const log = options.logger ?? consoleLogger;
-  const daemon = frames.started(await startCountedDaemon(host, options, github, build, log));
+  const notify = options.gateNotify && gateNotifyWatch(host, options.gateNotify, log);
+  const daemon = frames.started(await startCountedDaemon(host, options, github, build, log, notify));
   const loopDelay = startLoopDelayWatch({ log });
   const unbindCarry = bindCarryStateDir(stateDir);
   const services = options.routes.shepherd;
@@ -136,11 +143,12 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const digestSweep = startSeatDigest(host, services, options.seatDigest, stateDir, log);
   const busy = () => busyRuns(host.runtime.list(["running"]), routedRunner(options.routes).routeFor, heldRun(services)).length;
   const pacerSweep = startDeployPacer(options.deployPacer, { now: options.now ?? Date.now, runningSha: build.sha, busy }, log);
+  const notifySweep = notify?.start();
   let closing: Promise<void> | null = null;
   const close = async (): Promise<void> => {
     await sweep.stop();
     thaws.stop();
-    for (const later of [frames, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep, loopDelay]) await later?.stop();
+    for (const later of [frames, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep, notifySweep, loopDelay]) await later?.stop();
     mainWatch?.close();
     await daemon.close();
     unbindCarry();
@@ -153,7 +161,8 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
 export async function serveFactoryUntilSignal(options: FactoryServerOptions, stop?: AbortSignal): Promise<void> {
   const restoreConsole = timestampConsole();
   try {
-    const server = await startFactoryServer(options);
+    const server = await startUnlessLive(() => startFactoryServer(options), options.logger ?? consoleLogger, options.probe);
+    if (server === null) return;
     const reason = await untilStopped(stop);
     (options.logger ?? consoleLogger).info({ signal: reason }, "shutting down");
     await server.close();
@@ -172,12 +181,12 @@ function stateDirOf(options: FactoryServerOptions): string {
 type BuildHealth = BehindMain & { sha: string };
 
 /** The pid file is read before startDaemon removes a stale one: a leftover file means the last serve exited without cleaning up. A refused start is not counted. */
-async function startCountedDaemon(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BuildHealth, log: Logger): Promise<DaemonHandle> {
+async function startCountedDaemon(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BuildHealth, log: Logger, notify: GateNotifyWatch | undefined): Promise<DaemonHandle> {
   const stateDir = stateDirOf(options);
   try {
     const unclean = (await readPidFile(daemonPaths(stateDir))) !== null;
     const recorded: { start?: ServeStart } = {};
-    const daemon = await startDaemon(daemonOptions(host, options, github, build, { proofs: ownerProofs(options), start: () => recorded.start }));
+    const daemon = await startDaemon(daemonOptions(host, options, github, build, { proofs: ownerProofs(options), start: () => recorded.start, notify }));
     recorded.start = recordStart(stateDir, unclean, options, log);
     return daemon;
   } catch (err) {
@@ -204,9 +213,10 @@ function ownerProofs(options: FactoryServerOptions): OwnerProofs {
 interface DaemonExtras {
   proofs: OwnerProofs;
   start: () => ServeStart | undefined;
+  notify: GateNotifyWatch | undefined;
 }
 
-function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BuildHealth, { proofs, start }: DaemonExtras): StartDaemonOptions<FactoryContext> {
+function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BuildHealth, { proofs, start, notify }: DaemonExtras): StartDaemonOptions<FactoryContext> {
   const { routeFor } = routedRunner(options.routes);
   const log = options.logger ?? consoleLogger;
   return {
@@ -226,6 +236,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
       lastDeploy: readLastDeploy(options.deployStateDir ?? factoryStateDir(process.env)),
       ...(options.deployWatch && { deploy: options.deployWatch.status() }),
       ...deployPendingHealth(options.deployPacer),
+      ...(notify && { gateNotify: notify.status() }),
       ownerKeys: proofs.keys.ok ? { count: proofs.keys.ids.length, ids: proofs.keys.ids } : { count: 0, refusal: proofs.keys.refusal },
       ...startHealth(start(), options),
     }),

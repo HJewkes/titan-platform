@@ -1,6 +1,7 @@
 import type { GitHubPort } from "@titan-design/github";
 import type { FreezeStoreRef } from "./freeze.js";
 import type { GhGateway } from "./gh-gateway-port.js";
+import type { PrFilesRead } from "./git-pr-files.js";
 import type { SeatBook } from "./seats.js";
 import type { ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
@@ -18,6 +19,8 @@ export interface ShepherdServices extends SnapshotServices {
   train?: MergeTrainRef;
   /** Read before a gate a freeze caused is superseded, and watched for thaws; absent means no repo is ever frozen. */
   freeze?: FreezeStoreRef;
+  /** Reads a registered head's changed files from Shepherd's git cache; absent means the serve process's cached reader. */
+  prFiles?: PrFilesRead;
   /** The clock `shepherd.prs` dates its merged window by; absent means the wall clock. */
   now?: () => number;
   /** Serve's GitHub gateway behind `shepherd.ghRead` and `shepherd.ghBudget`; absent on a host that is not serve. */

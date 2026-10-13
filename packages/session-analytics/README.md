@@ -70,6 +70,14 @@ priceRequest(
 - `blockedFlowReport(input)`, `livenessReport(input)`, `reviewFillReport(db, window)` and the
   parsers under them (`parseVerdict`, `parseDenials`, `parseSeatJournal`, `parseBrokerLog`) —
   agent-chat operations reports; see "Blocked flow", "Liveness" and "Review fill" below.
+- `successorReworkReport(db, window, options?)` — how much a successor re-reads what its
+  same-named predecessor read; a handoff-quality guardrail. See "Successor rework" below.
+- `renderReviewFillText(report)`, `renderSuccessorReworkText(report)`,
+  `renderWindowComparisonText(comparison, columns)` — the guardrail reports and their
+  before/after comparisons as plain-text tables.
+- `compareWindows(run, before, after, spec)`, `REVIEW_FILL_COMPARISON`,
+  `SUCCESSOR_REWORK_COMPARISON` — one guardrail report over a before and an after window with
+  per-row deltas; see "Before and after" below.
 - `initiativeFromCwd(cwd)`, `sessionInitiative(tasks, cwd)` — a session's initiative from its
   task edges, falling back to the `cf_analyze.py` cwd rule.
 - `buildSessionTimeline(observations, options?)`, `SessionTimelineAccumulator`,
@@ -296,7 +304,49 @@ miner fills from transcripts. Each chat verdict is placed in the context band of
 that sent it, per model, and an approve counts as an error when the same PR later got
 `changes_requested`. A GitHub-surface review has no issuing request in the graph and counts in
 `unfilled`. It takes an open graph connection, never a path, and does not call `gh`.
-`reviewFillSchema` is its zod schema.
+`reviewFillSchema` is its zod schema. `renderReviewFillText(report)` prints it as one table per
+band and model, with a null rate as `-`; it has no dollars, so no price caveat.
+
+## Successor rework
+
+`successorReworkReport(db, window, { bootRequests? })` answers whether handoffs leave a successor
+re-learning what its predecessor already knew. A successor is the next session to start under the
+same agent name after the previous one ends. For each pair whose successor starts in the window,
+it counts the paths the successor reads in its first `bootRequests` main-thread requests (default
+`DEFAULT_BOOT_REQUESTS`, 30) that the predecessor's `file_read` signals already name, and costs the
+boot requests that re-read at least one of them. Rows are per role: pairs, mean boot reads and
+re-reads per pair, re-read share, and re-read cost at list prices.
+
+It is a proxy for handoff quality, not a cost to minimise: some re-reading is the successor doing
+its job. `fileReadData` is false when the graph holds no `file_read` signal at all, and then zero
+rework means no data, not no rework. `renderSuccessorReworkText(report)` prints that warning,
+the per-role table and the list-price caveat. `successorReworkSchema` is its zod schema.
+
+## Before and after
+
+`compareWindows(run, before, after, spec)` answers whether a guardrail got worse across a change,
+such as a new handoff threshold or cache TTL. It calls `run` once per window, before first, and
+pairs the two reports' rows by `spec.key`. Each row carries both sides and a `delta` per numeric
+field, always after minus before. A delta is null, never zero, when the key is missing from one
+window, the field is null on either side, or either window fails `spec.hasData` (default: it has
+rows). Top-level counters such as `unfilled` or `bootRequests` stay on `before` and `after`
+without deltas.
+
+`REVIEW_FILL_COMPARISON` keys `reviewFillReport` rows by band and model.
+`SUCCESSOR_REWORK_COMPARISON` keys `successorReworkReport` rows by role, and treats a window with
+no `file_read` signal as no data. `run` closes over the connection and options, so the module
+never touches the database:
+
+```ts
+compareWindows((w) => successorReworkReport(db, w, { bootRequests: 20 }), before, after, SUCCESSOR_REWORK_COMPARISON);
+```
+
+A window means what that report's own filter makes it mean: `reviewFillReport` filters verdicts
+by their timestamp, and `successorReworkReport` filters pairs by when the successor started.
+
+`renderWindowComparisonText(comparison, columns)` prints one row per key with each named column
+as `before → after (Δ)`, a signed delta, and `-` for anything null or missing. A column whose
+name ends in `Usd` prints in dollars and adds the list-price caveat.
 
 ## Cost per outcome
 

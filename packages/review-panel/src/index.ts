@@ -12,7 +12,7 @@ export type {
   ReviewClass,
   ReviewShape,
 } from "./types.js";
-export { changedLineCount, classifyPr, DEFAULT_CLASS_RULES, SECURITY_SLICE_LINES, securitySliceFlag, touchesDependency } from "./classify.js";
+export { changedLineCount, classifyPr, DEFAULT_CLASS_RULES, pathTouches, SECURITY_SLICE_LINES, securitySliceFlag, touchesDependency } from "./classify.js";
 export type { ClassRules, SliceFlag, SliceInput } from "./classify.js";
 export {
   DEFAULT_CLASS_ROLES,
@@ -67,3 +67,5 @@ export type { AggregateInput, MemberResult } from "./aggregate.js";
 export { OVERLAY_SHAPES, SHAPE_BRIEFS, shapeBrief } from "./briefs/shape-brief.js";
 export type { OverlayShape, ShapeBrief, ShapeBriefInput } from "./briefs/shape-brief.js";
 export type { FixProofUnverified } from "./briefs/tests.js";
+export { SPAWN_REFUSED_REASON, memberName, reviewPullRequest } from "./review-pull-request.js";
+export type { ReviewClock, ReviewOptions, ReviewPorts, ReviewRequest } from "./review-pull-request.js";

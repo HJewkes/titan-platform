@@ -1,4 +1,4 @@
-import type { GitHubPort } from "@titan-design/github";
+import type { GitHubPort, WriteResult } from "@titan-design/github";
 import { deadline } from "./deadline.js";
 import { conflictOrThrow } from "./land-steps.js";
 import type { Timing } from "./land.js";
@@ -23,10 +23,15 @@ export interface UpdateInput {
 /** GitHub's update-branch sometimes never moves the head on the first write; each re-send follows a fresh read of the PR. */
 export const UPDATE_RESENDS = 2;
 
+/** One update-branch write: a merge of the base into the head, never a rebase or a force push; GitHub's 422 for an unmergeable base is `conflict`. */
+export function requestUpdate(port: GitHubPort, input: UpdateInput): Promise<WriteResult | "conflict"> {
+  return port.updateBranch(input.repo, input.pr, input.expectedHeadSha).catch(conflictOrThrow);
+}
+
 /** update-branch is asynchronous on GitHub, so the step waits for the head to move before it reports one. */
 export async function updateBranch(port: GitHubPort, input: UpdateInput, timing: Timing, signal: AbortSignal): Promise<UpdateResult> {
   for (let resend = 0; ; resend++) {
-    const write = await port.updateBranch(input.repo, input.pr, input.expectedHeadSha).catch(conflictOrThrow);
+    const write = await requestUpdate(port, input);
     if (write === "conflict") return { headSha: input.expectedHeadSha, own: false, conflict: true };
     if (!write.done && write.skipped !== "head-moved") {
       const pr = await port.getPr(input.repo, input.pr);

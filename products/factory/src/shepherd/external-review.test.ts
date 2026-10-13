@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { seatTranscript, type SeatRow } from "../test-support/seat-transcript.js";
 import type { AwaitVerdictResult, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
 import { FINDINGS_SEPARATOR } from "@titan-design/review-panel";
+import { BrokerUnavailableError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
+import { ReviewerAskTimedOut, ReviewerBrokerBusy, ReviewerBrokerDown, reviewWait } from "./review-wait.js";
 import { transcriptReviewerReader } from "./reviewer-reader.js";
 import { DamagedTranscriptError, acceptExternalVerdict, awaitExternalVerdict, SEAT_REVIEWER, newestAtHead, seatFixFirst, seatVetoed, unlessSeatFixFirst } from "./external-review.js";
 
@@ -178,6 +180,43 @@ describe("seatFixFirst", () => {
     expect(await seatFixFirst(roster, readerOf([]), target)).toEqual({ kind: "none", reason: "seat check: the roster could not be read: Error" });
   });
 
+  it.each([
+    ["a reviewer ask that timed out", new ReviewerAskTimedOut("agent-chat timed out")],
+    ["a broker that is down", new ReviewerBrokerDown("connect refused")],
+    ["a busy broker", new ReviewerBrokerBusy("machine guard")],
+    ["a broker call that timed out", new DispatchTimeoutError("timed out")],
+    ["an unreachable broker", new BrokerUnavailableError("unreachable")],
+    ["an HTTP 502", Object.assign(new Error("bad gateway"), { status: 502 })],
+  ])("marks a roster read failed by %s as one that may clear", async (_name, error) => {
+    const roster = async () => Promise.reject(error);
+
+    expect(await seatFixFirst(roster, readerOf([]), target)).toMatchObject({ kind: "none", retry: true });
+  });
+
+  it.each([
+    ["a permission error", Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" })],
+    ["a missing file", Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" })],
+    ["a JSON parse error", new SyntaxError("Unexpected end of JSON input")],
+    ["an HTTP 403", Object.assign(new Error("forbidden"), { status: 403 })],
+  ])("never marks a roster or transcript read failed by %s as one that may clear", async (_name, error) => {
+    const roster = async () => Promise.reject(error);
+    const reader: ReviewerReader = { read: async () => Promise.reject(error) };
+
+    const unreadRoster = await seatFixFirst(roster, readerOf([]), target);
+    const unreadTranscript = await seatFixFirst(rosterOf(SEAT), reader, target);
+
+    expect(unreadRoster).toMatchObject({ kind: "none" });
+    expect(unreadRoster).not.toHaveProperty("retry");
+    expect(unreadTranscript).toMatchObject({ kind: "none" });
+    expect(unreadTranscript).not.toHaveProperty("retry");
+  });
+
+  it("marks a transcript read that timed out as one that may clear", async () => {
+    const reader: ReviewerReader = { read: async () => Promise.reject(new ReviewerAskTimedOut("agent-chat timed out")) };
+
+    expect(await seatFixFirst(rosterOf(SEAT), reader, target)).toEqual({ kind: "none", reason: `seat check: the transcript of ${SEAT.name} could not be read: ReviewerAskTimedOut`, retry: true });
+  });
+
   it("blocks the head with the reviewer named when a seat reviewer's transcript cannot be read", async () => {
     const reader: ReviewerReader = { read: async () => Promise.reject(new Error("EACCES: permission denied")) };
 
@@ -192,7 +231,7 @@ describe("seatFixFirst", () => {
     const unreadRoster = await seatFixFirst(roster, readerOf([]), target);
     const unreadTranscript = await seatFixFirst(rosterOf(SEAT), reader, target);
 
-    expect(unreadRoster).toEqual({ kind: "none", reason: "seat check: the roster could not be read: HTTP 503" });
+    expect(unreadRoster).toEqual({ kind: "none", reason: "seat check: the roster could not be read: HTTP 503", retry: true });
     expect(unreadTranscript).toEqual({ kind: "none", reason: `seat check: the transcript of ${SEAT.name} could not be read: Error` });
     for (const text of [JSON.stringify(unreadRoster), JSON.stringify(unreadTranscript)]) {
       expect(text).not.toContain("db.example.invalid");
@@ -383,14 +422,70 @@ describe("Shepherd's MERGE meeting a seat WAIT", () => {
     expect(seat.reads()).toBe(1);
   });
 
-  it("blocks with the failed read's reason, not seatHeld, when a read fails during the wait", async () => {
+  it("holds the own MERGE with the failed read's reason when a read keeps failing through the wait", async () => {
     const seat = seatSaying("WAIT");
     let rosterReads = 0;
-    const roster = async () => (++rosterReads > 1 ? Promise.reject(new Error("broker down")) : [SEAT]);
+    const roster = async () => (++rosterReads > 1 ? Promise.reject(new ReviewerBrokerDown("broker down")) : [SEAT]);
+
+    const result = await unlessSeatFixFirst(roster, seat.reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
+
+    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("roster could not be read"), seatHeld: shepherdMerge });
+  });
+
+  it("blocks at once, holding nothing, when a read during the wait fails in a way no re-read can mend", async () => {
+    const seat = seatSaying("WAIT");
+    let rosterReads = 0;
+    const roster = async () => (++rosterReads > 1 ? Promise.reject(Object.assign(new Error("EACCES"), { code: "EACCES" })) : [SEAT]);
 
     const result = await unlessSeatFixFirst(roster, seat.reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
 
     expect(result).toEqual({ kind: "none", reason: expect.stringContaining("roster could not be read") });
+    expect(rosterReads).toBe(2);
+  });
+
+  it("lets the own MERGE stand when a roster read times out once and the seat then says MERGE", async () => {
+    const seat = seatSaying("MERGE");
+    let rosterReads = 0;
+    const roster = async () => (++rosterReads === 1 ? Promise.reject(new ReviewerAskTimedOut("agent-chat timed out")) : [SEAT]);
+
+    const result = await unlessSeatFixFirst(roster, seat.reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
+
+    expect(result).toBe(shepherdMerge);
+    expect(rosterReads).toBe(2);
+  });
+
+  it("lets the own MERGE stand when a seat transcript read times out once and the seat then says MERGE", async () => {
+    const seat = seatSaying("MERGE");
+    let seatReads = 0;
+    const reader: ReviewerReader = { read: async (input) => (++seatReads === 1 ? Promise.reject(new ReviewerAskTimedOut("agent-chat timed out")) : seat.reader.read(input)) };
+
+    const result = await unlessSeatFixFirst(rosterOf(SEAT), reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
+
+    expect(result).toBe(shepherdMerge);
+    expect(seatReads).toBe(2);
+  });
+
+  it("still blocks at once on a damaged seat transcript, which no re-read can mend", async () => {
+    const seat = seatSaying("MERGE");
+    let seatReads = 0;
+    const damaged = new DamagedTranscriptError("ends in a partial record", [said(SEAT, verdictAt("WAIT", OLD_HEAD), 1)], `Review ${REPO}#4`);
+    const reader: ReviewerReader = { read: async () => ((seatReads += 1), Promise.reject(damaged)) };
+
+    const result = await unlessSeatFixFirst(rosterOf(SEAT), reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
+
+    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("could not be read") });
+    expect(seatReads).toBe(1);
+  });
+
+  it("shows the hold in the review wait while the seat says WAIT, and clears it once the seat settles", async () => {
+    const seat = seatSaying("WAIT", "MERGE");
+    const seen: (string | undefined)[] = [];
+    const timing = { ...seat.seatWait.timing, sleep: async (ms: number) => (seen.push(reviewWait(REPO, 4)), seat.seatWait.timing.sleep(ms)) };
+
+    await unlessSeatFixFirst(rosterOf(SEAT), seat.reader, target, shepherdMerge, undefined, Date.now, { ...seat.seatWait, timing });
+
+    expect(seen).toEqual([expect.stringContaining(`holding Shepherd's MERGE at ${HEAD} on the seat check: seat check: ${SEAT.name} said WAIT`)]);
+    expect(reviewWait(REPO, 4)).toBeUndefined();
   });
 });
 

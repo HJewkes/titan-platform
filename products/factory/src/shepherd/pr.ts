@@ -1,4 +1,3 @@
-import type { RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { defineWorkflow, stepIdMatches, type WorkflowDefinition } from "../definition.js";
 import type { LandPrState } from "../workflows/land-pr.js";
@@ -14,18 +13,20 @@ import { freezeHoldRoutes, heldByFrozenMain } from "./freeze-hold.js";
 import { conflictCheckRoute, conflictCheckedGates, conflictsAt } from "./conflict-check.js";
 import type { MainRedWiring } from "./main-red.js";
 import { parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
-import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
+import type { SeatHeld, ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
 import { ownerBriefAt, verdictIsMergeAt } from "../gate-brief.js";
-import { runPolicyCeiling, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
+import { shepherdLandOptions, type EffectivePolicy } from "./policy.js";
+import { shepherdPrParams, type ShepherdPrParams } from "./pr-params.js";
 import { g10ReleaseRoutes, releaseG10Hold } from "./g10-release.js";
 import { g10ReholdRoutes, reholdMovedHead } from "./g10-rehold.js";
 import { narrowToRegistration, registrationPolicy } from "./registration-policy.js";
-import { afterStages, type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
-import { VERSION_PACKAGES_BRANCH, npmRegistry, releaseFollowStep, releaseLandOptions, releasePreflightAt, releaseRoutes, releaseVerdict, type PackageRegistry } from "./release.js";
+import { type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
+import { npmRegistry, releaseFollowStep, releaseLandOptions, releasePreflightAt, releaseRoutes, releaseVerdict, type PackageRegistry } from "./release.js";
 import { npmVersionRegistry, type VersionRegistry } from "./release-follow.js";
 import { publishOutcome } from "./publish-review.js";
 import { reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { standingVerdict } from "./review-request.js";
+import { reviewKeepingSeatHold } from "./seat-recheck.js";
 import { reviewRefusedRoute, standingMerge } from "./merge-standing.js";
 import { LeaveLand } from "./leave-land.js";
 import { observePr, observeRoute } from "./observe.js";
@@ -48,32 +49,6 @@ import { SHEPHERD_STEPS } from "./shepherd-steps.js";
 import { withEarlier, type FixFirstTrail } from "./fix-first-trail.js";
 
 export { SHEPHERD_STEPS };
-
-export interface ShepherdPrParams {
-  repo: RepoSlug;
-  pr?: number;
-  branch?: string;
-  policy: EffectivePolicy;
-  /** Parsed before land, so a malformed list fails the run before any merge. */
-  after: AfterStage[];
-  /** The registration's `<initiative>/<ID>`; its id is named in the squash subject. */
-  task?: string;
-  /** The changesets Version Packages PR: a release preflight stands in for the reviewer. */
-  release: boolean;
-}
-
-/** A run with no `policy` param gets the owner gate as its ceiling; the registration's policy can only narrow it. */
-export function shepherdPrParams(ctx: WorkflowContext): ShepherdPrParams {
-  const repo = ctx.param("repo");
-  const rawPr = ctx.param("pr");
-  const branch = ctx.param("branch");
-  if (!repo) throw new Error("shepherd-pr: param repo is required");
-  const pr = rawPr === undefined ? undefined : Number(rawPr);
-  if (pr !== undefined && (!Number.isInteger(pr) || pr <= 0)) throw new Error(`shepherd-pr: param pr must be a positive integer, got ${rawPr}`);
-  if (pr === undefined && !branch) throw new Error("shepherd-pr: param pr or branch is required");
-  const policy = runPolicyCeiling(ctx.param("policy"));
-  return { repo, ...(pr === undefined ? { branch: branch! } : { pr }), policy, ...(ctx.param("task") ? { task: ctx.param("task") } : {}), after: afterStages(ctx), release: branch === VERSION_PACKAGES_BRANCH };
-}
 
 interface ShepherdRun extends WakeRun, FixFirstTrail {
   ctx: WorkflowContext;
@@ -104,6 +79,9 @@ interface ShepherdRun extends WakeRun, FixFirstTrail {
   freezeChecks: number;
   /** Heads whose next review spawns a never-held reviewer. */
   fresh: Set<string>;
+  /** Shepherd's own MERGE a seat held at each head; that head's next review re-checks the seat only. */
+  seatHeld: Map<string, SeatHeld>;
+  seatHeldRounds: Map<string, number>;
   /** Update-branch calls since the last human gate across every round; replaying the run's recorded steps rebuilds it, so a restart keeps the count. */
   updateBound: UpdateBound;
   /** The unsettled-merge wait at a head across every round; replay rebuilds it like the update bound. */
@@ -122,7 +100,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const pr = params.pr ?? (await awaitPrStep(ctx, params.repo, params.branch));
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), merged: new Map(), policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release, task: params.task },
-    ...{ failedRounds: 0, throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map(), wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [] },
+    ...{ failedRounds: 0, throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), seatHeld: new Map(), seatHeldRounds: new Map(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map(), wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [] },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : { ...shepherdLandOptions(() => run.policy, verdictFor, (headSha) => liveEscalation(run, headSha)), reviewedMerge: (headSha) => verdictIsMergeAt(verdictFor(headSha), headSha), ownerBriefAt: (headSha) => ownerBriefAt(verdictFor(headSha), headSha) };
@@ -295,7 +273,7 @@ async function reviewHead(run: ShepherdRun, headSha: string): Promise<Verdict> {
   const carried = run.trail.seatAsked.has(headSha) ? undefined : await carriedVerdict(tapped(run.ctx, (stepId, result) => noteCarryStep(probe, stepId, result)), run.target, run.reviews, headSha, run.carryScopeReads++);
   if (carried) return carried;
   const cause = takeCause(run.trail, headSha, probe);
-  const verdict = await run.phases.review(run.ctx, { ...run.target, round: run.state.round, headSha, ...(run.fresh.has(headSha) && { fresh: true }), cause });
+  const verdict = await reviewKeepingSeatHold(run.seatHeld, headSha, (seatHeld) => run.phases.review(run.ctx, { ...run.target, round: run.state.round, headSha, ...(run.fresh.has(headSha) && { fresh: true }), cause, ...(seatHeld && { seatHeld }) }));
   return verdict.kind === "none" || verdict.headSha === headSha ? verdict : { kind: "none", cause: "no-verdict" };
 }
 
@@ -322,7 +300,7 @@ async function onConflict(run: ShepherdRun, headSha: string): Promise<LandOutcom
 async function landed(ctx: WorkflowContext, run: ShepherdRun, merged: Extract<LandOutcome, { kind: "merged" }>, after: readonly AfterStage[]): Promise<LandOutcome> {
   await recordLanded(ctx, run.target, merged);
   // The main-CI read answers `none` for an empty merge sha and hands that run to the owner.
-  const mainCi = await shepherdMainCi(ctx, { ...run.target, mergeSha: merged.mergeSha ?? "" }, after, run.policy.fixer);
+  const mainCi = await shepherdMainCi(ctx, { ...run.target, mergeSha: merged.mergeSha ?? "", ...(merged.landed && { landed: merged.landed }) }, after, run.policy.fixer);
   // A red or unread main already went to its own route, and a release built on it would not publish.
   if (run.release && mainCi.verdict === "green" && merged.mergeSha) await releaseFollowStep(ctx, { ...run.target, mergeSha: merged.mergeSha }, releasePreflightAt(merged.headSha, (headSha) => run.reviews.get(headSha))?.versions ?? {});
   return merged;

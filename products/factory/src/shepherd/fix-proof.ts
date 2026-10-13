@@ -20,7 +20,10 @@ const FIX_PROOF_EXEC_CHECKS: ReadonlySet<string> = new Set(["fix-proof-base", "f
  * queue gaps. A judge that runs to its limit is still read.
  */
 const DEFAULT_FIX_PROOF_WAIT_MS = 35 * 60_000;
-/** A head that has no Actions run this long after the first poll never will: the repo runs no Actions on it. */
+/**
+ * A head that has no Actions run this long after the first poll never will: the repo runs no Actions on it, or the head opted out
+ * with `[skip ci]`. In a repo whose base runs fix-proof, the grace ends in `error`, not `missing`.
+ */
 const DEFAULT_NO_ACTIONS_GRACE_MS = 3 * 60_000;
 const LOG_TAIL_LINES = 200;
 const GATED_KINDS: ReadonlySet<string> = new Set(["correctness", "security"]);
@@ -32,6 +35,8 @@ const ACTIONS_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z /;
  * chose the code that printed its own result line.
  */
 const FIX_PROOF_HARNESS: readonly string[] = [".github/workflows/", ".github/actions/", ".github/fix-proof.json", "scripts/fix-proof-run.sh"];
+/** Read at the PR's base ref, so a PR cannot delete its way out of the gate. */
+const FIX_PROOF_WORKFLOW = ".github/workflows/fix-proof.yml";
 
 type Parsed = { line: string; verdict: FixProofResult["verdict"] };
 type FixProofRead = ({ kind: "result" } & Parsed) | ({ kind: "untrusted"; reason: string } & Parsed) | { kind: "skipped" | "missing" | "error"; reason: string };
@@ -190,17 +195,37 @@ async function distrustOf(port: GitHubPort, repo: RepoSlug, pr: number | null, r
   return harnessTouch(port, repo, pr);
 }
 
-/** A missing run is believed only when the PR left the harness alone; deleting the workflow is otherwise a way to dodge the gate. */
-async function missingRead(port: GitHubPort, repo: RepoSlug, pr: number | null, missing: string): Promise<FixProofRead> {
+/**
+ * Why the base ref may run fix-proof on this PR, or undefined only when the base is known to have no such workflow. A contents 404
+ * also covers a base ref that does not exist, so a missing file is believed only once the branch itself is read.
+ */
+async function workflowAtBase(port: GitHubPort, repo: RepoSlug, binding: Binding): Promise<string | undefined> {
+  if ("unbound" in binding) return binding.unbound;
+  try {
+    if ((await port.getFile(repo, FIX_PROOF_WORKFLOW, binding.baseRef)) !== null) return `${FIX_PROOF_WORKFLOW} exists at the base ${binding.baseRef}`;
+    if ((await port.getHeadSha(repo, binding.baseRef)) === null) return `the base ${binding.baseRef} does not exist, so ${FIX_PROOF_WORKFLOW} could not be read there`;
+    return undefined;
+  } catch (error) {
+    return `${FIX_PROOF_WORKFLOW} could not be read at the base ${binding.baseRef}: ${failureOf(error)}`;
+  }
+}
+
+/**
+ * A missing run is believed only when the PR left the harness alone and its base runs no fix-proof workflow. Otherwise deleting
+ * the workflow, or a `[skip ci]` head that starts no Actions run, is a way to dodge the gate.
+ */
+async function missingRead(port: GitHubPort, repo: RepoSlug, pr: number | null, binding: Binding, missing: string): Promise<FixProofRead> {
   const touched = await harnessTouch(port, repo, pr);
-  return touched === undefined ? { kind: "missing", reason: missing } : { kind: "error", reason: `${missing}, and ${touched}` };
+  if (touched !== undefined) return { kind: "error", reason: `${missing}, and ${touched}` };
+  const atBase = await workflowAtBase(port, repo, binding);
+  return atBase === undefined ? { kind: "missing", reason: missing } : { kind: "error", reason: `${missing}, but ${atBase}` };
 }
 
 async function readResult(port: GitHubPort, input: FixProofInput, pr: number | null, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
   const binding = await bindingOf(port, input.repo, pr);
   const polled = await completedRun(port, input.repo, input.head, binding, timing, signal);
   if ("stalled" in polled) return { kind: "error", reason: polled.stalled };
-  if ("missing" in polled) return missingRead(port, input.repo, pr, polled.missing);
+  if ("missing" in polled) return missingRead(port, input.repo, pr, binding, polled.missing);
   const line = lastResultLine(await port.jobLogTail(input.repo, polled.run.id, LOG_TAIL_LINES), input.head);
   if (line === undefined) return { kind: "error", reason: `the ${FIX_PROOF_CHECK} job log has no result line for this head` };
   const parsed = parseResultLine(line);
@@ -234,7 +259,7 @@ export function fixProofVerdict(read: z.infer<typeof FixProofReadSchema>, head: 
   return { kind: "NO_REPRO", headSha: head, result: parsed.result };
 }
 
-type FixProofUnverified = "error" | "untrusted" | "unread";
+export type FixProofUnverified = "error" | "untrusted" | "unread";
 
 /**
  * Why a gated proof that is not NO_REPRO still proves nothing about `head`, or undefined when it stands or no proof was expected.

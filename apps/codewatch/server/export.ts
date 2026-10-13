@@ -5,7 +5,7 @@ import { createQueryResolver } from "@titan-design/code-read";
 import { embedSnapshot } from "@titan-design/react-app";
 import { canonicalArgs, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import { exportSnapshot } from "@titan-design/rpc-client/node";
-import { invokeCommand, type BaseContext, type CommandRegistry } from "@titan-design/registry";
+import { inProcessCaller, type BaseContext, type CommandRegistry } from "@titan-design/registry";
 import { datasetSource } from "../src/data/dataset.js";
 import { encodeDataset } from "./dataset-export.js";
 import { firstPaintCalls, type PlannedCall } from "./plan.js";
@@ -30,9 +30,10 @@ function comparable(command: string, envelope: unknown): string {
 
 /** Answers each recorded call through the live registry too, and lists the ones whose answers differ. */
 async function liveMismatches(registry: CommandRegistry<BaseContext>, snapshot: Snapshot, plan: readonly PlannedCall[]): Promise<string[]> {
+  const call = inProcessCaller(registry, createContext);
   const mismatched: string[] = [];
   for (const { command, args } of plan) {
-    const { envelope } = await invokeCommand(registry.get(command)!, args, createContext());
+    const envelope = await call(command, args);
     const recorded = snapshot.calls[snapshotKey(command, args)];
     if (comparable(command, envelope) !== comparable(command, recorded)) mismatched.push(`${command} ${JSON.stringify(args)}`);
   }

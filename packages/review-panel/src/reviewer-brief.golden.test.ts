@@ -10,7 +10,7 @@ const earlierFindings = [
   { head: "a".repeat(40), defectClass: "Unquoted shell words", text: "1. `rm $dir` splits on spaces.\nVerdict: FIX_FIRST" },
   { head: "b".repeat(40), text: "1. The retry never stops." },
 ];
-const refusals: MalformedRefusal[] = ["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target"];
+const refusals: MalformedRefusal[] = ["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target", "ci_policy_malformed"];
 
 const reviews: [string, string][] = [
   ["standard review", reviewerBrief(target)],

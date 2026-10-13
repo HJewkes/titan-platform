@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
+import type { FixProofUnverified } from "./fix-proof.js";
 import type { PanelMerge, ShepherdDeps, Verdict } from "./phases.js";
 import { classRulesFor, intentPlan, panelFacts, panelPolicyFor, withoutPlan, type IntentPlan, type PanelMode } from "./review-panel-plan.js";
 import { Awaited, Dispatched } from "./review-schemas.js";
@@ -88,6 +89,7 @@ export interface MemberBase extends ReviewTarget {
   runId: string;
   fixFirsts?: number;
   fixProof?: string;
+  fixProofUnverified?: FixProofUnverified;
 }
 
 interface DispatchedMember {
@@ -225,12 +227,13 @@ export function panelMerge(verdict: PanelVerdict, results: readonly { shape: Mem
 export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, base: MemberBase, awaiting: AwaitVerdictInput, dispatchedReviewer: AgentIdentity, account: string): Promise<Verdict> {
   const target: ReviewTarget = { repo: base.repo, pr: base.pr, head: base.head };
   const members = await dispatchMembers(ctx, intent, base);
-  const taken = await takeAwaited(ctx, target, awaiting, dispatchedReviewer, account);
+  const standing = { unverified: base.fixProofUnverified };
+  const taken = await takeAwaited(ctx, target, awaiting, dispatchedReviewer, account, standing);
   if ("held" in taken) return taken.held;
   const results = [{ shape: "correctness" as const, result: memberResultOf(taken.awaited) }, ...(await awaitMembers(ctx, target, members))];
   const verdict = await panelVerdict(ctx, target, intent.plan, results, base.fixProof);
   if (verdict.outcome === "FIX_FIRST") return panelFixFirst(target.head, verdict);
   if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return { kind: "none", cause: verdict.outcome === "timeout" ? "timeout" : "no-verdict", reason: "a blocking panel member gave no verdict" };
-  const decided = await verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited);
+  const decided = await verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing);
   return decided.kind === "MERGE" && verdict.outcome === "MERGE" ? { ...decided, panel: panelMerge(verdict, results) } : decided;
 }

@@ -4,16 +4,18 @@ import { z } from "zod";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
 import { moveAccountHold } from "./account-store.js";
 import { parkSettled, repointParkSettled, settlePark, type ParkSettle } from "./park-settled.js";
-import { readSlots, recordVouch, repointRunRows, vouchedLine, writeSlotRow, type Vouch } from "./hold-slot-rows.js";
+import { HoldSatisfiedBySchema, type HoldSatisfaction, type HoldSatisfiedBy } from "./hold-satisfaction.js";
+import { readSlots, reclassHold, recordVouch, repointRunRows, vouchedLine, writeSlotRow, type Reclass, type Vouch } from "./hold-slot-rows.js";
 import { afterHold, isAdversaryHold, liftClass, liftTop, type HoldSlots, type Lift, type SlotHold } from "./hold-slots.js";
 import { isOwnerHold, liftOwnerHold, ownerHoldOf, placeOwnerHold, recordOwnerAsked, type OwnerHold } from "./owner-hold-rows.js";
+import { registrationFactsOf, writeRegistrationFacts, type RegistrationFacts, type RegistrationFactsInput } from "./registration-facts.js";
 import { EffectivePolicySchema, RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy.js";
 import { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
 
 export { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
 
 /** A PR, or a branch whose PR does not exist yet, handed to one shepherd-pr run. */
-export interface RegistrationInput {
+export interface RegistrationInput extends RegistrationFactsInput {
   repo: RepoSlug;
   pr?: number;
   branch?: string;
@@ -28,9 +30,9 @@ export interface RegistrationInput {
   slice?: string;
 }
 
-export type RegistrationUpdate = Pick<RegistrationInput, "task" | "implementer" | "reviewer" | "policy" | "kind" | "slice">;
+export type RegistrationUpdate = Pick<RegistrationInput, "task" | "implementer" | "reviewer" | "policy" | "kind" | "slice" | "headSha" | "base">;
 
-export interface Registration {
+export interface Registration extends RegistrationFacts {
   repo: RepoSlug;
   pr: number | null;
   branch: string | null;
@@ -57,21 +59,14 @@ export interface Registration {
   updatedAt: string;
 }
 
-/** The verdict that satisfied a hold: its reviewer's name, the session that wrote it, and where in that session's transcript. */
-export const HoldSatisfiedBySchema = z.object({ reviewer: z.string(), agentId: z.string(), sessionId: z.string(), locator: z.looseObject({}) });
-export type HoldSatisfiedBy = z.infer<typeof HoldSatisfiedBySchema>;
-
-export interface HoldSatisfaction {
-  head: string;
-  by: HoldSatisfiedBy;
-}
+export { HoldSatisfiedBySchema, type HoldSatisfaction, type HoldSatisfiedBy } from "./hold-satisfaction.js";
 
 /** What the merge guard asks: the reason `repo#pr`, or the PR's head `branch`, is held, or undefined when nothing holds it; a hold satisfied at `sha` does not hold a merge there. */
 export interface HoldLookup {
   heldReason(repo: RepoSlug, pr: number, branch?: string, sha?: string): string | undefined;
 }
 
-export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
+export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrationFactsMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
 
 import type { Author, AuthorInput, AuthorRow } from "./author-types.js";
 export type { Author, AuthorInput } from "./author-types.js";
@@ -109,6 +104,7 @@ export class ShepherdStore implements HoldLookup {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(repoKey(input.repo), input.pr ?? null, input.branch === undefined ? null : branchName(input.branch), input.runId, input.task, input.implementer, input.reviewer ?? null, JSON.stringify(input.policy), kind, input.slice ?? null, at, at);
+    writeRegistrationFacts(this.db, input.runId, input);
     return this.changed(input.runId, this.byRun(input.runId)!);
   }
 
@@ -148,6 +144,7 @@ export class ShepherdStore implements HoldLookup {
       this.db
         .prepare("UPDATE shepherd_registration SET task = ?, implementer = ?, reviewer = ?, policy = ?, kind = ?, slice = ?, updated_at = ? WHERE run_id = ?")
         .run(meta.task, meta.implementer, meta.reviewer ?? null, JSON.stringify(policy), kind, meta.slice ?? null, this.stamp(), runId);
+      writeRegistrationFacts(this.db, runId, meta);
     });
     write.immediate();
     return this.changed(runId, this.byRun(runId)!);
@@ -189,6 +186,11 @@ export class ShepherdStore implements HoldLookup {
   /** Compare-and-swap: releases only while the run's gating hold is exactly `reason`; false when a release or another hold got there first. */
   releaseIfHeld(runId: string, reason: string, by: EventContext = {}): boolean {
     return this.lift(runId, (slots) => (slots.top?.reason === reason ? liftTop(slots) : undefined), by);
+  }
+
+  /** Compare-and-swap in one transaction: `reclassHold` swaps the gating hold, only while it is `from`, for `next` of the hold left gating. */
+  reclassIfHeld(runId: string, from: string, next: Reclass["next"], by: EventContext = {}): string | null | false {
+    return this.changed(runId, this.db.transaction(() => reclassHold(this.db, runId, { from, next }, this.stamp(), by))());
   }
 
   /** Compare-and-swap: lifts the owner-asked hold only while one is set, recording its reason, or `reason` when given; false, writing nothing, when none is. */
@@ -368,6 +370,7 @@ function fromRow(row: Row): Registration {
     releaseReady: row.release_ready_head && row.release_ready_at ? { head: row.release_ready_head, at: row.release_ready_at } : null,
     reviewRequest: row.review_request_head && row.review_request_at ? { head: row.review_request_head, at: row.review_request_at, takenAt: row.review_request_taken_at ?? null } : null,
     ownerHold,
+    ...registrationFactsOf(row),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

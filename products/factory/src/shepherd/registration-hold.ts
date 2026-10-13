@@ -1,7 +1,9 @@
-import type { GitHubPort, PrFile, RepoSlug } from "@titan-design/github";
+import { FileListTruncatedError, type GitHubPort, type PrFile, type RepoSlug } from "@titan-design/github";
 import { classifyPr, DEFAULT_CLASS_RULES, type ClassRules } from "@titan-design/review-panel";
 import { SHEPHERD_ACTOR } from "./events.js";
 import { holdClassOf } from "./g10-release.js";
+import { reclassedUnread, UNREAD_FILES_PREFIX } from "./g10-reclass-events.js";
+import { localPrFiles, prFilesOf, type PrFilesRead } from "./git-pr-files.js";
 import { isAdversaryHold } from "./hold-slots.js";
 import { isOwnerHold } from "./owner-hold-rows.js";
 import { prChangedLines } from "./reviewer-roles.js";
@@ -22,12 +24,24 @@ const SHEPHERD_CLASS_RULES: ClassRules = {
 /** Each lost compare-and-swap means another hold or release landed; the run is read again and the G10 hold restacked on it. */
 const CAS_ATTEMPTS = 5;
 
+export { isUnreadRegistrationHold } from "./g10-reclass-events.js";
+
 const ADVERSARY_TOUCHES = ["authority", "policy", "security"] as const;
 
 interface HoldTarget {
   repo: RepoSlug;
   pr: number;
   kind: string;
+  /** With `base`, the files come from Shepherd's git cache at this head instead of GitHub. */
+  head?: string;
+  base?: string;
+}
+
+interface HoldFiles {
+  /** Reads a head's files from git; absent means the serve process's cached reader. */
+  local?: PrFilesRead;
+  /** The head to class instead of the registered one: the PR's head as a branch registration first saw it. */
+  head?: string;
 }
 
 /**
@@ -54,15 +68,26 @@ function reasonFor(files: readonly PrFile[], kind: string): string | undefined {
   return touches.includes("migration") ? "g10-review: store migration" : undefined;
 }
 
-/**
- * The G10 hold a PR needs at registration, adversary before review. A file list Shepherd cannot read whole (an API error or
- * a list past GitHub's cap) could hide any touch, so it takes the adversary class: failing closed means the seat reviews it.
- */
-export async function g10HoldAt(port: GitHubPort, { repo, pr, kind }: HoldTarget): Promise<string | undefined> {
+/** A failed read is tried once more, since a transient error would otherwise cost a seat review; a list past the cap stays past it. */
+async function filesWithRetry(port: GitHubPort, target: HoldTarget, local: PrFilesRead): Promise<PrFile[]> {
   try {
-    return reasonFor(await port.listPrFiles(repo, pr), kind);
+    return await prFilesOf(port, target, local);
   } catch (error) {
-    return `g10-adversary: changed files unread at registration (${error instanceof Error ? error.name : "error"})`;
+    if (error instanceof FileListTruncatedError) throw error;
+    return prFilesOf(port, target, local);
+  }
+}
+
+/**
+ * The G10 hold a PR needs at registration, adversary before review. A file list Shepherd cannot read whole (an API error
+ * twice, or a list past GitHub's cap) could hide any touch, so it takes the adversary class: failing closed means the seat
+ * reviews it. Git's `-M` diff names a rename's old path as GitHub's list does, so both class a rename alike.
+ */
+export async function g10HoldAt(port: GitHubPort, target: HoldTarget, local: PrFilesRead = localPrFiles): Promise<string | undefined> {
+  try {
+    return reasonFor(await filesWithRetry(port, target, local), target.kind);
+  } catch (error) {
+    return `${UNREAD_FILES_PREFIX}${error instanceof Error ? error.name : "error"})`;
   }
 }
 
@@ -70,9 +95,15 @@ const G10_STRENGTH: Readonly<Record<string, number>> = { "g10-review": 1, "g10-a
 
 const g10StrengthOf = (reason: string | null | undefined): number => G10_STRENGTH[holdClassOf(reason) ?? ""] ?? 0;
 
-/** True when a G10 hold at least as strong as `wanted` was placed on the run, so a weaker one placed or inherited never blocks a stronger. */
-const wasG10Held = (store: ShepherdStore, runId: string, wanted: string): boolean =>
-  store.eventsOf(runId).some((event) => event.kind === "hold" && g10StrengthOf(event.reason) >= g10StrengthOf(wanted));
+/**
+ * True when a G10 hold at least as strong as `wanted` was placed on the run, so a weaker one placed or inherited never blocks
+ * a stronger. An unread-files hold Shepherd re-classed decided no class, so a repeat registration may still escalate.
+ */
+function wasG10Held(store: ShepherdStore, runId: string, wanted: string): boolean {
+  const events = store.eventsOf(runId);
+  const reclassed = reclassedUnread(events);
+  return events.some((event) => event.kind === "hold" && !reclassed.has(event) && g10StrengthOf(event.reason) >= g10StrengthOf(wanted));
+}
 
 /** True when the run holds or ever held a G10 hold; the reviewer it gets is picked by this, since a released hold still names the class. */
 export const everG10Held = (store: ShepherdStore, runId: string): boolean =>
@@ -105,9 +136,9 @@ function holdToPlace(store: ShepherdStore, runId: string, wanted: string): strin
  * released; a weaker one does not stop an escalation. The file read is slow, so the hold is a compare-and-swap retried
  * on a fresh read of the run. A history that cannot be read holds `g10-adversary`, keeping an adversary hold in force.
  */
-export async function applyRegistrationHold(port: GitHubPort, store: ShepherdStore, runId: string): Promise<string | undefined> {
+export async function applyRegistrationHold(port: GitHubPort, store: ShepherdStore, runId: string, files: HoldFiles = {}): Promise<string | undefined> {
   try {
-    return await placeRegistrationHold(port, store, runId);
+    return await placeRegistrationHold(port, store, runId, files);
   } catch (error) {
     const reason = `g10-adversary: hold history unread at registration (${error instanceof Error ? error.name : "error"})`;
     return store.holdUnlessAdversary(runId, reason, { actor: SHEPHERD_ACTOR }) ? reason : undefined;
@@ -118,10 +149,12 @@ export async function applyRegistrationHold(port: GitHubPort, store: ShepherdSto
  * A run whose hold history cannot be read could have any class, so `applyRegistrationHold` holds it adversary instead,
  * unless an adversary hold already gates it: that hold, often a seat's with its reviewer, is kept as it stands.
  */
-async function placeRegistrationHold(port: GitHubPort, store: ShepherdStore, runId: string): Promise<string | undefined> {
+async function placeRegistrationHold(port: GitHubPort, store: ShepherdStore, runId: string, files: HoldFiles): Promise<string | undefined> {
   const registration = store.byRun(runId);
   if (!registration || registration.pr === null || wasG10Held(store, runId, "g10-adversary:")) return undefined;
-  const wanted = await g10HoldAt(port, { repo: registration.repo, pr: registration.pr, kind: registration.kind });
+  const head = files.head ?? registration.headSha ?? undefined;
+  const target = { repo: registration.repo, pr: registration.pr, kind: registration.kind, ...(head !== undefined && { head }), ...(registration.base !== null && { base: registration.base }) };
+  const wanted = await g10HoldAt(port, target, files.local);
   if (wanted === undefined) return undefined;
   for (let attempt = 0; attempt < CAS_ATTEMPTS; attempt++) {
     const mark = store.changeMark(runId);
