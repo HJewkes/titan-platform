@@ -6,13 +6,13 @@ import type { FactoryHost } from "./host.js";
 import { AGENT_CALL_TIMEOUT_MS } from "./shepherd/agents.js";
 import { startSweep, type Sweep } from "./sweep.js";
 
-export const GATE_NOTIFY_MS = 30_000;
+const GATE_NOTIFY_MS = 30_000;
 
 /** The agent-chat side of the gate notifier; serve supplies the gates and the `gate_ask` store from its own host. */
 export type GateNotifyOptions = Pick<GateNotifyPorts, "label" | "resolverClass" | "askHuman" | "readAnswers" | "dismissAsk">;
 
 /** What health shows, so a gate the phone cannot settle, or a label whose answers cannot be read, is seen rather than waited on. */
-export interface GateNotifyStatus {
+interface GateNotifyStatus {
   label: string;
   resolverClass: GateNotifyOptions["resolverClass"];
   /** Asks waiting on an answer. */
