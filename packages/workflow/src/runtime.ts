@@ -38,6 +38,7 @@ export class WorkflowRuntime {
   private readonly reconcileTimeoutMs: number;
   private readonly now: () => number;
   private readonly baseDeps: Omit<ContextDeps, "save" | "recovered">;
+  private isQuiesced = false;
 
   constructor(private readonly options: WorkflowRuntimeOptions) {
     this.store = new WorkflowRunStore(options.db, options.runTable);
@@ -68,11 +69,21 @@ export class WorkflowRuntime {
   registered(): string[] {
     return [...this.workflows.keys()];
   }
-  /** `options.onStart` commits with the run row, or its throw rolls the run back and nothing launches. */
+  /**
+   * `options.onStart` commits with the run row, or its throw rolls the run back and nothing launches.
+   * Once quiesced, the row is persisted unclaimed so the successor runtime adopts it on its next hydrate.
+   */
   start(name: string, params: Record<string, string> = {}, options: WorkflowStartOptions = {}): string {
     const workflow = this.workflows.get(name);
     if (!workflow) throw new Error(`unknown workflow: ${name}`);
     const run = newRun(randomUUID(), name, params, workflow.version);
+    if (this.isQuiesced) {
+      this.options.db.transaction(() => {
+        this.store.create(run);
+        options.onStart?.(run.id);
+      }).immediate();
+      return run.id;
+    }
     const insert = this.options.db.transaction((): WorkflowRun => {
       this.store.create(run);
       const claimed = this.claim(run.id);
@@ -86,6 +97,7 @@ export class WorkflowRuntime {
 
   /** `exclude` leaves those runs unclaimed this call, for a caller that is not yet sure they are its to drive. */
   async hydrate(options: { exclude?: ReadonlySet<string> } = {}): Promise<string[]> {
+    if (this.isQuiesced) return [];
     const candidates = this.store.listByStatus(ACTIVE_STATUSES).filter((run) => !options.exclude?.has(run.id) && !this.held.has(run));
     const settled = await Promise.allSettled(candidates.map((run) => this.hydrateOne(run)));
     return settled.flatMap((result) => result.status === "fulfilled" && result.value ? [result.value] : []);
@@ -202,6 +214,16 @@ export class WorkflowRuntime {
     this.live.clear();
   }
 
+  /** Stops admission for a planned handoff: live runs are released and new ones are left for the successor to drive. */
+  quiesce(): void {
+    this.isQuiesced = true;
+    this.shutdown();
+  }
+
+  quiesced(): boolean {
+    return this.isQuiesced;
+  }
+
   private finish(run: WorkflowRun, status: "completed" | "failed" | "cancelled", error: string | null): void {
     this.dropLive(run.id);
     run.status = status;
@@ -248,7 +270,7 @@ export class WorkflowRuntime {
     this.save(run);
     this.cancelGates(runId, reason);
     if (live) live.controller.abort(new WorkflowCancelledError(runId, reason));
-    else if (Object.keys(run.activeSteps).length === 0) this.finish(run, "cancelled", reason);
+    else if (!this.isQuiesced && Object.keys(run.activeSteps).length === 0) this.finish(run, "cancelled", reason);
     else this.release(run);
   }
 
