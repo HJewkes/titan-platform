@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { MinerContext } from "../context.js";
 import { citationReportSchema, findingSchema, verifyCitations, type CitationCheck, type CitationReport, type CitationRunner, type Finding } from "../insights/citations.js";
 import { insightCommand, type AnyInsight } from "../insights/define.js";
-import { AGENT_CHAT_QUESTIONS, INSIGHT_QUESTIONS, TRANSCRIPT_QUESTIONS } from "../insights/questions.js";
+import { AGENT_CHAT_QUESTIONS, GUARDRAIL_QUESTIONS, INSIGHT_QUESTIONS, TRANSCRIPT_QUESTIONS } from "../insights/questions.js";
 
 const VerifyCitationsArgs = z.object({ findings: z.string().min(1).describe("JSON file holding an array of findings") }).strict();
 
@@ -16,7 +16,7 @@ export const verifyCitationsCommand = defineCommand<z.infer<typeof VerifyCitatio
   cli: { options: { findings: { long: "--findings", description: "findings JSON file", required: true } } },
   async run(args, ctx) {
     if (ctx.surface !== "cli") throw Object.assign(new Error("findings is accepted only on the CLI"), { code: EXIT.DATAERR });
-    const report = await verifyCitations(readFindings(args.findings), insightRunner([...INSIGHT_QUESTIONS, ...AGENT_CHAT_QUESTIONS, ...TRANSCRIPT_QUESTIONS], ctx));
+    const report = await verifyCitations(readFindings(args.findings), insightRunner([...INSIGHT_QUESTIONS, ...AGENT_CHAT_QUESTIONS, ...TRANSCRIPT_QUESTIONS, ...GUARDRAIL_QUESTIONS], ctx));
     const text = renderCitationReport(report);
     if (!report.ok) throw Object.assign(new Error(text), { code: EXIT.GENERIC });
     return ctx.format === "human" ? text : report;

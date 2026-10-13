@@ -12,6 +12,15 @@ const brief = readFileSync(new URL("analyst-brief.md", skillDir), "utf8");
 /** Questions that frame or check the analysis rather than feed it. */
 const LOOP_COMMANDS = new Set(["seat-generations", "data-quality", "prices", "verify-citations"]);
 
+function stepText(text: string, step: number): string {
+  return text.split(/^## Step /m).find((section) => Number.parseInt(section, 10) === step) ?? "";
+}
+
+function briefExample(): unknown[] {
+  const example = /```json\n([\s\S]*?)```/.exec(brief)?.[1];
+  return z.array(z.unknown()).parse(JSON.parse(example ?? "null"));
+}
+
 function insightNames(text: string): string[] {
   return [...text.matchAll(/titan-miner insights ([a-z][a-z0-9-]*)/g)].map((m) => m[1]!);
 }
@@ -51,6 +60,15 @@ describe("the session-insights skill", () => {
     expect(steps.get("verify-citations")!).toBeGreaterThan(Math.max(...analysis));
   });
 
+  it("scores every proposed lever on verdict-to-merge, open MERGE PRs and requests per finished agent", () => {
+    const report = stepText(skill, 7);
+
+    expect(report).toContain("titan-miner insights blocked-flow --split-at");
+    expect(report).toContain("/verdictToMerge/rows");
+    expect(report).toContain("/openHoldingMerge/rows");
+    expect(report).toContain("requestsPerFinished");
+  });
+
   it("ships with the package", () => {
     const pkg = z.object({ files: z.array(z.string()) }).parse(createRequire(import.meta.url)("../package.json"));
 
@@ -60,10 +78,24 @@ describe("the session-insights skill", () => {
 
 describe("the analyst brief's example", () => {
   it("parses as findings under the citation contract", () => {
-    const example = /```json\n([\s\S]*?)```/.exec(brief)?.[1];
-    const findings = z.array(z.unknown()).parse(JSON.parse(example ?? "null"));
+    const findings = briefExample();
 
     expect(findings.length).toBeGreaterThan(0);
     for (const finding of findings) expect(findingSchema.safeParse(finding).success).toBe(true);
+  });
+
+  it("fails the citation contract without its falsifier", () => {
+    const [first] = briefExample();
+    const entries = Object.entries(z.record(z.string(), z.unknown()).parse(first));
+    const withoutFalsifier = Object.fromEntries(entries.filter(([key]) => key !== "falsifier"));
+
+    expect(findingSchema.safeParse(withoutFalsifier).success).toBe(false);
+  });
+});
+
+describe("the analyst brief's tools", () => {
+  it("name no agent-chat command or tool", () => {
+    expect(brief).not.toMatch(/agent-chat\s+[a-z]/);
+    expect(brief).not.toMatch(/\b(?:agent|chat)_[a-z]+/);
   });
 });
