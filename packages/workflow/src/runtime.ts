@@ -60,10 +60,7 @@ export class WorkflowRuntime {
     };
   }
 
-  /**
-   * `version` pins each new run to this definition; hydrate parks a run pinned to another one instead of replaying it.
-   * `strictReplay` parks a replay that makes a live call while results its prior drive recorded remain unread.
-   */
+  /** `version` pins new runs to this definition (hydrate parks a run pinned to another); `strictReplay` parks a replay that goes live with recorded results unread. */
   register(name: string, fn: WorkflowFn, options: { version?: string; abandonsOrphan?: AbandonsOrphan; strictReplay?: boolean } = {}): void {
     if (this.workflows.has(name)) throw new Error(`workflow already registered: ${name}`);
     this.workflows.set(name, { ...registration(name, fn, options.version), abandonsOrphan: options.abandonsOrphan, strictReplay: options.strictReplay });

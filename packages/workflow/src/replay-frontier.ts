@@ -1,4 +1,4 @@
-import type { StepOperation } from "./types.js";
+import { WorkflowRecoveryRequiredError, type StepOperation, type StepResult, type WorkflowRun } from "./types.js";
 
 const nextTurn = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
@@ -41,5 +41,47 @@ export class ReplayFrontier {
 
   evidence(operation: StepOperation, stepId: string): string {
     return `replay diverged: ${operation}("${stepId}") ran live with ${this.unread()} recorded results unread, next ${this.nextUnread()}`;
+  }
+}
+
+/**
+ * Strict replay for one drive: reads memos through the frontier and refuses a live call the record cannot explain.
+ * The refusal is sticky, so workflow code that catches it cannot carry on from the record.
+ */
+export class ReplayGuard {
+  private readonly frontier: ReplayFrontier | null;
+  private diverged: string | null = null;
+
+  constructor(
+    private readonly run: WorkflowRun,
+    strict: boolean,
+    private readonly hold: (stepId: string, evidence: string) => never,
+  ) {
+    this.frontier = strict ? new ReplayFrontier(Object.keys(run.stepResults)) : null;
+  }
+
+  /** The result recorded at `key`, or else at `otherKey`, marking whichever answered as read. */
+  recall(stepId: string, key: string, otherKey: string | undefined): StepResult | undefined {
+    this.throwIfDiverged(stepId);
+    const foundAt = this.run.stepResults[key] !== undefined || otherKey === undefined ? key : otherKey;
+    const cached = this.run.stepResults[foundAt];
+    if (cached) this.frontier?.read(foundAt);
+    return cached;
+  }
+
+  unread(): number {
+    return this.frontier?.unread() ?? 0;
+  }
+
+  /** Parks the run, before the live call has any side effect, when records stay unread after concurrent branches settle. */
+  async beforeLive(operation: StepOperation, stepId: string): Promise<void> {
+    if (!this.frontier || (await this.frontier.settled())) return;
+    this.throwIfDiverged(stepId);
+    this.diverged = this.frontier.evidence(operation, stepId);
+    this.hold(stepId, this.diverged);
+  }
+
+  private throwIfDiverged(stepId: string): void {
+    if (this.diverged !== null) throw new WorkflowRecoveryRequiredError(this.run.id, stepId, this.diverged);
   }
 }
