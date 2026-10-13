@@ -14,7 +14,7 @@ const TARGET_KEY: Record<string, string> = { createCommitOnBranch: "branchName",
 const ESCAPE_RE = /\\(?:u\{([0-9a-fA-F]+)\}|u([0-9a-fA-F]{4})|(["\\/bfnrt]))/g;
 const SIMPLE_ESCAPES: Record<string, string> = { '"': '"', "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
 
-export interface GraphqlBranchWrites {
+interface GraphqlBranchWrites {
   /** The branch mutations the query texts name, in order of first appearance. */
   mutations: string[];
   /** Candidate branch names, with one `refs/` and one `heads/` stripped; the caller tests each for protection. */
