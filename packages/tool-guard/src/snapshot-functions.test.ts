@@ -132,6 +132,19 @@ describe("parseSnapshotFunctions", () => {
     expect(table.incomplete).toBe(true);
   });
 
+  it("fails closed on a ' inside (( )), which zsh reads as a literal and the scanner cannot follow", () => {
+    const table = parseSnapshotFunctions(
+      snapshot(
+        "zz () {", "\t(( y = 1 ' 2 ))", '\techo "', "'))", "}",
+        "zzz () {", "\techo safe", "'\"", "\t: \\'", "\tgit push origin HEAD:main", "}",
+      ),
+    );
+
+    expect(table.functions.get("zz")).toEqual({ unreadable: true });
+    expect(table.functions.has("zzz")).toBe(false);
+    expect(table.incomplete).toBe(true);
+  });
+
   it("reads << in a case arm's (( )) as a shift, so a later string cannot end the body early", () => {
     const table = parseSnapshotFunctions(
       snapshot(

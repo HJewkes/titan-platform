@@ -36,6 +36,8 @@ const HEREDOC_STARTERS: ReadonlySet<Kind> = new Set(["code", "cmdsub"]);
 const PROCESS_SUBSTITUTIONS = ["<(", ">("];
 // Backticks end at the first unescaped backtick whatever quotes they hold; only plain text inside them is followed.
 const BACKTICK_UNSURE = /^(?:['"]|\$[({[]|<<|\\`)/;
+// zsh lexes arithmetic text with these (and `$'`) as literals, not quotes, so one could open a quote zsh never sees.
+const ARITH_UNSURE = new Set(["'", '"', "`"]);
 const DELIMITER_END = new Set([" ", "\t", ";", "|", "&", "<", ">", "(", ")"]);
 // Only plain ' " \ quoting is removed the way zsh removes it; `$'EOF'`, `$X` or a backtick could spell another end line.
 const PLAIN_DELIMITER = /^[A-Za-z0-9_.-]+$/;
@@ -96,6 +98,10 @@ function step(scan: BodyScan, line: string, i: number): number {
   if (c === "\\") return i + 2;
   if (kind === "dsq") return c === "'" ? pop(scan, i + 1) : i + 1;
   if (kind === "dq") return c === '"' ? pop(scan, i + 1) : (opener(scan, line, i) ?? i + 1);
+  if (kind === "arith" && (ARITH_UNSURE.has(c ?? "") || line.startsWith("$'", i))) {
+    scan.broken = true;
+    return i + 1;
+  }
   const opened = quoteOpener(scan, line, i) ?? opener(scan, line, i);
   if (opened !== null) return opened;
   if (kind === "param") return paramStep(scan, c, i);
