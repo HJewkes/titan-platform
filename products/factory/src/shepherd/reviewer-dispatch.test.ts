@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewTarget } from "./review.js";
 import { ReviewerAskTimedOut, ReviewerMachineHold } from "./review-wait.js";
 import { agentChatReviewerDispatch, expandHome, runningReviewStarts, type ReviewerRosterRow, type AgentChatReviewerDispatchOptions } from "./reviewer-dispatch.js";
+import { createRosterReader } from "./roster.js";
+import { spawnGate } from "./spawn-gate.js";
 
 const PROFILE = "rv-readonly";
 const BRIEF = "Review octo/demo#7. BRIEF-SENTINEL-4f2a";
@@ -353,6 +355,31 @@ describe("agentChatReviewerDispatch resume", () => {
 
     expect(error).toBeInstanceOf(ReviewerAskTimedOut);
     expectRefusal(error, "timed out");
+  });
+});
+
+describe("agentChatReviewerDispatch reviewer-slot reading", () => {
+  const live = (name: string) => ({ name, agentId: name, state: "running", presence: "live", status: "working", profile: PROFILE, surface: "headless", cwd: "/srv/demo", sessionId: `s-${name}`, generation: 1 });
+  const gateAt = (at: number) => spawnGate({ read: () => ({ load5: 0 }), now: () => at, log: () => undefined });
+
+  it("keeps the names of the live rv- rows a spawn read, beside the concurrent cap", async () => {
+    const gate = gateAt(Date.parse("2026-10-13T12:00:00Z"));
+    const rows = [live("rv-demo-1"), live("rv-demo-2"), live("coord"), { ...live("rv-demo-3"), presence: "exited" }];
+    const dispatch = dispatchOver(undefined, { gate, roster: createRosterReader(async () => rows) });
+
+    await dispatch.spawn("rv-demo-7", BRIEF, target);
+
+    expect(gate.reviewSlots()).toEqual({ running: ["rv-demo-1", "rv-demo-2"], cap: 3, readAt: "2026-10-13T12:00:00.000Z" });
+  });
+
+  it("keeps a roster timeout as rosterError with no running list, so it never reads as 0", async () => {
+    const gate = gateAt(Date.parse("2026-10-13T12:00:00Z"));
+    gate.noteReviewers({ running: ["rv-demo-1"] });
+    const dispatch = dispatchOver(undefined, { gate, roster: createRosterReader(async () => Promise.reject(new Error("agent ls timed out after 10000 ms"))) });
+
+    await failure(dispatch.spawn("rv-demo-7", BRIEF, target));
+
+    expect(gate.reviewSlots()).toStrictEqual({ cap: 3, readAt: "2026-10-13T12:00:00.000Z", rosterError: "agent ls timed out after 10000 ms" });
   });
 });
 
