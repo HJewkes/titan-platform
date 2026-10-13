@@ -69,29 +69,20 @@ export class WorkflowRuntime {
   registered(): string[] {
     return [...this.workflows.keys()];
   }
-  /**
-   * `options.onStart` commits with the run row, or its throw rolls the run back and nothing launches.
-   * Once quiesced, the row is persisted unclaimed so the successor runtime adopts it on its next hydrate.
-   */
+  /** `options.onStart` commits with the run row, or its throw rolls the run back; a quiesced runtime leaves the row unclaimed for its successor. */
   start(name: string, params: Record<string, string> = {}, options: WorkflowStartOptions = {}): string {
     const workflow = this.workflows.get(name);
     if (!workflow) throw new Error(`unknown workflow: ${name}`);
     const run = newRun(randomUUID(), name, params, workflow.version);
-    if (this.isQuiesced) {
-      this.options.db.transaction(() => {
-        this.store.create(run);
-        options.onStart?.(run.id);
-      }).immediate();
-      return run.id;
-    }
-    const insert = this.options.db.transaction((): WorkflowRun => {
+    const insert = this.options.db.transaction((): WorkflowRun | null => {
       this.store.create(run);
-      const claimed = this.claim(run.id);
-      if (!claimed) throw new Error(`could not claim new workflow ${run.id}`);
+      const claimed = this.isQuiesced ? null : this.claim(run.id);
+      if (claimed === undefined) throw new Error(`could not claim new workflow ${run.id}`);
       options.onStart?.(run.id);
       return claimed;
     });
-    this.launch(insert.immediate(), workflow, new Map());
+    const claimed = insert.immediate();
+    if (claimed) this.launch(claimed, workflow, new Map());
     return run.id;
   }
 
@@ -262,7 +253,7 @@ export class WorkflowRuntime {
     const run = live?.ctx.run ?? this.claim(runId);
     if (!run) {
       const current = this.store.get(runId);
-      if (current && isTerminal(current.status)) return;
+      if (current && !ACTIVE_STATUSES.includes(current.status)) return;
       throw new WorkflowNotOwnedError(runId);
     }
     run.status = "cancelling";
@@ -333,9 +324,9 @@ export class WorkflowRuntime {
     }
   }
 
-  private release(run: WorkflowRun): void {
+  private release(run: WorkflowRun, fence = fenceOf(run)): void {
     try {
-      this.store.release(run, fenceOf(run));
+      this.store.release(run, fence);
     } catch (error) {
       if (!(error instanceof WorkflowOwnershipLostError)) throw error;
     }
@@ -370,20 +361,14 @@ export class WorkflowRuntime {
     const step = authoritative && Object.values(authoritative.activeSteps)[0];
     if (!originalFence || !authoritative?.owner || !sameFence(authoritative.owner, originalFence)) return;
     if (step) this.markRecovery(authoritative, step, "unknown", failure.message);
-    else {
-      parkForRecovery(authoritative, failure.message);
-    }
+    else parkForRecovery(authoritative, failure.message);
     try {
       const lease = this.leaseWindow();
       this.store.save(authoritative, originalFence, lease.leaseUntil, lease.at);
     } catch {
       // A later owner can reconcile the unchanged active intent.
     }
-    try {
-      this.store.release(authoritative, originalFence);
-    } catch (error) {
-      if (!(error instanceof WorkflowOwnershipLostError)) throw error;
-    }
+    this.release(authoritative, originalFence);
   }
 
   private leaseWindow(): { leaseUntil: string; at: string } {
@@ -394,8 +379,4 @@ export class WorkflowRuntime {
   private isoNow(): string {
     return timestampAt(this.now(), "now");
   }
-}
-
-function isTerminal(status: WorkflowRun["status"]): boolean {
-  return !ACTIVE_STATUSES.includes(status);
 }
