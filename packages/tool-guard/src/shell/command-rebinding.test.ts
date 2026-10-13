@@ -86,6 +86,12 @@ describe("a command that rebinds a command name", () => {
     ["zstyle -g", "zstyle -g functions"],
     ["zformat -f", "zformat -f functions fmt"],
     ["vared -e, a flag", "vared -e 'commands[y]'"],
+    ["zparseopts -A attached", "zparseopts -Acommands a"],
+    ["zparseopts -a attached", "zparseopts -acommands a"],
+    ["zparseopts -A attached after -E", "zparseopts -E -Acommands y:"],
+    ["zparseopts -A with a dynamic name", 'zparseopts -A"$n" y:'],
+    ["a zparseopts spec storing into a parameter", "zparseopts y:=commands"],
+    ["functions -c", "functions -c f y"],
   ])("is caught: %s", (_how, src) => {
     expect(rebinds(src)).toBe(true);
   });
@@ -119,6 +125,8 @@ describe("a command that rebinds a command name", () => {
     ["set -o and its value", "set -o pipefail"],
     ["a dynamic printf format", 'printf "$fmt" "$x"'],
     ["declare -f printing a function", 'declare -f "$fn"'],
+    ["zparseopts into an ordinary name", "zparseopts -A opts -D y: v=verbose"],
+    ["functions listing", "functions -x 2 f"],
   ])("is left alone: %s", (_how, src) => {
     expect(rebinds(src)).toBe(false);
   });

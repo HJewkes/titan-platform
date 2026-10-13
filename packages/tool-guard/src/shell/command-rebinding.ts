@@ -12,8 +12,6 @@ const TARGET_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*(?=\[|\+?=|\?|$)/s;
 const ASSIGNING_EXPANSION_RE = new RegExp(`\\$\\{[^}]*?\\b(?:${REBINDING.join("|")})(?:\\[[^\\]]*\\])?:{0,2}=`);
 /** An expansion that assigns whatever parameter another one names: bash `${!n=/x}`, zsh `${(P)n::=/x}`. */
 const INDIRECT_ASSIGNING_RE = /\$\{(?:!|\([^)]*P[^)]*\))[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?:{0,2}=/;
-/** A `zparseopts` word naming its store: `-A commands`'s value, or a spec's `x=commands`. */
-const ZPARSEOPTS_STORE_RE = new RegExp(`(?:^|=)(?:${REBINDING.join("|")})$`);
 const NAMEREF_DECLARERS = new Set(["typeset", "declare", "local"]);
 
 /**
@@ -42,6 +40,10 @@ const STORERS: Record<string, StoreSpec> = {
   printf: { values: "", targets: "v", operands: "none" },
   print: { values: "fCuxX", targets: "v", operands: "none" },
 };
+/** zsh `zparseopts -a ARRAY -A ASSOC SPEC...`, the name attached or next; each `SPEC=ARRAY` stores too. */
+const ZPARSEOPTS: StoreSpec = { values: "", targets: "aA", operands: "none" };
+/** zsh `functions`, where `-x` takes an indent and `-c OLD NEW` copies a function under a new command name. */
+const FUNCTIONS: StoreSpec = { values: "x", targets: "", operands: "none" };
 /** Builtins whose first word is often a dynamic format or text, which counts only where it could be `-v NAME VALUE`. */
 const PRINTERS = new Set(["printf", "print"]);
 
@@ -96,7 +98,8 @@ function hashBinds(args: WordToken[]): boolean {
 
 /** Whether a store builtin declares a nameref or writes a rebinding parameter, or one only known at run time. */
 function storesRebinding(name: string, args: WordToken[]): boolean {
-  if (name === "zparseopts") return args.some((a) => a.dynamic || ZPARSEOPTS_STORE_RE.test(a.value));
+  if (name === "zparseopts") return zparseoptsStores(args);
+  if (name === "functions") return functionsCopies(args);
   if (name === "zstyle") return zstyleStores(args);
   const spec = STORERS[name];
   if (!spec) return false;
@@ -133,6 +136,23 @@ function readOptions(args: WordToken[], spec: StoreSpec): Options {
 /** A dynamic word may expand to an option unless literal text that no option starts with comes first: `PATH=$HOME`. */
 function mayBeOption(word: WordToken): boolean {
   return /^[-+]/.test(word.value) || word.refs.some((r) => r.start === 0) || (word.cuts ?? []).some((c) => c.at === 0);
+}
+
+/** Whether `zparseopts` stores into a rebinding parameter through `-a`/`-A` or a spec's `=ARRAY`, or may. */
+function zparseoptsStores(args: WordToken[]): boolean {
+  const options = readOptions(args, ZPARSEOPTS);
+  if (options.unsureAt !== null) return true;
+  const specs = args.slice(options.end).map((w): Target | null => {
+    const at = w.value.lastIndexOf("=");
+    return at < 0 ? (w.dynamic ? [w, 0] : null) : [w, at + 1];
+  });
+  return [...options.targets, ...specs.filter((t) => t !== null)].some(([word, from]) => targetRebinds(word, from));
+}
+
+/** Whether `functions -c OLD NEW` may copy a function under a new command name. */
+function functionsCopies(args: WordToken[]): boolean {
+  const options = readOptions(args, FUNCTIONS);
+  return options.unsureAt !== null || options.flags.includes("-c");
 }
 
 /** zsh `zstyle -s/-b/-a/-h CONTEXT STYLE NAME` and `-g NAME` store into a parameter; any operand may be that name. */
