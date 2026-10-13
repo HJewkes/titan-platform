@@ -135,6 +135,42 @@ describe("graphqlBranchWrites, variables zsh modifies", () => {
   });
 });
 
+describe("graphqlBranchWrites, mutations that change branch protection", () => {
+  const CREATE_RULE = (pattern: string) =>
+    `mutation{createBranchProtectionRule(input:{repositoryId:"R",pattern:${pattern},requiresApprovingReviews:true}){clientMutationId}}`;
+  const UPDATE_RULE = 'mutation{updateBranchProtectionRule(input:{branchProtectionRuleId:"BPR",requiresApprovingReviews:false}){clientMutationId}}';
+  const DELETE_RULE = 'mutation{deleteBranchProtectionRule(input:{branchProtectionRuleId:"BPR"}){clientMutationId}}';
+  const BY_VAR = (name: string, key: string) =>
+    `mutation($v:String!){${name}(input:{repositoryId:"R",${key}:$v}){clientMutationId}}`;
+
+  it.each([
+    ["createBranchProtectionRule", "on main", CREATE_RULE('"main"'), ""],
+    ["updateBranchProtectionRule", "by rule id", UPDATE_RULE, ""],
+    ["deleteBranchProtectionRule", "by rule id", DELETE_RULE, ""],
+    ["createBranchProtectionRule", "on a feature-only pattern", CREATE_RULE('"feat/*"'), ""],
+    ["deleteBranchProtectionRule", "behind an alias", DELETE_RULE.replace("{delete", "{x: delete"), ""],
+    [
+      "deleteBranchProtectionRule",
+      "escaped in an --input body",
+      `{"query":"mutation{${BS}u0064eleteBranchProtectionRule(input:{branchProtectionRuleId:${BS}"BPR${BS}"}){clientMutationId}}"}`,
+      "",
+    ],
+    ["deleteBranchProtectionRule", "beside an {owner} fill", `${DELETE_RULE} # "{owner}"`, ""],
+    ["createBranchProtectionRule", "with a pattern gh fills from {branch}", BY_VAR("createBranchProtectionRule", "pattern"), "-F 'pattern={branch}'"],
+    ["updateBranchProtectionRule", "with an id gh fills from :branch", BY_VAR("updateBranchProtectionRule", "branchProtectionRuleId"), "-F id=:branch"],
+  ])("reads %s %s as an unknown write", (name, _how, query, vars) => {
+    expect(read(query, vars)).toMatchObject({ mutations: [name], unknown: true });
+  });
+
+  it.each([
+    ["a longer name", 'mutation{updateBranchProtectionRuleX(input:{branchProtectionRuleId:"BPR"}){clientMutationId}}', ""],
+    ["a protection rule read", '{repository(owner:"o",name:"r"){branchProtectionRules(first:5){nodes{pattern}}}}', ""],
+    ["a field value that only names the mutation", "{viewer{login}}", "-f note=deleteBranchProtectionRule"],
+  ])("reads %s as no mutation", (_what, query, vars) => {
+    expect(read(query, vars)).toEqual({ mutations: [], branches: [], unknown: false });
+  });
+});
+
 describe("graphqlBranchWrites, texts with no branch mutation", () => {
   it.each([
     ["a viewer read", "{viewer{login}}", false],
