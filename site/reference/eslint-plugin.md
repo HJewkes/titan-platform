@@ -17,6 +17,7 @@ review. This package adds both as ESLint rules whose messages name the fix.
 ## When to reach for it
 
 - You want CI to fail on a function longer than 30 non-blank lines.
+- You want CI to fail on an egregiously long code line (opt-in `max-line-length`).
 - You want every TODO comment to carry a task id.
 - You want commented-out code deleted.
 - You want `as unknown as T` double casts reported.
@@ -28,13 +29,15 @@ To run ESLint against a style profile and get normalized diagnostics, use `style
 
 | Export | What it does |
 |---|---|
-| default export | the plugin: `meta.name` and `rules` with `max-function-lines`, `no-chained-type-assertions`, `no-commented-code`, `no-internal-module-mock` and `todo-needs-issue` |
+| default export | the plugin: `meta.name` and `rules` with `max-function-lines`, `max-line-length`, `no-chained-type-assertions`, `no-commented-code`, `no-internal-module-mock` and `todo-needs-issue` |
 | `maxFunctionLines` | reports a function, arrow function or method with more than `max` (default 30) non-blank lines, naming it by its id, variable, key or as `anonymous function` |
 | `DEFAULT_MAX_LINES` | `30` |
+| `maxLineLength` | reports a line longer than `max` (default 200) characters unless no code token touches it (a comment line), it lies in an import or re-export declaration, or string, template, regex and JSX text tokens cover at least half its characters after the indent; opt-in, not in `recommended` |
+| `DEFAULT_MAX_LINE_LENGTH` | `200` |
 | `noChainedTypeAssertions` | reports a type assertion (`as` or `<T>`) whose operand is another type assertion, once per chain at the outermost one; a chain made only of `as const` passes |
 | `noCommentedCode` | reports a comment whose text parses as statements and carries a code signal: any statement other than an expression statement, or an expression that is an assignment, call, `new`, `await`, `++`/`--` or optional chain, or text ending in `;`. A bare `continue`, `break`, `return` or `debugger` and a lone expression without a signal (`read-only`, `100 - 75`, `a, b`, `this`) and a manual page reference such as `sudo(8)` read as prose. Consecutive whole-line `//` comments are parsed together; trailing comments never join. Leading `*` on block comment lines is stripped. JSDoc, `eslint-*`, `@ts-*`, `istanbul`/`c8`/`v8 ignore`, `prettier-ignore`, `#!` and `/// <reference` comments always pass |
 | `noInternalModuleMock` | reports `vi.mock`, `vi.doMock`, `jest.mock`, `jest.doMock` or `jest.unstable_mockModule` whose static specifier (a string, a template without expressions, or vitest's `import("…")` form) is relative, absolute, a `#` subpath, or starts with an internal prefix; option `internalPrefixes` (default `["@titan-design/"]`) replaces the prefix list |
-| `recommended` | a flat config registering the plugin as `titan` and enabling all five rules at `error` |
+| `recommended` | a flat config registering the plugin as `titan` and enabling every rule except `max-line-length` at `error` |
 | `todoNeedsIssue` | reports each `TODO` in a comment that is not immediately followed by a tracker key (`TODO(TP-123)`, `TODO: TP-123`) or an issue number (`TODO(#123)`, `TODO #123`); a bare token must end the sentence, so `TODO UTF-8 support` is reported, as is any bare key with a standards prefix (`UTF`, `ES`, `ISO`, `RFC`, `SHA`, `MD`, `TLS`, `SSL`, `IPV`, `ECMA`, `HTTP`) |
 
 ## Example
@@ -57,7 +60,7 @@ export default [
 ];
 ```
 
-Or enable all five with `import { recommended } from "@titan-design/eslint-plugin"` and `export default [recommended]`.
+Or enable all but the opt-in `max-line-length` with `import { recommended } from "@titan-design/eslint-plugin"` and `export default [recommended]`.
 
 ## Rules and messages
 
@@ -65,6 +68,12 @@ Or enable all five with `import { recommended } from "@titan-design/eslint-plugi
 
 ```text
 `<name>` is <n> lines; the limit is 30. Extract one step into a named function in this file. Do not add eslint-disable and do not edit the suppressions file.
+```
+
+`max-line-length`:
+
+```text
+This line is <n> characters; the limit is 200. Name an intermediate value with a const, or break the expression across lines. Do not add eslint-disable and do not edit the suppressions file.
 ```
 
 `no-chained-type-assertions`:
@@ -107,6 +116,8 @@ TODO needs a task id, for example `TODO(TP-123): ...`. File the task with `activ
 
 - It has no baseline of its own. Existing long functions are grandfathered by the consuming
   repo's suppressions, not by the rule.
+- `max-line-length` has no formatter and no autofix, and no baseline of its own. It is opt-in so a
+  plugin bump never breaks a consumer that has not baselined its long lines.
 
 ## Gotchas
 
