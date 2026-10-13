@@ -1,4 +1,5 @@
-import { codeTexts, mayWriteRunTimeName } from "./ifs-writes.js";
+import { codeTexts } from "./ifs-scripts.js";
+import { mayWriteRunTimeName } from "./ifs-writes.js";
 import { tokenize } from "./lexer.js";
 import type { Token, WordToken } from "./tokens.js";
 import { ASSIGNMENT_RE, type Vars } from "./vars.js";
@@ -8,9 +9,9 @@ const DEFAULT_IFS = " \t\n";
 const LETTER_RANGE_RE = /(?:^|[^0-9-])\.\.|\.\.(?:[^0-9-]|$)/;
 /**
  * Text that may build a name at run time (an expansion, a backquote, a glob, a brace), source a file, or reach an
- * arithmetic sink: an integer attribute or a mapfile callback.
+ * arithmetic sink: an integer or float attribute or a mapfile callback.
  */
-const RUN_TIME_TEXT_RE = /[$`?*[{]|source|integer|float|(?:^|[\s;&|(])\.\s|\s[-+][A-Za-z0-9]*[iC]/;
+const RUN_TIME_TEXT_RE = /[$`?*[{]|source|integer|float|(?:^|[\s;&|(])\.\s|\s[-+][A-Za-z0-9]*[iCEF]/;
 /** The walk's own nesting limit (`MAX_DEPTH` in commands.ts); past it the value counts as naming IFS. */
 const RELEX_DEPTH = 8;
 

@@ -211,6 +211,41 @@ describe("namesIfs", () => {
     expect(namesIfs(line)).toBe(false);
   });
 
+  describe("inside a script the walk runs", () => {
+    const loop = (write: string) => `R=origin,HEAD:main; for i in 1 2; do git push $R; ${write}; done`;
+    const WRAPPERS: Array<[string, (script: string) => string]> = [
+      ["bash -c", (s) => `bash -c ${singleQuoted(s)}`],
+      ["sh -c", (s) => `sh -c ${singleQuoted(s)}`],
+      ["a bash heredoc", (s) => `bash <<'EOF'\n${s}\nEOF`],
+      ["echo piped into bash", (s) => `echo ${singleQuoted(s)} | bash`],
+      ["a bash here-string", (s) => `bash <<< ${singleQuoted(s)}`],
+      ["sudo bash -c", (s) => `sudo bash -c ${singleQuoted(s)}`],
+      ["xargs sh -c fed a pipe", (s) => `printf '%s' ${singleQuoted(s)} | xargs -0 sh -c`],
+    ];
+    const WRITES = ["declare I\\FS=,", "declare $a$b=,", "$c source", "declare -i x; read x"];
+    const rows = WRAPPERS.flatMap(([wrapper, wrap]) => WRITES.map((write) => [wrapper, write, wrap(loop(write))] as const));
+
+    it.each(rows)("matches %s running %s", (_wrapper, _write, line) => {
+      expect(namesIfs(line)).toBe(true);
+    });
+
+    it.each(WRAPPERS.map(([wrapper, wrap]) => [wrapper, wrap("git push origin $R; cd $dir")] as const))(
+      "does not match %s running clean commands",
+      (_wrapper, line) => {
+        expect(namesIfs(line)).toBe(false);
+      },
+    );
+  });
+
+  it.each([
+    ["zsh typeset -F", "typeset -F x; read x < f"],
+    ["zsh typeset -E", "typeset -E x; read x < f"],
+    ["a quoted subscript in unset", "unset 'a[$a$b=1]'"],
+    ["an indirect expansion", "echo ${!x}"],
+  ])("matches %s", (_form, line) => {
+    expect(namesIfs(line)).toBe(true);
+  });
+
   it.each([
     ["arithmetic expansion", ": $(( $a$b=1 ))"],
     ["a substring offset", "echo ${x:$a$b=1}"],

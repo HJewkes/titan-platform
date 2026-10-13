@@ -5,6 +5,7 @@ import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
 import { catOperands, SPLICING_SHELLS, splicedWords, stdinScript } from "./sub-output.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
+import { SHELLS, shellOperands } from "./shell-operands.js";
 import { caseNamed, caseScripts } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
 import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackCompound, trackVars } from "./vars.js";
@@ -21,9 +22,7 @@ import { chargeSpliced, MAX_UNSURE_WORDS, NestingReadingError, ReadingLimitError
 import type { UnsureBudget } from "./unsure-readings.js";
 
 const MAX_DEPTH = 8;
-const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
 const RUNNERS = new Set([...SHELLS, "eval", "find"]);
-const SHELL_VALUE_OPTS = new Set(["-o", "+o", "-O", "+O", "--rcfile", "--init-file"]);
 
 /**
  * How a command was reached: a `( )` subshell or a substitution, a shell's `-c` string or a wrapper's
@@ -357,20 +356,6 @@ function splicedReadings(words: WordToken[], budget: UnsureBudget): string[] {
   const added = [...new Set(spliced)].filter((text) => !plain.includes(text));
   chargeSpliced(budget, added);
   return [...new Set([...plain, ...added])];
-}
-
-function shellOperands(args: WordToken[]): { hasC: boolean; positional: WordToken | null } {
-  let hasC = false;
-  for (let i = 0; i < args.length; i++) {
-    const v = (args[i] as WordToken).value;
-    if (v === "-") break;
-    if (v === "--") return { hasC, positional: args[i + 1] ?? null };
-    if (SHELL_VALUE_OPTS.has(v)) i++;
-    else if (v.startsWith("--")) continue;
-    else if (/^[-+][A-Za-z]+$/.test(v)) hasC ||= v.startsWith("-") && v.includes("c");
-    else return { hasC, positional: args[i] as WordToken };
-  }
-  return { hasC, positional: null };
 }
 
 function changeDir(dir: string | null, word: WordToken | undefined, home: string | null): string | null {

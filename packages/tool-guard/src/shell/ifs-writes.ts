@@ -21,9 +21,10 @@ const TEST_COMMANDS = new Set(["[", "[["]);
 const ARITH_TESTS = new Set(["-eq", "-ne", "-lt", "-le", "-gt", "-ge"]);
 /**
  * Arithmetic contexts in a word's text holding run-time text: `$(( ))`, a `${x:offset}` substring and an indexed
- * subscript. bash expands that text first, so `$a$b=1` there assigns whatever name it builds.
+ * subscript, and an indirect `${!x}`, whose target's subscript bash evaluates. bash expands that text first, so
+ * `$a$b=1` there assigns whatever name it builds.
  */
-const RUN_TIME_ARITH_RES = [/\$\(\([^]*[$`]/, /\$\{[^}:]*:(?![-=+?])[^}]*[$`]/, /\[[^\]]*[$`]/];
+const RUN_TIME_ARITH_RES = [/\$\(\([^]*[$`]/, /\$\{[^}:]*:(?![-=+?])[^}]*[$`]/, /\[[^\]]*[$`]/, /\$\{!/];
 
 /** A command segment and whether it sits inside `(( ))`, where any run-time word is arithmetic text. */
 interface Segment {
@@ -59,17 +60,6 @@ function segments(tokens: readonly Token[]): Segment[] {
   return out;
 }
 
-/** Texts this shell runs as code: eval's arguments joined as eval joins them, a trap's action and alias values. */
-export function codeTexts(tokens: readonly Token[]): string[] {
-  return segments(tokens).flatMap(({ words, arith }) => {
-    const { command, args } = splitCommand(arith ? [] : words);
-    if (command?.value === "eval") return [args.map((a) => a.value).join(" ")];
-    if (command?.value === "trap") return args.filter((a) => a.value !== "--").slice(0, 1).map((a) => a.value);
-    if (command?.value === "alias") return args.flatMap((a) => (a.value.includes("=") ? [a.value.slice(a.value.indexOf("=") + 1)] : []));
-    return [];
-  });
-}
-
 function segmentMayWrite({ words, arith }: Segment): boolean {
   if (arith) return words.some(isRunTime);
   if (words.some(holdsRunTimeArith)) return true;
@@ -97,14 +87,15 @@ function commandMayWrite(command: WordToken, args: WordToken[]): boolean {
 }
 
 /**
- * Evaluator sinks: run-time text given to eval, let or trap, a mapfile callback, and an integer attribute, under
- * which a later `x=$v` or `read x` evaluates the value as arithmetic and `IFS=1` there assigns IFS.
+ * Evaluator sinks: run-time text given to eval, let or trap, a mapfile callback, and an integer or zsh float
+ * (`-E`, `-F`) attribute, under which a later `x=$v` or `read x` evaluates the value as arithmetic and `IFS=1`
+ * there assigns IFS. bash's `declare -F` only lists functions, which errs toward true.
  */
 function runsCode(name: string, args: WordToken[]): boolean {
   if (EVALUATORS.has(name)) return args.some(isRunTime);
   if (NUMERIC_DECLARERS.has(name)) return true;
   if (CALLBACK_RUNNERS.has(name)) return args.some((a) => mayBeOptionWord(a) && (isRunTime(a) || /^-[A-Za-z0-9]*C/.test(a.value)));
-  return DECLARERS.has(name) && args.some((a) => mayBeOptionWord(a) && (isRunTime(a) || /^[-+][A-Za-z0-9]*i/.test(a.value)));
+  return DECLARERS.has(name) && args.some((a) => mayBeOptionWord(a) && (isRunTime(a) || /^[-+][A-Za-z0-9]*[iEF]/.test(a.value)));
 }
 
 /**
