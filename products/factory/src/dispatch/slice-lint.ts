@@ -131,7 +131,7 @@ function chainEndingAt(tail: PlannedSlice, byName: ByName): PlannedSlice[] {
   const chain = [tail];
   let current: PlannedSlice | undefined = tail;
   while (current.dependsOn.length === 1) {
-    current = byName.get(current.dependsOn[0] as string);
+    current = byName.get(current.dependsOn[0] ?? "");
     if (current === undefined || chain.includes(current)) break;
     chain.unshift(current);
   }

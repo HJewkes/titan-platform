@@ -24,6 +24,8 @@ export interface Report {
   text: string;
 }
 
+const isStatus = (value: string | undefined): value is Status => (STATUSES as readonly (string | undefined)[]).includes(value);
+
 const unmarked = (line: string): string => line.replace(/[*`]/g, "").trim();
 
 export function parseReport(text: string): Report {
@@ -34,9 +36,9 @@ export function parseReport(text: string): Report {
   const firstLine = lines[0] ?? "";
   const report: Report = { status: "unknown", firstLine, text };
   const status = /^Status:\s*([A-Z_]+)\s*$/.exec(firstLine)?.[1];
-  if (STATUSES.includes(status as Status)) report.status = status as Status;
+  if (isStatus(status)) report.status = status;
   const verdict = /^Verdict:\s*(APPROVE|CHANGES)\s*$/.exec(firstLine)?.[1];
-  if (verdict !== undefined) report.verdict = verdict as Verdict;
+  if (verdict === "APPROVE" || verdict === "CHANGES") report.verdict = verdict;
   const parked = /^PARKED\s+(\S+)$/.exec(lines.at(-1) ?? "")?.[1];
   if (parked !== undefined) report.parked = parked;
   const pr = field(lines, "PR");
@@ -91,7 +93,7 @@ export function readSlices(planText: string): SliceRead {
   try {
     json = JSON.parse(body);
   } catch (err) {
-    return { problems: [`burndown-slices block is not JSON: ${(err as Error).message}`] };
+    return { problems: [`burndown-slices block is not JSON: ${err instanceof Error ? err.message : String(err)}`] };
   }
   const parsed = z.array(PlannedSlice).min(1).safeParse(json);
   if (!parsed.success) return { problems: parsed.error.issues.map(shapeProblem) };

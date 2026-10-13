@@ -15,7 +15,7 @@ function globToRegex(pattern: string): string {
   let regexStr = "";
   let i = 0;
   while (i < pattern.length) {
-    const char = pattern[i] as string;
+    const char = pattern.charAt(i);
     if (char === "*" && pattern[i + 1] === "*") {
       i += 2;
       if (pattern[i] === "/") i++;
@@ -86,7 +86,7 @@ function walkSegments(left: string[], right: string[]): boolean {
     if (left[i] === ANY_SEGMENTS) return from(i + 1, j) || (j < right.length && from(i, j + 1));
     if (right[j] === ANY_SEGMENTS) return from(i, j + 1) || (i < left.length && from(i + 1, j));
     if (i === left.length || j === right.length) return i === left.length && j === right.length;
-    return segmentsIntersect(left[i] as string, right[j] as string) && from(i + 1, j + 1);
+    return segmentsIntersect(left[i] ?? "", right[j] ?? "") && from(i + 1, j + 1);
   };
   return from(0, 0);
 }

@@ -47,9 +47,20 @@ const EXTRA_PATTERNS: Partial<Record<Op, RegExp[]>> = {
 
 const classPatterns = (op: Op): RegExp[] => HARD_STOPS.filter((stop) => HARD_STOP_OPS[stop.name] === op).map((stop) => stop.pattern);
 
-export const OP_PATTERNS: Record<Op, RegExp[]> = Object.fromEntries(
-  OPS.map((op) => [op, [...classPatterns(op), ...(EXTRA_PATTERNS[op] ?? [])]]),
-) as Record<Op, RegExp[]>;
+const patternsOf = (op: Op): RegExp[] => [...classPatterns(op), ...(EXTRA_PATTERNS[op] ?? [])];
+
+export const OP_PATTERNS: Record<Op, RegExp[]> = {
+  deploy: patternsOf("deploy"),
+  restart: patternsOf("restart"),
+  "config-edit": patternsOf("config-edit"),
+  publish: patternsOf("publish"),
+  spend: patternsOf("spend"),
+  "force-push": patternsOf("force-push"),
+  "ruleset-write": patternsOf("ruleset-write"),
+  "dotfiles-merge": patternsOf("dotfiles-merge"),
+  message: patternsOf("message"),
+  "personal-data": patternsOf("personal-data"),
+};
 
 export interface OpsHit {
   op: Op;
