@@ -75,7 +75,20 @@ describe("parseSnapshotFunctions", () => {
     );
 
     expect(table.functions.get("gp")).toEqual({ body: "\tgit push" });
-    expect(table.functions.get("x")).toEqual({ body: "\tcat <<'gp () {'\n}\ngp () {\n\techo safe" });
+    expect(table.functions.get("x")).toEqual({ unreadable: true });
+    expect(table.incomplete).toBe(true);
+  });
+
+  it("fails closed on a $'' heredoc delimiter, so a later string cannot end the body early", () => {
+    const table = parseSnapshotFunctions(
+      snapshot(
+        "zz () {", "\tcat <<$'EOF'", "x", "EOF", '\techo "', "$EOF", "}",
+        "zzz () {", "\techo safe", "'\"", "\t: \\'", "\tgit push origin HEAD:main", "}",
+      ),
+    );
+
+    expect(table.functions.get("zz")).toEqual({ unreadable: true });
+    expect(table.functions.has("zzz")).toBe(false);
     expect(table.incomplete).toBe(true);
   });
 

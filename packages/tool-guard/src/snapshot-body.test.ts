@@ -12,7 +12,10 @@ describe("snapshot body scan", () => {
     ["plain code", ["\tgit push", '\techo "a" \'b\' $\'c\\\'\'']],
     ["a closed heredoc", ["\tcat <<EOF", "}", "EOF"]],
     ["a <<- heredoc ended by a tab-indented line", ["\tcat <<-EOF", "}", "\t\tEOF"]],
-    ["a quoted delimiter with spaces", ["\tcat <<'gp () {'", "}", "gp () {"]],
+    ["a single-quoted delimiter", ["\tcat <<'EOF'", "}", "EOF"]],
+    ["a double-quoted delimiter", ['\tcat <<"EOF"', "}", "EOF"]],
+    ["a backslash-quoted delimiter", ["\tcat <<\\EOF", "}", "EOF"]],
+    ["a plain delimiter of word chars, dot and dash", ["\tcat <<E_1.x-y", "}", "E_1.x-y"]],
     ["two heredocs on one line", ["\tcat <<A <<\"B\"", "a", "A", "b", "B"]],
     ["a here-string", ["\tcat <<< x"]],
     ["a closed multi-line substitution", ["\tx=$(echo a", "}", ")"]],
@@ -58,6 +61,11 @@ describe("snapshot body scan", () => {
     ["a bare case pattern in a $( )", ["\tx=$(case $y in a) echo ;; esac)"]],
     ["a (# inside a $( )", ["\tx=$(print -l (#i)*.zsh)"]],
     ["$[ ] arithmetic", ["\tx=$[ 1 << 2 ]"]],
+    ["a $'' delimiter, whose end line zsh spells without the $", ["\tcat <<$'EOF'", "EOF"]],
+    ["a delimiter holding a parameter in double quotes", ['\tcat <<"E$X"']],
+    ["a delimiter in backticks", ["\tcat <<`E`"]],
+    ["a delimiter ending in an escaped $", ["\tcat <<E\\$"]],
+    ["a quoted delimiter with spaces", ["\tcat <<'gp () {'", "}", "gp () {"]],
   ])("fails closed on %s", (_name, lines) => {
     const scan = newBodyScan();
     for (const line of lines) scanLine(scan, line);

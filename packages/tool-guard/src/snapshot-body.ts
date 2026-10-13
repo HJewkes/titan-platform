@@ -35,6 +35,8 @@ const PROCESS_SUBSTITUTIONS = ["<(", ">("];
 // Backticks end at the first unescaped backtick whatever quotes they hold; only plain text inside them is followed.
 const BACKTICK_UNSURE = /^(?:['"]|\$[({[]|<<|\\`)/;
 const DELIMITER_END = new Set([" ", "\t", ";", "|", "&", "<", ">", "(", ")"]);
+// Only plain ' " \ quoting is removed the way zsh removes it; `$'EOF'`, `$X` or a backtick could spell another end line.
+const PLAIN_DELIMITER = /^[A-Za-z0-9_.-]+$/;
 // `(` is left out so a zsh glob such as `(#b)(((a|b)))` opens no comment.
 const WORD_START = new Set([" ", "\t", ";", "|", "&"]);
 const COMMAND_KEYWORDS = new Set(["if", "elif", "while", "until", "then", "do", "else", "!", "{", "time"]);
@@ -119,7 +121,6 @@ function backtickStep(scan: BodyScan, line: string, i: number): number {
   return line[i] === "\\" ? i + 2 : i + 1;
 }
 
-
 function paramStep(scan: BodyScan, c: string | undefined, i: number): number {
   const ctx = top(scan);
   if (c === "{") ctx.depth++;
@@ -188,12 +189,12 @@ function heredocOperator(scan: BodyScan, line: string, from: number): number {
   let i = stripTabs ? from + 1 : from;
   while (line[i] === " " || line[i] === "\t") i++;
   const { word, end } = readDelimiter(line, i);
-  if (word === null || word === "") scan.broken = true;
+  if (word === null || !PLAIN_DELIMITER.test(word)) scan.broken = true;
   else scan.pending.push({ delimiter: word, stripTabs, owner: scan.stack.length - 1 });
   return end;
 }
 
-/** The delimiter with its quotes removed, as the heredoc's end line spells it; null when a quote is left open. */
+/** The delimiter with plain ' " \ quotes removed; null when a quote is left open. Any other char is kept as is. */
 function readDelimiter(line: string, from: number): { word: string | null; end: number } {
   let word = "";
   let i = from;
