@@ -512,7 +512,7 @@ Key exports:
 - `ci-verdict`: `ciVerdict`, `loadRequiredContexts`
 - `ci-wait`: `ciWait`
 - `readiness`: `headCheckFindings`, `mergeReadiness`
-- +100 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
+- +101 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-health"></a>
 

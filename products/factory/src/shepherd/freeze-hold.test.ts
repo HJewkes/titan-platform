@@ -365,10 +365,10 @@ describe("a ci-red wake on a PR whose base head is red", () => {
     expect(w.told.filter((text) => text.includes("base-red"))).toEqual([]);
   });
 
-  it("wakes a fixer when the head's failing step cannot be read, though its check fails at the base head", async () => {
+  it("wakes a fixer when no job's failing step can be read, though the head's check fails at the base head", async () => {
     const w = world(["validate"], []);
     baseFails(w, ["validate"]);
-    w.fake.jobSteps.delete(HEAD_JOBS);
+    w.fake.jobSteps.clear();
     const runId = start(w);
 
     await gateOpened(w.host, gateId(runId, "ci-failed"));

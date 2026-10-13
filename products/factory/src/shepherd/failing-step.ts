@@ -5,7 +5,7 @@ import { actionsRunsAt } from "./main-verdict.js";
 const FAILED_STEP = new Set(["failure", "timed_out", "cancelled"]);
 
 /** The red head whose failing checks are matched against another sha's red. */
-export interface RedChecks {
+interface RedChecks {
   repo: RepoSlug;
   headSha: string;
   failing: string[];
