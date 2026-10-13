@@ -1,5 +1,5 @@
 import { defineCommand } from "@titan-design/registry";
-import { taskActuals } from "@titan-design/session-analytics";
+import { taskActuals, type TaskActualsOptions } from "@titan-design/session-analytics";
 import { openSessionGraph, type SessionGraph } from "@titan-design/session-graph";
 import { backtest, classTable, type BacktestResult, type ClassTable, type Coverage, type ThroughputRow, type Watermark } from "@titan-design/throughput";
 import { z } from "zod";
@@ -9,11 +9,11 @@ import { lastIndexedAt } from "./status.js";
 import { loadDoneTasks, toThroughputRows, type UnparsedTask } from "./throughput-rows.js";
 
 const MS_PER_DAY = 86_400_000;
-const DEFAULT_WEEKS = 4;
-const DEFAULT_HORIZON_DAYS = 7;
+export const DEFAULT_WEEKS = 4;
+export const DEFAULT_HORIZON_DAYS = 7;
 
 /** What every throughput result says about its inputs, so a reader can tell which model and data produced it. */
-interface ThroughputInputs {
+export interface ThroughputInputs {
   modelHash: string;
   watermark: Watermark;
   initiatives: string[];
@@ -35,14 +35,14 @@ interface ThroughputBacktestResult extends ThroughputInputs {
   backtest: BacktestResult;
 }
 
-const FitArgs = {
+export const FitArgs = {
   cap: z.number().positive().optional().describe("idle cap in minutes behind the headline agent-hours (default 15)"),
   asOf: isoTime.optional().describe("time recency weights count back from (default: newest done task)"),
   halfLife: z.number().positive().optional().describe("recency half-life in days (default 21)"),
   minN: z.number().int().nonnegative().optional().describe("weighted rows a class needs before it stops backing off (default 20)"),
 };
 
-const FIT_OPTIONS = {
+export const FIT_OPTIONS = {
   cap: { long: "--cap", description: "idle cap in minutes (default 15)" },
   asOf: { long: "--as-of", description: "ISO time recency weights count back from" },
   halfLife: { long: "--half-life", description: "recency half-life in days (default 21)" },
@@ -63,21 +63,24 @@ const BacktestArgs = z
   .strict();
 type BacktestArgs = z.infer<typeof BacktestArgs>;
 
-interface LoadedRows {
+export interface LoadedRows {
   rows: ThroughputRow[];
   minerIndexedAt: string | null;
   inputs: Omit<ThroughputInputs, "modelHash" | "watermark" | "excludedRows">;
 }
 
+/** Optional joins a caller adds to every row; the table and backtest pass none. */
+export type RowJoins = Pick<TaskActualsOptions, "prDiffs" | "shepherdRuns">;
+
 /** Reads the graph strictly read-only, even the miner's own index: `ctx.graph()` would migrate and reprice it. */
-function loadRows(ctx: MinerContext, capMinutes: number | undefined): LoadedRows {
+export function loadRows(ctx: MinerContext, capMinutes: number | undefined, joins: RowJoins = {}): LoadedRows {
   const { initiativesRoot, throughputInitiatives: initiatives, dbPath } = ctx.config;
   const load = loadDoneTasks(initiativesRoot, initiatives);
   for (const initiative of load.missing) ctx.warnings.push(`initiative ${initiative} has no tasks directory under ${initiativesRoot}`);
   const graph = openSessionGraph(dbPath, { readonly: true });
   try {
     if (countTaskLinkedOrigins(graph) === 0) ctx.warnings.push(`${dbPath} has no task-linked sessions; pass --graph with active-work's graph`);
-    const actuals = taskActuals(graph.db, load.tasks, { initiatives, capMinutes });
+    const actuals = taskActuals(graph.db, load.tasks, { initiatives, capMinutes, ...joins });
     const multiKind = load.tasks.filter((task) => task.multiKind).length;
     return {
       rows: toThroughputRows(actuals, load.tasks),
@@ -139,12 +142,12 @@ export const throughputBacktest = defineCommand<BacktestArgs, ThroughputBacktest
 });
 
 /** `weeks` origins a week apart, the last one a full horizon before the newest done task so its test window is complete. */
-function weeklyOrigins(newestDoneAt: string, horizonDays: number, weeks: number): string[] {
+export function weeklyOrigins(newestDoneAt: string, horizonDays: number, weeks: number): string[] {
   const last = Date.parse(newestDoneAt) - horizonDays * MS_PER_DAY;
   return Array.from({ length: weeks }, (_, i) => new Date(last - (weeks - 1 - i) * 7 * MS_PER_DAY).toISOString());
 }
 
-function renderInputs(inputs: ThroughputInputs): string {
+export function renderInputs(inputs: ThroughputInputs): string {
   const { modelHash, watermark, initiatives, rows, excludedRows, unparsed, multiKind } = inputs;
   const mark = `watermark miner=${watermark.minerIndexedAt ?? "none"} newestDone=${watermark.newestDoneAt}`;
   return `model ${modelHash}  ${mark}  initiatives=${initiatives.join(",")}  rows=${rows} excluded=${excludedRows}  unparsed=${unparsed.length}  multiKind=${multiKind}`;
@@ -173,7 +176,7 @@ function renderBacktest(result: BacktestResult): string[] {
   return [pooled, skipped, ...origins, ...classes];
 }
 
-function coverage(c: Coverage): string {
+export function coverage(c: Coverage): string {
   return c.rate ? `${c.hits}/${c.n} ${(c.rate.estimate * 100).toFixed(0)}% [${(c.rate.lower * 100).toFixed(0)}-${(c.rate.upper * 100).toFixed(0)}]` : `0/0`;
 }
 
