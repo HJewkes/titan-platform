@@ -114,6 +114,62 @@ describe("namesIfs", () => {
     expect(performance.now() - started).toBeLessThan(100);
   });
 
+  it.each([
+    ["names joined from variables", "c=S; b=F; a=I; declare $a$b$c=,"],
+    ["a case-changing expansion", "x=ifs; declare ${x^^}=,"],
+    ["a command substitution as the name", "declare \"$(printf '\\x49FS')\"=,"],
+    ["a substitution inside the name", "declare I$(echo F)S=,"],
+    ["a function body before the write", "R=origin,HEAD:main; f(){ git push $R; }; c=S; b=F; a=I; declare $a$b$c=,; f"],
+    ["a run-time read option word", "read $opt line"],
+    ["eval of run-time text", 'eval "$a$b$c=,"'],
+    ["let of run-time text", "let $n=1"],
+    ["arithmetic of run-time text", "(( $n = 1 ))"],
+    ["a run-time command word", "$c $a$b$c=,"],
+    ["builtin before the writer", "builtin declare $a=,"],
+  ])("matches a write whose name is built at run time: %s", (_form, line) => {
+    expect(namesIfs(line)).toBe(true);
+  });
+
+  it.each([
+    ["read ?", "read -r ?FS <<< ,"],
+    ["read [ ]", "read [I]FS <<< ,"],
+    ["read *", "read *FS <<< ,"],
+    ["read -a", "read -a ?FS <<< ,"],
+    ["printf -v", "printf -v ?FS %s ,"],
+    ["unset", "unset ?FS"],
+    ["mapfile", "mapfile -t *FS < list"],
+    ["getopts", "getopts ab ?FS"],
+    ["declare", "declare ?FS=,"],
+  ])("matches a glob in the name slot of %s", (_form, line) => {
+    expect(namesIfs(line)).toBe(true);
+  });
+
+  it.each([
+    "read -r line",
+    'read -p "Name: $x" n',
+    'export PATH="$HOME/bin:$PATH"',
+    "declare X=$(date) Y=${z^^}",
+    "for f in *.txt; do echo $f; done",
+    "printf '%s\\n' $x",
+    "git push origin $R",
+    "cd $dir && ls *.ts",
+    "mapfile -t lines < <(ls $d)",
+    "unset -f my-func",
+  ])("does not match a write whose name is literal: %s", (line) => {
+    expect(namesIfs(line)).toBe(false);
+  });
+
+  it("reads 64KB under 8 nested evals in under 200 ms", () => {
+    const line = nestedEvals(`echo ${"$a ".repeat(21_000)}; declare $a$b$c=,`, 8);
+    const started = performance.now();
+
+    const named = namesIfs(line);
+
+    expect(line.length).toBeGreaterThan(64 * 1024);
+    expect(named).toBe(true);
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+
   it("does not match a numeric range", () => {
     expect(namesIfs("for i in {1..10}; do echo $i; done")).toBe(false);
   });

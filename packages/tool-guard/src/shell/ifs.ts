@@ -1,3 +1,4 @@
+import { mayWriteRunTimeName } from "./ifs-writes.js";
 import { tokenize } from "./lexer.js";
 import type { Token, WordToken } from "./tokens.js";
 import { ASSIGNMENT_RE, type Vars } from "./vars.js";
@@ -7,30 +8,33 @@ const DEFAULT_IFS = " \t\n";
 const LETTER_RANGE_RE = /(?:^|[^0-9-])\.\.|\.\.(?:[^0-9-]|$)/;
 /** Quoting a word's value may still hold, so an `eval` or `sh -c` text re-lexes to IFS. */
 const REQUOTED_RE = /[\\'"$]/;
+/** Text that may build a name at run time: an expansion, a backquote or a glob. */
+const RUN_TIME_TEXT_RE = /[$`?*[]/;
 /** The walk's own nesting limit (`MAX_DEPTH` in commands.ts); past it the value counts as naming IFS. */
 const RELEX_DEPTH = 8;
 
 /**
- * Whether any word of the text may spell IFS once quotes, escapes, line continuations and `$'…'` are removed
- * and braces expanded, so `declare I\FS=,` or `read {I,}FS` counts as a write the walk may reach late.
- * Where this model of bash runs out, it answers true.
+ * Whether the text may write IFS: a word spells IFS once quotes, escapes, line continuations and `$'…'` are
+ * removed and braces expanded (`declare I\FS=,`, `read {I,}FS`), or a write slot's name is built at run time
+ * (`declare $a$b$c=,`, `read ?FS`). Where this model of bash runs out, it answers true.
  */
 export function namesIfs(text: string, depth = 0): boolean {
   if (text.includes("IFS")) return true;
-  if (!maySpellIfs(text)) return false;
+  if (!maySpellIfs(text) && !RUN_TIME_TEXT_RE.test(text)) return false;
   let tokens: Token[];
   try {
     tokens = tokenize(text);
   } catch {
     return true;
   }
-  return wordValues(tokens).some((v) => valueNamesIfs(v, depth));
+  return tokenLists(tokens).some((list) => mayWriteRunTimeName(list) || wordValues(list).some((v) => valueNamesIfs(v, text, depth)));
 }
 
-function valueNamesIfs(value: string, depth: number): boolean {
+/** A value equal to the text it came from re-lexes to itself, so only a shorter one is read again. */
+function valueNamesIfs(value: string, text: string, depth: number): boolean {
   if (value.includes("IFS") || braceMaySpellIfs(value)) return true;
-  if (!REQUOTED_RE.test(value)) return false;
-  return depth + 1 >= RELEX_DEPTH ? maySpellIfs(value) : namesIfs(value, depth + 1);
+  if (!REQUOTED_RE.test(value) || value.length >= text.length) return false;
+  return depth + 1 >= RELEX_DEPTH || namesIfs(value, depth + 1);
 }
 
 /**
@@ -58,12 +62,21 @@ function holdsIfsInOrder(text: string): boolean {
   return f >= 0 && text.includes("S", f + 1);
 }
 
-/** Every word value in the tokens, including those inside command and process substitutions and redirects. */
+/** The tokens and every token list nested in their command and process substitutions. */
+function tokenLists(tokens: readonly Token[]): Token[][] {
+  const nested = tokens.flatMap((t): Token[][] => {
+    if (t.type === "word" || t.type === "subs") return t.subs;
+    if (t.type === "redirect") return [...t.subs, ...(t.target?.subs ?? [])];
+    return [];
+  });
+  return [[...tokens], ...nested.flatMap(tokenLists)];
+}
+
+/** Word values, redirect targets and heredoc bodies of one token list. */
 function wordValues(tokens: readonly Token[]): string[] {
   return tokens.flatMap((t): string[] => {
-    if (t.type === "word") return [t.value, ...t.subs.flatMap(wordValues)];
-    if (t.type === "subs") return t.subs.flatMap(wordValues);
-    if (t.type === "redirect") return [...(t.target ? [t.target.value] : []), ...(t.body === null ? [] : [t.body]), ...t.subs.flatMap(wordValues)];
+    if (t.type === "word") return [t.value];
+    if (t.type === "redirect") return [...(t.target ? [t.target.value] : []), ...(t.body === null ? [] : [t.body])];
     return [];
   });
 }

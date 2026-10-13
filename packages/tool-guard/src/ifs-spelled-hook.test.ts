@@ -25,9 +25,10 @@ async function handled(command: string): Promise<"deny" | "pass"> {
 const LATE_ESCAPED_IFS = [
   ["a function called after the write", "R=origin,HEAD:main; f(){ git push $R; }; declare I\\FS=,; f"],
   ["a loop whose later iteration writes", "R=origin,HEAD:main; for i in 1 2; do git push $R; declare I\\FS=,; done"],
+  ["a function called after a write whose name is joined", "R=origin,HEAD:main; f(){ git push $R; }; c=S; b=F; a=I; declare $a$b$c=,; f"],
 ] as const;
 
-describe("an escaped IFS write that runs after the push is spelled (TP-2723)", () => {
+describe("an IFS write that runs after the push is spelled or built (TP-2723)", () => {
   it.each(LATE_ESCAPED_IFS)("is seen by namesIfs in %s", (_form, line) => {
     expect(namesIfs(line)).toBe(true);
   });
