@@ -57,7 +57,17 @@ interface ThroughputRow {
     firstImplAt?: string | null;
     /** The implementer's peak context in tokens, when the miner recorded it. */
     peakContextTokens?: number | null;
+    /** Review-panel class over all the task's PR files; null with `touches: []` when it had no PR. */
+    prClass?: string | null;
+    /** Review-panel touches in its own order, so the first is the lead touch. */
+    touches?: readonly string[] | null;
+    changedLines?: number | null;
+    /** Distinct heads Shepherd awaited a verdict on; null when no run joined. */
+    reviewRounds?: number | null;
+    /** Minutes per Shepherd stage (queued, ci, review, re-review, hold, land). */
+    stageMinutes?: StageMinutesLike | null;
 }
+type StageMinutesLike = Readonly<Partial<Record<string, number>>>;
 /** The plan-time facts that place a task in a class. */
 interface TaskClassFacts {
     kind?: string | null;
@@ -239,6 +249,126 @@ interface BacktestResult {
  */
 declare function backtest(actuals: readonly ThroughputRow[], options: BacktestOptions): BacktestResult;
 
+declare const REVIEW_TARGETS: readonly ["reviewAgentHours", "reviewRounds", "postPrWallHours"];
+type ReviewTarget = (typeof REVIEW_TARGETS)[number];
+/** `diff` keys on review class x lead touch; `base` on kind x size band, the plan-time baseline. */
+type ReviewKey = "diff" | "base";
+/** `group` is the review class for the diff key and the kind for the base key. */
+type ReviewBackoffLevel = "key" | "group" | "global";
+declare const NO_PR_KEY = "nopr";
+type ReviewFacts = Pick<ThroughputRow, "prClass" | "touches" | "kind" | "estimate">;
+interface ReviewLevelStats {
+    n: number;
+    /** Rows after recency weighting; the back-off threshold applies to this. */
+    weightedN: number;
+    quantiles: Quantiles;
+}
+interface ReviewEntry extends ReviewLevelStats {
+    level: ReviewBackoffLevel;
+    levelKey: string;
+}
+interface ReviewTargetTable {
+    /** Rows that carry this target. */
+    n: number;
+    /** Placed rows left out because this target is null on them. */
+    skippedNull: number;
+    keys: Record<string, ReviewLevelStats>;
+    groups: Record<string, ReviewLevelStats>;
+    global: ReviewLevelStats | null;
+}
+interface ReviewTableConfig extends ThroughputConfig {
+    key: ReviewKey;
+}
+interface ReviewTable {
+    modelHash: string;
+    packageVersion: string;
+    key: ReviewKey;
+    watermark: Watermark;
+    asOf: string;
+    halfLifeDays: number;
+    minN: number;
+    /** Rows left out because they carry no implementer session. */
+    excludedRows: number;
+    /** Rows left out because the key needs PR features they do not carry. */
+    skippedMissingFeatures: number;
+    targets: Record<ReviewTarget, ReviewTargetTable>;
+}
+/**
+ * `<prClass>/<lead touch>`, `nopr` for a task with no PR, or undefined when the row lacks PR
+ * features (no cache entry), which callers skip and count.
+ */
+declare function reviewFeatureKey(row: ReviewFacts): string | undefined;
+/** The row's value for one review target; null when unknown. */
+declare function reviewTarget(row: ThroughputRow, target: ReviewTarget): number | null;
+/**
+ * Recency-weighted quantiles of reviewer agent-hours, review rounds and post-PR wall hours,
+ * keyed on review class x lead touch (`diff`) or kind x size band (`base`), with back-off to
+ * the group (class or kind) then global. Pure: equal rows and config give equal output.
+ */
+declare function reviewTable(actuals: readonly ThroughputRow[], config: ReviewTableConfig): ReviewTable;
+/**
+ * The quantiles one task gets for a target, backing off key, group, then global. Undefined when
+ * the table's key cannot place the task or no training row carries the target.
+ */
+declare function reviewFor(table: ReviewTable, facts: ReviewFacts, target: ReviewTarget): ReviewEntry | undefined;
+
+/** Below this many scored rows a target's comparison is reported as insufficient, not a win or loss. */
+declare const MIN_ABLATION_N = 40;
+interface ReviewAblationOptions {
+    /** ISO dates; each one refits both arms on rows done before it. */
+    origins: readonly string[];
+    horizonDays?: number;
+    /** Passed to reviewTable for both arms; `asOf` is always the origin. */
+    config?: Omit<ThroughputConfig, "asOf">;
+}
+interface ReviewArmScore {
+    n: number;
+    pinball: {
+        p10: number | null;
+        p50: number | null;
+        p90: number | null;
+    };
+    /** Share of actuals inside [p10, p90]. */
+    coverage: ReturnType<typeof intervalCoverage>;
+}
+interface ReviewTargetAblation {
+    /** Test rows scored by both arms; the two arms always score the same rows. */
+    n: number;
+    /** Test rows whose target is null. */
+    skippedNull: number;
+    /** Test rows with a target but no training row carrying it. */
+    unscored: number;
+    diff: ReviewArmScore;
+    base: ReviewArmScore;
+    /** diff p50 pinball minus base p50 pinball; negative means the diff key predicts better. */
+    deltaP50: number | null;
+    insufficient: boolean;
+}
+interface ReviewAblationOrigin {
+    origin: string;
+    horizonEnd: string;
+    trainN: number;
+    testN: number;
+    /** Null when no row was done before the origin, so neither arm could be fitted. */
+    targets: Record<ReviewTarget, ReviewTargetAblation> | null;
+}
+interface ReviewAblationResult {
+    horizonDays: number;
+    /** Rows left out because they carry no implementer session. */
+    excludedRows: number;
+    /** Rows left out of both arms because they lack PR features. */
+    skippedMissingFeatures: number;
+    /** Rows with features but no `firstImplAt`: they can train but are never tested. */
+    skippedNoStart: number;
+    origins: ReviewAblationOrigin[];
+    pooled: Record<ReviewTarget, ReviewTargetAblation>;
+}
+/**
+ * Rolling-origin ablation of the diff key against the kind x size-band key for each review
+ * target. Both arms fit and score exactly the same rows, so the key is the only difference.
+ */
+declare function reviewAblation(actuals: readonly ThroughputRow[], options: ReviewAblationOptions): ReviewAblationResult;
+
 declare const DEFAULT_WEEK_MIN_TASKS = 8;
 interface ClosureStats {
     n: number;
@@ -410,4 +540,4 @@ interface BacktestSetsResult {
  */
 declare function backtestSets(actuals: readonly ThroughputRow[], options: BacktestSetsOptions): BacktestSetsResult;
 
-export { type BackoffLevel, type BacktestMetric, type BacktestOptions, type BacktestResult, type BacktestSetsOptions, type BacktestSetsResult, type CappedHoursLike, type Censoring, type ClassEntry, type ClassScore, type ClassTable, type ClosureLookup, type ClosureRates, type ClosureStats, type ContextLineScore, type Coverage, DEFAULT_BACKTEST_SET_DRAWS, DEFAULT_FORECAST_DRAWS, DEFAULT_HALF_LIFE_DAYS, DEFAULT_MIN_N, DEFAULT_WEEK_MIN_TASKS, type ForecastSetOptions, type GroupScore, type IntervalScore, type LevelStats, type OpenSetTask, type OpenTask, type OriginResult, type PointScore, type Quantiles, type ScoredOrigin, type ScoredSetGroup, type SetArmScore, type SetForecast, type SetGroupKind, type SetKindScore, type SetMembership, type SetOrigin, type SetTask, type SizeBand, type SkippedOrigin, type TaskClassFacts, type TaskForecast, type ThroughputConfig, type ThroughputRow, type UnclassifiableTask, type Watermark, type WeekEffect, type WeekEffectOptions, backtest, backtestSets, classFor, classTable, closureFor, closureRates, forecastSet, sizeBand, weekEffects };
+export { type BackoffLevel, type BacktestMetric, type BacktestOptions, type BacktestResult, type BacktestSetsOptions, type BacktestSetsResult, type CappedHoursLike, type Censoring, type ClassEntry, type ClassScore, type ClassTable, type ClosureLookup, type ClosureRates, type ClosureStats, type ContextLineScore, type Coverage, DEFAULT_BACKTEST_SET_DRAWS, DEFAULT_FORECAST_DRAWS, DEFAULT_HALF_LIFE_DAYS, DEFAULT_MIN_N, DEFAULT_WEEK_MIN_TASKS, type ForecastSetOptions, type GroupScore, type IntervalScore, type LevelStats, MIN_ABLATION_N, NO_PR_KEY, type OpenSetTask, type OpenTask, type OriginResult, type PointScore, type Quantiles, REVIEW_TARGETS, type ReviewAblationOptions, type ReviewAblationOrigin, type ReviewAblationResult, type ReviewArmScore, type ReviewBackoffLevel, type ReviewEntry, type ReviewFacts, type ReviewKey, type ReviewLevelStats, type ReviewTable, type ReviewTableConfig, type ReviewTarget, type ReviewTargetAblation, type ReviewTargetTable, type ScoredOrigin, type ScoredSetGroup, type SetArmScore, type SetForecast, type SetGroupKind, type SetKindScore, type SetMembership, type SetOrigin, type SetTask, type SizeBand, type SkippedOrigin, type StageMinutesLike, type TaskClassFacts, type TaskForecast, type ThroughputConfig, type ThroughputRow, type UnclassifiableTask, type Watermark, type WeekEffect, type WeekEffectOptions, backtest, backtestSets, classFor, classTable, closureFor, closureRates, forecastSet, reviewAblation, reviewFeatureKey, reviewFor, reviewTable, reviewTarget, sizeBand, weekEffects };

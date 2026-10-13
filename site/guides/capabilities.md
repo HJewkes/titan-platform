@@ -942,12 +942,13 @@ Tier 2, `@titan-design/throughput@0.2.0`. Per-class throughput model: recency-we
 Key exports:
 
 - `backtest`: `backtest`
-- `class-table`: `classFor`, `classTable`, `DEFAULT_HALF_LIFE_DAYS`, `DEFAULT_MIN_N`
+- `class-table`: `classFor`, `classTable`
 - `rows`: `sizeBand`
-- `forecast-set`: `DEFAULT_FORECAST_DRAWS`, `forecastSet`
-- `set-inputs`: `closureFor`, `closureRates`, `weekEffects`
-- `backtest-sets`: `backtestSets`
-- +46 more in the [reference page](/reference/throughput)
+- `review-model`: `reviewFeatureKey`, `reviewFor`, `reviewTable`, `reviewTarget`
+- `review-ablation`: `reviewAblation`
+- `forecast-set`: `forecastSet`
+- `set-inputs`: `closureFor`, `closureRates`
+- +69 more in the [reference page](/reference/throughput)
 
 <a id="cap-workflow"></a>
 
