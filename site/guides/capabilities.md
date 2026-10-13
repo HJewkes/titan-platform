@@ -593,7 +593,7 @@ Key exports:
 - `envelope`: `describeError`, `errorEnvelope`, `successEnvelope`
 - `zod-introspect`: `arrayElementKind`, `fieldSchema`, `isOptionalField`, `schemaKind`, `unwrapSchema`
 - `cli-options`: `camelizeFlagKey`, `coerceCliValue`
-- +26 more in the [reference page](/reference/registry)
+- +28 more in the [reference page](/reference/registry)
 
 <a id="cap-retrieval"></a>
 
