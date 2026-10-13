@@ -1,5 +1,5 @@
 import { formatResultLine, type FixProofResult } from "@titan-design/fix-proof";
-import { fakeGitHub, fakeSha, githubPort, successRun, type CheckRun, type PrFile } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, successRun, type CheckRun, type FakeGitHub, type GitHubPort, type PrFile } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { StepRoute } from "@titan-design/workflow";
@@ -22,6 +22,9 @@ const FIX_PROOF_JOB = 77;
 const OTHER_APP = 424242;
 const UNVERIFIED_BRIEF = "Shepherd marks this head's fix-proof unverified";
 const WORKFLOW_EDIT: PrFile = { path: ".github/workflows/fix-proof.yml", status: "modified" };
+
+/** The fake PR's base is `main`, so this is the repo running fix-proof on every PR into it. */
+const addWorkflowAtBase = (fake: FakeGitHub) => fake.files.set(`main:${WORKFLOW_EDIT.path}`, { content: "name: fix-proof\n", blobSha: "w1" });
 
 function resultLine(head: string, verdict: FixProofResult["verdict"]): string {
   const counts: FixProofResult["counts"] = { reproduces: verdict === "reproduced" ? 1 : 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
@@ -63,6 +66,7 @@ interface Scene {
   log?: string;
   files?: PrFile[];
   external?: string;
+  workflow?: boolean;
 }
 
 function fakeDispatch(): ReviewerDispatch & { agents: ReviewerAgent[]; spawns: { name: string; brief: string }[] } {
@@ -89,6 +93,7 @@ describe("sh-fix-proof in reviewPhase", () => {
     fake.setRuns(H, [successRun("validate", 1), successRun("dag-check", 2), ...(scene.runs ?? [])]);
     if (scene.log !== undefined) fake.jobLogs.set(FIX_PROOF_JOB, scene.log);
     fake.prFiles.set(1, scene.files ?? [{ path: "src/a.ts", status: "modified" }]);
+    if (scene.workflow) addWorkflowAtBase(fake);
     let clock = 10_000;
     const store = shepherdStoreRef();
     const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined } };
@@ -186,6 +191,14 @@ describe("sh-fix-proof in reviewPhase", () => {
     expect(verdicts).not.toContainEqual(expect.objectContaining({ kind: "NO_REPRO" }));
   });
 
+  it("records an error proof when a [skip ci] head has no Actions run in a repo with the fix-proof workflow", async () => {
+    const { verdicts, proof } = await review({ kind: "correctness", workflow: true });
+
+    expect(proof).toEqual({ kind: "error", reason: expect.stringContaining(WORKFLOW_EDIT.path) });
+    expect(fixProofStanding(FixProofReadSchema.parse(proof), H)).toEqual({ unverified: "unread" });
+    expect(verdicts).not.toContainEqual(expect.objectContaining({ kind: "NO_REPRO" }));
+  });
+
   it("hands a reproduced line at the head to the reviewer brief", async () => {
     const line = resultLine(H, "reproduced");
 
@@ -276,6 +289,8 @@ describe("readFixProof", () => {
     logs?: Record<number, string>;
     files?: PrFile[];
     changedFiles?: number;
+    workflow?: boolean;
+    port?: (port: GitHubPort) => GitHubPort;
   }
 
   function registered(kind: string, runs: CheckRun[], options: Registered = {}) {
@@ -286,6 +301,8 @@ describe("readFixProof", () => {
     for (const [job, log] of Object.entries(options.logs ?? {})) fake.jobLogs.set(Number(job), log);
     if (options.files !== undefined) fake.prFiles.set(1, options.files);
     if (options.changedFiles !== undefined) fake.prChangedFiles.set(1, options.changedFiles);
+    if (options.workflow) addWorkflowAtBase(fake);
+    const port = (options.port ?? ((base) => base))(githubPort(fake.wire));
     const db = openDatabase(":memory:");
     runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
     const store = shepherdStoreRef();
@@ -299,7 +316,7 @@ describe("readFixProof", () => {
     };
     const timeoutMs = options.timeoutMs ?? 10_000;
     const timing = { now: () => clock, sleep, pollMs: 1_000, noActionsGraceMs: 180_000, ...(timeoutMs !== "default" && { timeoutMs }) };
-    return { fake, elapsed: () => clock, read: () => readFixProof({ port: githubPort(fake.wire), store }, { repo: REPO, head: H, runId: "run-1" }, timing, signal) };
+    return { fake, elapsed: () => clock, read: () => readFixProof({ port, store }, { repo: REPO, head: H, runId: "run-1" }, timing, signal) };
   }
 
   it("makes no GitHub call for a kind outside the gate on a registered branch", async () => {
@@ -327,6 +344,29 @@ describe("readFixProof", () => {
 
     expect(await read()).toEqual({ kind: "missing", reason: expect.stringContaining("no GitHub Actions run") });
     expect(elapsed()).toBeLessThan(200_000);
+  });
+
+  it("reads error, not missing, after the grace when a head with no Actions run is in a repo with the fix-proof workflow", async () => {
+    const { read, elapsed } = registered("correctness", [], { workflow: true, timeoutMs: 1_500_000 });
+
+    const proof = await read();
+
+    expect(proof).toEqual({ kind: "error", reason: expect.stringContaining("no GitHub Actions run") });
+    expect(proof).toEqual({ kind: "error", reason: expect.stringContaining(`${WORKFLOW_EDIT.path} exists at the base main`) });
+    expect(elapsed()).toBeLessThan(200_000);
+  });
+
+  it("reads error when the fix-proof workflow cannot be read at the base and no run exists", async () => {
+    const failing = (port: GitHubPort): GitHubPort => ({ ...port, getFile: async () => Promise.reject(Object.assign(new Error("server error"), { status: 500 })) });
+    const { read } = registered("correctness", [], { port: failing });
+
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("could not be read at the base main: HTTP 500") });
+  });
+
+  it("reads error when the PR's base branch cannot be read and no run exists", async () => {
+    const { read } = registered("correctness", [], { unreadablePr: true });
+
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("base branch could not be read") });
   });
 
   it("keeps polling past the grace while an Actions run that is not fix-proof is still in progress", async () => {
@@ -462,6 +502,20 @@ describe("readFixProof", () => {
     const { read } = registered("correctness", [], { files: [{ path: "src/a.ts", status: "modified" }], changedFiles: 5_000 });
 
     expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("could not be read") });
+  });
+
+  it("reads error, not missing, when every Actions run settled with no fix-proof run in a repo with the workflow", async () => {
+    const validate = { ...successRun("validate", 5), headSha: H };
+    const { read } = registered("correctness", [validate], { workflow: true, files: [{ path: "src/a.ts", status: "modified" }] });
+
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("no fix-proof check run, but") });
+  });
+
+  it("reads error, not missing, at the deadline with no run in a repo with the workflow", async () => {
+    const pending = { ...successRun("validate", 5), headSha: H, status: "in_progress" as const, conclusion: null };
+    const { read } = registered("correctness", [pending], { workflow: true });
+
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("before the deadline, but") });
   });
 
   it("still reads missing for a repo with no fix-proof run when the PR leaves the harness alone", async () => {
