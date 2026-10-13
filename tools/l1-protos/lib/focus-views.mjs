@@ -1,6 +1,6 @@
 // D4 (one area entered) and D5 (one package entered, top-k files), both under the cap.
 import { CAP, PROXIES_PER_BAND, capProxies, fitStubs, containerOptions, focusEdges, focusElisions, focusScene, proxyNodes, refold, shortName, wrapLines } from "./focus.mjs";
-import { LIMITS, boxSize, fitTransform } from "./scene.mjs";
+import { LIMITS, boxSize, charFor, fitTransform } from "./scene.mjs";
 import { MODEL_ORDER, fallbackNote } from "./designs.mjs";
 import { crossingBudget, crossingCount } from "./rules.mjs";
 
@@ -15,7 +15,7 @@ function budgetLines(head, cut, rerouted) {
 }
 
 function leafNode(nodes, spec, id, kind, lines, parent) {
-  nodes.push({ id, ...boxSize(lines), parent });
+  nodes.push({ id, ...boxSize(lines, 0, charFor(id, kind)), parent });
   spec.set(id, { kind, lines });
 }
 

@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { themeStyles } from "./theme.mjs";
+import { pinnedLabelFace } from "./config.mjs";
 
 const PLAYER = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "player.js"), "utf8");
 export const LABEL_FAMILY = "L1Label";
@@ -81,8 +82,10 @@ ${ruler(frame)}
 /** The page for `data` = { frame, frames, timeline, static }, styled by L1_THEME (default plain). */
 export function pageHtml(title, data) {
   const { css, htmlClass } = themeStyles(process.env.L1_THEME ?? "plain");
+  // Outranks the theme's per-role label faces (file paths and pills in its mono token).
+  const pinned = pinnedLabelFace() ? `svg.frame text.lbl{font-family:"${LABEL_FAMILY}",monospace}` : "";
   const json = JSON.stringify(data).replace(/</g, "\\u003c");
-  return `<!doctype html><html class="${htmlClass}"><head><meta charset="utf-8"><title>${title}</title><style>${layoutCss(data.frame)}${css}</style></head>
+  return `<!doctype html><html class="${htmlClass}"><head><meta charset="utf-8"><title>${title}</title><style>${layoutCss(data.frame)}${css}${pinned}</style></head>
 <body><div class="wrap">${frameSvg(data.frame)}
 <div class="controls"><button id="play">play</button><label><input type="checkbox" id="loop" checked> loop</label>
 <input type="range" id="scrub" min="0" step="0.01" value="0"><span id="time"></span></div></div>

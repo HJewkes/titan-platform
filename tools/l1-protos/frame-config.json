@@ -8,8 +8,9 @@
     "lineHeight": 1.25
   },
   "themeFonts": {
-    "titan": { "family": "Space Grotesk", "xHeight": 0.5 }
+    "titan": { "family": "Space Grotesk", "xHeight": 0.5, "measuredAdvance": 0.5014 }
   },
+  "faceAdvance": false,
   "labelFloor": {
     "xHeightFraction": 0.02,
     "minViewerXHeightPx": 8

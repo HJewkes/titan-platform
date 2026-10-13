@@ -35,6 +35,7 @@ export function metricsFor(F, cfg) {
   return {
     font: F,
     char: cfg.font.advance * F,
+    monoChar: (cfg.font.monoAdvance ?? cfg.font.advance) * F,
     line,
     pad,
     containerTop: 2 * pad + line,
@@ -105,13 +106,26 @@ export function topKBounds(caps, { groups, open = 2, proxies = 0, filesMax = 10 
 }
 
 // The titan themes draw labels in their own face, so the floor derives from its x-height. The
-// advance and line pitch stay the config's: they are the layout budget, not a face property.
+// advance and line pitch stay the config's layout budget unless `faceAdvance` (or
+// L1_FACE_ADVANCE=1) is on: then box labels budget the face's measured average advance, and
+// the roles the theme draws in its mono token (file paths, pills) keep the config's advance.
 const THEME_FONT = { dark: "titan", light: "titan" };
+
+function faceAdvanceOn(cfg) {
+  return process.env.L1_FACE_ADVANCE ? process.env.L1_FACE_ADVANCE === "1" : cfg.faceAdvance === true;
+}
+
+/** L1_LABEL_FACE=pinned keeps map labels in the config's pinned face under a titan theme's colours. */
+export const pinnedLabelFace = () => process.env.L1_LABEL_FACE === "pinned";
 
 /** `cfg` with the font metrics of the face L1_THEME draws labels in. */
 export function themedConfig(cfg, theme = process.env.L1_THEME) {
-  const face = cfg.themeFonts?.[THEME_FONT[theme]];
-  return face ? { ...cfg, font: { ...cfg.font, ...face } } : cfg;
+  const face = pinnedLabelFace() ? null : cfg.themeFonts?.[THEME_FONT[theme]];
+  if (!face) return cfg;
+  const { measuredAdvance, ...metrics } = face;
+  const font = { ...cfg.font, ...metrics };
+  if (faceAdvanceOn(cfg) && measuredAdvance) Object.assign(font, { advance: measuredAdvance, monoAdvance: cfg.font.advance });
+  return { ...cfg, font };
 }
 
 /** The frame selected by L1_FRAME (default 1080p), with the label floor from L1_LABEL_PX if set. */

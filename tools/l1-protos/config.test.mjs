@@ -19,6 +19,16 @@ test("the titan themes derive a 44 px floor from Space Grotesk's 0.500 x-height 
   assert.equal(themedConfig(cfg, "plain"), cfg);
 });
 
+test("the face-advance switch budgets titan box labels at the measured advance and keeps mono roles at the config's", () => {
+  const off = deriveLimits(frame("1080p"), themedConfig(cfg, "dark")).metrics;
+  const on = deriveLimits(frame("1080p"), themedConfig({ ...cfg, faceAdvance: true }, "dark")).metrics;
+  assert.equal(off.char, off.monoChar);
+  assert.equal(on.font, 44);
+  assert.equal(on.char, cfg.themeFonts.titan.measuredAdvance * 44);
+  assert.equal(on.monoChar, off.char);
+  assert.equal(themedConfig({ ...cfg, faceAdvance: true }, "plain").font.advance, cfg.font.advance);
+});
+
 test("a frame viewed at a third needs the viewer-absolute floor, which wins over the fraction", () => {
   const third = labelFloorPx(frame("1080p-embed-third"), cfg);
   assert.equal(third, Math.ceil(cfg.labelFloor.minViewerXHeightPx / 0.3333 / cfg.font.xHeight));

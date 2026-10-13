@@ -30,6 +30,11 @@ it. Labels then draw in Space Grotesk, so the floor derives from `themeFonts.tit
 (x-height 0.500: 44 px at 1080 instead of 40); the advance and line pitch stay the layout budget. `theme-compare.mjs` (same arguments) renders D2, D4 and D5 at 40 px in all three themes, re-renders the clip in
 dark and light, and measures the label faces' x-height and advance.
 
+`faceAdvance` in `frame-config.json` (default false, or `L1_FACE_ADVANCE=1`) budgets titan box labels at the face's
+measured average advance (`themeFonts.titan.measuredAdvance`, 0.5014 em from `theme-compare.mjs`) instead of 0.602 em;
+file paths and count pills, which titan draws in its mono token, keep 0.602 em. `L1_LABEL_FACE=pinned` keeps every map
+label in the config's pinned face under a titan theme's colours, with the floor from that face (40 px at 1080).
+
 `L1_MODEL_ORDER=0` lays out each view cold instead of seeding it from the previous view's reading order.
 
 | File | What |

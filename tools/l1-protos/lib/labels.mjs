@@ -1,7 +1,7 @@
 // Edge count pills placed where they collide with nothing, container headers moved out of the
 // way of edges, and the label/edge crossing count. All placement is a deterministic scan over
 // fixed candidate lists, so the same layout always gets the same labels.
-import { CHAR, FONT, LINE, MIN_GAP, PAD, boxSize, element } from "./scene.mjs";
+import { CHAR, FONT, LINE, MIN_GAP, MONO_CHAR, PAD, boxSize, charFor, element } from "./scene.mjs";
 
 const LEAF_KINDS = new Set(["box", "tile", "chip"]);
 
@@ -13,7 +13,8 @@ export function hit(a, b, gap = MIN_GAP) {
 export function textRects(e) {
   const s = (e.fs ?? FONT) / FONT;
   const [dx, dy] = [e.ldx ?? 0, e.ldy ?? 0];
-  return e.lines.map((line, i) => ({ x: e.x + PAD * s + dx, y: e.y + PAD * s + i * LINE * s + dy, w: line.length * CHAR * s, h: LINE * s - 4 * s * (FONT / 24) }));
+  const char = charFor(e.id, e.kind);
+  return e.lines.map((line, i) => ({ x: e.x + PAD * s + dx, y: e.y + PAD * s + i * LINE * s + dy, w: line.length * char * s, h: LINE * s - 4 * s * (FONT / 24) }));
 }
 
 const PILL_T = [0.5, 0.3, 0.7, 0.2, 0.8, 0.1, 0.9];
@@ -66,7 +67,7 @@ export function placePills(elements, labelled) {
   const pills = [];
   let dropped = 0;
   for (const [edge, text] of [...labelled].sort((a, b) => b[0].sw - a[0].sw || (a[0].id < b[0].id ? -1 : 1))) {
-    const size = boxSize([text]);
+    const size = boxSize([text], 0, MONO_CHAR);
     const clear = (r) => !blocked.some((b) => hit(r, b)) && !onBorder(r, containers) && !edgeCrosses(edges, r, edge.id, MIN_GAP);
     const spot = candidates(edge.points, size).find(clear);
     if (!spot) {

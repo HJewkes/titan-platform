@@ -23,10 +23,16 @@ export const SPACING = {
   edges: { "elk.layered.spacing.edgeNodeBetweenLayers": px(M.edgeNode), "elk.spacing.edgeNode": px(M.edgeNode), "elk.spacing.edgeEdge": px(M.edgeGap) },
 };
 
-/** Size of a box holding `lines` of label text plus padding. */
-export function boxSize(lines, minWidth = 0) {
+export const MONO_CHAR = M.monoChar;
+
+// File paths and count pills draw in the theme's mono token (theme/diagram.css), so they keep
+// the mono budget when box labels budget a proportional face's advance.
+export const charFor = (id, kind) => (kind === "elabel" || id?.startsWith("file:") ? MONO_CHAR : CHAR);
+
+/** Size of a box holding `lines` of label text plus padding, at `char` px per character. */
+export function boxSize(lines, minWidth = 0, char = CHAR) {
   const longest = Math.max(...lines.map((l) => l.length));
-  return { w: Math.max(minWidth, Math.ceil(longest * CHAR + 2 * PAD)), h: Math.ceil(lines.length * LINE + 2 * PAD - 0.25 * FONT) };
+  return { w: Math.max(minWidth, Math.ceil(longest * char + 2 * PAD)), h: Math.ceil(lines.length * LINE + 2 * PAD - 0.25 * FONT) };
 }
 
 /** A scene element from an ELK box: kind is box | container | tile | chip | band. */
