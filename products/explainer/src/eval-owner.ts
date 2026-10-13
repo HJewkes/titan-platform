@@ -1,6 +1,7 @@
 import { randomInt } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
+import { z } from "zod";
 import { deriveEvalView, type EvalBeat } from "./eval-view.js";
 import { appendTsv, freezeScript, type BenchLayout } from "./eval-store.js";
 import type { MapLayout } from "./map-state.js";
@@ -58,7 +59,8 @@ export interface OwnerVersion {
 }
 
 /** Which blind label hides which version. Sealed until the owner's rating is written. */
-export type BlindKey = Record<string, { config_id: string; script_sha: string }>;
+const BlindKeySchema = z.record(z.string(), z.object({ config_id: z.string(), script_sha: z.string() }).strict());
+export type BlindKey = z.infer<typeof BlindKeySchema>;
 
 export const OWNER_COLUMNS = [
   "date",
@@ -168,7 +170,8 @@ export function recordOwnerSession(bench: BenchLayout, session: string, answers:
   const dir = ownerSessionDir(bench, session);
   if (existsSync(join(dir, OPENED))) throw new Error(`owner session ${session} is already rated; its key is open`);
   if (answers.length === 0) throw new Error("a session with no answers cannot open its key");
-  const key = JSON.parse(Buffer.from(readFileSync(join(dir, SEALED), "utf8"), "base64").toString("utf8")) as BlindKey;
+  const sealed = Buffer.from(readFileSync(join(dir, SEALED), "utf8"), "base64").toString("utf8");
+  const key = BlindKeySchema.parse(JSON.parse(sealed));
   appendTsv<OwnerRow>(ownerPath(bench), OWNER_COLUMNS, toRows(bench, session, key, answers, options));
   writeFileSync(join(dir, OPENED), `${JSON.stringify(key, null, 2)}\n`);
   return key;
