@@ -1,5 +1,7 @@
 import { deriveEvalView, toMapBeats, type EvalBeat } from "./eval-view.js";
 import { lintMapBeats, type MapLint, type MapLintRule } from "./map-lints.js";
+import { evidenceCheck } from "./lint-evidence.js";
+import { whyCheck } from "./lint-why.js";
 import type { MapLayout } from "./map-state.js";
 import type { ScriptV1 } from "./script-schema.js";
 import type { StructureRow } from "./eval-store.js";
@@ -37,7 +39,7 @@ export const mapLintCheck: L0Check = ({ script, layout }) => {
   });
 };
 
-export const L0_CHECKS: readonly L0Check[] = [mapLintCheck];
+export const L0_CHECKS: readonly L0Check[] = [mapLintCheck, whyCheck, evidenceCheck];
 
 export function runL0(script: ScriptV1, layout?: MapLayout, checks: readonly L0Check[] = L0_CHECKS): L0Result[] {
   const input: L0Input = { script, view: deriveEvalView(script, layout), ...(layout ? { layout } : {}) };
