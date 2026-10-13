@@ -17,8 +17,8 @@ export const NONE_KINDS = [
   "not-started",
   "unknown",
 ] as const;
-export type NoneKind = (typeof NONE_KINDS)[number];
-export interface NoneReason {
+type NoneKind = (typeof NONE_KINDS)[number];
+interface NoneReason {
   kind: NoneKind;
   text: string;
 }
@@ -57,7 +57,7 @@ function endedReason(ended: unknown): NoneReason {
 }
 
 /** Why one stored await (or correction) ended in `none`; precedence runs top-down, so a seat WAIT outranks a malformed record it carries. */
-export function awaitNoneReason(output: unknown, corrected = false): NoneReason | undefined {
+function awaitNoneReason(output: unknown, corrected = false): NoneReason | undefined {
   const record = asRecord(output);
   if (record?.kind !== "none") return undefined;
   const reason = typeof record.reason === "string" ? record.reason : undefined;
@@ -74,7 +74,7 @@ export function awaitNoneReason(output: unknown, corrected = false): NoneReason 
 }
 
 /** Why one stored review dispatch started no reviewer; a started dispatch has no reason. */
-export function dispatchNoneReason(output: unknown): NoneReason | undefined {
+function dispatchNoneReason(output: unknown): NoneReason | undefined {
   const record = asRecord(output);
   if (record?.kind === "dispatched") return undefined;
   if (typeof record?.refused === "string") return label("dispatch-refused", `dispatch refused: ${record.refused}`);
