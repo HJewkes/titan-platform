@@ -6,7 +6,7 @@ import type { Registration } from "./store.js";
 export type { SliceFlag };
 
 /** Registration waits this long at most for the file list; the flag is advisory, so a slow read just goes unflagged. */
-export const SIZE_FLAG_TIMEOUT_MS = 15_000;
+const SIZE_FLAG_TIMEOUT_MS = 15_000;
 
 interface SizeFlagOptions {
   local?: PrFilesRead;
@@ -19,8 +19,7 @@ const changedFilesOf = (files: readonly PrFile[]) =>
 
 function withinMs<T>(work: Promise<T>, ms: number): Promise<T | undefined> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const expiry = new Promise<undefined>((resolve) => (timer = setTimeout(() => resolve(undefined), ms)));
-  timer?.unref?.();
+  const expiry = new Promise<undefined>((resolve) => (timer = setTimeout(() => resolve(undefined), ms).unref()));
   return Promise.race([work, expiry]).finally(() => clearTimeout(timer));
 }
 
