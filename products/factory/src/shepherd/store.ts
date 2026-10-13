@@ -1,12 +1,11 @@
 import type { RepoSlug } from "@titan-design/github";
-import { EXIT } from "@titan-design/registry";
 import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
 import { moveAccountHold } from "./account-store.js";
 import { parkSettled, repointParkSettled, settlePark, type ParkSettle } from "./park-settled.js";
 import { readSlots, recordVouch, repointRunRows, vouchedLine, writeSlotRow, type Vouch } from "./hold-slot-rows.js";
-import { adversarySwapRefusal, afterHold, isAdversaryHold, liftClass, liftTop, type HoldSlots, type Lift, type SlotHold } from "./hold-slots.js";
+import { afterHold, assertAdversaryKept, isAdversaryHold, liftClass, liftTop, unlessAdversary, type HoldSlots, type Lift, type SlotHold } from "./hold-slots.js";
 import { isOwnerHold, liftOwnerHold, ownerHoldOf, placeOwnerHold, recordOwnerAsked, type OwnerHold } from "./owner-hold-rows.js";
 import { registrationFactsOf, writeRegistrationFacts, type RegistrationFacts, type RegistrationFactsInput } from "./registration-facts.js";
 import { EffectivePolicySchema, RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy.js";
@@ -59,21 +58,13 @@ export interface Registration extends RegistrationFacts {
   updatedAt: string;
 }
 
-/** The verdict that satisfied a hold: its reviewer's name, the session that wrote it, and where in that session's transcript. */
-export const HoldSatisfiedBySchema = z.object({ reviewer: z.string(), agentId: z.string(), sessionId: z.string(), locator: z.looseObject({}) });
-export type HoldSatisfiedBy = z.infer<typeof HoldSatisfiedBySchema>;
-
-export interface HoldSatisfaction {
-  head: string;
-  by: HoldSatisfiedBy;
-}
+import { HoldSatisfiedBySchema, type HoldSatisfaction, type HoldSatisfiedBy } from "./hold-satisfaction.js";
+export { HoldSatisfiedBySchema, type HoldSatisfaction, type HoldSatisfiedBy } from "./hold-satisfaction.js";
 
 /** What the merge guard asks: the reason `repo#pr`, or the PR's head `branch`, is held, or undefined when nothing holds it; a hold satisfied at `sha` does not hold a merge there. */
 export interface HoldLookup {
   heldReason(repo: RepoSlug, pr: number, branch?: string, sha?: string): string | undefined;
 }
-
-const unlessAdversary = (lift: Lift | undefined): Lift | undefined => (lift !== undefined && isAdversaryHold(lift.reason) ? undefined : lift);
 
 export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrationFactsMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
 
@@ -180,18 +171,10 @@ export class ShepherdStore implements HoldLookup {
     return this.changed(newRunId, this.byRun(newRunId)!);
   }
 
-  /**
-   * A hold or release clears any satisfaction, so a re-hold waits for its reviewer again; another class waits under a
-   * `g10-adversary` hold (`afterHold`); an owner-asked hold takes its own slot. A re-hold that would change the gating
-   * `g10-adversary` hold's reviewer throws, exit 65, writing nothing.
-   */
+  /** A hold or release clears any satisfaction, so a re-hold waits for its reviewer again; another class waits under a `g10-adversary` hold (`afterHold`), whose reviewer a re-hold may not change (`assertAdversaryKept`); an owner-asked hold takes its own slot. */
   hold(runId: string, reason: string, reviewer?: string, by: EventContext = {}): Registration {
     const hold = { reason, reviewer: reviewer ?? null };
-    this.db.transaction(() => {
-      const refusal = adversarySwapRefusal(readSlots(this.db, runId), hold);
-      if (refusal !== undefined) throw Object.assign(new Error(refusal), { code: EXIT.DATAERR });
-      this.placeHold(runId, hold, by);
-    })();
+    this.db.transaction(() => (assertAdversaryKept(readSlots(this.db, runId), hold), this.placeHold(runId, hold, by)))();
     return this.changed(runId, this.byRun(runId)!);
   }
 
@@ -216,10 +199,7 @@ export class ShepherdStore implements HoldLookup {
     return this.changed(runId, recordOwnerAsked(this.db, runId, this.stamp()));
   }
 
-  /**
-   * Compare-and-swap: lifts only the hold `liftClass` picks for `holdClass`; false, writing nothing, when it picks none or
-   * picks a `g10-adversary` hold, which lifts only with an owner-signed proof (`releaseIfHeld` from `hold-release-proof.ts`).
-   */
+  /** Compare-and-swap: lifts only the hold `liftClass` picks for `holdClass`; false, writing nothing, when it picks none or a `g10-adversary` hold (`unlessAdversary`). */
   releaseClass(runId: string, holdClass: string | undefined, by: EventContext = {}): boolean {
     return this.lift(runId, (slots) => unlessAdversary(liftClass(slots, holdClass)), by);
   }

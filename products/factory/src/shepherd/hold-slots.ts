@@ -1,3 +1,5 @@
+import { EXIT } from "@titan-design/registry";
+
 /** Read the way `holdClassOf` reads a class, the text before the first colon, without importing the g10 release step. */
 export const isAdversaryHold = (reason: string | null | undefined): boolean => reason?.startsWith("g10-adversary:") ?? false;
 
@@ -25,15 +27,17 @@ export function afterHold({ top, parked }: HoldSlots, hold: SlotHold): HoldSlots
   return { top: hold, parked };
 }
 
+const reviewerOf = (name: string | null): string => (name === null ? "no named reviewer" : `reviewer ${name}`);
+
 /**
- * Why `hold` may not replace the gating `g10-adversary` hold, or undefined when it may. A hold of another class parks
- * under it, and a re-hold may change its detail; one that names another reviewer, or drops or adds one, would let a
- * MERGE that reviewer chose satisfy it, a release by another route (TP-2378).
+ * Throws, exit 65, when `hold` would replace the gating `g10-adversary` hold with one naming another reviewer, or
+ * dropping or adding one: that reviewer's MERGE would satisfy it, a release by another route (TP-2378). A hold of
+ * another class parks under it, and a re-hold may change its detail.
  */
-export function adversarySwapRefusal({ top }: HoldSlots, hold: SlotHold): string | undefined {
-  if (top === null || !isAdversaryHold(top.reason) || !isAdversaryHold(hold.reason) || top.reviewer === hold.reviewer) return undefined;
-  const reviewer = (name: string | null): string => (name === null ? "no named reviewer" : `reviewer ${name}`);
-  return `hold refused, nothing was held: the g10-adversary hold in force waits for ${reviewer(top.reviewer)}, and a re-hold may not change it to ${reviewer(hold.reviewer)}; only an owner-signed release (POST /holds/release-proof) lifts it`;
+export function assertAdversaryKept({ top }: HoldSlots, hold: SlotHold): void {
+  if (top === null || !isAdversaryHold(top.reason) || !isAdversaryHold(hold.reason) || top.reviewer === hold.reviewer) return;
+  const refusal = `hold refused, nothing was held: the g10-adversary hold in force waits for ${reviewerOf(top.reviewer)}, and a re-hold may not change it to ${reviewerOf(hold.reviewer)}; only an owner-signed release (POST /holds/release-proof) lifts it`;
+  throw Object.assign(new Error(refusal), { code: EXIT.DATAERR });
 }
 
 /** A release lifts the hold that gates; a parked one then gates in its place. */
@@ -46,6 +50,9 @@ export interface Lift {
 }
 
 export const liftTop = (slots: HoldSlots): Lift => ({ slots: afterRelease(slots), reason: slots.top?.reason ?? null });
+
+/** A `g10-adversary` hold lifts only with an owner-signed proof (`hold-release-proof.ts`), so a class release never picks one. */
+export const unlessAdversary = (lift: Lift | undefined): Lift | undefined => (lift !== undefined && isAdversaryHold(lift.reason) ? undefined : lift);
 
 /** The text before a reason's first colon, or the whole reason when it has none. */
 const classOf = (reason: string): string => (reason.includes(":") ? reason.slice(0, reason.indexOf(":")) : reason);
