@@ -14,7 +14,7 @@ export interface GhReadAnswer {
   source: "github" | "memory" | "snapshot";
 }
 
-export interface GhReadRequest {
+interface GhReadRequest {
   path: string;
   maxAgeMs?: number;
   caller?: string;
