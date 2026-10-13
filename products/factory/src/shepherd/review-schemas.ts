@@ -16,7 +16,7 @@ const Identity = z.object({ agentId: z.string().min(1), sessionId: z.string().mi
  * A verdict locator is the reader's own output and is only handed back to it, so it is checked to be an object and no more:
  * the reader owns its shape, and a stricter copy here would drift from it.
  */
-const LocatorSchema = z.custom<SourceTextLocator>((value) => typeof value === "object" && value !== null && !Array.isArray(value), "a locator object");
+export const LocatorSchema = z.custom<SourceTextLocator>((value) => typeof value === "object" && value !== null && !Array.isArray(value), "a locator object");
 
 const CI_POLICY_MALFORMED = { kind: "malformed" } as const;
 

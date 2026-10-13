@@ -34,8 +34,9 @@ import { REVIEW_STEP } from "./review-steps.js";
 import { REVIEW_STOP_STEPS, reviewStopRoute } from "./review-stop.js";
 import { withoutPlan, type PanelMode } from "./review-panel-plan.js";
 import { PANEL_STEPS, panelOn, panelReview, panelVerdictRoute, plannedPanel, type MemberBase, type PanelOnPlan } from "./review-panel-step.js";
-import { LATE_VERDICT_STEP, asksOwnerBrief, mergeVerdict, takeVerdict, type ProofStanding } from "./take-verdict.js";
+import { LATE_VERDICT_STEP, SEAT_RECHECK_STEP, asksOwnerBrief, mergeVerdict, recheckSeat, takeVerdict, type ProofStanding } from "./take-verdict.js";
 import { NO_REVIEWER_STEPS, noReviewerHeld, noReviewerRoutes } from "./no-reviewer-hold.js";
+import { heldMerge, recordsRecheck } from "./seat-recheck.js";
 
 export const REVIEW_INTENT_STEP = "sh-review-intent";
 export { REVIEW_STEP };
@@ -48,6 +49,7 @@ export const REVIEW_STEPS: readonly StepDeclaration[] = [
   { id: AWAIT_VERDICT_STEP, kind: "dispatch" },
   { id: LATE_VERDICT_STEP, kind: "dispatch" },
   { id: CORRECT_VERDICT_STEP, kind: "dispatch" },
+  { id: SEAT_RECHECK_STEP, kind: "dispatch" },
   ...MERGE_EVIDENCE_STEPS,
   { id: CARRY_STEP, kind: "dispatch" },
   ...PUBLISH_REVIEW_STEPS,
@@ -297,6 +299,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     codeRoute(AWAIT_VERDICT_STEP, deps.now, seatVetoed(wiring, run, deps.now, seatWait)),
     codeRoute(LATE_VERDICT_STEP, deps.now, seatVetoed(wiring, (raw: unknown, signal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(raw), signal), deps.now, seatWait)),
     repeatAwareRoute(CORRECT_VERDICT_STEP, deps.now, brokerStep(deps, wiring, CorrectVerdictInputSchema, correctReviewer)),
+    codeRoute(SEAT_RECHECK_STEP, deps.now, seatVetoed(wiring, async (raw: unknown) => heldMerge(raw), deps.now, seatWait)),
     codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, isFrozen, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) }, wiring?.reviewAppId)),
     carryRoute(deps.now, wiring?.carry),
     publishReviewRoute(deps),
@@ -340,6 +343,7 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const noRepro = fixProofVerdict(proof, target.head);
   if (noRepro) return noRepro;
   const standing: ProofStanding = fixProofStanding(proof, target.head) ?? {};
+  if (request.seatHeld?.head === target.head && recordsRecheck(ctx, target.head)) return recheckSeat(ctx, target, request.seatHeld, standing);
   const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }) }, Intended);
   if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : { kind: "none", cause: "no-verdict" };
   if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined, DEFAULT_ACCOUNT, standing);

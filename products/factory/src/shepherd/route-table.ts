@@ -53,6 +53,8 @@ export function mergeableState(raw: string, draft: boolean): MergeableState {
 
 /** Stuck rounds at one task before the owner is asked. */
 export const MAX_FAILED_ROUNDS = 3;
+/** Rounds at one head whose own MERGE the seat held before the owner is asked; above `MAX_FAILED_ROUNDS`, since a seat waiting on slow CI held three (tp#1300). */
+export const MAX_SEAT_HELD_ROUNDS = 6;
 /** Throttled rounds at one run that count no round; a later one counts as stuck, so a machine that never settles still reaches the owner. */
 export const MAX_THROTTLED_ROUNDS = 1;
 /** FIX_FIRST reviews at one task before the owner is asked; a third means point fixes are not converging, so the task needs redesign (TP-2394). */
