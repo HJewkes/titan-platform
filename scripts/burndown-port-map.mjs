@@ -52,17 +52,20 @@ export function diffFiles(mapFiles, listed) {
 
 /**
  * Imports from a ported F slice into a destination that is not ported strictly earlier, so the slice cannot land
- * alone. L1 is the store every slice is built on, so an import of it is never forward.
+ * alone. L1 is the store every slice is built on, so an import of it is never forward. A file already `ported` blocks
+ * nothing either way, and neither does an import that a `leafPorts` entry `covers`: everything it takes is ported.
  */
-export function forwardEdges(files, order) {
+export function forwardEdges(files, order, leafPorts = []) {
   const level = (dest) => {
     const i = order.findIndex((group) => group.includes(dest));
     return i === -1 ? Infinity : i;
   };
   const destOf = new Map(files.map((f) => [f.file, f.dest]));
+  const ported = new Set(files.filter((f) => f.ported).map((f) => f.file));
+  const covered = (from, to) => leafPorts.some((leaf) => leaf.file === to && leaf.covers.includes(from));
   const edges = [];
-  for (const { file, dest, imports } of files.filter((f) => /^F\d$/.test(f.dest))) {
-    for (const target of imports) {
+  for (const { file, dest, imports } of files.filter((f) => /^F\d$/.test(f.dest) && !ported.has(f.file))) {
+    for (const target of imports.filter((t) => !ported.has(t) && !covered(file, t))) {
       const to = destOf.get(target);
       if (to !== dest && to !== "L1" && level(to) >= level(dest)) edges.push({ from: file, fromDest: dest, to: target, toDest: to });
     }
