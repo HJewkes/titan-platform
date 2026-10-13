@@ -743,9 +743,9 @@ Key exports:
 - `layout`: `computeLayout`
 - `compound-layout`: `computeCompoundLayout`
 - `route`: `routeOf`
+- `route-path`: `routeToPathD`
 - `layout-options`: `COMPOUND_LAYOUT_OPTIONS`, `ELK_LAYOUT_OPTIONS`, `FOCUS_LAYOUT_OPTIONS`
-- `types`: `GraphInput`
-- +6 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/graph-layout)
+- +9 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/graph-layout)
 
 <a id="cap-memory"></a>
 

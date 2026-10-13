@@ -475,7 +475,7 @@ importers:
         specifier: workspace:^
         version: link:../code-graph
       elkjs:
-        specifier: ^0.10.0
+        specifier: 0.10.2
         version: 0.10.2
 
   packages/health:

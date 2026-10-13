@@ -1,9 +1,10 @@
+import { createHash } from "node:crypto";
 import { describe, it, expect } from "vitest";
 import type { GraphEdge, GraphNode } from "@titan-design/code-graph";
 import { computeCompoundLayout } from "./compound-layout.js";
 import { computeLayout } from "./layout.js";
 import { routeOf } from "./route.js";
-import type { GraphInput, GroupOf, LayoutResult } from "./types.js";
+import type { CompoundLayoutResult, GraphInput, GroupOf, LayoutResult } from "./types.js";
 
 function file(id: string): GraphNode {
   return { id, kind: "file", name: id.split("/").pop() ?? id };
@@ -58,6 +59,19 @@ function geometry(result: LayoutResult): Record<string, unknown> {
   return out;
 }
 
+// Every coordinate a map would store, nodes, group boxes and routes alike, as one digest.
+function layoutSha(result: CompoundLayoutResult): string {
+  const groups = result.groups.map((g) => [g.id, g.x, g.y, g.width, g.height]);
+  const payload = JSON.stringify({ geometry: geometry(result), groups });
+  return createHash("sha256").update(payload).digest("hex");
+}
+
+// The fan-out plus the package-level edges between its group boxes.
+const fanOutWithAggregates: GraphInput = {
+  ...fanOut,
+  edges: [...fanOut.edges, edge("pkg:a", "pkg:b"), edge("pkg:a", "pkg:c"), edge("pkg:b", "pkg:c")],
+};
+
 const seeds = [1, 2, 3, 4, 5, 6, 7, 8];
 
 describe("layout determinism", () => {
@@ -73,6 +87,15 @@ describe("layout determinism", () => {
     for (const seed of seeds) {
       const result = await computeCompoundLayout(reordered(fanOut, seed), null, byPackage);
       expect(geometry(result), `seed ${seed}`).toEqual(baseline);
+    }
+  });
+
+  it("gives the compound layout with group edges the same sha for every input order", async () => {
+    const baseline = await computeCompoundLayout(fanOutWithAggregates, null, byPackage);
+    expect(baseline.edges.filter((e) => routeOf(e)).length).toBe(fanOutWithAggregates.edges.length);
+    for (const seed of seeds) {
+      const result = await computeCompoundLayout(reordered(fanOutWithAggregates, seed), null, byPackage);
+      expect(layoutSha(result), `seed ${seed}`).toBe(layoutSha(baseline));
     }
   });
 
