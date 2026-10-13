@@ -80,12 +80,16 @@ function laterExpressions({ name, args, assigned }: Unwrapped): string[] {
  */
 function handedTexts({ name, args }: Unwrapped, words: WordToken[], redirects: RedirectToken[]): HandedText[] {
   const handed = (w: WordToken): HandedText => ({
-    text: w.value, dynamic: w.dynamic, braces: !w.quoted || w.spliced, globs: !w.quoted, cuts: (w.cuts ?? []).map((cut) => cut.at),
+    text: w.value, dynamic: w.dynamic, braces: !w.quoted || w.spliced, globs: !w.quoted, rewrites: true, cuts: (w.cuts ?? []).map((cut) => cut.at),
   });
-  const body = (text: string): HandedText => ({ text, dynamic: true, braces: false, globs: false, cuts: [] });
-  const inputs = redirects.flatMap((r) => [...(r.target ? [handed(r.target)] : []), ...(r.body === null ? [] : [body(r.body)])]);
+  const inputs = redirects.flatMap((r) => [...(r.target ? [handed(r.target)] : []), ...(r.body === null ? [] : [heredocBody(r.body, r.target)])]);
   if (name !== null && TEST_COMMANDS.has(name)) return [...args.filter((_, i) => args[i - 1]?.value === "-v").map(handed), ...inputs];
   return [...[...words, ...args].map(handed), ...inputs];
+}
+
+/** A heredoc body expands unless its delimiter is quoted (`<<'EOF'`); no printf rewrites it. */
+function heredocBody(text: string, delimiter: WordToken | null): HandedText {
+  return { text, dynamic: delimiter?.quoted !== true, braces: false, globs: false, rewrites: false, cuts: [] };
 }
 
 /** Where the first arithmetic in the text starts, or -1. A literal word opens only at a subscript. */

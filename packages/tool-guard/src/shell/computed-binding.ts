@@ -1,14 +1,20 @@
 const IDENTIFIER_CHAR_RE = /[A-Za-z0-9_]/;
-/** Characters a compound assignment operator puts before its `=`: `+=`, `**=`, `<<=`, zsh `||=`. */
+const SPACE_RE = /\s/;
+/** Characters a compound assignment operator puts before its `=`: `+=`, `**=`, `<<=`, zsh `||=`, `^^=`. */
 const OPERATOR_CHARS = "+-*/%&^|<>";
-/** What ends an expansion, which only a dynamic word holds: `${…}`, `$(…)`, backquotes, `$x`, `$@`, `$#`, `$!`. */
-const EXPANSION_BEFORE = new Set(["}", ")", "`", "$", "@", "#", "!"]);
-/** What a later rewrite of literal text may turn into a name: a printf directive `%s` or an escape `\x34`. */
-const REWRITE_BEFORE = new Set(["\\", "%"]);
-/** What ends a glob, which only an unquoted word expands. */
-const GLOB_BEFORE = new Set(["*", "?", "]"]);
+/** What ends an expansion, which only a dynamic text holds: `${…}`, `$(…)`, backquotes, `$x`, `$@`, `$#`, `$!`. */
+const EXPANSION_END = new Set(["}", ")", "`", "$", "@", "#", "!"]);
+/** What starts one. */
+const EXPANSION_START = new Set(["$", "`"]);
+/** What a later rewrite of a word may turn into a name: a printf directive `%s` or an escape `\x34`. */
+const REWRITE = new Set(["\\", "%"]);
+/** What ends or starts a glob, which only an unquoted word expands. */
+const GLOB_END = new Set(["*", "?", "]"]);
+const GLOB_START = new Set(["*", "?", "["]);
+/** Past this a subscript or a `${…}` is not scanned, and the read fails closed. */
+const MAX_SCAN = 256;
 
-/** How the shell treats a word's text: which expansions it holds or undergoes. */
+/** How the shell treats a text: which expansions it holds or undergoes. */
 export interface HandedText {
   text: string;
   /** It holds a `$` or backquote expansion. */
@@ -17,30 +23,29 @@ export interface HandedText {
   braces: boolean;
   /** None of it is quoted, so a glob in it expands. */
   globs: boolean;
+  /** It is a word, which printf or `echo -e` may rewrite. */
+  rewrites: boolean;
   /** Where each `$( )` or backquote's output lands in `text`, which leaves it out. */
   cuts: number[];
 }
-/** Past this a subscript before an `=` is not scanned back, and the name counts as computed. */
-const MAX_SUBSCRIPT = 256;
 
 /**
- * Whether an assignment in the text, once a shell stores and evaluates it, may bind a name the shell computes. The
- * name an `=` binds is the identifier run just before it, after any subscript; it is computed when an expansion or
- * rewrite ends right before that run: `PS{4,}=7`, `"${v:-PS4}=7"`, `"$(echo PS4)=7"`, `"${x}4=7"`, printf's
- * `'%s=7'` and `'PS\x34=7'`, or an unquoted glob `P?4=7`. Any of these may bind a hooked name, so it counts; a
- * literal run is read as written elsewhere. A single-quoted `'{$1=""}'` holds no expansion, and a stored value is
- * not expanded again when math reads it. Every scan stops at the previous `=` or a bounded subscript, so the
- * read is linear.
+ * Whether a math write in the text, once a shell stores and evaluates it, may bind a name the shell computes. Every
+ * write operator anchors: `=` and each compound `op=` and a postfix `++`/`--` bind the identifier run before them,
+ * past any whitespace and subscript; a prefix `++`/`--` binds the run after it. The name is computed when an
+ * expansion, rewrite or glob ends just before that run or starts at or just after it: `"${x} = 7"`, `"$x"$'\t=7'`,
+ * `"++$x"`, `'%s++'`. An `=` in a `${…}` pattern operand (`${line#*=}`) is never stored, so it does not anchor.
+ * Each scan stops at the next operator or a bound, so the read is linear.
  */
-export function bindsComputedName({ text, dynamic, braces, globs, cuts }: HandedText): boolean {
-  for (let eq = text.indexOf("="); eq >= 0; eq = text.indexOf("=", eq + 1)) {
-    if (isComparison(text, eq)) continue;
-    const start = boundNameStart(text, eq);
-    if (start === null) return true;
-    const before = text.charAt(start - 1);
-    if (cuts.includes(start)) return true;
-    if (REWRITE_BEFORE.has(before) || (dynamic && EXPANSION_BEFORE.has(before))) return true;
-    if ((braces && before === "}") || (globs && GLOB_BEFORE.has(before))) return true;
+export function bindsComputedName(handed: HandedText): boolean {
+  const { text } = handed;
+  const exempt = patternOperands(text);
+  for (let i = 0; i < text.length; i++) {
+    const ch = text.charAt(i);
+    if (ch === "=" && !exempt[i] && !isComparison(text, i) && computedBefore(handed, compoundStart(text, i))) return true;
+    const step = text.charAt(i + 1) === ch && (ch === "+" || ch === "-");
+    if (step && (computedBefore(handed, i) || computedAfter(handed, i + 2))) return true;
+    if (step) i++;
   }
   return false;
 }
@@ -52,20 +57,74 @@ function isComparison(text: string, eq: number): boolean {
   return (prev === "<" || prev === ">") && text.charAt(eq - 2) !== prev;
 }
 
-/** Where the name an `=` binds starts, or null when its subscript is too long to scan back. */
-function boundNameStart(text: string, eq: number): number | null {
+/** Where the operator ending in the `=` at `eq` starts: `**=`, `<<=`, `||=` take up to three characters. */
+function compoundStart(text: string, eq: number): number {
   let i = eq;
   while (i > 0 && eq - i < 2 && OPERATOR_CHARS.includes(text.charAt(i - 1))) i--;
-  if (text.charAt(i - 1) === "]") {
-    const open = openingBracket(text, i - 1);
-    if (open === null) return null;
-    i = open;
-  }
-  while (i > 0 && IDENTIFIER_CHAR_RE.test(text.charAt(i - 1))) i--;
   return i;
 }
 
-function openingBracket(text: string, close: number): number | null {
-  for (let i = close - 1; i >= 0 && close - i <= MAX_SUBSCRIPT; i--) if (text[i] === "[") return i;
-  return null;
+/** Whether the name an operator starting at `at` binds before it is computed. */
+function computedBefore({ text, dynamic, braces, globs, rewrites, cuts }: HandedText, at: number): boolean {
+  let i = skipSpaceBack(text, at);
+  if (text.charAt(i - 1) === "]") {
+    const open = openingBracket(text, i - 1);
+    if (open < 0) return true;
+    i = skipSpaceBack(text, open);
+  }
+  while (i > 0 && IDENTIFIER_CHAR_RE.test(text.charAt(i - 1))) i--;
+  const before = text.charAt(i - 1);
+  if (cuts.includes(i) || (rewrites && REWRITE.has(before)) || (dynamic && EXPANSION_END.has(before))) return true;
+  return (braces && before === "}") || (globs && GLOB_END.has(before));
+}
+
+/** Whether the name a prefix `++`/`--` ending at `from` binds after it is computed. */
+function computedAfter({ text, dynamic, braces, globs, rewrites, cuts }: HandedText, from: number): boolean {
+  let i = from;
+  while (i < text.length && SPACE_RE.test(text.charAt(i))) i++;
+  const opens = (at: number) => {
+    const ch = text.charAt(at);
+    if (cuts.includes(at) || (rewrites && REWRITE.has(ch)) || (dynamic && EXPANSION_START.has(ch))) return true;
+    return (braces && ch === "{") || (globs && GLOB_START.has(ch));
+  };
+  if (opens(i)) return true;
+  while (i < text.length && IDENTIFIER_CHAR_RE.test(text.charAt(i))) i++;
+  return i > from && opens(i);
+}
+
+/** The `[` that opens the subscript closing at `close`, or -1 within `MAX_SCAN` characters. */
+function openingBracket(text: string, close: number): number {
+  for (let i = close - 1; i >= 0 && close - i <= MAX_SCAN; i--) if (text[i] === "[") return i;
+  return -1;
+}
+
+function skipSpaceBack(text: string, at: number): number {
+  let i = at;
+  while (i > 0 && SPACE_RE.test(text.charAt(i - 1))) i--;
+  return i;
+}
+
+/** The positions inside a `${name#…}`, `${name%…}` or `${name/…/` pattern, which the shell matches and never stores. */
+function patternOperands(text: string): boolean[] {
+  const exempt: boolean[] = [];
+  for (let at = text.indexOf("${"); at >= 0; at = text.indexOf("${", at + 2)) {
+    const head = /^\$\{(?:[A-Za-z_][A-Za-z0-9_]*|\d+|[@*#?$!-])(?:\[[^\]]*\])?(#{1,2}|%{1,2}|\/[/#%]?)/.exec(text.slice(at, at + MAX_SCAN));
+    if (!head) continue;
+    const from = at + head[0].length;
+    const end = patternEnd(text, from, (head[1] ?? "").startsWith("/"));
+    for (let i = from; i < end; i++) exempt[i] = true;
+  }
+  return exempt;
+}
+
+/** Where a pattern starting at `from` ends: its `}`, or for a `/` substitution the `/` before the replacement. */
+function patternEnd(text: string, from: number, replaced: boolean): number {
+  let depth = 0;
+  for (let i = from; i < text.length && i - from < MAX_SCAN; i++) {
+    const ch = text.charAt(i);
+    if (ch === "{") depth++;
+    else if (ch === "}" && depth-- === 0) return i;
+    else if (ch === "/" && replaced && depth === 0) return i;
+  }
+  return from;
 }

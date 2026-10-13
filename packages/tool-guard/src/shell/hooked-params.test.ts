@@ -481,3 +481,72 @@ describe("an assignment whose bound name the shell computes", () => {
     expect(performance.now() - started).toBeLessThan(100);
   });
 });
+
+describe("every math write operator, spacing and side around a computed name", () => {
+  const OPERATORS = ["=", "+=", "-=", "*=", "/=", "%=", "&=", "^=", "|=", "<<=", ">>=", "**=", "&&=", "||=", "^^="];
+  const SPACES = [["no space", ""], ["a space", " "], ["a tab", "\t"], ["a newline", "\n"]];
+  const NAMES = ["${x}", "$x", "$(echo PS4)"];
+  const assignments = OPERATORS.flatMap((op) =>
+    SPACES.flatMap(([how, space]) => NAMES.map((name) => [`${name} ${op} with ${how}`, `f "${name}${space}${op}${space}7"`])),
+  );
+
+  it.each(assignments)("counts an assignment: %s", (_how, line) => {
+    expect(hooked(line)).not.toBeNull();
+  });
+
+  it.each([
+    ["a postfix ++ after ${x}", 'f "${x}++"'],
+    ["a postfix -- after $x with a space", 'f "$x --"'],
+    ["a postfix ++ after a newline", 'f "${x}\n++"'],
+    ["a postfix ++ after a subscript", 'f "${x}[0]++"'],
+    ["a prefix ++ before $x", 'f "++$x"'],
+    ["a prefix -- before ${x} with a space", 'f "-- ${x}"'],
+    ["a prefix ++ before a tab and a command substitution", 'f "++\t$(echo PS4)"'],
+    ["a prefix ++ before a name that continues into an expansion", 'f "++P${x}"'],
+    ["a tab from $'\\t' before the =", "f \"$x\"$'\\t=7'"],
+    ["a space before the = after ${x}", 'f "${x} = 7"'],
+    ["a space before the = after $x", 'f "$x =7"'],
+    ["the second item of a comma list", 'f "1, ${x}=7"'],
+    ["a compound operator in a comma list", 'f "a=1,${x}+=2"'],
+    ["printf %s before ++", "printf -v y '%s++' PS4"],
+    ["printf %s after ++", "printf -v y '++%s' PS4"],
+    ["printf %s before a spaced +=", "printf -v y '%s += 1' PS4"],
+    ["a brace list before ++", "f PS{4,}++"],
+    ["a brace list after ++", "f ++PS{4,}"],
+    ["an unquoted glob before ++", "f P?4++"],
+    ["an unquoted heredoc body", "cat <<EOF\n${x}=1\nEOF"],
+  ])("counts: %s", (_how, line) => {
+    expect(hooked(line)).not.toBeNull();
+  });
+
+  it.each([
+    ["a # pattern holding =", 'val="${line#*=}"'],
+    ["a positional # pattern holding =", 'f "${1#*=}"'],
+    ["a ## pattern holding =", 'f "${x##*=}"'],
+    ["a %% pattern holding =", 'f "${x%%=*}"'],
+    ["a / pattern holding =", 'f "${x/=/:}"'],
+    ["a quoted heredoc body", "cat <<'EOF'\n${x}=1\nEOF"],
+    ["g++", "g++ -O2 a.c"],
+    ["an option holding =", "ls --color=auto"],
+    ["== after an expansion", 'f "$a == $b"'],
+    ["!= after an expansion", 'f "$a != $b"'],
+    ["<= after an expansion", 'f "$a <= $b"'],
+    [">= after an expansion", 'f "$a >= $b"'],
+    ["a -- between literal words", 'f "x--y"'],
+  ])("returns null: %s", (_how, line) => {
+    expect(hooked(line)).toBeNull();
+  });
+
+  it.each([
+    ["spaced operators between literal names", "a ++ b -- c = d ".repeat(10_000)],
+    ["many exempt patterns", "${x#*=}".repeat(10_000)],
+    ["subscripts that never open", "]=".repeat(30_000)],
+  ])("reads a long text without a hit in linear time: %s", (_how, value) => {
+    const word: WordToken = { type: "word", value, dynamic: true, quoted: true, spliced: false, computed: true, refs: [], subs: [] };
+    const started = performance.now();
+
+    writesHookedParam({ name: "f", path: "f", args: [word], assigned: [] }, [word]);
+
+    expect(performance.now() - started).toBeLessThan(150);
+  });
+});
