@@ -16,36 +16,26 @@ const GIT_REFS_RE = /(?:^|\/)repos\/[^/]+\/[^/]+\/git\/refs?(\/.*)?$/i;
 const HEADS_RE = /^\/heads\/(.+)$/i;
 const REF_KEY_RE = /^ref(?:\[\])?$/;
 
-/** Loose enough to see a git refs route in a path that cannot be decoded. */
-const RAW_GIT_REFS_RE = /git(?:\/|%2f)+refs?/i;
-
-/** RFC 3986 remove_dot_segments over `/`-split segments; curl applies it by default. */
-function withoutDotSegments(path: string): string {
-  const kept: string[] = [];
-  for (const segment of path.split("/")) {
-    if (segment === "..") kept.pop();
-    else if (segment !== ".") kept.push(segment);
-  }
-  return kept.join("/");
-}
-
 const hasDotSegment = (path: string) => path.split("/").some((s) => s === "." || s === "..");
 
+/** Decodes only the ASCII escapes, which always decode, so `%67it` reads as `git` beside an invalid `%E0`. */
+const asciiDecoded = (path: string) => path.replace(/%([0-7][0-9a-f])/gi, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+
 /**
- * The URL's path as GitHub routes it. "unsure" when it cannot be percent-decoded on a git refs route, or when it
- * holds a `.` or `..` segment and reads as a git refs route either as written or resolved: curl resolves them and gh
- * sends them as written, so which branch it names depends on the client and the server.
+ * The URL's path as GitHub routes it. "unsure" for any `.` or `..` segment, as written or decoded: curl resolves
+ * them before sending and gh does not, so the route depends on the client. Also "unsure" for a git refs route that
+ * cannot be fully percent-decoded.
  */
 function routedPath(url: string): string | "unsure" | null {
   const raw = url.replace(/[?#].*$/s, "");
+  if (hasDotSegment(raw)) return "unsure";
   let path: string;
   try {
     path = decodeURIComponent(raw).replace(/\/{2,}/g, "/");
   } catch {
-    return RAW_GIT_REFS_RE.test(raw) ? "unsure" : null;
+    return GIT_REFS_RE.test(asciiDecoded(raw).replace(/\/{2,}/g, "/")) ? "unsure" : null;
   }
-  if (!hasDotSegment(path)) return path;
-  return GIT_REFS_RE.test(path) || GIT_REFS_RE.test(withoutDotSegments(path)) ? "unsure" : null;
+  return hasDotSegment(path) ? "unsure" : path;
 }
 
 /** The text before a field's first `=`, and whether an expansion or a case attribute may change it. */
