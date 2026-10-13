@@ -540,4 +540,43 @@ interface ShapeBriefInput extends ReviewerBriefInput {
 /** The overlay comes first so the base brief's verdict template stays the end of the prompt. */
 declare function shapeBrief(shape: OverlayShape, input: ShapeBriefInput): string;
 
-export { type AcceptedVerdict, type AggregateInput, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, CI_POLICY_RULE, CI_REVIEWER_TEST_RULE, type ChangedFile, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, EARLIER_FINDINGS_END, EARLIER_FINDINGS_HEADING, EARLIER_FINDINGS_START, type EarlierFinding, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, FOLLOW_UPS_HEADING, FOLLOW_UPS_RULE, FOLLOW_UPS_WARNINGS, FOLLOW_UP_SEVERITIES, type FixProofUnverified, type FollowUp, FollowUpSchema, type FollowUpsWarning, type Headroom, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_FOLLOW_UPS, MAX_FOLLOW_UP_DONE_WHEN_CHARS, MAX_FOLLOW_UP_TITLE_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_REVIEWER_QUESTIONS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type ParsedFollowUps, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SECURITY_SLICE_LINES, SHAPE_BRIEFS, type ShapeBrief, type ShapeBriefInput, type ShapeRule, type SliceFlag, type SliceInput, USAGE_LIMIT_REASON, acceptVerdict, aggregate, boundedFindings, changedLineCount, classifyPr, correctionPrompt, findingsText, fixFirstFindings, followUpsFields, isInvestigativeCall, isUsageLimit, namesPr, namesTarget, parseFollowUps, parseOwnerBrief, planPanel, readMalformed, reviewCheckoutName, reviewerBrief, securitySliceFlag, shapeBrief, touchesDependency };
+interface ReviewRequest {
+    facts: PrFacts;
+    /** Everything the briefs carry except the target, which `facts` names. */
+    brief: Omit<ShapeBriefInput, "repo" | "pr" | "head">;
+    /** File text at the head, for the aggregate's citation check. */
+    source: LineSource;
+    /** Absent means `DEFAULT_PANEL_POLICY`. */
+    policy?: PanelPolicy;
+    /** Absent means `DEFAULT_CLASS_RULES`. */
+    rules?: ClassRules;
+}
+interface ReviewClock {
+    now(): number;
+    sleep(ms: number): Promise<void>;
+}
+interface ReviewPorts {
+    dispatch: ReviewerDispatch;
+    reader: ReviewerReader;
+    clock: ReviewClock;
+    /** Asked once, before planning. */
+    headroom(): Promise<Headroom>;
+}
+interface ReviewOptions {
+    pollMs?: number;
+    /** How long a member's session may take to start, from its spawn. */
+    startDeadlineMs?: number;
+    /** How long a started member may take to write its verdict. */
+    verdictDeadlineMs?: number;
+}
+/** Why a member has no verdict when the dispatch refused it at its profile and at any sonnet fallback. */
+declare const SPAWN_REFUSED_REASON = "the dispatch refused to spawn the reviewer";
+/** A pure function of the input, so a repeat call finds the same roster row; attempt 2 is the fresh retry of a silent member. */
+declare function memberName(target: ReviewTarget, shape: ReviewShape, attempt?: 1 | 2): string;
+/**
+ * Classifies, plans, runs every member in parallel and aggregates. Each member is spawned under `memberName`, so a repeat
+ * call with the same input reuses the roster rows and spawns nothing.
+ */
+declare function reviewPullRequest(request: ReviewRequest, ports: ReviewPorts, opts?: ReviewOptions): Promise<PanelVerdict>;
+
+export { type AcceptedVerdict, type AggregateInput, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, CI_POLICY_RULE, CI_REVIEWER_TEST_RULE, type ChangedFile, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, EARLIER_FINDINGS_END, EARLIER_FINDINGS_HEADING, EARLIER_FINDINGS_START, type EarlierFinding, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, FOLLOW_UPS_HEADING, FOLLOW_UPS_RULE, FOLLOW_UPS_WARNINGS, FOLLOW_UP_SEVERITIES, type FixProofUnverified, type FollowUp, FollowUpSchema, type FollowUpsWarning, type Headroom, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_FOLLOW_UPS, MAX_FOLLOW_UP_DONE_WHEN_CHARS, MAX_FOLLOW_UP_TITLE_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_REVIEWER_QUESTIONS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type ParsedFollowUps, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewClock, type ReviewOptions, type ReviewPorts, type ReviewRequest, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SECURITY_SLICE_LINES, SHAPE_BRIEFS, SPAWN_REFUSED_REASON, type ShapeBrief, type ShapeBriefInput, type ShapeRule, type SliceFlag, type SliceInput, USAGE_LIMIT_REASON, acceptVerdict, aggregate, boundedFindings, changedLineCount, classifyPr, correctionPrompt, findingsText, fixFirstFindings, followUpsFields, isInvestigativeCall, isUsageLimit, memberName, namesPr, namesTarget, parseFollowUps, parseOwnerBrief, planPanel, readMalformed, reviewCheckoutName, reviewPullRequest, reviewerBrief, securitySliceFlag, shapeBrief, touchesDependency };
