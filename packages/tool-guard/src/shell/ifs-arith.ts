@@ -6,16 +6,32 @@ import { ASSIGNMENT_RE } from "./vars.js";
 
 /** `$(( ))` to the word's end, or a `$[ ]`. */
 const ARITH_EXPANSION_RE = /\$\(\([^]*|\$\[[^\]]*\]?/g;
-/** A parameter expansion's subscript (group 1) and substring offset and length (group 2), which are arithmetic. */
-const EXPANSION_ARITH_RE = /\$\{[#!]?(?:[A-Za-z_]\w*|[@*#?$!-]|\d+)(\[[^\]]*\]?)?(:(?![-=+?])[^}]*)?/g;
+/** A parameter name or special parameter, as an expansion opens with it. */
+const PARAM = /(?:[A-Za-z_]\w*|[@*#?$!-]|\d+)/.source;
+/** What may open a `${…}` before its name: bash's `#` and `!`, zsh's `+`, `^`, `=`, `~` and `(flags)` groups. */
+const BRACED_OPEN = /\$\{[#!+^=~]*(?:\([^)]*\)[#!+^=~]*)*/.source;
+/**
+ * Every subscript after an expansion's name (group 1), chained as zsh's `${arr[1][x]}` chains them, braced or
+ * as zsh's unbraced `$arr[x]` with any `#`, `+`, `^`, `=` or `~` flag (`$#arr[x]`). Each is arithmetic.
+ */
+const EXPANSION_SUBSCRIPTS_RE = new RegExp(`(?:${BRACED_OPEN}|\\$[#+^=~]*)${PARAM}((?:\\[[^\\]]*\\]?)+)`, "g");
+/** A `${…}` substring offset and length (group 1), which are arithmetic; `${x:-default}` is not. */
+const EXPANSION_OFFSET_RE = new RegExp(`${BRACED_OPEN}${PARAM}(?:\\[[^\\]]*\\]?)*(:(?![-=+?])[^}]*)`, "g");
+/**
+ * A zsh expansion nested where the name goes (`${${arr[1]}[x]}`, `${#$(cmd)}`). This model does not follow
+ * nesting, so the whole text counts as arithmetic.
+ */
+const NESTED_EXPANSION_RE = new RegExp(`${BRACED_OPEN}\\$[{(]`);
 /** The subscript after a name, as a write slot or `[[ -v ]]` reads it. */
 const SUBSCRIPT_RE = /(?<=[A-Za-z_]\w*)\[[^\]]*\]?/g;
 /** A name as arithmetic reads it, bare rather than the `$NAME` or `${NAME` an expansion opens with. */
 const BARE_NAME_RE = /(?<![\w$])(?<!\$\{[#!]?)[A-Za-z_]\w*/g;
 /** An assignment inside arithmetic, which stores a number. */
 const ARITH_ASSIGN_RE = /(?<![\w$])([A-Za-z_]\w*)\s*=(?!=)/g;
-/** A `${N=…}`, `${N:=…}` or zsh `${N::=…}` expansion, which assigns N whatever text follows. */
-const DEFAULT_ASSIGN_RE = /\$\{([A-Za-z_]\w*)(?:\[[^\]]*\])?:{0,2}=/g;
+/** zsh's unbraced `$+name`, `$^name`, `$=name` and `$~name`, which bash leaves as text. */
+const ZSH_FLAGGED_RE = new RegExp(`\\$[#+^=~]*[+^=~]${PARAM}`);
+/** A `${N=…}`, `${N:=…}` or zsh `${N::=…}` expansion, under any opening flag, which assigns N whatever text follows. */
+const DEFAULT_ASSIGN_RE = new RegExp(`${BRACED_OPEN}([A-Za-z_]\\w*)(?:\\[[^\\]]*\\])*:{0,2}=`, "g");
 /** The name a `declare -n NAME=TARGET` operand binds to, which any write through NAME reaches with any value. */
 const NAMEREF_TARGET_RE = /^[A-Za-z_]\w*=([A-Za-z_]\w*)/;
 /** Values arithmetic reads as a number, never as an expression: an integer, or a brace range of them. */
@@ -27,8 +43,6 @@ const NUMBER_RE = /^(?:-?\d+|\{-?\d+\.\.-?\d+(?:\.\.-?\d+)?\})$/;
 const TEXT_FORMAT_RE = /^(?:[^%]|%%|%[-+ #0]*\d*(?:\.\d*)?[sbq])*$/s;
 /** Letters of zsh's `print` whose value is the next word or the rest of the cluster; `-f` is the format. */
 const PRINT_VALUE_OPTIONS = "vCfuxX";
-/** zsh's unbraced `$name[…]`, whose subscript is arithmetic. */
-const ZSH_SUBSCRIPT_RE = /(?<=\$[A-Za-z_]\w*)\[[^\]]*\]?/g;
 /** Writers whose operand without `=` leaves the value alone, or unsets it. */
 const VALUE_KEEPERS = new Set([...DECLARERS, "unset"]);
 /**
@@ -74,9 +88,12 @@ export function arithReadsUnknownValue(lists: readonly Token[][]): boolean {
   return read.some((name) => !LINE_OWNED_RE.test(name) || SHELL_SET_NAMES.has(name) || !writes.numeric.has(name) || writes.other.has(name));
 }
 
-/** Every word and redirect target the shell expands at run time; a quoted `'$((x))'` evaluates nothing. */
+/**
+ * Every word and redirect target the shell expands at run time; a quoted `'$((x))'` evaluates nothing. bash's lexer
+ * reads zsh's `$+arr[x]` as literal text, so a word holding one counts whatever its quoting.
+ */
 function expandedTexts({ words, targets }: Segment): string[] {
-  return [...words, ...targets].filter(isRunTime).map((w) => w.value);
+  return [...words, ...targets].filter((w) => isRunTime(w) || ZSH_FLAGGED_RE.test(w.value)).map((w) => w.value);
 }
 
 /** An unquoted heredoc expands its body, arithmetic and `${x:=…}` included. */
@@ -139,8 +156,9 @@ function arithTexts({ words, arith, redirects }: Segment): string[] {
 }
 
 function expansionTexts(value: string): string[] {
-  const parts = [...value.matchAll(EXPANSION_ARITH_RE)].flatMap(([, sub, offset]) => [sub ?? "", offset ?? ""]);
-  return [...(value.match(ARITH_EXPANSION_RE) ?? []), ...(value.match(ZSH_SUBSCRIPT_RE) ?? []), ...parts];
+  if (NESTED_EXPANSION_RE.test(value)) return [value];
+  const groups = [...value.matchAll(EXPANSION_SUBSCRIPTS_RE), ...value.matchAll(EXPANSION_OFFSET_RE)].map(([, part = ""]) => part);
+  return [...(value.match(ARITH_EXPANSION_RE) ?? []), ...groups];
 }
 
 /** Operands a command reads as arithmetic; a format's values unless every conversion prints text. */

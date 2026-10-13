@@ -379,6 +379,27 @@ describe("namesIfs", () => {
       ["a format after --", "a=IF; x=${a}S=1; printf -- '%d' x"],
       ["a format that opens with - after --", "a=IF; x=${a}S=1; printf -- '-%d' x"],
       ["zsh's unbraced subscript", "a=IF; x=${a}S=1; arr=(a b); : $arr[x]"],
+      ["zsh's unbraced length subscript", "a=IF; x=${a}S=1; arr=(ab); : $#arr[x]"],
+      ["zsh's unbraced length subscript in double quotes", 'a=IF; x=${a}S=1; arr=(ab); : "$#arr[x]"'],
+      ["zsh's unbraced length subscript in a redirect target", "a=IF; x=${a}S=1; arr=(ab); : >/dev/null$#arr[x]"],
+      ["zsh's $+ subscript", "a=IF; x=${a}S=1; arr=(ab); : $+arr[x]"],
+      ["zsh's $^ subscript", "a=IF; x=${a}S=1; arr=(ab); : $^arr[x]"],
+      ["zsh's $= subscript", "a=IF; x=${a}S=1; arr=(ab); : $=arr[x]"],
+      ["zsh's $~ subscript", "a=IF; x=${a}S=1; arr=(ab); : $~arr[x]"],
+      ["zsh's ${+ } subscript", "a=IF; x=${a}S=1; arr=(ab); : ${+arr[x]}"],
+      ["zsh's ${^ } subscript", "a=IF; x=${a}S=1; arr=(ab); : ${^arr[x]}"],
+      ["zsh's ${= } subscript", "a=IF; x=${a}S=1; arr=(ab); : ${=arr[x]}"],
+      ["a chained subscript", "a=IF; x=${a}S=1; arr=(ab); : ${arr[1][x]}"],
+      ["an unbraced chained subscript", "a=IF; x=${a}S=1; arr=(ab cd); : $arr[1][x]"],
+      ["zsh's $@ subscript", "a=IF; x=${a}S=1; set -- ab; : $@[x]"],
+      ["a subscript after a nested expansion", "a=IF; x=${a}S=1; arr=(ab cd); : ${${arr[1]}[x]}"],
+      ["a length subscript after a nested expansion", "a=IF; x=${a}S=1; arr=(ab cd); : ${#${arr}[x]}"],
+      ["a length subscript", "a=IF; x=${a}S=1; arr=(ab); : ${#arr[x]}"],
+      ["a subscript before a default", "a=IF; x=${a}S=1; arr=(ab); : ${arr[x]:-d}"],
+      ["a subscript inside a default", "a=IF; x=${a}S=1; arr=(ab); : ${y:-${arr[x]}}"],
+      ["zsh's ${=x:=} assignment", "x=1; unset x; a=IF; : ${=x:=${a}S=1}; let x"],
+      ["zsh's ${^x:=} assignment", "x=1; unset x; a=IF; : ${^x:=${a}S=1}; let x"],
+      ["zsh's ${~x:=} assignment", "x=1; unset x; a=IF; : ${~x:=${a}S=1}; let x"],
       ["a write through a nameref", "a=IF; x=1; declare -n r=x; r=${a}S=1; let x"],
     ])("matches arithmetic outside the command words: %s", (_form, line) => {
       expect(namesIfs(`${line}; R=origin1HEAD:main; git push origin $R`)).toBe(true);
@@ -400,6 +421,9 @@ describe("namesIfs", () => {
       "printf '%s %b %q\\n' x y z; print -f '%s' x; git push origin $R",
       'git push origin $R >"$LOG" 2>&1',
       'git push origin $R > "${LOG:-/dev/null}"',
+      "git push origin ${BRANCH}:main $R:refs/heads/x",
+      'git push origin "${R:-${DEFAULT_BRANCH}}" "$1" "${@:2}"',
+      "i=0; arr=(a b); git push origin ${arr[i]}",
     ])("does not match arithmetic over numbers the line writes: %s", (line) => {
       expect(namesIfs(line)).toBe(false);
     });
