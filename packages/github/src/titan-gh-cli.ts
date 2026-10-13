@@ -1,4 +1,5 @@
 import type { CleanMergeTree } from "./approved-head-walk.js";
+import { ciFailures, DEFAULT_TAIL_LINES, formatCiFailures, type CiFailuresTarget } from "./ci-failures.js";
 import { ciWait, type CiWaitOutcome } from "./ci-wait.js";
 import { formatPrContext, prContext } from "./pr-context.js";
 import { formatPrStatus, prStatus } from "./pr-status.js";
@@ -21,6 +22,7 @@ const USAGE = [
   "       titan-gh pr-status <owner/repo#N> [--json]   state, head, mergeable state, required checks, ready or the blockers",
   "       titan-gh pr-context <owner/repo#N> [--json]  title, base, head sha, changed files and body, for a reviewer",
   "       titan-gh premerge <owner/repo#N> <sha> --approved-head <sha> [--clone <dir>] [--json]  OK or FAIL <reasons>; exits 0, 1, or 2 on usage",
+  "       titan-gh ci-failures <owner/repo#N | owner/repo --job <id>> [--lines <n>] [--json]  failing job, first failing test, coverage miss and log tail",
   "  example: titan-gh pr-status octo/widgets#42 --json",
 ];
 
@@ -29,6 +31,7 @@ const EXIT: Record<CiWaitOutcome, number> = { green: 0, red: 1, timeout: 2, "unk
 const USAGE_EXIT = 64;
 /** premerge keeps the exit codes of agent-chat's `scripts/seat/premerge`, which its shim forwards. */
 const PREMERGE_EXIT = { ok: 0, fail: 1, usage: 2 } as const;
+const CI_FAILURES_USAGE_EXIT = 2;
 
 interface CiWaitArgs {
   repo: string;
@@ -51,6 +54,7 @@ export async function runTitanGh(args: readonly string[], io: TitanGhIo): Promis
   const prVerb = verb === undefined ? undefined : PR_VERBS.get(verb);
   if (prVerb) return runPrVerb(prVerb, rest, io);
   if (verb === "premerge") return runPremerge(rest, io);
+  if (verb === "ci-failures") return runCiFailures(rest, io);
   const parsed = verb === "ci-wait" ? parseCiWait(rest) : null;
   if (!parsed) return usage(io);
   const result = await ciWait(io.port, { ...parsed, now: io.now, sleep: io.sleep, onReadError: (error) => io.err(`ci-wait: read failed, retrying: ${error instanceof Error ? error.message : String(error)}`) });
@@ -78,6 +82,17 @@ async function runPremerge(args: readonly string[], io: TitanGhIo): Promise<numb
   const result = await premerge(io.port, { ...input, sleep: io.sleep, ...(clone !== undefined && io.mergeTree ? { cleanMergeTree: io.mergeTree(clone) } : {}) });
   io.out(json ? JSON.stringify(result) : formatPremerge(result));
   return result.ok ? PREMERGE_EXIT.ok : PREMERGE_EXIT.fail;
+}
+
+async function runCiFailures(args: readonly string[], io: TitanGhIo): Promise<number> {
+  const parsed = parseCiFailures(args);
+  if (!parsed) {
+    usage(io);
+    return CI_FAILURES_USAGE_EXIT;
+  }
+  const result = await ciFailures(io.port, parsed.target, parsed.lines);
+  io.out(parsed.json ? JSON.stringify(result) : formatCiFailures(result));
+  return 0;
 }
 
 function usage(io: TitanGhIo): number {
@@ -145,4 +160,32 @@ function parsePremerge(args: readonly string[]): PremergeArgs | null {
   const { "--approved-head": approvedHead, "--clone": clone } = flags;
   if (!target || positional.length !== 2 || !FULL_SHA.test(headSha!) || approvedHead === undefined || !FULL_SHA.test(approvedHead)) return null;
   return { ...target, headSha: headSha!, approvedHead, ...(clone === undefined ? {} : { clone }), json };
+}
+
+interface CiFailuresArgs {
+  target: CiFailuresTarget;
+  lines: number;
+  json: boolean;
+}
+
+/** At most 15 digits, so the number stays a safe integer. */
+const POSITIVE = /^[1-9][0-9]{0,14}$/;
+
+/** `owner/repo#N`, or `owner/repo --job <id>`; a job id must be a positive integer, like the check run id it is. */
+function parseCiFailures(args: readonly string[]): CiFailuresArgs | null {
+  const flags: Record<string, string> = {};
+  const positional: string[] = [];
+  let json = false;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--json") json = true;
+    else if (!arg.startsWith("-")) positional.push(arg);
+    else if (["--job", "--lines"].includes(arg) && i + 1 < args.length) flags[arg] = args[++i]!;
+    else return null;
+  }
+  const { "--job": job, "--lines": lines = String(DEFAULT_TAIL_LINES) } = flags;
+  const [ref] = positional;
+  if (positional.length !== 1 || !POSITIVE.test(lines) || (job !== undefined && !POSITIVE.test(job))) return null;
+  const target = job === undefined ? parsePrRef(ref!) : isRepo(ref!) ? { repo: ref!, jobId: Number(job) } : undefined;
+  return target ? { target, lines: Number(lines), json } : null;
 }

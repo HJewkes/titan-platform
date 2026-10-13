@@ -39,6 +39,19 @@ describe("the shepherd text view of a hold", () => {
     expect(formatShepherd("shepherd.status", [live])).toBe(`acme/widgets#1 merging ${HEAD.slice(0, 7)} merging (review 12m, 45m total)\n`);
   });
 
+  it("names the last await's none once, after the hold (TP-2625)", () => {
+    const waited = { ...row({ reason: "g10-review: big" }), lastNone: { kind: "seat-wait" as const, text: "seat WAIT from rv-seat-x" } };
+
+    expect(formatShepherd("shepherd.status", [waited])).toBe(`acme/widgets#1 merging ${HEAD.slice(0, 7)} merging [held: g10-review: big; last await: seat WAIT from rv-seat-x]\n`);
+  });
+
+  it("names the last await only once when the stall line already carries it", () => {
+    const reason = "g10-review hold at aaaaaaa has no reviewer MERGE (last await: seat WAIT from rv-seat-x); 61 min waiting, over the 60 min limit";
+    const stalled = { ...row(null), stalled: { reason }, lastNone: { kind: "seat-wait" as const, text: "seat WAIT from rv-seat-x" } };
+
+    expect(formatShepherd("shepherd.list", [stalled]).match(/last await:/g)).toHaveLength(1);
+  });
+
   it("shows an unsatisfied hold by its reason alone", () => {
     expect(formatShepherd("shepherd.status", [row({ reason: "owner review" })])).toBe(`acme/widgets#1 merging ${HEAD.slice(0, 7)} merging [held: owner review]\n`);
   });
