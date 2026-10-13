@@ -11,6 +11,8 @@ import {
   type OriginLink,
   type SessionStats,
 } from "./task-actuals-queries.js";
+import type { ClassRules } from "@titan-design/review-panel";
+import { prFeaturesFor, type PrDiff, type PrFeatures } from "./task-actuals-pr.js";
 import { shepherdFactsFor, shepherdWindowStart, type ShepherdFacts, type ShepherdRunRecord } from "./task-actuals-shepherd.js";
 
 export const DEFAULT_ACTIVE_CAP_MINUTES = 15;
@@ -19,7 +21,7 @@ const LONG_CAP_MINUTES = 60;
 const MS_PER_HOUR = 3_600_000;
 const WEAK_SOURCES: ReadonlySet<string> = new Set(["brief-paragraph", "brief-anchor"]);
 
-export type TaskActualsFlag = "no-impl-session" | "weak-link" | "multi-task" | "reopened" | "unpriced" | "unmapped-role";
+export type TaskActualsFlag = "no-impl-session" | "weak-link" | "multi-task" | "reopened" | "unpriced" | "unmapped-role" | "pr-diff-missing";
 
 /**
  * Profiles the plan counts toward a task that `PROFILE_ROLES` does not map. Kept here so the worker
@@ -38,6 +40,8 @@ export interface ActualsTask {
   initiative: string;
   /** An ISO datetime, or a date alone for tasks written before the store kept the time. */
   doneAt: string | null;
+  /** The task's `kind:` tag, which `classifyPr` reads; absent or null classifies strict. */
+  kind?: string | null;
 }
 
 export interface TaskActualsOptions {
@@ -49,6 +53,10 @@ export interface TaskActualsOptions {
   shepherdRuns?: readonly ShepherdRunRecord[];
   /** Where Shepherd's ledger begins; defaults to the earliest run. A row merged before it gets null Shepherd facts. */
   shepherdSince?: string;
+  /** The gh backfill's changed files keyed by PR ref; when passed, every row carries the review-panel PR features. */
+  prDiffs?: ReadonlyMap<string, PrDiff>;
+  /** Review-panel's path tables for those features; defaults to `DEFAULT_CLASS_RULES`. */
+  classRules?: ClassRules;
 }
 
 /** Agent-hours at three idle caps. */
@@ -85,6 +93,9 @@ export interface TaskActuals {
   stageMinutes?: ShepherdFacts["stageMinutes"];
   serviceWallHours?: ShepherdFacts["serviceWallHours"];
   mergePath?: ShepherdFacts["mergePath"];
+  prClass?: PrFeatures["prClass"];
+  touches?: PrFeatures["touches"];
+  changedLines?: PrFeatures["changedLines"];
 }
 
 interface SessionRecord {
@@ -111,10 +122,22 @@ export function taskActuals(minerDb: Db, tasks: readonly ActualsTask[], options:
   const attached = attachByName(records, wanted);
   attachReviewersByPr(minerDb, records, attached, wanted, caps);
   const rows = done.map((task) => rowFor(task, attached, minerDb));
+  const withShepherd = withShepherdFacts(rows, options);
+  return options.prDiffs === undefined ? withShepherd : withPrFeatures(withShepherd, done, options.prDiffs, options.classRules);
+}
+
+function withShepherdFacts(rows: TaskActuals[], options: TaskActualsOptions): TaskActuals[] {
   const runs = options.shepherdRuns;
   if (runs === undefined) return rows;
   const windowStart = shepherdWindowStart(runs, options.shepherdSince);
   return rows.map((row) => ({ ...row, ...shepherdFactsFor(row, runs, windowStart) }));
+}
+
+function withPrFeatures(rows: TaskActuals[], tasks: readonly ActualsTask[], diffs: ReadonlyMap<string, PrDiff>, rules: ClassRules | undefined): TaskActuals[] {
+  return rows.map((row, i) => {
+    const { missing, ...features } = prFeaturesFor(row, tasks[i]!.kind, diffs, rules);
+    return { ...row, ...features, flags: missing ? [...row.flags, "pr-diff-missing"] : row.flags };
+  });
 }
 
 function buildRecords(db: Db, origins: readonly OriginLink[], caps: readonly number[]): Map<string, SessionRecord> {
