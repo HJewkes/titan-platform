@@ -78,6 +78,23 @@ describe("costPerOutcome", () => {
     expect(find(report.byKind, "bug").usdPerDone).toBeCloseTo(costOf(4_000), 10);
   });
 
+  it("counts window requests per finished agent, null where none finished", () => {
+    expect(report.totals).toMatchObject({ requests: 2, requestsPerFinished: 1 });
+    expect(find(report.byKind, "feature")).toMatchObject({ requests: 1, requestsPerFinished: 1 });
+    expect(find(report.byKind, "chore")).toMatchObject({ requests: 0, requestsPerFinished: null });
+  });
+
+  it("splits an agent's requests over its assignments like its cost", () => {
+    const split = [
+      assignment({ agent: "impl-1", task: "DEMO-1", kind: "first-try", outcome: "parked" }),
+      assignment({ agent: "impl-1", task: "DEMO-1", kind: "fix-round", outcome: "merged" }),
+    ];
+    const unbounded = costPerOutcome(fixture.openReadOnly(), split, { since: null, until: null });
+
+    expect(find(unbounded.byKind, "fix-round")).toMatchObject({ requests: 1.5, requestsPerFinished: 1.5 });
+    expect(find(unbounded.byKind, "first-try")).toMatchObject({ requests: 1.5, requestsPerFinished: null });
+  });
+
   it("keeps the seat's own session out of every bucket", () => {
     expect(report.seatCostUsd).toEqual([{ key: "seat-a", costUsd: costOf(1_000) }]);
     expect(find(report.bySeat, "seat-a").costUsd).toBeCloseTo(costOf(2_000) + costOf(4_000), 10);
@@ -101,5 +118,6 @@ describe("renderCostPerOutcomeText", () => {
     expect(text).toContain(LIST_PRICE_CAVEAT);
     expect(text).toContain("Unmatched agents: impl-3");
     expect(text).toContain("By initiative");
+    expect(text).toContain("req/finished");
   });
 });

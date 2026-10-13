@@ -5,6 +5,11 @@ next, so an agent that hits the rule can fix the code without asking.
 
 - `max-function-lines`: a function may have at most 30 non-blank lines (option `max`).
   Blank lines are not counted; comment lines are.
+- `max-line-length` (opt-in, not in `recommended`): a code line may have at most 200 characters
+  (option `max`). Comment lines, import and re-export declarations, and lines where string,
+  template or regex literals make up at least half the characters after the indent are skipped.
+  A line holding a short literal among long logic is still reported, unlike core `max-len`'s
+  `ignoreStrings`.
 - `todo-needs-issue`: every `TODO` in a comment must carry its task right after the marker:
   `TODO(TP-123)`, `TODO(#123)`, or a bare `TODO: TP-123` / `TODO #123` that ends the
   sentence. `TODO UTF-8 support`, `TODO ES-2022` (keys with a standards prefix such as `UTF`, `ES`, `ISO`, `RFC`, `SHA`, `MD`, `TLS`, `SSL`, `IPV`, `ECMA`, `HTTP` are prose), and a key that sits later in the comment
@@ -22,7 +27,7 @@ next, so an agent that hits the rule can fix the code without asking.
   `["@titan-design/"]`). `node:` builtins and third-party packages stay mockable. It matches the
   `vi` and `jest` names only, so a renamed import (`import { vi as t }`) is not seen, and it skips
   a specifier built at run time.
-- `recommended`: a flat config enabling all five rules at `error` under the `titan` namespace.
+- `recommended`: a flat config enabling the five rules other than `max-line-length` at `error` under the `titan` namespace.
 
 Tier 0 of the titan-platform DAG. May import only packages in the same tier or
 below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.

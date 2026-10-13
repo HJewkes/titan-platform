@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "@titan-design/agent-protocol": "workspace:^",
+    "@titan-design/review-panel": "workspace:^",
     "@titan-design/session-graph": "workspace:^",
     "@titan-design/session-read": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^"

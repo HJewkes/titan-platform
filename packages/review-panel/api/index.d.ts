@@ -207,8 +207,8 @@ interface SliceInput {
     changedFiles: readonly ChangedFile[];
 }
 /**
- * Flags a slice over the cap when it is kind `security` or touches a security or authority path outside the generated
- * set. Advisory only, so an unreadable count flags nothing.
+ * Flags a slice over the cap when it is kind `security` or touches, or renames out of, a security or authority path
+ * outside the generated set. Advisory only, so an unreadable count flags nothing.
  */
 declare function securitySliceFlag(input: SliceInput, rules?: ClassRules): SliceFlag | undefined;
 /** True when any changed file, or the path it was renamed from, is a dependency manifest or lockfile. */
@@ -305,6 +305,15 @@ interface ReviewerBriefInput {
     fixProofUnverified?: FixProofUnverified;
     /** The run's earlier FIX_FIRST findings, oldest first; reviewer text, so it is rendered as data with every verdict-block line removed. */
     earlierFindings?: readonly EarlierFinding[];
+    /** Picks the owner recorded for this PR; only grammar-valid ones reach the prompt, so body text cannot. */
+    ownerPicks?: readonly OwnerPick[];
+    /** The absolute checkout git runs against with `-C`; set when the reviewer starts in its run dir rather than in the checkout. */
+    sourceCheckout?: string;
+}
+/** One recorded owner answer: the question it settles and the choice the owner made. */
+interface OwnerPick {
+    id: string;
+    choice: string;
 }
 /** One earlier FIX_FIRST of this run: the head it was given at, the class its reviewer named, and its findings. */
 interface EarlierFinding {
@@ -314,6 +323,9 @@ interface EarlierFinding {
 }
 /** The line the fixer's structural brief finds the reviewer's defect-class section by. */
 declare const DEFECT_CLASS_HEADING = "Defect class:";
+declare const MAX_OWNER_PICKS = 4;
+/** Only picks a short plain grammar accepts are kept, since a caller may have read them from a PR body. */
+declare function validOwnerPicks(picks: readonly OwnerPick[]): OwnerPick[];
 declare const EARLIER_FINDINGS_START = "EARLIER-FINDINGS";
 declare const EARLIER_FINDINGS_END = "END-EARLIER-FINDINGS";
 /** The line a re-review's fixed/not-fixed checklist over the earlier findings starts with. */
@@ -479,6 +491,10 @@ declare function boundedFindings(text: string, max?: number): string;
  * messages their agent, session and dispatch guards let through; `fallback` is the verdict message, used when none says more.
  */
 declare function fixFirstFindings(target: ReviewTarget, messages: readonly ReviewerMessage[], fallback: string, heading?: string): string;
+/** The line a reviewer adds for each blocking item that contradicts a recorded owner pick. */
+declare const OWNER_PICK_CONTRADICTED = "Owner pick contradicted:";
+/** The recorded pick ids a reviewer's text names on contradiction lines, each once; an id not recorded is ignored. */
+declare function contradictedPicks(text: string, ids: readonly string[]): string[];
 
 /** A verdict block names its target when repo (GitHub ignores case), PR number and head sha all match. */
 declare function namesTarget(block: {
@@ -583,4 +599,4 @@ declare function memberName(target: ReviewTarget, shape: ReviewShape, attempt?: 
  */
 declare function reviewPullRequest(request: ReviewRequest, ports: ReviewPorts, opts?: ReviewOptions): Promise<PanelVerdict>;
 
-export { type AcceptedVerdict, type AggregateInput, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, CI_POLICY_RULE, CI_REVIEWER_TEST_RULE, type ChangedFile, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, EARLIER_FINDINGS_END, EARLIER_FINDINGS_HEADING, EARLIER_FINDINGS_START, type EarlierFinding, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, FOLLOW_UPS_HEADING, FOLLOW_UPS_RULE, FOLLOW_UPS_WARNINGS, FOLLOW_UP_SEVERITIES, type FixProofUnverified, type FollowUp, FollowUpSchema, type FollowUpsWarning, type Headroom, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_FOLLOW_UPS, MAX_FOLLOW_UP_DONE_WHEN_CHARS, MAX_FOLLOW_UP_TITLE_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_REVIEWER_QUESTIONS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type ParsedFollowUps, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewClock, type ReviewOptions, type ReviewPorts, type ReviewRequest, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SECURITY_SLICE_LINES, SHAPE_BRIEFS, SPAWN_REFUSED_REASON, type ShapeBrief, type ShapeBriefInput, type ShapeRule, type SliceFlag, type SliceInput, USAGE_LIMIT_REASON, acceptVerdict, aggregate, boundedFindings, changedLineCount, classifyPr, correctionPrompt, findingsText, fixFirstFindings, followUpsFields, isInvestigativeCall, isUsageLimit, memberName, namesPr, namesTarget, parseFollowUps, parseOwnerBrief, pathTouches, planPanel, readMalformed, reviewCheckoutName, reviewPullRequest, reviewerBrief, securitySliceFlag, shapeBrief, touchesDependency };
+export { type AcceptedVerdict, type AggregateInput, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, CI_POLICY_RULE, CI_REVIEWER_TEST_RULE, type ChangedFile, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, EARLIER_FINDINGS_END, EARLIER_FINDINGS_HEADING, EARLIER_FINDINGS_START, type EarlierFinding, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, FOLLOW_UPS_HEADING, FOLLOW_UPS_RULE, FOLLOW_UPS_WARNINGS, FOLLOW_UP_SEVERITIES, type FixProofUnverified, type FollowUp, FollowUpSchema, type FollowUpsWarning, type Headroom, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_FOLLOW_UPS, MAX_FOLLOW_UP_DONE_WHEN_CHARS, MAX_FOLLOW_UP_TITLE_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_OWNER_PICKS, MAX_REVIEWER_QUESTIONS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, OWNER_PICK_CONTRADICTED, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type OwnerPick, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type ParsedFollowUps, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewClock, type ReviewOptions, type ReviewPorts, type ReviewRequest, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SECURITY_SLICE_LINES, SHAPE_BRIEFS, SPAWN_REFUSED_REASON, type ShapeBrief, type ShapeBriefInput, type ShapeRule, type SliceFlag, type SliceInput, USAGE_LIMIT_REASON, acceptVerdict, aggregate, boundedFindings, changedLineCount, classifyPr, contradictedPicks, correctionPrompt, findingsText, fixFirstFindings, followUpsFields, isInvestigativeCall, isUsageLimit, memberName, namesPr, namesTarget, parseFollowUps, parseOwnerBrief, pathTouches, planPanel, readMalformed, reviewCheckoutName, reviewPullRequest, reviewerBrief, securitySliceFlag, shapeBrief, touchesDependency, validOwnerPicks };

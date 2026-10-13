@@ -144,6 +144,8 @@ export { REVIEW_FILL_COMPARISON, SUCCESSOR_REWORK_COMPARISON, compareWindows } f
 export { renderReviewFillText, renderSuccessorReworkText, renderWindowComparisonText } from "./render-guardrails.js";
 export type { ActualsTask, CappedHours, TaskActuals, TaskActualsFlag, TaskActualsOptions, TaskPr } from "./task-actuals.js";
 export { DEFAULT_ACTIVE_CAP_MINUTES, taskActuals } from "./task-actuals.js";
+export type { PrDiff, PrFeatures } from "./task-actuals-pr.js";
+export { listMergedPrRefs, parsePrRef, prFeaturesFor } from "./task-actuals-pr.js";
 export type { SeatContextOptions, SeatContextRow, SeatSessions } from "./seat-context.js";
 export { seatContext, seatContextSchema } from "./seat-context.js";
 export type { InheritMode } from "./coord-duty/assign.js";
