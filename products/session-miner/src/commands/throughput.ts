@@ -63,14 +63,14 @@ const BacktestArgs = z
   .strict();
 type BacktestArgs = z.infer<typeof BacktestArgs>;
 
-export interface LoadedRows {
+interface LoadedRows {
   rows: ThroughputRow[];
   minerIndexedAt: string | null;
   inputs: Omit<ThroughputInputs, "modelHash" | "watermark" | "excludedRows">;
 }
 
 /** Optional joins a caller adds to every row; the table and backtest pass none. */
-export type RowJoins = Pick<TaskActualsOptions, "prDiffs" | "shepherdRuns">;
+type RowJoins = Pick<TaskActualsOptions, "prDiffs" | "shepherdRuns">;
 
 /** Reads the graph strictly read-only, even the miner's own index: `ctx.graph()` would migrate and reprice it. */
 export function loadRows(ctx: MinerContext, capMinutes: number | undefined, joins: RowJoins = {}): LoadedRows {

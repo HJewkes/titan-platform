@@ -66,7 +66,7 @@ const ShepherdRun = z.object({
 });
 const ShepherdStats = z.object({ perRun: z.array(ShepherdRun) });
 
-export function readShepherdRuns(file: string): ShepherdRunRecord[] {
+function readShepherdRuns(file: string): ShepherdRunRecord[] {
   if (!existsSync(file)) throw Object.assign(new Error(`no Shepherd runs file at ${file}`), { code: EXIT.NOINPUT });
   const parsed = ShepherdStats.safeParse(JSON.parse(readFileSync(file, "utf8")));
   if (!parsed.success) throw Object.assign(new Error(`invalid Shepherd runs file ${file}: ${z.prettifyError(parsed.error)}`), { code: EXIT.DATAERR });
