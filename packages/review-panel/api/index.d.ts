@@ -307,6 +307,8 @@ interface ReviewerBriefInput {
     earlierFindings?: readonly EarlierFinding[];
     /** Picks the owner recorded for this PR; only grammar-valid ones reach the prompt, so body text cannot. */
     ownerPicks?: readonly OwnerPick[];
+    /** The absolute checkout git runs against with `-C`; set when the reviewer starts in its run dir rather than in the checkout. */
+    sourceCheckout?: string;
 }
 /** One recorded owner answer: the question it settles and the choice the owner made. */
 interface OwnerPick {

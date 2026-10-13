@@ -109,6 +109,18 @@ describe("reviewerBrief", () => {
     });
   });
 
+  it.each([
+    ["a double quote that ends the quoted path", '/x/a" ; touch /tmp/pwn ; "'],
+    ["a command substitution", "/x/$(id)"],
+    ["a backtick substitution", "/x/`id`"],
+    ["a backslash", "/x/a\\b"],
+    ["a newline that splits the line", "/x/a\ntouch /tmp/pwn"],
+    ["a relative path", "x/a"],
+    ["an empty string, which would run git in the starting directory", ""],
+  ])("refuses a sourceCheckout with %s", (_shape, sourceCheckout) => {
+    expect(() => reviewerBrief({ ...target, sourceCheckout })).toThrow(/sourceCheckout must be an absolute path/);
+  });
+
   it("never points the reviewer at TMPDIR as a place to extract", () => {
     expect(reviewerBrief(target)).not.toMatch(/dir="\$TMPDIR|-C "\/tmp/);
   });
