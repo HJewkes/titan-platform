@@ -387,6 +387,14 @@ function seatSaying(...answers: string[]) {
 }
 
 describe("Shepherd's MERGE meeting a seat WAIT", () => {
+  it("names the seat that said WAIT on the check", async () => {
+    const seat = seatSaying("WAIT");
+
+    const check = await seatFixFirst(rosterOf(SEAT), seat.reader, target);
+
+    expect(check).toMatchObject({ kind: "none", wait: true, seat: SEAT.name });
+  });
+
   it("waits for the seat's MERGE and lets the own MERGE stand", async () => {
     const seat = seatSaying("WAIT", "WAIT", "MERGE");
 
@@ -409,7 +417,7 @@ describe("Shepherd's MERGE meeting a seat WAIT", () => {
 
     const result = await unlessSeatFixFirst(rosterOf(SEAT), seat.reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
 
-    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("said WAIT"), seatHeld: shepherdMerge });
+    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("said WAIT"), seat: SEAT.name, seatHeld: shepherdMerge });
     expect(seat.reads()).toBe(SEAT_BOUND_MS / SEAT_POLL_MS + 1);
   });
 
@@ -418,7 +426,7 @@ describe("Shepherd's MERGE meeting a seat WAIT", () => {
 
     const result = await unlessSeatFixFirst(rosterOf(SEAT), seat.reader, target, shepherdMerge);
 
-    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("said WAIT") });
+    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("said WAIT"), seat: SEAT.name });
     expect(seat.reads()).toBe(1);
   });
 

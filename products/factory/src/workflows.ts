@@ -1,4 +1,5 @@
-import { ghCliWire, githubPort, type GitHubPort } from "@titan-design/github";
+import { githubPort, octokitWire, sharedOctokit, type GitHubPort } from "@titan-design/github";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Db, Migration } from "@titan-design/store-sqlite";
 import type { AuditPorts } from "./audit/ports.js";
@@ -13,6 +14,7 @@ import type { CleanupPorts } from "./shepherd/cleanup.js";
 import { reviewCheckPort } from "./shepherd/publish-review.js";
 import { activeWorkFixTasks, activeWorkOrigin, activeWorkTasks, agentChatCleanupAgents } from "./shepherd/cleanup-ports.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
+import { ghGateway, type GhCallLine, type GhGateway } from "./shepherd/gh-gateway.js";
 import type { PrFilesRead } from "./shepherd/git-pr-files.js";
 import { freezeCancelOnlyMigration, freezeFixPrMigration, freezeGuard, freezeMigration, freezeStoreRef, isFixersPr, recheckedFrozen, type FreezeStoreRef } from "./shepherd/freeze.js";
 import { carry } from "./shepherd/tree-carry.js";
@@ -49,6 +51,7 @@ import { reviewPendingAt } from "./shepherd/review-request.js";
 import { leaveTrainToWait, mergeTrainRef, rideTrain, trainLeaveRoute, trainMigration, type MergeTrainRef } from "./shepherd/train.js";
 import { sleep } from "./workflows/land.js";
 import { landPrRoutes, landPrWorkflow, type LandPrDeps } from "./workflows/land-pr.js";
+import { systemChorePorts } from "./workflows/post-merge-chore.js";
 import { devicePrWorkflow } from "./workflows/device-pr.js";
 import { tickPacing, type TickPacing } from "./tick-pacing.js";
 import { prSnapshot } from "./workflows/pr-snapshot.js";
@@ -108,6 +111,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   audit?: AuditPorts;
   /** Repos whose merges, branch updates and pushes Shepherd never makes; defaults to none. */
   advisory?: IsAdvisory;
+  /** Serve's GitHub gateway for `shepherd.ghRead` and `shepherd.ghBudget`; absent means those refuse as unavailable. */
+  gateway?: GhGateway;
 }
 
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
@@ -144,7 +149,7 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? recheckedFrozen(deps.port, () => freeze.get(), holds, deps.now) };
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, versions: deps.versions, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train, accountLimits) };
-  const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze, snapshot: deps.snapshot, pacing: deps.pacing, now: shepherdDeps.now, prFiles: deps.prFiles };
+  const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze, snapshot: deps.snapshot, pacing: deps.pacing, now: shepherdDeps.now, prFiles: deps.prFiles, gateway: deps.gateway };
   return Object.assign([...retryingGhServerErrors([...land, ...shepherd], { sleep: pause }), trainLeaveRoute(train, shepherdDeps.now), redeployRoute(shepherdDeps.now, deps.redeploy), ...auditRoutes(deps.audit ?? systemAuditPorts(ownCheckout()))], { database, shepherd: services });
 }
 
@@ -239,6 +244,8 @@ export function configuredSpawnLimits(shepherd: FactoryConfig["shepherd"]): Part
 
 /** The bin this bundle was built as: dist/bin.js sits beside the bundled routes. */
 const ownBin = (): string => fileURLToPath(new URL("./bin.js", import.meta.url));
+/** The post-merge chore wrapper, built beside bin.js as its own entry. */
+const ownChoreMain = (): string => fileURLToPath(new URL("./chore-main.js", import.meta.url));
 
 /**
  * The production route set: the post-merge chore and the reviewer come from the config file; the seat book is re-read per
@@ -260,11 +267,18 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const mainRed = configuredMainRed(shepherd, env, roster, gate);
   const exitNotice = agentChatBin ? configuredExitNotice(seats, agentChatAgents(agentChatBin, { roster }), shepherd?.hubSeat) : undefined;
   const redeploy = systemDeployer({ bin: ownBin(), stateDir: factoryStateDir(env) });
-  const port = overrides.port ?? githubPort(ghCliWire());
+  const client = sharedOctokit();
+  const port = overrides.port ?? githubPort(octokitWire({ client }));
   const pacing = tickPacing({ now: overrides.now });
   const snapshot = prSnapshot(port, { now: overrides.now, tickMs: pacing.tickMs });
+  const gateway = ghGateway({ client, snapshot, onCall: logGhCall });
   const pushes = pushSignal((repo) => boundCheckout(seats(), repo, repos()));
-  return factoryRoutesFor({ port, snapshot, pushes, pacing, store, freeze, postMerge, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), advisory: stickyAdvisory(configuredAdvisory(env), advisoryFile(factoryStateDir(env))), ...overrides, seats });
+  const chores = systemChorePorts({ dir: join(factoryStateDir(env), "chores"), wrapper: [process.execPath, ownChoreMain()] });
+  return factoryRoutesFor({ port, snapshot, pushes, pacing, gateway, store, freeze, postMerge, chores, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), advisory: stickyAdvisory(configuredAdvisory(env), advisoryFile(factoryStateDir(env))), ...overrides, seats });
+}
+
+function logGhCall(line: GhCallLine): void {
+  console.warn(`shepherd: gh-call ${JSON.stringify(line)}`);
 }
 
 /** Each read takes the file afresh; no file reads as undefined, never as a map with no advisory repo in it. */

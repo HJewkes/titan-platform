@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { appInstallationToken, ghCliWire, githubPort, type GitHubPort, type RepoSlug } from "@titan-design/github";
+import { appInstallationTokenOverHttp, githubPort, octokitWire, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { ReviewCheckConfig } from "../config.js";
@@ -99,7 +99,7 @@ export function reviewCheckPort(config: ReviewCheckConfig | undefined): GitHubPo
   if (!config) return undefined;
   const appToken = async (): Promise<string> => {
     const privateKeyPem = await readFile(config.privateKeyPath, "utf8");
-    return (await appInstallationToken({ appId: config.appId, installationId: config.installationId, privateKeyPem, now: Date.now })).token;
+    return (await appInstallationTokenOverHttp({ appId: config.appId, installationId: config.installationId, privateKeyPem, now: Date.now })).token;
   };
-  return githubPort(ghCliWire(undefined, { appToken }));
+  return githubPort(octokitWire({ appToken }));
 }
