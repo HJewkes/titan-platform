@@ -1,5 +1,5 @@
 import { probeHealth } from "@titan-design/daemon";
-import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
+import { inProcessCaller, type JsonEnvelope } from "@titan-design/registry";
 import type { Command } from "commander";
 import { parsePort } from "../cli-options.js";
 import type { FactoryHost, FactoryRoutes } from "../host.js";
@@ -31,7 +31,7 @@ export function registerDigest(program: Command, verbs: DigestVerbs, rpc: Factor
       const flags: DigestFlags = { sinceMinutes: opts.since, dryRun: opts.dryRun, full: opts.full };
       if (await probeHealth(opts.port)) return verbs.setExit(await runDigestVerb(verbs.io, (name, args) => rpc(opts.port, name, args), flags, { dbPath: verbs.dbPath() }));
       await verbs.withHost((host, routes) => {
-        const call: FactoryCall = async (name, args) => (await invokeCommand(createFactoryRegistry().get(name)!, args, factoryContext(host, routes))).envelope;
+        const call: FactoryCall = inProcessCaller(createFactoryRegistry(), () => factoryContext(host, routes));
         return runDigestVerb(verbs.io, call, flags, { dbPath: verbs.dbPath() });
       });
     });

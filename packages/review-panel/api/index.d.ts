@@ -207,8 +207,8 @@ interface SliceInput {
     changedFiles: readonly ChangedFile[];
 }
 /**
- * Flags a slice over the cap when it is kind `security` or touches a security or authority path outside the generated
- * set. Advisory only, so an unreadable count flags nothing.
+ * Flags a slice over the cap when it is kind `security` or touches, or renames out of, a security or authority path
+ * outside the generated set. Advisory only, so an unreadable count flags nothing.
  */
 declare function securitySliceFlag(input: SliceInput, rules?: ClassRules): SliceFlag | undefined;
 /** True when any changed file, or the path it was renamed from, is a dependency manifest or lockfile. */

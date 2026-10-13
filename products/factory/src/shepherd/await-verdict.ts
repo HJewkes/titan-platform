@@ -1,6 +1,6 @@
 import { acceptVerdict, boundedFindings, isUsageLimit, type AwaitVerdictInput, type AwaitVerdictResult, type Presence, type ReviewerReader } from "@titan-design/review-panel";
 import { z } from "zod";
-import { deadline } from "../workflows/deadline.js";
+import { deadline, type DeadlineTiming } from "../workflows/deadline.js";
 
 /** How long an exited or deregistered reviewer may stay gone before its wait ends; its final turn may still be landing on disk. */
 export const DEFAULT_EXIT_GRACE_MS = 60_000;
@@ -107,13 +107,14 @@ export async function awaitVerdict(
 
 /**
  * After the wait ran out: a reviewer held up by a permission prompt can still write its verdict, so its final message is
- * read again until it has one, the reviewer has exited, or the grace ends. A read taken after the exit decides.
+ * read again until it has one, the reviewer has exited, or the grace ends. A read taken after the exit decides. The grace
+ * runs from `timing.startedAt` when given, so a restarted step gets only what is left of it.
  */
 export async function awaitLateVerdict(
   reader: ReviewerReader,
   exited: () => Promise<boolean>,
   input: AwaitVerdictInput,
-  timing: AwaitVerdictTiming,
+  timing: AwaitVerdictTiming & Pick<DeadlineTiming, "startedAt">,
   signal: AbortSignal,
 ): Promise<AwaitVerdictResult> {
   const clock = deadline(timing);
