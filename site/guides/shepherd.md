@@ -76,6 +76,13 @@ replaces the stored kind, unless it would move a `correctness` run to `feature`,
 reason naming both kinds. Moving `correctness` to `security`, or `feature`, `refactor` or
 `unknown` to any kind, still applies.
 
+On a `correctness` or `security` run, or any `fix/` branch, Shepherd reads the head's
+fix-proof result before the review. A vacuous or test-less proof ends the round as
+`NO_REPRO`. A proof that shows nothing about the head goes to the reviewer marked unverified.
+That covers an `error` verdict (a skipped base included), an untrusted run, and a result that
+could not be read although one was due. A MERGE on such a head carries no merge-on-green
+grant, so it waits at the owner gate even under an `auto` policy.
+
 A branch registered first and its pull request registered later share one run. A
 registration by number reads the pull request from GitHub to learn its head branch, so it
 needs `gh`. A `--branch` that is not the pull request's head is refused.
