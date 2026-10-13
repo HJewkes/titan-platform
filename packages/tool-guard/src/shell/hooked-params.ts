@@ -50,8 +50,8 @@ const SPECS: Record<string, WriterSpec> = {
   zformat: { names: "faF", operands: "none" },
   strftime: { names: "s", flags: "rqn", operands: "none" },
   zstat: ZSTAT,
-  /** zsh/stat's builtin shares its name with GNU and BSD stat, whose `-c` and `-t` take a format. */
-  stat: { ...ZSTAT, values: "fFct", flags: "gnNolLTrsqx", longOptions: true },
+  /** zsh/stat's builtin shares its name with GNU and BSD stat: `-t` and BSD `-f` take a format, GNU `-f` and BSD `-F` are flags. */
+  stat: { ...ZSTAT, values: "c", either: "fFt", flags: "gnNolLTrsqx", longOptions: true },
   zselect: { names: "aA", values: "t", flags: "rwe", operands: "none" },
   getln: { flags: "AclneE", operands: "names" },
   sysread: { names: "c", values: "iost", operands: "names" },
@@ -115,48 +115,71 @@ function forNames(args: WordToken[]): WordToken[] {
   return end < 0 ? args : args.slice(0, end);
 }
 
+/**
+ * Walks the option words as every shell may read them. A state is a word index and a letter offset in it (0 before
+ * the word); an either-letter queues both readings, and each state is read once, so the walk stays linear.
+ */
 function specSlots(spec: WriterSpec, args: WordToken[]): WordToken[] | string {
   const slots: WordToken[] = [];
-  let i = 0;
-  for (let word = args[i]; word !== undefined && mayBeOption(word, spec); word = args[i]) {
-    if (word.value === "--" || word.value === "-") {
-      i++;
-      break;
-    }
-    if (spec.longOptions === true && word.value.startsWith("--")) {
-      i++;
-      continue;
-    }
-    const read = readOption(word, args[i + 1], spec);
-    if (read === null) return word.value;
-    slots.push(...read.slots);
-    i += read.width;
+  const seen = new Set<string>();
+  const pending: Array<[number, number]> = [[0, 0]];
+  for (let state = pending.pop(); state !== undefined; state = pending.pop()) {
+    const key = state.join(":");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const next = step(spec, args, state, slots);
+    if (typeof next === "string") return next;
+    pending.push(...next);
   }
-  return [...slots, ...operandSlots(spec, args.slice(i))];
+  return slots;
+}
+
+/**
+ * One step of the walk: the states it leads to, or the text of an option word that fails closed. Any attached tail
+ * is a slot, and so is the next word after a name or either-letter. A character no shell takes as an option ends
+ * the reading, since the shell then refuses the command.
+ */
+function step(spec: WriterSpec, args: WordToken[], [i, k]: [number, number], slots: WordToken[]): Array<[number, number]> | string {
+  const word = args[i];
+  if (word === undefined) return [];
+  if (k === 0) return startWord(spec, args, i, word, slots);
+  if (k >= word.value.length) return [[i + 1, 0]];
+  const letter = word.value.charAt(k);
+  const tail = word.value.slice(k + 1);
+  const either = has(spec.either, letter);
+  if (either || has(spec.names, letter) || has(spec.values, letter)) {
+    const value = tail ? { ...word, value: tail } : has(spec.values, letter) ? null : (args[i + 1] ?? null);
+    if (value !== null) slots.push(value);
+    const after: [number, number] = tail ? [i + 1, 0] : [i + 2, 0];
+    return either ? [after, [i, k + 1]] : [after];
+  }
+  if (has(spec.numeric, letter)) return [[i, k + 1 + (/^\d*/.exec(tail)?.[0].length ?? 0)]];
+  if (has(spec.flags, letter) || (spec.anyFlag === true && /[A-Za-z0-9]/.test(letter))) return [[i, k + 1]];
+  return /[A-Za-z0-9]/.test(letter) ? word.value : [];
+}
+
+/** Past this length an option word is not walked letter by letter, and it counts as a hooked write. */
+const MAX_OPTION_WORD = 256;
+
+/** At a word's start: the operands once options end, or the first letter of an option word. */
+function startWord(spec: WriterSpec, args: WordToken[], i: number, word: WordToken, slots: WordToken[]): Array<[number, number]> | string {
+  if (!mayBeOption(word, spec)) {
+    slots.push(...operandSlots(spec, args.slice(i)));
+    return [];
+  }
+  if (word.dynamic || word.value.length > MAX_OPTION_WORD) return word.value;
+  if (word.value === "--" || word.value === "-") {
+    slots.push(...operandSlots(spec, args.slice(i + 1)));
+    return [];
+  }
+  if (spec.longOptions === true && word.value.startsWith("--")) return [[i + 1, 0]];
+  return [[i, 1]];
 }
 
 /** A dynamic word that opens with an expansion may expand to an option. */
 function mayBeOption(word: WordToken, spec: WriterSpec): boolean {
   if (word.value.startsWith("-") || (spec.plus === true && word.value.startsWith("+"))) return true;
   return word.dynamic && (/^[$`]/.test(word.value) || word.cuts?.some((cut) => cut.at === 0) === true);
-}
-
-/** Reads one option word as getopt does; null when it is dynamic or holds a letter the spec does not know. */
-function readOption(word: WordToken, next: WordToken | undefined, spec: WriterSpec): { slots: WordToken[]; width: number } | null {
-  if (word.dynamic) return null;
-  const body = word.value.slice(1);
-  for (let k = 0; k < body.length; k++) {
-    const letter = body.charAt(k);
-    const tail = body.slice(k + 1);
-    const takesName = has(spec.names, letter) || has(spec.either, letter);
-    if (takesName || has(spec.values, letter)) {
-      if (tail) return { slots: [{ ...word, value: tail }], width: 1 };
-      return { slots: takesName && next ? [next] : [], width: 2 };
-    }
-    if (has(spec.numeric, letter)) while (/\d/.test(body[k + 1] ?? "")) k++;
-    else if (!has(spec.flags, letter) && !(spec.anyFlag === true && /[A-Za-z0-9]/.test(letter))) return null;
-  }
-  return { slots: [], width: 1 };
 }
 
 const has = (letters: string | undefined, letter: string) => letters?.includes(letter) === true;

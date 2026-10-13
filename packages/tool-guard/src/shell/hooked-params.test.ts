@@ -52,6 +52,11 @@ describe("a command that writes a parameter the shell later runs", () => {
     ["zsh strftime -s attached", "strftime -sPS4 %s 0", "PS4"],
     ["zsh zstat -A attached", "zstat -APS4 f", "PS4"],
     ["zsh/stat's stat builtin", "stat -A module_path +name /m", "module_path"],
+    ["stat -A after zsh's -t flag", "stat -t -A module_path +name /m", "module_path"],
+    ["stat -A in a cluster after zsh's -t flag", "stat -tA module_path +name /m", "module_path"],
+    ["stat -A after zsh's -F, a BSD flag", "stat -F -A module_path +name /m", "module_path"],
+    ["stat -A after GNU's -f flag", "stat -f -A module_path +name /m", "module_path"],
+    ["read -a after zsh's -p flag", "read -p -aPS4", "PS4"],
     ["zsh zparseopts -A attached", "zparseopts -APS4 a", "PS4"],
     ["a zparseopts spec's array", "zparseopts -D h=PS4", "PS4"],
     ["zsh print -v after -f's value", "print -f %s -v PS4 x", "PS4"],
@@ -176,6 +181,7 @@ describe("a command that only reads, mentions or writes another name", () => {
     ["GNU stat with a format", "stat -c %s f"],
     ["GNU stat with a long option", "stat --format=%s -L f"],
     ["BSD stat with a time format", "stat -f %m -t %s f"],
+    ["BSD stat with an attached time format", "stat -t%Y f"],
     ["zsh print with values", "print -u 2 -C 2 a b"],
     ["read with a timeout", "read -t 5 x"],
     ["compgen of words", "compgen -W 'a b' a"],
@@ -185,5 +191,22 @@ describe("a command that only reads, mentions or writes another name", () => {
     ["a brace word in a command that writes no named parameter", "echo {P,}S4"],
   ])("returns null: %s", (_how, line) => {
     expect(hooked(line)).toBeNull();
+  });
+});
+
+describe("an option word the walk reads both ways", () => {
+  it("reads a long run of either-letters in linear time", () => {
+    const words = tokenize(`stat ${"-t ".repeat(20_000)}-A module_path`).filter((t): t is WordToken => t.type === "word");
+    const cmd = unwrap(words);
+    const started = performance.now();
+
+    const named = cmd && writesHookedParam(cmd, words);
+
+    expect(named).toBe("module_path");
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+
+  it("fails closed on an option word too long to walk", () => {
+    expect(hooked(`stat -${"t".repeat(300)} f`)).toBe(`-${"t".repeat(300)}`);
   });
 });
