@@ -33,6 +33,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "commander": "^14.0.3",
     "zod": "^4.4.3"
+  },
+  "bin": {
+    "explainer": "./dist/bin.js"
   }
 }
