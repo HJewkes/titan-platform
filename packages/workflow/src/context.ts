@@ -248,14 +248,14 @@ export class RunContext implements WorkflowContext {
     options: DispatchOptions<unknown>,
     recovered?: RecoveredStep,
   ): Promise<CompletedStep> {
-    let attempt = recovered?.step.attempt ?? 0;
+    const restarts = restartsOf(recovered);
+    let attempt = (recovered?.step.attempt ?? 0) + (recovered?.kind === "retry_safe" ? 1 : 0);
     let pending = recovered?.kind === "completion" ? recovered.completion : undefined;
     let active: ActiveStep | undefined = recovered?.step;
     let failedUsage = recovered?.step.priorUsage;
-    if (recovered?.kind === "retry_safe") attempt += 1;
     for (;;) {
       if (!pending) {
-        active = this.newActiveStep(stepId, iterKey, attempt, failedUsage);
+        active = this.newActiveStep(stepId, iterKey, { attempt, restarts, firstStartedAt: firstStartOf(active) }, failedUsage);
         this.activate(active);
         pending = this.start(active, { runId: this.runId, workflowName: this.workflowName, stepId, iteration, prompt, model: options.model, outputSchema: options.schema, signal: this.signal });
       }
@@ -274,7 +274,7 @@ export class RunContext implements WorkflowContext {
         this.consumeActive(active!);
         throw new StepOutputInvalidError(stepId, iteration, "schema", [outcome.error], failedUsage);
       }
-      if (!outcome.retryable || attempt >= this.deps.maxRetries) {
+      if (!outcome.retryable || attempt - restarts >= this.deps.maxRetries) {
         this.consumeActive(active!);
         throw new StepFailedError(stepId, iteration, outcome.error, { retryable: outcome.retryable, usage: failedUsage });
       }
@@ -283,8 +283,11 @@ export class RunContext implements WorkflowContext {
     }
   }
 
-  private newActiveStep(stepId: string, iterKey: string, attempt: number, priorUsage: StepUsage | undefined): ActiveStep {
-    const base = { stepId, iterKey, attempt, startedAt: nowIso(), ...(priorUsage ? { priorUsage } : {}) };
+  private newActiveStep(stepId: string, iterKey: string, timing: StepTiming, priorUsage: StepUsage | undefined): ActiveStep {
+    const { attempt, restarts } = timing;
+    const startedAt = nowIso();
+    const firstStartedAt = timing.firstStartedAt ?? startedAt;
+    const base = { stepId, iterKey, attempt, startedAt, firstStartedAt, restarts, ...(priorUsage ? { priorUsage } : {}) };
     if (!isRecoverable(this.deps.runner)) return { kind: "legacy", ...base };
     const executionId = this.deps.executionId();
     return {
@@ -309,7 +312,14 @@ export class RunContext implements WorkflowContext {
       return runLegacyStep(this.deps.runner, step, input);
     }
     if (!isRecoverable(this.deps.runner)) return this.requireRecovery(step, "unknown", "recoverable step has no recoverable runner");
-    const ack = await this.deps.runner.dispatch({ ...input, executionId: step.executionId, requestKey: step.requestKey, attempt: step.attempt });
+    const ack = await this.deps.runner.dispatch({
+      ...input,
+      executionId: step.executionId,
+      requestKey: step.requestKey,
+      attempt: step.attempt,
+      firstStartedAt: step.firstStartedAt ?? step.startedAt,
+      restarts: step.restarts ?? 0,
+    });
     void ack.completion.catch(() => undefined);
     if (ack.executionId !== step.executionId || ack.requestKey !== step.requestKey || !ack.runnerRef.trim()) {
       return this.requireRecovery(step, "unknown", "runner acknowledgment does not match the persisted execution intent");
@@ -383,4 +393,20 @@ export class RunContext implements WorkflowContext {
   private persist(): void {
     this.deps.save(this.run);
   }
+}
+
+interface StepTiming {
+  attempt: number;
+  restarts: number;
+  /** Absent for a step's first attempt, which stamps it. */
+  firstStartedAt: string | undefined;
+}
+
+/** A retry-safe recovery re-dispatches a step a restart cut off; that try is counted apart so it spends no retry budget. */
+function restartsOf(recovered: RecoveredStep | undefined): number {
+  return (recovered?.step.restarts ?? 0) + (recovered?.kind === "retry_safe" ? 1 : 0);
+}
+
+function firstStartOf(step: ActiveStep | undefined): string | undefined {
+  return step?.firstStartedAt ?? step?.startedAt;
 }

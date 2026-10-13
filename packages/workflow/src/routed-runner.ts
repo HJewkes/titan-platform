@@ -1,5 +1,5 @@
 import { idempotentRunner } from "./runners.js";
-import type { RecoverableStepRunner, StepReconcileOutcome, StepRunInput, StepRunOutcome } from "./types.js";
+import type { RecoverableActiveStep, RecoverableStepRunner, StepReconcileOutcome, StepRunInput, StepRunOutcome } from "./types.js";
 
 /** `repeat` re-dispatches a step interrupted by a crash; `park` leaves the run recovery_required for a human. */
 export type RestartRule = "repeat" | "park";
@@ -8,6 +8,10 @@ export type RestartRule = "repeat" | "park";
 export interface RoutedStepInput extends StepRunInput {
   attempt: number;
   requestKey: string;
+  /** When the step's first attempt started; a restart keeps it, so a wait can resume its deadline. */
+  firstStartedAt: string;
+  /** How many restarts re-dispatched this step; 0 on a first run and on ordinary retries. */
+  restarts: number;
 }
 
 export interface RouteRunner {
@@ -19,6 +23,8 @@ export interface StepRoute {
   match: string;
   runner: RouteRunner;
   onRestart: RestartRule;
+  /** Decides a step a restart interrupted, ahead of `onRestart`; a rejection parks the run. */
+  reconcile?(step: RecoverableActiveStep, signal: AbortSignal): Promise<StepReconcileOutcome>;
 }
 
 export interface RoutedRunner extends RecoverableStepRunner {
@@ -42,8 +48,10 @@ export function routedRunner(routes: readonly StepRoute[]): RoutedRunner {
       if (!route) throw new Error(`no route for step ${input.stepId}`);
       return idempotentRunner({ run: () => route.runner.run(input) }).dispatch(input);
     },
-    async reconcile(step): Promise<StepReconcileOutcome> {
-      const rule = routeFor(step.stepId)?.onRestart;
+    async reconcile(step, signal): Promise<StepReconcileOutcome> {
+      const route = routeFor(step.stepId);
+      if (route?.reconcile) return route.reconcile(step, signal);
+      const rule = route?.onRestart;
       if (rule === "repeat") return { kind: "not_found", retrySafe: true, evidence: `step ${step.stepId} is routed repeat and did not survive the restart` };
       return { kind: "unknown", evidence: `step ${step.stepId} is routed ${rule ?? "nowhere"}; its effect may have happened, so a human decides` };
     },
