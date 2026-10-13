@@ -39,6 +39,23 @@
       "type": "array",
       "maxItems": 3,
       "items": { "type": "string", "maxLength": 200 }
+    },
+    "size": {
+      "description": "Optional: the PR's non-generated changed lines from git numstat, and whether it is a guard-area slice over the security slice cap. Left out when numstat or the review-panel build is unavailable.",
+      "type": "object",
+      "required": ["lines", "cap", "guardPaths", "flagged"],
+      "additionalProperties": false,
+      "properties": {
+        "lines": { "$ref": "#/$defs/count" },
+        "cap": { "$ref": "#/$defs/count" },
+        "guardPaths": {
+          "description": "Guard-area paths behind the flag, at most 10; empty when not flagged.",
+          "type": "array",
+          "maxItems": 10,
+          "items": { "type": "string" }
+        },
+        "flagged": { "type": "boolean" }
+      }
     }
   },
   "$defs": {
