@@ -333,10 +333,15 @@ ask for Shepherd's own review with [`shepherd review`](#own-review).
 - `shepherd-route/failed-rounds`: 3 review rounds failed at this task. Only a stuck round
   counts: a fresh reviewer after silence or a timeout, a re-read of a hold's reviewer, or a
   conflict. A `FIX_FIRST` that yields a new head is progress and does not count.
-- `shepherd-route/fix-first-runaway`: 6 `FIX_FIRST` reviews at this task.
+- `shepherd-route/fix-first-runaway`: 3 `FIX_FIRST` reviews at this task, for every kind of PR.
+  Two fix rounds that did not converge mean point fixes are not working, so Shepherd wakes no
+  third fixer. Route the task to the planner to redesign or split it; Shepherd files no planner
+  task itself. It is checked before `no-progress`, so a third `FIX_FIRST` always names this
+  route.
 - `shepherd-route/no-progress`: 2 `FIX_FIRST` reviews in a row ended with `Closer: no`, meaning
   the head is no closer to `MERGE` than the last one. A `FIX_FIRST` with `Closer: yes` or no
-  Closer line, and any other round, resets the count. It is checked before the runaway cap.
+  Closer line, and any other round, resets the count. Under the cap of 3 it can only fire at
+  the second `FIX_FIRST`.
 - a policy that did not allow an automated merge, such as an `owner-gate` seat or an unmet
   `MRG-AU-RV` fact. The prompt starts `the authority policy did not allow an automated merge`.
 
