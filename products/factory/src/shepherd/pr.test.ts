@@ -13,6 +13,7 @@ import { H1, REPO, gateId, gateOpened, outsideActions } from "../test-support/la
 import { factoryRoutesFor } from "../workflows.js";
 import { AwaitHeadResult } from "../workflows/await-head.js";
 import { sleep, step } from "../workflows/land.js";
+import { MergePolicyResult } from "../workflows/land-steps.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
 import { prSnapshot, type PrSnapshot } from "../workflows/pr-snapshot.js";
 import { MergeHeldError, holdingPort } from "./hold.js";
@@ -746,11 +747,13 @@ describe("the route table in a run", () => {
     return { w, runId, final, wakes: () => wakes };
   }
 
+  const RecordedDecision = z.looseObject({ result: MergePolicyResult });
+
   /** The decisions the run's merge-policy steps recorded, in order. */
   const mergeDecisions = (w: World, runId: string) =>
     Object.values(w.host.runtime.status(runId)!.stepResults)
       .filter((result) => result.stepId.startsWith("merge-policy"))
-      .map((result) => (JSON.parse(result.output ?? "{}") as { result: { rule: { table: string; rowId: string }; reason: string } }).result);
+      .map((result) => RecordedDecision.parse(JSON.parse(result.output ?? "{}")).result);
 
   it("merges the moved head of a superseded no-progress head on the reviewer's fresh MERGE there, with no second owner gate (decision 303)", async () => {
     const { w, runId, final } = await noProgressSuperseded(0);
