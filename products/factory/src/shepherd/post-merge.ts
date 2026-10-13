@@ -14,6 +14,7 @@ import { FixTaskResult, FixerResult, FreezeResult, UnfreezeResult, mainRedRoutes
 import type { ShepherdDeps } from "./phases.js";
 import { REDEPLOY_STEP, redeployStep } from "./redeploy.js";
 import { MAIN_CI_ROUTES, type MainCiRead, type MainCiRoute } from "./route-table.js";
+import { STACK_LAND_STEPS, restackLanded, stackLandRoutes } from "./stack-land.js";
 
 export const SH_MAIN_CI_TIMEOUT_MS = 60 * 60_000;
 export const SH_MAIN_CI_POLL_MS = 30_000;
@@ -26,6 +27,7 @@ export const AFTER_STAGES = ["deploy", "release", "activation"] as const;
 export type AfterStage = (typeof AFTER_STAGES)[number];
 
 export const POST_MERGE_STEPS: readonly StepDeclaration[] = [
+  ...STACK_LAND_STEPS,
   { id: "sh-main-ci", kind: "dispatch" },
   { id: REDEPLOY_STEP, kind: "dispatch" },
   { id: "sh-unfreeze", kind: "dispatch" },
@@ -80,6 +82,7 @@ const OwnerAck = z.object({ decision: z.literal("acknowledged"), mergeSha: z.str
  * the owner. Then cleans up. Runs no after stage.
  */
 export async function shepherdMainCi(ctx: WorkflowContext, target: MergedTarget, after: readonly AfterStage[], fixer = false): Promise<MainCi> {
+  await restackLanded(ctx, target);
   const result = await step(ctx, "sh-main-ci", { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, after, ...(target.landed && { baseRef: target.landed.baseRef }) }, MainCiResult);
   const red = { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, runId: ctx.runId };
   if (result.verdict === "green") {
@@ -161,6 +164,7 @@ export function postMergeRoutes(deps: ShepherdDeps, mainRed?: MainRedWiring): St
   return [
     codeRoute("sh-main-ci", deps.now, (input: MainCiInput, signal) => readMainCi(mainReads, input, timing, signal)),
     ...mainRedRoutes(deps, mainRed),
+    ...stackLandRoutes(deps),
     codeRoute("sh-cleanup", deps.now, (input: CleanupInput, signal) => runCleanup(deps, input, signal)),
   ];
 }
