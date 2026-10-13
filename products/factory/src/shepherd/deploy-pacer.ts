@@ -14,6 +14,11 @@ export const DEPLOY_MAX_WAIT_MS = 90 * 60_000;
 export const DEPLOY_STALE_SPAWN_MS = 2 * 60 * 60_000;
 /** How often serve runs `pacerTick`. */
 export const PACER_SWEEP_MS = 60_000;
+/** The owner's express lane (TP-2338): a merged PR with this label skips the quiet window, and nothing else. */
+export const DEPLOY_NOW_LABEL = "deploy:now";
+
+/** Whether the PR merged as `sha` carries `DEPLOY_NOW_LABEL`; settled before the tick since it asks GitHub. */
+export type ExpressProbe = (sha: string) => Promise<boolean>;
 
 /** Times must parse: an unparseable one would make every window comparison false and spawn at once. */
 const instant = z.iso.datetime({ offset: true });
@@ -34,7 +39,7 @@ type PaceDecision =
   | { kind: "idle" }
   | { kind: "clear"; why: string }
   | { kind: "wait"; why: string; until?: number }
-  | { kind: "spawn"; sha: string; stale?: boolean };
+  | { kind: "spawn"; sha: string; stale?: boolean; express?: boolean };
 
 interface PaceInput {
   wanted: DeployWanted | undefined;
@@ -46,6 +51,8 @@ interface PaceInput {
   busy: number;
   /** TP-2268's rollback pause: the deployer would refuse, so nothing is spawned until a person clears it. */
   paused: boolean;
+  /** The wanted sha carries `DEPLOY_NOW_LABEL`: the quiet window is skipped, while the pause, a live deployer and busy runs still hold it. */
+  express?: boolean;
   quietMs: number;
   maxWaitMs: number;
   staleSpawnMs: number;
@@ -91,9 +98,11 @@ export function paceDecision(input: PaceInput): PaceDecision {
   if (spawned !== undefined) return spawned;
   const quietEnds = ms(wanted.lastAt) + quietMs;
   const capEnds = ms(wanted.firstAt) + maxWaitMs;
-  if (now < quietEnds && now < capEnds) return { kind: "wait", why: "inside the quiet window", until: Math.min(quietEnds, capEnds) };
+  const quiet = now < quietEnds && now < capEnds;
+  const express = quiet && input.express === true;
+  if (quiet && !express) return { kind: "wait", why: "inside the quiet window", until: Math.min(quietEnds, capEnds) };
   if (busy > 0 && now < capEnds) return { kind: "wait", why: `${busy} busy run(s)`, until: capEnds };
-  return { kind: "spawn", sha: wanted.sha };
+  return { kind: "spawn", sha: wanted.sha, ...(express && { express }) };
 }
 
 /** The file effects the wanted record has; tests pass fakes. */
@@ -170,6 +179,8 @@ interface PacerDeps {
   lastDeploy: () => DeployRecord | undefined;
   busy: () => number;
   paused: () => boolean;
+  /** Whether `sha` carries `DEPLOY_NOW_LABEL`, settled before the tick; absent means every sha is paced. */
+  express?: (sha: string) => boolean;
   spawn: (sha: string) => { pid?: number | undefined };
   quietMs?: number;
   maxWaitMs?: number;
@@ -195,6 +206,7 @@ function decide(deps: PacerDeps): { wanted: DeployWanted | undefined; decision: 
     lastDeploy: deps.lastDeploy(),
     busy: deps.busy(),
     paused: deps.paused(),
+    express: deps.express?.(wanted.sha) ?? false,
     quietMs: deps.quietMs ?? DEPLOY_QUIET_MS,
     maxWaitMs: deps.maxWaitMs ?? DEPLOY_MAX_WAIT_MS,
     staleSpawnMs: deps.staleSpawnMs ?? DEPLOY_STALE_SPAWN_MS,
@@ -211,6 +223,7 @@ function act(deps: PacerDeps, wanted: DeployWanted, decision: PaceDecision): voi
   if (decision.kind !== "spawn") return;
   writeWanted(deps.stateDir, deps.store, { ...wanted, spawnedSha: decision.sha, spawnedAt: iso(deps.now()), ...(decision.stale && { respawned: true }) });
   if (decision.stale) deps.log(`deploy pacer: the deployer for ${decision.sha} recorded nothing by ${wanted.spawnedAt}; asking once more`);
+  if (decision.express) deps.log(`deploy pacer: ${decision.sha} carries ${DEPLOY_NOW_LABEL}; skipping the quiet window`);
   const { pid } = deps.spawn(decision.sha);
   deps.log(pid === undefined ? `deploy pacer: the deployer for ${decision.sha} did not start` : `deploy pacer: deployer pid ${pid} deploys ${decision.sha}`);
 }
@@ -221,6 +234,8 @@ export interface DeployPacerOptions {
   spawn: (sha: string) => { pid?: number | undefined };
   /** Lets the sweep clear a wanted sha the running build already descends from. */
   isAncestor?: AncestryProbe;
+  /** Lets a `DEPLOY_NOW_LABEL` merge skip the quiet window; absent means every merge is paced. */
+  express?: ExpressProbe;
   store?: WantedStore;
   /** How often the sweep runs; defaults to `PACER_SWEEP_MS`. */
   sweepMs?: number;
