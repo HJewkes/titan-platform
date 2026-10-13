@@ -12,7 +12,7 @@ export interface CallableComplexity {
   fileId: string;
   cyclomatic: number;
   cognitive: number;
-  /** Non-blank, non-comment lines. */
+  /** Non-blank, non-comment lines of the body; docstrings, the signature and a lone closing brace are not counted. */
   sloc: number;
 }
 
@@ -95,7 +95,7 @@ export function summarizeComplexity(callables: readonly CallableComplexity[]): C
     erosion,
     cogMass: cog.mass,
     cogErosion: cog.erosion,
-    ccMax: cc.length === 0 ? 0 : Math.max(...cc),
+    ccMax: cc.reduce((a, b) => Math.max(a, b), 0),
     ccMean,
     ccStd: Math.sqrt(ratio(sum(cc.map((v) => (v - ccMean) ** 2)), cc.length)),
     ccHighCount: high.length,
@@ -145,13 +145,11 @@ function measuredCallables(symbolNodes: readonly GraphNode[], ctx: ReportContext
     if (n.kind !== "symbol" || !fileId || !keepNode(ctx, fileId)) continue;
     const cyclomatic = lookupMetric(ctx, "symbol_cyclomatic", n.id);
     if (cyclomatic === undefined) continue;
-    const loc = lookupMetric(ctx, "symbol_loc", n.id) ?? 0;
-    const comments = lookupMetric(ctx, "symbol_comment_lines", n.id) ?? 0;
     out.push({
       fileId,
       cyclomatic,
       cognitive: lookupMetric(ctx, "symbol_cognitive", n.id) ?? 0,
-      sloc: Math.max(loc - comments, 0),
+      sloc: lookupMetric(ctx, "symbol_body_lines", n.id) ?? 0,
     });
   }
   return out;

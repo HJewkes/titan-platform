@@ -120,7 +120,7 @@ interface CallableComplexity {
     fileId: string;
     cyclomatic: number;
     cognitive: number;
-    /** Non-blank, non-comment lines. */
+    /** Non-blank, non-comment lines of the body; docstrings, the signature and a lone closing brace are not counted. */
     sloc: number;
 }
 /**

@@ -36,6 +36,12 @@ describe("SCBench complexity summary", () => {
     expect(summarizeComplexity([callable(4, 1), callable(4, 9)]).ccGini).toBe(0);
   });
 
+  it("finds the highest CC in a tree too large to spread into one call", () => {
+    const callables = Array.from({ length: 200_000 }, (_, i) => callable(i === 123_456 ? 99 : 1, 1));
+
+    expect(summarizeComplexity(callables).ccMax).toBe(99);
+  });
+
   it("rolls callables up per package and computes the total over all of them at once", () => {
     const rollup = complexityDistribution(
       [callable(20, 4, 0, "packages/a/x.ts"), callable(2, 4, 0, "packages/b/y.ts"), callable(1, 1, 0, "scripts/z.ts")],
@@ -57,15 +63,16 @@ describe("report quality section", () => {
   const symbol = (fileId: string, name: string): GraphNode => ({ id: `${fileId}#${name}`, kind: "symbol", name, parentId: fileId });
   const metric = (nodeId: string, name: string, value: number): GraphMetric => ({ nodeId, name, value });
 
-  it("measures named functions in kept files, with comment lines taken out of SLOC", () => {
+  it("measures named functions in kept files, taking SLOC from the body's code rows rather than the span less comments", () => {
     const nodes = [file("src/a.ts"), file("src/a.test.ts", "test"), symbol("src/a.ts", "f"), symbol("src/a.ts", "T"), symbol("src/a.test.ts", "t")];
     const ctx = buildReportContext({
       nodes,
       metrics: [
         metric("src/a.ts#f", "symbol_cyclomatic", 12),
         metric("src/a.ts#f", "symbol_cognitive", 15),
-        metric("src/a.ts#f", "symbol_loc", 13),
+        metric("src/a.ts#f", "symbol_loc", 20),
         metric("src/a.ts#f", "symbol_comment_lines", 4),
+        metric("src/a.ts#f", "symbol_body_lines", 9),
         metric("src/a.test.ts#t", "symbol_cyclomatic", 40),
       ],
       excluders: [],
