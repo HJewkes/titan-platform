@@ -164,12 +164,13 @@ describe("titan-factory service check", () => {
   it("reports unresponsive with each probe's latency when the live launchd pid never answers, inside the budget", async () => {
     const { code, out, elapsedMs } = await check({ print: running, health: healthy(), answerAfterMs: Infinity }, "--json");
 
-    const result = JSON.parse(out) as { cause: string; message: string; pid: number; detail: { probeLatenciesMs: string } };
     expect(code).toBe(EXIT.FAILURE);
-    expect(result.cause).toBe("unresponsive");
-    expect(result.pid).toBe(PID);
-    expect(result.message).toContain(`launchd pid ${PID} is alive but every /health probe on port 7410 timed out`);
-    expect(result.detail.probeLatenciesMs).toBe("6000, 6000, 3000");
+    expect(JSON.parse(out)).toMatchObject({
+      cause: "unresponsive",
+      pid: PID,
+      message: expect.stringContaining(`launchd pid ${PID} is alive but every /health probe on port 7410 timed out`),
+      detail: { probeLatenciesMs: "6000, 6000, 3000" },
+    });
     expect(elapsedMs).toBeLessThan(SERVICE_CHECK_BUDGET_MS);
   });
 
