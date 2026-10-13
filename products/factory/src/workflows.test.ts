@@ -49,7 +49,7 @@ async function landWith(env: NodeJS.ProcessEnv): Promise<{ argvs: (readonly stri
     return { exitCode: 0, signal: null, timedOut: false, stdout: "", stderr: "" };
   };
   let clock = 0;
-  const routes = configuredRoutes(env, { port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms), runChore });
+  const routes = configuredRoutes(env, { port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms), runChore, chores: undefined });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   const runId = host.runtime.start("land-pr", { repo: REPO, pr: "1" });
@@ -189,7 +189,7 @@ async function reviewWith(scene: ReviewScene, overrides: Partial<FactoryRouteDep
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
   let clock = 0;
-  const routes = configuredRoutes(scene.env, { port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms), spawnGate: { admit: () => undefined }, machineStop: watchReading(undefined), ...overrides });
+  const routes = configuredRoutes(scene.env, { port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms), spawnGate: { admit: () => undefined, noteReviewers: () => undefined, reviewSlots: () => undefined }, machineStop: watchReading(undefined), ...overrides });
   const workflow = defineWorkflow({ name: "review-wiring", steps: REVIEW_STEPS, run: async (ctx) => void (await reviewPhase(ctx, { repo, pr: 1, round: 0, headSha: H1 })) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [workflow], routes, gatePollMs: 5 });
   hosts.push(host);

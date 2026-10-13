@@ -105,7 +105,7 @@ match wins, in this order:
 2. A configured glob from `.codewatch/roles.json` (below).
 3. `test`, then `story` (`*.stories.{js,jsx,ts,tsx}` with an optional `c`/`m`, and `*.mdx`),
    so a story under `fixtures/` is still a story.
-4. `fixture` (a `fixtures/` path or a `*.fixture.*` file), `script`, `entry` (a `#!` shebang), `barrel`, `types`, `config`, else `source`.
+4. `fixture` (a `fixtures/` path or a `*.fixture.*` or `*.fixtures.*` file), `script`, `entry` (a `#!` shebang), `barrel`, `types`, `config`, else `source`.
 
 `UNIMPORTED_ROLES` lists the roles nothing imports by design (`test`, `fixture`, `story`, `lab`,
 `config`, `script`, `entry`). Dead-module reachability seeds from them plus `barrel`.
@@ -275,6 +275,9 @@ cycle of one. `import type` and `export type … from` edges are left out unless
 `includeTypeOnly: true`. An all-inline `{ type T }` import still counts, because under
 `verbatimModuleSyntax` it compiles to an import that loads the module. `exclude` and
 `excludeRoles` take files out of the graph.
+Each cycle carries `cycleKind`: `value` when its value imports alone still close a cycle among
+its members, otherwise `type-only`. A type-only cycle also names its `hub`, the member with the
+most type-only imports in from the other members, and its evidence says so.
 The baseline key is the rule id plus every member, so it does not depend on edge order. Against
 a baseline, a cycle whose members all sit inside one known cycle is a carryover, so a shrunk or
 split cycle passes, while a cycle that gains a file or merges two known cycles is new.
@@ -425,6 +428,11 @@ Python, and are written on every function or file, zeros included:
   (per 100 non-blank lines), and `swallowed_except` (handlers whose body is empty, `pass`,
   `...`, `continue`, a bare or `None`/`null`/`undefined` return, or one call to a logger,
   `print`, `warn` or `console`).
+- Per file, line density (TP-2474): `long_line_share_160` (share of non-blank lines over 160
+  characters), `chars_per_sloc` (characters per non-blank line, surrounding whitespace
+  excluded) and `bool_ops_per_line` (syntax-tree `&&`, `||`, `??` and ternaries, or Python
+  `and`, `or` and conditional expressions, per non-blank line; strings and comments never
+  count).
 
 Call-graph metrics (TP-323) come from `calls` edges, one per caller and callee symbol, each
 carrying the literal arguments of every call site in `attrs.sites`. TypeScript resolves a
@@ -594,6 +602,9 @@ are leads, not verdicts, and both drop files that `keepNode` rejects:
 - `topUnusedExports(symbolNodes, publicApi, ctx, limit)` lists exported symbols whose
   `utilization` is 0 or absent, ranked internal first, then by `symbol_cognitive`
   descending, each row carrying the export's own `loc` (`symbol_loc`, 0 when unmeasured).
+  A namespace import `import * as X` credits each export its member accesses name (`X.a`,
+  the type `X.T`, `X["a"]`). Using `X` whole (an argument, a spread, `typeof X`) credits
+  every export of an in-repo target.
   `publicApiFiles(nodes, edges)` builds `publicApi`: the files a `barrel`-role
   node re-exports one hop away, whose exports may still have npm consumers.
 - `topDeadModules(nodes, edges, ctx, limit, { view })` lists files that a forward walk over
@@ -757,6 +768,12 @@ churn entries they were built from (`LoadedHistory`, whose `warnings` say why hi
 `DEFAULT_CHURN_WINDOWS` (`[30, 90, 180]`), `resolveChurnWindows`, `windowSuffix` (`30d`,
 `lifetime`) and `computeRecencyWindows` alongside it. Node ids are the history engine's
 repo-relative paths, so both must be rooted at the same `idRoot`.
+
+`revisionLineSource(repoRoot, rev)` is an evidence `LineSource` over the blobs of commit
+`rev`, never the working tree, so `verifyCitation` over it reports `past-eof` for a range
+that only an uncommitted edit reaches. `rev` must be a full 40-hex commit id; a ref name
+throws. Each path is one `git --no-replace-objects cat-file --batch` read, cached. A path
+that is not a blob at `rev` reads as unreadable.
 
 Change coupling is not stored. It is computed on demand from `loadChurnEntries`, as
 codewatch's `graph coupled` command did.

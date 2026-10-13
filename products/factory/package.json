@@ -36,6 +36,7 @@
     "@titan-design/agent-dispatch": "workspace:^",
     "@titan-design/app-paths": "workspace:^",
     "@titan-design/authority": "workspace:^",
+    "@titan-design/coordinator": "workspace:^",
     "@titan-design/daemon": "workspace:^",
     "@titan-design/fix-proof": "workspace:^",
     "@titan-design/github": "workspace:^",
@@ -56,7 +57,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@titan-design/decider": "workspace:^"
+    "@titan-design/decider": "workspace:^",
+    "@titan-design/test-kit": "workspace:*"
   },
   "private": true,
   "bin": {

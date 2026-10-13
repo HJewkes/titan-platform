@@ -3,7 +3,7 @@ import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
 import { holdSlotsMigration } from "./store-migrations.js";
 import { shepherdEventMigration } from "./events.js";
-import { freshReviewerBase, runCleanup, SH_CLEANUP_GIVE_UP_MS, SH_CLEANUP_RETRY_MS, type CleanupAgent, type CleanupAgents, type CleanupPorts, type CleanupTasks, type TaskState } from "./cleanup.js";
+import { freshReviewerBase, runCleanup, SH_CLEANUP_GIVE_UP_MS, SH_CLEANUP_RETRY_MS, type CleanupAgent, type CleanupAgents, type CleanupPorts, type CleanupTasks, type MergedPr, type TaskState } from "./cleanup.js";
 import { DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
 import { createRosterReader } from "./roster.js";
 import { agentChatCleanupAgents, activeWorkTasks, type AgentChatCalls } from "./cleanup-ports.js";
@@ -54,7 +54,7 @@ function fakeTasks(state: TaskState): CleanupTasks & { closed: string[]; notes: 
   return { closed, notes, state: async () => state, done: async (initiative, id) => void closed.push(`${initiative}/${id}`), appendNote: async (initiative, id, line) => void notes.push(`${initiative}/${id}: ${line}`) };
 }
 
-function world(options: { fake?: FakeGitHub; port?: GitHubPort; agents?: FakeAgent[]; task?: TaskState; registration?: RegistrationInput; advisory?: (repo: string) => boolean } = {}) {
+function world(options: { fake?: FakeGitHub; port?: GitHubPort; agents?: FakeAgent[]; task?: TaskState; registration?: RegistrationInput; advisory?: (repo: string) => boolean; merged?: MergedPr } = {}) {
   const fake = options.fake ?? mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO });
   const clock = { now: 0 };
   const agents = fakeAgents(clock, options.agents ?? []);
@@ -62,7 +62,7 @@ function world(options: { fake?: FakeGitHub; port?: GitHubPort; agents?: FakeAge
   const { ref, store } = storeRef(options.registration);
   const cleanup: CleanupPorts = { agents, tasks };
   const deps = { port: options.port ?? githubPort(fake.wire), store: ref, now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 30_000, cleanup, ...(options.advisory && { advisory: options.advisory }) };
-  const run = () => runCleanup(deps, { repo: REPO, pr: 1, runId: RUN }, new AbortController().signal);
+  const run = () => runCleanup(deps, { repo: REPO, pr: 1, runId: RUN, ...(options.merged && { merged: options.merged }) }, new AbortController().signal);
   return { fake, clock, agents, tasks, store, run };
 }
 
@@ -218,6 +218,36 @@ describe("sh-cleanup hold", () => {
   });
 });
 
+describe("sh-cleanup after its own merge", () => {
+  const MERGED: MergedPr = { headRef: "feat/x", headRepo: REPO, headSha: fakeSha("head"), mergeSha: fakeSha("merge") };
+  const getPrs = (fake: FakeGitHub): number => fake.calls.filter((call) => call === "getPr").length;
+
+  it("reads no PR: deletes the head, releases the hold and closes the task from the merge's own result", async () => {
+    const w = world({ merged: MERGED });
+    w.store.hold(RUN, "owner review");
+
+    const result = await w.run();
+
+    expect(getPrs(w.fake)).toBe(0);
+    expect(result).toMatchObject({ ref: "deleted", task: "done" });
+    expect(w.fake.refs.has("feat/x")).toBe(false);
+    expect(w.store.eventsOf(RUN).find((event) => event.kind === "release")).toMatchObject({ headSha: fakeSha("head") });
+    expect(w.tasks.notes).toEqual([`demo/TP-1: closed by Shepherd: ${REPO}#1 at ${fakeSha("merge")} merged`]);
+  });
+
+  it("deletes a fork head in the head repo the merge named", async () => {
+    const deleted: HeadRef[] = [];
+    const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO });
+    const port: GitHubPort = { ...githubPort(fake.wire), deleteRef: async (_repo, head) => (deleted.push(head), { done: true }) };
+    const w = world({ fake, port, merged: { ...MERGED, headRepo: "fork/demo" } });
+
+    await w.run();
+
+    expect(deleted).toEqual([{ branch: "feat/x", repo: "fork/demo" }]);
+    expect(getPrs(fake)).toBe(0);
+  });
+});
+
 describe("sh-cleanup task", () => {
   it("marks the registration's open task done", async () => {
     const w = world({ task: "open" });
@@ -282,6 +312,27 @@ describe("sh-cleanup retire", () => {
 
     expect(result.retired).toEqual([`${IMPLEMENTER}-s2`, `${IMPLEMENTER}-s1`, IMPLEMENTER, "rv-octo-demo-1-2"]);
     expect(w.agents.retires.map((retire) => retire.name)).not.toContain(STANDING);
+  });
+
+  it("retires the panel members a standing reviewer's review named after this PR, and never the standing reviewer", async () => {
+    const names = [STANDING, "rv-octo-demo-1-adversary", "rv-octo-demo-1-perf-2"];
+    const w = world({ registration: { ...base, policy }, agents: names.map((name) => ({ name, exitAt: 0 })) });
+
+    const result = await w.run();
+
+    expect(result.retired).toEqual(expect.arrayContaining(["rv-octo-demo-1-adversary", "rv-octo-demo-1-perf-2"]));
+    expect(result.retired).not.toContain(STANDING);
+  });
+
+  it("retires a fresh reviewer's panel members, and no name that only looks like one", async () => {
+    const names = ["rv-octo-demo-1-2-adversary", "rv-octo-demo-1-2-perf-2", "rv-octo-demo-1-2-review", "rv-octo-demo-1-2-adversary-x"];
+    const w = world({ registration: { ...base, policy }, agents: names.map((name) => ({ name, exitAt: 0 })) });
+
+    const result = await w.run();
+
+    expect(result.retired).toEqual(expect.arrayContaining(["rv-octo-demo-1-2-adversary", "rv-octo-demo-1-2-perf-2"]));
+    expect(result.retired).not.toContain("rv-octo-demo-1-2-review");
+    expect(result.retired).not.toContain("rv-octo-demo-1-2-adversary-x");
   });
 
   it("retires no sooner than 3 minutes after the agent is seen exited", async () => {

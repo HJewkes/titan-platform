@@ -19,6 +19,9 @@ const REPORT_METRIC = new Map(Object.entries(STORED_METRIC).map(([report, stored
 // Budgets in check.json exclude these roles, so their metrics would only add noise.
 const SKIPPED_ROLES = new Set(["test", "fixture"]);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const GUARD_PATH_LIMIT = 10;
+// The slice rule lives in review-panel; a missing build leaves the size block out instead of breaking dag-check.
+const reviewPanel = await import("../packages/review-panel/dist/index.js").catch(() => null);
 
 /** Best effort: a failure logs to stderr and never reaches the caller, so dag-check's exit code holds. */
 export function writeReport(file, build) {
@@ -45,7 +48,78 @@ export function collectReport(graph, store, { snapshot, baselineSnapshot, result
     exports: baseId === undefined ? [] : collectExports(graph, store, snapshot.id, baseId, lineOf),
   };
   const questions = renderQuestions(full);
-  return { ...full, deltas: full.deltas.slice(0, DELTA_LIMIT), exports: full.exports.slice(0, EXPORT_LIMIT), questions };
+  const size = sizeBlock(options.readNumstat ?? gitNumstat(base, snapshot.commitHash));
+  const report = { ...full, deltas: full.deltas.slice(0, DELTA_LIMIT), exports: full.exports.slice(0, EXPORT_LIMIT), questions };
+  return size ? { ...report, size } : report;
+}
+
+/** The PR's non-generated size and whether it is a guard-area slice over the cap; any failure leaves it out, which reads as unknown. */
+export function sizeBlock(readNumstat) {
+  try {
+    if (!reviewPanel) return undefined;
+    const changedFiles = countedFiles(parseNumstat(readNumstat()));
+    const lines = reviewPanel.changedLineCount(changedFiles);
+    if (lines === undefined) throw new Error("numstat gave a file no line counts");
+    const flag = reviewPanel.securitySliceFlag({ changedFiles });
+    const guardPaths = (flag?.guardPaths ?? []).slice(0, GUARD_PATH_LIMIT);
+    return { lines, cap: reviewPanel.SECURITY_SLICE_LINES, guardPaths, flagged: flag !== undefined };
+  } catch (err) {
+    console.error(`codewatch-report: size left out: ${err instanceof Error ? err.message : String(err)}`);
+    return undefined;
+  }
+}
+
+/** A binary file outside the guard area has no lines to review; one inside it makes the whole size unknown. */
+function countedFiles(files) {
+  const known = (f) => Number.isFinite(f.additions) && Number.isFinite(f.deletions);
+  const hidden = files.find((f) => !known(f) && [f.path, f.previousPath].some(isGuardPath));
+  if (hidden) throw new Error(`numstat gave guard path ${JSON.stringify(hidden.path)} no line counts`);
+  return files.map((f) => (known(f) ? f : { ...f, additions: 0, deletions: 0 }));
+}
+
+// Asks the shared rule whether this one path, made oversize, would be flagged as guard area, so the globs stay in review-panel.
+function isGuardPath(file) {
+  if (file === undefined) return false;
+  const probe = { path: file, additions: reviewPanel.SECURITY_SLICE_LINES + 1, deletions: 0 };
+  return reviewPanel.securitySliceFlag({ changedFiles: [probe] }) !== undefined;
+}
+
+/**
+ * Parses `git diff --numstat -z -M`: `add\tdel\tpath`, or `add\tdel\t` then the old and new paths for a rename.
+ * Only NUL separates records, because -z leaves a path's own newlines and tabs raw.
+ */
+export function parseNumstat(text) {
+  const tokens = text.split("\0");
+  const files = [];
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] === "") continue;
+    const [add, del, ...rest] = tokens[i].split("\t");
+    const counts = { additions: lineCount(add), deletions: lineCount(del) };
+    const name = rest.join("\t");
+    if (name) {
+      files.push({ path: name, ...counts });
+      continue;
+    }
+    files.push({ path: tokens[i + 2], previousPath: tokens[i + 1], ...counts });
+    i += 2;
+  }
+  return files;
+}
+
+// A count numstat could not give (`-` for a binary diff) stays unknown here; countedFiles decides what it means.
+function lineCount(field) {
+  return /^\d+$/.test(field ?? "") ? Number(field) : Number.NaN;
+}
+
+// Attributes come from the empty tree, so a PR's own .gitattributes cannot mark a guard file -diff and hide its lines.
+const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+export function gitNumstat(base, head, cwd = ROOT) {
+  return () => {
+    if (!base) throw new Error("no baseline commit");
+    const args = [`--attr-source=${EMPTY_TREE}`, "diff", "--numstat", "-z", "-M", base, head];
+    return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  };
 }
 
 function checkBlock(result) {

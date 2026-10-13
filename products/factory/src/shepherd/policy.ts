@@ -3,11 +3,13 @@ import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { GateDecision, GatePolicy, PolicyRule } from "../gate-policy.js";
 import type { LandOptions } from "../workflows/land.js";
-import { decideAutoMerge, isUnsettledGate, type MergeEvidence } from "./merge-facts.js";
+import { decideAutoMerge, isUnsettledGate, shownPaths, type MergeEvidence } from "./merge-facts.js";
 import { refreshMergeEvidence } from "./merge-settle.js";
+import { CiPolicySchema } from "./review-schemas.js";
 import type { Verdict } from "./phases.js";
 import { escalationReason, type Escalated } from "./route-table.js";
 import { FEATURE_BASE_GRANT, MERGE_ON_GREEN_GRANT, RELEASE_MERGE_GRANT, type SeatLookup } from "./seats.js";
+import { skillPathsIn } from "./skill-paths.js";
 
 const MERGE_ORDER = ["never", "owner-gate", "auto"] as const;
 
@@ -148,7 +150,7 @@ export function shepherdGatePolicy(effective: EffectivePolicy, verdictFor: (head
     decide: (action, target): GateDecision => {
       if (effective.merge === "never") return { outcome: "deny", rule, reason: `seat ${effective.seat} policy never allows ${action}` };
       if (effective.merge === "auto" && action === "merge" && target?.headSha !== undefined) return decideAutoMerge(target.headSha, mergeEvidenceAt(target.headSha, verdictFor), effective.visualPaths);
-      return { outcome: "gate", rule, reason: `seat ${effective.seat} policy ${effective.merge}${reasonNote(effective)} waits for the owner on ${action}${reviewNote(target?.headSha, verdictFor)}` };
+      return { outcome: "gate", rule, reason: `seat ${effective.seat} policy ${effective.merge}${reasonNote(effective)} waits for the owner on ${action}${reviewNote(target?.headSha, verdictFor)}${skillNote(target?.headSha, verdictFor)}` };
     },
   };
 }
@@ -182,11 +184,12 @@ export function shepherdLandOptions(
     if (decision.outcome !== "gate") return decision;
     return { ...decision, reason: escalationReason("policy-denial", decision.reason) };
   };
-  return { policy: { decide }, allowEvidence: (merge) => ({ ...mergeEvidenceAt(merge.headSha, current)?.record }), unsettled: { transient: isUnsettledGate, refresh }, featureBase: () => effective().featureBase === true };
+  const allowEvidence = (merge: { headSha: string }) => ({ ...mergeEvidenceAt(merge.headSha, current)?.record });
+  return { policy: { decide }, allowEvidence, unsettled: { transient: isUnsettledGate, refresh }, featureBase: () => effective().featureBase === true, skillPathsAt: (headSha) => skillPathsAt(headSha, current) };
 }
 
 function escalatedReason(escalated: Escalated, headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {
-  const reason = escalationReason(escalated.escalation, escalated.detail);
+  const reason = escalationReason(escalated.escalation, escalated.detail, escalated.words);
   return escalated.carriedFrom === undefined ? reason : `${reason}; carried from the gate at head ${escalated.carriedFrom}${reviewNote(headSha, verdictFor)}`;
 }
 
@@ -205,12 +208,26 @@ export function mergeEvidenceAt(headSha: string, verdictFor: (headSha: string) =
     typeof evidence.record === "object" &&
     evidence.record !== null &&
     (evidence.changedFilesUnread === undefined || typeof evidence.changedFilesUnread === "string");
-  return wellFormed ? (evidence as MergeEvidence) : undefined;
+  if (!wellFormed) return undefined;
+  const stored = evidence as MergeEvidence;
+  // Only an absent line parses to undefined, so the stored evidence is returned as it is in that case.
+  const ciPolicy = CiPolicySchema.parse(stored.ciPolicy);
+  return ciPolicy ? { ...stored, ciPolicy } : stored;
 }
 
 function reviewNote(headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {
   const verdict = headSha === undefined ? undefined : verdictFor(headSha);
   return verdict ? `; review at this head: ${verdict.kind}` : "";
+}
+
+/** Read from the MERGE evidence at that head; a head with no well-formed evidence names none. */
+function skillPathsAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): string[] {
+  return skillPathsIn(mergeEvidenceAt(headSha, verdictFor)?.merge.changedPaths ?? []);
+}
+
+function skillNote(headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {
+  const skills = headSha === undefined ? [] : skillPathsAt(headSha, verdictFor);
+  return skills.length > 0 ? `; repo skill changes: ${shownPaths(skills)}` : "";
 }
 
 function reasonNote(effective: EffectivePolicy): string {

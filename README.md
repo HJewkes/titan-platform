@@ -63,8 +63,9 @@ Before adding code:
 2. Name the existing unit you reuse, or the gap you fill and its task, in the plan and the PR.
 3. Verify runtime and auth assumptions with the path's smoke check before you build on them.
 
-All six must be green before you finish a change. `dag:check` runs the self-hosted check
-against this repo's own `@titan-design/code-graph`, built by `pnpm build`.
+All six must be green before you finish a change. `dag:check` runs the self-hosted DAG
+check and then the dead-export check against this repo's own `@titan-design/code-graph`,
+built by `pnpm build`: the same two checks as CI's `dag-check` job.
 
 Adding a package, running the DAG check against a base ref, the changeset requirement, the
 release flow, and the docs-site scripts are all documented in

@@ -87,6 +87,42 @@ if (week.status === "scored") {
 }
 ```
 
+### Review model and ablation
+
+`reviewTable(actuals, { key, ...config })` predicts the review half of a task once its PR is
+up. It covers three targets: `reviewAgentHours` (capped), `reviewRounds` (Shepherd's distinct
+heads awaiting a verdict) and `postPrWallHours` (Shepherd's ci, review, re-review, hold and
+land minutes over 60; `queued` is left out because it overlaps implementer time). A row with
+a null target is skipped and counted for that target only.
+
+With `key: "diff"` rows are keyed `<prClass>/<lead touch>` from the `prClass` and `touches`
+that `@titan-design/session-analytics` adds from review-panel's `classifyPr`, for example
+`g10/migration` or `standard/none`. A task that merged no PR is keyed `nopr`. A row without
+features (a PR missing from the diff cache) is skipped and counted. A key under `minN`
+weighted rows backs off to its review class, then global. With `key: "base"` the same code
+keys on kind x size band and backs off to the kind. That way the key is the only difference
+between the two arms. `reviewFor(table, facts, target)` resolves one task and names the
+back-off level.
+
+`reviewAblation(actuals, { origins, horizonDays, config })` compares the two arms on
+identical rows. These are the rows that carry PR features. At each origin both arms train on
+rows done before it and score rows first dispatched in the next `horizonDays` (default 7). A
+row in flight across the origin is in neither set. For each target it reports n, mean
+pinball loss at p10, p50 and p90, and `[p10, p90]` coverage with a Wilson interval for each
+arm. It also gives `deltaP50` (diff minus base; negative favours the diff key) and flags
+`insufficient` under 40 scored rows. Pooled totals cover every origin.
+
+```ts
+import { reviewAblation, reviewFor, reviewTable } from "@titan-design/throughput";
+
+const table = reviewTable(rows, { key: "diff" });
+reviewFor(table, { prClass: "g10", touches: ["migration", "large"] }, "postPrWallHours");
+// { level: "key", levelKey: "g10/migration", n, weightedN, quantiles: { p10, p50, p80, p90 } }
+
+const ablation = reviewAblation(rows, { origins: ["2026-10-05", "2026-10-12"] });
+ablation.pooled.reviewAgentHours; // { n, diff, base, deltaP50, insufficient, skippedNull, unscored }
+```
+
 ### Forecasting a set
 
 `forecastSet(tasks, table, { seed, draws, closure, weekEffect })` answers "how many

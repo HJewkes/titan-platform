@@ -163,7 +163,8 @@ const inv = parseGit(commands[0].args, commands[0].dir, "/home/you");
   (`wrapping`: a subshell, `sh -c`, `eval`, `xargs`, a heredoc or pipe into a shell, `find -exec`),
   its command word as typed (`path`), the operators joining it to the commands before and after
   it (`prev`, `next`), whether a `!` negates its pipeline (`negated`), and the operator that
-  started its `&&` chain (`chain`).
+  started its `&&` chain (`chain`). It reads past wrappers such as `command`, `exec` and
+  `sudo`, and past zsh's precommand modifiers `noglob`, `nocorrect` and `-`.
 - `parseGit` and `splitArgs` read git's global options and flag clusters.
 
 Nothing here touches the filesystem, the environment or a clock.
@@ -199,8 +200,11 @@ do instead. Commands nested in `bash -c`, `eval`, heredocs, substitutions and wr
 | R133 | a merge the merge family classifies, when `ctx.seat` | `seat-merge`, any merge outside a seat |
 | R64 | `active-work` with `XDG_DATA_HOME` set and no `ACTIVE_ROOT` | `ACTIVE_ROOT=<dir> active-work` |
 | R164 | git `--no-verify`, `commit -n`, `-c core.hooksPath=` | `-m "--no-verify"`, `push -n` |
+| R175 | `pnpm test`, `npm test` and their `t`, `tst`, `run test` and `run-script test` forms, `pnpm -c test`, `vitest`, `vitest run`, `vitest watch`, `npx vitest [run\|watch]`, `pnpm [exec] vitest [run\|watch]` with no path argument, including options after `--`, when `ctx.agentWorktree` | a path argument (also after `--`), a bare `--changed`, `pnpm --filter <pkg> test`, `pnpm test:affected`, any run outside an agent worktree |
 
 The checker is pure. A shell loop's keywords never reach the command list, so R127 reads a
-`sleep` beside a CI read as the loop. The merge spellings that need the checked-out branch
-(`git merge`, a bare `git push`) are skipped, since reading it needs the filesystem.
+`sleep` beside a CI read as the loop. R175 names `pnpm test:affected` because CI runs the full
+suite on every pull request, so a local whole-suite run only spends machine memory. The merge
+spellings that need the checked-out branch (`git merge`, a bare `git push`) are skipped, since
+reading it needs the filesystem.
 `checkPreferences` only reports; no hook blocks on a preference hit yet.

@@ -27,7 +27,33 @@ export {
   type ThroughputConfig,
   type Watermark,
 } from "./class-table.js";
-export { sizeBand, type CappedHoursLike, type SizeBand, type TaskClassFacts, type ThroughputRow } from "./rows.js";
+export { sizeBand, type CappedHoursLike, type SizeBand, type StageMinutesLike, type TaskClassFacts, type ThroughputRow } from "./rows.js";
+export {
+  NO_PR_KEY,
+  REVIEW_TARGETS,
+  reviewFeatureKey,
+  reviewFor,
+  reviewTable,
+  reviewTarget,
+  type ReviewBackoffLevel,
+  type ReviewEntry,
+  type ReviewFacts,
+  type ReviewKey,
+  type ReviewLevelStats,
+  type ReviewTable,
+  type ReviewTableConfig,
+  type ReviewTarget,
+  type ReviewTargetTable,
+} from "./review-model.js";
+export {
+  MIN_ABLATION_N,
+  reviewAblation,
+  type ReviewAblationOptions,
+  type ReviewAblationOrigin,
+  type ReviewAblationResult,
+  type ReviewArmScore,
+  type ReviewTargetAblation,
+} from "./review-ablation.js";
 export {
   DEFAULT_FORECAST_DRAWS,
   forecastSet,

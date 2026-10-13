@@ -12,9 +12,9 @@ export interface HttpResponse {
 export type Fields = Record<string, string>;
 
 /** A GET sent with the caller's own ETag: a 304 answers `notModified`, with no body and, on GitHub, no rate-limit point. */
-type Revalidated<T> = { notModified: true } | { notModified: false; body: T; etag: string | null };
+export type Revalidated<T> = { notModified: true } | { notModified: false; body: T; etag: string | null };
 
-/** Every call is `gh api -i`, so the status line, ETag, Link and rate headers are all visible. */
+/** The REST transport every wire method reads through: `restCaller` over `gh api -i`, or `octokitRest` over Octokit. */
 export interface Rest {
   /** Conditional on the ETag of the same request's last 200; a 304 answers with that cached body. */
   get<T>(path: string, fields?: Fields): Promise<T>;
@@ -26,13 +26,13 @@ export interface Rest {
    * longer than a page answers every page with a null `etag`, and the caller's next read is unconditional.
    */
   revalidatePages<P, T>(path: string, fields: Fields, etag: string | null, pick: (page: P) => T[]): Promise<Revalidated<T[]>>;
-  /** Unconditional, for bodies that are not JSON. */
+  /** Unconditional, for bodies that are not JSON. Escape sequences pass through: `gh` otherwise refuses a coloured log after a 200. */
   text(path: string): Promise<string>;
   send<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, fields?: Fields, input?: string): Promise<T>;
 }
 
 /** A GraphQL query that has not answered by now is dead; the caller gets a rejection, not a hang. */
-const GRAPHQL_TIMEOUT_MS = 30_000;
+export const GRAPHQL_TIMEOUT_MS = 30_000;
 
 const API_ORIGIN = "https://api.github.com/";
 
@@ -78,7 +78,7 @@ export function restCaller(exec: GhExec, budget: RateBudget, cacheSize: number, 
       if (!next) return { notModified: false, body: first, etag: response.headers.get("etag") ?? null };
       return { notModified: false, body: await followPages(conditional, getArgs(next, {}), pick, first), etag: null };
     }),
-    text: retried(async (path: string) => (await run(getArgs(path, {}))).body),
+    text: retried(async (path: string) => (await run([...getArgs(path, {}), "--allow-escape-sequences"])).body),
     send: async <T>(method: string, path: string, fields: Fields = {}, input?: string) => {
       const args = ["-X", method, path, ...fieldArgs(fields), ...(input === undefined ? [] : ["--input", "-"])];
       return json<T>((await run(args, input, path === "graphql" ? "graphql" : "core")).body);
@@ -177,7 +177,7 @@ export function parseIncluded(stdout: string): HttpResponse | null {
 }
 
 /** Only an api.github.com link is followed, as a path, so a page URL can never point `gh` elsewhere. */
-function nextPage(link: string | undefined): string | null {
+export function nextPage(link: string | undefined): string | null {
   const next = link ? /<([^>]+)>;\s*rel="next"/.exec(link)?.[1] : undefined;
   if (!next) return null;
   if (!next.startsWith(API_ORIGIN)) throw new Error(`refusing to follow a next page outside ${API_ORIGIN}: ${redact(next, [])}`);

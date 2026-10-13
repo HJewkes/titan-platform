@@ -3,6 +3,8 @@ import { GateBrief, GateResolver, GateRecord, GateStore } from '@titan-design/hi
 import { ZodType } from 'zod';
 import { Db, Migration } from '@titan-design/store-sqlite';
 import { AgentRunConfig, AgentRunDeps, Harness, HarnessRunRequestFor, DurableHarnessDispatcher } from '@titan-design/agent';
+import { ExecutionRecord } from '@titan-design/agent-protocol';
+import { TraceRecord } from '@titan-design/agent-protocol/trace';
 
 type WorkflowStatus = "running" | "paused" | "cancelling" | "recovery_required" | "completed" | "failed" | "cancelled";
 interface WorkflowOwnerFence {
@@ -37,12 +39,18 @@ interface StepResult<TData extends Record<string, unknown> = Record<string, unkn
     data?: TData;
     /** Summed over every attempt, retries included, when the runner reported cost; `mapItems` sums it against its budget. */
     usage?: StepUsage;
+    /** The dispatch attempt that produced this result, so a trace can name it; absent reads as 0. */
+    attempt?: number;
 }
 interface ActiveStepBase {
     stepId: string;
     iterKey: string;
     attempt: number;
     startedAt: string;
+    /** When this step's first attempt started, kept across retries and restarts; absent on older rows, read `startedAt`. */
+    firstStartedAt?: string;
+    /** How many restarts re-dispatched this step; they raise `attempt` but spend no retry budget. Absent reads as 0. */
+    restarts?: number;
     runnerRef?: string;
     /** Summed cost of this step's earlier failed attempts, so a resumed run still reports every attempt once. */
     priorUsage?: StepUsage;
@@ -187,6 +195,9 @@ interface RecoverableStepDispatchInput extends StepRunInput {
     executionId: string;
     requestKey: string;
     attempt: number;
+    /** When the step's first attempt started, so a wait resumed after a restart can keep its original deadline. */
+    firstStartedAt: string;
+    restarts: number;
 }
 interface StepDispatchAck {
     executionId: string;
@@ -260,6 +271,11 @@ type WorkflowEvent = {
     runId: string;
     stepId: string;
     error: string;
+} | {
+    type: "step_abandoned";
+    runId: string;
+    stepId: string;
+    reason: string;
 } | {
     type: "workflow_recovery_required";
     runId: string;
@@ -478,6 +494,13 @@ type RestartRule = "repeat" | "park";
 interface RoutedStepInput extends StepRunInput {
     attempt: number;
     requestKey: string;
+    /**
+     * When the step's first attempt started; a restart keeps it, so a wait can resume its deadline. The runtime always
+     * sets it and `restarts`; they are optional so an input built by hand, as in a route's own test, still type-checks.
+     */
+    firstStartedAt?: string;
+    /** How many restarts re-dispatched this step; 0 on a first run and on ordinary retries. */
+    restarts?: number;
 }
 interface RouteRunner {
     run(input: RoutedStepInput): Promise<StepRunOutcome>;
@@ -487,6 +510,8 @@ interface StepRoute {
     match: string;
     runner: RouteRunner;
     onRestart: RestartRule;
+    /** Decides a step a restart interrupted, ahead of `onRestart`; a rejection parks the run. */
+    reconcile?(step: RecoverableActiveStep, signal: AbortSignal): Promise<StepReconcileOutcome>;
 }
 interface RoutedRunner extends RecoverableStepRunner {
     routeFor(stepId: string): StepRoute | undefined;
@@ -584,8 +609,16 @@ interface WorkflowRuntimeOptions {
 
 /** The `StepResult.data` key the F3 trace projection reads gate-decision records from. */
 declare const TRACE_GATES_KEY = "titan.trace.gates";
+/** The `StepResult.data` key the F3 trace projection reads artifact records (commits, PRs, files) from. */
+declare const TRACE_ARTIFACTS_KEY = "titan.trace.artifacts";
 /** The name every authorize gate records as its rule's table. */
 declare const AUTHORITY_TABLE_NAME = "F5";
+
+/**
+ * Asked, when a workflow returns, about each recovered step its replay never reached: true drops the step with a
+ * `step_abandoned` event, false parks the run. A registration without one parks on every such orphan.
+ */
+type AbandonsOrphan = (stepId: string) => boolean;
 
 /** Durable workflow driver with fenced row ownership and explicit execution reconciliation. */
 declare class WorkflowRuntime {
@@ -599,13 +632,16 @@ declare class WorkflowRuntime {
     private readonly reconcileTimeoutMs;
     private readonly now;
     private readonly baseDeps;
+    private isQuiesced;
     constructor(options: WorkflowRuntimeOptions);
-    /** `version` pins each new run to this definition; hydrate parks a run pinned to another one instead of replaying it. */
+    /** `version` pins new runs to this definition (hydrate parks a run pinned to another); `strictReplay` parks a replay that goes live with recorded results unread. */
     register(name: string, fn: WorkflowFn, options?: {
         version?: string;
+        abandonsOrphan?: AbandonsOrphan;
+        strictReplay?: boolean;
     }): void;
     registered(): string[];
-    /** `options.onStart` commits with the run row, or its throw rolls the run back and nothing launches. */
+    /** `options.onStart` commits with the run row, or its throw rolls the run back; a quiesced runtime leaves the row unclaimed for its successor. */
     start(name: string, params?: Record<string, string>, options?: WorkflowStartOptions): string;
     /** `exclude` leaves those runs unclaimed this call, for a caller that is not yet sure they are its to drive. */
     hydrate(options?: {
@@ -619,6 +655,9 @@ declare class WorkflowRuntime {
     private finishFromSuccess;
     private settleRejection;
     shutdown(): void;
+    /** Stops admission for a planned handoff: live runs are released and new ones are left for the successor to drive. */
+    quiesce(): void;
+    quiesced(): boolean;
     private finish;
     status(runId: string): WorkflowRun | undefined;
     list(statuses?: readonly WorkflowRun["status"][]): WorkflowRun[];
@@ -655,4 +694,19 @@ declare function durableHarnessRunner<H extends Harness>(dispatcher: DurableHarn
 
 declare function gateIdFor(runId: string, stepId: string): string;
 
-export { AUTHORITY_TABLE_NAME, type ActiveStep, type AgentRunnerOptions, type AssistedOptions, AuthorityDeniedError, AuthorityRefusedError, type AuthorizeOptions, type AuthorizeRequest, type AuthorizeResult, DEFAULT_RUN_TABLE, DEFAULT_SIGNAL_PATTERNS, type DispatchOptions, type DurableHarnessRunnerOptions, type DurableStepOutcome, EMPTY_OUTPUT_SIGNAL, GATE_CANCELLED_SIGNAL, type LegacyActiveStep, type LegacyStepRunner, type MapItemFailure, type MapItemFn, type MapItemResult, type MapOptions, type MapResult, type RecoverableActiveStep, type RecoverableStepDispatchInput, type RecoverableStepRunner, type RestartRule, type RouteRunner, type RoutedRunner, type RoutedStepInput, type SeedResult, type SignalMatcher, type SignalParser, type SignalSetParser, type StepDispatchAck, StepFailedError, type StepFailureDetail, type StepOperation, type StepOutputFailureKind, StepOutputInvalidError, type StepReconcileOutcome, type StepResult, type StepRoute, type StepRunInput, type StepRunOutcome, type StepRunner, type StepUsage, TRACE_GATES_KEY, type TemplateRenderer, type WorkflowAuthorityOptions, WorkflowCancelledError, type WorkflowContext, type WorkflowEvent, type WorkflowFn, WorkflowNonDeterminismError, WorkflowNotOwnedError, type WorkflowOwnerFence, type WorkflowOwnerLease, WorkflowOwnershipLostError, WorkflowRecoveryRequiredError, type WorkflowRun, WorkflowRunStore, WorkflowRuntime, type WorkflowRuntimeOptions, WorkflowSchemaDriftError, type WorkflowStartOptions, type WorkflowStatus, WorkflowStoreSchemaOutdated, agentRunner, buildStepVars, createSignalParser, createSignalSetParser, durableHarnessRunner, gateIdFor, idempotentRunner, inlineRunner, mapItems, mustacheRenderer, parseSignal, parseSignals, routedRunner, unfilledVariables, workflowDefinitionVersionMigration, workflowMigration, workflowOwnershipMigration, workflowRunTableDdl, workflowStepRequestKey };
+/** What a projection reads besides the run; structural, so workflow takes no runtime dependency on the ledger package. */
+interface RunTraceSources {
+    gates: Pick<GateStore, "get">;
+    executions?: {
+        findByRequestKey(requestKey: string): ExecutionRecord | undefined;
+    };
+    /** Hex sha256 of the text; injected so the projection stays pure. */
+    digest(text: string): string;
+}
+/**
+ * Projects a stored run into strict trace records: the run first, then each recorded step's attempts, gates and
+ * artifacts in recording order, then in-flight steps and the gate a paused run waits on.
+ */
+declare function projectRunTrace(run: WorkflowRun, sources: RunTraceSources): TraceRecord[];
+
+export { AUTHORITY_TABLE_NAME, type ActiveStep, type AgentRunnerOptions, type AssistedOptions, AuthorityDeniedError, AuthorityRefusedError, type AuthorizeOptions, type AuthorizeRequest, type AuthorizeResult, DEFAULT_RUN_TABLE, DEFAULT_SIGNAL_PATTERNS, type DispatchOptions, type DurableHarnessRunnerOptions, type DurableStepOutcome, EMPTY_OUTPUT_SIGNAL, GATE_CANCELLED_SIGNAL, type LegacyActiveStep, type LegacyStepRunner, type MapItemFailure, type MapItemFn, type MapItemResult, type MapOptions, type MapResult, type RecoverableActiveStep, type RecoverableStepDispatchInput, type RecoverableStepRunner, type RestartRule, type RouteRunner, type RoutedRunner, type RoutedStepInput, type RunTraceSources, type SeedResult, type SignalMatcher, type SignalParser, type SignalSetParser, type StepDispatchAck, StepFailedError, type StepFailureDetail, type StepOperation, type StepOutputFailureKind, StepOutputInvalidError, type StepReconcileOutcome, type StepResult, type StepRoute, type StepRunInput, type StepRunOutcome, type StepRunner, type StepUsage, TRACE_ARTIFACTS_KEY, TRACE_GATES_KEY, type TemplateRenderer, type WorkflowAuthorityOptions, WorkflowCancelledError, type WorkflowContext, type WorkflowEvent, type WorkflowFn, WorkflowNonDeterminismError, WorkflowNotOwnedError, type WorkflowOwnerFence, type WorkflowOwnerLease, WorkflowOwnershipLostError, WorkflowRecoveryRequiredError, type WorkflowRun, WorkflowRunStore, WorkflowRuntime, type WorkflowRuntimeOptions, WorkflowSchemaDriftError, type WorkflowStartOptions, type WorkflowStatus, WorkflowStoreSchemaOutdated, agentRunner, buildStepVars, createSignalParser, createSignalSetParser, durableHarnessRunner, gateIdFor, idempotentRunner, inlineRunner, mapItems, mustacheRenderer, parseSignal, parseSignals, projectRunTrace, routedRunner, unfilledVariables, workflowDefinitionVersionMigration, workflowMigration, workflowOwnershipMigration, workflowRunTableDdl, workflowStepRequestKey };

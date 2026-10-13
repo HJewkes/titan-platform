@@ -53,10 +53,14 @@ export function mergeableState(raw: string, draft: boolean): MergeableState {
 
 /** Stuck rounds at one task before the owner is asked. */
 export const MAX_FAILED_ROUNDS = 3;
+/** Rounds at one head whose own MERGE the seat held before the owner is asked; above `MAX_FAILED_ROUNDS`, since a seat waiting on slow CI held three (tp#1300). */
+export const MAX_SEAT_HELD_ROUNDS = 6;
+/** The seat-held gate's own words: it shares the failed-rounds row id, but no review round failed there. */
+export const SEAT_HELD_ROUNDS_WORDS = `the seat held Shepherd's own MERGE for ${MAX_SEAT_HELD_ROUNDS} rounds at one head`;
 /** Throttled rounds at one run that count no round; a later one counts as stuck, so a machine that never settles still reaches the owner. */
 export const MAX_THROTTLED_ROUNDS = 1;
-/** FIX_FIRST reviews at one task before the owner is asked; below it each one is progress, so only a runaway stops. */
-const MAX_FIX_FIRSTS = 6;
+/** FIX_FIRST reviews at one task before the owner is asked; a third means point fixes are not converging, so the task needs redesign (TP-2394). */
+const MAX_FIX_FIRSTS = 3;
 /** Consecutive FIX_FIRST reviews whose Closer line said no before the owner is asked; a review with no Closer line never counts. */
 const MAX_NO_CLOSER_STREAK = 2;
 /** Fixer wakes of every kind at one run, counted across heads, before the owner is asked; FIX_FIRST keeps its own tighter cap too. */
@@ -68,7 +72,7 @@ export const ESCALATIONS = {
   conflict: "a merge conflict survived one fixer attempt",
   "policy-denial": "the authority policy did not allow an automated merge",
   "failed-rounds": `${MAX_FAILED_ROUNDS} review rounds failed at this task`,
-  "fix-first-runaway": `${MAX_FIX_FIRSTS} FIX_FIRST reviews at this task`,
+  "fix-first-runaway": `${MAX_FIX_FIRSTS} FIX_FIRST reviews at this task: route it to the planner to redesign or split it; Shepherd dispatches no further fix round`,
   "no-progress": `${MAX_NO_CLOSER_STREAK} FIX_FIRST reviews in a row said the head is no closer to MERGE`,
   "repair-budget": `${MAX_REPAIRS} fixer wakes at this run`,
 } as const;
@@ -86,6 +90,8 @@ export const FAILED_ROUND_WORDS: Partial<Record<ReviewOutcome, string>> = {
 export interface Escalated {
   escalation: Escalation;
   detail: string;
+  /** Replaces `ESCALATIONS[escalation]` in the gate reason; the row id stays `escalation`. */
+  words?: string;
   /** The head whose owner gate the pull request moved past; this escalation was carried from it, so the new head is asked afresh whatever its review says. */
   carriedFrom?: string;
 }
@@ -123,16 +129,16 @@ export function nextCloserStreak(state: CloserStreak, kind: RoundKind, verdict: 
   return state.head === headSha ? state : { streak: state.streak + 1, head: headSha };
 }
 
-/** The owner is asked once the streak reaches its cap, ahead of the runaway cap; `fixFirsts` includes this round. */
+/** The runaway cap is checked ahead of the Closer streak, so a run at its cap always names the planner route; `fixFirsts` includes this round. */
 export function fixFirstEscalation(fixFirsts: number, streak: number, headSha: string): Escalated | undefined {
   const detail = `the last at ${headSha}`;
-  if (streak >= MAX_NO_CLOSER_STREAK) return { escalation: "no-progress", detail };
-  return fixFirsts >= MAX_FIX_FIRSTS ? { escalation: "fix-first-runaway", detail } : undefined;
+  if (fixFirsts >= MAX_FIX_FIRSTS) return { escalation: "fix-first-runaway", detail };
+  return streak >= MAX_NO_CLOSER_STREAK ? { escalation: "no-progress", detail } : undefined;
 }
 
-/** The gate reason: which escalation, then the detail. */
-export function escalationReason(escalation: Escalation, detail: string): string {
-  return `${ESCALATIONS[escalation]}: ${detail}`;
+/** The gate reason: which escalation, or the words that replace its own, then the detail. */
+export function escalationReason(escalation: Escalation, detail: string, words: string = ESCALATIONS[escalation]): string {
+  return `${words}: ${detail}`;
 }
 
 /** How a finished post-merge main CI read is classified; `cancelled` means every failed run was cancelled and no later run of its name superseded it. */

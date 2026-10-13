@@ -2066,11 +2066,6 @@
       "count": 2
     }
   },
-  "packages/session-read/src/verdict-block.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "packages/store-sqlite/src/kit.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
@@ -2750,7 +2745,7 @@
   },
   "products/factory/src/deploy-ports.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
+      "count": 2
     }
   },
   "products/factory/src/deploy.test.ts": {
@@ -2874,11 +2869,6 @@
   "products/factory/src/required-checks.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
-    }
-  },
-  "products/factory/src/required-checks.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
     }
   },
   "products/factory/src/resolve-proof.test.ts": {

@@ -39,3 +39,16 @@ export function fixFirstFindings(target: ReviewTarget, messages: readonly Review
   const texts = [...new Set([...said].sort((a, b) => a.writtenAt - b.writtenAt).map((message) => message.text))];
   return heading + boundedFindings(texts.length === 0 ? fallback : texts.join(FINDINGS_SEPARATOR), MAX_FIX_FIRST_TEXT_CHARS - heading.length);
 }
+
+/** The line a reviewer adds for each blocking item that contradicts a recorded owner pick. */
+export const OWNER_PICK_CONTRADICTED = "Owner pick contradicted:";
+
+/** The recorded pick ids a reviewer's text names on contradiction lines, each once; an id not recorded is ignored. */
+export function contradictedPicks(text: string, ids: readonly string[]): string[] {
+  const named = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith(OWNER_PICK_CONTRADICTED))
+    .map((line) => line.slice(OWNER_PICK_CONTRADICTED.length).trim());
+  return [...new Set(named.filter((id) => ids.includes(id)))];
+}

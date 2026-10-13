@@ -1,6 +1,6 @@
 import type { Logger } from "@titan-design/daemon";
 import type { FactoryHost } from "../host.js";
-import type { ShepherdServices } from "./commands.js";
+import type { ShepherdServices } from "./services.js";
 import { TOOLCHAIN_SWEEP_MS, sweepToolchain } from "./toolchain-sweep.js";
 import { RELEASE_SWEEP_MS, sweepVersionPackages } from "./version-packages.js";
 

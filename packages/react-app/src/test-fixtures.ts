@@ -7,12 +7,10 @@ import {
   EXIT,
   createRegistry,
   defineCommand,
-  errorEnvelope,
-  invokeCommand,
+  inProcessCaller,
   type BaseContext,
   type CommandMapOf,
   type CommandRegistry,
-  type JsonEnvelope,
 } from "@titan-design/registry";
 import { liveSource, type DataSource } from "@titan-design/rpc-client";
 
@@ -77,13 +75,7 @@ const context = (): BaseContext => ({ warnings: [], format: "json" });
 
 /** The in-process caller an exporter hands `exportSnapshot`. */
 export function registryCaller(registry: CommandRegistry): Pick<DataSource, "call"> {
-  return {
-    async call(name: string, args: unknown): Promise<JsonEnvelope<unknown>> {
-      const cmd = registry.get(name);
-      if (!cmd) return errorEnvelope(`Unknown command: ${name}`, EXIT.USAGE);
-      return (await invokeCommand(cmd, args, context(), { invalidArgsCode: EXIT.DATAERR })).envelope;
-    },
-  };
+  return { call: inProcessCaller(registry, context, { invalidArgsCode: EXIT.DATAERR }) };
 }
 
 export interface TestDaemon {

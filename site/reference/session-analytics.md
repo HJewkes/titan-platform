@@ -194,14 +194,41 @@ fills. It reads the session graph's `pr_review`, `tool_call` and `request` table
 miner fills from transcripts, and places each chat verdict in the context band of the request
 that sent it, per model. An approve counts as an error when the same PR later got
 `changes_requested`. GitHub-surface reviews have no issuing request and count as `unfilled`.
-It takes an open graph connection and never calls `gh`.
+It takes an open graph connection and never calls `gh`. `renderReviewFillText(report)` prints it
+as a table per band and model, null rates as `-`, with no price caveat because it has no dollars.
+
+### successorReworkReport
+
+`successorReworkReport(db, window, { bootRequests? })` answers whether handoffs leave a successor
+re-learning what its predecessor knew. It pairs each session with the next one to start under the
+same agent name, keeps pairs whose successor starts in the window, and counts the paths the
+successor reads in its first `bootRequests` main-thread requests (default 30) that the
+predecessor's `file_read` signals already name. Rows are per role, with the re-read share and
+the list-price cost of the boot requests that re-read. It is a proxy for handoff quality, not a
+cost to minimise. `fileReadData` is false when the graph has no `file_read` signal, so zero rework
+then means no data. `renderSuccessorReworkText(report)` prints that warning, the table and the
+list-price caveat.
+
+### compareWindows
+
+`compareWindows(run, before, after, spec)` runs one guardrail report over a before and an after
+window and pairs the rows by `spec.key`. Each row has `before`, `after` and a `delta` per numeric
+field, after minus before. A delta is null, not zero, when the key is missing from one window,
+the field is null on either side, or either window fails `spec.hasData`. `run` is called once per
+window, before first, and closes over the connection and options.
+`REVIEW_FILL_COMPARISON` keys review-fill rows by band and model; `SUCCESSOR_REWORK_COMPARISON`
+keys successor-rework rows by role and treats a window with no `file_read` data as no data.
+`renderWindowComparisonText(comparison, columns)` prints each named column as
+`before → after (Δ)`, nulls as `-`, and adds the list-price caveat only for a column ending in
+`Usd`.
 
 ### costPerOutcome
 
 `costPerOutcome(db, assignments, { since, until })` costs generic assignment records
 (`assignmentSchema`) against `request_cost` and reports `bySeat`, `byKind`, `byInitiative` and
 `byValue` buckets with `usdPerMerged` and `usdPerDone` (bucket cost over its merged or done
-count, null at zero). An agent joins by `agent_name`, then by `session_origin.task_ids`; one with
+count, null at zero), plus `requests` and `requestsPerFinished` (bucket requests over merged plus
+done, null at zero). An agent joins by `agent_name`, then by `session_origin.task_ids`; one with
 neither lands in `unmatchedAgents`, and `joinSource` counts each route. An agent's window spend is
 split over its assignments, so it is costed once however many rounds it ran. Seat sessions are
 reported in `seatCostUsd` and kept out of every bucket. `renderCostPerOutcomeText` prints the
@@ -243,6 +270,7 @@ toward neither, and each is null when there is nothing to read.
 | `reopened` | An implementer session started after `doneAt`. All work still counts. |
 | `unpriced` | A request ran on a model with no price row, so `usd` is a floor. |
 | `unmapped-role` | A task-linked session counts toward neither total; `unmappedSessions` counts them. |
+| `pr-diff-missing` | `prDiffs` was passed but lacks a merged PR of the task, so the PR features are null. |
 
 A session's role comes from its spawn profile alone (`roleFromProfile`, plus `fable-implementer`
 as implementer and `fable-reviewer` as reviewer), so a resumed or fix-round implementer counts
@@ -250,6 +278,23 @@ however long it lived. The worker report's standing-peer override is not applied
 linked to the task either counts in `implAgentHours` or `reviewAgentHours`, or is counted in
 `unmappedSessions` and raises `unmapped-role`: planner, researcher, coordinator and peer profiles,
 and profiles with no role. Nothing is dropped without the row saying so. `capMinutes` must be positive.
+
+#### PR-diff features
+
+Pass `prDiffs`, a map from PR ref (`pr:<owner/repo>#<n>`) to a `PrDiff` (`repo`, `pr`, `head`,
+`files` with path and line counts, `truncated`), and each row gains `prClass`, `touches` and
+`changedLines`. The files of all the task's merged PRs form one `PrFacts`, classified once by
+review-panel's `classifyPr` with the task's `kind` (absent classifies strict), so two medium PRs
+can together be `large`. `changedLines` is review-panel's `changedLineCount`, which leaves
+generated files out. `classRules` overrides `DEFAULT_CLASS_RULES`.
+
+A task with no merged PR gets `prClass: null, touches: [], changedLines: 0`. A merged PR missing
+from the map gives all three null and the `pr-diff-missing` flag, since a partial diff would read
+short. A `truncated` diff (GitHub's 3,000-file cap) gives `changedLines: null` and is classified
+by file count. Without `prDiffs` rows carry none of the three keys.
+
+`listMergedPrRefs(db, since?)` lists the miner index's merged PR refs, sorted, for a backfill to
+fetch; `parsePrRef(ref)` reads the repo and number back out of one.
 
 ### seatContext
 

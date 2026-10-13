@@ -10,6 +10,7 @@ import { seatFixFirst } from "./external-review.js";
 import { registeredKind } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { mergeVerdict, type ReviewWiring } from "./review.js";
+import { CiPolicySchema } from "./review-schemas.js";
 import { FIX_CARRY_STEP, fixCarryRoute } from "./fix-carry.js";
 import { OWN_MERGE_UP_STEP, ownMergeUpRoute } from "./own-merge-up.js";
 import { MERGE_UP_STEP, mergeUpRoute, recordMergeUp, treeCarries } from "./merge-up-carry.js";
@@ -180,7 +181,9 @@ const Evidence = z.looseObject({
     dispatchedReviewer: z.looseObject({ agentId: z.string().min(1), sessionId: z.string().min(1) }),
     seatGrants: z.array(z.string()),
   }),
-  record: z.looseObject({ verdictLocator: z.looseObject({}) }),
+  record: z.looseObject({ verdictLocator: z.looseObject({}), proofUnverified: z.string().optional() }),
+  ciPolicy: CiPolicySchema,
+  grantWithheld: z.object({ policy: z.string().nullable(), proof: z.string().nullable() }).optional(),
 });
 type SourceEvidence = z.infer<typeof Evidence>;
 
@@ -246,6 +249,9 @@ export async function carriedVerdict(ctx: WorkflowContext, target: CarryTarget, 
     dispatchedReviewer: merge.dispatchedReviewer,
     seatGrants: merge.seatGrants,
     carry,
+    ...(source.ciPolicy && { ciPolicy: source.ciPolicy }),
+    ...(source.grantWithheld && { grantWithheld: source.grantWithheld }),
+    ...(source.record.proofUnverified !== undefined && { proofUnverified: source.record.proofUnverified }),
   });
   return mergeUp && verdict.kind === "MERGE" ? { ...verdict, mergeUpFrom: fromHead } : verdict;
 }

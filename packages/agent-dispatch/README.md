@@ -7,7 +7,8 @@ with one more message, and runs binaries by absolute path with a minimal environ
 
 Tier 1 of the titan-platform DAG, with no titan dependencies (zod is a peer dependency,
 used by `readAnswers` and the `./limits` subpath). Ported unchanged from relay's
-`daemon/src/dispatch.ts`, `exec.ts` and `session.ts` (`resumeArgs`) by TP-460.
+`daemon/src/dispatch.ts`, `exec.ts` and `session.ts` (`resumeArgs`) by TP-460. relay's
+daemon now depends on this package and its own copy is deleted.
 
 ```ts
 import { dispatchToAgentChat, resumeArgs, execSafe, minimalEnv } from "@titan-design/agent-dispatch";
@@ -28,12 +29,15 @@ await dispatchToAgentChat(
   rejects with `DispatchTimeoutError`, since the spawn may still have happened. It runs the
   CLI in `req.cwd`, which agent-chat sends to the broker as the spawn location.
 - `assertInstalledHeadless(profile, dir?)` reads `<dir>/<profile>.json` (default
-  `installedProfilesDir()`, `$HOME/.agent-chat/profiles`) and throws `DispatchError` unless
-  it says `"surface": "headless"`: an interactive surface puts the brief in `claude`'s argv.
-  A missing, unreadable or non-JSON file is refused too. The refusal names the profile and
+  `installedProfilesDir()`: `$AGENT_CHAT_HOME/profiles`, else `$HOME/.agent-chat/profiles`)
+  and throws `DispatchError` unless it says `"surface": "headless"`: an interactive surface
+  puts the brief in `claude`'s argv. A missing, unreadable or non-JSON file is refused too,
+  and so is a profile name outside `^[a-z0-9][a-z0-9._-]*$`, before any path is built. The refusal names the profile and
   path, never the file's contents. `dispatchToAgentChat` takes `profilesDir` to point it
   elsewhere. The broker re-reads the file after this check, so a write in between is still
   possible until agent-chat's surface lock closes that window.
+- `agentChatEnv()` is the env every agent-chat CLI call runs under. It forwards a non-empty
+  `AGENT_CHAT_HOME`, so the CLI reaches the broker whose profiles the guard read.
 - `dispatchToAgentChat` also takes `configDir`, passed as `--config-dir <path>` to run the
   agent on another Claude account.
 - `resumeAgent(bin, name, message, timeoutMs)` runs `agent-chat agent resume <name>

@@ -54,17 +54,14 @@ The key is `snapshotKey(command, args)`: the args as a daemon would receive them
 round-tripped; no args, `null`, and `{}` are the same), with every object's keys sorted.
 Failure envelopes are recorded too, so a replay fails the same way the daemon did.
 
-To export from a registry in process, pass a caller that wraps `invokeCommand`:
+To export from a registry in process, pass `inProcessCaller` from `@titan-design/registry`:
 
 ```ts
+import { EXIT, inProcessCaller } from "@titan-design/registry";
 import { exportSnapshot } from "@titan-design/rpc-client/node";
 
 await exportSnapshot("report/snapshot.json", {
-  call: async (name, args) => {
-    const cmd = registry.get(name);
-    if (!cmd) return errorEnvelope(`Unknown command: ${name}`, EXIT.USAGE);
-    return (await invokeCommand(cmd, args, createContext("export"), { invalidArgsCode: EXIT.DATAERR })).envelope;
-  },
+  call: inProcessCaller(registry, () => createContext("export"), { invalidArgsCode: EXIT.DATAERR }),
 }, { calls: [{ command: "task.list", args: { status: "open" } }], dataset });
 ```
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MERGE_GUARD_ROWS } from "./merge-facts.js";
-import { ESCALATIONS } from "./route-table.js";
+import { ESCALATIONS, SEAT_HELD_ROUNDS_WORDS } from "./route-table.js";
 import { closestUnmet, whyAsked } from "./why-asked.js";
 
 const GATES = "the authority policy did not allow an automated merge: MRG-AU gates merge by automation";
@@ -90,6 +90,9 @@ describe("whyAsked for Shepherd's own rows", () => {
     ["head-mismatch", "accidental"],
     ["files-unread", "accidental"],
     ["required-checks-unknown", "accidental"],
+    ["github-path", "accidental"],
+    ["ci-policy-weakened", "deliberate"],
+    ["ci-policy-malformed", "accidental"],
   ])("labels merge guard %s %s", (rowId, gateClass) => {
     expect(whyAsked({ table: "shepherd-merge-guard", rowId }, "x").gateClass).toBe(gateClass);
   });
@@ -99,6 +102,21 @@ describe("whyAsked for Shepherd's own rows", () => {
 
     expect(why.gateClass).toBe("accidental");
     expect(why.sentence).toContain(words);
+  });
+
+  it("names seat-held rounds for a failed-rounds gate the seat's hold opened", () => {
+    const why = whyAsked({ table: "shepherd-route", rowId: "failed-rounds" }, `${SEAT_HELD_ROUNDS_WORDS}: at abc, the last with seat check: WAIT`);
+
+    expect(why.gateClass).toBe("accidental");
+    expect(why.ruleId).toBe("shepherd-route/failed-rounds");
+    expect(why.sentence).toContain("because the seat held Shepherd's own MERGE for 6 rounds at one head");
+    expect(why.sentence).not.toContain("review rounds failed");
+  });
+
+  it("keeps the review-rounds words for an ordinary failed-rounds gate", () => {
+    const why = whyAsked({ table: "shepherd-route", rowId: "failed-rounds" }, `${ESCALATIONS["failed-rounds"]}: the last at abc ended with no reviewer verdict`);
+
+    expect(why.sentence).toContain("3 review rounds failed");
   });
 
   it.each([

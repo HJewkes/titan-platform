@@ -40,6 +40,8 @@ export interface StepResult<TData extends Record<string, unknown> = Record<strin
   data?: TData;
   /** Summed over every attempt, retries included, when the runner reported cost; `mapItems` sums it against its budget. */
   usage?: StepUsage;
+  /** The dispatch attempt that produced this result, so a trace can name it; absent reads as 0. */
+  attempt?: number;
 }
 
 export interface ActiveStepBase {
@@ -47,6 +49,10 @@ export interface ActiveStepBase {
   iterKey: string;
   attempt: number;
   startedAt: string;
+  /** When this step's first attempt started, kept across retries and restarts; absent on older rows, read `startedAt`. */
+  firstStartedAt?: string;
+  /** How many restarts re-dispatched this step; they raise `attempt` but spend no retry budget. Absent reads as 0. */
+  restarts?: number;
   runnerRef?: string;
   /** Summed cost of this step's earlier failed attempts, so a resumed run still reports every attempt once. */
   priorUsage?: StepUsage;
@@ -189,6 +195,9 @@ export interface RecoverableStepDispatchInput extends StepRunInput {
   executionId: string;
   requestKey: string;
   attempt: number;
+  /** When the step's first attempt started, so a wait resumed after a restart can keep its original deadline. */
+  firstStartedAt: string;
+  restarts: number;
 }
 
 export interface StepDispatchAck {
@@ -232,6 +241,7 @@ export type WorkflowEvent =
   | { type: "step_complete"; runId: string; stepId: string; iteration: number; signal: string | null }
   | { type: "step_retry"; runId: string; stepId: string; attempt: number; error: string }
   | { type: "step_failed"; runId: string; stepId: string; error: string }
+  | { type: "step_abandoned"; runId: string; stepId: string; reason: string }
   | { type: "workflow_recovery_required"; runId: string; stepId: string; evidence: string; gateId?: string }
   | { type: "gate_opened"; runId: string; stepId: string; gateId: string; prompt: string; summary?: string }
   | { type: "workflow_complete"; runId: string }

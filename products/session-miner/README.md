@@ -99,6 +99,7 @@ it runs on the CLI, as the MCP tool `miner__insights__<question>`, and at
 | Q10 | `insights tool-adoption` | per flag or verb in the adoption registry, weekly uses of the new form against the old pipelines it replaces, flagged unadopted or unused two weeks after ship; an unshipped baseline counts the old pipelines alone | none |
 | Q11 | `insights probes` | one row per probe per local day: a named Q5 or Q6 measure against its target, HOLDING, REGRESSED or NO-DATA | `--probes <file>` (required, CLI only) |
 | Q12 | `insights data-quality` | faults to clear before any analysis, one row each with severity, evidence and a suggested task title: graph stale, transcripts discovered but not indexed, facet backlog, unpriced models, and with `--assignments` bad lines, unknown outcomes and agents with no session | `--max-lag <minutes>` (default 60), `--assignments <file>` (CLI only), `--known-outcome <word>` |
+| Q13 | `insights quality-guardrails` | review verdicts by the reviewer's context fill with changes-requested and verdict-error rates, and successor rework per role; with a before window, each row before and after with its change, after minus before | `--before-since <time>` and `--before-until <time>` (both or neither), `--boot-requests <n>` (default 30) |
 | Q14 | `insights seat-generations` | each agent that held a seat's name in the window, in start order, with its start, end, how it ended (`handoff`, `teleport`, `exit` or `open`) and its graph sessions, plus a ready `--session` argument string for the graph questions | `--seat <name>` (required), `--broker-log <file>` (CLI only) |
 
 Every question takes the same filters, which combine with AND: `--session <id>` and
@@ -142,6 +143,13 @@ before `--until`, not counting `resolution` rows, however long before `--since`;
 A prompt is skipped once its actor has an `agent_exited` or `agent_retired` row, or when the broker
 restarted after it and the actor never registered again. Each row cites its `broker.log:<line>` or `events#<id>`. Q8 is registered from
 `AGENT_CHAT_QUESTIONS`, because the shared tests run every other question against the graph.
+
+Q13 runs session-analytics' `reviewFillReport` and `successorReworkReport` over the window. With
+`--before-since` and `--before-until` it runs both again over the before window through
+`compareWindows`, and `comparison` pairs the rows by key with per-field deltas; it is null without
+them. A before window with one bound is a usage error, since it would compare against all history.
+Successor rework deltas are null when the graph holds no `file_read` signal. It refuses the session
+filters, because neither report is scoped by session. Q13 is registered from `GUARDRAIL_QUESTIONS`.
 
 Q14 resolves a seat to its generations through session-analytics' `seatGenerations`. It reads
 `agent_handoff` rows from the events table and spawn, exit and `teleport_completed` lines from the
@@ -246,6 +254,24 @@ args or a missing events db). A number matches within `tolerance` relative to th
 0.01 by default; strings, booleans and null match exactly. It exits non-zero and lists the
 failures when any citation is not ok. `--findings` is accepted only on the CLI.
 
+### The session-insights skill (TP-499)
+
+`skills/session-insights/` ships in the package. `SKILL.md` runs the insight loop in order:
+resolve the scope (Q14 for a seat since a time), clear Q12 data-quality faults (stopping on a
+stale graph), check prices with Q0 `--published` (stopping on any mismatch), run the questions
+as JSON, hand the JSON to a read-only analyst with `analyst-brief.md`, keep only the findings
+`verify-citations` passes, and file a task for any number the library cannot answer. A seat
+loads it from the installed package's `skills/session-insights/` or from a checkout.
+Step 2 also flags a file input written before `--until`, and step 7 scores each proposed lever on
+Q7's verdict-to-merge and open MERGE PRs (`--split-at`) and on `requestsPerFinished`.
+Each lever names Q13 `quality-guardrails` with `--before-since` and `--before-until` as its
+guardrail, so a proposal shows whether the lever cost review quality or successor rework.
+`src/session-insights-skill.test.ts` fails when the skill names an unregistered question, when
+the data-quality or price step moves after the questions, when step 7 drops a lever metric or
+the Q13 guardrail, when
+the brief's example stops parsing as `findingSchema` or still parses without its falsifier, or
+when the brief names an agent-chat command or tool.
+
 ## The playbook (TP-19)
 
 `playbook add` is the default path and costs nothing: the agent that just learned
@@ -289,9 +315,11 @@ The envelope carries paths and counts (groups, singletons, largest group, groups
 destination), never fact text, so MCP and HTTP callers see no memory bodies.
 `--skills-root` and `--out` are accepted only on the CLI. Neither command opens the graph.
 
-`--group-threshold` (default 0.12) is the topic Jaccard that links two facts. Grouping is
-single-link, so a lower value chains most facts into one group, and a higher one leaves
-most facts on their own. The default was measured on a real corpus of about 300 facts.
+`--group-threshold` (default 0.03, from `@titan-design/memory`) is the average topic
+similarity, a TF-IDF cosine, at which two groups merge. Grouping is average-linkage with a cap
+of 25 facts per group, so it does not chain unrelated facts together. A higher value gives more
+and smaller groups. On 2026-10-11 the default gave 51 groups, the largest of 22, on 303 real
+facts.
 
 `memory apply`, which acts on accepted groups, is the next slice.
 
@@ -382,6 +410,50 @@ printf 'ACTIVE_ROOT=<root>\nTITAN_MINER_GRAPH=<root>/.miner/graph.sqlite3\nTITAN
 install -m 644 -t ~/.config/systemd/user ~/projects/titan-platform/ops/systemd/session-miner-tool-gaps.service ~/projects/titan-platform/ops/systemd/session-miner-tool-gaps.timer
 systemctl --user daemon-reload
 systemctl --user enable --now session-miner-tool-gaps.timer
+```
+
+## Throughput (TP-2155)
+
+`titan-miner throughput table` fits `@titan-design/throughput`'s class table (kind x size band)
+over done tasks; `titan-miner throughput backtest` scores it at rolling origins. Both read done
+task YAML from `<TITAN_MINER_INITIATIVES_ROOT>/<initiative>/tasks/*.yml` (the root defaults to
+active-work's data root) for the initiatives in `TITAN_MINER_THROUGHPUT_INITIATIVES`, a comma
+list that defaults to the engineering initiatives. A task's kind comes from its `kind:<x>` tag.
+Files that fail pm's `TaskSchema` are counted as `unparsed`, not fatal.
+
+Task-linked sessions live in active-work's graph, so pass it. The graph is always opened
+read-only, the miner's own index included:
+
+```sh
+titan-miner --graph "<active-work root>/.miner/graph.sqlite3" throughput table
+titan-miner --graph "<active-work root>/.miner/graph.sqlite3" throughput backtest --weeks 4 --horizon 7
+```
+
+Output leads with the model hash and the watermark (miner `lastIndexedAt`, newest done task).
+`--json` returns the full class table or back-test result beside the same header fields.
+
+`titan-miner throughput pr-backfill` (TP-2162) caches each merged PR's head sha and changed
+files (paths and line counts, never diff text) in `<state>/pr-diffs.json`, mode 0600, through
+the shell's `gh` login. Cached refs are skipped, a 404 is cached as missing, and the run stops
+at `@titan-design/github`'s rate floor with its progress saved, so re-run it after the reset.
+`--dry-run` counts uncached PRs per repo without calling GitHub; `--since` and `--limit` narrow
+a run. It is CLI-only.
+
+```sh
+titan-miner --graph "<active-work root>/.miner/graph.sqlite3" throughput pr-backfill --dry-run
+```
+
+`titan-miner throughput review` (TP-2162) reads that cache into the rows and prints
+`@titan-design/throughput`'s review table: reviewer agent-hours, review rounds and post-PR
+wall hours, keyed on review-panel class x lead touch with back-off. Below the table it prints
+the rolling-origin ablation of that key against kind x size band, per target. The header adds
+cache coverage, which is rows with features over rows with a merged PR. Review rounds and post-PR
+hours need Shepherd's runs, passed as a file with `--shepherd-runs`. It takes the same fit and
+origin flags as `backtest`.
+
+```sh
+titan-factory shepherd stats --per-run --json > /tmp/shepherd-runs.json
+titan-miner --graph "<active-work root>/.miner/graph.sqlite3" throughput review --shepherd-runs /tmp/shepherd-runs.json
 ```
 
 ## Codex sessions

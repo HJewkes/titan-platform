@@ -1,17 +1,21 @@
 import type { SimpleCommand } from "../shell/commands.js";
 import { parseGit } from "../shell/git.js";
 import type { GitInvocation } from "../shell/git.js";
+import type { WordToken } from "../shell/lexer.js";
 import type { ClassifiedAction, ClassifyContext } from "../types.js";
 import { merge } from "./merge.js";
 import { hasFlag, readOptions, set } from "./options.js";
+import type { Options } from "./options.js";
 import { release } from "./release.js";
 
-export type PreferenceId = "R86" | "R50" | "R31" | "R127" | "R133" | "R64" | "R164";
+export type PreferenceId = "R86" | "R50" | "R31" | "R127" | "R133" | "R64" | "R164" | "R175";
 
 /** What a row needs that the command text does not carry. */
 export interface PreferenceContext {
   /** Whether the session is a seat, where every merge goes through `seat-merge`. */
   seat: boolean;
+  /** Whether the session works in an agent worktree, where CI runs the full suite on the PR. Default false. */
+  agentWorktree?: boolean;
 }
 
 export interface PreferenceHit {
@@ -131,6 +135,47 @@ function skipsHooks(cmd: SimpleCommand): boolean {
   return hasFlag(options, "--no-verify") || (inv.sub === "commit" && hasFlag(options, "-n"));
 }
 
+/** Pnpm, npm and vitest options that take a value, so `--project threads` is not read as a test path. */
+const SUITE_VALUES = set("--filter", "-F", "-C", "--dir", "--prefix", "--workspace", "--project", "-c", "--config", "--root", "--reporter", "-t", "--testNamePattern", "--shard", "--pool", "--environment", "--testTimeout", "--maxWorkers", "--outputFile");
+/** pnpm's own `-c` is `--shell-mode`, a switch, so `pnpm -c test` keeps `test` as its verb. */
+const PNPM_VALUES = new Set([...SUITE_VALUES].filter((flag) => flag !== "-c"));
+/** Options that already narrow the run to one package or the change set. */
+const SCOPED = ["--filter", "-F", "-C", "--dir", "--prefix", "--workspace", "--root", "--changed"];
+const SCRIPT_TEST = [["test"], ["t"], ["tst"], ["run", "test"], ["run-script", "test"]];
+/** Per runner, the positional words that run a whole suite when nothing follows them. */
+const SUITE_VERBS: Record<string, string[][]> = {
+  vitest: [[], ["run"], ["watch"], ["dev"]],
+  npx: [["vitest"], ["vitest", "run"], ["vitest", "watch"]],
+  npm: SCRIPT_TEST,
+  pnpm: [...SCRIPT_TEST, ["vitest"], ["vitest", "run"], ["vitest", "watch"], ["exec", "vitest"], ["exec", "vitest", "run"]],
+};
+
+const sameWords = (words: WordToken[], verb: string[]) => words.length === verb.length && verb.every((w, i) => words[i]?.value === w);
+
+/**
+ * pnpm and npm hand what follows `--` to the script, so its options still scope or widen the run.
+ * pnpm's own options precede its verb and are read with pnpm's value set; the rest belong to the script.
+ */
+function suiteOptions(cmd: SimpleCommand): Options {
+  const dash = cmd.args.findIndex((word) => word.value === "--");
+  const args = cmd.args.filter((_, i) => i !== dash);
+  if (cmd.name !== "pnpm") return readOptions(args, SUITE_VALUES);
+  const verb = readOptions(args, PNPM_VALUES).positionals[0];
+  if (!verb) return readOptions(args, PNPM_VALUES);
+  const at = args.indexOf(verb);
+  const head = readOptions(args.slice(0, at), PNPM_VALUES);
+  const tail = readOptions(args.slice(at + 1), SUITE_VALUES);
+  return { opts: [...head.opts, ...tail.opts], positionals: [verb, ...tail.positionals] };
+}
+
+/** A test run with no path argument or scoping option, so it runs every test file the config holds. */
+function runsWholeSuite(cmd: SimpleCommand): boolean {
+  const verbs = cmd.name === null ? undefined : SUITE_VERBS[cmd.name];
+  if (!verbs) return false;
+  const options = suiteOptions(cmd);
+  return !hasFlag(options, ...SCOPED) && verbs.some((verb) => sameWords(options.positionals, verb));
+}
+
 /** The preference rows, in report order. Each matcher reads only the parsed commands and `ctx`. */
 export const PREFERENCES: readonly PreferenceRow[] = [
   {
@@ -167,6 +212,11 @@ export const PREFERENCES: readonly PreferenceRow[] = [
     id: "R164",
     message: "Do not skip hooks; fix what the hook reported, then commit or push again.",
     matches: (commands) => commands.some(skipsHooks),
+  },
+  {
+    id: "R175",
+    message: "Run `pnpm test:affected` or named test files with a timeout, not the whole suite, because CI runs the full suite on the PR.",
+    matches: (commands, ctx) => ctx.agentWorktree === true && commands.some(runsWholeSuite),
   },
 ];
 

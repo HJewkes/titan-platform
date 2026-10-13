@@ -61,7 +61,7 @@ source answers for the same absolute paths a checkout would, so node ids do not 
 
 Each file and module node gets a `role` from `ALL_ROLES`. `generated` wins outright, then any
 glob in `.codewatch/roles.json`, then the built-in filename and directory heuristics: `test`,
-`story` (`*.stories.tsx` and kin, `*.mdx`), `fixture` (`fixtures/` and `*.fixture.*`),
+`story` (`*.stories.tsx` and kin, `*.mdx`), `fixture` (`fixtures/` `*.fixture.*` and `*.fixtures.*`),
 `script`, `entry`, `barrel`, `types`, `config`, else `source`. `lab` has no built-in rule; a repo assigns it with globs in
 `.gitattributes` syntax:
 
@@ -268,6 +268,10 @@ sit beside), and `symbol_pass_through` (1 when the body is one call that forward
 parameter in order). Per file: `except_count`, `except_density` (per 100 non-blank lines),
 and `swallowed_except` (handlers whose body is empty, `pass`, a bare return, or one logger
 call; a Python `except ImportError` or `ModuleNotFoundError` is exempt).
+Line density is written on every file too: `long_line_share_160` (share of non-blank lines
+over 160 characters), `chars_per_sloc` (characters per non-blank line, surrounding whitespace
+excluded) and `bool_ops_per_line` (`&&`, `||`, `??` and ternaries, or Python `and`, `or` and
+conditional expressions, per non-blank line, counted from the syntax tree).
 
 **Call-graph metrics** come from symbol `calls` edges, one per caller and callee, each
 carrying the literal arguments of every call site in `attrs.sites`. TypeScript resolves a
@@ -430,7 +434,9 @@ topUnusedExports(symbols, publicApiFiles(nodes, edges), ctx, 10);
 - `topUnusedExports` lists exported symbols whose `utilization` is 0 or absent. Exports in
   files a barrel re-exports one hop away carry `publicApi: true`, since an npm consumer may
   still use them, and rank after internal ones; ties break on `symbol_cognitive`. Each row also carries `loc`, the export's own
-  `symbol_loc` (0 when unmeasured).
+  `symbol_loc` (0 when unmeasured). A namespace import `import * as X` credits each export
+  its member accesses name (`X.a`, the type `X.T`, `X["a"]`). Using `X` whole (an argument,
+  a spread, `typeof X`) credits every export of an in-repo target.
 - `topDeadModules` lists files a forward walk over `imports` and `re-exports` never reaches,
   ranked by `loc`. Files with the role `test`, `fixture`, `story` or `lab` are never rows. The
   default view, `"all-consumers"`, starts the walk at files with the role `entry`, `barrel`,
@@ -763,6 +769,10 @@ DEFAULT_CHURN_WINDOWS; // [30, 90, 180]
 `computeTestCoverageOwnership` needs and what saves a caller a second git pass.
 `resolveChurnWindows` and `computeRecencyWindows` are exported beside them. Node ids are the
 history engine's repo-relative paths, so `nodes` and `repoRoot` must share a root.
+
+`revisionLineSource(repoRoot, rev)` is an evidence `LineSource` over the blobs of commit
+`rev`, never the working tree. `rev` must be a full 40-hex commit id; a ref name throws. A
+path that is not a blob at `rev` reads as unreadable.
 
 Change coupling is not stored. It is computed on demand from `loadChurnEntries`, as
 codewatch's `graph coupled` command did.

@@ -1,7 +1,7 @@
 # titan-console
 
-One read-only console over three local sources: the active-work daemon, the agent-chat broker
-and the session graph. It is one app shell built from `@titan-design/react-ui`, and one
+One read-only console over four local sources: the active-work daemon, the agent-chat broker,
+the session graph and titan-factory's `needs.list`. It is one app shell built from `@titan-design/react-ui`, and one
 loopback daemon built from `@titan-design/daemon` and `@titan-design/registry`. The browser
 talks only to that daemon, through `@titan-design/react-app` hooks typed from the daemon's own
 command definitions. The app is private and publishes nothing.
@@ -46,6 +46,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_STATE` | `~/.local/state/titan-console` | Holds the daemon's pid file; a second console over the same directory is refused |
 | `TITAN_CONSOLE_ACTIVE_WORK_PORT` | `7400` | Loopback port of the active-work daemon |
 | `TITAN_CONSOLE_AGENT_CHAT_PORT` | `7600` | Loopback port of the agent-chat broker |
+| `TITAN_CONSOLE_FACTORY_PORT` | `7410` | Loopback port of `titan-factory serve`, whose `needs.list` `approvals.flow` reads with no token, only the `X-Titan-Client` header. Refused if it equals the console's own port |
 | `TITAN_CONSOLE_AGENT_CHAT_TOKEN` | `$AGENT_CHAT_HOME/ui.token`, else `~/.agent-chat/ui.token` | The broker's 0600 token file, read on every agents call and refused (exit 78) if group or others have any access |
 | `TITAN_CONSOLE_EVENTS_DB` | `$AGENT_CHAT_HOME/events.db`, else `~/.agent-chat/events.db` | agent-chat's event log, opened read-only by `agents.messages`; when it will not open, that command falls back to the broker's history window |
 | `TITAN_CONSOLE_SEATS` | none | `seat=prefix` pairs, comma separated; an agent named `<prefix>-...` belongs to that seat |
@@ -57,7 +58,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_TOKEN` | `$TITAN_CONSOLE_STATE/lan.token` | The LAN secret, created at 0600 on first use; refused if it is group- or world-readable, a symlink, short or someone else's |
 | `TITAN_CONSOLE_OWNER_WRITES` | `0` | `1` lets owner-write commands run on the LAN (see "Who may run a command"). Turning it on is an owner step. Any value but `0` or `1` is refused |
 | `TITAN_CONSOLE_INBOX_DIR` | `$TITAN_CONSOLE_STATE/inbox/deposits` | The owner-inbox spool `inbox.deposit` files into, created 0700 on the first deposit |
-| `TITAN_CONSOLE_ROUNDS_DIR` | `$TITAN_CONSOLE_STATE/rounds` | Review rounds, one `<round-id>/round.json` each, read by `rounds.list` and `rounds.get`. `fixtures/rounds` holds synthetic ones for a browser check |
+| `TITAN_CONSOLE_ROUNDS_DIR` | `$TITAN_CONSOLE_STATE/rounds` | Review rounds, one `<round-id>/round.json` each, read by `rounds.list`, `rounds.get` and `approvals.flow`. `fixtures/rounds` holds synthetic ones for a browser check |
 
 The active-work root is `ACTIVE_ROOT` when set. Otherwise it is the data directory
 active-work's own CLI resolves through `env-paths`: the platform's application data
@@ -97,6 +98,13 @@ titan-console token rotate   # rewrites lan.token at 0600; every session and lin
 - **Logout** is `POST /auth/logout` with a JSON body. It clears that browser's cookie only;
   a copied cookie stays valid until a rotation.
 
+The console is the single owner origin. Shepherd (titan-factory on `TITAN_CONSOLE_FACTORY_PORT`)
+and the review rounds are reached from other devices only through this login: the console
+proxies three Shepherd reads, `shepherd.list`, `shepherd.timeline` and `shepherd.waiting`, to
+`127.0.0.1` server-side and no Shepherd write, and serves the rounds pages itself. The factory
+stays loopback-only with its own Host and Origin guards. There is no `tailscale serve` path
+router in front of the backends, and Funnel is never used.
+
 Nothing is exposed until the service unit sets `TITAN_CONSOLE_HOST`; installing that unit is an
 owner step. The unit and the tailscale certificate, install, login, renewal, rotate and rollback
 commands are in [docs/lan.md](docs/lan.md).
@@ -118,8 +126,9 @@ commands are in [docs/lan.md](docs/lan.md).
 | `POST /rpc/work.notes` | Notes and top-level sources across every initiative, newest change first, each with its `note:<slug>/<file>` or `source:<slug>/<path>` ref |
 | `POST /rpc/work.record` | `{ ref }` in; that note or source with its markdown body and `truncated` when active-work's read cap cut it. A ref with a `..` segment is refused (65) and a missing file is not found (66) |
 | `POST /rpc/work.search` | `{ q }` in; active-work's `search` hits by ref, and the retrievers that failed under `degraded` |
-| `POST /rpc/rounds.list` | Every round in the rounds dir, newest first, `open` or `sent` (a `feedback.json` sits beside it). A manifest that fails `RoundSchema` from `@titan-design/review-schema`, round@1 included, is listed with the schema's reason. Symlinked round directories are skipped |
+| `POST /rpc/rounds.list` | Every round in the rounds dir, newest first, `open` or `sent` (a `feedback.json` sits beside it), plus `dir`, the rounds dir the server reads. A manifest that fails `RoundSchema` from `@titan-design/review-schema`, round@1 included, is listed with the schema's reason. Symlinked round directories are skipped |
 | `POST /rpc/rounds.get` | `{ id }` in; that round's manifest. While an `after-answer` round is unsent, every question's recommendation is stripped. A round with frames is flagged `design`. `round.json` is read without following symlinks and only up to 1 MiB; an unknown or unsafe id is not found (66) |
+| `POST /rpc/approvals.flow` | The owner's one merged queue: `{ flow, gaps, fyiCount, readAt }` (see "The approvals flow") |
 | `POST /rpc/inbox.deposit` | An `ownerItemDeposit` in; `{ id, created }` out. The one write, a `deposit` (see "Owner inbox deposits") |
 | `GET /events` | The daemon package's SSE stream, carrying the upstream events relay (see "Live updates"). At most 64 browsers at once (one more gets 503); a browser 256 frames behind is disconnected and redials |
 | `GET /` and any client route | The built app, or a "not built" page until `build` has run |
@@ -131,8 +140,8 @@ requests with one `gh` call, cached for a minute. A failed GitHub read is listed
 
 Three rules hold for every later slice.
 
-- **Loopback HTTP only.** The console imports no other product's source. It reaches the two
-  daemons at `127.0.0.1:<port>`; only the port is configurable.
+- **Loopback HTTP only.** The console imports no other product's source. It reaches the
+  active-work daemon, the broker and the factory at `127.0.0.1:<port>`; only the port is configurable.
 - **It starts nothing.** A probe is one `GET /health` with a one second timeout. An upstream
   that does not answer is reported as unreachable, and the console never spawns it.
 - **Read-only, apart from deposits.** The one write is `inbox.deposit`, which files an item but
@@ -234,6 +243,28 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   deposit still cannot answer or resolve anything, so this costs inbox noise, not owner
   authority.
 
+## The approvals flow
+
+`approvals.flow` (`server/approvals.ts`) is a read. It merges three legs through
+`@titan-design/owner-queue`'s `consolidate` and returns `{ flow, gaps, fyiCount, readAt }`:
+
+- **Factory.** `server/factory.ts` posts `needs.list` to `127.0.0.1:$TITAN_CONSOLE_FACTORY_PORT`
+  with a ten second timeout: agent-chat asks, hitl gates, Morning items and needs-decision tasks.
+  An item that fails `ownerItemSchema` is a gap line naming its id; the rest are kept. Items whose
+  first source is `deposit` are dropped, because the console reads its own spool.
+- **Spool.** `server/approval-items.ts` reads `TITAN_CONSOLE_INBOX_DIR`; a deposit with an answer
+  file beside it counts as answered. A deposit's `gate:` and `run:` keys are removed, so an
+  agent-written deposit never takes a hitl gate's place.
+- **Rounds.** An unsent round gives one open item per question; a round with a valid
+  `feedback.json` gives answered items instead, never both. A missing rounds dir is no rounds.
+
+Each leg catches its own failure into a `gaps` line prefixed `factory:`, `spool:` or `rounds:`, so a
+dead source never reads as an empty queue. `lens: fyi` items are counted in `fyiCount`, not
+ordered. An unanswered after-answer question's recommendation is removed from `order`,
+`withdrawn` and `dropped`, as `rounds.get` does. A PR group's `shipBlockedBy` lists open change
+requests (free text, or a pick other than the implemented one); an unanswered question never
+blocks. hitl gates carry no `pr:` key yet (TP-2053), so a gate sits in a topic group.
+
 ## active-work reads
 
 `server/active-work.ts` is the only code that calls the active-work daemon. It posts to
@@ -284,7 +315,7 @@ Hash routes, because a page opened from disk has no server to answer a pushed pa
 | `#/agents`, `#/agents/<name>` | Agents | Roster, spawn tree and message feed, and one agent | TP-864a, TP-865a |
 | `#/knowledge` | Notes | Browse tab: notes and sources in one table, filtered by `initiative`, `kind` and `since` in the query string. Search tab: hits by ref for `?tab=search&q=<q>`. The Graph tab is TP-1064 | TP-869 |
 | `#/knowledge/<ref>` | Notes | One note or source as prose, with a link to its initiative | TP-869 |
-| `#/rounds`, `#/rounds/<id>` | Rounds | Open and sent review rounds, and one round's questions with keys 1-9 choosing an option. Picks stay in the page; a design round points to the harness | TP-1987 |
+| `#/rounds`, `#/rounds/<id>` | Rounds | Open and sent review rounds, and one round's questions with keys 1-9 choosing an option. Picks stay in the page; a design round points to the harness. With no rounds the page names the rounds dir and `titan-console rounds import <round-dir>` | TP-1987 |
 
 Any route keeps its query string (`#/tasks?task=<id>`, `#/knowledge/<ref>?tab=graph`) in `Route.query`.
 A knowledge ref holds `:` and `/`, so `href` encodes the whole ref as one segment. An unknown view,
@@ -328,8 +359,9 @@ existing piece, not worked around with local styles.
 ```
 server/   config.ts (ports and paths), paths.ts (the built page and export locations),
           upstreams.ts (the three probes), active-work.ts (the read-only client), broker.ts (the
-          read-only agent-chat broker client), work.ts (the work.* read models), agents.ts (the
-          agents.* commands), commands.ts (the command list and `ConsoleCommands`), registry.ts,
+          read-only agent-chat broker client), factory.ts (the factory's needs.list client),
+          approval-items.ts (spool and round queue items), approvals.ts (approvals.flow), work.ts
+          (the work.* read models), agents.ts (the agents.* commands), commands.ts (the command list and `ConsoleCommands`), registry.ts,
           daemon.ts, cli.ts (the bin), dev.ts, export.ts, fixtures.ts (synthetic answers),
           test-support.ts (a fake daemon for tests)
 src/      main.tsx, App.tsx (the shell), router.ts, refs.ts (refToRoute), views.tsx (the rail and

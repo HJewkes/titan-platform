@@ -147,13 +147,13 @@ function mergedPrs(runs: readonly WorkflowRun[]): MergedPr[] {
   return [...prs.values()].filter((entry) => entry.merged).map(({ merged: _, ...entry }) => entry);
 }
 
-interface RoundCost {
+export interface RoundCost {
   usd: number;
   tokens: CostTokens;
 }
 
 /** A request already counted anywhere in the report (a resumed session repeats its history) is skipped; an unpriced model voids the round. */
-function priceRound(requests: readonly SessionRequest[], seen: Set<string>): RoundCost | { reason: string } {
+export function priceRound(requests: readonly SessionRequest[], seen: Set<string>): RoundCost | { reason: string } {
   const cost: RoundCost = { usd: 0, tokens: emptyTokens() };
   const fresh = [...new Map(requests.map((request) => [request.responseId, request])).values()].filter((request) => !seen.has(request.responseId));
   for (const { model, at, tokens } of fresh) {

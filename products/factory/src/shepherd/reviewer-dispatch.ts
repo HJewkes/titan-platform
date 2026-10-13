@@ -1,14 +1,14 @@
 import { statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
-import { BrokerUnavailableError, DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
+import { BrokerUnavailableError, DispatchError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
 import { agentChatAgents } from "./agents.js";
 import { agentChatRoster, type RosterReader } from "./roster.js";
 import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewerAgent, type ReviewerDispatch, type ReviewTarget } from "./review.js";
 import { reviewerRoleFor, type ReviewerRoles } from "./reviewer-roles.js";
 import { toPresence } from "./presence.js";
 import { HOME_PREFIXES } from "./seats.js";
-import { ReviewerMachineHold, ReviewerSpawnQueued } from "./review-wait.js";
+import { ReviewerAskTimedOut, ReviewerMachineHold, ReviewerSpawnQueued } from "./review-wait.js";
 import { SpawnDeferred, type ReviewAsk, type SpawnGate } from "./spawn-gate.js";
 
 export const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
@@ -92,12 +92,16 @@ function busyReason(message: string): { reason: string; code?: string } | undefi
   return trailer ? { reason: `${reason.replace(REFUSAL_PREFIX, "")} (${code})`, code } : undefined;
 }
 
-/** Only an unreachable broker or a refusal that clears with time is safe to ask again; every other failure, a timeout included, stays a refusal. */
+/**
+ * Only an unreachable broker or a refusal that clears with time is safe to ask again. A timeout gets its own class, because
+ * the call may have landed: the review layer looks for the reviewer before asking again. Every other failure stays a refusal.
+ */
 async function askBroker<T>(ask: () => T | Promise<T>, onMachineHold?: AgentChatReviewerDispatchOptions["onMachineHold"]): Promise<T> {
   try {
     return await ask();
   } catch (error) {
     if (error instanceof BrokerUnavailableError) throw new ReviewerBrokerDown(error.message, { cause: error });
+    if (error instanceof DispatchTimeoutError) throw new ReviewerAskTimedOut(error.message, { cause: error });
     if (error instanceof SpawnDeferred) throw new ReviewerSpawnQueued(`spawn gate: ${error.message}`, { cause: error });
     const busy = error instanceof DispatchError ? busyReason(error.message) : undefined;
     if (busy?.code === MACHINE_HOLD_CODE) {
@@ -151,10 +155,29 @@ function holdsLiveSession(row: ReviewerRosterRow, now: number): boolean {
  * `firstSeen` remembers earlier sightings and forgets reviewers that no longer run.
  */
 export function runningReviewStarts(rows: readonly ReviewerRosterRow[], firstSeen: Map<string, number>, now: number): number[] {
-  const running = rows.filter((row) => REVIEWER_NAME.test(row.name) && holdsLiveSession(row, now));
-  const names = new Set(running.map((row) => row.name));
+  const running = runningReviewers(rows, now);
+  const names = new Set(running);
   for (const name of firstSeen.keys()) if (!names.has(name)) firstSeen.delete(name);
-  return running.map((row) => firstSeen.get(row.name) ?? (firstSeen.set(row.name, now), now));
+  return running.map((name) => firstSeen.get(name) ?? (firstSeen.set(name, now), now));
+}
+
+/** The names of the `rv-` rows that hold a live session. */
+function runningReviewers(rows: readonly ReviewerRosterRow[], now: number): string[] {
+  return rows.filter((row) => REVIEWER_NAME.test(row.name) && holdsLiveSession(row, now)).map((row) => row.name);
+}
+
+/** Reads the roster for the gate and tells it what was read, or why nothing was, so `shepherd status` never shows an unread roster as 0. */
+async function readRunningReviews(roster: RosterReader, gate: SpawnGate, firstSeen: Map<string, number>): Promise<number[]> {
+  let rows: ReviewerRosterRow[];
+  try {
+    rows = (await roster.rows()).map(rosterRow);
+  } catch (error) {
+    gate.noteReviewers({ rosterError: error instanceof Error ? error.message : String(error) });
+    throw error;
+  }
+  const now = Date.now();
+  gate.noteReviewers({ running: runningReviewers(rows, now) });
+  return runningReviewStarts(rows, firstSeen, now);
 }
 
 /** A resume names only the reviewer, so its PR is known only when this process spawned it. */
@@ -167,7 +190,7 @@ export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOpti
   const { agentChatBin, roles, cwdFor, configDir } = options;
   const roster = options.roster ?? agentChatRoster(agentChatBin, { timeoutMs: options.rosterTimeoutMs ?? DEFAULT_ROSTER_TIMEOUT_MS });
   const firstSeen = new Map<string, number>();
-  const runningReviews = async () => runningReviewStarts((await roster.rows()).map(rosterRow), firstSeen, Date.now());
+  const runningReviews = async () => (options.gate ? readRunningReviews(roster, options.gate, firstSeen) : []);
   const spawnTimeoutMs = options.spawnTimeoutMs ?? DEFAULT_SPAWN_TIMEOUT_MS;
   const agents = agentChatAgents(agentChatBin, { configDir, timeoutMs: spawnTimeoutMs, roster, gate: options.gate });
   const targets = new Map<string, ReviewTarget>();
@@ -177,7 +200,7 @@ export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOpti
   };
   return {
     roster: () => askBroker(async () => (await roster.rows()).map(rosterRow)),
-    spawn: (name, brief, target, facts = {}) => askBroker(() => spawn(name, brief, target, reviewerRoleFor(facts, roles), facts.intentAt), options.onMachineHold),
+    spawn: (name, brief, target, facts = {}) => askBroker(() => spawn(name, brief, target, facts.profile ?? reviewerRoleFor(facts, roles), facts.intentAt), options.onMachineHold),
     resume: (name, brief) => askBroker(async () => agents.resume(name, brief, options.gate && (await runningReviews()), reviewAsk(targets.get(name), options.isFixer)), options.onMachineHold),
   };
 }

@@ -1,4 +1,5 @@
-import type { GitHubPort, RepoSlug } from "@titan-design/github";
+import type { GitHubPort, PullRequest, RepoSlug } from "@titan-design/github";
+import { OVERLAY_SHAPES } from "@titan-design/review-panel";
 import { z } from "zod";
 import { deadline, type Deadline } from "../workflows/deadline.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
@@ -50,10 +51,26 @@ export interface CleanupDeps {
   advisory?: (repo: RepoSlug) => boolean;
 }
 
+/** What the run's own merge step knew of the PR it merged; with it, cleanup reads no PR. */
+export interface MergedPr {
+  headRef: string;
+  headRepo: RepoSlug | null;
+  headSha: string;
+  mergeSha: string;
+}
+
 export interface CleanupInput {
   repo: RepoSlug;
   pr: number;
   runId: string;
+  /** Absent for a PR merged outside the run, or a step recorded before the field: each part then reads the PR. */
+  merged?: MergedPr;
+}
+
+type PrAfterMerge = Pick<PullRequest, "merged" | "headRef" | "headRepo" | "headSha" | "mergeSha">;
+
+async function prAfterMerge(port: GitHubPort, input: CleanupInput): Promise<PrAfterMerge> {
+  return input.merged === undefined ? port.getPr(input.repo, input.pr) : { merged: true, ...input.merged };
 }
 
 export const CleanupResult = z.looseObject({
@@ -92,7 +109,7 @@ export async function runCleanup(deps: CleanupDeps, input: CleanupInput, signal:
 /** The ref lives in the head repo, so a fork's same-named branch in the base repo is never touched; the port skips forks and the default branch. */
 async function deleteHead({ port, advisory }: CleanupDeps, input: CleanupInput): Promise<string> {
   if (advisory?.(input.repo)) return "advisory";
-  const pr = await port.getPr(input.repo, input.pr);
+  const pr = await prAfterMerge(port, input);
   if (!pr.merged) return "not-merged";
   const result = await port.deleteRef(input.repo, { branch: pr.headRef, repo: pr.headRepo });
   return result.done ? "deleted" : result.skipped;
@@ -108,7 +125,7 @@ async function releaseLanded(deps: CleanupDeps, input: CleanupInput): Promise<vo
   const store = deps.store.get();
   const registration = store.byRun(input.runId);
   if (registration?.held !== true) return;
-  const pr = await deps.port.getPr(input.repo, input.pr);
+  const pr = await prAfterMerge(deps.port, input);
   if (!pr.merged) return;
   const by = { actor: CLEANUP_ACTOR, headSha: pr.headSha };
   if (registration.ownerHold) store.releaseOwnerHold(input.runId, by, `${OWNER_HOLD_BYPASSED} (${registration.ownerHold.reason})`);
@@ -130,7 +147,7 @@ function satisfiedReason(registration: Registration | undefined): string | undef
  */
 async function settleTask(deps: CleanupDeps, registration: Registration, input: CleanupInput, wait: Waiter): Promise<string> {
   const tasks = deps.cleanup!.tasks;
-  const pr = await retrying(`merge sha of #${input.pr}`, () => deps.port.getPr(input.repo, input.pr), wait);
+  const pr = await retrying(`merge sha of #${input.pr}`, () => prAfterMerge(deps.port, input), wait);
   const landing = `${input.repo}#${input.pr} at ${pr?.mergeSha ?? "unknown"}`;
   if (registration.slice === null) return closeTask(tasks, registration.task, `closed by Shepherd: ${landing} merged`, wait);
   if (pr === undefined) return "unread";
@@ -172,7 +189,8 @@ async function retrying<T>(what: string, attempt: () => Promise<T>, wait: Waiter
   }
 }
 
-/** Newest successor first, then the implementer, then this PR's fresh reviewers; the standing reviewer is never among them. */
+
+/** Newest successor first, then the implementer, then this PR's fresh reviewers and their panel members; the standing reviewer is never among them. */
 export function retireOrder(registration: Registration, lineageSuccessors: readonly string[], roster: readonly CleanupAgent[], input: CleanupInput): string[] {
   const successorName = new RegExp(`^${escapeRegExp(registration.implementer)}-s(\\d+)$`);
   const numbered = roster.flatMap((agent) => {
@@ -180,10 +198,20 @@ export function retireOrder(registration: Registration, lineageSuccessors: reado
     return k === undefined ? [] : [{ name: agent.name, k: Number(k) }];
   });
   const successors = [...[...lineageSuccessors].reverse(), ...numbered.sort((a, b) => b.k - a.k).map((agent) => agent.name)];
-  const reviewerName = new RegExp(`^${escapeRegExp(freshReviewerBase(input.repo, input.pr))}(-\\d+)?$`);
-  const reviewers = roster.map((agent) => agent.name).filter((name) => reviewerName.test(name));
+  const reviewers = roster.map((agent) => agent.name).filter(isOwnReviewer(input.repo, input.pr));
   const standing = registration.policy.reviewer;
   return [...new Set([...successors, registration.implementer, ...reviewers])].filter((name) => name !== standing);
+}
+
+const MEMBER_SUFFIX = `(?:-(?:${OVERLAY_SHAPES.join("|")})(?:-\\d+)?)?`;
+
+/**
+ * Shepherd's own reviewers of one PR: its fresh reviewers, and the panel members named after one of them or after the PR's
+ * base. Park and cleanup both find them by this one test, so a new name form cannot reach only one of them.
+ */
+export function isOwnReviewer(repo: RepoSlug, pr: number): (name: string) => boolean {
+  const own = new RegExp(`^${escapeRegExp(freshReviewerBase(repo, pr))}(?:-\\d+)?${MEMBER_SUFFIX}$`);
+  return (name) => own.test(name);
 }
 
 /** The name `sh-review` gives the first fresh reviewer of a PR; later ones append `-<k>`. */

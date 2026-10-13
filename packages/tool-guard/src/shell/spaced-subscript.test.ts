@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { classify } from "../classify.js";
 import type { ClassifyContext } from "../types.js";
+import { ParseError } from "./lexer.js";
 
 const REPO = "/home/you/projects/app";
 
@@ -45,12 +46,12 @@ describe("a subscript assignment with blanks inside the brackets", () => {
     ["[[ ]] with ||", "[[ 1 || Y[ == [[ ]]; git push origin HEAD:main; echo ]=x"],
     ["(( )) with ||", "(( 1 || Y[ 1 )); git push origin HEAD:main; (( ]=1 ))"],
     ["a here-doc body", "cat <<E\nY[ \nE\ngit push origin HEAD:main; ]=x"],
-    ...["@", "!", "?", "*", "+"].map((op): [string, string] => [
-      `an extglob ${op}( pattern`,
-      `shopt -s extglob\necho ${op}(a|Y[ ); git push origin HEAD:main; ]=x`,
-    ]),
   ])("does not hide a push behind brackets with %s", (_how, command) => {
     expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  });
+
+  it.each(["@", "!", "?", "*", "+"])("does not hide a push behind brackets with an extglob %s( pattern: the line is refused", (op) => {
+    expect(() => spellings(`shopt -s extglob\necho ${op}(a|Y[ ); git push origin HEAD:main; ]=x`)).toThrow(ParseError);
   });
 
   it.each([

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { openFactoryHost } from "../host.js";
 import { factoryRoutes, factoryWorkflows } from "../workflows.js";
-import type { ShepherdServices } from "./commands.js";
+import type { ShepherdServices } from "./services.js";
 import { REVERTED_STEP, markRevertedRuns, revertOf, sweepReverts, type RevertDeps } from "./reverts.js";
 import { redAfterMerge } from "./stats-quality.js";
 

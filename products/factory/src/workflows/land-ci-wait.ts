@@ -1,8 +1,10 @@
-import { readCi, type CiInput, type CiSnapshot } from "./land-ci.js";
+import { readCi, type CiInput, type CiReadOptions, type CiSnapshot } from "./land-ci.js";
 import { CI_BACKLOG_CEILING_FACTOR, MISSING_CHECK_GRACE_MS, missingCheckGraceSpent, type FirstReads } from "./land-budget.js";
 import { rerunIfFlaky, type FlakyState } from "./land-flaky.js";
-import { deadline, type Deadline } from "./deadline.js";
+import { deadline, type Deadline, type DeadlineTiming } from "./deadline.js";
 import type { LandDeps, Timing } from "./land.js";
+import { requireRequiredChecks } from "../required-checks.js";
+import { noRunVerdict, type NoRunWatch } from "../shepherd/ci-norun.js";
 
 /** Writes go through the port, which re-reads the PR first; the snapshot is dropped once a write is through, so the next read sees it. */
 export async function afterWrite<T>(deps: LandDeps, input: { repo: string }, write: Promise<T>): Promise<T> {
@@ -20,22 +22,30 @@ async function rerunWithinDeadline(deps: LandDeps, input: CiInput, red: CiSnapsh
   return rerun;
 }
 
-/** One blocking step: the workflow retry loop has no backoff, so polling lives here. A failed read is polled again. */
-export async function waitForCi(deps: LandDeps, input: CiInput, timing: Timing, signal: AbortSignal, flaky: FlakyState, firstReads: FirstReads): Promise<CiSnapshot> {
-  const { port, snapshot: reads } = deps;
-  const clock = deadline(timing);
-  const startedAt = timing.now();
-  let backlog = false;
+/** One ci-wait's read options: its open-repo run sets and the grace a never-reported required check gets live across its polls. */
+function readOptions(deps: LandDeps, input: CiInput, timing: Timing, firstReads: FirstReads): CiReadOptions {
   const graceMs = deps.missingCheckGraceMs ?? MISSING_CHECK_GRACE_MS;
   const missingSettled = (headSha: string) => missingCheckGraceSpent(firstReads, `${input.repo}#${input.pr}@${headSha}`, timing.now(), graceMs);
+  const liveContexts = async (baseRef: string) => (await requireRequiredChecks(deps.port, input.repo, baseRef)).contexts;
+  return { missingSettled, openSeen: {}, liveContexts };
+}
+
+/** One blocking step: the workflow retry loop has no backoff, so polling lives here. A failed read is polled again. Both bounds run from `timing.startedAt` when given. */
+export async function waitForCi(deps: LandDeps, input: CiInput, timing: Timing & Pick<DeadlineTiming, "startedAt">, signal: AbortSignal, flaky: FlakyState, firstReads: FirstReads): Promise<CiSnapshot> {
+  const { port, snapshot: reads } = deps;
+  const clock = deadline(timing);
+  const startedAt = Math.min(timing.startedAt ?? Number.POSITIVE_INFINITY, timing.now());
+  let backlog = false;
   let last = "no read yet";
-  const openSeen = {};
+  const options = readOptions(deps, input, timing, firstReads);
+  const noRun: NoRunWatch = {};
   for (;;) {
     try {
-      const snapshot = await readCi(port, input, reads, { missingSettled, openSeen });
+      const snapshot = await readCi(port, input, reads, options);
       const readAt = timing.now();
       if (snapshot.verdict === "red" && (await rerunWithinDeadline(deps, input, snapshot, { timing, signal, flaky, clock }))) continue;
-      if (snapshot.verdict !== "pending") return { ...snapshot, readAt };
+      const done = snapshot.verdict === "pending" ? await noRunVerdict(port, input, snapshot, readAt, noRun) : snapshot;
+      if (done) return { ...done, readAt };
       last = `waiting on ${snapshot.waitingOn?.join(", ") || `mergeable_state ${snapshot.mergeableState}`}`;
       backlog = snapshot.backlog === true;
     } catch (error) {

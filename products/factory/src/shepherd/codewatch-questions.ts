@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { failureOf } from "./error-class.js";
-import { MAX_REVIEWER_QUESTIONS, reviewerBrief, type ReviewerBriefInput } from "@titan-design/review-panel";
+import { MAX_REVIEWER_QUESTIONS, reviewerBrief, shapeBrief, type OverlayShape, type ShapeBriefInput } from "@titan-design/review-panel";
 
 /** The part of a review target the report is looked up by. */
 interface CodewatchTarget {
@@ -88,13 +88,16 @@ export function briefQuestions(codewatch: readonly string[], bank: readonly stri
   return [...codewatch.slice(0, MAX_CODEWATCH_QUESTIONS).map((question) => `${UNTRUSTED} ${question}`), ...bank].slice(0, MAX_REVIEWER_QUESTIONS);
 }
 
-type BriefTarget = Omit<ReviewerBriefInput, "questions">;
+/** `shape` names a panel member other than correctness, whose overlay goes ahead of the base brief. */
+type BriefTarget = Omit<ShapeBriefInput, "questions"> & { shape?: OverlayShape };
 
 /** The reviewer brief with the codewatch questions ahead of the bank's, and the evidence the sh-review step records. */
 export async function reviewBrief(input: BriefTarget, codewatch?: CodewatchReader, bank?: (target: BriefTarget) => Promise<readonly string[]>): Promise<{ brief: string; codewatch?: CodewatchEvidence }> {
   const report = await codewatch?.(input);
   const questions = briefQuestions(report?.questions ?? [], (await bank?.(input)) ?? []);
-  return { brief: reviewerBrief({ ...input, questions }), ...(report && { codewatch: report.evidence }) };
+  const { shape, ...base } = input;
+  const brief = shape === undefined ? reviewerBrief({ ...base, questions }) : shapeBrief(shape, { ...base, questions });
+  return { brief, ...(report && { codewatch: report.evidence }) };
 }
 
 const GH_TIMEOUT_MS = 30_000;
