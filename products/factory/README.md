@@ -337,6 +337,14 @@ A source that fails becomes one Gaps line and the rest still render. An ask that
 same PR or run id as an earlier one is dropped, so a factory gate wins over a queue line
 about the same PR.
 
+"Decided for you" follows Needs you whenever agent-chat's ledger holds questions the decider
+answered in the window. Each line gives the question, the answer, the class, and, when agent-chat
+sends them, the confidence, the principle ids and how to reverse it. A decision still awaiting
+audit ends with its overrule, `agent-chat answer <id> "..."`. The section closes with the 7-day
+reversal rate per class. Decisions are notices, not asks: at most 5 are shown, and only as many as
+fit the 400 words left after the other sections. The rest count in the closing "and N more" line.
+An agent-chat too old to send the list leaves the section out.
+
 With `digest.push` set, each written slot is also pushed to an ntfy topic after the files are
 written: title `Digest <date> <HH>:00`, the first three headline lines as the message, and the full
 markdown attached (`PUT` with a `Filename:` header). If the server refuses the attachment, the push
@@ -480,7 +488,7 @@ in `$XDG_CONFIG_HOME/systemd/user/`, else `~/.config/systemd/user/`, and mirrors
 | Plist | Unit |
 | --- | --- |
 | `ProgramArguments` | `ExecStart=`, the same argv, quoted where an argument holds a space |
-| `KeepAlive` | `Type=simple`, `Restart=always`, `RestartSec=5` |
+| `KeepAlive` `SuccessfulExit` false, `ThrottleInterval` 60 | `Type=simple`, `Restart=on-failure`, `RestartSec=5` |
 | `RunAtLoad` | `WantedBy=default.target`, enabled by install |
 | `EnvironmentVariables` `PATH` | `Environment=PATH=...`, the same `servicePath` value, since a user manager starts jobs with its own minimal `PATH` |
 | `StandardOutPath`, `StandardErrorPath` | `StandardOutput=append:`, `StandardError=append:` on the same log files |
@@ -585,9 +593,12 @@ or unread main, record no step. A replay reuses the recorded step, and a service
 built from the merge sha spawns nothing, so the run resumed after the restart is a no-op.
 
 The plist names `dev.hjewkes.titan-factory`: the absolute node path, the built `dist/bin.js`
-and `serve`, `RunAtLoad` and `KeepAlive` true, and logs at
+and `serve`, `RunAtLoad` true, and logs at
 `$XDG_STATE_HOME/titan-factory/serve.{out,err}.log`. `ProcessType` is `Interactive`; a
-`Background` job is throttled by macOS.
+`Background` job is throttled by macOS. `KeepAlive` restarts serve only after a failed exit
+(`SuccessfulExit` false), at most once every 60 seconds (`ThrottleInterval`). A serve started
+beside a live factory, one whose `/health` pid matches the pid file, logs that and exits 0, so
+the job does not loop on it; any other refused start still fails and is restarted.
 
 launchd starts a job with `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, and serve runs `gh`,
 `agent-chat` and `claude` by bare name. So the plist sets `EnvironmentVariables` to one
