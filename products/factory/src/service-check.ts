@@ -1,15 +1,16 @@
 import type { Command } from "commander";
 import { parsePort } from "./cli-options.js";
-import { DIRTY_SUFFIX } from "./build-info.js";
+import { DIRTY_SUFFIX, PROBE_PENDING } from "./build-info.js";
 import { deployBlockOf, type DeployHealth } from "./deploy-health.js";
 import { FACTORY_PORT } from "./serve.js";
 import { serviceLabel, UNIT_NAME } from "./service.js";
-import { MANAGED_PLATFORMS, runServiceVerb, settledHealth, type ServiceIo, type ServicePorts } from "./service-control.js";
+import { MANAGED_PLATFORMS, runServiceVerb, type ServiceIo, type ServicePorts } from "./service-control.js";
+import { SERVICE_CHECK_HEALTH_TIMEOUT_MS } from "./service-ports.js";
 import { describeIndexLock, type IndexLock } from "./stale-lock.js";
 import { judgeTick, type TickStatusRead } from "./tick-status.js";
 
 /** The causes in the order `check` tests them; the first that holds is the one reported. */
-type Cause = "not loaded" | "stale pid" | "crash loop" | "stale build" | "GitHub down" | "stale index.lock" | "deploy stalled" | "tick failing" | "tick stale" | "no hub seat";
+type Cause = "not loaded" | "stale pid" | "crash loop" | "unresponsive" | "stale build" | "GitHub down" | "stale index.lock" | "deploy stalled" | "tick failing" | "tick stale" | "no hub seat";
 
 /** What `check` reads beyond `ServicePorts`; every one is read-only, so a fake never has to model a mutation. */
 export interface CheckPorts extends ServicePorts {
@@ -120,33 +121,69 @@ function verdict(cause: Cause | null, message: string, job: Job, health: Record<
 
 /** Never starts, stops or restarts the job: it reads launchctl or systemctl, ps, /health and the deploy checkout's commits only. */
 async function diagnoseService(ports: CheckPorts, port: number): Promise<CheckResult> {
+  const deadline = ports.now() + SERVICE_CHECK_BUDGET_MS - AFTER_PROBES_MS;
   const job = await readJob(ports);
   if (!job.loaded) return verdict("not loaded", `${jobName(job, ports)} is not loaded; run titan-factory service install`, job, null);
-  const { health, failedProbes } = await probeHealth(ports, job, port);
+  const probes = await probeHealth(ports, job, port, deadline);
+  const { health } = probes;
   const healthPid = typeof health?.pid === "number" ? health.pid : undefined;
   const stale = stalePid(ports, job, healthPid, port);
   if (stale) return verdict("stale pid", stale, job, health, { healthPid: healthPid ?? null });
   const answersFromJob = health?.ok === true && healthPid === job.pid;
   if (await isCrashLoop(ports, job, answersFromJob)) return crashLoop(job, jobName(job, ports), health);
-  if (!answersFromJob) return verdict("stale pid", unansweredWhy(job, port, failedProbes), job, health, { healthPid: healthPid ?? null });
+  if (!answersFromJob) return unanswered(job, port, probes, healthPid);
   const running = await judgeRunning(ports, job, health);
   if (!running.ok) return running;
   const judged = (await withDeploy(running, ports)) ?? withTick(running, ports);
   return judged.ok ? withHubSeat(judged, ports) : judged;
 }
 
+/** The whole check prints inside this, every probe included; agent-chat's reads of it wait 30 s (TP-2451). */
+export const SERVICE_CHECK_BUDGET_MS = 20_000;
+/** Kept back from the probes for the local reads after them: ps, the deploy checkout's git history and its index lock. */
+const AFTER_PROBES_MS = 2_000;
+/** A probe cut shorter than this would read a merely slow serve as silent, so the check stops probing instead. */
+const MIN_PROBE_MS = 1_000;
 /** One failed read is not an outage: serve can miss a single probe while up, so a live job pid gets a few more polls before the answer counts. */
 const EXTRA_PROBES = 2;
 const PROBE_GAP_MS = 1_500;
+/** serve reports `checking` until its first gh probe lands, within its 10 s timeout. */
+const SETTLE_POLL_MS = 250;
 
-async function probeHealth(ports: CheckPorts, job: Job, port: number): Promise<{ health: Record<string, unknown> | null; failedProbes: number }> {
-  let health = await settledHealth(ports, port);
-  let failedProbes = 0;
-  while (health?.ok !== true && ++failedProbes <= EXTRA_PROBES && job.pid !== undefined && ports.isAlive(job.pid)) {
-    await ports.sleep(PROBE_GAP_MS);
-    health = await settledHealth(ports, port);
+interface Probes {
+  health: Record<string, unknown> | null;
+  latenciesMs: number[];
+  /** Probes that got no usable answer; zero once one does. */
+  failed: number;
+  /** True when every probe gave no answer only because its timeout ran out, as a hung serve does; a refused connection returns at once. */
+  allTimedOut: boolean;
+}
+
+async function timedProbe(ports: CheckPorts, port: number, deadline: number): Promise<{ health: Record<string, unknown> | null; latencyMs: number; timedOut: boolean }> {
+  const timeoutMs = Math.max(MIN_PROBE_MS, Math.min(SERVICE_CHECK_HEALTH_TIMEOUT_MS, deadline - ports.now()));
+  const started = ports.now();
+  const health = await ports.health(port, timeoutMs);
+  const latencyMs = ports.now() - started;
+  return { health, latencyMs, timedOut: health === null && latencyMs >= timeoutMs };
+}
+
+/** Each probe's timeout is cut to what is left of the budget, and no probe starts once too little is left for it to mean anything. */
+async function probeHealth(ports: CheckPorts, job: Job, port: number, deadline: number): Promise<Probes> {
+  const probes: Probes = { health: null, latenciesMs: [], failed: 0, allTimedOut: true };
+  for (;;) {
+    const probe = await timedProbe(ports, port, deadline);
+    probes.health = probe.health;
+    probes.latenciesMs.push(probe.latencyMs);
+    probes.allTimedOut &&= probe.timedOut;
+    const answered = probe.health?.ok === true;
+    if (answered && probe.health?.github !== PROBE_PENDING) break;
+    if (!answered && (++probes.failed > EXTRA_PROBES || job.pid === undefined || !ports.isAlive(job.pid))) break;
+    const gap = answered ? SETTLE_POLL_MS : PROBE_GAP_MS;
+    if (deadline - ports.now() - gap < MIN_PROBE_MS) break;
+    await ports.sleep(gap);
   }
-  return { health, failedProbes: health?.ok === true ? 0 : failedProbes };
+  if (probes.health?.ok === true) probes.failed = 0;
+  return probes;
 }
 
 /** A stale lock comes first because it explains the refusals behind the deploy alarm. */
@@ -190,6 +227,16 @@ function stalePid(ports: CheckPorts, job: Job, healthPid: number | undefined, po
 }
 
 /** What is left once crash loop is ruled out: launchd or systemd has no process, or its process gives no usable /health answer. */
+function unanswered(job: Job, port: number, probes: Probes, healthPid: number | undefined): CheckResult {
+  const detail = { healthPid: healthPid ?? null, probeLatenciesMs: probes.latenciesMs.join(", ") };
+  if (job.pid !== undefined && probes.health === null && probes.allTimedOut) {
+    const seconds = probes.latenciesMs.map((ms) => `${(ms / 1000).toFixed(1)} s`).join(", ");
+    const message = `${job.manager} pid ${job.pid} is alive but every /health probe on port ${port} timed out (${seconds}); read serve.err.log in the service log directory, then run titan-factory service restart`;
+    return verdict("unresponsive", message, job, null, detail);
+  }
+  return verdict("stale pid", unansweredWhy(job, port, probes.failed), job, probes.health, detail);
+}
+
 const unansweredWhy = (job: Job, port: number, failedProbes: number): string => {
   const probes = failedProbes > 1 ? ` (${failedProbes} probes failed)` : "";
   return `${job.pid === undefined ? `${job.manager} holds no process` : `${job.manager} pid ${job.pid} does not answer /health on port ${port}${probes}`}; ${RESTART}`;
