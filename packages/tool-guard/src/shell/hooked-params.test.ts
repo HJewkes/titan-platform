@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import { arithmeticHooked } from "./arith-hooked.js";
 import { writesHookedParam } from "./hooked-params.js";
 import { tokenize } from "./lexer.js";
-import type { WordToken } from "./lexer.js";
+import type { RedirectToken, WordToken } from "./lexer.js";
 import { unwrap } from "./unwrap.js";
 
 const hooked = (line: string) => {
-  const words = tokenize(line).filter((t): t is WordToken => t.type === "word");
+  const tokens = tokenize(line);
+  const words = tokens.filter((t): t is WordToken => t.type === "word");
   const cmd = unwrap(words);
-  return cmd && writesHookedParam(cmd, words);
+  return cmd && writesHookedParam(cmd, words, tokens.filter((t): t is RedirectToken => t.type === "redirect"));
 };
 
 describe("a command that writes a parameter the shell later runs", () => {
@@ -352,6 +353,24 @@ describe("arithmetic that mentions a hooked parameter", () => {
     ["an env value", "env x='PS4=1' zsh", "PS4"],
     ["an integer declaration's value", "integer x='PS4=1'", "PS4"],
     ["a declare value", "declare x='MODULE_PATH=1'", "MODULE_PATH"],
+    ["unset of a subscripted name", "unset 'a[PS4=7]'", "PS4"],
+    ["a [[ -v test of a subscripted name", "[[ -v a[PS4=7] ]]", "PS4"],
+    ["a test -v of a subscripted name", "test -v 'a[PS4=7]'", "PS4"],
+    ["a [ -v test of a subscripted name", "[ -v 'a[PS4=7]' ]", "PS4"],
+    ["a bash substring of $@", ": ${@:PS4=7}", "PS4"],
+    ["a bash substring of $1", ": ${1:PS4=7}", "PS4"],
+    ["an array element's key", "b=([PS4=7]=x)", "PS4"],
+    ["an appended array element's key", "b+=([PS4=7]=x)", "PS4"],
+    ["a for list word", "for x in 'PS4=7'", "PS4"],
+    ["set -- of a word", "set -- 'PS4=7'", "PS4"],
+    ["a function argument", "f 'PS4=7'", "PS4"],
+    ["zsh print -v of a word", "print -v x 'PS4=7'", "PS4"],
+    ["zsh set -A of a word", "set -A b 'PS4=7'", "PS4"],
+    ["a herestring", "read x <<< 'PS4=7'", "PS4"],
+    ["zsh ||= in a value", "x='PS4||=7'", "PS4"],
+    ["zsh &&= in a value", "x='PS4&&=7'", "PS4"],
+    ["zsh ^^= in a value", "x='PS4^^=7'", "PS4"],
+    ["any literal word that assigns, an accepted over-read in a commit message", "git commit -m 'set PS4=1'", "PS4"],
   ])("counts as a hooked write: %s", (_how, line, name) => {
     expect(hooked(line)).toBe(name);
   });
@@ -372,7 +391,7 @@ describe("arithmetic that mentions a hooked parameter", () => {
     ["a numeric [[ test of another name", "[[ $n -eq 1 ]]"],
     ["a string [[ test naming PS4", "[[ $x == PS4 ]]"],
     ["a declare without -i", "declare x=i+1"],
-    ["single-quoted arithmetic in a commit message", "git commit -m 'set $(( PS4=1 ))'"],
+    ["single-quoted arithmetic reading PS4 in a commit message", "git commit -m 'show $(( PS4 + 1 ))'"],
     ["a literal subscript in an echo operand", "echo a[PS4]"],
     ["a longer name in let", "let PS44=1"],
     ["[ ] numeric test, which does not evaluate", "[ PS4=1 -eq 1 ]"],

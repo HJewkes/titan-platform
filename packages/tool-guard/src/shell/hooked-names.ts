@@ -3,8 +3,8 @@ export const HOOKED: ReadonlySet<string> = new Set(["PS4", "PROMPT4", "module_pa
 
 /** A hooked name as a whole identifier: `PS4` in `PS4=1` or `x+PS4`, not in `PS44` or `MY_PS4`. */
 const HOOKED_MENTION_RE = new RegExp(`(?<![A-Za-z0-9_])(?:${[...HOOKED].join("|")})(?![A-Za-z0-9_])`, "g");
-/** What makes a mention a write in math: an assignment operator, an increment, or a subscript, read as a write. */
-const WRITTEN_AFTER_AT_RE = /\s*(?:\[|(?:\*\*|<<|>>|[-+*/%&^|])?=(?!=)|\+\+|--)/y;
+/** What makes a mention a write in math: an assignment operator (zsh adds `&&=`, `||=`, `^^=`), an increment, or a subscript, read as a write. */
+const WRITTEN_AFTER_AT_RE = /\s*(?:\[|(?:\*\*|<<|>>|&&|\|\||\^\^|[-+*/%&^|])?=(?!=)|\+\+|--)/y;
 const WRITTEN_BEFORE_RE = /(?:\+\+|--)\s*$/;
 
 /** The first hooked name the text mentions at or after `from`. */

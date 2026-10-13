@@ -1,4 +1,4 @@
-import type { WordToken } from "./lexer.js";
+import type { RedirectToken, WordToken } from "./lexer.js";
 import type { Unwrapped } from "./unwrap.js";
 import { arithmeticHookedIn } from "./arith-hooked.js";
 import { assignOnExpand } from "./assign-on-expand.js";
@@ -75,15 +75,16 @@ const SUBSCRIPTED_RE = /^([A-Za-z_][A-Za-z0-9_]*)\[([A-Za-z0-9_]*)\]$/;
  * expands PS4, so no check of the value can be sound. `words` are the command's own words as written, prefix
  * assignments included: `Unwrapped.assigned` keeps no text for a dynamic value such as `X=${PS4:=x}`. A name
  * slot the shell computes (expanded, globbed, braced) or an option word the spec cannot read returns its text.
+ * `redirects` are its redirections: a herestring or heredoc body may hold text a later `(( x ))` reads as math.
  */
-export function writesHookedParam(cmd: Unwrapped, words: WordToken[]): string | null {
+export function writesHookedParam(cmd: Unwrapped, words: WordToken[], redirects: RedirectToken[] = []): string | null {
   const slots = nameSlots(cmd);
   return (
     assignedHooked(cmd) ??
     slotsHooked(slots) ??
     namerefHooked(cmd) ??
     expansionHooked([...words, ...cmd.args]) ??
-    arithmeticHookedIn(cmd, words, typeof slots === "string" ? [] : slots)
+    arithmeticHookedIn(cmd, words, typeof slots === "string" ? [] : slots, redirects)
   );
 }
 

@@ -1,16 +1,18 @@
 import { assignedInMath, mentionedIn } from "./hooked-names.js";
-import type { WordToken } from "./lexer.js";
+import type { RedirectToken, WordToken } from "./lexer.js";
 import type { Unwrapped } from "./unwrap.js";
 
 const NUMERIC_TEST_RE = /^-(?:eq|ne|lt|le|gt|ge)$/;
 /** zsh builtins whose arguments are math: `repeat 'PS4=1' true` and `return 'PS4=1'` assign PS4. */
 const MATH_ARG_BUILTINS = new Set(["repeat", "shift", "return", "exit", "break", "continue"]);
 const PRINT_FORMAT_RE = /^-[A-Za-z]*f/;
+const NON_EVALUATING = new Set(["[", "test", "select"]);
+const TEST_COMMANDS = new Set(["[", "test"]);
 const INTEGER_DECLARERS = new Set(["declare", "typeset", "local", "export", "readonly", "private"]);
 const INTEGER_OPTION_RE = /^-[A-Za-z0-9]*i/;
 const SUBSCRIPTED_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*\[.*\]\+?=/s;
 /** bash `${x:offset}`: a colon after the name that opens no `:-`, `:=`, `:+`, `:?` or zsh `:#` operator. */
-const SUBSTRING_AT_RE = /\$\{[!#]?[A-Za-z_][A-Za-z0-9_]*:(?![-=+?#])/y;
+const SUBSTRING_AT_RE = /\$\{[!#]?(?:[A-Za-z_][A-Za-z0-9_]*|[@*]|\d+):(?![-=+?#])/y;
 const NAME_CHAR_RE = /[A-Za-z0-9_]/;
 
 /**
@@ -26,12 +28,12 @@ export function arithmeticHooked(expression: string): string | null {
  * `declare -i` or zsh `integer`/`float` value, and the arithmetic inside a word: `$(( ))`, `$[ ]`, a subscript or a
  * bash substring offset in a dynamic word, and a subscript in an assignment word or a name slot.
  */
-export function arithmeticHookedIn(cmd: Unwrapped, words: WordToken[], slots: WordToken[]): string | null {
+export function arithmeticHookedIn(cmd: Unwrapped, words: WordToken[], slots: WordToken[], redirects: RedirectToken[]): string | null {
   for (const text of wholeExpressions(cmd)) {
     const hooked = mentionedIn(text);
     if (hooked !== null) return hooked;
   }
-  for (const text of laterExpressions(cmd)) {
+  for (const text of [...laterExpressions(cmd), ...literalTexts(cmd, words, redirects)]) {
     const hooked = assignedInMath(text);
     if (hooked !== null) return hooked;
   }
@@ -64,6 +66,20 @@ function laterExpressions({ name, args, assigned }: Unwrapped): string[] {
   if (declared) values.push(...args.flatMap((a) => (a.value.includes("=") ? [a.value.slice(a.value.indexOf("=") + 1)] : [])));
   const formatted = name === "printf" || (name === "print" && args.some((a) => PRINT_FORMAT_RE.test(a.value)));
   return formatted ? [...values, ...args.map((a) => a.value)] : values;
+}
+
+/**
+ * Every literal text the command hands on, which a shell may store and later read as math: `unset 'a[PS4=7]'`,
+ * `set -- 'PS4=7'`, `f 'PS4=7'`, an array element `[PS4=7]=x`, a herestring or heredoc body. `[`, `test` and
+ * `select` evaluate none of theirs, apart from the name a `-v` test reads, whose subscript is math.
+ */
+function literalTexts({ name, args }: Unwrapped, words: WordToken[], redirects: RedirectToken[]): string[] {
+  const inputs = redirects.flatMap((r) => [...(r.target && !r.target.dynamic ? [r.target.value] : []), ...(r.body === null ? [] : [r.body])]);
+  if (name !== null && NON_EVALUATING.has(name)) {
+    const tested = TEST_COMMANDS.has(name) ? args.filter((_, i) => args[i - 1]?.value === "-v") : [];
+    return [...tested.map((w) => w.value), ...inputs];
+  }
+  return [...[...words, ...args].filter((w) => !w.dynamic).map((w) => w.value), ...inputs];
 }
 
 /** Where the first arithmetic in the text starts, or -1. A literal word opens only at a subscript. */
