@@ -8,7 +8,7 @@ import type { Vars } from "./vars.js";
 const words = (src: string) => tokenize(src).filter((t): t is WordToken => t.type === "word");
 
 function read(src: string, values: Record<string, string | null>, home: string | null = null) {
-  return splitReading(words(src), new Map(Object.entries(values)) as Vars, home);
+  return splitReading(words(src), new Map(Object.entries(values)), home);
 }
 
 const values = (reading: WordToken[] | null) => reading?.map((w) => w.value) ?? null;
@@ -66,10 +66,20 @@ describe("splitReading does not split assignments", () => {
     ["a prefix assignment", "Y=$X git status"],
     ["an export argument", "export Y=$X"],
     ["a declare argument after an option", "declare -x Y=$X"],
-    ["a declaration behind command", "command export Y=$X"],
+    ["a declaration behind time", "time export Y=$X"],
     ["a declaration behind time -p", "time -p readonly Y=$X"],
   ])("%s", (_name, src) => {
     expect(read(src, { X: "a b" })).toBeNull();
+  });
+
+  it.each([
+    ["behind command", "command export Y=$X", ["command", "export", "Y=a", "b"]],
+    ["behind builtin", "builtin export Y=$X", ["builtin", "export", "Y=a", "b"]],
+    ["behind command -p", "command -p export Y=$X", ["command", "-p", "export", "Y=a", "b"]],
+    ["with an escaped name", "\\export Y=$X", ["export", "Y=a", "b"]],
+    ["with a quoted name", '"export" Y=$X', ["export", "Y=a", "b"]],
+  ])("splits a declaration's assignment argument %s, as bash does", (_name, src, expected) => {
+    expect(values(read(src, { X: "a b" }))).toEqual(expected);
   });
 
   it("still splits a declarer's non-assignment argument", () => {

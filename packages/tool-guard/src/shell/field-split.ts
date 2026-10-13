@@ -1,7 +1,7 @@
 import { isCaseUnsureLookup } from "./case-attrs.js";
 import type { CaseUnsure } from "./case-attrs.js";
 import type { WordToken } from "./tokens.js";
-import { ASSIGNMENT_RE, expandWord, lookup, PASS_THROUGH } from "./vars.js";
+import { ASSIGNMENT_RE, expandWord, lookup } from "./vars.js";
 import type { Vars } from "./vars.js";
 
 type Resolve = (name: string) => string | null | CaseUnsure;
@@ -22,24 +22,26 @@ export function splitReading(words: WordToken[], vars: Vars, home: string | null
   const resolve: Resolve = (name) => lookup(vars, home, name);
   const customIfs = vars.has("IFS") && lookup(vars, home, "IFS") !== DEFAULT_IFS;
   const kept = assignmentSlots(words);
-  let changed = false;
-  const reading = words.flatMap((word, i) => {
-    const fields = kept.has(i) ? null : splitWord(word, resolve, customIfs);
-    changed ||= fields !== null;
-    return fields ?? [expandWord(word, resolve)];
-  });
-  return changed ? reading : null;
+  const split = words.map((word, i) => (kept.has(i) ? null : splitWord(word, resolve, customIfs)));
+  if (split.every((fields) => fields === null)) return null;
+  return words.flatMap((word, i) => split[i] ?? [expandWord(word, resolve)]);
 }
 
-/** Indexes of the leading `NAME=value` words and of a declaration builtin's assignment-shaped arguments. */
+/**
+ * Indexes of the leading `NAME=value` words and of a declaration builtin's assignment-shaped arguments. Bash
+ * keeps a declaration's value whole only when the declarer is an unquoted word, bare or behind `time`;
+ * behind `command` or `builtin`, or spelled `\export`, its arguments are ordinary words and split.
+ */
 function assignmentSlots(words: WordToken[]): Set<number> {
   const slots = new Set<number>();
   let i = 0;
-  for (; i < words.length && ASSIGNMENT_RE.test((words[i] as WordToken).value); i++) slots.add(i);
-  while (i < words.length && (PASS_THROUGH.has((words[i] as WordToken).value) || (words[i] as WordToken).value === "-p")) i++;
+  while (i < words.length && ASSIGNMENT_RE.test(words[i]?.value ?? "")) slots.add(i++);
+  if (words[i]?.value === "time" && !words[i]?.quoted) i += words[i + 1]?.value === "-p" ? 2 : 1;
   const name = words[i];
-  if (name === undefined || name.dynamic || !DECLARERS.has(name.value)) return slots;
-  for (let j = i + 1; j < words.length; j++) if (ASSIGNMENT_RE.test((words[j] as WordToken).value)) slots.add(j);
+  if (name === undefined || name.dynamic || name.quoted || !DECLARERS.has(name.value)) return slots;
+  words.forEach((word, j) => {
+    if (j > i && ASSIGNMENT_RE.test(word.value)) slots.add(j);
+  });
   return slots;
 }
 
@@ -48,13 +50,13 @@ function splitWord(word: WordToken, resolve: Resolve, customIfs: boolean): WordT
   if (!word.dynamic || word.computed || !word.unquotedExpansion || word.refs.length === 0) return null;
   const found = word.refs.map((ref) => resolve(ref.name));
   const values = found.map((f) => (isCaseUnsureLookup(f) ? f.asWritten : f));
-  if (values.includes(null)) return null;
+  if (!values.every((v): v is string => v !== null)) return null;
   if (customIfs) return [word];
   const expanded = expandWord(word, resolve);
-  if (expanded.value !== "" && !values.some((v) => BLANK_RE.test(v as string))) return null;
+  if (expanded.value !== "" && !values.some((v) => BLANK_RE.test(v))) return null;
   if (word.quoted || word.spliced || found.some(isCaseUnsureLookup)) return [word];
   const typed = word.typed ?? word.value;
-  return fieldValues(word, values as string[]).map((value) => ({ ...expanded, value, dynamic: false, refs: [], typed }));
+  return fieldValues(word, values).map((value) => ({ ...expanded, value, dynamic: false, refs: [], typed }));
 }
 
 /** Literal text stays in its field; each value is split on blank runs, and empty fields are dropped. */
@@ -63,7 +65,7 @@ function fieldValues(word: WordToken, values: string[]): string[] {
   let current = "";
   let last = 0;
   for (const [i, ref] of word.refs.entries()) {
-    const [first = "", ...rest] = (values[i] as string).split(BLANKS_RE);
+    const [first = "", ...rest] = (values[i] ?? "").split(BLANKS_RE);
     current += word.value.slice(last, ref.start) + first;
     for (const part of rest) {
       if (current !== "") fields.push(current);
