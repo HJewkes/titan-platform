@@ -172,6 +172,11 @@ describe("a push destination known only at run time counts as an unknown protect
     ['git push origin "${X#a:b}"', "feat/x"],
     ['git push origin "$@"', "feat/x"],
     ['git push origin "${arr[@]}"', "feat/x"],
+    ['git push origin "HEAD:$(cmd)"', "feat/x"],
+    ['git push origin "HEAD:`cmd`"', "feat/x"],
+    ['git push origin "x:$(printf ma)in"', "feat/x"],
+    ['git push origin "x:`printf ma`in"', "feat/x"],
+    ['git push origin "$X":', "feat/x"],
   ])("denies %s on %s", (command, head) => {
     expect(bash(command, head)).toEqual(unknownPush);
   });
@@ -194,6 +199,7 @@ describe("a push destination known only at run time counts as an unknown protect
       expect.objectContaining({ spelling: "bash.merge.git-push-protected", subject: { branch: "main" } }),
     ]);
     expect(bash('git push origin "$X":feat')).toEqual([]);
+    expect(bash('git push origin "$(cmd)":feat')).toEqual([]);
   });
 
   it.each(["git push origin feat/x", "git push origin --tags", 'git push "$R" feat/x'])("leaves %s to other families", (command) => {

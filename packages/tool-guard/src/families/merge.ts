@@ -124,11 +124,14 @@ function literalSpec(word: WordToken): string | null {
   const typed = word.typed ?? word.value;
   const colon = refspecColon(typed);
   const tail = typed.slice(colon + 1);
-  if (colon >= 0 && PLAIN_REF_RE.test(tail)) return `:${tail}`;
+  if (colon >= 0 && PLAIN_REF_RE.test(tail) && !cutAfterColon(word)) return `:${tail}`;
   return isCaseUnsure(word) ? `:${UNKNOWN}` : null;
 }
 
-const PLAIN_REF_RE = /^[\w./@+-]*$/;
+const PLAIN_REF_RE = /^[\w./@+-]+$/;
+
+/** `value` leaves out a `$(...)` or backquote's text, so `"HEAD:$(cmd)"` reads `HEAD:` though the output is the destination. */
+const cutAfterColon = (word: WordToken) => (word.cuts ?? []).some((cut) => cut.at > refspecColon(word.value));
 
 /** The last colon outside any `${...}`, `$(...)` or backquote, where `${B:-main}` and `${B:0:4}` hide colons of their own. */
 function refspecColon(text: string): number {
