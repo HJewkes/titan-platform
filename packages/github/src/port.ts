@@ -6,6 +6,8 @@ import { wholeForcePushes, type ForcePush, type ForcePushPage } from "./force-pu
 import { memoizedLogin, upsertComment } from "./upsert-comment.js";
 import { pause } from "./write-read-back.js";
 import { merge, rerunFailed } from "./merge-writes.js";
+import { listPrFiles } from "./pr-files.js";
+export { FileListTruncatedError } from "./pr-files.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import { checkConclusion, checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha, checkShaPrefix, checkTimestamp } from "./validate.js";
@@ -357,23 +359,6 @@ async function setPrBase(wire: GitHubWire, repo: RepoSlug, number: number, base:
   if (skipped) return { done: false, skipped };
   await wire.setPrBase(repo, number, base);
   return { done: true };
-}
-
-/** The list came back shorter than the PR's own count, so a path may be missing. */
-export class FileListTruncatedError extends Error {
-  constructor(
-    readonly expected: number,
-    readonly received: number,
-  ) {
-    super(`GitHub listed ${received} of ${expected} changed files; the PR is past its list cap, so do not decide from a partial list`);
-    this.name = "FileListTruncatedError";
-  }
-}
-
-async function listPrFiles(wire: GitHubWire, repo: RepoSlug, number: number): Promise<PrFile[]> {
-  const { files, changedFiles } = await wire.listPrFiles(repo, number);
-  if (files.length < changedFiles) throw new FileListTruncatedError(changedFiles, files.length);
-  return files;
 }
 
 function closedSkip(pr: PullRequest): SkipReason | undefined {

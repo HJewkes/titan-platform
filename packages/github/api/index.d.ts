@@ -103,6 +103,13 @@ declare class ForcePushesTruncated extends Error {
     constructor();
 }
 
+/** The list came back shorter than the PR's own count, so a path may be missing. */
+declare class FileListTruncatedError extends Error {
+    readonly expected: number;
+    readonly received: number;
+    constructor(expected: number, received: number);
+}
+
 /**
  * The open PRs, or `notModified` when they are unchanged since the read that answered `etag`. Rows carry no `behind`
  * and an `unknown` mergeable state, like every list row, and a change to either does not change the ETag.
@@ -478,12 +485,6 @@ interface GitHubPortOptions {
 }
 /** Every argument is validated before any wire call, because each one becomes part of a `gh api` path. */
 declare function githubPort(wire: GitHubWire, options?: GitHubPortOptions): GitHubPort;
-/** The list came back shorter than the PR's own count, so a path may be missing. */
-declare class FileListTruncatedError extends Error {
-    readonly expected: number;
-    readonly received: number;
-    constructor(expected: number, received: number);
-}
 
 /** A write that kept answering a 5xx or an unreadable answer; `status` is the last answer's, so callers still classify it. */
 declare class WriteRetriesExhaustedError extends Error {
