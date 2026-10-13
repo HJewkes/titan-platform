@@ -434,7 +434,9 @@ topUnusedExports(symbols, publicApiFiles(nodes, edges), ctx, 10);
 - `topUnusedExports` lists exported symbols whose `utilization` is 0 or absent. Exports in
   files a barrel re-exports one hop away carry `publicApi: true`, since an npm consumer may
   still use them, and rank after internal ones; ties break on `symbol_cognitive`. Each row also carries `loc`, the export's own
-  `symbol_loc` (0 when unmeasured).
+  `symbol_loc` (0 when unmeasured). A namespace import `import * as X` credits each export
+  its member accesses name (`X.a`, the type `X.T`, `X["a"]`). Using `X` whole (an argument,
+  a spread, `typeof X`) credits every export of an in-repo target.
 - `topDeadModules` lists files a forward walk over `imports` and `re-exports` never reaches,
   ranked by `loc`. Files with the role `test`, `fixture`, `story` or `lab` are never rows. The
   default view, `"all-consumers"`, starts the walk at files with the role `entry`, `barrel`,

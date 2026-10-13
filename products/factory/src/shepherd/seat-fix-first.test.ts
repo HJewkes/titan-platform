@@ -115,7 +115,8 @@ describe("a seat check that cannot read the roster at every round", () => {
 
     expect(stepIds.filter((id) => id.startsWith(`sh-seat-recheck:${HELD}`)).length).toBeGreaterThanOrEqual(1);
     expect(stepIds).not.toContain(`sh-merge-evidence:${HELD}`);
-    expect(prompt).toContain("review rounds failed");
+    expect(prompt).toContain(`the seat held Shepherd's own MERGE for ${MAX_SEAT_HELD_ROUNDS} rounds at one head: at ${HELD}`);
+    expect(prompt).not.toContain("review rounds failed");
     expect(prompt).toContain("seat check: the roster could not be read: ReviewerAskTimedOut");
     expect(prompt).not.toContain("wait ran out");
     expect(merged).toBe(false);
@@ -176,8 +177,10 @@ describe("a seat whose WAIT over Shepherd's MERGE never changes", () => {
 
     expect(seat.spawns).toHaveLength(1);
     expect(stepIds).not.toContain(`sh-merge-evidence:${HELD}`);
-    expect(prompt).toContain("review rounds failed");
-    expect(prompt).toContain(`the seat held Shepherd's MERGE at ${HELD} for ${MAX_SEAT_HELD_ROUNDS} rounds, the last with seat check: ${SEAT.name} said WAIT at ${HELD}`);
+    expect(prompt).not.toContain("review rounds failed");
+    expect(prompt).toContain(
+      `Policy shepherd-route/failed-rounds: the seat held Shepherd's own MERGE for ${MAX_SEAT_HELD_ROUNDS} rounds at one head: at ${HELD}, the last with seat check: ${SEAT.name} said WAIT at ${HELD}`,
+    );
     expect(stepIds.filter((id) => id.startsWith(`sh-seat-recheck:${HELD}`))).toHaveLength(MAX_SEAT_HELD_ROUNDS - 1);
     expect(merged).toBe(false);
   });

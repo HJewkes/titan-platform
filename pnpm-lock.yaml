@@ -871,6 +871,9 @@ importers:
       '@titan-design/authority':
         specifier: workspace:^
         version: link:../../packages/authority
+      '@titan-design/coordinator':
+        specifier: workspace:^
+        version: link:../../packages/coordinator
       '@titan-design/daemon':
         specifier: workspace:^
         version: link:../../packages/daemon
