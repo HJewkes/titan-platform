@@ -324,6 +324,9 @@ importers:
       '@titan-design/embed':
         specifier: workspace:^
         version: link:../embed
+      '@titan-design/evidence':
+        specifier: workspace:^
+        version: link:../evidence
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../retrieval
