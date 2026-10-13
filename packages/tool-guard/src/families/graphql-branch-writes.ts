@@ -1,0 +1,93 @@
+import { isCaseUnsure } from "../shell/case-attrs.js";
+import type { WordToken } from "../shell/lexer.js";
+
+/** The GraphQL mutations that move a branch ref, as named in GitHub's schema. */
+const BRANCH_MUTATION_RE = /\b(updateRefs|updateRef|createRef|deleteRef|mergeBranch|createCommitOnBranch|enqueuePullRequest)\b/g;
+/** Their target is an opaque ref id or a PR's base, which the text cannot show. */
+const OPAQUE_TARGET = new Set(["updateRef", "deleteRef", "enqueuePullRequest"]);
+/** Their target branch is written in the text or a variable. */
+const NAMED_TARGET = new Set(["updateRefs", "createRef", "mergeBranch", "createCommitOnBranch"]);
+
+const ESCAPE_RE = /\\(?:u\{([0-9a-fA-F]+)\}|u([0-9a-fA-F]{4})|(["\\/bfnrt]))/g;
+const SIMPLE_ESCAPES: Record<string, string> = { '"': '"', "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
+
+export interface GraphqlBranchWrites {
+  /** The branch mutations the query texts name, in order of first appearance. */
+  mutations: string[];
+  /** Candidate branch names, with one `refs/` and one `heads/` stripped; the caller tests each for protection. */
+  branches: string[];
+  /** A mutation's target branch is known only at run time. */
+  unknown: boolean;
+}
+
+function decodeEscape(match: string, braced?: string, hex?: string, simple?: string): string {
+  if (simple !== undefined) return SIMPLE_ESCAPES[simple] ?? match;
+  const code = Number.parseInt((braced ?? hex) as string, 16);
+  return code <= 0x10ffff ? String.fromCodePoint(code) : match;
+}
+
+/**
+ * Decodes JSON and GraphQL string escapes until none is left. An `--input` body is JSON carrying GraphQL text, so a
+ * name can sit under two layers of escapes; decoding past what the server would only finds more, never less.
+ */
+export function decodeGraphqlEscapes(text: string): string {
+  let current = text;
+  for (;;) {
+    const next = current.replace(ESCAPE_RE, decodeEscape);
+    if (next === current) return current;
+    current = next;
+  }
+}
+
+const normalizeBranch = (name: string) => name.trim().replace(/^refs\//, "").replace(/^heads\//, "");
+
+/**
+ * Every run of text between two double quotes: each GraphQL or JSON string, `"""block"""` strings included, whatever
+ * comments or escaped quotes would do to a real lexer's alignment. The gaps between strings come along; they are harmless.
+ */
+const quotedRuns = (text: string) => text.split('"').slice(1, -1);
+
+/** Whether a field word's key, before its first `=`, is the literal `query`, which carries the texts themselves. */
+function isQueryField(word: WordToken): boolean {
+  if (!word.value.startsWith("query=")) return false;
+  const literalKey = (at: number) => at >= "query".length;
+  return word.refs.every((r) => literalKey(r.start)) && (word.cuts ?? []).every((c) => literalKey(c.at));
+}
+
+/** A variable whose value cannot be read: computed at run time, case-folded, or read from a file. */
+function unreadable(word: WordToken): boolean {
+  return word.dynamic || isCaseUnsure(word) || /^[^=]*=@/.test(word.value);
+}
+
+function fieldValue(word: WordToken): string {
+  const eq = word.value.indexOf("=");
+  return eq >= 0 ? word.value.slice(eq + 1) : word.value;
+}
+
+function mutationsIn(texts: string[]): string[] {
+  const found = texts.flatMap((t) => [...t.matchAll(BRANCH_MUTATION_RE)].map((m) => m[1] as string));
+  return [...new Set(found)];
+}
+
+function candidateBranches(texts: string[], variables: WordToken[]): string[] {
+  const values = variables.filter((w) => !unreadable(w)).map(fieldValue);
+  const names = [...texts.flatMap(quotedRuns), ...values, ...values.flatMap(quotedRuns)].map(normalizeBranch);
+  return [...new Set(names)].filter((n) => n !== "");
+}
+
+/**
+ * The GitHub GraphQL mutations in `texts` that move a branch ref, and the branches they may name. `texts` are the
+ * query texts a call sends; `fields` are its `-f`/`-F` words, `query=` among them. The reading is deliberately coarse:
+ * any quoted string or literal variable in a call naming `updateRefs`, `createRef`, `mergeBranch` or
+ * `createCommitOnBranch` counts as a branch it may write.
+ */
+export function graphqlBranchWrites(texts: string[], fields: WordToken[]): GraphqlBranchWrites {
+  const decoded = texts.map(decodeGraphqlEscapes);
+  const mutations = mutationsIn(decoded);
+  if (mutations.length === 0) return { mutations, branches: [], unknown: false };
+  const variables = fields.filter((w) => !isQueryField(w));
+  const byId = mutations.includes("createCommitOnBranch") && ![...decoded, ...fields.map((w) => w.value)].some((t) => /\bbranchName\b/.test(t));
+  const unknown = mutations.some((m) => OPAQUE_TARGET.has(m)) || byId || variables.some(unreadable);
+  const named = mutations.some((m) => NAMED_TARGET.has(m));
+  return { mutations, branches: named ? candidateBranches(decoded, variables) : [], unknown };
+}
