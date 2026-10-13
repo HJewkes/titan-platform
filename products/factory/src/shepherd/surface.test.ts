@@ -10,6 +10,8 @@ import { startFactoryServer, type FactoryServer } from "../serve.js";
 import { deployWatch, type DeployWatch } from "../deploy-watch.js";
 import { H1, REPO } from "../test-support/land.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
+import type { ReviewerReading } from "./review-slots.js";
+import { spawnGate } from "./spawn-gate.js";
 import { BRANCH, shepherdFixture, type ShepherdFixture } from "../test-support/shepherd.js";
 
 const SHEPHERD_TOOLS = ["register", "status", "list", "timeline", "hold", "release", "merge"].map((verb) => `shepherd__${verb}`);
@@ -132,16 +134,55 @@ describe("the deploy block on shepherd status", () => {
     const withDeploy = await cli(["shepherd", "status", "--json", "--deploy", "--port", port], fixture);
     const bare = await cli(["shepherd", "status", "--json", "--port", port], fixture);
 
-    expect(JSON.parse(withDeploy.out)).toMatchObject({ rows: [], deploy: { alarm: true, behind: 1, behindMinutes: 120, runningSha: SHA, consecutiveRefusals: 0, lastRefusal: null } });
+    expect(JSON.parse(withDeploy.out)).toMatchObject({ rows: [], reviewSlots: null, deploy: { alarm: true, behind: 1, behindMinutes: 120, runningSha: SHA, consecutiveRefusals: 0, lastRefusal: null } });
     expect(JSON.parse(bare.out)).toEqual([]);
   });
 
-  it("ends the human view with the deploy line", async () => {
+  it("ends the human view with the deploy line, then the reviewer slots", async () => {
     const { fixture, port } = await served();
 
     const status = await cli(["shepherd", "status", "--port", port], fixture);
 
-    expect(status.out.split("\n").filter(Boolean).at(-1)).toMatch(new RegExp(`^deploy: running ${SHA}, 1 asked deploy\\(s\\) not landed, .*ALARM`));
+    expect(status.out.split("\n").filter(Boolean).at(-1)).toBe("reviewers unread (no roster reading from titan-factory serve)");
+    expect(status.out.split("\n").filter(Boolean).at(-2)).toMatch(new RegExp(`^deploy: running ${SHA}, 1 asked deploy\\(s\\) not landed, .*ALARM`));
+  });
+});
+
+describe("the reviewer slots on shepherd status", () => {
+  const READ_AT = Date.parse("2026-10-13T12:00:00Z");
+
+  async function servedAfter(reading: ReviewerReading): Promise<{ fixture: ShepherdFixture; port: string }> {
+    const gate = spawnGate({ now: () => READ_AT, log: () => undefined });
+    gate.noteReviewers(reading);
+    const fixture = shepherdFixture({ frozen: true, spawnGate: gate });
+    const server = await serve(fixture);
+    return { fixture, port: String(server.port) };
+  }
+
+  it("rides along under --json --deploy as the gate's last reading of the running reviewers", async () => {
+    const { fixture, port } = await servedAfter({ running: ["rv-demo-1", "rv-demo-2"] });
+
+    const status = await cli(["shepherd", "status", "--json", "--deploy", "--port", port], fixture);
+
+    expect(JSON.parse(status.out)).toEqual({ rows: [], deploy: null, reviewSlots: { running: ["rv-demo-1", "rv-demo-2"], cap: 3, readAt: "2026-10-13T12:00:00.000Z" } });
+  });
+
+  it("ends the human view with reviewers R/cap", async () => {
+    const { fixture, port } = await servedAfter({ running: ["rv-demo-1", "rv-demo-2"] });
+
+    const status = await cli(["shepherd", "status", "--port", port], fixture);
+
+    expect(status.out.split("\n").filter(Boolean).at(-1)).toBe("reviewers 2/3 (read 2026-10-13T12:00:00.000Z)");
+  });
+
+  it("reports a roster timeout as unread with its error, with no running list, never as 0", async () => {
+    const { fixture, port } = await servedAfter({ rosterError: "agent ls timed out after 10000 ms" });
+
+    const json = await cli(["shepherd", "status", "--json", "--deploy", "--port", port], fixture);
+    const text = await cli(["shepherd", "status", "--port", port], fixture);
+
+    expect(JSON.parse(json.out).reviewSlots).toStrictEqual({ cap: 3, readAt: "2026-10-13T12:00:00.000Z", rosterError: "agent ls timed out after 10000 ms" });
+    expect(text.out.split("\n").filter(Boolean).at(-1)).toBe("reviewers unread (agent ls timed out after 10000 ms, at 2026-10-13T12:00:00.000Z)");
   });
 });
 
