@@ -59,6 +59,7 @@ graph TD
     codeRead["code-read"]
     coordinator["coordinator"]
     decider["decider"]
+    graphLayout["graph-layout"]
     memory["memory"]
     ownerQueue["owner-queue"]
     pm["pm"]
@@ -93,6 +94,7 @@ graph TD
   agentLifecycle --> storeSqlite
   codeGraph --> codeParser
   codeGraph --> embed
+  codeGraph --> evidence
   codeGraph --> retrieval
   codeGraph --> storeSqlite
   codeRead --> codeGraph
@@ -106,6 +108,7 @@ graph TD
   decider --> sessionRead
   decider --> storeSqlite
   egressScan --> fixProof
+  graphLayout --> codeGraph
   health --> storeSqlite
   hitl --> authority
   hitl --> storeSqlite

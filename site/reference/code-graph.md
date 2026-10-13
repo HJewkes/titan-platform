@@ -450,6 +450,64 @@ topUnusedExports(symbols, publicApiFiles(nodes, edges), ctx, 10);
 Neither is `pnpm dead:check`, which reads edges rather than `utilization` and follows
 re-exports transitively from package-manifest entries.
 
+### SCBench complexity rollup
+
+`qualitySection` fills the report's optional `quality` section with SlopCodeBench's
+complexity measures, for the whole tree and per package:
+
+```ts
+import { buildReportContext, qualitySection } from "@titan-design/code-graph/analysis";
+
+const nodes = [
+  { id: "packages/a/x.ts", kind: "file", name: "x.ts" },
+  { id: "packages/a/x.ts#run", kind: "symbol", name: "run", parentId: "packages/a/x.ts" },
+];
+const metrics = [
+  { nodeId: "packages/a/x.ts#run", name: "symbol_cyclomatic", value: 12 },
+  { nodeId: "packages/a/x.ts#run", name: "symbol_loc", value: 9 },
+];
+const ctx = buildReportContext({ nodes, metrics, excluders: [], excludedRoles: new Set(), windowDays: 30 });
+
+qualitySection(nodes, ctx, [{ id: "packages/a", name: "a" }], []).complexity.packages;
+// [ { packageId: 'packages/a', callables: 1, mass: 36, erosion: 1, ccMax: 12, ccGini: 0, … } ]
+```
+
+- Mass is CC·√SLOC, with SLOC taken as `symbol_loc` minus `symbol_comment_lines`.
+  `erosion` (SCBench `mass.high_cc_pct`) is the share of mass in callables with CC above 10;
+  `cogErosion` is the same over cognitive complexity.
+- The rows also carry `ccMax`, `ccMean`, `ccStd` (population), `ccHighCount` (CC > 10),
+  `ccExtremeCount` (CC > 30), `highCcMean` and `ccGini` (SCBench `cc_concentration`).
+- Only functions with a symbol node count, so nested closures are left out. Erosion drops when a
+  function is split, whether or not the design improved; read it beside `symbol_pass_through`
+  and `symbol_single_caller_helper`.
+
+### SCBench dependency-graph metrics
+
+`quality.dependencies` carries SlopCodeBench's dependency-graph measures, one row per package.
+`dependencyGraphMetrics(nodes, edges, packages)` builds the rows from any node set:
+
+```ts
+import { callGraphMetrics, importCyclicMass } from "@titan-design/code-graph/analysis";
+
+callGraphMetrics(["a", "b", "c"], [
+  { src: "a", dst: "b", weight: 2 },
+  { src: "b", dst: "a", weight: 1 },
+  { src: "b", dst: "c", weight: 1 },
+]);
+// { nodes: 3, edges: 3, cyclicDependencyMass: 0.75, propagationCost: 0.666…, dependencyEntropy: 0.333… }
+```
+
+- `calls` is the call graph over the callables the complexity rollup measured, each edge
+  weighted by its call-site count. `cyclicDependencyMass` is the share of call weight inside a
+  component of two or more callables, so plain recursion is not a cycle. `propagationCost` is
+  reachable ordered pairs over n(n − 1). `dependencyEntropy` is the mean normalized Shannon
+  entropy of each callable's out-edge weights.
+- `imports` splits the cyclic mass of the package's file imports: `value` is held by cycles that
+  value imports close on their own, and `typeOnly` is the part only a type-only import closes.
+  Both are shares of all import weight, so they sum to the whole cyclic mass.
+- Only edges inside one package count, and there is no whole-tree row, because propagation cost
+  is O(n·(n + e)).
+
 ### Growth and untested risks
 
 The scaling-smell and under-tested-hotspot sections of codewatch's `graph report` are pure
@@ -738,6 +796,10 @@ DEFAULT_CHURN_WINDOWS; // [30, 90, 180]
 `computeTestCoverageOwnership` needs and what saves a caller a second git pass.
 `resolveChurnWindows` and `computeRecencyWindows` are exported beside them. Node ids are the
 history engine's repo-relative paths, so `nodes` and `repoRoot` must share a root.
+
+`revisionLineSource(repoRoot, rev)` is an evidence `LineSource` over the blobs of commit
+`rev`, never the working tree. `rev` must be a full 40-hex commit id; a ref name throws. A
+path that is not a blob at `rev` reads as unreadable.
 
 Change coupling is not stored. It is computed on demand from `loadChurnEntries`, as
 codewatch's `graph coupled` command did.

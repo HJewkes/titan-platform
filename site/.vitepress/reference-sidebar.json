@@ -156,6 +156,10 @@
         "link": "/reference/decider"
       },
       {
+        "text": "graph-layout",
+        "link": "/reference/graph-layout"
+      },
+      {
         "text": "memory",
         "link": "/reference/memory"
       },

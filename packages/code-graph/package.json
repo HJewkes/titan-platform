@@ -45,6 +45,7 @@
   "dependencies": {
     "@titan-design/code-parser": "workspace:^",
     "@titan-design/embed": "workspace:^",
+    "@titan-design/evidence": "workspace:^",
     "@titan-design/retrieval": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
     "ts-morph": "^25.0.0",
