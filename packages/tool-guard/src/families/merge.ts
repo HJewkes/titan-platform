@@ -122,9 +122,29 @@ function pushDestination(spec: string, head: string | null): string | null {
 function literalSpec(word: WordToken): string | null {
   if (!word.dynamic && !isCaseUnsure(word)) return word.value;
   const typed = word.typed ?? word.value;
-  const tail = typed.slice(typed.lastIndexOf(":") + 1);
-  if (typed.includes(":") && !/[$`]/.test(tail)) return `:${tail}`;
+  const colon = refspecColon(typed);
+  const tail = typed.slice(colon + 1);
+  if (colon >= 0 && PLAIN_REF_RE.test(tail)) return `:${tail}`;
   return isCaseUnsure(word) ? `:${UNKNOWN}` : null;
+}
+
+const PLAIN_REF_RE = /^[\w./@+-]*$/;
+
+/** The last colon outside any `${...}`, `$(...)` or backquote, where `${B:-main}` and `${B:0:4}` hide colons of their own. */
+function refspecColon(text: string): number {
+  let depth = 0;
+  let backquoted = false;
+  let found = -1;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    const opens = c === "$" && (text[i + 1] === "{" || text[i + 1] === "(");
+    if (opens) i++;
+    if (c === "`") backquoted = !backquoted;
+    else if (opens || (depth > 0 && (c === "{" || c === "("))) depth++;
+    else if (depth > 0 && (c === "}" || c === ")")) depth--;
+    else if (c === ":" && depth === 0 && !backquoted) found = i;
+  }
+  return found;
 }
 
 /**
@@ -132,8 +152,11 @@ function literalSpec(word: WordToken): string | null {
  * so it reads as a push to an unknown destination.
  */
 function hasUnknownDestination(git: GitInvocation, refspecs: WordToken[]): boolean {
-  return git.subArgs.some(splits) || refspecs.some((s) => literalSpec(s) === null);
+  return git.subArgs.some((w) => splits(w) || expandsToMany(w)) || refspecs.some((s) => literalSpec(s) === null);
 }
+
+/** `"$@"` and `"${arr[@]}"` give one word per element even when quoted, so any of them may be a refspec. */
+const expandsToMany = (word: WordToken) => word.dynamic && /\$@|\$\{@|\[@\]\}/.test(word.typed ?? word.value);
 
 function gitPush(git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] {
   const options = readOptions(git.subArgs, GIT_PUSH_VALUES);

@@ -164,12 +164,20 @@ describe("a push destination known only at run time counts as an unknown protect
     ["git push origin HEAD:$B", "feat/x"],
     ["git push origin $M:refs/heads/x", "feat/x"],
     ['git push origin "$(git branch --show-current)"', "feat/x"],
+    ['git push origin HEAD:"${B:-main}"', "feat/x"],
+    ['git push origin "HEAD:${B:-main}"', "feat/x"],
+    ['git push origin "${B:-main}"', "feat/x"],
+    ['git push origin "${M:-HEAD}:${B:-main}"', "feat/x"],
+    ['git push origin "${B:0:4}"', "feat/x"],
+    ['git push origin "${X#a:b}"', "feat/x"],
+    ['git push origin "$@"', "feat/x"],
+    ['git push origin "${arr[@]}"', "feat/x"],
   ])("denies %s on %s", (command, head) => {
     expect(bash(command, head)).toEqual(unknownPush);
   });
 
-  it("denies an unquoted option value that may split into a refspec", () => {
-    expect(mergeSpellings("git push -o $O origin feat")).toEqual(["bash.merge.git-push-protected"]);
+  it.each(["git push -o $O origin feat", 'git push "$@"'])("denies %s, whose words may carry a refspec", (command) => {
+    expect(mergeSpellings(command)).toEqual(["bash.merge.git-push-protected"]);
   });
 
   it("keeps a literal destination after a run-time source", () => {
