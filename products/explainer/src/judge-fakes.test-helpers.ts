@@ -46,13 +46,13 @@ export function fakeJudge(options: { lenient?: boolean; evidence?: "quoted" | "n
   const calls: string[] = [];
   const evidenceFor = (id: string, text: string) =>
     options.evidence === "none" ? [] : [{ beat: id, quote: options.evidence === "invented" ? "a sentence nobody wrote" : quoteOf(text) }];
-  const harness: JudgeHarness = async <T>({ prompt }: JudgeCall<T>): Promise<JudgeReply<T>> => {
+  const harness: JudgeHarness = async <T>({ prompt, schema }: JudgeCall<T>): Promise<JudgeReply<T>> => {
     calls.push(prompt);
     const beats = promptBeats(prompt);
     const output = prompt.includes("# L1 script rubric")
       ? { dims: SCRIPT_DIMS.map((dim) => ({ dim, evidence: evidenceFor(beats[0]!.id, beats[0]!.spoken), score: 4 })) }
       : { beats: beats.map((b) => ({ beat: b.id, dims: BEAT_DIMS.map((dim) => ({ dim, evidence: evidenceFor(b.id, b.spoken), pass: options.lenient || !isCanary(b.spoken) })) })) };
-    return { ok: true, output: output as T, usd: 0.01, tokensIn: 100, tokensOut: 20 };
+    return { ok: true, output: schema.parse(output), usd: 0.01, tokensIn: 100, tokensOut: 20 };
   };
   return { harness, calls };
 }
@@ -60,7 +60,7 @@ export function fakeJudge(options: { lenient?: boolean; evidence?: "quoted" | "n
 /** A viewer that cites the first beat for every answer; `answerCanary` makes it guess the unanswerable one. */
 export function fakeViewer(answers: Record<string, string>, options: { answerCanary?: boolean; cite?: "spoken" | "none" } = {}) {
   const calls: string[] = [];
-  const harness: JudgeHarness = async <T>({ prompt }: JudgeCall<T>): Promise<JudgeReply<T>> => {
+  const harness: JudgeHarness = async <T>({ prompt, schema }: JudgeCall<T>): Promise<JudgeReply<T>> => {
     calls.push(prompt);
     const first = promptBeats(prompt)[0]!;
     const text = first.spoken || first.headline;
@@ -73,7 +73,7 @@ export function fakeViewer(answers: Record<string, string>, options: { answerCan
           : { qid, citations, not_stated: false, answer: answers[qid] ?? "" },
       ),
     };
-    return { ok: true, output: output as T, usd: 0.02, tokensIn: 300, tokensOut: 60 };
+    return { ok: true, output: schema.parse(output), usd: 0.02, tokensIn: 300, tokensOut: 60 };
   };
   return { harness, calls };
 }

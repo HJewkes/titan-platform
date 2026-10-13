@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runEvalCli, type EvalCliDeps } from "./eval-cli.js";
 import { readRubric } from "./eval-evidence.js";
+import type { JudgeCall, JudgeHarness, JudgeReply } from "./eval-harness.js";
 import { l1EvalVersion } from "./eval-judge.js";
 import { scriptSha } from "./eval-store.js";
 import { fakeJudge, fakeViewer, sonnet, twoChapters } from "./judge-fakes.test-helpers.js";
@@ -95,10 +96,14 @@ describe("explainer eval smoke", () => {
 
   it("passes when the configured judge answers the schema, and fails when the call fails", async () => {
     const judge = write("judge.json", { provider: "claude-print", model: "haiku" });
-    const answer = (ok: boolean) => () => async () => (ok ? { ok: true, output: { ok: true }, usd: 0.001, tokensIn: 1, tokensOut: 1 } : { ok: false, reason: "auth_misconfigured: logged out", usd: 0, tokensIn: 0, tokensOut: 0 });
+    const answer =
+      (ok: boolean) =>
+      (): JudgeHarness =>
+      async <T>({ schema }: JudgeCall<T>): Promise<JudgeReply<T>> =>
+        ok ? { ok: true, output: schema.parse({ ok: true }), usd: 0.001, tokensIn: 1, tokensOut: 1 } : { ok: false, reason: "auth_misconfigured: logged out", usd: 0, tokensIn: 0, tokensOut: 0 };
 
-    expect(await runEvalCli(["eval", "smoke", "--judge", judge], { harness: answer(true) as never })).toBe(0);
-    expect(await runEvalCli(["eval", "smoke", "--judge", judge], { harness: answer(false) as never })).toBe(1);
+    expect(await runEvalCli(["eval", "smoke", "--judge", judge], { harness: answer(true) })).toBe(0);
+    expect(await runEvalCli(["eval", "smoke", "--judge", judge], { harness: answer(false) })).toBe(1);
     expect(JSON.parse(logs[1]!)).toMatchObject({ judge: "claude-print:haiku", ok: false, reason: "auth_misconfigured: logged out" });
   });
 });

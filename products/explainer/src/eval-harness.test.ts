@@ -1,7 +1,7 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { codexExecCapabilities, type AgentInit, type AgentRunConfig, type AgentRunResult, type AgentUsage, type CodexRunRequest, type HarnessAdapter, type HarnessRunResult, type runAgent } from "@titan-design/agent";
+import { codexExecCapabilities, type AgentInit, type AgentRunConfig, type AgentRunResult, type AgentUsage, type CodexRunRequest, type HarnessAdapter, type HarnessRunFailure, type HarnessRunResult, type runAgent } from "@titan-design/agent";
 import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -11,39 +11,48 @@ const schema = z.strictObject({ ok: z.boolean() });
 const conversation = { harness: "codex", namespace: "explainer-eval", nativeId: "t-1" };
 const execution = { executionId: "e-1", conversation };
 
-/** A codex adapter that records its request and answers with the given result. */
-function fakeCodex(result: HarnessRunResult<unknown, "codex">) {
+type CodexAnswer =
+  | { output: { kind: "structured"; value: unknown } | { kind: "text"; text: string }; usage: ReturnType<typeof usage>[] }
+  | { failure: HarnessRunFailure };
+
+/** A codex adapter that records its request; a structured answer goes through the request's own schema, as the real one does. */
+function fakeCodex(answer: CodexAnswer) {
   const requests: CodexRunRequest<unknown>[] = [];
   const adapter: HarnessAdapter<"codex"> = {
     descriptor: codexExecCapabilities(),
-    run: async <T>(request: CodexRunRequest<T>) => {
-      requests.push(request as CodexRunRequest<unknown>);
-      return result as HarnessRunResult<T, "codex">;
+    run: async <T>(request: CodexRunRequest<T>): Promise<HarnessRunResult<T, "codex">> => {
+      requests.push(request);
+      if ("failure" in answer) return { ok: false, harness: "codex", failure: answer.failure, usage: [] };
+      const output = answer.output.kind === "text" ? answer.output : { kind: "structured" as const, value: request.native!.outputSchema!.parse(answer.output.value) };
+      return { ok: true, harness: "codex", execution, conversation, output, usage: answer.usage };
     },
   };
   return { adapter, requests };
 }
 
-const usage = (input: number, output: number, sequence: number) => ({
-  model: "gpt-x",
-  tokens: { input, output, cachedInput: null, cacheWriteInput: null, reasoningOutput: null, total: null },
-  cost: { usd: 0.01 * sequence, kind: "estimate" as const },
-  source: "fake",
-  kind: "snapshot" as const,
-  scope: "conversation" as const,
-  scopeId: "c-1",
-  epoch: "e",
-  sequence,
-});
+function usage(input: number, output: number, sequence: number) {
+  return {
+    model: "gpt-x",
+    tokens: { input, output, cachedInput: null, cacheWriteInput: null, reasoningOutput: null, total: null },
+    cost: { usd: 0.01 * sequence, kind: "estimate" as const },
+    source: "fake",
+    kind: "snapshot" as const,
+    scope: "conversation" as const,
+    scopeId: "c-1",
+    epoch: "e",
+    sequence,
+  };
+}
 
 describe("createJudgeHarness", () => {
   it("runs a claude-print judge as one bounded, schema-bound turn on the configured model", async () => {
     const seen: AgentRunConfig<unknown>[] = [];
-    const fakeRun = (async (config: AgentRunConfig<unknown>): Promise<AgentRunResult<unknown>> => {
+    const fakeRun: typeof runAgent = async <T>(config: AgentRunConfig<T>): Promise<AgentRunResult<T>> => {
       seen.push(config);
+      const output = config.outputSchema!.parse({ ok: true });
       const modelUsage = { haiku: partialFake<AgentUsage["modelUsage"][string]>({ inputTokens: 40, outputTokens: 5 }) };
-      return { ok: true, output: { ok: true }, sessionId: "s", usage: { totalCostUsd: 0.002, modelUsage, turns: 1, durationMs: 10 }, init: partialFake<AgentInit>() };
-    }) as typeof runAgent;
+      return { ok: true, output, sessionId: "s", usage: { totalCostUsd: 0.002, modelUsage, turns: 1, durationMs: 10 }, init: partialFake<AgentInit>() };
+    };
     const config = JudgeConfigSchema.parse({ provider: "claude-print", model: "haiku", max_budget_usd: 0.1 });
 
     const reply = await createJudgeHarness(config, { runAgent: fakeRun, cwd: "/tmp" })({ prompt: "p", schema });
@@ -53,8 +62,7 @@ describe("createJudgeHarness", () => {
   });
 
   it("runs a codex judge read-only on the configured model and effort, counting only the latest usage snapshot", async () => {
-    const ok: HarnessRunResult<unknown, "codex"> = { ok: true, harness: "codex", execution, conversation, output: { kind: "structured", value: { ok: true } }, usage: [usage(10, 1, 1), usage(30, 4, 2)] };
-    const { adapter, requests } = fakeCodex(ok);
+    const { adapter, requests } = fakeCodex({ output: { kind: "structured", value: { ok: true } }, usage: [usage(10, 1, 1), usage(30, 4, 2)] });
     const config = JudgeConfigSchema.parse({ provider: "codex", model: "gpt-x", reasoning_effort: "high", wall_time_s: 60 });
 
     const reply = await createJudgeHarness(config, { codexAdapter: () => adapter, cwd: "/tmp" })({ prompt: "p", schema });
@@ -65,10 +73,10 @@ describe("createJudgeHarness", () => {
   });
 
   it("parses a codex text answer through the schema and reports a failed run with its kind", async () => {
-    const text: HarnessRunResult<unknown, "codex"> = { ok: true, harness: "codex", execution, conversation, output: { kind: "text", text: '{"ok":"yes"}' }, usage: [] };
-    const failed: HarnessRunResult<unknown, "codex"> = { ok: false, harness: "codex", failure: { kind: "runtime_error", reason: "no cached login" }, usage: [] };
+    const text: CodexAnswer = { output: { kind: "text", text: '{"ok":"yes"}' }, usage: [] };
+    const failed: CodexAnswer = { failure: { kind: "runtime_error", reason: "no cached login" } };
     const config = JudgeConfigSchema.parse({ provider: "codex", model: "gpt-x" });
-    const call = (result: HarnessRunResult<unknown, "codex">) => createJudgeHarness(config, { codexAdapter: () => fakeCodex(result).adapter })({ prompt: "p", schema });
+    const call = (result: CodexAnswer) => createJudgeHarness(config, { codexAdapter: () => fakeCodex(result).adapter })({ prompt: "p", schema });
 
     expect(await call(text)).toMatchObject({ ok: false, reason: expect.stringMatching(/^schema_invalid: /) });
     expect(await call(failed)).toMatchObject({ ok: false, reason: "runtime_error: no cached login" });
