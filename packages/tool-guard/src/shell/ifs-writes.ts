@@ -1,9 +1,13 @@
-import { nameSlots, NAMEREF_DECLARERS } from "./name-slots.js";
+import { DECLARERS, nameSlots, NAMEREF_DECLARERS } from "./name-slots.js";
 import type { Token, WordToken } from "./tokens.js";
 import { ASSIGNMENT_RE } from "./vars.js";
 
-/** Builtins that evaluate their arguments as shell or arithmetic text, so a run-time argument may assign any name. */
-const EVALUATORS = new Set(["eval", "let"]);
+/** Builtins that evaluate an argument as shell or arithmetic text, so a run-time argument may assign any name. */
+const EVALUATORS = new Set(["eval", "let", "trap"]);
+/** Builtins that run a callback over input text: `mapfile -C` evaluates it with each line appended. */
+const CALLBACK_RUNNERS = new Set(["mapfile", "readarray"]);
+/** zsh declarers whose names always hold numbers, so every later write to them is arithmetic. */
+const NUMERIC_DECLARERS = new Set(["integer", "float"]);
 /** Builtins that run a file's text in this shell, which may assign anything. */
 const SOURCERS = new Set(["source", "."]);
 /** Words that may precede the command word without being it. */
@@ -11,6 +15,8 @@ const COMMAND_PREFIXES = new Set(["{", "}", "!", "do", "then", "else", "elif", "
 const NAME_BUILDER_RE = /[$`?*[]/;
 /** A command word bash may glob or brace-expand into any builtin. */
 const COMMAND_BUILDER_RE = /[?*[{]/;
+/** The test commands, whose brackets are their names rather than globs. */
+const TEST_COMMANDS = new Set(["[", "[["]);
 /** `[[` compares these operands as arithmetic, which assigns any `NAME=` text it is given. */
 const ARITH_TESTS = new Set(["-eq", "-ne", "-lt", "-le", "-gt", "-ge"]);
 /**
@@ -53,23 +59,52 @@ function segments(tokens: readonly Token[]): Segment[] {
   return out;
 }
 
+/** Texts this shell runs as code: eval's arguments joined as eval joins them, a trap's action and alias values. */
+export function codeTexts(tokens: readonly Token[]): string[] {
+  return segments(tokens).flatMap(({ words, arith }) => {
+    const { command, args } = splitCommand(arith ? [] : words);
+    if (command?.value === "eval") return [args.map((a) => a.value).join(" ")];
+    if (command?.value === "trap") return args.filter((a) => a.value !== "--").slice(0, 1).map((a) => a.value);
+    if (command?.value === "alias") return args.flatMap((a) => (a.value.includes("=") ? [a.value.slice(a.value.indexOf("=") + 1)] : []));
+    return [];
+  });
+}
+
 function segmentMayWrite({ words, arith }: Segment): boolean {
   if (arith) return words.some(isRunTime);
   if (words.some(holdsRunTimeArith)) return true;
-  const at = words.findIndex((w) => !COMMAND_PREFIXES.has(w.value) && !ASSIGNMENT_RE.test(w.value) && !isOption(w));
-  const command = words[at];
-  return command ? commandMayWrite(command, words.slice(at + 1)) : false;
+  const { command, args } = splitCommand(words);
+  return command ? commandMayWrite(command, args) : false;
 }
 
+function splitCommand(words: WordToken[]): { command?: WordToken; args: WordToken[] } {
+  const at = words.findIndex((w) => !COMMAND_PREFIXES.has(w.value) && !ASSIGNMENT_RE.test(w.value) && !isOption(w));
+  return at < 0 ? { args: [] } : { command: words[at], args: words.slice(at + 1) };
+}
+
+/**
+ * A command word that is not a static literal may become any builtin, `source` and `declare -n` included, so it
+ * answers true whatever its arguments look like.
+ */
 function commandMayWrite(command: WordToken, args: WordToken[]): boolean {
   const name = command.value;
   if (name === "[[") return args.some((a) => ARITH_TESTS.has(a.value)) && args.some(isRunTime);
-  if (isRunTime(command) || COMMAND_BUILDER_RE.test(name)) return args.some(nameMayBeRunTime);
-  if (SOURCERS.has(name)) return true;
-  if (EVALUATORS.has(name)) return args.some(isRunTime);
+  if (isRunTime(command) || (!TEST_COMMANDS.has(name) && COMMAND_BUILDER_RE.test(name))) return true;
+  if (SOURCERS.has(name) || runsCode(name, args)) return true;
   const slots = nameSlots(name, args);
   if (typeof slots === "string") return true;
   return slots.some(nameMayBeRunTime) || namerefMayBeRunTime(name, args);
+}
+
+/**
+ * Evaluator sinks: run-time text given to eval, let or trap, a mapfile callback, and an integer attribute, under
+ * which a later `x=$v` or `read x` evaluates the value as arithmetic and `IFS=1` there assigns IFS.
+ */
+function runsCode(name: string, args: WordToken[]): boolean {
+  if (EVALUATORS.has(name)) return args.some(isRunTime);
+  if (NUMERIC_DECLARERS.has(name)) return true;
+  if (CALLBACK_RUNNERS.has(name)) return args.some((a) => mayBeOptionWord(a) && (isRunTime(a) || /^-[A-Za-z0-9]*C/.test(a.value)));
+  return DECLARERS.has(name) && args.some((a) => mayBeOptionWord(a) && (isRunTime(a) || /^[-+][A-Za-z0-9]*i/.test(a.value)));
 }
 
 /**

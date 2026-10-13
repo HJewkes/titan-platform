@@ -170,6 +170,48 @@ describe("namesIfs", () => {
   });
 
   it.each([
+    ["a braced source", "{source,} ./f"],
+    ["a braced dot", "{.,} ./f"],
+    ["a braced declare -n", "{declare,} -n R=$a$b; R=,"],
+    ["a variable naming source", "c=source; $c ./f"],
+    ["a variable naming declare -n", "c=declare; $c -n R=$a$b; R=,"],
+    ["builtin of a variable", "builtin $c"],
+    ["command of a variable", "command $c"],
+    ["a command substitution", "$(echo source) ./f"],
+  ])("matches a command word that is not a static literal: %s", (_form, line) => {
+    expect(namesIfs(line)).toBe(true);
+  });
+
+  it.each([
+    ["declare -i with a run-time value", "declare -i x=$a$b"],
+    ["declare -i, then a run-time value", "declare -i x; x=$a$b"],
+    ["declare -i, then read", "declare -i x; read x < f"],
+    ["local -ri", "f(){ local -ri x; read x; }"],
+    ["typeset +i", "typeset +i x"],
+    ["zsh integer", "integer x; read x < f"],
+    ["zsh float", "float x; read x < f"],
+    ["trap with run-time code", 'trap "$x" DEBUG'],
+    ["mapfile -C", 'mapfile -C "$x" -c 1 arr < f'],
+    ["readarray -tC", "readarray -tC cb arr < f"],
+    ["a literal trap action", "trap 'declare $a$b=,' DEBUG"],
+    ["an alias value", "alias d='declare $a$b=,'"],
+    ["eval joining its arguments", "eval declare '$a$b=,'"],
+    ["an escaped IFS in a trap action", "trap -- 'I\\FS=,' EXIT"],
+  ])("matches an evaluator sink: %s", (_form, line) => {
+    expect(namesIfs(line)).toBe(true);
+  });
+
+  it.each([
+    "[ -f x ] && echo $x",
+    "trap 'rm -f $tmp' EXIT",
+    "mapfile -t arr < f",
+    "declare -r X=1",
+    "echo {1..10}",
+  ])("does not match a static command with no sink: %s", (line) => {
+    expect(namesIfs(line)).toBe(false);
+  });
+
+  it.each([
     ["arithmetic expansion", ": $(( $a$b=1 ))"],
     ["a substring offset", "echo ${x:$a$b=1}"],
     ["an indexed subscript", "arr[$a$b=1]=x"],

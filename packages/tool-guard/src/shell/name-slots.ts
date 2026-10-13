@@ -54,6 +54,9 @@ const SPECS: Record<string, WriterSpec> = {
   pcre_match: { names: "va", values: "n", flags: "b", operands: "none" },
 };
 
+/** Builtins that read DECLARE's options, whose `-i` makes later writes to the name arithmetic. */
+export const DECLARERS = new Set(Object.keys(SPECS).filter((name) => SPECS[name] === DECLARE));
+
 /** Declarers whose `-n` makes each operand a nameref, so its target names the variable later writes reach. */
 export const NAMEREF_DECLARERS = new Set(["declare", "typeset", "local", "private"]);
 
