@@ -271,6 +271,9 @@ describe("namesIfs", () => {
     ["a substring offset", "echo ${x:$a$b=1}"],
     ["an indexed subscript", "arr[$a$b=1]=x"],
     ["a [[ ]] arithmetic test", "[[ 1 -eq $a$b ]]"],
+    ["a redirect target's arithmetic", ": >/dev/null$(( $a$b=1 ))"],
+    ["a dup target's arithmetic", ": >&$(( $a$b=1 ))"],
+    ["a here-string's arithmetic", ": <<< $(( $a$b=1 ))"],
     ["source", "source ./env.sh"],
     ["dot", ". ./env.sh"],
     ["BASH_ENV before bash -c", "BASH_ENV=./f bash -c 'R=origin,HEAD:main; git push $R'"],
@@ -359,6 +362,29 @@ describe("namesIfs", () => {
     });
 
     it.each([
+      ["a redirect target's arithmetic expansion", "a=IF; x=${a}S=1; : >/dev/null$(( x ))"],
+      ["a redirect target's subscript", "a=IF; x=${a}S=1; : >/dev/null${arr[x]}"],
+      ["a dup target's arithmetic expansion", "a=IF; x=${a}S=1; echo hi >&$((x))"],
+      ["a here-string's arithmetic expansion", "a=IF; x=${a}S=1; : <<< $(( x ))"],
+      ["a here-string's subscript", "a=IF; x=${a}S=1; : <<< ${arr[x]}"],
+      ["a default assignment in a redirect target", "x=1; unset x; a=IF; : >/dev/null${x:=${a}S=1}; let x"],
+      ["a default assignment in an unquoted heredoc", "x=1; unset x; a=IF; : <<EOF\n${x:=${a}S=1}\nEOF\nlet x"],
+      ["[ -v ] on a subscript", "a=IF; x=${a}S=1; [ -v 'arr[x]' ]"],
+      ["test -v on a subscript", "a=IF; x=${a}S=1; test -v 'arr[x]'"],
+      ["[ -v ] on a run-time name", "v=$(cat f); [ -v \"$v\" ]"],
+      ["zsh print -f", "a=IF; x=${a}S=1; print -f '%d' x"],
+      ["zsh print -f in a cluster", "a=IF; x=${a}S=1; print -rf '%d' x"],
+      ["a * width", "a=IF; x=${a}S=1; printf '%*s' x y"],
+      ["a positional conversion", "a=IF; x=${a}S=1; printf '%1$d' x"],
+      ["a format after --", "a=IF; x=${a}S=1; printf -- '%d' x"],
+      ["a format that opens with - after --", "a=IF; x=${a}S=1; printf -- '-%d' x"],
+      ["zsh's unbraced subscript", "a=IF; x=${a}S=1; arr=(a b); : $arr[x]"],
+      ["a write through a nameref", "a=IF; x=1; declare -n r=x; r=${a}S=1; let x"],
+    ])("matches arithmetic outside the command words: %s", (_form, line) => {
+      expect(namesIfs(`${line}; R=origin1HEAD:main; git push origin $R`)).toBe(true);
+    });
+
+    it.each([
       "i=0; while (( i < 3 )); do i=$((i+1)); done; git push origin $R",
       "for i in 1 2 {3..5}; do echo $((i*2)); done; git push origin $R",
       "n=2; s=abc; echo ${s:1} ${s:n}; git push origin $R",
@@ -369,6 +395,11 @@ describe("namesIfs", () => {
       "printf '%s\\n' a b; git push origin \"${R:-origin}\" $((1 + 2))",
       "git commit -m 'arr[i] and $((x))' && ulimit -n 1024 && git push origin $R",
       "cat <<'EOF'\n$((x))\nEOF\ngit push origin $R",
+      "i=0; n=3; (( i<n )); git push origin $R",
+      "i=0; n=3; while [[ i -lt n ]]; do git push origin $R && break; i=$((i+1)); done",
+      "printf '%s %b %q\\n' x y z; print -f '%s' x; git push origin $R",
+      'git push origin $R >"$LOG" 2>&1',
+      'git push origin $R > "${LOG:-/dev/null}"',
     ])("does not match arithmetic over numbers the line writes: %s", (line) => {
       expect(namesIfs(line)).toBe(false);
     });

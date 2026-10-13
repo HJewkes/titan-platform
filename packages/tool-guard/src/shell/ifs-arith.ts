@@ -1,6 +1,6 @@
 import { ARITH_BUILTINS } from "./builtins.js";
-import { ARITH_TESTS, isRunTime, segments, splitCommand, type Segment } from "./ifs-writes.js";
-import { DECLARERS, nameSlots } from "./name-slots.js";
+import { ARITH_TESTS, isRunTime, segments, splitCommand, TESTS, type Segment } from "./ifs-writes.js";
+import { DECLARERS, NAMEREF_DECLARERS, nameSlots } from "./name-slots.js";
 import type { Token, WordToken } from "./tokens.js";
 import { ASSIGNMENT_RE } from "./vars.js";
 
@@ -16,10 +16,19 @@ const BARE_NAME_RE = /(?<![\w$])(?<!\$\{[#!]?)[A-Za-z_]\w*/g;
 const ARITH_ASSIGN_RE = /(?<![\w$])([A-Za-z_]\w*)\s*=(?!=)/g;
 /** A `${N=…}`, `${N:=…}` or zsh `${N::=…}` expansion, which assigns N whatever text follows. */
 const DEFAULT_ASSIGN_RE = /\$\{([A-Za-z_]\w*)(?:\[[^\]]*\])?:{0,2}=/g;
+/** The name a `declare -n NAME=TARGET` operand binds to, which any write through NAME reaches with any value. */
+const NAMEREF_TARGET_RE = /^[A-Za-z_]\w*=([A-Za-z_]\w*)/;
 /** Values arithmetic reads as a number, never as an expression: an integer, or a brace range of them. */
 const NUMBER_RE = /^(?:-?\d+|\{-?\d+\.\.-?\d+(?:\.\.-?\d+)?\})$/;
-/** A printf format with a numeric conversion, whose argument zsh evaluates as arithmetic. */
-const NUMERIC_FORMAT_RE = /%[^%a-zA-Z]*[diouxXeEfFgGaAc]/;
+/**
+ * A format whose every conversion prints its argument as text. zsh evaluates the argument of any other conversion,
+ * a `*` width or precision, or a `%1$d` position as arithmetic.
+ */
+const TEXT_FORMAT_RE = /^(?:[^%]|%%|%[-+ #0]*\d*(?:\.\d*)?[sbq])*$/s;
+/** Letters of zsh's `print` whose value is the next word or the rest of the cluster; `-f` is the format. */
+const PRINT_VALUE_OPTIONS = "vCfuxX";
+/** zsh's unbraced `$name[…]`, whose subscript is arithmetic. */
+const ZSH_SUBSCRIPT_RE = /(?<=\$[A-Za-z_]\w*)\[[^\]]*\]?/g;
 /** Writers whose operand without `=` leaves the value alone, or unsets it. */
 const VALUE_KEEPERS = new Set([...DECLARERS, "unset"]);
 /**
@@ -54,14 +63,25 @@ interface Writes {
  */
 export function arithReadsUnknownValue(lists: readonly Token[][]): boolean {
   const all = lists.flatMap((list) => segments(list));
-  const texts = [...all.flatMap(arithTexts), ...lists.flatMap(heredocTexts)];
+  const expanded = [...all.flatMap(expandedTexts), ...lists.flatMap(heredocBodies)];
+  const texts = [...all.flatMap(arithTexts), ...expanded.flatMap(expansionTexts)];
   const read = texts.flatMap((text) => text.match(BARE_NAME_RE) ?? []);
   if (read.length === 0) return false;
   const writes: Writes = { numeric: new Set(), other: new Set() };
   for (const segment of all) recordWrites(segment, writes);
   for (const text of texts) for (const [, name = ""] of text.matchAll(ARITH_ASSIGN_RE)) writes.numeric.add(name);
-  for (const w of lists.flat()) if (w.type === "word") for (const [, name = ""] of w.value.matchAll(DEFAULT_ASSIGN_RE)) writes.other.add(name);
+  for (const text of expanded) for (const [, name = ""] of text.matchAll(DEFAULT_ASSIGN_RE)) writes.other.add(name);
   return read.some((name) => !LINE_OWNED_RE.test(name) || SHELL_SET_NAMES.has(name) || !writes.numeric.has(name) || writes.other.has(name));
+}
+
+/** Every word and redirect target the shell expands at run time; a quoted `'$((x))'` evaluates nothing. */
+function expandedTexts({ words, targets }: Segment): string[] {
+  return [...words, ...targets].filter(isRunTime).map((w) => w.value);
+}
+
+/** An unquoted heredoc expands its body, arithmetic and `${x:=…}` included. */
+function heredocBodies(list: readonly Token[]): string[] {
+  return list.flatMap((t) => (t.type === "redirect" && t.body !== null && t.target?.quoted !== true ? [t.body] : []));
 }
 
 /** Sorts the segment's explicit writes by whether each stores a number. */
@@ -72,11 +92,13 @@ function recordWrites({ words, arith }: Segment, writes: Writes): void {
   const slots = command ? nameSlots(command.value, args) : [];
   const keeps = command !== undefined && VALUE_KEEPERS.has(command.value);
   const loopsOverNumbers = command !== undefined && ["for", "select"].includes(command.value) && listsNumbers(args);
+  const namerefs = command !== undefined && NAMEREF_DECLARERS.has(command.value) && args.some((a) => /^-[A-Za-z0-9]*n/.test(a.value));
   for (const w of [...leading.filter((l) => ASSIGNMENT_RE.test(l.value)), ...(typeof slots === "string" ? [] : slots)]) {
     const name = /^[A-Za-z_]\w*/.exec(w.value)?.[0];
     if (name === undefined || (!w.value.includes("=") && keeps)) continue;
     const numeric = w.value.includes("=") ? numericValue(w) : loopsOverNumbers;
     (numeric ? writes.numeric : writes.other).add(name);
+    if (namerefs) writes.other.add(NAMEREF_TARGET_RE.exec(w.value)?.[1] ?? name);
   }
 }
 
@@ -103,8 +125,8 @@ function closesAtEnd(value: string): boolean {
 }
 
 /**
- * Text the segment may evaluate as arithmetic: all of `(( ))`, the operands a command reads as numbers, each
- * expansion's arithmetic part, and the subscripts of the names it writes.
+ * Text the segment may evaluate as arithmetic: all of `(( ))`, the operands a command reads as numbers, and the
+ * subscripts of the names it writes or a test command checks with `-v`.
  */
 function arithTexts({ words, arith, redirects }: Segment): string[] {
   if (arith) return [[...words.map((w) => w.value), ...redirects].join(" ")];
@@ -112,35 +134,40 @@ function arithTexts({ words, arith, redirects }: Segment): string[] {
   const operands = command ? arithArgs(command.value, args) : [];
   const slots = command ? nameSlots(command.value, args) : [];
   const writes = [...words.filter((w) => ASSIGNMENT_RE.test(w.value)), ...(typeof slots === "string" ? [] : slots)];
-  const subscripted = command?.value === "[[" ? [...writes, ...args] : writes;
-  return [
-    ...operands.map((w) => w.value),
-    ...words.filter(isRunTime).flatMap((w) => expansionTexts(w.value)),
-    ...subscripted.flatMap((w) => w.value.match(SUBSCRIPT_RE) ?? []),
-  ];
+  const subscripted = command !== undefined && TESTS.has(command.value) ? [...writes, ...args] : writes;
+  return [...operands.map((w) => w.value), ...subscripted.flatMap((w) => w.value.match(SUBSCRIPT_RE) ?? [])];
 }
 
 function expansionTexts(value: string): string[] {
   const parts = [...value.matchAll(EXPANSION_ARITH_RE)].flatMap(([, sub, offset]) => [sub ?? "", offset ?? ""]);
-  return [...(value.match(ARITH_EXPANSION_RE) ?? []), ...parts];
+  return [...(value.match(ARITH_EXPANSION_RE) ?? []), ...(value.match(ZSH_SUBSCRIPT_RE) ?? []), ...parts];
 }
 
-/** Operands a command reads as arithmetic; printf's values only under a numeric conversion. */
+/** Operands a command reads as arithmetic; a format's values unless every conversion prints text. */
 function arithArgs(name: string, args: WordToken[]): WordToken[] {
   if (name === "let") return args;
   if (name === "[[") return args.filter((_, i) => ARITH_TESTS.has(args[i - 1]?.value ?? "") || ARITH_TESTS.has(args[i + 1]?.value ?? ""));
-  if (name === "printf") return printfValues(args);
+  if (name === "printf" || name === "print") return formattedValues(name, args);
   return ARITH_BUILTINS.has(name) ? args.filter((a) => !a.value.startsWith("-")) : [];
 }
 
-function printfValues(args: WordToken[]): WordToken[] {
-  const rest = args[0]?.value === "-v" ? args.slice(2) : args;
-  const [format, ...values] = rest;
+/** The values after printf's format, or after the format zsh's `print -f` takes; without `-f` print reads none. */
+function formattedValues(name: string, args: WordToken[]): WordToken[] {
+  const takesValue = name === "print" ? PRINT_VALUE_OPTIONS : "v";
+  let format: WordToken | undefined;
+  let i = 0;
+  for (let word = args[i]; word !== undefined && /^-./.test(word.value); word = args[++i]) {
+    if (word.value === "--") {
+      i++;
+      break;
+    }
+    const at = [...word.value.slice(1)].findIndex((letter) => takesValue.includes(letter));
+    if (at < 0) continue;
+    const attached = word.value.slice(at + 2);
+    const value = attached === "" ? args[++i] : { ...word, value: attached };
+    if (word.value[at + 1] === "f") format = value;
+  }
+  if (name === "printf") format = args[i++];
   if (format === undefined) return [];
-  return isRunTime(format) || NUMERIC_FORMAT_RE.test(format.value) ? values : [];
-}
-
-/** An unquoted heredoc expands its body, arithmetic included. */
-function heredocTexts(list: readonly Token[]): string[] {
-  return list.flatMap((t) => (t.type === "redirect" && t.body !== null && t.target?.quoted !== true ? expansionTexts(t.body) : []));
+  return isRunTime(format) || !TEXT_FORMAT_RE.test(format.value) ? args.slice(i) : [];
 }

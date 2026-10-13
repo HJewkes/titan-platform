@@ -27,8 +27,8 @@ const MODELED = new Set([
 const NAME_BUILDER_RE = /[$`?*[]/;
 /** A command word bash may glob or brace-expand into any builtin. */
 const COMMAND_BUILDER_RE = /[?*[{]/;
-/** The test commands, whose brackets are their names rather than globs. */
-const TEST_COMMANDS = new Set(["[", "[["]);
+/** The test commands; the brackets are their names rather than globs. */
+export const TESTS = new Set(["[", "[[", "test"]);
 /** `[[` compares these operands as arithmetic, which assigns any `NAME=` text it is given. */
 export const ARITH_TESTS = new Set(["-eq", "-ne", "-lt", "-le", "-gt", "-ge"]);
 /**
@@ -42,12 +42,14 @@ const RUN_TIME_WRITE_RES = [/\$\(\([^]*[$`]/, /\$\{[^}:]*:(?![-=+?])[^}]*[$`]/, 
 
 /**
  * A command segment and whether it sits inside `(( ))`, where any run-time word is arithmetic text, as are the
- * operators and operands the lexer reads there as redirects (`i < n`).
+ * operators and operands the lexer reads there as redirects (`i < n`). `targets` are the redirect and here-string
+ * words the shell expands, heredoc delimiters aside.
  */
 export interface Segment {
   words: WordToken[];
   arith: boolean;
   redirects: string[];
+  targets: WordToken[];
 }
 
 /**
@@ -62,28 +64,27 @@ export function mayWriteRunTimeName(tokens: readonly Token[]): boolean {
 
 export function segments(tokens: readonly Token[]): Segment[] {
   const out: Segment[] = [];
-  let words: WordToken[] = [];
-  let redirects: string[] = [];
-  let arith = false;
+  let segment: Segment = { words: [], arith: false, redirects: [], targets: [] };
   let afterOpen = false;
   for (const t of tokens) {
-    if (t.type === "word") words.push(t);
-    if (t.type === "redirect") redirects.push(`${t.fd ?? ""}${t.op}${t.target?.value ?? ""}`);
+    if (t.type === "word") segment.words.push(t);
+    if (t.type === "redirect") {
+      segment.redirects.push(`${t.fd ?? ""}${t.op}${t.target?.value ?? ""}`);
+      if (t.target && t.body === null) segment.targets.push(t.target);
+    }
     if (t.type !== "op") continue;
-    out.push({ words, arith, redirects });
-    words = [];
-    redirects = [];
-    if (t.value === ")") arith = false;
-    else if (t.value === "(" && afterOpen) arith = true;
+    out.push(segment);
+    const arith = t.value === ")" ? false : t.value === "(" && afterOpen ? true : segment.arith;
+    segment = { words: [], arith, redirects: [], targets: [] };
     afterOpen = t.value === "(";
   }
-  out.push({ words, arith, redirects });
+  out.push(segment);
   return out;
 }
 
-function segmentMayWrite({ words, arith }: Segment): boolean {
-  if (arith) return words.some(isRunTime);
-  if (words.some(holdsRunTimeWrite)) return true;
+function segmentMayWrite({ words, arith, targets }: Segment): boolean {
+  if (arith) return [...words, ...targets].some(isRunTime);
+  if ([...words, ...targets].some(holdsRunTimeWrite)) return true;
   const { command, args } = splitCommand(words);
   return command ? commandMayWrite(command, args) : false;
 }
@@ -102,12 +103,21 @@ export function splitCommand(words: WordToken[]): { command?: WordToken; args: W
  */
 function commandMayWrite(command: WordToken, args: WordToken[]): boolean {
   const name = command.value;
-  if (name === "[[") return args.some((a) => ARITH_TESTS.has(a.value)) && args.some(isRunTime);
-  if (isRunTime(command) || (!TEST_COMMANDS.has(name) && COMMAND_BUILDER_RE.test(name))) return true;
+  if (TESTS.has(name)) return testMayWrite(name, args);
+  if (isRunTime(command) || COMMAND_BUILDER_RE.test(name)) return true;
   if (SOURCERS.has(name) || runsCode(name, args) || (SHELL_BUILTINS.has(name) && !MODELED.has(name))) return true;
   const slots = nameSlots(name, args);
   if (typeof slots === "string") return true;
   return slots.some(nameMayBeRunTime) || namerefMayBeRunTime(name, args);
+}
+
+/**
+ * `[[` evaluates every operand of an arithmetic comparison, and each test command evaluates the subscript of the
+ * name `-v` checks, so a run-time operand there may hold `IFS=1`.
+ */
+function testMayWrite(name: string, args: WordToken[]): boolean {
+  const arith = name === "[[" && args.some((a) => ARITH_TESTS.has(a.value));
+  return args.some((a, i) => isRunTime(a) && (arith || args[i - 1]?.value === "-v"));
 }
 
 /**
