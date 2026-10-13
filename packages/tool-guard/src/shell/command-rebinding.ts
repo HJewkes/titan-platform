@@ -6,8 +6,8 @@ import type { Unwrapped } from "./unwrap.js";
 /** Parameters whose stores bind a command name, or a `~name`, to something the guard never reads as that name. */
 const REBINDING = ["commands", "BASH_CMDS", "functions", "dis_functions", "nameddirs"];
 const REBINDING_SET = new Set(REBINDING);
-/** The name a store operand writes: `commands`, `commands[y]=…`, `functions+=…`. */
-const TARGET_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*(?=\[|\+?=|$)/s;
+/** The name a store operand writes: `commands`, `commands[y]=…`, `functions+=…`, zsh read's `commands?prompt`. */
+const TARGET_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*(?=\[|\+?=|\?|$)/s;
 /** An expansion that assigns: `${commands[y]::=/x}`, `${functions[y]:=x}`, bash `${BASH_CMDS[y]=/x}`; a read has no `=`. */
 const ASSIGNING_EXPANSION_RE = new RegExp(`\\$\\{[^}]*?\\b(?:${REBINDING.join("|")})(?:\\[[^\\]]*\\])?:{0,2}=`);
 /** An expansion that assigns whatever parameter another one names: bash `${!n=/x}`, zsh `${(P)n::=/x}`. */
@@ -18,19 +18,23 @@ const NAMEREF_DECLARERS = new Set(["typeset", "declare", "local"]);
 
 /**
  * How a builtin that stores into a named parameter reads its words: option letters taking a value, option letters whose
- * value is the name it stores into, and which operands are such names.
+ * value is the name it stores into, and which operands are such names. `loose` marks value letters one shell reads as a
+ * flag, as zsh does `read -p`, `-n` and `-t`, so each value word may be a name the builtin stores into.
  */
 interface StoreSpec {
   values: string;
   targets: string;
   operands: "all" | "none" | number;
+  loose?: true;
 }
 
 const DECLARER: StoreSpec = { values: "", targets: "", operands: "all" };
 const STORERS: Record<string, StoreSpec> = {
   typeset: DECLARER, declare: DECLARER, local: DECLARER, export: DECLARER, readonly: DECLARER, integer: DECLARER, float: DECLARER,
-  vared: { values: "prifMme", targets: "", operands: "all" },
-  read: { values: "dinNptu", targets: "a", operands: "all" },
+  vared: { values: "prifMm", targets: "", operands: "all" },
+  read: { values: "dinNptu", targets: "a", operands: "all", loose: true },
+  getln: { values: "", targets: "", operands: "all" },
+  zformat: { values: "", targets: "", operands: 0 },
   mapfile: { values: "dnOsuCc", targets: "", operands: "all" },
   readarray: { values: "dnOsuCc", targets: "", operands: "all" },
   set: { values: "o", targets: "A", operands: "none" },
@@ -48,8 +52,8 @@ interface Options {
   flags: string[];
   targets: Target[];
   end: number;
-  /** A dynamic word where an option may stand, which may expand to any option. */
-  dynamicAt: number | null;
+  /** A dynamic word where an option may stand, which may expand to any option, or an option word no cluster reads. */
+  unsureAt: number | null;
 }
 
 /** A line that rebinds a command name (`hash y=/usr/bin/git`, `commands[y]=…`); the hook denies it unchecked. */
@@ -93,10 +97,11 @@ function hashBinds(args: WordToken[]): boolean {
 /** Whether a store builtin declares a nameref or writes a rebinding parameter, or one only known at run time. */
 function storesRebinding(name: string, args: WordToken[]): boolean {
   if (name === "zparseopts") return args.some((a) => a.dynamic || ZPARSEOPTS_STORE_RE.test(a.value));
+  if (name === "zstyle") return zstyleStores(args);
   const spec = STORERS[name];
   if (!spec) return false;
   const options = readOptions(args, spec);
-  if (options.dynamicAt !== null && dynamicOptionCounts(name, args, options.dynamicAt, options.flags)) return true;
+  if (options.unsureAt !== null && unsureOptionCounts(name, args, options.unsureAt, options.flags)) return true;
   if (NAMEREF_DECLARERS.has(name) && options.flags.includes("-n")) return true;
   const targets = [...options.targets, ...operandTargets(spec, args.slice(options.end), options.flags)];
   return targets.some(([word, from]) => targetRebinds(word, from));
@@ -110,18 +115,19 @@ function readOptions(args: WordToken[], spec: StoreSpec): Options {
   for (let i = 0; i < args.length; i++) {
     const word = args[i];
     if (!word) break;
-    if (word.dynamic) return { flags, targets, end: i, dynamicAt: mayBeOption(word) ? i : null };
-    if (word.value === "--") return { flags, targets, end: i + 1, dynamicAt: null };
-    const sign = word.value[0] ?? "";
-    const cluster = /^[-+]./s.test(word.value) ? splitCluster(`-${word.value.slice(1)}`, { values }) : null;
-    if (!cluster) return { flags, targets, end: i, dynamicAt: null };
-    flags.push(...cluster.flags.map((f) => sign + f));
+    if (word.dynamic) return { flags, targets, end: i, unsureAt: mayBeOption(word) ? i : null };
+    if (word.value === "--") return { flags, targets, end: i + 1, unsureAt: null };
+    if (!/^[-+]./s.test(word.value)) return { flags, targets, end: i, unsureAt: null };
+    const cluster = splitCluster(`-${word.value.slice(1)}`, { values, digits: true });
+    if (!cluster) return { flags, targets, end: i, unsureAt: i };
+    flags.push(...cluster.flags.map((f) => (word.value[0] ?? "") + f));
     if (!cluster.end) continue;
     const attached = cluster.end.text !== "";
     const value = attached ? word : args[++i];
-    if (value && spec.targets.includes(cluster.end.option)) targets.push([value, attached ? word.value.length - cluster.end.text.length : 0]);
+    const named = spec.targets.includes(cluster.end.option) || (spec.loose === true && !attached);
+    if (value && named) targets.push([value, attached ? word.value.length - cluster.end.text.length : 0]);
   }
-  return { flags, targets, end: args.length, dynamicAt: null };
+  return { flags, targets, end: args.length, unsureAt: null };
 }
 
 /** A dynamic word may expand to an option unless literal text that no option starts with comes first: `PATH=$HOME`. */
@@ -129,11 +135,18 @@ function mayBeOption(word: WordToken): boolean {
   return /^[-+]/.test(word.value) || word.refs.some((r) => r.start === 0) || (word.cuts ?? []).some((c) => c.at === 0);
 }
 
+/** zsh `zstyle -s/-b/-a/-h CONTEXT STYLE NAME` and `-g NAME` store into a parameter; any operand may be that name. */
+function zstyleStores(args: WordToken[]): boolean {
+  const first = args[0];
+  if (!first || first.dynamic) return first !== undefined;
+  return /^-[abghs]/.test(first.value) && args.slice(1).some((w) => targetRebinds(w, 0));
+}
+
 /**
- * Whether a dynamic option word may make the builtin store somewhere. Quoted, it is one word: last after a declarer's `-f`
+ * Whether an unsure option word may make the builtin store somewhere. Quoted, it is one word: last after a declarer's `-f`
  * it names a function to print, and a printer's needs two more words to be `-v NAME FORMAT`. Unquoted, it may split into any.
  */
-function dynamicOptionCounts(name: string, args: WordToken[], at: number, flags: string[]): boolean {
+function unsureOptionCounts(name: string, args: WordToken[], at: number, flags: string[]): boolean {
   if (args[at]?.unquotedExpansion === true) return true;
   if (STORERS[name] === DECLARER && flags.includes("-f") && at === args.length - 1) return false;
   return !PRINTERS.has(name) || args.length - at - 1 >= 2;
