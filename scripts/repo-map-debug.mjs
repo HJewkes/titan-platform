@@ -92,7 +92,9 @@ async function main() {
   const layout = await import(path.join(ROOT, "packages/graph-layout/dist/index.js"));
   const files = await loadFiles(graphFile, outDir);
   const [l1, l2] = [await layoutL1(files, layout), await layoutL2(files, layout)];
-  const [l1Canvas, l2Canvas] = [canvasOf(l1.nodes), canvasOf([...l2.groups, ...l2.nodes])];
+  const routes = (edges) => edges.map(layout.routeOf).filter(Boolean);
+  const l1Canvas = canvasOf(l1.nodes, routes(l1.edges));
+  const l2Canvas = canvasOf([...l2.groups, ...l2.nodes], routes(l2.edges));
   const one = renderL1(l1, l1Canvas, L1_LABEL, layout);
   const two = renderL2(l2, l2Canvas, IDS, layout);
   writeFileSync(path.join(outDir, "map-l1.svg"), one.svg);

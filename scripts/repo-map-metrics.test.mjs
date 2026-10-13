@@ -37,4 +37,8 @@ describe("repo map metrics", () => {
   it("measures the canvas to the far edge of the furthest box", () => {
     expect(canvasOf(boxes)).toEqual({ width: 100, height: 240 });
   });
+
+  it("widens the canvas to a route that runs outside every box", () => {
+    expect(canvasOf(boxes, [[{ x: 90, y: 40 }, { x: 160, y: 40 }]])).toEqual({ width: 160, height: 240 });
+  });
 });

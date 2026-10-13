@@ -2,9 +2,11 @@
 // box that is not its end, and whether two labels overlap. Pure functions over laid-out boxes
 // (centre x/y, like LaidOutNode) and absolute routes.
 
-export function canvasOf(boxes) {
-  const width = Math.max(...boxes.map((b) => b.x + b.width / 2));
-  const height = Math.max(...boxes.map((b) => b.y + b.height / 2));
+/** The extent of every box and route point; ELK may route an edge outside every box. */
+export function canvasOf(boxes, routes = []) {
+  const points = routes.flat();
+  const width = Math.max(...boxes.map((b) => b.x + b.width / 2), ...points.map((p) => p.x));
+  const height = Math.max(...boxes.map((b) => b.y + b.height / 2), ...points.map((p) => p.y));
   return { width: Math.ceil(width), height: Math.ceil(height) };
 }
 
