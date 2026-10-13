@@ -194,6 +194,25 @@ export class ShepherdStore implements HoldLookup {
     return this.lift(runId, (slots) => (slots.top?.reason === reason ? liftTop(slots) : undefined), by);
   }
 
+  /**
+   * Compare-and-swap in one transaction: lifts the gating hold only while it is exactly `from`, recording `from` as the
+   * release's reason, then places `next(<the hold now gating>)` when that is defined, so a parked hold is never dropped and
+   * the run is never seen unheld between the two writes. The placed reason, null when only released, false when nothing was written.
+   */
+  reclassIfHeld(runId: string, from: string, next: (gating: string | null) => string | undefined, by: EventContext = {}): string | null | false {
+    const swap = this.db.transaction((): string | null | false => {
+      const slots = readSlots(this.db, runId);
+      if (slots.top?.reason !== from) return false;
+      const lifted = liftTop(slots).slots;
+      this.writeSlots(runId, lifted, { kind: "release", reason: from }, by);
+      const placed = next(lifted.top?.reason ?? null);
+      if (placed === undefined) return null;
+      this.placeHold(runId, { reason: placed, reviewer: null }, by);
+      return placed;
+    });
+    return this.changed(runId, swap());
+  }
+
   /** Compare-and-swap: lifts the owner-asked hold only while one is set, recording its reason, or `reason` when given; false, writing nothing, when none is. */
   releaseOwnerHold(runId: string, by: EventContext = {}, reason?: string): boolean {
     return this.changed(runId, this.db.transaction(() => liftOwnerHold(this.db, runId, this.stamp(), by, reason))());

@@ -2,6 +2,7 @@ import { fakeGitHub, fakeSha, githubPort, type FakeGitHub } from "@titan-design/
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { holdSlotsMigration, parkSettledMigration } from "./store-migrations.js";
+import { adversaryRehold } from "./adversary-anchor.js";
 import { adversaryGuard } from "./adversary-guard.js";
 import { accountLimitMigration } from "./account-store.js";
 import { shepherdEventMigration } from "./events.js";
@@ -236,5 +237,40 @@ describe("the merge guard failing closed on a g10-adversary run", () => {
     await r.merge();
 
     expect(r.fake.pr(1).merged).toBe(true);
+  });
+});
+
+describe("an unread-files hold Shepherd re-classed", () => {
+  const UNREAD = "g10-adversary: changed files unread at registration (GhError)";
+
+  function heldUnread(releasedBy: string) {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)]);
+    const store = new ShepherdStore(db);
+    const fake = fakeGitHub({ repo: REPO });
+    fake.addPr({ headSha: MOVED });
+    store.register({ repo: REPO, pr: 1, runId: "run-1", task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    store.hold("run-1", UNREAD, undefined, { actor: "shepherd", headSha: REVIEWED });
+    store.releaseIfHeld("run-1", UNREAD, { actor: releasedBy, headSha: REVIEWED });
+    const guard = adversaryGuard({ store: () => store, carry: async () => FIX_PUSH });
+    const port = holdingPort(githubPort(fake.wire), () => store, guard);
+    return { store, fake, merge: () => port.merge(REPO, 1, MOVED, "squash") };
+  }
+
+  const reholdAt = (store: ShepherdStore) => adversaryRehold(store, "run-1", { head: MOVED, baseRef: async () => "main" }, async () => FIX_PUSH);
+
+  it("is no adversary history: a new head is not re-held and the merge goes ahead", async () => {
+    const r = heldUnread("shepherd");
+
+    expect(await reholdAt(r.store)).toBeUndefined();
+    await r.merge();
+    expect(r.fake.pr(1).merged).toBe(true);
+  });
+
+  it("is still adversary history when a seat released it, so a new head is re-held and the merge refused", async () => {
+    const r = heldUnread("seat-x");
+
+    expect((await reholdAt(r.store))?.reason).toContain(`from ${REVIEWED} to ${MOVED}`);
+    await expect(r.merge()).rejects.toBeInstanceOf(MergeHeldError);
   });
 });

@@ -344,6 +344,56 @@ describe("a hold of another class beside a g10-adversary hold", () => {
   });
 });
 
+describe("re-classing an unread-files hold in one swap", () => {
+  const UNREAD = "g10-adversary: changed files unread at registration (GhError)";
+  const STALL = "stalled: no progress; TP-1";
+  const REVIEW = "g10-review: 900 changed lines";
+
+  function heldUnread(over?: string): ShepherdStore {
+    const store = openStore();
+    store.register(base);
+    if (over !== undefined) store.hold("run-1", over, undefined, { actor: "seat" });
+    store.hold("run-1", UNREAD, undefined, { actor: "shepherd" });
+    return store;
+  }
+
+  it("lifts the unread hold and leaves a parked stall gating, recording one release of the unread reason", () => {
+    const store = heldUnread(STALL);
+    const seen: (string | null)[] = [];
+
+    const placed = store.reclassIfHeld("run-1", UNREAD, (gating) => (seen.push(gating), undefined), { actor: "shepherd" });
+
+    expect(placed).toBeNull();
+    expect(seen).toEqual([STALL]);
+    expect(store.byRun("run-1")).toMatchObject({ held: true, holdReason: STALL });
+    const releases = store.eventsOf("run-1").filter((event) => event.kind === "release");
+    expect(releases).toMatchObject([{ reason: UNREAD, actor: "shepherd" }]);
+  });
+
+  it("places the real class over no parked hold", () => {
+    const store = heldUnread();
+
+    const placed = store.reclassIfHeld("run-1", UNREAD, (gating) => (gating === null ? REVIEW : undefined), { actor: "shepherd" });
+
+    expect(placed).toBe(REVIEW);
+    expect(store.byRun("run-1")).toMatchObject({ held: true, holdReason: REVIEW });
+    expect(store.eventsOf("run-1").map((event) => [event.kind, event.reason])).toEqual([["hold", UNREAD], ["release", UNREAD], ["hold", REVIEW]]);
+  });
+
+  it("writes nothing when the gating hold is not the one named", () => {
+    const store = heldUnread();
+    store.release("run-1", { actor: "seat" });
+    store.hold("run-1", "g10-adversary: authority change; TP-1", undefined, { actor: "seat" });
+    const mark = store.changeMark("run-1");
+
+    const placed = store.reclassIfHeld("run-1", UNREAD, () => REVIEW, { actor: "shepherd" });
+
+    expect(placed).toBe(false);
+    expect(store.changeMark("run-1")).toBe(mark);
+    expect(store.byRun("run-1")?.holdReason).toBe("g10-adversary: authority change; TP-1");
+  });
+});
+
 describe("a hold satisfied by its reviewer's MERGE", () => {
   const H1 = "1".repeat(40);
   const H2 = "2".repeat(40);

@@ -2,6 +2,7 @@ import type { GitHubPort, PrFile, RepoSlug } from "@titan-design/github";
 import { classifyPr, DEFAULT_CLASS_RULES, type ClassRules } from "@titan-design/review-panel";
 import { SHEPHERD_ACTOR } from "./events.js";
 import { holdClassOf } from "./g10-release.js";
+import { reclassedUnread, UNREAD_FILES_PREFIX } from "./g10-reclass-events.js";
 import { localPrFiles, prFilesOf, type PrFilesRead } from "./git-pr-files.js";
 import { isAdversaryHold } from "./hold-slots.js";
 import { isOwnerHold } from "./owner-hold-rows.js";
@@ -22,6 +23,8 @@ const SHEPHERD_CLASS_RULES: ClassRules = {
 
 /** Each lost compare-and-swap means another hold or release landed; the run is read again and the G10 hold restacked on it. */
 const CAS_ATTEMPTS = 5;
+
+export { isUnreadRegistrationHold } from "./g10-reclass-events.js";
 
 const ADVERSARY_TOUCHES = ["authority", "policy", "security"] as const;
 
@@ -74,7 +77,7 @@ export async function g10HoldAt(port: GitHubPort, target: HoldTarget, local: PrF
   try {
     return reasonFor(await prFilesOf(port, target, local), target.kind);
   } catch (error) {
-    return `g10-adversary: changed files unread at registration (${error instanceof Error ? error.name : "error"})`;
+    return `${UNREAD_FILES_PREFIX}${error instanceof Error ? error.name : "error"})`;
   }
 }
 
@@ -82,9 +85,15 @@ const G10_STRENGTH: Readonly<Record<string, number>> = { "g10-review": 1, "g10-a
 
 const g10StrengthOf = (reason: string | null | undefined): number => G10_STRENGTH[holdClassOf(reason) ?? ""] ?? 0;
 
-/** True when a G10 hold at least as strong as `wanted` was placed on the run, so a weaker one placed or inherited never blocks a stronger. */
-const wasG10Held = (store: ShepherdStore, runId: string, wanted: string): boolean =>
-  store.eventsOf(runId).some((event) => event.kind === "hold" && g10StrengthOf(event.reason) >= g10StrengthOf(wanted));
+/**
+ * True when a G10 hold at least as strong as `wanted` was placed on the run, so a weaker one placed or inherited never blocks
+ * a stronger. An unread-files hold Shepherd re-classed decided no class, so a repeat registration may still escalate.
+ */
+function wasG10Held(store: ShepherdStore, runId: string, wanted: string): boolean {
+  const events = store.eventsOf(runId);
+  const reclassed = reclassedUnread(events);
+  return events.some((event) => event.kind === "hold" && !reclassed.has(event) && g10StrengthOf(event.reason) >= g10StrengthOf(wanted));
+}
 
 /** True when the run holds or ever held a G10 hold; the reviewer it gets is picked by this, since a released hold still names the class. */
 export const everG10Held = (store: ShepherdStore, runId: string): boolean =>

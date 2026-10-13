@@ -3,7 +3,8 @@ import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { shepherdEventMigration } from "./events.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import { applyRegistrationHold, g10HoldAt, stackedOver } from "./registration-hold.js";
+import { reclassedUnread } from "./g10-reclass-events.js";
+import { applyRegistrationHold, everG10Held, g10HoldAt, isUnreadRegistrationHold, stackedOver } from "./registration-hold.js";
 import { holdSlotsMigration } from "./store-migrations.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
 
@@ -260,5 +261,42 @@ describe("the G10 hold Shepherd places at registration", () => {
 
     expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: 900 changed lines, over a stalled hold");
     expect(r.store.release("run-1").holdReason).toBe("stalled: seat away; TP-1");
+  });
+});
+
+describe("an unread-files hold re-classed by Shepherd", () => {
+  const UNREAD = "g10-adversary: changed files unread at registration (GhError)";
+
+  it("recognises the unread-files reason for any error name, and no other adversary reason", () => {
+    expect(isUnreadRegistrationHold(UNREAD)).toBe(true);
+    expect(isUnreadRegistrationHold("g10-adversary: changed files unread at registration (FileListTruncatedError)")).toBe(true);
+    expect(isUnreadRegistrationHold("g10-adversary: hold history unread at registration (Error)")).toBe(false);
+    expect(isUnreadRegistrationHold("g10-adversary: authority change; TP-1")).toBe(false);
+  });
+
+  it("re-classes nothing for a seat's release of an unread-looking hold", async () => {
+    const r = rig([file("products/factory/src/shepherd/g10-x.ts", 10)]);
+    r.store.hold("run-1", UNREAD);
+    r.store.releaseIfHeld("run-1", UNREAD, { actor: "seat-x" });
+
+    expect(reclassedUnread(r.store.eventsOf("run-1")).size).toBe(0);
+    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBeUndefined();
+  });
+
+  it("a repeat registration escalates a re-classed run whose diff now touches policy", async () => {
+    const r = rig([file("products/factory/src/shepherd/g10-x.ts", 10)]);
+    r.store.hold("run-1", UNREAD);
+    r.store.reclassIfHeld("run-1", UNREAD, () => undefined, { actor: "shepherd" });
+
+    expect(reclassedUnread(r.store.eventsOf("run-1")).size).toBe(2);
+    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: policy touch");
+  });
+
+  it("still counts a re-classed unread hold when picking the run's reviewer", () => {
+    const r = rig([file("packages/x/src/a.ts", 10)]);
+    r.store.hold("run-1", UNREAD);
+    r.store.reclassIfHeld("run-1", UNREAD, () => undefined, { actor: "shepherd" });
+
+    expect(everG10Held(r.store, "run-1")).toBe(true);
   });
 });
