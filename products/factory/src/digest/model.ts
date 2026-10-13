@@ -71,6 +71,26 @@ export interface FlowStats {
   mergesPerSlotHour?: number;
 }
 
+/** One question the decider answered for the owner; `overrule` is the command that replaces the answer, set only while the decision awaits audit. */
+export interface DecidedLine {
+  questionId: string;
+  question: string;
+  answer: string;
+  class: string;
+  state: string;
+  reversible?: string;
+  confidence?: number;
+  principleIds?: string[];
+  overrule?: string;
+}
+
+/** Decisions per class over the last week and how many the owner overruled. */
+export interface ReversalLine {
+  class: string;
+  decided: number;
+  overruled: number;
+}
+
 /** Everything one digest says, as data; ranking and rendering never read a source. */
 export interface DigestModel {
   slot: DigestSlot;
@@ -89,11 +109,27 @@ export interface DigestModel {
   flow?: FlowStats;
   /** The latest day of owner friction; absent when the gate store could not be read. */
   friction?: FrictionDay;
+  /** Questions the decider answered in the window, oldest first; absent when there are none. */
+  decided?: DecidedLine[];
+  /** The 7-day reversal rate per class; read only alongside `decided`. */
+  reversals?: ReversalLine[];
   /** Sources that could not be read, one line each, so a gap is never silent. */
   gaps: string[];
 }
 
 const NamedItem = z.object({ label: z.string(), detail: z.string().default("") });
+/** `reversible`, `confidence` and `principleIds` come from a newer agent-chat (TP-695 c) and are read when present. */
+const DecidedEntry = z.object({
+  questionId: z.string(),
+  question: z.string(),
+  answer: z.string(),
+  class: z.string(),
+  state: z.string(),
+  reversible: z.string().optional(),
+  confidence: z.number().optional(),
+  principleIds: z.array(z.string()).optional(),
+});
+const Reversal = z.object({ class: z.string(), decided: z.number(), overruled: z.number() });
 const Reading = z.object({ sevenDay: z.number().optional(), fiveHour: z.number().optional() });
 
 /** The subset of agent-chat's `digest --json` model the owner digest reads; unknown fields are ignored. */
@@ -103,8 +139,10 @@ export const AgentChatDigestSchema = z.object({
       available: z.boolean().default(false),
       escalations: z.array(z.object({ from: z.string(), text: z.string(), at: z.number() })).default([]),
       reports: z.array(z.object({ from: z.string(), at: z.number(), status: z.string(), line: z.string() })).default([]),
+      decided: z.array(DecidedEntry).default([]),
+      reversals: z.array(Reversal).default([]),
     })
-    .default({ available: false, escalations: [], reports: [] }),
+    .default({ available: false, escalations: [], reports: [], decided: [], reversals: [] }),
   readyToMerge: z.array(NamedItem).default([]),
   needsGrant: z.array(NamedItem).default([]),
   mergedPrs: z.array(NamedItem).default([]),

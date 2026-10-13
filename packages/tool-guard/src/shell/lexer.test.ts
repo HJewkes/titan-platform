@@ -248,7 +248,6 @@ describe("subscripts with blanks inside the brackets", () => {
     ["esac", "Y[ 0 ]=x esac", ["Y[ 0 ]=x", "esac"]],
     ["[[", "Y[ 0 ]=x [[", ["Y[ 0 ]=x", "[["]],
     ["]]", "Y[ 0 ]=x ]]", ["Y[ 0 ]=x", "]]"]],
-    ["((", "Y[ 0 ]=x ((", ["Y[ 0 ]=x", "<op>", "<op>"]],
     ["))", "Y[ 0 ]=x ))", ["Y[ 0 ]=x", "<op>", "<op>"]],
     ["$((", "Y[ 0 ]=x $((1))", ["Y[ 0 ]=x", "$((1))"]],
     ["<<", "Y[ 0 ]=x <<E\nE\n", ["Y[ 0 ]=x", "<redirect>", "<op>"]],
@@ -260,6 +259,10 @@ describe("subscripts with blanks inside the brackets", () => {
     ]),
   ])("joins the subscript when the text holds %s after it", (_token, src, expected) => {
     expect(words(src)).toEqual(expected);
+  });
+
+  it("refuses (( after the joined assignment, which bash reads as a compound assignment's nested (", () => {
+    expect(() => tokenize("Y[ 0 ]=x ((")).toThrow(ParseError);
   });
 });
 

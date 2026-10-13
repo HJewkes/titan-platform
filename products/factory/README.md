@@ -268,11 +268,14 @@ Shepherd opens `approve-merge` for the owner for five reasons only, listed in `E
   owner can approve this one.
 - `failed-rounds`: `MAX_FAILED_ROUNDS` review rounds at one task ended with no verdict, a
   timeout or an unanswered hold. Retrying again would only repeat the stall.
-- `fix-first-runaway`: `MAX_FIX_FIRSTS` FIX_FIRST reviews at one task. Each one counts as
-  progress, so this cap only stops a loop between the reviewer and the fixer.
+- `fix-first-runaway`: the third FIX_FIRST review at one run (`MAX_FIX_FIRSTS` is 3, for every
+  kind of PR). Two fix rounds that did not converge mean point fixes are not working, so
+  Shepherd wakes no third fixer. The gate reason routes the task to the planner to redesign or
+  split it; coord or the owner acts on that, and Shepherd files no planner task itself
+  (TP-2394). It is checked before `no-progress`, so a third FIX_FIRST always names this route.
 - `no-progress`: two FIX_FIRST reviews in a row ended with `Closer: no`, meaning the head is no
   closer to MERGE than the last one. A FIX_FIRST with `Closer: yes` or no Closer line, and any
-  other round, resets the count. It is checked before `fix-first-runaway`.
+  other round, resets the count. Under the cap of 3 it can only fire at the second FIX_FIRST.
 - `repair-budget`: `MAX_REPAIRS` fixer wakes of any kind at one run, counted across heads. This
   caps what one PR can spend on agents before a human looks at it.
 
@@ -333,6 +336,14 @@ Its sources:
 A source that fails becomes one Gaps line and the rest still render. An ask that names the
 same PR or run id as an earlier one is dropped, so a factory gate wins over a queue line
 about the same PR.
+
+"Decided for you" follows Needs you whenever agent-chat's ledger holds questions the decider
+answered in the window. Each line gives the question, the answer, the class, and, when agent-chat
+sends them, the confidence, the principle ids and how to reverse it. A decision still awaiting
+audit ends with its overrule, `agent-chat answer <id> "..."`. The section closes with the 7-day
+reversal rate per class. Decisions are notices, not asks: at most 5 are shown, and only as many as
+fit the 400 words left after the other sections. The rest count in the closing "and N more" line.
+An agent-chat too old to send the list leaves the section out.
 
 With `digest.push` set, each written slot is also pushed to an ntfy topic after the files are
 written: title `Digest <date> <HH>:00`, the first three headline lines as the message, and the full
@@ -458,7 +469,7 @@ checkout that should serve, not from a worktree that will be removed.
 | Verb | What it does | Exit 0 when |
 | --- | --- | --- |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers and its `github` field is `ok` |
-| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`not loaded`, `stale pid`, `crash loop`, `stale build`, `GitHub down`, `stale index.lock` (the service checkout's `.git/index.lock` with no process holding it, older than 10 minutes, named by path and age and never removed), `deploy stalled` (`/health`'s deploy block has its alarm up), then `tick failing` or `tick stale` from agent-chat's `$AGENT_CHAT_HOME/burndown-status.json`, default `~/.agent-chat/burndown-status.json`, which an absent file skips; a heartbeat older than 3 x its `intervalSeconds` is stale), then `no hub seat` (the config sets no `shepherd.hubSeat`, so a deploy alarm reaches no seat); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, the burndown tick is not failing or stale, and a hub seat is configured |
+| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`unreadable` (on Linux, `systemctl --user show` itself failed; the line carries its stderr, `detail` its `exitCode` and `stderr`), `not loaded`, `stale pid` (the pid is dead, a foreign pid answers the port, or there is no process), `crash loop`, `unresponsive` (the pid is alive but every `/health` probe timed out; `detail.probeLatenciesMs` lists each), `stale build`, `GitHub down`, `stale index.lock` (the service checkout's `.git/index.lock` with no process holding it, older than 10 minutes, named by path and age and never removed), `deploy stalled` (`/health`'s deploy block has its alarm up), then `tick failing` or `tick stale` from agent-chat's `$AGENT_CHAT_HOME/burndown-status.json`, default `~/.agent-chat/burndown-status.json`, which an absent file skips; a heartbeat older than 3 x its `intervalSeconds` is stale), then `no hub seat` (the config sets no `shepherd.hubSeat`, so a deploy alarm reaches no seat); `--json` adds `cause`, `pid`, `health` and `detail`; it always prints within 20 s (`SERVICE_CHECK_BUDGET_MS`) | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, the burndown tick is not failing or stale, and a hub seat is configured |
 | `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, then `launchctl kickstart -k`, then the same `/health` wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>] [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Fast-forwards the service checkout, rebuilds the factory closure when the range touches it, restarts drained, and restores `dist` on failure | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
@@ -477,7 +488,7 @@ in `$XDG_CONFIG_HOME/systemd/user/`, else `~/.config/systemd/user/`, and mirrors
 | Plist | Unit |
 | --- | --- |
 | `ProgramArguments` | `ExecStart=`, the same argv, quoted where an argument holds a space |
-| `KeepAlive` | `Type=simple`, `Restart=always`, `RestartSec=5` |
+| `KeepAlive` `SuccessfulExit` false, `ThrottleInterval` 60 | `Type=simple`, `Restart=on-failure`, `RestartSec=5` |
 | `RunAtLoad` | `WantedBy=default.target`, enabled by install |
 | `EnvironmentVariables` `PATH` | `Environment=PATH=...`, the same `servicePath` value, since a user manager starts jobs with its own minimal `PATH` |
 | `StandardOutPath`, `StandardErrorPath` | `StandardOutput=append:`, `StandardError=append:` on the same log files |
@@ -494,7 +505,10 @@ install would make, and changes nothing. For the unit to run without a login ses
 lingering once: `loginctl enable-linger "$USER"`. `service check` reads `systemctl --user show`
 on Linux: `MainPID` (no process unless `ActiveState` is `active`), `NRestarts` in place of
 launchd's run count and `ExecMainStatus` in place of its last exit code, with the same causes
-and exit codes as on macOS.
+and exit codes as on macOS. A missing unit reads as exit 0 with `LoadState=not-found` and is
+`not loaded`; a non-zero exit from `systemctl --user show` (no user bus because
+`XDG_RUNTIME_DIR` is unset, a permission error, a timeout, no `systemctl`) is `unreadable`,
+never `not loaded`, since the unit may well be installed.
 
 `service restart` drains first. It polls `/health` every 5 s until its `busy` list is
 empty, and prints the busy runs once a minute. A run is busy when it is `running` and its
@@ -582,9 +596,12 @@ or unread main, record no step. A replay reuses the recorded step, and a service
 built from the merge sha spawns nothing, so the run resumed after the restart is a no-op.
 
 The plist names `dev.hjewkes.titan-factory`: the absolute node path, the built `dist/bin.js`
-and `serve`, `RunAtLoad` and `KeepAlive` true, and logs at
+and `serve`, `RunAtLoad` true, and logs at
 `$XDG_STATE_HOME/titan-factory/serve.{out,err}.log`. `ProcessType` is `Interactive`; a
-`Background` job is throttled by macOS.
+`Background` job is throttled by macOS. `KeepAlive` restarts serve only after a failed exit
+(`SuccessfulExit` false), at most once every 60 seconds (`ThrottleInterval`). A serve started
+beside a live factory, one whose `/health` pid matches the pid file, logs that and exits 0, so
+the job does not loop on it; any other refused start still fails and is restarted.
 
 launchd starts a job with `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, and serve runs `gh`,
 `agent-chat` and `claude` by bare name. So the plist sets `EnvironmentVariables` to one

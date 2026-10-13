@@ -9,9 +9,9 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { shepherdEventMigration } from "./events.js";
 import { FIX_PROOF_CHECK, FixProofReadSchema, fixProofStanding, lastResultLine, readFixProof } from "./fix-proof.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "./review.js";
-import { holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
+import { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
 
 const REPO = "octo/demo";
 const H = fakeSha("fix-proof-head");
@@ -20,6 +20,7 @@ const BASE = fakeSha("fix-proof-base");
 const AUTO: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: true, seat: "trusted-seat" };
 const FIX_PROOF_JOB = 77;
 const OTHER_APP = 424242;
+const UNVERIFIED_BRIEF = "Shepherd marks this head's fix-proof unverified";
 const WORKFLOW_EDIT: PrFile = { path: ".github/workflows/fix-proof.yml", status: "modified" };
 
 function resultLine(head: string, verdict: FixProofResult["verdict"]): string {
@@ -61,6 +62,7 @@ interface Scene {
   runs?: CheckRun[];
   log?: string;
   files?: PrFile[];
+  external?: string;
 }
 
 function fakeDispatch(): ReviewerDispatch & { agents: ReviewerAgent[]; spawns: { name: string; brief: string }[] } {
@@ -91,17 +93,19 @@ describe("sh-fix-proof in reviewPhase", () => {
     const store = shepherdStoreRef();
     const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined } };
     const dispatch = fakeDispatch();
+    if (scene.external) dispatch.agents.push({ name: scene.external, agentId: `agent-${scene.external}`, sessionId: `session-${scene.external}`, presence: "live", spawnedBy: null, predecessor: null });
     const said = (who: ReviewerAgent): ReviewerMessage => ({ agentId: who.agentId, sessionId: who.sessionId, writtenAt: clock + 1, text: `Verdict: MERGE\nPR: ${REPO}#1\nHead: ${H}\n`, locator: locatorIn(who.sessionId) });
     const reader: ReviewerReader = { read: async (input) => dispatch.agents.filter((who) => who.agentId === input.reviewerAgentId).map(said) };
     const verdicts: Verdict[] = [];
     const inputs: Record<string, unknown> = {};
     const recorded = reviewRoutes(deps, { reader, dispatch, timeoutMs: 5_000 }).map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(step)) } }));
-    const routes = Object.assign(recorded, { database: { extraMigrations: [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)], bind: store.bind } });
+    const routes = Object.assign(recorded, { database: { extraMigrations: [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)], bind: store.bind } });
     const run = async (ctx: Parameters<typeof reviewPhase>[0]) => void verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha: H }));
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "fix-proof-test", steps: REVIEW_STEPS, run })], routes, gatePollMs: 5 });
     hosts.push(host);
     const runId = host.runtime.start("fix-proof-test", { policy: JSON.stringify(AUTO) });
     store.get().register({ repo: REPO, pr: 1, runId, task: "demo: fix the parser", implementer: "impl-a", policy: OWNER_GATE_POLICY, ...(scene.kind && { kind: scene.kind }), ...(scene.branch && { branch: scene.branch }) });
+    if (scene.external) store.get().hold(runId, "seat review", scene.external);
     await host.runtime.wait(runId);
     const results = Object.values(host.runtime.status(runId)!.stepResults);
     const proof = (results.find((result) => result.stepId === `sh-fix-proof:${H}`)?.data as { result?: unknown } | undefined)?.result;
@@ -202,12 +206,59 @@ describe("sh-fix-proof in reviewPhase", () => {
     expect(spawns[0]?.brief).not.toContain("Do not rerun");
   });
 
-  it("reviews a PR whose vacuous line is untrusted instead of ending it as NO_REPRO", async () => {
-    const { verdicts, spawns, proof } = await review({ kind: "correctness", runs: [fixProofRun()], log: actionsLog(resultLine(H, "vacuous")), files: [WORKFLOW_EDIT] });
+  it("reviews a PR whose vacuous line is untrusted as unverified, and its MERGE cannot auto-merge", async () => {
+    const { verdicts, spawns, proof, inputs } = await review({ kind: "correctness", runs: [fixProofRun()], log: actionsLog(resultLine(H, "vacuous")), files: [WORKFLOW_EDIT] });
 
     expect(proof).toMatchObject({ kind: "untrusted", verdict: "vacuous" });
     expect(verdicts).toMatchObject([{ kind: "MERGE" }]);
     expect(spawns).toHaveLength(1);
+    expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProofUnverified: "untrusted", ownerBrief: true });
+    expect(spawns[0]?.brief).toContain(UNVERIFIED_BRIEF);
+    expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [] });
+  });
+
+  it("reviews a correctness head that forces a fix-proof error as unverified, and its MERGE cannot auto-merge", async () => {
+    const { verdicts, spawns, proof, inputs } = await review({ kind: "correctness", runs: [fixProofRun()], log: actionsLog(resultLine(H, "error")) });
+
+    expect(proof).toMatchObject({ kind: "result", verdict: "error" });
+    expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProofUnverified: "error", ownerBrief: true });
+    expect(spawns[0]?.brief).toContain(UNVERIFIED_BRIEF);
+    expect(spawns[0]?.brief).not.toContain("Do not rerun");
+    expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H }]);
+    expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [] });
+  });
+
+  it("drops the merge-on-green grant for an external reviewer's MERGE on a head whose fix-proof errored", async () => {
+    const { verdicts, spawns, inputs } = await review({ kind: "correctness", runs: [fixProofRun()], log: actionsLog(resultLine(H, "error")), external: "seat-reviewer" });
+
+    expect(spawns).toEqual([]);
+    expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H }]);
+    expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [] });
+  });
+
+  it("keeps the merge-on-green grant and asks no owner brief for a reproduced proof", async () => {
+    const { verdicts, spawns, inputs } = await review({ kind: "correctness", runs: [fixProofRun()], log: actionsLog(resultLine(H, "reproduced")) });
+
+    expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H }]);
+    expect(inputs[`sh-review:${H}`]).not.toHaveProperty("fixProofUnverified");
+    expect(inputs[`sh-review:${H}`]).not.toHaveProperty("ownerBrief");
+    expect(spawns[0]?.brief).not.toContain(UNVERIFIED_BRIEF);
+    expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [MERGE_ON_GREEN_GRANT] });
+  });
+
+  it("keeps the merge-on-green grant for a repo that runs no fix-proof", async () => {
+    const { inputs } = await review({ kind: "correctness" });
+
+    expect(inputs[`sh-review:${H}`]).not.toHaveProperty("fixProofUnverified");
+    expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [MERGE_ON_GREEN_GRANT] });
+  });
+
+  it("keeps today's grant for a feature PR outside the gate whose fix-proof errored", async () => {
+    const { proof, inputs } = await review({ kind: "feature", runs: [fixProofRun()], log: actionsLog(resultLine(H, "error")) });
+
+    expect(proof).toMatchObject({ kind: "skipped" });
+    expect(inputs[`sh-review:${H}`]).not.toHaveProperty("fixProofUnverified");
+    expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [MERGE_ON_GREEN_GRANT] });
   });
 });
 

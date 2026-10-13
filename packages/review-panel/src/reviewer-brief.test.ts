@@ -3,6 +3,7 @@ import { formatResultLine, type Verdict } from "@titan-design/fix-proof";
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { BLOCK_LINE, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS } from "./fix-first-findings.js";
 import {
+  CI_POLICY_EXACT,
   EARLIER_FINDINGS_END,
   EARLIER_FINDINGS_START,
   FOLLOW_UPS_RULE,
@@ -24,6 +25,7 @@ const REFUSAL_SET: Record<MalformedRefusal, true> = {
   missing_head_line: true,
   bad_head: true,
   wrong_target: true,
+  ci_policy_malformed: true,
 };
 const REFUSALS = Object.keys(REFUSAL_SET).filter((key): key is MalformedRefusal => Object.hasOwn(REFUSAL_SET, key));
 
@@ -216,6 +218,15 @@ describe("the CI-policy line", () => {
 
   it.each([false, true])("is asked for by the correction prompt, owner brief %s", (ownerBrief) => {
     asksForLine(correctionPrompt({ ...input, refusal: "no_block", ownerBrief }), (key) => key);
+  });
+
+  it.each([
+    ["a review brief", reviewerBrief(input)],
+    ["an owner-gated review brief", reviewerBrief({ ...input, ownerBrief: true })],
+    ["a correction prompt", correctionPrompt({ ...input, refusal: "ci_policy_malformed" })],
+    ["an owner-gated correction prompt", correctionPrompt({ ...input, refusal: "ci_policy_malformed", ownerBrief: true })],
+  ])("is stated by %s to hold nothing else", (_name, text) => {
+    expect(text).toContain(CI_POLICY_EXACT);
   });
 });
 

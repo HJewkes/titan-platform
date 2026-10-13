@@ -11,10 +11,12 @@ import { HoldReasonSchema, OWNER_HOLD_CLASS, ReleasableClassSchema, type HoldRes
 import { isOwnerHold } from "./owner-hold-rows.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { ReleaseHeadArg, releaseAtHead } from "./release-head.js";
+import { cachedByHead, localPrFiles } from "./git-pr-files.js";
 import { applyRegistrationHold } from "./registration-hold.js";
 import { hostPrsSources, shepherdPrs, type PrRow } from "./prs.js";
 import { PrArg, RegisterArgs, RepoArg, coded, headBranch, policyFor, refuseKindMove, sliceAfter } from "./register-args.js";
 import { restartFor } from "./restart.js";
+import { sizeFlagFor, type SliceFlag } from "./size-flag.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
 import { reviewCommand } from "./review-request.js";
 import { findRegistration, releaseFinishedBranch } from "./registration-lookup.js";
@@ -39,6 +41,8 @@ export interface Registered {
   previousStop?: string;
   /** The G10 hold Shepherd placed at this registration, when the PR's class needs one. */
   g10Hold?: string;
+  /** Set when a security-kind or guard-area PR is over the 400 non-generated line slice cap; advisory, never a hold. */
+  sizeFlag?: SliceFlag;
 }
 
 export interface MergeEvaluation {
@@ -134,12 +138,16 @@ async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Regist
 /**
  * Only a seat's registration is classed: the release and toolchain PRs Shepherd registers itself carry no seat to release a hold.
  * A repeat registration is classed again, so a diff that grew past the size limit or into a stronger class gets its hold.
+ * The hold and the slice-cap flag share one git read of the head's files.
  */
 async function registerWithHold(args: RegisterArgs, ctx: FactoryContext): Promise<Registered> {
   const registered = await register(args, ctx);
   const services = servicesOf(ctx);
-  const g10Hold = await applyRegistrationHold(services.port, services.store.get(), registered.runId, { ...(services.prFiles && { local: services.prFiles }) });
-  return g10Hold === undefined ? registered : { ...registered, g10Hold, registration: services.store.get().byRun(registered.runId)! };
+  const local = cachedByHead(services.prFiles ?? localPrFiles);
+  const g10Hold = await applyRegistrationHold(services.port, services.store.get(), registered.runId, { local });
+  const held = g10Hold === undefined ? registered : { ...registered, g10Hold, registration: services.store.get().byRun(registered.runId)! };
+  const sizeFlag = await sizeFlagFor(services.port, held.registration, { local });
+  return sizeFlag === undefined ? held : { ...held, sizeFlag };
 }
 
 /** Registers the changesets PR the way `shepherd register` would, with no fixer: no agent wrote it, so none can fix it. */

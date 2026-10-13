@@ -38,13 +38,19 @@ describe("service label prefix", () => {
 });
 
 describe("titan-factory service plist", () => {
-  it("names the job and keeps it running from load", () => {
+  it("names the job and starts it at load", () => {
     const plist = renderPlist(options);
 
     expect(keyValue(plist, "Label")).toBe(SERVICE_LABEL);
     expect(SERVICE_LABEL).toBe("dev.hjewkes.titan-factory");
-    expect(keyValue(plist, "KeepAlive")).toBe("<true/>");
     expect(keyValue(plist, "RunAtLoad")).toBe("<true/>");
+  });
+
+  it("restarts serve only after a failed exit, at most once a minute, so a serve beside a live factory is not looped", () => {
+    const plist = renderPlist(options);
+
+    expect(plist).toMatch(/<key>KeepAlive<\/key>\s*<dict>\s*<key>SuccessfulExit<\/key>\s*<false\/>\s*<\/dict>/);
+    expect(plist).toMatch(/<key>ThrottleInterval<\/key>\s*<integer>60<\/integer>/);
   });
 
   it("runs Interactive, because a Background job is throttled by macOS", () => {
@@ -161,11 +167,11 @@ describe("titan-factory service unit", () => {
     expect(UNIT_NAME).toBe("titan-factory.service");
   });
 
-  it("keeps serve running from boot, as KeepAlive and RunAtLoad do", () => {
+  it("starts serve at boot and restarts it only on failure, as KeepAlive SuccessfulExit=false and RunAtLoad do", () => {
     const unit = renderUnit(options);
 
     expect(directive(unit, "Type")).toEqual(["simple"]);
-    expect(directive(unit, "Restart")).toEqual(["always"]);
+    expect(directive(unit, "Restart")).toEqual(["on-failure"]);
     expect(directive(unit, "RestartSec")).toEqual(["5"]);
     expect(directive(unit, "WantedBy")).toEqual(["default.target"]);
   });

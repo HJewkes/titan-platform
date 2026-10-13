@@ -1,8 +1,12 @@
-import { jaccard, tokenize } from "../text.js";
+import { tokenize } from "../text.js";
+import { averageLinkage } from "./average-linkage.js";
+import { cosine, tfidfVectors } from "./tfidf.js";
 import type { DedupedFact, FactGroup } from "./types.js";
-import { linkClusters } from "./union-find.js";
 
-const DEFAULT_GROUP_THRESHOLD = 0.3;
+// Measured on 303 real facts on 2026-10-11: 0.03 gave 51 groups (largest 22, 5 singletons), inside a passing band
+// of about 0.02 to 0.035; single-link Jaccard had no threshold below 60 groups without one group of 200 or more.
+export const DEFAULT_GROUP_THRESHOLD = 0.03;
+export const MAX_GROUP_SIZE = 25;
 const LABEL_TOKENS = 3;
 
 // Words that link facts on phrasing rather than topic.
@@ -14,7 +18,10 @@ const STOP_WORDS = new Set([
 ]);
 
 export interface GroupOptions {
+  /** Average TF-IDF cosine at which two groups merge. */
   threshold?: number;
+  /** No group grows past this many facts. */
+  maxGroupSize?: number;
 }
 
 /** The topic tokens of a fact or skill: its tokenized name and description minus the stop list. */
@@ -24,8 +31,12 @@ export function topicTokens(text: string): Set<string> {
   return tokens;
 }
 
-function factTopic({ fact }: DedupedFact): string {
-  return [...topicTokens(`${fact.name} ${fact.description}`)].join(" ");
+function factTokens({ fact }: DedupedFact): Set<string> {
+  return topicTokens(`${fact.name} ${fact.description}`);
+}
+
+function factTopic(deduped: DedupedFact): string {
+  return [...factTokens(deduped)].join(" ");
 }
 
 function label(facts: readonly DedupedFact[]): string {
@@ -47,15 +58,22 @@ function byPath(a: DedupedFact, b: DedupedFact): number {
   return compareText(a.fact.ref.path, b.fact.ref.path);
 }
 
-/** Single-link groups over topic-token Jaccard, largest first, then by label; stable for any input order. */
+// A fact with no topic tokens never links, so it stays a singleton at any threshold.
+function cluster(sorted: readonly DedupedFact[], threshold: number, maxSize: number): DedupedFact[][] {
+  const topical = sorted.filter((fact) => factTokens(fact).size > 0);
+  const untopical = sorted.filter((fact) => factTokens(fact).size === 0);
+  const vectors = tfidfVectors(topical.map(factTokens));
+  const similarity = (i: number, j: number): number => cosine(vectors[i] ?? new Map(), vectors[j] ?? new Map());
+  return [...averageLinkage(topical, similarity, { threshold, maxSize }), ...untopical.map((fact) => [fact])];
+}
+
+/**
+ * Average-linkage groups over the smoothed TF-IDF cosine of topic tokens, capped at `maxGroupSize`, largest
+ * first, then by label; stable for any input order.
+ */
 export function groupFacts(deduped: readonly DedupedFact[], options: GroupOptions = {}): FactGroup[] {
-  const threshold = options.threshold ?? DEFAULT_GROUP_THRESHOLD;
-  const topics = new Map(deduped.map((fact) => [fact, factTopic(fact)]));
-  const linked = (a: DedupedFact, b: DedupedFact): boolean => {
-    const [ta, tb] = [topics.get(a) ?? "", topics.get(b) ?? ""];
-    return ta !== "" && tb !== "" && jaccard(ta, tb) >= threshold;
-  };
-  return linkClusters([...deduped].sort(byPath), linked)
+  const { threshold = DEFAULT_GROUP_THRESHOLD, maxGroupSize = MAX_GROUP_SIZE } = options;
+  return cluster([...deduped].sort(byPath), threshold, maxGroupSize)
     .map((facts) => ({ label: label(facts), facts }))
     .sort((a, b) => b.facts.length - a.facts.length || compareText(a.label, b.label) || compareText(firstPath(a), firstPath(b)));
 }
