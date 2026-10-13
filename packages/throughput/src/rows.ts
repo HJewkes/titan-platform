@@ -22,7 +22,18 @@ export interface ThroughputRow {
   firstImplAt?: string | null;
   /** The implementer's peak context in tokens, when the miner recorded it. */
   peakContextTokens?: number | null;
+  /** Review-panel class over all the task's PR files; null with `touches: []` when it had no PR. */
+  prClass?: string | null;
+  /** Review-panel touches in its own order, so the first is the lead touch. */
+  touches?: readonly string[] | null;
+  changedLines?: number | null;
+  /** Distinct heads Shepherd awaited a verdict on; null when no run joined. */
+  reviewRounds?: number | null;
+  /** Minutes per Shepherd stage (queued, ci, review, re-review, hold, land). */
+  stageMinutes?: StageMinutesLike | null;
 }
+
+export type StageMinutesLike = Readonly<Partial<Record<string, number>>>;
 
 /** The plan-time facts that place a task in a class. */
 export interface TaskClassFacts {

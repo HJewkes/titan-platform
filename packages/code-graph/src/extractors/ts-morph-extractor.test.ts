@@ -184,7 +184,29 @@ describe("TsMorphGraphExtractor", () => {
       expect(refTo(fragment!, "src/b.ts#B")?.attrs?.weight).toBe(1);
     });
 
-    it("does not emit per-symbol references for namespace imports", () => {
+    it("credits only the exports a namespace import's member accesses name (TP-2474 c)", () => {
+      const [fragment] = fixture.extract("/repo/src/ns-members.ts");
+      expect(refTo(fragment!, "src/ns-target.ts#a")?.attrs?.weight).toBe(2);
+      expect(refTo(fragment!, "src/ns-target.ts#b")?.attrs?.weight).toBe(1);
+      expect(refTo(fragment!, "src/ns-target.ts#T")).toBeDefined();
+      expect(refTo(fragment!, "src/ns-target.ts#c")).toBeUndefined();
+    });
+
+    it("credits every export when a namespace object is used whole (TP-2474 c)", () => {
+      const [fragment] = fixture.extract("/repo/src/ns-whole.ts");
+      const refs = fragment!.edges
+        .filter((e) => e.kind === "references")
+        .map((e) => e.dstId)
+        .sort();
+      expect(refs).toEqual([
+        "src/ns-target.ts#T",
+        "src/ns-target.ts#a",
+        "src/ns-target.ts#b",
+        "src/ns-target.ts#c",
+      ]);
+    });
+
+    it("does not emit per-symbol references for an external namespace import", () => {
       const [fragment] = fixture.extract("/repo/src/heavy.ts");
       const nsRefs = fragment!.edges.filter(
         (e) => e.kind === "references" && e.dstId.startsWith("npm:"),

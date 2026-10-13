@@ -32,6 +32,10 @@ forecastSet(tasks, table, { seed: "plan-1", closure, weekEffect }).totals.implAg
 refits at each origin and scores [p10, p90] coverage on seat-week, parent and milestone sets,
 with and without the week effect.
 
+`reviewTable(rows, { key: "diff" })` predicts reviewer hours, review rounds and post-PR wall
+hours keyed on review-panel class x lead touch, and `reviewAblation` compares that key with
+kind x size band on the same rows (pinball loss and 80% coverage per target).
+
 The table carries `modelHash` (config, watermark and package version), `watermark` and
 `packageVersion`. Equal inputs give equal output in any row order.
 

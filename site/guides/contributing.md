@@ -22,8 +22,9 @@ All six must be green:
 pnpm build && pnpm typecheck && pnpm lint && pnpm test && pnpm dag:check && pnpm docs:build
 ```
 
-Zero lint warnings in files you touched. `pnpm build` has to precede `pnpm test` and
-`dag:check`, because an import of a workspace package by its published name resolves
+`pnpm dag:check` runs both checks of CI's `dag-check` job: the DAG check, then the
+dead-export check on the same graph. Zero lint warnings in files you touched.
+`pnpm build` has to precede `pnpm test` and `dag:check`, because an import of a workspace package by its published name resolves
 through that package's built `dist/*.d.ts` entry.
 
 For a fast local signal, `pnpm test:affected` runs only the tests your change reaches
@@ -120,16 +121,22 @@ enforces it, self-hosted against this repo's own `@titan-design/code-graph`:
 pnpm build && pnpm dag:check
 ```
 
-`pnpm build` has to run first; `dag:check` imports the package's built output. Set
-`BASE_REF=origin/main` to report only violations that are new relative to main, which is
-what CI does. `scripts/dag-check.sh` remains for one release as a fallback that needs
+`pnpm build` has to run first; `dag:check` imports the package's built output. It then
+runs [the dead-export check](#checking-for-dead-exports) on the graph it just built, so it
+fails wherever CI's `dag-check` job would. `pnpm dag:check:graph` is the DAG check alone,
+and the one to call with `--json` or `--report <file>`, since the dead-export report
+follows on stdout. Set `BASE_REF=origin/main` to report only violations that are new
+relative to main, which is what CI does; with `BASE_REF` unset, `dag:check` still passes
+`origin/main`, when it exists, to the dead-export step for its baseline-growth check. `scripts/dag-check.sh` remains for one release as a fallback that needs
 `CODEWATCH_CLI` pointed at a built codewatch checkout.
 
 ## Checking for dead exports
 
 `pnpm dead:check` lists exports that no other module imports, and CI fails the pull
 request on a new one. That includes an export used only inside its own file: drop the
-`export` keyword. Like `dag:check`, it needs the built `@titan-design/code-graph`:
+`export` keyword. `pnpm dag:check` already runs it; run it alone with `pnpm dead:check`,
+which indexes the tree itself. Like `dag:check`, it needs the built
+`@titan-design/code-graph`:
 
 ```sh
 pnpm build && pnpm dead:check

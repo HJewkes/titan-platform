@@ -87,4 +87,28 @@ describe("routedRunner", () => {
     expect(second.status(parked)).toMatchObject({ status: "recovery_required", activeSteps: { actuate: { recovery: { kind: "unknown" } } } });
     expect(calls).toEqual(["draft"]);
   });
+
+  it("asks a route's reconcile hook before its restart rule, so a park route can resume a step still running", async () => {
+    const db = makeDb();
+    const first = runtime(db, routedRunner([{ match: "actuate", onRestart: "park", runner: hanging }]));
+    first.register("one", oneStep);
+    const runId = first.start("one", { step: "actuate" });
+    await vi.waitFor(() => expect(Object.keys(first.status(runId)?.activeSteps ?? {})).toEqual(["actuate"]));
+    first.shutdown();
+
+    const calls: string[] = [];
+    const reconcile = vi.fn<NonNullable<StepRoute["reconcile"]>>(async () => ({
+      kind: "running",
+      runnerRef: "chore-1",
+      completion: Promise.resolve({ kind: "succeeded", output: "actuated elsewhere" }),
+      evidence: "the chore outlived the restart",
+    }));
+    const second = runtime(db, routedRunner([{ ...countingRoute("actuate", "park", calls), reconcile }]));
+    second.register("one", oneStep);
+
+    expect(await second.hydrate()).toEqual([runId]);
+    expect(await second.wait(runId)).toMatchObject({ status: "completed", stepResults: { "actuate:0": { output: "actuated elsewhere" } } });
+    expect(reconcile).toHaveBeenCalledWith(expect.objectContaining({ stepId: "actuate" }), expect.any(AbortSignal));
+    expect(calls).toEqual([]);
+  });
 });

@@ -649,6 +649,9 @@ importers:
       '@titan-design/agent-protocol':
         specifier: workspace:^
         version: link:../agent-protocol
+      '@titan-design/review-panel':
+        specifier: workspace:^
+        version: link:../review-panel
       '@titan-design/session-graph':
         specifier: workspace:^
         version: link:../session-graph
@@ -861,6 +864,9 @@ importers:
       '@titan-design/authority':
         specifier: workspace:^
         version: link:../../packages/authority
+      '@titan-design/coordinator':
+        specifier: workspace:^
+        version: link:../../packages/coordinator
       '@titan-design/daemon':
         specifier: workspace:^
         version: link:../../packages/daemon

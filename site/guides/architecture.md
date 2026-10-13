@@ -124,6 +124,7 @@ graph TD
   reviewPanel --> sessionRead
   rpcClient --> rpcProtocol
   sessionAnalytics --> agentProtocol
+  sessionAnalytics --> reviewPanel
   sessionAnalytics --> sessionGraph
   sessionAnalytics --> sessionRead
   sessionAnalytics --> storeSqlite
@@ -159,6 +160,7 @@ graph TD
   factory --> agentDispatch
   factory --> appPaths
   factory --> authority
+  factory --> coordinator
   factory --> daemon
   factory --> fixProof
   factory --> github

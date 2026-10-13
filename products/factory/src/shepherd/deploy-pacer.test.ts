@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DeployRecord } from "../deploy.js";
 import {
   DEPLOY_MAX_WAIT_MS,
+  DEPLOY_NOW_LABEL,
   DEPLOY_QUIET_MS,
   DEPLOY_STALE_SPAWN_MS,
   DEPLOY_WANTED,
@@ -35,7 +36,7 @@ function memoryStore(): WantedStore & { files: Map<string, string> } {
 }
 
 /** A pacer over an in-memory state dir and a settable clock, recording every spawn as `[minute, sha]`. */
-function pacer(options: { busy?: number; lastDeploy?: DeployRecord; runningHolds?: (sha: string) => boolean } = {}) {
+function pacer(options: { busy?: number; lastDeploy?: DeployRecord; runningHolds?: (sha: string) => boolean; express?: (sha: string) => boolean } = {}) {
   const store = memoryStore();
   const spawns: Array<[number, string]> = [];
   const logs: string[] = [];
@@ -48,6 +49,7 @@ function pacer(options: { busy?: number; lastDeploy?: DeployRecord; runningHolds
       now: () => world.now,
       runningSha: () => world.runningSha,
       ...(options.runningHolds && { runningHolds: options.runningHolds }),
+      ...(options.express && { express: options.express }),
       lastDeploy: () => world.lastDeploy,
       busy: () => world.busy,
       paused: () => world.paused,
@@ -70,7 +72,7 @@ const wantedAt = (sha: string, firstMin: number, lastMin: number, extra: Partial
   ...extra,
 });
 
-const decide = (wanted: DeployWanted | undefined, nowMin: number, extra: { busy?: number; lastDeploy?: DeployRecord; runningSha?: string; paused?: boolean } = {}) =>
+const decide = (wanted: DeployWanted | undefined, nowMin: number, extra: { busy?: number; lastDeploy?: DeployRecord; runningSha?: string; paused?: boolean; express?: boolean } = {}) =>
   paceDecision({
     wanted,
     now: nowMin * MIN,
@@ -78,6 +80,7 @@ const decide = (wanted: DeployWanted | undefined, nowMin: number, extra: { busy?
     lastDeploy: extra.lastDeploy,
     busy: extra.busy ?? 0,
     paused: extra.paused ?? false,
+    express: extra.express ?? false,
     quietMs: DEPLOY_QUIET_MS,
     maxWaitMs: DEPLOY_MAX_WAIT_MS,
     staleSpawnMs: DEPLOY_STALE_SPAWN_MS,
@@ -285,6 +288,53 @@ describe("deploy pacer", () => {
     expect(p.spawns).toEqual([[15, "a"], [15 + stale, "a"]]);
     expect(p.wanted()).toBeUndefined();
     expect(p.logs.filter((line) => line.includes("recorded nothing"))).toHaveLength(2);
+  });
+});
+
+describe(`the ${DEPLOY_NOW_LABEL} express lane`, () => {
+  it("a labelled merge inside the quiet window spawns on the next tick and logs why", () => {
+    const p = pacer({ express: (sha) => sha === "a" });
+    p.merge("a");
+
+    p.ticksUntil(1);
+
+    expect(p.spawns).toEqual([[1, "a"]]);
+    expect(p.logs).toContain(`deploy pacer: a carries ${DEPLOY_NOW_LABEL}; skipping the quiet window`);
+  });
+
+  it("an unlabelled merge after a labelled one is paced normally", () => {
+    const p = pacer({ express: (sha) => sha === "a" });
+    p.merge("a");
+    p.ticksUntil(1);
+
+    p.merge("b");
+    p.ticksUntil(30);
+
+    expect(p.spawns).toEqual([[1, "a"], [16, "b"]]);
+  });
+
+  it("a labelled merge with busy runs waits for them to drain, up to the cap", () => {
+    const wanted = wantedAt("a", 0, 0);
+
+    const held = decide(wanted, 1, { busy: 1, express: true });
+    const drained = decide(wanted, 2, { busy: 0, express: true });
+
+    expect(held).toEqual({ kind: "wait", why: "1 busy run(s)", until: DEPLOY_MAX_WAIT_MS });
+    expect(drained).toEqual({ kind: "spawn", sha: "a", express: true });
+  });
+
+  it("a labelled merge never spawns while deploys are paused", () => {
+    expect(decide(wantedAt("a", 0, 0), 1, { paused: true, express: true }).kind).toBe("wait");
+  });
+
+  it("a labelled merge whose deployer already started is not spawned again", () => {
+    const wanted = wantedAt("a", 0, 0, { spawnedSha: "a", spawnedAt: new Date(MIN).toISOString() });
+
+    expect(decide(wanted, 2, { express: true })).toEqual({ kind: "wait", why: "deployer already started for a", until: MIN + DEPLOY_STALE_SPAWN_MS });
+  });
+
+  it("past the quiet window a labelled spawn is an ordinary one", () => {
+    expect(decide(wantedAt("a", 0, 0), 20, { express: true })).toEqual({ kind: "spawn", sha: "a" });
   });
 });
 

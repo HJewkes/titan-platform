@@ -75,10 +75,38 @@ describe("burndown-port-map", () => {
     expect(forwardEdges(files, order).map((e) => e.to)).toEqual(["f3.ts", "f4.ts", "kept.ts"]);
   });
 
+  it("drops edges into or out of a ported file, and an import a leaf port covers", () => {
+    const order = [["L1"], ["F2", "F3"]];
+    const files = [
+      { file: "a.ts", dest: "F2", imports: ["done.ts", "leafy.ts", "open.ts"] },
+      { file: "b.ts", dest: "F2", imports: ["leafy.ts"] },
+      { file: "done.ts", dest: "F3", imports: ["a.ts"], ported: true },
+      { file: "leafy.ts", dest: "F3", imports: [] },
+      { file: "open.ts", dest: "F3", imports: [] },
+    ];
+    const leafPorts = [{ file: "leafy.ts", covers: ["a.ts"] }];
+
+    expect(forwardEdges(files, order, leafPorts).map((e) => `${e.from}->${e.to}`)).toEqual(["a.ts->open.ts", "b.ts->leafy.ts"]);
+  });
+
   it("pins the forward edges the committed map implies", () => {
     const map = JSON.parse(readFileSync(MAP_PATH, "utf8"));
 
-    expect(forwardEdges(map.files, map.order)).toEqual(map.knownForwardEdges);
+    expect(forwardEdges(map.files, map.order, map.leafPorts)).toEqual(map.knownForwardEdges);
+  });
+
+  // The two non-leaf targets, and three imports of types no ported code uses yet, so F2 declares them when it ports.
+  it("leaves no F3 import of F2, and only the F2 imports of F3 that TP-2627 did not port", () => {
+    const map = JSON.parse(readFileSync(MAP_PATH, "utf8"));
+    const between = forwardEdges(map.files, map.order, map.leafPorts).filter((e) => [e.fromDest, e.toDest].sort().join() === "F2,F3");
+
+    expect(between.map((e) => `${e.from}->${e.to}`)).toEqual([
+      "advance.ts->seed-slices.ts",
+      "landed-sweep.ts->score-source.ts",
+      "observe.ts->collision.ts",
+      "observe.ts->plan.ts",
+      "owns-adjudicate.ts->collision.ts",
+    ]);
   });
 
   it("exits 1 when the burndown directory has a file the map lacks", () => {
