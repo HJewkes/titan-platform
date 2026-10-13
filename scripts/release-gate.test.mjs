@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { DEBOUNCE_S, releaseDecision } from "./release-gate.mjs";
+import { DEBOUNCE_S, releaseDecision, tipGreenFromRuns, tipRunsQuery } from "./release-gate.mjs";
 
 const stale = { pending: 2, branchExists: true, branchHasTip: false, branchAgeS: DEBOUNCE_S };
 
@@ -48,6 +48,32 @@ describe("releaseDecision on the hourly schedule", () => {
 
   it("still waits out the debounce window", () => {
     expect(scheduled({ ...stale, branchAgeS: 60 })).toBe(false);
+  });
+});
+
+describe("the schedule's green-tip read", () => {
+  const TIP = "a".repeat(40);
+  const run = (fields) => ({ head_sha: TIP, event: "push", status: "completed", conclusion: "success", ...fields });
+  const green = (...runs) => tipGreenFromRuns(JSON.stringify({ total_count: runs.length, workflow_runs: runs }), TIP);
+
+  it("asks for push CI runs at the tip only", () => {
+    expect(tipRunsQuery("example/repo", TIP)).toBe(`repos/example/repo/actions/workflows/ci.yml/runs?head_sha=${TIP}&event=push`);
+  });
+
+  it("reads a successful push run at the tip as green", () => {
+    expect(green(run({ conclusion: "cancelled" }), run({}))).toBe(true);
+  });
+
+  it("never reads a failed, cancelled or unfinished run as green", () => {
+    expect(green(run({ conclusion: "failure" }), run({ conclusion: "cancelled" }), run({ status: "in_progress", conclusion: null }))).toBe(false);
+  });
+
+  it("reads no run at all as not green", () => {
+    expect(green()).toBe(false);
+  });
+
+  it("never reads a successful run from another event or another sha as green", () => {
+    expect(green(run({ event: "pull_request" }), run({ event: "workflow_dispatch" }), run({ head_sha: "b".repeat(40) }))).toBe(false);
   });
 });
 

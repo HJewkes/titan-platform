@@ -40,11 +40,16 @@ function succeeds(fn) {
   }
 }
 
-function tipGreen(repo, tip) {
-  const query = `repos/${repo}/actions/workflows/ci.yml/runs?head_sha=${tip}&event=push`;
-  const count = execFileSync("gh", ["api", query, "--jq", '[.workflow_runs[] | select(.conclusion == "success")] | length'], { encoding: "utf8" });
-  return Number(count) > 0;
+/** The CI runs a push of `tip` started; the reader below holds every row to the same filter, so the query only narrows. */
+export const tipRunsQuery = (repo, tip) => `repos/${repo}/actions/workflows/ci.yml/runs?head_sha=${tip}&event=push`;
+
+/** True only when some CI run in the response is a push of `tip` that succeeded; a red, cancelled or missing run is not green. */
+export function tipGreenFromRuns(responseJson, tip) {
+  const runs = JSON.parse(responseJson).workflow_runs ?? [];
+  return runs.some((run) => run.conclusion === "success" && run.event === "push" && run.head_sha === tip);
 }
+
+const tipGreen = (repo, tip) => tipGreenFromRuns(execFileSync("gh", ["api", tipRunsQuery(repo, tip)], { encoding: "utf8" }), tip);
 
 function readFacts(env, now) {
   const event = env.EVENT_NAME;
