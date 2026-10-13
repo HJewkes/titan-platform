@@ -15,8 +15,12 @@ const INDIRECT_STORE_RE = /\$\{\([^)]*P[^)]*\)[^}]*?:{0,2}=/;
 const BOUND_PARAM_RE = new RegExp(String.raw`^${PARAM}(?:\[|$)`);
 /** A zparseopts spec storing into an alias parameter: `h=aliases`, `v+=galiases`. */
 const SPEC_PARAM_RE = new RegExp(String.raw`=${PARAM}$`);
-/** A quoted expansion that still yields several words: `"$@"`, `"${a[@]}"`, `"${(@)a}"`, `"${(f)x}"`, `"${=o}"`. */
-const SEVERAL_RE = /\$@|\[@\]|\$\{\([^)]*[@fsz0=]|\$\{[~^]*=/;
+/** A quoted expansion that may still yield several words: any `@` (`"${@:2}"`, `"${a[@]}"`), zsh flags or `=` splitting. */
+const SEVERAL_RE = /@|\$\{[~^]*[=(]/;
+/** A brace expansion, `{a,b}` or `{1..3}`, which makes one typed word several. */
+const BRACE_RE = /\{[^{}]*(?:,|\.\.)[^{}]*\}/;
+/** An alias parameter anywhere in a word, as one alternative of a brace expansion may name it. */
+const BRACED_PARAM_RE = new RegExp(String.raw`(?<![A-Za-z0-9_])${PARAM}(?![A-Za-z0-9_])`);
 /** A declared name, with or without a subscript or an append, as it reads when nothing in it expands. */
 const DECLARED_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[.*\])?\+?$/s;
 
@@ -86,18 +90,20 @@ export function definesAlias(cmd: Unwrapped): boolean {
 }
 
 /**
- * A store builtin whose target is an alias parameter, or may be one: a varying word where it reads the name, a varying
- * word where options may still stand that a later word follows or that may expand to several words, since it may supply
- * a name-taking option with its name (`printf "$o" x`, o=-valiases[y]; `printf "$@"`), or a nameref bound to one.
+ * A store builtin whose target is an alias parameter, or may be one: a varying word where it reads the name; any option
+ * word, or the first operand before `--`, that may yield several words, or a varying first operand a later word follows,
+ * since either may supply a name-taking option with its name (`printf "$@"`, `print -r${=X}`, `printf "$o" x`); or a
+ * nameref bound to one.
  */
 function storesAliasParam(name: string, args: WordToken[]): boolean {
   const spec = STORE_BUILTINS.get(name);
   if (!spec) return false;
-  if (args.some((w) => STORED_PARAM_RE.test(w.value))) return true;
-  const { options, targets, operands, mayBeOption } = readOptions(args, spec);
-  if (targets.some(varies) || dynamicTargetOperand(spec, options, operands)) return true;
-  const supplies = operands.length > 1 || (operands[0] !== undefined && mayBeSeveral(operands[0]));
-  if (mayBeOption && supplies && (spec.names ?? spec.stores) !== undefined) return true;
+  if (args.some((w) => STORED_PARAM_RE.test(w.value) || (mayBraceExpand(w) && BRACED_PARAM_RE.test(w.value)))) return true;
+  const { options, targets, operands, mayBeOption, ended } = readOptions(args, spec);
+  if (targets.some((w) => varies(w) || yieldsSeveral(w)) || dynamicTargetOperand(spec, options, operands)) return true;
+  const optionPlace = ended ? options : [...options, ...operands.slice(0, 1)];
+  const supplies = optionPlace.some(yieldsSeveral) || (mayBeOption && operands.length > 1);
+  if (supplies && (spec.names ?? spec.stores) !== undefined) return true;
   return NAMEREF_DECLARERS.has(name) && options.some((w) => /^-.*n/s.test(w.value)) && operands.some(bindsAliasParam);
 }
 
@@ -106,9 +112,14 @@ function varies(w: WordToken): boolean {
   return w.dynamic || w.unquotedExpansion === true;
 }
 
-/** A word that may expand to several words: any unquoted expansion, `"$@"`, `"${a[@]}"`, or zsh's `(@)`, `(f)`, `(s::)`, `(z)` and `=` splitting. */
-function mayBeSeveral(w: WordToken): boolean {
-  return w.unquotedExpansion === true || (w.dynamic && SEVERAL_RE.test(w.value));
+/** A word that may yield several words: any unquoted expansion, a quoted one that splits, or a brace expansion. */
+function yieldsSeveral(w: WordToken): boolean {
+  return w.unquotedExpansion === true || (w.dynamic && SEVERAL_RE.test(w.value)) || mayBraceExpand(w);
+}
+
+/** Braces the shell may expand: the word is not wholly quoted, so the lexer cannot say they were. */
+function mayBraceExpand(w: WordToken): boolean {
+  return (!w.quoted || w.spliced) && BRACE_RE.test(w.value);
 }
 
 /** A builtin's words as the shell reads them once expanded. */
@@ -119,6 +130,8 @@ interface OptionWords {
   operands: WordToken[];
   /** The first operand varies, so it may still expand to any option, a name-taking one with its name attached included. */
   mayBeOption: boolean;
+  /** `--` or a lone `-` ended the options, so no operand can supply one. */
+  ended: boolean;
 }
 
 /**
@@ -141,7 +154,7 @@ function readOptions(args: WordToken[], spec: StoreSpec = {}): OptionWords {
   }
   const first = args[i];
   const ends = first !== undefined && !varies(first) && (first.value === "--" || first.value === "-");
-  return { options, targets, operands: args.slice(ends ? i + 1 : i), mayBeOption: first !== undefined && varies(first) };
+  return { options, targets, operands: args.slice(ends ? i + 1 : i), mayBeOption: first !== undefined && varies(first), ended: ends };
 }
 
 /** A word led by `-` or `+`, other than `--`; one that varies only when a letter follows its dashes statically. */
@@ -158,7 +171,7 @@ function dynamicTargetOperand(spec: StoreSpec, options: WordToken[], operands: W
     case "spec": return operands.some((w) => varies(w) || SPEC_PARAM_RE.test(w.value));
     case "store": return hasLetter(options, spec.stores) && operands.some(varies);
     case undefined: return false;
-    default: return operands.slice(0, spec.operands + 1).some((w, k) => (k === spec.operands ? varies(w) : mayBeSeveral(w)));
+    default: return operands.slice(0, spec.operands + 1).some((w, k) => (k === spec.operands ? varies(w) : yieldsSeveral(w)));
   }
 }
 
