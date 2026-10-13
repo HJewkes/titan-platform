@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import type { FunctionTable, SnapshotFunction } from "./snapshot-functions.js";
 
 /** True when the shell parses the script. It must never run it. */
-export type ParseCheck = (script: string) => boolean;
+type ParseCheck = (script: string) => boolean;
 
 const PARSE_TIMEOUT_MS = 2000;
 const UNREADABLE: SnapshotFunction = { unreadable: true };
