@@ -165,11 +165,29 @@ describe("decodeGraphqlEscapes", () => {
     [String.raw`a\nb`, "a\nb"],
     [String.raw`\u{110000}`, String.raw`\u{110000}`],
   ])("decodes %s", (text, decoded) => {
-    expect(decodeGraphqlEscapes(text)).toBe(decoded);
+    expect(decodeGraphqlEscapes(text)).toEqual({ text: decoded, complete: true });
   });
 
-  it("gives up on escapes left after the two layers GitHub decodes", () => {
-    expect(decodeGraphqlEscapes(String.raw`\u{5c}u{5c}u006dain`)).toBeNull();
+  it("stops after the two layers GitHub decodes and says escapes are left", () => {
+    expect(decodeGraphqlEscapes(String.raw`\u{5c}u{5c}u006dain`)).toEqual({ text: String.raw`\u006dain`, complete: false });
+  });
+});
+
+describe("graphqlBranchWrites past the decode cap", () => {
+  const DEEP = String.raw`\u{5c}u{5c}u0041`;
+
+  it("keeps an opaque mutation beside a comment escaped past the cap", () => {
+    const query = `mutation{updateRef(input:{refId:"R",oid:"x"}){clientMutationId}} # ${DEEP}`;
+    expect(graphqlBranchWrites([query], [])).toMatchObject({ mutations: ["updateRef"], unknown: true });
+  });
+
+  it("reads a named mutation on a feature branch as unknown once a text is escaped past the cap", () => {
+    const query = `mutation{mergeBranch(input:{base:"feat/x",head:"feat/y"}){mergeCommit{oid}}} # ${DEEP}`;
+    expect(graphqlBranchWrites([query], [])).toMatchObject({ mutations: ["mergeBranch"], unknown: true });
+  });
+
+  it("reads a text with no mutation escaped past the cap as unknown", () => {
+    expect(graphqlBranchWrites([`{viewer{login}} # ${DEEP}`], [])).toEqual({ mutations: [], branches: [], unknown: true });
   });
 });
 
