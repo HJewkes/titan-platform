@@ -11,7 +11,7 @@ const REWRITE = new Set(["\\", "%"]);
 /** What ends or starts a glob, which only an unquoted word expands. */
 const GLOB_END = new Set(["*", "?", "]"]);
 const GLOB_START = new Set(["*", "?", "["]);
-/** Past this a subscript or a `${…}` is not scanned, and the read fails closed. */
+/** Past this a subscript is not scanned, and the read fails closed. */
 const MAX_SCAN = 256;
 
 /** How the shell treats a text: which expansions it holds or undergoes. */
@@ -34,15 +34,15 @@ export interface HandedText {
  * write operator anchors: `=` and each compound `op=` and a postfix `++`/`--` bind the identifier run before them,
  * past any whitespace and subscript; a prefix `++`/`--` binds the run after it. The name is computed when an
  * expansion, rewrite or glob ends just before that run or starts at or just after it: `"${x} = 7"`, `"$x"$'\t=7'`,
- * `"++$x"`, `'%s++'`. An `=` in a `${…}` pattern operand (`${line#*=}`) is never stored, so it does not anchor.
- * Each scan stops at the next operator or a bound, so the read is linear.
+ * `"++$x"`, `'%s++'`. An `=` in a `${…}` pattern operand anchors too: math expanded inside a pattern still runs
+ * (`${x#$(( ${y}=1 ))}`), so `${line#*=}` is an accepted over-read. Each scan stops at the next operator or a
+ * bound, so the read is linear.
  */
 export function bindsComputedName(handed: HandedText): boolean {
   const { text } = handed;
-  const exempt = patternOperands(text);
   for (let i = 0; i < text.length; i++) {
     const ch = text.charAt(i);
-    if (ch === "=" && !exempt[i] && !isComparison(text, i) && computedBefore(handed, compoundStart(text, i))) return true;
+    if (ch === "=" && !isComparison(text, i) && computedBefore(handed, compoundStart(text, i))) return true;
     const step = text.charAt(i + 1) === ch && (ch === "+" || ch === "-");
     if (step && (computedBefore(handed, i) || computedAfter(handed, i + 2))) return true;
     if (step) i++;
@@ -102,29 +102,4 @@ function skipSpaceBack(text: string, at: number): number {
   let i = at;
   while (i > 0 && SPACE_RE.test(text.charAt(i - 1))) i--;
   return i;
-}
-
-/** The positions inside a `${name#…}`, `${name%…}` or `${name/…/` pattern, which the shell matches and never stores. */
-function patternOperands(text: string): boolean[] {
-  const exempt: boolean[] = [];
-  for (let at = text.indexOf("${"); at >= 0; at = text.indexOf("${", at + 2)) {
-    const head = /^\$\{(?:[A-Za-z_][A-Za-z0-9_]*|\d+|[@*#?$!-])(?:\[[^\]]*\])?(#{1,2}|%{1,2}|\/[/#%]?)/.exec(text.slice(at, at + MAX_SCAN));
-    if (!head) continue;
-    const from = at + head[0].length;
-    const end = patternEnd(text, from, (head[1] ?? "").startsWith("/"));
-    for (let i = from; i < end; i++) exempt[i] = true;
-  }
-  return exempt;
-}
-
-/** Where a pattern starting at `from` ends: its `}`, or for a `/` substitution the `/` before the replacement. */
-function patternEnd(text: string, from: number, replaced: boolean): number {
-  let depth = 0;
-  for (let i = from; i < text.length && i - from < MAX_SCAN; i++) {
-    const ch = text.charAt(i);
-    if (ch === "{") depth++;
-    else if (ch === "}" && depth-- === 0) return i;
-    else if (ch === "/" && replaced && depth === 0) return i;
-  }
-  return from;
 }

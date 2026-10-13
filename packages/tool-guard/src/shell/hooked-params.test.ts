@@ -515,17 +515,20 @@ describe("every math write operator, spacing and side around a computed name", (
     ["a brace list after ++", "f ++PS{4,}"],
     ["an unquoted glob before ++", "f P?4++"],
     ["an unquoted heredoc body", "cat <<EOF\n${x}=1\nEOF"],
+    ["a subscript in a # pattern", ': "${x#${a[${y}=1]}}"'],
+    ["$(( )) in a # pattern", ': "${x#$(( ${y}=1 ))}"'],
+    ["$[ ] in a % pattern", ': "${x%$[${y}=1]}"'],
+    ["$(( )) in a / pattern", ': "${x/$(( ${y}=1 ))/z}"'],
+    ["a bare { before the expansion in a pattern", 'f "${x#{},${y}=7,0}"'],
+    ["a # pattern holding =, an accepted over-read", 'val="${line#*=}"'],
+    ["a positional # pattern holding =, an accepted over-read", 'f "${1#*=}"'],
   ])("counts: %s", (_how, line) => {
     expect(hooked(line)).not.toBeNull();
   });
 
   it.each([
-    ["a # pattern holding =", 'val="${line#*=}"'],
-    ["a positional # pattern holding =", 'f "${1#*=}"'],
-    ["a ## pattern holding =", 'f "${x##*=}"'],
-    ["a %% pattern holding =", 'f "${x%%=*}"'],
-    ["a / pattern holding =", 'f "${x/=/:}"'],
     ["a quoted heredoc body", "cat <<'EOF'\n${x}=1\nEOF"],
+    ["a / pattern whose = follows no name", 'f "${x/=/:}"'],
     ["g++", "g++ -O2 a.c"],
     ["an option holding =", "ls --color=auto"],
     ["== after an expansion", 'f "$a == $b"'],
@@ -539,7 +542,7 @@ describe("every math write operator, spacing and side around a computed name", (
 
   it.each([
     ["spaced operators between literal names", "a ++ b -- c = d ".repeat(10_000)],
-    ["many exempt patterns", "${x#*=}".repeat(10_000)],
+    ["many # patterns", "${x#*}".repeat(10_000)],
     ["subscripts that never open", "]=".repeat(30_000)],
   ])("reads a long text without a hit in linear time: %s", (_how, value) => {
     const word: WordToken = { type: "word", value, dynamic: true, quoted: true, spliced: false, computed: true, refs: [], subs: [] };
