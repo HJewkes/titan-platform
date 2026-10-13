@@ -65,8 +65,8 @@ export function decodeGraphqlEscapes(text: string): DecodedText {
  */
 const objectKeyRe = (key: string) => new RegExp(`\\b${key}"?[\\s,]*${key === "id" ? "[:#]" : ":"}`);
 
-/** A field word's key before its first `=`: `key` itself, or `key` as any bracket segment of gh's nested `a[b][key]` form. */
-const fieldKeyRe = (key: string) => new RegExp(`^(?:${key}|[^=]*\\[${key}\\])=`);
+/** A field key that is `key` itself, or has `key` as any bracket segment of gh's nested `a[b][key]` form. */
+const fieldKeyRe = (key: string) => new RegExp(`^(?:${key}|.*\\[${key}\\])$`);
 
 /**
  * gh's own `-F` placeholder pattern (gh 2.102), unanchored as gh applies it: `{branch}` and `:branch` become the
@@ -86,21 +86,38 @@ const normalizeBranch = (name: string) => name.trim().replace(/^refs\//, "").rep
  */
 const quotedRuns = (text: string) => text.split('"').slice(1, -1);
 
-/** Whether a field word's key, before its first `=`, is the literal `query`, which carries the texts themselves. */
-function isQueryField(word: WordToken): boolean {
-  if (!word.value.startsWith("query=")) return false;
-  const literalKey = (at: number) => at >= "query".length;
-  return word.refs.every((r) => literalKey(r.start)) && (word.cuts ?? []).every((c) => literalKey(c.at));
+const keyEnd = (text: string) => (text.includes("=") ? text.indexOf("=") : text.length);
+
+/**
+ * A field word's key, the text before its first `=`, or null when the shell may change it at run time: a variable or
+ * command substitution at or before that `=` (`query$(printf x)=v` sends the key `queryx`), an expansion the word
+ * was resolved from, a case attribute, or a dynamic part no ref or cut accounts for. Every key read goes through here.
+ */
+function literalKey(word: WordToken): string | null {
+  const end = keyEnd(word.value);
+  const cuts = word.cuts ?? [];
+  if (word.refs.some((r) => r.start <= end) || cuts.some((c) => c.at <= end)) return null;
+  if (word.dynamic && word.refs.length + cuts.length === 0) return null;
+  if (word.typed !== undefined && /[$`]/.test(word.typed.slice(0, keyEnd(word.typed)))) return null;
+  return isCaseUnsure(word) ? null : word.value.slice(0, end);
+}
+
+/** Whether a field word's key is the literal `query`, which carries the texts themselves. */
+const isQueryField = (word: WordToken) => literalKey(word) === "query";
+
+/** Whether a field word's key is `key`, or a nested `a[b][key]`; a key unknown until run time may be any. */
+function fieldKeyed(word: WordToken, key: string): boolean | null {
+  const name = literalKey(word);
+  return name === null ? null : fieldKeyRe(key).test(name);
+}
+
+function fieldValue(word: WordToken): string {
+  return word.value.slice(keyEnd(word.value) + 1);
 }
 
 /** A variable whose value cannot be read: computed at run time, case-folded, read from a file, or filled in by gh. */
 function unreadable(word: WordToken): boolean {
-  return word.dynamic || isCaseUnsure(word) || /^[^=]*=@/.test(word.value) || ghFills(word.value).length > 0;
-}
-
-function fieldValue(word: WordToken): string {
-  const eq = word.value.indexOf("=");
-  return eq >= 0 ? word.value.slice(eq + 1) : word.value;
+  return word.dynamic || isCaseUnsure(word) || fieldValue(word).startsWith("@") || ghFills(word.value).length > 0;
 }
 
 function mutationsIn(texts: string[]): string[] {
@@ -108,8 +125,9 @@ function mutationsIn(texts: string[]): string[] {
   return [...new Set(found)];
 }
 
-const keyed = (key: string, texts: string[], variables: WordToken[]) =>
-  texts.some((t) => objectKeyRe(key).test(t)) || variables.some((w) => fieldKeyRe(key).test(w.value));
+/** Whether `key` is written; `orUnknown` counts a field key unknown until run time as written. */
+const keyed = (key: string, texts: string[], variables: WordToken[], orUnknown: boolean) =>
+  texts.some((t) => objectKeyRe(key).test(t)) || variables.some((w) => fieldKeyed(w, key) ?? orUnknown);
 
 /**
  * A mutation that may leave its branch out is known only when the branch key is written and no `id` key is: a
@@ -118,7 +136,7 @@ const keyed = (key: string, texts: string[], variables: WordToken[]) =>
 function targetUnwritten(mutations: string[], texts: string[], variables: WordToken[]): boolean {
   const keys = mutations.flatMap((m) => TARGET_KEY[m] ?? []);
   if (keys.length === 0) return false;
-  return keyed("id", texts, variables) || keys.some((k) => !keyed(k, texts, variables));
+  return keyed("id", texts, variables, true) || keys.some((k) => !keyed(k, texts, variables, false));
 }
 
 function candidateBranches(texts: string[], variables: WordToken[]): string[] {

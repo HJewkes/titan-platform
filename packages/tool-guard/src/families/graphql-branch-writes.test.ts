@@ -185,6 +185,21 @@ describe("graphqlBranchWrites, variables", () => {
     expect(GH_PLACEHOLDER_RE.source).toBe(String.raw`:(?:owner|repo|branch)\b|\{[a-z]+\}`);
   });
 
+  const FEATURE_MERGE = 'mutation{mergeBranch(input:{repositoryId:"r",base:"feat/x",head:"feat/y"}){mergeCommit{oid}}}';
+
+  it.each([
+    ["a command substitution", '-f "query$(printf x)=main"'],
+    ["a backquote substitution", '-f "query`printf x`=main"'],
+    ["a variable", '-f "query${X}=main"'],
+  ])("reads a field whose key %s extends past query as an unreadable variable", (_how, vars) => {
+    expect(read(FEATURE_MERGE, vars).unknown).toBe(true);
+  });
+
+  it("does not count a branchName key a substitution right before its = may change", () => {
+    const vars = "-F i[branch][repositoryNameWithOwner]=o/r -F 'i[branch][branchName]'\"$(printf x)\"=feat/x";
+    expect(read(BY_INPUT, vars).unknown).toBe(true);
+  });
+
   it("keeps a feature branch whose name only resembles a placeholder known", () => {
     expect(read(MERGE_BY_VAR, "-F base=feat:branches").unknown).toBe(false);
   });
@@ -209,7 +224,7 @@ describe("graphqlBranchWrites, calls that write no branch", () => {
     expect(result).toMatchObject({ mutations: ["updateRefs"], unknown: false });
   });
 
-  it("does not read a dynamic query field as an unknown variable", () => {
+  it("keeps a query field whose value, after its literal key, is dynamic out of the variables", () => {
     expect(graphqlBranchWrites(['mutation{mergeBranch(input:{base:"feat/x",head:"feat/y"}){mergeCommit{oid}}}'], words('query="$Q"')).unknown).toBe(false);
   });
 });
