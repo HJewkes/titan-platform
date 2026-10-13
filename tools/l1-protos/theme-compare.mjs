@@ -62,7 +62,7 @@ function fontRows(faces) {
   return faces.map((f) => {
     const xh = f.xHeight * PX;
     const floor = Math.ceil(FLOOR_X_HEIGHT / f.xHeight);
-    return `<tr><td>${esc(f.name)}</td><td>${esc(f.stack)} ${f.weight}</td><td>${f.xHeight}</td><td>${xh.toFixed(1)} px ${xh >= FLOOR_X_HEIGHT ? "meets" : "<b>misses</b>"} 22</td><td>${floor} px</td><td>${f.avgAdvance} em</td><td>${f.worstFill}</td></tr>`;
+    return `<tr><td>${esc(f.name)}</td><td>${esc(f.stack)} ${f.weight}</td><td>${f.xHeight}</td><td>${xh.toFixed(1)} px ${xh >= FLOOR_X_HEIGHT ? "meets" : "<b>misses</b>"} 22</td><td>${floor} px</td><td>${f.avgAdvance} em</td><td>${f.worstFill}</td><td>${f.lineBox} em</td></tr>`;
   });
 }
 
@@ -83,7 +83,7 @@ table{border-collapse:collapse;font-size:13px}td,th{border:1px solid #bbb;paddin
 </style></head><body><h1>L1 map at a ${PX} px floor: plain | titan dark | titan light</h1>
 <p>Same layout in all three columns; only the stylesheet changes. Each frame is a true 1920x1080 render shown at about a third;
 click for full size. Green bars top right are 24, 32 and 40 px. Token mapping and proposed diagram tokens: <a href="gaps.md">gaps.md</a>.</p>
-<h2>Label faces (x-height floor ${FLOOR_X_HEIGHT} px)</h2><table><tr><th>role</th><th>face</th><th>x-height / em</th><th>x-height at ${PX} px</th><th>size for 22 px</th><th>avg advance</th><th>worst label vs 0.6 em budget</th></tr>
+<h2>Label faces (x-height floor ${FLOOR_X_HEIGHT} px)</h2><table><tr><th>role</th><th>face</th><th>x-height / em</th><th>x-height at ${PX} px</th><th>size for 22 px</th><th>avg advance</th><th>worst label vs 0.6 em budget</th><th>line box (pitch 1.25 em)</th></tr>
 ${fontRows(faces).join("\n")}</table>
 <h2>Transition clip</h2><p>${clips.join(" | ")}</p>
 ${rows.join("\n")}</body></html>`;

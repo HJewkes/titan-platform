@@ -1,9 +1,10 @@
 // Measures the faces a theme draws labels in: x-height and average advance as fractions of the
 // em, from canvas text metrics in the same headless browser, over the real label strings. The
 // layout budgets 0.6 em per character (scene.mjs CHAR), so `worstFill` above 1 means some label
-// is wider than its box allows.
+// is wider than its box allows. `lineBox` is the face's ascent plus descent: above the 1.25 em
+// line pitch (scene.mjs LINE), stacked lines' boxes touch, which the overlap check counts.
 /* global document, getComputedStyle */
-const PROBE_PX = 100;
+const PROBE_PX = 1000;
 
 // Runs in the browser, so it closes over nothing.
 async function measureInPage({ faces, labels, px }) {
@@ -23,6 +24,7 @@ async function measureInPage({ faces, labels, px }) {
       stack: resolve(face.family),
       xHeight: +(ctx.measureText("x").actualBoundingBoxAscent / px).toFixed(4),
       capHeight: +(ctx.measureText("H").actualBoundingBoxAscent / px).toFixed(4),
+      lineBox: +((ctx.measureText("x").fontBoundingBoxAscent + ctx.measureText("x").fontBoundingBoxDescent) / px).toFixed(4),
       avgAdvance: +(total / chars).toFixed(4),
       worstFill: +Math.max(...labels.map((l) => width(l) / (l.length * 0.6))).toFixed(3),
     });

@@ -15,16 +15,21 @@ function pathD(points) {
 
 function rectSvg(e, op) {
   const rx = e.kind === "chip" ? 18 : e.kind === "band" ? 0 : 6;
-  return `<rect class="r ${e.kind}" data-id="${esc(e.id)}"${toneAttr(e)} x="${e.x}" y="${e.y}" width="${e.w}" height="${e.h}" rx="${rx}" opacity="${op}"/>`;
+  return `<rect class="r ${e.kind}" data-id="${esc(e.id)}"${toneAttr(e)} x="${e.x}" y="${e.y}" width="${e.w}" height="${e.h}" rx="${rx}" style="--r:${(Math.min(e.w, e.h) / 2).toFixed(1)}px" opacity="${op}"/>`;
 }
+
+// Pills and chips centre their one line: a proportional face runs narrower than the box allows.
+const CENTRED = new Set(["chip", "elabel"]);
 
 function textSvg(e, op) {
   const s = e.fs / 24;
+  const centred = CENTRED.has(e.kind) && e.lines.length === 1;
+  const anchor = centred ? ' text-anchor="middle"' : "";
   return e.lines
     .map((line, i) => {
-      const [x, y] = [e.x + 14 * s, e.y + 14 * s + e.fs * 0.8 + i * 30 * s];
+      const [x, y] = [centred ? e.x + e.w / 2 : e.x + 14 * s, e.y + 14 * s + e.fs * 0.8 + i * 30 * s];
       const cls = `lbl ${e.kind}${i === 0 ? " head" : ""}`;
-      return `<text class="${cls}" data-box="${esc(e.id)}"${toneAttr(e)} x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${e.fs.toFixed(2)}" opacity="${op}">${esc(line)}</text>`;
+      return `<text class="${cls}" data-box="${esc(e.id)}"${toneAttr(e)}${anchor} x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${e.fs.toFixed(2)}" opacity="${op}">${esc(line)}</text>`;
     })
     .join("");
 }
