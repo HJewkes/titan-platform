@@ -6,7 +6,7 @@ import type { WordToken } from "../shell/lexer.js";
 import { classified } from "../spellings.js";
 import type { SpellingId } from "../spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
-import { httpRequest } from "./egress.js";
+import { httpRequest, isWrite } from "./egress.js";
 import { mayReachGitHubApi } from "./github-endpoint.js";
 import { hasFlag, lastValue, readOptions, set, valuesOf } from "./options.js";
 
@@ -73,9 +73,6 @@ function endpointMerge(url: string, method: string, pullSpelling: SpellingId, me
   if (pull) return [classified(pullSpelling, /^\d+$/.test(pull[1] ?? "") ? { pr: pull[1] as string } : {})];
   return MERGES_RE.test(url) ? [classified(mergesSpelling, {})] : [];
 }
-
-/** Any method but GET or HEAD writes, including one known only at run time. */
-const isWrite = (method: string) => method !== "GET" && method !== "HEAD";
 
 /** A literal endpoint names its PR, so it wins over a run-time URL that only may reach a merge endpoint. */
 function curlMerge(cmd: SimpleCommand): ClassifiedAction[] {

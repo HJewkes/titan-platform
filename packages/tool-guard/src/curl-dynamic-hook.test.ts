@@ -35,6 +35,14 @@ describe("handle: an HTTP write to a run-time URL", () => {
     'http PUT "$U"',
     'curl -X "$M" "$U"',
     'curl -X PUT "https://api.github.com/repos/$R/pulls/1/merge"',
+    'http "$M" "$U"',
+    'http put "$U"',
+    'curl -X PUT "$U" --next -X GET https://example.com/x',
+    'curl -X PUT "$U" -: -X GET https://example.com/x',
+    'echo "$U" | xargs curl -X PUT',
+    "wget --method=PUT -i urls",
+    'curl --variable %P --expand-url "https://api.github.com/{{P}}" -X PUT',
+    'curl -X PUT "https://api.github.com/repos/o/r/pulls/1/merg{e}"',
   ])("denies %s as a merge", async (command) => {
     const { columns } = await logColumns(command);
 
