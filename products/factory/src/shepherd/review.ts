@@ -6,6 +6,7 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { join } from "node:path";
 import { z } from "zod";
 import { codeRoute, step } from "../workflows/land.js";
+import type { StepClock } from "../workflows/deadline.js";
 import { CORRECT_VERDICT_STEP, CorrectVerdictInputSchema, correctVerdict, type CorrectVerdictInput, type CorrectedResult } from "./correct-verdict.js";
 import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./codewatch-questions.js";
 import { AWAIT_VERDICT_STEP, HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
@@ -180,18 +181,18 @@ export interface ReviewWiring {
 type Wired = ReviewWiring & { dispatch: ReviewerDispatch };
 const brokerTiming = (deps: ShepherdDeps): Timing => ({ now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs ?? DEFAULT_POLL_MS });
 
-type BrokerStepBody<I, T> = (deps: ShepherdDeps, wired: Wired, input: I, signal: AbortSignal, repeat: boolean) => Promise<T>;
+type BrokerStepBody<I, T> = (deps: ShepherdDeps, wired: Wired, input: I, signal: AbortSignal, repeat: boolean, clock?: StepClock) => Promise<T>;
 
 /**
  * A malformed input fails the step. With no dispatch wired the step answers `none` at once, and a throw from its body is a refusal; either way the owner
  * gate decides. A refusal's text goes to the local console only, since the stored reason can reach a public PR.
  */
 const brokerStep = <I, T extends object>(deps: ShepherdDeps, wiring: ReviewWiring | undefined, schema: z.ZodType<I>, body: BrokerStepBody<I, T>) =>
-  async (raw: unknown, signal: AbortSignal, repeat = false): Promise<T | NoReview> => {
+  async (raw: unknown, signal: AbortSignal, clock?: StepClock, repeat = false): Promise<T | NoReview> => {
     const input = schema.parse(raw);
     const dispatch = wiring?.dispatch;
     if (!dispatch) return { kind: "none", reason: "no reviewer dispatch is wired" };
-    return body(deps, { ...wiring, dispatch }, input, signal, repeat).catch((error: unknown) => {
+    return body(deps, { ...wiring, dispatch }, input, signal, repeat, clock).catch((error: unknown) => {
       signal.throwIfAborted();
       const failure = failureOf(error);
       console.warn(`shepherd: the reviewer dispatch was refused (${failure}): ${consoleTextOf(error)}`);
@@ -238,8 +239,11 @@ async function thenDropCheckout<T>(deps: ShepherdDeps, target: ReviewTarget, wor
   return result;
 }
 
-/** The body of the sh-review step; `repeat` means a crash interrupted an earlier run. The brief is built from the target alone, so no registration text can reach it. */
-const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, wired, { intent, runId, fixFirsts, ownerBrief, fixProof, fixProofUnverified, shape, profile, ...target }, signal, repeat) => {
+/**
+ * The body of the sh-review step; `repeat` means a crash interrupted an earlier run. The brief is built from the target alone, so no registration text can reach it.
+ * A reviewer an earlier run asked for keeps that run's session-start clock; one asked for again gets a fresh one.
+ */
+const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, wired, { intent, runId, fixFirsts, ownerBrief, fixProof, fixProofUnverified, shape, profile, ...target }, signal, repeat, clock) => {
   const { dispatch, questions, codewatch, sessionStartTimeoutMs, busyWaitMs, roles } = wired;
   const timing = { ...brokerTiming(deps), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
   const roster = await whileBrokerDown(timing, signal, () => dispatch.roster());
@@ -255,7 +259,7 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
       return refused;
     }
   }
-  const { agent: started, rosterError } = await startedSession(() => dispatch.roster(), holds(intent), timing, signal);
+  const { agent: started, rosterError } = await startedSession(() => dispatch.roster(), holds(intent), { ...timing, startedAt: asked ? clock?.firstStartedAtMs : undefined }, signal);
   if (!started) {
     await dropCheckout(deps, target, shape);
     return notStartedInTime(intent, rosterError);
@@ -270,10 +274,10 @@ const correctReviewer: BrokerStepBody<CorrectVerdictInput, CorrectedResult> = (d
   return correctVerdict(dispatch, input, timing, signal, repeat);
 };
 
-/** `codeRoute` for a body that must know it ran before: a first run is attempt 0, and only the recovery of an interrupted step raises it. */
-function repeatAwareRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal, repeat: boolean) => Promise<object>): StepRoute {
-  const routeFor = (repeat: boolean) => codeRoute(match, now, (input: I, signal) => fn(input, signal, repeat));
-  return { ...routeFor(false), runner: { run: (step) => routeFor(step.attempt > 0).runner.run(step) } };
+/** `codeRoute` for a body that must know it ran before: a first run is attempt 0 with no restarts, and only the recovery of an interrupted step raises either. */
+function repeatAwareRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal, clock: StepClock, repeat: boolean) => Promise<object>): StepRoute {
+  const routeFor = (repeat: boolean) => codeRoute(match, now, (input: I, signal, clock) => fn(input, signal, clock, repeat));
+  return { ...routeFor(false), runner: { run: (step) => routeFor(step.attempt > 0 || (step.restarts ?? 0) > 0).runner.run(step) } };
 }
 
 /** A panel member's await names its shape, so its own checkout is the one removed. */
@@ -297,7 +301,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     codeRoute(REVIEW_INTENT_STEP, deps.now, brokerStep(deps, wiring, ReviewInputSchema, reviewIntent)),
     repeatAwareRoute(REVIEW_STEP, deps.now, brokerStep(deps, wiring, ReviewDispatchInputSchema, dispatchReview)),
     codeRoute(AWAIT_VERDICT_STEP, deps.now, seatVetoed(wiring, run, deps.now, seatWait)),
-    codeRoute(LATE_VERDICT_STEP, deps.now, seatVetoed(wiring, (raw: unknown, signal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(raw), signal), deps.now, seatWait)),
+    codeRoute(LATE_VERDICT_STEP, deps.now, (raw: unknown, signal, clock) => seatVetoed(wiring, (late: unknown, lateSignal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(late), lateSignal, clock.firstStartedAtMs), deps.now, seatWait)(raw, signal)),
     repeatAwareRoute(CORRECT_VERDICT_STEP, deps.now, brokerStep(deps, wiring, CorrectVerdictInputSchema, correctReviewer)),
     codeRoute(SEAT_RECHECK_STEP, deps.now, seatVetoed(wiring, async (raw: unknown) => heldMerge(raw), deps.now, seatWait)),
     codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, isFrozen, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) }, wiring?.reviewAppId)),
@@ -312,10 +316,10 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
 };
 
 /** With no dispatch wired there is no roster to tell an exited reviewer, so the step answers `none` at once. */
-async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined, input: AwaitVerdictInput, signal: AbortSignal): Promise<AwaitVerdictResult> {
+async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined, input: AwaitVerdictInput, signal: AbortSignal, startedAt: number | undefined): Promise<AwaitVerdictResult> {
   const dispatch = wiring?.dispatch;
   if (!dispatch) return { kind: "none" };
-  const timing = { ...brokerTiming(deps), timeoutMs: wiring.lateVerdictMs ?? DEFAULT_LATE_VERDICT_MS };
+  const timing = { ...brokerTiming(deps), timeoutMs: wiring.lateVerdictMs ?? DEFAULT_LATE_VERDICT_MS, startedAt };
   const exited = async () => (await dispatch.roster()).every((agent) => agent.agentId !== input.reviewerAgentId || agent.presence === "exited");
   return thenDropCheckout(deps, input, () => awaitLateVerdict(wiring.reader, exited, input, timing, signal), () => true);
 }
@@ -342,7 +346,8 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const proof = await step(ctx, `${FIX_PROOF_STEP}:${target.head}`, { repo: target.repo, head: target.head, runId: ctx.runId }, FixProofReadSchema);
   const noRepro = fixProofVerdict(proof, target.head);
   if (noRepro) return noRepro;
-  const standing: ProofStanding = fixProofStanding(proof, target.head) ?? {};
+  const unverified = fixProofStanding(proof, target.head);
+  const standing: ProofStanding = unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {};
   if (request.seatHeld?.head === target.head && recordsRecheck(ctx, target.head)) return recheckSeat(ctx, target, request.seatHeld, standing);
   const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }) }, Intended);
   if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : { kind: "none", cause: "no-verdict" };
@@ -361,6 +366,6 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
     ...(dispatched.profile !== undefined && { reviewerProfile: dispatched.profile }),
   };
   const account = typeof intent.account === "string" ? intent.account : DEFAULT_ACCOUNT;
-  const reviewed = panelOn(intent) ? await panelReview(ctx, intent, base, awaiting, dispatchedReviewer, account) : await takeVerdict(ctx, target, awaiting, dispatchedReviewer, account, standing);
+  const reviewed = panelOn(intent) ? await panelReview(ctx, intent, base, awaiting, dispatchedReviewer, account, standing) : await takeVerdict(ctx, target, awaiting, dispatchedReviewer, account, standing);
   return withReviewerProfile(reviewed, dispatched.profile);
 };

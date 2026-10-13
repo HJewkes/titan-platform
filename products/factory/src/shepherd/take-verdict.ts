@@ -9,7 +9,7 @@ import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
 import { correctOnce } from "./correct-verdict.js";
 import { evidenceOrGate } from "./merge-evidence-gate.js";
 import type { MergeEvidenceInput } from "./merge-facts.js";
-import type { FixProofUnverified } from "./fix-proof.js";
+import { grantWithheldOf, type GrantStanding } from "./grant-withheld.js";
 import type { SeatHeld, Verdict } from "./phases.js";
 import { MERGE_ON_GREEN_GRANT, runPolicyCeiling } from "./policy.js";
 import { publishReview } from "./publish-review.js";
@@ -31,7 +31,7 @@ export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEviden
 /** The grant is read from the run's own policy param, the ceiling a registration can only narrow. */
 const effectivePolicy = (ctx: WorkflowContext) => runPolicyCeiling(ctx.param("policy"));
 /** Why a gated head's fix-proof proves nothing; such a head merges only through the owner gate, whatever the policy (TP-2434). */
-export type ProofStanding = { unverified?: FixProofUnverified };
+export type ProofStanding = GrantStanding;
 /**
  * Whether a visual-path gate will open is unknown until the evidence step, so a visual-ceiling run always asks for the brief.
  * `standing` is the round's read fix-proof standing and has no default, because `{}` reads as verified.
@@ -40,7 +40,11 @@ export const asksOwnerBrief = (ctx: WorkflowContext, standing: ProofStanding): b
   const policy = effectivePolicy(ctx);
   return standing.unverified !== undefined || policy.merge === "owner-gate" || (policy.visualPaths?.length ?? 0) > 0;
 };
-const seatGrants = (ctx: WorkflowContext, standing: ProofStanding): string[] => (standing.unverified === undefined && effectivePolicy(ctx).merge === "auto" ? [MERGE_ON_GREEN_GRANT] : []);
+/** The grant, or which half of it is withheld, so a gate on it can name the failing half (TP-2658). */
+function seatGrants(ctx: WorkflowContext, standing: ProofStanding): Pick<MergeEvidenceInput, "seatGrants" | "grantWithheld"> {
+  const grantWithheld = grantWithheldOf(effectivePolicy(ctx).merge, standing);
+  return grantWithheld ? { seatGrants: [], grantWithheld } : { seatGrants: [MERGE_ON_GREEN_GRANT] };
+}
 
 type ExternalAwaiting = ReviewTarget & { external: string };
 export type AwaitedResult = z.infer<typeof Awaited>;
@@ -112,5 +116,5 @@ export async function verdictOf(ctx: WorkflowContext, target: ReviewTarget, awai
   if (awaited.kind !== "verdict") return dispatchedReviewer && !("external" in awaiting) ? dispatchedNone(ctx, target.head, awaiting.startedAt ?? awaiting.dispatchedAt, awaited.reason) : { kind: "none", cause: "external-hold", ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
   if (awaited.verdict === "FIX_FIRST") return { kind: "FIX_FIRST", headSha: target.head, text: awaited.text ?? "", ...(awaited.closer === "yes" || awaited.closer === "no" ? { closer: awaited.closer } : {}) };
   const verdict = { value: "MERGE" as const, head: awaited.head, locator: awaited.locator };
-  return mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer: dispatchedReviewer ?? awaited.reviewer, seatGrants: seatGrants(ctx, standing), ...(awaited.ciPolicy && { ciPolicy: awaited.ciPolicy }) }, awaited.ownerBrief ?? undefined);
+  return mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer: dispatchedReviewer ?? awaited.reviewer, ...seatGrants(ctx, standing), ...(awaited.ciPolicy && { ciPolicy: awaited.ciPolicy }) }, awaited.ownerBrief ?? undefined);
 }

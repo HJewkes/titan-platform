@@ -1,5 +1,5 @@
 import { CLIENT_HEADER } from "@titan-design/daemon";
-import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
+import { inProcessCaller, type JsonEnvelope } from "@titan-design/registry";
 import type { Verbs } from "./cli.js";
 import { EXIT } from "./exit-codes.js";
 import { createFactoryRegistry, factoryContext } from "./registry.js";
@@ -15,7 +15,7 @@ export async function statusRows(verbs: Verbs, args: { repo: string; pr: number 
 export async function localEnvelope(verbs: Verbs, name: ShepherdCommandName, args: object): Promise<JsonEnvelope<unknown>> {
   let result: JsonEnvelope<unknown> | undefined;
   await verbs.withHost(async (host, routes) => {
-    result = (await invokeCommand(createFactoryRegistry().get(name)!, args, factoryContext(host, routes))).envelope;
+    result = await inProcessCaller(createFactoryRegistry(), () => factoryContext(host, routes))(name, args);
     return EXIT.OK;
   });
   return result!;
