@@ -8,6 +8,18 @@ export const DEFAULT_EXIT_GRACE_MS = 60_000;
 export const DEFAULT_DETACH_GRACE_MS = 10 * 60_000;
 export const HEAD = /^[0-9a-f]{40}$/;
 
+/** Why a wait with no verdict ended: the clock ran out, or the roster showed the reviewer gone for its grace. */
+export const AWAIT_ENDS = ["deadline", "reviewer-gone"] as const;
+export type AwaitEnd = (typeof AWAIT_ENDS)[number];
+type EndedNone = Extract<AwaitVerdictResult, { kind: "none" }> & { ended: AwaitEnd };
+
+/** Stamps a `none` with how its wait ended, so a reader can tell a slow reviewer from one that left; a verdict or a limit notice already says why. */
+export function withEnd(result: AwaitVerdictResult, end: AwaitEnd): AwaitVerdictResult {
+  if (result.kind !== "none" || isUsageLimit(result)) return result;
+  const stamped: EndedNone = { ...result, ended: end };
+  return stamped;
+}
+
 export interface AwaitVerdictTiming {
   now: () => number;
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
@@ -99,8 +111,8 @@ export async function awaitVerdict(
     // A limit notice is the reviewer's last word, so waiting for its exit adds nothing.
     if (result.kind === "verdict" || isUsageLimit(result)) return result;
     // A verdict can land between the read and the decision that the reviewer is gone, so that decision reads once more.
-    if (await silent(input)) return poll();
-    if (clock.expired()) return last;
+    if (await silent(input)) return withEnd(await poll(), "reviewer-gone");
+    if (clock.expired()) return withEnd(last, "deadline");
     await clock.sleep(timing.pollMs, signal);
   }
 }
