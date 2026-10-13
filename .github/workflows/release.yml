@@ -22,7 +22,9 @@ name: Release
 # Each refresh of the Version Packages PR pushes a head that runs full CI, so a burst
 # of merges refreshes it at most once per 30 minutes. The hourly schedule picks up a
 # refresh the debounce skipped once merges stop. Publishing is never debounced: with
-# no pending changeset the action publishes, and nothing skips that.
+# no pending changeset on a green tip the action publishes, from either trigger. Both
+# share the concurrency group below, so a scheduled run that replaces a queued publish
+# run publishes in its place.
 on:
   workflow_run:
     workflows: [CI]

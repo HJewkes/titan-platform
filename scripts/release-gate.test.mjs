@@ -33,8 +33,12 @@ describe("releaseDecision after a green main CI run", () => {
 describe("releaseDecision on the hourly schedule", () => {
   const scheduled = (facts) => releaseDecision({ event: "schedule", tipGreen: true, ...facts }).run;
 
-  it("never publishes, even with no changeset pending on a green tip", () => {
-    expect(scheduled({ ...stale, pending: 0 })).toBe(false);
+  it("publishes on a green tip with no changeset pending, so a publish run it replaced in the queue is not lost", () => {
+    expect(scheduled({ ...stale, pending: 0 })).toBe(true);
+  });
+
+  it("never publishes on a tip with no green push CI run", () => {
+    expect(scheduled({ ...stale, pending: 0, tipGreen: false })).toBe(false);
   });
 
   it("does nothing on a tip with no green push CI run", () => {

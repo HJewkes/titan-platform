@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // release.yml's gate: whether this Release run versions or publishes now, written to $GITHUB_OUTPUT as run=true|false.
 // Each Version Packages refresh pushes a head that runs full CI, so a burst of merges refreshes it at most once per
-// DEBOUNCE_S. The hourly schedule catches up a skipped refresh, and only that: it never publishes, and it acts only on a
-// tip with a green push CI run, the bar the job-level `if` sets for a workflow_run.
+// DEBOUNCE_S. The hourly schedule catches up a skipped refresh, and it publishes on the bar a workflow_run publishes on:
+// a green push CI run at the tip and no changeset pending. Both share one concurrency group, so a scheduled run can replace
+// a queued publish run; publishing in its place keeps that publish, and `changeset publish` skips versions already on npm.
 import { execFileSync } from "node:child_process";
 import { appendFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -19,10 +20,7 @@ const decide = (run, reason) => ({ run, reason });
 export function releaseDecision(facts) {
   const scheduled = facts.event === "schedule";
   if (scheduled && facts.tipGreen !== true) return decide(false, "No green push CI run at the tip yet; the Release run after it decides.");
-  if (facts.pending === 0) {
-    if (scheduled) return decide(false, "No pending changeset; publishing follows the merge, never the schedule.");
-    return decide(true, "No pending changeset: publish.");
-  }
+  if (facts.pending === 0) return decide(true, "No pending changeset: publish.");
   if (!facts.branchExists) return decide(true, "No Version Packages branch yet: open it.");
   if (facts.branchHasTip) return decide(false, "The Version Packages branch already contains the tip.");
   if (facts.branchAgeS < DEBOUNCE_S) return decide(false, `The Version Packages PR was refreshed ${facts.branchAgeS}s ago; the next merge after 30 minutes or the hourly run refreshes it.`);
