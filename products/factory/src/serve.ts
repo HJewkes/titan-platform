@@ -83,8 +83,6 @@ export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweep
   seatDigest?: SeatDigestPorts;
   /** Posts pending decision gates to agent-chat's human queue and resolves them from the answers; absent means serve asks nothing. */
   gateNotify?: GateNotifyOptions;
-  /** How often the gate notifier runs; defaults to `GATE_NOTIFY_MS`. */
-  gateNotifyMs?: number;
   /** The audience an owner proof must name; defaults to this machine's hostname. */
   aud?: string;
   /** Replaces the root-owned key directory read at start; tests inject it. No flag or config reaches this. */
@@ -116,7 +114,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   void github.refresh();
   const build = buildHealth(options);
   const log = options.logger ?? consoleLogger;
-  const notify = options.gateNotify && gateNotifyWatch(host, options.gateNotify, log, options.gateNotifyMs);
+  const notify = options.gateNotify && gateNotifyWatch(host, options.gateNotify, log);
   const daemon = frames.started(await startCountedDaemon(host, options, github, build, log, notify));
   const loopDelay = startLoopDelayWatch({ log });
   const unbindCarry = bindCarryStateDir(stateDir);

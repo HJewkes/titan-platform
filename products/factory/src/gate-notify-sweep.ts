@@ -9,7 +9,10 @@ import { startSweep, type Sweep } from "./sweep.js";
 const GATE_NOTIFY_MS = 30_000;
 
 /** The agent-chat side of the gate notifier; serve supplies the gates and the `gate_ask` store from its own host. */
-export type GateNotifyOptions = Pick<GateNotifyPorts, "label" | "resolverClass" | "askHuman" | "readAnswers" | "dismissAsk">;
+export type GateNotifyOptions = Pick<GateNotifyPorts, "label" | "resolverClass" | "askHuman" | "readAnswers" | "dismissAsk"> & {
+  /** How often the notifier runs; defaults to 30 seconds. */
+  everyMs?: number;
+};
 
 /** What health shows, so a gate the phone cannot settle, or a label whose answers cannot be read, is seen rather than waited on. */
 interface GateNotifyStatus {
@@ -42,7 +45,7 @@ export function configuredGateNotify(env: NodeJS.ProcessEnv): GateNotifyOptions 
   };
 }
 
-export function gateNotifyWatch(host: FactoryHost, options: GateNotifyOptions, log: Logger, everyMs = GATE_NOTIFY_MS): GateNotifyWatch {
+export function gateNotifyWatch(host: FactoryHost, options: GateNotifyOptions, log: Logger): GateNotifyWatch {
   let answersError: string | undefined;
   const readAnswersNoted: GateNotifyOptions["readAnswers"] = async (label, since) => {
     try {
@@ -66,7 +69,7 @@ export function gateNotifyWatch(host: FactoryHost, options: GateNotifyOptions, l
   return {
     status: () => ({ ...notifyStatus(host, options), ...(answersError !== undefined && { answersError }) }),
     start: () => {
-      const sweep = startSweep(() => notifyTick(ports), everyMs, "gate notify", log);
+      const sweep = startSweep(() => notifyTick(ports), options.everyMs ?? GATE_NOTIFY_MS, "gate notify", log);
       void sweep.tick();
       return sweep;
     },

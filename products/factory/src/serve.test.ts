@@ -343,7 +343,7 @@ describe("serve's gate notifier", () => {
   const health = async (server: FactoryServer): Promise<unknown> => (await fetch(`http://127.0.0.1:${server.port}/health`)).json();
 
   it("asks nothing and shows no gateNotify block without the config", async () => {
-    const server = await serve(dbFile(), landScenario(), { gateNotifyMs: 10 });
+    const server = await serve(dbFile(), landScenario(), {});
     openMergeGate(server, "run1/approve-merge");
 
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -356,7 +356,7 @@ describe("serve's gate notifier", () => {
     const queue = fakeQueue();
     const errors: unknown[] = [];
     const logger = { ...silentLogger, error: (_fields: unknown, msg?: unknown) => void errors.push(msg) };
-    const server = await serve(dbFile(), landScenario(), { logger, gateNotify: queue.options, gateNotifyMs: 10 });
+    const server = await serve(dbFile(), landScenario(), { logger, gateNotify: { ...queue.options, everyMs: 10 } });
     openMergeGate(server, "run1/approve-merge");
 
     await vi.waitFor(() => expect(queue.reads()).toBeGreaterThan(2));
@@ -369,7 +369,7 @@ describe("serve's gate notifier", () => {
 
   it("health shows a gate whose answer could not settle it and a gate no answer can settle", async () => {
     const queue = fakeQueue({ q1: "maybe" });
-    const server = await serve(dbFile(), landScenario(), { gateNotify: queue.options, gateNotifyMs: 10 });
+    const server = await serve(dbFile(), landScenario(), { gateNotify: { ...queue.options, everyMs: 10 } });
     openMergeGate(server, "run1/approve-merge");
     openMergeGate(server, "run2/approve-merge", { unpinned: true });
 
@@ -383,7 +383,7 @@ describe("serve's gate notifier", () => {
   it("health names the error while the label's answers cannot be read", async () => {
     const queue = fakeQueue();
     const options = { ...queue.options, readAnswers: async () => Promise.reject(new Error("broker unavailable")) };
-    const server = await serve(dbFile(), landScenario(), { gateNotify: options, gateNotifyMs: 10 });
+    const server = await serve(dbFile(), landScenario(), { gateNotify: { ...options, everyMs: 10 } });
 
     await vi.waitFor(async () => expect(await health(server)).toMatchObject({ gateNotify: { answersError: "broker unavailable" } }));
   });
