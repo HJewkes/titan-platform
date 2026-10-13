@@ -19,7 +19,7 @@ interface Logged {
 
 function recordingLogger(): { log: Logger; lines: Logged[] } {
   const lines: Logged[] = [];
-  const record = (fields: unknown, msg?: unknown) => void lines.push({ fields: fields as Record<string, unknown>, msg: String(msg) });
+  const record = (fields: Record<string, unknown>, msg: string) => void lines.push({ fields, msg });
   return { log: { ...silentLogger, info: record, warn: record, error: record }, lines };
 }
 
