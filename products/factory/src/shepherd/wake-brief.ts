@@ -3,6 +3,7 @@ import { isPassing, type CheckRun, type GitHubPort, type PullRequest, type RepoS
 import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
+import { noRunWake } from "./ci-norun.js";
 import { failureOf } from "./error-class.js";
 import { boundedFindings, findingsText } from "@titan-design/review-panel";
 import { FixFirstEntrySchema, defectClassSection, fixFirstEntry, sameClassAsEarlier, type FixFirstEntry } from "./fix-first-trail.js";
@@ -272,6 +273,8 @@ async function wakeBody(port: GitHubPort, input: WakeFacts, pr: PullRequest): Pr
   const head = input.headSha;
   switch (input.kind) {
     case "ci-red": {
+      const noRun = noRunWake(head, input.payload);
+      if (noRun) return noRun;
       const failing = await failingRuns(port, input);
       return { reason: `CI failed at head ${head}.${failingJobsLine(failing)} The failing jobs' log tails follow. ${BASE_IS_SHEPHERDS}`, payload: dataFence("CI log", await ciLogs(port, input, failing)) };
     }
