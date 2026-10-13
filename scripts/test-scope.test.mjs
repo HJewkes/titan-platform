@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { readWorkspace, scopeForEvent, testScope, vitestArgs } from "./test-scope.mjs";
 
@@ -125,5 +126,38 @@ describe("readWorkspace on this repo", () => {
     expect(members.map((member) => member.dir)).toContain("deploy/hub/");
     expect(scope.mode).toBe("scoped");
     expect(scope.dirs).toEqual(expect.arrayContaining(["packages/test-kit/", "products/factory/"]));
+  });
+});
+
+describe("the root scripts factory's audit test runs", () => {
+  const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+  const RELATIVE_IMPORT = /from\s+"\.\/([\w.-]+\.mjs)"/g;
+  const DIST_LOAD = /"packages",\s*"([\w-]+)",\s*"dist"/g;
+
+  function reachedFrom(entry, seen = new Set()) {
+    if (seen.has(entry)) return seen;
+    seen.add(entry);
+    for (const [, file] of read(entry).matchAll(RELATIVE_IMPORT)) reachedFrom(`scripts/${file}`, seen);
+    return seen;
+  }
+
+  it("scope factory, as do the packages those scripts load from dist, beside their own tests", () => {
+    expect(read("products/factory/src/audit/production.ts")).toContain('join(checkout, "scripts", "areas.mjs")');
+    const scripts = [...reachedFrom("scripts/areas.mjs")];
+    const loaded = scripts.flatMap((file) => [...read(file).matchAll(DIST_LOAD)].map(([, name]) => `packages/${name}/`));
+    const members = readWorkspace();
+
+    expect(scripts).toContain("scripts/new-package.mjs");
+    expect(loaded).toContain("packages/pm/");
+    for (const path of scripts) expect(testScope([path], members).dirs, path).toContain("products/factory/");
+    for (const dir of loaded) {
+      expect(testScope([`${dir}src/index.ts`], members).dirs, dir).toEqual(expect.arrayContaining([dir, "products/factory/"]));
+    }
+  });
+});
+
+describe("readWorkspace on this repo, for an import only a test makes", () => {
+  it("reaches coordinator from egress-scan, which coordinator's example test imports", () => {
+    expect(testScope(["packages/egress-scan/src/scan.ts"], readWorkspace()).dirs).toContain("packages/coordinator/");
   });
 });

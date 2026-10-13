@@ -44,28 +44,37 @@ const NO_TEST_PATHS = new Set([
 ]);
 const NO_TEST_PREFIXES = [".changeset/", "site/"];
 
-// Files outside a package that a package's tests read at runtime. They come before the no-test prefixes.
+// Edges the package graph cannot see, added on top of a path's own tests: files outside a package that its tests
+// read, and root scripts its tests run with what they load. factory's audit/production.test.ts runs
+// scripts/areas.mjs, which imports scripts/new-package.mjs and loads packages/pm/dist.
 const RUNTIME_COUPLINGS = [
   { prefix: "site/guides/shepherd.md", dirs: ["products/factory/"] },
-  { prefix: "metrics/", dirs: ["products/factory/"] },
+  { prefix: "metrics/", dirs: ["products/factory/", ROOT_TESTS] },
   { prefix: ".codewatch/", dirs: ["products/factory/", ROOT_TESTS] },
-  { prefix: "scripts/areas", dirs: ["products/factory/", ROOT_TESTS] },
+  { prefix: "scripts/areas", dirs: ["products/factory/"] },
+  { prefix: "scripts/new-package.mjs", dirs: ["products/factory/"] },
+  { prefix: "packages/pm/", dirs: ["products/factory/"] },
 ];
 
 const startsWithAny = (path, prefixes) => prefixes.some((prefix) => path.startsWith(prefix));
 
+/** The tests a path owns: its member, the root script tests, none ([]), or null for a path this does not know. */
+function ownTestDirs(path, memberDirs) {
+  const member = memberDirs.find((dir) => path.startsWith(dir));
+  if (member) return [member];
+  if (ROOT_TEST_INPUTS.has(path) || path.startsWith(ROOT_TESTS) || path.startsWith("templates/")) return [ROOT_TESTS];
+  if (NO_TEST_PATHS.has(path) || startsWithAny(path, NO_TEST_PREFIXES)) return [];
+  return null;
+}
+
 /** What one changed path asks for: the full suite, no tests, or the test dirs it touches before the closure. */
 function classifyPath(path, memberDirs) {
   if (FULL_PATHS.has(path) || startsWithAny(path, FULL_PREFIXES)) return { kind: "full" };
-  const coupling = RUNTIME_COUPLINGS.find(({ prefix }) => path.startsWith(prefix));
-  if (coupling) return { kind: "dirs", dirs: coupling.dirs };
-  const member = memberDirs.find((dir) => path.startsWith(dir));
-  if (member) return { kind: "dirs", dirs: [member] };
-  if (ROOT_TEST_INPUTS.has(path) || path.startsWith(ROOT_TESTS) || path.startsWith("templates/")) {
-    return { kind: "dirs", dirs: [ROOT_TESTS] };
-  }
-  if (NO_TEST_PATHS.has(path) || startsWithAny(path, NO_TEST_PREFIXES)) return { kind: "none" };
-  return { kind: "full" };
+  const coupled = RUNTIME_COUPLINGS.filter(({ prefix }) => path.startsWith(prefix)).flatMap(({ dirs }) => dirs);
+  const own = ownTestDirs(path, memberDirs);
+  if (own === null && coupled.length === 0) return { kind: "full" };
+  const dirs = [...coupled, ...(own ?? [])];
+  return dirs.length > 0 ? { kind: "dirs", dirs } : { kind: "none" };
 }
 
 /** Each member dir mapped to the member dirs that depend on it. */
