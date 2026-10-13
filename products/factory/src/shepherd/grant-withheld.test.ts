@@ -1,8 +1,10 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidenceInput } from "./merge-facts.js";
-import { verdictOf, type AwaitedResult } from "./take-verdict.js";
+import { Awaited } from "./review-schemas.js";
+import { verdictOf } from "./take-verdict.js";
 import { whyAsked } from "./why-asked.js";
 
 /** Synthetic stand-ins shaped like tp#1356 run d72ca70e: auto policy, a fix-proof read that errored, a dispatched MERGE. */
@@ -12,7 +14,7 @@ const REVIEWER = { agentId: "agent-rv-octo-demo-1", sessionId: "session-rv-octo-
 const LOCATOR = { source: { conversation: { nativeId: REVIEWER.sessionId } } };
 const TARGET = { repo: REPO, pr: 1, head: HEAD };
 const AWAITING = { ...TARGET, reviewerAgentId: REVIEWER.agentId, reviewerSessionId: REVIEWER.sessionId, dispatchedAt: 0 };
-const MERGE = { kind: "verdict", verdict: "MERGE", head: HEAD, locator: LOCATOR, reviewer: REVIEWER } as AwaitedResult;
+const MERGE = Awaited.parse({ kind: "verdict", verdict: "MERGE", head: HEAD, locator: LOCATOR, reviewer: REVIEWER });
 const PROOF_READ = "the fix-proof check could not be read: HTTP 200";
 const UNREAD = { unverified: "unread" as const, reason: PROOF_READ };
 /** The grant condition closing the reason, with no clause after it naming which half failed. */
@@ -48,10 +50,22 @@ function stoppingAtEvidence(policy: string): { ctx: WorkflowContext; inputs: Map
   return { ctx, inputs };
 }
 
+/** The grant fields the verdict step hands the evidence step; the rest of its input is the fixed MERGE below. */
+const GrantFields = z.object({
+  seatGrants: z.array(z.string()),
+  grantWithheld: z.object({ policy: z.string().nullable(), proof: z.string().nullable() }).optional(),
+});
+
+function mergeInput(grant: z.infer<typeof GrantFields>): MergeEvidenceInput {
+  const verdict = MERGE.kind === "verdict" ? MERGE : undefined;
+  if (verdict === undefined) throw new Error("the MERGE fixture is not a verdict");
+  return { runId: "run-1", ...TARGET, verdict: { value: "MERGE", head: HEAD, locator: verdict.locator }, resolver: REVIEWER, dispatchedReviewer: REVIEWER, seatGrants: grant.seatGrants, ...(grant.grantWithheld && { grantWithheld: grant.grantWithheld }) };
+}
+
 async function evidenceInput(policy: string, standing: object): Promise<MergeEvidenceInput> {
   const { ctx, inputs } = stoppingAtEvidence(policyOf(policy));
   await expect(verdictOf(ctx, TARGET, AWAITING, REVIEWER, MERGE, standing)).rejects.toThrow(`stop at sh-merge-evidence:${HEAD}`);
-  return inputs.get(`sh-merge-evidence:${HEAD}`) as MergeEvidenceInput;
+  return mergeInput(GrantFields.parse(inputs.get(`sh-merge-evidence:${HEAD}`)));
 }
 
 function world(): FakeGitHub {
