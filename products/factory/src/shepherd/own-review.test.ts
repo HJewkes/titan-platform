@@ -95,7 +95,7 @@ function heldRun(hold: string, reviewer?: string, { seatSilent = false, say, sta
   const reviewers = scriptedReviewers(seatSilent, say ?? merges);
   const wake: ShepherdPhases["wake"] = async () => ({ kind: "unhandled", reason: "no fixer in this test" });
   const ref = shepherdStoreRef();
-  const waits = say ? { timeoutMs: 20, lateVerdictMs: 5, exitGraceMs: 1 } : {};
+  const waits = say ? { timeoutMs: 20, lateVerdictMs: 5, exitGraceMs: 1, sessionStartTimeoutMs: 20 } : {};
   const review = { dispatch: reviewers.dispatch, reader: reviewers.reader, roles: { g10: "bd-reviewer", standard: "bd-reviewer" }, ...waits, ...(machineStop && { machineStop }) };
   const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: say ? Date.now : () => 0, sleep: async (_ms, signal) => sleep(1, signal), holdPollMs: 1, review });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review: reviewPhase, wake })], routes, gatePollMs: 5 });
