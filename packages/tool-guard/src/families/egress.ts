@@ -221,7 +221,7 @@ const HTTP_SPELLINGS: Record<string, SpellingId> = {
 
 function upload(cmd: SimpleCommand): ClassifiedAction[] {
   const request = httpRequest(cmd);
-  if (!request || !(request.body || UPLOAD_METHODS.has(request.method))) return [];
+  if (!request || !(request.body || UPLOAD_METHODS.has(request.method) || request.method === UNKNOWN_METHOD)) return [];
   return actionsFor(HTTP_SPELLINGS[cmd.name ?? ""] as SpellingId, request.urls.map(hostOf));
 }
 
