@@ -38,6 +38,23 @@ describe("a command that defines a shell alias", () => {
     ["an assigning expansion as the command word", "${aliases[y]::=git}"],
     ["a dynamic command word with a definition operand", '"$C" y=git'],
     ["a dynamic command word with alias options first", '"$C" -g P=x'],
+    ["a dynamic command word past a lone -", '"$C" - y=git'],
+    ["a dynamic command word past --", '"$C" -- y=git'],
+    ["a dynamic command word with an option word after the first operand", '"$C" g -x y=git'],
+    ["alias past a lone -", "alias - y=git"],
+    ["alias with an option word after the first operand", "alias g -x y=git"],
+    ["printf -v with the name attached", "printf -valiases[y] git"],
+    ["print -v in a cluster with the name attached", "print -rvaliases[y] git"],
+    ["zparseopts -A with the name attached", "zparseopts -Aaliases a"],
+    ["zstyle -s into aliases", "zstyle -s ':ctx' style aliases"],
+    ["zformat -f into galiases", "zformat -f galiases '%a' a:x"],
+    ["strftime -s into saliases", "strftime -s saliases '%Y' 0"],
+    ["an indirect assigning expansion", ": ${(P)n::=git}"],
+    ["a plain read of the alias table", ": $aliases"],
+    ["an element store into BASH_ALIASES", "BASH_ALIASES[y]=git"],
+    ["declare -A BASH_ALIASES", "declare -A BASH_ALIASES"],
+    ["an assigning expansion of BASH_ALIASES", ": ${BASH_ALIASES[y]:=git}"],
+    ["enable with a dynamic option word", 'enable "$O" y'],
   ])("is refused: %s", (_how, src) => {
     expect(defines(src)).toBe(true);
   });
@@ -61,6 +78,10 @@ describe("a command that only reads or removes aliases, or names them as text", 
     ["a dynamic compiler's define", '"$CC" -DFOO=1'],
     ["a leading environment assignment", "FOO=1 git status"],
     ["a similarly named variable", "my_aliases[y]=git"],
+    ["a quoted alias-table name beside an expansion", "echo \"$x\"'$aliases'"],
+    ["printf -v into another variable", "printf -vout git"],
+    ["a non-indirect assigning expansion", ": ${n::=git}"],
+    ["enable with a dynamic word after its first operand", 'enable -f y "$F"'],
   ])("passes: %s", (_how, src) => {
     expect(defines(src)).toBe(false);
   });
