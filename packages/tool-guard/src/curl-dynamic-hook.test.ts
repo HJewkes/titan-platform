@@ -62,6 +62,22 @@ describe("handle: an HTTP write to a run-time URL", () => {
     'wget $A "$U"',
     'wget "$O" PUT "$U"',
     "wget $A https://api.github.com/repos/o/r/pulls/1/merge",
+    "wget -e method=PUT https://api.github.com/repos/o/r/pulls/1/merge",
+    "wget -emethod=PUT https://api.github.com/repos/o/r/pulls/1/merge",
+    "wget -qe method=PUT https://api.github.com/repos/o/r/pulls/1/merge",
+    "wget --execute=method=PUT https://api.github.com/repos/o/r/pulls/1/merge",
+    "wget --execute method=PUT https://api.github.com/repos/o/r/pulls/1/merge",
+    "wget -e 'method = put' https://api.github.com/repos/o/r/pulls/1/merge",
+    "wget --meth=PUT https://api.github.com/repos/o/r/pulls/1/merge",
+    "wget --metho PUT https://api.github.com/repos/o/r/pulls/1/merge",
+    "wget --post-d=x https://api.github.com/repos/o/r/pulls/1/merge",
+    "wget --body-d x --method=PUT https://api.github.com/repos/o/r/pulls/1/merge",
+    "wget -e post_data=x https://api.github.com/repos/o/r/pulls/1/merge",
+    "wget --config=rc https://api.github.com/repos/o/r/pulls/1/merge",
+    "WGETRC=rc wget https://api.github.com/repos/o/r/pulls/1/merge",
+    "wget -e robots=off https://api.github.com/repos/o/r/pulls/1/merge",
+    "wget --some-future-option https://api.github.com/repos/o/r/pulls/1/merge",
+    'wget -e "$E" https://api.github.com/repos/o/r/pulls/1/merge',
   ])("denies %s as a merge", async (command) => {
     const { columns } = await logColumns(command);
 
@@ -74,7 +90,7 @@ describe("handle: an HTTP write to a run-time URL", () => {
     expect(columns).toEqual(["deny", "EXT-CO", "private-egress", "bash.egress.curl-upload", "coordinator+worker+headless"]);
   });
 
-  it.each(["curl -X GET \"$U\"", "curl -fsSL --compressed https://api.github.com/repos/o/r/pulls/1", "curl -g --no-get --globoff https://api.github.com/repos/o/r", "curl --no-progress-meter -sS https://example.com/x", 'curl --include "$U"', 'curl --progress-meter -s "$U"', 'curl -s: -I "$U"', 'curl -s "https://api.github.com/repos/$R/pulls" -H "Authorization: Bearer $T"', 'curl -s "http://localhost:8080/$P" -o f'])(
+  it.each(["curl -X GET \"$U\"", "curl -fsSL --compressed https://api.github.com/repos/o/r/pulls/1", "curl -g --no-get --globoff https://api.github.com/repos/o/r", "curl --no-progress-meter -sS https://example.com/x", 'curl --include "$U"', 'curl --progress-meter -s "$U"', 'curl -s: -I "$U"', 'curl -s "https://api.github.com/repos/$R/pulls" -H "Authorization: Bearer $T"', 'curl -s "http://localhost:8080/$P" -o f', "wget -q -nv --no-config -O out https://api.github.com/repos/o/r/pulls/1", "wget --quiet --no-check-certificate --tries=3 https://example.com/x"])(
     "lets the read %s through",
     async (command) => {
       const { stdout } = await logColumns(command);

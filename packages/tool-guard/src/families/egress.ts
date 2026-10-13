@@ -5,8 +5,9 @@ import { classified } from "../spellings.js";
 import type { SpellingId } from "../spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
 import { hasFlag, lastValue, readOptions, set, valuesOf } from "./options.js";
-import type { Options } from "./options.js";
+import type { Option, Options } from "./options.js";
 import { CURL_SWITCHES, CURL_VALUE_OPTIONS } from "./curl-options.js";
+import { WGET_SWITCHES, WGET_VALUE_OPTIONS } from "./wget-options.js";
 import { firstExpansion } from "./github-endpoint.js";
 
 /** Hosts data may be sent to (D5). `registry.npmjs.org` is allowed for reads only, so it is absent. */
@@ -20,12 +21,15 @@ const UPLOAD_METHODS = set("POST", "PUT", "PATCH", UNKNOWN_METHOD);
 const CURL_BODY = ["-d", "--data", "--data-raw", "--data-binary", "--data-urlencode", "--data-ascii", "--json", "-F", "--form", "--form-string", "-T", "--upload-file"];
 /** Options that set the method or URL from somewhere the line does not show. */
 const CURL_HIDDEN = set("-K", "--config", "--request-target");
-/** Switches curl accepts that `--help all` does not list: an old name kept for a renamed switch. */
-const CURL_SWITCH_ALIASES = set("--include");
+const WGET_HIDDEN = set("--config");
+/** curl's switches, with `--include`: an old name `--help all` no longer lists for a renamed switch. */
+const CURL_KNOWN_SWITCHES = set(...CURL_SWITCHES, "--include");
 /** Words that start curl's next request, which takes its own method and URLs. */
 const CURL_NEXT = set("--next", "-:");
-const WGET_BODY = ["--post-data", "--post-file", "--body-data", "--body-file"];
-const WGET_VALUES = set(...WGET_BODY, "--method", "-O", "--output-document", "-o", "--output-file", "-a", "-e", "-U", "--user-agent", "-t", "-T", "-w", "-P", "-i", "--input-file", "--header");
+/** Long wget option names getopt_long matches by unique prefix: each listed one, and each switch with and without `no-`. */
+const WGET_LONG = set(...[...WGET_VALUE_OPTIONS, ...WGET_SWITCHES].filter((n) => n.startsWith("--")).flatMap((n) => [n, ...switchForms(n, WGET_SWITCHES)]));
+/** wgetrc settings that set the method or a body; `-e` running any other one may set anything. */
+const WGETRC_BODY = set("postdata", "postfile", "bodydata", "bodyfile");
 const HTTPIE_VALUES = set("-a", "--auth", "-A", "--auth-type", "-o", "--output", "--session", "--session-read-only", "-p", "--print", "-s", "--style", "--pretty", "--verify", "--cert", "--cert-key", "--timeout", "--proxy", "--raw", "--format-options", "--default-scheme");
 /** An httpie request item; the earliest separator decides its kind. */
 const HTTPIE_ITEM_RE = /==|:=@|:=|=@|=|@|:/;
@@ -56,7 +60,7 @@ export function httpRequest(cmd: SimpleCommand): HttpRequest | null {
 
 function clientRequest(cmd: SimpleCommand): HttpRequest | null {
   if (cmd.name === "curl") return curlRequest(cmd.args);
-  if (cmd.name === "wget") return wgetRequest(cmd.args);
+  if (cmd.name === "wget") return wgetRequest(cmd);
   if (cmd.name === "http" || cmd.name === "https") return httpieRequest(readOptions(cmd.args, HTTPIE_VALUES));
   return null;
 }
@@ -83,7 +87,7 @@ function curlPart(words: WordToken[], followed: boolean): HttpRequest {
   const body = hasFlag(o, ...CURL_BODY);
   const upload = hasFlag(o, "-T", "--upload-file");
   const implied = switchOn(o, "-G", "--get") ? "GET" : upload ? "PUT" : body ? "POST" : "GET";
-  const hidden = o.opts.some((opt) => !isKnownCurlOption(opt.flag)) || hidesOption(words, o.positionals, followed);
+  const hidden = o.opts.some((opt) => !isKnownOption(opt.flag, CURL_VALUE_OPTIONS, CURL_KNOWN_SWITCHES, CURL_HIDDEN)) || hidesOption(words, o.positionals, followed);
   const method = hidden ? UNKNOWN_METHOD : (methodOf(lastValue(o, "-X", "--request")) ?? implied);
   const globs = !switchOn(o, "-g", "--globoff");
   const urls = [...o.positionals, ...valuesOf(o, "--url")].map((u) => (globs ? globbed(u) : u));
@@ -149,10 +153,17 @@ function hidesOption(words: WordToken[], positionals: WordToken[], followed: boo
   return positionals.some((p) => mayBeOption(p) && (splitsWords(p) || followed || words.indexOf(p) < words.length - 1));
 }
 
-function isKnownCurlOption(flag: string): boolean {
-  if (CURL_HIDDEN.has(flag)) return false;
-  if (CURL_VALUE_OPTIONS.has(flag) || CURL_SWITCHES.has(flag) || CURL_SWITCH_ALIASES.has(flag)) return true;
-  return CURL_SWITCHES.has(flag.startsWith("--no-") ? `--${flag.slice("--no-".length)}` : `--no-${flag.slice(2)}`);
+/** A listed option, or a switch's other form; an option that reads settings from a file the line does not show is not known. */
+function isKnownOption(flag: string, values: ReadonlySet<string>, switches: ReadonlySet<string>, hidden: ReadonlySet<string>): boolean {
+  if (hidden.has(flag)) return false;
+  if (values.has(flag) || switches.has(flag)) return true;
+  return flag.startsWith("--") && switchForms(flag, switches).length > 0;
+}
+
+/** The other form of a long switch: `--no-x` for `--x` and `--x` for `--no-x`, when that one is listed. */
+function switchForms(flag: string, switches: ReadonlySet<string>): string[] {
+  const other = flag.startsWith("--no-") ? `--${flag.slice("--no-".length)}` : `--no-${flag.slice(2)}`;
+  return switches.has(other) ? [other] : [];
 }
 
 /** Whether a switch is on: the last of it and its `--no-` form wins. */
@@ -174,14 +185,51 @@ function runTimeFrom(word: WordToken, at: number): WordToken {
   return at < 0 ? word : { ...word, value: `${word.value.slice(0, at)}$`, dynamic: true };
 }
 
-function wgetRequest(words: WordToken[]): HttpRequest {
-  const o = readOptions(words, WGET_VALUES);
-  const body = hasFlag(o, ...WGET_BODY);
-  const hidden = hidesOption(words, o.positionals, false);
-  const method = hidden ? UNKNOWN_METHOD : (methodOf(lastValue(o, "--method")) ?? (body ? "POST" : "GET"));
+/** A `WGETRC` file, an unknown option or an unread `-e` command may set the method and URLs, so the request is unknown. */
+function wgetRequest(cmd: SimpleCommand): HttpRequest {
+  const words = cmd.args.map(wgetLongName);
+  const o = readOptions(words, WGET_VALUE_OPTIONS);
+  const settings = wgetSettings(o);
+  const hidden = settings === null || "WGETRC" in cmd.env || hidesOption(words, o.positionals, false);
+  const method = hidden ? UNKNOWN_METHOD : settings.method;
   const listed = hasFlag(o, "-i", "--input-file") || hidden ? [UNSEEN_URL] : [];
-  return { method, body, urls: [...o.positionals, ...listed] };
+  return { method, body: settings?.body ?? false, urls: [...o.positionals, ...listed] };
 }
+
+/** getopt_long takes any unique prefix of a long option, as `--meth` for `--method`. */
+function wgetLongName(word: WordToken): WordToken {
+  const eq = word.value.indexOf("=");
+  const name = eq < 0 ? word.value : word.value.slice(0, eq);
+  if (!name.startsWith("--") || name === "--" || WGET_LONG.has(name)) return word;
+  const [only, ...more] = [...WGET_LONG].filter((n) => n.startsWith(name));
+  return only === undefined || more.length > 0 ? word : { ...word, value: `${only}${eq < 0 ? "" : word.value.slice(eq)}` };
+}
+
+/** The method and body wget's options and `-e` commands set, the last winning; null when one may set anything else. */
+function wgetSettings(o: Options): { method: string; body: boolean } | null {
+  let method: string | null = null;
+  let body = false;
+  for (const opt of o.opts) {
+    const setting = isKnownOption(opt.flag, WGET_VALUE_OPTIONS, WGET_SWITCHES, WGET_HIDDEN) ? wgetSetting(opt) : null;
+    if (setting === null) return null;
+    if (setting.name === "method") method = setting.value;
+    else if (WGETRC_BODY.has(setting.name)) body = true;
+  }
+  return { method: method ?? (body ? "POST" : "GET"), body };
+}
+
+/** An option as the wgetrc setting it makes; `-e` runs one by name, which is case-, `-` and `_`-insensitive. */
+function wgetSetting(opt: Option): { name: string; value: string | null } | null {
+  if (opt.flag !== "-e" && opt.flag !== "--execute") return { name: wgetrcName(opt.flag), value: methodOf(opt.value) };
+  const command = opt.value;
+  const eq = command?.value.indexOf("=") ?? -1;
+  if (!command || command.dynamic || eq < 0) return null;
+  const name = wgetrcName(command.value.slice(0, eq));
+  if (name !== "method" && !WGETRC_BODY.has(name)) return null;
+  return { name, value: command.value.slice(eq + 1).trim().toUpperCase() };
+}
+
+const wgetrcName = (text: string) => text.replace(/[-_\s]/g, "").toLowerCase();
 
 /** `http [METHOD] URL [ITEM...]`; `key=value`, `key:=json` and `key@file` items make a body, headers and `==` queries do not. */
 function httpieRequest(o: Options): HttpRequest {
