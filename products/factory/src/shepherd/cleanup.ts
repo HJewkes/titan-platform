@@ -181,7 +181,7 @@ function closeUnlessSliced(tasks: CleanupTasks, landing: string, shaRead: boolea
 const EPIC_TAG = "epic";
 
 /** Why one unsliced PR cannot close its task, or undefined when nothing else is due to land on it. */
-export function heldOpenBy({ tags, notes, plan }: TaskSlicing): string | undefined {
+function heldOpenBy({ tags, notes, plan }: TaskSlicing): string | undefined {
   if (plan !== undefined && hasSlicesBlock(plan)) {
     const slices = readSlices(plan).slices;
     if (slices === undefined) return "its plan has a burndown-slices block that does not read";
