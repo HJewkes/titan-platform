@@ -61,7 +61,7 @@ function servicesOf(ctx: FactoryContext): ShepherdServices {
 function refresh(store: ShepherdStore, existing: Registration, args: RegisterArgs, policy: EffectivePolicy): Registered {
   const { runId } = existing;
   try {
-    store.update(runId, { task: args.task, implementer: args.implementer, reviewer: args.reviewer, policy, kind: args.kind, slice: sliceAfter(existing, args) });
+    store.update(runId, { task: args.task, implementer: args.implementer, reviewer: args.reviewer, policy, kind: args.kind, slice: sliceAfter(existing, args), headSha: args.head, base: args.base });
   } catch (error) {
     if (error instanceof RegistrationRefused) throw coded(`registration refused: ${error.message}`, EXIT.DATAERR);
     throw error;
@@ -104,7 +104,7 @@ async function startRegistered(ctx: FactoryContext, store: ShepherdStore, args: 
   let registration: Registration | undefined;
   try {
     const runId = startRun(ctx, args, branch, policy, (started) => {
-      registration = store.register({ ...args, kind: args.kind ?? DEFAULT_KIND, branch, runId: started, policy });
+      registration = store.register({ ...args, kind: args.kind ?? DEFAULT_KIND, branch, runId: started, policy, headSha: args.head });
     });
     return { runId, created: true, registration: registration! };
   } catch (error) {
@@ -138,7 +138,7 @@ async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Regist
 async function registerWithHold(args: RegisterArgs, ctx: FactoryContext): Promise<Registered> {
   const registered = await register(args, ctx);
   const services = servicesOf(ctx);
-  const g10Hold = await applyRegistrationHold(services.port, services.store.get(), registered.runId);
+  const g10Hold = await applyRegistrationHold(services.port, services.store.get(), registered.runId, { ...(services.prFiles && { local: services.prFiles }) });
   return g10Hold === undefined ? registered : { ...registered, g10Hold, registration: services.store.get().byRun(registered.runId)! };
 }
 

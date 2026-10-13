@@ -2,6 +2,7 @@ import type { GitHubPort, PrFile, RepoSlug } from "@titan-design/github";
 import { classifyPr, DEFAULT_CLASS_RULES, type ClassRules } from "@titan-design/review-panel";
 import { SHEPHERD_ACTOR } from "./events.js";
 import { holdClassOf } from "./g10-release.js";
+import { localPrFiles, prFilesOf, type PrFilesRead } from "./git-pr-files.js";
 import { isAdversaryHold } from "./hold-slots.js";
 import { isOwnerHold } from "./owner-hold-rows.js";
 import { prChangedLines } from "./reviewer-roles.js";
@@ -28,6 +29,16 @@ interface HoldTarget {
   repo: RepoSlug;
   pr: number;
   kind: string;
+  /** With `base`, the files come from Shepherd's git cache at this head instead of GitHub. */
+  head?: string;
+  base?: string;
+}
+
+interface HoldFiles {
+  /** Reads a head's files from git; absent means the serve process's cached reader. */
+  local?: PrFilesRead;
+  /** The head to class instead of the registered one: the PR's head as a branch registration first saw it. */
+  head?: string;
 }
 
 /**
@@ -57,10 +68,11 @@ function reasonFor(files: readonly PrFile[], kind: string): string | undefined {
 /**
  * The G10 hold a PR needs at registration, adversary before review. A file list Shepherd cannot read whole (an API error or
  * a list past GitHub's cap) could hide any touch, so it takes the adversary class: failing closed means the seat reviews it.
+ * Git's `-M` diff names a rename's old path as GitHub's list does, so both class a rename alike.
  */
-export async function g10HoldAt(port: GitHubPort, { repo, pr, kind }: HoldTarget): Promise<string | undefined> {
+export async function g10HoldAt(port: GitHubPort, target: HoldTarget, local: PrFilesRead = localPrFiles): Promise<string | undefined> {
   try {
-    return reasonFor(await port.listPrFiles(repo, pr), kind);
+    return reasonFor(await prFilesOf(port, target, local), target.kind);
   } catch (error) {
     return `g10-adversary: changed files unread at registration (${error instanceof Error ? error.name : "error"})`;
   }
@@ -105,9 +117,9 @@ function holdToPlace(store: ShepherdStore, runId: string, wanted: string): strin
  * released; a weaker one does not stop an escalation. The file read is slow, so the hold is a compare-and-swap retried
  * on a fresh read of the run. A history that cannot be read holds `g10-adversary`, keeping an adversary hold in force.
  */
-export async function applyRegistrationHold(port: GitHubPort, store: ShepherdStore, runId: string): Promise<string | undefined> {
+export async function applyRegistrationHold(port: GitHubPort, store: ShepherdStore, runId: string, files: HoldFiles = {}): Promise<string | undefined> {
   try {
-    return await placeRegistrationHold(port, store, runId);
+    return await placeRegistrationHold(port, store, runId, files);
   } catch (error) {
     const reason = `g10-adversary: hold history unread at registration (${error instanceof Error ? error.name : "error"})`;
     return store.holdUnlessAdversary(runId, reason, { actor: SHEPHERD_ACTOR }) ? reason : undefined;
@@ -118,10 +130,12 @@ export async function applyRegistrationHold(port: GitHubPort, store: ShepherdSto
  * A run whose hold history cannot be read could have any class, so `applyRegistrationHold` holds it adversary instead,
  * unless an adversary hold already gates it: that hold, often a seat's with its reviewer, is kept as it stands.
  */
-async function placeRegistrationHold(port: GitHubPort, store: ShepherdStore, runId: string): Promise<string | undefined> {
+async function placeRegistrationHold(port: GitHubPort, store: ShepherdStore, runId: string, files: HoldFiles): Promise<string | undefined> {
   const registration = store.byRun(runId);
   if (!registration || registration.pr === null || wasG10Held(store, runId, "g10-adversary:")) return undefined;
-  const wanted = await g10HoldAt(port, { repo: registration.repo, pr: registration.pr, kind: registration.kind });
+  const head = files.head ?? registration.headSha ?? undefined;
+  const target = { repo: registration.repo, pr: registration.pr, kind: registration.kind, ...(head !== undefined && { head }), ...(registration.base !== null && { base: registration.base }) };
+  const wanted = await g10HoldAt(port, target, files.local);
   if (wanted === undefined) return undefined;
   for (let attempt = 0; attempt < CAS_ATTEMPTS; attempt++) {
     const mark = store.changeMark(runId);
