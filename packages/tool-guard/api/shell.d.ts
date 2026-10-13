@@ -78,7 +78,10 @@ declare class ParseError extends Error {
 /** Splits a command string into words, operators, redirections and substitutions. Throws `ParseError`. */
 declare function tokenize(src: string, trials?: ArithTrials): Token[];
 
-/** Alias name to the shell texts it may expand to; a name can carry more than one (a built-in floor and the shell's own). */
+/**
+ * Alias name to the shell texts it may expand to; a name can carry more than one (a built-in floor and the shell's own).
+ * An aliased command is read as its expansion as well as as written, so the alias reading only adds commands.
+ */
 type AliasTable = ReadonlyMap<string, readonly string[]>;
 
 /**
@@ -132,10 +135,6 @@ interface ExtractOptions {
      * `ReadingLimitError`. For a script the line runs, which the user cannot split further.
      */
     stopPastCap?: boolean;
-    /**
-     * Aliases the shell expands in the command word. An aliased command is read as its expansion as well as as written,
-     * so the alias reading only adds commands. Omitted: none.
-     */
     aliases?: AliasTable;
 }
 /**

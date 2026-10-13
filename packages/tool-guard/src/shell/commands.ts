@@ -7,7 +7,7 @@ import { catOperands, SPLICING_SHELLS, splicedWords, stdinScript } from "./sub-o
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed, caseScripts } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
-import { type AliasReading, aliasReadings, type AliasTable } from "./alias-words.js";
+import { aliasCommands, type AliasTable } from "./alias-words.js";
 import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { cutReading, pipedShellTexts } from "./piped-nul.js";
@@ -80,10 +80,6 @@ export interface ExtractOptions {
    * `ReadingLimitError`. For a script the line runs, which the user cannot split further.
    */
   stopPastCap?: boolean;
-  /**
-   * Aliases the shell expands in the command word. An aliased command is read as its expansion as well as as written,
-   * so the alias reading only adds commands. Omitted: none.
-   */
   aliases?: AliasTable;
 }
 
@@ -243,24 +239,13 @@ function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, nex
   const words = folded(rawWords.map(expand), w);
   const runs = caseNamed(words);
   const cut = cutReading(words);
-  const aliased = aliasReadings(words, w.aliases);
+  const aliased = aliasCommands(words, w.aliases);
   w.walked = new Set();
-  for (const cmd of [...runs, ...(cut ? caseNamed(cut) : []), ...aliasedRuns(aliased)]) run(cmd, redirects, w, next);
-  for (const reading of aliased) if ("tokens" in reading) walkAliasScript(reading.tokens, reading.aliases, w);
+  for (const cmd of [...runs, ...(cut ? caseNamed(cut) : []), ...aliased.runs]) run(cmd, redirects, w, next);
+  for (const { tokens, aliases } of aliased.scripts) walk(tokens, Object.assign(child(w, [...w.scope.wrapping, "eval"]), { aliases }));
   for (const reading of unsureReadings(runs[0], w.unsure)) walkAdded(reading, redirects, w, next);
   w.walked = null;
   return runs[0] ?? null;
-}
-
-/** The child walk is the one its stores report to, so it carries the narrowed table itself rather than a copy of it. */
-function walkAliasScript(tokens: Token[], aliases: AliasTable, w: Walk): void {
-  const into = child(w, [...w.scope.wrapping, "eval"]);
-  into.aliases = aliases;
-  walk(tokens, into);
-}
-
-function aliasedRuns(readings: AliasReading[]): Unwrapped[] {
-  return readings.flatMap((reading) => ("words" in reading ? caseNamed(reading.words) : []));
 }
 
 function walkAdded(runs: Unwrapped[], redirects: RedirectToken[], w: Walk, next: string | null): void {

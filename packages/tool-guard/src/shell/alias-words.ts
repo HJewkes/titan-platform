@@ -1,15 +1,35 @@
 import { ParseError, tokenize } from "./lexer.js";
 import type { Token, WordToken } from "./lexer.js";
-import { unwrap } from "./unwrap.js";
+import { caseNamed } from "./case-script.js";
+import { unwrap, type Unwrapped } from "./unwrap.js";
 
-/** Alias name to the shell texts it may expand to; a name can carry more than one (a built-in floor and the shell's own). */
+/**
+ * Alias name to the shell texts it may expand to; a name can carry more than one (a built-in floor and the shell's own).
+ * An aliased command is read as its expansion as well as as written, so the alias reading only adds commands.
+ */
 export type AliasTable = ReadonlyMap<string, readonly string[]>;
 
 /**
  * What an aliased command word runs. Plain-word values splice into the command's words; a value with operators,
  * redirects, expansions or substitutions makes the line's tokens, which run as eval text does.
  */
-export type AliasReading = { words: WordToken[] } | { tokens: Token[]; aliases: AliasTable };
+type AliasReading = { words: WordToken[] } | AliasScript;
+
+/** Eval text an alias value makes, and the table it walks with: the names expanded on the way there never expand again. */
+interface AliasScript {
+  tokens: Token[];
+  aliases: AliasTable;
+}
+
+/**
+ * What the alias readings of a command's words run: the commands plain-word values name, and the eval texts the rest
+ * make. The walker sets `aliases` on the child walk it creates, not a copy, since that walk is the one its stores report to.
+ */
+export function aliasCommands(words: WordToken[], table: AliasTable | null): { runs: Unwrapped[]; scripts: AliasScript[] } {
+  const readings = aliasReadings(words, table);
+  const runs = readings.flatMap((reading) => ("words" in reading ? caseNamed(reading.words) : []));
+  return { runs, scripts: readings.filter((reading): reading is AliasScript => "tokens" in reading) };
+}
 
 /** Bounds a table of aliases that each expand to several values, whose readings would otherwise multiply. */
 const MAX_EXPANSIONS = 64;
@@ -20,7 +40,7 @@ const MAX_ROUNDS = 16;
  * reaches its command. A name never expands inside its own expansion, as in zsh and bash. Empty when no alias applies.
  * Throws `ParseError` for a value the lexer rejects or a table past the bounds, so the line goes unchecked.
  */
-export function aliasReadings(words: WordToken[], table: AliasTable | null): AliasReading[] {
+function aliasReadings(words: WordToken[], table: AliasTable | null): AliasReading[] {
   if (table === null || table.size === 0) return [];
   const out: AliasReading[] = [];
   expand(words, { table, done: new Set(), budget: { left: MAX_EXPANSIONS }, round: 0 }, out);
@@ -53,7 +73,6 @@ function expand(words: WordToken[], x: Expansion, out: AliasReading[]): void {
   }
 }
 
-/** The table eval text walks with: the names expanded on the way there never expand again inside it. */
 function without(table: AliasTable, done: ReadonlySet<string>): AliasTable {
   return new Map([...table].filter(([name]) => !done.has(name)));
 }
