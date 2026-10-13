@@ -22,3 +22,8 @@ will validate a storyboard against them. Until that lands, any kebab-case value 
 
 `beats.json` has no version field. A format change adds an optional field or a migration;
 the zod shape is what validates a file.
+
+The map track (`map-state.ts`, `map-lints.ts`, `map-timeline.ts`) parses each beat's
+optional `visual.map_state`, lints it against the layout's ids, and compiles it to timed
+segments. A beat without `map_state` is off the map; the next map beat resumes where the map
+last was.
