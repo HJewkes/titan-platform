@@ -29,7 +29,7 @@ const subcommands = (groups: string, words: string): [string, ReadonlySet<string
  * Each gh command's own subcommands and their aliases (gh 2.102, `gh __complete <group>` and each
  * subcommand's ALIASES), which gh runs before a `group word` config alias of the same name.
  */
-export const GH_SUBCOMMANDS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+const GH_SUBCOMMANDS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ...subcommands("agent-task", "create list view"),
   ...subcommands("alias", "delete import list ls set"),
   ...subcommands("attestation", "download trusted-root verify"),
@@ -75,7 +75,7 @@ export const GH_SUBCOMMANDS: ReadonlyMap<string, ReadonlySet<string>> = new Map(
 ]);
 
 /** gh's command aliases, by the name gh resolves them to (gh 2.102 ALIASES). */
-export const COMMAND_ALIASES: ReadonlyMap<string, string> = new Map([
+const COMMAND_ALIASES: ReadonlyMap<string, string> = new Map([
   ["a11y", "accessibility"],
   ["agent", "agent-task"],
   ["agents", "agent-task"],
@@ -88,13 +88,13 @@ export const COMMAND_ALIASES: ReadonlyMap<string, string> = new Map([
 ]);
 
 /** gh commands that never run a `<command> <word>` config alias (probed on gh 2.102). */
-export const NO_ALIAS_CHILD = set("accessibility", "api", "browse", "completion", "credits", "licenses", "status", "version");
+const NO_ALIAS_CHILD = set("accessibility", "api", "browse", "completion", "credits", "licenses", "status", "version");
 
 /**
  * The second-level commands that run a `<command> <sub> <word>` config alias, with their own
  * subcommands. `codespace ports` has subcommands too but runs, and takes no alias (probed).
  */
-export const NESTED_GROUPS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+const NESTED_GROUPS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ["repo autolink", set("create", "new", "delete", "list", "ls", "view")],
   ["repo deploy-key", set("add", "delete", "list", "ls")],
   ["repo gitignore", set("list", "ls", "view")],
@@ -106,7 +106,7 @@ export const NESTED_GROUPS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
  * level), the word that names it (undefined when the guard cannot resolve that word), and how
  * many command words reach it.
  */
-export interface AliasSlot {
+interface AliasSlot {
   parent: string;
   word: string | undefined;
   used: number;
@@ -141,7 +141,7 @@ const NO_ALIAS_GROUPS: ReadonlyMap<string, ReadonlySet<string>> = new Map([["cod
 const EXTENSION_RUNNERS = set("extension exec");
 
 /** The command gh runs for a line's arguments, read the way cobra v1.10's `Find` reads them. */
-export interface GhCommandLine {
+interface GhCommandLine {
   /** The command words cobra finds, the top one canonical (`cs` reads `codespace`), ending at an alias slot's word. */
   path: string[];
   /** The arguments minus the command words, which the found command's own flags parse (cobra `argsMinusFirstX`). */
