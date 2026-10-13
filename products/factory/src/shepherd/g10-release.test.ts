@@ -216,3 +216,59 @@ describe("a release at a clean merge-up of the reviewed head", () => {
     expect([unmarked.dispatch, adversary.dispatch].map((d) => d.mock.calls.length)).toEqual([0, 0]);
   });
 });
+
+describe("a clean merge-up head whose CI reads behind with its own checks green", () => {
+  const A = HEAD;
+  const B = MOVED;
+
+  function behindRun(mergeUpFrom: string | undefined, ci: object) {
+    const dispatch = vi.fn(async (_id: string, _kind: string, _input: { vars: Record<string, string> }) => ({ data: { result: { released: true, head: B } } }));
+    const evidence = { record: { head: A, verdictLocator: mergeAt(A).locator, reviewer: { agentId: "a-1", sessionId: "s-1" } } };
+    const reviewed = { kind: "MERGE" as const, headSha: A, evidence, reviewerProfile: "bd-reviewer" };
+    const carried = { kind: "MERGE" as const, headSha: B, evidence: { record: { head: B, carry: { fromHead: A } } }, ...(mergeUpFrom && { mergeUpFrom }) };
+    const ctx = { runId: "run-1", iteration: () => 0, dispatch } as never;
+    const run = { ctx, target: { repo: REPO, pr: 1 }, reviews: new Map<string, Verdict>([[A, reviewed], [B, carried]]), lastCi: { headSha: B, ...ci } as never };
+    return { dispatch, run };
+  }
+
+  const askedInput = (dispatch: ReturnType<typeof behindRun>["dispatch"]): object => JSON.parse(Object.values(dispatch.mock.calls[0]![2].vars)[0]!) as object;
+
+  it("releases the hold on the MERGE written at the reviewed head", async () => {
+    const { dispatch, run } = behindRun(A, { verdict: "behind", checksGreen: true });
+    const { store, pr, deps } = rig("g10-review: auth; TP-1", B);
+
+    await releaseG10Hold(run, "g10-review: auth; TP-1");
+    const done = await runStep(g10ReleaseRoutes(deps)[0]!, { ...askedInput(dispatch), pr });
+
+    expect(done).toMatchObject({ released: true, head: B, verdict: { head: A } });
+    expect(store.byRun("run-1")?.held).toBe(false);
+  });
+
+  it("keeps the hold when the behind read's own checks are not green", async () => {
+    const { dispatch, run } = behindRun(A, { verdict: "behind" });
+    const { store, pr, deps } = rig("g10-review: auth; TP-1", B);
+
+    await releaseG10Hold(run, "g10-review: auth; TP-1");
+    const done = await runStep(g10ReleaseRoutes(deps)[0]!, { ...askedInput(dispatch), pr });
+
+    expect(done.released).toBe(false);
+    expect(store.byRun("run-1")?.held).toBe(true);
+  });
+
+  it("asks with checks not green at a reviewed head that is itself behind, which waits for its update", async () => {
+    const { dispatch, run } = behindRun(A, { verdict: "behind", checksGreen: true });
+    const atReviewed = { ...run, lastCi: { headSha: A, verdict: "behind", checksGreen: true } as never };
+
+    await releaseG10Hold(atReviewed, "g10-review: auth; TP-1");
+
+    expect(askedInput(dispatch)).toMatchObject({ head: A, checks: { head: A, green: false } });
+  });
+
+  it("asks for nothing when the carry was not a recorded clean merge-up", async () => {
+    const { dispatch, run } = behindRun(undefined, { verdict: "behind", checksGreen: true });
+
+    await releaseG10Hold(run, "g10-review: auth; TP-1");
+
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+});
