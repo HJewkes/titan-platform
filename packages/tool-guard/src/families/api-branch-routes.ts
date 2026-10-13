@@ -1,0 +1,115 @@
+import type { WordToken } from "../shell/lexer.js";
+import { asciiDecoded, fieldKey, refBranch, routedPath } from "./api-branch-refs.js";
+
+export type BranchRoute = "contents" | "rename" | "merge-upstream" | "protection" | "default-branch";
+
+/**
+ * A GitHub REST write outside `git/refs` that changes a branch or what protects it. A null entry is a branch known
+ * only at run time, including the default branch. The matcher does not know the protected list, so it names every
+ * branch and the caller tests each one.
+ */
+export interface BranchRouteWrite {
+  route: BranchRoute;
+  branches: (string | null)[];
+}
+
+type Fields = WordToken[] | "unread";
+
+/** Anchored on `repos/<o>/<r>` as `GIT_REFS_RE` is, so full api.github.com and GHES `api/v3` URLs match too. */
+const REPO_ROUTE_RE = /(?:^|\/)repos\/[^/]+\/[^/]+(\/.*)?$/i;
+const BRANCH_KEY_RE = /^branch(?:\[\])?$/;
+const NEW_NAME_KEY_RE = /^new_name(?:\[\])?$/;
+const DEFAULT_BRANCH_KEY_RE = /^default_branch(?:\[\])?$/;
+
+/** Raw-path guesses for a path whose route is unsure, most specific first. */
+const LOOSE_ROUTES: [RegExp, BranchRoute][] = [
+  [/\/protection(?:\/|$)/i, "protection"],
+  [/\/rename(?:\/|$)/i, "rename"],
+  [/\/merge-upstream(?:\/|$)/i, "merge-upstream"],
+  [/\/contents(?:\/|$)/i, "contents"],
+];
+const LOOSE_ROUTE_RE = /(?:^|\/)repos\/.*\/(?:contents|merge-upstream|branches|rename|protection)(?:\/|$)/i;
+
+/** Fields whose key matches `key`, or whose key is not literal. */
+function candidates(fields: WordToken[], key: RegExp): WordToken[] {
+  return fields.filter((f) => {
+    const read = fieldKey(f);
+    return !read.literal || key.test(read.key);
+  });
+}
+
+/** The heads the matching fields name; a `refs/tags/…` value is dropped. */
+function fieldBranches(fields: Fields, key: RegExp): (string | null)[] {
+  if (fields === "unread") return [null];
+  return candidates(fields, key)
+    .map(refBranch)
+    .filter((b): b is string | null => b !== undefined);
+}
+
+/** A contents write with no `branch` commits to the default branch, which is known only at run time. */
+function contentsWrite(fields: Fields): BranchRouteWrite {
+  const branches = fieldBranches(fields, BRANCH_KEY_RE);
+  return { route: "contents", branches: branches.length > 0 ? branches : [null] };
+}
+
+/** GitHub rejects merge-upstream without `branch` (422), so a call with none moves nothing. */
+function mergeUpstreamWrite(fields: Fields): BranchRouteWrite | null {
+  const branches = fieldBranches(fields, BRANCH_KEY_RE);
+  return branches.length > 0 ? { route: "merge-upstream", branches } : null;
+}
+
+/** Any `default_branch` field, or a body that may hold one; the value never makes it safe (D1). */
+function defaultBranchWrite(verb: string | null, fields: Fields): BranchRouteWrite | null {
+  if (verb !== null && verb !== "PATCH") return null;
+  if (fields === "unread") return { route: "default-branch", branches: [null] };
+  const named = candidates(fields, DEFAULT_BRANCH_KEY_RE);
+  return named.length > 0 ? { route: "default-branch", branches: named.map((f) => refBranch(f) ?? null) } : null;
+}
+
+/**
+ * Branch names keep their slashes, so `branches/a/protection/b/protection` could name `a` or `a/protection/b`.
+ * Every split that ends a valid route is a candidate.
+ */
+function branchesWrite(rest: string, fields: Fields): BranchRouteWrite | null {
+  const segments = rest.split("/");
+  const lower = segments.map((s) => s.toLowerCase());
+  const protectedBy = lower.flatMap((s, i) => (i > 0 && s === "protection" ? [segments.slice(0, i).join("/")] : []));
+  const renamed = segments.length > 1 && lower[segments.length - 1] === "rename" ? segments.slice(0, -1).join("/") : null;
+  if (renamed === null) return protectedBy.length > 0 ? { route: "protection", branches: protectedBy } : null;
+  const branches = [...protectedBy, renamed, ...fieldBranches(fields, NEW_NAME_KEY_RE)];
+  return { route: protectedBy.length > 0 ? "protection" : "rename", branches };
+}
+
+/** The route a repository-relative tail names; an empty tail is the repository itself. */
+function tailWrite(tail: string, verb: string | null, fields: Fields): BranchRouteWrite | null {
+  if (tail === "") return defaultBranchWrite(verb, fields);
+  if (/^\/contents(?:\/.*)?$/i.test(tail)) return contentsWrite(fields);
+  if (/^\/merge-upstream$/i.test(tail)) return mergeUpstreamWrite(fields);
+  const branch = /^\/branches\/(.+)$/i.exec(tail);
+  return branch ? branchesWrite(branch[1] as string, fields) : null;
+}
+
+/** An unsure path reads as the route its raw text loosely names, with the branch known only at run time. */
+function unsureWrite(url: string, verb: string | null, fields: Fields): BranchRouteWrite | null {
+  const raw = asciiDecoded(url.replace(/[?#].*$/s, ""));
+  if (!/(?:^|\/)repos\//i.test(raw)) return null;
+  const guess = LOOSE_ROUTES.find(([re]) => re.test(raw));
+  if (guess) return { route: guess[1], branches: [null] };
+  return defaultBranchWrite(verb, fields) && { route: "default-branch", branches: [null] };
+}
+
+/**
+ * A REST write that changes a branch outside `git/refs`: a contents PUT/DELETE, a branch rename, merge-upstream, a
+ * write on branch protection, or a repository PATCH of `default_branch`. A null method is a write. `fields` is
+ * "unread" when the body comes from `--input`.
+ */
+export function apiBranchRouteWrite(url: string, method: string | null, fields: Fields): BranchRouteWrite | null {
+  const verb = method?.toUpperCase() ?? null;
+  if (verb === "GET" || verb === "HEAD") return null;
+  const path = routedPath(url, LOOSE_ROUTE_RE);
+  if (path === null) return null;
+  if (path === "unsure") return unsureWrite(url, verb, fields);
+  const repo = REPO_ROUTE_RE.exec(path);
+  if (!repo) return null;
+  return tailWrite((repo[1] ?? "").replace(/\/+$/, ""), verb, fields);
+}

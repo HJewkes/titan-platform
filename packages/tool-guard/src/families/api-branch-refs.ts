@@ -19,27 +19,27 @@ const REF_KEY_RE = /^ref(?:\[\])?$/;
 const hasDotSegment = (path: string) => path.split("/").some((s) => s === "." || s === "..");
 
 /** Decodes only the ASCII escapes, which always decode, so `%67it` reads as `git` beside an invalid `%E0`. */
-const asciiDecoded = (path: string) => path.replace(/%([0-7][0-9a-f])/gi, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+export const asciiDecoded = (path: string) => path.replace(/%([0-7][0-9a-f])/gi, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
 
 /**
  * The URL's path as GitHub routes it. "unsure" for any `.` or `..` segment, as written or decoded: curl resolves
- * them before sending and gh does not, so the route depends on the client. Also "unsure" for a git refs route that
- * cannot be fully percent-decoded.
+ * them before sending and gh does not, so the route depends on the client. Also "unsure" for a path on `route` (by
+ * default the git refs route) that cannot be fully percent-decoded.
  */
-function routedPath(url: string): string | "unsure" | null {
+export function routedPath(url: string, route: RegExp = GIT_REFS_RE): string | "unsure" | null {
   const raw = url.replace(/[?#].*$/s, "");
   if (hasDotSegment(raw)) return "unsure";
   let path: string;
   try {
     path = decodeURIComponent(raw).replace(/\/{2,}/g, "/");
   } catch {
-    return GIT_REFS_RE.test(asciiDecoded(raw).replace(/\/{2,}/g, "/")) ? "unsure" : null;
+    return route.test(asciiDecoded(raw).replace(/\/{2,}/g, "/")) ? "unsure" : null;
   }
   return hasDotSegment(path) ? "unsure" : path;
 }
 
 /** The text before a field's first `=`, and whether an expansion or a case attribute may change it. */
-function fieldKey(word: WordToken): { key: string; literal: boolean } {
+export function fieldKey(word: WordToken): { key: string; literal: boolean } {
   const typed = word.typed ?? word.value;
   const key = typed.slice(0, typed.includes("=") ? typed.indexOf("=") : typed.length);
   const eq = word.value.indexOf("=");
@@ -52,7 +52,7 @@ function fieldKey(word: WordToken): { key: string; literal: boolean } {
  * The branch a `ref` field value names; undefined for a ref outside `refs/heads`. A value read from a file (`-F
  * ref=@f`), expanded at run time or case-unsure is null.
  */
-function refBranch(word: WordToken): string | null | undefined {
+export function refBranch(word: WordToken): string | null | undefined {
   if (word.dynamic || isCaseUnsure(word)) return null;
   const value = word.value.slice(word.value.indexOf("=") + 1);
   if (value.startsWith("@")) return null;
