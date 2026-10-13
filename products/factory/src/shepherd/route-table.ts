@@ -53,6 +53,10 @@ export function mergeableState(raw: string, draft: boolean): MergeableState {
 
 /** Stuck rounds at one task before the owner is asked. */
 export const MAX_FAILED_ROUNDS = 3;
+/** Rounds at one head whose own MERGE the seat held before the owner is asked; above `MAX_FAILED_ROUNDS`, since a seat waiting on slow CI held three (tp#1300). */
+export const MAX_SEAT_HELD_ROUNDS = 6;
+/** The seat-held gate's own words: it shares the failed-rounds row id, but no review round failed there. */
+export const SEAT_HELD_ROUNDS_WORDS = `the seat held Shepherd's own MERGE for ${MAX_SEAT_HELD_ROUNDS} rounds at one head`;
 /** Throttled rounds at one run that count no round; a later one counts as stuck, so a machine that never settles still reaches the owner. */
 export const MAX_THROTTLED_ROUNDS = 1;
 /** FIX_FIRST reviews at one task before the owner is asked; a third means point fixes are not converging, so the task needs redesign (TP-2394). */
@@ -86,6 +90,8 @@ export const FAILED_ROUND_WORDS: Partial<Record<ReviewOutcome, string>> = {
 export interface Escalated {
   escalation: Escalation;
   detail: string;
+  /** Replaces `ESCALATIONS[escalation]` in the gate reason; the row id stays `escalation`. */
+  words?: string;
   /** The head whose owner gate the pull request moved past; this escalation was carried from it, so the new head is asked afresh whatever its review says. */
   carriedFrom?: string;
 }
@@ -130,9 +136,9 @@ export function fixFirstEscalation(fixFirsts: number, streak: number, headSha: s
   return streak >= MAX_NO_CLOSER_STREAK ? { escalation: "no-progress", detail } : undefined;
 }
 
-/** The gate reason: which escalation, then the detail. */
-export function escalationReason(escalation: Escalation, detail: string): string {
-  return `${ESCALATIONS[escalation]}: ${detail}`;
+/** The gate reason: which escalation, or the words that replace its own, then the detail. */
+export function escalationReason(escalation: Escalation, detail: string, words: string = ESCALATIONS[escalation]): string {
+  return `${words}: ${detail}`;
 }
 
 /** How a finished post-merge main CI read is classified; `cancelled` means every failed run was cancelled and no later run of its name superseded it. */

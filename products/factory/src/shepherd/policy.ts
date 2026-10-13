@@ -189,7 +189,7 @@ export function shepherdLandOptions(
 }
 
 function escalatedReason(escalated: Escalated, headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {
-  const reason = escalationReason(escalated.escalation, escalated.detail);
+  const reason = escalationReason(escalated.escalation, escalated.detail, escalated.words);
   return escalated.carriedFrom === undefined ? reason : `${reason}; carried from the gate at head ${escalated.carriedFrom}${reviewNote(headSha, verdictFor)}`;
 }
 

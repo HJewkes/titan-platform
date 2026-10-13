@@ -5,7 +5,7 @@
 import type { MergeGuardRow } from "./merge-facts.js";
 import type { OwnerGateReason } from "./policy.js";
 import { transientOnlyConditions } from "./resync.js";
-import { ESCALATIONS } from "./route-table.js";
+import { ESCALATIONS, SEAT_HELD_ROUNDS_WORDS } from "./route-table.js";
 
 type GateClass = "deliberate" | "accidental" | "unclassified";
 
@@ -117,11 +117,17 @@ function authorityWhy(rowId: string, reason: string, mergeableState: string | un
   return { gateClass: "deliberate", ruleId: rowId, sentence: `By design, authority holds the merge for you because ${words} (deliberate).` };
 }
 
+/** A seat-held gate shares the failed-rounds row but names its own cause, which its reason puts first. */
+function escalationWords(rowId: string, reason: string, known: string): string {
+  if (rowId === "policy-denial") return reason;
+  return rowId === "failed-rounds" && reason.startsWith(SEAT_HELD_ROUNDS_WORDS) ? SEAT_HELD_ROUNDS_WORDS : known;
+}
+
 function routeWhy(rowId: string, reason: string): WhyAsked {
   const ruleId = `shepherd-route/${rowId}`;
   const known = (ESCALATIONS as Readonly<Record<string, string>>)[rowId];
   if (known === undefined) return { gateClass: "unclassified", ruleId, sentence: `Shepherd escalated the run: ${reason}.` };
-  const words = rowId === "policy-denial" ? reason : known;
+  const words = escalationWords(rowId, reason, known);
   return { gateClass: "accidental", ruleId, sentence: `Not by design: Shepherd's review loop stopped because ${words} (accidental: the loop ran out before a mergeable verdict).` };
 }
 

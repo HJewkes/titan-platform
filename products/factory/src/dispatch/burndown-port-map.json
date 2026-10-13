@@ -617,7 +617,7 @@
       "dest": "F3",
       "imports": [],
       "externalImporters": [],
-      "ported": false
+      "ported": true
     },
     {
       "file": "overlap-exempt.ts",
@@ -664,7 +664,7 @@
       "externalImporters": [
         "src/cli/verbs/burndown-unstall.ts"
       ],
-      "ported": false
+      "ported": true
     },
     {
       "file": "plan-order.ts",
@@ -862,7 +862,7 @@
       "externalImporters": [
         "src/cli/verbs/burndown-unstall.ts"
       ],
-      "ported": false
+      "ported": true
     },
     {
       "file": "review-diff.ts",
@@ -872,7 +872,7 @@
         "exec.ts"
       ],
       "externalImporters": [],
-      "ported": false
+      "ported": true
     },
     {
       "file": "run-tick.ts",
@@ -1241,7 +1241,7 @@
         "report.ts"
       ],
       "externalImporters": [],
-      "ported": false
+      "ported": true
     },
     {
       "file": "slice-repo.ts",
@@ -1279,7 +1279,7 @@
       "dest": "F3",
       "imports": [],
       "externalImporters": [],
-      "ported": false
+      "ported": true
     },
     {
       "file": "spend-meter.ts",
@@ -1507,23 +1507,110 @@
       "ported": false
     }
   ],
+  "leafPorts": [
+    {
+      "file": "brief.ts",
+      "module": "products/factory/src/dispatch/brief.ts",
+      "task": "TP-2627",
+      "symbols": [
+        "planPathFor"
+      ],
+      "covers": [
+        "brief-approve.ts",
+        "observe.ts",
+        "score-render.ts",
+        "seed-slices.ts"
+      ]
+    },
+    {
+      "file": "collision.ts",
+      "module": "products/factory/src/dispatch/collision.ts",
+      "task": "TP-2627",
+      "symbols": [
+        "namesId",
+        "coveredIds",
+        "LANDING_LOG_FORMAT",
+        "landingLines",
+        "readPrFiles"
+      ],
+      "covers": [
+        "landed-sweep.ts"
+      ]
+    },
+    {
+      "file": "exec.ts",
+      "module": "products/factory/src/dispatch/runner.ts",
+      "task": "TP-2627",
+      "symbols": [
+        "Runner",
+        "RunResult"
+      ],
+      "covers": [
+        "leak-check.ts",
+        "pr-adopt-ports.ts",
+        "pr-state.ts",
+        "tick.ts"
+      ]
+    },
+    {
+      "file": "observe.ts",
+      "module": "products/factory/src/dispatch/observe.ts",
+      "task": "TP-2627",
+      "symbols": [
+        "defaultBranch"
+      ],
+      "covers": [
+        "collision.ts",
+        "landed-sweep.ts"
+      ]
+    },
+    {
+      "file": "plan.ts",
+      "module": "products/factory/src/dispatch/plan.ts",
+      "task": "TP-2627",
+      "symbols": [
+        "DEFAULT_NAME_PREFIX",
+        "agentNameFor",
+        "successorNameFor",
+        "reviewerNameFor"
+      ],
+      "covers": [
+        "advance.ts",
+        "seat-deliver.ts"
+      ]
+    },
+    {
+      "file": "pr-adopt-ports.ts",
+      "module": "products/factory/src/dispatch/pr-adopt-ports.ts",
+      "task": "TP-2627",
+      "symbols": [
+        "originRepo",
+        "jsonLines"
+      ],
+      "covers": [
+        "exited-adopt.ts",
+        "pr-state.ts"
+      ]
+    },
+    {
+      "file": "trust-gate.ts",
+      "module": "products/factory/src/dispatch/trust-gate.ts",
+      "task": "TP-2627",
+      "symbols": [
+        "worktreePathFor"
+      ],
+      "covers": [
+        "observe.ts",
+        "plan.ts",
+        "seat-plan.ts"
+      ]
+    }
+  ],
   "knownForwardEdges": [
     {
       "from": "advance.ts",
       "fromDest": "F2",
       "to": "exception.ts",
-      "toDest": "F4"
-    },
-    {
-      "from": "advance.ts",
-      "fromDest": "F2",
-      "to": "plan.ts",
-      "toDest": "F3"
-    },
-    {
-      "from": "advance.ts",
-      "fromDest": "F2",
-      "to": "report.ts",
       "toDest": "F4"
     },
     {
@@ -1537,12 +1624,6 @@
       "fromDest": "F2",
       "to": "shepherd.ts",
       "toDest": "G-10"
-    },
-    {
-      "from": "advance.ts",
-      "fromDest": "F2",
-      "to": "spend-cap.ts",
-      "toDest": "F3"
     },
     {
       "from": "billed-pool.ts",
@@ -1567,24 +1648,6 @@
       "fromDest": "F3",
       "to": "exec.ts",
       "toDest": "G-10"
-    },
-    {
-      "from": "collision.ts",
-      "fromDest": "F3",
-      "to": "observe.ts",
-      "toDest": "F2"
-    },
-    {
-      "from": "collision.ts",
-      "fromDest": "F3",
-      "to": "report.ts",
-      "toDest": "F4"
-    },
-    {
-      "from": "collision.ts",
-      "fromDest": "F3",
-      "to": "review-diff.ts",
-      "toDest": "F2"
     },
     {
       "from": "critical-path.ts",
@@ -1641,22 +1704,10 @@
       "toDest": "G-10"
     },
     {
-      "from": "exited-adopt.ts",
-      "fromDest": "F2",
-      "to": "pr-adopt-ports.ts",
-      "toDest": "F4"
-    },
-    {
       "from": "flow-gate.ts",
       "fromDest": "F3",
       "to": "task-tags.ts",
       "toDest": "G-2"
-    },
-    {
-      "from": "landed-sweep.ts",
-      "fromDest": "F2",
-      "to": "collision.ts",
-      "toDest": "F3"
     },
     {
       "from": "landed-sweep.ts",
@@ -1687,12 +1738,6 @@
       "fromDest": "F2",
       "to": "source.ts",
       "toDest": "G-2"
-    },
-    {
-      "from": "leak-check.ts",
-      "fromDest": "F4",
-      "to": "exec.ts",
-      "toDest": "G-10"
     },
     {
       "from": "milestone-report.ts",
@@ -1733,12 +1778,6 @@
     {
       "from": "observe.ts",
       "fromDest": "F2",
-      "to": "brief.ts",
-      "toDest": "F4"
-    },
-    {
-      "from": "observe.ts",
-      "fromDest": "F2",
       "to": "collision.ts",
       "toDest": "F3"
     },
@@ -1747,12 +1786,6 @@
       "fromDest": "F2",
       "to": "exec.ts",
       "toDest": "G-10"
-    },
-    {
-      "from": "observe.ts",
-      "fromDest": "F2",
-      "to": "owns-fence.ts",
-      "toDest": "F3"
     },
     {
       "from": "observe.ts",
@@ -1769,26 +1802,8 @@
     {
       "from": "observe.ts",
       "fromDest": "F2",
-      "to": "report.ts",
-      "toDest": "F4"
-    },
-    {
-      "from": "observe.ts",
-      "fromDest": "F2",
       "to": "shepherd.ts",
       "toDest": "G-10"
-    },
-    {
-      "from": "observe.ts",
-      "fromDest": "F2",
-      "to": "spend-cap.ts",
-      "toDest": "F3"
-    },
-    {
-      "from": "observe.ts",
-      "fromDest": "F2",
-      "to": "trust-gate.ts",
-      "toDest": "F3"
     },
     {
       "from": "off-plan.ts",
@@ -1827,22 +1842,10 @@
       "toDest": "G-2"
     },
     {
-      "from": "plan.ts",
-      "fromDest": "F3",
-      "to": "report.ts",
-      "toDest": "F4"
-    },
-    {
       "from": "planning-supply.ts",
       "fromDest": "F3",
       "to": "eligibility.ts",
       "toDest": "G-2"
-    },
-    {
-      "from": "pr-adopt-ports.ts",
-      "fromDest": "F4",
-      "to": "exec.ts",
-      "toDest": "G-10"
     },
     {
       "from": "pr-adopt-ports.ts",
@@ -1901,26 +1904,8 @@
     {
       "from": "pr-state.ts",
       "fromDest": "F2",
-      "to": "exec.ts",
-      "toDest": "G-10"
-    },
-    {
-      "from": "pr-state.ts",
-      "fromDest": "F2",
-      "to": "pr-adopt-ports.ts",
-      "toDest": "F4"
-    },
-    {
-      "from": "pr-state.ts",
-      "fromDest": "F2",
       "to": "shepherd.ts",
       "toDest": "G-10"
-    },
-    {
-      "from": "prior-route.ts",
-      "fromDest": "F3",
-      "to": "report.ts",
-      "toDest": "F4"
     },
     {
       "from": "progress.ts",
@@ -1939,12 +1924,6 @@
       "fromDest": "F3",
       "to": "score.ts",
       "toDest": "G-2"
-    },
-    {
-      "from": "review-diff.ts",
-      "fromDest": "F2",
-      "to": "exec.ts",
-      "toDest": "G-10"
     },
     {
       "from": "run-tick.ts",
@@ -2015,19 +1994,7 @@
     {
       "from": "seed-slices.ts",
       "fromDest": "F3",
-      "to": "brief.ts",
-      "toDest": "F4"
-    },
-    {
-      "from": "seed-slices.ts",
-      "fromDest": "F3",
       "to": "execute.ts",
-      "toDest": "F4"
-    },
-    {
-      "from": "seed-slices.ts",
-      "fromDest": "F3",
-      "to": "report.ts",
       "toDest": "F4"
     },
     {
@@ -2059,12 +2026,6 @@
       "fromDest": "F3",
       "to": "eligibility.ts",
       "toDest": "G-2"
-    },
-    {
-      "from": "slice-lint.ts",
-      "fromDest": "F3",
-      "to": "report.ts",
-      "toDest": "F4"
     },
     {
       "from": "slice-repo.ts",

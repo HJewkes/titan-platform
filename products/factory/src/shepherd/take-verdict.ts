@@ -32,8 +32,11 @@ export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEviden
 const effectivePolicy = (ctx: WorkflowContext) => runPolicyCeiling(ctx.param("policy"));
 /** Why a gated head's fix-proof proves nothing; such a head merges only through the owner gate, whatever the policy (TP-2434). */
 export type ProofStanding = { unverified?: FixProofUnverified };
-/** Whether a visual-path gate will open is unknown until the evidence step, so a visual-ceiling run always asks for the brief. */
-export const asksOwnerBrief = (ctx: WorkflowContext, standing: ProofStanding = {}): boolean => {
+/**
+ * Whether a visual-path gate will open is unknown until the evidence step, so a visual-ceiling run always asks for the brief.
+ * `standing` is the round's read fix-proof standing and has no default, because `{}` reads as verified.
+ */
+export const asksOwnerBrief = (ctx: WorkflowContext, standing: ProofStanding): boolean => {
   const policy = effectivePolicy(ctx);
   return standing.unverified !== undefined || policy.merge === "owner-gate" || (policy.visualPaths?.length ?? 0) > 0;
 };
@@ -53,7 +56,24 @@ function heldMergeOf(result: AwaitedResult): z.infer<typeof HeldMerge> | undefin
 
 function seatHeldOf(result: AwaitedResult, dispatchedReviewer: AgentIdentity): SeatHeld | undefined {
   const held = heldMergeOf(result);
-  return held && { head: held.head, locator: held.locator, reviewer: held.reviewer, dispatchedReviewer };
+  return held && { head: held.head, locator: held.locator, reviewer: held.reviewer, dispatchedReviewer, merge: held };
+}
+
+/** Re-runs only the seat check against Shepherd's own held MERGE; the step's body is `seatVetoed` over the recorded MERGE. */
+export const SEAT_RECHECK_STEP = "sh-seat-recheck";
+
+/**
+ * The next round at a head whose own MERGE a seat WAIT or a seat read that can clear held: the seat check alone runs again,
+ * so no reviewer is started. A clear seat lets the MERGE stand, a seat FIX_FIRST sends the head back, and a standing WAIT holds
+ * it again. A check that fails for good is a round with no verdict, as a fresh review's would be. `standing` is the head's
+ * fix-proof standing, read again this round, so an unverified proof's MERGE still reaches only the owner gate.
+ */
+export async function recheckSeat(ctx: WorkflowContext, target: ReviewTarget, held: SeatHeld, standing: ProofStanding): Promise<Verdict> {
+  const { agentId, sessionId } = held.dispatchedReviewer;
+  const awaiting: AwaitVerdictInput = { ...target, reviewerAgentId: agentId, reviewerSessionId: sessionId, dispatchedAt: 0 };
+  const rechecked = await step(ctx, `${SEAT_RECHECK_STEP}:${target.head}`, { ...awaiting, merge: held.merge }, Awaited);
+  if (rechecked.kind !== "verdict" && !heldMergeOf(rechecked)) return { kind: "none", cause: "no-verdict", ...(typeof rechecked.reason === "string" && { reason: rechecked.reason }) };
+  return verdictOf(ctx, target, awaiting, held.dispatchedReviewer, rechecked, standing);
 }
 
 /** A dispatched reviewer stopped by its account's usage limit holds `account` until the reset; any other result is not a limit. */
