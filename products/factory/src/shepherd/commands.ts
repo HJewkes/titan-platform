@@ -10,6 +10,7 @@ import { RegistrationRefused, runPolicyCeiling, shepherdGatePolicy, stricterPoli
 import { HoldReasonSchema, OWNER_HOLD_CLASS, ReleasableClassSchema, type HoldResult } from "./hold-reason.js";
 import { isOwnerHold } from "./owner-hold-rows.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
+import { ownUpdatedHeads, type MergeUpReads } from "./merge-up-release.js";
 import { ReleaseHeadArg, releaseAtHead } from "./release-head.js";
 import { cachedByHead, localPrFiles } from "./git-pr-files.js";
 import { applyRegistrationHold } from "./registration-hold.js";
@@ -284,13 +285,15 @@ const ReleaseArgs = PrRefArgs.extend({ actor: ActorArg, head: ReleaseHeadArg, ho
 
 const releaseCommand = defineCommand<z.infer<typeof ReleaseArgs>, HoldResult, FactoryContext>({
   name: "shepherd.release",
-  description: "Release one hold on owner/repo#pr at the head the seat reviewed (--head): the hold of --class, or the only hold; refused when the PR's head is another sha",
+  description: "Release one hold on owner/repo#pr at the head the seat reviewed (--head): the hold of --class, or the only hold; refused when the PR's head is another sha, unless a g10-adversary release and that head is Shepherd's own clean merge-up of it",
   args: ReleaseArgs,
   result: z.custom<HoldResult>(),
   async run({ repo, pr, head, actor, holdClass }, ctx) {
     const services = servicesOf(ctx);
-    const { runId } = await locate(services, repo, pr);
-    const after = await releaseAtHead(services.store.get(), services.port, { runId, repo, pr, head, actor, ...(holdClass && { holdClass }) });
+    const registration = await locate(services, repo, pr);
+    const { runId } = registration;
+    const reads: MergeUpReads | undefined = services.carry && { ownUpdates: () => ownUpdatedHeads(runOf(ctx.host, registration)), carry: services.carry };
+    const after = await releaseAtHead(services.store.get(), services.port, { runId, repo, pr, head, actor, ...(holdClass && { holdClass }) }, reads);
     return { runId, held: after.held ? { reason: after.holdReason ?? "held", ...(after.holdReviewer !== null && { reviewer: after.holdReviewer }) } : null };
   },
 });
