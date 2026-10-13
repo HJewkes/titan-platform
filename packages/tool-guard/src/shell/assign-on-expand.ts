@@ -1,4 +1,4 @@
-import { HOOKED } from "./hooked-names.js";
+import { HOOKED, mentionedIn } from "./hooked-names.js";
 
 const IDENTIFIER_AT_RE = /[A-Za-z_][A-Za-z0-9_]*/y;
 const ZSH_PREFIXES_AT_RE = /[=~^#+]*/y;
@@ -6,6 +6,8 @@ const ZSH_PREFIXES_AT_RE = /[=~^#+]*/y;
 const FLAG_ARG_COUNTS = new Map<string, number>([["j", 1], ["s", 1], ["I", 1], ["Z", 1], ["g", 1], ["_", 1], ["l", 3], ["r", 3]]);
 const DELIMITER_PAIRS = new Map([["(", ")"], ["[", "]"], ["{", "}"], ["<", ">"]]);
 const MAX_FLAG_GROUP = 256;
+/** Flags whose first argument zsh evaluates as math: the `l` and `r` widths and the `I` match index. */
+const MATH_FLAGS = new Set(["l", "r", "I"]);
 const ASSIGN_OPERATOR_AT_RE = /:{0,2}=/y;
 /** What an assign-on-expand through a name the shell resolves writes: only known at run time. */
 const INDIRECT = Symbol("indirect");
@@ -27,6 +29,7 @@ export function assignOnExpand(text: string): string | null {
 function assignedAt(text: string, at: number): string | typeof INDIRECT | null {
   const head = expansionHead(text, at);
   if (head === "cut") return INDIRECT;
+  if (head !== null && "evaluated" in head) return head.evaluated;
   if (head === null || head.target === null) return null;
   let i = head.end;
   if (text[i] === "[") {
@@ -42,13 +45,17 @@ function assignedAt(text: string, at: number): string | typeof INDIRECT | null {
  * The `!` or zsh flags and the name after `${`: the hooked or indirect target, and where the name ends. "cut" when
  * an indirect name cannot be read: a zsh flag group that does not close, or a nested `${…}` name.
  */
-function expansionHead(text: string, at: number): { target: string | typeof INDIRECT | null; end: number } | "cut" | null {
+function expansionHead(
+  text: string,
+  at: number,
+): { target: string | typeof INDIRECT | null; end: number } | { evaluated: string } | "cut" | null {
   let i = skipZshPrefixes(text, at);
   let indirect = text[i] === "!";
   if (indirect) i++;
   else if (text[i] === "(") {
     const group = flagGroup(text, i + 1);
     if (group === null) return "cut";
+    if (group.evaluated !== null) return { evaluated: group.evaluated };
     indirect = group.indirect;
     i = skipZshPrefixes(text, group.end);
   }
@@ -67,20 +74,23 @@ function skipZshPrefixes(text: string, at: number): number {
 }
 
 /**
- * A zsh flag group after its `(`: whether it holds the P flag, and the index after its `)`. Flags such as `s:…:`
+ * A zsh flag group after its `(`: whether it holds the P flag, the first hooked name the math argument of an
+ * `l`, `r` or `I` flag mentions, and the index after its `)`. Flags such as `s:…:`
  * take arguments in their own delimiters, which may hold `)`, `P` or `$`. Null when it does not close within
  * `MAX_FLAG_GROUP` characters, which also bounds the work per `${`.
  */
-function flagGroup(text: string, from: number): { indirect: boolean; end: number } | null {
+function flagGroup(text: string, from: number): { indirect: boolean; evaluated: string | null; end: number } | null {
   const limit = Math.min(text.length, from + MAX_FLAG_GROUP);
   let indirect = false;
+  let evaluated: string | null = null;
   for (let i = from; i < limit; i++) {
     const flag = text.charAt(i);
-    if (flag === ")") return { indirect, end: i + 1 };
+    if (flag === ")") return { indirect, evaluated, end: i + 1 };
     if (flag === "P") indirect = true;
     else if (FLAG_ARG_COUNTS.has(flag)) {
       const end = flagArgs(text, i + 1, FLAG_ARG_COUNTS.get(flag) ?? 1, limit);
       if (end < 0) return null;
+      if (MATH_FLAGS.has(flag)) evaluated ??= mentionedIn(text.slice(i + 2, flagArgs(text, i + 1, 1, limit) - 1));
       i = end - 1;
     }
   }

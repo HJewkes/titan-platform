@@ -1,8 +1,11 @@
-import { HOOKED_MENTION_RE } from "./hooked-names.js";
+import { assignedInMath, mentionedIn } from "./hooked-names.js";
 import type { WordToken } from "./lexer.js";
 import type { Unwrapped } from "./unwrap.js";
 
 const NUMERIC_TEST_RE = /^-(?:eq|ne|lt|le|gt|ge)$/;
+/** zsh builtins whose arguments are math: `repeat 'PS4=1' true` and `return 'PS4=1'` assign PS4. */
+const MATH_ARG_BUILTINS = new Set(["repeat", "shift", "return", "exit", "break", "continue"]);
+const PRINT_FORMAT_RE = /^-[A-Za-z]*f/;
 const INTEGER_DECLARERS = new Set(["declare", "typeset", "local", "export", "readonly", "private"]);
 const INTEGER_OPTION_RE = /^-[A-Za-z0-9]*i/;
 const SUBSCRIPTED_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*\[.*\]\+?=/s;
@@ -15,7 +18,7 @@ const NAME_CHAR_RE = /[A-Za-z0-9_]/;
  * `PS4++`), and a mere read is rare enough there to refuse with it. The walk passes each `(( ))` span here.
  */
 export function arithmeticHooked(expression: string): string | null {
-  return mentionFrom(expression, 0);
+  return mentionedIn(expression);
 }
 
 /**
@@ -25,13 +28,17 @@ export function arithmeticHooked(expression: string): string | null {
  */
 export function arithmeticHookedIn(cmd: Unwrapped, words: WordToken[], slots: WordToken[]): string | null {
   for (const text of wholeExpressions(cmd)) {
-    const hooked = mentionFrom(text, 0);
+    const hooked = mentionedIn(text);
+    if (hooked !== null) return hooked;
+  }
+  for (const text of laterExpressions(cmd)) {
+    const hooked = assignedInMath(text);
     if (hooked !== null) return hooked;
   }
   const named = [...words.filter((w) => !w.dynamic && SUBSCRIPTED_ASSIGNMENT_RE.test(w.value)), ...slots];
   for (const word of [...words, ...cmd.args].filter((w) => w.dynamic).concat(named)) {
     const opener = arithmeticOpener(word.value, word.dynamic);
-    const hooked = opener < 0 ? null : mentionFrom(word.value, opener);
+    const hooked = opener < 0 ? null : mentionedIn(word.value, opener);
     if (hooked !== null) return hooked;
   }
   return null;
@@ -40,10 +47,23 @@ export function arithmeticHookedIn(cmd: Unwrapped, words: WordToken[], slots: Wo
 /** Texts the command evaluates whole as arithmetic. */
 function wholeExpressions({ name, args }: Unwrapped): string[] {
   const values = args.map((a) => a.value);
-  if (name === "let") return values;
+  if (name === "let" || (name !== null && MATH_ARG_BUILTINS.has(name))) return values;
   if (name === "[[" && values.some((v) => NUMERIC_TEST_RE.test(v))) return values;
   const integer = name === "integer" || name === "float" || (name !== null && INTEGER_DECLARERS.has(name) && values.some((v) => INTEGER_OPTION_RE.test(v)));
   return integer ? values.flatMap((v) => (v.includes("=") ? [v.slice(v.indexOf("=") + 1)] : [])) : [];
+}
+
+/**
+ * Texts a shell may evaluate as math later or only by format, where a mere mention is not a write: every value the
+ * command assigns, read as math by `(( x ))` or `${a[x]}` once `x='PS4=1'`, and zsh printf operands, which `%d`
+ * evaluates.
+ */
+function laterExpressions({ name, args, assigned }: Unwrapped): string[] {
+  const values = assigned.flatMap(([, value]) => value ?? []);
+  const declared = name !== null && (INTEGER_DECLARERS.has(name) || name === "integer" || name === "float");
+  if (declared) values.push(...args.flatMap((a) => (a.value.includes("=") ? [a.value.slice(a.value.indexOf("=") + 1)] : [])));
+  const formatted = name === "printf" || (name === "print" && args.some((a) => PRINT_FORMAT_RE.test(a.value)));
+  return formatted ? [...values, ...args.map((a) => a.value)] : values;
 }
 
 /** Where the first arithmetic in the text starts, or -1. A literal word opens only at a subscript. */
@@ -58,9 +78,4 @@ function arithmeticOpener(text: string, dynamic: boolean): number {
     }
   }
   return -1;
-}
-
-function mentionFrom(text: string, from: number): string | null {
-  HOOKED_MENTION_RE.lastIndex = from;
-  return HOOKED_MENTION_RE.exec(text)?.[0] ?? null;
 }
