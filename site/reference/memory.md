@@ -138,8 +138,10 @@ for (const group of groupFacts(dedupeFacts(facts))) {
   throw. `parseMemoryIndex` reads the `- [Title](file.md)` lines of a `MEMORY.md`.
 - **Dedupe** merges equal content keys, then near-duplicates at Jaccard ≥ 0.85 with the same
   polarity, the same rule `curate` uses. Every source file is kept.
-- **Grouping** is single-link over name-and-description tokens at Jaccard ≥ 0.3, largest group
-  first. The same files give the same groups in any input order.
+- **Grouping** is average-linkage over the smoothed TF-IDF cosine of name-and-description tokens,
+  merging while the average reaches 0.03 (`DEFAULT_GROUP_THRESHOLD`) and capping each group at 25
+  facts (`MAX_GROUP_SIZE`), largest group first. The same files give the same groups in any input
+  order.
 - **Destinations** follow a fixed rule order: matching skill, coordination feedback to the
   charter, guidance across projects to the global CLAUDE.md, stale project facts to delete,
   single-project guidance to that project's CLAUDE.md, otherwise a new skill.
