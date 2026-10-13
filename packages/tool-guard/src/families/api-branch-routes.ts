@@ -1,5 +1,5 @@
 import type { WordToken } from "../shell/lexer.js";
-import { asciiDecoded, fieldKey, knownBranch, placeholderRoutes, queryKeys, refBranch, repoSlotFilled, routedPath } from "./api-branch-refs.js";
+import { asciiDecoded, fieldKey, knownBranch, placeholderRoutes, refBranch, repoSlotFilled, routedPath, slotSafePost } from "./api-branch-refs.js";
 
 type BranchRoute = "contents" | "rename" | "merge-upstream" | "protection" | "default-branch";
 
@@ -20,13 +20,6 @@ const REPO_ROUTE_RE = /(?:^|\/)repos\/[^/]+\/[^/]+(\/.*)?$/i;
 const BRANCH_KEY_RE = /^branch(?:\[\])?$/;
 const NEW_NAME_KEY_RE = /^new_name(?:\[\])?$/;
 const DEFAULT_BRANCH_KEY_RE = /^default_branch(?:\[\])?$/;
-/**
- * Keys a POST route reads: merge-upstream `branch`, rename `new_name`, protection `restrictions` `users`/`teams`/
- * `apps` and `required_status_checks` `contexts`, and the Merges API `base`/`head`.
- */
-const ROUTE_FIELD_KEY_RE = /^(?:branch|new_name|default_branch|users|teams|apps|contexts|base|head)(?:\[\])?$/;
-/** A merge segment a filled slot can complete into the Merges API, merge-upstream or a pull merge. */
-const MERGE_SEGMENT_RE = /\/(?:merges|merge-upstream|merge)(?:\/|$)/i;
 /** The route a filled repo slot most plausibly reaches for each method, when the written path names none. */
 const FILLED_ROUTES: Partial<Record<string, BranchRoute>> = { PUT: "contents", DELETE: "protection", PATCH: "default-branch" };
 
@@ -71,9 +64,12 @@ function mergeUpstreamWrite(fields: Fields): BranchRouteWrite | null {
   return named.length > 0 ? { route: "merge-upstream", branches: named.map((f) => refBranch(f) ?? null) } : null;
 }
 
-/** Any `default_branch` field, or a body that may hold one; the value never makes it safe (D1). */
+/**
+ * Any `default_branch` field, or a body that may hold one; the value never makes it safe (D1). GitHub routes a POST
+ * as a PATCH, so a POST counts too.
+ */
 function defaultBranchWrite(verb: string | null, fields: Fields): BranchRouteWrite | null {
-  if (verb !== null && verb !== "PATCH") return null;
+  if (verb !== null && verb !== "PATCH" && verb !== "POST") return null;
   if (fields === "unread") return { route: "default-branch", branches: [null] };
   const named = candidates(fields, DEFAULT_BRANCH_KEY_RE);
   return named.length > 0 ? { route: "default-branch", branches: named.map((f) => refBranch(f) ?? null) } : null;
@@ -120,21 +116,14 @@ function unsureWrite(url: string, verb: string | null, fields: Fields): BranchRo
 }
 
 /**
- * A filled repo slot (`repoSlotFilled`) makes the route unknown. PUT, DELETE and PATCH can reach a route whatever the
- * body (a protection sub-path takes any field); a POST only as `postReachesRoute` says, so a plain issue POST passes.
+ * A filled repo slot (`repoSlotFilled`) makes the route unknown, so any request off the `slotSafePost` allowlist
+ * reads as an unknown branch write. A pull request create on it names its `base`, which a cut fill can merge into.
  * It runs after every reading of the written path, so no early return of that reading skips it.
  */
 function slotFilledWrite(url: string, verb: string | null, fields: Fields, read: BranchRouteWrite | null): BranchRouteWrite | null {
-  const post = verb === null || verb === "POST";
-  if (!read && post && !postReachesRoute(url, fields)) return null;
-  return { route: read?.route ?? FILLED_ROUTES[verb ?? "POST"] ?? "merge-upstream", branches: [null] };
-}
-
-/** A POST reaches a route through a field or query key a route reads, an unread body, or a merge segment. */
-function postReachesRoute(url: string, fields: Fields): boolean {
-  if (fields === "unread" || candidates(fields, ROUTE_FIELD_KEY_RE).length > 0) return true;
-  if (queryKeys(url).some((k) => ROUTE_FIELD_KEY_RE.test(k))) return true;
-  return MERGE_SEGMENT_RE.test(asciiDecoded(url.replace(/[?#].*$/s, "")));
+  const bases = slotSafePost(url, verb, fields);
+  if (bases === null) return { route: read?.route ?? FILLED_ROUTES[verb ?? "POST"] ?? "merge-upstream", branches: [null] };
+  return bases.length > 0 ? { route: "merge-upstream", branches: bases } : read;
 }
 
 /** The route write the written path names, before any filled repo slot is considered. */

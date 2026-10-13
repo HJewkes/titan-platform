@@ -55,15 +55,6 @@ export function repoSlotFilled(url: string): boolean {
   return slots !== null && [slots[2], slots[3]].some((slot) => SLOT_PLACEHOLDER_RE.test(slot ?? ""));
 }
 
-/** The ASCII-decoded keys of a URL's query string, which a filled slot may turn into a write's body. */
-export function queryKeys(url: string): string[] {
-  const query = /\?([^#]*)/.exec(url)?.[1] ?? "";
-  return query
-    .split("&")
-    .filter((pair) => pair !== "")
-    .map((pair) => asciiDecoded(pair.split("=")[0] ?? ""));
-}
-
 const hasDotSegment = (path: string) => path.split("/").some((s) => s === "." || s === "..");
 
 /** Decodes only the ASCII escapes, which always decode, so `%67it` reads as `git` beside an invalid `%E0`. */
@@ -110,6 +101,45 @@ export function refBranch(word: WordToken): string | null | undefined {
   return knownBranch(unqualified.replace(/^heads\//, ""));
 }
 
+const SLOT_TAIL_RE = /(?:^|\/)repos\/[^/]+\/[^/]+(\/.*)?$/i;
+
+/** The POST tails a filled repo slot may still reach, each with the field keys it takes (a `[…]` suffix dropped). */
+const SAFE_SLOT_POSTS: [RegExp, ReadonlySet<string>][] = [
+  [/^\/issues$/i, new Set(["title", "body", "assignee", "assignees", "milestone", "labels", "type"])],
+  [/^\/issues\/\d+\/comments$/i, new Set(["body"])],
+  [/^\/pulls$/i, new Set(["title", "head", "head_repo", "base", "body", "draft", "maintainer_can_modify", "issue"])],
+  [
+    /^\/pulls\/\d+\/comments$/i,
+    new Set(["body", "commit_id", "path", "position", "line", "side", "start_line", "start_side", "in_reply_to", "subject_type"]),
+  ],
+  [/^\/pulls\/\d+\/reviews$/i, new Set(["body", "event", "commit_id", "comments"])],
+  [/^\/labels$/i, new Set(["name", "color", "description"])],
+];
+
+/** The allowlisted tail's key set, when every field is a literal key it takes; null otherwise. */
+function safeSlotKeys(url: string, fields: WordToken[]): ReadonlySet<string> | null {
+  if (/[?#]/.test(url)) return null;
+  const path = routedPath(url);
+  if (path === null || path === "unsure") return null;
+  const tail = (SLOT_TAIL_RE.exec(path)?.[1] ?? "").replace(/\/+$/, "");
+  const keys = SAFE_SLOT_POSTS.find(([re]) => re.test(tail))?.[1] ?? null;
+  const allTaken = fields.map(fieldKey).every(({ key, literal }) => literal && keys?.has(key.replace(/\[.*$/s, "")));
+  return keys && allTaken ? keys : null;
+}
+
+/**
+ * With a filled repo slot (`repoSlotFilled`) the route is unknown, so a request passes only on an allowlist. Null
+ * when it is not on it; else the `base` values it names, empty but for a pull request create, which a fill cut with
+ * `#` can turn into a Merges API call. A null method with no fields is gh's GET; any other method but POST, and an
+ * unread body, are never safe, since GitHub routes a POST as a PATCH.
+ */
+export function slotSafePost(url: string, verb: string | null, fields: WordToken[] | "unread"): (string | null)[] | null {
+  if (fields === "unread" || (verb !== null && verb !== "POST")) return null;
+  if (verb === null && fields.length === 0) return [];
+  if (!safeSlotKeys(url, fields)) return null;
+  return fields.filter((f) => fieldKey(f).key === "base").map((f) => refBranch(f) ?? null);
+}
+
 /** POST `git/refs`: every `ref` field, and every field whose key is not literal, is a candidate. */
 function createdBranches(fields: WordToken[] | "unread"): BranchTarget | null {
   if (fields === "unread") return RUN_TIME;
@@ -122,14 +152,14 @@ function createdBranches(fields: WordToken[] | "unread"): BranchTarget | null {
 }
 
 /**
- * A filled repo slot reaches a ref on any PATCH, PUT or DELETE, and on a POST only through a `ref` field, a `ref`
- * query key, or a path that already reads as a ref write.
+ * A filled repo slot makes any request off the `slotSafePost` allowlist an unknown ref write. It still names the
+ * branches the written path and a `ref` field give, since GitHub routes a POST on a head as a PATCH of it.
  */
 function slotFilledWrite(url: string, verb: string | null, fields: WordToken[] | "unread", read: BranchTarget | null): BranchTarget | null {
-  if (verb !== null && verb !== "POST") return RUN_TIME;
-  const created = createdBranches(fields);
-  if (created) return created;
-  return read || queryKeys(url).some((k) => REF_KEY_RE.test(k)) ? RUN_TIME : null;
+  if (slotSafePost(url, verb, fields) !== null) return read;
+  const created = verb === null || verb === "POST" ? createdBranches(fields) : null;
+  const named = [...(read?.branches ?? []), ...(created?.branches ?? [])].filter((b): b is string => b !== null);
+  return { branches: [...new Set(named), null] };
 }
 
 /** The ref write the written path names, before any filled repo slot is considered. */

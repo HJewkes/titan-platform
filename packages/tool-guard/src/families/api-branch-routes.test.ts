@@ -179,7 +179,7 @@ describe("gh's run-time {branch} placeholder names an unknown branch", () => {
     ["POST", "repos/{owner}/{repo}/contexts", "contexts[]=ci", "merge-upstream", [null]],
     ["POST", "repos/{owner}/{repo}/merges", "", "merge-upstream", [null]],
     ["POST", "repos/{owner}/{repo}", "base=main head=feat/x", "merge-upstream", [null]],
-    [null, "repos/{owner}/{repo}/pulls/1/merge/", "", "merge-upstream", [null]],
+    [null, "repos/{owner}/{repo}/pulls/1/merge/", "merge_method=squash", "merge-upstream", [null]],
   ])("%s %s %s reads as %s %j", (method, url, src, route, branches) => {
     expect(apiBranchRouteWrite(url, method, fields(src))).toEqual({ route, branches });
   });
@@ -210,17 +210,67 @@ describe("a filled repo slot holds through every early return of the path readin
     ["DELETE", "repos/{owner}/{repo}/branches/main", "", "protection", "branches tail, no route"],
     ["POST", "repos/{owner}/{repo}/users?users[]=bot", "", "merge-upstream", "other tail, key in the query"],
     ["POST", "repos/{owner}/{repo}/users?users%5B%5D=bot", "", "merge-upstream", "other tail, encoded query key"],
-    [null, "repos/:owner/:repo/x?base=main&head=x", "", "merge-upstream", "other tail, merge keys in the query"],
+    ["POST", "repos/:owner/:repo/x?base=main&head=x", "", "merge-upstream", "other tail, merge keys in the query"],
+    ["POST", "repos/{owner}/{repo}/issues?labels=x", "title=x", "merge-upstream", "allowlisted tail with a query"],
+    ["POST", "repos/{owner}/{repo}/x/.", "title=x", "merge-upstream", "unsure path, no route key"],
   ])("%s %s %s reads as %s (%s)", (method, url, src, route, _returnPath) => {
     expect(apiBranchRouteWrite(url, method, fields(src))).toEqual({ route, branches: [null] });
   });
 
   it.each([
     ["GET", "repos/{owner}/{repo}/x/.", ""],
-    ["POST", "repos/{owner}/{repo}/issues?labels=x", "title=x"],
-    ["POST", "repos/{owner}/{repo}/x/.", "title=x"],
   ])("%s %s %s still passes", (method, url, src) => {
     expect(apiBranchRouteWrite(url, method, fields(src))).toBeNull();
+  });
+});
+
+describe("a filled repo slot passes only an allowlisted POST", () => {
+  it.each([
+    ["repos/{owner}/{repo}/issues", "title=x body=@b.md labels[]=bug assignees[]=me"],
+    ["repos/{owner}/{repo}/issues/12/comments", "body=x"],
+    ["repos/{owner}/{repo}/pulls/12/comments", "body=x commit_id=c path=p line=1 side=RIGHT"],
+    ["repos/:owner/:repo/pulls/12/reviews", "body=x event=APPROVE comments[][path]=p"],
+    ["repos/{owner}/{repo}/labels", "name=bug color=f00 description=d"],
+  ])("POST %s %s", (url, src) => {
+    expect(apiBranchRouteWrite(url, "POST", fields(src))).toBeNull();
+  });
+
+  it("lets gh's GET (no method, no fields) through", () => {
+    expect(apiBranchRouteWrite("repos/{owner}/{repo}/branches", null, [])).toBeNull();
+  });
+
+  it.each([
+    ["base=feat/x head=feat/y title=t", ["feat/x"]],
+    ["base=main head=feat/x title=t", ["main"]],
+    ['base="$B" head=feat/x', [null]],
+  ])("names a pull request create's base, which a cut fill can merge into: %s", (src, branches) => {
+    expect(apiBranchRouteWrite("repos/{owner}/{repo}/pulls", "POST", fields(src))).toEqual({ route: "merge-upstream", branches });
+  });
+
+  it.each([
+    ["POST", "repos/{owner}/{repo}/git/refs", "sha=x", "merge-upstream"],
+    ["POST", "repos/{owner}/{repo}/issues/12", "title=x", "merge-upstream"],
+    ["POST", "repos/{owner}/{repo}/issues", "title=x state=open", "merge-upstream"],
+    ["POST", "repos/{owner}/{repo}/x", "required_approving_review_count=0", "merge-upstream"],
+    ["POST", "repos/{owner}/{repo}/branches/main/protection/required_pull_request_reviews", "dismiss_stale_reviews=false", "protection"],
+  ])("denies %s %s %s off the allowlist", (method, url, src, route) => {
+    expect(apiBranchRouteWrite(url, method, fields(src))).toEqual({ route, branches: [null] });
+  });
+});
+
+describe("GitHub routes a POST as a PATCH", () => {
+  it.each([
+    ["repos/o/r", "default_branch=x", ["x"]],
+    ["repos/o/r/", "default_branch=main", ["main"]],
+  ])("POST %s %s changes the default branch", (url, src, branches) => {
+    expect(apiBranchRouteWrite(url, "POST", fields(src))).toEqual({ route: "default-branch", branches });
+  });
+
+  it("reads POST protection sub-routes as protection writes", () => {
+    expect(apiBranchRouteWrite("repos/o/r/branches/main/protection/required_pull_request_reviews", "POST", fields("x=y"))).toEqual({
+      route: "protection",
+      branches: ["main"],
+    });
   });
 });
 

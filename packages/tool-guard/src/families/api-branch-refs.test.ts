@@ -100,7 +100,6 @@ describe("gh's run-time {branch} placeholder names an unknown branch", () => {
     ["PATCH", "repos/o/r/git/refs/{branch}", ""],
     ["PATCH", "repos/o/r/git/{branch}", ""],
     ["PATCH", "repos/o/r/{repo}/refs/heads/main", ""],
-    ["PATCH", "/repos/{owner}/{repo}/git/refs/heads/main/", ""],
     ["PATCH", "repos/{owner}/{repo}/heads/main", "sha=x"],
     ["DELETE", "repos/o/:repo/x", ""],
     ["PUT", "repos/{owner}/r/issues/1", ""],
@@ -117,14 +116,50 @@ describe("a filled repo slot holds through every early return of the path readin
     ["PATCH", "repos/{owner}/{repo}/pulls/1", "", "no git refs route"],
     ["PATCH", "repos/{owner}/{repo}/git/refs", "", "git refs root, not POST"],
     ["POST", "repos/{owner}/{repo}/issues?ref=refs/heads/main", "", "POST, ref in the query"],
-    ["POST", "repos/{owner}/{repo}/git/refs/heads/feat/x", "sha=x", "POST on a head path"],
     ["PATCH", "repos/{owner}/{repo}/git/refs/tags/v1", "", "not a head"],
+    ["POST", "repos/{owner}/{repo}/git/refs", "sha=x", "git refs root, POST with no ref"],
   ])("%s %s %s (%s)", (method, url, src) => {
     expect(apiBranchRefWrite(url, method, fields(src))).toEqual({ branches: [null] });
   });
 
-  it("still lets a POST with no ref through", () => {
-    expect(apiBranchRefWrite("repos/{owner}/{repo}/git/refs", "POST", fields("sha=x"))).toBeNull();
+  it.each([
+    ["PATCH", "/repos/{owner}/{repo}/git/refs/heads/main/", "", ["main", null]],
+    ["POST", "repos/{owner}/{repo}/git/refs/heads/feat/x", "sha=x", ["feat/x", null]],
+    ["POST", "repos/{owner}/{repo}/git/refs/heads/main", "ref=refs/heads/feat sha=x force=true", ["main", "feat", null]],
+    ["POST", "repos/{owner}/{repo}/git/refs", "ref=refs/heads/main sha=x", ["main", null]],
+  ])("%s %s %s names the path and ref-field branches beside the unknown route", (method, url, src, branches) => {
+    expect(apiBranchRefWrite(url, method, fields(src))).toEqual({ branches });
+  });
+});
+
+describe("a filled repo slot passes only an allowlisted POST", () => {
+  it.each([
+    ["repos/{owner}/{repo}/issues", "title=x body=@b.md labels[]=bug assignees[]=me"],
+    ["repos/{owner}/{repo}/issues/12/comments", "body=x"],
+    ["repos/{owner}/{repo}/pulls", "title=x head=feat/x base=main body=y draft=true"],
+    ["repos/{owner}/{repo}/pulls/12/comments", "body=x commit_id=c path=p line=1 side=RIGHT"],
+    ["repos/:owner/:repo/pulls/12/reviews", "body=x event=APPROVE comments[][path]=p"],
+    ["repos/{owner}/{repo}/labels", "name=bug color=f00 description=d"],
+  ])("POST %s %s", (url, src) => {
+    expect(apiBranchRefWrite(url, "POST", fields(src))).toBeNull();
+  });
+
+  it("lets gh's GET (no method, no fields) through", () => {
+    expect(apiBranchRefWrite("repos/{owner}/{repo}/branches", null, [])).toBeNull();
+  });
+
+  it.each([
+    ["POST", "repos/{owner}/{repo}/issues/12", "title=x"],
+    ["POST", "repos/{owner}/{repo}/issues", "title=x state=open"],
+    ["POST", "repos/{owner}/{repo}/issues?x=1", "title=x"],
+    [null, "repos/{owner}/{repo}/labels", '"$K"=v'],
+    ["POST", "repos/{owner}/{repo}/x", "required_approving_review_count=0"],
+  ])("denies %s %s %s off the allowlist", (method, url, src) => {
+    expect(apiBranchRefWrite(url, method, fields(src))).toEqual({ branches: [null] });
+  });
+
+  it("denies an unread --input body on an allowlisted tail", () => {
+    expect(apiBranchRefWrite("repos/{owner}/{repo}/issues", "POST", "unread")).toEqual({ branches: [null] });
   });
 });
 
