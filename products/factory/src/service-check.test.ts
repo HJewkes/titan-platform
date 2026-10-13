@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { EXIT, runCli } from "./cli.js";
 import { SERVICE_LABEL, UNIT_NAME } from "./service.js";
-import { CRASH_LOOP_WINDOW_MS, type CheckPorts } from "./service-check.js";
+import { CRASH_LOOP_WINDOW_MS, SERVICE_CHECK_BUDGET_MS, type CheckPorts } from "./service-check.js";
 import { deployHealth, parseRedeployLog } from "./deploy-health.js";
 import type { IndexLock } from "./stale-lock.js";
 
@@ -24,6 +24,8 @@ interface Machine {
   health?: Record<string, unknown> | null;
   /** Successive /health answers, the last repeating; overrides `health`. */
   healthSequence?: (Record<string, unknown> | null)[];
+  /** How long each /health probe takes to answer on the fake clock; a probe whose timeout is shorter returns null at its timeout. Infinity never answers. */
+  answerAfterMs?: number;
   dead?: number[];
   startedAgoMs?: number;
   /** The commit a restart loads; absent means the running build. */
@@ -47,6 +49,12 @@ const healthy = (extra: Record<string, unknown> = {}): Record<string, unknown> =
 function fakePorts(init: Machine) {
   const calls: string[] = [];
   let probes = 0;
+  let clock = NOW;
+  const answer = (): Record<string, unknown> | null => (init.healthSequence ? (init.healthSequence[Math.min(probes++, init.healthSequence.length - 1)] ?? null) : (init.health ?? null));
+  const timedAnswer = (answerAfterMs: number, timeoutMs = Infinity): Record<string, unknown> | null => {
+    clock += Math.min(answerAfterMs, timeoutMs);
+    return answerAfterMs <= timeoutMs ? answer() : null;
+  };
   const ports: CheckPorts = {
     platform: init.platform ?? "darwin",
     uid: UID,
@@ -64,14 +72,17 @@ function fakePorts(init: Machine) {
     claude: async () => undefined,
     isDirectory: () => false,
     which: () => undefined,
-    health: async () => (init.healthSequence ? (init.healthSequence[Math.min(probes++, init.healthSequence.length - 1)] ?? null) : (init.health ?? null)),
+    health: async (_port, timeoutMs) => (init.answerAfterMs === undefined ? answer() : timedAnswer(init.answerAfterMs, timeoutMs)),
     mkdir: () => undefined,
     writeFile: () => undefined,
     readFile: () => undefined,
     exists: () => false,
     remove: () => undefined,
-    sleep: async () => undefined,
-    now: () => NOW,
+    // Only a timed machine's clock moves, so the crash-loop window tests keep their exact process ages.
+    sleep: async (ms) => {
+      if (init.answerAfterMs !== undefined) clock += ms;
+    },
+    now: () => clock,
     isAlive: (pid) => !(init.dead ?? []).includes(pid),
     processStartedAt: async () => new Date(NOW - (init.startedAgoMs ?? 3_600_000)),
     restartTargetSha: async () => init.target ?? BUILD,
@@ -80,16 +91,16 @@ function fakePorts(init: Machine) {
     indexLock: async () => init.lock ?? { state: "absent", path: LOCK },
     hubSeat: () => (init.noHubSeat ? undefined : "hub"),
   };
-  return { ports, calls };
+  return { ports, calls, elapsedMs: () => clock - NOW };
 }
 
 async function check(init: Machine, ...flags: string[]) {
-  const { ports, calls } = fakePorts(init);
+  const { ports, calls, elapsedMs } = fakePorts(init);
   let out = "";
   let err = "";
   const io = { stdout: (t: string) => void (out += t), stderr: (t: string) => void (err += t), env: {} };
   const code = await runCli(["service", "check", ...flags], io, { workflows: [], routes: [], check: ports });
-  return { code, out, err, calls };
+  return { code, out, err, calls, elapsedMs: elapsedMs() };
 }
 
 describe("titan-factory service check", () => {
@@ -148,6 +159,46 @@ describe("titan-factory service check", () => {
 
     expect(code).not.toBe(EXIT.OK);
     expect(out).toContain(`stale pid: launchd pid ${PID} does not answer /health on port 7410 (3 probes failed)`);
+  });
+
+  it("reports unresponsive with each probe's latency when the live launchd pid never answers, inside the budget", async () => {
+    const { code, out, elapsedMs } = await check({ print: running, health: healthy(), answerAfterMs: Infinity }, "--json");
+
+    expect(code).toBe(EXIT.FAILURE);
+    expect(JSON.parse(out)).toMatchObject({
+      cause: "unresponsive",
+      pid: PID,
+      message: expect.stringContaining(`launchd pid ${PID} is alive but every /health probe on port 7410 timed out`),
+      detail: { probeLatenciesMs: "6000, 6000, 3000" },
+    });
+    expect(elapsedMs).toBeLessThan(SERVICE_CHECK_BUDGET_MS);
+  });
+
+  it("reports stale pid, not unresponsive, when a dead pid's probe times out", async () => {
+    const { out } = await check({ print: running, health: null, dead: [PID], answerAfterMs: Infinity });
+
+    expect(out).toMatch(/^stale pid: launchd pid 4242 is dead/);
+  });
+
+  it("reports stale pid, not unresponsive, when a foreign pid answers slowly on the port", async () => {
+    const { out } = await check({ print: running, health: healthy({ pid: 999 }), answerAfterMs: 1_500 });
+
+    expect(out).toMatch(/^stale pid: port 7410 is answered by pid 999/);
+  });
+
+  it("exits 0 when /health answers after 1.5 s", async () => {
+    const { code, out, elapsedMs } = await check({ print: running, health: healthy(), answerAfterMs: 1_500 });
+
+    expect(code).toBe(EXIT.OK);
+    expect(out).toBe(`ok: /health answers from pid ${PID} with github ok\n`);
+    expect(elapsedMs).toBe(1_500);
+  });
+
+  it("finishes inside the budget while serve reports its GitHub probe as checking", async () => {
+    const { out, elapsedMs } = await check({ print: running, health: healthy({ github: "checking" }), answerAfterMs: 2_000 });
+
+    expect(out).toMatch(/^GitHub down: /);
+    expect(elapsedMs).toBeLessThan(SERVICE_CHECK_BUDGET_MS);
   });
 
   it("reports a crash loop when the job exited non-zero several times and holds no process", async () => {
@@ -367,6 +418,13 @@ describe("titan-factory service check", () => {
       expect(dead.out).toContain(`stale pid: systemd pid ${PID} is dead`);
       expect(foreign.out).toContain(`not systemd pid ${PID}`);
       expect(dead.out + foreign.out).not.toContain("launchd");
+    });
+
+    it("reports unresponsive when the active MainPID never answers /health", async () => {
+      const { out, elapsedMs } = await linux({ unit: unit({}), health: healthy(), answerAfterMs: Infinity });
+
+      expect(out).toMatch(/^unresponsive: systemd pid 4242 is alive but every \/health probe on port 7410 timed out \(6\.0 s, 6\.0 s, 3\.0 s\)/);
+      expect(elapsedMs).toBeLessThan(SERVICE_CHECK_BUDGET_MS);
     });
   });
 
