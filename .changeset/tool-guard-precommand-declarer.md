@@ -2,4 +2,4 @@
 "@titan-design/tool-guard": patch
 ---
 
-Read zsh's precommand modifiers `noglob`, `nocorrect` and `-` as running the builtin after them in the current shell: a `read`, `printf -v` or declarer behind one is read like one behind `command` (TP-2716 b).
+Read a `read` or `printf -v` name operand behind zsh's precommand modifiers `noglob`, `nocorrect` and `-` like one behind `command`, so a subscripted or run-time name is read as arithmetic (TP-2716 b). A readonly behind them is not marked sure.

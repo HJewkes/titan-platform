@@ -53,3 +53,20 @@ describe("a payload a name operand behind a zsh precommand modifier reads as ari
     expect(await handled(command)).toBe("deny");
   });
 });
+
+describe("a readonly behind a word that may run a program is not sure, so a later assignment still counts", () => {
+  const after = "Y=push; git $Y origin HEAD:main";
+  it.each([
+    ["command -", `command - readonly Y=status; ${after}`],
+    ["command -p -", `command -p - readonly Y=status; ${after}`],
+    ["builtin -", `builtin - readonly Y=status; ${after}`],
+    ["time -", `time - readonly Y=status; ${after}`],
+    ["noglob", `noglob readonly Y=status; ${after}`],
+    ["nocorrect", `nocorrect readonly Y=status; ${after}`],
+    ["-", `- readonly Y=status; ${after}`],
+    ["command noglob", `command noglob readonly Y=status; ${after}`],
+    ["a quoted noglob", `'noglob' readonly Y=status; ${after}`],
+  ])("denies %s readonly", async (_, command) => {
+    expect(await handled(command)).toBe("deny");
+  });
+});

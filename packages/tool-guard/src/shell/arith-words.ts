@@ -30,6 +30,11 @@ const NAME_TAKERS = new Set(["read", "printf", "getopts", "wait", "declare", "ty
 /** The `read` options that take a value, which names no variable. */
 const READ_VALUE_OPTIONS = new Set(["-d", "-i", "-n", "-N", "-p", "-t", "-u"]);
 const SUBSCRIPTED_NAME_RE = /^[A-Za-z_]\w*\[/;
+/**
+ * zsh's precommand modifiers, kept out of `PASS_THROUGH`, which marks a readonly sure: reading one as running the
+ * builtin only adds a deny here, but there it would keep a value neither shell may store (`command - readonly`).
+ */
+const PRECOMMAND_MODIFIERS = new Set(["noglob", "nocorrect", "-"]);
 
 /**
  * Whether a builtin is handed a variable name with a subscript, or one known only at run time, which may hold one:
@@ -38,7 +43,8 @@ const SUBSCRIPTED_NAME_RE = /^[A-Za-z_]\w*\[/;
  * shell.
  */
 export function nameOperandEvaluates(command: WordToken[]): boolean {
-  const start = command.findIndex((w) => !PASS_THROUGH.has(w.value) && w.value !== "-p" && w.value !== "--");
+  const leads = (v: string) => PASS_THROUGH.has(v) || PRECOMMAND_MODIFIERS.has(v) || v === "-p" || v === "--";
+  const start = command.findIndex((w) => !leads(w.value));
   const [head, ...args] = start < 0 ? [] : command.slice(start);
   if (head === undefined || !NAME_TAKERS.has(head.value)) return false;
   return nameOperands(head.value, args).some((w) => w.dynamic || SUBSCRIPTED_NAME_RE.test(w.value));

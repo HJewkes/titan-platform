@@ -75,11 +75,8 @@ export function expandWord(w: WordToken, resolve: (name: string) => string | nul
 const sureWords = new WeakSet<WordToken>();
 const CLOSERS: Record<string, string> = { if: "fi", while: "done", until: "done", for: "done", select: "done", case: "esac" };
 const LEADING_KEYWORDS = new Set(["then", "do", "else", "elif", "!"]);
-/**
- * Words that still run the builtin after them in the current shell, zsh's precommand modifiers among them; any other
- * wrapper runs a program.
- */
-export const PASS_THROUGH = new Set(["builtin", "command", "time", "noglob", "nocorrect", "-"]);
+/** Words that still run the builtin after them in the current shell; any other wrapper runs a program. */
+export const PASS_THROUGH = new Set(["builtin", "command", "time"]);
 /** A command these lead may not run; a newline after one still continues it. */
 const CONDITIONAL_OPS = new Set(["&&", "||", "|", "|&"]);
 /** A command these follow runs in a subshell. */
