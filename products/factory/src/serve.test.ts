@@ -335,12 +335,12 @@ describe("serve's gate notifier", () => {
   /** `unpinned` leaves the head free in the schema, so no answer can supply it and the gate stays off the phone. */
   function openMergeGate(server: FactoryServer, id: string, { unpinned = false } = {}): void {
     const { schema, brief } = approveMergeDecision({ repo: "HJewkes/demo", pr: 7, headSha: HEAD, reason: "Ready.", reviewedMerge: true });
-    const json = toJSONSchema(schema) as { properties: Record<string, unknown> };
-    if (unpinned) json.properties.headSha = { type: "string" };
-    server.host.gates.create({ id, prompt: "Merge?", schema: json, ...brief });
+    const json = toJSONSchema(schema);
+    const gateSchema = unpinned ? { ...json, properties: { ...json.properties, headSha: { type: "string" as const } } } : json;
+    server.host.gates.create({ id, prompt: "Merge?", schema: gateSchema, ...brief });
   }
 
-  const health = async (server: FactoryServer) => (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
+  const health = async (server: FactoryServer): Promise<unknown> => (await fetch(`http://127.0.0.1:${server.port}/health`)).json();
 
   it("asks nothing and shows no gateNotify block without the config", async () => {
     const server = await serve(dbFile(), landScenario(), { gateNotifyMs: 10 });
