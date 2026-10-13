@@ -411,6 +411,12 @@ interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> extends Surf
     processStartTime?: (pid: number) => Date | null;
     /** Defaults to 7400. Pass 0 for an ephemeral port; the handle reports the bound one. */
     port?: number;
+    /**
+     * An already-listening loopback socket to serve on instead of binding `host:port`, such as
+     * the one `systemdListenFd()` returns. The handle reports the socket's own port, and close
+     * releases only this process's copy, so the socket's owner keeps it listening.
+     */
+    listenFd?: number;
     /** Defaults to 127.0.0.1. A non-loopback host throws `NonLoopbackBindError` unless the opt-in below is set. */
     host?: string;
     /** The daemon has no auth: setting this exposes every route to the network the host is on. */
@@ -460,6 +466,17 @@ declare function startDaemon<Ctx extends BaseContext>(options: StartDaemonOption
 /** Start, then run until SIGTERM/SIGINT, then close. Resolves after shutdown completes. */
 declare function runDaemonUntilSignal<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>): Promise<void>;
 
+/**
+ * The systemd socket-activation handoff (sd_listen_fds(3)): a supervisor that owns the
+ * listening socket passes it as fd 3 and names the receiving process in `LISTEN_PID`.
+ */
+/**
+ * The listening fd systemd passed to `pid`, or `undefined` when none was passed to it. A
+ * `LISTEN_PID` naming another pid was meant for a parent and is left alone. On a match the
+ * variables are removed from `env`, so no child process mistakes the socket for its own.
+ */
+declare function systemdListenFd(env?: NodeJS.ProcessEnv, pid?: number): number | undefined;
+
 interface StaticAppOptions {
     /** A built app directory holding `index.html`, or a single-file build's HTML file. */
     root: string;
@@ -471,4 +488,4 @@ interface StaticAppOptions {
 /** Mounts `GET <base>/*`: files from `root`, `index.html` for client routes, 404 for missing assets. */
 declare function mountStaticApp(app: Hono, options: StaticAppOptions): void;
 
-export { DEFAULT_ALLOWED_HOSTS, DEFAULT_DAEMON_PORT, DEFAULT_EVENT_LIMITS, DEFAULT_RPC_BODY_LIMIT, DaemonAlreadyRunningError, type DaemonAuth, type DaemonAuthOptions, type DaemonHandle, type DaemonMeta, type DaemonPaths, DaemonPortInUseError, EventHub, type EventLimits, type GuardRefusal, type GuardedRequest, type HealthPayload, type HealthPayloadInput, type HttpAppOptions, LOGIN_CODE_TTL_MS, LOGIN_PATH, LOGOUT_PATH, type Logger, type LoginCodeLedger, type McpServerOptions, NonLoopbackBindError, type PidFileContents, type ProbeHealthOptions, RemoteBindError, type RemoteListenerOptions, type RemoteTlsOptions, type RequestAuth, type RequestGuard, type RequestGuardOptions, type RpcBodyLimit, SESSION_COOKIE, SESSION_MAX_AGE_MS, type StartDaemonOptions, type StaticAppOptions, type Subscriber, type Surface, type SurfaceOptions, TlsFileError, TokenFileError, type TokenFileProblem, type ToolCallOutcome, type TreeWatcher, type WatchTreeOptions, attachHandlers, buildHealthPayload, buildHttpApp, consoleLogger, consumeLoginCode, createDaemonAuth, createLoginCodeLedger, createMcpServer, createRequestGuard, daemonPaths, ensureTokenFile, getProcessCommand, getProcessStartTime, getRequestAuth, invokeTool, isLoopbackHost, isProcessAlive, listTools, mintLoginCode, mountStaticApp, probeHealth, readPidFile, removePidFile, rotateTokenFile, runDaemonUntilSignal, runMcpStdio, signSession, silentLogger, startDaemon, verifySession, watchTree, writePidFile };
+export { DEFAULT_ALLOWED_HOSTS, DEFAULT_DAEMON_PORT, DEFAULT_EVENT_LIMITS, DEFAULT_RPC_BODY_LIMIT, DaemonAlreadyRunningError, type DaemonAuth, type DaemonAuthOptions, type DaemonHandle, type DaemonMeta, type DaemonPaths, DaemonPortInUseError, EventHub, type EventLimits, type GuardRefusal, type GuardedRequest, type HealthPayload, type HealthPayloadInput, type HttpAppOptions, LOGIN_CODE_TTL_MS, LOGIN_PATH, LOGOUT_PATH, type Logger, type LoginCodeLedger, type McpServerOptions, NonLoopbackBindError, type PidFileContents, type ProbeHealthOptions, RemoteBindError, type RemoteListenerOptions, type RemoteTlsOptions, type RequestAuth, type RequestGuard, type RequestGuardOptions, type RpcBodyLimit, SESSION_COOKIE, SESSION_MAX_AGE_MS, type StartDaemonOptions, type StaticAppOptions, type Subscriber, type Surface, type SurfaceOptions, TlsFileError, TokenFileError, type TokenFileProblem, type ToolCallOutcome, type TreeWatcher, type WatchTreeOptions, attachHandlers, buildHealthPayload, buildHttpApp, consoleLogger, consumeLoginCode, createDaemonAuth, createLoginCodeLedger, createMcpServer, createRequestGuard, daemonPaths, ensureTokenFile, getProcessCommand, getProcessStartTime, getRequestAuth, invokeTool, isLoopbackHost, isProcessAlive, listTools, mintLoginCode, mountStaticApp, probeHealth, readPidFile, removePidFile, rotateTokenFile, runDaemonUntilSignal, runMcpStdio, signSession, silentLogger, startDaemon, systemdListenFd, verifySession, watchTree, writePidFile };
