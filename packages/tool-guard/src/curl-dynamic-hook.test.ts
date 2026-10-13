@@ -43,6 +43,14 @@ describe("handle: an HTTP write to a run-time URL", () => {
     "wget --method=PUT -i urls",
     'curl --variable %P --expand-url "https://api.github.com/{{P}}" -X PUT',
     'curl -X PUT "https://api.github.com/repos/o/r/pulls/1/merg{e}"',
+    'curl -g --no-globoff -X PUT "https://api.github.com/repos/o/r/pulls/1/merg{e}"',
+    'curl -X PUT --expand-url "https://api.github.com/repos/o/r/pulls/1/merg{e}"',
+    'curl --variable %M --expand-request "{{M}}" https://api.github.com/repos/o/r/pulls/1/merge',
+    'curl --variable %M --expand-request "{{M}}" "$U"',
+    "curl --expand-upload-file f https://api.github.com/repos/o/r/pulls/1/merge",
+    "curl --request-target /repos/o/r/pulls/1/merge -X PUT https://api.github.com/x",
+    "curl -K cfg -X PUT https://api.github.com/x",
+    "curl --some-future-option -X PUT https://api.github.com/x",
   ])("denies %s as a merge", async (command) => {
     const { columns } = await logColumns(command);
 
@@ -51,6 +59,21 @@ describe("handle: an HTTP write to a run-time URL", () => {
 
   it("keeps a literal non-GitHub upload under egress", async () => {
     const { columns } = await logColumns("curl -X PUT https://example.com/x");
+
+    expect(columns).toEqual(["deny", "EXT-CO", "private-egress", "bash.egress.curl-upload", "coordinator+worker+headless"]);
+  });
+
+  it.each(["curl -X GET \"$U\"", "curl -fsSL --compressed https://api.github.com/repos/o/r/pulls/1", "curl -g --no-get --globoff https://api.github.com/repos/o/r", "curl --no-progress-meter -sS https://example.com/x"])(
+    "lets the read %s through",
+    async (command) => {
+      const { stdout } = await logColumns(command);
+
+      expect(stdout).toBe("");
+    },
+  );
+
+  it("keeps a literal non-GitHub write with known options under egress", async () => {
+    const { columns } = await logColumns("curl -sS --fail-with-body --no-progress-meter -X PUT https://example.com/x");
 
     expect(columns).toEqual(["deny", "EXT-CO", "private-egress", "bash.egress.curl-upload", "coordinator+worker+headless"]);
   });

@@ -6,6 +6,7 @@ import type { SpellingId } from "../spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
 import { hasFlag, lastValue, readOptions, set, valuesOf } from "./options.js";
 import type { Options } from "./options.js";
+import { CURL_SWITCHES, CURL_VALUE_OPTIONS } from "./curl-options.js";
 
 /** Hosts data may be sent to (D5). `registry.npmjs.org` is allowed for reads only, so it is absent. */
 const ALLOWED_HOSTS = set("github.com", "api.github.com", "localhost", "127.0.0.1", "::1");
@@ -16,7 +17,8 @@ const UNKNOWN_METHOD = "UNKNOWN";
 const UPLOAD_METHODS = set("POST", "PUT", "PATCH", UNKNOWN_METHOD);
 
 const CURL_BODY = ["-d", "--data", "--data-raw", "--data-binary", "--data-urlencode", "--data-ascii", "--json", "-F", "--form", "--form-string", "-T", "--upload-file"];
-const CURL_VALUES = set(...CURL_BODY, "-X", "--request", "-H", "--header", "-o", "--output", "-u", "--user", "-A", "--user-agent", "-e", "--referer", "-b", "--cookie", "-c", "--cookie-jar", "-w", "--write-out", "-m", "--max-time", "--connect-timeout", "-x", "--proxy", "--retry", "-K", "--config", "--cacert", "--cert", "-E", "--key", "-r", "--range", "-C", "--continue-at", "-D", "--dump-header", "--resolve", "--connect-to", "--url", "--oauth2-bearer", "--unix-socket", "--output-dir", "--variable", "--expand-url");
+/** Options that set the method or URL from somewhere the line does not show. */
+const CURL_HIDDEN = set("-K", "--config", "--request-target");
 /** Words that start curl's next request, which takes its own method and URLs. */
 const CURL_NEXT = set("--next", "-:");
 const WGET_BODY = ["--post-data", "--post-file", "--body-data", "--body-file"];
@@ -67,20 +69,47 @@ function curlRequest(args: WordToken[]): HttpRequest {
     if (CURL_NEXT.has(word.value)) parts.push([]);
     else parts.at(-1)?.push(word);
   }
-  const requests = parts.map((part) => curlPart(readOptions(part, CURL_VALUES)));
+  const requests = parts.map((part) => curlPart(readOptions(expandOptions(part), CURL_VALUE_OPTIONS)));
   const method = (requests.find((r) => isWrite(r.method)) ?? requests[0])?.method ?? "GET";
   return { method, body: requests.some((r) => r.body), urls: requests.flatMap((r) => r.urls) };
 }
 
+/** An option the reader does not know, or one that reads the request from elsewhere, leaves the method and URL unknown. */
 function curlPart(o: Options): HttpRequest {
   const body = hasFlag(o, ...CURL_BODY);
   const upload = hasFlag(o, "-T", "--upload-file");
-  const implied = hasFlag(o, "-G", "--get") ? "GET" : upload ? "PUT" : body ? "POST" : "GET";
-  const method = methodOf(lastValue(o, "-X", "--request")) ?? implied;
-  const globs = !hasFlag(o, "-g", "--globoff");
+  const implied = switchOn(o, "-G", "--get") ? "GET" : upload ? "PUT" : body ? "POST" : "GET";
+  const hidden = o.opts.some((opt) => !isKnownCurlOption(opt.flag));
+  const method = hidden ? UNKNOWN_METHOD : (methodOf(lastValue(o, "-X", "--request")) ?? implied);
+  const globs = !switchOn(o, "-g", "--globoff");
   const urls = [...o.positionals, ...valuesOf(o, "--url")].map((u) => (globs ? globbed(u) : u));
-  const expanded = valuesOf(o, "--expand-url").map((u) => runTimeFrom(u, u.value.indexOf("{{")));
-  return { method, body, urls: [...urls, ...expanded] };
+  return { method, body, urls: hidden ? [...urls, UNSEEN_URL] : urls };
+}
+
+/** curl reads `--expand-<opt>` as `<opt>` with each `{{var}}` in its value filled in at run time. */
+function expandOptions(words: WordToken[]): WordToken[] {
+  return words.map((word, i) => {
+    const prev = words[i - 1]?.value ?? "";
+    if (prev.startsWith("--expand-") && CURL_VALUE_OPTIONS.has(`--${prev.slice("--expand-".length)}`)) {
+      return runTimeFrom(word, word.value.indexOf("{{"));
+    }
+    if (!word.value.startsWith("--expand-")) return word;
+    const named = { ...word, value: `--${word.value.slice("--expand-".length)}` };
+    return runTimeFrom(named, named.value.indexOf("{{"));
+  });
+}
+
+function isKnownCurlOption(flag: string): boolean {
+  if (CURL_HIDDEN.has(flag)) return false;
+  if (CURL_VALUE_OPTIONS.has(flag) || CURL_SWITCHES.has(flag)) return true;
+  return flag.startsWith("--no-") && CURL_SWITCHES.has(`--${flag.slice("--no-".length)}`);
+}
+
+/** Whether a switch is on: the last of it and its `--no-` form wins. */
+function switchOn(o: Options, short: string, long: string): boolean {
+  const off = `--no-${long.slice(2)}`;
+  const last = o.opts.filter((opt) => opt.flag === short || opt.flag === long || opt.flag === off).at(-1);
+  return last !== undefined && last.flag !== off;
 }
 
 /** curl expands `{a,b}` and `[1-3]` in a URL unless `-g` is given; an IPv6 host's brackets are not a glob. */
