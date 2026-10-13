@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { z } from "zod";
 
 /** A design decision a commit records; `why` is quoted verbatim from that commit's message, never paraphrased. */
-export const DecisionSchema = z.object({
+const DecisionSchema = z.object({
   what: z.string().min(1),
   why: z.string().min(1),
   alternative: z.string().min(1).optional(),
@@ -12,19 +12,19 @@ export const DecisionSchema = z.object({
 
 export type Decision = z.infer<typeof DecisionSchema>;
 
-export interface HistoryEntry {
+interface HistoryEntry {
   sha: string;
   date: string;
   subject: string;
   removal: boolean;
 }
 
-export interface HistoryMine {
+interface HistoryMine {
   history: HistoryEntry[];
   decisions: Decision[];
 }
 
-export interface RejectedDecision {
+interface RejectedDecision {
   decision: unknown;
   reason: string;
 }
