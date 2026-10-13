@@ -1,9 +1,9 @@
 import type { WaitingGate } from "../shepherd/waiting.js";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
-import type { Ask, DigestModel, FlowStats, PoolLine, ProofFixture } from "./model.js";
-import type { RankedDigest } from "./rank.js";
+import type { Ask, DecidedLine, DigestModel, FlowStats, PoolLine, ProofFixture, ReversalLine } from "./model.js";
+import { DEFAULT_CAPS, type RankedDigest } from "./rank.js";
 
-export const WORD_LIMIT = 400;
+export const WORD_LIMIT = DEFAULT_CAPS.words;
 export const FULL_COMMAND = "titan-factory digest run --full";
 const ASK_WORDS = 12;
 const REASON_WORDS = 10;
@@ -49,6 +49,27 @@ function needsYou(d: RankedDigest): string[] {
   return section(`Needs you (${d.totals.needsYou})`, lines, "Nothing.");
 }
 
+function decidedLine(e: DecidedLine, i: number): string {
+  const tags = [e.class, ...(e.confidence !== undefined ? [`conf ${e.confidence}`] : []), ...(e.principleIds ? [`principles ${e.principleIds.join(",")}`] : [])];
+  const parts = [
+    `${clip(e.question, ASK_WORDS)} -> ${clip(e.answer, REASON_WORDS)} [${tags.join(", ")}]`,
+    ...(e.reversible ? [`reversible: ${clip(e.reversible, REASON_WORDS)}`] : []),
+    e.overrule ? `overrule: \`${e.overrule}\`` : e.state,
+  ];
+  return `${i + 1}. ${parts.join(" | ")}`;
+}
+
+function reversalLine(reversals: readonly ReversalLine[]): string[] {
+  const rates = reversals.filter((r) => r.decided > 0).map((r) => `${r.class} ${r.overruled}/${r.decided} (${Math.round((100 * r.overruled) / r.decided)}%)`);
+  return rates.length > 0 ? [`Reversal rate, last 7 days: ${rates.join(", ")}`] : [];
+}
+
+/** Left out when no decision is shown, so an older agent-chat or a quiet window adds no empty heading. */
+function decidedLines(d: RankedDigest, shown: number): string[] {
+  if (d.decided === undefined || shown === 0) return [];
+  return section(`Decided for you (${d.totals.decided})`, [...d.decided.slice(0, shown).map(decidedLine), ...reversalLine(d.reversals ?? [])], "");
+}
+
 function frictionLines(day: FrictionDay | undefined): string[] {
   if (day === undefined) return [];
   const waits = day.kinds.map((k) => `${k.kind} ${k.medianHours}/${k.maxHours}`);
@@ -76,10 +97,11 @@ function proofFixtureLines(fixtures: DigestModel["proofFixtures"], now: string):
   return section("Proof fixtures (not counted above)", fixtures.map(line), "");
 }
 
-function body(d: RankedDigest): string[] {
+function body(d: RankedDigest, decidedShown: number): string[] {
   const spend = d.spend.map((p) => `- ${p.pool}: week ${percent(p.sevenDay)}, 5h ${percent(p.fiveHour)}${p.stale ? " (stale)" : ""}`);
   return [
     ...needsYou(d),
+    ...decidedLines(d, decidedShown),
     ...section(`Merged (${d.totals.merged})`, d.merged.map((m) => `- ${m.ref}: ${clip(m.title, REASON_WORDS)}`), "Nothing merged."),
     ...section(`Stuck (${d.totals.stuck})`, d.stuck.map((s) => `- ${s.ref}: ${clip(s.reason, REASON_WORDS)} (${age(s.since, d.generatedAt)})`), "Nothing stuck."),
     ...section("Seats", d.seats.map((s) => `- ${s.seat}: ${s.dispatches} dispatches, $${s.usd.toFixed(2)}`), "No seats in the seat book."),
@@ -92,9 +114,17 @@ function body(d: RankedDigest): string[] {
   ];
 }
 
-/** Sections in reading order; anything a cap hid is one closing line that names the command showing it. */
-export function renderMarkdown(d: RankedDigest): string {
-  const lines = [`# Owner digest ${d.slot.date} ${d.slot.hour}:00`, "", deterministicHeadline(d), "", `Since ${d.since}.`, ...body(d)];
-  if (d.overflow > 0) lines.push("", `and ${d.overflow} more: \`${FULL_COMMAND}\``);
+function document(d: RankedDigest, decidedShown: number): string {
+  const lines = [`# Owner digest ${d.slot.date} ${d.slot.hour}:00`, "", deterministicHeadline(d), "", `Since ${d.since}.`, ...body(d, decidedShown)];
+  const overflow = d.overflow + (d.decided?.length ?? 0) - decidedShown;
+  if (overflow > 0) lines.push("", `and ${overflow} more: \`${FULL_COMMAND}\``);
   return `${lines.join("\n")}\n`;
+}
+
+/** Sections in reading order; anything a cap hid is one closing line that names the command showing it. Decisions drop from the end until the digest fits its word limit. */
+export function renderMarkdown(d: RankedDigest): string {
+  let shown = d.decided?.length ?? 0;
+  let markdown = document(d, shown);
+  while (shown > 0 && wordCount(markdown) > d.wordLimit) markdown = document(d, --shown);
+  return markdown;
 }

@@ -398,8 +398,8 @@ titan-factory digest run --dry-run   # print the owner digest for the current sl
 titan-factory digest run             # write <date>-<HH>.md to the digest dir and the iCloud dir
 ```
 
-The digest covers every seat in the seat book in under 400 words: Needs you, Merged, Stuck,
-Seats and Spend. A source that cannot be read becomes a Gaps line instead of a failure. The
+The digest covers every seat in the seat book in under 400 words: Needs you, Decided for you
+(the decider's answers, each with its overrule command), Merged, Stuck, Seats and Spend. A source that cannot be read becomes a Gaps line instead of a failure. The
 `digest` config block and the sources are in the package README, under "Owner digest".
 
 ## Install as a service

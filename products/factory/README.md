@@ -268,11 +268,14 @@ Shepherd opens `approve-merge` for the owner for five reasons only, listed in `E
   owner can approve this one.
 - `failed-rounds`: `MAX_FAILED_ROUNDS` review rounds at one task ended with no verdict, a
   timeout or an unanswered hold. Retrying again would only repeat the stall.
-- `fix-first-runaway`: `MAX_FIX_FIRSTS` FIX_FIRST reviews at one task. Each one counts as
-  progress, so this cap only stops a loop between the reviewer and the fixer.
+- `fix-first-runaway`: the third FIX_FIRST review at one run (`MAX_FIX_FIRSTS` is 3, for every
+  kind of PR). Two fix rounds that did not converge mean point fixes are not working, so
+  Shepherd wakes no third fixer. The gate reason routes the task to the planner to redesign or
+  split it; coord or the owner acts on that, and Shepherd files no planner task itself
+  (TP-2394). It is checked before `no-progress`, so a third FIX_FIRST always names this route.
 - `no-progress`: two FIX_FIRST reviews in a row ended with `Closer: no`, meaning the head is no
   closer to MERGE than the last one. A FIX_FIRST with `Closer: yes` or no Closer line, and any
-  other round, resets the count. It is checked before `fix-first-runaway`.
+  other round, resets the count. Under the cap of 3 it can only fire at the second FIX_FIRST.
 - `repair-budget`: `MAX_REPAIRS` fixer wakes of any kind at one run, counted across heads. This
   caps what one PR can spend on agents before a human looks at it.
 
@@ -333,6 +336,14 @@ Its sources:
 A source that fails becomes one Gaps line and the rest still render. An ask that names the
 same PR or run id as an earlier one is dropped, so a factory gate wins over a queue line
 about the same PR.
+
+"Decided for you" follows Needs you whenever agent-chat's ledger holds questions the decider
+answered in the window. Each line gives the question, the answer, the class, and, when agent-chat
+sends them, the confidence, the principle ids and how to reverse it. A decision still awaiting
+audit ends with its overrule, `agent-chat answer <id> "..."`. The section closes with the 7-day
+reversal rate per class. Decisions are notices, not asks: at most 5 are shown, and only as many as
+fit the 400 words left after the other sections. The rest count in the closing "and N more" line.
+An agent-chat too old to send the list leaves the section out.
 
 With `digest.push` set, each written slot is also pushed to an ntfy topic after the files are
 written: title `Digest <date> <HH>:00`, the first three headline lines as the message, and the full

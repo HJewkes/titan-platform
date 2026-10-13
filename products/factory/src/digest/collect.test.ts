@@ -67,6 +67,29 @@ describe("collectDigest", () => {
     expect(model.gaps).toEqual([]);
   });
 
+  it("reads the decider's answers with an overrule only on the one awaiting audit, and the reversal rate", async () => {
+    const entry = { questionId: "q-1", asker: "seat-a", question: "Rebase?", answer: "rebase", by: "decider", at: 0, class: "tech_design", basis: "precedent", precedent: "p", state: "awaiting audit", reversible: "force-push", confidence: 0.7, principleIds: ["p1"] };
+    const json = { ledger: { available: true, decided: [entry, { ...entry, questionId: "q-2", state: "overruled" }], reversals: [{ class: "tech_design", decided: 2, overruled: 1 }] } };
+    const exec: Exec = async () => ({ code: 0, stdout: JSON.stringify(json), stderr: "" });
+
+    const model = await collectDigest({ sources: fakeSources({ agentChat: (m) => readAgentChat(exec, "agent-chat", m) }), now: NOW, windowMinutes: 60, slot: SLOT });
+
+    expect(model.decided).toEqual([
+      { questionId: "q-1", question: "Rebase?", answer: "rebase", class: "tech_design", state: "awaiting audit", reversible: "force-push", confidence: 0.7, principleIds: ["p1"], overrule: 'agent-chat answer q-1 "..."' },
+      { questionId: "q-2", question: "Rebase?", answer: "rebase", class: "tech_design", state: "overruled", reversible: "force-push", confidence: 0.7, principleIds: ["p1"] },
+    ]);
+    expect(model.reversals).toEqual([{ class: "tech_design", decided: 2, overruled: 1 }]);
+  });
+
+  it("parses an older agent-chat with no decided list and adds no section or gap", async () => {
+    const exec: Exec = async () => ({ code: 0, stdout: JSON.stringify({ ledger: { available: true, escalations: [], reports: [] } }), stderr: "" });
+
+    const model = await collectDigest({ sources: fakeSources({ agentChat: (m) => readAgentChat(exec, "agent-chat", m) }), now: NOW, windowMinutes: 60, slot: SLOT });
+
+    expect(model.decided).toBeUndefined();
+    expect(model.gaps).toEqual([]);
+  });
+
   it("a pending gate becomes one ask with summary, evidence and resolve command", async () => {
     const gates = [gateFact({ summary: "Merge widgets#42, CI green", evidenceRef: "https://ci.example/run/1" })];
     const sources = fakeSources({ rows: async () => [watchRow({ pr: 42, runId: RUN })], gates: async () => gates });
