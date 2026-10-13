@@ -302,6 +302,9 @@ mountRoutes: (app) => mountStaticApp(app, { root: path.resolve(here, "dashboard"
 - `isProcessAlive(pid)`, `getProcessCommand(pid)` — liveness plus the identity check that
   catches a recycled pid.
 - `probeHealth(port, { host, timeoutMs })` — `GET /health`, null on any failure.
+- `systemdListenFd(env, pid)` — the socket systemd passed to this process (fd 3), or
+  `undefined` when it passed none or passed one to another pid. Throws unless `LISTEN_FDS`
+  is 1, and removes the `LISTEN_*` variables from `env` once it takes the fd.
 - `buildHttpApp(options)` — the hono app alone, testable through `app.request()`.
 - `createMcpServer`, `attachHandlers`, `listTools`, `invokeTool`, `runMcpStdio` — the MCP
   projection, usable over stdio without running a daemon.
@@ -313,6 +316,12 @@ stops a supervised restart from deleting its successor's pid file. Pass the pid 
 
 **`/mcp` is spliced in ahead of hono on the raw Node server**, because the SDK's
 `StreamableHTTPServerTransport` takes ownership of the response object.
+
+**A restart on an inherited socket refuses nothing.** Pass `listenFd: systemdListenFd()`
+under a systemd `.socket` unit and the daemon serves on that socket instead of binding
+`port`. Close releases only this process's copy. While no process listens, connections wait
+in the kernel backlog, and the next process holds them until its pid file exists, so none
+is refused and none sees 503 `starting`. Without the variables it binds `port` as before.
 
 **Close order is yours to get right.** If your product runs its own watcher or indexer,
 close it *before* the socket: a refresh may be mid-transaction. `startDaemon` closes what it
