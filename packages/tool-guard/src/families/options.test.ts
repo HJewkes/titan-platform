@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { WordToken } from "../shell/lexer.js";
 import { tokenize } from "../shell/lexer.js";
 import { mayBeOption } from "../shell/command-rebinding.js";
-import { CURL_LONG, resolveLong } from "./long-options.js";
+import { CURL_LONG, WGET_LONG, resolveLong } from "./long-options.js";
 import { readOptions, set } from "./options.js";
 
 const words = (src: string): WordToken[] => tokenize(src).filter((t): t is WordToken => t.type === "word");
@@ -23,6 +23,12 @@ describe("readOptions with a long-option resolver", () => {
 
   it("resolves the flag of an attached value", () => {
     expect(summary("--CONFIG=f u", curl)).toEqual({ opts: [["--config", "f"]], positionals: ["u"] });
+  });
+
+  it("leaves a hidden wget flag bare so the body option after it still reads", () => {
+    const options = readOptions(words("--hsts --post-data=x u"), WGET_LONG.values, resolveLong(WGET_LONG, false));
+    expect(options.opts.map((o) => [o.flag, o.value?.value ?? null])).toEqual([["--hsts", null], ["--post-data", "x"]]);
+    expect(options.positionals.map((w) => w.value)).toEqual(["u"]);
   });
 
   it("reads as before without a resolver", () => {
