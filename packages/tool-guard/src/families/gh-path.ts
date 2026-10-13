@@ -12,6 +12,8 @@ const VERB_GROUPS = set("pr", "release", "workflow", "gist");
 const VALUE_OPTS = set("-R", "--repo", "--hostname");
 /** Flags every gh level defines as taking no value, so they never take the next word. */
 const NO_VALUE_FLAGS = set("-h", "--help");
+/** Words cobra drops while finding the command, so they may fill no path slot. */
+const DROPPED = set("", "-");
 
 /** An unquoted dynamic word word-splits, so it can carry several path words; the test `shell/git.ts` uses. */
 const splits = (word: WordToken | undefined) => Boolean(word?.dynamic && (!word.quoted || word.unquotedExpansion));
@@ -58,7 +60,11 @@ function step(args: WordToken[], reading: Reading): Reading[] | null {
   const { at, path, afterDashes } = reading;
   const word = args[at];
   if (word === undefined || pathComplete(path)) return [];
-  if (afterDashes || !optionShaped(word)) return unknown(word) ? null : [{ at: at + 1, path: [...path, word], afterDashes }];
+  if (afterDashes || !optionShaped(word)) {
+    if (unknown(word)) return null;
+    const asPath = { at: at + 1, path: [...path, word], afterDashes };
+    return DROPPED.has(word.value) ? [asPath, { at: at + 1, path, afterDashes }] : [asPath];
+  }
   if (word.value === "--" && !unknown(word)) return [{ at: at + 1, path, afterDashes: true }];
   const widths = optionWidths(word, args[at + 1]);
   return widths && widths.map((width) => ({ at: at + width, path, afterDashes }));
@@ -68,16 +74,17 @@ function step(args: WordToken[], reading: Reading): Reading[] | null {
 const optionShaped = (word: WordToken) => word.value.length > 1 && word.value.startsWith("-");
 
 /**
- * The words an option may span, or null when that or what it leaves for the path is unknown. Cobra lets a flag
- * a level does not define as a no-value flag take the next word, and which level defines it depends on the path,
- * so any other flag without an attached value may span one word or two.
+ * The words an option may span, or null when that or what it leaves for the path is unknown. Cobra lets a `--x`
+ * or `-x` a level does not define as a no-value flag take the next word, which level defines it depends on the
+ * path, and pflag may still read a longer cluster's last letter as taking one, so any other option without an
+ * attached value may span one word or two.
  */
 function optionWidths(word: WordToken, next: WordToken | undefined): number[] | null {
   const valueAt = attachedValueAt(word.value);
   if (word.dynamic || isCaseUnsure(word) || splitsKnown(word)) return valueAt !== null && valueAt <= firstDynamic(word) && !splits(word) ? [1] : null;
   if (valueAt !== null || NO_VALUE_FLAGS.has(word.value)) return [1];
   if (splits(next) || splitsKnown(next)) return null;
-  return takesNext(word.value) ? [2] : [1, 2];
+  return VALUE_OPTS.has(word.value) ? [2] : [1, 2];
 }
 
 /** Where an option's own value starts inside its word (`--repo=x`, `-Rx`), null when it has none there. */
@@ -88,11 +95,6 @@ function attachedValueAt(v: string): number | null {
   }
   const letter = [...v.slice(1)].findIndex((c) => VALUE_OPTS.has(`-${c}`));
   return letter >= 0 && letter + 2 < v.length ? letter + 2 : null;
-}
-
-function takesNext(v: string): boolean {
-  if (v.startsWith("--")) return VALUE_OPTS.has(v);
-  return [...v.slice(1)].some((c) => VALUE_OPTS.has(`-${c}`));
 }
 
 /** The first index of `value` whose text is only known at run time; 0 when that cannot be placed. */

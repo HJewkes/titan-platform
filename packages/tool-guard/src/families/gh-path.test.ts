@@ -38,6 +38,10 @@ describe("a gh command path only known at run time", () => {
     ["a verb after a short flag the group level reads as taking a value", "gh pr -b x $V 1"],
     ["a group after a flag the root reads as taking a value", "gh --body x $G merge 1"],
     ["a verb after a flag whose value would be unknown", 'gh pr --body "$B" merge 1'],
+    ["a group after a cluster ending in R, which cobra reads as one word", 'gh -bR "$V" merge 1'],
+    ["a verb after a cluster ending in R", 'gh pr -bR "$V" 1'],
+    ["a verb after an empty word, which cobra drops", "gh pr '' \"$V\""],
+    ["a group after a lone dash, which cobra drops", 'gh - "$X" create f'],
   ])("is unknown for %s: %s", (_, line) => {
     expect(ghPathUnknown(ghArgs(line))).toBe(true);
   });
@@ -63,6 +67,14 @@ describe("a gh command path known as written", () => {
     ["a help flag before a variable past the verb", "gh pr -h view $N"],
     ["a flag either reading leaves a known path after", "gh pr --body x view 1"],
     ["a no-value flag with a known path either way", "gh pr --web view 1"],
+    ["an attached long value", "gh pr --body=x view 1"],
+    ["a short cluster with a known path either way", "gh pr -bx view 1"],
+    ["a repo option before the group", "gh -R o/r pr view 1"],
+    ["a list", "gh pr list"],
+    ["checks on a variable", "gh pr checks $N"],
+    ["a run list", "gh run list -L 5"],
+    ["an empty word with a known path either way", "gh pr '' view 1"],
+    ["sixty flags, whose readings are memoised", `gh ${"-a ".repeat(60)}pr view 1`],
   ])("is known for %s: %s", (_, line) => {
     expect(ghPathUnknown(ghArgs(line))).toBe(false);
   });
