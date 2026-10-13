@@ -337,6 +337,14 @@ A source that fails becomes one Gaps line and the rest still render. An ask that
 same PR or run id as an earlier one is dropped, so a factory gate wins over a queue line
 about the same PR.
 
+"Decided for you" follows Needs you whenever agent-chat's ledger holds questions the decider
+answered in the window. Each line gives the question, the answer, the class, and, when agent-chat
+sends them, the confidence, the principle ids and how to reverse it. A decision still awaiting
+audit ends with its overrule, `agent-chat answer <id> "..."`. The section closes with the 7-day
+reversal rate per class. Decisions are notices, not asks: at most 5 are shown, and only as many as
+fit the 400 words left after the other sections. The rest count in the closing "and N more" line.
+An agent-chat too old to send the list leaves the section out.
+
 With `digest.push` set, each written slot is also pushed to an ntfy topic after the files are
 written: title `Digest <date> <HH>:00`, the first three headline lines as the message, and the full
 markdown attached (`PUT` with a `Filename:` header). If the server refuses the attachment, the push
