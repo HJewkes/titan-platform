@@ -66,6 +66,24 @@ describe("ifsFields keeps the field a quoted part makes, even an empty one", () 
   });
 });
 
+describe("ifsFields refuses a non-ASCII IFS, which bash splits by bytes", () => {
+  it.each<[string, string, string]>([
+    ["a blank plus multibyte characters", " ã©", "gh é pr é merge é 1"],
+    ["multibyte characters alone (C locale)", "ã©", "ghéprémergeé1"],
+  ])("returns null for %s", (_how, ifs, value) => {
+    expect(ifsFields([exp(value)], ifs)).toBeNull();
+  });
+
+  it("still splits the same command under an ASCII IFS", () => {
+    expect(ifsFields([exp("gh,pr,merge,1")], ",")).toEqual(["gh", "pr", "merge", "1"]);
+  });
+
+  it("reports a possible split for any text, so a caller does not skip it", () => {
+    expect(hasIfsChar("ghéprémergeé1", "ã©")).toBe(true);
+    expect(hasIfsChar("ghéprémergeé1", ",")).toBe(false);
+  });
+});
+
 describe("ifsFields under the default IFS", () => {
   it.each<[string, WordPart[], string[]]>([
     ["drops leading and trailing blanks", [exp("  push   origin  ")], ["push", "origin"]],

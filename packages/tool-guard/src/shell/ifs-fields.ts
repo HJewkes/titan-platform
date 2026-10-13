@@ -19,9 +19,16 @@ const IFS_BLANKS = " \t\n\v\f\r";
 
 const inIfs = (c: string, ifs: string): boolean => c !== "" && ifs.includes(c);
 
-/** True when some character of `text` is in `ifs`, so splitting `text` could change it. */
+// Bash 5.3 matches some IFS characters byte by byte and others by locale character, so a multibyte
+// IFS can split inside another character (IFS=" ã©" splits "é"); such an IFS is not modelled.
+const isNonAscii = (ifs: string): boolean => [...ifs].some((c) => (c.codePointAt(0) ?? 0) > 0x7f);
+
+/**
+ * True when some character of `text` is in `ifs`, so splitting `text` could change it. Always true
+ * for a non-ASCII `ifs`, so a caller never skips the split that `ifsFields` refuses to model.
+ */
 export function hasIfsChar(text: string, ifs: string): boolean {
-  return [...text].some((c) => inIfs(c, ifs));
+  return isNonAscii(ifs) || [...text].some((c) => inIfs(c, ifs));
 }
 
 /**
@@ -30,8 +37,12 @@ export function hasIfsChar(text: string, ifs: string): boolean {
  * non-whitespace IFS character with the IFS whitespace around it is one delimiter that always ends a
  * field, even an empty one. A delimiter at the end adds no empty field. A word that comes to nothing
  * yields no field unless a quoted part, even an empty one, makes one.
+ *
+ * Null when `ifs` has a non-ASCII character: the split is unmodelled, and the caller must treat that
+ * IFS as unknown and leave the word raw, which fails closed.
  */
-export function ifsFields(parts: WordPart[], ifs: string): string[] {
+export function ifsFields(parts: WordPart[], ifs: string): string[] | null {
+  if (isNonAscii(ifs)) return null;
   const fields: string[] = [];
   let field = "";
   let started = false;
