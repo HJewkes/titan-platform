@@ -36,6 +36,15 @@ describe("one fixture per bash.merge spelling", () => {
     ["bash.merge.git-push-protected", 'git push origin "$X":main', { branch: "main" }],
     ["bash.merge.git-push-protected", 'git push origin "${B}:main"', { branch: "main" }],
     ["bash.merge.git-push-protected", 'git push origin +"$X":main', { branch: "main" }],
+    ["bash.merge.git-push-protected", "noglob git push origin HEAD:main", { branch: "main" }],
+    ["bash.merge.git-push-protected", "nocorrect git push origin HEAD:main", { branch: "main" }],
+    ["bash.merge.git-push-protected", "nocorrect noglob git push origin HEAD:main", { branch: "main" }],
+    ["bash.merge.git-push-protected", "- git push origin HEAD:main", { branch: "main" }],
+    ["bash.merge.git-push-protected", "exec noglob git push origin HEAD:main", { branch: "main" }],
+    ["bash.merge.git-push-protected", "noglob exec git push origin HEAD:main", { branch: "main" }],
+    ["bash.merge.git-push-protected", "exec - git push origin HEAD:main", { branch: "main" }],
+    ["bash.merge.git-push-protected", "eval 'noglob git push origin HEAD:main'", { branch: "main" }],
+    ["bash.merge.gh-pr-merge", "noglob gh pr merge 5", { pr: "5" }],
     ["bash.merge.git-push-all", "git push --all origin", {}],
     ["bash.merge.git-push-all", "git push --mirror origin", {}],
     ["bash.merge.git-push-all", "git push origin 'refs/heads/*:refs/heads/*'", {}],
@@ -208,6 +217,19 @@ describe("a push destination known only at run time counts as an unknown protect
 
   it("still reads --all before an unknown destination", () => {
     expect(spellings(bash("git push --all $R"))).toContain("bash.merge.git-push-all");
+  });
+});
+
+describe("a declarer behind a zsh precommand modifier runs in this shell, as one behind command does", () => {
+  it.each([
+    ["noglob", "R=x; M readonly R=HEAD:main; git push origin $R"],
+    ["nocorrect", "R=x; M readonly R=HEAD:main; git push origin $R"],
+    ["-", "R=x; M readonly R=HEAD:main; git push origin $R"],
+    ["noglob", "M export R=HEAD:main; git push origin $R"],
+    ["nocorrect", "M export R=HEAD:main; git push origin $R"],
+    ["-", "M export R=HEAD:main; git push origin $R"],
+  ])("%s in %s", (modifier, template) => {
+    expect(bash(template.replace("M", modifier))).toEqual(bash(template.replace("M", "command")));
   });
 });
 
