@@ -61,6 +61,16 @@ describe("a command that rebinds a command name", () => {
     ["a name spliced from a variable", "export ${n}=x"],
     ["a bash indirect expansion", ": ${!n=/x}"],
     ["a zsh (P) expansion", ": ${(P)n::=/x}"],
+    ["read after an attached prompt", "read -pinput 'BASH_CMDS[y]'"],
+    ["read after a cluster ending in a value option", "read -rpt 'BASH_CMDS[y]'"],
+    ["bash read -a", "read -a BASH_CMDS"],
+    ["set -A after -o and its value", "set -o pipefail -A commands y /x"],
+    ["set with -A attached", "set -Acommands y /x"],
+    ["set +A", "set +A commands y /x"],
+    ["set behind a dynamic option word", "set -$o commands y /x"],
+    ["printf behind a dynamic word with room for -v", 'printf "$f" "commands[y]" /x'],
+    ["printf behind an unquoted dynamic word", "printf $args"],
+    ["declare -f with a dynamic word before a name", 'declare -f "$o" r=BASH_CMDS'],
   ])("is caught: %s", (_how, src) => {
     expect(rebinds(src)).toBe(true);
   });
@@ -90,6 +100,9 @@ describe("a command that rebinds a command name", () => {
     ["export -n, which unexports", "export -n FOO"],
     ["an indirect read", "echo ${!n}"],
     ["a hash lookup after --", "hash -- -p"],
+    ["set -o and its value", "set -o pipefail"],
+    ["a dynamic printf format", 'printf "$fmt" "$x"'],
+    ["declare -f printing a function", 'declare -f "$fn"'],
   ])("is left alone: %s", (_how, src) => {
     expect(rebinds(src)).toBe(false);
   });
