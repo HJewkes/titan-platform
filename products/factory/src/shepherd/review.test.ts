@@ -236,7 +236,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(reader, input, { ...clock, pollMs: 100, timeoutMs: 250 }, signal);
 
-    expect(result).toEqual({ kind: "none" });
+    expect(result).toEqual({ kind: "none", ended: "deadline" });
     expect(reads).toBe(4);
     expect(clock.now()).toBe(300);
   });
@@ -247,14 +247,14 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(reader, input, { ...clock, pollMs: 100, timeoutMs: 250 }, signal);
 
-    expect(result).toEqual({ kind: "none", reason: "wait" });
+    expect(result).toEqual({ kind: "none", reason: "wait", ended: "deadline" });
   });
 
   it("treats a failing read as nothing yet", async () => {
     const clock = clockAt(0);
     const reader: ReviewerReader = { read: async () => Promise.reject(new Error("io")) };
 
-    await expect(awaitVerdict(reader, input, { ...clock, pollMs: 100, timeoutMs: 150 }, signal)).resolves.toEqual({ kind: "none" });
+    await expect(awaitVerdict(reader, input, { ...clock, pollMs: 100, timeoutMs: 150 }, signal)).resolves.toEqual({ kind: "none", ended: "deadline" });
   });
 
   const timing = (clock: ReturnType<typeof clockAt>) => ({ ...clock, pollMs: 100, timeoutMs: 10_000, exitGraceMs: 300, detachGraceMs: 1_000 });
@@ -271,7 +271,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, (now) => (now < 500 ? "live" : "exited")));
 
-    expect(result).toEqual({ kind: "none" });
+    expect(result).toEqual({ kind: "none", ended: "reviewer-gone" });
     expect(clock.now()).toBe(800);
   });
 
@@ -280,7 +280,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, (now) => (now < 500 ? "live" : "absent")));
 
-    expect(result).toEqual({ kind: "none" });
+    expect(result).toEqual({ kind: "none", ended: "reviewer-gone" });
   });
 
   it("takes a verdict that lands within the grace after the exit", async () => {
@@ -307,7 +307,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, (now) => (now < 500 ? "live" : "detached")));
 
-    expect(result).toEqual({ kind: "none" });
+    expect(result).toEqual({ kind: "none", ended: "reviewer-gone" });
     expect(clock.now()).toBe(1_500);
   });
 
@@ -316,7 +316,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(silentReader, input, { ...timing(clock), timeoutMs: 2_000 }, signal, rosterBy(clock, () => "down"));
 
-    expect(result).toEqual({ kind: "none" });
+    expect(result).toEqual({ kind: "none", ended: "deadline" });
     expect(clock.now()).toBeGreaterThanOrEqual(2_000);
   });
 
@@ -326,7 +326,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, presenceAt));
 
-    expect(result).toEqual({ kind: "none" });
+    expect(result).toEqual({ kind: "none", ended: "reviewer-gone" });
     expect(clock.now()).toBe(1_200);
   });
 
@@ -1082,6 +1082,16 @@ describe("sh-review", () => {
     expect(logged).toContain(`shepherd: the reviewer dispatch was refused (${kind}): ${refusal.message}`);
   });
 
+  it("answers a timed-out spawn nobody took up as not started once the session-start look ends, without waiting longer", async () => {
+    const dispatch = fakeDispatch();
+    dispatch.spawn = async () => Promise.reject(new ReviewerAskTimedOut("agent-chat timed out"));
+
+    const { result, clock } = await shReview(dispatch);
+
+    expect(result).toEqual({ kind: "none", notStarted: true, reason: "the reviewer dispatch was refused: ReviewerAskTimedOut (no reviewer seen after 0 min)" });
+    expect(clock.now - START).toBeLessThanOrEqual(110);
+  });
+
   it("answers none with the refusal's class, not a failed step, when the refusal's message getter throws", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const refusal = new DispatchError("x");
@@ -1588,6 +1598,33 @@ describe("reviewPhase", () => {
     expect(stepIds).toContain(`sh-no-reviewer-hold:${H1}`);
   });
 
+  describe("a reviewer ask that timed out", () => {
+    it("asks again on the next round after the session-start look, not after the no-reviewer wait", async () => {
+      const dispatch = fakeDispatch();
+      const spawn = dispatch.spawn;
+      dispatch.spawn = async (...args) => (dispatch.spawns.length === 0 ? (dispatch.spawns.push({ name: args[0], brief: args[1], target: args[2] }), Promise.reject(new ReviewerAskTimedOut("agent-chat timed out"))) : spawn(...args));
+
+      const { verdicts, stepIds, steps } = await review({ dispatch, policy: AUTO, requests: [{ headSha: H1 }, { headSha: H1 }] });
+
+      expect(steps.find((each) => each.stepId === `sh-review:${H1}`)?.result).toEqual({ kind: "none", notStarted: true, reason: "the reviewer dispatch was refused: ReviewerAskTimedOut (no reviewer seen after 5 min)" });
+      expect(stepIds.filter((id) => id.startsWith("sh-no-reviewer"))).toEqual([]);
+      expect(routeFor("open", "clean", "not-started")).toBe("retry-review");
+      expect(dispatch.spawns).toHaveLength(2);
+      expect(verdicts).toMatchObject([{ kind: "none", cause: "not-started" }, { kind: "MERGE", headSha: H1 }]);
+    });
+
+    it("adopts the reviewer a timed-out spawn started instead of asking again", async () => {
+      const dispatch = fakeDispatch();
+      const spawn = dispatch.spawn;
+      dispatch.spawn = async (...args) => (await spawn(...args), Promise.reject(new ReviewerAskTimedOut("agent-chat timed out")));
+
+      const { verdicts } = await review({ dispatch, policy: AUTO });
+
+      expect(dispatch.spawns).toHaveLength(1);
+      expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
+    });
+  });
+
   it("returns none after the intent step alone when the roster read is refused", async () => {
     const dispatch = fakeDispatch();
     dispatch.roster = async () => Promise.reject(new Error("the roster is not readable"));
@@ -1968,6 +2005,24 @@ describe("reviewPhase", () => {
       expect(dispatch.resumes).toEqual([{ name: "rv-octo-demo-1", brief: expect.stringContaining("it had no Verdict line") }]);
       expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
       expect(resultOf(`sh-merge-evidence:${H1}`)).toMatchObject({ merge: { resolver: identity, dispatchedReviewer: identity } });
+    });
+
+    it("resumes the same session of a reviewer that exited silent, naming the Verdict, PR and Head lines, and spawns nobody fresh", async () => {
+      const dispatch = fakeDispatch();
+      const silentUntilResumed: Scene["read"] = (input, fake, now) => {
+        const who = fake.agents.find((candidate) => candidate.agentId === input.reviewerAgentId);
+        if (!who) return [];
+        if (fake.resumes.length === 0) return (who.presence = "exited"), [];
+        return [said(who, verdictAt(input.head), now + 1)];
+      };
+
+      const { verdicts, stepIds } = await review({ dispatch, read: silentUntilResumed, policy: AUTO });
+
+      expect(dispatch.spawns.map((spawned) => spawned.name)).toEqual(["rv-octo-demo-1"]);
+      expect(dispatch.resumes.map((resumed) => resumed.name)).toEqual(["rv-octo-demo-1"]);
+      expect(dispatch.resumes[0]?.brief).toContain(["Verdict: <MERGE or FIX_FIRST>", `PR: ${REPO}#1`, `Head: ${H1}`].join("\n"));
+      expect(corrections(stepIds)).toEqual([`sh-correct-verdict:${H1}`]);
+      expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
     });
 
     it.each([

@@ -8,6 +8,17 @@ export const DEFAULT_EXIT_GRACE_MS = 60_000;
 export const DEFAULT_DETACH_GRACE_MS = 10 * 60_000;
 export const HEAD = /^[0-9a-f]{40}$/;
 
+/** Why a wait with no verdict ended: the clock ran out, or the roster showed the reviewer gone for its grace. */
+type AwaitEnd = "deadline" | "reviewer-gone";
+type EndedNone = Extract<AwaitVerdictResult, { kind: "none" }> & { ended: AwaitEnd };
+
+/** Stamps a `none` with how its wait ended, so a reader can tell a slow reviewer from one that left; a verdict or a limit notice already says why. */
+function withEnd(result: AwaitVerdictResult, end: AwaitEnd): AwaitVerdictResult {
+  if (result.kind !== "none" || isUsageLimit(result)) return result;
+  const stamped: EndedNone = { ...result, ended: end };
+  return stamped;
+}
+
 export interface AwaitVerdictTiming {
   now: () => number;
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
@@ -99,10 +110,20 @@ export async function awaitVerdict(
     // A limit notice is the reviewer's last word, so waiting for its exit adds nothing.
     if (result.kind === "verdict" || isUsageLimit(result)) return result;
     // A verdict can land between the read and the decision that the reviewer is gone, so that decision reads once more.
-    if (await silent(input)) return poll();
-    if (clock.expired()) return last;
+    if (await silent(input)) return withEnd(await poll(), "reviewer-gone");
+    if (clock.expired()) return withEnd(last, "deadline");
     await clock.sleep(timing.pollMs, signal);
   }
+}
+
+/**
+ * A `none` read after the reviewer left carries when it was seen gone, so a correction can tell the reviewer's own writes from
+ * the ones its resume makes; the stamp is recorded with the step, so a replay reads the same time.
+ */
+function goneAt(result: AwaitVerdictResult, gone: boolean, now: number): AwaitVerdictResult {
+  if (!gone || result.kind !== "none" || isUsageLimit(result)) return result;
+  const stamped: Extract<AwaitVerdictResult, { kind: "none" }> & { goneAt: number } = { ...result, goneAt: now };
+  return stamped;
 }
 
 /**
@@ -121,7 +142,7 @@ export async function awaitLateVerdict(
   for (;;) {
     const gone = await exited().catch(() => false);
     const result = acceptVerdict(input, await reader.read(input).catch(() => []));
-    if (result.kind === "verdict" || gone || clock.expired()) return result;
+    if (result.kind === "verdict" || gone || clock.expired()) return goneAt(result, gone, timing.now());
     await clock.sleep(timing.pollMs, signal);
   }
 }

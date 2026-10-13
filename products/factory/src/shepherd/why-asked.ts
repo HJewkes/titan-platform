@@ -2,6 +2,7 @@
  * Why a pending approve-merge reaches the owner, in one plain sentence, labelled deliberate (a stop the owner chose) or
  * accidental (a gate a fix would remove). The owner PR section quotes it under "Why it reaches you" (TP-1687 plan 4.3).
  */
+import { withheldInReason } from "./grant-withheld.js";
 import type { MergeGuardRow } from "./merge-facts.js";
 import type { OwnerGateReason } from "./policy.js";
 import { transientOnlyConditions } from "./resync.js";
@@ -75,6 +76,13 @@ const CONDITION_WORDS: Readonly<Record<string, string>> = {
   "seat-grants-merge-on-green-approve": "the seat lacks the merge-on-green-approve grant",
 };
 
+/** The grant condition names the half that failed when the gate reason recorded it (TP-2658). */
+function conditionWords(condition: string, reason: string): string {
+  const withheld = condition === "seat-grants-merge-on-green-approve" ? withheldInReason(reason) : undefined;
+  if (withheld !== undefined) return `the merge-on-green-approve grant was withheld: ${withheld}`;
+  return CONDITION_WORDS[condition] ?? `\`${condition}\` is unmet`;
+}
+
 function seatWhy(rowId: string, ownerGateReason: OwnerGateReason | undefined): WhyAsked {
   const ruleId = `shepherd-seat/${rowId}`;
   if (ownerGateReason === undefined) return { gateClass: "accidental", ruleId, sentence: `Seat ${rowId} policy is owner-gate with no recorded reason: the seat lacks the merge grant for this repo, or the run was registered before a reason was required (accidental: no reason recorded).` };
@@ -113,7 +121,7 @@ function authorityWhy(rowId: string, reason: string, mergeableState: string | un
   if (transientOnlyConditions(reason).join() === "merge-tree-clean") return mergeTreeWhy(rowId, mergeableState);
   const unmet = closestUnmet(reason);
   if (unmet.length === 0) return { gateClass: "unclassified", ruleId: rowId, sentence: `Authority did not allow an automated merge: ${reason}.` };
-  const words = unmet.map((c) => CONDITION_WORDS[c] ?? `\`${c}\` is unmet`).join("; ");
+  const words = unmet.map((c) => conditionWords(c, reason)).join("; ");
   return { gateClass: "deliberate", ruleId: rowId, sentence: `By design, authority holds the merge for you because ${words} (deliberate).` };
 }
 
