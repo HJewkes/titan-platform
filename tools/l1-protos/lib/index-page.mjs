@@ -40,6 +40,6 @@ ${(clip?.stages ?? []).map((s) => stageRow(s, cap)).join("")}</table>
 <h2>Level transition (expand, then zoom)</h2>
 <p><a href="motion/transition.html">interactive player (play, loop, scrubber)</a></p>
 <p>Mental map: ${esc(JSON.stringify(results.find((r) => r.name === "motion")?.mental ?? {}))}</p>
-<video src="motion/transition.mp4" controls loop muted></video>
+<video src="motion/transition.mp4" controls autoplay loop muted playsinline></video>
 </body></html>`;
 }

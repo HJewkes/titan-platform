@@ -6,7 +6,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { loadRepo } from "./lib/graph.mjs";
 import { buildModel } from "./lib/model.mjs";
-import { CAP, areaOverview, expandInPlace, readingOrder } from "./lib/designs.mjs";
+import { CAP, areaOverview, expandFitted, readingOrder } from "./lib/designs.mjs";
 import { tierBands } from "./lib/bands.mjs";
 import { areaFocus, packageFocus } from "./lib/focus-views.mjs";
 import { frameOf, mentalMap, staticData, transitionData } from "./lib/frames.mjs";
@@ -31,7 +31,7 @@ async function scenes(model) {
   // L1_MODEL_ORDER=0 lays each view out cold, for comparing how far a transition moves boxes.
   const seeded = process.env.L1_MODEL_ORDER !== "0";
   const overview = await areaOverview(model);
-  const expanded = await expandInPlace(model, t.open, 4, seeded ? readingOrder(overview) : null);
+  const expanded = await expandFitted(model, t.open, 4, seeded ? readingOrder(overview) : null);
   return {
     t,
     list: [
@@ -60,7 +60,11 @@ async function main() {
   try {
     for (const f of frames) {
       const page = writePage(path.join(out, f.name), "frame.html", f.title, staticData(f));
-      results.push({ name: f.name, title: f.title, fit: f.fit, ...f.checks, ...(await renderStatic(browser, page, path.join(out, f.name, "frame.png"))) });
+      results.push({ name: f.name, title: f.title, fit: f.fit, k: f.k, ...f.checks, ...(await renderStatic(browser, page, path.join(out, f.name, "frame.png"))) });
+    }
+    if (process.env.L1_CLIP === "0") {
+      writeFileSync(path.join(out, "metrics.json"), JSON.stringify({ cap: CAP, results }, null, 1));
+      return;
     }
     const clip = transitionData(frames[1], frames[2], frames[3], t.focusArea.id, t.focusArea.name);
     const clipPage = writePage(path.join(out, "motion"), "transition.html", "level transition", clip);

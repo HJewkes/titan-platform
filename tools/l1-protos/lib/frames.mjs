@@ -7,7 +7,7 @@ export function frameOf(scene) {
   const t = fitTransform(scene.width, scene.height);
   const elements = toScreen(scene.elements, t);
   const checks = { pillsDropped: scene.pillsDropped ?? 0, labelEdgeHits: labelEdgeHits(elements) };
-  return { name: scene.name, title: scene.title, subtitle: scene.subtitle, fit: +t.s.toFixed(3), checks, elements };
+  return { name: scene.name, title: scene.title, subtitle: scene.subtitle, fit: +t.s.toFixed(3), k: scene.k ?? null, checks, elements };
 }
 
 export function staticData(frame) {

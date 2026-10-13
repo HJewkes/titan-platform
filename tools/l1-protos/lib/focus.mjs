@@ -4,7 +4,7 @@
 import { layout } from "./elk.mjs";
 import { shortName } from "./model.mjs";
 import { CAP, COMPACT } from "./designs.mjs";
-import { CONTAINER_TOP, PAD, boxSize, edgeElement, element, strokeFor } from "./scene.mjs";
+import { CONTAINER_TOP, LINE, PAD, boxSize, edgeElement, element, strokeFor } from "./scene.mjs";
 import { placePills } from "./labels.mjs";
 
 const BAND_PAD = 18;
@@ -13,7 +13,7 @@ const LAYER = { top: "FIRST", bot: "LAST" };
 function containerOptions(lines) {
   const { w } = boxSize(lines);
   return {
-    "elk.padding": `[top=${CONTAINER_TOP + (lines.length - 1) * 30},left=${PAD},bottom=${PAD},right=${PAD}]`,
+    "elk.padding": `[top=${CONTAINER_TOP + (lines.length - 1) * LINE},left=${PAD},bottom=${PAD},right=${PAD}]`,
     "elk.nodeSize.constraints": "MINIMUM_SIZE",
     "elk.nodeSize.minimum": `(${w}, ${CONTAINER_TOP + 40})`,
   };

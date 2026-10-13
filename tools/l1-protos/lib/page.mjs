@@ -33,11 +33,20 @@ function ruler() {
   return parts.join("");
 }
 
-// A 24 px label next to a bar exactly 24 px tall: a reader can compare any map label against it.
+// Bars exactly 24, 32 and 40 px tall, each beside sample text at that size, bottoms aligned: a
+// reader can compare any map label against the size it is being judged at.
+const REFERENCE_SIZES = [24, 32, 40];
+
 function scaleReference() {
-  return `<rect x="1560" y="20" width="10" height="24" fill="#0a7d3c"/>
-<text class="ref" x="1578" y="39" font-size="24">24px reference</text>
-<text class="ref" x="1896" y="76" font-size="24" text-anchor="end" id="stage"></text>`;
+  let x = 1330;
+  const parts = REFERENCE_SIZES.map((px) => {
+    const part = `<rect x="${x}" y="${64 - px}" width="8" height="${px}" fill="#0a7d3c"/>
+<text class="ref" x="${x + 14}" y="${64 - Math.round(px * 0.2)}" font-size="${px}">${px}px</text>`;
+    x += 14 + Math.ceil(px * 0.6 * 4) + 24;
+    return part;
+  });
+  return `${parts.join("\n")}
+<text class="ref" x="1896" y="100" font-size="24" text-anchor="end" id="stage"></text>`;
 }
 
 function frameSvg() {

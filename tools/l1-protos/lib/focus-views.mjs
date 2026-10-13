@@ -48,7 +48,7 @@ export async function areaFocus(model, areaId, orderHint = null) {
   let k = area.members.length <= room + 1 ? area.members.length : room;
   for (;;) {
     const scene = await areaFocusAt(model, area, k, orderHint);
-    if (fitTransform(scene.width, scene.height).s >= 1 || k <= 3) return scene;
+    if (fitTransform(scene.width, scene.height).s >= 1 || k <= 1) return scene;
     k -= k === area.members.length ? 2 : 1;
   }
 }
@@ -82,7 +82,7 @@ async function areaFocusAt(model, area, k, orderHint) {
   if (area.members.length > k) leafNode(nodes, spec, `more:${area.id}`, "tile", [`+${area.members.length - k} more`], area.id);
   const scene = await focusScene(nodes, spec, edges, proxies, orderHint ? MODEL_ORDER : {});
   const subtitle = "other areas as proxies · top band: what imports the focus · bottom band: what it imports";
-  return { ...scene, name: "d4-area-focus", title: `D4 · area focus (${area.name}) with border bands`, subtitle };
+  return { ...scene, k, name: "d4-area-focus", title: `D4 · area focus (${area.name}) with border bands`, subtitle };
 }
 
 const FILES_MAX = 10;
@@ -135,7 +135,7 @@ export async function packageFocus(model, pkgId) {
   let k = Math.min(FILES_MAX, CAP.boxes - 2 - probe.proxies.length);
   for (;;) {
     const scene = await packageFocusAt(model, pkgId, k);
-    if (fitTransform(scene.width, scene.height).s >= 1 || k <= 3) return scene;
+    if (fitTransform(scene.width, scene.height).s >= 1 || k <= 1) return scene;
     k -= 1;
   }
 }
@@ -158,5 +158,5 @@ async function packageFocusAt(model, pkgId, k) {
   const scene = await focusScene(nodes, spec, edges, proxies);
   const drawn = edges.reduce((n, e) => n + e.pairs, 0);
   const subtitle = `files ranked by fan-in, barrels excluded · ${drawn} of ${total} file edges drawn as ${edges.length} lines`;
-  return { ...scene, name: "d5-package-focus", title: `D5 · package focus (${shortName(pkgId)}): top ${shownFiles.length} files`, subtitle };
+  return { ...scene, k, name: "d5-package-focus", title: `D5 · package focus (${shortName(pkgId)}): top ${shownFiles.length} files`, subtitle };
 }

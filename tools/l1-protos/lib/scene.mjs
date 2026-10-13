@@ -1,16 +1,19 @@
 // Scene model shared by every design: boxes and edges in layout units where one unit is one
 // screen px at scale 1, so a 24-unit label is a 24 px label when the scene fits unscaled.
-export const FONT = 24;
+// The label floor in screen px is a build parameter (L1_LABEL_PX, default 24). Box padding, line
+// pitch and glyph width scale with it, so a larger floor is the same layout at a larger type size.
+export const FONT = Number(process.env.L1_LABEL_PX ?? 24);
+const K = FONT / 24;
 export const CHAR = 0.6 * FONT;
-export const LINE = 30;
-export const PAD = 14;
+export const LINE = 30 * K;
+export const PAD = 14 * K;
 export const CONTAINER_TOP = PAD * 2 + LINE;
 export const FRAME = { width: 1920, height: 1080, content: { x: 24, y: 96, width: 1872, height: 948 } };
 
 /** Size of a box holding `lines` of label text plus padding. */
 export function boxSize(lines, minWidth = 0) {
   const longest = Math.max(...lines.map((l) => l.length));
-  return { w: Math.max(minWidth, Math.ceil(longest * CHAR + 2 * PAD)), h: Math.ceil(lines.length * LINE + 2 * PAD - 6) };
+  return { w: Math.max(minWidth, Math.ceil(longest * CHAR + 2 * PAD)), h: Math.ceil(lines.length * LINE + 2 * PAD - 6 * K) };
 }
 
 /** A scene element from an ELK box: kind is box | container | tile | chip | band. */

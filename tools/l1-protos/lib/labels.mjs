@@ -1,5 +1,5 @@
 // Edge count pills placed where they collide with nothing, and the label/edge crossing count.
-import { CHAR, LINE, PAD, boxSize, element } from "./scene.mjs";
+import { CHAR, FONT, LINE, PAD, boxSize, element } from "./scene.mjs";
 
 const LEAF_KINDS = new Set(["box", "tile", "chip"]);
 
@@ -9,8 +9,8 @@ function hit(a, b, gap = 2) {
 
 /** Rectangles of every text line of a box-like element. */
 export function textRects(e) {
-  const s = (e.fs ?? 24) / 24;
-  return e.lines.map((line, i) => ({ x: e.x + PAD * s, y: e.y + PAD * s + i * LINE * s, w: line.length * CHAR * s, h: LINE * s - 4 * s }));
+  const s = (e.fs ?? FONT) / FONT;
+  return e.lines.map((line, i) => ({ x: e.x + PAD * s, y: e.y + PAD * s + i * LINE * s, w: line.length * CHAR * s, h: LINE * s - 4 * s * (FONT / 24) }));
 }
 
 function candidates(points, size) {

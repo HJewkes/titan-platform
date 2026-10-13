@@ -2,10 +2,10 @@
 // a scene in layout units: { name, title, subtitle, elements, width, height, notes }.
 import { layout } from "./elk.mjs";
 import { aggregate, shortName } from "./model.mjs";
-import { CONTAINER_TOP, PAD, boxSize, edgeElement, element, strokeFor, withinBudget } from "./scene.mjs";
+import { CONTAINER_TOP, FONT, PAD, boxSize, edgeElement, element, fitTransform, strokeFor, withinBudget } from "./scene.mjs";
 import { placePills } from "./labels.mjs";
 
-export const CAP = { boxes: 20, edges: 25, labelPx: 24, topGroups: 7 };
+export const CAP = { boxes: 20, edges: 25, labelPx: FONT, topGroups: 7 };
 // Tighter layer channels for the nested views, which otherwise run taller than 1080.
 export const COMPACT = { "elk.layered.spacing.nodeNodeBetweenLayers": "40", "elk.spacing.nodeNode": "28", "elk.layered.spacing.edgeNodeBetweenLayers": "14" };
 
@@ -131,7 +131,26 @@ export async function expandInPlace(model, openIds, k = 5, orderHint = null) {
   const scene = sceneFrom(laid, spec, edges, (e) => (expandRank(e) === 0 && e.pairs > 1 ? String(e.pairs) : null));
   const names = openIds.map((id) => model.areas.find((a) => a.id === id).name).join(" + ");
   const subtitle = `top ${k} per open area by fan-in · outside edges end on the area border · ${dropped.length}/${all.length} edges cut`;
-  return { ...scene, name: "d3-expand-in-place", title: `D3 · expand in place (${names})`, subtitle };
+  return { ...scene, k, name: "d3-expand-in-place", title: `D3 · expand in place (${names})`, subtitle };
+}
+
+/**
+ * D3 at the largest per-area k (≤ `kMax`) whose layout fits the frame unscaled at the label floor.
+ * When even k = 1 overflows with every area in `openIds` open, the last one folds back to a card;
+ * with one area left, k = 0 (its packages all behind "+N more") is the last resort.
+ */
+export async function expandFitted(model, openIds, kMax, orderHint = null) {
+  const tries = [];
+  for (let open = openIds.length; open >= 1; open--) {
+    for (let k = kMax; k >= 1; k--) tries.push([open, k]);
+  }
+  tries.push([1, 0]);
+  let scene;
+  for (const [open, k] of tries) {
+    scene = await expandInPlace(model, openIds.slice(0, open), k, orderHint);
+    if (fitTransform(scene.width, scene.height).s >= 1) break;
+  }
+  return scene;
 }
 
 export { addLeaf, leaf, plural };
