@@ -30,6 +30,12 @@ describe("splittingWords", () => {
     expect(splitting("echo $((1+2)) $(cat f)")).toEqual([]);
   });
 
+  it("skips a computed word even when it carries refs", () => {
+    const [, word] = words("echo ${E%x}");
+    expect(word?.computed).toBe(true);
+    expect(splitting("echo ${E%x}")).toEqual([]);
+  });
+
   it("skips literal words", () => {
     expect(splitting("git push origin main")).toEqual([]);
   });
@@ -62,7 +68,27 @@ describe("namesIfs", () => {
     expect(namesIfs('declare "OLDIFS=$IFS"')).toBe(true);
   });
 
+  it.each([
+    ["an escaped letter", "declare I\\FS=,"],
+    ["an empty quote pair", "read I''FS"],
+    ["a quoted letter", 'export "I"FS=,'],
+    ["a line continuation", "IF\\\nS=,"],
+    ["an ANSI-C escape", "declare $'\\x49FS=,'"],
+    ["printf -v with an escape", "printf -v I\\FS %s ,"],
+    ["a brace list", "read {I,}FS"],
+    ["a brace range", "read {H..J}FS"],
+    ["an eval text that unquotes to IFS", "eval 'I\\FS=,'"],
+    ["a command substitution", "x=$(read I\\FS)"],
+  ])("matches IFS spelled with %s", (_form, line) => {
+    expect(namesIfs(line)).toBe(true);
+  });
+
   it("does not match a line without IFS", () => {
     expect(namesIfs("git push origin x")).toBe(false);
+    expect(namesIfs("echo {I,J}{F,G} 'I'F")).toBe(false);
+  });
+
+  it("does not match a line that fails to parse", () => {
+    expect(namesIfs("echo 'I")).toBe(false);
   });
 });
