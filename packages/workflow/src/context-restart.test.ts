@@ -92,8 +92,9 @@ describe("a step a restart re-dispatches", () => {
 
 /** Rewrites the run's active step as a release before restart counting stored it, started at `startedAt`. */
 function withoutRestartFields(db: Db, runId: string, startedAt: string): void {
-  const row = db.prepare("SELECT active_steps FROM workflow_run WHERE id = ?").get(runId) as { active_steps: string };
-  const work = { ...JSON.parse(row.active_steps).work, startedAt };
+  const stored: unknown = db.prepare("SELECT active_steps FROM workflow_run WHERE id = ?").pluck().get(runId);
+  if (typeof stored !== "string") throw new Error(`run ${runId} has no stored active steps`);
+  const work = { ...JSON.parse(stored).work, startedAt };
   delete work.firstStartedAt;
   delete work.restarts;
   db.prepare("UPDATE workflow_run SET active_steps = ? WHERE id = ?").run(JSON.stringify({ work }), runId);
