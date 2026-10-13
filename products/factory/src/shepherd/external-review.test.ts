@@ -387,6 +387,14 @@ function seatSaying(...answers: string[]) {
 }
 
 describe("Shepherd's MERGE meeting a seat WAIT", () => {
+  it("names the seat that said WAIT on the check", async () => {
+    const seat = seatSaying("WAIT");
+
+    const check = await seatFixFirst(rosterOf(SEAT), seat.reader, target);
+
+    expect(check).toMatchObject({ kind: "none", wait: true, seat: SEAT.name });
+  });
+
   it("waits for the seat's MERGE and lets the own MERGE stand", async () => {
     const seat = seatSaying("WAIT", "WAIT", "MERGE");
 
@@ -409,7 +417,7 @@ describe("Shepherd's MERGE meeting a seat WAIT", () => {
 
     const result = await unlessSeatFixFirst(rosterOf(SEAT), seat.reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
 
-    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("said WAIT"), seatHeld: shepherdMerge });
+    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("said WAIT"), seat: SEAT.name, seatHeld: shepherdMerge });
     expect(seat.reads()).toBe(SEAT_BOUND_MS / SEAT_POLL_MS + 1);
   });
 
@@ -418,7 +426,7 @@ describe("Shepherd's MERGE meeting a seat WAIT", () => {
 
     const result = await unlessSeatFixFirst(rosterOf(SEAT), seat.reader, target, shepherdMerge);
 
-    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("said WAIT") });
+    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("said WAIT"), seat: SEAT.name });
     expect(seat.reads()).toBe(1);
   });
 
@@ -510,25 +518,27 @@ describe("G10 disagreement between a seat reviewer and Shepherd", () => {
   const wiring = (...rows: ReviewerAgent[]) => ({ dispatch: { roster: rosterOf(...rows), spawn: async () => undefined, resume: async () => undefined }, reader: readerOf([]) }) as unknown as Parameters<typeof seatVetoed>[0];
   const withReader = (messages: ReviewerMessage[], ...rows: ReviewerAgent[]) => ({ ...wiring(...rows)!, reader: readerOf(messages) }) as Parameters<typeof seatVetoed>[0];
   const shepherdFixFirst: AwaitVerdictResult = { ...shepherdMerge, verdict: "FIX_FIRST", text: "rename" } as AwaitVerdictResult;
+  const ownInput = { ...target, reviewerAgentId: SHEPHERD_RV.agentId, reviewerSessionId: SHEPHERD_RV.sessionId };
+  const seatMerge: AwaitVerdictResult = { ...shepherdMerge, locator: locatorIn(SEAT.sessionId), reviewer: { agentId: SEAT.agentId, sessionId: SEAT.sessionId } };
 
   it("records a seat FIX_FIRST over Shepherd's MERGE on the verdict that sends the head back", async () => {
     const step = seatVetoed(withReader([said(SEAT, verdictAt("FIX_FIRST"), 5)], SEAT), async () => shepherdMerge, () => 77);
 
-    expect(await step(target, new AbortController().signal)).toMatchObject({ verdict: "FIX_FIRST", ownerOverride: { trigger: "g10-disagree", head: HEAD, shepherd: "MERGE", other: "FIX_FIRST", at: 77 } });
+    expect(await step(ownInput, new AbortController().signal)).toMatchObject({ verdict: "FIX_FIRST", ownerOverride: { trigger: "g10-disagree", head: HEAD, shepherd: "MERGE", other: "FIX_FIRST", at: 77 } });
   });
 
   it("records a seat MERGE over Shepherd's FIX_FIRST and leaves the verdict standing", async () => {
     const step = seatVetoed(withReader([said(SEAT, verdictAt("MERGE"), 5)], SEAT), async () => shepherdFixFirst, () => 78);
 
-    expect(await step(target, new AbortController().signal)).toMatchObject({ verdict: "FIX_FIRST", ownerOverride: { trigger: "g10-disagree", shepherd: "FIX_FIRST", other: "MERGE", at: 78 } });
+    expect(await step(ownInput, new AbortController().signal)).toMatchObject({ verdict: "FIX_FIRST", ownerOverride: { trigger: "g10-disagree", shepherd: "FIX_FIRST", other: "MERGE", at: 78 } });
   });
 
   it("records nothing when the seat reviewer agrees with Shepherd", async () => {
     const merged = seatVetoed(withReader([said(SEAT, verdictAt("MERGE"), 5)], SEAT), async () => shepherdMerge);
     const sentBack = seatVetoed(withReader([said(SEAT, verdictAt("FIX_FIRST"), 5)], SEAT), async () => shepherdFixFirst);
 
-    expect(await merged(target, new AbortController().signal)).not.toHaveProperty("ownerOverride");
-    expect(await sentBack(target, new AbortController().signal)).not.toHaveProperty("ownerOverride");
+    expect(await merged(ownInput, new AbortController().signal)).not.toHaveProperty("ownerOverride");
+    expect(await sentBack(ownInput, new AbortController().signal)).not.toHaveProperty("ownerOverride");
   });
 
   it("is waited out inside the verdict step when seatVetoed is given the timing", async () => {
@@ -536,8 +546,46 @@ describe("G10 disagreement between a seat reviewer and Shepherd", () => {
 
     const step = seatVetoed({ ...wiring(SEAT)!, reader: seat.reader }, async () => shepherdMerge, Date.now, seat.seatWait.timing);
 
-    expect(await step(target, new AbortController().signal)).toMatchObject({ kind: "verdict", verdict: "MERGE", reviewer: { agentId: SHEPHERD_RV.agentId } });
+    expect(await step(ownInput, new AbortController().signal)).toMatchObject({ kind: "verdict", verdict: "MERGE", reviewer: { agentId: SHEPHERD_RV.agentId } });
     expect(seat.reads()).toBe(2);
+  });
+
+  describe("a verdict whose author is not the dispatched reviewer", () => {
+    it("records no verdict when the body returns a seat reviewer's MERGE for Shepherd's own reviewer", async () => {
+      const step = seatVetoed(wiring(SEAT), async () => seatMerge);
+
+      expect(await step(ownInput, new AbortController().signal)).toEqual({ kind: "none", reason: expect.stringMatching(/not the dispatched reviewer/) });
+    });
+
+    it("records no verdict when only the session differs from the dispatched one", async () => {
+      const step = seatVetoed(wiring(SEAT), async () => shepherdMerge);
+
+      expect(await step({ ...ownInput, reviewerSessionId: "session-other" }, new AbortController().signal)).toMatchObject({ kind: "none", reason: expect.stringMatching(/not the dispatched reviewer/) });
+    });
+
+    it("records no verdict when the input names no dispatched reviewer", async () => {
+      const step = seatVetoed(wiring(SEAT), async () => shepherdMerge);
+
+      expect(await step(target, new AbortController().signal)).toMatchObject({ kind: "none", reason: expect.stringMatching(/not the dispatched reviewer/) });
+    });
+
+    it("guards the verdict even with no dispatch wired", async () => {
+      const step = seatVetoed(undefined, async () => seatMerge);
+
+      expect(await step(ownInput, new AbortController().signal)).toMatchObject({ kind: "none" });
+    });
+
+    it("passes the verdict through when the input names its author as the dispatched reviewer", async () => {
+      const step = seatVetoed(wiring(), async () => seatMerge);
+
+      expect(await step({ ...target, reviewerAgentId: SEAT.agentId, reviewerSessionId: SEAT.sessionId }, new AbortController().signal)).toMatchObject({ kind: "verdict", verdict: "MERGE", reviewer: { agentId: SEAT.agentId } });
+    });
+
+    it("passes an external review's verdict through, since Shepherd started nobody", async () => {
+      const step = seatVetoed(wiring(), async () => seatMerge);
+
+      expect(await step({ ...target, external: SEAT.name }, new AbortController().signal)).toMatchObject({ kind: "verdict", verdict: "MERGE", reviewer: { agentId: SEAT.agentId } });
+    });
   });
 });
 

@@ -90,6 +90,30 @@ describe("classifyPr", () => {
     expect(classifyPr(facts(["docs/a.md"], { kind: "security" }))).toEqual({ class: "g10", touches: ["security"] });
   });
 
+  it("matches a rename's old path too, so renaming guard source away keeps the security touch", () => {
+    const outOfGuard = { path: "src/x.ts", previousPath: "packages/tool-guard/src/x.ts" };
+    expect(pathTouches([outOfGuard])).toEqual(["security", "perf"]);
+    const result = classifyPr(facts([], { kind: "correctness", changedFiles: [{ ...file(outOfGuard.path), ...outOfGuard }] }));
+    expect(result.class).toBe("g10");
+    expect(result.touches).toContain("security");
+  });
+
+  it("still touches security for a rename into a guard path", () => {
+    expect(pathTouches([{ path: "packages/tool-guard/src/x.ts", previousPath: "src/x.ts" }])).toEqual(["security", "perf"]);
+  });
+
+  it("gives a guard-to-guard rename each touch once", () => {
+    expect(pathTouches([{ path: "packages/tool-guard/src/b.ts", previousPath: "packages/tool-guard/src/a.ts" }])).toEqual(["security", "perf"]);
+  });
+
+  it("gives a rename between non-guard paths no touch", () => {
+    expect(pathTouches([{ path: "docs/b.md", previousPath: "docs/a.md" }])).toEqual([]);
+  });
+
+  it("exempts a test file renamed out of a guard path from the security touch", () => {
+    expect(pathTouches([{ path: "src/x.test.ts", previousPath: "packages/tool-guard/src/x.test.ts" }])).toEqual(["perf"]);
+  });
+
   it("forces security from the kind", () => {
     const result = classifyPr(facts(["docs/a.md"], { kind: "security" }));
     expect(result).toEqual({ class: "g10", touches: ["security"] });
@@ -177,6 +201,20 @@ describe("securitySliceFlag", () => {
 
   it("does not treat a generated file under an authority glob as a guard path", () => {
     expect(securitySliceFlag({ changedFiles: [file(".codewatch/check.json", 500, 0)] })).toBeUndefined();
+  });
+
+  it("flags a rename out of the guard area and names the old path", () => {
+    const changedFiles = [{ ...file("src/x.ts", 300, 160), previousPath: guard }];
+    expect(securitySliceFlag({ changedFiles })).toEqual({ lines: 460, cap: 400, guardPaths: [guard] });
+  });
+
+  it("leaves an oversize rename between two non-guard paths unflagged", () => {
+    expect(securitySliceFlag({ changedFiles: [{ ...file("src/b.ts", 300, 160), previousPath: "src/a.ts" }] })).toBeUndefined();
+  });
+
+  it("names a rename into the guard area once, by its new path", () => {
+    const changedFiles = [{ ...file(guard, 300, 160), previousPath: "src/x.ts" }];
+    expect(securitySliceFlag({ changedFiles })?.guardPaths).toEqual([guard]);
   });
 
   it("flags nothing when a count is unreadable", () => {

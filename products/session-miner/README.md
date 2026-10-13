@@ -264,8 +264,11 @@ as JSON, hand the JSON to a read-only analyst with `analyst-brief.md`, keep only
 loads it from the installed package's `skills/session-insights/` or from a checkout.
 Step 2 also flags a file input written before `--until`, and step 7 scores each proposed lever on
 Q7's verdict-to-merge and open MERGE PRs (`--split-at`) and on `requestsPerFinished`.
+Each lever names Q13 `quality-guardrails` with `--before-since` and `--before-until` as its
+guardrail, so a proposal shows whether the lever cost review quality or successor rework.
 `src/session-insights-skill.test.ts` fails when the skill names an unregistered question, when
-the data-quality or price step moves after the questions, when step 7 drops a lever metric, when
+the data-quality or price step moves after the questions, when step 7 drops a lever metric or
+the Q13 guardrail, when
 the brief's example stops parsing as `findingSchema` or still parses without its falsifier, or
 when the brief names an agent-chat command or tool.
 
@@ -428,6 +431,30 @@ titan-miner --graph "<active-work root>/.miner/graph.sqlite3" throughput backtes
 
 Output leads with the model hash and the watermark (miner `lastIndexedAt`, newest done task).
 `--json` returns the full class table or back-test result beside the same header fields.
+
+`titan-miner throughput pr-backfill` (TP-2162) caches each merged PR's head sha and changed
+files (paths and line counts, never diff text) in `<state>/pr-diffs.json`, mode 0600, through
+the shell's `gh` login. Cached refs are skipped, a 404 is cached as missing, and the run stops
+at `@titan-design/github`'s rate floor with its progress saved, so re-run it after the reset.
+`--dry-run` counts uncached PRs per repo without calling GitHub; `--since` and `--limit` narrow
+a run. It is CLI-only.
+
+```sh
+titan-miner --graph "<active-work root>/.miner/graph.sqlite3" throughput pr-backfill --dry-run
+```
+
+`titan-miner throughput review` (TP-2162) reads that cache into the rows and prints
+`@titan-design/throughput`'s review table: reviewer agent-hours, review rounds and post-PR
+wall hours, keyed on review-panel class x lead touch with back-off. Below the table it prints
+the rolling-origin ablation of that key against kind x size band, per target. The header adds
+cache coverage, which is rows with features over rows with a merged PR. Review rounds and post-PR
+hours need Shepherd's runs, passed as a file with `--shepherd-runs`. It takes the same fit and
+origin flags as `backtest`.
+
+```sh
+titan-factory shepherd stats --per-run --json > /tmp/shepherd-runs.json
+titan-miner --graph "<active-work root>/.miner/graph.sqlite3" throughput review --shepherd-runs /tmp/shepherd-runs.json
+```
 
 ## Codex sessions
 

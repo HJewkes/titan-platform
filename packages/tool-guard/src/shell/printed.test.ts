@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { extractCommands } from "./commands.js";
-import { printedText } from "./printed.js";
+import { printedReadings, printedText } from "./printed.js";
 import { tokenize } from "./lexer.js";
 import type { WordToken } from "./lexer.js";
 
@@ -99,5 +99,34 @@ describe("bash and zsh builtins", () => {
   it("counts printf width in bytes for bash and characters for zsh", () => {
     expect(printedText("printf", words(["'[%6s]'", "é"]), "bash")).toBe("[    é]");
     expect(printedText("printf", words(["'[%6s]'", "é"]), "zsh")).toBe("[     é]");
+  });
+});
+
+describe("readings under each splicing shell", () => {
+  const shells = ["bash", "zsh"] as const;
+  const readings = (name: string, args: string[]) => printedReadings(name, words(args), shells);
+
+  it("keeps echo's lone '-' for no shell and bash, and drops it for zsh", () => {
+    expect(readings("echo", ["-", "git", "push"])).toEqual(["- git push", "git push"]);
+  });
+
+  it("gives one text when every shell prints the same", () => {
+    expect(readings("echo", ["git", "push"])).toEqual(["git push"]);
+  });
+
+  it("gives printf's character and byte precision texts", () => {
+    expect(readings("printf", ["'[%.4s]'", "ééégit"])).toEqual(["[ééég]", "[éé]"]);
+  });
+
+  it("gives printf's character and byte width texts", () => {
+    expect(readings("printf", ["'[%6s]'", "é"])).toEqual(["[     é]", "[    é]"]);
+  });
+
+  it("gives nothing for a dynamic argument", () => {
+    expect(readings("echo", ["-", "$cmd"])).toEqual([]);
+  });
+
+  it("gives nothing for a command that is not a print builtin", () => {
+    expect(readings("cat", ["-"])).toEqual([]);
   });
 });

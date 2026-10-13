@@ -183,6 +183,7 @@ const Evidence = z.looseObject({
   }),
   record: z.looseObject({ verdictLocator: z.looseObject({}) }),
   ciPolicy: CiPolicySchema,
+  grantWithheld: z.object({ policy: z.string().nullable(), proof: z.string().nullable() }).optional(),
 });
 type SourceEvidence = z.infer<typeof Evidence>;
 
@@ -249,6 +250,7 @@ export async function carriedVerdict(ctx: WorkflowContext, target: CarryTarget, 
     seatGrants: merge.seatGrants,
     carry,
     ...(source.ciPolicy && { ciPolicy: source.ciPolicy }),
+    ...(source.grantWithheld && { grantWithheld: source.grantWithheld }),
   });
   return mergeUp && verdict.kind === "MERGE" ? { ...verdict, mergeUpFrom: fromHead } : verdict;
 }

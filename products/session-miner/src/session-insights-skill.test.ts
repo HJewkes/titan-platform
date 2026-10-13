@@ -69,6 +69,12 @@ describe("the session-insights skill", () => {
     expect(report).toContain("requestsPerFinished");
   });
 
+  it("names Q13 with a before window as every lever's guardrail", () => {
+    const report = stepText(skill, 7);
+
+    expect(report).toMatch(/titan-miner insights quality-guardrails .*--before-since .*--before-until/);
+  });
+
   it("ships with the package", () => {
     const pkg = z.object({ files: z.array(z.string()) }).parse(createRequire(import.meta.url)("../package.json"));
 

@@ -207,14 +207,14 @@ interface SliceInput {
     changedFiles: readonly ChangedFile[];
 }
 /**
- * Flags a slice over the cap when it is kind `security` or touches a security or authority path outside the generated
- * set. Advisory only, so an unreadable count flags nothing.
+ * Flags a slice over the cap when it is kind `security` or touches, or renames out of, a security or authority path
+ * outside the generated set. Advisory only, so an unreadable count flags nothing.
  */
 declare function securitySliceFlag(input: SliceInput, rules?: ClassRules): SliceFlag | undefined;
 /** True when any changed file, or the path it was renamed from, is a dependency manifest or lockfile. */
 declare function touchesDependency(files: readonly Pick<ChangedFile, "path" | "previousPath">[], rules?: Pick<ClassRules, "dependency">): boolean;
-/** Touches the changed paths alone produce, with no kind or caller flag; a test file never counts as authority, policy or security. */
-declare function pathTouches(files: readonly Pick<ChangedFile, "path">[], rules?: ClassRules): PrTouch[];
+/** Touches the changed paths, or the paths they were renamed from, alone produce, with no kind or caller flag; a test file never counts as authority, policy or security. */
+declare function pathTouches(files: readonly Pick<ChangedFile, "path" | "previousPath">[], rules?: ClassRules): PrTouch[];
 /** Class and touch flags from signals alone; no model reads the diff. An unread kind takes the strict class. */
 declare function classifyPr(facts: PrFacts, rules?: ClassRules): PrClass;
 
@@ -307,6 +307,8 @@ interface ReviewerBriefInput {
     earlierFindings?: readonly EarlierFinding[];
     /** Picks the owner recorded for this PR; only grammar-valid ones reach the prompt, so body text cannot. */
     ownerPicks?: readonly OwnerPick[];
+    /** The absolute checkout git runs against with `-C`; set when the reviewer starts in its run dir rather than in the checkout. */
+    sourceCheckout?: string;
 }
 /** One recorded owner answer: the question it settles and the choice the owner made. */
 interface OwnerPick {

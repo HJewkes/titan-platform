@@ -19,7 +19,7 @@ import { flakyState, type FlakyChecks } from "./land-flaky.js";
 import { SettleResult, settleOrGate, settleRun, type MergeTreeProbe, type SettleHold, type SettleInput, type UnsettledMerge } from "./land-settle.js";
 import { UPDATE_RESENDS, updateBranch, type UpdateInput } from "./land-update.js";
 import { portReads, type PrSnapshot } from "./pr-snapshot.js";
-import { sleep } from "./deadline.js";
+import { sleep, stepClock, type StepClock } from "./deadline.js";
 import { baseMovedOrThrow, mergePolicyRecord, type MergePolicyInput, CiSnapshotResult, LandRulesResult, BackoffResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
 export { readCi, type CiSnapshot, type FailingCheck } from "./land-ci.js";
@@ -334,7 +334,7 @@ export function landRoutes(deps: LandDeps): StepRoute[] {
   const firstReads: FirstReads = new Map();
   return [
     codeRoute("land-rules", now, (input: { repo: string; pr: number }) => readRules(deps.port, input)),
-    codeRoute("ci-wait", now, (input: CiInput, signal) => waitForCi(deps, input, { ...timing, timeoutMs: deps.ciTimeoutMs ?? 45 * 60_000 }, signal, flaky, firstReads)),
+    codeRoute("ci-wait", now, (input: CiInput, signal, clock) => waitForCi(deps, input, { ...timing, timeoutMs: deps.ciTimeoutMs ?? 45 * 60_000, startedAt: clock.firstStartedAtMs }, signal, flaky, firstReads)),
     codeRoute("update-branch", now, updateRun(deps, timing, now)),
     codeRoute("update-backoff", now, async (input: { waitMs: number; retry: number }, signal) => (await timing.sleep(input.waitMs, signal), input)),
     codeRoute("base-check", now, (input: BaseCheckInput) => checkBase(deps.port, input)),
@@ -349,8 +349,9 @@ function updateRun(deps: LandDeps, timing: Omit<Timing, "timeoutMs">, now: () =>
   return async (input: UpdateInput, signal: AbortSignal) => ({ ...(await afterWrite(deps, input, updateBranch(deps.port, input, { ...timing, timeoutMs: deps.updateTimeoutMs ?? 5 * 60_000 }, signal))), at: now() });
 }
 
-export function codeRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal) => Promise<object>): StepRoute {
-  return recordRoute(match, now, async (input: I, step) => ({ result: await fn(input, step.signal) }));
+/** `clock` carries the step's first start across a restart, so a wait that reads it resumes its deadline rather than restarting it. */
+export function codeRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal, clock: StepClock) => Promise<object>): StepRoute {
+  return recordRoute(match, now, async (input: I, step) => ({ result: await fn(input, step.signal, stepClock(step)) }));
 }
 
 /** Like `codeRoute`, for a step whose record carries trace keys beside `result`. */
