@@ -301,9 +301,11 @@ The envelope carries paths and counts (groups, singletons, largest group, groups
 destination), never fact text, so MCP and HTTP callers see no memory bodies.
 `--skills-root` and `--out` are accepted only on the CLI. Neither command opens the graph.
 
-`--group-threshold` (default 0.12) is the topic Jaccard that links two facts. Grouping is
-single-link, so a lower value chains most facts into one group, and a higher one leaves
-most facts on their own. The default was measured on a real corpus of about 300 facts.
+`--group-threshold` (default 0.03, from `@titan-design/memory`) is the average topic
+similarity, a TF-IDF cosine, at which two groups merge. Grouping is average-linkage with a cap
+of 25 facts per group, so it does not chain unrelated facts together. A higher value gives more
+and smaller groups. On 2026-10-11 the default gave 51 groups, the largest of 22, on 303 real
+facts.
 
 `memory apply`, which acts on accepted groups, is the next slice.
 
