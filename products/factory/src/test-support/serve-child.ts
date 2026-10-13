@@ -4,25 +4,21 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, type WorkflowEvent, type WorkflowRun, type WorkflowStatus } from "@titan-design/workflow";
+import { z } from "zod";
 
 const MAIN = fileURLToPath(new URL("./serve-child-main.ts", import.meta.url));
 const READY_MS = 20_000;
 
-/** Everything a serve child and its successor share: one database, one state dir, and the files the blocking step reads and writes. */
-export interface ServeChildPaths {
-  dbPath: string;
-  stateDir: string;
-  /** One JSON line per dispatch of the blocking step, so dispatches are counted across processes. */
-  dispatchLog: string;
-  /** The blocking step returns once this file exists. */
-  releaseFile: string;
-}
+/**
+ * Everything a serve child and its successor share: one database, one state dir, the dispatch log
+ * (one JSON line per dispatch of the blocking step, so dispatches are counted across processes), and
+ * the release file the blocking step waits for.
+ */
+export const serveChildPathsSchema = z.object({ dbPath: z.string(), stateDir: z.string(), dispatchLog: z.string(), releaseFile: z.string() });
+export type ServeChildPaths = z.infer<typeof serveChildPathsSchema>;
 
-export interface Dispatch {
-  pid: number;
-  attempt: number;
-  restarts?: number;
-}
+const dispatchSchema = z.object({ pid: z.number(), attempt: z.number(), restarts: z.number().optional() });
+export type Dispatch = z.infer<typeof dispatchSchema>;
 
 export type ParentMessage = { kind: "start" } | { kind: "status"; runId: string };
 
@@ -56,7 +52,7 @@ export function releaseBlockedStep(paths: ServeChildPaths): void {
 
 export function dispatches(paths: ServeChildPaths): Dispatch[] {
   if (!existsSync(paths.dispatchLog)) return [];
-  return readFileSync(paths.dispatchLog, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as Dispatch);
+  return readFileSync(paths.dispatchLog, "utf8").trim().split("\n").filter(Boolean).map((line) => dispatchSchema.parse(JSON.parse(line)));
 }
 
 /** The run's stored lease; read it only while no serve child is running. */
@@ -112,8 +108,9 @@ function reply<K extends ChildMessage["kind"]>(child: ChildProcess, kind: K, tim
       child.off("exit", onExit);
       done();
     };
+    const isAnswer = (message: ChildMessage): message is Extract<ChildMessage, { kind: K }> => message.kind === kind;
     const onMessage = (message: ChildMessage) => {
-      if (message.kind === kind) settle(() => resolve(message as Extract<ChildMessage, { kind: K }>));
+      if (isAnswer(message)) settle(() => resolve(message));
     };
     const onExit = (code: number | null, signal: string | null) => settle(() => reject(new Error(`serve child exited (${code ?? signal}) before "${kind}": ${stderr()}`)));
     const timer = setTimeout(() => settle(() => reject(new Error(`serve child sent no "${kind}" within ${timeoutMs} ms: ${stderr()}`))), timeoutMs);

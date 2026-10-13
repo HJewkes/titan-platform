@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync } from "node:fs";
 import { registerHooks } from "node:module";
 import type { StepRoute, StepRunOutcome } from "@titan-design/workflow";
-import type { ChildMessage, Dispatch, ParentMessage, ServeChildPaths } from "./serve-child.js";
+import type { ChildMessage, Dispatch, ParentMessage } from "./serve-child.js";
 
 /**
  * A serve child forked by `forkServeChild`. Node strips the source's types, and this hook points the
@@ -18,9 +18,10 @@ function sourceSibling(specifier: string, parentURL: string | undefined): string
 
 const LEASE_MS = 1_000;
 const POLL_MS = 20;
-const paths = JSON.parse(process.argv[2] ?? "{}") as ServeChildPaths;
 const send = (message: ChildMessage): void => void process.send?.(message);
 
+const { serveChildPathsSchema } = await import("./serve-child.js");
+const paths = serveChildPathsSchema.parse(JSON.parse(process.argv[2] ?? "{}"));
 const { silentLogger } = await import("@titan-design/daemon");
 const { defineWorkflow } = await import("../definition.js");
 const { startFactoryServer } = await import("../serve.js");
@@ -37,7 +38,8 @@ const routes: StepRoute[] = [{ match: "block", onRestart: "repeat", runner: { ru
 
 /** `restarts` is read loosely: the field arrives with TP-2675, and the log records it once it does. */
 async function blockUntilReleased(input: Parameters<StepRoute["runner"]["run"]>[0]): Promise<StepRunOutcome> {
-  const dispatch: Dispatch = { pid: process.pid, attempt: input.attempt, restarts: (input as { restarts?: number }).restarts };
+  const restarts = "restarts" in input && typeof input.restarts === "number" ? input.restarts : undefined;
+  const dispatch: Dispatch = { pid: process.pid, attempt: input.attempt, restarts };
   appendFileSync(paths.dispatchLog, `${JSON.stringify(dispatch)}\n`);
   while (!existsSync(paths.releaseFile)) {
     if (input.signal.aborted) return { ok: false, error: "aborted", retryable: true };
