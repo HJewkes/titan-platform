@@ -127,6 +127,7 @@ describe("a command that defines a shell alias", () => {
     ["typeset with a glob that may match aliases[y]=echo", "typeset ali*"],
     ["typeset -g with a glob", "typeset -g ali*"],
     ["typeset with a brace expansion spelling aliases", 'typeset {ali,ali}ases"[y]"=echo'],
+    ["set -A with a brace expansion supplying aliases and a key", "set -A {ali,y}ases echo"],
     ["typeset with a pattern past one subscript", "typeset alias[e]s[[]y[]]=echo"],
     ["typeset with a bracket glob and no value", "typeset aliase[s]"],
     ["zstat -H into aliases", "zstat -L -H aliases L"],
