@@ -317,6 +317,39 @@ and keeps its own route, the `ci-failed` gate or the `not-mergeable` stop. The w
 still bounds how many such wakes a run makes. A refused message to a live implementer still
 opens `sh-sent-back`, since a successor beside a live agent would race it on the branch.
 
+## Review stats
+
+`titan-factory shepherd stats --reviews [--from <day>] [--to <day>] [--repo <owner/name>] [--json [--rows]]` answers
+what each review costs and how long it takes, and what each PR's reviews cost in total. Each call first refreshes
+`review-stats.sqlite3`, which sits beside the factory database (`~/.local/state/titan-factory/` by default):
+
+- It reads the ledger read-only, and only finished runs completed since the last refresh plus the unfinished ones.
+  A repeat call prices nothing again, so it costs a SQL read.
+- A round's cost is the agent-chat retire row of its reviewer's session, read from every `logs/*/dispatch.jsonl` under
+  `AUTONOMY_ROOT` (default `$ACTIVE_ROOT/claude-channels/sources/autonomy`, and `ACTIVE_ROOT` defaults to
+  active-work's XDG data directory). A round with no retire row is priced once from its transcript, else it stays unpriced.
+
+`--from` and `--to` filter by verdict day in UTC, both inclusive. `--json` prints the v1 shape:
+`{ v: 1, at, range, perReview, perPr, rows?, refresh }`.
+
+- `perReview` gives `n`, `unpriced`, and `usd`, `reviewMinutes` and `queueMinutes` as `{p50, p90, mean, total}`, with
+  the same cut `byRepo`, `byWeek` (ISO week) and `byModel`, and counts `byVerdict`.
+- `perPr` gives `n`, the spread of `usd`, `reviewMinutes` and `rounds` across PRs, and `prs`, one row per PR with
+  `rounds`, `usd`, `reviewMinutes` and `queueMinutes` summed over its rounds in range, `registeredToMergeMinutes` and
+  `merged`, dearest first.
+- `refresh` counts the reviews the refresh added, repriced from retire rows, and the transcripts it read.
+
+Text mode prints the distribution, its cuts and the ten PRs whose reviews cost most.
+
+Dashboards can query the store directly, for example `sqlite3 review-stats.sqlite3 'SELECT * FROM pr_review'`.
+Schema v1 (`src/shepherd/review-stats-store.ts`) keeps times as epoch ms and money as list-price USD:
+
+| Object | Columns |
+| --- | --- |
+| `review` table, one row per finished round, keyed `(run_id, round)` | `run_id`, `round`, `repo` (lower case), `pr`, `head_sha`, `reviewer`, `session_id`, `model`, `requested_at`, `started_at`, `verdict_at`, `queue_ms`, `review_ms`, `verdict`, `input`, `cache_read`, `cache_write`, `output`, `usd`, `cost_source` (`retire` or `transcript`, null when unpriced) |
+| `review_run` table, one row per shepherd-pr run | `run_id`, `repo`, `pr`, `registered_at`, `merged_at` |
+| `pr_review` view, one row per repo and PR over all time | `repo`, `pr`, `rounds`, `usd`, `review_ms`, `queue_ms`, `registered_at`, `merged_at` |
+
 ## Owner digest
 
 `titan-factory digest run` writes one markdown digest across every seat in the seat book:
@@ -670,6 +703,7 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/needs/` | The owner-queue `QueueSource` adapters (agent-chat `/api/queue`, factory hitl gates), the merge step over all four, and the `queue-counts` and `needs` verbs |
 | `src/digest/` | The owner digest: `collect` (sources to model), `rank` (de-dupe, order, caps), `render-md`, `slots`, and `command` (the `digest run` verb) |
 | `src/shepherd/commands.ts`, `src/shepherd/view.ts` | The `shepherd.*` registry commands, and the watch-row and timeline read model they return |
+| `src/shepherd/review-stats-store.ts`, `src/shepherd/review-stats.ts`, `src/shepherd/review-stats-report.ts` | The review stats store, its incremental refresh, and the `stats --reviews` report (see Review stats) |
 | `src/workflows/land.ts` | The land core (see below) |
 | `src/test-support/crash.ts` | Crash harness: host A with a frozen clock hangs in a step and never releases its lease; host B, clocked past that lease, takes the run over |
 
