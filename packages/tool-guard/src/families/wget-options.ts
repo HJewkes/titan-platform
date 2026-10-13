@@ -28,3 +28,8 @@ export const WGET_SWITCHES = set(
   "--retry-connrefused", "--retry-on-host-error", "-S", "--save-headers", "--server-response", "--show-progress", "--span-hosts", "--spider",
   "--strict-comments", "--timestamping", "--trust-server-names", "--unlink", "-V", "-v", "--verbose", "--version", "--warc-cdx", "-x", "--xattr",
 );
+
+/** wgetrc settings that set the method or a body; `-e` running any other one may set anything. */
+export const WGETRC_BODY = set("postdata", "postfile", "bodydata", "bodyfile");
+/** wgetrc settings `-e` may run that change neither the request nor where it goes. */
+export const WGETRC_NO_OPS = set("robots", "tries", "timeout", "wait");

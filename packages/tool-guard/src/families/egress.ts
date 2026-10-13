@@ -7,7 +7,7 @@ import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
 import { hasFlag, lastValue, readOptions, set, valuesOf } from "./options.js";
 import type { Option, Options } from "./options.js";
 import { CURL_SWITCHES, CURL_VALUE_OPTIONS } from "./curl-options.js";
-import { WGET_SWITCHES, WGET_VALUE_OPTIONS } from "./wget-options.js";
+import { WGET_SWITCHES, WGET_VALUE_OPTIONS, WGETRC_BODY, WGETRC_NO_OPS } from "./wget-options.js";
 import { firstExpansion } from "./github-endpoint.js";
 
 /** Hosts data may be sent to (D5). `registry.npmjs.org` is allowed for reads only, so it is absent. */
@@ -28,10 +28,6 @@ const CURL_KNOWN_SWITCHES = set(...CURL_SWITCHES, "--include");
 const CURL_NEXT = set("--next", "-:");
 /** Long wget option names getopt_long matches by unique prefix: each listed one, and each switch with and without `no-`. */
 const WGET_LONG = set(...[...WGET_VALUE_OPTIONS, ...WGET_SWITCHES].filter((n) => n.startsWith("--")).flatMap((n) => [n, ...switchForms(n, WGET_SWITCHES)]));
-/** wgetrc settings that set the method or a body; `-e` running any other one may set anything. */
-const WGETRC_BODY = set("postdata", "postfile", "bodydata", "bodyfile");
-/** wgetrc settings `-e` may run that change neither the request nor where it goes. */
-const WGETRC_NO_OPS = set("robots", "tries", "timeout", "wait");
 const HTTPIE_VALUES = set("-a", "--auth", "-A", "--auth-type", "-o", "--output", "--session", "--session-read-only", "-p", "--print", "-s", "--style", "--pretty", "--verify", "--cert", "--cert-key", "--timeout", "--proxy", "--raw", "--format-options", "--default-scheme");
 /** An httpie request item; the earliest separator decides its kind. */
 const HTTPIE_ITEM_RE = /==|:=@|:=|=@|=|@|:/;
