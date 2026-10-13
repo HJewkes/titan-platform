@@ -6,6 +6,7 @@ import { oneLine } from "../gate-brief.js";
 import { readRequiredChecks, statusOf } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import { errorClass } from "./error-class.js";
+import { grantWithheldField, withGrantWithheld, type GrantWithheldField } from "./grant-withheld.js";
 import { CI_POLICY_MALFORMED_REASON, CI_POLICY_WEAKENED_PREFIX, GITHUB_PATH_REASON_PREFIX, SKILL_REASON_PREFIX, VISUAL_REASON_PREFIX, evidenceComment, evidenceMarker } from "./evidence-comment.js";
 import { REVIEW_CHECK_NAME } from "./publish-review.js";
 import type { ShepherdStoreRef } from "./store.js";
@@ -49,7 +50,7 @@ export type IsFrozen = (repo: RepoSlug, pr: number) => Promise<boolean>;
 /** A stand-in until TP-523 adds the freeze store: no repo can be frozen before it exists. */
 export const noFreezeStoreUntilTp523: IsFrozen = async () => false;
 
-export interface MergeEvidenceInput {
+export interface MergeEvidenceInput extends GrantWithheldField {
   runId: string;
   repo: RepoSlug;
   pr: number;
@@ -95,7 +96,7 @@ export interface EvidenceRecord {
 }
 
 /** The facts observed at one head, and the record of what they decided there. */
-export interface MergeEvidence {
+export interface MergeEvidence extends GrantWithheldField {
   head: string;
   merge: MergeFacts;
   record: EvidenceRecord;
@@ -111,7 +112,7 @@ export interface MergeEvidence {
 }
 
 /** Just what `decideAutoMerge` reads, so the evidence step can decide before its record exists. */
-export interface DecidableEvidence {
+export interface DecidableEvidence extends GrantWithheldField {
   head: string;
   merge: MergeFacts;
   record: Pick<EvidenceRecord, "repo" | "pr">;
@@ -179,7 +180,7 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
     return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}` };
   }
   const reason = decision.verdict === "allow" ? `${decision.ruleId} allows, but only ${AUTO_MERGE_RULES.join(" and ")} merge without the owner` : decision.reason;
-  return { outcome: "gate", rule: authorityRule(decision.ruleId), reason };
+  return { outcome: "gate", rule: authorityRule(decision.ruleId), reason: withGrantWithheld(reason, evidence) };
 }
 
 const SHOWN_VISUAL_PATHS = 10;
@@ -371,7 +372,7 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
   const mergeableState = pr.mergeableState;
   const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
   const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy };
-  const decision = decideAutoMerge(input.head, { head: input.head, merge, record: input, mergeableState, ...unknown, ...ciPolicy }, input.visualPaths);
+  const decision = decideAutoMerge(input.head, { head: input.head, merge, record: input, mergeableState, ...unknown, ...ciPolicy, ...grantWithheldField(input) }, input.visualPaths);
   const record: EvidenceRecord = {
     runId: input.runId,
     repo: input.repo,
@@ -388,5 +389,5 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
     ...ciPolicy,
   };
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
-  return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, commentId: comment.id };
+  return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...grantWithheldField(input), commentId: comment.id };
 }

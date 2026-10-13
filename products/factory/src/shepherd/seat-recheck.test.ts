@@ -101,7 +101,7 @@ describe("the review of a head whose own MERGE a seat held, on replay", () => {
     await expect(reviewPhase(unverified.ctx, request)).rejects.toThrow(`stop at sh-merge-evidence:${HEAD}`);
 
     expect(verified.inputs.get(`sh-merge-evidence:${HEAD}`)).toMatchObject({ seatGrants: [MERGE_ON_GREEN_GRANT] });
-    expect(unverified.inputs.get(`sh-merge-evidence:${HEAD}`)).toMatchObject({ seatGrants: [] });
+    expect(unverified.inputs.get(`sh-merge-evidence:${HEAD}`)).toMatchObject({ seatGrants: [], grantWithheld: { policy: null, proof: "unread (the fix-proof check could not be read)" } });
   });
 
   it("cannot re-check a seat without the round's fix-proof standing, since an empty one reads as verified", () => {
