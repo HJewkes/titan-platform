@@ -12,6 +12,7 @@ const ENTRIES = [
   "graph-report-drift.ts",
   "graph-report-types.ts",
   "complexity-distribution.ts",
+  "dependency-graph-metrics.ts",
   "dead-modules.ts",
   "unused-exports.ts",
   "growth-risks.ts",
