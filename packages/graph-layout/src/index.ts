@@ -5,6 +5,8 @@ export { computeLayout } from "./layout.js";
 export { computeCompoundLayout } from "./compound-layout.js";
 export { routeOf } from "./route.js";
 export { routeToPathD } from "./route-path.js";
+export { labelBoxSizing, type LabelMetrics } from "./label-boxes.js";
+export { packageOf } from "./package-of.js";
 export { COMPOUND_LAYOUT_OPTIONS, ELK_LAYOUT_OPTIONS, FOCUS_LAYOUT_OPTIONS } from "./layout-options.js";
 export type {
   CompoundLayoutResult,
