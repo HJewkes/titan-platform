@@ -2,6 +2,7 @@ import type { NeedsList } from "../needs/merged.js";
 import type { OwnerItem } from "@titan-design/owner-queue";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
 import { waitingGates } from "../shepherd/waiting.js";
+import { lastAwaitClause } from "../shepherd/none-reason.js";
 import type { WatchRow } from "../shepherd/view.js";
 import { flowStats, implementerHours, mergedInWindow, taskToMerge, type FlowPorts } from "./flow.js";
 import { keysIn, prKey, refOfUrl, runKey } from "./keys.js";
@@ -216,11 +217,17 @@ function shepherdMerged(rows: readonly WatchRow[], since: Date): Merged[] {
   return rows.filter((row) => endedSince(row, since) && row.outcome?.kind === "merged").map((row) => ({ ref: refOf(row), title: row.task, at: row.phaseSince }));
 }
 
+function stuckReason(row: WatchRow): string {
+  const reason = row.held ? `held: ${row.held.reason}` : `${row.phase}: ${row.stalled!.reason}`;
+  const lastAwait = lastAwaitClause(row);
+  return lastAwait === undefined ? reason : `${reason}; ${lastAwait}`;
+}
+
 /** Held or stalled live runs, plus runs that failed or stopped unmerged inside the window; older endings are history, not news. */
 function shepherdStuck(rows: readonly WatchRow[], since: Date): Stuck[] {
   const live = rows
     .filter((row) => (row.held || row.stalled) && (!FINISHED.has(row.phase) || (row.phase === "failed" && Date.parse(row.phaseSince) >= since.getTime())))
-    .map((row) => ({ ref: refOf(row), reason: row.held ? `held: ${row.held.reason}` : `${row.phase}: ${row.stalled!.reason}`, since: row.phaseSince }));
+    .map((row) => ({ ref: refOf(row), reason: stuckReason(row), since: row.phaseSince }));
   const unmerged = rows
     .filter((row) => endedSince(row, since) && row.outcome?.kind !== "merged")
     .map((row) => ({ ref: refOf(row), reason: `stopped: ${row.outcome?.reason ?? "ended without a recorded outcome"}`, since: row.phaseSince }));

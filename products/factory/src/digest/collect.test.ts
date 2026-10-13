@@ -33,6 +33,14 @@ describe("collectDigest", () => {
     expect(model.stuck).toEqual([{ ref: "acme/widgets#8", reason: "held: waiting on a design call", since: "2026-03-10T15:00:00Z" }]);
   });
 
+  it("names the last await's none on a held run's stuck line (TP-2625)", async () => {
+    const rows = [watchRow({ pr: 8, held: { reason: "g10-review: big" }, lastNone: { kind: "deadline", text: "no verdict before the wait ran out" }, phaseSince: "2026-03-10T15:00:00Z" })];
+
+    const model = await collectDigest({ sources: fakeSources({ rows: async () => rows }), now: NOW, windowMinutes: 360, slot: SLOT });
+
+    expect(model.stuck).toEqual([{ ref: "acme/widgets#8", reason: "held: g10-review: big; last await: no verdict before the wait ran out", since: "2026-03-10T15:00:00Z" }]);
+  });
+
   it("leaves out a run that finished before the window", async () => {
     const rows = [watchRow({ pr: 3, phase: "done", phaseSince: "2026-03-09T10:00:00Z" }), watchRow({ pr: 4, phase: "failed", stalled: { reason: "boom" }, phaseSince: "2026-03-09T10:00:00Z" })];
 

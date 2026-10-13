@@ -1,5 +1,5 @@
 import { fakeGitHub, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
-import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
+import { inProcessCaller, type JsonEnvelope } from "@titan-design/registry";
 import type { WorkflowDefinition } from "../definition.js";
 import type { FactoryHost, FactoryRoutes } from "../host.js";
 import { createFactoryRegistry, factoryContext } from "../registry.js";
@@ -65,8 +65,7 @@ export function shepherdFixture(options: FixtureOptions = {}): ShepherdFixture {
 }
 
 export async function callCommand<T>(host: FactoryHost, routes: FactoryRoutes, name: string, args: unknown): Promise<JsonEnvelope<T>> {
-  const { envelope } = await invokeCommand(createFactoryRegistry().get(name)!, args, factoryContext(host, routes));
-  return envelope as JsonEnvelope<T>;
+  return (await inProcessCaller(createFactoryRegistry(), () => factoryContext(host, routes))(name, args)) as JsonEnvelope<T>;
 }
 
 export function shepherdRuns(host: FactoryHost): string[] {

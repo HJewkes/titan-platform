@@ -9,10 +9,11 @@ import { seatContextCommand } from "./commands/seat-context.js";
 import { sessionList, sessionShow } from "./commands/sessions.js";
 import { status } from "./commands/status.js";
 import { throughputBacktest, throughputTable } from "./commands/throughput.js";
+import { throughputPrBackfill } from "./commands/throughput-pr-backfill.js";
 import { verifyCitationsCommand } from "./commands/verify-citations.js";
 import type { MinerContext } from "./context.js";
 import { insightCommand } from "./insights/define.js";
-import { AGENT_CHAT_QUESTIONS, INSIGHT_QUESTIONS, TRANSCRIPT_QUESTIONS } from "./insights/questions.js";
+import { AGENT_CHAT_QUESTIONS, GUARDRAIL_QUESTIONS, INSIGHT_QUESTIONS, TRANSCRIPT_QUESTIONS } from "./insights/questions.js";
 
 export const MINER_VERSION = (createRequire(import.meta.url)("../package.json") as { version: string }).version;
 export const TOOL_PREFIX = "miner__";
@@ -20,7 +21,7 @@ export const TOOL_PREFIX = "miner__";
 /** Every command the miner exposes, on every surface. Serve/mcp are wired by the CLI, not registered. */
 export function createMinerRegistry(): CommandRegistry<MinerContext> {
   const registry = createRegistry<MinerContext>();
-  const commands = [refresh, status, search, sessionList, sessionShow, drainIngest, drainTemplates, seatContextCommand, playbookAdd, playbookRecall, playbookReflect, playbookStatus, memoryScan, memoryReport, verifyCitationsCommand, throughputTable, throughputBacktest];
-  for (const cmd of [...commands, ...[...INSIGHT_QUESTIONS, ...AGENT_CHAT_QUESTIONS, ...TRANSCRIPT_QUESTIONS].map(insightCommand)]) registry.register(cmd);
+  const commands = [refresh, status, search, sessionList, sessionShow, drainIngest, drainTemplates, seatContextCommand, playbookAdd, playbookRecall, playbookReflect, playbookStatus, memoryScan, memoryReport, verifyCitationsCommand, throughputTable, throughputBacktest, throughputPrBackfill];
+  for (const cmd of [...commands, ...[...INSIGHT_QUESTIONS, ...AGENT_CHAT_QUESTIONS, ...TRANSCRIPT_QUESTIONS, ...GUARDRAIL_QUESTIONS].map(insightCommand)]) registry.register(cmd);
   return registry;
 }
