@@ -6,6 +6,9 @@ import type { Vars } from "./vars.js";
 
 const words = (src: string) => tokenize(src).filter((t): t is WordToken => t.type === "word");
 const splitting = (src: string) => [...splittingWords(words(src))];
+const singleQuoted = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
+const nestedEvals = (line: string, levels: number): string =>
+  levels === 0 ? line : nestedEvals(`eval ${singleQuoted(line)}`, levels - 1);
 
 describe("splittingWords", () => {
   it("marks an unquoted variable expansion", () => {
@@ -88,7 +91,35 @@ describe("namesIfs", () => {
     expect(namesIfs("echo {I,J}{F,G} 'I'F")).toBe(false);
   });
 
-  it("does not match a line that fails to parse", () => {
+  it.each([
+    ["an escaped closing brace", "declare {I,\\}}FS=,"],
+    ["an escaped opening brace", "declare {I,\\{}FS=,"],
+    ["a double-quoted brace", 'declare {I,"}"}FS=,'],
+    ["a single-quoted brace", "declare {I,'{'}FS=,"],
+  ])("matches a brace list with %s as an item", (_form, line) => {
+    expect(namesIfs(line)).toBe(true);
+  });
+
+  it.each([4, 7, 8, 12])("matches an escaped IFS under %i nested evals", (levels) => {
+    expect(namesIfs(nestedEvals("declare I\\FS=,", levels))).toBe(true);
+  });
+
+  it("fails closed fast on a brace list whose expansion would be huge", () => {
+    const items = Array.from({ length: 250 }, (_, i) => `a${i}`).join(",");
+    const started = performance.now();
+
+    const named = namesIfs(`echo {${items}}{\u0001..￿}`);
+
+    expect(named).toBe(true);
+    expect(performance.now() - started).toBeLessThan(100);
+  });
+
+  it("does not match a numeric range", () => {
+    expect(namesIfs("for i in {1..10}; do echo $i; done")).toBe(false);
+  });
+
+  it("matches a line that fails to parse once it holds I, F and S in order", () => {
     expect(namesIfs("echo 'I")).toBe(false);
+    expect(namesIfs("I\\FS=, echo 'x")).toBe(true);
   });
 });

@@ -3,33 +3,59 @@ import type { Token, WordToken } from "./tokens.js";
 import { ASSIGNMENT_RE, type Vars } from "./vars.js";
 
 const DEFAULT_IFS = " \t\n";
+/** A range whose ends are not both numbers may cover I, F or S. */
+const LETTER_RANGE_RE = /(?:^|[^0-9-])\.\.|\.\.(?:[^0-9-]|$)/;
 /** Quoting a word's value may still hold, so an `eval` or `sh -c` text re-lexes to IFS. */
 const REQUOTED_RE = /[\\'"$]/;
-/** Lexing a value inside a value ends here; a deeper spelling of IFS needs a parse the guard refuses anyway. */
-const RELEX_DEPTH = 3;
-const BRACE_GROUP_RE = /\{([^{}]*)\}/;
-/** More brace words than this from one word reads as naming IFS rather than spend time expanding. */
-const BRACE_LIMIT = 256;
+/** The walk's own nesting limit (`MAX_DEPTH` in commands.ts); past it the value counts as naming IFS. */
+const RELEX_DEPTH = 8;
 
 /**
- * Whether any word of the text spells IFS once quotes, escapes, line continuations and `$'…'` are removed
+ * Whether any word of the text may spell IFS once quotes, escapes, line continuations and `$'…'` are removed
  * and braces expanded, so `declare I\FS=,` or `read {I,}FS` counts as a write the walk may reach late.
+ * Where this model of bash runs out, it answers true.
  */
 export function namesIfs(text: string, depth = 0): boolean {
   if (text.includes("IFS")) return true;
+  if (!maySpellIfs(text)) return false;
   let tokens: Token[];
   try {
     tokens = tokenize(text);
   } catch {
-    // The guard refuses a line it cannot parse; a value that does not parse is no command text.
-    return false;
+    return true;
   }
   return wordValues(tokens).some((v) => valueNamesIfs(v, depth));
 }
 
 function valueNamesIfs(value: string, depth: number): boolean {
-  if (braceWords(value).some((w) => w.includes("IFS"))) return true;
-  return depth < RELEX_DEPTH && REQUOTED_RE.test(value) && namesIfs(value, depth + 1);
+  if (value.includes("IFS") || braceMaySpellIfs(value)) return true;
+  if (!REQUOTED_RE.test(value)) return false;
+  return depth + 1 >= RELEX_DEPTH ? maySpellIfs(value) : namesIfs(value, depth + 1);
+}
+
+/**
+ * Brace expansion keeps each word's characters in order, so without a letter range a word can spell IFS only
+ * if it already holds I, F and S in order. This reads the quote-removed value, where a quoted brace or comma
+ * looks unquoted, so it errs toward true rather than parse which braces bash expands.
+ */
+function braceMaySpellIfs(value: string): boolean {
+  if (!value.includes("{")) return false;
+  return holdsIfsInOrder(value) || LETTER_RANGE_RE.test(value);
+}
+
+/**
+ * Quote removal, escapes, line continuations and brace lists only drop characters, so a text that becomes IFS
+ * holds I, F and S in order, or a `$'…'` that decodes one, or a `..` range that makes one.
+ */
+function maySpellIfs(text: string): boolean {
+  return holdsIfsInOrder(text) || text.includes("$'") || text.includes("..");
+}
+
+/** A linear scan; a regex like `I.*F.*S` backtracks cubically on a long text with no S. */
+function holdsIfsInOrder(text: string): boolean {
+  const i = text.indexOf("I");
+  const f = i < 0 ? -1 : text.indexOf("F", i + 1);
+  return f >= 0 && text.includes("S", f + 1);
 }
 
 /** Every word value in the tokens, including those inside command and process substitutions and redirects. */
@@ -40,35 +66,6 @@ function wordValues(tokens: readonly Token[]): string[] {
     if (t.type === "redirect") return [...(t.target ? [t.target.value] : []), ...(t.body === null ? [] : [t.body]), ...t.subs.flatMap(wordValues)];
     return [];
   });
-}
-
-/** Bash brace expansion of comma lists and single-character ranges, innermost group first; numeric ranges never spell a letter. */
-function braceWords(value: string): string[] {
-  let words = [value];
-  while (words.some((w) => BRACE_GROUP_RE.test(w))) {
-    words = words.flatMap(expandOneGroup);
-    if (words.length > BRACE_LIMIT) return ["IFS"];
-  }
-  return words;
-}
-
-function expandOneGroup(word: string): string[] {
-  const m = BRACE_GROUP_RE.exec(word);
-  if (!m) return [word];
-  const before = word.slice(0, m.index);
-  const after = word.slice(m.index + m[0].length);
-  return groupItems(m[1] ?? "").map((item) => before + item + after);
-}
-
-function groupItems(body: string): string[] {
-  const range = /^(.)\.\.(.)(?:\.\.-?\d+)?$/s.exec(body);
-  if (range?.[1] && range[2]) return charRange(range[1], range[2]);
-  return body.includes(",") ? body.split(",") : [body];
-}
-
-function charRange(from: string, to: string): string[] {
-  const [lo, hi] = [from.charCodeAt(0), to.charCodeAt(0)].sort((a, b) => a - b) as [number, number];
-  return Array.from({ length: hi - lo + 1 }, (_, i) => String.fromCharCode(lo + i));
 }
 
 /** A null IFS is a write the walk could not read, which may have set any separator. */
