@@ -95,11 +95,18 @@ describe("burndown-port-map", () => {
     expect(forwardEdges(map.files, map.order, map.leafPorts)).toEqual(map.knownForwardEdges);
   });
 
-  it("leaves no F3 import of F2 and no F2 import of F3 but the two non-leaf ones (TP-2627)", () => {
+  // The two non-leaf targets, and three imports of types no ported code uses yet, so F2 declares them when it ports.
+  it("leaves no F3 import of F2, and only the F2 imports of F3 that TP-2627 did not port", () => {
     const map = JSON.parse(readFileSync(MAP_PATH, "utf8"));
     const between = forwardEdges(map.files, map.order, map.leafPorts).filter((e) => [e.fromDest, e.toDest].sort().join() === "F2,F3");
 
-    expect(between.map((e) => `${e.from}->${e.to}`)).toEqual(["advance.ts->seed-slices.ts", "landed-sweep.ts->score-source.ts"]);
+    expect(between.map((e) => `${e.from}->${e.to}`)).toEqual([
+      "advance.ts->seed-slices.ts",
+      "landed-sweep.ts->score-source.ts",
+      "observe.ts->collision.ts",
+      "observe.ts->plan.ts",
+      "owns-adjudicate.ts->collision.ts",
+    ]);
   });
 
   it("exits 1 when the burndown directory has a file the map lacks", () => {

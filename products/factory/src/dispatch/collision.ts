@@ -1,12 +1,5 @@
 import type { Runner } from "./runner.js";
 
-/** The owns a live holder has declared in a repo, which a new slice's owns must not overlap. */
-export interface HeldOwns {
-  holder: string;
-  repo: string;
-  owns: string[];
-}
-
 /** `id` as a whole token, any case: TP-40 never matches TP-400, and a branch's `cc-202` matches CC-202. */
 export const namesId = (text: string, id: string): boolean =>
   new RegExp(`(?<![A-Za-z0-9])${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![0-9])`, "i").test(text);

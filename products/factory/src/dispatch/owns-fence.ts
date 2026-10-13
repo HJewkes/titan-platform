@@ -12,7 +12,7 @@ import { matchPattern } from "./glob-pattern.js";
  */
 
 /** Generated or release boilerplate nearly every slice regenerates, so no slice should have to declare it; only the outside-owns stall uses it, never the protected-path check. */
-export const IMPLICIT_OWNS: readonly string[] = [
+const IMPLICIT_OWNS: readonly string[] = [
   ".changeset/**",
   "CAPABILITIES.md",
   "**/CAPABILITIES.md",

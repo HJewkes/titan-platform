@@ -7,7 +7,7 @@ import type { Runner } from "./runner.js";
  * risking unreviewed writes.
  */
 
-export interface DiffVerdict {
+interface DiffVerdict {
   reviewable: boolean;
   reason: string;
 }

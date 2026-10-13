@@ -1,14 +1,3 @@
-/** Implementer worktrees under one repo's `.worktrees`: every one, and those the tick's own agents hold. */
-export interface WorktreeUse {
-  total: number;
-  ours: number;
-  /** Reviewer trees, charged to the broker's reviewer pool and not to `total`. */
-  reviewers?: number;
-  /** The broker's per-repo budget less the reserve the tick never takes. */
-  totalCeiling: number;
-  oursCeiling: number;
-}
-
 /** A claim with no `namePrefix` names its agents `bd-...`, as every claim did before seats. */
 export const DEFAULT_NAME_PREFIX = "bd";
 

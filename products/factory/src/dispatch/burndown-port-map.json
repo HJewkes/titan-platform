@@ -1527,7 +1527,6 @@
       "module": "products/factory/src/dispatch/collision.ts",
       "task": "TP-2627",
       "symbols": [
-        "HeldOwns",
         "namesId",
         "coveredIds",
         "LANDING_LOG_FORMAT",
@@ -1535,9 +1534,7 @@
         "readPrFiles"
       ],
       "covers": [
-        "landed-sweep.ts",
-        "observe.ts",
-        "owns-adjudicate.ts"
+        "landed-sweep.ts"
       ]
     },
     {
@@ -1546,8 +1543,7 @@
       "task": "TP-2627",
       "symbols": [
         "Runner",
-        "RunResult",
-        "RunOptions"
+        "RunResult"
       ],
       "covers": [
         "leak-check.ts",
@@ -1573,7 +1569,6 @@
       "module": "products/factory/src/dispatch/plan.ts",
       "task": "TP-2627",
       "symbols": [
-        "WorktreeUse",
         "DEFAULT_NAME_PREFIX",
         "agentNameFor",
         "successorNameFor",
@@ -1581,7 +1576,6 @@
       ],
       "covers": [
         "advance.ts",
-        "observe.ts",
         "seat-deliver.ts"
       ]
     },
@@ -1784,8 +1778,20 @@
     {
       "from": "observe.ts",
       "fromDest": "F2",
+      "to": "collision.ts",
+      "toDest": "F3"
+    },
+    {
+      "from": "observe.ts",
+      "fromDest": "F2",
       "to": "exec.ts",
       "toDest": "G-10"
+    },
+    {
+      "from": "observe.ts",
+      "fromDest": "F2",
+      "to": "plan.ts",
+      "toDest": "F3"
     },
     {
       "from": "observe.ts",
@@ -1810,6 +1816,12 @@
       "fromDest": "F4",
       "to": "seat-tick.ts",
       "toDest": "G-2"
+    },
+    {
+      "from": "owns-adjudicate.ts",
+      "fromDest": "F2",
+      "to": "collision.ts",
+      "toDest": "F3"
     },
     {
       "from": "owns-adjudicate.ts",

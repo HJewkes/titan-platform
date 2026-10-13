@@ -8,7 +8,7 @@ import type { PlannedSlice } from "./report.js";
  * no milestone data.
  */
 
-export const MAX_SLICE_POINTS = 3;
+const MAX_SLICE_POINTS = 3;
 
 type Rule = (slice: PlannedSlice, names: ReadonlySet<string>) => string[];
 

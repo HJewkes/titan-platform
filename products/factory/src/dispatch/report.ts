@@ -8,11 +8,11 @@ import { lintSlices, sliceWarnings } from "./slice-lint.js";
  * parser cannot read is `unknown`, never a guess at success.
  */
 
-export const STATUSES = ["DONE", "DONE_WITH_CONCERNS", "BLOCKED", "NEEDS_CONTEXT"] as const;
-export type Status = (typeof STATUSES)[number];
-export type Verdict = "APPROVE" | "CHANGES";
+const STATUSES = ["DONE", "DONE_WITH_CONCERNS", "BLOCKED", "NEEDS_CONTEXT"] as const;
+type Status = (typeof STATUSES)[number];
+type Verdict = "APPROVE" | "CHANGES";
 
-export interface Report {
+interface Report {
   status: Status | "unknown";
   verdict?: Verdict;
   /** The message id of the `chat_ask` a parked worker filed. */
@@ -51,14 +51,13 @@ export function parseReport(text: string): Report {
 const field = (lines: string[], label: string): string | undefined =>
   lines.map((line) => new RegExp(`^${label}:\\s*(\\S.*?)\\s*$`).exec(line)?.[1]).find((value) => value !== undefined);
 
-export const CONTRACT_OPS = ["replace", "remove", "rename", "migrate", "add", "extend", "modify"] as const;
-export const DESTRUCTIVE_OPS: readonly (typeof CONTRACT_OPS)[number][] = ["replace", "remove", "rename", "migrate"];
+const CONTRACT_OPS = ["replace", "remove", "rename", "migrate", "add", "extend", "modify"] as const;
 
-export const Contract = z.object({
+const Contract = z.object({
   scope: z.string().trim().min(1),
   op: z.enum(CONTRACT_OPS),
 });
-export type Contract = z.infer<typeof Contract>;
+type Contract = z.infer<typeof Contract>;
 
 const PlannedSlice = z.object({
   n: z.string().min(1),
@@ -79,7 +78,7 @@ const PlannedSlice = z.object({
 export type PlannedSlice = Omit<z.infer<typeof PlannedSlice>, "contracts"> & { contracts?: Contract[] };
 
 /** A planner's slices and their advisory lines when they pass the lint, else the reason lines. */
-export type SliceRead =
+type SliceRead =
   | { slices: PlannedSlice[]; warnings: string[]; problems?: undefined }
   | { slices?: undefined; warnings?: undefined; problems: string[] };
 

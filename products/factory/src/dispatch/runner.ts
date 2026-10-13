@@ -12,7 +12,7 @@ export interface RunResult {
   timedOut?: boolean;
 }
 
-export interface RunOptions {
+interface RunOptions {
   /** Overrides the runner's default timeout for one call whose child is known to run longer. */
   timeoutMs?: number;
 }

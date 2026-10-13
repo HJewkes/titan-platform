@@ -3,7 +3,7 @@
 /** The fields of a transcript spend read this sum uses; agent-chat's full read is assignable to it. */
 export type TranscriptSpendRead = { ok: true; path: string; tokens: number; usd_est: number | null } | { ok: false; path: string };
 
-export interface ClaimSpend {
+interface ClaimSpend {
   /** The sum of the priced reads: a lower bound whenever `unknown` is not empty. */
   usd: number;
   tokens: number;
@@ -12,7 +12,7 @@ export interface ClaimSpend {
   unknown: string[];
 }
 
-export type CapVerdict = "over" | "under" | "unknown";
+type CapVerdict = "over" | "under" | "unknown";
 
 const usdPlaces = 1e4;
 

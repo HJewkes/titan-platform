@@ -49,7 +49,7 @@ const classPatterns = (op: Op): RegExp[] => HARD_STOPS.filter((stop) => HARD_STO
 
 const patternsOf = (op: Op): RegExp[] => [...classPatterns(op), ...(EXTRA_PATTERNS[op] ?? [])];
 
-export const OP_PATTERNS: Record<Op, RegExp[]> = {
+const OP_PATTERNS: Record<Op, RegExp[]> = {
   deploy: patternsOf("deploy"),
   restart: patternsOf("restart"),
   "config-edit": patternsOf("config-edit"),
@@ -62,7 +62,7 @@ export const OP_PATTERNS: Record<Op, RegExp[]> = {
   "personal-data": patternsOf("personal-data"),
 };
 
-export interface OpsHit {
+interface OpsHit {
   op: Op;
   text: string;
 }
