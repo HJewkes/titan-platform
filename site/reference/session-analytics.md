@@ -269,6 +269,7 @@ toward neither, and each is null when there is nothing to read.
 | `reopened` | An implementer session started after `doneAt`. All work still counts. |
 | `unpriced` | A request ran on a model with no price row, so `usd` is a floor. |
 | `unmapped-role` | A task-linked session counts toward neither total; `unmappedSessions` counts them. |
+| `pr-diff-missing` | `prDiffs` was passed but lacks a merged PR of the task, so the PR features are null. |
 
 A session's role comes from its spawn profile alone (`roleFromProfile`, plus `fable-implementer`
 as implementer and `fable-reviewer` as reviewer), so a resumed or fix-round implementer counts
@@ -276,6 +277,23 @@ however long it lived. The worker report's standing-peer override is not applied
 linked to the task either counts in `implAgentHours` or `reviewAgentHours`, or is counted in
 `unmappedSessions` and raises `unmapped-role`: planner, researcher, coordinator and peer profiles,
 and profiles with no role. Nothing is dropped without the row saying so. `capMinutes` must be positive.
+
+#### PR-diff features
+
+Pass `prDiffs`, a map from PR ref (`pr:<owner/repo>#<n>`) to a `PrDiff` (`repo`, `pr`, `head`,
+`files` with path and line counts, `truncated`), and each row gains `prClass`, `touches` and
+`changedLines`. The files of all the task's merged PRs form one `PrFacts`, classified once by
+review-panel's `classifyPr` with the task's `kind` (absent classifies strict), so two medium PRs
+can together be `large`. `changedLines` is review-panel's `changedLineCount`, which leaves
+generated files out. `classRules` overrides `DEFAULT_CLASS_RULES`.
+
+A task with no merged PR gets `prClass: null, touches: [], changedLines: 0`. A merged PR missing
+from the map gives all three null and the `pr-diff-missing` flag, since a partial diff would read
+short. A `truncated` diff (GitHub's 3,000-file cap) gives `changedLines: null` and is classified
+by file count. Without `prDiffs` rows carry none of the three keys.
+
+`listMergedPrRefs(db, since?)` lists the miner index's merged PR refs, sorted, for a backfill to
+fetch; `parsePrRef(ref)` reads the repo and number back out of one.
 
 ### seatContext
 
