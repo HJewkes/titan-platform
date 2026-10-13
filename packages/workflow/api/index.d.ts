@@ -47,6 +47,10 @@ interface ActiveStepBase {
     iterKey: string;
     attempt: number;
     startedAt: string;
+    /** When this step's first attempt started, kept across retries and restarts; absent on older rows, read `startedAt`. */
+    firstStartedAt?: string;
+    /** How many restarts re-dispatched this step; they raise `attempt` but spend no retry budget. Absent reads as 0. */
+    restarts?: number;
     runnerRef?: string;
     /** Summed cost of this step's earlier failed attempts, so a resumed run still reports every attempt once. */
     priorUsage?: StepUsage;
@@ -191,6 +195,9 @@ interface RecoverableStepDispatchInput extends StepRunInput {
     executionId: string;
     requestKey: string;
     attempt: number;
+    /** When the step's first attempt started, so a wait resumed after a restart can keep its original deadline. */
+    firstStartedAt: string;
+    restarts: number;
 }
 interface StepDispatchAck {
     executionId: string;
@@ -487,6 +494,13 @@ type RestartRule = "repeat" | "park";
 interface RoutedStepInput extends StepRunInput {
     attempt: number;
     requestKey: string;
+    /**
+     * When the step's first attempt started; a restart keeps it, so a wait can resume its deadline. The runtime always
+     * sets it and `restarts`; they are optional so an input built by hand, as in a route's own test, still type-checks.
+     */
+    firstStartedAt?: string;
+    /** How many restarts re-dispatched this step; 0 on a first run and on ordinary retries. */
+    restarts?: number;
 }
 interface RouteRunner {
     run(input: RoutedStepInput): Promise<StepRunOutcome>;
@@ -496,6 +510,8 @@ interface StepRoute {
     match: string;
     runner: RouteRunner;
     onRestart: RestartRule;
+    /** Decides a step a restart interrupted, ahead of `onRestart`; a rejection parks the run. */
+    reconcile?(step: RecoverableActiveStep, signal: AbortSignal): Promise<StepReconcileOutcome>;
 }
 interface RoutedRunner extends RecoverableStepRunner {
     routeFor(stepId: string): StepRoute | undefined;

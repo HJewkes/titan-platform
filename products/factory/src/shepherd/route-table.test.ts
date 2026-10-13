@@ -117,6 +117,16 @@ describe("nextCloserStreak", () => {
   });
 });
 
+describe("escalationReason", () => {
+  it("names the escalation's own words ahead of the detail", () => {
+    expect(escalationReason("failed-rounds", "d")).toBe("3 review rounds failed at this task: d");
+  });
+
+  it("puts the given words in place of the escalation's own", () => {
+    expect(escalationReason("failed-rounds", "d", "w")).toBe("w: d");
+  });
+});
+
 describe("fixFirstEscalation", () => {
   const HEAD = "a".repeat(40);
 

@@ -81,6 +81,20 @@ const FILES: Record<string, string> = {
     `}\n`,
   // Reference-count fixtures (C-51): weight = how often the imported binding is
   // actually used, not how many import statements name it.
+  // Namespace imports (TP-2474 c): member accesses credit those exports only;
+  // a whole-object use credits every export of the target.
+  "/repo/src/ns-target.ts":
+    `export function a() { return 1; }\n` +
+    `export const b = 2;\n` +
+    `export const c = 3;\n` +
+    `export type T = number;\n`,
+  "/repo/src/ns-members.ts":
+    `import * as S from "./ns-target.js";\n` +
+    `export const r: S.T = S.a() + S.a() + S.b;\n`,
+  "/repo/src/ns-whole.ts":
+    `import * as S from "./ns-target.js";\n` +
+    `declare function use(x: unknown): number;\n` +
+    `export const w = use(S) + S.b;\n`,
   "/repo/src/heavy.ts":
     `import { A } from "./a.js";\n` +
     `import { B as Bee } from "./b.js";\n` +
