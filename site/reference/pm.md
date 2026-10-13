@@ -203,6 +203,36 @@ import { criticalPath } from "@titan-design/pm";
 const { criticalPath: path, length, cycles } = criticalPath(allTasks, { deliverable: "console-v1" });
 ```
 
+## Review dispositions
+
+A repo review ends with each of its proposals dispositioned: every top-level bullet under
+SUMMARY.md's "Integration recommendations" heading and every P1 or P2 topic in
+`topics-judged.tsv` gets one row in `dispositions.tsv`. The columns are `rec_id`,
+`summary_line`, `disposition` and `ref`:
+
+| disposition | ref |
+|---|---|
+| `task` | the task filed for it |
+| `dup` | the task it duplicates |
+| `fold` | the task it was folded into |
+| `drop` | the reason |
+| `pending-owner` | the reason, for a brief that says "none filed" |
+
+`summaryRecommendations(summaryText)` lists the bullets. A bullet led by a bold label such as
+`**A1.` is that label; any other bullet is `R<n>`, its ordinal in the section. It throws when
+the heading is missing, so a renamed section cannot pass with nothing to disposition.
+`prioritizedTopics(topicsTsv)` lists the P1 and P2 topics. `parseDispositions(tsv)` throws on
+the first bad row, naming its line. `checkDispositions(items, rows)` matches by id, never by
+count, and reports `missing` items, `unknown` row ids and `duplicated` ids.
+
+```ts
+import { checkDispositions, parseDispositions, prioritizedTopics, summaryRecommendations } from "@titan-design/pm";
+
+const items = [...summaryRecommendations(summaryText), ...prioritizedTopics(topicsTsv)];
+const check = checkDispositions(items, parseDispositions(dispositionsTsv));
+if (!check.ok) for (const item of check.missing) console.error(`no disposition for ${item.id}`);
+```
+
 ## What it deliberately does not do
 
 It reads no files, parses no YAML and writes nothing, the category and deliverable

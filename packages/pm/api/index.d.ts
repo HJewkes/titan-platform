@@ -129,6 +129,61 @@ declare function readEdges(task: Task): Edges;
  */
 declare function checkEdges(tasks: readonly Task[], change: EdgeChange): EdgeCheck;
 
+/** Something a repo review proposed that must end with a disposition row. */
+interface ReviewItem {
+    id: string;
+    source: "recommendation" | "topic";
+    /** 1-based line in SUMMARY.md for a recommendation, in topics-judged.tsv for a topic. */
+    line: number;
+}
+/**
+ * Lists the top-level bullets under SUMMARY.md's "Integration recommendations" (or plain
+ * "Recommendations") heading, up to the next level-1 or level-2 heading. A bullet led by a bold
+ * label such as `**A1.` is that label; any other bullet is `R<n>`, its ordinal in the section.
+ * Nested bullets and fenced code are not recommendations. Throws when the heading is missing,
+ * so a renamed section cannot pass the gate by having nothing to disposition.
+ */
+declare function summaryRecommendations(summary: string): ReviewItem[];
+/** Lists the P1 and P2 topics of a review's `topics-judged.tsv`, in file order. */
+declare function prioritizedTopics(topicsTsv: string): ReviewItem[];
+
+/**
+ * How a review item ended. `task`, `dup` and `fold` name a task id: the task filed for it, the
+ * task it duplicates, or the task it was folded into. `drop` and `pending-owner` give a reason;
+ * `pending-owner` is for a brief that says "none filed", where the owner's plan file decides.
+ */
+declare const DISPOSITION_KINDS: readonly ["task", "dup", "fold", "drop", "pending-owner"];
+declare const DispositionRowSchema: z.ZodObject<{
+    rec_id: z.ZodString;
+    summary_line: z.ZodString;
+    disposition: z.ZodEnum<{
+        task: "task";
+        dup: "dup";
+        fold: "fold";
+        drop: "drop";
+        "pending-owner": "pending-owner";
+    }>;
+    ref: z.ZodString;
+}, z.core.$strip>;
+type DispositionRow = z.infer<typeof DispositionRowSchema>;
+type DispositionKind = (typeof DISPOSITION_KINDS)[number];
+/** Parses `dispositions.tsv`. Throws on the first bad row, naming its line. */
+declare function parseDispositions(tsv: string): DispositionRow[];
+interface DispositionCheck {
+    ok: boolean;
+    /** Review items with no row. */
+    missing: ReviewItem[];
+    /** Row ids that name no review item, usually a typo that would otherwise hide a missing row. */
+    unknown: string[];
+    /** Ids with more than one row, so the item's ending is ambiguous. */
+    duplicated: string[];
+}
+/**
+ * Matches rows to review items by id, never by count: three items and three rows still fail
+ * when one row names an item twice or names something that is not an item.
+ */
+declare function checkDispositions(items: readonly ReviewItem[], rows: readonly DispositionRow[]): DispositionCheck;
+
 interface TaskTreeNode {
     id: string;
     title: string;
@@ -245,4 +300,4 @@ type CategorizedTask = Pick<Task, "id" | "status" | "kind" | "cos" | "area" | "d
  */
 declare function checkCategories(task: CategorizedTask, registry: CategoryRegistry | null): CategoryError[];
 
-export { type AreaEntry, BUILT_IN_STATUSES, type CategorizedTask, type CategoryAxis, type CategoryError, type CategoryRegistry, CategoryRegistrySchema, type CriticalPathOptions, type CriticalPathResult, type CrossInitiativeParentWarning, DELIVERABLE_ID_REGEX, DELIVERABLE_STATUSES, type Deliverable, type DeliverableEntry, DeliverableSchema, type DeliverableStatus, type EdgeChange, type EdgeCheck, type EdgeError, type EdgeField, type Edges, type ExternalDep, type StatusEntry, type Task, type TaskFloat, TaskSchema, type TaskTreeNode, categoriesPath, checkCategories, checkEdges, criticalPath, deliverablePath, deliverablesDir, parseCategoryRegistry, parseDeliverableRegistry, readEdges, taskTree };
+export { type AreaEntry, BUILT_IN_STATUSES, type CategorizedTask, type CategoryAxis, type CategoryError, type CategoryRegistry, CategoryRegistrySchema, type CriticalPathOptions, type CriticalPathResult, type CrossInitiativeParentWarning, DELIVERABLE_ID_REGEX, DELIVERABLE_STATUSES, DISPOSITION_KINDS, type Deliverable, type DeliverableEntry, DeliverableSchema, type DeliverableStatus, type DispositionCheck, type DispositionKind, type DispositionRow, DispositionRowSchema, type EdgeChange, type EdgeCheck, type EdgeError, type EdgeField, type Edges, type ExternalDep, type ReviewItem, type StatusEntry, type Task, type TaskFloat, TaskSchema, type TaskTreeNode, categoriesPath, checkCategories, checkDispositions, checkEdges, criticalPath, deliverablePath, deliverablesDir, parseCategoryRegistry, parseDeliverableRegistry, parseDispositions, prioritizedTopics, readEdges, summaryRecommendations, taskTree };
