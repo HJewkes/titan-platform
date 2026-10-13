@@ -221,6 +221,9 @@ describe("namesIfs", () => {
       ["a bash here-string", (s) => `bash <<< ${singleQuoted(s)}`],
       ["sudo bash -c", (s) => `sudo bash -c ${singleQuoted(s)}`],
       ["xargs sh -c fed a pipe", (s) => `printf '%s' ${singleQuoted(s)} | xargs -0 sh -c`],
+      ["find -exec bash -c", (s) => `find . -exec bash -c ${singleQuoted(s)} \\;`],
+      ["find -execdir sh -c", (s) => `find -execdir sh -c ${singleQuoted(s)} {} +`],
+      ["bash -c of a printed string", (s) => `bash -c "$(printf %s ${singleQuoted(s)})"`],
     ];
     const WRITES = ["declare I\\FS=,", "declare $a$b=,", "$c source", "declare -i x; read x"];
     const rows = WRAPPERS.flatMap(([wrapper, wrap]) => WRITES.map((write) => [wrapper, write, wrap(loop(write))] as const));
@@ -229,7 +232,14 @@ describe("namesIfs", () => {
       expect(namesIfs(line)).toBe(true);
     });
 
-    it.each(WRAPPERS.map(([wrapper, wrap]) => [wrapper, wrap("git push origin $R; cd $dir")] as const))(
+    it.each([
+      ["bash -c of a variable", 'bash -c "$x"'],
+      ["sh -c of a command substitution", "sh -c \"$(cat script)\""],
+    ])("matches a run-time -c string, as for eval: %s", (_form, line) => {
+      expect(namesIfs(line)).toBe(true);
+    });
+
+    it.each(WRAPPERS.filter(([wrapper]) => !wrapper.includes("printed")).map(([wrapper, wrap]) => [wrapper, wrap("git push origin $R; cd $dir")] as const))(
       "does not match %s running clean commands",
       (_wrapper, line) => {
         expect(namesIfs(line)).toBe(false);

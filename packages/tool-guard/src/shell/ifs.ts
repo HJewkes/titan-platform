@@ -1,4 +1,4 @@
-import { codeTexts } from "./ifs-scripts.js";
+import { type Scripts, scriptsOf, tokenLists } from "./ifs-scripts.js";
 import { mayWriteRunTimeName } from "./ifs-writes.js";
 import { tokenize } from "./lexer.js";
 import type { Token, WordToken } from "./tokens.js";
@@ -18,7 +18,7 @@ const RELEX_DEPTH = 8;
 /**
  * Whether the text may write IFS: a word spells IFS once quotes, escapes, line continuations and `$'…'` are
  * removed and braces expanded (`declare I\FS=,`, `read {I,}FS`), a write slot's name is built at run time
- * (`declare $a$b$c=,`, `read ?FS`), or text this shell runs as code (eval, trap, alias) does either.
+ * (`declare $a$b$c=,`, `read ?FS`), a script the walk runs does either, or such a script is only known at run time.
  * Where this model of bash runs out, it answers true.
  */
 export function namesIfs(text: string, depth = 0): boolean {
@@ -30,12 +30,19 @@ export function namesIfs(text: string, depth = 0): boolean {
   } catch {
     return true;
   }
-  return tokenLists(tokens).some((list) => listNamesIfs(list, depth));
+  return tokenLists(tokens).some((list) => listNamesIfs(list, text.length, depth));
 }
 
-function listNamesIfs(list: Token[], depth: number): boolean {
+function listNamesIfs(list: Token[], srcLength: number, depth: number): boolean {
   if (mayWriteRunTimeName(list) || wordValues(list).some(valueSpellsIfs)) return true;
-  return codeTexts(list).some((code) => depth + 1 >= RELEX_DEPTH || namesIfs(code, depth + 1));
+  let scripts: Scripts;
+  try {
+    scripts = scriptsOf(list, srcLength);
+  } catch {
+    // Past the spliced-text budget the walk refuses the line, so this answers true with it.
+    return true;
+  }
+  return scripts.runTime || scripts.texts.some((code) => depth + 1 >= RELEX_DEPTH || namesIfs(code, depth + 1));
 }
 
 function valueSpellsIfs(value: string): boolean {
@@ -65,16 +72,6 @@ function holdsIfsInOrder(text: string): boolean {
   const i = text.indexOf("I");
   const f = i < 0 ? -1 : text.indexOf("F", i + 1);
   return f >= 0 && text.includes("S", f + 1);
-}
-
-/** The tokens and every token list nested in their command and process substitutions. */
-function tokenLists(tokens: readonly Token[]): Token[][] {
-  const nested = tokens.flatMap((t): Token[][] => {
-    if (t.type === "word" || t.type === "subs") return t.subs;
-    if (t.type === "redirect") return [...t.subs, ...(t.target?.subs ?? [])];
-    return [];
-  });
-  return [[...tokens], ...nested.flatMap(tokenLists)];
 }
 
 /** Word values, redirect targets and heredoc bodies of one token list. */

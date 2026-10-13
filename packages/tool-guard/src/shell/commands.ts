@@ -3,14 +3,14 @@ import { NestingLimitError } from "./nesting.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
-import { catOperands, SPLICING_SHELLS, splicedWords, stdinScript } from "./sub-output.js";
+import { catOperands, stdinScript } from "./sub-output.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
-import { SHELLS, shellOperands } from "./shell-operands.js";
-import { caseNamed, caseScripts } from "./case-script.js";
+import { inlineScript, SHELLS, type Inline } from "./inline-script.js";
+import { caseNamed } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
 import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
-import { cutReading, pipedShellTexts } from "./piped-nul.js";
+import { cutReading } from "./piped-nul.js";
 import { addRedirect, groupStdin } from "./group-stdin.js";
 import { xargsCommands } from "./xargs-runs.js";
 import { runReadings } from "./xargs-readings.js";
@@ -18,7 +18,7 @@ import type { Vars } from "./vars.js";
 import { newMarks, noteRedirect, recordValue, settle } from "./value-marks.js";
 import { noteCommand, noteWord } from "./stored-words.js";
 import type { ValueMarks } from "./value-marks.js";
-import { chargeSpliced, MAX_UNSURE_WORDS, NestingReadingError, ReadingLimitError, SPLICED_WEIGHT, SplitReadingError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
+import { MAX_UNSURE_WORDS, NestingReadingError, ReadingLimitError, SPLICED_WEIGHT, SplitReadingError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
 
 const MAX_DEPTH = 8;
@@ -78,18 +78,14 @@ export interface ExtractOptions {
    * `ReadingLimitError`. For a script the line runs, which the user cannot split further.
    */
   stopPastCap?: boolean;
+  /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
+  onScript?: (text: string) => void;
 }
 
 interface Scope {
   dir: string | null;
   vars: Vars;
   wrapping: Wrapping[];
-}
-
-/** Shell text a command runs, and how it reaches the commands in it. */
-interface Inline {
-  texts: string[];
-  wrap: Wrapping;
 }
 
 interface Walk {
@@ -112,6 +108,7 @@ interface Walk {
   unsure: UnsureBudget;
   /** What the line stores and whether it evaluates arithmetic, shared by every walk of it. */
   marks: ValueMarks;
+  onScript: ((text: string) => void) | null;
 }
 
 /**
@@ -124,7 +121,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
   const foldCase = options.foldCase === true;
   const unsure = { left: MAX_UNSURE_WORDS, splicedLeft: SPLICED_WEIGHT * src.length, decides: decider(options.guarded), stopPastCap: options.stopPastCap === true };
-  const w: Walk = { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase, walked: null, unsure, marks: newMarks() };
+  const w: Walk = { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase, walked: null, unsure, marks: newMarks(), onScript: options.onScript ?? null };
   walk(tokenizeLine(src), observed(w));
   settle(w.marks);
   return out;
@@ -307,6 +304,7 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[]): void {
   for (const text of script.texts) {
     if (w.walked?.has(text)) continue;
     w.walked?.add(text);
+    w.onScript?.(text);
     // A shell's arguments and input become its positional parameters and what its `read` stores.
     if (script.wrap !== "eval") w.marks.opaque = true;
     walk(tokenizeLine(text), child(w, [...wrapping, script.wrap]));
@@ -327,35 +325,6 @@ function literalEnv(cmd: Unwrapped): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [name, value, kind] of cmd.assigned) if (value !== null && !kind) env[name] = value;
   return env;
-}
-
-/**
- * The script a shell or `eval` runs: a `-c` string, else a heredoc, here-string or literal pipe on stdin. Eval and `-c`
- * text is read with and without what its substitutions print, when that is literal on the line.
- */
-function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], stdin: string | null, budget: UnsureBudget): Inline | null {
-  if (cmd.script !== undefined) return { texts: [cmd.script], wrap: "sh-c" };
-  if (cmd.name === "eval") return { texts: splicedReadings(cmd.args, budget), wrap: "eval" };
-  if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
-  const { hasC, positional } = shellOperands(cmd.args);
-  // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
-  const text = hasC ? (positional ? splicedReadings([positional], budget) : stdin) : positional ? null : stdinScript(redirects);
-  if (text !== null) return { texts: hasC ? [text].flat() : [text].flat().flatMap((t) => pipedShellTexts(cmd.name, t)), wrap: hasC ? "sh-c" : "heredoc-shell" };
-  return hasC || positional || stdin === null ? null : { texts: pipedShellTexts(cmd.name, stdin), wrap: "piped-shell" };
-}
-
-/**
- * Splicing only adds a reading: where the model of a substitution's output is wrong (`printf '%d' '#'` prints `0`,
- * not `#`), the spliced text could hide what follows, so the text with substitutions left out is walked too. Each
- * shell's spliced text is a reading of its own, so output that bash and zsh print differently hides in neither. Only
- * the texts splicing adds are charged, so a line that nests eval walks them in time linear in its length or is refused.
- */
-function splicedReadings(words: WordToken[], budget: UnsureBudget): string[] {
-  const plain = caseScripts(words);
-  const spliced = SPLICING_SHELLS.flatMap((shell) => caseScripts(splicedWords(words, shell)));
-  const added = [...new Set(spliced)].filter((text) => !plain.includes(text));
-  chargeSpliced(budget, added);
-  return [...new Set([...plain, ...added])];
 }
 
 function changeDir(dir: string | null, word: WordToken | undefined, home: string | null): string | null {
