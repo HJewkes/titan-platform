@@ -99,6 +99,10 @@ describe("gh's run-time {branch} placeholder names an unknown branch", () => {
     ["PATCH", ":owner/o/r/git/refs/heads/main", ""],
     ["PATCH", "repos/o/r/git/refs/{branch}", ""],
     ["PATCH", "repos/o/r/git/{branch}", ""],
+    ["PATCH", "repos/o/r/{branch}", ""],
+    ["PATCH", "repos/o/r/g{branch}", ""],
+    ["PATCH", "repos/o/r/%67it/{branch}", ""],
+    ["PATCH", "repos/o/r/git/refs/heads/feat-{branch}", ""],
     ["PATCH", "repos/o/r/{repo}/refs/heads/main", ""],
     ["PATCH", "repos/{owner}/{repo}/heads/main", "sha=x"],
     ["DELETE", "repos/o/:repo/x", ""],
@@ -106,6 +110,26 @@ describe("gh's run-time {branch} placeholder names an unknown branch", () => {
     ["POST", "repos/{owner}/{repo}/issues", "ref=refs/heads/{branch}"],
   ])("%s %s %s", (method, url, src) => {
     expect(apiBranchRefWrite(url, method, fields(src))).toEqual({ branches: [null] });
+  });
+});
+
+describe("a placeholder in a ref field reads as unknown unless the text before it pins a non-heads ref", () => {
+  it.each([
+    ["ref=refs/{branch} sha=x", [null]],
+    ["ref=refs/he{branch} sha=x", [null]],
+    ["ref=refs/heads{branch} sha=x", [null]],
+    ["ref=refs/:branch sha=x", [null]],
+    ["ref={branch} sha=x", [null]],
+    ["ref=re{branch} sha=x", [null]],
+    ["ref=refs/heads/feat-{branch} sha=x", [null]],
+    ["ref=refs/tags/{branch} ref=refs/heads/main", ["main"]],
+    ["ref=refs/notes{branch} ref=refs/heads/main", ["main"]],
+  ])("POST git/refs %s names %j", (src, branches) => {
+    expect(apiBranchRefWrite("repos/o/r/git/refs", "POST", fields(src))).toEqual({ branches });
+  });
+
+  it("drops a tags ref with a placeholder when no other field names a head", () => {
+    expect(apiBranchRefWrite("repos/o/r/git/refs", "POST", fields("ref=refs/tags/{branch} sha=x"))).toBeNull();
   });
 });
 

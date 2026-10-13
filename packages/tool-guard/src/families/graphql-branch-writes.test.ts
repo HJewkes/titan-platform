@@ -1,0 +1,225 @@
+import { describe, expect, it } from "vitest";
+import { tokenize } from "../shell/lexer.js";
+import type { WordToken } from "../shell/lexer.js";
+import { GH_PLACEHOLDER_RE } from "./field-words.js";
+import { decodeGraphqlEscapes, graphqlBranchWrites } from "./graphql-branch-writes.js";
+
+const BS = "\\";
+const PROTECTED_RE = /^(?:main|master|release\/.+)$/;
+/** Two escape layers past what GitHub decodes. */
+const DEEP = `${BS}u{5c}u{5c}u0041`;
+const words = (src: string) => tokenize(src).filter((t): t is WordToken => t.type === "word");
+/** Reads a `gh api graphql` call whose query is `query` and whose other field words are `vars`, written as shell text. */
+const read = (query: string, vars = "") => graphqlBranchWrites([query], [...words(`'query=${query}'`), ...words(vars)]);
+
+const merge = (base: string, head = '"feat/x"') => `mutation{mergeBranch(input:{repositoryId:"r",base:${base},head:${head}}){mergeCommit{oid}}}`;
+const commitOn = (branch: string, rest = 'message:{headline:"m"}') =>
+  `mutation{createCommitOnBranch(input:{branch:${branch},${rest},expectedHeadOid:"x"}){commit{oid}}}`;
+const updateRefs = (name: string) => `mutation{updateRefs(input:{repositoryId:"r",refUpdates:[{name:${name},afterOid:"x"}]}){clientMutationId}}`;
+const createRef = (name: string) => `mutation{createRef(input:{repositoryId:"r",name:${name},oid:"x"}){ref{id}}}`;
+const MERGE_BY_VAR = `mutation($base:String!)${merge("$base").slice("mutation".length)}`;
+const BY_INPUT = "mutation($i:CreateCommitOnBranchInput!){createCommitOnBranch(input:$i){commit{oid}}}";
+const FEATURE_MERGE = merge('"feat/x"', '"feat/y"');
+const LINKED = (name: string) => `mutation{createLinkedBranch(input:{issueId:"I",oid:"x"${name}}){linkedBranch{ref{name}}}}`;
+
+describe("graphqlBranchWrites, mutations", () => {
+  it.each([
+    ["updateRef", 'mutation{updateRef(input:{refId:"R",oid:"x"}){clientMutationId}}', true],
+    ["deleteRef", 'mutation{deleteRef(input:{refId:"R"}){clientMutationId}}', true],
+    ["enqueuePullRequest", 'mutation{enqueuePullRequest(input:{pullRequestId:"p"}){mergeQueueEntry{id}}}', true],
+    ["updatePullRequestBranch", 'mutation{updatePullRequestBranch(input:{pullRequestId:"p"}){pullRequest{number}}}', true],
+    ["updateRef", `mutation{${BS}u0075pdateRef(input:{refId:"R",oid:"x"}){clientMutationId}}`, true],
+    ["updateRef", `mutation{updateRef(input:{refId:"R",oid:"x"}){clientMutationId}} # ${DEEP}`, true],
+    ["updateRefs", updateRefs('"refs/heads/main"'), false],
+    ["createRef", createRef('"refs/heads/main"'), false],
+    ["mergeBranch", merge('"main"'), false],
+    ["createCommitOnBranch", commitOn('{repositoryNameWithOwner:"o/r",branchName:"main"}'), false],
+    ["createLinkedBranch", LINKED(',name:"main"'), false],
+  ])("%s reads unknown %s, or lists main (row %#)", (name, query, unknown) => {
+    expect(read(query)).toMatchObject({ mutations: [name], unknown, branches: unknown ? [] : expect.arrayContaining(["main"]) });
+  });
+});
+
+describe("graphqlBranchWrites, known targets", () => {
+  it.each([
+    ["a feature updateRefs, not read as updateRef", updateRefs('"refs/heads/feat/x"'), "", "feat/x"],
+    ["a feature mergeBranch with a {oid} selection gh leaves alone", FEATURE_MERGE, "", "feat/y"],
+    ["a release branch's slash", createRef('"refs/heads/release/2.0"'), "", "release/2.0"],
+    ["an escaped name in an --input body", `{"query":"${updateRefs(`${BS}"refs/heads/${BS}u006dain${BS}"`)}"}`, "", "main"],
+    ["a name after an escaped newline in a JSON body", `{"query":"mutation{${BS}nmergeBranch(input:{base:${BS}"main${BS}"}){mergeCommit{oid}}}"}`, "", "main"],
+    ["a block string", merge('"""main"""'), "", "main"],
+    ["a name a comment's stray quote would misalign", `# "\n${merge('"main"')}`, "", "main"],
+    ["a base given by -f base=main", MERGE_BY_VAR, "-f base=main", "main"],
+    ["a wholly quoted glob, which the shell leaves alone", MERGE_BY_VAR, "-f 'base=mai?'", "mai?"],
+    ["a name only resembling a placeholder", MERGE_BY_VAR, "-F base=feat:branches", "feat:branches"],
+    ["a query field whose value, after its literal key, is dynamic", FEATURE_MERGE, '-f query="$Q"', "feat/y"],
+    ["createLinkedBranch on a feature", LINKED(',name:"feat/x"'), "", "feat/x"],
+    ["createCommitOnBranch on a feature", commitOn('{repositoryNameWithOwner:"o/r",branchName:"feat/y"}'), "", "feat/y"],
+    ["a quoted nested branchName", BY_INPUT, "-F 'i[branch][repositoryNameWithOwner]=o/r' -F 'i[branch][branchName]=main'", "main"],
+  ])("reads %s as known", (_what, query, vars, branch) => {
+    const result = read(query, vars);
+    expect(result).toMatchObject({ unknown: false, branches: expect.arrayContaining([branch]) });
+    expect(result.branches.some((b) => PROTECTED_RE.test(b))).toBe(PROTECTED_RE.test(branch));
+  });
+});
+
+describe("graphqlBranchWrites, targets known only at run time", () => {
+  it.each([
+    ["a base read from a file", MERGE_BY_VAR, "-F base=@f"],
+    ["a base set at run time", MERGE_BY_VAR, '-f base="$B"'],
+    ["a base under a run-time key", MERGE_BY_VAR, '-f "$K"=main'],
+    ["a base from a command substitution", MERGE_BY_VAR, "-f base=`cat b`"],
+    ["a commit by id", commitOn('{id:"R"}'), ""],
+    ["a commit by an id that spells a branch", commitOn('{id:"REF_main"}'), ""],
+    ["a commit by id beside a feature branchName", commitOn('{id:"R",branchName:"feat/x"}'), ""],
+    ["a commit by id while a comment names branchName", `# branchName: feat/x\n${commitOn('{id:"R"}')}`, ""],
+    ["a commit by id while the headline says branchName", commitOn('{id:"R"}', 'message:{headline:"set branchName"}'), ""],
+    ["a commit by id with commas and a comment before the colon", commitOn('{id , # c\n : "R"}'), ""],
+    ["a commit by id in a JSON variables object", `{"query":${JSON.stringify(commitOn("$b"))},"variables":{"b":{"id":"R"}}}`, ""],
+    ["a commit by id in a nested -F field", commitOn("$b"), "-F 'b[id]=R' -F 'b[branchName]=feat/x'"],
+    ["a commit with no branch key at all", commitOn("$b"), "-f note=branchName"],
+    ["a commit by id two levels deep", BY_INPUT, "-F 'i[branch][id]=REF_main'"],
+    ["a deep id beside an aliased branchName selection", BY_INPUT.replace("commit{oid}", "branchName:commit{oid}"), "-F 'i[branch][id]=REF_main'"],
+    ["a deep id while a comment names branchName", `# branchName:\n${BY_INPUT}`, "-F 'i[branch][id]=REF_main'"],
+    ["a deep id beside a branchName field", BY_INPUT, "-F 'i[branch][id]=REF_main' -f branchName=feat/x"],
+    ["a deep id in an array element", BY_INPUT, "-F 'i[branch][][id]=REF_main' -f 'i[branch][branchName]=feat/x'"],
+    ["createLinkedBranch with no name", LINKED(""), ""],
+    ["a base gh fills from {branch}", MERGE_BY_VAR, "-F 'base={branch}'"],
+    ["a base with :branch inside a word", MERGE_BY_VAR, "-F base=m:branch"],
+    ["a base with :branch before a dot", MERGE_BY_VAR, "-F base=:branch-1.0"],
+    ["a base with {branch} after a prefix", MERGE_BY_VAR, "-F 'base=feature-{branch}'"],
+    ["a base from {repo}", MERGE_BY_VAR, "-F 'base={repo}'"],
+    ["a nested branchName gh fills", BY_INPUT, "-F 'i[branch][repositoryNameWithOwner]=o/r' -F 'i[branch][branchName]={branch}'"],
+    ["an updateRefs name gh fills", `mutation($name:String!)${updateRefs("$name").slice("mutation".length)}`, "-F 'name=refs/heads/{branch}'"],
+    ["a query string {branch}", merge('"{branch}"'), ""],
+    ["a query string :branch", merge('":branch"'), ""],
+    ["a query string refs/heads/{branch}", createRef('"refs/heads/{branch}"'), ""],
+    ["a fill between unquoted halves of a value", merge("{branch}main{branch}"), ""],
+    ["a fill before the first quote", 'mutation{mergeBranch(input:{base:{branch},repositoryId:"r",head:"feat/x"}){mergeCommit{oid}}}', ""],
+    ["a fill after the last quote", merge("x:owner"), ""],
+    ["fills in a query with no quotes", "mutation{createRef(input:{repositoryId:{repo},name:{owner},oid:{branch}}){ref{id}}}", ""],
+    ["a key a command substitution extends past query", FEATURE_MERGE, '-f "query$(printf x)=main"'],
+    ["a key a backquote substitution extends past query", FEATURE_MERGE, '-f "query`printf x`=main"'],
+    ["a key a variable extends past query", FEATURE_MERGE, '-f "query${X}=main"'],
+    ["a branchName key a substitution right before its = may change", BY_INPUT, "-F 'i[branch][branchName]'\"$(printf x)\"=feat/x"],
+    ["a value a glob may expand", MERGE_BY_VAR, "-f base=mai?"],
+    ["a key a glob may expand into a deep id", BY_INPUT, "-F i?branch??id?=REF_main -f 'i[branch][branchName]=feat/x'"],
+    ["a value a brace list expands", MERGE_BY_VAR, "-f base=m{x,a}in"],
+    ["an unquoted nested key, which globs", BY_INPUT, "-F 'i[branch][repositoryNameWithOwner]=o/r' -F i[branch][branchName]=feat/x"],
+    ["a glob in a partly quoted value", MERGE_BY_VAR, '-f base="mai"?'],
+    ["a value tilde expansion makes $HOME", MERGE_BY_VAR, "-f base=~"],
+    ["a value tilde expansion makes $PWD", MERGE_BY_VAR, "-f base=~+"],
+    ["a value tilde expansion makes $OLDPWD", MERGE_BY_VAR, "-f base=~-"],
+    ["a value a zsh extended-glob negation may match", MERGE_BY_VAR, "-f base=^x"],
+    ["a value a zsh extended-glob repeat may match", MERGE_BY_VAR, "-f base=mai#n"],
+    ["a word zsh expands as =cmd", MERGE_BY_VAR, "-f =main"],
+    ["a feature merge with a text escaped past the cap", `${FEATURE_MERGE} # ${DEEP}`, ""],
+  ])("reads %s as unknown", (_what, query, vars) => {
+    expect(read(query, vars).unknown).toBe(true);
+  });
+});
+
+describe("graphqlBranchWrites, variables zsh modifies", () => {
+  /** A field word as variable tracking leaves it: the text as written in `typed`, the bash-modelled value in `value`. */
+  const tracked = (src: string, value: string) => words(src).map((w) => ({ ...w, value, dynamic: false, refs: [], typed: w.value }));
+  const call = (vars: WordToken[]) => graphqlBranchWrites([MERGE_BY_VAR], [...words(`'query=${MERGE_BY_VAR}'`), ...vars]);
+  it.each([
+    ["a :l modifier, which lower-cases MAIN", tracked('"base=$X:l"', "base=MAIN:l"), true],
+    ["a :h modifier, which drops /x", tracked('"base=$Y:h"', "base=refs/heads/main/x:h"), true],
+    ["a modifier after a closing quote, which zsh leaves but the dropped quotes hide", tracked('base="$Y":h', "base=refs/heads/main/x:h"), true],
+    ["a subscript", tracked('"base=$X[1]"', "base=MAIN[1]"), true],
+    ["an untracked variable with a modifier", words('"base=$X:l"'), true],
+    ["a braced variable before a colon, which zsh leaves literal", tracked('"base=${X}:x"', "base=MAIN:x"), false],
+  ])("reads %s as unknown: %s", (_what, vars, unknown) => {
+    expect(call(vars).unknown).toBe(unknown);
+  });
+});
+
+describe("graphqlBranchWrites, mutations that change branch protection", () => {
+  const CREATE_RULE = (pattern: string) =>
+    `mutation{createBranchProtectionRule(input:{repositoryId:"R",pattern:${pattern},requiresApprovingReviews:true}){clientMutationId}}`;
+  const UPDATE_RULE = 'mutation{updateBranchProtectionRule(input:{branchProtectionRuleId:"BPR",requiresApprovingReviews:false}){clientMutationId}}';
+  const DELETE_RULE = 'mutation{deleteBranchProtectionRule(input:{branchProtectionRuleId:"BPR"}){clientMutationId}}';
+  const BY_VAR = (name: string, key: string) =>
+    `mutation($v:String!){${name}(input:{repositoryId:"R",${key}:$v}){clientMutationId}}`;
+
+  it.each([
+    ["createBranchProtectionRule", "on main", CREATE_RULE('"main"'), ""],
+    ["updateBranchProtectionRule", "by rule id", UPDATE_RULE, ""],
+    ["deleteBranchProtectionRule", "by rule id", DELETE_RULE, ""],
+    ["createBranchProtectionRule", "on a feature-only pattern", CREATE_RULE('"feat/*"'), ""],
+    ["deleteBranchProtectionRule", "behind an alias", DELETE_RULE.replace("{delete", "{x: delete"), ""],
+    [
+      "deleteBranchProtectionRule",
+      "escaped in an --input body",
+      `{"query":"mutation{${BS}u0064eleteBranchProtectionRule(input:{branchProtectionRuleId:${BS}"BPR${BS}"}){clientMutationId}}"}`,
+      "",
+    ],
+    ["deleteBranchProtectionRule", "beside an {owner} fill", `${DELETE_RULE} # "{owner}"`, ""],
+    ["createBranchProtectionRule", "with a pattern gh fills from {branch}", BY_VAR("createBranchProtectionRule", "pattern"), "-F 'pattern={branch}'"],
+    ["updateBranchProtectionRule", "with an id gh fills from :branch", BY_VAR("updateBranchProtectionRule", "branchProtectionRuleId"), "-F id=:branch"],
+  ])("reads %s %s as an unknown write", (name, _how, query, vars) => {
+    expect(read(query, vars)).toMatchObject({ mutations: [name], unknown: true });
+  });
+
+  it.each([
+    ["a longer name", 'mutation{updateBranchProtectionRuleX(input:{branchProtectionRuleId:"BPR"}){clientMutationId}}', ""],
+    ["a protection rule read", '{repository(owner:"o",name:"r"){branchProtectionRules(first:5){nodes{pattern}}}}', ""],
+    ["a field value that only names the mutation", "{viewer{login}}", "-f note=deleteBranchProtectionRule"],
+  ])("reads %s as no mutation", (_what, query, vars) => {
+    expect(read(query, vars)).toEqual({ mutations: [], branches: [], unknown: false });
+  });
+});
+
+describe("graphqlBranchWrites, texts with no branch mutation", () => {
+  it.each([
+    ["a viewer read", "{viewer{login}}", false],
+    ["a mergeable read", 'query{repository(owner:"o",name:"r"){pullRequest(number:1){mergeable}}}', false],
+    ["a field named mergeBranchX", "query{mergeBranchX}", false],
+    ["a branch fill, which may hold any GraphQL text", "{viewer{login}}{branch}", true],
+    ["an owner fill that completes a name", 'mutation{update:repo(input:{refId:"R",oid:"x"}){clientMutationId}}', true],
+    ["an owner fill as the whole mutation name", `mutation{ {owner}${merge('"main"').slice("mutation{mergeBranch".length)}`, true],
+    ["a repo fill behind an alias", `mutation{ a: {repo}${merge('"main"').slice("mutation{mergeBranch".length)}`, true],
+    ["owner and repo fills joined into one name", `mutation{ {owner}{repo}${merge('"main"').slice("mutation{mergeBranch".length)}`, true],
+    ["a colon-form owner as the name", `mutation{ :owner${merge('"main"').slice("mutation{mergeBranch".length)}`, true],
+    ["an owner fill spliced in as the operation", `{owner}{ {repo}${merge('"main"').slice("mutation{mergeBranch".length)}`, true],
+    ["a read naming a quoted owner and repo, as any fill may rewrite the query", 'query{repository(owner:"{owner}",name:"{repo}"){id}}', true],
+    ["a read escaped past the cap", `{viewer{login}} # ${DEEP}`, true],
+  ])("reads %s", (_what, query, unknown) => {
+    expect(read(query, unknown ? "" : '-f x="$X"')).toEqual({ mutations: [], branches: [], unknown });
+  });
+
+  it("pins gh 2.102's placeholder pattern", () => {
+    expect(GH_PLACEHOLDER_RE.source).toBe(String.raw`:(?:owner|repo|branch)\b|\{[a-z]+\}`);
+  });
+});
+
+describe("decodeGraphqlEscapes", () => {
+  it.each([
+    [`${BS}u006dain`, "main", true],
+    [`${BS}u{6d}ain`, "main", true],
+    [`refs${BS}/heads${BS}/main`, "refs/heads/main", true],
+    [`${BS}"main${BS}"`, '"main"', true],
+    [`${BS}${BS}u006dain`, "main", true],
+    [`a${BS}nb`, "a\nb", true],
+    [`${BS}u{110000}`, `${BS}u{110000}`, true],
+    [`${BS}u{5c}u{5c}u006dain`, `${BS}u006dain`, false],
+  ])("decodes %s to %s, within the two layers GitHub decodes: %s", (text, decoded, complete) => {
+    expect(decodeGraphqlEscapes(text)).toEqual({ text: decoded, complete });
+  });
+});
+
+describe("graphqlBranchWrites cost on crafted texts", () => {
+  /** Past this a hook timeout would let the command through; a linear reading of 64 KB takes milliseconds. */
+  const BUDGET_MS = 500;
+  const KB = 1024;
+
+  it.each([
+    ["a chain of escapes, each pass peeling one", merge(`"${BS}u{5c}${"u{5c}".repeat((32 * KB) / 5)}u006dain${`${BS}u{110000}`.repeat((32 * KB) / 10)}"`)],
+    ["commented id keys", `${commitOn("$b")}\n${"#id\n".repeat(16 * KB)}`],
+  ])("reads 64 KB of %s as unknown within budget", (_what, text) => {
+    const start = performance.now();
+    expect(graphqlBranchWrites([text], []).unknown).toBe(true);
+    expect(performance.now() - start).toBeLessThan(BUDGET_MS);
+  });
+});
