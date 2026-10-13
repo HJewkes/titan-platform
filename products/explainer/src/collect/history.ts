@@ -1,12 +1,14 @@
 import { execFileSync } from "node:child_process";
 import { z } from "zod";
 
+const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+
 /** A design decision a commit records; `why` is quoted verbatim from that commit's message, never paraphrased. */
 const DecisionSchema = z.object({
   what: z.string().min(1),
   why: z.string().min(1),
   alternative: z.string().min(1).optional(),
-  sha: z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/),
+  sha: z.string().regex(SHA),
   why_source: z.literal("commit"),
 });
 
@@ -22,7 +24,15 @@ interface HistoryEntry {
 interface HistoryMine {
   history: HistoryEntry[];
   decisions: Decision[];
+  /** False in a shallow clone: history[] then stops at the graft and must not be presented as the whole record. */
+  complete: boolean;
 }
+
+interface MineOptions {
+  timeoutMs?: number;
+}
+
+type Git = (args: string[]) => string;
 
 interface RejectedDecision {
   decision: unknown;
@@ -38,11 +48,29 @@ const WHY_WORDS = /\b(because|so that|in order to|instead of|rather than|to avoi
 const ALTERNATIVE = /\b(?:instead of|rather than)\s+([^.,;:!?]+)/i;
 const REMOVAL_VERB = /^(remove|drop|delete|retire)\b/i;
 const MAX_BUFFER = 256 * 1024 * 1024;
+const GIT_TIMEOUT_MS = 60_000;
 // A shorter quote ("the", "cache") is found in almost any message, so it proves nothing about the reason.
 const MIN_WHY_WORDS = 4;
+// The clone is untrusted: its own config could otherwise make `git log` verify signatures with a program it names.
+const PINNED_CONFIG = ["log.showSignature=false", "gpg.program=false", "gpg.ssh.program=false", "gpg.x509.program=false"];
 
-function git(dir: string, args: string[]): string {
-  return execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", maxBuffer: MAX_BUFFER, stdio: ["ignore", "pipe", "pipe"] });
+// An inherited GIT_DIR, GIT_CONFIG_PARAMETERS or the like would override `-C dir` and the pins.
+function gitEnv(): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")));
+}
+
+function gitIn(dir: string, timeoutMs = GIT_TIMEOUT_MS): Git {
+  const pins = PINNED_CONFIG.flatMap((pin) => ["-c", pin]);
+  const env = gitEnv();
+  return (args) =>
+    execFileSync("git", [...pins, "-C", dir, ...args], {
+      encoding: "utf8",
+      env,
+      maxBuffer: MAX_BUFFER,
+      timeout: timeoutMs,
+      killSignal: "SIGKILL",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
 }
 
 function normalize(text: string): string {
@@ -60,23 +88,34 @@ function sentences(body: string): string[] {
     .filter((s) => wordCount(s) >= MIN_WHY_WORDS);
 }
 
-/** Commits that delete at least one file; one log call for the whole range. */
-function deletingShas(dir: string, ref: string): Set<string> {
-  const out = git(dir, ["log", "--no-merges", "--diff-filter=D", "--format=%x1e%H", "--name-only", "--end-of-options", ref]);
-  return new Set(out.split("\x1e").map((record) => record.trim().split("\n")[0] ?? "").filter((sha) => sha !== ""));
+function checkedSha(sha: string, seen: Set<string>): string {
+  if (!SHA.test(sha)) throw new Error(`git log record has a malformed sha: ${JSON.stringify(sha.slice(0, 80))}`);
+  if (seen.has(sha)) throw new Error(`git log record repeats sha ${sha}`);
+  seen.add(sha);
+  return sha;
 }
 
-function readCommits(dir: string, ref: string): Commit[] {
-  const deleting = deletingShas(dir, ref);
-  const out = git(dir, ["log", "--no-merges", "--format=%H%x1f%aI%x1f%s%x1f%b%x1e", "--end-of-options", ref]);
-  return out
-    .split("\x1e")
-    .map((record) => record.replace(/^\n/, "").split("\x1f"))
-    .flatMap(([sha, date, subject, body]) => {
-      if (!sha || !date || subject === undefined) return [];
-      const removal = deleting.has(sha) || REMOVAL_VERB.test(subject);
-      return [{ sha, date, subject, body: body ?? "", removal }];
-    });
+/** Commits that delete at least one file; shas only, so no file name can pose as one. */
+function deletingShas(git: Git, ref: string): Set<string> {
+  const out = git(["log", "--no-merges", "--diff-filter=D", "--format=%H", "--end-of-options", ref]);
+  const seen = new Set<string>();
+  for (const sha of out.split("\n").filter((line) => line !== "")) checkedSha(sha, seen);
+  return seen;
+}
+
+// NUL is the one byte a commit message cannot carry, so a body cannot forge a record boundary.
+function readCommits(git: Git, ref: string): Commit[] {
+  const deleting = deletingShas(git, ref);
+  const fields = git(["log", "-z", "--no-merges", "--format=%H%x00%aI%x00%s%x00%b", "--end-of-options", ref]).split("\0");
+  if (fields.pop() !== "" || fields.length % 4 !== 0) throw new Error("git log output is not whole NUL-delimited records");
+  const seen = new Set<string>();
+  const commits: Commit[] = [];
+  for (let i = 0; i < fields.length; i += 4) {
+    const [rawSha = "", date = "", subject = "", body = ""] = fields.slice(i, i + 4);
+    const sha = checkedSha(rawSha, seen);
+    commits.push({ sha, date, subject, body, removal: deleting.has(sha) || REMOVAL_VERB.test(subject) });
+  }
+  return commits;
 }
 
 /** A removal states its reason in its first body sentence; any other commit must use a why-word. */
@@ -89,40 +128,51 @@ function decisionFrom(commit: Commit): Decision | undefined {
 }
 
 /** K2: mines a local clone's history for decisions with a quotable why. Shells out to git only; no network. */
-export function mineHistory(dir: string, ref = "HEAD"): HistoryMine {
-  const commits = readCommits(dir, ref);
+export function mineHistory(dir: string, ref = "HEAD", { timeoutMs }: MineOptions = {}): HistoryMine {
+  const git = gitIn(dir, timeoutMs);
+  const commits = readCommits(git, ref);
   return {
     history: commits.map(({ sha, date, subject, removal }) => ({ sha, date, subject, removal })),
     decisions: commits.flatMap((commit) => decisionFrom(commit) ?? []),
+    complete: git(["rev-parse", "--is-shallow-repository"]).trim() === "false",
   };
 }
 
-/** The body only: a quote of the subject restates what changed, not why. */
-function commitBody(dir: string, sha: string): string | undefined {
+/** Subject and body; the why is matched against the body only, since a quote of the subject restates what changed. */
+function commitText(git: Git, sha: string): { subject: string; body: string } | undefined {
   try {
-    git(dir, ["cat-file", "-e", `${sha}^{commit}`]);
-    return git(dir, ["log", "-1", "--format=%b", sha]);
+    git(["cat-file", "-e", `${sha}^{commit}`]);
+    const [subject = "", ...body] = git(["log", "-1", "--format=%s%x00%b", "--end-of-options", sha]).split("\0");
+    return { subject, body: body.join("\0") };
   } catch {
     return undefined;
   }
 }
 
-function rejection(dir: string, raw: unknown): string | undefined {
+function rejection(git: Git, raw: unknown): string | undefined {
   const parsed = DecisionSchema.safeParse(raw);
   if (!parsed.success) return `invalid decision: ${parsed.error.issues[0]?.message ?? "schema"}`;
-  if (wordCount(parsed.data.why) < MIN_WHY_WORDS) return `why is shorter than ${MIN_WHY_WORDS} words`;
-  const body = commitBody(dir, parsed.data.sha);
-  if (body === undefined) return `sha ${parsed.data.sha} is not a commit in this clone`;
-  if (!normalize(body).includes(normalize(parsed.data.why))) return `why is not quoted verbatim from the body of ${parsed.data.sha}`;
+  const { what, why, alternative, sha } = parsed.data;
+  if (wordCount(why) < MIN_WHY_WORDS) return `why is shorter than ${MIN_WHY_WORDS} words`;
+  const text = commitText(git, sha);
+  if (text === undefined) return `sha ${sha} is not a commit in this clone`;
+  if (what !== text.subject) return `what is not the subject of ${sha}`;
+  if (!normalize(text.body).includes(normalize(why))) return `why is not quoted verbatim from the body of ${sha}`;
+  if (alternative !== undefined && !why.includes(alternative)) return "alternative is not quoted from the why";
   return undefined;
 }
 
-/** Gate for decisions from any source (a model pass, a hand edit): the sha must exist and the why must be a quote. */
-export function validateDecisions(dir: string, decisions: unknown[]): { accepted: Decision[]; rejected: RejectedDecision[] } {
+/** Gate for decisions from any source (a model pass, a hand edit): the sha must exist, what must be its subject, the why a quote. */
+export function validateDecisions(
+  dir: string,
+  decisions: unknown[],
+  { timeoutMs }: MineOptions = {},
+): { accepted: Decision[]; rejected: RejectedDecision[] } {
+  const git = gitIn(dir, timeoutMs);
   const accepted: Decision[] = [];
   const rejected: RejectedDecision[] = [];
   for (const decision of decisions) {
-    const reason = rejection(dir, decision);
+    const reason = rejection(git, decision);
     if (reason === undefined) accepted.push(DecisionSchema.parse(decision));
     else rejected.push({ decision, reason });
   }
