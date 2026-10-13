@@ -19,6 +19,8 @@ const UPLOAD_METHODS = set("POST", "PUT", "PATCH", UNKNOWN_METHOD);
 const CURL_BODY = ["-d", "--data", "--data-raw", "--data-binary", "--data-urlencode", "--data-ascii", "--json", "-F", "--form", "--form-string", "-T", "--upload-file"];
 /** Options that set the method or URL from somewhere the line does not show. */
 const CURL_HIDDEN = set("-K", "--config", "--request-target");
+/** Switches curl accepts that `--help all` does not list: an old name kept for a renamed switch. */
+const CURL_SWITCH_ALIASES = set("--include");
 /** Words that start curl's next request, which takes its own method and URLs. */
 const CURL_NEXT = set("--next", "-:");
 const WGET_BODY = ["--post-data", "--post-file", "--body-data", "--body-file"];
@@ -65,21 +67,22 @@ const methodOf = (word: WordToken | null) => (word === null ? null : word.dynami
 /** Each `--next` request reads alone; together they send the first write method to every URL. */
 function curlRequest(args: WordToken[]): HttpRequest {
   const parts: WordToken[][] = [[]];
-  for (const word of args) {
-    if (CURL_NEXT.has(word.value)) parts.push([]);
+  for (const word of args.flatMap(splitNext)) {
+    if (word === null) parts.push([]);
     else parts.at(-1)?.push(word);
   }
-  const requests = parts.map((part) => curlPart(readOptions(expandOptions(part), CURL_VALUE_OPTIONS)));
+  const requests = parts.map((part, i) => curlPart(expandOptions(part), i < parts.length - 1));
   const method = (requests.find((r) => isWrite(r.method)) ?? requests[0])?.method ?? "GET";
   return { method, body: requests.some((r) => r.body), urls: requests.flatMap((r) => r.urls) };
 }
 
 /** An option the reader does not know, or one that reads the request from elsewhere, leaves the method and URL unknown. */
-function curlPart(o: Options): HttpRequest {
+function curlPart(words: WordToken[], followed: boolean): HttpRequest {
+  const o = readOptions(words, CURL_VALUE_OPTIONS);
   const body = hasFlag(o, ...CURL_BODY);
   const upload = hasFlag(o, "-T", "--upload-file");
   const implied = switchOn(o, "-G", "--get") ? "GET" : upload ? "PUT" : body ? "POST" : "GET";
-  const hidden = o.opts.some((opt) => !isKnownCurlOption(opt.flag));
+  const hidden = o.opts.some((opt) => !isKnownCurlOption(opt.flag)) || o.positionals.some((p) => mayBeOption(p, words, followed));
   const method = hidden ? UNKNOWN_METHOD : (methodOf(lastValue(o, "-X", "--request")) ?? implied);
   const globs = !switchOn(o, "-g", "--globoff");
   const urls = [...o.positionals, ...valuesOf(o, "--url")].map((u) => (globs ? globbed(u) : u));
@@ -99,10 +102,45 @@ function expandOptions(words: WordToken[]): WordToken[] {
   });
 }
 
+/**
+ * `--next`, `-:` and a short cluster's `:` (`-s:`) start the next request, shown as null; a letter that
+ * takes a value ends the cluster, so a `:` after it is part of that value.
+ */
+function splitNext(word: WordToken): Array<WordToken | null> {
+  if (CURL_NEXT.has(word.value)) return [null];
+  const v = word.value;
+  if (!/^-[^-]/.test(v) || !v.includes(":")) return [word];
+  const out: Array<WordToken | null> = [];
+  let letters = "";
+  const flush = () => {
+    if (letters !== "") out.push({ ...word, value: `-${letters}` });
+    letters = "";
+  };
+  for (let i = 1; i < v.length; i++) {
+    if (CURL_VALUE_OPTIONS.has(`-${v[i]}`)) return [...out, { ...word, value: `-${letters}${v.slice(i)}` }];
+    if (v[i] === ":") {
+      flush();
+      out.push(null);
+    } else letters += v[i];
+  }
+  flush();
+  return out;
+}
+
+/**
+ * A run-time word read as a URL may be an option instead: an unquoted one may split into several words, and
+ * any other may take the word after it, or the request boundary, as its value. Only a quoted one that ends
+ * the last request is read as a URL.
+ */
+function mayBeOption(word: WordToken, words: WordToken[], followed: boolean): boolean {
+  if (!word.dynamic) return false;
+  return word.unquotedExpansion === true || followed || words.indexOf(word) < words.length - 1;
+}
+
 function isKnownCurlOption(flag: string): boolean {
   if (CURL_HIDDEN.has(flag)) return false;
-  if (CURL_VALUE_OPTIONS.has(flag) || CURL_SWITCHES.has(flag)) return true;
-  return flag.startsWith("--no-") && CURL_SWITCHES.has(`--${flag.slice("--no-".length)}`);
+  if (CURL_VALUE_OPTIONS.has(flag) || CURL_SWITCHES.has(flag) || CURL_SWITCH_ALIASES.has(flag)) return true;
+  return CURL_SWITCHES.has(flag.startsWith("--no-") ? `--${flag.slice("--no-".length)}` : `--no-${flag.slice(2)}`);
 }
 
 /** Whether a switch is on: the last of it and its `--no-` form wins. */

@@ -293,6 +293,7 @@ describe("an HTTP write to a URL that may reach GitHub's API only at run time re
     'curl --variable %P --expand-url "https://api.github.com/{{P}}" -X PUT',
     'curl -X PUT "https://api.github.com/repos/o/r/pulls/1/merg{e}"',
     "curl -X PUT 'https://api.github.com/repos/o/r/pulls/[1-2]/merge'",
+    'curl -X GET "$U" --next -I https://example.com/x',
   ])("%s", (command) => {
     expect(merges(command)).toEqual([expect.objectContaining({ spelling: "bash.merge.curl-api", subject: {} })]);
   });
@@ -313,7 +314,7 @@ describe("an HTTP write to a URL that may reach GitHub's API only at run time re
     "curl -X PUT 'https://example.com/a[1-2]'",
     "curl -g -X PUT 'https://api.github.com/repos/o/r/pulls/1/merg{e}'",
     "curl -X PUT 'http://[::1]:8080/x'",
-    'curl -X GET "$U" --next -I https://example.com/x',
+    'curl -I https://example.com/x --next -X GET "$U"',
     'echo "$U" | xargs curl',
     "wget -i urls",
     'http "$U" Accept:json',
