@@ -526,6 +526,11 @@
       "count": 3
     }
   },
+  "packages/tool-guard/src/shell/ifs-values.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
   "packages/tool-guard/src/shell/lexer.ts": {
     "titan/max-line-length": {
       "count": 1
@@ -752,6 +757,11 @@
   "products/factory/src/shepherd/external-review.ts": {
     "titan/max-line-length": {
       "count": 6
+    }
+  },
+  "products/factory/src/shepherd/fix-proof.ts": {
+    "titan/max-line-length": {
+      "count": 1
     }
   },
   "products/factory/src/shepherd/flake-check.ts": {
@@ -982,7 +992,7 @@
   },
   "products/factory/src/shepherd/review-panel-step.ts": {
     "titan/max-line-length": {
-      "count": 3
+      "count": 4
     }
   },
   "products/factory/src/shepherd/review-request.ts": {
@@ -1022,7 +1032,7 @@
   },
   "products/factory/src/shepherd/review.ts": {
     "titan/max-line-length": {
-      "count": 13
+      "count": 15
     }
   },
   "products/factory/src/shepherd/reviewer-brief.ts": {
@@ -1100,6 +1110,16 @@
       "count": 2
     }
   },
+  "products/factory/src/shepherd/train-shadow-stats.ts": {
+    "titan/max-line-length": {
+      "count": 3
+    }
+  },
+  "products/factory/src/shepherd/train-shadow.ts": {
+    "titan/max-line-length": {
+      "count": 3
+    }
+  },
   "products/factory/src/shepherd/train.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1
@@ -1137,11 +1157,16 @@
   },
   "products/factory/src/workflows.ts": {
     "titan/max-line-length": {
-      "count": 11
+      "count": 12
     }
   },
   "products/factory/src/workflows/await-head.test.ts": {
     "titan/no-chained-type-assertions": {
+      "count": 1
+    }
+  },
+  "products/factory/src/workflows/land-ci-wait.ts": {
+    "titan/max-line-length": {
       "count": 1
     }
   },
@@ -1157,7 +1182,7 @@
   },
   "products/factory/src/workflows/land.ts": {
     "titan/max-line-length": {
-      "count": 4
+      "count": 5
     }
   },
   "products/factory/src/workflows/pr-snapshot.test.ts": {
@@ -1186,6 +1211,11 @@
     }
   },
   "products/session-miner/src/commands/sessions.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/session-miner/src/commands/throughput-pr-backfill.ts": {
     "titan/max-line-length": {
       "count": 1
     }
