@@ -33,8 +33,9 @@ const SUBSCRIPTED_NAME_RE = /^[A-Za-z_]\w*\[/;
 
 /**
  * Whether a builtin is handed a variable name with a subscript, or one known only at run time, which may hold one:
- * `printf -v 'b[X]'`, `read 'b[X]'`, `read "$N"`. `command` starts at the command word; `builtin`, `command` and
- * `time` before it, with their `-p` and `--`, still run the builtin in this shell.
+ * `printf -v 'b[X]'`, `read 'b[X]'`, `read "$N"`. `command` starts at the command word; `builtin`, `command`,
+ * `time` and zsh's `noglob`, `nocorrect` and `-` before it, with their `-p` and `--`, still run the builtin in this
+ * shell.
  */
 export function nameOperandEvaluates(command: WordToken[]): boolean {
   const start = command.findIndex((w) => !PASS_THROUGH.has(w.value) && w.value !== "-p" && w.value !== "--");
