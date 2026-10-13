@@ -20,7 +20,7 @@ export type ServeChildPaths = z.infer<typeof serveChildPathsSchema>;
 const dispatchSchema = z.object({ pid: z.number(), attempt: z.number(), restarts: z.number().optional() });
 export type Dispatch = z.infer<typeof dispatchSchema>;
 
-export type ParentMessage = { kind: "start" } | { kind: "status"; runId: string };
+export type ParentMessage = { kind: "start"; workflow?: string } | { kind: "status"; runId: string };
 
 export type ChildMessage =
   | { kind: "ready"; port: number }
@@ -33,8 +33,8 @@ export interface ServeChild {
   readonly port: number;
   /** Every workflow event the child's runtime emitted, in order. */
   readonly events: readonly WorkflowEvent[];
-  /** Starts one run of the blocking workflow; resolves with its id. */
-  start(): Promise<string>;
+  /** Starts one run of the blocking workflow, or of `chore-test`, whose post-merge chore blocks instead; resolves with its id. */
+  start(workflow?: "chore-test"): Promise<string>;
   status(runId: string): Promise<WorkflowStatus | null>;
   /** Sends `signal` to this child's own pid and resolves once it has exited. */
   kill(signal: "SIGKILL" | "SIGTERM"): Promise<void>;
@@ -86,7 +86,7 @@ export async function forkServeChild(paths: ServeChildPaths, forked: Set<ChildPr
     pid: child.pid!,
     port,
     events,
-    start: async () => (await ask({ kind: "start" }, "started")).runId,
+    start: async (workflow) => (await ask({ kind: "start", workflow }, "started")).runId,
     status: async (runId) => (await ask({ kind: "status", runId }, "status")).status,
     kill: async (signal) => {
       if (child.exitCode === null && child.signalCode === null) process.kill(child.pid!, signal);
