@@ -75,8 +75,8 @@ function endpointMerge(url: string, method: string, pullSpelling: SpellingId, me
 }
 
 /** A literal endpoint names its PR, so it wins over a run-time URL that only may reach a merge endpoint. */
-function curlMerge(cmd: SimpleCommand): ClassifiedAction[] {
-  const request = httpRequest(cmd);
+function curlMerge(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
+  const request = httpRequest(cmd, ctx);
   if (!request) return [];
   const literal = request.urls.flatMap((u) => endpointMerge(u.value, request.method, "bash.merge.curl-api", "bash.merge.curl-api"));
   const runTime = isWrite(request.method) && request.urls.some(mayReachGitHubApi) ? [classified("bash.merge.curl-api", {})] : [];
@@ -199,7 +199,7 @@ function git(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
 function bash(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
   if (cmd.name === "gh") return [...prMerge(cmd), ...apiMerge(cmd)];
   if (cmd.name === "git") return git(cmd, inChain(cmd, ctx));
-  return curlMerge(cmd);
+  return curlMerge(cmd, ctx);
 }
 
 const NEW_BRANCH_OPTS = ["-b", "-B", "-c", "-C", "--orphan", "--create", "--force-create"];

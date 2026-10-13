@@ -30,6 +30,8 @@ const CURL_NEXT = set("--next", "-:");
 const WGET_LONG = set(...[...WGET_VALUE_OPTIONS, ...WGET_SWITCHES].filter((n) => n.startsWith("--")).flatMap((n) => [n, ...switchForms(n, WGET_SWITCHES)]));
 /** wgetrc settings that set the method or a body; `-e` running any other one may set anything. */
 const WGETRC_BODY = set("postdata", "postfile", "bodydata", "bodyfile");
+/** wgetrc settings `-e` may run that change neither the request nor where it goes. */
+const WGETRC_NO_OPS = set("robots", "tries", "timeout", "wait");
 const HTTPIE_VALUES = set("-a", "--auth", "-A", "--auth-type", "-o", "--output", "--session", "--session-read-only", "-p", "--print", "-s", "--style", "--pretty", "--verify", "--cert", "--cert-key", "--timeout", "--proxy", "--raw", "--format-options", "--default-scheme");
 /** An httpie request item; the earliest separator decides its kind. */
 const HTTPIE_ITEM_RE = /==|:=@|:=|=@|=|@|:/;
@@ -51,9 +53,10 @@ export interface HttpRequest {
  * The request `curl`, `wget`, `http` or `https` would send, or null for any other command. What the
  * command line does not show fails closed: a run-time method is a write and an unseen URL is run-time.
  */
-export function httpRequest(cmd: SimpleCommand): HttpRequest | null {
+export function httpRequest(cmd: SimpleCommand, ctx: ClassifyContext): HttpRequest | null {
   const request = clientRequest(cmd);
   if (!request) return null;
+  if (ctx.httpConfigUnseen) return { ...request, method: UNKNOWN_METHOD, urls: [...request.urls, UNSEEN_URL] };
   const unseen = request.urls.length === 0 || cmd.wrapping.includes("xargs");
   return unseen ? { ...request, urls: [...request.urls, UNSEEN_URL] } : request;
 }
@@ -185,12 +188,12 @@ function runTimeFrom(word: WordToken, at: number): WordToken {
   return at < 0 ? word : { ...word, value: `${word.value.slice(0, at)}$`, dynamic: true };
 }
 
-/** A `WGETRC` file, an unknown option or an unread `-e` command may set the method and URLs, so the request is unknown. */
+/** An unknown option or an unread `-e` command may set the method and URLs, so the request is unknown. */
 function wgetRequest(cmd: SimpleCommand): HttpRequest {
   const words = cmd.args.map(wgetLongName);
   const o = readOptions(words, WGET_VALUE_OPTIONS);
   const settings = wgetSettings(o);
-  const hidden = settings === null || "WGETRC" in cmd.env || hidesOption(words, o.positionals, false);
+  const hidden = settings === null || hidesOption(words, o.positionals, false);
   const method = hidden ? UNKNOWN_METHOD : settings.method;
   const listed = hasFlag(o, "-i", "--input-file") || hidden ? [UNSEEN_URL] : [];
   return { method, body: settings?.body ?? false, urls: [...o.positionals, ...listed] };
@@ -225,6 +228,7 @@ function wgetSetting(opt: Option): { name: string; value: string | null } | null
   const eq = command?.value.indexOf("=") ?? -1;
   if (!command || command.dynamic || eq < 0) return null;
   const name = wgetrcName(command.value.slice(0, eq));
+  if (WGETRC_NO_OPS.has(name)) return { name, value: null };
   if (name !== "method" && !WGETRC_BODY.has(name)) return null;
   return { name, value: command.value.slice(eq + 1).trim().toUpperCase() };
 }
@@ -279,8 +283,8 @@ const HTTP_SPELLINGS: Partial<Record<string, SpellingId>> = {
   https: "bash.egress.httpie",
 };
 
-function upload(cmd: SimpleCommand): ClassifiedAction[] {
-  const request = httpRequest(cmd);
+function upload(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
+  const request = httpRequest(cmd, ctx);
   const spelling = HTTP_SPELLINGS[cmd.name ?? ""];
   if (!request || !spelling || !(request.body || UPLOAD_METHODS.has(request.method))) return [];
   return actionsFor(spelling, request.urls.map(hostOf));
@@ -388,7 +392,7 @@ function pushUrl(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
 function bash(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
   if (cmd.name === "gh") return gist(cmd);
   if (cmd.name === "git") return pushUrl(cmd, ctx);
-  return [...upload(cmd), ...socket(cmd), ...remoteCopy(cmd), ...cloudCopy(cmd)];
+  return [...upload(cmd, ctx), ...socket(cmd), ...remoteCopy(cmd), ...cloudCopy(cmd)];
 }
 
 /** Named commands that send data off the machine: the EXT rows of the authority table. */
