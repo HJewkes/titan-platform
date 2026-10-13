@@ -8,7 +8,8 @@ stores, one YAML file per task. Also exports `readEdges` and `checkEdges` for a 
 parent and dep edges, and `CategoryRegistrySchema`, `categoriesPath` and
 `checkCategories` for the closed kind, status, cos and area categories, and
 `DeliverableSchema`, `deliverablesDir` and `parseDeliverableRegistry` for the
-deliverable registry. Pure code: no fs, process or network. See
+deliverable registry, and `summaryRecommendations`, `prioritizedTopics`,
+`parseDispositions` and `checkDispositions` for the repo-review disposition gate. Pure code: no fs, process or network. See
 `site/reference/pm.md`.
 
 The first npm publish is pending and owner-only; trusted publishing is set up after it.
