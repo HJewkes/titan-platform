@@ -137,7 +137,11 @@ export function ghAliasSlot(words: readonly (string | undefined)[]): AliasSlot |
  */
 const NO_ALIAS_GROUPS: ReadonlyMap<string, ReadonlySet<string>> = new Map([["codespace ports", set("forward", "visibility")]]);
 
-/** Commands whose first argument names an installed extension that gh runs, as `gh <extension>` would. */
+/**
+ * Commands whose first argument names an installed extension that gh runs, as `gh <extension>` would. `extension
+ * exec` disables flag parsing, so gh hands every word after it to the extension dispatcher, even past `--` or a
+ * word cobra would read as a flag's value; the path is a run-time slot whatever follows, as leak-guard reads it.
+ */
 const EXTENSION_RUNNERS = set("extension exec");
 
 /** The command gh runs for a line's arguments, read the way cobra v1.10's `Find` reads them. */
@@ -146,7 +150,7 @@ interface GhCommandLine {
   path: string[];
   /** The arguments minus the command words, which the found command's own flags parse (cobra `argsMinusFirstX`). */
   leaf: WordToken[];
-  /** The path ends on a word gh may run as a config alias or an extension. */
+  /** The path ends on a word gh may run as a config alias or an extension, or is an `extension exec` path. */
   aliasSlot: boolean;
   /** A word only known at run time, or one that may split, sits where cobra may read a command word. */
   hidden: boolean;
@@ -180,7 +184,7 @@ export function ghCommandLine(args: WordToken[]): GhCommandLine {
   return { path, leaf: rest, aliasSlot: ghAliasSlot(path) !== undefined || runsExtension(path), hidden: false };
 }
 
-const runsExtension = (path: readonly string[]) => path.length === 3 && EXTENSION_RUNNERS.has(path.slice(0, 2).join(" "));
+const runsExtension = (path: readonly string[]) => path.length >= 2 && EXTENSION_RUNNERS.has(path.slice(0, 2).join(" "));
 
 /** Whether the command a path names may have a subcommand or alias under it, so cobra reads another command word. */
 function takesCommandWord(path: readonly string[]): boolean {

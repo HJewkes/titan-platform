@@ -1,11 +1,23 @@
 import type { WordToken } from "../shell/lexer.js";
 import { fieldKeyed, fieldValue, ghFills, literalKey, unreadable } from "./field-words.js";
 
-/** The GraphQL mutations that move a branch ref, as named in GitHub's schema. */
+/** The GraphQL mutations that move a branch ref or change a branch's protection, as named in GitHub's schema. */
 const BRANCH_MUTATION_RE =
-  /\b(updateRefs|updateRef|createRef|deleteRef|mergeBranch|createCommitOnBranch|enqueuePullRequest|createLinkedBranch|updatePullRequestBranch)\b/g;
-/** Their target is an opaque ref id or a PR's base or head branch, which the text cannot show. */
-const OPAQUE_TARGET = new Set(["updateRef", "deleteRef", "enqueuePullRequest", "updatePullRequestBranch"]);
+  /\b(updateRefs|updateRef|createRef|deleteRef|mergeBranch|createCommitOnBranch|enqueuePullRequest|createLinkedBranch|updatePullRequestBranch|createBranchProtectionRule|updateBranchProtectionRule|deleteBranchProtectionRule)\b/g;
+/**
+ * Their target is an opaque ref id or a PR's base or head branch, which the text cannot show. A protection rule is
+ * named by an opaque rule id or matches by a `pattern` glob, so it may cover any branch, `feat/*` included, since a
+ * more specific rule outranks a broader one.
+ */
+const OPAQUE_TARGET = new Set([
+  "updateRef",
+  "deleteRef",
+  "enqueuePullRequest",
+  "updatePullRequestBranch",
+  "createBranchProtectionRule",
+  "updateBranchProtectionRule",
+  "deleteBranchProtectionRule",
+]);
 /** Their target branch is written in the text or a variable. */
 const NAMED_TARGET = new Set(["updateRefs", "createRef", "mergeBranch", "createCommitOnBranch", "createLinkedBranch"]);
 /** The input key that must carry the branch, where the schema lets the call leave it out. */
