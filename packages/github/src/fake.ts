@@ -297,5 +297,6 @@ function landMerge(fake: FakeGitHub, pr: PullRequest, sha: string, nextSha: (tag
   pr.state = "closed";
   pr.mergeSha = nextSha("merge");
   pr.mergedAt = FAKE_MERGED_AT;
+  fake.refs.set(pr.baseRef, pr.mergeSha);
   return { sha: pr.mergeSha };
 }
