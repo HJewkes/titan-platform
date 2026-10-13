@@ -103,6 +103,9 @@ describe("a command that rebinds a command name", () => {
     ["a dynamic printf format, which may be -vNAME", 'printf "$fmt" "$x"'],
     ["print behind a dynamic word and one more", 'print "$f" x'],
     ["printf behind a dynamic word and one more", 'printf "$f" x'],
+    ["print behind a lone dynamic word, as zsh print -vNAME stores \"\"", 'print "$f"'],
+    ["print -r behind a lone dynamic word", 'print -r "$f"'],
+    ["builtin print behind a lone dynamic word", 'builtin print "$f"'],
   ])("is caught: %s", (_how, src) => {
     expect(rebinds(src)).toBe(true);
   });

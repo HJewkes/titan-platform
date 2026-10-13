@@ -46,8 +46,6 @@ const ZPARSEOPTS: StoreSpec = { values: "", targets: "aA", operands: "none" };
 const FUNCTIONS: StoreSpec = { values: "x", targets: "", operands: "none" };
 /** zsh builtins that skip one leading `--` and still read options after it: `zparseopts -- -A commands y:`. */
 const SKIPS_LEADING_DASHES = new Set(["zparseopts", "zstyle", "zformat"]);
-/** Builtins whose first word is often a dynamic format or text, which counts only where it could be `-vNAME VALUE`. */
-const PRINTERS = new Set(["printf", "print"]);
 
 type Target = [word: WordToken, from: number];
 
@@ -167,12 +165,13 @@ function zstyleStores(args: WordToken[]): boolean {
 
 /**
  * Whether an unsure option word may make the builtin store somewhere. Quoted, it is one word: last after a declarer's `-f`
- * it names a function to print, and a printer's needs a word after it to be `-vNAME FORMAT`. Unquoted, it may split into any.
+ * it names a function to print, and printf's needs a word after it to be `-vNAME FORMAT`, while zsh `print -vNAME` stores
+ * even with nothing after it. Unquoted, it may split into any.
  */
 function unsureOptionCounts(name: string, args: WordToken[], at: number, flags: string[]): boolean {
   if (args[at]?.unquotedExpansion === true) return true;
   if (STORERS[name] === DECLARER && flags.includes("-f") && at === args.length - 1) return false;
-  return !PRINTERS.has(name) || at < args.length - 1;
+  return name !== "printf" || at < args.length - 1;
 }
 
 /** The operands that name a parameter the builtin stores into; a declarer's `-f` only prints functions. */
