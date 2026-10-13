@@ -301,11 +301,11 @@ Tier 0, `@titan-design/evidence@0.2.1`. Citation verification, overlap grouping,
 Key exports:
 
 - `line-source`: `lineSourceFromTexts`, `splitLines`
-- `citation`: `quoteFragments`, `quoteInRange`, `verifyCitation`
-- `anchor`: `isFullSha`, `parseAnchor`
+- `citation`: `quoteFragments`, `quoteInRange`, `verifyCitation`, `verifyRange`
+- `anchor`: `isAnchorForm`, `isFullSha`, `parseAnchor`
+- `anchor-check`: `verifyAnchorText`
 - `overlap`: `groupByOverlap`, `rangesOverlap`
-- `controls`: `pickControls`, `placeControls`, `scoreControls`
-- +21 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/evidence)
+- +27 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/evidence)
 
 <a id="cap-fix-proof"></a>
 

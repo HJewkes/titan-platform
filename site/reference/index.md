@@ -42,7 +42,7 @@ Reusable machinery over the primitives.
 | [`daemon`](/reference/daemon) | hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle | `registry`, `rpc-protocol` |
 | [`github`](/reference/github) | GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake | none |
 | [`health`](/reference/health) | health/v1 contract, probes, append-only sample store and uptime | `store-sqlite` |
-| [`hitl`](/reference/hitl) | Human-in-the-loop gate()/resolve() primitive | `authority`, `store-sqlite` |
+| [`hitl`](/reference/hitl) | Human-in-the-loop gate()/resolve() primitive | `authority`, `evidence`, `store-sqlite` |
 | [`matrix-bus`](/reference/matrix-bus) | Matrix client-server API over fetch: appservice client, io.titan.item codec, owner resolution fold, #queue bootstrap | none |
 | [`messaging`](/reference/messaging) | Runtime-neutral messaging transport: contract, BlueBubbles iMessage and Telegram Bot API adapters, mock, inbound validators, liveness | none |
 | [`registry`](/reference/registry) | zod command registry projected to CLI, MCP, and HTTP surfaces | `rpc-protocol` |
@@ -61,7 +61,7 @@ Modules that know about a subject: transcripts, code, rules.
 | [`coordinator`](/reference/coordinator) | Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types). | `agent-dispatch` |
 | [`decider`](/reference/decider) | Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source | `locator`, `memory`, `session-read`, `store-sqlite` |
 | [`memory`](/reference/memory) | Decaying rule playbook: bullets, feedback, deterministic curation, recall | `embed`, `retrieval`, `store-sqlite` |
-| [`owner-queue`](/reference/owner-queue) | The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions | `review-schema` |
+| [`owner-queue`](/reference/owner-queue) | The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions | `evidence`, `review-schema` |
 | [`pm`](/reference/pm) | Project-management schemas: the zod task schema and its type, as active-work stores tasks | none |
 | [`queue-mirror`](/reference/queue-mirror) | Projects a local queue of human-actionable items into a Matrix room and folds the owner's verdicts back | `hitl`, `matrix-bus`, `store-sqlite` |
 | [`review-panel`](/reference/review-panel) | Review-panel types and the reviewer ports a caller satisfies | `evidence`, `fix-proof`, `session-read` |

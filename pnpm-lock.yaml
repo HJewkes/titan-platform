@@ -484,6 +484,9 @@ importers:
       '@titan-design/authority':
         specifier: workspace:^
         version: link:../authority
+      '@titan-design/evidence':
+        specifier: workspace:^
+        version: link:../evidence
       '@titan-design/store-sqlite':
         specifier: workspace:*
         version: link:../store-sqlite
@@ -523,6 +526,9 @@ importers:
 
   packages/owner-queue:
     dependencies:
+      '@titan-design/evidence':
+        specifier: workspace:^
+        version: link:../evidence
       '@titan-design/review-schema':
         specifier: ^0.1.0
         version: 0.1.0(zod@4.5.4)
