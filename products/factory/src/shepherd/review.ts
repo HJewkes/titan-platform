@@ -1,5 +1,5 @@
 import type { AgentIdentity } from "@titan-design/authority";
-import { OVERLAY_SHAPES, OwnerBriefSchema, type AcceptedVerdict as PanelAcceptedVerdict, type AwaitVerdictInput, type PanelPolicy, type ReviewTarget, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
+import { OVERLAY_SHAPES, type AcceptedVerdict as PanelAcceptedVerdict, type AwaitVerdictInput, type PanelPolicy, type ReviewTarget, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
 import type { OwnerOverride } from "./override-stats.js";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
@@ -14,7 +14,7 @@ import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./account-limit.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { awaitExternalVerdict, isExternalVerdictInput, seatVetoed } from "./external-review.js";
 import { removeReviewCheckout, reviewCheckoutRoot } from "./review-checkout.js";
-import { CiPolicySchema, Dispatched, Intended, LocatorSchema, ReviewCauseSchema } from "./review-schemas.js";
+import { Dispatched, Intended, ReviewCauseSchema } from "./review-schemas.js";
 import { MERGE_EVIDENCE_STEPS } from "./merge-evidence-gate.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
@@ -36,6 +36,7 @@ import { withoutPlan, type PanelMode } from "./review-panel-plan.js";
 import { PANEL_STEPS, panelOn, panelReview, panelVerdictRoute, plannedPanel, type MemberBase, type PanelOnPlan } from "./review-panel-step.js";
 import { LATE_VERDICT_STEP, SEAT_RECHECK_STEP, asksOwnerBrief, mergeVerdict, recheckSeat, takeVerdict } from "./take-verdict.js";
 import { NO_REVIEWER_STEPS, noReviewerHeld, noReviewerRoutes } from "./no-reviewer-hold.js";
+import { heldMerge, recordsRecheck } from "./seat-recheck.js";
 
 export const REVIEW_INTENT_STEP = "sh-review-intent";
 export { REVIEW_STEP };
@@ -306,26 +307,6 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
   ];
 };
 
-const HeldMergeInput = z.object({
-  merge: z.object({
-    kind: z.literal("verdict"),
-    verdict: z.literal("MERGE"),
-    head: z.string().regex(HEAD),
-    locator: LocatorSchema,
-    reviewer: z.object({ agentId: z.string().min(1), sessionId: z.string().min(1) }),
-    ownerBrief: OwnerBriefSchema.nullable().optional().catch(null),
-    ciPolicy: CiPolicySchema,
-  }),
-});
-
-/** The recheck's MERGE, as the verdict step recorded it; one that does not read is no verdict, so it can never merge. */
-function heldMerge(raw: unknown): AwaitVerdictResult {
-  const read = HeldMergeInput.safeParse(raw);
-  if (!read.success) return { kind: "none", reason: "the held MERGE could not be read" };
-  const { head, locator, reviewer, ownerBrief, ciPolicy } = read.data.merge;
-  return { kind: "verdict", verdict: "MERGE", head, locator, reviewer, ...(ownerBrief !== undefined && { ownerBrief }), ...(ciPolicy && { ciPolicy }) };
-}
-
 /** With no dispatch wired there is no roster to tell an exited reviewer, so the step answers `none` at once. */
 async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined, input: AwaitVerdictInput, signal: AbortSignal): Promise<AwaitVerdictResult> {
   const dispatch = wiring?.dispatch;
@@ -343,12 +324,6 @@ function notDispatched(ctx: WorkflowContext, target: ReviewTarget, dispatched: R
   if (dispatched.notStarted === true) return { kind: "none", cause: "not-started" };
   if (typeof dispatched.refused === "string") return noReviewerHeld(ctx, target, dispatched.refused);
   return { kind: "none", cause: "no-verdict" };
-}
-
-/** A replay whose record took another step at this head ran before the recheck existed, so it reviews again as it did. */
-function recordsRecheck(ctx: WorkflowContext, head: string): boolean {
-  const next = ctx.historyNext();
-  return next === undefined || next === `${SEAT_RECHECK_STEP}:${head}`;
 }
 
 /**
