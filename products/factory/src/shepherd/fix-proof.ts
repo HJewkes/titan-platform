@@ -234,7 +234,7 @@ export function fixProofVerdict(read: z.infer<typeof FixProofReadSchema>, head: 
   return { kind: "NO_REPRO", headSha: head, result: parsed.result };
 }
 
-type FixProofUnverified = "error" | "untrusted" | "unread";
+export type FixProofUnverified = "error" | "untrusted" | "unread";
 
 /**
  * Why a gated proof that is not NO_REPRO still proves nothing about `head`, or undefined when it stands or no proof was expected.
