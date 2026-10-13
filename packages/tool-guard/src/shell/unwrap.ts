@@ -39,6 +39,10 @@ const WRAPPERS: Record<string, WrapperSpec> = {
   env: { values: [...SHORT_VALUES.env, "--unset", "--chdir", "--argv0"], script: ["-S", "--split-string"], attached: true, digits: true },
   command: { stop: ["-v", "-V"] },
   builtin: {},
+  // zsh precommand modifiers, which run the next word as the command; Claude Code runs Bash under zsh.
+  noglob: {},
+  nocorrect: {},
+  "-": {},
   exec: { values: ["-a"] },
   nohup: {},
   time: { values: [...SHORT_VALUES.time, "--format", "--output"] },

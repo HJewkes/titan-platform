@@ -1,11 +1,11 @@
-export type { CheckRun, CheckRunPr, Commit, CommitStatus, CompareResult, GitHubPort, GitHubWire, HeadRef, IssueComment, LoggedCommit, MergeMessage, MergeMethod, PrFile, PullRequest, PutFileRequest, RepoFile, RepoSlug, RequiredChecks, SkipReason, SquashSource, WriteResult } from "./port.js";
+export type { CheckRun, CheckRunPr, Commit, CommitStatus, CompareResult, GitHubPort, GitHubWire, HeadRef, IssueComment, LoggedCommit, MergeIntoBranchRequest, MergeIntoBranchResult, MergeMessage, MergeMethod, PrFile, PullRequest, PutFileRequest, RepoFile, RepoSlug, RequiredChecks, SkipReason, SquashSource, WriteResult } from "./port.js";
 export { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, FileListTruncatedError, GitHubConflictError, PR_COMMITS_CAP, PR_FILES_CAP, githubPort, type GitHubPortOptions } from "./port.js";
 export { WriteRetriesExhaustedError } from "./write-read-back.js";
 export type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 export type { ReviewComment } from "./review-comment.js";
 export type { ForcePush, ForcePushPage } from "./force-pushes.js";
 export { FORCE_PUSHES_CAP, ForcePushesTruncated } from "./force-pushes.js";
-export { isPassing, latestPerName } from "./checks.js";
+export { isPassing, isPassingConclusion, isSucceeded, latestPerName } from "./checks.js";
 export type { CiVerdict, CiVerdictInput } from "./ci-verdict.js";
 export { ciVerdict, loadRequiredContexts } from "./ci-verdict.js";
 export type { CiWaitOptions, CiWaitOutcome, CiWaitResult } from "./ci-wait.js";
