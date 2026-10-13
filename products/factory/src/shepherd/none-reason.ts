@@ -1,6 +1,7 @@
 import { DEPTH_FLOOR_REASON, isUsageLimit, readMalformed } from "@titan-design/review-panel";
-import type { StepResult } from "@titan-design/workflow";
+import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
+import { endedAt } from "./run-end.js";
 import { SILENT_AFTER_CORRECTION, UNPARSED_AFTER_CORRECTION, isCorrectionFailure } from "./correct-verdict.js";
 
 export const NONE_KINDS = [
@@ -113,6 +114,11 @@ function outputOf(step: StepResult): unknown {
 export function lastNoneReason(steps: readonly StepResult[]): NoneReason | undefined {
   const newest = steps.filter((step) => readerFor(step.stepId) !== undefined).at(-1);
   return newest && readerFor(newest.stepId)!(outputOf(newest));
+}
+
+/** A finished run's last await is history, so only a live run carries one. */
+export function liveLastNone(run: WorkflowRun, steps: readonly StepResult[]): NoneReason | null {
+  return endedAt(run, steps) === undefined ? (lastNoneReason(steps) ?? null) : null;
 }
 
 /** Why the last await gave none, for a row's blockers; nothing when the stall line already says it. */
