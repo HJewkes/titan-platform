@@ -176,7 +176,16 @@ describe("a push destination known only at run time counts as an unknown protect
     expect(bash(command, head)).toEqual(unknownPush);
   });
 
-  it.each(["git push -o $O origin feat", 'git push "$@"'])("denies %s, whose words may carry a refspec", (command) => {
+  it.each([
+    "git push -o $O origin feat",
+    'git push "$@"',
+    'a=(origin main); git push "${a[@]:0}"',
+    'a=(origin main); git push "${a[@]#x}"',
+    'a=(origin main); git push "${a[@]/x/y}"',
+    'a=(origin main); git push "${a[@]^^}"',
+    'a=(origin main); git push "${a[@]-x}"',
+    "a=(origin main); git push ${a[*]}",
+  ])("denies %s, whose words may carry a refspec", (command) => {
     expect(mergeSpellings(command)).toEqual(["bash.merge.git-push-protected"]);
   });
 

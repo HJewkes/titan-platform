@@ -155,8 +155,8 @@ function hasUnknownDestination(git: GitInvocation, refspecs: WordToken[]): boole
   return git.subArgs.some((w) => splits(w) || expandsToMany(w)) || refspecs.some((s) => literalSpec(s) === null);
 }
 
-/** `"$@"` and `"${arr[@]}"` give one word per element even when quoted, so any of them may be a refspec. */
-const expandsToMany = (word: WordToken) => word.dynamic && /\$@|\$\{@|\[@\]\}/.test(word.typed ?? word.value);
+/** `"$@"` and `"${arr[@]}"`, with or without an operator such as `:0` or `#x`, give one word per element even when quoted, so any of them may be a refspec. */
+const expandsToMany = (word: WordToken) => word.dynamic && /\$@|\$\{@|\[@\]/.test(word.typed ?? word.value);
 
 function gitPush(git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] {
   const options = readOptions(git.subArgs, GIT_PUSH_VALUES);
