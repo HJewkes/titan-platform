@@ -64,9 +64,9 @@ Run only the questions the retro asks about, each with the step 1 filters and `-
   `titan-miner insights blocked-flow`, `titan-miner insights liveness`,
   `titan-miner insights tool-gaps`, `titan-miner insights tool-adoption`,
   `titan-miner insights probes`.
-- Guardrails: Q13 quality-guardrails (review fill and successor rework, with a before/after
-  comparison) is pending TP-499 slice e. Until it is registered, use
-  `titan-miner insights blocked-flow --split-at <time>` for a before/after on a lever.
+- `titan-miner insights quality-guardrails` (Q13): review verdicts by the reviewer's context fill,
+  and successor rework per role. It covers every session in the window, so pass only `--since`
+  and `--until`; it refuses `--session` and `--agent-prefix`.
 - Cost per outcome: `active-work miner outcomes`, once TP-513 ships it. Until then, report the
   outcome question as a gap under step 8.
 
@@ -106,8 +106,11 @@ analyst's reading was right and the field moved, ask it for a corrected finding 
   - `requestsPerFinished` per outcome bucket, from `active-work miner outcomes` over a window
     before and one after the change, once TP-508 slice h and TP-513 ship it. Until then, list it
     as a gap.
-- It also names the guardrail that will show whether the lever cost quality: Q13
-  quality-guardrails once it ships. A lever with no guardrail is not proposed.
+- Every lever names Q13 as its guardrail, the check that shows whether the lever cost quality:
+  `titan-miner insights quality-guardrails --since <change time> --until <end> --before-since <start> --before-until <change time> --json`,
+  with a before window as long as the after window. Its `/comparison/reviewFill` and
+  `/comparison/successorRework` rows hold each change, after minus before. A lever with no
+  guardrail is not proposed.
 - State the step 2 and step 3 caveats next to any dollar figure.
 
 ## Step 8: extend the library
