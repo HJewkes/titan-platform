@@ -328,31 +328,34 @@ export type RestartDrain = Omit<DrainOptions, "port">;
 
 const withInstallHint = (failure: string): string => `${failure}; titan-factory service install loads the job`;
 
-/** The unit's own cgroup scopes `systemctl kill`, so the fence never signals a pid it read itself. */
-function systemdFence(ports: ServicePorts, io: ServiceIo): RestartFencePorts {
+/**
+ * systemd's cgroup or launchd's job scopes the kill, so the fence never signals a pid it read itself.
+ * Neither restart waits for the stop: `--no-block` queues it, and `kickstart -k` returns once it has sent SIGTERM.
+ */
+function managerFence(ports: ServicePorts, io: ServiceIo): RestartFencePorts {
+  const [restart, kill]: [ServiceCommand, ServiceCommand] = isSystemd(ports)
+    ? [systemctl("restart", "--no-block", UNIT_NAME), systemctl("kill", "--signal=SIGKILL", UNIT_NAME)]
+    : [{ tool: "launchctl", args: ["kickstart", "-k", serviceTarget(ports)] }, { tool: "launchctl", args: ["kill", "SIGKILL", serviceTarget(ports)] }];
   return {
-    readMainPid: async () => (await unitState(ports)).pid,
+    readMainPid: async () => (await jobState(ports)).pid,
     requestRestart: async () => {
-      const failure = await runCommands(ports, [systemctl("restart", "--no-block", UNIT_NAME)]);
+      const failure = await runCommands(ports, [restart]);
       return failure === undefined ? undefined : withInstallHint(failure);
     },
-    killUnit: () => runCommands(ports, [systemctl("kill", "--signal=SIGKILL", UNIT_NAME)]),
-    killVia: "systemctl kill",
-    unit: UNIT_NAME,
+    killUnit: () => runCommands(ports, [kill]),
+    killVia: `${kill.tool} kill`,
+    unit: serviceName(ports),
     sleep: ports.sleep,
     now: ports.now,
     log: io.stdout,
   };
 }
 
-/** Resolves the fenced pid, or a failure; launchd's kickstart -k returns only once the new process runs. */
+/** Resolves the fenced pid, or a failure. */
 async function restartJob(ports: ServicePorts, io: ServiceIo): Promise<{ fenced?: number } | { why: string }> {
-  if (isSystemd(ports)) {
-    const fenced = await fencedRestart(systemdFence(ports, io));
-    return fenced.ok ? (fenced.fenced === undefined ? {} : { fenced: fenced.fenced }) : { why: fenced.why };
-  }
-  const failure = await runCommands(ports, [{ tool: "launchctl", args: ["kickstart", "-k", serviceTarget(ports)] }]);
-  return failure === undefined ? {} : { why: withInstallHint(failure) };
+  const fenced = await fencedRestart(managerFence(ports, io));
+  if (!fenced.ok) return { why: fenced.why };
+  return fenced.fenced === undefined ? {} : { fenced: fenced.fenced };
 }
 
 /** A serve outside the service holds the port the restarted one must bind, so it is cleared first; the service's own process is left to its manager. */
