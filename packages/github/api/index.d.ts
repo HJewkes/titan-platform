@@ -81,7 +81,7 @@ interface Rest {
      * longer than a page answers every page with a null `etag`, and the caller's next read is unconditional.
      */
     revalidatePages<P, T>(path: string, fields: Fields, etag: string | null, pick: (page: P) => T[]): Promise<Revalidated<T[]>>;
-    /** Unconditional, for bodies that are not JSON. */
+    /** Unconditional, for bodies that are not JSON. Escape sequences pass through: `gh` otherwise refuses a coloured log after a 200. */
     text(path: string): Promise<string>;
     send<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, fields?: Fields, input?: string): Promise<T>;
 }
