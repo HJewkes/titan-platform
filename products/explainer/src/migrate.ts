@@ -37,7 +37,7 @@ const TODO_JOB = "TODO: pick the beat's visual job";
 const row = (fn: Row["function"], job: string = TODO_JOB, mode: Row["mode"] = "explain"): Row => ({ function: fn, job, mode });
 
 // The spike's component kinds carry no rhetorical role, so this table is a best guess the writer
-// revises; a kind with no confident visual job gets a TODO for L0 to report.
+// revises; a kind with no confident visual job gets a placeholder for L0 to report.
 const BY_KIND: Readonly<Record<string, Row>> = {
   hook: row("HOOK"),
   title: row("PROMISE"),
@@ -125,7 +125,7 @@ export interface MigrateOptions {
 
 /**
  * Migrates a spike tour (`tour-v0.json`) and its render probe to `script/v1`. The visual track is
- * rebuilt from the probe's last shot per beat. Fields the spike never had are `TODO:` strings, so
+ * rebuilt from the probe's last shot per beat. Fields the spike never had get placeholder strings, so
  * the L0 lints report them rather than the parser.
  */
 export function migrateTourV0(tour: unknown, probe: unknown, options: MigrateOptions = {}): ScriptV1 {
