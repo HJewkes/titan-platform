@@ -20,8 +20,8 @@ const noFiles: ReadFs = {
 
 const port: HookPort = { context: nodeContext(HOME, noFiles), now: () => new Date("2026-01-02T03:04:05.000Z"), loadDecide: async () => decide };
 
-async function logColumns(command: string): Promise<{ stdout: string; columns: string[] | undefined }> {
-  const input = JSON.stringify({ tool_name: "Bash", session_id: "sess-1", tool_use_id: "tu-1", cwd: REPO, tool_input: { command } });
+async function logColumns(command: string, cwd = REPO): Promise<{ stdout: string; columns: string[] | undefined }> {
+  const input = JSON.stringify({ tool_name: "Bash", session_id: "sess-1", tool_use_id: "tu-1", cwd, tool_input: { command } });
   const result = await handle(input, {}, port);
   return { stdout: result.stdout, columns: result.log[0]?.split("\t").slice(1, 6) };
 }
@@ -132,6 +132,22 @@ describe("handle: an HTTP write to a run-time URL", () => {
     'N=$(echo d2dldHJj | base64 -d); curl -so "$HOME/.$N" https://example.com/rc; wget https://api.github.com/repos/o/r/pulls/1/merge',
     'curl --output="$F" https://example.com/x; wget https://api.github.com/repos/o/r/pulls/1/merge',
     'wget --output-doc="$F" https://example.com/x; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'printf "method=PUT" > x; set -a; : ${WGETRC:=x}; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'printf "method=PUT" > x; set -a; : ${WGETRC=x}; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'printf "method=PUT" > x; set -a; : ${WGETRC::=x}; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'mkdir c; set -a; : ${CURL_HOME:="$PWD/c"}; curl -s https://api.github.com/repos/o/r/pulls/1/merge',
+    'set -a; : ${XDG_CONFIG_HOME:=/tmp/c}; curl -s https://api.github.com/repos/o/r/pulls/1/merge',
+    'set -a; : ${HOME:=/tmp/h}; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'set -a; : ${HTTPIE_CONFIG_DIR:=/tmp/h}; http https://api.github.com/repos/o/r/pulls/1/merge',
+    'X=${WGETRC:-${WGETRC:=x}}; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'curl -so a.tar https://example.com/a; cd ~; tar xf projects/app/a.tar; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'cd ~ && unzip projects/app/a.zip; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'cd ~; cpio -i < projects/app/a.cpio; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'cd ~/.config && bsdtar xf ~/projects/app/a.tar; curl -s https://api.github.com/repos/o/r/pulls/1/merge',
+    'pushd ~/.httpie; tar xf ~/projects/app/a.tar; http https://api.github.com/repos/o/r/pulls/1/merge',
+    'cd /etc; tar xf ~/projects/app/a.tar; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'cd "$D"; tar xf ~/projects/app/a.tar; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    '(cd "$D" && bsdtar xf a.tar); wget https://api.github.com/repos/o/r/pulls/1/merge',
   ])("denies %s as a merge", async (command) => {
     const { columns } = await logColumns(command);
 
@@ -144,7 +160,7 @@ describe("handle: an HTTP write to a run-time URL", () => {
     expect(columns).toEqual(["deny", "EXT-CO", "private-egress", "bash.egress.curl-upload", "coordinator+worker+headless"]);
   });
 
-  it.each(["curl -X GET \"$U\"", "curl -fsSL --compressed https://api.github.com/repos/o/r/pulls/1", "curl -g --no-get --globoff https://api.github.com/repos/o/r", "curl --no-progress-meter -sS https://example.com/x", 'curl --include "$U"', 'curl --progress-meter -s "$U"', 'curl -s: -I "$U"', 'curl -s "https://api.github.com/repos/$R/pulls" -H "Authorization: Bearer $T"', 'curl -s "http://localhost:8080/$P" -o f', "wget -q -nv --no-config -O out https://api.github.com/repos/o/r/pulls/1", "wget --quiet --no-check-certificate --tries=3 https://example.com/x", "wget -e robots=off -e tries=3 -e timeout=10 -e wait=1 https://example.com/x", "wget -q https://api.github.com/repos/o/r/pulls/1", "wget -O out.html https://example.com/x", "curl -o file https://example.com/x > log.txt", 'curl -s https://example.com/x > "$D/out.html"', 'curl -s https://example.com/x > "out-$(date +%s).html"', "curl -s https://example.com/x | tee out.txt", "cp a.txt b.txt && curl -s https://example.com/x", 'for f in a b; do curl -s "https://example.com/$f"; done', 'read -r U < f; curl -s "$U"', 'grep -q x "$F" && curl -s https://example.com/x', 'echo "$U"; curl -s "$U"', '"$EDITOR" notes.md; curl -s https://example.com/x'])(
+  it.each(["curl -X GET \"$U\"", "curl -fsSL --compressed https://api.github.com/repos/o/r/pulls/1", "curl -g --no-get --globoff https://api.github.com/repos/o/r", "curl --no-progress-meter -sS https://example.com/x", 'curl --include "$U"', 'curl --progress-meter -s "$U"', 'curl -s: -I "$U"', 'curl -s "https://api.github.com/repos/$R/pulls" -H "Authorization: Bearer $T"', 'curl -s "http://localhost:8080/$P" -o f', "wget -q -nv --no-config -O out https://api.github.com/repos/o/r/pulls/1", "wget --quiet --no-check-certificate --tries=3 https://example.com/x", "wget -e robots=off -e tries=3 -e timeout=10 -e wait=1 https://example.com/x", "wget -q https://api.github.com/repos/o/r/pulls/1", "wget -O out.html https://example.com/x", "curl -o file https://example.com/x > log.txt", 'curl -s https://example.com/x > "$D/out.html"', 'curl -s https://example.com/x > "out-$(date +%s).html"', "curl -s https://example.com/x | tee out.txt", "cp a.txt b.txt && curl -s https://example.com/x", 'for f in a b; do curl -s "https://example.com/$f"; done', 'read -r U < f; curl -s "$U"', 'grep -q x "$F" && curl -s https://example.com/x', 'echo "$U"; curl -s "$U"', '"$EDITOR" notes.md; curl -s https://example.com/x', 'cd ~/projects/app && curl -s "$U"', 'cd "$D" && wget -O out.html https://example.com/x', 'cd ~ && ls; curl -s "$U"', 'echo ${WGETRC:-none}; curl -s "$U"', 'cd /tmp; tar xf a.tar', 'cd ~; tar xf projects/app/a.tar'])(
     "lets the read %s through",
     async (command) => {
       const { stdout } = await logColumns(command);
@@ -157,6 +173,12 @@ describe("handle: an HTTP write to a run-time URL", () => {
     const { columns } = await logColumns("curl -sS --fail-with-body --no-progress-meter -X PUT https://example.com/x");
 
     expect(columns).toEqual(["deny", "EXT-CO", "private-egress", "bash.egress.curl-upload", "coordinator+worker+headless"]);
+  });
+
+  it("lets an unpack in the session's own directory through, since the line moved nowhere", async () => {
+    const { stdout } = await logColumns('tar xf a.tar; curl -s "$U"', HOME);
+
+    expect(stdout).toBe("");
   });
 
   it("lets a GET to a run-time URL through", async () => {

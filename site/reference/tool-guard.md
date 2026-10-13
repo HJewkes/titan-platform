@@ -89,7 +89,7 @@ through a symlinked parent, is refused just before the append.
 - It does not follow commands built at run time (`$(...)`, `eval "$x"`), and reads a script run
   by path one level deep.
 - An HTTP client that sends a write method to a URL whose host, or whose `api.github.com` path, is known only at run time reads as a merge.
-- A curl, wget or httpie config file is checked only within one command line: an rc file planted by an earlier Bash call (`echo method=PUT > ~/.wgetrc`, then `wget <merge URL>` in the next call) is not seen (TP-2861 tracks the path-layer guard). A download that names its file from the URL (`curl -O`/`-J`, a bare `wget "$U"`) is not read as an rc write either.
+- A curl, wget or httpie config file is checked only within one command line: an rc file planted by an earlier Bash call (`echo method=PUT > ~/.wgetrc`, then `wget <merge URL>` in the next call) is not seen (TP-2861 tracks the path-layer guard). A download that names its file from the URL (`curl -O`/`-J`, a bare `wget "$U"`) is not read as an rc write either. An unpacker (`tar xf`, `unzip`) counts as an rc write only after the line itself moves to an rc or run-time directory, so one run where the session already sits in `~` is not seen.
 - It does not classify `titan-factory` verbs.
 
 ## Gotchas
