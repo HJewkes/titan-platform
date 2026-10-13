@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -34,7 +34,7 @@ beforeAll(() => {
   commit("init", "Add parser skeleton", { "src/parse.ts": "export {};\n", "src/legacy.ts": "export {};\n" });
   commit("feature", "Add token reader\n\nReads tokens from the input stream.", { "src/read.ts": "export {};\n" });
   commit("why", "Cache parsed files by path\n\nKey the cache by path rather than content hash, because hashing\nevery file on each run doubled the cold start.", { "src/cache.ts": "export {};\n" });
-  commit("removal", "Remove the legacy importer\n\nNo caller has used it since the token reader landed.", { "src/legacy.ts": null });
+  commit("removal", "Fold the legacy importer into the token reader\n\nNo caller has used it since the token reader landed.", { "src/legacy.ts": null });
   commit("rename", "Rename read to readTokens", { "src/read.ts": "export const readTokens = 1;\n" });
   commit("docs", "Fix a typo in the parser comment\n\nSpelling only.", { "src/parse.ts": "// parser\nexport {};\n" });
 });
@@ -68,16 +68,23 @@ describe("mineHistory", () => {
     expect(validateDecisions(repo, decisions).rejected).toEqual([]);
   });
 
-  it("flags the commit that deletes a file as a removal in history", () => {
+  it("flags a commit that deletes a file as a removal though its subject uses no removal verb", () => {
     const { history } = mineHistory(repo);
 
     expect(history.filter((h) => h.removal).map((h) => h.sha)).toEqual([shas.removal]);
+  });
+
+  it("reads a ref that looks like an option as a revision, never as a git flag", () => {
+    const planted = path.join(repo, "planted.txt");
+
+    expect(() => mineHistory(repo, `--output=${planted}`)).toThrow();
+    expect(existsSync(planted)).toBe(false);
   });
 });
 
 describe("validateDecisions", () => {
   const quoted = (): Decision => ({
-    what: "Remove the legacy importer",
+    what: "Fold the legacy importer into the token reader",
     why: "No caller has used it since the token reader landed.",
     sha: shas.removal ?? "",
     why_source: "commit",
@@ -90,6 +97,24 @@ describe("validateDecisions", () => {
 
     expect(accepted).toEqual([]);
     expect(rejected[0]?.reason).toMatch(/not quoted verbatim/);
+  });
+
+  it("rejects a one-word why even though the message contains it", () => {
+    const { rejected } = validateDecisions(repo, [{ ...quoted(), why: "caller" }]);
+
+    expect(rejected[0]?.reason).toMatch(/shorter than 4 words/);
+  });
+
+  it("rejects a why quoted from the subject line, which says what changed rather than why", () => {
+    const { rejected } = validateDecisions(repo, [{ ...quoted(), why: "Fold the legacy importer" }]);
+
+    expect(rejected[0]?.reason).toMatch(/not quoted verbatim from the body/);
+  });
+
+  it("checks a SHA-256 object id against the clone instead of rejecting its shape", () => {
+    const { rejected } = validateDecisions(repo, [{ ...quoted(), sha: "a".repeat(64) }]);
+
+    expect(rejected[0]?.reason).toMatch(/not a commit/);
   });
 
   it("rejects a well-formed sha that is not a commit in the clone", () => {

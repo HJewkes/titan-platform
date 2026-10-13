@@ -6,7 +6,7 @@ const DecisionSchema = z.object({
   what: z.string().min(1),
   why: z.string().min(1),
   alternative: z.string().min(1).optional(),
-  sha: z.string().regex(/^[0-9a-f]{40}$/),
+  sha: z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/),
   why_source: z.literal("commit"),
 });
 
@@ -38,6 +38,8 @@ const WHY_WORDS = /\b(because|so that|in order to|instead of|rather than|to avoi
 const ALTERNATIVE = /\b(?:instead of|rather than)\s+([^.,;:!?]+)/i;
 const REMOVAL_VERB = /^(remove|drop|delete|retire)\b/i;
 const MAX_BUFFER = 256 * 1024 * 1024;
+// A shorter quote ("the", "cache") is found in almost any message, so it proves nothing about the reason.
+const MIN_WHY_WORDS = 4;
 
 function git(dir: string, args: string[]): string {
   return execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", maxBuffer: MAX_BUFFER, stdio: ["ignore", "pipe", "pipe"] });
@@ -47,22 +49,26 @@ function normalize(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
+function wordCount(text: string): number {
+  return normalize(text).split(" ").filter((w) => w !== "").length;
+}
+
 function sentences(body: string): string[] {
   return body
     .split(/\n\s*\n/)
     .flatMap((paragraph) => normalize(paragraph).split(/(?<=[.!?])\s+/))
-    .filter((s) => s.length > 0);
+    .filter((s) => wordCount(s) >= MIN_WHY_WORDS);
 }
 
 /** Commits that delete at least one file; one log call for the whole range. */
 function deletingShas(dir: string, ref: string): Set<string> {
-  const out = git(dir, ["log", "--no-merges", "--diff-filter=D", "--format=%x1e%H", "--name-only", ref]);
+  const out = git(dir, ["log", "--no-merges", "--diff-filter=D", "--format=%x1e%H", "--name-only", "--end-of-options", ref]);
   return new Set(out.split("\x1e").map((record) => record.trim().split("\n")[0] ?? "").filter((sha) => sha !== ""));
 }
 
 function readCommits(dir: string, ref: string): Commit[] {
   const deleting = deletingShas(dir, ref);
-  const out = git(dir, ["log", "--no-merges", "--format=%H%x1f%aI%x1f%s%x1f%b%x1e", ref]);
+  const out = git(dir, ["log", "--no-merges", "--format=%H%x1f%aI%x1f%s%x1f%b%x1e", "--end-of-options", ref]);
   return out
     .split("\x1e")
     .map((record) => record.replace(/^\n/, "").split("\x1f"))
@@ -91,10 +97,11 @@ export function mineHistory(dir: string, ref = "HEAD"): HistoryMine {
   };
 }
 
-function commitMessage(dir: string, sha: string): string | undefined {
+/** The body only: a quote of the subject restates what changed, not why. */
+function commitBody(dir: string, sha: string): string | undefined {
   try {
     git(dir, ["cat-file", "-e", `${sha}^{commit}`]);
-    return git(dir, ["log", "-1", "--format=%B", sha]);
+    return git(dir, ["log", "-1", "--format=%b", sha]);
   } catch {
     return undefined;
   }
@@ -103,9 +110,10 @@ function commitMessage(dir: string, sha: string): string | undefined {
 function rejection(dir: string, raw: unknown): string | undefined {
   const parsed = DecisionSchema.safeParse(raw);
   if (!parsed.success) return `invalid decision: ${parsed.error.issues[0]?.message ?? "schema"}`;
-  const message = commitMessage(dir, parsed.data.sha);
-  if (message === undefined) return `sha ${parsed.data.sha} is not a commit in this clone`;
-  if (!normalize(message).includes(normalize(parsed.data.why))) return `why is not quoted verbatim from ${parsed.data.sha}`;
+  if (wordCount(parsed.data.why) < MIN_WHY_WORDS) return `why is shorter than ${MIN_WHY_WORDS} words`;
+  const body = commitBody(dir, parsed.data.sha);
+  if (body === undefined) return `sha ${parsed.data.sha} is not a commit in this clone`;
+  if (!normalize(body).includes(normalize(parsed.data.why))) return `why is not quoted verbatim from the body of ${parsed.data.sha}`;
   return undefined;
 }
 
