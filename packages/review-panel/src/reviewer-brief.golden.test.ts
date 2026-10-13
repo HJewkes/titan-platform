@@ -14,6 +14,7 @@ const refusals: MalformedRefusal[] = ["no_block", "multiple_blocks", "bad_verdic
 
 const reviews: [string, string][] = [
   ["standard review", reviewerBrief(target)],
+  ["standard review from run dir", reviewerBrief({ ...target, sourceCheckout: "/srv/checkouts/demo" })],
   ["standard review with questions", reviewerBrief({ ...target, questions })],
   ["g10 review", reviewerBrief({ ...target, ownerBrief: true })],
   ["g10 review with questions", reviewerBrief({ ...target, ownerBrief: true, questions })],

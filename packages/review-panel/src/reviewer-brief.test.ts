@@ -87,6 +87,40 @@ describe("reviewerBrief", () => {
     expect(brief).toContain("never against a real remote");
   });
 
+  describe("for a reviewer that starts in its run dir", () => {
+    const sourceCheckout = "/srv/checkouts/demo checkout";
+    const runDir = `/data/titan-factory/checkouts/reviews/${reviewCheckoutName(target.pr, target.head)}`;
+    const brief = reviewerBrief({ ...target, sourceCheckout });
+
+    it("fetches and archives the head through git -C on the source checkout", () => {
+      expect(brief).toContain(`git -C "${sourceCheckout}" fetch origin ${target.head} && git -C "${sourceCheckout}" archive ${target.head} | tar -x -C "$dir/head"`);
+      expect(brief).not.toMatch(/^ {2}git fetch origin/m);
+    });
+
+    it("names the run dir as the starting directory and keeps probes off the checkout", () => {
+      expect(brief).toContain(`Your starting directory is \`"${runDir}"\`.`);
+      expect(brief).toContain(`\`"${sourceCheckout}"\` is a real checkout: run only the \`git -C\` fetch and archive above against it, never a probe, a push or a pipe to a shell.`);
+      expect(brief).not.toContain("which is a real checkout");
+    });
+
+    it("removes head, base and probe but never the run dir it starts in", () => {
+      expect(brief).toContain(`\`rm -rf "${runDir}/head" "${runDir}/base" "${runDir}/probe"\``);
+      expect(brief).not.toContain(`rm -rf "${runDir}"\``);
+    });
+  });
+
+  it.each([
+    ["a double quote that ends the quoted path", '/x/a" ; touch /tmp/pwn ; "'],
+    ["a command substitution", "/x/$(id)"],
+    ["a backtick substitution", "/x/`id`"],
+    ["a backslash", "/x/a\\b"],
+    ["a newline that splits the line", "/x/a\ntouch /tmp/pwn"],
+    ["a relative path", "x/a"],
+    ["an empty string, which would run git in the starting directory", ""],
+  ])("refuses a sourceCheckout with %s", (_shape, sourceCheckout) => {
+    expect(() => reviewerBrief({ ...target, sourceCheckout })).toThrow(/sourceCheckout must be an absolute path/);
+  });
+
   it("never points the reviewer at TMPDIR as a place to extract", () => {
     expect(reviewerBrief(target)).not.toMatch(/dir="\$TMPDIR|-C "\/tmp/);
   });
