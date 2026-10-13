@@ -17,10 +17,11 @@ const HEADS_RE = /^\/heads\/(.+)$/i;
 const REF_KEY_RE = /^ref(?:\[\])?$/;
 
 /**
- * gh fills `{branch}` and `:branch` with the checked-out branch anywhere in an endpoint or `-F` value, unanchored
- * (its own pattern is `:(owner|repo|branch)\b|\{[a-z]+\}`), so `m:branch` may be `main` at run time.
+ * gh fills its placeholders anywhere in an endpoint or `-F` value, unanchored, with the checked-out branch or with
+ * the owner and repo from GH_REPO or the cwd remote, all of which the agent controls. So `m:branch` or `{owner}` may
+ * read `main` at run time. This is gh's own pattern; a `{word}` gh leaves alone only fails closed.
  */
-const RUN_TIME_BRANCH_RE = /\{branch\}|:branch\b/i;
+const RUN_TIME_BRANCH_RE = /:(?:owner|repo|branch)\b|\{[a-z]+\}/i;
 
 /** A branch name as GitHub receives it; null when gh substitutes it at run time. */
 export const knownBranch = (name: string): string | null => (RUN_TIME_BRANCH_RE.test(name) ? null : name);
