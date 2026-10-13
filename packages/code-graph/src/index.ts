@@ -176,18 +176,12 @@ export type {
 } from "./analysis/graph-report-types.js";
 export type { ReportContext, ReportContextInput } from "./analysis/graph-report-sections.js";
 export {
-  buildReportContext,
-  busFactorOf,
-  hotspotScoreOf,
-  keepNode,
-  lookupMetric,
-  topBusFactorRisks,
-  topCentralFiles,
-  topHotspots,
-  topTestCoverageRisks,
+  buildReportContext, busFactorOf, hotspotScoreOf, keepNode, lookupMetric,
+  topBusFactorRisks, topCentralFiles, topHotspots, topTestCoverageRisks,
 } from "./analysis/graph-report-sections.js";
 export { publicApiFiles, topUnusedExports } from "./analysis/unused-exports.js";
 export * from "./analysis/complexity-distribution.js";
+export * from "./analysis/dependency-graph-metrics.js";
 export { topDeadModules } from "./analysis/dead-modules.js";
 export { topGrowthRisks } from "./analysis/growth-risks.js";
 export { topUntestedRisks } from "./analysis/untested-risks.js";
