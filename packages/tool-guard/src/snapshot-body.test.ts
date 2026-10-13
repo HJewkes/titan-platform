@@ -24,7 +24,10 @@ describe("snapshot body scan", () => {
     ["a zsh glob opening with (( inside [[ ]]", ["\t[[ $x = ((#i)http|ftp)* ]] && cat <<EOF", "}", "EOF"]],
     ["a heredoc inside a (( that is nested subshells", ["\tx=$(", "((cat <<EOF) )", "}", "EOF", ")"]],
     ["a comment holding a quote inside $( )", ["\tx=$(: # it's", ")"]],
-    ["a comment holding a quote inside backticks", ["\tx=`: # it's", "`"]],
+    ["a heredoc read inside a multi-line $( )", ["\tx=$(cat <<EOF", "}", "EOF", ")"]],
+    ["plain backticks", ["\tx=`basename $0`"]],
+    ["a process substitution holding a quote and a )", ["\tdiff <(echo ')') >(cat) =(echo \")\")"]],
+    ["parameter flags", ["\tx=${(j:,:)arr} y=${(s./.)p}"]],
   ])("is at top level after %s", (_name, lines) => {
     expect(topLevelAfter(...lines)).toBe(true);
   });
@@ -45,11 +48,28 @@ describe("snapshot body scan", () => {
     expect(topLevelAfter(...lines)).toBe(false);
   });
 
+  it.each([
+    ["a heredoc in a $( ) closed on its line", ["\tx=$(cat <<EOF)", "EOF"]],
+    ["a heredoc in a process substitution closed on its line", ["\tdiff <(cat <<EOF) x", "EOF"]],
+    ["a heredoc whose line ends inside a later $( )", ["\tcat <<EOF; x=$(", "echo", ")", "body", "EOF"]],
+    ["a heredoc in backticks", ["\tx=`cat <<EOF`", "EOF"]],
+    ["a quote in backticks", ["\tx=`: # it's`"]],
+    ["an escaped backtick in backticks", ["\tx=`echo \\`date\\``"]],
+    ["a bare case pattern in a $( )", ["\tx=$(case $y in a) echo ;; esac)"]],
+    ["a (# inside a $( )", ["\tx=$(print -l (#i)*.zsh)"]],
+    ["$[ ] arithmetic", ["\tx=$[ 1 << 2 ]"]],
+  ])("fails closed on %s", (_name, lines) => {
+    const scan = newBodyScan();
+    for (const line of lines) scanLine(scan, line);
+
+    expect(scan.broken).toBe(true);
+  });
+
   it("starts a heredoc only after a line continuation ends", () => {
     const scan = newBodyScan();
     scanLine(scan, "\tcat <<EOF \\");
     scanLine(scan, "\t| cat");
 
-    expect(scan.reading).toEqual([{ delimiter: "EOF", stripTabs: false }]);
+    expect(scan.reading).toEqual([{ delimiter: "EOF", stripTabs: false, owner: 0 }]);
   });
 });

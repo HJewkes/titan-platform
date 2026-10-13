@@ -28,9 +28,9 @@ interface Header {
 /**
  * Reads only the snapshot's `# Functions` section; Claude Code's own `rg` and `pkill` wrappers after `# Aliases`
  * are never read. A body ends at the first column-0 `}` that lies outside every heredoc and quote, so verbatim body
- * text never steers the parser. Anything else out of step stops the read and marks the table incomplete, and so
- * does a body holding a column-0 `}` followed by a header: if the scan misjudged a heredoc or quote, that body has
- * swallowed later functions.
+ * text never steers the parser. Anything else out of step stops the read and marks the table incomplete. So do two
+ * tripwires for a misjudged heredoc or quote: a body holding a column-0 `}` followed by a header has suspect later
+ * functions, and a name defined twice cannot come from `typeset -f`, which prints each function once.
  */
 export function parseSnapshotFunctions(text: string, findBodyEnd = bodyEnd): FunctionTable {
   const lines = text.split("\n");
@@ -38,11 +38,11 @@ export function parseSnapshotFunctions(text: string, findBodyEnd = bodyEnd): Fun
   const start = lines.indexOf(SECTION);
   if (start === -1) return { functions, incomplete: lines.some((line) => line.trimEnd() === SECTION) };
   let last: string | null = null;
-  let swallowed = false;
+  let suspect = false;
   for (let i = start + 1; i < lines.length; ) {
     const line = lines[i] ?? "";
     if (line.trim() === "") i++;
-    else if (line.startsWith("# ")) return { functions, incomplete: swallowed };
+    else if (line.startsWith("# ")) return { functions, incomplete: suspect };
     else {
       const header = headerAt(lines, i);
       const end = header === null ? null : findBodyEnd(lines, header.bodyStart);
@@ -51,8 +51,9 @@ export function parseSnapshotFunctions(text: string, findBodyEnd = bodyEnd): Fun
         if (name !== null) functions.set(name, UNREADABLE);
         return { functions, incomplete: true };
       }
-      functions.set(header.name, { body: lines.slice(header.bodyStart, end).join("\n") });
-      swallowed ||= holdsHeader(lines, header.bodyStart, end);
+      const repeated = functions.has(header.name);
+      functions.set(header.name, repeated ? UNREADABLE : { body: lines.slice(header.bodyStart, end).join("\n") });
+      suspect ||= repeated || holdsHeader(lines, header.bodyStart, end);
       [i, last] = [end + 1, header.name];
     }
   }

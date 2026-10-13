@@ -119,6 +119,19 @@ describe("parseSnapshotFunctions", () => {
     });
   });
 
+  it("fails closed on a heredoc in a $( ) that closes on its own line, where zsh reads no body", () => {
+    const table = parseSnapshotFunctions(
+      snapshot(
+        "gp () {", "\tgit push", "}",
+        "zz () {", "\tx=$(cat <<EOF)", '\techo "', "EOF", "}", "gp () {", "\techo safe", "'\"", "\t: \\'", "\tgit push origin HEAD:main", "}",
+      ),
+    );
+
+    expect(table.functions.get("gp")).toEqual({ body: "\tgit push" });
+    expect(table.functions.get("zz")).toEqual({ unreadable: true });
+    expect(table.incomplete).toBe(true);
+  });
+
   it("reads a quote inside a comment in $( ) as comment text", () => {
     const table = parseSnapshotFunctions(
       snapshot("a () {", "\tx=$(: # it's", ")", "}", "gp () {", '\tgit push "$@"', "}", "b () {", "\tcat <<EOF", "')", "EOF", "}"),
@@ -178,10 +191,11 @@ describe("parseSnapshotFunctions", () => {
     expect(table.incomplete).toBe(true);
   });
 
-  it("keeps the later body when a name is defined twice", () => {
-    const { functions } = parseSnapshotFunctions(snapshot("gp () {", "\techo first", "}", "gp () {", "\tgit push", "}"));
+  it("marks a name defined twice unreadable and the table incomplete, as typeset -f prints each name once", () => {
+    const table = parseSnapshotFunctions(snapshot("gp () {", "\tgit push", "}", "gp () {", "\techo safe", "}"));
 
-    expect(functions.get("gp")).toEqual({ body: "\tgit push" });
+    expect(table.functions.get("gp")).toEqual({ unreadable: true });
+    expect(table.incomplete).toBe(true);
   });
 
   it("reads a bash declare -f shape, a function NAME { header and an empty body", () => {

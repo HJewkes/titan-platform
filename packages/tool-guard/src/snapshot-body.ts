@@ -10,13 +10,15 @@ interface Context {
 interface Heredoc {
   delimiter: string;
   stripTabs: boolean;
+  /** Stack index of the code or `$( )` context the operator stands in; zsh reads its body inside that text only. */
+  owner: number;
 }
 
 /**
  * Quote, substitution and heredoc state carried across the lines of one function body. It tracks only what can hold
- * verbatim text, not the full grammar: the guard's lexer rejects some zsh syntax that `typeset -f` prints. Where it
- * is unsure it sees a heredoc (zsh reads none from a one-line substitution): a body that runs long swallows a `}`
- * and header, which the parser flags, while one cut short would let verbatim text pose as a function.
+ * verbatim text, not the full grammar: the guard's lexer rejects some zsh syntax that `typeset -f` prints. Wherever
+ * its reading could part from zsh's, it sets `broken` instead of guessing, because a guess in either direction can
+ * end a body early and let verbatim text pose as a function.
  */
 interface BodyScan {
   stack: Context[];
@@ -28,7 +30,10 @@ interface BodyScan {
   codeAt: number;
 }
 
-const HEREDOC_STARTERS: ReadonlySet<Kind> = new Set(["code", "cmdsub", "backtick"]);
+const HEREDOC_STARTERS: ReadonlySet<Kind> = new Set(["code", "cmdsub"]);
+const PROCESS_SUBSTITUTIONS = ["<(", ">("];
+// Backticks end at the first unescaped backtick whatever quotes they hold; only plain text inside them is followed.
+const BACKTICK_UNSURE = /^(?:['"]|\$[({[]|<<|\\`)/;
 const DELIMITER_END = new Set([" ", "\t", ";", "|", "&", "<", ">", "(", ")"]);
 // `(` is left out so a zsh glob such as `(#b)(((a|b)))` opens no comment.
 const WORD_START = new Set([" ", "\t", ";", "|", "&"]);
@@ -54,7 +59,10 @@ export function scanLine(scan: BodyScan, line: string): void {
   let i = 0;
   while (i < line.length) i = step(scan, line, i);
   const continued = i > line.length;
-  if (!continued && HEREDOC_STARTERS.has(top(scan).kind)) scan.reading.push(...scan.pending.splice(0));
+  if (continued || !HEREDOC_STARTERS.has(top(scan).kind) || scan.pending.length === 0) return;
+  // A newline inside a later `$( )` does not start a body opened outside it.
+  if (scan.pending.some((h) => h.owner !== scan.stack.length - 1)) scan.broken = true;
+  scan.reading.push(...scan.pending.splice(0));
 }
 
 function top(scan: BodyScan): Context {
@@ -66,8 +74,12 @@ function push(scan: BodyScan, kind: Kind, next: number): number {
   return next;
 }
 
+/** Closing a `$( )` on the line of a heredoc it holds leaves zsh no body to read, where bash reads one. */
 function pop(scan: BodyScan, next: number): number {
-  if (scan.stack.length > 1) scan.stack.pop();
+  if (scan.stack.length <= 1) return next;
+  const closed = scan.stack.length - 1;
+  if (scan.pending.some((h) => h.owner >= closed)) scan.broken = true;
+  scan.stack.pop();
   return next;
 }
 
@@ -75,6 +87,7 @@ function step(scan: BodyScan, line: string, i: number): number {
   const kind = top(scan).kind;
   const c = line[i];
   if (kind === "sq") return c === "'" ? pop(scan, i + 1) : i + 1;
+  if (kind === "backtick") return backtickStep(scan, line, i);
   if (c === "\\") return i + 2;
   if (kind === "dsq") return c === "'" ? pop(scan, i + 1) : i + 1;
   if (kind === "dq") return c === '"' ? pop(scan, i + 1) : (opener(scan, line, i) ?? i + 1);
@@ -96,9 +109,16 @@ function opener(scan: BodyScan, line: string, i: number): number | null {
   if (line.startsWith("$((", i) && i !== scan.codeAt) return pushArith(scan, i, i + 3);
   if (line.startsWith("$(", i)) return push(scan, "cmdsub", i + 2);
   if (line.startsWith("${", i)) return push(scan, "param", i + 2);
-  if (line[i] !== "`") return null;
-  return top(scan).kind === "backtick" ? pop(scan, i + 1) : push(scan, "backtick", i + 1);
+  if (line.startsWith("$[", i)) scan.broken = true;
+  return line[i] === "`" ? push(scan, "backtick", i + 1) : null;
 }
+
+function backtickStep(scan: BodyScan, line: string, i: number): number {
+  if (line[i] === "`") return pop(scan, i + 1);
+  if (BACKTICK_UNSURE.test(line.slice(i, i + 2))) scan.broken = true;
+  return line[i] === "\\" ? i + 2 : i + 1;
+}
+
 
 function paramStep(scan: BodyScan, c: string | undefined, i: number): number {
   const ctx = top(scan);
@@ -140,8 +160,11 @@ function codeStep(scan: BodyScan, line: string, i: number): number {
   const c = line[i];
   const wordStart = i === 0 || WORD_START.has(line[i - 1] ?? "");
   if (line.startsWith("((", i) && i !== scan.codeAt && atCommandStart(line, i)) return pushArith(scan, i, i + 2);
-  // `typeset -f` drops comments from code, but substitution text is printed verbatim, comments and all.
-  if (wordStart && c === "#" && ctx.kind !== "code") return line.length;
+  if (ctx.kind === "cmdsub") substitutionText(scan, line, i, wordStart);
+  if (wordStart && c === "#" && ctx.kind === "cmdsub") return line.length;
+  if (PROCESS_SUBSTITUTIONS.some((op) => line.startsWith(op, i)) || (wordStart && line.startsWith("=(", i))) {
+    return push(scan, "cmdsub", i + 2);
+  }
   if (c === "(") ctx.depth++;
   else if (c === ")" && ctx.kind === "cmdsub" && ctx.depth === 0) return pop(scan, i + 1);
   else if (c === ")") ctx.depth = Math.max(0, ctx.depth - 1);
@@ -150,13 +173,23 @@ function codeStep(scan: BodyScan, line: string, i: number): number {
   return i + 1;
 }
 
+/**
+ * `typeset -f` drops comments from code but prints `$( )` text verbatim. There a bare case pattern's `)` would end
+ * the substitution early, and `(#` may be a glob flag or a comment, so neither is followed.
+ */
+function substitutionText(scan: BodyScan, line: string, i: number, wordStart: boolean): void {
+  const commandWord = wordStart || line[i - 1] === "(";
+  if (commandWord && /^case(?:\s|$)/.test(line.slice(i, i + 5))) scan.broken = true;
+  if (line.startsWith("(#", i)) scan.broken = true;
+}
+
 function heredocOperator(scan: BodyScan, line: string, from: number): number {
   const stripTabs = line[from] === "-";
   let i = stripTabs ? from + 1 : from;
   while (line[i] === " " || line[i] === "\t") i++;
   const { word, end } = readDelimiter(line, i);
   if (word === null || word === "") scan.broken = true;
-  else scan.pending.push({ delimiter: word, stripTabs });
+  else scan.pending.push({ delimiter: word, stripTabs, owner: scan.stack.length - 1 });
   return end;
 }
 
