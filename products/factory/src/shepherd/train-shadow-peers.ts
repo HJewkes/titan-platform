@@ -6,7 +6,7 @@ import { inStepOrder, payloadOf, stepName } from "./stats.js";
 import { TRAIN_WORKFLOW } from "./train.js";
 
 /** Where a trusted run waits that a batch would take: its refresh update, the CI on its refreshed head, or the train. */
-export type ShadowStage = "refresh" | "refresh-ci" | "train";
+type ShadowStage = "refresh" | "refresh-ci" | "train";
 
 export interface ShadowPeer {
   runId: string;
@@ -20,7 +20,7 @@ export interface ShadowExcluded extends Omit<ShadowPeer, "stage"> {
 }
 
 /** What the admission reads live; each read failing excludes that peer as `unread`, never admits it. */
-export interface PeerReads {
+interface PeerReads {
   held: HeldCheck;
   baseOf: (repo: RepoSlug, pr: number) => Promise<string>;
   defaultBranch: string;

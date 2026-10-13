@@ -2,7 +2,7 @@ import type { WorkflowRun } from "@titan-design/workflow";
 import { inRange, inStepOrder, isoWeek, mergedAt, outsideAt, payloadOf, stepName, type StatsRange } from "./stats.js";
 import type { TrainShadow } from "./train-shadow.js";
 
-export interface TrainShadowRow {
+interface TrainShadowRow {
   repo: string;
   week: string;
   /** Land-time refreshes whose shadow was recorded. */

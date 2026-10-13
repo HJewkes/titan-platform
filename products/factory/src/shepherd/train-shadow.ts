@@ -65,7 +65,7 @@ export function shadowsIn(db: Db): TrainShadow[] {
   return Rows.parse(db.prepare("SELECT * FROM shepherd_train_shadow ORDER BY id").all()).map(fromRow);
 }
 
-export class TrainShadowStore {
+class TrainShadowStore {
   private readonly runs: WorkflowRunStore;
 
   constructor(private readonly db: Db) {
@@ -88,7 +88,7 @@ export class TrainShadowStore {
   }
 }
 
-export interface TrainShadowRef {
+interface TrainShadowRef {
   get(): TrainShadowStore;
   bind(db: Db): () => void;
 }
