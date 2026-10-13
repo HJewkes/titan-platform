@@ -1,5 +1,6 @@
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import type { ForcePush } from "./force-pushes.js";
+import type { MergeIntoBranchResult } from "./merge-into-branch.js";
 import type { ReviewComment } from "./review-comment.js";
 import type { CheckRun, Commit, CommitStatus, GitHubWire, IssueComment, LoggedCommit, MergeMessage, PrFile, PullRequest, RequiredChecks, SquashSource } from "./port.js";
 
@@ -74,6 +75,10 @@ export interface FakeGitHub {
   squashSources: Map<number, SquashSource>;
   /** Every `merge` PUT's pull number and message, in order; `message` is undefined when none was sent. */
   merges: { number: number; message: MergeMessage | undefined }[];
+  /** Head shas whose merge into any branch answers a conflict, as GitHub's Merges API does with 409. */
+  mergeConflicts: Set<string>;
+  /** Every Merges API call that reached a branch, in order, with what it answered; `FakeEffects` stays as it was. */
+  branchMerges: { branch: string; head: string; outcome: MergeIntoBranchResult["outcome"] }[];
   /** Every PR base change that landed, in order; its length counts the retargets, so `FakeEffects` stays as it was. */
   baseChanges: { number: number; base: string }[];
   /** The default branch's history for `listCommits`, in any order; it answers those at or after `since`, newest first. */
