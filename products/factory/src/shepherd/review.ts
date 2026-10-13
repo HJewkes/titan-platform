@@ -20,7 +20,7 @@ import { MERGE_EVIDENCE_STEPS } from "./merge-evidence-gate.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { PUBLISH_REVIEW_STEPS, publishReviewRoute } from "./publish-review.js";
-import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, startedSession, whileBrokerBusy, whileBrokerDown, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
+import { DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, busyWaits, clearReviewWait, notStarted, noteReviewWait, startedSession, timedOutUnseen, whileBrokerBusy, whileBrokerDown, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
 import { reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
 import { spawnFacts } from "./spawn-facts.js";
@@ -118,8 +118,11 @@ const ReviewDispatchInputSchema = ReviewTargetSchema.extend({
 
 type Timing = Pick<AwaitVerdictTiming, "now" | "sleep" | "pollMs">;
 
-/** Spawns or resumes the intent's reviewer, waiting out a broker that is down or busy; the watch row names a busy wait while it lasts, and `waits` keeps each one. */
-async function startReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, target: ReviewTarget, facts: ReviewerFacts, brief: string, timing: BusyTiming & Timing, signal: AbortSignal, waits: string[]): Promise<void> {
+/**
+ * Spawns or resumes the intent's reviewer, waiting out a broker that is down or busy; the watch row names a busy wait while it lasts, and `waits` keeps each one.
+ * A timed-out ask may have landed, so it is `timed-out`, looked for like any ask, and never asked again blind (TP-2804).
+ */
+async function startReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, target: ReviewTarget, facts: ReviewerFacts, brief: string, timing: BusyTiming & Timing, signal: AbortSignal, waits: string[]): Promise<"asked" | "timed-out"> {
   const ask = () => (intent.mode === "resume" ? dispatch.resume(intent.reviewer, brief) : dispatch.spawn(intent.reviewer, brief, target, facts));
   const note = (text: string) => {
     waits.push(text);
@@ -127,6 +130,10 @@ async function startReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, t
   };
   try {
     await whileBrokerBusy(timing, signal, note, () => whileBrokerDown(timing, signal, ask));
+    return "asked";
+  } catch (error) {
+    if (error instanceof ReviewerAskTimedOut) return "timed-out";
+    throw error;
   } finally {
     clearReviewWait(target.repo, target.pr);
   }
@@ -252,17 +259,16 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
   const waits: string[] = [];
   const facts = { ...(await spawnFacts(deps, runId, intent, target, roles)), ...(profile !== undefined && { profile }) };
   const asking = asked ? undefined : await reviewBrief({ ...target, checkoutRoot: checkoutRootOf(deps, shape), fixFirsts, ownerBrief, fixProof, fixProofUnverified, testRule: deps.suiteRules?.reviewer, ...(shape !== undefined && { shape }) }, codewatch, questions);
-  if (asking) {
-    const refused = await startReviewer(dispatchFor(wired.accounts, wired.dispatch, intent.account), intent, target, facts, asking.brief, timing, signal, waits).then(() => undefined, (error: unknown) => notStarted(error, waits));
-    if (refused) {
-      await dropCheckout(deps, target, shape);
-      return refused;
-    }
+  const outcome = asking && (await startReviewer(dispatchFor(wired.accounts, wired.dispatch, intent.account), intent, target, facts, asking.brief, timing, signal, waits).catch((error: unknown) => notStarted(error, waits)));
+  if (typeof outcome === "object") {
+    await dropCheckout(deps, target, shape);
+    return outcome;
   }
   const { agent: started, rosterError } = await startedSession(() => dispatch.roster(), holds(intent), { ...timing, startedAt: asked ? clock?.firstStartedAtMs : undefined }, signal);
   if (!started) {
     await dropCheckout(deps, target, shape);
-    return notStartedInTime(intent, rosterError);
+    // An unseen timed-out ask started nobody, so the review is retried now rather than held as no-reviewer.
+    return outcome === "timed-out" ? timedOutUnseen(timing.timeoutMs, waits) : notStartedInTime(intent, rosterError);
   }
   const spawnedAs = profile ?? (roles && reviewerRoleFor(facts, roles));
   return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...(intent.mode === "spawn" && spawnedAs !== undefined && { profile: spawnedAs }), ...busyWaits(waits), ...(asking?.codewatch && { codewatch: asking.codewatch }) };

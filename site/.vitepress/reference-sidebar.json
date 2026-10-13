@@ -160,6 +160,10 @@
         "link": "/reference/dispatch-ledger"
       },
       {
+        "text": "graph-layout",
+        "link": "/reference/graph-layout"
+      },
+      {
         "text": "memory",
         "link": "/reference/memory"
       },

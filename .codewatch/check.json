@@ -58,6 +58,7 @@
           "packages/review-panel",
           "packages/pm",
           "packages/throughput",
+          "packages/graph-layout",
           "packages/dispatch-ledger"
         ],
         "ui": [
@@ -127,6 +128,7 @@
           "packages/review-panel",
           "packages/pm",
           "packages/throughput",
+          "packages/graph-layout",
           "packages/dispatch-ledger"
         ],
         [
