@@ -1,5 +1,5 @@
 import type { WordToken } from "../shell/lexer.js";
-import { asciiDecoded, fieldKey, refBranch, routedPath } from "./api-branch-refs.js";
+import { asciiDecoded, fieldKey, knownBranch, refBranch, routedPath } from "./api-branch-refs.js";
 
 export type BranchRoute = "contents" | "rename" | "merge-upstream" | "protection" | "default-branch";
 
@@ -52,10 +52,14 @@ function contentsWrite(fields: Fields): BranchRouteWrite {
   return { route: "contents", branches: branches.length > 0 ? branches : [null] };
 }
 
-/** GitHub rejects merge-upstream without `branch` (422), so a call with none moves nothing. */
+/**
+ * GitHub rejects merge-upstream without `branch` (422), so a call with none moves nothing. A `refs/tags/…` value is
+ * not a head, so it reads as unknown rather than absent.
+ */
 function mergeUpstreamWrite(fields: Fields): BranchRouteWrite | null {
-  const branches = fieldBranches(fields, BRANCH_KEY_RE);
-  return branches.length > 0 ? { route: "merge-upstream", branches } : null;
+  if (fields === "unread") return { route: "merge-upstream", branches: [null] };
+  const named = candidates(fields, BRANCH_KEY_RE);
+  return named.length > 0 ? { route: "merge-upstream", branches: named.map((f) => refBranch(f) ?? null) } : null;
 }
 
 /** Any `default_branch` field, or a body that may hold one; the value never makes it safe (D1). */
@@ -73,10 +77,10 @@ function defaultBranchWrite(verb: string | null, fields: Fields): BranchRouteWri
 function branchesWrite(rest: string, fields: Fields): BranchRouteWrite | null {
   const segments = rest.split("/");
   const lower = segments.map((s) => s.toLowerCase());
-  const protectedBy = lower.flatMap((s, i) => (i > 0 && s === "protection" ? [segments.slice(0, i).join("/")] : []));
+  const protectedBy = lower.flatMap((s, i) => (i > 0 && s === "protection" ? [knownBranch(segments.slice(0, i).join("/"))] : []));
   const renamed = segments.length > 1 && lower[segments.length - 1] === "rename" ? segments.slice(0, -1).join("/") : null;
   if (renamed === null) return protectedBy.length > 0 ? { route: "protection", branches: protectedBy } : null;
-  const branches = [...protectedBy, renamed, ...fieldBranches(fields, NEW_NAME_KEY_RE)];
+  const branches = [...protectedBy, knownBranch(renamed), ...fieldBranches(fields, NEW_NAME_KEY_RE)];
   return { route: protectedBy.length > 0 ? "protection" : "rename", branches };
 }
 

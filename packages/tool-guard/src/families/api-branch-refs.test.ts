@@ -85,6 +85,16 @@ describe("a POST to git/refs reads its ref field", () => {
   });
 });
 
+describe("gh's run-time {branch} placeholder names an unknown branch", () => {
+  it.each([
+    ["PATCH", "repos/{owner}/{repo}/git/refs/heads/{branch}", ""],
+    ["DELETE", "repos/:owner/:repo/git/refs/heads/:branch", ""],
+    ["POST", "repos/o/r/git/refs", "ref=refs/heads/{branch} sha=x"],
+  ])("%s %s %s", (method, url, src) => {
+    expect(apiBranchRefWrite(url, method, fields(src))).toEqual({ branches: [null] });
+  });
+});
+
 describe("requests that move no branch ref", () => {
   it.each([
     ["GET", "repos/o/r/git/refs/heads/main", ""],

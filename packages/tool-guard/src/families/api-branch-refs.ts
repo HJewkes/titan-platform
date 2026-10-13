@@ -16,6 +16,12 @@ const GIT_REFS_RE = /(?:^|\/)repos\/[^/]+\/[^/]+\/git\/refs?(\/.*)?$/i;
 const HEADS_RE = /^\/heads\/(.+)$/i;
 const REF_KEY_RE = /^ref(?:\[\])?$/;
 
+/** gh fills `{branch}` (and `:branch` in an endpoint) with the checked-out branch, so the name is known only at run time. */
+const RUN_TIME_BRANCH_RE = /\{branch\}|(?:^|\/):branch(?:\/|$)/i;
+
+/** A branch name as GitHub receives it; null when gh substitutes it at run time. */
+export const knownBranch = (name: string): string | null => (RUN_TIME_BRANCH_RE.test(name) ? null : name);
+
 const hasDotSegment = (path: string) => path.split("/").some((s) => s === "." || s === "..");
 
 /** Decodes only the ASCII escapes, which always decode, so `%67it` reads as `git` beside an invalid `%E0`. */
@@ -58,7 +64,7 @@ export function refBranch(word: WordToken): string | null | undefined {
   if (value.startsWith("@")) return null;
   const unqualified = value.replace(/^refs\//, "");
   if (unqualified !== value && !/^heads\//.test(unqualified)) return undefined;
-  return unqualified.replace(/^heads\//, "");
+  return knownBranch(unqualified.replace(/^heads\//, ""));
 }
 
 /** POST `git/refs`: every `ref` field, and every field whose key is not literal, is a candidate. */
@@ -87,5 +93,5 @@ export function apiBranchRefWrite(url: string, method: string | null, fields: Wo
   const tail = (refs[1] ?? "").replace(/\/+$/, "");
   if (tail === "") return verb === null || verb === "POST" ? createdBranches(fields) : null;
   const branch = HEADS_RE.exec(tail)?.[1];
-  return branch === undefined ? null : { branches: [branch] };
+  return branch === undefined ? null : { branches: [knownBranch(branch)] };
 }

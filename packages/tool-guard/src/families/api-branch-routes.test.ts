@@ -133,6 +133,28 @@ describe("a path with dot segments or no full decoding reads its loose route wit
   });
 });
 
+describe("gh's run-time {branch} placeholder names an unknown branch", () => {
+  it.each([
+    ["DELETE", "repos/{owner}/{repo}/branches/{branch}/protection", "", "protection", [null]],
+    ["DELETE", "repos/:owner/:repo/branches/:branch/protection/enforce_admins", "", "protection", [null]],
+    ["PUT", "repos/o/r/contents/x", "branch={branch}", "contents", [null]],
+    ["PUT", "repos/o/r/contents/x", "branch=refs/heads/{branch}", "contents", [null]],
+    ["POST", "repos/o/r/branches/{branch}/rename", "new_name=feat/y", "rename", [null, "feat/y"]],
+    ["POST", "repos/o/r/branches/feat/x/rename", "new_name={branch}", "rename", ["feat/x", null]],
+    ["POST", "repos/o/r/merge-upstream", "branch={branch}", "merge-upstream", [null]],
+    ["PATCH", "repos/o/r", "default_branch={branch}", "default-branch", [null]],
+  ])("%s %s %s reads as %s %j", (method, url, src, route, branches) => {
+    expect(apiBranchRouteWrite(url, method, fields(src))).toEqual({ route, branches });
+  });
+
+  it("reads a merge-upstream branch outside refs/heads as unknown", () => {
+    expect(apiBranchRouteWrite("repos/o/r/merge-upstream", "POST", fields("branch=refs/tags/x"))).toEqual({
+      route: "merge-upstream",
+      branches: [null],
+    });
+  });
+});
+
 describe("requests that change no branch", () => {
   it.each([
     ["GET", "repos/o/r/contents/README.md", "branch=main"],
