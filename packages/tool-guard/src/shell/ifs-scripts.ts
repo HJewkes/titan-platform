@@ -13,8 +13,13 @@ interface Stage {
   piped: boolean;
 }
 
-/** Variables that name a file a starting shell sources: bash's `BASH_ENV`, sh's `ENV`, zsh's `ZDOTDIR`. */
-const STARTUP_VAR_RE = /^(?:BASH_ENV|ENV|ZDOTDIR)(?:\[[^\]]*\])?(?:\+?=|$)/;
+/**
+ * Variables that name a file a starting shell sources: bash's `BASH_ENV`, sh's `ENV`, zsh's `ZDOTDIR`, and `HOME`,
+ * under which zsh always reads `.zshenv` and a login bash or zsh reads its profile.
+ */
+const STARTUP_VAR_RE = /^(?:BASH_ENV|ENV|ZDOTDIR|HOME)(?:\[[^\]]*\])?(?:\+?=|$)/;
+/** Each startup variable's shortest spelling; `BASH_ENV` holds `ENV` in order. */
+const STARTUP_NAMES = ["ENV", "ZDOTDIR", "HOME"];
 /** Shell options that source a startup file: interactive or login clusters, and an rc or init file. */
 const STARTUP_OPTION_RE = /^(?:-[A-Za-z]*[il][A-Za-z]*|--login|--rcfile|--init-file|--interactive)$/;
 
@@ -33,7 +38,26 @@ export interface Scripts {
  * anywhere after it sources that file before its own script, as `source` would.
  */
 export function selectsStartupFile(tokens: readonly Token[]): boolean {
-  return tokenLists(tokens).some((list) => list.some((t) => t.type === "word" && STARTUP_VAR_RE.test(t.value)));
+  return tokenLists(tokens).some((list) => list.some((t) => t.type === "word" && namesStartupVar(t.value)));
+}
+
+/**
+ * Brace expansion keeps a word's characters in order, so a brace word builds a startup variable's name
+ * (`{BASH_,}ENV=./f`) only if it holds that name in order, unless a `..` range makes the letters.
+ */
+function namesStartupVar(value: string): boolean {
+  if (STARTUP_VAR_RE.test(value)) return true;
+  if (!value.includes("{")) return false;
+  return value.includes("..") || STARTUP_NAMES.some((name) => holdsInOrder(value, name));
+}
+
+function holdsInOrder(text: string, name: string): boolean {
+  let at = -1;
+  for (const c of name) {
+    at = text.indexOf(c, at + 1);
+    if (at < 0) return false;
+  }
+  return true;
 }
 
 /**

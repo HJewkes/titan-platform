@@ -11,7 +11,7 @@ const LETTER_RANGE_RE = /(?:^|[^0-9-])\.\.|\.\.(?:[^0-9-]|$)/;
  * Text that may build a name at run time (an expansion, a backquote, a glob, a brace), source a file, or reach an
  * arithmetic sink (an integer or float attribute, a mapfile callback), or select a shell startup file.
  */
-const RUN_TIME_TEXT_RE = /[$`?*[{]|source|integer|float|ENV|ZDOTDIR|--(?:login|rcfile|init-file|interactive)|(?:^|[\s;&|(])\.\s|\s[-+][A-Za-z0-9]*[iCEFl]/;
+const RUN_TIME_TEXT_RE = /[$`?*[{]|source|integer|float|ENV|ZDOTDIR|HOME|--(?:login|rcfile|init-file|interactive)|(?:^|[\s;&|(])\.\s|\s[-+][A-Za-z0-9]*[iCEFl]/;
 /** The walk's own nesting limit (`MAX_DEPTH` in commands.ts); past it the value counts as naming IFS. */
 const RELEX_DEPTH = 8;
 
