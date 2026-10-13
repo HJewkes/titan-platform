@@ -7,6 +7,7 @@ import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
 import { g10UnreviewedStall, type HoldWait } from "./g10-unreviewed-stall.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { OWNER_GATE_REASONS } from "./policy.js";
+import { NONE_KINDS, lastNoneReason } from "./none-reason.js";
 import { MAX_NOT_STARTED_REVIEWS, notStartedStreak, reviewerName } from "./review-steps.js";
 import { reviewWait } from "./review-wait.js";
 import { TERMINAL_PHASE, endedAt, runOutcome } from "./run-end.js";
@@ -54,6 +55,8 @@ export const WatchRowSchema = z.object({
   slice: z.string().nullable().optional(),
   /** The agent name the newest started `sh-review` dispatched; null before any reviewer started. Absent in rows older than the field. */
   reviewer: z.string().nullable().optional(),
+  /** Why the newest head-level review step ended in `none`; null for a finished run or one whose last review gave a verdict. Absent in rows older than the field. */
+  lastNone: z.object({ kind: z.enum(NONE_KINDS), text: z.string() }).nullable().optional(),
 });
 export type WatchRow = z.infer<typeof WatchRowSchema>;
 
@@ -251,7 +254,17 @@ function stallReason(run: WorkflowRun, steps: readonly StepResult[], phase: Phas
   if (run.status === "failed" || run.status === "recovery_required") return run.error ?? run.status;
   const streak = notStartedStreak(steps);
   if (streak >= MAX_NOT_STARTED_REVIEWS) return `${streak} review dispatches in a row started no reviewer`;
-  return g10UnreviewedStall(run, wait, since, now) ?? (wait.holding ? undefined : overstayReason(phase, since, now));
+  return g10UnreviewedStall(run, wait, since, now, liveLastNone(run, steps)?.text) ?? (wait.holding ? undefined : overstayReason(phase, since, now));
+}
+
+function stalledView(...args: Parameters<typeof stallReason>): WatchRow["stalled"] {
+  const reason = stallReason(...args);
+  return reason === undefined ? null : { reason };
+}
+
+/** A finished run's last await is history, so only a live run carries one. */
+function liveLastNone(run: WorkflowRun, steps: readonly StepResult[]): NonNullable<WatchRow["lastNone"]> | null {
+  return endedAt(run, steps) === undefined ? (lastNoneReason(steps) ?? null) : null;
 }
 
 /** The stage of the phase the run is in now and its age; a merge waiting on a hold is in `hold`, not `land`. */
@@ -278,7 +291,6 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
   const held = heldView(registration);
   const holding = phase === "merging" && waitsOnHold(run, held, headSha);
   const since = phaseSince(run, steps, phase);
-  const stalled = stallReason(run, steps, phase, since, now, { registration, headSha, holding });
   return {
     repo: registration.repo,
     pr: registration.pr,
@@ -292,13 +304,14 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending && stepOf(pending.gate.id), registration, train?.runId === run.id ? undefined : train)),
     pendingGate: pending ? { gateId: pending.gate.id, stepId: stepOf(pending.gate.id), since: pending.gate.createdAt } : null,
     held,
-    stalled: stalled === undefined ? null : { reason: stalled },
+    stalled: stalledView(run, steps, phase, since, now, { registration, headSha, holding }),
     outcome: runOutcome(steps),
     stage: liveStage(run, steps, phase, holding, now),
     totalMinutes: Math.floor(((endedAt(run, steps) === undefined ? now.getTime() : Date.parse(since)) - Date.parse(run.startedAt)) / MINUTE),
     implementer: registration.implementer || null,
     slice: registration.slice ?? null,
     reviewer: reviewerName(steps),
+    lastNone: liveLastNone(run, steps),
   };
 }
 
