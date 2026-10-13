@@ -3,7 +3,7 @@ import type { ContextDeps, RecoveredStep } from "./context-deps.js";
 import { isRecoverable } from "./recovery.js";
 import { workflowStepRequestKey, type ActiveStep, type StepUsage } from "./types.js";
 
-export interface TryTiming {
+interface TryTiming {
   attempt: number;
   restarts: number;
   startedAt: string;
