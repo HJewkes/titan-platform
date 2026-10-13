@@ -526,6 +526,13 @@ describe("every math write operator, spacing and side around a computed name", (
     ["a quote in a replacement before =", "f \"${x/*/PS'4'=7}\""],
     ["& in a // replacement", 'f "${y//*/&=7}"'],
     ["& in a /# replacement after ++", 'f "${y/#*/++&}"'],
+    ["an escaped } in the pattern before & and =", 'f "${y/[^\\}]*/&=7}"'],
+    ["an escaped } in the pattern before & and ++", 'f "${y/[^\\}]*/&++}"'],
+    ["an indirect head before & and =", 'f "${!v/*/&=7}"'],
+    ["a zsh flag group before the substitution", 'f "${(L)y/*/&=7}"'],
+    ["a substitution with = in its pattern, an accepted false deny", 'f "${x/=/:}"'],
+    ["a substitution before a URL query, an accepted false deny", 'f "${url/http:/https:}?a=1"'],
+    ["a substitution of / into --, an accepted false deny", 'f "${p//\\//--}"'],
     ["a # pattern holding =, an accepted over-read", 'val="${line#*=}"'],
     ["a positional # pattern holding =, an accepted over-read", 'f "${1#*=}"'],
   ])("counts: %s", (_how, line) => {
@@ -534,7 +541,9 @@ describe("every math write operator, spacing and side around a computed name", (
 
   it.each([
     ["a quoted heredoc body", "cat <<'EOF'\n${x}=1\nEOF"],
-    ["a / pattern whose = follows no name", 'f "${x/=/:}"'],
+    ["an assignment before a substitution", 'new="${old/a/b}"'],
+    ["an option before a substitution", '--name="${f/.txt/}"'],
+    ["an uppercase assignment before a substitution", 'NAME="${x/a/b}"'],
     ["& in a URL query, outside any replacement", 'curl "$U?a=1&b=2"'],
     ["g++", "g++ -O2 a.c"],
     ["an option holding =", "ls --color=auto"],
