@@ -31,6 +31,7 @@ guarded file stays readable by that user. The OS account is the real boundary.
 
 - Commands built at run time (`$(...)`, `read`, `printf -v`, `eval "$x"`) are not followed.
   A script run by path is read one level deep.
+- An HTTP client that sends a write method to a URL whose host, or whose `api.github.com` path, is known only at run time reads as a merge.
 - A Bash command the tokenizer cannot parse passes, unless its text names a guarded
   path, a distinctive credential file name, or `gh pr merge`, `/merge`, `publish`, `deploy`,
   `gist` (owner decision D6). Then it denies and asks for simpler commands. The text is checked

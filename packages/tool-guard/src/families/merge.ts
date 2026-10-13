@@ -7,6 +7,7 @@ import { classified } from "../spellings.js";
 import type { SpellingId } from "../spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
 import { httpRequest } from "./egress.js";
+import { mayReachGitHubApi } from "./github-endpoint.js";
 import { hasFlag, lastValue, readOptions, set, valuesOf } from "./options.js";
 
 const PROTECTED_RE = /^(?:main|master|release\/.+)$/;
@@ -67,16 +68,22 @@ function apiMerge(cmd: SimpleCommand): ClassifiedAction[] {
 }
 
 function endpointMerge(url: string, method: string, pullSpelling: SpellingId, mergesSpelling: SpellingId): ClassifiedAction[] {
-  if (method === "GET" || method === "HEAD") return [];
+  if (!isWrite(method)) return [];
   const pull = PULL_MERGE_RE.exec(url);
   if (pull) return [classified(pullSpelling, /^\d+$/.test(pull[1] ?? "") ? { pr: pull[1] as string } : {})];
   return MERGES_RE.test(url) ? [classified(mergesSpelling, {})] : [];
 }
 
+/** Any method but GET or HEAD writes, including one known only at run time. */
+const isWrite = (method: string) => method !== "GET" && method !== "HEAD";
+
+/** A literal endpoint names its PR, so it wins over a run-time URL that only may reach a merge endpoint. */
 function curlMerge(cmd: SimpleCommand): ClassifiedAction[] {
   const request = httpRequest(cmd);
   if (!request) return [];
-  return request.urls.flatMap((u) => endpointMerge(u.value, request.method, "bash.merge.curl-api", "bash.merge.curl-api")).slice(0, 1);
+  const literal = request.urls.flatMap((u) => endpointMerge(u.value, request.method, "bash.merge.curl-api", "bash.merge.curl-api"));
+  const runTime = isWrite(request.method) && request.urls.some(mayReachGitHubApi) ? [classified("bash.merge.curl-api", {})] : [];
+  return [...literal, ...runTime].slice(0, 1);
 }
 
 /** Branch checked out where git runs; an unknown directory reads as `unknown`, which counts as protected. */

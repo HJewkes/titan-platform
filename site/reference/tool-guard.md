@@ -88,6 +88,7 @@ through a symlinked parent, is refused just before the append.
   only write is its log append, and the log path check above keeps that out of settings files.
 - It does not follow commands built at run time (`$(...)`, `eval "$x"`), and reads a script run
   by path one level deep.
+- An HTTP client that sends a write method to a URL whose host, or whose `api.github.com` path, is known only at run time reads as a merge.
 - It does not classify `titan-factory` verbs.
 
 ## Gotchas
