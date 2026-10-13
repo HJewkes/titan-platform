@@ -1,10 +1,14 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import type { AnswersPage, AskRequest } from "@titan-design/agent-dispatch";
 import { DaemonAlreadyRunningError, silentLogger } from "@titan-design/daemon";
 import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { toJSONSchema } from "zod";
 import { defineWorkflow } from "./definition.js";
+import { approveMergeDecision } from "./gate-brief.js";
+import type { GateNotifyOptions } from "./gate-notify-sweep.js";
 import { serveFactoryUntilSignal, startFactoryServer, sweepCheckouts, type FactoryServer, type FactoryServerOptions } from "./serve.js";
 import { crashAt } from "./test-support/crash.js";
 import { approveUntilSettled, gateId, gateOpened, landScenario, type LandScenario } from "./test-support/land.js";
@@ -303,5 +307,84 @@ describe("sweepCheckouts", () => {
 
     expect(warnings).toHaveLength(1);
     expect(warnings[0]?.obj).toEqual({ path, err: "EBUSY" });
+  });
+});
+
+describe("serve's gate notifier", () => {
+  const HEAD = "b".repeat(40);
+
+  /** One question per ask, answered from `replies` by msg id. */
+  function fakeQueue(replies: Record<string, string> = {}) {
+    const asked: AskRequest[] = [];
+    let reads = 0;
+    const read = (): AnswersPage => {
+      reads += 1;
+      const answers = Object.entries(replies).map(([questionId, text], i) => ({ msgId: `a${i}`, questionId, outcome: "answered" as const, text, by: "human" as const, channel: "phone", at: i }));
+      return { answers, ...(answers.length > 0 && { next: answers.at(-1)!.msgId }) };
+    };
+    const options: GateNotifyOptions = {
+      label: "titan-factory",
+      resolverClass: "owner-remote",
+      askHuman: async (req) => `q${asked.push(req)}`,
+      readAnswers: async () => read(),
+      dismissAsk: async () => undefined,
+    };
+    return { options, asked, reads: () => reads };
+  }
+
+  /** `unpinned` leaves the head free in the schema, so no answer can supply it and the gate stays off the phone. */
+  function openMergeGate(server: FactoryServer, id: string, { unpinned = false } = {}): void {
+    const { schema, brief } = approveMergeDecision({ repo: "HJewkes/demo", pr: 7, headSha: HEAD, reason: "Ready.", reviewedMerge: true });
+    const json = toJSONSchema(schema);
+    const gateSchema = unpinned ? { ...json, properties: { ...json.properties, headSha: { type: "string" as const } } } : json;
+    server.host.gates.create({ id, prompt: "Merge?", schema: gateSchema, ...brief });
+  }
+
+  const health = async (server: FactoryServer): Promise<unknown> => (await fetch(`http://127.0.0.1:${server.port}/health`)).json();
+
+  it("asks nothing and shows no gateNotify block without the config", async () => {
+    const server = await serve(dbFile(), landScenario(), {});
+    openMergeGate(server, "run1/approve-merge");
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(server.host.asks.get("run1/approve-merge")).toBeUndefined();
+    expect(await health(server)).not.toHaveProperty("gateNotify");
+  });
+
+  it("asks a pending decision gate once, and close stops the sweep", async () => {
+    const queue = fakeQueue();
+    const errors: unknown[] = [];
+    const logger = { ...silentLogger, error: (_fields: unknown, msg?: unknown) => void errors.push(msg) };
+    const server = await serve(dbFile(), landScenario(), { logger, gateNotify: { ...queue.options, everyMs: 10 } });
+    openMergeGate(server, "run1/approve-merge");
+
+    await vi.waitFor(() => expect(queue.reads()).toBeGreaterThan(2));
+    await server.close();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(queue.asked).toEqual([expect.objectContaining({ as: "titan-factory", task: "gate:run1/approve-merge" })]);
+    expect(errors).not.toContain("gate notify failed");
+  });
+
+  it("health shows a gate whose answer could not settle it and a gate no answer can settle", async () => {
+    const queue = fakeQueue({ q1: "maybe" });
+    const server = await serve(dbFile(), landScenario(), { gateNotify: { ...queue.options, everyMs: 10 } });
+    openMergeGate(server, "run1/approve-merge");
+    openMergeGate(server, "run2/approve-merge", { unpinned: true });
+
+    await vi.waitFor(() => expect(server.host.asks.get("run1/approve-merge")?.state).toBe("unmappable"));
+
+    expect(await health(server)).toMatchObject({
+      gateNotify: { label: "titan-factory", resolverClass: "owner-remote", open: 0, stuck: [{ gateId: "run1/approve-merge", state: "unmappable", detail: "maybe" }], unasked: ["run2/approve-merge"] },
+    });
+  });
+
+  it("health names the error while the label's answers cannot be read", async () => {
+    const queue = fakeQueue();
+    const options = { ...queue.options, readAnswers: async () => Promise.reject(new Error("broker unavailable")) };
+    const server = await serve(dbFile(), landScenario(), { gateNotify: { ...options, everyMs: 10 } });
+
+    await vi.waitFor(async () => expect(await health(server)).toMatchObject({ gateNotify: { answersError: "broker unavailable" } }));
   });
 });

@@ -9,6 +9,7 @@ import { configuredDeployPacer } from "./deploy-pacer-sweep.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import { configuredFixerRetire, configuredMainWatch } from "./main-watch-ports.js";
 import { configuredSeatDigest } from "./seat-digest-ports.js";
+import { configuredGateNotify, type GateNotifyOptions } from "./gate-notify-sweep.js";
 import type { FixerRetirePorts } from "./shepherd/fixer-retire.js";
 import { EXIT } from "./exit-codes.js";
 import type { OwnerPresence } from "./gate-resolve.js";
@@ -75,10 +76,12 @@ export interface CliDeps {
   fixerRetire?: (env: NodeJS.ProcessEnv) => FixerRetirePorts | undefined;
   /** The serve verb's seat digest; absent, or undefined for an env, means serve sends none. */
   seatDigest?: (env: NodeJS.ProcessEnv) => SeatDigestPorts | undefined;
+  /** The serve verb's gate notifier; absent, or undefined for an env, means serve posts no gate to agent-chat. */
+  gateNotify?: (env: NodeJS.ProcessEnv) => GateNotifyOptions | undefined;
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
-const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), deployPacer: (env) => configuredDeployPacer(env, deployCheckoutFor(env)), mainWatch: configuredMainWatch, fixerRetire: configuredFixerRetire, seatDigest: configuredSeatDigest };
+const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), deployPacer: (env) => configuredDeployPacer(env, deployCheckoutFor(env)), mainWatch: configuredMainWatch, fixerRetire: configuredFixerRetire, seatDigest: configuredSeatDigest, gateNotify: configuredGateNotify };
 
 export interface Verbs {
   io: CliIo;

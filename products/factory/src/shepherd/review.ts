@@ -28,13 +28,13 @@ import { chooseReviewer } from "./reviewer-choice.js";
 import { isRepoKey } from "./seats.js";
 import { REVIEW_REQUEST_STEPS, reviewPendingAt, reviewRequestRoute } from "./review-request.js";
 import { fixFirstCount } from "./wake-brief.js";
-import { FIX_PROOF_STEP, FIX_PROOF_STEPS, FixProofReadSchema, fixProofRoute, fixProofVerdict } from "./fix-proof.js";
+import { FIX_PROOF_STEP, FIX_PROOF_STEPS, FixProofReadSchema, fixProofRoute, fixProofStanding, fixProofVerdict } from "./fix-proof.js";
 import type { MachineStopWatch } from "./machine-stop.js";
 import { REVIEW_STEP } from "./review-steps.js";
 import { REVIEW_STOP_STEPS, reviewStopRoute } from "./review-stop.js";
 import { withoutPlan, type PanelMode } from "./review-panel-plan.js";
 import { PANEL_STEPS, panelOn, panelReview, panelVerdictRoute, plannedPanel, type MemberBase, type PanelOnPlan } from "./review-panel-step.js";
-import { LATE_VERDICT_STEP, SEAT_RECHECK_STEP, asksOwnerBrief, mergeVerdict, recheckSeat, takeVerdict } from "./take-verdict.js";
+import { LATE_VERDICT_STEP, SEAT_RECHECK_STEP, asksOwnerBrief, mergeVerdict, recheckSeat, takeVerdict, type ProofStanding } from "./take-verdict.js";
 import { NO_REVIEWER_STEPS, noReviewerHeld, noReviewerRoutes } from "./no-reviewer-hold.js";
 import { heldMerge, recordsRecheck } from "./seat-recheck.js";
 
@@ -99,7 +99,10 @@ const ReviewInputSchema = ReviewTargetSchema.extend({ runId: z.string().min(1), 
  * `account` is the Claude config directory the reviewer bills, set only when review accounts are wired.
  */
 const ReviewIntentSchema = z.object({ head: HeadSchema, reviewer: z.string().min(1), at: z.number(), mode: z.enum(["spawn", "resume", "external"]), agentId: z.string().min(1).optional(), account: z.string().min(1).optional() });
-/** `fixFirsts` counts the run's earlier FIX_FIRST reviews; one or more makes the brief a re-review. `fixProof` is the raw result line the sh-fix-proof step read at this head. */
+/**
+ * `fixFirsts` counts the run's earlier FIX_FIRST reviews; one or more makes the brief a re-review. `fixProof` is the raw result line the
+ * sh-fix-proof step read at this head; `fixProofUnverified` says why that proof proves nothing, and the brief tells the reviewer it blocks.
+ */
 /** `shape` and `profile` are set only for a panel member other than correctness: its brief overlay and its planned profile. */
 const ReviewDispatchInputSchema = ReviewTargetSchema.extend({
   intent: ReviewIntentSchema,
@@ -107,6 +110,7 @@ const ReviewDispatchInputSchema = ReviewTargetSchema.extend({
   fixFirsts: z.number().int().positive().optional(),
   ownerBrief: z.boolean().optional(),
   fixProof: z.string().optional(),
+  fixProofUnverified: z.enum(["error", "untrusted", "unread"]).optional(),
   shape: z.enum(OVERLAY_SHAPES).optional(),
   profile: z.string().min(1).optional(),
 });
@@ -235,7 +239,7 @@ async function thenDropCheckout<T>(deps: ShepherdDeps, target: ReviewTarget, wor
 }
 
 /** The body of the sh-review step; `repeat` means a crash interrupted an earlier run. The brief is built from the target alone, so no registration text can reach it. */
-const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, wired, { intent, runId, fixFirsts, ownerBrief, fixProof, shape, profile, ...target }, signal, repeat) => {
+const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, wired, { intent, runId, fixFirsts, ownerBrief, fixProof, fixProofUnverified, shape, profile, ...target }, signal, repeat) => {
   const { dispatch, questions, codewatch, sessionStartTimeoutMs, busyWaitMs, roles } = wired;
   const timing = { ...brokerTiming(deps), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
   const roster = await whileBrokerDown(timing, signal, () => dispatch.roster());
@@ -243,7 +247,7 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
   const asked = roster.some(intent.mode === "resume" ? (agent) => repeat && resumedSince(intent)(agent) : holds(intent));
   const waits: string[] = [];
   const facts = { ...(await spawnFacts(deps, runId, intent, target, roles)), ...(profile !== undefined && { profile }) };
-  const asking = asked ? undefined : await reviewBrief({ ...target, checkoutRoot: checkoutRootOf(deps, shape), fixFirsts, ownerBrief, fixProof, testRule: deps.suiteRules?.reviewer, ...(shape !== undefined && { shape }) }, codewatch, questions);
+  const asking = asked ? undefined : await reviewBrief({ ...target, checkoutRoot: checkoutRootOf(deps, shape), fixFirsts, ownerBrief, fixProof, fixProofUnverified, testRule: deps.suiteRules?.reviewer, ...(shape !== undefined && { shape }) }, codewatch, questions);
   if (asking) {
     const refused = await startReviewer(dispatchFor(wired.accounts, wired.dispatch, intent.account), intent, target, facts, asking.brief, timing, signal, waits).then(() => undefined, (error: unknown) => notStarted(error, waits));
     if (refused) {
@@ -328,22 +332,24 @@ function notDispatched(ctx: WorkflowContext, target: ReviewTarget, dispatched: R
 
 /**
  * Read the head's fix-proof result, record which reviewer this head gets, start or adopt it, wait for its verdict, and take a
- * MERGE through the evidence step. A vacuous or test-less proof ends the review as NO_REPRO before any reviewer is started.
+ * MERGE through the evidence step. A vacuous or test-less proof ends the review as NO_REPRO before any reviewer is started; an
+ * unverified one goes to the reviewer marked unverified, and its MERGE reaches only the owner gate, since a head can force it.
  * The resolver comes from the verdict step and the dispatched reviewer from the dispatch step, so a mismatch between them gates.
  * An intent recorded under `review.panel` on runs the panel; one recorded with no plan, before the flag or under off or shadow, runs one reviewer.
  */
 export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const target: ReviewTarget = { repo: request.repo, pr: request.pr, head: request.headSha };
-  if (request.seatHeld?.head === target.head && recordsRecheck(ctx, target.head)) return recheckSeat(ctx, target, request.seatHeld);
   const proof = await step(ctx, `${FIX_PROOF_STEP}:${target.head}`, { repo: target.repo, head: target.head, runId: ctx.runId }, FixProofReadSchema);
   const noRepro = fixProofVerdict(proof, target.head);
   if (noRepro) return noRepro;
+  const standing: ProofStanding = fixProofStanding(proof, target.head) ?? {};
+  if (request.seatHeld?.head === target.head && recordsRecheck(ctx, target.head)) return recheckSeat(ctx, target, request.seatHeld, standing);
   const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }) }, Intended);
   if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : { kind: "none", cause: "no-verdict" };
-  if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined);
+  if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined, DEFAULT_ACCOUNT, standing);
   const fixFirsts = fixFirstCount(ctx);
-  const base: MemberBase = { ...target, runId: ctx.runId, ...(fixFirsts > 0 && { fixFirsts }), ...(proof.kind === "result" && { fixProof: proof.line }) };
-  const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent: withoutPlan(intent), ...(fixFirsts > 0 && { fixFirsts }), ...(asksOwnerBrief(ctx) && { ownerBrief: true }), ...(base.fixProof !== undefined && { fixProof: base.fixProof }) }, Dispatched);
+  const base: MemberBase = { ...target, runId: ctx.runId, ...(fixFirsts > 0 && { fixFirsts }), ...(proof.kind === "result" && { fixProof: proof.line }), ...(standing.unverified && { fixProofUnverified: standing.unverified }) };
+  const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent: withoutPlan(intent), ...(fixFirsts > 0 && { fixFirsts }), ...(asksOwnerBrief(ctx, standing) && { ownerBrief: true }), ...(base.fixProof !== undefined && { fixProof: base.fixProof }), ...(standing.unverified && { fixProofUnverified: standing.unverified }) }, Dispatched);
   if (dispatched.kind !== "dispatched") return notDispatched(ctx, target, dispatched);
   const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
   const awaiting: AwaitVerdictInput & { reviewerProfile?: string } = {
@@ -355,6 +361,6 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
     ...(dispatched.profile !== undefined && { reviewerProfile: dispatched.profile }),
   };
   const account = typeof intent.account === "string" ? intent.account : DEFAULT_ACCOUNT;
-  const reviewed = panelOn(intent) ? await panelReview(ctx, intent, base, awaiting, dispatchedReviewer, account) : await takeVerdict(ctx, target, awaiting, dispatchedReviewer, account);
+  const reviewed = panelOn(intent) ? await panelReview(ctx, intent, base, awaiting, dispatchedReviewer, account) : await takeVerdict(ctx, target, awaiting, dispatchedReviewer, account, standing);
   return withReviewerProfile(reviewed, dispatched.profile);
 };
