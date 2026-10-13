@@ -28,6 +28,8 @@ interface BodyScan {
   line: number;
   /** A `((` or `$((` at this index of the current line is read as code: it proved not to be arithmetic. */
   codeAt: number;
+  /** A `((` on the current line was read as code; zsh may have read it as arithmetic, where `<<` is a shift. */
+  parensAsCode: boolean;
 }
 
 const HEREDOC_STARTERS: ReadonlySet<Kind> = new Set(["code", "cmdsub"]);
@@ -42,7 +44,7 @@ const WORD_START = new Set([" ", "\t", ";", "|", "&"]);
 const COMMAND_KEYWORDS = new Set(["if", "elif", "while", "until", "then", "do", "else", "!", "{", "time"]);
 
 export function newBodyScan(): BodyScan {
-  return { stack: [{ kind: "code", depth: 0 }], pending: [], reading: [], broken: false, line: 0, codeAt: -1 };
+  return { stack: [{ kind: "code", depth: 0 }], pending: [], reading: [], broken: false, line: 0, codeAt: -1, parensAsCode: false };
 }
 
 /** True when the next line starts outside every quote, substitution and heredoc. */
@@ -53,6 +55,7 @@ export function atTopLevel(scan: BodyScan): boolean {
 export function scanLine(scan: BodyScan, line: string): void {
   scan.line++;
   scan.codeAt = -1;
+  scan.parensAsCode = false;
   const heredoc = scan.reading[0];
   if (heredoc) {
     if ((heredoc.stripTabs ? line.replace(/^\t+/, "") : line) === heredoc.delimiter) scan.reading.shift();
@@ -160,7 +163,10 @@ function codeStep(scan: BodyScan, line: string, i: number): number {
   const ctx = top(scan);
   const c = line[i];
   const wordStart = i === 0 || WORD_START.has(line[i - 1] ?? "");
-  if (line.startsWith("((", i) && i !== scan.codeAt && atCommandStart(line, i)) return pushArith(scan, i, i + 2);
+  if (line.startsWith("((", i)) {
+    if (i !== scan.codeAt && atCommandStart(line, i)) return pushArith(scan, i, i + 2);
+    scan.parensAsCode = true;
+  }
   if (ctx.kind === "cmdsub") substitutionText(scan, line, i, wordStart);
   if (wordStart && c === "#" && ctx.kind === "cmdsub") return line.length;
   if (PROCESS_SUBSTITUTIONS.some((op) => line.startsWith(op, i)) || (wordStart && line.startsWith("=(", i))) {
@@ -189,7 +195,7 @@ function heredocOperator(scan: BodyScan, line: string, from: number): number {
   let i = stripTabs ? from + 1 : from;
   while (line[i] === " " || line[i] === "\t") i++;
   const { word, end } = readDelimiter(line, i);
-  if (word === null || !PLAIN_DELIMITER.test(word)) scan.broken = true;
+  if (word === null || !PLAIN_DELIMITER.test(word) || scan.parensAsCode) scan.broken = true;
   else scan.pending.push({ delimiter: word, stripTabs, owner: scan.stack.length - 1 });
   return end;
 }
@@ -216,9 +222,12 @@ function readDelimiter(line: string, from: number): { word: string | null; end: 
   return { word, end: i };
 }
 
-/** `((` opens arithmetic only where a command starts; `[[ $x = ((#i)a)* ]]` is a zsh glob. */
+/**
+ * `((` opens arithmetic only where a command starts; `[[ $x = ((#i)a)* ]]` is a zsh glob. A `)` before it ends a
+ * case arm's pattern. Positions this misses are caught by `parensAsCode`.
+ */
 function atCommandStart(line: string, i: number): boolean {
   const before = line.slice(0, i).trimEnd();
-  if (before === "" || /[;&|]$/.test(before)) return true;
+  if (before === "" || /[;&|)]$/.test(before)) return true;
   return COMMAND_KEYWORDS.has(before.split(/\s+/).at(-1) ?? "");
 }

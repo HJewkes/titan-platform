@@ -23,9 +23,10 @@ describe("snapshot body scan", () => {
     ["a shift inside $(( ))", ["\tx=$(( 1 << 2 ))"]],
     ["zsh glob flags", ["\t[[ $w == (#b)(((http|ftp)(|s))://*) ]]"]],
     ["a shift inside (( ))", ["\t(( y = x << n ))", "\tif (( a << 1 )) && (( b <<2 ))"]],
-    ["a zsh case pattern opening with ((", ["\t\t((add-|)fpath) cat <<EOF ;;", "}", "EOF"]],
-    ["a zsh glob opening with (( inside [[ ]]", ["\t[[ $x = ((#i)http|ftp)* ]] && cat <<EOF", "}", "EOF"]],
-    ["a heredoc inside a (( that is nested subshells", ["\tx=$(", "((cat <<EOF) )", "}", "EOF", ")"]],
+    ["a shift inside (( )) in a (pat) case arm", ["\t\t(a) (( y = x << n )) ;;"]],
+    ["a shift inside (( )) in a pat) case arm", ["\t\ta) (( y = x << n )) ;;"]],
+    ["a heredoc in a case arm", ["\t\t(a) cat << n ;;", "}", "n"]],
+    ["a zsh case pattern opening with (( and no heredoc", ["\t\t((add-|)fpath) shift ;;"]],
     ["a comment holding a quote inside $( )", ["\tx=$(: # it's", ")"]],
     ["a heredoc read inside a multi-line $( )", ["\tx=$(cat <<EOF", "}", "EOF", ")"]],
     ["plain backticks", ["\tx=`basename $0`"]],
@@ -66,6 +67,9 @@ describe("snapshot body scan", () => {
     ["a delimiter in backticks", ["\tcat <<`E`"]],
     ["a delimiter ending in an escaped $", ["\tcat <<E\\$"]],
     ["a quoted delimiter with spaces", ["\tcat <<'gp () {'", "}", "gp () {"]],
+    ["a << after a (( read as code: a zsh case pattern", ["\t\t((add-|)fpath) cat <<EOF ;;", "}", "EOF"]],
+    ["a << after a (( read as code: a zsh glob in [[ ]]", ["\t[[ $x = ((#i)http|ftp)* ]] && cat <<EOF", "}", "EOF"]],
+    ["a << after a (( read as code: nested subshells", ["\tx=$(", "((cat <<EOF) )", "}", "EOF", ")"]],
   ])("fails closed on %s", (_name, lines) => {
     const scan = newBodyScan();
     for (const line of lines) scanLine(scan, line);

@@ -112,24 +112,39 @@ describe("parseSnapshotFunctions", () => {
     expect(table.incomplete).toBe(false);
   });
 
-  it("sees a heredoc inside a (( that proves to be nested subshells, so a duplicate cannot hide the real body", () => {
+  it("fails closed on a heredoc inside a (( that proves to be nested subshells, so a duplicate cannot hide the real body", () => {
     const table = parseSnapshotFunctions(
       snapshot("gp () {", "\tgit push", "}", "zz () {", "\tx=$(", "((cat <<EOF) )", "}", "gp () {", "\techo safe", "EOF", ")", "}"),
     );
 
     expect(table.functions.get("gp")).toEqual({ body: "\tgit push" });
-    expect(table.functions.get("zz")).toEqual({ body: "\tx=$(\n((cat <<EOF) )\n}\ngp () {\n\techo safe\nEOF\n)" });
+    expect(table.functions.get("zz")).toEqual({ unreadable: true });
+    expect(table.incomplete).toBe(true);
   });
 
-  it("sees a heredoc inside a (( that proves to be nested subshells, so a made-up name cannot take the real body", () => {
+  it("fails closed on a heredoc inside a (( that proves to be nested subshells, so a made-up name cannot take the real body", () => {
     const table = parseSnapshotFunctions(
       snapshot("zz () {", "\tx=$(", "((cat <<EOF) )", "}", "zzz () {", "\techo safe", "EOF", ")", "\tgit push origin HEAD:main", "}"),
     );
 
     expect(table.functions.has("zzz")).toBe(false);
+    expect(table.functions.get("zz")).toEqual({ unreadable: true });
+    expect(table.incomplete).toBe(true);
+  });
+
+  it("reads << in a case arm's (( )) as a shift, so a later string cannot end the body early", () => {
+    const table = parseSnapshotFunctions(
+      snapshot(
+        "zz () {", "\tcase a in", "\t\t(a) (( y = x << n )) ;;", "\tesac", '\techo "', "n", "}",
+        "zzz () {", "\techo safe", "'\"", "\t: \\'", "\tgit push origin HEAD:main", "}",
+      ),
+    );
+
+    expect(table.functions.has("zzz")).toBe(false);
     expect(table.functions.get("zz")).toEqual({
-      body: "\tx=$(\n((cat <<EOF) )\n}\nzzz () {\n\techo safe\nEOF\n)\n\tgit push origin HEAD:main",
+      body: "\tcase a in\n\t\t(a) (( y = x << n )) ;;\n\tesac\n\techo \"\nn\n}\nzzz () {\n\techo safe\n'\"\n\t: \\'\n\tgit push origin HEAD:main",
     });
+    expect(table.incomplete).toBe(true);
   });
 
   it("fails closed on a heredoc in a $( ) that closes on its own line, where zsh reads no body", () => {
