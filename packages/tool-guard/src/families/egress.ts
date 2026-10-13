@@ -50,8 +50,9 @@ export function httpRequest(cmd: SimpleCommand): HttpRequest | null {
 function curlRequest(args: WordToken[]): HttpRequest {
   const parts = curlParts(args).map(curlPart);
   const methods = new Set(parts.map((p) => p.method));
+  const [only] = methods;
   return {
-    method: methods.size === 1 ? (parts[0] as HttpRequest).method : UNKNOWN_METHOD,
+    method: methods.size === 1 && only !== undefined ? only : UNKNOWN_METHOD,
     body: parts.some((p) => p.body),
     bodies: parts.some((p) => p.bodies === null) ? null : parts.flatMap((p) => p.bodies ?? []),
     urls: parts.flatMap((p) => p.urls),
@@ -90,7 +91,8 @@ function curlPart(args: WordToken[]): HttpRequest {
     return { method: explicit ? explicitMethod(explicit) : curlImpliedMethod(o, body), body, bodies: curlBodies(o), urls };
   }
   const bodies = hidden.flag === "-K" || hidden.flag === "--config" ? null : curlBodies(o);
-  return { method: UNKNOWN_METHOD, body, bodies, urls: [...urls, runtimeUrl(hidden.value ?? (args[0] as WordToken))] };
+  const base = hidden.value ?? args[0];
+  return { method: UNKNOWN_METHOD, body, bodies, urls: base ? [...urls, runtimeUrl(base)] : urls };
 }
 
 const isHiddenInput = (opt: Option) => CURL_HIDDEN.has(opt.flag) || (opt.flag.startsWith("--expand-") && !isLiteralValue(opt));
