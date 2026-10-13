@@ -16,6 +16,7 @@ import {
   checkProductIsolation,
   checkRootLintCoversWorkspaces,
   checkScaffold,
+  checkTrainPushRunsCi,
   checkTurboBuildContract,
   checkZodIsPeer,
 } from "./structure-rules.mjs";
@@ -71,6 +72,16 @@ function turboRoot(prefix, turbo, { runsProcess }) {
     writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ name: "@titan-design/a" }));
     writeFileSync(join(pkgDir, "tsup.config.ts"), 'import { execFileSync } from "node:child_process";\n');
   }
+  return root;
+}
+
+// Each mutation is one edit to this repo's own ci.yml, so the case breaks loudly if the line it targets moves.
+function mutatedCiRoot(from, to) {
+  const ci = readFileSync(join(REPO, ".github", "workflows", "ci.yml"), "utf8");
+  if (!ci.includes(from)) throw new Error(`ci.yml no longer contains ${from}`);
+  const root = tempRoot("structure-ci-");
+  mkdirSync(join(root, ".github", "workflows"), { recursive: true });
+  writeFileSync(join(root, ".github", "workflows", "ci.yml"), ci.replace(from, to));
   return root;
 }
 
@@ -171,6 +182,30 @@ const cases = [
     check: checkTurboBuildContract,
     root: () => turboRoot("structure-turbo-git-", { agentGuidance: false }, { runsProcess: true }),
     message: "`packages/a` runs a process in its build config. Add a `turbo.json` that extends `//` and sets `tasks.build.cache` to false.",
+  },
+  {
+    rule: "R58 a train push triggers CI",
+    check: checkTrainPushRunsCi,
+    root: () => mutatedCiRoot('branches: [main, "shepherd-train/**"]', "branches: [main]"),
+    message: "`ci.yml` does not run on a push to `shepherd-train/**`.",
+  },
+  {
+    rule: "R58 a train push runs every required job",
+    check: checkTrainPushRunsCi,
+    root: () => mutatedCiRoot("  hub-compose:\n", "  hub-compose:\n    if: github.event_name == 'pull_request'\n"),
+    message: "`hub-compose` has a job-level `if`, so a train push can skip a required check.",
+  },
+  {
+    rule: "R58 the changeset guard has a base on a train push",
+    check: checkTrainPushRunsCi,
+    root: () => mutatedCiRoot("--since=origin/${{ github.base_ref || 'main' }}", "--since=origin/${{ github.base_ref }}"),
+    message: "`validate` step `Require a changeset for package changes` reads `github.base_ref` with no push fallback.",
+  },
+  {
+    rule: "R58 a guard step is not gated to pull requests alone",
+    check: checkTrainPushRunsCi,
+    root: () => mutatedCiRoot("if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/shepherd-train/')\n", "if: github.event_name == 'pull_request'\n"),
+    message: "`validate` step `Require a fresh INDEX_VERSION when a PR bumps it` runs only on pull requests.",
   },
   {
     rule: "R10 no lint rule at warn severity",

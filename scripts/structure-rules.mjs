@@ -3,6 +3,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
+import { parse } from "yaml";
 import { findTiersRule, layersFromTiers, productIsolationRules } from "./new-package.mjs";
 
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
@@ -203,4 +204,45 @@ export function checkRootLintCoversWorkspaces(root) {
       (dir) =>
         `The root \`lint\` script does not reach \`${dir}\`. Add \`${dir}/src\` to it in \`package.json\`; workspaces have no \`lint\` script of their own.`,
     );
+}
+
+const TRAIN_BRANCHES = "shepherd-train/**";
+const TRAIN_REF_TEST = "startsWith(github.ref, 'refs/heads/shepherd-train/')";
+// The required checks on main: Shepherd judges a train tip by them, so one skipped or renamed leaves the batch pending.
+const REQUIRED_CI_JOBS = ["validate", "dag-check", "hub-compose"];
+const PR_ONLY_CONTEXT = /github\.(event\.pull_request\.|base_ref\b)/;
+
+function expressionsIn(value, key) {
+  if (typeof value === "string") {
+    const wrapped = [...value.matchAll(/\$\{\{([\s\S]*?)\}\}/g)].map((m) => m[1]);
+    return key === "if" && wrapped.length === 0 ? [value] : wrapped;
+  }
+  if (value && typeof value === "object") return Object.entries(value).flatMap(([k, v]) => expressionsIn(v, k));
+  return [];
+}
+
+function stepViolations(jobId, step) {
+  const label = `\`${jobId}\` step \`${step.name ?? step.uses ?? String(step.run).split("\n")[0]}\``;
+  const prOnly = typeof step.if === "string" && step.if.includes("'pull_request'") && !step.if.includes("shepherd-train/");
+  const gate = prOnly ? [`${label} runs only on pull requests. Add \`|| ${TRAIN_REF_TEST}\` to its \`if\`.`] : [];
+  const unguarded = expressionsIn(step)
+    .filter((expr) => PR_ONLY_CONTEXT.test(expr) && !expr.includes("||"))
+    .map((expr) => `${label} reads \`${expr.trim()}\` with no push fallback. Add \`|| <value for a push>\` to it.`);
+  return [...gate, ...unguarded];
+}
+
+/** R58: a push to a Shepherd train branch runs every required CI job, and no step reads pull-request-only context bare. */
+export function checkTrainPushRunsCi(root) {
+  const workflow = parse(readFileSync(join(root, ".github", "workflows", "ci.yml"), "utf8"));
+  const jobs = workflow.jobs ?? {};
+  const trigger = (workflow.on?.push?.branches ?? []).includes(TRAIN_BRANCHES)
+    ? []
+    : [`\`ci.yml\` does not run on a push to \`${TRAIN_BRANCHES}\`. Add it to \`on.push.branches\`.`];
+  const required = REQUIRED_CI_JOBS.flatMap((id) => {
+    if (!jobs[id]) return [`\`ci.yml\` has no \`${id}\` job. Required check names must not change.`];
+    if (jobs[id].if === undefined) return [];
+    return [`\`${id}\` has a job-level \`if\`, so a train push can skip a required check. Gate its steps instead.`];
+  });
+  const steps = Object.entries(jobs).flatMap(([id, job]) => (job.steps ?? []).flatMap((step) => stepViolations(id, step)));
+  return [...trigger, ...required, ...steps];
 }
