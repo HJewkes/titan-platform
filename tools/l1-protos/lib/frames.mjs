@@ -1,13 +1,16 @@
-// Scenes (layout units) to frames (screen px), and the level-transition clip's timeline.
-import { cameraOnto, fitTransform, toScreen } from "./scene.mjs";
-import { labelEdgeHits } from "./labels.mjs";
+// Scenes (layout units) to frames (frame px), and the level-transition clip's timeline.
+import { LIMITS, cameraOnto, fitTransform, toScreen } from "./scene.mjs";
+import { checkFrame, mentalMap } from "./rules.mjs";
 
-/** A design's static frame: the scene fitted into the 1920x1080 content area. */
-export function frameOf(scene) {
+export { mentalMap };
+
+/** A design's static frame: the scene fitted into the frame's content area, with every rule checked. */
+export function frameOf(scene, prev = null) {
   const t = fitTransform(scene.width, scene.height);
   const elements = toScreen(scene.elements, t);
-  const checks = { pillsDropped: scene.pillsDropped ?? 0, labelEdgeHits: labelEdgeHits(elements) };
-  return { name: scene.name, title: scene.title, subtitle: scene.subtitle, fit: +t.s.toFixed(3), k: scene.k ?? null, checks, elements };
+  const frame = { name: scene.name, title: scene.title, subtitle: scene.subtitle, fit: +t.s.toFixed(3), k: scene.k ?? null, open: scene.open ?? null, elisions: scene.elisions ?? [], fallbacks: scene.fallbacks ?? [], elements };
+  const checks = { pillsDropped: scene.pillsDropped ?? 0, headersMoved: scene.headersMoved ?? null, ...checkFrame(frame, LIMITS, prev) };
+  return { ...frame, checks };
 }
 
 export function staticData(frame) {
@@ -51,27 +54,4 @@ export function transitionData(overview, expanded, focus, targetId, targetName) 
     { kind: "hold", frame: 3, dur: 2.5, label: "4 focus" },
   ];
   return { static: false, frames: [overview, expanded, zoomed, focus], timeline };
-}
-
-const centre = (e) => ({ x: e.x + e.w / 2, y: e.y + e.h / 2 });
-
-/**
- * How much a morph disturbs the mental map: for boxes in both frames, the mean centre
- * displacement and the share of box pairs whose left/right or above/below order flips.
- */
-export function mentalMap(from, to) {
-  const b = new Map(to.elements.filter((e) => e.kind !== "edge" && e.kind !== "elabel").map((e) => [e.id, e]));
-  const both = from.elements.filter((e) => b.has(e.id) && e.kind !== "edge" && e.kind !== "elabel");
-  const moves = both.map((e) => Math.hypot(centre(e).x - centre(b.get(e.id)).x, centre(e).y - centre(b.get(e.id)).y));
-  let [pairs, flips] = [0, 0];
-  for (let i = 0; i < both.length; i++) {
-    for (let j = i + 1; j < both.length; j++) {
-      const [a0, b0, a1, b1] = [centre(both[i]), centre(both[j]), centre(b.get(both[i].id)), centre(b.get(both[j].id))];
-      const flipped = (u, v) => Math.abs(u) > 4 && Math.abs(v) > 4 && Math.sign(u) !== Math.sign(v);
-      pairs++;
-      if (flipped(b0.x - a0.x, b1.x - a1.x) || flipped(b0.y - a0.y, b1.y - a1.y)) flips++;
-    }
-  }
-  const mean = moves.length ? moves.reduce((s, m) => s + m, 0) / moves.length : 0;
-  return { persisting: both.length, meanMovePx: Math.round(mean), orderFlips: `${flips}/${pairs}` };
 }
