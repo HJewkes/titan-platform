@@ -1,0 +1,45 @@
+import { describe, expect, it } from "vitest";
+import type { WordToken } from "../shell/lexer.js";
+import { tokenize } from "../shell/lexer.js";
+import { mayBeOption } from "../shell/command-rebinding.js";
+import { CURL_LONG, resolveLong } from "./long-options.js";
+import { readOptions, set } from "./options.js";
+
+const words = (src: string): WordToken[] => tokenize(src).filter((t): t is WordToken => t.type === "word");
+const curl = resolveLong(CURL_LONG, true);
+
+const summary = (src: string, resolve?: (flag: string) => string) => {
+  const options = readOptions(words(src), set("--config"), resolve);
+  return {
+    opts: options.opts.map((o) => [o.flag, o.value?.value ?? null]),
+    positionals: options.positionals.map((w) => w.value),
+  };
+};
+
+describe("readOptions with a long-option resolver", () => {
+  it("gives an abbreviated option the value the full option takes", () => {
+    expect(summary("--conf f u", curl)).toEqual({ opts: [["--config", "f"]], positionals: ["u"] });
+  });
+
+  it("resolves the flag of an attached value", () => {
+    expect(summary("--CONFIG=f u", curl)).toEqual({ opts: [["--config", "f"]], positionals: ["u"] });
+  });
+
+  it("reads as before without a resolver", () => {
+    expect(summary("--conf f u")).toEqual({ opts: [["--conf", null]], positionals: ["f", "u"] });
+  });
+});
+
+describe("a run-time word that may expand to an option", () => {
+  it.each([
+    ['"$OPT"', true],
+    ["$X", true],
+    ['"$URL"', true],
+    ['"-$X"', true],
+    ['"https://$HOST/x"', false],
+    ["PATH=$HOME", false],
+  ])("%s may be an option: %s", (src, expected) => {
+    const [word] = words(src);
+    expect(word && mayBeOption(word)).toBe(expected);
+  });
+});
