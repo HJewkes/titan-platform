@@ -47,9 +47,6 @@ describe("a command that writes a parameter the shell later runs", () => {
     ["printf -v of an element, attached", "printf -vPS4[0] x", "PS4"],
     ["zsh print -v of an element", "print -v PS4[1] x", "PS4"],
     ["a nameref to an element", "declare -n R=PS4[0]", "PS4"],
-    ["export of a brace-expanded name", "export {P,}S4=x", "PS4"],
-    ["read of a brace-expanded name", "read {P,}S4", "PS4"],
-    ["read of a sequence-expanded name", "read PS{1..9}", "PS4"],
   ])("names it: %s", (_how, line, name) => {
     expect(hooked(line)).toBe(name);
   });
@@ -78,12 +75,39 @@ describe("a command that only reads or mentions a hooked name", () => {
   });
 });
 
-describe("a brace expansion too large to read", () => {
-  it("counts as a hooked write in a command that names what it writes", () => {
-    expect(hooked("read {1..5000}")).toBe("{1..5000}");
+describe("a brace word in a command that names what it writes", () => {
+  it.each([
+    ["a brace list", "export {P,}S4=x", "{P,}S4=x"],
+    ["a brace list in read", "read {P,}S4", "{P,}S4"],
+    ["an escaped closing brace", "export {P,\\}}S4=x", "{P,}}S4=x"],
+    ["a double-quoted closing brace", 'export {P,"}"}S4=x', "{P,}}S4=x"],
+    ["a single-quoted closing brace", "export {P,'}'}S4=x", "{P,}}S4=x"],
+    ["an escaped opening brace", "read {P,\\{}S4", "{P,{}S4"],
+    ["an escaped opening brace first", "read {\\{,P}S4", "{{,P}S4"],
+    ["an integer range for the digit", "read PS{1..9}", "PS{1..9}"],
+    ["a letter range", "read {O..Q}S4", "{O..Q}S4"],
+    ["zsh module_path through a brace list", "typeset -a {module,x}_path", "{module,x}_path"],
+  ])("counts as a hooked write: %s", (_how, line, word) => {
+    expect(hooked(line)).toBe(word);
   });
 
-  it("is ignored in a command that writes no named parameter", () => {
-    expect(hooked("echo {1..5000}")).toBeNull();
+  it("returns null when the word lacks a hooked name's characters in order", () => {
+    expect(hooked("read {a,b}")).toBeNull();
+    expect(hooked("printf '%s\\n' {1..5}")).toBeNull();
+  });
+
+  it("is not read in a command that writes no named parameter", () => {
+    expect(hooked("echo {P,}S4")).toBeNull();
+  });
+
+  it("reads a 100 KB line of integer ranges without expanding it", () => {
+    const words = tokenize(`read ${"{1..1000} ".repeat(10_000)}PS{4,}`).filter((t): t is WordToken => t.type === "word");
+    const cmd = unwrap(words);
+    const started = performance.now();
+
+    const named = cmd && writesHookedParam(cmd, words);
+
+    expect(named).toBe("PS{4,}");
+    expect(performance.now() - started).toBeLessThan(100);
   });
 });
