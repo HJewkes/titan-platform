@@ -84,8 +84,15 @@ function normalizedEntropy(weights: readonly number[]): number {
   return h / Math.log(weights.length);
 }
 
-/** CY, PC and ENT over one graph. Links must join listed nodes; parallel links should already be merged into one weight. */
-export function callGraphMetrics(nodeIds: readonly string[], links: readonly WeightedLink[]): CallGraphMetrics {
+/** The links with both ends listed; a module-level call has a file as its source, and that is no callable. */
+function joining<L extends WeightedLink>(nodeIds: readonly string[], links: readonly L[]): L[] {
+  const listed = new Set(nodeIds);
+  return links.filter((l) => listed.has(l.src) && listed.has(l.dst));
+}
+
+/** CY, PC and ENT over one graph, ignoring links to unlisted nodes; parallel links should already be merged into one weight. */
+export function callGraphMetrics(nodeIds: readonly string[], allLinks: readonly WeightedLink[]): CallGraphMetrics {
+  const links = joining(nodeIds, allLinks);
   const n = nodeIds.length;
   const graph = adjacencyOf(nodeIds, links);
   const outWeights = new Map<string, number[]>(nodeIds.map((id) => [id, []]));
@@ -101,11 +108,12 @@ export function callGraphMetrics(nodeIds: readonly string[], links: readonly Wei
   };
 }
 
-/** {@link ImportCyclicMass} over file imports, `typeOnly` marking the links that carry only types. */
+/** {@link ImportCyclicMass} over file imports between listed files, `typeOnly` marking the links that carry only types. */
 export function importCyclicMass(
   fileIds: readonly string[],
-  links: readonly (WeightedLink & { typeOnly: boolean })[],
+  allLinks: readonly (WeightedLink & { typeOnly: boolean })[],
 ): ImportCyclicMass {
+  const links = joining(fileIds, allLinks);
   const total = links.reduce((a, l) => a + l.weight, 0);
   const all = weightInsideCycles(fileIds, links);
   const value = weightInsideCycles(fileIds, links.filter((l) => !l.typeOnly));
@@ -115,7 +123,8 @@ export function importCyclicMass(
 /**
  * The SCBench dependency-graph measures per package: CY, PC and ENT over `calls` between the
  * symbol nodes given, and cyclic import mass between the file nodes given. Only edges whose
- * ends are both given and in one package count. PC costs O(n·(n + e)) per package, so there is
+ * ends are both given, of the right kind and in one package count, so a call made at module
+ * level, which the extractors attribute to the file, is left out. PC costs O(n·(n + e)) per package, so there is
  * deliberately no whole-tree row.
  */
 export function dependencyGraphMetrics(

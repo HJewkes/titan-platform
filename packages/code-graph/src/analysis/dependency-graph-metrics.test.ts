@@ -56,6 +56,20 @@ describe("dependency rows per package", () => {
     ]);
   });
 
+  it("leaves out a module-level call, whose source is the file rather than a callable", () => {
+    const nodes = [file("packages/a/x.ts"), symbol("packages/a/x.ts", "main"), symbol("packages/a/x.ts", "run")];
+    const edges = [calls("packages/a/x.ts", "packages/a/x.ts#main"), calls("packages/a/x.ts#main", "packages/a/x.ts#run")];
+
+    const [row] = dependencyGraphMetrics(nodes, edges, [{ id: "packages/a", name: "a" }]);
+
+    expect(row!.calls).toMatchObject({ nodes: 2, edges: 1, propagationCost: 0.5 });
+  });
+
+  it("ignores links to nodes it was not given instead of failing", () => {
+    expect(callGraphMetrics(["a"], [link("a", "elsewhere"), link("elsewhere", "a")])).toMatchObject({ nodes: 1, edges: 0 });
+    expect(importCyclicMass(["x"], [{ ...link("x", "y"), typeOnly: false }])).toEqual({ value: 0, typeOnly: 0 });
+  });
+
   it("builds the report's graphs from measured callables and kept files only", () => {
     const nodes = [file("src/a.ts"), file("src/a.test.ts", "test"), symbol("src/a.ts", "f"), symbol("src/a.ts", "g"), symbol("src/a.test.ts", "t")];
     const metric = (nodeId: string): GraphMetric => ({ nodeId, name: "symbol_cyclomatic", value: 1 });

@@ -105,16 +105,17 @@ interface PackageDependencyRow {
     calls: CallGraphMetrics;
     imports: ImportCyclicMass;
 }
-/** CY, PC and ENT over one graph. Links must join listed nodes; parallel links should already be merged into one weight. */
-declare function callGraphMetrics(nodeIds: readonly string[], links: readonly WeightedLink[]): CallGraphMetrics;
-/** {@link ImportCyclicMass} over file imports, `typeOnly` marking the links that carry only types. */
-declare function importCyclicMass(fileIds: readonly string[], links: readonly (WeightedLink & {
+/** CY, PC and ENT over one graph, ignoring links to unlisted nodes; parallel links should already be merged into one weight. */
+declare function callGraphMetrics(nodeIds: readonly string[], allLinks: readonly WeightedLink[]): CallGraphMetrics;
+/** {@link ImportCyclicMass} over file imports between listed files, `typeOnly` marking the links that carry only types. */
+declare function importCyclicMass(fileIds: readonly string[], allLinks: readonly (WeightedLink & {
     typeOnly: boolean;
 })[]): ImportCyclicMass;
 /**
  * The SCBench dependency-graph measures per package: CY, PC and ENT over `calls` between the
  * symbol nodes given, and cyclic import mass between the file nodes given. Only edges whose
- * ends are both given and in one package count. PC costs O(n·(n + e)) per package, so there is
+ * ends are both given, of the right kind and in one package count, so a call made at module
+ * level, which the extractors attribute to the file, is left out. PC costs O(n·(n + e)) per package, so there is
  * deliberately no whole-tree row.
  */
 declare function dependencyGraphMetrics(nodes: readonly GraphNode[], edges: readonly GraphEdge[], packages: readonly PackageRoot[]): PackageDependencyRow[];
