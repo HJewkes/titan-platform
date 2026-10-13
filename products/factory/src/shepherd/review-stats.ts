@@ -10,7 +10,7 @@ import { priceRound, type RoundCost, type SessionRead, type TranscriptPort } fro
 import { mergedAt, outsideAt, payloadOf, stepName } from "./stats.js";
 
 /** Shepherd-pr runs for a refresh: the finished ones completed at or after `since` (all when undefined), and every unfinished one. */
-export interface RunSource {
+interface RunSource {
   runs(since: string | undefined): WorkflowRun[];
 }
 
@@ -31,7 +31,7 @@ export function ledgerRuns(db: Db): RunSource {
 }
 
 /** One agent-chat broker retire row's spend for a session. */
-export interface RetireCost {
+interface RetireCost {
   usd: number;
   tokens: NonNullable<ReviewRow["tokens"]>;
   model: string | null;
@@ -149,14 +149,14 @@ function runRow(run: WorkflowRun): ReviewRunRow {
   return { runId: run.id, repo: (run.params.repo ?? "").toLowerCase(), pr: Number.isInteger(pr) && pr > 0 ? pr : null, registeredAt: Date.parse(run.startedAt), mergedAt: mergedAt(run) ?? outsideAt(run) ?? null };
 }
 
-export interface ReviewStatsDeps {
+interface ReviewStatsDeps {
   store: ReviewStatsStore;
   runs: RunSource;
   retire: ReadonlyMap<string, RetireCost>;
   transcripts: TranscriptPort;
 }
 
-export interface RefreshResult {
+interface RefreshResult {
   added: number;
   repriced: number;
   transcriptReads: number;

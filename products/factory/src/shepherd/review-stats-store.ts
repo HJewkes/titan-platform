@@ -88,7 +88,7 @@ export interface ReviewRunRow {
   mergedAt: number | null;
 }
 
-export interface Unpriced {
+interface Unpriced {
   runId: string;
   round: number;
   sessionId: string;

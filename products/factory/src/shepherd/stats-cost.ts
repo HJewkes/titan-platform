@@ -6,14 +6,14 @@ import { median, p90 } from "./stage-times.js";
 import { inRange, isoWeek, mergedAt, payloadOf, stepName } from "./stats.js";
 
 /** Disjoint token counts: `input` excludes cache reads and writes. */
-export interface CostTokens {
+interface CostTokens {
   input: number;
   cacheRead: number;
   cacheWrite: number;
   output: number;
 }
 
-export interface SessionRequest {
+interface SessionRequest {
   responseId: string;
   model: string | null;
   /** ISO timestamp the request is priced at. */
