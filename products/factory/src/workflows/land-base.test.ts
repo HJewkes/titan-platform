@@ -80,7 +80,7 @@ describe("land on a base that is not the default branch", () => {
     expect(mergesBeforeReask).toBe(0);
     expect(run.status).toBe("completed");
     expect(world.mergedInto).toEqual(["main"]);
-    expect(world.outcomes).toEqual([{ kind: "merged", headSha: H1, mergeSha: world.fake.pr(1).mergeSha, landed: expect.objectContaining({ baseRef: "main", headSha: H1 }) }]);
+    expect(world.outcomes).toEqual([{ kind: "merged", headSha: H1, mergeSha: world.fake.pr(1).mergeSha, landed: expect.objectContaining({ baseRef: "main", headSha: H1 }), own: true }]);
     expect(stepResult(world.host, runId, "land-rules:1")).toMatchObject({ base: "main" });
   });
 

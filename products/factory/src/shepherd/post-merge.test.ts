@@ -1,5 +1,5 @@
 import { tmpdir } from "node:os";
-import { GITHUB_ACTIONS_APP_ID, fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
@@ -414,12 +414,12 @@ afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 /** The fake's base requires dag-check beside validate, so a non-empty main read gets its green. */
 const withRequired = (runs: ReturnType<typeof successRun>[]) => (runs.length === 0 ? runs : [...runs, successRun("dag-check", 99)]);
 
-function shepherdWorld(mergeRuns: () => ReturnType<typeof successRun>[], cleanup?: CleanupPorts, mainRed?: Omit<MainRedWiring, "freezes">) {
+function shepherdWorld(mergeRuns: () => ReturnType<typeof successRun>[], cleanup?: CleanupPorts, mainRed?: Omit<MainRedWiring, "freezes">, wrap: (port: GitHubPort) => GitHubPort = (port) => port) {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const base = githubPort(fake.wire);
-  const port = { ...base, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, withRequired(mergeRuns())), base.checkRuns(repo, sha)) };
+  const port = wrap({ ...base, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, withRequired(mergeRuns())), base.checkRuns(repo, sha)) });
   let clock = 0;
   const store = shepherdStoreRef();
   const freeze = freezeStoreRef(() => clock);
@@ -439,6 +439,42 @@ async function runToMerge(w: ReturnType<typeof shepherdWorld>, params: Record<st
 const stepIds = (w: ReturnType<typeof shepherdWorld>, runId: string) => Object.values(w.host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
 
 describe("shepherd-pr after land", () => {
+  /** A stacked child on the merged PR's branch; its non-agent-chat head makes the restack skip it without any git call. */
+  function stackedChild(w: ReturnType<typeof shepherdWorld>): number {
+    w.fake.pr(1).headRepo = REPO;
+    return w.fake.addPr({ headSha: fakeSha("child"), headRef: "topic-child", baseRef: w.fake.pr(1).headRef }).number;
+  }
+
+  it("restacks the stacked children of its own merge before reading main CI", async () => {
+    const w = shepherdWorld(() => [successRun("validate", 5)]);
+    const child = stackedChild(w);
+    const runId = await runToMerge(w);
+
+    await w.host.runtime.wait(runId);
+
+    const ids = stepIds(w, runId);
+    expect(ids).toContain(`sh-restack:${child}:${fakeSha("child")}`);
+    expect(ids.indexOf("sh-stack-children:1")).toBeLessThan(ids.indexOf("sh-main-ci"));
+  });
+
+  it("restacks nothing when the merge step finds the PR already merged elsewhere", async () => {
+    const w = shepherdWorld(() => [successRun("validate", 5)], undefined, undefined, (port) => ({
+      ...port,
+      merge: async (...args: Parameters<GitHubPort["merge"]>) => {
+        Object.assign(w.fake.pr(1), { merged: true, state: "closed", mergeSha: fakeSha("elsewhere") });
+        return port.merge(...args);
+      },
+    }));
+    stackedChild(w);
+    const runId = await runToMerge(w);
+
+    await w.host.runtime.wait(runId);
+
+    const merge = Object.values(w.host.runtime.status(runId)!.stepResults).find((result) => result.stepId.startsWith("merge:"));
+    expect(merge?.data).toMatchObject({ result: { done: false, skipped: "merged" } });
+    expect(stepIds(w, runId).filter((id) => id.startsWith("sh-stack-children") || id.startsWith("sh-restack"))).toEqual([]);
+  });
+
   it("records green main CI on the merge sha and opens no gate", async () => {
     const w = shepherdWorld(() => [successRun("validate", 5)]);
     const runId = await runToMerge(w);

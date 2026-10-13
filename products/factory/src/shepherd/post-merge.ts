@@ -72,6 +72,8 @@ export interface MergedTarget {
   mergeSha: string;
   /** What the run's own merge step read of the PR; absent for a PR merged elsewhere, so each step reads the PR instead. */
   landed?: LandedPr;
+  /** Set only when the run's own merge write landed; a stacked child is restacked only after it. */
+  own?: true;
 }
 
 const OwnerAck = z.object({ decision: z.literal("acknowledged"), mergeSha: z.string() });

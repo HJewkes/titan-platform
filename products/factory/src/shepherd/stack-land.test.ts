@@ -184,8 +184,44 @@ describe("restackChild", { timeout: 30_000 }, () => {
 
     const result = await restackChild(s.deps, s.input);
 
-    expect(result).toMatchObject({ outcome: "head-moved", reason: `parent #${s.parentPr} landed; restack head moved: the fast-forward push was rejected` });
+    expect(result).toMatchObject({ outcome: "head-moved", reason: `parent #${s.parentPr} landed; restack head moved: the fast-forward push was rejected; Shepherd left the base as it was` });
     expect(originRef(`refs/heads/${CHILD}`)).toBe(moved);
+    expect(s.fake.pr(s.childPr).baseRef).toBe(PARENT);
+    expect(s.fake.baseChanges).toEqual([]);
+  });
+
+  it("finds its own pushed commit on a replay, so it neither pushes again nor wakes the implementer", async () => {
+    const s = buildStack();
+    const first = await restackChild(s.deps, s.input);
+
+    const replay = await restackChild(s.deps, s.input);
+
+    expect(replay).toEqual({ ...first, retargeted: false });
+    expect(s.seen.filter((args) => args[0] === "push")).toHaveLength(1);
+    expect(s.wakes).toEqual([]);
+    expect(s.fake.baseChanges).toEqual([{ number: s.childPr, base: "main" }]);
+  });
+
+  it("still retargets on a replay whose first attempt pushed and then stopped before the retarget", async () => {
+    const s = buildStack();
+    const failing = { ...s.deps, port: { ...s.deps.port, setPrBase: async () => Promise.reject(new Error("network down")) } };
+    const first = await restackChild(failing, s.input);
+
+    const replay = await restackChild(s.deps, s.input);
+
+    expect(first).toMatchObject({ outcome: "guard", reason: expect.stringMatching(/^parent #\d+ landed; restack guard: pushed [0-9a-f]{40}, but the retarget to main /) });
+    expect(replay).toMatchObject({ outcome: "restacked", retargeted: true });
+    expect(s.fake.baseChanges).toEqual([{ number: s.childPr, base: "main" }]);
+  });
+
+  it("refuses a child whose head branch GitHub reports differently from the open list", async () => {
+    const s = buildStack();
+    s.fake.pr(s.childPr).headRef = "agent-chat/renamed";
+
+    const result = await restackChild(s.deps, s.input);
+
+    expect(result).toMatchObject({ outcome: "guard", reason: expect.stringContaining("head branch is agent-chat/renamed") });
+    expect(s.seen).toEqual([]);
   });
 
   it("wakes the child's implementer on a conflict with main and pushes nothing", async () => {
@@ -193,7 +229,7 @@ describe("restackChild", { timeout: 30_000 }, () => {
 
     const result = await restackChild(s.deps, s.input);
 
-    expect(result).toEqual({ outcome: "conflict", pr: s.childPr, reason: `parent #${s.parentPr} landed; restack conflict in base.txt`, woken: true });
+    expect(result).toEqual({ outcome: "conflict", pr: s.childPr, reason: `parent #${s.parentPr} landed; restack conflict in base.txt; Shepherd pushed nothing`, woken: true });
     expect(originRef(`refs/heads/${CHILD}`)).toBe(s.childHead);
     expect(s.fake.baseChanges).toEqual([]);
     expect(s.seen.some((args) => args[0] === "push")).toBe(false);
