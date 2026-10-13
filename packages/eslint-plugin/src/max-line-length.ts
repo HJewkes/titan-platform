@@ -43,6 +43,11 @@ function lineRange(sourceCode: SourceCode, line: number): Range {
   return [start, start + (sourceCode.lines[line - 1] ?? "").length];
 }
 
+function configuredMax(option: unknown): number {
+  if (typeof option !== "object" || option === null || !("max" in option)) return DEFAULT_MAX_LINE_LENGTH;
+  return typeof option.max === "number" ? option.max : DEFAULT_MAX_LINE_LENGTH;
+}
+
 export const maxLineLength: Rule.RuleModule = {
   meta: {
     type: "suggestion",
@@ -60,8 +65,7 @@ export const maxLineLength: Rule.RuleModule = {
     },
   },
   create(context) {
-    const options = (context.options[0] ?? {}) as { max?: number };
-    const max = options.max ?? DEFAULT_MAX_LINE_LENGTH;
+    const max = configuredMax(context.options[0]);
     const sourceCode = context.sourceCode;
     return {
       Program(program) {
