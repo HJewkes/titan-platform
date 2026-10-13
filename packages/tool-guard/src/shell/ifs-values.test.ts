@@ -31,6 +31,11 @@ describe("lineIfsValues on shell text run by eval or sh -c", () => {
     ["sh -c with a script", "bash -c \"IFS=:; x\"", [":"]],
     ["eval with a following command", "eval 'IFS=,; true'", [","]],
     ["eval nested two deep", "eval \"eval 'IFS=,'\"", [","]],
+    ["eval with a partly quoted operand", "eval IF'S=,; x'", [","]],
+    ["eval with an escaped blank", "eval IFS=a\\ b", ["a"]],
+    ["eval joining its operands", "eval IFS=, x", [","]],
+    ["bash -c with an escaped separator", "bash -c IFS=,\\;x", [","]],
+    ["eval with an ANSI-C spelled name", "eval $'\\x49FS=,'", [","]],
   ])("finds %s", (_how, line, expected) => {
     expect(values(line)).toEqual([DEFAULT_IFS, ...expected]);
   });
@@ -51,6 +56,9 @@ describe("lineIfsValues on lines that keep only the default", () => {
     ["the empty IFS of a read loop", "while IFS= read -r l; do :; done"],
     ["unset IFS", "unset IFS"],
     ["unset with an option", "unset -v IFS"],
+    ["a local IFS with no value", "f(){ local IFS; }"],
+    ["an export with a literal name and a dynamic value", "IFS=; export PATH=\"$HOME/bin\""],
+    ["eval of dynamic text that names no IFS", "eval \"$E\""],
   ])("gives only the default for %s", (_how, line) => {
     expect(values(line)).toEqual([DEFAULT_IFS]);
   });
@@ -81,6 +89,16 @@ describe("lineIfsValues on IFS writes it cannot resolve to a literal", () => {
     ["for IFS over the positional parameters", "for IFS; do :; done"],
     ["a dynamic command word that may be a declarer", "x=declare; $x 'IFS=, '"],
     ["a read of IFS", "old=$IFS"],
+    ["eval of a brace-spelled name", "eval {I,}FS=,"],
+    ["export of a brace-spelled name", "export {I,}FS=,"],
+    ["read of a brace-spelled name", "read {I,}FS"],
+    ["eval of a brace with an escaped close", "eval {I,\\}}FS=,"],
+    ["declare of a brace with an escaped close", "declare {I,\\}}FS=,"],
+    ["read of a name built from a variable", "x=IF; read ${x}S"],
+    ["declare of a name built from a variable", "declare \"${x}S=,\""],
+    ["a nameref built from a variable", "declare -n r=${x}FS"],
+    ["printf -v of a name built from a variable", "printf -v \"${x}S\" ,"],
+    ["eval of dynamic text that may name IFS", "eval \"IFS=$V\""],
   ])("gives null for %s", (_how, line) => {
     expect(values(line)).toBeNull();
   });
