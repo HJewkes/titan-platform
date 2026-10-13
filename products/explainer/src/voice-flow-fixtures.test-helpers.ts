@@ -5,7 +5,7 @@ import { ScriptSchema, type ScriptV1 } from "./script-schema.js";
 
 export type BeatSpec = [id: string, chapter: string, fn: string, spoken: string, extra?: Record<string, unknown>];
 
-export const beat = ([id, chapter, fn, spoken, extra = {}]: BeatSpec) => ({
+const beat = ([id, chapter, fn, spoken, extra = {}]: BeatSpec) => ({
   id,
   chapter,
   function: fn,
@@ -17,7 +17,7 @@ export const beat = ([id, chapter, fn, spoken, extra = {}]: BeatSpec) => ({
   ...extra,
 });
 
-export const THESIS = "the desk checks every scan against the ledger before printing";
+const THESIS = "the desk checks every scan against the ledger before printing";
 
 // A synthetic tour of an invented repo that every voice and flow lint passes: the positive control.
 export const GOOD_BEATS: BeatSpec[] = [
