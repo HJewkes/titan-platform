@@ -153,6 +153,17 @@ files and body for a reviewer; past GitHub's 3,000-file cap it gives the count a
 `--json` prints either as one object; an unknown verb or a ref that is not `owner/repo#N` prints
 usage and exits 64.
 
+`titan-gh ci-failures <owner/repo#N>` replaces `gh run view --log-failed` piped through `sed` and
+`grep`. For each failing Actions check run at the PR head (at most five; the rest are named as
+skipped) it reads the last 400 lines of the job log and prints the job name and url, the first
+vitest failure line (`FAIL `, `×` or `✗`), the `Test Files` and `Tests` summary, any
+`ERROR: Coverage` or obsolete-snapshot line, and the last `--lines` lines (default 20), with ANSI
+codes and Actions timestamps stripped. A log with none of those lines prints the tail, marked
+unrecognised. `titan-gh ci-failures <owner/repo> --job <id>` digests one job by its check run id.
+`--json` prints `{ repo, number, headSha, jobs: [{ job, id, url, digest }], skipped }`. A PR with
+no failing job prints `no failing Actions job at <head7>` and exits 0; bad arguments exit 2.
+`digestJobLog(log)` and `ciFailures(port, target)` in `src/ci-failures.ts` are the core.
+
 `titan-gh premerge <owner/repo#N> <sha> --approved-head <sha> [--clone <dir>] [--json]` is the
 read-only half of agent-chat's `scripts/seat/premerge`; the caller looks up the verdict and passes
 the head it approved. It reads the PR, the base's required contexts, the head's check runs and

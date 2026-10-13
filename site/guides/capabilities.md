@@ -510,7 +510,7 @@ Key exports:
 - `checks`: `isPassing`, `isPassingConclusion`, `isSucceeded`, `latestPerName`
 - `ci-verdict`: `ciVerdict`, `loadRequiredContexts`
 - `ci-wait`: `ciWait`
-- +100 more in the [reference page](/reference/github)
+- +102 more in the [reference page](/reference/github)
 
 <a id="cap-health"></a>
 

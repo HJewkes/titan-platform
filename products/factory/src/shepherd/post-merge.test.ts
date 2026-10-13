@@ -251,8 +251,11 @@ describe("readMainCi", () => {
       expect(await readLater(world)).toMatchObject({ verdict: "green", readSha: TIP, warning: "not required, so not blocking: lint" });
     });
 
-    it("acknowledges a merge sha with no run yet on a later commit green on every required context", async () => {
-      expect(await readLater(laterMain([], [...requiredGreen, failing("lint")]))).toMatchObject({ verdict: "green", acknowledgedSha: TIP });
+    it("reads a merge sha with no run as superseded by the later commit, green on every required context", async () => {
+      const result = await readLater(laterMain([], [...requiredGreen, failing("lint")]));
+
+      expect(result).toMatchObject({ verdict: "green", readSha: TIP, warning: "not required, so not blocking: lint" });
+      expect(result.acknowledgedSha).toBeUndefined();
     });
 
     it("is green on the merge sha itself, with a warning, when it is red only on a check that is not required", async () => {
