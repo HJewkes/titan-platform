@@ -124,6 +124,7 @@ graph TD
   reviewPanel --> sessionRead
   rpcClient --> rpcProtocol
   sessionAnalytics --> agentProtocol
+  sessionAnalytics --> reviewPanel
   sessionAnalytics --> sessionGraph
   sessionAnalytics --> sessionRead
   sessionAnalytics --> storeSqlite

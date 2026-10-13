@@ -49,6 +49,10 @@ export interface ActiveStepBase {
   iterKey: string;
   attempt: number;
   startedAt: string;
+  /** When this step's first attempt started, kept across retries and restarts; absent on older rows, read `startedAt`. */
+  firstStartedAt?: string;
+  /** How many restarts re-dispatched this step; they raise `attempt` but spend no retry budget. Absent reads as 0. */
+  restarts?: number;
   runnerRef?: string;
   /** Summed cost of this step's earlier failed attempts, so a resumed run still reports every attempt once. */
   priorUsage?: StepUsage;
@@ -191,6 +195,9 @@ export interface RecoverableStepDispatchInput extends StepRunInput {
   executionId: string;
   requestKey: string;
   attempt: number;
+  /** When the step's first attempt started, so a wait resumed after a restart can keep its original deadline. */
+  firstStartedAt: string;
+  restarts: number;
 }
 
 export interface StepDispatchAck {
