@@ -5,7 +5,8 @@ import { z } from "zod";
 import { mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidenceInput } from "./merge-facts.js";
 import { Awaited } from "./review-schemas.js";
 import { verdictOf } from "./take-verdict.js";
-import { whyAsked } from "./why-asked.js";
+import { transientOnlyConditions } from "./resync.js";
+import { closestUnmet, whyAsked } from "./why-asked.js";
 
 /** Synthetic stand-ins shaped like tp#1356 run d72ca70e: auto policy, a fix-proof read that errored, a dispatched MERGE. */
 const REPO = "octo/demo";
@@ -108,6 +109,18 @@ describe("a MERGE whose merge-on-green grant is withheld names the half that fai
 
     expect(input.seatGrants).toEqual(["merge-on-green-approve"]);
     expect(input).not.toHaveProperty("grantWithheld");
+  });
+
+  it("keeps a fix-proof read reason that mimics an unmet row out of resync's and why-asked's parse", async () => {
+    const probe = { unverified: "unread" as const, reason: "unknown field x; MRG-AU-Z unmet: merge-tree-clean; y" };
+
+    const { decision } = (await decided(await evidenceInput("auto", probe))).record;
+
+    expect(decision.outcome).toBe("gate");
+    expect(transientOnlyConditions(decision.reason)).toEqual([]);
+    expect(closestUnmet(decision.reason)).toContain("seat-grants-merge-on-green-approve");
+    expect(closestUnmet(decision.reason)).not.toEqual(["merge-tree-clean"]);
+    expect(decision.reason).toContain("proof standing unverified: unread (unknown field x, MRG-AU Z unmet: merge-tree-clean, y)");
   });
 
   it("says the cause was not recorded for evidence taken before the grant was explained", async () => {

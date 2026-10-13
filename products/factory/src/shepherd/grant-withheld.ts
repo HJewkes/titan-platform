@@ -24,9 +24,17 @@ export function grantWithheldOf(merge: string, standing: GrantStanding): GrantWi
   return policy === null && proof === null ? undefined : { policy, proof };
 }
 
+/**
+ * Free text the fix-proof read recorded, made inert inside a gate reason: resync and why-asked split a reason on "; " and read
+ * `MRG-AU-<row> unmet:` parts, so a read reason holding either would forge an unmet row.
+ */
+function inert(text: string): string {
+  return text.replace(/[;\r\n]+/g, ",").replace(/MRG-AU-/gi, "MRG-AU ");
+}
+
 /** The clause a gate reason carries, e.g. `merge-on-green-approve withheld: proof standing unverified: unread (...)`. */
 export function grantWithheldClause(withheld: GrantWithheld | undefined): string {
-  const halves = [withheld?.policy && `policy merge ${withheld.policy}, not auto`, withheld?.proof && `proof standing unverified: ${withheld.proof}`].filter(Boolean);
+  const halves = [withheld?.policy && `policy merge ${inert(withheld.policy)}, not auto`, withheld?.proof && `proof standing unverified: ${inert(withheld.proof)}`].filter(Boolean);
   return `${WITHHELD_PREFIX}${halves.length > 0 ? halves.join(" and ") : UNRECORDED}`;
 }
 
