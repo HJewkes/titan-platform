@@ -739,13 +739,15 @@ Key exports:
 
 - `collapse-packages`: `collapseToPackages`
 - `collapse-directories`: `collapseToDirectories`
-- `focus-package`: `focusPackage`, `packagesInSnapshot`, `FocusOptions`
+- `focus-package`: `focusPackage`, `packagesInSnapshot`
 - `layout`: `computeLayout`
 - `compound-layout`: `computeCompoundLayout`
 - `route`: `routeOf`
 - `route-path`: `routeToPathD`
-- `layout-options`: `COMPOUND_LAYOUT_OPTIONS`, `ELK_LAYOUT_OPTIONS`, `FOCUS_LAYOUT_OPTIONS`
-- +9 more in the [reference page](/reference/graph-layout)
+- `label-boxes`: `labelBoxSizing`
+- `package-of`: `packageOf`
+- `layout-options`: `COMPOUND_LAYOUT_OPTIONS`, `ELK_LAYOUT_OPTIONS`
+- +12 more in the [reference page](/reference/graph-layout)
 
 <a id="cap-memory"></a>
 

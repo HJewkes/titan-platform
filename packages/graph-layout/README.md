@@ -20,10 +20,14 @@ enforces the tier in CI.
 | `computeCompoundLayout(input, sizing, groupOf, options?)` | nested layout; `groupOf` names each node's ancestor groups, outermost first. Also returns `groups` (every group's box) and routes edges whose ends are group ids |
 | `routeOf(edge)` | the typed route a layout attached to `edge.attrs.route`, or undefined |
 | `routeToPathD(route)` | an SVG path `d` (`M x y L x y …`) through a route's points |
+| `labelBoxSizing(labels, metrics)` | box sizes that fit each label plus padding and a fixed body, for a collapsed level laid out at the size it is shown |
+| `packageOf(fileId)` | the package id a file belongs to, the id `collapseToPackages` gives it |
 | `ELK_LAYOUT_OPTIONS`, `FOCUS_LAYOUT_OPTIONS`, `COMPOUND_LAYOUT_OPTIONS` | the ELK option sets for the package, focus and nested views |
-| `GraphInput`, `GroupOf`, `LaidOutNode`, `LaidOutGroup`, `LayoutResult`, `CompoundLayoutResult`, `NodeSizing` | types |
+| `GraphInput`, `GroupOf`, `LabelMetrics`, `LaidOutNode`, `LaidOutGroup`, `LayoutResult`, `CompoundLayoutResult`, `NodeSizing` | types |
 
-A package is the segment after `packages/` in a file id, or else the id's first segment.
+A package is the segment after `packages/` in a file id, `products/<name>` or `apps/<name>` for a
+file inside one, or else the id's first segment. Products and apps keep their root in the id, so
+one cannot collide with a package of the same name.
 
 ## Determinism
 
@@ -47,6 +51,13 @@ package-to-package edge from `collapseToPackages` with ids that match `groupOf`.
 between the group boxes in the same pass that places the files, so a map's package view and
 file view read one layout and the boxes never move between them. A second pass cannot do this:
 see Fixed positions. If ELK throws or places nothing, both layouts fall back to a grid.
+
+The cost is that a group box is sized for everything inside it, so at the package level a
+box is mostly empty space. To show a collapsed level at its own size, lay that level out on
+its own: `computeLayout(collapseToPackages(input), labelBoxSizing(labels, metrics))`. Each box
+then fits its label, and since ELK keeps boxes apart, no two labels overlap. The boxes of that
+layout are not the boxes of the compound one, so a view that moves between the two levels
+moves between two layouts.
 
 ## Fixed positions
 
