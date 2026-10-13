@@ -1,21 +1,35 @@
 import { ParseError, tokenize } from "./lexer.js";
 import { NestingLimitError } from "./nesting.js";
-import type { RedirectToken, SubsToken, Token, WordToken } from "./tokens.js";
+import {
+  arithmeticTextUnknown,
+  arithmeticUnknown,
+  type Assignment,
+  declaresPs4Spelling,
+  dynamicDeclarationKnown,
+  elementSubscript,
+  feedsDynamicText,
+  isAssignment,
+  isOption,
+  isPrefixAssignment,
+  isSourcingOption,
+  literal,
+  namesStartupFile,
+  namesSubscript,
+  opensArithmetic,
+  parseAssignment,
+  possiblyIfs,
+  possiblyPs4,
+  printfTargetDynamic,
+  readsTextByName,
+  subscriptUnknown,
+} from "./ifs-words.js";
+import type { RedirectToken, Token, WordToken } from "./tokens.js";
 
 /** What bash starts with and what `unset IFS` restores. */
 export const DEFAULT_IFS = " \t\n";
 
 /** How many `eval` or `sh -c` texts deep a value is still looked for; deeper text leaves IFS unknown. */
 const MAX_RESCAN = 2;
-/**
- * A word that may name IFS once brace expansion or quote removal has run: `{I,}FS`, `I{F,}S`, `${IFS:=,}`.
- * Dynamic words keep their raw text, so this also catches `$IFS` and `$((IFS=1))`.
- */
-const POSSIBLY_IFS_RE = /I.*F.*S/s;
-/** The same test for PS4, the prompt xtrace expands: `PS4[0]`, `{P,}S4`, `P{S,}4`, `-vPS4`. */
-const POSSIBLY_PS4_RE = /P.*S.*4/s;
-const ASSIGNMENT_RE = /^([A-Za-z_][A-Za-z0-9_]*)(\[[^\]]*\])?(\+?)=(.*)$/s;
-const OPTION_RE = /^[-+][A-Za-z]+$/;
 const RESERVED = new Set(["!", "{", "}", "if", "then", "elif", "else", "fi", "while", "until", "do", "done", "time"]);
 const PREFIXES = new Set(["command", "builtin"]);
 const DECLARERS = new Set(["local", "export", "declare", "typeset", "readonly"]);
@@ -26,21 +40,6 @@ const NAME_WRITERS = new Set(["read", "mapfile", "readarray", "getopts", "wait",
 const SOURCERS = new Set(["source", "."]);
 /** Commands that run another command or stored shell text; a dynamic operand may be any code at all. */
 const RUNNERS = new Set(["trap", "alias", "exec", "coproc", "nohup", "env", "sudo", "doas", "timeout", "nice", "xargs", "stdbuf", "setsid", "watch", "parallel", "su"]);
-/** `$(( ))` and `$[ ]`: arithmetic assigns, and a name's value is itself read as an expression. */
-const ARITHMETIC_EXPANSION_RE = /\$(?:\(\(|\[)/g;
-/**
- * Expansions that evaluate a variable's text, not just its value: `$(( v ))`, `$[ v ]`, `${v@P}`, a subscript
- * `${a[v]}`, and a substring offset `${x:v}` (the `:-`, `:=`, `:?` and `:+` defaults excluded).
- */
-const READS_BY_NAME_RE = /\$\(\(|\$\[|@P\}|\$\{!|\$\{[^}]*\[|\$\{[#!]?[A-Za-z0-9_@*]+:(?![-=?+])/;
-/** A name operand with a non-numeric subscript, `read 'a[k]'` or `[[ -v a[k] ]]`: the subscript is arithmetic. */
-const SUBSCRIPTED_NAME_RE = /[A-Za-z_][A-Za-z0-9_]*\[(?!\d*\])/;
-/** A compound-array element `[k]=v` inside `a=( )`, `a+=( )` or `declare -a a=( )`; its subscript is arithmetic. */
-const ELEMENT_SUBSCRIPT_RE = /^\[([^\]]*)\]\+?=/;
-/** Variables naming a file every non-interactive `bash` or `sh` sources before its script. */
-const STARTUP_FILE_RE = /^(?:BASH_ENV|ENV)\+?=/;
-/** Shell options that source an rc or profile file: `--rcfile`, `--init-file`, `--login`, `-i`, `-l`, `-lc`. */
-const SOURCING_OPTION_RE = /^(?:--(?:rcfile|init-file|login|interactive)\b|-[A-Za-z]*[il])/;
 const ARITHMETIC_TESTS = new Set(["-eq", "-ne", "-lt", "-le", "-gt", "-ge"]);
 /** Commands whose operands are stored as code, run later by name. */
 const STORED_CODE = new Set(["trap", "alias"]);
@@ -59,13 +58,6 @@ interface Scan {
   namerefTargets: Set<string>;
   /** Names assigned a literal value that may name PS4; the first write to an empty nameref sets its target. */
   ps4Valued: Set<string>;
-}
-
-interface Assignment {
-  name: string;
-  plain: boolean;
-  subscript: string;
-  value: string;
 }
 
 /**
@@ -121,22 +113,6 @@ function scanTokens(tokens: Token[], depth: number, scan: Scan): void {
   scanCommand(words, input, depth, scan);
 }
 
-/** `bash <(printf %s "$v")` and `bash -s <<< "$v"` hand a command text this scan cannot read. */
-function feedsDynamicText(token: SubsToken | RedirectToken): boolean {
-  if (token.type === "subs" || token.subs.length > 0) return true;
-  return token.target?.dynamic === true || /[$`]/.test(token.body ?? "");
-}
-
-/** `((` opens an arithmetic command, or `for ((`, which runs until its first `)`; a nested subshell `( (` only reads stricter. */
-function opensArithmetic(tokens: Token[], i: number): boolean {
-  const before = tokens[i - 1];
-  return isOp(tokens[i], "(") && before !== undefined && isOp(before, "(");
-}
-
-function isOp(token: Token | undefined, value: string): boolean {
-  return token?.type === "op" && token.value === value;
-}
-
 function scanArithmeticWord(word: WordToken, depth: number, scan: Scan): void {
   scanSubs(word.subs, depth, scan);
   scan.readsByName = true;
@@ -160,19 +136,6 @@ function scanRedirect(token: RedirectToken, arithmetic: boolean, depth: number, 
   if (possiblyIfs(target.value) || (target.dynamic && arithmetic) || arithmeticUnknown(target)) markUnknown(scan);
 }
 
-/** `$(( $n = 1 ))`: a dynamic name, or text that may name IFS, inside arithmetic may assign IFS. */
-function arithmeticUnknown(word: WordToken): boolean {
-  return word.dynamic && arithmeticTextUnknown(word.value);
-}
-
-function arithmeticTextUnknown(text: string): boolean {
-  for (const match of text.matchAll(ARITHMETIC_EXPANSION_RE)) {
-    const rest = text.slice(match.index + match[0].length);
-    if (rest.includes("$") || possiblyIfs(rest)) return true;
-  }
-  return false;
-}
-
 /** An unquoted heredoc body expands in the current shell like a double-quoted word; `<<'EOF'` keeps it literal. */
 function scanHeredocBody(token: RedirectToken, scan: Scan): void {
   const body = token.body;
@@ -185,7 +148,7 @@ function scanHeredocBody(token: RedirectToken, scan: Scan): void {
 /** Text bash expands in the current shell, as a double-quoted word: a heredoc body or the PS4 prompt. */
 function scanExpandedText(text: string, scan: Scan): void {
   if (arithmeticTextUnknown(text)) markUnknown(scan);
-  if (READS_BY_NAME_RE.test(text)) scan.readsByName = true;
+  if (readsTextByName(text)) scan.readsByName = true;
 }
 
 /** PS4 is stored code: `set -x` expands it in the current shell before every traced command, like a trap body. */
@@ -198,7 +161,7 @@ function notePs4(assignment: Assignment, scan: Scan): void {
 function scanCommand(words: WordToken[], input: boolean, depth: number, scan: Scan): void {
   for (const word of words) {
     scanSubs(word.subs, depth, scan);
-    if (arithmeticUnknown(word) || STARTUP_FILE_RE.test(word.value)) markUnknown(scan);
+    if (arithmeticUnknown(word) || namesStartupFile(word.value)) markUnknown(scan);
     noteReadsByName(word, scan);
     scanElementSubscript(word, scan);
   }
@@ -212,11 +175,11 @@ function scanCommand(words: WordToken[], input: boolean, depth: number, scan: Sc
 }
 
 function noteReadsByName(word: WordToken, scan: Scan): void {
-  if ((word.dynamic && READS_BY_NAME_RE.test(word.value)) || SUBSCRIPTED_NAME_RE.test(word.value)) scan.readsByName = true;
+  if ((word.dynamic && readsTextByName(word.value)) || namesSubscript(word.value)) scan.readsByName = true;
 }
 
 function scanElementSubscript(word: WordToken, scan: Scan): void {
-  const subscript = ELEMENT_SUBSCRIPT_RE.exec(word.value)?.[1];
+  const subscript = elementSubscript(word.value);
   if (subscript === undefined) return;
   if (subscript.includes("$") || possiblyIfs(subscript)) markUnknown(scan);
   else if (!/^\d*$/.test(subscript)) scan.readsByName = true;
@@ -224,10 +187,6 @@ function scanElementSubscript(word: WordToken, scan: Scan): void {
 
 function isReserved(word: WordToken | undefined): boolean {
   return RESERVED.has(literal(word));
-}
-
-function isPrefixAssignment(word: WordToken | undefined): boolean {
-  return word !== undefined && !whollyQuoted(word) && ASSIGNMENT_RE.test(word.value);
 }
 
 /** A dynamic command word may be a declarer, `eval` or `bash`, so any IFS-like or dynamic operand or input is unknown. */
@@ -263,7 +222,7 @@ function noteCommandEffects(name: string, args: WordToken[], scan: Scan): void {
 
 /** Names a command writes from run-time input, which retarget a nameref of that name. */
 function noteRuntimeNames(name: string, args: WordToken[], scan: Scan): void {
-  const operands = args.filter((word) => !word.dynamic && !OPTION_RE.test(word.value));
+  const operands = args.filter((word) => !word.dynamic && !isOption(word.value));
   if (NAME_WRITERS.has(name) && name !== "let") for (const word of operands) scan.runtimeNames.add(word.value);
   if (name === "for" && operands[0]) scan.runtimeNames.add(operands[0].value);
   if (name !== "printf") return;
@@ -283,40 +242,28 @@ function scanEval(args: WordToken[], depth: number, scan: Scan): void {
 
 /** Any operand of `sh` may be the `-c` script, so a dynamic one is unknown; rescanning an option or a path finds nothing. */
 function scanShell(args: WordToken[], depth: number, scan: Scan): void {
-  if (args.some((word) => word.dynamic || SOURCING_OPTION_RE.test(word.value))) return markUnknown(scan);
-  for (const word of args) if (!OPTION_RE.test(word.value)) rescan(word.value, depth, scan);
+  if (args.some((word) => word.dynamic || isSourcingOption(word.value))) return markUnknown(scan);
+  for (const word of args) if (!isOption(word.value)) rescan(word.value, depth, scan);
 }
 
 function scanDeclarer(args: WordToken[], scan: Scan): void {
   const nameref = args.some((word) => !word.dynamic && /^-[A-Za-z]*n/.test(word.value));
   for (const word of args) {
-    if (!word.dynamic && OPTION_RE.test(word.value)) continue;
+    if (!word.dynamic && isOption(word.value)) continue;
     if (nameref && (word.dynamic || possiblyIfs(word.value))) return markUnknown(scan);
     if (nameref) noteNameref(word, scan);
     if (!word.dynamic && declaresPs4Spelling(word)) return markUnknown(scan);
     if (word.dynamic && !dynamicDeclarationKnown(word)) return markUnknown(scan);
     if (word.dynamic) noteRuntimeAssignment(word, scan);
-    if (!word.dynamic && word.value !== "IFS" && ASSIGNMENT_RE.test(word.value)) scanAssignment(word, scan);
+    if (!word.dynamic && word.value !== "IFS" && isAssignment(word.value)) scanAssignment(word, scan);
     else if (!word.dynamic && word.value !== "IFS" && possiblyIfs(word.value)) return markUnknown(scan);
   }
-}
-
-/** `export {P,}S4=…` declares PS4 after brace expansion, which no assignment check reads as PS4. */
-function declaresPs4Spelling(word: WordToken): boolean {
-  const name = parseAssignment(word.value)?.name ?? word.value;
-  return name !== "PS4" && possiblyPs4(name);
 }
 
 function noteNameref(word: WordToken, scan: Scan): void {
   const assignment = parseAssignment(word.value);
   scan.namerefs.add(assignment?.name ?? word.value);
   if (assignment) scan.namerefTargets.add(assignment.value);
-}
-
-/** `export PATH="$HOME/bin"` names its variable literally; `declare "${x}S=,"` does not. */
-function dynamicDeclarationKnown(word: WordToken): boolean {
-  const assignment = parseAssignment(word.value);
-  return assignment !== null && assignment.name !== "IFS" && !possiblyIfs(assignment.value) && !subscriptUnknown(assignment);
 }
 
 /** `for IFS in a b; do`: each literal list word is a value IFS holds for one pass of the loop. */
@@ -326,11 +273,6 @@ function scanFor(args: WordToken[], scan: Scan): void {
   if (!variable || !possiblyIfs(variable.value)) return;
   if (literal(variable) !== "IFS" || literal(keyword) !== "in" || list.some((word) => word.dynamic)) return markUnknown(scan);
   for (const word of list) add(word.value, scan);
-}
-
-/** `printf -v NAME` and `printf -vNAME` write NAME. */
-function printfTargetDynamic(args: WordToken[]): boolean {
-  return args.some((word, i) => (literal(word) === "-v" && args[i + 1]?.dynamic === true) || (word.dynamic && word.value.startsWith("-v")));
 }
 
 function scanAssignment(word: WordToken, scan: Scan): void {
@@ -354,34 +296,6 @@ function noteRuntimeAssignment(word: WordToken, scan: Scan): void {
   if (!assignment) return;
   scan.runtimeNames.add(assignment.name);
   notePs4(assignment, scan);
-}
-
-function parseAssignment(text: string): Assignment | null {
-  const match = ASSIGNMENT_RE.exec(text);
-  if (!match) return null;
-  return { name: match[1]!, plain: match[2] === undefined && match[3] === "", subscript: match[2] ?? "", value: match[4]! };
-}
-
-/** `a[IFS=1]=x` and `a[$n]=x`: an indexed array's subscript is arithmetic, which may assign. */
-function subscriptUnknown(assignment: Assignment): boolean {
-  return assignment.subscript.includes("$") || possiblyIfs(assignment.subscript);
-}
-
-/** `'IFS=,; true'` in command position runs a command of that name; it assigns nothing. */
-function whollyQuoted(word: WordToken): boolean {
-  return word.quoted && !word.spliced;
-}
-
-function literal(word: WordToken | undefined): string {
-  return word && !word.dynamic && !word.quoted ? word.value : "";
-}
-
-function possiblyIfs(text: string): boolean {
-  return POSSIBLY_IFS_RE.test(text);
-}
-
-function possiblyPs4(text: string): boolean {
-  return POSSIBLY_PS4_RE.test(text);
 }
 
 function markUnknown(scan: Scan): void {
