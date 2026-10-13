@@ -9,12 +9,11 @@ export const DEFAULT_DETACH_GRACE_MS = 10 * 60_000;
 export const HEAD = /^[0-9a-f]{40}$/;
 
 /** Why a wait with no verdict ended: the clock ran out, or the roster showed the reviewer gone for its grace. */
-export const AWAIT_ENDS = ["deadline", "reviewer-gone"] as const;
-export type AwaitEnd = (typeof AWAIT_ENDS)[number];
+type AwaitEnd = "deadline" | "reviewer-gone";
 type EndedNone = Extract<AwaitVerdictResult, { kind: "none" }> & { ended: AwaitEnd };
 
 /** Stamps a `none` with how its wait ended, so a reader can tell a slow reviewer from one that left; a verdict or a limit notice already says why. */
-export function withEnd(result: AwaitVerdictResult, end: AwaitEnd): AwaitVerdictResult {
+function withEnd(result: AwaitVerdictResult, end: AwaitEnd): AwaitVerdictResult {
   if (result.kind !== "none" || isUsageLimit(result)) return result;
   const stamped: EndedNone = { ...result, ended: end };
   return stamped;
