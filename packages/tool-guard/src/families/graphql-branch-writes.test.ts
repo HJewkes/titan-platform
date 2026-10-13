@@ -15,6 +15,7 @@ describe("graphqlBranchWrites, mutations whose target is opaque", () => {
     ["updateRef", 'mutation{updateRef(input:{refId:"R",oid:"x"}){clientMutationId}}'],
     ["deleteRef", 'mutation{deleteRef(input:{refId:"R"}){clientMutationId}}'],
     ["enqueuePullRequest", 'mutation{enqueuePullRequest(input:{pullRequestId:"p"}){mergeQueueEntry{id}}}'],
+    ["updatePullRequestBranch", 'mutation{updatePullRequestBranch(input:{pullRequestId:"p"}){pullRequest{number}}}'],
   ])("%s reads as an unknown branch", (name, query) => {
     expect(read(query)).toMatchObject({ mutations: [name], unknown: true });
   });
@@ -26,6 +27,7 @@ describe("graphqlBranchWrites, mutations that name their branch", () => {
     ["createRef", 'mutation{createRef(input:{repositoryId:"r",name:"refs/heads/main",oid:"x"}){ref{id}}}'],
     ["mergeBranch", 'mutation{mergeBranch(input:{repositoryId:"r",base:"main",head:"feat/x"}){mergeCommit{oid}}}'],
     ["createCommitOnBranch", 'mutation{createCommitOnBranch(input:{branch:{repositoryNameWithOwner:"o/r",branchName:"main"},message:{headline:"m"},expectedHeadOid:"x"}){commit{oid}}}'],
+    ["createLinkedBranch", 'mutation{createLinkedBranch(input:{issueId:"I",oid:"x",name:"main"}){linkedBranch{ref{name}}}}'],
   ])("%s on main lists main and stays known", (name, query) => {
     const result = read(query);
     expect(result).toMatchObject({ mutations: [name], unknown: false });
@@ -84,9 +86,37 @@ describe("graphqlBranchWrites, variables", () => {
     expect(read(MERGE_BY_VAR, vars).unknown).toBe(true);
   });
 
-  it("reads createCommitOnBranch by branch id as unknown", () => {
-    const query = 'mutation{createCommitOnBranch(input:{branch:{id:"R"},message:{headline:"m"},expectedHeadOid:"x"}){commit{oid}}}';
-    expect(read(query)).toMatchObject({ mutations: ["createCommitOnBranch"], unknown: true });
+  const commitOn = (branch: string, rest = 'message:{headline:"m"}') =>
+    `mutation{createCommitOnBranch(input:{branch:${branch},${rest},expectedHeadOid:"x"}){commit{oid}}}`;
+
+  it.each([
+    ["by id", [commitOn('{id:"R"}')], ""],
+    ["by an id that spells a branch", [commitOn('{id:"REF_main"}')], ""],
+    ["by id beside a feature branchName", [commitOn('{id:"R",branchName:"feat/x"}')], ""],
+    ["by id while a comment names branchName", [`# branchName: feat/x\n${commitOn('{id:"R"}')}`], ""],
+    ["by id while the headline says branchName", [commitOn('{id:"R"}', 'message:{headline:"set branchName"}')], ""],
+    ["by id with commas and a comment before the colon", [commitOn('{id , # c\n : "R"}')], ""],
+    ["by id in a JSON variables object", [`{"query":${JSON.stringify(commitOn("$b"))},"variables":{"b":{"id":"R"}}}`], ""],
+    ["by id in a nested -F field", [commitOn("$b")], "-F b[id]=R -F b[branchName]=feat/x"],
+    ["with no branch key at all", [commitOn("$b")], "-f note=branchName"],
+  ])("reads createCommitOnBranch %s as unknown", (_how, texts, vars) => {
+    expect(graphqlBranchWrites(texts, words(vars))).toMatchObject({ mutations: ["createCommitOnBranch"], unknown: true });
+  });
+
+  it("reads createLinkedBranch with no name as unknown", () => {
+    expect(read('mutation{createLinkedBranch(input:{issueId:"I",oid:"x"}){linkedBranch{ref{name}}}}')).toMatchObject({
+      mutations: ["createLinkedBranch"],
+      unknown: true,
+    });
+  });
+
+  it("reads createLinkedBranch with a feature name as known", () => {
+    const result = read('mutation{createLinkedBranch(input:{issueId:"I",oid:"x",name:"feat/x"}){linkedBranch{ref{name}}}}');
+    expect(result).toMatchObject({ unknown: false, branches: expect.arrayContaining(["feat/x"]) });
+  });
+
+  it("reads createCommitOnBranch on a feature branch as known", () => {
+    expect(read(commitOn('{repositoryNameWithOwner:"o/r",branchName:"feat/x"}')).unknown).toBe(false);
   });
 
   it("reads createCommitOnBranch whose branchName comes from a nested field", () => {

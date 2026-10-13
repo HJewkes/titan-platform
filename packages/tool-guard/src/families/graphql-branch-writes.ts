@@ -2,11 +2,14 @@ import { isCaseUnsure } from "../shell/case-attrs.js";
 import type { WordToken } from "../shell/lexer.js";
 
 /** The GraphQL mutations that move a branch ref, as named in GitHub's schema. */
-const BRANCH_MUTATION_RE = /\b(updateRefs|updateRef|createRef|deleteRef|mergeBranch|createCommitOnBranch|enqueuePullRequest)\b/g;
-/** Their target is an opaque ref id or a PR's base, which the text cannot show. */
-const OPAQUE_TARGET = new Set(["updateRef", "deleteRef", "enqueuePullRequest"]);
+const BRANCH_MUTATION_RE =
+  /\b(updateRefs|updateRef|createRef|deleteRef|mergeBranch|createCommitOnBranch|enqueuePullRequest|createLinkedBranch|updatePullRequestBranch)\b/g;
+/** Their target is an opaque ref id or a PR's base or head branch, which the text cannot show. */
+const OPAQUE_TARGET = new Set(["updateRef", "deleteRef", "enqueuePullRequest", "updatePullRequestBranch"]);
 /** Their target branch is written in the text or a variable. */
-const NAMED_TARGET = new Set(["updateRefs", "createRef", "mergeBranch", "createCommitOnBranch"]);
+const NAMED_TARGET = new Set(["updateRefs", "createRef", "mergeBranch", "createCommitOnBranch", "createLinkedBranch"]);
+/** The input key that must carry the branch, where the schema lets the call leave it out. */
+const TARGET_KEY: Record<string, string> = { createCommitOnBranch: "branchName", createLinkedBranch: "name" };
 
 const ESCAPE_RE = /\\(?:u\{([0-9a-fA-F]+)\}|u([0-9a-fA-F]{4})|(["\\/bfnrt]))/g;
 const SIMPLE_ESCAPES: Record<string, string> = { '"': '"', "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
@@ -22,7 +25,9 @@ export interface GraphqlBranchWrites {
 
 function decodeEscape(match: string, braced?: string, hex?: string, simple?: string): string {
   if (simple !== undefined) return SIMPLE_ESCAPES[simple] ?? match;
-  const code = Number.parseInt((braced ?? hex) as string, 16);
+  const digits = braced ?? hex;
+  if (digits === undefined) return match;
+  const code = Number.parseInt(digits, 16);
   return code <= 0x10ffff ? String.fromCodePoint(code) : match;
 }
 
@@ -38,6 +43,15 @@ export function decodeGraphqlEscapes(text: string): string {
     current = next;
   }
 }
+
+/**
+ * `key` written as an object key: GraphQL `key:` or JSON `"key":`. Commas and comments may sit before the colon,
+ * since GraphQL ignores both.
+ */
+const objectKeyRe = (key: string) => new RegExp(`\\b${key}"?[\\s,]*(?:#[^\\n\\r]*[\\n\\r][\\s,]*)*:`);
+
+/** A field word's key before its first `=`, matching `key` or a nested `parent[key]`. */
+const fieldKeyRe = (key: string) => new RegExp(`^(?:[^=\\[]*\\[)?${key}\\]?=`);
 
 const normalizeBranch = (name: string) => name.trim().replace(/^refs\//, "").replace(/^heads\//, "");
 
@@ -65,8 +79,21 @@ function fieldValue(word: WordToken): string {
 }
 
 function mutationsIn(texts: string[]): string[] {
-  const found = texts.flatMap((t) => [...t.matchAll(BRANCH_MUTATION_RE)].map((m) => m[1] as string));
+  const found = texts.flatMap((t) => [...t.matchAll(BRANCH_MUTATION_RE)].map((m) => m[0]));
   return [...new Set(found)];
+}
+
+const keyed = (key: string, texts: string[], variables: WordToken[]) =>
+  texts.some((t) => objectKeyRe(key).test(t)) || variables.some((w) => fieldKeyRe(key).test(w.value));
+
+/**
+ * A mutation that may leave its branch out is known only when the branch key is written and no `id` key is: a
+ * `CommittableBranch` names its branch by `id` or by `branchName`, and any `id` anywhere may be that one.
+ */
+function targetUnwritten(mutations: string[], texts: string[], variables: WordToken[]): boolean {
+  const keys = mutations.flatMap((m) => TARGET_KEY[m] ?? []);
+  if (keys.length === 0) return false;
+  return keyed("id", texts, variables) || keys.some((k) => !keyed(k, texts, variables));
 }
 
 function candidateBranches(texts: string[], variables: WordToken[]): string[] {
@@ -78,16 +105,15 @@ function candidateBranches(texts: string[], variables: WordToken[]): string[] {
 /**
  * The GitHub GraphQL mutations in `texts` that move a branch ref, and the branches they may name. `texts` are the
  * query texts a call sends; `fields` are its `-f`/`-F` words, `query=` among them. The reading is deliberately coarse:
- * any quoted string or literal variable in a call naming `updateRefs`, `createRef`, `mergeBranch` or
- * `createCommitOnBranch` counts as a branch it may write.
+ * any quoted string or literal variable in a call naming a mutation with a written target counts as a branch it may write.
  */
 export function graphqlBranchWrites(texts: string[], fields: WordToken[]): GraphqlBranchWrites {
   const decoded = texts.map(decodeGraphqlEscapes);
   const mutations = mutationsIn(decoded);
   if (mutations.length === 0) return { mutations, branches: [], unknown: false };
   const variables = fields.filter((w) => !isQueryField(w));
-  const byId = mutations.includes("createCommitOnBranch") && ![...decoded, ...fields.map((w) => w.value)].some((t) => /\bbranchName\b/.test(t));
-  const unknown = mutations.some((m) => OPAQUE_TARGET.has(m)) || byId || variables.some(unreadable);
+  const unknown =
+    mutations.some((m) => OPAQUE_TARGET.has(m)) || targetUnwritten(mutations, decoded, variables) || variables.some(unreadable);
   const named = mutations.some((m) => NAMED_TARGET.has(m));
   return { mutations, branches: named ? candidateBranches(decoded, variables) : [], unknown };
 }
