@@ -13,6 +13,7 @@ import { frameOf, mentalMap, staticData, transitionData } from "./lib/frames.mjs
 import { pageHtml } from "./lib/page.mjs";
 import { openBrowser, renderClip, renderStatic } from "./lib/capture.mjs";
 import { indexHtml } from "./lib/index-page.mjs";
+import { toneOf, withTones } from "./lib/tones.mjs";
 
 const [snapshot, outArg, pwDir, chromium] = process.argv.slice(2);
 const out = path.resolve(outArg);
@@ -54,7 +55,8 @@ function writePage(dir, file, title, data) {
 async function main() {
   const model = buildModel(await loadRepo(snapshot));
   const { t, list } = await scenes(model);
-  const frames = list.map(frameOf);
+  const tone = toneOf(model);
+  const frames = list.map((scene) => withTones(frameOf(scene), tone));
   const browser = await openBrowser(pwDir, chromium);
   const results = [];
   try {

@@ -15,6 +15,13 @@ node tools/l1-protos/build.mjs "$TMPDIR/graph.json" <outDir> <dir with playwrigh
 design re-fits its top-k to the frame at that floor. `L1_CLIP=0` skips the transition clip. `sizes.mjs` (same arguments as
 `build.mjs`, `<outDir>` is where the page goes) renders D2-D5 at 24, 32 and 40 px and writes a side-by-side comparison page.
 
+`L1_THEME=plain|dark|light` picks the stylesheet (default plain, the original look). `dark` and `light` inline the
+real `tokens.css` of the `@titan-design/react-ui` that `apps/codewatch` depends on, titan's self-hosted heading and body
+faces (`theme/fonts`, latin subsets copied from titan-design 408de648, OFL), and `theme/diagram.css`, which maps every
+map role to a token. Areas carry a `tone` (their rank, first six only) for the categorical palette; layout never reads
+it. `theme-compare.mjs` (same arguments) renders D2, D4 and D5 at 40 px in all three themes, re-renders the clip in
+dark and light, and measures the label faces' x-height and advance.
+
 `L1_MODEL_ORDER=0` lays out each view cold instead of seeding it from the previous view's reading order.
 
 | File | What |
@@ -27,4 +34,6 @@ design re-fits its top-k to the frame at that floor. `L1_CLIP=0` skips the trans
 | `lib/labels.mjs` | count pills placed clear of boxes and labels; label/edge crossing count |
 | `lib/player.js`, `lib/page.mjs` | 1920x1080 SVG page with scale reference, staged tween player, DOM measurement |
 | `sizes.mjs` | label-floor comparison: D2-D5 at 24 / 32 / 40 px, `index.html` + one PNG per design and size |
+| `lib/theme.mjs`, `theme/`, `lib/tones.mjs` | stylesheets per `L1_THEME`, titan role map and fonts, per-area tone |
+| `theme-compare.mjs`, `lib/font-metrics.mjs` | plain / titan dark / titan light comparison page, label-face metrics |
 | `lib/frames.mjs`, `lib/capture.mjs`, `lib/index-page.mjs` | frames and clip timeline, headless capture and MP4, index |

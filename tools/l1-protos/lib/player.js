@@ -7,6 +7,7 @@ const clamp = (v) => Math.max(0, Math.min(1, v));
 const ease = (v) => (v < 0.5 ? 2 * v * v : 1 - (-2 * v + 2) ** 2 / 2);
 const lerp = (a, b, t) => a + (b - a) * t;
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const toneAttr = (e) => (e.tone === undefined ? "" : ` data-tone="${e.tone}"`);
 
 function pathD(points) {
   return points.map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
@@ -14,7 +15,7 @@ function pathD(points) {
 
 function rectSvg(e, op) {
   const rx = e.kind === "chip" ? 18 : e.kind === "band" ? 0 : 6;
-  return `<rect class="r ${e.kind}" data-id="${esc(e.id)}" x="${e.x}" y="${e.y}" width="${e.w}" height="${e.h}" rx="${rx}" opacity="${op}"/>`;
+  return `<rect class="r ${e.kind}" data-id="${esc(e.id)}"${toneAttr(e)} x="${e.x}" y="${e.y}" width="${e.w}" height="${e.h}" rx="${rx}" opacity="${op}"/>`;
 }
 
 function textSvg(e, op) {
@@ -23,7 +24,7 @@ function textSvg(e, op) {
     .map((line, i) => {
       const [x, y] = [e.x + 14 * s, e.y + 14 * s + e.fs * 0.8 + i * 30 * s];
       const cls = `lbl ${e.kind}${i === 0 ? " head" : ""}`;
-      return `<text class="${cls}" data-box="${esc(e.id)}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${e.fs.toFixed(2)}" opacity="${op}">${esc(line)}</text>`;
+      return `<text class="${cls}" data-box="${esc(e.id)}"${toneAttr(e)} x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${e.fs.toFixed(2)}" opacity="${op}">${esc(line)}</text>`;
     })
     .join("");
 }

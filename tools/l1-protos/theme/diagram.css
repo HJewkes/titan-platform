@@ -1,0 +1,63 @@
+/*
+ * L1 map roles on titan-design tokens. Every colour is a var(--color-*) from @titan-design/react-ui's
+ * dist/tokens.css (inlined ahead of this file): :root is the dark theme, `.light` flips it. The
+ * --l1-* names are the diagram roles this study proposes upstream (gaps.md); here each is only an
+ * alias of an existing token or a mix of two.
+ *
+ * Sources at titan-design 408de648:
+ *   radii      packages/ui/src/theme/tokens/primitives.ts:569-578 (primitiveBorderRadius; not in tokens.css)
+ *   categories packages/ui/TOKENS.md §2, primitives.ts:280 (CATEGORICAL_CVD_SAFE_MAX = 6)
+ *   type       packages/ui/docs/typography-rules.md:23-33 (titles heading face, ids and values mono,
+ *              captions body face; semibold headings, medium labels, bold for the value)
+ *   tinted fill pipeline-explainer MapBeat.tsx:123 (surface-raised mixed 18% toward the actor tone)
+ */
+svg.frame {
+  --l1-radius-box: 12px; /* lg */
+  --l1-radius-container: 24px; /* 2xl */
+  --l1-radius-pill: 9999px; /* full */
+  --l1-canvas: var(--color-background-base);
+  --l1-ink: var(--color-text-primary);
+  --l1-ink-muted: var(--color-text-secondary);
+  --l1-edge: var(--color-text-secondary);
+  --l1-band: var(--color-background-default);
+  --l1-context-fill: var(--color-surface-elevated);
+  --l1-pill-fill: var(--color-surface-overlay);
+  --l1-pill-stroke: var(--color-hairline-strong);
+  --l1-elision-stroke: var(--color-border-prominent);
+  --l1-ref: var(--color-status-success);
+  --tone: var(--color-text-tertiary);
+}
+[data-tone="0"] { --tone: var(--color-dataviz-categorical-0); }
+[data-tone="1"] { --tone: var(--color-dataviz-categorical-1); }
+[data-tone="2"] { --tone: var(--color-dataviz-categorical-2); }
+[data-tone="3"] { --tone: var(--color-dataviz-categorical-3); }
+[data-tone="4"] { --tone: var(--color-dataviz-categorical-4); }
+[data-tone="5"] { --tone: var(--color-dataviz-categorical-5); }
+
+body { background: var(--color-background-frame); color: var(--color-text-secondary); font-family: var(--font-family-body), sans-serif; }
+svg.frame { background: var(--l1-canvas); }
+.bg { fill: var(--l1-canvas); }
+text { font-family: var(--font-family-heading), sans-serif; font-weight: 500; fill: var(--l1-ink); }
+.chrome { fill: var(--l1-ink); font-weight: 600; }
+#subtitle { font-family: var(--font-family-body), sans-serif; font-weight: 400; fill: var(--l1-ink-muted); }
+.ref { fill: var(--l1-ref); font-family: var(--font-family-mono); } .tick { stroke: var(--l1-ref); }
+
+/* Focus: area cards and packages, tinted toward their area's hue. */
+.r.box { fill: color-mix(in srgb, var(--tone) 18%, var(--color-surface-raised)); stroke: var(--tone); stroke-width: 3; rx: var(--l1-radius-box); }
+.r.container { fill: color-mix(in srgb, var(--tone) 6%, var(--l1-canvas)); stroke: var(--tone); stroke-width: 2; rx: var(--l1-radius-container); }
+/* Context: proxies on the border bands recede to an outline in their area's hue. */
+.r.chip { fill: var(--l1-context-fill); stroke: var(--tone); stroke-width: 2; rx: var(--l1-radius-pill); }
+.r.band { fill: var(--l1-band); }
+/* Elision: "+N more" is a dashed placeholder, never a peer of a real box. */
+.r.tile { fill: none; stroke: var(--l1-elision-stroke); stroke-width: 2; stroke-dasharray: 8 6; rx: var(--l1-radius-box); }
+.r.elabel { fill: var(--l1-pill-fill); stroke: var(--l1-pill-stroke); stroke-width: 2; rx: var(--l1-radius-pill); }
+
+.lbl.head { font-weight: 600; }
+.lbl.box:not(.head), .lbl.container:not(.head) { fill: var(--l1-ink-muted); font-weight: 400; }
+.lbl.chip, .lbl.band, .lbl.tile { fill: var(--l1-ink-muted); }
+.lbl.chip.head, .lbl.band.head { font-weight: 500; }
+.lbl[data-box^="file:"] { font-family: var(--font-family-mono); }
+.lbl.elabel { font-family: var(--font-family-mono); font-weight: 700; fill: var(--l1-ink); }
+
+path.edge { fill: none; stroke: var(--l1-edge); stroke-linejoin: round; }
+.arrowhead { fill: var(--l1-edge); }
