@@ -300,12 +300,12 @@ Tier 0, `@titan-design/evidence@0.2.1`. Citation verification, overlap grouping,
 
 Key exports:
 
-- `line-source`: `LineSource`, `lineSourceFromTexts`, `splitLines`
+- `line-source`: `lineSourceFromTexts`, `splitLines`
 - `citation`: `quoteFragments`, `quoteInRange`, `verifyCitation`
+- `anchor`: `isFullSha`, `parseAnchor`
 - `overlap`: `groupByOverlap`, `rangesOverlap`
 - `controls`: `pickControls`, `placeControls`, `scoreControls`
-- `seeded`: `seededRandom`
-- +12 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/evidence)
+- +21 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/evidence)
 
 <a id="cap-fix-proof"></a>
 
