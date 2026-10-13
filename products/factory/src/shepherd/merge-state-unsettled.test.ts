@@ -148,7 +148,7 @@ describe("a MERGE whose evidence reads mergeable_state unknown on every read", (
     const host = open(w);
     const runId = start(host, w);
 
-    await gateOpened(host, gateId(runId, "approve-merge"));
+    await gateOpened(host, gateId(runId, "approve-merge"), 10_000);
 
     const prompt = host.gates.get(gateId(runId, "approve-merge"))!.prompt;
     expect(prompt).toContain("shepherd-merge-guard/merge-state-unsettled");
@@ -184,7 +184,7 @@ describe("a MERGE whose evidence reads mergeable_state unknown on every read", (
     const host = open(w);
     const runId = start(host, w);
 
-    await gateOpened(host, gateId(runId, "approve-merge"));
+    await gateOpened(host, gateId(runId, "approve-merge"), 10_000);
 
     expect(settleRecords(host, runId)).toEqual([]);
     expect(w.collections.get(H1)).toBe(1);
