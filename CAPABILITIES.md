@@ -55,7 +55,7 @@ Before adding code:
 | [`graph-layout`](#cap-graph-layout) | 2 | A product draws a code-graph snapshot as boxes and routed edges: collapse files to packages, directories or one focused package, then lay the result out with ELK layered (flat or nested), with the same coordinates for any input order. For the graph itself use code-graph; for rolled-up values per tree depth use code-read's `hierarchy.get`. |
 | [`memory`](#cap-memory) | 2 | An agent must carry lessons between sessions in a rule playbook whose confidence decays with evidence and stays small without manual curation. It also parses, dedupes and groups Claude Code auto-memory fact files, proposing where each group should live. |
 | [`owner-queue`](#cap-owner-queue) | 2 | You gather the things only the owner can answer from several stores of record (chat questions, hitl gates, task notes, review rounds) into one list and need one `OwnerItem` shape, a `QueueSource` port for adapters, a merge that joins duplicates only on an exact shared key including a PR's head sha, a deterministic rank, and pure stale rules that label an item gone elsewhere from source facts (PR merged, head moved, task done, asker retired), and `buildOwnerRounds`, which turns open Decide items into titan-review round@2 manifests with `Principle:` batching and shadow-mode picks revealed only after the answer, plus `fromRoundQuestions`/`answeredFromFeedback` to read a round's questions and feedback back as OwnerItems, and `ask:`/`component:`/`token:`/`topic:` relation keys that relate items without merging them, and `consolidate`, which turns the open queue into the approvals Flow (per-PR and topic groups, influence order, holds, and a per-PR `shipBlockedBy` from open change requests), and an optional `audience` (owner or operator) with the `forAudience` reader filter, and owner card fields (`class`, `irreversible`, `shown`, `default`, `onSilence`, option `consequence`) checked by `cardLint`/`ownerCardSchema`. The root export holds no I/O; the one exception is the `/spool` subpath, the 0600 file spool where agents file deposits and the console keeps the owner's answers. Other adapters live in the product, the gate itself is hitl, routing is decider, and mirroring to Matrix is queue-mirror. |
-| [`pm`](#cap-pm) | 2 | You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`. Pure code; it reads no files, so parse the task, registry and deliverable YAML in the host and hand the objects over. For a seat's front matter use `coordinator` instead. |
+| [`pm`](#cap-pm) | 2 | You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`, or gate a repo review on every recommendation and P1 or P2 topic having a task, dup, fold, drop or pending-owner row with `summaryRecommendations`, `prioritizedTopics`, `parseDispositions` and `checkDispositions`. Pure code; it reads no files, so parse the task, registry and deliverable YAML in the host and hand the objects over. For a seat's front matter use `coordinator` instead. |
 | [`queue-mirror`](#cap-queue-mirror) | 2 | A local queue of human decisions (approvals, hitl gates) should also be answerable from a Matrix room, with verdicts folded back. |
 | [`review-panel`](#cap-review-panel) | 2 | You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`), `classifyPr` to class a PR from its paths and kind, `planPanel` to pick its reviewers by shape, profile and blocking flag, the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy, `acceptVerdict` to decide whether a reviewer's final message is its verdict for this PR at this head, `aggregate` to turn the members' verdicts into one fail-closed panel verdict, and `reviewPullRequest` to run the whole panel for one head over those ports. It runs nothing; to start an agent use agent-dispatch, and to parse a transcript use session-read. |
 | [`session-analytics`](#cap-session-analytics) | 2 | You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Also for agent-chat operations: it reads agent-chat's events.db through a connection the caller opened, parses broker.log lines, transcript denials and seat journals the caller reads, and reports blocked merges, dark agents and review fill. Also for a coordinator duty meter over seat transcript lines the caller reads. Session parsing is session-read; storage is session-graph. |
@@ -301,12 +301,12 @@ Tier 0, `@titan-design/evidence@0.2.1`. Citation verification, overlap grouping,
 
 Key exports:
 
-- `line-source`: `LineSource`, `lineSourceFromTexts`, `splitLines`
+- `line-source`: `lineSourceFromTexts`, `splitLines`
 - `citation`: `quoteFragments`, `quoteInRange`, `verifyCitation`
+- `anchor`: `isFullSha`, `parseAnchor`
 - `overlap`: `groupByOverlap`, `rangesOverlap`
 - `controls`: `pickControls`, `placeControls`, `scoreControls`
-- `seeded`: `seededRandom`
-- +12 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/evidence)
+- +21 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/evidence)
 
 <a id="cap-fix-proof"></a>
 
@@ -508,11 +508,10 @@ Key exports:
 - `port`: `FileListTruncatedError`, `GitHubConflictError`, `githubPort`
 - `write-read-back`: `WriteRetriesExhaustedError`
 - `force-pushes`: `ForcePushesTruncated`
-- `checks`: `isPassing`, `latestPerName`
+- `checks`: `isPassing`, `isPassingConclusion`, `isSucceeded`, `latestPerName`
 - `ci-verdict`: `ciVerdict`, `loadRequiredContexts`
 - `ci-wait`: `ciWait`
-- `readiness`: `headCheckFindings`, `mergeReadiness`
-- +100 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
+- +102 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-health"></a>
 
@@ -790,16 +789,16 @@ Key exports:
 
 Tier 2, `@titan-design/pm@0.2.0`. Project-management schemas: the zod task schema and its type, as active-work stores tasks
 
-**Use this when:** You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`. Pure code; it reads no files, so parse the task, registry and deliverable YAML in the host and hand the objects over. For a seat's front matter use `coordinator` instead.
+**Use this when:** You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`, or gate a repo review on every recommendation and P1 or P2 topic having a task, dup, fold, drop or pending-owner row with `summaryRecommendations`, `prioritizedTopics`, `parseDispositions` and `checkDispositions`. Pure code; it reads no files, so parse the task, registry and deliverable YAML in the host and hand the objects over. For a seat's front matter use `coordinator` instead.
 
 Key exports:
 
 - `task`: `TaskSchema`
 - `deliverable`: `DeliverableSchema`, `deliverablePath`, `deliverablesDir`, `parseDeliverableRegistry`
 - `edges`: `checkEdges`, `readEdges`
-- `graph`: `criticalPath`, `taskTree`
-- `categories`: `CategoryRegistrySchema`, `categoriesPath`, `checkCategories`
-- +25 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/pm)
+- `dispositions`: `DispositionRowSchema`, `checkDispositions`, `parseDispositions`
+- `review-summary`: `prioritizedTopics`, `summaryRecommendations`
+- +35 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/pm)
 
 <a id="cap-queue-mirror"></a>
 

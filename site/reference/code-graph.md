@@ -739,6 +739,10 @@ DEFAULT_CHURN_WINDOWS; // [30, 90, 180]
 `resolveChurnWindows` and `computeRecencyWindows` are exported beside them. Node ids are the
 history engine's repo-relative paths, so `nodes` and `repoRoot` must share a root.
 
+`revisionLineSource(repoRoot, rev)` is an evidence `LineSource` over the blobs of commit
+`rev`, never the working tree. `rev` must be a full 40-hex commit id; a ref name throws. A
+path that is not a blob at `rev` reads as unreadable.
+
 Change coupling is not stored. It is computed on demand from `loadChurnEntries`, as
 codewatch's `graph coupled` command did.
 
