@@ -66,7 +66,8 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
-      # The full-history checkout carries origin/changeset-release/main, the Version Packages PR's branch.
+      # The full-history checkout carries origin/changeset-release/main, the Version Packages PR's branch. The runner's own
+      # node runs the gate, which needs no dependency, so a skipped run installs nothing.
       - name: Decide whether to version or publish now
         id: gate
         env:
@@ -74,23 +75,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           REPO: ${{ github.repository }}
           TIP: ${{ github.sha }}
-        run: |
-          go() { echo "run=$1" >> "$GITHUB_OUTPUT"; echo "$2" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; }
-          if [ "$EVENT_NAME" = schedule ]; then
-            green=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$TIP&event=push" --jq '[.workflow_runs[] | select(.conclusion == "success")] | length')
-            [ "$green" -gt 0 ] || go false "No green push CI run at $TIP yet; the Release run after it decides."
-          fi
-          pending=$(find .changeset -maxdepth 1 -name '*.md' ! -name README.md | wc -l)
-          if [ "$pending" -eq 0 ]; then
-            [ "$EVENT_NAME" = schedule ] && go false "No pending changeset; publishing follows the merge, not the schedule."
-            go true "No pending changeset: publish."
-          fi
-          branch=origin/changeset-release/main
-          git rev-parse --verify -q "$branch" > /dev/null || go true "No Version Packages branch yet: open it."
-          git merge-base --is-ancestor "$TIP" "$branch" && go false "The Version Packages branch already contains $TIP."
-          age=$(( $(date +%s) - $(git log -1 --format=%ct "$branch") ))
-          [ "$age" -ge 1800 ] || go false "The Version Packages PR was refreshed ${age}s ago; the next merge after 30 minutes or the hourly run refreshes it."
-          go true "Refresh the Version Packages PR."
+        run: node scripts/release-gate.mjs
       - if: steps.gate.outputs.run == 'true'
         uses: pnpm/action-setup@v4
       - if: steps.gate.outputs.run == 'true'
