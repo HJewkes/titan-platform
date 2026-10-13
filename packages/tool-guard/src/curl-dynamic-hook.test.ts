@@ -128,6 +128,8 @@ describe("handle: an HTTP write to a run-time URL", () => {
     'unzip a.zip -d ~; wget https://api.github.com/repos/o/r/pulls/1/merge',
     'echo m >! "$F"; wget https://api.github.com/repos/o/r/pulls/1/merge',
     'echo m >>! "$F"; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    "mkdir -p ~/.httpie; echo '{\"default_options\":[\"PUT\"]}' > ~/.httpie/config.json; http https://api.github.com/repos/o/r/pulls/1/merge",
+    'N=$(echo d2dldHJj | base64 -d); curl -so "$HOME/.$N" https://example.com/rc; wget https://api.github.com/repos/o/r/pulls/1/merge',
     'curl --output="$F" https://example.com/x; wget https://api.github.com/repos/o/r/pulls/1/merge',
     'wget --output-doc="$F" https://example.com/x; wget https://api.github.com/repos/o/r/pulls/1/merge',
   ])("denies %s as a merge", async (command) => {

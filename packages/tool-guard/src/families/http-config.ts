@@ -20,10 +20,10 @@ const TEXT_ASSIGNS_RE = new RegExp(
 );
 /** In a word with quotes removed: an `env` argument. */
 const WORD_ASSIGNS_RE = new RegExp(`^(?:${NAMES})\\+?=`);
-/** A config file or directory: `.wgetrc`, `/etc/wgetrc`, `.curlrc`, `$XDG_CONFIG_HOME/curlrc`, `~/.config/httpie`. */
-const RC_TEXT_RE = /(?:wget|curl)rc|\/httpie\b/;
+/** A config file or directory: `.wgetrc`, `/etc/wgetrc`, `.curlrc`, `$XDG_CONFIG_HOME/curlrc`, `~/.config/httpie`, the legacy `~/.httpie`. */
+const RC_TEXT_RE = /(?:wget|curl)rc|\/\.?httpie\b/;
 /** Every name a config file, or a directory a recursive copy may plant one in, ends in. */
-const RC_NAMES = [".wgetrc", "wgetrc", ".curlrc", "curlrc", "_curlrc", "config.json", "httpie", ".config"];
+const RC_NAMES = [".wgetrc", "wgetrc", ".curlrc", "curlrc", "_curlrc", "config.json", "httpie", ".httpie", ".config"];
 /** A declaration option that makes a nameref, through which a later plain assignment writes the named variable. */
 const NAMEREF_RE = /^-[a-zA-Z]*n/;
 /** Commands that write no file, whatever their operands; any other command may write any operand or attached value. */
@@ -132,7 +132,7 @@ function isRcName(name: string): boolean {
 }
 
 function rcDirs(home: string | null): string[] {
-  return home === null ? ["/etc"] : ["/etc", home, `${home}/.config`, `${home}/.config/httpie`];
+  return home === null ? ["/etc"] : ["/etc", home, `${home}/.config`, `${home}/.config/httpie`, `${home}/.httpie`];
 }
 
 /** Where the word's last run-time part ends: a variable, a substitution's output, another expansion or a pattern. */
