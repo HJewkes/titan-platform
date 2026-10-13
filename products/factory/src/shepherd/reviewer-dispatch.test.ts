@@ -24,6 +24,7 @@ beforeEach(() => {
   checkout = join(home, "projects", "demo");
   mkdirSync(checkout, { recursive: true });
   vi.stubEnv("HOME", home);
+  vi.stubEnv("AGENT_CHAT_HOME", join(home, ".agent-chat"));
   installHeadlessProfiles(home, [PROFILE, "bd-reviewer", "reviewer", "rv-other"]);
 });
 

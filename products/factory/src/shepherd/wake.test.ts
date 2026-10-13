@@ -154,6 +154,7 @@ describe("sh-wake-implementer: who is woken", () => {
     mkdirSync(join(SCRATCH, ".agent-chat", "profiles"), { recursive: true });
     writeFileSync(join(SCRATCH, ".agent-chat", "profiles", "bd-implementer.json"), JSON.stringify({ surface: "headless" }));
     vi.stubEnv("HOME", SCRATCH);
+    vi.stubEnv("AGENT_CHAT_HOME", join(SCRATCH, ".agent-chat"));
     try {
       const { run } = wakeStep({ noAgents: true, agentChatBin: bin, agentChatConfigDir: "/srv/claude-second", warmth: { "/transcripts/impl-a.jsonl": warmAt(50) } });
 
