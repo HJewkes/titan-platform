@@ -68,7 +68,7 @@ function curlRequest(args: WordToken[]): HttpRequest {
     else parts.at(-1)?.push(word);
   }
   const requests = parts.map((part) => curlPart(readOptions(part, CURL_VALUES)));
-  const method = (requests.find((r) => isWrite(r.method)) ?? (requests[0] as HttpRequest)).method;
+  const method = (requests.find((r) => isWrite(r.method)) ?? requests[0])?.method ?? "GET";
   return { method, body: requests.some((r) => r.body), urls: requests.flatMap((r) => r.urls) };
 }
 
@@ -143,7 +143,7 @@ function actionsFor(spelling: SpellingId, hosts: string[]): ClassifiedAction[] {
   return [...new Set(hosts)].filter((h) => !allowed(h)).map((host) => classified(spelling, { host }));
 }
 
-const HTTP_SPELLINGS: Record<string, SpellingId> = {
+const HTTP_SPELLINGS: Partial<Record<string, SpellingId>> = {
   curl: "bash.egress.curl-upload",
   wget: "bash.egress.wget-upload",
   http: "bash.egress.httpie",
@@ -152,8 +152,9 @@ const HTTP_SPELLINGS: Record<string, SpellingId> = {
 
 function upload(cmd: SimpleCommand): ClassifiedAction[] {
   const request = httpRequest(cmd);
-  if (!request || !(request.body || UPLOAD_METHODS.has(request.method))) return [];
-  return actionsFor(HTTP_SPELLINGS[cmd.name ?? ""] as SpellingId, request.urls.map(hostOf));
+  const spelling = HTTP_SPELLINGS[cmd.name ?? ""];
+  if (!request || !spelling || !(request.body || UPLOAD_METHODS.has(request.method))) return [];
+  return actionsFor(spelling, request.urls.map(hostOf));
 }
 
 const GH_GIST_WRITES = set("create", "new", "edit");
