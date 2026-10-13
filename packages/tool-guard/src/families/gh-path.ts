@@ -45,7 +45,7 @@ export function ghPathUnknown(args: WordToken[]): boolean {
   const seen = new Set<string>();
   const pending: Reading[] = [{ at: 0, path: [], afterDashes: false }];
   for (let reading = pending.pop(); reading; reading = pending.pop()) {
-    const key = `${reading.at}|${reading.afterDashes}|${reading.path.map((w) => w.value).join(" ")}`;
+    const key = `${reading.at}|${reading.afterDashes}|${JSON.stringify(reading.path.map((w) => w.value))}`;
     if (seen.has(key)) continue;
     seen.add(key);
     const next = step(args, reading);

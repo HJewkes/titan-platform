@@ -42,6 +42,8 @@ describe("a gh command path only known at run time", () => {
     ["a verb after a cluster ending in R", 'gh pr -bR "$V" 1'],
     ["a verb after an empty word, which cobra drops", "gh pr '' \"$V\""],
     ["a group after a lone dash, which cobra drops", 'gh - "$X" create f'],
+    ["a group after an empty word, which cobra drops", "gh '' \"$X\" merge 1"],
+    ["a group after an empty double-quoted word", 'gh "" "$G"'],
   ])("is unknown for %s: %s", (_, line) => {
     expect(ghPathUnknown(ghArgs(line))).toBe(true);
   });
