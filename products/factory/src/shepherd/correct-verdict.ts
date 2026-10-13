@@ -75,7 +75,7 @@ type AwaitedOutput = z.infer<typeof Awaited>;
 
 /** How a correction that came to no verdict is worded, so a later review can tell a malformed verdict from silence. */
 export const UNPARSED_AFTER_CORRECTION = "the reviewer's verdict did not parse after one correction";
-const SILENT_AFTER_CORRECTION = "the reviewer wrote no verdict after its correction";
+export const SILENT_AFTER_CORRECTION = "the reviewer wrote no verdict after its correction";
 
 export const isCorrectionFailure = (reason: unknown): boolean => typeof reason === "string" && (reason.startsWith(UNPARSED_AFTER_CORRECTION) || reason === SILENT_AFTER_CORRECTION);
 

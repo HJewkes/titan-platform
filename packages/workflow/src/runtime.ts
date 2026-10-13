@@ -60,10 +60,10 @@ export class WorkflowRuntime {
     };
   }
 
-  /** `version` pins each new run to this definition; hydrate parks a run pinned to another one instead of replaying it. */
-  register(name: string, fn: WorkflowFn, options: { version?: string; abandonsOrphan?: AbandonsOrphan } = {}): void {
+  /** `version` pins new runs to this definition (hydrate parks a run pinned to another); `strictReplay` parks a replay that goes live with recorded results unread. */
+  register(name: string, fn: WorkflowFn, options: { version?: string; abandonsOrphan?: AbandonsOrphan; strictReplay?: boolean } = {}): void {
     if (this.workflows.has(name)) throw new Error(`workflow already registered: ${name}`);
-    this.workflows.set(name, { ...registration(name, fn, options.version), abandonsOrphan: options.abandonsOrphan });
+    this.workflows.set(name, { ...registration(name, fn, options.version), abandonsOrphan: options.abandonsOrphan, strictReplay: options.strictReplay });
   }
 
   registered(): string[] {
@@ -148,7 +148,7 @@ export class WorkflowRuntime {
     controller = new AbortController(),
     renewTimer = this.startRenewal(run, controller),
   ): void {
-    const deps: ContextDeps = { ...this.baseDeps, recovered, save: (value) => this.save(value) };
+    const deps: ContextDeps = { ...this.baseDeps, recovered, save: (value) => this.save(value), strictReplay: workflow.strictReplay === true };
     const ctx = new RunContext(run, deps, controller);
     const done = this.drive(run, workflow, ctx, controller);
     this.live.set(run.id, { ctx, controller, done, renewTimer });

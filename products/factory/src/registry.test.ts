@@ -2,10 +2,11 @@ import { listTools } from "@titan-design/daemon";
 import { fakeGitHub, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { EXIT, invokeCommand } from "@titan-design/registry";
 import { afterEach, describe, expect, it } from "vitest";
-import { openFactoryHost, type FactoryHost } from "./host.js";
+import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "./host.js";
 import { createFactoryRegistry, parsePrRef, type FactoryContext } from "./registry.js";
 import { TOOL_PREFIX } from "./serve.js";
 import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
+import { callCommand } from "./test-support/shepherd.js";
 import { landPrRoutes, landPrWorkflow } from "./workflows/land-pr.js";
 import { OWNER } from "./test-support/resolver.js";
 
@@ -13,7 +14,7 @@ const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 /** PR #1 on a fake repo whose checks pass, and a host running the registered land-pr workflow. */
-function world(): { host: FactoryHost; fake: FakeGitHub } {
+function world(): { host: FactoryHost; fake: FakeGitHub; routes: FactoryRoutes } {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
@@ -21,7 +22,7 @@ function world(): { host: FactoryHost; fake: FakeGitHub } {
   const routes = landPrRoutes({ port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
-  return { host, fake };
+  return { host, fake, routes };
 }
 
 async function call(host: FactoryHost, name: string, args: unknown): Promise<{ ok: boolean; data?: unknown; code?: number }> {
@@ -39,7 +40,7 @@ describe("factory registry", () => {
   it("surfaces the factory, shepherd and needs commands as MCP tools, with no prefix doubling and no resolve tool", () => {
     const tools = listTools({ registry: createFactoryRegistry(), createContext: () => ({ warnings: [], format: "json" }) as never, toolPrefix: TOOL_PREFIX, name: "titan-factory", version: "0" });
 
-    const shepherd = ["hold", "list", "merge", "prs", "register", "release", "resync", "review", "status", "timeline", "waiting"].map((verb) => `shepherd__${verb}`);
+    const shepherd = ["ghBudget", "ghRead", "hold", "list", "merge", "prs", "register", "release", "resync", "review", "status", "timeline", "waiting"].map((verb) => `shepherd__${verb}`);
     expect(tools.map((tool) => tool.name).sort()).toEqual(["factory__gates", "factory__gates-review", "factory__land", "factory__status", "needs__count", "needs__list", ...shepherd]);
   });
 
@@ -89,6 +90,14 @@ describe("factory registry", () => {
     expect(gates).toMatchObject({ ok: true, data: { gates: [{ runId, stepId: "approve-merge", resolve: `titan-factory gate resolve ${runId} approve-merge --json '<payload>'` }] } });
     expect(status).toMatchObject({ ok: true, data: { runs: [{ id: runId, status: "paused", params: { repo: REPO, pr: "1" } }] } });
     expect(await call(host, "factory.status", { runId: "missing" })).toMatchObject({ ok: false, code: EXIT.NOINPUT });
+  });
+
+  it("answers an unknown command name with a usage envelope instead of throwing", async () => {
+    const { host, routes } = world();
+
+    const result = await callCommand(host, routes, "shepherd.nope", {});
+
+    expect(result).toEqual({ ok: false, error: "Unknown command: shepherd.nope", code: EXIT.USAGE });
   });
 });
 
