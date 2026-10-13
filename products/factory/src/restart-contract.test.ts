@@ -119,6 +119,9 @@ function parkRoutesWithoutReconcile(routes: readonly StepRoute[]): string[] {
   return routes.filter((route) => route.onRestart === "park" && !hasReconcile(route)).map((route) => route.match);
 }
 
+/** The text after the category prefix, which is what names this step's own effect. */
+const detailOf = (reason: string): string => reason.slice(reason.indexOf(":") + 1).trim();
+
 function unsafeDispatchSteps(): string[] {
   const ids = factoryWorkflows.flatMap((definition) => dispatchStepIds(definition).filter((id) => !orphanSafe(definition)(id)));
   return [...new Set(ids)];
@@ -133,8 +136,9 @@ describe("restart contract", () => {
     expect(unsafeDispatchSteps().sort()).toEqual(Object.keys(RESTART_WRITE_STEPS).sort());
   });
 
-  it("gives every exception a reason", () => {
-    const reasons = [...Object.values(PARK_ROUTES_WITHOUT_RECONCILE), ...Object.values(RESTART_WRITE_STEPS)];
-    expect(reasons.filter((reason) => reason.trim().length < 10)).toEqual([]);
+  it("gives every exception a reason of its own, beyond the shared category", () => {
+    const blankParks = Object.entries(PARK_ROUTES_WITHOUT_RECONCILE).filter(([, reason]) => reason.trim() === "");
+    const blankSteps = Object.entries(RESTART_WRITE_STEPS).filter(([, reason]) => !reason.includes(":") || detailOf(reason) === "");
+    expect([...blankParks, ...blankSteps].map(([id]) => id)).toEqual([]);
   });
 });
