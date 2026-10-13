@@ -257,3 +257,41 @@ describe("lineIfsValues on namerefs and shells it can still read", () => {
     expect(values(line)).toEqual([DEFAULT_IFS, ","]);
   });
 });
+
+describe("lineIfsValues on unquoted heredoc bodies", () => {
+  const k = "k=$(printf %sFS=1 I); ";
+  it.each([
+    ["an arithmetic expansion", `${k}cat <<EOF\n$(( k ))\nEOF`],
+    ["a substring offset", `${k}cat <<EOF\n\${x:k}\nEOF`],
+    ["an indirect default", `${k}cat <<EOF\n\${!k:=,}\nEOF`],
+    ["arithmetic on names built from parts", "a=I; b=FS=1; cat <<EOF\n$(( $a$b ))\nEOF"],
+    ["a tab-stripped heredoc", `${k}cat <<-EOF\n\t$(( k ))\nEOF`],
+  ])("gives null for %s", (_how, line) => {
+    expect(values(line)).toBeNull();
+  });
+
+  it.each([
+    ["a quoted delimiter", `IFS=,; ${k}cat <<'EOF'\n$(( k )) \${x:k} \${!k:=,}\nEOF`],
+    ["an escaped delimiter", `IFS=,; ${k}cat <<\\EOF\n$(( k ))\nEOF`],
+    ["an unquoted body that only expands values", `IFS=,; ${k}cat <<EOF\n$k \${k:-x}\nEOF`],
+  ])("keeps %s literal", (_how, line) => {
+    expect(values(line)).toEqual([DEFAULT_IFS, ","]);
+  });
+});
+
+describe("lineIfsValues on compound-array subscripts", () => {
+  const k = "k=$(printf %sFS=1 I); ";
+  it.each([
+    ["an array assignment", `${k}a=([k]=1)`],
+    ["an array append", `${k}a+=([k]=1)`],
+    ["a declared array", `${k}declare -a a=([k]=1)`],
+    ["a dynamic subscript", "a=([$k]=1)"],
+    ["a subscript that may name IFS", "a=([IFS=1]=1)"],
+  ])("gives null for %s", (_how, line) => {
+    expect(values(line)).toBeNull();
+  });
+
+  it("resolves numeric subscripts beside a run-time value", () => {
+    expect(values(`IFS=,; ${k}a=([0]=1 [2]=x)`)).toEqual([DEFAULT_IFS, ","]);
+  });
+});

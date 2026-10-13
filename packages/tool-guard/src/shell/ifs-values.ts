@@ -33,6 +33,8 @@ const ARITHMETIC_EXPANSION_RE = /\$(?:\(\(|\[)/g;
 const READS_BY_NAME_RE = /\$\(\(|\$\[|@P\}|\$\{!|\$\{[^}]*\[|\$\{[#!]?[A-Za-z0-9_@*]+:(?![-=?+])/;
 /** A name operand with a non-numeric subscript, `read 'a[k]'` or `[[ -v a[k] ]]`: the subscript is arithmetic. */
 const SUBSCRIPTED_NAME_RE = /[A-Za-z_][A-Za-z0-9_]*\[(?!\d*\])/;
+/** A compound-array element `[k]=v` inside `a=( )`, `a+=( )` or `declare -a a=( )`; its subscript is arithmetic. */
+const ELEMENT_SUBSCRIPT_RE = /^\[([^\]]*)\]\+?=/;
 /** Variables naming a file every non-interactive `bash` or `sh` sources before its script. */
 const STARTUP_FILE_RE = /^(?:BASH_ENV|ENV)\+?=/;
 /** Shell options that source an rc or profile file: `--rcfile`, `--init-file`, `--login`, `-i`, `-l`, `-lc`. */
@@ -135,7 +137,7 @@ function scanSubs(subs: Token[][], depth: number, scan: Scan): void {
  * inside `(( ))` a `<` reads as a comparison.
  */
 function scanRedirect(token: RedirectToken, arithmetic: boolean, depth: number, scan: Scan): void {
-  if (possiblyIfs(token.body ?? "")) markUnknown(scan);
+  scanHeredocBody(token, scan);
   const target = token.target;
   if (!target) return;
   scanSubs(target.subs, depth, scan);
@@ -145,12 +147,25 @@ function scanRedirect(token: RedirectToken, arithmetic: boolean, depth: number, 
 
 /** `$(( $n = 1 ))`: a dynamic name, or text that may name IFS, inside arithmetic may assign IFS. */
 function arithmeticUnknown(word: WordToken): boolean {
-  if (!word.dynamic) return false;
-  for (const match of word.value.matchAll(ARITHMETIC_EXPANSION_RE)) {
-    const rest = word.value.slice(match.index + match[0].length);
+  return word.dynamic && arithmeticTextUnknown(word.value);
+}
+
+function arithmeticTextUnknown(text: string): boolean {
+  for (const match of text.matchAll(ARITHMETIC_EXPANSION_RE)) {
+    const rest = text.slice(match.index + match[0].length);
     if (rest.includes("$") || possiblyIfs(rest)) return true;
   }
   return false;
+}
+
+/** An unquoted heredoc body expands in the current shell like a double-quoted word; `<<'EOF'` keeps it literal. */
+function scanHeredocBody(token: RedirectToken, scan: Scan): void {
+  const body = token.body;
+  if (body === null) return;
+  if (possiblyIfs(body)) return markUnknown(scan);
+  if (token.target?.quoted) return;
+  if (arithmeticTextUnknown(body)) markUnknown(scan);
+  if (READS_BY_NAME_RE.test(body)) scan.readsByName = true;
 }
 
 function scanCommand(words: WordToken[], input: boolean, depth: number, scan: Scan): void {
@@ -158,6 +173,7 @@ function scanCommand(words: WordToken[], input: boolean, depth: number, scan: Sc
     scanSubs(word.subs, depth, scan);
     if (arithmeticUnknown(word) || STARTUP_FILE_RE.test(word.value)) markUnknown(scan);
     noteReadsByName(word, scan);
+    scanElementSubscript(word, scan);
   }
   let i = 0;
   while (i < words.length && isReserved(words[i])) i++;
@@ -170,6 +186,13 @@ function scanCommand(words: WordToken[], input: boolean, depth: number, scan: Sc
 
 function noteReadsByName(word: WordToken, scan: Scan): void {
   if ((word.dynamic && READS_BY_NAME_RE.test(word.value)) || SUBSCRIPTED_NAME_RE.test(word.value)) scan.readsByName = true;
+}
+
+function scanElementSubscript(word: WordToken, scan: Scan): void {
+  const subscript = ELEMENT_SUBSCRIPT_RE.exec(word.value)?.[1];
+  if (subscript === undefined) return;
+  if (subscript.includes("$") || possiblyIfs(subscript)) markUnknown(scan);
+  else if (!/^\d*$/.test(subscript)) scan.readsByName = true;
 }
 
 function isReserved(word: WordToken | undefined): boolean {
