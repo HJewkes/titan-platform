@@ -8,7 +8,7 @@ import { shepherdStoreRef } from "./store.js";
 import { WAKE_STEPS, wakeRoutes } from "./wake.js";
 
 const WAKE_FAMILIES = ["sh-wake", "sh-await-new-head", "sh-repair", "sh-flake-check", "sh-exit-notice"];
-const REVIEW_FAMILIES = ["sh-fix-proof", "sh-review", "sh-await-verdict", "sh-late-verdict", "sh-correct-verdict", "sh-merge-evidence", "sh-carry", "sh-publish-review", "sh-account", "sh-no-reviewer"];
+const REVIEW_FAMILIES = ["sh-fix-proof", "sh-review", "sh-await-verdict", "sh-late-verdict", "sh-correct-verdict", "sh-seat-recheck", "sh-merge-evidence", "sh-carry", "sh-publish-review", "sh-account", "sh-no-reviewer"];
 const target = { repo: "octo/demo", pr: 1, round: 0, headSha: "abc123" };
 const deps: ShepherdDeps = { port: githubPort(fakeGitHub().wire), store: shepherdStoreRef(), now: () => 0, sleep: async () => {}, agentChatBin: "agent-chat" };
 
@@ -33,8 +33,8 @@ describe("shepherd phase step families", () => {
     expect(wakeRoutes(deps).map((route) => route.match)).toEqual(ids);
   });
 
-  it("pins sh-fix-proof, sh-review-intent, sh-review, sh-await-verdict, sh-late-verdict, sh-correct-verdict, sh-merge-evidence, sh-carry, sh-publish-review, sh-account-hold, sh-account-wait, sh-review-request, sh-review-stop, sh-review-panel, sh-no-reviewer-hold and sh-no-reviewer-wait to review.ts, declared and routed there", () => {
-    const ids = ["sh-fix-proof", "sh-review-intent", "sh-review", "sh-await-verdict", "sh-late-verdict", "sh-correct-verdict", "sh-merge-evidence", "sh-merge-evidence-gate", "sh-carry", "sh-publish-review", "sh-account-hold", "sh-account-wait", "sh-review-request", "sh-review-stop", "sh-review-panel", "sh-no-reviewer-hold", "sh-no-reviewer-wait"];
+  it("pins sh-fix-proof, sh-review-intent, sh-review, sh-await-verdict, sh-late-verdict, sh-correct-verdict, sh-seat-recheck, sh-merge-evidence, sh-carry, sh-publish-review, sh-account-hold, sh-account-wait, sh-review-request, sh-review-stop, sh-review-panel, sh-no-reviewer-hold and sh-no-reviewer-wait to review.ts, declared and routed there", () => {
+    const ids = ["sh-fix-proof", "sh-review-intent", "sh-review", "sh-await-verdict", "sh-late-verdict", "sh-correct-verdict", "sh-seat-recheck", "sh-merge-evidence", "sh-merge-evidence-gate", "sh-carry", "sh-publish-review", "sh-account-hold", "sh-account-wait", "sh-review-request", "sh-review-stop", "sh-review-panel", "sh-no-reviewer-hold", "sh-no-reviewer-wait"];
     expect(REVIEW_STEPS.map((step) => step.id)).toEqual(ids);
     expect(reviewRoutes(deps).map((route) => route.match)).toEqual(ids.filter((id) => id !== "sh-merge-evidence-gate"));
     expect(WAKE_STEPS.map((step) => step.id)).not.toContain("sh-review-intent");

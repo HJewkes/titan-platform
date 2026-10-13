@@ -7,13 +7,8 @@ const BAKED_SHA = /function buildSha\(\) \{\s*return "([0-9a-f]{40}(?:-dirty)?|u
 
 export const bakedShaOf = (bundleText: string): string | undefined => BAKED_SHA.exec(bundleText)?.[1];
 
-/**
- * The build sha baked into the dist a restart would run. A restart rebuilds nothing, so this is the
- * truth even when the checkout's HEAD is ahead of dist (a rolled-back deploy restores dist only).
- * Undefined when the dist is absent or predates the bake.
- */
-export function distBuildSha(checkout: string): string | undefined {
-  const dist = join(deployedBinPath(checkout), "..");
+/** The build sha baked into any `*.js` in `dist`; undefined when the directory is absent or no chunk carries one. */
+export function bundleBuildSha(dist: string): string | undefined {
   try {
     for (const file of readdirSync(dist).filter((name) => name.endsWith(".js"))) {
       const sha = bakedShaOf(readFileSync(join(dist, file), "utf8"));
@@ -24,3 +19,10 @@ export function distBuildSha(checkout: string): string | undefined {
   }
   return undefined;
 }
+
+/**
+ * The build sha baked into the dist a restart would run. A restart rebuilds nothing, so this is the
+ * truth even when the checkout's HEAD is ahead of dist (a rolled-back deploy restores dist only).
+ * Undefined when the dist is absent or predates the bake.
+ */
+export const distBuildSha = (checkout: string): string | undefined => bundleBuildSha(join(deployedBinPath(checkout), ".."));
