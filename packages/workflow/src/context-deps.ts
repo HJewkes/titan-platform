@@ -37,4 +37,6 @@ export interface ContextDeps {
   save: (run: WorkflowRun) => void;
   recovered: ReadonlyMap<string, RecoveredStep>;
   authority?: WorkflowAuthorityOptions;
+  /** Refuse a replay that makes a live call while the prior drive's records remain unread. */
+  strictReplay?: boolean;
 }
