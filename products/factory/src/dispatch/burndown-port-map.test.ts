@@ -1,7 +1,13 @@
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import map from "./burndown-port-map.json" with { type: "json" };
 
-type Entry = { file: string; dest: string; portSlice?: string; reason?: string; imports: string[] };
+const DISPATCH = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(DISPATCH, "..", "..", "..", "..");
+
+type Entry = { file: string; dest: string; portSlice?: string; reason?: string; imports: string[]; ported: boolean };
 const files: Entry[] = map.files;
 const count = (pick: (f: Entry) => boolean) => files.filter(pick).length;
 
@@ -35,6 +41,25 @@ describe("burndown port map", () => {
     expect(byDest).toEqual({ L1: 3, F1: 1, F2: 19, F3: 28, F4: 28, "G-1": 1, "G-2": 17, "G-4": 1, "G-10": 2, DROP: 0 });
     expect(count((f) => f.dest === "G-2" && f.portSlice === "F3")).toBe(14);
     expect(count((f) => f.dest === "G-2" && f.portSlice === "F4")).toBe(3);
+  });
+
+  it("has a factory module beside this map for every file marked ported", () => {
+    const missing = files.filter((f) => f.ported && !existsSync(join(DISPATCH, f.file))).map((f) => f.file);
+
+    expect(files.filter((f) => f.ported).length).toBeGreaterThan(0);
+    expect(missing).toEqual([]);
+  });
+
+  it("exports every symbol a leaf port lists, and covers only files that import the ported file", () => {
+    const names = new Set(files.map((f) => f.file));
+    const problems = map.leafPorts.flatMap((leaf) => {
+      const source = readFileSync(join(ROOT, leaf.module), "utf8");
+      const unexported = leaf.symbols.filter((s) => !new RegExp(`export (?:const|function|interface|type) ${s}\\b`).test(source));
+      const strangers = leaf.covers.filter((c) => !files.find((f) => f.file === c)?.imports.includes(leaf.file));
+      return [...(names.has(leaf.file) ? [] : [`${leaf.file}: no entry`]), ...unexported, ...strangers.map((c) => `${c} does not import ${leaf.file}`)];
+    });
+
+    expect(problems).toEqual([]);
   });
 
   it("resolves every internal import to another entry", () => {
