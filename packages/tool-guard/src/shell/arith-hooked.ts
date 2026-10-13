@@ -6,7 +6,6 @@ const NUMERIC_TEST_RE = /^-(?:eq|ne|lt|le|gt|ge)$/;
 /** zsh builtins whose arguments are math: `repeat 'PS4=1' true` and `return 'PS4=1'` assign PS4. */
 const MATH_ARG_BUILTINS = new Set(["repeat", "shift", "return", "exit", "break", "continue"]);
 const PRINT_FORMAT_RE = /^-[A-Za-z]*f/;
-const NON_EVALUATING = new Set(["[", "test", "select"]);
 const TEST_COMMANDS = new Set(["[", "test"]);
 const INTEGER_DECLARERS = new Set(["declare", "typeset", "local", "export", "readonly", "private"]);
 const INTEGER_OPTION_RE = /^-[A-Za-z0-9]*i/;
@@ -33,7 +32,7 @@ export function arithmeticHookedIn(cmd: Unwrapped, words: WordToken[], slots: Wo
     const hooked = mentionedIn(text);
     if (hooked !== null) return hooked;
   }
-  for (const text of [...laterExpressions(cmd), ...literalTexts(cmd, words, redirects)]) {
+  for (const text of [...laterExpressions(cmd), ...handedTexts(cmd, words, redirects)]) {
     const hooked = assignedInMath(text);
     if (hooked !== null) return hooked;
   }
@@ -69,17 +68,17 @@ function laterExpressions({ name, args, assigned }: Unwrapped): string[] {
 }
 
 /**
- * Every literal text the command hands on, which a shell may store and later read as math: `unset 'a[PS4=7]'`,
- * `set -- 'PS4=7'`, `f 'PS4=7'`, an array element `[PS4=7]=x`, a herestring or heredoc body. `[`, `test` and
- * `select` evaluate none of theirs, apart from the name a `-v` test reads, whose subscript is math.
+ * The raw text of every word the command hands on, dynamic ones included, which a shell may store and later read
+ * as math: `unset 'a[PS4=7]'`, `f "PS4=$v"`, `select x in 'PS4=7'`, an array element `[PS4=7]=x`, a herestring or
+ * heredoc body. `[` and `test` evaluate none of theirs, apart from the name a `-v` test reads, whose subscript is
+ * math.
  */
-function literalTexts({ name, args }: Unwrapped, words: WordToken[], redirects: RedirectToken[]): string[] {
-  const inputs = redirects.flatMap((r) => [...(r.target && !r.target.dynamic ? [r.target.value] : []), ...(r.body === null ? [] : [r.body])]);
-  if (name !== null && NON_EVALUATING.has(name)) {
-    const tested = TEST_COMMANDS.has(name) ? args.filter((_, i) => args[i - 1]?.value === "-v") : [];
-    return [...tested.map((w) => w.value), ...inputs];
+function handedTexts({ name, args }: Unwrapped, words: WordToken[], redirects: RedirectToken[]): string[] {
+  const inputs = redirects.flatMap((r) => [...(r.target ? [r.target.value] : []), ...(r.body === null ? [] : [r.body])]);
+  if (name !== null && TEST_COMMANDS.has(name)) {
+    return [...args.filter((_, i) => args[i - 1]?.value === "-v").map((w) => w.value), ...inputs];
   }
-  return [...[...words, ...args].filter((w) => !w.dynamic).map((w) => w.value), ...inputs];
+  return [...[...words, ...args].map((w) => w.value), ...inputs];
 }
 
 /** Where the first arithmetic in the text starts, or -1. A literal word opens only at a subscript. */

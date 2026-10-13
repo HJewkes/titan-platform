@@ -371,6 +371,14 @@ describe("arithmetic that mentions a hooked parameter", () => {
     ["zsh &&= in a value", "x='PS4&&=7'", "PS4"],
     ["zsh ^^= in a value", "x='PS4^^=7'", "PS4"],
     ["any literal word that assigns, an accepted over-read in a commit message", "git commit -m 'set PS4=1'", "PS4"],
+    ["a double-quoted value with an expansion", 'x="PS4=$v"', "PS4"],
+    ["a double-quoted function argument", 'f "PS4=$v"', "PS4"],
+    ["a double-quoted for list word", 'for x in "PS4=$v"', "PS4"],
+    ["a double-quoted herestring", 'read x <<< "PS4=$v"', "PS4"],
+    ["an alternate value", 'f "${v:+PS4=7}"', "PS4"],
+    ["select's list", "select x in 'PS4=7'", "PS4"],
+    ["zsh l flag padding text, an accepted over-read", ": ${(l:5::PS4=1:)x}", "PS4"],
+    ["a zsh subscript read of module_path, an accepted over-read", "echo $module_path[1]", "module_path"],
   ])("counts as a hooked write: %s", (_how, line, name) => {
     expect(hooked(line)).toBe(name);
   });
@@ -396,14 +404,12 @@ describe("arithmetic that mentions a hooked parameter", () => {
     ["a longer name in let", "let PS44=1"],
     ["[ ] numeric test, which does not evaluate", "[ PS4=1 -eq 1 ]"],
     ["test -eq, which does not evaluate", "test PS4=1 -eq 1"],
-    ["select's list", "select x in PS4=1"],
     ["printf %s of a word naming PS4", "printf '%s\\n' PS4"],
     ["shift by a number", "shift 2"],
     ["return of a status", "return $?"],
     ["a value naming PS4 without assigning", "x='PS4'"],
     ["a value comparing PS4", "x='PS4 == 1'"],
     ["a value of a longer name", "x='PS44=1'"],
-    ["zsh l flag padding text naming PS4", ": ${(l:5::PS4=1:)x}"],
     ["zsh l flag of a plain width", ": ${(l:10:)x}"],
   ])("returns null: %s", (_how, line) => {
     expect(hooked(line)).toBeNull();
