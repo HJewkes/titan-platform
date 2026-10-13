@@ -1,20 +1,18 @@
-/** One data row of a TSV file, keyed by header name, with its 1-based line in the file. */
-export interface TsvRecord {
-  line: number;
-  fields: Record<string, string>;
-}
-
 /**
- * Splits TSV text into records keyed by the header row. Blank lines are skipped. Throws when a
- * required column is missing from the header, so a renamed column fails loudly instead of
- * reading as empty.
+ * Splits TSV text into records keyed by the header row, each with its 1-based line in the
+ * file. Blank lines are skipped. Throws when a required column is missing from the header, so
+ * a renamed column fails loudly instead of reading as empty.
  */
-export function readTsv(text: string, required: readonly string[], label: string): TsvRecord[] {
+export function readTsv(
+  text: string,
+  required: readonly string[],
+  label: string,
+): { line: number; fields: Record<string, string> }[] {
   const lines = text.split(/\r?\n/);
   const header = (lines[0] ?? "").split("\t");
   const absent = required.filter((column) => !header.includes(column));
   if (absent.length > 0) throw new Error(`${label}: header lacks ${absent.join(", ")}`);
-  const records: TsvRecord[] = [];
+  const records: { line: number; fields: Record<string, string> }[] = [];
   lines.slice(1).forEach((raw, index) => {
     if (raw.trim() === "") return;
     const cells = raw.split("\t");
