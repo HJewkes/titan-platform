@@ -13,6 +13,7 @@ import { githubHealth, type GithubHealth } from "./github-health.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
 import { timestampConsole } from "./serve-log.js";
+import { startUnlessLive, type HealthProbe } from "./serve-beside-live.js";
 import { startLoopDelayWatch } from "./serve-loop-delay.js";
 import { untilStopped } from "./serve-signal.js";
 import { recordServeStart, serveStartsHealth, type ServeStart } from "./serve-starts.js";
@@ -85,6 +86,8 @@ export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweep
   ownerKeys?: () => OwnerKeys;
   /** Replaces the live owner-queue adapters behind needs.list and needs.count; tests inject it. */
   needsSources?: NeedsSources;
+  /** Replaces the /health probe that tells a live factory from a refused start; tests inject it. */
+  probe?: HealthProbe;
 }
 
 interface OwnerProofs {
@@ -153,7 +156,8 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
 export async function serveFactoryUntilSignal(options: FactoryServerOptions, stop?: AbortSignal): Promise<void> {
   const restoreConsole = timestampConsole();
   try {
-    const server = await startFactoryServer(options);
+    const server = await startUnlessLive(() => startFactoryServer(options), options.logger ?? consoleLogger, options.probe);
+    if (server === null) return;
     const reason = await untilStopped(stop);
     (options.logger ?? consoleLogger).info({ signal: reason }, "shutting down");
     await server.close();

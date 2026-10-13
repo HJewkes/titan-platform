@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAIN_CI_READS, MAIN_CI_ROUTES, MERGEABLE_STATES, REVIEW_OUTCOMES, ROUTES, ROUTE_TABLE, RUN_STATES, mergeableState, nextCloserStreak, roundKind, routeFor, type MergeableState, type ReviewOutcome, type Route, type RunState } from "./route-table.js";
+import { MAIN_CI_READS, MAIN_CI_ROUTES, MERGEABLE_STATES, REVIEW_OUTCOMES, ROUTES, ROUTE_TABLE, RUN_STATES, escalationReason, fixFirstEscalation, mergeableState, nextCloserStreak, roundKind, routeFor, type MergeableState, type ReviewOutcome, type Route, type RunState } from "./route-table.js";
 
 const MERGE_COLUMN: Partial<Record<ReviewOutcome, Route>> = { MERGE: "merge", "no-verdict": "fresh-reviewer", timeout: "fresh-reviewer", "external-hold": "await-external", "not-started": "retry-review", throttled: "fresh-reviewer" };
 
@@ -114,5 +114,27 @@ describe("nextCloserStreak", () => {
     ["a stuck round", "stuck", { kind: "none" }],
   ] as const)("resets on %s", (_name, kind, verdict) => {
     expect(nextCloserStreak({ streak: 1, head: "a" }, kind, verdict, "b")).toEqual({ streak: 0 });
+  });
+});
+
+describe("fixFirstEscalation", () => {
+  const HEAD = "a".repeat(40);
+
+  it("asks for a planner redesign or split at the third FIX_FIRST", () => {
+    const escalated = fixFirstEscalation(3, 0, HEAD);
+
+    expect(escalated).toEqual({ escalation: "fix-first-runaway", detail: `the last at ${HEAD}` });
+    expect(escalationReason(escalated!.escalation, escalated!.detail)).toBe(
+      `3 FIX_FIRST reviews at this task: route it to the planner to redesign or split it; Shepherd dispatches no further fix round: the last at ${HEAD}`,
+    );
+  });
+
+  it("does not escalate at the second FIX_FIRST without a Closer: no streak", () => {
+    expect(fixFirstEscalation(2, 0, HEAD)).toBeUndefined();
+  });
+
+  it("checks the runaway cap before no-progress", () => {
+    expect(fixFirstEscalation(3, 2, HEAD)?.escalation).toBe("fix-first-runaway");
+    expect(fixFirstEscalation(2, 2, HEAD)?.escalation).toBe("no-progress");
   });
 });

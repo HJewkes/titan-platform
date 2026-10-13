@@ -1,4 +1,4 @@
-/** The exec flag naming the sandbox user; fix-proof-run.sh greps a merge-base dist/bin.js for it to tell an old runner apart. */
+/** The exec flag naming the sandbox user; fix-proof-run.sh greps every merge-base dist/*.js chunk for it to tell an old runner apart. */
 export const SANDBOX_FLAG = "sandbox-user";
 /** A plain login name, so the value can never read as an option or carry shell syntax into sudo's argv. */
 export const SANDBOX_USER_PATTERN = /^[a-z_][a-z0-9_-]{0,31}$/;

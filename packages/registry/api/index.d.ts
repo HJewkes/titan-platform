@@ -121,6 +121,12 @@ interface Invocation<T = unknown> {
 }
 /** Validate args, run the command, and always return an envelope. Never throws. */
 declare function invokeCommand<Ctx extends BaseContext>(cmd: AnyCommand<Ctx>, rawArgs: unknown, ctx: Ctx, options?: InvokeOptions): Promise<Invocation>;
+type InProcessCall = (name: string, args: unknown) => Promise<JsonEnvelope<unknown>>;
+/**
+ * Call registry commands by name in process. An unknown name yields a USAGE envelope, never a throw.
+ * The context is a thunk so each call gets its own `warnings` and one call's warnings never leak into the next.
+ */
+declare function inProcessCaller<Ctx extends BaseContext>(registry: CommandRegistry<Ctx>, context: () => Ctx, options?: InvokeOptions): InProcessCall;
 
 /** The transport-agnostic MCP tool descriptor; the SDK's `Tool` is a superset. */
 interface McpToolDescriptor {
@@ -139,4 +145,4 @@ declare function toolNameToCommandName(toolName: string, naming: ToolNaming): st
 /** Build an MCP tool descriptor from a command's zod args via zod 4's native JSON Schema export. */
 declare function commandToTool(cmd: AnyCommand<never>, naming: ToolNaming): McpToolDescriptor;
 
-export { type AnyCommand, type BaseContext, type CliMeta, type CliOption, type Command, type CommandMapOf, type CommandRegistry, type ErrorDescription, type Invocation, type InvokeOptions, type McpToolDescriptor, type SchemaKind, type ToolNaming, arrayElementKind, camelizeFlagKey, coerceCliValue, collectCliArgs, collectOptionParser, commandNameToToolName, commandPath, commandToTool, createRegistry, defineCommand, describeError, fieldSchema, flagToKey, invokeCommand, isOptionalField, optionFlagSpec, positionalSpec, readCommanderOption, schemaKind, toolNameToCommandName, unwrapSchema };
+export { type AnyCommand, type BaseContext, type CliMeta, type CliOption, type Command, type CommandMapOf, type CommandRegistry, type ErrorDescription, type InProcessCall, type Invocation, type InvokeOptions, type McpToolDescriptor, type SchemaKind, type ToolNaming, arrayElementKind, camelizeFlagKey, coerceCliValue, collectCliArgs, collectOptionParser, commandNameToToolName, commandPath, commandToTool, createRegistry, defineCommand, describeError, fieldSchema, flagToKey, inProcessCaller, invokeCommand, isOptionalField, optionFlagSpec, positionalSpec, readCommanderOption, schemaKind, toolNameToCommandName, unwrapSchema };
