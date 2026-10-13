@@ -520,6 +520,12 @@ describe("every math write operator, spacing and side around a computed name", (
     ["$[ ] in a % pattern", ': "${x%$[${y}=1]}"'],
     ["$(( )) in a / pattern", ': "${x/$(( ${y}=1 ))/z}"'],
     ["a bare { before the expansion in a pattern", 'f "${x#{},${y}=7,0}"'],
+    ["& in a replacement before =", 'f "${y/*/&=7}"'],
+    ["& in a replacement before a spaced =", 'f "${y/*/& = 7}"'],
+    ["& in a replacement before ++", 'f "${y/*/&++}"'],
+    ["a quote in a replacement before =", "f \"${x/*/PS'4'=7}\""],
+    ["& in a // replacement", 'f "${y//*/&=7}"'],
+    ["& in a /# replacement after ++", 'f "${y/#*/++&}"'],
     ["a # pattern holding =, an accepted over-read", 'val="${line#*=}"'],
     ["a positional # pattern holding =, an accepted over-read", 'f "${1#*=}"'],
   ])("counts: %s", (_how, line) => {
@@ -529,6 +535,7 @@ describe("every math write operator, spacing and side around a computed name", (
   it.each([
     ["a quoted heredoc body", "cat <<'EOF'\n${x}=1\nEOF"],
     ["a / pattern whose = follows no name", 'f "${x/=/:}"'],
+    ["& in a URL query, outside any replacement", 'curl "$U?a=1&b=2"'],
     ["g++", "g++ -O2 a.c"],
     ["an option holding =", "ls --color=auto"],
     ["== after an expansion", 'f "$a == $b"'],
