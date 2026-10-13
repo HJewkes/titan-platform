@@ -824,8 +824,8 @@ procedure is not a hold reason. Any other reason is refused with exit 65 before 
 read or written: nothing is held, so the pull request stays unheld and Shepherd may still
 merge it. The refusal message lists the classes and the task-ID rule
 (`products/factory/src/shepherd/hold-reason.ts`). Only `shepherd hold` checks the reason.
-`release` clears any hold, and a typed `hold` replaces an existing one, including one
-stored before the check existed.
+`release` clears any hold but a `g10-adversary` or `owner-asked` one, and a typed `hold`
+replaces an existing one, including one stored before the check existed.
 
 A hold does not stop the run. CI waits, branch updates and gates carry on. The hold blocks
 the merge call itself: every merge route reads the hold first, and a held pull request waits
@@ -849,15 +849,27 @@ checks are green at that head. A hold that names a reviewer waits for that revie
 When Shepherd's own update-branch then moves the head by a clean merge-up of main, that
 `MERGE` stands at the new head: the step releases the hold there once its checks are green,
 with no fresh review and no seat release. A head reached by any other move, or carried by the
-remerge rule, needs a fresh review first. A `g10-adversary:` hold never releases itself; the
-seat releases it.
+remerge rule, needs a fresh review first. A `g10-adversary:` hold never releases itself, and
+no seat releases it: only the owner's signed release does.
+
+A `g10-adversary:` hold lifts only through an owner-signed `titan-factory.hold-release`
+statement posted to serve's `POST /holds/release-proof` (TP-2378). The statement is bound to the
+run, the sha256 of the hold's reason, the PR head and serve's `aud`, its nonce is good once, and
+the release event records actor `key:<keyId>`. `shepherd release` that would lift it, with
+`--class g10-adversary` or as the run's only hold, refuses with exit 65 before it reads the PR and
+writes nothing, whatever actor it sends: the actor is self-declared, so it proves nothing. A
+`shepherd hold` over it may change the detail of its reason, but one that names another
+`--reviewer`, or drops or adds one, refuses with exit 65, since that reviewer's `MERGE` would
+satisfy the hold. A hold of another class parks under it (below). The account-limit release
+lifts only the account hold it placed, so it never lifts this one. A seat still chooses the
+reviewer named when the hold is first placed, and that reviewer's `MERGE` still satisfies it.
 
 `release` takes the head the seat reviewed, as `--head <40-character sha>`, and refuses with exit 65
 when the pull request is at another head, or with exit 69 when the head cannot be read: a seat
 that reviewed one head must not release a later one. It also refuses, with exit 65, a run that is
 not held. The release records that head, and the `sh-g10-rehold` step compares later heads against it.
 
-A `g10-adversary:` hold the seat released is re-applied by the `sh-g10-rehold` step, read at every
+A `g10-adversary:` hold the owner released is re-applied by the `sh-g10-rehold` step, read at every
 CI read, when the head then moves off the released one: a fix round, a fixer's push, a rebase, or
 a merge-up whose conflicts were resolved by hand. The hold event names the old and new head and
 the seat is told. A pure merge-up keeps the release: the head's first parent is the released head
@@ -879,24 +891,24 @@ the seat is told.
 Once a `g10-adversary` hold has been released at
 a recorded head, the rule holds for the rest of the run. Later holds of other classes, and releases
 written with no head, such as Shepherd's own `g10-review` auto-release, do not switch it off. Later
-heads are compared against the head the seat last released a `g10-adversary` hold at. A release of
+heads are compared against the head a `g10-adversary` hold was last released at. A release of
 another class leaves that head where it was, even one made with `--head` at a newer head: lifting a
 stall is not an adversary review.
 
 A run keeps two holds at once: the `g10-adversary` hold and one hold of any other class. Each
 `shepherd hold` replaces only the hold of its own kind, and both are recorded. While both are in
 force, the `g10-adversary` hold gates and shows, and a `release` must name the hold it lifts with
-`--class <class>`: one that names none is refused, so lifting a stall can never count as the seat's
-adversary release. `--class g10-adversary` lifts the adversary hold, and the other hold, with its
-`--reviewer`, then gates until it is released in turn; `--class stalled` lifts the stall and leaves
-the adversary hold in place. A run with one hold releases it with no `--class`, as before. The
-release reports the hold still in force. So an owner's or another seat's hold survives the seat's
-adversary release, and an adversary hold placed over another hold never drops it. A
-`g10-adversary` release with no head (made before `--head` was required) vouches for no head, so
-the next merge check re-holds and the seat releases again with `--head`.
+`--class <class>`: one that names none is refused, so lifting a stall can never count as the
+adversary release. `--class stalled` lifts the stall and leaves the adversary hold in place. The
+owner's signed release lifts the adversary hold, and the other hold, with its `--reviewer`, then
+gates until it is released in turn. A run with one hold of another class releases it with no
+`--class`, as before. The release reports the hold still in force. So an owner's or another seat's
+hold survives the adversary release, and an adversary hold placed over another hold never drops
+it. A `g10-adversary` release with no head (made before `--head` was required) vouches for no head,
+so the next merge check re-holds and the owner releases again at the head.
 
 The rule fails closed. The run's registration row decides whether a hold gates now; the events
-decide only where the seat released. A repoint carries the run's events and proofs to the run that
+decide only where the hold was released. A repoint carries the run's events and proofs to the run that
 replaces it. A proof is kept per base branch, so a head shown clean onto another branch is probed
 again onto the pull request's own base. A release records the hold it lifted.
 

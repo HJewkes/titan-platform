@@ -11,6 +11,7 @@ import { BRANCH, callCommand, shepherdFixture, shepherdRuns, type FixtureOptions
 import { AccountLimitStore } from "./account-store.js";
 import type { MergeEvaluation, Registered } from "./commands.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
+import type { ShepherdStore } from "./store.js";
 import { PrTimelineSchema, WatchRowSchema, type PrTimeline, type WatchRow } from "./view.js";
 import type { Waiting } from "./waiting.js";
 
@@ -658,7 +659,7 @@ describe("shepherd.merge", () => {
     w.fake.addPr({ headSha: H1, headRef: BRANCH });
     const { runId } = await registered(w, pr1);
 
-    await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: "g10-adversary: trust rule; TP-1" });
+    await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: "no-reviewer: review step recorded none; TP-1" });
     await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1 });
 
     expect(w.routes.shepherd!.store.get().eventsOf(runId).at(-1)).toMatchObject({ kind: "release", headSha: H1 });
@@ -669,7 +670,7 @@ describe("shepherd.merge", () => {
     w.fake.addPr({ headSha: H1, headRef: BRANCH });
     const { runId } = await registered(w, pr1);
     const store = w.routes.shepherd!.store.get();
-    store.hold(runId, "g10-adversary: trust rule; TP-1");
+    store.hold(runId, "no-reviewer: review step recorded none; TP-1");
     w.fake.pr(1).headSha = fakeSha("pushed-after-review");
 
     const envelope = await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1 });
@@ -694,7 +695,7 @@ describe("shepherd.merge", () => {
     w.fake.addPr({ headSha: H1, headRef: BRANCH });
     const { runId } = await registered(w, pr1);
     const store = w.routes.shepherd!.store.get();
-    store.hold(runId, "g10-adversary: trust rule; TP-1");
+    store.hold(runId, "no-reviewer: review step recorded none; TP-1");
     const missing = await w.call("shepherd.release", { repo: REPO, pr: 1 });
     w.fake.onGetPr = () => {
       throw new Error("github is down");
@@ -760,19 +761,14 @@ describe("shepherd.release with a g10-adversary hold over another", () => {
     expect(store.eventsOf(runId).map((event) => event.kind)).toEqual(["hold", "hold"]);
   });
 
-  it("lifts only the named class, records its reason, and reports the hold still in force", async () => {
+  it("lifts only the named class, records its reason, and reports the adversary hold still in force", async () => {
     const { w, runId } = await heldTwice();
     const store = w.routes.shepherd!.store.get();
 
     const stall = await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1, holdClass: "stalled", actor: "owner" });
-    const adversary = await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1, actor: "seat" });
 
     expect(stall).toEqual({ ok: true, data: { runId, held: { reason: ADVERSARY } } });
-    expect(adversary).toEqual({ ok: true, data: { runId, held: null } });
-    expect(store.eventsOf(runId).filter((event) => event.kind === "release").map((event) => [event.reason, event.actor])).toEqual([
-      [STALL, "owner"],
-      [ADVERSARY, "seat"],
-    ]);
+    expect(store.eventsOf(runId).filter((event) => event.kind === "release").map((event) => [event.reason, event.actor])).toEqual([[STALL, "owner"]]);
   });
 
   it("refuses a class the run holds no hold of, and records no event", async () => {
@@ -782,6 +778,97 @@ describe("shepherd.release with a g10-adversary hold over another", () => {
 
     expect(envelope).toMatchObject({ ok: false, error: expect.stringContaining("no visual-gate2 hold") });
     expect(w.routes.shepherd!.store.get().eventsOf(runId)).toHaveLength(2);
+  });
+});
+
+describe("a g10-adversary or owner-asked hold that only an owner-signed release lifts", () => {
+  const ADVERSARY = "g10-adversary: trust rule";
+  const OWNER = "owner-asked: hold, discuss";
+
+  async function heldAs(reason: string, reviewer?: string): Promise<{ w: World; runId: string; store: ShepherdStore }> {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const { runId } = await registered(w, pr1);
+    await w.call("shepherd.hold", { repo: REPO, pr: 1, reason, actor: "seat-a", ...(reviewer && { reviewer }) });
+    return { w, runId, store: w.routes.shepherd!.store.get() };
+  }
+
+  it.each([
+    [ADVERSARY, "owner", undefined],
+    [ADVERSARY, "seat-a", undefined],
+    [ADVERSARY, undefined, undefined],
+    [ADVERSARY, "owner", "g10-adversary"],
+    [OWNER, "owner", undefined],
+    [OWNER, "seat-a", undefined],
+    [OWNER, undefined, undefined],
+  ])("refuses shepherd.release of %s by actor %s (class %s) with exit 65, keeps the hold and records no release", async (reason, actor, holdClass) => {
+    const { w, runId, store } = await heldAs(reason);
+
+    const refused = await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1, ...(actor && { actor }), ...(holdClass && { holdClass }) });
+
+    expect(refused).toMatchObject({ ok: false, code: 65 });
+    expect(store.heldReason(REPO, 1)).toBe(reason);
+    expect(store.eventsOf(runId).map((event) => event.kind)).toEqual(["hold"]);
+  });
+
+  it("refuses an adversary release before reading the PR, naming the signed route", async () => {
+    const { w } = await heldAs(ADVERSARY);
+    w.fake.onGetPr = () => {
+      throw new Error("github is down");
+    };
+
+    const refused = await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1, actor: "owner" });
+
+    expect(refused).toMatchObject({ ok: false, code: 65, error: expect.stringContaining("POST /holds/release-proof") });
+  });
+
+  it.each([
+    ["another reviewer", "other-review"],
+    ["no reviewer", undefined],
+  ])("refuses a re-hold that moves the adversary hold to %s with exit 65 and writes nothing", async (_case, reviewer) => {
+    const { w, runId, store } = await heldAs(ADVERSARY, "sec-review");
+
+    const refused = await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: "g10-adversary: new detail", ...(reviewer && { reviewer }) });
+
+    expect(refused).toMatchObject({ ok: false, code: 65, error: expect.stringContaining("reviewer sec-review") });
+    expect(store.byRun(runId)).toMatchObject({ holdReason: ADVERSARY, holdReviewer: "sec-review" });
+    expect(store.eventsOf(runId)).toHaveLength(1);
+  });
+
+  it("refuses a re-hold that names a reviewer for an adversary hold that waited on none", async () => {
+    const { w, store } = await heldAs(ADVERSARY);
+
+    const refused = await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: ADVERSARY, reviewer: "friendly-review" });
+
+    expect(refused).toMatchObject({ ok: false, code: 65 });
+    expect(store.heldReason(REPO, 1)).toBe(ADVERSARY);
+  });
+
+  it("lets a re-hold change the adversary hold's detail under the same reviewer", async () => {
+    const { w, runId } = await heldAs(ADVERSARY, "sec-review");
+
+    const held = await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: "g10-adversary: new detail", reviewer: "sec-review" });
+
+    expect(held).toEqual({ ok: true, data: { runId, held: { reason: "g10-adversary: new detail", reviewer: "sec-review" } } });
+  });
+
+  it("parks a hold of another class under the adversary hold, so releasing it leaves the adversary hold gating", async () => {
+    const { w, runId } = await heldAs(ADVERSARY, "sec-review");
+
+    const held = await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: "serve-down: y; TP-1" });
+    const released = await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1, holdClass: "serve-down" });
+
+    expect(held).toMatchObject({ ok: true, data: { held: { reason: ADVERSARY, reviewer: "sec-review" } } });
+    expect(released).toEqual({ ok: true, data: { runId, held: { reason: ADVERSARY, reviewer: "sec-review" } } });
+  });
+
+  it("still lifts the adversary hold by the compare-and-swap the signed route uses, recording its key", async () => {
+    const { runId, store } = await heldAs(ADVERSARY);
+
+    const lifted = store.releaseIfHeld(runId, ADVERSARY, { actor: "key:owner-mac", headSha: H1 });
+
+    expect(lifted).toBe(true);
+    expect(store.eventsOf(runId).at(-1)).toMatchObject({ kind: "release", actor: "key:owner-mac", headSha: H1 });
   });
 });
 

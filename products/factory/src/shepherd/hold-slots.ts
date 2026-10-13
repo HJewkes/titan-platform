@@ -25,6 +25,17 @@ export function afterHold({ top, parked }: HoldSlots, hold: SlotHold): HoldSlots
   return { top: hold, parked };
 }
 
+/**
+ * Why `hold` may not replace the gating `g10-adversary` hold, or undefined when it may. A hold of another class parks
+ * under it, and a re-hold may change its detail; one that names another reviewer, or drops or adds one, would let a
+ * MERGE that reviewer chose satisfy it, a release by another route (TP-2378).
+ */
+export function adversarySwapRefusal({ top }: HoldSlots, hold: SlotHold): string | undefined {
+  if (top === null || !isAdversaryHold(top.reason) || !isAdversaryHold(hold.reason) || top.reviewer === hold.reviewer) return undefined;
+  const reviewer = (name: string | null): string => (name === null ? "no named reviewer" : `reviewer ${name}`);
+  return `hold refused, nothing was held: the g10-adversary hold in force waits for ${reviewer(top.reviewer)}, and a re-hold may not change it to ${reviewer(hold.reviewer)}; only an owner-signed release (POST /holds/release-proof) lifts it`;
+}
+
 /** A release lifts the hold that gates; a parked one then gates in its place. */
 export const afterRelease = ({ parked }: HoldSlots): HoldSlots => ({ top: parked, parked: null });
 

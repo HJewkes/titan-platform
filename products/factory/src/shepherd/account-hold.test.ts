@@ -381,3 +381,19 @@ describe("a repoint during an account hold", () => {
     expect(s.db.prepare("SELECT run_id, reason FROM shepherd_account_hold").all()).toEqual([{ run_id: "run-2", reason: HELD }]);
   });
 });
+
+describe("an account hold a seat re-held as g10-adversary", () => {
+  it("stays held when headroom arrives: the account release lifts only its own hold", async () => {
+    const s = scene();
+    s.register("run-1", 1);
+    await s.hold("run-1");
+    s.store().hold("run-1", "g10-adversary: authority touch", undefined, { actor: "seat-a" });
+    s.clock.now = Date.parse("2026-10-11T00:00:01.000Z");
+
+    const account = s.pick("run-1");
+
+    expect(account).toBe(ACCOUNT);
+    expect(s.store().byRun("run-1")).toMatchObject({ held: true, holdReason: "g10-adversary: authority touch" });
+    expect(s.store().eventsOf("run-1").map((event) => event.kind)).not.toContain("release");
+  });
+});

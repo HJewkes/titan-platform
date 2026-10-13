@@ -48,7 +48,7 @@ export function ownReholdAt(events: readonly ShepherdEvent[], head: string): str
 
 const reholdReason = (from: string | undefined, to: string): string =>
   from === undefined
-    ? `g10-adversary: no seat release at a recorded head covers ${to}; the seat must review it and release with --head`
+    ? `g10-adversary: no release at a recorded head covers ${to}; the seat reviews it and the owner releases it with a signed hold-release proof`
     : `g10-adversary: head moved from ${from} to ${to} after the seat released the hold; the seat's fail-open review does not cover it`;
 
 /** The re-hold a moved head needs, and the run's change mark it was judged at, for the caller's compare-and-swap. */

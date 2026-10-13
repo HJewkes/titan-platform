@@ -1,11 +1,12 @@
 import type { RepoSlug } from "@titan-design/github";
+import { EXIT } from "@titan-design/registry";
 import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
 import { moveAccountHold } from "./account-store.js";
 import { parkSettled, repointParkSettled, settlePark, type ParkSettle } from "./park-settled.js";
 import { readSlots, recordVouch, repointRunRows, vouchedLine, writeSlotRow, type Vouch } from "./hold-slot-rows.js";
-import { afterHold, isAdversaryHold, liftClass, liftTop, type HoldSlots, type Lift, type SlotHold } from "./hold-slots.js";
+import { adversarySwapRefusal, afterHold, isAdversaryHold, liftClass, liftTop, type HoldSlots, type Lift, type SlotHold } from "./hold-slots.js";
 import { isOwnerHold, liftOwnerHold, ownerHoldOf, placeOwnerHold, recordOwnerAsked, type OwnerHold } from "./owner-hold-rows.js";
 import { registrationFactsOf, writeRegistrationFacts, type RegistrationFacts, type RegistrationFactsInput } from "./registration-facts.js";
 import { EffectivePolicySchema, RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy.js";
@@ -71,6 +72,8 @@ export interface HoldSatisfaction {
 export interface HoldLookup {
   heldReason(repo: RepoSlug, pr: number, branch?: string, sha?: string): string | undefined;
 }
+
+const unlessAdversary = (lift: Lift | undefined): Lift | undefined => (lift !== undefined && isAdversaryHold(lift.reason) ? undefined : lift);
 
 export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrationFactsMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
 
@@ -177,9 +180,18 @@ export class ShepherdStore implements HoldLookup {
     return this.changed(newRunId, this.byRun(newRunId)!);
   }
 
-  /** A hold or release clears any satisfaction, so a re-hold waits for its reviewer again; another class waits under a `g10-adversary` hold (`afterHold`); an owner-asked hold takes its own slot. */
+  /**
+   * A hold or release clears any satisfaction, so a re-hold waits for its reviewer again; another class waits under a
+   * `g10-adversary` hold (`afterHold`); an owner-asked hold takes its own slot. A re-hold that would change the gating
+   * `g10-adversary` hold's reviewer throws, exit 65, writing nothing.
+   */
   hold(runId: string, reason: string, reviewer?: string, by: EventContext = {}): Registration {
-    this.db.transaction(() => this.placeHold(runId, { reason, reviewer: reviewer ?? null }, by))();
+    const hold = { reason, reviewer: reviewer ?? null };
+    this.db.transaction(() => {
+      const refusal = adversarySwapRefusal(readSlots(this.db, runId), hold);
+      if (refusal !== undefined) throw Object.assign(new Error(refusal), { code: EXIT.DATAERR });
+      this.placeHold(runId, hold, by);
+    })();
     return this.changed(runId, this.byRun(runId)!);
   }
 
@@ -204,9 +216,12 @@ export class ShepherdStore implements HoldLookup {
     return this.changed(runId, recordOwnerAsked(this.db, runId, this.stamp()));
   }
 
-  /** Compare-and-swap: lifts only the hold `liftClass` picks for `holdClass`; false, writing nothing, when it picks none. */
+  /**
+   * Compare-and-swap: lifts only the hold `liftClass` picks for `holdClass`; false, writing nothing, when it picks none or
+   * picks a `g10-adversary` hold, which lifts only with an owner-signed proof (`releaseIfHeld` from `hold-release-proof.ts`).
+   */
   releaseClass(runId: string, holdClass: string | undefined, by: EventContext = {}): boolean {
-    return this.lift(runId, (slots) => liftClass(slots, holdClass), by);
+    return this.lift(runId, (slots) => unlessAdversary(liftClass(slots, holdClass)), by);
   }
 
   /** The id of the run's latest hold or release event, 0 when it has none; a reader keeps it to learn, at its write, whether any change landed since. */

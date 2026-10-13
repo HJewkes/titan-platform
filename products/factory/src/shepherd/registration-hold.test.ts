@@ -211,7 +211,7 @@ describe("the G10 hold Shepherd places at registration", () => {
 
     const reason = await applyRegistrationHold(r.port, r.store, "run-1");
     const gating = r.store.byRun("run-1")?.holdReason;
-    r.store.releaseClass("run-1", "g10-adversary");
+    r.store.releaseIfHeld("run-1", gating ?? "");
 
     expect(reason).toBe("g10-adversary: hold history unread at registration (Error)");
     expect(gating).toBe(reason);

@@ -232,7 +232,11 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
     ref (reviewer, session, locator). A FIX_FIRST, a head that moved, a verdict carried from another head, or a
     profile that is not an opus one keeps the hold.
   - `g10-adversary` never releases itself. Seats use it for authority, merge-policy and security PRs, which also
-    need a seat's fail-open reviewer until Shepherd has one (TP-1931); release it with `shepherd release <pr> --head <sha>`.
+    need a seat's fail-open reviewer until Shepherd has one (TP-1931). Only an owner-signed `titan-factory.hold-release`
+    statement on serve's `POST /holds/release-proof` lifts it (TP-2378), recorded as actor `key:<keyId>`.
+    `shepherd release` that would lift it refuses with exit 65 and writes nothing, whatever actor it sends, and so
+    does a `shepherd hold` that would change its `--reviewer`; a re-hold may change its detail. The account-limit
+    release never lifts it.
 
   Any other class waits for `shepherd release <pr> --head <sha>`. While a `g10-adversary` hold sits over a
   hold of another class, `release` must name the hold it lifts with `--class <class>`.
