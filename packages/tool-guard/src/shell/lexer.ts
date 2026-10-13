@@ -1,6 +1,7 @@
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, sameSpend, spent } from "./arith-trials.js";
 import { backtickEnd, balancedEnd, type DollarOpener, dollarOpener, type NestedReaders, QUOTED_LITERAL_OPENERS } from "./balanced.js";
 import { dropJoins, joinedDollar, nextAfter, pastJoins, readAhead } from "./joins.js";
+import { newRegexScan, noteCompoundParen, refuseRedirect } from "./compound.js";
 import { nested } from "./nesting.js";
 import { ParseError, refusingAs, SplitParseError } from "./parse-error.js";
 import { readLineEnd } from "./procsub-heredoc.js";
@@ -13,8 +14,6 @@ export type { LexState, OpToken, RedirectToken, SubsToken, Token, VarRef, WordTo
 
 const OPERATORS = ["&&", "||", ";;", "|&", "|", ";", "&", "(", ")", "\n"];
 const REDIRECT_RE = /&>>?|<<<|<<-?|<>|>>|>&|<&|>\||>|</y;
-/** The word before a compound assignment's `(`; quotes are already removed from the value. */
-const ASSIGNMENT_HEAD_RE = /^[A-Za-z_]\w*(?:\[.*\])?\+?=/s;
 const BRACED_NAME_RE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
 /** Characters that keep their meaning inside a subscript: quotes, escapes and expansions. */
 const SUBSCRIPT_ACTIVE = "\\'\"`$";
@@ -27,7 +26,7 @@ export function tokenize(src: string, trials = newTrials(src)): Token[] {
 }
 
 function newState(src: string, i: number, nested: boolean, trials: ArithTrials): LexState {
-  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], leftOpen: false, redirect: null, subscriptEnd: -1, looseSubscriptEnd: -1, arithOutsideLoose: true, arithEnd: -1, wholeEnd: -1, compoundDepth: -1, trials };
+  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], leftOpen: false, redirect: null, subscriptEnd: -1, looseSubscriptEnd: -1, arithOutsideLoose: true, arithEnd: -1, wholeEnd: -1, compoundDepth: -1, regex: newRegexScan(), trials };
 }
 
 function lex(s: LexState): void {
@@ -156,22 +155,14 @@ function readBlank(s: LexState): void {
 /** A newline bash read inside a `((` span, arithmetic or reparsed as subshells, is not a line end and starts no heredoc body. */
 function readOperator(s: LexState, op: string, end: number): void {
   const inWholeSpan = s.i < s.wholeEnd;
+  const inArithmetic = s.i < s.arithEnd;
   endWord(s);
   s.i = end;
   if (op === "(") s.depth++;
   if (op === ")") s.depth--;
-  noteCompoundParen(s, op);
+  noteCompoundParen(s, op, inArithmetic);
   s.tokens.push({ type: "op", value: op });
   if (op === "\n" && !inWholeSpan) readLineEnd(s);
-}
-
-/** Inside `NAME=( … )` bash accepts only words, newlines and the closing `)`; any other operator ends the line in a syntax error. */
-function noteCompoundParen(s: LexState, op: string): void {
-  if (s.compoundDepth !== -1 && op !== ")" && op !== "\n") throw new ParseError(`\`${op}\` inside a compound assignment ( … ) is a bash syntax error`);
-  if (op === ")" && s.depth < s.compoundDepth) s.compoundDepth = -1;
-  if (op !== "(" || s.compoundDepth !== -1) return;
-  const before = s.tokens[s.tokens.length - 1];
-  if (before?.type === "word" && ASSIGNMENT_HEAD_RE.test(before.value)) s.compoundDepth = s.depth;
 }
 
 function readDouble(s: LexState): void {
@@ -393,7 +384,7 @@ function readRedirect(s: LexState): void {
     s.tokens.push({ type: "subs", subs: [readSubstitution(s, paren + 1)] });
     return;
   }
-  if (s.compoundDepth !== -1) throw new ParseError("a redirect inside a compound assignment ( … ) is a bash syntax error");
+  refuseRedirect(s);
   const heredoc = op === "<<" || op === "<<-";
   const token: RedirectToken = { type: "redirect", op, fd, target: null, body: heredoc ? "" : null, subs: [] };
   s.tokens.push(token);
