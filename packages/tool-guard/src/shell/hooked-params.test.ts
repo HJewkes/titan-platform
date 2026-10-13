@@ -206,6 +206,20 @@ describe("an option word the walk reads both ways", () => {
     expect(performance.now() - started).toBeLessThan(200);
   });
 
+  it.each([
+    ["read, whose -p ends options in zsh", "read", "-p a "],
+    ["stat, whose -t ends options in BSD stat", "stat", "-t a "],
+  ])("slots the operands once when many readings end options: %s", (_how, name, unit) => {
+    const words = tokenize(`${name} ${unit.repeat(20_000)}-A module_path`).filter((t): t is WordToken => t.type === "word");
+    const cmd = unwrap(words);
+    const started = performance.now();
+
+    const named = cmd && writesHookedParam(cmd, words);
+
+    expect(named).toBe("module_path");
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+
   it("fails closed on an option word too long to walk", () => {
     expect(hooked(`stat -${"t".repeat(300)} f`)).toBe(`-${"t".repeat(300)}`);
   });

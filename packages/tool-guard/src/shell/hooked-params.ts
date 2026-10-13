@@ -116,22 +116,31 @@ function forNames(args: WordToken[]): WordToken[] {
 }
 
 /**
+ * What a walk collects: option values that are slots, and the earliest word where some reading's operands start.
+ * Every reading's operands are a suffix of the arguments, so the earliest start covers them all, slotted once.
+ */
+interface OptionWalk {
+  slots: WordToken[];
+  operandsFrom: number;
+}
+
+/**
  * Walks the option words as every shell may read them. A state is a word index and a letter offset in it (0 before
  * the word); an either-letter queues both readings, and each state is read once, so the walk stays linear.
  */
 function specSlots(spec: WriterSpec, args: WordToken[]): WordToken[] | string {
-  const slots: WordToken[] = [];
+  const walk: OptionWalk = { slots: [], operandsFrom: args.length };
   const seen = new Set<string>();
   const pending: Array<[number, number]> = [[0, 0]];
   for (let state = pending.pop(); state !== undefined; state = pending.pop()) {
     const key = state.join(":");
     if (seen.has(key)) continue;
     seen.add(key);
-    const next = step(spec, args, state, slots);
+    const next = step(spec, args, state, walk);
     if (typeof next === "string") return next;
     pending.push(...next);
   }
-  return slots;
+  return [...walk.slots, ...operandSlots(spec, args.slice(walk.operandsFrom))];
 }
 
 /**
@@ -139,17 +148,17 @@ function specSlots(spec: WriterSpec, args: WordToken[]): WordToken[] | string {
  * is a slot, and so is the next word after a name or either-letter. A character no shell takes as an option ends
  * the reading, since the shell then refuses the command.
  */
-function step(spec: WriterSpec, args: WordToken[], [i, k]: [number, number], slots: WordToken[]): Array<[number, number]> | string {
+function step(spec: WriterSpec, args: WordToken[], [i, k]: [number, number], walk: OptionWalk): Array<[number, number]> | string {
   const word = args[i];
   if (word === undefined) return [];
-  if (k === 0) return startWord(spec, args, i, word, slots);
+  if (k === 0) return startWord(spec, i, word, walk);
   if (k >= word.value.length) return [[i + 1, 0]];
   const letter = word.value.charAt(k);
   const tail = word.value.slice(k + 1);
   const either = has(spec.either, letter);
   if (either || has(spec.names, letter) || has(spec.values, letter)) {
     const value = tail ? { ...word, value: tail } : has(spec.values, letter) ? null : (args[i + 1] ?? null);
-    if (value !== null) slots.push(value);
+    if (value !== null) walk.slots.push(value);
     const after: [number, number] = tail ? [i + 1, 0] : [i + 2, 0];
     return either ? [after, [i, k + 1]] : [after];
   }
@@ -162,14 +171,14 @@ function step(spec: WriterSpec, args: WordToken[], [i, k]: [number, number], slo
 const MAX_OPTION_WORD = 256;
 
 /** At a word's start: the operands once options end, or the first letter of an option word. */
-function startWord(spec: WriterSpec, args: WordToken[], i: number, word: WordToken, slots: WordToken[]): Array<[number, number]> | string {
+function startWord(spec: WriterSpec, i: number, word: WordToken, walk: OptionWalk): Array<[number, number]> | string {
   if (!mayBeOption(word, spec)) {
-    slots.push(...operandSlots(spec, args.slice(i)));
+    walk.operandsFrom = Math.min(walk.operandsFrom, i);
     return [];
   }
   if (word.dynamic || word.value.length > MAX_OPTION_WORD) return word.value;
   if (word.value === "--" || word.value === "-") {
-    slots.push(...operandSlots(spec, args.slice(i + 1)));
+    walk.operandsFrom = Math.min(walk.operandsFrom, i + 1);
     return [];
   }
   if (spec.longOptions === true && word.value.startsWith("--")) return [[i + 1, 0]];
