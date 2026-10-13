@@ -380,6 +380,16 @@ describe("re-classing an unread-files hold in one swap", () => {
     expect(store.eventsOf("run-1").map((event) => [event.kind, event.reason])).toEqual([["hold", UNREAD], ["release", UNREAD], ["hold", REVIEW]]);
   });
 
+  it("places the real class over a parked stall without dropping it", () => {
+    const store = heldUnread(STALL);
+    const over = "g10-adversary: 900 changed lines, over a stalled hold";
+
+    store.reclassIfHeld("run-1", UNREAD, (gating) => (gating === STALL ? over : undefined), { actor: "shepherd" });
+
+    expect(store.byRun("run-1")?.holdReason).toBe(over);
+    expect(store.release("run-1", { actor: "seat" }).holdReason).toBe(STALL);
+  });
+
   it("writes nothing when the gating hold is not the one named", () => {
     const store = heldUnread();
     store.release("run-1", { actor: "seat" });

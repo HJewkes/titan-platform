@@ -4,7 +4,8 @@ import { z } from "zod";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
 import { moveAccountHold } from "./account-store.js";
 import { parkSettled, repointParkSettled, settlePark, type ParkSettle } from "./park-settled.js";
-import { readSlots, recordVouch, repointRunRows, vouchedLine, writeSlotRow, type Vouch } from "./hold-slot-rows.js";
+import { HoldSatisfiedBySchema, type HoldSatisfaction, type HoldSatisfiedBy } from "./hold-satisfaction.js";
+import { readSlots, reclassHold, recordVouch, repointRunRows, vouchedLine, writeSlotRow, type Reclass, type Vouch } from "./hold-slot-rows.js";
 import { afterHold, isAdversaryHold, liftClass, liftTop, type HoldSlots, type Lift, type SlotHold } from "./hold-slots.js";
 import { isOwnerHold, liftOwnerHold, ownerHoldOf, placeOwnerHold, recordOwnerAsked, type OwnerHold } from "./owner-hold-rows.js";
 import { registrationFactsOf, writeRegistrationFacts, type RegistrationFacts, type RegistrationFactsInput } from "./registration-facts.js";
@@ -58,14 +59,7 @@ export interface Registration extends RegistrationFacts {
   updatedAt: string;
 }
 
-/** The verdict that satisfied a hold: its reviewer's name, the session that wrote it, and where in that session's transcript. */
-export const HoldSatisfiedBySchema = z.object({ reviewer: z.string(), agentId: z.string(), sessionId: z.string(), locator: z.looseObject({}) });
-export type HoldSatisfiedBy = z.infer<typeof HoldSatisfiedBySchema>;
-
-export interface HoldSatisfaction {
-  head: string;
-  by: HoldSatisfiedBy;
-}
+export { HoldSatisfiedBySchema, type HoldSatisfaction, type HoldSatisfiedBy } from "./hold-satisfaction.js";
 
 /** What the merge guard asks: the reason `repo#pr`, or the PR's head `branch`, is held, or undefined when nothing holds it; a hold satisfied at `sha` does not hold a merge there. */
 export interface HoldLookup {
@@ -194,23 +188,9 @@ export class ShepherdStore implements HoldLookup {
     return this.lift(runId, (slots) => (slots.top?.reason === reason ? liftTop(slots) : undefined), by);
   }
 
-  /**
-   * Compare-and-swap in one transaction: lifts the gating hold only while it is exactly `from`, recording `from` as the
-   * release's reason, then places `next(<the hold now gating>)` when that is defined, so a parked hold is never dropped and
-   * the run is never seen unheld between the two writes. The placed reason, null when only released, false when nothing was written.
-   */
-  reclassIfHeld(runId: string, from: string, next: (gating: string | null) => string | undefined, by: EventContext = {}): string | null | false {
-    const swap = this.db.transaction((): string | null | false => {
-      const slots = readSlots(this.db, runId);
-      if (slots.top?.reason !== from) return false;
-      const lifted = liftTop(slots).slots;
-      this.writeSlots(runId, lifted, { kind: "release", reason: from }, by);
-      const placed = next(lifted.top?.reason ?? null);
-      if (placed === undefined) return null;
-      this.placeHold(runId, { reason: placed, reviewer: null }, by);
-      return placed;
-    });
-    return this.changed(runId, swap());
+  /** Compare-and-swap in one transaction: `reclassHold` swaps the gating hold, only while it is `from`, for `next` of the hold left gating. */
+  reclassIfHeld(runId: string, from: string, next: Reclass["next"], by: EventContext = {}): string | null | false {
+    return this.changed(runId, this.db.transaction(() => reclassHold(this.db, runId, { from, next }, this.stamp(), by))());
   }
 
   /** Compare-and-swap: lifts the owner-asked hold only while one is set, recording its reason, or `reason` when given; false, writing nothing, when none is. */
