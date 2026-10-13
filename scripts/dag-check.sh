@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# `pnpm dag:check` now runs scripts/dag-check-self.mjs, the self-hosted check against
+# `pnpm dag:check:graph` runs scripts/dag-check-self.mjs, the self-hosted check against
 # this repo's own @titan-design/code-graph. This script stays as a fallback for one
 # release: point CODEWATCH_CLI at a built codewatch checkout's cli entry to run it.
 # Set BASE_REF (e.g. origin/main) to suppress violations that already exist there.
