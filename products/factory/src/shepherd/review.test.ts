@@ -2003,6 +2003,44 @@ describe("reviewPhase", () => {
       expect(corrections(stepIds)).toEqual([`sh-correct-verdict:${H1}`]);
     });
 
+    describe("a MERGE whose CI-policy line is prose", () => {
+      const PROSE = "CI-policy: no .github/ files changed and no required check was dropped, renamed or skipped.";
+      const CI_FILES: PrFile[] = [{ path: ".github/workflows/ci.yml", status: "modified" }];
+      const decisionOf = (verdict: Verdict | undefined) => ((verdict as Extract<Verdict, { kind: "MERGE" }>).evidence as MergeEvidence).record.decision;
+
+      it("corrects the reviewer once and merges its 'unchanged' reply with no ci-policy-malformed gate", async () => {
+        const dispatch = fakeDispatch();
+
+        const { verdicts, stepIds } = await review({ dispatch, files: CI_FILES, read: correcting(verdictAt(H1) + PROSE, (head) => `${verdictAt(head)}CI-policy: unchanged`), policy: AUTO });
+
+        expect(corrections(stepIds)).toEqual([`sh-correct-verdict:${H1}`]);
+        expect(stepIds).toContain(`sh-await-verdict:${H1}:corrected`);
+        expect(dispatch.resumes).toEqual([{ name: "rv-octo-demo-1", brief: expect.stringContaining("its CI-policy line held more than the exact form") }]);
+        expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
+        expect(decisionOf(verdicts[0])).toMatchObject({ outcome: "allow", rule: { table: "authority" } });
+      });
+
+      it("ends a second prose reply in the after-one-correction timeout none, with one resume", async () => {
+        const dispatch = fakeDispatch();
+
+        const { verdicts, stepIds } = await review({ dispatch, files: CI_FILES, read: correcting(verdictAt(H1) + PROSE, (head) => verdictAt(head) + PROSE), policy: AUTO });
+
+        expect(verdicts).toEqual([{ kind: "none", cause: "timeout", reason: "the reviewer's verdict did not parse after one correction (ci_policy_malformed)" }]);
+        expect(dispatch.resumes).toHaveLength(1);
+        expect(corrections(stepIds)).toEqual([`sh-correct-verdict:${H1}`]);
+      });
+
+      it("never corrects a weakened line, which still gates ci-policy-weakened", async () => {
+        const dispatch = fakeDispatch();
+
+        const { verdicts, stepIds } = await review({ dispatch, files: CI_FILES, read: correcting(`${verdictAt(H1)}CI-policy: weakened permissions`), policy: AUTO });
+
+        expect(corrections(stepIds)).toEqual([]);
+        expect(dispatch.resumes).toEqual([]);
+        expect(decisionOf(verdicts[0])).toMatchObject({ outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "ci-policy-weakened" } });
+      });
+    });
+
     it("ends in a timeout none when the resumed reviewer writes nothing after its malformed message", async () => {
       const dispatch = fakeDispatch();
 
