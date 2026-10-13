@@ -363,6 +363,13 @@ describe("readFixProof", () => {
     expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("could not be read at the base main: HTTP 500") });
   });
 
+  it("reads error, not missing, when the PR's base branch no longer exists and no run exists", async () => {
+    const { fake, read } = registered("correctness", []);
+    fake.refs.delete("main");
+
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("the base main does not exist") });
+  });
+
   it("reads error when the PR's base branch cannot be read and no run exists", async () => {
     const { read } = registered("correctness", [], { unreadablePr: true });
 

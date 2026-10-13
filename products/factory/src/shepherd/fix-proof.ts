@@ -195,12 +195,16 @@ async function distrustOf(port: GitHubPort, repo: RepoSlug, pr: number | null, r
   return harnessTouch(port, repo, pr);
 }
 
-/** Why the base ref may run fix-proof on this PR, or undefined only when the base is known to have no such workflow. */
+/**
+ * Why the base ref may run fix-proof on this PR, or undefined only when the base is known to have no such workflow. A contents 404
+ * also covers a base ref that does not exist, so a missing file is believed only once the branch itself is read.
+ */
 async function workflowAtBase(port: GitHubPort, repo: RepoSlug, binding: Binding): Promise<string | undefined> {
   if ("unbound" in binding) return binding.unbound;
   try {
-    const file = await port.getFile(repo, FIX_PROOF_WORKFLOW, binding.baseRef);
-    return file === null ? undefined : `${FIX_PROOF_WORKFLOW} exists at the base ${binding.baseRef}`;
+    if ((await port.getFile(repo, FIX_PROOF_WORKFLOW, binding.baseRef)) !== null) return `${FIX_PROOF_WORKFLOW} exists at the base ${binding.baseRef}`;
+    if ((await port.getHeadSha(repo, binding.baseRef)) === null) return `the base ${binding.baseRef} does not exist, so ${FIX_PROOF_WORKFLOW} could not be read there`;
+    return undefined;
   } catch (error) {
     return `${FIX_PROOF_WORKFLOW} could not be read at the base ${binding.baseRef}: ${failureOf(error)}`;
   }
