@@ -7,7 +7,7 @@ import { portReads, type PrReads } from "../workflows/pr-snapshot.js";
 import { mergeableState, type MergeableState, type RunState } from "./route-table.js";
 
 export const OBSERVE_STEP = "sh-observe";
-export const OBSERVE_STEPS: readonly StepDeclaration[] = [{ id: OBSERVE_STEP, kind: "dispatch" }];
+export const OBSERVE_STEPS: readonly StepDeclaration[] = [{ id: OBSERVE_STEP, kind: "dispatch", orphanSafe: true }];
 
 /** The PR as GitHub reports it once a review ends: the route table's run state and mergeable state, and the head now. */
 export interface ObservedPr {
