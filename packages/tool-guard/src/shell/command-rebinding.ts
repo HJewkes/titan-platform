@@ -44,6 +44,8 @@ const STORERS: Record<string, StoreSpec> = {
 const ZPARSEOPTS: StoreSpec = { values: "", targets: "aA", operands: "none" };
 /** zsh `functions`, where `-x` takes an indent and `-c OLD NEW` copies a function under a new command name. */
 const FUNCTIONS: StoreSpec = { values: "x", targets: "", operands: "none" };
+/** zsh builtins that skip one leading `--` and still read options after it: `zparseopts -- -A commands y:`. */
+const SKIPS_LEADING_DASHES = new Set(["zparseopts", "zstyle", "zformat"]);
 /** Builtins whose first word is often a dynamic format or text, which counts only where it could be `-v NAME VALUE`. */
 const PRINTERS = new Set(["printf", "print"]);
 
@@ -97,7 +99,8 @@ function hashBinds(args: WordToken[]): boolean {
 }
 
 /** Whether a store builtin declares a nameref or writes a rebinding parameter, or one only known at run time. */
-function storesRebinding(name: string, args: WordToken[]): boolean {
+function storesRebinding(name: string, words: WordToken[]): boolean {
+  const args = SKIPS_LEADING_DASHES.has(name) && words[0]?.value === "--" ? words.slice(1) : words;
   if (name === "zparseopts") return zparseoptsStores(args);
   if (name === "functions") return functionsCopies(args);
   if (name === "zstyle") return zstyleStores(args);

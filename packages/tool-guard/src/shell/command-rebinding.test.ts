@@ -92,6 +92,14 @@ describe("a command that rebinds a command name", () => {
     ["zparseopts -A with a dynamic name", 'zparseopts -A"$n" y:'],
     ["a zparseopts spec storing into a parameter", "zparseopts y:=commands"],
     ["functions -c", "functions -c f y"],
+    ["zparseopts -A after a leading --", "zparseopts -- -A commands y:"],
+    ["zparseopts -a after a leading --", "zparseopts -- -a commands y:"],
+    ["zparseopts -E -A after a leading --", "zparseopts -- -E -A commands y:"],
+    ["zstyle -a after a leading --", "zstyle -- -a :z k commands"],
+    ["zstyle -s after a leading --", "zstyle -- -s :z k 'BASH_CMDS[y]'"],
+    ["zstyle -g after a leading --", "zstyle -- -g functions"],
+    ["zformat -f after a leading --", "zformat -- -f functions fmt"],
+    ["getopts after --", "getopts -- ab commands"],
   ])("is caught: %s", (_how, src) => {
     expect(rebinds(src)).toBe(true);
   });
@@ -127,6 +135,7 @@ describe("a command that rebinds a command name", () => {
     ["declare -f printing a function", 'declare -f "$fn"'],
     ["zparseopts into an ordinary name", "zparseopts -A opts -D y: v=verbose"],
     ["functions listing", "functions -x 2 f"],
+    ["functions -c after --, which names functions", "functions -- -c f y"],
   ])("is left alone: %s", (_how, src) => {
     expect(rebinds(src)).toBe(false);
   });
