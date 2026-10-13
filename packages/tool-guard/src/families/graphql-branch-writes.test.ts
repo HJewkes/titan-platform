@@ -48,12 +48,12 @@ describe("graphqlBranchWrites, mutations that name their branch", () => {
   });
 
   it("reads a branch written with \\u escapes, as an --input body would carry it", () => {
-    const body = String.raw`{"query":"mutation{updateRefs(input:{repositoryId:\"r\",refUpdates:[{name:\"refs/heads/main\",afterOid:\"x\"}]}){clientMutationId}}"}`;
+    const body = String.raw`{"query":"mutation{updateRefs(input:{repositoryId:\"r\",refUpdates:[{name:\"refs/heads/\u006dain\",afterOid:\"x\"}]}){clientMutationId}}"}`;
     expect(graphqlBranchWrites([body], []).branches).toContain("main");
   });
 
   it("reads a mutation name hidden behind \\u escapes", () => {
-    expect(read(String.raw`mutation{updateRef(input:{refId:"R",oid:"x"}){clientMutationId}}`)).toMatchObject({ mutations: ["updateRef"], unknown: true });
+    expect(read(String.raw`mutation{\u0075pdateRef(input:{refId:"R",oid:"x"}){clientMutationId}}`)).toMatchObject({ mutations: ["updateRef"], unknown: true });
   });
 
   it("reads a mutation name after an escaped newline in a JSON body", () => {
@@ -157,7 +157,7 @@ describe("graphqlBranchWrites, calls that write no branch", () => {
 
 describe("decodeGraphqlEscapes", () => {
   it.each([
-    [String.raw`main`, "main"],
+    [String.raw`\u006dain`, "main"],
     [String.raw`\u{6d}ain`, "main"],
     [String.raw`refs\/heads\/main`, "refs/heads/main"],
     [String.raw`\"main\"`, '"main"'],
@@ -166,5 +166,37 @@ describe("decodeGraphqlEscapes", () => {
     [String.raw`\u{110000}`, String.raw`\u{110000}`],
   ])("decodes %s", (text, decoded) => {
     expect(decodeGraphqlEscapes(text)).toBe(decoded);
+  });
+
+  it("gives up on escapes left after the two layers GitHub decodes", () => {
+    expect(decodeGraphqlEscapes(String.raw`\u{5c}u{5c}u006dain`)).toBeNull();
+  });
+});
+
+describe("graphqlBranchWrites cost on crafted texts", () => {
+  /** Past this a hook timeout would let the command through; a linear reading of 64 KB takes milliseconds. */
+  const BUDGET_MS = 500;
+  const BS = "\\";
+  const KB = 1024;
+
+  function timed(texts: string[]) {
+    const start = performance.now();
+    const result = graphqlBranchWrites(texts, []);
+    return { result, ms: performance.now() - start };
+  }
+
+  it("reads a 64 KB chain of escapes, each pass peeling one, as unknown within budget", () => {
+    const link = `${BS}u{5c}`;
+    const chain = `${link}${"u{5c}".repeat((32 * KB) / 5)}u006dain`;
+    const padding = `${BS}u{110000}`.repeat((32 * KB) / 10);
+    const { result, ms } = timed([`mutation{mergeBranch(input:{base:"${chain}${padding}"}){mergeCommit{oid}}}`]);
+    expect(result.unknown).toBe(true);
+    expect(ms).toBeLessThan(BUDGET_MS);
+  });
+
+  it("reads 64 KB of commented id keys within budget", () => {
+    const { result, ms } = timed([`mutation{createCommitOnBranch(input:{branch:$b}){commit{oid}}}\n${"#id\n".repeat(16 * KB)}`]);
+    expect(result.unknown).toBe(true);
+    expect(ms).toBeLessThan(BUDGET_MS);
   });
 });

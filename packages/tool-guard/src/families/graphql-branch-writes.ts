@@ -11,6 +11,8 @@ const NAMED_TARGET = new Set(["updateRefs", "createRef", "mergeBranch", "createC
 /** The input key that must carry the branch, where the schema lets the call leave it out. */
 const TARGET_KEY: Record<string, string> = { createCommitOnBranch: "branchName", createLinkedBranch: "name" };
 
+/** The escape layers GitHub decodes: a JSON body, then a GraphQL string inside it. */
+const DECODED_LAYERS = 2;
 const ESCAPE_RE = /\\(?:u\{([0-9a-fA-F]+)\}|u([0-9a-fA-F]{4})|(["\\/bfnrt]))/g;
 const SIMPLE_ESCAPES: Record<string, string> = { '"': '"', "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
 
@@ -19,7 +21,7 @@ interface GraphqlBranchWrites {
   mutations: string[];
   /** Candidate branch names, with one `refs/` and one `heads/` stripped; the caller tests each for protection. */
   branches: string[];
-  /** A mutation's target branch is known only at run time. */
+  /** A mutation's target branch is known only at run time, or a text is escaped past what GitHub decodes. */
   unknown: boolean;
 }
 
@@ -32,23 +34,25 @@ function decodeEscape(match: string, braced?: string, hex?: string, simple?: str
 }
 
 /**
- * Decodes JSON and GraphQL string escapes until none is left. An `--input` body is JSON carrying GraphQL text, so a
- * name can sit under two layers of escapes; decoding past what the server would only finds more, never less.
+ * Decodes JSON and GraphQL string escapes, the two layers an `--input` body carries, or null when escapes still decode
+ * after them. Each pass peels one layer, so the cap keeps a crafted chain of escapes from costing quadratic time.
  */
-export function decodeGraphqlEscapes(text: string): string {
+export function decodeGraphqlEscapes(text: string): string | null {
   let current = text;
-  for (;;) {
+  for (let pass = 0; pass <= DECODED_LAYERS; pass++) {
     const next = current.replace(ESCAPE_RE, decodeEscape);
     if (next === current) return current;
     current = next;
   }
+  return null;
 }
 
 /**
- * `key` written as an object key: GraphQL `key:` or JSON `"key":`. Commas and comments may sit before the colon,
- * since GraphQL ignores both.
+ * `key` written as an object key: GraphQL `key:` or JSON `"key":`, with commas or spaces before the colon. A comment
+ * there is not followed to its colon, which would cost quadratic time over many commented keys: an `id` key counts
+ * as written once a comment follows it, and any other key as unwritten, which both read the target as unknown.
  */
-const objectKeyRe = (key: string) => new RegExp(`\\b${key}"?[\\s,]*(?:#[^\\n\\r]*[\\n\\r][\\s,]*)*:`);
+const objectKeyRe = (key: string) => new RegExp(`\\b${key}"?[\\s,]*${key === "id" ? "[:#]" : ":"}`);
 
 /** A field word's key before its first `=`: `key` itself, or `key` as any bracket segment of gh's nested `a[b][key]` form. */
 const fieldKeyRe = (key: string) => new RegExp(`^(?:${key}|[^=]*\\[${key}\\])=`);
@@ -108,7 +112,8 @@ function candidateBranches(texts: string[], variables: WordToken[]): string[] {
  * any quoted string or literal variable in a call naming a mutation with a written target counts as a branch it may write.
  */
 export function graphqlBranchWrites(texts: string[], fields: WordToken[]): GraphqlBranchWrites {
-  const decoded = texts.map(decodeGraphqlEscapes);
+  const decoded = texts.map(decodeGraphqlEscapes).filter((t) => t !== null);
+  if (decoded.length < texts.length) return { mutations: mutationsIn(decoded), branches: [], unknown: true };
   const mutations = mutationsIn(decoded);
   if (mutations.length === 0) return { mutations, branches: [], unknown: false };
   const variables = fields.filter((w) => !isQueryField(w));
