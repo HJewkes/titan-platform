@@ -50,6 +50,10 @@ describe("testScope", () => {
     expect(scope).toEqual({ mode: "none" });
   });
 
+  it.each(["CLAUDE.md", "AGENTS.md"])("runs the root script tests for %s, which the structure test reads live", (path) => {
+    expect(testScope([path], workspace)).toEqual({ mode: "scoped", dirs: ["scripts/"] });
+  });
+
   it("runs factory for the docs page its escalation test reads", () => {
     const scope = testScope(["site/guides/shepherd.md"], workspace);
 

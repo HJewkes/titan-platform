@@ -30,11 +30,12 @@ const FULL_PATHS = new Set([
 ]);
 const FULL_PREFIXES = ["scripts/fixtures/", ".github/"];
 
-// Read by no test; docs:build, lint and the changeset guard cover them.
+// Root files the script tests read from the live repo: structure.test.mjs holds R53 (AGENTS.md copies CLAUDE.md).
+const ROOT_TEST_INPUTS = new Set(["AGENTS.md", "CLAUDE.md"]);
+
+// Read by no test, live or by fixture; docs:build, lint and the changeset guard cover them.
 const NO_TEST_PATHS = new Set([
   "README.md",
-  "AGENTS.md",
-  "CLAUDE.md",
   "CAPABILITIES.md",
   "LICENSE",
   "NOTICE",
@@ -60,7 +61,9 @@ function classifyPath(path, memberDirs) {
   if (coupling) return { kind: "dirs", dirs: coupling.dirs };
   const member = memberDirs.find((dir) => path.startsWith(dir));
   if (member) return { kind: "dirs", dirs: [member] };
-  if (path.startsWith(ROOT_TESTS) || path.startsWith("templates/")) return { kind: "dirs", dirs: [ROOT_TESTS] };
+  if (ROOT_TEST_INPUTS.has(path) || path.startsWith(ROOT_TESTS) || path.startsWith("templates/")) {
+    return { kind: "dirs", dirs: [ROOT_TESTS] };
+  }
   if (NO_TEST_PATHS.has(path) || startsWithAny(path, NO_TEST_PREFIXES)) return { kind: "none" };
   return { kind: "full" };
 }
