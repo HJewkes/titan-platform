@@ -25,16 +25,21 @@ const OCTAL: Record<EscapeMode, RegExp> = {
   "ansi-c": /^[0-7]{1,3}/,
   echo: /^0[0-7]{0,3}/,
   "printf-b": /^(?:0[0-7]{0,3}|[1-7][0-7]{0,2})/,
+  "printf-format": /^[0-7]{1,3}/,
+  "zsh-printf-format": /^[0-7]{1,3}/,
 };
 
-/** Quotes are kept literal outside `$'...'`: every shell's echo and printf %b prints the backslash too. */
+/** Quotes are kept literal in echo and printf %b: every shell prints the backslash too. */
 const QUOTES = new Set(["'", '"', "?"]);
 
 /**
- * `echo -e` reads octal as `\0nnn` only; `printf %b` also takes `\nnn`; `$'...'` takes `\nnn` alone.
- * Outside `$'...'`, `\c` ends the output.
+ * `echo -e` reads octal as `\0nnn` only; `printf %b` also takes `\nnn`; `$'...'` takes `\nnn` alone. A printf format
+ * decodes like `$'...'`, except that `\c` is no control prefix: bash prints it as written and zsh stops there.
+ * In echo and `printf %b`, `\c` ends the output.
  */
-type EscapeMode = "ansi-c" | "echo" | "printf-b";
+type EscapeMode = "ansi-c" | "echo" | "printf-b" | "printf-format" | "zsh-printf-format";
+
+const STOPS_AT_C = new Set<EscapeMode>(["echo", "printf-b", "zsh-printf-format"]);
 
 /** Decodes the body of a `$'...'` string the way bash does, so `$'\x7e'` reads as `~`. */
 export function decodeAnsiC(body: string, mode: EscapeMode = "ansi-c"): string {
@@ -50,7 +55,7 @@ export function decodeEscapes(body: string, mode: EscapeMode): { text: string; s
       continue;
     }
     const rest = body.slice(i + 1);
-    if (mode !== "ansi-c" && rest[0] === "c") return { text: out, stopped: true };
+    if (STOPS_AT_C.has(mode) && rest[0] === "c") return { text: out, stopped: true };
     const { text, width } = decodeEscape(rest, mode);
     out += text;
     i += 1 + width;
@@ -60,10 +65,10 @@ export function decodeEscapes(body: string, mode: EscapeMode): { text: string; s
 
 function decodeEscape(rest: string, mode: EscapeMode): { text: string; width: number } {
   const c = rest[0] ?? "";
-  if (mode !== "ansi-c" && QUOTES.has(c)) return { text: `\\${c}`, width: 1 };
+  if ((mode === "echo" || mode === "printf-b") && QUOTES.has(c)) return { text: `\\${c}`, width: 1 };
   const simple = SIMPLE[c];
   if (simple !== undefined) return { text: simple, width: 1 };
-  if (c === "c" && rest.length > 1) return { text: String.fromCharCode(rest.charCodeAt(1) & 0x1f), width: 2 };
+  if (mode === "ansi-c" && c === "c" && rest.length > 1) return { text: String.fromCharCode(rest.charCodeAt(1) & 0x1f), width: 2 };
   const numeric: Array<[RegExp, number]> = [[OCTAL[mode], 8], ...NUMERIC.slice(1)];
   for (const [re, radix] of numeric) {
     const match = re.exec(rest)?.[0];

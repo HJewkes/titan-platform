@@ -4,7 +4,8 @@ import type { WordToken } from "./lexer.js";
 /**
  * The shell whose builtins print: zsh's echo takes a lone `-` as the end of its options and drops it, and bash's printf
  * counts width and precision in bytes where zsh's counts characters. Without one, echo keeps `-` and printf counts
- * characters.
+ * characters. bash's echo decodes escapes only when `-e` is the last of `-e`/`-E`, and zsh's whenever `-e` is given. A
+ * printf format's `\c` prints as written in bash and ends all output in zsh.
  */
 export type Shell = "bash" | "zsh";
 
@@ -12,8 +13,8 @@ export type Shell = "bash" | "zsh";
 export function printedText(name: string | null, args: WordToken[], shell?: Shell): string | null {
   if (args.some((a) => a.dynamic)) return null;
   const values = args.map((a) => a.value);
-  if (name === "echo") return echoText(values, shell === "zsh");
-  if (name === "printf") return printfText(values[0] === "--" ? values.slice(1) : values, shell === "bash");
+  if (name === "echo") return echoText(values, shell);
+  if (name === "printf") return printfText(values[0] === "--" ? values.slice(1) : values, shell);
   return null;
 }
 
@@ -32,30 +33,35 @@ export function printedReadings(name: string | null, args: WordToken[], shells: 
   return texts;
 }
 
-/** Escapes are decoded unless `-E` is given: zsh's and sh's echo decode them by default. */
-function echoText(values: string[], dashEndsOptions: boolean): string {
+/** Without a shell, escapes are decoded unless `-E` comes last, as sh's echo with xpg_echo and dash's decode them. */
+function echoText(values: string[], shell: Shell | undefined): string {
   let i = 0;
-  let escapes = true;
+  let escapes = shell !== "bash";
+  let sawE = false;
   for (; i < values.length && /^-[neE]+$/.test(values[i] as string); i++) {
     const flags = values[i] as string;
     if (/[eE]/.test(flags)) escapes = flags.lastIndexOf("e") > flags.lastIndexOf("E");
+    sawE ||= flags.includes("e");
   }
-  if (dashEndsOptions && values[i] === "-") i++;
+  if (shell === "zsh") escapes ||= sawE;
+  if (shell === "zsh" && values[i] === "-") i++;
   const text = values.slice(i).join(" ");
   return escapes ? decodeAnsiC(text, "echo") : text;
 }
 
 /** Handles `%s`, `%b`, `%c`, `%d`, `%i` and `%%` with width and precision, reusing the format as printf does. */
-function printfText(values: string[], bytes: boolean): string | null {
+function printfText(values: string[], shell: Shell | undefined): string | null {
   const [format, ...args] = values;
   if (format === undefined || format.startsWith("-")) return null;
+  const decoded = decodeEscapes(format, shell === "zsh" ? "zsh-printf-format" : "printf-format");
+  const bytes = shell === "bash";
   let out = "";
   let rest = args;
   do {
-    const pass = applyFormat(decodeAnsiC(format), rest, bytes);
+    const pass = applyFormat(decoded.text, rest, bytes);
     if (pass === null) return null;
     out += pass.text;
-    if (pass.stopped || pass.used === 0) break;
+    if (decoded.stopped || pass.stopped || pass.used === 0) break;
     rest = rest.slice(pass.used);
   } while (rest.length > 0);
   return out;
