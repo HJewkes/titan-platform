@@ -24,11 +24,15 @@ interface WriterSpec {
   anyFlag?: boolean;
   /** Whether a `+` cluster is an option word too. */
   plus?: boolean;
+  /** Whether a `--name` word is an option of another command of the same name, which writes no name. */
+  longOptions?: boolean;
   /** Which operands are names: all of them, none, or each zparseopts spec's array after `=`. */
   operands: "names" | "none" | "specs";
 }
 
 const DECLARE: WriterSpec = { flags: "aAfFgGhHiIklLmnprRtTuUxzEZ", numeric: "EFLRZip", plus: true, operands: "names" };
+
+const ZSTAT: WriterSpec = { names: "AH", values: "fF", flags: "gnNolLtTrs", operands: "none" };
 
 const SPECS: Record<string, WriterSpec> = {
   export: DECLARE, declare: DECLARE, typeset: DECLARE, local: DECLARE, readonly: DECLARE, private: DECLARE,
@@ -45,7 +49,9 @@ const SPECS: Record<string, WriterSpec> = {
   zparseopts: { names: "aAv", flags: "DEFKM", operands: "specs" },
   zformat: { names: "faF", operands: "none" },
   strftime: { names: "s", flags: "rqn", operands: "none" },
-  zstat: { names: "AH", values: "fF", flags: "gnNolLtTrs", operands: "none" },
+  zstat: ZSTAT,
+  /** zsh/stat's builtin shares its name with GNU and BSD stat, whose `-c` and `-t` take a format. */
+  stat: { ...ZSTAT, values: "fFct", flags: "gnNolLTrsqx", longOptions: true },
   zselect: { names: "aA", values: "t", flags: "rwe", operands: "none" },
   getln: { flags: "AclneE", operands: "names" },
   sysread: { names: "c", values: "iost", operands: "names" },
@@ -112,11 +118,14 @@ function forNames(args: WordToken[]): WordToken[] {
 function specSlots(spec: WriterSpec, args: WordToken[]): WordToken[] | string {
   const slots: WordToken[] = [];
   let i = 0;
-  while (i < args.length && mayBeOption(args[i] as WordToken, spec)) {
-    const word = args[i] as WordToken;
+  for (let word = args[i]; word !== undefined && mayBeOption(word, spec); word = args[i]) {
     if (word.value === "--" || word.value === "-") {
       i++;
       break;
+    }
+    if (spec.longOptions === true && word.value.startsWith("--")) {
+      i++;
+      continue;
     }
     const read = readOption(word, args[i + 1], spec);
     if (read === null) return word.value;
@@ -137,7 +146,7 @@ function readOption(word: WordToken, next: WordToken | undefined, spec: WriterSp
   if (word.dynamic) return null;
   const body = word.value.slice(1);
   for (let k = 0; k < body.length; k++) {
-    const letter = body[k] as string;
+    const letter = body.charAt(k);
     const tail = body.slice(k + 1);
     const takesName = has(spec.names, letter) || has(spec.either, letter);
     if (takesName || has(spec.values, letter)) {
