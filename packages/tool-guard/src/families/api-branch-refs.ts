@@ -33,9 +33,9 @@ const SLOT_PLACEHOLDER_RE = /^(?::owner|\{owner\}|:repo|\{repo\})$/i;
 const clearedSlot = (segment: string) => (SLOT_PLACEHOLDER_RE.test(segment) ? "x" : segment);
 
 /**
- * True when gh fills a placeholder that can change the route. Only a whole `{owner}` or `{repo}` slot of the first
- * `repos/<o>/<r>` cannot, since GH_REPO's owner and repo hold no slash; anywhere else either can name a route word
- * (GH_REPO=repos/x turns `{owner}/o/r/…` into `repos/o/r/…`), and `{branch}` can name a whole route.
+ * True when gh fills a placeholder that can change the route outside a whole `repos/<o>/<r>` slot: there
+ * `{owner}` or `{repo}` can name a route word (GH_REPO=repos/x turns `{owner}/o/r/…` into `repos/o/r/…`), and
+ * `{branch}` can name a whole route. A filled slot is read by `repoSlotFilled`.
  */
 export function placeholderRoutes(rawPath: string): boolean {
   const slotsCleared = rawPath.replace(
@@ -43,6 +43,16 @@ export function placeholderRoutes(rawPath: string): boolean {
     (_, lead: string, owner: string, repo: string) => `${lead}repos/${clearedSlot(owner)}/${clearedSlot(repo)}`,
   );
   return PLACEHOLDER_RE.test(slotsCleared);
+}
+
+/**
+ * True when gh fills a whole owner or repo slot of the first `repos/<o>/<r>`. go-gh only rejects an empty GH_REPO
+ * part, so the fill may hold `?` or `#`, which cut the path back to the repository, or `%2F`, which GitHub decodes
+ * into further route segments. The route is then unknown.
+ */
+export function repoSlotFilled(url: string): boolean {
+  const slots = REPO_SLOTS_RE.exec(url.replace(/[?#].*$/s, ""));
+  return slots !== null && [slots[2], slots[3]].some((slot) => SLOT_PLACEHOLDER_RE.test(slot ?? ""));
 }
 
 const hasDotSegment = (path: string) => path.split("/").some((s) => s === "." || s === "..");
@@ -102,6 +112,11 @@ function createdBranches(fields: WordToken[] | "unread"): BranchTarget | null {
   return branches.length > 0 ? { branches } : null;
 }
 
+/** A filled repo slot reaches a ref on any PATCH, PUT or DELETE, and on a POST only through a `ref` field. */
+function slotFilledWrite(verb: string | null, fields: WordToken[] | "unread"): BranchTarget | null {
+  return verb === null || verb === "POST" ? createdBranches(fields) : RUN_TIME;
+}
+
 /**
  * A REST write that moves a branch ref: PATCH, DELETE, PUT or POST on `git/refs/heads/<x>`, or POST on `git/refs`
  * whose `ref` field is a head. A null method is a write. `fields` is "unread" when the body comes from `--input`.
@@ -112,6 +127,7 @@ export function apiBranchRefWrite(url: string, method: string | null, fields: Wo
   const path = routedPath(url);
   if (path === null) return null;
   if (path === "unsure") return RUN_TIME;
+  if (repoSlotFilled(url)) return slotFilledWrite(verb, fields);
   const refs = GIT_REFS_RE.exec(path);
   if (!refs) return null;
   const tail = (refs[1] ?? "").replace(/\/+$/, "");

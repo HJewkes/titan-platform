@@ -19,10 +19,9 @@ describe("a write to a branch ref by URL names the branch", () => {
     ["PATCH", "repos/o/r/git/refs/heads%2Fmain", "main"],
     ["PATCH", "repos/o/r/git//refs/heads/main", "main"],
     ["PATCH", "repos/o/r/GIT/Refs/HEADS/Main?force=true", "Main"],
-    ["patch", "/repos/{owner}/{repo}/git/refs/heads/main/", "main"],
+    ["patch", "/repos/o/r/git/refs/heads/main/", "main"],
     [null, "repos/o/r/git/refs/heads/main", "main"],
-    ["PATCH", "repos/{owner}/{repo}/git/refs/heads/main", "main"],
-    ["PATCH", "repos/:owner/:repo/git/refs/heads/feat/x?x={branch}", "feat/x"],
+    ["PATCH", "repos/o/r/git/refs/heads/feat/x?x={branch}", "feat/x"],
     ["DELETE", "repos/o/r/git/refs/heads/agent-chat/x", "agent-chat/x"],
   ])("%s %s names %s", (method, url, branch) => {
     expect(apiBranchRefWrite(url, method, [])).toEqual({ branches: [branch] });
@@ -101,6 +100,11 @@ describe("gh's run-time {branch} placeholder names an unknown branch", () => {
     ["PATCH", "repos/o/r/git/refs/{branch}", ""],
     ["PATCH", "repos/o/r/git/{branch}", ""],
     ["PATCH", "repos/o/r/{repo}/refs/heads/main", ""],
+    ["PATCH", "/repos/{owner}/{repo}/git/refs/heads/main/", ""],
+    ["PATCH", "repos/{owner}/{repo}/heads/main", "sha=x"],
+    ["DELETE", "repos/o/:repo/x", ""],
+    ["PUT", "repos/{owner}/r/issues/1", ""],
+    ["POST", "repos/{owner}/{repo}/issues", "ref=refs/heads/{branch}"],
   ])("%s %s %s", (method, url, src) => {
     expect(apiBranchRefWrite(url, method, fields(src))).toEqual({ branches: [null] });
   });
@@ -108,6 +112,8 @@ describe("gh's run-time {branch} placeholder names an unknown branch", () => {
 
 describe("requests that move no branch ref", () => {
   it.each([
+    ["POST", "repos/{owner}/{repo}/issues", "title=x"],
+    [null, "repos/:owner/:repo/issues", "title=x body=y"],
     ["GET", "repos/o/r/git/refs/heads/main", ""],
     ["HEAD", "repos/o/r/git/refs/heads/main", ""],
     ["get", "repos/o/r/git/refs", "ref=refs/heads/main"],

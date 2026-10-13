@@ -32,7 +32,7 @@ describe("a contents write names the branch it commits to", () => {
   it.each([
     "https://api.github.com/repos/o/r/contents/x",
     "https://ghe.example.com/api/v3/repos/o/r/contents/x",
-    "/repos/{owner}/{repo}/CONTENTS/x?ref=y",
+    "/repos/o/r/CONTENTS/x?ref={branch}",
     "repos/o/r/contents",
   ])("matches %s", (url) => {
     expect(apiBranchRouteWrite(url, "PUT", fields("branch=main"))).toEqual({ route: "contents", branches: ["main"] });
@@ -164,8 +164,20 @@ describe("gh's run-time {branch} placeholder names an unknown branch", () => {
     ["PUT", "{owner}/o/r/contents/f", "branch=main", "contents", [null]],
     ["PATCH", "{owner}/o/r", "default_branch=main", "default-branch", [null]],
     ["POST", "{branch}", "", "contents", [null]],
+    ["PATCH", "repos/{owner}/{repo}/issues/1", "default_branch=x", "default-branch", [null]],
+    ["PATCH", "repos/:owner/:repo/pulls/1", "title=x", "default-branch", [null]],
+    ["DELETE", "repos/{owner}/{repo}/protection", "", "protection", [null]],
+    ["PUT", "repos/{owner}/{repo}/f", "message=m", "contents", [null]],
+    ["PUT", "/repos/{owner}/{repo}/CONTENTS/x", "branch=feat/x", "contents", [null]],
+    ["POST", "repos/{owner}/:repo/issues", "branch=main", "merge-upstream", [null]],
+    ["POST", "repos/o/{repo}/x", "new_name=y", "merge-upstream", [null]],
+    [null, "repos/{owner}/{repo}/issues", '"$K"=v', "merge-upstream", [null]],
   ])("%s %s %s reads as %s %j", (method, url, src, route, branches) => {
     expect(apiBranchRouteWrite(url, method, fields(src))).toEqual({ route, branches });
+  });
+
+  it("reads an unread --input POST on a filled repo slot as unknown", () => {
+    expect(apiBranchRouteWrite("repos/{owner}/{repo}/issues", "POST", "unread")).toEqual({ route: "merge-upstream", branches: [null] });
   });
 
   it("reads a merge-upstream branch outside refs/heads as unknown", () => {
@@ -199,7 +211,8 @@ describe("requests that change no branch", () => {
     ["PUT", "repos/o/r/pulls/12/merge", ""],
     ["GET", "repos/o/r/branches/{branch}/protection", ""],
     ["POST", "repos/{owner}/{repo}/issues", "title=x"],
-    ["PATCH", "repos/:owner/:repo/pulls/1", "title=x"],
+    [null, "repos/:owner/:repo/issues/1/comments", "body=x"],
+    ["GET", "repos/{owner}/{repo}/branches/main/protection", ""],
     ["PUT", "repos/o/r/pulls/1/merge?x={branch}", ""],
   ])("%s %s %s", (method, url, src) => {
     expect(apiBranchRouteWrite(url, method, fields(src))).toBeNull();

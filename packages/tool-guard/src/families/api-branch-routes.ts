@@ -1,5 +1,5 @@
 import type { WordToken } from "../shell/lexer.js";
-import { asciiDecoded, fieldKey, knownBranch, placeholderRoutes, refBranch, routedPath } from "./api-branch-refs.js";
+import { asciiDecoded, fieldKey, knownBranch, placeholderRoutes, refBranch, repoSlotFilled, routedPath } from "./api-branch-refs.js";
 
 type BranchRoute = "contents" | "rename" | "merge-upstream" | "protection" | "default-branch";
 
@@ -20,6 +20,9 @@ const REPO_ROUTE_RE = /(?:^|\/)repos\/[^/]+\/[^/]+(\/.*)?$/i;
 const BRANCH_KEY_RE = /^branch(?:\[\])?$/;
 const NEW_NAME_KEY_RE = /^new_name(?:\[\])?$/;
 const DEFAULT_BRANCH_KEY_RE = /^default_branch(?:\[\])?$/;
+const ROUTE_FIELD_KEY_RE = /^(?:branch|new_name|default_branch)(?:\[\])?$/;
+/** The route a filled repo slot most plausibly reaches for each method, when the written path names none. */
+const FILLED_ROUTES: Partial<Record<string, BranchRoute>> = { PUT: "contents", DELETE: "protection", PATCH: "default-branch" };
 
 /** Raw-path guesses for a path whose route is unsure, most specific first. */
 const LOOSE_ROUTES: [RegExp, BranchRoute][] = [
@@ -111,6 +114,16 @@ function unsureWrite(url: string, verb: string | null, fields: Fields): BranchRo
 }
 
 /**
+ * A filled repo slot (`repoSlotFilled`) makes the route unknown. PUT, DELETE and PATCH can reach a route whatever the
+ * body (a protection sub-path takes any field); a POST only with a field a route reads, so a plain issue POST passes.
+ */
+function slotFilledWrite(verb: string | null, fields: Fields, read: BranchRouteWrite | null): BranchRouteWrite | null {
+  const post = verb === null || verb === "POST";
+  if (!read && post && fields !== "unread" && candidates(fields, ROUTE_FIELD_KEY_RE).length === 0) return null;
+  return { route: read?.route ?? FILLED_ROUTES[verb ?? "POST"] ?? "merge-upstream", branches: [null] };
+}
+
+/**
  * A REST write that changes a branch outside `git/refs`: a contents PUT/DELETE, a branch rename, merge-upstream, a
  * write on branch protection, or a repository PATCH of `default_branch`. A null method is a write. `fields` is
  * "unread" when the body comes from `--input`.
@@ -122,5 +135,6 @@ export function apiBranchRouteWrite(url: string, method: string | null, fields: 
   if (path === null) return null;
   if (path === "unsure") return unsureWrite(url, verb, fields);
   const repo = REPO_ROUTE_RE.exec(path);
-  return repo ? tailWrite((repo[1] ?? "").replace(/\/+$/, ""), verb, fields) : null;
+  const read = repo ? tailWrite((repo[1] ?? "").replace(/\/+$/, ""), verb, fields) : null;
+  return repoSlotFilled(url) ? slotFilledWrite(verb, fields, read) : read;
 }
