@@ -57,6 +57,11 @@ describe("handle: an HTTP write to a run-time URL", () => {
     'curl -X PUT "$U" "$N" -X GET https://example.com/x',
     'curl "$OPT" PUT https://api.github.com/repos/o/r/pulls/1/merge',
     'curl "$D" --next https://api.github.com/repos/o/r/pulls/1/merge',
+    'set -- -X PUT https://api.github.com/repos/o/r/pulls/1/merge; curl "$@"',
+    'A=(-X PUT https://api.github.com/repos/o/r/pulls/1/merge); curl "${A[@]}"',
+    'wget $A "$U"',
+    'wget "$O" PUT "$U"',
+    "wget $A https://api.github.com/repos/o/r/pulls/1/merge",
   ])("denies %s as a merge", async (command) => {
     const { columns } = await logColumns(command);
 
@@ -69,7 +74,7 @@ describe("handle: an HTTP write to a run-time URL", () => {
     expect(columns).toEqual(["deny", "EXT-CO", "private-egress", "bash.egress.curl-upload", "coordinator+worker+headless"]);
   });
 
-  it.each(["curl -X GET \"$U\"", "curl -fsSL --compressed https://api.github.com/repos/o/r/pulls/1", "curl -g --no-get --globoff https://api.github.com/repos/o/r", "curl --no-progress-meter -sS https://example.com/x", 'curl --include "$U"', 'curl --progress-meter -s "$U"', 'curl -s: -I "$U"'])(
+  it.each(["curl -X GET \"$U\"", "curl -fsSL --compressed https://api.github.com/repos/o/r/pulls/1", "curl -g --no-get --globoff https://api.github.com/repos/o/r", "curl --no-progress-meter -sS https://example.com/x", 'curl --include "$U"', 'curl --progress-meter -s "$U"', 'curl -s: -I "$U"', 'curl -s "https://api.github.com/repos/$R/pulls" -H "Authorization: Bearer $T"', 'curl -s "http://localhost:8080/$P" -o f'])(
     "lets the read %s through",
     async (command) => {
       const { stdout } = await logColumns(command);

@@ -1,5 +1,5 @@
 import type { SimpleCommand } from "../shell/commands.js";
-import { parseGit } from "../shell/git.js";
+import { parseGit, splits } from "../shell/git.js";
 import type { WordToken } from "../shell/lexer.js";
 import { classified } from "../spellings.js";
 import type { SpellingId } from "../spellings.js";
@@ -7,6 +7,7 @@ import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
 import { hasFlag, lastValue, readOptions, set, valuesOf } from "./options.js";
 import type { Options } from "./options.js";
 import { CURL_SWITCHES, CURL_VALUE_OPTIONS } from "./curl-options.js";
+import { firstExpansion } from "./github-endpoint.js";
 
 /** Hosts data may be sent to (D5). `registry.npmjs.org` is allowed for reads only, so it is absent. */
 const ALLOWED_HOSTS = set("github.com", "api.github.com", "localhost", "127.0.0.1", "::1");
@@ -55,7 +56,7 @@ export function httpRequest(cmd: SimpleCommand): HttpRequest | null {
 
 function clientRequest(cmd: SimpleCommand): HttpRequest | null {
   if (cmd.name === "curl") return curlRequest(cmd.args);
-  if (cmd.name === "wget") return wgetRequest(readOptions(cmd.args, WGET_VALUES));
+  if (cmd.name === "wget") return wgetRequest(cmd.args);
   if (cmd.name === "http" || cmd.name === "https") return httpieRequest(readOptions(cmd.args, HTTPIE_VALUES));
   return null;
 }
@@ -82,7 +83,7 @@ function curlPart(words: WordToken[], followed: boolean): HttpRequest {
   const body = hasFlag(o, ...CURL_BODY);
   const upload = hasFlag(o, "-T", "--upload-file");
   const implied = switchOn(o, "-G", "--get") ? "GET" : upload ? "PUT" : body ? "POST" : "GET";
-  const hidden = o.opts.some((opt) => !isKnownCurlOption(opt.flag)) || o.positionals.some((p) => mayBeOption(p, words, followed));
+  const hidden = o.opts.some((opt) => !isKnownCurlOption(opt.flag)) || hidesOption(words, o.positionals, followed);
   const method = hidden ? UNKNOWN_METHOD : (methodOf(lastValue(o, "-X", "--request")) ?? implied);
   const globs = !switchOn(o, "-g", "--globoff");
   const urls = [...o.positionals, ...valuesOf(o, "--url")].map((u) => (globs ? globbed(u) : u));
@@ -127,14 +128,25 @@ function splitNext(word: WordToken): Array<WordToken | null> {
   return out;
 }
 
-/**
- * A run-time word read as a URL may be an option instead: an unquoted one may split into several words, and
- * any other may take the word after it, or the request boundary, as its value. Only a quoted one that ends
- * the last request is read as a URL.
- */
-function mayBeOption(word: WordToken, words: WordToken[], followed: boolean): boolean {
+/** A run-time word may be an option when it can split into several words, or nothing but a `-` comes before its run-time part. */
+function mayBeOption(word: WordToken): boolean {
   if (!word.dynamic) return false;
-  return word.unquotedExpansion === true || followed || words.indexOf(word) < words.length - 1;
+  if (splitsWords(word)) return true;
+  const prefix = word.value.slice(0, firstExpansion(word));
+  return prefix === "" || prefix.startsWith("-");
+}
+
+/** Unquoted expansions split, and so do `"$@"` and `"${A[@]}"` quoted. */
+function splitsWords(word: WordToken): boolean {
+  return splits(word) || word.refs.some((r) => r.name === "@" || r.name === "*") || /\$\{[^}]*(?:@|\[\*\])/.test(word.value);
+}
+
+/**
+ * A positional the reader takes for a URL that may be an option instead hides the request: one that splits,
+ * or one followed by a word or a request boundary it could take as its value. A lone last one reads as a URL.
+ */
+function hidesOption(words: WordToken[], positionals: WordToken[], followed: boolean): boolean {
+  return positionals.some((p) => mayBeOption(p) && (splitsWords(p) || followed || words.indexOf(p) < words.length - 1));
 }
 
 function isKnownCurlOption(flag: string): boolean {
@@ -162,10 +174,12 @@ function runTimeFrom(word: WordToken, at: number): WordToken {
   return at < 0 ? word : { ...word, value: `${word.value.slice(0, at)}$`, dynamic: true };
 }
 
-function wgetRequest(o: Options): HttpRequest {
+function wgetRequest(words: WordToken[]): HttpRequest {
+  const o = readOptions(words, WGET_VALUES);
   const body = hasFlag(o, ...WGET_BODY);
-  const method = methodOf(lastValue(o, "--method")) ?? (body ? "POST" : "GET");
-  const listed = hasFlag(o, "-i", "--input-file") ? [UNSEEN_URL] : [];
+  const hidden = hidesOption(words, o.positionals, false);
+  const method = hidden ? UNKNOWN_METHOD : (methodOf(lastValue(o, "--method")) ?? (body ? "POST" : "GET"));
+  const listed = hasFlag(o, "-i", "--input-file") || hidden ? [UNSEEN_URL] : [];
   return { method, body, urls: [...o.positionals, ...listed] };
 }
 
