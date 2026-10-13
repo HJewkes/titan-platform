@@ -75,18 +75,8 @@ const fieldKeyRe = (key: string) => new RegExp(`^(?:${key}|[^=]*\\[${key}\\])=`)
 export const GH_PLACEHOLDER_RE = /:(?:owner|repo|branch)\b|\{[a-z]+\}/;
 /** The matches gh fills; it leaves any other `{name}`, such as a `{oid}` selection, as written. */
 const GH_FILLED = new Set([":owner", ":repo", ":branch", "{owner}", "{repo}", "{branch}"]);
-const NAME_CHAR_RE = /[A-Za-z0-9_]/;
 
 const ghFills = (text: string) => [...text.matchAll(new RegExp(GH_PLACEHOLDER_RE, "g"))].filter((m) => GH_FILLED.has(m[0]));
-
-/**
- * Whether gh's fill can change what a query sent by `-F query=` means beyond a known value: a branch name may hold
- * quotes or any other GraphQL text, and an owner or repo name beside a name character extends that name.
- */
-function rewritesQuery(text: string): boolean {
-  const touchesName = (at: number) => NAME_CHAR_RE.test(text.charAt(at));
-  return ghFills(text).some((m) => m[0].includes("branch") || touchesName(m.index - 1) || touchesName(m.index + m[0].length));
-}
 
 const normalizeBranch = (name: string) => name.trim().replace(/^refs\//, "").replace(/^heads\//, "");
 
@@ -147,14 +137,16 @@ export function graphqlBranchWrites(texts: string[], fields: WordToken[]): Graph
   const capped = reads.some((r) => !r.complete);
   const decoded = reads.map((r) => r.text);
   const mutations = mutationsIn(decoded);
-  if (mutations.length === 0) return { mutations, branches: [], unknown: capped || texts.some(rewritesQuery) };
+  // A query sent by `-F query=` is filled before GitHub reads it, and any fill may be a whole mutation name.
+  const filled = texts.some((t) => ghFills(t).length > 0);
+  if (mutations.length === 0) return { mutations, branches: [], unknown: capped || filled };
   const variables = fields.filter((w) => !isQueryField(w));
   const unknown =
     capped ||
     mutations.some((m) => OPAQUE_TARGET.has(m)) ||
     targetUnwritten(mutations, decoded, variables) ||
     variables.some(unreadable) ||
-    texts.some((t) => ghFills(t).length > 0);
+    filled;
   const named = mutations.some((m) => NAMED_TARGET.has(m));
   return { mutations, branches: named ? candidateBranches(decoded, variables) : [], unknown };
 }

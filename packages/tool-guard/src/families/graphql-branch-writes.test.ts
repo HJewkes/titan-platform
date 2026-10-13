@@ -164,12 +164,17 @@ describe("graphqlBranchWrites, variables", () => {
   it.each([
     ["a branch, which may hold any GraphQL text", "{viewer{login}}{branch}"],
     ["an owner that completes a name", 'mutation{update:repo(input:{refId:"R",oid:"x"}){clientMutationId}}'],
+    ["an owner that is the whole mutation name", 'mutation{ {owner}(input:{repositoryId:"R",base:"main",head:"feat/x"}){mergeCommit{oid}} }'],
+    ["a repo behind an alias", 'mutation{ a: {repo}(input:{repositoryId:"R",base:"main",head:"feat/x"}){mergeCommit{oid}} }'],
+    ["an owner and repo joined into one name", 'mutation{ {owner}{repo}(input:{repositoryId:"R",base:"main",head:"feat/x"}){mergeCommit{oid}} }'],
+    ["a colon-form owner as the name", 'mutation{ :owner(input:{repositoryId:"R",base:"main",head:"feat/x"}){mergeCommit{oid}} }'],
+    ["an owner spliced into a read as the operation", '{owner}{ {repo}(input:{repositoryId:"R",base:"main",head:"feat/x"}){mergeCommit{oid}} }'],
   ])("reads a query with no mutation whose fill is %s as unknown", (_what, query) => {
     expect(read(query)).toMatchObject({ mutations: [], unknown: true });
   });
 
-  it("keeps a read naming a quoted owner and repo known", () => {
-    expect(read('query{repository(owner:"{owner}",name:"{repo}"){defaultBranchRef{name}}}')).toEqual({ mutations: [], branches: [], unknown: false });
+  it("reads even a read naming a quoted owner and repo as unknown, since any fill may rewrite the query", () => {
+    expect(read('query{repository(owner:"{owner}",name:"{repo}"){defaultBranchRef{name}}}')).toEqual({ mutations: [], branches: [], unknown: true });
   });
 
   it("keeps a feature-branch mutation with a {name} selection gh leaves alone known", () => {
