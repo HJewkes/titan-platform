@@ -296,10 +296,25 @@ async function withAuthorProfile(raw: unknown, result: AwaitVerdictResult, roste
   return profile === undefined ? result : { ...result, reviewerProfile: profile };
 }
 
+const DispatchedReviewer = z.looseObject({ reviewerAgentId: z.string().min(1), reviewerSessionId: z.string().min(1) });
+
+/**
+ * The step records a verdict only as its own dispatched reviewer's, so a seat that counts Shepherd's verdict as a second
+ * independent review never reads its own reviewer there. An input naming no reviewer cannot vouch for one, so it fails closed.
+ * External mode started nobody and takes the named reviewer's verdict as its own.
+ */
+function authoredByDispatched(raw: unknown, result: AwaitVerdictResult): AwaitVerdictResult {
+  if (result.kind !== "verdict" || isExternalVerdictInput(raw)) return result;
+  const input = DispatchedReviewer.safeParse(raw);
+  const { agentId, sessionId } = result.reviewer;
+  if (input.success && input.data.reviewerAgentId === agentId && input.data.reviewerSessionId === sessionId) return result;
+  return { kind: "none", reason: `verdict author ${agentId} is not the dispatched reviewer${input.success ? ` ${input.data.reviewerAgentId}` : ""}` };
+}
+
 /** Inside the step, so the replay reads the recorded outcome; with no dispatch wired there is no roster to read seat reviewers from. With `seatWaitTiming`, a seat WAIT over the MERGE is waited out under the step's signal. */
 export function seatVetoed(wiring: ReviewWiring | undefined, body: VerdictStep, now: () => number = Date.now, seatWaitTiming?: SeatWaitTiming): VerdictStep {
   return async (raw, signal) => {
-    const result = await body(raw, signal);
+    const result = authoredByDispatched(raw, await body(raw, signal));
     const dispatch = wiring?.dispatch;
     if (!dispatch) return result;
     const { repo, pr, head } = raw as ReviewTarget;
