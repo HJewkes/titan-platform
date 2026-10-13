@@ -215,7 +215,7 @@ const specPick: Picker = (runs, name, app) => {
   const open = slot.find(unfinished);
   if (open) return open;
   const byId = (a: CheckRun, b: CheckRun) => (b.id > a.id ? b : a);
-  if (slot.some((run) => run.startedAt === null)) return slot.reduce(byId, slot[0]!) ?? null;
+  if (slot.some((run) => run.startedAt === null)) return slot.reduce(byId, slot[0]!);
   return slot.reduce<CheckRun | null>((best, run) => (!best || run.startedAt! > best.startedAt! || (run.startedAt === best.startedAt && run.id > best.id) ? run : best), null);
 };
 
