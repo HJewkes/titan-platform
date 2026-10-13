@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { EXIT } from "./envelope.js";
-import { invokeCommand } from "./invoke.js";
+import { inProcessCaller, invokeCommand } from "./invoke.js";
+import { createRegistry } from "./registry.js";
 import { defineCommand, type BaseContext } from "./types.js";
 
 interface Ctx extends BaseContext {
@@ -72,5 +73,29 @@ describe("invokeCommand", () => {
       formatError: () => ({ message: "redacted", code: EXIT.SOFTWARE }),
     });
     expect(envelope).toEqual({ ok: false, error: "redacted", code: EXIT.SOFTWARE });
+  });
+});
+
+describe("inProcessCaller", () => {
+  const registry = createRegistry<Ctx>();
+  registry.register(echo);
+  registry.register(failing);
+
+  it("returns a USAGE envelope for an unknown name instead of throwing", async () => {
+    const envelope = await inProcessCaller(registry, ctx)("nope", {});
+    expect(envelope).toEqual({ ok: false, error: "Unknown command: nope", code: EXIT.USAGE });
+  });
+
+  it("builds a fresh context per call so warnings do not leak between calls", async () => {
+    const call = inProcessCaller(registry, ctx);
+    const first = await call("echo", { n: -1 });
+    const second = await call("echo", { n: 2 });
+    expect(first).toMatchObject({ warnings: ["negative input"] });
+    expect(second).toEqual({ ok: true, data: { doubled: 4, root: "/tmp" } });
+  });
+
+  it("forwards invoke options to the command", async () => {
+    const envelope = await inProcessCaller(registry, ctx, { invalidArgsCode: EXIT.USAGE })("echo", { n: "x" });
+    expect(envelope).toMatchObject({ ok: false, code: EXIT.USAGE });
   });
 });
