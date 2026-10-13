@@ -35,6 +35,12 @@ question touches outcomes.
 - Stop on a `graph-stale` fault. Run `titan-miner refresh`, then start again at step 2.
 - Any other `error` fault, such as `unpriced-model`, does not stop the loop, but it makes every
   dollar figure from the affected requests a lower bound. Say so in the retro.
+- Compare each file input's modification time (a `--pulls` snapshot, `--journal` and
+  `--transcript` files, a `--broker-log`) with `--until`. A file last written before `--until`
+  misses the end of the window: file one task for it like a fault, and prefer a live source,
+  such as Q7 without `--pulls`, over the stale file.
+- The `tokens` and `usd_est` fields of dispatch records are unused: cost comes from the graph.
+  Do not read them, and do not file a fault because they are empty.
 
 ## Step 3: prices
 
@@ -72,8 +78,13 @@ Spawn one read-only sonnet worker through agent-chat `agent_spawn`, with the pro
 uses for read-only analysis. Give it:
 
 - `analyst-brief.md` from this directory, as its brief.
-- The JSON files from steps 2 to 4, as paths. No transcripts, no database, no `agent-chat` CLI.
+- The JSON files from steps 2 to 4, as paths. No transcripts, no database, no `agent-chat` CLI,
+  no Bash and no network: read-only file tools only.
 - The scope from step 1 and the question the retro asks.
+- A cap of $2 and 150k tokens.
+
+Until a read-only sonnet profile exists, use the nearest read-only profile with a sonnet model
+override, and name the profile used in the retro.
 
 It returns a findings file: a JSON array in the citation contract the brief describes.
 
@@ -88,14 +99,20 @@ analyst's reading was right and the field moved, ask it for a corrected finding 
 ## Step 7: report
 
 - Findings go to the retro, each with its claim, its citations as commands, and its falsifier.
-- A proposed change goes to `proposals/`. It names the guardrail that will show whether it
-  worked: Q13 quality-guardrails once it ships, and Q7 `blocked-flow --split-at <change time>`
-  for the merge flow. A lever with no guardrail is not proposed.
+- A proposed change goes to `proposals/`. It names the metrics that score the lever before and
+  after its change time:
+  - verdict-to-merge (`/verdictToMerge/rows`) and open PRs holding MERGE
+    (`/openHoldingMerge/rows`), from `titan-miner insights blocked-flow --split-at <change time>`;
+  - `requestsPerFinished` per outcome bucket, from `active-work miner outcomes` over a window
+    before and one after the change, once TP-508 slice h and TP-513 ship it. Until then, list it
+    as a gap.
+- It also names the guardrail that will show whether the lever cost quality: Q13
+  quality-guardrails once it ships. A lever with no guardrail is not proposed.
 - State the step 2 and step 3 caveats next to any dollar figure.
 
 ## Step 8: extend the library
 
 When the retro needs a number no question returns, do not compute it ad hoc. File a
 session-insights task in titan-platform with the question in one sentence and the smallest
-query that answers it, such as the tables and columns it reads. The first expected one is
-requests per finished agent. Once that question ships, this skill names it in step 4.
+query that answers it, such as the tables and columns it reads. Requests per finished agent is
+already filed as TP-508 slice h; note it on that task rather than filing it again.
