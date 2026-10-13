@@ -142,6 +142,21 @@ describe("ciVerdict picks a required context's newest run as checks.ts does", ()
     expect(judgeValidate([validate(1, "completed", "success", T1), validate(2, "queued", null, null)])).toEqual({ verdict: "pending", reasons: ["validate"] });
   });
 
+  it.each([
+    ["a success with no start", validate(2, "completed", "success", null)],
+    ["a success on a tied start", validate(2, "completed", "success", T1)],
+    ["a later-started success", validate(2, "completed", "success", T2)],
+  ])("reads an unfinished run as pending beside %s, in either input order", (_name, success) => {
+    const runs = [validate(1, "in_progress", null, T1), success];
+
+    expect(judgeValidate(runs)).toEqual({ verdict: "pending", reasons: ["validate"] });
+    expect(judgeValidate([...runs].reverse())).toEqual({ verdict: "pending", reasons: ["validate"] });
+  });
+
+  it("reads a pending run with the higher id as pending beside a success on a tied start", () => {
+    expect(judgeValidate([validate(2, "pending", null, T1), validate(1, "completed", "success", T1)])).toEqual({ verdict: "pending", reasons: ["validate"] });
+  });
+
   it("reads a newer started failure as red beside a completed success with no start", () => {
     expect(judgeValidate([validate(2, "completed", "failure", T2), validate(1, "completed", "success", null)])).toEqual({ verdict: "red", reasons: ["validate=failure"] });
   });

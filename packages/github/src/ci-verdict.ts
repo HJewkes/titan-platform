@@ -42,18 +42,24 @@ function requiredFindings({ rules, runs, statuses }: CiVerdictInput): Finding[] 
   for (const context of rules.contexts) {
     const pins = rules.pins?.[context];
     if (pins) {
-      findings.push(...pins.map((app) => judge(context, newest(runs, context, app), null)));
+      findings.push(...pins.map((app) => judge(context, decidingRun(runs, context, app), null)));
     } else {
       const state = statuses.find((status) => status.context === context)?.state ?? null;
-      findings.push(judge(context, newest(runs, context, GITHUB_ACTIONS_APP_ID), state));
+      findings.push(judge(context, decidingRun(runs, context, GITHUB_ACTIONS_APP_ID), state));
     }
   }
   return findings.filter((finding): finding is Finding => finding !== null);
 }
 
-/** `latestPerName` decides which run is newest, so a tie and an unstarted rerun read the same here as in checks.ts. */
-function newest(runs: readonly CheckRun[], name: string, app: number): CheckRun | null {
-  return latestPerName(runs.filter((run) => run.name === name && run.appId === app))[0] ?? null;
+/**
+ * Any unfinished run of the context and app decides it, so it reads pending whatever the start times and ids say: one
+ * job name shared by push and pull_request workflows can start both runs in the same second, and no ordering can prove
+ * a finished run superseded an unfinished one. Once every run has completed, `latestPerName` picks the newest.
+ */
+function decidingRun(runs: readonly CheckRun[], name: string, app: number): CheckRun | null {
+  const slot = runs.filter((run) => run.name === name && run.appId === app);
+  const unfinished = slot.filter((run) => run.status !== "completed");
+  return latestPerName(unfinished.length > 0 ? unfinished : slot)[0] ?? null;
 }
 
 /** A required context needs `isSucceeded`, as checks.ts documents: skipped and neutral are red here, unlike the all-runs rule. */
