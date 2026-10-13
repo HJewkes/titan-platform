@@ -2,8 +2,8 @@ import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { GateDecision } from "../gate-policy.js";
 
-/** How long a merge decision a later read may clear is polled again at one head before the owner is asked. */
-const UNSETTLED_BOUND_MS = 30 * 60_000;
+/** How long a merge decision a later read may clear is polled again at one head before the seat is told. */
+const UNSETTLED_BOUND_MS = 20 * 60_000;
 
 /** The first wait is zero, so the first-unknown time is recorded before any sleep a restart could cut short. */
 const SETTLE_WAITS_MS = [0, 30_000, 60_000, 120_000];
@@ -18,6 +18,11 @@ export interface UnsettledMerge {
   transient: (decision: GateDecision) => boolean;
   /** Reads the facts at `headSha` again, so the next decision judges a fresh read; called only while the PR is still at that head. */
   refresh: (ctx: WorkflowContext, headSha: string) => Promise<void>;
+  /**
+   * Tells the seat the wait at `headSha` outlasted its bound. A sent notice, or undefined for one already sent, keeps the
+   * wait going with no owner gate; an unsent one gates, naming why. Absent, the bound gates.
+   */
+  notice?: (headSha: string, reason: string) => Promise<{ sent: boolean; detail: string } | undefined>;
 }
 
 /** What GitHub's mergeability stands in for, read locally; it names the result in a gate's reason. */
@@ -31,6 +36,8 @@ export interface SettleInput {
   since?: number;
   waitMs: number;
   boundMs: number;
+  /** The seat already heard about this head, so past the bound the step only waits before the next read. */
+  told?: boolean;
 }
 
 export const SettleResult = z.looseObject({ headSha: z.string(), since: z.number(), at: z.number(), spent: z.boolean(), mergeTree: z.string().optional() });
@@ -42,6 +49,7 @@ interface SettleState {
   headSha: string;
   since: number;
   attempt: number;
+  told?: boolean;
 }
 
 /** Where the settle state lives; one hold spans every land round at a head, so a new round neither restarts the bound nor skips the refresh. */
@@ -49,15 +57,15 @@ export interface SettleHold {
   settle?: SettleState;
 }
 
-/** Waits once, or past the bound probes the local merge-tree instead, so the gate that follows can name it. */
+/** Waits once, or past the bound probes the local merge-tree instead, so the notice or gate that follows can name it. */
 export async function settleRun(input: SettleInput, timing: { now: () => number; sleep: (ms: number, signal: AbortSignal) => Promise<void> }, mergeTree: MergeTreeProbe | undefined, signal: AbortSignal): Promise<Settled> {
   const since = input.since ?? timing.now();
-  if (timing.now() - since >= input.boundMs) {
+  if (timing.now() - since >= input.boundMs && !input.told) {
     const probed = mergeTree ? await mergeTree({ repo: input.repo, baseRef: input.baseRef, headSha: input.headSha }, signal) : "not run";
     return { headSha: input.headSha, since, at: timing.now(), spent: true, mergeTree: probed };
   }
   await timing.sleep(input.waitMs, signal);
-  return { headSha: input.headSha, since, at: timing.now(), spent: false };
+  return { headSha: input.headSha, since, at: timing.now(), spent: input.told === true };
 }
 
 function unsettledReason(reason: string, settled: Settled): string {
@@ -65,12 +73,21 @@ function unsettledReason(reason: string, settled: Settled): string {
   return `${reason}; unsettled for ${minutes} min at ${settled.headSha}; local merge-tree: ${settled.mergeTree ?? "not run"}`;
 }
 
-/** A gate a later read may clear waits at this head instead, up to the bound; past it the gate stands and says how long it waited. */
+/**
+ * A gate a later read may clear waits at this head instead, up to the bound. Past it the seat is told once and the wait
+ * goes on, re-reading at the longest backoff; with no notice wired, or one that could not be sent, the gate stands and
+ * says how long it waited. A new head starts its own bound.
+ */
 export async function settleOrGate(holder: SettleHold, decision: GateDecision, unsettled: UnsettledMerge | undefined, headSha: string, record: (wait: Omit<SettleInput, "repo" | "baseRef">) => Promise<Settled>): Promise<GateDecision | undefined> {
   if (!unsettled?.transient(decision)) return decision;
   const prior = holder.settle?.headSha === headSha ? holder.settle : undefined;
   const attempt = prior ? prior.attempt + 1 : 0;
-  const settled = await record({ headSha, ...(prior && { since: prior.since }), waitMs: settleWaitMs(attempt), boundMs: UNSETTLED_BOUND_MS });
-  holder.settle = { headSha, since: settled.since, attempt };
-  return settled.spent ? { ...decision, reason: unsettledReason(decision.reason, settled) } : undefined;
+  const told = prior?.told === true;
+  const settled = await record({ headSha, ...(prior && { since: prior.since }), waitMs: settleWaitMs(attempt), boundMs: UNSETTLED_BOUND_MS, ...(told && { told }) });
+  holder.settle = { headSha, since: settled.since, attempt, ...(told && { told }) };
+  if (!settled.spent || told) return undefined;
+  const reason = unsettledReason(decision.reason, settled);
+  const notice = unsettled.notice && (await unsettled.notice(headSha, reason));
+  if (unsettled.notice && notice?.sent !== false) return void (holder.settle.told = true);
+  return { ...decision, reason: notice ? `${reason} (${notice.detail})` : reason };
 }
