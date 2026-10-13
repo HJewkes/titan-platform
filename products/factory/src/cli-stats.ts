@@ -24,6 +24,8 @@ import { failureStats, formatFailures } from "./shepherd/stats-failures.js";
 import { shepherdStats, type StatsRow } from "./shepherd/stats.js";
 import { claudeTranscripts, formatReviewCost, reviewCost } from "./shepherd/stats-cost.js";
 import { formatRedAfterMerge, redAfterMerge } from "./shepherd/stats-quality.js";
+import { shadowsIn } from "./shepherd/train-shadow.js";
+import { formatTrainShadow, trainShadowStats } from "./shepherd/train-shadow-stats.js";
 import { evaluateSlo, formatSlo, readRegistry } from "./shepherd/slo.js";
 
 const ALL_STATUSES: WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
@@ -156,8 +158,9 @@ function statsReport(db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: 
   const red = redAfterMerge(runs, range);
   const failures = opts.failures ? failureStats(runs, range) : undefined;
   const overrides = overrideStats(runs, range);
-  if (opts.json) return `${JSON.stringify({ merges: rows, ownerFriction: friction, stageTimes: stages, redAfterMerge: red, ownerOverrides: overrides, ...(failures && { failures }), reviewCauses: causes }, null, 2)}\n`;
-  const lines = [...formatRedAfterMerge(red), ...(failures ? formatFailures(failures) : [])].map((line) => `${line}\n`).join("");
+  const train = trainShadowStats(shadowsIn(db), runs, range);
+  if (opts.json) return `${JSON.stringify({ merges: rows, ownerFriction: friction, stageTimes: stages, redAfterMerge: red, ownerOverrides: overrides, trainShadow: train, ...(failures && { failures }), reviewCauses: causes }, null, 2)}\n`;
+  const lines = [...formatRedAfterMerge(red), ...formatTrainShadow(train), ...(failures ? formatFailures(failures) : [])].map((line) => `${line}\n`).join("");
   return `${formatStats(rows, friction, stages, overrides)}${lines}${causes.length === 0 ? "" : `\nreview causes:\n${causesReport(causes, false)}`}`;
 }
 

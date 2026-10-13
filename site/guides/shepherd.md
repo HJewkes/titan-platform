@@ -80,8 +80,10 @@ On a `correctness` or `security` run, or any `fix/` branch, Shepherd reads the h
 fix-proof result before the review. A vacuous or test-less proof ends the round as
 `NO_REPRO`. A proof that shows nothing about the head goes to the reviewer marked unverified.
 That covers an `error` verdict (a skipped base included), an untrusted run, and a result that
-could not be read although one was due. A MERGE on such a head carries no merge-on-green
-grant, so it waits at the owner gate even under an `auto` policy.
+could not be read although one was due. A read that fails is read once more at the same head
+first. A MERGE on such a head keeps the policy's merge-on-green grant (owner decision 303), so
+under an `auto` policy it merges on the usual conditions. The merge evidence record and the
+evidence PR comment name the unverified standing and the read's reason.
 
 A branch registered first and its pull request registered later share one run. A
 registration by number reads the pull request from GitHub to learn its head branch, so it

@@ -104,6 +104,11 @@ stays out of the repo.
   after `timeoutMs` (default 10 minutes). When GitHub reports the PR merged but names no merge
   commit, the merged outcome's `mergeSha` is `null`, and `LAND_PR_MERGE_SHA` is left unset, even
   when the factory's own environment has one. A chore that needs the sha should check that it is set. An unknown key such as `shell` fails the load.
+
+  The chore runs in its own transient unit (`systemd-run --user`, a detached process off Linux)
+  and writes its result under `<stateDir>/chores`, so a restart of serve neither kills it nor
+  loses its result. Under systemd it sees the user manager's environment plus serve's `PATH`,
+  not the whole of serve's environment.
 - `shepherd.agentChatBin` is the absolute path of the `agent-chat` executable. It is required
   when `shepherd.review` or `shepherd.fixer` is set. Without it, a red main still freezes the
   repo and files a fix task, but spawns no fixer.
@@ -395,7 +400,9 @@ held ab0f9228-… shepherd-pr: leased by 9fdfad86-… until 2026-09-30T14:42:43.
 ```
 
 A killed process keeps its lease for 30 seconds. A run whose interrupted step may already
-have had its effect (the post-merge chore) is parked as `recovery_required` for a human.
+have had its effect is parked as `recovery_required` for a human. The post-merge chore is
+reconciled from its result file instead: a finished chore is recorded, a running one is
+awaited, and only a chore that is gone and wrote no result parks the run.
 
 ## `digest run`
 

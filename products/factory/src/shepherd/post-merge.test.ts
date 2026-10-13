@@ -251,8 +251,11 @@ describe("readMainCi", () => {
       expect(await readLater(world)).toMatchObject({ verdict: "green", readSha: TIP, warning: "not required, so not blocking: lint" });
     });
 
-    it("acknowledges a merge sha with no run yet on a later commit green on every required context", async () => {
-      expect(await readLater(laterMain([], [...requiredGreen, failing("lint")]))).toMatchObject({ verdict: "green", acknowledgedSha: TIP });
+    it("reads a merge sha with no run as superseded by the later commit, green on every required context", async () => {
+      const result = await readLater(laterMain([], [...requiredGreen, failing("lint")]));
+
+      expect(result).toMatchObject({ verdict: "green", readSha: TIP, warning: "not required, so not blocking: lint" });
+      expect(result.acknowledgedSha).toBeUndefined();
     });
 
     it("is green on the merge sha itself, with a warning, when it is red only on a check that is not required", async () => {
@@ -565,7 +568,7 @@ describe("shepherd-pr after land", () => {
   it("reads the PR no more after its own merge: main CI and cleanup take the base, head ref and merge sha from the merge", async () => {
     const notes: string[] = [];
     const cleanup: CleanupPorts = {
-      tasks: { state: async () => "open", done: async () => undefined, appendNote: async (_initiative, _id, line) => void notes.push(line) },
+      tasks: { state: async () => "open", slicing: async () => ({ tags: [], notes: "", plan: undefined }), done: async () => undefined, appendNote: async (_initiative, _id, line) => void notes.push(line) },
       agents: { invalidate: () => undefined, roster: async () => [], retire: async () => undefined },
     };
     const w = shepherdWorld(() => [successRun("validate", 5)], cleanup);
@@ -588,7 +591,7 @@ describe("shepherd-pr after land", () => {
     const closed: string[] = [];
     const retired: string[] = [];
     const cleanup: CleanupPorts = {
-      tasks: { state: async () => "open", done: async (initiative, id) => void closed.push(`${initiative}/${id}`), appendNote: async () => undefined },
+      tasks: { state: async () => "open", slicing: async () => ({ tags: [], notes: "", plan: undefined }), done: async (initiative, id) => void closed.push(`${initiative}/${id}`), appendNote: async () => undefined },
       agents: { invalidate: () => undefined, roster: async () => (retired.includes("impl-a") ? [] : [{ name: "impl-a", presence: "exited", status: "finished" }]), retire: async (name) => void retired.push(name) },
     };
     const w = shepherdWorld(() => [successRun("validate", 5)], cleanup);

@@ -63,6 +63,16 @@ describe("check-then-act port over the fake", () => {
     expect(fake.effects.merge).toBe(1);
   });
 
+  it("moves the base branch to the merge sha when a PR merges, as GitHub does", async () => {
+    const fake = fakeGitHub();
+    const port = githubPort(fake.wire);
+    const pr = fake.addPr({ headSha: H1 });
+
+    const { mergeSha } = await port.merge(REPO, pr.number, H1, "squash");
+
+    expect(await port.getHeadSha(REPO, pr.baseRef)).toBe(mergeSha);
+  });
+
   it("stamps mergedAt when a PR merges, and leaves it null until then", async () => {
     const fake = fakeGitHub();
     const port = githubPort(fake.wire);
