@@ -67,6 +67,8 @@ export interface StackLandDeps {
   snapshot?: PrSnapshot;
   /** Tells the child's implementer; false when no one could be told. */
   wakeChild: (wake: ChildWake) => Promise<boolean>;
+  /** Why Shepherd may not restack in `repo` right now, or undefined when it may; read again on every child. */
+  held: (repo: RepoSlug) => string | undefined;
   /** Holds Shepherd's bare git cache; absent means the bound state dir. */
   stateDir?: string;
   /** The fetch and push URL for `repo`; absent means GitHub over https. */
@@ -188,8 +190,12 @@ async function attempt(deps: StackLandDeps, input: RestackInput): Promise<Restac
  * Restacks one child of a parent Shepherd squash-merged: a merge-onto commit pushed fast-forward, never forced, and only
  * then retargeted. Every refusal, a failed read or fetch included, wakes the child's implementer; there is no rebase
  * fallback. Only direct children come here, so a grandchild keeps its base and is untouched until its own parent lands.
+ * The switch and the advisory flag are read again here, since a resumed run replays a child list stored before either
+ * changed; a held repo is skipped quietly, as the owner chose it.
  */
 export async function restackChild(deps: StackLandDeps, input: RestackInput): Promise<RestackResult> {
+  const held = deps.held(input.repo);
+  if (held !== undefined) return { outcome: "skipped", pr: input.child.pr, reason: restackReason(input.parentPr, `skipped: ${held}`), woken: false };
   const result = await attempt(deps, input).catch((error: unknown): Refusal => ({ outcome: "guard", reason: `guard: ${reasonOf(error)}` }));
   if (result.outcome === "restacked") return result;
   const reason = restackReason(input.parentPr, result.reason);
@@ -240,14 +246,22 @@ export function configuredStackRestack(read: () => Readonly<Record<string, { sta
   };
 }
 
+/** The switch off or an advisory repo holds every restack; anything but a clear yes is off. */
+function restackHeld(deps: ShepherdDeps): (repo: RepoSlug) => string | undefined {
+  return (repo) => {
+    if (deps.stackRestack?.(repo) !== true) return `stack restack is off for ${repo}`;
+    return deps.advisory?.(repo) ? `${repo} is advisory` : undefined;
+  };
+}
+
 /**
  * The child list never fails post-merge: the switch off, an advisory repo or a failed read all answer no children with
  * a `skipped` caveat, so main CI, the unfreeze, cleanup and the release still follow the merge. The caveat names only
  * the error class, since it is a stored step output that can reach a public PR.
  */
-async function listChildren(deps: ShepherdDeps, land: StackLandDeps, input: LandedParent & { parentHeadRepo: string | null }): Promise<z.infer<typeof ChildrenResult>> {
-  if (deps.stackRestack?.(input.repo) !== true) return { children: [], skipped: `stack restack is off for ${input.repo}` };
-  if (deps.advisory?.(input.repo)) return { children: [], skipped: `${input.repo} is advisory` };
+async function listChildren(land: StackLandDeps, input: LandedParent & { parentHeadRepo: string | null }): Promise<z.infer<typeof ChildrenResult>> {
+  const held = land.held(input.repo);
+  if (held !== undefined) return { children: [], skipped: held };
   return stackChildren(land, input).then(
     (children) => ({ children }),
     (error: unknown) => ({ children: [], skipped: `the child list could not be read: ${errorClass(error)}` }),
@@ -255,9 +269,9 @@ async function listChildren(deps: ShepherdDeps, land: StackLandDeps, input: Land
 }
 
 export function stackLandRoutes(deps: ShepherdDeps): StepRoute[] {
-  const land: StackLandDeps = { port: deps.port, wakeChild: wakeOver(deps), ...(deps.snapshot && { snapshot: deps.snapshot }) };
+  const land: StackLandDeps = { port: deps.port, wakeChild: wakeOver(deps), held: restackHeld(deps), ...(deps.snapshot && { snapshot: deps.snapshot }) };
   return [
-    codeRoute(STACK_CHILDREN_STEP, deps.now, (input: LandedParent & { parentHeadRepo: string | null }) => listChildren(deps, land, input)),
+    codeRoute(STACK_CHILDREN_STEP, deps.now, (input: LandedParent & { parentHeadRepo: string | null }) => listChildren(land, input)),
     codeRoute(RESTACK_STEP, deps.now, (input: RestackInput) => restackChild(land, input)),
   ];
 }

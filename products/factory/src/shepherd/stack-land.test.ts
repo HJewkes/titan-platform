@@ -104,7 +104,7 @@ function buildStack(options: StackOptions = {}): Stack {
 
   const wakes: ChildWake[] = [];
   const seen: string[][] = [];
-  const deps: StackLandDeps = { port: githubPort(fake.wire), wakeChild: async (wake) => (wakes.push(wake), true), stateDir: join(root, "state"), remote: () => origin, git: recordingGit(seen, options.beforePush) };
+  const deps: StackLandDeps = { port: githubPort(fake.wire), wakeChild: async (wake) => (wakes.push(wake), true), held: () => undefined, stateDir: join(root, "state"), remote: () => origin, git: recordingGit(seen, options.beforePush) };
   const input: RestackInput = { repo: REPO, parentPr, parentHeadRef: PARENT, parentFinal, squash, child: { pr: childPr, headRef: childBranch, headSha: childHead } };
   return { fake, parentPr, childPr, grandchildPr, parentFinal, childHead, grandchildHead, squash, wakes, seen, deps, input };
 }
@@ -246,6 +246,24 @@ describe("restackChild", { timeout: 30_000 }, () => {
     expect(s.seen).toEqual([]);
     expect(originRef(`refs/heads/${CHILD}`)).toBe(s.childHead);
   });
+
+  for (const [label, reason] of [["the switch is turned off", `stack restack is off for ${REPO}`], ["the repo turns advisory", `${REPO} is advisory`]] as const) {
+    it(`pushes, retargets and wakes nothing when ${label} after the child list was read`, async () => {
+      const s = buildStack();
+      const hold: { reason?: string } = {};
+      const deps = { ...s.deps, held: () => hold.reason };
+      const [child] = await stackChildren(deps, { repo: REPO, parentPr: s.parentPr, parentHeadRef: PARENT, parentHeadRepo: REPO });
+      hold.reason = reason;
+
+      const result = await restackChild(deps, { ...s.input, child: child! });
+
+      expect(result).toEqual({ outcome: "skipped", pr: s.childPr, reason: `parent #${s.parentPr} landed; restack skipped: ${reason}`, woken: false });
+      expect(s.seen).toEqual([]);
+      expect(s.fake.baseChanges).toEqual([]);
+      expect(originRef(`refs/heads/${CHILD}`)).toBe(s.childHead);
+      expect(s.wakes).toEqual([]);
+    });
+  }
 
   it("skips a child whose head branch is not an agent-chat branch", async () => {
     const s = buildStack({ childBranch: "feature/manual" });

@@ -417,9 +417,10 @@ const withRequired = (runs: ReturnType<typeof successRun>[]) => (runs.length ===
 interface WorldOptions {
   wrap?: (port: GitHubPort) => GitHubPort;
   stackRestack?: (repo: string) => boolean;
+  advisory?: (repo: string) => boolean;
 }
 
-function shepherdWorld(mergeRuns: () => ReturnType<typeof successRun>[], cleanup?: CleanupPorts, mainRed?: Omit<MainRedWiring, "freezes">, { wrap = (port) => port, stackRestack }: WorldOptions = {}) {
+function shepherdWorld(mergeRuns: () => ReturnType<typeof successRun>[], cleanup?: CleanupPorts, mainRed?: Omit<MainRedWiring, "freezes">, { wrap = (port) => port, stackRestack, advisory }: WorldOptions = {}) {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
@@ -428,7 +429,7 @@ function shepherdWorld(mergeRuns: () => ReturnType<typeof successRun>[], cleanup
   let clock = 0;
   const store = shepherdStoreRef();
   const freeze = freezeStoreRef(() => clock);
-  const routes = factoryRoutesFor({ port, store, freeze, now: () => clock, sleep: async (ms, signal) => (signal?.throwIfAborted(), void (clock += ms)), cleanup, mainRed, stackRestack });
+  const routes = factoryRoutesFor({ port, store, freeze, now: () => clock, sleep: async (ms, signal) => (signal?.throwIfAborted(), void (clock += ms)), cleanup, mainRed, stackRestack, advisory });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, store, routes, freezes: () => freeze.get() };
@@ -475,6 +476,32 @@ describe("shepherd-pr after land", () => {
     expect(resultOf(w, runId, "sh-stack-children:1")).toMatchObject({ result: { children: [], skipped: `stack restack is off for ${REPO}` } });
     expect(stepIds(w, runId).filter((id) => id.startsWith("sh-restack"))).toEqual([]);
   });
+
+  for (const turn of ["off", "advisory"] as const) {
+    it(`skips a listed child without a retarget once the repo turns ${turn} before its restack step`, async () => {
+      let held = false;
+      const retargets: number[] = [];
+      const w = shepherdWorld(() => [successRun("validate", 5)], undefined, undefined, {
+        stackRestack: (repo) => repo === REPO && !(turn === "off" && held),
+        advisory: () => turn === "advisory" && held,
+        wrap: (port) => ({
+          ...port,
+          listOpenPrs: async (repo: string) => port.listOpenPrs(repo).finally(() => (held = true)),
+          setPrBase: async (...args: Parameters<GitHubPort["setPrBase"]>) => (retargets.push(args[1]), port.setPrBase(...args)),
+        }),
+      });
+      const child = stackedChild(w);
+      const runId = await runToMerge(w);
+
+      await w.host.runtime.wait(runId);
+
+      const reason = turn === "off" ? `stack restack is off for ${REPO}` : `${REPO} is advisory`;
+      expect(resultOf(w, runId, "sh-stack-children:1")).toMatchObject({ result: { children: [{ pr: child }] } });
+      expect(resultOf(w, runId, `sh-restack:${child}:${fakeSha("child")}`)).toMatchObject({ result: { outcome: "skipped", reason: `parent #1 landed; restack skipped: ${reason}`, woken: false } });
+      expect(retargets).toEqual([]);
+      expect(w.host.runtime.status(runId)?.status).toBe("completed");
+    });
+  }
 
   it("still reads main CI, unfreezes and cleans up when the child list cannot be read", async () => {
     const w = shepherdWorld(() => [successRun("validate", 5)], undefined, undefined, {
