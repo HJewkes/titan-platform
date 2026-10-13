@@ -100,10 +100,10 @@ export function ghGateway(deps: GhGatewayDeps): GhGateway {
   const inFlight = new Map<string, Promise<GhReadAnswer>>();
   return {
     budget: () => deps.client.budget(),
-    read: async ({ path, maxAgeMs = 0, caller = "unknown" }) => {
+    read: async ({ path, maxAgeMs = 0, caller = "unknown", raw = false }) => {
       const matched = matchRoute(path);
       if (!matched) throw coded(`shepherd.ghRead refused ${JSON.stringify(path.slice(0, 200))}: not a whitelisted read route`, EXIT.NOPERM);
-      const fromSnapshot = await snapshotPull(deps.snapshot, matched, now);
+      const fromSnapshot = raw ? undefined : await snapshotPull(deps.snapshot, matched, now);
       if (fromSnapshot) return fromSnapshot;
       const remembered = memory.get(path);
       if (remembered && now() - remembered.readAt < maxAgeMs) return { ...remembered.answer, source: "memory" };
@@ -164,11 +164,12 @@ const GhReadArgs = z.object({
   method: z.string().default("GET"),
   maxAgeMs: z.number().int().min(0).max(3_600_000).optional(),
   caller: z.string().min(1).max(100).default("unknown"),
+  raw: z.boolean().optional(),
 });
 
 const ghReadCommand = defineCommand<z.infer<typeof GhReadArgs>, GhReadAnswer, FactoryContext>({
   name: "shepherd.ghRead",
-  description: "One whitelisted GitHub GET through serve's shared, throttled client and ETag cache; any other route or method is refused",
+  description: "One whitelisted GitHub GET through serve's shared, throttled client and ETag cache; any other route or method is refused; raw skips the PR snapshot",
   args: GhReadArgs,
   result: z.custom<GhReadAnswer>(),
   run: async ({ method, ...request }, ctx) => {
