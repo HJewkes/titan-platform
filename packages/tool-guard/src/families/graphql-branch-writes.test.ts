@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { tokenize } from "../shell/lexer.js";
 import type { WordToken } from "../shell/lexer.js";
-import { decodeGraphqlEscapes, graphqlBranchWrites } from "./graphql-branch-writes.js";
+import { GH_PLACEHOLDER_RE, decodeGraphqlEscapes, graphqlBranchWrites } from "./graphql-branch-writes.js";
 
 const words = (src: string) => tokenize(src).filter((t): t is WordToken => t.type === "word");
 
@@ -150,6 +150,34 @@ describe("graphqlBranchWrites, variables", () => {
     ["refs/heads/{branch}", 'mutation{createRef(input:{repositoryId:"r",name:"refs/heads/{branch}",oid:"x"}){ref{id}}}'],
   ])("reads a query string %s gh fills from the checkout as unknown", (_what, query) => {
     expect(read(query).unknown).toBe(true);
+  });
+
+  it.each([
+    ["between unquoted halves of a value", 'mutation{mergeBranch(input:{repositoryId:"r",head:"feat/x",base:{branch}main{branch}}){mergeCommit{oid}}}'],
+    ["before the first quote", 'mutation{mergeBranch(input:{base:{branch},repositoryId:"r",head:"feat/x"}){mergeCommit{oid}}}'],
+    ["after the last quote", 'mutation{mergeBranch(input:{repositoryId:"r",head:"feat/x",base:x:owner}){mergeCommit{oid}}}'],
+    ["in a query with no quotes", "mutation{createRef(input:{repositoryId:{repo},name:{owner},oid:{branch}}){ref{id}}}"],
+  ])("reads a placeholder %s of a -F query as unknown", (_where, query) => {
+    expect(read(query).unknown).toBe(true);
+  });
+
+  it.each([
+    ["a branch, which may hold any GraphQL text", "{viewer{login}}{branch}"],
+    ["an owner that completes a name", 'mutation{update:repo(input:{refId:"R",oid:"x"}){clientMutationId}}'],
+  ])("reads a query with no mutation whose fill is %s as unknown", (_what, query) => {
+    expect(read(query)).toMatchObject({ mutations: [], unknown: true });
+  });
+
+  it("keeps a read naming a quoted owner and repo known", () => {
+    expect(read('query{repository(owner:"{owner}",name:"{repo}"){defaultBranchRef{name}}}')).toEqual({ mutations: [], branches: [], unknown: false });
+  });
+
+  it("keeps a feature-branch mutation with a {name} selection gh leaves alone known", () => {
+    expect(read('mutation{mergeBranch(input:{repositoryId:"r",base:"feat/x",head:"feat/y"}){mergeCommit{oid}}}').unknown).toBe(false);
+  });
+
+  it("pins gh 2.102's placeholder pattern", () => {
+    expect(GH_PLACEHOLDER_RE.source).toBe(String.raw`:(?:owner|repo|branch)\b|\{[a-z]+\}`);
   });
 
   it("keeps a feature branch whose name only resembles a placeholder known", () => {

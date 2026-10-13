@@ -22,8 +22,8 @@ interface GraphqlBranchWrites {
   /** Candidate branch names, with one `refs/` and one `heads/` stripped; the caller tests each for protection. */
   branches: string[];
   /**
-   * A mutation's target branch is known only at run time, or a text is escaped past the two layers GitHub decodes;
-   * the second can hold with `mutations` empty.
+   * A mutation's target branch is known only at run time, a text is escaped past the two layers GitHub decodes, or
+   * gh's placeholder fill can rewrite a text; the last two can hold with `mutations` empty.
    */
   unknown: boolean;
 }
@@ -72,7 +72,21 @@ const fieldKeyRe = (key: string) => new RegExp(`^(?:${key}|[^=]*\\[${key}\\])=`)
  * gh's own `-F` placeholder pattern (gh 2.102), unanchored as gh applies it: `{branch}` and `:branch` become the
  * checked-out branch, so `m:branch` or `feature-{branch}` names a branch only known at run time.
  */
-const GH_PLACEHOLDER_RE = /:(?:owner|repo|branch)\b|\{[a-z]+\}/;
+export const GH_PLACEHOLDER_RE = /:(?:owner|repo|branch)\b|\{[a-z]+\}/;
+/** The matches gh fills; it leaves any other `{name}`, such as a `{oid}` selection, as written. */
+const GH_FILLED = new Set([":owner", ":repo", ":branch", "{owner}", "{repo}", "{branch}"]);
+const NAME_CHAR_RE = /[A-Za-z0-9_]/;
+
+const ghFills = (text: string) => [...text.matchAll(new RegExp(GH_PLACEHOLDER_RE, "g"))].filter((m) => GH_FILLED.has(m[0]));
+
+/**
+ * Whether gh's fill can change what a query sent by `-F query=` means beyond a known value: a branch name may hold
+ * quotes or any other GraphQL text, and an owner or repo name beside a name character extends that name.
+ */
+function rewritesQuery(text: string): boolean {
+  const touchesName = (at: number) => NAME_CHAR_RE.test(text.charAt(at));
+  return ghFills(text).some((m) => m[0].includes("branch") || touchesName(m.index - 1) || touchesName(m.index + m[0].length));
+}
 
 const normalizeBranch = (name: string) => name.trim().replace(/^refs\//, "").replace(/^heads\//, "");
 
@@ -91,11 +105,8 @@ function isQueryField(word: WordToken): boolean {
 
 /** A variable whose value cannot be read: computed at run time, case-folded, read from a file, or filled in by gh. */
 function unreadable(word: WordToken): boolean {
-  return word.dynamic || isCaseUnsure(word) || /^[^=]*=@/.test(word.value) || GH_PLACEHOLDER_RE.test(word.value);
+  return word.dynamic || isCaseUnsure(word) || /^[^=]*=@/.test(word.value) || ghFills(word.value).length > 0;
 }
-
-/** A string in a query sent by `-F query=`, which gh fills placeholders in as in any other `-F` value. */
-const placeholderString = (texts: string[]) => texts.some((t) => quotedRuns(t).some((run) => GH_PLACEHOLDER_RE.test(run)));
 
 function fieldValue(word: WordToken): string {
   const eq = word.value.indexOf("=");
@@ -136,14 +147,14 @@ export function graphqlBranchWrites(texts: string[], fields: WordToken[]): Graph
   const capped = reads.some((r) => !r.complete);
   const decoded = reads.map((r) => r.text);
   const mutations = mutationsIn(decoded);
-  if (mutations.length === 0) return { mutations, branches: [], unknown: capped };
+  if (mutations.length === 0) return { mutations, branches: [], unknown: capped || texts.some(rewritesQuery) };
   const variables = fields.filter((w) => !isQueryField(w));
   const unknown =
     capped ||
     mutations.some((m) => OPAQUE_TARGET.has(m)) ||
     targetUnwritten(mutations, decoded, variables) ||
     variables.some(unreadable) ||
-    placeholderString(decoded);
+    texts.some((t) => ghFills(t).length > 0);
   const named = mutations.some((m) => NAMED_TARGET.has(m));
   return { mutations, branches: named ? candidateBranches(decoded, variables) : [], unknown };
 }
