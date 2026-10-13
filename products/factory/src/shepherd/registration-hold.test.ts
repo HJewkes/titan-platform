@@ -1,7 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort, type PrFile } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
-import { shepherdEventMigration } from "./events.js";
+import { reclassMarkMigration, shepherdEventMigration } from "./events.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { reclassedUnread } from "./g10-reclass-events.js";
 import { applyRegistrationHold, everG10Held, g10HoldAt, isUnreadRegistrationHold, stackedOver } from "./registration-hold.js";
@@ -20,7 +20,7 @@ interface Rig {
 
 function rig(files: PrFile[], kind = "feature"): Rig {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), reclassMarkMigration(25)]);
   const store = new ShepherdStore(db);
   const fake = fakeGitHub({ repo: REPO });
   const { number: pr } = fake.addPr({ headSha: fakeSha("head-1") });
@@ -274,10 +274,10 @@ describe("an unread-files hold re-classed by Shepherd", () => {
     expect(isUnreadRegistrationHold("g10-adversary: authority change; TP-1")).toBe(false);
   });
 
-  it("re-classes nothing for a seat's release of an unread-looking hold", async () => {
+  it.each(["seat-x", "shepherd"])("re-classes nothing for a release by %s that is not Shepherd's re-class", async (actor) => {
     const r = rig([file("products/factory/src/shepherd/g10-x.ts", 10)]);
     r.store.hold("run-1", UNREAD);
-    r.store.releaseIfHeld("run-1", UNREAD, { actor: "seat-x" });
+    r.store.releaseIfHeld("run-1", UNREAD, { actor });
 
     expect(reclassedUnread(r.store.eventsOf("run-1")).size).toBe(0);
     expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBeUndefined();
