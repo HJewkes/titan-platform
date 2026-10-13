@@ -227,7 +227,8 @@ keys successor-rework rows by role and treats a window with no `file_read` data 
 `costPerOutcome(db, assignments, { since, until })` costs generic assignment records
 (`assignmentSchema`) against `request_cost` and reports `bySeat`, `byKind`, `byInitiative` and
 `byValue` buckets with `usdPerMerged` and `usdPerDone` (bucket cost over its merged or done
-count, null at zero). An agent joins by `agent_name`, then by `session_origin.task_ids`; one with
+count, null at zero), plus `requests` and `requestsPerFinished` (bucket requests over merged plus
+done, null at zero). An agent joins by `agent_name`, then by `session_origin.task_ids`; one with
 neither lands in `unmatchedAgents`, and `joinSource` counts each route. An agent's window spend is
 split over its assignments, so it is costed once however many rounds it ran. Seat sessions are
 reported in `seatCostUsd` and kept out of every bucket. `renderCostPerOutcomeText` prints the

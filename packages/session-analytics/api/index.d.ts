@@ -2065,6 +2065,8 @@ declare const outcomeBucketSchema: z.ZodObject<{
     costUsd: z.ZodNumber;
     usdPerMerged: z.ZodNullable<z.ZodNumber>;
     usdPerDone: z.ZodNullable<z.ZodNumber>;
+    requests: z.ZodNumber;
+    requestsPerFinished: z.ZodNullable<z.ZodNumber>;
 }, z.core.$strip>;
 declare const costPerOutcomeSchema: z.ZodObject<{
     window: z.ZodObject<{
@@ -2079,6 +2081,8 @@ declare const costPerOutcomeSchema: z.ZodObject<{
         costUsd: z.ZodNumber;
         usdPerMerged: z.ZodNullable<z.ZodNumber>;
         usdPerDone: z.ZodNullable<z.ZodNumber>;
+        requests: z.ZodNumber;
+        requestsPerFinished: z.ZodNullable<z.ZodNumber>;
     }, z.core.$strip>;
     bySeat: z.ZodArray<z.ZodObject<{
         key: z.ZodString;
@@ -2088,6 +2092,8 @@ declare const costPerOutcomeSchema: z.ZodObject<{
         costUsd: z.ZodNumber;
         usdPerMerged: z.ZodNullable<z.ZodNumber>;
         usdPerDone: z.ZodNullable<z.ZodNumber>;
+        requests: z.ZodNumber;
+        requestsPerFinished: z.ZodNullable<z.ZodNumber>;
     }, z.core.$strip>>;
     byKind: z.ZodArray<z.ZodObject<{
         key: z.ZodString;
@@ -2097,6 +2103,8 @@ declare const costPerOutcomeSchema: z.ZodObject<{
         costUsd: z.ZodNumber;
         usdPerMerged: z.ZodNullable<z.ZodNumber>;
         usdPerDone: z.ZodNullable<z.ZodNumber>;
+        requests: z.ZodNumber;
+        requestsPerFinished: z.ZodNullable<z.ZodNumber>;
     }, z.core.$strip>>;
     byInitiative: z.ZodArray<z.ZodObject<{
         key: z.ZodString;
@@ -2106,6 +2114,8 @@ declare const costPerOutcomeSchema: z.ZodObject<{
         costUsd: z.ZodNumber;
         usdPerMerged: z.ZodNullable<z.ZodNumber>;
         usdPerDone: z.ZodNullable<z.ZodNumber>;
+        requests: z.ZodNumber;
+        requestsPerFinished: z.ZodNullable<z.ZodNumber>;
     }, z.core.$strip>>;
     byValue: z.ZodArray<z.ZodObject<{
         key: z.ZodString;
@@ -2115,6 +2125,8 @@ declare const costPerOutcomeSchema: z.ZodObject<{
         costUsd: z.ZodNumber;
         usdPerMerged: z.ZodNullable<z.ZodNumber>;
         usdPerDone: z.ZodNullable<z.ZodNumber>;
+        requests: z.ZodNumber;
+        requestsPerFinished: z.ZodNullable<z.ZodNumber>;
     }, z.core.$strip>>;
     seatCostUsd: z.ZodArray<z.ZodObject<{
         key: z.ZodString;
