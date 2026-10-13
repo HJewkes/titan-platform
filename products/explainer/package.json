@@ -39,6 +39,9 @@
     "commander": "^14.0.3",
     "zod": "^4.4.3"
   },
+  "devDependencies": {
+    "@titan-design/test-kit": "workspace:*"
+  },
   "bin": {
     "explainer": "./dist/bin.js"
   }
