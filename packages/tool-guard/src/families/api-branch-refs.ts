@@ -86,6 +86,6 @@ export function apiBranchRefWrite(url: string, method: string | null, fields: Wo
   if (!refs) return null;
   const tail = (refs[1] ?? "").replace(/\/+$/, "");
   if (tail === "") return verb === null || verb === "POST" ? createdBranches(fields) : null;
-  const head = HEADS_RE.exec(tail);
-  return head ? { branches: [head[1] as string] } : null;
+  const branch = HEADS_RE.exec(tail)?.[1];
+  return branch === undefined ? null : { branches: [branch] };
 }
