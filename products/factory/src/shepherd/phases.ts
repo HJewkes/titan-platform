@@ -47,6 +47,8 @@ export interface ReviewRequest extends PhaseTarget {
   fresh?: boolean;
   /** Why this head is reviewed; the intent step records it. */
   cause?: ReviewCause;
+  /** Shepherd's own MERGE at this head that a seat held last round; only the seat check runs again. */
+  seatHeld?: SeatHeld;
 }
 
 /**
@@ -62,12 +64,14 @@ export interface PanelMerge {
   members: readonly { shape: ReviewShape; agentId: string; sessionId: string; locator: unknown }[];
 }
 
-/** Shepherd's own MERGE at `head` that a seat reviewer's WAIT still held when the seat wait ran out. */
+/** Shepherd's own MERGE at `head` that a seat reviewer's WAIT, or a seat read that can clear, still held when the seat wait ran out. */
 export interface SeatHeld {
   head: string;
   locator: unknown;
   reviewer: AgentIdentity;
   dispatchedReviewer: AgentIdentity;
+  /** The verdict step's MERGE as recorded, which the next round's seat recheck holds or lets stand. */
+  merge: Readonly<Record<string, unknown>>;
 }
 
 export type Verdict =

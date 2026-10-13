@@ -27,6 +27,10 @@ export interface GhCliOptions {
   sleep?: (ms: number) => Promise<void>;
 }
 
+/** Actions colours its log with ANSI codes, which would hide a line's prefix from every reader of the log. */
+// eslint-disable-next-line no-control-regex
+const stripEscapes = (log: string): string => log.replace(/\u001b\[[0-9;]*[A-Za-z]/g, "");
+
 export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): GitHubWire {
   const api = restCaller(exec, options.budget ?? sharedRateBudget, options.etagCacheSize ?? 500, options.sleep);
   return {
@@ -54,15 +58,16 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     listCheckRuns: (repo, sha) => listCheckRuns(api, repo, sha),
     createCheckRun: async (repo, request) => createCheckRun(exec, options, repo, request),
     getCommit: async (repo, sha) => {
-      const commit = await api.get<{ sha: string; parents: { sha: string }[]; tree?: { sha: string }; committer?: { date?: string } }>(`repos/${repo}/git/commits/${sha}`);
+      const commit = await api.get<{ sha: string; parents: { sha: string }[]; tree?: { sha: string }; committer?: { date?: string }; message?: string }>(`repos/${repo}/git/commits/${sha}`);
       const committedAt = commit.committer?.date;
       const tree = commit.tree?.sha;
-      return { sha: commit.sha, parents: commit.parents.map((parent) => parent.sha), ...(tree ? { tree } : {}), ...(committedAt ? { committedAt } : {}) } satisfies Commit;
+      const message = commit.message;
+      return { sha: commit.sha, parents: commit.parents.map((parent) => parent.sha), ...(tree ? { tree } : {}), ...(committedAt ? { committedAt } : {}), ...(message !== undefined ? { message } : {}) } satisfies Commit;
     },
     resolveCommit: (repo, sha) => resolveCommit(api, repo, sha),
     listCommitStatuses: (repo, sha) => listCommitStatuses(api, repo, sha),
     getWorkflowRunStatus: async (repo, runId) => (await api.get<{ status: string }>(`repos/${repo}/actions/runs/${runId}`)).status,
-    getJobLog: (repo, jobId) => api.text(`repos/${repo}/actions/jobs/${jobId}/logs`),
+    getJobLog: async (repo, jobId) => stripEscapes(await api.text(`repos/${repo}/actions/jobs/${jobId}/logs`)),
     updateBranch: async (repo, number, expectedHeadSha) => void (await api.send("PUT", `repos/${repo}/pulls/${number}/update-branch`, { expected_head_sha: expectedHeadSha })),
     setPrBase: async (repo, number, base) => void (await api.send("PATCH", `repos/${repo}/pulls/${number}`, {}, JSON.stringify({ base }))),
     merge: async (repo, number, sha, method, message) => {

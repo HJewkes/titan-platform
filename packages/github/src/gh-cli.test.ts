@@ -152,14 +152,14 @@ describe("gh api adapter", () => {
     expect(gh.calls.flatMap((call) => call.args).some((arg) => /token|authorization/i.test(arg))).toBe(false);
   });
 
-  it("reads a commit's parents, tree and committer date, and leaves the date out when GitHub omits it", async () => {
-    const dated = scriptedGh({ [`git/commits/${H1}`]: JSON.stringify({ sha: H1, parents: [{ sha: "p1" }], tree: { sha: "t1" }, committer: { date: "2026-02-03T04:05:06Z" } }) });
+  it("reads a commit's parents, tree, committer date and message, and leaves the date out when GitHub omits it", async () => {
+    const dated = scriptedGh({ [`git/commits/${H1}`]: JSON.stringify({ sha: H1, parents: [{ sha: "p1" }], tree: { sha: "t1" }, committer: { date: "2026-02-03T04:05:06Z" }, message: "Add x\n\n[skip ci]" }) });
     const undated = scriptedGh({ [`git/commits/${H1}`]: JSON.stringify({ sha: H1, parents: [] }) });
 
     const withDate = await ghCliWire(dated.exec).getCommit(REPO, H1);
     const withoutDate = await ghCliWire(undated.exec).getCommit(REPO, H1);
 
-    expect(withDate).toEqual({ sha: H1, parents: ["p1"], tree: "t1", committedAt: "2026-02-03T04:05:06Z" });
+    expect(withDate).toEqual({ sha: H1, parents: ["p1"], tree: "t1", committedAt: "2026-02-03T04:05:06Z", message: "Add x\n\n[skip ci]" });
     expect(withoutDate).toEqual({ sha: H1, parents: [] });
   });
 
@@ -462,7 +462,19 @@ describe("gh api adapter, REST only", () => {
     expect(log).toBe("line 2\nline 3");
     expect(gh.argv).toContainEqual(["api", "-i", "-X", "GET", "repos/octo/demo/pulls", "-f", "state=open", "-f", "per_page=100"]);
     expect(gh.argv).toContainEqual(["api", "-i", "-X", "DELETE", "repos/octo/demo/git/refs/heads/topic"]);
-    expect(gh.argv).toContainEqual(["api", "-i", "-X", "GET", "repos/octo/demo/actions/jobs/42/logs"]);
+    expect(gh.argv).toContainEqual(["api", "-i", "-X", "GET", "repos/octo/demo/actions/jobs/42/logs", "--allow-escape-sequences"]);
+  });
+
+  it("reads a job log whose colour codes make gh refuse it unless escape sequences are allowed, and returns it without them", async () => {
+    const headers = ["HTTP/2.0 200 OK", "Content-Type: text/plain", "Content-Length: 40"].join("\r\n");
+    const exec: GhExec = async (args) =>
+      args.includes("--allow-escape-sequences")
+        ? { code: 0, stdout: `${headers}\r\n\r\n2026-10-11T12:00:00.0000000Z \u001b[36;1mpnpm test\u001b[0m\n2026-10-11T12:00:01.0000000Z done\n`, stderr: "" }
+        : { code: 1, stdout: `${headers}\r\n\r\n`, stderr: "the response contains terminal escape sequences; pass --allow-escape-sequences to output it anyway\n" };
+
+    const log = await githubPort(ghCliWire(exec)).jobLogTail(REPO, 42, 5);
+
+    expect(log).toBe("2026-10-11T12:00:00.0000000Z pnpm test\n2026-10-11T12:00:01.0000000Z done");
   });
 
   it("filters open PRs by head prefix", async () => {

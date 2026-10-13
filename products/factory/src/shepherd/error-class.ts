@@ -15,7 +15,8 @@ export function errorClass(error: unknown): string {
   }
 }
 
-const isHttpStatus = (status: unknown): status is number => typeof status === "number" && Number.isInteger(status) && status >= 100 && status <= 599;
+/** A 2xx is not an HTTP error: a read that fails on a 200 failed on its content. */
+const isHttpStatus = (status: unknown): status is number => typeof status === "number" && Number.isInteger(status) && status >= 100 && status <= 599 && !(status >= 200 && status <= 299);
 
 /** The HTTP status when the error carries one, otherwise its class name; never any of its text. */
 export function failureOf(error: unknown): string {

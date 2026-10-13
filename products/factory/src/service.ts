@@ -142,6 +142,7 @@ const execArg = (value: string): string => quoteIfNeeded(noSpecifiers(value).rep
  * The systemd --user twin of renderPlist: Restart=on-failure is KeepAlive SuccessfulExit=false, enabling under default.target is RunAtLoad.
  * A user manager starts jobs with its own minimal PATH, so the unit sets the same PATH the plist does.
  * `append:` takes the rest of the line as the path, so a log path is never quoted.
+ * TimeoutStopSec sits above the restart fence's 45 s, so a hand `systemctl restart` of a wedged serve waits 60 s, not systemd's 90 s.
  */
 export function renderUnit(options: PlistOptions): string {
   return [
@@ -154,6 +155,7 @@ export function renderUnit(options: PlistOptions): string {
     `ExecStart=${serveArgv(options).map(execArg).join(" ")}`,
     "Restart=on-failure",
     "RestartSec=5",
+    "TimeoutStopSec=60",
     `Environment=${quoteIfNeeded(noSpecifiers(`PATH=${options.path}`))}`,
     `StandardOutput=append:${noSpecifiers(join(options.logDir, "serve.out.log"))}`,
     `StandardError=append:${noSpecifiers(join(options.logDir, "serve.err.log"))}`,

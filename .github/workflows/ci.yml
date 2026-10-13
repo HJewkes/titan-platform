@@ -159,7 +159,7 @@ jobs:
       - name: Check the package DAG
         env:
           BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
-        run: pnpm dag:check --report "$RUNNER_TEMP/codewatch-report.json" --db "$RUNNER_TEMP/graph.db" --seed-db "$RUNNER_TEMP/graph.db"
+        run: pnpm dag:check:graph --report "$RUNNER_TEMP/codewatch-report.json" --db "$RUNNER_TEMP/graph.db" --seed-db "$RUNNER_TEMP/graph.db"
       # Only main saves, so a pull request never writes a graph built from an unmerged tree.
       - name: Save the dag-check graph
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.graph-cache.outputs.cache-hit != 'true'
