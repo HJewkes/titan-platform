@@ -1,5 +1,5 @@
 import type { ApprovedHeadWalk } from "./approved-head-walk.js";
-import { isPassing } from "./checks.js";
+import { isPassing, isSucceeded } from "./checks.js";
 import type { CheckRun, PullRequest, RequiredChecks } from "./port.js";
 
 /** The GitHub Actions app; on this owner's repos every required check comes from it. */
@@ -100,8 +100,4 @@ function findingBlocker(finding: CheckFinding, headSha: string, apps: string): M
   const { run } = finding;
   if (finding.kind === "pending") return { reason: "check-pending", detail: `${run.name} is ${run.status} at ${run.headSha}` };
   return { reason: "check-failed", detail: `${run.name} concluded ${run.conclusion ?? "none"} (${run.url})` };
-}
-
-function isSucceeded(run: CheckRun): boolean {
-  return run.status === "completed" && run.conclusion === "success";
 }

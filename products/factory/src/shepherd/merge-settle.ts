@@ -20,6 +20,7 @@ function rereadInput(runId: string, evidence: MergeEvidence, visualPaths: string
     ...(visualPaths && { visualPaths }),
     ...(evidence.ciPolicy && { ciPolicy: evidence.ciPolicy }),
     ...(evidence.grantWithheld && { grantWithheld: evidence.grantWithheld }),
+    ...(record.proofUnverified !== undefined && { proofUnverified: record.proofUnverified }),
   };
 }
 
