@@ -104,7 +104,12 @@ export function renderPlist(options: PlistOptions): string {
     "  <key>RunAtLoad</key>",
     "  <true/>",
     "  <key>KeepAlive</key>",
-    "  <true/>",
+    "  <dict>",
+    "    <key>SuccessfulExit</key>",
+    "    <false/>",
+    "  </dict>",
+    "  <key>ThrottleInterval</key>",
+    "  <integer>60</integer>",
     "  <key>ProcessType</key>",
     "  <string>Interactive</string>",
     "  <key>EnvironmentVariables</key>",
@@ -134,7 +139,7 @@ function quoteIfNeeded(value: string): string {
 const execArg = (value: string): string => quoteIfNeeded(noSpecifiers(value).replace(/\$/g, "$$$$"));
 
 /**
- * The systemd --user twin of renderPlist: Restart=always is KeepAlive, enabling under default.target is RunAtLoad.
+ * The systemd --user twin of renderPlist: Restart=on-failure is KeepAlive SuccessfulExit=false, enabling under default.target is RunAtLoad.
  * A user manager starts jobs with its own minimal PATH, so the unit sets the same PATH the plist does.
  * `append:` takes the rest of the line as the path, so a log path is never quoted.
  */
@@ -147,7 +152,7 @@ export function renderUnit(options: PlistOptions): string {
     "Type=simple",
     ...(options.workingDirectory === undefined ? [] : [`WorkingDirectory=${noSpecifiers(options.workingDirectory)}`]),
     `ExecStart=${serveArgv(options).map(execArg).join(" ")}`,
-    "Restart=always",
+    "Restart=on-failure",
     "RestartSec=5",
     `Environment=${quoteIfNeeded(noSpecifiers(`PATH=${options.path}`))}`,
     `StandardOutput=append:${noSpecifiers(join(options.logDir, "serve.out.log"))}`,
