@@ -5,7 +5,7 @@ import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitH
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import { LEDGER_FIXTURES, type HeadScript, type LedgerFixture, type MainScript, type Pinned, type ReviewAnswer } from "../test-support/ledger-fixtures.js";
+import { HOLD_REGRESSION_FIXTURES, LEDGER_FIXTURES, type HeadScript, type LedgerFixture, type MainScript, type Pinned, type ReviewAnswer } from "../test-support/ledger-fixtures.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, sleep } from "../workflows/land.js";
 import { UPDATE_GAP_MS, spaceUpdates } from "../test-support/land.js";
@@ -15,7 +15,7 @@ import type { MainRedWiring } from "./main-red.js";
 import type { ReviewRequest, ShepherdPhases, Verdict, WakeOutcome } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
-import { mergeVerdict, type ReviewerAgent, type ReviewWiring } from "./review.js";
+import { mergeVerdict, type AwaitVerdictInput, type ReviewerAgent, type ReviewWiring } from "./review.js";
 import { ESCALATIONS } from "./route-table.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
 import type { Git, GitResult } from "./tree-carry.js";
@@ -47,6 +47,10 @@ interface Replay {
   heldMerges: string[];
   /** Heads at which a seat reviewer said FIX_FIRST. */
   seatObjections: string[];
+  /** What the hold's live reviewer sent with `chat_send`, by head; only a seat read returns it. */
+  liveSent: { head: string; text: string }[];
+  /** Seat reads of the hold's reviewer's own session. */
+  namedSeatReads: number;
   runId: string;
   /** Reads of each head so far, for a head scripted with `unknownReads`. */
   reads: Map<string, number>;
@@ -97,7 +101,17 @@ function answerReview(replay: Replay, request: ReviewRequest): ReviewAnswer | un
   if (head.goesBehind && index === (head.reviews?.length ?? 0) - 1) replay.wentBehind.add(request.headSha);
   if (answer !== undefined && !answer.startsWith("held-")) replay.trace.reviewers += 1;
   if (answer === "held-MERGE") replay.heldMerges.push(request.headSha);
+  if (index === (head.reviews?.length ?? 0) - 1) holdAfterReview(replay, request.headSha, head);
   return answer;
+}
+
+const LIVE_TEXT = { MERGE: (head: string) => `Verdict: MERGE\nPR: ${REPO}#1\nHead: ${head}`, "no-verdict": () => "Still reading the diff; no verdict yet." };
+
+/** The owner holds the PR for the fixture's reviewer after Shepherd's own review here, and that reviewer, still live, answers in a `chat_send`. */
+function holdAfterReview(replay: Replay, sha: string, head: HeadScript): void {
+  if (!head.holdAfterReview) return;
+  replay.store.hold(replay.runId, "synthetic hold", `rv-${replay.fixture.id}`);
+  if (head.liveSends) replay.liveSent.push({ head: sha, text: LIVE_TEXT[head.liveSends](sha) });
 }
 
 const ok = (stdout = ""): GitResult => ({ code: 0, stdout, stderr: "" });
@@ -168,8 +182,14 @@ function heldReviewer(replay: Replay): Omit<ReviewWiring, "isFrozen"> {
   const objected = (head: string, index: number) => ({ agentId: seat.agentId, sessionId: seat.sessionId, writtenAt: index, text: `Verdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${head}`, locator: LOCATOR });
   const refuse = async (): Promise<never> => Promise.reject(new Error("the replay starts no reviewer"));
   const said = (head: string, index: number) => ({ agentId: reviewer.agentId, sessionId: reviewer.sessionId, writtenAt: index, text: `Verdict: MERGE\nPR: ${REPO}#1\nHead: ${head}`, locator: LOCATOR });
+  const sent = ({ text }: { text: string }, index: number) => ({ agentId: reviewer.agentId, sessionId: reviewer.sessionId, writtenAt: 100 + index, text, locator: LOCATOR });
   const carry = { stateDir: mkdtempSync(join(tmpdir(), "ledger-replay-")), git: scriptedGit(replay) };
-  return { dispatch: { roster: async () => [implementer, reviewer, seat], spawn: refuse, resume: refuse }, reader: { read: async () => [...replay.heldMerges.map(said), ...replay.seatObjections.map(objected)] }, carry };
+  const finished = () => [...replay.heldMerges.map(said), ...replay.seatObjections.map(objected)];
+  const readSeat = async (input: AwaitVerdictInput) => {
+    if (input.reviewerAgentId === reviewer.agentId) replay.namedSeatReads += 1;
+    return [...finished(), ...replay.liveSent.map(sent)];
+  };
+  return { dispatch: { roster: async () => [implementer, reviewer, seat], spawn: refuse, resume: refuse }, reader: { read: async () => finished(), readSeat }, carry };
 }
 
 function fixerWiring(fixers: string[]): Omit<MainRedWiring, "freezes"> {
@@ -198,7 +218,7 @@ function startReplay(fixture: LedgerFixture, options: ReplayOptions = {}): { hos
   const fake = fakeGitHub({ repo: REPO });
   fake.rules.strict = strict;
   const trace: Trace = { reviewers: 0, unscripted: [], fixers: [] };
-  const replay: Replay = { fixture, fake, store: undefined as unknown as ShepherdStore, trace, seen: [], wentBehind: new Set(), reviewsAt: new Map(), heldMerges: [], seatObjections: [], runId: "", reads: new Map(), updateGapMs, strict };
+  const replay: Replay = { fixture, fake, store: undefined as unknown as ShepherdStore, trace, seen: [], wentBehind: new Set(), reviewsAt: new Map(), heldMerges: [], seatObjections: [], liveSent: [], namedSeatReads: 0, runId: "", reads: new Map(), updateGapMs, strict };
   const host = openReplay(replay);
   fake.reviewBypass = fixture.reviewBypass ?? false;
   fake.addPr({ headSha: fakeSha(`f${fixture.id}-h0`), mergeSha: fakeSha(`f${fixture.id}-test-merge`) });
@@ -224,11 +244,21 @@ function settled(host: FactoryHost, replay: Replay): string | undefined {
   return held && /^merge(:|$)/.test(run.currentStep ?? "") ? "held-in-merge" : undefined;
 }
 
+type Replayed = Omit<Pinned, "outcome"> & { outcome: string; unscripted: string[] };
+
 /** A held run is read again after a pause, so a merge that slipped through the hold shows as merged. */
-async function replayed(fixture: LedgerFixture): Promise<Omit<Pinned, "outcome"> & { outcome: string; unscripted: string[] }> {
+async function replayed(fixture: LedgerFixture): Promise<Replayed> {
+  return (await replayWithTrace(fixture)).result;
+}
+
+async function replayWithTrace(fixture: LedgerFixture): Promise<{ result: Replayed; replay: Replay }> {
   const { host, replay } = startReplay(fixture);
   await vi.waitFor(() => expect(settled(host, replay)).toBeDefined(), { timeout: 5_000, interval: 10 });
   if (settled(host, replay) === "held-in-merge") await sleep(100, new AbortController().signal);
+  return { result: summary(host, replay), replay };
+}
+
+function summary(host: FactoryHost, replay: Replay): Replayed {
   const gates = host.pendingGates().filter((gate) => gate.runId === replay.runId);
   const { reviewers, unscripted, fixers } = replay.trace;
   return { outcome: settled(host, replay)!, gates: gates.map((gate) => gateName(gate.stepId, gate.gate.prompt)), reviewers, fixers: fixers.length, unscripted };
@@ -244,6 +274,15 @@ describe("the ledger replay of the 2026-09-29..10-01 owner gates", () => {
     const result = await replayed(fixture);
 
     expect(result).toEqual({ ...fixture.today, unscripted: [] });
+  });
+});
+
+describe("a --reviewer hold placed after Shepherd's own MERGE, with the named reviewer still live (TP-737)", () => {
+  it.each(HOLD_REGRESSION_FIXTURES.map((fixture) => [fixture.id, fixture.story, fixture] as const))("fixture %i (%s) settles as pinned after reading the reviewer's live session", async (_id, _story, fixture) => {
+    const { result, replay } = await replayWithTrace(fixture);
+
+    expect(result).toEqual({ ...fixture.today, unscripted: [] });
+    expect(replay.namedSeatReads).toBeGreaterThan(0);
   });
 });
 
@@ -367,15 +406,16 @@ describe("a base that moves on every read in a repo that does not require up-to-
   });
   it("refreshes every round's allowed head before its merge and never opens stuck-behind, however many rounds and minutes pass", async () => {
     const sentBack: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, { state: "behind", reviews: ["FIX_FIRST"] }];
-    const heads: HeadScript[] = [...sentBack, ...sentBack, ...sentBack, { state: "behind", reviews: ["MERGE"] }, { state: "behind", treeEqual: true }];
+    // Two send-backs, the most a run takes before its third FIX_FIRST stops it for the planner.
+    const heads: HeadScript[] = [...sentBack, ...sentBack, { state: "behind", reviews: ["MERGE"] }, { state: "behind", treeEqual: true }];
     const { host, replay } = startReplay({ ...LOOSE, heads }, { strict: false });
 
     await vi.waitFor(() => expect(settled(host, replay)).toBe("merged"), { timeout: 5_000, interval: 10 });
     const mergedHead = replay.fake.pr(1).headSha;
 
-    expect(replay.trace).toEqual({ reviewers: 7, unscripted: [], fixers: [] });
-    expect(replay.fake.effects).toMatchObject({ updateBranch: 4, merge: 1 });
-    expect(replay.seen.indexOf(mergedHead)).toBe(7);
+    expect(replay.trace).toEqual({ reviewers: 5, unscripted: [], fixers: [] });
+    expect(replay.fake.effects).toMatchObject({ updateBranch: 3, merge: 1 });
+    expect(replay.seen.indexOf(mergedHead)).toBe(5);
     expect(host.pendingGates()).toEqual([]);
   });
 });

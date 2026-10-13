@@ -5,8 +5,8 @@ import { closureDirs, FACTORY_PACKAGE, nativeBuildChanges, readWorkspace, touche
 import type { DeployIncident } from "./deploy-incident.js";
 import { deployLockPath, releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
 import { describePause, readDeployPause, writeDeployPause, type DeployPause } from "./deploy-pause.js";
+import { buildLog, detail, writeBuildLog } from "./deploy-output.js";
 import { buildShaOf, DEFAULT_WATCH_WINDOW, watchServe, type WatchWindow } from "./deploy-watch-window.js";
-import { redactCredentials } from "./redact.js";
 import { restartService, type CommandResult, type RestartDrain, type ServiceIo, type ServicePorts } from "./service-control.js";
 
 /** Every effect the deployer has beyond the service verbs'; tests pass fakes, so none of them reaches git, pnpm or launchd. */
@@ -78,8 +78,6 @@ type Plan = { kind: "go"; go: Go } | Stop;
 const UNKNOWN = "unknown";
 const MAIN = "main";
 const ORIGIN_MAIN = "origin/main";
-const OUTPUT_TAIL_LINES = 20;
-const OUTPUT_TAIL_CHARS = 2_000;
 const FAILURE = 1;
 const SHA_POLLS = 10;
 const SHA_POLL_MS = 1_000;
@@ -88,14 +86,6 @@ const LOCKFILE = "pnpm-lock.yaml";
 
 export const deployRecordPath = (stateDir: string): string => join(stateDir, "deploy.json");
 const backupRoot = (stateDir: string): string => join(stateDir, "deploy-backup");
-/** Redacted before the cut, so a cut can never leave a token without the prefix that marks it. */
-function tail(name: string, text: string): string[] {
-  const kept = redactCredentials(text.trim()).split("\n").slice(-OUTPUT_TAIL_LINES).join("\n");
-  return kept === "" ? [] : [`${name}:\n${kept.length <= OUTPUT_TAIL_CHARS ? kept : `…${kept.slice(-OUTPUT_TAIL_CHARS)}`}`];
-}
-
-/** Both streams, since pnpm prints a failing script's output on stdout and leaves stderr empty. */
-const detail = (result: CommandResult): string => [`exit ${result.code}`, ...tail("stderr", result.stderr), ...tail("stdout", result.stdout)].join("\n");
 
 export function parseDeployRecord(text: string | undefined): DeployRecord | undefined {
   if (text === undefined) return undefined;
@@ -267,7 +257,7 @@ async function execute(deploy: Deploy, go: Go): Promise<number> {
   if (go.touched.length === 0) return finish(deploy, go, "skipped", "no changed path reaches the factory build");
   deploy.io.stdout(`deploying ${go.target} over build ${go.running ?? UNKNOWN}; ${go.touched.length} changed path(s) reach the factory build\n`);
   const backup = snapshot(deploy, go);
-  const built = await installAndBuild(deploy.ports);
+  const built = await installAndBuild(deploy, go.target);
   if (built !== undefined) return rollBackBuild(deploy, go, backup, built);
   const why = await restartAndConfirm(deploy, go.target);
   return why === undefined ? finish(deploy, go, "deployed") : rollBackRestart(deploy, go, backup, why);
@@ -275,7 +265,7 @@ async function execute(deploy: Deploy, go: Go): Promise<number> {
 
 /** No service runs from this checkout yet, so there is no backup to restore and no restart to confirm: build, then `service install` points the service at it. */
 async function prepare(deploy: Deploy, go: Go): Promise<number> {
-  const built = await installAndBuild(deploy.ports);
+  const built = await installAndBuild(deploy, go.target);
   if (built !== undefined) return stop(deploy, refuse(built));
   deploy.io.stdout(`prepared ${go.target} in ${deploy.options.checkout}; run titan-factory service install to point the service at it\n`);
   return 0;
@@ -315,10 +305,12 @@ function restore({ ports, options }: Deploy, go: Go, backup: string): void {
   }
 }
 
-async function installAndBuild(ports: DeployPorts): Promise<string | undefined> {
+async function installAndBuild(deploy: Deploy, target: string): Promise<string | undefined> {
   for (const args of [["install", "--frozen-lockfile"], ["--filter", `${FACTORY_PACKAGE}...`, "build"]]) {
-    const result = await ports.pnpm(args);
-    if (result.code !== 0) return `pnpm ${args.join(" ")} failed: ${detail(result)}`;
+    const result = await deploy.ports.pnpm(args);
+    if (result.code === 0) continue;
+    const command = `pnpm ${args.join(" ")}`;
+    return `${command} failed: ${detail(result)}\n${writeBuildLog(deploy.ports, deploy.options.stateDir, buildLog(command, target, new Date(deploy.ports.now()).toISOString(), result))}`;
   }
   return undefined;
 }

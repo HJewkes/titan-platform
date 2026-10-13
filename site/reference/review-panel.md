@@ -65,9 +65,19 @@ every caller plans, briefs and aggregates the same way:
   FIX_FIRST from a session with no investigative call (`isInvestigativeCall`) is `none`
   with `DEPTH_FLOOR_REASON`. A FIX_FIRST keeps its findings (`fixFirstFindings`, bounded
   by `boundedFindings`), and a verdict keeps the reviewer's OWNER-BRIEF block
-  (`parseOwnerBrief`). A short usage-limit notice the client wrote itself (a `synthetic`
+  (`parseOwnerBrief`). A MERGE carries the reviewer's `CI-policy:` line as `ciPolicy` when
+  `parseVerdictBlock` reads one. A verdict of either kind carries the reviewer's proposed
+  `Follow-ups:` tasks as `followUps`, or `followUpsWarning` when the block was dropped; neither
+  changes the verdict (`parseFollowUps` below). A short usage-limit notice the client wrote itself (a `synthetic`
   message) is `none` with `USAGE_LIMIT_REASON`, the notice and any recorded `resetsAt`;
   `isUsageLimit` tells that result apart. The same words from the reviewer are malformed.
+- `parseFollowUps(text)`: the optional `Follow-ups:` section, one `- <title> | <done_when> | <severity>`
+  line per task directly under the heading, severity `low`, `medium` or `high`, at most `MAX_FOLLOW_UPS`.
+  It may sit before or after the verdict lines; fenced or commented lines are not read (session-read's
+  `visibleLines`). `Follow-ups: none` proposes nothing. Any fault drops the whole block with one warning
+  from `FOLLOW_UPS_WARNINGS` (`multiple_blocks`, `bad_item`, `bad_severity`, `too_many`, `too_long`,
+  `placeholder`), so a block is never filed in part. `followUpsFields` gives the two optional fields
+  `acceptVerdict` adds, and `FOLLOW_UPS_RULE` is the sentence `reviewerBrief` places before the verdict lines.
 - `aggregate(plan, results, input)`: the pure panel verdict from the members' results
   (`MemberResult`: shape, accepted verdict or `none` or `timeout`, degraded at spawn). Only
   a verdict of exactly `MERGE` or `FIX_FIRST` naming `input.head` counts; any other
@@ -81,6 +91,18 @@ every caller plans, briefs and aggregates the same way:
   equal share of 16,000 characters. `satisfiesG10` needs a g10 class, a MERGE, no degraded
   member, the correctness member at an opus profile (a key of `sonnetFor`) and the
   adversary's MERGE.
+- `reviewPullRequest(request, ports, opts?)`: the one entry point. It classifies the PR,
+  plans the panel (asking `ports.headroom()` once), runs every member in parallel and
+  returns `aggregate`'s verdict. Each member is spawned under `memberName(target, shape)`
+  (`rp-<owner>-<repo>-<pr>-<head 8>-<shape>`), with its planned profile in
+  `ReviewerFacts.profile`; a name already on the roster is reused and nothing is spawned,
+  so a repeat call with the same input spawns nothing. An opus spawn the dispatch refuses
+  is tried once at its sonnet profile and the member is degraded; a second refusal is a
+  `none` with `SPAWN_REFUSED_REASON`. The wait polls `ports.reader` through
+  `acceptVerdict`. A malformed reply gets one `correctionPrompt` per member, sent by
+  `resume`; silence past the deadline or an uncorrected reply gets one fresh reviewer
+  under the `-r2` name, and a member still silent after it is a `timeout`. A usage-limit
+  notice is final.
 
 ## When to reach for it
 
@@ -143,6 +165,7 @@ const brief = shapeBrief("adversary", {
   spawn headroom) is a port the caller passes in.
 - It does not import `agent-dispatch`, `workflow`, `github`, or any product.
 - Durability is the caller's. Shepherd records each step itself; the package keeps no state.
+  `reviewPullRequest` holds nothing between calls; its idempotence comes from the member names.
 
 ## Gotchas
 
@@ -170,6 +193,10 @@ const brief = shapeBrief("adversary", {
   (in any case), so a mid-line cut cannot recreate either. The brief then asks for an
   `Earlier findings:` checklist of `- fixed:` and `- not fixed:` lines, and for an earlier
   `Defect class:` line copied exactly when the class recurs.
+- `reviewerBrief` asks every MERGE, on any diff, for a `CI-policy: unchanged` or
+  `CI-policy: weakened <keys>` line directly after `Head:` (`CI_POLICY_RULE`, which gives each
+  key a one-line meaning). `correctionPrompt` repeats it with the key names only, since it resumes
+  the session that already read the brief, and stays within `MAX_CORRECTION_PROMPT_CHARS`.
 - `tests` is advisory in the plan. `aggregate` makes it block when `input.fixProof` is
   `vacuous`, `no-tests` or `error`, and then its MERGE is needed too. When the plan has no `tests`
   member, that seat counts as missing, so the panel never says MERGE.

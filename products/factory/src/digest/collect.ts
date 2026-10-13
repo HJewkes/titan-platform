@@ -6,7 +6,7 @@ import type { WatchRow } from "../shepherd/view.js";
 import { flowStats, implementerHours, mergedInWindow, taskToMerge, type FlowPorts } from "./flow.js";
 import { keysIn, prKey, refOfUrl, runKey } from "./keys.js";
 import { subjectOf } from "../needs/overlap.js";
-import type { AgentChatDigest, Ask, DigestModel, DigestSlot, FlowStats, Merged, ProofFixture, SeatLine, Stuck } from "./model.js";
+import type { AgentChatDigest, Ask, DecidedLine, DigestModel, DigestSlot, FlowStats, Merged, ProofFixture, SeatLine, Stuck } from "./model.js";
 
 export interface GateFact {
   runId: string;
@@ -85,7 +85,6 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
   const needs = sources.needs ? await guarded(gaps, "owner queue", undefined, () => sources.needs!()) : undefined;
   gaps.push(...(needs?.gaps ?? []));
   const measured = await measuredSections(sources, gaps, rows, since, now);
-  const waiting = waitingGates(rows, now).owner.slice(0, WAITING_SHOWN);
   return {
     slot,
     generatedAt: now.toISOString(),
@@ -95,11 +94,17 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
     stuck: [...shepherdStuck(rows, since), ...(chat ? chatStuck(chat) : [])],
     seats,
     spend: (chat?.spend ?? []).map((a) => ({ pool: a.account, sevenDay: a.now?.sevenDay, fiveHour: a.now?.fiveHour, stale: a.stale })),
-    ...(waiting.length > 0 && { waiting }),
+    ...(chat && decidedSection(chat)),
+    ...waitingSection(rows, now),
     ...proofSection(allRows, proofRuns, allGates, needs?.items ?? []),
     ...measured,
     gaps: [...gaps, ...(chat?.gaps ?? []).map((gap) => `agent-chat: ${gap}`)],
   };
+}
+
+function waitingSection(rows: readonly WatchRow[], now: Date): Pick<DigestModel, "waiting"> {
+  const waiting = waitingGates(rows, now).owner.slice(0, WAITING_SHOWN);
+  return waiting.length > 0 ? { waiting } : {};
 }
 
 /** Owner friction and flow, the sections that are left out when their port is missing or fails. */
@@ -183,6 +188,26 @@ function chatAsks(chat: AgentChatDigest): Ask[] {
     items.map((item) => ({ text: `${label} ${refOfUrl(item.label)} ${item.detail}`.trim(), source: "agent-chat", keys: keysIn(item.label) }));
   const escalations = chat.ledger.escalations.map((e) => ({ text: `${e.from}: ${e.text}`, source: "agent-chat", keys: keysIn(e.text) }));
   return [...escalations, ...named("ready to merge:", chat.readyToMerge), ...named("needs a grant:", chat.needsGrant)];
+}
+
+/** Item 101: a two-way decision takes effect at once, so it is a notice with its overrule, not an ask. */
+function decidedSection(chat: AgentChatDigest): Pick<DigestModel, "decided" | "reversals"> {
+  if (chat.ledger.decided.length === 0) return {};
+  return { decided: chat.ledger.decided.map(decidedLine), reversals: chat.ledger.reversals };
+}
+
+function decidedLine({ questionId, question, answer, class: cls, state, reversible, confidence, principleIds }: AgentChatDigest["ledger"]["decided"][number]): DecidedLine {
+  return {
+    questionId,
+    question,
+    answer,
+    class: cls,
+    state,
+    ...(reversible !== undefined && { reversible }),
+    ...(confidence !== undefined && { confidence }),
+    ...(principleIds !== undefined && principleIds.length > 0 && { principleIds }),
+    ...(state === "awaiting audit" && { overrule: `agent-chat answer ${questionId} "..."` }),
+  };
 }
 
 const endedSince = (row: WatchRow, since: Date): boolean => row.phase === "done" && Date.parse(row.phaseSince) >= since.getTime();

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { EXIT, runCli } from "./cli.js";
 import { SERVICE_LABEL, UNIT_NAME } from "./service.js";
-import { CRASH_LOOP_WINDOW_MS, type CheckPorts } from "./service-check.js";
+import { CRASH_LOOP_WINDOW_MS, SERVICE_CHECK_BUDGET_MS, type CheckPorts } from "./service-check.js";
 import { deployHealth, parseRedeployLog } from "./deploy-health.js";
 import type { IndexLock } from "./stale-lock.js";
 
@@ -19,11 +19,15 @@ interface Machine {
   platform?: NodeJS.Platform;
   /** `systemctl --user show` output on Linux. */
   unit?: string;
+  /** A failed `systemctl --user show`; overrides `unit`. */
+  unitFailure?: { code: number; stderr: string };
   /** launchctl print output; undefined means the job is not loaded. */
   print?: string;
   health?: Record<string, unknown> | null;
   /** Successive /health answers, the last repeating; overrides `health`. */
   healthSequence?: (Record<string, unknown> | null)[];
+  /** How long each /health probe takes to answer on the fake clock; a probe whose timeout is shorter returns null at its timeout. Infinity never answers. */
+  answerAfterMs?: number;
   dead?: number[];
   startedAgoMs?: number;
   /** The commit a restart loads; absent means the running build. */
@@ -36,7 +40,13 @@ interface Machine {
   lock?: IndexLock;
   /** True when the config sets no shepherd.hubSeat; one is set by default. */
   noHubSeat?: boolean;
+  /** The titan-factory on PATH, resolved; absent means none is on PATH. */
+  installed?: { path: string; sha: string | undefined };
+  /** The deploy checkout's HEAD; absent means the running build. */
+  head?: string;
 }
+
+const DEPLOY_BIN = "/srv/tester/.local/share/titan-factory/deploy/titan-platform/products/factory/dist/bin.js";
 
 const LOCK = "/srv/checkout/.git/index.lock";
 
@@ -47,6 +57,12 @@ const healthy = (extra: Record<string, unknown> = {}): Record<string, unknown> =
 function fakePorts(init: Machine) {
   const calls: string[] = [];
   let probes = 0;
+  let clock = NOW;
+  const answer = (): Record<string, unknown> | null => (init.healthSequence ? (init.healthSequence[Math.min(probes++, init.healthSequence.length - 1)] ?? null) : (init.health ?? null));
+  const timedAnswer = (answerAfterMs: number, timeoutMs = Infinity): Record<string, unknown> | null => {
+    clock += Math.min(answerAfterMs, timeoutMs);
+    return answerAfterMs <= timeoutMs ? answer() : null;
+  };
   const ports: CheckPorts = {
     platform: init.platform ?? "darwin",
     uid: UID,
@@ -59,19 +75,23 @@ function fakePorts(init: Machine) {
     },
     systemctl: async (args) => {
       calls.push(`systemctl ${args.join(" ")}`);
+      if (init.unitFailure) return { ...init.unitFailure, stdout: "" };
       return init.unit === undefined ? { code: 127, stdout: "", stderr: "systemctl not found" } : { code: 0, stdout: init.unit, stderr: "" };
     },
     claude: async () => undefined,
     isDirectory: () => false,
     which: () => undefined,
-    health: async () => (init.healthSequence ? (init.healthSequence[Math.min(probes++, init.healthSequence.length - 1)] ?? null) : (init.health ?? null)),
+    health: async (_port, timeoutMs) => (init.answerAfterMs === undefined ? answer() : timedAnswer(init.answerAfterMs, timeoutMs)),
     mkdir: () => undefined,
     writeFile: () => undefined,
     readFile: () => undefined,
     exists: () => false,
     remove: () => undefined,
-    sleep: async () => undefined,
-    now: () => NOW,
+    // Only a timed machine's clock moves, so the crash-loop window tests keep their exact process ages.
+    sleep: async (ms) => {
+      if (init.answerAfterMs !== undefined) clock += ms;
+    },
+    now: () => clock,
     isAlive: (pid) => !(init.dead ?? []).includes(pid),
     processStartedAt: async () => new Date(NOW - (init.startedAgoMs ?? 3_600_000)),
     restartTargetSha: async () => init.target ?? BUILD,
@@ -79,17 +99,20 @@ function fakePorts(init: Machine) {
     tickStatus: () => ({ file: TICK_FILE, text: init.tick }),
     indexLock: async () => init.lock ?? { state: "absent", path: LOCK },
     hubSeat: () => (init.noHubSeat ? undefined : "hub"),
+    installedCli: async () => init.installed,
+    checkoutHead: async () => init.head ?? BUILD,
+    deployBin: DEPLOY_BIN,
   };
-  return { ports, calls };
+  return { ports, calls, elapsedMs: () => clock - NOW };
 }
 
 async function check(init: Machine, ...flags: string[]) {
-  const { ports, calls } = fakePorts(init);
+  const { ports, calls, elapsedMs } = fakePorts(init);
   let out = "";
   let err = "";
   const io = { stdout: (t: string) => void (out += t), stderr: (t: string) => void (err += t), env: {} };
   const code = await runCli(["service", "check", ...flags], io, { workflows: [], routes: [], check: ports });
-  return { code, out, err, calls };
+  return { code, out, err, calls, elapsedMs: elapsedMs() };
 }
 
 describe("titan-factory service check", () => {
@@ -148,6 +171,46 @@ describe("titan-factory service check", () => {
 
     expect(code).not.toBe(EXIT.OK);
     expect(out).toContain(`stale pid: launchd pid ${PID} does not answer /health on port 7410 (3 probes failed)`);
+  });
+
+  it("reports unresponsive with each probe's latency when the live launchd pid never answers, inside the budget", async () => {
+    const { code, out, elapsedMs } = await check({ print: running, health: healthy(), answerAfterMs: Infinity }, "--json");
+
+    expect(code).toBe(EXIT.FAILURE);
+    expect(JSON.parse(out)).toMatchObject({
+      cause: "unresponsive",
+      pid: PID,
+      message: expect.stringContaining(`launchd pid ${PID} is alive but every /health probe on port 7410 timed out`),
+      detail: { probeLatenciesMs: "6000, 6000, 3000" },
+    });
+    expect(elapsedMs).toBeLessThan(SERVICE_CHECK_BUDGET_MS);
+  });
+
+  it("reports stale pid, not unresponsive, when a dead pid's probe times out", async () => {
+    const { out } = await check({ print: running, health: null, dead: [PID], answerAfterMs: Infinity });
+
+    expect(out).toMatch(/^stale pid: launchd pid 4242 is dead/);
+  });
+
+  it("reports stale pid, not unresponsive, when a foreign pid answers slowly on the port", async () => {
+    const { out } = await check({ print: running, health: healthy({ pid: 999 }), answerAfterMs: 1_500 });
+
+    expect(out).toMatch(/^stale pid: port 7410 is answered by pid 999/);
+  });
+
+  it("exits 0 when /health answers after 1.5 s", async () => {
+    const { code, out, elapsedMs } = await check({ print: running, health: healthy(), answerAfterMs: 1_500 });
+
+    expect(code).toBe(EXIT.OK);
+    expect(out).toBe(`ok: /health answers from pid ${PID} with github ok\n`);
+    expect(elapsedMs).toBe(1_500);
+  });
+
+  it("finishes inside the budget while serve reports its GitHub probe as checking", async () => {
+    const { out, elapsedMs } = await check({ print: running, health: healthy({ github: "checking" }), answerAfterMs: 2_000 });
+
+    expect(out).toMatch(/^GitHub down: /);
+    expect(elapsedMs).toBeLessThan(SERVICE_CHECK_BUDGET_MS);
   });
 
   it("reports a crash loop when the job exited non-zero several times and holds no process", async () => {
@@ -360,6 +423,32 @@ describe("titan-factory service check", () => {
       expect(out).toBe(`not loaded: ${UNIT_NAME} is not loaded; run titan-factory service install\n`);
     });
 
+    const NO_BUS =
+      "Failed to connect to user scope bus via local transport: $DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not defined (consider using --machine=<user>@.host --user to connect to bus of other user)\n";
+
+    it("reports unreadable with systemctl's stderr, not not loaded, when there is no user bus", async () => {
+      const { code, out, calls } = await linux({ unitFailure: { code: 1, stderr: NO_BUS }, health: healthy() });
+
+      expect(code).toBe(EXIT.FAILURE);
+      expect(out).toMatch(/^unreadable: systemctl --user show titan-factory\.service failed: .*XDG_RUNTIME_DIR not defined/);
+      expect(out).not.toContain("not loaded");
+      expect(out).not.toContain("service install");
+      expect(calls).toEqual([`systemctl --user show ${UNIT_NAME} --property=LoadState,ActiveState,MainPID,NRestarts,ExecMainStatus`]);
+    });
+
+    it("carries systemctl's exit code and stderr in --json", async () => {
+      const { out } = await linux({ unitFailure: { code: 1, stderr: NO_BUS }, health: healthy() }, "--json");
+
+      expect(JSON.parse(out)).toMatchObject({ ok: false, cause: "unreadable", health: null, detail: { exitCode: 1, stderr: expect.stringMatching(/XDG_RUNTIME_DIR/) } });
+    });
+
+    it("names the exit code when a failed systemctl prints no stderr", async () => {
+      const { code, out } = await linux({ unitFailure: { code: 124, stderr: "  \n" }, health: healthy() });
+
+      expect(code).toBe(EXIT.FAILURE);
+      expect(out).toMatch(/^unreadable: systemctl --user show titan-factory\.service failed: exit 124; /);
+    });
+
     it("names systemd, never launchd, for a dead or foreign pid", async () => {
       const dead = await linux({ unit: unit({}), health: null, dead: [PID] });
       const foreign = await linux({ unit: unit({}), health: healthy({ pid: 999 }) });
@@ -367,6 +456,13 @@ describe("titan-factory service check", () => {
       expect(dead.out).toContain(`stale pid: systemd pid ${PID} is dead`);
       expect(foreign.out).toContain(`not systemd pid ${PID}`);
       expect(dead.out + foreign.out).not.toContain("launchd");
+    });
+
+    it("reports unresponsive when the active MainPID never answers /health", async () => {
+      const { out, elapsedMs } = await linux({ unit: unit({}), health: healthy(), answerAfterMs: Infinity });
+
+      expect(out).toMatch(/^unresponsive: systemd pid 4242 is alive but every \/health probe on port 7410 timed out \(6\.0 s, 6\.0 s, 3\.0 s\)/);
+      expect(elapsedMs).toBeLessThan(SERVICE_CHECK_BUDGET_MS);
     });
   });
 
@@ -494,6 +590,76 @@ describe("titan-factory service check", () => {
       const tick = await check({ print: running, health: healthy(), tick: tickFixture(), noHubSeat: true });
 
       expect(tick.out).toMatch(/^tick failing: /);
+    });
+  });
+
+  describe("a stale titan-factory CLI on PATH", () => {
+    const OLD = "c".repeat(40);
+    const NEW = "d".repeat(40);
+    const MAIN_CHECKOUT_BIN = "/srv/tester/projects/titan-platform/products/factory/dist/bin.js";
+    const sound = { print: running, health: healthy() };
+
+    it("names an installed build behind the deploy checkout HEAD, and still exits 0", async () => {
+      const { code, out } = await check({ ...sound, installed: { path: MAIN_CHECKOUT_BIN, sha: OLD }, head: NEW, ancestry: [[OLD, NEW]] });
+
+      expect(code).toBe(EXIT.OK);
+      expect(out).toMatch(/^stale CLI: /);
+      expect(out).toContain(MAIN_CHECKOUT_BIN);
+      expect(out).toContain(OLD);
+      expect(out).toContain(NEW);
+      expect(out).toContain(DEPLOY_BIN);
+    });
+
+    it("reports the finding as ok in --json, so callers that stop work on a failing check do not", async () => {
+      const { code, out } = await check({ ...sound, installed: { path: MAIN_CHECKOUT_BIN, sha: OLD }, head: NEW, ancestry: [[OLD, NEW]] }, "--json");
+
+      expect(code).toBe(EXIT.OK);
+      expect(JSON.parse(out)).toMatchObject({ ok: true, cause: "stale CLI", detail: { installedCli: MAIN_CHECKOUT_BIN, installedBuild: OLD, checkoutHead: NEW } });
+    });
+
+    it("stays quiet when the installed build equals the checkout HEAD", async () => {
+      const { code, out } = await check({ ...sound, installed: { path: MAIN_CHECKOUT_BIN, sha: NEW }, head: NEW, ancestry: [[NEW, NEW]] });
+
+      expect(code).toBe(EXIT.OK);
+      expect(out).not.toContain("stale CLI");
+    });
+
+    it("stays quiet when a dirty build sits at the checkout HEAD", async () => {
+      const { out } = await check({ ...sound, installed: { path: MAIN_CHECKOUT_BIN, sha: `${NEW}-dirty` }, head: NEW, ancestry: [[NEW, NEW]] });
+
+      expect(out).not.toContain("stale CLI");
+    });
+
+    it("stays quiet when the installed build is newer than or diverged from the checkout HEAD", async () => {
+      const { out } = await check({ ...sound, installed: { path: MAIN_CHECKOUT_BIN, sha: NEW }, head: OLD, ancestry: [[OLD, NEW]] });
+
+      expect(out).not.toContain("stale CLI");
+    });
+
+    it("stays quiet when the CLI on PATH is the deploy bin, which a rollback leaves behind HEAD on purpose", async () => {
+      const { out } = await check({ ...sound, installed: { path: DEPLOY_BIN, sha: OLD }, head: NEW, ancestry: [[OLD, NEW]] });
+
+      expect(out).not.toContain("stale CLI");
+    });
+
+    it.each([
+      ["no titan-factory is on PATH", undefined],
+      ["its dist carries no baked sha", { path: MAIN_CHECKOUT_BIN, sha: undefined }],
+      ["it was built without a sha", { path: MAIN_CHECKOUT_BIN, sha: "unknown" }],
+    ])("stays quiet when %s", async (_why, installed) => {
+      const { out } = await check({ ...sound, ...(installed && { installed }), head: NEW, ancestry: [["unknown", NEW]] });
+
+      expect(out).not.toContain("stale CLI");
+    });
+
+    it("comes after every server, tick and config cause", async () => {
+      const stale = { installed: { path: MAIN_CHECKOUT_BIN, sha: OLD }, head: NEW, ancestry: [[OLD, NEW], [BUILD, NEW]] as [string, string][] };
+
+      const seat = await check({ ...sound, ...stale, noHubSeat: true });
+      const build = await check({ ...sound, ...stale, target: NEW });
+
+      expect(seat.out).toMatch(/^no hub seat: /);
+      expect(build.out).toMatch(/^stale build: /);
     });
   });
 });

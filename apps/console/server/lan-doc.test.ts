@@ -53,3 +53,25 @@ describe("the documented checks", () => {
     expect(phone).toMatch(/survives `systemctl --user restart titan-console`/);
   });
 });
+
+describe("the owner-origin decision", () => {
+  function ownerOriginBullet(): string {
+    const decided = readFileSync(DOC, "utf8").split("## What the owner decided")[1]?.split("\n## ")[0] ?? "";
+    return decided.split("\n- ").find((item) => item.includes("single owner origin")) ?? "";
+  }
+
+  it("names the console as the single owner origin for Shepherd and the review rounds", () => {
+    const bullet = ownerOriginBullet();
+
+    expect(bullet).toContain("127.0.0.1:7410");
+    expect(bullet).toMatch(/review\s+rounds/);
+    expect(bullet).toMatch(/7410 binds loopback only/);
+  });
+
+  it("rules out a tailscale serve path router and Funnel", () => {
+    const bullet = ownerOriginBullet();
+
+    expect(bullet).toMatch(/no `tailscale serve` path\s+router/);
+    expect(bullet).toMatch(/Funnel is never used/);
+  });
+});

@@ -496,12 +496,20 @@ interface DedupeOptions {
  */
 declare function dedupeFacts(facts: readonly ParsedFact[], options?: DedupeOptions): DedupedFact[];
 
+declare const DEFAULT_GROUP_THRESHOLD = 0.03;
+declare const MAX_GROUP_SIZE = 25;
 interface GroupOptions {
+    /** Average TF-IDF cosine at which two groups merge. */
     threshold?: number;
+    /** No group grows past this many facts. */
+    maxGroupSize?: number;
 }
 /** The topic tokens of a fact or skill: its tokenized name and description minus the stop list. */
 declare function topicTokens(text: string): Set<string>;
-/** Single-link groups over topic-token Jaccard, largest first, then by label; stable for any input order. */
+/**
+ * Average-linkage groups over the smoothed TF-IDF cosine of topic tokens, capped at `maxGroupSize`, largest
+ * first, then by label; stable for any input order.
+ */
 declare function groupFacts(deduped: readonly DedupedFact[], options?: GroupOptions): FactGroup[];
 
 interface ProposeOptions {
@@ -511,4 +519,4 @@ interface ProposeOptions {
 /** Proposes where a group of facts should live; the first matching rule wins, so the order is the policy. */
 declare function proposeDestination(group: FactGroup, skills: readonly SkillSummary[], options: ProposeOptions): DestinationProposal;
 
-export { type AddDelta, BULLET_KINDS, BULLET_SCOPES, BULLET_SOURCES, BULLET_STATES, BULLET_TYPES, type BlockedPattern, type Bullet, type BulletKind, BulletNotFound, type BulletScope, type BulletSource, type BulletState, type BulletType, type Conflict, type CurateOptions, type CurationReport, DEFAULT_HALF_LIFE_DAYS, DEFAULT_MEMORY_TABLES, type DecayedCounts, type DedupeOptions, type DedupedFact, type DestinationProposal, type FactGroup, type FeedbackEvent, type FeedbackInput, type FeedbackType, type GroupOptions, HARD_DEPRECATE_SCORE, HARMFUL_WEIGHT, type InversionOptions, MATURITIES, MATURITY_MULTIPLIER, MEMORY_FACT_TYPES, type Maturity, type MaturityChange, type MemoryDestination, type MemoryFactType, type MemoryIndexPointer, type MemorySourceRef, type MemoryTables, MemoryVectors, type MemoryVectorsOptions, type NewBullet, type ParseFailure, type ParsedDelta, type ParsedFact, type PlaybookDelta, PlaybookDeltaSchema, PlaybookStore, type PlaybookStoreOptions, type ProposeOptions, type Provenance, type RecallOptions, type RecallResult, type RecalledBullet, type ReflectDeps, type ReflectInput, type ReflectOptions, type ReflectSessionInput, type ReflectionResult, type Reflector, type RejectedDelta, SUPERSEDES, type ScoreOptions, type ScoredBullet, type SemanticOptions, type SkillSummary, type StalenessOptions, applyMaturity, bulletRef, contentKey, curate, decayedCounts, decayedValue, dedupeFacts, effectiveScore, feedbackTableDdl, groupFacts, isStale, jaccard, keywordScore, maturityFor, memoryDdl, memoryMigration, newBulletId, nextMaturity, normalizeContent, parseDeltas, parseMemoryFile, parseMemoryIndex, proposeDestination, recall, reflectSession, scoreBullet, scorePlaybook, staleBullets, tokenize, topicTokens };
+export { type AddDelta, BULLET_KINDS, BULLET_SCOPES, BULLET_SOURCES, BULLET_STATES, BULLET_TYPES, type BlockedPattern, type Bullet, type BulletKind, BulletNotFound, type BulletScope, type BulletSource, type BulletState, type BulletType, type Conflict, type CurateOptions, type CurationReport, DEFAULT_GROUP_THRESHOLD, DEFAULT_HALF_LIFE_DAYS, DEFAULT_MEMORY_TABLES, type DecayedCounts, type DedupeOptions, type DedupedFact, type DestinationProposal, type FactGroup, type FeedbackEvent, type FeedbackInput, type FeedbackType, type GroupOptions, HARD_DEPRECATE_SCORE, HARMFUL_WEIGHT, type InversionOptions, MATURITIES, MATURITY_MULTIPLIER, MAX_GROUP_SIZE, MEMORY_FACT_TYPES, type Maturity, type MaturityChange, type MemoryDestination, type MemoryFactType, type MemoryIndexPointer, type MemorySourceRef, type MemoryTables, MemoryVectors, type MemoryVectorsOptions, type NewBullet, type ParseFailure, type ParsedDelta, type ParsedFact, type PlaybookDelta, PlaybookDeltaSchema, PlaybookStore, type PlaybookStoreOptions, type ProposeOptions, type Provenance, type RecallOptions, type RecallResult, type RecalledBullet, type ReflectDeps, type ReflectInput, type ReflectOptions, type ReflectSessionInput, type ReflectionResult, type Reflector, type RejectedDelta, SUPERSEDES, type ScoreOptions, type ScoredBullet, type SemanticOptions, type SkillSummary, type StalenessOptions, applyMaturity, bulletRef, contentKey, curate, decayedCounts, decayedValue, dedupeFacts, effectiveScore, feedbackTableDdl, groupFacts, isStale, jaccard, keywordScore, maturityFor, memoryDdl, memoryMigration, newBulletId, nextMaturity, normalizeContent, parseDeltas, parseMemoryFile, parseMemoryIndex, proposeDestination, recall, reflectSession, scoreBullet, scorePlaybook, staleBullets, tokenize, topicTokens };

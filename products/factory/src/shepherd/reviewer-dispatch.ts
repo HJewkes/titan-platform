@@ -1,14 +1,14 @@
 import { statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
-import { BrokerUnavailableError, DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
+import { BrokerUnavailableError, DispatchError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
 import { agentChatAgents } from "./agents.js";
 import { agentChatRoster, type RosterReader } from "./roster.js";
 import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewerAgent, type ReviewerDispatch, type ReviewTarget } from "./review.js";
 import { reviewerRoleFor, type ReviewerRoles } from "./reviewer-roles.js";
 import { toPresence } from "./presence.js";
 import { HOME_PREFIXES } from "./seats.js";
-import { ReviewerMachineHold, ReviewerSpawnQueued } from "./review-wait.js";
+import { ReviewerAskTimedOut, ReviewerMachineHold, ReviewerSpawnQueued } from "./review-wait.js";
 import { SpawnDeferred, type ReviewAsk, type SpawnGate } from "./spawn-gate.js";
 
 export const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
@@ -92,12 +92,16 @@ function busyReason(message: string): { reason: string; code?: string } | undefi
   return trailer ? { reason: `${reason.replace(REFUSAL_PREFIX, "")} (${code})`, code } : undefined;
 }
 
-/** Only an unreachable broker or a refusal that clears with time is safe to ask again; every other failure, a timeout included, stays a refusal. */
+/**
+ * Only an unreachable broker or a refusal that clears with time is safe to ask again. A timeout gets its own class, because
+ * the call may have landed: the review layer looks for the reviewer before asking again. Every other failure stays a refusal.
+ */
 async function askBroker<T>(ask: () => T | Promise<T>, onMachineHold?: AgentChatReviewerDispatchOptions["onMachineHold"]): Promise<T> {
   try {
     return await ask();
   } catch (error) {
     if (error instanceof BrokerUnavailableError) throw new ReviewerBrokerDown(error.message, { cause: error });
+    if (error instanceof DispatchTimeoutError) throw new ReviewerAskTimedOut(error.message, { cause: error });
     if (error instanceof SpawnDeferred) throw new ReviewerSpawnQueued(`spawn gate: ${error.message}`, { cause: error });
     const busy = error instanceof DispatchError ? busyReason(error.message) : undefined;
     if (busy?.code === MACHINE_HOLD_CODE) {
@@ -177,7 +181,7 @@ export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOpti
   };
   return {
     roster: () => askBroker(async () => (await roster.rows()).map(rosterRow)),
-    spawn: (name, brief, target, facts = {}) => askBroker(() => spawn(name, brief, target, reviewerRoleFor(facts, roles), facts.intentAt), options.onMachineHold),
+    spawn: (name, brief, target, facts = {}) => askBroker(() => spawn(name, brief, target, facts.profile ?? reviewerRoleFor(facts, roles), facts.intentAt), options.onMachineHold),
     resume: (name, brief) => askBroker(async () => agents.resume(name, brief, options.gate && (await runningReviews()), reviewAsk(targets.get(name), options.isFixer)), options.onMachineHold),
   };
 }

@@ -8,6 +8,8 @@ import { KnowledgePage } from "./KnowledgePage.js";
 import { RoundDetailPage } from "./RoundDetailPage.js";
 import { RoundsPage } from "./RoundsPage.js";
 import { SessionsRoute } from "./SessionsPage.js";
+import { ShepherdDetailPage } from "./ShepherdDetailPage.js";
+import { ShepherdPage } from "./ShepherdPage.js";
 import { TaskDetailPage } from "./TaskDetailPage.js";
 import { TasksPage } from "./TasksPage.js";
 
@@ -15,6 +17,7 @@ type PageComponent = (props: { route: Route }) => ReactNode;
 
 const WorkPage: PageComponent = ({ route }) => (route.id ? createElement(InitiativeDetailPage, { slug: route.id }) : createElement(InitiativesPage));
 const RoundsView: PageComponent = ({ route }) => (route.id ? createElement(RoundDetailPage, { id: route.id }) : createElement(RoundsPage));
+const ShepherdView: PageComponent = ({ route }) => (route.id ? createElement(ShepherdDetailPage, { id: route.id }) : createElement(ShepherdPage));
 
 /** One entry per built view; a rail entry with none here renders its placeholder. */
 export const PAGES: Partial<Record<ViewKey, PageComponent>> = {
@@ -25,4 +28,5 @@ export const PAGES: Partial<Record<ViewKey, PageComponent>> = {
   knowledge: KnowledgePage,
   agents: AgentsRoute,
   rounds: RoundsView,
+  shepherd: ShepherdView,
 };

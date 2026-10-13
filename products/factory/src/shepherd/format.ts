@@ -1,6 +1,7 @@
 import type { CommandMapOf } from "@titan-design/registry";
 import type { ZodType } from "zod";
 import { SHEPHERD_COMMAND_MAP, type MergeEvaluation, type Registered, type ShepherdCommandName } from "./commands.js";
+import type { PrRow } from "./prs.js";
 import type { ReviewAsk } from "./review-request.js";
 import type { ResyncReport } from "./resync.js";
 import { OVERDUE_HOURS, overdueOwnerGates, type Waiting, type WaitingGate } from "./waiting.js";
@@ -28,6 +29,7 @@ const FORMATTERS: Formatters = {
   "shepherd.merge": formatMerge,
   "shepherd.review": formatReviewAsk,
   "shepherd.resync": formatResync,
+  "shepherd.prs": formatPrs,
 };
 
 const RESULT_SCHEMAS: ResultSchemas = SHEPHERD_COMMAND_MAP;
@@ -50,6 +52,16 @@ function formatWaiting(waiting: Waiting): string {
   return `${[...section("waiting on the owner", owner), ...section("seat work", seat), ...(overdue > 0 ? [`${overdue} owner gate(s) over ${OVERDUE_HOURS} h`] : [])].join("\n")}\n`;
 }
 
+function prLine(row: PrRow): string {
+  const head = row.state === "merged" ? `merged ${row.mergeSha?.slice(0, 7) ?? "-"}` : (row.headSha?.slice(0, 7) ?? "-");
+  const run = row.runId === undefined ? "unregistered" : `${row.runId} ${row.phase}`;
+  return `${row.repo}#${row.number}  ${head}  ${row.branch ?? "-"}  ${run}  ci ${row.ci?.state ?? "-"}${row.draft ? "  [draft]" : ""}`;
+}
+
+function formatPrs(rows: PrRow[]): string {
+  return rows.length === 0 ? "no PRs\n" : `${rows.map(prLine).join("\n")}\n`;
+}
+
 function formatHold({ runId, held }: ShepherdResults["shepherd.hold"]): string {
   return `run ${runId}: ${held ? `held (${held.reason})` : "released"}\n`;
 }
@@ -62,7 +74,12 @@ function formatRegistered(registered: Registered): string {
   const { runId, registration } = registered;
   const target = `${registration.repo}${registration.pr === null ? "" : `#${registration.pr}`}${registration.branch ? ` (${registration.branch})` : ""}`;
   const held = registered.g10Hold === undefined ? "" : `; held ${registered.g10Hold}`;
-  return `run ${runId} shepherd-pr ${target}: ${registerOutcome(registered)}; policy ${registration.policy.merge}${held}\n`;
+  return `run ${runId} shepherd-pr ${target}: ${registerOutcome(registered)}; policy ${registration.policy.merge}${held}\n${sizeWarning(registered)}`;
+}
+
+function sizeWarning({ sizeFlag }: Registered): string {
+  if (sizeFlag === undefined) return "";
+  return `warning: security or guard-area PR is ${sizeFlag.lines} non-generated lines, over the ${sizeFlag.cap}-line slice cap; split the parser or list change from its wiring\n`;
 }
 
 function registerOutcome({ created, previousRunId, previousStop }: Registered): string {

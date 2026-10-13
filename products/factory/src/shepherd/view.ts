@@ -4,10 +4,12 @@ import { z } from "zod";
 import { stepOf } from "../coordinator-evidence.js";
 import { stepIdMatches } from "../definition.js";
 import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
+import { g10UnreviewedStall, type HoldWait } from "./g10-unreviewed-stall.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { OWNER_GATE_REASONS } from "./policy.js";
 import { MAX_NOT_STARTED_REVIEWS, notStartedStreak, reviewerName } from "./review-steps.js";
 import { reviewWait } from "./review-wait.js";
+import { TERMINAL_PHASE, endedAt, runOutcome } from "./run-end.js";
 import { STAGES, stageSpans } from "./stage-times.js";
 import { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
 import { spawnQueuePosition } from "./spawn-gate.js";
@@ -110,16 +112,15 @@ export type TimelineEntry = z.infer<typeof TimelineEntrySchema>;
 export const PrTimelineSchema = z.object({ row: WatchRowSchema, entries: z.array(TimelineEntrySchema) });
 export type PrTimeline = z.infer<typeof PrTimelineSchema>;
 
-const TERMINAL_PHASE: Partial<Record<WorkflowRun["status"], Phase>> = { completed: "done", failed: "failed", cancelled: "cancelled" };
-
 /** Completed step results, oldest first. */
 function completedSteps(run: WorkflowRun): StepResult[] {
   return Object.values(run.stepResults).sort((a, b) => a.completedAt.localeCompare(b.completedAt));
 }
 
 function runPhase(run: WorkflowRun, steps: readonly StepResult[]): Phase {
+  const terminal = TERMINAL_PHASE[run.status] ?? (endedAt(run, steps) === undefined ? undefined : "done");
   const current = run.currentStep ?? steps.at(-1)?.stepId;
-  return TERMINAL_PHASE[run.status] ?? (current === undefined ? (run.params.pr === undefined ? "awaiting-pr" : "ci") : stepPhase(current));
+  return terminal ?? (current === undefined ? (run.params.pr === undefined ? "awaiting-pr" : "ci") : stepPhase(current));
 }
 
 function headOf(result: StepResult): string | undefined {
@@ -129,7 +130,8 @@ function headOf(result: StepResult): string | undefined {
 }
 
 function phaseSince(run: WorkflowRun, steps: readonly StepResult[], phase: Phase): string {
-  if (TERMINAL_PHASE[run.status]) return run.completedAt ?? run.startedAt;
+  const ended = endedAt(run, steps);
+  if (ended !== undefined) return ended;
   const previous = steps.filter((result) => stepPhase(result.stepId) !== phase).at(-1);
   return previous?.completedAt ?? run.startedAt;
 }
@@ -228,16 +230,6 @@ export interface RowInput {
   now?: Date;
 }
 
-const StoppedData = z.object({ result: z.object({ reason: z.string() }) });
-
-/** How a finished run ended, from its sh-landed or sh-stopped step; null while neither is recorded. */
-export function runOutcome(steps: readonly StepResult[]): WatchRow["outcome"] {
-  if (steps.some((result) => result.stepId.startsWith("sh-landed"))) return { kind: "merged", reason: null };
-  const stopped = steps.find((result) => result.stepId.startsWith("sh-stopped"));
-  const parsed = stopped && StoppedData.safeParse(stopped.data);
-  return parsed ? { kind: "stopped", reason: parsed.success ? parsed.data.result.reason : null } : null;
-}
-
 const MINUTE = 60_000;
 
 /** Longest a run may sit in a phase before it reads as stalled; phases that wait on a person or an agent by design have no limit. */
@@ -255,16 +247,16 @@ function overstayReason(phase: Phase, since: string, now: Date): string | undefi
 }
 
 /** A merge waiting on a hold waits on a person by design, so only the phase limit is skipped for it. */
-function stallReason(run: WorkflowRun, steps: readonly StepResult[], phase: Phase, since: string, now: Date, holding: boolean): string | undefined {
+function stallReason(run: WorkflowRun, steps: readonly StepResult[], phase: Phase, since: string, now: Date, wait: HoldWait): string | undefined {
   if (run.status === "failed" || run.status === "recovery_required") return run.error ?? run.status;
   const streak = notStartedStreak(steps);
   if (streak >= MAX_NOT_STARTED_REVIEWS) return `${streak} review dispatches in a row started no reviewer`;
-  return holding ? undefined : overstayReason(phase, since, now);
+  return g10UnreviewedStall(run, wait, since, now) ?? (wait.holding ? undefined : overstayReason(phase, since, now));
 }
 
 /** The stage of the phase the run is in now and its age; a merge waiting on a hold is in `hold`, not `land`. */
 function liveStage(run: WorkflowRun, steps: readonly StepResult[], phase: Phase, holding: boolean, now: Date): WatchRow["stage"] {
-  if (TERMINAL_PHASE[run.status]) return null;
+  if (endedAt(run, steps) !== undefined) return null;
   const open = stageSpans(steps, run.startedAt, { phase, at: now.getTime() }).find((span) => span.open);
   if (open === undefined) return null;
   return { name: holding ? "hold" : open.stage, minutes: Math.floor((open.endedAt - open.startedAt) / MINUTE) };
@@ -286,7 +278,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
   const held = heldView(registration);
   const holding = phase === "merging" && waitsOnHold(run, held, headSha);
   const since = phaseSince(run, steps, phase);
-  const stalled = stallReason(run, steps, phase, since, now, holding);
+  const stalled = stallReason(run, steps, phase, since, now, { registration, headSha, holding });
   return {
     repo: registration.repo,
     pr: registration.pr,
@@ -303,7 +295,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     stalled: stalled === undefined ? null : { reason: stalled },
     outcome: runOutcome(steps),
     stage: liveStage(run, steps, phase, holding, now),
-    totalMinutes: Math.floor(((TERMINAL_PHASE[run.status] ? Date.parse(since) : now.getTime()) - Date.parse(run.startedAt)) / MINUTE),
+    totalMinutes: Math.floor(((endedAt(run, steps) === undefined ? now.getTime() : Date.parse(since)) - Date.parse(run.startedAt)) / MINUTE),
     implementer: registration.implementer || null,
     slice: registration.slice ?? null,
     reviewer: reviewerName(steps),

@@ -8,6 +8,7 @@ import { search } from "./commands/search.js";
 import { seatContextCommand } from "./commands/seat-context.js";
 import { sessionList, sessionShow } from "./commands/sessions.js";
 import { status } from "./commands/status.js";
+import { throughputBacktest, throughputTable } from "./commands/throughput.js";
 import { verifyCitationsCommand } from "./commands/verify-citations.js";
 import type { MinerContext } from "./context.js";
 import { insightCommand } from "./insights/define.js";
@@ -19,7 +20,7 @@ export const TOOL_PREFIX = "miner__";
 /** Every command the miner exposes, on every surface. Serve/mcp are wired by the CLI, not registered. */
 export function createMinerRegistry(): CommandRegistry<MinerContext> {
   const registry = createRegistry<MinerContext>();
-  const commands = [refresh, status, search, sessionList, sessionShow, drainIngest, drainTemplates, seatContextCommand, playbookAdd, playbookRecall, playbookReflect, playbookStatus, memoryScan, memoryReport, verifyCitationsCommand];
+  const commands = [refresh, status, search, sessionList, sessionShow, drainIngest, drainTemplates, seatContextCommand, playbookAdd, playbookRecall, playbookReflect, playbookStatus, memoryScan, memoryReport, verifyCitationsCommand, throughputTable, throughputBacktest];
   for (const cmd of [...commands, ...[...INSIGHT_QUESTIONS, ...AGENT_CHAT_QUESTIONS, ...TRANSCRIPT_QUESTIONS].map(insightCommand)]) registry.register(cmd);
   return registry;
 }

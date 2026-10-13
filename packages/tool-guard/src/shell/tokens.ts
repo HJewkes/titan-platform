@@ -56,6 +56,15 @@ export interface RedirectToken {
 
 export type Token = WordToken | OpToken | SubsToken | RedirectToken;
 
+/** Tokens scanned so far, their paren depth, and the depths a `[[` and a `=~` in it sat at, or -1. */
+export interface RegexScan {
+  scanned: number;
+  depth: number;
+  commandStart: boolean;
+  conditionalAt: number;
+  regexAt: number;
+}
+
 export interface LexState {
   src: string;
   i: number;
@@ -69,7 +78,17 @@ export interface LexState {
   redirect: { token: RedirectToken; stripTabs: boolean } | null;
   /** Index of the `]` closing an assignment's subscript; blanks and operators before it stay in the word. */
   subscriptEnd: number;
+  /** Index of the `]` of a subscript bash may join but this lexer splits; before it a comment or heredoc opener is refused. */
+  looseSubscriptEnd: number;
+  /** Whether the arithmetic command `arithEnd` closes began outside every loose span; a trial lex starts inside one. */
+  arithOutsideLoose: boolean;
   /** Index of the `))` closing an arithmetic command; before it `<<` is a shift and `#` no comment. */
   arithEnd: number;
+  /** Index of the `)` matching a `((`'s second `(`, arithmetic or not; bash reads up to it whole, so no newline before it ends a line. */
+  wholeEnd: number;
+  /** Paren depth a `NAME=(` or `NAME+=(` opened at, or -1; bash rejects any redirect before that paren closes. */
+  compoundDepth: number;
+  /** Where the scan for a `[[ … =~ … ]]` operand, which `NAME=(` only groups in, has reached. */
+  regex: RegexScan;
   trials: ArithTrials;
 }

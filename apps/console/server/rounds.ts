@@ -3,15 +3,16 @@
  * under the rounds dir, validated with review-schema's `RoundSchema`. This module only reads.
  *
  * Another process writes the dir, so every read is defended: a round id is a plain name (no
- * dot, no slash), a round directory or file that is a symlink is refused, `round.json` is read
- * through `O_NOFOLLOW` up to a size cap, and no path a manifest names (an image, a frame) is
- * ever opened. A round is `sent` once a `feedback.json` sits beside it.
+ * dot, no slash), a round directory or file that is a symlink is refused, `round.json` and
+ * `feedback.json` are read through `O_NOFOLLOW` and `O_NONBLOCK` (a planted FIFO cannot hang the
+ * open) up to a size cap, and no path a manifest names (an image, a frame) is ever opened. A
+ * round is `sent` once a `feedback.json` sits beside it.
  */
 import { constants } from "node:fs";
 import { lstat, open, readdir, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { RoundSchema, isLoopbackUrl, type Manifest, type Question } from "@titan-design/review-schema";
+import { FeedbackSchema, RoundSchema, isLoopbackUrl, type Feedback, type Manifest, type Question } from "@titan-design/review-schema";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import { readCommand } from "./owner-guard.js";
@@ -27,6 +28,7 @@ const ROUND_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const ROUND_FILE = "round.json";
 const FEEDBACK_FILE = "feedback.json";
 const MAX_REASON_ISSUES = 5;
+const OPEN_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 
 const roundStatus = z.enum(["open", "sent"]);
 type RoundStatus = z.infer<typeof roundStatus>;
@@ -117,7 +119,7 @@ function unreadableReason(error: unknown): string {
 async function readManifest(roundDir: string): Promise<{ parsed: Parsed; updatedAt: string | null }> {
   let handle: FileHandle;
   try {
-    handle = await open(path.join(roundDir, ROUND_FILE), constants.O_RDONLY | constants.O_NOFOLLOW);
+    handle = await open(path.join(roundDir, ROUND_FILE), OPEN_FLAGS);
   } catch (error) {
     return { parsed: { ok: false, reason: unreadableReason(error) }, updatedAt: null };
   }
@@ -181,20 +183,96 @@ function detailOf({ id, status, updatedAt, parsed }: LoadedRound): RoundDetail {
 
 const newestFirst = (a: RoundSummary, b: RoundSummary): number => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || a.id.localeCompare(b.id);
 
-/** A missing rounds dir is no rounds yet; a symlinked round directory is skipped, as `isDirectory` is false for it. */
-export async function listRounds({ dir }: RoundsSource): Promise<{ rounds: RoundSummary[]; truncated: boolean }> {
+/**
+ * A missing rounds dir is no rounds yet; a symlinked round directory is skipped, as `isDirectory` is false for it.
+ * The dir is returned so an empty page can say where rounds are read from.
+ */
+export async function listRounds({ dir }: RoundsSource): Promise<{ rounds: RoundSummary[]; truncated: boolean; dir: string }> {
   const entries = await readdir(dir, { withFileTypes: true }).catch((error: unknown) => {
     if (errnoOf(error) === "ENOENT") return [];
     throw failure("the rounds dir could not be read", EXIT.UNAVAILABLE);
   });
   const ids = entries.filter((entry) => entry.isDirectory() && ROUND_ID.test(entry.name)).map((entry) => entry.name).sort();
   const loaded = await Promise.all(ids.slice(0, MAX_ROUNDS).map((id) => loadRound(dir, id)));
-  return { rounds: loaded.map(summaryOf).sort(newestFirst), truncated: ids.length > MAX_ROUNDS };
+  return { rounds: loaded.map(summaryOf).sort(newestFirst), truncated: ids.length > MAX_ROUNDS, dir };
 }
 
 export async function getRound({ dir }: RoundsSource, id: string): Promise<RoundDetail> {
   if (!(await roundDirExists(dir, id))) throw failure(`No round named "${id}"`, EXIT.NOINPUT);
   return detailOf(await loadRound(dir, id));
+}
+
+/** A valid round as the owner queue reads it: `feedback` is the validated feedback.json, or null while unsent. */
+export interface QueueRound {
+  id: string;
+  updatedAt: string;
+  manifest: Manifest;
+  feedback: Feedback | null;
+}
+
+type FeedbackRead = { ok: true; feedback: Feedback | null } | { ok: false; reason: string };
+
+function parseFeedback(text: string): FeedbackRead {
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    return { ok: false, reason: `${FEEDBACK_FILE} is not JSON` };
+  }
+  const result = FeedbackSchema.safeParse(json);
+  return result.success ? { ok: true, feedback: result.data } : { ok: false, reason: `${FEEDBACK_FILE}: ${schemaReason(result.error)}` };
+}
+
+/** A missing or symlinked feedback.json leaves the round unsent, as `statusOf` already does. */
+async function readFeedback(roundDir: string): Promise<FeedbackRead> {
+  let handle: FileHandle;
+  try {
+    handle = await open(path.join(roundDir, FEEDBACK_FILE), OPEN_FLAGS);
+  } catch (error) {
+    const code = errnoOf(error);
+    if (code === "ENOENT" || code === "ELOOP") return { ok: true, feedback: null };
+    return { ok: false, reason: `${FEEDBACK_FILE} could not be read` };
+  }
+  let text: string | null;
+  try {
+    const stats = await handle.stat();
+    if (!stats.isFile()) return { ok: true, feedback: null };
+    text = stats.size > MAX_ROUND_BYTES ? null : await readCapped(handle);
+  } catch {
+    return { ok: false, reason: `${FEEDBACK_FILE} could not be read` };
+  } finally {
+    await handle.close();
+  }
+  if (text === null) return { ok: false, reason: `${FEEDBACK_FILE} is over ${MAX_ROUND_BYTES} bytes` };
+  return parseFeedback(text);
+}
+
+/** A feedback.json that cannot be read is a gap, and the round stays open so its questions are still asked. */
+async function queueRound(dir: string, id: string): Promise<{ round?: QueueRound; gap?: string }> {
+  const roundDir = path.join(dir, id);
+  const [{ parsed, updatedAt }, read] = await Promise.all([readManifest(roundDir), readFeedback(roundDir)]);
+  if (!parsed.ok) return { gap: `${id}: ${parsed.reason}` };
+  if (updatedAt === null) return { gap: `${id}: ${ROUND_FILE} has no modified time` };
+  const round = { id, updatedAt, manifest: parsed.manifest, feedback: read.ok ? read.feedback : null };
+  return read.ok ? { round } : { round, gap: `${id}: ${read.reason}` };
+}
+
+/**
+ * Every valid round with its feedback, for the owner queue. Nothing here throws: an invalid round, an
+ * unreadable feedback file or the dir itself becomes a gap line. A missing dir is no rounds and no gap.
+ */
+export async function readQueueRounds({ dir }: RoundsSource): Promise<{ rounds: QueueRound[]; gaps: string[] }> {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch (error) {
+    return { rounds: [], gaps: errnoOf(error) === "ENOENT" ? [] : ["the rounds dir could not be read"] };
+  }
+  const ids = entries.filter((entry) => entry.isDirectory() && ROUND_ID.test(entry.name)).map((entry) => entry.name).sort();
+  const read = await Promise.all(ids.slice(0, MAX_ROUNDS).map((id) => queueRound(dir, id)));
+  const gaps = read.flatMap(({ gap }) => (gap === undefined ? [] : [gap]));
+  if (ids.length > MAX_ROUNDS) gaps.push(`only the first ${MAX_ROUNDS} of ${ids.length} rounds were read`);
+  return { rounds: read.flatMap(({ round }) => (round === undefined ? [] : [round])), gaps };
 }
 
 export function roundsCommands(source: RoundsSource) {
@@ -203,7 +281,7 @@ export function roundsCommands(source: RoundsSource) {
       name: "rounds.list",
       description: "Every review round in the rounds dir, newest first: open or sent, and the schema's reason for any invalid one",
       args: z.object({}),
-      result: z.object({ rounds: z.array(roundSummary), truncated: z.boolean() }),
+      result: z.object({ rounds: z.array(roundSummary), truncated: z.boolean(), dir: z.string() }),
       run: () => listRounds(source),
     }),
     "rounds.get": readCommand({

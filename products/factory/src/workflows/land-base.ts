@@ -10,9 +10,10 @@ export interface BaseCheckInput {
   featureBase: boolean;
 }
 
-export const BaseCheckResult = z.looseObject({ base: z.string(), defaultBranch: z.string(), allowed: z.boolean(), reason: z.string() });
+/** `headRef` and `headRepo` are absent on a check recorded before them. */
+export const BaseCheckResult = z.looseObject({ base: z.string(), defaultBranch: z.string(), allowed: z.boolean(), reason: z.string(), headRef: z.string().optional(), headRepo: z.string().nullish() });
 
-type BaseCheck = z.infer<typeof BaseCheckResult>;
+export type BaseCheck = z.infer<typeof BaseCheckResult>;
 
 /**
  * Read live, never from the snapshot, because the merge that follows lands on whatever base the PR names. A PR merged
@@ -23,7 +24,7 @@ export async function checkBase(port: GitHubPort, input: BaseCheckInput): Promis
   const defaultBranch = await port.defaultBranch(input.repo);
   const settled = pr.merged || pr.state !== "open";
   const allowed = settled || pr.baseRef === defaultBranch || input.featureBase;
-  return { base: pr.baseRef, defaultBranch, allowed, reason: allowed ? `base ${pr.baseRef} allowed` : refusedBase(pr.baseRef, defaultBranch) };
+  return { base: pr.baseRef, defaultBranch, allowed, reason: allowed ? `base ${pr.baseRef} allowed` : refusedBase(pr.baseRef, defaultBranch), headRef: pr.headRef, headRepo: pr.headRepo };
 }
 
 function refusedBase(base: string, defaultBranch: string): string {

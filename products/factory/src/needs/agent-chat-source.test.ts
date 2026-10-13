@@ -1,3 +1,4 @@
+import { CLIENT_HEADER, createRequestGuard } from "@titan-design/daemon";
 import { mergeByKeys, ownerItemSchema } from "@titan-design/owner-queue";
 import { describe, expect, it, vi } from "vitest";
 import { RUN_A, brokerSnapshot, gateSnapshot } from "../test-support/owner-queue.js";
@@ -26,7 +27,7 @@ describe("agentChatSource open", () => {
   it("reads every open row with the token header and yields schema-valid items", async () => {
     const { endpoint: source, fetchFake } = queueReply();
     const items = await agentChatSource(source).open();
-    expect(fetchFake).toHaveBeenCalledWith("http://127.0.0.1:7600/api/queue", expect.objectContaining({ headers: { [TOKEN_HEADER]: SECRET } }));
+    expect(fetchFake).toHaveBeenCalledWith("http://127.0.0.1:7600/api/queue", expect.objectContaining({ headers: { [TOKEN_HEADER]: SECRET, [CLIENT_HEADER]: "titan-factory" } }));
     expect(items).toHaveLength(brokerSnapshot().length);
     for (const item of items) expect(() => ownerItemSchema.parse(item)).not.toThrow();
   });
@@ -42,7 +43,7 @@ describe("agentChatSource open", () => {
     const question = items.find((item) => item.id === "chat:m-30")!;
     expect(question).toMatchObject({
       kind: "decide",
-      door: "two-way",
+      door: "one-way",
       summary: `Which retry budget for run ${RUN_A}?`,
       options: [{ id: "two", label: "two" }, { id: "three", label: "three" }],
       recommended: { optionId: "three", by: "agent-0" },
@@ -65,7 +66,7 @@ describe("agentChatSource open", () => {
 
   it("makes permission prompts and endorsements one-way approvals", async () => {
     const items = await agentChatSource(queueReply().endpoint).open();
-    const approvals = items.filter((item) => item.door === "one-way").map((item) => item.id);
+    const approvals = items.filter((item) => item.kind === "approve" && item.door === "one-way").map((item) => item.id);
     expect(approvals).toEqual(["chat:m-33", "chat:m-34"]);
   });
 
@@ -83,6 +84,67 @@ describe("agentChatSource open", () => {
       .map((r) => ({ ...r, meta: { ...r.meta, kind: "stalled" } }));
     const items = await agentChatSource(endpoint(() => json({ items: rows })).endpoint).open();
     expect(items.map((item) => [item.kind, item.door])).toEqual([["approve", "one-way"], ["approve", "one-way"]]);
+  });
+});
+
+describe("agentChatSource ask v2 meta", () => {
+  const question = (meta: Record<string, string>) => ({ ...brokerSnapshot().find((r) => r.msgId === "m-30")!, meta });
+  const mapOne = async (meta: Record<string, string>) => {
+    const [item] = await agentChatSource(endpoint(() => json({ items: [question(meta)] })).endpoint).open();
+    return item!;
+  };
+  const twoOptions = { options: JSON.stringify(["two", "three"]) };
+
+  it("takes a declared two-way door, and reads a missing or unknown door as one-way", async () => {
+    expect((await mapOne({ ...twoOptions, door: "two-way" })).door).toBe("two-way");
+    expect((await mapOne(twoOptions)).door).toBe("one-way");
+    expect((await mapOne({ ...twoOptions, door: "sideways" })).door).toBe("one-way");
+  });
+
+  it("keeps an approval_request one-way even when its meta declares two-way", async () => {
+    const row = { ...brokerSnapshot().find((r) => r.kind === "approval_request")!, meta: { door: "two-way", kind: "decision" } };
+    const [item] = await agentChatSource(endpoint(() => json({ items: [row] })).endpoint).open();
+    expect(item).toMatchObject({ kind: "approve", door: "one-way" });
+  });
+
+  it("pairs descriptions with their options and sets category, initiative and a label default", async () => {
+    const item = await mapOne({
+      options: JSON.stringify(["two", "three", "four"]),
+      option_descriptions: JSON.stringify(["cheap", "", "slow"]),
+      default: "two",
+      category: "agent_ops",
+      initiative: "example-init",
+      header: "Retry budget",
+    });
+    expect(item).toMatchObject({
+      options: [{ id: "two", label: "two", description: "cheap" }, { id: "three", label: "three" }, { id: "four", label: "four", description: "slow" }],
+      default: "two",
+      category: "agent_ops",
+      initiative: "example-init",
+      summary: "Retry budget",
+    });
+    expect(item.options![1]).not.toHaveProperty("description");
+    expect(() => ownerItemSchema.parse(item)).not.toThrow();
+  });
+
+  it("drops a default that is not one of the option labels", async () => {
+    expect(await mapOne({ ...twoOptions, default: "five" })).not.toHaveProperty("default");
+  });
+
+  it("notes a parked asker and the reversal path in the context", async () => {
+    const item = await mapOne({ ...twoOptions, blocking: "parked", reversible: "rerun with the old budget" });
+    expect(item.context).toContain("Asker is parked on this");
+    expect(item.context).toContain("Reversible: rerun with the old budget");
+    expect((await mapOne({ ...twoOptions, blocking: "continue" })).context).not.toContain("parked");
+  });
+
+  it("maps a v1 row as before except that its door is now one-way", async () => {
+    const v1 = { kind: "decision", task: "EX-1", options: JSON.stringify(["two", "three"]), recommended: "three" };
+    const item = await mapOne(v1);
+    expect(item).toMatchObject({ kind: "decide", door: "one-way", options: [{ id: "two", label: "two" }, { id: "three", label: "three" }], recommended: { optionId: "three" } });
+    expect(item).not.toHaveProperty("default");
+    expect(item).not.toHaveProperty("category");
+    expect(item.summary).toBe(`Which retry budget for run ${RUN_A}?`);
   });
 });
 
@@ -129,6 +191,19 @@ describe("agentChatSource resolve", () => {
     const { endpoint: source, fetchFake } = endpoint(() => json({ ok: true }));
     await agentChatSource(source).resolve("m-1", answer);
     expect(fetchFake.mock.calls[0]![0]).toBe("http://127.0.0.1:7600/api/dismiss");
+  });
+
+  it("sends answer and dismiss POSTs the broker's request guard lets through", async () => {
+    const { endpoint: source, fetchFake } = endpoint(() => json({ ok: true }));
+    await agentChatSource(source).resolve("m-30", { ...answer, text: "yes" });
+    await agentChatSource(source).resolve("m-1", answer);
+    const guard = createRequestGuard({}, () => 7600);
+    expect(fetchFake.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual(["/api/answer", "/api/dismiss"]);
+    for (const [url, init] of fetchFake.mock.calls) {
+      const headers = new Headers(init!.headers);
+      const request = { method: init!.method!, host: new URL(String(url)).host, origin: undefined, client: headers.get(CLIENT_HEADER), contentType: headers.get("content-type") };
+      expect(guard(request)).toBeNull();
+    }
   });
 
   it("reports a second verdict as closed and a refusal as rejected", async () => {

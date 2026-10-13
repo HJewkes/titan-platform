@@ -56,7 +56,7 @@ Before adding code:
 | [`owner-queue`](#cap-owner-queue) | 2 | You gather the things only the owner can answer from several stores of record (chat questions, hitl gates, task notes, review rounds) into one list and need one `OwnerItem` shape, a `QueueSource` port for adapters, a merge that joins duplicates only on an exact shared key including a PR's head sha, a deterministic rank, and pure stale rules that label an item gone elsewhere from source facts (PR merged, head moved, task done, asker retired), and `buildOwnerRounds`, which turns open Decide items into titan-review round@2 manifests with `Principle:` batching and shadow-mode picks revealed only after the answer, plus `fromRoundQuestions`/`answeredFromFeedback` to read a round's questions and feedback back as OwnerItems, and `ask:`/`component:`/`token:`/`topic:` relation keys that relate items without merging them, and `consolidate`, which turns the open queue into the approvals Flow (per-PR and topic groups, influence order, holds, and a per-PR `shipBlockedBy` from open change requests), and an optional `audience` (owner or operator) with the `forAudience` reader filter, and owner card fields (`class`, `irreversible`, `shown`, `default`, `onSilence`, option `consequence`) checked by `cardLint`/`ownerCardSchema`. The root export holds no I/O; the one exception is the `/spool` subpath, the 0600 file spool where agents file deposits and the console keeps the owner's answers. Other adapters live in the product, the gate itself is hitl, routing is decider, and mirroring to Matrix is queue-mirror. |
 | [`pm`](#cap-pm) | 2 | You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`. Pure code; it reads no files, so parse the task, registry and deliverable YAML in the host and hand the objects over. For a seat's front matter use `coordinator` instead. |
 | [`queue-mirror`](#cap-queue-mirror) | 2 | A local queue of human decisions (approvals, hitl gates) should also be answerable from a Matrix room, with verdicts folded back. |
-| [`review-panel`](#cap-review-panel) | 2 | You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`), `classifyPr` to class a PR from its paths and kind, `planPanel` to pick its reviewers by shape, profile and blocking flag, the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy, `acceptVerdict` to decide whether a reviewer's final message is its verdict for this PR at this head, and `aggregate` to turn the members' verdicts into one fail-closed panel verdict. It runs nothing; to start an agent use agent-dispatch, and to parse a transcript use session-read. |
+| [`review-panel`](#cap-review-panel) | 2 | You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`), `classifyPr` to class a PR from its paths and kind, `planPanel` to pick its reviewers by shape, profile and blocking flag, the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy, `acceptVerdict` to decide whether a reviewer's final message is its verdict for this PR at this head, `aggregate` to turn the members' verdicts into one fail-closed panel verdict, and `reviewPullRequest` to run the whole panel for one head over those ports. It runs nothing; to start an agent use agent-dispatch, and to parse a transcript use session-read. |
 | [`session-analytics`](#cap-session-analytics) | 2 | You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Also for agent-chat operations: it reads agent-chat's events.db through a connection the caller opened, parses broker.log lines, transcript denials and seat journals the caller reads, and reports blocked merges, dark agents and review fill. Also for a coordinator duty meter over seat transcript lines the caller reads. Session parsing is session-read; storage is session-graph. |
 | [`session-graph`](#cap-session-graph) | 2 | You query a growing corpus of Claude Code and Codex sessions repeatedly and want it folded into an incrementally maintained SQLite graph. |
 | [`session-read`](#cap-session-read) | 2 | You parse Claude Code or Codex transcripts into typed events with locators and do not want session-graph's storage. |
@@ -592,7 +592,7 @@ Key exports:
 - `envelope`: `describeError`, `errorEnvelope`, `successEnvelope`
 - `zod-introspect`: `arrayElementKind`, `fieldSchema`, `isOptionalField`, `schemaKind`, `unwrapSchema`
 - `cli-options`: `camelizeFlagKey`, `coerceCliValue`
-- +26 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/registry)
+- +28 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/registry)
 
 <a id="cap-retrieval"></a>
 
@@ -671,7 +671,7 @@ Key exports:
 - `git-tree-source`: `gitTreeSource`
 - `@titan-design/code-parser`: `getLanguageFromPath`, `getSupportedLanguages`, `parseFile`, `shouldIncludeFile`
 - `extractors/dispatch`: `LanguageExtractor`
-- +403 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-graph)
+- +404 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
@@ -739,7 +739,7 @@ Key exports:
 - `schema`: `feedbackTableDdl`, `memoryDdl`, `memoryMigration`
 - `scoring`: `decayedCounts`, `decayedValue`, `effectiveScore`, `isStale`, `maturityFor`, `nextMaturity`
 - `text`: `contentKey`, `jaccard`
-- +87 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/memory)
+- +89 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/memory)
 
 <a id="cap-owner-queue"></a>
 
@@ -803,17 +803,16 @@ Key exports:
 
 Tier 2, `@titan-design/review-panel@0.5.4`. Review-panel types and the reviewer ports a caller satisfies
 
-**Use this when:** You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`), `classifyPr` to class a PR from its paths and kind, `planPanel` to pick its reviewers by shape, profile and blocking flag, the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy, `acceptVerdict` to decide whether a reviewer's final message is its verdict for this PR at this head, and `aggregate` to turn the members' verdicts into one fail-closed panel verdict. It runs nothing; to start an agent use agent-dispatch, and to parse a transcript use session-read.
+**Use this when:** You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`), `classifyPr` to class a PR from its paths and kind, `planPanel` to pick its reviewers by shape, profile and blocking flag, the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy, `acceptVerdict` to decide whether a reviewer's final message is its verdict for this PR at this head, `aggregate` to turn the members' verdicts into one fail-closed panel verdict, and `reviewPullRequest` to run the whole panel for one head over those ports. It runs nothing; to start an agent use agent-dispatch, and to parse a transcript use session-read.
 
 Key exports:
 
-- `classify`: `changedLineCount`, `classifyPr`, `securitySliceFlag`, `touchesDependency`
+- `classify`: `changedLineCount`, `classifyPr`, `pathTouches`, `securitySliceFlag`, `touchesDependency`
 - `plan`: `planPanel`
 - `reviewer-brief`: `correctionPrompt`, `reviewCheckoutName`, `reviewerBrief`
 - `accept-verdict`: `acceptVerdict`, `isUsageLimit`
 - `depth-floor`: `isInvestigativeCall`
-- `fix-first-findings`: `boundedFindings`
-- +77 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-panel)
+- +100 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-panel)
 
 <a id="cap-session-analytics"></a>
 
@@ -833,7 +832,7 @@ Key exports:
 - `turn-action`: `classifyRequest`
 - `request-owner`: `readRequestToolCalls`
 - `wake-episodes`: `buildWakeEpisodes`, `episodeNames`
-- +285 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-analytics)
+- +294 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-analytics)
 
 <a id="cap-session-graph"></a>
 
@@ -869,7 +868,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `parseFileRef`, `prRef`
-- +207 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
+- +211 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
 
 <a id="cap-style-analyzer"></a>
 
@@ -962,7 +961,7 @@ Key exports:
 
 - `types`: `AuthorityDeniedError`, `AuthorityRefusedError`, `StepFailedError`, `StepOutputInvalidError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowNotOwnedError`, `WorkflowRecoveryRequiredError`, `WorkflowSchemaDriftError`, `workflowStepRequestKey`
 - `signals`: `createSignalParser`, `createSignalSetParser`
-- +75 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/workflow)
+- +78 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/workflow)
 
 ## UI
 
@@ -1008,7 +1007,7 @@ Key exports:
 
 - `spec`: `CheckSpecSchema`, `EvalCaseSchema`, `ScorecardSchema`, `SuiteSpecSchema`, `UnitSpecSchema`, `TrialRecordSchema`, `VariantSpecSchema`, `parseSpec`, `parseTrialRecord`
 - `hash`: `canonicalJson`, `caseHash`, `hashCanonical`
-- +75 more in `products/evals/src/index.ts`
+- +98 more in `products/evals/src/index.ts`
 
 <a id="cap-factory"></a>
 

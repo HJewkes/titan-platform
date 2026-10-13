@@ -21,6 +21,11 @@ export function shepherdEventMigration(version = 16): Migration {
   return { version, name: "factory:shepherd_event", up: (db) => db.exec(EVENT_DDL) };
 }
 
+/** Marks the release only Shepherd's re-class of an unread-files hold writes; no CLI argument or other write path reaches the column. */
+export function reclassMarkMigration(version = 25): Migration {
+  return { version, name: "factory:shepherd_event_reclass", up: (db) => db.exec("ALTER TABLE shepherd_event ADD COLUMN reclass INTEGER NOT NULL DEFAULT 0") };
+}
+
 export const EVENT_KINDS = ["hold", "release", "freeze", "thaw"] as const;
 export type EventKind = (typeof EVENT_KINDS)[number];
 
@@ -34,6 +39,8 @@ export interface ShepherdEvent {
   actor: string | null;
   at: string;
   headSha: string | null;
+  /** Set only on the release `reclassHold` writes when it swaps an unread-files hold for the PR's real class. */
+  reclass?: true;
 }
 
 /** Every new row names its actor: a seat or owner name from the CLI, `owner` for a gate answer, else Shepherd itself. Only rows from before TP-2266 are null. */
@@ -54,11 +61,13 @@ interface EventRow {
   actor: string | null;
   at: string;
   head_sha: string | null;
+  reclass?: number;
 }
 
-/** Callers append inside the transaction that makes the state change, so a failed change leaves no event. */
+/** Callers append inside the transaction that makes the state change, so a failed change leaves no event. Only a marked event names the reclass column, so a database without it still takes every other write. */
 export function appendEvent(db: Db, event: Partial<ShepherdEvent> & Pick<ShepherdEvent, "repo" | "kind" | "at">): void {
-  db.prepare("INSERT INTO shepherd_event (run_id, repo, pr, kind, reason, actor, at, head_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
+  const mark = event.reclass ? [", reclass", ", 1"] : ["", ""];
+  db.prepare(`INSERT INTO shepherd_event (run_id, repo, pr, kind, reason, actor, at, head_sha${mark[0]}) VALUES (?, ?, ?, ?, ?, ?, ?, ?${mark[1]})`).run(
     event.runId ?? null,
     event.repo.toLowerCase(),
     event.pr ?? null,
@@ -87,5 +96,5 @@ export function eventsSince(db: Db, since = ""): ShepherdEvent[] {
 }
 
 function fromRow(row: EventRow): ShepherdEvent {
-  return { runId: row.run_id, repo: row.repo, pr: row.pr, kind: row.kind, reason: row.reason, actor: row.actor, at: row.at, headSha: row.head_sha };
+  return { runId: row.run_id, repo: row.repo, pr: row.pr, kind: row.kind, reason: row.reason, actor: row.actor, at: row.at, headSha: row.head_sha, ...(row.reclass === 1 && { reclass: true }) };
 }

@@ -2,12 +2,12 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
-import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
+import { appliedVersions, openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { holdSlotsMigration } from "./store-migrations.js";
 import { factoryRoutesFor } from "../workflows.js";
-import { shepherdEventMigration } from "./events.js";
-import { FREEZE_RECHECK_MS, FreezeStore, freezeCancelOnlyMigration, freezeGuard, freezeMigration, freezeStoreRef, redOnlyFromCancels } from "./freeze.js";
+import { eventsSince, shepherdEventMigration } from "./events.js";
+import { FREEZE_RECHECK_MS, FreezeStore, freezeCancelOnlyMigration, freezeFixPrMigration, freezeGuard, freezeMigration, freezeStoreRef, redOnlyFromCancels } from "./freeze.js";
 import { MergeHeldError, heldCheck, holdingPort, openHeadRead, waitWhileHeld } from "./hold.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
@@ -20,6 +20,7 @@ const A = "octo/a";
 const B = "octo/b";
 
 interface Rig {
+  db: Db;
   fake: FakeGitHub;
   port: GitHubPort;
   guarded: GitHubPort;
@@ -30,7 +31,7 @@ interface Rig {
 
 function rig(): Rig {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), freezeCancelOnlyMigration(12), shepherdEventMigration(16), holdSlotsMigration(19)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), freezeCancelOnlyMigration(12), shepherdEventMigration(16), holdSlotsMigration(19), freezeFixPrMigration(23)]);
   const clock = { at: 0 };
   const freezes = new FreezeStore(db, () => clock.at);
   const registrations = new ShepherdStore(db, () => clock.at);
@@ -42,6 +43,7 @@ function rig(): Rig {
     now: () => clock.at,
   });
   return {
+    db,
     fake,
     port,
     guarded: holdingPort(port, () => registrations, guard),
@@ -110,6 +112,42 @@ describe("the frozen-merge guard", () => {
 
     expect(merged).toMatchObject({ done: true });
     expect(r.fake.effects.merge).toBe(1);
+  });
+
+  it("lets a seat's marked fix PR through a freeze while another registered PR stays frozen", async () => {
+    const r = rig();
+    const { episode } = r.freezes.freeze(A, RED);
+    const fix = openPr(r, A, "demo/seat-fix");
+    const other = openPr(r, A, "demo/other");
+    r.freezes.markFixPr(A, episode, fix.pr, "seat-a");
+
+    const merged = await land(r, fix);
+    await expect(land(r, other)).rejects.toThrow(/frozen/);
+
+    expect(merged).toMatchObject({ done: true });
+    expect(r.fake.effects.merge).toBe(1);
+  });
+
+  it("refuses an unregistered PR whose number is the marked fix PR", async () => {
+    const r = rig();
+    const { episode } = r.freezes.freeze(A, RED);
+    const unregistered = openPr(r, A);
+    r.freezes.markFixPr(A, episode, unregistered.pr, "seat-a");
+
+    await expect(land(r, unregistered)).rejects.toThrow(/frozen/);
+    expect(r.fake.effects.merge).toBe(0);
+  });
+
+  it("does not carry a marked fix PR into the next freeze episode", async () => {
+    const r = rig();
+    const fix = openPr(r, A, "demo/seat-fix");
+    r.freezes.markFixPr(A, r.freezes.freeze(A, RED).episode, fix.pr, "seat-a");
+    r.freezes.unfreeze(A, GREEN);
+
+    const next = r.freezes.freeze(A, fakeSha("red2"));
+
+    expect(next).toMatchObject({ episode: 2, fixPr: null, fixPrActor: null });
+    await expect(land(r, fix)).rejects.toThrow(/frozen/);
   });
 
   it("exempts nobody while the freeze has no fix task yet", async () => {
@@ -343,6 +381,47 @@ describe("the freeze store", () => {
     expect(later).toMatchObject({ redCount: 2, cancelOnly: false });
   });
 
+  it("marks a fix PR on the live episode and records one freeze event naming the actor and the PR", () => {
+    const r = rig();
+    const { episode } = r.freezes.freeze(A, RED);
+
+    const result = r.freezes.markFixPr(A, episode, 833, "seat-a", "run-1");
+
+    expect(result).toBe("marked");
+    expect(r.freezes.get(A)).toMatchObject({ fixPr: 833, fixPrActor: "seat-a" });
+    expect(eventsSince(r.db).filter((event) => event.pr === 833)).toEqual([expect.objectContaining({ kind: "freeze", runId: "run-1", actor: "seat-a", headSha: RED, reason: "fix PR #833 marked" })]);
+  });
+
+  it("refuses a mark on a thawed repo or a stale episode and writes nothing", () => {
+    const r = rig();
+    const unfrozen = r.freezes.markFixPr(A, 1, 833, "seat-a");
+    r.freezes.freeze(A, RED);
+    r.freezes.unfreeze(A, GREEN);
+    const thawed = r.freezes.markFixPr(A, 1, 833, "seat-a");
+    const eventsBefore = eventsSince(r.db).length;
+    r.freezes.freeze(A, fakeSha("red2"));
+
+    const stale = r.freezes.markFixPr(A, 1, 833, "seat-a");
+
+    expect([unfrozen, thawed, stale]).toEqual(["not-live", "not-live", "not-live"]);
+    expect(r.freezes.get(A)).toMatchObject({ episode: 2, fixPr: null });
+    expect(eventsSince(r.db).filter((event) => event.pr === 833)).toEqual([]);
+    expect(eventsSince(r.db)).toHaveLength(eventsBefore + 1);
+  });
+
+  it("keeps the first marked fix PR, refuses a second and writes no event for a repeat", () => {
+    const r = rig();
+    const { episode } = r.freezes.freeze(A, RED);
+    r.freezes.markFixPr(A, episode, 833, "seat-a");
+
+    const second = r.freezes.markFixPr(A, episode, 834, "seat-b");
+    const repeat = r.freezes.markFixPr(A, episode, 833, "seat-b");
+
+    expect([second, repeat]).toEqual(["taken", "already"]);
+    expect(r.freezes.get(A)).toMatchObject({ fixPr: 833, fixPrActor: "seat-a" });
+    expect(eventsSince(r.db).filter((event) => event.pr !== null)).toHaveLength(1);
+  });
+
   it("refuses to name a fix task for a repo that is not frozen, or for an episode that has thawed", () => {
     const r = rig();
     const unfrozen = r.freezes.setFixTask(A, 1, "demo/fix");
@@ -377,7 +456,7 @@ describe("redOnlyFromCancels", () => {
 describe("thaw notice from the freeze store ref", () => {
   function boundRef(): { ref: ReturnType<typeof freezeStoreRef>; thawed: string[]; unsubscribe: () => void } {
     const db = openDatabase(":memory:");
-    runMigrations(db, [freezeMigration(6), freezeCancelOnlyMigration(12), shepherdEventMigration(16)]);
+    runMigrations(db, [freezeMigration(6), freezeCancelOnlyMigration(12), shepherdEventMigration(16), freezeFixPrMigration(23)]);
     const ref = freezeStoreRef(() => 0);
     ref.bind(db);
     const thawed: string[] = [];
@@ -428,7 +507,7 @@ describe("thaw notice from the freeze store ref", () => {
 
   it("a store whose own thaw callback throws still reports the thaw it committed", () => {
     const db = openDatabase(":memory:");
-    runMigrations(db, [freezeMigration(6), freezeCancelOnlyMigration(12), shepherdEventMigration(16)]);
+    runMigrations(db, [freezeMigration(6), freezeCancelOnlyMigration(12), shepherdEventMigration(16), freezeFixPrMigration(23)]);
     const freezes = new FreezeStore(db, () => 0, () => {
       throw new Error("callback broke");
     });
@@ -451,7 +530,7 @@ describe("the freeze store on a database another connection writes", () => {
     dirs.push(dir);
     const path = join(dir, "factory.db");
     const host = openDatabase(path);
-    runMigrations(host, [freezeMigration(6), freezeCancelOnlyMigration(12), shepherdEventMigration(16)]);
+    runMigrations(host, [freezeMigration(6), freezeCancelOnlyMigration(12), shepherdEventMigration(16), freezeFixPrMigration(23)]);
     const cli = openDatabase(path);
     cli.pragma("busy_timeout = 0");
     const cliWrite = () => {
@@ -507,8 +586,8 @@ describe("the freeze migration", () => {
       ...tenant.extraMigrations,
     ]);
 
-    expect(applied).toEqual([6, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 22]);
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 22]);
+    expect(applied).toEqual([6, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 22, 23, 24, 25]);
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 22, 23, 24, 25]);
     expect(() => new FreezeStore(db).freeze(A, RED)).not.toThrow();
     db.close();
   });
@@ -518,10 +597,10 @@ describe("the freeze migration", () => {
     runMigrations(db, [freezeMigration(6)]);
     db.prepare("INSERT INTO shepherd_freeze (repo, red_sha, red_count, frozen_at, episode) VALUES (?, ?, 1, ?, 1)").run(A, RED, "2026-10-05T00:29:50Z");
 
-    expect(runMigrations(db, [freezeMigration(6), freezeCancelOnlyMigration(12)])).toEqual([12]);
+    expect(runMigrations(db, [freezeMigration(6), freezeCancelOnlyMigration(12), freezeFixPrMigration(23)])).toEqual([12, 23]);
     const freezes = new FreezeStore(db);
 
-    expect(freezes.get(A)).toMatchObject({ redSha: RED, episode: 1, cancelOnly: false });
+    expect(freezes.get(A)).toMatchObject({ redSha: RED, episode: 1, cancelOnly: false, fixPr: null });
     expect(freezes.unfreeze(A, RED)).toBe(false);
     db.close();
   });

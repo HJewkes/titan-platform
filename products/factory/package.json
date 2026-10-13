@@ -56,7 +56,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@titan-design/decider": "workspace:^"
+    "@titan-design/decider": "workspace:^",
+    "@titan-design/test-kit": "workspace:*"
   },
   "private": true,
   "bin": {

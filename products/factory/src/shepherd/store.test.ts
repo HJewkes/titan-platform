@@ -1,14 +1,14 @@
 import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { accountLimitMigration } from "./account-store.js";
-import { holdSlotsMigration, parkSettledMigration } from "./store-migrations.js";
-import { shepherdEventMigration } from "./events.js";
+import { holdSlotsMigration, parkSettledMigration, registrationFactsMigration } from "./store-migrations.js";
+import { reclassMarkMigration, shepherdEventMigration } from "./events.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type AuthorInput, type RegistrationInput } from "./store.js";
 
 function openStore(): ShepherdStore {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)]);
+  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), reclassMarkMigration(25)]);
   return new ShepherdStore(db, () => Date.parse("2026-01-01T00:00:00Z"));
 }
 
@@ -236,6 +236,40 @@ describe("shepherd registration store", () => {
   });
 });
 
+describe("the head and base a registration names", () => {
+  const HEAD_1 = "1".repeat(40);
+  const HEAD_2 = "2".repeat(40);
+
+  function factsStore(): ShepherdStore {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), registrationFactsMigration(24)]);
+    return new ShepherdStore(db);
+  }
+
+  it("adds both columns to a database that already holds registrations, which read as null", () => {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [shepherdMigration(4), sliceMigration(8)]);
+    new ShepherdStore(db).register(base);
+
+    runMigrations(db, [shepherdMigration(4), sliceMigration(8), registrationFactsMigration(24)]);
+
+    expect(appliedVersions(db)).toContain(24);
+    expect(new ShepherdStore(db).byRun("run-1")).toMatchObject({ pr: 7, headSha: null, base: null });
+  });
+
+  it("stores the head and base at registration, a new head on a repeat, and keeps what a repeat omits", () => {
+    const store = factsStore();
+
+    expect(store.register({ ...base, headSha: HEAD_1, base: "main" })).toMatchObject({ headSha: HEAD_1, base: "main" });
+    expect(store.update("run-1", { ...base, headSha: HEAD_2 })).toMatchObject({ headSha: HEAD_2, base: "main" });
+    expect(store.update("run-1", base)).toMatchObject({ headSha: HEAD_2, base: "main" });
+  });
+
+  it("registers without facts on a database the migration has not reached", () => {
+    expect(openStore().register(base)).toMatchObject({ headSha: null, base: null });
+  });
+});
+
 describe("a hold of another class beside a g10-adversary hold", () => {
   const ADVERSARY = "g10-adversary: trust rule (security)";
   const STALL = "stalled: no progress; TP-2";
@@ -283,6 +317,115 @@ describe("a hold of another class beside a g10-adversary hold", () => {
 
     expect(store.releaseIfHeld("run-1", STALL)).toBe(false);
     expect(store.heldReason("octo/demo", 7)).toBe(ADVERSARY);
+  });
+
+  it("writes nothing and records no event on a hold-unless-adversary over a seat's adversary hold", () => {
+    const store = openStore();
+    store.register(base);
+    store.hold("run-1", ADVERSARY, "sec-audit-review", { actor: "seat" });
+    const mark = store.changeMark("run-1");
+
+    const placed = store.holdUnlessAdversary("run-1", "g10-adversary: fail closed");
+
+    expect(placed).toBe(false);
+    expect(store.changeMark("run-1")).toBe(mark);
+    expect(store.byRun("run-1")).toMatchObject({ held: true, holdReason: ADVERSARY, holdReviewer: "sec-audit-review" });
+  });
+
+  it("places a hold-unless-adversary on an unheld run", () => {
+    const store = openStore();
+    store.register(base);
+
+    const placed = store.holdUnlessAdversary("run-1", ADVERSARY);
+
+    expect(placed).toBe(true);
+    expect(store.byRun("run-1")).toMatchObject({ held: true, holdReason: ADVERSARY, holdReviewer: null });
+    expect(store.eventsOf("run-1").map((event) => event.kind)).toEqual(["hold"]);
+  });
+});
+
+describe("re-classing an unread-files hold in one swap", () => {
+  const UNREAD = "g10-adversary: changed files unread at registration (GhError)";
+  const STALL = "stalled: no progress; TP-1";
+  const REVIEW = "g10-review: 900 changed lines";
+
+  function heldUnread(over?: string): ShepherdStore {
+    const store = openStore();
+    store.register(base);
+    if (over !== undefined) store.hold("run-1", over, undefined, { actor: "seat" });
+    store.hold("run-1", UNREAD, undefined, { actor: "shepherd" });
+    return store;
+  }
+
+  it("lifts the unread hold and leaves a parked stall gating, recording one release of the unread reason", () => {
+    const store = heldUnread(STALL);
+    const seen: (string | null)[] = [];
+
+    const placed = store.reclassIfHeld("run-1", UNREAD, (gating) => (seen.push(gating), undefined), { actor: "shepherd" });
+
+    expect(placed).toBeNull();
+    expect(seen).toEqual([STALL]);
+    expect(store.byRun("run-1")).toMatchObject({ held: true, holdReason: STALL });
+    const releases = store.eventsOf("run-1").filter((event) => event.kind === "release");
+    expect(releases).toMatchObject([{ reason: UNREAD, actor: "shepherd", reclass: true }]);
+  });
+
+  it("places the real class over no parked hold", () => {
+    const store = heldUnread();
+
+    const placed = store.reclassIfHeld("run-1", UNREAD, (gating) => (gating === null ? REVIEW : undefined), { actor: "shepherd" });
+
+    expect(placed).toBe(REVIEW);
+    expect(store.byRun("run-1")).toMatchObject({ held: true, holdReason: REVIEW });
+    expect(store.eventsOf("run-1").map((event) => [event.kind, event.reason])).toEqual([["hold", UNREAD], ["release", UNREAD], ["hold", REVIEW]]);
+  });
+
+  it("places the real class over a parked stall without dropping it", () => {
+    const store = heldUnread(STALL);
+    const over = "g10-adversary: 900 changed lines, over a stalled hold";
+
+    store.reclassIfHeld("run-1", UNREAD, (gating) => (gating === STALL ? over : undefined), { actor: "shepherd" });
+
+    expect(store.byRun("run-1")?.holdReason).toBe(over);
+    expect(store.release("run-1", { actor: "seat" }).holdReason).toBe(STALL);
+  });
+
+  it("marks no other release as the re-class, whatever actor it names", () => {
+    const store = heldUnread();
+
+    store.releaseIfHeld("run-1", UNREAD, { actor: "shepherd" });
+
+    expect(store.eventsOf("run-1").at(-1)).not.toHaveProperty("reclass");
+  });
+
+  it("refuses to place an owner-asked hold, writing nothing", () => {
+    const store = heldUnread();
+    const mark = store.changeMark("run-1");
+
+    expect(() => store.reclassIfHeld("run-1", UNREAD, () => "owner-asked: discuss", { actor: "shepherd" })).toThrow(/owner-asked/);
+    expect(store.changeMark("run-1")).toBe(mark);
+    expect(store.byRun("run-1")).toMatchObject({ held: true, holdReason: UNREAD, ownerHold: null });
+  });
+
+  it("refuses to re-class any hold but an unread-files one", () => {
+    const store = heldUnread();
+    store.hold("run-1", "g10-adversary: authority change; TP-1", undefined, { actor: "seat" });
+
+    expect(() => store.reclassIfHeld("run-1", "g10-adversary: authority change; TP-1", () => undefined, { actor: "shepherd" })).toThrow(/unread-files/);
+    expect(store.byRun("run-1")?.holdReason).toBe("g10-adversary: authority change; TP-1");
+  });
+
+  it("writes nothing when the gating hold is not the one named", () => {
+    const store = heldUnread();
+    store.release("run-1", { actor: "seat" });
+    store.hold("run-1", "g10-adversary: authority change; TP-1", undefined, { actor: "seat" });
+    const mark = store.changeMark("run-1");
+
+    const placed = store.reclassIfHeld("run-1", UNREAD, () => REVIEW, { actor: "shepherd" });
+
+    expect(placed).toBe(false);
+    expect(store.changeMark("run-1")).toBe(mark);
+    expect(store.byRun("run-1")?.holdReason).toBe("g10-adversary: authority change; TP-1");
   });
 });
 

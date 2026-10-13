@@ -1,7 +1,9 @@
+import { execFile } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runCli } from "../cli.js";
 
@@ -16,6 +18,18 @@ if [ -n "$SYSTEMCTL_FAIL" ]; then
 fi
 `;
 
+const run = promisify(execFile);
+
+// cp writes in a process that has exited before the first exec, so a concurrent fork in another
+// worker thread never holds the target open for writing (ETXTBSY, or a partially written script).
+async function installExecutable(file: string, contents: string): Promise<void> {
+  const staging = `${file}.staging`;
+  await writeFile(staging, contents);
+  await chmod(staging, 0o755);
+  await run("cp", ["-p", staging, file]);
+  await rm(staging);
+}
+
 let dir: string;
 let home: string;
 let stubDir: string;
@@ -28,8 +42,7 @@ beforeEach(async () => {
   log = join(dir, "systemctl.log");
   await mkdir(home);
   await mkdir(stubDir);
-  await writeFile(join(stubDir, "systemctl"), STUB);
-  await chmod(join(stubDir, "systemctl"), 0o755);
+  await installExecutable(join(stubDir, "systemctl"), STUB);
 });
 
 afterEach(async () => {
@@ -113,8 +126,8 @@ describe("titan health install", () => {
 
 describe("titan health uninstall", () => {
   it("disables the timer, removes both units, then reloads systemd", async () => {
-    await titan(["install"]);
-    await rm(log);
+    expect((await titan(["install"])).code).toBe(0);
+    await rm(log, { force: true });
 
     const result = await titan(["uninstall"]);
 

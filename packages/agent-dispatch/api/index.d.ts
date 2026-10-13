@@ -169,7 +169,11 @@ declare class DispatchTimeoutError extends DispatchError {
 }
 /** Same shape agent-chat's own registry enforces, checked before we spend a spawn. */
 declare const PEER_NAME_PATTERN: RegExp;
-/** Every agent-chat call runs with this; autostart would leave a broker owned by the caller. */
+/**
+ * Every agent-chat call runs with this; autostart would leave a broker owned by the caller.
+ * A non-empty `AGENT_CHAT_HOME` is forwarded so the CLI reaches the broker whose
+ * profiles `installedProfilesDir()` just checked, not the default one.
+ */
 declare function agentChatEnv(): Record<string, string>;
 interface DispatchRequest {
     agentChatBinPath: string;
@@ -227,7 +231,8 @@ declare function dispatchToAgentChat(req: DispatchRequest, timeoutMs: number, al
  * Refuse a dispatch unless the profile agent-chat is about to load says
  * `"surface": "headless"` (relay R-71 slice A, ported from relay PR #59).
  *
- * agent-chat re-reads `~/.agent-chat/profiles/<name>.json` on every spawn, and
+ * agent-chat re-reads `<name>.json` from its profiles dir (`$AGENT_CHAT_HOME/profiles`,
+ * default `~/.agent-chat/profiles`) on every spawn, and
  * a dispatched implementer holds `Write` and blanket `Bash`, neither
  * path-limited. So one agent can rewrite the installed profile to an
  * interactive surface, and the NEXT dispatch then puts its brief in `claude`'s
@@ -240,8 +245,11 @@ declare function dispatchToAgentChat(req: DispatchRequest, timeoutMs: number, al
  * closes that window.
  */
 /**
- * Resolved per call so it tracks `HOME`. Read from `process.env` first because
- * `homedir()` sees the process-wide variable, not a worker thread's own env.
+ * agent-chat's own rule: `$AGENT_CHAT_HOME/profiles`, else
+ * `$HOME/.agent-chat/profiles`. `||` rather than `??` so an empty variable
+ * falls back instead of yielding a relative `profiles`. Resolved per call so
+ * it tracks both variables. Read from `process.env` first because `homedir()`
+ * sees the process-wide variable, not a worker thread's own env.
  */
 declare function installedProfilesDir(): string;
 declare function assertInstalledHeadless(profile: string, dir?: string): void;

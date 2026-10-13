@@ -656,20 +656,24 @@ describe("the route table in a run", () => {
     expect(w.host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
   });
 
-  it("opens approve-merge naming the runaway at the sixth FIX_FIRST, each of which yielded a new head", async () => {
+  it("opens approve-merge naming the planner route at the third FIX_FIRST, each of which yielded a new head, and wakes no third fixer", async () => {
     const late: { w?: World } = {};
     const heads: string[] = [];
+    const wakes: string[] = [];
     const w = autoWorld(
       async (_ctx, request) => (heads.push(request.headSha), { kind: "FIX_FIRST", headSha: request.headSha, text: "again" }),
-      async () => (late.w!.fake.pushHead(1, fakeSha(`fix-${heads.length}`)), { kind: "woken", agent: "impl-a" }),
+      async () => (wakes.push(heads.at(-1)!), late.w!.fake.pushHead(1, fakeSha(`fix-${heads.length}`)), { kind: "woken", agent: "impl-a" }),
     );
     late.w = w;
     const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
 
     await gateOpened(w.host, gateId(runId, "approve-merge"));
 
-    expect(heads).toHaveLength(6);
-    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`Policy shepherd-route/fix-first-runaway: 6 FIX_FIRST reviews at this task: the last at ${heads[5]}`);
+    expect(heads).toHaveLength(3);
+    expect(wakes).toEqual(heads.slice(0, 2));
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(
+      `Policy shepherd-route/fix-first-runaway: 3 FIX_FIRST reviews at this task: route it to the planner to redesign or split it; Shepherd dispatches no further fix round: the last at ${heads[2]}`,
+    );
     expect(w.fake.effects.merge).toBe(0);
   });
 
@@ -697,10 +701,10 @@ describe("the route table in a run", () => {
 
     await gateOpened(w.host, gateId(runId, "approve-merge"));
 
-    expect(read.reviews).toEqual([0, 1, 2, 3, 4, 5]);
-    expect(read.wakes).toEqual([2, 3, 4, 5]);
-    expect(recorded(runId)).toHaveLength(6);
-    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("Policy shepherd-route/fix-first-runaway: 6 FIX_FIRST reviews at this task");
+    expect(read.reviews).toEqual([0, 1, 2]);
+    expect(read.wakes).toEqual([2]);
+    expect(recorded(runId)).toHaveLength(3);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("Policy shepherd-route/fix-first-runaway: 3 FIX_FIRST reviews at this task");
   });
 
   const resultOf = (data: unknown) => (typeof data === "object" && data !== null && "result" in data ? data.result : undefined);
@@ -713,14 +717,14 @@ describe("the route table in a run", () => {
     await gateOpened(w.host, gateId(runId, "approve-merge"));
 
     expect(recorded(runId).map((result) => resultOf(result.data))).toEqual(heads.map((headSha, n) => ({ repo: REPO, pr: 1, headSha, fixFirst: n + 1 })));
-    expect(read.wakes).toEqual([1, 2, 3, 4, 5]);
+    expect(read.wakes).toEqual([1, 2]);
   });
 
   /** A no-progress gate at H2 under an auto policy, superseded by a head the run then sends back `sendBacks` times before a fixer's push gets a MERGE. */
   async function noProgressSuperseded(sendBacks: number, movedBehind = false) {
     const late: { w?: World } = {};
     const moved = fakeSha("moved");
-    const final = fakeSha(`fix-${sendBacks + 1}`);
+    const final = sendBacks === 0 ? moved : fakeSha(`fix-${sendBacks + 1}`);
     let wakes = 0;
     const w = autoWorld(
       async (ctx, request) => {
@@ -739,17 +743,29 @@ describe("the route table in a run", () => {
     w.fake.pushHead(1, moved);
     if (movedBehind) Object.assign(w.fake.pr(1), { mergeableState: "behind", behind: true });
     await supersedeMovedGates(w.host, w.services);
-    return { w, runId, final };
+    return { w, runId, final, wakes: () => wakes };
   }
 
-  it.each([1, 2])("asks the owner again at the head a fixer pushes after %i send-back(s) of a superseded no-progress head, and never merges it", async (sendBacks) => {
-    const { w, runId, final } = await noProgressSuperseded(sendBacks);
+  it("asks the owner again at the moved head of a superseded no-progress head, and never merges it", async () => {
+    const { w, runId, final } = await noProgressSuperseded(0);
 
     await vi.waitFor(() => expect(w.host.gates.get(gateId(runId, "approve-merge", 1))?.status).toBe("pending"));
 
     const prompt = w.host.gates.get(gateId(runId, "approve-merge", 1))?.prompt;
     expect(prompt).toContain(`at head ${final} into main? CI is green. Policy shepherd-route/no-progress`);
     expect(prompt).toContain("review at this head: MERGE");
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
+  it("wakes no fixer for the moved head's FIX_FIRST, the run's third, and asks the owner at that head", async () => {
+    const { w, runId, final, wakes } = await noProgressSuperseded(1);
+    const moved = w.fake.pr(1).headSha;
+
+    await vi.waitFor(() => expect(w.host.gates.get(gateId(runId, "approve-merge", 1))?.status).toBe("pending"));
+
+    expect(w.host.gates.get(gateId(runId, "approve-merge", 1))?.prompt).toContain(`at head ${moved} into main? CI is green.`);
+    expect(moved).not.toBe(final);
+    expect(wakes()).toBe(1);
     expect(w.fake.effects.merge).toBe(0);
   });
 
@@ -765,7 +781,7 @@ describe("the route table in a run", () => {
   });
 
   it("merges that head once the owner answers the carried gate, which consumes the escalation", async () => {
-    const { w, runId, final } = await noProgressSuperseded(1);
+    const { w, runId, final } = await noProgressSuperseded(0);
     await gateOpened(w.host, gateId(runId, "approve-merge", 1));
 
     w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: final }, OWNER);
@@ -1540,6 +1556,8 @@ describe("the round after a wake's await-new-head", () => {
       },
       checkRuns: (repo, sha) => port.checkRuns(repo, sha),
       openPrs: (repo) => prSnapshot(port, { now: () => 0 }).openPrs(repo),
+      openList: (repo) => prSnapshot(port, { now: () => 0 }).openList(repo),
+      cachedRuns: () => undefined,
       invalidate: () => undefined,
     });
     const { w, wakes } = sentBackBehind(lagging);

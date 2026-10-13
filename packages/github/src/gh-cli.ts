@@ -54,16 +54,18 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     listCheckRuns: (repo, sha) => listCheckRuns(api, repo, sha),
     createCheckRun: async (repo, request) => createCheckRun(exec, options, repo, request),
     getCommit: async (repo, sha) => {
-      const commit = await api.get<{ sha: string; parents: { sha: string }[]; tree?: { sha: string }; committer?: { date?: string } }>(`repos/${repo}/git/commits/${sha}`);
+      const commit = await api.get<{ sha: string; parents: { sha: string }[]; tree?: { sha: string }; committer?: { date?: string }; message?: string }>(`repos/${repo}/git/commits/${sha}`);
       const committedAt = commit.committer?.date;
       const tree = commit.tree?.sha;
-      return { sha: commit.sha, parents: commit.parents.map((parent) => parent.sha), ...(tree ? { tree } : {}), ...(committedAt ? { committedAt } : {}) } satisfies Commit;
+      const message = commit.message;
+      return { sha: commit.sha, parents: commit.parents.map((parent) => parent.sha), ...(tree ? { tree } : {}), ...(committedAt ? { committedAt } : {}), ...(message !== undefined ? { message } : {}) } satisfies Commit;
     },
     resolveCommit: (repo, sha) => resolveCommit(api, repo, sha),
     listCommitStatuses: (repo, sha) => listCommitStatuses(api, repo, sha),
     getWorkflowRunStatus: async (repo, runId) => (await api.get<{ status: string }>(`repos/${repo}/actions/runs/${runId}`)).status,
     getJobLog: (repo, jobId) => api.text(`repos/${repo}/actions/jobs/${jobId}/logs`),
     updateBranch: async (repo, number, expectedHeadSha) => void (await api.send("PUT", `repos/${repo}/pulls/${number}/update-branch`, { expected_head_sha: expectedHeadSha })),
+    setPrBase: async (repo, number, base) => void (await api.send("PATCH", `repos/${repo}/pulls/${number}`, {}, JSON.stringify({ base }))),
     merge: async (repo, number, sha, method, message) => {
       const fields = { sha, merge_method: method, ...(message ? { commit_title: message.subject, commit_message: message.body } : {}) };
       return { sha: (await api.send<{ sha: string }>("PUT", `repos/${repo}/pulls/${number}/merge`, fields)).sha };
@@ -116,6 +118,8 @@ async function getContent(api: Rest, repo: string, path: string, ref: string): P
 interface GhPull {
   number: number;
   state: unknown;
+  title?: string;
+  body?: string | null;
   merged?: boolean;
   merged_at?: string | null;
   merge_commit_sha: string | null;
@@ -148,6 +152,7 @@ function toPullRequest(pr: GhPull, behindBy?: number): PullRequest {
     behind: (behindBy ?? 0) > 0,
     ...(behindBy === undefined ? {} : { behindBy }),
     autoMerge: pr.auto_merge != null,
+    ...(pr.title === undefined ? {} : { title: pr.title, body: pr.body ?? "" }),
   };
 }
 

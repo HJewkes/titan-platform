@@ -1,3 +1,4 @@
+import { BrokerUnavailableError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
 import type { AgentIdentity } from "@titan-design/authority";
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { z } from "zod";
@@ -5,6 +6,7 @@ import { deadline } from "../workflows/deadline.js";
 import { bounded, type AwaitVerdictTiming } from "./await-verdict.js";
 import { failureOf } from "./error-class.js";
 import { holdClassOf } from "./g10-release.js";
+import { ReviewerAskTimedOut, ReviewerBrokerBusy, ReviewerBrokerDown, clearReviewWait, noteReviewWait } from "./review-wait.js";
 import type { AwaitVerdictInput, AwaitVerdictResult, ReviewTarget, ReviewWiring, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { OwnerOverride } from "./override-stats.js";
 import type { Registration } from "./store.js";
@@ -50,7 +52,7 @@ export function acceptExternalVerdict(input: ExternalVerdictInput, row: Reviewer
   const { message, block } = newest;
   if (!block.ok) return { kind: "none", reason: "wait" };
   const accepted = { kind: "verdict" as const, head: block.head, locator: message.locator, reviewer: { agentId: row.agentId, sessionId: row.sessionId } };
-  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: fixFirstFindings(input, own, message.text), ...(block.closer && { closer: block.closer }) };
+  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE", ...(block.ciPolicy && { ciPolicy: block.ciPolicy }) } : { ...accepted, verdict: "FIX_FIRST", text: fixFirstFindings(input, own, message.text), ...(block.closer && { closer: block.closer }) };
 }
 
 /** A name can span sessions; the last row the roster lists with a session holds it. */
@@ -141,8 +143,11 @@ async function readReviewer(reader: ReviewerReader, target: ReviewTarget, rows: 
   return { messages: messages.filter(owned), failures };
 }
 
-/** `clear` lets the MERGE stand; a FIX_FIRST sends the head back; a `none` with a reason is a read that failed, or a seat WAIT (`wait`), and blocks the head too. */
-export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string; wait?: true } | { kind: "clear"; merged?: string };
+/**
+ * `clear` lets the MERGE stand; a FIX_FIRST sends the head back; a `none` with a reason is a read that failed, or a seat WAIT
+ * (`wait`), and blocks the head too. `retry` marks a failed read that may succeed if asked again.
+ */
+export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string; wait?: true; retry?: true } | { kind: "clear"; merged?: string };
 
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -163,6 +168,13 @@ function reviewsThisPr(target: ReviewTarget, read: NameRead): boolean {
   });
 }
 
+/** The broker's own failures that clear with time; a permission, missing-file or parse failure reads the same every time. */
+const TRANSIENT = [ReviewerAskTimedOut, ReviewerBrokerDown, ReviewerBrokerBusy, DispatchTimeoutError, BrokerUnavailableError];
+
+const transient = (error: unknown): boolean => TRANSIENT.some((kind) => error instanceof kind) || /^HTTP 5\d\d$/.test(failureOf(error));
+
+const retryIf = (clears: boolean) => (clears ? { retry: true as const } : {});
+
 /**
  * A damaged transcript blocks only the PR its brief or a verdict block ties it to; one tied to no PR, or only to
  * other PRs, warns instead of blocking every PR on the machine. Any other failure blocks.
@@ -175,7 +187,8 @@ function failedRead(name: string, target: ReviewTarget, read: NameRead, warn: (l
     warn(`seat check: ${name} is not the reviewer of ${target.repo}#${target.pr}, so its damaged transcript does not block it: ${failureOf(failure)}`);
     return undefined;
   }
-  return { kind: "none", reason: `seat check: the transcript of ${name} could not be read: ${failureOf(failure)}` };
+  const hards = read.failures.filter((each) => !(each instanceof DamagedTranscriptError));
+  return { kind: "none", reason: `seat check: the transcript of ${name} could not be read: ${failureOf(failure)}`, ...retryIf(hards.length > 0 && hards.every(transient)) };
 }
 
 function sentBack(name: string, target: ReviewTarget, message: ReviewerMessage, messages: readonly ReviewerMessage[]): SeatCheck {
@@ -192,7 +205,7 @@ export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[
   try {
     listed = await roster();
   } catch (error) {
-    return { kind: "none", reason: `seat check: the roster could not be read: ${failureOf(error)}` };
+    return { kind: "none", reason: `seat check: the roster could not be read: ${failureOf(error)}`, ...retryIf(transient(error)) };
   }
   const rows = listed.filter((row) => SEAT_REVIEWER.test(row.name) && row.sessionId !== "");
   let failed: SeatCheck | undefined;
@@ -225,26 +238,39 @@ interface SeatHeldNone {
   seatHeld: OwnMerge;
 }
 
-/** Re-reads the seat check while it answers WAIT, so a seat waiting on CI settles into its verdict; the deadline returns the standing WAIT. */
+/** A WAIT, or a read the broker failed for a while, can still settle; a damaged transcript or a refused read cannot. */
+const unsettled = (check: SeatCheck): boolean => check.kind === "none" && (check.wait === true || check.retry === true);
+
+/**
+ * Re-reads the seat check while it answers WAIT or a read failed in a way that can clear, so a seat waiting on CI settles into
+ * its verdict and a broker timeout does not cost the own MERGE; the deadline returns the standing check. The hold shows in the view,
+ * because the step records nothing until it ends.
+ */
 async function awaitSeatSettled(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, timing: SeatWaitTiming, signal: AbortSignal, warn?: (line: string) => void): Promise<SeatCheck> {
   const clock = deadline(timing);
-  for (;;) {
-    const check = await seatFixFirst(roster, reader, target, warn);
-    if (check.kind !== "none" || !check.wait || clock.expired()) return check;
-    await clock.sleep(timing.pollMs, signal);
+  try {
+    for (;;) {
+      const check = await seatFixFirst(roster, reader, target, warn);
+      if (!unsettled(check) || clock.expired()) return check;
+      if (check.kind === "none") noteReviewWait(target.repo, target.pr, `holding Shepherd's MERGE at ${target.head} on the seat check: ${check.reason}`);
+      await clock.sleep(timing.pollMs, signal);
+    }
+  } finally {
+    clearReviewWait(target.repo, target.pr);
   }
 }
 
 /**
  * A MERGE stands only while the seat check is clear at the same head. A seat's FIX_FIRST over it is a G10 disagreement,
- * recorded on the result. With `seatWait`, a seat WAIT is waited out, and one that outlasts it holds the MERGE as `seatHeld`.
+ * recorded on the result. With `seatWait`, a seat WAIT or a read that can clear is waited out, and one that outlasts it holds the MERGE
+ * as `seatHeld`, so the next round re-checks the seat instead of reviewing again. A damaged transcript blocks with no hold.
  */
 export async function unlessSeatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, result: AwaitVerdictResult, warn?: (line: string) => void, now: () => number = Date.now, seatWait?: SeatWait): Promise<AwaitVerdictResult> {
   if (result.kind !== "verdict" || result.verdict !== "MERGE") return result;
   const check = seatWait ? await awaitSeatSettled(roster, reader, target, seatWait.timing, seatWait.signal, warn) : await seatFixFirst(roster, reader, target, warn);
   if (check.kind === "clear") return result;
   if (check.kind === "verdict") return { ...check, ownerOverride: disagreement(target.head, "MERGE", "FIX_FIRST", now) };
-  return seatWait && check.wait ? held(check.reason, result) : { kind: "none", reason: check.reason };
+  return seatWait && unsettled(check) ? held(check.reason, result) : { kind: "none", reason: check.reason };
 }
 
 const held = (reason: string, seatHeld: OwnMerge): SeatHeldNone => ({ kind: "none", reason, seatHeld });

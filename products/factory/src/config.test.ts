@@ -152,6 +152,20 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(xdg({ postMerge })))).toThrow(key);
   });
 
+  it("reads the gate notifier with the owner-remote class and the titan-factory label by default", () => {
+    const env = xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", gateNotify: {} } });
+
+    expect(loadConfig(configPath(env)).shepherd?.gateNotify).toEqual({ label: "titan-factory", resolverClass: "owner-remote" });
+  });
+
+  it("rejects a gate notifier with no agent-chat binary to ask through", () => {
+    expect(() => loadConfig(configPath(xdg({ shepherd: { gateNotify: {} } })))).toThrow(/gateNotify needs an agentChatBin/);
+  });
+
+  it("rejects a gate notifier label agent-chat would refuse", () => {
+    expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", gateNotify: { label: "Titan Factory" } } })))).toThrow(/gateNotify\.label/);
+  });
+
   it("reads the agent-chat binary and the reviewer it dispatches", () => {
     const review = { profile: "rv-readonly", configDir: "/srv/rv-claude", verdictTimeoutMs: 900_000, sessionStartTimeoutMs: 60_000 };
     const env = xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review } });

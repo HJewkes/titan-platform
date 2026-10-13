@@ -6,9 +6,10 @@ import type { StepDeclaration } from "../definition.js";
 import { evidenceRecord } from "../evidence.js";
 import { stuckBehindDecision } from "../gate-brief.js";
 import type { GateDecision, GatePolicy } from "../gate-policy.js";
-import { requireRequiredChecks } from "../required-checks.js";
+import { requireBaseRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
-import { BaseCheckResult, BaseWaitResult, checkBase, mergeOnAllowedBase, waitForRetarget, type BaseCheckInput, type BaseWaitInput } from "./land-base.js";
+import { BaseCheckResult, BaseWaitResult, checkBase, mergeOnAllowedBase, waitForRetarget, type BaseCheck, type BaseCheckInput, type BaseWaitInput } from "./land-base.js";
+import { landedOf, type LandedPr } from "./land-landed.js";
 import { approveMergeGate, askedApproval, type AskApproval } from "./land-approval.js";
 import type { MergeInput } from "./land-merge-message.js";
 import type { CiInput, CiSnapshot, FailingCheck } from "./land-ci.js";
@@ -32,11 +33,11 @@ export const MAX_CI_CYCLES = 20;
 
 /** Every step the land core calls; a workflow that uses `land` spreads these into its own declaration. */
 export const LAND_STEPS: readonly StepDeclaration[] = [
-  { id: "land-rules", kind: "dispatch" },
-  { id: "ci-wait", kind: "dispatch" },
+  { id: "land-rules", kind: "dispatch", orphanSafe: true },
+  { id: "ci-wait", kind: "dispatch", orphanSafe: true },
   { id: "update-branch", kind: "dispatch" },
   { id: "update-backoff", kind: "dispatch" },
-  { id: "base-check", kind: "dispatch" },
+  { id: "base-check", kind: "dispatch", orphanSafe: true },
   { id: "base-wait", kind: "dispatch" },
   { id: "merge", kind: "dispatch" },
   { id: "merge-policy", kind: "dispatch" },
@@ -83,6 +84,8 @@ export interface LandOptions {
   reviewedMerge?: (headSha: string) => boolean;
   /** The reviewer's owner brief from a MERGE at exactly this head, shown on the approve-merge gate. */
   ownerBriefAt?: (headSha: string) => OwnerBrief | undefined;
+  /** Repo skill paths the PR changes at exactly this head; the approve-merge gate then links the diff and recommends nothing. */
+  skillPathsAt?: (headSha: string) => readonly string[];
   /** A gate this names waits at its head on recorded backoff steps, refreshing the facts each time, before the owner is asked. */
   unsettled?: UnsettledMerge;
   /** Asked in place of the approve-merge gate at the head the policy gated; absent, land opens approve-merge. */
@@ -92,8 +95,8 @@ export interface LandOptions {
 }
 
 export type LandOutcome =
-  /** `mergeSha` is null when GitHub reports the PR merged but names no merge commit. */
-  | { kind: "merged"; headSha: string; mergeSha: string | null }
+  /** `mergeSha` is null when GitHub reports the PR merged but names no merge commit; `landed` is absent for a merge made elsewhere. */
+  | { kind: "merged"; headSha: string; mergeSha: string | null; landed?: LandedPr }
   | { kind: "ci-failed"; headSha: string; failing: FailingCheck[] }
   | { kind: "stopped"; reason: "closed" | "not-mergeable" | "conflict" | "abandoned" | "stuck-behind" | "merge-denied" | "update-branch-unmoved"; headSha: string; detail: string };
 
@@ -252,24 +255,24 @@ async function onSettled(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot,
   if (ci.verdict === "closed") return stopped("closed", ci.headSha, "the pull request was closed without merging");
   if (ci.verdict !== "green") return stopped("not-mergeable", ci.headSha, `mergeable_state is ${ci.mergeableState}`);
   if (!state.trusted.has(ci.headSha)) return approve(ctx, input, ci, state, options);
-  const base = await allowedBase(ctx, input, ci, state, options);
-  if (base === undefined) return undefined;
-  const merge = await step(ctx, roundId("merge", state.round, state.merges++), { repo: input.repo, pr: input.pr, sha: ci.headSha, method: input.method ?? "squash", taskIds: input.taskIds ?? [], base }, MergeResultResult);
+  const check = await allowedBase(ctx, input, ci, state, options);
+  if (check === undefined) return undefined;
+  const merge = await step(ctx, roundId("merge", state.round, state.merges++), { repo: input.repo, pr: input.pr, sha: ci.headSha, method: input.method ?? "squash", taskIds: input.taskIds ?? [], base: check.base }, MergeResultResult);
   // The port answers "" for a PR merged elsewhere with no merge commit named.
-  if (merge.done || merge.skipped === "merged") return { kind: "merged", headSha: ci.headSha, mergeSha: merge.mergeSha || null };
+  if (merge.done || merge.skipped === "merged") return { kind: "merged", headSha: ci.headSha, mergeSha: merge.mergeSha || null, ...landedOf(check, ci.headSha) };
   if (merge.skipped === "closed") return stopped("closed", ci.headSha, "the pull request was closed before the merge");
   return undefined;
 }
 
 /**
- * The base the approved head may merge into, read live; undefined after a wait on a refused base, so land reads CI
- * again. A refused base never reaches the merge step, and the wait neither fails nor ends the run.
+ * The base check that allowed the approved head's merge, read live; undefined after a wait on a refused base, so land
+ * reads CI again. A refused base never reaches the merge step, and the wait neither fails nor ends the run.
  */
-async function allowedBase(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState, options: LandOptions): Promise<string | undefined> {
+async function allowedBase(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState, options: LandOptions): Promise<BaseCheck | undefined> {
   const checkInput: BaseCheckInput = { repo: input.repo, pr: input.pr, featureBase: options.featureBase?.() ?? false };
   const check = await step(ctx, roundId("base-check", state.round, state.baseChecks++), checkInput, BaseCheckResult);
   if (check.allowed && check.base !== state.trustedOn) return untrust(state, ci.headSha);
-  if (check.allowed) return check.base;
+  if (check.allowed) return check;
   const waitInput: BaseWaitInput = { repo: input.repo, pr: input.pr, base: check.base, headSha: ci.headSha };
   await step(ctx, roundId("base-wait", state.round, state.baseWaits++), waitInput, BaseWaitResult);
   return undefined;
@@ -286,7 +289,7 @@ async function approve(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, s
   const settleStep = (wait: Omit<SettleInput, "repo" | "baseRef">) => step(ctx, roundId("merge-settle", state.round, state.settles++), { repo: input.repo, baseRef: state.rules.base, ...wait }, SettleResult);
   const decision = await settleOrGate(state.hold, decided, options.unsettled, ci.headSha, settleStep);
   if (!decision) return undefined;
-  const ask = options.askApproval ?? approveMergeGate(decision.rule, options.reviewedMerge, options.ownerBriefAt);
+  const ask = options.askApproval ?? approveMergeGate(decision.rule, options);
   return askedApproval(ctx, ask, { repo: input.repo, pr: input.pr, headSha: ci.headSha, round: state.round, reason: decision.reason, base }, () => trust(state, ci.headSha, "human", base));
 }
 
@@ -366,7 +369,7 @@ function recordRoute<I>(match: string, now: () => number, fn: (input: I, step: R
 
 async function readRules(port: GitHubPort, input: { repo: string; pr: number }): Promise<LandRules> {
   const pr = await port.getPr(input.repo, input.pr);
-  const required = await requireRequiredChecks(port, input.repo, pr.baseRef);
+  const required = await requireBaseRequiredChecks(port, input.repo, pr.baseRef);
   return { base: pr.baseRef, contexts: required.contexts, strict: required.strict };
 }
 

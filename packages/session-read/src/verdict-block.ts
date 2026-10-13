@@ -15,6 +15,14 @@
  * - An optional fourth line `Closer: yes|no` (is this head closer to MERGE than the last reviewed one) is read
  *   only directly after Head and only on FIX_FIRST. Absent, on MERGE or WAIT, or any other value, a duplicate, or
  *   a line anywhere else, it leaves `closer` undefined and the block parses as it would without it.
+ * - An optional fourth line `CI-policy: unchanged` or `CI-policy: weakened <key>(, <key>)*` (TP-2407) is read only
+ *   directly after Head and only on MERGE. Keys come from a closed set, each at most once. Unlike every other rule here,
+ *   the label is looked for on every raw line, fenced, indented, commented out or not, and a line is labelled when it
+ *   folds to `cipolicy...` (see `foldCiPolicyLine`: NFKC, lower case, every non-alphanumeric and any list number gone).
+ *   With no labelled line `ciPolicy` is undefined. A labelled line whose rest folds to `weakened` and known keys reads
+ *   weakened wherever it sits; the canonical unchanged line counts only as the one labelled line, exact and visible at
+ *   Head+1; any other labelled line reads `{ kind: "malformed" }`. Across lines the strictest reading wins: weakened
+ *   (keys merged) over malformed over unchanged. Both gate on any PR: a reviewer who wrote the line meant something.
  * - Any visible line starting `Verdict:` is a block start, so a second one is refused, even
  *   when identical or malformed. A `Status:` line is ignored.
  */
@@ -22,6 +30,12 @@
 export type VerdictBlockVerdict = "MERGE" | "FIX_FIRST";
 
 type VerdictBlockCloser = "yes" | "no";
+
+export const CI_POLICY_KEYS = ["required-check", "permissions", "pull_request_target", "secrets", "ruleset", "other"] as const;
+
+export type CiPolicyKey = (typeof CI_POLICY_KEYS)[number];
+
+export type CiPolicy = { kind: "unchanged" } | { kind: "weakened"; keys: CiPolicyKey[] } | { kind: "malformed" };
 
 export type VerdictBlockRefusal =
   | "no_block"
@@ -33,13 +47,18 @@ export type VerdictBlockRefusal =
   | "bad_head";
 
 export type VerdictBlockResult =
-  | { ok: true; verdict: VerdictBlockVerdict; repo: string; pr: number; head: string; lineOffset: number; closer?: VerdictBlockCloser }
+  | { ok: true; verdict: VerdictBlockVerdict; repo: string; pr: number; head: string; lineOffset: number; closer?: VerdictBlockCloser; ciPolicy?: CiPolicy }
   | { ok: false; reason: "wait"; repo: string; pr: number; head: string; lineOffset: number }
   | { ok: false; reason: VerdictBlockRefusal };
 
 const PR_LINE = /^PR: ([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)#([1-9][0-9]{0,15})$/;
 const HEAD_LINE = /^Head: ([0-9a-f]{40})$/;
 const CLOSER_LINE = /^Closer: (yes|no)$/;
+const CI_POLICY_UNCHANGED_LINE = "CI-policy: unchanged";
+const CI_POLICY_LABEL = "cipolicy";
+const CI_POLICY_WEAKENED = "weakened";
+const NOT_ALPHANUMERIC = /[^a-z0-9]/g;
+const LIST_NUMBER = /^[0-9]+/;
 const FENCE = /^(`{3,}|~{3,})/;
 const TRIMMED_SPACE = /[\s\uFEFF]/;
 const CONTAINER = /^(?:>\s*|[-*+]\s+|\d{1,9}[.)]\s+)/;
@@ -53,11 +72,11 @@ export function parseVerdictBlock(text: string): VerdictBlockResult {
   });
   if (starts.length === 0) return { ok: false, reason: "no_block" };
   if (starts.length > 1) return { ok: false, reason: "multiple_blocks" };
-  return readBlock(lines, starts[0]!);
+  return readBlock(text, lines, starts[0]!);
 }
 
-/** One entry per line: its trimmed text, or null when fenced, commented out or indented as code. */
-function visibleLines(text: string): (string | null)[] {
+/** One entry per line: its trimmed text, or null when fenced, commented out or indented as code; shared so every reviewer-message parser agrees on what is visible. */
+export function visibleLines(text: string): (string | null)[] {
   let fence: { char: string; length: number } | null = null;
   let inComment = false;
   return text.split("\n").map((raw) => {
@@ -102,7 +121,7 @@ function indentOf(raw: string): number {
   return width;
 }
 
-function readBlock(lines: (string | null)[], at: number): VerdictBlockResult {
+function readBlock(text: string, lines: (string | null)[], at: number): VerdictBlockResult {
   const verdict = lines[at] ?? "";
   if (verdict !== "Verdict: MERGE" && verdict !== "Verdict: FIX_FIRST" && verdict !== "Verdict: WAIT") return { ok: false, reason: "bad_verdict" };
   const prLine = lines[at + 1];
@@ -118,7 +137,10 @@ function readBlock(lines: (string | null)[], at: number): VerdictBlockResult {
   if (!head) return { ok: false, reason: "bad_head" };
   const named = { repo: `${pr[1]}/${pr[2]}`, pr: number, head: head[1]!, lineOffset: at };
   if (verdict === "Verdict: WAIT") return { ok: false, reason: "wait", ...named };
-  if (verdict === "Verdict: MERGE") return { ok: true, verdict: "MERGE", ...named };
+  if (verdict === "Verdict: MERGE") {
+    const ciPolicy = readCiPolicy(text, lines[at + 3] === CI_POLICY_UNCHANGED_LINE ? at + 3 : -1);
+    return { ok: true, verdict: "MERGE", ...named, ...(ciPolicy && { ciPolicy }) };
+  }
   const closer = readCloser(lines, at + 3);
   return { ok: true, verdict: "FIX_FIRST", ...named, ...(closer && { closer }) };
 }
@@ -128,7 +150,52 @@ function readCloser(lines: (string | null)[], at: number): VerdictBlockCloser | 
   const match = CLOSER_LINE.exec(lines[at] ?? "");
   const duplicated = lines.some((line, index) => index !== at && line?.startsWith("Closer:"));
   if (!match || duplicated) return undefined;
-  return match[1] as VerdictBlockCloser;
+  return match[1] === "yes" ? "yes" : "no";
+}
+
+/**
+ * Scans raw lines, not visible ones: a weakening written in a fence, a comment or an indent is still the reviewer's
+ * word, and hiding it must never read as silence. `canonicalAt` is the Head+1 index when it holds the exact unchanged
+ * line, else -1.
+ */
+function readCiPolicy(text: string, canonicalAt: number): CiPolicy | undefined {
+  const readings = text.split("\n").flatMap((raw, index) => {
+    const folded = foldCiPolicyLine(raw);
+    if (!folded.startsWith(CI_POLICY_LABEL)) return [];
+    return [readCiPolicyLabel(folded.slice(CI_POLICY_LABEL.length), index === canonicalAt)];
+  });
+  return readings.length === 0 ? undefined : strictestCiPolicy(readings);
+}
+
+/** Folds rather than matching a list of decorations, so a decoration no one listed still reads as labelled. */
+function foldCiPolicyLine(raw: string): string {
+  return raw.normalize("NFKC").toLowerCase().replace(NOT_ALPHANUMERIC, "").replace(LIST_NUMBER, "");
+}
+
+function readCiPolicyLabel(rest: string, canonicalUnchanged: boolean): CiPolicy {
+  if (rest.startsWith(CI_POLICY_WEAKENED)) {
+    const keys = foldedCiPolicyKeys(rest.slice(CI_POLICY_WEAKENED.length));
+    return keys ? { kind: "weakened", keys } : { kind: "malformed" };
+  }
+  return canonicalUnchanged ? { kind: "unchanged" } : { kind: "malformed" };
+}
+
+/** Greedy is exact because no folded key is a prefix of another; an unknown, repeated or missing key reads undefined. */
+function foldedCiPolicyKeys(rest: string): CiPolicyKey[] | undefined {
+  const keys: CiPolicyKey[] = [];
+  for (let remaining = rest; remaining.length > 0; ) {
+    const key = CI_POLICY_KEYS.find((candidate) => remaining.startsWith(foldCiPolicyLine(candidate)));
+    if (key === undefined || keys.includes(key)) return undefined;
+    keys.push(key);
+    remaining = remaining.slice(foldCiPolicyLine(key).length);
+  }
+  return keys.length > 0 ? keys : undefined;
+}
+
+function strictestCiPolicy(readings: CiPolicy[]): CiPolicy {
+  const keys = [...new Set(readings.flatMap((reading) => (reading.kind === "weakened" ? reading.keys : [])))];
+  if (keys.length > 0) return { kind: "weakened", keys };
+  return readings.some((reading) => reading.kind === "malformed") ? { kind: "malformed" } : { kind: "unchanged" };
 }
 
 function isDotName(name: string): boolean {

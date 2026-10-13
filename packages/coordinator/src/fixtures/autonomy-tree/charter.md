@@ -80,7 +80,6 @@
       "planner": 250
     },
     "teleport_k": 250,
-    "worktrees_per_repo_per_seat": 12,
     "worktrees_left_free_per_repo": 2,
     "stale_pr_days": 7,
     "heartbeat_cron": "17,47 * * * *"

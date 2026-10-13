@@ -33,6 +33,8 @@ export interface CiSnapshot {
   baseMoved?: boolean;
   /** When `ci-wait` returned this read, so the update budget can tell how long the base has been chased. */
   readAt?: number;
+  /** The required contexts this read was judged on: the base's live list, or the recorded one when the live read failed. */
+  contexts?: string[];
 }
 
 export interface CiInput {
@@ -47,6 +49,8 @@ export interface CiReadOptions {
   openSeen?: OpenSeen;
   /** Reads true once a required check that never reported has waited out its grace; a running check still blocks. */
   missingSettled?: (headSha: string) => boolean;
+  /** Reads the base's required contexts now, so a context the ruleset dropped mid-wait stops being waited on. */
+  liveContexts?: (baseRef: string) => Promise<string[]>;
 }
 
 /**
@@ -62,6 +66,25 @@ export async function readCi(port: GitHubPort, input: CiInput, reads?: PrReads, 
 /** An open repo's settled judgement compares two polls, so each is a live read: a cached run set would be compared with itself. */
 function judgedReads(port: GitHubPort, input: CiInput, reads: PrReads, options: CiReadOptions): PrReads {
   return input.contexts.length === 0 && options.openSeen !== undefined ? { getPr: reads.getPr, checkRuns: portReads(port).checkRuns } : reads;
+}
+
+/**
+ * A failed live read, or a live empty list over a recorded non-empty one, keeps the recorded list: an empty list would
+ * judge by the open-repo rule, so a flaky rules read must never relax the wait.
+ */
+export async function liveOrRecorded(recorded: string[], live: () => Promise<string[]>): Promise<string[]> {
+  try {
+    const contexts = await live();
+    return contexts.length === 0 && recorded.length > 0 ? recorded : contexts;
+  } catch {
+    return recorded;
+  }
+}
+
+async function judgedInput(input: CiInput, baseRef: string, options: CiReadOptions): Promise<CiInput> {
+  const { liveContexts } = options;
+  if (liveContexts === undefined) return input;
+  return { ...input, contexts: await liveOrRecorded(input.contexts, () => liveContexts(baseRef)) };
 }
 
 /** The runs a verdict is judged on. The snapshot settles a head on this same set: once every finding left is a failure, nothing is still running. */
@@ -86,12 +109,17 @@ export async function requiredChecksPass(input: Pick<CiInput, "repo" | "contexts
   return findingsAt(input, headSha, runs).length === 0;
 }
 
-async function readCiFrom(port: GitHubPort, input: CiInput, snapshotReads: PrReads, options: CiReadOptions): Promise<CiSnapshot> {
-  const reads = judgedReads(port, input, snapshotReads, options);
-  const pr = await reads.getPr(input.repo, input.pr);
+async function readCiFrom(port: GitHubPort, recorded: CiInput, snapshotReads: PrReads, options: CiReadOptions): Promise<CiSnapshot> {
+  const pr = await snapshotReads.getPr(recorded.repo, recorded.pr);
   const base = { headSha: pr.headSha, mergeableState: pr.mergeableState, baseRef: pr.baseRef };
   if (pr.merged) return { ...base, verdict: "merged", mergeSha: pr.mergeSha };
   if (pr.state === "closed") return { ...base, verdict: "closed" };
+  const input = await judgedInput(recorded, pr.baseRef, options);
+  return { ...(await judgeOpenPr(port, input, pr, judgedReads(port, input, snapshotReads, options), options)), contexts: input.contexts };
+}
+
+async function judgeOpenPr(port: GitHubPort, input: CiInput, pr: PullRequest, reads: PrReads, options: CiReadOptions): Promise<CiSnapshot> {
+  const base = { headSha: pr.headSha, mergeableState: pr.mergeableState, baseRef: pr.baseRef };
   const runs = await reads.checkRuns(input.repo, pr.headSha, (all) => findingsAt(input, pr.headSha, all).every((finding) => finding.kind === "failed"));
   const findings = findingsAt(input, pr.headSha, runs);
   if (findings.length === 0 && awaitsSecondRead(input, options, pr.headSha, runs)) return { ...base, verdict: "pending", waitingOn: ["a second read that sees the same check-runs"] };

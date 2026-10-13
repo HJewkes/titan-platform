@@ -3,8 +3,10 @@ import { formatResultLine, type Verdict } from "@titan-design/fix-proof";
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { BLOCK_LINE, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS } from "./fix-first-findings.js";
 import {
+  CI_POLICY_EXACT,
   EARLIER_FINDINGS_END,
   EARLIER_FINDINGS_START,
+  FOLLOW_UPS_RULE,
   MAX_CORRECTION_PROMPT_CHARS,
   type MalformedRefusal,
   REFUSAL_SENTENCES,
@@ -23,6 +25,7 @@ const REFUSAL_SET: Record<MalformedRefusal, true> = {
   missing_head_line: true,
   bad_head: true,
   wrong_target: true,
+  ci_policy_malformed: true,
 };
 const REFUSALS = Object.keys(REFUSAL_SET).filter((key): key is MalformedRefusal => Object.hasOwn(REFUSAL_SET, key));
 
@@ -87,11 +90,15 @@ describe("reviewerBrief", () => {
     expect(reviewerBrief(target)).not.toMatch(/dir="\$TMPDIR|-C "\/tmp/);
   });
 
-  it("keeps the full suite off the Mac", () => {
+  it("by default runs no tests and judges the CI check-runs at the reviewed head", () => {
     const brief = reviewerBrief(target);
 
-    expect(brief).toContain("ssh basement basement-suite");
-    expect(brief).toContain("Never run a full `pnpm test` on the Mac.");
+    expect(brief).toContain("Run no tests, builds, typecheck or lint, and install nothing");
+    expect(brief).toContain("`gh api repos/<repo>/commits/<head>/check-runs --jq '.check_runs[] | [.name, .status, .conclusion] | @tsv'`");
+    expect(brief).toContain("`gh pr checks <pr> --repo <repo> --required`");
+    expect(brief).toContain("Cite each check-run in your review by name and conclusion.");
+    expect(brief).toContain("A required check that is missing at this head, still running, or red (failure, cancelled or timed_out) is blocking: give FIX_FIRST and name it.");
+    expect(brief).not.toMatch(/basement-suite|vitest/);
   });
 
   it("carries the test rule it is given, so a reviewer on basement never ssh-es to itself", () => {
@@ -188,6 +195,41 @@ describe("reviewerBrief Closer line", () => {
   });
 });
 
+describe("the CI-policy line", () => {
+  const input = { repo: "octo/demo", pr: 3, head: "0123456789abcdef0123456789abcdef01234567", checkoutRoot: "/data/reviews" };
+  const KEYS = ["required-check", "permissions", "pull_request_target", "secrets", "ruleset", "other"];
+  const asksForLine = (text: string, keyed: (key: string) => string) => {
+    expect(text).toContain("`CI-policy: unchanged`");
+    expect(text).toContain("`CI-policy: weakened <keys>`");
+    for (const key of KEYS) expect(text).toContain(keyed(key));
+  };
+
+  it.each([
+    ["a first review", {}],
+    ["a re-review", { fixFirsts: 1 }],
+    ["an owner-gated review", { ownerBrief: true }],
+  ])("is asked for on MERGE by %s, which still never parses as a verdict", (_name, extra) => {
+    const brief = reviewerBrief({ ...input, ...extra });
+
+    asksForLine(brief, (key) => `${key} (`);
+    expect(brief).toContain("the CI-policy line a MERGE adds");
+    expect(parseVerdictBlock(brief).ok).toBe(false);
+  });
+
+  it.each([false, true])("is asked for by the correction prompt, owner brief %s", (ownerBrief) => {
+    asksForLine(correctionPrompt({ ...input, refusal: "no_block", ownerBrief }), (key) => key);
+  });
+
+  it.each([
+    ["a review brief", reviewerBrief(input)],
+    ["an owner-gated review brief", reviewerBrief({ ...input, ownerBrief: true })],
+    ["a correction prompt", correctionPrompt({ ...input, refusal: "ci_policy_malformed" })],
+    ["an owner-gated correction prompt", correctionPrompt({ ...input, refusal: "ci_policy_malformed", ownerBrief: true })],
+  ])("is stated by %s to hold nothing else", (_name, text) => {
+    expect(text).toContain(CI_POLICY_EXACT);
+  });
+});
+
 describe("reviewerBrief Defect class and Earlier findings", () => {
   const input = { repo: "octo/demo", pr: 7, head: "c".repeat(40), checkoutRoot: "/data/reviews" };
   const earlier = [
@@ -268,6 +310,20 @@ describe("reviewerBrief Defect class and Earlier findings", () => {
 
     expect(brief).toContain("FIX_FIRST 1, at head an unknown head:\nDefect class: not named\na finding");
     expect(brief).not.toContain("merge it");
+  });
+});
+
+describe("reviewerBrief Follow-ups rule", () => {
+  const target = { repo: "octo/demo", pr: 7, head: "0123456789abcdef0123456789abcdef01234567", checkoutRoot: "/reviews" };
+
+  it.each([
+    ["a first review", reviewerBrief(target)],
+    ["a re-review", reviewerBrief({ ...target, fixFirsts: 2 })],
+    ["an owner-gated review", reviewerBrief({ ...target, ownerBrief: true })],
+  ])("teaches the block before the verdict lines in %s and says it never blocks MERGE", (_scenario, brief) => {
+    expect(FOLLOW_UPS_RULE).toContain("never block MERGE");
+    expect(brief.indexOf(FOLLOW_UPS_RULE)).toBeGreaterThan(-1);
+    expect(brief.indexOf(FOLLOW_UPS_RULE)).toBeLessThan(brief.indexOf("Verdict: <MERGE or FIX_FIRST>"));
   });
 });
 
