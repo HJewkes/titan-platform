@@ -7,7 +7,7 @@ export interface DeadlineTiming {
   now: () => number;
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   timeoutMs: number;
-  /** When the wait first began, in epoch ms; a restart resumes from it, so a re-dispatched wait gets only what is left. Absent means now. */
+  /** When the wait first began, in epoch ms; a restart resumes from it, so a re-dispatched wait gets only what is left. Absent, or ahead of `now`, means now. */
   startedAt?: number | undefined;
   /** A sleep that overruns its request by more than this is a clock jump. */
   jumpSlackMs?: number;
@@ -27,7 +27,7 @@ export function deadline(timing: DeadlineTiming): Deadline {
   if (!Number.isFinite(timing.timeoutMs)) throw new RangeError(`deadline needs a finite timeoutMs, got ${timing.timeoutMs}`);
   const slack = timing.jumpSlackMs ?? DEFAULT_JUMP_SLACK_MS;
   const grace = timing.jumpGraceMs ?? DEFAULT_JUMP_GRACE_MS;
-  const end = (timing.startedAt ?? timing.now()) + timing.timeoutMs;
+  const end = Math.min(timing.startedAt ?? Number.POSITIVE_INFINITY, timing.now()) + timing.timeoutMs;
   let jumped = false;
   let graceGranted = false;
   return {

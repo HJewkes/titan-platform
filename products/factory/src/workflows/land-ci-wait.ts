@@ -34,7 +34,7 @@ function readOptions(deps: LandDeps, input: CiInput, timing: Timing, firstReads:
 export async function waitForCi(deps: LandDeps, input: CiInput, timing: Timing & Pick<DeadlineTiming, "startedAt">, signal: AbortSignal, flaky: FlakyState, firstReads: FirstReads): Promise<CiSnapshot> {
   const { port, snapshot: reads } = deps;
   const clock = deadline(timing);
-  const startedAt = timing.startedAt ?? timing.now();
+  const startedAt = Math.min(timing.startedAt ?? Number.POSITIVE_INFINITY, timing.now());
   let backlog = false;
   let last = "no read yet";
   const options = readOptions(deps, input, timing, firstReads);

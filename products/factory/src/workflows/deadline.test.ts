@@ -72,6 +72,15 @@ describe("deadline", () => {
 
     expect(clock.now).toBe(31 * MIN);
   });
+
+  it("reads a startedAt ahead of the clock as now, so a stamp from another clock cannot stretch the wait", async () => {
+    const { clock, timing } = fakeClock();
+    const d = deadline({ ...timing, startedAt: 60 * MIN });
+
+    while (!d.expired()) await d.sleep(30_000, signal);
+
+    expect(clock.now).toBe(10 * MIN);
+  });
 });
 
 describe("stepClock", () => {
