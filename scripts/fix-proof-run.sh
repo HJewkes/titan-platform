@@ -78,8 +78,10 @@ sandbox_problem() {
 stage_pnpm() {
   local pnpm node package bin
   pnpm=$(command -v pnpm) && node=$(command -v node) || return 1
-  package=$(node -p 'path.dirname(require.resolve("pnpm/package.json", { paths: [process.argv[1]] }))' "$(dirname "$pnpm")") &&
-    bin=$(node -p 'require(process.argv[1]).bin.pnpm' "$package/package.json") || return 1
+  # action-setup's .bin sits beside node_modules/pnpm. pnpm's exports map hides package.json from require.resolve.
+  package=$(cd "$(dirname "$pnpm")/../pnpm" && pwd -P) &&
+    bin=$(node -p 'JSON.parse(fs.readFileSync(process.argv[1], "utf8")).bin.pnpm' "$package/package.json") || return 1
+  [ -n "$bin" ] && [ "$bin" != undefined ] && [ -f "$package/$bin" ] || return 1
   # shellcheck disable=SC2016 # expanded by the root shell, from its own arguments
   sudo -n sh -c '
     set -e

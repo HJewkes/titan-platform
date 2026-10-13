@@ -119,11 +119,11 @@ case "$1" in
   -g) echo 999 ;;
 esac
 `;
-      // Laid out as pnpm/action-setup leaves it: a .bin shim beside node_modules/pnpm.
+      // Laid out as pnpm/action-setup leaves it: a .bin shim beside node_modules/pnpm, whose exports map hides package.json.
       const installPnpm = () => {
         const pkg = path.join(tmp, "setup-pnpm/node_modules/pnpm");
         mkdirSync(path.join(pkg, "bin"), { recursive: true });
-        writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name: "pnpm", bin: { pnpm: "bin/pnpm.cjs", pnpx: "bin/pnpx.cjs" } }));
+        writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name: "pnpm", bin: { pnpm: "bin/pnpm.cjs", pnpx: "bin/pnpx.cjs" }, exports: { ".": "./package.json" } }));
         writeFileSync(path.join(pkg, "bin/pnpm.cjs"), "console.log(`pnpm at ${__filename} ${process.argv.slice(2).join(' ')}`);\n");
         const bin = path.join(tmp, "setup-pnpm/node_modules/.bin");
         mkdirSync(bin);
