@@ -9,6 +9,7 @@ import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
 import { correctOnce } from "./correct-verdict.js";
 import { evidenceOrGate } from "./merge-evidence-gate.js";
 import type { MergeEvidenceInput } from "./merge-facts.js";
+import type { FixProofUnverified } from "./fix-proof.js";
 import type { SeatHeld, Verdict } from "./phases.js";
 import { MERGE_ON_GREEN_GRANT, runPolicyCeiling } from "./policy.js";
 import { publishReview } from "./publish-review.js";
@@ -29,12 +30,14 @@ export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEviden
 
 /** The grant is read from the run's own policy param, the ceiling a registration can only narrow. */
 const effectivePolicy = (ctx: WorkflowContext) => runPolicyCeiling(ctx.param("policy"));
+/** Why a gated head's fix-proof proves nothing; such a head merges only through the owner gate, whatever the policy (TP-2434). */
+export type ProofStanding = { unverified?: FixProofUnverified };
 /** Whether a visual-path gate will open is unknown until the evidence step, so a visual-ceiling run always asks for the brief. */
-export const asksOwnerBrief = (ctx: WorkflowContext): boolean => {
+export const asksOwnerBrief = (ctx: WorkflowContext, standing: ProofStanding = {}): boolean => {
   const policy = effectivePolicy(ctx);
-  return policy.merge === "owner-gate" || (policy.visualPaths?.length ?? 0) > 0;
+  return standing.unverified !== undefined || policy.merge === "owner-gate" || (policy.visualPaths?.length ?? 0) > 0;
 };
-const seatGrants = (ctx: WorkflowContext): string[] => (effectivePolicy(ctx).merge === "auto" ? [MERGE_ON_GREEN_GRANT] : []);
+const seatGrants = (ctx: WorkflowContext, standing: ProofStanding): string[] => (standing.unverified === undefined && effectivePolicy(ctx).merge === "auto" ? [MERGE_ON_GREEN_GRANT] : []);
 
 type ExternalAwaiting = ReviewTarget & { external: string };
 export type AwaitedResult = z.infer<typeof Awaited>;
@@ -65,29 +68,29 @@ function limitHeld(ctx: WorkflowContext, target: ReviewTarget, result: AwaitedRe
  * correction's reply, is held on `account` until the reset, never handed to a fresh reviewer. An own MERGE a seat WAIT held
  * has its verdict already, so it is neither read late nor corrected.
  */
-export async function takeAwaited(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account: string): Promise<{ held: Verdict } | { awaited: AwaitedResult }> {
+export async function takeAwaited(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account: string, standing: ProofStanding = {}): Promise<{ held: Verdict } | { awaited: AwaitedResult }> {
   const onTime = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}`, awaiting, Awaited);
   const heldOnTime = limitHeld(ctx, target, onTime, dispatchedReviewer, account);
   if (heldOnTime) return { held: await heldOnTime };
   if (heldMergeOf(onTime)) return { awaited: onTime };
   const late = onTime.kind === "none" && dispatchedReviewer ? await step(ctx, `${LATE_VERDICT_STEP}:${target.head}`, awaiting, Awaited) : onTime;
-  const correction = { ownerBrief: asksOwnerBrief(ctx), replyStep: `${AWAIT_VERDICT_STEP}:${target.head}:corrected` };
+  const correction = { ownerBrief: asksOwnerBrief(ctx, standing), replyStep: `${AWAIT_VERDICT_STEP}:${target.head}:corrected` };
   const awaited = dispatchedReviewer && !("external" in awaiting) && !heldMergeOf(late) ? await correctOnce(ctx, awaiting, late, correction) : late;
   const heldLate = limitHeld(ctx, target, awaited, dispatchedReviewer, account);
   return heldLate ? { held: await heldLate } : { awaited };
 }
 
 /** An external reviewer is both the dispatched reviewer and the resolver, because Shepherd started nobody else. */
-export async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account = DEFAULT_ACCOUNT): Promise<Verdict> {
-  const taken = await takeAwaited(ctx, target, awaiting, dispatchedReviewer, account);
-  return "held" in taken ? taken.held : verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited);
+export async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account = DEFAULT_ACCOUNT, standing: ProofStanding = {}): Promise<Verdict> {
+  const taken = await takeAwaited(ctx, target, awaiting, dispatchedReviewer, account, standing);
+  return "held" in taken ? taken.held : verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing);
 }
 
-export async function verdictOf(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, awaited: AwaitedResult): Promise<Verdict> {
+export async function verdictOf(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, awaited: AwaitedResult, standing: ProofStanding = {}): Promise<Verdict> {
   const seatHeld = dispatchedReviewer && seatHeldOf(awaited, dispatchedReviewer);
   if (seatHeld) return { kind: "none", cause: "external-hold", ...(typeof awaited.reason === "string" && { reason: awaited.reason }), seatHeld };
   if (awaited.kind !== "verdict") return dispatchedReviewer && !("external" in awaiting) ? dispatchedNone(ctx, target.head, awaiting.startedAt ?? awaiting.dispatchedAt, awaited.reason) : { kind: "none", cause: "external-hold", ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
   if (awaited.verdict === "FIX_FIRST") return { kind: "FIX_FIRST", headSha: target.head, text: awaited.text ?? "", ...(awaited.closer === "yes" || awaited.closer === "no" ? { closer: awaited.closer } : {}) };
   const verdict = { value: "MERGE" as const, head: awaited.head, locator: awaited.locator };
-  return mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer: dispatchedReviewer ?? awaited.reviewer, seatGrants: seatGrants(ctx), ...(awaited.ciPolicy && { ciPolicy: awaited.ciPolicy }) }, awaited.ownerBrief ?? undefined);
+  return mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer: dispatchedReviewer ?? awaited.reviewer, seatGrants: seatGrants(ctx, standing), ...(awaited.ciPolicy && { ciPolicy: awaited.ciPolicy }) }, awaited.ownerBrief ?? undefined);
 }

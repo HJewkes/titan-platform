@@ -62,6 +62,6 @@ export { parseMemoryFile, parseMemoryIndex } from "./auto-memory/parse.js";
 export type { DedupeOptions } from "./auto-memory/dedupe.js";
 export { dedupeFacts } from "./auto-memory/dedupe.js";
 export type { GroupOptions } from "./auto-memory/group.js";
-export { groupFacts, topicTokens } from "./auto-memory/group.js";
+export { DEFAULT_GROUP_THRESHOLD, groupFacts, MAX_GROUP_SIZE, topicTokens } from "./auto-memory/group.js";
 export type { ProposeOptions } from "./auto-memory/propose.js";
 export { proposeDestination } from "./auto-memory/propose.js";
