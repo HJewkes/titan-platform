@@ -1,5 +1,5 @@
 import { formatResultLine, type FixProofResult } from "@titan-design/fix-proof";
-import { fakeGitHub, fakeSha, githubPort, successRun, type CheckRun, type FakeGitHub, type GitHubPort, type PrFile } from "@titan-design/github";
+import { fakeGitHub, fakeSha, ghCliWire, githubPort, successRun, type CheckRun, type FakeGitHub, type GitHubPort, type PrFile } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { StepRoute } from "@titan-design/workflow";
@@ -318,6 +318,19 @@ describe("readFixProof", () => {
     const timing = { now: () => clock, sleep, pollMs: 1_000, noActionsGraceMs: 180_000, ...(timeoutMs !== "default" && { timeoutMs }) };
     return { fake, elapsed: () => clock, read: () => readFixProof({ port, store }, { repo: REPO, head: H, runId: "run-1" }, timing, signal) };
   }
+
+  it("reads the result from a job log fetched through the gh adapter, whose colour codes gh refuses without --allow-escape-sequences", async () => {
+    const headers = "HTTP/2.0 200 OK\r\nContent-Type: text/plain";
+    const colored = actionsLog(resultLine(H, "reproduced")).replace("Run pnpm", "\u001b[36;1mRun pnpm\u001b[0m");
+    const exec = async (args: readonly string[]) =>
+      args.includes("--allow-escape-sequences")
+        ? { code: 0, stdout: `${headers}\r\n\r\n${colored}\n`, stderr: "" }
+        : { code: 1, stdout: `${headers}\r\n\r\n`, stderr: "the response contains terminal escape sequences; pass --allow-escape-sequences to output it anyway\n" };
+    const viaGh = githubPort(ghCliWire(exec));
+    const { read } = registered("correctness", [fixProofRun()], { port: (base) => ({ ...base, jobLogTail: viaGh.jobLogTail }) });
+
+    expect(await read()).toEqual({ kind: "result", line: resultLine(H, "reproduced"), verdict: "reproduced" });
+  });
 
   it("makes no GitHub call for a kind outside the gate on a registered branch", async () => {
     const { fake, read } = registered("refactor", [fixProofRun()], { branch: "feat/tidy" });

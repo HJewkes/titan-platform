@@ -26,7 +26,7 @@ export interface Rest {
    * longer than a page answers every page with a null `etag`, and the caller's next read is unconditional.
    */
   revalidatePages<P, T>(path: string, fields: Fields, etag: string | null, pick: (page: P) => T[]): Promise<Revalidated<T[]>>;
-  /** Unconditional, for bodies that are not JSON. */
+  /** Unconditional, for bodies that are not JSON. Escape sequences pass through: `gh` otherwise refuses a coloured log after a 200. */
   text(path: string): Promise<string>;
   send<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, fields?: Fields, input?: string): Promise<T>;
 }
@@ -78,7 +78,7 @@ export function restCaller(exec: GhExec, budget: RateBudget, cacheSize: number, 
       if (!next) return { notModified: false, body: first, etag: response.headers.get("etag") ?? null };
       return { notModified: false, body: await followPages(conditional, getArgs(next, {}), pick, first), etag: null };
     }),
-    text: retried(async (path: string) => (await run(getArgs(path, {}))).body),
+    text: retried(async (path: string) => (await run([...getArgs(path, {}), "--allow-escape-sequences"])).body),
     send: async <T>(method: string, path: string, fields: Fields = {}, input?: string) => {
       const args = ["-X", method, path, ...fieldArgs(fields), ...(input === undefined ? [] : ["--input", "-"])];
       return json<T>((await run(args, input, path === "graphql" ? "graphql" : "core")).body);
