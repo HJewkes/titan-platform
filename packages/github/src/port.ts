@@ -128,6 +128,8 @@ export interface GitHubWire {
   getWorkflowRunStatus(repo: RepoSlug, runId: number): Promise<string>;
   getJobLog(repo: RepoSlug, jobId: number): Promise<string>;
   updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<void>;
+  /** Retargets the PR onto `base`; the request carries no field but `base`. */
+  setPrBase(repo: RepoSlug, number: number, base: string): Promise<void>;
   /** `message` becomes the squash commit's `commit_title` and `commit_message`; absent, GitHub writes its default. */
   merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod, message?: MergeMessage): Promise<{ sha: string }>;
   getSquashSource(repo: RepoSlug, number: number): Promise<SquashSource>;
@@ -190,6 +192,8 @@ export interface GitHubPort {
   /** The last `lines` lines of an Actions job's log. */
   jobLogTail(repo: RepoSlug, jobId: number, lines: number): Promise<string>;
   updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult>;
+  /** Retargets an open PR onto `base`, so a stacked child can follow its landed parent; a PR already on `base` skips as `unchanged`. */
+  setPrBase(repo: RepoSlug, number: number, base: string): Promise<WriteResult>;
   /** Pushes a commit with the head's own tree onto `branch`, so CI runs again; skips as `head-moved` when the branch is not at `expectedHeadSha`. */
   pushEmptyCommit(repo: RepoSlug, branch: string, expectedHeadSha: string, message: string): Promise<WriteResult<{ sha: string }>>;
   /**
@@ -266,6 +270,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     commitStatuses: async (repo, sha) => wire.listCommitStatuses(repoOf(repo), checkSha("sha", sha)),
     jobLogTail: async (repo, jobId, lines) => tail(await wire.getJobLog(repoOf(repo), checkPositiveInt("jobId", jobId)), checkPositiveInt("lines", lines)),
     updateBranch: async (repo, number, expectedHeadSha) => updateBranch(wire, repoOf(repo), pr(number), checkSha("expectedHeadSha", expectedHeadSha)),
+    setPrBase: async (repo, number, base) => setPrBase(wire, repoOf(repo), pr(number), checkRef("base", base)),
     pushEmptyCommit: async (repo, branch, expectedHeadSha, message) => pushEmptyCommit(wire, repoOf(repo), checkRef("branch", branch), checkSha("expectedHeadSha", expectedHeadSha), message),
     merge: async (repo, number, sha, method, message, expectedBase) => merge(wire, repoOf(repo), pr(number), checkSha("sha", sha), checkMergeMethod(method), sleep, message, expectedBase),
     getSquashSource: async (repo, number) => wire.getSquashSource(repoOf(repo), pr(number)),
@@ -337,6 +342,14 @@ async function updateBranch(wire: GitHubWire, repo: RepoSlug, number: number, ex
   const skipped = closedSkip(pr) ?? (pr.headSha !== expectedHeadSha ? "head-moved" : !pr.behind ? "up-to-date" : undefined);
   if (skipped) return { done: false, skipped };
   return sendUpdateBranch(wire, repo, number, expectedHeadSha);
+}
+
+async function setPrBase(wire: GitHubWire, repo: RepoSlug, number: number, base: string): Promise<WriteResult> {
+  const pr = await wire.getPr(repo, number);
+  const skipped = closedSkip(pr) ?? (pr.baseRef === base ? "unchanged" : undefined);
+  if (skipped) return { done: false, skipped };
+  await wire.setPrBase(repo, number, base);
+  return { done: true };
 }
 
 /** The list came back shorter than the PR's own count, so a path may be missing. */
