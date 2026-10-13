@@ -443,6 +443,19 @@ a run. It is CLI-only.
 titan-miner --graph "<active-work root>/.miner/graph.sqlite3" throughput pr-backfill --dry-run
 ```
 
+`titan-miner throughput review` (TP-2162) reads that cache into the rows and prints
+`@titan-design/throughput`'s review table: reviewer agent-hours, review rounds and post-PR
+wall hours, keyed on review-panel class x lead touch with back-off. Below the table it prints
+the rolling-origin ablation of that key against kind x size band, per target. The header adds
+cache coverage, which is rows with features over rows with a merged PR. Review rounds and post-PR
+hours need Shepherd's runs, passed as a file with `--shepherd-runs`. It takes the same fit and
+origin flags as `backtest`.
+
+```sh
+titan-factory shepherd stats --per-run --json > /tmp/shepherd-runs.json
+titan-miner --graph "<active-work root>/.miner/graph.sqlite3" throughput review --shepherd-runs /tmp/shepherd-runs.json
+```
+
 ## Codex sessions
 
 Opt in with `--codex-home ~/.codex --namespace workstation-account` (or

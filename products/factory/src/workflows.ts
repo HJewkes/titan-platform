@@ -1,4 +1,5 @@
 import { githubPort, octokitWire, sharedOctokit, type GitHubPort } from "@titan-design/github";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Db, Migration } from "@titan-design/store-sqlite";
 import type { AuditPorts } from "./audit/ports.js";
@@ -52,6 +53,7 @@ import { shadowRefresh, trainShadowMigration, trainShadowRef } from "./shepherd/
 import { shadowHeldCheck } from "./shepherd/train-shadow-held.js";
 import { sleep } from "./workflows/land.js";
 import { landPrRoutes, landPrWorkflow, type LandPrDeps } from "./workflows/land-pr.js";
+import { systemChorePorts } from "./workflows/post-merge-chore.js";
 import { devicePrWorkflow } from "./workflows/device-pr.js";
 import { tickPacing, type TickPacing } from "./tick-pacing.js";
 import { portReads, prSnapshot } from "./workflows/pr-snapshot.js";
@@ -245,6 +247,8 @@ export function configuredSpawnLimits(shepherd: FactoryConfig["shepherd"]): Part
 
 /** The bin this bundle was built as: dist/bin.js sits beside the bundled routes. */
 const ownBin = (): string => fileURLToPath(new URL("./bin.js", import.meta.url));
+/** The post-merge chore wrapper, built beside bin.js as its own entry. */
+const ownChoreMain = (): string => fileURLToPath(new URL("./chore-main.js", import.meta.url));
 
 /**
  * The production route set: the post-merge chore and the reviewer come from the config file; the seat book is re-read per
@@ -272,7 +276,8 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const snapshot = prSnapshot(port, { now: overrides.now, tickMs: pacing.tickMs });
   const gateway = ghGateway({ client, snapshot, onCall: logGhCall });
   const pushes = pushSignal((repo) => boundCheckout(seats(), repo, repos()));
-  return factoryRoutesFor({ port, snapshot, pushes, pacing, gateway, store, freeze, postMerge, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), advisory: stickyAdvisory(configuredAdvisory(env), advisoryFile(factoryStateDir(env))), ...overrides, seats });
+  const chores = systemChorePorts({ dir: join(factoryStateDir(env), "chores"), wrapper: [process.execPath, ownChoreMain()] });
+  return factoryRoutesFor({ port, snapshot, pushes, pacing, gateway, store, freeze, postMerge, chores, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), advisory: stickyAdvisory(configuredAdvisory(env), advisoryFile(factoryStateDir(env))), ...overrides, seats });
 }
 
 function logGhCall(line: GhCallLine): void {
