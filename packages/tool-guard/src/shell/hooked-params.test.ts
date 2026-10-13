@@ -241,6 +241,18 @@ describe("an assign-on-expand through a name the shell resolves", () => {
     ["inside another word", "echo x${!N:=hooked}y"],
     ["in an assignment's value", "X=${(P)N::=hooked}"],
     ["in a double-quoted word", 'echo "${!N:=hooked}"'],
+    ["a $ inside a zsh flag argument", ": ${(s:$:)PS4::=x}"],
+    ["P after a flag argument holding $", ": ${(s:$:P)N::=x}"],
+    ["a ) as a flag delimiter", ": ${(s.).)PS4::=x}"],
+    ["P after a ) delimiter", ": ${(s.).P)N::=x}"],
+    ["a bracket-paired flag delimiter", ": ${(s[)])PS4::=x}"],
+    ["l with three arguments", ": ${(l:5::P::x:)PS4::=x}"],
+    ["zsh = splitting", ": ${=PS4::=x}"],
+    ["zsh ~ globbing", ": ${~PS4::=x}"],
+    ["zsh ^ rc-expansion", ": ${^PS4::=x}"],
+    ["zsh doubled ==", ": ${==PS4::=x}"],
+    ["zsh = after the P flag", ": ${(P)=N::=x}"],
+    ["zsh = after the A flag", ": ${(A)=module_path::=/m}"],
   ])("counts as a hooked write: %s", (_how, line) => {
     expect(hooked(line)).not.toBeNull();
   });
@@ -252,9 +264,20 @@ describe("an assign-on-expand through a name the shell resolves", () => {
     ["bash name-prefix expansion", "echo ${!PS@}"],
     ["bash array keys", 'echo "${!m[@]}"'],
     ["zsh flags without P", ": ${(k)N::=x}"],
+    ["a P only inside a flag argument", ": ${(s.P.)N::=x}"],
+    ["a non-indirect flag group that substitutes", ": ${(s:$:)PS4:-x}"],
     ["a quoted indirect assign in a commit message", "git commit -m 'set ${!N:=x}'"],
   ])("returns null: %s", (_how, line) => {
     expect(hooked(line)).toBeNull();
+  });
+});
+
+describe("a zsh flag group too long to read", () => {
+  it("fails closed as an indirect name", () => {
+    const value = `\${(${"k".repeat(300)})N::=x}`;
+    const word: WordToken = { type: "word", value, dynamic: true, quoted: false, spliced: false, computed: true, refs: [], subs: [] };
+
+    expect(writesHookedParam({ name: ":", path: ":", args: [word], assigned: [] }, [word])).toBe(value);
   });
 });
 
@@ -265,6 +288,9 @@ describe("reading assign-on-expand in a long word", () => {
     ["hooked subscripts that never close", "${PS4[".repeat(16_000)],
     ["indirect subscripts that never close", "${!a[".repeat(20_000)],
     ["P-flag subscripts that never close", "${(P)a[".repeat(14_000)],
+    ["many flag-argument delimiters that never close", `\${(${"s:a:".repeat(30_000)}`],
+    ["many readable flag groups", "${(s:$:)x}".repeat(10_000)],
+    ["many l flags with three arguments", "${(l:1::a::b:".repeat(8_000)],
   ])("reads it in linear time: %s", (_how, value) => {
     const word: WordToken = { type: "word", value, dynamic: true, quoted: false, spliced: false, computed: true, refs: [], subs: [] };
     const started = performance.now();
