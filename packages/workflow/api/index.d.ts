@@ -632,6 +632,7 @@ declare class WorkflowRuntime {
     private readonly reconcileTimeoutMs;
     private readonly now;
     private readonly baseDeps;
+    private isQuiesced;
     constructor(options: WorkflowRuntimeOptions);
     /** `version` pins each new run to this definition; hydrate parks a run pinned to another one instead of replaying it. */
     register(name: string, fn: WorkflowFn, options?: {
@@ -639,7 +640,7 @@ declare class WorkflowRuntime {
         abandonsOrphan?: AbandonsOrphan;
     }): void;
     registered(): string[];
-    /** `options.onStart` commits with the run row, or its throw rolls the run back and nothing launches. */
+    /** `options.onStart` commits with the run row, or its throw rolls the run back; a quiesced runtime leaves the row unclaimed for its successor. */
     start(name: string, params?: Record<string, string>, options?: WorkflowStartOptions): string;
     /** `exclude` leaves those runs unclaimed this call, for a caller that is not yet sure they are its to drive. */
     hydrate(options?: {
@@ -653,6 +654,9 @@ declare class WorkflowRuntime {
     private finishFromSuccess;
     private settleRejection;
     shutdown(): void;
+    /** Stops admission for a planned handoff: live runs are released and new ones are left for the successor to drive. */
+    quiesce(): void;
+    quiesced(): boolean;
     private finish;
     status(runId: string): WorkflowRun | undefined;
     list(statuses?: readonly WorkflowRun["status"][]): WorkflowRun[];
