@@ -3,7 +3,17 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { createServer, type Server } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { findOnPath, runCommand, SERVICE_CHECK_HEALTH_TIMEOUT_MS, systemServicePorts } from "./service-ports.js";
+import {
+  findOnPath,
+  parseCgroupUnit,
+  parseCmdline,
+  parseSsListeners,
+  parseStatStartTime,
+  runCommand,
+  SERVICE_CHECK_HEALTH_TIMEOUT_MS,
+  systemPortOwner,
+  systemServicePorts,
+} from "./service-ports.js";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -133,4 +143,49 @@ describe("systemServicePorts health", () => {
     expect(await systemServicePorts().health(port)).toBeNull();
     expect(Date.now() - started).toBeLessThan(SERVICE_CHECK_HEALTH_TIMEOUT_MS + 2_000);
   }, 15_000);
+});
+
+describe("port owner readers", () => {
+  it("reads the holder's pid from ss, and an absent pid for another user's socket", () => {
+    const ss = [
+      'LISTEN 0      511        127.0.0.1:7410       0.0.0.0:*    users:(("MainThread",pid=3571910,fd=27))',
+      "LISTEN 0      511        127.0.0.1:7410       0.0.0.0:*",
+      "",
+    ].join("\n");
+
+    expect(parseSsListeners(ss)).toEqual([{ pid: 3571910 }, {}]);
+    expect(parseSsListeners("")).toEqual([]);
+  });
+
+  it("reads argv from the NUL-separated cmdline, not the MainThread comm", () => {
+    const argv = ["/usr/bin/node", "/srv/deploy/titan-platform/products/factory/dist/bin.js", "serve", "--port", "7410"];
+
+    expect(parseCmdline(`${argv.join("\0")}\0`)).toEqual(argv);
+    expect(parseCmdline("")).toEqual([]);
+  });
+
+  it("names the innermost service in a cgroup v2 path, and none for a session scope", () => {
+    expect(parseCgroupUnit("0::/user.slice/user-1000.slice/user@1000.service/app.slice/titan-factory.service\n")).toBe("titan-factory.service");
+    expect(parseCgroupUnit("0::/user.slice/user-1000.slice/session-3.scope\n")).toBeUndefined();
+  });
+
+  it("reads start time from field 22 of stat, even when comm holds spaces and parentheses", () => {
+    const rest = Array.from({ length: 50 }, (_, index) => String(index + 3)).join(" ");
+
+    expect(parseStatStartTime(`3571910 (Main) Thread) ${rest}`)).toBe("22");
+  });
+
+  it("is set on the system ports for Linux and macOS alike", () => {
+    expect(systemServicePorts().portOwner).toBeDefined();
+    expect(systemPortOwner("darwin").listeners).toBeTypeOf("function");
+  });
+
+  it("reads this process's own argv and start time through /proc on Linux", async () => {
+    if (process.platform !== "linux") return;
+
+    const info = await systemPortOwner("linux").processInfo(process.pid);
+
+    expect(info?.argv.length).toBeGreaterThan(0);
+    expect(info?.startedAt).toMatch(/^\d+$/);
+  });
 });

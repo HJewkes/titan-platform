@@ -470,7 +470,7 @@ checkout that should serve, not from a worktree that will be removed.
 | --- | --- | --- |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers and its `github` field is `ok` |
 | `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`unreadable` (on Linux, `systemctl --user show` itself failed; the line carries its stderr, `detail` its `exitCode` and `stderr`), `not loaded`, `stale pid` (the pid is dead, a foreign pid answers the port, or there is no process), `crash loop`, `unresponsive` (the pid is alive but every `/health` probe timed out; `detail.probeLatenciesMs` lists each), `stale build`, `GitHub down`, `stale index.lock` (the service checkout's `.git/index.lock` with no process holding it, older than 10 minutes, named by path and age and never removed), `deploy stalled` (`/health`'s deploy block has its alarm up), then `tick failing` or `tick stale` from agent-chat's `$AGENT_CHAT_HOME/burndown-status.json`, default `~/.agent-chat/burndown-status.json`, which an absent file skips; a heartbeat older than 3 x its `intervalSeconds` is stale), then `no hub seat` (the config sets no `shepherd.hubSeat`, so a deploy alarm reaches no seat); `--json` adds `cause`, `pid`, `health` and `detail`; it always prints within 20 s (`SERVICE_CHECK_BUDGET_MS`) | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, the burndown tick is not failing or stale, and a hub seat is configured |
-| `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, then `launchctl kickstart -k`, then the same `/health` wait as install | the new process answers with `github` `ok` |
+| `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, clears a foreign `titan-factory serve` off the port, restarts without blocking on the stop and fences a process that outlives it (see [The restart fence](#the-restart-fence)), then the same `/health` wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>] [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Fast-forwards the service checkout, rebuilds the factory closure when the range touches it, restarts drained, and restores `dist` on failure | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
 | `service plist [--port <n>] [--node <path>]` | Prints the plist, or the unit on Linux, and touches nothing | always |
@@ -489,6 +489,7 @@ in `$XDG_CONFIG_HOME/systemd/user/`, else `~/.config/systemd/user/`, and mirrors
 | --- | --- |
 | `ProgramArguments` | `ExecStart=`, the same argv, quoted where an argument holds a space |
 | `KeepAlive` `SuccessfulExit` false, `ThrottleInterval` 60 | `Type=simple`, `Restart=on-failure`, `RestartSec=5` |
+| `ExitTimeOut` default | `TimeoutStopSec=60`, so a hand `systemctl --user restart` of a serve that ignores SIGTERM waits 60 s, not systemd's 90 s |
 | `RunAtLoad` | `WantedBy=default.target`, enabled by install |
 | `EnvironmentVariables` `PATH` | `Environment=PATH=...`, the same `servicePath` value, since a user manager starts jobs with its own minimal `PATH` |
 | `StandardOutPath`, `StandardErrorPath` | `StandardOutput=append:`, `StandardError=append:` on the same log files |
@@ -499,7 +500,7 @@ in `$XDG_CONFIG_HOME/systemd/user/`, else `~/.config/systemd/user/`, and mirrors
 unit was already running, then does the same `/health` wait (the answer must come from the
 unit's `MainPID`). `status` reads `systemctl --user show` (`ActiveState`, `SubState`,
 `MainPID`). `uninstall` runs `disable --now`, removes the unit and runs `daemon-reload`.
-`restart` and `deploy` restart with `systemctl --user restart`. `service plist` prints the unit.
+`restart` and `deploy` restart with `systemctl --user restart --no-block` and the restart fence. `service plist` prints the unit.
 `service install --dry-run` prints the unit or plist and the `systemctl` or `launchctl` calls
 install would make, and changes nothing. For the unit to run without a login session, enable
 lingering once: `loginctl enable-linger "$USER"`. `service check` reads `systemctl --user show`
@@ -509,6 +510,34 @@ and exit codes as on macOS. A missing unit reads as exit 0 with `LoadState=not-f
 `not loaded`; a non-zero exit from `systemctl --user show` (no user bus because
 `XDG_RUNTIME_DIR` is unset, a permission error, a timeout, no `systemctl`) is `unreadable`,
 never `not loaded`, since the unit may well be installed.
+
+### The restart fence
+
+A serve whose event loop is blocked never runs its SIGTERM handler, so a blocking restart used to
+outlast the deployer's 30 s command cap and send a good deploy to rollback. `service restart`,
+`service deploy` and a deploy's rollback therefore restart in two bounded steps:
+
+1. **A foreign serve on the port.** Before the restart, a listener on the service port that is not
+   the unit's or job's own process is fenced only when its command line proves it is
+   `<node> .../products/factory/dist/bin.js serve`: SIGTERM, up to 15 s, a start-time re-check (a
+   reused pid is left alone), then SIGKILL. It prints
+   `fenced pid N (titan-factory serve outside titan-factory.service, held :7410): ...`. Any other
+   holder, or a listener whose pid is not visible, is refused by pid and argv, and nothing is
+   signalled.
+2. **The service's own process.** The restart is queued without waiting for the stop
+   (`systemctl --user restart --no-block`, or `launchctl kickstart -k`). The verb then waits
+   `STOP_FENCE_MS` (45 s) for a new `MainPID`, or a new launchd pid. If the old one is still
+   there, it prints `fenced pid N (<unit> MainPID, alive 45 s after SIGTERM): SIGKILL via systemctl kill`
+   (`launchctl kill` on macOS), kills through the service manager, so the unit's cgroup or the
+   launchd job decides which process dies, and waits up to 10 s more for the new pid.
+
+The 30 s `/health` wait starts only once the new pid exists, so a slow stop cannot spend it. The
+success line names the fenced pid: `restarted titan-factory.service (fenced pid N); /health answers
+on port 7410`.
+
+`TimeoutStopSec=60` reaches a host's unit only when the unit file is rewritten. `service deploy`
+does not rewrite it, so run `titan-factory service install` once after the release that adds it.
+That install restarts serve.
 
 `service restart` drains first. It polls `/health` every 5 s until its `busy` list is
 empty, and prints the busy runs once a minute. A run is busy when it is `running` and its

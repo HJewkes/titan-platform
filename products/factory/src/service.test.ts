@@ -176,6 +176,10 @@ describe("titan-factory service unit", () => {
     expect(directive(unit, "WantedBy")).toEqual(["default.target"]);
   });
 
+  it("stops within 60 s, so a hand restart of a serve that ignores SIGTERM is SIGKILLed sooner than systemd's 90 s default", () => {
+    expect(directive(renderUnit(options), "TimeoutStopSec")).toEqual(["60"]);
+  });
+
   it("runs the plist's argv, with the port when given", () => {
     expect(directive(renderUnit(options), "ExecStart")).toEqual([`${options.nodePath} ${options.binPath} serve`]);
     expect(directive(renderUnit({ ...options, port: 7411 }), "ExecStart")).toEqual([`${options.nodePath} ${options.binPath} serve --port 7411`]);
