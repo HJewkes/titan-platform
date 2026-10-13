@@ -295,3 +295,18 @@ describe("lineIfsValues on compound-array subscripts", () => {
     expect(values(`IFS=,; ${k}a=([0]=1 [2]=x)`)).toEqual([DEFAULT_IFS, ","]);
   });
 });
+
+describe("lineIfsValues on PS4, which xtrace expands in the current shell", () => {
+  it.each([
+    ["a substring offset over a run-time value", "k=$(printf %sFS=1 I); PS4='${x:k}'; set -x; A=push1origin1HEAD:main; git $A"],
+    ["arithmetic on names built from parts", "PS4='$(( $a$b ))'; a=I; b=FS=1; set -x; git $A"],
+    ["a declared arithmetic prompt set before the run-time value", "declare PS4='$((k))'; k=$(cmd); set -x; git $A"],
+    ["an exported prompt from a variable beside a run-time value", "k=$(cmd); export PS4=\"$p\"; set -x; git $A"],
+  ])("gives null for %s", (_how, line) => {
+    expect(values(line)).toBeNull();
+  });
+
+  it("resolves a literal prompt", () => {
+    expect(values("IFS=,; PS4='+ '; set -x; git $A")).toEqual([DEFAULT_IFS, ","]);
+  });
+});

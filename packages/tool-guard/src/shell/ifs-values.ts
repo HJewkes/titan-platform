@@ -164,8 +164,20 @@ function scanHeredocBody(token: RedirectToken, scan: Scan): void {
   if (body === null) return;
   if (possiblyIfs(body)) return markUnknown(scan);
   if (token.target?.quoted) return;
-  if (arithmeticTextUnknown(body)) markUnknown(scan);
-  if (READS_BY_NAME_RE.test(body)) scan.readsByName = true;
+  scanExpandedText(body, scan);
+}
+
+/** Text bash expands in the current shell, as a double-quoted word: a heredoc body or the PS4 prompt. */
+function scanExpandedText(text: string, scan: Scan): void {
+  if (arithmeticTextUnknown(text)) markUnknown(scan);
+  if (READS_BY_NAME_RE.test(text)) scan.readsByName = true;
+}
+
+/** PS4 is stored code: `set -x` expands it in the current shell before every traced command, like a trap body. */
+function notePs4(assignment: Assignment, scan: Scan): void {
+  if (assignment.name !== "PS4") return;
+  scan.readsByName = true;
+  scanExpandedText(assignment.value, scan);
 }
 
 function scanCommand(words: WordToken[], input: boolean, depth: number, scan: Scan): void {
@@ -297,6 +309,7 @@ function scanAssignment(word: WordToken, scan: Scan): void {
   if (!assignment) return;
   if (subscriptUnknown(assignment) || possiblyIfs(assignment.value)) return markUnknown(scan);
   if (!/^(\[\d*\])?$/.test(assignment.subscript)) scan.readsByName = true;
+  notePs4(assignment, scan);
   if (assignment.name !== "IFS") {
     if (word.dynamic) noteRuntimeAssignment(word, scan);
     return;
@@ -308,7 +321,9 @@ function scanAssignment(word: WordToken, scan: Scan): void {
 function noteRuntimeAssignment(word: WordToken, scan: Scan): void {
   scan.computed = true;
   const assignment = parseAssignment(word.value);
-  if (assignment) scan.runtimeNames.add(assignment.name);
+  if (!assignment) return;
+  scan.runtimeNames.add(assignment.name);
+  notePs4(assignment, scan);
 }
 
 function parseAssignment(text: string): Assignment | null {
