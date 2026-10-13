@@ -236,7 +236,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(reader, input, { ...clock, pollMs: 100, timeoutMs: 250 }, signal);
 
-    expect(result).toEqual({ kind: "none" });
+    expect(result).toEqual({ kind: "none", ended: "deadline" });
     expect(reads).toBe(4);
     expect(clock.now()).toBe(300);
   });
@@ -247,14 +247,14 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(reader, input, { ...clock, pollMs: 100, timeoutMs: 250 }, signal);
 
-    expect(result).toEqual({ kind: "none", reason: "wait" });
+    expect(result).toEqual({ kind: "none", reason: "wait", ended: "deadline" });
   });
 
   it("treats a failing read as nothing yet", async () => {
     const clock = clockAt(0);
     const reader: ReviewerReader = { read: async () => Promise.reject(new Error("io")) };
 
-    await expect(awaitVerdict(reader, input, { ...clock, pollMs: 100, timeoutMs: 150 }, signal)).resolves.toEqual({ kind: "none" });
+    await expect(awaitVerdict(reader, input, { ...clock, pollMs: 100, timeoutMs: 150 }, signal)).resolves.toEqual({ kind: "none", ended: "deadline" });
   });
 
   const timing = (clock: ReturnType<typeof clockAt>) => ({ ...clock, pollMs: 100, timeoutMs: 10_000, exitGraceMs: 300, detachGraceMs: 1_000 });
@@ -271,7 +271,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, (now) => (now < 500 ? "live" : "exited")));
 
-    expect(result).toEqual({ kind: "none" });
+    expect(result).toEqual({ kind: "none", ended: "reviewer-gone" });
     expect(clock.now()).toBe(800);
   });
 
@@ -280,7 +280,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, (now) => (now < 500 ? "live" : "absent")));
 
-    expect(result).toEqual({ kind: "none" });
+    expect(result).toEqual({ kind: "none", ended: "reviewer-gone" });
   });
 
   it("takes a verdict that lands within the grace after the exit", async () => {
@@ -307,7 +307,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, (now) => (now < 500 ? "live" : "detached")));
 
-    expect(result).toEqual({ kind: "none" });
+    expect(result).toEqual({ kind: "none", ended: "reviewer-gone" });
     expect(clock.now()).toBe(1_500);
   });
 
@@ -316,7 +316,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(silentReader, input, { ...timing(clock), timeoutMs: 2_000 }, signal, rosterBy(clock, () => "down"));
 
-    expect(result).toEqual({ kind: "none" });
+    expect(result).toEqual({ kind: "none", ended: "deadline" });
     expect(clock.now()).toBeGreaterThanOrEqual(2_000);
   });
 
@@ -326,7 +326,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, presenceAt));
 
-    expect(result).toEqual({ kind: "none" });
+    expect(result).toEqual({ kind: "none", ended: "reviewer-gone" });
     expect(clock.now()).toBe(1_200);
   });
 
