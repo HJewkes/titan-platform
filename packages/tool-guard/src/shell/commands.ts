@@ -2,7 +2,7 @@ import { ParseError, SplitParseError, tokenize } from "./lexer.js";
 import { NestingLimitError } from "./nesting.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
-import { printedText } from "./printed.js";
+import { printedReadings, printedText } from "./printed.js";
 import { catOperands, SPLICING_SHELLS, splicedWords, stdinScript } from "./sub-output.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed, caseScripts } from "./case-script.js";
@@ -101,6 +101,8 @@ interface Walk {
   depth: number;
   /** Literal text piped into the command being emitted, as `echo 'git push' | bash` does. */
   stdin: string | null;
+  /** bash's and zsh's texts of a print piped straight in, where they differ from `stdin` (`printf 'echo \c; …' | bash`). */
+  shellStdin: string[];
   /** The operator before the command being emitted. */
   prev: string | null;
   chain: Chain;
@@ -125,7 +127,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
   const foldCase = options.foldCase === true;
   const unsure = { left: MAX_UNSURE_WORDS, splicedLeft: SPLICED_WEIGHT * src.length, decides: decider(options.guarded), stopPastCap: options.stopPastCap === true };
-  const w: Walk = { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase, walked: null, unsure, marks: newMarks() };
+  const w: Walk = { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, shellStdin: [], prev: null, chain: { start: null }, negated: false, foldCase, walked: null, unsure, marks: newMarks() };
   walk(tokenizeLine(src), observed(w));
   settle(w.marks);
   return out;
@@ -150,7 +152,9 @@ function walk(tokens: Token[], w: Walk): void {
     if (token.type === "op") {
       noteValues(token, words, w);
       const cmd = emit(words, redirects, w, token.value);
-      w.stdin = groupStdin(w, token.value, words, redirects, cmd, nextStdin(token.value, cmd, words.length + redirects.length === 0, w.stdin));
+      const empty = words.length + redirects.length === 0;
+      w.shellStdin = nextShellStdin(token.value, cmd, empty, w);
+      w.stdin = groupStdin(w, token.value, words, redirects, cmd, nextStdin(token.value, cmd, empty, w.stdin));
       words = [];
       redirects = [];
       w.prev = token.value;
@@ -204,6 +208,13 @@ function nextStdin(op: string, cmd: Unwrapped | null, empty: boolean, stdin: str
   return printedText(cmd.name, cmd.args) ?? (passesThrough(cmd) ? stdin : null);
 }
 
+/** Each splicing shell's text of a print piped on, so a push only bash or zsh prints still reaches the shell it feeds. */
+function nextShellStdin(op: string, cmd: Unwrapped | null, empty: boolean, w: Walk): string[] {
+  if (op === "(" && empty) return w.shellStdin;
+  if (!cmd || (op !== "|" && op !== "|&")) return [];
+  return printedReadings(cmd.name, cmd.args, SPLICING_SHELLS).slice(1);
+}
+
 function passesThrough(cmd: Unwrapped): boolean {
   if (cmd.name === "tee") return true;
   if (cmd.name !== "cat") return false;
@@ -218,7 +229,7 @@ function nestedLists(token: Token): Token[][] {
 
 function child(w: Walk, wrapping: Wrapping[]): Walk {
   const scope = { dir: w.scope.dir, vars: childVars(w.scope.vars), wrapping };
-  return observed({ ...w, scope, stack: [], depth: w.depth + 1, stdin: null, prev: null, chain: { start: null }, negated: false, walked: null });
+  return observed({ ...w, scope, stack: [], depth: w.depth + 1, stdin: null, shellStdin: [], prev: null, chain: { start: null }, negated: false, walked: null });
 }
 
 function scope(op: string, w: Walk): void {
@@ -297,7 +308,8 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   w.negated ||= cmd.negated === true;
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
   w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links });
-  const script = inlineScript(cmd, redirects, stdin, w.unsure);
+  const piped = stdin === null ? [] : [stdin, ...(stdin === w.stdin ? w.shellStdin : [])];
+  const script = inlineScript(cmd, redirects, piped, w.unsure);
   if (script !== null) walkScript(script, w, wrapping);
   if (cmd.name !== "find") return;
   for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(folded(words, w)))) run(exec, [], child(w, [...wrapping, "find-exec"]), null);
@@ -334,15 +346,15 @@ function literalEnv(cmd: Unwrapped): Record<string, string> {
  * The script a shell or `eval` runs: a `-c` string, else a heredoc, here-string or literal pipe on stdin. Eval and `-c`
  * text is read with and without what its substitutions print, when that is literal on the line.
  */
-function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], stdin: string | null, budget: UnsureBudget): Inline | null {
+function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], piped: string[], budget: UnsureBudget): Inline | null {
   if (cmd.script !== undefined) return { texts: [cmd.script], wrap: "sh-c" };
   if (cmd.name === "eval") return { texts: splicedReadings(cmd.args, budget), wrap: "eval" };
   if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
   const { hasC, positional } = shellOperands(cmd.args);
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
-  const text = hasC ? (positional ? splicedReadings([positional], budget) : stdin) : positional ? null : stdinScript(redirects);
+  const text = hasC ? (positional ? splicedReadings([positional], budget) : piped.length > 0 ? piped : null) : positional ? null : stdinScript(redirects);
   if (text !== null) return { texts: hasC ? [text].flat() : [text].flat().flatMap((t) => pipedShellTexts(cmd.name, t)), wrap: hasC ? "sh-c" : "heredoc-shell" };
-  return hasC || positional || stdin === null ? null : { texts: pipedShellTexts(cmd.name, stdin), wrap: "piped-shell" };
+  return hasC || positional || piped.length === 0 ? null : { texts: piped.flatMap((t) => pipedShellTexts(cmd.name, t)), wrap: "piped-shell" };
 }
 
 /**

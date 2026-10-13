@@ -28,9 +28,29 @@ const formatBackslashC = (cmd: string): [string, string][] => [
   ["printf format \\c piped to zsh", `printf 'echo \\c; ${cmd}' | zsh`],
 ];
 
+/** Both shells print an escaped `%` as written, so it is no directive and eats no argument. */
+const escapedPercent = (cmd: string): [string, string][] =>
+  ["bash", "zsh"].flatMap((sh): [string, string][] => [
+    [`octal \\045 piped to ${sh}`, `printf '\\045.0s\\n%s\\n' '${cmd}' | ${sh}`],
+    [`hex \\x25 piped to ${sh}`, `printf '\\x25.0s\\n%s\\n' '${cmd}' | ${sh}`],
+  ]);
+
+/** Only bash's or zsh's text of the print holds the command, so the pipe walks each shell's text. */
+const oneShellPrints = (cmd: string): [string, string][] => [
+  ["bash echo's \\c printed as written, piped to bash", `echo 'echo \\c; ${cmd}' | bash`],
+  ["zsh echo's -e beating -E, piped to zsh", `echo -neE '${cmd.replace(" ", "\\x20")}' | zsh`],
+];
+
+const both = (rows: (cmd: string) => [string, string][]) => [
+  ...rows("git push origin HEAD:main").map(([n, c]) => [`${n} (push)`, c]),
+  ...rows("gh pr merge 1 --squash").map(([n, c]) => [`${n} (merge)`, c]),
+];
+
 const denyRows = [
-  ...formatBackslashC("git push origin HEAD:main").map(([n, c]) => [`${n} (push)`, c]),
-  ...formatBackslashC("gh pr merge 1 --squash").map(([n, c]) => [`${n} (merge)`, c]),
+  ...both(formatBackslashC),
+  ...both(escapedPercent),
+  ...both(oneShellPrints),
+  ["a format after --, starting with -", "printf -- '-x\\n%s\\n' 'git push origin HEAD:main' | bash"],
 ];
 
 const passRows: [string, string][] = [["printf format \\c before a git status", "printf 'echo \\c; git status' | bash"]];

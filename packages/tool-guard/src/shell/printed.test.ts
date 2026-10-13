@@ -172,6 +172,25 @@ describe("escapes per shell", () => {
     expect(text("printf", ["'%b'", "'p\\c q'"])).toBe("p");
   });
 
+  it.each([
+    ["octal", "'\\045.0s\\n%s\\n'"],
+    ["hex", "'\\x25.0s\\n%s\\n'"],
+  ])("prints an %s-escaped %% as written, so it eats no argument", (_how, format) => {
+    for (const shell of [undefined, "bash", "zsh"] as const) {
+      expect(text("printf", [format, `'${PUSH}'`], shell)).toBe(`%.0s\n${PUSH}\n`);
+    }
+  });
+
+  it("reads a \\ before % as a lone backslash and the % as a directive", () => {
+    expect(text("printf", ["'\\%s|'", "ab"])).toBe("\\ab|");
+    expect(text("printf", ["'a\\\\%s|'", "ab"])).toBe("a\\ab|");
+  });
+
+  it("reads a format after -- even when it starts with -", () => {
+    expect(text("printf", ["--", "'-x%s'", "ab"])).toBe("-xab");
+    expect(text("printf", ["'-x%s'", "ab"])).toBeNull();
+  });
+
   it("gives TP-2381 b's piped readings a text holding the push", () => {
     const readings = printedReadings("echo", words([`'echo \\c; ${PUSH}'`]), ["bash", "zsh"]);
 

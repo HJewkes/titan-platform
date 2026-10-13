@@ -1,6 +1,8 @@
 import { decodeAnsiC, decodeEscapes } from "./ansi-c.js";
 import type { WordToken } from "./lexer.js";
 
+type FormatMode = "printf-format" | "zsh-printf-format";
+
 /**
  * The shell whose builtins print: zsh's echo takes a lone `-` as the end of its options and drops it, and bash's printf
  * counts width and precision in bytes where zsh's counts characters. Without one, echo keeps `-` and printf counts
@@ -14,7 +16,7 @@ export function printedText(name: string | null, args: WordToken[], shell?: Shel
   if (args.some((a) => a.dynamic)) return null;
   const values = args.map((a) => a.value);
   if (name === "echo") return echoText(values, shell);
-  if (name === "printf") return printfText(values[0] === "--" ? values.slice(1) : values, shell);
+  if (name === "printf") return printfText(values, shell);
   return null;
 }
 
@@ -51,54 +53,85 @@ function echoText(values: string[], shell: Shell | undefined): string {
 
 /** Handles `%s`, `%b`, `%c`, `%d`, `%i` and `%%` with width and precision, reusing the format as printf does. */
 function printfText(values: string[], shell: Shell | undefined): string | null {
-  const [format, ...args] = values;
-  if (format === undefined || format.startsWith("-")) return null;
-  const decoded = decodeEscapes(format, shell === "zsh" ? "zsh-printf-format" : "printf-format");
-  const bytes = shell === "bash";
+  const ended = values[0] === "--";
+  const [format, ...args] = ended ? values.slice(1) : values;
+  if (format === undefined || (!ended && format.startsWith("-"))) return null;
+  const pieces = formatPieces(format);
+  const mode = shell === "zsh" ? "zsh-printf-format" : "printf-format";
   let out = "";
   let rest = args;
   do {
-    const pass = applyFormat(decoded.text, rest, bytes);
+    const pass = applyFormat(pieces, rest, shell === "bash", mode);
     if (pass === null) return null;
     out += pass.text;
-    if (decoded.stopped || pass.stopped || pass.used === 0) break;
+    if (pass.stopped || pass.used === 0) break;
     rest = rest.slice(pass.used);
   } while (rest.length > 0);
   return out;
 }
 
-const DIRECTIVE = /%([-+ #0]*)(\*|\d*)(?:\.(\*|\d*))?(.?)/g;
+const DIRECTIVE = /\\[^%]|%([-+ #0]*)(\*|\d*)(?:\.(\*|\d*))?(.?)/g;
 
-/** A `*` count printf would read as `-1` or `0x8` is not guessed: only plain decimals are understood. */
-function applyFormat(format: string, args: string[], bytes: boolean): { text: string; used: number; stopped: boolean } | null {
-  let used = 0;
-  let understood = true;
-  const next = () => args[used++] ?? "";
-  const count = () => {
-    const v = next();
-    if (!/^\d+$/.test(v)) understood = false;
-    return v;
-  };
-  let text = "";
+/** A raw literal run of the format, or one directive in it. */
+type Piece = string | RegExpMatchArray;
+
+/**
+ * Directives are found before escapes are decoded, so an escaped `%` (`\045`, `\x25`) prints as `%` and starts none.
+ * A `\` pair is skipped whole; a `\` before `%` is a lone backslash and the `%` still starts a directive, as in bash and zsh.
+ */
+function formatPieces(format: string): Piece[] {
+  const pieces: Piece[] = [];
   let at = 0;
   for (const m of format.matchAll(DIRECTIVE)) {
-    const [whole, flags = "", width = "", precision, conv = ""] = m;
-    text += format.slice(at, m.index);
-    at = (m.index ?? 0) + whole.length;
+    if (m[0].startsWith("\\")) continue;
+    pieces.push(format.slice(at, m.index), m);
+    at = (m.index ?? 0) + m[0].length;
+  }
+  pieces.push(format.slice(at));
+  return pieces;
+}
+
+/** A `*` count printf would read as `-1` or `0x8` is not guessed: only plain decimals are understood. */
+function applyFormat(pieces: Piece[], args: string[], bytes: boolean, mode: FormatMode): { text: string; used: number; stopped: boolean } | null {
+  const r = argReader(args);
+  let text = "";
+  for (const piece of pieces) {
+    if (typeof piece === "string") {
+      const literal = decodeEscapes(piece, mode);
+      text += literal.text;
+      if (literal.stopped) return r.understood ? { text, used: r.used, stopped: true } : null;
+      continue;
+    }
+    const [whole, flags = "", width = "", precision, conv = ""] = piece;
     if (whole === "%%") {
       text += "%";
       continue;
     }
-    if (!"sbcdi".includes(conv) || conv === "") understood = false;
-    const w = width === "*" ? count() : width;
-    const p = precision === "*" ? count() : precision;
-    const arg = next();
+    if (!"sbcdi".includes(conv) || conv === "") r.understood = false;
+    const w = width === "*" ? r.count() : width;
+    const p = precision === "*" ? r.count() : precision;
+    const arg = r.next();
     if (conv === "b" && decodeEscapes(arg, "printf-b").stopped) {
-      return understood ? { text: text + convert(conv, arg, p, bytes), used, stopped: true } : null;
+      return r.understood ? { text: text + convert(conv, arg, p, bytes), used: r.used, stopped: true } : null;
     }
     text += pad(convert(conv, arg, p, bytes), w, flags.includes("-"), bytes);
   }
-  return understood ? { text: text + format.slice(at), used, stopped: false } : null;
+  return r.understood ? { text, used: r.used, stopped: false } : null;
+}
+
+/** Reads printf's arguments in order; a `*` count that is not a plain decimal leaves the pass not understood. */
+function argReader(args: string[]) {
+  const r = {
+    used: 0,
+    understood: true,
+    next: () => args[r.used++] ?? "",
+    count: () => {
+      const v = r.next();
+      if (!/^\d+$/.test(v)) r.understood = false;
+      return v;
+    },
+  };
+  return r;
 }
 
 /** `%.3s` truncates to three characters, the one directive that can turn `git push` into `git`. */
