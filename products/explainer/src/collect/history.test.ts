@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { mineHistory, validateDecisions, type Decision } from "./history.js";
 
 vi.mock("node:child_process", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:child_process")>();
+  const actual = await importOriginal<{ execFileSync: typeof execFileSync }>();
   return { ...actual, execFileSync: vi.fn(actual.execFileSync) };
 });
 
