@@ -1,4 +1,5 @@
-import { DECLARERS, nameSlots, NAMEREF_DECLARERS } from "./name-slots.js";
+import { ARITH_BUILTINS, INERT_BUILTINS, SHELL_BUILTINS } from "./builtins.js";
+import { DECLARERS, nameSlots, NAMEREF_DECLARERS, WRITERS } from "./name-slots.js";
 import type { Token, WordToken } from "./tokens.js";
 import { ASSIGNMENT_RE } from "./vars.js";
 
@@ -10,15 +11,26 @@ const CALLBACK_RUNNERS = new Set(["mapfile", "readarray"]);
 const NUMERIC_DECLARERS = new Set(["integer", "float"]);
 /** Builtins that run a file's text in this shell, which may assign anything. */
 const SOURCERS = new Set(["source", "."]);
-/** Words that may precede the command word without being it. */
-const COMMAND_PREFIXES = new Set(["{", "}", "!", "do", "then", "else", "elif", "if", "while", "until", "time", "done", "fi", "builtin", "command"]);
+/**
+ * Words that may precede the command word without being it: reserved words, and the precommand modifiers of bash
+ * and zsh. A command `exec` or `coproc` runs may only write a shell that is gone, which reading it errs past.
+ */
+const COMMAND_PREFIXES = new Set([
+  ...["{", "}", "!", "do", "then", "else", "elif", "if", "while", "until", "time", "done", "fi", "end"],
+  ...["builtin", "command", "exec", "coproc", "noglob", "nocorrect", "-"],
+]);
+/** Builtins this model reads; any other builtin may write a name it cannot see. */
+const MODELED = new Set([
+  ...[...COMMAND_PREFIXES, ...WRITERS, ...EVALUATORS, ...CALLBACK_RUNNERS, ...NUMERIC_DECLARERS, ...SOURCERS],
+  ...[...INERT_BUILTINS, ...ARITH_BUILTINS, "[[", "function"],
+]);
 const NAME_BUILDER_RE = /[$`?*[]/;
 /** A command word bash may glob or brace-expand into any builtin. */
 const COMMAND_BUILDER_RE = /[?*[{]/;
 /** The test commands, whose brackets are their names rather than globs. */
 const TEST_COMMANDS = new Set(["[", "[["]);
 /** `[[` compares these operands as arithmetic, which assigns any `NAME=` text it is given. */
-const ARITH_TESTS = new Set(["-eq", "-ne", "-lt", "-le", "-gt", "-ge"]);
+export const ARITH_TESTS = new Set(["-eq", "-ne", "-lt", "-le", "-gt", "-ge"]);
 /**
  * Run-time text bash or zsh evaluates or assigns through: arithmetic contexts (`$(( ))`, a `${x:offset}` substring,
  * an indexed subscript), where `$a$b=1` assigns whatever name it builds, and a parameter expansion whose name the
@@ -29,7 +41,7 @@ const ARITH_TESTS = new Set(["-eq", "-ne", "-lt", "-le", "-gt", "-ge"]);
 const RUN_TIME_WRITE_RES = [/\$\(\([^]*[$`]/, /\$\{[^}:]*:(?![-=+?])[^}]*[$`]/, /\[[^\]]*[$`]/, /\$\{[=~^#+]*[!(]/];
 
 /** A command segment and whether it sits inside `(( ))`, where any run-time word is arithmetic text. */
-interface Segment {
+export interface Segment {
   words: WordToken[];
   arith: boolean;
 }
@@ -44,7 +56,7 @@ export function mayWriteRunTimeName(tokens: readonly Token[]): boolean {
   return segments(tokens).some(segmentMayWrite);
 }
 
-function segments(tokens: readonly Token[]): Segment[] {
+export function segments(tokens: readonly Token[]): Segment[] {
   const out: Segment[] = [];
   let words: WordToken[] = [];
   let arith = false;
@@ -69,20 +81,23 @@ function segmentMayWrite({ words, arith }: Segment): boolean {
   return command ? commandMayWrite(command, args) : false;
 }
 
-function splitCommand(words: WordToken[]): { command?: WordToken; args: WordToken[] } {
+/** The command word past any prefix, assignment or option, and its arguments; `function NAME` defines, not runs. */
+export function splitCommand(words: WordToken[]): { command?: WordToken; args: WordToken[] } {
   const at = words.findIndex((w) => !COMMAND_PREFIXES.has(w.value) && !ASSIGNMENT_RE.test(w.value) && !isOption(w));
-  return at < 0 ? { args: [] } : { command: words[at], args: words.slice(at + 1) };
+  if (at < 0) return { args: [] };
+  if (words[at]?.value === "function") return splitCommand(words.slice(at + 2));
+  return { command: words[at], args: words.slice(at + 1) };
 }
 
 /**
  * A command word that is not a static literal may become any builtin, `source` and `declare -n` included, so it
- * answers true whatever its arguments look like.
+ * answers true whatever its arguments look like, as does a builtin this model does not read.
  */
 function commandMayWrite(command: WordToken, args: WordToken[]): boolean {
   const name = command.value;
   if (name === "[[") return args.some((a) => ARITH_TESTS.has(a.value)) && args.some(isRunTime);
   if (isRunTime(command) || (!TEST_COMMANDS.has(name) && COMMAND_BUILDER_RE.test(name))) return true;
-  if (SOURCERS.has(name) || runsCode(name, args)) return true;
+  if (SOURCERS.has(name) || runsCode(name, args) || (SHELL_BUILTINS.has(name) && !MODELED.has(name))) return true;
   const slots = nameSlots(name, args);
   if (typeof slots === "string") return true;
   return slots.some(nameMayBeRunTime) || namerefMayBeRunTime(name, args);
@@ -132,7 +147,7 @@ function holdsRunTimeWrite(w: WordToken): boolean {
   return isRunTime(w) && RUN_TIME_WRITE_RES.some((re) => re.test(w.value));
 }
 
-function isRunTime(w: WordToken): boolean {
+export function isRunTime(w: WordToken): boolean {
   return w.dynamic || w.computed;
 }
 

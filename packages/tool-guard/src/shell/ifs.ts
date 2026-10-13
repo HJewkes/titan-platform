@@ -1,4 +1,6 @@
+import { INERT_BUILTINS, SHELL_BUILTINS } from "./builtins.js";
 import { type Scripts, scriptsOf, selectsStartupFile, tokenLists } from "./ifs-scripts.js";
+import { arithReadsWrittenValue } from "./ifs-arith.js";
 import { mayWriteRunTimeName } from "./ifs-writes.js";
 import { tokenize } from "./lexer.js";
 import type { Token, WordToken } from "./tokens.js";
@@ -8,22 +10,39 @@ const DEFAULT_IFS = " \t\n";
 /** A range whose ends are not both numbers may cover I, F or S. */
 const LETTER_RANGE_RE = /(?:^|[^0-9-])\.\.|\.\.(?:[^0-9-]|$)/;
 /**
- * Text that may build a name at run time (an expansion, a backquote, a glob, a brace), source a file, or reach an
- * arithmetic sink (an integer or float attribute, a mapfile callback), or select a shell startup file.
+ * Text that may build a name at run time (an expansion, a backquote, a glob, a brace), source a file, reach an
+ * arithmetic sink (an integer or float attribute, a mapfile callback, `(( ))`, `let` or a zsh arithmetic builtin),
+ * select a shell startup file, or run a builtin this model does not read.
  */
-const RUN_TIME_TEXT_RE = /[$`?*[{]|source|integer|float|ENV|ZDOTDIR|HOME|--(?:login|rcfile|init-file|interactive)|(?:^|[\s;&|(])\.\s|\s[-+][A-Za-z0-9]*[iCEFl]/;
+const RUN_TIME_TEXT_RE = new RegExp(
+  [
+    /[$`?*[{]|source|integer|float|ENV|ZDOTDIR|HOME|--(?:login|rcfile|init-file|interactive)|(?:^|[\s;&|(])\.\s/.source,
+    /\s[-+][A-Za-z0-9]*[iCEFl]|\(\(/.source,
+    `(?:^|[^\\w-])(?:${[...SHELL_BUILTINS].filter((name) => /^\w+$/.test(name) && !INERT_BUILTINS.has(name)).join("|")})(?![\\w-])`,
+  ].join("|"),
+);
 /** The walk's own nesting limit (`MAX_DEPTH` in commands.ts); past it the value counts as naming IFS. */
 const RELEX_DEPTH = 8;
 
 /**
  * Whether the text may write IFS: a word spells IFS once quotes, escapes, line continuations and `$'…'` are
- * removed and braces expanded (`declare I\FS=,`, `read {I,}FS`), a write slot's name is built at run time
- * (`declare $a$b$c=,`, `read ?FS`), a script the walk runs does either, or such a script is only known at run time.
- * Where this model of bash runs out, it answers true.
+ * removed and braces expanded (`declare I\\FS=,`, `read {I,}FS`), a write slot's name is built at run time
+ * (`declare $a$b$c=,`, `read ?FS`), arithmetic reads a value the line writes (`x=$v; let x`), a script the walk
+ * runs does any of these, or such a script is only known at run time. Where this model of bash runs out, it
+ * answers true.
  */
-export function namesIfs(text: string, depth = 0): boolean {
+export function namesIfs(text: string): boolean {
+  if (!text.includes("IFS") && !maySpellIfs(text) && !RUN_TIME_TEXT_RE.test(text)) return false;
+  const lists = readLists(text, 0);
+  return lists === true || arithReadsWrittenValue(lists);
+}
+
+/**
+ * Every token list the text runs, its scripts' included, or true once one of them may write IFS. Arithmetic in one
+ * list may read a value another writes, as `eval 'read x'; let x` does, so the lists come back together.
+ */
+function readLists(text: string, depth: number): Token[][] | true {
   if (text.includes("IFS")) return true;
-  if (!maySpellIfs(text) && !RUN_TIME_TEXT_RE.test(text)) return false;
   let tokens: Token[];
   try {
     tokens = tokenize(text);
@@ -31,10 +50,16 @@ export function namesIfs(text: string, depth = 0): boolean {
     return true;
   }
   const startup = selectsStartupFile(tokens);
-  return tokenLists(tokens).some((list) => listNamesIfs(list, text.length, startup, depth));
+  const out: Token[][] = [];
+  for (const list of tokenLists(tokens)) {
+    const nested = listScripts(list, text.length, startup, depth);
+    if (nested === true) return true;
+    out.push(list, ...nested);
+  }
+  return out;
 }
 
-function listNamesIfs(list: Token[], srcLength: number, startup: boolean, depth: number): boolean {
+function listScripts(list: Token[], srcLength: number, startup: boolean, depth: number): Token[][] | true {
   if (mayWriteRunTimeName(list) || wordValues(list).some(valueSpellsIfs)) return true;
   let scripts: Scripts;
   try {
@@ -44,7 +69,14 @@ function listNamesIfs(list: Token[], srcLength: number, startup: boolean, depth:
     return true;
   }
   if (scripts.runTime || (startup && scripts.startsShell)) return true;
-  return scripts.texts.some((code) => depth + 1 >= RELEX_DEPTH || namesIfs(code, depth + 1));
+  if (scripts.texts.length > 0 && depth + 1 >= RELEX_DEPTH) return true;
+  const out: Token[][] = [];
+  for (const code of scripts.texts) {
+    const lists = readLists(code, depth + 1);
+    if (lists === true) return true;
+    out.push(...lists);
+  }
+  return out;
 }
 
 function valueSpellsIfs(value: string): boolean {

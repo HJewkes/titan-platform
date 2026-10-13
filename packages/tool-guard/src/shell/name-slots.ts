@@ -54,6 +54,9 @@ const SPECS: Record<string, WriterSpec> = {
   pcre_match: { names: "va", values: "n", flags: "b", operands: "none" },
 };
 
+/** Every builtin the table reads. */
+export const WRITERS = new Set([...Object.keys(SPECS), "for", "select", "getopts"]);
+
 /** Builtins that read DECLARE's options, whose `-i` makes later writes to the name arithmetic. */
 export const DECLARERS = new Set(Object.keys(SPECS).filter((name) => SPECS[name] === DECLARE));
 

@@ -316,6 +316,69 @@ describe("namesIfs", () => {
     expect(namesIfs(line)).toBe(false);
   });
 
+  describe("arithmetic that reads a value the line writes", () => {
+    const push = (line: string) => `a=IF; x=$a"S=1"; ${line}; R=origin1HEAD:main; git push $R`;
+
+    it.each([
+      ["let", "let x"],
+      ["an arithmetic command", "(( x ))"],
+      ["a compound arithmetic assignment", "((x+=0))"],
+      ["an arithmetic expansion", ": $((x))"],
+      ["a [[ ]] arithmetic test", "[[ x -eq 0 ]]"],
+      ["a substring offset", "s=abc; : ${s:x}"],
+      ["an indexed subscript", "arr[x]=1"],
+      ["a name whose literal value names another", "y=x; : $((y))"],
+      ["zsh shift", "shift x"],
+      ["zsh printf %d", "printf %d x"],
+      ["an unquoted heredoc body", "cat <<EOF\n$((x))\nEOF"],
+    ])("matches %s", (_form, line) => {
+      expect(namesIfs(push(line))).toBe(true);
+    });
+
+    it.each([
+      ["read from a file", "read x < f; let x; git push $R"],
+      ["read inside eval", "eval 'read x' < f; let x; git push $R"],
+      ["a loop over run-time words", "for x in $(cat f); do let x; done"],
+    ])("matches a value given by %s", (_form, line) => {
+      expect(namesIfs(line)).toBe(true);
+    });
+
+    it.each([
+      "i=0; while (( i < 3 )); do i=$((i+1)); done; git push origin $R",
+      "for i in 1 2 {3..5}; do echo $((i*2)); done; git push origin $R",
+      "s=abc; echo ${s:1} ${s:n}; git push origin $R",
+      "arr[0]=a; arr[1]=b; echo ${arr[1]} $((i + 1)); git push origin $R",
+      "local x; let x=1; git push origin $R",
+    ])("does not match arithmetic over numbers or unwritten names: %s", (line) => {
+      expect(namesIfs(line)).toBe(false);
+    });
+  });
+
+  it.each([
+    ["zsh noglob", "noglob typeset $a$b$c=,"],
+    ["zsh nocorrect", "nocorrect typeset $a$b$c=,"],
+    ["zsh -", "- typeset $a$b$c=,"],
+    ["exec", "exec typeset $a$b$c=,"],
+    ["a function keyword body", "function f { declare $a$b=,; }; f"],
+    ["zsh's ksh93 nameref", "zmodload zsh/ksh93; nameref r=$a$b; r=,"],
+    ["zsh sysopen -u", "sysopen -u $a$b -r f"],
+    ["zsh compadd -A", "compadd -A $a$b x"],
+    ["an autoloaded function", "autoload f; f; git push origin $R"],
+    ["zsh emulate -c", "emulate zsh -c $x"],
+  ])("matches a command word outside the modeled builtins: %s", (_form, line) => {
+    expect(namesIfs(line)).toBe(true);
+  });
+
+  it.each([
+    "git push origin main",
+    "noglob git push origin $R",
+    "exec 3>&1; git push origin $R",
+    "cd $dir && echo $R && git push origin $R",
+    "function f { git push origin $R; }; f",
+  ])("does not match a modeled or external command: %s", (line) => {
+    expect(namesIfs(line)).toBe(false);
+  });
+
   it("reads 64KB under 8 nested evals in under 200 ms", () => {
     const line = nestedEvals(`echo ${"$a ".repeat(21_000)}; declare $a$b$c=,`, 8);
     const started = performance.now();
