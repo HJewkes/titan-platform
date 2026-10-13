@@ -67,6 +67,8 @@ export interface MergeEvidenceInput extends GrantWithheldField {
   visualPaths?: string[];
   /** The reviewer's CI-policy line on the MERGE; absent gates a `.github/` change. */
   ciPolicy?: CiPolicy;
+  /** The head's unverified fix-proof standing and read reason; recorded, never gated on (decision 303). */
+  proofUnverified?: string;
 }
 
 export interface EvidenceCheckRun {
@@ -93,6 +95,7 @@ export interface EvidenceRecord {
   /** Set when the verdict was reviewed at another head and carried here: both heads and both trees. */
   carry?: CarryFact;
   ciPolicy?: CiPolicy;
+  proofUnverified?: string;
 }
 
 /** The facts observed at one head, and the record of what they decided there. */
@@ -387,6 +390,7 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
     mergeableState,
     ...(merge.carry && { carry: merge.carry }),
     ...ciPolicy,
+    ...(input.proofUnverified !== undefined && { proofUnverified: input.proofUnverified }),
   };
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
   return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...grantWithheldField(input), commentId: comment.id };
