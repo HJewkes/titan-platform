@@ -118,6 +118,24 @@ describe("a command that defines a shell alias", () => {
     ["a brace expansion supplying -v and the name", 'printf {-v,"aliases[y]",echo}'],
     ["a brace expansion as the -v target", "printf -v {aliases[y],x} git"],
     ["a brace expansion naming aliases under read", "read {aliases[y],x}"],
+    ["alias with a glob that may match a file named y=echo", "alias *"],
+    ["alias with a glob after --", "alias -- *"],
+    ["alias with a ? glob", "alias y?echo"],
+    ["a dynamic command word with a glob", '"$C" *'],
+    ["a dynamic command word with a varying option word", '"$C" -g$o y=git'],
+    ["printf with a glob that may supply -v and the name", "printf *"],
+    ["typeset with a glob that may match aliases[y]=echo", "typeset ali*"],
+    ["typeset -g with a glob", "typeset -g ali*"],
+    ["typeset with a brace expansion spelling aliases", 'typeset {ali,ali}ases"[y]"=echo'],
+    ["typeset with a pattern past one subscript", "typeset alias[e]s[[]y[]]=echo"],
+    ["typeset with a bracket glob and no value", "typeset aliase[s]"],
+    ["zstat -H into aliases", "zstat -L -H aliases L"],
+    ["stat, zsh/stat's other name, -H into aliases", "stat -L -H aliases L"],
+    ["zstat -A with a dynamic name", 'zstat -A "$n" L'],
+    ["zselect -A into aliases", "zselect -t 0 -A aliases -r 0"],
+    ["zselect -a with the name attached", "zselect -aaliases -r 0"],
+    ["pcre_match -a into aliases", "pcre_match -a aliases echo"],
+    ["pcre_match -A with a dynamic name", 'pcre_match -A "$n" x'],
   ])("is refused: %s", (_how, src) => {
     expect(defines(src)).toBe(true);
   });
@@ -177,6 +195,13 @@ describe("a command that only reads or removes aliases, or names them as text", 
     ["a nameref to another variable", "declare -n r=other"],
     ["export -n, which only unexports", "export -n FOO"],
     ["zstyle setting a dynamic style value", "zstyle ':ctx' style \"$v\""],
+    ["typeset of a subscript, which neither shell globs", "typeset a[1]=2"],
+    ["typeset with a glob in the value, which neither shell globs", "typeset x=*"],
+    ["printf with a static format before a glob", "printf '%s\\n' *.ts"],
+    ["printf -- before a glob", "printf -- *"],
+    ["a dynamic test runner's option before a glob", '"$PYTEST" -x tests/*'],
+    ["stat with a static format", "stat -c %s file"],
+    ["pcre_match into a static name", "pcre_match -v out x"],
   ])("passes: %s", (_how, src) => {
     expect(defines(src)).toBe(false);
   });

@@ -19,10 +19,15 @@ const SPEC_PARAM_RE = new RegExp(String.raw`=${PARAM}$`);
 const SEVERAL_RE = /@|\$\{[~^]*[=(]/;
 /** A brace expansion, `{a,b}` or `{1..3}`, which makes one typed word several. */
 const BRACE_RE = /\{[^{}]*(?:,|\.\.)[^{}]*\}/;
+/** A glob character, which makes the word a pattern that may match any file names. */
+const GLOB_RE = /[*?[]/;
 /** An alias parameter anywhere in a word, as one alternative of a brace expansion may name it. */
 const BRACED_PARAM_RE = new RegExp(String.raw`(?<![A-Za-z0-9_])${PARAM}(?![A-Za-z0-9_])`);
-/** A declared name, with or without a subscript or an append, as it reads when nothing in it expands. */
-const DECLARED_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[.*\])?\+?$/s;
+/**
+ * A declared name, with or without one subscript or an append, as it reads when nothing in it expands. Both shells
+ * spare only this form of `NAME=VALUE` from globbing: `alias[e]s[[]y[]]=echo` is a pattern to zsh.
+ */
+const DECLARED_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[[^[\]]*\])?\+?$/s;
 
 /**
  * Where a store builtin takes the name it stores into, so only a dynamic word there may name an alias parameter.
@@ -57,6 +62,11 @@ const STORE_BUILTINS = new Map<string, StoreSpec>([
   ["zstyle", { operands: "store", stores: "sabg" }],
   ["zformat", { names: "fa" }],
   ["strftime", { names: "s" }],
+  // zsh/stat names its builtin both `zstat` and `stat`; `-H` fills a hash with a file's fields, `link` among them.
+  ["zstat", { names: "AH", values: "fF" }],
+  ["stat", { names: "AH", values: "fF" }],
+  ["zselect", { names: "aA", values: "rwet" }],
+  ["pcre_match", { names: "vaA", values: "n" }],
   ["unset", {}],
 ]);
 /** Declarations whose `-n` makes each name a reference to the parameter its value names. */
@@ -107,19 +117,32 @@ function storesAliasParam(name: string, args: WordToken[]): boolean {
   return NAMEREF_DECLARERS.has(name) && options.some((w) => /^-.*n/s.test(w.value)) && operands.some(bindsAliasParam);
 }
 
-/** A word whose text is only known at run time, `$=o` included, which the lexer marks static but which splits. */
+/**
+ * A word whose text is only known at run time: `$=o` included, which the lexer marks static but which splits, and a
+ * word filename generation may turn into any file names.
+ */
 function varies(w: WordToken): boolean {
-  return w.dynamic || w.unquotedExpansion === true;
+  return w.dynamic || w.unquotedExpansion === true || mayGenerate(w);
 }
 
-/** A word that may yield several words: any unquoted expansion, a quoted one that splits, or a brace expansion. */
+/** A word that may yield several words: any unquoted expansion, a quoted one that splits, a glob or a brace expansion. */
 function yieldsSeveral(w: WordToken): boolean {
-  return w.unquotedExpansion === true || (w.dynamic && SEVERAL_RE.test(w.value)) || mayBraceExpand(w);
+  return w.unquotedExpansion === true || (w.dynamic && SEVERAL_RE.test(w.value)) || mayGenerate(w);
 }
 
-/** Braces the shell may expand: the word is not wholly quoted, so the lexer cannot say they were. */
+/** A glob or braces the shell may expand into other words. */
+function mayGenerate(w: WordToken): boolean {
+  return mayBraceExpand(w) || (mayBeUnquoted(w) && GLOB_RE.test(w.value));
+}
+
+/** Braces the shell may expand, one alternative of which may spell an alias parameter the whole word does not. */
 function mayBraceExpand(w: WordToken): boolean {
-  return (!w.quoted || w.spliced) && BRACE_RE.test(w.value);
+  return mayBeUnquoted(w) && BRACE_RE.test(w.value);
+}
+
+/** The word is not wholly quoted, so the lexer cannot say which of its characters were. */
+function mayBeUnquoted(w: WordToken): boolean {
+  return !w.quoted || w.spliced;
 }
 
 /** A builtin's words as the shell reads them once expanded. */
@@ -167,12 +190,19 @@ function dynamicTargetOperand(spec: StoreSpec, options: WordToken[], operands: W
   switch (spec.operands) {
     case "all": return operands.some(varies);
     case "last": return operands.slice(-1).some(varies);
-    case "declare": return !hasLetter(options, spec.inert) && operands.some((w) => varies(w) && !DECLARED_NAME_RE.test(w.value.replace(/=.*$/s, "")));
+    case "declare": return !hasLetter(options, spec.inert) && operands.some((w) => varies(w) && !declaresPlainName(w));
     case "spec": return operands.some((w) => varies(w) || SPEC_PARAM_RE.test(w.value));
     case "store": return hasLetter(options, spec.stores) && operands.some(varies);
     case undefined: return false;
     default: return operands.slice(0, spec.operands + 1).some((w, k) => (k === spec.operands ? varies(w) : yieldsSeveral(w)));
   }
+}
+
+/** A declaration operand whose name nothing can change: a plain name, and an assignment if the shell may glob the word. */
+function declaresPlainName(w: WordToken): boolean {
+  const eq = w.value.indexOf("=");
+  if (eq === -1 && mayGenerate(w)) return false;
+  return DECLARED_NAME_RE.test(eq === -1 ? w.value : w.value.slice(0, eq));
 }
 
 /** Whether any option word holds one of the letters. */
@@ -198,11 +228,12 @@ function expandsAliasParam(w: WordToken): boolean {
 }
 
 /**
- * A dynamic command word may be `alias`, so a `NAME=VALUE` operand may define one. An option `alias` does not take
- * means the command is something else, as in `"$PY" -c x=1`.
+ * A dynamic command word may be `alias`, so a `NAME=VALUE` operand, or a glob that may match a file so named, may
+ * define one. A static option `alias` does not take means the command is something else, as in `"$PY" -c x=1`; a
+ * varying one may still be an `alias` option.
  */
 function dynamicDefinition(args: WordToken[]): boolean {
   const { options, operands } = readOptions(args);
-  if (!options.every((w) => ALIAS_OPTION_RE.test(w.value))) return false;
-  return operands.some((w) => DEFINITION_RE.test(w.value));
+  if (!options.every((w) => varies(w) || ALIAS_OPTION_RE.test(w.value))) return false;
+  return operands.some((w) => mayGenerate(w) || DEFINITION_RE.test(w.value));
 }
