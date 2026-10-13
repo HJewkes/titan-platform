@@ -130,6 +130,32 @@ describe("graphqlBranchWrites, variables", () => {
     expect(result).toMatchObject({ unknown: false, branches: expect.arrayContaining(["main"]) });
   });
 
+  const UPDATE_REFS_BY_VAR = "mutation($name:String!){updateRefs(input:{repositoryId:\"r\",refUpdates:[{name:$name,afterOid:\"x\"}]}){clientMutationId}}";
+
+  it.each([
+    ["a mergeBranch base", MERGE_BY_VAR, "-F 'base={branch}'"],
+    ["a mergeBranch base with :branch inside a word", MERGE_BY_VAR, "-F base=m:branch"],
+    ["a mergeBranch base with :branch before a dot", MERGE_BY_VAR, "-F base=:branch-1.0"],
+    ["a mergeBranch base with {branch} after a prefix", MERGE_BY_VAR, "-F 'base=feature-{branch}'"],
+    ["a mergeBranch base from {repo}", MERGE_BY_VAR, "-F 'base={repo}'"],
+    ["a nested createCommitOnBranch branchName", BY_INPUT, "-F i[branch][repositoryNameWithOwner]=o/r -F 'i[branch][branchName]={branch}'"],
+    ["an updateRefs name", UPDATE_REFS_BY_VAR, "-F 'name=refs/heads/{branch}'"],
+  ])("reads %s gh fills from the checkout as unknown", (_what, query, vars) => {
+    expect(read(query, vars).unknown).toBe(true);
+  });
+
+  it.each([
+    ["{branch}", 'mutation{mergeBranch(input:{repositoryId:"r",base:"{branch}",head:"feat/x"}){mergeCommit{oid}}}'],
+    [":branch", 'mutation{mergeBranch(input:{repositoryId:"r",base:":branch",head:"feat/x"}){mergeCommit{oid}}}'],
+    ["refs/heads/{branch}", 'mutation{createRef(input:{repositoryId:"r",name:"refs/heads/{branch}",oid:"x"}){ref{id}}}'],
+  ])("reads a query string %s gh fills from the checkout as unknown", (_what, query) => {
+    expect(read(query).unknown).toBe(true);
+  });
+
+  it("keeps a feature branch whose name only resembles a placeholder known", () => {
+    expect(read(MERGE_BY_VAR, "-F base=feat:branches").unknown).toBe(false);
+  });
+
   it("reads createCommitOnBranch whose branchName comes from a nested field", () => {
     const query = "mutation($branch:CommittableBranch!){createCommitOnBranch(input:{branch:$branch,message:{headline:\"m\"},expectedHeadOid:\"x\"}){commit{oid}}}";
     expect(read(query, "-F branch[branchName]=main -F branch[repositoryNameWithOwner]=o/r")).toMatchObject({ unknown: false, branches: expect.arrayContaining(["main"]) });

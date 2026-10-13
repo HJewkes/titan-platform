@@ -68,6 +68,12 @@ const objectKeyRe = (key: string) => new RegExp(`\\b${key}"?[\\s,]*${key === "id
 /** A field word's key before its first `=`: `key` itself, or `key` as any bracket segment of gh's nested `a[b][key]` form. */
 const fieldKeyRe = (key: string) => new RegExp(`^(?:${key}|[^=]*\\[${key}\\])=`);
 
+/**
+ * gh's own `-F` placeholder pattern (gh 2.102), unanchored as gh applies it: `{branch}` and `:branch` become the
+ * checked-out branch, so `m:branch` or `feature-{branch}` names a branch only known at run time.
+ */
+const GH_PLACEHOLDER_RE = /:(?:owner|repo|branch)\b|\{[a-z]+\}/;
+
 const normalizeBranch = (name: string) => name.trim().replace(/^refs\//, "").replace(/^heads\//, "");
 
 /**
@@ -83,10 +89,13 @@ function isQueryField(word: WordToken): boolean {
   return word.refs.every((r) => literalKey(r.start)) && (word.cuts ?? []).every((c) => literalKey(c.at));
 }
 
-/** A variable whose value cannot be read: computed at run time, case-folded, or read from a file. */
+/** A variable whose value cannot be read: computed at run time, case-folded, read from a file, or filled in by gh. */
 function unreadable(word: WordToken): boolean {
-  return word.dynamic || isCaseUnsure(word) || /^[^=]*=@/.test(word.value);
+  return word.dynamic || isCaseUnsure(word) || /^[^=]*=@/.test(word.value) || GH_PLACEHOLDER_RE.test(word.value);
 }
+
+/** A string in a query sent by `-F query=`, which gh fills placeholders in as in any other `-F` value. */
+const placeholderString = (texts: string[]) => texts.some((t) => quotedRuns(t).some((run) => GH_PLACEHOLDER_RE.test(run)));
 
 function fieldValue(word: WordToken): string {
   const eq = word.value.indexOf("=");
@@ -130,7 +139,11 @@ export function graphqlBranchWrites(texts: string[], fields: WordToken[]): Graph
   if (mutations.length === 0) return { mutations, branches: [], unknown: capped };
   const variables = fields.filter((w) => !isQueryField(w));
   const unknown =
-    capped || mutations.some((m) => OPAQUE_TARGET.has(m)) || targetUnwritten(mutations, decoded, variables) || variables.some(unreadable);
+    capped ||
+    mutations.some((m) => OPAQUE_TARGET.has(m)) ||
+    targetUnwritten(mutations, decoded, variables) ||
+    variables.some(unreadable) ||
+    placeholderString(decoded);
   const named = mutations.some((m) => NAMED_TARGET.has(m));
   return { mutations, branches: named ? candidateBranches(decoded, variables) : [], unknown };
 }
