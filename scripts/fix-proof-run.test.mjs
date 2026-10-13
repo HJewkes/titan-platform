@@ -98,28 +98,56 @@ describe("fix-proof-run.sh", () => {
     describe("base side sandbox", () => {
       let shims;
       let sudoLog;
-      // sudo shim: logs each call and exits with the code an env var names, so a test can fail one step.
+      let tools;
+      // sudo shim: logs each call, runs the root shell that stages pnpm, and exits with the code an env var names so a
+      // test can fail one step.
       const sudoShim = `#!/usr/bin/env bash
 echo "$*" >>"$SUDO_LOG"
 case "$*" in
   "-n true") exit "\${SUDO_TRUE_EXIT:-0}" ;;
   "-n useradd "*) exit "\${USERADD_EXIT:-0}" ;;
   "-n -u fix-proof-sandbox sudo -n true") exit "\${SANDBOX_SUDO_EXIT:-1}" ;;
+  "-n sh -c "*) shift; exec "$@" ;;
 esac
 exit 0
 `;
+      // id shim: the sandbox user is absent until useradd, and has only its own group unless a test says otherwise.
+      const idShim = `#!/usr/bin/env bash
+case "$1" in
+  -u) exit "\${SANDBOX_ID_EXIT:-1}" ;;
+  -G) echo "\${SANDBOX_GROUPS:-999}" ;;
+  -g) echo 999 ;;
+esac
+`;
+      // Laid out as pnpm/action-setup leaves it: a .bin shim beside node_modules/pnpm.
+      const installPnpm = () => {
+        const pkg = path.join(tmp, "setup-pnpm/node_modules/pnpm");
+        mkdirSync(path.join(pkg, "bin"), { recursive: true });
+        writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name: "pnpm", bin: { pnpm: "bin/pnpm.cjs", pnpx: "bin/pnpx.cjs" } }));
+        writeFileSync(path.join(pkg, "bin/pnpm.cjs"), "console.log(`pnpm at ${__filename} ${process.argv.slice(2).join(' ')}`);\n");
+        const bin = path.join(tmp, "setup-pnpm/node_modules/.bin");
+        mkdirSync(bin);
+        writeFileSync(path.join(bin, "pnpm"), `#!/bin/sh\nexec node ${path.join(pkg, "bin/pnpm.cjs")} "$@"\n`, { mode: 0o755 });
+        return bin;
+      };
+      // Prints its args, then which pnpm a sandboxed `pnpm exec` would get from the PATH the runner forwards.
+      const binJs = `${echoArgs}console.log(require("node:child_process").execFileSync("pnpm", ["exec"], { encoding: "utf8" }).trim());\n`;
+      let searchPath;
       beforeEach(() => {
         shims = path.join(tmp, "shims");
         sudoLog = path.join(tmp, "sudo.log");
+        tools = path.join(tmp, "opt/fix-proof-sandbox");
         mkdirSync(shims);
         writeFileSync(path.join(shims, "sudo"), sudoShim, { mode: 0o755 });
+        writeFileSync(path.join(shims, "id"), idShim, { mode: 0o755 });
         for (const tool of ["unshare", "setpriv", "timeout"]) writeFileSync(path.join(shims, tool), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
-        writeFileSync(path.join(dist, "bin.js"), echoArgs);
+        searchPath = `${shims}:${installPnpm()}:${process.env.PATH}`;
+        writeFileSync(path.join(dist, "bin.js"), binJs);
         writeFileSync(path.join(dist, "judge.js"), echoArgs);
       });
       const withSandboxSupport = () => writeFileSync(path.join(dist, "chunk-ABC.js"), 'var SANDBOX_FLAG = "sandbox-user";\n');
       const execWith = (side, env = {}) =>
-        sh(["exec", side, runner, path.join(tmp, "repo"), base, head, out()], { PATH: `${shims}:${process.env.PATH}`, SUDO_LOG: sudoLog, ...env });
+        sh(["exec", side, runner, path.join(tmp, "repo"), base, head, out()], { PATH: searchPath, SUDO_LOG: sudoLog, FIX_PROOF_SANDBOX_TOOLS: tools, ...env });
       const expectBaseMarkers = (error) => {
         for (const name of ["base", "base-rerun"]) {
           const decoded = decodeReport(readFileSync(path.join(out(), `${name}.report`), "utf8"));
@@ -133,10 +161,38 @@ exit 0
         const result = execWith("base");
 
         expect(result.status).toBe(0);
-        expect(result.stdout.trim()).toBe(
+        expect(result.stdout.split("\n")[0]).toBe(
           `exec --side base --repo ${path.join(tmp, "repo")} --base ${base} --head ${head} --out ${out()} --budget-ms 780000 --sandbox-user fix-proof-sandbox`,
         );
         expect(readFileSync(sudoLog, "utf8")).toContain("-n -u fix-proof-sandbox sudo -n true");
+      });
+
+      it("exec base runs pnpm from a copy outside the runner's home, which the sandbox user cannot traverse", () => {
+        withSandboxSupport();
+
+        const result = execWith("base");
+
+        expect(result.status).toBe(0);
+        expect(result.stdout.split("\n")[1]).toBe(`pnpm at ${path.join(tools, "pnpm/bin/pnpm.cjs")} exec`);
+      });
+
+      it("exec base writes error markers when pnpm cannot be staged for the sandbox", () => {
+        withSandboxSupport();
+        rmSync(path.join(tmp, "setup-pnpm/node_modules/pnpm/package.json"));
+
+        const result = execWith("base");
+
+        expect(result.stdout).toBe("");
+        expectBaseMarkers("base: sandbox unavailable: staging pnpm for the sandbox failed");
+      });
+
+      it("exec base writes error markers when an existing sandbox user has supplementary groups", () => {
+        withSandboxSupport();
+
+        const result = execWith("base", { SANDBOX_ID_EXIT: "0", SANDBOX_GROUPS: "999 118" });
+
+        expect(result.stdout).toBe("");
+        expectBaseMarkers("base: sandbox unavailable: fix-proof-sandbox has supplementary groups");
       });
 
       it("exec base on a merge-base runner without sandbox support writes error markers for both base reports", () => {
@@ -179,7 +235,8 @@ exit 0
 
         const result = execWith("head");
 
-        expect(result.stdout.trim()).not.toContain("sandbox-user");
+        expect(result.stdout.split("\n")[0]).not.toContain("sandbox-user");
+        expect(result.stdout).not.toContain(tools);
         expect(existsSync(sudoLog)).toBe(false);
       });
     });

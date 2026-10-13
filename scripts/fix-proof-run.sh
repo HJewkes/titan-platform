@@ -25,6 +25,9 @@ readonly EXEC_BUDGET_MS=780000
 # over 128 KiB (MAX_ARG_STRLEN). A larger report becomes an error marker the judge can read instead.
 readonly MAX_OUTPUT_BYTES=120000
 readonly SANDBOX_USER=fix-proof-sandbox
+# Root-owned and outside the runner's home, so the sandbox user can run what is here but not change it. Tests point it
+# at a temp dir.
+readonly SANDBOX_TOOLS=${FIX_PROOF_SANDBOX_TOOLS:-/opt/fix-proof-sandbox}
 
 usage() {
   echo "usage: fix-proof-run.sh exec|emit|receive|judge ... (see the header)" >&2
@@ -63,7 +66,27 @@ sandbox_problem() {
   if ! id -u "$SANDBOX_USER" >/dev/null 2>&1; then
     sudo -n useradd --system --no-create-home --shell /usr/sbin/nologin "$SANDBOX_USER" >&2 || { echo "useradd failed"; return; }
   fi
-  if sudo -n -u "$SANDBOX_USER" sudo -n true >/dev/null 2>&1; then echo "$SANDBOX_USER can sudo"; fi
+  # setpriv --init-groups hands the sandbox every group the user is in, and a group such as docker reaches root.
+  [ "$(id -G "$SANDBOX_USER")" = "$(id -g "$SANDBOX_USER")" ] || { echo "$SANDBOX_USER has supplementary groups"; return; }
+  if sudo -n -u "$SANDBOX_USER" sudo -n true >/dev/null 2>&1; then echo "$SANDBOX_USER can sudo"; return; fi
+  stage_pnpm || echo "staging pnpm for the sandbox failed"
+}
+
+# pnpm/action-setup installs pnpm under the runner's home, which the sandbox user cannot traverse, so vitest's
+# `pnpm exec` exits 127 there. A root-owned copy in SANDBOX_TOOLS, first on PATH, serves it instead; node already
+# lives in the world-readable tool cache.
+stage_pnpm() {
+  local pnpm node package bin
+  pnpm=$(command -v pnpm) && node=$(command -v node) || return 1
+  package=$(node -p 'path.dirname(require.resolve("pnpm/package.json", { paths: [process.argv[1]] }))' "$(dirname "$pnpm")") &&
+    bin=$(node -p 'require(process.argv[1]).bin.pnpm' "$package/package.json") || return 1
+  # shellcheck disable=SC2016 # expanded by the root shell, from its own arguments
+  sudo -n sh -c '
+    set -e
+    rm -rf "$1" && mkdir -p "$1/bin" && cp -RL "$2" "$1/pnpm"
+    printf "#!/bin/sh\nexec %s %s \"\$@\"\n" "$3" "$1/pnpm/$4" >"$1/bin/pnpm"
+    chmod -R a+rX,go-w "$1" && chmod 755 "$1/bin/pnpm"
+  ' sh "$SANDBOX_TOOLS" "$package" "$node" "$bin"
 }
 
 write_markers() {
@@ -79,7 +102,7 @@ base_sandbox_problem() {
 }
 
 exec_side() {
-  local side=$1 runner=$2 repo=$3 base=$4 head=$5 out=$6 names problem
+  local side=$1 runner=$2 repo=$3 base=$4 head=$5 out=$6 names problem path=$PATH
   local -a sandbox=()
   names=$(side_reports "$side")
   if ! has_judge "$runner"; then
@@ -96,8 +119,9 @@ exec_side() {
     fi
     { unshare --version && setpriv --version; } >&2 || true
     sandbox=(--sandbox-user "$SANDBOX_USER")
+    path="$SANDBOX_TOOLS/bin:$PATH"
   fi
-  node "$runner/packages/fix-proof/dist/bin.js" exec --side "$side" --repo "$repo" --base "$base" --head "$head" --out "$out" \
+  PATH=$path node "$runner/packages/fix-proof/dist/bin.js" exec --side "$side" --repo "$repo" --base "$base" --head "$head" --out "$out" \
     --budget-ms "$EXEC_BUDGET_MS" "${sandbox[@]}"
 }
 
