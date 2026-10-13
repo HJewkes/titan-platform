@@ -50,7 +50,23 @@ function heldMergeOf(result: AwaitedResult): z.infer<typeof HeldMerge> | undefin
 
 function seatHeldOf(result: AwaitedResult, dispatchedReviewer: AgentIdentity): SeatHeld | undefined {
   const held = heldMergeOf(result);
-  return held && { head: held.head, locator: held.locator, reviewer: held.reviewer, dispatchedReviewer };
+  return held && { head: held.head, locator: held.locator, reviewer: held.reviewer, dispatchedReviewer, merge: held };
+}
+
+/** Re-runs only the seat check against Shepherd's own held MERGE; the step's body is `seatVetoed` over the recorded MERGE. */
+export const SEAT_RECHECK_STEP = "sh-seat-recheck";
+
+/**
+ * The next round at a head whose own MERGE a seat WAIT or a seat read that can clear held: the seat check alone runs again,
+ * so no reviewer is started. A clear seat lets the MERGE stand, a seat FIX_FIRST sends the head back, and a standing WAIT holds
+ * it again. A check that fails for good is a round with no verdict, as a fresh review's would be.
+ */
+export async function recheckSeat(ctx: WorkflowContext, target: ReviewTarget, held: SeatHeld): Promise<Verdict> {
+  const { agentId, sessionId } = held.dispatchedReviewer;
+  const awaiting: AwaitVerdictInput = { ...target, reviewerAgentId: agentId, reviewerSessionId: sessionId, dispatchedAt: 0 };
+  const rechecked = await step(ctx, `${SEAT_RECHECK_STEP}:${target.head}`, { ...awaiting, merge: held.merge }, Awaited);
+  if (rechecked.kind !== "verdict" && !heldMergeOf(rechecked)) return { kind: "none", cause: "no-verdict", ...(typeof rechecked.reason === "string" && { reason: rechecked.reason }) };
+  return verdictOf(ctx, target, awaiting, held.dispatchedReviewer, rechecked);
 }
 
 /** A dispatched reviewer stopped by its account's usage limit holds `account` until the reset; any other result is not a limit. */

@@ -254,14 +254,15 @@ async function awaitSeatSettled(roster: () => Promise<readonly ReviewerAgent[]>,
 
 /**
  * A MERGE stands only while the seat check is clear at the same head. A seat's FIX_FIRST over it is a G10 disagreement,
- * recorded on the result. With `seatWait`, a seat WAIT is waited out, and one that outlasts it holds the MERGE as `seatHeld`.
+ * recorded on the result. With `seatWait`, a seat WAIT or a read that can clear is waited out, and one that outlasts it holds the MERGE
+ * as `seatHeld`, so the next round re-checks the seat instead of reviewing again. A damaged transcript blocks with no hold.
  */
 export async function unlessSeatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, result: AwaitVerdictResult, warn?: (line: string) => void, now: () => number = Date.now, seatWait?: SeatWait): Promise<AwaitVerdictResult> {
   if (result.kind !== "verdict" || result.verdict !== "MERGE") return result;
   const check = seatWait ? await awaitSeatSettled(roster, reader, target, seatWait.timing, seatWait.signal, warn) : await seatFixFirst(roster, reader, target, warn);
   if (check.kind === "clear") return result;
   if (check.kind === "verdict") return { ...check, ownerOverride: disagreement(target.head, "MERGE", "FIX_FIRST", now) };
-  return seatWait && check.wait ? held(check.reason, result) : { kind: "none", reason: check.reason };
+  return seatWait && unsettled(check) ? held(check.reason, result) : { kind: "none", reason: check.reason };
 }
 
 const held = (reason: string, seatHeld: OwnMerge): SeatHeldNone => ({ kind: "none", reason, seatHeld });

@@ -14,7 +14,7 @@ import { freezeHoldRoutes, heldByFrozenMain } from "./freeze-hold.js";
 import { conflictCheckRoute, conflictCheckedGates, conflictsAt } from "./conflict-check.js";
 import type { MainRedWiring } from "./main-red.js";
 import { parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
-import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
+import type { SeatHeld, ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
 import { ownerBriefAt, verdictIsMergeAt } from "../gate-brief.js";
 import { runPolicyCeiling, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 import { g10ReleaseRoutes, releaseG10Hold } from "./g10-release.js";
@@ -104,6 +104,8 @@ interface ShepherdRun extends WakeRun, FixFirstTrail {
   freezeChecks: number;
   /** Heads whose next review spawns a never-held reviewer. */
   fresh: Set<string>;
+  /** Shepherd's own MERGE a seat held at each head; that head's next review re-checks the seat only. */
+  seatHeld: Map<string, SeatHeld>;
   /** Update-branch calls since the last human gate across every round; replaying the run's recorded steps rebuilds it, so a restart keeps the count. */
   updateBound: UpdateBound;
   /** The unsettled-merge wait at a head across every round; replay rebuilds it like the update bound. */
@@ -122,7 +124,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const pr = params.pr ?? (await awaitPrStep(ctx, params.repo, params.branch));
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), merged: new Map(), policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release, task: params.task },
-    ...{ failedRounds: 0, throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map(), wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [] },
+    ...{ failedRounds: 0, throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), seatHeld: new Map(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map(), wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [] },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : { ...shepherdLandOptions(() => run.policy, verdictFor, (headSha) => liveEscalation(run, headSha)), reviewedMerge: (headSha) => verdictIsMergeAt(verdictFor(headSha), headSha), ownerBriefAt: (headSha) => ownerBriefAt(verdictFor(headSha), headSha) };
@@ -295,7 +297,10 @@ async function reviewHead(run: ShepherdRun, headSha: string): Promise<Verdict> {
   const carried = run.trail.seatAsked.has(headSha) ? undefined : await carriedVerdict(tapped(run.ctx, (stepId, result) => noteCarryStep(probe, stepId, result)), run.target, run.reviews, headSha, run.carryScopeReads++);
   if (carried) return carried;
   const cause = takeCause(run.trail, headSha, probe);
-  const verdict = await run.phases.review(run.ctx, { ...run.target, round: run.state.round, headSha, ...(run.fresh.has(headSha) && { fresh: true }), cause });
+  const seatHeld = run.seatHeld.get(headSha);
+  const verdict = await run.phases.review(run.ctx, { ...run.target, round: run.state.round, headSha, ...(run.fresh.has(headSha) && { fresh: true }), cause, ...(seatHeld && { seatHeld }) });
+  if (verdict.kind === "none" && verdict.seatHeld?.head === headSha) run.seatHeld.set(headSha, verdict.seatHeld);
+  else run.seatHeld.delete(headSha);
   return verdict.kind === "none" || verdict.headSha === headSha ? verdict : { kind: "none", cause: "no-verdict" };
 }
 

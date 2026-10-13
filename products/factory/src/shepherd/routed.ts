@@ -41,6 +41,8 @@ export async function countRound(run: RoundCounts, routed: Routed): Promise<Esca
     run.fixFirstTrail.push(fixFirstEntry(headSha, routed.verdict.kind === "FIX_FIRST" ? routed.verdict.text : ""));
     return fixFirstEscalation(await recordFixFirst(run.ctx, { ...run.target, headSha }), run.closer.streak, headSha);
   }
+  // A held MERGE is a verdict waiting on the seat, not a failed review, and its next round starts nobody.
+  if (routed.verdict.kind === "none" && routed.verdict.seatHeld !== undefined) return undefined;
   if (kind === "throttled" && ++run.throttledRounds <= MAX_THROTTLED_ROUNDS) return undefined;
   if (kind !== "stuck" && kind !== "throttled") return undefined;
   run.failedRounds += 1;

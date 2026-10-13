@@ -384,14 +384,14 @@ describe("Shepherd's MERGE meeting a seat WAIT", () => {
     expect(seat.reads()).toBe(1);
   });
 
-  it("blocks with the failed read's reason, not seatHeld, when a read fails during the wait", async () => {
+  it("holds the own MERGE with the failed read's reason when a read keeps failing through the wait", async () => {
     const seat = seatSaying("WAIT");
     let rosterReads = 0;
     const roster = async () => (++rosterReads > 1 ? Promise.reject(new Error("broker down")) : [SEAT]);
 
     const result = await unlessSeatFixFirst(roster, seat.reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
 
-    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("roster could not be read") });
+    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("roster could not be read"), seatHeld: shepherdMerge });
   });
 
   it("lets the own MERGE stand when a roster read times out once and the seat then says MERGE", async () => {

@@ -88,3 +88,56 @@ describe("a seat check that cannot read the roster at every round", () => {
     expect(prompt).not.toContain("wait ran out");
   });
 });
+
+/** Synthetic stand-in for the head a seat held across three rounds while its required checks ran (the tp#1300 pattern). */
+const HELD = fakeSha("seat-replay-held");
+
+/** Every Shepherd reviewer says MERGE at once; the seat reviewer says WAIT on its first `waits` reads at HELD, then MERGE. */
+function seatWaiting(waits: number): { dispatch: ReviewerDispatch; reader: ReviewerReader; spawns: string[] } {
+  const agents: ReviewerAgent[] = [row("coord", "live"), SEAT];
+  const spawns: string[] = [];
+  let seatReads = 0;
+  const dispatch: ReviewerDispatch = {
+    roster: async () => [...agents],
+    spawn: async (name) => void (spawns.push(name), agents.push(row(name))),
+    resume: async () => undefined,
+  };
+  const reader: ReviewerReader = {
+    read: async (input) => {
+      if (input.reviewerAgentId === SEAT.agentId) return [said(SEAT, verdictAt(HELD, ++seatReads <= waits ? "WAIT" : "MERGE"))];
+      return agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, verdictAt(input.head)));
+    },
+  };
+  return { dispatch, reader, spawns };
+}
+
+describe("a seat that says WAIT at one head for three rounds over Shepherd's MERGE", () => {
+  it("starts one reviewer, opens no failed-rounds gate, and takes the held MERGE to the merge decision once the seat clears", async () => {
+    const fake = fakeGitHub();
+    fake.onGetPr = (open) => fake.setRuns(open.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
+    const phases = { review: reviewPhase, wake: async () => ({ kind: "unhandled" as const, reason: "test" }) };
+    const seat = seatWaiting(6);
+    let clock = 0;
+    const store = shepherdStoreRef();
+    const review = { dispatch: seat.dispatch, reader: seat.reader, seatWaitMs: 1_000 };
+    const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)), review });
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
+    hosts.push(host);
+    fake.addPr({ headSha: HELD });
+    const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
+    store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+
+    await gateOpened(host, gateId(runId, "approve-merge"));
+    const stepIds = Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
+    const prompt = host.gates.get(gateId(runId, "approve-merge"))?.prompt ?? "";
+
+    expect(seat.spawns).toHaveLength(1);
+    expect(stepIds.filter((id) => id.startsWith(`sh-review:${HELD}`))).toHaveLength(1);
+    expect(stepIds.filter((id) => id.startsWith(`sh-seat-recheck:${HELD}`)).length).toBeGreaterThanOrEqual(2);
+    expect(stepIds).toContain(`sh-merge-evidence:${HELD}`);
+    expect(prompt).toContain(`at head ${HELD}`);
+    expect(prompt).not.toContain("review rounds failed");
+    expect(fake.pr(1).merged).toBe(false);
+  });
+});
+

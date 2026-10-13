@@ -2192,7 +2192,7 @@ describe("reviewPhase", () => {
       expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
     });
 
-    it("does not merge when the seat reviewer's transcript cannot be read, and records why", async () => {
+    it("does not merge when the seat reviewer's transcript cannot be read, and holds the own MERGE with why", async () => {
       const dispatch = fakeDispatch(crew(seat));
       const unreadable: Scene["read"] = (input, held, now) => {
         if (input.reviewerAgentId === seat.agentId) throw new Error("unexpected end of JSON input");
@@ -2202,8 +2202,8 @@ describe("reviewPhase", () => {
       const { verdicts, stepIds, resultOf } = await review({ dispatch, read: unreadable, policy: AUTO });
 
       const reason = `seat check: the transcript of ${seat.name} could not be read: Error`;
-      expect(verdicts).toEqual([{ kind: "none", cause: "timeout", reason }]);
-      expect(resultOf(`sh-await-verdict:${H1}`)).toEqual({ kind: "none", reason });
+      expect(verdicts).toEqual([{ kind: "none", cause: "external-hold", reason, seatHeld: expect.objectContaining({ head: H1 }) }]);
+      expect(resultOf(`sh-await-verdict:${H1}`)).toEqual({ kind: "none", reason, seatHeld: expect.objectContaining({ verdict: "MERGE", head: H1 }) });
       expect(stepIds.filter((id) => id.startsWith("sh-merge-evidence"))).toEqual([]);
     });
 

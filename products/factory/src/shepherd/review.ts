@@ -1,5 +1,5 @@
 import type { AgentIdentity } from "@titan-design/authority";
-import { OVERLAY_SHAPES, type AcceptedVerdict as PanelAcceptedVerdict, type AwaitVerdictInput, type PanelPolicy, type ReviewTarget, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
+import { OVERLAY_SHAPES, OwnerBriefSchema, type AcceptedVerdict as PanelAcceptedVerdict, type AwaitVerdictInput, type PanelPolicy, type ReviewTarget, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
 import type { OwnerOverride } from "./override-stats.js";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
@@ -14,7 +14,7 @@ import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./account-limit.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { awaitExternalVerdict, isExternalVerdictInput, seatVetoed } from "./external-review.js";
 import { removeReviewCheckout, reviewCheckoutRoot } from "./review-checkout.js";
-import { Dispatched, Intended, ReviewCauseSchema } from "./review-schemas.js";
+import { CiPolicySchema, Dispatched, Intended, LocatorSchema, ReviewCauseSchema } from "./review-schemas.js";
 import { MERGE_EVIDENCE_STEPS } from "./merge-evidence-gate.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
@@ -34,7 +34,7 @@ import { REVIEW_STEP } from "./review-steps.js";
 import { REVIEW_STOP_STEPS, reviewStopRoute } from "./review-stop.js";
 import { withoutPlan, type PanelMode } from "./review-panel-plan.js";
 import { PANEL_STEPS, panelOn, panelReview, panelVerdictRoute, plannedPanel, type MemberBase, type PanelOnPlan } from "./review-panel-step.js";
-import { LATE_VERDICT_STEP, asksOwnerBrief, mergeVerdict, takeVerdict } from "./take-verdict.js";
+import { LATE_VERDICT_STEP, SEAT_RECHECK_STEP, asksOwnerBrief, mergeVerdict, recheckSeat, takeVerdict } from "./take-verdict.js";
 import { NO_REVIEWER_STEPS, noReviewerHeld, noReviewerRoutes } from "./no-reviewer-hold.js";
 
 export const REVIEW_INTENT_STEP = "sh-review-intent";
@@ -48,6 +48,7 @@ export const REVIEW_STEPS: readonly StepDeclaration[] = [
   { id: AWAIT_VERDICT_STEP, kind: "dispatch" },
   { id: LATE_VERDICT_STEP, kind: "dispatch" },
   { id: CORRECT_VERDICT_STEP, kind: "dispatch" },
+  { id: SEAT_RECHECK_STEP, kind: "dispatch" },
   ...MERGE_EVIDENCE_STEPS,
   { id: CARRY_STEP, kind: "dispatch" },
   ...PUBLISH_REVIEW_STEPS,
@@ -293,6 +294,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     codeRoute(AWAIT_VERDICT_STEP, deps.now, seatVetoed(wiring, run, deps.now, seatWait)),
     codeRoute(LATE_VERDICT_STEP, deps.now, seatVetoed(wiring, (raw: unknown, signal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(raw), signal), deps.now, seatWait)),
     repeatAwareRoute(CORRECT_VERDICT_STEP, deps.now, brokerStep(deps, wiring, CorrectVerdictInputSchema, correctReviewer)),
+    codeRoute(SEAT_RECHECK_STEP, deps.now, seatVetoed(wiring, async (raw: unknown) => heldMerge(raw), deps.now, seatWait)),
     codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, isFrozen, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) }, wiring?.reviewAppId)),
     carryRoute(deps.now, wiring?.carry),
     publishReviewRoute(deps),
@@ -303,6 +305,26 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     ...noReviewerRoutes(deps, wiring?.accounts?.alert),
   ];
 };
+
+const HeldMergeInput = z.object({
+  merge: z.object({
+    kind: z.literal("verdict"),
+    verdict: z.literal("MERGE"),
+    head: z.string().regex(HEAD),
+    locator: LocatorSchema,
+    reviewer: z.object({ agentId: z.string().min(1), sessionId: z.string().min(1) }),
+    ownerBrief: OwnerBriefSchema.nullable().optional().catch(null),
+    ciPolicy: CiPolicySchema,
+  }),
+});
+
+/** The recheck's MERGE, as the verdict step recorded it; one that does not read is no verdict, so it can never merge. */
+function heldMerge(raw: unknown): AwaitVerdictResult {
+  const read = HeldMergeInput.safeParse(raw);
+  if (!read.success) return { kind: "none", reason: "the held MERGE could not be read" };
+  const { head, locator, reviewer, ownerBrief, ciPolicy } = read.data.merge;
+  return { kind: "verdict", verdict: "MERGE", head, locator, reviewer, ...(ownerBrief !== undefined && { ownerBrief }), ...(ciPolicy && { ciPolicy }) };
+}
 
 /** With no dispatch wired there is no roster to tell an exited reviewer, so the step answers `none` at once. */
 async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined, input: AwaitVerdictInput, signal: AbortSignal): Promise<AwaitVerdictResult> {
@@ -323,6 +345,12 @@ function notDispatched(ctx: WorkflowContext, target: ReviewTarget, dispatched: R
   return { kind: "none", cause: "no-verdict" };
 }
 
+/** A replay whose record took another step at this head ran before the recheck existed, so it reviews again as it did. */
+function recordsRecheck(ctx: WorkflowContext, head: string): boolean {
+  const next = ctx.historyNext();
+  return next === undefined || next === `${SEAT_RECHECK_STEP}:${head}`;
+}
+
 /**
  * Read the head's fix-proof result, record which reviewer this head gets, start or adopt it, wait for its verdict, and take a
  * MERGE through the evidence step. A vacuous or test-less proof ends the review as NO_REPRO before any reviewer is started.
@@ -331,6 +359,7 @@ function notDispatched(ctx: WorkflowContext, target: ReviewTarget, dispatched: R
  */
 export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const target: ReviewTarget = { repo: request.repo, pr: request.pr, head: request.headSha };
+  if (request.seatHeld?.head === target.head && recordsRecheck(ctx, target.head)) return recheckSeat(ctx, target, request.seatHeld);
   const proof = await step(ctx, `${FIX_PROOF_STEP}:${target.head}`, { repo: target.repo, head: target.head, runId: ctx.runId }, FixProofReadSchema);
   const noRepro = fixProofVerdict(proof, target.head);
   if (noRepro) return noRepro;
