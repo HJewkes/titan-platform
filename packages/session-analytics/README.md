@@ -358,7 +358,9 @@ record; parsing a seat log into them is the caller's adapter. An agent's session
 the agent is listed in `unmatchedAgents`; `joinSource` counts assignments by route. The agent's
 `request_cost` in the window is split evenly over its assignments, so a fix round does not cost it
 twice. `usdPerMerged` is a bucket's whole cost, parked tries included, over its merged count, and
-null at zero. A seat's own sessions go to `seatCostUsd`, never a bucket. `costPerOutcomeSchema` is
+null at zero. `requests` splits the agent's window requests the same way, and `requestsPerFinished`
+is a bucket's requests over its merged plus done count, null at zero. A seat's own sessions go to
+`seatCostUsd`, never a bucket. `costPerOutcomeSchema` is
 its zod schema and `renderCostPerOutcomeText(report)` prints it with the list-price caveat.
 
 ## Scorecard rows
