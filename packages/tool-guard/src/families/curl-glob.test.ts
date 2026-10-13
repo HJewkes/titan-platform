@@ -47,13 +47,37 @@ describe("expandCurlGlob returns null where curl refuses the glob or it is too l
     ["a zero step", "h/x[1-3:0]"],
     ["an unclosed range", "h/x[1-3"],
     ["a product over the cap", "h/[1-9][1-9]"],
-    ["a range too long to list", "h/[0-99999999999]"],
   ])("%s", (_name, text) => {
     expect(expandCurlGlob(text)).toBeNull();
+  });
+
+  it.each([
+    ["wide ranges", "[0-4094]"],
+    ["ranges each under the cap", "[1-8]"],
+  ])("refuses a long run of %s without listing them", (_name, range) => {
+    const text = `h/${range.repeat(100_000)}`;
+    const heapBefore = process.memoryUsage().heapUsed;
+    const started = performance.now();
+
+    const urls = expandCurlGlob(text);
+
+    expect(urls).toBeNull();
+    expect(performance.now() - started).toBeLessThan(200);
+    expect(process.memoryUsage().heapUsed - heapBefore).toBeLessThan(16 * 1024 * 1024);
+  });
+
+  it("refuses a single range far over the cap without listing it", () => {
+    expect(expandCurlGlob("h/[0-99999999999]")).toBeNull();
+    expect(expandCurlGlob("h/[0-64]")).toBeNull();
+    expect(expandCurlGlob("h/[1-64]")).toHaveLength(64);
   });
 
   it("honours a caller's cap", () => {
     expect(expandCurlGlob("h/{a,b,c}", 2)).toBeNull();
     expect(expandCurlGlob("h/{a,b}", 2)).toHaveLength(2);
   });
+});
+
+describe("-g/--globoff", () => {
+  it.todo("TP-2735 c: curl -g/--globoff reads a URL word literally instead of through expandCurlGlob");
 });
