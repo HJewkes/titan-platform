@@ -37,7 +37,7 @@ interface Expansion {
 
 function expand(words: WordToken[], x: Expansion, out: AliasReading[]): void {
   const at = commandWordAt(words);
-  const name = at < 0 ? null : (words[at] as WordToken).value;
+  const name = words[at]?.value ?? null;
   const values = name === null || x.done.has(name) ? undefined : x.table.get(name);
   if (name === null || values === undefined) {
     if (x.round > 0) out.push({ words });
