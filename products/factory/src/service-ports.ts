@@ -1,10 +1,11 @@
 import { execFile } from "node:child_process";
-import { accessSync, constants, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { delimiter, isAbsolute, join } from "node:path";
+import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { getProcessStartTime, isProcessAlive, probeHealth } from "@titan-design/daemon";
-import { distBuildSha } from "./dist-build.js";
+import { bundleBuildSha, distBuildSha } from "./dist-build.js";
+import { deployedBinPath } from "./deploy-checkout.js";
 import { configPath, loadConfig } from "./config.js";
 import type { Listener, PortOwnerReaders, ProcessInfo } from "./port-owner.js";
 import type { CheckPorts } from "./service-check.js";
@@ -192,6 +193,27 @@ async function checkoutHasAncestor(checkout: string, ancestor: string, descendan
   return (await gitIn(checkout, ["merge-base", "--is-ancestor", ancestor, descendant]))?.code === 0;
 }
 
+const realPathOr = (path: string): string => {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
+};
+
+/** A shim that is a shell script rather than a symlink resolves to itself and reads no baked sha. */
+function installedCli(): { path: string; sha: string | undefined } | undefined {
+  const found = findOnPath("titan-factory", process.env.PATH);
+  if (found === undefined) return undefined;
+  const path = realPathOr(found);
+  return { path, sha: bundleBuildSha(dirname(path)) };
+}
+
+async function checkoutHead(checkout: string): Promise<string | undefined> {
+  const result = await gitIn(checkout, ["rev-parse", "HEAD"]);
+  return result?.code === 0 ? result.stdout.trim() : undefined;
+}
+
 /** `checkout` is the service checkout whose index.lock blocks deploys and whose built dist a restart loads. */
 export function systemCheckPorts(checkout: string): CheckPorts {
   return {
@@ -203,5 +225,8 @@ export function systemCheckPorts(checkout: string): CheckPorts {
     tickStatus: tickStatusRead,
     indexLock: () => inspectIndexLock(checkout, nodeLockProbe),
     hubSeat: () => configuredHubSeat(process.env),
+    installedCli: async () => installedCli(),
+    checkoutHead: () => checkoutHead(checkout),
+    deployBin: realPathOr(deployedBinPath(checkout)),
   };
 }

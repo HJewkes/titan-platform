@@ -433,8 +433,8 @@ titan-factory service install --port 7411 --mcp
 | --- | --- | --- |
 | `service install [--port <n>] [--node <path>] [--mcp]` | The five steps above | the job answers `/health` with `github` `ok` |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers with `github` `ok` |
-| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`unreadable`, `not loaded`, `stale pid`, `crash loop`, `unresponsive`, `stale build`, `GitHub down`, `stale index.lock`, `deploy stalled`, `no hub seat`); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, and a hub seat is configured |
-| `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, then `launchctl kickstart -k`, then the same wait as install | the new process answers with `github` `ok` |
+| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`unreadable`, `not loaded`, `stale pid`, `crash loop`, `unresponsive`, `stale build`, `GitHub down`, `stale index.lock`, `deploy stalled`, `no hub seat`, `stale CLI`); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, and a hub seat is configured; a `stale CLI` alone still exits 0 |
+| `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, fences a foreign serve on the port, restarts without blocking on the stop and fences a process that outlives it by 45 s, then the same wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>]` | Fast-forwards the service checkout, rebuilds the factory when the range touches it, restarts drained; see [below](#service-deploy-redeploy-from-main) | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
 
@@ -445,6 +445,19 @@ argv with `Restart=always`, the plist's `PATH` and its two log files, and is ena
 was already running), then the same `/health` wait. `service install --dry-run` prints the file
 and the calls it would make, and changes nothing. Run `loginctl enable-linger "$USER"` once so
 the unit runs without a login session. The package README maps each plist key to its unit line.
+The unit sets `TimeoutStopSec=60`; `service deploy` never rewrites the unit, so run
+`titan-factory service install` once after the release that adds it.
+
+`service restart`, `service deploy` and a deploy's rollback never wait behind a serve that ignores
+SIGTERM, which a serve with a blocked event loop does. They queue the restart without blocking
+(`systemctl --user restart --no-block`, or `launchctl kickstart -k`), wait 45 s
+(`STOP_FENCE_MS`) for a new main pid, then SIGKILL the old one through the service manager
+(`systemctl --user kill --signal=SIGKILL`, or `launchctl kill SIGKILL`) and print
+`fenced pid N (... MainPID, alive 45 s after SIGTERM)`. The `/health` wait starts only after the
+new pid exists. Before that, a listener on the port outside the unit or job is fenced only when its
+command line proves it is `titan-factory serve` (SIGTERM, 15 s, a start-time re-check, then
+SIGKILL, printed as `fenced pid N (titan-factory serve outside ...)`); any other holder is refused
+by pid and argv with no signal sent. The package README has the full sequence.
 
 `service check` defines each cause precisely and reports the first that holds, in this order:
 
@@ -465,6 +478,7 @@ On Linux it reads `systemctl --user show titan-factory.service` instead: `MainPI
 - **stale index.lock**: the service checkout's `.git/index.lock` has no process holding it and is older than 10 minutes. The line names its path and age. `service check` never removes it; a person does, once no git runs there.
 - **deploy stalled**: the deploy block in `/health` has its alarm up (see [below](#service-deploy-redeploy-from-main)). The line names each cause, with the last refusal's reason; `--json` adds the running sha, the waiting asks, the refusals in a row and the last refusal.
 - **no hub seat**: the config sets no `shepherd.hubSeat`, so a deploy alarm reaches no seat. It is reported only once the server and the burndown tick are sound.
+- **stale CLI**: the `titan-factory` on PATH, resolved through symlinks, was built from a commit behind the deploy checkout's HEAD, so verbs added since fail as unknown options. Point it at the deploy checkout's `dist/bin.js` or rebuild it; `service restart` does not change the CLI. It is advisory: reported last, with `ok` still true and exit 0, so the burndown tick and the watchdog do not stop on it. The deploy bin itself is never reported, because a rolled-back deploy leaves it behind HEAD on purpose.
 
 It never starts, stops or restarts the job.
 

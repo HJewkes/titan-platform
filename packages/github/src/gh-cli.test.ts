@@ -152,14 +152,14 @@ describe("gh api adapter", () => {
     expect(gh.calls.flatMap((call) => call.args).some((arg) => /token|authorization/i.test(arg))).toBe(false);
   });
 
-  it("reads a commit's parents, tree and committer date, and leaves the date out when GitHub omits it", async () => {
-    const dated = scriptedGh({ [`git/commits/${H1}`]: JSON.stringify({ sha: H1, parents: [{ sha: "p1" }], tree: { sha: "t1" }, committer: { date: "2026-02-03T04:05:06Z" } }) });
+  it("reads a commit's parents, tree, committer date and message, and leaves the date out when GitHub omits it", async () => {
+    const dated = scriptedGh({ [`git/commits/${H1}`]: JSON.stringify({ sha: H1, parents: [{ sha: "p1" }], tree: { sha: "t1" }, committer: { date: "2026-02-03T04:05:06Z" }, message: "Add x\n\n[skip ci]" }) });
     const undated = scriptedGh({ [`git/commits/${H1}`]: JSON.stringify({ sha: H1, parents: [] }) });
 
     const withDate = await ghCliWire(dated.exec).getCommit(REPO, H1);
     const withoutDate = await ghCliWire(undated.exec).getCommit(REPO, H1);
 
-    expect(withDate).toEqual({ sha: H1, parents: ["p1"], tree: "t1", committedAt: "2026-02-03T04:05:06Z" });
+    expect(withDate).toEqual({ sha: H1, parents: ["p1"], tree: "t1", committedAt: "2026-02-03T04:05:06Z", message: "Add x\n\n[skip ci]" });
     expect(withoutDate).toEqual({ sha: H1, parents: [] });
   });
 

@@ -9,8 +9,8 @@ import { SERVICE_CHECK_HEALTH_TIMEOUT_MS } from "./service-ports.js";
 import { describeIndexLock, type IndexLock } from "./stale-lock.js";
 import { judgeTick, type TickStatusRead } from "./tick-status.js";
 
-/** The causes in the order `check` tests them; the first that holds is the one reported. */
-type Cause = "unreadable" | "not loaded" | "stale pid" | "crash loop" | "unresponsive" | "stale build" | "GitHub down" | "stale index.lock" | "deploy stalled" | "tick failing" | "tick stale" | "no hub seat";
+/** The causes in the order `check` tests them; the first that holds is the one reported. `stale CLI` alone is advisory: it leaves the check ok. */
+type Cause = "unreadable" | "not loaded" | "stale pid" | "crash loop" | "unresponsive" | "stale build" | "GitHub down" | "stale index.lock" | "deploy stalled" | "tick failing" | "tick stale" | "no hub seat" | "stale CLI";
 
 /** What `check` reads beyond `ServicePorts`; every one is read-only, so a fake never has to model a mutation. */
 export interface CheckPorts extends ServicePorts {
@@ -27,6 +27,12 @@ export interface CheckPorts extends ServicePorts {
   indexLock: () => Promise<IndexLock>;
   /** The config's shepherd.hubSeat, the seat a deploy alarm reaches; undefined when none is set. */
   hubSeat: () => string | undefined;
+  /** The bare `titan-factory` on PATH, resolved through symlinks, and the build sha baked into its dist; undefined when none is on PATH. */
+  installedCli: () => Promise<{ path: string; sha: string | undefined } | undefined>;
+  /** HEAD of the deploy checkout, the commit `service deploy` builds; undefined when git cannot read it. */
+  checkoutHead: () => Promise<string | undefined>;
+  /** The deploy checkout's dist/bin.js, resolved through symlinks. */
+  deployBin: string;
 }
 
 interface CheckResult {
@@ -140,7 +146,8 @@ async function diagnoseService(ports: CheckPorts, port: number): Promise<CheckRe
   const running = await judgeRunning(ports, job, health);
   if (!running.ok) return running;
   const judged = (await withDeploy(running, ports)) ?? withTick(running, ports);
-  return judged.ok ? withHubSeat(judged, ports) : judged;
+  const configured = judged.ok ? withHubSeat(judged, ports) : judged;
+  return configured.ok ? withInstalledCli(configured, ports) : configured;
 }
 
 function unreadable(job: Job, failure: NonNullable<Job["unreadable"]>): CheckResult {
@@ -216,9 +223,32 @@ function deployDetail(deploy: DeployHealth): CheckResult["detail"] {
 
 const NO_HUB_SEAT = "shepherd.hubSeat is not set in the titan-factory config; a deploy alarm reaches no seat, so set it to the coordinating seat and run titan-factory service restart";
 
-/** Last in order: a config gap only matters once the server and its tick are sound. */
+/** A config gap only matters once the server and its tick are sound. */
 function withHubSeat(running: CheckResult, ports: CheckPorts): CheckResult {
   return ports.hubSeat() === undefined ? { ...running, ok: false, cause: "no hub seat", message: NO_HUB_SEAT, detail: {} } : running;
+}
+
+/**
+ * The operator's bare `titan-factory` is what goes stale, so PATH is read rather than the running
+ * process's own build. The deploy bin itself is never reported: a rolled-back deploy leaves its dist
+ * behind HEAD on purpose, and a rebuild would undo the rollback.
+ */
+async function olderInstalledCli(ports: CheckPorts): Promise<{ path: string; sha: string; head: string } | undefined> {
+  const installed = await ports.installedCli();
+  if (installed?.sha === undefined || installed.sha === UNKNOWN || installed.path === ports.deployBin) return undefined;
+  const head = await ports.checkoutHead();
+  if (head === undefined) return undefined;
+  const from = withoutDirty(installed.sha);
+  if (from === head) return undefined;
+  return (await ports.isAncestor(from, head)) ? { path: installed.path, sha: installed.sha, head } : undefined;
+}
+
+/** Last in order, and advisory: callers stop work on a failing check, and a stale CLI leaves serve sound. */
+async function withInstalledCli(running: CheckResult, ports: CheckPorts): Promise<CheckResult> {
+  const stale = await olderInstalledCli(ports);
+  if (stale === undefined) return running;
+  const message = `the titan-factory on PATH (${stale.path}) is build ${stale.sha}, behind the deploy checkout HEAD ${stale.head}; point it at ${ports.deployBin} (or rebuild it); service restart does not change the CLI`;
+  return { ...running, cause: "stale CLI", message, detail: { installedCli: stale.path, installedBuild: stale.sha, checkoutHead: stale.head } };
 }
 
 /** A server fault is reported before the tick that depends on it. */
@@ -277,7 +307,7 @@ async function checkService(ports: CheckPorts, io: ServiceIo, port: number, json
 export function registerServiceCheck(service: Command, io: ServiceIo, portsOf: () => CheckPorts, setExit: (code: number) => void): void {
   service
     .command("check")
-    .description("exit 0 when /health answers from the launchd or systemd pid with github ok and deploys are not stalled; otherwise one line naming the cause, never changing the service")
+    .description("exit 0 when /health answers from the launchd or systemd pid with github ok and deploys are not stalled; otherwise one line naming the cause, never changing the service; a stale CLI on PATH (behind the deploy checkout) is named but still exits 0")
     .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
     .option("--json", "print cause, pid, health and the cause's details as one JSON object")
     .action(async (opts: { port: number; json?: boolean }) => {
