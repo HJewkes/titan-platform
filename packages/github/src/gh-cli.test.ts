@@ -95,7 +95,7 @@ describe("gh api adapter", () => {
       const overGh = await githubPort(ghCliWire(gh.exec)).setPrBase(REPO, pr.number, "main");
 
       expect(overGh).toEqual(overFake);
-      expect(gh.calls.filter((call) => call.args.includes("PATCH")).length).toBe(fake.effects.setPrBase);
+      expect(gh.calls.filter((call) => call.args.includes("PATCH")).length).toBe(fake.baseChanges.length);
     }
   });
 

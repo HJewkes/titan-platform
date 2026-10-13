@@ -145,7 +145,6 @@ describe("check-then-act port over the fake", () => {
 
     expect([first, again, merged]).toEqual([{ done: true }, { done: false, skipped: "unchanged" }, { done: false, skipped: "merged" }]);
     expect(fake.baseChanges).toEqual([{ number: child.number, base: "main" }]);
-    expect(fake.effects.setPrBase).toBe(1);
     expect(fake.pr(child.number).baseRef).toBe("main");
   });
 

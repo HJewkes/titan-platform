@@ -15,7 +15,6 @@ export interface FakeEffects {
   createPr: number;
   updateBranch: number;
   updateRef: number;
-  setPrBase: number;
   merge: number;
   rerunFailedJobs: number;
 }
@@ -79,7 +78,7 @@ export interface FakeGitHub {
   squashSources: Map<number, SquashSource>;
   /** Every `merge` PUT's pull number and message, in order; `message` is undefined when none was sent. */
   merges: { number: number; message: MergeMessage | undefined }[];
-  /** Every PR base change that landed, in order. */
+  /** Every PR base change that landed, in order; its length counts the retargets, so `FakeEffects` stays as it was. */
   baseChanges: { number: number; base: string }[];
   /** The default branch's history for `listCommits`, in any order; it answers those at or after `since`, newest first. */
   history: (LoggedCommit & { committedAt: string })[];
@@ -121,7 +120,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
   const repo = options.repo ?? "o/r";
   let counter = 0;
   const nextSha = (tag: string): string => fakeSha(`${tag}${++counter}`);
-  const effects: FakeEffects = { createRef: 0, deleteRef: 0, putContent: 0, createPr: 0, updateBranch: 0, updateRef: 0, setPrBase: 0, merge: 0, rerunFailedJobs: 0 };
+  const effects: FakeEffects = { createRef: 0, deleteRef: 0, putContent: 0, createPr: 0, updateBranch: 0, updateRef: 0, merge: 0, rerunFailedJobs: 0 };
   const prs = new Map<number, PullRequest>();
   const runs = new Map<string, CheckRun[]>();
   const runStatus = new Map<number, string>();
@@ -356,7 +355,6 @@ function landUpdate(fake: FakeGitHub, pr: PullRequest, nextSha: (tag: string) =>
 function setPrBase(fake: FakeGitHub, pr: PullRequest, base: string): void {
   if (pr.state !== "open") throw new FakeHttpError(422, "Cannot change the base branch of a closed pull request");
   if (!fake.refs.has(base)) throw new FakeHttpError(422, `Proposed base branch '${base}' was not found`);
-  fake.effects.setPrBase += 1;
   fake.baseChanges.push({ number: pr.number, base });
   pr.baseRef = base;
 }
