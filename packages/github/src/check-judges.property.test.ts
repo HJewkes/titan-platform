@@ -192,6 +192,11 @@ function* sampledSnapshots(count: number, seed: number): Generator<Snapshot> {
 
 const headInput = (snapshot: Snapshot): HeadChecksInput => ({ headSha: HEAD, contexts: snapshot.rules.contexts, runs: snapshot.runs, requiredApps: snapshot.requiredApps });
 
+/** Slice b's documented divergence: an unstarted run now sorts newest, where the oracle sorted it oldest. */
+function unstartedBesideStarted(runs: readonly CheckRun[]): boolean {
+  return runs.some((unstarted) => unstarted.startedAt === null && runs.some((other) => other.name === unstarted.name && other.startedAt !== null));
+}
+
 /** Collects mismatches instead of asserting per case, so one failure reports its first few cases, not 50k. */
 function mismatches(snapshots: Iterable<Snapshot>): { count: number; first: unknown[] } {
   const first: unknown[] = [];
@@ -204,6 +209,7 @@ function mismatches(snapshots: Iterable<Snapshot>): { count: number; first: unkn
     ] as const;
     for (const [judge, live, oracle] of checks) {
       if (JSON.stringify(live) === JSON.stringify(oracle)) continue;
+      if (judge === "latestPerName" && unstartedBesideStarted(snapshot.runs)) continue;
       count++;
       if (first.length < 5) first.push({ judge, snapshot, live, oracle });
     }
@@ -218,6 +224,13 @@ describe("check judges against their origin/main oracles", () => {
 
   it("agree on 20k seeded snapshots of two or three runs", () => {
     expect(mismatches(sampledSnapshots(20_000, 2465))).toEqual({ count: 0, first: [] });
+  });
+
+  it("latestPerName diverges on the documented unstarted-run inputs, picking the unstarted run", () => {
+    const diverged = Array.from(sampledSnapshots(20_000, 2465), (snapshot) => snapshot.runs).filter((runs) => JSON.stringify(latestPerName(runs)) !== JSON.stringify(oracleLatestPerName(runs)));
+
+    expect(diverged.length).toBeGreaterThan(0);
+    expect(diverged.every((runs) => latestPerName(runs).some((picked) => picked.startedAt === null) && unstartedBesideStarted(runs))).toBe(true);
   });
 });
 
