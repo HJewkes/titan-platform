@@ -50,8 +50,8 @@ export function definesAlias(cmd: Unwrapped): boolean {
  */
 function splitOptions(args: WordToken[]): { options: WordToken[]; operands: WordToken[] } {
   const at = args.findIndex((w) => w.dynamic || !/^[-+]./.test(w.value) || w.value === "--");
-  if (at === -1) return { options: args, operands: [] };
-  const end = args[at] as WordToken;
+  const end = args[at];
+  if (!end) return { options: args, operands: [] };
   const dropped = !end.dynamic && (end.value === "--" || end.value === "-");
   return { options: args.slice(0, at), operands: args.slice(dropped ? at + 1 : at) };
 }
