@@ -34,6 +34,10 @@ describe("a gh command path only known at run time", () => {
     ["a known value bash splits into the group and verb", 'X="pr merge"; gh $X 1'],
     ["the same value quoted, which no gh group matches", 'X="pr merge"; gh "$X" 1'],
     ["a known repo value bash splits into the path", 'R="o/r pr merge"; gh -R $R 1'],
+    ["a verb after a long flag the group level reads as taking a value", "gh pr --body x $V 1"],
+    ["a verb after a short flag the group level reads as taking a value", "gh pr -b x $V 1"],
+    ["a group after a flag the root reads as taking a value", "gh --body x $G merge 1"],
+    ["a verb after a flag whose value would be unknown", 'gh pr --body "$B" merge 1'],
   ])("is unknown for %s: %s", (_, line) => {
     expect(ghPathUnknown(ghArgs(line))).toBe(true);
   });
@@ -56,6 +60,9 @@ describe("a gh command path known as written", () => {
     ["a literal release", "gh release create v1"],
     ["a literal gist", "gh gist create f"],
     ["a literal option before the group", "gh --help pr view"],
+    ["a help flag before a variable past the verb", "gh pr -h view $N"],
+    ["a flag either reading leaves a known path after", "gh pr --body x view 1"],
+    ["a no-value flag with a known path either way", "gh pr --web view 1"],
   ])("is known for %s: %s", (_, line) => {
     expect(ghPathUnknown(ghArgs(line))).toBe(false);
   });

@@ -10,6 +10,8 @@ import { set } from "./options.js";
 const VERB_GROUPS = set("pr", "release", "workflow", "gist");
 /** gh options that take the next word as their value and may sit before the group. */
 const VALUE_OPTS = set("-R", "--repo", "--hostname");
+/** Flags every gh level defines as taking no value, so they never take the next word. */
+const NO_VALUE_FLAGS = set("-h", "--help");
 
 /** An unquoted dynamic word word-splits, so it can carry several path words; the test `shell/git.ts` uses. */
 const splits = (word: WordToken | undefined) => Boolean(word?.dynamic && (!word.quoted || word.unquotedExpansion));
@@ -25,39 +27,57 @@ function pathComplete(path: WordToken[]): boolean {
   return path.length >= 2 || (group !== undefined && !VERB_GROUPS.has(group.value));
 }
 
+/** One way gh may have read the words before `at`: the path words so far and whether a `--` ended the options. */
+interface Reading {
+  at: number;
+  path: WordToken[];
+  afterDashes: boolean;
+}
+
 /**
  * Whether the words that pick what gh does, the group and for a group in `VERB_GROUPS` its verb, are only known
- * at run time: an unknown word in a path slot, an unknown option word, or an option value that may split.
+ * at run time under any reading of the options before them: an unknown word in a path slot, an unknown option
+ * word, or an option value that may split.
  */
 export function ghPathUnknown(args: WordToken[]): boolean {
-  const path: WordToken[] = [];
-  let afterDashes = false;
-  for (let i = 0; i < args.length && !pathComplete(path); i++) {
-    const word = args[i];
-    if (word === undefined) break;
-    if (afterDashes || !optionShaped(word)) {
-      if (unknown(word)) return true;
-      path.push(word);
-    } else if (word.value === "--" && !unknown(word)) afterDashes = true;
-    else {
-      const width = optionWidth(word, args[i + 1]);
-      if (width === null) return true;
-      i += width - 1;
-    }
+  const seen = new Set<string>();
+  const pending: Reading[] = [{ at: 0, path: [], afterDashes: false }];
+  for (let reading = pending.pop(); reading; reading = pending.pop()) {
+    const key = `${reading.at}|${reading.afterDashes}|${reading.path.map((w) => w.value).join(" ")}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const next = step(args, reading);
+    if (next === null) return true;
+    pending.push(...next);
   }
   return false;
+}
+
+/** The readings after the word at `reading.at`, none once the path is complete, null when a path slot is unknown. */
+function step(args: WordToken[], reading: Reading): Reading[] | null {
+  const { at, path, afterDashes } = reading;
+  const word = args[at];
+  if (word === undefined || pathComplete(path)) return [];
+  if (afterDashes || !optionShaped(word)) return unknown(word) ? null : [{ at: at + 1, path: [...path, word], afterDashes }];
+  if (word.value === "--" && !unknown(word)) return [{ at: at + 1, path, afterDashes: true }];
+  const widths = optionWidths(word, args[at + 1]);
+  return widths && widths.map((width) => ({ at: at + width, path, afterDashes }));
 }
 
 /** A word gh may read as an option; an unknown word not written with a leading `-` is read as a path word. */
 const optionShaped = (word: WordToken) => word.value.length > 1 && word.value.startsWith("-");
 
-/** How many words an option spans, or null when that or what it leaves for the path is unknown. */
-function optionWidth(word: WordToken, next: WordToken | undefined): number | null {
+/**
+ * The words an option may span, or null when that or what it leaves for the path is unknown. Cobra lets a flag
+ * a level does not define as a no-value flag take the next word, and which level defines it depends on the path,
+ * so any other flag without an attached value may span one word or two.
+ */
+function optionWidths(word: WordToken, next: WordToken | undefined): number[] | null {
   const valueAt = attachedValueAt(word.value);
-  if (word.dynamic || isCaseUnsure(word) || splitsKnown(word)) return valueAt !== null && valueAt <= firstDynamic(word) && !splits(word) ? 1 : null;
-  if (valueAt !== null) return 1;
-  if (!takesNext(word.value)) return 1;
-  return splits(next) || splitsKnown(next) ? null : 2;
+  if (word.dynamic || isCaseUnsure(word) || splitsKnown(word)) return valueAt !== null && valueAt <= firstDynamic(word) && !splits(word) ? [1] : null;
+  if (valueAt !== null || NO_VALUE_FLAGS.has(word.value)) return [1];
+  if (splits(next) || splitsKnown(next)) return null;
+  return takesNext(word.value) ? [2] : [1, 2];
 }
 
 /** Where an option's own value starts inside its word (`--repo=x`, `-Rx`), null when it has none there. */
