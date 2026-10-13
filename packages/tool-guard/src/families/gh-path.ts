@@ -20,7 +20,10 @@ const splitsKnown = (word: WordToken | undefined) => Boolean(word?.unquotedExpan
 /** No gh command name holds a blank, so a path word with one is treated like an unknown one. */
 const unknown = (word: WordToken) => word.dynamic || isCaseUnsure(word) || /\s/.test(word.value);
 
-const pathComplete = (path: WordToken[]) => path.length >= 2 || (path.length === 1 && !VERB_GROUPS.has((path[0] as WordToken).value));
+function pathComplete(path: WordToken[]): boolean {
+  const [group] = path;
+  return path.length >= 2 || (group !== undefined && !VERB_GROUPS.has(group.value));
+}
 
 /**
  * Whether the words that pick what gh does, the group and for a group in `VERB_GROUPS` its verb, are only known
@@ -30,7 +33,8 @@ export function ghPathUnknown(args: WordToken[]): boolean {
   const path: WordToken[] = [];
   let afterDashes = false;
   for (let i = 0; i < args.length && !pathComplete(path); i++) {
-    const word = args[i] as WordToken;
+    const word = args[i];
+    if (word === undefined) break;
     if (afterDashes || !optionShaped(word)) {
       if (unknown(word)) return true;
       path.push(word);
