@@ -13,15 +13,23 @@ name: Release
 # by hand from the owner's own terminal (see CLAUDE.md). Setup: site/guides/autonomous-loop-setup.md.
 #
 # Release runs after a green CI run for a push to main, so it doesn't repeat CI's
-# build, typecheck, lint and test. Every main push's CI run completes and starts a
-# Release run. A run for a sha that is no longer the main tip skips its job, and a queued
-# run a newer one replaces never starts; pending changesets stay pending either way, so
-# the next Release for the tip releases them.
+# build, typecheck, lint and test. Every main push's CI run that is not replaced
+# while queued completes and starts a Release run. A run for a sha that is no longer
+# the main tip skips its job, and a queued run a newer one replaces never starts;
+# pending changesets stay pending either way, so the next Release for the tip
+# releases them.
+#
+# Each refresh of the Version Packages PR pushes a head that runs full CI, so a burst
+# of merges refreshes it at most once per 30 minutes. The hourly schedule picks up a
+# refresh the debounce skipped once merges stop. Publishing is never debounced: with
+# no pending changeset the action publishes, and nothing skips that.
 on:
   workflow_run:
     workflows: [CI]
     types: [completed]
     branches: [main]
+  schedule:
+    - cron: "23 * * * *"
 
 concurrency:
   group: release-${{ github.ref }}
@@ -33,13 +41,16 @@ jobs:
     # the main tip when the event fired. Requiring that it is the sha CI validated
     # keeps the commit and the tags on code that passed. If a newer push landed first,
     # its own CI run triggers the next Release.
+    # The gate step holds a scheduled run to the same bar: a green push CI run at the tip.
     if: >-
+      github.event_name == 'schedule' || (
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
-      github.event.workflow_run.head_sha == github.sha
+      github.event.workflow_run.head_sha == github.sha)
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: write
       pull-requests: write
       id-token: write
@@ -55,19 +66,49 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      # The full-history checkout carries origin/changeset-release/main, the Version Packages PR's branch.
+      - name: Decide whether to version or publish now
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          TIP: ${{ github.sha }}
+        run: |
+          go() { echo "run=$1" >> "$GITHUB_OUTPUT"; echo "$2" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; }
+          if [ "$EVENT_NAME" = schedule ]; then
+            green=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$TIP&event=push" --jq '[.workflow_runs[] | select(.conclusion == "success")] | length')
+            [ "$green" -gt 0 ] || go false "No green push CI run at $TIP yet; the Release run after it decides."
+          fi
+          pending=$(find .changeset -maxdepth 1 -name '*.md' ! -name README.md | wc -l)
+          if [ "$pending" -eq 0 ]; then
+            [ "$EVENT_NAME" = schedule ] && go false "No pending changeset; publishing follows the merge, not the schedule."
+            go true "No pending changeset: publish."
+          fi
+          branch=origin/changeset-release/main
+          git rev-parse --verify -q "$branch" > /dev/null || go true "No Version Packages branch yet: open it."
+          git merge-base --is-ancestor "$TIP" "$branch" && go false "The Version Packages branch already contains $TIP."
+          age=$(( $(date +%s) - $(git log -1 --format=%ct "$branch") ))
+          [ "$age" -ge 1800 ] || go false "The Version Packages PR was refreshed ${age}s ago; the next merge after 30 minutes or the hourly run refreshes it."
+          go true "Refresh the Version Packages PR."
+      - if: steps.gate.outputs.run == 'true'
+        uses: pnpm/action-setup@v4
+      - if: steps.gate.outputs.run == 'true'
+        uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
           cache: pnpm
           registry-url: https://registry.npmjs.org
       # Trusted publishing needs npm >= 11.5.1. Pinned to 11.x whatever npm .node-version bundles:
       # changesets passes pnpm's --git-checks to npm publish, which npm 12 rejects outright.
-      - run: npm install -g npm@11 && npm --version
+      - if: steps.gate.outputs.run == 'true'
+        run: npm install -g npm@11 && npm --version
       # No build here: `pnpm release` builds before `changeset publish`, and
       # `pnpm version-packages` reads package sources, not dist.
-      - run: pnpm install --frozen-lockfile
-      - name: Version packages or publish
+      - if: steps.gate.outputs.run == 'true'
+        run: pnpm install --frozen-lockfile
+      - if: steps.gate.outputs.run == 'true'
+        name: Version packages or publish
         uses: changesets/action@v1
         with:
           version: pnpm version-packages

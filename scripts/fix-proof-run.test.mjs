@@ -310,6 +310,12 @@ describe("fix-proof workflow", () => {
     expect(Object.keys(workflow.jobs).sort()).toEqual(["fix-proof", "fix-proof-base", "fix-proof-head"]);
   });
 
+  it("skips every job on the Version Packages PR, so the judge prints no error verdict for reports that never came", () => {
+    const guarded = Object.entries(workflow.jobs).filter(([, job]) => String(job.if ?? "").includes("github.head_ref != 'changeset-release/main'"));
+
+    expect(guarded.map(([id]) => id).sort()).toEqual(["fix-proof", "fix-proof-base", "fix-proof-head"]);
+  });
+
   it("only the head exec job restores or saves a cache, so a store its install tampered with reaches no base-side or judge job", () => {
     const caches = (job) => job.steps.some((step) => Object.keys(step.with ?? {}).some((key) => /cache/.test(key)) || /cache/.test(step.uses ?? ""));
 
@@ -339,7 +345,7 @@ describe("fix-proof workflow", () => {
 
   it("the judge job has no cache and installs only from the runner tree", () => {
     expect(judge.needs).toEqual(["fix-proof-base", "fix-proof-head"]);
-    expect(judge.if).toBe("${{ !cancelled() }}");
+    expect(judge.if).toBe("${{ !cancelled() && github.head_ref != 'changeset-release/main' }}");
     expect(judge.steps.some((step) => step.with !== undefined && "cache" in step.with)).toBe(false);
     expect(judge.steps.every((step) => step["working-directory"] === undefined || step["working-directory"] === "runner")).toBe(true);
     const setup = judge.steps.filter((step) => /^(pnpm\/action-setup|actions\/setup-node)@/.test(step.uses ?? ""));

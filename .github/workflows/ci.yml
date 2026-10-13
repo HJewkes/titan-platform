@@ -5,8 +5,12 @@ on:
     branches: [main]
   pull_request:
 
+# A pull request's newer head cancels its older run. Main pushes share one group without cancel-in-progress: the running
+# main CI finishes and saves the caches, and a newer push replaces only a run still queued behind it. The newer run
+# contains the replaced push, and Release acts only on the tip, so nothing goes untested or unreleased; Shepherd reads
+# a merge whose queued run was replaced on the newer push.
 concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || 'main-push' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -103,29 +107,6 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: pnpm index-version:check
 
-  # Type-aware rules (eslint.typed.config.js) need a TypeScript program per tsconfig, so they run beside the syntax lint, not in it.
-  lint-types:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      # Packages read each other's types from dist, so the build comes first; main's turbo cache makes it a replay.
-      - name: Restore turbo cache
-        uses: actions/cache/restore@v4
-        with:
-          path: .turbo/cache
-          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
-          restore-keys: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
-      - run: pnpm build
-        env:
-          TURBO_TELEMETRY_DISABLED: 1
-      - run: pnpm lint:types
-
   dag-check:
     runs-on: ubuntu-latest
     steps:
@@ -138,7 +119,19 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @titan-design/code-graph... --filter @titan-design/review-panel... run build
+      # A full build, not just the indexer's, because lint:types below reads every package's types from dist. Main's
+      # turbo cache makes it a replay; only validate saves that cache.
+      - name: Restore turbo cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+      - name: Build
+        id: build
+        run: pnpm build
+        env:
+          TURBO_TELEMETRY_DISABLED: 1
       # The indexer re-parses only files that changed since the cached graph (a cold head index is ~250 s).
       # The key covers the indexer's own code, so a schema or extractor change misses; the ISO week in the
       # key and the restore-key bounds a stale chain to a week, so each week's first main run indexes cold.
@@ -191,6 +184,12 @@ jobs:
         env:
           BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
         run: pnpm dead:check --db "$RUNNER_TEMP/graph.db"
+      # Type-aware rules (eslint.typed.config.js) need a TypeScript program per tsconfig, so they run beside the syntax
+      # lint, not in it. A step here rather than its own job saves a second checkout, install and build; it runs after a
+      # red DAG step too, so one push reports both.
+      - name: Lint with type-aware rules
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: pnpm lint:types
 
   # A required check must always report, so the job always runs and a pull request touching none of its inputs is a no-op.
   hub-compose:
