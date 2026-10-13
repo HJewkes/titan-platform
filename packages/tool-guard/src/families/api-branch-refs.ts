@@ -5,7 +5,7 @@ import type { WordToken } from "../shell/lexer.js";
  * The branches a GitHub REST ref write moves. A null entry is a branch known only at run time. The matcher does not
  * know the protected list, so it names every branch and the caller tests each one.
  */
-export interface BranchTarget {
+interface BranchTarget {
   branches: (string | null)[];
 }
 
