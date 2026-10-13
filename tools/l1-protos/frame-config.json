@@ -1,0 +1,56 @@
+{
+  "font": {
+    "family": "DejaVu Sans Mono",
+    "file": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+    "boldFile": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+    "xHeight": 0.547,
+    "advance": 0.602,
+    "lineHeight": 1.25
+  },
+  "themeFonts": {
+    "titan": { "family": "Space Grotesk", "xHeight": 0.5 }
+  },
+  "labelFloor": {
+    "xHeightFraction": 0.02,
+    "minViewerXHeightPx": 8
+  },
+  "safeArea": {
+    "x": 0.0125,
+    "y": 0.0333,
+    "titleStrip": 0.0556
+  },
+  "spacing": {
+    "boxPad": 0.583,
+    "boxGap": 0.9,
+    "layerGap": 1.0,
+    "layerGapOverview": 1.75,
+    "edgeGap": 0.3,
+    "edgeNode": 0.45,
+    "minGap": 0.25
+  },
+  "stroke": {
+    "baseEm": 0.0625,
+    "minViewerPx": 1
+  },
+  "cognitive": {
+    "groups": 7,
+    "boxes": 20,
+    "labels": 20,
+    "edges": 25,
+    "crossingsPerEdge": 0.25,
+    "unit": "boxes"
+  },
+  "labelChars": 14,
+  "stability": {
+    "maxMoveFraction": 0.25,
+    "maxOrderFlipFraction": 0.25
+  },
+  "frames": {
+    "720p": { "width": 1280, "height": 720, "viewScale": 1 },
+    "1080p": { "width": 1920, "height": 1080, "viewScale": 1 },
+    "1440p": { "width": 2560, "height": 1440, "viewScale": 1 },
+    "2160p": { "width": 3840, "height": 2160, "viewScale": 1 },
+    "portrait-1080": { "width": 1080, "height": 1920, "viewScale": 1 },
+    "1080p-embed-third": { "width": 1920, "height": 1080, "viewScale": 0.3333 }
+  }
+}

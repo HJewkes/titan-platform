@@ -2,12 +2,14 @@
 // a scene in layout units: { name, title, subtitle, elements, width, height, notes }.
 import { layout } from "./elk.mjs";
 import { aggregate, shortName } from "./model.mjs";
-import { CONTAINER_TOP, FONT, PAD, boxSize, edgeElement, element, fitTransform, strokeFor, withinBudget } from "./scene.mjs";
-import { placePills } from "./labels.mjs";
+import { CONTAINER_TOP, FONT, FRAME, LIMITS, PAD, SPACING, boxSize, edgeElement, element, fitTransform, strokeFor, withinBudget } from "./scene.mjs";
+import { placeHeaders, placePills } from "./labels.mjs";
 
-export const CAP = { boxes: 20, edges: 25, labelPx: FONT, topGroups: 7 };
-// Tighter layer channels for the nested views, which otherwise run taller than 1080.
-export const COMPACT = { "elk.layered.spacing.nodeNodeBetweenLayers": "40", "elk.spacing.nodeNode": "28", "elk.layered.spacing.edgeNodeBetweenLayers": "14" };
+// The caps are derived per frame (config.mjs): the smaller of the cognitive ceiling and the
+// geometric capacity of the content area at the label floor.
+export const CAP = { boxes: LIMITS.caps.boxes, edges: LIMITS.caps.edges, labelPx: FONT, topGroups: LIMITS.caps.groups };
+// Tighter layer channels for the nested views, which otherwise run taller than the frame.
+export const COMPACT = SPACING.compact;
 
 function containerOptions(lines, extra = {}) {
   const { w } = boxSize(lines);
@@ -37,7 +39,8 @@ function sceneFrom(laid, spec, edges, labelOf = () => null) {
     if (text) labelled.push([edge, text]);
   }
   const { pills, dropped } = placePills(elements, labelled);
-  return { elements: [...elements, ...pills], width: laid.width, height: laid.height, pillsDropped: dropped };
+  const headersMoved = placeHeaders(elements);
+  return { elements: [...elements, ...pills], width: laid.width, height: laid.height, pillsDropped: dropped, headersMoved };
 }
 
 function leaf(id, kind, lines, extra = {}) {
@@ -46,7 +49,7 @@ function leaf(id, kind, lines, extra = {}) {
 
 function addLeaf(nodes, spec, n) {
   nodes.push({ id: n.id, w: n.w, h: n.h, parent: n.parent, options: n.options });
-  spec.set(n.id, { kind: n.kind, lines: n.lines, extra: n.extra });
+  spec.set(n.id, { kind: n.kind, lines: n.lines, extra: { parent: n.parent, ...n.extra } });
 }
 
 function areaLines(area) {
@@ -81,8 +84,8 @@ function crossAtArea(model, key) {
   return (id, other) => (other !== undefined && areaOf(id) !== areaOf(other) ? areaOf(id) : key(id));
 }
 
-function openArea(nodes, spec, area, k, undrawn) {
-  // One header line: a second line costs 30 px of height, which is what the frame runs short of.
+function openArea(nodes, spec, area, k, undrawn, elisions) {
+  // One header line: a second line costs a line pitch of height, which is what the frame runs short of.
   const lines = [`${area.name} · ${plural(area.members.length, "pkg")}${undrawn > 0 ? ` · ${undrawn} edges cut` : ""}`];
   // Laid out on its own, a container does not inherit the root's options, so it repeats them.
   nodes.push({ id: area.id, options: containerOptions(lines, { algorithm: "layered", "elk.direction": "DOWN", "elk.edgeRouting": "ORTHOGONAL", ...COMPACT }) });
@@ -90,6 +93,8 @@ function openArea(nodes, spec, area, k, undrawn) {
   for (const p of area.members.slice(0, k)) addLeaf(nodes, spec, leaf(`pkg:${p.id}`, "box", [shortName(p.id)], { parent: area.id }));
   const hidden = area.members.length - k;
   if (hidden > 0) addLeaf(nodes, spec, leaf(`more:${area.id}`, "tile", [`+${hidden} more`], { parent: area.id }));
+  if (hidden > 0) elisions.push({ what: "packages", hidden, in: `more:${area.id}` });
+  if (undrawn > 0) elisions.push({ what: "edges", hidden: undrawn, in: area.id });
 }
 
 // Keeps the overview's left-to-right order inside each layer, so an expand moves cards less.
@@ -120,24 +125,31 @@ export async function expandInPlace(model, openIds, k = 5, orderHint = null) {
   const areaOfKey = (key) => model.packages.get(key.replace(/^pkg:/, ""))?.area ?? key.replace(/^more:/, "");
   const nodes = [];
   const spec = new Map();
+  const elisions = [];
   for (const a of inHintOrder(model.areas, orderHint)) {
-    if (open.has(a.id)) openArea(nodes, spec, a, k, dropped.filter((e) => areaOfKey(e.src) === a.id).length);
+    if (open.has(a.id)) openArea(nodes, spec, a, k, dropped.filter((e) => areaOfKey(e.src) === a.id).length, elisions);
     else addLeaf(nodes, spec, leaf(a.id, "box", areaLines(a)));
   }
   // Every cross-area edge ends on an area border, so each open area can be laid out on its own
   // (bottom-up) and sized to its contents instead of stretching across global layers.
-  const options = { ...COMPACT, "elk.layered.spacing.nodeNodeBetweenLayers": "36", "elk.hierarchyHandling": "SEPARATE_CHILDREN" };
+  const options = { ...COMPACT, "elk.hierarchyHandling": "SEPARATE_CHILDREN" };
   const laid = await layout(nodes, edges, orderHint ? { ...options, ...MODEL_ORDER } : options);
   const scene = sceneFrom(laid, spec, edges, (e) => (expandRank(e) === 0 && e.pairs > 1 ? String(e.pairs) : null));
   const names = openIds.map((id) => model.areas.find((a) => a.id === id).name).join(" + ");
   const subtitle = `top ${k} per open area by fan-in · outside edges end on the area border · ${dropped.length}/${all.length} edges cut`;
-  return { ...scene, k, name: "d3-expand-in-place", title: `D3 · expand in place (${names})`, subtitle };
+  return { ...scene, k, open: openIds.length, elisions, name: "d3-expand-in-place", title: `D3 · expand in place (${names})`, subtitle };
+}
+
+/** One line per rejected try, so a frame reports every fallback it took. */
+export function fallbackNote(label, scene) {
+  const c = FRAME.content;
+  return `${label}: ${Math.round(scene.width)}x${Math.round(scene.height)} exceeds ${c.width}x${c.height}`;
 }
 
 /**
  * D3 at the largest per-area k (≤ `kMax`) whose layout fits the frame unscaled at the label floor.
- * When even k = 1 overflows with every area in `openIds` open, the last one folds back to a card;
- * with one area left, k = 0 (its packages all behind "+N more") is the last resort.
+ * Fallback order: lower k, then collapse the last open area back to a card; with one area left,
+ * k = 0 (its packages all behind "+N more") is the last resort before switching design (D2).
  */
 export async function expandFitted(model, openIds, kMax, orderHint = null) {
   const tries = [];
@@ -145,12 +157,15 @@ export async function expandFitted(model, openIds, kMax, orderHint = null) {
     for (let k = kMax; k >= 1; k--) tries.push([open, k]);
   }
   tries.push([1, 0]);
+  const fallbacks = [];
   let scene;
   for (const [open, k] of tries) {
     scene = await expandInPlace(model, openIds.slice(0, open), k, orderHint);
     if (fitTransform(scene.width, scene.height).s >= 1) break;
+    fallbacks.push(fallbackNote(`open ${open} k ${k}`, scene));
   }
-  return scene;
+  if (fitTransform(scene.width, scene.height).s < 1) fallbacks.push("exhausted: switch design (D2)");
+  return { ...scene, fallbacks };
 }
 
 export { addLeaf, leaf, plural };

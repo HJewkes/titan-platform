@@ -22,8 +22,9 @@ function card(r) {
 }
 
 export function indexHtml(results, cap) {
-  const designs = results.filter((r) => r.name !== "motion");
-  const clip = results.find((r) => r.name === "motion")?.clip;
+  const designs = results.filter((r) => !r.clip);
+  const motion = results.find((r) => r.clip) ?? { name: "motion" };
+  const clip = motion.clip;
   const head = ["frame", "boxes", "edges", "labels", "min label px", "label overlaps", "label overflow", "fit scale", "verdict"];
   return `<!doctype html><html><head><meta charset="utf-8"><title>L1 legibility designs</title><style>
 body{font-family:system-ui,sans-serif;margin:16px;background:#f4f4f4}
@@ -37,9 +38,9 @@ Images below are at true 1080 scale (scroll sideways). <button onclick="document
 <table><tr>${head.map((h) => `<th>${h}</th>`).join("")}</tr>${designs.map((r) => row(r, cap)).join("")}
 ${(clip?.stages ?? []).map((s) => stageRow(s, cap)).join("")}</table>
 <div class="row">${designs.map(card).join("")}</div>
-<h2>Level transition (expand, then zoom)</h2>
-<p><a href="motion/transition.html">interactive player (play, loop, scrubber)</a></p>
-<p>Mental map: ${esc(JSON.stringify(results.find((r) => r.name === "motion")?.mental ?? {}))}</p>
-<video src="motion/transition.mp4" controls autoplay loop muted playsinline></video>
+<h2>Level transition</h2>
+<p><a href="${motion.name}/transition.html">interactive player (play, loop, scrubber)</a></p>
+<p>Mental map: ${esc(JSON.stringify(motion.mental ?? {}))}</p>
+<video src="${motion.name}/transition.mp4" controls autoplay loop muted playsinline></video>
 </body></html>`;
 }

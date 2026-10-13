@@ -1,4 +1,5 @@
-// Page styling by L1_THEME: "plain" (the study's original look), or "dark" / "light" on titan-design.
+// Page styling by L1_THEME: "plain" (the study's original look, in the config's pinned face), or
+// "dark" / "light" on titan-design.
 // The titan themes inline the real token CSS from the @titan-design/react-ui this repo already
 // depends on (apps/codewatch), titan's self-hosted heading and body faces, and theme/diagram.css.
 import { readFileSync } from "node:fs";
@@ -13,9 +14,9 @@ const CONSUMER = path.join(HERE, "..", "..", "..", "apps", "codewatch", "package
 export const THEMES = ["plain", "dark", "light"];
 
 const PLAIN = `
-body{margin:0;background:#2b2f36;font-family:"DejaVu Sans Mono",Menlo,monospace;color:#ddd}
+body{background:#2b2f36;color:#ddd}
 svg.frame{background:#fff}.bg{fill:#fff}
-text{font-family:"DejaVu Sans Mono",Menlo,monospace;fill:#1b2a41}
+text{fill:#1b2a41}
 .r.box{fill:#fff;stroke:#4a6fa5;stroke-width:2}.r.container{fill:#f3f7fd;stroke:#4a6fa5;stroke-width:1.5}
 .r.tile{fill:#f7f7f7;stroke:#888;stroke-width:1.5;stroke-dasharray:6 4}.r.chip{fill:#efe9f8;stroke:#7d5ba6;stroke-width:2}
 .r.band{fill:#f6f2fb}.r.elabel{fill:#fff;stroke:#c0392b;stroke-width:1}

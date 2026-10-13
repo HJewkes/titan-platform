@@ -1,13 +1,16 @@
-// Scenes (layout units) to frames (screen px), and the level-transition clip's timeline.
-import { cameraOnto, fitTransform, toScreen } from "./scene.mjs";
-import { labelEdgeHits } from "./labels.mjs";
+// Scenes (layout units) to frames (frame px), and the level-transition clip's timeline.
+import { LIMITS, cameraOnto, fitTransform, toScreen } from "./scene.mjs";
+import { checkFrame, mentalMap } from "./rules.mjs";
 
-/** A design's static frame: the scene fitted into the 1920x1080 content area. */
-export function frameOf(scene) {
+export { mentalMap };
+
+/** A design's static frame: the scene fitted into the frame's content area, with every rule checked. */
+export function frameOf(scene, prev = null) {
   const t = fitTransform(scene.width, scene.height);
   const elements = toScreen(scene.elements, t);
-  const checks = { pillsDropped: scene.pillsDropped ?? 0, labelEdgeHits: labelEdgeHits(elements) };
-  return { name: scene.name, title: scene.title, subtitle: scene.subtitle, fit: +t.s.toFixed(3), k: scene.k ?? null, checks, elements };
+  const frame = { name: scene.name, title: scene.title, subtitle: scene.subtitle, fit: +t.s.toFixed(3), k: scene.k ?? null, open: scene.open ?? null, elisions: scene.elisions ?? [], fallbacks: scene.fallbacks ?? [], elements };
+  const checks = { pillsDropped: scene.pillsDropped ?? 0, headersMoved: scene.headersMoved ?? null, ...checkFrame(frame, LIMITS, prev) };
+  return { ...frame, checks };
 }
 
 export function staticData(frame) {
@@ -36,6 +39,50 @@ function underCamera(frame, keep, cam) {
   return { ...frame, elements };
 }
 
+const PROXY = /^(top|bot):/;
+
+/**
+ * The frame as a viewer tracks it: a border proxy is the box it stands for (`top:area:x` is
+ * `area:x`, `top:pkg-id` is `pkg:pkg-id`), an area in both bands counts once at its first proxy,
+ * and the bands themselves are frame furniture, not boxes. For mentalMap, not for the rules.
+ */
+export function asTracked(frame) {
+  const seen = new Set();
+  const elements = [];
+  for (const e of frame.elements) {
+    if (e.kind === "band" || e.kind === "edge" || e.kind === "elabel") continue;
+    const bare = e.id.replace(PROXY, "");
+    const id = PROXY.test(e.id) && !/^(area|pkg|more|file):/.test(bare) ? `pkg:${bare}` : bare;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    elements.push({ ...e, id });
+  }
+  return { ...frame, elements };
+}
+
+/**
+ * The ladder D2 → D4 → D5. With `zoom`, D2 → D4 is a camera move that carries the area card onto
+ * the place D4 draws that area's container, so the box the viewer watches does not jump; without
+ * it, D2 → D4 is the same staged cross-step morph as D4 → D5.
+ */
+export function ladderData(overview, focus, pkg, targetId, targetName, zoom = true) {
+  const steps = [{ kind: "hold", frame: 0, dur: 1.5, label: "D2 overview" }];
+  const frames = [overview];
+  let enter = { kind: "morph", from: 0, to: 1, dur: 2.4, label: `D2 → D4: enter ${targetName}` };
+  if (zoom) {
+    const card = overview.elements.find((e) => e.id === targetId);
+    const area = focus.elements.find((e) => e.id === targetId);
+    const cam = cameraOnto(card, { x: area.x, y: area.y, width: area.w, height: area.h });
+    frames.push(underCamera(overview, [targetId], cam));
+    steps.push({ kind: "camera", frame: 0, keep: [targetId], to: cam, dur: 1.4, label: `D2 → D4: zoom into ${targetName}` });
+    enter = { kind: "morph", from: 1, to: 2, dur: 1.8, label: `D2 → D4: enter ${targetName}` };
+  }
+  frames.push(focus, pkg);
+  const [d4, d5] = [frames.length - 2, frames.length - 1];
+  steps.push(enter, { kind: "hold", frame: d4, dur: 2.5, label: "D4 area focus" }, { kind: "morph", from: d4, to: d5, dur: 2.4, label: "D4 → D5: enter package" }, { kind: "hold", frame: d5, dur: 2.5, label: "D5 package focus" });
+  return { static: false, frames, timeline: steps };
+}
+
 /** overview → expand two areas → zoom onto one → enter it (border bands appear). */
 export function transitionData(overview, expanded, focus, targetId, targetName) {
   const keep = insideIds(expanded, targetId);
@@ -51,27 +98,4 @@ export function transitionData(overview, expanded, focus, targetId, targetName) 
     { kind: "hold", frame: 3, dur: 2.5, label: "4 focus" },
   ];
   return { static: false, frames: [overview, expanded, zoomed, focus], timeline };
-}
-
-const centre = (e) => ({ x: e.x + e.w / 2, y: e.y + e.h / 2 });
-
-/**
- * How much a morph disturbs the mental map: for boxes in both frames, the mean centre
- * displacement and the share of box pairs whose left/right or above/below order flips.
- */
-export function mentalMap(from, to) {
-  const b = new Map(to.elements.filter((e) => e.kind !== "edge" && e.kind !== "elabel").map((e) => [e.id, e]));
-  const both = from.elements.filter((e) => b.has(e.id) && e.kind !== "edge" && e.kind !== "elabel");
-  const moves = both.map((e) => Math.hypot(centre(e).x - centre(b.get(e.id)).x, centre(e).y - centre(b.get(e.id)).y));
-  let [pairs, flips] = [0, 0];
-  for (let i = 0; i < both.length; i++) {
-    for (let j = i + 1; j < both.length; j++) {
-      const [a0, b0, a1, b1] = [centre(both[i]), centre(both[j]), centre(b.get(both[i].id)), centre(b.get(both[j].id))];
-      const flipped = (u, v) => Math.abs(u) > 4 && Math.abs(v) > 4 && Math.sign(u) !== Math.sign(v);
-      pairs++;
-      if (flipped(b0.x - a0.x, b1.x - a1.x) || flipped(b0.y - a0.y, b1.y - a1.y)) flips++;
-    }
-  }
-  const mean = moves.length ? moves.reduce((s, m) => s + m, 0) / moves.length : 0;
-  return { persisting: both.length, meanMovePx: Math.round(mean), orderFlips: `${flips}/${pairs}` };
 }

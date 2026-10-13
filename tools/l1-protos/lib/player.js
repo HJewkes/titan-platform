@@ -1,7 +1,8 @@
-// Browser side of the l1-protos player: draws keyframes (screen-px scenes) into a 1920x1080
-// SVG, tweens between them on a staged timeline, and measures what a frame shows.
-/* global document, window, requestAnimationFrame, location */
+// Browser side of the l1-protos player: draws keyframes (frame-px scenes) into the SVG frame,
+// tweens between them on a staged timeline, and measures what a frame shows.
+/* global document, window, requestAnimationFrame, location, XMLSerializer */
 const DATA = JSON.parse(document.getElementById("data").textContent);
+const FRAME = DATA.frame;
 const BOX_KINDS = new Set(["box", "container", "tile", "chip"]);
 const clamp = (v) => Math.max(0, Math.min(1, v));
 const ease = (v) => (v < 0.5 ? 2 * v * v : 1 - (-2 * v + 2) ** 2 / 2);
@@ -21,13 +22,15 @@ function rectSvg(e, op) {
 // Pills and chips centre their one line: a proportional face runs narrower than the box allows.
 const CENTRED = new Set(["chip", "elabel"]);
 
+// Label origin: box padding and line pitch are em fractions of the font size (frame config).
 function textSvg(e, op) {
-  const s = e.fs / 24;
+  const pad = e.fs * FRAME.padEm;
   const centred = CENTRED.has(e.kind) && e.lines.length === 1;
   const anchor = centred ? ' text-anchor="middle"' : "";
   return e.lines
     .map((line, i) => {
-      const [x, y] = [centred ? e.x + e.w / 2 : e.x + 14 * s, e.y + 14 * s + e.fs * 0.8 + i * 30 * s];
+      const x = (centred ? e.x + e.w / 2 : e.x + pad) + (e.ldx ?? 0);
+      const y = e.y + pad + e.fs * 0.8 + i * e.fs * FRAME.lineEm + (e.ldy ?? 0);
       const cls = `lbl ${e.kind}${i === 0 ? " head" : ""}`;
       return `<text class="${cls}" data-box="${esc(e.id)}"${toneAttr(e)}${anchor} x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${e.fs.toFixed(2)}" opacity="${op}">${esc(line)}</text>`;
     })
@@ -38,7 +41,8 @@ function edgeSvg(e, op) {
   return `<path class="edge ${e.cls ?? ""}" data-id="${esc(e.id)}" d="${pathD(e.points)}" stroke-width="${e.sw.toFixed(2)}" opacity="${op}" marker-end="url(#arrow)"/>`;
 }
 
-// Paint order: bands, containers, edges, boxes and pills on top, labels last.
+// Paint order: bands, containers, edges, boxes and pills on top, labels last. A container
+// header ("head") is text only: it occupies layout space but draws no rect.
 function paint(items, cam) {
   const layer = (pred) => items.filter(([e, op]) => op > 0.005 && pred(e));
   const rects = (pred) => layer(pred).map(([e, op]) => rectSvg(e, op)).join("");
@@ -46,7 +50,7 @@ function paint(items, cam) {
     rects((e) => e.kind === "band"),
     rects((e) => e.kind === "container"),
     layer((e) => e.kind === "edge").map(([e, op]) => edgeSvg(e, op)).join(""),
-    rects((e) => e.kind !== "band" && e.kind !== "container" && e.kind !== "edge"),
+    rects((e) => !["band", "container", "edge", "head"].includes(e.kind)),
     layer((e) => e.kind !== "edge").map(([e, op]) => textSvg(e, op)).join(""),
   ].join("");
   const g = document.getElementById("scene");
@@ -64,9 +68,9 @@ const byId = (frame) => new Map(frame.elements.map((e) => [e.id, e]));
 const sameEdge = (a, b) => JSON.stringify(a.points) === JSON.stringify(b.points);
 
 function morphBox(a, b, q) {
-  const keys = ["x", "y", "w", "h", "fs"];
+  const keys = ["x", "y", "w", "h", "fs", "ldx", "ldy"];
   const out = { ...(q < 0.5 ? a : b) };
-  for (const k of keys) out[k] = lerp(a[k], b[k], q);
+  for (const k of keys) out[k] = lerp(a[k] ?? 0, b[k] ?? 0, q);
   return out;
 }
 
@@ -140,7 +144,7 @@ function inside(inner, outer) {
 
 // What one frame shows, measured from the rendered DOM rather than the scene data.
 function measure() {
-  const view = { left: 0, top: 0, right: 1920, bottom: 1080 };
+  const view = { left: 0, top: 0, right: FRAME.width, bottom: FRAME.height };
   const shown = (el) => +el.getAttribute("opacity") > 0.01 && rectsHit(el.getBoundingClientRect(), view);
   const rects = [...document.querySelectorAll("#scene rect.r")].filter(shown);
   const boxes = rects.filter((r) => [...r.classList].some((c) => BOX_KINDS.has(c)));
@@ -153,6 +157,7 @@ function measure() {
   const overflow = labels.filter((l, i) => !inside(lr[i], boxRect.get(l.dataset.box) ?? lr[i])).length;
   const px = labels.map((l) => +l.getAttribute("font-size") * scale);
   const offscreen = boxes.filter((b) => !inside(b.getBoundingClientRect(), view)).length;
+  const fonts = [...document.fonts].map((f) => `${f.family}:${f.weight}:${f.status}`).sort();
   return {
     boxes: boxes.length,
     edges: [...document.querySelectorAll("#scene path.edge")].filter(shown).length,
@@ -161,6 +166,7 @@ function measure() {
     labelOverlaps: overlaps,
     labelOverflow: overflow,
     boxesCutByFrame: offscreen,
+    fonts,
   };
 }
 
@@ -168,6 +174,7 @@ const duration = DATA.timeline.reduce((n, s) => n + s.dur, 0);
 window.__duration = duration;
 window.__seek = (t) => render(t);
 window.__measure = measure;
+window.__svg = () => new XMLSerializer().serializeToString(document.querySelector("svg.frame"));
 
 function wireControls() {
   const [play, loop, scrub, time] = ["play", "loop", "scrub", "time"].map((id) => document.getElementById(id));

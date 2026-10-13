@@ -5,20 +5,21 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 import { ROOT } from "./graph.mjs";
+import { SPACING } from "./scene.mjs";
 
 const require = createRequire(path.join(ROOT, "packages/graph-layout/package.json"));
 const ELK = require("elkjs/lib/elk.bundled.js");
 
+// Spacing comes from config (em fractions of the label floor); the rest pins the algorithm.
+// Layered with these options is deterministic: no random seed is read and node order is the
+// input order, which every caller sorts.
 export const BASE_OPTIONS = {
   algorithm: "layered",
   "elk.direction": "DOWN",
   "elk.edgeRouting": "ORTHOGONAL",
   "elk.hierarchyHandling": "INCLUDE_CHILDREN",
-  "elk.layered.spacing.nodeNodeBetweenLayers": "70",
-  "elk.spacing.nodeNode": "36",
-  "elk.layered.spacing.edgeNodeBetweenLayers": "18",
-  "elk.spacing.edgeNode": "18",
-  "elk.spacing.edgeEdge": "12",
+  ...SPACING.overview,
+  ...SPACING.edges,
   "elk.json.shapeCoords": "ROOT",
   "elk.json.edgeCoords": "ROOT",
 };

@@ -1,9 +1,8 @@
 // D4 (one area entered) and D5 (one package entered, top-k files), both under the cap.
-import { CAP, capProxies, fitStubs, containerOptions, focusEdges, focusScene, proxyNodes, refold, shortName } from "./focus.mjs";
-import { boxSize, fitTransform } from "./scene.mjs";
-import { MODEL_ORDER } from "./designs.mjs";
-
-const PROXIES_PER_BAND = 4;
+import { CAP, PROXIES_PER_BAND, capProxies, fitStubs, containerOptions, focusEdges, focusElisions, focusScene, proxyNodes, refold, shortName, wrapLines } from "./focus.mjs";
+import { LIMITS, boxSize, fitTransform } from "./scene.mjs";
+import { MODEL_ORDER, fallbackNote } from "./designs.mjs";
+import { crossingBudget, crossingCount } from "./rules.mjs";
 
 function plural(n, word) {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -20,9 +19,11 @@ function leafNode(nodes, spec, id, kind, lines, parent) {
   spec.set(id, { kind, lines });
 }
 
+// The container itself carries no text; its header goes to the gutter (focusScene `headers`).
 function containerNode(nodes, spec, id, lines, parent) {
-  nodes.push({ id, parent, options: containerOptions(lines) });
-  spec.set(id, { kind: "container", lines });
+  nodes.push({ id, parent, options: containerOptions([]) });
+  spec.set(id, { kind: "container", lines: [] });
+  return { of: id, lines: wrapLines(lines.join(" · ")) };
 }
 
 function withoutProxyPairs(edges) {
@@ -37,20 +38,42 @@ function bordered(rawEdges, nameOf) {
   return { edges: folded, proxies: proxyNodes(folded, nameOf, hidden) };
 }
 
+// Fewest edges a focus view keeps when crossings force the budget down: one stub per band side.
+const EDGE_BUDGET_FLOOR = 4;
+
+// Lower k until the scene fits unscaled; once it fits, lower the edge budget while the routes
+// cross more than the budget allows. Every rejected try is recorded; k = 1 and the edge floor
+// are the ends, after which the only fallback is another design.
+async function fitted(build, k0, step) {
+  const fallbacks = [];
+  let [k, edges] = [k0, CAP.edges];
+  for (;;) {
+    const scene = await build(k, edges);
+    const fits = fitTransform(scene.width, scene.height).s >= 1;
+    const [crossings, budget] = [crossingCount(scene.elements), crossingBudget(scene.elements, LIMITS)];
+    if (fits && crossings <= budget) return { ...scene, fallbacks };
+    if (fits) {
+      if (edges <= EDGE_BUDGET_FLOOR) return { ...scene, fallbacks: [...fallbacks, `edges ${edges}: ${crossings} crossings > ${budget}, at the edge floor`] };
+      fallbacks.push(`edges ${edges} → ${Math.max(EDGE_BUDGET_FLOOR, Math.floor(edges * 0.8))}: ${crossings} crossings > ${budget}`);
+      edges = Math.max(EDGE_BUDGET_FLOOR, Math.floor(edges * 0.8));
+      continue;
+    }
+    fallbacks.push(fallbackNote(`k ${k}`, scene));
+    if (k <= 1) return { ...scene, fallbacks: [...fallbacks, "exhausted: switch design"] };
+    k -= step(k);
+  }
+}
+
 /**
- * D4 at the largest package count (≤ the box cap) whose layout fits the frame at 24 px. A
- * "+1 more" tile costs the same box as the package it hides, so k never stops one short.
+ * D4 at the largest package count (≤ the box cap) whose layout fits the frame at the label
+ * floor. A "+1 more" tile costs the same box as the package it hides, so k never stops one short.
  */
 export async function areaFocus(model, areaId, orderHint = null) {
   const area = model.areas.find((a) => a.id === areaId);
   const probe = bordered(areaEdges(model, area, area.members.length), (id) => areaNameOf(model, id));
-  const room = CAP.boxes - 2 - probe.proxies.length;
-  let k = area.members.length <= room + 1 ? area.members.length : room;
-  for (;;) {
-    const scene = await areaFocusAt(model, area, k, orderHint);
-    if (fitTransform(scene.width, scene.height).s >= 1 || k <= 1) return scene;
-    k -= k === area.members.length ? 2 : 1;
-  }
+  const room = Math.max(1, CAP.boxes - 2 - probe.proxies.length);
+  const k0 = area.members.length <= room + 1 ? area.members.length : room;
+  return fitted((k, edges) => areaFocusAt(model, area, k, orderHint, edges), k0, (k) => (k === area.members.length ? 2 : 1));
 }
 
 function areaNameOf(model, id) {
@@ -72,17 +95,19 @@ function hinted(packages, orderHint) {
   return [...packages].sort((a, b) => rank(a) - rank(b));
 }
 
-async function areaFocusAt(model, area, k, orderHint) {
+async function areaFocusAt(model, area, k, orderHint, edgeBudget = CAP.edges) {
   const { edges: all, proxies } = bordered(areaEdges(model, area, k), (id) => areaNameOf(model, id));
-  const { edges, cut, rerouted } = fitStubs(all, area.id, CAP.edges);
+  const { edges, cut, rerouted } = fitStubs(all, area.id, edgeBudget);
   const nodes = [];
   const spec = new Map();
-  containerNode(nodes, spec, area.id, budgetLines(`${area.name} · ${plural(area.members.length, "pkg")}`, cut, rerouted));
+  const header = containerNode(nodes, spec, area.id, budgetLines(`${area.name} · ${plural(area.members.length, "pkg")}`, cut, rerouted));
   for (const p of hinted(area.members.slice(0, k), orderHint)) leafNode(nodes, spec, `pkg:${p.id}`, "box", [shortName(p.id)], area.id);
   if (area.members.length > k) leafNode(nodes, spec, `more:${area.id}`, "tile", [`+${area.members.length - k} more`], area.id);
-  const scene = await focusScene(nodes, spec, edges, proxies, orderHint ? MODEL_ORDER : {});
+  const scene = await focusScene(nodes, spec, edges, proxies, orderHint ? MODEL_ORDER : {}, [header]);
+  const elisions = focusElisions(area.id, proxies, cut, rerouted);
+  if (area.members.length > k) elisions.push({ what: "packages", hidden: area.members.length - k, in: `more:${area.id}` });
   const subtitle = "other areas as proxies · top band: what imports the focus · bottom band: what it imports";
-  return { ...scene, k, name: "d4-area-focus", title: `D4 · area focus (${area.name}) with border bands`, subtitle };
+  return { ...scene, k, elisions, name: "d4-area-focus", title: `D4 · area focus (${area.name}) with border bands`, subtitle };
 }
 
 const FILES_MAX = 10;
@@ -128,20 +153,16 @@ function hiddenLines(pkg, files, shown) {
   return [`+${hidden.length - types} files`, `+${pkg.counts.test} tests · +${types} types`, "not shown"];
 }
 
-/** D5 at the largest file count (≤ the box cap) whose layout fits the frame at 24 px. */
+/** D5 at the largest file count (≤ the box cap) whose layout fits the frame at the label floor. */
 export async function packageFocus(model, pkgId) {
   const { ranked } = fileStats(model, pkgId);
   const probe = bordered(fileEdges(model, pkgId, new Set(ranked.slice(0, FILES_MAX).map((f) => f.id))).edges, shortName);
-  let k = Math.min(FILES_MAX, CAP.boxes - 2 - probe.proxies.length);
-  for (;;) {
-    const scene = await packageFocusAt(model, pkgId, k);
-    if (fitTransform(scene.width, scene.height).s >= 1 || k <= 1) return scene;
-    k -= 1;
-  }
+  const k0 = Math.max(1, Math.min(FILES_MAX, CAP.boxes - 2 - probe.proxies.length));
+  return fitted((k, edges) => packageFocusAt(model, pkgId, k, edges), k0, () => 1);
 }
 
 /** D5: one package, its top-k files (dir/name labels), the rest counted in one tile. */
-async function packageFocusAt(model, pkgId, k) {
+async function packageFocusAt(model, pkgId, k, edgeBudget = CAP.edges) {
   const pkg = model.packages.get(pkgId);
   const { files, ranked } = fileStats(model, pkgId);
   const shownFiles = ranked.slice(0, k);
@@ -149,14 +170,16 @@ async function packageFocusAt(model, pkgId, k) {
   const { edges: raw, total } = fileEdges(model, pkgId, shown);
   const root = `pkg:${pkgId}`;
   const { edges: all, proxies } = bordered(raw, shortName);
-  const { edges, cut, rerouted } = fitStubs(all, root, CAP.edges);
+  const { edges, cut, rerouted } = fitStubs(all, root, edgeBudget);
   const nodes = [];
   const spec = new Map();
-  containerNode(nodes, spec, root, budgetLines(`${shortName(pkgId)} · ${files.length} files`, cut, rerouted));
+  const header = containerNode(nodes, spec, root, budgetLines(`${shortName(pkgId)} · ${files.length} files`, cut, rerouted));
   for (const f of shownFiles) leafNode(nodes, spec, `file:${f.id}`, "box", [fileLabel(f, pkg.dir)], root);
   leafNode(nodes, spec, `more:${pkgId}`, "tile", hiddenLines(pkg, files, shown), root);
-  const scene = await focusScene(nodes, spec, edges, proxies);
+  const scene = await focusScene(nodes, spec, edges, proxies, {}, [header]);
   const drawn = edges.reduce((n, e) => n + e.pairs, 0);
+  const elisions = focusElisions(root, proxies, cut, rerouted);
+  elisions.push({ what: "files", hidden: files.filter((f) => !shown.has(f.id) && f.role !== "types").length, in: `more:${pkgId}` });
   const subtitle = `files ranked by fan-in, barrels excluded · ${drawn} of ${total} file edges drawn as ${edges.length} lines`;
-  return { ...scene, k, name: "d5-package-focus", title: `D5 · package focus (${shortName(pkgId)}): top ${shownFiles.length} files`, subtitle };
+  return { ...scene, k, elisions, name: "d5-package-focus", title: `D5 · package focus (${shortName(pkgId)}): top ${shownFiles.length} files`, subtitle };
 }

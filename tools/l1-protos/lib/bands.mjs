@@ -30,7 +30,7 @@ function placeRows(rows) {
     let x = header + PAD;
     for (const c of r.chips) {
       const { w, h } = boxSize(c.lines);
-      elements.push(element(c.id, c.kind, c.lines, { x, y: y + ROW.pad, w, h }));
+      elements.push(element(c.id, c.kind, c.lines, { x, y: y + ROW.pad, w, h }, { parent: r.id }));
       x += w + ROW.chipGap;
     }
     right = Math.max(right, x + PAD);
@@ -68,6 +68,7 @@ export async function tierBands(model, k = 3) {
   });
   const all = [...elements, ...labelled.map(([e]) => e)];
   const { pills, dropped } = placePills(all, labelled);
+  const elisions = elements.filter((e) => e.kind === "tile").map((e) => ({ what: "packages", hidden: Number(e.lines[0].match(/\d+/)[0]), in: e.id }));
   const subtitle = `top ${k} packages per tier by fan-in · right gutter: package edges between tiers`;
-  return { elements: [...all, ...pills], width: right + LANE * edges.length + PAD, height, pillsDropped: dropped, name: "d1-tier-bands", title: "D1 · tier bands (declared CI tiers)", subtitle };
+  return { elements: [...all, ...pills], width: right + LANE * edges.length + PAD, height, pillsDropped: dropped, elisions, name: "d1-tier-bands", title: "D1 · tier bands (declared CI tiers)", subtitle };
 }
