@@ -1,6 +1,6 @@
 import type { SimpleCommand } from "../shell/commands.js";
 import { isCaseUnsure } from "../shell/case-attrs.js";
-import { parseGit } from "../shell/git.js";
+import { parseGit, splits } from "../shell/git.js";
 import type { GitInvocation } from "../shell/git.js";
 import type { WordToken } from "../shell/lexer.js";
 import { classified } from "../spellings.js";
@@ -122,17 +122,53 @@ function pushDestination(spec: string, head: string | null): string | null {
 function literalSpec(word: WordToken): string | null {
   if (!word.dynamic && !isCaseUnsure(word)) return word.value;
   const typed = word.typed ?? word.value;
-  const tail = typed.slice(typed.lastIndexOf(":") + 1);
-  if (typed.includes(":") && !/[$`]/.test(tail)) return `:${tail}`;
+  const colon = refspecColon(typed);
+  const tail = typed.slice(colon + 1);
+  if (colon >= 0 && PLAIN_REF_RE.test(tail) && !cutAfterColon(word)) return `:${tail}`;
   return isCaseUnsure(word) ? `:${UNKNOWN}` : null;
 }
 
+const PLAIN_REF_RE = /^[\w./@+-]+$/;
+
+/** `value` leaves out a `$(...)` or backquote's text, so `"HEAD:$(cmd)"` reads `HEAD:` though the output is the destination. */
+const cutAfterColon = (word: WordToken) => (word.cuts ?? []).some((cut) => cut.at > refspecColon(word.value));
+
+/** The last colon outside any `${...}`, `$(...)` or backquote, where `${B:-main}` and `${B:0:4}` hide colons of their own. */
+function refspecColon(text: string): number {
+  let depth = 0;
+  let backquoted = false;
+  let found = -1;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    const opens = c === "$" && (text[i + 1] === "{" || text[i + 1] === "(");
+    if (opens) i++;
+    if (c === "`") backquoted = !backquoted;
+    else if (opens || (depth > 0 && (c === "{" || c === "("))) depth++;
+    else if (depth > 0 && (c === "}" || c === ")")) depth--;
+    else if (c === ":" && depth === 0 && !backquoted) found = i;
+  }
+  return found;
+}
+
+/**
+ * A refspec known only at run time, or an unquoted dynamic word that may split into one, may name any branch,
+ * so it reads as a push to an unknown destination.
+ */
+function hasUnknownDestination(git: GitInvocation, refspecs: WordToken[]): boolean {
+  return git.subArgs.some((w) => splits(w) || expandsToMany(w)) || refspecs.some((s) => literalSpec(s) === null);
+}
+
+/** `"$@"` and `"${arr[@]}"`, with or without an operator such as `:0` or `#x`, give one word per element even when quoted, so any of them may be a refspec. */
+const expandsToMany = (word: WordToken) => word.dynamic && /\$@|\$\{@|\[@\]/.test(word.typed ?? word.value);
+
 function gitPush(git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] {
   const options = readOptions(git.subArgs, GIT_PUSH_VALUES);
-  const specs = options.positionals.slice(1).flatMap((s) => literalSpec(s) ?? []);
+  const refspecs = options.positionals.slice(1);
+  const specs = refspecs.flatMap((s) => literalSpec(s) ?? []);
   if (hasFlag(options, "--all", "--branches", "--mirror") || specs.some((s) => s.includes("*"))) {
     return [classified("bash.merge.git-push-all", {})];
   }
+  if (hasUnknownDestination(git, refspecs)) return pushSpecs([...specs, UNKNOWN], git, ctx);
   if (options.positionals.length > 1) return pushSpecs(specs, git, ctx);
   if (hasFlag(options, "--tags", "--delete", "-d")) return [];
   const head = headOf(git, ctx);

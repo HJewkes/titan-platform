@@ -57,7 +57,8 @@
           "packages/owner-queue",
           "packages/review-panel",
           "packages/pm",
-          "packages/throughput"
+          "packages/throughput",
+          "packages/graph-layout"
         ],
         "ui": [
           "packages/react-app"
@@ -125,7 +126,8 @@
           "packages/owner-queue",
           "packages/review-panel",
           "packages/pm",
-          "packages/throughput"
+          "packages/throughput",
+          "packages/graph-layout"
         ],
         [
           "packages/react-app"
