@@ -17,10 +17,11 @@ enforces the tier in CI.
 | `focusPackage(input, pkg, { includeTests })` | one package's files in full, other packages as stub nodes |
 | `packagesInSnapshot(input)` | sorted package names that own at least one file |
 | `computeLayout(input, sizing?, options?)` | flat ELK layered layout with orthogonal routes |
-| `computeCompoundLayout(input, sizing, groupOf, options?)` | nested layout; `groupOf` names each node's ancestor groups, outermost first |
+| `computeCompoundLayout(input, sizing, groupOf, options?)` | nested layout; `groupOf` names each node's ancestor groups, outermost first. Also returns `groups` (every group's box) and routes edges whose ends are group ids |
 | `routeOf(edge)` | the typed route a layout attached to `edge.attrs.route`, or undefined |
+| `routeToPathD(route)` | an SVG path `d` (`M x y L x y …`) through a route's points |
 | `ELK_LAYOUT_OPTIONS`, `FOCUS_LAYOUT_OPTIONS`, `COMPOUND_LAYOUT_OPTIONS` | the ELK option sets for the package, focus and nested views |
-| `GraphInput`, `GroupOf`, `LaidOutNode`, `LayoutResult`, `NodeSizing` | types |
+| `GraphInput`, `GroupOf`, `LaidOutNode`, `LaidOutGroup`, `LayoutResult`, `CompoundLayoutResult`, `NodeSizing` | types |
 
 A package is the segment after `packages/` in a file id, or else the id's first segment.
 
@@ -28,15 +29,24 @@ A package is the segment after `packages/` in a file id, or else the id's first 
 
 Both layouts sort nodes by id and edges by `(srcId, dstId, kind)` before ELK sees them, and
 round every centre and route point to 0.5 px. The same graph listed in any order gives the
-same coordinates, and the result lists nodes and edges in that sorted order. ELK layered
+same coordinates, and the result lists nodes, groups and edges in that sorted order. `elkjs` is
+pinned to an exact version, because a minor release can move every coordinate. ELK layered
 breaks ties by input order, so without the sort a fan-out's siblings swap places.
 
 ## Coordinates
 
-Node `x` and `y` are box centres in the root frame. Routes sit on `edge.attrs.route`, also in
+Node and group `x` and `y` are box centres in the root frame. Routes sit on `edge.attrs.route`, also in
 the root frame. ELK reports compound children relative to their parent and an edge's route
 relative to its endpoints' lowest common ancestor group; `computeCompoundLayout` adds both
-offsets back. If ELK throws or places nothing, both layouts fall back to a grid.
+offsets back.
+
+## Every level in one pass
+
+An edge given to `computeCompoundLayout` may name a group id as either end, for example a
+package-to-package edge from `collapseToPackages` with ids that match `groupOf`. ELK routes it
+between the group boxes in the same pass that places the files, so a map's package view and
+file view read one layout and the boxes never move between them. A second pass cannot do this:
+see Fixed positions. If ELK throws or places nothing, both layouts fall back to a grid.
 
 ## Fixed positions
 
