@@ -41,9 +41,11 @@ guarded file stays readable by that user. The OS account is the real boundary.
   call runs. The bin exits 0 on every path and gives stdin 2 s. A Bash command over 8 KiB
   (`MAX_COMMAND_BYTES`) is not classified, since padding could push classification past the
   timeout. It denies whatever it names, and the reason asks for shorter commands or a script file.
-- `definesAlias` reads a dynamic word, a split, `"$@"` or a brace expansion where a store
-  builtin may still take options as possibly supplying `-v` and an alias-table name, but not a
-  glob: `printf *` in a directory holding files named `-v` and `aliases[y]` is not seen (TP-2705).
+- `definesAlias` reads any word that is not wholly quoted and holds `*`, `?`, `[` or a brace
+  expansion as varying, since filename generation may turn it into any file names. So
+  `alias *`, `typeset ali*` and `printf *` are refused in any directory, and so are harmless
+  forms such as `printf *.txt` or `"$CMD" *`. Only the plain `NAME=VALUE` form of a
+  declaration is spared, as neither shell globs it: `typeset a[1]=2` passes (TP-2705).
 - The mention rule is broad: any argument naming a secret path counts as a read, so
   `echo ~/.npmrc` and a `gh pr create --body` that names `~/.npmrc` deny too.
 
