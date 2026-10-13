@@ -132,7 +132,7 @@ function splitNext(word: WordToken): Array<WordToken | null> {
 }
 
 /** A run-time word may be an option when it can split into several words, or nothing but a `-` comes before its run-time part. */
-function mayBeOption(word: WordToken): boolean {
+export function mayBeOption(word: WordToken): boolean {
   if (!word.dynamic) return false;
   if (splitsWords(word)) return true;
   const prefix = word.value.slice(0, firstExpansion(word));

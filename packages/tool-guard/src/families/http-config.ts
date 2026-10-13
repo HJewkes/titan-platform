@@ -6,6 +6,7 @@ import { commandWrites, TARGET_RE } from "../shell/writers.js";
 import { CURL_VALUE_OPTIONS } from "./curl-options.js";
 import { HTTPIE_VALUES, wgetLongName } from "./egress.js";
 import { readOptions, set, valuesOf } from "./options.js";
+import { unpacks } from "./unpackers.js";
 import { WGET_VALUE_OPTIONS } from "./wget-options.js";
 
 /** Variables that choose which config file wget, curl or httpie reads. */
@@ -13,10 +14,11 @@ const CONFIG_VARS = new Set(["WGETRC", "SYSTEM_WGETRC", "CURL_HOME", "XDG_CONFIG
 const NAMES = [...CONFIG_VARS].join("|");
 /**
  * In the typed text: a prefix, compound or arithmetic assignment, whose run-time value or `(( ))` the extracted
- * commands drop, or a `${NAME:=…}` default (zsh also `${NAME::=…}`). A name after `$` is a read.
+ * commands drop, or a `${NAME:=…}` default (zsh also `${NAME::=…}`). An indirect default, bash `${!V:=…}` or zsh
+ * `${(P)V:=…}`, may assign any variable whatever its name. A name after `$` is a read.
  */
 const TEXT_ASSIGNS_RE = new RegExp(
-  `(?<![\\w$])(?:${NAMES})\\s*(?:\\[[^\\]]*\\])?\\s*(?:<<|>>|[-+*/%&^|])?=(?!=)|(?<![\\w$])(?:${NAMES})\\s*(?:\\+\\+|--)|(?:\\+\\+|--)\\s*(?:${NAMES})\\b|\\$\\{(?:${NAMES})(?:\\[[^\\]]*\\])?:{0,2}=`,
+  `(?<![\\w$])(?:${NAMES})\\s*(?:\\[[^\\]]*\\])?\\s*(?:<<|>>|[-+*/%&^|])?=(?!=)|(?<![\\w$])(?:${NAMES})\\s*(?:\\+\\+|--)|(?:\\+\\+|--)\\s*(?:${NAMES})\\b|\\$\\{(?:${NAMES})(?:\\[[^\\]]*\\])?:{0,2}=|\\$\\{(?:!|\\([^)]*P[^)]*\\))(?:\\$\\{[^}]*\\}|[^}:=])*:{0,2}=`,
 );
 /** In a word with quotes removed: an `env` argument. */
 const WORD_ASSIGNS_RE = new RegExp(`^(?:${NAMES})\\+?=`);
@@ -45,21 +47,12 @@ const DESCRIPTOR_RE = /^(?:\d+|-)$/;
 /**
  * Whether the line may choose or write the config file wget, curl or httpie reads, which can set any method and URL:
  * it writes one of `CONFIG_VARS` in any form the variable tracker knows, or a run-time name, or names an rc file
- * anywhere. A write target is an rc file unless its literal part rules that out, and so is whatever an unpacker writes
- * where the line moved to.
+ * anywhere, or extracts an archive, whose member paths may be any file. A write target is an rc file unless its
+ * literal part rules that out.
  */
-export function choosesHttpConfig(src: string, commands: SimpleCommand[], cwd: string | null, home: string | null): boolean {
+export function choosesHttpConfig(src: string, commands: SimpleCommand[], home: string | null): boolean {
   if (TEXT_ASSIGNS_RE.test(src) || RC_TEXT_RE.test(src)) return true;
-  return commands.some((cmd) => setsConfigVar(cmd) || writesInMovedRcDir(cmd, cwd, home) || writeTargets(cmd).some((w) => mayBeRcPath(w, cmd.dir, home)));
-}
-
-/**
- * After a `cd` or `pushd` to an rc directory or a run-time one, a command may write rc files it never names, as
- * `tar xf` or `unzip` does from the archive's member list. The clients' own writes are read from their options.
- */
-function writesInMovedRcDir(cmd: SimpleCommand, cwd: string | null, home: string | null): boolean {
-  if (cmd.dir === cwd || (cmd.name !== null && (READ_ONLY.has(cmd.name) || cmd.name in CLIENT_OUTPUTS))) return false;
-  return cmd.dir === null || rcDirs(home).includes(cmd.dir);
+  return commands.some((cmd) => setsConfigVar(cmd) || unpacks(cmd) || writeTargets(cmd).some((w) => mayBeRcPath(w, cmd.dir, home)));
 }
 
 function setsConfigVar(cmd: SimpleCommand): boolean {

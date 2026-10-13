@@ -148,6 +148,31 @@ describe("handle: an HTTP write to a run-time URL", () => {
     'cd /etc; tar xf ~/projects/app/a.tar; wget https://api.github.com/repos/o/r/pulls/1/merge',
     'cd "$D"; tar xf ~/projects/app/a.tar; wget https://api.github.com/repos/o/r/pulls/1/merge',
     '(cd "$D" && bsdtar xf a.tar); wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'tar -xPf a.tar; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'tar --absolute-names -xf a.tar; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'bsdtar -xPf a.tar; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'cpio -i < a.cpio; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'unzip -: a.zip; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'pax -r < a.pax; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'tar xf a.tar; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'tar -Pxf a.tar; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'tar --extract -f a.tar; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'tar --get --file=a.tar; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'tar -f a.tar --ext; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'tar -f a.tar "$MODE"; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'gtar -C /tmp -xf a.tar; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'cpio -idmv < a.cpio; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'cpio --extract < a.cpio; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'pax -rw -f a.pax; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    '7z x a.7z; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    '7za -y e a.7z; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'ar x a.a; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'jar xf a.jar; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'set -a; V=WGETRC; : ${!V:=x}; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'set -a; V=WGETRC; : ${!V=x}; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'V=WGETRC; : ${(P)V::=x}; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'V=WGETRC; : ${(P)V:=x}; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    ': ${(P)${V}:=x}; wget https://api.github.com/repos/o/r/pulls/1/merge',
   ])("denies %s as a merge", async (command) => {
     const { columns } = await logColumns(command);
 
@@ -160,7 +185,7 @@ describe("handle: an HTTP write to a run-time URL", () => {
     expect(columns).toEqual(["deny", "EXT-CO", "private-egress", "bash.egress.curl-upload", "coordinator+worker+headless"]);
   });
 
-  it.each(["curl -X GET \"$U\"", "curl -fsSL --compressed https://api.github.com/repos/o/r/pulls/1", "curl -g --no-get --globoff https://api.github.com/repos/o/r", "curl --no-progress-meter -sS https://example.com/x", 'curl --include "$U"', 'curl --progress-meter -s "$U"', 'curl -s: -I "$U"', 'curl -s "https://api.github.com/repos/$R/pulls" -H "Authorization: Bearer $T"', 'curl -s "http://localhost:8080/$P" -o f', "wget -q -nv --no-config -O out https://api.github.com/repos/o/r/pulls/1", "wget --quiet --no-check-certificate --tries=3 https://example.com/x", "wget -e robots=off -e tries=3 -e timeout=10 -e wait=1 https://example.com/x", "wget -q https://api.github.com/repos/o/r/pulls/1", "wget -O out.html https://example.com/x", "curl -o file https://example.com/x > log.txt", 'curl -s https://example.com/x > "$D/out.html"', 'curl -s https://example.com/x > "out-$(date +%s).html"', "curl -s https://example.com/x | tee out.txt", "cp a.txt b.txt && curl -s https://example.com/x", 'for f in a b; do curl -s "https://example.com/$f"; done', 'read -r U < f; curl -s "$U"', 'grep -q x "$F" && curl -s https://example.com/x', 'echo "$U"; curl -s "$U"', '"$EDITOR" notes.md; curl -s https://example.com/x', 'cd ~/projects/app && curl -s "$U"', 'cd "$D" && wget -O out.html https://example.com/x', 'cd ~ && ls; curl -s "$U"', 'echo ${WGETRC:-none}; curl -s "$U"', 'cd /tmp; tar xf a.tar', 'cd ~; tar xf projects/app/a.tar'])(
+  it.each(["curl -X GET \"$U\"", "curl -fsSL --compressed https://api.github.com/repos/o/r/pulls/1", "curl -g --no-get --globoff https://api.github.com/repos/o/r", "curl --no-progress-meter -sS https://example.com/x", 'curl --include "$U"', 'curl --progress-meter -s "$U"', 'curl -s: -I "$U"', 'curl -s "https://api.github.com/repos/$R/pulls" -H "Authorization: Bearer $T"', 'curl -s "http://localhost:8080/$P" -o f', "wget -q -nv --no-config -O out https://api.github.com/repos/o/r/pulls/1", "wget --quiet --no-check-certificate --tries=3 https://example.com/x", "wget -e robots=off -e tries=3 -e timeout=10 -e wait=1 https://example.com/x", "wget -q https://api.github.com/repos/o/r/pulls/1", "wget -O out.html https://example.com/x", "curl -o file https://example.com/x > log.txt", 'curl -s https://example.com/x > "$D/out.html"', 'curl -s https://example.com/x > "out-$(date +%s).html"', "curl -s https://example.com/x | tee out.txt", "cp a.txt b.txt && curl -s https://example.com/x", 'for f in a b; do curl -s "https://example.com/$f"; done', 'read -r U < f; curl -s "$U"', 'grep -q x "$F" && curl -s https://example.com/x', 'echo "$U"; curl -s "$U"', '"$EDITOR" notes.md; curl -s https://example.com/x', 'cd ~/projects/app && curl -s "$U"', 'cd "$D" && wget -O out.html https://example.com/x', 'cd ~ && ls; curl -s "$U"', 'echo ${WGETRC:-none}; curl -s "$U"', 'cd /tmp; tar xf a.tar', 'cd ~; tar xf projects/app/a.tar', 'cd "$D" && make && curl -s https://example.com/x', 'tar -czf out.tgz dir && curl -s https://example.com/x', 'tar -tf a.tar; curl -s https://example.com/x', 'tar cf a.tar -C src .; curl -s https://example.com/x', 'tar --exclude=.git -cf - . | gzip > a.tgz; curl -s https://example.com/x', '7z a out.7z dir; curl -s https://example.com/x', 'cpio -o < list > a.cpio; curl -s https://example.com/x', 'pax -w -f a.pax dir; curl -s https://example.com/x', 'echo ${!V}; curl -s https://example.com/x', 'echo ${!V:-x}; curl -s https://example.com/x'])(
     "lets the read %s through",
     async (command) => {
       const { stdout } = await logColumns(command);
@@ -175,10 +200,10 @@ describe("handle: an HTTP write to a run-time URL", () => {
     expect(columns).toEqual(["deny", "EXT-CO", "private-egress", "bash.egress.curl-upload", "coordinator+worker+headless"]);
   });
 
-  it("lets an unpack in the session's own directory through, since the line moved nowhere", async () => {
-    const { stdout } = await logColumns('tar xf a.tar; curl -s "$U"', HOME);
+  it("denies an unpack in the session's own home directory before a merge request", async () => {
+    const { columns } = await logColumns('tar xf a.tar; wget https://api.github.com/repos/o/r/pulls/1/merge', HOME);
 
-    expect(stdout).toBe("");
+    expect(columns).toEqual(["deny", "MRG-WK", "merge", "bash.merge.curl-api", "coordinator+worker+headless"]);
   });
 
   it("lets a GET to a run-time URL through", async () => {
