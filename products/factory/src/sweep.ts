@@ -7,17 +7,20 @@ export interface Sweep {
   halt(): void;
   /** The tick running now, or null; it never rejects. */
   inFlight(): Promise<void> | null;
+  /** Aborts the signal every tick of this sweep was given; for a tick serve has stopped waiting on. */
+  abort(): void;
   /** `halt()`, then wait for the running tick without a bound. */
   stop(): Promise<void>;
 }
 
 /** One tick at a time, every `everyMs`; adoption picks up runs whose owning process exited without releasing. */
-export function startSweep(tickOnce: () => Promise<void>, everyMs: number, name: string, log: Logger): Sweep {
+export function startSweep(tickOnce: (signal: AbortSignal) => Promise<void>, everyMs: number, name: string, log: Logger): Sweep {
+  const controller = new AbortController();
   let inFlight: Promise<void> | null = null;
   let halted = false;
   const tick = (): Promise<void> => {
     if (halted) return inFlight ?? Promise.resolve();
-    return (inFlight ??= tickOnce()
+    return (inFlight ??= tickOnce(controller.signal)
       .catch((err: unknown) => log.error({ err }, `${name} failed`))
       .finally(() => (inFlight = null)));
   };
@@ -32,6 +35,7 @@ export function startSweep(tickOnce: () => Promise<void>, everyMs: number, name:
     tick,
     halt,
     inFlight: () => inFlight,
+    abort: () => controller.abort(),
     stop: async () => {
       halt();
       await inFlight;

@@ -14,23 +14,24 @@ interface ClosingParts {
   host: { runtime: { shutdown(): void }; close(): void };
 }
 
-/** The runtime lets its runs go before anything is awaited, so a successor can claim them and this process starts no more step work. */
+/** The runtime lets its runs go before anything is awaited, so a successor can claim them and this process starts no more step work. A tick still running at the end of the grace has its signal aborted before the database closes, so an agent-chat child it holds is killed and it starts no other. */
 export async function closeServer(parts: ClosingParts, log: Logger, graceMs: number): Promise<void> {
   const started = Date.now();
   const live = parts.sweeps.filter((sweep): sweep is Sweep => sweep !== undefined);
   for (const sweep of live) sweep.halt();
   parts.host.runtime.shutdown();
   const abandoned = await awaitTicks(live, graceMs);
+  for (const sweep of abandoned) sweep.abort();
   for (const watch of parts.watches) watch.stop();
   parts.mainWatch?.close();
   await parts.daemon.close();
   parts.unbindCarry();
   parts.host.close();
-  log.info({ ms: Date.now() - started, ...(abandoned.length > 0 && { abandoned }) }, "closed");
+  log.info({ ms: Date.now() - started, ...(abandoned.length > 0 && { abandoned: abandoned.map((sweep) => sweep.name) }) }, "closed");
 }
 
-/** The names of sweeps whose tick was still running when the grace ran out; that tick's later failure is caught and logged by its sweep. */
-async function awaitTicks(sweeps: readonly Sweep[], graceMs: number): Promise<string[]> {
+/** The sweeps whose tick was still running when the grace ran out; that tick's later failure is caught and logged by its sweep. */
+async function awaitTicks(sweeps: readonly Sweep[], graceMs: number): Promise<Sweep[]> {
   const pending = new Set(sweeps.filter((sweep) => sweep.inFlight() !== null));
   const ticks = [...pending].map((sweep) => sweep.inFlight()!.then(() => pending.delete(sweep)));
   let timer: NodeJS.Timeout | undefined;
@@ -40,5 +41,5 @@ async function awaitTicks(sweeps: readonly Sweep[], graceMs: number): Promise<st
   });
   await Promise.race([Promise.allSettled(ticks), grace]);
   clearTimeout(timer);
-  return [...pending].map((sweep) => sweep.name);
+  return [...pending];
 }

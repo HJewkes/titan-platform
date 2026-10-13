@@ -1,7 +1,7 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import type { AnswersPage } from "@titan-design/agent-dispatch";
+import { dirname, join } from "node:path";
+import { execSafeAsync, type AnswersPage } from "@titan-design/agent-dispatch";
 import { silentLogger, type Logger } from "@titan-design/daemon";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GateNotifyOptions } from "./gate-notify-sweep.js";
@@ -57,6 +57,27 @@ async function serve(scenario: LandScenario, log: Logger, gateNotify: GateNotify
 
 const never = new Promise<void>(() => undefined);
 
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A notifier whose answer read is a real child that outlives any grace, writing its pid first. */
+function childNotifier(pidFile: string): GateNotifyOptions {
+  const sleeper = ["-c", `echo $$ > ${pidFile}; exec sleep 60`];
+  return {
+    ...slowNotifier(never),
+    readAnswers: async (_label, _since, signal): Promise<AnswersPage> => {
+      await execSafeAsync("/bin/sh", sleeper, { PATH: process.env.PATH ?? "/usr/bin:/bin" }, 60_000, undefined, undefined, signal);
+      return { answers: [] };
+    },
+  };
+}
+
 describe("serve's bounded shutdown", () => {
   it("waits five seconds by default", () => {
     expect(SHUTDOWN_SWEEP_GRACE_MS).toBe(5_000);
@@ -71,6 +92,20 @@ describe("serve's bounded shutdown", () => {
 
     expect(Date.now() - started).toBeLessThan(GRACE_MS + 2_000);
     expect(lines).toContainEqual({ msg: "closed", fields: expect.objectContaining({ abandoned: ["gate notify"] }) });
+  });
+
+  it("a hung tick's child process is killed at the end of the grace", async () => {
+    const pidFile = join(mkdtempSync(join(tmpdir(), "factory-child-")), "pid");
+    dirs.push(dirname(pidFile));
+    const server = await serve(landScenario(), recordingLogger().log, childNotifier(pidFile));
+    await vi.waitFor(() => expect(existsSync(pidFile) && readFileSync(pidFile, "utf8").trim()).toBeTruthy());
+    const pid = Number(readFileSync(pidFile, "utf8"));
+    const started = Date.now();
+
+    await server.close();
+
+    expect(Date.now() - started).toBeLessThan(GRACE_MS + 2_000);
+    await vi.waitFor(() => expect(isAlive(pid)).toBe(false), { timeout: 2_000 });
   });
 
   it("the runtime releases runs before any sweep is awaited", async () => {
