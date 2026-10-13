@@ -207,6 +207,11 @@ describe("namesIfs", () => {
     "mapfile -t arr < f",
     "declare -r X=1",
     "echo {1..10}",
+    "bash -c 'git push origin $R'",
+    "bash -e -c 'cd $dir'",
+    "PATH=/x bash -c 'cd $dir'",
+    ": ${x:=default} ${y:-$z}",
+    "echo $HOME_ENV_DIR",
   ])("does not match a static command with no sink: %s", (line) => {
     expect(namesIfs(line)).toBe(false);
   });
@@ -252,6 +257,11 @@ describe("namesIfs", () => {
     ["zsh typeset -E", "typeset -E x; read x < f"],
     ["a quoted subscript in unset", "unset 'a[$a$b=1]'"],
     ["an indirect expansion", "echo ${!x}"],
+    ["a zsh (P) assignment", "a=I; b=FS; x=$a$b; : ${(P)x::=,}"],
+    ["a zsh (P) default assignment", ": ${(P)x:=,}"],
+    ["a zsh (e) evaluation", "echo ${(e)x}"],
+    ["a zsh flag group after a prefix", "echo ${=(P)x}"],
+    ["an indirect default assignment", ": ${!x:=,}"],
   ])("matches %s", (_form, line) => {
     expect(namesIfs(line)).toBe(true);
   });
@@ -263,6 +273,17 @@ describe("namesIfs", () => {
     ["a [[ ]] arithmetic test", "[[ 1 -eq $a$b ]]"],
     ["source", "source ./env.sh"],
     ["dot", ". ./env.sh"],
+    ["BASH_ENV before bash -c", "BASH_ENV=./f bash -c 'R=origin,HEAD:main; git push $R'"],
+    ["ENV before sh -c", "ENV=./f sh -c 'git push origin $R'"],
+    ["ZDOTDIR before zsh -c", "ZDOTDIR=/tmp/z zsh -c 'git push origin $R'"],
+    ["BASH_ENV through env", "env BASH_ENV=./f bash -c 'git push origin $R'"],
+    ["an earlier BASH_ENV export", "export BASH_ENV=./f; bash -c 'git push origin $R'"],
+    ["a BASH_ENV export before a nested shell", "export BASH_ENV=./f; x=$(bash -c 'git push origin $R')"],
+    ["bash --rcfile -i", "bash --rcfile ./f -i -c 'git push origin $R'"],
+    ["bash --init-file", "bash --init-file ./f -c 'git push origin $R'"],
+    ["an interactive cluster", "bash -ic 'git push origin $R'"],
+    ["a login shell", "bash -l -c 'git push origin $R'"],
+    ["bash --login", "bash --login -c 'git push origin $R'"],
   ])("matches run-time arithmetic or a sourced file: %s", (_form, line) => {
     expect(namesIfs(line)).toBe(true);
   });

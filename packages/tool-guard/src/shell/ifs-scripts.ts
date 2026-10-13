@@ -13,10 +13,27 @@ interface Stage {
   piped: boolean;
 }
 
-/** The script texts a token list runs, and whether one of them is only known at run time. */
+/** Variables that name a file a starting shell sources: bash's `BASH_ENV`, sh's `ENV`, zsh's `ZDOTDIR`. */
+const STARTUP_VAR_RE = /^(?:BASH_ENV|ENV|ZDOTDIR)(?:\[[^\]]*\])?(?:\+?=|$)/;
+/** Shell options that source a startup file: interactive or login clusters, and an rc or init file. */
+const STARTUP_OPTION_RE = /^(?:-[A-Za-z]*[il][A-Za-z]*|--login|--rcfile|--init-file|--interactive)$/;
+
+/**
+ * The script texts a token list runs, whether one of them is only known at run time, and whether the list starts
+ * a shell at all, which then sources any startup file the line selects.
+ */
 export interface Scripts {
   texts: string[];
   runTime: boolean;
+  startsShell: boolean;
+}
+
+/**
+ * Whether any word of the line, nested lists included, sets or exports a startup-file variable. A shell started
+ * anywhere after it sources that file before its own script, as `source` would.
+ */
+export function selectsStartupFile(tokens: readonly Token[]): boolean {
+  return tokenLists(tokens).some((list) => list.some((t) => t.type === "word" && STARTUP_VAR_RE.test(t.value)));
 }
 
 /**
@@ -33,6 +50,7 @@ export function scriptsOf(tokens: readonly Token[], srcLength: number): Scripts 
   return {
     texts: runs.flatMap(({ stage, cmds, before }) => cmds.flatMap((cmd) => commandScripts(cmd, stage, before, budget))),
     runTime: runs.some(({ cmds }) => cmds.some(runsRunTimeScript)),
+    startsShell: runs.some(({ cmds }) => cmds.some(isShell)),
   };
 }
 
@@ -77,10 +95,21 @@ function commandScripts(cmd: Unwrapped, { redirects, piped }: Stage, before: Sta
   return inline;
 }
 
+/**
+ * A shell whose `-c` string is only known at run time, or that sources a startup file: one its options select, or
+ * one a prefix assignment names. Either runs text this model never reads, in the shell that runs the script.
+ */
 function runsRunTimeScript(cmd: Unwrapped): boolean {
-  if (cmd.name === null || !SHELLS.has(cmd.name)) return false;
+  if (!isShell(cmd)) return false;
+  if (cmd.assigned.some(([name]) => STARTUP_VAR_RE.test(`${name}=`))) return true;
   const { hasC, positional } = shellOperands(cmd.args);
+  const options = positional ? cmd.args.slice(0, cmd.args.indexOf(positional)) : cmd.args;
+  if (options.some((a) => STARTUP_OPTION_RE.test(a.value))) return true;
   return hasC && positional !== null && (positional.dynamic || positional.computed);
+}
+
+function isShell(cmd: Unwrapped): boolean {
+  return cmd.name !== null && SHELLS.has(cmd.name);
 }
 
 function stageTexts({ words, redirects }: Stage): string[] {

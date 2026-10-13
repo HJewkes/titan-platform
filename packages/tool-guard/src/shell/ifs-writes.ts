@@ -20,11 +20,13 @@ const TEST_COMMANDS = new Set(["[", "[["]);
 /** `[[` compares these operands as arithmetic, which assigns any `NAME=` text it is given. */
 const ARITH_TESTS = new Set(["-eq", "-ne", "-lt", "-le", "-gt", "-ge"]);
 /**
- * Arithmetic contexts in a word's text holding run-time text: `$(( ))`, a `${x:offset}` substring and an indexed
- * subscript, and an indirect `${!x}`, whose target's subscript bash evaluates. bash expands that text first, so
- * `$a$b=1` there assigns whatever name it builds.
+ * Run-time text bash or zsh evaluates or assigns through: arithmetic contexts (`$(( ))`, a `${x:offset}` substring,
+ * an indexed subscript), where `$a$b=1` assigns whatever name it builds, and a parameter expansion whose name the
+ * model cannot read, after any zsh `=`, `~`, `^`, `#` or `+` prefix: bash's indirect `${!x}` and any zsh flag
+ * group, such as `${(P)x::=,}`, which assigns the variable x names, or `(e)`, which evaluates the value. Flag
+ * groups are not parsed (tool-guard's hooked-params reads their delimiters for PS4); any group answers true.
  */
-const RUN_TIME_ARITH_RES = [/\$\(\([^]*[$`]/, /\$\{[^}:]*:(?![-=+?])[^}]*[$`]/, /\[[^\]]*[$`]/, /\$\{!/];
+const RUN_TIME_WRITE_RES = [/\$\(\([^]*[$`]/, /\$\{[^}:]*:(?![-=+?])[^}]*[$`]/, /\[[^\]]*[$`]/, /\$\{[=~^#+]*[!(]/];
 
 /** A command segment and whether it sits inside `(( ))`, where any run-time word is arithmetic text. */
 interface Segment {
@@ -62,7 +64,7 @@ function segments(tokens: readonly Token[]): Segment[] {
 
 function segmentMayWrite({ words, arith }: Segment): boolean {
   if (arith) return words.some(isRunTime);
-  if (words.some(holdsRunTimeArith)) return true;
+  if (words.some(holdsRunTimeWrite)) return true;
   const { command, args } = splitCommand(words);
   return command ? commandMayWrite(command, args) : false;
 }
@@ -126,8 +128,8 @@ function nameMayBeRunTime(w: WordToken): boolean {
   return NAME_BUILDER_RE.test(w.value.slice(0, end)) || w.refs.some((r) => r.start < end) || (w.cuts ?? []).some((c) => c.at <= end);
 }
 
-function holdsRunTimeArith(w: WordToken): boolean {
-  return isRunTime(w) && RUN_TIME_ARITH_RES.some((re) => re.test(w.value));
+function holdsRunTimeWrite(w: WordToken): boolean {
+  return isRunTime(w) && RUN_TIME_WRITE_RES.some((re) => re.test(w.value));
 }
 
 function isRunTime(w: WordToken): boolean {
