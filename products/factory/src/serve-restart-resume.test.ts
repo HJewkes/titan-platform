@@ -110,6 +110,29 @@ describe("a serve stopped mid-step hands its run to the next serve", () => {
     CASE_MS,
   );
 
+  it(
+    "a serve killed with SIGKILL mid-chore: the post-merge chore finishes in its own process and the successor records it",
+    async () => {
+      const paths = scratch();
+      const first = await forkServeChild(paths, forked);
+      const runId = await first.start("chore-test");
+      await until(() => dispatches(paths).length, (count) => count === 1, 10_000, "the chore's start");
+
+      await first.kill("SIGKILL");
+      const successor = await forkServeChild(paths, forked);
+      releaseBlockedStep(paths);
+      const statuses = await settle(successor, runId);
+
+      const chores = dispatches(paths).map((dispatch) => dispatch.pid);
+      expect(statuses.at(-1)).toBe("completed");
+      expect(statuses).not.toContain("recovery_required");
+      expect([...first.events, ...successor.events].filter((event) => event.type === "workflow_recovery_required")).toEqual([]);
+      expect(chores).toHaveLength(1);
+      expect(chores).not.toContain(first.pid);
+    },
+    CASE_MS,
+  );
+
   it.skip(
     "a restart is counted apart from retries: the successor's dispatch sees restarts 1 (needs TP-2675)",
     async () => {

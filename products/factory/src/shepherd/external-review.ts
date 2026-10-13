@@ -145,9 +145,9 @@ async function readReviewer(reader: ReviewerReader, target: ReviewTarget, rows: 
 
 /**
  * `clear` lets the MERGE stand; a FIX_FIRST sends the head back; a `none` with a reason is a read that failed, or a seat WAIT
- * (`wait`), and blocks the head too. `retry` marks a failed read that may succeed if asked again.
+ * (`wait`, naming the `seat`), and blocks the head too. `retry` marks a failed read that may succeed if asked again.
  */
-export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string; wait?: true; retry?: true } | { kind: "clear"; merged?: string };
+export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string; wait?: true; retry?: true; seat?: string } | { kind: "clear"; merged?: string };
 
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -214,7 +214,7 @@ export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[
     const read = await readReviewer(reader, target, rows.filter((row) => row.name === name));
     const newest = newestAtHead(target, read.messages);
     if (newest?.verdict === "FIX_FIRST") return sentBack(name, target, newest.message, read.messages);
-    if (newest?.verdict === "WAIT") return { kind: "none", reason: `seat check: ${name} said WAIT at ${target.head}, so its required checks had not finished`, wait: true };
+    if (newest?.verdict === "WAIT") return { kind: "none", reason: `seat check: ${name} said WAIT at ${target.head}, so its required checks had not finished`, wait: true, seat: name };
     if (newest?.verdict === "MERGE") merged ??= name;
     failed ??= failedRead(name, target, read, warn);
   }
@@ -236,7 +236,11 @@ interface SeatHeldNone {
   kind: "none";
   reason: string;
   seatHeld: OwnMerge;
+  seat?: string;
 }
+
+/** A seat's `none` as the step records it, carrying the seat that said WAIT so a reader can name it. */
+type SeatNone = { kind: "none"; reason: string; seat?: string };
 
 /** A WAIT, or a read the broker failed for a while, can still settle; a damaged transcript or a refused read cannot. */
 const unsettled = (check: SeatCheck): boolean => check.kind === "none" && (check.wait === true || check.retry === true);
@@ -270,10 +274,11 @@ export async function unlessSeatFixFirst(roster: () => Promise<readonly Reviewer
   const check = seatWait ? await awaitSeatSettled(roster, reader, target, seatWait.timing, seatWait.signal, warn) : await seatFixFirst(roster, reader, target, warn);
   if (check.kind === "clear") return result;
   if (check.kind === "verdict") return { ...check, ownerOverride: disagreement(target.head, "MERGE", "FIX_FIRST", now) };
-  return seatWait && unsettled(check) ? held(check.reason, result) : { kind: "none", reason: check.reason };
+  const none: SeatNone = { kind: "none", reason: check.reason, ...(check.seat !== undefined && { seat: check.seat }) };
+  return seatWait && unsettled(check) ? held(none, result) : none;
 }
 
-const held = (reason: string, seatHeld: OwnMerge): SeatHeldNone => ({ kind: "none", reason, seatHeld });
+const held = (none: SeatNone, seatHeld: OwnMerge): SeatHeldNone => ({ ...none, seatHeld });
 
 const disagreement = (head: string, shepherd: "MERGE" | "FIX_FIRST", other: string, now: () => number): Omit<OwnerOverride, "trigger"> & { trigger: "g10-disagree" } => ({ trigger: "g10-disagree", head, shepherd, other, at: now() });
 

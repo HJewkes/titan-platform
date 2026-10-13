@@ -303,13 +303,27 @@ async function newestSettled(main: MainRead, sha: string, rules: MainRules | und
 /** One read at `sha`, routed by MAIN_CI_ROUTES once it has finished. */
 async function readAt(main: MainRead, sha: string, rules: MainRules | undefined): Promise<Read> {
   const read = evaluate(sha, await main.port.checkRuns(main.repo, sha), rules);
-  if (read.verdict === "pending") return { verdict: "pending", detail: read.detail, ...(read.queued && { queued: true as const }) };
+  if (read.verdict === "pending") return pendingAt(main, sha, read);
   const newer = read.verdict === "cancelled" ? await newerMainPush(main, sha) : undefined;
-  const classified: Classified = newer === undefined ? { read: read.verdict } : { read: "cancelled-superseded", newer };
-  const routed = routeOf(classified);
+  return routedRead(routeOf(newer === undefined ? { read: read.verdict } : { read: "cancelled-superseded", newer }), sha, read);
+}
+
+/**
+ * Concurrency cancels a queued main run before any job starts, so a superseded run leaves no check run at its sha: with
+ * main moved past it, the read is a superseded cancel. A newer push with no run yet is waiting behind the running one,
+ * so it counts as queued and earns the re-checks.
+ */
+async function pendingAt(main: MainRead, sha: string, read: Extract<Evaluated, { verdict: "pending" }>): Promise<Read> {
+  const newer = read.absent === true ? await newerMainPush(main, sha) : undefined;
+  if (newer !== undefined) return routedRead(routeOf({ read: "cancelled-superseded", newer }), sha, { detail: `${read.detail}, superseded` });
+  const queued = read.queued === true || (read.absent === true && sha !== main.mergeSha);
+  return { verdict: "pending", detail: read.detail, ...(queued && { queued: true as const }) };
+}
+
+function routedRead(routed: Routed, sha: string, read: { detail: string; warning?: string }): Read {
   switch (routed.route) {
     case "done":
-      return { verdict: "green", detail: read.detail, ...("warning" in read && read.warning && { warning: read.warning }) };
+      return { verdict: "green", detail: read.detail, ...(read.warning && { warning: read.warning }) };
     case "main-red":
       return { verdict: "red", detail: read.detail };
     case "read-newer-run":
@@ -347,7 +361,7 @@ async function newerMainPush(main: MainRead, sha: string): Promise<string | unde
   return (await main.port.compareFiles(main.repo, sha, tip)).mergeBaseSha === sha ? tip : undefined;
 }
 
-type Evaluated = { verdict: Exclude<MainCiRead, "cancelled-superseded" | "green">; detail: string } | { verdict: "green"; detail: string; warning?: string } | { verdict: "pending"; detail: string; queued?: true };
+type Evaluated = { verdict: Exclude<MainCiRead, "cancelled-superseded" | "green">; detail: string } | { verdict: "green"; detail: string; warning?: string } | { verdict: "pending"; detail: string; queued?: true; absent?: true };
 
 /**
  * Only allowed-app runs at the merge sha count, and each counts but a cancel a newer run of its name superseded, so an
@@ -356,7 +370,7 @@ type Evaluated = { verdict: Exclude<MainCiRead, "cancelled-superseded" | "green"
  */
 function evaluate(mergeSha: string, runs: readonly CheckRun[], rules: MainRules | undefined): Evaluated {
   const { findings, counted, warnings } = judgeMain(mergeSha, runs, rules);
-  if (counted === 0) return { verdict: "pending", detail: `no run from app ${GITHUB_ACTIONS_APP_ID} at ${mergeSha} yet` };
+  if (counted === 0) return { verdict: "pending", absent: true, detail: `no run from app ${GITHUB_ACTIONS_APP_ID} at ${mergeSha} yet` };
   const failed = findings.flatMap((finding) => (finding.kind === "failed" ? [finding.run] : []));
   const names = failed.map((run) => run.name).join(", ");
   if (failed.length > 0 && failed.every((run) => run.conclusion === "cancelled")) return { verdict: "cancelled", detail: `cancelled: ${names}` };
