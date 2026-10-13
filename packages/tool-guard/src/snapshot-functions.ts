@@ -1,13 +1,13 @@
 import { atTopLevel, newBodyScan, scanLine } from "./snapshot-body.js";
 
 /** A function from a shell snapshot: its body text, or unreadable when its end could not be found. */
-type SnapshotFunction = { body: string } | { unreadable: true };
+export type SnapshotFunction = { body: string } | { unreadable: true };
 
 /**
  * The functions the shell holds after sourcing the snapshot. `incomplete` means the section could not be read to
  * its end, so a name missing from `functions` may still be a function.
  */
-interface FunctionTable {
+export interface FunctionTable {
   functions: ReadonlyMap<string, SnapshotFunction>;
   incomplete: boolean;
 }
