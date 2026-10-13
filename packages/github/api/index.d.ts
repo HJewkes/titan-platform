@@ -291,6 +291,8 @@ interface GitHubWire {
     getWorkflowRunStatus(repo: RepoSlug, runId: number): Promise<string>;
     getJobLog(repo: RepoSlug, jobId: number): Promise<string>;
     updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<void>;
+    /** Retargets the PR onto `base`; the request carries no field but `base`. */
+    setPrBase(repo: RepoSlug, number: number, base: string): Promise<void>;
     /** `message` becomes the squash commit's `commit_title` and `commit_message`; absent, GitHub writes its default. */
     merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod, message?: MergeMessage): Promise<{
         sha: string;
@@ -370,6 +372,8 @@ interface GitHubPort {
     /** The last `lines` lines of an Actions job's log. */
     jobLogTail(repo: RepoSlug, jobId: number, lines: number): Promise<string>;
     updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult>;
+    /** Retargets an open PR onto `base`, so a stacked child can follow its landed parent; a PR already on `base` skips as `unchanged`. */
+    setPrBase(repo: RepoSlug, number: number, base: string): Promise<WriteResult>;
     /** Pushes a commit with the head's own tree onto `branch`, so CI runs again; skips as `head-moved` when the branch is not at `expectedHeadSha`. */
     pushEmptyCommit(repo: RepoSlug, branch: string, expectedHeadSha: string, message: string): Promise<WriteResult<{
         sha: string;
@@ -620,6 +624,7 @@ interface FakeEffects {
     createPr: number;
     updateBranch: number;
     updateRef: number;
+    setPrBase: number;
     merge: number;
     rerunFailedJobs: number;
 }
@@ -704,6 +709,11 @@ interface FakeGitHub {
     merges: {
         number: number;
         message: MergeMessage | undefined;
+    }[];
+    /** Every PR base change that landed, in order. */
+    baseChanges: {
+        number: number;
+        base: string;
     }[];
     /** The default branch's history for `listCommits`, in any order; it answers those at or after `since`, newest first. */
     history: (LoggedCommit & {
