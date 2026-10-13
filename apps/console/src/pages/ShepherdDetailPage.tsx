@@ -2,10 +2,10 @@ import type { ReactNode } from "react";
 import { Alert, BreadcrumbItem, Breadcrumbs, HStack, Heading, Pill, Section, SectionContent, SectionHeader, Spinner, Typography, VStack } from "@titan-design/react-ui";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
-import { RowBadges, stageOf, type WatchRow } from "./ShepherdPage.js";
+import { RowBadges, isRecord, stageOf, type WatchRow } from "./ShepherdPage.js";
 
 /** Splits `owner/repo#pr` at its last `#`; anything else names no PR. */
-export function parsePrRef(ref: string): { repo: string; pr: number } | undefined {
+function parsePrRef(ref: string): { repo: string; pr: number } | undefined {
   const at = ref.lastIndexOf("#");
   const repo = ref.slice(0, at);
   const pr = Number(ref.slice(at + 1));
@@ -96,10 +96,9 @@ const DESCRIBE: Readonly<Record<string, (e: Entry) => string>> = {
 };
 
 /** Shepherd adds entry kinds over time and the console's schema keeps them `unknown`, so a kind it does not know gets a fallback line. */
-export function describeEntry(entry: unknown): string {
-  if (typeof entry !== "object" || entry === null) return "Unrecognised entry";
-  const e = entry as Entry;
-  const kind = e["kind"];
+function describeEntry(entry: unknown): string {
+  if (!isRecord(entry)) return "Unrecognised entry";
+  const kind = entry["kind"];
   const describe = typeof kind === "string" && Object.hasOwn(DESCRIBE, kind) ? DESCRIBE[kind] : undefined;
-  return describe ? describe(e) : `Unrecognised entry: ${text(kind)}`;
+  return describe ? describe(entry) : `Unrecognised entry: ${text(kind)}`;
 }

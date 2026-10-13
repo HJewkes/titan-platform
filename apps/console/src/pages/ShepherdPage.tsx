@@ -32,7 +32,7 @@ const MINUTES_WIDTH = 96;
 const ACTIVE = { state: "active" } as const;
 
 /** The detail route's id, `owner/repo#pr`; the last `#` splits it because a repo name holds none. */
-export function prRef(repo: string, pr: number): string {
+function prRef(repo: string, pr: number): string {
   return `${repo}#${pr}`;
 }
 
@@ -148,11 +148,15 @@ function ReasonBadge({ label, color, reason }: { label: string; color: "warning"
   );
 }
 
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 /** The console's schema passes `stage` through untyped, and rows older than the field lack it. */
 export function stageOf(row: WatchRow): { name: string; minutes: number } | undefined {
   const stage = row["stage"];
-  if (typeof stage !== "object" || stage === null) return undefined;
-  const { name, minutes } = stage as Record<string, unknown>;
+  if (!isRecord(stage)) return undefined;
+  const { name, minutes } = stage;
   return typeof name === "string" && typeof minutes === "number" ? { name, minutes } : undefined;
 }
 

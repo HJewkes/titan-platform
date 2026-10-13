@@ -91,7 +91,7 @@ describe("the Shepherd watch list", () => {
   it("offers no control that writes", async () => {
     renderConsole("#/shepherd");
     await screen.findByTestId("shepherd-row-run-12");
-    expect(screen.queryAllByRole("button").filter((button) => /merge|hold|release|register/i.test(button.textContent ?? ""))).toHaveLength(0);
+    expect(screen.queryAllByRole("button").filter((button) => /merge|hold|release|register/i.test(button.textContent))).toHaveLength(0);
   });
 
   it("opens a PR's timeline from its row", async () => {
