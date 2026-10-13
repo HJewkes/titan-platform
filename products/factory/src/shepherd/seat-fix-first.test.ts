@@ -8,7 +8,7 @@ import { sleep } from "../workflows/land.js";
 import type { WakeRequest } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "./review.js";
+import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
 import { reviewPhase } from "./review.js";
 import { ReviewerAskTimedOut } from "./review-wait.js";
 import { MAX_SEAT_HELD_ROUNDS } from "./route-table.js";

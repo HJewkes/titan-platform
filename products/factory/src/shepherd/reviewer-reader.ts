@@ -3,8 +3,7 @@ import os from "node:os";
 import { claudeSourceFromPath, readSessionObservations, type NormalizedSessionObservation } from "@titan-design/session-read";
 import { DamagedTranscriptError } from "./external-review.js";
 import type { Presence } from "./presence.js";
-import type { AwaitVerdictInput, ReviewerMessage, ReviewerReader } from "./review.js";
-import { isInvestigativeCall } from "@titan-design/review-panel";
+import { isInvestigativeCall, type AwaitVerdictInput, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
 
 /** The roster fields the reader needs; an `agent ls --json` row carries all of them. */
 export interface TranscriptRow {

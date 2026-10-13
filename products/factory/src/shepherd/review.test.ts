@@ -31,20 +31,14 @@ import {
   parseAwaitVerdictInput,
   reviewPhase,
   reviewRoutes,
-  type AwaitVerdictInput,
   type AwaitVerdictResult,
   type ReviewDispatchResult,
   type ReviewIntent,
   type ReviewIntentResult,
-  type ReviewerAgent,
-  type ReviewerDispatch,
-  type ReviewerMessage,
-  type ReviewerReader,
-  type ReviewTarget,
   type ReviewWiring,
 } from "./review.js";
 import { DEFAULT_HOLD_WAIT_MS, ReviewerAskTimedOut, ReviewerMachineHold, reviewWait } from "./review-wait.js";
-import { DEPTH_FLOOR_REASON } from "@titan-design/review-panel";
+import { DEPTH_FLOOR_REASON, type AwaitVerdictInput, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader, type ReviewTarget } from "@titan-design/review-panel";
 import { MAX_REVIEWER_QUESTIONS, SHAPE_BRIEFS, reviewerBrief } from "@titan-design/review-panel";
 import { routeFor } from "./route-table.js";
 import type { ReviewerFacts, ReviewerRoles } from "./reviewer-roles.js";

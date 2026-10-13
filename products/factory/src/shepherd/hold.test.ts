@@ -12,7 +12,7 @@ import { shepherdEventMigration } from "./events.js";
 import type { CarryResult } from "./tree-carry.js";
 import { MergeHeldError, heldCheck, holdSatisfier, holdingPort, openHeadRead, waitWhileHeld } from "./hold.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import type { ReviewerAgent, ReviewerMessage } from "./review.js";
+import type { ReviewerAgent, ReviewerMessage } from "@titan-design/review-panel";
 import { transcriptReviewerReader } from "./reviewer-reader.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
 

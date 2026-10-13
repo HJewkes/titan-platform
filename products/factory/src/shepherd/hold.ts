@@ -6,13 +6,12 @@ import { codeRoute } from "../workflows/land.js";
 import { acceptExternalVerdict, externalReviewer, latestSession, readNamedReviewer } from "./external-review.js";
 import type { FreezeGuard } from "./freeze.js";
 import { provablyIndependent } from "./lineage.js";
-import type { ReviewerAgent, ReviewerReader } from "./review.js";
 import type { HoldLookup, Registration, ShepherdStore } from "./store.js";
 import { openOrRead } from "./snapshot-reads.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { CarryInput, CarryResult } from "./tree-carry.js";
 import { CARRYING_KINDS } from "./carry-merge.js";
-import { namesPr } from "@titan-design/review-panel";
+import { namesPr, type ReviewerAgent, type ReviewerReader } from "@titan-design/review-panel";
 
 export const HOLD_POLL_MS = 10_000;
 

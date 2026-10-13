@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { shepherdEventMigration } from "./events.js";
 import { MergeHeldError, holdSatisfier, holdingPort } from "./hold.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import type { ReviewerAgent, ReviewerMessage } from "./review.js";
+import type { ReviewerAgent, ReviewerMessage } from "@titan-design/review-panel";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, shepherdMigration, sliceMigration } from "./store.js";
 import type { CarryResult } from "./tree-carry.js";
 
