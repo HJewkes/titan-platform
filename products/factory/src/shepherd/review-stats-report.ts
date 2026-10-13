@@ -4,13 +4,13 @@ import { median, p90 } from "./stage-times.js";
 import { isoWeek } from "./stats.js";
 
 /** Verdict days, inclusive, as YYYY-MM-DD in UTC; `repo` matches case-blind, as the store keeps repos lower case. */
-export interface ReviewRange {
+interface ReviewRange {
   from?: string;
   to?: string;
   repo?: string;
 }
 
-export interface Dist {
+interface Dist {
   p50: number | null;
   p90: number | null;
   mean: number | null;
@@ -25,7 +25,7 @@ interface Cut {
   queueMinutes: Dist;
 }
 
-export interface PrRow {
+interface PrRow {
   repo: string;
   pr: number;
   rounds: number;
@@ -36,7 +36,7 @@ export interface PrRow {
   merged: boolean;
 }
 
-export interface ReviewReport {
+interface ReviewReport {
   v: 1;
   at: string;
   range: { from: string | null; to: string | null; repo: string | null };
@@ -57,7 +57,7 @@ const PrSql = z.object({
   registered_at: z.number().nullable(), merged_at: z.number().nullable(),
 });
 
-export interface ReviewRecord {
+interface ReviewRecord {
   runId: string;
   round: number;
   repo: string;
