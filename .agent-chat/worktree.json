@@ -1,0 +1,6 @@
+{
+  "setup": {
+    "command": ["pnpm", "install", "--frozen-lockfile", "--prefer-offline"],
+    "timeoutMs": 600000
+  }
+}

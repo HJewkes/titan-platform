@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { loadavg } from "node:os";
 import { readLinuxMemory, type ReadFile } from "./machine-linux.js";
 import { stopReason } from "./machine-stop.js";
+import type { ReviewerReading, ReviewSlots } from "./review-slots.js";
 import { BUSY_LONGEST_WAIT_MS } from "./review-wait.js";
 
 /**
@@ -234,6 +235,10 @@ export class SpawnDeferred extends Error {
 export interface SpawnGate {
   /** Resolves when the spawn of `name` is admitted; throws `SpawnDeferred` when it is not. Only a review spawn passes `review`. */
   admit(name: string, runningReviews?: readonly number[], review?: ReviewAsk): void;
+  /** Keeps the newest reading of the running reviewers, replacing the one before. */
+  noteReviewers(reading: ReviewerReading): void;
+  /** Undefined until a spawn has read the roster in this process. */
+  reviewSlots(): ReviewSlots | undefined;
 }
 
 interface SpawnGateOptions {
@@ -262,6 +267,18 @@ function verdictFor(machine: Admission, review: Admission, queue: readonly Waiti
   return admitQueued(machine.admit ? review : machine, queue, name, ask);
 }
 
+/** The newest reviewer reading of this process, stamped with when it was read. */
+function reviewSlotMemory(cap: number, now: () => number): Pick<SpawnGate, "noteReviewers" | "reviewSlots"> {
+  let slots: ReviewSlots | undefined;
+  return {
+    noteReviewers(reading) {
+      const readAt = new Date(now()).toISOString();
+      slots = "running" in reading ? { running: [...reading.running], cap, readAt } : { cap, readAt, rosterError: reading.rosterError };
+    },
+    reviewSlots: () => slots && { ...slots },
+  };
+}
+
 /** Remembers the admissions and the waiting reviews of this process, so every spawn site shares one window and one queue. */
 export function spawnGate(options: SpawnGateOptions = {}): SpawnGate {
   const limits = { ...DEFAULT_SPAWN_LIMITS, ...options.limits };
@@ -269,6 +286,7 @@ export function spawnGate(options: SpawnGateOptions = {}): SpawnGate {
   const starts: number[] = [];
   const reviews = reviewWaitList(options.reviewStaleMs ?? REVIEW_STALE_MS);
   return {
+    ...reviewSlotMemory(limits.maxConcurrentReviews, now),
     admit(name, runningReviews = [], review) {
       const at = now();
       const readings = read();

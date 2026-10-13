@@ -1,5 +1,6 @@
 import type { ChurnWindow } from "../history/window.js";
 import type { SnapshotRow } from "../types.js";
+import type { QualitySection } from "./complexity-distribution.js";
 
 export interface HotspotRow {
   nodeId: string;
@@ -139,6 +140,8 @@ export interface GraphReportResult {
   /** User-facing guidance shown when emptyWindow is true. */
   hint?: string;
   drift?: ReportDrift;
+  /** SCBench-aligned code-quality rollups; absent from reports that did not compute them. */
+  quality?: QualitySection;
 }
 
 export interface HotspotDelta {

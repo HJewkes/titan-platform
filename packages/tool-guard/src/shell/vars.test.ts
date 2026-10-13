@@ -371,7 +371,7 @@ describe("writes to a variable with a case attribute (TP-1497)", () => {
   it.each([
     ["-l and an unprotected branch", "declare -l B; B=feature; git push origin HEAD:$B"],
     ["a plain variable", "B=feature; git push origin HEAD:$B"],
-    ["a destination no case attribute touched", "declare -l B; B=X; C=$(cmd); git push origin HEAD:$C"],
+    ["a destination no case attribute touched", "declare -l B; B=X; C=feature; git push origin HEAD:$C"],
   ])("finds no protected push with %s", (_, command) => {
     expect(pushSubjects(command)).toEqual([]);
   });

@@ -119,9 +119,9 @@ function isUntested(paths: readonly string[], rules: ClassRules): boolean {
   return !tests && paths.some((p) => matchesAny(p, rules.source));
 }
 
-/** Touches the changed paths alone produce, with no kind or caller flag; a test file never counts as authority, policy or security. */
-export function pathTouches(files: readonly Pick<ChangedFile, "path">[], rules: ClassRules = DEFAULT_CLASS_RULES): PrTouch[] {
-  const paths = files.map((f) => f.path);
+/** Touches the changed paths, or the paths they were renamed from, alone produce, with no kind or caller flag; a test file never counts as authority, policy or security. */
+export function pathTouches(files: readonly Pick<ChangedFile, "path" | "previousPath">[], rules: ClassRules = DEFAULT_CLASS_RULES): PrTouch[] {
+  const paths = files.flatMap((f) => (f.previousPath === undefined ? [f.path] : [f.path, f.previousPath]));
   const nonTest = paths.filter((p) => !matchesAny(p, rules.test));
   return PATH_TOUCHES.filter((touch) => (TEST_EXEMPT.includes(touch) ? nonTest : paths).some((p) => matchesAny(p, rules[touch])));
 }

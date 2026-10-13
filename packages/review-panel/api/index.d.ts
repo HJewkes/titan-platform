@@ -213,8 +213,8 @@ interface SliceInput {
 declare function securitySliceFlag(input: SliceInput, rules?: ClassRules): SliceFlag | undefined;
 /** True when any changed file, or the path it was renamed from, is a dependency manifest or lockfile. */
 declare function touchesDependency(files: readonly Pick<ChangedFile, "path" | "previousPath">[], rules?: Pick<ClassRules, "dependency">): boolean;
-/** Touches the changed paths alone produce, with no kind or caller flag; a test file never counts as authority, policy or security. */
-declare function pathTouches(files: readonly Pick<ChangedFile, "path">[], rules?: ClassRules): PrTouch[];
+/** Touches the changed paths, or the paths they were renamed from, alone produce, with no kind or caller flag; a test file never counts as authority, policy or security. */
+declare function pathTouches(files: readonly Pick<ChangedFile, "path" | "previousPath">[], rules?: ClassRules): PrTouch[];
 /** Class and touch flags from signals alone; no model reads the diff. An unread kind takes the strict class. */
 declare function classifyPr(facts: PrFacts, rules?: ClassRules): PrClass;
 
