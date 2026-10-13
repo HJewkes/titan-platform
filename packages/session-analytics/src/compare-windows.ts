@@ -7,7 +7,6 @@ interface RowsReport {
 }
 
 type RowOf<R extends RowsReport> = R["rows"][number];
-type NumericKeys<Row> = { [K in keyof Row]-?: Row[K] extends number | null ? K : never }[keyof Row];
 
 export interface ComparisonSpec<R extends RowsReport> {
   key: (row: RowOf<R>) => string;
@@ -19,8 +18,8 @@ export interface RowDelta<Row> {
   key: string;
   before: Row | null;
   after: Row | null;
-  /** After minus before per numeric field; null when either side is missing, null, or has no data. */
-  delta: { [K in NumericKeys<Row>]: number | null };
+  /** After minus before per numeric field name; null when either side is missing, null, or has no data. */
+  delta: Record<string, number | null>;
 }
 
 export interface WindowComparison<R extends RowsReport> {
@@ -65,7 +64,7 @@ function rowDelta<Row>(key: string, before: Row | null, after: Row | null, compa
   for (const field of numericFields(before, after)) {
     delta[field] = comparable ? deltaOf(fieldOf(before, field), fieldOf(after, field)) : null;
   }
-  return { key, before, after, delta: delta as RowDelta<Row>["delta"] };
+  return { key, before, after, delta };
 }
 
 function numericFields(...rows: unknown[]): string[] {
@@ -78,7 +77,7 @@ function numericFields(...rows: unknown[]): string[] {
 }
 
 function fieldOf(row: unknown, field: string): unknown {
-  return row === null ? null : (row as Record<string, unknown>)[field];
+  return row !== null && typeof row === "object" ? new Map(Object.entries(row)).get(field) : null;
 }
 
 function deltaOf(before: unknown, after: unknown): number | null {
