@@ -26,8 +26,29 @@ describe("a write to a branch ref by URL names the branch", () => {
     expect(apiBranchRefWrite(url, method, [])).toEqual({ branches: [branch] });
   });
 
-  it("reads a path that cannot be percent-decoded as a branch known only at run time", () => {
+  it("reads a git refs path that cannot be percent-decoded as a branch known only at run time", () => {
     expect(apiBranchRefWrite("repos/o/r/git/refs/heads/%E0%A4", "PATCH", [])).toEqual({ branches: [null] });
+  });
+
+  it("ignores a path that cannot be percent-decoded on another route", () => {
+    expect(apiBranchRefWrite("repos/o/r/issues/%E0%A4", "PATCH", [])).toBeNull();
+  });
+});
+
+describe("a git refs path with dot segments, which curl resolves, names a branch known only at run time", () => {
+  it.each([
+    "repos/o/r/git/refs/heads/feat/../main",
+    "https://api.github.com/repos/o/r/git/refs/heads/feat/../main",
+    "repos/o/r/git/refs/heads/./main",
+    "repos/o/r/git/refs/heads/x/%2E%2E/main",
+    "repos/o/r/git/x/../refs/heads/main",
+    "repos/o/r/issues/../git/refs/heads/main",
+  ])("PATCH %s", (url) => {
+    expect(apiBranchRefWrite(url, "PATCH", [])).toEqual({ branches: [null] });
+  });
+
+  it("ignores dot segments on a route that is not git refs either way", () => {
+    expect(apiBranchRefWrite("repos/o/r/issues/../pulls/1", "PATCH", [])).toBeNull();
   });
 });
 

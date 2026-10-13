@@ -16,14 +16,36 @@ const GIT_REFS_RE = /(?:^|\/)repos\/[^/]+\/[^/]+\/git\/refs?(\/.*)?$/i;
 const HEADS_RE = /^\/heads\/(.+)$/i;
 const REF_KEY_RE = /^ref(?:\[\])?$/;
 
-/** The URL's path as GitHub routes it, or null when it cannot be percent-decoded. */
-function routedPath(url: string): string | null {
-  const path = url.replace(/[?#].*$/s, "");
-  try {
-    return decodeURIComponent(path).replace(/\/{2,}/g, "/");
-  } catch {
-    return null;
+/** Loose enough to see a git refs route in a path that cannot be decoded. */
+const RAW_GIT_REFS_RE = /git(?:\/|%2f)+refs?/i;
+
+/** RFC 3986 remove_dot_segments over `/`-split segments; curl applies it by default. */
+function withoutDotSegments(path: string): string {
+  const kept: string[] = [];
+  for (const segment of path.split("/")) {
+    if (segment === "..") kept.pop();
+    else if (segment !== ".") kept.push(segment);
   }
+  return kept.join("/");
+}
+
+const hasDotSegment = (path: string) => path.split("/").some((s) => s === "." || s === "..");
+
+/**
+ * The URL's path as GitHub routes it. "unsure" when it cannot be percent-decoded on a git refs route, or when it
+ * holds a `.` or `..` segment and reads as a git refs route either as written or resolved: curl resolves them and gh
+ * sends them as written, so which branch it names depends on the client and the server.
+ */
+function routedPath(url: string): string | "unsure" | null {
+  const raw = url.replace(/[?#].*$/s, "");
+  let path: string;
+  try {
+    path = decodeURIComponent(raw).replace(/\/{2,}/g, "/");
+  } catch {
+    return RAW_GIT_REFS_RE.test(raw) ? "unsure" : null;
+  }
+  if (!hasDotSegment(path)) return path;
+  return GIT_REFS_RE.test(path) || GIT_REFS_RE.test(withoutDotSegments(path)) ? "unsure" : null;
 }
 
 /** The text before a field's first `=`, and whether an expansion or a case attribute may change it. */
@@ -68,7 +90,8 @@ export function apiBranchRefWrite(url: string, method: string | null, fields: Wo
   const verb = method?.toUpperCase() ?? null;
   if (verb === "GET" || verb === "HEAD") return null;
   const path = routedPath(url);
-  if (path === null) return RUN_TIME;
+  if (path === null) return null;
+  if (path === "unsure") return RUN_TIME;
   const refs = GIT_REFS_RE.exec(path);
   if (!refs) return null;
   const tail = (refs[1] ?? "").replace(/\/+$/, "");
