@@ -365,7 +365,7 @@ describe("namesIfs", () => {
     ["zsh compadd -A", "compadd -A $a$b x"],
     ["an autoloaded function", "autoload f; f; git push origin $R"],
     ["zsh emulate -c", "emulate zsh -c $x"],
-  ])("matches a command word outside the modeled builtins: %s", (_form, line) => {
+  ])("matches a write behind a precommand modifier or a builtin the model does not read: %s", (_form, line) => {
     expect(namesIfs(line)).toBe(true);
   });
 
