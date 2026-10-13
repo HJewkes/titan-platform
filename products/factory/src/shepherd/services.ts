@@ -5,7 +5,6 @@ import type { PrFilesRead } from "./git-pr-files.js";
 import type { SeatBook } from "./seats.js";
 import type { ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
-import type { CarryInput, CarryResult } from "./tree-carry.js";
 import type { SnapshotServices } from "./snapshot-reads.js";
 
 export const SHEPHERD_WORKFLOW = "shepherd-pr";
@@ -26,6 +25,4 @@ export interface ShepherdServices extends SnapshotServices {
   now?: () => number;
   /** Serve's GitHub gateway behind `shepherd.ghRead` and `shepherd.ghBudget`; absent on a host that is not serve. */
   gateway?: GhGateway;
-  /** The tree probe a release across Shepherd's own merge-up proves the merge with; absent, a release names the PR's current head. */
-  carry?: (input: CarryInput) => Promise<CarryResult>;
 }
