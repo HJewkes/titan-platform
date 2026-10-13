@@ -2006,7 +2006,7 @@ describe("reviewPhase", () => {
     describe("a MERGE whose CI-policy line is prose", () => {
       const PROSE = "CI-policy: no .github/ files changed and no required check was dropped, renamed or skipped.";
       const CI_FILES: PrFile[] = [{ path: ".github/workflows/ci.yml", status: "modified" }];
-      const decisionOf = (verdict: Verdict | undefined) => ((verdict as Extract<Verdict, { kind: "MERGE" }>).evidence as MergeEvidence).record.decision;
+      const decided = (decision: object) => ({ kind: "MERGE", headSha: H1, evidence: { record: { decision } } });
 
       it("corrects the reviewer once and merges its 'unchanged' reply with no ci-policy-malformed gate", async () => {
         const dispatch = fakeDispatch();
@@ -2016,8 +2016,7 @@ describe("reviewPhase", () => {
         expect(corrections(stepIds)).toEqual([`sh-correct-verdict:${H1}`]);
         expect(stepIds).toContain(`sh-await-verdict:${H1}:corrected`);
         expect(dispatch.resumes).toEqual([{ name: "rv-octo-demo-1", brief: expect.stringContaining("its CI-policy line held more than the exact form") }]);
-        expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
-        expect(decisionOf(verdicts[0])).toMatchObject({ outcome: "allow", rule: { table: "authority" } });
+        expect(verdicts).toMatchObject([decided({ outcome: "allow", rule: { table: "authority" } })]);
       });
 
       it("ends a second prose reply in the after-one-correction timeout none, with one resume", async () => {
@@ -2037,7 +2036,7 @@ describe("reviewPhase", () => {
 
         expect(corrections(stepIds)).toEqual([]);
         expect(dispatch.resumes).toEqual([]);
-        expect(decisionOf(verdicts[0])).toMatchObject({ outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "ci-policy-weakened" } });
+        expect(verdicts).toMatchObject([decided({ outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "ci-policy-weakened" } })]);
       });
     });
 
