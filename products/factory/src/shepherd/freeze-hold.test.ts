@@ -429,3 +429,80 @@ describe("a ci-red wake on a PR whose base head is red", () => {
     expect(w.told).toEqual([]);
   });
 });
+
+const BASE_PARENT = fakeSha("base-parent");
+const FIXED = fakeSha("base-fixed");
+/** Every run `runs` builds starts at the `successRun` default. */
+const CI_STARTED = Date.parse("2026-01-01T00:00:00Z");
+const at = (offsetMinutes: number) => new Date(CI_STARTED + offsetMinutes * 60_000).toISOString();
+
+/**
+ * Main ran BASE_PARENT (green) then BASE (red on `validate`), landed `baseAt` minutes from the PR's CI start, and is
+ * already at FIXED (green). Each head the update makes passes, so only H1's red is the base's.
+ */
+function fixedBaseWorld(baseAt: number): World {
+  const w = world(["validate"], []);
+  w.fake.rules.strict = false;
+  w.fake.pr(1).behind = true;
+  w.fake.onGetPr = (pr) => w.fake.setRuns(pr.headSha, runs(pr.headSha === H1 ? ["validate"] : []));
+  w.fake.setRuns(BASE_PARENT, runs([]));
+  baseFails(w, ["validate"]);
+  w.fake.setRuns(FIXED, runs([]));
+  w.fake.commits.set(BASE_PARENT, { sha: BASE_PARENT, parents: [], committedAt: at(baseAt - 30) });
+  w.fake.commits.set(BASE, { sha: BASE, parents: [BASE_PARENT], committedAt: at(baseAt) });
+  w.fake.commits.set(FIXED, { sha: FIXED, parents: [BASE], committedAt: at(60) });
+  w.fake.refs.set("main", FIXED);
+  return w;
+}
+
+describe("a ci-red wake on a PR whose CI ran against a base that has since been fixed", () => {
+  it("merges the red head up with no wake, repair or notice, and the fresh CI lands it green with no seat or implementer push", async () => {
+    const w = fixedBaseWorld(-10);
+    const runId = start(w, { ...OWNER_GATE_POLICY, seat: "demo-seat" });
+
+    await vi.waitFor(() => expect(stepIds(w, runId)).toContain("update-branch:sh-freeze-hold:0"));
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    expect(holdOf(w, runId)).toMatchObject({ result: { hold: true, baseRed: { baseRef: "main", baseSha: BASE, stale: true } } });
+    expect(resultOf(w, runId, "sh-base-wait:0")).toMatchObject({ result: { baseMoved: true, headSha: H1 } });
+    expect(w.fake.effects).toMatchObject({ updateBranch: 1, rerunFailedJobs: 0 });
+    expect(stepIds(w, runId)).not.toContain("sh-repair");
+    expect(stepIds(w, runId)).not.toContain("sh-head-origin");
+    expect(w.wakes).toEqual([]);
+    expect(w.told.filter((text) => text.includes("base-red"))).toEqual([]);
+  });
+
+  it("wakes as before when the base its CI ran against was green, though a later base was red", async () => {
+    const w = fixedBaseWorld(10);
+    const runId = start(w);
+
+    await gateOpened(w.host, gateId(runId, "ci-failed"));
+
+    expect(w.wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["ci-red", H1]]);
+    expect(holdOf(w, runId)).toMatchObject({ result: { hold: false, reason: expect.stringContaining("failing here but not on main") } });
+  });
+
+  it("wakes as before when a base commit's landing time is unknown", async () => {
+    const w = fixedBaseWorld(-10);
+    w.fake.commits.set(BASE, { sha: BASE, parents: [BASE_PARENT] });
+    const runId = start(w);
+
+    await gateOpened(w.host, gateId(runId, "ci-failed"));
+
+    expect(w.wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["ci-red", H1]]);
+    expect(w.fake.effects.updateBranch).toBe(0);
+  });
+
+  it("wakes as before when the base its CI ran against is more than 20 commits back", async () => {
+    const w = fixedBaseWorld(-10);
+    const later = Array.from({ length: 20 }, (_, i) => fakeSha(`base-later-${i}`));
+    later.forEach((sha, i) => w.fake.commits.set(sha, { sha, parents: [later[i - 1] ?? BASE], committedAt: at(1 + i) }));
+    w.fake.refs.set("main", later.at(-1)!);
+    w.fake.setRuns(later.at(-1)!, runs([]));
+    const runId = start(w);
+
+    await gateOpened(w.host, gateId(runId, "ci-failed"));
+
+    expect(w.wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["ci-red", H1]]);
+  });
+});

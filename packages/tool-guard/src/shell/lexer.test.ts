@@ -248,18 +248,20 @@ describe("subscripts with blanks inside the brackets", () => {
     ["esac", "Y[ 0 ]=x esac", ["Y[ 0 ]=x", "esac"]],
     ["[[", "Y[ 0 ]=x [[", ["Y[ 0 ]=x", "[["]],
     ["]]", "Y[ 0 ]=x ]]", ["Y[ 0 ]=x", "]]"]],
-    ["((", "Y[ 0 ]=x ((", ["Y[ 0 ]=x", "<op>", "<op>"]],
     ["))", "Y[ 0 ]=x ))", ["Y[ 0 ]=x", "<op>", "<op>"]],
     ["$((", "Y[ 0 ]=x $((1))", ["Y[ 0 ]=x", "$((1))"]],
     ["<<", "Y[ 0 ]=x <<E\nE\n", ["Y[ 0 ]=x", "<redirect>", "<op>"]],
     ["<<-", "Y[ 0 ]=x <<-E\nE\n", ["Y[ 0 ]=x", "<redirect>", "<op>"]],
-    ...["@", "!", "?", "*", "+"].map((op): [string, string, string[]] => [
-      `${op}(`,
-      `Y[ 0 ]=x ${op}(a)`,
-      ["Y[ 0 ]=x", op, "<op>", "a", "<op>"],
-    ]),
   ])("joins the subscript when the text holds %s after it", (_token, src, expected) => {
     expect(words(src)).toEqual(expected);
+  });
+
+  it.each(["@", "!", "?", "*", "+"])("refuses an extglob %s( after the joined assignment, which bash may read as a pattern", (op) => {
+    expect(() => tokenize(`Y[ 0 ]=x ${op}(a)`)).toThrow(ParseError);
+  });
+
+  it("refuses (( after the joined assignment, which bash reads as a compound assignment's nested (", () => {
+    expect(() => tokenize("Y[ 0 ]=x ((")).toThrow(ParseError);
   });
 });
 

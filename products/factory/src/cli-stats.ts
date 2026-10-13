@@ -1,3 +1,5 @@
+import { homedir } from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { MetricsEntryRead } from "@titan-design/health/metrics";
 import { openDatabase } from "@titan-design/store-sqlite";
@@ -11,6 +13,9 @@ import { eventsSince } from "./shepherd/events.js";
 import { readAllGates } from "./shepherd/owner-friction-read.js";
 import { ownerFriction, type FrictionDay } from "./shepherd/owner-friction.js";
 import { reviewCauseStats, type ReviewCauseRow } from "./shepherd/review-cause.js";
+import { formatReviewReport, reviewReport } from "./shepherd/review-stats-report.js";
+import { REVIEW_STATS_DB, ReviewStatsStore } from "./shepherd/review-stats-store.js";
+import { ledgerRuns, readRetireCosts, refreshReviewStats } from "./shepherd/review-stats.js";
 import { stageStats, type StageWeek } from "./shepherd/stage-times.js";
 import { perRunExport } from "./shepherd/per-run-export.js";
 import { ShepherdStore } from "./shepherd/store.js";
@@ -19,6 +24,8 @@ import { failureStats, formatFailures } from "./shepherd/stats-failures.js";
 import { shepherdStats, type StatsRow } from "./shepherd/stats.js";
 import { claudeTranscripts, formatReviewCost, reviewCost } from "./shepherd/stats-cost.js";
 import { formatRedAfterMerge, redAfterMerge } from "./shepherd/stats-quality.js";
+import { shadowsIn } from "./shepherd/train-shadow.js";
+import { formatTrainShadow, trainShadowStats } from "./shepherd/train-shadow-stats.js";
 import { evaluateSlo, formatSlo, readRegistry } from "./shepherd/slo.js";
 
 const ALL_STATUSES: WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
@@ -35,6 +42,9 @@ interface StatsOpts {
   registry?: string;
   perRun?: boolean;
   gates?: boolean;
+  reviews?: boolean;
+  repo?: string;
+  rows?: boolean;
   /** Minutes, parsed from `90m`, `6h` or `7d`. */
   since?: number;
 }
@@ -82,6 +92,29 @@ function perRunReport(db: ReturnType<typeof openDatabase>, opts: StatsOpts): str
   return `${JSON.stringify({ perRun: perRunExport(shepherdRuns(db), kinds, { from: opts.from, to: opts.to }) }, null, 2)}\n`;
 }
 
+/** The broker's seat logs, Shepherd's `logs/shepherd/` among them: AUTONOMY_ROOT, else under ACTIVE_ROOT, else active-work's default root. */
+function seatLogsDir(env: NodeJS.ProcessEnv): string {
+  const active = env.ACTIVE_ROOT || path.join(env.XDG_DATA_HOME || path.join(env.HOME || homedir(), ".local", "share"), "active-work");
+  return path.join(env.AUTONOMY_ROOT || path.join(active, "claude-channels", "sources", "autonomy"), "logs");
+}
+
+/**
+ * Refreshes `review-stats.sqlite3` beside the ledger, then reads the report from it. The ledger's runs are read before
+ * the first await, so the caller may close its read-only connection as soon as this returns.
+ */
+async function reviewsReport(db: ReturnType<typeof openDatabase>, opts: StatsOpts, io: CliIo, dbPath: string, now: number): Promise<string> {
+  const store = ReviewStatsStore.open(path.join(path.dirname(dbPath), REVIEW_STATS_DB));
+  try {
+    const runs = ledgerRuns(db).runs(store.refreshedThrough());
+    const refresh = await refreshReviewStats({ store, runs: { runs: () => runs }, retire: readRetireCosts(seatLogsDir(io.env)), transcripts: claudeTranscripts() });
+    const report = reviewReport(store.db, { from: opts.from, to: opts.to, repo: opts.repo }, now, opts.rows);
+    if (opts.json) return `${JSON.stringify({ ...report, refresh }, null, 2)}\n`;
+    return `${formatReviewReport(report)}refresh: ${refresh.added} new reviews, ${refresh.repriced} repriced, ${refresh.transcriptReads} transcript reads\n`;
+  } finally {
+    store.close();
+  }
+}
+
 function gateLine(r: GateStatsRow): string {
   const decisions = Object.entries(r.decisions).map(([decision, n]) => `${decision} ${n}`).join(" ");
   return `${r.policyRow}  ${r.resolver}  gates ${r.count}  decisions ${decisions || "-"}  cancelled-unanswered ${r.cancelledUnanswered}  pending ${r.pending}  median ${r.medianHours}h  max ${r.maxHours}h`;
@@ -98,6 +131,8 @@ function usageError(opts: StatsOpts): string | undefined {
   const bad = [opts.from, opts.to].find((date) => date !== undefined && !DATE.test(date));
   if (bad !== undefined) return `expected YYYY-MM-DD, got ${JSON.stringify(bad)}`;
   if (opts.perRun && !opts.json) return "--per-run prints JSON only; add --json";
+  if ((opts.repo !== undefined || opts.rows) && !opts.reviews) return "--repo and --rows apply only to --reviews";
+  if (opts.rows && !opts.json) return "--rows prints JSON only; add --json";
   if (opts.gates && opts.since === undefined) return "--gates needs --since, e.g. --since 7d";
   if (opts.since !== undefined && !opts.gates) return "--since applies only to --gates";
   if (opts.gates && (opts.from !== undefined || opts.to !== undefined)) return "--gates takes --since, not --from/--to";
@@ -123,8 +158,9 @@ function statsReport(db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: 
   const red = redAfterMerge(runs, range);
   const failures = opts.failures ? failureStats(runs, range) : undefined;
   const overrides = overrideStats(runs, range);
-  if (opts.json) return `${JSON.stringify({ merges: rows, ownerFriction: friction, stageTimes: stages, redAfterMerge: red, ownerOverrides: overrides, ...(failures && { failures }), reviewCauses: causes }, null, 2)}\n`;
-  const lines = [...formatRedAfterMerge(red), ...(failures ? formatFailures(failures) : [])].map((line) => `${line}\n`).join("");
+  const train = trainShadowStats(shadowsIn(db), runs, range);
+  if (opts.json) return `${JSON.stringify({ merges: rows, ownerFriction: friction, stageTimes: stages, redAfterMerge: red, ownerOverrides: overrides, trainShadow: train, ...(failures && { failures }), reviewCauses: causes }, null, 2)}\n`;
+  const lines = [...formatRedAfterMerge(red), ...formatTrainShadow(train), ...(failures ? formatFailures(failures) : [])].map((line) => `${line}\n`).join("");
   return `${formatStats(rows, friction, stages, overrides)}${lines}${causes.length === 0 ? "" : `\nreview causes:\n${causesReport(causes, false)}`}`;
 }
 
@@ -151,6 +187,7 @@ function statsAction(opts: StatsOpts, io: CliIo, dbPath: () => string, setExit: 
     if (opts.gates) return io.stdout(gatesReport(db, opts, now()));
     if (opts.slo) return sloOrExit(db, opts, now(), io, setExit);
     if (opts.perRun) return io.stdout(perRunReport(db, opts));
+    if (opts.reviews) return reviewsReport(db, opts, io, dbPath(), now()).then((report) => io.stdout(report));
     if (opts.cost) return costReport(shepherdRuns(db), opts).then((report) => io.stdout(report));
     io.stdout(statsReport(db, opts, now()));
   } finally {
@@ -167,6 +204,9 @@ export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () =
     .option("--to <date>", "last day, YYYY-MM-DD (UTC), inclusive")
     .option("--json", "print the rows as JSON")
     .option("--cost", "instead: reviewer dollars and tokens per merged PR, per repo and ISO week, read from the verdicts' transcripts")
+    .option("--reviews", "instead: refresh review-stats.sqlite3 beside the database, then print per-review dollars, review and queue minutes (p50, p90, mean, total) by repo, ISO week, model and verdict, and per-PR rounds, dollars and review minutes")
+    .option("--repo <owner/name>", "with --reviews: only this repo")
+    .option("--rows", "with --reviews --json: also print every review row")
     .option("--rereviews", "print only the review dispatches per repo and ISO week, counted by why each was dispatched")
     .option("--slo", "instead: each metric in metrics/shepherd.yml with its value over its SLO window (or --from/--to), its SLO, and pass or fail")
     .option("--registry <file>", "the titan.metrics/v1 entry --slo reads (default: this checkout's metrics/shepherd.yml)")

@@ -43,7 +43,7 @@ import {
   type ReviewTarget,
   type ReviewWiring,
 } from "./review.js";
-import { DEFAULT_HOLD_WAIT_MS, ReviewerMachineHold, reviewWait } from "./review-wait.js";
+import { DEFAULT_HOLD_WAIT_MS, ReviewerAskTimedOut, ReviewerMachineHold, reviewWait } from "./review-wait.js";
 import { DEPTH_FLOOR_REASON } from "@titan-design/review-panel";
 import { MAX_REVIEWER_QUESTIONS, SHAPE_BRIEFS, reviewerBrief } from "@titan-design/review-panel";
 import { routeFor } from "./route-table.js";
@@ -236,7 +236,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(reader, input, { ...clock, pollMs: 100, timeoutMs: 250 }, signal);
 
-    expect(result).toEqual({ kind: "none" });
+    expect(result).toEqual({ kind: "none", ended: "deadline" });
     expect(reads).toBe(4);
     expect(clock.now()).toBe(300);
   });
@@ -247,14 +247,14 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(reader, input, { ...clock, pollMs: 100, timeoutMs: 250 }, signal);
 
-    expect(result).toEqual({ kind: "none", reason: "wait" });
+    expect(result).toEqual({ kind: "none", reason: "wait", ended: "deadline" });
   });
 
   it("treats a failing read as nothing yet", async () => {
     const clock = clockAt(0);
     const reader: ReviewerReader = { read: async () => Promise.reject(new Error("io")) };
 
-    await expect(awaitVerdict(reader, input, { ...clock, pollMs: 100, timeoutMs: 150 }, signal)).resolves.toEqual({ kind: "none" });
+    await expect(awaitVerdict(reader, input, { ...clock, pollMs: 100, timeoutMs: 150 }, signal)).resolves.toEqual({ kind: "none", ended: "deadline" });
   });
 
   const timing = (clock: ReturnType<typeof clockAt>) => ({ ...clock, pollMs: 100, timeoutMs: 10_000, exitGraceMs: 300, detachGraceMs: 1_000 });
@@ -271,7 +271,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, (now) => (now < 500 ? "live" : "exited")));
 
-    expect(result).toEqual({ kind: "none" });
+    expect(result).toEqual({ kind: "none", ended: "reviewer-gone" });
     expect(clock.now()).toBe(800);
   });
 
@@ -280,7 +280,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, (now) => (now < 500 ? "live" : "absent")));
 
-    expect(result).toEqual({ kind: "none" });
+    expect(result).toEqual({ kind: "none", ended: "reviewer-gone" });
   });
 
   it("takes a verdict that lands within the grace after the exit", async () => {
@@ -307,7 +307,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, (now) => (now < 500 ? "live" : "detached")));
 
-    expect(result).toEqual({ kind: "none" });
+    expect(result).toEqual({ kind: "none", ended: "reviewer-gone" });
     expect(clock.now()).toBe(1_500);
   });
 
@@ -316,7 +316,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(silentReader, input, { ...timing(clock), timeoutMs: 2_000 }, signal, rosterBy(clock, () => "down"));
 
-    expect(result).toEqual({ kind: "none" });
+    expect(result).toEqual({ kind: "none", ended: "deadline" });
     expect(clock.now()).toBeGreaterThanOrEqual(2_000);
   });
 
@@ -326,7 +326,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, presenceAt));
 
-    expect(result).toEqual({ kind: "none" });
+    expect(result).toEqual({ kind: "none", ended: "reviewer-gone" });
     expect(clock.now()).toBe(1_200);
   });
 
@@ -1970,6 +1970,20 @@ describe("reviewPhase", () => {
       expect(resultOf(`sh-merge-evidence:${H1}`)).toMatchObject({ merge: { resolver: identity, dispatchedReviewer: identity } });
     });
 
+    it.each([
+      ["I would merge this head as it is", "## Review\n\nThe change is sound and the tests cover it.\n\nI would merge this head as it is."],
+      ["I'd merge this head", "## Review\n\nNo blocking findings. I'd merge this head."],
+    ])("records the await and corrects a reviewer that exits with prose saying '%s' and no Verdict block", async (_name, prose) => {
+      const dispatch = fakeDispatch();
+
+      const { verdicts, stepIds } = await review({ dispatch, read: correcting(prose, (head) => verdictAt(head)), policy: AUTO });
+
+      expect(stepIds).toContain(`sh-await-verdict:${H1}`);
+      expect(corrections(stepIds)).toEqual([`sh-correct-verdict:${H1}`]);
+      expect(dispatch.resumes).toEqual([{ name: "rv-octo-demo-1", brief: expect.stringContaining("it had no Verdict line") }]);
+      expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
+    });
+
     it("sends the head back with the corrected reply's text on a corrected FIX_FIRST", async () => {
       const dispatch = fakeDispatch();
 
@@ -2178,18 +2192,33 @@ describe("reviewPhase", () => {
       expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
     });
 
-    it("does not merge when the seat reviewer's transcript cannot be read, and records why", async () => {
+    it("does not merge when the seat reviewer's transcript cannot be parsed, and records why without holding the own MERGE", async () => {
       const dispatch = fakeDispatch(crew(seat));
       const unreadable: Scene["read"] = (input, held, now) => {
-        if (input.reviewerAgentId === seat.agentId) throw new Error("unexpected end of JSON input");
+        if (input.reviewerAgentId === seat.agentId) throw new SyntaxError("unexpected end of JSON input");
         return withSeat([])(input, held, now);
       };
 
       const { verdicts, stepIds, resultOf } = await review({ dispatch, read: unreadable, policy: AUTO });
 
-      const reason = `seat check: the transcript of ${seat.name} could not be read: Error`;
+      const reason = `seat check: the transcript of ${seat.name} could not be read: SyntaxError`;
       expect(verdicts).toEqual([{ kind: "none", cause: "timeout", reason }]);
       expect(resultOf(`sh-await-verdict:${H1}`)).toEqual({ kind: "none", reason });
+      expect(stepIds.filter((id) => id.startsWith("sh-merge-evidence"))).toEqual([]);
+    });
+
+    it("does not merge when every read of the seat reviewer's transcript times out, and holds the own MERGE with why", async () => {
+      const dispatch = fakeDispatch(crew(seat));
+      const timingOut: Scene["read"] = (input, held, now) => {
+        if (input.reviewerAgentId === seat.agentId) throw new ReviewerAskTimedOut("agent-chat timed out");
+        return withSeat([])(input, held, now);
+      };
+
+      const { verdicts, stepIds, resultOf } = await review({ dispatch, read: timingOut, policy: AUTO });
+
+      const reason = `seat check: the transcript of ${seat.name} could not be read: ReviewerAskTimedOut`;
+      expect(verdicts).toEqual([{ kind: "none", cause: "external-hold", reason, seatHeld: expect.objectContaining({ head: H1 }) }]);
+      expect(resultOf(`sh-await-verdict:${H1}`)).toEqual({ kind: "none", reason, seatHeld: expect.objectContaining({ verdict: "MERGE", head: H1 }) });
       expect(stepIds.filter((id) => id.startsWith("sh-merge-evidence"))).toEqual([]);
     });
 

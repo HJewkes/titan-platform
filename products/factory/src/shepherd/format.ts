@@ -4,6 +4,7 @@ import { SHEPHERD_COMMAND_MAP, type MergeEvaluation, type Registered, type Sheph
 import type { PrRow } from "./prs.js";
 import type { ReviewAsk } from "./review-request.js";
 import type { ResyncReport } from "./resync.js";
+import { lastAwaitClause } from "./none-reason.js";
 import { OVERDUE_HOURS, overdueOwnerGates, type Waiting, type WaitingGate } from "./waiting.js";
 import type { PrTimeline, TimelineEntry, WatchRow } from "./view.js";
 
@@ -74,7 +75,12 @@ function formatRegistered(registered: Registered): string {
   const { runId, registration } = registered;
   const target = `${registration.repo}${registration.pr === null ? "" : `#${registration.pr}`}${registration.branch ? ` (${registration.branch})` : ""}`;
   const held = registered.g10Hold === undefined ? "" : `; held ${registered.g10Hold}`;
-  return `run ${runId} shepherd-pr ${target}: ${registerOutcome(registered)}; policy ${registration.policy.merge}${held}\n`;
+  return `run ${runId} shepherd-pr ${target}: ${registerOutcome(registered)}; policy ${registration.policy.merge}${held}\n${sizeWarning(registered)}`;
+}
+
+function sizeWarning({ sizeFlag }: Registered): string {
+  if (sizeFlag === undefined) return "";
+  return `warning: security or guard-area PR is ${sizeFlag.lines} non-generated lines, over the ${sizeFlag.cap}-line slice cap; split the parser or list change from its wiring\n`;
 }
 
 function registerOutcome({ created, previousRunId, previousStop }: Registered): string {
@@ -85,7 +91,7 @@ function registerOutcome({ created, previousRunId, previousStop }: Registered): 
 function rowLine(row: WatchRow): string {
   const target = row.pr === null ? `${row.repo} ${row.branch}` : `${row.repo}#${row.pr}`;
   const head = row.headSha === null ? "-" : row.headSha.slice(0, 7);
-  const blockers = [row.held && heldLine(row.held), row.stalled && `stalled: ${row.stalled.reason}`].filter(Boolean);
+  const blockers = [row.held && heldLine(row.held), row.stalled && `stalled: ${row.stalled.reason}`, lastAwaitClause(row)].filter(Boolean);
   return `${target} ${row.phase} ${head} ${row.nextAction}${timeSuffix(row)}${blockers.length > 0 ? ` [${blockers.join("; ")}]` : ""}`;
 }
 

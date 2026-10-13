@@ -63,6 +63,16 @@ describe("check-then-act port over the fake", () => {
     expect(fake.effects.merge).toBe(1);
   });
 
+  it("moves the base branch to the merge sha when a PR merges, as GitHub does", async () => {
+    const fake = fakeGitHub();
+    const port = githubPort(fake.wire);
+    const pr = fake.addPr({ headSha: H1 });
+
+    const { mergeSha } = await port.merge(REPO, pr.number, H1, "squash");
+
+    expect(await port.getHeadSha(REPO, pr.baseRef)).toBe(mergeSha);
+  });
+
   it("stamps mergedAt when a PR merges, and leaves it null until then", async () => {
     const fake = fakeGitHub();
     const port = githubPort(fake.wire);
@@ -130,6 +140,31 @@ describe("check-then-act port over the fake", () => {
     fake.updateBranchFaults = [{ error: first }, { error: new FakeHttpError(500, "boom") }];
 
     await expect(githubPort(fake.wire).updateBranch(REPO, pr.number, H1)).rejects.toBe(first);
+  });
+
+  it("setPrBase records each retarget once and moves the PR's base; a repeat or a merged PR skips", async () => {
+    const fake = fakeGitHub();
+    const port = githubPort(fake.wire);
+    fake.refs.set("stack/parent", H1);
+    const child = fake.addPr({ headSha: H2, baseRef: "stack/parent" });
+    const landed = fake.addPr({ headSha: H1, baseRef: "stack/parent", merged: true, state: "closed" });
+
+    const first = await port.setPrBase(REPO, child.number, "main");
+    const again = await port.setPrBase(REPO, child.number, "main");
+    const merged = await port.setPrBase(REPO, landed.number, "main");
+
+    expect([first, again, merged]).toEqual([{ done: true }, { done: false, skipped: "unchanged" }, { done: false, skipped: "merged" }]);
+    expect(fake.baseChanges).toEqual([{ number: child.number, base: "main" }]);
+    expect(fake.pr(child.number).baseRef).toBe("main");
+  });
+
+  it("the fake refuses a retarget onto a branch that does not exist, as GitHub does", async () => {
+    const fake = fakeGitHub();
+    const pr = fake.addPr({ headSha: H1, baseRef: "stack/parent" });
+
+    await expect(githubPort(fake.wire).setPrBase(REPO, pr.number, "gone")).rejects.toMatchObject({ status: 422 });
+    expect(fake.baseChanges).toEqual([]);
+    expect(fake.pr(pr.number).baseRef).toBe("stack/parent");
   });
 
   it("rerunFailed does nothing while the run is already re-running", async () => {

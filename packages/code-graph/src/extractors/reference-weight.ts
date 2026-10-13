@@ -66,9 +66,7 @@ export function importWeight(
  * One named or default import binding, pairing the name as *exported by the
  * target module* (what a symbol node is keyed on) with the *local* alias in
  * this file (what usage counts key on). Namespace imports (`import * as ns`)
- * are deliberately excluded: they reference the module as a whole, not any one
- * export, so per-symbol attribution isn't well-defined — the file-level
- * `imports` edge still accounts for them (C-53).
+ * are not bindings of one export; `namespaceMemberUsage` attributes them.
  */
 export interface ImportBinding {
   importedName: string;
@@ -86,6 +84,52 @@ export function namedImportBindings(decl: ImportDeclaration): ImportBinding[] {
     });
   }
   return out;
+}
+
+/** Usage key for a whole-object use of a namespace binding, which may reach any export. */
+export const WHOLE_NAMESPACE = "*";
+
+/**
+ * Per-member use counts of a namespace import `import * as X` (TP-2474 c):
+ * `X.a`, the type `X.T` and `X["a"]` each count toward that export, so modules
+ * consumed through a namespace stop reading as unused. Any other use of `X`
+ * (passed as an argument, spread, `typeof X`, re-exported) escapes static
+ * attribution and counts toward `WHOLE_NAMESPACE`.
+ */
+export function namespaceMemberUsage(
+  sourceFile: SourceFile,
+  localName: string,
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const id of sourceFile.getDescendantsOfKind(SyntaxKind.Identifier)) {
+    if (id.getText() !== localName || isDeclarationSite(id)) continue;
+    const member = namespaceMemberName(id);
+    counts.set(member, (counts.get(member) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function isDeclarationSite(id: Identifier): boolean {
+  if (id.getFirstAncestorByKind(SyntaxKind.ImportDeclaration)) return true;
+  if (id.getFirstAncestorByKind(SyntaxKind.ExportDeclaration)?.hasModuleSpecifier()) return true;
+  return isPropertyNamePosition(id);
+}
+
+function namespaceMemberName(id: Identifier): string {
+  const parent = id.getParent();
+  if (Node.isPropertyAccessExpression(parent) && parent.getExpression() === id) {
+    return parent.getName();
+  }
+  if (Node.isQualifiedName(parent) && parent.getLeft() === id) {
+    return parent.getRight().getText();
+  }
+  if (Node.isElementAccessExpression(parent) && parent.getExpression() === id) {
+    const arg = parent.getArgumentExpression();
+    if (Node.isStringLiteral(arg) || Node.isNoSubstitutionTemplateLiteral(arg)) {
+      return arg.getLiteralText();
+    }
+  }
+  return WHOLE_NAMESPACE;
 }
 
 /**

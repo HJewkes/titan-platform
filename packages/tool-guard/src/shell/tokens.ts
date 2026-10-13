@@ -56,6 +56,31 @@ export interface RedirectToken {
 
 export type Token = WordToken | OpToken | SubsToken | RedirectToken;
 
+/** Tokens scanned so far, their paren depth, and the depths a `[[` and a `=~` in it sat at, or -1. */
+export interface RegexScan {
+  scanned: number;
+  depth: number;
+  commandStart: boolean;
+  conditionalAt: number;
+  regexAt: number;
+  /** The last word stood in command position, so a `(` after it may open a function header `name ( )`. */
+  wordAtStart: boolean;
+  /** The last words were `time` and its options, after which bash still reads a command. */
+  timed: boolean;
+  /** The last word was `function` or `coproc` in command position, so the next word is a name a `(` may follow. */
+  nameNext: boolean;
+  /** The last word named a function or coproc, so a `(` after it opens a header or a subshell body. */
+  named: boolean;
+  /** Open `case`s, inside which a `(` may open a pattern after `in`, `)` or an operator. */
+  caseDepth: number;
+  /** Open `if`s and loops, without which bash rejects `then`, `elif`, `else` and `do`. */
+  blockDepth: number;
+  /** Paren depth of an open function header `(`, or -1. */
+  headerAt: number;
+  /** A function header closed and its compound body has not opened, so bash accepts only that body next. */
+  bodyPending: boolean;
+}
+
 export interface LexState {
   src: string;
   i: number;
@@ -77,5 +102,9 @@ export interface LexState {
   arithEnd: number;
   /** Index of the `)` matching a `((`'s second `(`, arithmetic or not; bash reads up to it whole, so no newline before it ends a line. */
   wholeEnd: number;
+  /** Paren depth a `NAME=(` or `NAME+=(` opened at, or -1; bash rejects any redirect before that paren closes. */
+  compoundDepth: number;
+  /** Where the scan for a `[[ … =~ … ]]` operand, which `NAME=(` only groups in, has reached. */
+  regex: RegexScan;
   trials: ArithTrials;
 }

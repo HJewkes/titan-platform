@@ -71,6 +71,10 @@ describe("failureOf", () => {
     expect(failureOf(Object.assign(new Error(LEAKY), { status: 502 }))).toBe("HTTP 502");
   });
 
+  it.each([200, 204, 299])("gives the class, not an HTTP error, for the success status %i", (status) => {
+    expect(failureOf(Object.assign(new StorageFault(LEAKY), { status }))).toBe("StorageFault");
+  });
+
   it.each([1, 99, 600, 42_000])("gives the class, not an HTTP status, for the numeric status %i outside 100-599", (status) => {
     expect(failureOf(Object.assign(new StorageFault(LEAKY), { status }))).toBe("StorageFault");
   });

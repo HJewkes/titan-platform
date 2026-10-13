@@ -1,6 +1,7 @@
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, sameSpend, spent } from "./arith-trials.js";
 import { backtickEnd, balancedEnd, type DollarOpener, dollarOpener, type NestedReaders, QUOTED_LITERAL_OPENERS } from "./balanced.js";
 import { dropJoins, joinedDollar, nextAfter, pastJoins, readAhead } from "./joins.js";
+import { newRegexScan, noteParen, refuseRedirect } from "./compound.js";
 import { nested } from "./nesting.js";
 import { ParseError, refusingAs, SplitParseError } from "./parse-error.js";
 import { readLineEnd } from "./procsub-heredoc.js";
@@ -25,7 +26,7 @@ export function tokenize(src: string, trials = newTrials(src)): Token[] {
 }
 
 function newState(src: string, i: number, nested: boolean, trials: ArithTrials): LexState {
-  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], leftOpen: false, redirect: null, subscriptEnd: -1, looseSubscriptEnd: -1, arithOutsideLoose: true, arithEnd: -1, wholeEnd: -1, trials };
+  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], leftOpen: false, redirect: null, subscriptEnd: -1, looseSubscriptEnd: -1, arithOutsideLoose: true, arithEnd: -1, wholeEnd: -1, compoundDepth: -1, regex: newRegexScan(), trials };
 }
 
 function lex(s: LexState): void {
@@ -154,10 +155,10 @@ function readBlank(s: LexState): void {
 /** A newline bash read inside a `((` span, arithmetic or reparsed as subshells, is not a line end and starts no heredoc body. */
 function readOperator(s: LexState, op: string, end: number): void {
   const inWholeSpan = s.i < s.wholeEnd;
+  const glued = op === "(" && s.word ? s.word.value.slice(-1) : null;
   endWord(s);
+  noteParen(s, op, glued);
   s.i = end;
-  if (op === "(") s.depth++;
-  if (op === ")") s.depth--;
   s.tokens.push({ type: "op", value: op });
   if (op === "\n" && !inWholeSpan) readLineEnd(s);
 }
@@ -381,6 +382,7 @@ function readRedirect(s: LexState): void {
     s.tokens.push({ type: "subs", subs: [readSubstitution(s, paren + 1)] });
     return;
   }
+  refuseRedirect(s);
   const heredoc = op === "<<" || op === "<<-";
   const token: RedirectToken = { type: "redirect", op, fd, target: null, body: heredoc ? "" : null, subs: [] };
   s.tokens.push(token);

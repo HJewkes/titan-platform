@@ -317,6 +317,39 @@ and keeps its own route, the `ci-failed` gate or the `not-mergeable` stop. The w
 still bounds how many such wakes a run makes. A refused message to a live implementer still
 opens `sh-sent-back`, since a successor beside a live agent would race it on the branch.
 
+## Review stats
+
+`titan-factory shepherd stats --reviews [--from <day>] [--to <day>] [--repo <owner/name>] [--json [--rows]]` answers
+what each review costs and how long it takes, and what each PR's reviews cost in total. Each call first refreshes
+`review-stats.sqlite3`, which sits beside the factory database (`~/.local/state/titan-factory/` by default):
+
+- It reads the ledger read-only, and only finished runs completed since the last refresh plus the unfinished ones.
+  A repeat call prices nothing again, so it costs a SQL read.
+- A round's cost is the agent-chat retire row of its reviewer's session, read from every `logs/*/dispatch.jsonl` under
+  `AUTONOMY_ROOT` (default `$ACTIVE_ROOT/claude-channels/sources/autonomy`, and `ACTIVE_ROOT` defaults to
+  active-work's XDG data directory). A round with no retire row is priced once from its transcript, else it stays unpriced.
+
+`--from` and `--to` filter by verdict day in UTC, both inclusive. `--json` prints the v1 shape:
+`{ v: 1, at, range, perReview, perPr, rows?, refresh }`.
+
+- `perReview` gives `n`, `unpriced`, and `usd`, `reviewMinutes` and `queueMinutes` as `{p50, p90, mean, total}`, with
+  the same cut `byRepo`, `byWeek` (ISO week) and `byModel`, and counts `byVerdict`.
+- `perPr` gives `n`, the spread of `usd`, `reviewMinutes` and `rounds` across PRs, and `prs`, one row per PR with
+  `rounds`, `usd`, `reviewMinutes` and `queueMinutes` summed over its rounds in range, `registeredToMergeMinutes` and
+  `merged`, dearest first.
+- `refresh` counts the reviews the refresh added, repriced from retire rows, and the transcripts it read.
+
+Text mode prints the distribution, its cuts and the ten PRs whose reviews cost most.
+
+Dashboards can query the store directly, for example `sqlite3 review-stats.sqlite3 'SELECT * FROM pr_review'`.
+Schema v1 (`src/shepherd/review-stats-store.ts`) keeps times as epoch ms and money as list-price USD:
+
+| Object | Columns |
+| --- | --- |
+| `review` table, one row per finished round, keyed `(run_id, round)` | `run_id`, `round`, `repo` (lower case), `pr`, `head_sha`, `reviewer`, `session_id`, `model`, `requested_at`, `started_at`, `verdict_at`, `queue_ms`, `review_ms`, `verdict`, `input`, `cache_read`, `cache_write`, `output`, `usd`, `cost_source` (`retire` or `transcript`, null when unpriced) |
+| `review_run` table, one row per shepherd-pr run | `run_id`, `repo`, `pr`, `registered_at`, `merged_at` |
+| `pr_review` view, one row per repo and PR over all time | `repo`, `pr`, `rounds`, `usd`, `review_ms`, `queue_ms`, `registered_at`, `merged_at` |
+
 ## Owner digest
 
 `titan-factory digest run` writes one markdown digest across every seat in the seat book:
@@ -469,8 +502,8 @@ checkout that should serve, not from a worktree that will be removed.
 | Verb | What it does | Exit 0 when |
 | --- | --- | --- |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers and its `github` field is `ok` |
-| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`not loaded`, `stale pid`, `crash loop`, `stale build`, `GitHub down`, `stale index.lock` (the service checkout's `.git/index.lock` with no process holding it, older than 10 minutes, named by path and age and never removed), `deploy stalled` (`/health`'s deploy block has its alarm up), then `tick failing` or `tick stale` from agent-chat's `$AGENT_CHAT_HOME/burndown-status.json`, default `~/.agent-chat/burndown-status.json`, which an absent file skips; a heartbeat older than 3 x its `intervalSeconds` is stale), then `no hub seat` (the config sets no `shepherd.hubSeat`, so a deploy alarm reaches no seat); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, the burndown tick is not failing or stale, and a hub seat is configured |
-| `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, then `launchctl kickstart -k`, then the same `/health` wait as install | the new process answers with `github` `ok` |
+| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`unreadable` (on Linux, `systemctl --user show` itself failed; the line carries its stderr, `detail` its `exitCode` and `stderr`), `not loaded`, `stale pid` (the pid is dead, a foreign pid answers the port, or there is no process), `crash loop`, `unresponsive` (the pid is alive but every `/health` probe timed out; `detail.probeLatenciesMs` lists each), `stale build`, `GitHub down`, `stale index.lock` (the service checkout's `.git/index.lock` with no process holding it, older than 10 minutes, named by path and age and never removed), `deploy stalled` (`/health`'s deploy block has its alarm up), then `tick failing` or `tick stale` from agent-chat's `$AGENT_CHAT_HOME/burndown-status.json`, default `~/.agent-chat/burndown-status.json`, which an absent file skips; a heartbeat older than 3 x its `intervalSeconds` is stale), then `no hub seat` (the config sets no `shepherd.hubSeat`, so a deploy alarm reaches no seat), then the advisory `stale CLI` (the `titan-factory` on PATH, resolved through symlinks, carries a baked build behind the deploy checkout's HEAD and is not the deploy bin itself; `detail` names `installedCli`, `installedBuild` and `checkoutHead`; it leaves `ok` true and exits 0, because callers stop work on a failing check and a restart does not change the CLI); `--json` adds `cause`, `pid`, `health` and `detail`; it always prints within 20 s (`SERVICE_CHECK_BUDGET_MS`) | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, the burndown tick is not failing or stale, and a hub seat is configured; a `stale CLI` alone still exits 0 |
+| `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, clears a foreign `titan-factory serve` off the port, restarts without blocking on the stop and fences a process that outlives it (see [The restart fence](#the-restart-fence)), then the same `/health` wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>] [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Fast-forwards the service checkout, rebuilds the factory closure when the range touches it, restarts drained, and restores `dist` on failure | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
 | `service plist [--port <n>] [--node <path>]` | Prints the plist, or the unit on Linux, and touches nothing | always |
@@ -489,6 +522,7 @@ in `$XDG_CONFIG_HOME/systemd/user/`, else `~/.config/systemd/user/`, and mirrors
 | --- | --- |
 | `ProgramArguments` | `ExecStart=`, the same argv, quoted where an argument holds a space |
 | `KeepAlive` `SuccessfulExit` false, `ThrottleInterval` 60 | `Type=simple`, `Restart=on-failure`, `RestartSec=5` |
+| `ExitTimeOut` default | `TimeoutStopSec=60`, so a hand `systemctl --user restart` of a serve that ignores SIGTERM waits 60 s, not systemd's 90 s |
 | `RunAtLoad` | `WantedBy=default.target`, enabled by install |
 | `EnvironmentVariables` `PATH` | `Environment=PATH=...`, the same `servicePath` value, since a user manager starts jobs with its own minimal `PATH` |
 | `StandardOutPath`, `StandardErrorPath` | `StandardOutput=append:`, `StandardError=append:` on the same log files |
@@ -499,13 +533,44 @@ in `$XDG_CONFIG_HOME/systemd/user/`, else `~/.config/systemd/user/`, and mirrors
 unit was already running, then does the same `/health` wait (the answer must come from the
 unit's `MainPID`). `status` reads `systemctl --user show` (`ActiveState`, `SubState`,
 `MainPID`). `uninstall` runs `disable --now`, removes the unit and runs `daemon-reload`.
-`restart` and `deploy` restart with `systemctl --user restart`. `service plist` prints the unit.
+`restart` and `deploy` restart with `systemctl --user restart --no-block` and the restart fence. `service plist` prints the unit.
 `service install --dry-run` prints the unit or plist and the `systemctl` or `launchctl` calls
 install would make, and changes nothing. For the unit to run without a login session, enable
 lingering once: `loginctl enable-linger "$USER"`. `service check` reads `systemctl --user show`
 on Linux: `MainPID` (no process unless `ActiveState` is `active`), `NRestarts` in place of
 launchd's run count and `ExecMainStatus` in place of its last exit code, with the same causes
-and exit codes as on macOS.
+and exit codes as on macOS. A missing unit reads as exit 0 with `LoadState=not-found` and is
+`not loaded`; a non-zero exit from `systemctl --user show` (no user bus because
+`XDG_RUNTIME_DIR` is unset, a permission error, a timeout, no `systemctl`) is `unreadable`,
+never `not loaded`, since the unit may well be installed.
+
+### The restart fence
+
+A serve whose event loop is blocked never runs its SIGTERM handler, so a blocking restart used to
+outlast the deployer's 30 s command cap and send a good deploy to rollback. `service restart`,
+`service deploy` and a deploy's rollback therefore restart in two bounded steps:
+
+1. **A foreign serve on the port.** Before the restart, a listener on the service port that is not
+   the unit's or job's own process is fenced only when its command line proves it is
+   `<node> .../products/factory/dist/bin.js serve`: SIGTERM, up to 15 s, a start-time re-check (a
+   reused pid is left alone), then SIGKILL. It prints
+   `fenced pid N (titan-factory serve outside titan-factory.service, held :7410): ...`. Any other
+   holder, or a listener whose pid is not visible, is refused by pid and argv, and nothing is
+   signalled.
+2. **The service's own process.** The restart is queued without waiting for the stop
+   (`systemctl --user restart --no-block`, or `launchctl kickstart -k`). The verb then waits
+   `STOP_FENCE_MS` (45 s) for a new `MainPID`, or a new launchd pid. If the old one is still
+   there, it prints `fenced pid N (<unit> MainPID, alive 45 s after SIGTERM): SIGKILL via systemctl kill`
+   (`launchctl kill` on macOS), kills through the service manager, so the unit's cgroup or the
+   launchd job decides which process dies, and waits up to 10 s more for the new pid.
+
+The 30 s `/health` wait starts only once the new pid exists, so a slow stop cannot spend it. The
+success line names the fenced pid: `restarted titan-factory.service (fenced pid N); /health answers
+on port 7410`.
+
+`TimeoutStopSec=60` reaches a host's unit only when the unit file is rewritten. `service deploy`
+does not rewrite it, so run `titan-factory service install` once after the release that adds it.
+That install restarts serve.
 
 `service restart` drains first. It polls `/health` every 5 s until its `busy` list is
 empty, and prints the busy runs once a minute. A run is busy when it is `running` and its
@@ -638,6 +703,7 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/needs/` | The owner-queue `QueueSource` adapters (agent-chat `/api/queue`, factory hitl gates), the merge step over all four, and the `queue-counts` and `needs` verbs |
 | `src/digest/` | The owner digest: `collect` (sources to model), `rank` (de-dupe, order, caps), `render-md`, `slots`, and `command` (the `digest run` verb) |
 | `src/shepherd/commands.ts`, `src/shepherd/view.ts` | The `shepherd.*` registry commands, and the watch-row and timeline read model they return |
+| `src/shepherd/review-stats-store.ts`, `src/shepherd/review-stats.ts`, `src/shepherd/review-stats-report.ts` | The review stats store, its incremental refresh, and the `stats --reviews` report (see Review stats) |
 | `src/workflows/land.ts` | The land core (see below) |
 | `src/test-support/crash.ts` | Crash harness: host A with a frozen clock hangs in a step and never releases its lease; host B, clocked past that lease, takes the run over |
 
@@ -693,6 +759,19 @@ one on a deny list, gets no reviewer, and `sh-review` records
 
 With no `review` key nothing is built: no `agent-chat` process is started, `sh-review`
 answers `none`, and the owner gate decides every merge.
+
+### Answering gates from agent-chat: `shepherd.gateNotify`
+
+With `"gateNotify": {}` (and `agentChatBin`) set, serve runs a sweep every 30 seconds
+(`src/gate-notify-sweep.ts`) that files each pending decision gate as an `agent-chat ask` under the
+label `titan-factory` with task `gate:<gateId>`, and resolves the gate from the owner's answer at
+most once. An answer resolves as `owner-remote` (owner decision Q1 of CC-169): any unregistered
+caller on the broker's socket can answer, so a gate whose rule does not admit `owner-remote` is
+never asked. `label` and `resolverClass` (`owner-remote` or `owner-terminal`) override the
+defaults. `/health`'s `gateNotify` block shows `open` asks, `stuck` gates whose ask ended without
+resolving them (refused, dismissed, unmappable), `unasked` gates an answer cannot settle, and
+`answersError` while the label's answers cannot be read. Each of those still waits on
+`titan-factory gate resolve`. Without the key serve asks nothing.
 
 ### A reviewer account out of usage
 

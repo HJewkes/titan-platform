@@ -8,7 +8,8 @@ import { stuckBehindDecision } from "../gate-brief.js";
 import type { GateDecision, GatePolicy } from "../gate-policy.js";
 import { requireBaseRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
-import { BaseCheckResult, BaseWaitResult, checkBase, mergeOnAllowedBase, waitForRetarget, type BaseCheckInput, type BaseWaitInput } from "./land-base.js";
+import { BaseCheckResult, BaseWaitResult, checkBase, mergeOnAllowedBase, waitForRetarget, type BaseCheck, type BaseCheckInput, type BaseWaitInput } from "./land-base.js";
+import { landedOf, type LandedPr } from "./land-landed.js";
 import { approveMergeGate, askedApproval, type AskApproval } from "./land-approval.js";
 import type { MergeInput } from "./land-merge-message.js";
 import type { CiInput, CiSnapshot, FailingCheck } from "./land-ci.js";
@@ -18,7 +19,7 @@ import { flakyState, type FlakyChecks } from "./land-flaky.js";
 import { SettleResult, settleOrGate, settleRun, type MergeTreeProbe, type SettleHold, type SettleInput, type UnsettledMerge } from "./land-settle.js";
 import { UPDATE_RESENDS, updateBranch, type UpdateInput } from "./land-update.js";
 import { portReads, type PrSnapshot } from "./pr-snapshot.js";
-import { sleep } from "./deadline.js";
+import { sleep, stepClock, type StepClock } from "./deadline.js";
 import { baseMovedOrThrow, mergePolicyRecord, type MergePolicyInput, CiSnapshotResult, LandRulesResult, BackoffResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
 export { readCi, type CiSnapshot, type FailingCheck } from "./land-ci.js";
@@ -32,11 +33,11 @@ export const MAX_CI_CYCLES = 20;
 
 /** Every step the land core calls; a workflow that uses `land` spreads these into its own declaration. */
 export const LAND_STEPS: readonly StepDeclaration[] = [
-  { id: "land-rules", kind: "dispatch" },
-  { id: "ci-wait", kind: "dispatch" },
+  { id: "land-rules", kind: "dispatch", orphanSafe: true },
+  { id: "ci-wait", kind: "dispatch", orphanSafe: true },
   { id: "update-branch", kind: "dispatch" },
   { id: "update-backoff", kind: "dispatch" },
-  { id: "base-check", kind: "dispatch" },
+  { id: "base-check", kind: "dispatch", orphanSafe: true },
   { id: "base-wait", kind: "dispatch" },
   { id: "merge", kind: "dispatch" },
   { id: "merge-policy", kind: "dispatch" },
@@ -94,8 +95,8 @@ export interface LandOptions {
 }
 
 export type LandOutcome =
-  /** `mergeSha` is null when GitHub reports the PR merged but names no merge commit. */
-  | { kind: "merged"; headSha: string; mergeSha: string | null }
+  /** `mergeSha` is null when GitHub reports the PR merged but names no merge commit; `landed` is absent for a merge made elsewhere. */
+  | { kind: "merged"; headSha: string; mergeSha: string | null; landed?: LandedPr }
   | { kind: "ci-failed"; headSha: string; failing: FailingCheck[] }
   | { kind: "stopped"; reason: "closed" | "not-mergeable" | "conflict" | "abandoned" | "stuck-behind" | "merge-denied" | "update-branch-unmoved"; headSha: string; detail: string };
 
@@ -254,24 +255,24 @@ async function onSettled(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot,
   if (ci.verdict === "closed") return stopped("closed", ci.headSha, "the pull request was closed without merging");
   if (ci.verdict !== "green") return stopped("not-mergeable", ci.headSha, `mergeable_state is ${ci.mergeableState}`);
   if (!state.trusted.has(ci.headSha)) return approve(ctx, input, ci, state, options);
-  const base = await allowedBase(ctx, input, ci, state, options);
-  if (base === undefined) return undefined;
-  const merge = await step(ctx, roundId("merge", state.round, state.merges++), { repo: input.repo, pr: input.pr, sha: ci.headSha, method: input.method ?? "squash", taskIds: input.taskIds ?? [], base }, MergeResultResult);
+  const check = await allowedBase(ctx, input, ci, state, options);
+  if (check === undefined) return undefined;
+  const merge = await step(ctx, roundId("merge", state.round, state.merges++), { repo: input.repo, pr: input.pr, sha: ci.headSha, method: input.method ?? "squash", taskIds: input.taskIds ?? [], base: check.base }, MergeResultResult);
   // The port answers "" for a PR merged elsewhere with no merge commit named.
-  if (merge.done || merge.skipped === "merged") return { kind: "merged", headSha: ci.headSha, mergeSha: merge.mergeSha || null };
+  if (merge.done || merge.skipped === "merged") return { kind: "merged", headSha: ci.headSha, mergeSha: merge.mergeSha || null, ...landedOf(check, ci.headSha) };
   if (merge.skipped === "closed") return stopped("closed", ci.headSha, "the pull request was closed before the merge");
   return undefined;
 }
 
 /**
- * The base the approved head may merge into, read live; undefined after a wait on a refused base, so land reads CI
- * again. A refused base never reaches the merge step, and the wait neither fails nor ends the run.
+ * The base check that allowed the approved head's merge, read live; undefined after a wait on a refused base, so land
+ * reads CI again. A refused base never reaches the merge step, and the wait neither fails nor ends the run.
  */
-async function allowedBase(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState, options: LandOptions): Promise<string | undefined> {
+async function allowedBase(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState, options: LandOptions): Promise<BaseCheck | undefined> {
   const checkInput: BaseCheckInput = { repo: input.repo, pr: input.pr, featureBase: options.featureBase?.() ?? false };
   const check = await step(ctx, roundId("base-check", state.round, state.baseChecks++), checkInput, BaseCheckResult);
   if (check.allowed && check.base !== state.trustedOn) return untrust(state, ci.headSha);
-  if (check.allowed) return check.base;
+  if (check.allowed) return check;
   const waitInput: BaseWaitInput = { repo: input.repo, pr: input.pr, base: check.base, headSha: ci.headSha };
   await step(ctx, roundId("base-wait", state.round, state.baseWaits++), waitInput, BaseWaitResult);
   return undefined;
@@ -333,7 +334,7 @@ export function landRoutes(deps: LandDeps): StepRoute[] {
   const firstReads: FirstReads = new Map();
   return [
     codeRoute("land-rules", now, (input: { repo: string; pr: number }) => readRules(deps.port, input)),
-    codeRoute("ci-wait", now, (input: CiInput, signal) => waitForCi(deps, input, { ...timing, timeoutMs: deps.ciTimeoutMs ?? 45 * 60_000 }, signal, flaky, firstReads)),
+    codeRoute("ci-wait", now, (input: CiInput, signal, clock) => waitForCi(deps, input, { ...timing, timeoutMs: deps.ciTimeoutMs ?? 45 * 60_000, startedAt: clock.firstStartedAtMs }, signal, flaky, firstReads)),
     codeRoute("update-branch", now, updateRun(deps, timing, now)),
     codeRoute("update-backoff", now, async (input: { waitMs: number; retry: number }, signal) => (await timing.sleep(input.waitMs, signal), input)),
     codeRoute("base-check", now, (input: BaseCheckInput) => checkBase(deps.port, input)),
@@ -348,8 +349,9 @@ function updateRun(deps: LandDeps, timing: Omit<Timing, "timeoutMs">, now: () =>
   return async (input: UpdateInput, signal: AbortSignal) => ({ ...(await afterWrite(deps, input, updateBranch(deps.port, input, { ...timing, timeoutMs: deps.updateTimeoutMs ?? 5 * 60_000 }, signal))), at: now() });
 }
 
-export function codeRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal) => Promise<object>): StepRoute {
-  return recordRoute(match, now, async (input: I, step) => ({ result: await fn(input, step.signal) }));
+/** `clock` carries the step's first start across a restart, so a wait that reads it resumes its deadline rather than restarting it. */
+export function codeRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal, clock: StepClock) => Promise<object>): StepRoute {
+  return recordRoute(match, now, async (input: I, step) => ({ result: await fn(input, step.signal, stepClock(step)) }));
 }
 
 /** Like `codeRoute`, for a step whose record carries trace keys beside `result`. */

@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { seatTranscript, type SeatRow } from "../test-support/seat-transcript.js";
 import type { AwaitVerdictResult, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
 import { FINDINGS_SEPARATOR } from "@titan-design/review-panel";
+import { BrokerUnavailableError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
+import { ReviewerAskTimedOut, ReviewerBrokerBusy, ReviewerBrokerDown, reviewWait } from "./review-wait.js";
 import { transcriptReviewerReader } from "./reviewer-reader.js";
 import { DamagedTranscriptError, acceptExternalVerdict, awaitExternalVerdict, SEAT_REVIEWER, newestAtHead, seatFixFirst, seatVetoed, unlessSeatFixFirst } from "./external-review.js";
 
@@ -178,6 +180,43 @@ describe("seatFixFirst", () => {
     expect(await seatFixFirst(roster, readerOf([]), target)).toEqual({ kind: "none", reason: "seat check: the roster could not be read: Error" });
   });
 
+  it.each([
+    ["a reviewer ask that timed out", new ReviewerAskTimedOut("agent-chat timed out")],
+    ["a broker that is down", new ReviewerBrokerDown("connect refused")],
+    ["a busy broker", new ReviewerBrokerBusy("machine guard")],
+    ["a broker call that timed out", new DispatchTimeoutError("timed out")],
+    ["an unreachable broker", new BrokerUnavailableError("unreachable")],
+    ["an HTTP 502", Object.assign(new Error("bad gateway"), { status: 502 })],
+  ])("marks a roster read failed by %s as one that may clear", async (_name, error) => {
+    const roster = async () => Promise.reject(error);
+
+    expect(await seatFixFirst(roster, readerOf([]), target)).toMatchObject({ kind: "none", retry: true });
+  });
+
+  it.each([
+    ["a permission error", Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" })],
+    ["a missing file", Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" })],
+    ["a JSON parse error", new SyntaxError("Unexpected end of JSON input")],
+    ["an HTTP 403", Object.assign(new Error("forbidden"), { status: 403 })],
+  ])("never marks a roster or transcript read failed by %s as one that may clear", async (_name, error) => {
+    const roster = async () => Promise.reject(error);
+    const reader: ReviewerReader = { read: async () => Promise.reject(error) };
+
+    const unreadRoster = await seatFixFirst(roster, readerOf([]), target);
+    const unreadTranscript = await seatFixFirst(rosterOf(SEAT), reader, target);
+
+    expect(unreadRoster).toMatchObject({ kind: "none" });
+    expect(unreadRoster).not.toHaveProperty("retry");
+    expect(unreadTranscript).toMatchObject({ kind: "none" });
+    expect(unreadTranscript).not.toHaveProperty("retry");
+  });
+
+  it("marks a transcript read that timed out as one that may clear", async () => {
+    const reader: ReviewerReader = { read: async () => Promise.reject(new ReviewerAskTimedOut("agent-chat timed out")) };
+
+    expect(await seatFixFirst(rosterOf(SEAT), reader, target)).toEqual({ kind: "none", reason: `seat check: the transcript of ${SEAT.name} could not be read: ReviewerAskTimedOut`, retry: true });
+  });
+
   it("blocks the head with the reviewer named when a seat reviewer's transcript cannot be read", async () => {
     const reader: ReviewerReader = { read: async () => Promise.reject(new Error("EACCES: permission denied")) };
 
@@ -192,7 +231,7 @@ describe("seatFixFirst", () => {
     const unreadRoster = await seatFixFirst(roster, readerOf([]), target);
     const unreadTranscript = await seatFixFirst(rosterOf(SEAT), reader, target);
 
-    expect(unreadRoster).toEqual({ kind: "none", reason: "seat check: the roster could not be read: HTTP 503" });
+    expect(unreadRoster).toEqual({ kind: "none", reason: "seat check: the roster could not be read: HTTP 503", retry: true });
     expect(unreadTranscript).toEqual({ kind: "none", reason: `seat check: the transcript of ${SEAT.name} could not be read: Error` });
     for (const text of [JSON.stringify(unreadRoster), JSON.stringify(unreadTranscript)]) {
       expect(text).not.toContain("db.example.invalid");
@@ -348,6 +387,14 @@ function seatSaying(...answers: string[]) {
 }
 
 describe("Shepherd's MERGE meeting a seat WAIT", () => {
+  it("names the seat that said WAIT on the check", async () => {
+    const seat = seatSaying("WAIT");
+
+    const check = await seatFixFirst(rosterOf(SEAT), seat.reader, target);
+
+    expect(check).toMatchObject({ kind: "none", wait: true, seat: SEAT.name });
+  });
+
   it("waits for the seat's MERGE and lets the own MERGE stand", async () => {
     const seat = seatSaying("WAIT", "WAIT", "MERGE");
 
@@ -370,7 +417,7 @@ describe("Shepherd's MERGE meeting a seat WAIT", () => {
 
     const result = await unlessSeatFixFirst(rosterOf(SEAT), seat.reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
 
-    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("said WAIT"), seatHeld: shepherdMerge });
+    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("said WAIT"), seat: SEAT.name, seatHeld: shepherdMerge });
     expect(seat.reads()).toBe(SEAT_BOUND_MS / SEAT_POLL_MS + 1);
   });
 
@@ -379,18 +426,74 @@ describe("Shepherd's MERGE meeting a seat WAIT", () => {
 
     const result = await unlessSeatFixFirst(rosterOf(SEAT), seat.reader, target, shepherdMerge);
 
-    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("said WAIT") });
+    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("said WAIT"), seat: SEAT.name });
     expect(seat.reads()).toBe(1);
   });
 
-  it("blocks with the failed read's reason, not seatHeld, when a read fails during the wait", async () => {
+  it("holds the own MERGE with the failed read's reason when a read keeps failing through the wait", async () => {
     const seat = seatSaying("WAIT");
     let rosterReads = 0;
-    const roster = async () => (++rosterReads > 1 ? Promise.reject(new Error("broker down")) : [SEAT]);
+    const roster = async () => (++rosterReads > 1 ? Promise.reject(new ReviewerBrokerDown("broker down")) : [SEAT]);
+
+    const result = await unlessSeatFixFirst(roster, seat.reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
+
+    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("roster could not be read"), seatHeld: shepherdMerge });
+  });
+
+  it("blocks at once, holding nothing, when a read during the wait fails in a way no re-read can mend", async () => {
+    const seat = seatSaying("WAIT");
+    let rosterReads = 0;
+    const roster = async () => (++rosterReads > 1 ? Promise.reject(Object.assign(new Error("EACCES"), { code: "EACCES" })) : [SEAT]);
 
     const result = await unlessSeatFixFirst(roster, seat.reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
 
     expect(result).toEqual({ kind: "none", reason: expect.stringContaining("roster could not be read") });
+    expect(rosterReads).toBe(2);
+  });
+
+  it("lets the own MERGE stand when a roster read times out once and the seat then says MERGE", async () => {
+    const seat = seatSaying("MERGE");
+    let rosterReads = 0;
+    const roster = async () => (++rosterReads === 1 ? Promise.reject(new ReviewerAskTimedOut("agent-chat timed out")) : [SEAT]);
+
+    const result = await unlessSeatFixFirst(roster, seat.reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
+
+    expect(result).toBe(shepherdMerge);
+    expect(rosterReads).toBe(2);
+  });
+
+  it("lets the own MERGE stand when a seat transcript read times out once and the seat then says MERGE", async () => {
+    const seat = seatSaying("MERGE");
+    let seatReads = 0;
+    const reader: ReviewerReader = { read: async (input) => (++seatReads === 1 ? Promise.reject(new ReviewerAskTimedOut("agent-chat timed out")) : seat.reader.read(input)) };
+
+    const result = await unlessSeatFixFirst(rosterOf(SEAT), reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
+
+    expect(result).toBe(shepherdMerge);
+    expect(seatReads).toBe(2);
+  });
+
+  it("still blocks at once on a damaged seat transcript, which no re-read can mend", async () => {
+    const seat = seatSaying("MERGE");
+    let seatReads = 0;
+    const damaged = new DamagedTranscriptError("ends in a partial record", [said(SEAT, verdictAt("WAIT", OLD_HEAD), 1)], `Review ${REPO}#4`);
+    const reader: ReviewerReader = { read: async () => ((seatReads += 1), Promise.reject(damaged)) };
+
+    const result = await unlessSeatFixFirst(rosterOf(SEAT), reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
+
+    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("could not be read") });
+    expect(seatReads).toBe(1);
+  });
+
+  it("shows the hold in the review wait while the seat says WAIT, and clears it once the seat settles", async () => {
+    const seat = seatSaying("WAIT", "MERGE");
+    const seen: (string | undefined)[] = [];
+    const timing = { ...seat.seatWait.timing, sleep: async (ms: number) => (seen.push(reviewWait(REPO, 4)), seat.seatWait.timing.sleep(ms)) };
+
+    await unlessSeatFixFirst(rosterOf(SEAT), seat.reader, target, shepherdMerge, undefined, Date.now, { ...seat.seatWait, timing });
+
+    expect(seen).toEqual([expect.stringContaining(`holding Shepherd's MERGE at ${HEAD} on the seat check: seat check: ${SEAT.name} said WAIT`)]);
+    expect(reviewWait(REPO, 4)).toBeUndefined();
   });
 });
 
@@ -415,25 +518,27 @@ describe("G10 disagreement between a seat reviewer and Shepherd", () => {
   const wiring = (...rows: ReviewerAgent[]) => ({ dispatch: { roster: rosterOf(...rows), spawn: async () => undefined, resume: async () => undefined }, reader: readerOf([]) }) as unknown as Parameters<typeof seatVetoed>[0];
   const withReader = (messages: ReviewerMessage[], ...rows: ReviewerAgent[]) => ({ ...wiring(...rows)!, reader: readerOf(messages) }) as Parameters<typeof seatVetoed>[0];
   const shepherdFixFirst: AwaitVerdictResult = { ...shepherdMerge, verdict: "FIX_FIRST", text: "rename" } as AwaitVerdictResult;
+  const ownInput = { ...target, reviewerAgentId: SHEPHERD_RV.agentId, reviewerSessionId: SHEPHERD_RV.sessionId };
+  const seatMerge: AwaitVerdictResult = { ...shepherdMerge, locator: locatorIn(SEAT.sessionId), reviewer: { agentId: SEAT.agentId, sessionId: SEAT.sessionId } };
 
   it("records a seat FIX_FIRST over Shepherd's MERGE on the verdict that sends the head back", async () => {
     const step = seatVetoed(withReader([said(SEAT, verdictAt("FIX_FIRST"), 5)], SEAT), async () => shepherdMerge, () => 77);
 
-    expect(await step(target, new AbortController().signal)).toMatchObject({ verdict: "FIX_FIRST", ownerOverride: { trigger: "g10-disagree", head: HEAD, shepherd: "MERGE", other: "FIX_FIRST", at: 77 } });
+    expect(await step(ownInput, new AbortController().signal)).toMatchObject({ verdict: "FIX_FIRST", ownerOverride: { trigger: "g10-disagree", head: HEAD, shepherd: "MERGE", other: "FIX_FIRST", at: 77 } });
   });
 
   it("records a seat MERGE over Shepherd's FIX_FIRST and leaves the verdict standing", async () => {
     const step = seatVetoed(withReader([said(SEAT, verdictAt("MERGE"), 5)], SEAT), async () => shepherdFixFirst, () => 78);
 
-    expect(await step(target, new AbortController().signal)).toMatchObject({ verdict: "FIX_FIRST", ownerOverride: { trigger: "g10-disagree", shepherd: "FIX_FIRST", other: "MERGE", at: 78 } });
+    expect(await step(ownInput, new AbortController().signal)).toMatchObject({ verdict: "FIX_FIRST", ownerOverride: { trigger: "g10-disagree", shepherd: "FIX_FIRST", other: "MERGE", at: 78 } });
   });
 
   it("records nothing when the seat reviewer agrees with Shepherd", async () => {
     const merged = seatVetoed(withReader([said(SEAT, verdictAt("MERGE"), 5)], SEAT), async () => shepherdMerge);
     const sentBack = seatVetoed(withReader([said(SEAT, verdictAt("FIX_FIRST"), 5)], SEAT), async () => shepherdFixFirst);
 
-    expect(await merged(target, new AbortController().signal)).not.toHaveProperty("ownerOverride");
-    expect(await sentBack(target, new AbortController().signal)).not.toHaveProperty("ownerOverride");
+    expect(await merged(ownInput, new AbortController().signal)).not.toHaveProperty("ownerOverride");
+    expect(await sentBack(ownInput, new AbortController().signal)).not.toHaveProperty("ownerOverride");
   });
 
   it("is waited out inside the verdict step when seatVetoed is given the timing", async () => {
@@ -441,8 +546,46 @@ describe("G10 disagreement between a seat reviewer and Shepherd", () => {
 
     const step = seatVetoed({ ...wiring(SEAT)!, reader: seat.reader }, async () => shepherdMerge, Date.now, seat.seatWait.timing);
 
-    expect(await step(target, new AbortController().signal)).toMatchObject({ kind: "verdict", verdict: "MERGE", reviewer: { agentId: SHEPHERD_RV.agentId } });
+    expect(await step(ownInput, new AbortController().signal)).toMatchObject({ kind: "verdict", verdict: "MERGE", reviewer: { agentId: SHEPHERD_RV.agentId } });
     expect(seat.reads()).toBe(2);
+  });
+
+  describe("a verdict whose author is not the dispatched reviewer", () => {
+    it("records no verdict when the body returns a seat reviewer's MERGE for Shepherd's own reviewer", async () => {
+      const step = seatVetoed(wiring(SEAT), async () => seatMerge);
+
+      expect(await step(ownInput, new AbortController().signal)).toEqual({ kind: "none", reason: expect.stringMatching(/not the dispatched reviewer/) });
+    });
+
+    it("records no verdict when only the session differs from the dispatched one", async () => {
+      const step = seatVetoed(wiring(SEAT), async () => shepherdMerge);
+
+      expect(await step({ ...ownInput, reviewerSessionId: "session-other" }, new AbortController().signal)).toMatchObject({ kind: "none", reason: expect.stringMatching(/not the dispatched reviewer/) });
+    });
+
+    it("records no verdict when the input names no dispatched reviewer", async () => {
+      const step = seatVetoed(wiring(SEAT), async () => shepherdMerge);
+
+      expect(await step(target, new AbortController().signal)).toMatchObject({ kind: "none", reason: expect.stringMatching(/not the dispatched reviewer/) });
+    });
+
+    it("guards the verdict even with no dispatch wired", async () => {
+      const step = seatVetoed(undefined, async () => seatMerge);
+
+      expect(await step(ownInput, new AbortController().signal)).toMatchObject({ kind: "none" });
+    });
+
+    it("passes the verdict through when the input names its author as the dispatched reviewer", async () => {
+      const step = seatVetoed(wiring(), async () => seatMerge);
+
+      expect(await step({ ...target, reviewerAgentId: SEAT.agentId, reviewerSessionId: SEAT.sessionId }, new AbortController().signal)).toMatchObject({ kind: "verdict", verdict: "MERGE", reviewer: { agentId: SEAT.agentId } });
+    });
+
+    it("passes an external review's verdict through, since Shepherd started nobody", async () => {
+      const step = seatVetoed(wiring(), async () => seatMerge);
+
+      expect(await step({ ...target, external: SEAT.name }, new AbortController().signal)).toMatchObject({ kind: "verdict", verdict: "MERGE", reviewer: { agentId: SEAT.agentId } });
+    });
   });
 });
 

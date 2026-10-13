@@ -12,6 +12,7 @@ import {
 } from "@titan-design/session-analytics";
 import { openDatabase, type Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
+import { loggedGitHubPort } from "./gh-call-log.js";
 
 /** Runs `read` over agent-chat's events table opened read-only; nothing is written, not even a WAL pragma. */
 export function withEventsDb<T>(eventsDb: string, read: (db: Db) => T): T {
@@ -27,7 +28,7 @@ export function withEventsDb<T>(eventsDb: string, read: (db: Db) => T): T {
 const PULL_CONCURRENCY = 6;
 
 /** Each PR's state through the GitHub port; a PR GitHub cannot find is left out and reported as unknown. */
-export async function fetchPulls(keys: readonly { repo: string; pr: number }[], github: GitHubPort = githubPort(ghCliWire())): Promise<PullState[]> {
+export async function fetchPulls(keys: readonly { repo: string; pr: number }[], github: GitHubPort = loggedGitHubPort(githubPort(ghCliWire()))):Promise<PullState[]> {
   const unique = [...new Map(keys.map((k) => [prKey(k), k])).values()];
   const pulls: PullState[] = [];
   for (let i = 0; i < unique.length; i += PULL_CONCURRENCY) {
