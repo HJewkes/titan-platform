@@ -1,8 +1,8 @@
 import type { FixProofUnverified } from "./fix-proof.js";
 
 /**
- * Which half of the merge-on-green-approve grant a MERGE lacked (TP-2658): the run policy's merge when it is not `auto`, and
- * the head's fix-proof standing with the read's reason when the proof is unverified. Null means that half was met.
+ * Which half of the merge-on-green-approve grant a MERGE lacked (TP-2658): the run policy's merge when it is not `auto`, and,
+ * in evidence recorded before TP-2660 b, the head's unverified fix-proof standing. Null means that half was met.
  */
 interface GrantWithheld {
   policy: string | null;
@@ -23,10 +23,17 @@ export interface GrantStanding {
 const WITHHELD_PREFIX = "merge-on-green-approve withheld: ";
 const UNRECORDED = "the cause was not recorded at this head";
 
-export function grantWithheldOf(merge: string, standing: GrantStanding): GrantWithheld | undefined {
-  const policy = merge === "auto" ? null : merge;
-  const proof = standing.unverified === undefined ? null : `${standing.unverified}${standing.reason ? ` (${standing.reason})` : ""}`;
-  return policy === null && proof === null ? undefined : { policy, proof };
+/**
+ * Only the policy half can withhold the grant now: an unverified proof is recorded, not gated (decision 303, TP-2660 b). `proof`
+ * stays in the shape because evidence recorded before then may carry it.
+ */
+export function grantWithheldOf(merge: string): GrantWithheld | undefined {
+  return merge === "auto" ? undefined : { policy: merge, proof: null };
+}
+
+/** The head's unverified fix-proof standing and its read reason, as the merge evidence records it; undefined when the proof stands. */
+export function proofUnverifiedOf(standing: GrantStanding): string | undefined {
+  return standing.unverified === undefined ? undefined : `${standing.unverified}${standing.reason ? ` (${standing.reason})` : ""}`;
 }
 
 /**

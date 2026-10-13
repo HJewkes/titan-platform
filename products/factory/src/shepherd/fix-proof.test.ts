@@ -219,34 +219,36 @@ describe("sh-fix-proof in reviewPhase", () => {
     expect(spawns[0]?.brief).not.toContain("Do not rerun");
   });
 
-  it("reviews a PR whose vacuous line is untrusted as unverified, and its MERGE cannot auto-merge", async () => {
+  it("reviews a PR whose vacuous line is untrusted as unverified, and its MERGE keeps the grant with the standing recorded", async () => {
     const { verdicts, spawns, proof, inputs } = await review({ kind: "correctness", runs: [fixProofRun()], log: actionsLog(resultLine(H, "vacuous")), files: [WORKFLOW_EDIT] });
 
     expect(proof).toMatchObject({ kind: "untrusted", verdict: "vacuous" });
     expect(verdicts).toMatchObject([{ kind: "MERGE" }]);
     expect(spawns).toHaveLength(1);
-    expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProofUnverified: "untrusted", ownerBrief: true });
+    expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProofUnverified: "untrusted" });
+    expect(inputs[`sh-review:${H}`]).not.toHaveProperty("ownerBrief");
     expect(spawns[0]?.brief).toContain(UNVERIFIED_BRIEF);
-    expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [] });
+    expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [MERGE_ON_GREEN_GRANT], proofUnverified: expect.stringMatching(/^untrusted \(/) });
   });
 
-  it("reviews a correctness head that forces a fix-proof error as unverified, and its MERGE cannot auto-merge", async () => {
+  it("reviews a correctness head that forces a fix-proof error as unverified, and its MERGE keeps the grant with the standing recorded", async () => {
     const { verdicts, spawns, proof, inputs } = await review({ kind: "correctness", runs: [fixProofRun()], log: actionsLog(resultLine(H, "error")) });
 
     expect(proof).toMatchObject({ kind: "result", verdict: "error" });
-    expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProofUnverified: "error", ownerBrief: true });
+    expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProofUnverified: "error" });
+    expect(inputs[`sh-review:${H}`]).not.toHaveProperty("ownerBrief");
     expect(spawns[0]?.brief).toContain(UNVERIFIED_BRIEF);
     expect(spawns[0]?.brief).not.toContain("Do not rerun");
     expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H }]);
-    expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [] });
+    expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [MERGE_ON_GREEN_GRANT], proofUnverified: "error" });
   });
 
-  it("drops the merge-on-green grant for an external reviewer's MERGE on a head whose fix-proof errored", async () => {
+  it("keeps the merge-on-green grant for an external reviewer's MERGE on a head whose fix-proof errored", async () => {
     const { verdicts, spawns, inputs } = await review({ kind: "correctness", runs: [fixProofRun()], log: actionsLog(resultLine(H, "error")), external: "seat-reviewer" });
 
     expect(spawns).toEqual([]);
     expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H }]);
-    expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [] });
+    expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [MERGE_ON_GREEN_GRANT], proofUnverified: "error" });
   });
 
   it("keeps the merge-on-green grant and asks no owner brief for a reproduced proof", async () => {
