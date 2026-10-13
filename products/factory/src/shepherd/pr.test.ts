@@ -746,15 +746,48 @@ describe("the route table in a run", () => {
     return { w, runId, final, wakes: () => wakes };
   }
 
-  it("asks the owner again at the moved head of a superseded no-progress head, and never merges it", async () => {
+  /** The decisions the run's merge-policy steps recorded, in order. */
+  const mergeDecisions = (w: World, runId: string) =>
+    Object.values(w.host.runtime.status(runId)!.stepResults)
+      .filter((result) => result.stepId.startsWith("merge-policy"))
+      .map((result) => (JSON.parse(result.output ?? "{}") as { result: { rule: { table: string; rowId: string }; reason: string } }).result);
+
+  it("merges the moved head of a superseded no-progress head on the reviewer's fresh MERGE there, with no second owner gate (decision 303)", async () => {
     const { w, runId, final } = await noProgressSuperseded(0);
 
-    await vi.waitFor(() => expect(w.host.gates.get(gateId(runId, "approve-merge", 1))?.status).toBe("pending"));
+    await w.host.runtime.wait(runId);
 
-    const prompt = w.host.gates.get(gateId(runId, "approve-merge", 1))?.prompt;
-    expect(prompt).toContain(`at head ${final} into main? CI is green. Policy shepherd-route/no-progress`);
-    expect(prompt).toContain("review at this head: MERGE");
-    expect(w.fake.effects.merge).toBe(0);
+    expect(w.fake.effects.merge).toBe(1);
+    expect(w.host.gates.get(gateId(runId, "approve-merge", 1))).toBeUndefined();
+    expect(mergeDecisions(w, runId).at(-1)).toMatchObject({ rule: { table: "shepherd-route", rowId: "no-progress/cleared-by-merge" }, reason: expect.stringContaining(`carried from head ${H2} is cleared by the dispatched reviewer's MERGE at head ${final}`) });
+  });
+
+  it("replays ac#823: a fix-first-runaway carried across two head moves stops gating at a fresh MERGE, so no approve-merge:2 opens", async () => {
+    const late: { w?: World } = {};
+    const moved = fakeSha("ac823-moved");
+    const final = fakeSha("ac823-final");
+    let fixFirsts = 0;
+    const w = autoWorld(
+      async (ctx, request) => (request.headSha === final ? merges(ctx, request) : (fixFirsts++, { kind: "FIX_FIRST", headSha: request.headSha, text: "again" })),
+      async () => (late.w!.fake.pushHead(1, fakeSha(`ac823-fix-${fixFirsts}`)), { kind: "woken", agent: "impl-a" }),
+    );
+    late.w = w;
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    const fired = w.fake.pr(1).headSha;
+    w.fake.pushHead(1, moved);
+    await supersedeMovedGates(w.host, w.services);
+    await gateOpened(w.host, gateId(runId, "approve-merge", 1));
+    w.fake.pushHead(1, final);
+    await supersedeMovedGates(w.host, w.services);
+
+    await w.host.runtime.wait(runId);
+
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`at head ${fired} into main? CI is green. Policy shepherd-route/fix-first-runaway`);
+    expect(w.host.gates.get(gateId(runId, "approve-merge", 1))?.prompt).toContain(`at head ${moved} into main? CI is green. Policy shepherd-route/fix-first-runaway`);
+    expect(w.host.gates.get(gateId(runId, "approve-merge", 2))).toBeUndefined();
+    expect(w.fake.effects.merge).toBe(1);
+    expect(mergeDecisions(w, runId).at(-1)?.rule).toEqual({ table: "shepherd-route", rowId: "fix-first-runaway/cleared-by-merge", version: 1 });
   });
 
   it("wakes no fixer for the moved head's FIX_FIRST, the run's third, and asks the owner at that head", async () => {
@@ -769,22 +802,21 @@ describe("the route table in a run", () => {
     expect(w.fake.effects.merge).toBe(0);
   });
 
-  it("asks the owner again at the updated head when the moved head is behind and itself escalated no-progress", async () => {
+  it("merges the updated head on its fresh MERGE when the moved head was behind and itself escalated no-progress", async () => {
     const { w, runId } = await noProgressSuperseded(1, true);
 
-    await vi.waitFor(() => expect(w.host.gates.get(gateId(runId, "approve-merge", 1))?.status).toBe("pending"));
+    await w.host.runtime.wait(runId);
 
-    const prompt = w.host.gates.get(gateId(runId, "approve-merge", 1))?.prompt;
-    expect(prompt).toContain(`at head ${w.fake.pr(1).headSha} into main? CI is green. Policy shepherd-route/no-progress`);
     expect(w.fake.effects.updateBranch).toBe(1);
-    expect(w.fake.effects.merge).toBe(0);
+    expect(w.fake.effects.merge).toBe(1);
+    expect(w.host.gates.get(gateId(runId, "approve-merge", 1))).toBeUndefined();
   });
 
-  it("merges that head once the owner answers the carried gate, which consumes the escalation", async () => {
-    const { w, runId, final } = await noProgressSuperseded(0);
+  it("merges the moved head once the owner answers the gate at its FIX_FIRST, which consumes the escalation", async () => {
+    const { w, runId } = await noProgressSuperseded(1);
     await gateOpened(w.host, gateId(runId, "approve-merge", 1));
 
-    w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: final }, OWNER);
+    w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: w.fake.pr(1).headSha }, OWNER);
 
     await vi.waitFor(() => expect(w.fake.effects.merge).toBe(1));
   });
