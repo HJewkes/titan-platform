@@ -624,7 +624,6 @@ interface FakeEffects {
     createPr: number;
     updateBranch: number;
     updateRef: number;
-    setPrBase: number;
     merge: number;
     rerunFailedJobs: number;
 }
@@ -710,7 +709,7 @@ interface FakeGitHub {
         number: number;
         message: MergeMessage | undefined;
     }[];
-    /** Every PR base change that landed, in order. */
+    /** Every PR base change that landed, in order; its length counts the retargets, so `FakeEffects` stays as it was. */
     baseChanges: {
         number: number;
         base: string;
@@ -732,6 +731,7 @@ interface FakeGitHub {
     /** PR number to its head force-pushes, oldest first; unset means none. `listForcePushes` reads at most 100, like the GraphQL page. */
     forcePushes: Map<number, ForcePush[]>;
 }
+
 declare class FakeHttpError extends Error {
     readonly status: number;
     constructor(status: number, message: string);
