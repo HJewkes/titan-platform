@@ -26,7 +26,7 @@ interface ShepherdOpts extends TimelineView, StatusFilter {
   deploy?: boolean;
 }
 
-type RegisterOpts = ShepherdOpts & { branch?: string; task?: string; implementer?: string; reviewer?: string; kind?: string; slice?: string | false; policy?: string };
+type RegisterOpts = ShepherdOpts & { branch?: string; head?: string; base?: string; task?: string; implementer?: string; reviewer?: string; kind?: string; slice?: string | false; policy?: string };
 
 /** The shepherd.* registry commands as verbs: on titan-factory serve when one answers, else against the database here; register needs --offline for that. */
 export function registerShepherd(program: Command, verbs: Verbs): void {
@@ -50,6 +50,8 @@ type VerbOf = (spec: string, description: string) => Command;
 function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
   verb("register <target>", "shepherd owner/repo#N, or owner/repo with --branch before its PR exists; a repeat returns the existing run, or a new one if it failed")
     .option("--branch <name>", "the PR's head branch")
+    .option("--head <sha>", "the PR's head commit; with --branch, Shepherd does not read the PR from GitHub to register it")
+    .option("--base <name>", "the PR's base branch; with --head, Shepherd classes the PR's files from local git")
     .option("--task <slug/id>", "the task this PR delivers; defaults to the id in an agent-chat/<name> head branch")
     .option("--implementer <name>", "the agent that pushes fixes; defaults to <name> of an agent-chat/<name> head branch")
     .option("--reviewer <name>", "the agent that reviews")
@@ -105,11 +107,11 @@ const PR_VERBS = [
 async function registerArgs(target: string, opts: RegisterOpts, { io, deps }: Verbs): Promise<Record<string, unknown>> {
   const policy = opts.policy === undefined ? undefined : parsePayload(opts.policy);
   if (opts.policy !== undefined && !policy) throw new Error("--policy must be a JSON object");
-  const { branch, reviewer, kind, slice } = opts;
+  const { branch, head, base, reviewer, kind, slice } = opts;
   const parsed = parseTarget(target);
   const { task: given, implementer } = await inferIdentity(parsed, opts, deps.headRef);
   const task = await qualifyTask(given, { origin: activeWorkOrigin(io.env), ...(deps.fetch && { fetch: deps.fetch }) });
-  return { ...parsed, branch, task, implementer, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, policy };
+  return { ...parsed, branch, head, base, task, implementer, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, policy };
 }
 
 async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () => object | Promise<object>, opts: ShepherdOpts): Promise<void> {

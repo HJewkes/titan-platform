@@ -1,7 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fakeSha } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
 import { openDatabase } from "@titan-design/store-sqlite";
 import type { StepResult } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -30,6 +30,7 @@ function world(options: FixtureOptions & { dbPath?: string } = {}): World {
 }
 
 const pr1 = { repo: REPO, pr: 1, task: "demo/T-1", implementer: "impl-a" };
+const H2 = fakeSha("head2");
 
 async function registered(w: World, args: object): Promise<Registered> {
   const envelope = await w.call<Registered>("shepherd.register", args);
@@ -138,6 +139,44 @@ describe("shepherd.register", () => {
     const envelope = await w.call("shepherd.register", { ...pr1, branch: BRANCH });
 
     expect(envelope).toMatchObject({ ok: false });
+    expect(shepherdRuns(w.host)).toEqual([]);
+  });
+});
+
+describe("shepherd.register from facts", () => {
+  const facts = { ...pr1, branch: BRANCH, head: H1, base: "main", kind: "feature" };
+
+  it("reads nothing from GitHub when the head, base and branch are passed, and stores the head and base", async () => {
+    const reads: string[] = [];
+    const github = fakeGitHub();
+    github.addPr({ headSha: H1, headRef: BRANCH });
+    const refused = async (): Promise<never> => Promise.reject(new Error("register read GitHub"));
+    const port = { ...githubPort(github.wire), getPr: refused, listPrFiles: refused };
+    const w = world({ frozen: true, port, prFiles: async ({ head }) => (reads.push(head), [{ path: "packages/x/src/a.ts", status: "modified", additions: 3, deletions: 1 }]) });
+
+    const { registration, g10Hold } = await registered(w, facts);
+
+    expect(reads).toEqual([H1]);
+    expect(g10Hold).toBeUndefined();
+    expect(registration).toMatchObject({ headSha: H1, base: "main", branch: BRANCH });
+  });
+
+  it("holds a large diff read from git, and a repeat at a new head stores that head", async () => {
+    const lines = new Map([[H1, 10], [H2, 500]]);
+    const w = world({ frozen: true, prFiles: async ({ head }) => [{ path: "packages/x/src/a.ts", status: "modified", additions: lines.get(head) ?? 0, deletions: 0 }] });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+
+    const first = await registered(w, facts);
+    const second = await registered(w, { ...facts, head: H2 });
+
+    expect(first.g10Hold).toBeUndefined();
+    expect(second).toMatchObject({ g10Hold: "g10-review: 500 changed lines", registration: { headSha: H2, base: "main" } });
+  });
+
+  it("refuses a head that is not a full sha", async () => {
+    const w = world({ frozen: true });
+
+    expect(await w.call("shepherd.register", { ...facts, head: "abc123" })).toMatchObject({ ok: false });
     expect(shepherdRuns(w.host)).toEqual([]);
   });
 });

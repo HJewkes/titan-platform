@@ -1,7 +1,7 @@
 import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { accountLimitMigration } from "./account-store.js";
-import { holdSlotsMigration, parkSettledMigration } from "./store-migrations.js";
+import { holdSlotsMigration, parkSettledMigration, registrationFactsMigration } from "./store-migrations.js";
 import { shepherdEventMigration } from "./events.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type AuthorInput, type RegistrationInput } from "./store.js";
@@ -233,6 +233,40 @@ describe("shepherd registration store", () => {
     expect(store.heldReason("octo/demo", 12, "feat/xy")).toBeUndefined();
     expect(store.heldReason("octo/demo", 12, "other/feat/x")).toBeUndefined();
     expect(store.heldReason("octo/demo", 12, "refs/heads/other/feat/x")).toBeUndefined();
+  });
+});
+
+describe("the head and base a registration names", () => {
+  const HEAD_1 = "1".repeat(40);
+  const HEAD_2 = "2".repeat(40);
+
+  function factsStore(): ShepherdStore {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), registrationFactsMigration(24)]);
+    return new ShepherdStore(db);
+  }
+
+  it("adds both columns to a database that already holds registrations, which read as null", () => {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [shepherdMigration(4), sliceMigration(8)]);
+    new ShepherdStore(db).register(base);
+
+    runMigrations(db, [shepherdMigration(4), sliceMigration(8), registrationFactsMigration(24)]);
+
+    expect(appliedVersions(db)).toContain(24);
+    expect(new ShepherdStore(db).byRun("run-1")).toMatchObject({ pr: 7, headSha: null, base: null });
+  });
+
+  it("stores the head and base at registration, a new head on a repeat, and keeps what a repeat omits", () => {
+    const store = factsStore();
+
+    expect(store.register({ ...base, headSha: HEAD_1, base: "main" })).toMatchObject({ headSha: HEAD_1, base: "main" });
+    expect(store.update("run-1", { ...base, headSha: HEAD_2 })).toMatchObject({ headSha: HEAD_2, base: "main" });
+    expect(store.update("run-1", base)).toMatchObject({ headSha: HEAD_2, base: "main" });
+  });
+
+  it("registers without facts on a database the migration has not reached", () => {
+    expect(openStore().register(base)).toMatchObject({ headSha: null, base: null });
   });
 });
 

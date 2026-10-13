@@ -21,6 +21,7 @@ describe("hash routes", () => {
     ["#/tasks/OR-12?tab=sessions", { view: "tasks", id: "OR-12", query: "tab=sessions" }],
     ["#/sessions/0b7e2c1a-5d4f-4e8b-9a61-3c2d1e0f9a8b?tab=conversation", { view: "sessions", id: "0b7e2c1a-5d4f-4e8b-9a61-3c2d1e0f9a8b", query: "tab=conversation" }],
     ["#/agents/relay-worker-3?since=2031-03-01", { view: "agents", id: "relay-worker-3", query: "since=2031-03-01" }],
+    ["#/shepherd/orbit%2Frelay%2312", { view: "shepherd", id: "orbit/relay#12" }],
     ["#/knowledge/note%3Aorbit-relay%2F2031-03-03-backoff-ceiling.md?tab=graph", { view: "knowledge", id: "note:orbit-relay/2031-03-03-backoff-ceiling.md", query: "tab=graph" }],
   ])("parses %s and writes it back unchanged", (hash, route) => {
     expect(parseRoute(hash)).toEqual(route);
