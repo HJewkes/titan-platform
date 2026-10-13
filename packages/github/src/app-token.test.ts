@@ -1,6 +1,9 @@
 import { generateKeyPairSync, createVerify } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { appInstallationToken, signAppJwt } from "./app-token.js";
+import { appInstallationToken, appInstallationTokenOverHttp, signAppJwt } from "./app-token.js";
+import { API, fakeFetch, rejectionOf, type FakeAnswer } from "./fetch-fake.test-helpers.js";
+import { octokitClient } from "./octokit-client.js";
+import { octokitWire } from "./octokit-wire.js";
 import { redact, redactStreams } from "./redact.js";
 import { GhError, type GhExec, type GhExecOptions, type GhResult } from "./exec.js";
 import { fakeGitHub, fakeSha, FAKE_APP_ID } from "./fake.js";
@@ -193,6 +196,85 @@ describe("createCheckRun", () => {
 
     await expect(attempt).rejects.toThrow(/token provider/);
     expect(gh.calls).toEqual([]);
+  });
+});
+
+let httpClients = 0;
+const throttleId = () => `app-test-${++httpClients}`;
+
+describe("appInstallationTokenOverHttp", () => {
+  it("exchanges the JWT as the bearer of that one request", async () => {
+    const fake = fakeFetch(() => ({ status: 201, body: { token: TOKEN, expires_at: "2026-03-01T13:00:00Z" } }));
+
+    const result = await appInstallationTokenOverHttp(credentials, { fetch: fake.fetch, throttleId: throttleId() });
+
+    const call = fake.calls[0]!;
+    expect(result).toEqual({ token: TOKEN, expiresAtMs: Date.parse("2026-03-01T13:00:00Z") });
+    expect(call).toMatchObject({ method: "POST", url: `${API}app/installations/9/access_tokens` });
+    expect(call.headers.authorization?.split(" ")[1]?.split(".")).toHaveLength(3);
+    expect(call.url).not.toContain("eyJ");
+  });
+
+  it("refuses a bad key before any request", async () => {
+    const fake = fakeFetch(() => ({ status: 201, body: {} }));
+
+    await expect(appInstallationTokenOverHttp({ ...credentials, privateKeyPem: pemBlock("PRIVATE KEY", "bm90LWEta2V5") }, { fetch: fake.fetch })).rejects.toBeInstanceOf(GitHubInputError);
+    expect(fake.calls).toEqual([]);
+  });
+
+  it("keeps the JWT, the PEM and any echoed token out of a failed exchange", async () => {
+    let jwt = "";
+    const fake = fakeFetch((call) => ((jwt = call.headers.authorization!.split(" ")[1]!), { status: 401, body: { message: `Bad credentials ${jwt} {"token":"${TOKEN}"}` } }));
+
+    const error = await rejectionOf(appInstallationTokenOverHttp(credentials, { fetch: fake.fetch, throttleId: throttleId() }), Error);
+
+    expect(error.message).toContain("HTTP 401");
+    for (const secret of [jwt, TOKEN, PEM.split("\n")[1]!]) expect(error.message).not.toContain(secret);
+    expect(fake.calls).toHaveLength(1);
+  });
+
+  it("refuses an answer without a token and expiry", async () => {
+    const fake = fakeFetch(() => ({ status: 201, body: { expires_at: "2026-03-01T13:00:00Z" } }));
+
+    await expect(appInstallationTokenOverHttp(credentials, { fetch: fake.fetch, throttleId: throttleId() })).rejects.toThrow(/without a token and expiry/);
+  });
+});
+
+describe("octokitWire createCheckRun", () => {
+  const userToken = "ghp_synthetic_user_token_00000000000";
+  const wireWith = (answer: () => FakeAnswer, { appToken }: { appToken?: () => Promise<string> } = { appToken: async () => TOKEN }) => {
+    const user = fakeFetch(answer);
+    const app = fakeFetch(answer);
+    const client = octokitClient({ fetch: user.fetch, token: async () => userToken, throttleId: throttleId() });
+    return { user, app, port: githubPort(octokitWire({ client, appToken, appClientOptions: { fetch: app.fetch, throttleId: throttleId() } })) };
+  };
+
+  it("posts as the App installation, never as the user's client", async () => {
+    const { user, app, port } = wireWith(() => ({ status: 201, body: { id: 55 } }));
+
+    const result = await port.createCheckRun(REPO, request);
+
+    expect(result).toEqual({ id: 55 });
+    expect(user.calls).toEqual([]);
+    expect(app.calls[0]).toMatchObject({ method: "POST", url: `${API}repos/${REPO}/check-runs` });
+    expect(app.calls[0]!.headers.authorization).toBe(`bearer ${TOKEN}`);
+    expect(JSON.parse(app.calls[0]!.body!)).toMatchObject({ name: "shepherd", head_sha: HEAD, status: "completed", conclusion: "success" });
+  });
+
+  it("keeps the HTTP status and drops the token from a failure", async () => {
+    const { port } = wireWith(() => ({ status: 422, body: { message: `nope ${TOKEN}` } }));
+
+    const error = await rejectionOf(port.createCheckRun(REPO, request), GhError);
+
+    expect(error.status).toBe(422);
+    expect(error.message).not.toContain(TOKEN);
+  });
+
+  it("refuses with no token provider before any request", async () => {
+    const { user, app, port } = wireWith(() => ({ status: 201, body: { id: 1 } }), {});
+
+    await expect(port.createCheckRun(REPO, request)).rejects.toThrow(/token provider/);
+    expect([...user.calls, ...app.calls]).toEqual([]);
   });
 });
 

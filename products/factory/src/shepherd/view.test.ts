@@ -42,6 +42,12 @@ describe("shepherd view outcomes", () => {
     expect(row).toMatchObject({ phase: "done", outcome: { kind: "stopped", reason: "closed" } });
   });
 
+  it("carries no last await on a finished run whose last await gave none", () => {
+    const run = completedWith("sh-await-verdict:" + "1".repeat(40), { kind: "none", ended: "deadline" });
+
+    expect(watchRow({ registration, run }).lastNone).toBeNull();
+  });
+
   it("reads a completed run that passed sh-landed as merged", () => {
     expect(watchRow({ registration, run: completedWith("sh-landed", { mergeSha: "def5678" }) }).outcome).toEqual({ kind: "merged", reason: null });
   });
@@ -266,13 +272,13 @@ describe("a g10-review hold whose review recorded no verdict (TP-2455)", () => {
     const late = watchRow({ registration: held, run: waitingAt("merge:0"), now: minutesIn(61) });
 
     expect(early.stalled).toBeNull();
-    expect(late.stalled?.reason).toMatch(/^g10-review hold at 1111111 has no reviewer verdict; 61 min waiting, over the 60 min limit$/);
+    expect(late.stalled?.reason).toMatch(/^g10-review hold at 1111111 has no reviewer MERGE \(last await: no verdict read\); 61 min waiting, over the 60 min limit$/);
   });
 
   it("reads a run parked in sh-held-wait as stalled after 61 minutes", () => {
     const row = watchRow({ registration: held, run: waitingAt(`sh-held-wait:r0:${H1}`), now: minutesIn(61) });
 
-    expect(row).toMatchObject({ phase: "awaiting-approval", stalled: { reason: expect.stringMatching(/^g10-review hold at 1111111 has no reviewer verdict/) } });
+    expect(row).toMatchObject({ phase: "awaiting-approval", stalled: { reason: expect.stringMatching(/^g10-review hold at 1111111 has no reviewer MERGE \(last await: no verdict read\)/) } });
   });
 
   it("leaves a hold of another class unstalled at 61 minutes", () => {
@@ -312,8 +318,23 @@ describe("a g10-review hold whose review recorded no verdict (TP-2455)", () => {
     });
 
     it("still stalls when the reviewed head has no MERGE", () => {
-      expect(watchRow({ registration: held, run: carriedTo("FIX_FIRST"), now: minutesIn(61) }).stalled?.reason).toMatch(/^g10-review hold at 1111111 has no reviewer verdict/);
+      expect(watchRow({ registration: held, run: carriedTo("FIX_FIRST"), now: minutesIn(61) }).stalled?.reason).toMatch(/^g10-review hold at 1111111 has no reviewer MERGE \(last await: no verdict read\)/);
     });
+  });
+
+  it("names the seat WAIT that ended the last await in the stall line and on the row (TP-2625)", () => {
+    const seatWait = { kind: "none", reason: `seat check: rv-seat-x said WAIT at ${H1}, so its required checks had not finished`, seat: "rv-seat-x" };
+    const row = watchRow({ registration: held, run: waitingAt("merge:0", seatWait), now: minutesIn(61) });
+
+    expect(row.stalled?.reason).toBe("g10-review hold at 1111111 has no reviewer MERGE (last await: seat WAIT from rv-seat-x); 61 min waiting, over the 60 min limit");
+    expect(row.lastNone).toEqual({ kind: "seat-wait", text: "seat WAIT from rv-seat-x" });
+  });
+
+  it("keeps the plain words when no review step was recorded", () => {
+    const run = waitingAt("merge:0");
+    delete run.stepResults[`sh-await-verdict:${H1}`];
+
+    expect(watchRow({ registration: held, run, now: minutesIn(61) }).stalled?.reason).toMatch(/^g10-review hold at 1111111 has no reviewer verdict; 61 min/);
   });
 
   it("leaves an owner hold unstalled at 61 minutes", () => {

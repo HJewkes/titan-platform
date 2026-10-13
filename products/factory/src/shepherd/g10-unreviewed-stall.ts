@@ -23,13 +23,14 @@ function answeredAt(run: WorkflowRun, head: string): boolean {
   return fromHead !== undefined && verdictAt(run, fromHead) !== undefined;
 }
 
-/** A g10-review hold releases only on a reviewer's MERGE at the head; with none recorded, waiting past the limit is a stall (TP-2455). */
-export function g10UnreviewedStall(run: WorkflowRun, { registration, headSha, holding }: HoldWait, since: string, now: Date): string | undefined {
+/** A g10-review hold releases only on a reviewer's MERGE at the head; with none recorded, waiting past the limit is a stall (TP-2455). `lastNone` names why the last await gave none. */
+export function g10UnreviewedStall(run: WorkflowRun, { registration, headSha, holding }: HoldWait, since: string, now: Date, lastNone?: string): string | undefined {
   const { held, holdReason, holdSatisfied, ownerHold } = registration;
   if (!held || ownerHold || headSha === null || holdClassOf(holdReason) !== "g10-review") return undefined;
   const heldWait = run.currentStep !== null && stepIdMatches("sh-held-wait", run.currentStep);
   if (!(holding || heldWait) || holdSatisfied?.head === headSha || answeredAt(run, headSha)) return undefined;
   const elapsed = now.getTime() - Date.parse(since);
   if (elapsed <= G10_UNREVIEWED_LIMIT_MS) return undefined;
-  return `g10-review hold at ${headSha.slice(0, 7)} has no reviewer verdict; ${Math.floor(elapsed / MINUTE)} min waiting, over the ${G10_UNREVIEWED_LIMIT_MS / MINUTE} min limit`;
+  const missing = lastNone === undefined ? "no reviewer verdict" : `no reviewer MERGE (last await: ${lastNone})`;
+  return `g10-review hold at ${headSha.slice(0, 7)} has ${missing}; ${Math.floor(elapsed / MINUTE)} min waiting, over the ${G10_UNREVIEWED_LIMIT_MS / MINUTE} min limit`;
 }
