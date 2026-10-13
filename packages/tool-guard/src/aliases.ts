@@ -1,23 +1,23 @@
 import { tokenize, type Token, type WordToken } from "./shell/lexer.js";
 
 /** Alias name to every value seen for it; a name can carry the floor's value and the snapshot's. */
-export type AliasValues = Map<string, string[]>;
+type AliasValues = Map<string, string[]>;
 
 /**
  * Aliases assumed even with no readable snapshot, so a missing or oversized one still fails closed for them. Every
  * profile's zsh setup defines `g=git`.
  */
-export const FLOOR_ALIASES: Readonly<Record<string, readonly string[]>> = { g: ["git"] };
+const FLOOR_ALIASES: Readonly<Record<string, readonly string[]>> = { g: ["git"] };
 
 const SECTION = "# Aliases";
 /** Bounds the re-lexing a line with an unclosed quote costs: each try re-reads the joined lines from the start. */
 const MAX_DEFINITION_LINES = 32;
 
 /**
- * The aliases a Claude Code shell snapshot defines. Only its `# Aliases` section is read, since function bodies above
- * it can hold `alias` lines that never run at source time; a file with no such header falls back to every line that
- * starts with `alias `. Accepts zsh's `alias -- NAME=VALUE` and bash's `alias NAME=VALUE`, quoting removed. A line the
- * lexer rejects is skipped, unless joining a few lines after it closes a quote that holds a newline.
+ * The aliases a Claude Code shell snapshot defines. Only its last `# Aliases` section is read, since function bodies
+ * above it can hold `alias` lines, or that header, that never run at source time; a file with no such header falls back
+ * to every line that starts with `alias `. Accepts zsh's `alias -- NAME=VALUE` and bash's `alias NAME=VALUE`, quoting
+ * removed. A line the lexer rejects is skipped, unless joining a few lines after it closes a quote that holds a newline.
  */
 export function parseSnapshotAliases(text: string): AliasValues {
   const lines = aliasSection(text.split("\n"));
@@ -40,7 +40,7 @@ export function withFloor(table: AliasValues): AliasValues {
 }
 
 function aliasSection(lines: string[]): string[] {
-  const start = lines.indexOf(SECTION);
+  const start = lines.lastIndexOf(SECTION);
   if (start < 0) return lines;
   const end = lines.findIndex((line, i) => i > start && line.startsWith("# "));
   return lines.slice(start + 1, end < 0 ? lines.length : end);
@@ -77,9 +77,13 @@ function definitionPairs(tokens: Token[]): Array<[string, string]> | null {
   if (head !== "alias") return null;
   while (rest[0] === "-g") rest.shift();
   if (rest[0] === "--") rest.shift();
-  const pairs = rest.map(splitDefinition);
-  if (pairs.length === 0 || pairs.some((p) => p === null)) return null;
-  return pairs as Array<[string, string]>;
+  const pairs: Array<[string, string]> = [];
+  for (const word of rest) {
+    const pair = splitDefinition(word);
+    if (!pair) return null;
+    pairs.push(pair);
+  }
+  return pairs.length > 0 ? pairs : null;
 }
 
 function splitDefinition(word: string): [string, string] | null {

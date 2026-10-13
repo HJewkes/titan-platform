@@ -42,6 +42,11 @@ describe("parseSnapshotAliases", () => {
     expect(table.has("rg")).toBe(false);
   });
 
+  it("reads the real section when a function body above it holds the same header", () => {
+    const snapshot = ["# Functions", "setup () {", "# Aliases", "alias -- gp='git push'", "}", "# Aliases", "alias -- g=git"];
+    expect(Object.fromEntries(parseSnapshotAliases(snapshot.join("\n")))).toEqual({ g: ["git"] });
+  });
+
   it("reads bash-style definitions when the file has no alias section", () => {
     const table = parseSnapshotAliases("alias gp='git push'\nalias ll='ls -l' la='ls -a'\necho done");
     expect(Object.fromEntries(table)).toEqual({ gp: ["git push"], ll: ["ls -l"], la: ["ls -a"] });
