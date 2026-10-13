@@ -55,6 +55,15 @@ export function repoSlotFilled(url: string): boolean {
   return slots !== null && [slots[2], slots[3]].some((slot) => SLOT_PLACEHOLDER_RE.test(slot ?? ""));
 }
 
+/** The ASCII-decoded keys of a URL's query string, which a filled slot may turn into a write's body. */
+export function queryKeys(url: string): string[] {
+  const query = /\?([^#]*)/.exec(url)?.[1] ?? "";
+  return query
+    .split("&")
+    .filter((pair) => pair !== "")
+    .map((pair) => asciiDecoded(pair.split("=")[0] ?? ""));
+}
+
 const hasDotSegment = (path: string) => path.split("/").some((s) => s === "." || s === "..");
 
 /** Decodes only the ASCII escapes, which always decode, so `%67it` reads as `git` beside an invalid `%E0`. */
@@ -112,9 +121,28 @@ function createdBranches(fields: WordToken[] | "unread"): BranchTarget | null {
   return branches.length > 0 ? { branches } : null;
 }
 
-/** A filled repo slot reaches a ref on any PATCH, PUT or DELETE, and on a POST only through a `ref` field. */
-function slotFilledWrite(verb: string | null, fields: WordToken[] | "unread"): BranchTarget | null {
-  return verb === null || verb === "POST" ? createdBranches(fields) : RUN_TIME;
+/**
+ * A filled repo slot reaches a ref on any PATCH, PUT or DELETE, and on a POST only through a `ref` field, a `ref`
+ * query key, or a path that already reads as a ref write.
+ */
+function slotFilledWrite(url: string, verb: string | null, fields: WordToken[] | "unread", read: BranchTarget | null): BranchTarget | null {
+  if (verb !== null && verb !== "POST") return RUN_TIME;
+  const created = createdBranches(fields);
+  if (created) return created;
+  return read || queryKeys(url).some((k) => REF_KEY_RE.test(k)) ? RUN_TIME : null;
+}
+
+/** The ref write the written path names, before any filled repo slot is considered. */
+function refRead(url: string, verb: string | null, fields: WordToken[] | "unread"): BranchTarget | null {
+  const path = routedPath(url);
+  if (path === null) return null;
+  if (path === "unsure") return RUN_TIME;
+  const refs = GIT_REFS_RE.exec(path);
+  if (!refs) return null;
+  const tail = (refs[1] ?? "").replace(/\/+$/, "");
+  if (tail === "") return verb === null || verb === "POST" ? createdBranches(fields) : null;
+  const branch = HEADS_RE.exec(tail)?.[1];
+  return branch === undefined ? null : { branches: [knownBranch(branch)] };
 }
 
 /**
@@ -124,14 +152,6 @@ function slotFilledWrite(verb: string | null, fields: WordToken[] | "unread"): B
 export function apiBranchRefWrite(url: string, method: string | null, fields: WordToken[] | "unread"): BranchTarget | null {
   const verb = method?.toUpperCase() ?? null;
   if (verb === "GET" || verb === "HEAD") return null;
-  const path = routedPath(url);
-  if (path === null) return null;
-  if (path === "unsure") return RUN_TIME;
-  if (repoSlotFilled(url)) return slotFilledWrite(verb, fields);
-  const refs = GIT_REFS_RE.exec(path);
-  if (!refs) return null;
-  const tail = (refs[1] ?? "").replace(/\/+$/, "");
-  if (tail === "") return verb === null || verb === "POST" ? createdBranches(fields) : null;
-  const branch = HEADS_RE.exec(tail)?.[1];
-  return branch === undefined ? null : { branches: [knownBranch(branch)] };
+  const read = refRead(url, verb, fields);
+  return repoSlotFilled(url) ? slotFilledWrite(url, verb, fields, read) : read;
 }

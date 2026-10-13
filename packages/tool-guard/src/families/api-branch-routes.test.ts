@@ -196,6 +196,34 @@ describe("gh's run-time {branch} placeholder names an unknown branch", () => {
   });
 });
 
+describe("a filled repo slot holds through every early return of the path reading", () => {
+  it.each([
+    ["DELETE", "repos/{owner}/{repo}/x/%E0", "", "protection", "undecodable path"],
+    ["DELETE", "repos/{owner}/{repo}/x/.", "", "protection", "unsure path, no guess"],
+    ["PUT", "repos/{owner}/{repo}/x/.", "message=m", "contents", "unsure path, no guess"],
+    ["POST", "repos/{owner}/{repo}/x/.", "users[]=bot", "merge-upstream", "unsure path, no guess"],
+    ["POST", "repos/{owner}/{repo}/./merges", "base=main head=x", "merge-upstream", "unsure path, no guess"],
+    ["PATCH", "repos/{owner}/{repo}/x/..", "title=x", "default-branch", "unsure path, no default_branch"],
+    ["DELETE", "repos/{owner}/{repo}/branches/main/protection/.", "", "protection", "unsure path, guessed"],
+    ["PUT", "repos/{owner}/{repo}", "title=x", "contents", "repository tail, not PATCH"],
+    ["POST", "repos/{owner}/{repo}/merge-upstream", "", "merge-upstream", "merge-upstream without branch"],
+    ["DELETE", "repos/{owner}/{repo}/branches/main", "", "protection", "branches tail, no route"],
+    ["POST", "repos/{owner}/{repo}/users?users[]=bot", "", "merge-upstream", "other tail, key in the query"],
+    ["POST", "repos/{owner}/{repo}/users?users%5B%5D=bot", "", "merge-upstream", "other tail, encoded query key"],
+    [null, "repos/:owner/:repo/x?base=main&head=x", "", "merge-upstream", "other tail, merge keys in the query"],
+  ])("%s %s %s reads as %s (%s)", (method, url, src, route, _returnPath) => {
+    expect(apiBranchRouteWrite(url, method, fields(src))).toEqual({ route, branches: [null] });
+  });
+
+  it.each([
+    ["GET", "repos/{owner}/{repo}/x/.", ""],
+    ["POST", "repos/{owner}/{repo}/issues?labels=x", "title=x"],
+    ["POST", "repos/{owner}/{repo}/x/.", "title=x"],
+  ])("%s %s %s still passes", (method, url, src) => {
+    expect(apiBranchRouteWrite(url, method, fields(src))).toBeNull();
+  });
+});
+
 describe("requests that change no branch", () => {
   it.each([
     ["GET", "repos/o/r/contents/README.md", "branch=main"],

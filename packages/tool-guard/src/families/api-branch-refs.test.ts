@@ -110,6 +110,24 @@ describe("gh's run-time {branch} placeholder names an unknown branch", () => {
   });
 });
 
+describe("a filled repo slot holds through every early return of the path reading", () => {
+  it.each([
+    ["PATCH", "repos/{owner}/{repo}/x/%E0", "", "undecodable path"],
+    ["DELETE", "repos/{owner}/{repo}/x/.", "", "unsure path"],
+    ["PATCH", "repos/{owner}/{repo}/pulls/1", "", "no git refs route"],
+    ["PATCH", "repos/{owner}/{repo}/git/refs", "", "git refs root, not POST"],
+    ["POST", "repos/{owner}/{repo}/issues?ref=refs/heads/main", "", "POST, ref in the query"],
+    ["POST", "repos/{owner}/{repo}/git/refs/heads/feat/x", "sha=x", "POST on a head path"],
+    ["PATCH", "repos/{owner}/{repo}/git/refs/tags/v1", "", "not a head"],
+  ])("%s %s %s (%s)", (method, url, src) => {
+    expect(apiBranchRefWrite(url, method, fields(src))).toEqual({ branches: [null] });
+  });
+
+  it("still lets a POST with no ref through", () => {
+    expect(apiBranchRefWrite("repos/{owner}/{repo}/git/refs", "POST", fields("sha=x"))).toBeNull();
+  });
+});
+
 describe("requests that move no branch ref", () => {
   it.each([
     ["POST", "repos/{owner}/{repo}/issues", "title=x"],

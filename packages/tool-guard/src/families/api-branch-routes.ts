@@ -1,5 +1,5 @@
 import type { WordToken } from "../shell/lexer.js";
-import { asciiDecoded, fieldKey, knownBranch, placeholderRoutes, refBranch, repoSlotFilled, routedPath } from "./api-branch-refs.js";
+import { asciiDecoded, fieldKey, knownBranch, placeholderRoutes, queryKeys, refBranch, repoSlotFilled, routedPath } from "./api-branch-refs.js";
 
 type BranchRoute = "contents" | "rename" | "merge-upstream" | "protection" | "default-branch";
 
@@ -25,8 +25,8 @@ const DEFAULT_BRANCH_KEY_RE = /^default_branch(?:\[\])?$/;
  * `apps` and `required_status_checks` `contexts`, and the Merges API `base`/`head`.
  */
 const ROUTE_FIELD_KEY_RE = /^(?:branch|new_name|default_branch|users|teams|apps|contexts|base|head)(?:\[\])?$/;
-/** A merge suffix a filled slot can complete into the Merges API, merge-upstream or a pull merge. */
-const MERGE_SUFFIX_RE = /\/(?:merges|merge-upstream|merge)\/?$/i;
+/** A merge segment a filled slot can complete into the Merges API, merge-upstream or a pull merge. */
+const MERGE_SEGMENT_RE = /\/(?:merges|merge-upstream|merge)(?:\/|$)/i;
 /** The route a filled repo slot most plausibly reaches for each method, when the written path names none. */
 const FILLED_ROUTES: Partial<Record<string, BranchRoute>> = { PUT: "contents", DELETE: "protection", PATCH: "default-branch" };
 
@@ -121,13 +121,29 @@ function unsureWrite(url: string, verb: string | null, fields: Fields): BranchRo
 
 /**
  * A filled repo slot (`repoSlotFilled`) makes the route unknown. PUT, DELETE and PATCH can reach a route whatever the
- * body (a protection sub-path takes any field); a POST only with a field a route reads, so a plain issue POST passes.
+ * body (a protection sub-path takes any field); a POST only as `postReachesRoute` says, so a plain issue POST passes.
+ * It runs after every reading of the written path, so no early return of that reading skips it.
  */
-function slotFilledWrite(path: string, verb: string | null, fields: Fields, read: BranchRouteWrite | null): BranchRouteWrite | null {
+function slotFilledWrite(url: string, verb: string | null, fields: Fields, read: BranchRouteWrite | null): BranchRouteWrite | null {
   const post = verb === null || verb === "POST";
-  const routeless = fields !== "unread" && candidates(fields, ROUTE_FIELD_KEY_RE).length === 0;
-  if (!read && post && routeless && !MERGE_SUFFIX_RE.test(path)) return null;
+  if (!read && post && !postReachesRoute(url, fields)) return null;
   return { route: read?.route ?? FILLED_ROUTES[verb ?? "POST"] ?? "merge-upstream", branches: [null] };
+}
+
+/** A POST reaches a route through a field or query key a route reads, an unread body, or a merge segment. */
+function postReachesRoute(url: string, fields: Fields): boolean {
+  if (fields === "unread" || candidates(fields, ROUTE_FIELD_KEY_RE).length > 0) return true;
+  if (queryKeys(url).some((k) => ROUTE_FIELD_KEY_RE.test(k))) return true;
+  return MERGE_SEGMENT_RE.test(asciiDecoded(url.replace(/[?#].*$/s, "")));
+}
+
+/** The route write the written path names, before any filled repo slot is considered. */
+function routeRead(url: string, verb: string | null, fields: Fields): BranchRouteWrite | null {
+  const path = routedPath(url, LOOSE_ROUTE_RE);
+  if (path === null) return null;
+  if (path === "unsure") return unsureWrite(url, verb, fields);
+  const repo = REPO_ROUTE_RE.exec(path);
+  return repo ? tailWrite((repo[1] ?? "").replace(/\/+$/, ""), verb, fields) : null;
 }
 
 /**
@@ -138,10 +154,6 @@ function slotFilledWrite(path: string, verb: string | null, fields: Fields, read
 export function apiBranchRouteWrite(url: string, method: string | null, fields: Fields): BranchRouteWrite | null {
   const verb = method?.toUpperCase() ?? null;
   if (verb === "GET" || verb === "HEAD") return null;
-  const path = routedPath(url, LOOSE_ROUTE_RE);
-  if (path === null) return null;
-  if (path === "unsure") return unsureWrite(url, verb, fields);
-  const repo = REPO_ROUTE_RE.exec(path);
-  const read = repo ? tailWrite((repo[1] ?? "").replace(/\/+$/, ""), verb, fields) : null;
-  return repoSlotFilled(url) ? slotFilledWrite(path, verb, fields, read) : read;
+  const read = routeRead(url, verb, fields);
+  return repoSlotFilled(url) ? slotFilledWrite(url, verb, fields, read) : read;
 }
