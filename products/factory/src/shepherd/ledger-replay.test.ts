@@ -367,15 +367,16 @@ describe("a base that moves on every read in a repo that does not require up-to-
   });
   it("refreshes every round's allowed head before its merge and never opens stuck-behind, however many rounds and minutes pass", async () => {
     const sentBack: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, { state: "behind", reviews: ["FIX_FIRST"] }];
-    const heads: HeadScript[] = [...sentBack, ...sentBack, ...sentBack, { state: "behind", reviews: ["MERGE"] }, { state: "behind", treeEqual: true }];
+    // Two send-backs, the most a run takes before its third FIX_FIRST stops it for the planner.
+    const heads: HeadScript[] = [...sentBack, ...sentBack, { state: "behind", reviews: ["MERGE"] }, { state: "behind", treeEqual: true }];
     const { host, replay } = startReplay({ ...LOOSE, heads }, { strict: false });
 
     await vi.waitFor(() => expect(settled(host, replay)).toBe("merged"), { timeout: 5_000, interval: 10 });
     const mergedHead = replay.fake.pr(1).headSha;
 
-    expect(replay.trace).toEqual({ reviewers: 7, unscripted: [], fixers: [] });
-    expect(replay.fake.effects).toMatchObject({ updateBranch: 4, merge: 1 });
-    expect(replay.seen.indexOf(mergedHead)).toBe(7);
+    expect(replay.trace).toEqual({ reviewers: 5, unscripted: [], fixers: [] });
+    expect(replay.fake.effects).toMatchObject({ updateBranch: 3, merge: 1 });
+    expect(replay.seen.indexOf(mergedHead)).toBe(5);
     expect(host.pendingGates()).toEqual([]);
   });
 });
