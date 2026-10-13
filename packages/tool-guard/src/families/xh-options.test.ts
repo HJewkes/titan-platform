@@ -17,6 +17,10 @@ describe("XH_VALUES reads an xh command line as xh does", () => {
     ["max redirects", "--max-redirects 3 https://x", ["https://x"]],
     ["an output file", "-o f https://x", ["https://x"]],
     ["a session file", "--session s POST https://x a=1", ["POST", "https://x", "a=1"]],
+    ["a hidden message-signature key id", "--unstable-m-sig-id https://allowed.example https://x", ["https://x"]],
+    ["a hidden message-signature key", "--unstable-m-sig-key https://allowed.example https://x", ["https://x"]],
+    ["a hidden message-signature algorithm", "--unstable-m-sig-alg https://allowed.example https://x", ["https://x"]],
+    ["a hidden message-signature component", "--unstable-m-sig-comp https://allowed.example https://x", ["https://x"]],
   ])("consumes %s", (_name, src, expected) => {
     expect(positionals(src)).toEqual(expected);
   });

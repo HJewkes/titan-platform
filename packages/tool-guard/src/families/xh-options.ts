@@ -1,8 +1,9 @@
 import { set } from "./options.js";
 
 /**
- * xh's options that take a value, from the `xh --help` text of xh 0.24 (not checked against a binary).
- * A missing entry would let its value read as the method or URL, so the table errs toward listing too many.
+ * xh's options that take a value, from xh's src/cli.rs at tag v0.26.2, including the `--unstable-m-sig-*` options
+ * that default builds hide from `--help` but clap still accepts. A missing entry would let its value read as the
+ * method or URL.
  * Unlike curl, xh's `-F` (follow), `-f` (form), `-d` (download), `-b` (body), `-c` (continue) and `-x` (compress)
  * are switches.
  */
@@ -34,4 +35,8 @@ export const XH_VALUES = set(
   "--unix-socket",
   "--default-scheme",
   "--generate",
+  "--unstable-m-sig-id",
+  "--unstable-m-sig-key",
+  "--unstable-m-sig-alg",
+  "--unstable-m-sig-comp",
 );
