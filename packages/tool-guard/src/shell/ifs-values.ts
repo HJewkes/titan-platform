@@ -23,8 +23,7 @@ import {
   printfTargetDynamic,
   opensIfsArray,
   readsTextByName,
-  rewritesAssignedValue,
-  rewritesWord,
+  shellMayRewrite,
   subscriptUnknown,
   transformsIfs,
 } from "./ifs-words.js";
@@ -280,7 +279,7 @@ function scanFor(args: WordToken[], scan: Scan): void {
   if (list.some((word) => possiblyIfs(word.value))) return markUnknown(scan);
   if (!variable || !possiblyIfs(variable.value)) return;
   if (literal(variable) !== "IFS" || literal(keyword) !== "in") return markUnknown(scan);
-  if (list.some((word) => word.dynamic || rewritesWord(word.value))) return markUnknown(scan);
+  if (list.some((word) => word.dynamic || shellMayRewrite(word.value))) return markUnknown(scan);
   for (const word of list) add(word.value, scan);
 }
 
@@ -295,7 +294,7 @@ function scanAssignment(word: WordToken, scan: Scan): void {
     if (word.dynamic) noteRuntimeAssignment(word, scan);
     return;
   }
-  if (!assignment.plain || word.dynamic || rewritesAssignedValue(assignment.value)) return markUnknown(scan);
+  if (!assignment.plain || word.dynamic || shellMayRewrite(assignment.value)) return markUnknown(scan);
   add(assignment.value, scan);
 }
 

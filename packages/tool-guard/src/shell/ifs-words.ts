@@ -26,11 +26,11 @@ const STARTUP_FILE_RE = /^(?:BASH_ENV|ENV)\+?=/;
 const SOURCING_OPTION_RE = /^(?:--(?:rcfile|init-file|login|interactive)\b|-[A-Za-z]*[il])/;
 
 /**
- * An assignment value the shell rewrites after the lexer: `~`, `~+` or `~-` at the start or after a `:`
- * (`IFS=a:~`), zsh's `=cmd` at the start or after a `:` (`IFS=a:=ls`), and a glob under zsh's `globassign`
- * (`IFS=/e*`). Tokens keep no record of which characters were quoted.
+ * Text no shell or option rewrites after the lexer, whether as an assignment value or a word: letters, digits,
+ * blank, tab, newline and `,.:;/_%-`. Anything else may be a tilde, `=cmd`, glob (zsh `globassign`,
+ * `extendedglob` `^ # ~`), brace list or other expansion. Tokens keep no record of which characters were quoted.
  */
-const ASSIGNED_REWRITE_RE = /(?:^|:)[~=]|[*?[]/;
+const UNREWRITTEN_TEXT_RE = /^[A-Za-z0-9 \t\n,.:;/_%-]*$/;
 /**
  * The only declarer options known to leave IFS's value as written: readonly, export and global, set or
  * cleared, and `--`. Any other option may transform it (`-u`, `-i`, `-a`, zsh `-Z3`, `-L3`, `-R3`, `-E`).
@@ -39,8 +39,6 @@ const SAFE_DECLARER_OPTION_RE = /^(?:[-+][rxg]+|--)$/;
 const OPTION_WORD_RE = /^[-+]./s;
 /** zsh's `integer` and `float` are `typeset -i` and `typeset -E` under another name. */
 const TRANSFORMING_DECLARERS = new Set(["integer", "float"]);
-/** A command word is also globbed and brace-expanded: `*`, `?`, `[`, `{a,b}`, `{1..3}`, and zsh's `^` and `#`. */
-const WORD_REWRITE_RE = /^[~=]|[*?[^#]|\{[^}]*(?:,|\.\.)[^}]*\}/;
 
 export interface Assignment {
   name: string;
@@ -57,14 +55,9 @@ export function possiblyPs4(text: string): boolean {
   return POSSIBLY_PS4_RE.test(text);
 }
 
-/** The shell may turn this IFS value into other text at run time, so its literal reading is not the value. */
-export function rewritesAssignedValue(text: string): boolean {
-  return ASSIGNED_REWRITE_RE.test(text);
-}
-
-/** As `rewritesAssignedValue`, for a `for IFS in` word or a declarer operand, which glob and brace-expand too. */
-export function rewritesWord(text: string): boolean {
-  return ASSIGNED_REWRITE_RE.test(text) || WORD_REWRITE_RE.test(text);
+/** The shell may turn this IFS value or `for IFS in` word into other text at run time, so its literal reading is not the value. */
+export function shellMayRewrite(text: string): boolean {
+  return !UNREWRITTEN_TEXT_RE.test(text);
 }
 
 /**
@@ -155,7 +148,7 @@ export function declaresPs4Spelling(word: WordToken): boolean {
 /** `export IFS=~` or `declare IFS=*`: a declarer operand may be expanded like a word, not only like a value. */
 export function declaresRewrittenIfs(word: WordToken): boolean {
   const assignment = parseAssignment(word.value);
-  return assignment?.name === "IFS" && rewritesWord(assignment.value);
+  return assignment?.name === "IFS" && shellMayRewrite(assignment.value);
 }
 
 /** `export PATH="$HOME/bin"` names its variable literally; `declare "${x}S=,"` does not. */

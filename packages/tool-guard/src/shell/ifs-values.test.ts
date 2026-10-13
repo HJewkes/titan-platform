@@ -366,7 +366,6 @@ describe("lineIfsValues on IFS values the shell rewrites at run time", () => {
   });
 
   it.each([
-    ["a tilde inside the value", "IFS=a~; $A", ["a~"]],
     ["a for list of plain separators", "for IFS in , : /; do $A; done", [",", ":", "/"]],
   ])("resolves %s", (_how, line, expected) => {
     expect(values(line)).toEqual([DEFAULT_IFS, ...expected]);
@@ -402,10 +401,6 @@ describe("lineIfsValues on zsh equals expansion after a colon", () => {
     ["eval text", "eval 'IFS=a:=ls'; $A"],
   ])("gives null for %s", (_how, line) => {
     expect(values(line)).toBeNull();
-  });
-
-  it("resolves an equals sign that follows no colon", () => {
-    expect(values("IFS=a=b; $A")).toEqual([DEFAULT_IFS, "a=b"]);
   });
 });
 
@@ -451,5 +446,26 @@ describe("lineIfsValues on glob characters in an IFS value", () => {
     ["an exported glob", "export IFS=x*; $A"],
   ])("gives null for %s", (_how, line) => {
     expect(values(line)).toBeNull();
+  });
+});
+
+describe("lineIfsValues on IFS values outside the unrewritten character set", () => {
+  it.each([
+    ["an extendedglob caret", "IFS=a^c; $A"],
+    ["an extendedglob hash", "IFS=a#; $A"],
+    ["an extendedglob tilde", "IFS=a~b; $A"],
+    ["a quoted caret, whose quoting the tokens do not keep", "IFS='a^c'; $A"],
+    ["a trailing tilde", "IFS=a~; $A"],
+    ["an equals sign that follows no colon", "IFS=a=b; $A"],
+    ["a non-ASCII character", "IFS=é; $A"],
+  ])("gives null for %s", (_how, line) => {
+    expect(values(line)).toBeNull();
+  });
+
+  it.each([
+    ["each allowed punctuation mark", "IFS=',.:;/_%-'; $A", [",.:;/_%-"]],
+    ["letters, digits and blanks", "IFS='a1 '; $A", ["a1 "]],
+  ])("resolves %s", (_how, line, expected) => {
+    expect(values(line)).toEqual([DEFAULT_IFS, ...expected]);
   });
 });
