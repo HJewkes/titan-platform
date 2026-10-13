@@ -9,7 +9,7 @@
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer as createHttpsServer, type Server as HttpsServer } from "node:https";
-import { serve, type ServerType } from "@hono/node-server";
+import { createAdaptorServer, serve, type ServerType } from "@hono/node-server";
 import type { Hono } from "hono";
 import type { BaseContext } from "@titan-design/registry";
 import { isLoopbackHost, NonLoopbackBindError } from "./bind-guard.js";
@@ -36,6 +36,12 @@ export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> exten
   processStartTime?: (pid: number) => Date | null;
   /** Defaults to 7400. Pass 0 for an ephemeral port; the handle reports the bound one. */
   port?: number;
+  /**
+   * An already-listening loopback socket to serve on instead of binding `host:port`, such as
+   * the one `systemdListenFd()` returns. The handle reports the socket's own port, and close
+   * releases only this process's copy, so the socket's owner keeps it listening.
+   */
+  listenFd?: number;
   /** Defaults to 127.0.0.1. A non-loopback host throws `NonLoopbackBindError` unless the opt-in below is set. */
   host?: string;
   /** The daemon has no auth: setting this exposes every route to the network the host is on. */
@@ -100,9 +106,11 @@ export async function startDaemon<Ctx extends BaseContext>(options: StartDaemonO
 
   const hub = new EventHub();
   let boundPort = options.port ?? DEFAULT_DAEMON_PORT;
-  let ready = false;
-  const shared = { ...toHttpOptions(options), hub, port: () => boundPort, ready: () => ready };
-  const server = await listenLoopback(buildHttpApp(shared), options.host ?? DEFAULT_HOST, boundPort, mcpHandler(options, () => boundPort));
+  const ready = readyLatch();
+  const shared = { ...toHttpOptions(options), hub, port: () => boundPort, ready: ready.isOpen };
+  const target = listenTarget(options, boundPort);
+  const { fetch } = buildHttpApp(shared);
+  const server = await listenLoopback("fd" in target ? holdUntil(fetch, ready.opened) : fetch, target, mcpHandler(options, () => boundPort));
   boundPort = boundPortOf(server, boundPort);
   const servers = [server, ...(await listenRemoteOrClose({ remote, shared, port: boundPort, loopback: server, graceMs, log }))];
 
@@ -110,8 +118,8 @@ export async function startDaemon<Ctx extends BaseContext>(options: StartDaemonO
   await writePidFile(paths, process.pid, { port: boundPort, version: options.version, started: new Date().toISOString() });
   // Only now is a `/health` probe answerable: the pid file exists, so anything that finds
   // the daemon healthy can also find the daemon.
-  ready = true;
-  log.info({ pid: process.pid, port: boundPort }, "daemon started");
+  ready.open();
+  log.info({ pid: process.pid, port: boundPort, ...("fd" in target ? { listenFd: target.fd } : {}) }, "daemon started");
 
   return { port: boundPort, hub, close: onceAsync(() => shutdown({ servers, watcher, paths, log, graceMs })) };
 }
@@ -238,13 +246,48 @@ function mcpHandler<Ctx extends BaseContext>(
   return (req, res) => handleMcpRequest(mcpOptions, guard, req, res);
 }
 
+interface ReadyLatch {
+  isOpen: () => boolean;
+  opened: Promise<void>;
+  open: () => void;
+}
+
+function readyLatch(): ReadyLatch {
+  let isOpen = false;
+  let resolve!: () => void;
+  const opened = new Promise<void>((r) => (resolve = r));
+  const open = (): void => {
+    isOpen = true;
+    resolve();
+  };
+  return { isOpen: () => isOpen, opened, open };
+}
+
+/**
+ * Clients queued on an inherited socket while no process listened reach this one the moment
+ * it listens, before the pid file exists. Holding them until it does turns what would be a 503
+ * "starting" into a few more milliseconds of the wait they were already in.
+ */
+function holdUntil(fetch: Hono["fetch"], opened: Promise<void>): Hono["fetch"] {
+  return async (...args) => {
+    await opened;
+    return fetch(...args);
+  };
+}
+
+/** An inherited socket, or the address to bind. */
+type ListenTarget = { fd: number } | { hostname: string; port: number };
+
+function listenTarget<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>, port: number): ListenTarget {
+  return options.listenFd === undefined ? { hostname: options.host ?? DEFAULT_HOST, port } : { fd: options.listenFd };
+}
+
 function listenLoopback(
-  app: Hono,
-  hostname: string,
-  port: number,
+  fetch: Hono["fetch"],
+  target: ListenTarget,
   mcp: ((req: IncomingMessage, res: ServerResponse) => Promise<void>) | null,
 ): Promise<ServerType> {
-  const { server, bound } = bind(app, hostname, port);
+  const { server, bound } = bind(fetch, target);
   if (mcp) spliceMcpRoute(server, mcp);
   return bound;
 }
@@ -254,28 +297,37 @@ function listenLoopback(
  * The server is `https` alone, so a plain-HTTP request fails the handshake and gets no reply.
  */
 async function listenRemote(app: Hono, remote: RemoteListener, port: number, log: Logger): Promise<ServerType> {
-  const server = await bind(app, remote.options.host, port, { createServer: createHttpsServer, serverOptions: tlsServerOptions(remote.tls.current()) }).bound;
+  const server = await bind(app.fetch, { hostname: remote.options.host, port }, { createServer: createHttpsServer, serverOptions: tlsServerOptions(remote.tls.current()) }).bound;
   reloadTlsOnChange(server as HttpsServer, remote.tls, { intervalMs: remote.options.tlsReloadMs ?? DEFAULT_TLS_RELOAD_MS, log });
   return server;
 }
 
-type ServerFactory = Pick<Parameters<typeof serve>[0], "createServer" | "serverOptions">;
+type ServeOptions = Parameters<typeof serve>[0];
+type ServerFactory = Pick<ServeOptions, "createServer" | "serverOptions">;
 
-function bind(app: Hono, hostname: string, port: number, factory: ServerFactory = {}): { server: ServerType; bound: Promise<ServerType> } {
+function bind(fetch: Hono["fetch"], target: ListenTarget, factory: ServerFactory = {}): { server: ServerType; bound: Promise<ServerType> } {
   let server!: ServerType;
   const bound = new Promise<ServerType>((resolve, reject) => {
-    server = serve({ fetch: app.fetch, hostname, port, ...factory } as Parameters<typeof serve>[0], () => {
+    server = listenOn({ fetch, ...factory } as ServeOptions, target, () => {
       server.off("error", onBindError);
       resolve(server);
     });
-    // serve() attaches no error listener; without this a bind failure is an uncaught exception.
+    // Neither serve() nor createAdaptorServer() attaches an error listener; without this a
+    // listen failure is an uncaught exception. Both report it on a later tick.
     const onBindError = (err: NodeJS.ErrnoException): void => {
       server.off("error", onBindError);
-      reject(err.code === "EADDRINUSE" ? new DaemonPortInUseError(port, hostname, { cause: err }) : err);
+      reject(err.code === "EADDRINUSE" && "port" in target ? new DaemonPortInUseError(target.port, target.hostname, { cause: err }) : err);
     };
     server.on("error", onBindError);
   });
   return { server, bound };
+}
+
+function listenOn(options: ServeOptions, target: ListenTarget, onListening: () => void): ServerType {
+  if ("port" in target) return serve({ ...options, hostname: target.hostname, port: target.port }, onListening);
+  const server = createAdaptorServer(options);
+  server.listen({ fd: target.fd }, onListening);
+  return server;
 }
 
 function boundPortOf(server: ServerType, requested: number): number {
