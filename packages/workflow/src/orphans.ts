@@ -8,7 +8,7 @@ import type { ActiveStep, WorkflowEvent, WorkflowRun } from "./types.js";
  */
 export type AbandonsOrphan = (stepId: string) => boolean;
 
-export type WorkflowRegistration = Registration & { abandonsOrphan?: AbandonsOrphan };
+export type WorkflowRegistration = Registration & { abandonsOrphan?: AbandonsOrphan; strictReplay?: boolean };
 
 interface OrphanHooks {
   save: (run: WorkflowRun) => void;

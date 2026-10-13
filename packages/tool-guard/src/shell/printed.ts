@@ -17,6 +17,21 @@ export function printedText(name: string | null, args: WordToken[], shell?: Shel
   return null;
 }
 
+/**
+ * Every distinct text `echo` or `printf` writes when the line may run under any of `shells`: the shell-less text first,
+ * then each shell's text that differs. Empty when an argument is dynamic or the format is not understood.
+ */
+export function printedReadings(name: string | null, args: WordToken[], shells: readonly Shell[]): string[] {
+  const first = printedText(name, args);
+  if (first === null) return [];
+  const texts = [first];
+  for (const shell of shells) {
+    const text = printedText(name, args, shell);
+    if (text !== null && !texts.includes(text)) texts.push(text);
+  }
+  return texts;
+}
+
 /** Escapes are decoded unless `-E` is given: zsh's and sh's echo decode them by default. */
 function echoText(values: string[], dashEndsOptions: boolean): string {
   let i = 0;
