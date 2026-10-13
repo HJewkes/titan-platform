@@ -29,12 +29,15 @@ export type MutationCheck = { ok: true } | { ok: false; error: string };
 const SPEC_KEYS = new Set(["v", "mutations"]);
 const MUTATION_KEYS = new Set(["name", "file", "find", "replace", "kills"]);
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function asRecord(value: unknown, what: string, keys: ReadonlySet<string>): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(`${what} must be a JSON object`);
-  const record = value as Record<string, unknown>;
-  const unknownKey = Object.keys(record).find((key) => !keys.has(key));
+  if (!isRecord(value)) throw new Error(`${what} must be a JSON object`);
+  const unknownKey = Object.keys(value).find((key) => !keys.has(key));
   if (unknownKey !== undefined) throw new Error(`${what}: unknown key ${unknownKey}`);
-  return record;
+  return value;
 }
 
 function readText(value: unknown, what: string, max: number, allowEmpty = false): string {
@@ -90,7 +93,7 @@ export function parseMutationSpec(text: string): MutationSpecResult {
   try {
     return { ok: true, spec: readSpec(JSON.parse(text)) };
   } catch (error) {
-    return { ok: false, error: `mutation spec: ${(error as Error).message}` };
+    return { ok: false, error: `mutation spec: ${error instanceof Error ? error.message : String(error)}` };
   }
 }
 
