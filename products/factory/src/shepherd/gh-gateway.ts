@@ -3,21 +3,10 @@ import { EXIT, defineCommand, type AnyCommand } from "@titan-design/registry";
 import { z } from "zod";
 import type { FactoryContext } from "../registry.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
+import type { GhGateway, GhReadAnswer } from "./gh-gateway-port.js";
 import { coded } from "./register-args.js";
 
-/**
- * One gateway read. `source` says where the body came from: GitHub (a 304 included), this gateway's memory within
- * `maxAgeMs`, or the PR snapshot, whose body is the port's `PullRequest`, not GitHub's JSON.
- */
-interface GhReadAnswer {
-  status: number;
-  body: unknown;
-  /** ISO time the body was read from GitHub or the snapshot. */
-  at: string;
-  /** True when GitHub refused or the lane is cooling down, so this is the last answer the gateway had. */
-  stale: boolean;
-  source: "github" | "memory" | "snapshot";
-}
+export type { GhGateway } from "./gh-gateway-port.js";
 
 /** One line per call the gateway really sent, in the gh-calls v1 shape. */
 export interface GhCallLine {
@@ -27,17 +16,6 @@ export interface GhCallLine {
   method: "GET";
   route: string;
   status: number;
-}
-
-interface GhReadRequest {
-  path: string;
-  maxAgeMs?: number;
-  caller?: string;
-}
-
-export interface GhGateway {
-  read(request: GhReadRequest): Promise<GhReadAnswer>;
-  budget(): GatewayBudget;
 }
 
 interface GhGatewayDeps {

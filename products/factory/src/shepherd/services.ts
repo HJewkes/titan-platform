@@ -1,6 +1,6 @@
 import type { GitHubPort } from "@titan-design/github";
 import type { FreezeStoreRef } from "./freeze.js";
-import type { GhGateway } from "./gh-gateway.js";
+import type { GhGateway } from "./gh-gateway-port.js";
 import type { SeatBook } from "./seats.js";
 import type { ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
