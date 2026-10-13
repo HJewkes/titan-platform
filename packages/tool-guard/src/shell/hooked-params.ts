@@ -61,7 +61,7 @@ const SPECS: Record<string, WriterSpec> = {
 const NAMEREF_DECLARERS = new Set(["declare", "typeset", "local", "private"]);
 
 const IDENTIFIER_AT_RE = /[A-Za-z_][A-Za-z0-9_]*/y;
-const ZSH_PREFIXES_AT_RE = /[=~^]*/y;
+const ZSH_PREFIXES_AT_RE = /[=~^#+]*/y;
 /** zsh parameter flags that take delimited arguments, with how many: `l` and `r` take up to three. */
 const FLAG_ARG_COUNTS = new Map<string, number>([["j", 1], ["s", 1], ["I", 1], ["Z", 1], ["g", 1], ["_", 1], ["l", 3], ["r", 3]]);
 const DELIMITER_PAIRS = new Map([["(", ")"], ["[", "]"], ["{", "}"], ["<", ">"]]);
@@ -309,7 +309,7 @@ function expansionHead(text: string, at: number): { target: string | typeof INDI
   return { target, end: i + name.length };
 }
 
-/** zsh `${=…}`, `${~…}`, `${^…}` and their doubled forms, before or after a flag group. */
+/** zsh `${=…}`, `${~…}`, `${^…}`, `${#…}`, `${+…}` and their doubled forms, before or after a flag group; each still assigns. */
 function skipZshPrefixes(text: string, at: number): number {
   ZSH_PREFIXES_AT_RE.lastIndex = at;
   return at + (ZSH_PREFIXES_AT_RE.exec(text)?.[0].length ?? 0);

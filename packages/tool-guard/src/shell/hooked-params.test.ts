@@ -253,6 +253,14 @@ describe("an assign-on-expand through a name the shell resolves", () => {
     ["zsh doubled ==", ": ${==PS4::=x}"],
     ["zsh = after the P flag", ": ${(P)=N::=x}"],
     ["zsh = after the A flag", ": ${(A)=module_path::=/m}"],
+    ["zsh # length prefix", ": ${#PS4::=x}"],
+    ["zsh # length prefix on PROMPT4", ": ${#PROMPT4::=x}"],
+    ["zsh + set-test prefix", ": ${+module_path::=x}"],
+    ["zsh = and # prefixes", ": ${=#PS4::=x}"],
+    ["zsh # after the P flag", ": ${(P)#N::=x}"],
+    ["zsh + after the P flag", ": ${(P)+N::=x}"],
+    ["# with :=, a bad substitution in bash that zsh assigns", ": ${#PS4:=x}"],
+    ["+ with :=, a bad substitution in bash that zsh assigns", ": ${+PS4:=x}"],
   ])("counts as a hooked write: %s", (_how, line) => {
     expect(hooked(line)).not.toBeNull();
   });
@@ -266,6 +274,8 @@ describe("an assign-on-expand through a name the shell resolves", () => {
     ["zsh flags without P", ": ${(k)N::=x}"],
     ["a P only inside a flag argument", ": ${(s.P.)N::=x}"],
     ["a non-indirect flag group that substitutes", ": ${(s:$:)PS4:-x}"],
+    ["zsh # length of PS4", "echo ${#PS4}"],
+    ["zsh + set-test of PS4", "echo ${+PS4}"],
     ["a quoted indirect assign in a commit message", "git commit -m 'set ${!N:=x}'"],
   ])("returns null: %s", (_how, line) => {
     expect(hooked(line)).toBeNull();
