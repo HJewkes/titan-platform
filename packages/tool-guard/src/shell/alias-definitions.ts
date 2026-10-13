@@ -29,14 +29,20 @@ interface StoreSpec {
   values?: string;
   operands?: "all" | "last" | "declare" | "spec" | "store" | number;
   stores?: string;
+  /** Option letters under which a dynamic operand only names, never assigns: `typeset -f "$fn"`, `declare -p "$n"`. */
+  inert?: string;
 }
 
-const DECLARE: StoreSpec = { operands: "declare" };
+const DECLARE: StoreSpec = { operands: "declare", inert: "fp" };
 const STORE_BUILTINS = new Map<string, StoreSpec>([
   ["typeset", DECLARE], ["declare", DECLARE], ["local", DECLARE], ["export", DECLARE], ["readonly", DECLARE],
   ["integer", DECLARE], ["float", DECLARE],
   ["set", { names: "A", values: "o" }],
-  ["read", { names: "Aa", values: "ptunNdi", operands: "all" }],
+  // Only -d takes a separate word in both shells; zsh reads -t/-u/-k values attached and -p/-n as flags, so a word
+  // bash would take as their value is a name to zsh.
+  ["read", { names: "Aa", values: "d", operands: "all" }],
+  ["getln", { operands: "all" }],
+  ["sysread", { names: "c", values: "iost", operands: "all" }],
   ["vared", { values: "prMmif", operands: "last" }],
   ["print", { names: "v", values: "fuCxX" }],
   ["printf", { names: "v" }],
@@ -114,12 +120,17 @@ function dynamicTargetOperand(spec: StoreSpec, options: WordToken[], operands: W
   switch (spec.operands) {
     case "all": return operands.some((w) => w.dynamic);
     case "last": return operands.at(-1)?.dynamic === true;
-    case "declare": return operands.some((w) => w.dynamic && !DECLARED_NAME_RE.test(w.value.replace(/=.*$/s, "")));
+    case "declare": return !hasLetter(options, spec.inert) && operands.some((w) => w.dynamic && !DECLARED_NAME_RE.test(w.value.replace(/=.*$/s, "")));
     case "spec": return operands.some((w) => w.dynamic || SPEC_PARAM_RE.test(w.value));
-    case "store": return options.some((w) => [...(spec.stores ?? "")].some((c) => w.value.includes(c))) && operands.some((w) => w.dynamic);
+    case "store": return hasLetter(options, spec.stores) && operands.some((w) => w.dynamic);
     case undefined: return false;
     default: return operands[spec.operands]?.dynamic === true;
   }
+}
+
+/** Whether any option word holds one of the letters. */
+function hasLetter(options: WordToken[], letters = ""): boolean {
+  return options.some((w) => [...letters].some((c) => w.value.slice(1).includes(c)));
 }
 
 /** A `-n` name with no value may be bound by a later assignment, so only a static value naming no alias parameter is safe. */
