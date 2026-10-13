@@ -1,12 +1,20 @@
-/** A function from a shell snapshot: its body text, or unreadable when its end is cut off or ambiguous. */
-export type SnapshotFunction = { body: string } | { unreadable: true };
+import { atTopLevel, newBodyScan, scanLine } from "./snapshot-body.js";
 
-/** Function name to definition, as the shell would hold it after sourcing the snapshot. */
-export type FunctionTable = ReadonlyMap<string, SnapshotFunction>;
+/** A function from a shell snapshot: its body text, or unreadable when its end could not be found. */
+type SnapshotFunction = { body: string } | { unreadable: true };
+
+/**
+ * The functions the shell holds after sourcing the snapshot. `incomplete` means the section could not be read to
+ * its end, so a name missing from `functions` may still be a function.
+ */
+interface FunctionTable {
+  functions: ReadonlyMap<string, SnapshotFunction>;
+  incomplete: boolean;
+}
 
 const SECTION = "# Functions";
 const UNREADABLE: SnapshotFunction = { unreadable: true };
-const NAME = "([^\\s(){}]+)";
+const NAME = "([^\\s(){}'\"]+)";
 const INLINE_HEADER_RE = new RegExp(`^(?:function\\s+)?${NAME}\\s*\\(\\)\\s*\\{\\s*$|^function\\s+${NAME}\\s*\\{\\s*$`);
 const OPEN_HEADER_RE = new RegExp(`^${NAME}\\s*\\(\\)\\s*$`);
 const BRACE_RE = /^\{\s*$/;
@@ -18,54 +26,53 @@ interface Header {
 }
 
 /**
- * Reads only the snapshot's `# Functions` section. Claude Code appends its own `rg` and `pkill` wrappers after
- * `# Aliases`; those are never read. A column-0 `}` that is not followed by a header or the section end may be
- * heredoc text, so that function, and every name until a header that follows a `}`, is unreadable.
+ * Reads only the snapshot's `# Functions` section; Claude Code's own `rg` and `pkill` wrappers after `# Aliases`
+ * are never read. A body ends at the first column-0 `}` that lies outside every heredoc and quote, so verbatim body
+ * text never steers the parser. Anything else out of step stops the read and marks the table incomplete.
  */
 export function parseSnapshotFunctions(text: string): FunctionTable {
   const lines = text.split("\n");
-  const table = new Map<string, SnapshotFunction>();
-  let i = lines.indexOf(SECTION) + 1;
-  if (i === 0) return table;
-  let atBoundary = true;
+  const functions = new Map<string, SnapshotFunction>();
+  const start = lines.indexOf(SECTION);
+  if (start === -1) return { functions, incomplete: lines.some((line) => line.trimEnd() === SECTION) };
   let last: string | null = null;
-  while (i < lines.length) {
-    const line = lines[i] as string;
-    const header = headerAt(lines, i);
+  for (let i = start + 1; i < lines.length; ) {
+    const line = lines[i] ?? "";
     if (line.trim() === "") i++;
-    else if (atBoundary && line.startsWith("# ")) break;
-    else if (header && atBoundary) {
-      const next = readFunction(lines, header, table);
-      if (next === null) break;
-      [i, last] = [next, header.name];
-    } else if (header) {
-      table.set(header.name, UNREADABLE);
-      [i, atBoundary] = [header.bodyStart, false];
-    } else {
-      if (last !== null) table.set(last, UNREADABLE);
-      [i, atBoundary] = [i + 1, CLOSE_RE.test(line)];
+    else if (line.startsWith("# ")) return { functions, incomplete: false };
+    else {
+      const header = headerAt(lines, i);
+      const end = header === null ? null : bodyEnd(lines, header.bodyStart);
+      const name = header?.name ?? last;
+      if (header === null || end === null) {
+        if (name !== null) functions.set(name, UNREADABLE);
+        return { functions, incomplete: true };
+      }
+      functions.set(header.name, { body: lines.slice(header.bodyStart, end).join("\n") });
+      [i, last] = [end + 1, header.name];
     }
   }
-  return table;
+  return { functions, incomplete: true };
 }
 
 /** `NAME () {` or `function NAME {` on one line (zsh), or `NAME () ` then `{` (bash `declare -f`). */
 function headerAt(lines: string[], i: number): Header | null {
-  const line = lines[i] as string;
+  const line = lines[i] ?? "";
   const inline = INLINE_HEADER_RE.exec(line);
-  if (inline) return { name: (inline[1] ?? inline[2]) as string, bodyStart: i + 1 };
-  const open = OPEN_HEADER_RE.exec(line);
-  if (open && BRACE_RE.test(lines[i + 1] ?? "")) return { name: open[1] as string, bodyStart: i + 2 };
+  const inlineName = inline?.[1] ?? inline?.[2];
+  if (inlineName !== undefined) return { name: inlineName, bodyStart: i + 1 };
+  const openName = OPEN_HEADER_RE.exec(line)?.[1];
+  if (openName !== undefined && BRACE_RE.test(lines[i + 1] ?? "")) return { name: openName, bodyStart: i + 2 };
   return null;
 }
 
-/** Records the body up to the first column-0 `}`; the line after it, or null when the body is cut off. */
-function readFunction(lines: string[], header: Header, table: Map<string, SnapshotFunction>): number | null {
-  for (let j = header.bodyStart; j < lines.length; j++) {
-    if (!CLOSE_RE.test(lines[j] as string)) continue;
-    table.set(header.name, { body: lines.slice(header.bodyStart, j).join("\n") });
-    return j + 1;
+/** The line index of the column-0 `}` that closes the body, or null when the body is cut off. */
+function bodyEnd(lines: string[], from: number): number | null {
+  const scan = newBodyScan();
+  for (let j = from; j < lines.length; j++) {
+    const line = lines[j] ?? "";
+    if (CLOSE_RE.test(line) && atTopLevel(scan)) return j;
+    scanLine(scan, line);
   }
-  table.set(header.name, UNREADABLE);
   return null;
 }
