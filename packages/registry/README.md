@@ -55,6 +55,20 @@ The envelope type, its constructors, and `EXIT` are defined in
 `import type`, so zod and this package stay out of the bundle. Keys must equal each
 command's `name`; the type cannot check that, because `defineCommand` widens `name` to `string`.
 
+## Call by name in process
+
+```ts
+import { EXIT, inProcessCaller } from "@titan-design/registry";
+
+const call = inProcessCaller(registry, () => createContext(), { invalidArgsCode: EXIT.DATAERR });
+const envelope = await call("task.list", { status: "open" });
+```
+
+`inProcessCaller` looks the command up by name and runs it through `invokeCommand`. An
+unregistered name returns `{ ok: false, error: "Unknown command: <name>", code: EXIT.USAGE }`
+instead of throwing. The context is a thunk, built fresh per call, so warnings one call pushes
+never appear in the next call's envelope. The returned function fits a `DataSource["call"]` slot.
+
 ## CLI projection
 
 Commander-free helpers so the product owns the commander wiring:

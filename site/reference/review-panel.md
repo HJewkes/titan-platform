@@ -91,6 +91,18 @@ every caller plans, briefs and aggregates the same way:
   equal share of 16,000 characters. `satisfiesG10` needs a g10 class, a MERGE, no degraded
   member, the correctness member at an opus profile (a key of `sonnetFor`) and the
   adversary's MERGE.
+- `reviewPullRequest(request, ports, opts?)`: the one entry point. It classifies the PR,
+  plans the panel (asking `ports.headroom()` once), runs every member in parallel and
+  returns `aggregate`'s verdict. Each member is spawned under `memberName(target, shape)`
+  (`rp-<owner>-<repo>-<pr>-<head 8>-<shape>`), with its planned profile in
+  `ReviewerFacts.profile`; a name already on the roster is reused and nothing is spawned,
+  so a repeat call with the same input spawns nothing. An opus spawn the dispatch refuses
+  is tried once at its sonnet profile and the member is degraded; a second refusal is a
+  `none` with `SPAWN_REFUSED_REASON`. The wait polls `ports.reader` through
+  `acceptVerdict`. A malformed reply gets one `correctionPrompt` per member, sent by
+  `resume`; silence past the deadline or an uncorrected reply gets one fresh reviewer
+  under the `-r2` name, and a member still silent after it is a `timeout`. A usage-limit
+  notice is final.
 
 ## When to reach for it
 
@@ -153,6 +165,7 @@ const brief = shapeBrief("adversary", {
   spawn headroom) is a port the caller passes in.
 - It does not import `agent-dispatch`, `workflow`, `github`, or any product.
 - Durability is the caller's. Shepherd records each step itself; the package keeps no state.
+  `reviewPullRequest` holds nothing between calls; its idempotence comes from the member names.
 
 ## Gotchas
 
