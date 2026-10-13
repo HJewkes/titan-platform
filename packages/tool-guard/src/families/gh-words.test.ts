@@ -32,6 +32,8 @@ describe("gh command words found the way cobra finds them", () => {
     ["a command with no subcommands ends the path", "api repos/o/r/pulls", "api", "repos/o/r/pulls"],
     ["a subcommand alias stays as written", "pr co 5", "pr co", "5"],
     ["a flag with nothing after it", "pr -R", "pr", "-R"],
+    ["a subcommand of a second-level group that takes no alias", "codespace ports visibility 80:public", "codespace ports visibility", "80:public"],
+    ["an argument of a second-level group that takes no alias", "cs ports 80", "codespace ports", "80"],
   ])("%s: gh %s", (_, line, path, leaf) => {
     expect(read(line)).toMatchObject({ path, leaf, hidden: false });
   });
@@ -44,6 +46,10 @@ describe("a gh word gh may run as a config alias or an extension", () => {
     ["a word under a group", "pr x 5", true],
     ["a word under a nested group", "repo autolink zz", true],
     ["a word under a command with no subcommand list", "copilot x", true],
+    ["an extension that extension exec runs", "extension exec foo", true],
+    ["an extension that ext exec runs", "ext exec foo", true],
+    ["an argument of a group that takes no alias", "codespace ports 80", false],
+    ["extension exec with no extension", "extension exec", false],
     ["a subcommand", "pr view 1", false],
     ["a word after a command that takes no alias", "api x", false],
     ["a command with no children", "status", false],
@@ -66,6 +72,10 @@ describe("a gh word cobra may read as a command word that is only known at run t
     ["a case-unsure verb", "declare -u V; V=merge; gh pr $V merge"],
     ["a known value bash splits", 'S="pr merge"; gh $S 1'],
     ["a quoted known value with a blank", 'S="pr merge"; gh "$S" 1'],
+    ["a second-level group's subcommand", "gh codespace ports $X"],
+    ["a second-level group's subcommand under a command alias", "gh cs ports $X"],
+    ["a second-level group's subcommand after a flag's value", "gh codespace ports -c x $X"],
+    ["the extension extension exec runs", "gh extension exec $X"],
   ])("is hidden for %s: %s", (_, line) => {
     expect(ghLine(line).hidden).toBe(true);
   });

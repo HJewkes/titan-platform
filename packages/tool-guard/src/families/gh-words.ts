@@ -129,6 +129,17 @@ export function ghAliasSlot(words: readonly (string | undefined)[]): AliasSlot |
   return { parent: `${top} ${second}`, word: third, used: 3 };
 }
 
+/**
+ * The second-level commands with subcommands of their own that take no `<command> <sub> <word>` alias, so a word
+ * that names none of them is an argument. The full gh 2.102 tree has this one beside `NESTED_GROUPS`: every
+ * second-level command reachable by `gh <group> <sub> --help` lists no subcommands but these, and the binary's
+ * `<name> <command>` group strings below the top level are the `repo` ones only.
+ */
+const NO_ALIAS_GROUPS: ReadonlyMap<string, ReadonlySet<string>> = new Map([["codespace ports", set("forward", "visibility")]]);
+
+/** Commands whose first argument names an installed extension that gh runs, as `gh <extension>` would. */
+const EXTENSION_RUNNERS = set("extension exec");
+
 /** The command gh runs for a line's arguments, read the way cobra v1.10's `Find` reads them. */
 export interface GhCommandLine {
   /** The command words cobra finds, the top one canonical (`cs` reads `codespace`), ending at an alias slot's word. */
@@ -152,6 +163,7 @@ const LEVEL_BOOLS = set("--help");
 /**
  * Finds gh's command words level by level, as cobra's `Find` does: at each level `stripFlags` names the first
  * command word and `argsMinusFirstX` removes it, until a command with no subcommands or an alias slot is reached.
+ * Under a group that takes no alias, a word that names none of its subcommands stays an argument.
  */
 export function ghCommandLine(args: WordToken[]): GhCommandLine {
   const path: string[] = [];
@@ -161,18 +173,22 @@ export function ghCommandLine(args: WordToken[]): GhCommandLine {
     if (at === "unknown") return { path, leaf: rest, aliasSlot: false, hidden: true };
     if (at === "none") break;
     const word = rest[at]!.value;
+    if (NO_ALIAS_GROUPS.get(path.join(" "))?.has(word) === false) break;
     path.push(path.length === 0 ? (COMMAND_ALIASES.get(word) ?? word) : word);
     rest = rest.filter((_, i) => i !== at);
   }
-  return { path, leaf: rest, aliasSlot: ghAliasSlot(path) !== undefined, hidden: false };
+  return { path, leaf: rest, aliasSlot: ghAliasSlot(path) !== undefined || runsExtension(path), hidden: false };
 }
+
+const runsExtension = (path: readonly string[]) => path.length === 3 && EXTENSION_RUNNERS.has(path.slice(0, 2).join(" "));
 
 /** Whether the command a path names may have a subcommand or alias under it, so cobra reads another command word. */
 function takesCommandWord(path: readonly string[]): boolean {
   if (path.length === 0) return true;
   if (ghAliasSlot(path) !== undefined) return false;
   if (path.length === 1) return !NO_ALIAS_CHILD.has(path[0]!);
-  return path.length === 2 && NESTED_GROUPS.has(path.join(" "));
+  const key = path.join(" ");
+  return path.length === 2 && (NESTED_GROUPS.has(key) || NO_ALIAS_GROUPS.has(key) || EXTENSION_RUNNERS.has(key));
 }
 
 /**

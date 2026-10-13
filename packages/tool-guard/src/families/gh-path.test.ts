@@ -55,6 +55,9 @@ describe("a gh command path only known at run time", () => {
     ["an XDG config prefix", "XDG_CONFIG_HOME=/c gh pr view 1"],
     ["a home prefix", "HOME=/h gh pr view 1"],
     ["a config directory set through env", "env GH_CONFIG_DIR=/c gh pr view 1"],
+    ["a second-level group's subcommand from a variable", "gh codespace ports $X"],
+    ["an extension extension exec runs", "gh extension exec foo"],
+    ["an extension from a variable that extension exec runs", "gh extension exec $X"],
   ])("is unknown for %s: %s", (_, line) => {
     expect(ghPathUnknown(ghCommand(line))).toBe(true);
   });
