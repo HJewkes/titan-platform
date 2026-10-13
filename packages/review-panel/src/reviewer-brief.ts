@@ -11,8 +11,8 @@ export const MAX_OWNER_BRIEF_CHARS = 2000;
 export const OWNER_BRIEF_START = "OWNER-BRIEF";
 export const OWNER_BRIEF_END = "END-OWNER-BRIEF";
 
-/** Why a reviewer's final message was no verdict: the parser refused its block, or the block named another repo, PR or head. */
-export type MalformedRefusal = VerdictBlockRefusal | "wrong_target";
+/** Why a reviewer's final message was no verdict: the parser refused its block, the block named another repo, PR or head, or a MERGE's CI-policy line was off-format. */
+export type MalformedRefusal = VerdictBlockRefusal | "wrong_target" | "ci_policy_malformed";
 
 /** The name a reviewer extracts into: `review-<pr>-<first 12 hex of the head sha>`. */
 export function reviewCheckoutName(pr: number, head: string): string {
@@ -23,14 +23,18 @@ export const MAX_REVIEWER_QUESTIONS = 8;
 
 const CI_POLICY_KEYS_LINE = "required-check, permissions, pull_request_target, secrets, ruleset, other";
 
+/** A reviewer that explains on the line itself writes a line the merge guard cannot read (TP-2623). */
+export const CI_POLICY_EXACT = "The CI-policy line holds nothing else; put any reasoning above the Verdict line.";
+
 /** The correction resumes the reviewer's own session, which already holds the key meanings, so it names only the keys. */
-const CI_POLICY_REMINDER = `On MERGE, add after Head \`CI-policy: unchanged\` or \`CI-policy: weakened <keys>\`, keys comma-separated from: ${CI_POLICY_KEYS_LINE}.`;
+const CI_POLICY_REMINDER = `On MERGE, add after Head \`CI-policy: unchanged\` or \`CI-policy: weakened <keys>\`, keys comma-separated from: ${CI_POLICY_KEYS_LINE}. ${CI_POLICY_EXACT}`;
 
 /** Shepherd's merge guard reads this line (TP-2407): a `.github/` change without it fails closed, and `weakened` reaches the owner. */
 export const CI_POLICY_RULE =
   "If your verdict is MERGE, add a fourth line directly after the Head line: `CI-policy: unchanged`, or `CI-policy: weakened <keys>` naming, comma-separated, each key that applies: " +
   "required-check (drops, renames or skips a required check), permissions (widens token permissions), pull_request_target (adds or widens that trigger), " +
-  "secrets (exposes secrets to more code), ruleset (loosens a ruleset or branch protection), other (any other CI weakening). Write it on every MERGE, even with no .github/ change; never on a FIX_FIRST.";
+  "secrets (exposes secrets to more code), ruleset (loosens a ruleset or branch protection), other (any other CI weakening). Write it on every MERGE, even with no .github/ change; never on a FIX_FIRST. " +
+  `${CI_POLICY_EXACT} No explanation, bold, list marker, code span or fence on it.`;
 
 /** CI's required checks already ran the full suite at this head; a reviewer rerunning them costs a host's memory and slots for no new signal. */
 export const CI_REVIEWER_TEST_RULE =
@@ -253,8 +257,8 @@ export function reviewerBrief(input: ReviewerBriefInput): string {
   ].join("\n");
 }
 
-/** The most a correction prompt may hold, owner block included. */
-export const MAX_CORRECTION_PROMPT_CHARS = 1500;
+/** The most a correction prompt may hold, owner block included; raised from 1500 when the CI-policy exactness sentence joined it. */
+export const MAX_CORRECTION_PROMPT_CHARS = 1600;
 
 /** One fixed sentence per refusal; a closed map, so no reviewer text can reach the prompt. */
 export const REFUSAL_SENTENCES: Record<MalformedRefusal, string> = {
@@ -266,6 +270,7 @@ export const REFUSAL_SENTENCES: Record<MalformedRefusal, string> = {
   missing_head_line: "its PR line was not followed by a Head line",
   bad_head: "its Head line was not 40 lowercase hex characters",
   wrong_target: "its block named another repo, PR or head",
+  ci_policy_malformed: "its CI-policy line held more than the exact form",
 };
 
 interface CorrectionPromptInput {
