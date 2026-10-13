@@ -153,8 +153,8 @@ function packageLookup(nodes: readonly GraphNode[], packages: readonly PackageRo
 }
 
 function callLink(e: GraphEdge): WeightedLink {
-  const sites = (e.attrs?.sites as unknown[] | undefined)?.length ?? 0;
-  return { src: e.srcId, dst: e.dstId, weight: Math.max(sites, 1) };
+  const sites = e.attrs?.sites;
+  return { src: e.srcId, dst: e.dstId, weight: Array.isArray(sites) ? Math.max(sites.length, 1) : 1 };
 }
 
 function importLink(e: GraphEdge): WeightedLink & { typeOnly: boolean } {
