@@ -1,12 +1,14 @@
-import { fakeGitHub, fakeSha, githubPort, type FakeGitHub } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { holdSlotsMigration, parkSettledMigration } from "./store-migrations.js";
+import { adversaryRehold } from "./adversary-anchor.js";
 import { adversaryGuard } from "./adversary-guard.js";
 import { accountLimitMigration } from "./account-store.js";
-import { shepherdEventMigration } from "./events.js";
+import { reclassMarkMigration, shepherdEventMigration } from "./events.js";
 import { MergeHeldError, holdingPort } from "./hold.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
+import { releaseAtHead } from "./release-head.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
 import type { CarryInput, CarryResult } from "./tree-carry.js";
 
@@ -236,5 +238,51 @@ describe("the merge guard failing closed on a g10-adversary run", () => {
     await r.merge();
 
     expect(r.fake.pr(1).merged).toBe(true);
+  });
+});
+
+describe("an unread-files hold Shepherd re-classed", () => {
+  const UNREAD = "g10-adversary: changed files unread at registration (GhError)";
+
+  /** The run held unread at REVIEWED, lifted by `lift` there, and the PR then pushed to MOVED. */
+  async function heldUnread(lift: (store: ShepherdStore, port: GitHubPort) => Promise<unknown>) {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), reclassMarkMigration(25)]);
+    const store = new ShepherdStore(db);
+    const fake = fakeGitHub({ repo: REPO });
+    fake.addPr({ headSha: REVIEWED });
+    store.register({ repo: REPO, pr: 1, runId: "run-1", task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    store.hold("run-1", UNREAD, undefined, { actor: "shepherd", headSha: REVIEWED });
+    await lift(store, githubPort(fake.wire));
+    fake.pushHead(1, MOVED);
+    const guard = adversaryGuard({ store: () => store, carry: async () => FIX_PUSH });
+    const port = holdingPort(githubPort(fake.wire), () => store, guard);
+    return { store, fake, merge: () => port.merge(REPO, 1, MOVED, "squash") };
+  }
+
+  const cliRelease = (actor: string) => (store: ShepherdStore, port: GitHubPort) => releaseAtHead(store, port, { runId: "run-1", repo: REPO, pr: 1, head: REVIEWED, actor });
+  const reholdAt = (store: ShepherdStore) => adversaryRehold(store, "run-1", { head: MOVED, baseRef: async () => "main" }, async () => FIX_PUSH);
+
+  it("is no adversary history: a new head is not re-held and the merge goes ahead", async () => {
+    const r = await heldUnread(async (store) => store.reclassIfHeld("run-1", UNREAD, () => undefined, { actor: "shepherd", headSha: REVIEWED }));
+
+    expect(await reholdAt(r.store)).toBeUndefined();
+    await r.merge();
+    expect(r.fake.pr(1).merged).toBe(true);
+  });
+
+  it("is still adversary history when a seat released it, so a new head is re-held and the merge refused", async () => {
+    const r = await heldUnread(cliRelease("seat-x"));
+
+    expect((await reholdAt(r.store))?.reason).toContain(`from ${REVIEWED} to ${MOVED}`);
+    await expect(r.merge()).rejects.toBeInstanceOf(MergeHeldError);
+  });
+
+  it("is still adversary history when a CLI release names the actor shepherd, so a new head is re-held", async () => {
+    const r = await heldUnread(cliRelease("shepherd"));
+
+    expect(r.store.eventsOf("run-1").at(-1)).toMatchObject({ kind: "release", actor: "shepherd", reason: UNREAD });
+    expect((await reholdAt(r.store))?.reason).toContain(`from ${REVIEWED} to ${MOVED}`);
+    await expect(r.merge()).rejects.toBeInstanceOf(MergeHeldError);
   });
 });

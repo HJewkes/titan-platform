@@ -469,7 +469,7 @@ checkout that should serve, not from a worktree that will be removed.
 | Verb | What it does | Exit 0 when |
 | --- | --- | --- |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers and its `github` field is `ok` |
-| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`not loaded`, `stale pid` (the pid is dead, a foreign pid answers the port, or there is no process), `crash loop`, `unresponsive` (the pid is alive but every `/health` probe timed out; `detail.probeLatenciesMs` lists each), `stale build`, `GitHub down`, `stale index.lock` (the service checkout's `.git/index.lock` with no process holding it, older than 10 minutes, named by path and age and never removed), `deploy stalled` (`/health`'s deploy block has its alarm up), then `tick failing` or `tick stale` from agent-chat's `$AGENT_CHAT_HOME/burndown-status.json`, default `~/.agent-chat/burndown-status.json`, which an absent file skips; a heartbeat older than 3 x its `intervalSeconds` is stale), then `no hub seat` (the config sets no `shepherd.hubSeat`, so a deploy alarm reaches no seat); `--json` adds `cause`, `pid`, `health` and `detail`; it always prints within 20 s (`SERVICE_CHECK_BUDGET_MS`) | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, the burndown tick is not failing or stale, and a hub seat is configured |
+| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`unreadable` (on Linux, `systemctl --user show` itself failed; the line carries its stderr, `detail` its `exitCode` and `stderr`), `not loaded`, `stale pid` (the pid is dead, a foreign pid answers the port, or there is no process), `crash loop`, `unresponsive` (the pid is alive but every `/health` probe timed out; `detail.probeLatenciesMs` lists each), `stale build`, `GitHub down`, `stale index.lock` (the service checkout's `.git/index.lock` with no process holding it, older than 10 minutes, named by path and age and never removed), `deploy stalled` (`/health`'s deploy block has its alarm up), then `tick failing` or `tick stale` from agent-chat's `$AGENT_CHAT_HOME/burndown-status.json`, default `~/.agent-chat/burndown-status.json`, which an absent file skips; a heartbeat older than 3 x its `intervalSeconds` is stale), then `no hub seat` (the config sets no `shepherd.hubSeat`, so a deploy alarm reaches no seat); `--json` adds `cause`, `pid`, `health` and `detail`; it always prints within 20 s (`SERVICE_CHECK_BUDGET_MS`) | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, the burndown tick is not failing or stale, and a hub seat is configured |
 | `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, then `launchctl kickstart -k`, then the same `/health` wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>] [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Fast-forwards the service checkout, rebuilds the factory closure when the range touches it, restarts drained, and restores `dist` on failure | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
@@ -505,7 +505,10 @@ install would make, and changes nothing. For the unit to run without a login ses
 lingering once: `loginctl enable-linger "$USER"`. `service check` reads `systemctl --user show`
 on Linux: `MainPID` (no process unless `ActiveState` is `active`), `NRestarts` in place of
 launchd's run count and `ExecMainStatus` in place of its last exit code, with the same causes
-and exit codes as on macOS.
+and exit codes as on macOS. A missing unit reads as exit 0 with `LoadState=not-found` and is
+`not loaded`; a non-zero exit from `systemctl --user show` (no user bus because
+`XDG_RUNTIME_DIR` is unset, a permission error, a timeout, no `systemctl`) is `unreadable`,
+never `not loaded`, since the unit may well be installed.
 
 `service restart` drains first. It polls `/health` every 5 s until its `busy` list is
 empty, and prints the busy runs once a minute. A run is busy when it is `running` and its
@@ -693,6 +696,19 @@ one on a deny list, gets no reviewer, and `sh-review` records
 
 With no `review` key nothing is built: no `agent-chat` process is started, `sh-review`
 answers `none`, and the owner gate decides every merge.
+
+### Answering gates from agent-chat: `shepherd.gateNotify`
+
+With `"gateNotify": {}` (and `agentChatBin`) set, serve runs a sweep every 30 seconds
+(`src/gate-notify-sweep.ts`) that files each pending decision gate as an `agent-chat ask` under the
+label `titan-factory` with task `gate:<gateId>`, and resolves the gate from the owner's answer at
+most once. An answer resolves as `owner-remote` (owner decision Q1 of CC-169): any unregistered
+caller on the broker's socket can answer, so a gate whose rule does not admit `owner-remote` is
+never asked. `label` and `resolverClass` (`owner-remote` or `owner-terminal`) override the
+defaults. `/health`'s `gateNotify` block shows `open` asks, `stuck` gates whose ask ended without
+resolving them (refused, dismissed, unmappable), `unasked` gates an answer cannot settle, and
+`answersError` while the label's answers cannot be read. Each of those still waits on
+`titan-factory gate resolve`. Without the key serve asks nothing.
 
 ### A reviewer account out of usage
 

@@ -119,6 +119,12 @@ function judgedAt(reviews: ReadonlyMap<string, Verdict>, head: string): Judged |
   return { verdict, reviewerProfile, ...(fromHead !== head && { mergeUp: { fromHead, head } }) };
 }
 
+/**
+ * At a head a clean merge-up made, a `behind` read whose own required checks are green counts as green: a strict base that keeps moving
+ * would otherwise hold the run forever. The merge step still gates on the base. Any other head waits for its update and a green read.
+ */
+const greenAt = (ci: CiSnapshot, judged: Judged): boolean => ci.verdict === "green" || (judged.mergeUp !== undefined && ci.verdict === "behind" && ci.checksGreen === true);
+
 /** Records the release as a step, so `shepherd status` and the ledger show it; the route re-reads the PR head and the hold before it writes. */
 export async function releaseG10Hold(run: G10WorkflowRun, holdReason: string | null | undefined): Promise<void> {
   const ci = run.lastCi;
@@ -127,7 +133,7 @@ export async function releaseG10Hold(run: G10WorkflowRun, holdReason: string | n
   const key = JSON.stringify([ci.headSha, judged?.verdict.locator]);
   if (!judged || used.get(run.ctx)?.has(key)) return;
   const attempt = run.ctx.iteration(G10_RELEASE_STEP);
-  const input = { runId: run.ctx.runId, ...run.target, head: ci.headSha, ...judged, checks: { head: ci.headSha, green: ci.verdict === "green" } };
+  const input = { runId: run.ctx.runId, ...run.target, head: ci.headSha, ...judged, checks: { head: ci.headSha, green: greenAt(ci, judged) } };
   const done = await step(run.ctx, `${G10_RELEASE_STEP}:${ci.headSha}:${attempt}`, input, G10ReleaseResult);
   if (done.released) used.set(run.ctx, (used.get(run.ctx) ?? new Set()).add(key));
 }
