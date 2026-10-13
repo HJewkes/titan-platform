@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { dedupeFacts, groupFacts, proposeDestination, type FactGroup, type MemoryDestination, type ParsedFact, type SkillSummary } from "@titan-design/memory";
+import { DEFAULT_GROUP_THRESHOLD, dedupeFacts, groupFacts, proposeDestination, type FactGroup, type MemoryDestination, type ParsedFact, type SkillSummary } from "@titan-design/memory";
 import { stringify } from "yaml";
 
 interface ReportSource {
@@ -57,9 +57,6 @@ function toReportGroup(group: FactGroup, index: number, skills: readonly SkillSu
     sources: group.facts.flatMap(({ sources }) => sources.map(sourceOf)),
   };
 }
-
-// Measured on 302 real facts: 0.3 left 296 singletons, and below 0.12 single-link chaining folds most facts into one group.
-export const DEFAULT_GROUP_THRESHOLD = 0.12;
 
 export function buildMemoryReport(facts: readonly ParsedFact[], skills: readonly SkillSummary[], now: Date, threshold = DEFAULT_GROUP_THRESHOLD): MemoryReport {
   const groups = groupFacts(dedupeFacts(facts), { threshold });

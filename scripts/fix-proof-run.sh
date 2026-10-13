@@ -11,6 +11,11 @@
 #
 # The runner always comes from the merge base. A merge base that predates the split has no dist/judge.js, so every
 # mode treats it as "nothing to prove with": exec writes skipped markers and judge prints a skipped line.
+#
+# exec base runs the head's tests on the merge base, so it hands the runner a sandbox user: a system account with no
+# sudo, which the runner drops to inside a fresh PID namespace. Nothing those tests start can then outlive vitest or
+# write the reports, this script or $GITHUB_OUTPUT. A merge-base runner without sandbox support, or a sandbox this
+# job cannot set up, yields error markers for both base reports, never an unsandboxed run.
 set -euo pipefail
 
 readonly SKIPPED="skipped: no runner at merge base"
@@ -19,6 +24,10 @@ readonly EXEC_BUDGET_MS=780000
 # The judge receives each report as one environment string, and Linux refuses to start a process holding a string
 # over 128 KiB (MAX_ARG_STRLEN). A larger report becomes an error marker the judge can read instead.
 readonly MAX_OUTPUT_BYTES=120000
+readonly SANDBOX_USER=fix-proof-sandbox
+# Root-owned and outside the runner's home, so the sandbox user can run what is here but not change it. Tests point it
+# at a temp dir.
+readonly SANDBOX_TOOLS=${FIX_PROOF_SANDBOX_TOOLS:-/opt/fix-proof-sandbox}
 
 usage() {
   echo "usage: fix-proof-run.sh exec|emit|receive|judge ... (see the header)" >&2
@@ -42,18 +51,80 @@ has_judge() {
   [ -f "$1/packages/fix-proof/dist/bin.js" ] && [ -f "$1/packages/fix-proof/dist/judge.js" ]
 }
 
+# tsup splits shared code into chunks, so the flag's literal sits in a chunk beside bin.js rather than in bin.js.
+has_sandbox() {
+  grep -qsF -- '"sandbox-user"' "$1"/packages/fix-proof/dist/*.js
+}
+
+# Prints why the sandbox user cannot be used, or nothing when it can.
+sandbox_problem() {
+  local tool
+  for tool in sudo timeout unshare setpriv; do
+    command -v "$tool" >/dev/null || { echo "$tool is missing"; return; }
+  done
+  sudo -n true >/dev/null 2>&1 || { echo "the job cannot sudo"; return; }
+  if ! id -u "$SANDBOX_USER" >/dev/null 2>&1; then
+    sudo -n useradd --system --no-create-home --shell /usr/sbin/nologin "$SANDBOX_USER" >&2 || { echo "useradd failed"; return; }
+  fi
+  # setpriv --init-groups hands the sandbox every group the user is in, and a group such as docker reaches root.
+  [ "$(id -G "$SANDBOX_USER")" = "$(id -g "$SANDBOX_USER")" ] || { echo "$SANDBOX_USER has supplementary groups"; return; }
+  if sudo -n -u "$SANDBOX_USER" sudo -n true >/dev/null 2>&1; then echo "$SANDBOX_USER can sudo"; return; fi
+  stage_pnpm || echo "staging pnpm for the sandbox failed"
+}
+
+# pnpm/action-setup installs pnpm under the runner's home, which the sandbox user cannot traverse, so vitest's
+# `pnpm exec` exits 127 there. A root-owned copy in SANDBOX_TOOLS, first on PATH, serves it instead; node already
+# lives in the world-readable tool cache.
+stage_pnpm() {
+  local pnpm node package bin
+  pnpm=$(command -v pnpm) && node=$(command -v node) || return 1
+  # action-setup's .bin sits beside node_modules/pnpm. pnpm's exports map hides package.json from require.resolve.
+  package=$(cd "$(dirname "$pnpm")/../pnpm" && pwd -P) &&
+    bin=$(node -p 'JSON.parse(fs.readFileSync(process.argv[1], "utf8")).bin.pnpm' "$package/package.json") || return 1
+  [ -n "$bin" ] && [ "$bin" != undefined ] && [ -f "$package/$bin" ] || return 1
+  # shellcheck disable=SC2016 # expanded by the root shell, from its own arguments
+  sudo -n sh -c '
+    set -e
+    rm -rf "$1" && mkdir -p "$1/bin" && cp -RL "$2" "$1/pnpm"
+    printf "#!/bin/sh\nexec %s %s \"\$@\"\n" "$3" "$1/pnpm/$4" >"$1/bin/pnpm"
+    chmod -R a+rX,go-w "$1" && chmod 755 "$1/bin/pnpm"
+  ' sh "$SANDBOX_TOOLS" "$package" "$node" "$bin"
+}
+
+write_markers() {
+  local out=$1 message=$2 name
+  shift 2
+  mkdir -p "$out"
+  for name in "$@"; do marker "$message" >"$out/$name.report"; done
+}
+
+# Prints why the base side cannot run sandboxed, or nothing when it can.
+base_sandbox_problem() {
+  if has_sandbox "$1"; then sandbox_problem; else echo "the merge-base runner has no sandbox support"; fi
+}
+
 exec_side() {
-  local side=$1 runner=$2 repo=$3 base=$4 head=$5 out=$6 name
-  local names
+  local side=$1 runner=$2 repo=$3 base=$4 head=$5 out=$6 names problem path=$PATH
+  local -a sandbox=()
   names=$(side_reports "$side")
   if ! has_judge "$runner"; then
     echo "fix-proof: no exec/judge runner at merge base ($runner)" >&2
-    mkdir -p "$out"
-    for name in $names; do marker "$SKIPPED" >"$out/$name.report"; done
+    write_markers "$out" "$SKIPPED" $names
     return 0
   fi
-  node "$runner/packages/fix-proof/dist/bin.js" exec --side "$side" --repo "$repo" --base "$base" --head "$head" --out "$out" \
-    --budget-ms "$EXEC_BUDGET_MS"
+  if [ "$side" = base ]; then
+    problem=$(base_sandbox_problem "$runner")
+    if [ -n "$problem" ]; then
+      echo "fix-proof: base side not run: $problem" >&2
+      write_markers "$out" "base: sandbox unavailable: $problem" $names
+      return 0
+    fi
+    { unshare --version && setpriv --version; } >&2 || true
+    sandbox=(--sandbox-user "$SANDBOX_USER")
+    path="$SANDBOX_TOOLS/bin:$PATH"
+  fi
+  PATH=$path node "$runner/packages/fix-proof/dist/bin.js" exec --side "$side" --repo "$repo" --base "$base" --head "$head" --out "$out" \
+    --budget-ms "$EXEC_BUDGET_MS" "${sandbox[@]}"
 }
 
 # Prints the report to pass on, or a marker saying why it cannot be: a value with anything outside the base64

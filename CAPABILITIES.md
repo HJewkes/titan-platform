@@ -592,7 +592,7 @@ Key exports:
 - `envelope`: `describeError`, `errorEnvelope`, `successEnvelope`
 - `zod-introspect`: `arrayElementKind`, `fieldSchema`, `isOptionalField`, `schemaKind`, `unwrapSchema`
 - `cli-options`: `camelizeFlagKey`, `coerceCliValue`
-- +26 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/registry)
+- +28 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/registry)
 
 <a id="cap-retrieval"></a>
 
@@ -739,7 +739,7 @@ Key exports:
 - `schema`: `feedbackTableDdl`, `memoryDdl`, `memoryMigration`
 - `scoring`: `decayedCounts`, `decayedValue`, `effectiveScore`, `isStale`, `maturityFor`, `nextMaturity`
 - `text`: `contentKey`, `jaccard`
-- +87 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/memory)
+- +89 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/memory)
 
 <a id="cap-owner-queue"></a>
 
