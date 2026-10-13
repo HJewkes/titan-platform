@@ -130,3 +130,44 @@ describe("lineIfsValues on code run from text it cannot read", () => {
     expect(values(line)).toBeNull();
   });
 });
+
+describe("lineIfsValues on stored text that may name IFS", () => {
+  it.each([
+    ["a trap running a stored value", "v=IFS=,; trap \"$v\" DEBUG"],
+    ["a trap running a dynamic value", "trap -- \"$v\" RETURN"],
+    ["an arithmetic command reading a stored value", "v=IFS=1; (( v ))"],
+    ["an arithmetic expansion reading a stored value", "v=IFS=1; : $(( v ))"],
+    ["a subscript reading a stored value", "v=IFS=1; a[v]=x"],
+    ["let reading a stored value", "v=IFS=1; let v"],
+    ["a conditional reading a stored value", "v=IFS=1; [[ v -eq 1 ]]"],
+    ["a substring offset reading a stored value", "v=IFS=1; : ${x:v}"],
+    ["a prompt expansion of stored arithmetic", "v='$((IFS=1))'; : \"${v@P}\""],
+    ["a prompt expansion of a stored default", "v='${IFS:=,}'; : \"${v@P}\""],
+    ["a here-string script", "bash <<< 'IFS=,'"],
+    ["a here-string from a variable", "bash -s <<< \"$v\""],
+    ["a script from a process substitution", "bash <(printf %s \"$v\")"],
+    ["an alias from a variable", "alias x=\"$v\""],
+    ["exec of a dynamic script", "exec bash -c \"$v\""],
+    ["coproc of a dynamic eval", "coproc eval \"$v\""],
+    ["a heredoc script", "bash <<EOF\nIFS=,\nEOF"],
+    ["a for list storing IFS-like text", "for v in IFS=1; do (( v )); done"],
+    ["a declared value that may name IFS", "declare v=IFS=1"],
+  ])("gives null for %s", (_how, line) => {
+    expect(values(line)).toBeNull();
+  });
+});
+
+describe("lineIfsValues on ordinary lines beside an IFS assignment", () => {
+  it.each([
+    ["a dynamic argument to an ordinary command", "IFS=,; git push origin \"$b\"", ","],
+    ["read from a dynamic here-string", "IFS=, read -r a b <<< \"$line\"", ","],
+    ["a literal trap", "IFS=,; trap 'rm -f x' EXIT", ","],
+    ["exec of a literal command", "IFS=:; exec git status", ":"],
+    ["a process substitution for an ordinary command", "IFS=,; diff <(ls a) <(ls b)", ","],
+    ["a stored command substitution", "IFS=,; d=$(date)", ","],
+    ["literal arithmetic on a stored number", "IFS=,; v=1; (( v ))", ","],
+    ["a heredoc for an ordinary command", "IFS=,; cat <<EOF\nhello\nEOF", ","],
+  ])("resolves %s", (_how, line, ifs) => {
+    expect(values(line)).toEqual([DEFAULT_IFS, ifs]);
+  });
+});
