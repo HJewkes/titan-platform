@@ -14,7 +14,7 @@ export function listenOn(options: ServeOptions, target: ListenTarget, onListenin
   return server;
 }
 
-export interface ReadyLatch {
+interface ReadyLatch {
   isOpen: () => boolean;
   opened: Promise<void>;
   open: () => void;
