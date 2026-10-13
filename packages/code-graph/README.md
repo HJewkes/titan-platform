@@ -618,6 +618,48 @@ are leads, not verdicts, and both drop files that `keepNode` rejects:
 These differ from `pnpm dead:check`, which reads edges rather than `utilization` and follows
 re-exports transitively from package-manifest entries.
 
+### SCBench complexity rollup
+
+TP-2474 h ports the complexity half of SlopCodeBench's code-quality metrics to TypeScript.
+`qualitySection(nodes, ctx, packages, edges)` returns the report's optional `quality` section:
+`complexity.total` over every kept file and `complexity.packages`, one row per `PackageRoot`
+(`""` for files under none). `complexityDistribution(callables, packages)` and
+`summarizeComplexity(callables)` are the same arithmetic over plain `CallableComplexity` rows.
+
+Each named function with a `symbol_cyclomatic` metric is one callable; its SLOC is
+`symbol_loc` minus `symbol_comment_lines`. Mass is CC·√SLOC. `erosion` (SCBench's
+`mass.high_cc_pct`) is the share of mass in callables with CC above 10, and `cogErosion` is
+the same over `symbol_cognitive`. The row also carries `ccMax`, `ccMean`, `ccStd` (population),
+`ccHighCount` (CC > 10), `ccExtremeCount` (CC > 30), `highCcMean` and `ccGini`
+(SCBench's `cc_concentration`). Nested closures and helpers with no symbol node of their own
+are not counted, so erosion can read lower than a tool that measures every function, such as
+scb-check. Splitting a function lowers erosion without improving the design, so read it beside
+`symbol_pass_through` and `symbol_single_caller_helper`.
+
+### SCBench dependency-graph metrics
+
+TP-2474 i ports SlopCodeBench's dependency-graph measures. `quality.dependencies` holds one
+`PackageDependencyRow` per package; `dependencyGraphMetrics(nodes, edges, packages)` builds the
+rows from any node set, and `callGraphMetrics` and `importCyclicMass` are the same arithmetic
+over plain `WeightedLink` lists. Only edges with both ends in one package count, and there is no
+whole-tree row because propagation cost is O(n·(n + e)).
+
+`calls` holds the call graph over the callables the complexity rollup measured, each edge
+weighted by its call-site count:
+
+- `cyclicDependencyMass` (`cyclic_dependency_mass`): the share of call weight on edges inside a
+  strongly connected component of two or more callables. A function calling only itself is not
+  a cycle.
+- `propagationCost` (`propagation_cost`): ordered pairs (a, b), a ≠ b, with b reachable from a,
+  over n(n − 1).
+- `dependencyEntropy` (`dependency_entropy`): the mean over callables of the Shannon entropy of
+  out-edge weights, normalized by log(out-degree), and 0 at out-degree 1 or less.
+
+`imports` splits the cyclic mass of the package's file imports (edge `weight`, default 1).
+`value` is the weight of value imports inside cycles that value imports close on their own, and
+`typeOnly` is the rest of the cyclic weight, the part only a type-only import closes. Both share
+the denominator of all import weight, so they sum to the cyclic mass of the whole import graph.
+
 ### Growth and untested risks
 
 Ported with TP-1468 from codewatch's `graph report`, unchanged apart from import paths. Both
@@ -750,6 +792,12 @@ churn entries they were built from (`LoadedHistory`, whose `warnings` say why hi
 `DEFAULT_CHURN_WINDOWS` (`[30, 90, 180]`), `resolveChurnWindows`, `windowSuffix` (`30d`,
 `lifetime`) and `computeRecencyWindows` alongside it. Node ids are the history engine's
 repo-relative paths, so both must be rooted at the same `idRoot`.
+
+`revisionLineSource(repoRoot, rev)` is an evidence `LineSource` over the blobs of commit
+`rev`, never the working tree, so `verifyCitation` over it reports `past-eof` for a range
+that only an uncommitted edit reaches. `rev` must be a full 40-hex commit id; a ref name
+throws. Each path is one `git --no-replace-objects cat-file --batch` read, cached. A path
+that is not a blob at `rev` reads as unreadable.
 
 Change coupling is not stored. It is computed on demand from `loadChurnEntries`, as
 codewatch's `graph coupled` command did.

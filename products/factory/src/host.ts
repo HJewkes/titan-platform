@@ -133,7 +133,7 @@ function createRuntime(db: Db, gates: SqliteGateStore, options: FactoryHostOptio
   for (const definition of options.workflows) {
     assertDistinctStepIds(definition);
     runner.assertRoutes(definition.name, dispatchStepIds(definition));
-    runtime.register(definition.name, (ctx) => definition.run(guardedContext(ctx, definition)), { abandonsOrphan: orphanSafe(definition) });
+    runtime.register(definition.name, (ctx) => definition.run(guardedContext(ctx, definition)), { abandonsOrphan: orphanSafe(definition), strictReplay: true });
   }
   return runtime;
 }
