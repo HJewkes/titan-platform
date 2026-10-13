@@ -30,7 +30,13 @@ const ARITHMETIC_EXPANSION_RE = /\$(?:\(\(|\[)/g;
  * Expansions that evaluate a variable's text, not just its value: `$(( v ))`, `$[ v ]`, `${v@P}`, a subscript
  * `${a[v]}`, and a substring offset `${x:v}` (the `:-`, `:=`, `:?` and `:+` defaults excluded).
  */
-const READS_BY_NAME_RE = /\$\(\(|\$\[|@P\}|\$\{[^}]*\[|\$\{[#!]?[A-Za-z0-9_@*]+:(?![-=?+])/;
+const READS_BY_NAME_RE = /\$\(\(|\$\[|@P\}|\$\{!|\$\{[^}]*\[|\$\{[#!]?[A-Za-z0-9_@*]+:(?![-=?+])/;
+/** A name operand with a non-numeric subscript, `read 'a[k]'` or `[[ -v a[k] ]]`: the subscript is arithmetic. */
+const SUBSCRIPTED_NAME_RE = /[A-Za-z_][A-Za-z0-9_]*\[(?!\d*\])/;
+/** Variables naming a file every non-interactive `bash` or `sh` sources before its script. */
+const STARTUP_FILE_RE = /^(?:BASH_ENV|ENV)\+?=/;
+/** Shell options that source an rc or profile file: `--rcfile`, `--init-file`, `--login`, `-i`, `-l`, `-lc`. */
+const SOURCING_OPTION_RE = /^(?:--(?:rcfile|init-file|login|interactive)\b|-[A-Za-z]*[il])/;
 const ARITHMETIC_TESTS = new Set(["-eq", "-ne", "-lt", "-le", "-gt", "-ge"]);
 /** Commands whose operands are stored as code, run later by name. */
 const STORED_CODE = new Set(["trap", "alias"]);
@@ -42,6 +48,9 @@ interface Scan {
   computed: boolean;
   /** The line evaluates some variable's text by name: `(( v ))`, `let v`, `${v@P}`, `a[v]=x`, `trap`, `declare -i`. */
   readsByName: boolean;
+  /** Names declared `-n`, and names given a run-time value or used as a `for` variable, matched at the end. */
+  namerefs: Set<string>;
+  runtimeNames: Set<string>;
 }
 
 interface Assignment {
@@ -63,9 +72,14 @@ interface Assignment {
  * null, in either order, since a loop or a function call can run the reader after the store.
  */
 export function lineIfsValues(tokens: Token[]): string[] | null {
-  const scan: Scan = { found: new Set([DEFAULT_IFS]), unknown: false, computed: false, readsByName: false };
+  const scan: Scan = { found: new Set([DEFAULT_IFS]), unknown: false, computed: false, readsByName: false, namerefs: new Set(), runtimeNames: new Set() };
   scanTokens(tokens, 0, scan);
-  return scan.unknown || (scan.computed && scan.readsByName) ? null : [...scan.found];
+  return scan.unknown || (scan.computed && scan.readsByName) || namerefRetargeted(scan) ? null : [...scan.found];
+}
+
+/** `declare -n r; for r in $L` or `r=$x`: a nameref given a run-time target may write IFS through it. */
+function namerefRetargeted(scan: Scan): boolean {
+  return [...scan.namerefs].some((name) => scan.runtimeNames.has(name));
 }
 
 function scanTokens(tokens: Token[], depth: number, scan: Scan): void {
@@ -142,7 +156,7 @@ function arithmeticUnknown(word: WordToken): boolean {
 function scanCommand(words: WordToken[], input: boolean, depth: number, scan: Scan): void {
   for (const word of words) {
     scanSubs(word.subs, depth, scan);
-    if (arithmeticUnknown(word)) markUnknown(scan);
+    if (arithmeticUnknown(word) || STARTUP_FILE_RE.test(word.value)) markUnknown(scan);
     noteReadsByName(word, scan);
   }
   let i = 0;
@@ -155,7 +169,7 @@ function scanCommand(words: WordToken[], input: boolean, depth: number, scan: Sc
 }
 
 function noteReadsByName(word: WordToken, scan: Scan): void {
-  if (word.dynamic && READS_BY_NAME_RE.test(word.value)) scan.readsByName = true;
+  if ((word.dynamic && READS_BY_NAME_RE.test(word.value)) || SUBSCRIPTED_NAME_RE.test(word.value)) scan.readsByName = true;
 }
 
 function isReserved(word: WordToken | undefined): boolean {
@@ -194,6 +208,19 @@ function noteCommandEffects(name: string, args: WordToken[], scan: Scan): void {
   if (name === "let" || STORED_CODE.has(name)) scan.readsByName = true;
   if (name === "[[" && args.some((word) => ARITHMETIC_TESTS.has(literal(word)))) scan.readsByName = true;
   if (DECLARERS.has(name) && args.some((word) => !word.dynamic && /^[-+][A-Za-z]*i/.test(word.value))) scan.readsByName = true;
+  noteRuntimeNames(name, args, scan);
+}
+
+/** Names a command writes from run-time input, which retarget a nameref of that name. */
+function noteRuntimeNames(name: string, args: WordToken[], scan: Scan): void {
+  const operands = args.filter((word) => !word.dynamic && !OPTION_RE.test(word.value));
+  if (NAME_WRITERS.has(name) && name !== "let") for (const word of operands) scan.runtimeNames.add(word.value);
+  if (name === "for" && operands[0]) scan.runtimeNames.add(operands[0].value);
+  if (name !== "printf") return;
+  args.forEach((word, i) => {
+    const target = args[i + 1];
+    if (literal(word) === "-v" && target && !target.dynamic) scan.runtimeNames.add(target.value);
+  });
 }
 
 /** `eval` joins its operands with spaces and runs the result as shell text, which is unknown once any is dynamic. */
@@ -205,7 +232,7 @@ function scanEval(args: WordToken[], depth: number, scan: Scan): void {
 
 /** Any operand of `sh` may be the `-c` script, so a dynamic one is unknown; rescanning an option or a path finds nothing. */
 function scanShell(args: WordToken[], depth: number, scan: Scan): void {
-  if (args.some((word) => word.dynamic)) return markUnknown(scan);
+  if (args.some((word) => word.dynamic || SOURCING_OPTION_RE.test(word.value))) return markUnknown(scan);
   for (const word of args) if (!OPTION_RE.test(word.value)) rescan(word.value, depth, scan);
 }
 
@@ -214,8 +241,9 @@ function scanDeclarer(args: WordToken[], scan: Scan): void {
   for (const word of args) {
     if (!word.dynamic && OPTION_RE.test(word.value)) continue;
     if (nameref && (word.dynamic || possiblyIfs(word.value))) return markUnknown(scan);
+    if (nameref) scan.namerefs.add(parseAssignment(word.value)?.name ?? word.value);
     if (word.dynamic && !dynamicDeclarationKnown(word)) return markUnknown(scan);
-    if (word.dynamic) scan.computed = true;
+    if (word.dynamic) noteRuntimeAssignment(word, scan);
     if (!word.dynamic && word.value !== "IFS" && ASSIGNMENT_RE.test(word.value)) scanAssignment(word, scan);
     else if (!word.dynamic && word.value !== "IFS" && possiblyIfs(word.value)) return markUnknown(scan);
   }
@@ -247,11 +275,17 @@ function scanAssignment(word: WordToken, scan: Scan): void {
   if (subscriptUnknown(assignment) || possiblyIfs(assignment.value)) return markUnknown(scan);
   if (!/^(\[\d*\])?$/.test(assignment.subscript)) scan.readsByName = true;
   if (assignment.name !== "IFS") {
-    if (word.dynamic) scan.computed = true;
+    if (word.dynamic) noteRuntimeAssignment(word, scan);
     return;
   }
   if (!assignment.plain || word.dynamic) return markUnknown(scan);
   add(assignment.value, scan);
+}
+
+function noteRuntimeAssignment(word: WordToken, scan: Scan): void {
+  scan.computed = true;
+  const assignment = parseAssignment(word.value);
+  if (assignment) scan.runtimeNames.add(assignment.name);
 }
 
 function parseAssignment(text: string): Assignment | null {

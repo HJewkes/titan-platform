@@ -206,3 +206,54 @@ describe("lineIfsValues on run-time values no reader evaluates", () => {
     expect(values(line)).toEqual([DEFAULT_IFS, ","]);
   });
 });
+
+describe("lineIfsValues on subscripted names and indirection", () => {
+  const k = "k=$(printf %sFS=1 I); ";
+  it.each([
+    ["read into a subscripted name", `${k}read 'a[k]'`],
+    ["printf -v into a subscripted name", `${k}printf -v 'a[k]' x`],
+    ["unset of a subscripted name", `${k}unset 'a[k]'`],
+    ["a [[ -v ]] test of a subscripted name", `${k}[[ -v a[k] ]]`],
+    ["a test -v of a subscripted name", `${k}test -v 'a[k]'`],
+    ["an indirect expansion", `${k}: "\${!k}"`],
+    ["an indirect expansion with a default", `${k}: "\${!k:=,}"`],
+  ])("gives null for %s", (_how, line) => {
+    expect(values(line)).toBeNull();
+  });
+});
+
+describe("lineIfsValues on shells that source a startup file", () => {
+  it.each([
+    ["BASH_ENV as a prefix", "BASH_ENV=/tmp/x bash -c :"],
+    ["BASH_ENV exported", "export BASH_ENV=/tmp/x; bash -c :"],
+    ["BASH_ENV through env", "env BASH_ENV=/tmp/x bash -c :"],
+    ["ENV for sh", "ENV=/tmp/x sh -c :"],
+    ["--rcfile", "bash --rcfile /tmp/x -i"],
+    ["--init-file", "bash --init-file /tmp/x"],
+    ["a login shell", "bash -lc :"],
+  ])("gives null for %s", (_how, line) => {
+    expect(values(line)).toBeNull();
+  });
+});
+
+describe("lineIfsValues on namerefs given a run-time target", () => {
+  it.each([
+    ["a nameref as a for variable over a dynamic list", "declare -n r; for r in $L; do r=,; done"],
+    ["a nameref as a for variable over a literal list", "declare -n r; for r in a b; do r=,; done"],
+    ["a nameref assigned a dynamic value", "declare -n r; r=$x; r=,"],
+    ["a local nameref read into", "f(){ local -n r; read r; r=,; }"],
+    ["a nameref assigned before it is declared, as a loop runs it", "for i in 1 2; do r=$x; typeset -n r; done"],
+  ])("gives null for %s", (_how, line) => {
+    expect(values(line)).toBeNull();
+  });
+});
+
+describe("lineIfsValues on namerefs and shells it can still read", () => {
+  it.each([
+    ["a nameref with a literal target", "IFS=,; declare -n r=a; r=1"],
+    ["a literal sh -c script", "IFS=,; bash -c 'echo hi'"],
+    ["a numeric subscript beside a run-time value", "IFS=,; read -r v; a[1]=x"],
+  ])("resolves %s", (_how, line) => {
+    expect(values(line)).toEqual([DEFAULT_IFS, ","]);
+  });
+});
