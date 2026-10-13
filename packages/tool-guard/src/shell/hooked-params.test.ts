@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { arithmeticHooked } from "./arith-hooked.js";
 import { writesHookedParam } from "./hooked-params.js";
 import { tokenize } from "./lexer.js";
 import type { WordToken } from "./lexer.js";
@@ -155,7 +156,6 @@ describe("a command that only reads, mentions or writes another name", () => {
     ["a commit message", "git commit -m 'refuse PS4 writes'"],
     ["a quoted default-assign in a commit message", "git commit -m 'set ${PS4:=x}'"],
     ["unset", "unset PS4"],
-    ["let", "let PS4=1"],
     ["set -x", "set -x"],
     ["set with options and an operand", "set -euo pipefail"],
     ["set -- with a glob", "set -- *"],
@@ -302,6 +302,68 @@ describe("reading assign-on-expand in a long word", () => {
     ["many readable flag groups", "${(s:$:)x}".repeat(10_000)],
     ["many l flags with three arguments", "${(l:1::a::b:".repeat(8_000)],
   ])("reads it in linear time: %s", (_how, value) => {
+    const word: WordToken = { type: "word", value, dynamic: true, quoted: false, spliced: false, computed: true, refs: [], subs: [] };
+    const started = performance.now();
+
+    writesHookedParam({ name: ":", path: ":", args: [word], assigned: [] }, [word]);
+
+    expect(performance.now() - started).toBeLessThan(100);
+  });
+});
+
+describe("arithmetic that mentions a hooked parameter", () => {
+  it.each([
+    ["let", "let PS4=1", "PS4"],
+    ["let of module_path, quoted", 'let "MODULE_PATH=7"', "MODULE_PATH"],
+    ["$(( ))", ": $(( module_path = 3 ))", "module_path"],
+    ["zsh $[ ]", ": $[ PS4 = 2 ]", "PS4"],
+    ["a subscript inside ${ }", ": ${a[MODULE_PATH=4]}", "MODULE_PATH"],
+    ["a bash subscript inside ${ }", ": ${a[PS4=5]}", "PS4"],
+    ["a length of an element", ": ${#a[PS4=1]}", "PS4"],
+    ["a zsh subscript after $name", ": $x[MODULE_PATH=1]", "MODULE_PATH"],
+    ["a bash substring offset", ": ${x:PS4=0}", "PS4"],
+    ["a substring length", ": ${x:0:PS4=1}", "PS4"],
+    ["an assignment word's subscript", "a[PS4=7]=x", "PS4"],
+    ["a prefix assignment's subscript", "a[PS4=7]=x true", "PS4"],
+    ["read into a quoted subscripted name", "read 'a[PS4=6]'", "PS4"],
+    ["printf -v into a subscripted name", "printf -v 'a[PS4=1]' x", "PS4"],
+    ["a numeric [[ test", "[[ PS4=1 -eq 1 ]]", "PS4"],
+    ["a declare -i value", "declare -i x=PS4=2", "PS4"],
+    ["a zsh integer value", "integer x=PS4=3", "PS4"],
+    ["a zsh float value", "float x=module_path=1", "module_path"],
+  ])("counts as a hooked write: %s", (_how, line, name) => {
+    expect(hooked(line)).toBe(name);
+  });
+
+  it.each([
+    ["(( MODULE_PATH = 1 ))", "MODULE_PATH = 1", "MODULE_PATH"],
+    ["(( y, PS4=1 ))", "y, PS4=1", "PS4"],
+    ["a for (( )) step", "PS4=0; PS4<1; PS4++", "PS4"],
+  ])("reads a (( )) span the walk passes: %s", (_how, expression, name) => {
+    expect(arithmeticHooked(expression)).toBe(name);
+  });
+
+  it.each([
+    ["let of another name", "let i=i+1"],
+    ["$(( )) of other names", "echo $(( i + 1 ))"],
+    ["a subscript of another name", "echo ${a[i]}"],
+    ["a substring of PS4 itself", "echo ${PS4:0:1}"],
+    ["a numeric [[ test of another name", "[[ $n -eq 1 ]]"],
+    ["a string [[ test naming PS4", "[[ $x == PS4 ]]"],
+    ["a declare without -i", "declare x=i+1"],
+    ["single-quoted arithmetic in a commit message", "git commit -m 'set $(( PS4=1 ))'"],
+    ["a literal subscript in an echo operand", "echo a[PS4]"],
+    ["a longer name in let", "let PS44=1"],
+  ])("returns null: %s", (_how, line) => {
+    expect(hooked(line)).toBeNull();
+  });
+
+  it("returns null for a (( )) span of other names", () => {
+    expect(arithmeticHooked("i = i + 1")).toBeNull();
+  });
+
+  it("reads a long word in linear time", () => {
+    const value = `$((${"a[".repeat(30_000)}`;
     const word: WordToken = { type: "word", value, dynamic: true, quoted: false, spliced: false, computed: true, refs: [], subs: [] };
     const started = performance.now();
 
