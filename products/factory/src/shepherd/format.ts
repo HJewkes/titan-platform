@@ -4,6 +4,7 @@ import { SHEPHERD_COMMAND_MAP, type MergeEvaluation, type Registered, type Sheph
 import type { PrRow } from "./prs.js";
 import type { ReviewAsk } from "./review-request.js";
 import type { ResyncReport } from "./resync.js";
+import { lastAwaitClause } from "./none-reason.js";
 import { OVERDUE_HOURS, overdueOwnerGates, type Waiting, type WaitingGate } from "./waiting.js";
 import type { PrTimeline, TimelineEntry, WatchRow } from "./view.js";
 
@@ -90,7 +91,7 @@ function registerOutcome({ created, previousRunId, previousStop }: Registered): 
 function rowLine(row: WatchRow): string {
   const target = row.pr === null ? `${row.repo} ${row.branch}` : `${row.repo}#${row.pr}`;
   const head = row.headSha === null ? "-" : row.headSha.slice(0, 7);
-  const blockers = [row.held && heldLine(row.held), row.stalled && `stalled: ${row.stalled.reason}`].filter(Boolean);
+  const blockers = [row.held && heldLine(row.held), row.stalled && `stalled: ${row.stalled.reason}`, lastAwaitClause(row)].filter(Boolean);
   return `${target} ${row.phase} ${head} ${row.nextAction}${timeSuffix(row)}${blockers.length > 0 ? ` [${blockers.join("; ")}]` : ""}`;
 }
 

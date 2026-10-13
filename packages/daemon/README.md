@@ -117,6 +117,28 @@ If the requested port is taken, `startDaemon` rejects with `DaemonPortInUseError
 the original error. The listener is removed once the server is listening, so a later runtime
 error is not reported as a bind failure.
 
+## Inherited socket (systemd socket activation)
+
+Pass `listenFd` to serve on a socket that is already listening instead of binding
+`host:port`. `systemdListenFd()` returns fd 3 when systemd passed exactly one socket to this
+process (`LISTEN_PID` is this pid and `LISTEN_FDS` is 1). It removes `LISTEN_PID`,
+`LISTEN_FDS` and `LISTEN_FDNAMES` from the environment so no child sees them. It returns
+`undefined` when none were passed, or when `LISTEN_PID` names another process. It throws when
+`LISTEN_FDS` is anything but 1.
+
+```ts
+import { startDaemon, systemdListenFd } from "@titan-design/daemon";
+
+await startDaemon({ ...options, listenFd: systemdListenFd(), port: 7400 });
+```
+
+With no fd the daemon binds `port` exactly as before. With one, `handle.port`, `/health`
+and the pid metadata report the socket's real port, and the `daemon started` log line names
+`listenFd`. Requests the socket queued before this process listened are held until the pid
+file exists rather than answered 503. `close()` closes this process's copy of the socket
+only, so its owner keeps it listening and the next process accepts what queues in between.
+A restart then refuses no connections. The remote listener still binds its own port.
+
 ## Bind address
 
 The daemon has no authentication, so `startDaemon` throws `NonLoopbackBindError` (carrying
