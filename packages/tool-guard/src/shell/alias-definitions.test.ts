@@ -128,6 +128,17 @@ describe("a command that defines a shell alias", () => {
     ["typeset -g with a glob", "typeset -g ali*"],
     ["typeset with a brace expansion spelling aliases", 'typeset {ali,ali}ases"[y]"=echo'],
     ["set -A with a brace expansion supplying aliases and a key", "set -A {ali,y}ases echo"],
+    ["alias with an extendedglob negation", "alias ^z"],
+    ["alias with an extendedglob repetition", "alias y#"],
+    ["alias with an extendedglob exclusion", "alias y~z"],
+    ["alias with the working directory, which may hold =", "alias ~+"],
+    ["alias with the previous directory", "alias ~-"],
+    ["alias with a directory stack entry", "alias ~1"],
+    ["alias with a user's home", "alias ~root"],
+    ["a dynamic command word with the working directory", '"$C" ~+'],
+    ["a dynamic command word with an = path", '"$C" =ls'],
+    ["typeset with a directory name", "typeset ~+"],
+    ["printf with a directory that may supply -v and the name", "printf ~+"],
     ["typeset with a pattern past one subscript", "typeset alias[e]s[[]y[]]=echo"],
     ["typeset with a bracket glob and no value", "typeset aliase[s]"],
     ["zstat -H into aliases", "zstat -L -H aliases L"],
@@ -203,8 +214,16 @@ describe("a command that only reads or removes aliases, or names them as text", 
     ["a dynamic test runner's option before a glob", '"$PYTEST" -x tests/*'],
     ["stat with a static format", "stat -c %s file"],
     ["pcre_match into a static name", "pcre_match -v out x"],
+    ["typeset with a tilde in the value, which names nothing", "typeset x=~/bin"],
+    ["printf with a static format before a tilde", "printf '%s\\n' ~+"],
   ])("passes: %s", (_how, src) => {
     expect(defines(src)).toBe(false);
+  });
+});
+
+describe("a glob qualifier or extendedglob flag in parentheses", () => {
+  it.each([["alias y(N)"], ["alias (#i)Y*"], ["alias y(#q.)"]])("never reaches the matcher: %s", (src) => {
+    expect(() => defines(src)).toThrow();
   });
 });
 

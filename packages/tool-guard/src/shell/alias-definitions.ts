@@ -19,8 +19,12 @@ const SPEC_PARAM_RE = new RegExp(String.raw`=${PARAM}$`);
 const SEVERAL_RE = /@|\$\{[~^]*[=(]/;
 /** A brace expansion, `{a,b}` or `{1..3}`, which makes one typed word several. */
 const BRACE_RE = /\{[^{}]*(?:,|\.\.)[^{}]*\}/;
-/** A glob character, which makes the word a pattern that may match any file names. */
-const GLOB_RE = /[*?[]/;
+/**
+ * A zsh generation operator, which may turn the word into file names or a directory: a glob character, extendedglob's
+ * `^`, `#` and `x~y`, a tilde (`~+`, `~1`, `~user`), or a leading `=` naming a command's path. A `(` qualifier never
+ * reaches here: the lexer refuses it.
+ */
+const GLOB_RE = /[*?[^#~]|^=/;
 /** An alias parameter anywhere in a word, as one alternative of a brace expansion may name it. */
 const BRACED_PARAM_RE = new RegExp(String.raw`(?<![A-Za-z0-9_])${PARAM}(?![A-Za-z0-9_])`);
 /**
@@ -130,7 +134,7 @@ function yieldsSeveral(w: WordToken): boolean {
   return w.unquotedExpansion === true || (w.dynamic && SEVERAL_RE.test(w.value)) || mayGenerate(w);
 }
 
-/** A glob or braces the shell may expand into other words. */
+/** A glob, a tilde, an `=` path or braces the shell may expand into other words. */
 function mayGenerate(w: WordToken): boolean {
   return mayBraceExpand(w) || (mayBeUnquoted(w) && GLOB_RE.test(w.value));
 }
