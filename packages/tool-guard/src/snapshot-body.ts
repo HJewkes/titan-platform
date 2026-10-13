@@ -23,6 +23,9 @@ interface BodyScan {
 
 const HEREDOC_STARTERS: ReadonlySet<Kind> = new Set(["code", "cmdsub", "backtick"]);
 const DELIMITER_END = new Set([" ", "\t", ";", "|", "&", "<", ">", "(", ")"]);
+// `(` is left out so a zsh glob such as `(#b)(((a|b)))` opens no comment.
+const WORD_START = new Set([" ", "\t", ";", "|", "&"]);
+const COMMAND_KEYWORDS = new Set(["if", "elif", "while", "until", "then", "do", "else", "!", "{", "time"]);
 
 export function newBodyScan(): BodyScan {
   return { stack: [{ kind: "code", depth: 0 }], pending: [], reading: [], broken: false };
@@ -95,17 +98,22 @@ function paramStep(scan: BodyScan, c: string | undefined, i: number): number {
   return i + 1;
 }
 
+/** A lone `)` at depth 0 means the `((` was a zsh case pattern such as `((a|)b)`, not arithmetic. */
 function arithStep(scan: BodyScan, line: string, i: number): number {
   const ctx = top(scan);
   if (line[i] === "(") ctx.depth++;
   else if (line[i] === ")" && ctx.depth > 0) ctx.depth--;
-  else if (line.startsWith("))", i)) return pop(scan, i + 2);
+  else if (line[i] === ")") return pop(scan, line[i + 1] === ")" ? i + 2 : i + 1);
   return i + 1;
 }
 
 function codeStep(scan: BodyScan, line: string, i: number): number {
   const ctx = top(scan);
   const c = line[i];
+  const wordStart = i === 0 || WORD_START.has(line[i - 1] ?? "");
+  if (line.startsWith("((", i) && atCommandStart(line, i)) return push(scan, "arith", i + 2);
+  // `typeset -f` drops comments from code, but substitution text is printed verbatim, comments and all.
+  if (wordStart && c === "#" && ctx.kind !== "code") return line.length;
   if (c === "(") ctx.depth++;
   else if (c === ")" && ctx.kind === "cmdsub" && ctx.depth === 0) return pop(scan, i + 1);
   else if (c === ")") ctx.depth = Math.max(0, ctx.depth - 1);
@@ -144,4 +152,11 @@ function readDelimiter(line: string, from: number): { word: string | null; end: 
     }
   }
   return { word, end: i };
+}
+
+/** `((` opens arithmetic only where a command starts; `[[ $x = ((#i)a)* ]]` is a zsh glob. */
+function atCommandStart(line: string, i: number): boolean {
+  const before = line.slice(0, i).trimEnd();
+  if (before === "" || /[;&|]$/.test(before)) return true;
+  return COMMAND_KEYWORDS.has(before.split(/\s+/).at(-1) ?? "");
 }

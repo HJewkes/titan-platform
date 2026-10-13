@@ -19,6 +19,11 @@ describe("snapshot body scan", () => {
     ["nested braces in a parameter", ['\tx=${y:-{a}}']],
     ["a shift inside $(( ))", ["\tx=$(( 1 << 2 ))"]],
     ["zsh glob flags", ["\t[[ $w == (#b)(((http|ftp)(|s))://*) ]]"]],
+    ["a shift inside (( ))", ["\t(( y = x << n ))", "\tif (( a << 1 )) && (( b <<2 ))"]],
+    ["a zsh case pattern opening with ((", ["\t\t((add-|)fpath) cat <<EOF ;;", "}", "EOF"]],
+    ["a zsh glob opening with (( inside [[ ]]", ["\t[[ $x = ((#i)http|ftp)* ]] && cat <<EOF", "}", "EOF"]],
+    ["a comment holding a quote inside $( )", ["\tx=$(: # it's", ")"]],
+    ["a comment holding a quote inside backticks", ["\tx=`: # it's", "`"]],
   ])("is at top level after %s", (_name, lines) => {
     expect(topLevelAfter(...lines)).toBe(true);
   });

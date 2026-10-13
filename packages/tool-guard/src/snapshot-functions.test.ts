@@ -76,6 +76,7 @@ describe("parseSnapshotFunctions", () => {
 
     expect(table.functions.get("gp")).toEqual({ body: "\tgit push" });
     expect(table.functions.get("x")).toEqual({ body: "\tcat <<'gp () {'\n}\ngp () {\n\techo safe" });
+    expect(table.incomplete).toBe(true);
   });
 
   it("keeps a body whole when its heredoc spans what looks like another function", () => {
@@ -85,6 +86,27 @@ describe("parseSnapshotFunctions", () => {
 
     expect(table.functions.get("a")).toEqual({ body: "\tcat <<EOF\n}\nb () {\n\tls\n}\nEOF\n\tgit push" });
     expect(table.functions.has("b")).toBe(false);
+    expect(table.incomplete).toBe(true);
+  });
+
+  it("reads << in an arithmetic command as a shift, not a heredoc", () => {
+    const table = parseSnapshotFunctions(
+      snapshot("a () {", "\t(( y = x << n ))", "}", "gp () {", '\tgit push "$@"', "}", "b () {", "\tcat <<EOF", "n", "EOF", "}"),
+    );
+
+    expect([...table.functions.keys()]).toEqual(["a", "gp", "b"]);
+    expect(table.functions.get("gp")).toEqual({ body: '\tgit push "$@"' });
+    expect(table.incomplete).toBe(false);
+  });
+
+  it("reads a quote inside a comment in $( ) as comment text", () => {
+    const table = parseSnapshotFunctions(
+      snapshot("a () {", "\tx=$(: # it's", ")", "}", "gp () {", '\tgit push "$@"', "}", "b () {", "\tcat <<EOF", "')", "EOF", "}"),
+    );
+
+    expect([...table.functions.keys()]).toEqual(["a", "gp", "b"]);
+    expect(table.functions.get("gp")).toEqual({ body: '\tgit push "$@"' });
+    expect(table.incomplete).toBe(false);
   });
 
   it("keeps a body whole when a multi-line string holds a column-0 }", () => {
