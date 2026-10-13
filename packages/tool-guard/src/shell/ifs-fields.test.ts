@@ -84,6 +84,23 @@ describe("ifsFields refuses a non-ASCII IFS, which bash splits by bytes", () => 
   });
 });
 
+describe("ifsFields refuses an IFS holding bash's internal quoting bytes \\x01 and \\x7f", () => {
+  const quoted = (text: string): WordPart => ({ text, splits: false, quoted: true });
+
+  it.each<[string, string, WordPart[]]>([
+    ['\\x7f (CTLNUL) and a blank, ""$F', "\x7f ", [quoted(""), exp(" gh pr merge 1")]],
+    ['\\x01 (CTLESC), $E"x"', "\x01", [exp("git"), quoted("x")]],
+  ])("returns null for %s", (_how, ifs, parts) => {
+    expect(ifsFields(parts, ifs)).toBeNull();
+  });
+
+  it("reports a possible split, so a caller does not skip it", () => {
+    expect(hasIfsChar("git", "\x01")).toBe(true);
+    expect(hasIfsChar(" gh", "\x7f ")).toBe(true);
+    expect(hasIfsChar("git", "\x02")).toBe(false);
+  });
+});
+
 describe("ifsFields under the default IFS", () => {
   it.each<[string, WordPart[], string[]]>([
     ["drops leading and trailing blanks", [exp("  push   origin  ")], ["push", "origin"]],
