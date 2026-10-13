@@ -9,6 +9,11 @@ export interface GrantWithheld {
   proof: string | null;
 }
 
+/** Merge evidence, its input and what decides on it carry this; set when `seatGrants` lacks merge-on-green-approve. */
+export interface GrantWithheldField {
+  grantWithheld?: GrantWithheld;
+}
+
 export interface GrantStanding {
   unverified?: FixProofUnverified;
   /** Why the fix-proof read proves nothing, as the sh-fix-proof step recorded it. */
@@ -36,6 +41,18 @@ function inert(text: string): string {
 export function grantWithheldClause(withheld: GrantWithheld | undefined): string {
   const halves = [withheld?.policy && `policy merge ${inert(withheld.policy)}, not auto`, withheld?.proof && `proof standing unverified: ${inert(withheld.proof)}`].filter(Boolean);
   return `${WITHHELD_PREFIX}${halves.length > 0 ? halves.join(" and ") : UNRECORDED}`;
+}
+
+const GRANT_CONDITION = "seat-grants-merge-on-green-approve";
+
+/** An unmet grant names which half failed, so the owner is never shown the bare condition (TP-2658). */
+export function withGrantWithheld(reason: string, evidence: GrantWithheldField): string {
+  return reason.includes(GRANT_CONDITION) ? `${reason}; ${grantWithheldClause(evidence.grantWithheld)}` : reason;
+}
+
+/** The field alone, absent when nothing was withheld, so a record spreads it without an undefined key. */
+export function grantWithheldField(source: GrantWithheldField): GrantWithheldField {
+  return source.grantWithheld ? { grantWithheld: source.grantWithheld } : {};
 }
 
 /** The withheld halves named in a gate reason, read up to a later `read closed:` clause; undefined when the reason has none. */
