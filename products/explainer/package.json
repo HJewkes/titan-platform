@@ -13,6 +13,7 @@
   },
   "files": [
     "dist",
+    "rubrics",
     "README.md"
   ],
   "author": "Henry Jewkes",
@@ -33,6 +34,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@titan-design/agent": "workspace:^",
+    "@titan-design/agent-protocol": "workspace:^",
     "commander": "^14.0.3",
     "zod": "^4.4.3"
   },

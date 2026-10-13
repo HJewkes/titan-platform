@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { Command, CommanderError } from "commander";
 import { l0HardPass, runL0, type L0Check } from "./eval-l0.js";
+import type { JudgeConfig, JudgeHarness } from "./eval-harness.js";
+import { l1Command, l2Command, smokeCommand } from "./eval-judge-cli.js";
 import { appendRun, appendTsv, benchLayout, freezeScript, rulesSha, STRUCTURE_COLUMNS, type RunRecord, type StructureRow } from "./eval-store.js";
 import { MapLayoutSchema } from "./map-state.js";
 import { ScriptSchema } from "./script-schema.js";
@@ -17,10 +19,12 @@ interface L0Flags {
   layout?: string;
 }
 
-/** The clock and check list are injectable so a run is reproducible in a test. */
+/** The clock, check list and judge harness are injectable so a run is reproducible in a test. */
 export interface EvalCliDeps {
   now?: () => Date;
   checks?: readonly L0Check[];
+  harness?: (config: JudgeConfig) => JudgeHarness;
+  codexUnavailable?: (config: JudgeConfig) => string | null;
 }
 
 const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"));
@@ -83,13 +87,20 @@ function l0Command(deps: EvalCliDeps, onResult: (code: number) => void): Command
     });
 }
 
-/** Exit 0 when the script passes, 1 when an error-severity check fails, 2 on bad input or usage. */
+/**
+ * Exit 0 when the script passes (l0) or the run is trusted (l1, l2), 1 when an error-severity check
+ * fails or a canary or judge call fails, 2 on bad input or usage.
+ */
 export async function runEvalCli(argv: readonly string[], deps: EvalCliDeps = {}): Promise<number> {
   let code: number = EXIT.OK;
   const onResult = (next: number): void => {
     code = next;
   };
-  const evalCommand = new Command("eval").description("Score scripts against the eval harness").exitOverride().addCommand(l0Command(deps, onResult));
+  const evalCommand = new Command("eval").description("Score scripts against the eval harness").exitOverride()
+    .addCommand(l0Command(deps, onResult))
+    .addCommand(l1Command(deps, onResult))
+    .addCommand(l2Command(deps, onResult))
+    .addCommand(smokeCommand(deps, onResult));
   const program = new Command("explainer").exitOverride().addCommand(evalCommand);
   try {
     await program.parseAsync([...argv], { from: "user" });
