@@ -50,8 +50,8 @@ export function decodeGraphqlEscapes(text: string): string {
  */
 const objectKeyRe = (key: string) => new RegExp(`\\b${key}"?[\\s,]*(?:#[^\\n\\r]*[\\n\\r][\\s,]*)*:`);
 
-/** A field word's key before its first `=`, matching `key` or a nested `parent[key]`. */
-const fieldKeyRe = (key: string) => new RegExp(`^(?:[^=\\[]*\\[)?${key}\\]?=`);
+/** A field word's key before its first `=`: `key` itself, or `key` as any bracket segment of gh's nested `a[b][key]` form. */
+const fieldKeyRe = (key: string) => new RegExp(`^(?:${key}|[^=]*\\[${key}\\])=`);
 
 const normalizeBranch = (name: string) => name.trim().replace(/^refs\//, "").replace(/^heads\//, "");
 

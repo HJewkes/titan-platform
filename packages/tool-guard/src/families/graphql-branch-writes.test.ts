@@ -88,6 +88,7 @@ describe("graphqlBranchWrites, variables", () => {
 
   const commitOn = (branch: string, rest = 'message:{headline:"m"}') =>
     `mutation{createCommitOnBranch(input:{branch:${branch},${rest},expectedHeadOid:"x"}){commit{oid}}}`;
+  const BY_INPUT = "mutation($i:CreateCommitOnBranchInput!){createCommitOnBranch(input:$i){commit{oid}}}";
 
   it.each([
     ["by id", [commitOn('{id:"R"}')], ""],
@@ -99,6 +100,11 @@ describe("graphqlBranchWrites, variables", () => {
     ["by id in a JSON variables object", [`{"query":${JSON.stringify(commitOn("$b"))},"variables":{"b":{"id":"R"}}}`], ""],
     ["by id in a nested -F field", [commitOn("$b")], "-F b[id]=R -F b[branchName]=feat/x"],
     ["with no branch key at all", [commitOn("$b")], "-f note=branchName"],
+    ["by id two levels deep in a -F field", [BY_INPUT], "-F i[branch][id]=REF_main"],
+    ["by deep id beside an aliased branchName selection", [BY_INPUT.replace("commit{oid}", "branchName:commit{oid}")], "-F i[branch][id]=REF_main"],
+    ["by deep id while a comment names branchName", [`# branchName:\n${BY_INPUT}`], "-F i[branch][id]=REF_main"],
+    ["by deep id beside a branchName field", [BY_INPUT], "-F i[branch][id]=REF_main -f branchName=feat/x"],
+    ["by deep id in an array element", [BY_INPUT], "-F i[branch][][id]=REF_main -f i[branch][branchName]=feat/x"],
   ])("reads createCommitOnBranch %s as unknown", (_how, texts, vars) => {
     expect(graphqlBranchWrites(texts, words(vars))).toMatchObject({ mutations: ["createCommitOnBranch"], unknown: true });
   });
@@ -117,6 +123,11 @@ describe("graphqlBranchWrites, variables", () => {
 
   it("reads createCommitOnBranch on a feature branch as known", () => {
     expect(read(commitOn('{repositoryNameWithOwner:"o/r",branchName:"feat/x"}')).unknown).toBe(false);
+  });
+
+  it("reads createCommitOnBranch with a branchName two levels deep in a -F field as known", () => {
+    const result = read(BY_INPUT, "-F i[branch][repositoryNameWithOwner]=o/r -F i[branch][branchName]=main");
+    expect(result).toMatchObject({ unknown: false, branches: expect.arrayContaining(["main"]) });
   });
 
   it("reads createCommitOnBranch whose branchName comes from a nested field", () => {
