@@ -432,6 +432,17 @@ titan-miner --graph "<active-work root>/.miner/graph.sqlite3" throughput backtes
 Output leads with the model hash and the watermark (miner `lastIndexedAt`, newest done task).
 `--json` returns the full class table or back-test result beside the same header fields.
 
+`titan-miner throughput pr-backfill` (TP-2162) caches each merged PR's head sha and changed
+files (paths and line counts, never diff text) in `<state>/pr-diffs.json`, mode 0600, through
+the shell's `gh` login. Cached refs are skipped, a 404 is cached as missing, and the run stops
+at `@titan-design/github`'s rate floor with its progress saved, so re-run it after the reset.
+`--dry-run` counts uncached PRs per repo without calling GitHub; `--since` and `--limit` narrow
+a run. It is CLI-only.
+
+```sh
+titan-miner --graph "<active-work root>/.miner/graph.sqlite3" throughput pr-backfill --dry-run
+```
+
 ## Codex sessions
 
 Opt in with `--codex-home ~/.codex --namespace workstation-account` (or

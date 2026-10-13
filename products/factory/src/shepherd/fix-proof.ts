@@ -144,7 +144,7 @@ function deadlineRead(chosen: { run: CheckRun } | undefined, execSeen: boolean):
 /** Absence is believed only on two polls in a row, since a job behind `needs:` is created after the runs it waits on finish. */
 async function completedRun(port: GitHubPort, repo: RepoSlug, head: string, binding: Binding, timing: PollTiming, signal: AbortSignal): Promise<Polled> {
   const clock = deadline({ ...timing, timeoutMs: timing.timeoutMs ?? DEFAULT_FIX_PROOF_WAIT_MS });
-  const grace = deadline({ ...timing, timeoutMs: timing.noActionsGraceMs ?? DEFAULT_NO_ACTIONS_GRACE_MS });
+  const grace = deadline({ ...timing, startedAt: undefined, timeoutMs: timing.noActionsGraceMs ?? DEFAULT_NO_ACTIONS_GRACE_MS });
   let settledBefore = false;
   let execSeen = false;
   for (;;) {
@@ -249,7 +249,7 @@ export async function readFixProof(deps: Pick<ShepherdDeps, "port" | "store">, r
 }
 
 export const fixProofRoute = (deps: ShepherdDeps): StepRoute =>
-  codeRoute(FIX_PROOF_STEP, deps.now, (input: unknown, signal) => readFixProof(deps, input, { now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs }, signal));
+  codeRoute(FIX_PROOF_STEP, deps.now, (input: unknown, signal, clock) => readFixProof(deps, input, { now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs, startedAt: clock.firstStartedAtMs }, signal));
 
 /** A vacuous or test-less proof at `head` is NO_REPRO, carrying the parsed result; anything else lets the review proceed. */
 export function fixProofVerdict(read: z.infer<typeof FixProofReadSchema>, head: string): Extract<Verdict, { kind: "NO_REPRO" }> | undefined {

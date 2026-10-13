@@ -7,9 +7,10 @@ import { assistedGateId, cancelOwnPending, gateIdFor, gateIsPending, memoKey, ot
 import type { CompletedStep, ContextDeps, Memo, RecoveredStep } from "./context-deps.js";
 import { buildStepVars } from "./prompt.js";
 import { announceRecovery, isRecoverable, parkForRecovery, runLegacyStep } from "./recovery.js";
+import { ReplayGuard } from "./replay-frontier.js";
 import { messageOf } from "./runtime-values.js";
 import { reportingStepFailure } from "./step-failure.js";
-import { dispatchTiming, resumeCounts, tryTiming, type TryTiming } from "./step-timing.js";
+import { dispatchTiming, newActiveStep, resumeCounts, tryTiming } from "./step-timing.js";
 import { parseStepOutput } from "./step-output.js";
 import { addUsage } from "./usage.js";
 import {
@@ -20,7 +21,6 @@ import {
   WorkflowNonDeterminismError,
   WorkflowRecoveryRequiredError,
   WorkflowSchemaDriftError,
-  workflowStepRequestKey,
   type ActiveStep,
   type AssistedOptions,
   type AuthorizeOptions,
@@ -32,7 +32,6 @@ import {
   type StepOperation,
   type StepResult,
   type StepRunInput,
-  type StepUsage,
   type WorkflowContext,
   type WorkflowRun,
 } from "./types.js";
@@ -56,6 +55,7 @@ export class RunContext implements WorkflowContext {
   private readonly legacyKeys: boolean;
   /** The step a resumed run was paused on; its next gate call must find the row it opened. */
   private resumedGateStep: string | null;
+  private readonly replay: ReplayGuard;
 
   constructor(
     readonly run: WorkflowRun,
@@ -67,6 +67,7 @@ export class RunContext implements WorkflowContext {
     this.signal = controller.signal;
     this.legacyKeys = Object.values(run.stepResults).some((result) => result.operation === undefined);
     this.resumedGateStep = run.status === "paused" || run.status === "recovery_required" ? run.currentStep : null;
+    this.replay = new ReplayGuard(run, deps.strictReplay === true && !this.legacyKeys, (stepId, evidence) => this.holdForRecovery(stepId, evidence));
   }
 
   param(key: string): string | undefined {
@@ -96,6 +97,7 @@ export class RunContext implements WorkflowContext {
   private async dispatchStep(stepId: string, template: string, options: DispatchOptions<unknown>): Promise<StepResult> {
     const { index: iteration, key: iterKey, cached } = this.recall("dispatch", stepId);
     if (cached) return this.bump(stepId, this.replayed(cached, iteration, options.schema));
+    if (this.replay.unread()) await this.replay.beforeLive("dispatch", stepId);
     const recovered = this.deps.recovered.get(iterKey);
     if (recovered) this.claimed.add(iterKey);
     else this.throwIfCancelled();
@@ -141,6 +143,7 @@ export class RunContext implements WorkflowContext {
     this.throwIfCancelled();
     const { index: iteration, key, cached } = this.recall("seed", stepId);
     if (cached) return this.bumpSeed(stepId, cached);
+    if (this.replay.unread()) await this.replay.beforeLive("seed", stepId);
     this.setCurrent(stepId);
     const seed = await fn();
     Object.assign(this.run.params, seed.data);
@@ -163,6 +166,7 @@ export class RunContext implements WorkflowContext {
     this.throwIfCancelled();
     const { index: iteration, key, cached } = this.recall("assisted", stepId);
     if (cached) return this.bump(stepId, cached);
+    if (this.replay.unread()) await this.replay.beforeLive("assisted", stepId);
     const gateId = assistedGateId(this.run, stepId, iteration, (id) => gateIsPending(this.deps.gates, id));
     this.requireResumedGate(stepId, gateId);
     this.openGateOnce(gateId, prompt, options, stepId);
@@ -223,6 +227,7 @@ export class RunContext implements WorkflowContext {
     this.throwIfCancelled();
     const { index: iteration, key, cached } = this.recall("authorize", stepId);
     if (cached) return authorizeResultOf(stepId, iteration, this.bump(stepId, cached).data as AuthorityOutcome);
+    if (this.replay.unread()) await this.replay.beforeLive("authorize", stepId);
     const gateId = gateIdFor(this.runId, key);
     this.requireResumedGate(stepId, gateId);
     const gate: AuthorityGate = {
@@ -256,7 +261,7 @@ export class RunContext implements WorkflowContext {
     let failedUsage = recovered?.step.priorUsage;
     for (;;) {
       if (!pending) {
-        active = this.newActiveStep(stepId, iterKey, tryTiming(attempt, restarts, active), failedUsage);
+        active = newActiveStep(this.deps, this.runId, stepId, iterKey, tryTiming(attempt, restarts, active), failedUsage);
         this.activate(active);
         pending = this.start(active, { runId: this.runId, workflowName: this.workflowName, stepId, iteration, prompt, model: options.model, outputSchema: options.schema, signal: this.signal });
       }
@@ -282,19 +287,6 @@ export class RunContext implements WorkflowContext {
       attempt += 1;
       this.deps.emit({ type: "step_retry", runId: this.runId, stepId, attempt: retry, error: outcome.error });
     }
-  }
-
-  private newActiveStep(stepId: string, iterKey: string, timing: TryTiming, priorUsage: StepUsage | undefined): ActiveStep {
-    const { attempt } = timing;
-    const base = { stepId, iterKey, ...timing, ...(priorUsage ? { priorUsage } : {}) };
-    if (!isRecoverable(this.deps.runner)) return { kind: "legacy", ...base };
-    const executionId = this.deps.executionId();
-    return {
-      kind: "recoverable",
-      ...base,
-      executionId,
-      requestKey: workflowStepRequestKey(this.runId, stepId, Number(iterKey.slice(iterKey.lastIndexOf(":") + 1)), attempt),
-    };
   }
 
   private activate(step: ActiveStep): void {
@@ -345,7 +337,7 @@ export class RunContext implements WorkflowContext {
   private recall(operation: StepOperation, stepId: string): Memo {
     const index = this.legacyKeys && operation === "seed" ? 0 : this.iteration(stepId);
     const key = memoKey(operation, stepId, index);
-    const cached = this.run.stepResults[key] ?? (this.legacyKeys ? undefined : this.run.stepResults[memoKey(otherKeyShape(operation), stepId, index)]);
+    const cached = this.replay.recall(stepId, key, this.legacyKeys ? undefined : memoKey(otherKeyShape(operation), stepId, index));
     if (!this.legacyKeys && cached?.operation && cached.operation !== operation) {
       throw new WorkflowNonDeterminismError(this.runId, stepId, index, cached.operation, operation);
     }
