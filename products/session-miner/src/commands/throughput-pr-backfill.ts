@@ -13,7 +13,7 @@ const CACHE_FILE = "pr-diffs.json";
 const DEFAULT_CONCURRENCY = 4;
 
 /** A PR GitHub answered 404 for; cached so a re-run does not ask again. */
-export interface PrDiffMissing {
+interface PrDiffMissing {
   prRef: string;
   missing: true;
 }
@@ -63,7 +63,7 @@ export interface BackfillDeps {
   limit?: number;
 }
 
-export interface BackfillResult {
+interface BackfillResult {
   cachePath: string;
   refs: number;
   alreadyCached: number;
@@ -126,7 +126,7 @@ function summarize(cachePath: string, refs: number, uncached: number, fresh: rea
   return { cachePath, refs, alreadyCached: refs - uncached, fetched: fresh.length - missing, missing, truncated, remaining: uncached - fresh.length, stoppedAtFloor, rateRemaining };
 }
 
-export interface BackfillPlan {
+interface BackfillPlan {
   cachePath: string;
   refs: number;
   alreadyCached: number;
@@ -134,7 +134,7 @@ export interface BackfillPlan {
   toFetchByRepo: Record<string, number>;
 }
 
-export function planBackfill(refs: readonly string[], cachePath: string): BackfillPlan {
+function planBackfill(refs: readonly string[], cachePath: string): BackfillPlan {
   const entries = readCacheEntries(cachePath);
   const toFetchByRepo: Record<string, number> = {};
   for (const ref of refs.filter((r) => !entries.has(r))) {
