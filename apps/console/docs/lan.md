@@ -22,6 +22,12 @@ carry:
   address, which voids the `peerLocal` check owner writes rely on.
 - **The session cookie is `Secure`**, `HttpOnly` and `SameSite=Strict`, and lasts 30 days.
   Rotation is the global logout.
+- **The console is the single owner origin** (BS-18 D3). Shepherd on 7410 and the review rounds
+  are reached only through the console's login: the console reads `shepherd.list`,
+  `shepherd.timeline` and `shepherd.waiting` server-side from `127.0.0.1:7410` and serves the
+  rounds pages itself. 7410 binds loopback only and keeps its Host and Origin guards. There is
+  no `tailscale serve` path router in front of the backends, because it would expose them
+  without the login, and Funnel is never used.
 
 ## What is and is not safe
 

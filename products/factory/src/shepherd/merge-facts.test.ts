@@ -276,11 +276,11 @@ describe("mergeEvidence", () => {
     expect((await collect(fake)).record.decision.outcome).toBe("gate");
   });
 
-  it("allows a release workflow change when authority allows and required checks are green (TP-1886)", async () => {
+  it("allows a release workflow change the reviewer calls CI-policy unchanged when authority allows and required checks are green (TP-1886, TP-2407)", async () => {
     const fake = world([{ path: ".github/workflows/release.yml", status: "modified" }]);
     vi.mocked(evaluate).mockReturnValue(ALLOW_ALL);
 
-    const evidence = await collect(fake);
+    const evidence = await collect(fake, { ciPolicy: { kind: "unchanged" } });
 
     expect(evidence.record.decision).toMatchObject({ outcome: "allow", rule: { table: "authority" } });
   });
@@ -292,7 +292,7 @@ describe("mergeEvidence", () => {
 
     expect(evidence.merge.changedPaths).toEqual(["tools/x.yml", ".github/actions/x.yml"]);
     vi.mocked(evaluate).mockReturnValueOnce(ALLOW_ALL);
-    expect(decideAutoMerge(HEAD, evidence).outcome).toBe("allow");
+    expect(decideAutoMerge(HEAD, { ...evidence, ciPolicy: { kind: "unchanged" } }).outcome).toBe("allow");
   });
 
   it("gates facts collected at one head when the decision is for another", async () => {

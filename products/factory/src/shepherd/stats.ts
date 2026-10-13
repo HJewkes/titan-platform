@@ -32,6 +32,7 @@ interface MergeUps {
   landTime: number;
   strictChase: number;
   freezeHold: number;
+  baseRed: number;
   retry: number;
 }
 
@@ -116,12 +117,16 @@ const inStepOrder = (run: WorkflowRun): Ordered[] =>
     .map(([key, result]) => ({ key, result }))
     .sort((a, b) => a.result.completedAt.localeCompare(b.result.completedAt));
 
+const FREEZE_HOLD_UPDATE = "update-branch:sh-freeze-hold:";
+
 /**
- * Classifies one update-branch step by what preceded it. A refresh after a `ci-wait` read that saw the base move past
- * a green is the land-time merge-up; any other update off a behind read is the strict chase.
+ * Classifies one update-branch step by what preceded it. A freeze-hold refresh whose round waited on a red base is the
+ * base-red refresh; it is matched by round number, not step order, because the wait and the update can share a timestamp.
+ * A refresh after a `ci-wait` read that saw the base move past a green is the land-time merge-up; any other update off a
+ * behind read is the strict chase.
  */
-function classOf(key: string, previous: string | undefined, lastCi: Record<string, unknown> | undefined): MergeUpClass {
-  if (key.startsWith("update-branch:sh-freeze-hold:")) return "freezeHold";
+function classOf(run: WorkflowRun, key: string, previous: string | undefined, lastCi: Record<string, unknown> | undefined): MergeUpClass {
+  if (key.startsWith(FREEZE_HOLD_UPDATE)) return `sh-base-wait:${key.slice(FREEZE_HOLD_UPDATE.length)}` in run.stepResults ? "baseRed" : "freezeHold";
   if (previous !== undefined && stepName(previous) === "update-backoff") return "retry";
   return lastCi?.baseMoved === true ? "landTime" : "strictChase";
 }
@@ -133,7 +138,7 @@ function mergeUpsOf(run: WorkflowRun): { kind: MergeUpClass; at: number }[] {
   let lastCi: Record<string, unknown> | undefined;
   for (const { key, result } of inStepOrder(run)) {
     if (stepName(key) === "ci-wait") lastCi = payloadOf(result);
-    if (stepName(key) === "update-branch") ups.push({ kind: classOf(key, previous, lastCi), at: Date.parse(result.completedAt) });
+    if (stepName(key) === "update-branch") ups.push({ kind: classOf(run, key, previous, lastCi), at: Date.parse(result.completedAt) });
     previous = key;
   }
   return ups;
@@ -158,7 +163,7 @@ const emptyRow = (repo: string, week: string): StatsRow => ({
   slowMerges: 0,
   slowHours: 0,
   outsideMerges: 0,
-  mergeUps: { landTime: 0, strictChase: 0, freezeHold: 0, retry: 0 },
+  mergeUps: { landTime: 0, strictChase: 0, freezeHold: 0, baseRed: 0, retry: 0 },
   strictRounds: 0,
   slowOwnerGated: 0,
   foreignMergeUps: 0,

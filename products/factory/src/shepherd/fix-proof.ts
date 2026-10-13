@@ -13,6 +13,8 @@ import type { Registration, ShepherdStoreRef } from "./store.js";
 export const FIX_PROOF_STEP = "sh-fix-proof";
 export const FIX_PROOF_STEPS: readonly StepDeclaration[] = [{ id: FIX_PROOF_STEP, kind: "dispatch" }];
 export const FIX_PROOF_CHECK = "fix-proof";
+/** The judge sits behind `needs:` on these jobs, so GitHub creates it only after both have finished. */
+const FIX_PROOF_EXEC_CHECKS: ReadonlySet<string> = new Set(["fix-proof-base", "fix-proof-head"]);
 /**
  * Above the three-job run's worst case: the 15-minute exec jobs, then the 8-minute judge created only after them, plus
  * queue gaps. A judge that runs to its limit is still read.
@@ -111,29 +113,44 @@ function chooseRun(candidates: readonly CheckRun[], binding: Binding): { run: Ch
 
 const actionsAt = (runs: readonly CheckRun[], head: string): CheckRun[] => runs.filter((run) => run.appId === GITHUB_ACTIONS_APP_ID && run.headSha === head);
 
-/** Every Actions run at the head finished and none is fix-proof: the repo has no such job, or it was skipped. */
-const settledWithout = (runs: readonly CheckRun[], head: string): boolean => {
+const execAt = (runs: readonly CheckRun[], head: string): boolean => actionsAt(runs, head).some((run) => FIX_PROOF_EXEC_CHECKS.has(run.name));
+
+/**
+ * Every Actions run at the head finished and none is fix-proof: the repo has no such job, or it was skipped. An exec job seen at
+ * the head on any poll means the workflow runs here and its judge is still to be created, so its absence proves nothing.
+ */
+const settledWithout = (runs: readonly CheckRun[], head: string, execSeen: boolean): boolean => {
   const actions = actionsAt(runs, head);
-  return actions.length > 0 && actions.every((run) => run.status === "completed") && !actions.some(isFixProofRun(head));
+  return actions.length > 0 && actions.every((run) => run.status === "completed") && !actions.some(isFixProofRun(head)) && !execSeen;
 };
 
-/** `stalled` is a fix-proof run that existed at the head but never completed, so its absence of a line is not believed. */
+/**
+ * `stalled` is a fix-proof run that existed at the head but never completed, or exec jobs that ran with no judge after them by the
+ * deadline, so the absence of a line is not believed.
+ */
 type Polled = { run: CheckRun; distrust?: string } | { missing: string } | { stalled: string };
+
+function deadlineRead(chosen: { run: CheckRun } | undefined, execSeen: boolean): Polled {
+  if (chosen !== undefined) return { stalled: `the ${FIX_PROOF_CHECK} run at this head was still ${chosen.run.status} at the deadline` };
+  if (execSeen) return { stalled: `the ${FIX_PROOF_CHECK} exec jobs ran at this head but no ${FIX_PROOF_CHECK} judge run completed before the deadline` };
+  return { missing: `no completed ${FIX_PROOF_CHECK} check run from GitHub Actions at this head before the deadline` };
+}
 
 /** Absence is believed only on two polls in a row, since a job behind `needs:` is created after the runs it waits on finish. */
 async function completedRun(port: GitHubPort, repo: RepoSlug, head: string, binding: Binding, timing: PollTiming, signal: AbortSignal): Promise<Polled> {
   const clock = deadline({ ...timing, timeoutMs: timing.timeoutMs ?? DEFAULT_FIX_PROOF_WAIT_MS });
   const grace = deadline({ ...timing, timeoutMs: timing.noActionsGraceMs ?? DEFAULT_NO_ACTIONS_GRACE_MS });
   let settledBefore = false;
+  let execSeen = false;
   for (;;) {
     const runs = await port.checkRuns(repo, head);
     const chosen = chooseRun(runs.filter(isFixProofRun(head)), binding);
     if (chosen?.run.status === "completed") return chosen;
-    const settled = settledWithout(runs, head);
+    execSeen ||= execAt(runs, head);
+    const settled = settledWithout(runs, head, execSeen);
     if (settled && settledBefore) return { missing: `every GitHub Actions run at this head completed with no ${FIX_PROOF_CHECK} check run` };
-    if (actionsAt(runs, head).length === 0 && grace.expired()) return { missing: "no GitHub Actions run at this head" };
-    if (clock.expired() && chosen !== undefined) return { stalled: `the ${FIX_PROOF_CHECK} run at this head was still ${chosen.run.status} at the deadline` };
-    if (clock.expired()) return { missing: `no completed ${FIX_PROOF_CHECK} check run from GitHub Actions at this head before the deadline` };
+    if (actionsAt(runs, head).length === 0 && !execSeen && grace.expired()) return { missing: "no GitHub Actions run at this head" };
+    if (clock.expired()) return deadlineRead(chosen, execSeen);
     settledBefore = settled;
     await clock.sleep(timing.pollMs ?? CHECKS_RECHECK_MS, signal);
   }

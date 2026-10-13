@@ -1,6 +1,7 @@
 import type { GitHubPort } from "@titan-design/github";
 import type { WorkflowRun } from "@titan-design/workflow";
-import { checksAt, verdictAt, type EvidenceSources } from "./coordinator-evidence-read.js";
+import { checksAt, type EvidenceSources } from "./coordinator-evidence-read.js";
+import { verdictAt } from "./verdict-at.js";
 import { landGate } from "./coordinator-evidence.js";
 import { batchRefusal } from "./gate-batch-plan.js";
 import type { FactoryHost } from "./host.js";

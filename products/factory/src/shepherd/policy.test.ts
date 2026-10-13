@@ -254,13 +254,20 @@ describe("shepherdGatePolicy under merge:auto", () => {
     expect(decision).toMatchObject({ outcome: "gate", rule: { rowId: "head-mismatch" } });
   });
 
-  it("allows a .github/ workflow change when authority allows (TP-1886)", () => {
+  it("allows a .github/ workflow change the reviewer calls CI-policy unchanged when authority allows (TP-1886, TP-2407)", () => {
     vi.mocked(evaluate).mockReturnValue({ verdict: "allow", ruleId: "MRG-AU-RV" });
 
-    const decision = shepherdGatePolicy(effective("acme/gizmos"), reviewed(evidenceAt(HEAD, [".github/workflows/release.yml"]))).decide("merge", { headSha: HEAD });
+    const decision = shepherdGatePolicy(effective("acme/gizmos"), reviewed({ ...evidenceAt(HEAD, [".github/workflows/release.yml"]), ciPolicy: { kind: "unchanged" } })).decide("merge", { headSha: HEAD });
 
     expect(decision).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" } });
     expect(evaluate).toHaveBeenCalled();
+  });
+
+  it("gates github-path on stored evidence with no CI-policy line and a .github/ path, before asking authority", () => {
+    const decision = shepherdGatePolicy(effective("acme/gizmos"), reviewed(evidenceAt(HEAD, [".github/workflows/release.yml"]))).decide("merge", { headSha: HEAD });
+
+    expect(decision).toMatchObject({ outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "github-path" } });
+    expect(evaluate).not.toHaveBeenCalled();
   });
 
   it("never asks authority under owner-gate or never, so the table cannot lift the seat ceiling", () => {

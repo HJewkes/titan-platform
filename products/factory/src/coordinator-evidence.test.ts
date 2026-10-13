@@ -66,7 +66,7 @@ describe("coordinatorEvidencePolicy over an approve-merge gate", () => {
     expect(admits(mergeGate(), MERGE, mergeEvidence(overrides as never))).toBe(false);
   });
 
-  it.each(["shepherd-merge-guard/visual-path", "shepherd-seat/synthetic", "shepherd-route/repair-budget", "shepherd-merge-guard/github-path", "shepherd-release/owner-gate"])("refuses a %s gate even with matching evidence", (rule) => {
+  it.each(["shepherd-merge-guard/visual-path", "shepherd-seat/synthetic", "shepherd-route/repair-budget", "shepherd-merge-guard/github-path", "shepherd-merge-guard/ci-policy-weakened", "shepherd-release/owner-gate"])("refuses a %s gate even with matching evidence", (rule) => {
     expect(admits(mergeGate(rule), MERGE, mergeEvidence({ run: { ...RUN, rule } }))).toBe(false);
   });
 
