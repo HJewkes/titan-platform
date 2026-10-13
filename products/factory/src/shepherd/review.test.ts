@@ -43,7 +43,7 @@ import {
   type ReviewTarget,
   type ReviewWiring,
 } from "./review.js";
-import { DEFAULT_HOLD_WAIT_MS, ReviewerMachineHold, reviewWait } from "./review-wait.js";
+import { DEFAULT_HOLD_WAIT_MS, ReviewerAskTimedOut, ReviewerMachineHold, reviewWait } from "./review-wait.js";
 import { DEPTH_FLOOR_REASON } from "@titan-design/review-panel";
 import { MAX_REVIEWER_QUESTIONS, SHAPE_BRIEFS, reviewerBrief } from "@titan-design/review-panel";
 import { routeFor } from "./route-table.js";
@@ -2192,16 +2192,31 @@ describe("reviewPhase", () => {
       expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
     });
 
-    it("does not merge when the seat reviewer's transcript cannot be read, and holds the own MERGE with why", async () => {
+    it("does not merge when the seat reviewer's transcript cannot be parsed, and records why without holding the own MERGE", async () => {
       const dispatch = fakeDispatch(crew(seat));
       const unreadable: Scene["read"] = (input, held, now) => {
-        if (input.reviewerAgentId === seat.agentId) throw new Error("unexpected end of JSON input");
+        if (input.reviewerAgentId === seat.agentId) throw new SyntaxError("unexpected end of JSON input");
         return withSeat([])(input, held, now);
       };
 
       const { verdicts, stepIds, resultOf } = await review({ dispatch, read: unreadable, policy: AUTO });
 
-      const reason = `seat check: the transcript of ${seat.name} could not be read: Error`;
+      const reason = `seat check: the transcript of ${seat.name} could not be read: SyntaxError`;
+      expect(verdicts).toEqual([{ kind: "none", cause: "timeout", reason }]);
+      expect(resultOf(`sh-await-verdict:${H1}`)).toEqual({ kind: "none", reason });
+      expect(stepIds.filter((id) => id.startsWith("sh-merge-evidence"))).toEqual([]);
+    });
+
+    it("does not merge when every read of the seat reviewer's transcript times out, and holds the own MERGE with why", async () => {
+      const dispatch = fakeDispatch(crew(seat));
+      const timingOut: Scene["read"] = (input, held, now) => {
+        if (input.reviewerAgentId === seat.agentId) throw new ReviewerAskTimedOut("agent-chat timed out");
+        return withSeat([])(input, held, now);
+      };
+
+      const { verdicts, stepIds, resultOf } = await review({ dispatch, read: timingOut, policy: AUTO });
+
+      const reason = `seat check: the transcript of ${seat.name} could not be read: ReviewerAskTimedOut`;
       expect(verdicts).toEqual([{ kind: "none", cause: "external-hold", reason, seatHeld: expect.objectContaining({ head: H1 }) }]);
       expect(resultOf(`sh-await-verdict:${H1}`)).toEqual({ kind: "none", reason, seatHeld: expect.objectContaining({ verdict: "MERGE", head: H1 }) });
       expect(stepIds.filter((id) => id.startsWith("sh-merge-evidence"))).toEqual([]);

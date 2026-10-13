@@ -65,7 +65,7 @@ export const SEAT_RECHECK_STEP = "sh-seat-recheck";
  * it again. A check that fails for good is a round with no verdict, as a fresh review's would be. `standing` is the head's
  * fix-proof standing, read again this round, so an unverified proof's MERGE still reaches only the owner gate.
  */
-export async function recheckSeat(ctx: WorkflowContext, target: ReviewTarget, held: SeatHeld, standing: ProofStanding = {}): Promise<Verdict> {
+export async function recheckSeat(ctx: WorkflowContext, target: ReviewTarget, held: SeatHeld, standing: ProofStanding): Promise<Verdict> {
   const { agentId, sessionId } = held.dispatchedReviewer;
   const awaiting: AwaitVerdictInput = { ...target, reviewerAgentId: agentId, reviewerSessionId: sessionId, dispatchedAt: 0 };
   const rechecked = await step(ctx, `${SEAT_RECHECK_STEP}:${target.head}`, { ...awaiting, merge: held.merge }, Awaited);

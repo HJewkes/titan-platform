@@ -1,3 +1,4 @@
+import { BrokerUnavailableError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
 import type { AgentIdentity } from "@titan-design/authority";
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { z } from "zod";
@@ -5,7 +6,7 @@ import { deadline } from "../workflows/deadline.js";
 import { bounded, type AwaitVerdictTiming } from "./await-verdict.js";
 import { failureOf } from "./error-class.js";
 import { holdClassOf } from "./g10-release.js";
-import { clearReviewWait, noteReviewWait } from "./review-wait.js";
+import { ReviewerAskTimedOut, ReviewerBrokerBusy, ReviewerBrokerDown, clearReviewWait, noteReviewWait } from "./review-wait.js";
 import type { AwaitVerdictInput, AwaitVerdictResult, ReviewTarget, ReviewWiring, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { OwnerOverride } from "./override-stats.js";
 import type { Registration } from "./store.js";
@@ -167,6 +168,13 @@ function reviewsThisPr(target: ReviewTarget, read: NameRead): boolean {
   });
 }
 
+/** The broker's own failures that clear with time; a permission, missing-file or parse failure reads the same every time. */
+const TRANSIENT = [ReviewerAskTimedOut, ReviewerBrokerDown, ReviewerBrokerBusy, DispatchTimeoutError, BrokerUnavailableError];
+
+const transient = (error: unknown): boolean => TRANSIENT.some((kind) => error instanceof kind) || /^HTTP 5\d\d$/.test(failureOf(error));
+
+const retryIf = (clears: boolean) => (clears ? { retry: true as const } : {});
+
 /**
  * A damaged transcript blocks only the PR its brief or a verdict block ties it to; one tied to no PR, or only to
  * other PRs, warns instead of blocking every PR on the machine. Any other failure blocks.
@@ -179,8 +187,8 @@ function failedRead(name: string, target: ReviewTarget, read: NameRead, warn: (l
     warn(`seat check: ${name} is not the reviewer of ${target.repo}#${target.pr}, so its damaged transcript does not block it: ${failureOf(failure)}`);
     return undefined;
   }
-  // A damaged transcript reads the same every time; any other failure, such as a busy broker's timeout, can clear.
-  return { kind: "none", reason: `seat check: the transcript of ${name} could not be read: ${failureOf(failure)}`, ...(hard !== undefined && { retry: true as const }) };
+  const hards = read.failures.filter((each) => !(each instanceof DamagedTranscriptError));
+  return { kind: "none", reason: `seat check: the transcript of ${name} could not be read: ${failureOf(failure)}`, ...retryIf(hards.length > 0 && hards.every(transient)) };
 }
 
 function sentBack(name: string, target: ReviewTarget, message: ReviewerMessage, messages: readonly ReviewerMessage[]): SeatCheck {
@@ -197,7 +205,7 @@ export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[
   try {
     listed = await roster();
   } catch (error) {
-    return { kind: "none", reason: `seat check: the roster could not be read: ${failureOf(error)}`, retry: true };
+    return { kind: "none", reason: `seat check: the roster could not be read: ${failureOf(error)}`, ...retryIf(transient(error)) };
   }
   const rows = listed.filter((row) => SEAT_REVIEWER.test(row.name) && row.sessionId !== "");
   let failed: SeatCheck | undefined;
@@ -230,7 +238,7 @@ interface SeatHeldNone {
   seatHeld: OwnMerge;
 }
 
-/** A WAIT, or a read a busy broker timed out, can still settle; a damaged transcript cannot. */
+/** A WAIT, or a read the broker failed for a while, can still settle; a damaged transcript or a refused read cannot. */
 const unsettled = (check: SeatCheck): boolean => check.kind === "none" && (check.wait === true || check.retry === true);
 
 /**
