@@ -4,7 +4,11 @@ import type { SimpleCommand } from "../shell/commands.js";
 import { parseGit } from "../shell/git.js";
 import { declaresRouting, gitConfigRoutes, isRoutingVar } from "./proxy-route.js";
 
-const lastCommand = (line: string) => extractCommands(line, {}).at(-1) as SimpleCommand;
+function lastCommand(line: string): SimpleCommand {
+  const cmd = extractCommands(line, {}).at(-1);
+  if (!cmd) throw new Error(`no command in ${line}`);
+  return cmd;
+}
 
 function gitGlobals(globals: string) {
   const { args } = lastCommand(`git ${globals} push origin feat/x`);
@@ -45,6 +49,9 @@ describe("declaresRouting", () => {
     "export $(echo https_proxy)=x",
     "export https_proxy=$P",
     "export https_proxy=$(cat /tmp/p)",
+    "export https_proxy+=http://evil",
+    "export https_proxy+=",
+    "declare -x ALL_PROXY+=x",
   ])("reads %s as routing", (line) => {
     expect(declaresRouting(lastCommand(line))).toBe(true);
   });
@@ -84,6 +91,12 @@ describe("gitConfigRoutes", () => {
     "-c $C",
     "-c $(cat /tmp/c)",
     "--config-env=$K=P",
+    '--config-env "url.https://evil/x=$V"',
+    '--config-env="url.https://evil/x=$V"',
+    '--config-env "http.x=$V"',
+    "--config-env http.x=$(cat /tmp/v)",
+    "-c http.curloptResolve=github.com:443:1.2.3.4",
+    "-c http.https://github.com.curlOptResolve=github.com:443:1.2.3.4",
   ])("reads git %s push as routing", (globals) => {
     expect(gitConfigRoutes(gitGlobals(globals))).toBe(true);
   });
@@ -96,6 +109,8 @@ describe("gitConfigRoutes", () => {
     "-C /tmp",
     "--no-pager",
     "--config-env=user.name=P",
+    "--config-env user.name=P",
+    '-c "url.https://e/x=$V"',
   ])("does not read git %s push as routing", (globals) => {
     expect(gitConfigRoutes(gitGlobals(globals))).toBe(false);
   });

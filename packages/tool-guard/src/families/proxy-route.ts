@@ -18,7 +18,7 @@ const PROXY_VAR = /^(?:https?|all|ftp)_proxy$/i;
  * subsection's case, so this over-matches only there, which fails closed.
  */
 const ROUTING_KEY = new RegExp(
-  "^(?:http\\.(?:.+\\.)?proxy" +
+  "^(?:http\\.(?:.+\\.)?(?:proxy|curloptresolve)" +
     "|remote\\..+\\.(?:proxy|url|pushurl)" +
     "|url\\..+\\.(?:insteadof|pushinsteadof)" +
     "|core\\.(?:gitproxy|sshcommand)" +
@@ -41,13 +41,14 @@ export function declaresRouting(cmd: SimpleCommand): boolean {
 
 /** Whether the git global words `globals`, before the subcommand, set a routing key or one only known at run time. */
 export function gitConfigRoutes(globals: WordToken[]): boolean {
-  for (let i = 0; i < globals.length; i++) {
-    const v = (globals[i] as WordToken).value;
-    if (v === "-c" || v === "--config-env") {
-      const value = globals[++i];
-      if (value && settingRoutes(value, v === "--config-env")) return true;
-    } else if (v.startsWith("--config-env=")) {
-      if (settingRoutes(dropPrefix(globals[i] as WordToken, "--config-env=".length), true)) return true;
+  let takesValue: string | null = null;
+  for (const word of globals) {
+    if (takesValue !== null) {
+      if (settingRoutes(word, takesValue === "--config-env")) return true;
+      takesValue = null;
+    } else if (word.value === "-c" || word.value === "--config-env") takesValue = word.value;
+    else if (word.value.startsWith("--config-env=")) {
+      if (word.dynamic || ROUTING_KEY.test(envKey(word.value.slice("--config-env=".length)))) return true;
     }
   }
   return false;
@@ -55,45 +56,43 @@ export function gitConfigRoutes(globals: WordToken[]): boolean {
 
 function splitDeclaration(args: WordToken[]): { options: string[]; names: WordToken[] } {
   const options: string[] = [];
-  let i = 0;
-  for (; i < args.length; i++) {
-    const v = (args[i] as WordToken).value;
-    if (v === "--") {
-      i++;
-      break;
-    }
-    if ((args[i] as WordToken).dynamic || !/^[-+]./.test(v) || v.includes("=")) break;
-    options.push(v);
+  for (const [i, word] of args.entries()) {
+    if (word.value === "--") return { options, names: args.slice(i + 1) };
+    if (word.dynamic || !/^[-+]./.test(word.value) || word.value.includes("=")) return { options, names: args.slice(i) };
+    options.push(word.value);
   }
-  return { options, names: args.slice(i) };
+  return { options, names: [] };
 }
 
+/** An append (`NAME+=`) exports whatever value the variable already held, so even an empty one counts. */
 function namesRouting(word: WordToken): boolean {
   const eq = word.value.indexOf("=");
   const end = eq < 0 ? word.value.length : eq;
   if (dynamicBefore(word, end)) return true;
-  if (!isRoutingVar(word.value.slice(0, end).replace(/\[.*$/s, ""))) return false;
-  return eq < 0 || word.dynamic || eq < word.value.length - 1;
+  const name = word.value.slice(0, end).replace(/\[.*$/s, "");
+  const append = name.endsWith("+");
+  if (!isRoutingVar(append ? name.slice(0, -1) : name)) return false;
+  return eq < 0 || append || word.dynamic || eq < word.value.length - 1;
 }
 
 /**
- * `-c` splits its setting at the first `=`, and `--config-env` at the last, since its value is an environment
- * variable's name. A dynamic key may name anything; a dynamic value under a static key changes nothing here.
+ * `-c` splits its setting at the first `=`, which run-time text after it cannot move. `--config-env` splits at the
+ * last, since its value names an environment variable, so run-time text anywhere can move the key's end.
  */
 function settingRoutes(word: WordToken, fromEnv: boolean): boolean {
-  const eq = fromEnv ? word.value.lastIndexOf("=") : word.value.indexOf("=");
+  if (fromEnv) return word.dynamic || ROUTING_KEY.test(envKey(word.value));
+  const eq = word.value.indexOf("=");
   const end = eq < 0 ? word.value.length : eq;
   return dynamicBefore(word, end) || ROUTING_KEY.test(word.value.slice(0, end));
+}
+
+function envKey(setting: string): string {
+  const eq = setting.lastIndexOf("=");
+  return eq < 0 ? setting : setting.slice(0, eq);
 }
 
 /** Whether run-time text lands in `word.value` before index `end`, through a variable or a substitution. */
 function dynamicBefore(word: WordToken, end: number): boolean {
   if (!word.dynamic) return false;
   return word.refs.some((r) => r.start < end) || (word.cuts ?? []).some((c) => c.at <= end) || /[$`]/.test(word.value.slice(0, end));
-}
-
-function dropPrefix(word: WordToken, by: number): WordToken {
-  const refs = word.refs.map((r) => ({ ...r, start: r.start - by, end: r.end - by }));
-  const cuts = word.cuts?.map((c) => ({ ...c, at: c.at - by }));
-  return { ...word, value: word.value.slice(by), refs, ...(cuts ? { cuts } : {}) };
 }
