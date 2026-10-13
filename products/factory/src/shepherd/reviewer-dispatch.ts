@@ -155,10 +155,29 @@ function holdsLiveSession(row: ReviewerRosterRow, now: number): boolean {
  * `firstSeen` remembers earlier sightings and forgets reviewers that no longer run.
  */
 export function runningReviewStarts(rows: readonly ReviewerRosterRow[], firstSeen: Map<string, number>, now: number): number[] {
-  const running = rows.filter((row) => REVIEWER_NAME.test(row.name) && holdsLiveSession(row, now));
-  const names = new Set(running.map((row) => row.name));
+  const running = runningReviewers(rows, now);
+  const names = new Set(running);
   for (const name of firstSeen.keys()) if (!names.has(name)) firstSeen.delete(name);
-  return running.map((row) => firstSeen.get(row.name) ?? (firstSeen.set(row.name, now), now));
+  return running.map((name) => firstSeen.get(name) ?? (firstSeen.set(name, now), now));
+}
+
+/** The names of the `rv-` rows that hold a live session. */
+function runningReviewers(rows: readonly ReviewerRosterRow[], now: number): string[] {
+  return rows.filter((row) => REVIEWER_NAME.test(row.name) && holdsLiveSession(row, now)).map((row) => row.name);
+}
+
+/** Reads the roster for the gate and tells it what was read, or why nothing was, so `shepherd status` never shows an unread roster as 0. */
+async function readRunningReviews(roster: RosterReader, gate: SpawnGate, firstSeen: Map<string, number>): Promise<number[]> {
+  let rows: ReviewerRosterRow[];
+  try {
+    rows = (await roster.rows()).map(rosterRow);
+  } catch (error) {
+    gate.noteReviewers({ rosterError: (error as Error).message });
+    throw error;
+  }
+  const now = Date.now();
+  gate.noteReviewers({ running: runningReviewers(rows, now) });
+  return runningReviewStarts(rows, firstSeen, now);
 }
 
 /** A resume names only the reviewer, so its PR is known only when this process spawned it. */
@@ -171,7 +190,7 @@ export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOpti
   const { agentChatBin, roles, cwdFor, configDir } = options;
   const roster = options.roster ?? agentChatRoster(agentChatBin, { timeoutMs: options.rosterTimeoutMs ?? DEFAULT_ROSTER_TIMEOUT_MS });
   const firstSeen = new Map<string, number>();
-  const runningReviews = async () => runningReviewStarts((await roster.rows()).map(rosterRow), firstSeen, Date.now());
+  const runningReviews = async () => (options.gate ? readRunningReviews(roster, options.gate, firstSeen) : []);
   const spawnTimeoutMs = options.spawnTimeoutMs ?? DEFAULT_SPAWN_TIMEOUT_MS;
   const agents = agentChatAgents(agentChatBin, { configDir, timeoutMs: spawnTimeoutMs, roster, gate: options.gate });
   const targets = new Map<string, ReviewTarget>();
