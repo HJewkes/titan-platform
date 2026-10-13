@@ -28,7 +28,7 @@ const CURL_KNOWN_SWITCHES = set(...CURL_SWITCHES, "--include");
 const CURL_NEXT = set("--next", "-:");
 /** Long wget option names getopt_long matches by unique prefix: each listed one, and each switch with and without `no-`. */
 const WGET_LONG = set(...[...WGET_VALUE_OPTIONS, ...WGET_SWITCHES].filter((n) => n.startsWith("--")).flatMap((n) => [n, ...switchForms(n, WGET_SWITCHES)]));
-const HTTPIE_VALUES = set("-a", "--auth", "-A", "--auth-type", "-o", "--output", "--session", "--session-read-only", "-p", "--print", "-s", "--style", "--pretty", "--verify", "--cert", "--cert-key", "--timeout", "--proxy", "--raw", "--format-options", "--default-scheme");
+export const HTTPIE_VALUES = set("-a", "--auth", "-A", "--auth-type", "-o", "--output", "--session", "--session-read-only", "-p", "--print", "-s", "--style", "--pretty", "--verify", "--cert", "--cert-key", "--timeout", "--proxy", "--raw", "--format-options", "--default-scheme");
 /** An httpie request item; the earliest separator decides its kind. */
 const HTTPIE_ITEM_RE = /==|:=@|:=|=@|=|@|:/;
 const HTTPIE_METHODS = set("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS");
@@ -196,7 +196,7 @@ function wgetRequest(cmd: SimpleCommand): HttpRequest {
 }
 
 /** getopt_long takes any unique prefix of a long option, as `--meth` for `--method`. */
-function wgetLongName(word: WordToken): WordToken {
+export function wgetLongName(word: WordToken): WordToken {
   const eq = word.value.indexOf("=");
   const name = eq < 0 ? word.value : word.value.slice(0, eq);
   if (!name.startsWith("--") || name === "--" || WGET_LONG.has(name)) return word;

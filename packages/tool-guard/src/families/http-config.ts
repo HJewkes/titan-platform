@@ -3,6 +3,10 @@ import type { RedirectToken, WordToken } from "../shell/lexer.js";
 import { basename, resolveValue } from "../shell/path.js";
 import { DECLARED_RE, DECLARERS, parseAssignment } from "../shell/vars.js";
 import { commandWrites, TARGET_RE } from "../shell/writers.js";
+import { CURL_VALUE_OPTIONS } from "./curl-options.js";
+import { HTTPIE_VALUES, wgetLongName } from "./egress.js";
+import { readOptions, set, valuesOf } from "./options.js";
+import { WGET_VALUE_OPTIONS } from "./wget-options.js";
 
 /** Variables that choose which config file wget, curl or httpie reads. */
 const CONFIG_VARS = new Set(["WGETRC", "SYSTEM_WGETRC", "CURL_HOME", "XDG_CONFIG_HOME", "HOME", "HTTPIE_CONFIG_DIR"]);
@@ -22,8 +26,17 @@ const RC_TEXT_RE = /(?:wget|curl)rc|\/httpie\b/;
 const RC_NAMES = [".wgetrc", "wgetrc", ".curlrc", "curlrc", "_curlrc", "config.json", "httpie", ".config"];
 /** A declaration option that makes a nameref, through which a later plain assignment writes the named variable. */
 const NAMEREF_RE = /^-[a-zA-Z]*n/;
-/** Commands that write each operand they name: `tee` its files, a copy or link its destination or a file in it. */
-const FILE_WRITERS = new Set(["tee", "cp", "mv", "ln", "install"]);
+/** Commands that write no file, whatever their operands; any other command may write any operand or attached value. */
+const READ_ONLY = set("cat", "grep", "egrep", "fgrep", "rg", "ls", "echo", "printf", "test", "[", "[[", "head", "tail", "wc", "true", "false", ":", "pwd", "which", "type", "sleep", "jq", "basename", "dirname", "for", "select", "read", "mapfile", "readarray", "export", "declare", "typeset", "local", "readonly", "unset", "getopts", "let", "set", "shift", "return", "exit", "break", "continue", "wait");
+/** The HTTP clients' own options that name a file they write, read against each client's value options. */
+const CLIENT_OUTPUTS: Record<string, { values: ReadonlySet<string>; outputs: readonly string[] }> = {
+  curl: { values: CURL_VALUE_OPTIONS, outputs: ["-o", "--output", "--output-dir", "-D", "--dump-header", "-c", "--cookie-jar", "--trace", "--trace-ascii", "--stderr", "--etag-save", "--hsts", "--alt-svc", "--libcurl"] },
+  wget: { values: WGET_VALUE_OPTIONS, outputs: ["-O", "--output-document", "-o", "--output-file", "-a", "--append-output", "-P", "--directory-prefix", "--save-cookies", "--rejected-log", "--warc-file"] },
+  http: { values: HTTPIE_VALUES, outputs: ["-o", "--output", "--session"] },
+  https: { values: HTTPIE_VALUES, outputs: ["-o", "--output", "--session"] },
+};
+/** A file only known at run time; its `$` marks the run-time part as the lexer leaves an unexpanded variable. */
+const UNKNOWN_TARGET: WordToken = { type: "word", value: "$", dynamic: true, quoted: false, spliced: false, computed: true, refs: [], subs: [] };
 /** A pattern or brace character, which may expand to any name. */
 const PATTERN_RE = /[*?[{]/g;
 /** A `>&` or `<&` to a descriptor duplicates it and opens no file. */
@@ -70,15 +83,35 @@ function runTimeTarget(name: string, args: WordToken[]): boolean {
   return (name === "read" || name === "mapfile" || name === "readarray") && args.some((a) => a.dynamic);
 }
 
-/** Files the command may write: an output redirect's target, and every operand of a `FILE_WRITERS` command. */
+/**
+ * Files the command may write: an output redirect's target, an HTTP client's output options, and for any command not
+ * `READ_ONLY` every operand and every value glued to an option or `=`. A zsh `>!` target the lexer reads as `!` is unknown.
+ */
 function writeTargets(cmd: SimpleCommand): WordToken[] {
-  const redirected = cmd.redirects.filter(opensForWrite).flatMap((r) => r.target ?? []);
-  if (cmd.name === null || !FILE_WRITERS.has(cmd.name)) return redirected;
-  return [...redirected, ...cmd.args.filter((a) => a.dynamic || !a.value.startsWith("-"))];
+  const redirected = cmd.redirects.filter(opensForWrite).flatMap((r) => (r.target?.value.startsWith("!") ? [UNKNOWN_TARGET] : (r.target ?? [])));
+  if (cmd.name !== null && READ_ONLY.has(cmd.name)) return redirected;
+  const client = CLIENT_OUTPUTS[cmd.name ?? ""];
+  if (client) return [...redirected, ...clientOutputs(cmd, client)];
+  // A null name means a run-time command word, which is args[0]: the command, not an operand it writes.
+  const operands = cmd.name === null ? cmd.args.slice(1) : cmd.args;
+  return [...redirected, ...operands.flatMap(withGluedValues)];
+}
+
+function clientOutputs(cmd: SimpleCommand, client: { values: ReadonlySet<string>; outputs: readonly string[] }): WordToken[] {
+  const words = cmd.name === "wget" ? cmd.args.map(wgetLongName) : cmd.args.map((w) => ({ ...w, value: w.value.replace(/^--expand-/, "--") }));
+  return valuesOf(readOptions(words, client.values), ...client.outputs);
 }
 
 function opensForWrite(r: RedirectToken): boolean {
   return r.op.includes(">") && !(r.op.endsWith("&") && DESCRIPTOR_RE.test(r.target?.value ?? ""));
+}
+
+/** A run-time word's tail does not depend on what precedes it; a literal one also names the text after `=` or a short option. */
+function withGluedValues(w: WordToken): WordToken[] {
+  if (w.dynamic) return [w];
+  const eq = w.value.indexOf("=");
+  const glued = eq >= 0 ? [w.value.slice(eq + 1)] : /^-[^-]./.test(w.value) ? [w.value.slice(2)] : [];
+  return [w, ...glued.map((value) => ({ ...w, value }))];
 }
 
 /**

@@ -119,6 +119,17 @@ describe("handle: an HTTP write to a run-time URL", () => {
     "export HTTPIE_CONFIG_DIR=d; http https://api.github.com/repos/o/r/pulls/1/merge",
     "echo x > ~/.config/httpie/config.json; http https://api.github.com/repos/o/r/pulls/1/merge",
     'echo x > "$D/config.json"; http https://api.github.com/repos/o/r/pulls/1/merge',
+    'curl -o ~/.wget$X https://example.com/x; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'curl -so "$F" https://example.com/x; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'wget -O "$F" https://example.com/x; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'dd of="$F" < rc; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'rsync rc "$F"; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'sed -i s/a/b/ "$F"; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'unzip a.zip -d ~; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'echo m >! "$F"; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'echo m >>! "$F"; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'curl --output="$F" https://example.com/x; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'wget --output-doc="$F" https://example.com/x; wget https://api.github.com/repos/o/r/pulls/1/merge',
   ])("denies %s as a merge", async (command) => {
     const { columns } = await logColumns(command);
 
@@ -131,7 +142,7 @@ describe("handle: an HTTP write to a run-time URL", () => {
     expect(columns).toEqual(["deny", "EXT-CO", "private-egress", "bash.egress.curl-upload", "coordinator+worker+headless"]);
   });
 
-  it.each(["curl -X GET \"$U\"", "curl -fsSL --compressed https://api.github.com/repos/o/r/pulls/1", "curl -g --no-get --globoff https://api.github.com/repos/o/r", "curl --no-progress-meter -sS https://example.com/x", 'curl --include "$U"', 'curl --progress-meter -s "$U"', 'curl -s: -I "$U"', 'curl -s "https://api.github.com/repos/$R/pulls" -H "Authorization: Bearer $T"', 'curl -s "http://localhost:8080/$P" -o f', "wget -q -nv --no-config -O out https://api.github.com/repos/o/r/pulls/1", "wget --quiet --no-check-certificate --tries=3 https://example.com/x", "wget -e robots=off -e tries=3 -e timeout=10 -e wait=1 https://example.com/x", "wget -q https://api.github.com/repos/o/r/pulls/1", "wget -O out.html https://example.com/x", "curl -o file https://example.com/x > log.txt", 'curl -s https://example.com/x > "$D/out.html"', 'curl -s https://example.com/x > "out-$(date +%s).html"', "curl -s https://example.com/x | tee out.txt", "cp a.txt b.txt && curl -s https://example.com/x", 'for f in a b; do curl -s "https://example.com/$f"; done', 'read -r U < f; curl -s "$U"'])(
+  it.each(["curl -X GET \"$U\"", "curl -fsSL --compressed https://api.github.com/repos/o/r/pulls/1", "curl -g --no-get --globoff https://api.github.com/repos/o/r", "curl --no-progress-meter -sS https://example.com/x", 'curl --include "$U"', 'curl --progress-meter -s "$U"', 'curl -s: -I "$U"', 'curl -s "https://api.github.com/repos/$R/pulls" -H "Authorization: Bearer $T"', 'curl -s "http://localhost:8080/$P" -o f', "wget -q -nv --no-config -O out https://api.github.com/repos/o/r/pulls/1", "wget --quiet --no-check-certificate --tries=3 https://example.com/x", "wget -e robots=off -e tries=3 -e timeout=10 -e wait=1 https://example.com/x", "wget -q https://api.github.com/repos/o/r/pulls/1", "wget -O out.html https://example.com/x", "curl -o file https://example.com/x > log.txt", 'curl -s https://example.com/x > "$D/out.html"', 'curl -s https://example.com/x > "out-$(date +%s).html"', "curl -s https://example.com/x | tee out.txt", "cp a.txt b.txt && curl -s https://example.com/x", 'for f in a b; do curl -s "https://example.com/$f"; done', 'read -r U < f; curl -s "$U"', 'grep -q x "$F" && curl -s https://example.com/x', 'echo "$U"; curl -s "$U"', '"$EDITOR" notes.md; curl -s https://example.com/x'])(
     "lets the read %s through",
     async (command) => {
       const { stdout } = await logColumns(command);
