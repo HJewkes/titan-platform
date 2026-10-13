@@ -25,7 +25,8 @@ import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import type { Phase } from "./step-phase.js";
 import { waitingCommand } from "./waiting.js";
 import { timelineEntries, type PrTimeline, type WatchRow } from "./view.js";
-import { LIST_FILTER, rowOf, waitingFilter, watchRows } from "./watch-rows.js";
+import { LIST_FILTER, rowOf, rowsWithRuns, waitingFilter, watchRows } from "./watch-rows.js";
+import { stackFrozen } from "./stack-cascade.js";
 
 /** Transitional, for workflows.ts until TP-2466 b repoints it. */
 export type { ShepherdServices } from "./services.js";
@@ -222,13 +223,18 @@ const registerCommand = defineCommand<RegisterArgs, Registered, FactoryContext>(
   run: registerWithHold,
 });
 
-const statusCommand = defineCommand<{ repo?: string; pr?: number }, WatchRow[], FactoryContext>({
+/** `stackFrozen` is read by agent-chat, which stacks no new child on a parent past its fix-round limit. */
+export type StatusRow = WatchRow & { stackFrozen: boolean };
+
+const statusCommand = defineCommand<{ repo?: string; pr?: number }, StatusRow[], FactoryContext>({
   name: "shepherd.status",
-  description: "One row per shepherded PR, optionally narrowed to a repo or a PR: phase, head, next action and blockers",
+  description: "One row per shepherded PR, optionally narrowed to a repo or a PR: phase, head, next action, blockers, and whether new stacking on it is frozen",
   args: z.object({ repo: RepoArg.optional(), pr: PrArg.optional() }),
-  result: z.custom<WatchRow[]>(),
-  run: async ({ repo, pr }, ctx) =>
-    watchRows(ctx.host, servicesOf(ctx), (registration) => (repo === undefined || registration.repo === repo.toLowerCase()) && (pr === undefined || registration.pr === pr)),
+  result: z.custom<StatusRow[]>(),
+  run: async ({ repo, pr }, ctx) => {
+    const rows = await rowsWithRuns(ctx.host, servicesOf(ctx), (registration) => (repo === undefined || registration.repo === repo.toLowerCase()) && (pr === undefined || registration.pr === pr));
+    return rows.map(({ row, run }) => ({ ...row, stackFrozen: stackFrozen(run) }));
+  },
 });
 
 const waiting = waitingCommand((ctx) => watchRows(ctx.host, servicesOf(ctx), waitingFilter(ctx.host)));
