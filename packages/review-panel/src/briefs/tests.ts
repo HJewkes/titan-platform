@@ -25,7 +25,7 @@ const UNVERIFIED_READING: Record<FixProofUnverified, string> = {
   unread: "Shepherd marks this head's fix-proof unverified: it could not read a fix-proof result for this head although one was due.",
 };
 
-const UNVERIFIED_RULE = "Say FIX_FIRST unless you name an added test and show it fails on the base; a MERGE here goes to the owner, never to auto-merge.";
+const UNVERIFIED_RULE = "Say FIX_FIRST unless you name an added test and show it fails on the base; a MERGE here merges on green with the unverified standing recorded.";
 
 const JUDGE_YOURSELF = "Read each added test against the base code and say which would fail there.";
 
