@@ -100,6 +100,9 @@ describe("a command that rebinds a command name", () => {
     ["zstyle -g after a leading --", "zstyle -- -g functions"],
     ["zformat -f after a leading --", "zformat -- -f functions fmt"],
     ["getopts after --", "getopts -- ab commands"],
+    ["a dynamic printf format, which may be -vNAME", 'printf "$fmt" "$x"'],
+    ["print behind a dynamic word and one more", 'print "$f" x'],
+    ["printf behind a dynamic word and one more", 'printf "$f" x'],
   ])("is caught: %s", (_how, src) => {
     expect(rebinds(src)).toBe(true);
   });
@@ -131,8 +134,8 @@ describe("a command that rebinds a command name", () => {
     ["an indirect read", "echo ${!n}"],
     ["a hash lookup after --", "hash -- -p"],
     ["set -o and its value", "set -o pipefail"],
-    ["a dynamic printf format", 'printf "$fmt" "$x"'],
     ["declare -f printing a function", 'declare -f "$fn"'],
+    ["printf printing only a dynamic word", 'printf "$msg"'],
     ["zparseopts into an ordinary name", "zparseopts -A opts -D y: v=verbose"],
     ["functions listing", "functions -x 2 f"],
     ["functions -c after --, which names functions", "functions -- -c f y"],
