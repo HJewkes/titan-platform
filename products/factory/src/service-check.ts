@@ -2,6 +2,7 @@ import type { Command } from "commander";
 import { parsePort } from "./cli-options.js";
 import { DIRTY_SUFFIX, PROBE_PENDING } from "./build-info.js";
 import { deployBlockOf, type DeployHealth } from "./deploy-health.js";
+import { EXIT } from "./exit-codes.js";
 import { FACTORY_PORT } from "./serve.js";
 import { serviceLabel, UNIT_NAME } from "./service.js";
 import { MANAGED_PLATFORMS, runServiceVerb, type ServiceIo, type ServicePorts } from "./service-control.js";
@@ -10,7 +11,7 @@ import { describeIndexLock, type IndexLock } from "./stale-lock.js";
 import { judgeTick, type TickStatusRead } from "./tick-status.js";
 
 /** The causes in the order `check` tests them; the first that holds is the one reported. `stale CLI` alone is advisory: it leaves the check ok. */
-type Cause = "unreadable" | "not loaded" | "stale pid" | "crash loop" | "unresponsive" | "stale build" | "GitHub down" | "stale index.lock" | "deploy stalled" | "tick failing" | "tick stale" | "no hub seat" | "stale CLI";
+type Cause = "unreadable" | "not loaded" | "socket down" | "restarting" | "stale pid" | "crash loop" | "unresponsive" | "stale build" | "GitHub down" | "stale index.lock" | "deploy stalled" | "tick failing" | "tick stale" | "no hub seat" | "stale CLI";
 
 /** What `check` reads beyond `ServicePorts`; every one is read-only, so a fake never has to model a mutation. */
 export interface CheckPorts extends ServicePorts {
@@ -50,7 +51,8 @@ interface CheckResult {
 const CRASH_LOOP_MIN_RUNS = 3;
 export const CRASH_LOOP_WINDOW_MS = 5 * 60_000;
 const UNKNOWN = "unknown";
-const FAILURE = 1;
+const RESTARTING_RETRY_S = 10;
+const SOCKET_UNIT = "titan-factory.socket";
 
 type Manager = "launchd" | "systemd";
 
@@ -60,6 +62,11 @@ interface Job {
   pid?: number;
   runs?: number;
   lastExit?: number;
+  /** systemd only: the unit's ActiveState and SubState, which tell a restart in flight from a unit that holds no process. */
+  activeState?: string;
+  subState?: string;
+  /** systemd only: the socket unit, `absent` when none is installed. `down` means it is loaded but not active. */
+  socket?: "listening" | "down" | "absent";
   /** Set when the manager itself could not be read, so whether the job is loaded is unknown. */
   unreadable?: { exitCode: number; stderr: string };
 }
@@ -79,7 +86,7 @@ async function readLaunchdJob(ports: CheckPorts): Promise<Job> {
   return loadedJob("launchd", field(printed.stdout, "pid"), field(printed.stdout, "runs"), field(printed.stdout, "last exit code"));
 }
 
-const UNIT_PROPERTIES = "LoadState,ActiveState,MainPID,NRestarts,ExecMainStatus";
+const UNIT_PROPERTIES = "LoadState,ActiveState,SubState,MainPID,NRestarts,ExecMainStatus";
 const integer = (text: string): number | undefined => (/^-?\d+$/.test(text) ? Number(text) : undefined);
 
 /** NRestarts stands in for launchd's runs and ExecMainStatus for its last exit code; a unit that is not active holds no process, whatever MainPID says. */
@@ -91,7 +98,15 @@ async function readUnit(ports: CheckPorts): Promise<Job> {
   if (value("LoadState") !== "loaded") return { manager: "systemd", loaded: false };
   const pid = integer(value("MainPID"));
   const running = value("ActiveState") === "active" && pid !== undefined && pid > 0;
-  return loadedJob("systemd", running ? pid : undefined, integer(value("NRestarts")), integer(value("ExecMainStatus")));
+  const job = loadedJob("systemd", running ? pid : undefined, integer(value("NRestarts")), integer(value("ExecMainStatus")));
+  return { ...job, activeState: value("ActiveState"), subState: value("SubState"), socket: await readSocket(ports) };
+}
+
+/** A socket unit that cannot be read counts as absent: it is optional, and the service's own state is judged without it. */
+async function readSocket(ports: CheckPorts): Promise<NonNullable<Job["socket"]>> {
+  const shown = await ports.systemctl(["--user", "show", SOCKET_UNIT, "--property=LoadState,ActiveState"]);
+  if (shown.code !== 0 || !/^LoadState=loaded$/m.test(shown.stdout)) return "absent";
+  return /^ActiveState=active$/m.test(shown.stdout) ? "listening" : "down";
 }
 
 const readJob = (ports: CheckPorts): Promise<Job> => (ports.platform === "linux" ? readUnit(ports) : readLaunchdJob(ports));
@@ -135,6 +150,7 @@ async function diagnoseService(ports: CheckPorts, port: number): Promise<CheckRe
   const job = await readJob(ports);
   if (job.unreadable) return unreadable(job, job.unreadable);
   if (!job.loaded) return verdict("not loaded", `${jobName(job, ports)} is not loaded; run titan-factory service install`, job, null);
+  if (job.socket === "down") return socketDown(job);
   const probes = await probeHealth(ports, job, port, deadline);
   const { health } = probes;
   const healthPid = typeof health?.pid === "number" ? health.pid : undefined;
@@ -148,6 +164,11 @@ async function diagnoseService(ports: CheckPorts, port: number): Promise<CheckRe
   const judged = (await withDeploy(running, ports)) ?? withTick(running, ports);
   const configured = judged.ok ? withHubSeat(judged, ports) : judged;
   return configured.ok ? withInstalledCli(configured, ports) : configured;
+}
+
+function socketDown(job: Job): CheckResult {
+  const message = `${SOCKET_UNIT} is loaded but not active; run systemctl --user start ${SOCKET_UNIT} (or titan-factory service install)`;
+  return verdict("socket down", message, job, null, { activeState: job.activeState ?? null, subState: job.subState ?? null, socket: "down" });
 }
 
 function unreadable(job: Job, failure: NonNullable<Job["unreadable"]>): CheckResult {
@@ -274,7 +295,17 @@ function unanswered(job: Job, port: number, probes: Probes, healthPid: number | 
     const message = `${job.manager} pid ${job.pid} is alive but every /health probe on port ${port} timed out (${seconds}); read serve.err.log in the service log directory, then run titan-factory service restart`;
     return verdict("unresponsive", message, job, null, detail);
   }
+  if (isRestarting(job)) return restarting(job, probes.health, detail);
   return verdict("stale pid", unansweredWhy(job, port, probes.failed), job, probes.health, detail);
+}
+
+/** A unit between processes is not a stale pid: systemd is about to start the next one. */
+const isRestarting = (job: Job): boolean => job.activeState === "activating" || job.activeState === "deactivating" || job.subState === "auto-restart";
+
+function restarting(job: Job, health: Record<string, unknown> | null, probeDetail: CheckResult["detail"]): CheckResult {
+  const state = [job.activeState, job.subState].filter((part) => part !== undefined && part !== "").join(" ");
+  const detail = { ...probeDetail, activeState: job.activeState ?? null, subState: job.subState ?? null, socket: job.socket === "listening" ? "listening" : "absent" };
+  return verdict("restarting", `${UNIT_NAME} is restarting (${state}); retry in ${RESTARTING_RETRY_S} s`, job, health, detail);
 }
 
 const unansweredWhy = (job: Job, port: number, failedProbes: number): string => {
@@ -301,7 +332,8 @@ async function judgeRunning(ports: CheckPorts, job: Job, health: Record<string, 
 async function checkService(ports: CheckPorts, io: ServiceIo, port: number, json: boolean): Promise<number> {
   const result = await diagnoseService(ports, port);
   io.stdout(json ? `${JSON.stringify(result)}\n` : `${result.cause === null ? "" : `${result.cause}: `}${result.message}\n`);
-  return result.ok ? 0 : FAILURE;
+  if (result.ok) return EXIT.OK;
+  return result.cause === "restarting" ? EXIT.TEMPFAIL : EXIT.FAILURE;
 }
 
 export function registerServiceCheck(service: Command, io: ServiceIo, portsOf: () => CheckPorts, setExit: (code: number) => void): void {

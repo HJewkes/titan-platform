@@ -810,10 +810,9 @@ Key exports:
 
 - `classify`: `changedLineCount`, `classifyPr`, `pathTouches`, `securitySliceFlag`, `touchesDependency`
 - `plan`: `planPanel`
-- `reviewer-brief`: `correctionPrompt`, `reviewCheckoutName`, `reviewerBrief`
+- `reviewer-brief`: `correctionPrompt`, `reviewCheckoutName`, `reviewerBrief`, `validOwnerPicks`
 - `accept-verdict`: `acceptVerdict`, `isUsageLimit`
-- `depth-floor`: `isInvestigativeCall`
-- +100 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-panel)
+- +105 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-panel)
 
 <a id="cap-session-analytics"></a>
 
