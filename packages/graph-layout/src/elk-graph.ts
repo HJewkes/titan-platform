@@ -16,7 +16,7 @@ export function dimsFor(nodeId: string, sizing: NodeSizing): NodeSize {
   return sizing?.get(nodeId) ?? DEFAULT_NODE_SIZE;
 }
 
-function byText(a: string, b: string): number {
+export function byText(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -34,7 +34,7 @@ export function sortedInput(input: GraphInput): { nodes: GraphNode[]; edges: Gra
 }
 
 /** Round to the nearest 0.5 px, so float noise below half a pixel never changes the output. */
-function roundHalf(v: number): number {
+export function roundHalf(v: number): number {
   return Math.round(v * 2) / 2;
 }
 
