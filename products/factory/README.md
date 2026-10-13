@@ -694,6 +694,19 @@ one on a deny list, gets no reviewer, and `sh-review` records
 With no `review` key nothing is built: no `agent-chat` process is started, `sh-review`
 answers `none`, and the owner gate decides every merge.
 
+### Answering gates from agent-chat: `shepherd.gateNotify`
+
+With `"gateNotify": {}` (and `agentChatBin`) set, serve runs a sweep every 30 seconds
+(`src/gate-notify-sweep.ts`) that files each pending decision gate as an `agent-chat ask` under the
+label `titan-factory` with task `gate:<gateId>`, and resolves the gate from the owner's answer at
+most once. An answer resolves as `owner-remote` (owner decision Q1 of CC-169): any unregistered
+caller on the broker's socket can answer, so a gate whose rule does not admit `owner-remote` is
+never asked. `label` and `resolverClass` (`owner-remote` or `owner-terminal`) override the
+defaults. `/health`'s `gateNotify` block shows `open` asks, `stuck` gates whose ask ended without
+resolving them (refused, dismissed, unmappable), `unasked` gates an answer cannot settle, and
+`answersError` while the label's answers cannot be read. Each of those still waits on
+`titan-factory gate resolve`. Without the key serve asks nothing.
+
 ### A reviewer account out of usage
 
 Only Claude Code's own usage-limit record counts: a final message whose transcript record has the
