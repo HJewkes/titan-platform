@@ -5,6 +5,7 @@ import {
   ModuleResolutionKind,
   type ExportDeclaration,
   type ImportDeclaration,
+  type Node,
   type SourceFile,
 } from "ts-morph";
 import type { Extractor, ParsedFile } from "@titan-design/code-parser";
@@ -18,7 +19,9 @@ import {
   buildLocalUsageCounts,
   importWeight,
   namedImportBindings,
+  namespaceMemberUsage,
   reExportWeight,
+  WHOLE_NAMESPACE,
 } from "./reference-weight.js";
 import { buildSymbolNodes } from "./symbol-nodes.js";
 import {
@@ -200,6 +203,34 @@ export class TsMorphGraphExtractor implements Extractor<GraphFragment> {
         bindingWeight(binding, c.usage),
       );
     }
+    const ns = decl.getNamespaceImport();
+    if (ns) this.recordNamespaceReferences(c, decl, ns.getText());
+  }
+
+  /**
+   * Credit the exports a namespace import actually touches (TP-2474 c). A
+   * whole-object use credits every export of the target, which is only
+   * enumerable when ts-morph linked the target; otherwise only the named
+   * members are credited, through the on-disk re-export walk. The export map is
+   * read once per import, and never for an out-of-repo target.
+   */
+  private recordNamespaceReferences(c: EdgeCollector, decl: ImportDeclaration, localName: string): void {
+    const targetSf = decl.getModuleSpecifierSourceFile();
+    if (targetSf && !this.resolveInternal(targetSf)) return;
+    const exported = targetSf?.getExportedDeclarations();
+    const usage = namespaceMemberUsage(decl.getSourceFile(), localName);
+    const names = new Set(usage.keys());
+    if (names.delete(WHOLE_NAMESPACE)) {
+      for (const name of exported?.keys() ?? []) names.add(name);
+    }
+    const specifier = decl.getModuleSpecifierValue();
+    for (const name of names) {
+      const dstId = targetSf
+        ? this.originSymbolId(targetSf, exported!.get(name), name)
+        : this.resolveReExportedSymbol(c, specifier, name);
+      if (!dstId) continue;
+      addWeightedEdge(c.agg, c.srcFileId, dstId, "references", specifier, Math.max(usage.get(name) ?? 0, 1));
+    }
   }
 
   /**
@@ -221,20 +252,26 @@ export class TsMorphGraphExtractor implements Extractor<GraphFragment> {
   ): string | null {
     const targetSf = decl.getModuleSpecifierSourceFile();
     if (targetSf) {
-      const decls = targetSf.getExportedDeclarations().get(importedName);
-      const originSf =
-        decls && decls.length > 0 ? decls[0]!.getSourceFile() : targetSf;
-      const originId = this.inRepoFileId(remapDistToSrc(originSf.getFilePath(), this.fileExists));
-      return originId ? symbolId(originId, importedName) : null;
+      return this.originSymbolId(targetSf, targetSf.getExportedDeclarations().get(importedName), importedName);
     }
     // ts-morph couldn't link the specifier (extensionless / out-of-project);
     // trace the target's re-export hops on disk so an import through an
     // extensionless barrel still credits the origin symbol (C-70).
+    return this.resolveReExportedSymbol(c, decl.getModuleSpecifierValue(), importedName);
+  }
+
+  private originSymbolId(targetSf: SourceFile, decls: Node[] | undefined, name: string): string | null {
+    const originSf = decls && decls.length > 0 ? decls[0]!.getSourceFile() : targetSf;
+    const originId = this.inRepoFileId(remapDistToSrc(originSf.getFilePath(), this.fileExists));
+    return originId ? symbolId(originId, name) : null;
+  }
+
+  private resolveReExportedSymbol(c: EdgeCollector, specifier: string, name: string): string | null {
     return resolveReExportOrigin(
       { project: this.ensureProject(), repoRoot: this.repoRoot },
       c.srcAbs,
-      decl.getModuleSpecifierValue(),
-      importedName,
+      specifier,
+      name,
     );
   }
 

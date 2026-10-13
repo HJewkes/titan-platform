@@ -1,7 +1,7 @@
 import { parseResultLine } from "@titan-design/fix-proof";
 import { fixProofLines, unverifiedLines, type FixProofUnverified } from "./briefs/tests.js";
 import type { VerdictBlockRefusal } from "@titan-design/session-read";
-import { boundedFindings, findingsText } from "./fix-first-findings.js";
+import { OWNER_PICK_CONTRADICTED, boundedFindings, findingsText } from "./fix-first-findings.js";
 import { FOLLOW_UPS_HEADING, MAX_FOLLOW_UPS } from "./follow-ups.js";
 
 type RepoSlug = string;
@@ -65,6 +65,14 @@ export interface ReviewerBriefInput {
   fixProofUnverified?: FixProofUnverified;
   /** The run's earlier FIX_FIRST findings, oldest first; reviewer text, so it is rendered as data with every verdict-block line removed. */
   earlierFindings?: readonly EarlierFinding[];
+  /** Picks the owner recorded for this PR; only grammar-valid ones reach the prompt, so body text cannot. */
+  ownerPicks?: readonly OwnerPick[];
+}
+
+/** One recorded owner answer: the question it settles and the choice the owner made. */
+export interface OwnerPick {
+  id: string;
+  choice: string;
 }
 
 /** One earlier FIX_FIRST of this run: the head it was given at, the class its reviewer named, and its findings. */
@@ -101,6 +109,26 @@ function greenCheckLines(input: ReviewerBriefInput): string[] {
     ...proof,
     ...unverifiedLines(input.fixProofUnverified),
     ...(rerun ? ["Do not rerun the checks named here, including typecheck, lint and the full suite when they are named; read their results and spend your time on the diff."] : []),
+  ];
+}
+
+export const MAX_OWNER_PICKS = 4;
+const PICK_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
+const PICK_CHOICE = /^[A-Za-z0-9][A-Za-z0-9 ._/-]{0,59}$/;
+
+/** Only picks a short plain grammar accepts are kept, since a caller may have read them from a PR body. */
+export function validOwnerPicks(picks: readonly OwnerPick[]): OwnerPick[] {
+  return picks.filter((pick) => PICK_ID.test(pick.id) && PICK_CHOICE.test(pick.choice)).slice(0, MAX_OWNER_PICKS);
+}
+
+/** A reviewer that blocks on a value the owner already chose sends a fixer to overwrite the owner (TP-2139). */
+function ownerPickLines(picks: readonly OwnerPick[]): string[] {
+  const valid = validOwnerPicks(picks);
+  if (valid.length === 0) return [];
+  return [
+    "The owner already decided these for this PR. Treat each as declared: do not block on it. " +
+      `If a blocking item you find contradicts one, still list it, and add a line \`${OWNER_PICK_CONTRADICTED} <id>\` for that pick.`,
+    ...valid.map((pick) => `- ${pick.id}: ${pick.choice}`),
   ];
 }
 
@@ -220,6 +248,7 @@ function handsOffLines(runDir: string): string[] {
 /** What each verdict means and what it adds, ending with the optional follow-ups that never change it. */
 function verdictRuleLines(input: ReviewerBriefInput): string[] {
   return [
+    ...ownerPickLines(input.ownerPicks ?? []),
     "MERGE means you would merge this head as it is. Anything blocking means FIX_FIRST.",
     CI_POLICY_RULE,
     `For FIX_FIRST, list every blocking item, then add a section that starts with a line \`${DEFECT_CLASS_HEADING}\` naming the defect class the items share and the boundary where one fix covers it.`,

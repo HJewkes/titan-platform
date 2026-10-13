@@ -34,6 +34,7 @@ export {
   FOLLOW_UPS_RULE,
   MAX_CORRECTION_PROMPT_CHARS,
   MAX_OWNER_BRIEF_CHARS,
+  MAX_OWNER_PICKS,
   MAX_REVIEWER_QUESTIONS,
   OWNER_BRIEF_END,
   OWNER_BRIEF_START,
@@ -41,12 +42,23 @@ export {
   correctionPrompt,
   reviewCheckoutName,
   reviewerBrief,
+  validOwnerPicks,
 } from "./reviewer-brief.js";
-export type { EarlierFinding, MalformedRefusal, ReviewerBriefInput } from "./reviewer-brief.js";
+export type { EarlierFinding, MalformedRefusal, OwnerPick, ReviewerBriefInput } from "./reviewer-brief.js";
 export { USAGE_LIMIT_REASON, acceptVerdict, isUsageLimit } from "./accept-verdict.js";
 export type { AcceptedVerdict, AwaitVerdictResult } from "./accept-verdict.js";
 export { DEPTH_FLOOR_REASON, INVESTIGATIVE_CALLS, isInvestigativeCall } from "./depth-floor.js";
-export { BLOCK_LINE, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, boundedFindings, findingsText, fixFirstFindings } from "./fix-first-findings.js";
+export {
+  BLOCK_LINE,
+  FINDINGS_SEPARATOR,
+  FIX_FIRST_TRUNCATED,
+  MAX_FIX_FIRST_TEXT_CHARS,
+  OWNER_PICK_CONTRADICTED,
+  boundedFindings,
+  contradictedPicks,
+  findingsText,
+  fixFirstFindings,
+} from "./fix-first-findings.js";
 export { MALFORMED_REFUSALS, MalformedSchema, OwnerBriefSchema, parseOwnerBrief, readMalformed } from "./verdict-schemas.js";
 export type { Malformed, OwnerBrief } from "./verdict-schemas.js";
 export {
