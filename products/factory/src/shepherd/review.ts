@@ -346,7 +346,8 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const proof = await step(ctx, `${FIX_PROOF_STEP}:${target.head}`, { repo: target.repo, head: target.head, runId: ctx.runId }, FixProofReadSchema);
   const noRepro = fixProofVerdict(proof, target.head);
   if (noRepro) return noRepro;
-  const standing: ProofStanding = fixProofStanding(proof, target.head) ?? {};
+  const unverified = fixProofStanding(proof, target.head);
+  const standing: ProofStanding = unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {};
   if (request.seatHeld?.head === target.head && recordsRecheck(ctx, target.head)) return recheckSeat(ctx, target, request.seatHeld, standing);
   const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }) }, Intended);
   if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : { kind: "none", cause: "no-verdict" };
@@ -365,6 +366,6 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
     ...(dispatched.profile !== undefined && { reviewerProfile: dispatched.profile }),
   };
   const account = typeof intent.account === "string" ? intent.account : DEFAULT_ACCOUNT;
-  const reviewed = panelOn(intent) ? await panelReview(ctx, intent, base, awaiting, dispatchedReviewer, account) : await takeVerdict(ctx, target, awaiting, dispatchedReviewer, account, standing);
+  const reviewed = panelOn(intent) ? await panelReview(ctx, intent, base, awaiting, dispatchedReviewer, account, standing) : await takeVerdict(ctx, target, awaiting, dispatchedReviewer, account, standing);
   return withReviewerProfile(reviewed, dispatched.profile);
 };
