@@ -10,7 +10,7 @@ import { failureOf } from "./error-class.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 
-export const FIX_PROOF_STEP = "sh-fix-proof";
+const FIX_PROOF_STEP = "sh-fix-proof";
 export const FIX_PROOF_STEPS: readonly StepDeclaration[] = [{ id: FIX_PROOF_STEP, kind: "dispatch" }];
 export const FIX_PROOF_CHECK = "fix-proof";
 /** The judge sits behind `needs:` on these jobs, so GitHub creates it only after both have finished. */

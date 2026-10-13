@@ -2,7 +2,7 @@ import { FileListTruncatedError, type GitHubPort, type PrFile, type RepoSlug } f
 import { statusOf } from "../required-checks.js";
 
 /** Both sides of every rename, so moving a file out of `.github/` still counts as touching it. */
-export function changedPaths(files: readonly PrFile[]): string[] {
+function changedPaths(files: readonly PrFile[]): string[] {
   return files.flatMap((file) => (file.previousPath === undefined ? [file.path] : [file.path, file.previousPath]));
 }
 
