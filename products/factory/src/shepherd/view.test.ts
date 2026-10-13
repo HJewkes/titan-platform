@@ -287,6 +287,35 @@ describe("a g10-review hold whose review recorded no verdict (TP-2455)", () => {
     expect(watchRow({ registration: held, run: waitingAt("merge:0", merge), now: minutesIn(61) }).stalled).toBeNull();
   });
 
+  it("leaves a g10-review hold with a recorded FIX_FIRST at the head unstalled at 61 minutes", () => {
+    const fixFirst = { kind: "verdict", verdict: "FIX_FIRST", head: H1, locator: {}, reviewer: { agentId: "agent-rv-own" } };
+
+    expect(watchRow({ registration: held, run: waitingAt("merge:0", fixFirst), now: minutesIn(61) }).stalled).toBeNull();
+  });
+
+  describe("at a head a clean merge-up made from the reviewed head", () => {
+    const A = "a".repeat(40);
+
+    /** The reviewer's verdict at `A`, then a merge-up to `H1` recorded as clean, and no review of its own at `H1`. */
+    function carriedTo(verdictAtA: string): WorkflowRun {
+      const run = waitingAt("merge:0");
+      const record = (stepId: string, result: object) => {
+        run.stepResults[stepId] = { stepId, iteration: 0, agentId: null, signal: null, completedAt: new Date(waitedFrom - 5000).toISOString(), data: { result } };
+      };
+      record(`sh-await-verdict:${A}`, { kind: "verdict", verdict: verdictAtA, head: A, locator: {}, reviewer: { agentId: "agent-rv-own" } });
+      record(`sh-merge-up:${H1}`, { fromHead: A, head: H1, base: "b".repeat(40), rule: "clean-merge-up" });
+      return run;
+    }
+
+    it("leaves the hold unstalled at 61 minutes when the carried verdict is a MERGE", () => {
+      expect(watchRow({ registration: held, run: carriedTo("MERGE"), now: minutesIn(61) }).stalled).toBeNull();
+    });
+
+    it("still stalls when the reviewed head has no MERGE", () => {
+      expect(watchRow({ registration: held, run: carriedTo("FIX_FIRST"), now: minutesIn(61) }).stalled?.reason).toMatch(/^g10-review hold at 1111111 has no reviewer verdict/);
+    });
+  });
+
   it("leaves an owner hold unstalled at 61 minutes", () => {
     const owner: Registration = { ...held, ownerHold: { reason: "owner wants a look", at: new Date(waitedFrom).toISOString(), askedAt: null } };
 
