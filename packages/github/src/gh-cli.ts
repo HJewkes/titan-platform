@@ -27,6 +27,10 @@ export interface GhCliOptions {
   sleep?: (ms: number) => Promise<void>;
 }
 
+/** Actions colours its log with ANSI codes, which would hide a line's prefix from every reader of the log. */
+// eslint-disable-next-line no-control-regex
+const stripEscapes = (log: string): string => log.replace(/\u001b\[[0-9;]*[A-Za-z]/g, "");
+
 export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): GitHubWire {
   const api = restCaller(exec, options.budget ?? sharedRateBudget, options.etagCacheSize ?? 500, options.sleep);
   return {
@@ -62,7 +66,7 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     resolveCommit: (repo, sha) => resolveCommit(api, repo, sha),
     listCommitStatuses: (repo, sha) => listCommitStatuses(api, repo, sha),
     getWorkflowRunStatus: async (repo, runId) => (await api.get<{ status: string }>(`repos/${repo}/actions/runs/${runId}`)).status,
-    getJobLog: (repo, jobId) => api.text(`repos/${repo}/actions/jobs/${jobId}/logs`),
+    getJobLog: async (repo, jobId) => stripEscapes(await api.text(`repos/${repo}/actions/jobs/${jobId}/logs`)),
     updateBranch: async (repo, number, expectedHeadSha) => void (await api.send("PUT", `repos/${repo}/pulls/${number}/update-branch`, { expected_head_sha: expectedHeadSha })),
     setPrBase: async (repo, number, base) => void (await api.send("PATCH", `repos/${repo}/pulls/${number}`, {}, JSON.stringify({ base }))),
     merge: async (repo, number, sha, method, message) => {

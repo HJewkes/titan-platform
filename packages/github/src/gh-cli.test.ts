@@ -462,7 +462,19 @@ describe("gh api adapter, REST only", () => {
     expect(log).toBe("line 2\nline 3");
     expect(gh.argv).toContainEqual(["api", "-i", "-X", "GET", "repos/octo/demo/pulls", "-f", "state=open", "-f", "per_page=100"]);
     expect(gh.argv).toContainEqual(["api", "-i", "-X", "DELETE", "repos/octo/demo/git/refs/heads/topic"]);
-    expect(gh.argv).toContainEqual(["api", "-i", "-X", "GET", "repos/octo/demo/actions/jobs/42/logs"]);
+    expect(gh.argv).toContainEqual(["api", "-i", "-X", "GET", "repos/octo/demo/actions/jobs/42/logs", "--allow-escape-sequences"]);
+  });
+
+  it("reads a job log whose colour codes make gh refuse it unless escape sequences are allowed, and returns it without them", async () => {
+    const headers = ["HTTP/2.0 200 OK", "Content-Type: text/plain", "Content-Length: 40"].join("\r\n");
+    const exec: GhExec = async (args) =>
+      args.includes("--allow-escape-sequences")
+        ? { code: 0, stdout: `${headers}\r\n\r\n2026-10-11T12:00:00.0000000Z \u001b[36;1mpnpm test\u001b[0m\n2026-10-11T12:00:01.0000000Z done\n`, stderr: "" }
+        : { code: 1, stdout: `${headers}\r\n\r\n`, stderr: "the response contains terminal escape sequences; pass --allow-escape-sequences to output it anyway\n" };
+
+    const log = await githubPort(ghCliWire(exec)).jobLogTail(REPO, 42, 5);
+
+    expect(log).toBe("2026-10-11T12:00:00.0000000Z pnpm test\n2026-10-11T12:00:01.0000000Z done");
   });
 
   it("filters open PRs by head prefix", async () => {
