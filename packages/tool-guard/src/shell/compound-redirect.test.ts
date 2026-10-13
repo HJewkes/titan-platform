@@ -36,7 +36,24 @@ const FORMS = [
   "a=( x >f )",
 ];
 
+// Any operator but `)` ends the line in a syntax error too; each probe hides the push from a guard that reads on.
+const OPERATOR_PROBES = [
+  `a=( x ; ) <<E\n${PUSH}\nE`,
+  `a=( x || y ) 'q\n${PUSH}\n'`,
+  `a=( x | y ) 'q\n${PUSH}\n'`,
+  `a=( x |& y ) 'q\n${PUSH}\n'`,
+  `a=( x && y ) 'q\n${PUSH}\n'`,
+  `a=( x & ) <<E\n${PUSH}\nE`,
+  `a=( x ;; ) <<E\n${PUSH}\nE`,
+  `declare -a a=( x ; ) 'q\n${PUSH}\n'`,
+  `a=( x\n; ) '\n${PUSH}\n'`,
+  `a=( x ; ) $(cat <<E\n${PUSH}\nE\n)`,
+  `a=( (x) ) <<E\n${PUSH}\nE`,
+  `a=( ((1)) ) <<E\n${PUSH}\nE`,
+];
+
 const probe = (form: string) => `${form}\n${PUSH}\nE`;
+const PROBES = [...FORMS.map(probe), ...OPERATOR_PROBES];
 
 async function hookDenies(command: string): Promise<boolean> {
   const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
@@ -45,17 +62,13 @@ async function hookDenies(command: string): Promise<boolean> {
   return result.stdout !== "";
 }
 
-describe("a redirect inside a compound assignment", () => {
-  it.each(FORMS)("the hook denies a push bash runs after a redirect in %j", async (form) => {
-    expect(await hookDenies(probe(form))).toBe(true);
+describe("a redirect or operator inside a compound assignment", () => {
+  it.each(PROBES)("the hook denies the push bash runs after %j", async (command) => {
+    expect(await hookDenies(command)).toBe(true);
   });
 
-  it.each(FORMS)("the lexer refuses %j", (form) => {
-    expect(() => tokenize(probe(form))).toThrow(ParseError);
-  });
-
-  it("the hook denies a push after a subshell bash rejects inside an array", async () => {
-    expect(await hookDenies(`a=( (x) )\n${PUSH}`)).toBe(true);
+  it.each(PROBES)("the lexer refuses %j", (command) => {
+    expect(() => tokenize(command)).toThrow(ParseError);
   });
 });
 
@@ -66,6 +79,9 @@ const BENIGN = [
   "if (cat <<E\nhi\nE\n); then :; fi",
   "( cat <<E\nhi\nE\n)",
   "x=1; (cat <<E\nhi\nE\n)",
+  "a=( x # c ; ( |\n y )\necho ok",
+  "a=( $((1)) x )",
+  "a=(x) <<E\nbody\nE",
 ];
 
 describe("a heredoc or process substitution bash accepts around an array", () => {
@@ -84,8 +100,8 @@ describe.skipIf(!bashOnPath)("bash on each compound redirect probe", () => {
   const scratch = mkdtempSync(join(tmpdir(), "tool-guard-tp-2573-"));
   afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
-  it.each(FORMS)("bash -n rejects %j as a syntax error", (form) => {
-    const run = spawnSync("bash", ["-n", "-c", probe(form)], { cwd: scratch, encoding: "utf-8", timeout: 5000 });
+  it.each(PROBES)("bash -n rejects %j as a syntax error", (command) => {
+    const run = spawnSync("bash", ["-n", "-c", command], { cwd: scratch, encoding: "utf-8", timeout: 5000 });
 
     expect(run.status).not.toBe(0);
     expect(run.stderr).toContain("syntax error near unexpected token");

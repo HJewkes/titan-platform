@@ -165,7 +165,9 @@ function readOperator(s: LexState, op: string, end: number): void {
   if (op === "\n" && !inWholeSpan) readLineEnd(s);
 }
 
+/** Inside `NAME=( … )` bash accepts only words, newlines and the closing `)`; any other operator ends the line in a syntax error. */
 function noteCompoundParen(s: LexState, op: string): void {
+  if (s.compoundDepth !== -1 && op !== ")" && op !== "\n") throw new ParseError(`\`${op}\` inside a compound assignment ( … ) is a bash syntax error`);
   if (op === ")" && s.depth < s.compoundDepth) s.compoundDepth = -1;
   if (op !== "(" || s.compoundDepth !== -1) return;
   const before = s.tokens[s.tokens.length - 1];
