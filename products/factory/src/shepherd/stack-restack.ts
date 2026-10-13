@@ -5,7 +5,7 @@ import { CarryRefusal, type Git, isAncestor, must } from "./tree-carry.js";
  * A stacked child whose parent squash-landed. `parentFinal` is the parent head that was
  * squashed, `squash` the commit it became on the default branch, `main` that branch's tip.
  */
-export interface RestackInput {
+interface RestackInput {
   childHead: string;
   parentFinal: string;
   squash: string;
@@ -14,7 +14,7 @@ export interface RestackInput {
 }
 
 /** `base` is the child's fork point on its parent, the explicit merge base the tree was built from. */
-export type RestackResult =
+type RestackResult =
   | { kind: "restacked"; commit: string; tree: string; base: string }
   | { kind: "conflict"; base: string; files: string[] }
   | { kind: "guard"; reason: string };
