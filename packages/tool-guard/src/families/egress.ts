@@ -46,27 +46,72 @@ export function httpRequest(cmd: SimpleCommand): HttpRequest | null {
   return null;
 }
 
-/** A hidden input makes the method unknown and adds one URL word known only at run time. */
+/** Each `-:`/`--next` part is its own request; parts that disagree on the method make it unknown for the line. */
 function curlRequest(args: WordToken[]): HttpRequest {
-  const o = expandedOptions(readOptions(args, CURL_VALUES));
-  const hidden = o.opts.find((opt) => CURL_HIDDEN.has(opt.flag) || opt.flag.startsWith("--expand-"));
-  const body = hasFlag(o, ...CURL_BODY);
-  const urls = curlUrls(o);
-  if (hidden) return { method: UNKNOWN_METHOD, body, bodies: curlBodies(o), urls: [...urls, runtimeUrl(hidden.value ?? (args[0] as WordToken))] };
-  const explicit = lastValue(o, "-X", "--request");
-  return { method: explicit ? explicitMethod(explicit) : curlImpliedMethod(o, body), body, bodies: curlBodies(o), urls };
+  const parts = curlParts(args).map(curlPart);
+  const methods = new Set(parts.map((p) => p.method));
+  return {
+    method: methods.size === 1 ? (parts[0] as HttpRequest).method : UNKNOWN_METHOD,
+    body: parts.some((p) => p.body),
+    bodies: parts.some((p) => p.bodies === null) ? null : parts.flatMap((p) => p.bodies ?? []),
+    urls: parts.flatMap((p) => p.urls),
+  };
 }
 
-/** `--expand-<option>` with a literal value and no `{{` reads as `<option>`; any other keeps its name, which marks it hidden. */
+/** The words of each part; always at least one, so a bare `curl` still reads as a GET. */
+function curlParts(args: WordToken[]): WordToken[][] {
+  const parts: WordToken[][] = [[]];
+  for (const word of args) {
+    if (isNextWord(word)) parts.push([]);
+    else parts.at(-1)?.push(word);
+  }
+  const filled = parts.filter((p) => p.length > 0);
+  return filled.length > 0 ? filled : [[]];
+}
+
+/** `--next`, or a short cluster such as `-s:` whose `:` no earlier letter takes as its value. */
+function isNextWord(word: WordToken): boolean {
+  if (word.dynamic) return false;
+  if (word.value === "--next") return true;
+  const colon = word.value.indexOf(":");
+  if (!/^-[^-]/.test(word.value) || colon < 0) return false;
+  return [...word.value.slice(1, colon)].every((c) => !CURL_VALUES.has(`-${c}`));
+}
+
+/** A hidden input makes the method unknown and adds one URL word known only at run time; a config file may also hold a body. */
+function curlPart(args: WordToken[]): HttpRequest {
+  const raw = readOptions(args, CURL_VALUES);
+  const hidden = raw.opts.find(isHiddenInput);
+  const o = expandedOptions(raw);
+  const body = hasFlag(o, ...CURL_BODY);
+  const urls = curlUrls(o);
+  if (!hidden) {
+    const explicit = lastValue(o, "-X", "--request");
+    return { method: explicit ? explicitMethod(explicit) : curlImpliedMethod(o, body), body, bodies: curlBodies(o), urls };
+  }
+  const bodies = hidden.flag === "-K" || hidden.flag === "--config" ? null : curlBodies(o);
+  return { method: UNKNOWN_METHOD, body, bodies, urls: [...urls, runtimeUrl(hidden.value ?? (args[0] as WordToken))] };
+}
+
+const isHiddenInput = (opt: Option) => CURL_HIDDEN.has(opt.flag) || (opt.flag.startsWith("--expand-") && !isLiteralValue(opt));
+const isLiteralValue = ({ value }: Option) => value !== null && !value.dynamic && !value.value.includes("{{");
+
+/**
+ * `--expand-<option>` reads as `<option>`. A templated value is only known at run time, so it is kept as a dynamic
+ * word: a templated body is a body that cannot be read, and a templated URL is the hidden input's run-time URL.
+ */
 function expandedOptions(o: Options): Options {
-  const plain = (opt: Option): Option =>
-    opt.flag.startsWith("--expand-") && opt.value && !opt.value.dynamic && !opt.value.value.includes("{{") ? { ...opt, flag: `--${opt.flag.slice("--expand-".length)}` } : opt;
+  const plain = (opt: Option): Option => {
+    if (!opt.flag.startsWith("--expand-")) return opt;
+    const flag = `--${opt.flag.slice("--expand-".length)}`;
+    if (isLiteralValue(opt)) return { ...opt, flag };
+    return flag === "--url" ? opt : { flag, value: opt.value && runtimeUrl(opt.value) };
+  };
   return { opts: o.opts.map(plain), positionals: o.positionals };
 }
 
-/** `-G` makes every part a GET only when no `-:`/`--next` splits the line, as options are read across parts. */
 function curlImpliedMethod(o: Options, body: boolean): string {
-  if (hasFlag(o, "-G", "--get") && !hasFlag(o, "-:", "--next")) return "GET";
+  if (hasFlag(o, "-G", "--get")) return "GET";
   if (hasFlag(o, "-T", "--upload-file")) return "PUT";
   return body ? "POST" : "GET";
 }

