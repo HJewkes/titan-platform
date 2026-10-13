@@ -179,6 +179,20 @@ describe("securitySliceFlag", () => {
     expect(securitySliceFlag({ changedFiles: [file(".codewatch/check.json", 500, 0)] })).toBeUndefined();
   });
 
+  it("flags a rename out of the guard area and names the old path", () => {
+    const changedFiles = [{ ...file("src/x.ts", 300, 160), previousPath: guard }];
+    expect(securitySliceFlag({ changedFiles })).toEqual({ lines: 460, cap: 400, guardPaths: [guard] });
+  });
+
+  it("leaves an oversize rename between two non-guard paths unflagged", () => {
+    expect(securitySliceFlag({ changedFiles: [{ ...file("src/b.ts", 300, 160), previousPath: "src/a.ts" }] })).toBeUndefined();
+  });
+
+  it("names a rename into the guard area once, by its new path", () => {
+    const changedFiles = [{ ...file(guard, 300, 160), previousPath: "src/x.ts" }];
+    expect(securitySliceFlag({ changedFiles })?.guardPaths).toEqual([guard]);
+  });
+
   it("flags nothing when a count is unreadable", () => {
     const bare = partialFake<ChangedFile>({ path: guard });
     expect(securitySliceFlag({ kind: "security", changedFiles: [file(guard, 900, 0), bare] })).toBeUndefined();
