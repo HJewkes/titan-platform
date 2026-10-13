@@ -191,8 +191,7 @@ export * from "./analysis/complexity-distribution.js";
 export { topDeadModules } from "./analysis/dead-modules.js";
 export { topGrowthRisks } from "./analysis/growth-risks.js";
 export { topUntestedRisks } from "./analysis/untested-risks.js";
-export type { ComputeDriftInput } from "./analysis/graph-report-drift.js";
-export { computeReportDrift } from "./analysis/graph-report-drift.js";
+export { computeReportDrift, type ComputeDriftInput } from "./analysis/graph-report-drift.js";
 export type { HealthComponent, HealthComponentKey, HealthInput, HealthWeights, PenaltyWeight } from "./analysis/dashboard-health.js";
 export { DEFAULT_HEALTH_WEIGHTS, computeHealth } from "./analysis/dashboard-health.js";
 export type {
