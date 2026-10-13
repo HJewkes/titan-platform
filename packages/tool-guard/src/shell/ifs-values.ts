@@ -12,6 +12,8 @@ const MAX_RESCAN = 2;
  * Dynamic words keep their raw text, so this also catches `$IFS` and `$((IFS=1))`.
  */
 const POSSIBLY_IFS_RE = /I.*F.*S/s;
+/** The same test for PS4, the prompt xtrace expands: `PS4[0]`, `{P,}S4`, `P{S,}4`, `-vPS4`. */
+const POSSIBLY_PS4_RE = /P.*S.*4/s;
 const ASSIGNMENT_RE = /^([A-Za-z_][A-Za-z0-9_]*)(\[[^\]]*\])?(\+?)=(.*)$/s;
 const OPTION_RE = /^[-+][A-Za-z]+$/;
 const RESERVED = new Set(["!", "{", "}", "if", "then", "elif", "else", "fi", "while", "until", "do", "done", "time"]);
@@ -55,6 +57,8 @@ interface Scan {
   runtimeNames: Set<string>;
   /** The literal targets of `declare -n r=NAME`, which every later write to `r` reaches. */
   namerefTargets: Set<string>;
+  /** Names assigned a literal value that may name PS4; the first write to an empty nameref sets its target. */
+  ps4Valued: Set<string>;
 }
 
 interface Assignment {
@@ -76,7 +80,7 @@ interface Assignment {
  * null, in either order, since a loop or a function call can run the reader after the store.
  */
 export function lineIfsValues(tokens: Token[]): string[] | null {
-  const scan: Scan = { found: new Set([DEFAULT_IFS]), unknown: false, computed: false, readsByName: false, namerefs: new Set(), runtimeNames: new Set(), namerefTargets: new Set() };
+  const scan: Scan = { found: new Set([DEFAULT_IFS]), unknown: false, computed: false, readsByName: false, namerefs: new Set(), runtimeNames: new Set(), namerefTargets: new Set(), ps4Valued: new Set() };
   scanTokens(tokens, 0, scan);
   return scan.unknown || (scan.computed && scan.readsByName) || namerefRetargeted(scan) || ps4WrittenBySlot(scan) ? null : [...scan.found];
 }
@@ -86,7 +90,8 @@ export function lineIfsValues(tokens: Token[]): string[] | null {
  * in the current shell gets text no assignment word spells out.
  */
 function ps4WrittenBySlot(scan: Scan): boolean {
-  return scan.runtimeNames.has("PS4") || scan.namerefTargets.has("PS4");
+  if ([...scan.runtimeNames, ...scan.namerefTargets].some(possiblyPs4)) return true;
+  return [...scan.namerefs].some((name) => scan.ps4Valued.has(name));
 }
 
 /** `declare -n r; for r in $L` or `r=$x`: a nameref given a run-time target may write IFS through it. */
@@ -265,6 +270,7 @@ function noteRuntimeNames(name: string, args: WordToken[], scan: Scan): void {
   args.forEach((word, i) => {
     const target = args[i + 1];
     if (literal(word) === "-v" && target && !target.dynamic) scan.runtimeNames.add(target.value);
+    else if (!word.dynamic && /^-v./s.test(word.value)) scan.runtimeNames.add(word.value.slice(2));
   });
 }
 
@@ -287,11 +293,18 @@ function scanDeclarer(args: WordToken[], scan: Scan): void {
     if (!word.dynamic && OPTION_RE.test(word.value)) continue;
     if (nameref && (word.dynamic || possiblyIfs(word.value))) return markUnknown(scan);
     if (nameref) noteNameref(word, scan);
+    if (!word.dynamic && declaresPs4Spelling(word)) return markUnknown(scan);
     if (word.dynamic && !dynamicDeclarationKnown(word)) return markUnknown(scan);
     if (word.dynamic) noteRuntimeAssignment(word, scan);
     if (!word.dynamic && word.value !== "IFS" && ASSIGNMENT_RE.test(word.value)) scanAssignment(word, scan);
     else if (!word.dynamic && word.value !== "IFS" && possiblyIfs(word.value)) return markUnknown(scan);
   }
+}
+
+/** `export {P,}S4=…` declares PS4 after brace expansion, which no assignment check reads as PS4. */
+function declaresPs4Spelling(word: WordToken): boolean {
+  const name = parseAssignment(word.value)?.name ?? word.value;
+  return name !== "PS4" && possiblyPs4(name);
 }
 
 function noteNameref(word: WordToken, scan: Scan): void {
@@ -326,6 +339,7 @@ function scanAssignment(word: WordToken, scan: Scan): void {
   if (subscriptUnknown(assignment) || possiblyIfs(assignment.value)) return markUnknown(scan);
   if (!/^(\[\d*\])?$/.test(assignment.subscript)) scan.readsByName = true;
   notePs4(assignment, scan);
+  if (possiblyPs4(assignment.value)) scan.ps4Valued.add(assignment.name);
   if (assignment.name !== "IFS") {
     if (word.dynamic) noteRuntimeAssignment(word, scan);
     return;
@@ -364,6 +378,10 @@ function literal(word: WordToken | undefined): string {
 
 function possiblyIfs(text: string): boolean {
   return POSSIBLY_IFS_RE.test(text);
+}
+
+function possiblyPs4(text: string): boolean {
+  return POSSIBLY_PS4_RE.test(text);
 }
 
 function markUnknown(scan: Scan): void {

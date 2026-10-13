@@ -325,3 +325,25 @@ describe("lineIfsValues on PS4 written through a name slot", () => {
     expect(values(line)).toBeNull();
   });
 });
+
+describe("lineIfsValues on PS4 spelled through subscripts, braces and attached options", () => {
+  const k = "k=$(printf %sFS=1 I); ";
+  const trace = "; set -x; git $A";
+  it.each([
+    ["read into a PS4 subscript", `${k}read 'PS4[0]' <<< '$((k))'${trace}`],
+    ["printf -v into a PS4 subscript", `${k}printf -v 'PS4[0]' %s '$((k))'${trace}`],
+    ["a nameref onto a PS4 subscript", `${k}declare -n r=PS4[0]; r='$((k))'${trace}`],
+    ["printf with an attached -v", `${k}printf -vPS4 %s '$((k))'${trace}`],
+    ["read of a brace-spelled PS4", `${k}read {P,}S4 <<< '$((k))'${trace}`],
+    ["printf -v of a brace-spelled PS4", `${k}printf -v P{S,}4 %s '$((k))'${trace}`],
+    ["export of a brace-spelled PS4", `${k}export {P,}S4='$((k))'${trace}`],
+    ["a nameref onto a brace-spelled PS4", `${k}declare -n r=P{S,}4; r='$((k))'${trace}`],
+    ["an empty nameref whose first write targets PS4", `${k}declare -n r; r=PS4; r='$((k))'${trace}`],
+  ])("gives null for %s", (_how, line) => {
+    expect(values(line)).toBeNull();
+  });
+
+  it("resolves names that do not spell PS4", () => {
+    expect(values("IFS=,; read -r line; printf -v out %s x; declare -n r=a; r=1; set -x; git $A")).toEqual([DEFAULT_IFS, ","]);
+  });
+});
