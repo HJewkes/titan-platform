@@ -25,9 +25,9 @@ export interface GhCallLine {
   resource: null;
 }
 
-export type AppendCall = (line: GhCallLine) => void;
+type AppendCall = (line: GhCallLine) => void;
 
-export const ghCallsDir = (env: NodeJS.ProcessEnv = process.env): string =>
+const ghCallsDir = (env: NodeJS.ProcessEnv = process.env): string =>
   path.join(env.XDG_STATE_HOME || path.join(os.homedir(), ".local", "state"), "gh-calls");
 
 /** Appends to the line's day file, pruning older days on a day's first write; a GitHub read never fails on its log line. */
@@ -56,8 +56,8 @@ function pruneDays(dir: string, today: string): void {
 }
 
 function failureStatus(error: unknown): number | "error" {
-  const status = (error as { status?: unknown } | null)?.status;
-  return typeof status === "number" ? status : "error";
+  if (typeof error !== "object" || error === null || !("status" in error)) return "error";
+  return typeof error.status === "number" ? error.status : "error";
 }
 
 /** Wraps `port` so each `getPr` appends one line; every other method and every result passes through untouched. */
