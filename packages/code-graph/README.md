@@ -751,6 +751,12 @@ churn entries they were built from (`LoadedHistory`, whose `warnings` say why hi
 `lifetime`) and `computeRecencyWindows` alongside it. Node ids are the history engine's
 repo-relative paths, so both must be rooted at the same `idRoot`.
 
+`revisionLineSource(repoRoot, rev)` is an evidence `LineSource` over the blobs of commit
+`rev`, never the working tree, so `verifyCitation` over it reports `past-eof` for a range
+that only an uncommitted edit reaches. `rev` must be a full 40-hex commit id; a ref name
+throws. Each path is one `git --no-replace-objects cat-file --batch` read, cached. A path
+that is not a blob at `rev` reads as unreadable.
+
 Change coupling is not stored. It is computed on demand from `loadChurnEntries`, as
 codewatch's `graph coupled` command did.
 
