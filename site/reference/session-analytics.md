@@ -194,7 +194,20 @@ fills. It reads the session graph's `pr_review`, `tool_call` and `request` table
 miner fills from transcripts, and places each chat verdict in the context band of the request
 that sent it, per model. An approve counts as an error when the same PR later got
 `changes_requested`. GitHub-surface reviews have no issuing request and count as `unfilled`.
-It takes an open graph connection and never calls `gh`.
+It takes an open graph connection and never calls `gh`. `renderReviewFillText(report)` prints it
+as a table per band and model, null rates as `-`, with no price caveat because it has no dollars.
+
+### successorReworkReport
+
+`successorReworkReport(db, window, { bootRequests? })` answers whether handoffs leave a successor
+re-learning what its predecessor knew. It pairs each session with the next one to start under the
+same agent name, keeps pairs whose successor starts in the window, and counts the paths the
+successor reads in its first `bootRequests` main-thread requests (default 30) that the
+predecessor's `file_read` signals already name. Rows are per role, with the re-read share and
+the list-price cost of the boot requests that re-read. It is a proxy for handoff quality, not a
+cost to minimise. `fileReadData` is false when the graph has no `file_read` signal, so zero rework
+then means no data. `renderSuccessorReworkText(report)` prints that warning, the table and the
+list-price caveat.
 
 ### compareWindows
 
@@ -205,6 +218,9 @@ the field is null on either side, or either window fails `spec.hasData`. `run` i
 window, before first, and closes over the connection and options.
 `REVIEW_FILL_COMPARISON` keys review-fill rows by band and model; `SUCCESSOR_REWORK_COMPARISON`
 keys successor-rework rows by role and treats a window with no `file_read` data as no data.
+`renderWindowComparisonText(comparison, columns)` prints each named column as
+`before → after (Δ)`, nulls as `-`, and adds the list-price caveat only for a column ending in
+`Usd`.
 
 ### costPerOutcome
 

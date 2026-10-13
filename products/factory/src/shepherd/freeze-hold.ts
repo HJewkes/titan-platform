@@ -1,5 +1,5 @@
 import { isPassing, type GitHubPort, type RepoSlug } from "@titan-design/github";
-import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
+import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step, type FailingCheck, type LandOutcome } from "../workflows/land.js";
@@ -10,6 +10,7 @@ import { noticeHeldSeat } from "./gate-route.js";
 import type { GateRun, PrTarget } from "./gates.js";
 import { singleSeat } from "./held-repair.js";
 import type { ShepherdDeps } from "./phases.js";
+import type { CauseTrail } from "./review-cause.js";
 import { PUSH_WATCH_TICK_MS, headPoll, type HeadPoll } from "./push-signal.js";
 
 const FREEZE_HOLD_STEP = "sh-freeze-hold";
@@ -22,9 +23,14 @@ export const FREEZE_HOLD_STEPS: readonly StepDeclaration[] = [
 ];
 /** How long one wait holds the run before the run reads CI and decides again; a hold that still applies waits again. */
 const FREEZE_WAIT_LIMIT_MS = 60 * 60_000;
+/** The most base commits read back from the base head to find the one a red head's CI ran against. */
+const CI_BASE_WALK = 20;
 
-/** The PR's base head at the hold, red on every check the PR's head fails; records from before base-red carry none. */
-const BaseRed = z.object({ baseRef: z.string(), baseSha: z.string(), seat: z.string().optional() });
+/**
+ * The base the hold waits past, red on every check the PR's head fails; records from before base-red carry none. `stale`:
+ * the head's CI ran against this base commit, and the base head has already moved past it.
+ */
+const BaseRed = z.object({ baseRef: z.string(), baseSha: z.string(), seat: z.string().optional(), stale: z.boolean().optional() });
 type BaseRed = z.infer<typeof BaseRed>;
 const HoldResult = z.looseObject({ hold: z.boolean(), reason: z.string(), episode: z.number().nullable(), baseRef: z.string().optional(), baseRed: BaseRed.optional() });
 type Hold = z.infer<typeof HoldResult>;
@@ -52,29 +58,34 @@ interface BaseWaitInput extends PrTarget {
 }
 
 type RedHead = { headSha: string; failing: FailingCheck[] };
+/** `trail` takes each head the refresh makes: the hold runs on the run's own context, which records no update. */
+type HoldRun = GateRun & { trail: CauseTrail };
 
 /**
  * True when the PR's red head only repeats a frozen main's failures, or its base head's: the hold is recorded, the run
  * waits out the thaw, the base's move or a new head, and the caller lands the next round so CI is read afresh. No repair
  * is spent and nobody is woken. A stopped outcome ends the run.
  */
-export async function heldByFrozenMain(run: GateRun, red: RedHead, n: number): Promise<boolean | LandOutcome> {
+export async function heldByFrozenMain(run: HoldRun, red: RedHead, n: number): Promise<boolean | LandOutcome> {
   const { ctx, target } = run;
   const input: HoldInput = { ...target, headSha: red.headSha, failing: red.failing.map((check) => check.name) };
   const held = await step(ctx, `${FREEZE_HOLD_STEP}:${n}`, input, HoldResult);
   if (held.hold && held.baseRed) return heldByRedBase(run, red, held, held.baseRed, n);
   if (!held.hold || held.episode === null) return false;
   const waited = await step(ctx, `${FREEZE_WAIT_STEP}:${n}`, { ...target, headSha: red.headSha, episode: held.episode, baseRef: held.baseRef } satisfies WaitInput, WaitResult);
-  if (waited.thawed && waited.headSha === red.headSha) return (await refreshRedHead(ctx, target, red, n)) ?? true;
+  if (waited.thawed && waited.headSha === red.headSha) return (await refreshRedHead(run, red, n)) ?? true;
   return true;
 }
 
-/** The seat is told once per base and head; once the base moves past this head's base, the head is refreshed as after a thaw. */
-async function heldByRedBase(run: GateRun, red: RedHead, held: Hold, base: BaseRed, n: number): Promise<boolean | LandOutcome> {
-  await noticeHeldSeat(run, JSON.stringify(["base-red", base.baseSha, red.headSha]), { headSha: red.headSha, why: `base-red: ${held.reason}`, gate: "base-red", ...(base.seat && { seat: base.seat }) });
+/**
+ * The seat is told once per base and head; once the base moves past this head's base, the head is refreshed as after a
+ * thaw. A stale base already moved, so nothing waits on the seat and the head is merged up at once.
+ */
+async function heldByRedBase(run: HoldRun, red: RedHead, held: Hold, base: BaseRed, n: number): Promise<boolean | LandOutcome> {
+  if (!base.stale) await noticeHeldSeat(run, JSON.stringify(["base-red", base.baseSha, red.headSha]), { headSha: red.headSha, why: `base-red: ${held.reason}`, gate: "base-red", ...(base.seat && { seat: base.seat }) });
   const input: BaseWaitInput = { ...run.target, headSha: red.headSha, baseRef: base.baseRef, baseSha: base.baseSha };
   const waited = await step(run.ctx, `${BASE_WAIT_STEP}:${n}`, input, BaseWaitResult);
-  if (waited.baseMoved && waited.headSha === red.headSha) return (await refreshRedHead(run.ctx, run.target, red, n)) ?? true;
+  if (waited.baseMoved && waited.headSha === red.headSha) return (await refreshRedHead(run, red, n)) ?? true;
   return true;
 }
 
@@ -84,8 +95,9 @@ async function heldByRedBase(run: GateRun, red: RedHead, held: Hold, base: BaseR
  * An update GitHub accepted but never applied stops the run as `land` does: the update step already re-sent it, and
  * the next round would read the same red head and spend a repair on main's old failures.
  */
-async function refreshRedHead(ctx: WorkflowContext, target: PrTarget, red: RedHead, n: number): Promise<LandOutcome | undefined> {
+async function refreshRedHead({ ctx, target, trail }: HoldRun, red: RedHead, n: number): Promise<LandOutcome | undefined> {
   const update = await step(ctx, `update-branch:${FREEZE_HOLD_STEP}:${n}`, { ...target, expectedHeadSha: red.headSha }, UpdateResultResult);
+  if (update.own) trail.updated.add(update.headSha);
   if (update.unmoved) return { kind: "stopped", reason: "update-branch-unmoved", headSha: red.headSha, detail: `update-branch after the thaw: head still ${red.headSha} after ${UPDATE_RESENDS} re-sends` };
   if (update.skipped !== "up-to-date") return undefined;
   await step(ctx, `rerun:${FREEZE_HOLD_STEP}:${n}`, { ...target, headSha: red.headSha, failing: red.failing }, z.looseObject({}));
@@ -124,9 +136,48 @@ async function redAtBase(port: GitHubPort, repo: RepoSlug, sha: string): Promise
   return new Set(runs.filter((run) => run.status === "completed" && !isPassing(run) && run.conclusion !== "cancelled").map((run) => run.name));
 }
 
+/** The failing checks of `input` that are not red at `sha`. */
+async function notRedAt(port: GitHubPort, input: HoldInput, sha: string): Promise<string[]> {
+  const red = await redAtBase(port, input.repo, sha);
+  return input.failing.filter((name) => !red.has(name));
+}
+
+/** When the earliest failing run at the head started, since a pull_request run tests the base as it stood then. */
+async function failingStartedAt(port: GitHubPort, input: HoldInput): Promise<number | undefined> {
+  const runs = actionsRunsAt(await port.latestCheckRuns(input.repo, input.headSha), input.headSha).filter((run) => input.failing.includes(run.name));
+  const starts = runs.map((run) => Date.parse(run.startedAt ?? ""));
+  return starts.length === 0 || starts.some(Number.isNaN) ? undefined : Math.min(...starts);
+}
+
 /**
- * Holds a red head whose every failing check also fails at the PR's base head, so a fixer is never woken to repair the
- * base's red. Any read that fails passes, as does a base with no completed red run there (R5: path-filtered base CI) or only cancelled ones.
+ * The base commit the head's failing CI ran against: the newest first-parent ancestor of the base head that landed by
+ * the earliest failing run's start. Undefined when that is the base head itself, or a date is missing, or the walk runs
+ * out, so a doubtful read wakes as before.
+ */
+async function ciBaseOf(port: GitHubPort, input: HoldInput, baseSha: string): Promise<string | undefined> {
+  const startedAt = await failingStartedAt(port, input);
+  if (startedAt === undefined) return undefined;
+  let sha: string | undefined = baseSha;
+  for (let hop = 0; hop < CI_BASE_WALK && sha !== undefined; hop++) {
+    const commit = await port.getCommit(input.repo, sha);
+    const committedAt = Date.parse(commit.committedAt ?? "");
+    if (Number.isNaN(committedAt)) return undefined;
+    if (committedAt <= startedAt) return sha === baseSha ? undefined : sha;
+    sha = commit.parents[0];
+  }
+  return undefined;
+}
+
+function baseRedHold(deps: ShepherdDeps, input: HoldInput, base: Omit<BaseRed, "seat">, why: string): Hold {
+  const seat = singleSeat(deps.store.get().byPr(input.repo, input.pr)?.policy.seat);
+  const reason = `${why}, and every failing check (${input.failing.join(", ")}) fails there too`;
+  return { hold: true, reason, episode: null, baseRed: { ...base, ...(seat && { seat }) } };
+}
+
+/**
+ * Holds a red head whose every failing check also fails at the PR's base head, or at the since-moved base its CI ran
+ * against, so a fixer is never woken to repair the base's red. Any read that fails passes, as does a base with no
+ * completed red run there (R5: path-filtered base CI) or only cancelled ones.
  */
 async function decideBaseRed(deps: ShepherdDeps, input: HoldInput, unfrozen: string): Promise<Hold> {
   if (input.failing.length === 0) return pass(unfrozen);
@@ -134,12 +185,13 @@ async function decideBaseRed(deps: ShepherdDeps, input: HoldInput, unfrozen: str
     const { baseRef } = await deps.port.getPr(input.repo, input.pr);
     const baseSha = await deps.port.getHeadSha(input.repo, baseRef);
     if (baseSha === null) return pass(`${unfrozen}; the base ${baseRef} has no head`);
-    const onBase = await redAtBase(deps.port, input.repo, baseSha);
-    const own = input.failing.filter((name) => !onBase.has(name));
-    if (own.length > 0) return pass(`${unfrozen}; failing here but not on ${baseRef} at ${baseSha.slice(0, 7)}: ${own.join(", ")}`);
-    const seat = singleSeat(deps.store.get().byPr(input.repo, input.pr)?.policy.seat);
-    const reason = `the base ${baseRef} is red at ${baseSha.slice(0, 7)}, and every failing check (${input.failing.join(", ")}) fails there too`;
-    return { hold: true, reason, episode: null, baseRed: { baseRef, baseSha, ...(seat && { seat }) } };
+    const own = await notRedAt(deps.port, input, baseSha);
+    if (own.length === 0) return baseRedHold(deps, input, { baseRef, baseSha }, `the base ${baseRef} is red at ${baseSha.slice(0, 7)}`);
+    const ciBase = await ciBaseOf(deps.port, input, baseSha).catch(() => undefined);
+    if (ciBase !== undefined && (await notRedAt(deps.port, input, ciBase)).length === 0) {
+      return baseRedHold(deps, input, { baseRef, baseSha: ciBase, stale: true }, `this head's CI ran against ${baseRef} at ${ciBase.slice(0, 7)}, red there and since moved to ${baseSha.slice(0, 7)}`);
+    }
+    return pass(`${unfrozen}; failing here but not on ${baseRef} at ${baseSha.slice(0, 7)}: ${own.join(", ")}`);
   } catch (error) {
     return pass(`${unfrozen}; the base could not be read: ${failureOf(error)}`);
   }

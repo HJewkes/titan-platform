@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
+import { ASK_LABEL_PATTERN } from "@titan-design/agent-dispatch";
 import { z } from "zod";
 import { isRepoKey } from "./shepherd/seats.js";
 
@@ -142,6 +143,18 @@ export const ReviewCheckConfigSchema = z.strictObject({
 
 export type ReviewCheckConfig = z.infer<typeof ReviewCheckConfigSchema>;
 
+/**
+ * Posts pending decision gates to agent-chat's human queue and resolves them from the answer (CC-169 g). An answer
+ * resolves as `owner-remote` (Q1): any unregistered caller on the broker's 0600 socket can answer, so only gates whose
+ * rule admits a remote owner are asked; absent means serve asks nothing.
+ */
+export const GateNotifyConfigSchema = z.strictObject({
+  label: z.string().regex(ASK_LABEL_PATTERN, "must be an agent-chat ask label").default("titan-factory"),
+  resolverClass: z.enum(["owner-remote", "owner-terminal"]).default("owner-remote"),
+});
+
+export type GateNotifyConfig = z.infer<typeof GateNotifyConfigSchema>;
+
 function isRemoteFactoryUrl(value: string): boolean {
   if (!URL.canParse(value)) return false;
   const url = new URL(value);
@@ -176,11 +189,13 @@ export const FactoryConfigSchema = z.object({
       /** The agent-chat seat told when the deploy alarm goes up and while it stands; absent is warned about at serve start and fails `service check`. */
       hubSeat: z.string().min(1).optional(),
       deployAlarm: DeployAlarmConfigSchema.optional(),
+      gateNotify: GateNotifyConfigSchema.optional(),
     })
     .refine((s) => !s.hardStopRepos || s.charterPath, { message: "hardStopRepos needs a charterPath", path: ["charterPath"] })
     .refine((s) => !s.review || s.agentChatBin, { message: "review needs an agentChatBin", path: ["agentChatBin"] })
     .refine((s) => !s.fixer || s.agentChatBin, { message: "fixer needs an agentChatBin", path: ["agentChatBin"] })
     .refine((s) => !s.hubSeat || s.agentChatBin, { message: "hubSeat needs an agentChatBin", path: ["agentChatBin"] })
+    .refine((s) => !s.gateNotify || s.agentChatBin, { message: "gateNotify needs an agentChatBin", path: ["agentChatBin"] })
     .optional(),
 });
 
