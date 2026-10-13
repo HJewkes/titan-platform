@@ -5,7 +5,8 @@ import type { AnswersPage } from "@titan-design/agent-dispatch";
 import { silentLogger, type Logger } from "@titan-design/daemon";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GateNotifyOptions } from "./gate-notify-sweep.js";
-import { SHUTDOWN_SWEEP_GRACE_MS, startFactoryServer, type FactoryServer } from "./serve.js";
+import { startFactoryServer, type FactoryServer } from "./serve.js";
+import { SHUTDOWN_SWEEP_GRACE_MS } from "./serve-shutdown.js";
 import { gateId, gateOpened, landScenario, type LandScenario } from "./test-support/land.js";
 
 const GRACE_MS = 300;

@@ -16,6 +16,7 @@ import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
 import { timestampConsole } from "./serve-log.js";
 import { startUnlessLive, type HealthProbe } from "./serve-beside-live.js";
 import { startLoopDelayWatch } from "./serve-loop-delay.js";
+import { SHUTDOWN_SWEEP_GRACE_MS, closeServer } from "./serve-shutdown.js";
 import { untilStopped } from "./serve-signal.js";
 import { recordServeStart, serveStartsHealth, type ServeStart } from "./serve-starts.js";
 import type { FactoryHost, FactoryHostOptions } from "./host.js";
@@ -46,8 +47,6 @@ export const TOOL_PREFIX = "";
 const DEFAULT_LEASE_MS = 30_000;
 const IN_MEMORY_DB = ":memory:";
 const CHECKOUT_SWEEP_MS = 3_600_000;
-/** How long close waits, in total, for sweep ticks already running; a tick can sit on a 30 s agent-chat or gh timeout, and systemd shows `deactivating` all that time. */
-export const SHUTDOWN_SWEEP_GRACE_MS = 5_000;
 const STATUSES: readonly WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
 const { version: FACTORY_VERSION } = createRequire(import.meta.url)("../package.json") as { version: string };
 
@@ -150,49 +149,8 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const pacerSweep = startDeployPacer(options.deployPacer, { now: options.now ?? Date.now, runningSha: build.sha, busy }, log);
   const notifySweep = notify?.start();
   const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep, notifySweep];
-  const release = async (): Promise<void> => {
-    thaws.stop();
-    frames.stop();
-    loopDelay.stop();
-    mainWatch?.close();
-    await daemon.close();
-    unbindCarry();
-    host.close();
-  };
-  const close = () => closeServer({ sweeps, runtime: host.runtime, release }, log, options.shutdownGraceMs ?? SHUTDOWN_SWEEP_GRACE_MS);
+  const close = () => closeServer({ sweeps, watches: [thaws, frames, loopDelay], mainWatch, daemon, unbindCarry, host }, log, options.shutdownGraceMs ?? SHUTDOWN_SWEEP_GRACE_MS);
   return { port: daemon.port, host, hub: daemon.hub, close: () => (closing ??= close()) };
-}
-
-interface ClosingParts {
-  sweeps: readonly (Sweep | undefined)[];
-  runtime: { shutdown(): void };
-  /** Everything after the grace: watches, the daemon, the carry binding and the database. */
-  release(): Promise<void>;
-}
-
-/** The runtime lets its runs go before anything is awaited, so a successor can claim them and this process starts no more step work. */
-async function closeServer({ sweeps, runtime, release }: ClosingParts, log: Logger, graceMs: number): Promise<void> {
-  const started = Date.now();
-  const live = sweeps.filter((sweep): sweep is Sweep => sweep !== undefined);
-  for (const sweep of live) sweep.halt();
-  runtime.shutdown();
-  const abandoned = await awaitTicks(live, graceMs);
-  await release();
-  log.info({ ms: Date.now() - started, ...(abandoned.length > 0 && { abandoned }) }, "closed");
-}
-
-/** The names of sweeps whose tick was still running when the grace ran out; that tick's later failure is caught and logged by its sweep. */
-async function awaitTicks(sweeps: readonly Sweep[], graceMs: number): Promise<string[]> {
-  const pending = new Set(sweeps.filter((sweep) => sweep.inFlight() !== null));
-  const ticks = [...pending].map((sweep) => sweep.inFlight()!.then(() => pending.delete(sweep)));
-  let timer: NodeJS.Timeout | undefined;
-  const grace = new Promise<void>((resolve) => {
-    timer = setTimeout(resolve, graceMs);
-    timer.unref();
-  });
-  await Promise.race([Promise.allSettled(ticks), grace]);
-  clearTimeout(timer);
-  return [...pending].map((sweep) => sweep.name);
 }
 
 /** Start, then run until SIGTERM, SIGINT or `stop` aborts, then close. Resolves after shutdown completes. */
