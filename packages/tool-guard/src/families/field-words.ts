@@ -8,8 +8,8 @@ import type { WordToken } from "../shell/lexer.js";
 export const GH_PLACEHOLDER_RE = /:(?:owner|repo|branch)\b|\{[a-z]+\}/;
 /** The matches gh fills; it leaves any other `{name}`, such as a `{oid}` selection, as written. */
 const GH_FILLED = new Set([":owner", ":repo", ":branch", "{owner}", "{repo}", "{branch}"]);
-const GLOB_RE = /[*?[]/;
-const BRACE_LIST_RE = /\{[^{}]*(?:,|\.\.)[^{}]*\}/;
+/** Characters no shell expansion acts on outside quotes; anything else (`~ ^ # * ? [ { ( < !` …) may rewrite the word. */
+const SAFE_BARE_RE = /^[A-Za-z0-9_./:@%+,=-]*$/;
 
 export const ghFills = (text: string) => [...text.matchAll(new RegExp(GH_PLACEHOLDER_RE, "g"))].filter((m) => GH_FILLED.has(m[0]));
 
@@ -18,13 +18,20 @@ const fieldKeyRe = (key: string) => new RegExp(`^(?:${key}|.*\\[${key}\\])$`);
 
 const keyEnd = (text: string) => (text.includes("=") ? text.indexOf("=") : text.length);
 
+const withoutRefs = (word: WordToken) =>
+  [...word.refs].sort((a, b) => b.start - a.start).reduce((v, r) => v.slice(0, r.start) + v.slice(r.end), word.value);
+
 /**
- * Whether pathname or brace expansion may rewrite the word: a glob character or brace list not wholly inside one pair
- * of quotes. The lexer keeps no record of which characters partial quotes or escapes cover, so those count as bare.
+ * Whether a shell expansion other than a tracked variable may rewrite the word: tilde, glob, extended glob, brace or
+ * zsh `=cmd` expansion, or an expansion outside quotes that word-splits. A word not wholly inside one pair of quotes is
+ * literal only when every character outside its variables is in a safe set; the lexer keeps no record of which
+ * characters partial quotes or escapes cover, so they all count as bare.
  */
 function expandsAtRunTime(word: WordToken): boolean {
   if (word.quoted && !word.spliced) return false;
-  return GLOB_RE.test(word.value) || BRACE_LIST_RE.test(word.value);
+  if (word.unquotedExpansion) return true;
+  const bare = withoutRefs(word);
+  return bare.startsWith("=") || !SAFE_BARE_RE.test(bare);
 }
 
 /**

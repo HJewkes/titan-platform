@@ -112,6 +112,12 @@ describe("graphqlBranchWrites, targets known only at run time", () => {
     ["a value a brace list expands", MERGE_BY_VAR, "-f base=m{x,a}in"],
     ["an unquoted nested key, which globs", BY_INPUT, "-F 'i[branch][repositoryNameWithOwner]=o/r' -F i[branch][branchName]=feat/x"],
     ["a glob in a partly quoted value", MERGE_BY_VAR, '-f base="mai"?'],
+    ["a value tilde expansion makes $HOME", MERGE_BY_VAR, "-f base=~"],
+    ["a value tilde expansion makes $PWD", MERGE_BY_VAR, "-f base=~+"],
+    ["a value tilde expansion makes $OLDPWD", MERGE_BY_VAR, "-f base=~-"],
+    ["a value a zsh extended-glob negation may match", MERGE_BY_VAR, "-f base=^x"],
+    ["a value a zsh extended-glob repeat may match", MERGE_BY_VAR, "-f base=mai#n"],
+    ["a word zsh expands as =cmd", MERGE_BY_VAR, "-f =main"],
     ["a feature merge with a text escaped past the cap", `${FEATURE_MERGE} # ${DEEP}`, ""],
   ])("reads %s as unknown", (_what, query, vars) => {
     expect(read(query, vars).unknown).toBe(true);
