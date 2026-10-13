@@ -171,3 +171,38 @@ describe("lineIfsValues on ordinary lines beside an IFS assignment", () => {
     expect(values(line)).toEqual([DEFAULT_IFS, ifs]);
   });
 });
+
+describe("lineIfsValues on run-time values read by name", () => {
+  it.each([
+    ["a command substitution read by arithmetic", "v=$(printf %sFS=1 I); (( v ))"],
+    ["an expanded value read by prompt expansion", "v=$x; : \"${v@P}\""],
+    ["read input run by a trap", "read v; trap \"$v\" EXIT"],
+    ["read input stored as a literal trap body", "read v; trap 'eval \"$v\"' EXIT"],
+    ["an expanded value read by let", "v=$x; let v"],
+    ["read input read by a conditional", "read v; [[ v -eq 1 ]]"],
+    ["an expanded value read as a subscript", "v=$x; a[v]=1"],
+    ["an expanded value read as a substring offset", "v=$(cat f); : ${y:v}"],
+    ["an expanded value read as an expansion subscript", "v=$x; : ${a[v]}"],
+    ["a dynamic for list read by arithmetic", "for v in $L; do (( v )); done"],
+    ["read input read by an integer declaration", "declare -i n; read n"],
+    ["mapfile input read by an arithmetic expansion", "mapfile -t v < f; : $(( v ))"],
+    ["printf -v read by arithmetic", "printf -v v %s \"$x\"; (( v ))"],
+    ["a declared expanded value read by arithmetic", "local v=$x; (( v ))"],
+    ["a reader before the store, as a loop runs it", "for i in 1 2; do (( v )); v=$x; done"],
+    ["a reader in a function called after the store", "f(){ (( v )); }; v=$x; f"],
+    ["an expanded value read through a dynamic command", "v=$x; $cmd v"],
+  ])("gives null for %s", (_how, line) => {
+    expect(values(line)).toBeNull();
+  });
+});
+
+describe("lineIfsValues on run-time values no reader evaluates", () => {
+  it.each([
+    ["a command substitution used as a default", "IFS=,; d=$(date); echo \"${d:-x}\""],
+    ["read input echoed", "IFS=,; read -r a; echo \"$a\""],
+    ["literal arithmetic with no run-time value", "IFS=,; v=1; (( v ))"],
+    ["a run-time value beside a literal subscript", "IFS=,; a[0]=$x"],
+  ])("resolves %s", (_how, line) => {
+    expect(values(line)).toEqual([DEFAULT_IFS, ","]);
+  });
+});
