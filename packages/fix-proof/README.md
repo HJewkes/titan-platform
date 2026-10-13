@@ -14,7 +14,11 @@ the `fix-proof` bin does the git and vitest work.
 
 - `fix-proof exec --side base|head --out <dir> --base <mergeBase> --head <sha>` builds and tests
   one side and writes encoded reports (`base.report` and `base-rerun.report`, or `head.report`)
-  to `<dir>`. The base side installs and builds before any head file is overlaid.
+  to `<dir>`. The base side installs and builds before any head file is overlaid. With
+  `--sandbox-user <name>`, each base-side vitest run goes through `sudo -n` into a fresh PID
+  namespace as that user, with `no_new_privs` and no capabilities, so no process a head test
+  starts outlives the run or writes the runner's files. A sandbox that cannot be set up writes
+  error markers; vitest never falls back to an unsandboxed run. The head side ignores the flag.
 - `fix-proof judge --base-report <file> --head-report <file> [--base-rerun-report <file>] --base
   <mergeBase> --head <sha>` derives the plan from git, decodes the reports under a byte cap and
   prints one result line. It spawns nothing but git. `dist/judge.js` is the same command on its

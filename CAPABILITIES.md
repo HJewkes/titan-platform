@@ -962,7 +962,7 @@ Key exports:
 
 - `types`: `AuthorityDeniedError`, `AuthorityRefusedError`, `StepFailedError`, `StepOutputInvalidError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowNotOwnedError`, `WorkflowRecoveryRequiredError`, `WorkflowSchemaDriftError`, `workflowStepRequestKey`
 - `signals`: `createSignalParser`, `createSignalSetParser`
-- +77 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/workflow)
+- +78 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/workflow)
 
 ## UI
 

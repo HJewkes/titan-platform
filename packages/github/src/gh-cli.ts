@@ -125,6 +125,8 @@ async function getContent(api: Rest, repo: string, path: string, ref: string): P
 interface GhPull {
   number: number;
   state: unknown;
+  title?: string;
+  body?: string | null;
   merged?: boolean;
   merged_at?: string | null;
   merge_commit_sha: string | null;
@@ -157,6 +159,7 @@ function toPullRequest(pr: GhPull, behindBy?: number): PullRequest {
     behind: (behindBy ?? 0) > 0,
     ...(behindBy === undefined ? {} : { behindBy }),
     autoMerge: pr.auto_merge != null,
+    ...(pr.title === undefined ? {} : { title: pr.title, body: pr.body ?? "" }),
   };
 }
 

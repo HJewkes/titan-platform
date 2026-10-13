@@ -2,7 +2,7 @@ import type { EventHub } from "@titan-design/daemon";
 import type { Db } from "@titan-design/store-sqlite";
 import type { WorkflowEvent } from "@titan-design/workflow";
 import { openFactoryHost, type FactoryHost, type FactoryHostOptions, type FactoryRoutes } from "../host.js";
-import type { ShepherdServices } from "./commands.js";
+import type { ShepherdServices } from "./services.js";
 import type { Registration } from "./store.js";
 
 export const SHEPHERD_FRAME_EVENT = "shepherd";

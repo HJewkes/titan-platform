@@ -1,7 +1,7 @@
 import type { WorkflowRun } from "@titan-design/workflow";
 import type { FactoryHost, PendingGate } from "../host.js";
 import { RESYNC_CONCURRENCY, mapBounded, settledValue } from "./bounded.js";
-import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./commands.js";
+import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import { lastReadHead } from "./last-read-head.js";
 import { SHEPHERD_POLICY_TABLE } from "./policy.js";
 import type { Escalation } from "./route-table.js";

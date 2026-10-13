@@ -1,7 +1,8 @@
 import type { GitHubPort, PullRequest, RepoSlug } from "@titan-design/github";
 import type { FactoryHost } from "../host.js";
 import { TOOLCHAIN_CONSUMERS, adoptionPlan, readCanonical, readConsumer } from "../workflows/toolchain-fanout.js";
-import { registerToolchainAdoption, type ShepherdServices } from "./commands.js";
+import { registerToolchainAdoption } from "./commands.js";
+import type { ShepherdServices } from "./services.js";
 import { failureOf } from "./error-class.js";
 
 /** Drift, not an event, starts a fanout; an hourly read of a handful of files per consumer keeps the rate-limit cost small. */

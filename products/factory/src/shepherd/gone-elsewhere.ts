@@ -2,7 +2,7 @@ import { z } from "zod";
 import { WorkflowNotOwnedError, type WorkflowRun } from "@titan-design/workflow";
 import type { FactoryHost } from "../host.js";
 import { RESYNC_CONCURRENCY, mapBounded } from "./bounded.js";
-import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./commands.js";
+import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import { failureOf } from "./error-class.js";
 import { openOrRead } from "./snapshot-reads.js";
 import { POST_MERGE_STEPS } from "./post-merge.js";

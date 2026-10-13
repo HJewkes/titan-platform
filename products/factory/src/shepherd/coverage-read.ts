@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, type WorkflowRun, type WorkflowStatus } from "@titan-design/workflow";
-import { SHEPHERD_WORKFLOW } from "./commands.js";
+import { SHEPHERD_WORKFLOW } from "./services.js";
 import { coverage, mergedRows, type CoverageReport, type CoverageWindow, type LedgerRegistration, type MergedRow } from "./coverage.js";
 import { ShepherdStore } from "./store.js";
 

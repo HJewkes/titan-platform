@@ -5,7 +5,8 @@ import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { shepherdFixture, shepherdRuns } from "../test-support/shepherd.js";
 import { ADOPTION_BRANCH, DRIFTED, toolchainWorld, type ToolchainWorld } from "../test-support/toolchain.js";
 import { TOOLCHAIN_CONSUMERS } from "../workflows/toolchain-fanout.js";
-import { TOOLCHAIN_IMPLEMENTER, type ShepherdServices } from "./commands.js";
+import { TOOLCHAIN_IMPLEMENTER } from "./commands.js";
+import type { ShepherdServices } from "./services.js";
 import { sweepToolchain } from "./toolchain-sweep.js";
 
 const hosts: FactoryHost[] = [];

@@ -90,6 +90,9 @@ describe("whyAsked for Shepherd's own rows", () => {
     ["head-mismatch", "accidental"],
     ["files-unread", "accidental"],
     ["required-checks-unknown", "accidental"],
+    ["github-path", "accidental"],
+    ["ci-policy-weakened", "deliberate"],
+    ["ci-policy-malformed", "accidental"],
   ])("labels merge guard %s %s", (rowId, gateClass) => {
     expect(whyAsked({ table: "shepherd-merge-guard", rowId }, "x").gateClass).toBe(gateClass);
   });

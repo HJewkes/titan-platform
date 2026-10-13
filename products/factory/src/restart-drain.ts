@@ -36,8 +36,8 @@ const REPORT_EVERY_MS = 60_000;
 /** Consecutive unanswered `/health` polls for this long mean serve is down, not slow. */
 export const NO_ANSWER_PROCEED_MS = 2 * 60_000;
 const DRAIN_PHASES: ReadonlySet<string> = new Set(["review", "merging"]);
-/** Waits that only poll a store a restart reads again, so a restart costs them nothing; an exhausted account can hold one for days. */
-const IDLE_WAITS: readonly string[] = ["sh-account-wait"];
+/** Waits that only poll a store a restart reads again, so a restart costs them nothing; an exhausted account or an unbound checkout can hold one for days. */
+const IDLE_WAITS: readonly string[] = ["sh-account-wait", "sh-no-reviewer-wait"];
 
 type RouteFor = (stepId: string) => Pick<StepRoute, "onRestart"> | undefined;
 
