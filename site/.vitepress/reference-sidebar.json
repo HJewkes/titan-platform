@@ -222,5 +222,15 @@
         "link": "/reference/react-ui"
       }
     ]
+  },
+  {
+    "text": "Products",
+    "collapsed": false,
+    "items": [
+      {
+        "text": "explainer",
+        "link": "/reference/explainer"
+      }
+    ]
   }
 ]
