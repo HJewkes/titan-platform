@@ -618,6 +618,24 @@ are leads, not verdicts, and both drop files that `keepNode` rejects:
 These differ from `pnpm dead:check`, which reads edges rather than `utilization` and follows
 re-exports transitively from package-manifest entries.
 
+### SCBench complexity rollup
+
+TP-2474 h ports the complexity half of SlopCodeBench's code-quality metrics to TypeScript.
+`qualitySection(symbolNodes, ctx, packages)` returns the report's optional `quality` section:
+`complexity.total` over every kept file and `complexity.packages`, one row per `PackageRoot`
+(`""` for files under none). `complexityDistribution(callables, packages)` and
+`summarizeComplexity(callables)` are the same arithmetic over plain `CallableComplexity` rows.
+
+Each named function with a `symbol_cyclomatic` metric is one callable; its SLOC is
+`symbol_loc` minus `symbol_comment_lines`. Mass is CC·√SLOC. `erosion` (SCBench's
+`mass.high_cc_pct`) is the share of mass in callables with CC above 10, and `cogErosion` is
+the same over `symbol_cognitive`. The row also carries `ccMax`, `ccMean`, `ccStd` (population),
+`ccHighCount` (CC > 10), `ccExtremeCount` (CC > 30), `highCcMean` and `ccGini`
+(SCBench's `cc_concentration`). Nested closures and helpers with no symbol node of their own
+are not counted, so erosion can read lower than a tool that measures every function, such as
+scb-check. Splitting a function lowers erosion without improving the design, so read it beside
+`symbol_pass_through` and `symbol_single_caller_helper`.
+
 ### Growth and untested risks
 
 Ported with TP-1468 from codewatch's `graph report`, unchanged apart from import paths. Both
