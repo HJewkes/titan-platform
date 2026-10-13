@@ -62,5 +62,5 @@ export function listMergedPrRefs(db: Db, since?: string): string[] {
   const rows = db
     .prepare("SELECT pr_ref AS prRef FROM pr WHERE merged_at IS NOT NULL AND (@since IS NULL OR merged_at >= @since) ORDER BY pr_ref")
     .all({ since: since ?? null });
-  return rows.map((row) => (row as { prRef: string }).prRef);
+  return rows.flatMap((row) => (typeof row === "object" && row !== null && "prRef" in row && typeof row.prRef === "string" ? [row.prRef] : []));
 }
