@@ -71,3 +71,25 @@ Verified against 0.0.0.
 New. The packet byte cap and the code-excerpt rule follow a HyperFrames skill's packet
 builder; `attributeFindings` ports a demo-video script's helper of the same name, minus its
 substring match, which sent `beat-3` findings to `beat-30`. Tracked by TP-2611.
+
+## The map track
+
+A beat's `visual.map_state` declares what the repo map shows: its level, camera, revealed
+boxes, edges, focus, cards and pins, each change keyed to a spoken cue. `map_state` is
+optional. A beat without it takes the map off screen, so a video can cut to another slide
+type and come back.
+
+- `MapBeatSchema`, `VisualSchema` and `MapStateSchema` parse the visual track;
+  `MapLayoutSchema` is the slice of the layout the lints read.
+- `lintMapBeats(beats, layout)` returns errors for a jump of more than one level, more than
+  `MAX_NEW_BOXES` (3) new boxes in a beat, more than `MAX_FULL_WEIGHT` (7) boxes at full
+  weight, an id the layout lacks, a drawn edge with no `edgeSource`, a `hand` layout without
+  an `our-framing` chip, and two cards entering on one cue. A zoom with no later map beat is
+  only a warning.
+- `compileMapTimeline(beats, resolveCue)` returns one segment per map beat, in seconds from
+  the video start, with sorted events. `cueResolverFromWords` builds the resolver from
+  per-beat word timings and throws on a cue the beat never speaks.
+
+A beat that re-enters the map resumes the last map beat's camera, revealed boxes, focus and
+active set, and its own fields override them. Level checks and the new-box count run against
+that resumed state, so leaving the map never resets them.
