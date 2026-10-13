@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { l0HardPass, runL0, L0_CHECKS } from "./eval-l0.js";
 import { flowCheck } from "./lint-flow.js";
-import { GOOD_BEATS, lint, tour, withBeat } from "./voice-flow-fixtures.test-helpers.js";
+import { GOOD_BEATS, lint, tour, withBeat, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
 
 const flow = (beats = GOOD_BEATS, video: Record<string, unknown> = {}) => lint(tour(beats, video), [flowCheck]);
 const spoken = (id: string, text: string, extra: Record<string, unknown> = {}) => withBeat(id, { spoken: text, extra });
@@ -28,7 +28,7 @@ describe("flow lints on the positive control", () => {
 describe("Q-F1 beat links", () => {
   it("fails announcement openers and topic jumps", () => {
     const swap: Record<string, string> = { w2: "Here is the desk server.", w3: "Parcels weigh little.", k2: "Vans park outside." };
-    const beats = GOOD_BEATS.map((s) => (swap[s[0]] ? ([s[0], s[1], s[2], swap[s[0]], s[4]] as typeof s) : s));
+    const beats = GOOD_BEATS.map(([id, chapter, fn, text, extra]): BeatSpec => [id, chapter, fn, swap[id] ?? text, extra]);
 
     const row = flow(beats).get("Q-F1");
 
@@ -37,7 +37,7 @@ describe("Q-F1 beat links", () => {
   });
 
   it("fails when one connective carries most links", () => {
-    const beats = GOOD_BEATS.map((s) => (["h2", "w2", "w3", "w4", "k2", "k3", "c2"].includes(s[0]) ? ([s[0], s[1], s[2], `So ${s[3]}`, s[4]] as typeof s) : s));
+    const beats = GOOD_BEATS.map((s): BeatSpec => (["h2", "w2", "w3", "w4", "k2", "k3", "c2"].includes(s[0]) ? [s[0], s[1], s[2], `So ${s[3]}`, s[4]] : s));
 
     expect(flow(beats).get("Q-F1")).toMatchObject({ value: 1, pass: false });
   });
@@ -120,7 +120,7 @@ describe("Q-F11 close", () => {
 
 describe("warnings and plain opening", () => {
   it("Q-F14 and Q-F15 warn without failing the hard filter", () => {
-    const flat = GOOD_BEATS.map((s) => [s[0], s[1], s[2], `The ${s[0]} beat states one fact.`, s[4]] as typeof s);
+    const flat = GOOD_BEATS.map((s): BeatSpec => [s[0], s[1], s[2], `The ${s[0]} beat states one fact.`, s[4]]);
     const rows = flow(flat);
 
     expect(rows.get("Q-F14")).toMatchObject({ severity: "warning", value: 0, pass: false });

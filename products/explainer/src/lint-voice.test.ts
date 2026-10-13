@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { l0HardPass } from "./eval-l0.js";
 import { voiceCheck, voiceCheckWith } from "./lint-voice.js";
-import { lint, tour, withBeat } from "./voice-flow-fixtures.test-helpers.js";
+import { lint, tour, withBeat, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
 
 const voice = (beats = withBeat("w1", {}), checks = [voiceCheck]) => lint(tour(beats), checks);
 const spoken = (id: string, text: string, extra: Record<string, unknown> = {}) => withBeat(id, { spoken: text, extra });
@@ -52,9 +52,9 @@ describe("Q-V2 provenance placement", () => {
       w1: { assertion: "Runtime links (from review)", job: "numbers" },
       w2: { assertion: "Links", job: "numbers", labels: ["D-PD-W1-011"] },
     };
-    const beats = withBeat("w1", {}).map(([id, chapter, fn, text, extra]) =>
-      leaks[id] ? [id, chapter, fn, text, { ...extra, visual: leaks[id] }] : [id, chapter, fn, text, extra],
-    ) as ReturnType<typeof withBeat>;
+    const beats = withBeat("w1", {}).map(
+      ([id, chapter, fn, text, extra]): BeatSpec => [id, chapter, fn, text, leaks[id] ? { ...extra, visual: leaks[id] } : extra],
+    );
 
     expect(voice(beats).get("Q-V2")).toMatchObject({ value: 2, detail_beats: ["w1", "w2"] });
   });

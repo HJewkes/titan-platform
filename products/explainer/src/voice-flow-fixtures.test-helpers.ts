@@ -3,7 +3,7 @@ import { flowCheck } from "./lint-flow.js";
 import { voiceCheck } from "./lint-voice.js";
 import { ScriptSchema, type ScriptV1 } from "./script-schema.js";
 
-type BeatSpec = [id: string, chapter: string, fn: string, spoken: string, extra?: Record<string, unknown>];
+export type BeatSpec = [id: string, chapter: string, fn: string, spoken: string, extra?: Record<string, unknown>];
 
 export const beat = ([id, chapter, fn, spoken, extra = {}]: BeatSpec) => ({
   id,
