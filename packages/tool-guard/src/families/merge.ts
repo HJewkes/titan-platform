@@ -1,6 +1,6 @@
 import type { SimpleCommand } from "../shell/commands.js";
 import { isCaseUnsure } from "../shell/case-attrs.js";
-import { parseGit } from "../shell/git.js";
+import { parseGit, splits } from "../shell/git.js";
 import type { GitInvocation } from "../shell/git.js";
 import type { WordToken } from "../shell/lexer.js";
 import { classified } from "../spellings.js";
@@ -127,12 +127,22 @@ function literalSpec(word: WordToken): string | null {
   return isCaseUnsure(word) ? `:${UNKNOWN}` : null;
 }
 
+/**
+ * A refspec known only at run time, or an unquoted dynamic word that may split into one, may name any branch,
+ * so it reads as a push to an unknown destination.
+ */
+function hasUnknownDestination(git: GitInvocation, refspecs: WordToken[]): boolean {
+  return git.subArgs.some(splits) || refspecs.some((s) => literalSpec(s) === null);
+}
+
 function gitPush(git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] {
   const options = readOptions(git.subArgs, GIT_PUSH_VALUES);
-  const specs = options.positionals.slice(1).flatMap((s) => literalSpec(s) ?? []);
+  const refspecs = options.positionals.slice(1);
+  const specs = refspecs.flatMap((s) => literalSpec(s) ?? []);
   if (hasFlag(options, "--all", "--branches", "--mirror") || specs.some((s) => s.includes("*"))) {
     return [classified("bash.merge.git-push-all", {})];
   }
+  if (hasUnknownDestination(git, refspecs)) return pushSpecs([...specs, UNKNOWN], git, ctx);
   if (options.positionals.length > 1) return pushSpecs(specs, git, ctx);
   if (hasFlag(options, "--tags", "--delete", "-d")) return [];
   const head = headOf(git, ctx);

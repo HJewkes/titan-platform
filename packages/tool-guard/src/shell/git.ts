@@ -39,7 +39,7 @@ export function parseGit(args: WordToken[], dir: string | null, home: string | n
 }
 
 /** An unquoted dynamic word word-splits, so it can carry the subcommand itself. */
-const splits = (word: WordToken | null | undefined) => Boolean(word?.dynamic && (!word.quoted || word.unquotedExpansion));
+export const splits = (word: WordToken | null | undefined) => Boolean(word?.dynamic && (!word.quoted || word.unquotedExpansion));
 
 function option(args: WordToken[], i: number, valueOpts: Set<string>) {
   const word = args[i] as WordToken;

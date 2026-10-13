@@ -152,6 +152,42 @@ describe("one fixture per bash.merge spelling", () => {
   });
 });
 
+describe("a push destination known only at run time counts as an unknown protected branch", () => {
+  const unknownPush = [expect.objectContaining({ action: "merge", spelling: "bash.merge.git-push-protected", subject: { branch: "unknown" } })];
+  const mergeSpellings = (command: string) => spellings(bash(command)).filter((s) => s.startsWith("bash.merge."));
+
+  it.each([
+    ['git push origin "$BRANCH"', "main"],
+    ['git push origin "$X"', "main"],
+    ['git push origin "$X"', "feat/x"],
+    ["git push origin $X", "feat/x"],
+    ["git push origin HEAD:$B", "feat/x"],
+    ["git push origin $M:refs/heads/x", "feat/x"],
+    ['git push origin "$(git branch --show-current)"', "feat/x"],
+  ])("denies %s on %s", (command, head) => {
+    expect(bash(command, head)).toEqual(unknownPush);
+  });
+
+  it("denies an unquoted option value that may split into a refspec", () => {
+    expect(mergeSpellings("git push -o $O origin feat")).toEqual(["bash.merge.git-push-protected"]);
+  });
+
+  it("keeps a literal destination after a run-time source", () => {
+    expect(bash('git push origin "$X":main')).toEqual([
+      expect.objectContaining({ spelling: "bash.merge.git-push-protected", subject: { branch: "main" } }),
+    ]);
+    expect(bash('git push origin "$X":feat')).toEqual([]);
+  });
+
+  it.each(["git push origin feat/x", "git push origin --tags", 'git push "$R" feat/x'])("leaves %s to other families", (command) => {
+    expect(mergeSpellings(command)).toEqual([]);
+  });
+
+  it("still reads --all before an unknown destination", () => {
+    expect(spellings(bash("git push --all $R"))).toContain("bash.merge.git-push-all");
+  });
+});
+
 describe("normal work classifies nothing", () => {
   it.each([
     ["git merge origin/main on main", "git merge origin/main", "main"],
@@ -163,7 +199,6 @@ describe("normal work classifies nothing", () => {
     ["git push -u origin HEAD on a feature branch", "git push -u origin HEAD", "feat/x"],
     ["git push with no refspec on a feature branch", "git push", "feat/x"],
     ["git push on a detached head", "git push", null],
-    ["git push of a branch named at run time", 'git push origin "$BRANCH"', "main"],
     ["git push --tags on main", "git push origin --tags", "main"],
     ["gh pr merge --disable-auto", "gh pr merge 12 --disable-auto", "feat/x"],
     ["gh pr view and gh pr create", "gh pr view 12 && gh pr create --base main --fill", "feat/x"],
@@ -175,7 +210,6 @@ describe("normal work classifies nothing", () => {
     ["a push after creating a branch from a feature branch", "git checkout -b feat/y && git push -u origin HEAD", "feat/x"],
     ["a push after git switch -c from a feature branch", "git switch -c feat/y origin/main; git push", "feat/x"],
     ["a path restore before a push", "git checkout -- src/a.ts && git push", "feat/x"],
-    ["a push of a run-time branch name", 'git push origin "$X"', "main"],
   ])("%s", (_what, command, head) => {
     expect(bash(command, head)).toEqual([]);
   });
