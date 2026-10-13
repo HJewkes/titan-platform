@@ -113,7 +113,7 @@ function productionRoutes(): readonly StepRoute[] {
 }
 
 /** Read loosely: the `reconcile` hook is not on `StepRoute` until TP-2339 slice Z1 releases it. */
-const hasReconcile = (route: StepRoute): boolean => typeof (route as { reconcile?: unknown }).reconcile === "function";
+const hasReconcile = (route: StepRoute): boolean => "reconcile" in route && typeof route.reconcile === "function";
 
 function parkRoutesWithoutReconcile(routes: readonly StepRoute[]): string[] {
   return routes.filter((route) => route.onRestart === "park" && !hasReconcile(route)).map((route) => route.match);
