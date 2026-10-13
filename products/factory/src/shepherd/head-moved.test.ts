@@ -103,7 +103,7 @@ async function conflictAtGated(): Promise<{ host: FactoryHost; fake: FakeGitHub;
   return { ...(await gatedRun(fake, phases, { headSha: SENT_BACK, mergeableState: "dirty" })), fake, reviewed, review };
 }
 
-/** Six FIX_FIRST reviews, each followed by a fixer push, escalate to the owner at the sixth head; `moved` answers the review at MOVED. */
+/** Three FIX_FIRST reviews, the first two followed by a fixer push, escalate to the owner at the third head; `moved` answers the review at MOVED. */
 async function runawayAtThirdHead(moved: "FIX_FIRST" | "MERGE"): Promise<{ host: FactoryHost; fake: FakeGitHub; services: Services; runId: string; reviewed: string[]; gated: string }> {
   const fake = fakeGitHub();
   const reviewed: string[] = [];
