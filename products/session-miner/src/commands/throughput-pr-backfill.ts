@@ -91,10 +91,12 @@ async function fetchPrDiff(prRef: string, wire: GitHubWire, getPr: GitHubPort["g
     const pull = await getPr(parsed.repo, parsed.pr);
     return toPrDiff(prRef, parsed.repo, parsed.pr, pull.headSha, await wire.listPrFiles(parsed.repo, parsed.pr));
   } catch (error) {
-    if ((error as { status?: unknown }).status === 404) return { prRef, missing: true };
+    if (isNotFound(error)) return { prRef, missing: true };
     throw error;
   }
 }
+
+const isNotFound = (error: unknown): boolean => typeof error === "object" && error !== null && "status" in error && error.status === 404;
 
 const atFloor = (budget: BackfillDeps["budget"], floor: number): boolean => budget.remaining !== null && budget.remaining <= floor;
 
