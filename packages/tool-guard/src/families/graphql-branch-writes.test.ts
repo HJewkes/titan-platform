@@ -24,24 +24,19 @@ const LINKED = (name: string) => `mutation{createLinkedBranch(input:{issueId:"I"
 
 describe("graphqlBranchWrites, mutations", () => {
   it.each([
-    ["updateRef", 'mutation{updateRef(input:{refId:"R",oid:"x"}){clientMutationId}}'],
-    ["deleteRef", 'mutation{deleteRef(input:{refId:"R"}){clientMutationId}}'],
-    ["enqueuePullRequest", 'mutation{enqueuePullRequest(input:{pullRequestId:"p"}){mergeQueueEntry{id}}}'],
-    ["updatePullRequestBranch", 'mutation{updatePullRequestBranch(input:{pullRequestId:"p"}){pullRequest{number}}}'],
-    ["updateRef", `mutation{${BS}u0075pdateRef(input:{refId:"R",oid:"x"}){clientMutationId}}`],
-    ["updateRef", `mutation{updateRef(input:{refId:"R",oid:"x"}){clientMutationId}} # ${DEEP}`],
-  ])("%s with an opaque target reads unknown (row %#)", (name, query) => {
-    expect(read(query)).toMatchObject({ mutations: [name], unknown: true });
-  });
-
-  it.each([
-    ["updateRefs", updateRefs('"refs/heads/main"')],
-    ["createRef", createRef('"refs/heads/main"')],
-    ["mergeBranch", merge('"main"')],
-    ["createCommitOnBranch", commitOn('{repositoryNameWithOwner:"o/r",branchName:"main"}')],
-    ["createLinkedBranch", LINKED(',name:"main"')],
-  ])("%s on main lists main and stays known", (name, query) => {
-    expect(read(query)).toMatchObject({ mutations: [name], unknown: false, branches: expect.arrayContaining(["main"]) });
+    ["updateRef", 'mutation{updateRef(input:{refId:"R",oid:"x"}){clientMutationId}}', true],
+    ["deleteRef", 'mutation{deleteRef(input:{refId:"R"}){clientMutationId}}', true],
+    ["enqueuePullRequest", 'mutation{enqueuePullRequest(input:{pullRequestId:"p"}){mergeQueueEntry{id}}}', true],
+    ["updatePullRequestBranch", 'mutation{updatePullRequestBranch(input:{pullRequestId:"p"}){pullRequest{number}}}', true],
+    ["updateRef", `mutation{${BS}u0075pdateRef(input:{refId:"R",oid:"x"}){clientMutationId}}`, true],
+    ["updateRef", `mutation{updateRef(input:{refId:"R",oid:"x"}){clientMutationId}} # ${DEEP}`, true],
+    ["updateRefs", updateRefs('"refs/heads/main"'), false],
+    ["createRef", createRef('"refs/heads/main"'), false],
+    ["mergeBranch", merge('"main"'), false],
+    ["createCommitOnBranch", commitOn('{repositoryNameWithOwner:"o/r",branchName:"main"}'), false],
+    ["createLinkedBranch", LINKED(',name:"main"'), false],
+  ])("%s reads unknown %s, or lists main (row %#)", (name, query, unknown) => {
+    expect(read(query)).toMatchObject({ mutations: [name], unknown, branches: unknown ? [] : expect.arrayContaining(["main"]) });
   });
 });
 
@@ -124,6 +119,22 @@ describe("graphqlBranchWrites, targets known only at run time", () => {
   });
 });
 
+describe("graphqlBranchWrites, variables zsh modifies", () => {
+  /** A field word as variable tracking leaves it: the text as written in `typed`, the bash-modelled value in `value`. */
+  const tracked = (src: string, value: string) => words(src).map((w) => ({ ...w, value, dynamic: false, refs: [], typed: w.value }));
+  const call = (vars: WordToken[]) => graphqlBranchWrites([MERGE_BY_VAR], [...words(`'query=${MERGE_BY_VAR}'`), ...vars]);
+  it.each([
+    ["a :l modifier, which lower-cases MAIN", tracked('"base=$X:l"', "base=MAIN:l"), true],
+    ["a :h modifier, which drops /x", tracked('"base=$Y:h"', "base=refs/heads/main/x:h"), true],
+    ["a modifier after a closing quote, which zsh leaves but the dropped quotes hide", tracked('base="$Y":h', "base=refs/heads/main/x:h"), true],
+    ["a subscript", tracked('"base=$X[1]"', "base=MAIN[1]"), true],
+    ["an untracked variable with a modifier", words('"base=$X:l"'), true],
+    ["a braced variable before a colon, which zsh leaves literal", tracked('"base=${X}:x"', "base=MAIN:x"), false],
+  ])("reads %s as unknown: %s", (_what, vars, unknown) => {
+    expect(call(vars).unknown).toBe(unknown);
+  });
+});
+
 describe("graphqlBranchWrites, texts with no branch mutation", () => {
   it.each([
     ["a viewer read", "{viewer{login}}", false],
@@ -149,19 +160,16 @@ describe("graphqlBranchWrites, texts with no branch mutation", () => {
 
 describe("decodeGraphqlEscapes", () => {
   it.each([
-    [`${BS}u006dain`, "main"],
-    [`${BS}u{6d}ain`, "main"],
-    [`refs${BS}/heads${BS}/main`, "refs/heads/main"],
-    [`${BS}"main${BS}"`, '"main"'],
-    [`${BS}${BS}u006dain`, "main"],
-    [`a${BS}nb`, "a\nb"],
-    [`${BS}u{110000}`, `${BS}u{110000}`],
-  ])("decodes %s", (text, decoded) => {
-    expect(decodeGraphqlEscapes(text)).toEqual({ text: decoded, complete: true });
-  });
-
-  it("stops after the two layers GitHub decodes and says escapes are left", () => {
-    expect(decodeGraphqlEscapes(`${BS}u{5c}u{5c}u006dain`)).toEqual({ text: `${BS}u006dain`, complete: false });
+    [`${BS}u006dain`, "main", true],
+    [`${BS}u{6d}ain`, "main", true],
+    [`refs${BS}/heads${BS}/main`, "refs/heads/main", true],
+    [`${BS}"main${BS}"`, '"main"', true],
+    [`${BS}${BS}u006dain`, "main", true],
+    [`a${BS}nb`, "a\nb", true],
+    [`${BS}u{110000}`, `${BS}u{110000}`, true],
+    [`${BS}u{5c}u{5c}u006dain`, `${BS}u006dain`, false],
+  ])("decodes %s to %s, within the two layers GitHub decodes: %s", (text, decoded, complete) => {
+    expect(decodeGraphqlEscapes(text)).toEqual({ text: decoded, complete });
   });
 });
 

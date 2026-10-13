@@ -10,6 +10,8 @@ export const GH_PLACEHOLDER_RE = /:(?:owner|repo|branch)\b|\{[a-z]+\}/;
 const GH_FILLED = new Set([":owner", ":repo", ":branch", "{owner}", "{repo}", "{branch}"]);
 /** Characters no shell expansion acts on outside quotes; anything else (`~ ^ # * ? [ { ( < !` …) may rewrite the word. */
 const SAFE_BARE_RE = /^[A-Za-z0-9_./:@%+,=-]*$/;
+/** An unbraced zsh parameter followed by a `:h`/`:l` modifier, a `[1]` subscript or a `(…)` qualifier. */
+const ZSH_MODIFIED_RE = /\$(?:[A-Za-z_]\w*|[0-9#@*?$!-])[:[(]/;
 
 export const ghFills = (text: string) => [...text.matchAll(new RegExp(GH_PLACEHOLDER_RE, "g"))].filter((m) => GH_FILLED.has(m[0]));
 
@@ -22,12 +24,22 @@ const withoutRefs = (word: WordToken) =>
   [...word.refs].sort((a, b) => b.start - a.start).reduce((v, r) => v.slice(0, r.start) + v.slice(r.end), word.value);
 
 /**
+ * Whether zsh may modify a parameter in the word, quoted or not: `"$X:l"` lower-cases X. A tracked variable keeps the
+ * text as written in `typed`; the quotes it drops make `"$Y":h`, which zsh leaves alone, read the same way.
+ */
+function zshModified(word: WordToken): boolean {
+  if (word.typed !== undefined) return ZSH_MODIFIED_RE.test(word.typed);
+  return word.refs.some((r) => word.value.charAt(r.start + 1) !== "{" && /^[:[(]/.test(word.value.slice(r.end)));
+}
+
+/**
  * Whether a shell expansion other than a tracked variable may rewrite the word: tilde, glob, extended glob, brace or
  * zsh `=cmd` expansion, or an expansion outside quotes that word-splits. A word not wholly inside one pair of quotes is
  * literal only when every character outside its variables is in a safe set; the lexer keeps no record of which
  * characters partial quotes or escapes cover, so they all count as bare.
  */
 function expandsAtRunTime(word: WordToken): boolean {
+  if (zshModified(word)) return true;
   if (word.quoted && !word.spliced) return false;
   if (word.unquotedExpansion) return true;
   const bare = withoutRefs(word);
