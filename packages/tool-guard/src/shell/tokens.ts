@@ -77,5 +77,7 @@ export interface LexState {
   arithEnd: number;
   /** Index of the `)` matching a `((`'s second `(`, arithmetic or not; bash reads up to it whole, so no newline before it ends a line. */
   wholeEnd: number;
+  /** Paren depth a `NAME=(` or `NAME+=(` opened at, or -1; bash rejects any redirect before that paren closes. */
+  compoundDepth: number;
   trials: ArithTrials;
 }

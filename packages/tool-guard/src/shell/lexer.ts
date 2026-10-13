@@ -13,6 +13,8 @@ export type { LexState, OpToken, RedirectToken, SubsToken, Token, VarRef, WordTo
 
 const OPERATORS = ["&&", "||", ";;", "|&", "|", ";", "&", "(", ")", "\n"];
 const REDIRECT_RE = /&>>?|<<<|<<-?|<>|>>|>&|<&|>\||>|</y;
+/** The word before a compound assignment's `(`; quotes are already removed from the value. */
+const ASSIGNMENT_HEAD_RE = /^[A-Za-z_]\w*(?:\[.*\])?\+?=/s;
 const BRACED_NAME_RE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
 /** Characters that keep their meaning inside a subscript: quotes, escapes and expansions. */
 const SUBSCRIPT_ACTIVE = "\\'\"`$";
@@ -25,7 +27,7 @@ export function tokenize(src: string, trials = newTrials(src)): Token[] {
 }
 
 function newState(src: string, i: number, nested: boolean, trials: ArithTrials): LexState {
-  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], leftOpen: false, redirect: null, subscriptEnd: -1, looseSubscriptEnd: -1, arithOutsideLoose: true, arithEnd: -1, wholeEnd: -1, trials };
+  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], leftOpen: false, redirect: null, subscriptEnd: -1, looseSubscriptEnd: -1, arithOutsideLoose: true, arithEnd: -1, wholeEnd: -1, compoundDepth: -1, trials };
 }
 
 function lex(s: LexState): void {
@@ -158,8 +160,16 @@ function readOperator(s: LexState, op: string, end: number): void {
   s.i = end;
   if (op === "(") s.depth++;
   if (op === ")") s.depth--;
+  noteCompoundParen(s, op);
   s.tokens.push({ type: "op", value: op });
   if (op === "\n" && !inWholeSpan) readLineEnd(s);
+}
+
+function noteCompoundParen(s: LexState, op: string): void {
+  if (op === ")" && s.depth < s.compoundDepth) s.compoundDepth = -1;
+  if (op !== "(" || s.compoundDepth !== -1) return;
+  const before = s.tokens[s.tokens.length - 1];
+  if (before?.type === "word" && ASSIGNMENT_HEAD_RE.test(before.value)) s.compoundDepth = s.depth;
 }
 
 function readDouble(s: LexState): void {
@@ -381,6 +391,7 @@ function readRedirect(s: LexState): void {
     s.tokens.push({ type: "subs", subs: [readSubstitution(s, paren + 1)] });
     return;
   }
+  if (s.compoundDepth !== -1) throw new ParseError("a redirect inside a compound assignment ( … ) is a bash syntax error");
   const heredoc = op === "<<" || op === "<<-";
   const token: RedirectToken = { type: "redirect", op, fd, target: null, body: heredoc ? "" : null, subs: [] };
   s.tokens.push(token);
