@@ -1,14 +1,14 @@
 import type { WordToken } from "../shell/lexer.js";
 import { asciiDecoded, fieldKey, knownBranch, refBranch, routedPath } from "./api-branch-refs.js";
 
-export type BranchRoute = "contents" | "rename" | "merge-upstream" | "protection" | "default-branch";
+type BranchRoute = "contents" | "rename" | "merge-upstream" | "protection" | "default-branch";
 
 /**
  * A GitHub REST write outside `git/refs` that changes a branch or what protects it. A null entry is a branch known
  * only at run time, including the default branch. The matcher does not know the protected list, so it names every
  * branch and the caller tests each one.
  */
-export interface BranchRouteWrite {
+interface BranchRouteWrite {
   route: BranchRoute;
   branches: (string | null)[];
 }
