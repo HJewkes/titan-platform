@@ -29,12 +29,8 @@ const NOT_STORING = new Set(["let", "unset"]);
 const INTEGER_RANGE_RE = /\{-?\d+\.\.-?\d+(?:\.\.-?\d+)?\}/g;
 /** zsh `setopt braceccl` reads a brace with no comma as a character class, so `{O-Q}` makes P. */
 const CHAR_CLASS_BRACE_RE = /(?<!\$)\{[^{},]*-[^{},]*\}/;
-const GLOB_RE = /[*?[]/;
-/** Past this many `*` a glob is not matched, and it counts as hooked: each one multiplies the regex backtracking. */
-const MAX_GLOB_STARS = 4;
-const MAX_OPTION_LETTERS = 8;
-/** A subscript after the name, which a glob would read as a bracket expression. */
-const SUBSCRIPT_TAIL_RE = /\[[^\]]*\]$/;
+/** Glob characters of bash and zsh (`^`, `#` and `~` under extendedglob); POSIX classes open with `[`. */
+const GLOB_RE = /[*?[^#~]/;
 
 /**
  * The first hooked parameter the command writes, or null. Any value counts: bash decodes `\044` to `$` before it
@@ -98,11 +94,13 @@ function rewrittenHooked({ name, args }: Unwrapped): string | null {
   return args.find(mayBecomeHooked)?.value ?? null;
 }
 
+/**
+ * A glob may match a file named after a hooked parameter, or supply its `=` or subscript (`export P?4?*`), so any
+ * glob character outside quotes counts without reading the pattern.
+ */
 function mayBecomeHooked(word: WordToken): boolean {
-  const braced = word.value.includes("{");
-  const globbed = !(word.quoted && !word.spliced) && GLOB_RE.test(word.value);
-  if (braced && globbed) return true;
-  return (braced && braceMaySpellHooked(word.value)) || (globbed && globMayMatchHooked(word.value));
+  if (!(word.quoted && !word.spliced) && GLOB_RE.test(word.value)) return true;
+  return word.value.includes("{") && braceMaySpellHooked(word.value);
 }
 
 /**
@@ -122,48 +120,4 @@ function holdsInOrder(text: string, wanted: string): boolean {
   let at = 0;
   for (const ch of text) if (ch === wanted[at] && ++at === wanted.length) return true;
   return false;
-}
-
-/**
- * Whether a file the glob matches could be named after a hooked parameter: `read P?4` reads into PS4 once a
- * file PS4 exists. The name part is tested before any `=`, after each split of leading option letters, with and
- * without a subscript.
- */
-function globMayMatchHooked(value: string): boolean {
-  const name = value.split("=")[0] as string;
-  const candidates = globCandidates(name);
-  if (candidates === null || name.split("*").length - 1 > MAX_GLOB_STARS) return true;
-  try {
-    const patterns = candidates.map((text) => new RegExp(`^${globSource(text)}$`, "s"));
-    return patterns.some((pattern) => [...HOOKED].some((hooked) => pattern.test(hooked)));
-  } catch {
-    return true;
-  }
-}
-
-/**
- * `-vP?4` may be option `-v` and name `P?4`, or `-vP` and `?4`: each split of the letters is a candidate.
- * Null past `MAX_OPTION_LETTERS`, where the splits are not tried.
- */
-function globCandidates(name: string): string[] | null {
-  const letters = /^-([A-Za-z]+)/.exec(name)?.[1] ?? "";
-  if (letters.length > MAX_OPTION_LETTERS) return null;
-  const names = [name, ...Array.from(letters, (_, i) => name.slice(i + 2))];
-  return names.flatMap((text) => [text, text.replace(SUBSCRIPT_TAIL_RE, "")]);
-}
-
-/** A glob as regex source: `*`, `?` and a closed `[...]` match; every other character stands for itself. A bracket expression regex rejects throws. */
-function globSource(glob: string): string {
-  let out = "";
-  for (let i = 0; i < glob.length; i++) {
-    const ch = glob[i] as string;
-    const close = ch === "[" ? glob.indexOf("]", i + 2) : -1;
-    if (ch === "*") out += out.endsWith(".*") ? "" : ".*";
-    else if (ch === "?") out += ".";
-    else if (close > 0) {
-      out += `[${glob.slice(i + 1, close).replace(/^[!^]/, "^").replace(/[\\\]]/g, "\\$&")}]`;
-      i = close;
-    } else out += ch.replace(/[.*+?^${}()|[\]\\/-]/g, "\\$&");
-  }
-  return out;
 }

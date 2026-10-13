@@ -92,10 +92,6 @@ describe("a brace word in a command that names what it writes", () => {
     expect(hooked(line)).toBe(word);
   });
 
-  it("treats a brace word that also globs as a hooked write", () => {
-    expect(hooked("read {a,b}*")).toBe("{a,b}*");
-  });
-
   it("returns null when the word lacks a hooked name's characters in order", () => {
     expect(hooked("read {a,b}")).toBeNull();
     expect(hooked("printf '%s\\n' {1..5}")).toBeNull();
@@ -122,43 +118,34 @@ describe("a glob word in a command that names what it writes", () => {
     ["a ? in read", "read P?4", "P?4"],
     ["a * in read", "read P*4", "P*4"],
     ["a bracket expression in read", "read P[S]4", "P[S]4"],
-    ["a negated bracket expression", "read P[!X]4", "P[!X]4"],
+    ["a POSIX character class", "read [[:upper:]]S4", "[[:upper:]]S4"],
+    ["a POSIX equivalence class", "read [[=P=]]S4", "[[=P=]]S4"],
+    ["a POSIX collating symbol", "read [[.P.]]S4", "[[.P.]]S4"],
     ["a ? in export", "export P?4=x", "P?4=x"],
+    ["a glob that supplies the =", "export P?4?*", "P?4?*"],
+    ["a glob that supplies the = in declare", "declare P?4?x", "P?4?x"],
+    ["a glob that supplies a subscript", "read PS4?0?", "PS4?0?"],
     ["a ? in printf -v", "printf -v P?4 x", "P?4"],
     ["a ? attached to printf -v", "printf -vP?4 x", "-vP?4"],
-    ["a ? before a subscript", "read P?4[0]", "P?4[0]"],
+    ["a glob that matches no hooked name", "read x?", "x?"],
     ["a lone *", "read *", "*"],
-    ["a glob for module_path", "typeset -a mod*path", "mod*path"],
     ["a partly quoted glob", "read P'S'?", "PS?"],
+    ["a zsh ^ under extendedglob", "typeset ^X=x", "^X=x"],
+    ["a zsh # under extendedglob", "read P#S4", "P#S4"],
+    ["a zsh ~ under extendedglob", "read PS4~x", "PS4~x"],
+    ["a brace word that also globs", "read {a,b}*", "{a,b}*"],
   ])("counts as a hooked write: %s", (_how, line, word) => {
     expect(hooked(line)).toBe(word);
   });
 
   it.each([
-    ["a glob that matches no hooked name", "read x?"],
-    ["a glob in a printf operand", "printf '%s\\n' *.ts"],
     ["a fully quoted glob", "read 'P?4'"],
     ["a glob in a command that writes no named parameter", "ls P?4"],
   ])("returns null: %s", (_how, line) => {
     expect(hooked(line)).toBeNull();
   });
 
-  it("fails closed on an option cluster too long to split", () => {
-    expect(hooked("printf -abcdefghijP?4 x")).toBe("-abcdefghijP?4");
-  });
-
-  it("fails closed on a bracket expression regex cannot read", () => {
-    expect(hooked("read P[z-a]4")).toBe("P[z-a]4");
-  });
-
-  it("fails closed fast on a glob with many stars", () => {
-    const words = tokenize(`read ${"*?".repeat(5_000)}x`).filter((t): t is WordToken => t.type === "word");
-    const cmd = unwrap(words);
-    const started = performance.now();
-
-    const named = cmd && writesHookedParam(cmd, words);
-
-    expect(named).not.toBeNull();
-    expect(performance.now() - started).toBeLessThan(100);
+  it("keeps the exact name for a subscript, which a glob would read as a bracket expression", () => {
+    expect(hooked("printf -v PS4[0] x")).toBe("PS4");
   });
 });
