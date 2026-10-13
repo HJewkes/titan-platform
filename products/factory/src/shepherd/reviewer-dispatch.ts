@@ -172,7 +172,7 @@ async function readRunningReviews(roster: RosterReader, gate: SpawnGate, firstSe
   try {
     rows = (await roster.rows()).map(rosterRow);
   } catch (error) {
-    gate.noteReviewers({ rosterError: (error as Error).message });
+    gate.noteReviewers({ rosterError: error instanceof Error ? error.message : String(error) });
     throw error;
   }
   const now = Date.now();
