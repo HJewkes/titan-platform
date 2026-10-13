@@ -137,6 +137,18 @@ describe("reviewPullRequest", () => {
     expect(result.outcome).toBe("MERGE");
   });
 
+  it("corrects a MERGE whose CI-policy line is prose once, and accepts its corrected unchanged MERGE", async () => {
+    const prose: Reply = { text: `${verdict("MERGE")?.text}CI-policy: no .github/ files changed and no required check was dropped, renamed or skipped.` };
+    const { world, ports } = fakeWorld((_name, resumed) => (resumed ? { text: `${verdict("MERGE")?.text}CI-policy: unchanged` } : prose));
+
+    const result = await reviewPullRequest(request(STANDARD), ports, OPTS);
+
+    expect(world.spawns).toHaveLength(1);
+    expect(world.resumes).toHaveLength(1);
+    expect(world.resumes[0]?.brief).toContain("its CI-policy line held more than the exact form");
+    expect(result.outcome).toBe("MERGE");
+  });
+
   it("allows one correction per member: a still-malformed reply goes to a fresh reviewer that gets none", async () => {
     const { world, ports } = fakeWorld(() => ({ text: "No block here." }));
 

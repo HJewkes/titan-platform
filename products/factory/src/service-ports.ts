@@ -83,7 +83,7 @@ export function systemServicePorts(): ServicePorts {
     claude: (args, env) => runCommand("claude", args, env),
     isDirectory,
     which: (binary) => findOnPath(binary, process.env.PATH),
-    health: (port) => probeHealth(port, { timeoutMs: SERVICE_CHECK_HEALTH_TIMEOUT_MS }),
+    health: (port, timeoutMs = SERVICE_CHECK_HEALTH_TIMEOUT_MS) => probeHealth(port, { timeoutMs }),
     mkdir: (dir) => void mkdirSync(dir, { recursive: true }),
     writeFile: (path, text) => writeFileSync(path, text),
     readFile: readIfPresent,

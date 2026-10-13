@@ -1,6 +1,6 @@
 import type { RequestAuth, Surface } from "@titan-design/daemon";
-import { EXIT, createRegistry, errorEnvelope, invokeCommand, type CommandRegistry } from "@titan-design/registry";
-import { buildSnapshot, type DataSource, type Snapshot } from "@titan-design/rpc-client";
+import { createRegistry, inProcessCaller, type CommandRegistry } from "@titan-design/registry";
+import { buildSnapshot, type Snapshot } from "@titan-design/rpc-client";
 import { consoleCommands, type ConsoleSources } from "./commands.js";
 import { assertClassed, type ClassedCommand, type ConsoleContext } from "./owner-guard.js";
 
@@ -31,10 +31,5 @@ const FIRST_PAINT_CALLS = [
 
 /** Answers the first-paint calls in process, for a page that opens from disk with no daemon. */
 export async function recordFirstPaint(registry: CommandRegistry<ConsoleContext>): Promise<Snapshot> {
-  const call: DataSource["call"] = async (name, args) => {
-    const command = registry.get(name);
-    if (!command) return errorEnvelope(`Unknown command: ${name}`, EXIT.USAGE);
-    return (await invokeCommand(command, args, inProcessContext())).envelope;
-  };
-  return buildSnapshot({ call }, { calls: FIRST_PAINT_CALLS });
+  return buildSnapshot({ call: inProcessCaller(registry, inProcessContext) }, { calls: FIRST_PAINT_CALLS });
 }
