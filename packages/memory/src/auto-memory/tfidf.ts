@@ -1,4 +1,4 @@
-export type SparseVector = ReadonlyMap<string, number>;
+type SparseVector = ReadonlyMap<string, number>;
 
 function documentFrequency(tokenSets: readonly ReadonlySet<string>[]): Map<string, number> {
   const df = new Map<string, number>();
