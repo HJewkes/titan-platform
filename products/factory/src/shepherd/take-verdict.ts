@@ -32,8 +32,11 @@ export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEviden
 const effectivePolicy = (ctx: WorkflowContext) => runPolicyCeiling(ctx.param("policy"));
 /** Why a gated head's fix-proof proves nothing; such a head merges only through the owner gate, whatever the policy (TP-2434). */
 export type ProofStanding = { unverified?: FixProofUnverified };
-/** Whether a visual-path gate will open is unknown until the evidence step, so a visual-ceiling run always asks for the brief. */
-export const asksOwnerBrief = (ctx: WorkflowContext, standing: ProofStanding = {}): boolean => {
+/**
+ * Whether a visual-path gate will open is unknown until the evidence step, so a visual-ceiling run always asks for the brief.
+ * `standing` is the round's read fix-proof standing and has no default, because `{}` reads as verified.
+ */
+export const asksOwnerBrief = (ctx: WorkflowContext, standing: ProofStanding): boolean => {
   const policy = effectivePolicy(ctx);
   return standing.unverified !== undefined || policy.merge === "owner-gate" || (policy.visualPaths?.length ?? 0) > 0;
 };
