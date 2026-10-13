@@ -139,19 +139,25 @@ describe("gh's run-time {branch} placeholder names an unknown branch", () => {
     ["DELETE", "repos/:owner/:repo/branches/:branch/protection/enforce_admins", "", "protection", [null]],
     ["PUT", "repos/o/r/contents/x", "branch={branch}", "contents", [null]],
     ["PUT", "repos/o/r/contents/x", "branch=refs/heads/{branch}", "contents", [null]],
-    ["POST", "repos/o/r/branches/{branch}/rename", "new_name=feat/y", "rename", [null, "feat/y"]],
+    ["POST", "repos/o/r/branches/{branch}/rename", "new_name=feat/y", "rename", [null]],
     ["POST", "repos/o/r/branches/feat/x/rename", "new_name={branch}", "rename", ["feat/x", null]],
     ["POST", "repos/o/r/merge-upstream", "branch={branch}", "merge-upstream", [null]],
     ["PATCH", "repos/o/r", "default_branch={branch}", "default-branch", [null]],
     ["DELETE", "repos/o/r/branches/m:branch/protection", "", "protection", [null]],
     ["DELETE", "repos/o/r/branches/:branch-1.0/protection", "", "protection", [null]],
-    ["POST", "repos/o/r/branches/:branch.x/rename", "new_name=feat/y", "rename", [null, "feat/y"]],
+    ["POST", "repos/o/r/branches/:branch.x/rename", "new_name=feat/y", "rename", [null]],
     ["PUT", "repos/o/r/contents/x", "branch=m:branch", "contents", [null]],
     ["DELETE", "repos/o/r/branches/{owner}/protection", "", "protection", [null]],
     ["DELETE", "repos/o/r/branches/ma:repo/protection", "", "protection", [null]],
     ["PUT", "repos/o/r/contents/x", "branch={owner}", "contents", [null]],
     ["POST", "repos/o/r/merge-upstream", "branch={repo}", "merge-upstream", [null]],
     ["POST", "repos/o/r/branches/feat/x/rename", "new_name={owner}", "rename", ["feat/x", null]],
+    ["DELETE", "repos/o/r/branches/{branch}", "", "protection", [null]],
+    ["DELETE", "repos/o/r/branches/:branch", "", "protection", [null]],
+    ["POST", "repos/o/r/branches/x/{branch}", "", "protection", [null]],
+    ["POST", "repos/o/r/branches/{branch}", "new_name=feat/y", "protection", [null]],
+    ["PUT", "repos/o/r/{repo}", "branch=main", "contents", [null]],
+    ["DELETE", "repos/o/{branch}", "", "contents", [null]],
   ])("%s %s %s reads as %s %j", (method, url, src, route, branches) => {
     expect(apiBranchRouteWrite(url, method, fields(src))).toEqual({ route, branches });
   });
@@ -185,6 +191,9 @@ describe("requests that change no branch", () => {
     ["PATCH", "user/../x", "default_branch=main"],
     ["PATCH", "repos/o/r/issues/../pulls/1", "title=x"],
     ["PUT", "repos/o/r/pulls/12/merge", ""],
+    ["GET", "repos/o/r/branches/{branch}/protection", ""],
+    ["POST", "repos/{owner}/{repo}/issues", "title=x"],
+    ["PATCH", "repos/:owner/:repo/pulls/1", "title=x"],
   ])("%s %s %s", (method, url, src) => {
     expect(apiBranchRouteWrite(url, method, fields(src))).toBeNull();
   });

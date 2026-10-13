@@ -29,6 +29,10 @@ const LOOSE_ROUTES: [RegExp, BranchRoute][] = [
   [/\/contents(?:\/|$)/i, "contents"],
 ];
 const LOOSE_ROUTE_RE = /(?:^|\/)repos\/.*\/(?:contents|merge-upstream|branches|rename|protection)(?:\/|$)/i;
+/** gh's branch placeholder, which may fill in a name with slashes and so stand for any route. */
+const BRANCH_PLACEHOLDER_RE = /:branch\b|\{branch\}/i;
+/** Any gh placeholder; in the tail even `{owner}` or `{repo}` can fill in a route word such as `merge-upstream`. */
+const TAIL_PLACEHOLDER_RE = /:(?:owner|repo|branch)\b|\{(?:owner|repo|branch)\}/i;
 
 /** Fields whose key matches `key`, or whose key is not literal. */
 function candidates(fields: WordToken[], key: RegExp): WordToken[] {
@@ -103,6 +107,19 @@ function unsureWrite(url: string, verb: string | null, fields: Fields): BranchRo
 }
 
 /**
+ * gh fills placeholders after the endpoint text is written, so a route read from that text is not the route sent:
+ * `branches/{branch}` with `main/protection` checked out deletes main's protection. Any write whose route a
+ * placeholder can change reads as the route its text loosely names, else protection under `branches`, else
+ * contents, with the branch unknown.
+ */
+function placeholderWrite(path: string, tail: string): BranchRouteWrite | null {
+  if (!BRANCH_PLACEHOLDER_RE.test(path) && !TAIL_PLACEHOLDER_RE.test(tail)) return null;
+  const loose = LOOSE_ROUTES.find(([re]) => re.test(path))?.[1];
+  const route = loose ?? (/\/branches(?:\/|$)/i.test(path) ? "protection" : "contents");
+  return { route, branches: [null] };
+}
+
+/**
  * A REST write that changes a branch outside `git/refs`: a contents PUT/DELETE, a branch rename, merge-upstream, a
  * write on branch protection, or a repository PATCH of `default_branch`. A null method is a write. `fields` is
  * "unread" when the body comes from `--input`.
@@ -113,7 +130,8 @@ export function apiBranchRouteWrite(url: string, method: string | null, fields: 
   const path = routedPath(url, LOOSE_ROUTE_RE);
   if (path === null) return null;
   if (path === "unsure") return unsureWrite(url, verb, fields);
-  const repo = REPO_ROUTE_RE.exec(path);
-  if (!repo) return null;
-  return tailWrite((repo[1] ?? "").replace(/\/+$/, ""), verb, fields);
+  const tail = (REPO_ROUTE_RE.exec(path)?.[1] ?? "").replace(/\/+$/, "");
+  const filled = placeholderWrite(path, tail);
+  if (filled) return filled;
+  return REPO_ROUTE_RE.test(path) ? tailWrite(tail, verb, fields) : null;
 }
