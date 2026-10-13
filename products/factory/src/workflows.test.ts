@@ -417,7 +417,7 @@ async function fakeActiveWork(): Promise<{ port: number; calls: string[] }> {
     const command = (req.url ?? "").replace("/rpc/", "");
     calls.push(command);
     if (command === "task.done") status = "done";
-    const data = command === "task.list" ? { tasks: [{ id: "TP-1", status }] } : {};
+    const data = command === "task.list" ? { tasks: [{ id: "TP-1", status }] } : command === "source.list" ? { sources: [] } : {};
     req.resume().on("end", () => res.setHeader("content-type", "application/json").end(JSON.stringify({ ok: true, data })));
   });
   servers.push(server);
@@ -461,7 +461,7 @@ describe("configuredRoutes with shepherd.agentChatBin", () => {
 
     await host.runtime.wait(runId);
 
-    expect(activeWork.calls).toEqual(["task.list", "task.list", "task.edit", "task.done"]);
+    expect(activeWork.calls).toEqual(["task.list", "task.list", "source.list", "task.list", "task.edit", "task.done"]);
     expect(readFileSync(join(dir, "calls"), "utf8")).toContain("agent retire impl-a\n");
     expect(readFileSync(join(dir, "calls"), "utf8")).not.toContain("--force");
   });
