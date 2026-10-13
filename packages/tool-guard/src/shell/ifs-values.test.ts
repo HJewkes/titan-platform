@@ -310,3 +310,18 @@ describe("lineIfsValues on PS4, which xtrace expands in the current shell", () =
     expect(values("IFS=,; PS4='+ '; set -x; git $A")).toEqual([DEFAULT_IFS, ","]);
   });
 });
+
+describe("lineIfsValues on PS4 written through a name slot", () => {
+  const k = "k=$(printf %sFS=1 I); ";
+  it.each([
+    ["printf -v", `${k}printf -v PS4 %s '$((k))'; set -x; git $A`],
+    ["read -r from a here-string", `${k}read -r PS4 <<< '$((k))'; set -x; git $A`],
+    ["mapfile from a here-string", `${k}mapfile -t PS4 <<< '$((k))'; set -x; git $A`],
+    ["a nameref onto PS4", `${k}declare -n r=PS4; r='$((k))'; set -x; git $A`],
+    ["a for loop over PS4", `${k}for PS4 in '$((k))'; do set -x; git $A; done`],
+    ["printf -v of arithmetic on names built from parts", "a=I; b=FS=1; printf -v PS4 %s '$(( $a$b ))'; set -x; git $A"],
+    ["a for loop over a literal prompt", "for PS4 in '+ '; do set -x; git $A; done"],
+  ])("gives null for %s", (_how, line) => {
+    expect(values(line)).toBeNull();
+  });
+});

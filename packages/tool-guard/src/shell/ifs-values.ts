@@ -53,6 +53,8 @@ interface Scan {
   /** Names declared `-n`, and names given a run-time value or used as a `for` variable, matched at the end. */
   namerefs: Set<string>;
   runtimeNames: Set<string>;
+  /** The literal targets of `declare -n r=NAME`, which every later write to `r` reaches. */
+  namerefTargets: Set<string>;
 }
 
 interface Assignment {
@@ -74,9 +76,17 @@ interface Assignment {
  * null, in either order, since a loop or a function call can run the reader after the store.
  */
 export function lineIfsValues(tokens: Token[]): string[] | null {
-  const scan: Scan = { found: new Set([DEFAULT_IFS]), unknown: false, computed: false, readsByName: false, namerefs: new Set(), runtimeNames: new Set() };
+  const scan: Scan = { found: new Set([DEFAULT_IFS]), unknown: false, computed: false, readsByName: false, namerefs: new Set(), runtimeNames: new Set(), namerefTargets: new Set() };
   scanTokens(tokens, 0, scan);
-  return scan.unknown || (scan.computed && scan.readsByName) || namerefRetargeted(scan) ? null : [...scan.found];
+  return scan.unknown || (scan.computed && scan.readsByName) || namerefRetargeted(scan) || ps4WrittenBySlot(scan) ? null : [...scan.found];
+}
+
+/**
+ * `read PS4`, `printf -v PS4`, `mapfile PS4`, `for PS4 in`, or a nameref onto PS4: the prompt xtrace expands
+ * in the current shell gets text no assignment word spells out.
+ */
+function ps4WrittenBySlot(scan: Scan): boolean {
+  return scan.runtimeNames.has("PS4") || scan.namerefTargets.has("PS4");
 }
 
 /** `declare -n r; for r in $L` or `r=$x`: a nameref given a run-time target may write IFS through it. */
@@ -276,12 +286,18 @@ function scanDeclarer(args: WordToken[], scan: Scan): void {
   for (const word of args) {
     if (!word.dynamic && OPTION_RE.test(word.value)) continue;
     if (nameref && (word.dynamic || possiblyIfs(word.value))) return markUnknown(scan);
-    if (nameref) scan.namerefs.add(parseAssignment(word.value)?.name ?? word.value);
+    if (nameref) noteNameref(word, scan);
     if (word.dynamic && !dynamicDeclarationKnown(word)) return markUnknown(scan);
     if (word.dynamic) noteRuntimeAssignment(word, scan);
     if (!word.dynamic && word.value !== "IFS" && ASSIGNMENT_RE.test(word.value)) scanAssignment(word, scan);
     else if (!word.dynamic && word.value !== "IFS" && possiblyIfs(word.value)) return markUnknown(scan);
   }
+}
+
+function noteNameref(word: WordToken, scan: Scan): void {
+  const assignment = parseAssignment(word.value);
+  scan.namerefs.add(assignment?.name ?? word.value);
+  if (assignment) scan.namerefTargets.add(assignment.value);
 }
 
 /** `export PATH="$HOME/bin"` names its variable literally; `declare "${x}S=,"` does not. */
