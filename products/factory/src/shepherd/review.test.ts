@@ -1970,6 +1970,20 @@ describe("reviewPhase", () => {
       expect(resultOf(`sh-merge-evidence:${H1}`)).toMatchObject({ merge: { resolver: identity, dispatchedReviewer: identity } });
     });
 
+    it.each([
+      ["I would merge this head as it is", "## Review\n\nThe change is sound and the tests cover it.\n\nI would merge this head as it is."],
+      ["I'd merge this head", "## Review\n\nNo blocking findings. I'd merge this head."],
+    ])("records the await and corrects a reviewer that exits with prose saying '%s' and no Verdict block", async (_name, prose) => {
+      const dispatch = fakeDispatch();
+
+      const { verdicts, stepIds } = await review({ dispatch, read: correcting(prose, (head) => verdictAt(head)), policy: AUTO });
+
+      expect(stepIds).toContain(`sh-await-verdict:${H1}`);
+      expect(corrections(stepIds)).toEqual([`sh-correct-verdict:${H1}`]);
+      expect(dispatch.resumes).toEqual([{ name: "rv-octo-demo-1", brief: expect.stringContaining("it had no Verdict line") }]);
+      expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
+    });
+
     it("sends the head back with the corrected reply's text on a corrected FIX_FIRST", async () => {
       const dispatch = fakeDispatch();
 

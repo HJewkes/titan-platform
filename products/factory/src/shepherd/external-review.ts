@@ -5,6 +5,7 @@ import { deadline } from "../workflows/deadline.js";
 import { bounded, type AwaitVerdictTiming } from "./await-verdict.js";
 import { failureOf } from "./error-class.js";
 import { holdClassOf } from "./g10-release.js";
+import { clearReviewWait, noteReviewWait } from "./review-wait.js";
 import type { AwaitVerdictInput, AwaitVerdictResult, ReviewTarget, ReviewWiring, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { OwnerOverride } from "./override-stats.js";
 import type { Registration } from "./store.js";
@@ -141,8 +142,11 @@ async function readReviewer(reader: ReviewerReader, target: ReviewTarget, rows: 
   return { messages: messages.filter(owned), failures };
 }
 
-/** `clear` lets the MERGE stand; a FIX_FIRST sends the head back; a `none` with a reason is a read that failed, or a seat WAIT (`wait`), and blocks the head too. */
-export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string; wait?: true } | { kind: "clear"; merged?: string };
+/**
+ * `clear` lets the MERGE stand; a FIX_FIRST sends the head back; a `none` with a reason is a read that failed, or a seat WAIT
+ * (`wait`), and blocks the head too. `retry` marks a failed read that may succeed if asked again.
+ */
+export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string; wait?: true; retry?: true } | { kind: "clear"; merged?: string };
 
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -175,7 +179,8 @@ function failedRead(name: string, target: ReviewTarget, read: NameRead, warn: (l
     warn(`seat check: ${name} is not the reviewer of ${target.repo}#${target.pr}, so its damaged transcript does not block it: ${failureOf(failure)}`);
     return undefined;
   }
-  return { kind: "none", reason: `seat check: the transcript of ${name} could not be read: ${failureOf(failure)}` };
+  // A damaged transcript reads the same every time; any other failure, such as a busy broker's timeout, can clear.
+  return { kind: "none", reason: `seat check: the transcript of ${name} could not be read: ${failureOf(failure)}`, ...(hard !== undefined && { retry: true as const }) };
 }
 
 function sentBack(name: string, target: ReviewTarget, message: ReviewerMessage, messages: readonly ReviewerMessage[]): SeatCheck {
@@ -192,7 +197,7 @@ export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[
   try {
     listed = await roster();
   } catch (error) {
-    return { kind: "none", reason: `seat check: the roster could not be read: ${failureOf(error)}` };
+    return { kind: "none", reason: `seat check: the roster could not be read: ${failureOf(error)}`, retry: true };
   }
   const rows = listed.filter((row) => SEAT_REVIEWER.test(row.name) && row.sessionId !== "");
   let failed: SeatCheck | undefined;
@@ -225,13 +230,25 @@ interface SeatHeldNone {
   seatHeld: OwnMerge;
 }
 
-/** Re-reads the seat check while it answers WAIT, so a seat waiting on CI settles into its verdict; the deadline returns the standing WAIT. */
+/** A WAIT, or a read a busy broker timed out, can still settle; a damaged transcript cannot. */
+const unsettled = (check: SeatCheck): boolean => check.kind === "none" && (check.wait === true || check.retry === true);
+
+/**
+ * Re-reads the seat check while it answers WAIT or a read failed in a way that can clear, so a seat waiting on CI settles into
+ * its verdict and a broker timeout does not cost the own MERGE; the deadline returns the standing check. The hold shows in the view,
+ * because the step records nothing until it ends.
+ */
 async function awaitSeatSettled(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, timing: SeatWaitTiming, signal: AbortSignal, warn?: (line: string) => void): Promise<SeatCheck> {
   const clock = deadline(timing);
-  for (;;) {
-    const check = await seatFixFirst(roster, reader, target, warn);
-    if (check.kind !== "none" || !check.wait || clock.expired()) return check;
-    await clock.sleep(timing.pollMs, signal);
+  try {
+    for (;;) {
+      const check = await seatFixFirst(roster, reader, target, warn);
+      if (!unsettled(check) || clock.expired()) return check;
+      if (check.kind === "none") noteReviewWait(target.repo, target.pr, `holding Shepherd's MERGE at ${target.head} on the seat check: ${check.reason}`);
+      await clock.sleep(timing.pollMs, signal);
+    }
+  } finally {
+    clearReviewWait(target.repo, target.pr);
   }
 }
 
