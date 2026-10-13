@@ -21,10 +21,12 @@ import {
   possiblyIfs,
   possiblyPs4,
   printfTargetDynamic,
+  opensIfsArray,
   readsTextByName,
   rewritesAssignedValue,
   rewritesWord,
   subscriptUnknown,
+  transformsIfs,
 } from "./ifs-words.js";
 import type { RedirectToken, Token, WordToken } from "./tokens.js";
 
@@ -103,6 +105,7 @@ function scanTokens(tokens: Token[], depth: number, scan: Scan): void {
       scanCommand(words, input, depth, scan);
       words = [];
       input = false;
+      if (opensIfsArray(tokens, i)) markUnknown(scan);
       arithmetic = opensArithmetic(tokens, i) || (arithmetic && token.value !== ")");
     } else if (token.type === "word") {
       if (arithmetic) scanArithmeticWord(token, depth, scan);
@@ -251,6 +254,7 @@ function scanShell(args: WordToken[], depth: number, scan: Scan): void {
 
 function scanDeclarer(args: WordToken[], scan: Scan): void {
   const nameref = args.some((word) => !word.dynamic && /^-[A-Za-z]*n/.test(word.value));
+  if (transformsIfs(args)) return markUnknown(scan);
   for (const word of args) {
     if (!word.dynamic && isOption(word.value)) continue;
     if (nameref && (word.dynamic || possiblyIfs(word.value))) return markUnknown(scan);

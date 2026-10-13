@@ -372,3 +372,50 @@ describe("lineIfsValues on IFS values the shell rewrites at run time", () => {
     expect(values(line)).toEqual([DEFAULT_IFS, ...expected]);
   });
 });
+
+describe("lineIfsValues on IFS assignments a declarer attribute transforms", () => {
+  it.each([
+    ["an earlier uppercase declaration without a value", "declare -u IFS; IFS=x; $A"],
+    ["a lowercase declaration", "declare -l IFS; IFS=X; $A"],
+    ["a capitalising declaration", "declare -c IFS=xy; $A"],
+    ["zsh typeset -u", "typeset -u IFS; IFS=x; $A"],
+    ["an integer declaration with arithmetic", "declare -i IFS=2+2; $A"],
+    ["a local integer in hex", "f(){ local -i IFS=0x2f; $A; }; f"],
+    ["zsh right-justified padding", "typeset -R 3 IFS=x; $A"],
+    ["zsh zero padding", "typeset -Z 2 IFS=1; $A"],
+    ["an array declaration", "declare -a IFS=(x y); $A"],
+    ["an array assignment", "IFS=(x y); $A"],
+    ["a cleared attribute that reads the same", "declare +u IFS; IFS=x; $A"],
+  ])("gives null for %s", (_how, line) => {
+    expect(values(line)).toBeNull();
+  });
+
+  it("resolves an export or readonly, which do not transform the value", () => {
+    expect(values("export IFS=,; declare -rx IFS; $A")).toEqual([DEFAULT_IFS, ","]);
+  });
+});
+
+describe("lineIfsValues on zsh equals expansion after a colon", () => {
+  it.each([
+    ["a bare assignment", "IFS=a:=ls; $A"],
+    ["an export", "export IFS=a:=ls; $A"],
+    ["eval text", "eval 'IFS=a:=ls'; $A"],
+  ])("gives null for %s", (_how, line) => {
+    expect(values(line)).toBeNull();
+  });
+
+  it("resolves an equals sign that follows no colon", () => {
+    expect(values("IFS=a=b; $A")).toEqual([DEFAULT_IFS, "a=b"]);
+  });
+});
+
+describe("lineIfsValues on single glob characters in a for list", () => {
+  it.each([
+    ["a question mark", "for IFS in a?; do $A; done"],
+    ["an open bracket", "for IFS in a[; do $A; done"],
+    ["a zsh caret", "for IFS in a^; do $A; done"],
+    ["a zsh hash", "for IFS in a#; do $A; done"],
+  ])("gives null for %s", (_how, line) => {
+    expect(values(line)).toBeNull();
+  });
+});

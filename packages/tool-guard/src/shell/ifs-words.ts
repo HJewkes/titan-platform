@@ -27,9 +27,15 @@ const SOURCING_OPTION_RE = /^(?:--(?:rcfile|init-file|login|interactive)\b|-[A-Z
 
 /**
  * An assignment value bash rewrites after the lexer: `~`, `~+` or `~-` at the start or after a `:`
- * (`IFS=a:~`), and zsh's leading `=cmd`. Tokens keep no record of which characters were quoted.
+ * (`IFS=a:~`), and zsh's `=cmd` at the start or after a `:` (`IFS=a:=ls`). Tokens keep no record of which
+ * characters were quoted.
  */
-const ASSIGNED_REWRITE_RE = /(?:^|:)~|^=/;
+const ASSIGNED_REWRITE_RE = /(?:^|:)[~=]/;
+/**
+ * Declarer attributes that transform every value the variable takes, now or later: bash `-u -l -c -i`, `-a -A`
+ * (an array IFS splits on its first element), and zsh's `-E -F -L -R -Z -T`. `+u` clears one; it reads the same.
+ */
+const TRANSFORMING_OPTION_RE = /^[-+][A-Za-z]*[ulciaAEFLRZT]/;
 /** A command word is also globbed and brace-expanded: `*`, `?`, `[`, `{a,b}`, `{1..3}`, and zsh's `^` and `#`. */
 const WORD_REWRITE_RE = /^[~=]|[*?[^#]|\{[^}]*(?:,|\.\.)[^}]*\}/;
 
@@ -56,6 +62,20 @@ export function rewritesAssignedValue(text: string): boolean {
 /** As `rewritesAssignedValue`, for a `for IFS in` word or a declarer operand, which glob and brace-expand too. */
 export function rewritesWord(text: string): boolean {
   return ASSIGNED_REWRITE_RE.test(text) || WORD_REWRITE_RE.test(text);
+}
+
+/** `declare -u IFS` or `local -i IFS=0x2f`: IFS holds a transformed value, not the text assigned. */
+export function transformsIfs(args: WordToken[]): boolean {
+  const transforming = args.some((word) => !word.dynamic && isOption(word.value) && TRANSFORMING_OPTION_RE.test(word.value));
+  return transforming && args.some((word) => !isOption(word.value) && possiblyIfs(parseAssignment(word.value)?.name ?? word.value));
+}
+
+/** `IFS=(a b)`: an array IFS splits on its first element, which this scan does not read. */
+export function opensIfsArray(tokens: Token[], i: number): boolean {
+  const before = tokens[i - 1];
+  if (!isOp(tokens[i], "(") || before?.type !== "word") return false;
+  const assignment = parseAssignment(before.value);
+  return assignment !== null && assignment.value === "" && possiblyIfs(assignment.name);
 }
 
 export function isOption(text: string): boolean {
