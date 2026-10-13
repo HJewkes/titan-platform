@@ -15,6 +15,7 @@ export interface FakeEffects {
   createPr: number;
   updateBranch: number;
   updateRef: number;
+  setPrBase: number;
   merge: number;
   rerunFailedJobs: number;
 }
@@ -78,6 +79,8 @@ export interface FakeGitHub {
   squashSources: Map<number, SquashSource>;
   /** Every `merge` PUT's pull number and message, in order; `message` is undefined when none was sent. */
   merges: { number: number; message: MergeMessage | undefined }[];
+  /** Every PR base change that landed, in order. */
+  baseChanges: { number: number; base: string }[];
   /** The default branch's history for `listCommits`, in any order; it answers those at or after `since`, newest first. */
   history: (LoggedCommit & { committedAt: string })[];
   /** `base...head` to the compare inputs; an unset pair compares as no change. Caps of 300 files and 250 commits apply. */
@@ -118,7 +121,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
   const repo = options.repo ?? "o/r";
   let counter = 0;
   const nextSha = (tag: string): string => fakeSha(`${tag}${++counter}`);
-  const effects: FakeEffects = { createRef: 0, deleteRef: 0, putContent: 0, createPr: 0, updateBranch: 0, updateRef: 0, merge: 0, rerunFailedJobs: 0 };
+  const effects: FakeEffects = { createRef: 0, deleteRef: 0, putContent: 0, createPr: 0, updateBranch: 0, updateRef: 0, setPrBase: 0, merge: 0, rerunFailedJobs: 0 };
   const prs = new Map<number, PullRequest>();
   const runs = new Map<string, CheckRun[]>();
   const runStatus = new Map<number, string>();
@@ -144,6 +147,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     prCommits: new Map(),
     squashSources: new Map(),
     merges: [],
+    baseChanges: [],
     history: [],
     compares: new Map(),
     comments: new Map(),
@@ -218,6 +222,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       return record("getJobLog", log);
     },
     updateBranch: async (_repo, number, expected) => record("updateBranch", updateBranch(fake, mustPr(prs, number), expected, nextSha)),
+    setPrBase: async (_repo, number, base) => record("setPrBase", setPrBase(fake, mustPr(prs, number), base)),
     merge: async (_repo, number, sha, method, message) => {
       record("merge", undefined);
       fake.merges.push({ number, message });
@@ -345,6 +350,15 @@ function landUpdate(fake: FakeGitHub, pr: PullRequest, nextSha: (tag: string) =>
   fake.commits.set(merged, { sha: merged, parents: [pr.headSha, fake.refs.get(pr.baseRef) ?? ""] });
   pr.headSha = merged;
   pr.behind = false;
+}
+
+/** Like GitHub: a closed PR or a base branch that does not exist answers 422. */
+function setPrBase(fake: FakeGitHub, pr: PullRequest, base: string): void {
+  if (pr.state !== "open") throw new FakeHttpError(422, "Cannot change the base branch of a closed pull request");
+  if (!fake.refs.has(base)) throw new FakeHttpError(422, `Proposed base branch '${base}' was not found`);
+  fake.effects.setPrBase += 1;
+  fake.baseChanges.push({ number: pr.number, base });
+  pr.baseRef = base;
 }
 
 function mergePr(fake: FakeGitHub, pr: PullRequest, sha: string, _method: MergeMethod, nextSha: (tag: string) => string): { sha: string } {
