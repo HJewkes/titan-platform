@@ -1,5 +1,6 @@
 import { DEPTH_FLOOR_REASON, isUsageLimit, readMalformed } from "@titan-design/review-panel";
 import type { StepResult } from "@titan-design/workflow";
+import { z } from "zod";
 import { SILENT_AFTER_CORRECTION, UNPARSED_AFTER_CORRECTION, isCorrectionFailure } from "./correct-verdict.js";
 
 export const NONE_KINDS = [
@@ -29,7 +30,8 @@ const SEAT_WAIT = /^seat check: (\S+) said WAIT/;
 
 const cut = (text: string): string => (text.length <= MAX_TEXT ? text : `${text.slice(0, MAX_TEXT - 1)}…`);
 const label = (kind: NoneKind, text: string): NoneReason => ({ kind, text: cut(text) });
-const asRecord = (value: unknown): Record<string, unknown> | undefined => (typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined);
+const AnyRecord = z.record(z.string(), z.unknown());
+const asRecord = (value: unknown): Record<string, unknown> | undefined => AnyRecord.safeParse(value).data;
 
 function seatReason(record: Record<string, unknown>, reason: string | undefined): NoneReason | undefined {
   const seat = typeof record.seat === "string" ? record.seat : reason?.match(SEAT_WAIT)?.[1];
