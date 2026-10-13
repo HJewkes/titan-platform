@@ -96,6 +96,9 @@ interface Round {
 const RESOLVING = new Set(["sh-await-verdict", "sh-late-verdict"]);
 const text = (value: unknown): string | null => (typeof value === "string" ? value : null);
 const num = (value: unknown): number | null => (typeof value === "number" ? value : null);
+/** Follows `keys` through nested objects of an untyped payload; anything missing or not an object reads as undefined. */
+const Node = z.record(z.string(), z.unknown());
+const at = (value: unknown, ...keys: string[]): unknown => keys.reduce<unknown>((node, key) => Node.safeParse(node).data?.[key], value);
 
 /** A started reviewer's `sh-review` opens a round, and so does an external intent, which starts nobody. */
 function opened(name: string, result: Record<string, unknown>, index: number, runStart: number): Round | undefined {
@@ -113,10 +116,9 @@ function resolve(round: Round, step: StepResult, result: Record<string, unknown>
   round.verdictAt = Date.parse(step.completedAt);
   round.limitOnly &&= isUsageLimit({ kind: String(result.kind), reason: result.reason, notice: result.notice });
   if (result.kind !== "verdict") return void (round.verdict = text(result.kind));
-  const locator = result.locator as { source?: { path?: unknown; conversation?: { nativeId?: unknown } } } | undefined;
-  Object.assign(round, { verdict: text(result.verdict), final: true, path: text(locator?.source?.path) ?? round.path });
-  round.sessionId ??= text(locator?.source?.conversation?.nativeId);
-  round.verdictModel = text((result.reviewer as { model?: unknown } | undefined)?.model);
+  Object.assign(round, { verdict: text(result.verdict), final: true, path: text(at(result.locator, "source", "path")) ?? round.path });
+  round.sessionId ??= text(at(result.locator, "source", "conversation", "nativeId"));
+  round.verdictModel = text(at(result.reviewer, "model"));
 }
 
 /**
