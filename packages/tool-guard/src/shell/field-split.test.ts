@@ -3,6 +3,7 @@ import { markCase } from "./case-attrs.js";
 import { splitReading } from "./field-split.js";
 import { tokenize } from "./lexer.js";
 import type { WordToken } from "./tokens.js";
+import { trackVars } from "./vars.js";
 import type { Vars } from "./vars.js";
 
 const words = (src: string) => tokenize(src).filter((t): t is WordToken => t.type === "word");
@@ -57,6 +58,16 @@ describe("splitReading leaves a word it cannot split exactly raw and dynamic", (
   it("a value a case attribute may change", () => {
     const vars: Vars = new Map([["X", "Push origin"]]);
     markCase(vars, "X", "l");
+    expect(splitReading(words("git $X"), vars, null)?.[1]).toMatchObject({ dynamic: true, value: "$X" });
+  });
+
+  it.each([
+    ["a value IFS=: would split", "push:origin"],
+    ["a value only the default IFS would split", "push origin"],
+  ])("%s, after a declaration that may have set IFS", (_name, value) => {
+    const vars: Vars = new Map();
+    trackVars({ name: "declare", args: words('"$(printf IFS=:)"'), assigned: [] }, vars);
+    vars.set("X", value);
     expect(splitReading(words("git $X"), vars, null)?.[1]).toMatchObject({ dynamic: true, value: "$X" });
   });
 });
