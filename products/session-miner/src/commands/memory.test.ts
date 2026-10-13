@@ -68,6 +68,12 @@ describe("memory report", () => {
     expect(ctx.graph).not.toHaveBeenCalled();
   });
 
+  it("passes --group-threshold through to grouping", async () => {
+    const { envelope } = await invokeCommand(memoryReport, { groupThreshold: 0 }, context());
+
+    expect(envelope).toMatchObject({ ok: true, data: { files: 3, groups: 1, singletons: 0, largestGroup: 2 } });
+  });
+
   it("refuses --skills-root off the CLI", async () => {
     const { envelope, exitCode } = await invokeCommand(memoryReport, { skillsRoot: [temp.home] }, context());
 

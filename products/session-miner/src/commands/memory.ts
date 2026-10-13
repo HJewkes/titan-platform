@@ -1,11 +1,11 @@
 import path from "node:path";
-import type { MemoryFactType, ParseFailure } from "@titan-design/memory";
+import { DEFAULT_GROUP_THRESHOLD, type MemoryFactType, type ParseFailure } from "@titan-design/memory";
 import { defineCommand, EXIT } from "@titan-design/registry";
 import { expandHome } from "@titan-design/session-read";
 import { z } from "zod";
 import type { MinerContext } from "../context.js";
 import { scanMemory, type MemoryScan } from "../memory/discover.js";
-import { buildMemoryReport, DEFAULT_GROUP_THRESHOLD, writeMemoryReport, type MemoryReport } from "../memory/report.js";
+import { buildMemoryReport, writeMemoryReport, type MemoryReport } from "../memory/report.js";
 import { defaultSkillsRoots, readSkills } from "../memory/skills.js";
 
 interface Unparsed {
@@ -85,7 +85,7 @@ export const memoryScan = defineCommand<Record<string, never>, MemoryScanResult,
 const ReportArgs = z.object({
   skillsRoot: z.array(z.string()).default([]).describe("skills directory to match groups against (repeatable; CLI only)"),
   out: z.string().optional().describe("directory to write the report under (CLI only)"),
-  groupThreshold: z.number().min(0).max(1).default(DEFAULT_GROUP_THRESHOLD).describe("topic Jaccard at which two facts share a group"),
+  groupThreshold: z.number().min(0).max(1).default(DEFAULT_GROUP_THRESHOLD).describe("average topic similarity (TF-IDF cosine) at which two groups merge"),
 });
 
 export const memoryReport = defineCommand<z.infer<typeof ReportArgs>, MemoryReportResult, MinerContext>({
@@ -97,7 +97,7 @@ export const memoryReport = defineCommand<z.infer<typeof ReportArgs>, MemoryRepo
     options: {
       skillsRoot: { long: "--skills-root", description: "skills directory (repeatable; default ~/.claude/skills)" },
       out: { long: "--out", description: "report directory (default <state>/memory-miner)" },
-      groupThreshold: { long: "--group-threshold", description: `topic Jaccard that links two facts (default ${DEFAULT_GROUP_THRESHOLD})` },
+      groupThreshold: { long: "--group-threshold", description: `average topic similarity (TF-IDF cosine) at which two groups merge (default ${DEFAULT_GROUP_THRESHOLD})` },
     },
   },
   async run(args, ctx) {

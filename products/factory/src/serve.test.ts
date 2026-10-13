@@ -226,6 +226,51 @@ describe("serveFactoryUntilSignal", () => {
   });
 });
 
+describe("serveFactoryUntilSignal beside another serve", () => {
+  const options = (dbPath: string, scenario: LandScenario, overrides: Partial<FactoryServerOptions> = {}): FactoryServerOptions => ({
+    dbPath,
+    workflows: [scenario.workflow],
+    routes: scenario.routes,
+    port: 0,
+    logger: silentLogger,
+    github: { status: () => "ok", refresh: async () => undefined },
+    ...overrides,
+  });
+  const stopped = (): AbortSignal => AbortSignal.abort();
+
+  it("a second serve beside a live factory returns without error and leaves it serving", async () => {
+    const dbPath = dbFile();
+    const scenario = landScenario();
+    const first = await serve(dbPath, scenario);
+
+    await serveFactoryUntilSignal(options(dbPath, scenario), stopped());
+
+    const health = await fetch(`http://127.0.0.1:${first.port}/health`);
+    expect(health.ok).toBe(true);
+  });
+
+  it("a second serve whose pid file names a process that does not answer as that pid still fails", async () => {
+    const dbPath = dbFile();
+    const scenario = landScenario();
+    await serve(dbPath, scenario);
+    const probe = async () => ({ state: "up" as const, health: { pid: process.pid + 1 } });
+
+    const second = serveFactoryUntilSignal(options(dbPath, scenario, { probe }), stopped());
+
+    await expect(second).rejects.toBeInstanceOf(DaemonAlreadyRunningError);
+  });
+
+  it("a second serve whose live factory refuses the health probe still fails", async () => {
+    const dbPath = dbFile();
+    const scenario = landScenario();
+    await serve(dbPath, scenario);
+
+    const second = serveFactoryUntilSignal(options(dbPath, scenario, { probe: async () => ({ state: "refused" }) }), stopped());
+
+    await expect(second).rejects.toBeInstanceOf(DaemonAlreadyRunningError);
+  });
+});
+
 describe("serve's start-up warnings", () => {
   it("logs a warning when the deploy watch has no hub seat to tell", async () => {
     const warnings: unknown[] = [];
