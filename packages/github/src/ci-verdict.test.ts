@@ -10,6 +10,10 @@ function cr(name: string, status: string, conclusion: string | null = null, appI
 }
 const done = (name: string, conclusion: string, appId = A, startedAt?: string) => cr(name, "completed", conclusion, appId, startedAt);
 const st = (context: string, state: string): CommitStatus => ({ context, state });
+const T1 = "2026-01-01T00:00:00Z";
+const T2 = "2026-01-01T01:00:00Z";
+/** A `validate` run with a fixed id, for picks that turn on id order or a missing start. */
+const validate = (id: number, status: string, conclusion: string | null, startedAt: string | null): CheckRun => ({ ...cr("validate", status, conclusion), id, startedAt });
 const many = <T>(count: number, make: (i: number) => T): T[] => Array.from({ length: count }, (_, i) => make(i + 1));
 
 const NO_RULES: RequiredChecks = { contexts: [], strict: false };
@@ -118,6 +122,52 @@ describe("ciVerdict over required contexts", () => {
     const verdict = ciVerdict({ rules: rules("validate:4242"), runs: [done("validate", "success", A)], statuses: [st("validate", "success")] });
 
     expect(verdict).toEqual({ verdict: "pending", reasons: ["validate"] });
+  });
+});
+
+describe("ciVerdict picks a required context's newest run as checks.ts does", () => {
+  const judgeValidate = (runs: CheckRun[], statuses: CommitStatus[] = []) => ciVerdict({ rules: rules("validate"), runs, statuses });
+
+  it.each([
+    ["the higher id failing is red", "success", "failure", { verdict: "red", reasons: ["validate=failure"] }],
+    ["the higher id succeeding is green", "failure", "success", { verdict: "green", reasons: [] }],
+  ] as const)("on a tied start, %s in either input order", (_name, lower, higher, expected) => {
+    const runs = [validate(1, "completed", lower, T1), validate(2, "completed", higher, T1)];
+
+    expect(judgeValidate(runs)).toEqual(expected);
+    expect(judgeValidate([...runs].reverse())).toEqual(expected);
+  });
+
+  it("reads a queued rerun with no start as pending over an older success", () => {
+    expect(judgeValidate([validate(1, "completed", "success", T1), validate(2, "queued", null, null)])).toEqual({ verdict: "pending", reasons: ["validate"] });
+  });
+
+  it("reads a newer started failure as red beside a completed success with no start", () => {
+    expect(judgeValidate([validate(2, "completed", "failure", T2), validate(1, "completed", "success", null)])).toEqual({ verdict: "red", reasons: ["validate=failure"] });
+  });
+});
+
+describe("ciVerdict fails closed on a required context", () => {
+  it.each([
+    ["no run and no status", [], []],
+    ["an unknown run status", [cr("validate", "bogus")], []],
+    ["a run from an unknown app only", [done("validate", "success", 4242)], []],
+  ] as const)("is pending with %s", (_name, runs, statuses) => {
+    expect(ciVerdict({ rules: rules("validate"), runs, statuses })).toEqual({ verdict: "pending", reasons: ["validate"] });
+  });
+
+  it.each(["cancelled", "stale", "bogus"])("is red when the newest run concluded %s over an older success", (conclusion) => {
+    const runs = [done("validate", "success", A, T1), done("validate", conclusion, A, T2)];
+
+    expect(ciVerdict({ rules: rules("validate"), runs, statuses: [] })).toEqual({ verdict: "red", reasons: [`validate=${conclusion}`] });
+  });
+
+  it.each(["error", "bogus"])("is red on a %s commit status with no run", (state) => {
+    expect(ciVerdict({ rules: rules("validate"), runs: [], statuses: [st("validate", state)] })).toEqual({ verdict: "red", reasons: [`validate=${state}`] });
+  });
+
+  it("lets a success status override a red Actions run of an unpinned context, as origin/main does (TP-2485)", () => {
+    expect(ciVerdict({ rules: rules("validate"), runs: [done("validate", "failure")], statuses: [st("validate", "success")] }).verdict).toBe("green");
   });
 });
 

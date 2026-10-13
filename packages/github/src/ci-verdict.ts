@@ -1,3 +1,4 @@
+import { isPassing, isSucceeded, latestPerName } from "./checks.js";
 import { GITHUB_ACTIONS_APP_ID } from "./readiness.js";
 import type { CheckRun, CommitStatus, GitHubPort, RepoSlug, RequiredChecks } from "./port.js";
 
@@ -50,29 +51,24 @@ function requiredFindings({ rules, runs, statuses }: CiVerdictInput): Finding[] 
   return findings.filter((finding): finding is Finding => finding !== null);
 }
 
+/** `latestPerName` decides which run is newest, so a tie and an unstarted rerun read the same here as in checks.ts. */
 function newest(runs: readonly CheckRun[], name: string, app: number): CheckRun | null {
-  let best: CheckRun | null = null;
-  for (const run of runs) {
-    if (run.name === name && run.appId === app && (!best || (run.startedAt ?? "") > (best.startedAt ?? ""))) best = run;
-  }
-  return best;
+  return latestPerName(runs.filter((run) => run.name === name && run.appId === app))[0] ?? null;
 }
 
-/** A required context is green only on `success`: skipped and neutral are red here, unlike the all-runs rule. */
+/** A required context needs `isSucceeded`, as checks.ts documents: skipped and neutral are red here, unlike the all-runs rule. */
 function judge(name: string, run: CheckRun | null, state: string | null): Finding | null {
-  if ((run?.status === "completed" && run.conclusion === "success") || state === "success") return null;
+  if ((run && isSucceeded(run)) || state === "success") return null;
   if ((run && run.status !== "completed") || state === "pending" || (!run && state === null)) return { kind: "pending", text: name };
   return { kind: "bad", text: `${name}=${run ? run.conclusion : state}` };
 }
-
-const PASSING_CONCLUSIONS = new Set(["success", "skipped", "neutral"]);
 
 /** A status-only sha stays pending: a status can land before the check suites have even been created. */
 function allFindings(runs: readonly CheckRun[], statuses: readonly CommitStatus[]): Finding[] {
   const findings: Finding[] = [];
   for (const run of runs) {
     if (run.status !== "completed") findings.push({ kind: "pending", text: run.name });
-    else if (!PASSING_CONCLUSIONS.has(run.conclusion ?? "")) findings.push({ kind: "bad", text: `${run.name}=${run.conclusion}` });
+    else if (!isPassing(run)) findings.push({ kind: "bad", text: `${run.name}=${run.conclusion}` });
   }
   for (const status of statuses) {
     if (status.state === "pending") findings.push({ kind: "pending", text: status.context });
