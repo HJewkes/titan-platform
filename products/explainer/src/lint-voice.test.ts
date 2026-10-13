@@ -48,9 +48,13 @@ describe("Q-V1 process narration", () => {
 
 describe("Q-V2 provenance placement", () => {
   it("flags a status word in a headline and an internal id in a label", () => {
-    const beats = withBeat("w1", { extra: { visual: { assertion: "Runtime links (from review)", job: "numbers" } } }).map((spec) =>
-      spec[0] === "w2" ? ([...spec.slice(0, 4), { visual: { assertion: "Links", job: "numbers", labels: ["D-PD-W1-011"] } }] as typeof spec) : spec,
-    );
+    const leaks: Record<string, Record<string, unknown>> = {
+      w1: { assertion: "Runtime links (from review)", job: "numbers" },
+      w2: { assertion: "Links", job: "numbers", labels: ["D-PD-W1-011"] },
+    };
+    const beats = withBeat("w1", {}).map(([id, chapter, fn, text, extra]) =>
+      leaks[id] ? [id, chapter, fn, text, { ...extra, visual: leaks[id] }] : [id, chapter, fn, text, extra],
+    ) as ReturnType<typeof withBeat>;
 
     expect(voice(beats).get("Q-V2")).toMatchObject({ value: 2, detail_beats: ["w1", "w2"] });
   });
