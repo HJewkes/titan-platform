@@ -80,7 +80,7 @@ describe("report quality section", () => {
       windowDays: 30,
     });
 
-    const { total } = qualitySection(nodes, ctx, []).complexity;
+    const { total } = qualitySection(nodes, ctx, [], []).complexity;
 
     expect(total).toMatchObject({ callables: 1, ccMax: 12, mass: 36, cogMass: 45, erosion: 1, cogErosion: 1 });
   });
