@@ -172,6 +172,14 @@ describe("gh's run-time {branch} placeholder names an unknown branch", () => {
     ["POST", "repos/{owner}/:repo/issues", "branch=main", "merge-upstream", [null]],
     ["POST", "repos/o/{repo}/x", "new_name=y", "merge-upstream", [null]],
     [null, "repos/{owner}/{repo}/issues", '"$K"=v', "merge-upstream", [null]],
+    ["POST", "repos/{owner}/{repo}/users", "users[]=bot", "merge-upstream", [null]],
+    ["POST", "repos/{owner}/{repo}/teams", "teams[]=t", "merge-upstream", [null]],
+    ["POST", "repos/{owner}/{repo}/apps", "apps[]=a", "merge-upstream", [null]],
+    [null, "repos/:owner/:repo/users", "users[]=bot", "merge-upstream", [null]],
+    ["POST", "repos/{owner}/{repo}/contexts", "contexts[]=ci", "merge-upstream", [null]],
+    ["POST", "repos/{owner}/{repo}/merges", "", "merge-upstream", [null]],
+    ["POST", "repos/{owner}/{repo}", "base=main head=feat/x", "merge-upstream", [null]],
+    [null, "repos/{owner}/{repo}/pulls/1/merge/", "", "merge-upstream", [null]],
   ])("%s %s %s reads as %s %j", (method, url, src, route, branches) => {
     expect(apiBranchRouteWrite(url, method, fields(src))).toEqual({ route, branches });
   });

@@ -20,7 +20,13 @@ const REPO_ROUTE_RE = /(?:^|\/)repos\/[^/]+\/[^/]+(\/.*)?$/i;
 const BRANCH_KEY_RE = /^branch(?:\[\])?$/;
 const NEW_NAME_KEY_RE = /^new_name(?:\[\])?$/;
 const DEFAULT_BRANCH_KEY_RE = /^default_branch(?:\[\])?$/;
-const ROUTE_FIELD_KEY_RE = /^(?:branch|new_name|default_branch)(?:\[\])?$/;
+/**
+ * Keys a POST route reads: merge-upstream `branch`, rename `new_name`, protection `restrictions` `users`/`teams`/
+ * `apps` and `required_status_checks` `contexts`, and the Merges API `base`/`head`.
+ */
+const ROUTE_FIELD_KEY_RE = /^(?:branch|new_name|default_branch|users|teams|apps|contexts|base|head)(?:\[\])?$/;
+/** A merge suffix a filled slot can complete into the Merges API, merge-upstream or a pull merge. */
+const MERGE_SUFFIX_RE = /\/(?:merges|merge-upstream|merge)\/?$/i;
 /** The route a filled repo slot most plausibly reaches for each method, when the written path names none. */
 const FILLED_ROUTES: Partial<Record<string, BranchRoute>> = { PUT: "contents", DELETE: "protection", PATCH: "default-branch" };
 
@@ -117,9 +123,10 @@ function unsureWrite(url: string, verb: string | null, fields: Fields): BranchRo
  * A filled repo slot (`repoSlotFilled`) makes the route unknown. PUT, DELETE and PATCH can reach a route whatever the
  * body (a protection sub-path takes any field); a POST only with a field a route reads, so a plain issue POST passes.
  */
-function slotFilledWrite(verb: string | null, fields: Fields, read: BranchRouteWrite | null): BranchRouteWrite | null {
+function slotFilledWrite(path: string, verb: string | null, fields: Fields, read: BranchRouteWrite | null): BranchRouteWrite | null {
   const post = verb === null || verb === "POST";
-  if (!read && post && fields !== "unread" && candidates(fields, ROUTE_FIELD_KEY_RE).length === 0) return null;
+  const routeless = fields !== "unread" && candidates(fields, ROUTE_FIELD_KEY_RE).length === 0;
+  if (!read && post && routeless && !MERGE_SUFFIX_RE.test(path)) return null;
   return { route: read?.route ?? FILLED_ROUTES[verb ?? "POST"] ?? "merge-upstream", branches: [null] };
 }
 
@@ -136,5 +143,5 @@ export function apiBranchRouteWrite(url: string, method: string | null, fields: 
   if (path === "unsure") return unsureWrite(url, verb, fields);
   const repo = REPO_ROUTE_RE.exec(path);
   const read = repo ? tailWrite((repo[1] ?? "").replace(/\/+$/, ""), verb, fields) : null;
-  return repoSlotFilled(url) ? slotFilledWrite(verb, fields, read) : read;
+  return repoSlotFilled(url) ? slotFilledWrite(path, verb, fields, read) : read;
 }
