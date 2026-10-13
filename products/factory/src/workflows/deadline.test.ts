@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deadline } from "./deadline.js";
+import { deadline, stepClock } from "./deadline.js";
 
 const MIN = 60_000;
 
@@ -61,5 +61,25 @@ describe("deadline", () => {
     expect(d.expired()).toBe(false);
     await d.sleep(20 * MIN, signal);
     expect(d.expired()).toBe(true);
+  });
+
+  it("expires at startedAt plus the timeout, so a wait resumed 9 min into a 10 min timeout gets 1 min", async () => {
+    const { clock, timing } = fakeClock();
+    clock.now = 30 * MIN;
+    const d = deadline({ ...timing, startedAt: 21 * MIN });
+
+    while (!d.expired()) await d.sleep(30_000, signal);
+
+    expect(clock.now).toBe(31 * MIN);
+  });
+});
+
+describe("stepClock", () => {
+  it("reads the first start as epoch ms and the restart count", () => {
+    expect(stepClock({ firstStartedAt: "2026-10-13T08:00:00.000Z", restarts: 2 })).toEqual({ firstStartedAtMs: Date.parse("2026-10-13T08:00:00.000Z"), restarts: 2 });
+  });
+
+  it.each([undefined, "not a date"])("reads a first start of %s as absent and no restarts", (firstStartedAt) => {
+    expect(stepClock({ firstStartedAt })).toEqual({ firstStartedAtMs: undefined, restarts: 0 });
   });
 });

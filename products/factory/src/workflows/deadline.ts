@@ -1,3 +1,5 @@
+import type { RoutedStepInput } from "@titan-design/workflow";
+
 export const DEFAULT_JUMP_SLACK_MS = 60_000;
 export const DEFAULT_JUMP_GRACE_MS = 2 * 60_000;
 
@@ -5,6 +7,8 @@ export interface DeadlineTiming {
   now: () => number;
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   timeoutMs: number;
+  /** When the wait first began, in epoch ms; a restart resumes from it, so a re-dispatched wait gets only what is left. Absent means now. */
+  startedAt?: number | undefined;
   /** A sleep that overruns its request by more than this is a clock jump. */
   jumpSlackMs?: number;
   /** After a jump, the one fresh poll comes at least this long after the wake. */
@@ -23,7 +27,7 @@ export function deadline(timing: DeadlineTiming): Deadline {
   if (!Number.isFinite(timing.timeoutMs)) throw new RangeError(`deadline needs a finite timeoutMs, got ${timing.timeoutMs}`);
   const slack = timing.jumpSlackMs ?? DEFAULT_JUMP_SLACK_MS;
   const grace = timing.jumpGraceMs ?? DEFAULT_JUMP_GRACE_MS;
-  const end = timing.now() + timing.timeoutMs;
+  const end = (timing.startedAt ?? timing.now()) + timing.timeoutMs;
   let jumped = false;
   let graceGranted = false;
   return {
@@ -42,6 +46,17 @@ export function deadline(timing: DeadlineTiming): Deadline {
       return true;
     },
   };
+}
+
+/** When a step first started and how many restarts re-ran it; the start is absent for a dispatch that does not carry one. */
+export interface StepClock {
+  firstStartedAtMs: number | undefined;
+  restarts: number;
+}
+
+export function stepClock(step: Pick<RoutedStepInput, "firstStartedAt" | "restarts">): StepClock {
+  const firstStartedAtMs = step.firstStartedAt === undefined ? undefined : Date.parse(step.firstStartedAt);
+  return { firstStartedAtMs: Number.isFinite(firstStartedAtMs) ? firstStartedAtMs : undefined, restarts: step.restarts ?? 0 };
 }
 
 export function sleep(ms: number, signal: AbortSignal): Promise<void> {

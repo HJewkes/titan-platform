@@ -1,7 +1,7 @@
 import { readCi, type CiInput, type CiReadOptions, type CiSnapshot } from "./land-ci.js";
 import { CI_BACKLOG_CEILING_FACTOR, MISSING_CHECK_GRACE_MS, missingCheckGraceSpent, type FirstReads } from "./land-budget.js";
 import { rerunIfFlaky, type FlakyState } from "./land-flaky.js";
-import { deadline, type Deadline } from "./deadline.js";
+import { deadline, type Deadline, type DeadlineTiming } from "./deadline.js";
 import type { LandDeps, Timing } from "./land.js";
 import { requireRequiredChecks } from "../required-checks.js";
 import { noRunVerdict, type NoRunWatch } from "../shepherd/ci-norun.js";
@@ -30,11 +30,11 @@ function readOptions(deps: LandDeps, input: CiInput, timing: Timing, firstReads:
   return { missingSettled, openSeen: {}, liveContexts };
 }
 
-/** One blocking step: the workflow retry loop has no backoff, so polling lives here. A failed read is polled again. */
-export async function waitForCi(deps: LandDeps, input: CiInput, timing: Timing, signal: AbortSignal, flaky: FlakyState, firstReads: FirstReads): Promise<CiSnapshot> {
+/** One blocking step: the workflow retry loop has no backoff, so polling lives here. A failed read is polled again. Both bounds run from `timing.startedAt` when given. */
+export async function waitForCi(deps: LandDeps, input: CiInput, timing: Timing & Pick<DeadlineTiming, "startedAt">, signal: AbortSignal, flaky: FlakyState, firstReads: FirstReads): Promise<CiSnapshot> {
   const { port, snapshot: reads } = deps;
   const clock = deadline(timing);
-  const startedAt = timing.now();
+  const startedAt = timing.startedAt ?? timing.now();
   let backlog = false;
   let last = "no read yet";
   const options = readOptions(deps, input, timing, firstReads);
