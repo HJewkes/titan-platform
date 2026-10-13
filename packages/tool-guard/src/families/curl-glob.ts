@@ -40,7 +40,7 @@ function parseGlob(text: string, cap: number): Piece[] | null {
   let literal = "";
   let i = 0;
   while (i < text.length) {
-    const c = text[i] as string;
+    const c = text.charAt(i);
     const skip = c === "[" ? literalBracketLength(text, i) : 0;
     if (skip > 0) {
       literal += text.slice(i, i + skip);
@@ -74,7 +74,7 @@ function literalBracketLength(text: string, open: number): number {
   if (close < 0) return 0;
   const body = text.slice(open + 1, close);
   if (body === "") return 2;
-  const host = body.split("%")[0] as string;
+  const host = body.split("%")[0] ?? "";
   const colons = host.split(":").length - 1;
   return colons >= 2 && IPV6_LITERAL.test(body) ? close - open + 1 : 0;
 }
@@ -84,7 +84,7 @@ function readSet(text: string, start: number): Parsed | null {
   const items: string[] = [];
   let item = "";
   for (let i = start; i < text.length; i++) {
-    const c = text[i] as string;
+    const c = text.charAt(i);
     if (c === "{" || c === "[" || c === "]") return null;
     if (c === "}") {
       if (i === start) return null;
