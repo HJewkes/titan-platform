@@ -8,10 +8,13 @@ export type RestartRule = "repeat" | "park";
 export interface RoutedStepInput extends StepRunInput {
   attempt: number;
   requestKey: string;
-  /** When the step's first attempt started; a restart keeps it, so a wait can resume its deadline. */
-  firstStartedAt: string;
+  /**
+   * When the step's first attempt started; a restart keeps it, so a wait can resume its deadline. The runtime always
+   * sets it and `restarts`; they are optional so an input built by hand, as in a route's own test, still type-checks.
+   */
+  firstStartedAt?: string;
   /** How many restarts re-dispatched this step; 0 on a first run and on ordinary retries. */
-  restarts: number;
+  restarts?: number;
 }
 
 export interface RouteRunner {
