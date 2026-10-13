@@ -21,6 +21,8 @@ interface Machine {
   unit?: string;
   /** A failed `systemctl --user show`; overrides `unit`. */
   unitFailure?: { code: number; stderr: string };
+  /** `systemctl --user show titan-factory.socket` output; absent means no socket unit is installed. */
+  socket?: string;
   /** launchctl print output; undefined means the job is not loaded. */
   print?: string;
   health?: Record<string, unknown> | null;
@@ -75,6 +77,7 @@ function fakePorts(init: Machine) {
     },
     systemctl: async (args) => {
       calls.push(`systemctl ${args.join(" ")}`);
+      if (args.includes("titan-factory.socket")) return { code: 0, stdout: init.socket ?? "LoadState=not-found\nActiveState=inactive\n", stderr: "" };
       if (init.unitFailure) return { ...init.unitFailure, stdout: "" };
       return init.unit === undefined ? { code: 127, stdout: "", stderr: "systemctl not found" } : { code: 0, stdout: init.unit, stderr: "" };
     },
@@ -390,7 +393,7 @@ describe("titan-factory service check", () => {
 
       expect(code).toBe(EXIT.OK);
       expect(out).toBe(`ok: /health answers from pid ${PID} with github ok\n`);
-      expect(calls).toEqual([`systemctl --user show ${UNIT_NAME} --property=LoadState,ActiveState,MainPID,NRestarts,ExecMainStatus`]);
+      expect(calls).toEqual([`systemctl --user show ${UNIT_NAME} --property=LoadState,ActiveState,SubState,MainPID,NRestarts,ExecMainStatus`, `systemctl --user show titan-factory.socket --property=LoadState,ActiveState`]);
     });
 
     it("reports a crash loop when the unit keeps restarting after non-zero exits and holds no process", async () => {
@@ -416,6 +419,53 @@ describe("titan-factory service check", () => {
       expect(out).toBe("stale pid: systemd holds no process; stop any other process on the port, then run titan-factory service restart\n");
     });
 
+    const socket = (ActiveState: string, LoadState = "loaded"): string => `LoadState=${LoadState}\nActiveState=${ActiveState}\n`;
+
+    it.each([
+      ["deactivating", "stop-sigterm"],
+      ["activating", "auto-restart"],
+    ])("reports restarting, exit 75, for a unit that is %s (%s) and does not answer /health", async (state, subState) => {
+      const { code, out } = await linux({ unit: unit({ ActiveState: state, SubState: subState, MainPID: 0 }), health: null });
+
+      expect(code).toBe(EXIT.TEMPFAIL);
+      expect(out).toBe(`restarting: ${UNIT_NAME} is restarting (${state} ${subState}); retry in 10 s\n`);
+    });
+
+    it("reports restarting for an auto-restart wait whose ActiveState reads failed", async () => {
+      const { code, out } = await linux({ unit: unit({ ActiveState: "failed", SubState: "auto-restart", MainPID: 0 }), health: null });
+
+      expect(code).toBe(EXIT.TEMPFAIL);
+      expect(out).toMatch(/^restarting: /);
+    });
+
+    it("carries activeState, subState and the socket's state in --json for a restarting unit", async () => {
+      const held = await linux({ unit: unit({ ActiveState: "deactivating", SubState: "stop-sigterm", MainPID: 0 }), socket: socket("active"), health: null }, "--json");
+      const bare = await linux({ unit: unit({ ActiveState: "activating", SubState: "start", MainPID: 0 }), health: null }, "--json");
+
+      expect(JSON.parse(held.out)).toMatchObject({ ok: false, cause: "restarting", detail: { activeState: "deactivating", subState: "stop-sigterm", socket: "listening" } });
+      expect(JSON.parse(bare.out)).toMatchObject({ cause: "restarting", detail: { activeState: "activating", subState: "start", socket: "absent" } });
+    });
+
+    it("keeps a crash-looping unit a crash loop even while it is activating", async () => {
+      const { code, out } = await linux({ unit: unit({ ActiveState: "activating", SubState: "auto-restart", MainPID: 0, NRestarts: 5, ExecMainStatus: 1 }), health: null });
+
+      expect(code).toBe(EXIT.FAILURE);
+      expect(out).toMatch(/^crash loop: /);
+    });
+
+    it("reports socket down, exit 1, when the socket unit is loaded and failed", async () => {
+      const { code, out } = await linux({ unit: unit({ ActiveState: "failed", MainPID: 0 }), socket: socket("failed"), health: null }, "--json");
+
+      expect(code).toBe(EXIT.FAILURE);
+      expect(JSON.parse(out)).toMatchObject({ ok: false, cause: "socket down", message: expect.stringContaining("systemctl --user start titan-factory.socket"), detail: { activeState: "failed", socket: "down" } });
+    });
+
+    it("exits 0 for an answering unit whose socket is active", async () => {
+      const { code } = await linux({ unit: unit({}), socket: socket("active"), health: healthy() });
+
+      expect(code).toBe(EXIT.OK);
+    });
+
     it("reports not loaded when systemd has no unit file", async () => {
       const { code, out } = await linux({ unit: unit({ LoadState: "not-found", ActiveState: "inactive", MainPID: 0 }), health: healthy() });
 
@@ -433,7 +483,7 @@ describe("titan-factory service check", () => {
       expect(out).toMatch(/^unreadable: systemctl --user show titan-factory\.service failed: .*XDG_RUNTIME_DIR not defined/);
       expect(out).not.toContain("not loaded");
       expect(out).not.toContain("service install");
-      expect(calls).toEqual([`systemctl --user show ${UNIT_NAME} --property=LoadState,ActiveState,MainPID,NRestarts,ExecMainStatus`]);
+      expect(calls).toEqual([`systemctl --user show ${UNIT_NAME} --property=LoadState,ActiveState,SubState,MainPID,NRestarts,ExecMainStatus`]);
     });
 
     it("carries systemctl's exit code and stderr in --json", async () => {

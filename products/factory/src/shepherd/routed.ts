@@ -4,7 +4,7 @@ import { z } from "zod";
 import { step, type LandOutcome } from "../workflows/land.js";
 import type { ObservedPr } from "./observe.js";
 import type { Verdict } from "./phases.js";
-import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_SEAT_HELD_ROUNDS, MAX_THROTTLED_ROUNDS, fixFirstEscalation, nextCloserStreak, roundKind, type CloserStreak, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
+import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_SEAT_HELD_ROUNDS, MAX_THROTTLED_ROUNDS, SEAT_HELD_ROUNDS_WORDS, fixFirstEscalation, nextCloserStreak, roundKind, type CloserStreak, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { fixFirstEntry, type FixFirstTrail } from "./fix-first-trail.js";
 import { FIX_FIRST_STEP, fixFirstCount } from "./wake-brief.js";
 
@@ -58,7 +58,7 @@ function seatHoldRunOut(held: Map<string, number>, headSha: string, reason: stri
   const rounds = (held.get(headSha) ?? 0) + 1;
   held.set(headSha, rounds);
   if (rounds < MAX_SEAT_HELD_ROUNDS) return undefined;
-  return { escalation: "failed-rounds", detail: `the seat held Shepherd's MERGE at ${headSha} for ${rounds} rounds, the last with ${reason ?? "no reason given"}` };
+  return { escalation: "failed-rounds", words: SEAT_HELD_ROUNDS_WORDS, detail: `at ${headSha}, the last with ${reason ?? "no reason given"}` };
 }
 
 export function endedOutcome({ observed, headSha }: Routed): LandOutcome {
