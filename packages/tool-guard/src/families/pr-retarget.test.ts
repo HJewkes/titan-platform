@@ -25,6 +25,12 @@ describe("prEditRetarget", () => {
     ["gh pr edit -R o/r 12 --base main", { pr: "12", base: "main" }],
     ["gh pr edit https://github.com/o/r/pull/12 --base feat/parent", { pr: "https://github.com/o/r/pull/12", base: "feat/parent" }],
     ["gh $G pr edit 12 --base main", { pr: null, base: "unknown" }],
+    ["gh $G pr create --base main", { pr: null, base: "unknown" }],
+    ['gh pr "$E" 12 --base main', { pr: null, base: "unknown" }],
+    ['gh pr "$E" "$F"', { pr: null, base: "unknown" }],
+    ['gh "$P" edit "$F"', { pr: null, base: "unknown" }],
+    ['gh "$P" edit 12 --base main', { pr: null, base: "unknown" }],
+    ["gh pr $E 12", { pr: null, base: "unknown" }],
   ])("%s retargets", (line, expected) => {
     expect(prEditRetarget(lastCommand(line))).toEqual(expected);
   });
@@ -35,10 +41,39 @@ describe("prEditRetarget", () => {
     ['gh pr edit 12 --title "$T"'],
     ["gh pr create --base main"],
     ["gh pr merge 12"],
-    ["gh $G pr create --base main"],
+    ['gh pr "$E" 12 --title x'],
     ["git pr edit 12 --base main"],
   ])("%s does not retarget", (line) => {
     expect(prEditRetarget(lastCommand(line))).toBeNull();
+  });
+});
+
+describe("prEditRetarget run-time words", () => {
+  it.each([
+    ['gh pr edit 12 "-$X"'],
+    ['gh pr edit 12 "--$X"'],
+    ['gh pr edit 12 "--ba$X"'],
+    ["gh pr edit 12 -B{x,main}"],
+    ["gh pr edit 12 --title {x,-Bmain}"],
+    ["gh pr edit 12 --base=ma?n"],
+    ["gh pr edit 12 --base mai[n]"],
+    ['declare -u B; B=main; gh pr edit 12 --base "$B"'],
+  ])("%s may retarget to a run-time base", (line) => {
+    expect(prEditRetarget(lastCommand(line))).toEqual({ pr: "12", base: "unknown" });
+  });
+
+  it.each([["gh pr edit 12 --title x{,y}"], ['gh pr edit 12 --title="$T"'], ['gh pr edit 12 -- "$T"']])("%s stays a literal edit", (line) => {
+    expect(prEditRetarget(lastCommand(line))).toBeNull();
+  });
+});
+
+describe("prEditRetarget value flags", () => {
+  const values = ["-b", "--body", "-F", "--body-file", "-t", "--title", "-m", "--milestone", "-R", "--repo", "--attach"]
+    .concat(["--add-assignee", "--remove-assignee", "--add-label", "--remove-label", "--add-project", "--remove-project"])
+    .concat(["--add-reviewer", "--remove-reviewer"]);
+
+  it.each(values)("%s takes --base as its value, leaving main a positional", (flag) => {
+    expect(prEditRetarget(lastCommand(`gh pr edit 12 ${flag} --base main`))).toBeNull();
   });
 });
 
@@ -57,6 +92,14 @@ describe("apiPullRetarget", () => {
     ["gh api -X PATCH https://api.github.com/repos/o/r/pulls/12 -f base=main", { pr: "12", base: "main" }],
     ["gh api -X PATCH api/v3/repos/o/r/pulls/12/ -f base=main", { pr: "12", base: "main" }],
     ['gh api -X PATCH "repos/o/r/pulls/$N" -f base=main', { pr: null, base: "main" }],
+    ['gh api -X PATCH repos/o/r/pulls/12 "-fbase=$X"', { pr: "12", base: "unknown" }],
+    ['gh api -X PATCH repos/o/r/pulls/12 "$A"', { pr: "12", base: "unknown" }],
+    ["gh api -X PATCH repos/o/r/pulls/12 $ARGS", { pr: "12", base: "unknown" }],
+    ["gh api -X PATCH repos/o/r/pulls/12 -H $H", { pr: "12", base: "unknown" }],
+    ['gh api -X PATCH repos/o/r/pulls/12 -f "a[$K]=main"', { pr: "12", base: "unknown" }],
+    ["gh api -X PATCH repos/o/r/pulls/12 -f base=mai?", { pr: "12", base: "unknown" }],
+    ["gh api -X PATCH repos/o/r/pulls/12 {-fbase=main,-fx=y}", { pr: "12", base: "unknown" }],
+    ['declare -u B; B=main; gh api -X PATCH repos/o/r/pulls/12 -f "base=$B"', { pr: "12", base: "unknown" }],
   ])("%s retargets", (line, expected) => {
     expect(apiPullRetarget(lastCommand(line))).toEqual(expected);
   });
@@ -64,6 +107,8 @@ describe("apiPullRetarget", () => {
   it.each([
     ["gh api repos/o/r/pulls/12"],
     ["gh api -X GET repos/o/r/pulls/12 -f base=main"],
+    ["gh api -X HEAD repos/o/r/pulls/12 -f base=main"],
+    ['gh api -X PATCH repos/o/r/pulls/12 -H "$H" -f title=x'],
     ["gh api -X PATCH repos/o/r/pulls/12 -f title=x"],
     ['gh api -X PATCH repos/o/r/pulls/12 -f "title=$T"'],
     ["gh api -X PATCH repos/o/r/pulls/12/merge -f base=main"],
