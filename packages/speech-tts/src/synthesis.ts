@@ -4,7 +4,7 @@ import type { Audio, Synthesis, TtsCapabilities, WordTiming } from "./types.js";
 import { decodeWav, durationOf } from "./wav.js";
 
 /** The optional fields an external engine may report beside its audio, before validation. */
-export interface EngineExtras {
+interface EngineExtras {
   durationS?: unknown;
   words?: unknown;
   phonemes?: unknown;

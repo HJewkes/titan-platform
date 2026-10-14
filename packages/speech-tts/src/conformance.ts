@@ -5,7 +5,7 @@ import type { TtsProvider } from "./types.js";
 type Make = () => TtsProvider | Promise<TtsProvider>;
 
 /** Three builds of one adapter kind. Every adapter passes this kit before it ships. */
-export interface ConformanceHarness {
+interface ConformanceHarness {
   /** A provider whose engine answers. Its declared capabilities pick which checks apply. */
   working: Make;
   /** The same kind, pointed at an engine that is not there. */
