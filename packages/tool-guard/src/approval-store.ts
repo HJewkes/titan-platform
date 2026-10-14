@@ -260,6 +260,10 @@ function hex(bytes: number): string {
   return randomBytes(bytes).toString("hex");
 }
 
+function isErrno(err: unknown): err is NodeJS.ErrnoException {
+  return err instanceof Error && "code" in err;
+}
+
 function errCode(err: unknown): string | undefined {
-  return (err as NodeJS.ErrnoException | undefined)?.code;
+  return isErrno(err) ? err.code : undefined;
 }
