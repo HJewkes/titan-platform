@@ -4,7 +4,7 @@ import { isAbsolute, join } from "node:path";
 export const SYSTEM_PATH = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
 
 /** systemd expands `%` specifiers in every value below, so a literal one is doubled. */
-export const noSpecifiers = (value: string): string => value.replace(/%/g, "%%");
+const noSpecifiers = (value: string): string => value.replace(/%/g, "%%");
 
 /** systemd splits on whitespace and reads C escapes inside double quotes. */
 export function quoteIfNeeded(value: string): string {
@@ -20,7 +20,7 @@ export function userUnitDir({ env, home }: { env: NodeJS.ProcessEnv; home: strin
   return join(config, "systemd", "user");
 }
 
-export interface OneshotServiceOptions {
+interface OneshotServiceOptions {
   description: string;
   argv: string[];
   nice?: number;
@@ -57,7 +57,7 @@ export function renderOneshotService(options: OneshotServiceOptions): string {
   ].join("\n");
 }
 
-export interface CalendarTimerOptions {
+interface CalendarTimerOptions {
   description: string;
   onCalendar: string;
   /** systemd's default coalescing window is one minute. */
