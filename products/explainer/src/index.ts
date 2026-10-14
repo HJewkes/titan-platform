@@ -87,3 +87,6 @@ export {
   type PrepareOptions,
   type RecordOptions,
 } from "./eval-owner.js";
+export { MAX_SENTENCE_WORDS, MIN_PROJECT_SHARE, voiceCheck, voiceCheckWith } from "./lint-voice.js";
+export { flowCheck } from "./lint-flow.js";
+export { maskEntities, repoEntities } from "./lint-text.js";
