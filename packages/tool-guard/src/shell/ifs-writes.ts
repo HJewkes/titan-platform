@@ -30,6 +30,8 @@ const COMMAND_BUILDER_RE = /[?*[{]/;
 /** The test commands; the brackets are their names rather than globs. */
 export const TESTS = new Set(["[", "[[", "test"]);
 /** `[[` compares these operands as arithmetic, which assigns any `NAME=` text it is given. */
+/** Reserved words after which bash and zsh still read a keyword such as `[[`. */
+const CONDITIONAL_OPENERS = new Set(["!", "{", "if", "then", "elif", "else", "while", "until", "do", "time", "coproc"]);
 const ARITH_TESTS = new Set(["-eq", "-ne", "-lt", "-le", "-gt", "-ge"]);
 /**
  * Run-time text bash or zsh evaluates or assigns through: arithmetic contexts (`$(( ))`, a `${x:offset}` substring,
@@ -98,10 +100,23 @@ export function segments(tokens: readonly Token[]): Segment[] {
   return out;
 }
 
-/** Only a `[[` its segment runs as the command opens a conditional; `echo [[` or a `[[)` case pattern is a word. */
+/**
+ * `[[` is a keyword only at a command's start or after reserved words, so only there does it open a conditional.
+ * After a precommand modifier (`command`, `builtin`, `noglob`, `-`) or an assignment it is an ordinary word, and
+ * the segments after it are commands; its own operands still read as arithmetic through `splitCommand`.
+ */
 function conditionalAfter(word: WordToken, segment: Segment, open: boolean): boolean {
-  if (word.value === "[[") return open || splitCommand(segment.words).command === word;
+  if (word.value === "[[") return open || keywordPosition(segment.words.slice(0, segment.words.indexOf(word)));
   return word.value === "]]" ? false : open;
+}
+
+/** Every word before the `[[` is a reserved word, or an option of `time` (`time -p --`). */
+function keywordPosition(before: WordToken[]): boolean {
+  return before.every((w, i) => !w.quoted && (CONDITIONAL_OPENERS.has(w.value) || timeOption(w.value, before[i - 1]?.value)));
+}
+
+function timeOption(value: string, previous: string | undefined): boolean {
+  return (value === "-p" || value === "--") && (previous === "time" || previous === "-p");
 }
 
 function addRedirect(segment: Segment, t: RedirectToken): void {
