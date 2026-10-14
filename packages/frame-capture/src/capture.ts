@@ -31,11 +31,23 @@ export function launch(): Promise<Browser> {
   return chromium.launch({ headless: true })
 }
 
-async function waitForMotionApi(page: Page): Promise<number> {
+function throwIfPageErrored(errors: readonly Error[], when: string): void {
+  const [error] = errors
+  if (error) throw new Error(`page error ${when}: ${error.message}`)
+}
+
+/** A missing, NaN or non-positive duration would resolve to zero frames, which encodes as a silent success. */
+function validDuration(duration: unknown): number {
+  if (typeof duration === 'number' && Number.isFinite(duration) && duration > 0) return duration
+  throw new Error(`window.__titanMotion.duration must be a positive number of seconds, got ${String(duration)}`)
+}
+
+async function waitForMotionApi(page: Page, errors: readonly Error[]): Promise<number> {
   const deadline = Date.now() + API_TIMEOUT_MS
   while (Date.now() < deadline) {
-    const duration = await page.evaluate(() => window.__titanMotion?.duration)
-    if (duration !== undefined) return duration
+    throwIfPageErrored(errors, 'while loading')
+    const api = await page.evaluate(() => (window.__titanMotion ? { duration: window.__titanMotion.duration } : undefined))
+    if (api) return validDuration(api.duration)
     await new Promise((resolve) => setTimeout(resolve, API_POLL_MS))
   }
   throw new Error(`window.__titanMotion did not appear within ${API_TIMEOUT_MS} ms`)
@@ -60,20 +72,33 @@ export interface CapturePage {
   /** `__titanMotion.duration` in seconds. */
   duration: number
   fonts: FontState[]
+  /** Every uncaught page error, collected from before navigation; empty when the open succeeds. */
+  errors: readonly Error[]
 }
 
+function assertFontsLoaded(fonts: readonly FontState[]): void {
+  const unloaded = fonts.filter((f) => f.status !== 'loaded')
+  if (unloaded.length > 0) {
+    throw new Error(`fonts not loaded: ${unloaded.map((f) => `${f.family} (${f.status})`).join(', ')}`)
+  }
+}
+
+/**
+ * The pageerror listener attaches before navigation: an error thrown while the page loads, such as a
+ * render that throws on mount, leaves a page that still answers seeks and screenshots blank.
+ */
 export async function openCapturePage(browser: Browser, url: string, options: PageOptions): Promise<CapturePage> {
   const context = await browser.newContext({ viewport: options, deviceScaleFactor: 1 })
   await context.addInitScript({ content: VIRTUAL_TIME_SCRIPT })
   const page = await context.newPage()
+  const errors: Error[] = []
+  page.on('pageerror', (e) => errors.push(e))
   await page.goto(url, { waitUntil: 'load' })
-  const duration = await waitForMotionApi(page)
+  const duration = await waitForMotionApi(page, errors)
   const fonts = await settleFonts(page, options.preloadFonts ?? true)
-  const unloaded = fonts.filter((f) => f.status !== 'loaded')
-  if (options.preloadFonts !== false && unloaded.length > 0) {
-    throw new Error(`fonts not loaded: ${unloaded.map((f) => `${f.family} (${f.status})`).join(', ')}`)
-  }
-  return { page, duration, fonts }
+  if (options.preloadFonts !== false) assertFontsLoaded(fonts)
+  throwIfPageErrored(errors, 'while loading')
+  return { page, duration, fonts, errors }
 }
 
 /** One frame: advance virtual time, seek (commits through flushSync), await ready(), screenshot. */

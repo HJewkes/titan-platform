@@ -68,9 +68,7 @@ async function withBrowser<T>(use: (browser: Browser) => Promise<T>): Promise<T>
  */
 function captureChunk(options: FramesOptions, [from, to]: [number, number], emit: Emit) {
   return withBrowser(async (browser) => {
-    const { page } = await openCapturePage(browser, options.url, options)
-    const errors: Error[] = []
-    page.on('pageerror', (e) => errors.push(e))
+    const { page, errors } = await openCapturePage(browser, options.url, options)
     for (let i = from; i < to; i++) {
       const png = await captureFrame(page, i / options.fps)
       const [error] = errors

@@ -31,9 +31,13 @@
       //   throws         like clock, but from `?fail-at=<s>` on, a seek empties the stage and reports an
       //                  uncaught error, as a framework does when a render throws and unmounts the tree
       //   missing-font   like clock, but declares a face whose file does not exist
+      //   throws-at-load publishes the API, empties the stage and throws while loading; later seeks do nothing
+      // `?duration=nan` or `?duration=null` publishes a broken duration on any page.
       const query = new URLSearchParams(location.search)
       const page = query.get('page')
       const stage = document.getElementById('stage')
+      const DURATIONS = { nan: NaN, null: null }
+      const duration = query.has('duration') ? DURATIONS[query.get('duration')] : 3
       const failAt = query.has('fail-at') ? Number(query.get('fail-at')) : Infinity
 
       if (page === 'missing-font') {
@@ -52,7 +56,13 @@
       // A framework page renders t = 0 on mount, before any seek.
       if (page !== 'static-clock') {
         seek(0)
-        window.__titanMotion = { seek, ready: () => document.fonts.ready.then(() => undefined), duration: 3 }
+        window.__titanMotion = { seek, ready: () => document.fonts.ready.then(() => undefined), duration }
+      }
+
+      if (page === 'throws-at-load') {
+        stage.textContent = ''
+        window.__titanMotion.seek = () => {}
+        throw new Error('throws-at-load fixture fails while loading')
       }
     </script>
   </body>
