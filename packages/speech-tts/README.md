@@ -52,6 +52,7 @@ Errors are typed, and `code` is the field to branch on:
 | `TtsTimeoutError` | `timeout` | No audio before the deadline. A command's process group is killed. |
 | `TtsFailedError` | `failed` | The engine answered with an error or with output that breaks the contract, including a refused redirect or output past `maxOutputBytes`. |
 | `TtsConfigError` | `misconfigured` | Selection reached a provider whose config is wrong, and the profile does not set `tts.fallback`. `skipped` lists every provider passed over. |
+| `TtsConfigError` | `unknown-kind` | Selection reached a provider whose `kind` has no registered factory. The message names the kind and the registered kinds. `tts.fallback` does not apply. |
 
 ## Selecting a provider
 
@@ -66,12 +67,16 @@ const { audio, words } = await provider.synthesize({ text: "Hello there." }, "na
 ```
 
 Selection walks the providers in order and returns the first that meets every requirement.
-`skipped` says why each earlier one was passed over. A provider that lacks a capability, or
-whose `kind` is not registered on this host, is passed over. A provider whose *config* is wrong
-is not: selection stops with `TtsConfigError`, so a broken preferred engine is never silently
-replaced by a weaker one. Set `"tts": { "fallback": true }` to move past it instead; the
-reason stays in `skipped`. "Config is wrong" covers a factory validation error, a secret
-that resolves to nothing, and a `TITAN_SPEECH_TTS` id the profile does not define.
+`skipped` says why each earlier one was passed over. A provider that lacks a capability is
+passed over. A provider whose *config* is wrong is not: selection stops with
+`TtsConfigError`, so a broken preferred engine is never silently replaced by a weaker one.
+Set `"tts": { "fallback": true }` to move past it instead; the reason stays in `skipped`.
+"Config is wrong" covers a factory validation error, a secret that resolves to nothing, and a
+`TITAN_SPEECH_TTS` id the profile does not define.
+
+A `kind` with no registered factory always stops selection, with code `unknown-kind`, even
+with `fallback` set. A typo such as `"comand"` must not hand the text to the next provider,
+which may be a remote one.
 
 When no provider qualifies, the error names each provider and what it lacks:
 
@@ -106,6 +111,8 @@ Each machine gets its own profile. Code that calls `selectTts` stays the same ev
 
 **A laptop, CPU only.** The in-process Kokoro adapter is the default once it ships (see
 "Adding a provider kind"). The fallback is a local CPU engine wrapped in the command contract.
+Until the host registers the `kokoro` kind, selection stops at that entry with
+`unknown-kind`. Set `TITAN_SPEECH_TTS=local-cli` on such a host so the entry is never tried.
 
 ```json
 {
@@ -248,11 +255,17 @@ These defaults assume the profile is trusted, but the engine and the network are
 - **Commands get a minimal environment.** Only `INHERITED_ENV` and the entry's `env` reach
   the child.
 - **Files stay in the call's directory.** A `wav` named by a command is read only from inside
-  its `outDir`, after symlinks are resolved.
+  its `outDir`, after symlinks are resolved. The read uses one descriptor: it is opened without
+  following a final symlink, its type and size come from fstat on that descriptor, and the
+  read is bounded by that size. A file swapped for a link after the checks, a FIFO, or a file
+  that grows mid-read is refused.
 - **Secrets stay out of errors.** stderr and HTTP error bodies are redacted first, then
   trimmed to about 2 KB. The redaction covers `${env:...}` values, `secrets` and header values.
 - **Misconfiguration fails closed.** A secret that resolves to nothing or a malformed entry
-  stops selection with `TtsConfigError`, unless `tts.fallback` is set.
+  stops selection with `TtsConfigError`, unless `tts.fallback` is set. An unknown `kind` stops
+  it in every case.
+- **Declared secrets add up.** An entry's own `secrets` list is kept, and the expanded
+  `${env:...}` values are added to it. Every value in it is redacted.
 
 ## Adding a provider kind
 
@@ -265,8 +278,9 @@ const registry = defaultTtsRegistry().register("kokoro", (id, config) => kokoroP
 await selectTts({ registry, requirements });
 ```
 
-A profile entry of an unregistered kind is skipped, with that reason, so one profile can
-serve hosts with and without the optional engine installed.
+A profile entry of an unregistered kind stops selection with `TtsConfigError` (`unknown-kind`).
+To share one profile between hosts with and without the optional engine, pick the provider
+on each host with `TITAN_SPEECH_TTS`, so the unavailable entry is never tried.
 
 Every adapter must pass the conformance kit in `src/conformance.ts`: `runTtsConformance(name,
 { working, unavailable, hung })`. It checks that capabilities are honoured, that errors are

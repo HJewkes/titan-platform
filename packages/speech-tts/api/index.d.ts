@@ -70,7 +70,7 @@ interface TtsRequirements {
     sampleRate?: number;
 }
 
-type TtsErrorCode = "unavailable" | "unsupported" | "timeout" | "failed" | "misconfigured";
+type TtsErrorCode = "unavailable" | "unsupported" | "timeout" | "failed" | "misconfigured" | "unknown-kind";
 /** A provider that selection passed over, and why. */
 interface SkippedProvider {
     id: string;
@@ -104,12 +104,13 @@ declare class TtsTimeoutError extends TtsError {
     constructor(providerId: string, timeoutMs: number);
 }
 /**
- * Selection reached a provider whose config is wrong, such as a secret that resolves to nothing, and the profile
- * does not set `tts.fallback: true`. Failing closed keeps a broken preferred engine from being silently replaced.
+ * Selection reached a provider whose config is wrong. `misconfigured`: a bad entry or a secret that resolves to
+ * nothing, without `tts.fallback: true`. `unknown-kind`: a `kind` no factory is registered for, which never falls
+ * back, because a typo would otherwise hand the text to the next engine, possibly a remote one.
  */
 declare class TtsConfigError extends TtsError {
     readonly skipped: readonly SkippedProvider[];
-    constructor(providerId: string, message: string, skipped: readonly SkippedProvider[]);
+    constructor(providerId: string, message: string, skipped: readonly SkippedProvider[], code?: "misconfigured" | "unknown-kind");
 }
 /** The engine ran and answered, but with an error or with output that breaks the contract. */
 declare class TtsFailedError extends TtsError {
