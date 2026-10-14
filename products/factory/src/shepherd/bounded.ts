@@ -22,7 +22,7 @@ async function withDeadline<R>(promise: Promise<R>, timeoutMs: number): Promise<
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new ReadTimedOut(timeoutMs)), timeoutMs);
-    timer.unref?.();
+    timer.unref();
   });
   try {
     return await Promise.race([promise, deadline]);

@@ -1090,7 +1090,7 @@ describe("resyncShepherd over many runs", () => {
     let settled = false;
 
     const resyncing = resyncShepherd(w.seed, hanging).finally(() => (settled = true));
-    for (let tick = 0; tick < 4 && !settled; tick++) await vi.advanceTimersByTimeAsync(RESYNC_READ_TIMEOUT_MS);
+    for (let phase = 0; phase < 4; phase++) await vi.advanceTimersByTimeAsync(RESYNC_READ_TIMEOUT_MS);
 
     expect(settled).toBe(true);
     const report = await resyncing;
