@@ -184,10 +184,11 @@ export async function runAgentChatAsync(
   args: string[],
   timeoutMs: number,
   input?: string,
+  signal?: AbortSignal,
 ): Promise<SafeExecResult> {
   try {
     const bin = resolveBinaryPath(binPath, "agent-chat");
-    return await execSafeAsync(bin, args, agentChatEnv(), timeoutMs, input);
+    return await execSafeAsync(bin, args, agentChatEnv(), timeoutMs, input, undefined, signal);
   } catch (err) {
     throw mapExecError(err);
   }
