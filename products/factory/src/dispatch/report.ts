@@ -100,9 +100,10 @@ function proposedItem(bullet: string): ProposedItem {
 function parseDestination(target: string): Destination | undefined {
   const filed = /^filed\s+(\S+)$/i.exec(target)?.[1];
   if (filed !== undefined) return { kind: "filed", id: filed };
-  const [, kind, reason = ""] = /^(pending|dropped):?\s*(.*)$/i.exec(target) ?? [];
-  if (kind === undefined) return undefined;
-  return { kind: kind.toLowerCase() as "pending" | "dropped", reason: reason.trim() };
+  const [, kind = "", reason = ""] = /^(pending|dropped):?\s*(.*)$/i.exec(target) ?? [];
+  if (/^pending$/i.test(kind)) return { kind: "pending", reason: reason.trim() };
+  if (/^dropped$/i.test(kind)) return { kind: "dropped", reason: reason.trim() };
+  return undefined;
 }
 
 function destinationProblem({ text, destination }: ProposedItem): string | undefined {
