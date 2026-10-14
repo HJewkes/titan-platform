@@ -186,11 +186,11 @@ Tier 0, `@titan-design/authority@0.4.0`. The authority decision table as data: w
 
 Key exports:
 
-- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `CONDITION_KINDS`, `DELEGATE_RESOLVER_CLASSES`, `EVIDENCE_KINDS`, `MERGE_CONDITION_KINDS`, `QUESTION_CONDITION_KINDS`, `RESOLVER_CLASSES`
-- `conditions`: `unmetConditions`
+- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `CONDITION_KINDS`, `DELEGATE_RESOLVER_CLASSES`, `EVIDENCE_KINDS`, `MERGE_CONDITION_KINDS`, `QUESTION_CONDITION_KINDS`
+- `conditions`: `isCarryFencedPath`, `unmetConditions`
 - `schema`: `policyTableSchema`
 - `evaluate`: `evaluate`, `canResolve`
-- +21 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/authority)
+- +22 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/authority)
 
 <a id="cap-chat-protocol"></a>
 
