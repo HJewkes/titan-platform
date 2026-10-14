@@ -155,3 +155,20 @@ export {
   type Rule,
   type RuleRegistry,
 } from "./rules.js";
+export {
+  EvidenceSpanSchema,
+  ExplainerFactSchema,
+  FACT_KINDS,
+  FACT_SOURCES,
+  FactKindSchema,
+  FactSourceSchema,
+  ReviewBundleSchema,
+  VERIFIED_LEVELS,
+  type EvidenceSpan,
+  type ExplainerFact,
+  type FactKind,
+  type FactSource,
+  type ReviewBundle,
+} from "./presets/repo-explainer/schemas.js";
+export { GATHER_CODES, diag, type GatherCode, type GatherDiagnostic } from "./presets/repo-explainer/diagnostics.js";
+export { parseCites } from "./presets/repo-explainer/cite.js";

@@ -28,7 +28,7 @@ Before adding code:
 | [`embed`](#cap-embed) | 0 | You need embedding vectors and a model download must not be a hard requirement. Pair it with retrieval, which takes the same `Embedder`. |
 | [`eslint-plugin`](#cap-eslint-plugin) | 0 | You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function), the opt-in `max-line-length` (no code line over 200 characters), `no-commented-code` (no code in comments), `no-chained-type-assertions` (no `as unknown as T`), `no-internal-module-mock` (tests mock only external dependencies) and `todo-needs-issue` (every TODO names a task id). To run ESLint against a style profile and normalize its output, use `style-checker` instead. |
 | [`evidence`](#cap-evidence) | 0 | A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. Its `./stats` subpath puts honest intervals and paired tests on eval pass rates at 20 to 50 cases. |
-| [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority. |
+| [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. For a tests-only diff it also tells test material from source (`testOnlyOf`) and parses `*.mutations.json` specs. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority. |
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
@@ -316,19 +316,17 @@ Key exports:
 
 Tier 0, `@titan-design/fix-proof@0.4.0`. Proves a fix PR's new tests fail on the merge base and pass at head: diff plan, vitest report classification, fix-proof/v1 result line
 
-**Use this when:** You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority.
+**Use this when:** You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. For a tests-only diff it also tells test material from source (`testOnlyOf`) and parses `*.mutations.json` specs. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority.
 
 Key exports:
 
-- `config`: `parseFixProofConfig`
+- `config`: `isHarnessPath`, `parseFixProofConfig`
 - `glob`: `compileGlobs`, `expandBraces`
-- `plan`: `planFixProof`
+- `plan`: `planFixProof`, `testOnlyOf`
+- `mutation`: `checkMutation`, `parseMutationSpec`
 - `classify`: `classifyReports`
 - `result-line`: `formatResultLine`, `parseResultLine`, `toResult`
-- `cli`: `runCli`
-- `exec`: `spawnExec`
-- `run`: `errorLine`, `run`
-- +45 more in the [reference page](/reference/fix-proof)
+- +61 more in the [reference page](/reference/fix-proof)
 
 <a id="cap-locator"></a>
 
@@ -1067,7 +1065,7 @@ Key exports:
 - `attribute`: `attributeFindings`
 - `map-state`: `MapBeatSchema`, `MapLayoutSchema`, `MapStateSchema`, `VisualSchema`
 - `cues`: `cueResolverFromWords`
-- +172 more in `products/explainer/src/index.ts`
+- +190 more in `products/explainer/src/index.ts`
 
 <a id="cap-factory"></a>
 
