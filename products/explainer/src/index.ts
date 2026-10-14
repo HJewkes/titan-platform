@@ -99,3 +99,15 @@ export { MAX_NEW_NAMES_PER_CHAPTER, PUBLIC_PROFILE, evidenceCheck } from "./lint
 export { MAX_SENTENCE_WORDS, MIN_PROJECT_SHARE, voiceCheck, voiceCheckWith } from "./lint-voice.js";
 export { flowCheck } from "./lint-flow.js";
 export { maskEntities, repoEntities } from "./lint-text.js";
+export {
+  DEFAULT_RULES_PATH,
+  RuleRegistrySchema,
+  checkType,
+  loadRuleRegistry,
+  parseRuleRegistry,
+  resolveRule,
+  unimplementedL0Rules,
+  type CheckType,
+  type Rule,
+  type RuleRegistry,
+} from "./rules.js";
