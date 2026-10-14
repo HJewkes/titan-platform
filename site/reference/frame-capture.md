@@ -74,6 +74,11 @@ console.log(result.frames, result.pageDurationS);
   loads fails the open instead of answering every seek with a blank frame. The same list,
   `CapturePage.errors`, fails a later frame. A `duration` that is missing, NaN or not positive
   also fails the open, rather than resolving with zero frames.
+- `launch()` passes `--disable-partial-raster`. Without it, Chromium can keep tiles from the
+  previous frame, so a frame reached by a jump can differ from the same frame in a sweep on
+  fractional edges. Launch your own browser with the same flag if you pass one in.
+- Virtual time only moves forward: capture frames in increasing order on one page, and open a
+  fresh page to go back.
 - `seek` must commit synchronously. A page that commits on a later timer is captured one
   frame late, because virtual time only moves when the capture advances it.
 - `preloadFonts: false` turns off both the explicit font load and the unloaded-face check. It
