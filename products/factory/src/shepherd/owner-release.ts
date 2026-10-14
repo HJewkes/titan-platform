@@ -5,7 +5,7 @@ import { EXIT } from "@titan-design/registry";
 import { assertReleasableAt } from "./release-head.js";
 import type { Registration, ShepherdStore } from "./store.js";
 
-export interface OwnerReleaseAt {
+interface OwnerReleaseAt {
   repo: RepoSlug;
   pr: number;
   /** The 40-character head the owner releases at; a PR at any other head is refused. */

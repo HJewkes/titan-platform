@@ -13,7 +13,7 @@ const OWNER_ONLY = "only the owner releases an owner-asked hold, from their own 
 const refused = (message: string, code: number): Error => Object.assign(new Error(message), { code });
 
 /** Which hold a release lifts: the one of `holdClass`, or the run's only hold when none is named. */
-export interface ReleaseAt {
+interface ReleaseAt {
   runId: string;
   repo: RepoSlug;
   pr: number;
