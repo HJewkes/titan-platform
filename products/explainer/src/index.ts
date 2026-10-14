@@ -56,6 +56,19 @@ export {
   type ScriptVisual,
 } from "./script-schema.js";
 export { deriveEvalView, toMapBeats, type EvalBeat, type StateChange } from "./eval-view.js";
+export {
+  CUE_KIND_ROLES,
+  buildPaceBeats,
+  cueKindRole,
+  fromScriptV1,
+  type PaceBeat,
+  type PaceItem,
+  type PaceRole,
+  type PaceSource,
+  type PaceSourceBeat,
+} from "./pace-items.js";
+export { fromSpikeScript, readSpikeScript, type SpikeRead, type SpikeScript } from "./spike-script.js";
+export { readTiming, type BeatTiming, type ScriptTiming } from "./timing.js";
 export { migrateTourV0, type MigrateOptions, type TourProbe, type TourV0 } from "./migrate.js";
 export {
   SHORT_SHA_LENGTH,
