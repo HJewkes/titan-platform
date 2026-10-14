@@ -59,6 +59,7 @@ graph TD
     codeRead["code-read"]
     coordinator["coordinator"]
     decider["decider"]
+    dispatchLedger["dispatch-ledger"]
     graphLayout["graph-layout"]
     memory["memory"]
     ownerQueue["owner-queue"]
@@ -107,6 +108,7 @@ graph TD
   decider --> memory
   decider --> sessionRead
   decider --> storeSqlite
+  dispatchLedger --> storeSqlite
   egressScan --> fixProof
   graphLayout --> codeGraph
   health --> storeSqlite
@@ -160,6 +162,8 @@ graph TD
   evals --> sessionRead
   evals --> storeSqlite
   evals --> workflow
+  explainer --> agent
+  explainer --> agentProtocol
   factory --> agent
   factory --> agentDispatch
   factory --> appPaths

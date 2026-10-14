@@ -30,6 +30,19 @@ export interface LayoutResult {
   edges: GraphEdge[];
 }
 
+/** A group box from a compound layout; `x` and `y` are its centre in the root frame. */
+export interface LaidOutGroup extends NodeSize, Point {
+  id: string;
+}
+
+/**
+ * A compound layout: leaf nodes, every group box `groupOf` named (sorted by id),
+ * and edges, including edges whose ends are group ids.
+ */
+export interface CompoundLayoutResult extends LayoutResult {
+  groups: LaidOutGroup[];
+}
+
 /**
  * Ordered ancestor group ids for a node, outermost first (e.g. package then
  * subdirectory). An empty list places the node directly at the top level.

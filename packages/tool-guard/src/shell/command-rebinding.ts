@@ -135,7 +135,7 @@ function readOptions(args: WordToken[], spec: StoreSpec): Options {
 }
 
 /** A dynamic word may expand to an option unless literal text that no option starts with comes first: `PATH=$HOME`. */
-function mayBeOption(word: WordToken): boolean {
+export function mayBeOption(word: WordToken): boolean {
   return /^[-+]/.test(word.value) || word.refs.some((r) => r.start === 0) || (word.cuts ?? []).some((c) => c.at === 0);
 }
 

@@ -1,0 +1,315 @@
+{
+  "lastTickAt": "2026-01-04T10:00:00.000Z",
+  "version": 1,
+  "claims": [
+    {
+      "taskId": "TX-1",
+      "initiative": "demo",
+      "spawnedAt": "2026-01-01T10:00:00.000Z",
+      "phase": "queued",
+      "phaseAt": "2026-01-02T10:00:00.000Z",
+      "slice": "a",
+      "dependsOn": [],
+      "owns": [
+        "src/a.ts"
+      ],
+      "contracts": [
+        {
+          "scope": "demo api",
+          "op": "add"
+        }
+      ],
+      "seat": "seat-a",
+      "repo": "example/repo",
+      "overlapsAccepted": [
+        {
+          "pr": 12,
+          "path": "src/a.ts",
+          "why": "both edits are line-local"
+        }
+      ]
+    },
+    {
+      "taskId": "TX-2",
+      "initiative": "demo",
+      "spawnedAt": "2026-01-01T10:00:00.000Z",
+      "phase": "spawning",
+      "phaseAt": "2026-01-02T10:00:00.000Z",
+      "slice": "a",
+      "nextPhase": "implementing",
+      "agentName": "bd-tx-2-a",
+      "spawned": [
+        "bd-tx-2-a"
+      ],
+      "namePrefix": "bd",
+      "seat": "seat-a",
+      "stalledReason": "no-repo: example/missing is not checked out",
+      "stalledClass": "failed",
+      "stallCode": "no-repo"
+    },
+    {
+      "taskId": "TX-3",
+      "initiative": "demo",
+      "spawnedAt": "2026-01-01T10:00:00.000Z",
+      "phase": "planning",
+      "phaseAt": "2026-01-02T10:00:00.000Z",
+      "agentId": "agent-3",
+      "agentName": "bd-tx-3",
+      "spawned": [
+        "bd-tx-3"
+      ],
+      "briefer": true,
+      "inboxCursor": "m-3",
+      "questionId": "q-3"
+    },
+    {
+      "phaseAt": "2026-01-02T10:00:00.000Z",
+      "taskId": "TX-4",
+      "initiative": "demo",
+      "spawnedAt": "2026-01-01T10:00:00.000Z",
+      "phase": "implementing",
+      "slice": "b",
+      "dependsOn": [
+        "a"
+      ],
+      "stackedOn": {
+        "taskId": "TX-4",
+        "slice": "a",
+        "pr": "https://github.com/example/repo/pull/4",
+        "branch": "feat/tx-4-a",
+        "forkHead": "abc000"
+      },
+      "agentId": "agent-4",
+      "agentName": "bd-tx-4-b",
+      "worktree": "/tmp/wt/tx-4-b",
+      "attempt": 1,
+      "ownsAmended": [
+        "src/b.ts"
+      ],
+      "lease": {
+        "progressAt": "2026-01-03T10:00:00.000Z",
+        "leaseUntil": "2026-01-04T10:00:00.000Z",
+        "renewals": 2,
+        "head": "abc123",
+        "content": "h1",
+        "transcriptAt": "2026-01-03T10:00:00.000Z"
+      },
+      "finding": {
+        "kind": "stalled-after-claim",
+        "reason": "idle",
+        "code": "no-progress",
+        "since": "2026-01-02T10:00:00.000Z",
+        "openedAt": "2026-01-03T10:00:00.000Z",
+        "checkedAt": "2026-01-03T10:00:00.000Z",
+        "detail": "no transcript rows"
+      },
+      "checkpoint": {
+        "sentAt": "2026-01-03T10:00:00.000Z"
+      }
+    },
+    {
+      "taskId": "TX-5",
+      "initiative": "demo",
+      "spawnedAt": "2026-01-01T10:00:00.000Z",
+      "phase": "parked",
+      "phaseAt": "2026-01-02T10:00:00.000Z",
+      "agentName": "bd-tx-5",
+      "stalledReason": "no-progress: idle for 2h",
+      "stalledClass": "stalled",
+      "stallCode": "no-progress",
+      "stalledAt": "2026-01-03T10:00:00.000Z",
+      "stale": {
+        "class": "timeout",
+        "proposed": "respawn or release by hand",
+        "since": "2026-01-03T10:00:00.000Z"
+      },
+      "respawn": {
+        "code": "no-progress",
+        "occurrence": "2026-01-02T10:00:00.000Z"
+      },
+      "unretired": [
+        {
+          "name": "bd-tx-5-old",
+          "reason": "refused",
+          "at": "2026-01-02T10:00:00.000Z"
+        }
+      ],
+      "notified": [
+        "stalled:no-progress"
+      ],
+      "noticeFacts": {
+        "stalled:no-progress": "f1"
+      },
+      "triage": {
+        "occurrence": "2026-01-02T10:00:00.000Z",
+        "since": "2026-01-03T10:00:00.000Z",
+        "outcome": "started",
+        "name": "triage-tx-5",
+        "startedAt": "2026-01-03T10:00:00.000Z",
+        "detail": "sent"
+      }
+    },
+    {
+      "taskId": "TX-6",
+      "initiative": "demo",
+      "spawnedAt": "2026-01-01T10:00:00.000Z",
+      "phase": "reviewing",
+      "phaseAt": "2026-01-02T10:00:00.000Z",
+      "agentName": "rv-tx-6",
+      "pr": "https://github.com/example/repo/pull/6",
+      "reviewRound": 1,
+      "resumed": true
+    },
+    {
+      "taskId": "TX-7",
+      "initiative": "demo",
+      "spawnedAt": "2026-01-01T10:00:00.000Z",
+      "phase": "awaiting-merge",
+      "phaseAt": "2026-01-02T10:00:00.000Z",
+      "pr": "https://github.com/example/repo/pull/7",
+      "prHead": "def456",
+      "lastReport": "Status: DONE"
+    },
+    {
+      "taskId": "TX-8",
+      "initiative": "demo",
+      "spawnedAt": "2026-01-01T10:00:00.000Z",
+      "phase": "shepherding",
+      "phaseAt": "2026-01-02T10:00:00.000Z",
+      "pr": "https://github.com/example/repo/pull/8",
+      "leak": {
+        "repo": "example/repo",
+        "url": "https://github.com/example/repo/pull/8",
+        "findings": [
+          "src/x.ts:3 email"
+        ]
+      },
+      "reregistered": {
+        "n": 1,
+        "at": "2026-01-03T10:00:00.000Z",
+        "head": "def789"
+      }
+    },
+    {
+      "taskId": "TX-9",
+      "initiative": "demo",
+      "spawnedAt": "2026-01-01T10:00:00.000Z",
+      "phase": "done",
+      "phaseAt": "2026-01-02T10:00:00.000Z",
+      "pr": "https://github.com/example/repo/pull/9"
+    }
+  ],
+  "decider": {
+    "wakes": [
+      "2026-01-03T10:00:00.000Z"
+    ],
+    "refused": {
+      "reason": "rate cap",
+      "at": "2026-01-03T10:00:00.000Z"
+    }
+  },
+  "dailyRetire": {
+    "seat-a": "2026-01-03T10:00:00.000Z"
+  },
+  "seats": {
+    "seat-a": {
+      "samples": [
+        {
+          "at": 1767261600000,
+          "sevenDay": 0.42,
+          "resetsAt": 1767866400000
+        }
+      ],
+      "configDir": "/tmp/pool-a",
+      "noDispatch": {
+        "key": "no-eligible",
+        "at": "2026-01-03T10:00:00.000Z"
+      },
+      "exhaustedTicks": 2
+    }
+  },
+  "humanFiled": [
+    "leak:TX-8"
+  ],
+  "leakScanner": "present",
+  "leakScans": {
+    "https://github.com/example/repo/pull/8": {
+      "text": [
+        "src/x.ts:3 email"
+      ],
+      "branch": []
+    }
+  },
+  "releases": {
+    "TX-1": {
+      "n": 1,
+      "at": "2026-01-02T10:00:00.000Z"
+    }
+  },
+  "slicesReleased": {
+    "TX-4": [
+      "c"
+    ]
+  },
+  "slicesFlagged": [
+    "demo/TX-9"
+  ],
+  "triageStarts": [
+    "2026-01-03T10:00:00.000Z"
+  ],
+  "liveness": {
+    "TX-5#|retire": {
+      "byFact": {
+        "f1": {
+          "n": 2,
+          "firstAt": "2026-01-02T10:00:00.000Z",
+          "lastAt": "2026-01-03T10:00:00.000Z",
+          "lastText": "refused"
+        }
+      }
+    }
+  },
+  "ladder": {
+    "TX-5#": {
+      "respawns": 1,
+      "lastAt": "2026-01-03T10:00:00.000Z",
+      "occurrence": "2026-01-02T10:00:00.000Z",
+      "owner": "2026-01-03T10:00:00.000Z",
+      "releases": 1,
+      "branch": "feat/tx-5",
+      "code": "no-progress",
+      "seat": "seat-a",
+      "releaseDue": true
+    },
+    "TX-6#": {
+      "respawns": 0,
+      "lastAt": "2026-01-03T10:00:00.000Z",
+      "releases": 1,
+      "reason": "stack-broken: parent TX-4#a closed",
+      "seat": "seat-a"
+    }
+  },
+  "serviceCheck": {
+    "at": "2026-01-03T10:00:00.000Z",
+    "cause": null
+  },
+  "wake": {
+    "seat-a": {
+      "failed": 1,
+      "reason": "offline",
+      "skipped": 0
+    }
+  },
+  "brake": {
+    "at": [
+      "2026-01-03T10:00:00.000Z"
+    ],
+    "notified": "brake:no-progress",
+    "claims": [
+      "TX-5#"
+    ],
+    "seen": [
+      "TX-5#@2026-01-02T10:00:00.000Z"
+    ]
+  }
+}
