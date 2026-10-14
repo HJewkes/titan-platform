@@ -41,7 +41,7 @@ describe("ended terminal outcome", () => {
   });
 });
 
-describe("failed terminal usage", () => {
+describe("failed and cancellation_unknown terminal usage", () => {
   const spend: UsageMeasurement = {
     model: "gpt-6",
     tokens: { input: 900, output: 100, cachedInput: null, cacheWriteInput: null, reasoningOutput: null, total: 1_000 },
@@ -61,6 +61,21 @@ describe("failed terminal usage", () => {
 
   it("rejects usage that is not a list of measurements", () => {
     const terminal: ExecutionTerminal<string> = { outcome: "failed", reason: "output_invalid: schema", retryable: false };
+    Reflect.set(terminal, "usage", "x");
+
+    expectCode(() => apply(running(), event("finish", 3, T3, { fence, terminal })), "invalid_transition");
+  });
+
+  it("keeps the spend a cancellation_unknown execution reported on its record", () => {
+    const terminal: ExecutionTerminal<string> = { outcome: "cancellation_unknown", reason: "aborted: signalled", evidence: "no ack", usage: [spend] };
+
+    const record = apply(running(), event("finish", 3, T3, { fence, terminal }));
+
+    expect(record).toMatchObject({ phase: "cancellation_unknown", terminal: { outcome: "cancellation_unknown", usage: [spend] } });
+  });
+
+  it("rejects cancellation_unknown usage that is not a list", () => {
+    const terminal: ExecutionTerminal<string> = { outcome: "cancellation_unknown", reason: "aborted: signalled", evidence: "no ack" };
     Reflect.set(terminal, "usage", "x");
 
     expectCode(() => apply(running(), event("finish", 3, T3, { fence, terminal })), "invalid_transition");
