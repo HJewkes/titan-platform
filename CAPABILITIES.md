@@ -407,8 +407,8 @@ Key exports:
 - `log`: `formatDecisionLine`, `formatErrorLine`, `logPath`
 - `hook`: `handle`
 - `context`: `nodeContext`
-- `shell`: `ParseError`, `tokenize`
-- +47 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/tool-guard)
+- `approval-store`: `approvalsDir`, `nodeApprovalStore`
+- +57 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/tool-guard)
 
 ## Tier 1 — engines
 
