@@ -155,6 +155,14 @@ describe("agentChatReviewerDispatch roster", () => {
     expect(error).toBeInstanceOf(ReviewerAskTimedOut);
     expectRefusal(error, "timed out");
   });
+
+  it("reports the broker's own reply timeout on a roster read as a timed-out ask", async () => {
+    const error = await failure(
+      dispatchOver('echo "broker did not answer agents_result" >&2\nexit 1\n').roster(),
+    );
+
+    expect(error).toBeInstanceOf(ReviewerAskTimedOut);
+  });
 });
 
 describe("agentChatReviewerDispatch spawn", () => {
