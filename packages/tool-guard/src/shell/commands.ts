@@ -8,6 +8,7 @@ import { findExecs, type Unwrapped } from "./unwrap.js";
 import { inlineScript, SHELLS, type Inline } from "./inline-script.js";
 import { caseNamed } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
+import { aliasCommands, type AliasTable } from "./alias-words.js";
 import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { cutReading } from "./piped-nul.js";
@@ -78,6 +79,7 @@ export interface ExtractOptions {
    * `ReadingLimitError`. For a script the line runs, which the user cannot split further.
    */
   stopPastCap?: boolean;
+  aliases?: AliasTable;
   /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
   onScript?: (text: string) => void;
 }
@@ -104,6 +106,7 @@ interface Walk {
   foldCase: boolean;
   /** Script texts the readings of the command being emitted have walked, so a later reading walks each text once; null outside one. */
   walked: Set<string> | null;
+  aliases: AliasTable | null;
   /** The line's budget of `unsure` reading words, shared by every walk of it. */
   unsure: UnsureBudget;
   /** What the line stores and whether it evaluates arithmetic, shared by every walk of it. */
@@ -123,7 +126,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   const unsure = { left: MAX_UNSURE_WORDS, splicedLeft: SPLICED_WEIGHT * src.length, decides: decider(options.guarded), stopPastCap: options.stopPastCap === true };
   const w: Walk = {
     scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null },
-    negated: false, foldCase, walked: null, unsure, marks: newMarks(), onScript: options.onScript ?? null,
+    negated: false, foldCase, walked: null, aliases: options.aliases ?? null, unsure, marks: newMarks(), onScript: options.onScript ?? null,
   };
   walk(tokenizeLine(src), observed(w));
   settle(w.marks);
@@ -235,8 +238,10 @@ function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, nex
   const words = folded(rawWords.map(expand), w);
   const runs = caseNamed(words);
   const cut = cutReading(words);
+  const aliased = aliasCommands(words, w.aliases);
   w.walked = new Set();
-  for (const cmd of [...runs, ...(cut ? caseNamed(cut) : [])]) run(cmd, redirects, w, next);
+  for (const cmd of [...runs, ...(cut ? caseNamed(cut) : []), ...aliased.runs]) run(cmd, redirects, w, next);
+  for (const { tokens, aliases } of aliased.scripts) walk(tokens, Object.assign(child(w, [...w.scope.wrapping, "eval"]), { aliases }));
   for (const reading of unsureReadings(runs[0], w.unsure)) walkAdded(reading, redirects, w, next);
   w.walked = null;
   return runs[0] ?? null;

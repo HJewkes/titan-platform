@@ -18,6 +18,8 @@ export const DEFAULT_SPAWN_TIMEOUT_MS = 30_000;
 export interface ReviewerRosterRow extends ReviewerAgent {
   transcriptPath: string | null;
   transcriptExists: boolean;
+  /** Where agent-chat started the agent; the seat check reads it as whose reviewer a seat reviewer is. */
+  cwd?: string;
 }
 
 export interface AgentChatReviewerDispatchOptions {
@@ -135,6 +137,7 @@ function rosterRow(row: AgentRow): ReviewerRosterRow {
     transcriptPath,
     transcriptExists: row.transcriptExists === true,
     ...(row.profile !== "" && { profile: row.profile }),
+    ...(row.cwd !== "" && { cwd: row.cwd }),
     ...lastWrittenAt(transcriptPath),
   };
 }

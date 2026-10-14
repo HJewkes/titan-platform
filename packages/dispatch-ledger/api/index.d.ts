@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Db, Migration } from '@titan-design/store-sqlite';
 
 /**
  * The burndown claim ledger: which task each tick-spawned agent holds.
@@ -11,12 +12,16 @@ type Phase = (typeof PHASES)[number];
 /** Phases a spawn lands in once its agent row appears. */
 declare const AGENT_PHASES: readonly ["planning", "implementing", "reviewing"];
 type AgentPhase = (typeof AGENT_PHASES)[number];
-/** The unmerged parent slice a claim was admitted on, and the parent PR's head branch. */
+/**
+ * The unmerged parent slice a claim was admitted on, and the parent PR's head branch. `forkHead` is the parent head
+ * the child's worktree was cut from, recorded once the spawn answers, to diagnose a restack against.
+ */
 declare const StackedOnSchema: z.ZodObject<{
     taskId: z.ZodString;
     slice: z.ZodString;
     pr: z.ZodString;
     branch: z.ZodString;
+    forkHead: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
 type StackedOn = z.infer<typeof StackedOnSchema>;
 declare const ClaimSchema: z.ZodObject<{
@@ -33,6 +38,7 @@ declare const ClaimSchema: z.ZodObject<{
         "retry-spent": "retry-spent";
         budget: "budget";
         "outside-owns": "outside-owns";
+        "no-repo": "no-repo";
         "phase-timeout": "phase-timeout";
         "dirty-uncommitted": "dirty-uncommitted";
         "lease-expired": "lease-expired";
@@ -62,6 +68,7 @@ declare const ClaimSchema: z.ZodObject<{
             "retry-spent": "retry-spent";
             budget: "budget";
             "outside-owns": "outside-owns";
+            "no-repo": "no-repo";
             "phase-timeout": "phase-timeout";
             "dirty-uncommitted": "dirty-uncommitted";
             "lease-expired": "lease-expired";
@@ -91,6 +98,7 @@ declare const ClaimSchema: z.ZodObject<{
             "retry-spent": "retry-spent";
             budget: "budget";
             "outside-owns": "outside-owns";
+            "no-repo": "no-repo";
             "phase-timeout": "phase-timeout";
             "dirty-uncommitted": "dirty-uncommitted";
             "lease-expired": "lease-expired";
@@ -155,6 +163,7 @@ declare const ClaimSchema: z.ZodObject<{
         slice: z.ZodString;
         pr: z.ZodString;
         branch: z.ZodString;
+        forkHead: z.ZodOptional<z.ZodString>;
     }, z.core.$strip>>;
     owns: z.ZodOptional<z.ZodArray<z.ZodString>>;
     ownsAmended: z.ZodOptional<z.ZodArray<z.ZodString>>;
@@ -170,6 +179,11 @@ declare const ClaimSchema: z.ZodObject<{
             extend: "extend";
             modify: "modify";
         }>;
+    }, z.core.$strip>>>;
+    overlapsAccepted: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        pr: z.ZodNumber;
+        path: z.ZodString;
+        why: z.ZodString;
     }, z.core.$strip>>>;
     agentName: z.ZodOptional<z.ZodString>;
     spawned: z.ZodOptional<z.ZodArray<z.ZodString>>;
@@ -188,6 +202,11 @@ declare const ClaimSchema: z.ZodObject<{
     pr: z.ZodOptional<z.ZodString>;
     prHead: z.ZodOptional<z.ZodString>;
     lastReport: z.ZodOptional<z.ZodString>;
+    reregistered: z.ZodOptional<z.ZodObject<{
+        n: z.ZodNumber;
+        at: z.ZodString;
+        head: z.ZodOptional<z.ZodString>;
+    }, z.core.$strip>>;
     seat: z.ZodOptional<z.ZodString>;
     namePrefix: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
@@ -245,11 +264,13 @@ declare const LadderRecordSchema: z.ZodObject<{
         "retry-spent": "retry-spent";
         budget: "budget";
         "outside-owns": "outside-owns";
+        "no-repo": "no-repo";
         "phase-timeout": "phase-timeout";
         "dirty-uncommitted": "dirty-uncommitted";
         "lease-expired": "lease-expired";
         "no-progress": "no-progress";
     }>>;
+    reason: z.ZodOptional<z.ZodString>;
     seat: z.ZodOptional<z.ZodString>;
     releaseDue: z.ZodOptional<z.ZodLiteral<true>>;
 }, z.core.$strip>;
@@ -286,6 +307,7 @@ declare const LedgerSchema: z.ZodObject<{
             "retry-spent": "retry-spent";
             budget: "budget";
             "outside-owns": "outside-owns";
+            "no-repo": "no-repo";
             "phase-timeout": "phase-timeout";
             "dirty-uncommitted": "dirty-uncommitted";
             "lease-expired": "lease-expired";
@@ -315,6 +337,7 @@ declare const LedgerSchema: z.ZodObject<{
                 "retry-spent": "retry-spent";
                 budget: "budget";
                 "outside-owns": "outside-owns";
+                "no-repo": "no-repo";
                 "phase-timeout": "phase-timeout";
                 "dirty-uncommitted": "dirty-uncommitted";
                 "lease-expired": "lease-expired";
@@ -344,6 +367,7 @@ declare const LedgerSchema: z.ZodObject<{
                 "retry-spent": "retry-spent";
                 budget: "budget";
                 "outside-owns": "outside-owns";
+                "no-repo": "no-repo";
                 "phase-timeout": "phase-timeout";
                 "dirty-uncommitted": "dirty-uncommitted";
                 "lease-expired": "lease-expired";
@@ -408,6 +432,7 @@ declare const LedgerSchema: z.ZodObject<{
             slice: z.ZodString;
             pr: z.ZodString;
             branch: z.ZodString;
+            forkHead: z.ZodOptional<z.ZodString>;
         }, z.core.$strip>>;
         owns: z.ZodOptional<z.ZodArray<z.ZodString>>;
         ownsAmended: z.ZodOptional<z.ZodArray<z.ZodString>>;
@@ -423,6 +448,11 @@ declare const LedgerSchema: z.ZodObject<{
                 extend: "extend";
                 modify: "modify";
             }>;
+        }, z.core.$strip>>>;
+        overlapsAccepted: z.ZodOptional<z.ZodArray<z.ZodObject<{
+            pr: z.ZodNumber;
+            path: z.ZodString;
+            why: z.ZodString;
         }, z.core.$strip>>>;
         agentName: z.ZodOptional<z.ZodString>;
         spawned: z.ZodOptional<z.ZodArray<z.ZodString>>;
@@ -441,6 +471,11 @@ declare const LedgerSchema: z.ZodObject<{
         pr: z.ZodOptional<z.ZodString>;
         prHead: z.ZodOptional<z.ZodString>;
         lastReport: z.ZodOptional<z.ZodString>;
+        reregistered: z.ZodOptional<z.ZodObject<{
+            n: z.ZodNumber;
+            at: z.ZodString;
+            head: z.ZodOptional<z.ZodString>;
+        }, z.core.$strip>>;
         seat: z.ZodOptional<z.ZodString>;
         namePrefix: z.ZodOptional<z.ZodString>;
     }, z.core.$strip>>;
@@ -464,6 +499,7 @@ declare const LedgerSchema: z.ZodObject<{
         }, z.core.$strip>>;
         exhaustedTicks: z.ZodOptional<z.ZodNumber>;
     }, z.core.$strip>>>;
+    dailyRetire: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
     humanFiled: z.ZodOptional<z.ZodArray<z.ZodString>>;
     leakScanner: z.ZodOptional<z.ZodString>;
     leakScans: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodObject<{
@@ -475,6 +511,7 @@ declare const LedgerSchema: z.ZodObject<{
         at: z.ZodString;
     }, z.core.$strip>>>;
     slicesReleased: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodArray<z.ZodString>>>;
+    slicesFlagged: z.ZodOptional<z.ZodArray<z.ZodString>>;
     triageStarts: z.ZodOptional<z.ZodArray<z.ZodString>>;
     liveness: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodObject<{
         byFact: z.ZodRecord<z.ZodString, z.ZodObject<{
@@ -498,11 +535,13 @@ declare const LedgerSchema: z.ZodObject<{
             "retry-spent": "retry-spent";
             budget: "budget";
             "outside-owns": "outside-owns";
+            "no-repo": "no-repo";
             "phase-timeout": "phase-timeout";
             "dirty-uncommitted": "dirty-uncommitted";
             "lease-expired": "lease-expired";
             "no-progress": "no-progress";
         }>>;
+        reason: z.ZodOptional<z.ZodString>;
         seat: z.ZodOptional<z.ZodString>;
         releaseDue: z.ZodOptional<z.ZodLiteral<true>>;
     }, z.core.$strip>>>;
@@ -530,7 +569,7 @@ declare const PHASE_TIMEOUT_MS: Partial<Record<Phase, number>>;
  * The closed set of codes a stall or a stalled-after-claim finding carries, in precedence order: when two hold, the
  * earlier wins. A stall outside these kinds keeps its `stalledClass` and carries no code.
  */
-declare const STALL_CODES: readonly ["spawn-never-landed", "shepherd-ended", "planner-refused", "retry-spent", "budget", "outside-owns", "phase-timeout", "dirty-uncommitted", "lease-expired", "no-progress"];
+declare const STALL_CODES: readonly ["spawn-never-landed", "shepherd-ended", "planner-refused", "retry-spent", "budget", "outside-owns", "no-repo", "phase-timeout", "dirty-uncommitted", "lease-expired", "no-progress"];
 type StallCode = (typeof STALL_CODES)[number];
 /**
  * Codes a respawn or release can fix. The others go straight to the owner: a respawn under `budget` would spend more,
@@ -559,6 +598,13 @@ declare const ContractSchema: z.ZodObject<{
     }>;
 }, z.core.$strip>;
 type Contract = z.infer<typeof ContractSchema>;
+/** One open PR the slice may share one exact owns path with, because the planner read both edits as line-local. */
+declare const AcceptedOverlapSchema: z.ZodObject<{
+    pr: z.ZodNumber;
+    path: z.ZodString;
+    why: z.ZodString;
+}, z.core.$strip>;
+type AcceptedOverlap = z.infer<typeof AcceptedOverlapSchema>;
 
 /**
  * The claim-phase transition table: every (from, to) phase edge the burndown can emit, checked when the ledger is
@@ -584,6 +630,84 @@ declare function illegalEdges(before: readonly Held[], after: readonly Held[]): 
 /** The error a write throws for its first illegal edge, or undefined when every edge is in the table. */
 declare function illegalEdgeError(before: readonly Held[], after: readonly Held[]): IllegalPhaseEdgeError | undefined;
 
+/** A claim's identity: one claim per `(task, slice)` while it is held. */
+type ClaimKey = Pick<Claim, "taskId" | "slice">;
+declare const claimKey: (c: ClaimKey) => string;
+declare const heldClaims: (ledger: Ledger) => Claim[];
+/** Claims with an agent at work: parked, queued, awaiting-merge and shepherding claims hold their task but not a lane. */
+declare const laneClaims: (ledger: Ledger) => Claim[];
+/** The seat's claims the ledger shows holding an implementer: implementing, or spawning into it. */
+declare const ledgerImplementers: (ledger: Ledger, seat: string) => number;
+/** How many claims the ledger may hold beyond the agents actually running before the count is flagged. */
+declare const SLOT_MISMATCH_TOLERANCE = 3;
+/** The flag shown beside a role count whose ledger runs more than the tolerance ahead of its live agents. */
+declare const slotMismatch: (ledger: number, live: number) => string | undefined;
+declare function isStalled(claim: Claim, now: Date): boolean;
+declare const sameClaim: (a: ClaimKey, b: ClaimKey) => boolean;
+/** A second claim on a held `(task, slice)` is refused rather than merged. */
+declare function addClaim(ledger: Ledger, claim: Claim): Ledger;
+/** The parent a queued slice may stack on for its one unmet dependency `dep`, else undefined. */
+type StackPredicate = (child: Claim, dep: string) => StackedOn | undefined;
+/**
+ * Queued slices whose dependencies are all done or released, whose task is not in `held`, and that no
+ * hand-dispatched PR is linked to, in ledger order. With `stack`, a slice with exactly one unmet dependency is
+ * ready too when `stack` admits it, and comes back carrying `stackedOn`.
+ */
+declare function readySlices(ledger: Ledger, held?: ReadonlyMap<string, unknown>, stack?: StackPredicate): Claim[];
+
+type ClaimPatch = Partial<Omit<Claim, "taskId" | "slice" | "initiative">>;
+/**
+ * Ladder rung 2: the claim lets go of its worktree and branch, which stay. A slice goes back to `queued` for the
+ * planner's work to survive; a whole task is dropped. Never clears `ledger.liveness`.
+ */
+interface ReleaseAction {
+    kind: "release";
+    key: ClaimKey;
+    branch?: string;
+    requeue: boolean;
+    /** Absent for a release that is no stall: a `stack-broken` release carries `reason` instead. */
+    code?: StallCode;
+    reason?: string;
+    /** The agents that may still run, newest first; a retired one is no longer the broker's to retire. */
+    names: string[];
+}
+/**
+ * The actions `applyActions` reads, plus the side-effect kinds it passes through unchanged. A product's own action
+ * union, whose spawn, retire and register carry product types, stays assignable to this one.
+ */
+type LedgerAction = {
+    kind: "update";
+    key: ClaimKey;
+    patch: ClaimPatch;
+} | {
+    kind: "add";
+    claims: Claim[];
+}
+/** Writes the claim's triage ladder record; absent prunes it. */
+ | {
+    kind: "ladder";
+    key: ClaimKey;
+    record?: LadderRecord;
+}
+/** Writes the ladder's brake; absent clears it. */
+ | {
+    kind: "brake";
+    brake?: BrakeState;
+} | ReleaseAction | {
+    kind: "spawn" | "retire" | "register";
+};
+/** The ledger after `actions`; a phase change restarts the phase clock, and so does a new agent. */
+declare function applyActions(ledger: Ledger, actions: readonly LedgerAction[], now: Date): Ledger;
+
+/** The code of highest precedence among `codes`, absent when there is none. */
+declare const firstCode: (codes: readonly StallCode[]) => StallCode | undefined;
+/** The exception class each stall code parks its claim under. */
+declare const PARK_CLASS: Readonly<Record<StallCode, ExceptionClass>>;
+/** The one shape of a park: the claim's stall patch with its class taken from the code. */
+declare const parkUpdate: (key: ClaimKey, code: StallCode, detail: string) => Extract<LedgerAction, {
+    kind: "update";
+}>;
+
 /** Named so a recorded failure says what failed without carrying a file path in the message. */
 declare class LedgerMalformedError extends Error {
     name: string;
@@ -602,4 +726,52 @@ declare const exportLedgerJson: (ledger: Ledger) => string;
  */
 declare function writeLedgerExport(file: string, ledger: Ledger): void;
 
-export { AGENT_PHASES, type AgentPhase, type BrakeState, CONTRACT_OPS, type Claim, ClaimSchema, type Contract, type ContractOp, ContractSchema, DESTRUCTIVE_OPS, type DeciderState, EMPTY_LEDGER, EXCEPTION_CLASSES, type ExceptionClass, type IllegalEdge, IllegalPhaseEdgeError, LADDER_CODES, type LadderRecord, type Ledger, LedgerMalformedError, LedgerSchema, type LivenessRecord, PHASES, PHASE_EDGES, PHASE_TIMEOUT_MS, type Phase, type ReleaseRecord, STALE_CLASSES, STALL_CODES, type SeatState, type StackedOn, type StaleClass, type StallCode, type WakeRecord, exportLedgerJson, illegalEdgeError, illegalEdges, parseLedgerJson, writeLedgerExport };
+interface LedgerRead {
+    ledger: Ledger;
+    /** Bumped by every write; 0 before the first. */
+    revision: number;
+}
+/** Where the ledger lives. A write checks the revision it read and the phase edges, and commits whole or not at all. */
+interface LedgerStore {
+    read(): LedgerRead;
+    /** Throws `StaleRevisionError`, `IllegalPhaseEdgeError` or `LedgerMalformedError`, leaving the store unchanged. */
+    write(next: Ledger, expectedRevision?: number): {
+        revision: number;
+    };
+}
+/** A write whose `expectedRevision` another writer has moved past; the caller re-reads and retries. */
+declare class StaleRevisionError extends Error {
+    name: string;
+}
+/**
+ * zod's output, laid out in `raw`'s key order with keys zod added at the end: keys the schema does not name are
+ * dropped and contract scopes trimmed as agent-chat's read does, while a ledger already in that form keeps its bytes.
+ */
+declare function normalizeLedger(raw: unknown): Ledger;
+/** Validates `text` as `burndown.json` and writes it to `store`, normalized. */
+declare function importLedgerJson(store: LedgerStore, text: string, expectedRevision?: number): {
+    revision: number;
+};
+/** An in-process store for tests and dry runs; it hands out copies, so a caller's edits never reach it unwritten. */
+declare function memoryLedgerStore(initial?: Ledger): LedgerStore;
+
+/**
+ * One row per claim, in ledger order, holding the claim's own JSON; the meta row holds the rest of the ledger with
+ * `claims: []` in place, so the export keeps the file's key order.
+ */
+declare function dispatchLedgerDdl(): string;
+declare function dispatchLedgerMigration(version: number): Migration;
+/** The ledger on tables made by `dispatchLedgerDdl`; each write is one immediate transaction. */
+declare class SqliteLedgerStore implements LedgerStore {
+    private readonly db;
+    constructor(db: Db);
+    read(): LedgerRead;
+    write(next: Ledger, expectedRevision?: number): {
+        revision: number;
+    };
+    private readInside;
+    private claims;
+    private writeInside;
+}
+
+export { AGENT_PHASES, type AcceptedOverlap, AcceptedOverlapSchema, type AgentPhase, type BrakeState, CONTRACT_OPS, type Claim, type ClaimKey, type ClaimPatch, ClaimSchema, type Contract, type ContractOp, ContractSchema, DESTRUCTIVE_OPS, type DeciderState, EMPTY_LEDGER, EXCEPTION_CLASSES, type ExceptionClass, type IllegalEdge, IllegalPhaseEdgeError, LADDER_CODES, type LadderRecord, type Ledger, type LedgerAction, LedgerMalformedError, type LedgerRead, LedgerSchema, type LedgerStore, type LivenessRecord, PARK_CLASS, PHASES, PHASE_EDGES, PHASE_TIMEOUT_MS, type Phase, type ReleaseAction, type ReleaseRecord, SLOT_MISMATCH_TOLERANCE, STALE_CLASSES, STALL_CODES, type SeatState, SqliteLedgerStore, type StackPredicate, type StackedOn, type StaleClass, StaleRevisionError, type StallCode, type WakeRecord, addClaim, applyActions, claimKey, dispatchLedgerDdl, dispatchLedgerMigration, exportLedgerJson, firstCode, heldClaims, illegalEdgeError, illegalEdges, importLedgerJson, isStalled, laneClaims, ledgerImplementers, memoryLedgerStore, normalizeLedger, parkUpdate, parseLedgerJson, readySlices, sameClaim, slotMismatch, writeLedgerExport };

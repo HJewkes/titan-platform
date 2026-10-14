@@ -20,7 +20,14 @@
         }
       ],
       "seat": "seat-a",
-      "repo": "example/repo"
+      "repo": "example/repo",
+      "overlapsAccepted": [
+        {
+          "pr": 12,
+          "path": "src/a.ts",
+          "why": "both edits are line-local"
+        }
+      ]
     },
     {
       "taskId": "TX-2",
@@ -35,7 +42,10 @@
         "bd-tx-2-a"
       ],
       "namePrefix": "bd",
-      "seat": "seat-a"
+      "seat": "seat-a",
+      "stalledReason": "no-repo: example/missing is not checked out",
+      "stalledClass": "failed",
+      "stallCode": "no-repo"
     },
     {
       "taskId": "TX-3",
@@ -66,7 +76,8 @@
         "taskId": "TX-4",
         "slice": "a",
         "pr": "https://github.com/example/repo/pull/4",
-        "branch": "feat/tx-4-a"
+        "branch": "feat/tx-4-a",
+        "forkHead": "abc000"
       },
       "agentId": "agent-4",
       "agentName": "bd-tx-4-b",
@@ -172,6 +183,11 @@
         "findings": [
           "src/x.ts:3 email"
         ]
+      },
+      "reregistered": {
+        "n": 1,
+        "at": "2026-01-03T10:00:00.000Z",
+        "head": "def789"
       }
     },
     {
@@ -191,6 +207,9 @@
       "reason": "rate cap",
       "at": "2026-01-03T10:00:00.000Z"
     }
+  },
+  "dailyRetire": {
+    "seat-a": "2026-01-03T10:00:00.000Z"
   },
   "seats": {
     "seat-a": {
@@ -232,6 +251,9 @@
       "c"
     ]
   },
+  "slicesFlagged": [
+    "demo/TX-9"
+  ],
   "triageStarts": [
     "2026-01-03T10:00:00.000Z"
   ],
@@ -258,6 +280,13 @@
       "code": "no-progress",
       "seat": "seat-a",
       "releaseDue": true
+    },
+    "TX-6#": {
+      "respawns": 0,
+      "lastAt": "2026-01-03T10:00:00.000Z",
+      "releases": 1,
+      "reason": "stack-broken: parent TX-4#a closed",
+      "seat": "seat-a"
     }
   },
   "serviceCheck": {
