@@ -85,4 +85,37 @@ describe("explainer eval l0", () => {
     const shipped = rulesSha(readFileSync(DEFAULT_RULES_PATH));
     expect(structureLines().slice(1).every((line) => line.split("\t")[2] === shipped)).toBe(true);
   });
+
+  describe("ghost check ids", () => {
+    const GHOST = "schema: rules/v1\nrules:\n  - { id: Q-V9, rule: synthetic, fields: [beats.spoken], owner_support: none, l0: { severity: error, status: implemented, checks: [synthetic:ghost] } }\n";
+    const CLEAN = "schema: rules/v1\nrules:\n  - { id: Q-V9, rule: synthetic, fields: [beats.visual.job], owner_support: none, l0: { severity: error, status: implemented, checks: [map:new-boxes] } }\n";
+    const warnings = (): string[] => vi.mocked(console.error).mock.calls.map(([line]) => String(line));
+
+    it("warns once naming a ghost id and still exits 0 by default", async () => {
+      write("rules.yaml", GHOST);
+
+      const code = await l0(write("script.json", scriptWith()), "--layout", write("layout.json", layout));
+
+      expect(code).toBe(0);
+      expect(warnings()).toHaveLength(1);
+      expect(warnings()[0]).toContain("synthetic:ghost");
+    });
+
+    it("exits non-zero under --fail-on-ghosts", async () => {
+      write("rules.yaml", GHOST);
+
+      const code = await l0(write("script.json", scriptWith()), "--layout", write("layout.json", layout), "--fail-on-ghosts");
+
+      expect(code).toBe(1);
+    });
+
+    it("stays silent when every claimed id is emitted", async () => {
+      write("rules.yaml", CLEAN);
+
+      const code = await l0(write("script.json", scriptWith()), "--layout", write("layout.json", layout), "--fail-on-ghosts");
+
+      expect(code).toBe(0);
+      expect(warnings()).toEqual([]);
+    });
+  });
 });
