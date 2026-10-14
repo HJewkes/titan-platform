@@ -60,6 +60,9 @@
   "packages/agent-protocol/src/trace/schema.ts": {
     "titan/max-function-lines": {
       "count": 1
+    },
+    "titan/max-line-length": {
+      "count": 2
     }
   },
   "packages/agent-surface/src/run-agent.ts": {
@@ -120,6 +123,11 @@
   "packages/chat-protocol/src/ai-sdk.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1
+    }
+  },
+  "packages/code-graph/src/analysis/dashboard-health.ts": {
+    "titan/max-line-length": {
+      "count": 2
     }
   },
   "packages/code-graph/src/analysis/dashboard-node-metrics.ts": {
@@ -254,6 +262,9 @@
     "titan/max-function-lines": {
       "count": 1
     },
+    "titan/max-line-length": {
+      "count": 2
+    },
     "titan/no-chained-type-assertions": {
       "count": 1
     }
@@ -261,6 +272,9 @@
   "packages/github/src/gh-cli.ts": {
     "titan/max-function-lines": {
       "count": 1
+    },
+    "titan/max-line-length": {
+      "count": 7
     }
   },
   "packages/github/src/port.ts": {
@@ -270,6 +284,21 @@
   },
   "packages/github/src/rest.ts": {
     "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/github/src/rules-read.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "packages/github/src/titan-gh-cli.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "packages/github/src/upsert-comment.ts": {
+    "titan/max-line-length": {
       "count": 1
     }
   },
@@ -328,6 +357,11 @@
       "count": 1
     }
   },
+  "packages/review-panel/src/accept-verdict.ts": {
+    "titan/max-line-length": {
+      "count": 4
+    }
+  },
   "packages/rpc-client/src/client/static-source.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1
@@ -343,13 +377,54 @@
       "count": 1
     }
   },
+  "packages/session-analytics/src/blocked-flow.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "packages/session-analytics/src/cache-ttl.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "packages/session-analytics/src/cost-report.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "packages/session-analytics/src/fixture.ts": {
+    "titan/max-line-length": {
+      "count": 5
+    }
+  },
+  "packages/session-analytics/src/handoff-threshold.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "packages/session-analytics/src/liveness.ts": {
+    "titan/max-line-length": {
+      "count": 3
+    }
+  },
   "packages/session-graph/src/apply.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    },
     "titan/no-chained-type-assertions": {
       "count": 1
     }
   },
   "packages/session-graph/src/normalized-index.ts": {
     "titan/max-function-lines": {
+      "count": 1
+    },
+    "titan/max-line-length": {
+      "count": 2
+    }
+  },
+  "packages/session-graph/src/normalized-query.ts": {
+    "titan/max-line-length": {
       "count": 1
     }
   },
@@ -436,6 +511,11 @@
       "count": 1
     }
   },
+  "packages/throughput/src/backtest-sets.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
   "packages/tool-guard/src/hook.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1
@@ -444,6 +524,16 @@
   "packages/tool-guard/src/paths-glob.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 3
+    }
+  },
+  "packages/tool-guard/src/shell/ifs-values.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "packages/tool-guard/src/shell/lexer.ts": {
+    "titan/max-line-length": {
+      "count": 1
     }
   },
   "packages/tool-guard/src/shell/unwrap.ts": {
@@ -466,6 +556,11 @@
       "count": 1
     }
   },
+  "packages/workflow/src/prompt.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
   "packages/workflow/src/run-state-rules.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1
@@ -474,6 +569,11 @@
   "packages/workflow/src/runners.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1
+    }
+  },
+  "packages/workflow/src/runners.ts": {
+    "titan/max-line-length": {
+      "count": 2
     }
   },
   "packages/worktree/src/allocator.ts": {
@@ -491,8 +591,48 @@
       "count": 3
     }
   },
+  "products/evals/src/corpus/test-fixture.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/evals/src/review-pr/build-cases.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/audit/workflow.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/cli-host-verbs.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
   "products/factory/src/cli-service.ts": {
     "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/factory/src/cli-stats.ts": {
+    "titan/max-line-length": {
+      "count": 2
+    }
+  },
+  "products/factory/src/cli.ts": {
+    "titan/max-line-length": {
+      "count": 2
+    }
+  },
+  "products/factory/src/coordinator-evidence-read.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/digest/flow.ts": {
+    "titan/max-line-length": {
       "count": 1
     }
   },
@@ -503,6 +643,11 @@
   },
   "products/factory/src/gate-brief.ts": {
     "titan/no-chained-type-assertions": {
+      "count": 1
+    }
+  },
+  "products/factory/src/host.ts": {
+    "titan/max-line-length": {
       "count": 1
     }
   },
@@ -521,14 +666,37 @@
       "count": 1
     }
   },
+  "products/factory/src/resolve-proof.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
   "products/factory/src/serve.ts": {
     "titan/max-function-lines": {
+      "count": 1
+    },
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/service-check.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/service-control.ts": {
+    "titan/max-line-length": {
       "count": 1
     }
   },
   "products/factory/src/service.ts": {
     "titan/max-function-lines": {
       "count": 1
+    }
+  },
+  "products/factory/src/shepherd/account-hold.ts": {
+    "titan/max-line-length": {
+      "count": 2
     }
   },
   "products/factory/src/shepherd/approval-carry.test.ts": {
@@ -556,13 +724,58 @@
       "count": 1
     }
   },
+  "products/factory/src/shepherd/codewatch-questions.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/commands.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
   "products/factory/src/shepherd/conflict-check.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1
     }
   },
+  "products/factory/src/shepherd/evidence-comment.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/exit-notice.ts": {
+    "titan/max-line-length": {
+      "count": 2
+    }
+  },
   "products/factory/src/shepherd/external-review.test.ts": {
     "titan/no-chained-type-assertions": {
+      "count": 2
+    }
+  },
+  "products/factory/src/shepherd/external-review.ts": {
+    "titan/max-line-length": {
+      "count": 6
+    }
+  },
+  "products/factory/src/shepherd/fix-proof.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/flake-check.ts": {
+    "titan/max-line-length": {
+      "count": 4
+    }
+  },
+  "products/factory/src/shepherd/frames.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/freeze-hold.ts": {
+    "titan/max-line-length": {
       "count": 2
     }
   },
@@ -576,6 +789,11 @@
       "count": 1
     }
   },
+  "products/factory/src/shepherd/g10-rehold.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
   "products/factory/src/shepherd/g10-release-workflow.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1
@@ -586,8 +804,23 @@
       "count": 3
     }
   },
+  "products/factory/src/shepherd/g10-release.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/gate-route.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
   "products/factory/src/shepherd/head-moved.test.ts": {
     "titan/no-chained-type-assertions": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/hold-slot-rows.ts": {
+    "titan/max-line-length": {
       "count": 1
     }
   },
@@ -596,9 +829,24 @@
       "count": 1
     }
   },
+  "products/factory/src/shepherd/hold.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
   "products/factory/src/shepherd/ledger-replay.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 2
+    }
+  },
+  "products/factory/src/shepherd/main-red.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/main-verdict.ts": {
+    "titan/max-line-length": {
+      "count": 1
     }
   },
   "products/factory/src/shepherd/merge-facts.test.ts": {
@@ -607,6 +855,11 @@
     },
     "titan/no-internal-module-mock": {
       "count": 1
+    }
+  },
+  "products/factory/src/shepherd/merge-facts.ts": {
+    "titan/max-line-length": {
+      "count": 3
     }
   },
   "products/factory/src/shepherd/merge-state-unsettled.test.ts": {
@@ -624,8 +877,38 @@
       "count": 2
     }
   },
+  "products/factory/src/shepherd/observe.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/override-gate.ts": {
+    "titan/max-line-length": {
+      "count": 2
+    }
+  },
+  "products/factory/src/shepherd/owner-section.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/park-retry.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
   "products/factory/src/shepherd/park.test.ts": {
     "titan/no-chained-type-assertions": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/park.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/phases.ts": {
+    "titan/max-line-length": {
       "count": 1
     }
   },
@@ -637,8 +920,43 @@
       "count": 1
     }
   },
+  "products/factory/src/shepherd/policy.ts": {
+    "titan/max-line-length": {
+      "count": 4
+    }
+  },
+  "products/factory/src/shepherd/post-merge.ts": {
+    "titan/max-line-length": {
+      "count": 7
+    }
+  },
+  "products/factory/src/shepherd/pr-params.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/pr.ts": {
+    "titan/max-line-length": {
+      "count": 7
+    }
+  },
+  "products/factory/src/shepherd/prs.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
   "products/factory/src/shepherd/publish-review.test.ts": {
     "titan/no-chained-type-assertions": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/release.ts": {
+    "titan/max-line-length": {
+      "count": 2
+    }
+  },
+  "products/factory/src/shepherd/repair.ts": {
+    "titan/max-line-length": {
       "count": 1
     }
   },
@@ -652,8 +970,58 @@
       "count": 3
     }
   },
+  "products/factory/src/shepherd/resync.ts": {
+    "titan/max-line-length": {
+      "count": 2
+    }
+  },
   "products/factory/src/shepherd/review-cause.test.ts": {
     "titan/no-chained-type-assertions": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/review-cause.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/review-panel-plan.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/review-panel-step.ts": {
+    "titan/max-line-length": {
+      "count": 4
+    }
+  },
+  "products/factory/src/shepherd/review-request.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/review-schemas.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/review-stats-report.ts": {
+    "titan/max-line-length": {
+      "count": 3
+    }
+  },
+  "products/factory/src/shepherd/review-stats-store.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/review-stats.ts": {
+    "titan/max-line-length": {
+      "count": 2
+    }
+  },
+  "products/factory/src/shepherd/review-wait.ts": {
+    "titan/max-line-length": {
       "count": 1
     }
   },
@@ -662,13 +1030,28 @@
       "count": 11
     }
   },
+  "products/factory/src/shepherd/review.ts": {
+    "titan/max-line-length": {
+      "count": 15
+    }
+  },
   "products/factory/src/shepherd/reviewer-brief.ts": {
     "titan/max-function-lines": {
       "count": 1
     }
   },
+  "products/factory/src/shepherd/reviewer-dispatch.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
   "products/factory/src/shepherd/reviewer-reader.test.ts": {
     "titan/no-internal-module-mock": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/reviewer-roles.ts": {
+    "titan/max-line-length": {
       "count": 1
     }
   },
@@ -682,6 +1065,11 @@
       "count": 1
     }
   },
+  "products/factory/src/shepherd/slo-queries.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
   "products/factory/src/shepherd/spawn-profile.test.ts": {
     "titan/no-internal-module-mock": {
       "count": 1
@@ -692,9 +1080,29 @@
       "count": 1
     }
   },
+  "products/factory/src/shepherd/stale-gates.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/stats-cost.ts": {
+    "titan/max-line-length": {
+      "count": 2
+    }
+  },
+  "products/factory/src/shepherd/store.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
   "products/factory/src/shepherd/structural-pass.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1
+    }
+  },
+  "products/factory/src/shepherd/take-verdict.ts": {
+    "titan/max-line-length": {
+      "count": 7
     }
   },
   "products/factory/src/shepherd/task-ref.test.ts": {
@@ -702,8 +1110,23 @@
       "count": 2
     }
   },
+  "products/factory/src/shepherd/train-shadow-stats.ts": {
+    "titan/max-line-length": {
+      "count": 3
+    }
+  },
+  "products/factory/src/shepherd/train-shadow.ts": {
+    "titan/max-line-length": {
+      "count": 3
+    }
+  },
   "products/factory/src/shepherd/train.test.ts": {
     "titan/no-chained-type-assertions": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/tree-carry.ts": {
+    "titan/max-line-length": {
       "count": 1
     }
   },
@@ -712,9 +1135,54 @@
       "count": 2
     }
   },
+  "products/factory/src/shepherd/view.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/waiting.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/wake-brief.ts": {
+    "titan/max-line-length": {
+      "count": 2
+    }
+  },
+  "products/factory/src/shepherd/wake.ts": {
+    "titan/max-line-length": {
+      "count": 4
+    }
+  },
+  "products/factory/src/workflows.ts": {
+    "titan/max-line-length": {
+      "count": 12
+    }
+  },
   "products/factory/src/workflows/await-head.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1
+    }
+  },
+  "products/factory/src/workflows/land-ci-wait.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/workflows/land-ci.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/factory/src/workflows/land-settle.ts": {
+    "titan/max-line-length": {
+      "count": 2
+    }
+  },
+  "products/factory/src/workflows/land.ts": {
+    "titan/max-line-length": {
+      "count": 5
     }
   },
   "products/factory/src/workflows/pr-snapshot.test.ts": {
@@ -742,9 +1210,49 @@
       "count": 1
     }
   },
+  "products/session-miner/src/commands/sessions.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/session-miner/src/commands/throughput-pr-backfill.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/session-miner/src/insights/gh-call-log.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
   "products/session-miner/src/insights/insights.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 5
+    }
+  },
+  "products/session-miner/src/insights/probes.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/session-miner/src/insights/round-trips.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/session-miner/src/insights/tool-errors.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/session-miner/src/insights/tool-gaps.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/session-miner/src/registry.ts": {
+    "titan/max-line-length": {
+      "count": 1
     }
   }
 }
