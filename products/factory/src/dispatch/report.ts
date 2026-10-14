@@ -103,5 +103,8 @@ export function readSlices(planText: string): SliceRead {
 const shapeProblem = (issue: z.core.$ZodIssue): string =>
   issue.path.length === 0 ? `burndown-slices block: ${issue.message}` : `burndown-slices block at ${issue.path.join(".")}: ${issue.message}`;
 
+/** True for a plan that is sliced, even when its block is unreadable or fails the lint. */
+export const hasSlicesBlock = (planText: string): boolean => SLICES_BLOCK.test(planText);
+
 /** The planner's slices, or undefined when `readSlices` finds a problem. */
 export const parseSlices = (planText: string): PlannedSlice[] | undefined => readSlices(planText).slices;

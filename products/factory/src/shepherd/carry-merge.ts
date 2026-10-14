@@ -181,7 +181,7 @@ const Evidence = z.looseObject({
     dispatchedReviewer: z.looseObject({ agentId: z.string().min(1), sessionId: z.string().min(1) }),
     seatGrants: z.array(z.string()),
   }),
-  record: z.looseObject({ verdictLocator: z.looseObject({}) }),
+  record: z.looseObject({ verdictLocator: z.looseObject({}), proofUnverified: z.string().optional() }),
   ciPolicy: CiPolicySchema,
   grantWithheld: z.object({ policy: z.string().nullable(), proof: z.string().nullable() }).optional(),
 });
@@ -251,6 +251,7 @@ export async function carriedVerdict(ctx: WorkflowContext, target: CarryTarget, 
     carry,
     ...(source.ciPolicy && { ciPolicy: source.ciPolicy }),
     ...(source.grantWithheld && { grantWithheld: source.grantWithheld }),
+    ...(source.record.proofUnverified !== undefined && { proofUnverified: source.record.proofUnverified }),
   });
   return mergeUp && verdict.kind === "MERGE" ? { ...verdict, mergeUpFrom: fromHead } : verdict;
 }
