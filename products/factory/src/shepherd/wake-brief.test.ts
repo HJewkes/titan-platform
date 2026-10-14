@@ -398,13 +398,13 @@ describe("fix-proof wake brief: a NO_REPRO verdict", () => {
     return { fake, pr, wake };
   }
 
-  it("says the test does not reproduce the bug, names the merge base and fences the head branch", async () => {
+  it("says no test reproduces the bug, names the merge base and fences the head branch", async () => {
     const { pr, wake } = proofScene(noRepro("vacuous"));
 
     const { reason, payload } = await wake();
 
-    expect(reason).toContain("test does not reproduce the bug");
-    expect(reason).toContain(`merge base ${BASE}`);
+    expect(reason).toContain("no test the proof ran fails at the merge base and passes at the head");
+    expect(reason).toContain(`merge base is ${BASE}`);
     expect(reason).not.toContain(pr.headRef);
     expect(payload).toContain(fence("head branch", pr.headRef));
   });
@@ -416,8 +416,17 @@ describe("fix-proof wake brief: a NO_REPRO verdict", () => {
 
     expect(reason).toContain("no test added");
     expect(reason).toContain(`merge base is ${BASE}`);
-    expect(reason).not.toContain("does not reproduce");
-    expect(reason).not.toContain("It ran your tests");
+    expect(reason).not.toContain("no test the proof ran");
+    expect(reason).not.toMatch(/\bran your tests\b/);
+  });
+
+  it.each(["fails-on-head", "not-run"])("does not claim a vacuous %s test passes or ran at both sides", async (testClass) => {
+    const { wake } = proofScene(noRepro("vacuous", { tests: [{ file: "src/a.test.ts", name: "case", class: testClass }] }));
+
+    const { reason } = await wake();
+
+    expect(reason).not.toMatch(/\bpasses at the merge base\b|\bran your tests\b/);
+    expect(reason).toContain("each test's class is in the fenced result");
   });
 
   it("keeps a hostile head branch name inside its fence and out of the reason", async () => {

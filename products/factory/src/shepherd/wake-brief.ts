@@ -294,10 +294,13 @@ const SHA = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
 /** The payload is a replayed step record, so its shape is checked again; only a sha-shaped merge base is written outside the fence. */
 const NoReproPayload = z.looseObject({ kind: z.literal("NO_REPRO"), result: z.looseObject({ head: z.string().regex(SHA), mergeBase: z.string().regex(SHA), verdict: z.string() }) });
 
-/** The only two NO_REPRO verdicts; each is said in fixed words so no result text reaches `reason`. */
+/**
+ * The only two NO_REPRO verdicts, each in fixed words so no result text reaches `reason`. Each says only what the
+ * verdict guarantees: `vacuous` covers a test that passes on base, fails at head or never ran, so which one stays in the fenced result.
+ */
 const NO_REPRO_REASON: Readonly<Record<string, string>> = {
-  vacuous: "the test does not reproduce the bug: it passes at the merge base as well as at the head",
-  "no-tests": "no test added: the PR adds or changes no test the proof could run",
+  vacuous: "no test the proof ran fails at the merge base and passes at the head; each test's class is in the fenced result",
+  "no-tests": "no test added: the PR adds or changes no test file the proof could run",
 };
 const CARRY_UNREADABLE = "The carry globs could not be read at the merge base, so the error follows in their place.";
 
@@ -322,7 +325,7 @@ async function fixProofWake(port: GitHubPort, input: WakeFacts, pr: PullRequest)
   const carry = await carryGlobs(port, input.repo, mergeBase);
   const reason = [
     `The fix-proof check at head ${head} returned NO_REPRO: ${why}.`,
-    ...(verdict === "vacuous" ? [`It ran your tests at merge base ${mergeBase} and at the head.`] : [`The merge base is ${mergeBase}.`]),
+    `The merge base is ${mergeBase}.`,
     "Add or change a test on the head branch named in the fence below that fails at the merge base and passes at the head; support files it needs must match the carry globs below, or the proof will not copy them to the merge-base side.",
     ...(carry.ok ? [] : [CARRY_UNREADABLE]),
   ].join(" ");
