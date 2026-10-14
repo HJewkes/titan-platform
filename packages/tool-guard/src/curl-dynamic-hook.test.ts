@@ -212,3 +212,46 @@ describe("handle: an HTTP write to a run-time URL", () => {
     expect(stdout).toBe("");
   });
 });
+
+describe("handle: on a filesystem that folds case", () => {
+  const MERGE = "https://api.github.com/repos/o/r/pulls/1/merge";
+  const folding: HookPort = { ...port, context: { ...nodeContext(HOME, noFiles), foldCase: true } };
+
+  async function foldedColumns(command: string): Promise<{ stdout: string; columns: string[] | undefined }> {
+    const input = JSON.stringify({ tool_name: "Bash", session_id: "sess-1", tool_use_id: "tu-1", cwd: REPO, tool_input: { command } });
+    const result = await handle(input, {}, folding);
+    return { stdout: result.stdout, columns: result.log[0]?.split("\t").slice(1, 6) };
+  }
+
+  it.each([
+    `TAR xf a.tar; wget ${MERGE}`,
+    `Tar xf a.tar; wget ${MERGE}`,
+    `GTAR -xf a.tar; wget ${MERGE}`,
+    `BsdTar xf a.tar; wget ${MERGE}`,
+    `UNZIP a.zip; wget ${MERGE}`,
+    `UnZip a.zip; wget ${MERGE}`,
+    `CPIO -i < a.cpio; wget ${MERGE}`,
+    `Cpio -i < a.cpio; wget ${MERGE}`,
+    `7Z x a.7z; wget ${MERGE}`,
+    `7ZA x a.7z; wget ${MERGE}`,
+    `AR x a.ar; wget ${MERGE}`,
+    `Ar x a.ar; wget ${MERGE}`,
+    `JAR xf a.jar; wget ${MERGE}`,
+    `PAX -r < a.pax; wget ${MERGE}`,
+    `TAR xf a.tar; curl ${MERGE}`,
+    `echo method=PUT > ~/.WGETRC; wget ${MERGE}`,
+    `echo method=PUT | tee ~/.WgetRc; wget ${MERGE}`,
+    `cp rc /ETC/WGETRC; wget ${MERGE}`,
+    `cp rc ~/.CurlRC; curl ${MERGE}`,
+  ])("denies %s as a merge", async (command) => {
+    const { columns } = await foldedColumns(command);
+
+    expect(columns).toEqual(["deny", "MRG-WK", "merge", "bash.merge.curl-api", "coordinator+worker+headless"]);
+  });
+
+  it.each([`wget -q ${MERGE.replace("/merge", "")}`, `TAR cf a.tar src; wget -q https://example.com/x`])("lets the read %s through", async (command) => {
+    const { stdout } = await foldedColumns(command);
+
+    expect(stdout).toBe("");
+  });
+});

@@ -50,9 +50,11 @@ const DESCRIPTOR_RE = /^(?:\d+|-)$/;
  * anywhere, or extracts an archive, whose member paths may be any file. A write target is an rc file unless its
  * literal part rules that out.
  */
-export function choosesHttpConfig(src: string, commands: SimpleCommand[], home: string | null): boolean {
-  if (TEXT_ASSIGNS_RE.test(src) || RC_TEXT_RE.test(src)) return true;
-  return commands.some((cmd) => setsConfigVar(cmd) || unpacks(cmd) || writeTargets(cmd).some((w) => mayBeRcPath(w, cmd.dir, home)));
+export function choosesHttpConfig(src: string, commands: SimpleCommand[], home: string | null, foldCase = false): boolean {
+  // Where the filesystem folds case, `~/.WGETRC` is `~/.wgetrc`; variable names never fold.
+  const fold = foldCase ? (text: string) => text.toLowerCase() : (text: string) => text;
+  if (TEXT_ASSIGNS_RE.test(src) || RC_TEXT_RE.test(fold(src))) return true;
+  return commands.some((cmd) => setsConfigVar(cmd) || unpacks(cmd) || writeTargets(cmd).some((w) => mayBeRcPath(w, cmd.dir, home, fold)));
 }
 
 function setsConfigVar(cmd: SimpleCommand): boolean {
@@ -122,12 +124,13 @@ function withGluedValues(w: WordToken): WordToken[] {
  * name ending in it may be written, unless a `/` in it leaves a fully literal name. A literal path is resolved, and
  * a destination directory that holds rc files counts as one.
  */
-function mayBeRcPath(w: WordToken, dir: string | null, home: string | null): boolean {
-  const tail = w.value.slice(runTimeEnd(w));
-  if (tail !== w.value) return tail.includes("/") ? isRcName(basename(tail)) : RC_NAMES.some((n) => n.endsWith(tail));
+function mayBeRcPath(w: WordToken, dir: string | null, home: string | null, fold: (text: string) => string): boolean {
+  const end = runTimeEnd(w);
+  const tail = fold(w.value.slice(end));
+  if (end > 0) return tail.includes("/") ? isRcName(basename(tail)) : RC_NAMES.some((n) => n.endsWith(tail));
   const path = resolveValue(dir, w.value, home);
-  if (path === null) return isRcName(basename(w.value));
-  return RC_TEXT_RE.test(path) || rcDirs(home).includes(path);
+  if (path === null) return isRcName(fold(basename(w.value)));
+  return RC_TEXT_RE.test(fold(path)) || rcDirs(home).map(fold).includes(fold(path));
 }
 
 function isRcName(name: string): boolean {

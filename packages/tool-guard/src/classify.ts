@@ -45,9 +45,14 @@ interface ScriptMemo {
 
 function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
   const commands = extractCommands(src, extractOptions(cwd, ctx, scripts, false));
-  const line: ClassifyContext = choosesHttpConfig(src, commands, ctx.home) ? { ...ctx, httpConfigUnseen: true } : ctx;
+  const line = withHttpConfig(src, commands, ctx);
   const asWritten = classifyLine(commands, line, scripts);
   return ctx.foldCase ? unique([...asWritten, ...foldedActions(src, cwd, line, scripts)]) : asWritten;
+}
+
+/** Marks the line when it may choose or write an HTTP client's config file, read from these commands. */
+function withHttpConfig(src: string, commands: SimpleCommand[], ctx: ClassifyContext): ClassifyContext {
+  return choosesHttpConfig(src, commands, ctx.home, ctx.foldCase === true) ? { ...ctx, httpConfigUnseen: true } : ctx;
 }
 
 /** A script's text (`scripts` null) stops at the dynamic-word cap and reads on as main does; the line refuses past it. */
@@ -63,7 +68,8 @@ function extractOptions(cwd: string | null, ctx: ClassifyContext, scripts: Scrip
  */
 function foldedActions(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
   try {
-    return classifyLine(extractCommands(src, extractOptions(cwd, ctx, scripts, true)), ctx, scripts);
+    const folded = extractCommands(src, extractOptions(cwd, ctx, scripts, true));
+    return classifyLine(folded, withHttpConfig(src, folded, ctx), scripts);
   } catch (error) {
     if (error instanceof ReadingLimitError) throw error;
     return [];
