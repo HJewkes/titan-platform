@@ -51,7 +51,7 @@ describe("explainer eval l0", () => {
     expect(code).toBe(0);
     expect(readdirSync(join(dir, "bench/scripts"))).toEqual([`${sha}.json`]);
     const rows = structureLines().slice(1).map((line) => line.split("\t"));
-    expect(rows).toHaveLength(8);
+    expect(rows).toHaveLength(10);
     expect(rows.every(([config, s, rules]) => config === "tour-short/script-v1-01" && s === sha && rules === rulesSha(RULES))).toBe(true);
     const run = JSON.parse(readFileSync(join(dir, "bench/evals/runs.jsonl"), "utf8"));
     expect(run).toMatchObject({ script_sha: sha, parent_sha: "0123456789ab", rules_sha: rulesSha(RULES), eval_id: "L0-script", eval_version: rulesSha(RULES), usd: 0, wall_s: 1.5, started_at: "2026-10-13T10:00:00.000Z" });
