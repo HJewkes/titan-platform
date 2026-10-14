@@ -58,7 +58,7 @@ function ghostCheckIds(registry: RuleRegistry, results: readonly L0Result[], has
   const claimed = new Map(registry.rules.map((rule) => [rule.id, rule.l0?.status === "implemented" ? rule.l0.checks : (rule.l0?.partial ?? [])]));
   const known = (id: string): boolean => emitted.has(id) || (!hasLayout && id.startsWith("map:"));
   return unimplementedL0Rules(registry, new Set([...emitted, ...[...claimed.values()].flat().filter(known)])).flatMap((ruleId) =>
-    (claimed.get(ruleId) ?? []).filter((id) => !known(id)).map((id) => `${ruleId}: claimed check id ${id} is never emitted`),
+    [...new Set((claimed.get(ruleId) ?? []).filter((id) => !known(id)))].map((id) => `${ruleId}: claimed check id ${id} is never emitted`),
   );
 }
 

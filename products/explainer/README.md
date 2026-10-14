@@ -59,9 +59,9 @@ check emits.
 skipped without it), freezes the script and appends its rows and run record. A rule that claims
 a check id no run check emits is a ghost: each prints one warning on stderr, and
 `--fail-on-ghosts` turns them into exit 1. `doctrine/rules.yaml` holds which rules are
-implemented or pending. `--rules` defaults to
-the shipped registry and must parse as `rules/v1`. It exits 0 on a pass, 1 when an error-severity check fails (warnings never fail) and 2 on bad
-input. L0 filters only: never rank scripts by how many checks they pass.
+implemented or pending. `--rules` defaults to the shipped registry and must parse as
+`rules/v1`. It exits 0 on a pass, 1 when an error-severity check fails (warnings never fail)
+and 2 on bad input. L0 filters only: never rank scripts by how many checks they pass.
 
 L1 and L2 are the model-judged layers. The judge is configuration, never a constant: a JSON
 file names `provider` (`claude-print`, the Claude CLI's own login, or `codex`, a cached

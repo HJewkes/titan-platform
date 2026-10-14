@@ -101,6 +101,35 @@ describe("explainer eval l0", () => {
       expect(warnings()[0]).toContain("synthetic:ghost");
     });
 
+    const rule = (id: string, checks: string): string => `  - { id: ${id}, rule: synthetic, fields: [beats.spoken], owner_support: none, l0: { severity: error, status: implemented, checks: [${checks}] } }\n`;
+
+    it("does not call a skipped map lint a ghost when no layout is given", async () => {
+      write("rules.yaml", `schema: rules/v1\nrules:\n${rule("Q-V9", "map:new-boxes, synthetic:ghost")}`);
+
+      await l0(write("script.json", scriptWith()));
+
+      expect(warnings()).toHaveLength(1);
+      expect(warnings()[0]).toContain("synthetic:ghost");
+      expect(warnings()[0]).not.toContain("map:");
+    });
+
+    it("names only the ghost when one rule claims an emitted id and a ghost id", async () => {
+      write("rules.yaml", `schema: rules/v1\nrules:\n${rule("Q-V9", "map:new-boxes, synthetic:ghost")}`);
+
+      await l0(write("script.json", scriptWith()), "--layout", write("layout.json", layout));
+
+      expect(warnings()).toHaveLength(1);
+      expect(warnings()[0]).toContain("synthetic:ghost");
+    });
+
+    it("warns once when a rule lists the same ghost id twice", async () => {
+      write("rules.yaml", `schema: rules/v1\nrules:\n${rule("Q-V9", "synthetic:ghost, synthetic:ghost")}`);
+
+      await l0(write("script.json", scriptWith()), "--layout", write("layout.json", layout));
+
+      expect(warnings()).toHaveLength(1);
+    });
+
     it("exits non-zero under --fail-on-ghosts", async () => {
       write("rules.yaml", GHOST);
 
