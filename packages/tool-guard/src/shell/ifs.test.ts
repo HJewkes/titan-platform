@@ -202,6 +202,20 @@ describe("namesIfs", () => {
   });
 
   it.each([
+    "echo [[ ; read $n",
+    "echo [[ ; declare $a=1",
+    'echo [[ ; source "$f"',
+    'echo [[ ; . "$f"',
+    "ls [[ ; let $v",
+    "echo [[ ; typeset -n r=$t",
+    "echo [[ ; mapfile -C $c a",
+    "grep -F [[ f && read $n",
+    "case $a in [[) read $n;; esac",
+  ])("matches a write after a [[ that is an argument, not a conditional: %s", (line) => {
+    expect(namesIfs(line)).toBe(true);
+  });
+
+  it.each([
     "[ -f x ] && echo $x",
     "trap 'rm -f $tmp' EXIT",
     "mapfile -t arr < f",

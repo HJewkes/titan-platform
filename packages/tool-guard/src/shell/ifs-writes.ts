@@ -86,7 +86,7 @@ export function segments(tokens: readonly Token[]): Segment[] {
   let inConditional = false;
   for (const t of tokens) {
     if (t.type === "word") segment.words.push(t);
-    if (t.type === "word" && !t.quoted && (t.value === "[[" || t.value === "]]")) inConditional = t.value === "[[";
+    if (t.type === "word" && !t.quoted) inConditional = conditionalAfter(t, segment, inConditional);
     if (t.type === "redirect") addRedirect(segment, t);
     if (t.type !== "op") continue;
     out.push(segment);
@@ -96,6 +96,12 @@ export function segments(tokens: readonly Token[]): Segment[] {
   }
   out.push(segment);
   return out;
+}
+
+/** Only a `[[` its segment runs as the command opens a conditional; `echo [[` or a `[[)` case pattern is a word. */
+function conditionalAfter(word: WordToken, segment: Segment, open: boolean): boolean {
+  if (word.value === "[[") return open || splitCommand(segment.words).command === word;
+  return word.value === "]]" ? false : open;
 }
 
 function addRedirect(segment: Segment, t: RedirectToken): void {
