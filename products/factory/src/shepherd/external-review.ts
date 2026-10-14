@@ -65,12 +65,17 @@ export function latestSession(name: string, roster: readonly ReviewerAgent[]): R
   return roster.filter((agent) => agent.name === name && agent.sessionId !== "").at(-1);
 }
 
+/** A `ReviewerReader` whose seat read can take the roster its caller already holds, so a check reads the roster once. */
+export type SeatReader = Omit<ReviewerReader, "readSeat"> & {
+  readSeat?: (input: AwaitVerdictInput, roster?: readonly ReviewerAgent[]) => Promise<readonly ReviewerMessage[]>;
+};
+
 /**
  * A named reviewer's session read as a seat reviewer's is: at any presence, `chat_send` messages counted, and cached until
  * the transcript changes. A reader with no seat read falls back to the finished-session read. A failure propagates.
  */
-export function readNamedReviewer(reader: ReviewerReader, input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]> {
-  return reader.readSeat ? reader.readSeat(input) : reader.read(input);
+export function readNamedReviewer(reader: SeatReader, input: AwaitVerdictInput, roster?: readonly ReviewerAgent[]): Promise<readonly ReviewerMessage[]> {
+  return reader.readSeat ? reader.readSeat(input, roster) : reader.read(input);
 }
 
 /** The awaiting release-side read: any failure, a damaged transcript included, is no messages. A damaged transcript's complete records can hold a MERGE written before a cut-off FIX_FIRST, so they may only block a merge (the seat read), never release one. */
@@ -116,8 +121,8 @@ export function newestAtHead(target: ReviewTarget, messages: readonly ReviewerMe
 }
 
 /** Every session the roster lists under one name; a message the reader attributes to any other session is dropped. A damaged session still gives its complete records. */
-async function readReviewer(reader: ReviewerReader, target: ReviewTarget, rows: readonly SeatRow[]): Promise<NameRead> {
-  const read = (row: ReviewerAgent) => readNamedReviewer(reader, { ...target, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 });
+async function readReviewer(reader: SeatReader, target: ReviewTarget, rows: readonly SeatRow[], listed: readonly ReviewerAgent[]): Promise<NameRead> {
+  const read = (row: ReviewerAgent) => readNamedReviewer(reader, { ...target, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 }, listed);
   const owned = (message: ReviewerMessage) => rows.some((row) => row.agentId === message.agentId && row.sessionId === message.sessionId);
   const messages: ReviewerMessage[] = [];
   const failures: unknown[] = [];
@@ -144,11 +149,8 @@ export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | 
 /** The broker's own failures that clear with time; a permission, missing-file or parse failure reads the same every time. */
 const TRANSIENT = [ReviewerAskTimedOut, ReviewerBrokerDown, ReviewerBrokerBusy, DispatchTimeoutError, BrokerUnavailableError];
 
-/** agent-chat's CLI reached the broker but got no reply in time; the seat check only reads, so asking again is safe once the broker catches up. */
-const BROKER_NO_REPLY = /\bbroker did not answer \w+_result\b/;
-
 const transient = (error: unknown): boolean =>
-  TRANSIENT.some((kind) => error instanceof kind) || /^HTTP 5\d\d$/.test(failureOf(error)) || (error instanceof DispatchError && BROKER_NO_REPLY.test(consoleTextOf(error)));
+  TRANSIENT.some((kind) => error instanceof kind) || /^HTTP 5\d\d$/.test(failureOf(error));
 
 const retryIf = (clears: boolean) => (clears ? { retry: true as const } : {});
 
@@ -207,7 +209,7 @@ function sentBack(name: string, target: ReviewTarget, message: ReviewerMessage, 
  * readable records or the roster show it is another PR's reviewer (see `failedRead`). A reviewer with no finished transcript
  * yet reads as no verdict. Any FIX_FIRST is preferred over a failed read, since a fixer can act on it.
  */
-export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: SeatTarget, warn: (line: string) => void = console.warn): Promise<SeatCheck> {
+export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: SeatReader, target: SeatTarget, warn: (line: string) => void = console.warn): Promise<SeatCheck> {
   let listed: readonly ReviewerAgent[];
   try {
     listed = await roster();
@@ -219,7 +221,7 @@ export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[
   let merged: string | undefined;
   for (const name of new Set(rows.map((row) => row.name))) {
     const named = rows.filter((row) => row.name === name);
-    const read = await readReviewer(reader, target, named);
+    const read = await readReviewer(reader, target, named, listed);
     const newest = newestAtHead(target, read.messages);
     if (newest?.verdict === "FIX_FIRST") return sentBack(name, target, newest.message, read.messages);
     if (newest?.verdict === "WAIT") return { kind: "none", reason: `seat check: ${name} said WAIT at ${target.head}, so its required checks had not finished`, wait: true, seat: name };

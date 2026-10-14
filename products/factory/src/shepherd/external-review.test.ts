@@ -247,7 +247,7 @@ describe("seatFixFirst", () => {
   });
 
   describe("a seat reviewer whose read fails with agent-chat's DispatchError", () => {
-    const slow = new DispatchError("agent-chat refused agent ls: broker did not answer agents_result");
+    const slow = new DispatchTimeoutError("agent-chat refused agent ls: broker did not answer agents_result");
     const unrelated = agent("seat-k-8-review");
     const unrelatedFailing: ReviewerReader = { read: async (input) => (input.reviewerAgentId === unrelated.agentId ? Promise.reject(slow) : []) };
 
@@ -272,10 +272,19 @@ describe("seatFixFirst", () => {
 
       expect(await seatFixFirst(rosterOf(unrelated, SEAT), unrelatedFailing, target, warn)).toEqual({
         kind: "none",
-        reason: `seat check: the transcript of ${unrelated.name} could not be read: DispatchError: agent-chat refused agent ls: broker did not answer agents_result`,
+        reason: `seat check: the transcript of ${unrelated.name} could not be read: DispatchTimeoutError: agent-chat refused agent ls: broker did not answer agents_result`,
         retry: true,
       });
       expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("no longer treats a plain DispatchError carrying the broker's no-reply text as transient", async () => {
+      const plain = new DispatchError("agent-chat refused agent ls: broker did not answer agents_result");
+      const reader: ReviewerReader = { read: async (input) => (input.reviewerAgentId === unrelated.agentId ? Promise.reject(plain) : []) };
+      const warn = vi.fn();
+
+      expect(await seatFixFirst(rosterOf(elsewhere(unrelated), SEAT), reader, owned, warn)).toEqual({ kind: "clear" });
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(`${unrelated.name} is not the reviewer of`));
     });
 
     it("blocks with a retry when the PR's own sole-session reviewer's read fails in a way that may clear", async () => {
@@ -303,7 +312,7 @@ describe("seatFixFirst", () => {
     it("blocks the PR its own reviewer is tied to, naming the error's text, as a read that may clear", async () => {
       expect(await seatFixFirst(tiedRoster, tiedFailing(slow), target, vi.fn())).toEqual({
         kind: "none",
-        reason: `seat check: the transcript of ${SEAT.name} could not be read: DispatchError: agent-chat refused agent ls: broker did not answer agents_result`,
+        reason: `seat check: the transcript of ${SEAT.name} could not be read: DispatchTimeoutError: agent-chat refused agent ls: broker did not answer agents_result`,
         retry: true,
       });
     });
@@ -724,7 +733,7 @@ describe("seat and hold reviewers: the findings a FIX_FIRST hands over", () => {
 describe("G10 disagreement between a seat reviewer and Shepherd", () => {
   const wiring = (...rows: ReviewerAgent[]) => ({ dispatch: { roster: rosterOf(...rows), spawn: async () => undefined, resume: async () => undefined }, reader: readerOf([]) }) as unknown as Parameters<typeof seatVetoed>[0];
   const withReader = (messages: ReviewerMessage[], ...rows: ReviewerAgent[]) => ({ ...wiring(...rows)!, reader: readerOf(messages) }) as Parameters<typeof seatVetoed>[0];
-  const shepherdFixFirst: AwaitVerdictResult = { ...shepherdMerge, verdict: "FIX_FIRST", text: "rename" } as AwaitVerdictResult;
+  const shepherdFixFirst: AwaitVerdictResult = { ...shepherdMerge, verdict: "FIX_FIRST", text: "rename" };
   const ownInput = { ...target, reviewerAgentId: SHEPHERD_RV.agentId, reviewerSessionId: SHEPHERD_RV.sessionId };
   const seatMerge: AwaitVerdictResult = { ...shepherdMerge, locator: locatorIn(SEAT.sessionId), reviewer: { agentId: SEAT.agentId, sessionId: SEAT.sessionId } };
 
@@ -851,5 +860,32 @@ describe("awaitExternalVerdict over a real transcript", () => {
     const reader = transcriptReviewerReader({ roster: async () => [seat.row], namespace: "host-a" });
 
     expect(await seatFixFirst(rosterOf(seat.row), reader, target)).toMatchObject({ verdict: "FIX_FIRST" });
+  });
+});
+
+describe("seat check roster reads", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), "titan-seat-roster-"));
+  });
+
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("reads the roster once for two seat reviewers, and a later roster failure cannot turn the verdict into none", async () => {
+    const first = seatTranscript(dir, "seat-a-1-review", "exited").user("Review octo/demo#4.").send(verdictAt("FIX_FIRST"));
+    const second = seatTranscript(dir, "seat-b-2-review", "exited").user("Review octo/demo#4.").send(verdictAt("MERGE"));
+    const rows = [first.row, second.row];
+    let calls = 0;
+    const roster = async () => {
+      if (++calls > 1) throw new ReviewerAskTimedOut("broker did not answer agents_result");
+      return rows;
+    };
+    const reader = transcriptReviewerReader({ roster, namespace: "host-a" });
+
+    const check = await seatFixFirst(roster, reader, target, vi.fn());
+
+    expect(calls).toBe(1);
+    expect(check).toMatchObject({ verdict: "FIX_FIRST" });
   });
 });
