@@ -1,36 +1,32 @@
+import { z } from "zod";
 import { diag, type GatherDiagnostic } from "./diagnostics.js";
 import type { EvidenceSpan, ExplainerFact } from "./schemas.js";
 import { licenseSafe, type FactOptions } from "./summary-facts.js";
 
-export interface DigestFacts {
+interface DigestFacts {
   facts: ExplainerFact[];
   diagnostics: GatherDiagnostic[];
 }
 
-interface DigestFile {
-  path: string;
-  caption?: string;
-}
+// A file entry the digest writer got wrong is skipped rather than failing the whole digest.
+const DigestFileSchema = z.object({ path: z.string().min(1), purpose_one_line: z.string().optional() });
+const DigestSchema = z.object({ summary: z.unknown(), files: z.array(z.unknown()).catch([]) });
+type DigestFile = z.infer<typeof DigestFileSchema>;
 
-function digestFiles(files: unknown): DigestFile[] {
-  if (!Array.isArray(files)) return [];
-  return files.flatMap((file: unknown) => {
-    if (typeof file !== "object" || file === null) return [];
-    const { path, purpose_one_line: caption } = file as Record<string, unknown>;
-    if (typeof path !== "string" || path === "") return [];
-    return [{ path, ...(typeof caption === "string" && caption !== "" ? { caption } : {}) }];
-  });
-}
-
-function parseDigest(text: string): Record<string, unknown> | undefined {
+function parseDigest(text: string): z.infer<typeof DigestSchema> | undefined {
   try {
-    const value: unknown = JSON.parse(text);
-    return typeof value === "object" && value !== null && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : undefined;
+    const parsed = DigestSchema.safeParse(JSON.parse(text));
+    return parsed.success ? parsed.data : undefined;
   } catch {
     return undefined;
   }
+}
+
+function digestFiles(files: unknown[]): DigestFile[] {
+  return files.flatMap((file) => {
+    const parsed = DigestFileSchema.safeParse(file);
+    return parsed.success ? [parsed.data] : [];
+  });
 }
 
 /**
@@ -40,13 +36,13 @@ function parseDigest(text: string): Record<string, unknown> | undefined {
 export function digestFacts(name: string, text: string, options: FactOptions = {}): DigestFacts {
   const digest = parseDigest(text);
   const summary = digest?.summary;
-  if (typeof summary !== "string" || summary.trim() === "") {
+  if (digest === undefined || typeof summary !== "string" || summary.trim() === "") {
     const why = digest === undefined ? "is not a JSON object" : "has no summary";
     return { facts: [], diagnostics: [diag("W-BAD-ROW", `digest ${name} ${why}; skipped`, `digests/${name}.json`)] };
   }
-  const files = digestFiles(digest!.files);
+  const files = digestFiles(digest.files);
   const evidence: EvidenceSpan[] = [...new Set(files.map((file) => file.path))].map((path) => ({ path }));
-  const captions = files.flatMap((file) => (file.caption === undefined ? [] : [file.caption]));
+  const captions = files.flatMap((file) => (file.purpose_one_line ? [file.purpose_one_line] : []));
   const fact: ExplainerFact = {
     id: `D-${name}`,
     source: "digest",

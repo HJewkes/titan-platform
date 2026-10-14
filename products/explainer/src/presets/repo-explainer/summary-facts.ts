@@ -2,14 +2,14 @@ import { parseCites } from "./cite.js";
 import type { EvidenceSpan, ExplainerFact, FactKind, FactSource } from "./schemas.js";
 
 /** True when the code at `path` may be shown; gather builds it from the review's `licenses.tsv`. */
-export type LicenseCheck = (path: string) => boolean;
+type LicenseCheck = (path: string) => boolean;
 
 export interface FactOptions {
   isLicenseSafe?: LicenseCheck;
 }
 
 // Headings are matched by prefix: the review process names sections by convention, and the tail drifts.
-export const SUMMARY_SECTIONS = {
+const SUMMARY_SECTIONS = {
   "what-it-is": "What it is",
   "integration-rec": "Integration recommendations",
   capability: "Capability-to-tier table",
@@ -17,9 +17,9 @@ export const SUMMARY_SECTIONS = {
   "read-first": "Five files to read first",
   "owner-questions": "Owner",
 } as const;
-export type SummarySection = keyof typeof SUMMARY_SECTIONS;
+type SummarySection = keyof typeof SUMMARY_SECTIONS;
 
-export interface SummaryFacts {
+interface SummaryFacts {
   facts: ExplainerFact[];
   /** Sections whose heading is absent; the caller decides between E-SECTION and W-SECTION. */
   missing: SummarySection[];
@@ -76,7 +76,7 @@ export function splitSections(markdown: string): Map<string, string> {
 }
 
 /** The first section whose heading starts with `prefix`, ignoring case. */
-export function findSection(sections: Map<string, string>, prefix: string): string | undefined {
+function findSection(sections: Map<string, string>, prefix: string): string | undefined {
   const wanted = prefix.toLowerCase();
   for (const [heading, body] of sections) {
     if (heading.toLowerCase().startsWith(wanted)) return body;
@@ -85,7 +85,7 @@ export function findSection(sections: Map<string, string>, prefix: string): stri
 }
 
 /** Prose split into sentences of at least 40 characters, newlines folded to spaces; table rows are not prose. */
-export function sentences(text: string): string[] {
+function sentences(text: string): string[] {
   return text
     .split("\n")
     .filter((line) => !line.trim().startsWith("|"))
@@ -100,7 +100,7 @@ export function sentences(text: string): string[] {
  * Bullet and numbered items with their indented continuation lines folded in. `group` is the most
  * recent bold line outside an item, such as `**Adopt now** (small, MIT)`.
  */
-export function listItems(body: string): ListItem[] {
+function listItems(body: string): ListItem[] {
   const items: ListItem[] = [];
   let group: string | undefined;
   let open: ListItem | undefined;
@@ -265,24 +265,26 @@ export function ownerQuestionFacts(body: string, options: FactOptions = {}): Exp
   });
 }
 
-const SECTION_PARSERS: Record<SummarySection, (body: string, options: FactOptions) => ExplainerFact[]> = {
-  "what-it-is": whatItIsFacts,
-  "integration-rec": integrationRecFacts,
-  capability: capabilityFacts,
-  "should-not": shouldNotFacts,
-  "read-first": readFirstFacts,
-  "owner-questions": ownerQuestionFacts,
-};
+type SectionParser = (body: string, options: FactOptions) => ExplainerFact[];
+
+const SECTION_PARSERS: [SummarySection, SectionParser][] = [
+  ["what-it-is", whatItIsFacts],
+  ["integration-rec", integrationRecFacts],
+  ["capability", capabilityFacts],
+  ["should-not", shouldNotFacts],
+  ["read-first", readFirstFacts],
+  ["owner-questions", ownerQuestionFacts],
+];
 
 /** Every tour fact SUMMARY.md yields, and the sections it lacks. */
 export function summaryFacts(summary: string, options: FactOptions = {}): SummaryFacts {
   const sections = splitSections(summary);
   const facts: ExplainerFact[] = [];
   const missing: SummarySection[] = [];
-  for (const name of Object.keys(SECTION_PARSERS) as SummarySection[]) {
+  for (const [name, parse] of SECTION_PARSERS) {
     const body = findSection(sections, SUMMARY_SECTIONS[name]);
     if (body === undefined) missing.push(name);
-    else facts.push(...SECTION_PARSERS[name](body, options));
+    else facts.push(...parse(body, options));
   }
   return { facts, missing };
 }
