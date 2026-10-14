@@ -85,7 +85,7 @@ rules:
     aliases: [X2, TC1]
     related: [P1]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ4 }
+    l0: { severity: error, status: implemented, checks: ["Q-W1"] }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-W2
     rule: "Every WHAT/HOW beat introducing an element has a why with a resolving fact id"
@@ -94,7 +94,7 @@ rules:
     related: [S4]
     rubric_dims: [B2]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ4 }
+    l0: { severity: error, status: implemented, checks: ["Q-W2"] }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-W3
     rule: "Why before how in each chapter; each HOW opens on its local problem"
@@ -103,27 +103,27 @@ rules:
     related: [R9]
     rubric_dims: [J2]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ4 }
+    l0: { severity: error, status: implemented, checks: ["Q-W3"] }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-W4
     rule: "At least one user-value sentence per body chapter, on the causing beat, citing a value fact"
     fields: [beats.user_value]
     aliases: [S5, X10, TC12]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ4 }
+    l0: { severity: error, status: implemented, checks: ["Q-W4"] }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-W5
     rule: 'Promise has "you" and a capability verb; no "tour of", no chapter count'
     fields: [video.promise]
     aliases: [TC18, R11]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ4 }
+    l0: { severity: error, status: implemented, checks: ["Q-W5"] }
   - id: Q-W6
     rule: "Each HOW chapter speaks one invariant or absence"
     fields: [video.invariants, beats.spoken]
     aliases: [X11, R6, K6]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ4 }
+    l0: { severity: error, status: implemented, checks: ["Q-W6"] }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-W7
     rule: "Each HOW chapter states one cost or trade-off"
@@ -137,7 +137,7 @@ rules:
     aliases: [X4, TC9]
     related: [P2, P6]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ4 }
+    l0: { severity: error, status: implemented, checks: ["Q-W8"] }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-W9
     rule: "design_history entries cite an existing commit sha"
@@ -145,13 +145,13 @@ rules:
     aliases: [TC17]
     related: ["SA K2"]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ4 }
+    l0: { severity: error, status: implemented, checks: ["Q-W9"] }
   - id: Q-W10
     rule: "Each HOW chapter names a quality goal (when quality_goals exists)"
     fields: [video.quality_goals, beats.spoken]
     aliases: [R7, K8]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ4 }
+    l0: { severity: error, status: implemented, checks: ["Q-W10"] }
   - id: Q-W11
     rule: "A surprise in a hook has a non-empty against"
     fields: [beats.function, beats.fact_ids, facts_pack]
@@ -180,7 +180,7 @@ rules:
     aliases: [X5, TC10, S15]
     related: ["CT R3"]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ4 }
+    l0: { severity: error, status: implemented, checks: ["Q-F3"] }
   - id: Q-F4
     rule: "Thesis on 3 beats (open, midpoint, button); thesis_mechanism voiced once in acts 1-2"
     fields: [video.thesis_refs, video.thesis_mechanism, beats.spoken]
@@ -237,13 +237,13 @@ rules:
     fields: [video.simplifications, beats.function, beats.spoken]
     aliases: [X13, TC13, R12]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ4 }
+    l0: { severity: error, status: implemented, checks: ["Q-F12"] }
   - id: Q-F13
     rule: "demo beats: one path, at most 8 steps, a visible result per step"
     fields: [beats.mode, beats.visual.cues]
     aliases: [R3]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ4 }
+    l0: { severity: error, status: implemented, checks: ["Q-F13"] }
   - id: Q-F14
     rule: "Causal density at least 0.5 per body beat"
     fields: [beats.spoken, beats.connector_in]
@@ -361,27 +361,27 @@ rules:
     related: [J6, "EL FActScore"]
     rubric_dims: [J6]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ4 }
+    l0: { severity: error, status: implemented, checks: ["Q-E1"] }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-E2
     rule: "The running example is real when a journey test exists"
     fields: [video.running_example, facts_pack]
     aliases: [SA9]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ4 }
+    l0: { severity: error, status: implemented, checks: ["Q-E2"] }
   - id: Q-E3
     rule: "Profile switch: the same pack under repo-tour-public passes Q-V1 to Q-V3 with 0 VERDICT beats"
     fields: [profile, beats.function]
     aliases: [SA12]
     owner_support: none
     note: "An integration check: it needs the explain-pack assembler (SQ11) as well as SQ4."
-    l0: { severity: error, status: pending, owner: SQ4 }
+    l0: { severity: error, status: implemented, checks: ["Q-E3"] }
   - id: Q-E4
     rule: "new_terms a subset of the glossary; at most 4 new names per chapter"
     fields: [beats.new_terms, video.glossary]
     related: ["arc42 12", G14]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ4 }
+    l0: { severity: error, status: implemented, checks: ["Q-E4"] }
   - id: Q-E5
     rule: "Every viewer_needs item is closed; nothing taught from viewer_knows"
     fields: [video.audience, beats.closes_need]

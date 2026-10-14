@@ -87,6 +87,15 @@ export {
   type PrepareOptions,
   type RecordOptions,
 } from "./eval-owner.js";
+export {
+  MAX_DEMO_STEPS,
+  STAKE_BY_SHARE,
+  THREAD_SHARE,
+  runningExampleThread,
+  whyBeforeHow,
+  whyCheck,
+} from "./lint-why.js";
+export { MAX_NEW_NAMES_PER_CHAPTER, PUBLIC_PROFILE, evidenceCheck } from "./lint-evidence.js";
 export { MAX_SENTENCE_WORDS, MIN_PROJECT_SHARE, voiceCheck, voiceCheckWith } from "./lint-voice.js";
 export { flowCheck } from "./lint-flow.js";
 export { maskEntities, repoEntities } from "./lint-text.js";
