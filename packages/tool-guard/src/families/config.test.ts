@@ -44,6 +44,9 @@ describe("write.config", () => {
     ["NotebookEdit", "/home/you/.config/wget/wgetrc", "any:wgetrc"],
     ["Write", "/home/you/.config/httpie/config.json", "any:httpie/config.json"],
     ["Edit", "/home/you/.httpie/config.json", "any:.httpie/config.json"],
+    ["Write", "/home/you/.wget2rc", "any:.wget2rc"],
+    ["Edit", "/home/you/.config/wget/wget2rc", "any:wget2rc"],
+    ["Write", "/home/you/.config/xh/config.json", "any:xh/config.json"],
   ])("%s of %s", (toolName, path, pattern) => {
     expect(write(toolName, path)).toEqual([expect.objectContaining({ action: "authority-config", spelling: "write.config", subject: { pattern } })]);
   });

@@ -92,8 +92,11 @@ const CONFIG: GuardedList = {
     { id: "any:_curlrc", pattern: "**/_curlrc", samples: ["~/_curlrc"] },
     { id: "any:.wgetrc", pattern: "**/.wgetrc", samples: ["~/.wgetrc"] },
     { id: "any:wgetrc", pattern: "**/wgetrc", samples: ["/etc/wgetrc", "~/.config/wget/wgetrc"] },
+    { id: "any:.wget2rc", pattern: "**/.wget2rc", samples: ["~/.wget2rc"] },
+    { id: "any:wget2rc", pattern: "**/wget2rc", samples: ["~/.config/wget/wget2rc"] },
     { id: "any:httpie/config.json", pattern: "**/httpie/config.json", samples: ["~/.config/httpie/config.json"] },
     { id: "any:.httpie/config.json", pattern: "**/.httpie/config.json", samples: ["~/.httpie/config.json"] },
+    { id: "any:xh/config.json", pattern: "**/xh/config.json", samples: ["~/.config/xh/config.json"] },
   ],
   basenames: [],
 };

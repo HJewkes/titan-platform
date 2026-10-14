@@ -66,6 +66,9 @@ describe("matchGuarded", () => {
     ["/home/you/.config/wget/wgetrc", "any:wgetrc"],
     ["/home/you/.config/httpie/config.json", "any:httpie/config.json"],
     ["/home/you/.httpie/config.json", "any:.httpie/config.json"],
+    ["/home/you/.wget2rc", "any:.wget2rc"],
+    ["/home/you/.config/wget/wget2rc", "any:wget2rc"],
+    ["/home/you/.config/xh/config.json", "any:xh/config.json"],
   ])("guards the http client rc file %s as config, not as a secret", (path, id) => {
     expect(configId(path)).toBe(id);
     expect(secretId(path)).toBeNull();
@@ -89,6 +92,17 @@ describe("matchGuarded", () => {
     const input = { kind: "bash" as const, command, toolName: "Bash", cwd: REPO_DIR, sessionId: null, toolUseId: null };
 
     expect(classify(input, ctx)).toEqual([expect.objectContaining({ spelling, subject: { pattern: "any:.curlrc" } })]);
+  });
+
+  it.each([
+    ["cp /tmp/rc ~/.config/wget/wget2rc", "any:wget2rc"],
+    ["cp /tmp/rc ~/.wget2rc", "any:.wget2rc"],
+    ["cp x ~/.config/xh/config.json", "any:xh/config.json"],
+  ])("reads a later-call %s as a config copy", (command, pattern) => {
+    const ctx = { home: HOME, readLink: () => null, readHead: () => null, readScript: () => null };
+    const input = { kind: "bash" as const, command, toolName: "Bash", cwd: REPO_DIR, sessionId: null, toolUseId: null };
+
+    expect(classify(input, ctx)).toEqual([expect.objectContaining({ spelling: "bash.config.cp-mv-ln", subject: { pattern } })]);
   });
 
   it("reads a client naming ~/.curlrc as a config mention, since the hook cannot see what it does with the file", () => {
