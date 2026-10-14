@@ -20,8 +20,9 @@ import { TURN_START_MS } from "./turn-check.js";
 import { LOG_BUDGET_BYTES, tailBytes } from "./wake-brief.js";
 import { recordFixFirst } from "./routed.js";
 import { HEAD_READ_GIVE_UP_MS } from "./head-read.js";
+import { MAX_FIX_PROOF_WAKES } from "./fix-proof-cap.js";
 import { isHeld } from "./held-wake.js";
-import { MAX_FIX_PROOF_WAKES, WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
+import { WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
 import type { Warmth } from "./warmth.js";
 import { WAKE_ASK_MS } from "./wake-wait.js";
 

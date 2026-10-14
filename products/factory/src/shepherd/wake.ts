@@ -7,6 +7,7 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { AwaitHeadResult, awaitNewHeadRoute } from "../workflows/await-head.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { FIXER_EXIT_STEPS, fixerExitRoutes } from "./flake-check.js";
+import { FIX_PROOF_WAKE_STEP, fixProofBounce } from "./fix-proof-cap.js";
 import { agentChatAgents, type AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps, ShepherdPhases, WakeEvidence, WakeOutcome, WakeRequest } from "./phases.js";
 import { failureOf } from "./error-class.js";
@@ -23,9 +24,6 @@ import { DEFAULT_WARMTH_LIMITS, isWarm, readWarmth, type Warmth, type WarmthLimi
 
 export const WAKE_STEP = "sh-wake-implementer";
 export const AWAIT_NEW_HEAD_STEP = "sh-await-new-head";
-export const FIX_PROOF_WAKE_STEP = "sh-wake-fix-proof";
-/** Fix-proof wakes a run may spend; the next one goes to the owner gate, so a fix whose test never reproduces the bug cannot bounce forever. */
-export const MAX_FIX_PROOF_WAKES = 2;
 export const WAKE_STEPS: readonly StepDeclaration[] = [
   { id: WAKE_STEP, kind: "dispatch" },
   { id: AWAIT_NEW_HEAD_STEP, kind: "dispatch" },
@@ -364,20 +362,6 @@ export const wakePhase: ShepherdPhases["wake"] = async (ctx, request) => {
   const woke = await wakeStep(ctx, request, fixFirst);
   return woke.kind === "woken" ? redeliverAfterLiveExit(ctx, request, await awaitFixerHead(ctx, request, woke), woke, fixFirst) : notWoken(woke);
 };
-
-const FixProofWakeRecord = z.looseObject({ wake: z.number().int().positive() });
-
-/**
- * Each fix-proof wake is a step record written before the wake, so a replay sees the count it had; a live-exit
- * redelivery is the same wake and is not counted again. The capped wake carries no `held`, so the owner gate decides.
- */
-async function fixProofBounce(ctx: WorkflowContext, request: WakeRequest): Promise<WakeOutcome | undefined> {
-  if (request.kind !== "fix-proof") return undefined;
-  const wakes = ctx.iteration(FIX_PROOF_WAKE_STEP);
-  if (wakes >= MAX_FIX_PROOF_WAKES) return { kind: "unhandled", reason: `${MAX_FIX_PROOF_WAKES} fix-proof wakes on ${request.repo}#${request.pr} have not produced a test that reproduces the bug, so the owner decides` };
-  await step(ctx, FIX_PROOF_WAKE_STEP, { repo: request.repo, pr: request.pr, headSha: request.headSha, wake: wakes + 1 }, FixProofWakeRecord);
-  return undefined;
-}
 
 function notWoken(woke: Extract<z.infer<typeof Woke>, { kind: "unhandled" }>): WakeOutcome | HeldWake {
   return woke.held === undefined ? { kind: "unhandled", reason: woke.reason } : { kind: "unhandled", reason: woke.reason, held: woke.held };
