@@ -1,5 +1,5 @@
 import { illegalEdgeError } from "./claim-phase.js";
-import { LedgerMalformedError, parseLedgerJson } from "./json.js";
+import { LedgerMalformedError, isLedger, parseLedgerJson } from "./json.js";
 import { EMPTY_LEDGER, LedgerSchema, type Claim, type Ledger } from "./schema.js";
 
 export interface LedgerRead {
@@ -27,12 +27,14 @@ export class StaleRevisionError extends Error {
 export function normalizeLedger(raw: unknown): Ledger {
   const parsed = LedgerSchema.safeParse(raw);
   if (!parsed.success) throw new LedgerMalformedError("burndown ledger does not match the schema");
-  return inRawOrder(raw, parsed.data) as Ledger;
+  const ordered = inRawOrder(raw, parsed.data);
+  if (!isLedger(ordered)) throw new LedgerMalformedError("burndown ledger does not match the schema");
+  return ordered;
 }
 
 type Plain = Record<string, unknown>;
 
-const isPlain = (value: unknown): value is Plain =>
+export const isPlain = (value: unknown): value is Plain =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 function inRawOrder(raw: unknown, parsed: unknown): unknown {

@@ -1,6 +1,8 @@
 import type { Db, Migration } from "@titan-design/store-sqlite";
-import { EMPTY_LEDGER, type Claim, type Ledger } from "./schema.js";
-import { assertWritable, normalizeLedger, type LedgerRead, type LedgerStore } from "./store.js";
+import { z } from "zod";
+import { LedgerMalformedError, isLedger } from "./json.js";
+import { EMPTY_LEDGER, type Ledger } from "./schema.js";
+import { assertWritable, isPlain, normalizeLedger, type LedgerRead, type LedgerStore } from "./store.js";
 
 /**
  * One row per claim, in ledger order, holding the claim's own JSON; the meta row holds the rest of the ledger with
@@ -30,9 +32,14 @@ export function dispatchLedgerMigration(version: number): Migration {
   return { version, name: "dispatch-ledger", up: (db) => db.exec(dispatchLedgerDdl()) };
 }
 
-interface MetaRow {
-  revision: number;
-  doc: string;
+const MetaRowSchema = z.object({ revision: z.number().int(), doc: z.string() });
+const ClaimRowsSchema = z.array(z.object({ claim: z.string() }));
+
+/** The stored meta doc with the claim rows put back in its `claims` slot, which keeps the doc's key position. */
+function withClaims(doc: unknown, claims: unknown[]): Ledger {
+  const ledger = isPlain(doc) ? { ...doc, claims } : undefined;
+  if (!isLedger(ledger)) throw new LedgerMalformedError("stored dispatch ledger does not match the schema");
+  return ledger;
 }
 
 /** The ledger on tables made by `dispatchLedgerDdl`; each write is one immediate transaction. */
@@ -49,18 +56,16 @@ export class SqliteLedgerStore implements LedgerStore {
   }
 
   private readInside(): LedgerRead {
-    const meta = this.db.prepare("SELECT revision, doc FROM dispatch_ledger_meta WHERE id = 1").get() as
-      | MetaRow
-      | undefined;
-    if (meta === undefined) return { ledger: structuredClone(EMPTY_LEDGER), revision: 0 };
-    const ledger = JSON.parse(meta.doc) as Ledger;
-    ledger.claims = this.claims();
-    return { ledger, revision: meta.revision };
+    const row: unknown = this.db.prepare("SELECT revision, doc FROM dispatch_ledger_meta WHERE id = 1").get();
+    if (row === undefined) return { ledger: structuredClone(EMPTY_LEDGER), revision: 0 };
+    const meta = MetaRowSchema.parse(row);
+    const doc: unknown = JSON.parse(meta.doc);
+    return { ledger: withClaims(doc, this.claims()), revision: meta.revision };
   }
 
-  private claims(): Claim[] {
-    const rows = this.db.prepare("SELECT claim FROM dispatch_claim ORDER BY ordinal").all() as { claim: string }[];
-    return rows.map((row) => JSON.parse(row.claim) as Claim);
+  private claims(): unknown[] {
+    const rows = ClaimRowsSchema.parse(this.db.prepare("SELECT claim FROM dispatch_claim ORDER BY ordinal").all());
+    return rows.map((row): unknown => JSON.parse(row.claim));
   }
 
   private writeInside(next: Ledger, expectedRevision: number | undefined): { revision: number } {

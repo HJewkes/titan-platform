@@ -49,14 +49,10 @@ describe("SqliteLedgerStore", () => {
 
     importLedgerJson(new SqliteLedgerStore(db), FIXTURE);
 
-    const meta = db.prepare("SELECT revision, last_tick_at, doc FROM dispatch_ledger_meta").get() as {
-      revision: number;
-      last_tick_at: string;
-      doc: string;
-    };
-    expect(meta.revision).toBe(1);
-    expect(meta.last_tick_at).toBe("2026-01-04T10:00:00.000Z");
-    expect(JSON.parse(meta.doc).claims).toEqual([]);
+    const meta: unknown = db.prepare("SELECT revision, last_tick_at, doc FROM dispatch_ledger_meta").get();
+    expect(meta).toEqual({ revision: 1, last_tick_at: "2026-01-04T10:00:00.000Z", doc: expect.any(String) });
+    const doc: unknown = db.prepare("SELECT doc FROM dispatch_ledger_meta").pluck().get();
+    expect(JSON.parse(String(doc))).toHaveProperty("claims", []);
   });
 
   it("mounts through a store-sqlite migration", () => {
