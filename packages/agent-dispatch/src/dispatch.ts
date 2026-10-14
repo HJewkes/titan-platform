@@ -110,6 +110,16 @@ export function isBrokerUnavailable(result: SafeExecResult): boolean {
 }
 
 /**
+ * The CLI's own message when the broker misses a reply window (BrokerClient.request).
+ * The frame may have landed, so it is a timeout, not a refusal. stderr only, whole line.
+ */
+const BROKER_REPLY_TIMEOUT_LINE = /^broker did not answer [a-z_]+_result$/m;
+
+export function isBrokerReplyTimeout(result: SafeExecResult): boolean {
+  return result.status !== 0 && BROKER_REPLY_TIMEOUT_LINE.test(result.stderr);
+}
+
+/**
  * Every agent-chat call runs with this; autostart would leave a broker owned by the caller.
  * A non-empty `AGENT_CHAT_HOME` is forwarded so the CLI reaches the broker whose
  * profiles `installedProfilesDir()` just checked, not the default one.
@@ -236,6 +246,11 @@ export async function dispatchToAgentChat(
     // friendlier message would hide which of the supervisor's several preflight
     // gates actually refused.
     if (isBrokerUnavailable(result)) throw brokerUnavailable("agent spawn", result);
+    if (isBrokerReplyTimeout(result)) {
+      throw new DispatchTimeoutError(
+        `agent-chat refused the spawn: ${result.stderr.trim()}`,
+      );
+    }
     const reason = result.stdout.trim() || result.stderr.trim();
     throw new DispatchError(
       reason === ""
