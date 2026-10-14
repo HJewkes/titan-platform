@@ -2,9 +2,9 @@
   "source": {
     "repo": "agent-chat",
     "dir": "src/agents/burndown",
-    "sha": "28c31ed3456276be0d04e5a37c15e531837444ee"
+    "sha": "5c3fae0b9826c2da7d26a28b18397a683a31bd49"
   },
-  "fileCount": 100,
+  "fileCount": 110,
   "destinations": {
     "L1": "TP-2578",
     "F1": "TP-2579",
@@ -15,6 +15,7 @@
     "G-2": "CC-1211",
     "G-4": "CC-1213",
     "G-10": "CC-1216",
+    "S0": "CC-1193",
     "DROP": null
   },
   "order": [
@@ -35,7 +36,7 @@
   "files": [
     {
       "file": "advance.ts",
-      "lines": 647,
+      "lines": 776,
       "dest": "F2",
       "imports": [
         "exception.ts",
@@ -80,11 +81,14 @@
     },
     {
       "file": "brief-approve.ts",
-      "lines": 95,
+      "lines": 314,
       "dest": "F4",
       "imports": [
         "brief.ts",
+        "decider.ts",
+        "eligibility.ts",
         "ops.ts",
+        "report.ts",
         "source.ts"
       ],
       "externalImporters": [
@@ -94,9 +98,10 @@
     },
     {
       "file": "brief.ts",
-      "lines": 415,
+      "lines": 478,
       "dest": "F4",
       "imports": [
+        "shepherd.ts",
         "slice-lint.ts",
         "stall-code.ts"
       ],
@@ -143,7 +148,8 @@
         "ledger.ts"
       ],
       "externalImporters": [],
-      "ported": false
+      "ported": false,
+      "portedFrom": "67005f389acbb182c0f8807d95bf973e826d2638"
     },
     {
       "file": "classify-task.ts",
@@ -157,7 +163,7 @@
     },
     {
       "file": "collision.ts",
-      "lines": 462,
+      "lines": 499,
       "dest": "F3",
       "imports": [
         "eligibility.ts",
@@ -166,7 +172,8 @@
         "observe.ts",
         "overlap-exempt.ts",
         "report.ts",
-        "review-diff.ts"
+        "review-diff.ts",
+        "shepherd.ts"
       ],
       "externalImporters": [
         "src/cli/port-reads.ts",
@@ -199,10 +206,21 @@
       "ported": false
     },
     {
-      "file": "decider.ts",
-      "lines": 174,
+      "file": "daily-retire.ts",
+      "lines": 90,
       "dest": "F4",
       "imports": [
+        "budget-gate.ts"
+      ],
+      "externalImporters": [],
+      "ported": false
+    },
+    {
+      "file": "decider.ts",
+      "lines": 284,
+      "dest": "F4",
+      "imports": [
+        "brief.ts",
         "execute.ts",
         "ledger.ts",
         "observe.ts"
@@ -222,7 +240,7 @@
     },
     {
       "file": "dispatch-stats-source.ts",
-      "lines": 47,
+      "lines": 155,
       "dest": "F4",
       "imports": [
         "dispatch-stats.ts",
@@ -239,11 +257,12 @@
     },
     {
       "file": "dispatch-stats.ts",
-      "lines": 438,
+      "lines": 519,
       "dest": "F4",
       "imports": [
         "ledger.ts",
         "no-dispatch.ts",
+        "orphan-queue.ts",
         "task-tags.ts",
         "tick-summary.ts",
         "waste.ts"
@@ -266,13 +285,15 @@
     },
     {
       "file": "eligibility.ts",
-      "lines": 241,
+      "lines": 249,
       "dest": "G-2",
       "portSlice": "F3",
       "reason": "Imported by the seats subsystem; CC-1211 decides whether it ports (with portSlice) or stays in agent-chat.",
       "imports": [
         "backoff.ts",
+        "gate-reading.ts",
         "ops.ts",
+        "refusal-snapshot.ts",
         "score.ts",
         "task-tags.ts"
       ],
@@ -294,19 +315,18 @@
     },
     {
       "file": "exec.ts",
-      "lines": 94,
+      "lines": 48,
       "dest": "G-10",
       "reason": "The broker keeps it; F2 replaces the tick's shell-outs with in-process store reads.",
       "imports": [],
       "externalImporters": [
-        "src/agents/isolation/shepherd-skip.ts",
-        "src/agents/seats/in-flight-read.ts"
+        "src/cli/verbs/burndown.ts"
       ],
       "ported": false
     },
     {
       "file": "execute.ts",
-      "lines": 350,
+      "lines": 389,
       "dest": "F4",
       "imports": [
         "advance.ts",
@@ -383,6 +403,21 @@
       "ported": false
     },
     {
+      "file": "human-steps.ts",
+      "lines": 168,
+      "dest": "F4",
+      "imports": [
+        "eligibility.ts",
+        "ops.ts",
+        "policy.ts",
+        "seat-scope.ts",
+        "seat-tick.ts",
+        "source.ts"
+      ],
+      "externalImporters": [],
+      "ported": false
+    },
+    {
       "file": "in-flight.ts",
       "lines": 117,
       "dest": "F2",
@@ -394,7 +429,7 @@
     },
     {
       "file": "ladder.ts",
-      "lines": 361,
+      "lines": 363,
       "dest": "F2",
       "imports": [
         "advance.ts",
@@ -406,7 +441,7 @@
     },
     {
       "file": "landed-sweep.ts",
-      "lines": 109,
+      "lines": 138,
       "dest": "F2",
       "imports": [
         "collision.ts",
@@ -453,7 +488,7 @@
     },
     {
       "file": "ledger.ts",
-      "lines": 492,
+      "lines": 554,
       "dest": "L1",
       "imports": [
         "claim-phase.ts",
@@ -463,6 +498,10 @@
         "stall-code.ts"
       ],
       "externalImporters": [
+        "src/agents/counts/derive.ts",
+        "src/agents/counts/explain.ts",
+        "src/agents/counts/read-live.ts",
+        "src/agents/counts/types.ts",
         "src/agents/seats/in-flight-read.ts",
         "src/agents/seats/run.ts",
         "src/agents/seats/spawn-gate-read.ts",
@@ -473,10 +512,12 @@
         "src/cli/verbs/burndown-release.ts",
         "src/cli/verbs/burndown-unstall.ts",
         "src/cli/verbs/burndown.ts",
+        "src/cli/verbs/counts.ts",
         "src/cli/verbs/seats.ts",
         "src/digest/collect.ts"
       ],
-      "ported": false
+      "ported": false,
+      "portedFrom": "67005f389acbb182c0f8807d95bf973e826d2638"
     },
     {
       "file": "LICENSE.openrig",
@@ -572,7 +613,7 @@
     },
     {
       "file": "observe.ts",
-      "lines": 519,
+      "lines": 584,
       "dest": "F2",
       "imports": [
         "advance.ts",
@@ -596,17 +637,34 @@
         "trust-gate.ts"
       ],
       "externalImporters": [
+        "src/agents/counts/explain.ts",
         "src/cli/port-reads.ts",
         "src/cli/verbs/burndown.ts"
       ],
       "ported": false
     },
     {
+      "file": "off-ledger-adopt.ts",
+      "lines": 198,
+      "dest": "F4",
+      "imports": [
+        "exec.ts",
+        "ledger.ts",
+        "pr-adopt-ports.ts",
+        "pr-state.ts",
+        "seat-dispatch.ts",
+        "shepherd.ts"
+      ],
+      "externalImporters": [],
+      "ported": false
+    },
+    {
       "file": "off-plan.ts",
-      "lines": 41,
+      "lines": 48,
       "dest": "F3",
       "imports": [
-        "eligibility.ts"
+        "eligibility.ts",
+        "plan-class.ts"
       ],
       "externalImporters": [],
       "ported": false
@@ -620,8 +678,18 @@
       "ported": true
     },
     {
-      "file": "overlap-exempt.ts",
+      "file": "orphan-queue.ts",
       "lines": 36,
+      "dest": "F4",
+      "imports": [
+        "ledger.ts"
+      ],
+      "externalImporters": [],
+      "ported": false
+    },
+    {
+      "file": "overlap-exempt.ts",
+      "lines": 44,
       "dest": "F3",
       "imports": [],
       "externalImporters": [],
@@ -647,7 +715,7 @@
     },
     {
       "file": "owns-adjudicate.ts",
-      "lines": 54,
+      "lines": 57,
       "dest": "F2",
       "imports": [
         "collision.ts",
@@ -665,6 +733,30 @@
         "src/cli/verbs/burndown-unstall.ts"
       ],
       "ported": true
+    },
+    {
+      "file": "park-sweep.ts",
+      "lines": 76,
+      "dest": "F4",
+      "imports": [
+        "execute.ts",
+        "ledger.ts",
+        "observe.ts",
+        "tree-hold.ts"
+      ],
+      "externalImporters": [],
+      "ported": false
+    },
+    {
+      "file": "plan-class.ts",
+      "lines": 118,
+      "dest": "F3",
+      "imports": [
+        "eligibility.ts",
+        "seat-scope.ts"
+      ],
+      "externalImporters": [],
+      "ported": false
     },
     {
       "file": "plan-order.ts",
@@ -686,15 +778,18 @@
     },
     {
       "file": "plan.ts",
-      "lines": 391,
+      "lines": 439,
       "dest": "F3",
       "imports": [
         "backoff.ts",
         "budget-gate.ts",
         "collision.ts",
         "eligibility.ts",
+        "gate-reading.ts",
         "ledger.ts",
         "report.ts",
+        "shepherd.ts",
+        "stack.ts",
         "trust-gate.ts"
       ],
       "externalImporters": [
@@ -730,6 +825,7 @@
         "src/agents/seats/status.ts",
         "src/cli/verbs/burndown-landed.ts",
         "src/cli/verbs/burndown.ts",
+        "src/cli/verbs/counts.ts",
         "src/digest/collect.ts"
       ],
       "ported": false
@@ -788,7 +884,7 @@
     },
     {
       "file": "pr-state.ts",
-      "lines": 121,
+      "lines": 131,
       "dest": "F2",
       "imports": [
         "exec.ts",
@@ -851,8 +947,19 @@
       "ported": false
     },
     {
+      "file": "refusal-snapshot.ts",
+      "lines": 53,
+      "dest": "F3",
+      "imports": [
+        "eligibility.ts",
+        "no-dispatch.ts"
+      ],
+      "externalImporters": [],
+      "ported": false
+    },
+    {
       "file": "report.ts",
-      "lines": 116,
+      "lines": 126,
       "dest": "F4",
       "alsoIn": "L1",
       "imports": [
@@ -876,14 +983,16 @@
     },
     {
       "file": "run-tick.ts",
-      "lines": 905,
+      "lines": 1408,
       "dest": "F4",
       "imports": [
         "advance.ts",
+        "backoff.ts",
         "brief-approve.ts",
         "brief.ts",
         "budget-gate.ts",
         "collision.ts",
+        "daily-retire.ts",
         "decider.ts",
         "egress-runner.ts",
         "eligibility.ts",
@@ -891,18 +1000,24 @@
         "execute.ts",
         "exited-adopt.ts",
         "finding.ts",
+        "gate-reading.ts",
+        "human-steps.ts",
         "ladder.ts",
+        "landed-sweep.ts",
         "leak-check.ts",
         "ledger.ts",
         "no-dispatch.ts",
         "observe.ts",
+        "off-ledger-adopt.ts",
         "owner-queue-spool.ts",
+        "park-sweep.ts",
         "plan.ts",
         "policy.ts",
         "pr-adopt-ports.ts",
         "pr-adopt.ts",
         "pr-state.ts",
         "progress.ts",
+        "refusal-snapshot.ts",
         "seat-deliver.ts",
         "seat-events.ts",
         "seat-tick.ts",
@@ -910,8 +1025,12 @@
         "service-check.ts",
         "settings-resolve.ts",
         "settings-store.ts",
+        "shadow-record.ts",
         "shepherd.ts",
+        "slice-repo.ts",
+        "slices-complete.ts",
         "source.ts",
+        "step-timer.ts",
         "steps.ts",
         "tick-status.ts",
         "tick-summary.ts",
@@ -999,7 +1118,7 @@
     },
     {
       "file": "seat-deliver.ts",
-      "lines": 274,
+      "lines": 277,
       "dest": "F4",
       "imports": [
         "advance.ts",
@@ -1025,13 +1144,14 @@
       ],
       "externalImporters": [
         "src/agents/seats/seat-account.ts",
-        "src/agents/seats/status.ts"
+        "src/agents/seats/status.ts",
+        "src/cli/verbs/counts.ts"
       ],
       "ported": false
     },
     {
       "file": "seat-events.ts",
-      "lines": 291,
+      "lines": 309,
       "dest": "F4",
       "imports": [
         "advance.ts",
@@ -1047,17 +1167,19 @@
     },
     {
       "file": "seat-plan.ts",
-      "lines": 943,
+      "lines": 1096,
       "dest": "G-2",
       "portSlice": "F3",
       "reason": "Imported by the seats subsystem; CC-1211 decides whether it ports (with portSlice) or stays in agent-chat.",
       "imports": [
+        "advance.ts",
         "backoff.ts",
         "budget-gate.ts",
         "classify-task.ts",
         "collision.ts",
         "eligibility.ts",
         "flow-gate.ts",
+        "gate-reading.ts",
         "ledger.ts",
         "milestones.ts",
         "off-plan.ts",
@@ -1067,11 +1189,14 @@
         "prior-route.ts",
         "project-shares.ts",
         "ready-order.ts",
+        "refusal-snapshot.ts",
         "score.ts",
         "seat-dispatch.ts",
         "seat-scope.ts",
         "seed-slices.ts",
         "slice-repo.ts",
+        "stall-code.ts",
+        "task-tags.ts",
         "trust-gate.ts"
       ],
       "externalImporters": [
@@ -1095,20 +1220,23 @@
     },
     {
       "file": "seat-tick.ts",
-      "lines": 787,
+      "lines": 807,
       "dest": "G-2",
       "portSlice": "F3",
       "reason": "Imported by the seats subsystem; CC-1211 decides whether it ports (with portSlice) or stays in agent-chat.",
       "imports": [
+        "advance.ts",
         "billed-pool.ts",
         "budget-gate.ts",
         "collision.ts",
         "dispatch-stats.ts",
         "eligibility.ts",
+        "exec.ts",
         "flow-gate.ts",
         "ledger.ts",
         "no-dispatch.ts",
         "observe.ts",
+        "off-ledger-adopt.ts",
         "off-plan.ts",
         "plan.ts",
         "policy.ts",
@@ -1135,15 +1263,20 @@
     },
     {
       "file": "seed-slices.ts",
-      "lines": 106,
+      "lines": 455,
       "dest": "F3",
       "imports": [
+        "advance.ts",
         "brief.ts",
         "execute.ts",
         "ledger.ts",
-        "report.ts"
+        "off-ledger-adopt.ts",
+        "policy.ts",
+        "report.ts",
+        "slices-complete.ts"
       ],
       "externalImporters": [
+        "src/cli/verbs/burndown-release.ts",
         "src/cli/verbs/burndown-unstall.ts",
         "src/cli/verbs/burndown.ts"
       ],
@@ -1212,21 +1345,28 @@
       "ported": false
     },
     {
+      "file": "shadow-record.ts",
+      "lines": 200,
+      "dest": "S0",
+      "reason": "agent-chat's half of the DISPATCH-WF shadow sweep; it stays in agent-chat until CC-1193 decides the shadow snapshot, and F1 --dry-run writes the factory side.",
+      "imports": [
+        "brief-approve.ts",
+        "decider.ts",
+        "no-dispatch.ts",
+        "plan.ts",
+        "source.ts",
+        "triage.ts"
+      ],
+      "externalImporters": [],
+      "ported": false
+    },
+    {
       "file": "shepherd.ts",
-      "lines": 314,
+      "lines": 196,
       "dest": "G-10",
       "reason": "The broker keeps it; F2 replaces the tick's shell-outs with in-process store reads.",
-      "imports": [
-        "exec.ts"
-      ],
+      "imports": [],
       "externalImporters": [
-        "src/agents/isolation/shepherd-skip.ts",
-        "src/agents/seats/dispatch-log.ts",
-        "src/agents/seats/in-flight-read.ts",
-        "src/agents/seats/retire-seat-outcome.ts",
-        "src/agents/seats/teleport-state.ts",
-        "src/agents/teleport.ts",
-        "src/broker/daemon.ts",
         "src/cli/verbs/burndown-release.ts",
         "src/cli/verbs/burndown.ts"
       ],
@@ -1234,7 +1374,7 @@
     },
     {
       "file": "slice-lint.ts",
-      "lines": 164,
+      "lines": 178,
       "dest": "F3",
       "imports": [
         "ops.ts",
@@ -1245,17 +1385,34 @@
     },
     {
       "file": "slice-repo.ts",
-      "lines": 55,
+      "lines": 123,
       "dest": "F3",
       "imports": [
+        "advance.ts",
+        "execute.ts",
+        "ledger.ts",
         "seat-dispatch.ts"
       ],
       "externalImporters": [],
       "ported": false
     },
     {
+      "file": "slices-complete.ts",
+      "lines": 91,
+      "dest": "F4",
+      "imports": [
+        "eligibility.ts",
+        "ledger.ts",
+        "seat-events.ts"
+      ],
+      "externalImporters": [
+        "src/cli/verbs/burndown-release.ts"
+      ],
+      "ported": false
+    },
+    {
       "file": "source.ts",
-      "lines": 200,
+      "lines": 202,
       "dest": "G-2",
       "portSlice": "F3",
       "reason": "Imported by the seats subsystem; CC-1211 decides whether it ports (with portSlice) or stays in agent-chat.",
@@ -1301,7 +1458,7 @@
     },
     {
       "file": "stack.ts",
-      "lines": 79,
+      "lines": 97,
       "dest": "F3",
       "imports": [
         "ledger.ts",
@@ -1319,19 +1476,22 @@
         "advance.ts",
         "ledger.ts"
       ],
-      "externalImporters": [],
+      "externalImporters": [
+        "src/agents/counts/explain.ts"
+      ],
       "ported": false
     },
     {
       "file": "stall-code.ts",
-      "lines": 59,
+      "lines": 61,
       "dest": "L1",
       "imports": [
         "advance.ts",
         "exception.ts"
       ],
       "externalImporters": [],
-      "ported": false
+      "ported": false,
+      "portedFrom": "67005f389acbb182c0f8807d95bf973e826d2638"
     },
     {
       "file": "stall.ts",
@@ -1344,8 +1504,16 @@
       "ported": false
     },
     {
+      "file": "step-timer.ts",
+      "lines": 61,
+      "dest": "F4",
+      "imports": [],
+      "externalImporters": [],
+      "ported": false
+    },
+    {
       "file": "steps.ts",
-      "lines": 449,
+      "lines": 453,
       "dest": "F4",
       "imports": [
         "advance.ts",
@@ -1388,27 +1556,33 @@
       "imports": [],
       "externalImporters": [
         "src/cli/port-reads.ts",
-        "src/cli/verbs/burndown-job.ts"
+        "src/cli/verbs/burndown-job.ts",
+        "src/cli/verbs/counts.ts"
       ],
       "ported": false
     },
     {
       "file": "tick-summary.ts",
-      "lines": 238,
+      "lines": 277,
       "dest": "F4",
       "imports": [
         "advance.ts",
         "eligibility.ts",
         "execute.ts",
+        "gate-reading.ts",
         "ledger.ts",
         "no-dispatch.ts",
+        "orphan-queue.ts",
         "plan.ts",
         "pr-adopt.ts",
         "seat-dispatch.ts",
         "seat-scope.ts",
-        "shepherd.ts"
+        "shepherd.ts",
+        "step-timer.ts"
       ],
-      "externalImporters": [],
+      "externalImporters": [
+        "src/agents/counts/types.ts"
+      ],
       "ported": false
     },
     {
@@ -1445,7 +1619,7 @@
     },
     {
       "file": "tree-hold.ts",
-      "lines": 28,
+      "lines": 33,
       "dest": "G-1",
       "reason": "Only broker/daemon.ts imports it; no burndown file does.",
       "imports": [
@@ -1634,8 +1808,20 @@
     {
       "from": "brief-approve.ts",
       "fromDest": "F4",
+      "to": "eligibility.ts",
+      "toDest": "G-2"
+    },
+    {
+      "from": "brief-approve.ts",
+      "fromDest": "F4",
       "to": "source.ts",
       "toDest": "G-2"
+    },
+    {
+      "from": "brief.ts",
+      "fromDest": "F4",
+      "to": "shepherd.ts",
+      "toDest": "G-10"
     },
     {
       "from": "collision.ts",
@@ -1647,6 +1833,12 @@
       "from": "collision.ts",
       "fromDest": "F3",
       "to": "exec.ts",
+      "toDest": "G-10"
+    },
+    {
+      "from": "collision.ts",
+      "fromDest": "F3",
+      "to": "shepherd.ts",
       "toDest": "G-10"
     },
     {
@@ -1666,6 +1858,12 @@
       "fromDest": "F2",
       "to": "triage.ts",
       "toDest": "F4"
+    },
+    {
+      "from": "daily-retire.ts",
+      "fromDest": "F4",
+      "to": "budget-gate.ts",
+      "toDest": "G-2"
     },
     {
       "from": "dep-edges.ts",
@@ -1707,6 +1905,36 @@
       "from": "flow-gate.ts",
       "fromDest": "F3",
       "to": "task-tags.ts",
+      "toDest": "G-2"
+    },
+    {
+      "from": "human-steps.ts",
+      "fromDest": "F4",
+      "to": "eligibility.ts",
+      "toDest": "G-2"
+    },
+    {
+      "from": "human-steps.ts",
+      "fromDest": "F4",
+      "to": "policy.ts",
+      "toDest": "G-2"
+    },
+    {
+      "from": "human-steps.ts",
+      "fromDest": "F4",
+      "to": "seat-scope.ts",
+      "toDest": "G-2"
+    },
+    {
+      "from": "human-steps.ts",
+      "fromDest": "F4",
+      "to": "seat-tick.ts",
+      "toDest": "G-2"
+    },
+    {
+      "from": "human-steps.ts",
+      "fromDest": "F4",
+      "to": "source.ts",
       "toDest": "G-2"
     },
     {
@@ -1806,6 +2034,24 @@
       "toDest": "G-10"
     },
     {
+      "from": "off-ledger-adopt.ts",
+      "fromDest": "F4",
+      "to": "exec.ts",
+      "toDest": "G-10"
+    },
+    {
+      "from": "off-ledger-adopt.ts",
+      "fromDest": "F4",
+      "to": "seat-dispatch.ts",
+      "toDest": "G-2"
+    },
+    {
+      "from": "off-ledger-adopt.ts",
+      "fromDest": "F4",
+      "to": "shepherd.ts",
+      "toDest": "G-10"
+    },
+    {
       "from": "off-plan.ts",
       "fromDest": "F3",
       "to": "eligibility.ts",
@@ -1830,6 +2076,24 @@
       "toDest": "F4"
     },
     {
+      "from": "park-sweep.ts",
+      "fromDest": "F4",
+      "to": "tree-hold.ts",
+      "toDest": "G-1"
+    },
+    {
+      "from": "plan-class.ts",
+      "fromDest": "F3",
+      "to": "eligibility.ts",
+      "toDest": "G-2"
+    },
+    {
+      "from": "plan-class.ts",
+      "fromDest": "F3",
+      "to": "seat-scope.ts",
+      "toDest": "G-2"
+    },
+    {
       "from": "plan.ts",
       "fromDest": "F3",
       "to": "budget-gate.ts",
@@ -1840,6 +2104,12 @@
       "fromDest": "F3",
       "to": "eligibility.ts",
       "toDest": "G-2"
+    },
+    {
+      "from": "plan.ts",
+      "fromDest": "F3",
+      "to": "shepherd.ts",
+      "toDest": "G-10"
     },
     {
       "from": "planning-supply.ts",
@@ -1926,6 +2196,18 @@
       "toDest": "G-2"
     },
     {
+      "from": "refusal-snapshot.ts",
+      "fromDest": "F3",
+      "to": "eligibility.ts",
+      "toDest": "G-2"
+    },
+    {
+      "from": "refusal-snapshot.ts",
+      "fromDest": "F3",
+      "to": "no-dispatch.ts",
+      "toDest": "G-2"
+    },
+    {
       "from": "run-tick.ts",
       "fromDest": "F4",
       "to": "budget-gate.ts",
@@ -1970,6 +2252,12 @@
     {
       "from": "run-tick.ts",
       "fromDest": "F4",
+      "to": "shadow-record.ts",
+      "toDest": "S0"
+    },
+    {
+      "from": "run-tick.ts",
+      "fromDest": "F4",
       "to": "shepherd.ts",
       "toDest": "G-10"
     },
@@ -1994,7 +2282,31 @@
     {
       "from": "seed-slices.ts",
       "fromDest": "F3",
+      "to": "advance.ts",
+      "toDest": "F2"
+    },
+    {
+      "from": "seed-slices.ts",
+      "fromDest": "F3",
       "to": "execute.ts",
+      "toDest": "F4"
+    },
+    {
+      "from": "seed-slices.ts",
+      "fromDest": "F3",
+      "to": "off-ledger-adopt.ts",
+      "toDest": "F4"
+    },
+    {
+      "from": "seed-slices.ts",
+      "fromDest": "F3",
+      "to": "policy.ts",
+      "toDest": "G-2"
+    },
+    {
+      "from": "seed-slices.ts",
+      "fromDest": "F3",
+      "to": "slices-complete.ts",
       "toDest": "F4"
     },
     {
@@ -2030,7 +2342,25 @@
     {
       "from": "slice-repo.ts",
       "fromDest": "F3",
+      "to": "advance.ts",
+      "toDest": "F2"
+    },
+    {
+      "from": "slice-repo.ts",
+      "fromDest": "F3",
+      "to": "execute.ts",
+      "toDest": "F4"
+    },
+    {
+      "from": "slice-repo.ts",
+      "fromDest": "F3",
       "to": "seat-dispatch.ts",
+      "toDest": "G-2"
+    },
+    {
+      "from": "slices-complete.ts",
+      "fromDest": "F4",
+      "to": "eligibility.ts",
       "toDest": "G-2"
     },
     {

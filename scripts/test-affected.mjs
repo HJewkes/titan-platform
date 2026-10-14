@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Runs only the tests a change reaches: vitest --changed against a base. CI's full `pnpm test` stays the authority,
-// because the import graph misses tests that read files at runtime.
+// Runs only the tests a change reaches: vitest --changed against a base, for a quick local loop. CI does not use it:
+// the import graph misses tests that read files at runtime and stops at the dist other packages import. CI scopes pull
+// requests by the package graph (test-scope.mjs), and main's full run is the authority.
 // Usage: node scripts/test-affected.mjs [base]   (base: TEST_AFFECTED_BASE, then argv, then origin/main)
 import { execFileSync, spawnSync } from "node:child_process";
 import { globSync } from "node:fs";
