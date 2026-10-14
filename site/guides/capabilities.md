@@ -47,6 +47,7 @@ Before adding code:
 | [`registry`](#cap-registry) | 1 | You define a command once and want it served as a CLI, an MCP tool and an HTTP route. Adopt it the moment a second surface is plausible. |
 | [`retrieval`](#cap-retrieval) | 1 | You need search over a store-sqlite corpus that fuses FTS, vectors and graph hops and keeps answering when one retriever is down. `fuseByRRF` and `gatherFailOpen` work over your own retrievers too. |
 | [`rpc-client`](#cap-rpc-client) | 1 | Browser or Node code calls a registry-backed daemon, live over HTTP and SSE or from a static snapshot export, with typed commands. |
+| [`speech-tts`](#cap-speech-tts) | 1 | You need speech audio and the engine must differ per deployment: an in-process model, a GPU box behind a command or ssh, or a hosted HTTP API. Callers state the capabilities they need (voice, word timestamps, phoneme input, speed), and a profile plus `TITAN_SPEECH_*` env picks the provider. Recognition and alignment are not here; they belong to the planned speech-stt package. |
 | [`worktree`](#cap-worktree) | 1 | You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. Inputs are plain records and the budget is a parameter, so the caller keeps its own roster and journal. Launching the agent process is agent-surface; deciding which isolation strategy applies is agent-dispatch. |
 | [`code-graph`](#cap-code-graph) | 2 | A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python. |
 | [`code-read`](#cap-code-read) | 2 | A product serves code-graph snapshots to a UI, an agent or a workflow through a versioned read API, registered on a registry and hosted by daemon. |
@@ -632,6 +633,21 @@ Key exports:
 - `client/canonical-key`: `canonicalArgs`, `snapshotKey`, `wireArgs`
 - `client/sse-parser`: `createSseParser`
 - +12 more in the [reference page](/reference/rpc-client)
+
+<a id="cap-speech-tts"></a>
+
+### [`speech-tts`](/reference/speech-tts)
+
+Tier 1, `@titan-design/speech-tts@0.0.0`. Swappable text-to-speech provider contract, registry and command/HTTP adapters
+
+**Use this when:** You need speech audio and the engine must differ per deployment: an in-process model, a GPU box behind a command or ssh, or a hosted HTTP API. Callers state the capabilities they need (voice, word timestamps, phoneme input, speed), and a profile plus `TITAN_SPEECH_*` env picks the provider. Recognition and alignment are not here; they belong to the planned speech-stt package.
+
+Key exports:
+
+- `errors`: `TtsConfigError`, `TtsError`, `TtsFailedError`, `TtsTimeoutError`, `TtsUnavailableError`, `TtsUnsupportedError`
+- `capabilities`: `assertSupported`, `languageMatches`, `missingCapabilities`, `requirementsOf`
+- `wav`: `decodeWav`, `encodeWav`
+- +45 more in the [reference page](/reference/speech-tts)
 
 <a id="cap-worktree"></a>
 

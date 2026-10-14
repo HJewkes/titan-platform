@@ -38,7 +38,8 @@
           "packages/agent-dispatch",
           "packages/agent-surface",
           "packages/worktree",
-          "packages/health"
+          "packages/health",
+          "packages/speech-tts"
         ],
         "2": [
           "packages/session-read",
@@ -109,7 +110,8 @@
           "packages/agent-dispatch",
           "packages/agent-surface",
           "packages/worktree",
-          "packages/health"
+          "packages/health",
+          "packages/speech-tts"
         ],
         [
           "packages/session-read",
