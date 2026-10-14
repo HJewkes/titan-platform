@@ -22,7 +22,7 @@ rules:
     related: ["CT R1", P14]
     rubric_dims: [B5, J1]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ3 }
+    l0: { severity: error, status: implemented, checks: ["Q-V1"] }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-V2
     rule: "Provenance and internal ids appear only in chips"
@@ -30,28 +30,28 @@ rules:
     aliases: [S3]
     related: [SA1, R18]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ3 }
+    l0: { severity: error, status: implemented, checks: ["Q-V2"] }
   - id: Q-V3
     rule: "Verdict text only in VERDICT beats, after the chapter's HOW"
     fields: [beats.function, beats.spoken]
     aliases: [X14, SA2]
     related: ["ED-impl 3", S2]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ3 }
+    l0: { severity: error, status: implemented, checks: ["Q-V3"] }
   - id: Q-V4
     rule: 'No spoken "Chapter N"; labels and signposts name the move'
     fields: [beats.spoken, chapters.label]
     aliases: [K2, TC11, R15, S13b]
     related: [SA5]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ3 }
+    l0: { severity: error, status: implemented, checks: ["Q-V4"] }
   - id: Q-V5
     rule: "Project-subject share at least 80 % outside VERDICT beats"
     fields: [beats.spoken, beats.function]
     aliases: [S2]
     related: [X1]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ3 }
+    l0: { severity: error, status: implemented, checks: ["Q-V5"] }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-V6
     rule: '"We" only for the makers or narrator-and-viewer'
@@ -64,20 +64,20 @@ rules:
     fields: [beats.spoken]
     related: ["DF 1.9", "CT R1", K13]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ3 }
+    l0: { severity: error, status: implemented, checks: ["Q-V7"] }
   - id: Q-V8
     rule: "Pointing phrases only on V6/V9 cues; no dense-slide rescue"
     fields: [beats.spoken, beats.visual.cues]
     aliases: [TC6]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ3 }
+    l0: { severity: error, status: implemented, checks: ["Q-V8"] }
   - id: Q-V9
     rule: "Sentences at most 25 words (a TTS guardrail, never a target)"
     fields: [beats.spoken]
     aliases: [K13]
     related: ["EL 5"]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ3 }
+    l0: { severity: error, status: implemented, checks: ["Q-V9"] }
 
   - id: Q-W1
     rule: 'Stake voiced before 15 %, by a named role or "you", with a number or artifact'
@@ -166,14 +166,14 @@ rules:
     related: [SS-7]
     rubric_dims: [B3]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ3 }
+    l0: { severity: error, status: implemented, checks: ["Q-F1"] }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-F2
     rule: "At least 4 of 6 chapter hand-offs share a term or answer a question; connector_in set"
     fields: [beats.connector_in, chapters.question]
     aliases: [S13, SA5]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ3 }
+    l0: { severity: error, status: implemented, checks: ["Q-F2"] }
   - id: Q-F3
     rule: "The hook's call is the walk's call; at least 50 % of HOW beats reference the running example"
     fields: [video.running_example, beats.function, beats.spoken]
@@ -186,14 +186,14 @@ rules:
     fields: [video.thesis_refs, video.thesis_mechanism, beats.spoken]
     aliases: [SA6, X3]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ3 }
+    l0: { severity: error, status: implemented, checks: ["Q-F4"] }
   - id: Q-F5
     rule: "Exactly one WHAT to HOW pivot line"
     fields: [beats.function, beats.spoken]
     aliases: [X8]
     related: [P7]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ3 }
+    l0: { severity: error, status: implemented, checks: ["Q-F5"] }
   - id: Q-F6
     rule: "The beat after a chapter open states the chapter's answer"
     fields: [chapters.answer_line, beats.spoken]
@@ -205,33 +205,33 @@ rules:
     fields: [chapters.question]
     aliases: [R2, K3]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ3 }
+    l0: { severity: error, status: implemented, checks: ["Q-F7"] }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-F8
     rule: "One idea per beat: one function, no demo+explain mix, at most 2 new names, 6-20 s"
     fields: [beats.function, beats.mode, beats.new_terms, beats.plannedS]
     aliases: [S6, R1, R10]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ3 }
+    l0: { severity: error, status: implemented, checks: ["Q-F8"] }
   - id: Q-F9
     rule: "Spoken lists at most 5 items; 3 or more enumerated names or paths become a ref (visual or companion)"
     fields: [beats.spoken, beats.mode, companion]
     aliases: [SA10, R4, K5]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ3 }
+    l0: { severity: error, status: implemented, checks: ["Q-F9"] }
   - id: Q-F10
     rule: "No SIGN/VERDICT beat inside a WHAT to HOW chain"
     fields: [beats.function]
     aliases: [TC19]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ3 }
+    l0: { severity: error, status: implemented, checks: ["Q-F10"] }
   - id: Q-F11
     rule: 'Close is a typed close, no recap; outro at most 8 words, no "start reading"'
     fields: [video.close_type, beats.function, beats.spoken]
     aliases: [X15, TC16]
     related: ["CT R10"]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ3 }
+    l0: { severity: error, status: implemented, checks: ["Q-F11"] }
   - id: Q-F12
     rule: "simplifications voiced once; limits before the close"
     fields: [video.simplifications, beats.function, beats.spoken]
@@ -249,19 +249,19 @@ rules:
     fields: [beats.spoken, beats.connector_in]
     aliases: [S14]
     owner_support: none
-    l0: { severity: warning, status: pending, owner: SQ3 }
+    l0: { severity: warning, status: implemented, checks: ["Q-F14"] }
   - id: Q-F15
     rule: "At least one learner question per HOW chapter"
     fields: [beats.function]
     aliases: [TC14]
     owner_support: none
-    l0: { severity: warning, status: pending, owner: SQ3 }
+    l0: { severity: warning, status: implemented, checks: ["Q-F15"] }
   - id: Q-F16
     rule: "At least 40 % of words before the first internal identifier"
     fields: [beats.spoken]
     related: ["CT R2"]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ3 }
+    l0: { severity: error, status: implemented, checks: ["Q-F16"] }
 
   - id: Q-D1
     rule: "One map across the body; at most 1 level change per beat; a return after each zoom; at most 3 new boxes; at most 7 full-weight"

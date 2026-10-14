@@ -4,7 +4,16 @@ import { describe, expect, it } from "vitest";
 import { stringify } from "yaml";
 import { L0_CHECKS, runL0 } from "./eval-l0.js";
 import { layout } from "./map-fixtures.test-helpers.js";
-import { DEFAULT_RULES_PATH, checkType, loadRuleRegistry, parseRuleRegistry, resolveRule, unimplementedL0Rules, type Rule } from "./rules.js";
+import {
+  DEFAULT_RULES_PATH,
+  checkType,
+  loadRuleRegistry,
+  parseRuleRegistry,
+  resolveRule,
+  unclaimedL0Checks,
+  unimplementedL0Rules,
+  type Rule,
+} from "./rules.js";
 import { ScriptSchema } from "./script-schema.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
 
@@ -47,6 +56,10 @@ describe("the shipped Q-rule registry", () => {
     expect(resolveRule(registry, "Q-D3")?.l0).toMatchObject({ status: "implemented", checks: ["map:hand-framing"] });
   });
 
+  it("marks implemented every Q-rule whose check id the registered L0 checks emit", () => {
+    expect(unclaimedL0Checks(registry, emittedCheckIds)).toEqual([]);
+  });
+
   it("has every judge rule cited by a rubric file that names it, or pending on its owner slice", () => {
     for (const r of registry.rules.filter((each) => each.judge?.status === "cited")) {
       const rubric = join(packageRoot, r.judge?.status === "cited" ? r.judge.rubric : "");
@@ -81,6 +94,14 @@ describe("registry validation", () => {
     const claimed = parseRuleRegistry(registryText(rule({ l0: { severity: "error", status: "pending", owner: "SQ5", partial: ["map:no-such-lint"] } })));
 
     expect(unimplementedL0Rules(claimed, emittedCheckIds)).toEqual(["Q-V1"]);
+  });
+
+  it("reports an emitted Q-rule check id whose rule is still pending, or that names no rule", () => {
+    const pending = parseRuleRegistry(registryText(rule()));
+    const claimed = parseRuleRegistry(registryText(rule({ l0: { severity: "error", status: "implemented", checks: ["Q-V1"] } })));
+
+    expect(unclaimedL0Checks(pending, new Set(["Q-V1", "map:level-step"]))).toEqual(["Q-V1"]);
+    expect(unclaimedL0Checks(claimed, new Set(["Q-V1", "Q-V2"]))).toEqual(["Q-V2"]);
   });
 
   it("rejects a pending L0 rule with no owning slice", () => {

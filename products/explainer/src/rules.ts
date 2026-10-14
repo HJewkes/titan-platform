@@ -68,6 +68,15 @@ export function unimplementedL0Rules(registry: RuleRegistry, emitted: ReadonlySe
     .map((rule) => rule.id);
 }
 
+/**
+ * The emitted check ids shaped like a Q-rule id that no rule claims as implemented: a lint that
+ * landed while its rule stayed pending, or one emitting an id the registry does not hold.
+ */
+export function unclaimedL0Checks(registry: RuleRegistry, emitted: ReadonlySet<string>): string[] {
+  const claimed = new Set(registry.rules.flatMap(({ l0 }) => (l0?.status === "implemented" ? l0.checks : [])));
+  return [...emitted].filter((id) => /^Q-[VWFDE]\d+$/.test(id) && !claimed.has(id)).sort();
+}
+
 /** Resolves a Q-id or a phase-1 alias to its rule; `related` ids are citations only and never resolve. */
 export function resolveRule(registry: RuleRegistry, idOrAlias: string): Rule | undefined {
   return registry.rules.find((rule) => rule.id === idOrAlias || rule.aliases.includes(idOrAlias));
