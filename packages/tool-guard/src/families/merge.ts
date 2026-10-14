@@ -6,7 +6,7 @@ import type { WordToken } from "../shell/lexer.js";
 import { classified } from "../spellings.js";
 import type { SpellingId } from "../spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
-import { httpRequest, isWrite } from "./egress.js";
+import { httpRequest, isWrite } from "./http-request.js";
 import { mayReachGitHubApi } from "./github-endpoint.js";
 import { hasFlag, lastValue, readOptions, set, valuesOf } from "./options.js";
 

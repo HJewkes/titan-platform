@@ -2986,9 +2986,6 @@
     }
   },
   "products/factory/src/shepherd/external-review.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 5
     }
@@ -3226,16 +3223,6 @@
   "products/factory/src/shepherd/reviewer-dispatch.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 8
-    }
-  },
-  "products/factory/src/shepherd/reviewer-reader.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/reviewer-reader.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
     }
   },
   "products/factory/src/shepherd/round-merge.test.ts": {

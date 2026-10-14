@@ -7,7 +7,15 @@ import map from "./burndown-port-map.json" with { type: "json" };
 const DISPATCH = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(DISPATCH, "..", "..", "..", "..");
 
-type Entry = { file: string; dest: string; portSlice?: string; reason?: string; imports: string[]; ported: boolean };
+type Entry = {
+  file: string;
+  dest: string;
+  portSlice?: string;
+  reason?: string;
+  imports: string[];
+  ported: boolean;
+  portedFrom?: string;
+};
 const files: Entry[] = map.files;
 const count = (pick: (f: Entry) => boolean) => files.filter(pick).length;
 
@@ -60,6 +68,17 @@ describe("burndown port map", () => {
     });
 
     expect(problems).toEqual([]);
+  });
+
+  it("records the agent-chat commit L1 was ported from, matching the package README", () => {
+    const shas = files.filter((f) => f.dest === "L1").map((f) => f.portedFrom ?? "");
+    const readme = readFileSync(join(ROOT, "packages", "dispatch-ledger", "README.md"), "utf8");
+    const named = /Ported from agent-chat `[^`]+` at commit `([0-9a-f]{7,40})`/.exec(readme)?.[1] ?? "";
+    const [sha = ""] = shas;
+
+    expect(shas.every((s) => /^[0-9a-f]{40}$/.test(s) && s === sha)).toBe(true);
+    expect(named.length).toBeGreaterThanOrEqual(7);
+    expect(sha.startsWith(named)).toBe(true);
   });
 
   it("resolves every internal import to another entry", () => {

@@ -5,7 +5,7 @@ import { basename, resolveValue } from "../shell/path.js";
 import { DECLARED_RE, DECLARERS, parseAssignment } from "../shell/vars.js";
 import { commandWrites, TARGET_RE } from "../shell/writers.js";
 import { CURL_VALUE_OPTIONS } from "./curl-options.js";
-import { HTTPIE_VALUES, wgetLongName } from "./egress.js";
+import { HTTPIE_VALUES, wgetLongName } from "./http-request.js";
 import { readOptions, set, valuesOf } from "./options.js";
 import { unpacks } from "./unpackers.js";
 import { WGET_VALUE_OPTIONS } from "./wget-options.js";

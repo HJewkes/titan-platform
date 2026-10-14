@@ -1,6 +1,6 @@
 import type { SimpleCommand } from "../shell/commands.js";
 import type { WordToken } from "../shell/lexer.js";
-import { mayBeOption } from "./egress.js";
+import { mayBeOption } from "./http-request.js";
 
 /** GNU tar and bsdtar short options that take a value: the rest of their cluster, or the next word. */
 const TAR_VALUES = "bCfFgHIKLNTVX";

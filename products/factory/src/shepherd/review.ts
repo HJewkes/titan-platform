@@ -14,6 +14,7 @@ import { ACCOUNT_STEPS, accountHeld, accountRoutes, billIntent, dispatchFor } fr
 import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./account-limit.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { awaitExternalVerdict, isExternalVerdictInput, seatVetoed } from "./external-review.js";
+import { ownerIn } from "./seat-tie.js";
 import { removeReviewCheckout, reviewCheckoutRoot } from "./review-checkout.js";
 import { Dispatched, Intended, ReviewCauseSchema } from "./review-schemas.js";
 import { MERGE_EVIDENCE_STEPS } from "./merge-evidence-gate.js";
@@ -306,10 +307,10 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     fixProofRoute(deps),
     codeRoute(REVIEW_INTENT_STEP, deps.now, brokerStep(deps, wiring, ReviewInputSchema, reviewIntent)),
     repeatAwareRoute(REVIEW_STEP, deps.now, brokerStep(deps, wiring, ReviewDispatchInputSchema, dispatchReview)),
-    codeRoute(AWAIT_VERDICT_STEP, deps.now, seatVetoed(wiring, run, deps.now, seatWait)),
-    codeRoute(LATE_VERDICT_STEP, deps.now, (raw: unknown, signal, clock) => seatVetoed(wiring, (late: unknown, lateSignal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(late), lateSignal, clock.firstStartedAtMs), deps.now, seatWait)(raw, signal)),
+    codeRoute(AWAIT_VERDICT_STEP, deps.now, seatVetoed(wiring, run, deps.now, seatWait, ownerIn(deps.store))),
+    codeRoute(LATE_VERDICT_STEP, deps.now, (raw: unknown, signal, clock) => seatVetoed(wiring, (late: unknown, lateSignal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(late), lateSignal, clock.firstStartedAtMs), deps.now, seatWait, ownerIn(deps.store))(raw, signal)),
     repeatAwareRoute(CORRECT_VERDICT_STEP, deps.now, brokerStep(deps, wiring, CorrectVerdictInputSchema, correctReviewer)),
-    codeRoute(SEAT_RECHECK_STEP, deps.now, seatVetoed(wiring, async (raw: unknown) => heldMerge(raw), deps.now, seatWait)),
+    codeRoute(SEAT_RECHECK_STEP, deps.now, seatVetoed(wiring, async (raw: unknown) => heldMerge(raw), deps.now, seatWait, ownerIn(deps.store))),
     codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, isFrozen, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) }, wiring?.reviewAppId)),
     carryRoute(deps.now, wiring?.carry),
     publishReviewRoute(deps),

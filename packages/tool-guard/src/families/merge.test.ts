@@ -291,12 +291,17 @@ describe("an HTTP write to a URL that may reach GitHub's API only at run time re
     "wget --method=PUT --input-file=urls https://example.com/x",
     "curl -X PUT",
     'curl --variable %P --expand-url "https://api.github.com/{{P}}" -X PUT',
-    'curl -X PUT "https://api.github.com/repos/o/r/pulls/1/merg{e}"',
-    "curl -X PUT 'https://api.github.com/repos/o/r/pulls/[1-2]/merge'",
     'curl -X GET "$U" --next -I https://example.com/x',
   ])("%s", (command) => {
     expect(merges(command)).toEqual([expect.objectContaining({ spelling: "bash.merge.curl-api", subject: {} })]);
   });
+
+  it.each(['curl -X PUT "https://api.github.com/repos/o/r/pulls/1/merg{e}"', "curl -X PUT 'https://api.github.com/repos/o/r/pulls/[1-2]/merge'"])(
+    "expands curl's own glob in %s to the literal endpoint it names",
+    (command) => {
+      expect(merges(command)).toEqual([expect.objectContaining({ spelling: "bash.merge.curl-api", subject: { pr: "1" } })]);
+    },
+  );
 
   it("lets a literal merge endpoint name its PR", () => {
     expect(merges('curl -X PUT "https://$H/repos/o/r/pulls/1/merge"')).toEqual([expect.objectContaining({ spelling: "bash.merge.curl-api", subject: { pr: "1" } })]);
