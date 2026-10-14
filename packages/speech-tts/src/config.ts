@@ -1,0 +1,129 @@
+import { readFile } from "node:fs/promises";
+import { isRecord, isStringArray } from "./guards.js";
+
+/** One provider entry. `kind` picks the registry factory; the factory validates the rest. */
+export type TtsProviderConfig = { kind: string } & Readonly<Record<string, unknown>>;
+
+/** The `profile.json` document, version 1. Only the `tts` section is read here. */
+export interface TtsProfile {
+  version: 1;
+  tts?: {
+    /** Provider ids to try first, in order. Providers not named follow in declaration order. */
+    prefer?: readonly string[];
+    providers?: Readonly<Record<string, TtsProviderConfig>>;
+  };
+}
+
+export interface ResolvedTtsConfig {
+  /** Every provider id, in the order selection tries them. */
+  order: readonly string[];
+  providers: Readonly<Record<string, TtsProviderConfig>>;
+  /** Providers that cannot be used as configured, with the reason, such as a missing secret. */
+  unusable: Readonly<Record<string, string>>;
+}
+
+type Env = Readonly<Record<string, string | undefined>>;
+
+export const PROFILE_ENV = "TITAN_SPEECH_PROFILE";
+export const PREFER_ENV = "TITAN_SPEECH_TTS";
+
+/** `TITAN_SPEECH_TTS_<ID>_<FIELD>`, with the id upper-cased and every other character as `_`. */
+export const providerEnvName = (id: string, field: string): string =>
+  `${PREFER_ENV}_${id.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_${field}`;
+
+const isProviderConfig = (v: unknown): v is TtsProviderConfig => isRecord(v) && typeof v.kind === "string";
+
+/** Validates the document's shape; each provider's own fields are left to its factory. */
+export function parseTtsProfile(raw: unknown, source = "profile"): TtsProfile {
+  const fail = (why: string): never => {
+    throw new TypeError(`${source}: ${why}`);
+  };
+  if (!isRecord(raw) || raw.version !== 1) return fail('expected { "version": 1, ... }');
+  const tts = raw.tts;
+  if (tts === undefined) return { version: 1 };
+  if (!isRecord(tts)) return fail("tts must be an object");
+  const prefer = tts.prefer ?? [];
+  if (!isStringArray(prefer)) return fail("tts.prefer must be an array of provider ids");
+  const declared = tts.providers ?? {};
+  if (!isRecord(declared)) return fail("tts.providers must be an object keyed by provider id");
+  const providers: Record<string, TtsProviderConfig> = {};
+  for (const [id, entry] of Object.entries(declared)) {
+    providers[id] = isProviderConfig(entry) ? entry : fail(`tts.providers.${id} needs a string "kind"`);
+  }
+  return { version: 1, tts: { prefer, providers } };
+}
+
+/** Reads a profile file. A missing file is no profile, not an error: nothing about the host is assumed. */
+export async function loadTtsProfile(path: string): Promise<TtsProfile | undefined> {
+  let text: string;
+  try {
+    text = await readFile(path, "utf8");
+  } catch (error) {
+    if (isRecord(error) && error.code === "ENOENT") return undefined;
+    throw error;
+  }
+  return parseTtsProfile(JSON.parse(text), path);
+}
+
+function parseArgvEnv(name: string, value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    throw new TypeError(`${name} must be a JSON array of strings, such as ["ssh", "gpu-box", "tts-cli"]`);
+  }
+}
+
+function envOverrides(id: string, entry: TtsProviderConfig, env: Env): TtsProviderConfig {
+  const url = env[providerEnvName(id, "URL")];
+  const argv = env[providerEnvName(id, "ARGV")];
+  const timeout = env[providerEnvName(id, "TIMEOUT_MS")];
+  return {
+    ...entry,
+    ...(url ? { url } : {}),
+    ...(argv ? { argv: parseArgvEnv(providerEnvName(id, "ARGV"), argv) } : {}),
+    ...(timeout ? { timeoutMs: Number(timeout) } : {}),
+  };
+}
+
+const SECRET = /\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g;
+
+/** Expands `${env:NAME}` in header values, so a profile can be shared without its secrets. */
+function expandHeaders(entry: TtsProviderConfig, env: Env): { entry: TtsProviderConfig; missing: string[] } {
+  if (!isRecord(entry.headers)) return { entry, missing: [] };
+  const missing: string[] = [];
+  const headers = Object.fromEntries(
+    Object.entries(entry.headers).map(([name, value]) => [
+      name,
+      String(value).replace(SECRET, (_, key: string) => {
+        if (env[key] === undefined) missing.push(key);
+        return env[key] ?? "";
+      }),
+    ]),
+  );
+  return { entry: { ...entry, headers }, missing };
+}
+
+/**
+ * `TITAN_SPEECH_TTS` is an explicit choice, so it is the whole order and nothing else is tried. The profile's
+ * `prefer` only moves providers to the front.
+ */
+function selectionOrder(ids: readonly string[], profilePrefer: readonly string[], envChoice: readonly string[] | undefined): string[] {
+  if (envChoice) return [...new Set(envChoice)];
+  return [...new Set([...profilePrefer.filter((id) => ids.includes(id)), ...ids])];
+}
+
+/** Applies env over the profile: env wins. Neither is required; with neither, there are no providers. */
+export function resolveTtsConfig(opts: { profile?: TtsProfile; env?: Env } = {}): ResolvedTtsConfig {
+  const env = opts.env ?? process.env;
+  const declared = opts.profile?.tts?.providers ?? {};
+  const providers: Record<string, TtsProviderConfig> = {};
+  const unusable: Record<string, string> = {};
+  for (const [id, raw] of Object.entries(declared)) {
+    const { entry, missing } = expandHeaders(envOverrides(id, raw, env), env);
+    providers[id] = entry;
+    if (missing.length > 0) unusable[id] = `needs env ${missing.join(", ")} for its headers`;
+  }
+  const envChoice = env[PREFER_ENV]?.split(",").map((s) => s.trim()).filter(Boolean);
+  const order = selectionOrder(Object.keys(providers), opts.profile?.tts?.prefer ?? [], envChoice?.length ? envChoice : undefined);
+  return { order, providers, unusable };
+}
