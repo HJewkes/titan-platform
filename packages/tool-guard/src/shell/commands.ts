@@ -5,13 +5,14 @@ import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
 import { catOperands, stdinScript } from "./sub-output.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
-import { inlineScript, SHELLS, type Inline } from "./inline-script.js";
 import { caseNamed } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
 import { aliasCommands, type AliasTable } from "./alias-words.js";
 import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { cutReading } from "./piped-nul.js";
+import { inlineScript, SHELLS } from "./inline-script.js";
+import type { Inline } from "./inline-script.js";
 import { addRedirect, groupStdin } from "./group-stdin.js";
 import { xargsCommands } from "./xargs-runs.js";
 import { runReadings } from "./xargs-readings.js";
@@ -123,14 +124,37 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   const out: SimpleCommand[] = [];
   const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
   const foldCase = options.foldCase === true;
-  const unsure = { left: MAX_UNSURE_WORDS, splicedLeft: SPLICED_WEIGHT * src.length, decides: decider(options.guarded), stopPastCap: options.stopPastCap === true };
+  const unsure = lineBudget(src, options);
   const w: Walk = {
-    scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null },
-    negated: false, foldCase, walked: null, aliases: options.aliases ?? null, unsure, marks: newMarks(), onScript: options.onScript ?? null,
+    scope,
+    stack: [],
+    out,
+    home: options.home ?? null,
+    depth: 0,
+    stdin: null,
+    prev: null,
+    chain: { start: null },
+    negated: false,
+    foldCase,
+    walked: null,
+    aliases: options.aliases ?? null,
+    unsure,
+    marks: newMarks(),
+    onScript: options.onScript ?? null,
   };
   walk(tokenizeLine(src), observed(w));
   settle(w.marks);
   return out;
+}
+
+/** The line's budget of `unsure` reading words and spliced text, shared by every walk of it. */
+function lineBudget(src: string, options: ExtractOptions): UnsureBudget {
+  return {
+    left: MAX_UNSURE_WORDS,
+    splicedLeft: SPLICED_WEIGHT * src.length,
+    decides: decider(options.guarded),
+    stopPastCap: options.stopPastCap === true,
+  };
 }
 
 /** A line bash 5 and bash 3.2 read differently is refused outright, whatever it names; a plain ParseError is not. */

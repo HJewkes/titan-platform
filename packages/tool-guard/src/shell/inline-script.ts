@@ -1,19 +1,19 @@
 import { caseScripts } from "./case-script.js";
+import type { RedirectToken, WordToken } from "./lexer.js";
 import { pipedShellTexts } from "./piped-nul.js";
 import { SPLICING_SHELLS, splicedWords, stdinScript } from "./sub-output.js";
-import type { RedirectToken, WordToken } from "./tokens.js";
 import { chargeSpliced } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
+import type { Wrapping } from "./commands.js";
 import type { Unwrapped } from "./unwrap.js";
 
-/** Shells whose `-c` string, heredoc, here-string or piped input the walk reads as script. */
 export const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
 const SHELL_VALUE_OPTS = new Set(["-o", "+o", "-O", "+O", "--rcfile", "--init-file"]);
 
 /** Shell text a command runs, and how it reaches the commands in it. */
 export interface Inline {
   texts: string[];
-  wrap: "sh-c" | "eval" | "heredoc-shell" | "piped-shell";
+  wrap: Wrapping;
 }
 
 /**
@@ -48,14 +48,14 @@ function splicedReadings(words: WordToken[], budget: UnsureBudget): string[] {
 /** Whether a shell's options include `-c`, and its first operand: the `-c` string, or else a script file. */
 export function shellOperands(args: WordToken[]): { hasC: boolean; positional: WordToken | null } {
   let hasC = false;
-  for (let i = 0, word = args[0]; word; word = args[++i]) {
-    const v = word.value;
+  for (let i = 0; i < args.length; i++) {
+    const v = (args[i] as WordToken).value;
     if (v === "-") break;
     if (v === "--") return { hasC, positional: args[i + 1] ?? null };
     if (SHELL_VALUE_OPTS.has(v)) i++;
     else if (v.startsWith("--")) continue;
     else if (/^[-+][A-Za-z]+$/.test(v)) hasC ||= v.startsWith("-") && v.includes("c");
-    else return { hasC, positional: word };
+    else return { hasC, positional: args[i] as WordToken };
   }
   return { hasC, positional: null };
 }

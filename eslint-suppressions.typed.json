@@ -2414,6 +2414,11 @@
       "count": 1
     }
   },
+  "packages/tool-guard/src/shell/inline-script.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 2
+    }
+  },
   "packages/tool-guard/src/shell/lexer.test.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1

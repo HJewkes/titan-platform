@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planFixProof, type FixProofPlan, type PlanInput } from "./plan.js";
+import { planFixProof, testOnlyOf, type FixProofPlan, type PlanInput } from "./plan.js";
 
 function plan(input: PlanInput): FixProofPlan {
   const result = planFixProof(input);
@@ -117,5 +117,80 @@ describe("planFixProof", () => {
 
   it("plans a test with a dash inside its path", () => {
     expect(plan({ nameStatus: diff("A\tsrc/-ok.test.ts") }).tests).toEqual(["src/-ok.test.ts"]);
+  });
+});
+
+describe("source and mutation buckets", () => {
+  const repoConfig = JSON.stringify({
+    tests: ["{packages,products,apps}/*/src/**/*.test.{ts,tsx}", "apps/*/{scripts,server}/**/*.test.ts", "scripts/**/*.test.mjs"],
+    carry: ["**/fixtures/**", "**/__fixtures__/**", "**/test-support/**", "**/testdata/**", "**/*.test-helpers.ts", "**/*.fixture.ts"],
+  });
+  const planned = (...lines: string[]) => plan({ nameStatus: diff(...lines), baseConfig: repoConfig });
+
+  it("reads the Z7 diff, a changeset and one test, as test-only", () => {
+    const result = planned("A\t.changeset/tp-2677-restart-contract.md", "A\tproducts/factory/src/restart-contract.test.ts");
+
+    expect(result.source).toEqual([]);
+    expect(testOnlyOf(result)).toBe(true);
+  });
+
+  it("reads the Z8 diff, with test-support files, as test-only", () => {
+    const result = planned(
+      "A\t.changeset/z8-serve-restart-resume.md",
+      "A\tproducts/factory/src/serve-restart-resume.test.ts",
+      "A\tproducts/factory/src/test-support/serve-child-main.ts",
+      "A\tproducts/factory/src/test-support/serve-child.ts",
+    );
+
+    expect(result.source).toEqual([]);
+    expect(result.carried).toEqual(["products/factory/src/test-support/serve-child-main.ts", "products/factory/src/test-support/serve-child.ts"]);
+    expect(testOnlyOf(result)).toBe(true);
+  });
+
+  it("puts changed and deleted non-test files in source", () => {
+    const result = planned("M\tproducts/factory/src/serve.ts", "D\tpackages/store/src/old.ts", "A\tproducts/factory/src/serve.test.ts");
+
+    expect(result.source).toEqual(["packages/store/src/old.ts", "products/factory/src/serve.ts"]);
+    expect(testOnlyOf(result)).toBe(false);
+  });
+
+  it("puts the old path of a rename into a test in source", () => {
+    const result = planned("R100\tproducts/factory/src/x.ts\tproducts/factory/src/x.test.ts");
+
+    expect(result.source).toEqual(["products/factory/src/x.ts"]);
+  });
+
+  it("puts the new path of a rename out of the tests in source", () => {
+    expect(planned("R090\tproducts/factory/src/x.test.ts\tproducts/factory/src/x.ts").source).toEqual(["products/factory/src/x.ts"]);
+  });
+
+  it("leaves the untouched old path of a copy out of source", () => {
+    const result = planned("C100\tproducts/factory/src/x.ts\tproducts/factory/src/test-support/x.ts");
+
+    expect(result.source).toEqual([]);
+  });
+
+  it("collects added and changed mutation specs, not deleted ones, and keeps them out of carried and source", () => {
+    const result = planned(
+      "A\tproducts/factory/src/serve.test.mutations.json",
+      "M\tproducts/factory/src/fixtures/a.mutations.json",
+      "D\tproducts/factory/src/gone.test.mutations.json",
+    );
+
+    expect(result.mutations).toEqual(["products/factory/src/fixtures/a.mutations.json", "products/factory/src/serve.test.mutations.json"]);
+    expect(result.carried).toEqual([]);
+    expect(result.source).toEqual([]);
+  });
+
+  it("counts a harness path as source even where a carry glob matches it", () => {
+    const result = planned("A\t.github/workflows/fixtures/x.yml", "M\tscripts/fix-proof-run.sh", "M\t.github/fix-proof.json");
+
+    expect(result.source).toEqual([".github/fix-proof.json", ".github/workflows/fixtures/x.yml", "scripts/fix-proof-run.sh"]);
+  });
+
+  it("counts docs, configs and nested changeset paths as source", () => {
+    const result = planned("M\tREADME.md", "M\tvitest.config.ts", "A\t.changeset/deep/x.md", "A\t.changeset/config.json");
+
+    expect(result.source).toEqual([".changeset/config.json", ".changeset/deep/x.md", "README.md", "vitest.config.ts"]);
   });
 });
