@@ -66,7 +66,13 @@ describe("alias reading of the command word", () => {
   });
 
   it("keeps the as-written cp beside its nocorrect expansion", () => {
-    expect(lines("cp ~/.npmrc /tmp/x")).toEqual(["cp ~/.npmrc /tmp/x", "nocorrect cp ~/.npmrc /tmp/x"]);
+    expect(lines("cp ~/.npmrc /tmp/x")).toEqual(["cp ~/.npmrc /tmp/x", "cp ~/.npmrc /tmp/x"]);
+  });
+
+  it("reads a nocorrect expansion as the written-out nocorrect command", () => {
+    const [, expansion] = lines("cp ~/.npmrc /tmp/x");
+
+    expect(expansion).toEqual(lines("nocorrect cp ~/.npmrc /tmp/x", null)[0]);
   });
 
   it.each([
