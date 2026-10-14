@@ -45,7 +45,8 @@ function tarExtracts(args: WordToken[]): boolean {
 /** A run-time word that may be an option may be `-x`; a value or a word after `--` is no option. */
 function tarOptionsExtract(args: WordToken[]): boolean {
   for (let i = 0; i < args.length; i++) {
-    const word = args[i] as WordToken;
+    const word = args[i];
+    if (word === undefined) break;
     if (word.dynamic) {
       if (mayBeOption(word)) return true;
     } else if (word.value === "--") return false;
