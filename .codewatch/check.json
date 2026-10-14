@@ -611,10 +611,31 @@
       "to": "npm:@titan-design/beats"
     },
     {
-      "id": "video-mechanism-no-react",
+      "id": "video-mechanism-no-react:frame-capture",
       "type": "forbid-import",
-      "$comment": "The video mechanism packages (frame-capture, render-qa, graph-layout, speech-*) run without React: pixels live in titan-design, and these hold engines with no pixels.",
-      "from": "packages/{frame-capture,render-qa,graph-layout,speech-*}/src/**",
+      "$comment": "The video mechanism packages (frame-capture, render-qa, graph-layout, speech-*) run without React: pixels live in titan-design, and these hold engines with no pixels. One rule per package because codewatch globs have no braces; a glob that matches nothing, as render-qa does until it exists, is accepted.",
+      "from": "packages/frame-capture/src/**",
+      "to": "npm:react*"
+    },
+    {
+      "id": "video-mechanism-no-react:render-qa",
+      "type": "forbid-import",
+      "$comment": "The video mechanism packages (frame-capture, render-qa, graph-layout, speech-*) run without React: pixels live in titan-design, and these hold engines with no pixels. One rule per package because codewatch globs have no braces; a glob that matches nothing, as render-qa does until it exists, is accepted.",
+      "from": "packages/render-qa/src/**",
+      "to": "npm:react*"
+    },
+    {
+      "id": "video-mechanism-no-react:graph-layout",
+      "type": "forbid-import",
+      "$comment": "The video mechanism packages (frame-capture, render-qa, graph-layout, speech-*) run without React: pixels live in titan-design, and these hold engines with no pixels. One rule per package because codewatch globs have no braces; a glob that matches nothing, as render-qa does until it exists, is accepted.",
+      "from": "packages/graph-layout/src/**",
+      "to": "npm:react*"
+    },
+    {
+      "id": "video-mechanism-no-react:speech-*",
+      "type": "forbid-import",
+      "$comment": "The video mechanism packages (frame-capture, render-qa, graph-layout, speech-*) run without React: pixels live in titan-design, and these hold engines with no pixels. One rule per package because codewatch globs have no braces; a glob that matches nothing, as render-qa does until it exists, is accepted.",
+      "from": "packages/speech-*/src/**",
       "to": "npm:react*"
     },
     {
