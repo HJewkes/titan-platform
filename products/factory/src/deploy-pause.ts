@@ -24,7 +24,7 @@ const ManualHoldSchema = z.object({
   reason: z.string().min(1),
 });
 
-export type ManualHold = z.infer<typeof ManualHoldSchema>;
+type ManualHold = z.infer<typeof ManualHoldSchema>;
 
 /** `pause` is undefined when the file exists but does not parse; that still pauses. */
 type PauseState = { paused: false } | { paused: true; pause: DeployPause | undefined };
@@ -32,7 +32,7 @@ type PauseState = { paused: false } | { paused: true; pause: DeployPause | undef
 /** `hold` is undefined when the file exists but does not parse; that still holds. */
 type ManualState = { set: false } | { set: true; hold: ManualHold | undefined };
 
-export interface HoldsState {
+interface HoldsState {
   held: boolean;
   failure: PauseState;
   manual: ManualState;
@@ -95,7 +95,7 @@ export function writeDeployPause(ports: { writeFile: (path: string, text: string
   }
 }
 
-export function describePause(state: PauseState): string {
+function describePause(state: PauseState): string {
   if (!state.paused) return "deploys are not paused";
   const { pause } = state;
   if (pause === undefined) return `deploys are paused: ${DEPLOY_PAUSE} exists but does not parse`;
