@@ -89,6 +89,11 @@ type and come back.
 - `compileMapTimeline(beats, resolveCue)` returns one segment per map beat, in seconds from
   the video start, with sorted events. `cueResolverFromWords` builds the resolver from
   per-beat word timings and throws on a cue the beat never speaks.
+- `placeTimelinePins(timeline, beats, resolveCue, layout)` adds `pins` to each segment: every
+  pin's time, anchor, text and placed `box`, from graph-layout's `placePills` against the
+  scene `layout.sceneFor(beatId)` returns, above `CAPTION_KEEP_OUT`. The painter draws a pill
+  at its box. A pin with no clear spot, or in a beat with no scene, gets `box: null` and the
+  painter falls back to an offset from its anchor.
 
 A beat that re-enters the map resumes the last map beat's camera, revealed boxes, focus and
 active set, and its own fields override them. Level checks and the new-box count run against

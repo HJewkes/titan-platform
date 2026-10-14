@@ -776,9 +776,10 @@ Key exports:
 - `route`: `routeOf`
 - `route-path`: `routeToPathD`
 - `label-boxes`: `labelBoxSizing`
+- `place-pills`: `placePills`
 - `package-of`: `packageOf`
-- `layout-options`: `COMPOUND_LAYOUT_OPTIONS`, `ELK_LAYOUT_OPTIONS`
-- +12 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/graph-layout)
+- `layout-options`: `COMPOUND_LAYOUT_OPTIONS`
+- +21 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/graph-layout)
 
 <a id="cap-memory"></a>
 
@@ -1081,7 +1082,7 @@ Key exports:
 - `attribute`: `attributeFindings`
 - `map-state`: `MapBeatSchema`, `MapLayoutSchema`, `MapStateSchema`, `VisualSchema`
 - `cues`: `cueResolverFromWords`
-- +190 more in `products/explainer/src/index.ts`
+- +195 more in `products/explainer/src/index.ts`
 
 <a id="cap-factory"></a>
 
