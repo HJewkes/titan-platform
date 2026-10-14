@@ -36,6 +36,14 @@ describe("write.config", () => {
     ["Write", "/home/you/.config/titan-egress/private-terms", "home:egress-terms"],
     ["Edit", "/etc/claude-code/managed-settings.json", "managed-settings:linux"],
     ["NotebookEdit", ".claude/settings.json", "any:.claude/settings"],
+    ["Write", "/home/you/.curlrc", "any:.curlrc"],
+    ["Edit", "/home/you/.config/curlrc", "any:curlrc"],
+    ["MultiEdit", "/opt/curl-home/.curlrc", "any:.curlrc"],
+    ["Write", "/home/you/.wgetrc", "any:.wgetrc"],
+    ["Edit", "/etc/wgetrc", "any:wgetrc"],
+    ["NotebookEdit", "/home/you/.config/wget/wgetrc", "any:wgetrc"],
+    ["Write", "/home/you/.config/httpie/config.json", "any:httpie/config.json"],
+    ["Edit", "/home/you/.httpie/config.json", "any:.httpie/config.json"],
   ])("%s of %s", (toolName, path, pattern) => {
     expect(write(toolName, path)).toEqual([expect.objectContaining({ action: "authority-config", spelling: "write.config", subject: { pattern } })]);
   });
@@ -51,6 +59,9 @@ describe("write.config", () => {
     ["a repository CLAUDE.md", "/home/you/projects/app/CLAUDE.md"],
     ["a skill", "/home/you/.claude/skills/review/SKILL.md"],
     ["an ordinary source file", "/home/you/projects/app/src/settings.json"],
+    ["a document named after curlrc", "/home/you/projects/app/curlrc.md"],
+    ["a curlrc backup", "/home/you/.curlrc.bak"],
+    ["a source file under an httpie directory", "/home/you/projects/app/src/httpie/config.ts"],
   ])("classifies nothing for a write to %s", (_what, path) => {
     expect(write("Write", path)).toEqual([]);
   });

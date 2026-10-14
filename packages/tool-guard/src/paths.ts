@@ -86,6 +86,14 @@ const CONFIG: GuardedList = {
       pattern: "~/.local/state/titan-tool-guard/**",
       samples: ["~/.local/state/titan-tool-guard/guard.log"],
     },
+    // An http client's rc file sets a later request's method and URL, out of sight of that call (TP-2850).
+    { id: "any:.curlrc", pattern: "**/.curlrc", samples: ["~/.curlrc"] },
+    { id: "any:curlrc", pattern: "**/curlrc", samples: ["~/.config/curlrc"] },
+    { id: "any:_curlrc", pattern: "**/_curlrc", samples: ["~/_curlrc"] },
+    { id: "any:.wgetrc", pattern: "**/.wgetrc", samples: ["~/.wgetrc"] },
+    { id: "any:wgetrc", pattern: "**/wgetrc", samples: ["/etc/wgetrc", "~/.config/wget/wgetrc"] },
+    { id: "any:httpie/config.json", pattern: "**/httpie/config.json", samples: ["~/.config/httpie/config.json"] },
+    { id: "any:.httpie/config.json", pattern: "**/.httpie/config.json", samples: ["~/.httpie/config.json"] },
   ],
   basenames: [],
 };
