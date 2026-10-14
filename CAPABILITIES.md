@@ -408,7 +408,7 @@ Key exports:
 - `hook`: `handle`
 - `context`: `nodeContext`
 - `shell`: `ParseError`, `tokenize`
-- +47 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/tool-guard)
+- +48 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/tool-guard)
 
 ## Tier 1 — engines
 
