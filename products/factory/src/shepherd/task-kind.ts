@@ -11,7 +11,7 @@ export const FIX_PROOF_KINDS: ReadonlySet<TaskKind> = new Set(["correctness", "s
  * Until the gate reads test-only diffs and mutants, a run cannot move into test-only at all. A test-only run is gated exactly like
  * correctness meanwhile, so a fresh `--kind test-only` registration loosens nothing.
  */
-export const TEST_ONLY_GATED = false;
+const TEST_ONLY_GATED: boolean = false;
 
 /**
  * Why a move from `from` into test-only is refused once the kind is live. Only a correctness run needs diff facts: test-only is
