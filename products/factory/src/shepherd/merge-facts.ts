@@ -1,8 +1,6 @@
-import { compileGlobs } from "@titan-design/fix-proof";
 import { DEFAULT_TABLE, evaluate, type AgentIdentity, type CarryFact, type CheckRunFact, type MergeFacts } from "@titan-design/authority";
 import { GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug } from "@titan-design/github";
 import type { CiPolicy, SourceTextLocator } from "@titan-design/session-read";
-import { oneLine } from "../gate-brief.js";
 import { readRequiredChecks, statusOf } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import { errorClass } from "./error-class.js";
@@ -12,6 +10,7 @@ import { pinnedPaths } from "./pr-changed-paths.js";
 import { REVIEW_CHECK_NAME } from "./publish-review.js";
 import type { ShepherdStoreRef } from "./store.js";
 import { skillPathsIn } from "./skill-paths.js";
+import { baselineCheckGreen, changedBaselines, shownPaths, visualClearance, visualMatches, type VisualBaselines, type VisualPolicy } from "./visual-gate.js";
 import { remergeFact, type CarryRule, type RemergeResult } from "./remerge-carry.js";
 import type { CarryResult } from "./tree-carry.js";
 
@@ -72,12 +71,6 @@ export interface MergeEvidenceInput extends GrantWithheldField {
   ciPolicy?: CiPolicy;
   /** The head's unverified fix-proof standing and read reason; recorded, never gated on (decision 303). */
   proofUnverified?: string;
-}
-
-/** A check that diffs rendered output against committed baselines: a rendered change must change a file under `paths`. */
-export interface VisualBaselines {
-  check: string;
-  paths: string[];
 }
 
 export interface EvidenceCheckRun {
@@ -177,11 +170,6 @@ export function decideAutoMerge(headSha: string, evidence: DecidableEvidence | u
   return withUnreadFacts(decideOnFacts(headSha, evidence, { visualPaths, visualBaselines }), evidence);
 }
 
-interface VisualPolicy {
-  visualPaths: readonly string[] | undefined;
-  visualBaselines: VisualBaselines | undefined;
-}
-
 function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined, visual: VisualPolicy): GateDecision {
   if (!evidence) return { outcome: "gate", rule: guardRule("no-facts"), reason: `no merge facts were collected at ${headSha}` };
   if (evidence.head !== headSha || evidence.merge.head !== headSha) {
@@ -195,18 +183,10 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
   if (evidence.mergeableState === "unknown") return { outcome: "gate", rule: guardRule(UNSETTLED_ROW), reason: `mergeable_state unknown after ${SETTLE_MAX_READS} reads` };
   const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject: { repo: evidence.record.repo, pr: String(evidence.record.pr) }, facts: { merge: evidence.merge } });
   if (decision.verdict === "allow" && decision.ruleId !== null && AUTO_MERGE_RULES.includes(decision.ruleId)) {
-    return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}${visualClearance(evidence, visual)}` };
+    return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}${visualClearance(evidence.merge.changedPaths, evidence.head, visual)}` };
   }
   const reason = decision.verdict === "allow" ? `${decision.ruleId} allows, but only ${AUTO_MERGE_RULES.join(" and ")} merge without the owner` : decision.reason;
   return { outcome: "gate", rule: authorityRule(decision.ruleId), reason: withGrantWithheld(reason, evidence) };
-}
-
-const SHOWN_VISUAL_PATHS = 10;
-const MAX_SHOWN_PATH = 200;
-
-/** Each path is flattened, as a PR author names it and a gate reason lands on one line of the owner's prompt. */
-export function shownPaths(paths: readonly string[]): string {
-  return paths.slice(0, SHOWN_VISUAL_PATHS).map((path) => oneLine(path, MAX_SHOWN_PATH)).join(", ") + (paths.length > SHOWN_VISUAL_PATHS ? ` and ${paths.length - SHOWN_VISUAL_PATHS} more` : "");
 }
 
 /**
@@ -223,27 +203,18 @@ function changedFilesGate(evidence: DecidableEvidence, { visualPaths, visualBase
   const visual = visualMatches(evidence.merge.changedPaths, visualPaths);
   if (visual.length === 0) return undefined;
   const globGate: GateDecision = { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shownPaths(visual)}` };
-  return visualBaselines === undefined ? globGate : baselineGate(evidence, visualBaselines, globGate);
+  return visualBaselines === undefined ? globGate : baselineGate(evidence.merge, visualBaselines, globGate);
 }
 
 /**
  * A changed baseline is a rendered diff the owner reviews; none, with the baseline check green at the head, clears the glob
  * gate. A list of only blank globs, or a blank check name, can show no rendered diff, so it keeps the glob gate.
  */
-function baselineGate(evidence: DecidableEvidence, baselines: VisualBaselines, globGate: GateDecision): GateDecision | undefined {
-  const globs = baselines.paths.filter((path) => path.trim() !== "");
-  if (globs.length === 0 || baselines.check.trim() === "") return globGate;
-  const changed = baselineChanges(evidence.merge.changedPaths, globs);
+function baselineGate(merge: MergeFacts, baselines: VisualBaselines, globGate: GateDecision): GateDecision | undefined {
+  const changed = changedBaselines(merge.changedPaths, baselines);
+  if (changed === undefined) return globGate;
   if (changed.length > 0) return { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shownPaths(changed)}` };
-  return baselineCheckGreen(evidence.merge, baselines.check) ? undefined : globGate;
-}
-
-/** The note an allow carries when visual files were cleared by the baseline check, so the evidence comment records why. */
-function visualClearance(evidence: DecidableEvidence, { visualPaths, visualBaselines }: VisualPolicy): string {
-  if (visualPaths === undefined || visualBaselines === undefined) return "";
-  const visual = visualMatches(evidence.merge.changedPaths, visualPaths);
-  if (visual.length === 0) return "";
-  return `; visual files ${shownPaths(visual)} changed no baseline and ${oneLine(visualBaselines.check, MAX_SHOWN_PATH)} passed at ${evidence.head}`;
+  return baselineCheckGreen(merge, baselines.check, ALLOWED_CHECK_APPS) ? undefined : globGate;
 }
 
 /**
@@ -259,43 +230,6 @@ function ciPolicyGate(evidence: DecidableEvidence): GateDecision | undefined {
   const github = evidence.merge.changedPaths.filter(isGithubPath);
   if (github.length === 0) return undefined;
   return { outcome: "gate", rule: guardRule("github-path"), reason: `${GITHUB_PATH_REASON_PREFIX}${shownPaths(github)}` };
-}
-
-/** Tests, markdown and type declarations under a visual glob change no rendered output (decision 303, Q2). */
-const NON_RENDERING = /(\.(test|spec)\.[^/]*|\.md|\.d\.ts)$/;
-
-function cannotRender(path: string): boolean {
-  const name = path.toLowerCase().split("/").pop() ?? "";
-  return NON_RENDERING.test(name);
-}
-
-/**
- * Case is folded on both sides, as a case-insensitive checkout writes `Packages/UI/x` into `packages/ui/`. A glob list
- * that cannot compile matches every path, so a bad policy gates instead of throwing or allowing.
- */
-function visualMatches(paths: readonly string[], visualPaths: readonly string[]): string[] {
-  const isVisual = caseFoldedMatcher(visualPaths);
-  return paths.filter((path) => !cannotRender(path) && isVisual(path));
-}
-
-function caseFoldedMatcher(globs: readonly string[]): (path: string) => boolean {
-  try {
-    const matches = compileGlobs(globs.map((glob) => glob.toLowerCase()));
-    return (path) => matches(path.toLowerCase());
-  } catch {
-    return () => true;
-  }
-}
-
-/** Every status counts, as a removed or added baseline is a rendered change too; no `cannotRender` filter, as a snapshot directory may be named `.spec.`. */
-function baselineChanges(paths: readonly string[], baselinePaths: readonly string[]): string[] {
-  return paths.filter(caseFoldedMatcher(baselinePaths));
-}
-
-/** Every run of the check from GitHub Actions at the head concluded `success`, and there is at least one; pending reads null. */
-function baselineCheckGreen(merge: MergeFacts, check: string): boolean {
-  const runs = merge.checkRuns.filter((run) => run.name === check && ALLOWED_CHECK_APPS.includes(run.appId) && run.headSha === merge.head);
-  return runs.length > 0 && runs.every((run) => run.conclusion === "success");
 }
 
 /** A run with no app id is counted from no app, so it cannot satisfy a required context. */
