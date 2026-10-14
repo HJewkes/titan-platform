@@ -38,3 +38,8 @@ export type { IllegalEdge } from "./claim-phase.js";
 
 // JSON parse and export.
 export { LedgerMalformedError, exportLedgerJson, parseLedgerJson, writeLedgerExport } from "./json.js";
+
+// Ledger store: memory and sqlite adapters.
+export { StaleRevisionError, importLedgerJson, memoryLedgerStore, normalizeLedger } from "./store.js";
+export type { LedgerRead, LedgerStore } from "./store.js";
+export { SqliteLedgerStore, dispatchLedgerDdl, dispatchLedgerMigration } from "./sqlite-store.js";
