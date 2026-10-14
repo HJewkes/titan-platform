@@ -36,7 +36,7 @@ export async function whileBrokerDown<T>(timing: PollTiming, signal: AbortSignal
  * The roster read stayed timed out for the whole session-start window, so no reviewer could be chosen and none was started.
  * The message is built from the class and the budget alone, since it becomes a stored step reason.
  */
-export class ReviewerRosterUnread extends Error {
+class ReviewerRosterUnread extends Error {
   override readonly name = "ReviewerRosterUnread";
 
   constructor(budgetMs: number) {
