@@ -70,7 +70,16 @@ interface TtsRequirements {
     sampleRate?: number;
 }
 
-type TtsErrorCode = "unavailable" | "unsupported" | "timeout" | "failed";
+type TtsErrorCode = "unavailable" | "unsupported" | "timeout" | "failed" | "misconfigured";
+/** A provider that selection passed over, and why. */
+interface SkippedProvider {
+    id: string;
+    reason: string;
+    /** Set when the provider was skipped for lacking capabilities. */
+    missing?: readonly string[];
+    /** Set when the provider's own config is wrong, as opposed to its engine being absent. */
+    misconfigured?: true;
+}
 /** Every error this package throws. Branch on `code`, not on the message. */
 declare class TtsError extends Error {
     readonly code: TtsErrorCode;
@@ -93,6 +102,14 @@ declare class TtsUnsupportedError extends TtsError {
 declare class TtsTimeoutError extends TtsError {
     readonly timeoutMs: number;
     constructor(providerId: string, timeoutMs: number);
+}
+/**
+ * Selection reached a provider whose config is wrong, such as a secret that resolves to nothing, and the profile
+ * does not set `tts.fallback: true`. Failing closed keeps a broken preferred engine from being silently replaced.
+ */
+declare class TtsConfigError extends TtsError {
+    readonly skipped: readonly SkippedProvider[];
+    constructor(providerId: string, message: string, skipped: readonly SkippedProvider[]);
 }
 /** The engine ran and answered, but with an error or with output that breaks the contract. */
 declare class TtsFailedError extends TtsError {
@@ -144,10 +161,14 @@ interface CommandTtsOptions {
     argv: readonly string[];
     capabilities: TtsCapabilities;
     output?: CommandOutput;
-    /** Merged over the parent's environment. */
+    /** Added to the child's minimal environment (see `INHERITED_ENV`); nothing else of the parent's is passed. */
     env?: Readonly<Record<string, string>>;
     cwd?: string;
     timeoutMs?: number;
+    /** Past this many bytes of stdout, or of the named WAV file, the command is killed. Default 64 MB. */
+    maxOutputBytes?: number;
+    /** Values never quoted in an error, such as tokens passed in `env`. */
+    secrets?: readonly string[];
     /** Exit codes that mean "engine not reachable" rather than "engine failed": EX_UNAVAILABLE, shell not-found, ssh. */
     unavailableExitCodes?: readonly number[];
 }
@@ -160,9 +181,13 @@ interface CommandRequest {
     alphabet?: PhonemeAlphabet;
     speed?: number;
     language?: string;
-    /** In `json` mode, a fresh path the command may write its WAV to and name as `wav`. */
+    /** In `json` mode, a fresh directory for this call. A `wav` in the answer is a path relative to it. */
+    outDir?: string;
+    /** In `json` mode, a suggested file inside `outDir`. */
     out?: string;
 }
+/** The parent variables a child sees. Anything else, such as an API key, must be listed in `env`. */
+declare const INHERITED_ENV: readonly ["PATH", "HOME", "LANG", "TMPDIR"];
 /** Any external program that speaks the stdio contract in the README: a local engine, or one behind ssh. */
 declare function commandTts(opts: CommandTtsOptions): TtsProvider;
 
@@ -178,6 +203,7 @@ type HttpResponseMapping = {
 };
 interface HttpTtsOptions {
     id: string;
+    /** `https:`, or `http:` to a loopback host. Any other `http:` URL needs `allowInsecureHttp`. */
     url: string;
     method?: "POST" | "PUT";
     /** Sent as given. Resolve secrets before this point; `resolveTtsConfig` expands `${env:NAME}`. */
@@ -189,9 +215,18 @@ interface HttpTtsOptions {
     };
     response: HttpResponseMapping;
     timeoutMs?: number;
+    /** Past this many response bytes the read is cancelled. Default 64 MB. */
+    maxOutputBytes?: number;
+    /** Sends headers and text in the clear to a host that is not loopback. Off by default. */
+    allowInsecureHttp?: boolean;
+    /** Values never quoted in an error. Header values are always added. */
+    secrets?: readonly string[];
 }
 /** Any HTTP speech endpoint, self-hosted or hosted, described by a request template and a response mapping. */
 declare function httpTts(opts: HttpTtsOptions): TtsProvider;
+
+/** The most engine output read into memory per call, unless a provider sets `maxOutputBytes`. */
+declare const DEFAULT_MAX_OUTPUT_BYTES: number;
 
 /**
  * The values a request template may name: `{{text}}`, `{{voice}}`, `{{speed}}`, `{{language}}`, `{{alphabet}}`,
@@ -212,14 +247,17 @@ interface TtsProfile {
         /** Provider ids to try first, in order. Providers not named follow in declaration order. */
         prefer?: readonly string[];
         providers?: Readonly<Record<string, TtsProviderConfig>>;
+        /** Lets selection move past a misconfigured provider. Off by default: a broken preferred engine fails closed. */
+        fallback?: boolean;
     };
 }
 interface ResolvedTtsConfig {
     /** Every provider id, in the order selection tries them. */
     order: readonly string[];
     providers: Readonly<Record<string, TtsProviderConfig>>;
-    /** Providers that cannot be used as configured, with the reason, such as a missing secret. */
+    /** Providers that cannot be used as configured, with the reason, such as a secret that resolves to nothing. */
     unusable: Readonly<Record<string, string>>;
+    fallback: boolean;
 }
 type Env = Readonly<Record<string, string | undefined>>;
 declare const PROFILE_ENV = "TITAN_SPEECH_PROFILE";
@@ -241,12 +279,6 @@ type TtsProviderFactory = (id: string, config: TtsProviderConfig) => TtsProvider
 /** Only `voices` and `sampleRate` are required; every other capability defaults to absent. */
 declare function parseCapabilities(id: string, raw: unknown): TtsCapabilities;
 
-interface SkippedProvider {
-    id: string;
-    reason: string;
-    /** Set when the provider was skipped for lacking capabilities, rather than for being unusable. */
-    missing?: readonly string[];
-}
 interface TtsSelection {
     provider: TtsProvider;
     /** Providers tried before this one, and why each was passed over. Log it; it explains a fallback. */
@@ -273,4 +305,4 @@ interface SelectTtsOptions {
 /** Loads the profile, applies env overrides and selects: the one call a product needs. */
 declare function selectTts(opts?: SelectTtsOptions): Promise<TtsSelection>;
 
-export { type Audio, type CommandOutput, type CommandRequest, type CommandTtsOptions, FAKE_TTS_CAPABILITIES, type FakeTtsCall, type FakeTtsOptions, type FakeTtsProvider, type HttpResponseMapping, type HttpTtsOptions, PREFER_ENV, PROFILE_ENV, type PhonemeAlphabet, type ResolvedTtsConfig, type SelectTtsOptions, type SkippedProvider, type Synthesis, type SynthesizeOptions, type TtsCapabilities, TtsError, type TtsErrorCode, TtsFailedError, type TtsInput, type TtsProfile, type TtsProvider, type TtsProviderConfig, type TtsProviderFactory, type TtsRegistry, type TtsRequirements, type TtsSelection, TtsTimeoutError, type TtsToken, TtsUnavailableError, TtsUnsupportedError, type TtsVoice, type WordTiming, assertSupported, commandTts, createTtsRegistry, decodeWav, defaultTtsRegistry, encodeWav, fakeTts, fillTemplate, httpTts, languageMatches, loadTtsProfile, missingCapabilities, parseCapabilities, parseTtsProfile, providerEnvName, requirementsOf, resolveTtsConfig, selectTts };
+export { type Audio, type CommandOutput, type CommandRequest, type CommandTtsOptions, DEFAULT_MAX_OUTPUT_BYTES, FAKE_TTS_CAPABILITIES, type FakeTtsCall, type FakeTtsOptions, type FakeTtsProvider, type HttpResponseMapping, type HttpTtsOptions, INHERITED_ENV, PREFER_ENV, PROFILE_ENV, type PhonemeAlphabet, type ResolvedTtsConfig, type SelectTtsOptions, type SkippedProvider, type Synthesis, type SynthesizeOptions, type TtsCapabilities, TtsConfigError, TtsError, type TtsErrorCode, TtsFailedError, type TtsInput, type TtsProfile, type TtsProvider, type TtsProviderConfig, type TtsProviderFactory, type TtsRegistry, type TtsRequirements, type TtsSelection, TtsTimeoutError, type TtsToken, TtsUnavailableError, TtsUnsupportedError, type TtsVoice, type WordTiming, assertSupported, commandTts, createTtsRegistry, decodeWav, defaultTtsRegistry, encodeWav, fakeTts, fillTemplate, httpTts, languageMatches, loadTtsProfile, missingCapabilities, parseCapabilities, parseTtsProfile, providerEnvName, requirementsOf, resolveTtsConfig, selectTts };

@@ -2,13 +2,13 @@
 export const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 
 /** The most stderr or error body quoted in an error message. */
-export const ERROR_TEXT_CHARS = 2_000;
+const ERROR_TEXT_CHARS = 2_000;
 
 /** Short values are left alone: redacting "en" or "1" would mangle every message. */
 const MIN_SECRET_CHARS = 4;
 
 /** Replaces every occurrence of each secret, longest first so one secret inside another is still covered. */
-export function redact(text: string, secrets: readonly string[] = []): string {
+function redact(text: string, secrets: readonly string[] = []): string {
   return [...secrets]
     .filter((s) => s.length >= MIN_SECRET_CHARS)
     .sort((a, b) => b.length - a.length)

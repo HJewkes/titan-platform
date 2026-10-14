@@ -61,6 +61,12 @@ stdio contract for commands, and the HTTP mapping.
 - A speed of exactly 1 needs no `speedControl`. Any other speed does.
 - A command times out by killing its whole process group, so wrap engines in a program that
   exits when killed, not a daemon that detaches.
+- A command sees only `PATH`, `HOME`, `LANG`, `TMPDIR` and its configured `env`. An ssh argv
+  that needs an agent must list `SSH_AUTH_SOCK` there.
+- A misconfigured provider stops selection with `TtsConfigError`; it does not fall through to
+  the next one unless the profile sets `tts.fallback: true`.
+- `httpTts` refuses redirects and refuses plain http to non-loopback hosts unless
+  `allowInsecureHttp` is set. Output past `maxOutputBytes` (64 MB) fails the call.
 
 ## Where it came from
 

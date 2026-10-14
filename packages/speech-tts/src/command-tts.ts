@@ -68,7 +68,7 @@ export const INHERITED_ENV = ["PATH", "HOME", "LANG", "TMPDIR"] as const;
 const STDERR_RAW = 16_000;
 const DEFAULT_UNAVAILABLE = [69, 127, 255];
 
-export function commandRequest(input: TtsInput, voice: string, options: SynthesizeOptions, outDir?: string): CommandRequest {
+function commandRequest(input: TtsInput, voice: string, options: SynthesizeOptions, outDir?: string): CommandRequest {
   return {
     version: 1,
     voice,
@@ -79,7 +79,7 @@ export function commandRequest(input: TtsInput, voice: string, options: Synthesi
   };
 }
 
-export function childEnv(extra: Readonly<Record<string, string>> = {}): Record<string, string> {
+function childEnv(extra: Readonly<Record<string, string>> = {}): Record<string, string> {
   const inherited = INHERITED_ENV.flatMap((name) => {
     const value = process.env[name];
     return value === undefined ? [] : [[name, value] as const];

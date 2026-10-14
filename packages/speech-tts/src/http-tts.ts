@@ -41,7 +41,7 @@ const isLoopback = (hostname: string): boolean =>
   hostname === "localhost" || hostname === "[::1]" || /^127(\.\d{1,3}){3}$/.test(hostname);
 
 /** Refuses at construction, so a misplaced key is never sent: nothing is fetched from a refused config. */
-export function assertSafeUrl(id: string, url: string, allowInsecureHttp = false): void {
+function assertSafeUrl(id: string, url: string, allowInsecureHttp = false): void {
   const parsed = URL.canParse(url) ? new URL(url) : undefined;
   if (!parsed || (parsed.protocol !== "https:" && parsed.protocol !== "http:")) throw new TypeError(`${id}: url must be an absolute http(s) URL`);
   if (parsed.protocol === "http:" && !isLoopback(parsed.hostname) && !allowInsecureHttp) {

@@ -643,11 +643,10 @@ Tier 1, `@titan-design/speech-tts@0.0.0`. Swappable text-to-speech provider cont
 
 Key exports:
 
-- `errors`: `TtsError`, `TtsFailedError`, `TtsTimeoutError`, `TtsUnavailableError`, `TtsUnsupportedError`
+- `errors`: `TtsConfigError`, `TtsError`, `TtsFailedError`, `TtsTimeoutError`, `TtsUnavailableError`, `TtsUnsupportedError`
 - `capabilities`: `assertSupported`, `languageMatches`, `missingCapabilities`, `requirementsOf`
 - `wav`: `decodeWav`, `encodeWav`
-- `fake-tts`: `fakeTts`
-- +42 more in the [reference page](/reference/speech-tts)
+- +45 more in the [reference page](/reference/speech-tts)
 
 <a id="cap-worktree"></a>
 

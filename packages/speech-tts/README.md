@@ -50,7 +50,8 @@ Errors are typed, and `code` is the field to branch on:
 | `TtsUnavailableError` | `unavailable` | The engine cannot be reached: missing binary, refused connection, HTTP 502-504, exit 69. |
 | `TtsUnsupportedError` | `unsupported` | The call or the selection needs a capability that is not declared. `missing` lists each gap. |
 | `TtsTimeoutError` | `timeout` | No audio before the deadline. A command's process group is killed. |
-| `TtsFailedError` | `failed` | The engine answered with an error or with output that breaks the contract. |
+| `TtsFailedError` | `failed` | The engine answered with an error or with output that breaks the contract, including a refused redirect or output past `maxOutputBytes`. |
+| `TtsConfigError` | `misconfigured` | Selection reached a provider whose config is wrong, and the profile does not set `tts.fallback`. `skipped` lists every provider passed over. |
 
 ## Selecting a provider
 
@@ -65,8 +66,14 @@ const { audio, words } = await provider.synthesize({ text: "Hello there." }, "na
 ```
 
 Selection walks the providers in order and returns the first that meets every requirement.
-`skipped` says why each earlier one was passed over. When none qualifies, the error names
-each provider and what it lacks:
+`skipped` says why each earlier one was passed over. A provider that lacks a capability, or
+whose `kind` is not registered on this host, is passed over. A provider whose *config* is wrong
+is not: selection stops with `TtsConfigError`, so a broken preferred engine is never silently
+replaced by a weaker one. Set `"tts": { "fallback": true }` to move past it instead; the
+reason stays in `skipped`. "Config is wrong" covers a factory validation error, a secret
+that resolves to nothing, and a `TITAN_SPEECH_TTS` id the profile does not define.
+
+When no provider qualifies, the error names each provider and what it lacks:
 
 ```
 tts: no provider meets the requirements: laptop lacks word timestamps; hosted lacks voice "narrator"
@@ -84,7 +91,8 @@ providers, and selection says how to add one.
 | `TITAN_SPEECH_TTS_<ID>_URL` | Overrides an `http` provider's `url`. |
 | `TITAN_SPEECH_TTS_<ID>_ARGV` | Overrides a `command` provider's `argv`, as a JSON array. |
 | `TITAN_SPEECH_TTS_<ID>_TIMEOUT_MS` | Overrides a provider's `timeoutMs`. |
-| `${env:NAME}` in a header value | Expanded from the environment, so a profile can be shared without its secrets. If the variable is unset, the provider is skipped with that reason. |
+| `profile.json`, `tts.fallback` | `true` lets selection move past a misconfigured provider. Default `false`. |
+| `${env:NAME}` in a `headers` or command `env` value | Expanded from the environment, so a profile can be shared without its secrets. An unset or empty `NAME` makes the provider misconfigured, naming `NAME`; an empty header is never sent. Expanded values are redacted from error text. |
 
 `<ID>` is the provider id upper-cased, with every other character as `_`.
 
@@ -121,7 +129,9 @@ Each machine gets its own profile. Code that calls `selectTts` stays the same ev
 **A GPU server.** Large models such as XTTS or Qwen3-TTS run out of process. The same entry
 serves a laptop that reaches the server over ssh: it sets
 `TITAN_SPEECH_TTS_GPU_ARGV='["ssh","gpu-box","tts-cli","--device","cuda"]'`, and
-`stdout-wav` carries the audio back with no shared paths.
+`stdout-wav` carries the audio back with no shared paths. ssh with an agent needs
+`"env": { "SSH_AUTH_SOCK": "${env:SSH_AUTH_SOCK}" }` on the entry, because a command sees only
+a minimal environment (see the command contract).
 
 ```json
 {
@@ -177,25 +187,32 @@ really does: selection trusts the declaration.
 `commandTts` runs `argv` without a shell, writes one JSON request to stdin, and closes stdin.
 
 ```json
-{ "version": 1, "voice": "narrator", "text": "Hello there.", "speed": 1.1, "language": "en-US", "out": "/tmp/speech-tts-x/out.wav" }
+{ "version": 1, "voice": "narrator", "text": "Hello there.", "speed": 1.1, "language": "en-US",
+  "outDir": "/tmp/speech-tts-x", "out": "/tmp/speech-tts-x/out.wav" }
 ```
 
 Token input sends `"tokens": [{ "text", "phonemes", "whitespace" }]` and `"alphabet"` in place
-of `"text"`. `speed` and `language` are present only when the caller set them. `out` is
-present only in `json` mode.
+of `"text"`. `speed` and `language` are present only when the caller set them. `outDir`, a
+fresh directory for this call, and `out`, a suggested file in it, are present only in `json`
+mode.
 
 The answer depends on `output`:
 
 - **`stdout-wav`**: stdout is RIFF/WAVE bytes, PCM16 or float32, at any sample rate (the
   header is read). A streamed WAV with unpatched sizes is accepted.
-- **`json`** (the default): stdout is one JSON object with the audio as `"wav": "<path>"`
-  (usually the request's `out`) or as `"audioBase64"`. It may add `"durationS"`,
-  `"words": [{ "word", "start", "end" }]` in seconds, and `"phonemes": ["..."]`.
+- **`json`** (the default): stdout is one JSON object with the audio as `"wav": "<path>"` or
+  as `"audioBase64"`. A `wav` path is **relative to `outDir`**, such as `"out.wav"`. An absolute
+  path, a `..` escape, or a symlink that resolves outside `outDir` fails. The answer may add
+  `"durationS"`, `"words": [{ "word", "start", "end" }]` in seconds, and `"phonemes": ["..."]`.
 
 Exit 0 means success. Exit 69 (EX_UNAVAILABLE), 127 or 255 (ssh could not connect) means
-unavailable; `unavailableExitCodes` changes that list. Any other exit fails, with the tail of
-stderr in the message. At the deadline, the whole process group is sent SIGKILL. The per-call
-scratch directory is removed afterwards.
+unavailable; `unavailableExitCodes` changes that list. Any other exit fails, with about the
+last 2 KB of stderr in the message, after secrets are redacted. At the deadline, the whole
+process group is sent SIGKILL. The per-call scratch directory is removed afterwards.
+
+The child's environment is `PATH`, `HOME`, `LANG` and `TMPDIR` from the parent (`INHERITED_ENV`),
+plus the entry's `env` map. Nothing else is passed, so an API key in the parent's environment
+never reaches an engine unless the profile names it.
 
 ## The `http` mapping
 
@@ -209,8 +226,33 @@ scratch directory is removed afterwards.
 
 `response` is `{ "type": "wav" }` when the body is a WAV file, or
 `{ "type": "json", "audioBase64": "<path>", "words"?, "durationS"?, "phonemes"? }`, with dot
-paths such as `result.audio`. Statuses 502, 503 and 504 are unavailable; any other non-2xx
-fails with the start of the body. No vendor SDK is involved.
+paths such as `result.audio`. Statuses 502, 503 and 504 are unavailable; a 3xx is refused;
+any other non-2xx fails with about the first 2 KB of the body, with header values and
+secrets redacted. No vendor SDK is involved.
+
+`url` must be `https:`, or `http:` to a loopback host (`localhost`, `127.0.0.0/8`, `[::1]`).
+Plain http to any other host is refused when the provider is built, unless the entry sets
+`"allowInsecureHttp": true`.
+
+## Security notes
+
+These defaults assume the profile is trusted, but the engine and the network are not.
+
+- **Redirects are refused.** `httpTts` never follows a 3xx, so headers and text go only to
+  the configured origin. Point `url` at the final endpoint.
+- **No plain http off the machine.** Headers, keys and the text itself go in the clear over
+  http, so it is allowed only to loopback hosts unless `allowInsecureHttp` is set.
+- **Output is capped.** `maxOutputBytes` (default 64 MB, `DEFAULT_MAX_OUTPUT_BYTES`) bounds a
+  command's stdout, a named WAV file and an HTTP body. It is counted while streaming, so an
+  endless stream is cut off, the command is killed, and the call fails with `TtsFailedError`.
+- **Commands get a minimal environment.** Only `INHERITED_ENV` and the entry's `env` reach
+  the child.
+- **Files stay in the call's directory.** A `wav` named by a command is read only from inside
+  its `outDir`, after symlinks are resolved.
+- **Secrets stay out of errors.** stderr and HTTP error bodies are redacted first, then
+  trimmed to about 2 KB. The redaction covers `${env:...}` values, `secrets` and header values.
+- **Misconfiguration fails closed.** A secret that resolves to nothing or a malformed entry
+  stops selection with `TtsConfigError`, unless `tts.fallback` is set.
 
 ## Adding a provider kind
 
