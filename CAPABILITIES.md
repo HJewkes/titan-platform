@@ -739,10 +739,10 @@ Tier 2, `@titan-design/dispatch-ledger@0.0.0`. Burndown claim ledger: zod schema
 Key exports:
 
 - `schema`: `ClaimSchema`, `LedgerSchema`
-- `vocab`: `ContractSchema`
+- `vocab`: `AcceptedOverlapSchema`, `ContractSchema`
 - `claim-phase`: `IllegalPhaseEdgeError`, `illegalEdgeError`, `illegalEdges`
-- `ops`: `addClaim`, `claimKey`, `heldClaims`, `isStalled`, `laneClaims`, `ledgerImplementers`
-- +55 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/dispatch-ledger)
+- `ops`: `addClaim`, `claimKey`, `heldClaims`, `isStalled`, `laneClaims`
+- +57 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/dispatch-ledger)
 
 <a id="cap-graph-layout"></a>
 

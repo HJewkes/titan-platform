@@ -24,6 +24,7 @@ describe("stall code precedence", () => {
       "retry-spent",
       "budget",
       "outside-owns",
+      "no-repo",
     ]);
     expect(firstCode(["no-progress", "retry-spent"])).toBe("retry-spent");
   });
@@ -32,6 +33,10 @@ describe("stall code precedence", () => {
     expect(STALL_CODES).toContain("budget");
     expect(LADDER_CODES).not.toContain("budget");
     expect(STALL_CODES.indexOf("budget")).toBe(STALL_CODES.indexOf("retry-spent") + 1);
+  });
+
+  it("parks a no-repo claim as failed", () => {
+    expect(parkUpdate({ taskId: "TX-1" }, "no-repo", "example/missing").patch.stalledClass).toBe("failed");
   });
 
   it("builds the park update with the class of its code", () => {
