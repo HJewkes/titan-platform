@@ -21,9 +21,10 @@ enforces the tier in CI.
 | `routeOf(edge)` | the typed route a layout attached to `edge.attrs.route`, or undefined |
 | `routeToPathD(route)` | an SVG path `d` (`M x y L x y …`) through a route's points |
 | `labelBoxSizing(labels, metrics)` | box sizes that fit each label plus padding and a fixed body, for a collapsed level laid out at the size it is shown |
+| `placePills(scene, pins, config)` | a top-left box for each pin's pill beside its anchor, inside the frame above `config.keepOut`, clear of `scene.obstacles` and earlier pills; pills with no clear spot come back in `dropped`. Placed in `rank` then id order, so pin input order does not matter |
 | `packageOf(fileId)` | the package id a file belongs to, the id `collapseToPackages` gives it |
 | `ELK_LAYOUT_OPTIONS`, `FOCUS_LAYOUT_OPTIONS`, `COMPOUND_LAYOUT_OPTIONS` | the ELK option sets for the package, focus and nested views |
-| `GraphInput`, `GroupOf`, `LabelMetrics`, `LaidOutNode`, `LaidOutGroup`, `LayoutResult`, `CompoundLayoutResult`, `NodeSizing` | types |
+| `GraphInput`, `GroupOf`, `LabelMetrics`, `LaidOutNode`, `LaidOutGroup`, `LayoutResult`, `CompoundLayoutResult`, `NodeSizing`, `PillScene`, `PinSpec`, `PillConfig`, `PillPlacement`, `PlacedPill`, `DroppedPill`, `Rect`, `SceneRect` | types |
 
 A package is the segment after `packages/` in a file id, `products/<name>` or `apps/<name>` for a
 file inside one, or else the id's first segment. Products and apps keep their root in the id, so
