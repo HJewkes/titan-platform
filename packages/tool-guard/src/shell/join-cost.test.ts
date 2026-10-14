@@ -65,29 +65,34 @@ const SUBSCRIPTS: Array<[string, string]> = [
   ["one long name before many brackets", `${"a".repeat(32_000)}${"[".repeat(32_000)}\n`],
 ];
 
-async function timedHookStdout(script: string): Promise<{ stdout: string; ms: number }> {
+/**
+ * Times the hook in this thread's CPU, not the wall clock: in a full run the worker shares the runner's cores with
+ * other test files, and the time it waits for one says nothing about the work the hook does.
+ */
+async function timedHookStdout(script: string): Promise<{ stdout: string; cpuMs: number }> {
   const context = { ...nodeContext(HOME, noFs), foldCase: true, readScript: (p: string) => (p === `${REPO}/a.sh` ? script : null) };
   const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
-  const start = performance.now();
+  const start = process.threadCpuUsage();
   const result = await handle(event("bash a.sh; git push origin HEAD:main"), { PATH: "/usr/bin" }, port);
-  return { stdout: result.stdout, ms: performance.now() - start };
+  const { user, system } = process.threadCpuUsage(start);
+  return { stdout: result.stdout, cpuMs: (user + system) / 1000 };
 }
 
 describe("a script of many subscripts", () => {
   it.each(SUBSCRIPTS)("the hook denies a push after %s, within the budget", async (_name, script) => {
-    const { stdout, ms } = await timedHookStdout(script);
+    const { stdout, cpuMs } = await timedHookStdout(script);
 
     expect(stdout).toContain('"permissionDecision":"deny"');
-    expect(ms).toBeLessThan(BUDGET_MS);
+    expect(cpuMs).toBeLessThan(BUDGET_MS);
   });
 });
 
 describe("a long run of backslash-newlines", () => {
   it.each(SCRIPTS)("the hook denies a push after a script holding %s, within the budget", async (_name, script) => {
-    const { stdout, ms } = await timedHookStdout(script);
+    const { stdout, cpuMs } = await timedHookStdout(script);
 
     expect(stdout).toContain('"permissionDecision":"deny"');
-    expect(ms).toBeLessThan(BUDGET_MS);
+    expect(cpuMs).toBeLessThan(BUDGET_MS);
   });
 
   it.each([
