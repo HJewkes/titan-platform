@@ -2,7 +2,7 @@ import type { GitHubPort, PrFile } from "@titan-design/github";
 import type { ChangedFile, PrFacts } from "@titan-design/review-panel";
 
 /** One pull request named on the command line, before its head is read. */
-export interface PrTarget {
+interface PrTarget {
   /** `owner/repo`. */
   repo: string;
   pr: number;

@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 export type GhExec = (args: readonly string[]) => string;
 
 /** The shape of `@titan-design/evidence`'s `LineSource`, which the panel's citation check reads. */
-export interface GhLineSource {
+interface GhLineSource {
   lines(path: string): readonly string[] | undefined;
 }
 
