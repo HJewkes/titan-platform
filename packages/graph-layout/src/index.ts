@@ -6,6 +6,17 @@ export { computeCompoundLayout } from "./compound-layout.js";
 export { routeOf } from "./route.js";
 export { routeToPathD } from "./route-path.js";
 export { labelBoxSizing, type LabelMetrics } from "./label-boxes.js";
+export {
+  placePills,
+  type DroppedPill,
+  type PillConfig,
+  type PillPlacement,
+  type PillScene,
+  type PinSpec,
+  type PlacedPill,
+  type Rect,
+  type SceneRect,
+} from "./place-pills.js";
 export { packageOf } from "./package-of.js";
 export { COMPOUND_LAYOUT_OPTIONS, ELK_LAYOUT_OPTIONS, FOCUS_LAYOUT_OPTIONS } from "./layout-options.js";
 export type {

@@ -27,6 +27,7 @@ export { cueResolverFromWords, type CueResolver, type WordTiming } from "./cues.
 export { MAX_FULL_WEIGHT, MAX_NEW_BOXES, lintMapBeats, type MapLint, type MapLintRule } from "./map-lints.js";
 export type { CameraTarget, MapView } from "./map-run.js";
 export { compileMapTimeline, type MapEvent, type MapEventKind, type MapSegment, type MapTimeline } from "./map-timeline.js";
+export { placeTimelinePins, type PinLayout, type PinnedMapTimeline, type PinnedSegment, type PlacedPin } from "./map-pins.js";
 export {
   CAPTION_KEEP_OUT,
   CameraStationSchema,
