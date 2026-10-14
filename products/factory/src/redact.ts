@@ -3,9 +3,9 @@ export const MAX_STORED_ERROR_CHARS = 500;
 export const REDACTED = "[redacted]";
 
 // A token may follow a non-word character, `_` (KEY_sk-…), or an escape that ends in a word
-// character: \n, \u0022, %22 or an ANSI colour code. Requiring this, rather than any boundary,
-// keeps words like risk-assessment-… and task-sk-… from reading as keys.
-const ESCAPE = String.raw`\\[nrt]|\\u[0-9A-Fa-f]{4}|%[0-9A-Fa-f]{2}|\x1b\[[0-9;]{0,8}m`;
+// character: \n, \u0022, %22 or an ANSI colour or erase code. Requiring this, rather than any
+// boundary, keeps words like risk-assessment-… and task-sk-… from reading as keys.
+const ESCAPE = String.raw`\\[nrt]|\\u[0-9A-Fa-f]{4}|%[0-9A-Fa-f]{2}|\x1b\[[0-9;]{0,16}[A-Za-z]`;
 const AFTER = String.raw`(?:(?<![A-Za-z0-9-])|(?<=${ESCAPE}))`;
 // `_` is in the JWT class and the JWT needs dots after its first run, so a start after `_` or `-`
 // would rescan that run from every eyJ inside it.
@@ -22,9 +22,11 @@ const TOKEN = new RegExp(
 );
 const AUTHORIZATION = /(authorization\s*:\s*)(?:(?:bearer|token|basic)\s+)?\S+/gi;
 // The password runs to its last `@` before a `/`, so an unencoded `@` in it is still scrubbed. A raw
-// `/` is not: host:port/path@x would then read as userinfo. `:\/\/` is the JSON-escaped form.
-// The caps keep a long dotted word or a run of user:pass with no `@` from making the scan quadratic.
-const URL_USERINFO = /\b([a-z][a-z0-9+.-]{0,31}:(?:\\?\/){2})[^\s/@:]{1,256}:[^\s/]{1,256}@/gi;
+// `/` is not: host:port/path@x would then read as userinfo. It also stops at a query, fragment or
+// quote, so host:port?email=a@b and compact JSON keep their fields. `:\/\/` is the JSON-escaped form.
+// The user may be empty, as in redis://:password@host. The scheme cap keeps a long dotted word from
+// making the scan quadratic; user and password need none, since each scan stops at the next `://`.
+const URL_USERINFO = /\b([a-z][a-z0-9+.-]{0,31}:(?:\\?\/){2})[^\s/@:]*:[^\s/?#"']+@/gi;
 
 /** Strips credentials without bounding length, for callers that keep a tail rather than a head. */
 export function redactCredentials(text: string): string {

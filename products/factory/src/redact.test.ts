@@ -36,6 +36,12 @@ describe("error text stored as evidence", () => {
     ["a key after a JSON-escaped newline", String.raw`"a\nsk-ant-api03-${"Zx9".repeat(10)}"`, String.raw`"a\n${REDACTED}"`],
     ["a key after an env-name underscore", `KEY_sk-${"Zx9".repeat(10)}`, `KEY_${REDACTED}`],
     ["a token after a percent escape", `%22ghp_${"a1B2".repeat(9)}%22`, `%22${REDACTED}%22`],
+    ["a token after a JSON unicode escape", String.raw`"\u0022ghp_${"a1B2".repeat(9)}\u0022"`, String.raw`"\u0022${REDACTED}\u0022"`],
+    ["a token after an ANSI erase code", `\x1b[0Kghp_${"a1B2".repeat(9)}`, `\x1b[0K${REDACTED}`],
+    ["a token after a truecolour code", `\x1b[38;2;255;0;0mghp_${"a1B2".repeat(9)}`, `\x1b[38;2;255;0;0m${REDACTED}`],
+    ["empty-user redis userinfo", "redis://:secretpassword@host:6379", `redis://${REDACTED}@host:6379`],
+    ["empty-user https userinfo", "https://:TOKEN@h", `https://${REDACTED}@h`],
+    ["a long password", `ssh://u:${"p".repeat(300)}@h`, `ssh://${REDACTED}@h`],
   ])("replaces %s", (_name, input, expected) => {
     expect(redactCredentials(input)).toBe(expected);
   });
@@ -50,6 +56,10 @@ describe("error text stored as evidence", () => {
     "mailto:a@b.c",
     `risk-assessment-for-the-quarterly-review`,
     "https://registry.npmjs.org:443/@titan-design/factory",
+    "https://localhost:3000?email=a@b.com",
+    "https://localhost:3000#a@b",
+    `{"url":"https://h:8080","by":"a@b"}`,
+    `{'url':'https://h:8080','by':'a@b'}`,
   ])("leaves %s unchanged", (input) => {
     expect(redactCredentials(input)).toBe(input);
   });
@@ -63,6 +73,7 @@ describe("error text stored as evidence", () => {
     ["npm runs", "_npm_"],
     ["URL schemes", "a.b.c."],
     ["userinfo with no @", "a://b:"],
+    ["dotted schemes before one long password", `${"a.".repeat(15)}a://u:${"p".repeat(100_000)}`],
     ["escaped prefixes", "\\neyJ%22sk-"],
   ])("scans 100 kB of %s in linear time", (_name, unit) => {
     const input = unit.repeat(Math.ceil(100_000 / unit.length));
