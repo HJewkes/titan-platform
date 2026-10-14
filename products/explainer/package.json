@@ -13,6 +13,8 @@
   },
   "files": [
     "dist",
+    "doctrine",
+    "rubrics",
     "README.md"
   ],
   "author": "Henry Jewkes",
@@ -33,6 +35,16 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@titan-design/agent": "workspace:^",
+    "@titan-design/agent-protocol": "workspace:^",
+    "commander": "^14.0.3",
+    "yaml": "^2.9.1",
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@titan-design/test-kit": "workspace:*"
+  },
+  "bin": {
+    "explainer": "./dist/bin.js"
   }
 }

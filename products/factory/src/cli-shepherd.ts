@@ -2,6 +2,7 @@ import type { JsonEnvelope } from "@titan-design/registry";
 import type { Command } from "commander";
 import type { CliIo, Verbs } from "./cli.js";
 import { registerShepherdCoverage } from "./cli-coverage.js";
+import { registerOwnerRelease } from "./cli-owner-release.js";
 import { callerOf, parsePort, parsePositiveInt, parseTarget, statusRows, withStatusFilters, type StatusFilter } from "./cli-options.js";
 import { localEnvelope, postRpc, unansweredMessage } from "./cli-shepherd-rpc.js";
 import { registerShepherdWait } from "./cli-shepherd-wait.js";
@@ -32,7 +33,7 @@ type RegisterOpts = ShepherdOpts & { branch?: string; head?: string; base?: stri
 
 /** The shepherd.* registry commands as verbs: on titan-factory serve when one answers, else against the database here; register needs --offline for that. */
 export function registerShepherd(program: Command, verbs: Verbs): void {
-  const shepherd = program.command("shepherd").description("shepherd PRs to a merge; gate resolve stays its own verb and is never a shepherd command");
+  const shepherd = program.command("shepherd").description("shepherd PRs to a merge; gate resolve and owner-release stay local verbs and are never shepherd commands");
   const verb: VerbOf = (spec, description) =>
     shepherd
       .command(spec)
@@ -44,6 +45,7 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
   registerShepherdStats(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdCoverage(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdWait(shepherd, verbs);
+  registerOwnerRelease(shepherd, verbs);
   registerRefVerbs(verb, verbs);
 }
 

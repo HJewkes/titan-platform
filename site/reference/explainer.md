@@ -103,3 +103,39 @@ never cover it. `cameraStationFile` gives the `camera/<beat>.json` path and its 
 ids are sorted and deduplicated, so the file does not depend on their order. `projectBox`
 maps a layout box into 0..1 frame fractions. An unknown focus id throws. The module writes
 no files; the CLI step that lands later writes them.
+
+## The two-track script
+
+`ScriptSchema` parses `script/v1`: video-level framing (audience, stake, promise, thesis),
+chapters, and beats that each carry a narration track and a visual track. The visual track's
+`map_state` is `MapStateSchema` unchanged, so a script beat with no `map_state` is off the map
+and the next map beat resumes it.
+
+- Every cue in a beat's visual track, map ops and off-map `cues` alike, must name a word the
+  beat speaks (`word` or `word#n`). Beat ids are unique, each beat's chapter exists, and
+  `thesis_refs` name beats.
+- Required authored fields accept a `TODO:` placeholder, so a draft parses and the lints
+  report every gap at once.
+- `deriveEvalView(script, layout?)` returns the view judges and lints read: `nodes_shown`,
+  `edges_shown`, `you_are_here` (the camera station, else the focus) and `state_changes`
+  ordered by where their cue is spoken. It is derived, never authored.
+- `toMapBeats(script)` projects a script onto `MapBeat[]`, so `lintMapBeats` and
+  `compileMapTimeline` run on it.
+- `migrateTourV0(tour, probe)` lifts a spike tour and its render probe to v1. It infers each
+  beat's function, mode and visual job from the spike's component kind and rebuilds the
+  headline, labels, chips and map stations from the probe's last shot. Tracked by TP-2806.
+
+## The Q-rule registry
+
+`doctrine/rules.yaml` holds the script-quality rules (`rules/v1`), shipped with the package.
+`explainer eval l0` stamps every row with its sha, and uses it when `--rules` is omitted.
+
+- Each rule has a `Q-` id, the script fields it reads, its phase-1 `aliases` and `related`
+  ids, and `owner_support` (`none`, `for` or `against`), updated from owner sessions.
+- Its `l0` check is `implemented` with the check ids it emits, or `pending` on an owning
+  slice; its `judge` check is `cited` by a rubric file, or `pending`. The check type (`L0`,
+  `J`, `L0+J`) is whichever of the two it has.
+- `loadRuleRegistry(path?)` and `parseRuleRegistry(text)` validate it; an id or alias that
+  names two rules fails. `resolveRule` maps a Q-id or alias to its rule, and
+  `unimplementedL0Rules(registry, emittedIds)` lists rules whose claimed check ids no
+  registered check emits. Tracked by TP-2811.
