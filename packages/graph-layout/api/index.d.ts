@@ -142,6 +142,64 @@ interface LabelMetrics {
  */
 declare function labelBoxSizing(labels: ReadonlyMap<string, string>, metrics: LabelMetrics): Map<string, NodeSize>;
 
+/** An axis-aligned box by its top-left corner, in layout units. */
+interface Rect {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+interface SceneRect {
+    id: string;
+    rect: Rect;
+}
+/** The geometry a pill must respect; every rect is in the same layout frame. */
+interface PillScene {
+    /** The visible frame. Pills stay inside it and above its keep-out band. */
+    frame: Rect;
+    /** Boxes a pin can anchor to, by id. */
+    anchors: readonly SceneRect[];
+    /** Rects no pill may touch: box labels, edge labels, a legend. */
+    obstacles: readonly SceneRect[];
+}
+/** One pill to place beside the anchor box it names. Lower `rank` places first; ties break on id. */
+interface PinSpec extends NodeSize {
+    id: string;
+    anchor: string;
+    rank?: number;
+}
+interface PillConfig {
+    /** Clear space between a pill and its anchor, an obstacle or another pill. */
+    gap: number;
+    /** Fraction of the frame's height where the keep-out band starts, e.g. 0.83 above a caption band. */
+    keepOut: number;
+    /** A pill sits at most this many pill heights from its anchor. Default 3. */
+    reachSlots?: number;
+}
+interface PlacedPill {
+    id: string;
+    anchor: string;
+    rect: Rect;
+    /** The candidate that won, e.g. `below0`, `above1R0.5`, `side0L`. */
+    candidate: string;
+}
+interface DroppedPill {
+    id: string;
+    reason: "no-anchor" | "no-spot";
+}
+/** Placed and dropped pills, each in placement order. */
+interface PillPlacement {
+    placed: PlacedPill[];
+    dropped: DroppedPill[];
+}
+/**
+ * Places each pin's pill beside its anchor box: inside the frame above its keep-out band, clear of
+ * every obstacle and every pill placed before it, and within reach of the anchor. Greedy in rank
+ * order, so the input order of `pins` does not matter. A pill with no clear spot is dropped, never
+ * drawn over something; a painter falls back for it.
+ */
+declare function placePills(scene: PillScene, pins: readonly PinSpec[], config: PillConfig): PillPlacement;
+
 /**
  * The package a file id belongs to: the segment after `packages/`, `products/<name>` or
  * `apps/<name>` for a file inside one, else the first path segment.
@@ -161,4 +219,4 @@ declare const FOCUS_LAYOUT_OPTIONS: Record<string, string>;
 /** ELK options for a nested graph: `INCLUDE_CHILDREN` lays the whole hierarchy out in one pass. */
 declare const COMPOUND_LAYOUT_OPTIONS: Record<string, string>;
 
-export { COMPOUND_LAYOUT_OPTIONS, type CompoundLayoutResult, ELK_LAYOUT_OPTIONS, FOCUS_LAYOUT_OPTIONS, type FocusOptions, type GraphInput, type GroupOf, type LabelMetrics, type LaidOutGroup, type LaidOutNode, type LayoutResult, type NodeSize, type NodeSizing, type Point, collapseToDirectories, collapseToPackages, computeCompoundLayout, computeLayout, focusPackage, labelBoxSizing, packageOf, packagesInSnapshot, routeOf, routeToPathD };
+export { COMPOUND_LAYOUT_OPTIONS, type CompoundLayoutResult, type DroppedPill, ELK_LAYOUT_OPTIONS, FOCUS_LAYOUT_OPTIONS, type FocusOptions, type GraphInput, type GroupOf, type LabelMetrics, type LaidOutGroup, type LaidOutNode, type LayoutResult, type NodeSize, type NodeSizing, type PillConfig, type PillPlacement, type PillScene, type PinSpec, type PlacedPill, type Point, type Rect, type SceneRect, collapseToDirectories, collapseToPackages, computeCompoundLayout, computeLayout, focusPackage, labelBoxSizing, packageOf, packagesInSnapshot, placePills, routeOf, routeToPathD };

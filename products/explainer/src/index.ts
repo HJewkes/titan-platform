@@ -55,6 +55,7 @@ export {
   type DiagramMapOptions,
   type DiagramMapTimeline,
 } from "./diagram-map.js";
+export { placeTimelinePins, type PinLayout, type PinnedMapTimeline, type PinnedSegment, type PlacedPin } from "./map-pins.js";
 export {
   CAPTION_KEEP_OUT,
   CameraStationSchema,

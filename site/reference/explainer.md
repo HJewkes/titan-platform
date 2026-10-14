@@ -104,6 +104,11 @@ type and come back.
   `untilAtS`. `cameraBox` turns a beat's camera target into a layout box; a camera move
   without it throws. `DiagramMapTimelineSchema` mirrors titan-design's type strictly. A test
   checks it against a copy of titan-design's fixture, so drift fails a test instead of a render.
+- `placeTimelinePins(timeline, beats, resolveCue, layout)` adds `pins` to each segment: every
+  pin's time, anchor, text and placed `box`, from graph-layout's `placePills` against the
+  scene `layout.sceneFor(beatId)` returns, above `CAPTION_KEEP_OUT`. The painter draws a pill
+  at its box. A pin with no clear spot, or in a beat with no scene, gets `box: null` and the
+  painter falls back to an offset from its anchor.
 
 A beat that re-enters the map resumes the last map beat's camera, revealed boxes, focus and
 active set, and its own fields override them. Level checks and the new-box count run against

@@ -165,6 +165,7 @@ graph TD
   explainer --> agent
   explainer --> agentProtocol
   explainer --> evidence
+  explainer --> graphLayout
   factory --> agent
   factory --> agentDispatch
   factory --> appPaths
