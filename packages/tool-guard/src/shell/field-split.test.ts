@@ -42,17 +42,38 @@ describe("splitReading reads a known unquoted expansion as bash field-splits it"
   });
 });
 
+describe("splitReading splits a known unquoted expansion on a known custom IFS", () => {
+  it.each([
+    ["a command word on commas", "$E", { IFS: ",", E: "gh,pr,merge,1" }, ["gh", "pr", "merge", "1"]],
+    ["eval's argument", "eval $E", { IFS: ",", E: "gh,pr,merge,1" }, ["eval", "gh", "pr", "merge", "1"]],
+    ["a subcommand on colons", "git $X", { IFS: ":", X: "push:origin:HEAD:main" }, ["git", "push", "origin", "HEAD", "main"]],
+    ["a blank that is not in IFS", "$E", { IFS: ",", E: "gh pr,merge" }, ["gh pr", "merge"]],
+    ["an empty field between two commas", "x $E", { IFS: ",", E: "a,,b" }, ["x", "a", "", "b"]],
+    ["no trailing empty field", "x $E", { IFS: ",", E: "a," }, ["x", "a"]],
+    ["a literal comma that never splits", "x a,$E", { IFS: ",", E: "b,c" }, ["x", "a,b", "c"]],
+    ["an empty value under an empty IFS", "git $E push", { IFS: "", E: "" }, ["git", "push"]],
+  ])("splits %s", (_name, src, vars, expected) => {
+    expect(values(read(src, vars))).toEqual(expected);
+  });
+});
+
 describe("splitReading leaves a word it cannot split exactly raw and dynamic", () => {
   const raw = (reading: WordToken[] | null, i: number) => reading?.[i];
 
   it.each([
     ["a mixed-quote word", 'git "a"$X', { X: "push origin" }],
     ["a quoted empty beside an empty value", 'git ""$E', { E: "" }],
-    ["a custom IFS", "git $X", { IFS: ":", X: "push:origin:HEAD:main" }],
     ["an unknown IFS", "git $X", { IFS: null, X: "push" }],
-    ["an empty IFS", "git $X", { IFS: "", X: "push origin" }],
+    ["a mixed-quote word under a custom IFS", 'git "a"$X', { IFS: ",", X: "push,origin" }],
+    ["an IFS bash splits byte by byte", "git $X", { IFS: "é", X: "pushéorigin" }],
   ])("%s", (_name, src, vars) => {
     expect(raw(read(src, vars), 1)).toMatchObject({ dynamic: true, refs: [{ name: expect.any(String) }] });
+  });
+
+  it("an IFS a case attribute may change", () => {
+    const vars: Vars = new Map([["IFS", "x"], ["X", "pushxorigin"]]);
+    markCase(vars, "IFS", "u");
+    expect(splitReading(words("git $X"), vars, null)?.[1]).toMatchObject({ dynamic: true, value: "$X" });
   });
 
   it("a value a case attribute may change", () => {
@@ -106,6 +127,9 @@ describe("splitReading returns null when nothing splits differently", () => {
     ["no expansion at all", "git push origin feat", {}],
     ["a command substitution", "git push origin $(echo a b)", {}],
     ["a custom IFS with no expansion", "git push", { IFS: ":" }],
+    ["a custom IFS absent from the value", "git push origin $X", { IFS: ",", X: "feat" }],
+    ["blanks under a comma IFS", "git $X", { IFS: ",", X: "push origin" }],
+    ["an empty IFS, which never splits", "git $X", { IFS: "", X: "push origin" }],
   ])("%s", (_name, src, vars) => {
     expect(read(src, vars)).toBeNull();
   });
