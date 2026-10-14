@@ -854,6 +854,9 @@ importers:
       '@titan-design/evidence':
         specifier: workspace:^
         version: link:../../packages/evidence
+      '@titan-design/fix-proof':
+        specifier: workspace:^
+        version: link:../../packages/fix-proof
       '@titan-design/health':
         specifier: workspace:^
         version: link:../../packages/health
