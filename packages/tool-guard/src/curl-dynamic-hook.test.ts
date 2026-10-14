@@ -243,13 +243,17 @@ describe("handle: on a filesystem that folds case", () => {
     `echo method=PUT | tee ~/.WgetRc; wget ${MERGE}`,
     `cp rc /ETC/WGETRC; wget ${MERGE}`,
     `cp rc ~/.CurlRC; curl ${MERGE}`,
+    `cp -r d ~/.conﬁg; http ${MERGE}`,
+    `cp -r d ~/.Conﬁg; http ${MERGE}`,
+    `cp rc "$D/config.jſon"; wget ${MERGE}`,
+    `cp rc "$D/CONFIG.JſON"; wget ${MERGE}`,
   ])("denies %s as a merge", async (command) => {
     const { columns } = await foldedColumns(command);
 
     expect(columns).toEqual(["deny", "MRG-WK", "merge", "bash.merge.curl-api", "coordinator+worker+headless"]);
   });
 
-  it.each([`wget -q ${MERGE.replace("/merge", "")}`, `TAR cf a.tar src; wget -q https://example.com/x`])("lets the read %s through", async (command) => {
+  it.each([`wget -q ${MERGE.replace("/merge", "")}`, "wget https://example.com/x", `TAR cf a.tar src; wget -q https://example.com/x`])("lets the read %s through", async (command) => {
     const { stdout } = await foldedColumns(command);
 
     expect(stdout).toBe("");

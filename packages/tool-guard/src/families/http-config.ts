@@ -1,5 +1,6 @@
 import type { SimpleCommand } from "../shell/commands.js";
 import type { RedirectToken, WordToken } from "../shell/lexer.js";
+import { foldCase as foldText } from "../shell/case-literal.js";
 import { basename, resolveValue } from "../shell/path.js";
 import { DECLARED_RE, DECLARERS, parseAssignment } from "../shell/vars.js";
 import { commandWrites, TARGET_RE } from "../shell/writers.js";
@@ -51,8 +52,8 @@ const DESCRIPTOR_RE = /^(?:\d+|-)$/;
  * literal part rules that out.
  */
 export function choosesHttpConfig(src: string, commands: SimpleCommand[], home: string | null, foldCase = false): boolean {
-  // Where the filesystem folds case, `~/.WGETRC` is `~/.wgetrc`; variable names never fold.
-  const fold = foldCase ? (text: string) => text.toLowerCase() : (text: string) => text;
+  // Where the filesystem folds case, as APFS does with ligatures and the long s, `~/.WGETRC` and `~/.conﬁg` are rc paths; variable names never fold.
+  const fold = foldCase ? foldText : (text: string) => text;
   if (TEXT_ASSIGNS_RE.test(src) || RC_TEXT_RE.test(fold(src))) return true;
   return commands.some((cmd) => setsConfigVar(cmd) || unpacks(cmd) || writeTargets(cmd).some((w) => mayBeRcPath(w, cmd.dir, home, fold)));
 }
