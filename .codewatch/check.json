@@ -22,7 +22,8 @@
           "packages/eslint-plugin",
           "packages/app-paths",
           "packages/anthropic-account",
-          "packages/test-kit"
+          "packages/test-kit",
+          "packages/owner-proof"
         ],
         "1": [
           "packages/retrieval",
@@ -93,7 +94,8 @@
           "packages/eslint-plugin",
           "packages/app-paths",
           "packages/anthropic-account",
-          "packages/test-kit"
+          "packages/test-kit",
+          "packages/owner-proof"
         ],
         [
           "packages/retrieval",
