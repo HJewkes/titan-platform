@@ -186,7 +186,8 @@ interface RunOptions {
 }
 /**
  * Runs both exec sides and the judge in this process and returns one fix-proof/v1 line; the local mode of the three CI jobs.
- * Failures become a verdict error line, never a throw.
+ * Each side and the judge read their own bare snapshot of the two commits, so nothing either side writes reaches the
+ * caller's repo or the judge's. Failures become a verdict error line, never a throw.
  */
 declare function run(options: RunOptions): Promise<string>;
 
