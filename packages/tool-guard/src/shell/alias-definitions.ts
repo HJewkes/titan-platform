@@ -25,6 +25,11 @@ const BRACE_RE = /\{[^{}]*(?:,|\.\.)[^{}]*\}/;
  * reaches here: the lexer refuses it.
  */
 const GLOB_RE = /[*?[^#~]|^=/;
+/**
+ * A glob in a command word, which may match several file names: a bracket only with its closing one, so `[` and `[[`
+ * stay themselves, and a tilde only past the first character, where it is extendedglob's exclusion.
+ */
+const SEVERAL_NAMES_RE = /[*?#^]|\[[^\]]*\]|.~/s;
 /** An alias parameter anywhere in a word, as one alternative of a brace expansion may name it. */
 const BRACED_PARAM_RE = new RegExp(String.raw`(?<![A-Za-z0-9_])${PARAM}(?![A-Za-z0-9_])`);
 /**
@@ -100,7 +105,18 @@ export function definesAlias(cmd: Unwrapped): boolean {
     || cmd.args.some(expandsAliasParam)
     || (cmd.name !== null && storesAliasParam(cmd.name, cmd.args))
     || (cmd.name === null && dynamicDefinition(cmd.args.slice(1)))
+    || (cmd.path !== null && expandedDefinition(cmd.path, cmd.args))
   );
+}
+
+/**
+ * A static command word the shell still expands, which the unwrapper takes as written. Braces or a glob may turn the
+ * word itself into `alias` and its operands (`{alias,y=echo}`, `ali*`), so it fails closed; a leading `~` or `=`
+ * yields one word, which may be `alias`, so it reads as a dynamic one.
+ */
+function expandedDefinition(path: string, args: WordToken[]): boolean {
+  if (BRACE_RE.test(path) || SEVERAL_NAMES_RE.test(path)) return true;
+  return /^[=~]/.test(path) && dynamicDefinition(args);
 }
 
 /**

@@ -148,6 +148,14 @@ describe("a command that defines a shell alias", () => {
     ["zselect -a with the name attached", "zselect -aaliases -r 0"],
     ["pcre_match -a into aliases", "pcre_match -a aliases echo"],
     ["pcre_match -A with a dynamic name", 'pcre_match -A "$n" x'],
+    ["a brace expansion as the command word", '""{alias,y=echo}'],
+    ["a brace expansion as the command word under builtin", "builtin {alias,v=echo}"],
+    ["a glob command word with a definition operand", "ali?? w=echo"],
+    ["a glob command word under builtin", "builtin ali* t=echo"],
+    ["a brace expansion command word storing into aliases", '""{typeset,aliases\\[q\\]=echo}'],
+    ["an = path command word with a definition operand", "=alias y=echo"],
+    ["a tilde command word with a definition operand", "~a y=echo"],
+    ["a glob in place of builtin", "buil* alias y=echo"],
   ])("is refused: %s", (_how, src) => {
     expect(defines(src)).toBe(true);
   });
@@ -216,6 +224,12 @@ describe("a command that only reads or removes aliases, or names them as text", 
     ["pcre_match into a static name", "pcre_match -v out x"],
     ["typeset with a tilde in the value, which names nothing", "typeset x=~/bin"],
     ["printf with a static format before a tilde", "printf '%s\\n' ~+"],
+    ["a relative script path", "./build.sh"],
+    ["a command with a static option", "ls -la"],
+    ["a brace expansion operand", "echo {a,b}"],
+    ["a tilde command word without a definition operand", "~/bin/tool --flag x"],
+    ["the test builtin", "[ -f x ]"],
+    ["the conditional keyword", "[[ -f x ]]"],
   ])("passes: %s", (_how, src) => {
     expect(defines(src)).toBe(false);
   });
