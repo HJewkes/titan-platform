@@ -2,11 +2,11 @@ import { parseCites } from "./cite.js";
 import { diag, type GatherDiagnostic } from "./diagnostics.js";
 import type { ExplainerFact } from "./schemas.js";
 
-export const TOPICS_TSV = "synthesis/final/topics-judged.tsv";
-export const LEDGER_TSV = "ledger.tsv";
-export const CLAIMS_TSV = "synthesis/final/claims-audit.tsv";
+const TOPICS_TSV = "synthesis/final/topics-judged.tsv";
+const LEDGER_TSV = "ledger.tsv";
+const CLAIMS_TSV = "synthesis/final/claims-audit.tsv";
 
-export interface FactParse {
+interface FactParse {
   facts: ExplainerFact[];
   diagnostics: GatherDiagnostic[];
 }
