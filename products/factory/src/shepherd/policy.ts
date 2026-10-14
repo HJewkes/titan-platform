@@ -203,7 +203,7 @@ const CLEARED_BY_MERGE: ReadonlySet<Escalation> = new Set(["fix-first-runaway", 
  * Owner decision 303: a carried review-loop escalation stops gating once the dispatched reviewer writes a MERGE at exactly
  * this head and MRG-AU-RV allows it there. A MERGE carried by tree, remerge or merge-up is not a review of this head.
  */
-function clearedByFreshMerge(escalated: Escalated, decision: GateDecision, headSha: string, verdictFor: (headSha: string) => Verdict | undefined): boolean {
+export function clearedByFreshMerge(escalated: Escalated, decision: GateDecision, headSha: string, verdictFor: (headSha: string) => Verdict | undefined): boolean {
   if (escalated.carriedFrom === undefined || !CLEARED_BY_MERGE.has(escalated.escalation)) return false;
   if (decision.outcome !== "allow" || decision.rule.table !== "authority" || decision.rule.rowId !== MERGE_BY_REVIEWER_RULE) return false;
   const verdict = verdictFor(headSha);

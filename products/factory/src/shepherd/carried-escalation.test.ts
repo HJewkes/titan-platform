@@ -2,8 +2,9 @@ import type { MergeFacts } from "@titan-design/authority";
 import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import type { EvidenceRecord, MergeEvidence } from "./merge-facts.js";
+import type { GateDecision } from "../gate-policy.js";
 import type { Verdict } from "./phases.js";
-import { shepherdLandOptions, type EffectivePolicy } from "./policy.js";
+import { clearedByFreshMerge, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 import type { Escalated, Escalation } from "./route-table.js";
 
 const FIRED = "a".repeat(40);
@@ -83,9 +84,52 @@ describe("a carried escalation whose head has no fresh MERGE still gates", () =>
     expect(visual).toMatchObject({ outcome: "gate", rule: { table: "shepherd-route", rowId: "fix-first-runaway" } });
   });
 
+  it("over a fresh MERGE whose resolver is not the dispatched reviewer, which MRG-AU-RV refuses", () => {
+    const evidence = evidenceAt(HEAD);
+    evidence.merge.resolver = { agentId: "agent-other", sessionId: "session-other" };
+    const verdict: Verdict = { ...freshMerge, evidence };
+
+    const bare = decideAt(verdict, undefined);
+    expect(bare).toMatchObject({ outcome: "gate", rule: { table: "authority" } });
+    expect(bare.reason).toContain("resolver-is-dispatched-reviewer");
+    expect(decideAt(verdict, carried("fix-first-runaway"))).toMatchObject({ outcome: "gate", rule: { table: "shepherd-route", rowId: "fix-first-runaway" } });
+  });
+
+  it("over a fresh MERGE whose required check is red", () => {
+    const evidence = evidenceAt(HEAD);
+    evidence.merge.checkRuns = [{ name: "validate", appId: 15368, headSha: HEAD, conclusion: "failure" }];
+    const verdict: Verdict = { ...freshMerge, evidence };
+
+    const bare = decideAt(verdict, undefined);
+    expect(bare).toMatchObject({ outcome: "gate", rule: { table: "authority" } });
+    expect(bare.reason).toContain("required-contexts-green");
+    expect(decideAt(verdict, carried("fix-first-runaway"))).toMatchObject({ outcome: "gate", rule: { table: "shepherd-route", rowId: "fix-first-runaway" } });
+  });
+
   it("at the head where the escalation fired, whose review is FIX_FIRST", () => {
     const fired = decideAt({ kind: "FIX_FIRST", headSha: HEAD, text: "again" }, { escalation: "fix-first-runaway", detail: `the last at ${HEAD}` });
 
     expect(fired).toMatchObject({ outcome: "gate", rule: { table: "shepherd-route", rowId: "fix-first-runaway" } });
+  });
+});
+
+describe("clearedByFreshMerge clears only an MRG-AU-RV allow", () => {
+  const decision = (outcome: GateDecision["outcome"], table: string, rowId: string): GateDecision => ({ outcome, rule: { table, rowId, version: 1 }, reason: "x" });
+  const clears = (gate: GateDecision) => clearedByFreshMerge(carried("fix-first-runaway"), gate, HEAD, () => freshMerge);
+
+  it("clears an allow under authority row MRG-AU-RV at a fresh MERGE", () => {
+    expect(clears(decision("allow", "authority", "MRG-AU-RV"))).toBe(true);
+  });
+
+  it("does not clear a gate that carries the MRG-AU-RV label", () => {
+    expect(clears(decision("gate", "authority", "MRG-AU-RV"))).toBe(false);
+  });
+
+  it("does not clear an allow under another authority row", () => {
+    expect(clears(decision("allow", "authority", "MRG-AU-RM"))).toBe(false);
+  });
+
+  it("does not clear an allow from another table that reuses the MRG-AU-RV row id", () => {
+    expect(clears(decision("allow", "shepherd-merge-guard", "MRG-AU-RV"))).toBe(false);
   });
 });
