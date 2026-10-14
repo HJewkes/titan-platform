@@ -83,3 +83,6 @@ export {
   whyCheck,
 } from "./lint-why.js";
 export { MAX_NEW_NAMES_PER_CHAPTER, PUBLIC_PROFILE, evidenceCheck } from "./lint-evidence.js";
+export { MAX_SENTENCE_WORDS, MIN_PROJECT_SHARE, voiceCheck, voiceCheckWith } from "./lint-voice.js";
+export { flowCheck } from "./lint-flow.js";
+export { maskEntities, repoEntities } from "./lint-text.js";
