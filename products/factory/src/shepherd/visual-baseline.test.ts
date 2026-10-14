@@ -83,6 +83,23 @@ describe("a visual head gates only on a changed baseline once the seat names its
     expect(decision).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" }, reason: expect.stringContaining(BEAT) });
   });
 
+  it.each<[string, VisualBaselines]>([
+    ["an empty baseline list", { check: "visual", paths: [] }],
+    ["a blank check name", { check: " ", paths: BASELINES.paths }],
+  ])("keeps the glob gate when the seat names %s", async (_case, baselines) => {
+    const decision = await decisionFor([modified(BEAT)], { baselines });
+
+    expect(decision).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" }, reason: expect.stringContaining(BEAT) });
+  });
+
+  it("gates a baseline written in another case, as a case-insensitive checkout writes it", async () => {
+    const upper = "Packages/UI/Specimen/Baseline/button/default-chromium-linux.png";
+    const decision = await decisionFor([modified(BEAT), modified(upper)]);
+
+    expect(decision).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" } });
+    expect(decision.reason).toContain(upper);
+  });
+
   it("does not consult baselines for a head that matches no visual glob", async () => {
     const decision = await decisionFor([modified("packages/core/src/index.ts")], { runs: [] });
 

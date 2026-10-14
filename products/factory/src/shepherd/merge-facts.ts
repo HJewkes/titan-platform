@@ -226,8 +226,12 @@ function changedFilesGate(evidence: DecidableEvidence, { visualPaths, visualBase
   return visualBaselines === undefined ? globGate : baselineGate(evidence, visualBaselines, globGate);
 }
 
-/** A changed baseline is a rendered diff the owner reviews; none, with the baseline check green at the head, clears the glob gate. */
+/**
+ * A changed baseline is a rendered diff the owner reviews; none, with the baseline check green at the head, clears the glob
+ * gate. An empty list or a blank check name can show no rendered diff, so it keeps the glob gate.
+ */
 function baselineGate(evidence: DecidableEvidence, baselines: VisualBaselines, globGate: GateDecision): GateDecision | undefined {
+  if (baselines.paths.length === 0 || baselines.check.trim() === "") return globGate;
   const changed = baselineChanges(evidence.merge.changedPaths, baselines.paths);
   if (changed.length > 0) return { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shownPaths(changed)}` };
   return baselineCheckGreen(evidence.merge, baselines.check) ? undefined : globGate;
