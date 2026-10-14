@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { registeredOwners } from "./seat-tie.js";
+import os from "node:os";
+import path from "node:path";
+import { describe, expect, it, vi } from "vitest";
+import { SEAT_REVIEWER, seatFixFirst } from "./external-review.js";
+import type { ReviewerReader } from "./review.js";
+import { registeredOwners, rosterTie, type SeatRow } from "./seat-tie.js";
 
 const target = { repo: "octo/demo", pr: 4, head: "a".repeat(40) };
 const THIS_PR = { repo: "Octo/Demo", pr: 4, implementer: "tc-tp-9-a", branch: "agent-chat/tc-tp-9-a" };
@@ -32,5 +36,36 @@ describe("registeredOwners", () => {
     };
 
     expect(registeredOwners(unbound, target)).toEqual({});
+  });
+});
+
+describe("rosterTie for a reviewer started in Shepherd's review checkout root", () => {
+  /** Shepherd checks each PR out under ~/.cache/pc-reviews/<owner>-<repo>-<pr>, and a reviewer may run in a leaf named for itself under it. */
+  const reviews = (...leaves: string[]) => path.join(os.homedir(), ".cache", "pc-reviews", ...leaves);
+  const owner = { implementer: "tc-tp-9-a", branch: "agent-chat/tc-tp-9-a" };
+  const others = [{ implementer: "tc-tp-5-b", branch: "agent-chat/tc-tp-5-b", label: "octo/demo#5" }];
+  const row = (name: string, cwd: string): SeatRow => ({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence: "exited", spawnedBy: "coord", cwd });
+  const stem = (name: string) => name.replace(SEAT_REVIEWER, "");
+  const failing: ReviewerReader = { read: async () => Promise.reject(Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" })) };
+
+  it.each([
+    ["the PR's checkout", row("rv-octo-demo-4-review", reviews("octo-demo-4"))],
+    ["a leaf named for the reviewer", row("rv-octo-demo-4-review", reviews("octo-demo-4", "rv-octo-demo-4-review"))],
+  ])("finds no tie, and the seat check blocks with a retry, when this PR's reviewer runs in %s that no registration names", async (_label, reviewer) => {
+    const at = { ...target, owner, others };
+
+    expect(rosterTie(at, [reviewer], stem)).toMatchObject({ kind: "none" });
+    expect(await seatFixFirst(async () => [reviewer], failing, at, vi.fn())).toMatchObject({ kind: "none", retry: true, reason: expect.stringContaining(reviewer.name) });
+  });
+
+  it("ties a leaf that is another registered PR's implementer to that PR only through its registration", async () => {
+    const reviewer = row("rv-octo-demo-4-review", reviews("octo-demo-4", "tc-tp-5-b"));
+    const warn = vi.fn();
+
+    expect(rosterTie({ ...target, owner, others }, [reviewer], stem)).toEqual({ kind: "other", pr: "octo/demo#5" });
+    expect(await seatFixFirst(async () => [reviewer], failing, { ...target, owner, others }, warn)).toEqual({ kind: "clear" });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("the roster ties it to octo/demo#5's registration"));
+    expect(rosterTie({ ...target, owner, others: [] }, [reviewer], stem)).toMatchObject({ kind: "none" });
+    expect(await seatFixFirst(async () => [reviewer], failing, { ...target, owner }, vi.fn())).toMatchObject({ kind: "none", retry: true });
   });
 });
