@@ -105,5 +105,6 @@ export function apiPullRetarget(cmd: SimpleCommand): PrRetarget | null {
   const input = line.leaf.some((w) => /^--input(?:=|$)/.test(w.value)) ? UNKNOWN : null;
   const base = fromFields ?? queryBase(req.endpoint) ?? input;
   if (base === null) return null;
-  return { pr: /^\d+$/.test(pull[1] ?? "") ? (pull[1] as string) : null, base };
+  const pr = pull[1] ?? "";
+  return { pr: /^\d+$/.test(pr) ? pr : null, base };
 }
