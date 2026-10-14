@@ -80,6 +80,7 @@ const CONFIG: GuardedList = {
     { id: "home:.agent-chat/profiles", pattern: "~/.agent-chat/profiles/**", samples: ["~/.agent-chat/profiles/work.json"] },
     { id: "any:.git/hooks", pattern: "**/.git/hooks/**", samples: [".git/hooks/pre-push"] },
     { id: "home:egress-terms", pattern: "~/.config/titan-egress/private-terms" },
+    { id: "home:.config/gh/config.yml", pattern: "~/.config/gh/config.yml" },
     {
       id: "home:tool-guard-state",
       pattern: "~/.local/state/titan-tool-guard/**",
