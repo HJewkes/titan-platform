@@ -1,9 +1,9 @@
 import { stat } from "node:fs/promises";
 import os from "node:os";
 import { claudeSourceFromPath, readSessionObservations, type NormalizedSessionObservation } from "@titan-design/session-read";
-import { DamagedTranscriptError } from "./external-review.js";
+import { DamagedTranscriptError, type SeatReader } from "./external-review.js";
 import type { Presence } from "./presence.js";
-import type { AwaitVerdictInput, ReviewerMessage, ReviewerReader } from "./review.js";
+import type { AwaitVerdictInput, ReviewerMessage } from "./review.js";
 import { isInvestigativeCall } from "@titan-design/review-panel";
 
 /** The roster fields the reader needs; an `agent ls --json` row carries all of them. */
@@ -207,13 +207,13 @@ async function seatSignature(row: SeatRow): Promise<string | null> {
   }
 }
 
-interface SeatReader {
+interface SeatCache {
   read: (row: SeatRow) => Promise<readonly ReviewerMessage[]>;
   retain: (rows: readonly TranscriptRow[]) => void;
 }
 
 /** Reads each seat transcript once until its signature changes; a damaged read is cached as the same rejection, any other failure is retried. */
-function cachedSeatReader(namespace: string): SeatReader {
+function cachedSeatReader(namespace: string): SeatCache {
   const cache = new Map<string, { signature: string; result: Promise<readonly ReviewerMessage[]> }>();
   const read = async (row: SeatRow) => {
     const signature = await seatSignature(row);
@@ -235,8 +235,21 @@ function cachedSeatReader(namespace: string): SeatReader {
   return { read, retain };
 }
 
+const isTranscriptRow = (row: unknown): row is TranscriptRow => {
+  const candidate = row as Partial<TranscriptRow>;
+  return typeof candidate.transcriptExists === "boolean" && (typeof candidate.transcriptPath === "string" || candidate.transcriptPath === null);
+};
+
+/** A caller's roster is trusted only when the input's own row carries transcript fields; anything else reads as a fresh roster would, never as "no transcript". */
+function holdsTranscriptRow(rows: readonly unknown[], input: AwaitVerdictInput): rows is readonly TranscriptRow[] {
+  return rows.some((row) => {
+    const candidate = row as Partial<TranscriptRow>;
+    return candidate.agentId === input.reviewerAgentId && candidate.sessionId === input.reviewerSessionId && isTranscriptRow(row);
+  });
+}
+
 /** Reads the dispatched reviewer's own finished transcript; a read error propagates, and the caller treats it as nothing yet. */
-export function transcriptReviewerReader(options: TranscriptReviewerReaderOptions): ReviewerReader {
+export function transcriptReviewerReader(options: TranscriptReviewerReaderOptions): SeatReader {
   const namespace = options.namespace ?? os.hostname();
   const seats = cachedSeatReader(namespace);
   return {
@@ -246,9 +259,9 @@ export function transcriptReviewerReader(options: TranscriptReviewerReaderOption
       const row = finishedTranscript(rows, input);
       return row ? readWholeTranscript(row.agentId, row.transcriptPath, namespace) : [];
     },
-    async readSeat(input) {
-      const rows = await options.roster();
-      seats.retain(rows);
+    async readSeat(input, held) {
+      const rows = held && holdsTranscriptRow(held, input) ? held : await options.roster();
+      seats.retain(rows.filter(isTranscriptRow));
       const row = seatTranscript(rows, input);
       return row ? seats.read(row) : [];
     },
