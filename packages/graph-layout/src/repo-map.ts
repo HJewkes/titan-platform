@@ -42,16 +42,26 @@ interface Box {
   hidden?: number;
 }
 
+interface PlannedEdge {
+  srcId: string;
+  dstId: string;
+  kind: GraphEdge["kind"];
+  level: number;
+  weight: number;
+  edgeSource: MapEdgeSource;
+}
+
 interface MapPlan {
   leaves: Box[];
   groups: Map<string, Box>;
-  edges: GraphEdge[];
+  edges: PlannedEdge[];
 }
 
 // Prefixed so a single-package repo's `src` package can never share an id with its `src` directory.
 const packageId = (pkg: string): string => `pkg:${pkg}`;
 const directoryId = (dir: string): string => `dir:${dir}`;
 const overflowId = (dir: string): string => `more:${dir}`;
+const edgeId = (srcId: string, dstId: string): string => `${srcId}->${dstId}`;
 const lastSegment = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
 
 function packageRoot(pkg: string, fileId: string): string {
@@ -118,19 +128,24 @@ function pruneDirectory(dir: string, files: string[], degree: Map<string, number
   return [...boxes, more];
 }
 
-function fileEdge(p: FoldedPair): GraphEdge {
-  const edgeSource: MapEdgeSource = p.allCalls ? "call" : "import";
-  return { srcId: p.srcId, dstId: p.dstId, kind: p.allCalls ? "calls" : "imports", attrs: { weight: p.weight, level: FILE, edgeSource } };
+function fileEdge(p: FoldedPair): PlannedEdge {
+  const kind = p.allCalls ? "calls" : "imports";
+  return { srcId: p.srcId, dstId: p.dstId, kind, level: FILE, weight: p.weight, edgeSource: p.allCalls ? "call" : "import" };
 }
 
 /** A collapse's edges between the group boxes; an end that names no group is a bug, so it throws. */
-function aggregateEdges(collapsed: GraphInput, level: number, idOf: (id: string) => string, groups: Map<string, Box>): GraphEdge[] {
+function aggregateEdges(
+  collapsed: GraphInput,
+  level: number,
+  idOf: (id: string) => string,
+  groups: Map<string, Box>,
+): PlannedEdge[] {
   return collapsed.edges.map((e) => {
     const [srcId, dstId] = [idOf(e.srcId), idOf(e.dstId)];
     for (const id of [srcId, dstId]) {
       if (groups.get(id)?.level !== level) throw new Error(`repo-map: level ${level} edge end ${id} is not a group box`);
     }
-    return { srcId, dstId, kind: "imports", attrs: { weight: edgeWeight(e), level, edgeSource: "import" } };
+    return { srcId, dstId, kind: "imports", level, weight: edgeWeight(e), edgeSource: "import" };
   });
 }
 
@@ -183,22 +198,15 @@ function toMapNodes(laid: CompoundLayoutResult, plan: MapPlan): MapNode[] {
     .sort((a, b) => a.level - b.level || byText(a.id, b.id));
 }
 
-function toMapEdges(laid: CompoundLayoutResult): MapEdge[] {
-  return laid.edges
+function toMapEdges(laid: CompoundLayoutResult, plan: MapPlan): MapEdge[] {
+  const routes = new Map(laid.edges.map((e) => [edgeId(e.srcId, e.dstId), routeOf(e)]));
+  return plan.edges
     .map((e) => {
-      const route = routeOf(e);
-      if (!route || route.length < 2) throw new Error(`repo-map: ELK returned no route for ${e.srcId} -> ${e.dstId}`);
-      const attrs = e.attrs as { level: number; weight: number; edgeSource: MapEdgeSource };
-      return {
-        id: `${e.srcId}->${e.dstId}`,
-        source: e.srcId,
-        target: e.dstId,
-        level: attrs.level,
-        kind: e.kind,
-        edgeSource: attrs.edgeSource,
-        weight: attrs.weight,
-        route: route.map((p) => [p.x, p.y] as const),
-      };
+      const id = edgeId(e.srcId, e.dstId);
+      const route = routes.get(id);
+      if (!route || route.length < 2) throw new Error(`repo-map: ELK returned no route for ${id}`);
+      const { srcId: source, dstId: target, level, kind, edgeSource, weight } = e;
+      return { id, source, target, level, kind, edgeSource, weight, route: route.map((p) => [p.x, p.y] as const) };
     })
     .sort((a, b) => a.level - b.level || byText(a.id, b.id));
 }
@@ -216,9 +224,7 @@ function extent(nodes: readonly MapNode[]): { width: number; height: number } {
 /** A sha over everything ELK is given (sorted, so input order cannot change it) plus the ELK version. */
 function planSha(plan: MapPlan, label: LabelMetrics, layoutOptions: Record<string, string>): string {
   const boxes = [...plan.leaves, ...plan.groups.values()].sort((a, b) => byText(a.id, b.id));
-  const edges = plan.edges
-    .map((e) => [e.srcId, e.dstId, e.kind, e.attrs] as const)
-    .sort((a, b) => byText(a[0], b[0]) || byText(a[1], b[1]));
+  const edges = [...plan.edges].sort((a, b) => byText(a.srcId, b.srcId) || byText(a.dstId, b.dstId));
   const options = Object.entries(layoutOptions).sort(([a], [b]) => byText(a, b));
   return hashContent(JSON.stringify({ version: "repo-map/v1", elk: ELK_VERSION, label, options, boxes, edges }));
 }
@@ -234,7 +240,7 @@ export async function emitRepoMap(input: GraphInput, options: RepoMapOptions = {
   const plan = planRepoMap(input, Math.max(2, maxFilesPerBox));
   const chains = new Map(plan.leaves.map((l) => [l.id, l.chain]));
   const laid = await computeCompoundLayoutStrict(
-    { snapshotId: input.snapshotId, nodes: plan.leaves.map(asGraphNode), edges: plan.edges },
+    { snapshotId: input.snapshotId, nodes: plan.leaves.map(asGraphNode), edges: plan.edges.map(asGraphEdge) },
     {
       sizing: labelSizes(plan.leaves, label),
       groupOf: (n) => chains.get(n.id) ?? [],
@@ -244,9 +250,14 @@ export async function emitRepoMap(input: GraphInput, options: RepoMapOptions = {
   );
   const nodes = toMapNodes(laid, plan);
   const sha = planSha(plan, label, layoutOptions);
-  return { version: "repo-map/v1", ...extent(nodes), levels: LEVELS, nodes, edges: toMapEdges(laid), flows: [], cards: [], sha };
+  const edges = toMapEdges(laid, plan);
+  return { version: "repo-map/v1", ...extent(nodes), levels: LEVELS, nodes, edges, flows: [], cards: [], sha };
 }
 
 function asGraphNode(b: Box): GraphNode {
   return { id: b.id, kind: "file", name: b.label };
+}
+
+function asGraphEdge(e: PlannedEdge): GraphEdge {
+  return { srcId: e.srcId, dstId: e.dstId, kind: e.kind };
 }
