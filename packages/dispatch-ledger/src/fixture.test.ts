@@ -6,25 +6,25 @@ import { FIXTURE } from "./store.test-helpers.js";
 const isPlain = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-function innerType(schema: z.ZodType): z.ZodType {
-  if (schema instanceof z.ZodOptional || schema instanceof z.ZodNullable) return innerType(schema.unwrap() as z.ZodType);
+function innerType(schema: z.core.$ZodType): z.core.$ZodType {
+  if (schema instanceof z.ZodOptional || schema instanceof z.ZodNullable) return innerType(schema.unwrap());
   return schema;
 }
 
 /** Every object key under `schema` that none of `values` populates, as a dotted path; records and arrays pool their items. */
-function unpopulatedKeys(schema: z.ZodType, values: unknown[], at: string): string[] {
+function unpopulatedKeys(schema: z.core.$ZodType, values: unknown[], at: string): string[] {
   const inner = innerType(schema);
   const present = values.filter((value) => value !== undefined && value !== null);
   if (inner instanceof z.ZodArray) {
-    return unpopulatedKeys(inner.element as z.ZodType, present.flatMap((v) => (Array.isArray(v) ? v : [])), `${at}[]`);
+    return unpopulatedKeys(inner.element, present.flatMap((v) => (Array.isArray(v) ? v : [])), `${at}[]`);
   }
   if (inner instanceof z.ZodRecord) {
     const items = present.flatMap((v) => (isPlain(v) ? Object.values(v) : []));
-    return unpopulatedKeys(inner.valueType as z.ZodType, items, `${at}{}`);
+    return unpopulatedKeys(inner.valueType, items, `${at}{}`);
   }
   if (!(inner instanceof z.ZodObject)) return [];
   const objects = present.filter(isPlain);
-  return Object.entries(inner.shape as Record<string, z.ZodType>).flatMap(([key, child]) => {
+  return Object.entries(inner.shape).flatMap(([key, child]) => {
     const path = at === "" ? key : `${at}.${key}`;
     const found = objects.filter((o) => Object.hasOwn(o, key)).map((o) => o[key]);
     return found.length === 0 ? [path] : unpopulatedKeys(child, found, path);
@@ -37,7 +37,7 @@ function unpopulatedKeys(schema: z.ZodType, values: unknown[], at: string): stri
  */
 const KNOWN_GAPS = ["claims[].stale.until", "claims[].checkpoint.failed"];
 
-const gaps = (schema: z.ZodType, ledger: unknown): string[] =>
+const gaps = (schema: z.core.$ZodType, ledger: unknown): string[] =>
   unpopulatedKeys(schema, [ledger], "").filter((path) => !KNOWN_GAPS.includes(path));
 
 describe("burndown-ledger fixture", () => {
