@@ -30,6 +30,12 @@ describe("error text stored as evidence", () => {
     ["ssh userinfo", "ssh://deploy:hunter2@host/repo", `ssh://${REDACTED}@host/repo`],
     ["postgres userinfo", "postgres://u:p%40ss@db:5432/x", `postgres://${REDACTED}@db:5432/x`],
     ["https userinfo", "fetch https://u:p@github.com failed", `fetch https://${REDACTED}@github.com failed`],
+    ["userinfo with a raw @ in the password", "ssh://u:p@ss@host/x", `ssh://${REDACTED}@host/x`],
+    ["JSON-escaped userinfo", String.raw`"https:\/\/u:p@h"`, String.raw`"https:\/\/${REDACTED}@h"`],
+    ["a token after an ANSI colour code", `\x1b[31mghp_${"a1B2".repeat(9)}`, `\x1b[31m${REDACTED}`],
+    ["a key after a JSON-escaped newline", String.raw`"a\nsk-ant-api03-${"Zx9".repeat(10)}"`, String.raw`"a\n${REDACTED}"`],
+    ["a key after an env-name underscore", `KEY_sk-${"Zx9".repeat(10)}`, `KEY_${REDACTED}`],
+    ["a token after a percent escape", `%22ghp_${"a1B2".repeat(9)}%22`, `%22${REDACTED}%22`],
   ])("replaces %s", (_name, input, expected) => {
     expect(redactCredentials(input)).toBe(expected);
   });
@@ -42,8 +48,29 @@ describe("error text stored as evidence", () => {
     "eyJ alone",
     "ssh://git@github.com:org/repo",
     "mailto:a@b.c",
+    `risk-assessment-for-the-quarterly-review`,
+    "https://registry.npmjs.org:443/@titan-design/factory",
   ])("leaves %s unchanged", (input) => {
     expect(redactCredentials(input)).toBe(input);
+  });
+
+  it.each([
+    ["JWT runs after -", "-eyJ"],
+    ["JWT runs after _", "_eyJ"],
+    ["JWT runs after .", ".eyJaaaaaaa"],
+    ["sk- runs", "-sk-"],
+    ["gh token runs", "_ghp_"],
+    ["npm runs", "_npm_"],
+    ["URL schemes", "a.b.c."],
+    ["userinfo with no @", "a://b:"],
+    ["escaped prefixes", "\\neyJ%22sk-"],
+  ])("scans 100 kB of %s in linear time", (_name, unit) => {
+    const input = unit.repeat(Math.ceil(100_000 / unit.length));
+
+    const started = performance.now();
+    redactCredentials(input);
+
+    expect(performance.now() - started).toBeLessThan(100);
   });
 
   it("caps stored text at a fixed length", () => {
