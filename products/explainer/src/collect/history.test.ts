@@ -199,6 +199,24 @@ describe("mineHistory against a hostile clone", () => {
     expect(history.map((h) => h.subject)).toEqual(["Sign the reader", "Add the reader"]);
   });
 
+  it("fails closed in a treeless partial clone without running the clone's ssh command", () => {
+    const source = newRepo();
+    gitAt(source, "config", "uploadpack.allowFilter", "true");
+    commitAt(source, "Add the reader", { "a.ts": "export {};\n", "b.ts": "export {};\n" });
+    commitAt(source, "Drop the second reader", { "b.ts": null });
+    const clone = path.join(newRepo(), "treeless");
+    execFileSync("git", ["clone", "-q", "--filter=tree:0", `file://${source}`, clone], { stdio: "ignore" });
+    const marker = path.join(clone, "ssh-ran");
+    const program = path.join(clone, "fake-ssh");
+    writeFileSync(program, `#!/bin/sh\ntouch "${marker}"\nexit 1\n`);
+    chmodSync(program, 0o755);
+    gitAt(clone, "config", "remote.origin.url", "ssh://fixture.invalid/reader.git");
+    gitAt(clone, "config", "core.sshCommand", program);
+
+    expect(() => mineHistory(clone)).toThrow();
+    expect(existsSync(marker)).toBe(false);
+  });
+
   it("mines the directory it was given even when GIT_DIR points elsewhere", () => {
     const decoy = newRepo();
     commitAt(decoy, "Decoy commit", { "d.ts": "export {};\n" });

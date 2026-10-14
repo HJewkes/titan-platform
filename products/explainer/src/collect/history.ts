@@ -51,12 +51,20 @@ const MAX_BUFFER = 256 * 1024 * 1024;
 const GIT_TIMEOUT_MS = 60_000;
 // A shorter quote ("the", "cache") is found in almost any message, so it proves nothing about the reason.
 const MIN_WHY_WORDS = 4;
-// The clone is untrusted: its own config could otherwise make `git log` verify signatures with a program it names.
-const PINNED_CONFIG = ["log.showSignature=false", "gpg.program=false", "gpg.ssh.program=false", "gpg.x509.program=false"];
+// The clone is untrusted: its own config could otherwise make `git log` verify signatures with a program it names,
+// or, in a partial clone, lazily fetch missing objects through a remote and transport command it names.
+const PINNED_CONFIG = [
+  "log.showSignature=false",
+  "gpg.program=false",
+  "gpg.ssh.program=false",
+  "gpg.x509.program=false",
+  "protocol.allow=never",
+];
 
 // An inherited GIT_DIR, GIT_CONFIG_PARAMETERS or the like would override `-C dir` and the pins.
 function gitEnv(): NodeJS.ProcessEnv {
-  return Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")));
+  const inherited = Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_"));
+  return { ...Object.fromEntries(inherited), GIT_NO_LAZY_FETCH: "1" };
 }
 
 function gitIn(dir: string, timeoutMs = GIT_TIMEOUT_MS): Git {
@@ -127,7 +135,10 @@ function decisionFrom(commit: Commit): Decision | undefined {
   return { what: commit.subject, why, ...(alternative ? { alternative } : {}), sha: commit.sha, why_source: "commit" };
 }
 
-/** K2: mines a local clone's history for decisions with a quotable why. Shells out to git only; no network. */
+/**
+ * K2: mines a local clone's history for decisions with a quotable why. Shells out to git only and never fetches:
+ * lazy fetches and every transport are disabled, so a partial clone missing the objects it needs throws instead.
+ */
 export function mineHistory(dir: string, ref = "HEAD", { timeoutMs }: MineOptions = {}): HistoryMine {
   const git = gitIn(dir, timeoutMs);
   const commits = readCommits(git, ref);
