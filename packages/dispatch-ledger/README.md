@@ -89,3 +89,38 @@ bytes.
 `claims: []` in place. The product mounts the DDL in its own database.
 `memoryLedgerStore(initial?)` keeps the ledger in process for tests and dry runs. Both hand
 out copies.
+
+### Storage
+
+Every `Ledger` section, where `SqliteLedgerStore` keeps it, the guards a write passes before
+it is stored, and what a malformed stored value does. The doc is written whole, with every
+section, in the same transaction as the claim rows and the revision bump.
+
+| Section | Table and column | Write guard | Malformed |
+|---|---|---|---|
+| `version` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `lastTickAt` | `dispatch_ledger_meta.doc` key, copied to `last_tick_at` | revision, schema | read throws |
+| `claims` | `dispatch_claim` rows by `ordinal`: `claim` JSON plus index columns; `[]` in the doc | revision, phase edges, schema | read throws, naming the ordinal |
+| `decider` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `seats` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `dailyRetire` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `humanFiled` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `leakScanner` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `leakScans` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `releases` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `slicesReleased` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `slicesFlagged` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `triageStarts` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `liveness` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `ladder` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `brake` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `serviceCheck` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `wake` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+
+The guards are the revision check (`StaleRevisionError`), the phase edges against the stored
+claims (`IllegalPhaseEdgeError`, claims only) and the schema (`LedgerMalformedError`).
+"Read throws" means `read()`, and so any `write()`, throws `LedgerMalformedError` and changes
+nothing: a meta doc or claim row that is not JSON, a meta row whose revision is not an
+integer, a doc plus claims the schema refuses, and claim rows with no meta row. Only a store
+with no rows in either table reads as `EMPTY_LEDGER`; guessing empty over orphaned claims
+would dispatch them twice. Error messages never carry stored text.
