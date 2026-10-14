@@ -179,3 +179,45 @@ describe("titan-gh premerge", () => {
     expect(result.fake.calls).toEqual([]);
   });
 });
+
+async function titanGhCiFailures(args: string[]) {
+  const fake = fakeGitHub();
+  fake.addPr({ headSha: SHA });
+  fake.setRuns(SHA, [successRun("unit", 7, undefined, "failure")]);
+  fake.jobLogs.set(7, ["2026-10-11T12:00:00.0000000Z  FAIL  src/a.test.ts > a > b", "2026-10-11T12:00:01.0000000Z ##[error]exit 1"].join("\n"));
+  const out: string[] = [];
+  const err: string[] = [];
+  const code = await runTitanGh(args, { port: githubPort(fake.wire), out: (line) => out.push(line), err: (line) => err.push(line), now: () => 0, sleep: async () => {} });
+  return { code, out, err, fake };
+}
+
+describe("titan-gh ci-failures", () => {
+  it("digests one job with --job and exits 0", async () => {
+    const result = await titanGhCiFailures(["ci-failures", "o/r", "--job", "7"]);
+
+    expect(result.code).toBe(0);
+    expect(result.out.join("\n")).toBe(["FAILED job 7 https://github.com/o/r/runs/7", "first failure: FAIL  src/a.test.ts > a > b", "last 2 lines:", "   FAIL  src/a.test.ts > a > b", "  ##[error]exit 1"].join("\n"));
+  });
+
+  it("prints the PR's digests as one JSON object with --json", async () => {
+    const result = await titanGhCiFailures(["ci-failures", "o/r#1", "--json", "--lines", "1"]);
+
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.out.join("\n"))).toMatchObject({ repo: "o/r", number: 1, headSha: SHA, skipped: [], jobs: [{ job: "unit", id: 7, digest: { firstFailure: "FAIL  src/a.test.ts > a > b", tail: ["##[error]exit 1"] } }] });
+  });
+
+  it.each([
+    ["a non-numeric job", ["o/r", "--job", "abc"]],
+    ["a zero job", ["o/r", "--job", "0"]],
+    ["a job without a value", ["o/r", "--job"]],
+    ["a job on a PR ref", ["o/r#1", "--job", "7"]],
+    ["a non-numeric --lines", ["o/r#1", "--lines", "x"]],
+    ["a bare repo without --job", ["o/r"]],
+  ])("exits 2 with usage and no GitHub read on %s", async (_name, args) => {
+    const result = await titanGhCiFailures(["ci-failures", ...args]);
+
+    expect(result).toMatchObject({ code: 2, out: [] });
+    expect(result.err.join("\n")).toContain("titan-gh ci-failures <owner/repo#N | owner/repo --job <id>>");
+    expect(result.fake.calls).toEqual([]);
+  });
+});

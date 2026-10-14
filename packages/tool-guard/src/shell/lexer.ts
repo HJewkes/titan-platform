@@ -382,7 +382,7 @@ function readRedirect(s: LexState): void {
     s.tokens.push({ type: "subs", subs: [readSubstitution(s, paren + 1)] });
     return;
   }
-  refuseRedirect(s);
+  refuseRedirect(s, op);
   const heredoc = op === "<<" || op === "<<-";
   const token: RedirectToken = { type: "redirect", op, fd, target: null, body: heredoc ? "" : null, subs: [] };
   s.tokens.push(token);
