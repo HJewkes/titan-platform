@@ -1,7 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import * as childProcess from "node:child_process";
+import type * as childProcess from "node:child_process";
 import { DispatchError } from "@titan-design/agent-dispatch";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewTarget } from "./review.js";
@@ -10,9 +10,15 @@ import { agentChatReviewerDispatch, expandHome, runningReviewStarts, type Review
 import { createRosterReader } from "./roster.js";
 import { spawnGate } from "./spawn-gate.js";
 
+type ExecFileDone = (error: Error | null, stdout: string, stderr: string) => void;
+type ExecFileOverride = (bin: string, args: string[], options: { timeout: number }, done: ExecFileDone) => unknown;
+const execFileHook = vi.hoisted(() => ({ override: undefined as ExecFileOverride | undefined }));
+
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof childProcess>();
-  return { ...actual, execFile: vi.fn(actual.execFile) };
+  const execFile = (bin: string, args: string[], options: { timeout: number }, done: ExecFileDone): unknown =>
+    execFileHook.override ? execFileHook.override(bin, args, options, done) : Reflect.apply(actual.execFile, undefined, [bin, args, options, done]);
+  return { ...actual, execFile };
 });
 
 const PROFILE = "rv-readonly";
@@ -348,16 +354,17 @@ describe("agentChatReviewerDispatch spawn", () => {
 
   describe("with the default spawn timeout", () => {
     /** A broker that answers after `ms`; execFile kills a child still running at its `timeout` option, as here. */
-    const brokerAnsweringAfter = (ms: number) =>
-      vi.mocked(childProcess.execFile).mockImplementation(((_bin: string, _args: string[], options: { timeout: number }, done: (error: Error | null, stdout: string, stderr: string) => void) => {
-        const killed = ms > options.timeout;
-        setTimeout(() => done(killed ? Object.assign(new Error("killed"), { killed: true, signal: "SIGTERM" }) : null, "", ""), Math.min(ms, options.timeout));
+    const brokerAnsweringAfter = (ms: number): void => {
+      execFileHook.override = (_bin, _args, { timeout }, done) => {
+        const killed = ms > timeout;
+        setTimeout(() => done(killed ? Object.assign(new Error("killed"), { killed: true, signal: "SIGTERM" }) : null, "", ""), Math.min(ms, timeout));
         return { stdin: { on: () => undefined, end: () => undefined } };
-      }) as never);
+      };
+    };
 
     afterEach(() => {
       vi.useRealTimers();
-      vi.mocked(childProcess.execFile).mockReset();
+      execFileHook.override = undefined;
     });
 
     it("lets a broker that answers after 45 s finish the spawn", async () => {
