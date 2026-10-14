@@ -1,5 +1,7 @@
 import { isCaseUnsureLookup } from "./case-attrs.js";
 import type { CaseUnsure } from "./case-attrs.js";
+import { hasIfsChar, ifsFields } from "./ifs-fields.js";
+import type { WordPart } from "./ifs-fields.js";
 import type { WordToken } from "./tokens.js";
 import { ASSIGNMENT_RE, expandWord, lookup } from "./vars.js";
 import type { Vars } from "./vars.js";
@@ -9,22 +11,27 @@ type Resolve = (name: string) => string | null | CaseUnsure;
 /** Bash expands these builtins' assignment-shaped arguments as assignments, which never split. */
 const DECLARERS = new Set(["export", "declare", "typeset", "local", "readonly"]);
 const DEFAULT_IFS = " \t\n";
-const BLANKS_RE = /[ \t\n]+/;
-const BLANK_RE = /[ \t\n]/;
 
 /**
- * The command's words as bash reads them: a known value in an unquoted expansion is split on blanks and an
- * empty field is dropped. zsh does not split, so this is a reading beside the as-written one, never instead of
- * it. A word this cannot split exactly (mixed quoting, a custom IFS, a value a case attribute may change) is
- * left raw and dynamic, so it fails closed. Null when every word reads as `expandWord` gives it.
+ * The command's words as bash reads them: a known value in an unquoted expansion is split on the known IFS
+ * as bash 5 splits it. zsh does not split, so this is a reading beside the as-written one, never instead of
+ * it. A word this cannot split exactly (mixed quoting, an unknown or unmodelled IFS, a value a case attribute
+ * may change) is left raw and dynamic, so it fails closed. Null when every word reads as `expandWord` gives it.
  */
 export function splitReading(words: WordToken[], vars: Vars, home: string | null): WordToken[] | null {
   const resolve: Resolve = (name) => lookup(vars, home, name);
-  const customIfs = vars.has("IFS") && lookup(vars, home, "IFS") !== DEFAULT_IFS;
+  const ifs = knownIfs(vars, home);
   const kept = assignmentSlots(words);
-  const split = words.map((word, i) => (kept.has(i) ? null : splitWord(word, resolve, customIfs)));
+  const split = words.map((word, i) => (kept.has(i) ? null : splitWord(word, resolve, ifs)));
   if (split.every((fields) => fields === null)) return null;
   return words.flatMap((word, i) => split[i] ?? [expandWord(word, resolve)]);
+}
+
+/** IFS as the walk holds it: the default when never assigned, null when unknown or a case attribute may change it. */
+function knownIfs(vars: Vars, home: string | null): string | null {
+  if (!vars.has("IFS")) return DEFAULT_IFS;
+  const ifs = lookup(vars, home, "IFS");
+  return typeof ifs === "string" ? ifs : null;
 }
 
 /**
@@ -46,34 +53,29 @@ function assignmentSlots(words: WordToken[]): Set<number> {
 }
 
 /** The fields one word splits into, `[word]` when it must stay raw, or null when `expandWord` reads it exactly. */
-function splitWord(word: WordToken, resolve: Resolve, customIfs: boolean): WordToken[] | null {
+function splitWord(word: WordToken, resolve: Resolve, ifs: string | null): WordToken[] | null {
   if (!word.dynamic || word.computed || !word.unquotedExpansion || word.refs.length === 0) return null;
   const found = word.refs.map((ref) => resolve(ref.name));
   const values = found.map((f) => (isCaseUnsureLookup(f) ? f.asWritten : f));
   if (!values.every((v): v is string => v !== null)) return null;
-  if (customIfs) return [word];
+  if (ifs === null) return [word];
   const expanded = expandWord(word, resolve);
-  if (expanded.value !== "" && !values.some((v) => BLANK_RE.test(v))) return null;
+  if (expanded.value !== "" && !values.some((v) => hasIfsChar(v, ifs))) return null;
   if (word.quoted || word.spliced || found.some(isCaseUnsureLookup)) return [word];
+  const fields = ifsFields(wordParts(word, values), ifs);
+  if (fields === null) return [word];
   const typed = word.typed ?? word.value;
-  return fieldValues(word, values).map((value) => ({ ...expanded, value, dynamic: false, refs: [], typed }));
+  return fields.map((value) => ({ ...expanded, value, dynamic: false, refs: [], typed }));
 }
 
-/** Literal text stays in its field; each value is split on blank runs, and empty fields are dropped. */
-function fieldValues(word: WordToken, values: string[]): string[] {
-  const fields: string[] = [];
-  let current = "";
+/** The word as literal slices, which never split, and its refs' values, which do. */
+function wordParts(word: WordToken, values: string[]): WordPart[] {
+  const parts: WordPart[] = [];
   let last = 0;
   for (const [i, ref] of word.refs.entries()) {
-    const [first = "", ...rest] = (values[i] ?? "").split(BLANKS_RE);
-    current += word.value.slice(last, ref.start) + first;
-    for (const part of rest) {
-      if (current !== "") fields.push(current);
-      current = part;
-    }
+    parts.push({ text: word.value.slice(last, ref.start), splits: false }, { text: values[i] ?? "", splits: true });
     last = ref.end;
   }
-  current += word.value.slice(last);
-  if (current !== "") fields.push(current);
-  return fields;
+  parts.push({ text: word.value.slice(last), splits: false });
+  return parts;
 }
