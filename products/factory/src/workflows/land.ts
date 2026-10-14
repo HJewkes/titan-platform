@@ -1,30 +1,23 @@
-import type { GitHubPort, MergeMethod, RepoSlug } from "@titan-design/github";
+import type { MergeMethod, RepoSlug } from "@titan-design/github";
 import type { OwnerBrief } from "@titan-design/review-panel";
-import type { RoutedStepInput, StepRoute, WorkflowContext } from "@titan-design/workflow";
+import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
-import { evidenceRecord } from "../evidence.js";
 import { stuckBehindDecision } from "../gate-brief.js";
 import type { GateDecision, GatePolicy } from "../gate-policy.js";
-import { requireBaseRequiredChecks } from "../required-checks.js";
-import { redactForEvidence } from "../redact.js";
-import { BaseCheckResult, BaseWaitResult, checkBase, mergeOnAllowedBase, waitForRetarget, type BaseCheck, type BaseCheckInput, type BaseWaitInput } from "./land-base.js";
+import { BaseCheckResult, BaseWaitResult, type BaseCheck, type BaseCheckInput, type BaseWaitInput } from "./land-base.js";
 import { landedOf, type LandedPr } from "./land-landed.js";
 import { approveMergeGate, askedApproval, type AskApproval } from "./land-approval.js";
-import type { MergeInput } from "./land-merge-message.js";
-import type { CiInput, CiSnapshot, FailingCheck } from "./land-ci.js";
-import { afterWrite, waitForCi } from "./land-ci-wait.js";
-import { budgetSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type FirstReads, type UpdateBound } from "./land-budget.js";
-import { flakyState, type FlakyChecks } from "./land-flaky.js";
-import { SettleResult, settleOrGate, settleRun, type MergeTreeProbe, type SettleHold, type SettleInput, type UnsettledMerge } from "./land-settle.js";
-import { UPDATE_RESENDS, updateBranch, type UpdateInput } from "./land-update.js";
-import { portReads, type PrSnapshot } from "./pr-snapshot.js";
-import { sleep, stepClock, type StepClock } from "./deadline.js";
-import { baseMovedOrThrow, mergePolicyRecord, type MergePolicyInput, CiSnapshotResult, LandRulesResult, BackoffResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
+import type { CiSnapshot, FailingCheck } from "./land-ci.js";
+import { budgetSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type UpdateBound } from "./land-budget.js";
+import { SettleResult, settleOrGate, type SettleHold, type SettleInput, type UnsettledMerge } from "./land-settle.js";
+import { UPDATE_RESENDS } from "./land-update.js";
+import { CiSnapshotResult, LandRulesResult, BackoffResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
 export { readCi, type CiSnapshot, type FailingCheck } from "./land-ci.js";
 export { afterWrite } from "./land-ci-wait.js";
 export { sleep } from "./deadline.js";
+export { codeRoute, landRoutes, type LandDeps, type Timing } from "./land-routes.js";
 export { DEVICE_CHECK, type ApprovalAnswer, type ApprovalQuestion, type AskApproval } from "./land-approval.js";
 export { CI_BACKLOG_CEILING_FACTOR, MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, MISSING_CHECK_GRACE_MS, UPDATE_BUDGET_MS, newUpdateBound, type UpdateBound } from "./land-budget.js";
 
@@ -102,31 +95,9 @@ export type LandOutcome =
   | { kind: "ci-failed"; headSha: string; failing: FailingCheck[] }
   | { kind: "stopped"; reason: "closed" | "not-mergeable" | "conflict" | "abandoned" | "stuck-behind" | "merge-denied" | "update-branch-unmoved"; headSha: string; detail: string };
 
-export interface LandDeps {
-  port: GitHubPort;
-  now?: () => number;
-  sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
-  pollMs?: number;
-  ciTimeoutMs?: number;
-  /** How long a strict behind head waits on a required check that never reported before it is updated; default `MISSING_CHECK_GRACE_MS`. */
-  missingCheckGraceMs?: number;
-  updateTimeoutMs?: number;
-  flakyChecks?: Record<string, FlakyChecks>;
-  /** Where `ci-wait` reads the PR and its checks; absent means the port, once per poll. Writes always re-read through the port. */
-  snapshot?: PrSnapshot;
-  /** Probes the local merge-tree when an unsettled merge outlasts its bound; absent means the gate says it was not run. */
-  mergeTree?: MergeTreeProbe;
-}
-
-interface LandRules {
-  base: string;
-  contexts: string[];
-  strict: boolean;
-}
-
 interface LandState {
   round: number;
-  rules: LandRules;
+  rules: z.infer<typeof LandRulesResult>;
   /** Rules reads after the round's first, each made because a confirmed read named a new base. */
   rulesReads: number;
   baseChecks: number;
@@ -361,59 +332,4 @@ function stopped(reason: Extract<LandOutcome, { kind: "stopped" }>["reason"], he
 export async function step<R>(ctx: WorkflowContext, stepId: string, input: object, result: z.ZodType<R>): Promise<R> {
   const done = await ctx.dispatch(stepId, TEMPLATE, { vars: { [INPUT_VAR]: JSON.stringify(input) }, schema: z.looseObject({ result }) });
   return done.data!.result;
-}
-
-/** Every land step is a code step that reads before it writes, so each is safe to repeat after a crash. */
-export function landRoutes(deps: LandDeps): StepRoute[] {
-  const now = deps.now ?? Date.now;
-  const timing = { now, sleep: deps.sleep ?? sleep, pollMs: deps.pollMs ?? 30_000 };
-  const flaky = flakyState(deps.flakyChecks);
-  const firstReads: FirstReads = new Map();
-  return [
-    codeRoute("land-rules", now, (input: { repo: string; pr: number }) => readRules(deps.port, input)),
-    codeRoute("ci-wait", now, (input: CiInput, signal, clock) => waitForCi(deps, input, { ...timing, timeoutMs: deps.ciTimeoutMs ?? 45 * 60_000, startedAt: clock.firstStartedAtMs }, signal, flaky, firstReads)),
-    codeRoute("update-branch", now, updateRun(deps, timing, now)),
-    codeRoute("update-backoff", now, async (input: { waitMs: number; retry: number }, signal) => (await timing.sleep(input.waitMs, signal), input)),
-    codeRoute("base-check", now, (input: BaseCheckInput) => checkBase(deps.port, input)),
-    codeRoute("base-wait", now, (input: BaseWaitInput, signal) => waitForRetarget(deps.snapshot ?? portReads(deps.port), input, timing, signal)),
-    codeRoute("merge", now, async (input: MergeInput) => afterWrite(deps, input, mergeOnAllowedBase(deps.port, input).catch(baseMovedOrThrow))),
-    recordRoute("merge-policy", now, async (input: MergePolicyInput, step) => mergePolicyRecord(input, step)),
-    codeRoute("merge-settle", now, (input: SettleInput, signal) => settleRun(input, timing, deps.mergeTree, signal)),
-  ];
-}
-
-function updateRun(deps: LandDeps, timing: Omit<Timing, "timeoutMs">, now: () => number) {
-  return async (input: UpdateInput, signal: AbortSignal) => ({ ...(await afterWrite(deps, input, updateBranch(deps.port, input, { ...timing, timeoutMs: deps.updateTimeoutMs ?? 5 * 60_000 }, signal))), at: now() });
-}
-
-/** `clock` carries the step's first start across a restart, so a wait that reads it resumes its deadline rather than restarting it. */
-export function codeRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal, clock: StepClock) => Promise<object>): StepRoute {
-  return recordRoute(match, now, async (input: I, step) => ({ result: await fn(input, step.signal, stepClock(step)) }));
-}
-
-/** Like `codeRoute`, for a step whose record carries trace keys beside `result`. */
-function recordRoute<I>(match: string, now: () => number, fn: (input: I, step: RoutedStepInput) => Promise<object>): StepRoute {
-  const run = async (step: RoutedStepInput) => {
-    try {
-      const body = await fn(JSON.parse(step.prompt) as I, step);
-      const record = evidenceRecord(`land.${match}`, step, new Date(now()).toISOString(), body);
-      return { ok: true as const, output: JSON.stringify(record) };
-    } catch (error) {
-      return { ok: false as const, error: redactForEvidence(error instanceof Error ? error.message : String(error)), retryable: false };
-    }
-  };
-  return { match, onRestart: "repeat", runner: { run } };
-}
-
-async function readRules(port: GitHubPort, input: { repo: string; pr: number }): Promise<LandRules> {
-  const pr = await port.getPr(input.repo, input.pr);
-  const required = await requireBaseRequiredChecks(port, input.repo, pr.baseRef);
-  return { base: pr.baseRef, contexts: required.contexts, strict: required.strict };
-}
-
-export interface Timing {
-  now: () => number;
-  sleep: (ms: number, signal: AbortSignal) => Promise<void>;
-  pollMs: number;
-  timeoutMs: number;
 }

@@ -1182,7 +1182,7 @@
   },
   "products/factory/src/workflows/land.ts": {
     "titan/max-line-length": {
-      "count": 5
+      "count": 3
     }
   },
   "products/factory/src/workflows/pr-snapshot.test.ts": {
