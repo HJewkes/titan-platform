@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { cueResolverFromWords } from "./cues.js";
-import { lintMapBeats, lintMapCues, type MapLint, type MapLintRule } from "./map-lints.js";
+import { lintMapBeats, lintMapCues, type MapLint } from "./map-lints.js";
 import { layout, mapBeat, offMap, reveal } from "./map-fixtures.test-helpers.js";
 import type { MapBeat } from "./map-state.js";
 
-const rules = (beats: MapBeat[]): MapLintRule[] => lintMapBeats(beats, layout).map((l) => l.rule);
+const rules = (beats: MapBeat[]): MapLint["rule"][] => lintMapBeats(beats, layout).map((l) => l.rule);
 
 describe("lintMapBeats", () => {
   it("accepts a storyboard that leaves the map for another slide type and comes back", () => {
