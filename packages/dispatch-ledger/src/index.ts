@@ -36,5 +36,23 @@ export type { Contract, ContractOp, ExceptionClass, StaleClass, StallCode } from
 export { IllegalPhaseEdgeError, PHASE_EDGES, illegalEdgeError, illegalEdges } from "./claim-phase.js";
 export type { IllegalEdge } from "./claim-phase.js";
 
+// Pure ledger operations.
+export {
+  SLOT_MISMATCH_TOLERANCE,
+  addClaim,
+  claimKey,
+  heldClaims,
+  isStalled,
+  laneClaims,
+  ledgerImplementers,
+  readySlices,
+  sameClaim,
+  slotMismatch,
+} from "./ops.js";
+export type { ClaimKey, StackPredicate } from "./ops.js";
+export { applyActions } from "./apply.js";
+export type { ClaimPatch, LedgerAction, ReleaseAction } from "./apply.js";
+export { PARK_CLASS, firstCode, parkUpdate } from "./stall.js";
+
 // JSON parse and export.
 export { LedgerMalformedError, exportLedgerJson, parseLedgerJson, writeLedgerExport } from "./json.js";
