@@ -204,3 +204,33 @@ export function checkRootLintCoversWorkspaces(root) {
         `The root \`lint\` script does not reach \`${dir}\`. Add \`${dir}/src\` to it in \`package.json\`; workspaces have no \`lint\` script of their own.`,
     );
 }
+
+const WORKSPACE_IMPORT = /(?:\bfrom\s+|\bimport\s*\(\s*|\brequire\s*\(\s*|^import\s+)["'](@titan-design\/[a-z0-9-]+)/gm;
+const SOURCE_FILE = /\.[cm]?[jt]sx?$/;
+const SKIPPED_DIRS = new Set(["node_modules", "dist", "coverage"]);
+
+function sourceFiles(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return SKIPPED_DIRS.has(entry.name) ? [] : sourceFiles(path);
+    return entry.isFile() && SOURCE_FILE.test(entry.name) ? [path] : [];
+  });
+}
+
+function undeclaredImports(root, dir, members) {
+  const pkg = readJson(join(root, dir, "package.json"));
+  const declared = new Set(DEPENDENCY_FIELDS.flatMap((field) => Object.keys(pkg[field] ?? {})));
+  return sourceFiles(join(root, dir)).flatMap((file) =>
+    [...readFileSync(file, "utf8").matchAll(WORKSPACE_IMPORT)]
+      .map((match) => match[1])
+      .filter((name) => members.has(name) && name !== pkg.name && !declared.has(name))
+      .map((name) => `\`${relative(root, file)}\` imports \`${name}\`, which \`${pkg.name}\` does not declare. Add it as \`workspace:^\` (a devDependency for test-only use), so the package graph knows the edge.`),
+  );
+}
+
+/** R58: a workspace member declares every workspace package it imports; test scoping follows only declared edges. */
+export function checkWorkspaceImportsDeclared(root) {
+  const dirs = workspaceGlobs(root).flatMap((glob) => resolveWorkspaceGlob(root, glob));
+  const members = new Set(dirs.map((dir) => readJson(join(root, dir, "package.json")).name));
+  return [...new Set(dirs.flatMap((dir) => undeclaredImports(root, dir, members)))];
+}

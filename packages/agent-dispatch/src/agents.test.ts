@@ -61,6 +61,30 @@ const row = (over: Record<string, unknown> = {}) => ({
 });
 
 describe("listAgents", () => {
+  it("maps the broker's own reply timeout on stderr to a timeout", async () => {
+    const bin = fakeAgentChat(`echo "broker did not answer agents_result" >&2\nexit 1\n`);
+    const error = await listAgents(bin, 10_000).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DispatchTimeoutError);
+    expect(error).toMatchObject({ message: expect.stringContaining("agents_result") });
+  });
+
+  it("keeps the reply-timeout text on stdout a plain refusal", async () => {
+    const bin = fakeAgentChat(`echo "broker did not answer agents_result"\nexit 1\n`);
+    const error = await listAgents(bin, 10_000).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DispatchError);
+    expect(error).not.toBeInstanceOf(DispatchTimeoutError);
+  });
+
+  it.each([
+    "the broker did not answer park; it may predate CC-282",
+    "broker did not answer agents_result within 30s",
+  ])("keeps an unanchored copy (%s) a plain refusal", async (line) => {
+    const bin = fakeAgentChat(`echo "${line}" >&2\nexit 1\n`);
+    const error = await listAgents(bin, 10_000).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DispatchError);
+    expect(error).not.toBeInstanceOf(DispatchTimeoutError);
+  });
+
   it("asks for the JSON roster and returns every row agent-chat printed", async () => {
     const rows = [row(), row({ name: "item-7", status: "running", presence: "live" })];
     const bin = printing(rows);

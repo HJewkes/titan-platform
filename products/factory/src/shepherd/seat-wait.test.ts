@@ -134,11 +134,12 @@ describe("Shepherd's own MERGE meeting a seat reviewer's WAIT at the same head",
 });
 
 describe("a silent own reviewer with no seat reviewer listed", () => {
-  it("is still a timeout, not a held head", async () => {
+  it("is still a timeout, not a held head, once its correction turn never lands", async () => {
     const { verdicts, stepIds } = await review({ ownMerges: false });
 
-    expect(verdicts).toEqual([{ kind: "none", cause: "timeout" }]);
+    expect(verdicts).toEqual([{ kind: "none", cause: "timeout", reason: "the resumed reviewer did not show on the roster in time" }]);
     expect(stepIds).toContain(`sh-late-verdict:${H}`);
+    expect(stepIds).toContain(`sh-correct-verdict:${H}`);
   });
 });
 

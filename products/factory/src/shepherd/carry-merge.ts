@@ -7,6 +7,7 @@ import { codeRoute, step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
 import { failureOf } from "./error-class.js";
 import { seatFixFirst } from "./external-review.js";
+import { registeredOwners } from "./seat-tie.js";
 import { registeredKind } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { mergeVerdict, type ReviewWiring } from "./review.js";
@@ -156,16 +157,18 @@ async function seatHeads(port: ShepherdDeps["port"], input: SeatInput): Promise<
 /**
  * Reads every seat reviewer at each head a carry would vouch for, so a FIX_FIRST at any of them refuses it, as the fresh review
  * at that head would have. An unreadable roster, transcript, commit list or force-push list refuses too. With no dispatch wired there is no
- * roster to read.
+ * roster to read. The store, when given, names the registered owners that tie a seat reviewer whose transcript shows nothing.
  */
-export function carrySeatRoute(deps: Pick<ShepherdDeps, "now" | "port">, wiring: ReviewWiring | undefined): StepRoute {
+export function carrySeatRoute(deps: Pick<ShepherdDeps, "now" | "port"> & Partial<Pick<ShepherdDeps, "store">>, wiring: ReviewWiring | undefined): StepRoute {
   return codeRoute(CARRY_SEAT_STEP, deps.now, async (input: SeatInput) => {
     const dispatch = wiring?.dispatch;
     if (!dispatch) return { clear: true };
     const walked = await seatHeads(deps.port, input);
     if ("reason" in walked) return { clear: false, reason: walked.reason };
     for (const head of walked.heads) {
-      const check = await seatFixFirst(() => dispatch.roster(), wiring.reader, { repo: input.repo, pr: input.pr, head });
+      const target = { repo: input.repo, pr: input.pr, head };
+      const owners = deps.store && registeredOwners(deps.store, target);
+      const check = await seatFixFirst(() => dispatch.roster(), wiring.reader, { ...target, ...owners });
       if (check.kind !== "clear") return { clear: false, reason: check.kind === "none" ? check.reason : `a seat reviewer said FIX_FIRST at ${head}` };
     }
     return { clear: true };
@@ -181,7 +184,7 @@ const Evidence = z.looseObject({
     dispatchedReviewer: z.looseObject({ agentId: z.string().min(1), sessionId: z.string().min(1) }),
     seatGrants: z.array(z.string()),
   }),
-  record: z.looseObject({ verdictLocator: z.looseObject({}) }),
+  record: z.looseObject({ verdictLocator: z.looseObject({}), proofUnverified: z.string().optional() }),
   ciPolicy: CiPolicySchema,
   grantWithheld: z.object({ policy: z.string().nullable(), proof: z.string().nullable() }).optional(),
 });
@@ -251,6 +254,7 @@ export async function carriedVerdict(ctx: WorkflowContext, target: CarryTarget, 
     carry,
     ...(source.ciPolicy && { ciPolicy: source.ciPolicy }),
     ...(source.grantWithheld && { grantWithheld: source.grantWithheld }),
+    ...(source.record.proofUnverified !== undefined && { proofUnverified: source.record.proofUnverified }),
   });
   return mergeUp && verdict.kind === "MERGE" ? { ...verdict, mergeUpFrom: fromHead } : verdict;
 }
