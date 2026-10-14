@@ -81,19 +81,30 @@ const STORE_BUILTINS = new Map<string, StoreSpec>([
   ["syswrite", { names: "c", values: "o" }],
   ["sysopen", { names: "u", values: "mo" }],
   ["syserror", { names: "e", values: "p" }],
-  // Read through zsystemStores; listed so a static alias parameter in any word refuses.
+  // Read through SUBCOMMAND_STORES; listed so a static alias parameter in any word refuses.
   ["zsystem", {}],
+  ["zcurses", {}],
   ["zgetattr", { operands: 2 }],
   ["zlistattr", { operands: 1 }],
   ["zpty", { operands: "store", stores: "r" }],
   ["zregexparse", { operands: "all" }],
-  ["zcurses", { operands: "all" }],
   ["unset", {}],
 ]);
 /** Declarations whose `-n` makes each name a reference to the parameter its value names. */
 const NAMEREF_DECLARERS = new Set(["typeset", "declare", "local"]);
 /** `zsystem flock`'s options, read after the subcommand: `-f` names the parameter that gets the lock's fd. */
 const FLOCK: StoreSpec = { names: "f", values: "ti" };
+/** zcurses subcommands that store into the parameters after their window; the rest only draw or configure. */
+const ZCURSES_STORES = new Set(["input", "querychar", "position"]);
+const ZCURSES_OTHERS = new Set([
+  "init", "end", "addwin", "delwin", "refresh", "touch", "move", "clear", "char", "string", "border", "attr", "bg",
+  "scroll", "timeout", "mouse", "resize",
+]);
+/** Builtins led by a subcommand, whose store options or operands follow it. */
+const SUBCOMMAND_STORES = new Map<string, (args: WordToken[]) => boolean>([
+  ["zsystem", zsystemStores],
+  ["zcurses", zcursesStores],
+]);
 /** Options `alias` itself takes, so a dynamic command word that may be `alias` is read past them. */
 const ALIAS_OPTION_RE = /^[-+][gsrLm]+$/;
 const DEFINITION_RE = /^[^=/\s]+=/;
@@ -143,7 +154,8 @@ function storesAliasParam(name: string, args: WordToken[]): boolean {
   const spec = STORE_BUILTINS.get(name);
   if (!spec) return false;
   if (args.some((w) => STORED_PARAM_RE.test(w.value) || (mayBraceExpand(w) && BRACED_PARAM_RE.test(w.value)))) return true;
-  if (name === "zsystem") return zsystemStores(args);
+  const bySubcommand = SUBCOMMAND_STORES.get(name);
+  if (bySubcommand) return bySubcommand(args);
   if (spec.anywhere) return interleavedStores(args, spec);
   return readsStore(name, args, spec);
 }
@@ -155,6 +167,19 @@ function zsystemStores(args: WordToken[]): boolean {
   return varies(sub) || (sub.value === "flock" && readsStore("zsystem", rest, FLOCK));
 }
 
+/** A varying or unknown subcommand may be one that stores, so only a known drawing one is read as storing nothing. */
+function zcursesStores(args: WordToken[]): boolean {
+  const [sub, ...rest] = args;
+  if (sub === undefined) return false;
+  if (varies(sub) || !(ZCURSES_STORES.has(sub.value) || ZCURSES_OTHERS.has(sub.value))) return true;
+  return ZCURSES_STORES.has(sub.value) && readsStore("zcurses", rest, { operands: "all" });
+}
+
+/**
+ * The store reading of a builtin's options and operands under its spec: a varying or splitting target, a varying
+ * operand where the spec reads a name, an option place that may supply a name-taking option, or a nameref bound to an
+ * alias parameter.
+ */
 function readsStore(name: string, args: WordToken[], spec: StoreSpec): boolean {
   const { options, targets, operands, mayBeOption, ended } = readOptions(args, spec);
   if (targets.some((w) => varies(w) || yieldsSeveral(w)) || dynamicTargetOperand(spec, options, operands)) return true;
