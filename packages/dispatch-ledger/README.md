@@ -7,7 +7,7 @@ bytes.
 Tier 2 of the titan-platform DAG. May import only packages in the same tier or
 below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
 
-Ported from agent-chat `src/agents/burndown` at commit `1a717cb`. Re-port anything that
+Ported from agent-chat `src/agents/burndown` at commit `67005f3`. Re-port anything that
 lands there before the agent-chat copy is deleted.
 
 ## Schema and vocabularies

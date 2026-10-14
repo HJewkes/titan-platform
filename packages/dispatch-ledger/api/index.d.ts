@@ -12,12 +12,16 @@ type Phase = (typeof PHASES)[number];
 /** Phases a spawn lands in once its agent row appears. */
 declare const AGENT_PHASES: readonly ["planning", "implementing", "reviewing"];
 type AgentPhase = (typeof AGENT_PHASES)[number];
-/** The unmerged parent slice a claim was admitted on, and the parent PR's head branch. */
+/**
+ * The unmerged parent slice a claim was admitted on, and the parent PR's head branch. `forkHead` is the parent head
+ * the child's worktree was cut from, recorded once the spawn answers, to diagnose a restack against.
+ */
 declare const StackedOnSchema: z.ZodObject<{
     taskId: z.ZodString;
     slice: z.ZodString;
     pr: z.ZodString;
     branch: z.ZodString;
+    forkHead: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
 type StackedOn = z.infer<typeof StackedOnSchema>;
 declare const ClaimSchema: z.ZodObject<{
@@ -34,6 +38,7 @@ declare const ClaimSchema: z.ZodObject<{
         "retry-spent": "retry-spent";
         budget: "budget";
         "outside-owns": "outside-owns";
+        "no-repo": "no-repo";
         "phase-timeout": "phase-timeout";
         "dirty-uncommitted": "dirty-uncommitted";
         "lease-expired": "lease-expired";
@@ -63,6 +68,7 @@ declare const ClaimSchema: z.ZodObject<{
             "retry-spent": "retry-spent";
             budget: "budget";
             "outside-owns": "outside-owns";
+            "no-repo": "no-repo";
             "phase-timeout": "phase-timeout";
             "dirty-uncommitted": "dirty-uncommitted";
             "lease-expired": "lease-expired";
@@ -92,6 +98,7 @@ declare const ClaimSchema: z.ZodObject<{
             "retry-spent": "retry-spent";
             budget: "budget";
             "outside-owns": "outside-owns";
+            "no-repo": "no-repo";
             "phase-timeout": "phase-timeout";
             "dirty-uncommitted": "dirty-uncommitted";
             "lease-expired": "lease-expired";
@@ -156,6 +163,7 @@ declare const ClaimSchema: z.ZodObject<{
         slice: z.ZodString;
         pr: z.ZodString;
         branch: z.ZodString;
+        forkHead: z.ZodOptional<z.ZodString>;
     }, z.core.$strip>>;
     owns: z.ZodOptional<z.ZodArray<z.ZodString>>;
     ownsAmended: z.ZodOptional<z.ZodArray<z.ZodString>>;
@@ -171,6 +179,11 @@ declare const ClaimSchema: z.ZodObject<{
             extend: "extend";
             modify: "modify";
         }>;
+    }, z.core.$strip>>>;
+    overlapsAccepted: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        pr: z.ZodNumber;
+        path: z.ZodString;
+        why: z.ZodString;
     }, z.core.$strip>>>;
     agentName: z.ZodOptional<z.ZodString>;
     spawned: z.ZodOptional<z.ZodArray<z.ZodString>>;
@@ -189,6 +202,11 @@ declare const ClaimSchema: z.ZodObject<{
     pr: z.ZodOptional<z.ZodString>;
     prHead: z.ZodOptional<z.ZodString>;
     lastReport: z.ZodOptional<z.ZodString>;
+    reregistered: z.ZodOptional<z.ZodObject<{
+        n: z.ZodNumber;
+        at: z.ZodString;
+        head: z.ZodOptional<z.ZodString>;
+    }, z.core.$strip>>;
     seat: z.ZodOptional<z.ZodString>;
     namePrefix: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
@@ -246,11 +264,13 @@ declare const LadderRecordSchema: z.ZodObject<{
         "retry-spent": "retry-spent";
         budget: "budget";
         "outside-owns": "outside-owns";
+        "no-repo": "no-repo";
         "phase-timeout": "phase-timeout";
         "dirty-uncommitted": "dirty-uncommitted";
         "lease-expired": "lease-expired";
         "no-progress": "no-progress";
     }>>;
+    reason: z.ZodOptional<z.ZodString>;
     seat: z.ZodOptional<z.ZodString>;
     releaseDue: z.ZodOptional<z.ZodLiteral<true>>;
 }, z.core.$strip>;
@@ -287,6 +307,7 @@ declare const LedgerSchema: z.ZodObject<{
             "retry-spent": "retry-spent";
             budget: "budget";
             "outside-owns": "outside-owns";
+            "no-repo": "no-repo";
             "phase-timeout": "phase-timeout";
             "dirty-uncommitted": "dirty-uncommitted";
             "lease-expired": "lease-expired";
@@ -316,6 +337,7 @@ declare const LedgerSchema: z.ZodObject<{
                 "retry-spent": "retry-spent";
                 budget: "budget";
                 "outside-owns": "outside-owns";
+                "no-repo": "no-repo";
                 "phase-timeout": "phase-timeout";
                 "dirty-uncommitted": "dirty-uncommitted";
                 "lease-expired": "lease-expired";
@@ -345,6 +367,7 @@ declare const LedgerSchema: z.ZodObject<{
                 "retry-spent": "retry-spent";
                 budget: "budget";
                 "outside-owns": "outside-owns";
+                "no-repo": "no-repo";
                 "phase-timeout": "phase-timeout";
                 "dirty-uncommitted": "dirty-uncommitted";
                 "lease-expired": "lease-expired";
@@ -409,6 +432,7 @@ declare const LedgerSchema: z.ZodObject<{
             slice: z.ZodString;
             pr: z.ZodString;
             branch: z.ZodString;
+            forkHead: z.ZodOptional<z.ZodString>;
         }, z.core.$strip>>;
         owns: z.ZodOptional<z.ZodArray<z.ZodString>>;
         ownsAmended: z.ZodOptional<z.ZodArray<z.ZodString>>;
@@ -424,6 +448,11 @@ declare const LedgerSchema: z.ZodObject<{
                 extend: "extend";
                 modify: "modify";
             }>;
+        }, z.core.$strip>>>;
+        overlapsAccepted: z.ZodOptional<z.ZodArray<z.ZodObject<{
+            pr: z.ZodNumber;
+            path: z.ZodString;
+            why: z.ZodString;
         }, z.core.$strip>>>;
         agentName: z.ZodOptional<z.ZodString>;
         spawned: z.ZodOptional<z.ZodArray<z.ZodString>>;
@@ -442,6 +471,11 @@ declare const LedgerSchema: z.ZodObject<{
         pr: z.ZodOptional<z.ZodString>;
         prHead: z.ZodOptional<z.ZodString>;
         lastReport: z.ZodOptional<z.ZodString>;
+        reregistered: z.ZodOptional<z.ZodObject<{
+            n: z.ZodNumber;
+            at: z.ZodString;
+            head: z.ZodOptional<z.ZodString>;
+        }, z.core.$strip>>;
         seat: z.ZodOptional<z.ZodString>;
         namePrefix: z.ZodOptional<z.ZodString>;
     }, z.core.$strip>>;
@@ -465,6 +499,7 @@ declare const LedgerSchema: z.ZodObject<{
         }, z.core.$strip>>;
         exhaustedTicks: z.ZodOptional<z.ZodNumber>;
     }, z.core.$strip>>>;
+    dailyRetire: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
     humanFiled: z.ZodOptional<z.ZodArray<z.ZodString>>;
     leakScanner: z.ZodOptional<z.ZodString>;
     leakScans: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodObject<{
@@ -476,6 +511,7 @@ declare const LedgerSchema: z.ZodObject<{
         at: z.ZodString;
     }, z.core.$strip>>>;
     slicesReleased: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodArray<z.ZodString>>>;
+    slicesFlagged: z.ZodOptional<z.ZodArray<z.ZodString>>;
     triageStarts: z.ZodOptional<z.ZodArray<z.ZodString>>;
     liveness: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodObject<{
         byFact: z.ZodRecord<z.ZodString, z.ZodObject<{
@@ -499,11 +535,13 @@ declare const LedgerSchema: z.ZodObject<{
             "retry-spent": "retry-spent";
             budget: "budget";
             "outside-owns": "outside-owns";
+            "no-repo": "no-repo";
             "phase-timeout": "phase-timeout";
             "dirty-uncommitted": "dirty-uncommitted";
             "lease-expired": "lease-expired";
             "no-progress": "no-progress";
         }>>;
+        reason: z.ZodOptional<z.ZodString>;
         seat: z.ZodOptional<z.ZodString>;
         releaseDue: z.ZodOptional<z.ZodLiteral<true>>;
     }, z.core.$strip>>>;
@@ -531,7 +569,7 @@ declare const PHASE_TIMEOUT_MS: Partial<Record<Phase, number>>;
  * The closed set of codes a stall or a stalled-after-claim finding carries, in precedence order: when two hold, the
  * earlier wins. A stall outside these kinds keeps its `stalledClass` and carries no code.
  */
-declare const STALL_CODES: readonly ["spawn-never-landed", "shepherd-ended", "planner-refused", "retry-spent", "budget", "outside-owns", "phase-timeout", "dirty-uncommitted", "lease-expired", "no-progress"];
+declare const STALL_CODES: readonly ["spawn-never-landed", "shepherd-ended", "planner-refused", "retry-spent", "budget", "outside-owns", "no-repo", "phase-timeout", "dirty-uncommitted", "lease-expired", "no-progress"];
 type StallCode = (typeof STALL_CODES)[number];
 /**
  * Codes a respawn or release can fix. The others go straight to the owner: a respawn under `budget` would spend more,
@@ -560,6 +598,13 @@ declare const ContractSchema: z.ZodObject<{
     }>;
 }, z.core.$strip>;
 type Contract = z.infer<typeof ContractSchema>;
+/** One open PR the slice may share one exact owns path with, because the planner read both edits as line-local. */
+declare const AcceptedOverlapSchema: z.ZodObject<{
+    pr: z.ZodNumber;
+    path: z.ZodString;
+    why: z.ZodString;
+}, z.core.$strip>;
+type AcceptedOverlap = z.infer<typeof AcceptedOverlapSchema>;
 
 /**
  * The claim-phase transition table: every (from, to) phase edge the burndown can emit, checked when the ledger is
@@ -620,7 +665,9 @@ interface ReleaseAction {
     key: ClaimKey;
     branch?: string;
     requeue: boolean;
-    code: StallCode;
+    /** Absent for a release that is no stall: a `stack-broken` release carries `reason` instead. */
+    code?: StallCode;
+    reason?: string;
     /** The agents that may still run, newest first; a retired one is no longer the broker's to retire. */
     names: string[];
 }
@@ -727,4 +774,4 @@ declare class SqliteLedgerStore implements LedgerStore {
     private writeInside;
 }
 
-export { AGENT_PHASES, type AgentPhase, type BrakeState, CONTRACT_OPS, type Claim, type ClaimKey, type ClaimPatch, ClaimSchema, type Contract, type ContractOp, ContractSchema, DESTRUCTIVE_OPS, type DeciderState, EMPTY_LEDGER, EXCEPTION_CLASSES, type ExceptionClass, type IllegalEdge, IllegalPhaseEdgeError, LADDER_CODES, type LadderRecord, type Ledger, type LedgerAction, LedgerMalformedError, type LedgerRead, LedgerSchema, type LedgerStore, type LivenessRecord, PARK_CLASS, PHASES, PHASE_EDGES, PHASE_TIMEOUT_MS, type Phase, type ReleaseAction, type ReleaseRecord, SLOT_MISMATCH_TOLERANCE, STALE_CLASSES, STALL_CODES, type SeatState, SqliteLedgerStore, type StackPredicate, type StackedOn, type StaleClass, StaleRevisionError, type StallCode, type WakeRecord, addClaim, applyActions, claimKey, dispatchLedgerDdl, dispatchLedgerMigration, exportLedgerJson, firstCode, heldClaims, illegalEdgeError, illegalEdges, importLedgerJson, isStalled, laneClaims, ledgerImplementers, memoryLedgerStore, normalizeLedger, parkUpdate, parseLedgerJson, readySlices, sameClaim, slotMismatch, writeLedgerExport };
+export { AGENT_PHASES, type AcceptedOverlap, AcceptedOverlapSchema, type AgentPhase, type BrakeState, CONTRACT_OPS, type Claim, type ClaimKey, type ClaimPatch, ClaimSchema, type Contract, type ContractOp, ContractSchema, DESTRUCTIVE_OPS, type DeciderState, EMPTY_LEDGER, EXCEPTION_CLASSES, type ExceptionClass, type IllegalEdge, IllegalPhaseEdgeError, LADDER_CODES, type LadderRecord, type Ledger, type LedgerAction, LedgerMalformedError, type LedgerRead, LedgerSchema, type LedgerStore, type LivenessRecord, PARK_CLASS, PHASES, PHASE_EDGES, PHASE_TIMEOUT_MS, type Phase, type ReleaseAction, type ReleaseRecord, SLOT_MISMATCH_TOLERANCE, STALE_CLASSES, STALL_CODES, type SeatState, SqliteLedgerStore, type StackPredicate, type StackedOn, type StaleClass, StaleRevisionError, type StallCode, type WakeRecord, addClaim, applyActions, claimKey, dispatchLedgerDdl, dispatchLedgerMigration, exportLedgerJson, firstCode, heldClaims, illegalEdgeError, illegalEdges, importLedgerJson, isStalled, laneClaims, ledgerImplementers, memoryLedgerStore, normalizeLedger, parkUpdate, parseLedgerJson, readySlices, sameClaim, slotMismatch, writeLedgerExport };

@@ -14,6 +14,7 @@ export const PARK_CLASS: Readonly<Record<StallCode, ExceptionClass>> = {
   "retry-spent": "failed",
   budget: "failed",
   "outside-owns": "failed",
+  "no-repo": "failed",
   "phase-timeout": "stalled",
   "dirty-uncommitted": "stalled",
   "lease-expired": "stalled",
