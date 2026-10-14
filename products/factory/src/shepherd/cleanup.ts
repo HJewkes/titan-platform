@@ -1,6 +1,7 @@
 import type { GitHubPort, PullRequest, RepoSlug } from "@titan-design/github";
 import { OVERLAY_SHAPES } from "@titan-design/review-panel";
 import { z } from "zod";
+import { hasSlicesBlock, readSlices } from "../dispatch/report.js";
 import { deadline, type Deadline } from "../workflows/deadline.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import type { Presence } from "./presence.js";
@@ -28,8 +29,16 @@ export interface CleanupAgents {
 
 export type TaskState = "open" | "done" | "missing";
 
+/** What tells an unsliced PR whether it may close its task: the task's tags and notes, and its plan's text when it has one. */
+export interface TaskSlicing {
+  tags: readonly string[];
+  notes: string;
+  plan: string | undefined;
+}
+
 export interface CleanupTasks {
   state(initiative: string, id: string): Promise<TaskState>;
+  slicing(initiative: string, id: string): Promise<TaskSlicing>;
   done(initiative: string, id: string): Promise<void>;
   /** Adds a line to the task's notes unless the notes already hold it, so a repeated cleanup adds nothing. */
   appendNote(initiative: string, id: string, line: string): Promise<void>;
@@ -141,23 +150,46 @@ function satisfiedReason(registration: Registration | undefined): string | undef
 
 /**
  * A slice PR notes its task and leaves it open, because the task's other slices have not landed. Any other PR cites itself
- * and its merge sha in the task's notes, then closes it. A slice with an unread merge sha writes nothing, so a retry cannot add a second
- * line for the landing; a close still goes ahead then, citing the PR alone, because an unreadable GitHub must not keep a
- * merged task open.
+ * and its merge sha in the task's notes, then closes it, unless the task is sliced or an epic (CC-1150 closed on one
+ * unregistered slice). A note with an unread merge sha is never written, so a retry cannot add a second line for the
+ * landing; a close still goes ahead then, citing the PR alone, because an unreadable GitHub must not keep a merged task open.
  */
 async function settleTask(deps: CleanupDeps, registration: Registration, input: CleanupInput, wait: Waiter): Promise<string> {
   const tasks = deps.cleanup!.tasks;
   const pr = await retrying(`merge sha of #${input.pr}`, () => prAfterMerge(deps.port, input), wait);
   const landing = `${input.repo}#${input.pr} at ${pr?.mergeSha ?? "unknown"}`;
-  if (registration.slice === null) return closeTask(tasks, registration.task, `closed by Shepherd: ${landing} merged`, wait);
+  if (registration.slice === null) return onOpenTask(registration.task, wait, closeUnlessSliced(tasks, landing, pr !== undefined), tasks);
   if (pr === undefined) return "unread";
   return onOpenTask(registration.task, wait, (initiative, id) => tasks.appendNote(initiative, id, `${registration.slice} landed in ${landing}`).then(() => "noted"), tasks);
 }
 
 /** The note goes first: a crash between the two leaves an open task with its citation, and the replay finds the line already there. */
-async function closeTask(tasks: CleanupTasks, key: string, note: string, wait: Waiter): Promise<string> {
-  const closed = (initiative: string, id: string): Promise<string> => tasks.appendNote(initiative, id, note).then(() => tasks.done(initiative, id)).then(() => "done");
-  return onOpenTask(key, wait, closed, tasks);
+function closeUnlessSliced(tasks: CleanupTasks, landing: string, shaRead: boolean): (initiative: string, id: string) => Promise<string> {
+  return async (initiative, id) => {
+    const heldBy = heldOpenBy(await tasks.slicing(initiative, id));
+    if (heldBy === undefined) {
+      await tasks.appendNote(initiative, id, `closed by Shepherd: ${landing} merged`);
+      await tasks.done(initiative, id);
+      return "done";
+    }
+    if (!shaRead) return "unread";
+    await tasks.appendNote(initiative, id, `PR ${landing} merged; task left open: ${heldBy}`);
+    return "left-open";
+  };
+}
+
+const EPIC_TAG = "epic";
+
+/** Why one unsliced PR cannot close its task, or undefined when nothing else is due to land on it. */
+function heldOpenBy({ tags, notes, plan }: TaskSlicing): string | undefined {
+  if (plan !== undefined && hasSlicesBlock(plan)) {
+    const slices = readSlices(plan).slices;
+    if (slices === undefined) return "its plan has a burndown-slices block that does not read";
+    const landed = new Set(notes.split("\n").flatMap((line) => /^(\S+) landed in /.exec(line)?.[1] ?? []));
+    const unlanded = slices.map((slice) => slice.n).filter((n) => !landed.has(n));
+    return unlanded.length === 0 ? "it is sliced, and every slice is noted landed" : `it has slices ${unlanded.join(", ")}`;
+  }
+  return tags.includes(EPIC_TAG) ? `it is tagged ${EPIC_TAG}` : undefined;
 }
 
 async function onOpenTask(key: string, wait: Waiter, act: (initiative: string, id: string) => Promise<string>, tasks: CleanupTasks): Promise<string> {

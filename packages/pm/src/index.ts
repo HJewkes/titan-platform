@@ -17,6 +17,10 @@ export type {
   EdgeField,
   Edges,
 } from "./edges.js";
+export { DISPOSITION_KINDS, DispositionRowSchema, checkDispositions, parseDispositions } from "./dispositions.js";
+export type { DispositionCheck, DispositionKind, DispositionRow } from "./dispositions.js";
+export { prioritizedTopics, summaryRecommendations } from "./review-summary.js";
+export type { ReviewItem } from "./review-summary.js";
 export { criticalPath, taskTree } from "./graph.js";
 export type {
   CriticalPathOptions,
