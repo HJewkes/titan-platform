@@ -34,8 +34,14 @@ export function registeredOwners(store: SeatStore, target: ReviewTarget): Pick<S
   }
 }
 
-/** A roster row as the factory's dispatch lists it; `cwd` is where agent-chat started the agent. */
-export type SeatRow = ReviewerAgent & { cwd?: string };
+/** A roster row as the factory's dispatch lists it; `cwd` is where agent-chat started the agent, and `transcriptExists` is absent when the port does not say. */
+export type SeatRow = ReviewerAgent & { cwd?: string; transcriptExists?: boolean };
+
+/** The name's newest roster row (the last in roster order) when it has no session or no transcript yet; older rows and an absent `transcriptExists` are ignored. */
+export function awaitingTranscript(rows: readonly SeatRow[]): SeatRow | undefined {
+  const newest = rows.at(-1);
+  return newest !== undefined && (newest.sessionId === "" || newest.transcriptExists === false) ? newest : undefined;
+}
 
 const leaf = (path: string): string => path.replace(/\/+$/, "").split("/").at(-1)?.toLowerCase() ?? "";
 
