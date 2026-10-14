@@ -1,8 +1,10 @@
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { MAX_PENDING, REQUEST_TTL_S, approvalsDir, nodeApprovalStore } from "./approval-store.js";
+import { fileURLToPath } from "node:url";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MAX_PENDING, REQUEST_TTL_S, approvalsDir, nodeApprovalStore, passwdHome } from "./approval-store.js";
 import type { RequestFields } from "./approval-store.js";
 
 const NOW = 1_800_000_000;
@@ -24,6 +26,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   fs.rmSync(home, { recursive: true, force: true });
 });
 
@@ -143,6 +146,29 @@ describe("nodeApprovalStore", () => {
     expect(() => store.isSpent("../spent")).toThrow(/bad nonce/);
   });
 
+  it("throws rather than reporting spent when the ledger cannot be written", () => {
+    const store = nodeApprovalStore(home);
+    const request = store.issue(MERGE, NOW);
+    store.accept(request.id, "signed", NOW);
+    const spent = path.join(approvalsDir(home), "spent");
+    fs.chmodSync(spent, 0o500);
+    try {
+      expect(() => store.spend(request.id, request.nonce, NOW)).toThrow(/EACCES/);
+      expect(store.find(MERGE.digest, NOW)[0]?.approval).toBe("signed");
+    } finally {
+      fs.chmodSync(spent, 0o700);
+    }
+  });
+
+  it("refuses a store directory owned by another user", () => {
+    const store = nodeApprovalStore(home);
+    store.prune(NOW);
+    const owner = fs.statSync(approvalsDir(home)).uid;
+    vi.spyOn(process, "getuid").mockReturnValue(owner + 1);
+
+    expect(() => store.list(NOW)).toThrow(/not owned by this user/);
+  });
+
   it("writes under the given passwd home whatever HOME and XDG_STATE_HOME say", () => {
     const saved = { HOME: process.env.HOME, XDG_STATE_HOME: process.env.XDG_STATE_HOME };
     const decoy = fs.mkdtempSync(path.join(os.tmpdir(), "tg-decoy-"));
@@ -158,6 +184,25 @@ describe("nodeApprovalStore", () => {
         if (value === undefined) delete process.env[key];
         else process.env[key] = value;
       }
+      fs.rmSync(decoy, { recursive: true, force: true });
+    }
+  });
+});
+
+// A child process, as an agent would start one: vitest's worker threads keep their own env copy, which os.homedir()
+// never sees, so setting HOME in-process would not test anything.
+describe("passwdHome", () => {
+  it("reads the passwd entry, not the HOME a child was started with", () => {
+    const decoy = fs.mkdtempSync(path.join(os.tmpdir(), "tg-decoy-"));
+    try {
+      const source = fileURLToPath(new URL("./approval-store.ts", import.meta.url));
+      const script = "const m = await import(process.argv[1]); process.stdout.write(m.passwdHome());";
+      const run = spawnSync(process.execPath, ["--input-type=module", "-e", script, source], { env: { ...process.env, HOME: decoy }, encoding: "utf-8" });
+
+      expect(run.status).toBe(0);
+      expect(run.stdout).toBe(passwdHome());
+      expect(run.stdout).not.toBe(decoy);
+    } finally {
       fs.rmSync(decoy, { recursive: true, force: true });
     }
   });
