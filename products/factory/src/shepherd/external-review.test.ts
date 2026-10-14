@@ -37,6 +37,10 @@ const tiedFailing = (error: unknown): ReviewerReader => ({
   read: async (input) => (input.reviewerSessionId === SEAT.sessionId ? Promise.reject(error) : [said(SEAT_EARLIER, verdictAt("MERGE", OLD_HEAD), 3)]),
 });
 const tiedRoster = rosterOf(SEAT_EARLIER, SEAT);
+/** The PR as Shepherd registered it: opened by the implementer `seat-c-9`, whose seat reviewer is `seat-c-9-review`. */
+const owned = { ...target, owner: { implementer: "seat-c-9", branch: "agent-chat/seat-c-9" } };
+/** The row as the roster lists an agent started in another implementer's worktree. */
+const elsewhere = <T extends ReviewerAgent>(row: T) => ({ ...row, cwd: "/srv/work/demo/.worktrees/seat-z-1" });
 const shepherdMerge: AwaitVerdictResult = { kind: "verdict", verdict: "MERGE", head: HEAD, locator: locatorIn(SHEPHERD_RV.sessionId), reviewer: { agentId: SHEPHERD_RV.agentId, sessionId: SHEPHERD_RV.sessionId } };
 
 describe("SEAT_REVIEWER", () => {
@@ -256,7 +260,7 @@ describe("seatFixFirst", () => {
       const reader: ReviewerReader = { read: async (input) => (input.reviewerAgentId === unrelated.agentId ? Promise.reject(refused) : []) };
       const warn = vi.fn();
 
-      expect(await unlessSeatFixFirst(rosterOf(unrelated, SEAT), reader, target, shepherdMerge, warn)).toEqual(shepherdMerge);
+      expect(await unlessSeatFixFirst(rosterOf(elsewhere(unrelated), SEAT), reader, owned, shepherdMerge, warn)).toEqual(shepherdMerge);
       expect(warn).toHaveBeenCalledWith(expect.stringContaining(`${unrelated.name} is not the reviewer of ${REPO}#4`));
       expect(warn).toHaveBeenCalledWith(expect.stringContaining("printed invalid JSON"));
     });
@@ -317,6 +321,52 @@ describe("seatFixFirst", () => {
     });
   });
 
+  describe("a single-session seat reviewer whose read fails the same every time and shows nothing", () => {
+    const missing = Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" });
+    const failing: ReviewerReader = { read: async () => Promise.reject(missing) };
+    const task = { ...target, owner: { implementer: "tc-tp-9-a", branch: "agent-chat/tc-tp-9-a" } };
+
+    it("blocks the PR whose implementer the roster names as the reviewer's", async () => {
+      const own = agent("tc-tp-9-a-review");
+      const check = await seatFixFirst(rosterOf(own), failing, task, vi.fn());
+
+      expect(check).toEqual({ kind: "none", reason: "seat check: the transcript of tc-tp-9-a-review could not be read and the roster ties it to this PR's implementer: Error" });
+    });
+
+    it("blocks the PR whose worktree the roster says the reviewer ran in, whatever its name", async () => {
+      const own = { ...agent("x-review"), cwd: "/srv/work/demo/.worktrees/tc-tp-9-a" };
+
+      expect(await seatFixFirst(rosterOf(own), failing, task, vi.fn())).toMatchObject({ kind: "none", reason: expect.stringContaining("ties it to this PR's implementer") });
+    });
+
+    it("clears with a warning when the roster places the reviewer in another task's worktree, as for an old reviewer whose transcript was deleted", async () => {
+      const other = { ...agent("tc-tp-5-b-review"), cwd: "/srv/work/demo/.worktrees/tc-tp-5-b" };
+      const warn = vi.fn();
+
+      expect(await unlessSeatFixFirst(rosterOf(other), failing, task, shepherdMerge, warn)).toEqual(shepherdMerge);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(`${other.name} is not the reviewer of ${REPO}#4 (the roster places it in another agent's directory)`));
+    });
+
+    it.each([
+      ["no working directory", agent("tc-tp-5-b-review"), task],
+      ["only the repo's shared checkout", { ...agent("tc-tp-5-b-review"), cwd: "/srv/work/demo" }, task],
+      ["no registration for the PR", { ...agent("tc-tp-5-b-review"), cwd: "/srv/work/demo/.worktrees/tc-tp-5-b" }, target],
+    ])("blocks with a retry, naming the missing evidence, when the roster gives %s", async (_label, row, at) => {
+      const check = await seatFixFirst(rosterOf(row), failing, at, vi.fn());
+
+      expect(check).toEqual({ kind: "none", reason: "seat check: the transcript of tc-tp-5-b-review could not be read and no record, registration or roster directory says whose reviewer it is: Error", retry: true });
+    });
+
+    it("holds Shepherd's MERGE for the next round when no evidence turns up within the seat wait", async () => {
+      let clock = 0;
+      const seatWait = { timing: { now: () => clock, sleep: async (ms: number) => void (clock += ms), pollMs: SEAT_POLL_MS, timeoutMs: SEAT_BOUND_MS }, signal: new AbortController().signal };
+
+      const result = await unlessSeatFixFirst(rosterOf(agent("tc-tp-5-b-review")), failing, task, shepherdMerge, vi.fn(), Date.now, seatWait);
+
+      expect(result).toEqual({ kind: "none", reason: expect.stringContaining("no record, registration or roster directory"), seatHeld: shepherdMerge });
+    });
+  });
+
   it("prefers another seat reviewer's FIX_FIRST over a transcript that cannot be read", async () => {
     const broken = agent("seat-d-1-review");
     const reader: ReviewerReader = { read: async (input) => (input.reviewerAgentId === broken.agentId ? Promise.reject(new Error("bad json")) : [said(SEAT, verdictAt("FIX_FIRST"), 5)]) };
@@ -350,11 +400,17 @@ describe("seatFixFirst", () => {
       expect(warn).not.toHaveBeenCalled();
     });
 
-    it("warns without blocking when the damaged transcript names no PR, since it cannot be tied to this one", async () => {
+    it("warns without blocking when the damaged transcript names no PR and the roster places the reviewer elsewhere", async () => {
       const warn = vi.fn();
 
-      expect(await seatFixFirst(rosterOf(damaged), damagedReader([said(damaged, "Reading the diff.", 2)]), target, warn)).toEqual({ kind: "clear" });
+      expect(await seatFixFirst(rosterOf(elsewhere(damaged)), damagedReader([said(damaged, "Reading the diff.", 2)]), owned, warn)).toEqual({ kind: "clear" });
       expect(warn).toHaveBeenCalledOnce();
+    });
+
+    it("blocks with a retry when the damaged transcript names no PR and nothing else says whose reviewer it is", async () => {
+      const check = await seatFixFirst(rosterOf(damaged), damagedReader([said(damaged, "Reading the diff.", 2)]), target, vi.fn());
+
+      expect(check).toMatchObject({ kind: "none", retry: true, reason: expect.stringContaining("no record, registration or roster directory says whose reviewer it is") });
     });
 
     it("still blocks on its own reviewer's failed read after an unrelated damaged transcript", async () => {
@@ -406,10 +462,10 @@ describe("seatFixFirst", () => {
         expect(await seatFixFirst(rosterOf(first, second), reader, target, vi.fn())).toMatchObject({ kind: "none", reason: expect.stringContaining(first.name) });
       });
 
-      it("warns without blocking when neither session ties the name to the PR", async () => {
+      it("warns without blocking when neither session ties the name to the PR and the roster places it elsewhere", async () => {
         const warn = vi.fn();
 
-        expect(await seatFixFirst(rosterOf(first, second), twoSessions([said(first, "Reading.", 5)]), target, warn)).toEqual({ kind: "clear" });
+        expect(await seatFixFirst(rosterOf(elsewhere(first), elsewhere(second)), twoSessions([said(first, "Reading.", 5)]), owned, warn)).toEqual({ kind: "clear" });
         expect(warn).toHaveBeenCalledOnce();
       });
     });
@@ -619,6 +675,19 @@ describe("G10 disagreement between a seat reviewer and Shepherd", () => {
 
     expect(await merged(ownInput, new AbortController().signal)).not.toHaveProperty("ownerOverride");
     expect(await sentBack(ownInput, new AbortController().signal)).not.toHaveProperty("ownerOverride");
+  });
+
+  it("ties or unties an unreadable seat reviewer by the PR's registered owner when seatVetoed is given one", async () => {
+    const stale = elsewhere(agent("seat-z-1-review"));
+    const unreadable = { ...wiring(stale)!, reader: { read: async () => Promise.reject(new Error("ENOENT")) } } as Parameters<typeof seatVetoed>[0];
+    const ownerOf = vi.fn(() => owned.owner);
+
+    const registered = await seatVetoed(unreadable, async () => shepherdMerge, Date.now, undefined, ownerOf)(ownInput, new AbortController().signal);
+    const unregistered = await seatVetoed(unreadable, async () => shepherdMerge)(ownInput, new AbortController().signal);
+
+    expect(registered).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+    expect(ownerOf).toHaveBeenCalledWith({ repo: REPO, pr: 4, head: HEAD });
+    expect(unregistered).toMatchObject({ kind: "none", reason: expect.stringContaining("no record, registration or roster directory") });
   });
 
   it("is waited out inside the verdict step when seatVetoed is given the timing", async () => {
