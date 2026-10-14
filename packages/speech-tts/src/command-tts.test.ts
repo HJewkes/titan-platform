@@ -94,6 +94,16 @@ describe("commandTts", () => {
     expect(result.phonemes).toEqual(["lˈIv"]);
   });
 
+  // Mutation caught: engine timings pass through although the provider does not declare word timestamps.
+  it("drops word timings the engine sends when the provider does not declare them", async () => {
+    const tts = provider(stub("--mode", "json-base64"), { output: "json" });
+
+    const result = await tts.synthesize({ text: "one two" }, "narrator");
+
+    expect(result.words).toBeUndefined();
+    expect(result.durationS).toBeCloseTo(0.8, 3);
+  });
+
   // Mutation caught: the per-call scratch directory is never removed.
   it("removes the scratch WAV it offered the command as `out`", async () => {
     const echo = join(scratch(), "request.json");
