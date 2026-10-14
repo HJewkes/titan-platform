@@ -21,7 +21,7 @@ import { MERGE_EVIDENCE_STEPS } from "./merge-evidence-gate.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { PUBLISH_REVIEW_STEPS, publishReviewRoute } from "./publish-review.js";
-import { DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, busyWaits, clearReviewWait, notStarted, noteReviewWait, startedSession, timedOutUnseen, whileBrokerBusy, whileBrokerDown, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
+import { DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, busyWaits, clearReviewWait, notStarted, noteReviewWait, rosterUnread, startedSession, timedOutUnseen, whileBrokerBusy, whileBrokerDown, whileRosterSlow, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
 import { reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
 import { spawnFacts } from "./spawn-facts.js";
@@ -81,7 +81,7 @@ export type ReviewInput = z.infer<typeof ReviewInputSchema>;
 export type ReviewIntent = z.infer<typeof ReviewIntentSchema>;
 /** `refused` is the failure class of a dispatch the broker or port refused outright, which no retry at once can fix. */
 type NoReview = { kind: "none"; reason: string; exhausted?: string; refused?: string };
-export type ReviewIntentResult = ({ kind: "intent" } & ReviewIntent & Partial<PanelOnPlan>) | NoReview;
+export type ReviewIntentResult = ({ kind: "intent" } & ReviewIntent & Partial<PanelOnPlan>) | NoReview | NotStarted;
 export type ReviewDispatchInput = z.infer<typeof ReviewDispatchInputSchema>;
 export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string; startedAt: number; codewatch?: CodewatchEvidence } & ReviewIntent & BusyWaits & { profile?: string }) | NoReview | NotStarted;
 
@@ -214,7 +214,10 @@ const brokerStep = <I, T extends object>(deps: ShepherdDeps, wiring: ReviewWirin
  */
 const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (deps, wired, input, signal) => {
   const { dispatch, accounts } = wired;
-  const roster = await whileBrokerDown(brokerTiming(deps), signal, () => dispatch.roster());
+  const timing = brokerTiming(deps);
+  const budgetMs = wired.sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS;
+  const roster = await whileRosterSlow(timing, signal, budgetMs, () => whileBrokerDown(timing, signal, () => dispatch.roster())).catch(rosterUnread);
+  if ("kind" in roster) return roster;
   const store = deps.store.get();
   const registration = store.byRun(input.runId);
   const billed = billIntent(deps, accounts, input.runId, chooseReviewer(input, registration, roster, input.fresh), () => chooseReviewer(input, registration, roster, true));
@@ -332,12 +335,12 @@ async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined,
 }
 
 /**
- * A busy broker that started nobody retries the review. A refusal holds the run as no-reviewer rather than counting a failed
+ * A busy broker or an unread roster that started nobody retries the review. A refusal (at the intent or the dispatch) holds the run as no-reviewer rather than counting a failed
  * round, so a repo with no usable reviewer never reaches approve-merge unreviewed (TP-2446). Any other none is a round with no verdict.
  */
-function notDispatched(ctx: WorkflowContext, target: ReviewTarget, dispatched: Readonly<Record<string, unknown>>): Promise<Verdict> | Verdict {
-  if (dispatched.notStarted === true) return { kind: "none", cause: "not-started" };
-  if (typeof dispatched.refused === "string") return noReviewerHeld(ctx, target, dispatched.refused);
+function notReviewed(ctx: WorkflowContext, target: ReviewTarget, result: Readonly<Record<string, unknown>>): Promise<Verdict> | Verdict {
+  if (result.notStarted === true) return { kind: "none", cause: "not-started" };
+  if (typeof result.refused === "string") return noReviewerHeld(ctx, target, result.refused);
   return { kind: "none", cause: "no-verdict" };
 }
 
@@ -357,12 +360,12 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const standing: ProofStanding = unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {};
   if (request.seatHeld?.head === target.head && recordsRecheck(ctx, target.head)) return recheckSeat(ctx, target, request.seatHeld, standing);
   const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }) }, Intended);
-  if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : { kind: "none", cause: "no-verdict" };
+  if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : notReviewed(ctx, target, intent);
   if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined, DEFAULT_ACCOUNT, standing);
   const fixFirsts = fixFirstCount(ctx);
   const base: MemberBase = { ...target, runId: ctx.runId, ...(fixFirsts > 0 && { fixFirsts }), ...(proof.kind === "result" && { fixProof: proof.line }), ...(standing.unverified && { fixProofUnverified: standing.unverified }) };
   const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent: withoutPlan(intent), ...(fixFirsts > 0 && { fixFirsts }), ...(asksOwnerBrief(ctx) && { ownerBrief: true }), ...(base.fixProof !== undefined && { fixProof: base.fixProof }), ...(standing.unverified && { fixProofUnverified: standing.unverified }) }, Dispatched);
-  if (dispatched.kind !== "dispatched") return notDispatched(ctx, target, dispatched);
+  if (dispatched.kind !== "dispatched") return notReviewed(ctx, target, dispatched);
   const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
   const awaiting: AwaitVerdictInput & { reviewerProfile?: string } = {
     ...target,
