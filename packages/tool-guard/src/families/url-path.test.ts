@@ -21,6 +21,9 @@ describe("curl resolves dot segments before it sends the path", () => {
     ["the query untouched", `${API}/repos/o/r/pulls/1/merge/./?q=/../x`, `${API}/repos/o/r/pulls/1/merge/?q=/../x`],
     ["the fragment untouched", `${API}/repos/o/r/x/../y#f/..`, `${API}/repos/o/r/y#f/..`],
     ["a scheme-less host", "127.0.0.1:9/x/../y", "127.0.0.1:9/y"],
+    ["one slash keeps the host curl dials", "http:/127.0.0.1:9/../localhost:3000/x", "http:/127.0.0.1:9/localhost:3000/x"],
+    ["three slashes keep the host curl dials", "http:///127.0.0.1:9/../localhost:3000/x", "http:///127.0.0.1:9/localhost:3000/x"],
+    ["four slashes, which curl rejects, as written", "http:////127.0.0.1:9/a/../b", "http:////127.0.0.1:9/a/../b"],
     ["no path", API, API],
     ["a query with no path", "127.0.0.1:9?q=/../x", "127.0.0.1:9?q=/../x"],
   ])("%s", (_name, url, sent) => {

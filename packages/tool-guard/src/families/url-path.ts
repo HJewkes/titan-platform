@@ -4,7 +4,9 @@
  */
 import { asciiDecoded } from "./api-branch-refs.js";
 
-const SCHEME_PREFIX_RE = /^[a-z][a-z0-9+.-]*:\/\/[^/?#]*/i;
+/** curl 8.18 takes one to three slashes after the scheme as the authority's lead-in and rejects four or more. */
+const SCHEME_PREFIX_RE = /^[a-z][a-z0-9+.-]*:\/{1,3}[^/?#]*/i;
+const CURL_REJECTED_RE = /^[a-z][a-z0-9+.-]*:\/{4}/i;
 
 const dotted = (segment: string) => segment.replace(/%2e/gi, ".");
 const isDotSegment = (segment: string) => dotted(segment) === "." || dotted(segment) === "..";
@@ -34,9 +36,11 @@ function resolved(path: string): string {
 
 /**
  * The URL with its path resolved as default curl sends it. The scheme and authority (or, with no scheme, the text
- * before the first `/`), the query and the fragment stay as written, as do kept segments.
+ * before the first `/`), the query and the fragment stay as written, as do kept segments. A URL curl rejects is
+ * never sent, so it stays as written.
  */
 export function curlSquashed(url: string): string {
+  if (CURL_REJECTED_RE.test(url)) return url;
   const prefixEnd = SCHEME_PREFIX_RE.exec(url)?.[0].length ?? url.search(/[/?#]|$/);
   const rest = url.slice(prefixEnd);
   const path = pathPart(rest);
