@@ -164,6 +164,7 @@ graph TD
   evals --> workflow
   explainer --> agent
   explainer --> agentProtocol
+  explainer --> evidence
   factory --> agent
   factory --> agentDispatch
   factory --> appPaths
