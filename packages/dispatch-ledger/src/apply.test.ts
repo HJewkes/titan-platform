@@ -88,6 +88,7 @@ describe("applyActions on a release", () => {
     owns: ["src/a.ts"],
     repo: "example-org/example-repo",
     contracts: [{ scope: "api", op: "add" }],
+    overlapsAccepted: [{ pr: 12, path: "src/a.ts", why: "line-local" }],
     seat: "seat-a",
     namePrefix: "sa",
     agentId: "a1",
@@ -125,6 +126,7 @@ describe("applyActions on a release", () => {
         owns: ["src/a.ts"],
         repo: "example-org/example-repo",
         contracts: [{ scope: "api", op: "add" }],
+        overlapsAccepted: [{ pr: 12, path: "src/a.ts", why: "line-local" }],
         seat: "seat-a",
         namePrefix: "sa",
       },
@@ -146,6 +148,68 @@ describe("applyActions on a release", () => {
     expect(after.claims).toEqual([]);
     expect(after.releases?.["TX-1"]?.n).toBe(1);
     expect(after.ladder?.["TX-1#a"]).toMatchObject({ respawns: 0, releases: 1 });
+  });
+});
+
+describe("applyActions on a release's recorded cause", () => {
+  const KEY_B = { taskId: "TX-1", slice: "b" };
+  const REASON = "stack-broken: parent TX-1 a #10 closed";
+  const child = claim({
+    slice: "b",
+    dependsOn: ["a"],
+    seat: "seat-a",
+    stackedOn: { taskId: "TX-1", slice: "a", pr: "o/r#10", branch: "agent-chat/bd-tx-1-a", forkHead: "abc000" },
+  });
+  const releaseB = (cause: { code?: "lease-expired" | "no-progress"; reason?: string }): LedgerAction => ({
+    kind: "release",
+    key: KEY_B,
+    requeue: true,
+    ...cause,
+    branch: "agent-chat/bd-tx-1-b",
+    names: ["bd-tx-1-b"],
+  });
+  const withRecord = (record: LadderRecord): Ledger => ({ ...ledgerOf(child), ladder: { "TX-1#b": record } });
+
+  it("stores a release's reason and drops a carried-over code", () => {
+    const before = withRecord({ respawns: 1, lastAt: T0, releases: 0, code: "no-progress" });
+
+    const after = applyActions(before, [releaseB({ reason: REASON })], NOW);
+
+    expect(after.ladder?.["TX-1#b"]).toMatchObject({ reason: REASON, releases: 1 });
+    expect(after.ladder?.["TX-1#b"]?.code).toBeUndefined();
+  });
+
+  it("stores a release's code and drops a carried-over reason", () => {
+    const before = withRecord({ respawns: 1, lastAt: T0, releases: 1, reason: REASON });
+
+    const after = applyActions(before, [releaseB({ code: "lease-expired" })], NOW);
+
+    expect(after.ladder?.["TX-1#b"]).toMatchObject({ code: "lease-expired", releases: 2 });
+    expect(after.ladder?.["TX-1#b"]?.reason).toBeUndefined();
+  });
+
+  it("writes the released record in agent-chat's key order, the new code after the kept keys", () => {
+    const before = withRecord({ respawns: 1, code: "no-progress", lastAt: T0, occurrence: T0, releases: 0 });
+
+    const after = applyActions(before, [releaseB({ code: "lease-expired" })], NOW);
+
+    expect(Object.keys(after.ladder?.["TX-1#b"] ?? {})).toEqual([
+      "respawns",
+      "lastAt",
+      "occurrence",
+      "releases",
+      "code",
+      "branch",
+      "seat",
+    ]);
+  });
+
+  it("requeues a stacked child without its stackedOn", () => {
+    const after = applyActions(ledgerOf(child), [releaseB({ reason: REASON })], NOW);
+
+    expect(only(after)).toMatchObject({ phase: "queued", dependsOn: ["a"] });
+    expect(only(after).stackedOn).toBeUndefined();
+    expect(after.ladder?.["TX-1#b"]?.branch).toBe("agent-chat/bd-tx-1-b");
   });
 });
 
@@ -208,5 +272,19 @@ describe("LedgerAction", () => {
       | Extract<LedgerAction, { kind: "update" | "add" | "ladder" | "brake" | "release" }>;
 
     expectTypeOf<ProductAction>().toExtend<LedgerAction>();
+  });
+
+  it("accepts a product release with no stall code and a reason", () => {
+    type ProductRelease = {
+      kind: "release";
+      key: { taskId: string; slice?: string };
+      branch?: string;
+      requeue: boolean;
+      code?: "no-progress";
+      reason?: string;
+      names: string[];
+    };
+
+    expectTypeOf<ProductRelease>().toExtend<LedgerAction>();
   });
 });
