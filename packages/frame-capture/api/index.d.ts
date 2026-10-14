@@ -18,7 +18,7 @@ interface TitanMotionApi {
 declare const TITAN_MOTION_GLOBAL = "__titanMotion";
 
 /**
- * The virtual-time init script (plan N17). Playwright runs it before any page script, so nothing in
+ * The virtual-time init script. Playwright runs it before any page script, so nothing in
  * the page reads real time: Date, performance.now, timers and rAF all follow a clock that only
  * `__virtualTime.advanceTo(ms)` moves, and Math.random is seeded.
  *
@@ -69,7 +69,13 @@ interface CapturePage {
     /** `__titanMotion.duration` in seconds. */
     duration: number;
     fonts: FontState[];
+    /** Every uncaught page error, collected from before navigation; empty when the open succeeds. */
+    errors: readonly Error[];
 }
+/**
+ * The pageerror listener attaches before navigation: an error thrown while the page loads, such as a
+ * render that throws on mount, leaves a page that still answers seeks and screenshots blank.
+ */
 declare function openCapturePage(browser: Browser, url: string, options: PageOptions): Promise<CapturePage>;
 /** One frame: advance virtual time, seek (commits through flushSync), await ready(), screenshot. */
 declare function captureFrame(page: Page, t: number): Promise<Buffer>;
@@ -81,8 +87,7 @@ interface FramesOptions extends PageOptions {
     frames?: number;
     /**
      * Pages capturing contiguous chunks in parallel. A fixed count renders byte-identically run to run,
-     * but a chunk's first frames can differ from a sequential render by a few levels of anti-aliasing
-     * (MEASUREMENTS.md, "Chunk boundaries").
+     * but a chunk's first frames can differ from a sequential render by a few levels of anti-aliasing.
      */
     workers?: number;
 }

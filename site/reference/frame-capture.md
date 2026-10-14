@@ -70,6 +70,10 @@ console.log(result.frames, result.pageDurationS);
 - `captureFrames` gives each worker its own browser, because screenshots encode in the
   browser process. A fixed worker count renders byte-identically run to run, but a chunk's
   first frames can differ from a sequential render by a few levels of anti-aliasing.
+- `openCapturePage` listens for page errors before it navigates, so a page that throws while it
+  loads fails the open instead of answering every seek with a blank frame. The same list,
+  `CapturePage.errors`, fails a later frame. A `duration` that is missing, NaN or not positive
+  also fails the open, rather than resolving with zero frames.
 - `seek` must commit synchronously. A page that commits on a later timer is captured one
   frame late, because virtual time only moves when the capture advances it.
 - `preloadFonts: false` turns off both the explicit font load and the unloaded-face check. It
