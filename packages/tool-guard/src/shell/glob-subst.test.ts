@@ -52,6 +52,13 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     ["zsh --emulate=sh -c x"],
     ["$c globsubst"],
     ["$c options[globsubst]=on"],
+    ["setopt -- globsubst"],
+    ["unsetopt -- noglobsubst"],
+    ["emulate -- sh"],
+    ["setopt -m -- 'glob*'"],
+    ['print -v "options[globsubst]" on'],
+    ['printf -v "options[globsubst]" on'],
+    ["print -voptions\\[globsubst\\] on"],
   ])("reads %s as an enabler", (src) => {
     expect(enables(src)).toBe(true);
   });
@@ -67,7 +74,15 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     ["emulate zsh -o $o"],
     ["zsh -o $o -c x"],
     ["zsh $opts -c x"],
-  ])("reads the run-time operand of %s as a possible enabler", (src) => {
+    ["setopt glob{subst,}"],
+    ["setopt {glob,}subst"],
+    ["setopt globsub?t"],
+    ["setopt glob*"],
+    ["setopt glob'*'"],
+    ["unsetopt -- noglob*"],
+    ["set -o glob*"],
+    ["emulate {s,}h"],
+  ])("reads the run-time or expanded operand of %s as a possible enabler", (src) => {
     expect(enables(src)).toBe(true);
   });
 
@@ -97,6 +112,11 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     ["read line"],
     ["typeset -A opts"],
     ["git push origin HEAD:feat"],
+    ["setopt 'glob*'"],
+    ["setopt -- extendedglob"],
+    ["emulate -- zsh"],
+    ["print -v out options"],
+    ["printf -v x '%s' options"],
   ])("leaves %s alone", (src) => {
     expect(enables(src)).toBe(false);
   });

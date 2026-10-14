@@ -10,6 +10,7 @@ export function mayEnableGlobSubst(cmd: Unwrapped): boolean {
   if (cmd.assigned.some(([name]) => name === "options") || cmd.args.some(readsOptions)) return true;
   if (cmd.name === null) return cmd.args.length > 0 && dynamicCommand(cmd.args);
   if (WRITERS.has(cmd.name) && cmd.args.some((a) => OPTIONS_OPERAND_RE.test(a.value))) return true;
+  if ((cmd.name === "print" || cmd.name === "printf") && printsToOptions(cmd.args)) return true;
   const check = Object.hasOwn(ENABLERS, cmd.name) ? ENABLERS[cmd.name] : undefined;
   return check?.(cmd.args) ?? false;
 }
@@ -18,6 +19,11 @@ export function mayEnableGlobSubst(cmd: Unwrapped): boolean {
 const WRITERS = new Set(["local", "export", "declare", "typeset", "readonly", "integer", "float", "read", "vared", "getopts", "zparseopts"]);
 /** `options`, `options[k]=v` or `options+=v`, alone or attached to a short option as in `zparseopts -Aoptions`. */
 const OPTIONS_OPERAND_RE = /^(?:-[A-Za-z]*)?options(?:\[|\+?=|$)/;
+/** A `print -v` or `printf -v` cluster whose value, attached or in the next word, may be `options`. */
+const PRINT_TARGET_RE = /^-[A-Za-z]*v(.*)$/s;
+const OPTIONS_NAME_RE = /^options(?:\[|$)/;
+/** Characters brace expansion or filename generation reads; a split quote may leave any of them unquoted. */
+const PATTERN_RE = /[{*?[]/;
 /** `${options[globsubst]::=on}` assigns through an expansion; `refs` hold only plain names, so the text is read too. */
 const OPTIONS_EXPANSION_RE = /\$\{[^}]*\boptions\b/;
 
@@ -51,6 +57,7 @@ interface OptionScan {
   operands: string[];
   /** `--emulate` values. */
   modes: string[];
+  /** Some word is only known at run time or may expand to others. */
   dynamic: boolean;
 }
 
@@ -62,15 +69,29 @@ function scanOptions(args: WordToken[], valued: string, untilOperand: boolean): 
   const scan: OptionScan = { names: [], arrays: [], flags: "", operands: [], modes: [], dynamic: false };
   for (let i = 0; i < args.length; i++) {
     const w = args[i] as WordToken;
-    if (w.dynamic) scan.dynamic = true;
-    if (w.dynamic && untilOperand) break;
+    if (unknowable(w)) scan.dynamic = true;
+    if (scan.dynamic && untilOperand) break;
+    if (w.value === "--" && !untilOperand) readOperands(args.slice(i + 1), scan);
     if (w.value === "--" || (untilOperand && !isOptionWord(w.value))) break;
-    if (w.dynamic) continue;
+    if (unknowable(w)) continue;
     if (w.value.startsWith("--")) i = readLong(args, i, scan);
     else if (isOptionWord(w.value)) i = readCluster(args, i, valued, scan);
     else scan.operands.push(w.value);
   }
   return scan;
+}
+
+/** After `--`, `setopt` and `emulate` still read each word as an option name or a mode. */
+function readOperands(words: WordToken[], scan: OptionScan): void {
+  for (const w of words) {
+    if (unknowable(w)) scan.dynamic = true;
+    else scan.operands.push(w.value);
+  }
+}
+
+/** A word only known at run time, or one brace expansion or filename generation may turn into other words. */
+function unknowable(w: WordToken): boolean {
+  return w.dynamic || (PATTERN_RE.test(w.value) && (!w.quoted || w.spliced));
 }
 
 function isOptionWord(value: string): boolean {
@@ -108,7 +129,7 @@ function takeValue(args: WordToken[], i: number, attached: string, keep: (value:
     return i;
   }
   const next = args[i + 1];
-  if (next?.dynamic) scan.dynamic = true;
+  if (next && unknowable(next)) scan.dynamic = true;
   else if (next) keep(next.value);
   return i + 1;
 }
@@ -140,4 +161,12 @@ function dynamicCommand(args: WordToken[]): boolean {
   const [, ...rest] = args;
   const scan = scanOptions(rest, "o", false);
   return [...scan.names, ...scan.operands].some(namesGlobSubst) || rest.some((a) => OPTIONS_OPERAND_RE.test(a.value));
+}
+
+function printsToOptions(args: WordToken[]): boolean {
+  return args.some((a, i) => {
+    const target = PRINT_TARGET_RE.exec(a.value);
+    if (!target) return false;
+    return OPTIONS_NAME_RE.test(target[1] || (args[i + 1]?.value ?? ""));
+  });
 }
