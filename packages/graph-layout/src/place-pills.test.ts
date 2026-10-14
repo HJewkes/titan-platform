@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { placePills, type PillConfig, type PillScene, type PinSpec, type Rect } from "./place-pills.js";
+import { placePills, type PillConfig, type PillScene, type PinSpec, type PlacedPill, type Rect } from "./place-pills.js";
 
 const CONFIG: PillConfig = { gap: 8, keepOut: 0.83 };
 const FRAME: Rect = { x: 0, y: 0, width: 1200, height: 675 };
@@ -7,6 +7,11 @@ const FRAME: Rect = { x: 0, y: 0, width: 1200, height: 675 };
 const box = (id: string, x: number, y: number): { id: string; rect: Rect } => ({ id, rect: { x, y, width: 160, height: 60 } });
 const labelOf = ({ id, rect }: { id: string; rect: Rect }) => ({ id: `${id}:label`, rect: { x: rect.x + 12, y: rect.y + 12, width: rect.width - 24, height: 24 } });
 const pin = (id: string, anchor: string, width = 140, height = 32, rank = 0): PinSpec => ({ id, anchor, width, height, rank });
+function onlyRect(placed: readonly PlacedPill[]): Rect {
+  const [first] = placed;
+  if (!first) throw new Error("expected one placed pill, got none");
+  return first.rect;
+}
 const overlaps = (a: Rect, b: Rect): boolean =>
   a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
@@ -56,7 +61,7 @@ describe("placePills", () => {
 
     const { placed } = placePills({ frame: FRAME, anchors: [low], obstacles: [] }, [pin("p", "low")], CONFIG);
 
-    const rect = placed[0]?.rect as Rect;
+    const rect = onlyRect(placed);
     expect(rect.y + rect.height).toBeLessThanOrEqual(FRAME.height * CONFIG.keepOut);
     expect(placed[0]?.candidate).toBe("above0");
   });

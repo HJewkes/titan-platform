@@ -62,6 +62,19 @@ describe("placeTimelinePins", () => {
   it("leaves a pin's box null when its beat has no scene", () => {
     const pinned = placeTimelinePins(compileMapTimeline(beats, words), beats, words, layout({}));
 
-    expect(pinned.segments.flatMap((s) => s.pins.map((p) => p.box))).toEqual([null, null, null]);
+    expect(pinned.segments.flatMap((s) => s.pins.map((p) => [p.box, "reason" in p ? p.reason : null]))).toEqual([
+      [null, "no-scene"],
+      [null, "no-scene"],
+      [null, "no-scene"],
+    ]);
+  });
+
+  // catches: dropping placePills' reason, so a missing anchor reads as a beat with no scene
+  it("keeps placePills' reason on a pin it could not place", () => {
+    const noStore: PillScene = { ...lowScene, anchors: [] };
+
+    const pin = placeTimelinePins(compileMapTimeline(beats, words), beats, words, layout({ "beat-03": noStore })).segments[1]?.pins[0];
+
+    expect(pin).toMatchObject({ box: null, reason: "no-anchor" });
   });
 });

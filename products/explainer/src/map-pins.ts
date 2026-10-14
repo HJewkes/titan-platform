@@ -1,16 +1,28 @@
-import { labelBoxSizing, placePills, type LabelMetrics, type PillScene, type PinSpec, type Rect } from "@titan-design/graph-layout";
+import {
+  labelBoxSizing,
+  placePills,
+  type DroppedPill,
+  type LabelMetrics,
+  type PillScene,
+  type PinSpec,
+  type Rect,
+} from "@titan-design/graph-layout";
 import { CAPTION_KEEP_OUT } from "./camera.js";
 import type { CueResolver } from "./cues.js";
 import type { MapBeat } from "./map-state.js";
 import type { MapSegment, MapTimeline } from "./map-timeline.js";
 
-/** A pin as the painter draws it. `box` is null when no clear spot exists; the painter then falls back to an anchor offset. */
-export interface PlacedPin {
-  atS: number;
-  anchor: string;
-  text: string;
-  box: Rect | null;
-}
+/** Why a pin has no box: graph-layout's drop reason, or `no-scene` for a beat with no scene to place in. */
+export type UnplacedReason = DroppedPill["reason"] | "no-scene";
+
+/**
+ * A pin as the painter draws it. A null `box` carries its `reason`, and the painter falls back to
+ * an anchor offset.
+ */
+export type PlacedPin = { atS: number; anchor: string; text: string } & (
+  | { box: Rect }
+  | { box: null; reason: UnplacedReason }
+);
 
 export interface PinLayout {
   /** The scene a beat's pins are placed in: anchor boxes, labels to avoid and the camera frame, in layout units. */
@@ -46,10 +58,17 @@ export function placeTimelinePins(timeline: MapTimeline, beats: readonly MapBeat
   const segments = timeline.segments.map((segment): PinnedSegment => {
     const beat = beatsById.get(segment.beatId);
     const pins = beat ? timedPins(beat, segment.startS, resolveCue, layout.metrics) : [];
-    const scene = layout.sceneFor(segment.beatId);
-    const placed = scene ? placePills(scene, pins, { gap: layout.gap, keepOut: CAPTION_KEEP_OUT }).placed : [];
-    const boxes = new Map(placed.map((p) => [p.id, p.rect]));
-    return { ...segment, pins: pins.map((p) => ({ atS: p.atS, anchor: p.anchor, text: p.text, box: boxes.get(p.id) ?? null })) };
+    return { ...segment, pins: placeSegmentPins(pins, layout.sceneFor(segment.beatId), layout.gap) };
   });
   return { segments };
+}
+
+function placeSegmentPins(pins: readonly TimedPin[], scene: PillScene | undefined, gap: number): PlacedPin[] {
+  const result = scene ? placePills(scene, pins, { gap, keepOut: CAPTION_KEEP_OUT }) : { placed: [], dropped: [] };
+  const boxes = new Map(result.placed.map((p) => [p.id, p.rect]));
+  const reasons = new Map(result.dropped.map((d) => [d.id, d.reason]));
+  return pins.map(({ atS, anchor, text, id }): PlacedPin => {
+    const box = boxes.get(id);
+    return box ? { atS, anchor, text, box } : { atS, anchor, text, box: null, reason: reasons.get(id) ?? "no-scene" };
+  });
 }
