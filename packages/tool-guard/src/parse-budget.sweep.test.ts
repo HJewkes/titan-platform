@@ -77,13 +77,13 @@ function padToCeiling(shape: Shape, inner: string): string {
   return build(low);
 }
 
-const families = Object.keys(SENTINELS) as FamilyName[];
+const sentinels = Object.entries(SENTINELS);
 const shapes = Object.entries(SHAPES);
-const grid = families.flatMap((family) => shapes.map(([name, shape]) => [family, name, shape] as const));
+const grid = sentinels.flatMap(([family, sentinel]) => shapes.map(([name, shape]) => [family, name, shape, sentinel] as const));
 
 describe("every guarded family's sentinel", () => {
-  it.each(families)("%s denies on its own", async (family) => {
-    const { problems } = await withinParseBudget(run, SENTINELS[family], { mustDeny: true });
+  it.each(sentinels)("%s denies on its own", async (_family, sentinel) => {
+    const { problems } = await withinParseBudget(run, sentinel, { mustDeny: true });
 
     expect(problems).toEqual([]);
   });
@@ -91,7 +91,7 @@ describe("every guarded family's sentinel", () => {
   it("covers every family the classifier spells", () => {
     const spelled = new Set(Object.values(SPELLINGS).map((row) => row.family));
 
-    expect([...spelled].sort()).toEqual([...families].sort());
+    expect([...spelled].sort()).toEqual(Object.keys(SENTINELS).sort());
   });
 });
 
@@ -104,8 +104,8 @@ describe("each shape's generator", () => {
 });
 
 describe("the parse budget at depth 8, padded to the size cap", () => {
-  it.each(grid)("%s inside %s denies under budget", async (family, _name, shape) => {
-    const line = padToCeiling(shape, SENTINELS[family]);
+  it.each(grid)("%s inside %s denies under budget", async (_family, _name, shape, sentinel) => {
+    const line = padToCeiling(shape, sentinel);
 
     const result = await withinParseBudget(run, line, { mustDeny: true });
 
