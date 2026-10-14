@@ -1,5 +1,5 @@
 import { ARITH_BUILTINS } from "./builtins.js";
-import { ARITH_TESTS, expandedTexts, isRunTime, segments, splitCommand, TESTS, type Segment } from "./ifs-writes.js";
+import { expandedTexts, isRunTime, segments, splitCommand, testArithOperands, TESTS, type Segment } from "./ifs-writes.js";
 import { DECLARERS, NAMEREF_DECLARERS, nameSlots } from "./name-slots.js";
 import type { Token, WordToken } from "./tokens.js";
 import { ASSIGNMENT_RE } from "./vars.js";
@@ -130,8 +130,9 @@ function closesAtEnd(value: string): boolean {
  * Text the segment may evaluate as arithmetic: all of `(( ))`, the operands a command reads as numbers, and the
  * subscripts of the names it writes or a test command checks with `-v`.
  */
-function arithTexts({ words, arith, redirects }: Segment): string[] {
+function arithTexts({ words, arith, conditional, redirects }: Segment): string[] {
   if (arith) return [[...words.map((w) => w.value), ...redirects].join(" ")];
+  if (conditional) return testArithOperands(words).map((w) => w.value);
   const { command, args } = splitCommand(words);
   const operands = command ? arithArgs(command.value, args) : [];
   const slots = command ? nameSlots(command.value, args) : [];
@@ -149,7 +150,7 @@ function expansionTexts(value: string): string[] {
 /** Operands a command reads as arithmetic; a format's values unless every conversion prints text. */
 function arithArgs(name: string, args: WordToken[]): WordToken[] {
   if (name === "let") return args;
-  if (name === "[[") return args.filter((_, i) => ARITH_TESTS.has(args[i - 1]?.value ?? "") || ARITH_TESTS.has(args[i + 1]?.value ?? ""));
+  if (TESTS.has(name)) return testArithOperands(args);
   if (name === "printf" || name === "print") return formattedValues(name, args);
   return ARITH_BUILTINS.has(name) ? args.filter((a) => !a.value.startsWith("-")) : [];
 }

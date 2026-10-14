@@ -30,7 +30,7 @@ const COMMAND_BUILDER_RE = /[?*[{]/;
 /** The test commands; the brackets are their names rather than globs. */
 export const TESTS = new Set(["[", "[[", "test"]);
 /** `[[` compares these operands as arithmetic, which assigns any `NAME=` text it is given. */
-export const ARITH_TESTS = new Set(["-eq", "-ne", "-lt", "-le", "-gt", "-ge"]);
+const ARITH_TESTS = new Set(["-eq", "-ne", "-lt", "-le", "-gt", "-ge"]);
 /**
  * Run-time text bash or zsh evaluates or assigns through: arithmetic contexts (`$(( ))`, a `${x:offset}` substring,
  * an indexed subscript), where `$a$b=1` assigns whatever name it builds, and a parameter expansion whose name the
@@ -51,6 +51,8 @@ const ZSH_FLAGGED_RE = /\$[#+^=~]*[+^=~](?:[A-Za-z_]\w*|[@*#?$!-]|\d+)/;
 export interface Segment {
   words: WordToken[];
   arith: boolean;
+  /** The segment starts after an `&&`, `||`, `!` or paren inside an open `[[ ]]`, so its words are test operands. */
+  conditional: boolean;
   redirects: string[];
   targets: WordToken[];
   bodies: string[];
@@ -79,15 +81,17 @@ export function mayWriteRunTimeName(tokens: readonly Token[]): boolean {
 
 export function segments(tokens: readonly Token[]): Segment[] {
   const out: Segment[] = [];
-  let segment: Segment = { words: [], arith: false, redirects: [], targets: [], bodies: [] };
+  let segment: Segment = { words: [], arith: false, conditional: false, redirects: [], targets: [], bodies: [] };
   let afterOpen = false;
+  let inConditional = false;
   for (const t of tokens) {
     if (t.type === "word") segment.words.push(t);
+    if (t.type === "word" && !t.quoted && (t.value === "[[" || t.value === "]]")) inConditional = t.value === "[[";
     if (t.type === "redirect") addRedirect(segment, t);
     if (t.type !== "op") continue;
     out.push(segment);
     const arith = t.value === ")" ? false : t.value === "(" && afterOpen ? true : segment.arith;
-    segment = { words: [], arith, redirects: [], targets: [], bodies: [] };
+    segment = { words: [], arith, conditional: inConditional, redirects: [], targets: [], bodies: [] };
     afterOpen = t.value === "(";
   }
   out.push(segment);
@@ -105,6 +109,7 @@ function segmentMayWrite(segment: Segment): boolean {
   const { words, arith, targets } = segment;
   if (arith) return [...words, ...targets].some(isRunTime);
   if (expandedTexts(segment).some(holdsRunTimeWrite)) return true;
+  if (segment.conditional) return testMayWrite(words);
   const { command, args } = splitCommand(words);
   return command ? commandMayWrite(command, args) : false;
 }
@@ -123,7 +128,7 @@ export function splitCommand(words: WordToken[]): { command?: WordToken; args: W
  */
 function commandMayWrite(command: WordToken, args: WordToken[]): boolean {
   const name = command.value;
-  if (TESTS.has(name)) return testMayWrite(name, args);
+  if (TESTS.has(name)) return testMayWrite(args);
   if (isRunTime(command) || COMMAND_BUILDER_RE.test(name)) return true;
   if (SOURCERS.has(name) || runsCode(name, args) || (SHELL_BUILTINS.has(name) && !MODELED.has(name))) return true;
   const slots = nameSlots(name, args);
@@ -132,13 +137,25 @@ function commandMayWrite(command: WordToken, args: WordToken[]): boolean {
 }
 
 /**
- * `[[` evaluates every operand of an arithmetic comparison, and each test command evaluates the subscript of the
- * name `-v` checks, so a run-time operand there may hold `IFS=1`.
+ * A test form evaluates its arithmetic operands, and each test command evaluates the subscript of the name `-v`
+ * checks, so a run-time operand there may hold `IFS=1`.
  */
-function testMayWrite(name: string, args: WordToken[]): boolean {
-  const arith = name === "[[" && args.some((a) => ARITH_TESTS.has(a.value));
-  return args.some((a, i) => isRunTime(a) && (arith || args[i - 1]?.value === "-v"));
+function testMayWrite(args: WordToken[]): boolean {
+  return testArithOperands(args).some(isRunTime) || args.some((a, i) => isRunTime(a) && args[i - 1]?.value === "-v");
 }
+
+/**
+ * Operands a test form evaluates as arithmetic, as the union of bash and zsh: both sides of `-eq` to `-ge` (bash
+ * in `[[ ]]`, zsh in `[[ ]]`, `[ ]` and `test`), and zsh's `-t` operand, which it reads as a math expression
+ * rather than a descriptor number, so `[[ -t x ]]` evaluates x's value.
+ */
+export function testArithOperands(args: WordToken[]): WordToken[] {
+  return args.filter((_, i) => {
+    const before = args[i - 1]?.value ?? "";
+    return before === "-t" || ARITH_TESTS.has(before) || ARITH_TESTS.has(args[i + 1]?.value ?? "");
+  });
+}
+
 
 /**
  * Evaluator sinks: run-time text given to eval, let or trap, a mapfile callback, and an integer or zsh float
