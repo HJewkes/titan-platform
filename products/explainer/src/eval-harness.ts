@@ -109,7 +109,16 @@ export function createJudgeHarness(config: JudgeConfig, deps: JudgeHarnessDeps =
   const run = deps.runAgent ?? runAgent;
   return async <T>({ prompt, schema }: JudgeCall<T>) =>
     claudePrintReply(
-      await run<T>({ harness: "claude-print", prompt, cwd, model: config.model, outputSchema: schema, maxTurns: 1, maxBudgetUsd: config.max_budget_usd, inactivityTimeoutMs: config.wall_time_s * 1000 }),
+      await run<T>({
+        harness: "claude-print",
+        prompt,
+        cwd,
+        model: config.model,
+        outputSchema: schema,
+        maxTurns: 1,
+        maxBudgetUsd: config.max_budget_usd,
+        inactivityTimeoutMs: config.wall_time_s * 1000,
+      }),
     );
 }
 

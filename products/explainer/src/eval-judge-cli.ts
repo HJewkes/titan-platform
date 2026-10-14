@@ -111,10 +111,20 @@ function writeL2(flags: JudgedFlags, p: Prepared, result: L2Result, run: number)
 
 type Summary = Pick<L1Result, "eval_version" | "judge" | "trusted" | "failures" | "canaries" | "spend">;
 
-const report = (p: Prepared, run: number, r: Summary): void =>
-  console.log(JSON.stringify({ script_sha: p.sha, run, eval_version: r.eval_version, judge: r.judge, trusted: r.trusted, failed_canaries: r.canaries.filter((c) => !c.pass).map((c) => `${c.canary}:${c.dim}=${c.got}`), failures: r.failures, usd: r.spend.usd }));
+const report = (p: Prepared, run: number, r: Summary): void => {
+  const failedCanaries = r.canaries.filter((c) => !c.pass).map((c) => `${c.canary}:${c.dim}=${c.got}`);
+  const line = { script_sha: p.sha, run, eval_version: r.eval_version, judge: r.judge, trusted: r.trusted, failed_canaries: failedCanaries, failures: r.failures, usd: r.spend.usd };
+  console.log(JSON.stringify(line));
+};
 
-async function judgeRuns<R extends Summary>(p: Prepared, flags: JudgedFlags, deps: EvalCliDeps, evalId: string, once: (run: number) => Promise<R>, write: (r: R, run: number) => void): Promise<boolean> {
+async function judgeRuns<R extends Summary>(
+  p: Prepared,
+  flags: JudgedFlags,
+  deps: EvalCliDeps,
+  evalId: string,
+  once: (run: number) => Promise<R>,
+  write: (r: R, run: number) => void,
+): Promise<boolean> {
   const now = deps.now ?? (() => new Date());
   let trusted = true;
   for (let run = 1; run <= p.runs; run++) {
