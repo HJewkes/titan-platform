@@ -100,6 +100,9 @@ through a symlinked parent, is refused just before the append.
   `TITAN_TOOL_GUARD_BYPASS` is ignored: the hook runs as the agent's OS user, so nothing it
   can check is beyond the agent's reach. Take a guarded action from a terminal outside Claude
   Code.
+- zsh's precommand modifiers `noglob`, `nocorrect` and `-` are read as wrappers, like
+  `command` and `exec`, so `noglob git push origin HEAD:main` denies. The reading is generous:
+  `command noglob git push` denies although zsh would fail to run it.
 - Claude Code treats a hook that times out or exits non-zero as a non-blocking error and runs
   the call, so the bin exits 0 on every path.
 

@@ -34,6 +34,8 @@ export {
   topTestCoverageRisks,
 } from "./graph-report-sections.js";
 export { publicApiFiles, topUnusedExports } from "./unused-exports.js";
+export * from "./complexity-distribution.js";
+export * from "./dependency-graph-metrics.js";
 export { topDeadModules } from "./dead-modules.js";
 export { topGrowthRisks } from "./growth-risks.js";
 export { topUntestedRisks } from "./untested-risks.js";
