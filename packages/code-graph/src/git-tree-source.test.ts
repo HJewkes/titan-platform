@@ -2,13 +2,16 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { gitTreeSource } from "./git-tree-source.js";
 import { readSnapshot, type Snapshot } from "./incremental.test-helpers.js";
 import { indexPaths, type IndexOptions } from "./indexer.js";
 import { ALIAS_BASE_ATTR } from "./identity/lineage.js";
 import { daysAgo, isolatedGitEnv } from "./history/test-repo.js";
 import { openCodeGraph } from "./store.js";
+
+// Each test indexes a real git repo through ts-morph; CI run 38183124631 saw up to 7 s.
+vi.setConfig({ testTimeout: 30_000 });
 
 // HEAD~1. The tsconfig path alias and the .gitattributes rule both change in the
 // working tree, so an index that read either from disk would differ.
@@ -149,7 +152,13 @@ describe("gitTreeSource", () => {
     const store = openCodeGraph(":memory:");
     try {
       const index = (rev: string) =>
-        indexPaths(store, { paths: [dir], ref: "rev", incremental: false, source: gitTreeSource(dir, rev) });
+        indexPaths(store, {
+          paths: [dir],
+          ref: "rev",
+          incremental: false,
+          computeChurn: false,
+          source: gitTreeSource(dir, rev),
+        });
       await index("HEAD");
       const atFirst = await index("HEAD~1");
 
