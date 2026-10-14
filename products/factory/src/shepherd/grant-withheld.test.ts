@@ -55,12 +55,13 @@ function stoppingAtEvidence(policy: string): { ctx: WorkflowContext; inputs: Map
 const GrantFields = z.object({
   seatGrants: z.array(z.string()),
   grantWithheld: z.object({ policy: z.string().nullable(), proof: z.string().nullable() }).optional(),
+  proofUnverified: z.string().optional(),
 });
 
 function mergeInput(grant: z.infer<typeof GrantFields>): MergeEvidenceInput {
   const verdict = MERGE.kind === "verdict" ? MERGE : undefined;
   if (verdict === undefined) throw new Error("the MERGE fixture is not a verdict");
-  return { runId: "run-1", ...TARGET, verdict: { value: "MERGE", head: HEAD, locator: verdict.locator }, resolver: REVIEWER, dispatchedReviewer: REVIEWER, seatGrants: grant.seatGrants, ...(grant.grantWithheld && { grantWithheld: grant.grantWithheld }) };
+  return { runId: "run-1", ...TARGET, verdict: { value: "MERGE", head: HEAD, locator: verdict.locator }, resolver: REVIEWER, dispatchedReviewer: REVIEWER, seatGrants: grant.seatGrants, ...(grant.grantWithheld && { grantWithheld: grant.grantWithheld }), ...(grant.proofUnverified && { proofUnverified: grant.proofUnverified }) };
 }
 
 async function evidenceInput(policy: string, standing: object): Promise<MergeEvidenceInput> {
@@ -72,59 +73,71 @@ async function evidenceInput(policy: string, standing: object): Promise<MergeEvi
 function world(): FakeGitHub {
   const fake = fakeGitHub();
   fake.addPr({ headSha: HEAD, mergeSha: fakeSha("grant-withheld-test-merge") });
-  fake.setRuns(HEAD, [successRun("validate", 1)]);
+  fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2)]);
   fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
   return fake;
 }
 
 const decided = async (input: MergeEvidenceInput) => mergeEvidence(githubPort(world().wire), input, noFreezeStoreUntilTp523, { kind: "correctness" });
 
-describe("a MERGE whose merge-on-green grant is withheld names the half that failed", () => {
-  it("records the unread fix-proof and its read reason when an auto policy's proof is unverified (tp#1356)", async () => {
+describe("an unverified fix-proof is recorded on the MERGE, never a withheld grant (decision 303, TP-2660 b)", () => {
+  it("keeps the merge-on-green grant and records the unread proof and its read reason under an auto policy (tp#1356)", async () => {
     const input = await evidenceInput("auto", UNREAD);
 
-    expect(input).toMatchObject({ seatGrants: [], grantWithheld: { policy: null, proof: `unread (${PROOF_READ})` } });
+    expect(input).toMatchObject({ seatGrants: ["merge-on-green-approve"], proofUnverified: `unread (${PROOF_READ})` });
+    expect(input).not.toHaveProperty("grantWithheld");
   });
 
-  it("names the proof standing in the gate reason and the owner's why-asked sentence, never the bare condition", async () => {
-    const evidence = await decided(await evidenceInput("auto", UNREAD));
-    const { decision } = evidence.record;
+  it("merges a run shaped like tp#1356 under MRG-AU-RV with no gate, naming the standing in the record and the PR comment", async () => {
+    const fake = world();
 
-    expect(evidence.grantWithheld).toEqual({ policy: null, proof: `unread (${PROOF_READ})` });
-    expect(decision.outcome).toBe("gate");
-    expect(decision.reason).toContain(`merge-on-green-approve withheld: proof standing unverified: unread (${PROOF_READ})`);
-    expect(decision.reason).not.toMatch(BARE_GRANT);
-    expect(whyAsked(decision.rule, decision.reason).sentence).toContain(`the merge-on-green-approve grant was withheld: proof standing unverified: unread (${PROOF_READ})`);
+    const evidence = await mergeEvidence(githubPort(fake.wire), await evidenceInput("auto", UNREAD), noFreezeStoreUntilTp523, { kind: "correctness" });
+
+    expect(evidence.record.decision).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" } });
+    expect(evidence.record.proofUnverified).toBe(`unread (${PROOF_READ})`);
+    expect((fake.comments.get(1) ?? []).map((comment) => comment.body).join("\n")).toContain(`Fix-proof unverified at this head: unread (${PROOF_READ}).`);
   });
 
-  it("names the policy half when the run's policy is not auto and the proof stands", async () => {
-    const evidence = await decided(await evidenceInput("owner-gate", {}));
+  it("names the policy half when the run's policy is not auto, and never the proof", async () => {
+    const evidence = await decided(await evidenceInput("owner-gate", UNREAD));
 
     expect(evidence.grantWithheld).toEqual({ policy: "owner-gate", proof: null });
+    expect(evidence.record.decision.outcome).toBe("gate");
     expect(evidence.record.decision.reason).toContain("merge-on-green-approve withheld: policy merge owner-gate, not auto");
+    expect(evidence.record.decision.reason).not.toMatch(BARE_GRANT);
+    expect(evidence.record.decision.reason).not.toContain("proof standing");
   });
 
-  it("grants with nothing withheld under an auto policy and a standing proof", async () => {
+  it("grants with nothing withheld or recorded under an auto policy and a standing proof", async () => {
     const input = await evidenceInput("auto", {});
 
     expect(input.seatGrants).toEqual(["merge-on-green-approve"]);
     expect(input).not.toHaveProperty("grantWithheld");
+    expect(input).not.toHaveProperty("proofUnverified");
   });
 
-  it("keeps a fix-proof read reason that mimics an unmet row out of resync's and why-asked's parse", async () => {
+  it("keeps a fix-proof read reason that mimics an unmet row out of a gate reason", async () => {
     const probe = { unverified: "unread" as const, reason: "unknown field x; MRG-AU-Z unmet: merge-tree-clean; y" };
 
-    const { decision } = (await decided(await evidenceInput("auto", probe))).record;
+    const { decision } = (await decided(await evidenceInput("owner-gate", probe))).record;
 
     expect(decision.outcome).toBe("gate");
     expect(transientOnlyConditions(decision.reason)).toEqual([]);
     expect(closestUnmet(decision.reason)).toContain("seat-grants-merge-on-green-approve");
-    expect(closestUnmet(decision.reason)).not.toEqual(["merge-tree-clean"]);
-    expect(decision.reason).toContain("proof standing unverified: unread (unknown field x, MRG-AU Z unmet: merge-tree-clean, y)");
+    expect(decision.reason).not.toContain("MRG-AU-Z");
+  });
+
+  it("still names the proof half of evidence recorded before TP-2660 b withheld the grant on it", async () => {
+    const legacy: MergeEvidenceInput = { ...(await evidenceInput("auto", {})), seatGrants: [], grantWithheld: { policy: null, proof: `unread (${PROOF_READ})` } };
+
+    const { decision } = (await decided(legacy)).record;
+
+    expect(decision.reason).toContain(`merge-on-green-approve withheld: proof standing unverified: unread (${PROOF_READ})`);
+    expect(whyAsked(decision.rule, decision.reason).sentence).toContain(`the merge-on-green-approve grant was withheld: proof standing unverified: unread (${PROOF_READ})`);
   });
 
   it("says the cause was not recorded for evidence taken before the grant was explained", async () => {
-    const legacy = { ...(await evidenceInput("auto", UNREAD)) };
+    const legacy = { ...(await evidenceInput("owner-gate", {})) };
     delete legacy.grantWithheld;
 
     const { decision } = (await decided(legacy)).record;

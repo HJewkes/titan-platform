@@ -59,6 +59,8 @@ graph TD
     codeRead["code-read"]
     coordinator["coordinator"]
     decider["decider"]
+    dispatchLedger["dispatch-ledger"]
+    graphLayout["graph-layout"]
     memory["memory"]
     ownerQueue["owner-queue"]
     pm["pm"]
@@ -93,6 +95,7 @@ graph TD
   agentLifecycle --> storeSqlite
   codeGraph --> codeParser
   codeGraph --> embed
+  codeGraph --> evidence
   codeGraph --> retrieval
   codeGraph --> storeSqlite
   codeRead --> codeGraph
@@ -106,6 +109,7 @@ graph TD
   decider --> sessionRead
   decider --> storeSqlite
   egressScan --> fixProof
+  graphLayout --> codeGraph
   health --> storeSqlite
   hitl --> authority
   hitl --> storeSqlite
@@ -224,7 +228,7 @@ Same-tier edges such as `daemon --> registry`, `agent --> agent-lifecycle` and
 `session-graph --> session-read` are legal when they remain acyclic.
 
 <!-- generated:arch-leaves start -->
-`agent-protocol`, `anthropic-account`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `eslint-plugin`, `evidence`, `fix-proof`, `locator`, `rpc-protocol`, `store-sqlite`, `test-kit`, `agent-dispatch`, `agent-surface`, `github`, `matrix-bus`, `messaging`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
+`agent-protocol`, `anthropic-account`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `eslint-plugin`, `evidence`, `fix-proof`, `locator`, `rpc-protocol`, `store-sqlite`, `test-kit`, `agent-dispatch`, `agent-surface`, `github`, `matrix-bus`, `messaging`, `worktree`, `dispatch-ledger`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
 <!-- generated:arch-leaves end -->
 
 The [package families](/guides/package-families) guide groups the same packages by job.

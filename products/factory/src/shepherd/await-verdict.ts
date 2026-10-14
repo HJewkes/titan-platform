@@ -117,6 +117,16 @@ export async function awaitVerdict(
 }
 
 /**
+ * A `none` read after the reviewer left carries when it was seen gone, so a correction can tell the reviewer's own writes from
+ * the ones its resume makes; the stamp is recorded with the step, so a replay reads the same time.
+ */
+function goneAt(result: AwaitVerdictResult, gone: boolean, now: number): AwaitVerdictResult {
+  if (!gone || result.kind !== "none" || isUsageLimit(result)) return result;
+  const stamped: Extract<AwaitVerdictResult, { kind: "none" }> & { goneAt: number } = { ...result, goneAt: now };
+  return stamped;
+}
+
+/**
  * After the wait ran out: a reviewer held up by a permission prompt can still write its verdict, so its final message is
  * read again until it has one, the reviewer has exited, or the grace ends. A read taken after the exit decides. The grace
  * runs from `timing.startedAt` when given, so a restarted step gets only what is left of it.
@@ -132,7 +142,7 @@ export async function awaitLateVerdict(
   for (;;) {
     const gone = await exited().catch(() => false);
     const result = acceptVerdict(input, await reader.read(input).catch(() => []));
-    if (result.kind === "verdict" || gone || clock.expired()) return result;
+    if (result.kind === "verdict" || gone || clock.expired()) return goneAt(result, gone, timing.now());
     await clock.sleep(timing.pollMs, signal);
   }
 }

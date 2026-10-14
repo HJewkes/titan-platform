@@ -112,7 +112,7 @@ interface Ordered {
   result: StepResult;
 }
 
-const inStepOrder = (run: WorkflowRun): Ordered[] =>
+export const inStepOrder = (run: WorkflowRun): Ordered[] =>
   Object.entries(run.stepResults)
     .map(([key, result]) => ({ key, result }))
     .sort((a, b) => a.result.completedAt.localeCompare(b.result.completedAt));
