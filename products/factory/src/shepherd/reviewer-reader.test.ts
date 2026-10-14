@@ -375,12 +375,25 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
 
   it("reads the transcript through its own roster when the rows it is handed carry no transcript fields", async () => {
     const full = [{ ...seat, transcriptPath: path.join(dir, "gone", `${FIXTURE_SESSION}.jsonl`) }];
-    const bare = full.map(({ agentId, sessionId, name, presence }) => ({ agentId, sessionId, name, presence }));
+    const bare = full.map(({ agentId, sessionId, name, presence, spawnedBy }) => ({ agentId, sessionId, name, presence, spawnedBy, predecessor: null }));
     let calls = 0;
     const reader = transcriptReviewerReader({ roster: async () => (calls++, full), namespace: NAMESPACE });
     const input = { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD, reviewerAgentId: seat.agentId, reviewerSessionId: seat.sessionId, dispatchedAt: 0 };
 
-    await expect(reader.readSeat?.(input, bare as never)).rejects.toThrow();
+    await expect(reader.readSeat?.(input, bare)).rejects.toThrow();
+    expect(calls).toBe(1);
+  });
+
+  it("falls back to its own roster when the first row for the session lacks transcript fields, even if a later copy has them", async () => {
+    const entry = { ...seat, transcriptPath: path.join(dir, "gone", `${FIXTURE_SESSION}.jsonl`) };
+    const full = [entry];
+    const { agentId, sessionId, name, presence, spawnedBy } = entry;
+    const bareFirst = { agentId, sessionId, name, presence, spawnedBy, predecessor: null };
+    let calls = 0;
+    const reader = transcriptReviewerReader({ roster: async () => (calls++, full), namespace: NAMESPACE });
+    const input = { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD, reviewerAgentId: agentId, reviewerSessionId: sessionId, dispatchedAt: 0 };
+
+    await expect(reader.readSeat?.(input, [bareFirst, ...full])).rejects.toThrow();
     expect(calls).toBe(1);
   });
 
@@ -621,7 +634,7 @@ describe("an owner brief beside the verdict", () => {
 describe("the review depth floor", () => {
   const FIX_FIRST = BLOCK.replace("MERGE", "FIX_FIRST");
   const bash = (id: string, command: string): Json => ({ type: "tool_use", id, name: "Bash", input: { command } });
-  const ran = (call: Json): Json[] => [assistantRecord(SESSION, [call]), toolResult(SESSION, call.id as string, "output")];
+  const ran = (call: Json): Json[] => [assistantRecord(SESSION, [call]), toolResult(SESSION, String(call.id), "output")];
   const judged = async (records: readonly Json[]) => acceptVerdict(input, await read([row(writeTranscript(SESSION, [user(SESSION, "review it"), ...records]))]));
 
   it("sets aside a MERGE from a session that made no tool call at all", async () => {
