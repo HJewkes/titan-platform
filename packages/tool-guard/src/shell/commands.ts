@@ -121,7 +121,10 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
   const foldCase = options.foldCase === true;
   const unsure = { left: MAX_UNSURE_WORDS, splicedLeft: SPLICED_WEIGHT * src.length, decides: decider(options.guarded), stopPastCap: options.stopPastCap === true };
-  const w: Walk = { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase, walked: null, unsure, marks: newMarks(), onScript: options.onScript ?? null };
+  const w: Walk = {
+    scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null },
+    negated: false, foldCase, walked: null, unsure, marks: newMarks(), onScript: options.onScript ?? null,
+  };
   walk(tokenizeLine(src), observed(w));
   settle(w.marks);
   return out;
