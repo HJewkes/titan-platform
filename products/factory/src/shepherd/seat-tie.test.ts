@@ -73,9 +73,9 @@ describe("rosterTie for a reviewer started in Shepherd's review checkout root", 
 describe("awaitingTranscript", () => {
   const row = (extra: Partial<SeatRow> = {}): SeatRow => ({ name: "tc-tp-9-a-review", agentId: "a1", sessionId: "s1", presence: "live", spawnedBy: null, ...extra });
 
-  it("returns the newest row when it has no transcript yet", () => {
-    const pending = row({ transcriptExists: false });
-    expect(awaitingTranscript([row({ transcriptExists: true }), pending])).toBe(pending);
+  it("returns the newest row, listed first, when it has no transcript yet", () => {
+    const pending = row({ sessionId: "s2", transcriptExists: false });
+    expect(awaitingTranscript([pending, row({ transcriptExists: true })])).toBe(pending);
   });
 
   it("returns the newest row when it has no session yet", () => {
@@ -84,7 +84,7 @@ describe("awaitingTranscript", () => {
   });
 
   it("ignores an older row whose transcript is gone", () => {
-    expect(awaitingTranscript([row({ transcriptExists: false }), row({ sessionId: "s2", transcriptExists: true })])).toBeUndefined();
+    expect(awaitingTranscript([row({ sessionId: "s2", transcriptExists: true }), row({ transcriptExists: false })])).toBeUndefined();
   });
 
   it("ignores a row from a port that does not report transcriptExists", () => {
