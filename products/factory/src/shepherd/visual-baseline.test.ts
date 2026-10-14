@@ -85,6 +85,8 @@ describe("a visual head gates only on a changed baseline once the seat names its
 
   it.each<[string, VisualBaselines]>([
     ["an empty baseline list", { check: "visual", paths: [] }],
+    ["a baseline list of one empty glob", { check: "visual", paths: [""] }],
+    ["a baseline list of one blank glob", { check: "visual", paths: [" "] }],
     ["a blank check name", { check: " ", paths: BASELINES.paths }],
   ])("keeps the glob gate when the seat names %s", async (_case, baselines) => {
     const decision = await decisionFor([modified(BEAT)], { baselines });
