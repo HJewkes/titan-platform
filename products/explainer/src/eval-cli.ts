@@ -5,6 +5,7 @@ import type { JudgeConfig, JudgeHarness } from "./eval-harness.js";
 import { l1Command, l2Command, smokeCommand } from "./eval-judge-cli.js";
 import { appendRun, appendTsv, benchLayout, freezeScript, rulesSha, STRUCTURE_COLUMNS, type RunRecord, type StructureRow } from "./eval-store.js";
 import { MapLayoutSchema } from "./map-state.js";
+import { DEFAULT_RULES_PATH, parseRuleRegistry } from "./rules.js";
 import { ScriptSchema } from "./script-schema.js";
 
 const EXIT = { OK: 0, FAILURE: 1, USAGE: 2 } as const;
@@ -13,7 +14,7 @@ export const L0_EVAL_ID = "L0-script";
 
 interface L0Flags {
   config: string;
-  rules: string;
+  rules?: string;
   bench: string;
   parent?: string;
   layout?: string;
@@ -55,7 +56,9 @@ function evalL0(file: string, flags: L0Flags, deps: EvalCliDeps): boolean {
   const script = ScriptSchema.parse(raw);
   const layout = flags.layout ? MapLayoutSchema.parse(readJson(flags.layout)) : undefined;
   const bench = benchLayout(flags.bench);
-  const rules = rulesSha(readFileSync(flags.rules));
+  const registry = readFileSync(flags.rules ?? DEFAULT_RULES_PATH);
+  parseRuleRegistry(registry.toString("utf8"));
+  const rules = rulesSha(registry);
   const sha = freezeScript(bench, raw, flags.parent ?? null);
   const results = runL0(script, layout, deps.checks);
   const rows: StructureRow[] = results.map((result) => ({ config_id: flags.config, script_sha: sha, rules_sha: rules, ...result }));
@@ -72,7 +75,7 @@ function l0Command(deps: EvalCliDeps, onResult: (code: number) => void): Command
     .description("Run the deterministic L0 checks on a script/v1 file; append structure.tsv rows and a runs.jsonl record")
     .argument("<script>", "script/v1 JSON file")
     .requiredOption("--config <id>", "config_id of the generator configuration, e.g. tour-short/script-v1-02")
-    .requiredOption("--rules <file>", "rule registry file; its sha is rules_sha on every row")
+    .option("--rules <file>", "rules/v1 registry, by default the shipped doctrine/rules.yaml; its sha is rules_sha on every row")
     .option("--bench <dir>", "bench directory holding evals/ and scripts/", "bench")
     .option("--parent <sha>", "script_sha this script was derived from")
     .option("--layout <file>", "map layout JSON; without it the map lints are skipped")

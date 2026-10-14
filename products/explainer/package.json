@@ -13,6 +13,7 @@
   },
   "files": [
     "dist",
+    "doctrine",
     "rubrics",
     "README.md"
   ],
@@ -37,6 +38,7 @@
     "@titan-design/agent": "workspace:^",
     "@titan-design/agent-protocol": "workspace:^",
     "commander": "^14.0.3",
+    "yaml": "^2.9.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

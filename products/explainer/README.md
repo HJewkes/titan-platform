@@ -45,10 +45,18 @@ so shas minted by the pilot's Python tooling still resolve. A bench keeps its ro
 `<bench>/scripts/<script_sha>.json`, each with its `parent_sha`. Every row carries
 `rules_sha`, the sha of the rule registry file it ran under.
 
-`explainer eval l0 <script.json> --config <id> --rules <registry> [--bench <dir>]
+`doctrine/rules.yaml` is the Q-rule registry (`rules/v1`): 55 script-quality rules in one id
+space, each a hypothesis with a check. A rule row names the script fields it reads, the phase-1
+ids it absorbed (`aliases`, each resolving to one rule), its `owner_support`, and an `l0` and/or
+`judge` check that is either implemented (the L0 check ids it emits, or the rubric file citing
+it) or `pending` with the slice that owns it. `loadRuleRegistry` parses it and rejects a
+duplicate id or alias; `unimplementedL0Rules` lists rules whose claimed check ids no registered
+check emits.
+
+`explainer eval l0 <script.json> --config <id> [--rules <registry>] [--bench <dir>]
 [--layout <layout.json>] [--parent <sha>]` runs the deterministic L0 checks (today the map
-lints, which need `--layout`), freezes the script and appends its rows and run record. It
-exits 0 on a pass, 1 when an error-severity check fails (warnings never fail) and 2 on bad
+lints, which need `--layout`), freezes the script and appends its rows and run record. `--rules` defaults to
+the shipped registry and must parse as `rules/v1`. It exits 0 on a pass, 1 when an error-severity check fails (warnings never fail) and 2 on bad
 input. L0 filters only: never rank scripts by how many checks they pass.
 
 L1 and L2 are the model-judged layers. The judge is configuration, never a constant: a JSON

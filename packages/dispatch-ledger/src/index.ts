@@ -22,6 +22,7 @@ export type {
   WakeRecord,
 } from "./schema.js";
 export {
+  AcceptedOverlapSchema,
   CONTRACT_OPS,
   ContractSchema,
   DESTRUCTIVE_OPS,
@@ -30,7 +31,7 @@ export {
   STALE_CLASSES,
   STALL_CODES,
 } from "./vocab.js";
-export type { Contract, ContractOp, ExceptionClass, StaleClass, StallCode } from "./vocab.js";
+export type { AcceptedOverlap, Contract, ContractOp, ExceptionClass, StaleClass, StallCode } from "./vocab.js";
 
 // Phase edges.
 export { IllegalPhaseEdgeError, PHASE_EDGES, illegalEdgeError, illegalEdges } from "./claim-phase.js";

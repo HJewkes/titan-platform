@@ -11,6 +11,7 @@ export const STALL_CODES = [
   "retry-spent",
   "budget",
   "outside-owns",
+  "no-repo",
   "phase-timeout",
   "dirty-uncommitted",
   "lease-expired",
@@ -57,3 +58,11 @@ export const ContractSchema = z.object({
   op: z.enum(CONTRACT_OPS),
 });
 export type Contract = z.infer<typeof ContractSchema>;
+
+/** One open PR the slice may share one exact owns path with, because the planner read both edits as line-local. */
+export const AcceptedOverlapSchema = z.object({
+  pr: z.number().int().positive(),
+  path: z.string().min(1),
+  why: z.string().trim().min(1),
+});
+export type AcceptedOverlap = z.infer<typeof AcceptedOverlapSchema>;
