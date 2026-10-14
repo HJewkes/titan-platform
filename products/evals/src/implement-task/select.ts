@@ -19,7 +19,7 @@ const CorpusV3RowSchema = z.object({
 
 export type CorpusV3Row = z.infer<typeof CorpusV3RowSchema>;
 
-export type SkipReason =
+type SkipReason =
   | "private-repo"
   | "unsupported-runner"
   | "class-not-requested"
@@ -45,7 +45,7 @@ export interface SelectOptions {
   seed: string;
 }
 
-export interface Selection {
+interface Selection {
   /** Per requested class, candidates in seeded order; the export screens from the front until the quota fills. */
   byClass: Record<string, CorpusV3Row[]>;
   skipped: { caseId: string; reason: SkipReason }[];
@@ -74,7 +74,7 @@ function parseJson(line: string): unknown {
 }
 
 /** A task-file brief is the task's title and done_when; a subject-only row has its PR title. */
-export const briefOf = (row: CorpusV3Row): string => row.brief_text ?? row.title;
+const briefOf = (row: CorpusV3Row): string => row.brief_text ?? row.title;
 
 /** A brief edited after the merge can name the answer: the PR number, the merge sha, or where it landed. */
 export function leaksAnswer(brief: string, row: Pick<CorpusV3Row, "pr_number" | "merge_commit">): boolean {
