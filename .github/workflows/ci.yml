@@ -78,6 +78,9 @@ jobs:
       # redirect-corpus.test.ts runs every redirect form under real bash and zsh; it fails on CI without both.
       - name: Install zsh for the redirect corpus
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends zsh
+      # frame-capture's tests drive a real headless Chromium, at the revision its pinned playwright-core expects.
+      - name: Install Chromium for frame-capture
+        run: pnpm --filter @titan-design/frame-capture exec playwright-core install --with-deps --only-shell chromium
       # A pull request runs the packages its diff reaches through the workspace graph; main runs everything.
       - name: Run the tests in scope
         env:
