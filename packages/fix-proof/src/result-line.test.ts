@@ -11,6 +11,8 @@ const plan: FixProofPlan = {
   carried: [],
   deletedTests: ["src/gone.test.ts"],
   overlayRemovals: [],
+  mutations: [],
+  source: [],
   config: { tests: ["**/*.test.ts"], carry: [] },
   configEdited: false,
 };
