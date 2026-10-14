@@ -441,9 +441,10 @@ Tier 1, `@titan-design/agent-dispatch@0.7.0`. Start and resume agent-chat agents
 Key exports:
 
 - `dispatch`: `BrokerUnavailableError`, `DispatchError`, `DispatchTimeoutError`, `agentChatEnv`, `buildSpawnArgs`, `dispatchToAgentChat`
+- `call-timing`: `observeAgentChatCalls`
 - `profile-guard`: `assertInstalledHeadless`, `installedProfilesDir`
-- `exec`: `ExecError`, `ExecTimeoutError`, `execSafe`, `execSafeAsync`
-- +32 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent-dispatch)
+- `exec`: `ExecError`, `ExecTimeoutError`, `execSafe`
+- +34 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent-dispatch)
 
 <a id="cap-agent-lifecycle"></a>
 
