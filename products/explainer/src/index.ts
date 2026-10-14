@@ -74,6 +74,9 @@ export {
 } from "./eval-store.js";
 export { L0_CHECKS, l0HardPass, mapLintCheck, runL0, type L0Check, type L0Input, type L0Result } from "./eval-l0.js";
 export { L0_EVAL_ID, runEvalCli, type EvalCliDeps } from "./eval-cli.js";
+export { MAX_SENTENCE_WORDS, MIN_PROJECT_SHARE, voiceCheck, voiceCheckWith } from "./lint-voice.js";
+export { flowCheck } from "./lint-flow.js";
+export { maskEntities, repoEntities } from "./lint-text.js";
 export {
   DEFAULT_RULES_PATH,
   RuleRegistrySchema,

@@ -60,7 +60,7 @@ Modules that know about a subject: transcripts, code, rules.
 | [`code-read`](/reference/code-read) | Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands | `code-graph`, `registry`, `rpc-protocol` |
 | [`coordinator`](/reference/coordinator) | Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types). | `agent-dispatch` |
 | [`decider`](/reference/decider) | Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source | `locator`, `memory`, `session-read`, `store-sqlite` |
-| [`dispatch-ledger`](/reference/dispatch-ledger) | Burndown claim ledger: zod schema, phase edges, and burndown.json parse and export. | none |
+| [`dispatch-ledger`](/reference/dispatch-ledger) | Burndown claim ledger: zod schema, phase edges, and burndown.json parse and export. | `store-sqlite` |
 | [`graph-layout`](/reference/graph-layout) | Level collapses and deterministic ELK layered layouts (flat and compound) over a code-graph snapshot | `code-graph` |
 | [`memory`](/reference/memory) | Decaying rule playbook: bullets, feedback, deterministic curation, recall | `embed`, `retrieval`, `store-sqlite` |
 | [`owner-queue`](/reference/owner-queue) | The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions | `review-schema` |

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runEvalCli } from "./eval-cli.js";
+import { mapLintCheck } from "./eval-l0.js";
 import { rulesSha, scriptSha } from "./eval-store.js";
 import { layout } from "./map-fixtures.test-helpers.js";
 import { DEFAULT_RULES_PATH } from "./rules.js";
@@ -28,7 +29,7 @@ const clock = () => {
   return () => times.shift() ?? new Date(0);
 };
 const l0 = (script: string, ...extra: string[]) =>
-  runEvalCli(["eval", "l0", script, "--config", "tour-short/script-v1-01", "--rules", join(dir, "rules.yaml"), "--bench", join(dir, "bench"), ...extra], { now: clock() });
+  runEvalCli(["eval", "l0", script, "--config", "tour-short/script-v1-01", "--rules", join(dir, "rules.yaml"), "--bench", join(dir, "bench"), ...extra], { now: clock(), checks: [mapLintCheck] });
 const structureLines = () => readFileSync(join(dir, "bench/evals/structure.tsv"), "utf8").trimEnd().split("\n");
 
 beforeEach(() => {
