@@ -86,9 +86,24 @@ type and come back.
   weight, an id the layout lacks, a drawn edge with no `edgeSource`, a `hand` layout without
   an `our-framing` chip, and two cards entering on one cue. A zoom with no later map beat is
   only a warning.
+- `message_in_flight` walks a flow from `fromHop` to `toHop`, inclusive. `lintMapBeats`
+  rejects `hopCues` whose count is not one per hop (`flow-hops`), and a speed-3 walk with no
+  earlier speed-1 walk of the same flow over the same hops (`flow-replay`).
+- `lintMapCues(beats, resolveCue)` reads word timings. It rejects a hop cue that leaves less
+  than a `HOP_DWELL_S` (0.8 s) dwell plus `HOP_MIN_TRAVEL_S` (0.5 s) of travel before the next
+  hop cue or the beat's end, divided by the walk's speed, or that comes before the walk starts
+  (`hop-fit`). It also rejects an `untilCue` that does not come after the walk's `atCue`
+  (`until-cue`). Travel is checked against its floor; the renderer re-checks real routes.
 - `compileMapTimeline(beats, resolveCue)` returns one segment per map beat, in seconds from
   the video start, with sorted events. `cueResolverFromWords` builds the resolver from
   per-beat word timings and throws on a cue the beat never speaks.
+- `toDiagramMapTimeline(timeline, { layoutSha, cameraBox })` converts the segments into
+  titan-design's `MapTimeline`: the layout sha, the merged on-screen spans, and keyframes
+  sorted by time, op and ids. It adds a `level` and a `minimap` keyframe at a segment's start
+  when either changes. A flow keyframe carries the walk's hop and until cues as `hopAtS` and
+  `untilAtS`. `cameraBox` turns a beat's camera target into a layout box; a camera move
+  without it throws. `DiagramMapTimelineSchema` mirrors titan-design's type strictly. A test
+  checks it against a copy of titan-design's fixture, so drift fails a test instead of a render.
 
 A beat that re-enters the map resumes the last map beat's camera, revealed boxes, focus and
 active set, and its own fields override them. Level checks and the new-box count run against
