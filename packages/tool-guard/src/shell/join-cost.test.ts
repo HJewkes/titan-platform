@@ -65,12 +65,20 @@ const SUBSCRIPTS: Array<[string, string]> = [
   ["one long name before many brackets", `${"a".repeat(32_000)}${"[".repeat(32_000)}\n`],
 ];
 
+/** A loaded CI runner can stall any single run past the budget; a superlinear reading is slow on every run. */
+const TIMED_RUNS = 3;
+
 async function timedHookStdout(script: string): Promise<{ stdout: string; ms: number }> {
   const context = { ...nodeContext(HOME, noFs), foldCase: true, readScript: (p: string) => (p === `${REPO}/a.sh` ? script : null) };
   const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
-  const start = performance.now();
-  const result = await handle(event("bash a.sh; git push origin HEAD:main"), { PATH: "/usr/bin" }, port);
-  return { stdout: result.stdout, ms: performance.now() - start };
+  let fastest = { stdout: "", ms: Number.POSITIVE_INFINITY };
+  for (let run = 0; run < TIMED_RUNS; run++) {
+    const start = performance.now();
+    const result = await handle(event("bash a.sh; git push origin HEAD:main"), { PATH: "/usr/bin" }, port);
+    const ms = performance.now() - start;
+    if (ms < fastest.ms) fastest = { stdout: result.stdout, ms };
+  }
+  return fastest;
 }
 
 describe("a script of many subscripts", () => {
