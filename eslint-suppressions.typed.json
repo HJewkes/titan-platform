@@ -2391,7 +2391,7 @@
   },
   "packages/tool-guard/src/shell/commands.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
+      "count": 1
     }
   },
   "packages/tool-guard/src/shell/declarations.ts": {
@@ -2407,6 +2407,11 @@
   "packages/tool-guard/src/shell/group-stdin.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
+    }
+  },
+  "packages/tool-guard/src/shell/inline-script.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 2
     }
   },
   "packages/tool-guard/src/shell/lexer.test.ts": {
