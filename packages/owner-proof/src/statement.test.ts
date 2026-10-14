@@ -47,6 +47,17 @@ function flip(b64: string, at: number): string {
   return bytes.toString("base64url");
 }
 
+const BASE64URL_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+/** Another spelling of the same bytes: the last character differs only in bits the decoder ignores. */
+function nonCanonicalAlias(b64: string): string {
+  const bytes = Buffer.from(b64, "base64url");
+  const head = b64.slice(0, -1);
+  const alias = [...BASE64URL_ALPHABET].map((last) => head + last).find((text) => text !== b64 && Buffer.from(text, "base64url").equals(bytes));
+  if (alias === undefined) throw new Error("no spare bits in the last base64url character");
+  return alias;
+}
+
 const P256_ORDER = BigInt("0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551");
 
 function derInt(value: bigint): Buffer {
@@ -163,6 +174,40 @@ describe("verifySigned", () => {
     ["padded base64", { statementB64: "AA==", signatureB64: "AA" }],
   ])("refuses malformed %s without throwing", (_name, proof) => {
     expect(refusalOf(proof, setup().keys)).toBe("malformed");
+  });
+
+  it.each([NaN, Infinity, -Infinity])("refuses a non-finite clock of %s, even for a statement that expired long ago", (clock) => {
+    const { publicKey, privateKey, keys } = setup();
+    const stale = proofFrom(privateKey, noteFor(publicKey, { iat: NOW - 10 * 365 * 86_400, exp: NOW - 10 * 365 * 86_400 + 60 }));
+    expect(refusalOf(stale, keys, clock)).toBe("malformed");
+  });
+
+  it.each([
+    ["non-string fields", { statementB64: 5, signatureB64: null }],
+    ["undefined", undefined],
+    ["String objects", "boxed"],
+  ])("refuses %s input without throwing", (_name, shape) => {
+    const { publicKey, privateKey, keys } = setup();
+    const valid = proofFrom(privateKey, noteFor(publicKey));
+    // A boxed string passes the base64url regex and Buffer.from; the type check and the round-trip compare each refuse it
+    const input = shape === "boxed" ? { statementB64: new String(valid.statementB64), signatureB64: new String(valid.signatureB64) } : shape;
+    const result: unknown = Reflect.apply(verifySigned, undefined, [input, keys, NOW, AUD, NOTE]);
+    expect(result).toEqual({ ok: false, refusal: "malformed" });
+  });
+
+  it("refuses a non-canonical base64url spelling of signed bytes", () => {
+    const { publicKey, privateKey, keys } = setup();
+    const proofs = ["x", "xx", "xxx"].map((note) => proofFrom(privateKey, noteFor(publicKey, { note })));
+    const proof = proofs.find((candidate) => candidate.statementB64.length % 4 !== 0);
+    if (proof === undefined) throw new Error("no statement length leaves spare base64 bits");
+    const alias = nonCanonicalAlias(proof.statementB64);
+    expect(Buffer.from(alias, "base64url")).toEqual(Buffer.from(proof.statementB64, "base64url"));
+    expect(refusalOf({ ...proof, statementB64: alias }, keys)).toBe("malformed");
+  });
+
+  it("refuses a validly signed statement over 256 KiB", () => {
+    const { publicKey, privateKey, keys } = setup();
+    expect(refusalOf(proofFrom(privateKey, noteFor(publicKey, { note: "a".repeat(256 * 1024) })), keys)).toBe("malformed");
   });
 
   it("refuses a non-JSON signed statement as malformed", () => {
