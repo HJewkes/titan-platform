@@ -30,3 +30,9 @@ last was.
 
 `camera.ts` computes each beat's `camera/<beat>.json` station: a 16:9 box around the beat's
 focus boxes that keeps them above the 83 % caption line.
+
+`script-schema.ts` parses `script/v1`, a two-track script: per beat, a narration track
+(`spoken`, `why`, `fact_ids`) and a visual track whose `map_state` is the map track's schema
+unchanged. Every cue must be a word the beat speaks. `deriveEvalView` computes the view the
+evals read (`nodes_shown`, `you_are_here`, `state_changes`), and `migrateTourV0` lifts a
+spike tour to v1, writing `TODO:` for fields the spike never had.
