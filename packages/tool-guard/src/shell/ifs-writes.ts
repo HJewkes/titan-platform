@@ -45,13 +45,13 @@ const RUN_TIME_WRITE_RES = [/\$\(\([^]*[$`]/, /\$\{[^}:]*:(?![-=+?])[^}]*[$`]/, 
 /** zsh's unbraced `$+name`, `$^name`, `$=name` and `$~name`, which bash's lexer leaves as literal text. */
 const ZSH_FLAGGED_RE = /\$[#+^=~]*[+^=~](?:[A-Za-z_]\w*|[@*#?$!-]|\d+)/;
 
+type Conditional = "none" | "test" | "both";
+
 /**
  * A command segment and whether it sits inside `(( ))`, where any run-time word is arithmetic text, as are the
  * operators and operands the lexer reads there as redirects (`i < n`). `targets` are the redirect and here-string
  * words the shell expands, heredoc delimiters aside; `bodies` are the heredoc bodies it expands, `<<-` included.
  */
-export type Conditional = "none" | "test" | "both";
-
 export interface Segment {
   words: WordToken[];
   arith: boolean;
