@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>frame-capture fixture page</title>
+    <style>
+      @font-face {
+        font-family: 'Space Grotesk';
+        src: url('./fonts/space-grotesk-latin.woff2') format('woff2');
+        font-weight: 300 700;
+        font-display: block;
+      }
+      /* Drawn by nothing, so it loads only if the capture loads every face before frame 0. */
+      @font-face {
+        font-family: 'Unused Face';
+        src: url('./fonts/space-grotesk-latin.woff2') format('woff2');
+        font-display: block;
+      }
+      body { margin: 0; background: #000; }
+      #stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+        background: #fff; color: #000; font: 200px 'Space Grotesk'; }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <script>
+      // Speaks the __titanMotion protocol with no framework, so the capture is tested against the
+      // protocol alone. `?page=` picks the behaviour:
+      //   clock          shows t to three places
+      //   static-clock   the same markup with no motion API; a test sets its text
+      //   throws         like clock, but from `?fail-at=<s>` on, a seek empties the stage and reports an
+      //                  uncaught error, as a framework does when a render throws and unmounts the tree
+      //   missing-font   like clock, but declares a face whose file does not exist
+      const query = new URLSearchParams(location.search)
+      const page = query.get('page')
+      const stage = document.getElementById('stage')
+      const failAt = query.has('fail-at') ? Number(query.get('fail-at')) : Infinity
+
+      if (page === 'missing-font') {
+        document.fonts.add(new FontFace('MissingFace', "url('./fonts/missing.woff2')"))
+      }
+
+      function seek(t) {
+        if (t >= failAt) {
+          stage.textContent = ''
+          reportError(new Error(`throws fixture fails at ${t.toFixed(2)} s`))
+          return
+        }
+        stage.textContent = t.toFixed(3)
+      }
+
+      // A framework page renders t = 0 on mount, before any seek.
+      if (page !== 'static-clock') {
+        seek(0)
+        window.__titanMotion = { seek, ready: () => document.fonts.ready.then(() => undefined), duration: 3 }
+      }
+    </script>
+  </body>
+</html>

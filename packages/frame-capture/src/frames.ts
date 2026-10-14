@@ -1,5 +1,5 @@
 import type { Browser } from 'playwright-core'
-import { captureFrame, launch, openCapturePage, type CapturePage, type PageOptions } from './capture.ts'
+import { captureFrame, launch, openCapturePage, type CapturePage, type PageOptions } from './capture.js'
 
 export interface FramesOptions extends PageOptions {
   url: string
@@ -8,8 +8,7 @@ export interface FramesOptions extends PageOptions {
   frames?: number
   /**
    * Pages capturing contiguous chunks in parallel. A fixed count renders byte-identically run to run,
-   * but a chunk's first frames can differ from a sequential render by a few levels of anti-aliasing
-   * (MEASUREMENTS.md, "Chunk boundaries").
+   * but a chunk's first frames can differ from a sequential render by a few levels of anti-aliasing.
    */
   workers?: number
 }
@@ -64,7 +63,7 @@ async function withBrowser<T>(use: (browser: Browser) => Promise<T>): Promise<T>
 
 /**
  * One browser per chunk, not one page per chunk in a shared browser: screenshots encode in the browser
- * process, so a shared browser stops scaling at about 60 fps (MEASUREMENTS.md). A page error rejects the chunk
+ * process, so a shared browser stops scaling at about 60 fps. A page error rejects the chunk
  * before its frame is emitted: a render that throws unmounts the page, and every frame after it would encode black.
  */
 function captureChunk(options: FramesOptions, [from, to]: [number, number], emit: Emit) {

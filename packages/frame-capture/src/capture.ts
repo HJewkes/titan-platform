@@ -1,10 +1,11 @@
 import { chromium, type Browser, type Page } from 'playwright-core'
-import { installVirtualTime, type VirtualTimeApi } from './virtual-time.ts'
+import type { TitanMotionApi } from './protocol.js'
+import { VIRTUAL_TIME_SCRIPT, type VirtualTimeApi } from './virtual-time.js'
 
 declare global {
   interface Window {
     __virtualTime: VirtualTimeApi
-    __titanMotion?: { seek(t: number): void; ready(): Promise<void>; readonly duration: number }
+    __titanMotion?: TitanMotionApi
   }
 }
 
@@ -43,10 +44,12 @@ async function waitForMotionApi(page: Page): Promise<number> {
 /**
  * Loads the page's fonts and waits on document.fonts.ready. The explicit load matters: fonts load
  * lazily on first use, so fonts.ready alone can resolve before a beat that mounts later asks for one.
+ * A face that fails to load is left in its `error` status for the caller, which can name it; the
+ * rejection itself says only "A network error occurred".
  */
 export async function settleFonts(page: Page, preload = true): Promise<FontState[]> {
   return page.evaluate(async (load) => {
-    if (load) await Promise.all(Array.from(document.fonts, (face) => face.load()))
+    if (load) await Promise.all(Array.from(document.fonts, (face) => face.load().catch(() => face)))
     await document.fonts.ready
     return Array.from(document.fonts, (face) => ({ family: face.family, status: face.status }))
   }, preload)
@@ -61,7 +64,7 @@ export interface CapturePage {
 
 export async function openCapturePage(browser: Browser, url: string, options: PageOptions): Promise<CapturePage> {
   const context = await browser.newContext({ viewport: options, deviceScaleFactor: 1 })
-  await context.addInitScript(installVirtualTime)
+  await context.addInitScript({ content: VIRTUAL_TIME_SCRIPT })
   const page = await context.newPage()
   await page.goto(url, { waitUntil: 'load' })
   const duration = await waitForMotionApi(page)

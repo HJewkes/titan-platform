@@ -1,21 +1,24 @@
 /**
- * The virtual-time init script (plan N17). Playwright serialises this function and runs it before any
- * page script, so nothing in the page reads real time: Date, performance.now, timers and rAF all follow
- * a clock that only `__virtualTime.advanceTo(ms)` moves, and Math.random is seeded.
+ * The virtual-time init script. Playwright runs it before any page script, so nothing in
+ * the page reads real time: Date, performance.now, timers and rAF all follow a clock that only
+ * `__virtualTime.advanceTo(ms)` moves, and Math.random is seeded.
  *
- * It must stay self-contained: no imports, no closures over module scope.
+ * Each step below is serialised on its own, so it must stay self-contained: no imports, no closures over
+ * module scope, and no calls to another step except through the `steps` it is handed. Passing the steps
+ * in, rather than calling them by name, keeps the script working if a bundler renames a function.
  */
-export function installVirtualTime(): void {
-  const EPOCH_MS = Date.UTC(2026, 0, 1)
-  const MAX_FIRES_PER_ADVANCE = 100_000
-  type Task = { at: number; seq: number; fn: (...args: unknown[]) => void; args: unknown[]; everyMs?: number }
 
-  let nowMs = 0
-  let nextId = 1
-  let seq = 0
-  const timers = new Map<number, Task>()
-  let rafs = new Map<number, FrameRequestCallback>()
+type Task = { at: number; seq: number; fn: (...args: unknown[]) => void; args: unknown[]; everyMs?: number }
 
+interface ClockState {
+  nowMs: number
+  nextId: number
+  seq: number
+  timers: Map<number, Task>
+  rafs: Map<number, FrameRequestCallback>
+}
+
+function seedMathRandom(): void {
   let seed = 0x2f6b9d31
   Math.random = () => {
     seed = (seed + 0x6d2b79f5) | 0
@@ -23,85 +26,108 @@ export function installVirtualTime(): void {
     x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x
     return ((x ^ (x >>> 14)) >>> 0) / 4294967296
   }
+}
 
+function patchDate(state: ClockState): void {
+  const EPOCH_MS = Date.UTC(2026, 0, 1)
   const RealDate = Date
   class VirtualDate extends RealDate {
     constructor(...args: unknown[]) {
-      if (args.length === 0) super(EPOCH_MS + nowMs)
+      if (args.length === 0) super(EPOCH_MS + state.nowMs)
       else super(...(args as [string]))
     }
     static override now() {
-      return EPOCH_MS + nowMs
+      return EPOCH_MS + state.nowMs
     }
   }
   window.Date = VirtualDate as DateConstructor
-  performance.now = () => nowMs
+  performance.now = () => state.nowMs
+}
 
+function patchTimers(state: ClockState): void {
   function schedule(fn: unknown, delay: unknown, args: unknown[], repeat: boolean): number {
-    const id = nextId++
+    const id = state.nextId++
     if (typeof fn !== 'function') return id
     const ms = Math.max(0, Number(delay) || 0)
-    timers.set(id, { at: nowMs + ms, seq: seq++, fn: fn as Task['fn'], args, everyMs: repeat ? Math.max(1, ms) : undefined })
+    state.timers.set(id, { at: state.nowMs + ms, seq: state.seq++, fn: fn as Task['fn'], args, everyMs: repeat ? Math.max(1, ms) : undefined })
     return id
   }
-  const clear = (id?: number) => void (id !== undefined && timers.delete(id))
+  const clear = (id?: number) => void (id !== undefined && state.timers.delete(id))
   window.setTimeout = ((fn: unknown, delay?: number, ...args: unknown[]) => schedule(fn, delay, args, false)) as typeof setTimeout
   window.setInterval = ((fn: unknown, delay?: number, ...args: unknown[]) => schedule(fn, delay, args, true)) as typeof setInterval
   window.clearTimeout = clear as typeof clearTimeout
   window.clearInterval = clear as typeof clearInterval
   window.requestAnimationFrame = (cb) => {
-    const id = nextId++
-    rafs.set(id, cb)
+    const id = state.nextId++
+    state.rafs.set(id, cb)
     return id
   }
-  window.cancelAnimationFrame = (id) => void rafs.delete(id)
-
-  function nextDue(untilMs: number): [number, Task] | undefined {
-    let best: [number, Task] | undefined
-    for (const entry of timers) {
-      const task = entry[1]
-      if (task.at > untilMs) continue
-      if (!best || task.at < best[1].at || (task.at === best[1].at && task.seq < best[1].seq)) best = entry
-    }
-    return best
-  }
-
-  function fireTimers(untilMs: number) {
-    for (let fired = 0; fired < MAX_FIRES_PER_ADVANCE; fired++) {
-      const due = nextDue(untilMs)
-      if (!due) return
-      const [id, task] = due
-      nowMs = Math.max(nowMs, task.at)
-      if (task.everyMs === undefined) timers.delete(id)
-      else Object.assign(task, { at: task.at + task.everyMs, seq: seq++ })
-      task.fn(...task.args)
-    }
-    throw new Error(`virtual time: more than ${MAX_FIRES_PER_ADVANCE} timers due by ${untilMs} ms`)
-  }
-
-  function runFrame() {
-    const callbacks = rafs
-    rafs = new Map()
-    for (const cb of callbacks.values()) cb(nowMs)
-  }
-
-  Object.defineProperty(window, '__virtualTime', {
-    value: {
-      now: () => nowMs,
-      pending: () => ({ timers: timers.size, rafs: rafs.size }),
-      /** Fires every timer due by `ms` in order, sets the clock to `ms`, then runs one rAF frame. */
-      advanceTo(ms: number) {
-        if (ms < nowMs) throw new Error(`virtual time cannot go back from ${nowMs} to ${ms} ms`)
-        fireTimers(ms)
-        nowMs = ms
-        runFrame()
-      },
-    },
-  })
+  window.cancelAnimationFrame = (id) => void state.rafs.delete(id)
 }
+
+function nextDue(state: ClockState, untilMs: number): [number, Task] | undefined {
+  let best: [number, Task] | undefined
+  for (const entry of state.timers) {
+    const task = entry[1]
+    if (task.at > untilMs) continue
+    if (!best || task.at < best[1].at || (task.at === best[1].at && task.seq < best[1].seq)) best = entry
+  }
+  return best
+}
+
+function fireTimers(state: ClockState, untilMs: number, steps: VirtualTimeSteps): void {
+  const MAX_FIRES_PER_ADVANCE = 100_000
+  for (let fired = 0; fired < MAX_FIRES_PER_ADVANCE; fired++) {
+    const due = steps.nextDue(state, untilMs)
+    if (!due) return
+    const [id, task] = due
+    state.nowMs = Math.max(state.nowMs, task.at)
+    if (task.everyMs === undefined) state.timers.delete(id)
+    else Object.assign(task, { at: task.at + task.everyMs, seq: state.seq++ })
+    task.fn(...task.args)
+  }
+  throw new Error(`virtual time: more than ${MAX_FIRES_PER_ADVANCE} timers due by ${untilMs} ms`)
+}
+
+function runFrame(state: ClockState): void {
+  const callbacks = state.rafs
+  state.rafs = new Map()
+  for (const cb of callbacks.values()) cb(state.nowMs)
+}
+
+function publishVirtualTime(state: ClockState, steps: VirtualTimeSteps): void {
+  const api: VirtualTimeApi = {
+    now: () => state.nowMs,
+    pending: () => ({ timers: state.timers.size, rafs: state.rafs.size }),
+    advanceTo(ms: number) {
+      if (ms < state.nowMs) throw new Error(`virtual time cannot go back from ${state.nowMs} to ${ms} ms`)
+      steps.fireTimers(state, ms, steps)
+      state.nowMs = ms
+      steps.runFrame(state)
+    },
+  }
+  Object.defineProperty(window, '__virtualTime', { value: api })
+}
+
+const STEPS = { seedMathRandom, patchDate, patchTimers, nextDue, fireTimers, runFrame, publishVirtualTime }
+type VirtualTimeSteps = typeof STEPS
+
+function installVirtualTime(steps: VirtualTimeSteps): void {
+  const state: ClockState = { nowMs: 0, nextId: 1, seq: 0, timers: new Map(), rafs: new Map() }
+  steps.seedMathRandom()
+  steps.patchDate(state)
+  steps.patchTimers(state)
+  steps.publishVirtualTime(state, steps)
+}
+
+/** The init script source, for `context.addInitScript({ content: VIRTUAL_TIME_SCRIPT })`. */
+export const VIRTUAL_TIME_SCRIPT = `(${String(installVirtualTime)})({ ${Object.entries(STEPS)
+  .map(([name, step]) => `${name}: ${String(step)}`)
+  .join(', ')} })`
 
 export interface VirtualTimeApi {
   now(): number
   pending(): { timers: number; rafs: number }
+  /** Fires every timer due by `ms` in order, sets the clock to `ms`, then runs one rAF frame. */
   advanceTo(ms: number): void
 }

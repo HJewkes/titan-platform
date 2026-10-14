@@ -1,6 +1,10 @@
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import type { TimedBeat } from './timeline.ts'
+/** One voice clip in the mix: `wavPath(id)` names its file, and it is padded to `durationS`. */
+export interface MixSegment {
+  id: string
+  durationS: number
+}
 
 function run(args: string[]): Promise<void> {
   const ffmpeg = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args], { stdio: 'inherit' })
@@ -10,11 +14,11 @@ function run(args: string[]): Promise<void> {
   })
 }
 
-/** mix.wav: each beat's voice from its start, padded with silence to the beat's length. */
-export function mixAudio(beats: readonly TimedBeat[], wavPath: (id: string) => string, out: string): Promise<void> {
-  const inputs = beats.flatMap((beat) => ['-i', wavPath(beat.id)])
-  const pads = beats.map((beat, i) => `[${i}:a]apad=whole_dur=${beat.durationS}[a${i}]`)
-  const concat = `${beats.map((_, i) => `[a${i}]`).join('')}concat=n=${beats.length}:v=0:a=1[mix]`
+/** mix.wav: each segment's voice from its start, padded with silence to the segment's length, in order. */
+export function mixAudio(segments: readonly MixSegment[], wavPath: (id: string) => string, out: string): Promise<void> {
+  const inputs = segments.flatMap((segment) => ['-i', wavPath(segment.id)])
+  const pads = segments.map((segment, i) => `[${i}:a]apad=whole_dur=${segment.durationS}[a${i}]`)
+  const concat = `${segments.map((_, i) => `[a${i}]`).join('')}concat=n=${segments.length}:v=0:a=1[mix]`
   return run([...inputs, '-filter_complex', [...pads, concat].join(';'), '-map', '[mix]', out])
 }
 

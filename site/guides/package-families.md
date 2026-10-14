@@ -151,3 +151,9 @@ merge. The [factory](/guides/factory) product composes `github`, `authority`, `h
   record, the `QueueSource` port, and merge-by-keys and rank as pure functions.
 - [`decider`](/reference/decider): the owner-decision ledger. Its row schema, outcome
   classifier, exclusion check and append-only store record how the owner answered.
+
+## Video capture
+
+- [`frame-capture`](/reference/frame-capture): renders any page that publishes the
+  `__titanMotion` protocol (`seek`, `ready`, `duration`) to PNG frames under a virtual clock,
+  in parallel chunks, and encodes them with ffmpeg. It knows nothing of beats or React.
