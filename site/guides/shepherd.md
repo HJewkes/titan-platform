@@ -80,8 +80,10 @@ On a `correctness` or `security` run, or any `fix/` branch, Shepherd reads the h
 fix-proof result before the review. A vacuous or test-less proof ends the round as
 `NO_REPRO`. A proof that shows nothing about the head goes to the reviewer marked unverified.
 That covers an `error` verdict (a skipped base included), an untrusted run, and a result that
-could not be read although one was due. A MERGE on such a head carries no merge-on-green
-grant, so it waits at the owner gate even under an `auto` policy.
+could not be read although one was due. A read that fails is read once more at the same head
+first. A MERGE on such a head keeps the policy's merge-on-green grant (owner decision 303), so
+under an `auto` policy it merges on the usual conditions. The merge evidence record and the
+evidence PR comment name the unverified standing and the read's reason.
 
 A branch registered first and its pull request registered later share one run. A
 registration by number reads the pull request from GitHub to learn its head branch, so it
@@ -274,8 +276,11 @@ request moved head is superseded. That covers a seat-policy, merge-guard, MRG-AU
 superseded failed-rounds gate starts the new head's review rounds from zero, so the run does not
 ask the owner again before the new head has failed its own rounds. A superseded fix-first-runaway,
 no-progress or conflict gate is only cancelled, never answered: the run reviews the new head and
-asks the owner again there, with the gate naming the carried reason and the new review, even
-under an `auto` policy that would allow the merge. The carried reason stays on the run across
+asks the owner again there, with the gate naming the carried reason and the new review. The one
+exception (owner decision 303) is a head where the dispatched reviewer wrote a fresh `MERGE` at
+exactly that head and an `auto` policy allows it under MRG-AU-RV: the run merges with no gate and
+records the rule `shepherd-route/<escalation>/cleared-by-merge` naming both heads. A `MERGE`
+carried by tree, remerge or merge-up does not clear it. The carried reason stays on the run across
 send-backs, fixer pushes and further head moves until the owner answers an `approve-merge` gate. A superseded `ci-failed` gate reads as
 `await-fix`, so the run lands the new head with no owner answer. A superseded `stuck-behind`
 gate starts a new land round at the new head with a fresh update budget. Resync also answers
@@ -741,7 +746,8 @@ visual_paths:
 
 A seat with `visual_paths` resolves to `auto` even without `merge-on-green-approve`. At each
 head Shepherd decides, it matches the changed files the merge evidence read at that head
-(both sides of a rename) against the globs:
+(both sides of a rename) against the globs. Files that cannot render never match: names
+with `.test.` or `.spec.`, and names ending `.md` or `.d.ts`.
 
 - no file matches: the merge goes on to `MRG-AU-RV`, which still needs a `MERGE` at the head
   and green required checks;

@@ -149,7 +149,33 @@ describe("shepherd.ghRead", () => {
     expect(answer).toMatchObject({ status: 200, body: row, source: "snapshot", stale: false });
     expect(urls).toEqual([]);
   });
+
+  it("reads an open pull live as GitHub JSON when raw is set, though the snapshot holds it", async () => {
+    const pull = { number: 5, head: { sha: "g".repeat(40) } };
+    const { gateway, urls, lines } = gatewayWith(() => ({ status: 200, body: pull }), { snapshot: snapshotHoldingPull5() });
+
+    const answer = await gateway.read({ path: "repos/octo/demo/pulls/5", raw: true, caller: "gh-shim" });
+
+    expect(answer).toEqual({ status: 200, body: pull, at: new Date(NOW).toISOString(), stale: false, source: "github" });
+    expect(urls).toEqual([`${API}repos/octo/demo/pulls/5`]);
+    expect(lines).toEqual([{ v: 1, at: new Date(NOW).toISOString(), caller: "gh-shim", method: "GET", route: "repos/{owner}/{repo}/pulls/{n}", status: 200 }]);
+  });
+
+  it("passes raw through the RPC args to the gateway", async () => {
+    const { gateway, urls } = gatewayWith(() => ({ status: 200, body: { number: 5 } }), { snapshot: snapshotHoldingPull5() });
+    const ghRead = command("shepherd.ghRead");
+
+    const answer = await ghRead.run(ghRead.args.parse({ path: "repos/octo/demo/pulls/5", raw: true, caller: "t" }), contextWith(gateway));
+
+    expect(answer).toMatchObject({ body: { number: 5 }, source: "github" });
+    expect(urls).toHaveLength(1);
+  });
 });
+
+function snapshotHoldingPull5(): PrSnapshot {
+  const row = partialFake<PullRequest>({ number: 5, state: "open", headSha: "h".repeat(40) });
+  return partialFake<PrSnapshot>({ openPrs: async () => [row] });
+}
 
 describe("shepherd.ghBudget", () => {
   it("reports the gateway client's live rate window and cooldowns", async () => {

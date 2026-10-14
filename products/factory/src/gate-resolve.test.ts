@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineWorkflow } from "./definition.js";
-import { presenceReason, resolveGate, type OwnerPresence } from "./gate-resolve.js";
+import { ownerResolver, presenceReason, resolveGate, type OwnerPresence } from "./gate-resolve.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
 import { TEST_BRIEF } from "./test-support/brief.js";
 
@@ -234,5 +234,23 @@ describe("gate resolve by a coordinator", () => {
     await resolveGate(host, io, runId, "stuck-behind", '{"decision":"abandon"}', presence).catch(() => 1);
 
     expect(reasons).toEqual([`resolve gate ${runId}/stuck-behind: abandon`]);
+  });
+});
+
+describe("ownerResolver", () => {
+  it("refuses an agent shell without presence, proves it with presence, and asks nothing of the owner's own terminal", async () => {
+    const reason = "release the owner-asked hold on octo/demo#1";
+    const refused = presenceStub(undefined);
+    const confirmed = presenceStub(PROOF);
+    const ownShell = presenceStub(undefined);
+
+    const agent = await ownerResolver(AGENT_SHELL, reason, refused.presence);
+    const proved = await ownerResolver(AGENT_SHELL, reason, confirmed.presence);
+    const terminal = await ownerResolver({}, reason, ownShell.presence);
+
+    expect(agent).toBe(`owner presence was not confirmed, so tc-synthetic, a shell agent-chat launched, is refused: only the owner may ${reason}`);
+    expect(proved).toEqual({ class: "owner-terminal", id: userInfo().username, channel: "factory-cli", confirmEvent: PROOF });
+    expect(terminal).toEqual({ class: "owner-terminal", id: userInfo().username, channel: "factory-cli" });
+    expect([refused.reasons, confirmed.reasons, ownShell.reasons]).toEqual([[reason], [reason], []]);
   });
 });

@@ -66,6 +66,8 @@ composes all three.
   per-repository budget, with release, park, re-create and sweep.
 - [`coordinator`](/reference/coordinator): the zod schema and types for the seat config an
   autonomy coordinator reads.
+- [`dispatch-ledger`](/reference/dispatch-ledger): the burndown claim ledger's zod schema,
+  its claim-phase transition table, and a byte-preserving `burndown.json` parse and export.
 - [`pm`](/reference/pm): the zod schema and type for an active-work task record.
 - [`hitl`](/reference/hitl): a durable `gate()` that a human resolves from any process.
 - [`workflow`](/reference/workflow): an ordinary async function whose `dispatch`, `seed`,
@@ -94,6 +96,9 @@ runs the first two end to end.
   history. This repo's own `pnpm dag:check` runs on it.
 - [`code-read`](/reference/code-read): a versioned read contract over one snapshot,
   answered by pure functions a daemon and a browser both call.
+- [`graph-layout`](/reference/graph-layout): collapses a snapshot to packages, directories,
+  or one focused package, and lays it out with ELK layered, flat or nested, the same way for
+  any input order.
 - [`style-analyzer`](/reference/style-analyzer), [`style-profile`](/reference/style-profile),
   and [`style-checker`](/reference/style-checker): observe a repo's style, hold it as one
   profile exported to ESLint, ruff, and agent rules, then run those tools and the Python

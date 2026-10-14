@@ -78,7 +78,14 @@ jobs:
       # redirect-corpus.test.ts runs every redirect form under real bash and zsh; it fails on CI without both.
       - name: Install zsh for the redirect corpus
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends zsh
-      - run: pnpm test
+      # A pull request runs the packages its diff reaches through the workspace graph; main runs everything.
+      - name: Run the tests in scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: pnpm test:scope --run
       - name: Save vitest results
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v4

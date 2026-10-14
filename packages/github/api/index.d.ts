@@ -103,6 +103,13 @@ declare class ForcePushesTruncated extends Error {
     constructor();
 }
 
+/** The list came back shorter than the PR's own count, so a path may be missing. */
+declare class FileListTruncatedError extends Error {
+    readonly expected: number;
+    readonly received: number;
+    constructor(expected: number, received: number);
+}
+
 /**
  * The open PRs, or `notModified` when they are unchanged since the read that answered `etag`. Rows carry no `behind`
  * and an `unknown` mergeable state, like every list row, and a change to either does not change the ETag.
@@ -202,6 +209,28 @@ interface CheckRun {
 interface CheckRunPr {
     number: number;
     baseRef: string;
+}
+
+/**
+ * What GitHub's Merges API did with `head`: 201 made a merge commit, 204 found `head` already in the branch, and 409
+ * found a conflict. A conflict is an answer, not an error, because a caller building a batch ejects one member and
+ * goes on; a contained head is no conflict, so it must never eject.
+ */
+type MergeIntoBranchResult = {
+    outcome: "merged";
+    sha: string;
+} | {
+    outcome: "already-contained";
+} | {
+    outcome: "conflict";
+};
+interface MergeIntoBranchRequest {
+    /** The branch the merge commit lands on. */
+    branch: string;
+    /** The commit merged in. */
+    head: string;
+    /** The merge commit's message; absent, GitHub writes its default. */
+    message?: string;
 }
 
 /** `owner/name`. */
@@ -327,6 +356,8 @@ interface GitHubWire {
     merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod, message?: MergeMessage): Promise<{
         sha: string;
     }>;
+    /** GitHub's Merges API: merges `head` into `branch` server-side; 201, 204 and 409 answer, any other status throws. */
+    mergeIntoBranch(repo: RepoSlug, request: MergeIntoBranchRequest): Promise<MergeIntoBranchResult>;
     getSquashSource(repo: RepoSlug, number: number): Promise<SquashSource>;
     rerunFailedJobs(repo: RepoSlug, runId: number): Promise<void>;
     /** `changedFiles` is the PR's own count, so the port can tell a capped list from a complete one. */
@@ -415,6 +446,8 @@ interface GitHubPort {
     merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod, message?: MergeMessage, expectedBase?: string): Promise<WriteResult<{
         mergeSha: string;
     }>>;
+    /** Merges commit `head` into `branch` with no PR; repeating it after it landed answers `already-contained`, so it needs no read first. */
+    mergeIntoBranch(repo: RepoSlug, request: MergeIntoBranchRequest): Promise<MergeIntoBranchResult>;
     getSquashSource(repo: RepoSlug, number: number): Promise<SquashSource>;
     rerunFailed(repo: RepoSlug, runId: number): Promise<WriteResult>;
     /** Every changed file of the PR, all pages; `previousPath` is set on a rename. Throws `FileListTruncatedError` rather than return a short list. */
@@ -452,12 +485,6 @@ interface GitHubPortOptions {
 }
 /** Every argument is validated before any wire call, because each one becomes part of a `gh api` path. */
 declare function githubPort(wire: GitHubWire, options?: GitHubPortOptions): GitHubPort;
-/** The list came back shorter than the PR's own count, so a path may be missing. */
-declare class FileListTruncatedError extends Error {
-    readonly expected: number;
-    readonly received: number;
-    constructor(expected: number, received: number);
-}
 
 /** A write that kept answering a 5xx or an unreadable answer; `status` is the last answer's, so callers still classify it. */
 declare class WriteRetriesExhaustedError extends Error {
@@ -467,8 +494,16 @@ declare class WriteRetriesExhaustedError extends Error {
     constructor(step: string, attempts: number, last: unknown);
 }
 
+declare function isPassingConclusion(conclusion: string | null): boolean;
 declare function isPassing(run: CheckRun): boolean;
-/** One head can carry several runs per name (a superseded run is `cancelled`); only the newest counts. */
+declare function isSucceeded(run: CheckRun): boolean;
+/**
+ * One head can carry several runs per name (a superseded run is `cancelled`); only the newest counts. A run with no
+ * start that has not completed is newest, so a queued rerun shadows an old result and reads pending. A completed run
+ * with no start has no age to compare, so it and any equal start order by id, which GitHub assigns at creation;
+ * otherwise the later `startedAt` is newer. The rule is applied per name, not pairwise, because a pairwise mix of id and
+ * start order is not transitive and would make the pick depend on the order the API lists runs in.
+ */
 declare function latestPerName(runs: readonly CheckRun[]): CheckRun[];
 
 interface CiVerdictInput {
@@ -811,6 +846,14 @@ interface FakeGitHub {
         number: number;
         message: MergeMessage | undefined;
     }[];
+    /** Head shas whose merge into any branch answers a conflict, as GitHub's Merges API does with 409. */
+    mergeConflicts: Set<string>;
+    /** Every Merges API call that reached a branch, in order, with what it answered; `FakeEffects` stays as it was. */
+    branchMerges: {
+        branch: string;
+        head: string;
+        outcome: MergeIntoBranchResult["outcome"];
+    }[];
     /** Every PR base change that landed, in order; its length counts the retargets, so `FakeEffects` stays as it was. */
     baseChanges: {
         number: number;
@@ -869,4 +912,4 @@ interface SquashMessage {
 /** Pure: the same input always yields byte-identical output, and re-formatting its own output changes nothing. */
 declare function formatSquashMessage(input: SquashInput): SquashMessage;
 
-export { type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CheckConclusion, type CheckFinding, type CheckRun, type CheckRunPr, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type Cooldown, type CreateCheckRunRequest, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, type Fields, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GatewayBudget, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, type GitHubClient, GitHubConflictError, GitHubInputError, type GitHubPort, type GitHubPortOptions, GitHubRequestError, type GitHubWire, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type LoggedCommit, MAX_BASE_MERGES, type MergeBlockReason, type MergeBlocker, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type OctokitClientOptions, type OctokitWireOptions, type OpenPrList, type OpenPrRequest, PR_COMMITS_CAP, PR_FILES_CAP, type PrFile, type PullRequest, type PutFileRequest, RATE_FLOOR, type RateBudget, type RateBudgetOptions, type RateLane, type RateWindow, type RepoFile, type RepoSlug, type RequiredChecks, type Rest, type ReviewComment, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, appInstallationTokenOverHttp, approvedHeadWalk, backoffMs, ciVerdict, ciWait, execGh, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, githubPort, headCheckFindings, isPassing, isRepo, latestPerName, loadRequiredContexts, mergeReadiness, octokitClient, octokitRest, octokitWire, rateBudget, sharedOctokit, sharedRateBudget, signAppJwt, successRun };
+export { type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CheckConclusion, type CheckFinding, type CheckRun, type CheckRunPr, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type Cooldown, type CreateCheckRunRequest, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, type Fields, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GatewayBudget, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, type GitHubClient, GitHubConflictError, GitHubInputError, type GitHubPort, type GitHubPortOptions, GitHubRequestError, type GitHubWire, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type LoggedCommit, MAX_BASE_MERGES, type MergeBlockReason, type MergeBlocker, type MergeIntoBranchRequest, type MergeIntoBranchResult, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type OctokitClientOptions, type OctokitWireOptions, type OpenPrList, type OpenPrRequest, PR_COMMITS_CAP, PR_FILES_CAP, type PrFile, type PullRequest, type PutFileRequest, RATE_FLOOR, type RateBudget, type RateBudgetOptions, type RateLane, type RateWindow, type RepoFile, type RepoSlug, type RequiredChecks, type Rest, type ReviewComment, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, appInstallationTokenOverHttp, approvedHeadWalk, backoffMs, ciVerdict, ciWait, execGh, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, githubPort, headCheckFindings, isPassing, isPassingConclusion, isRepo, isSucceeded, latestPerName, loadRequiredContexts, mergeReadiness, octokitClient, octokitRest, octokitWire, rateBudget, sharedOctokit, sharedRateBudget, signAppJwt, successRun };

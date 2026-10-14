@@ -11,6 +11,7 @@ import type { SquashSource } from "./port-types.js";
 import type { OpenPrList } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import { restCaller, type Rest } from "./rest.js";
+import { sendMergeIntoBranch } from "./merge-into-branch.js";
 import { branchRules, classicRequiredChecks, type GhRule } from "./rules-read.js";
 
 export interface GhCliOptions {
@@ -83,6 +84,7 @@ export function wireOver(api: Rest, postCheckRun: CheckRunPoster): GitHubWire {
       const fields = { sha, merge_method: method, ...(message ? { commit_title: message.subject, commit_message: message.body } : {}) };
       return { sha: (await api.send<{ sha: string }>("PUT", `repos/${repo}/pulls/${number}/merge`, fields)).sha };
     },
+    mergeIntoBranch: (repo, request) => sendMergeIntoBranch(api, repo, request),
     getSquashSource: (repo, number) => getSquashSource(api, repo, number),
     rerunFailedJobs: async (repo, runId) => void (await api.send("POST", `repos/${repo}/actions/runs/${runId}/rerun-failed-jobs`)),
     listPrFiles: (repo, number) => listPrFiles(api, repo, number),
