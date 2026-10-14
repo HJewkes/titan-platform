@@ -151,3 +151,10 @@ merge. The [factory](/guides/factory) product composes `github`, `authority`, `h
   record, the `QueueSource` port, and merge-by-keys and rank as pure functions.
 - [`decider`](/reference/decider): the owner-decision ledger. Its row schema, outcome
   classifier, exclusion check and append-only store record how the owner answered.
+
+## Speech
+
+- [`speech-tts`](/reference/speech-tts): one `TtsProvider` contract with declared
+  capabilities. A registry picks a provider from a deployment's profile and `TITAN_SPEECH_*`
+  env. The `commandTts` and `httpTts` adapters fit any external engine. It is the first of the
+  speech packages; G2P, STT and vetting follow.
