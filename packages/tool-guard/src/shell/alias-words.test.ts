@@ -65,8 +65,8 @@ describe("alias reading of the command word", () => {
     expect(push?.wrapping).toEqual(["eval"]);
   });
 
-  it("keeps the as-written cp beside its nocorrect expansion", () => {
-    expect(lines("cp ~/.npmrc /tmp/x")).toEqual(["cp ~/.npmrc /tmp/x", "nocorrect cp ~/.npmrc /tmp/x"]);
+  it("keeps the as-written cp beside its nocorrect expansion, read past the zsh modifier", () => {
+    expect(lines("cp ~/.npmrc /tmp/x")).toEqual(["cp ~/.npmrc /tmp/x", "cp ~/.npmrc /tmp/x"]);
   });
 
   it.each([
