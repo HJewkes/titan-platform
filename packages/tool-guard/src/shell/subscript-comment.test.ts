@@ -98,6 +98,10 @@ describe("a subscript bash may join but the guard splits", () => {
     ["in a subshell, a case pattern ) inside $( )", "( ((1)); a[ $(case x in [x]) esac | : ] ) # ]=1; git push origin HEAD:main )"],
     ["in a subshell, a ) commented out inside $( )", "( ( ((1)); a[ $(: # ) ] ) \n) # ]=1; git push origin HEAD:main ) )"],
     ["in a subshell, a ) inside a subscript inside $( )", "( ((1)); a[ $( ( x[ ) ] ) | : ] ) # ]; git push origin HEAD:main )"],
+    ["in a subshell, a ) inside a double quote inside $( )", '( ( ((1)); a[ $(: [x] " ) ] ) \n" ) # ]=1; git push origin HEAD:main ) )'],
+    ["in a subshell, a ) inside a single quote inside $( )", "( ( ((1)); a[ $(: [x] ' ) ] ) \n' ) # ]=1; git push origin HEAD:main ) )"],
+    ["in a subshell, a ) inside backquotes inside $( )", "( ( ((1)); a[ $(: [x] ` ) ] ) \n` ) # ]=1; git push origin HEAD:main ) )"],
+    ["in a subshell, an escaped ) inside $( )", "( ((1)); a[ $(: [x] \\) ] ) # ]=1; git push origin HEAD:main )"],
     ["in a subshell, a heredoc opener inside $( )", "( ((1)); a[ $(: <<E ] ) # ]=1; git push origin HEAD:main )\nE\n)"],
   ])("denies a push hidden behind # %s", async (_scenario, command) => {
     expect(await decisionOf(command)).toBe("deny");
