@@ -445,9 +445,16 @@ describe("seatFixFirst", () => {
       expect(await seatFixFirst(rosterOf(damaged), damagedReader([], brief), target, vi.fn())).toMatchObject({ kind: "none" });
     });
 
-    it.each([`Review octo/demo#40 now.`, `Review other/demo#4 now.`, `Review octo/demo-x#4 now.`])("does not tie the reviewer to PR 4 by the brief %s", async (brief) => {
-      expect(await seatFixFirst(rosterOf(damaged), damagedReader([], brief), target, vi.fn())).toEqual({ kind: "clear" });
+    it("clears by the brief Review octo/demo#40 now., which names another PR's number", async () => {
+      expect(await seatFixFirst(rosterOf(damaged), damagedReader([], "Review octo/demo#40 now."), target, vi.fn())).toEqual({ kind: "clear" });
     });
+
+    it.each([`Review other/demo#4 now.`, `Review octo/demo-x#4 now.`, `Review tp#4 at head`, `Review #4 at head`, `Review pull/4 now.`, `Review demo#5, then tp#4`])(
+      "neither ties nor clears by the brief %s, whose PR number may be this one's, so it blocks with a retry",
+      async (brief) => {
+        expect(await seatFixFirst(rosterOf(damaged), damagedReader([], brief), target, vi.fn())).toMatchObject({ kind: "none", retry: true });
+      },
+    );
 
     it("ties the reviewer to the PR by a verdict block that names the repo in another letter case", async () => {
       const shouted = [said(damaged, `Findings.\n\nVerdict: MERGE\nPR: OCTO/Demo#4\nHead: ${OLD_HEAD}\n`, 3)];
@@ -499,6 +506,31 @@ describe("seatFixFirst", () => {
 
       it("blocks with a retry when damaged session 2's own records name no PR and only session 1 names another", async () => {
         expect(await seatFixFirst(rosterOf(first, second), resumedFailing(torn([said(second, "Reading.", 9)])), target, vi.fn())).toMatchObject({ kind: "none", retry: true });
+      });
+
+      it("ties the name by the failed session's roster row only, never a readable sibling's", async () => {
+        const readable = { ...agent("bd-x-review", "s1"), cwd: "/w/tc-tp-5-b" };
+        const failed = agent("bd-x-review", "s2");
+        const denied = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+        const reader: ReviewerReader = { read: async (input) => (input.reviewerSessionId === failed.sessionId ? Promise.reject(denied) : [said(readable, "Reading.", 5)]) };
+        const at = { ...target, owner: { implementer: "tc-tp-9-a", branch: "agent-chat/tc-tp-9-a" }, others: [{ implementer: "tc-tp-5-b", branch: "agent-chat/tc-tp-5-b", label: `${REPO}#5` }] };
+
+        expect(await seatFixFirst(rosterOf(readable, failed), reader, at, vi.fn())).toMatchObject({ kind: "none", retry: true, reason: expect.stringContaining("bd-x-review") });
+        const failedInOther = { ...failed, cwd: "/w/tc-tp-5-b" };
+        expect(await seatFixFirst(rosterOf(agent("bd-x-review", "s1"), failedInOther), reader, at, vi.fn())).toEqual({ kind: "clear" });
+      });
+
+      it.each([
+        ["session 1 damaged with a brief for PR 5, session 2 EACCES", torn([], `Review ${REPO}#5 now.`), new Error("EACCES: permission denied")],
+        ["both damaged, session 2 with no brief and no records", torn([], `Review ${REPO}#5 now.`), torn([], null)],
+      ])("blocks with a retry when %s", async (_label, one, two) => {
+        const reader: ReviewerReader = { read: async (input) => Promise.reject(input.reviewerSessionId === second.sessionId ? two : one) };
+
+        expect(await seatFixFirst(rosterOf(first, second), reader, target, vi.fn())).toMatchObject({ kind: "none", retry: true });
+      });
+
+      it("blocks a damaged session whose brief names this PR beside another", async () => {
+        expect(await seatFixFirst(rosterOf(first, second), resumedFailing(torn([], `Review ${REPO}#4 plus #5`)), target, vi.fn())).toMatchObject({ kind: "none" });
       });
 
       it("warns without blocking when damaged session 2's own brief names another PR", async () => {

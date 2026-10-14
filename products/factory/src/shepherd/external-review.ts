@@ -125,24 +125,31 @@ export class DamagedTranscriptError extends Error {
   }
 }
 
-/** One name's sessions, each read on its own: what every complete record said, and the reads that failed. */
+/** One name's sessions, each read on its own: what every complete record said, the reads that failed, and the rows they failed for. */
 interface NameRead {
   messages: readonly ReviewerMessage[];
   failures: readonly unknown[];
+  failedRows: readonly SeatRow[];
 }
 
 /** Every session the roster lists under one name; a message the reader attributes to any other session is dropped. A damaged session still gives its complete records. */
-async function readReviewer(reader: ReviewerReader, target: ReviewTarget, rows: readonly ReviewerAgent[]): Promise<NameRead> {
+async function readReviewer(reader: ReviewerReader, target: ReviewTarget, rows: readonly SeatRow[]): Promise<NameRead> {
   const read = (row: ReviewerAgent) => readNamedReviewer(reader, { ...target, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 });
   const owned = (message: ReviewerMessage) => rows.some((row) => row.agentId === message.agentId && row.sessionId === message.sessionId);
   const messages: ReviewerMessage[] = [];
   const failures: unknown[] = [];
-  for (const outcome of await Promise.allSettled(rows.map(read))) {
-    if (outcome.status === "fulfilled") messages.push(...outcome.value);
-    else failures.push(outcome.reason);
-    if (outcome.status === "rejected" && outcome.reason instanceof DamagedTranscriptError) messages.push(...outcome.reason.readable);
+  const failedRows: SeatRow[] = [];
+  const settled = (row: SeatRow) => read(row).then((value) => ({ row, value }), (reason: unknown) => ({ row, reason }));
+  for (const outcome of await Promise.all(rows.map(settled))) {
+    if ("value" in outcome) {
+      messages.push(...outcome.value);
+      continue;
+    }
+    failures.push(outcome.reason);
+    failedRows.push(outcome.row);
+    if (outcome.reason instanceof DamagedTranscriptError) messages.push(...outcome.reason.readable);
   }
-  return { messages: messages.filter(owned), failures };
+  return { messages: messages.filter(owned), failures, failedRows };
 }
 
 /**
@@ -199,22 +206,37 @@ const unread = (name: string, failure: unknown, clears: boolean): SeatCheck => {
   return { kind: "none", reason, ...retryIf(clears) };
 };
 
-const ANY_PR = /[\w.-]+#\d+(?!\d)/;
+/** A PR named with its repo or alias (`demo#5`, `tp#5`) or as a pull URL path (`pull/5`). */
+const NAMED_PR = /(?:[\w.-]#|pull\/)(\d+)(?!\d)/g;
+/** Any number a brief may use for a PR, a bare `#5` included. */
+const MAYBE_PR = /(?:#|pull\/)(\d+)(?!\d)/g;
+
+const numbers = (text: string, pattern: RegExp) => [...text.matchAll(pattern)].map((match) => Number(match[1]));
+
+/** A brief naming some PR, none of whose refs may be this one: an alias or a bare `#<n>` with this PR's number could be this PR. */
+function briefNamesOtherPr(target: ReviewTarget, brief: string): boolean {
+  return numbers(brief, NAMED_PR).some((pr) => pr !== target.pr) && !numbers(brief, MAYBE_PR).includes(target.pr);
+}
 
 /**
- * What a failed session's own complete records showed: a brief naming some PR, or a verdict block naming one. A hard failure
- * has no records, and a sibling session under the same name may be a resume reviewing this PR, so neither is evidence.
+ * What a failed session's own complete records showed: a brief naming another PR, or a verdict block naming one with another
+ * number. A hard failure has no records, and a sibling session under the same name may be a resume reviewing this PR, so neither is evidence.
  */
-function ownRecordsNameAnyPr(failure: unknown): boolean {
+function ownRecordsNameOtherPr(target: ReviewTarget, failure: unknown): boolean {
   if (!(failure instanceof DamagedTranscriptError)) return false;
-  return (failure.brief !== null && ANY_PR.test(failure.brief)) || failure.readable.some((message) => "repo" in parseVerdictBlock(message.text));
+  if (failure.brief !== null && briefNamesOtherPr(target, failure.brief)) return true;
+  return failure.readable.some((message) => {
+    const block = parseVerdictBlock(message.text);
+    return "repo" in block && block.pr !== target.pr;
+  });
 }
 
 /**
  * A failed read of a reviewer a brief or verdict block ties to this PR blocks. A failure that may clear blocks with a retry,
  * so the seat wait bounds it. One that reads the same every time clears with a warning only on evidence that the reviewer is
- * another PR's: every failed session is damaged and its own records name another PR, or its name stem or directory is another registered PR's implementer or
- * branch. With no evidence either way it blocks with a retry, so the seat wait holds the MERGE, and the reason names what was missing.
+ * another PR's: every failed session is damaged and its own records name a PR with another number, or the failed sessions' name stem or
+ * directory is another registered PR's implementer or branch. A row of the name tied to this PR still blocks. With no evidence either
+ * way it blocks with a retry, so the seat wait holds the MERGE, and the reason names what was missing.
  */
 function failedRead(name: string, target: SeatTarget, read: NameRead, rows: readonly SeatRow[], warn: (line: string) => void): SeatCheck | undefined {
   const hards = read.failures.filter((each) => !(each instanceof DamagedTranscriptError));
@@ -223,8 +245,9 @@ function failedRead(name: string, target: SeatTarget, read: NameRead, rows: read
   if (reviewsThisPr(target, read)) return unread(name, failure, hards.length > 0 && hards.every(transient));
   const clearing = hards.find(transient);
   if (clearing !== undefined) return unread(name, clearing, true);
-  const tie = rosterTie(target, rows, (stem) => stem.replace(SEAT_REVIEWER, ""));
-  if (tie.kind !== "own" && read.failures.every(ownRecordsNameAnyPr)) return untied(name, target, "its records name another PR", failure, warn);
+  const tieOf = (of: readonly SeatRow[]) => rosterTie(target, of, (stem) => stem.replace(SEAT_REVIEWER, ""));
+  const tie = tieOf(rows).kind === "own" ? { kind: "own" as const } : tieOf(read.failedRows);
+  if (tie.kind !== "own" && read.failures.every((each) => ownRecordsNameOtherPr(target, each))) return untied(name, target, "its records name another PR", failure, warn);
   if (tie.kind === "other") return untied(name, target, `the roster ties it to ${tie.pr}'s registration`, failure, warn);
   const why = tie.kind === "own" ? "the roster ties it to this PR's implementer" : `nothing says whose reviewer it is (no record names a PR; ${tie.missing})`;
   return { kind: "none", reason: `seat check: the transcript of ${name} could not be read and ${why}: ${failureText(failure)}`, ...retryIf(tie.kind === "none") };
