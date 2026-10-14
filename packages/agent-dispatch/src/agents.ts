@@ -16,6 +16,7 @@ import {
   PEER_NAME_PATTERN,
   agentChatEnv,
   brokerUnavailable,
+  isBrokerReplyTimeout,
   isBrokerUnavailable,
 } from "./dispatch.js";
 import {
@@ -202,6 +203,11 @@ function mapExecError(err: unknown): unknown {
 /** Same stream rule as a spawn: a broker refusal is on stdout, a usage error on stderr. */
 export function refusal(verb: string, result: SafeExecResult): DispatchError {
   if (isBrokerUnavailable(result)) return brokerUnavailable(verb, result);
+  if (isBrokerReplyTimeout(result)) {
+    return new DispatchTimeoutError(
+      `agent-chat refused ${verb}: ${result.stderr.trim()}`,
+    );
+  }
   const reason = result.stdout.trim() || result.stderr.trim();
   return new DispatchError(
     reason === ""

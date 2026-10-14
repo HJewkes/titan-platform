@@ -11,9 +11,7 @@ import { configuredRoutes, factoryWorkflows } from "./workflows.js";
  * A `park` route with no `reconcile` hook leaves its run recovery_required on every restart that catches it, and the
  * restart drain waits on it. Each entry names the change that removes it; the hook itself arrives with TP-2339 slice Z1.
  */
-const PARK_ROUTES_WITHOUT_RECONCILE: Readonly<Record<string, string>> = {
-  "post-merge": "the chore runs in serve's cgroup and dies with it; TP-2339 slice Z4 moves it to its own unit and reconciles it",
-};
+const PARK_ROUTES_WITHOUT_RECONCILE: Readonly<Record<string, string>> = {};
 
 const WRITE = "writes outside the run";
 const RECORD = "records a fact a replay must read back, never recompute";

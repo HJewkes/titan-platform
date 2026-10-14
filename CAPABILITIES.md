@@ -52,9 +52,11 @@ Before adding code:
 | [`code-read`](#cap-code-read) | 2 | A product serves code-graph snapshots to a UI, an agent or a workflow through a versioned read API, registered on a registry and hosted by daemon. |
 | [`coordinator`](#cap-coordinator) | 2 | You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package. Fold a seat's event log (spawn, retire, teleport, claim, release, hold, unhold, background, authored) into `SeatState` with `foldSeatEvents`: it never throws, counts unknown kinds and refuses background commands in temp or scratchpad space. Validate the charter front matter (`autonomy-charter/v1`: seats, hub, hard stops, scorer defaults; pools and funds pass through untyped) with `parseCharterPolicy`: it never throws and returns the typed policy or errors that name the missing or invalid key path. Validate a whole `titan-coordinator/v1` document (owner, repos, seats, limits, policy) with `checkCoordinatorConfig`: it reuses the seat, charter and agent-dispatch limits schemas, never throws, and names the key path of each cross-reference error (unknown pool, repo or hard stop, duplicate prefix, seat `config_dir`, not exactly one attended seat). Project one seat generation to a `SessionFacts` record per initiative with `projectSeatGeneration`: merged PRs, closed tasks and filed tasks, mapped by task-id prefix; it is given the activity and drops work no scope claims. |
 | [`decider`](#cap-decider) | 2 | You record owner answers to agent questions and need one ledger row shape (v2, still reading active-work's v1 precedent rows), the accept/amend/other/redirect outcome of an answer, the human-only and personal-data exclusion check before a row is written, or an append-only ledger store with watermarked sources (Claude Code `AskUserQuestion` answers and active-work decision notes included). It also maps owner answers to helpful or harmful feedback on principles stored as `memory` bullets, renders one principle doc per domain, and holds the fixed always-ask list. |
+| [`dispatch-ledger`](#cap-dispatch-ledger) | 2 | You need to validate, type or move the burndown claim ledger (`burndown.json`): `LedgerSchema` and `ClaimSchema` with their closed vocabularies (`PHASES`, `STALL_CODES`, `STALE_CLASSES`, `EXCEPTION_CLASSES`, `CONTRACT_OPS`), the claim-phase transition table (`PHASE_EDGES`, `illegalEdges`, `IllegalPhaseEdgeError`), and `parseLedgerJson`/`exportLedgerJson`/`writeLedgerExport`, which round-trip the file byte-equal; the pure ledger operations (`readySlices`, `heldClaims`, `laneClaims`, `isStalled`, `addClaim`, `applyActions` over a `LedgerAction`, `firstCode`, `parkUpdate`); and a `LedgerStore` (`SqliteLedgerStore` on `store-sqlite` tables from `dispatchLedgerDdl`, or `memoryLedgerStore`) whose writes check a revision and the phase edges. It holds no lock and runs no tick. For seat config and charter policy use `coordinator`; for agent execution state with fenced ownership use `agent-lifecycle`. |
+| [`graph-layout`](#cap-graph-layout) | 2 | A product draws a code-graph snapshot as boxes and routed edges: collapse files to packages, directories or one focused package, then lay the result out with ELK layered (flat or nested), with the same coordinates for any input order. For the graph itself use code-graph; for rolled-up values per tree depth use code-read's `hierarchy.get`. |
 | [`memory`](#cap-memory) | 2 | An agent must carry lessons between sessions in a rule playbook whose confidence decays with evidence and stays small without manual curation. It also parses, dedupes and groups Claude Code auto-memory fact files, proposing where each group should live. |
 | [`owner-queue`](#cap-owner-queue) | 2 | You gather the things only the owner can answer from several stores of record (chat questions, hitl gates, task notes, review rounds) into one list and need one `OwnerItem` shape, a `QueueSource` port for adapters, a merge that joins duplicates only on an exact shared key including a PR's head sha, a deterministic rank, and pure stale rules that label an item gone elsewhere from source facts (PR merged, head moved, task done, asker retired), and `buildOwnerRounds`, which turns open Decide items into titan-review round@2 manifests with `Principle:` batching and shadow-mode picks revealed only after the answer, plus `fromRoundQuestions`/`answeredFromFeedback` to read a round's questions and feedback back as OwnerItems, and `ask:`/`component:`/`token:`/`topic:` relation keys that relate items without merging them, and `consolidate`, which turns the open queue into the approvals Flow (per-PR and topic groups, influence order, holds, and a per-PR `shipBlockedBy` from open change requests), and an optional `audience` (owner or operator) with the `forAudience` reader filter, and owner card fields (`class`, `irreversible`, `shown`, `default`, `onSilence`, option `consequence`) checked by `cardLint`/`ownerCardSchema`. The root export holds no I/O; the one exception is the `/spool` subpath, the 0600 file spool where agents file deposits and the console keeps the owner's answers. Other adapters live in the product, the gate itself is hitl, routing is decider, and mirroring to Matrix is queue-mirror. |
-| [`pm`](#cap-pm) | 2 | You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`. Pure code; it reads no files, so parse the task, registry and deliverable YAML in the host and hand the objects over. For a seat's front matter use `coordinator` instead. |
+| [`pm`](#cap-pm) | 2 | You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`, or gate a repo review on every recommendation and P1 or P2 topic having a task, dup, fold, drop or pending-owner row with `summaryRecommendations`, `prioritizedTopics`, `parseDispositions` and `checkDispositions`. Pure code; it reads no files, so parse the task, registry and deliverable YAML in the host and hand the objects over. For a seat's front matter use `coordinator` instead. |
 | [`queue-mirror`](#cap-queue-mirror) | 2 | A local queue of human decisions (approvals, hitl gates) should also be answerable from a Matrix room, with verdicts folded back. |
 | [`review-panel`](#cap-review-panel) | 2 | You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`), `classifyPr` to class a PR from its paths and kind, `planPanel` to pick its reviewers by shape, profile and blocking flag, the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy, `acceptVerdict` to decide whether a reviewer's final message is its verdict for this PR at this head, `aggregate` to turn the members' verdicts into one fail-closed panel verdict, and `reviewPullRequest` to run the whole panel for one head over those ports. It runs nothing; to start an agent use agent-dispatch, and to parse a transcript use session-read. |
 | [`session-analytics`](#cap-session-analytics) | 2 | You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Also for agent-chat operations: it reads agent-chat's events.db through a connection the caller opened, parses broker.log lines, transcript denials and seat journals the caller reads, and reports blocked merges, dark agents and review fill. Also for a coordinator duty meter over seat transcript lines the caller reads. Session parsing is session-read; storage is session-graph. |
@@ -68,6 +70,7 @@ Before adding code:
 | [`react-app`](#cap-react-app) | ui | A React front end is served by a daemon or shipped as an offline report and needs hooks over rpc-client and a Vite preset. Components come from react-ui. |
 | [`react-ui`](#cap-react-ui) | ui | You are building a screen and need a component, a token or a theme. It is the design system; library packages here must not import it, so only apps and products take it. |
 | [`evals`](#cap-evals) | product | You need a stable content hash for a unit of work, a workflow variant, an eval case, a suite or a scorecard key, or strict and loose zod parsing of those specs. Also builds the labelled review outcome corpus (one row per reviewed head) from the factory database, read-only, and git history. For retrieval quality use retrieval-eval instead. |
+| [`explainer`](#cap-explainer) | product | You are building a step of the explainer video pipeline and need its file contracts or its pure helpers: `StoryboardSchema` validates `beats.json` (video type, chapters, beats with stops in seconds), `DigestSchema` validates `digest.json`, `LexiconSchema` and `lexiconEntriesFor` cover pronunciations, `buildPacket` builds one beat builder's packet (throws on a code beat with no excerpt and on a packet over its byte cap), and `attributeFindings` maps gate findings to the beat each names by beat number. Only `explainer eval l1`, `l2` and `smoke` call a model, through the judge a config file names; only the eval store, the CLI and the owner kit touch the filesystem. Motion primitives and beat components live in `@titan-design/react-ui`, not here; citation checks live in `evidence`. `lintMapBeats` and `compileMapTimeline` check and time the repo-map track (`visual.map_state`, optional per beat). `cameraStation` fits a 16:9 camera box around focus ids, clear of the 83 % caption keep-out. `ScriptSchema` parses a two-track `script/v1` script, `deriveEvalView` derives the view evals read from it, and `migrateTourV0` lifts a spike tour to v1. `scriptSha` names a script by its canonical-JSON sha, and `explainer eval l0` runs the L0 checks and appends `structure.tsv` and `runs.jsonl` rows that carry `rules_sha`. For an owner's blind read, `prepareOwnerSession` writes two-track storyboards under a sealed key and `recordOwnerSession` appends `owner.tsv` rows before it opens the key. `loadRuleRegistry` reads the shipped Q-rule registry (`doctrine/rules.yaml`), and `unimplementedL0Rules` reports rules that claim a check no registered L0 check emits. `explainer eval l1` and `l2` run the L1 judge and L2 viewer through a configured claude-print or codex judge, void any score without a verbatim quote, plant canaries in every call, and key rows by an `eval_version` over rubric, judge and fixtures. |
 | [`factory`](#cap-factory) | product | You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. The engine is `workflow`; this product holds the policy, the step router and the pilots. It requests agent dispatch through agent-chat, via `@titan-design/agent-dispatch`, for three kinds of agent: the Shepherd reviewer, the main-red fixer and the successor implementer. It also starts one process that is not an agent, the detached deployer. Relay and agent-chat keep every other dispatch. - **Reviewer.** Spawned when a registered pull request needs an independent review of its current head, and resumed for a later head. It runs under the agent-chat profile set by `review.profile` in the factory config (the profile is its tool grant) and under `review.configDir` when set, else agent-chat's default account. It starts in the repo's configured checkout, reads the head at that exact commit, changes nothing, and ends its final message with `Verdict: MERGE\|FIX_FIRST`, `PR:` and `Head:` lines. After a FIX_FIRST on a repeat round it also names the defect class. - **Fixer.** Spawned once per red-main episode, when main CI goes red after a merge and Shepherd freezes merges into the repo. Shepherd files a high-severity fix task in active-work first, and the fixer is named for the episode so a retry never starts a second one. It runs headless under the `bd-implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It branches from main, opens a PR, registers it with Shepherd against the fix task, and ends with a `Head: <full sha>` line. Only that PR may merge while the freeze holds. With no agent-chat configured, nothing is spawned and the owner gets the red main. - **Successor.** Spawned when Shepherd must wake an implementer (CI red, FIX_FIRST review, conflict, or a failed fix-proof check) and no agent of that lineage is live or resumable. A live implementer is messaged and an exited one is resumed; neither is a new dispatch. The successor runs headless under the `bd-implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It continues on the PR's head branch, does not open a new PR, registers as the PR's implementer, and ends with a `Head: <full sha>` line. - **Deployer.** Not an agent and not an agent-chat dispatch. After a merge into the factory's own repo, Shepherd starts `service deploy` for the merge sha as a detached process that outlives the service, and skips it if the service already runs that sha. It reports only through its log file in the state directory. Merges into any other repo start no deployer. - **Audit steps.** Not an agent-chat dispatch. Each agent step of `measurement-audit` (`titan-factory audit <area>`) is one `claude -p` turn through `@titan-design/agent`. The turn runs with no tools, on the CLI login, under the model the step's manifest names. It gets the inventory as data and answers with JSON that the step's schema checks. |
 | [`retrieval-eval`](#cap-retrieval-eval) | product | You change retrieval behaviour and need recall measured before and after, against the `active-work-search` row, today's shipped ranker. `date-order-notes` is only the pre-CC-101 floor. |
 | [`session-miner`](#cap-session-miner) | product | You want a working end-to-end example of the DAG, or to index and search your own Claude Code transcripts from a checkout. |
@@ -300,12 +303,12 @@ Tier 0, `@titan-design/evidence@0.2.1`. Citation verification, overlap grouping,
 
 Key exports:
 
-- `line-source`: `LineSource`, `lineSourceFromTexts`, `splitLines`
+- `line-source`: `lineSourceFromTexts`, `splitLines`
 - `citation`: `quoteFragments`, `quoteInRange`, `verifyCitation`
+- `anchor`: `isFullSha`, `parseAnchor`
 - `overlap`: `groupByOverlap`, `rangesOverlap`
 - `controls`: `pickControls`, `placeControls`, `scoreControls`
-- `seeded`: `seededRandom`
-- +12 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/evidence)
+- +21 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/evidence)
 
 <a id="cap-fix-proof"></a>
 
@@ -405,7 +408,7 @@ Key exports:
 - `hook`: `handle`
 - `context`: `nodeContext`
 - `shell`: `ParseError`, `tokenize`
-- +47 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/tool-guard)
+- +48 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/tool-guard)
 
 ## Tier 1 — engines
 
@@ -507,11 +510,10 @@ Key exports:
 - `port`: `FileListTruncatedError`, `GitHubConflictError`, `githubPort`
 - `write-read-back`: `WriteRetriesExhaustedError`
 - `force-pushes`: `ForcePushesTruncated`
-- `checks`: `isPassing`, `latestPerName`
+- `checks`: `isPassing`, `isPassingConclusion`, `isSucceeded`, `latestPerName`
 - `ci-verdict`: `ciVerdict`, `loadRequiredContexts`
 - `ci-wait`: `ciWait`
-- `readiness`: `headCheckFindings`, `mergeReadiness`
-- +98 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
+- +102 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-health"></a>
 
@@ -672,7 +674,7 @@ Key exports:
 - `git-tree-source`: `gitTreeSource`
 - `@titan-design/code-parser`: `getLanguageFromPath`, `getSupportedLanguages`, `parseFile`, `shouldIncludeFile`
 - `extractors/dispatch`: `LanguageExtractor`
-- +404 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-graph)
+- +421 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
@@ -726,6 +728,44 @@ Key exports:
 - `parse-answer`: `answerFor`, `parseAnswerText`
 - +175 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/decider)
 
+<a id="cap-dispatch-ledger"></a>
+
+### [`dispatch-ledger`](https://hjewkes.github.io/titan-platform/reference/dispatch-ledger)
+
+Tier 2, `@titan-design/dispatch-ledger@0.0.0`. Burndown claim ledger: zod schema, phase edges, and burndown.json parse and export.
+
+**Use this when:** You need to validate, type or move the burndown claim ledger (`burndown.json`): `LedgerSchema` and `ClaimSchema` with their closed vocabularies (`PHASES`, `STALL_CODES`, `STALE_CLASSES`, `EXCEPTION_CLASSES`, `CONTRACT_OPS`), the claim-phase transition table (`PHASE_EDGES`, `illegalEdges`, `IllegalPhaseEdgeError`), and `parseLedgerJson`/`exportLedgerJson`/`writeLedgerExport`, which round-trip the file byte-equal; the pure ledger operations (`readySlices`, `heldClaims`, `laneClaims`, `isStalled`, `addClaim`, `applyActions` over a `LedgerAction`, `firstCode`, `parkUpdate`); and a `LedgerStore` (`SqliteLedgerStore` on `store-sqlite` tables from `dispatchLedgerDdl`, or `memoryLedgerStore`) whose writes check a revision and the phase edges. It holds no lock and runs no tick. For seat config and charter policy use `coordinator`; for agent execution state with fenced ownership use `agent-lifecycle`.
+
+Key exports:
+
+- `schema`: `ClaimSchema`, `LedgerSchema`
+- `vocab`: `AcceptedOverlapSchema`, `ContractSchema`
+- `claim-phase`: `IllegalPhaseEdgeError`, `illegalEdgeError`, `illegalEdges`
+- `ops`: `addClaim`, `claimKey`, `heldClaims`, `isStalled`, `laneClaims`
+- +57 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/dispatch-ledger)
+
+<a id="cap-graph-layout"></a>
+
+### [`graph-layout`](https://hjewkes.github.io/titan-platform/reference/graph-layout)
+
+Tier 2, `@titan-design/graph-layout@0.0.0`. Level collapses and deterministic ELK layered layouts (flat and compound) over a code-graph snapshot
+
+**Use this when:** A product draws a code-graph snapshot as boxes and routed edges: collapse files to packages, directories or one focused package, then lay the result out with ELK layered (flat or nested), with the same coordinates for any input order. For the graph itself use code-graph; for rolled-up values per tree depth use code-read's `hierarchy.get`.
+
+Key exports:
+
+- `collapse-packages`: `collapseToPackages`
+- `collapse-directories`: `collapseToDirectories`
+- `focus-package`: `focusPackage`, `packagesInSnapshot`
+- `layout`: `computeLayout`
+- `compound-layout`: `computeCompoundLayout`
+- `route`: `routeOf`
+- `route-path`: `routeToPathD`
+- `label-boxes`: `labelBoxSizing`
+- `package-of`: `packageOf`
+- `layout-options`: `COMPOUND_LAYOUT_OPTIONS`, `ELK_LAYOUT_OPTIONS`
+- +12 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/graph-layout)
+
 <a id="cap-memory"></a>
 
 ### [`memory`](https://hjewkes.github.io/titan-platform/reference/memory)
@@ -767,16 +807,16 @@ Key exports:
 
 Tier 2, `@titan-design/pm@0.2.0`. Project-management schemas: the zod task schema and its type, as active-work stores tasks
 
-**Use this when:** You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`. Pure code; it reads no files, so parse the task, registry and deliverable YAML in the host and hand the objects over. For a seat's front matter use `coordinator` instead.
+**Use this when:** You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`, or gate a repo review on every recommendation and P1 or P2 topic having a task, dup, fold, drop or pending-owner row with `summaryRecommendations`, `prioritizedTopics`, `parseDispositions` and `checkDispositions`. Pure code; it reads no files, so parse the task, registry and deliverable YAML in the host and hand the objects over. For a seat's front matter use `coordinator` instead.
 
 Key exports:
 
 - `task`: `TaskSchema`
 - `deliverable`: `DeliverableSchema`, `deliverablePath`, `deliverablesDir`, `parseDeliverableRegistry`
 - `edges`: `checkEdges`, `readEdges`
-- `graph`: `criticalPath`, `taskTree`
-- `categories`: `CategoryRegistrySchema`, `categoriesPath`, `checkCategories`
-- +25 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/pm)
+- `dispositions`: `DispositionRowSchema`, `checkDispositions`, `parseDispositions`
+- `review-summary`: `prioritizedTopics`, `summaryRecommendations`
+- +35 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/pm)
 
 <a id="cap-queue-mirror"></a>
 
@@ -1009,6 +1049,25 @@ Key exports:
 - `spec`: `CheckSpecSchema`, `EvalCaseSchema`, `ScorecardSchema`, `SuiteSpecSchema`, `UnitSpecSchema`, `TrialRecordSchema`, `VariantSpecSchema`, `parseSpec`, `parseTrialRecord`
 - `hash`: `canonicalJson`, `caseHash`, `hashCanonical`
 - +98 more in `products/evals/src/index.ts`
+
+<a id="cap-explainer"></a>
+
+### `explainer`
+
+Tier product, private, `products/explainer`. Explainer video pipeline: beats.json and digest.json schemas, packet builder, finding attribution
+
+**Use this when:** You are building a step of the explainer video pipeline and need its file contracts or its pure helpers: `StoryboardSchema` validates `beats.json` (video type, chapters, beats with stops in seconds), `DigestSchema` validates `digest.json`, `LexiconSchema` and `lexiconEntriesFor` cover pronunciations, `buildPacket` builds one beat builder's packet (throws on a code beat with no excerpt and on a packet over its byte cap), and `attributeFindings` maps gate findings to the beat each names by beat number. Only `explainer eval l1`, `l2` and `smoke` call a model, through the judge a config file names; only the eval store, the CLI and the owner kit touch the filesystem. Motion primitives and beat components live in `@titan-design/react-ui`, not here; citation checks live in `evidence`. `lintMapBeats` and `compileMapTimeline` check and time the repo-map track (`visual.map_state`, optional per beat). `cameraStation` fits a 16:9 camera box around focus ids, clear of the 83 % caption keep-out. `ScriptSchema` parses a two-track `script/v1` script, `deriveEvalView` derives the view evals read from it, and `migrateTourV0` lifts a spike tour to v1. `scriptSha` names a script by its canonical-JSON sha, and `explainer eval l0` runs the L0 checks and appends `structure.tsv` and `runs.jsonl` rows that carry `rules_sha`. For an owner's blind read, `prepareOwnerSession` writes two-track storyboards under a sealed key and `recordOwnerSession` appends `owner.tsv` rows before it opens the key. `loadRuleRegistry` reads the shipped Q-rule registry (`doctrine/rules.yaml`), and `unimplementedL0Rules` reports rules that claim a check no registered L0 check emits. `explainer eval l1` and `l2` run the L1 judge and L2 viewer through a configured claude-print or codex judge, void any score without a verbatim quote, plant canaries in every call, and key rows by an `eval_version` over rubric, judge and fixtures.
+
+Key exports:
+
+- `storyboard`: `StoryboardSchema`, `beatNumber`
+- `digest`: `DigestSchema`
+- `lexicon`: `LexiconSchema`, `lexiconEntriesFor`
+- `packet`: `buildPacket`
+- `attribute`: `attributeFindings`
+- `map-state`: `MapBeatSchema`, `MapLayoutSchema`, `MapStateSchema`, `VisualSchema`
+- `cues`: `cueResolverFromWords`
+- +172 more in `products/explainer/src/index.ts`
 
 <a id="cap-factory"></a>
 

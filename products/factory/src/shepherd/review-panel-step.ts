@@ -12,7 +12,7 @@ import { Awaited, Dispatched } from "./review-schemas.js";
 import { freshReviewerBase } from "./cleanup.js";
 import { REVIEW_STEP } from "./review-steps.js";
 import type { ReviewerRoles } from "./reviewer-roles.js";
-import { takeAwaited, verdictOf, type AwaitedResult } from "./take-verdict.js";
+import { takeAwaited, verdictOf, type AwaitedResult, type ProofStanding } from "./take-verdict.js";
 
 /** Records the aggregate once, so a replay reads the verdict the panel gave rather than one recomputed over source that has since moved. */
 const PANEL_VERDICT_STEP = "sh-review-panel";
@@ -224,11 +224,10 @@ export function panelMerge(verdict: PanelVerdict, results: readonly { shape: Mem
  * Every member but correctness is started before any verdict is awaited, so they review side by side; correctness keeps its
  * late read, correction turn and usage-limit hold. The recorded aggregate decides, and a panel that is not unanimous never merges.
  */
-export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, base: MemberBase, awaiting: AwaitVerdictInput, dispatchedReviewer: AgentIdentity, account: string): Promise<Verdict> {
+export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, base: MemberBase, awaiting: AwaitVerdictInput, dispatchedReviewer: AgentIdentity, account: string, standing: ProofStanding): Promise<Verdict> {
   const target: ReviewTarget = { repo: base.repo, pr: base.pr, head: base.head };
   const members = await dispatchMembers(ctx, intent, base);
-  const standing = { unverified: base.fixProofUnverified };
-  const taken = await takeAwaited(ctx, target, awaiting, dispatchedReviewer, account, standing);
+  const taken = await takeAwaited(ctx, target, awaiting, dispatchedReviewer, account);
   if ("held" in taken) return taken.held;
   const results = [{ shape: "correctness" as const, result: memberResultOf(taken.awaited) }, ...(await awaitMembers(ctx, target, members))];
   const verdict = await panelVerdict(ctx, target, intent.plan, results, base.fixProof);

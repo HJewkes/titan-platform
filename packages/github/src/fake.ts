@@ -6,6 +6,7 @@ import { FORCE_PUSHES_CAP } from "./force-pushes.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { CheckRun, MergeMethod, PullRequest, PutFileRequest } from "./port.js";
 import type { FakeEffects, FakeFaultyRead, FakeGitHub } from "./fake-types.js";
+import { fakeMergeIntoBranch } from "./fake-merge-into-branch.js";
 
 export type { FakeEffects, FakeFaultyRead, FakeGitHub } from "./fake-types.js";
 
@@ -63,6 +64,8 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     prCommits: new Map(),
     squashSources: new Map(),
     merges: [],
+    mergeConflicts: new Set(),
+    branchMerges: [],
     baseChanges: [],
     history: [],
     compares: new Map(),
@@ -144,6 +147,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       fake.merges.push({ number, message });
       return mergePr(fake, mustPr(prs, number), sha, method, nextSha);
     },
+    mergeIntoBranch: async (_repo, request) => record("mergeIntoBranch", fakeMergeIntoBranch(fake, request, nextSha, (message) => new FakeHttpError(404, message))),
     getSquashSource: async (_repo, number) => record("getSquashSource", fake.squashSources.get(number) ?? { title: "", body: "", commits: [] }),
     rerunFailedJobs: async (_repo, runId) => {
       record("rerunFailedJobs", undefined);
@@ -293,5 +297,6 @@ function landMerge(fake: FakeGitHub, pr: PullRequest, sha: string, nextSha: (tag
   pr.state = "closed";
   pr.mergeSha = nextSha("merge");
   pr.mergedAt = FAKE_MERGED_AT;
+  fake.refs.set(pr.baseRef, pr.mergeSha);
   return { sha: pr.mergeSha };
 }

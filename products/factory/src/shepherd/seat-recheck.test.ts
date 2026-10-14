@@ -93,7 +93,7 @@ describe("the review of a head whose own MERGE a seat held, on replay", () => {
     expect(verdict).toMatchObject({ kind: "none", cause: "external-hold", seatHeld: { head: HEAD } });
   });
 
-  it("gives no merge-on-green grant to a rechecked MERGE at a head whose fix-proof is unverified", async () => {
+  it("keeps the merge-on-green grant for a rechecked MERGE at a head whose fix-proof is unverified, and records the standing", async () => {
     const verified = replaying({ next: undefined, recheck: MERGE });
     const unverified = replaying({ next: undefined, recheck: MERGE, proof: { kind: "error", reason: "the fix-proof check could not be read" } });
 
@@ -101,7 +101,9 @@ describe("the review of a head whose own MERGE a seat held, on replay", () => {
     await expect(reviewPhase(unverified.ctx, request)).rejects.toThrow(`stop at sh-merge-evidence:${HEAD}`);
 
     expect(verified.inputs.get(`sh-merge-evidence:${HEAD}`)).toMatchObject({ seatGrants: [MERGE_ON_GREEN_GRANT] });
-    expect(unverified.inputs.get(`sh-merge-evidence:${HEAD}`)).toMatchObject({ seatGrants: [] });
+    expect(verified.inputs.get(`sh-merge-evidence:${HEAD}`)).not.toHaveProperty("proofUnverified");
+    expect(unverified.inputs.get(`sh-merge-evidence:${HEAD}`)).toMatchObject({ seatGrants: [MERGE_ON_GREEN_GRANT], proofUnverified: "unread (the fix-proof check could not be read)" });
+    expect(unverified.inputs.get(`sh-merge-evidence:${HEAD}`)).not.toHaveProperty("grantWithheld");
   });
 
   it("cannot re-check a seat without the round's fix-proof standing, since an empty one reads as verified", () => {
@@ -114,19 +116,9 @@ describe("the review of a head whose own MERGE a seat held, on replay", () => {
 });
 
 describe("whether a round asks its reviewer for an owner brief", () => {
-  it("asks for one when the round's fix-proof is unverified, even under an auto policy", () => {
+  it("asks for none under an auto policy, since an unverified fix-proof no longer reaches the owner (decision 303)", () => {
     const { ctx } = replaying({ next: undefined });
 
-    expect(asksOwnerBrief(ctx, { unverified: "error" })).toBe(true);
-    expect(asksOwnerBrief(ctx, {})).toBe(false);
-  });
-
-  it("takes the round's fix-proof standing as a required argument, since an empty one reads as verified", () => {
-    const omitted = (ctx: WorkflowContext) =>
-      // @ts-expect-error asksOwnerBrief takes the round's fix-proof standing; no default may stand in for it
-      asksOwnerBrief(ctx);
-
-    expect(typeof omitted).toBe("function");
-    expect(asksOwnerBrief).toHaveLength(2);
+    expect(asksOwnerBrief(ctx)).toBe(false);
   });
 });

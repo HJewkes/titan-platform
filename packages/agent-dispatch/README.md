@@ -26,7 +26,9 @@ await dispatchToAgentChat(
   `agent-chat agent spawn <name> <profile> [--briefing <slug>] --brief-stdin`. A zero exit
   means the broker accepted the spawn, not that the work is done. A non-zero exit rejects
   with `DispatchError` carrying the CLI's stdout reason, else its stderr; a CLI that hangs
-  rejects with `DispatchTimeoutError`, since the spawn may still have happened. It runs the
+  rejects with `DispatchTimeoutError`, since the spawn may still have happened. So does a
+  stderr line `broker did not answer <frame>_result` (the broker missed its reply window,
+  and the frame may have landed), on this and every other verb here. It runs the
   CLI in `req.cwd`, which agent-chat sends to the broker as the spawn location.
 - `assertInstalledHeadless(profile, dir?)` reads `<dir>/<profile>.json` (default
   `installedProfilesDir()`: `$AGENT_CHAT_HOME/profiles`, else `$HOME/.agent-chat/profiles`)
