@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { SEAT_REVIEWER, seatFixFirst } from "./external-review.js";
 import type { ReviewerReader } from "./review.js";
-import { registeredOwners, rosterTie, type SeatRow } from "./seat-tie.js";
+import { awaitingTranscript, registeredOwners, rosterTie, type SeatRow } from "./seat-tie.js";
 
 const target = { repo: "octo/demo", pr: 4, head: "a".repeat(40) };
 const THIS_PR = { repo: "Octo/Demo", pr: 4, implementer: "tc-tp-9-a", branch: "agent-chat/tc-tp-9-a" };
@@ -67,5 +67,27 @@ describe("rosterTie for a reviewer started in Shepherd's review checkout root", 
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("the roster ties it to octo/demo#5's registration"));
     expect(rosterTie({ ...target, owner, others: [] }, [reviewer], stem)).toMatchObject({ kind: "none" });
     expect(await seatFixFirst(async () => [reviewer], failing, { ...target, owner }, vi.fn())).toMatchObject({ kind: "none", retry: true });
+  });
+});
+
+describe("awaitingTranscript", () => {
+  const row = (extra: Partial<SeatRow> = {}): SeatRow => ({ name: "tc-tp-9-a-review", agentId: "a1", sessionId: "s1", presence: "live", spawnedBy: null, ...extra });
+
+  it("returns the newest row, listed first, when it has no transcript yet", () => {
+    const pending = row({ sessionId: "s2", transcriptExists: false });
+    expect(awaitingTranscript([pending, row({ transcriptExists: true })])).toBe(pending);
+  });
+
+  it("returns the newest row when it has no session yet", () => {
+    const unstarted = row({ sessionId: "" });
+    expect(awaitingTranscript([unstarted])).toBe(unstarted);
+  });
+
+  it("ignores an older row whose transcript is gone", () => {
+    expect(awaitingTranscript([row({ sessionId: "s2", transcriptExists: true }), row({ transcriptExists: false })])).toBeUndefined();
+  });
+
+  it("ignores a row from a port that does not report transcriptExists", () => {
+    expect(awaitingTranscript([row()])).toBeUndefined();
   });
 });
