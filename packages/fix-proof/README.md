@@ -16,6 +16,11 @@ the `fix-proof` bin does the git and vitest work.
   `vacuous`, `no-tests` or `error`.
 - `toResult`, `formatResultLine` and `parseResultLine`: one `fix-proof/v1 <json>` line of at
   most 4 KB, parsed strictly.
+- `classifyMutants(specs, decoded)`: each declared mutation is `killed` only when its rebuild
+  succeeded, its `kills` tests passed once in the baseline, and the tests failing under it,
+  each an assertion failure, are exactly its `kills`. Otherwise it is `overkill`, `survived`,
+  `unbuilt`, `load-error`, `baseline` or `error`. `encodeMutantsReport` and
+  `decodeMutantsReport` carry the mutants side's baseline and per-mutation runs to the judge.
 
 - `fix-proof exec --side base|head --out <dir> --base <mergeBase> --head <sha>` builds and tests
   one side and writes encoded reports (`base.report` and `base-rerun.report`, or `head.report`)
