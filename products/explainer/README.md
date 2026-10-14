@@ -58,3 +58,27 @@ check emits.
 lints, which need `--layout`), freezes the script and appends its rows and run record. `--rules` defaults to
 the shipped registry and must parse as `rules/v1`. It exits 0 on a pass, 1 when an error-severity check fails (warnings never fail) and 2 on bad
 input. L0 filters only: never rank scripts by how many checks they pass.
+
+L1 and L2 are the model-judged layers. The judge is configuration, never a constant: a JSON
+file names `provider` (`claude-print`, the Claude CLI's own login, or `codex`, a cached
+`codex login`), `model`, and optionally `reasoning_effort`, `max_budget_usd`, `wall_time_s`
+and, for codex, a host-only `executable_path`. Provider, model and effort are part of
+`eval_version`, together with the rubric bytes (`rubrics/*.md`, beside `src/`) and the
+canaries, questions and answer key a run used, so changing any of them starts fresh rows.
+
+- `explainer eval l1 <script.json> --config <id> --rules <registry> --judge <judge.json>
+  [--runs <n>]` judges each chapter's beats on B1–B6 (pass or fail) and the script on J1–J7
+  (1–5), appending `beat-scores.tsv`, `script-scores.tsv` and `canaries.tsv`.
+- `explainer eval l2 ... [--answer-key <tsv>] [--reference-graph <tsv>]` quizzes a fresh
+  viewer on the spoken (S), spoken-and-screen (SV) and screen-only (V) tracks, appending
+  `viewer.tsv`. Answer-key terms grade Q1, Q3–Q4 and W1–W3 (Q5 counts them); Q2 gets node
+  recall and edge F1 against the reference graph. Questions with no key row stay ungraded,
+  and P is recorded for the process-leak classifier.
+- `explainer eval smoke --judge <judge.json>` makes one tiny call through the configured
+  judge, and skips a codex judge whose binary or cached login is missing, saying which.
+
+Every verdict and answer must quote the beat it cites, verbatim and at least two words long.
+A verdict with no quote, or a quote not in that beat's text on that track, is void (L1) or
+scores 0 (L2). Every beat call ends with one known-bad canary beat, and every viewer call
+asks about a component that does not exist. A run whose judge passes a canary, or whose call
+fails, is untrusted: its rows are still written, and the command exits 1.

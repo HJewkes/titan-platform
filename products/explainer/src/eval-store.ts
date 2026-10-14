@@ -39,8 +39,11 @@ export function canonicalJson(value: unknown): string {
 const shortSha = (content: string | Uint8Array): string =>
   createHash("sha256").update(content).digest("hex").slice(0, SHORT_SHA_LENGTH);
 
-/** Names a script artifact: the first 12 hex of sha256 over its canonical JSON, UTF-8. */
-export const scriptSha = (script: unknown): string => shortSha(canonicalJson(script));
+/** The first 12 hex of sha256 over a value's canonical JSON, UTF-8. */
+export const canonicalSha = (value: unknown): string => shortSha(canonicalJson(value));
+
+/** Names a script artifact by its canonical JSON. */
+export const scriptSha = canonicalSha;
 
 /** Names a rule registry version by its file bytes, so a reworded rule never mixes with old rows. */
 export const rulesSha = (registry: string | Uint8Array): string => shortSha(registry);

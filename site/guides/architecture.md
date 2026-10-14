@@ -162,6 +162,8 @@ graph TD
   evals --> sessionRead
   evals --> storeSqlite
   evals --> workflow
+  explainer --> agent
+  explainer --> agentProtocol
   factory --> agent
   factory --> agentDispatch
   factory --> appPaths

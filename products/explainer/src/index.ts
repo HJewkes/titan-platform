@@ -96,6 +96,50 @@ export {
   whyCheck,
 } from "./lint-why.js";
 export { MAX_NEW_NAMES_PER_CHAPTER, PUBLIC_PROFILE, evidenceCheck } from "./lint-evidence.js";
+export {
+  JUDGE_PROVIDERS,
+  JudgeConfigSchema,
+  codexUnavailable,
+  createJudgeHarness,
+  judgeIdentity,
+  judgeLabel,
+  type JudgeCall,
+  type JudgeConfig,
+  type JudgeHarness,
+  type JudgeHarnessDeps,
+  type JudgeReply,
+} from "./eval-harness.js";
+export { MIN_QUOTE_WORDS, evalVersion, readRubric, renderBeat, voidReason, type Evidence, type Track } from "./eval-evidence.js";
+export {
+  BEAT_DIMS,
+  L1_CANARIES,
+  L1_EVAL_ID,
+  SCRIPT_DIMS,
+  l1EvalVersion,
+  runL1,
+  type Canary,
+  type CanaryResult,
+  type L1Input,
+  type L1Result,
+  type L1Rubrics,
+  type Verdict,
+} from "./eval-judge.js";
+export {
+  L2_EVAL_ID,
+  TRACKS,
+  VIEWER_QUESTIONS,
+  gradeAnswer,
+  l2EvalVersion,
+  layoutScores,
+  runL2,
+  type AnswerKeyRow,
+  type L2Input,
+  type L2Result,
+  type ReferenceEdge,
+  type ViewerAnswer,
+} from "./eval-viewer.js";
+export { BEAT_SCORE_COLUMNS, CANARY_COLUMNS, SCRIPT_SCORE_COLUMNS, VIEWER_COLUMNS } from "./eval-judge-cli.js";
+export { canonicalSha } from "./eval-store.js";
 export { MAX_SENTENCE_WORDS, MIN_PROJECT_SHARE, voiceCheck, voiceCheckWith } from "./lint-voice.js";
 export { flowCheck } from "./lint-flow.js";
 export { maskEntities, repoEntities } from "./lint-text.js";
