@@ -143,7 +143,8 @@
         "ledger.ts"
       ],
       "externalImporters": [],
-      "ported": false
+      "ported": false,
+      "portedFrom": "67005f389acbb182c0f8807d95bf973e826d2638"
     },
     {
       "file": "classify-task.ts",
@@ -476,7 +477,8 @@
         "src/cli/verbs/seats.ts",
         "src/digest/collect.ts"
       ],
-      "ported": false
+      "ported": false,
+      "portedFrom": "67005f389acbb182c0f8807d95bf973e826d2638"
     },
     {
       "file": "LICENSE.openrig",
@@ -1331,7 +1333,8 @@
         "exception.ts"
       ],
       "externalImporters": [],
-      "ported": false
+      "ported": false,
+      "portedFrom": "67005f389acbb182c0f8807d95bf973e826d2638"
     },
     {
       "file": "stall.ts",

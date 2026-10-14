@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewTarget } from "./review.js";
 import { ReviewerAskTimedOut, ReviewerMachineHold } from "./review-wait.js";
 import { agentChatReviewerDispatch, expandHome, runningReviewStarts, type ReviewerRosterRow, type AgentChatReviewerDispatchOptions } from "./reviewer-dispatch.js";
+import { createRosterReader } from "./roster.js";
+import { spawnGate } from "./spawn-gate.js";
 
 const PROFILE = "rv-readonly";
 const BRIEF = "Review octo/demo#7. BRIEF-SENTINEL-4f2a";
@@ -91,13 +93,13 @@ describe("agentChatReviewerDispatch roster", () => {
     return dispatchOver(`cat "${dir}/roster.json"\n`).roster();
   };
 
-  it("reads `agent ls --json` and keeps the identity, presence, spawner, profile and transcript of each row, and nothing else", async () => {
+  it("reads `agent ls --json` and keeps the identity, presence, spawner, profile, working directory and transcript of each row, and nothing else", async () => {
     const full = { ...row, model: null, transcriptPath: "/srv/transcripts/session-1.jsonl", transcriptExists: true, spawnedBy: "coord", account: null, generation: 2, teleportFrom: "earlier" };
 
     const roster = await rosterOf([full]);
 
     expect(roster).toStrictEqual([
-      { name: "rv-demo-7", agentId: "agent-1", sessionId: "session-1", presence: "exited", spawnedBy: "coord", transcriptPath: "/srv/transcripts/session-1.jsonl", transcriptExists: true, profile: PROFILE },
+      { name: "rv-demo-7", agentId: "agent-1", sessionId: "session-1", presence: "exited", spawnedBy: "coord", transcriptPath: "/srv/transcripts/session-1.jsonl", transcriptExists: true, profile: PROFILE, cwd: "/srv/demo" },
     ]);
     expect(recordedArgv()).toEqual(["agent", "ls", "--json"]);
   });
@@ -115,11 +117,17 @@ describe("agentChatReviewerDispatch roster", () => {
   it("reports no spawner and no transcript for a row that carries neither", async () => {
     const roster = await rosterOf([row, { ...row, name: "rv-demo-8", spawnedBy: 7, transcriptPath: 7, transcriptExists: "yes" }]);
 
-    const bare = { agentId: "agent-1", sessionId: "session-1", presence: "exited", spawnedBy: null, transcriptPath: null, transcriptExists: false, profile: PROFILE };
+    const bare = { agentId: "agent-1", sessionId: "session-1", presence: "exited", spawnedBy: null, transcriptPath: null, transcriptExists: false, profile: PROFILE, cwd: "/srv/demo" };
     expect(roster).toStrictEqual([
       { name: "rv-demo-7", ...bare },
       { name: "rv-demo-8", ...bare },
     ]);
+  });
+
+  it("reports no working directory for a row whose cwd is empty", async () => {
+    const [found] = await rosterOf([{ ...row, cwd: "" }]);
+
+    expect(found).not.toHaveProperty("cwd");
   });
 
   it("reports no profile for a row whose profile is empty", async () => {
@@ -146,6 +154,14 @@ describe("agentChatReviewerDispatch roster", () => {
 
     expect(error).toBeInstanceOf(ReviewerAskTimedOut);
     expectRefusal(error, "timed out");
+  });
+
+  it("reports the broker's own reply timeout on a roster read as a timed-out ask", async () => {
+    const error = await failure(
+      dispatchOver('echo "broker did not answer agents_result" >&2\nexit 1\n').roster(),
+    );
+
+    expect(error).toBeInstanceOf(ReviewerAskTimedOut);
   });
 });
 
@@ -353,6 +369,31 @@ describe("agentChatReviewerDispatch resume", () => {
 
     expect(error).toBeInstanceOf(ReviewerAskTimedOut);
     expectRefusal(error, "timed out");
+  });
+});
+
+describe("agentChatReviewerDispatch reviewer-slot reading", () => {
+  const live = (name: string) => ({ name, agentId: name, state: "running", presence: "live", status: "working", profile: PROFILE, surface: "headless", cwd: "/srv/demo", sessionId: `s-${name}`, generation: 1 });
+  const gateAt = (at: number) => spawnGate({ read: () => ({ load5: 0 }), now: () => at, log: () => undefined });
+
+  it("keeps the names of the live rv- rows a spawn read, beside the concurrent cap", async () => {
+    const gate = gateAt(Date.parse("2026-10-13T12:00:00Z"));
+    const rows = [live("rv-demo-1"), live("rv-demo-2"), live("coord"), { ...live("rv-demo-3"), presence: "exited" }];
+    const dispatch = dispatchOver(undefined, { gate, roster: createRosterReader(async () => rows) });
+
+    await dispatch.spawn("rv-demo-7", BRIEF, target);
+
+    expect(gate.reviewSlots()).toEqual({ running: ["rv-demo-1", "rv-demo-2"], cap: 3, readAt: "2026-10-13T12:00:00.000Z" });
+  });
+
+  it("keeps a roster timeout as rosterError with no running list, so it never reads as 0", async () => {
+    const gate = gateAt(Date.parse("2026-10-13T12:00:00Z"));
+    gate.noteReviewers({ running: ["rv-demo-1"] });
+    const dispatch = dispatchOver(undefined, { gate, roster: createRosterReader(async () => Promise.reject(new Error("agent ls timed out after 10000 ms"))) });
+
+    await failure(dispatch.spawn("rv-demo-7", BRIEF, target));
+
+    expect(gate.reviewSlots()).toStrictEqual({ cap: 3, readAt: "2026-10-13T12:00:00.000Z", rosterError: "agent ls timed out after 10000 ms" });
   });
 });
 

@@ -278,10 +278,11 @@ describe("shepherdGatePolicy under merge:auto", () => {
     expect(evaluate).not.toHaveBeenCalled();
   });
 
-  it("gates a head the policy would allow when an escalation was carried to it, naming the carried gate and the review", () => {
+  it("gates a head the policy would allow on a merged-up MERGE when an escalation was carried to it, naming the carried gate and the review", () => {
     vi.mocked(evaluate).mockReturnValue({ verdict: "allow", ruleId: "MRG-AU-RV" });
     const carried = { escalation: "fix-first-runaway", detail: "the last at old", carriedFrom: "d".repeat(40) } as const;
-    const options = shepherdLandOptions(() => effective("acme/gizmos"), reviewed(evidenceAt(HEAD)), () => carried);
+    const mergedUp = (): Verdict => ({ kind: "MERGE", headSha: HEAD, evidence: evidenceAt(HEAD), mergeUpFrom: "c".repeat(40) });
+    const options = shepherdLandOptions(() => effective("acme/gizmos"), mergedUp, () => carried);
 
     const decision = options.policy.decide("merge", { headSha: HEAD });
 

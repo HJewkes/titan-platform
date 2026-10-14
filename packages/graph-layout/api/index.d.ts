@@ -24,6 +24,17 @@ interface LayoutResult {
     nodes: LaidOutNode[];
     edges: GraphEdge[];
 }
+/** A group box from a compound layout; `x` and `y` are its centre in the root frame. */
+interface LaidOutGroup extends NodeSize, Point {
+    id: string;
+}
+/**
+ * A compound layout: leaf nodes, every group box `groupOf` named (sorted by id),
+ * and edges, including edges whose ends are group ids.
+ */
+interface CompoundLayoutResult extends LayoutResult {
+    groups: LaidOutGroup[];
+}
 /**
  * Ordered ancestor group ids for a node, outermost first (e.g. package then
  * subdirectory). An empty list places the node directly at the top level.
@@ -102,12 +113,40 @@ declare function computeLayout(input: GraphInput, sizing?: NodeSizing, layoutOpt
 /**
  * Lay a graph out as an ELK compound hierarchy (nodes nested in the groups
  * `groupOf` names), returning absolute node centres and absolute orthogonal edge
- * routes in the same shape, rounding and order as `computeLayout`.
+ * routes in the same shape, rounding and order as `computeLayout`, plus every
+ * group's absolute box. An edge may name a group id as either end; it is routed
+ * in the same pass, so every level of the map reads one layout.
  */
-declare function computeCompoundLayout(input: GraphInput, sizing: NodeSizing, groupOf: GroupOf, layoutOptions?: Record<string, string>): Promise<LayoutResult>;
+declare function computeCompoundLayout(input: GraphInput, sizing: NodeSizing, groupOf: GroupOf, layoutOptions?: Record<string, string>): Promise<CompoundLayoutResult>;
 
 /** The route a layout attached to `edge.attrs.route`, or undefined when the edge has none. */
 declare function routeOf(edge: GraphEdge): Point[] | undefined;
+
+/** An SVG path `d` through every route point in order: `M x y L x y …`, or "" for an empty route. */
+declare function routeToPathD(route: readonly Point[]): string;
+
+/** How a renderer draws a box label; every length is in layout units. */
+interface LabelMetrics {
+    fontSize: number;
+    /** Advance width of one character as a fraction of `fontSize`; 0.6 fits a monospace face. */
+    charWidth?: number;
+    /** Space between the label and the box edge on every side. */
+    padding: number;
+    /** Fixed empty height under the label, so a box reads as a box rather than a caption. */
+    bodyHeight: number;
+}
+/**
+ * Boxes sized for their labels alone: a box exactly fits its label plus padding and a
+ * fixed body. Lay a collapsed level out with these and no label can overlap another,
+ * because the label sits inside a box that ELK keeps clear of every other box.
+ */
+declare function labelBoxSizing(labels: ReadonlyMap<string, string>, metrics: LabelMetrics): Map<string, NodeSize>;
+
+/**
+ * The package a file id belongs to: the segment after `packages/`, `products/<name>` or
+ * `apps/<name>` for a file inside one, else the first path segment.
+ */
+declare function packageOf(id: string): string;
 
 /** ELK options for a flat package-level graph. */
 declare const ELK_LAYOUT_OPTIONS: Record<string, string>;
@@ -122,4 +161,4 @@ declare const FOCUS_LAYOUT_OPTIONS: Record<string, string>;
 /** ELK options for a nested graph: `INCLUDE_CHILDREN` lays the whole hierarchy out in one pass. */
 declare const COMPOUND_LAYOUT_OPTIONS: Record<string, string>;
 
-export { COMPOUND_LAYOUT_OPTIONS, ELK_LAYOUT_OPTIONS, FOCUS_LAYOUT_OPTIONS, type FocusOptions, type GraphInput, type GroupOf, type LaidOutNode, type LayoutResult, type NodeSize, type NodeSizing, type Point, collapseToDirectories, collapseToPackages, computeCompoundLayout, computeLayout, focusPackage, packagesInSnapshot, routeOf };
+export { COMPOUND_LAYOUT_OPTIONS, type CompoundLayoutResult, ELK_LAYOUT_OPTIONS, FOCUS_LAYOUT_OPTIONS, type FocusOptions, type GraphInput, type GroupOf, type LabelMetrics, type LaidOutGroup, type LaidOutNode, type LayoutResult, type NodeSize, type NodeSizing, type Point, collapseToDirectories, collapseToPackages, computeCompoundLayout, computeLayout, focusPackage, labelBoxSizing, packageOf, packagesInSnapshot, routeOf, routeToPathD };

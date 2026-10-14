@@ -11,10 +11,10 @@ const HOME = "/home/you";
 const REPO = "/home/you/projects/app";
 const JOIN = "\\\n";
 /**
- * Only a backstop: the counted-work rows below are what catch a quadratic. Claude Code kills the hook at 5 s
- * (`cli.ts`), letting the command through, and a loaded runner took 1029 ms on a row here (tp#1464, run 38435978632).
+ * Past this thread-CPU time a hook timeout would let the command through; a linear reading takes milliseconds. It
+ * also backs the counted rows below for the work they cannot count, such as indexing a string one character at a time.
  */
-const HOOK_BACKSTOP_MS = 4000;
+const BUDGET_MS = 1000;
 
 const noFs: ReadFs = {
   realpath: () => {
@@ -26,43 +26,63 @@ const noFs: ReadFs = {
   isFile: () => false,
 };
 
-/** About 4x the most a linear reading of any shape below spends per source character: 21, for unclosed subscripts. */
-const WORK_PER_CHAR = 84;
+/**
+ * The most a linear reading of any shape below was measured to spend per source character is 23 counted calls, for
+ * unclosed subscripts and for one long name before many brackets; this leaves about 30% headroom. A quadratic spends
+ * thousands per character.
+ */
+const WORK_PER_CHAR = 30;
 
 class WorkCapExceeded extends Error {}
 
 /**
- * Calls `read` with every `startsWith` (join tests), `RegExp.prototype.test` (assignment and name checks) and
- * `Array.prototype.push` (bracket pairing) counted, stopping it once the count passes `cap`. Each guarded memo
- * stops one of these from repeating per bracket or per join, so counting them measures work without a clock.
+ * The string and pattern primitives the lexer reads its source through. Every guarded memo stops one of these from
+ * repeating per bracket or per join, so a quadratic that slips a memo shows up in their count. `push` is here because
+ * the bracket scan indexes characters directly: the `[`s it pushes are the only calls a rescan per bracket repeats.
  */
+const COUNTED: Array<[object, string]> = [
+  ...[
+    "startsWith",
+    "endsWith",
+    "includes",
+    "indexOf",
+    "lastIndexOf",
+    "slice",
+    "charAt",
+    "charCodeAt",
+    "codePointAt",
+  ].map((key): [object, string] => [String.prototype, key]),
+  [RegExp.prototype, "test"],
+  [RegExp.prototype, "exec"],
+  [Array.prototype, "push"],
+];
+
+/** Calls `read` with every `COUNTED` primitive counted, stopping it once the count passes `cap`. */
 function countWork(read: () => unknown, cap: number): number {
-  const startsWith = String.prototype.startsWith;
-  const test = RegExp.prototype.test;
-  const push = Array.prototype.push;
   let calls = 0;
-  const count = () => {
-    if (++calls > cap) throw new WorkCapExceeded(`more than ${cap} counted calls`);
-  };
-  String.prototype.startsWith = function (this: string, ...args: Parameters<string["startsWith"]>) {
-    count();
-    return startsWith.apply(this, args);
-  };
-  RegExp.prototype.test = function (this: RegExp, s: string) {
-    count();
-    return test.call(this, s);
-  };
-  Array.prototype.push = function (this: unknown[], ...items: unknown[]) {
-    count();
-    return push.apply(this, items);
-  };
+  const originals = COUNTED.map(([proto, key]) =>
+    Object.getOwnPropertyDescriptor(proto, key)
+  );
+  COUNTED.forEach(([proto, key], i) => {
+    const original: unknown = originals[i]?.value;
+    if (typeof original !== "function") throw new Error(`no ${key} to count`);
+    Object.defineProperty(proto, key, {
+      configurable: true,
+      writable: true,
+      value: function (this: unknown, ...args: unknown[]): unknown {
+        if (++calls > cap)
+          throw new WorkCapExceeded(`more than ${cap} counted calls`);
+        return Reflect.apply(original, this, args);
+      },
+    });
+  });
   try {
     read();
     return calls;
   } finally {
-    String.prototype.startsWith = startsWith;
-    RegExp.prototype.test = test;
-    Array.prototype.push = push;
+    COUNTED.forEach(([proto, key], i) =>
+      Object.defineProperty(proto, key, originals[i] ?? {})
+    );
   }
 }
 
@@ -76,7 +96,13 @@ function tokenizeOrRefuse(src: string): void {
 }
 
 function event(command: string): string {
-  return JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: REPO, tool_input: { command } });
+  return JSON.stringify({
+    tool_name: "Bash",
+    session_id: "s",
+    tool_use_id: "t",
+    cwd: REPO,
+    tool_input: { command },
+  });
 }
 
 type Shape = [name: string, script: (n: number) => string, n: number];
@@ -86,64 +112,118 @@ const SCRIPTS: Shape[] = [
   ["a (( arithmetic command", (n) => `((${JOIN.repeat(n)}1))\n`, 32_000],
   ["a $( ) substitution", (n) => `echo "$(${JOIN.repeat(n)}true)"\n`, 32_000],
   ["a plain word", (n) => `echo a${JOIN.repeat(n)}\n`, 32_000],
-  ["a heredoc of joined lines", (n) => `cat <<E\n${`x${JOIN}`.repeat(n)}\nE\n`, 21_000],
+  [
+    "a heredoc of joined lines",
+    (n) => `cat <<E\n${`x${JOIN}`.repeat(n)}\nE\n`,
+    21_000,
+  ],
 ];
 
 /** At `n`, each script is about 64 KB of `[`s, every one of which asks whether bash reads a subscript assignment there. */
 const SUBSCRIPTS: Shape[] = [
-  ["assignments each followed by a join", (n) => `${`a[0]=1 ${JOIN}`.repeat(n)}\n`, 7_000],
-  ["commands each with a joined subscript", (n) => `${`a${JOIN}[0]=1;`.repeat(n)}\n`, 7_000],
+  [
+    "assignments each followed by a join",
+    (n) => `${`a[0]=1 ${JOIN}`.repeat(n)}\n`,
+    7_000,
+  ],
+  [
+    "commands each with a joined subscript",
+    (n) => `${`a${JOIN}[0]=1;`.repeat(n)}\n`,
+    7_000,
+  ],
   ["assignments with no joins", (n) => `${"a[0]=1 ".repeat(n)}\n`, 9_000],
   // Half size: handling 21 000 commands of any kind costs a few hundred ms; a scan per bracket would still cost seconds.
-  ["commands each with an unclosed subscript", (n) => `${"a[;".repeat(n)}\n`, 10_500],
-  ["one long name before many brackets", (n) => `${"a".repeat(n)}${"[".repeat(n)}\n`, 32_000],
+  [
+    "commands each with an unclosed subscript",
+    (n) => `${"a[;".repeat(n)}\n`,
+    10_500,
+  ],
+  [
+    "one long name before many brackets",
+    (n) => `${"a".repeat(n)}${"[".repeat(n)}\n`,
+    32_000,
+  ],
 ];
 
-const SPACED_SUBSCRIPT: Shape = ["a spaced subscript", (n) => `Y[ ${JOIN.repeat(n)}0 ]=x true`, 32_000];
+const SPACED_SUBSCRIPT: Shape = [
+  "a spaced subscript",
+  (n) => `Y[ ${JOIN.repeat(n)}0 ]=x true`,
+  32_000,
+];
 
-const atFullSize = (shapes: Shape[]) => shapes.map(([name, script, n]): [string, string] => [name, script(n)]);
+const atFullSize = (shapes: Shape[]) =>
+  shapes.map(([name, script, n]): [string, string] => [name, script(n)]);
 
-async function timedHookStdout(script: string): Promise<{ stdout: string; ms: number }> {
-  const context = { ...nodeContext(HOME, noFs), foldCase: true, readScript: (p: string) => (p === `${REPO}/a.sh` ? script : null) };
-  const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
-  const start = performance.now();
-  const result = await handle(event("bash a.sh; git push origin HEAD:main"), { PATH: "/usr/bin" }, port);
-  return { stdout: result.stdout, ms: performance.now() - start };
+/**
+ * Times the hook in this thread's CPU, not the wall clock: in a full run the worker shares the runner's cores with
+ * other test files, and the time it waits for one says nothing about the work the hook does.
+ */
+async function timedHookStdout(
+  script: string
+): Promise<{ stdout: string; cpuMs: number }> {
+  const context = {
+    ...nodeContext(HOME, noFs),
+    foldCase: true,
+    readScript: (p: string) => (p === `${REPO}/a.sh` ? script : null),
+  };
+  const port: HookPort = {
+    context,
+    now: () => new Date(0),
+    loadDecide: async () => decide,
+  };
+  const start = process.threadCpuUsage();
+  const result = await handle(
+    event("bash a.sh; git push origin HEAD:main"),
+    { PATH: "/usr/bin" },
+    port
+  );
+  const { user, system } = process.threadCpuUsage(start);
+  return { stdout: result.stdout, cpuMs: (user + system) / 1000 };
 }
 
 describe("a script of many subscripts", () => {
-  it.each(atFullSize(SUBSCRIPTS))("the hook denies a push after %s, within the hook's timeout", async (_name, script) => {
-    const { stdout, ms } = await timedHookStdout(script);
+  it.each(atFullSize(SUBSCRIPTS))(
+    "the hook denies a push after %s, within the budget",
+    async (_name, script) => {
+      const { stdout, cpuMs } = await timedHookStdout(script);
 
-    expect(stdout).toContain('"permissionDecision":"deny"');
-    expect(ms).toBeLessThan(HOOK_BACKSTOP_MS);
-  });
+      expect(stdout).toContain('"permissionDecision":"deny"');
+      expect(cpuMs).toBeLessThan(BUDGET_MS);
+    }
+  );
 });
 
 describe("a long run of backslash-newlines", () => {
   it.each(atFullSize(SCRIPTS))(
-    "the hook denies a push after a script holding %s, within the hook's timeout",
+    "the hook denies a push after a script holding %s, within the budget",
     async (_name, script) => {
-      const { stdout, ms } = await timedHookStdout(script);
+      const { stdout, cpuMs } = await timedHookStdout(script);
 
       expect(stdout).toContain('"permissionDecision":"deny"');
-      expect(ms).toBeLessThan(HOOK_BACKSTOP_MS);
-    },
+      expect(cpuMs).toBeLessThan(BUDGET_MS);
+    }
   );
 });
 
 describe("tokenizing a 64 KB script", () => {
-  it.each([...SCRIPTS, ...SUBSCRIPTS, SPACED_SUBSCRIPT])("reads %s with work linear in its size", (_name, script, n) => {
-    const work = (size: number) => {
-      // The leading space keeps this source apart from the hook rows' copy, which the per-source caches would hold.
-      const src = ` ${script(size)}`;
-      return countWork(() => tokenizeOrRefuse(src), src.length * WORK_PER_CHAR);
-    };
+  it.each([...SCRIPTS, ...SUBSCRIPTS, SPACED_SUBSCRIPT])(
+    "reads %s with work linear in its size",
+    (_name, script, n) => {
+      const work = (size: number) => {
+        // The leading space keeps this source apart from the hook rows' copy, which the per-source caches would hold.
+        const src = ` ${script(size)}`;
+        return countWork(
+          () => tokenizeOrRefuse(src),
+          src.length * WORK_PER_CHAR
+        );
+      };
 
-    const ratio = work(n) / work(n / 4);
+      const ratio = work(n) / work(n / 4);
 
-    // Four times the input is about four times the work when linear and sixteen times when quadratic.
-    expect(ratio).toBeGreaterThan(3);
-    expect(ratio).toBeLessThan(6);
-  });
+      // Every shape measures 3.99 to 4.00. Four times the input is sixteen times the work when quadratic, and
+      // already 4.6 times when the work grows as n^1.1.
+      expect(ratio).toBeGreaterThan(3.5);
+      expect(ratio).toBeLessThan(4.5);
+    }
+  );
 });

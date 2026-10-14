@@ -338,6 +338,28 @@ describe("wrappers that run their command", () => {
     expect(gitArgs(src)).toEqual([["push"]]);
   });
 
+  it.each([
+    ["noglob git push", "noglob alone"],
+    ["nocorrect git push", "nocorrect alone"],
+    ["- git push", "- alone"],
+    ["nocorrect noglob git push", "stacked modifiers"],
+    ["nocorrect - git push", "nocorrect then -"],
+    ["exec noglob git push", "exec before noglob"],
+    ["noglob exec git push", "exec after noglob"],
+    ["builtin noglob git push", "builtin before noglob"],
+    ["noglob command git push", "command after noglob"],
+    ["noglob sudo git push", "sudo after noglob"],
+    ["FOO=1 noglob git push", "an assignment"],
+    ["if noglob git push; then :; fi", "an if"],
+    ["eval 'noglob git push'", "eval"],
+  ])("unwraps the zsh precommand modifier in %s past %s", (src) => {
+    expect(gitArgs(src)).toEqual([["push"]]);
+  });
+
+  it.each([["noglob"], ["nocorrect"], ["-"]])("reads %s with nothing after it as no command", (src) => {
+    expect(extract(src)).toEqual([]);
+  });
+
   it("unwraps bun x", () => {
     expect(gitArgs("bun x git push")).toEqual([["push"]]);
   });
