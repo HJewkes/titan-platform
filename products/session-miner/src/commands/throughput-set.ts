@@ -8,12 +8,12 @@ const MILESTONE_TAG = "milestone:";
 // Live tags carry stray punctuation from prose edits (`milestone:M4,`).
 const TAG_TRAILER = /[.,)]+$/;
 
-export type SetSelector = ({ tasks: string[] } | { parent: string } | { milestone: string }) & {
+type SetSelector = ({ tasks: string[] } | { parent: string } | { milestone: string }) & {
   /** Scopes a milestone whose name recurs across initiatives. */
   initiative?: string;
 };
 
-export interface SetSelection {
+interface SetSelection {
   tasks: SetTask[];
   /** Selected ids found in no allowlisted initiative. */
   notFound: string[];
