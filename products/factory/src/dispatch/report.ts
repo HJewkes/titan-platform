@@ -4,8 +4,8 @@ import { lintSlices, sliceWarnings } from "./slice-lint.js";
 
 /**
  * Parses what a tick-spawned agent leaves behind: the first line of its final message (`Status:` for workers,
- * `Verdict:` for reviewers), a closing `PARKED <msgId>` line, and a planner's `burndown-slices` block. Anything the
- * parser cannot read is `unknown`, never a guess at success.
+ * `Verdict:` for reviewers), a closing `PARKED <msgId>` line, a `Proposed tasks:` block, and a planner's
+ * `burndown-slices` block. Anything the parser cannot read is `unknown`, never a guess at success.
  */
 
 const STATUSES = ["DONE", "DONE_WITH_CONCERNS", "BLOCKED", "NEEDS_CONTEXT"] as const;
@@ -20,6 +20,10 @@ interface Report {
   pr?: string;
   /** A planner's plan file, from its `Plan: <absolute path>` line. */
   plan?: string;
+  /** The items of a `Proposed tasks:` block, absent when the report has none. */
+  proposed?: ProposedItem[];
+  /** Why the report is refused (decision 331): the first proposed item with no valid destination. */
+  refused?: string;
   firstLine: string;
   text: string;
 }
@@ -45,11 +49,71 @@ export function parseReport(text: string): Report {
   if (pr !== undefined) report.pr = pr;
   const plan = field(lines, "Plan");
   if (plan !== undefined) report.plan = plan;
+  const proposed = proposedItems(text);
+  if (proposed !== undefined) {
+    report.proposed = proposed;
+    const refused = proposed.map(destinationProblem).find((problem) => problem !== undefined);
+    if (refused !== undefined) report.refused = refused;
+  }
   return report;
 }
 
 const field = (lines: string[], label: string): string | undefined =>
   lines.map((line) => new RegExp(`^${label}:\\s*(\\S.*?)\\s*$`).exec(line)?.[1]).find((value) => value !== undefined);
+
+/** The reasons a proposed task may be dropped without filing it (decision 331). */
+export const DROP_REASONS = ["duplicate", "already-done", "out-of-scope", "superseded"] as const;
+
+type Destination = { kind: "filed"; id: string } | { kind: "pending"; reason: string } | { kind: "dropped"; reason: string };
+
+interface ProposedItem {
+  text: string;
+  /** Absent when the item has no `->` or an arrow to something that is not filed, pending or dropped. */
+  destination?: Destination;
+}
+
+const PROPOSED_HEADER = /^Proposed tasks:$/i;
+const BULLET = /^[-*+]\s+(.*)$/;
+
+/** Bullets under a `Proposed tasks:` line, up to the first line that is not one; undefined with no such line. */
+function proposedItems(text: string): ProposedItem[] | undefined {
+  const lines = text.split("\n").map((line) => line.trim());
+  const start = lines.findIndex((line) => PROPOSED_HEADER.test(unmarked(line)));
+  if (start === -1) return undefined;
+  const items: ProposedItem[] = [];
+  for (const line of lines.slice(start + 1)) {
+    const bullet = BULLET.exec(line)?.[1];
+    if (bullet === undefined) break;
+    items.push(proposedItem(unmarked(bullet)));
+  }
+  return items;
+}
+
+function proposedItem(bullet: string): ProposedItem {
+  const arrow = /^(.*?)\s*(?:->|→)\s*(.*)$/.exec(bullet);
+  if (arrow === null) return { text: bullet };
+  const [, text = "", target = ""] = arrow;
+  const destination = parseDestination(target);
+  return destination === undefined ? { text } : { text, destination };
+}
+
+function parseDestination(target: string): Destination | undefined {
+  const filed = /^filed\s+(\S+)$/i.exec(target)?.[1];
+  if (filed !== undefined) return { kind: "filed", id: filed };
+  const [, kind = "", reason = ""] = /^(pending|dropped):?\s*(.*)$/i.exec(target) ?? [];
+  if (/^pending$/i.test(kind)) return { kind: "pending", reason: reason.trim() };
+  if (/^dropped$/i.test(kind)) return { kind: "dropped", reason: reason.trim() };
+  return undefined;
+}
+
+function destinationProblem({ text, destination }: ProposedItem): string | undefined {
+  if (destination === undefined) return `proposed task "${text}" has no destination (filed <id>, pending: <reason> or dropped: <reason>)`;
+  if (destination.kind === "pending" && destination.reason === "") return `proposed task "${text}" is pending with no reason`;
+  if (destination.kind === "dropped" && !(DROP_REASONS as readonly string[]).includes(destination.reason)) {
+    return `proposed task "${text}" is dropped for "${destination.reason}", not one of ${DROP_REASONS.join(", ")}`;
+  }
+  return undefined;
+}
 
 const CONTRACT_OPS = ["replace", "remove", "rename", "migrate", "add", "extend", "modify"] as const;
 
