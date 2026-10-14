@@ -338,13 +338,15 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
     expect(blocked.kind === "verdict" && (await readSessionSourceText(blocked.locator))).toMatch(/^Verdict: FIX_FIRST\nPR: octo\/demo#4/);
   });
 
-  it("blocks the head when an exited seat reviewer's transcript cannot be read", async () => {
+  it("warns without blocking when an exited seat reviewer's transcript cannot be read and nothing ties it to the PR", async () => {
     const rows = [{ ...seat, transcriptPath: path.join(dir, "gone", `${FIXTURE_SESSION}.jsonl`) }];
     const reader = transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE });
+    const warn = vi.fn();
 
-    const blocked = await seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD });
+    const check = await seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD }, warn);
 
-    expect(blocked).toMatchObject({ kind: "none", reason: expect.stringContaining(`the transcript of ${seat.name} could not be read`) });
+    expect(check).toEqual({ kind: "clear" });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`${seat.name} is not the reviewer of octo/demo#4`));
   });
 
   it("does not block on a seat reviewer still running with no transcript yet", async () => {

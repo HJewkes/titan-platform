@@ -1,10 +1,11 @@
-import { BrokerUnavailableError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
+import { BrokerUnavailableError, DispatchError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
 import type { AgentIdentity } from "@titan-design/authority";
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 import { bounded, type AwaitVerdictTiming } from "./await-verdict.js";
-import { failureOf } from "./error-class.js";
+import { redactCredentials } from "../redact.js";
+import { consoleTextOf, failureOf } from "./error-class.js";
 import { holdClassOf } from "./g10-release.js";
 import { ReviewerAskTimedOut, ReviewerBrokerBusy, ReviewerBrokerDown, clearReviewWait, noteReviewWait } from "./review-wait.js";
 import type { AwaitVerdictInput, AwaitVerdictResult, ReviewTarget, ReviewWiring, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
@@ -171,24 +172,40 @@ function reviewsThisPr(target: ReviewTarget, read: NameRead): boolean {
 /** The broker's own failures that clear with time; a permission, missing-file or parse failure reads the same every time. */
 const TRANSIENT = [ReviewerAskTimedOut, ReviewerBrokerDown, ReviewerBrokerBusy, DispatchTimeoutError, BrokerUnavailableError];
 
-const transient = (error: unknown): boolean => TRANSIENT.some((kind) => error instanceof kind) || /^HTTP 5\d\d$/.test(failureOf(error));
+/** agent-chat's CLI reached the broker but got no reply in time; the seat check only reads, so asking again is safe once the broker catches up. */
+const BROKER_NO_REPLY = /\bbroker did not answer \w+_result\b/;
+
+const transient = (error: unknown): boolean =>
+  TRANSIENT.some((kind) => error instanceof kind) || /^HTTP 5\d\d$/.test(failureOf(error)) || (error instanceof DispatchError && BROKER_NO_REPLY.test(consoleTextOf(error)));
 
 const retryIf = (clears: boolean) => (clears ? { retry: true as const } : {});
 
+const DETAIL_CHARS = 200;
+const URL_TEXT = /\bhttps?:\/\/\S+/g;
+const HOME_DIR = /\/(?:Users|home)\/[^/\s]+/g;
+
+/** agent-dispatch's errors carry the agent-chat CLI's own words, which say why it failed; any other error's text may hold anything, so it stays its class. */
+function failureText(error: unknown): string {
+  const kind = failureOf(error);
+  if (!(error instanceof DispatchError)) return kind;
+  const text = redactCredentials(consoleTextOf(error)).replace(URL_TEXT, "[url]").replace(HOME_DIR, "~").replace(/\s+/g, " ").trim();
+  if (text === "") return kind;
+  return `${kind}: ${text.length <= DETAIL_CHARS ? text : `${text.slice(0, DETAIL_CHARS)}…`}`;
+}
+
 /**
- * A damaged transcript blocks only the PR its brief or a verdict block ties it to; one tied to no PR, or only to
- * other PRs, warns instead of blocking every PR on the machine. Any other failure blocks.
+ * A failed read blocks only the PR a brief or verdict block ties the reviewer to; a reviewer tied to no PR, or only to
+ * other PRs, warns instead of blocking every PR on the machine.
  */
 function failedRead(name: string, target: ReviewTarget, read: NameRead, warn: (line: string) => void): SeatCheck | undefined {
-  const hard = read.failures.find((failure) => !(failure instanceof DamagedTranscriptError));
-  const failure = hard ?? read.failures[0];
+  const hards = read.failures.filter((each) => !(each instanceof DamagedTranscriptError));
+  const failure = hards[0] ?? read.failures[0];
   if (failure === undefined) return undefined;
-  if (hard === undefined && !reviewsThisPr(target, read)) {
-    warn(`seat check: ${name} is not the reviewer of ${target.repo}#${target.pr}, so its damaged transcript does not block it: ${failureOf(failure)}`);
+  if (!reviewsThisPr(target, read)) {
+    warn(`seat check: ${name} is not the reviewer of ${target.repo}#${target.pr}, so its unreadable transcript does not block it: ${failureText(failure)}`);
     return undefined;
   }
-  const hards = read.failures.filter((each) => !(each instanceof DamagedTranscriptError));
-  return { kind: "none", reason: `seat check: the transcript of ${name} could not be read: ${failureOf(failure)}`, ...retryIf(hards.length > 0 && hards.every(transient)) };
+  return { kind: "none", reason: `seat check: the transcript of ${name} could not be read: ${failureText(failure)}`, ...retryIf(hards.length > 0 && hards.every(transient)) };
 }
 
 function sentBack(name: string, target: ReviewTarget, message: ReviewerMessage, messages: readonly ReviewerMessage[]): SeatCheck {
@@ -197,7 +214,7 @@ function sentBack(name: string, target: ReviewTarget, message: ReviewerMessage, 
 }
 
 /**
- * Fails closed: an unreadable roster, or a seat reviewer's transcript that cannot be read or parsed, blocks the head. A
+ * Fails closed: an unreadable roster, or the transcript of a seat reviewer tied to this PR that cannot be read or parsed, blocks the head. A
  * reviewer with no finished transcript yet reads as no verdict. Any FIX_FIRST is preferred over a failed read, since a fixer can act on it.
  */
 export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, warn: (line: string) => void = console.warn): Promise<SeatCheck> {
@@ -205,7 +222,7 @@ export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[
   try {
     listed = await roster();
   } catch (error) {
-    return { kind: "none", reason: `seat check: the roster could not be read: ${failureOf(error)}`, ...retryIf(transient(error)) };
+    return { kind: "none", reason: `seat check: the roster could not be read: ${failureText(error)}`, ...retryIf(transient(error)) };
   }
   const rows = listed.filter((row) => SEAT_REVIEWER.test(row.name) && row.sessionId !== "");
   let failed: SeatCheck | undefined;
