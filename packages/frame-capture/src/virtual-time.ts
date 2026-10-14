@@ -31,32 +31,43 @@ function seedMathRandom(): void {
 function patchDate(state: ClockState): void {
   const EPOCH_MS = Date.UTC(2026, 0, 1)
   const RealDate = Date
+  type DateParts = [year: number, monthIndex: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number]
+  type DateArgs = [] | [value: number | string | Date] | DateParts
   class VirtualDate extends RealDate {
-    constructor(...args: unknown[]) {
+    constructor(...args: DateArgs) {
       if (args.length === 0) super(EPOCH_MS + state.nowMs)
-      else super(...(args as [string]))
+      else if (args.length === 1) super(args[0])
+      else super(...args)
     }
     static override now() {
       return EPOCH_MS + state.nowMs
     }
   }
-  window.Date = VirtualDate as DateConstructor
+  // defineProperty, not assignment: the class has no call signature, so it is not a DateConstructor.
+  Object.defineProperty(window, 'Date', { value: VirtualDate, writable: true, configurable: true })
   performance.now = () => state.nowMs
 }
 
 function patchTimers(state: ClockState): void {
+  const isCallback = (fn: unknown): fn is Task['fn'] => typeof fn === 'function'
   function schedule(fn: unknown, delay: unknown, args: unknown[], repeat: boolean): number {
     const id = state.nextId++
-    if (typeof fn !== 'function') return id
+    if (!isCallback(fn)) return id
     const ms = Math.max(0, Number(delay) || 0)
-    state.timers.set(id, { at: state.nowMs + ms, seq: state.seq++, fn: fn as Task['fn'], args, everyMs: repeat ? Math.max(1, ms) : undefined })
+    state.timers.set(id, { at: state.nowMs + ms, seq: state.seq++, fn, args, everyMs: repeat ? Math.max(1, ms) : undefined })
     return id
   }
   const clear = (id?: number) => void (id !== undefined && state.timers.delete(id))
-  window.setTimeout = ((fn: unknown, delay?: number, ...args: unknown[]) => schedule(fn, delay, args, false)) as typeof setTimeout
-  window.setInterval = ((fn: unknown, delay?: number, ...args: unknown[]) => schedule(fn, delay, args, true)) as typeof setInterval
-  window.clearTimeout = clear as typeof clearTimeout
-  window.clearInterval = clear as typeof clearInterval
+  // defineProperty, not assignment: the global timer types merge Node's overloads, which these do not implement.
+  const overrides = {
+    setTimeout: (fn: unknown, delay?: number, ...args: unknown[]) => schedule(fn, delay, args, false),
+    setInterval: (fn: unknown, delay?: number, ...args: unknown[]) => schedule(fn, delay, args, true),
+    clearTimeout: clear,
+    clearInterval: clear,
+  }
+  for (const [name, value] of Object.entries(overrides)) {
+    Object.defineProperty(window, name, { value, writable: true, configurable: true })
+  }
   window.requestAnimationFrame = (cb) => {
     const id = state.nextId++
     state.rafs.set(id, cb)

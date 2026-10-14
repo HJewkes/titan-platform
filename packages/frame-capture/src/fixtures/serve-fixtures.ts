@@ -12,6 +12,11 @@ export interface Served {
   close(): Promise<void>
 }
 
+function tcpAddress(address: AddressInfo | string | null): AddressInfo {
+  if (address === null || typeof address === 'string') throw new Error(`fixture server is not on a TCP port: ${String(address)}`)
+  return address
+}
+
 /** Serves this directory over loopback HTTP: fonts do not load from file:// URLs. */
 export async function serveFixtures(): Promise<Served> {
   const server = createServer((req, res) => {
@@ -22,7 +27,7 @@ export async function serveFixtures(): Promise<Served> {
     )
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
-  const { port } = server.address() as AddressInfo
+  const { port } = tcpAddress(server.address())
   return {
     url: (page) => `http://127.0.0.1:${port}/page.html?page=${page}`,
     close: () => {

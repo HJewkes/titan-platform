@@ -82,7 +82,13 @@ jobs:
       # The browser is cached per playwright-core version; --with-deps still installs the system libraries each run.
       - name: Read the playwright-core version
         id: playwright
-        run: echo "version=$(pnpm --filter @titan-design/frame-capture exec node -p "require('playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
+        run: |
+          version=$(pnpm --filter @titan-design/frame-capture exec node -p "require('playwright-core/package.json').version")
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "could not read the playwright-core version (got '$version')" >&2; exit 1 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Restore the Chromium cache
         uses: actions/cache/restore@v4
         with:
