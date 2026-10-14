@@ -8,7 +8,6 @@ const AUD = "basement";
 const IAT = 1_791_500_000;
 const NONCE = "0123456789abcdef0123456789abcdef";
 const HEAD = "a".repeat(40);
-const DIGEST = "d".repeat(64);
 
 const row = (over: Partial<ReviewGate> = {}): ReviewGate => ({
   gateId: "run-1/approve-merge",
@@ -24,6 +23,8 @@ const row = (over: Partial<ReviewGate> = {}): ReviewGate => ({
   createdAt: "2026-10-14T00:00:00.000Z",
   ...over,
 });
+
+const noPrRow = row({ gateId: "run-1/main-red-ack", stepId: "main-red-ack", repo: null, pr: null, headSha: null, rule: null });
 
 const mergeItem = (n: number, repo = "HJewkes/titan-platform"): ProofItem =>
   gateItem(row({ gateId: `run-${n}/approve-merge`, runId: `run-${n}`, repo, pr: n }), { decision: "merge", headSha: HEAD });
@@ -61,7 +62,7 @@ describe("buildGateStatement", () => {
 });
 
 describe("gateItem", () => {
-  const noPr = row({ gateId: "run-1/main-red-ack", stepId: "main-red-ack", repo: null, pr: null, headSha: null, rule: null });
+  const noPr = noPrRow;
 
   it("throws for a gate with no PR when no ref is given", () => {
     expect(() => gateItem(noPr, { decision: "ack" })).toThrow(/names no PR/);
@@ -73,6 +74,12 @@ describe("gateItem", () => {
     expect(item).toMatchObject({ gate: "run-1/main-red-ack", runId: "run-1", stepId: "main-red-ack", pr: 9, headSha: HEAD });
   });
 
+  it("keeps the gate id when the ref carries extra keys", () => {
+    const ref = { repo: "HJewkes/titan-platform", pr: 9, headSha: HEAD, gate: "run-2/approve-merge" };
+
+    expect(() => gateItem(noPr, { decision: "ack" }, ref)).toThrow(/only repo, pr and headSha/);
+  });
+
   it("throws when a ref disagrees with the gate's own PR", () => {
     expect(() => gateItem(row(), { decision: "merge" }, { repo: "HJewkes/titan-platform", pr: 838, headSha: HEAD })).toThrow(/asks about/);
   });
@@ -80,15 +87,16 @@ describe("gateItem", () => {
 
 describe("signReason", () => {
   it("names the count, the digest prefix and the PRs", () => {
-    const reason = signReason([mergeItem(1), mergeItem(2)], DIGEST);
+    const items = [mergeItem(1), mergeItem(2)];
+    const reason = signReason(items, itemsDigest(items));
 
-    expect(reason).toBe(`Approve 2 gates, batch ${"d".repeat(16)}: titan-platform#1@aaaaaaa titan-platform#2@aaaaaaa`);
+    expect(reason).toBe(`Approve 2 gates, batch ${itemsDigest(items).slice(0, 16)}: HJewkes/titan-platform#1@aaaaaaa HJewkes/titan-platform#2@aaaaaaa`);
   });
 
   it("stays within 256 characters at 200 items and counts the PRs left out", () => {
     const items = Array.from({ length: 200 }, (_, index) => mergeItem(index + 1));
 
-    const reason = signReason(items, DIGEST);
+    const reason = signReason(items, itemsDigest(items));
 
     expect(reason.length).toBeLessThanOrEqual(256);
     const shown = reason.match(/#\d+@/g)?.length ?? 0;
@@ -99,25 +107,55 @@ describe("signReason", () => {
   it("reads a single non-merge answer as the local resolve dialog does", () => {
     const item = gateItem(row(), { decision: "decline", headSha: HEAD });
 
-    expect(signReason([item], DIGEST)).toBe(`resolve gate run-1/approve-merge: decline at ${HEAD}`);
+    expect(signReason([item], itemsDigest([item]))).toBe(`resolve gate run-1/approve-merge: decline at ${HEAD}`);
   });
 
   it.each([
     ["a newline in the gate id", { gate: "run-1/approve\nmerge", payload: { decision: "decline" } }],
     ["U+2028 in the decision", { payload: { decision: "decline merge" } }],
   ])("refuses %s in a single item", (_name, over) => {
-    const item = { ...mergeItem(1), ...over } as ProofItem;
+    const item: ProofItem = { ...mergeItem(1), ...over };
 
-    expect(() => signReason([item], DIGEST)).toThrow();
+    expect(() => signReason([item], itemsDigest([item]))).toThrow();
   });
 
   it("refuses a repo name that could hide text in the dialog", () => {
-    const item = { ...mergeItem(1), repo: "owner/repo\nApprove 1 gate" };
+    const items = [{ ...mergeItem(1), repo: "owner/repo\nApprove 1 gate" }, mergeItem(2)];
 
-    expect(() => signReason([item, mergeItem(2)], DIGEST)).toThrow(/cannot be shown safely/);
+    expect(() => signReason(items, itemsDigest(items))).toThrow(/cannot be shown safely/);
   });
 
   it("refuses a digest that is not 64 hex", () => {
     expect(() => signReason([mergeItem(1)], "d".repeat(63))).toThrow(/64 hex/);
+  });
+
+  it("refuses a digest over a different set of items than the one shown", () => {
+    expect(() => signReason([mergeItem(1)], itemsDigest([mergeItem(2)]))).toThrow(/does not match/);
+  });
+
+  it("names the gate for a no-PR gate answered merge, never only the owner's ref", () => {
+    const item = gateItem(noPrRow, { decision: "merge" }, { repo: "x/harmless", pr: 1, headSha: HEAD });
+
+    expect(signReason([item], itemsDigest([item]))).toBe("resolve gate run-1/main-red-ack: merge");
+  });
+
+  it("names the payload's head when it differs from the item's head", () => {
+    const other = "b".repeat(40);
+    const item = gateItem(row(), { decision: "merge", headSha: other });
+
+    expect(signReason([item], itemsDigest([item]))).toBe(`resolve gate run-1/approve-merge: merge at ${other}`);
+  });
+
+  it("refuses a batch that mixes a decline with a merge", () => {
+    const decline = gateItem(row(), { decision: "decline", headSha: HEAD });
+    const items = [decline, mergeItem(2)];
+
+    expect(() => signReason(items, itemsDigest(items))).toThrow(/only merges/);
+  });
+
+  it("re-checks items it is handed, so a malformed head cannot reach the dialog", () => {
+    const item = { ...mergeItem(1), headSha: `${"a".repeat(39)}\n`, payload: { decision: "merge", headSha: `${"a".repeat(39)}\n` } };
+
+    expect(() => signReason([item], itemsDigest([item]))).toThrow(/valid proof item/);
   });
 });
