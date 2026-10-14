@@ -584,6 +584,82 @@ declare function illegalEdges(before: readonly Held[], after: readonly Held[]): 
 /** The error a write throws for its first illegal edge, or undefined when every edge is in the table. */
 declare function illegalEdgeError(before: readonly Held[], after: readonly Held[]): IllegalPhaseEdgeError | undefined;
 
+/** A claim's identity: one claim per `(task, slice)` while it is held. */
+type ClaimKey = Pick<Claim, "taskId" | "slice">;
+declare const claimKey: (c: ClaimKey) => string;
+declare const heldClaims: (ledger: Ledger) => Claim[];
+/** Claims with an agent at work: parked, queued, awaiting-merge and shepherding claims hold their task but not a lane. */
+declare const laneClaims: (ledger: Ledger) => Claim[];
+/** The seat's claims the ledger shows holding an implementer: implementing, or spawning into it. */
+declare const ledgerImplementers: (ledger: Ledger, seat: string) => number;
+/** How many claims the ledger may hold beyond the agents actually running before the count is flagged. */
+declare const SLOT_MISMATCH_TOLERANCE = 3;
+/** The flag shown beside a role count whose ledger runs more than the tolerance ahead of its live agents. */
+declare const slotMismatch: (ledger: number, live: number) => string | undefined;
+declare function isStalled(claim: Claim, now: Date): boolean;
+declare const sameClaim: (a: ClaimKey, b: ClaimKey) => boolean;
+/** A second claim on a held `(task, slice)` is refused rather than merged. */
+declare function addClaim(ledger: Ledger, claim: Claim): Ledger;
+/** The parent a queued slice may stack on for its one unmet dependency `dep`, else undefined. */
+type StackPredicate = (child: Claim, dep: string) => StackedOn | undefined;
+/**
+ * Queued slices whose dependencies are all done or released, whose task is not in `held`, and that no
+ * hand-dispatched PR is linked to, in ledger order. With `stack`, a slice with exactly one unmet dependency is
+ * ready too when `stack` admits it, and comes back carrying `stackedOn`.
+ */
+declare function readySlices(ledger: Ledger, held?: ReadonlyMap<string, unknown>, stack?: StackPredicate): Claim[];
+
+type ClaimPatch = Partial<Omit<Claim, "taskId" | "slice" | "initiative">>;
+/**
+ * Ladder rung 2: the claim lets go of its worktree and branch, which stay. A slice goes back to `queued` for the
+ * planner's work to survive; a whole task is dropped. Never clears `ledger.liveness`.
+ */
+interface ReleaseAction {
+    kind: "release";
+    key: ClaimKey;
+    branch?: string;
+    requeue: boolean;
+    code: StallCode;
+    /** The agents that may still run, newest first; a retired one is no longer the broker's to retire. */
+    names: string[];
+}
+/**
+ * The actions `applyActions` reads, plus the side-effect kinds it passes through unchanged. A product's own action
+ * union, whose spawn, retire and register carry product types, stays assignable to this one.
+ */
+type LedgerAction = {
+    kind: "update";
+    key: ClaimKey;
+    patch: ClaimPatch;
+} | {
+    kind: "add";
+    claims: Claim[];
+}
+/** Writes the claim's triage ladder record; absent prunes it. */
+ | {
+    kind: "ladder";
+    key: ClaimKey;
+    record?: LadderRecord;
+}
+/** Writes the ladder's brake; absent clears it. */
+ | {
+    kind: "brake";
+    brake?: BrakeState;
+} | ReleaseAction | {
+    kind: "spawn" | "retire" | "register";
+};
+/** The ledger after `actions`; a phase change restarts the phase clock, and so does a new agent. */
+declare function applyActions(ledger: Ledger, actions: readonly LedgerAction[], now: Date): Ledger;
+
+/** The code of highest precedence among `codes`, absent when there is none. */
+declare const firstCode: (codes: readonly StallCode[]) => StallCode | undefined;
+/** The exception class each stall code parks its claim under. */
+declare const PARK_CLASS: Readonly<Record<StallCode, ExceptionClass>>;
+/** The one shape of a park: the claim's stall patch with its class taken from the code. */
+declare const parkUpdate: (key: ClaimKey, code: StallCode, detail: string) => Extract<LedgerAction, {
+    kind: "update";
+}>;
+
 /** Named so a recorded failure says what failed without carrying a file path in the message. */
 declare class LedgerMalformedError extends Error {
     name: string;
@@ -602,4 +678,4 @@ declare const exportLedgerJson: (ledger: Ledger) => string;
  */
 declare function writeLedgerExport(file: string, ledger: Ledger): void;
 
-export { AGENT_PHASES, type AgentPhase, type BrakeState, CONTRACT_OPS, type Claim, ClaimSchema, type Contract, type ContractOp, ContractSchema, DESTRUCTIVE_OPS, type DeciderState, EMPTY_LEDGER, EXCEPTION_CLASSES, type ExceptionClass, type IllegalEdge, IllegalPhaseEdgeError, LADDER_CODES, type LadderRecord, type Ledger, LedgerMalformedError, LedgerSchema, type LivenessRecord, PHASES, PHASE_EDGES, PHASE_TIMEOUT_MS, type Phase, type ReleaseRecord, STALE_CLASSES, STALL_CODES, type SeatState, type StackedOn, type StaleClass, type StallCode, type WakeRecord, exportLedgerJson, illegalEdgeError, illegalEdges, parseLedgerJson, writeLedgerExport };
+export { AGENT_PHASES, type AgentPhase, type BrakeState, CONTRACT_OPS, type Claim, type ClaimKey, type ClaimPatch, ClaimSchema, type Contract, type ContractOp, ContractSchema, DESTRUCTIVE_OPS, type DeciderState, EMPTY_LEDGER, EXCEPTION_CLASSES, type ExceptionClass, type IllegalEdge, IllegalPhaseEdgeError, LADDER_CODES, type LadderRecord, type Ledger, type LedgerAction, LedgerMalformedError, LedgerSchema, type LivenessRecord, PARK_CLASS, PHASES, PHASE_EDGES, PHASE_TIMEOUT_MS, type Phase, type ReleaseAction, type ReleaseRecord, SLOT_MISMATCH_TOLERANCE, STALE_CLASSES, STALL_CODES, type SeatState, type StackPredicate, type StackedOn, type StaleClass, type StallCode, type WakeRecord, addClaim, applyActions, claimKey, exportLedgerJson, firstCode, heldClaims, illegalEdgeError, illegalEdges, isStalled, laneClaims, ledgerImplementers, parkUpdate, parseLedgerJson, readySlices, sameClaim, slotMismatch, writeLedgerExport };

@@ -22,6 +22,9 @@ dispatcher, a store and a thin CLI client all validate against one definition.
   `illegalEdges` and `illegalEdgeError`.
 - Reading and exporting `burndown.json` without disturbing its bytes: `parseLedgerJson`,
   `exportLedgerJson` and `writeLedgerExport`.
+- Answering ledger questions without re-deriving them: which claims hold a lane
+  (`laneClaims`), which slices are ready to dispatch (`readySlices`), whether a claim stalled
+  (`isStalled`), and folding a tick's actions into the next ledger (`applyActions`).
 
 For the seat config and charter a coordinator reads, use
 [`coordinator`](/reference/coordinator). For agent execution state with fenced ownership,
@@ -54,6 +57,9 @@ logs: it returns the edges or an error, and the caller logs.
   to the same bytes. Treat any key the schema does not name as opaque.
 - `illegalEdges` pairs claims by `taskId#slice` and then by position, so a released claim
   that drops the newest entry of a key is not read as an edge.
+- `applyActions` passes `spawn`, `retire` and `register` through without reading them. A
+  product widens `LedgerAction` with its own payloads; it never needs this package to know
+  them.
 - A claim that keeps its phase is never an edge, and a claim with no earlier counterpart is
   never held to one.
 
