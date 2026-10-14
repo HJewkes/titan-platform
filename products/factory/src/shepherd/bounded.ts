@@ -12,7 +12,7 @@ export class ReadTimedOut extends Error {
   }
 }
 
-export interface BoundedOptions {
+interface BoundedOptions {
   /** Settles an item that takes longer than this as a `ReadTimedOut` rejection, so its worker moves on. */
   timeoutMs?: number;
 }
