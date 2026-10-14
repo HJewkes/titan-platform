@@ -8,7 +8,9 @@ import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
+import { TEST_BRIEF } from "../test-support/brief.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
+import { OWNER } from "../test-support/resolver.js";
 import type { ShepherdDeps, WakeOutcome, WakeRequest } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { spendRepair } from "./repair.js";
@@ -19,7 +21,7 @@ import { LOG_BUDGET_BYTES, tailBytes } from "./wake-brief.js";
 import { recordFixFirst } from "./routed.js";
 import { HEAD_READ_GIVE_UP_MS } from "./head-read.js";
 import { isHeld } from "./held-wake.js";
-import { WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
+import { MAX_FIX_PROOF_WAKES, WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
 import type { Warmth } from "./warmth.js";
 import { WAKE_ASK_MS } from "./wake-wait.js";
 
@@ -898,6 +900,22 @@ describe("wakePhase", () => {
     expect(agents.asked.map(({ verb }) => verb)).toEqual(["message", "resume"]);
   });
 
+  it("counts a fix-proof wake once when a live implementer's wake is re-delivered after its exit", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    fake.addPr({ headSha: H1 });
+    const agents = liveImplementer();
+    fake.onGetPr = (pr) => {
+      if (agents.asked.length === 1) agents.rows[0]!.presence = "exited";
+      if (agents.asked.length === 2) pr.headSha = H2;
+    };
+
+    const { outcome, stepIds } = await runPhase(agents, fake, writtenAfterEveryAsk, "fix-proof");
+
+    expect(outcome).toEqual({ kind: "woken", agent: "impl-a", sessionId: "s-impl-a" });
+    expect(agents.asked.map(({ verb }) => verb)).toEqual(["message", "resume"]);
+    expect(stepIds.filter((id) => id === "sh-wake-fix-proof")).toHaveLength(1);
+  });
+
   it("is unhandled when the PR closes at the same head", async () => {
     const fake = fakeGitHub({ repo: REPO });
     fake.addPr({ headSha: H1 });
@@ -984,5 +1002,117 @@ describe("a held wake and the repair budget", () => {
     expect(outcomes.every(isHeld)).toBe(true);
     expect(stepIds.filter((id) => id === "sh-repair")).toHaveLength(MAX_REPAIRS);
     expect(refusals).toBe(MAX_REPAIRS);
+  });
+});
+
+describe("the fix-proof bounce cap", () => {
+  const hosts: FactoryHost[] = [];
+  const dirs: string[] = [];
+  afterEach(() => {
+    hosts.splice(0).forEach((host) => host.close());
+    dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
+  });
+  const capReason = `${MAX_FIX_PROOF_WAKES} fix-proof wakes on ${REPO}#1 have not produced a test that reproduces the bug, so the owner decides`;
+  const HOLD = "sh-test-hold";
+
+  interface Wake {
+    wakePhase: typeof wakePhase;
+    wakeRoutes: typeof wakeRoutes;
+    WAKE_STEPS: typeof WAKE_STEPS;
+  }
+
+  /**
+   * A resumable implementer that pushes a new head after each ask, over a fake GitHub; `open` starts a host on `dbPath`
+   * over `wake`, so a restart can load wake.ts afresh and hold nothing in memory from the first host.
+   */
+  function bouncing() {
+    const fake = fakeGitHub({ repo: REPO });
+    fake.addPr({ headSha: H1 });
+    const agents = fakeAgents([row("impl-a")]);
+    let pushed = 0;
+    fake.onGetPr = (pr) => void (agents.asked.length > pushed && (pr.headSha = fakeSha(`fix-${++pushed}`)));
+    const outcomes: WakeOutcome[] = [];
+    let phase = wakePhase;
+    const wake = async (ctx: Parameters<typeof wakePhase>[0], round: number, kind: WakeRequest["kind"] = "fix-proof") => {
+      const headSha = fake.pr(1).headSha;
+      const payload = kind === "review" ? { kind: "FIX_FIRST", headSha, text: "fix it" } : { kind: "NO_REPRO", headSha };
+      outcomes.push(await phase(ctx, { kind, repo: REPO, pr: 1, round, headSha, payload }));
+    };
+    const open = (dbPath: string, run: (ctx: Parameters<typeof wakePhase>[0]) => Promise<void>, wakeModule: Wake = { wakePhase, wakeRoutes, WAKE_STEPS }) => {
+      phase = wakeModule.wakePhase;
+      const store = shepherdStoreRef();
+      let clock = T0;
+      const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
+      const wiring: WakeWiring = { agents, readWarmth: async () => warmAt(1), turnSince: async () => true, checkoutFor: () => MAIN_CHECKOUT };
+      const routes = Object.assign([...wakeModule.wakeRoutes(deps, wiring)], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5), sliceMigration(8)], bind: store.bind } });
+      const host = openFactoryHost({ dbPath, workflows: [defineWorkflow({ name: "bounce-test", steps: [...wakeModule.WAKE_STEPS, { id: HOLD, kind: "assisted" }], run })], routes, gatePollMs: 5 });
+      hosts.push(host);
+      return { host, store };
+    };
+    const stepIds = (host: FactoryHost, runId: string) => Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
+    return { agents, outcomes, wake, open, stepIds };
+  }
+
+  it("wakes the fixer for two fix-proof bounces and leaves the third to the owner gate, asking no agent", async () => {
+    const scene = bouncing();
+    const { host, store } = scene.open(":memory:", async (ctx) => {
+      for (const round of [0, 1, 2]) await scene.wake(ctx, round);
+    });
+    const runId = host.runtime.start("bounce-test");
+    store.get().register({ ...registration, runId });
+
+    await host.runtime.wait(runId);
+
+    expect(scene.outcomes.map((outcome) => outcome.kind)).toEqual(["woken", "woken", "unhandled"]);
+    expect(scene.outcomes[2]).toEqual({ kind: "unhandled", reason: capReason });
+    expect(scene.agents.asked).toHaveLength(MAX_FIX_PROOF_WAKES);
+    expect(scene.stepIds(host, runId).filter((id) => id === "sh-wake-fix-proof")).toHaveLength(MAX_FIX_PROOF_WAKES);
+    expect(scene.stepIds(host, runId)).not.toContain("sh-wake-fix-first");
+  });
+
+  it("keeps the count across a restart, so the third wake after replay is still the owner's", async () => {
+    const scene = bouncing();
+    const dir = mkdtempSync(join(tmpdir(), "tp545-bounce-"));
+    dirs.push(dir);
+    const dbPath = join(dir, "factory.sqlite3");
+    const run = async (ctx: Parameters<typeof wakePhase>[0]) => {
+      await scene.wake(ctx, 0);
+      await scene.wake(ctx, 1);
+      await ctx.assisted(HOLD, "Go on?", { brief: TEST_BRIEF });
+      await scene.wake(ctx, 2);
+    };
+    const first = scene.open(dbPath, run);
+    const runId = first.host.runtime.start("bounce-test");
+    first.store.get().register({ ...registration, runId });
+    await vi.waitFor(() => expect(first.host.gates.get(`${runId}/${HOLD}`)?.status).toBe("pending"));
+    first.host.close();
+
+    vi.resetModules();
+    const second = scene.open(dbPath, run, await import("./wake.js"));
+    await second.host.runtime.hydrate();
+    await vi.waitFor(() => expect(second.host.gates.get(`${runId}/${HOLD}`)?.status).toBe("pending"));
+    second.host.runtime.signal(runId, HOLD, {}, OWNER);
+    await second.host.runtime.wait(runId);
+
+    expect(scene.outcomes.at(-1)).toEqual({ kind: "unhandled", reason: capReason });
+    expect(scene.agents.asked).toHaveLength(MAX_FIX_PROOF_WAKES);
+  });
+
+  it("never counts a fix-proof wake as a FIX_FIRST, so a later review wake keeps the first FIX_FIRST's brief", async () => {
+    const scene = bouncing();
+    const { host, store } = scene.open(":memory:", async (ctx) => {
+      await scene.wake(ctx, 0);
+      await recordFixFirst(ctx, { repo: REPO, pr: 1, headSha: fakeSha("fix-1") });
+      await scene.wake(ctx, 1, "review");
+    });
+    const runId = host.runtime.start("bounce-test");
+    store.get().register({ ...registration, runId });
+
+    await host.runtime.wait(runId);
+
+    const ids = scene.stepIds(host, runId);
+    expect(ids.filter((id) => id === "sh-wake-fix-first")).toHaveLength(1);
+    expect(ids.filter((id) => id === "sh-wake-fix-proof")).toHaveLength(1);
+    expect(scene.agents.asked[1]!.message).toContain("returned FIX_FIRST. Its findings follow.");
   });
 });
