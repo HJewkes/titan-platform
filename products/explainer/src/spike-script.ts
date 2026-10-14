@@ -40,18 +40,19 @@ export interface SpikeRead {
   ignored: string[];
 }
 
-function collectIgnored(schema: z.ZodType, value: unknown, path: string, out: Set<string>): void {
+function collectIgnored(schema: z.core.$ZodType, value: unknown, path: string, out: Set<string>): void {
   if (schema instanceof z.ZodOptional || schema instanceof z.ZodDefault) {
-    collectIgnored(schema.unwrap() as z.ZodType, value, path, out);
+    collectIgnored(schema.unwrap(), value, path, out);
   } else if (schema instanceof z.ZodArray && Array.isArray(value)) {
-    for (const v of value) collectIgnored(schema.element as z.ZodType, v, `${path}[]`, out);
+    for (const v of value) collectIgnored(schema.element, v, `${path}[]`, out);
   } else if (schema instanceof z.ZodRecord && value && typeof value === "object") {
-    for (const v of Object.values(value)) collectIgnored(schema.valueType as z.ZodType, v, `${path}.*`, out);
+    for (const v of Object.values(value)) collectIgnored(schema.valueType, v, `${path}.*`, out);
   } else if (schema instanceof z.ZodObject && value && typeof value === "object") {
-    const shape = schema.shape as Record<string, z.ZodType>;
+    const shape: z.core.$ZodShape = schema.shape;
     for (const [key, v] of Object.entries(value)) {
       const at = path ? `${path}.${key}` : key;
-      if (Object.hasOwn(shape, key)) collectIgnored(shape[key] as z.ZodType, v, at, out);
+      const child = Object.hasOwn(shape, key) ? shape[key] : undefined;
+      if (child) collectIgnored(child, v, at, out);
       else out.add(at);
     }
   }
@@ -97,10 +98,16 @@ function spikeSourceBeat(beat: SpikeBeat, label: Labeller): PaceSourceBeat {
   };
 }
 
+/** A spike script's item track, plus the key paths its reader skipped so a caller can report them. */
+export interface SpikePace {
+  beats: PaceBeat[];
+  ignored: string[];
+}
+
 /** The item track of a spike script.json; map reveals are labelled from its `maps` node labels. */
-export function fromSpikeScript(json: unknown, timing?: ScriptTiming): PaceBeat[] {
-  const { script } = readSpikeScript(json);
+export function fromSpikeScript(json: unknown, timing?: ScriptTiming): SpikePace {
+  const { script, ignored } = readSpikeScript(json);
   const labels = new Map(Object.entries(script.maps).flatMap(([map, { nodes }]) => nodes.map((n) => [`${map}:${n.id}`, n.label])));
   const label: Labeller = (map, id) => labels.get(`${map}:${id}`) ?? id;
-  return buildPaceBeats(script.beats.map((b) => spikeSourceBeat(b, label)), timing);
+  return { beats: buildPaceBeats(script.beats.map((b) => spikeSourceBeat(b, label)), timing), ignored };
 }

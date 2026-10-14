@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { cueKindRole, fromScriptV1, type PaceBeat } from "./pace-items.js";
 import { ScriptSchema } from "./script-schema.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
@@ -6,7 +7,7 @@ import { fromSpikeScript } from "./spike-script.js";
 import { v4Durations, v4Script } from "./spike-fixtures.test-helpers.js";
 import { readTiming } from "./timing.js";
 
-const v4 = (): PaceBeat[] => fromSpikeScript(v4Script(), readTiming(v4Durations()));
+const v4 = (): PaceBeat[] => fromSpikeScript(v4Script(), readTiming(v4Durations())).beats;
 const beat = (beats: PaceBeat[], id: string): PaceBeat => {
   const found = beats.find((b) => b.id === id);
   if (!found) throw new Error(`no beat ${id}`);
@@ -65,22 +66,27 @@ describe("the v4 item track", () => {
 
   // Mutation: reading `timed` as "timing was passed" marks the dropped beat timed with a heard length.
   it("marks a beat with no heard duration timed:false and falls back to its planned length", () => {
-    const durations = v4Durations() as { beats: { id: string }[] };
+    const durations = z.object({ beats: z.array(z.looseObject({ id: z.string() })) }).parse(v4Durations());
     const timing = readTiming({ beats: durations.beats.filter((b) => b.id !== "r2-1-jobs") });
 
-    const beats = fromSpikeScript(v4Script(), timing);
+    const { beats } = fromSpikeScript(v4Script(), timing);
 
     expect(beat(beats, "r2-1-jobs")).toMatchObject({ timed: false, durationS: 7 });
     expect(beat(beats, "r2-2-inv")).toMatchObject({ timed: true, durationS: 14.2 });
-    expect(fromSpikeScript(v4Script()).every((b) => !b.timed)).toBe(true);
+    expect(fromSpikeScript(v4Script()).beats.every((b) => !b.timed)).toBe(true);
   });
 });
 
 describe("the kind table", () => {
   // Mutation: defaulting an unknown kind to "item" lets a new renderer's cues go uncounted as errors.
   it("throws on an unknown cue kind and names it", () => {
-    const script = v4Script() as { beats: { visual: { cues?: { target: string }[] } }[] };
-    script.beats[0]!.visual.cues![0]!.target = "widget:4 stores";
+    const Cue = z.looseObject({ target: z.string() });
+    const script = z
+      .looseObject({ beats: z.array(z.looseObject({ visual: z.looseObject({ cues: z.array(Cue).default([]) }) })) })
+      .parse(v4Script());
+    const [firstCue] = script.beats[0]?.visual.cues ?? [];
+    if (!firstCue) throw new Error("r1-1-hook has no cue");
+    firstCue.target = "widget:4 stores";
 
     expect(() => fromSpikeScript(script)).toThrow(/unknown cue kind "widget"/);
     expect(cueKindRole("detail")).toBe("attribute");
