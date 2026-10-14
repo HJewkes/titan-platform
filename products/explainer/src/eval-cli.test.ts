@@ -81,7 +81,7 @@ describe("explainer eval l0", () => {
   it("stamps rows with the shipped registry's sha when --rules is omitted", async () => {
     const script = write("script.json", scriptWith());
 
-    expect(await runEvalCli(["eval", "l0", script, "--config", "c", "--bench", join(dir, "bench")], { now: clock() })).toBe(0);
+    expect(await runEvalCli(["eval", "l0", script, "--config", "c", "--bench", join(dir, "bench")], { now: clock(), checks: [mapLintCheck] })).toBe(0);
     const shipped = rulesSha(readFileSync(DEFAULT_RULES_PATH));
     expect(structureLines().slice(1).every((line) => line.split("\t")[2] === shipped)).toBe(true);
   });
