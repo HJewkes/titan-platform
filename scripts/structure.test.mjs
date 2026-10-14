@@ -10,6 +10,7 @@ import {
   checkLayersMatchTiers,
   checkNoFileDependencies,
   checkNoNpmToken,
+  checkNoPython,
   checkNoTestsDirectories,
   checkNoWarnSeverity,
   checkPnpmPin,
@@ -88,6 +89,16 @@ function turboRoot(prefix, turbo, { runsProcess }) {
     writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ name: "@titan-design/a" }));
     writeFileSync(join(pkgDir, "tsup.config.ts"), 'import { execFileSync } from "node:child_process";\n');
   }
+  return root;
+}
+
+function pythonRoot(prefix, { file, scripts }) {
+  const root = tempRoot(prefix);
+  const dir = join(root, "products", "explainer");
+  mkdirSync(join(dir, "tools"), { recursive: true });
+  mkdirSync(join(dir, "fixtures"), { recursive: true });
+  writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "@titan-design/explainer", scripts }));
+  if (file) writeFileSync(join(dir, file), "print('x')\n");
   return root;
 }
 
@@ -196,12 +207,31 @@ const cases = [
     message: "`packages/a/src/x.test.ts` imports `@titan-design/c`, which `@titan-design/a` does not declare.",
   },
   {
+    rule: "R59 no Python file in a package or product",
+    check: checkNoPython,
+    root: () => pythonRoot("structure-py-file-", { file: "tools/x.py", scripts: { build: "tsup" } }),
+    message: "`products/explainer/tools/x.py` is Python. Write it in TypeScript",
+  },
+  {
+    rule: "R59 no python, pip or uv invocation in a script",
+    check: checkNoPython,
+    root: () => pythonRoot("structure-py-script-", { scripts: { build: "tsup", align: "cd tools && uv run align.py" } }),
+    message: "`products/explainer` script `align` runs python, pip or uv.",
+  },
+  {
     rule: "R10 no lint rule at warn severity",
     check: checkNoWarnSeverity,
     root: () => fixture("warn-severity"),
     message: "Rule `no-debugger` is set to warn in `eslint.config.js`. Set it to error or remove it. Warnings are not allowed.",
   },
 ];
+
+describe("R59 Python sample input under fixtures is data, not a tool", () => {
+  it("is allowed", () => {
+    const root = pythonRoot("structure-py-fixture-", { file: "fixtures/sample.py", scripts: { build: "tsup" } });
+    expect(checkNoPython(root)).toEqual([]);
+  });
+});
 
 describe.each(cases)("$rule", ({ check, root, message }) => {
   it("holds in this repo", async () => {

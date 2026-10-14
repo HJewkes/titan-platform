@@ -234,3 +234,31 @@ export function checkWorkspaceImportsDeclared(root) {
   const members = new Set(dirs.map((dir) => readJson(join(root, dir, "package.json")).name));
   return [...new Set(dirs.flatMap((dir) => undeclaredImports(root, dir, members)))];
 }
+
+const PYTHON_INVOCATION = /(?:^|[\s;&|(])(?:python3?|pip3?|uvx?|pipx|poetry)(?=\s|$)/;
+const PYTHON_GROUPS = ["packages", "products"];
+// style-analyzer and style-checker ship Python source as sample input for analysing Python code; it is data, never run as a tool.
+const PYTHON_SAMPLE_DIRS = new Set([...SKIPPED_DIRS, "fixtures"]);
+
+function pythonFiles(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return PYTHON_SAMPLE_DIRS.has(entry.name) ? [] : pythonFiles(path);
+    return entry.isFile() && entry.name.endsWith(".py") ? [path] : [];
+  });
+}
+
+function pythonScripts(root, dir) {
+  const manifest = readJson(join(dir, "package.json"));
+  return Object.entries(manifest.scripts ?? {})
+    .filter(([, command]) => PYTHON_INVOCATION.test(command))
+    .map(([name]) => `\`${relative(root, dir)}\` script \`${name}\` runs python, pip or uv. Write the tool in TypeScript; a Python engine is reached only as an external command from a product (decision 373).`);
+}
+
+/** R59: no Python file and no python, pip or uv script under packages/* and products/* (decision 373). */
+export function checkNoPython(root) {
+  const files = PYTHON_GROUPS.flatMap((group) => subdirs(join(root, group))).flatMap(pythonFiles);
+  const fileViolations = files.map((file) => `\`${relative(root, file)}\` is Python. Write it in TypeScript; titan-platform releases no Python tools (decision 373).`);
+  const scriptViolations = workspaceDirs(root, PYTHON_GROUPS).flatMap((dir) => pythonScripts(root, dir));
+  return [...fileViolations, ...scriptViolations];
+}

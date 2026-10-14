@@ -599,9 +599,23 @@
     {
       "id": "no-titan-design-library-imports",
       "type": "forbid-import",
-      "$comment": "Libraries never import across the repo line: titan-design may use titan-platform packages, not the reverse. Only products and apps may import @titan-design/react-ui.",
+      "$comment": "No library in titan-platform imports one from titan-design or the reverse; only products cross that line (site/guides/where-code-goes.md). Only products and apps may import @titan-design/react-ui.",
       "from": "packages/**",
       "to": "npm:@titan-design/react-ui"
+    },
+    {
+      "id": "no-titan-design-library-imports:beats",
+      "type": "forbid-import",
+      "$comment": "No library in titan-platform imports one from titan-design or the reverse; only products cross that line (site/guides/where-code-goes.md). Only products and apps may import @titan-design/beats.",
+      "from": "packages/**",
+      "to": "npm:@titan-design/beats"
+    },
+    {
+      "id": "video-mechanism-no-react",
+      "type": "forbid-import",
+      "$comment": "The video mechanism packages (frame-capture, render-qa, graph-layout, speech-*) run without React: pixels live in titan-design, and these hold engines with no pixels.",
+      "from": "packages/{frame-capture,render-qa,graph-layout,speech-*}/src/**",
+      "to": "npm:react*"
     },
     {
       "id": "codewatch-browser-no-node",
