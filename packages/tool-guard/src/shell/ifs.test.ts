@@ -218,6 +218,9 @@ describe("namesIfs", () => {
     "nocorrect [[ ; read $n",
     "noglob [[ ; read $n",
     "command [[ -n y || read $n",
+    "time -p [[ ; read $n ; echo ]]",
+    "time -- [[ ; read $n ; echo ]]",
+    "time -p -- [[ ; read $n ; echo ]]",
   ])("matches a write after a [[ that is an argument, not a conditional: %s", (line) => {
     expect(namesIfs(line)).toBe(true);
   });

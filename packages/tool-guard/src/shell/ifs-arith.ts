@@ -132,7 +132,13 @@ function closesAtEnd(value: string): boolean {
  */
 function arithTexts({ words, arith, conditional, redirects }: Segment): string[] {
   if (arith) return [[...words.map((w) => w.value), ...redirects].join(" ")];
-  if (conditional) return testArithOperands(words).map((w) => w.value);
+  const tests = conditional === "none" ? [] : testArithOperands(words).map((w) => w.value);
+  if (conditional === "test") return tests;
+  return [...tests, ...commandArithTexts(words)];
+}
+
+/** What a command segment evaluates as arithmetic: operands read as numbers and subscripts of names written or tested. */
+function commandArithTexts(words: WordToken[]): string[] {
   const { command, args } = splitCommand(words);
   const operands = command ? arithArgs(command.value, args) : [];
   const slots = command ? nameSlots(command.value, args) : [];

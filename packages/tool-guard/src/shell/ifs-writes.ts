@@ -29,9 +29,9 @@ const NAME_BUILDER_RE = /[$`?*[]/;
 const COMMAND_BUILDER_RE = /[?*[{]/;
 /** The test commands; the brackets are their names rather than globs. */
 export const TESTS = new Set(["[", "[[", "test"]);
-/** `[[` compares these operands as arithmetic, which assigns any `NAME=` text it is given. */
 /** Reserved words after which bash and zsh still read a keyword such as `[[`. */
 const CONDITIONAL_OPENERS = new Set(["!", "{", "if", "then", "elif", "else", "while", "until", "do", "time", "coproc"]);
+/** `[[` compares these operands as arithmetic, which assigns any `NAME=` text it is given. */
 const ARITH_TESTS = new Set(["-eq", "-ne", "-lt", "-le", "-gt", "-ge"]);
 /**
  * Run-time text bash or zsh evaluates or assigns through: arithmetic contexts (`$(( ))`, a `${x:offset}` substring,
@@ -50,11 +50,16 @@ const ZSH_FLAGGED_RE = /\$[#+^=~]*[+^=~](?:[A-Za-z_]\w*|[@*#?$!-]|\d+)/;
  * operators and operands the lexer reads there as redirects (`i < n`). `targets` are the redirect and here-string
  * words the shell expands, heredoc delimiters aside; `bodies` are the heredoc bodies it expands, `<<-` included.
  */
+export type Conditional = "none" | "test" | "both";
+
 export interface Segment {
   words: WordToken[];
   arith: boolean;
-  /** The segment starts after an `&&`, `||`, `!` or paren inside an open `[[ ]]`, so its words are test operands. */
-  conditional: boolean;
+  /**
+   * The segment starts after an `&&`, `||`, `!` or paren inside an open `[[ ]]`: `test` when its words are test
+   * operands, `both` when that `[[` may also be a command, so they are read both ways.
+   */
+  conditional: Conditional;
   redirects: string[];
   targets: WordToken[];
   bodies: string[];
@@ -83,9 +88,9 @@ export function mayWriteRunTimeName(tokens: readonly Token[]): boolean {
 
 export function segments(tokens: readonly Token[]): Segment[] {
   const out: Segment[] = [];
-  let segment: Segment = { words: [], arith: false, conditional: false, redirects: [], targets: [], bodies: [] };
+  let segment: Segment = { words: [], arith: false, conditional: "none", redirects: [], targets: [], bodies: [] };
   let afterOpen = false;
-  let inConditional = false;
+  let inConditional: Conditional = "none";
   for (const t of tokens) {
     if (t.type === "word") segment.words.push(t);
     if (t.type === "word" && !t.quoted) inConditional = conditionalAfter(t, segment, inConditional);
@@ -103,20 +108,28 @@ export function segments(tokens: readonly Token[]): Segment[] {
 /**
  * `[[` is a keyword only at a command's start or after reserved words, so only there does it open a conditional.
  * After a precommand modifier (`command`, `builtin`, `noglob`, `-`) or an assignment it is an ordinary word, and
- * the segments after it are commands; its own operands still read as arithmetic through `splitCommand`.
+ * the segments after it are commands; its own operands still read as arithmetic through `splitCommand`. bash's
+ * `time -p [[` is a conditional, but zsh's `time` takes no options and runs `-p` as the command, so after `time`
+ * and option-like words the segments after it are read both ways.
  */
-function conditionalAfter(word: WordToken, segment: Segment, open: boolean): boolean {
-  if (word.value === "[[") return open || keywordPosition(segment.words.slice(0, segment.words.indexOf(word)));
-  return word.value === "]]" ? false : open;
+function conditionalAfter(word: WordToken, segment: Segment, open: Conditional): Conditional {
+  if (word.value === "]]") return "none";
+  if (word.value !== "[[" || open !== "none") return open;
+  const before = segment.words.slice(0, segment.words.indexOf(word));
+  if (keywordPosition(before)) return "test";
+  return timedWithOptions(before) ? "both" : "none";
 }
 
-/** Every word before the `[[` is a reserved word, or an option of `time` (`time -p --`). */
+/** Every word before the `[[` is a reserved word. */
 function keywordPosition(before: WordToken[]): boolean {
-  return before.every((w, i) => !w.quoted && (CONDITIONAL_OPENERS.has(w.value) || timeOption(w.value, before[i - 1]?.value)));
+  return before.every((w) => !w.quoted && CONDITIONAL_OPENERS.has(w.value));
 }
 
-function timeOption(value: string, previous: string | undefined): boolean {
-  return (value === "-p" || value === "--") && (previous === "time" || previous === "-p");
+/** Reserved words, then `time`, then only option-like words (`time -p --`). */
+function timedWithOptions(before: WordToken[]): boolean {
+  const at = before.map((w) => !w.quoted && w.value === "time").lastIndexOf(true);
+  const options = before.slice(at + 1);
+  return at >= 0 && options.length > 0 && keywordPosition(before.slice(0, at)) && options.every((w) => !w.quoted && w.value.startsWith("-"));
 }
 
 function addRedirect(segment: Segment, t: RedirectToken): void {
@@ -130,7 +143,8 @@ function segmentMayWrite(segment: Segment): boolean {
   const { words, arith, targets } = segment;
   if (arith) return [...words, ...targets].some(isRunTime);
   if (expandedTexts(segment).some(holdsRunTimeWrite)) return true;
-  if (segment.conditional) return testMayWrite(words);
+  if (segment.conditional === "test") return testMayWrite(words);
+  if (segment.conditional === "both" && testMayWrite(words)) return true;
   const { command, args } = splitCommand(words);
   return command ? commandMayWrite(command, args) : false;
 }
