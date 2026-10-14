@@ -25,6 +25,26 @@ returns the changes outside it, pairing claims by `taskId#slice` and then by pos
 `illegalEdgeError` returns the `IllegalPhaseEdgeError` a write should throw for the first
 one, or `undefined`. Neither logs.
 
+## Pure ledger operations
+
+Queries over a `Ledger`, none of which reads a file or the clock:
+
+- `heldClaims` (every claim short of `done`), `laneClaims` (claims with an agent at work) and
+  `ledgerImplementers(ledger, seat)`;
+- `slotMismatch(ledger, live)`, the flag for a count more than `SLOT_MISMATCH_TOLERANCE` (3) ahead
+  of its live agents;
+- `isStalled(claim, now)`: a stall reason, or past the phase's `PHASE_TIMEOUT_MS`;
+- `readySlices(ledger, held?, stack?)`: queued slices whose dependencies are done or in
+  `slicesReleased`, with an optional `StackPredicate` that admits one unmet dependency;
+- `claimKey`, `sameClaim` and `addClaim`, which refuses a second claim on a held `(task, slice)`.
+
+`applyActions(ledger, actions, now)` folds a tick's actions into the next ledger. It reads the
+`update`, `add`, `ladder`, `brake` and `release` kinds and passes `spawn`, `retire` and `register`
+through, so a product's own action union, whose side-effect kinds carry product types, is
+assignable to `LedgerAction`. A phase change or a new agent restarts `phaseAt`; a new stall stamps
+`stalledAt` once. `firstCode` picks the stall code of highest precedence, and `parkUpdate` builds
+the `update` that parks a claim under its code's exception class.
+
 ## JSON parse and export
 
 ```ts

@@ -40,3 +40,20 @@ export {
   type CameraStation,
   type LayoutBox,
 } from "./camera.js";
+export {
+  BEAT_FUNCTIONS,
+  BEAT_MODES,
+  CHIP_KINDS,
+  CLOSE_TYPES,
+  MAX_CODE_LINES,
+  OFF_MAP_ACTIONS,
+  ScriptSchema,
+  beatCues,
+  spokenWordIndex,
+  type ScriptBeat,
+  type ScriptChapter,
+  type ScriptV1,
+  type ScriptVisual,
+} from "./script-schema.js";
+export { deriveEvalView, toMapBeats, type EvalBeat, type StateChange } from "./eval-view.js";
+export { migrateTourV0, type MigrateOptions, type TourProbe, type TourV0 } from "./migrate.js";
