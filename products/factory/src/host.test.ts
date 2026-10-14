@@ -39,16 +39,20 @@ const approval = defineWorkflow({
   },
 });
 
-const deps: CliDeps = { workflows: [approval], routes, host: { gatePollMs: 10 }, presence: async () => undefined };
+const deps: CliDeps = { workflows: [approval], routes, host: { gatePollMs: 10 }, presence: async () => "0b6f2c1e-6f1d-4c3a-9e1b-2d4c6a8e0f13" };
 
 async function cli(dbPath: string, ...argv: string[]): Promise<{ code: number; out: string; err: string }> {
   return cliWithEnv(dbPath, {}, ...argv);
 }
 
 async function cliWithEnv(dbPath: string, env: NodeJS.ProcessEnv, ...argv: string[]): Promise<{ code: number; out: string; err: string }> {
+  return cliWithDeps(dbPath, env, deps, ...argv);
+}
+
+async function cliWithDeps(dbPath: string, env: NodeJS.ProcessEnv, cliDeps: CliDeps, ...argv: string[]): Promise<{ code: number; out: string; err: string }> {
   let out = "";
   let err = "";
-  const code = await runCli(["--db", dbPath, ...argv], { stdout: (t) => (out += t), stderr: (t) => (err += t), env }, deps);
+  const code = await runCli(["--db", dbPath, ...argv], { stdout: (t) => (out += t), stderr: (t) => (err += t), env }, cliDeps);
   return { code, out, err };
 }
 
@@ -145,8 +149,9 @@ describe("titan-factory resume and gate resolve", () => {
   it("gate resolve from an agent-chat agent's shell is refused and the gate stays pending", async () => {
     const dbPath = dbFile();
     const runId = await pausedRun(dbPath);
+    const declined: CliDeps = { ...deps, presence: async () => undefined };
 
-    const { code, err } = await cliWithEnv(dbPath, { AGENT_CHAT_AGENT_ID: "agent-1" }, "gate", "resolve", runId, "approve-publish", "--json", '{"approve":true}');
+    const { code, err } = await cliWithDeps(dbPath, { AGENT_CHAT_AGENT_ID: "agent-1" }, declined, "gate", "resolve", runId, "approve-publish", "--json", '{"approve":true}');
 
     expect(code).toBe(EXIT.FAILURE);
     expect(err).toContain("refused a resolution by coordinator");

@@ -26,7 +26,7 @@ async function cli(argv: string[], ports: FakeAuditPorts = fakeAuditPorts(), db 
   let out = "";
   let err = "";
   const io: CliIo = { stdout: (text) => void (out += text), stderr: (text) => void (err += text), env: {} };
-  const deps = { workflows: [measurementAuditWorkflow()], routes: auditRoutes(ports), host: { gatePollMs: 5 }, presence: async () => undefined };
+  const deps = { workflows: [measurementAuditWorkflow()], routes: auditRoutes(ports), host: { gatePollMs: 5 }, presence: async () => "0b6f2c1e-6f1d-4c3a-9e1b-2d4c6a8e0f13" };
   const code = await runCli(["--db", db, ...argv], io, deps);
   return { code, out, err };
 }

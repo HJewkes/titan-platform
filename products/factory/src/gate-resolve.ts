@@ -37,9 +37,9 @@ export async function resolveGate(host: FactoryHost, io: ResolveIo, runId: strin
   const gateId = pendingGateId(host, runId, stepId);
   const evidenceFor = (resolver: GateResolver) => (sources && gateId ? readCoordinatorEvidence(host, sources, gateId, payload, resolver) : Promise.resolve(undefined));
   const resolution = await cliResolver(io.env, gateId, payload, presence, evidenceFor);
-  if (typeof resolution === "string") {
-    io.stderr(`error: ${resolution}\n`);
-    return EXIT.USAGE;
+  if ("refusal" in resolution) {
+    io.stderr(`error: ${resolution.refusal}\n`);
+    return resolution.exit;
   }
   const { resolver, evidence } = resolution;
   if (evidence && gateId) host.gates.resolve(gateId, payload, resolver, evidence);
@@ -73,12 +73,19 @@ interface Resolution {
   evidence?: CoordinatorEvidence;
 }
 
+/** A resolve refused before the store sees it, so the gate stays pending. */
+interface Refusal {
+  refusal: string;
+  exit: number;
+}
+
 /**
- * A shell agent-chat launched (AGENT_CHAT_AGENT_ID) is owner-terminal only with a presence proof, because the owner's
- * `!` commands inherit that marker; without one it is the coordinator named by AGENT_CHAT_NAME. An answer the factory
- * allows a coordinator (a stuck-behind retry), or one fresh evidence justifies (TP-1904), skips the dialog, so it never
- * reaches the owner's screen. Any other shell stays owner-terminal without a dialog until owner question Q1 is answered.
- * CLAUDECODE is ignored: `!` commands set it too. Returns an error message when the gate's fields cannot be shown safely in the dialog.
+ * Owner decision 2026-10-06 (item 39, tc-108): every shell is owner-terminal only with a presence proof, so unsetting or
+ * emptying AGENT_CHAT_AGENT_ID forges nothing. A shell agent-chat launched is otherwise the coordinator named by
+ * AGENT_CHAT_NAME: an answer the factory allows a coordinator (a stuck-behind retry), or one fresh evidence justifies
+ * (TP-1904), skips the dialog, so it never reaches the owner's screen, and with no proof the store refuses it. Any other
+ * shell with no proof is refused here. With no gate pending the coordinator goes to the store, which finds no gate to
+ * resolve. CLAUDECODE is ignored: `!` commands set it too.
  */
 async function cliResolver(
   env: NodeJS.ProcessEnv,
@@ -86,16 +93,20 @@ async function cliResolver(
   payload: Record<string, unknown>,
   presence: OwnerPresence,
   evidenceFor: (coordinator: GateResolver) => Promise<CoordinatorEvidence | undefined>,
-): Promise<Resolution | string> {
-  if (!env.AGENT_CHAT_AGENT_ID) return { resolver: ownerTerminal() };
-  const coordinator = coordinatorOf(env.AGENT_CHAT_NAME || env.AGENT_CHAT_AGENT_ID);
-  if (gateId === undefined || matchesAllowance(FACTORY_ANSWER_ALLOWANCES, gateId, coordinator, payload)) return { resolver: coordinator };
-  const evidence = await evidenceFor(coordinator);
-  if (evidence !== undefined) return { resolver: coordinator, evidence };
+): Promise<Resolution | Refusal> {
+  const marked = Boolean(env.AGENT_CHAT_AGENT_ID);
+  const coordinator = coordinatorOf(env.AGENT_CHAT_NAME || env.AGENT_CHAT_AGENT_ID || userInfo().username);
+  if (gateId === undefined) return { resolver: coordinator };
+  if (marked) {
+    if (matchesAllowance(FACTORY_ANSWER_ALLOWANCES, gateId, coordinator, payload)) return { resolver: coordinator };
+    const evidence = await evidenceFor(coordinator);
+    if (evidence !== undefined) return { resolver: coordinator, evidence };
+  }
   const reason = presenceReason(gateId, payload);
-  if (reason === undefined) return `gate ${JSON.stringify(gateId)} or its decision or headSha has an unexpected shape; refusing to ask for owner presence`;
-  const owner = await ownerResolver(env, reason, presence);
-  return { resolver: typeof owner === "string" ? coordinator : owner };
+  if (reason === undefined) return { exit: EXIT.USAGE, refusal: `gate ${JSON.stringify(gateId)} or its decision or headSha has an unexpected shape; refusing to ask for owner presence` };
+  const proof = await presence(reason);
+  if (proof) return { resolver: { ...ownerTerminal(), confirmEvent: proof } };
+  return marked ? { resolver: coordinator } : { exit: EXIT.FAILURE, refusal: "owner presence not confirmed; the gate stays pending" };
 }
 
 const ownerTerminal = (): GateResolver => ({ class: "owner-terminal", id: userInfo().username, channel: "factory-cli" });
@@ -104,7 +115,8 @@ const coordinatorOf = (id: string): GateResolver => ({ class: "coordinator", id,
 /**
  * The owner-only part of `cliResolver`, for an action no coordinator may take: no allowance and no evidence admit one.
  * A shell agent-chat launched (AGENT_CHAT_AGENT_ID) is the owner only with a presence proof for `reason`; without one
- * it is refused. Any other shell is owner-terminal without a dialog, as for gates. Returns the refusal as a string.
+ * it is refused. Any other shell is owner-terminal without a dialog, unlike a gate resolve, which item 39 makes ask in
+ * every shell. Returns the refusal as a string.
  */
 export async function ownerResolver(env: NodeJS.ProcessEnv, reason: string, presence: OwnerPresence): Promise<GateResolver | string> {
   const owner = ownerTerminal();

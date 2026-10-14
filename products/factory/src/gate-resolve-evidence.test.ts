@@ -18,6 +18,7 @@ const HEAD = fakeSha("head");
 const MERGE_SHA = fakeSha("merge");
 const TIP = fakeSha("tip");
 const AGENT_SHELL = { AGENT_CHAT_AGENT_ID: "agent-1", AGENT_CHAT_NAME: "tc-synthetic" };
+const PROOF = "0b6f2c1e-6f1d-4c3a-9e1b-2d4c6a8e0f13";
 const AUTO: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: true, seat: "synthetic" };
 const OwnerAck = z.object({ decision: z.literal("acknowledged"), mergeSha: z.string() });
 const NOW = Date.parse("2026-10-07T18:00:00Z");
@@ -115,9 +116,9 @@ function mergedPr(gh: FakeGitHub): void {
   Object.assign(gh.pr(1), { state: "closed", merged: true, mergeSha: MERGE_SHA });
 }
 
-function presenceStub(): { presence: OwnerPresence; reasons: string[] } {
+function presenceStub(proof?: string): { presence: OwnerPresence; reasons: string[] } {
   const reasons: string[] = [];
-  return { reasons, presence: async (reason) => (reasons.push(reason), undefined) };
+  return { reasons, presence: async (reason) => (reasons.push(reason), proof) };
 }
 
 const STEPS: Record<Scenario["gate"], string> = { merge: "approve-merge", "sent-back": "sh-sent-back", "ci-failed": "ci-failed", "main-red": "main-red", "main-frozen": "main-frozen" };
@@ -255,7 +256,7 @@ describe("coordinator resolve of an approve-merge gate on fresh evidence", () =>
     const world = await paused({ gate: "merge" });
     const io = { stdout: () => undefined, stderr: () => undefined, env: {} };
 
-    await resolveGate(world.host, io, world.runId, "approve-merge", JSON.stringify(MERGE), presenceStub().presence, world.sources);
+    await resolveGate(world.host, io, world.runId, "approve-merge", JSON.stringify(MERGE), presenceStub(PROOF).presence, world.sources);
 
     expect(world.gh.calls).toEqual([]);
     expect(world.host.gates.get(`${world.runId}/approve-merge`)).toMatchObject({ resolvedBy: { class: "owner-terminal" }, resolvedEvidence: undefined });
