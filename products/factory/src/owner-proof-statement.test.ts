@@ -154,8 +154,28 @@ describe("signReason", () => {
   });
 
   it("re-checks items it is handed, so a malformed head cannot reach the dialog", () => {
-    const item = { ...mergeItem(1), headSha: `${"a".repeat(39)}\n`, payload: { decision: "merge", headSha: `${"a".repeat(39)}\n` } };
+    const bad = `${"a".repeat(39)}\n`;
+    const items = [{ ...mergeItem(1), headSha: bad, payload: { decision: "merge", headSha: bad } }, mergeItem(2)];
 
-    expect(() => signReason([item], itemsDigest([item]))).toThrow(/valid proof item/);
+    expect(() => signReason(items, itemsDigest(items))).toThrow(/valid proof item/);
+  });
+
+  it("names the gate for a single no-PR gate answered merge at the ref's head, never only the ref", () => {
+    const item = gateItem(noPrRow, { decision: "merge", headSha: HEAD }, { repo: "x/harmless", pr: 1, headSha: HEAD });
+
+    expect(signReason([item], itemsDigest([item]))).toBe(`resolve gate run-1/main-red-ack: merge at ${HEAD}`);
+  });
+
+  it("names a PR once, with its count, when two gates ask about it at one head", () => {
+    const second = gateItem(row({ gateId: "run-1/approve-merge:2", stepId: "approve-merge:2" }), { decision: "merge", headSha: HEAD });
+    const items = [gateItem(row(), { decision: "merge", headSha: HEAD }), second];
+
+    expect(signReason(items, itemsDigest(items))).toMatch(/: HJewkes\/titan-platform#837@aaaaaaa \(2 gates\)$/);
+  });
+
+  it.each([["../.."], ["owner/.."], ["../repo"]])("refuses the path-like repo %s in a batch", (repo) => {
+    const items = [{ ...mergeItem(1), repo }, mergeItem(2)];
+
+    expect(() => signReason(items, itemsDigest(items))).toThrow(/cannot be shown safely/);
   });
 });

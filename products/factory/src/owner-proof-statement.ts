@@ -7,17 +7,17 @@ import { ItemSchema, itemsDigest, StatementSchema, type ProofItem, type Statemen
 const WINDOW_S = 240;
 const MAX_REASON = 256;
 const DIGEST = /^[0-9a-f]{64}$/;
-/** A GitHub owner/name; anything else could break a line or hide text in the dialog. */
-const REPO = /^[A-Za-z0-9._-]{1,100}\/[A-Za-z0-9._-]{1,100}$/;
+/** A GitHub owner/name; anything else could break a line, hide text or read as a path in the dialog. */
+const REPO = /^[A-Za-z0-9-]{1,39}\/(?!\.+$)[A-Za-z0-9._-]{1,100}$/;
 
 /** The PR and head the owner names for a gate that carries none of its own. */
-export interface GateRef {
+interface GateRef {
   repo: string;
   pr: number;
   headSha: string;
 }
 
-export interface GateStatementInput {
+interface GateStatementInput {
   items: readonly ProofItem[];
   aud: string;
   keyId: string;
@@ -27,7 +27,7 @@ export interface GateStatementInput {
   nonce: string;
 }
 
-export interface BuiltStatement {
+interface BuiltStatement {
   statement: Statement;
   bytes: Buffer;
   statementB64: string;
@@ -70,19 +70,20 @@ export function buildGateStatement({ items, aud, keyId, iat, nonce }: GateStatem
 }
 
 /**
- * The Touch ID dialog text, at most 256 characters, for exactly the items `digest` covers. Only a set of plain merges at
- * their own heads reads as a batch: the count, the digest prefix and as many PRs as fit. A single other answer reads as
- * the local resolve dialog does, naming its gate; a batch holding one throws, as does any field that is unsafe to show.
+ * The Touch ID dialog text, at most 256 characters, for exactly the items `digest` covers. A single item always reads as
+ * the local resolve dialog does, naming its gate, since the server never checks an owner-given ref on a single item. Two
+ * or more read as a batch (the count, the digest prefix and as many PRs as fit) only when every item is a plain merge at
+ * its own head; any other batch throws, as does any field that is unsafe to show.
  */
 export function signReason(items: readonly ProofItem[], digest: string): string {
   if (!DIGEST.test(digest)) throw new Error("digest is not 64 hex");
   const checked = items.map(checkedItem);
   if (checked.length === 0) throw new Error("no items to sign");
   if (itemsDigest(checked) !== digest) throw new Error("digest does not match the items");
-  if (checked.every(isHeadMerge)) return batchReason(checked, digest);
   const [only] = checked;
   if (checked.length === 1 && only !== undefined) return singleReason(only);
-  throw new Error("a batch only merges each gate at its own head");
+  if (!checked.every(isHeadMerge)) throw new Error("a batch only merges each gate at its own head");
+  return batchReason(checked, digest);
 }
 
 function checkedItem(item: ProofItem): ProofItem {
@@ -101,8 +102,8 @@ function singleReason(item: ProofItem): string {
 }
 
 function batchReason(items: readonly ProofItem[], digest: string): string {
-  const parts = items.map(prLabel);
-  let reason = `Approve ${items.length} gate${items.length === 1 ? "" : "s"}, batch ${digest.slice(0, 16)}:`;
+  const parts = labelsOnce(items.map(prLabel));
+  let reason = `Approve ${items.length} gates, batch ${digest.slice(0, 16)}:`;
   for (const [index, part] of parts.entries()) {
     const left = parts.length - index - 1;
     const candidate = `${reason} ${part}`;
@@ -110,6 +111,13 @@ function batchReason(items: readonly ProofItem[], digest: string): string {
     reason = candidate;
   }
   return reason;
+}
+
+/** Two gates on one PR at one head name it once, with their count, so the dialog never repeats a label. */
+function labelsOnce(labels: readonly string[]): string[] {
+  const counts = new Map<string, number>();
+  for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1);
+  return [...counts].map(([label, count]) => (count === 1 ? label : `${label} (${count} gates)`));
 }
 
 const moreSuffix = (left: number): string => (left > 0 ? ` +${left} more` : "");
