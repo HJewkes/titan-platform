@@ -14,7 +14,9 @@ the `fix-proof` bin does the git and vitest work.
 
 - `fix-proof exec --side base|head --out <dir> --base <mergeBase> --head <sha>` builds and tests
   one side and writes encoded reports (`base.report` and `base-rerun.report`, or `head.report`)
-  to `<dir>`. The base side installs and builds before any head file is overlaid. With
+  to `<dir>`. The base side installs and builds before any head file is overlaid. The install,
+  build and test defaults follow the tree's lockfile: pnpm for `pnpm-lock.yaml`, npm for a lone
+  `package-lock.json`. With
   `--sandbox-user <name>`, each base-side vitest run goes through `sudo -n` into a fresh PID
   namespace as that user, with `no_new_privs` and no capabilities, so no process a head test
   starts outlives the run or writes the runner's files. A sandbox that cannot be set up writes
