@@ -5,7 +5,12 @@ base with the non-test changes removed and pass at head. Pure functions plan and
 the `fix-proof` bin does the git and vitest work.
 
 - `planFixProof({ nameStatus, baseConfig, headConfig })`: tests to run, carried support files,
-  deleted tests and overlay removals, with globs from the base config only.
+  deleted tests and overlay removals, with globs from the base config only. It also lists
+  mutation specs (`mutations`) and every non-test path (`source`); `testOnlyOf(plan)` is true
+  when `source` is empty.
+- `parseMutationSpec(text)` and `checkMutation(mutation, baseText, config)`: a strict
+  `*.mutations.json` spec of 1 to 5 named find/replace mutations with the tests each must fail,
+  and the merge-base check that each `find` occurs exactly once in a file that is not test material.
 - `classifyReports({ selected, base, head })`: per-test `reproduces`, `passes-on-base`,
   `new-api`, `fails-on-head` or `not-run`, and a verdict of `reproduced`, `unproven`,
   `vacuous`, `no-tests` or `error`.
