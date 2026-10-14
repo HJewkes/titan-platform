@@ -92,6 +92,8 @@ export interface LandOptions {
   askApproval?: AskApproval;
   /** Read at each base check; true lets a merge land in a base that is not the repo's default branch. Absent, only the default branch. */
   featureBase?: () => boolean;
+  /** The base the merge evidence at this head was read on; one that differs from the live base is re-read before the decision. */
+  evidenceBase?: (headSha: string) => string | undefined;
 }
 
 export type LandOutcome =
@@ -269,20 +271,55 @@ async function onSettled(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot,
  * reads CI again. A refused base never reaches the merge step, and the wait neither fails nor ends the run.
  */
 async function allowedBase(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState, options: LandOptions): Promise<BaseCheck | undefined> {
-  const checkInput: BaseCheckInput = { repo: input.repo, pr: input.pr, featureBase: options.featureBase?.() ?? false };
-  const check = await step(ctx, roundId("base-check", state.round, state.baseChecks++), checkInput, BaseCheckResult);
+  const check = await baseCheck(ctx, input, state, options);
   if (check.allowed && check.base !== state.trustedOn) return untrust(state, ci.headSha);
   if (check.allowed) return check;
-  const waitInput: BaseWaitInput = { repo: input.repo, pr: input.pr, base: check.base, headSha: ci.headSha };
-  await step(ctx, roundId("base-wait", state.round, state.baseWaits++), waitInput, BaseWaitResult);
+  await baseWait(ctx, input, ci.headSha, check, state);
   return undefined;
+}
+
+async function baseCheck(ctx: WorkflowContext, input: LandInput, state: LandState, options: LandOptions): Promise<BaseCheck> {
+  const checkInput: BaseCheckInput = { repo: input.repo, pr: input.pr, featureBase: options.featureBase?.() ?? false };
+  return step(ctx, roundId("base-check", state.round, state.baseChecks++), checkInput, BaseCheckResult);
+}
+
+async function baseWait(ctx: WorkflowContext, input: LandInput, headSha: string, check: BaseCheck, state: LandState): Promise<void> {
+  const waitInput: BaseWaitInput = { repo: input.repo, pr: input.pr, base: check.base, headSha };
+  await step(ctx, roundId("base-wait", state.round, state.baseWaits++), waitInput, BaseWaitResult);
+}
+
+/**
+ * The base the merge would be decided on, checked before the decision so a refused base waits with no gate open. Undefined
+ * sends land back to CI: after the wait, or once a base the rules were not read on is allowed and the rules are re-read.
+ * A record that continues past CI with no base check predates this one and replays without it.
+ */
+async function decisionBase(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState, options: LandOptions): Promise<string | undefined> {
+  const next = ctx.historyNext();
+  if (next !== undefined && !next.startsWith("base-check")) return ci.baseRef ?? state.rules.base;
+  const check = await baseCheck(ctx, input, state, options);
+  if (!check.allowed) return void (await baseWait(ctx, input, ci.headSha, check, state));
+  if (check.base === state.rules.base) return check.base;
+  state.rules = await step(ctx, roundId("land-rules", state.round, ++state.rulesReads), { repo: input.repo, pr: input.pr }, LandRulesResult);
+  return undefined;
+}
+
+/**
+ * Settle waits and retargets re-read the evidence, and so does evidence read on another base. That last trigger is newer
+ * than some records: one that goes straight on to `merge-policy` was decided without it, so a replay skips it.
+ */
+async function refreshEvidence(ctx: WorkflowContext, headSha: string, base: string, state: LandState, options: LandOptions): Promise<void> {
+  const evidenceBase = options.evidenceBase?.(headSha);
+  const next = ctx.historyNext();
+  const elsewhere = evidenceBase !== undefined && evidenceBase !== base && (next === undefined || !next.startsWith("merge-policy"));
+  if (state.hold.settle?.headSha === headSha || state.retargeted === headSha || elsewhere) await options.unsettled?.refresh(ctx, headSha);
+  state.retargeted = undefined;
 }
 
 /** The payload must name the head shown, so an approval can never carry over to a head the human did not see. */
 async function approve(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState, options: LandOptions): Promise<LandOutcome | undefined> {
-  if (state.hold.settle?.headSha === ci.headSha || state.retargeted === ci.headSha) await options.unsettled?.refresh(ctx, ci.headSha);
-  state.retargeted = undefined;
-  const base = ci.baseRef ?? state.rules.base;
+  const base = await decisionBase(ctx, input, ci, state, options);
+  if (base === undefined) return undefined;
+  await refreshEvidence(ctx, ci.headSha, base, state, options);
   const decided = await decideMerge(ctx, input, ci, state, options);
   if (decided.outcome === "deny") return stopped("merge-denied", ci.headSha, decided.reason);
   if (decided.outcome === "allow") return void trust(state, ci.headSha, "policy", base);
