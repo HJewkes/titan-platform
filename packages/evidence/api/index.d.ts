@@ -42,6 +42,52 @@ declare function quoteInRange(fileLines: readonly string[], range: Omit<LineRang
 /** Checks a citation's path, range, visibility and quote. Rejections carry a machine-readable reason. */
 declare function verifyCitation(source: LineSource, citation: Citation, options?: VerifyOptions): CitationCheck;
 
+/** The commits an anchor resolves against. `head` and `base` are full 40-hex commit ids. */
+interface AnchorPins {
+    repo: string;
+    head: string;
+    base?: string;
+}
+/** A line range in one file at one pinned commit: `head/<path>#L10-L20` or `base/<path>#L7`. */
+interface RevisionAnchor extends LineRange {
+    side: "head" | "base";
+    repo: string;
+    rev: string;
+}
+/** One end of a diff anchor: `L` is a line in the base file, `R` a line in the head file. */
+interface DiffEndpoint {
+    side: "L" | "R";
+    line: number;
+    rev: string;
+}
+/** A range in a base-to-head diff of one file: `diff/<path>#L84-R90`. */
+interface DiffAnchor {
+    side: "diff";
+    repo: string;
+    path: string;
+    start: DiffEndpoint;
+    end: DiffEndpoint;
+}
+type Anchor = RevisionAnchor | DiffAnchor;
+type AnchorRejection = "bad-syntax" | "bad-path" | "bad-range" | "bad-pin";
+type AnchorParse = {
+    ok: true;
+    anchor: Anchor;
+} | {
+    ok: false;
+    reason: AnchorRejection;
+    detail: string;
+};
+/** True for a full, lowercase 40-hex git object id; abbreviations and ref names are not pins. */
+declare function isFullSha(rev: string): boolean;
+/**
+ * Parses `head/<path>#L10-L20`, `base/<path>#L7` or `diff/<path>#L84-R90` against the pinned commits.
+ * Refuses a reversed range, a path that is absolute, climbs with `..` or holds a backslash, and an
+ * anchor whose side has no 40-hex pin. A diff/ anchor needs both pins. Whether the lines exist is
+ * the caller's check, by verifyCitation over a LineSource at the anchor's revision.
+ */
+declare function parseAnchor(text: string, pins: AnchorPins): AnchorParse;
+
 /** True when two ranges share a path and at least one line. Touching ranges (10-12, 12-14) overlap. */
 declare function rangesOverlap(a: LineRange, b: LineRange): boolean;
 interface GroupOptions<T> {
@@ -97,4 +143,4 @@ declare function scoreControls(expected: readonly LabeledAnswer[], answered: rea
 /** A deterministic generator of floats in [0, 1) from a string or number seed (mulberry32). */
 declare function seededRandom(seed: string | number): () => number;
 
-export { type Citation, type CitationCheck, type CitationRejection, type ControlScore, type GroupOptions, type LabelScore, type LabeledAnswer, type LineRange, type LineSource, type Placement, type Planted, type ShownLines, type VerifyOptions, groupByOverlap, lineSourceFromTexts, pickControls, placeControls, quoteFragments, quoteInRange, rangesOverlap, scoreControls, seededRandom, splitLines, verifyCitation };
+export { type Anchor, type AnchorParse, type AnchorPins, type AnchorRejection, type Citation, type CitationCheck, type CitationRejection, type ControlScore, type DiffAnchor, type DiffEndpoint, type GroupOptions, type LabelScore, type LabeledAnswer, type LineRange, type LineSource, type Placement, type Planted, type RevisionAnchor, type ShownLines, type VerifyOptions, groupByOverlap, isFullSha, lineSourceFromTexts, parseAnchor, pickControls, placeControls, quoteFragments, quoteInRange, rangesOverlap, scoreControls, seededRandom, splitLines, verifyCitation };

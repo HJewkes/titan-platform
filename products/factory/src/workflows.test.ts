@@ -189,7 +189,7 @@ async function reviewWith(scene: ReviewScene, overrides: Partial<FactoryRouteDep
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
   let clock = 0;
-  const routes = configuredRoutes(scene.env, { port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms), spawnGate: { admit: () => undefined }, machineStop: watchReading(undefined), ...overrides });
+  const routes = configuredRoutes(scene.env, { port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms), spawnGate: { admit: () => undefined, noteReviewers: () => undefined, reviewSlots: () => undefined }, machineStop: watchReading(undefined), ...overrides });
   const workflow = defineWorkflow({ name: "review-wiring", steps: REVIEW_STEPS, run: async (ctx) => void (await reviewPhase(ctx, { repo, pr: 1, round: 0, headSha: H1 })) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [workflow], routes, gatePollMs: 5 });
   hosts.push(host);
@@ -417,7 +417,7 @@ async function fakeActiveWork(): Promise<{ port: number; calls: string[] }> {
     const command = (req.url ?? "").replace("/rpc/", "");
     calls.push(command);
     if (command === "task.done") status = "done";
-    const data = command === "task.list" ? { tasks: [{ id: "TP-1", status }] } : {};
+    const data = command === "task.list" ? { tasks: [{ id: "TP-1", status }] } : command === "source.list" ? { sources: [] } : {};
     req.resume().on("end", () => res.setHeader("content-type", "application/json").end(JSON.stringify({ ok: true, data })));
   });
   servers.push(server);
@@ -461,7 +461,7 @@ describe("configuredRoutes with shepherd.agentChatBin", () => {
 
     await host.runtime.wait(runId);
 
-    expect(activeWork.calls).toEqual(["task.list", "task.list", "task.edit", "task.done"]);
+    expect(activeWork.calls).toEqual(["task.list", "task.list", "source.list", "task.list", "task.edit", "task.done"]);
     expect(readFileSync(join(dir, "calls"), "utf8")).toContain("agent retire impl-a\n");
     expect(readFileSync(join(dir, "calls"), "utf8")).not.toContain("--force");
   });
