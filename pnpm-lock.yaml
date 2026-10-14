@@ -384,6 +384,9 @@ importers:
         specifier: workspace:^
         version: link:../agent-dispatch
     devDependencies:
+      '@titan-design/egress-scan':
+        specifier: workspace:^
+        version: link:../egress-scan
       zod:
         specifier: ^4.4.3
         version: 4.5.4
@@ -432,6 +435,16 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/dispatch-ledger:
+    dependencies:
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../store-sqlite
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
   packages/egress-scan:
     dependencies:
       '@titan-design/fix-proof':
@@ -475,7 +488,7 @@ importers:
         specifier: workspace:^
         version: link:../code-graph
       elkjs:
-        specifier: ^0.10.0
+        specifier: 0.10.2
         version: 0.10.2
 
   packages/health:
@@ -874,9 +887,25 @@ importers:
 
   products/explainer:
     dependencies:
+      '@titan-design/agent':
+        specifier: workspace:^
+        version: link:../../packages/agent
+      '@titan-design/agent-protocol':
+        specifier: workspace:^
+        version: link:../../packages/agent-protocol
+      commander:
+        specifier: ^14.0.3
+        version: 14.0.3
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
       zod:
         specifier: ^4.4.3
         version: 4.5.4
+    devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../../packages/test-kit
 
   products/factory:
     dependencies:

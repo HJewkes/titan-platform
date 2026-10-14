@@ -17,6 +17,7 @@ import {
   checkRootLintCoversWorkspaces,
   checkScaffold,
   checkTurboBuildContract,
+  checkWorkspaceImportsDeclared,
   checkZodIsPeer,
 } from "./structure-rules.mjs";
 
@@ -59,6 +60,22 @@ function uncoveredWorkspaceRoot() {
     mkdirSync(join(root, dir), { recursive: true });
     writeFileSync(join(root, dir, "package.json"), "{}");
   }
+  return root;
+}
+
+function undeclaredImportRoot() {
+  const root = tempRoot("structure-imports-");
+  writeFileSync(join(root, "pnpm-workspace.yaml"), 'packages:\n  - "packages/*"\n');
+  const members = {
+    a: { name: "@titan-design/a", devDependencies: { "@titan-design/b": "workspace:^" } },
+    b: { name: "@titan-design/b" },
+    c: { name: "@titan-design/c" },
+  };
+  for (const [dir, pkg] of Object.entries(members)) {
+    mkdirSync(join(root, "packages", dir, "src"), { recursive: true });
+    writeFileSync(join(root, "packages", dir, "package.json"), JSON.stringify(pkg));
+  }
+  writeFileSync(join(root, "packages/a/src/x.test.ts"), 'import { b } from "@titan-design/b";\nimport { c } from "@titan-design/c";\n');
   return root;
 }
 
@@ -171,6 +188,12 @@ const cases = [
     check: checkTurboBuildContract,
     root: () => turboRoot("structure-turbo-git-", { agentGuidance: false }, { runsProcess: true }),
     message: "`packages/a` runs a process in its build config. Add a `turbo.json` that extends `//` and sets `tasks.build.cache` to false.",
+  },
+  {
+    rule: "R58 a member declares every workspace package it imports",
+    check: checkWorkspaceImportsDeclared,
+    root: undeclaredImportRoot,
+    message: "`packages/a/src/x.test.ts` imports `@titan-design/c`, which `@titan-design/a` does not declare.",
   },
   {
     rule: "R10 no lint rule at warn severity",

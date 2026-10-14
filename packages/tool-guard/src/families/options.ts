@@ -1,4 +1,5 @@
 import type { WordToken } from "../shell/lexer.js";
+import type { LongResolver } from "./long-options.js";
 
 export interface Option {
   /** `--long` or a single `-x` letter, without any attached value. */
@@ -11,8 +12,11 @@ export interface Options {
   positionals: WordToken[];
 }
 
-/** Splits a command's words into options with their values and positionals; `values` names options that take one. */
-export function readOptions(args: WordToken[], values: ReadonlySet<string>): Options {
+/**
+ * Splits a command's words into options with their values and positionals; `values` names options that take one.
+ * `resolve` maps a long flag to the option it names, as for an abbreviation, before its value is looked up.
+ */
+export function readOptions(args: WordToken[], values: ReadonlySet<string>, resolve: LongResolver = (flag) => flag): Options {
   const out: Options = { opts: [], positionals: [] };
   for (let i = 0; i < args.length; i++) {
     const word = args[i] as WordToken;
@@ -21,21 +25,27 @@ export function readOptions(args: WordToken[], values: ReadonlySet<string>): Opt
       out.positionals.push(...args.slice(i + 1));
       break;
     }
-    if (v.startsWith("--")) i += readLong(word, args[i + 1], values, out.opts);
+    if (v.startsWith("--")) i += readLong(word, args[i + 1], { values, resolve }, out.opts);
     else if (v.startsWith("-") && v.length > 1) i += readShort(word, args[i + 1], values, out.opts);
     else out.positionals.push(word);
   }
   return out;
 }
 
-function readLong(word: WordToken, next: WordToken | undefined, values: ReadonlySet<string>, opts: Option[]): number {
+interface LongSpec {
+  values: ReadonlySet<string>;
+  resolve: LongResolver;
+}
+
+function readLong(word: WordToken, next: WordToken | undefined, spec: LongSpec, opts: Option[]): number {
   const eq = word.value.indexOf("=");
   if (eq > 0) {
-    opts.push({ flag: word.value.slice(0, eq), value: { ...word, value: word.value.slice(eq + 1) } });
+    opts.push({ flag: spec.resolve(word.value.slice(0, eq)), value: { ...word, value: word.value.slice(eq + 1) } });
     return 0;
   }
-  const takes = values.has(word.value);
-  opts.push({ flag: word.value, value: takes ? (next ?? null) : null });
+  const flag = spec.resolve(word.value);
+  const takes = spec.values.has(flag);
+  opts.push({ flag, value: takes ? (next ?? null) : null });
   return takes ? 1 : 0;
 }
 

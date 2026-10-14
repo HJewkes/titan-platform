@@ -1,4 +1,5 @@
-import type { GraphNode } from "../types.js";
+import type { GraphEdge, GraphNode } from "../types.js";
+import { dependencyGraphMetrics, type PackageDependencyRow } from "./dependency-graph-metrics.js";
 import { keepNode, lookupMetric, type ReportContext } from "./graph-report-sections.js";
 import { bucketFilesByPackage, type PackageRoot } from "./package-buckets.js";
 
@@ -62,6 +63,8 @@ export interface ComplexityRollup {
 export interface QualitySection {
   /** SCBench erosion and the CC distribution, over named functions in kept files. */
   complexity: ComplexityRollup;
+  /** SCBench CY, PC and ENT over each package's calls, and its cyclic import mass split value and type-only. */
+  dependencies: PackageDependencyRow[];
 }
 
 const ratio = (part: number, whole: number): number => (whole === 0 ? 0 : part / whole);
@@ -128,24 +131,31 @@ export function complexityDistribution(
 /**
  * The SCBench rollups for the report's `quality` section. Symbols stand in for SCBench's
  * callables, so a function with no symbol node of its own (a nested closure, an unexported
- * helper the extractor does not name) is not counted.
+ * helper the extractor does not name) is not counted. The same callables are the call graph's
+ * nodes, and kept files the import graph's.
  */
 export function qualitySection(
-  symbolNodes: readonly GraphNode[],
+  nodes: readonly GraphNode[],
   ctx: ReportContext,
   packages: readonly PackageRoot[],
+  edges: readonly GraphEdge[],
 ): QualitySection {
-  return { complexity: complexityDistribution(measuredCallables(symbolNodes, ctx), packages) };
+  const callables = measuredCallables(nodes, ctx);
+  const graphNodes = nodes.filter((n) => (n.kind === "file" ? keepNode(ctx, n.id) : callables.has(n)));
+  return {
+    complexity: complexityDistribution([...callables.values()], packages),
+    dependencies: dependencyGraphMetrics(graphNodes, edges, packages),
+  };
 }
 
-function measuredCallables(symbolNodes: readonly GraphNode[], ctx: ReportContext): CallableComplexity[] {
-  const out: CallableComplexity[] = [];
-  for (const n of symbolNodes) {
+function measuredCallables(nodes: readonly GraphNode[], ctx: ReportContext): Map<GraphNode, CallableComplexity> {
+  const out = new Map<GraphNode, CallableComplexity>();
+  for (const n of nodes) {
     const fileId = n.parentId;
     if (n.kind !== "symbol" || !fileId || !keepNode(ctx, fileId)) continue;
     const cyclomatic = lookupMetric(ctx, "symbol_cyclomatic", n.id);
     if (cyclomatic === undefined) continue;
-    out.push({
+    out.set(n, {
       fileId,
       cyclomatic,
       cognitive: lookupMetric(ctx, "symbol_cognitive", n.id) ?? 0,
