@@ -86,12 +86,14 @@ function byParent(index: TaskIndex, parent: string): { located: Located[]; notFo
   const children = childrenByParent(index);
   const seen = new Set([parent]);
   const located: Located[] = [];
-  for (let queue = [parent]; queue.length > 0; ) {
-    const next = (children.get(queue.shift() as string) ?? []).filter((hit) => !seen.has(hit.task.id));
+  const visit = (id: string): void => {
+    const next = (children.get(id) ?? []).filter((hit) => !seen.has(hit.task.id));
     for (const hit of next) seen.add(hit.task.id);
     located.push(...next);
-    queue.push(...next.map((hit) => hit.task.id));
-  }
+  };
+  visit(parent);
+  // `located` grows while it is walked, which makes this the breadth-first queue.
+  for (const hit of located) visit(hit.task.id);
   return { located, notFound: index.byId.has(parent) ? [] : [parent] };
 }
 
