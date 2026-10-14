@@ -23,8 +23,8 @@ const OPTIONS_OPERAND_RE = /^(?:-[A-Za-z]*)?options(?:\[|\+?=|$)/;
 const PRINT_TARGET_RE = /^-[A-Za-z]*v(.*)$/s;
 const OPTIONS_NAME_RE = /^options(?:\[|$)/;
 /** Characters brace expansion or filename generation reads, extendedglob's `^`, `#` and `~` included;
- * a leading `~` is tilde expansion instead, as in `zsh ~/x.zsh`; a split quote may leave any of them unquoted. */
-const PATTERN_RE = /[{*?[^#]|.~/s;
+ * a leading `~` is tilde expansion instead, safe only bare or as `~/`, since `~name` and `~1` read a named dir or the dirstack; a split quote may leave any of them unquoted. */
+const PATTERN_RE = /[{*?[^#]|.~|^~(?!\/|$)/s;
 /** `${options[globsubst]::=on}` assigns through an expansion; `refs` hold only plain names, so the text is read too. */
 const OPTIONS_EXPANSION_RE = /\$\{[^}]*\boptions\b/;
 

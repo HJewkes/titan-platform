@@ -89,6 +89,11 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     ["print -voption?\\[globsubst\\] on"],
     ['print -v "$n" on'],
     ['printf -v "$n" on'],
+    ["setopt ~g"],
+    ["setopt ~1"],
+    ["setopt ~-0"],
+    ["setopt ~+1"],
+    ["print -v ~g on"],
   ])("reads the run-time or expanded operand of %s as a possible enabler", (src) => {
     expect(enables(src)).toBe(true);
   });
@@ -126,6 +131,7 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     ["printf -v x '%s' options"],
     ["set -- *.txt"],
     ["zsh ~/x.zsh"],
+    ["zsh ~"],
     ["print -v out 'glob*'"],
   ])("leaves %s alone", (src) => {
     expect(enables(src)).toBe(false);
