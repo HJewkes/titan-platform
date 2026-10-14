@@ -59,6 +59,7 @@ graph TD
     codeRead["code-read"]
     coordinator["coordinator"]
     decider["decider"]
+    dispatchLedger["dispatch-ledger"]
     graphLayout["graph-layout"]
     memory["memory"]
     ownerQueue["owner-queue"]
@@ -79,6 +80,7 @@ graph TD
   end
   subgraph P["Products"]
     evals["evals"]
+    explainer["explainer"]
     factory["factory"]
     retrievalEval["retrieval-eval"]
     sessionMiner["session-miner"]
@@ -106,6 +108,7 @@ graph TD
   decider --> memory
   decider --> sessionRead
   decider --> storeSqlite
+  dispatchLedger --> storeSqlite
   egressScan --> fixProof
   graphLayout --> codeGraph
   health --> storeSqlite
@@ -159,6 +162,8 @@ graph TD
   evals --> sessionRead
   evals --> storeSqlite
   evals --> workflow
+  explainer --> agent
+  explainer --> agentProtocol
   factory --> agent
   factory --> agentDispatch
   factory --> appPaths
@@ -273,7 +278,7 @@ those live in the separate `@titan-design/react-ui` design system.
 command definitions — and gets everything else from the tiers.
 
 <!-- generated:arch-products start -->
-The `product` tier holds seven units: `evals`, `factory`, `retrieval-eval`, `session-miner`, `titan`, and the `codewatch` and `console` apps.
+The `product` tier holds eight units: `evals`, `explainer`, `factory`, `retrieval-eval`, `session-miner`, `titan`, and the `codewatch` and `console` apps.
 <!-- generated:arch-products end -->
 
 The usage guides are under [Guides](/guides/#running-the-products).

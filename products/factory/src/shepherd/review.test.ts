@@ -2219,6 +2219,13 @@ describe("reviewPhase", () => {
       if (late && now < 18_000) return [];
       return dispatch.agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, verdictAt(input.head), now));
     };
+    /** The seat's earlier session reviewed PR 1 at an older head, so a failed read of its latest session is this PR's reviewer's. */
+    const earlier = agent(seat.name, { spawnedBy: "coord", sessionId: `${seat.sessionId}-earlier` });
+    const seatFailing = (failure: () => Error): NonNullable<Scene["read"]> => (input, dispatch, now) => {
+      if (input.reviewerSessionId === earlier.sessionId) return [said(earlier, verdictAt(fakeSha("review-head-0")), 1)];
+      if (input.reviewerAgentId === seat.agentId) throw failure();
+      return withSeat([])(input, dispatch, now);
+    };
 
     it("sends the head back on the seat reviewer's FIX_FIRST at the head Shepherd's own reviewer passed, and collects no merge evidence", async () => {
       const dispatch = fakeDispatch(crew(seat));
@@ -2248,11 +2255,8 @@ describe("reviewPhase", () => {
     });
 
     it("does not merge when the seat reviewer's transcript cannot be parsed, and records why without holding the own MERGE", async () => {
-      const dispatch = fakeDispatch(crew(seat));
-      const unreadable: Scene["read"] = (input, held, now) => {
-        if (input.reviewerAgentId === seat.agentId) throw new SyntaxError("unexpected end of JSON input");
-        return withSeat([])(input, held, now);
-      };
+      const dispatch = fakeDispatch(crew(earlier, seat));
+      const unreadable = seatFailing(() => new SyntaxError("unexpected end of JSON input"));
 
       const { verdicts, stepIds, resultOf } = await review({ dispatch, read: unreadable, policy: AUTO });
 
@@ -2263,11 +2267,8 @@ describe("reviewPhase", () => {
     });
 
     it("does not merge when every read of the seat reviewer's transcript times out, and holds the own MERGE with why", async () => {
-      const dispatch = fakeDispatch(crew(seat));
-      const timingOut: Scene["read"] = (input, held, now) => {
-        if (input.reviewerAgentId === seat.agentId) throw new ReviewerAskTimedOut("agent-chat timed out");
-        return withSeat([])(input, held, now);
-      };
+      const dispatch = fakeDispatch(crew(earlier, seat));
+      const timingOut = seatFailing(() => new ReviewerAskTimedOut("agent-chat timed out"));
 
       const { verdicts, stepIds, resultOf } = await review({ dispatch, read: timingOut, policy: AUTO });
 

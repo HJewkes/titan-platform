@@ -106,11 +106,14 @@ function gitMerge(git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] 
   return [classified("bash.merge.git-merge-protected", { branch: head })];
 }
 
-/** The branch a push refspec updates; `HEAD` and a bare name push to the branch of that name. */
+/**
+ * The branch a push refspec updates; `HEAD` and a bare name push to the branch of that name.
+ * Git expands a short `heads/<x>` destination to `refs/heads/<x>`, so either prefix is stripped once.
+ */
 function pushDestination(spec: string, head: string | null): string | null {
   const plain = spec.replace(/^\+/, "");
   const colon = plain.lastIndexOf(":");
-  const dest = (colon >= 0 ? plain.slice(colon + 1) : plain).replace(/^refs\/heads\//, "");
+  const dest = (colon >= 0 ? plain.slice(colon + 1) : plain).replace(/^(?:refs\/)?heads\//, "");
   if (dest === "HEAD" || dest === "@") return colon >= 0 ? null : head;
   return dest === "" ? null : dest;
 }

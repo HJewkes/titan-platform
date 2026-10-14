@@ -5,6 +5,7 @@ import { claudeSourceFromPath, readSessionObservations, readSessionSourceText, t
 import type * as SessionRead from "@titan-design/session-read";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEPTH_FLOOR_REASON, INVESTIGATIVE_CALLS, USAGE_LIMIT_REASON, isInvestigativeCall } from "@titan-design/review-panel";
+import { DispatchTimeoutError } from "@titan-design/agent-dispatch";
 import { seatFixFirst } from "./external-review.js";
 import { acceptVerdict, type AwaitVerdictInput } from "./review.js";
 import { reviewerMessages, sentMessages, transcriptReviewerReader, type TranscriptRow } from "./reviewer-reader.js";
@@ -338,13 +339,62 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
     expect(blocked.kind === "verdict" && (await readSessionSourceText(blocked.locator))).toMatch(/^Verdict: FIX_FIRST\nPR: octo\/demo#4/);
   });
 
-  it("blocks the head when an exited seat reviewer's transcript cannot be read", async () => {
+  it("warns without blocking when an exited seat reviewer's transcript is gone and the roster places it in another task's worktree", async () => {
+    const rows = [{ ...seat, transcriptPath: path.join(dir, "gone", `${FIXTURE_SESSION}.jsonl`), cwd: path.join(dir, ".worktrees", "tc-tp-5-b") }];
+    const reader = transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE });
+    const warn = vi.fn();
+    const others = [{ implementer: "tc-tp-5-b", branch: "agent-chat/tc-tp-5-b", label: "octo/demo#5" }];
+    const target = { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD, owner: { implementer: "tc-tp-9-a", branch: "agent-chat/tc-tp-9-a" }, others };
+
+    const check = await seatFixFirst(async () => rows, reader, target, warn);
+
+    expect(check).toEqual({ kind: "clear" });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`${seat.name} is not the reviewer of octo/demo#4`));
+  });
+
+  it("blocks with a retry when an exited seat reviewer's transcript is gone and nothing says whose reviewer it is", async () => {
     const rows = [{ ...seat, transcriptPath: path.join(dir, "gone", `${FIXTURE_SESSION}.jsonl`) }];
     const reader = transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE });
 
-    const blocked = await seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD });
+    const check = await seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD }, vi.fn());
 
-    expect(blocked).toMatchObject({ kind: "none", reason: expect.stringContaining(`the transcript of ${seat.name} could not be read`) });
+    expect(check).toMatchObject({ kind: "none", retry: true, reason: expect.stringContaining(`the transcript of ${seat.name} could not be read and nothing says whose reviewer it is (no record names a PR; Shepherd holds no registration for octo/demo#4)`) });
+  });
+
+  it("blocks with a retry when the PR's own sole-session reviewer is read while the broker does not answer the roster", async () => {
+    const rows = [{ ...seat, name: "x-review", transcriptPath: path.join(dir, "project", `${FIXTURE_SESSION}.jsonl`) }];
+    const slow = new DispatchTimeoutError("agent-chat refused agent ls: broker did not answer agents_result");
+    const reader = transcriptReviewerReader({ roster: async () => Promise.reject(slow), namespace: NAMESPACE });
+
+    const bare = rows.map(({ agentId, sessionId, name, presence, spawnedBy }) => ({ agentId, sessionId, name, presence, spawnedBy, predecessor: null }));
+
+    const check = await seatFixFirst(async () => bare, reader, { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD }, vi.fn());
+
+    expect(check).toEqual({ kind: "none", reason: "seat check: the transcript of x-review could not be read: DispatchTimeoutError: agent-chat refused agent ls: broker did not answer agents_result", retry: true });
+  });
+
+  it("reads the transcript through its own roster when the rows it is handed carry no transcript fields", async () => {
+    const full = [{ ...seat, transcriptPath: path.join(dir, "gone", `${FIXTURE_SESSION}.jsonl`) }];
+    const bare = full.map(({ agentId, sessionId, name, presence, spawnedBy }) => ({ agentId, sessionId, name, presence, spawnedBy, predecessor: null }));
+    let calls = 0;
+    const reader = transcriptReviewerReader({ roster: async () => (calls++, full), namespace: NAMESPACE });
+    const input = { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD, reviewerAgentId: seat.agentId, reviewerSessionId: seat.sessionId, dispatchedAt: 0 };
+
+    await expect(reader.readSeat?.(input, bare)).rejects.toThrow();
+    expect(calls).toBe(1);
+  });
+
+  it("falls back to its own roster when the first row for the session lacks transcript fields, even if a later copy has them", async () => {
+    const entry = { ...seat, transcriptPath: path.join(dir, "gone", `${FIXTURE_SESSION}.jsonl`) };
+    const full = [entry];
+    const { agentId, sessionId, name, presence, spawnedBy } = entry;
+    const bareFirst = { agentId, sessionId, name, presence, spawnedBy, predecessor: null };
+    let calls = 0;
+    const reader = transcriptReviewerReader({ roster: async () => (calls++, full), namespace: NAMESPACE });
+    const input = { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD, reviewerAgentId: agentId, reviewerSessionId: sessionId, dispatchedAt: 0 };
+
+    await expect(reader.readSeat?.(input, [bareFirst, ...full])).rejects.toThrow();
+    expect(calls).toBe(1);
   });
 
   it("does not block on a seat reviewer still running with no transcript yet", async () => {
@@ -363,12 +413,15 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
     const reviewingPr7 = [user(SESSION, "review it"), assistant(SESSION, [BLOCK.replace(HEAD, "b".repeat(40))]), assistant(SESSION, ["Looking again."])];
 
     /** The seat check over one transcript of `records`, with `partial` appended as an unterminated last record. */
-    async function seatCheck(records: readonly Json[], presence: Presence, partial = false, pr = 7, warn = vi.fn()) {
+    /** With `elsewhere`, the roster places the reviewer in another registered PR's worktree. */
+    async function seatCheck(records: readonly Json[], presence: Presence, partial = false, pr = 7, warn = vi.fn(), elsewhere = false) {
       const transcript = writeTranscript(SESSION, records);
       if (partial) appendFileSync(transcript, PARTIAL, "utf8");
-      const rows = [{ ...seat, sessionId: SESSION, presence, transcriptPath: transcript }];
+      const placed = elsewhere ? { cwd: path.join(dir, ".worktrees", "tc-tp-5-b") } : {};
+      const rows = [{ ...seat, sessionId: SESSION, presence, transcriptPath: transcript, ...placed }];
       const reader = transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE });
-      return seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr, head: HEAD }, warn);
+      const owner = elsewhere ? { owner: { implementer: "tc-tp-9-a", branch: null }, others: [{ implementer: "tc-tp-5-b", branch: null, label: "octo/demo#5" }] } : {};
+      return seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr, head: HEAD, ...owner }, warn);
     }
 
     it.each(["exited", "detached"] as const)("blocks on a FIX_FIRST sent by a %s reviewer whose transcript ends on the chat_send call", async (presence) => {
@@ -403,11 +456,15 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
       expect(await seatCheck(briefed, "exited", true, 8)).toEqual({ kind: "clear" });
     });
 
-    it("does not block on a damaged transcript that names no PR, and warns", async () => {
+    it("does not block on a damaged transcript that names no PR when the roster places the reviewer elsewhere, and warns", async () => {
       const warn = vi.fn();
 
-      expect(await seatCheck(quiet, "exited", true, 7, warn)).toEqual({ kind: "clear" });
+      expect(await seatCheck(quiet, "exited", true, 7, warn, true)).toEqual({ kind: "clear" });
       expect(warn).toHaveBeenCalledWith(expect.stringContaining("does not block it: DamagedTranscriptError"));
+    });
+
+    it("blocks with a retry on a damaged transcript that names no PR when nothing says whose reviewer it is", async () => {
+      expect(await seatCheck(quiet, "exited", true)).toMatchObject({ kind: "none", retry: true });
     });
 
     it("stays clear for a running reviewer whose last record is still being written", async () => {
@@ -577,7 +634,7 @@ describe("an owner brief beside the verdict", () => {
 describe("the review depth floor", () => {
   const FIX_FIRST = BLOCK.replace("MERGE", "FIX_FIRST");
   const bash = (id: string, command: string): Json => ({ type: "tool_use", id, name: "Bash", input: { command } });
-  const ran = (call: Json): Json[] => [assistantRecord(SESSION, [call]), toolResult(SESSION, call.id as string, "output")];
+  const ran = (call: Json): Json[] => [assistantRecord(SESSION, [call]), toolResult(SESSION, String(call.id), "output")];
   const judged = async (records: readonly Json[]) => acceptVerdict(input, await read([row(writeTranscript(SESSION, [user(SESSION, "review it"), ...records]))]));
 
   it("sets aside a MERGE from a session that made no tool call at all", async () => {
