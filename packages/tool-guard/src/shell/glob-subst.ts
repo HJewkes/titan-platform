@@ -22,8 +22,9 @@ const OPTIONS_OPERAND_RE = /^(?:-[A-Za-z]*)?options(?:\[|\+?=|$)/;
 /** A `print -v` or `printf -v` cluster whose value, attached or in the next word, may be `options`. */
 const PRINT_TARGET_RE = /^-[A-Za-z]*v(.*)$/s;
 const OPTIONS_NAME_RE = /^options(?:\[|$)/;
-/** Characters brace expansion or filename generation reads; a split quote may leave any of them unquoted. */
-const PATTERN_RE = /[{*?[]/;
+/** Characters brace expansion or filename generation reads, extendedglob's `^`, `#` and `~` included;
+ * a leading `~` is tilde expansion instead, as in `zsh ~/x.zsh`; a split quote may leave any of them unquoted. */
+const PATTERN_RE = /[{*?[^#]|.~/s;
 /** `${options[globsubst]::=on}` assigns through an expansion; `refs` hold only plain names, so the text is read too. */
 const OPTIONS_EXPANSION_RE = /\$\{[^}]*\boptions\b/;
 
@@ -167,6 +168,8 @@ function printsToOptions(args: WordToken[]): boolean {
   return args.some((a, i) => {
     const target = PRINT_TARGET_RE.exec(a.value);
     if (!target) return false;
-    return OPTIONS_NAME_RE.test(target[1] || (args[i + 1]?.value ?? ""));
+    const word = target[1] ? a : args[i + 1];
+    if (!word) return false;
+    return unknowable(word) || OPTIONS_NAME_RE.test(target[1] || word.value);
   });
 }

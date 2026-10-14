@@ -82,6 +82,13 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     ["unsetopt -- noglob*"],
     ["set -o glob*"],
     ["emulate {s,}h"],
+    ["setopt globsubs^x"],
+    ["setopt globsubst#"],
+    ["setopt globsubst~x"],
+    ["print -v option?\\[globsubst\\] on"],
+    ["print -voption?\\[globsubst\\] on"],
+    ['print -v "$n" on'],
+    ['printf -v "$n" on'],
   ])("reads the run-time or expanded operand of %s as a possible enabler", (src) => {
     expect(enables(src)).toBe(true);
   });
@@ -117,6 +124,9 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     ["emulate -- zsh"],
     ["print -v out options"],
     ["printf -v x '%s' options"],
+    ["set -- *.txt"],
+    ["zsh ~/x.zsh"],
+    ["print -v out 'glob*'"],
   ])("leaves %s alone", (src) => {
     expect(enables(src)).toBe(false);
   });
