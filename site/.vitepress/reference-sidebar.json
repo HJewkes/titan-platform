@@ -98,6 +98,10 @@
         "link": "/reference/daemon"
       },
       {
+        "text": "frame-capture",
+        "link": "/reference/frame-capture"
+      },
+      {
         "text": "github",
         "link": "/reference/github"
       },

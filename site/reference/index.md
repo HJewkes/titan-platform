@@ -40,6 +40,7 @@ Reusable machinery over the primitives.
 | [`agent-lifecycle`](/reference/agent-lifecycle) | Durable agent execution state and fenced ownership | `agent-protocol`, `store-sqlite` |
 | [`agent-surface`](/reference/agent-surface) | Where a spawned agent is presented (headless or an iTerm2 pane, tab or window), and the launcher that execs its plan | none |
 | [`daemon`](/reference/daemon) | hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle | `registry`, `rpc-protocol` |
+| [`frame-capture`](/reference/frame-capture) | Deterministic frame capture of any page that speaks the __titanMotion protocol | none |
 | [`github`](/reference/github) | GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake | none |
 | [`health`](/reference/health) | health/v1 contract, probes, append-only sample store and uptime | `store-sqlite` |
 | [`hitl`](/reference/hitl) | Human-in-the-loop gate()/resolve() primitive | `authority`, `store-sqlite` |
