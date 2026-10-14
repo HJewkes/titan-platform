@@ -201,16 +201,19 @@ const unread = (name: string, failure: unknown, clears: boolean): SeatCheck => {
 
 const ANY_PR = /[\w.-]+#\d+(?!\d)/;
 
-/** What the reviewer's readable records showed: a brief naming some PR, or a verdict block naming one. Called only once this PR is ruled out. */
-function reviewsOtherPr(read: NameRead): boolean {
-  const briefs = read.failures.flatMap((failure) => (failure instanceof DamagedTranscriptError && failure.brief !== null ? [failure.brief] : []));
-  return briefs.some((brief) => ANY_PR.test(brief)) || read.messages.some((message) => "repo" in parseVerdictBlock(message.text));
+/**
+ * What a failed session's own complete records showed: a brief naming some PR, or a verdict block naming one. A hard failure
+ * has no records, and a sibling session under the same name may be a resume reviewing this PR, so neither is evidence.
+ */
+function ownRecordsNameAnyPr(failure: unknown): boolean {
+  if (!(failure instanceof DamagedTranscriptError)) return false;
+  return (failure.brief !== null && ANY_PR.test(failure.brief)) || failure.readable.some((message) => "repo" in parseVerdictBlock(message.text));
 }
 
 /**
  * A failed read of a reviewer a brief or verdict block ties to this PR blocks. A failure that may clear blocks with a retry,
  * so the seat wait bounds it. One that reads the same every time clears with a warning only on evidence that the reviewer is
- * another PR's: its readable records name another PR, or its name stem or directory is another registered PR's implementer or
+ * another PR's: every failed session is damaged and its own records name another PR, or its name stem or directory is another registered PR's implementer or
  * branch. With no evidence either way it blocks with a retry, so the seat wait holds the MERGE, and the reason names what was missing.
  */
 function failedRead(name: string, target: SeatTarget, read: NameRead, rows: readonly SeatRow[], warn: (line: string) => void): SeatCheck | undefined {
@@ -221,7 +224,7 @@ function failedRead(name: string, target: SeatTarget, read: NameRead, rows: read
   const clearing = hards.find(transient);
   if (clearing !== undefined) return unread(name, clearing, true);
   const tie = rosterTie(target, rows, (stem) => stem.replace(SEAT_REVIEWER, ""));
-  if (tie.kind !== "own" && reviewsOtherPr(read)) return untied(name, target, "its records name another PR", failure, warn);
+  if (tie.kind !== "own" && read.failures.every(ownRecordsNameAnyPr)) return untied(name, target, "its records name another PR", failure, warn);
   if (tie.kind === "other") return untied(name, target, `the roster ties it to ${tie.pr}'s registration`, failure, warn);
   const why = tie.kind === "own" ? "the roster ties it to this PR's implementer" : `nothing says whose reviewer it is (no record names a PR; ${tie.missing})`;
   return { kind: "none", reason: `seat check: the transcript of ${name} could not be read and ${why}: ${failureText(failure)}`, ...retryIf(tie.kind === "none") };

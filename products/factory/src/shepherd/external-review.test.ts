@@ -481,6 +481,32 @@ describe("seatFixFirst", () => {
         expect(await seatFixFirst(rosterOf(elsewhere(first), elsewhere(second)), twoSessions([said(first, "Reading.", 5)]), owned, warn)).toEqual({ kind: "clear" });
         expect(warn).toHaveBeenCalledOnce();
       });
+
+      /** Session 1 is whole with a MERGE for PR 5; session 2, a resume that may be reviewing PR 4, fails with `failure`. */
+      const resumedFailing = (failure: unknown): ReviewerReader => ({
+        read: async (input) => (input.reviewerSessionId === second.sessionId ? Promise.reject(failure) : [said(first, `Findings.\n\nVerdict: MERGE\nPR: ${REPO}#5\nHead: ${OLD_HEAD}\n`, 5)]),
+      });
+      const unownedTarget = { ...owned, owner: { implementer: "tc-tp-9-a", branch: "agent-chat/tc-tp-9-a" } };
+
+      it.each([
+        ["ENOENT", Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" })],
+        ["EACCES", Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" })],
+        ["SyntaxError", new SyntaxError("Unexpected token")],
+      ])("blocks with a retry when session 2's read fails with %s and only session 1 names another PR", async (_label, failure) => {
+        expect(await seatFixFirst(rosterOf(first, second), resumedFailing(failure), target, vi.fn())).toMatchObject({ kind: "none", retry: true, reason: expect.stringContaining(first.name) });
+        expect(await seatFixFirst(rosterOf(first, second), resumedFailing(failure), unownedTarget, vi.fn())).toMatchObject({ kind: "none", retry: true });
+      });
+
+      it("blocks with a retry when damaged session 2's own records name no PR and only session 1 names another", async () => {
+        expect(await seatFixFirst(rosterOf(first, second), resumedFailing(torn([said(second, "Reading.", 9)])), target, vi.fn())).toMatchObject({ kind: "none", retry: true });
+      });
+
+      it("warns without blocking when damaged session 2's own brief names another PR", async () => {
+        const warn = vi.fn();
+
+        expect(await seatFixFirst(rosterOf(first, second), resumedFailing(torn([], `Review ${REPO}#5 now.`)), target, warn)).toEqual({ kind: "clear" });
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining("its records name another PR"));
+      });
     });
   });
 
