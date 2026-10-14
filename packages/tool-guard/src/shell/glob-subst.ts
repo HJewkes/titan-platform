@@ -23,7 +23,8 @@ const OPTIONS_OPERAND_RE = /^(?:-[A-Za-z]*)?options(?:\[|\+?=|$)/;
 const PRINT_TARGET_RE = /^-[A-Za-z]*v(.*)$/s;
 const OPTIONS_NAME_RE = /^options(?:\[|$)/;
 /** Characters brace expansion or filename generation reads, extendedglob's `^`, `#` and `~` included;
- * a leading `~` is tilde expansion instead, safe only bare or as `~/`, since `~name` and `~1` read a named dir or the dirstack; a split quote may leave any of them unquoted. */
+ * a leading `~` is tilde expansion instead, safe only bare or as `~/`, since `~name` and `~1` read a named dir or
+ * the dirstack. A split quote may leave any of them unquoted. */
 const PATTERN_RE = /[{*?[^#]|.~|^~(?!\/|$)/s;
 /** `${options[globsubst]::=on}` assigns through an expansion; `refs` hold only plain names, so the text is read too. */
 const OPTIONS_EXPANSION_RE = /\$\{[^}]*\boptions\b/;
@@ -69,7 +70,8 @@ interface OptionScan {
 function scanOptions(args: WordToken[], valued: string, untilOperand: boolean): OptionScan {
   const scan: OptionScan = { names: [], arrays: [], flags: "", operands: [], modes: [], dynamic: false };
   for (let i = 0; i < args.length; i++) {
-    const w = args[i] as WordToken;
+    const w = args[i];
+    if (w === undefined) break;
     if (unknowable(w)) scan.dynamic = true;
     if (scan.dynamic && untilOperand) break;
     if (w.value === "--" && !untilOperand) readOperands(args.slice(i + 1), scan);
@@ -100,7 +102,7 @@ function isOptionWord(value: string): boolean {
 }
 
 function readLong(args: WordToken[], i: number, scan: OptionScan): number {
-  const value = (args[i] as WordToken).value;
+  const value = args[i]?.value ?? "";
   const [option, attached] = value.split(/=(.*)/s);
   if (option !== "--emulate") {
     scan.names.push(value);
@@ -110,9 +112,9 @@ function readLong(args: WordToken[], i: number, scan: OptionScan): number {
 }
 
 function readCluster(args: WordToken[], i: number, valued: string, scan: OptionScan): number {
-  const value = (args[i] as WordToken).value;
+  const value = args[i]?.value ?? "";
   for (let j = 1; j < value.length; j++) {
-    const letter = value[j] as string;
+    const letter = value.charAt(j);
     if (!valued.includes(letter)) {
       scan.flags += letter;
       continue;
