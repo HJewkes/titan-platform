@@ -43,9 +43,22 @@ export function parseCapabilities(id: string, raw: unknown): TtsCapabilities {
   };
 }
 
-function optionalTimeout(id: string, v: unknown): { timeoutMs?: number } {
-  if (v === undefined) return {};
-  return typeof v === "number" && v > 0 ? { timeoutMs: v } : fail(id, "timeoutMs must be a positive number");
+function optionalPositive(id: string, key: string, v: unknown): number | undefined {
+  if (v === undefined) return undefined;
+  return typeof v === "number" && v > 0 ? v : fail(id, `${key} must be a positive number`);
+}
+
+/** The limits and redaction list every adapter that talks to an outside engine takes. */
+function sharedOptions(id: string, config: TtsProviderConfig): { timeoutMs?: number; maxOutputBytes?: number; secrets?: string[] } {
+  const { secrets } = config;
+  if (secrets !== undefined && !isStringArray(secrets)) return fail(id, "secrets must be an array of strings");
+  const timeoutMs = optionalPositive(id, "timeoutMs", config.timeoutMs);
+  const maxOutputBytes = optionalPositive(id, "maxOutputBytes", config.maxOutputBytes);
+  return {
+    ...(timeoutMs ? { timeoutMs } : {}),
+    ...(maxOutputBytes ? { maxOutputBytes } : {}),
+    ...(secrets ? { secrets } : {}),
+  };
 }
 
 export const commandFactory: TtsProviderFactory = (id, config) => {
@@ -60,7 +73,7 @@ export const commandFactory: TtsProviderFactory = (id, config) => {
     ...(output ? { output } : {}),
     ...(env ? { env } : {}),
     ...(typeof cwd === "string" ? { cwd } : {}),
-    ...optionalTimeout(id, config.timeoutMs),
+    ...sharedOptions(id, config),
   });
 };
 
@@ -80,6 +93,7 @@ function parseResponse(id: string, raw: unknown): HttpResponseMapping {
 export const httpFactory: TtsProviderFactory = (id, config) => {
   const { url, method, headers, request } = config;
   if (typeof url !== "string" || !URL.canParse(url)) return fail(id, "url must be an absolute URL");
+  if (config.allowInsecureHttp !== undefined && typeof config.allowInsecureHttp !== "boolean") return fail(id, "allowInsecureHttp must be true or false");
   if (method !== undefined && !isMethod(method)) return fail(id, 'method must be "POST" or "PUT"');
   if (headers !== undefined && !isStringRecord(headers)) return fail(id, "headers must map names to strings");
   if (!isRecord(request) || request.body === undefined) return fail(id, "request.body must be a JSON template");
@@ -91,7 +105,8 @@ export const httpFactory: TtsProviderFactory = (id, config) => {
     response: parseResponse(id, config.response),
     ...(method ? { method } : {}),
     ...(headers ? { headers } : {}),
-    ...optionalTimeout(id, config.timeoutMs),
+    ...(config.allowInsecureHttp === true ? { allowInsecureHttp: true } : {}),
+    ...sharedOptions(id, config),
   });
 };
 

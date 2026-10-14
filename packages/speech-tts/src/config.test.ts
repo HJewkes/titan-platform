@@ -43,8 +43,23 @@ describe("resolveTtsConfig", () => {
   });
 
   // Mutation caught: a missing secret expands to an empty string and the provider is used anyway.
-  it("marks a provider unusable when a header names an unset env var", () => {
-    expect(resolveTtsConfig({ profile, env: {} }).unusable).toEqual({ hosted: "needs env API_KEY for its headers" });
+  it("marks a provider unusable, naming the variable, when a header secret is unset", () => {
+    expect(resolveTtsConfig({ profile, env: {} }).unusable).toEqual({ hosted: "headers.authorization needs env API_KEY, which is unset or empty" });
+  });
+
+  // Mutation caught: only unset variables are checked, so an empty one sends "Bearer " with no key.
+  it("treats an empty secret like an unset one, never sending an empty header", () => {
+    expect(resolveTtsConfig({ profile, env: { API_KEY: "" } }).unusable.hosted).toMatch(/needs env API_KEY/);
+  });
+
+  // Mutations caught: command env values are not expanded; expanded values are not handed on for redaction.
+  it("expands secrets in a command's env and hands every expanded value on as secrets", () => {
+    const withEnv: TtsProfile = { version: 1, tts: { providers: { gpu: { kind: "command", argv: ["x"], env: { TOKEN: "${env:GPU_TOKEN}" } } } } };
+
+    const { providers, unusable } = resolveTtsConfig({ profile: withEnv, env: { GPU_TOKEN: "t0ken-value" } });
+
+    expect(providers.gpu).toMatchObject({ env: { TOKEN: "t0ken-value" }, secrets: ["t0ken-value"] });
+    expect(unusable).toEqual({});
   });
 
   it("rejects an argv override that is not JSON, naming the variable", () => {
@@ -54,7 +69,7 @@ describe("resolveTtsConfig", () => {
   });
 
   it("resolves to no providers with neither a profile nor env", () => {
-    expect(resolveTtsConfig({ env: {} })).toEqual({ order: [], providers: {}, unusable: {} });
+    expect(resolveTtsConfig({ env: {} })).toEqual({ order: [], providers: {}, unusable: {}, fallback: false });
   });
 });
 

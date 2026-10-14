@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // A stand-in engine for the commandTts stdio contract. Flags:
-//   --mode stdout-wav | json-path | json-base64 | hang | fail | unavailable | garbage
+//   --mode stdout-wav | json-path | json-base64 | hang | fail | unavailable | garbage | flood
+//          | json-absolute | json-escape | json-symlink | env | secret-stderr
 //   --rate <Hz>        sample rate written in the WAV header (default 24000)
 //   --pid-file <path>  write this process's pid there before reading stdin
 //   --echo <path>      write the request JSON there
-import { writeFileSync } from "node:fs";
+import { symlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 const flags = Object.fromEntries(
   process.argv.slice(2).reduce((pairs, arg, i, all) => (arg.startsWith("--") ? [...pairs, [arg.slice(2), all[i + 1]]] : pairs), []),
@@ -38,24 +40,57 @@ function speak(request) {
   return { audio: wav(words.length * slot), timings, durationS: words.length * slot };
 }
 
-function answer(request) {
+/** Modes that exit without speaking. */
+function failEarly() {
   if (mode === "fail") {
     process.stderr.write("stub engine: voice model failed to load\n");
     process.exit(1);
   }
   if (mode === "unavailable") process.exit(69);
+  if (mode === "secret-stderr") {
+    process.stderr.write(`${"x".repeat(5000)} auth failed for token ${process.env.STUB_TOKEN} near the end\n`);
+    process.exit(1);
+  }
+}
+
+function writeNamedWav(request, audio, extras) {
+  writeFileSync(request.out, audio);
+  const names = {
+    "json-path": "out.wav",
+    "json-absolute": request.out,
+    "json-escape": "../outside.wav",
+    "json-symlink": "link.wav",
+  };
+  if (mode === "json-escape") writeFileSync(join(request.outDir, "..", "outside.wav"), audio);
+  if (mode === "json-symlink") symlinkSync(flags.target, join(request.outDir, "link.wav"));
+  process.stdout.write(JSON.stringify({ wav: names[mode], ...extras }));
+}
+
+function answer(request) {
+  failEarly();
+  if (mode === "env") {
+    writeFileSync(flags["dump-env"], JSON.stringify(process.env));
+    return void process.stdout.write(wav(0.4));
+  }
   if (mode === "garbage") return void process.stdout.write("not audio");
   const { audio, timings, durationS } = speak(request);
   if (mode === "stdout-wav") return void process.stdout.write(audio);
   const phonemes = request.tokens?.map((t) => t.phonemes ?? t.text);
   const extras = { durationS, words: timings, ...(phonemes ? { phonemes } : {}) };
   if (mode === "json-base64") return void process.stdout.write(JSON.stringify({ audioBase64: audio.toString("base64"), ...extras }));
-  writeFileSync(request.out, audio);
-  process.stdout.write(JSON.stringify({ wav: request.out, ...extras }));
+  writeNamedWav(request, audio, extras);
 }
 
 if (flags["pid-file"]) writeFileSync(flags["pid-file"], String(process.pid));
 if (mode === "hang") setInterval(() => undefined, 1_000);
+else if (mode === "flood") {
+  const block = Buffer.alloc(1 << 20, 0x41);
+  const pump = () => {
+    while (process.stdout.write(block));
+    process.stdout.once("drain", pump);
+  };
+  pump();
+}
 else {
   let input = "";
   process.stdin.on("data", (chunk) => (input += chunk));

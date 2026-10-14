@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveTtsConfig, type TtsProfile } from "./config.js";
-import { TtsUnavailableError, TtsUnsupportedError } from "./errors.js";
+import { TtsConfigError, TtsUnsupportedError } from "./errors.js";
 import { fakeTts } from "./fake-tts.js";
 import { createTtsRegistry, defaultTtsRegistry, selectTts } from "./registry.js";
 
@@ -44,21 +44,55 @@ describe("provider selection", () => {
   });
 
   // Mutation caught: a TITAN_SPEECH_TTS id missing from the profile is silently ignored.
-  it("reports an env-chosen provider that the profile does not define", () => {
-    const select = () => defaultTtsRegistry().select(config({ TITAN_SPEECH_TTS: "gpu" }));
+  it("fails closed on an env-chosen provider that the profile does not define", () => {
+    const select = () => defaultTtsRegistry().select(config({ TITAN_SPEECH_TTS: "gpu,plain" }));
 
-    expect(select).toThrow(TtsUnavailableError);
+    expect(select).toThrow(TtsConfigError);
     expect(select).toThrow("gpu is not configured in the profile");
   });
 
-  // Mutation caught: a factory's validation error escapes select instead of letting it fall back.
-  it("skips a misconfigured provider and selects the next one", () => {
-    const broken: TtsProfile = { version: 1, tts: { providers: { gpu: { kind: "command", argv: [] }, ...profile.tts?.providers } } };
+  const broken = (fallback?: boolean): TtsProfile => ({
+    version: 1,
+    tts: { ...(fallback !== undefined ? { fallback } : {}), providers: { gpu: { kind: "command", argv: [] }, ...profile.tts?.providers } },
+  });
 
-    const { provider, skipped } = defaultTtsRegistry().select(config({}, broken));
+  // Mutation caught: a misconfigured preferred provider is skipped silently, and a weaker engine takes its place.
+  it("fails closed on a misconfigured preferred provider, carrying the skipped reasons", () => {
+    const error: unknown = (() => {
+      try {
+        defaultTtsRegistry().select(config({}, broken()));
+      } catch (e) {
+        return e;
+      }
+    })();
+
+    expect(error).toBeInstanceOf(TtsConfigError);
+    expect(String(error)).toContain("gpu is misconfigured: tts.providers.gpu: argv must be a non-empty array");
+    expect(String(error)).toContain("set tts.fallback: true");
+    expect(error).toMatchObject({ code: "misconfigured", skipped: [{ id: "gpu", misconfigured: true }] });
+  });
+
+  // Mutations caught: tts.fallback is ignored; a factory's validation error escapes select.
+  it("moves past a misconfigured provider when the profile sets fallback, saying why", () => {
+    const { provider, skipped } = defaultTtsRegistry().select(config({}, broken(true)));
 
     expect(provider.id).toBe("plain");
     expect(skipped[0]?.reason).toMatch(/^is misconfigured: tts.providers.gpu: argv must be a non-empty array/);
+  });
+
+  // Mutation caught: a secret that resolves to nothing only marks the provider, and selection uses it anyway.
+  it("fails closed, naming the variable, when a preferred provider's secret is unset", () => {
+    const keyed: TtsProfile = {
+      version: 1,
+      tts: {
+        providers: {
+          hosted: { kind: "http", url: "https://tts.example.com", headers: { "x-api-key": "${env:HOSTED_KEY}" }, request: { body: {} }, capabilities: caps() },
+          ...profile.tts?.providers,
+        },
+      },
+    };
+
+    expect(() => defaultTtsRegistry().select(config({}, keyed))).toThrow("hosted is misconfigured: headers.x-api-key needs env HOSTED_KEY");
   });
 
   // Mutation caught: register does not add the kind, so the next slice's Kokoro adapter cannot plug in.

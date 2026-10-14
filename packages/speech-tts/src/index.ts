@@ -12,6 +12,7 @@ export type {
   WordTiming,
 } from "./types.js";
 export {
+  TtsConfigError,
   TtsError,
   TtsFailedError,
   TtsTimeoutError,
@@ -22,8 +23,9 @@ export {
 export { assertSupported, languageMatches, missingCapabilities, requirementsOf } from "./capabilities.js";
 export { decodeWav, encodeWav } from "./wav.js";
 export { FAKE_TTS_CAPABILITIES, fakeTts, type FakeTtsCall, type FakeTtsOptions, type FakeTtsProvider } from "./fake-tts.js";
-export { commandTts, type CommandOutput, type CommandRequest, type CommandTtsOptions } from "./command-tts.js";
+export { commandTts, INHERITED_ENV, type CommandOutput, type CommandRequest, type CommandTtsOptions } from "./command-tts.js";
 export { httpTts, type HttpResponseMapping, type HttpTtsOptions } from "./http-tts.js";
+export { DEFAULT_MAX_OUTPUT_BYTES } from "./output-limits.js";
 export { fillTemplate } from "./http-mapping.js";
 export {
   loadTtsProfile,

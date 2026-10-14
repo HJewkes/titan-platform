@@ -11,6 +11,8 @@ export interface TtsProfile {
     /** Provider ids to try first, in order. Providers not named follow in declaration order. */
     prefer?: readonly string[];
     providers?: Readonly<Record<string, TtsProviderConfig>>;
+    /** Lets selection move past a misconfigured provider. Off by default: a broken preferred engine fails closed. */
+    fallback?: boolean;
   };
 }
 
@@ -18,8 +20,9 @@ export interface ResolvedTtsConfig {
   /** Every provider id, in the order selection tries them. */
   order: readonly string[];
   providers: Readonly<Record<string, TtsProviderConfig>>;
-  /** Providers that cannot be used as configured, with the reason, such as a missing secret. */
+  /** Providers that cannot be used as configured, with the reason, such as a secret that resolves to nothing. */
   unusable: Readonly<Record<string, string>>;
+  fallback: boolean;
 }
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -46,11 +49,12 @@ export function parseTtsProfile(raw: unknown, source = "profile"): TtsProfile {
   if (!isStringArray(prefer)) return fail("tts.prefer must be an array of provider ids");
   const declared = tts.providers ?? {};
   if (!isRecord(declared)) return fail("tts.providers must be an object keyed by provider id");
+  if (tts.fallback !== undefined && typeof tts.fallback !== "boolean") return fail("tts.fallback must be true or false");
   const providers: Record<string, TtsProviderConfig> = {};
   for (const [id, entry] of Object.entries(declared)) {
     providers[id] = isProviderConfig(entry) ? entry : fail(`tts.providers.${id} needs a string "kind"`);
   }
-  return { version: 1, tts: { prefer, providers } };
+  return { version: 1, tts: { prefer, providers, ...(tts.fallback !== undefined ? { fallback: tts.fallback } : {}) } };
 }
 
 /** Reads a profile file. A missing file is no profile, not an error: nothing about the host is assumed. */
@@ -87,20 +91,42 @@ function envOverrides(id: string, entry: TtsProviderConfig, env: Env): TtsProvid
 
 const SECRET = /\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
-/** Expands `${env:NAME}` in header values, so a profile can be shared without its secrets. */
-function expandHeaders(entry: TtsProviderConfig, env: Env): { entry: TtsProviderConfig; missing: string[] } {
-  if (!isRecord(entry.headers)) return { entry, missing: [] };
-  const missing: string[] = [];
-  const headers = Object.fromEntries(
-    Object.entries(entry.headers).map(([name, value]) => [
-      name,
-      String(value).replace(SECRET, (_, key: string) => {
-        if (env[key] === undefined) missing.push(key);
-        return env[key] ?? "";
-      }),
-    ]),
-  );
-  return { entry: { ...entry, headers }, missing };
+interface Expanded {
+  values: Record<string, string>;
+  secrets: string[];
+  problems: string[];
+}
+
+/** Expands `${env:NAME}` in one map's values. An unset or empty NAME is a problem, never an empty value. */
+function expandMap(field: string, map: Record<string, unknown>, env: Env): Expanded {
+  const out: Expanded = { values: {}, secrets: [], problems: [] };
+  for (const [name, value] of Object.entries(map)) {
+    out.values[name] = String(value).replace(SECRET, (_, key: string) => {
+      const resolved = env[key];
+      if (!resolved) out.problems.push(`${field}.${name} needs env ${key}, which is unset or empty`);
+      else out.secrets.push(resolved);
+      return resolved ?? "";
+    });
+  }
+  return out;
+}
+
+/**
+ * Expands secrets in `headers` (http) and `env` (command), so a profile can be shared without them. The expanded
+ * values ride along as `secrets`, which adapters redact from error text.
+ */
+function expandSecrets(entry: TtsProviderConfig, env: Env): { entry: TtsProviderConfig; problems: string[] } {
+  const fields = (["headers", "env"] as const).filter((f) => isRecord(entry[f]));
+  const expanded = fields.map((f) => [f, expandMap(f, isRecord(entry[f]) ? entry[f] : {}, env)] as const);
+  if (expanded.length === 0) return { entry, problems: [] };
+  return {
+    entry: {
+      ...entry,
+      ...Object.fromEntries(expanded.map(([f, e]) => [f, e.values])),
+      secrets: expanded.flatMap(([, e]) => e.secrets),
+    },
+    problems: expanded.flatMap(([, e]) => e.problems),
+  };
 }
 
 /**
@@ -119,11 +145,11 @@ export function resolveTtsConfig(opts: { profile?: TtsProfile; env?: Env } = {})
   const providers: Record<string, TtsProviderConfig> = {};
   const unusable: Record<string, string> = {};
   for (const [id, raw] of Object.entries(declared)) {
-    const { entry, missing } = expandHeaders(envOverrides(id, raw, env), env);
+    const { entry, problems } = expandSecrets(envOverrides(id, raw, env), env);
     providers[id] = entry;
-    if (missing.length > 0) unusable[id] = `needs env ${missing.join(", ")} for its headers`;
+    if (problems.length > 0) unusable[id] = problems.join("; ");
   }
   const envChoice = env[PREFER_ENV]?.split(",").map((s) => s.trim()).filter(Boolean);
   const order = selectionOrder(Object.keys(providers), opts.profile?.tts?.prefer ?? [], envChoice?.length ? envChoice : undefined);
-  return { order, providers, unusable };
+  return { order, providers, unusable, fallback: opts.profile?.tts?.fallback === true };
 }

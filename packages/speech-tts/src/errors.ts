@@ -1,4 +1,14 @@
-export type TtsErrorCode = "unavailable" | "unsupported" | "timeout" | "failed";
+export type TtsErrorCode = "unavailable" | "unsupported" | "timeout" | "failed" | "misconfigured";
+
+/** A provider that selection passed over, and why. */
+export interface SkippedProvider {
+  id: string;
+  reason: string;
+  /** Set when the provider was skipped for lacking capabilities. */
+  missing?: readonly string[];
+  /** Set when the provider's own config is wrong, as opposed to its engine being absent. */
+  misconfigured?: true;
+}
 
 /** Every error this package throws. Branch on `code`, not on the message. */
 export class TtsError extends Error {
@@ -40,6 +50,21 @@ export class TtsTimeoutError extends TtsError {
   ) {
     super("timeout", providerId, `no audio within ${timeoutMs} ms`);
     this.name = "TtsTimeoutError";
+  }
+}
+
+/**
+ * Selection reached a provider whose config is wrong, such as a secret that resolves to nothing, and the profile
+ * does not set `tts.fallback: true`. Failing closed keeps a broken preferred engine from being silently replaced.
+ */
+export class TtsConfigError extends TtsError {
+  constructor(
+    providerId: string,
+    message: string,
+    readonly skipped: readonly SkippedProvider[],
+  ) {
+    super("misconfigured", providerId, message);
+    this.name = "TtsConfigError";
   }
 }
 

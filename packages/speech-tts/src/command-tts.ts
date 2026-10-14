@@ -1,11 +1,13 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import type { Readable } from "node:stream";
 import { assertSupported } from "./capabilities.js";
 import { withDeadline } from "./deadline.js";
 import { TtsFailedError, TtsUnavailableError } from "./errors.js";
 import { isRecord } from "./guards.js";
+import { DEFAULT_MAX_OUTPUT_BYTES, errorText } from "./output-limits.js";
 import { decodeEngineWav, toSynthesis } from "./synthesis.js";
 import type {
   PhonemeAlphabet,
@@ -26,10 +28,14 @@ export interface CommandTtsOptions {
   argv: readonly string[];
   capabilities: TtsCapabilities;
   output?: CommandOutput;
-  /** Merged over the parent's environment. */
+  /** Added to the child's minimal environment (see `INHERITED_ENV`); nothing else of the parent's is passed. */
   env?: Readonly<Record<string, string>>;
   cwd?: string;
   timeoutMs?: number;
+  /** Past this many bytes of stdout, or of the named WAV file, the command is killed. Default 64 MB. */
+  maxOutputBytes?: number;
+  /** Values never quoted in an error, such as tokens passed in `env`. */
+  secrets?: readonly string[];
   /** Exit codes that mean "engine not reachable" rather than "engine failed": EX_UNAVAILABLE, shell not-found, ssh. */
   unavailableExitCodes?: readonly number[];
 }
@@ -43,7 +49,9 @@ export interface CommandRequest {
   alphabet?: PhonemeAlphabet;
   speed?: number;
   language?: string;
-  /** In `json` mode, a fresh path the command may write its WAV to and name as `wav`. */
+  /** In `json` mode, a fresh directory for this call. A `wav` in the answer is a path relative to it. */
+  outDir?: string;
+  /** In `json` mode, a suggested file inside `outDir`. */
   out?: string;
 }
 
@@ -53,18 +61,30 @@ interface RunResult {
   stderr: string;
 }
 
-const STDERR_TAIL = 2_000;
+/** The parent variables a child sees. Anything else, such as an API key, must be listed in `env`. */
+export const INHERITED_ENV = ["PATH", "HOME", "LANG", "TMPDIR"] as const;
+
+/** Raw stderr kept for the error message; more than is shown, so redaction runs before the cut. */
+const STDERR_RAW = 16_000;
 const DEFAULT_UNAVAILABLE = [69, 127, 255];
 
-export function commandRequest(input: TtsInput, voice: string, options: SynthesizeOptions, out?: string): CommandRequest {
+export function commandRequest(input: TtsInput, voice: string, options: SynthesizeOptions, outDir?: string): CommandRequest {
   return {
     version: 1,
     voice,
     ...("tokens" in input ? { tokens: input.tokens, alphabet: input.alphabet } : { text: input.text }),
     ...(options.speed !== undefined ? { speed: options.speed } : {}),
     ...(options.language !== undefined ? { language: options.language } : {}),
-    ...(out ? { out } : {}),
+    ...(outDir ? { outDir, out: join(outDir, "out.wav") } : {}),
   };
+}
+
+export function childEnv(extra: Readonly<Record<string, string>> = {}): Record<string, string> {
+  const inherited = INHERITED_ENV.flatMap((name) => {
+    const value = process.env[name];
+    return value === undefined ? [] : [[name, value] as const];
+  });
+  return { ...Object.fromEntries(inherited), ...extra };
 }
 
 /** Kills the whole process group, so a wrapper (`sh -c`, a Python launcher) cannot leave its engine running. */
@@ -77,27 +97,44 @@ function killTree(pid: number | undefined): void {
   }
 }
 
+/** Counts as it reads, so an endless stream trips the limit instead of filling memory. */
+function collect(stream: Readable, limit: number, onOverflow: () => void): () => Buffer {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  stream.on("data", (chunk: Buffer) => {
+    if (size > limit) return;
+    size += chunk.length;
+    if (size <= limit) return void chunks.push(chunk);
+    chunks.length = 0;
+    onOverflow();
+  });
+  return () => Buffer.concat(chunks);
+}
+
 function run(opts: CommandTtsOptions, request: CommandRequest, signal: AbortSignal): Promise<RunResult> {
   const [command, ...args] = opts.argv;
+  const limit = opts.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
   return new Promise((resolve, reject) => {
     const child = spawn(command ?? "", args, {
       cwd: opts.cwd,
-      env: { ...process.env, ...opts.env },
+      env: childEnv(opts.env),
       detached: process.platform !== "win32",
       stdio: ["pipe", "pipe", "pipe"],
     });
-    const stdout: Buffer[] = [];
+    const stdout = collect(child.stdout, limit, () => {
+      killTree(child.pid);
+      reject(new TtsFailedError(opts.id, `stdout passed maxOutputBytes (${limit}); the command was killed`));
+    });
     let stderr = "";
     const onAbort = (): void => killTree(child.pid);
     signal.addEventListener("abort", onAbort, { once: true });
-    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
-    child.stderr.on("data", (chunk: Buffer) => (stderr = (stderr + chunk.toString()).slice(-STDERR_TAIL)));
+    child.stderr.on("data", (chunk: Buffer) => (stderr = (stderr + chunk.toString()).slice(-STDERR_RAW)));
     // A command that exits without reading its request closes the pipe; its exit code says what happened.
     child.stdin.on("error", () => undefined);
     child.on("error", (cause) => reject(new TtsUnavailableError(opts.id, `cannot start ${command}: ${cause.message}`, { cause })));
     child.on("close", (code) => {
       signal.removeEventListener("abort", onAbort);
-      resolve({ code, stdout: Buffer.concat(stdout), stderr: stderr.trim() });
+      resolve({ code, stdout: stdout(), stderr });
     });
     child.stdin.end(JSON.stringify(request));
   });
@@ -105,12 +142,33 @@ function run(opts: CommandTtsOptions, request: CommandRequest, signal: AbortSign
 
 function checkExit(opts: CommandTtsOptions, result: RunResult): void {
   if (result.code === 0) return;
-  const detail = `${opts.argv[0]} exited ${result.code ?? "on a signal"}${result.stderr ? `: ${result.stderr}` : ""}`;
+  const stderr = errorText(result.stderr, opts.secrets, "tail");
+  const detail = `${opts.argv[0]} exited ${result.code ?? "on a signal"}${stderr ? `: ${stderr}` : ""}`;
   if ((opts.unavailableExitCodes ?? DEFAULT_UNAVAILABLE).includes(result.code ?? -1)) throw new TtsUnavailableError(opts.id, detail);
   throw new TtsFailedError(opts.id, detail);
 }
 
-async function parseJsonOutput(opts: CommandTtsOptions, stdout: Buffer): Promise<Synthesis> {
+const escapes = (dir: string, path: string): boolean => {
+  const rel = relative(dir, path);
+  return rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
+};
+
+/** Reads the named WAV only from inside this call's `outDir`, after resolving symlinks, and only up to the limit. */
+async function readConfinedWav(opts: CommandTtsOptions, dir: string, wav: string): Promise<Uint8Array> {
+  const fail = (why: string): never => {
+    throw new TtsFailedError(opts.id, `wav "${wav}" ${why}`);
+  };
+  if (isAbsolute(wav)) fail("must be a path relative to outDir, not absolute");
+  if (escapes(dir, resolve(dir, wav))) fail("escapes outDir");
+  const realDir = await realpath(dir);
+  const realFile = await realpath(resolve(dir, wav)).catch(() => fail("does not exist in outDir"));
+  if (escapes(realDir, realFile)) fail("links outside outDir");
+  const limit = opts.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
+  if ((await stat(realFile)).size > limit) fail(`is larger than maxOutputBytes (${limit})`);
+  return readFile(realFile);
+}
+
+async function parseJsonOutput(opts: CommandTtsOptions, stdout: Buffer, dir: string): Promise<Synthesis> {
   let doc: unknown;
   try {
     doc = JSON.parse(stdout.toString("utf8"));
@@ -120,7 +178,7 @@ async function parseJsonOutput(opts: CommandTtsOptions, stdout: Buffer): Promise
   if (!isRecord(doc)) throw new TtsFailedError(opts.id, "stdout is not one JSON object");
   let bytes: Uint8Array;
   if (typeof doc.audioBase64 === "string") bytes = Buffer.from(doc.audioBase64, "base64");
-  else if (typeof doc.wav === "string") bytes = await readFile(doc.wav);
+  else if (typeof doc.wav === "string") bytes = await readConfinedWav(opts, dir, doc.wav);
   else throw new TtsFailedError(opts.id, "JSON output names neither wav nor audioBase64");
   return toSynthesis(opts.id, opts.capabilities, decodeEngineWav(opts.id, bytes), doc);
 }
@@ -128,8 +186,8 @@ async function parseJsonOutput(opts: CommandTtsOptions, stdout: Buffer): Promise
 async function synthesizeOnce(opts: CommandTtsOptions, request: CommandRequest, signal: AbortSignal): Promise<Synthesis> {
   const result = await run(opts, request, signal);
   checkExit(opts, result);
-  if (opts.output === "stdout-wav") return toSynthesis(opts.id, opts.capabilities, decodeEngineWav(opts.id, result.stdout));
-  return parseJsonOutput(opts, result.stdout);
+  if (!request.outDir) return toSynthesis(opts.id, opts.capabilities, decodeEngineWav(opts.id, result.stdout));
+  return parseJsonOutput(opts, result.stdout, request.outDir);
 }
 
 /** Any external program that speaks the stdio contract in the README: a local engine, or one behind ssh. */
@@ -138,7 +196,7 @@ export function commandTts(opts: CommandTtsOptions): TtsProvider {
   const synthesize = async (input: TtsInput, voice: string, options: SynthesizeOptions = {}): Promise<Synthesis> => {
     assertSupported(opts.id, opts.capabilities, input, voice, options);
     const dir = opts.output === "stdout-wav" ? undefined : await mkdtemp(join(tmpdir(), "speech-tts-"));
-    const request = commandRequest(input, voice, options, dir && join(dir, "out.wav"));
+    const request = commandRequest(input, voice, options, dir);
     try {
       return await withDeadline(opts.id, options.timeoutMs ?? opts.timeoutMs ?? 120_000, options.signal, (signal) =>
         synthesizeOnce(opts, request, signal),

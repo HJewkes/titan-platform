@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { loadTtsProfile, resolveTtsConfig } from "./config.js";
 import { runTtsConformance } from "./conformance.js";
 import { TtsFailedError, TtsUnavailableError } from "./errors.js";
@@ -16,8 +16,12 @@ interface Seen {
 }
 
 const seen: Seen[] = [];
+/** Requests that reached the second origin, the target of the cross-origin redirect. */
+const otherSeen: Seen[] = [];
 let server: Server;
+let other: Server;
 let base = "";
+let otherBase = "";
 let closedPortUrl = "";
 
 /** 0.4 s per word divided by speed, so pace and timings are checkable. */
@@ -29,7 +33,17 @@ function speak(body: Record<string, unknown>, sampleRate: number) {
   return { wav: Buffer.from(encodeWav({ samples, sampleRate })), timings };
 }
 
-const ROUTES: Record<string, (body: Record<string, unknown>, res: ServerResponse) => void> = {
+function flood(res: ServerResponse): void {
+  res.writeHead(200, { "content-type": "audio/wav" });
+  const block = Buffer.alloc(1 << 20, 0x41);
+  const pump = (): void => {
+    while (!res.destroyed && res.write(block));
+    if (!res.destroyed) res.once("drain", pump);
+  };
+  pump();
+}
+
+const ROUTES: Record<string, (body: Record<string, unknown>, res: ServerResponse, req: IncomingMessage) => void> = {
   "/speech-wav": (body, res) => res.writeHead(200, { "content-type": "audio/wav" }).end(speak(body, 24_000).wav),
   "/speech-json": (body, res) => {
     const { wav, timings } = speak(body, 22_050);
@@ -39,7 +53,24 @@ const ROUTES: Record<string, (body: Record<string, unknown>, res: ServerResponse
   "/reject": (_, res) => res.writeHead(400).end("voice not found"),
   "/not-wav": (_, res) => res.writeHead(200).end("hello"),
   "/hang": () => undefined,
+  "/redirect": (_, res) => res.writeHead(307, { location: `${otherBase}/speech-wav` }).end(),
+  "/flood": (_, res) => flood(res),
+  "/echo-key-early": (_, res, req) => res.writeHead(401).end(`key ${String(req.headers["x-api-key"])} rejected`),
+  "/echo-key": (_, res, req) => res.writeHead(401).end(`${"x".repeat(5_000)} key ${String(req.headers["x-api-key"])} rejected`),
 };
+
+function recordingServer(log: Seen[], route: (body: Record<string, unknown>, res: ServerResponse, req: IncomingMessage) => void): Server {
+  return createServer((req, res) => {
+    let raw = "";
+    req.on("data", (chunk: Buffer) => (raw += chunk.toString()));
+    req.on("end", () => {
+      const parsed: unknown = JSON.parse(raw || "{}");
+      const body = isRecord(parsed) ? parsed : {};
+      log.push({ body, headers: req.headers });
+      route(body, res, req);
+    });
+  });
+}
 
 async function listen(target: Server): Promise<number> {
   await new Promise<void>((resolve) => target.listen(0, "127.0.0.1", resolve));
@@ -49,25 +80,20 @@ async function listen(target: Server): Promise<number> {
 }
 
 beforeAll(async () => {
-  server = createServer((req, res) => {
-    let raw = "";
-    req.on("data", (chunk: Buffer) => (raw += chunk.toString()));
-    req.on("end", () => {
-      const parsed: unknown = JSON.parse(raw || "{}");
-      const body = isRecord(parsed) ? parsed : {};
-      seen.push({ body, headers: req.headers });
-      ROUTES[req.url ?? ""]?.(body, res);
-    });
-  });
+  server = recordingServer(seen, (body, res, req) => ROUTES[req.url ?? ""]?.(body, res, req));
   base = `http://127.0.0.1:${await listen(server)}`;
+  other = recordingServer(otherSeen, (body, res) => res.writeHead(200).end(speak(body, 24_000).wav));
+  otherBase = `http://127.0.0.1:${await listen(other)}`;
   const closed = createServer();
   closedPortUrl = `http://127.0.0.1:${await listen(closed)}/speech-wav`;
   await new Promise((resolve) => closed.close(resolve));
 });
 
 afterAll(async () => {
-  server.closeAllConnections();
-  await new Promise((resolve) => server.close(resolve));
+  for (const s of [server, other]) {
+    s.closeAllConnections();
+    await new Promise((resolve) => s.close(resolve));
+  }
 });
 
 const TEXT_ONLY: TtsCapabilities = {
@@ -140,6 +166,80 @@ describe("httpTts", () => {
     await jsonProvider("/speech-json").synthesize({ tokens: [{ text: "live", phonemes: "laɪv" }, { text: "now" }], alphabet: "ipa" }, "alloy");
 
     expect(seen.at(-1)?.body).toMatchObject({ text: "live now", phonemes: "laɪv now" });
+  });
+});
+
+describe("httpTts hardening", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // Mutation caught: fetch follows redirects, so the key and the text reach whatever origin the server names.
+  it("refuses a cross-origin redirect: no header and no body reach the second server", async () => {
+    const tts = wavProvider("/redirect", { headers: { "x-api-key": "s3cr3t" } });
+
+    await expect(tts.synthesize({ text: "private words" }, "alloy")).rejects.toThrow(/HTTP 307: redirects are refused/);
+
+    expect(seen.at(-1)?.headers["x-api-key"]).toBe("s3cr3t");
+    expect(otherSeen).toEqual([]);
+  });
+
+  // Mutations caught: the plain-http check is skipped; every host counts as loopback.
+  it("refuses plain http to a remote host at construction, and allows it only by opt-in", () => {
+    const remote = (allowInsecureHttp?: boolean) =>
+      wavProvider("http://tts.example.com/speak", allowInsecureHttp ? { allowInsecureHttp } : {});
+
+    expect(() => remote()).toThrow("refusing plain http to tts.example.com; use https, or set allowInsecureHttp: true");
+    expect(() => remote(true)).not.toThrow();
+    expect(() => wavProvider("http://localhost:9/speak")).not.toThrow();
+  });
+
+  // Mutation caught: the factory drops the check by passing allowInsecureHttp through as true.
+  it("never sends a profile's headers over plain http to a remote host", () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const config = resolveTtsConfig({
+      env: { KEY: "s3cr3t" },
+      profile: {
+        version: 1,
+        tts: {
+          fallback: true,
+          providers: {
+            remote: { kind: "http", url: "http://tts.example.com/speak", headers: { "x-api-key": "${env:KEY}" }, request: { body: {} }, capabilities: { voices: ["alloy"], sampleRate: 24_000 } },
+          },
+        },
+      },
+    });
+
+    expect(() => defaultTtsRegistry().select(config)).toThrow(/remote is misconfigured: remote: refusing plain http to tts.example.com/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  // Mutation caught: the body is read whole before its size is checked, so an endless body runs to the deadline.
+  it("cancels a response body that passes maxOutputBytes while it streams", async () => {
+    const started = Date.now();
+
+    const error = await wavProvider("/flood", { maxOutputBytes: 2 * 1024 * 1024 }).synthesize({ text: "hi" }, "alloy", { timeoutMs: 20_000 }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(TtsFailedError);
+    expect(String(error)).toContain("response passed maxOutputBytes (2097152)");
+    expect(Date.now() - started).toBeLessThan(10_000);
+  });
+
+  // Mutations caught: the error body is quoted unredacted; it is quoted whole, however long.
+  it("redacts header secrets from an error body and quotes at most about 2 KB of it", async () => {
+    const error = await wavProvider("/echo-key", { headers: { "x-api-key": "s3cr3t-key-value" } }).synthesize({ text: "hi" }, "alloy").catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(TtsFailedError);
+    expect(String(error)).not.toContain("s3cr3t-key-value");
+    expect(String(error).length).toBeLessThan(2_200);
+  });
+
+  // Mutation caught: the error body is cut before redaction, so a secret at the edge leaks in part.
+  it("redacts a secret even where the quoted text is cut", async () => {
+    const error = await wavProvider("/echo-key-early", { headers: { "x-api-key": "k".repeat(3_000) } }).synthesize({ text: "hi" }, "alloy").catch((e: unknown) => e);
+
+    expect(String(error)).toContain("key [redacted] rejected");
+    expect(String(error)).not.toContain("kkkk");
   });
 });
 
