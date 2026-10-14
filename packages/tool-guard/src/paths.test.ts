@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { classify } from "./classify.js";
 import { containsGuarded, GUARDED_PATHS, hasGlob, matchGlob, matchGuarded, toAbsolute } from "./paths.js";
 
 const HOME = "/home/you";
 const REPO_DIR = "/home/you/projects/app";
 const secretId = (path: string) => matchGuarded(path, GUARDED_PATHS.secret, HOME)?.id ?? null;
+const configId = (path: string) => matchGuarded(path, GUARDED_PATHS.config, HOME)?.id ?? null;
 
 describe("matchGuarded", () => {
   it("matches a guarded path exactly", () => {
@@ -36,6 +38,22 @@ describe("matchGuarded", () => {
     expect(secretId("/srv/app/.env.production")).toBe("any:.env.*");
     expect(secretId("/home/you/projects/app/.env.example")).toBeNull();
     expect(secretId("/home/you/projects/app/.envrc")).toBeNull();
+  });
+
+  it("guards gh's alias store as config and keeps its token file a secret only", () => {
+    expect(configId("/home/you/.config/gh/config.yml")).toBe("home:.config/gh/config.yml");
+    expect(secretId("/home/you/.config/gh/config.yml")).toBeNull();
+    expect(configId("/home/you/.config/gh/hosts.yml")).toBeNull();
+    expect(secretId("/home/you/.config/gh/hosts.yml")).toBe("home:.config/gh/hosts.yml");
+  });
+
+  it("reads an append to gh's config.yml as a config write", () => {
+    const ctx = { home: HOME, readLink: () => null, readHead: () => null, readScript: () => null };
+    const input = { kind: "bash" as const, command: "echo x >> ~/.config/gh/config.yml", toolName: "Bash", cwd: REPO_DIR, sessionId: null, toolUseId: null };
+
+    expect(classify(input, ctx)).toEqual([
+      expect.objectContaining({ spelling: "bash.config.redirect-out", subject: { pattern: "home:.config/gh/config.yml" } }),
+    ]);
   });
 
   it("anchors home patterns at the given home", () => {
