@@ -6,9 +6,10 @@ import { runEvalCli } from "./eval-cli.js";
 import { mapLintCheck } from "./eval-l0.js";
 import { rulesSha, scriptSha } from "./eval-store.js";
 import { layout } from "./map-fixtures.test-helpers.js";
+import { DEFAULT_RULES_PATH } from "./rules.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
 
-const RULES = "rules:\n  - id: Q-D2\n";
+const RULES = "schema: rules/v1\nrules:\n  - { id: Q-D2, rule: one job per beat, fields: [beats.visual.job], owner_support: none, l0: { severity: error, status: pending, owner: SQ5 } }\n";
 const fourBoxes = scriptWith({
   visual: {
     assertion: "Four parts at once",
@@ -71,8 +72,17 @@ describe("explainer eval l0", () => {
     expect(readFileSync(join(dir, "bench/evals/runs.jsonl"), "utf8").trim().split("\n")).toHaveLength(1);
   });
 
-  it("exits 2 on a script that is not script/v1, and on a missing --rules", async () => {
+  it("exits 2 on a script that is not script/v1, and on a registry that is not rules/v1", async () => {
     expect(await l0(write("bad.json", { schema: "script/v0" }))).toBe(2);
-    expect(await runEvalCli(["eval", "l0", write("script.json", scriptWith()), "--config", "c"])).toBe(2);
+    write("rules.yaml", "rules:\n  - id: Q-D2\n");
+    expect(await l0(write("script.json", scriptWith()))).toBe(2);
+  });
+
+  it("stamps rows with the shipped registry's sha when --rules is omitted", async () => {
+    const script = write("script.json", scriptWith());
+
+    expect(await runEvalCli(["eval", "l0", script, "--config", "c", "--bench", join(dir, "bench")], { now: clock(), checks: [mapLintCheck] })).toBe(0);
+    const shipped = rulesSha(readFileSync(DEFAULT_RULES_PATH));
+    expect(structureLines().slice(1).every((line) => line.split("\t")[2] === shipped)).toBe(true);
   });
 });
