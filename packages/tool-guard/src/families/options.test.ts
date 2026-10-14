@@ -69,9 +69,9 @@ describe("takesNextWord", () => {
   it.each(["-H", "--header", "-sH", "-d", "-Hx", "--header=x", "-s", "--", "-", "url", "-sHx", "-Hs", "--next", "--conf"])(
     "agrees with readOptions on whether %s consumes the next word",
     (word) => {
-      const next = words("next")[0] as WordToken;
-      const read = readOptions([...words(word), next], values, curl);
-      expect(takesNextWord(word, values, curl)).toBe(!read.positionals.includes(next));
+      const read = readOptions(words(`${word} next`), values, curl);
+      const consumed = !read.positionals.some((w) => w.value === "next");
+      expect(takesNextWord(word, values, curl)).toBe(consumed);
     },
   );
 });
