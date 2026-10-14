@@ -245,12 +245,53 @@ describe("seatFixFirst", () => {
     const unrelated = agent("seat-k-8-review");
     const unrelatedFailing: ReviewerReader = { read: async (input) => (input.reviewerAgentId === unrelated.agentId ? Promise.reject(slow) : []) };
 
-    it("leaves Shepherd's MERGE standing and warns with the error's text when the reviewer is tied to no PR", async () => {
+    /** A seat wait on a fake clock, so the deadline bounds how long a read that may clear holds the MERGE. */
+    const seatWait = () => {
+      let clock = 0;
+      return { timing: { now: () => clock, sleep: async (ms: number) => void (clock += ms), pollMs: SEAT_POLL_MS, timeoutMs: SEAT_BOUND_MS }, signal: new AbortController().signal };
+    };
+
+    it("leaves Shepherd's MERGE standing and warns with the error's text when an untied reviewer's refusal reads the same every time", async () => {
+      const refused = new DispatchError("agent-chat agent ls --json printed invalid JSON");
+      const reader: ReviewerReader = { read: async (input) => (input.reviewerAgentId === unrelated.agentId ? Promise.reject(refused) : []) };
       const warn = vi.fn();
 
-      expect(await unlessSeatFixFirst(rosterOf(unrelated, SEAT), unrelatedFailing, target, shepherdMerge, warn)).toEqual(shepherdMerge);
+      expect(await unlessSeatFixFirst(rosterOf(unrelated, SEAT), reader, target, shepherdMerge, warn)).toEqual(shepherdMerge);
       expect(warn).toHaveBeenCalledWith(expect.stringContaining(`${unrelated.name} is not the reviewer of ${REPO}#4`));
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining("broker did not answer agents_result"));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("printed invalid JSON"));
+    });
+
+    it("blocks with a retry when an untied reviewer's read fails in a way that may clear, since it may be this PR's own", async () => {
+      const warn = vi.fn();
+
+      expect(await seatFixFirst(rosterOf(unrelated, SEAT), unrelatedFailing, target, warn)).toEqual({
+        kind: "none",
+        reason: `seat check: the transcript of ${unrelated.name} could not be read: DispatchError: agent-chat refused agent ls: broker did not answer agents_result`,
+        retry: true,
+      });
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("blocks with a retry when the PR's own sole-session reviewer's read fails in a way that may clear", async () => {
+      const own = agent("x-review");
+      const reader: ReviewerReader = { read: async () => Promise.reject(slow) };
+
+      expect(await unlessSeatFixFirst(rosterOf(own), reader, target, shepherdMerge, vi.fn())).toMatchObject({ kind: "none", reason: expect.stringContaining(own.name) });
+      expect(await seatFixFirst(rosterOf(own), reader, target, vi.fn())).toMatchObject({ kind: "none", retry: true });
+    });
+
+    it("lets Shepherd's MERGE stand once an untied reviewer's failed read clears within the seat wait", async () => {
+      let reads = 0;
+      const reader: ReviewerReader = { read: async (input) => (input.reviewerAgentId === unrelated.agentId && ++reads === 1 ? Promise.reject(slow) : []) };
+
+      expect(await unlessSeatFixFirst(rosterOf(unrelated, SEAT), reader, target, shepherdMerge, vi.fn(), Date.now, seatWait())).toBe(shepherdMerge);
+      expect(reads).toBe(2);
+    });
+
+    it("holds Shepherd's MERGE for the next round when an untied reviewer's read still fails at the seat wait's deadline", async () => {
+      const result = await unlessSeatFixFirst(rosterOf(unrelated, SEAT), unrelatedFailing, target, shepherdMerge, vi.fn(), Date.now, seatWait());
+
+      expect(result).toEqual({ kind: "none", reason: expect.stringContaining("broker did not answer agents_result"), seatHeld: shepherdMerge });
     });
 
     it("blocks the PR its own reviewer is tied to, naming the error's text, as a read that may clear", async () => {

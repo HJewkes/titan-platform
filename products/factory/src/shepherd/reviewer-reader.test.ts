@@ -5,6 +5,7 @@ import { claudeSourceFromPath, readSessionObservations, readSessionSourceText, t
 import type * as SessionRead from "@titan-design/session-read";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEPTH_FLOOR_REASON, INVESTIGATIVE_CALLS, USAGE_LIMIT_REASON, isInvestigativeCall } from "@titan-design/review-panel";
+import { DispatchError } from "@titan-design/agent-dispatch";
 import { seatFixFirst } from "./external-review.js";
 import { acceptVerdict, type AwaitVerdictInput } from "./review.js";
 import { reviewerMessages, sentMessages, transcriptReviewerReader, type TranscriptRow } from "./reviewer-reader.js";
@@ -347,6 +348,16 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
 
     expect(check).toEqual({ kind: "clear" });
     expect(warn).toHaveBeenCalledWith(expect.stringContaining(`${seat.name} is not the reviewer of octo/demo#4`));
+  });
+
+  it("blocks with a retry when the PR's own sole-session reviewer is read while the broker does not answer the roster", async () => {
+    const rows = [{ ...seat, name: "x-review", transcriptPath: path.join(dir, "project", `${FIXTURE_SESSION}.jsonl`) }];
+    const slow = new DispatchError("agent-chat refused agent ls: broker did not answer agents_result");
+    const reader = transcriptReviewerReader({ roster: async () => Promise.reject(slow), namespace: NAMESPACE });
+
+    const check = await seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD }, vi.fn());
+
+    expect(check).toEqual({ kind: "none", reason: "seat check: the transcript of x-review could not be read: DispatchError: agent-chat refused agent ls: broker did not answer agents_result", retry: true });
   });
 
   it("does not block on a seat reviewer still running with no transcript yet", async () => {

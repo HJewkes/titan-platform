@@ -193,19 +193,25 @@ function failureText(error: unknown): string {
   return `${kind}: ${text.length <= DETAIL_CHARS ? text : `${text.slice(0, DETAIL_CHARS)}…`}`;
 }
 
+const unread = (name: string, failure: unknown, clears: boolean): SeatCheck => {
+  const reason = `seat check: the transcript of ${name} could not be read: ${failureText(failure)}`;
+  return { kind: "none", reason, ...retryIf(clears) };
+};
+
 /**
- * A failed read blocks only the PR a brief or verdict block ties the reviewer to; a reviewer tied to no PR, or only to
- * other PRs, warns instead of blocking every PR on the machine.
+ * A failed read of a reviewer a brief or verdict block ties to this PR blocks. An untied reviewer may still be this PR's
+ * own, unread: a failure that may clear blocks with a retry, so the seat wait bounds it, and one that reads the same every
+ * time warns instead of blocking every PR on the machine.
  */
 function failedRead(name: string, target: ReviewTarget, read: NameRead, warn: (line: string) => void): SeatCheck | undefined {
   const hards = read.failures.filter((each) => !(each instanceof DamagedTranscriptError));
   const failure = hards[0] ?? read.failures[0];
   if (failure === undefined) return undefined;
-  if (!reviewsThisPr(target, read)) {
-    warn(`seat check: ${name} is not the reviewer of ${target.repo}#${target.pr}, so its unreadable transcript does not block it: ${failureText(failure)}`);
-    return undefined;
-  }
-  return { kind: "none", reason: `seat check: the transcript of ${name} could not be read: ${failureText(failure)}`, ...retryIf(hards.length > 0 && hards.every(transient)) };
+  if (reviewsThisPr(target, read)) return unread(name, failure, hards.length > 0 && hards.every(transient));
+  const clearing = hards.find(transient);
+  if (clearing !== undefined) return unread(name, clearing, true);
+  warn(`seat check: ${name} is not the reviewer of ${target.repo}#${target.pr}, so its unreadable transcript does not block it: ${failureText(failure)}`);
+  return undefined;
 }
 
 function sentBack(name: string, target: ReviewTarget, message: ReviewerMessage, messages: readonly ReviewerMessage[]): SeatCheck {
