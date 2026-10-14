@@ -129,7 +129,7 @@ export function verifySigned<S extends Envelope, R extends string = never>(
 }
 
 function verifyChecked<S extends Envelope, R extends string>(input: ProofInput, keys: KeyRing, now: number, aud: string, kind: StatementKind<S, R>): Verified<S, R> {
-  if (typeof input?.statementB64 !== "string" || typeof input.signatureB64 !== "string") return { ok: false, refusal: "malformed" };
+  if (typeof input.statementB64 !== "string" || typeof input.signatureB64 !== "string") return { ok: false, refusal: "malformed" };
   if (!Number.isFinite(now) || typeof aud !== "string") return { ok: false, refusal: "malformed" };
   const bytes = decodeBase64url(input.statementB64);
   const signature = decodeBase64url(input.signatureB64);
