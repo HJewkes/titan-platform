@@ -65,7 +65,7 @@ describe("listAgents", () => {
     const bin = fakeAgentChat(`echo "broker did not answer agents_result" >&2\nexit 1\n`);
     const error = await listAgents(bin, 10_000).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(DispatchTimeoutError);
-    expect((error as Error).message).toContain("agents_result");
+    expect(error).toMatchObject({ message: expect.stringContaining("agents_result") });
   });
 
   it("keeps the reply-timeout text on stdout a plain refusal", async () => {
