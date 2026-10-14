@@ -7,7 +7,7 @@ import { codeRoute, step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
 import { failureOf } from "./error-class.js";
 import { seatFixFirst } from "./external-review.js";
-import { registeredOwner } from "./seat-tie.js";
+import { registeredOwners } from "./seat-tie.js";
 import { registeredKind } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { mergeVerdict, type ReviewWiring } from "./review.js";
@@ -157,7 +157,7 @@ async function seatHeads(port: ShepherdDeps["port"], input: SeatInput): Promise<
 /**
  * Reads every seat reviewer at each head a carry would vouch for, so a FIX_FIRST at any of them refuses it, as the fresh review
  * at that head would have. An unreadable roster, transcript, commit list or force-push list refuses too. With no dispatch wired there is no
- * roster to read. The store, when given, names the PR's registered owner for a seat reviewer whose transcript shows nothing.
+ * roster to read. The store, when given, names the registered owners that tie a seat reviewer whose transcript shows nothing.
  */
 export function carrySeatRoute(deps: Pick<ShepherdDeps, "now" | "port"> & Partial<Pick<ShepherdDeps, "store">>, wiring: ReviewWiring | undefined): StepRoute {
   return codeRoute(CARRY_SEAT_STEP, deps.now, async (input: SeatInput) => {
@@ -167,8 +167,8 @@ export function carrySeatRoute(deps: Pick<ShepherdDeps, "now" | "port"> & Partia
     if ("reason" in walked) return { clear: false, reason: walked.reason };
     for (const head of walked.heads) {
       const target = { repo: input.repo, pr: input.pr, head };
-      const owner = deps.store && registeredOwner(deps.store, target);
-      const check = await seatFixFirst(() => dispatch.roster(), wiring.reader, { ...target, ...(owner && { owner }) });
+      const owners = deps.store && registeredOwners(deps.store, target);
+      const check = await seatFixFirst(() => dispatch.roster(), wiring.reader, { ...target, ...owners });
       if (check.kind !== "clear") return { clear: false, reason: check.kind === "none" ? check.reason : `a seat reviewer said FIX_FIRST at ${head}` };
     }
     return { clear: true };

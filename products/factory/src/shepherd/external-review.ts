@@ -11,7 +11,7 @@ import { ReviewerAskTimedOut, ReviewerBrokerBusy, ReviewerBrokerDown, clearRevie
 import type { AwaitVerdictInput, AwaitVerdictResult, ReviewTarget, ReviewWiring, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { OwnerOverride } from "./override-stats.js";
 import type { Registration } from "./store.js";
-import { rosterTie, type PrOwner, type SeatRow, type SeatTarget } from "./seat-tie.js";
+import { rosterTie, type SeatRow, type SeatTarget } from "./seat-tie.js";
 import { fixFirstFindings, namesTarget } from "@titan-design/review-panel";
 
 /** The reviewer a hold waits on, from `hold --reviewer` alone; a name in the hold's reason text is never read as one. */
@@ -210,8 +210,8 @@ function reviewsOtherPr(read: NameRead): boolean {
 /**
  * A failed read of a reviewer a brief or verdict block ties to this PR blocks. A failure that may clear blocks with a retry,
  * so the seat wait bounds it. One that reads the same every time clears with a warning only on evidence that the reviewer is
- * another PR's: its readable records name another PR, or the roster places it in another agent's directory. With no evidence
- * either way it blocks with a retry, so the seat wait holds the MERGE, and the reason says what was missing.
+ * another PR's: its readable records name another PR, or its name stem or directory is another registered PR's implementer or
+ * branch. With no evidence either way it blocks with a retry, so the seat wait holds the MERGE, and the reason names what was missing.
  */
 function failedRead(name: string, target: SeatTarget, read: NameRead, rows: readonly SeatRow[], warn: (line: string) => void): SeatCheck | undefined {
   const hards = read.failures.filter((each) => !(each instanceof DamagedTranscriptError));
@@ -220,11 +220,11 @@ function failedRead(name: string, target: SeatTarget, read: NameRead, rows: read
   if (reviewsThisPr(target, read)) return unread(name, failure, hards.length > 0 && hards.every(transient));
   const clearing = hards.find(transient);
   if (clearing !== undefined) return unread(name, clearing, true);
-  const tie = rosterTie(target, rows, (row) => row.name.replace(SEAT_REVIEWER, ""));
-  if (tie !== "own" && reviewsOtherPr(read)) return untied(name, target, "its records name another PR", failure, warn);
-  if (tie === "other") return untied(name, target, "the roster places it in another agent's directory", failure, warn);
-  const why = tie === "own" ? "the roster ties it to this PR's implementer" : "no record, registration or roster directory says whose reviewer it is";
-  return { kind: "none", reason: `seat check: the transcript of ${name} could not be read and ${why}: ${failureText(failure)}`, ...retryIf(tie === "none") };
+  const tie = rosterTie(target, rows, (stem) => stem.replace(SEAT_REVIEWER, ""));
+  if (tie.kind !== "own" && reviewsOtherPr(read)) return untied(name, target, "its records name another PR", failure, warn);
+  if (tie.kind === "other") return untied(name, target, `the roster ties it to ${tie.pr}'s registration`, failure, warn);
+  const why = tie.kind === "own" ? "the roster ties it to this PR's implementer" : `nothing says whose reviewer it is (no record names a PR; ${tie.missing})`;
+  return { kind: "none", reason: `seat check: the transcript of ${name} could not be read and ${why}: ${failureText(failure)}`, ...retryIf(tie.kind === "none") };
 }
 
 function untied(name: string, target: ReviewTarget, evidence: string, failure: unknown, warn: (line: string) => void): undefined {
@@ -361,22 +361,21 @@ function authoredByDispatched(raw: unknown, result: AwaitVerdictResult): AwaitVe
 
 /**
  * Inside the step, so the replay reads the recorded outcome; with no dispatch wired there is no roster to read seat reviewers from. With
- * `seatWaitTiming`, a seat WAIT over the MERGE is waited out under the step's signal. `ownerOf` names who Shepherd registered as opening the PR.
+ * `seatWaitTiming`, a seat WAIT over the MERGE is waited out under the step's signal. `ownersOf` names who Shepherd registered as opening the PR and every other PR.
  */
 export function seatVetoed(
   wiring: ReviewWiring | undefined,
   body: VerdictStep,
   now: () => number = Date.now,
   seatWaitTiming?: SeatWaitTiming,
-  ownerOf?: (target: ReviewTarget) => PrOwner | undefined,
+  ownersOf?: (target: ReviewTarget) => Pick<SeatTarget, "owner" | "others">,
 ): VerdictStep {
   return async (raw, signal) => {
     const result = authoredByDispatched(raw, await body(raw, signal));
     const dispatch = wiring?.dispatch;
     if (!dispatch) return result;
     const { repo, pr, head } = raw as ReviewTarget;
-    const owner = ownerOf?.({ repo, pr, head });
-    const target: SeatTarget = { repo, pr, head, ...(owner && { owner }) };
+    const target: SeatTarget = { repo, pr, head, ...ownersOf?.({ repo, pr, head }) };
     const roster = () => dispatch.roster();
     const seatWait = seatWaitTiming && { timing: seatWaitTiming, signal };
     const vetoed = await unlessSeatFixFirst(roster, wiring.reader, target, result, undefined, now, seatWait);

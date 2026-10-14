@@ -343,7 +343,8 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
     const rows = [{ ...seat, transcriptPath: path.join(dir, "gone", `${FIXTURE_SESSION}.jsonl`), cwd: path.join(dir, ".worktrees", "tc-tp-5-b") }];
     const reader = transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE });
     const warn = vi.fn();
-    const target = { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD, owner: { implementer: "tc-tp-9-a", branch: "agent-chat/tc-tp-9-a" } };
+    const others = [{ implementer: "tc-tp-5-b", branch: "agent-chat/tc-tp-5-b", label: "octo/demo#5" }];
+    const target = { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD, owner: { implementer: "tc-tp-9-a", branch: "agent-chat/tc-tp-9-a" }, others };
 
     const check = await seatFixFirst(async () => rows, reader, target, warn);
 
@@ -357,7 +358,7 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
 
     const check = await seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD }, vi.fn());
 
-    expect(check).toMatchObject({ kind: "none", retry: true, reason: expect.stringContaining(`the transcript of ${seat.name} could not be read and no record, registration or roster directory`) });
+    expect(check).toMatchObject({ kind: "none", retry: true, reason: expect.stringContaining(`the transcript of ${seat.name} could not be read and nothing says whose reviewer it is (no record names a PR; Shepherd holds no registration for octo/demo#4)`) });
   });
 
   it("blocks with a retry when the PR's own sole-session reviewer is read while the broker does not answer the roster", async () => {
@@ -386,14 +387,14 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
     const reviewingPr7 = [user(SESSION, "review it"), assistant(SESSION, [BLOCK.replace(HEAD, "b".repeat(40))]), assistant(SESSION, ["Looking again."])];
 
     /** The seat check over one transcript of `records`, with `partial` appended as an unterminated last record. */
-    /** With `elsewhere`, the roster places the reviewer in another implementer's worktree than the PR's registered one. */
+    /** With `elsewhere`, the roster places the reviewer in another registered PR's worktree. */
     async function seatCheck(records: readonly Json[], presence: Presence, partial = false, pr = 7, warn = vi.fn(), elsewhere = false) {
       const transcript = writeTranscript(SESSION, records);
       if (partial) appendFileSync(transcript, PARTIAL, "utf8");
       const placed = elsewhere ? { cwd: path.join(dir, ".worktrees", "tc-tp-5-b") } : {};
       const rows = [{ ...seat, sessionId: SESSION, presence, transcriptPath: transcript, ...placed }];
       const reader = transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE });
-      const owner = elsewhere ? { owner: { implementer: "tc-tp-9-a", branch: null } } : {};
+      const owner = elsewhere ? { owner: { implementer: "tc-tp-9-a", branch: null }, others: [{ implementer: "tc-tp-5-b", branch: null, label: "octo/demo#5" }] } : {};
       return seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr, head: HEAD, ...owner }, warn);
     }
 

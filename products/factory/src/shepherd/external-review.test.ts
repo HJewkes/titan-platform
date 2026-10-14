@@ -37,9 +37,11 @@ const tiedFailing = (error: unknown): ReviewerReader => ({
   read: async (input) => (input.reviewerSessionId === SEAT.sessionId ? Promise.reject(error) : [said(SEAT_EARLIER, verdictAt("MERGE", OLD_HEAD), 3)]),
 });
 const tiedRoster = rosterOf(SEAT_EARLIER, SEAT);
-/** The PR as Shepherd registered it: opened by the implementer `seat-c-9`, whose seat reviewer is `seat-c-9-review`. */
-const owned = { ...target, owner: { implementer: "seat-c-9", branch: "agent-chat/seat-c-9" } };
-/** The row as the roster lists an agent started in another implementer's worktree. */
+/** PR 5 as Shepherd registered it: opened by `seat-z-1`, in its own worktree. */
+const OTHER_PR = { implementer: "seat-z-1", branch: "agent-chat/seat-z-1", label: `${REPO}#5` };
+/** The PR as Shepherd registered it: opened by the implementer `seat-c-9`, whose seat reviewer is `seat-c-9-review`, beside PR 5. */
+const owned = { ...target, owner: { implementer: "seat-c-9", branch: "agent-chat/seat-c-9" }, others: [OTHER_PR] };
+/** The row as the roster lists an agent started in PR 5's implementer's worktree. */
 const elsewhere = <T extends ReviewerAgent>(row: T) => ({ ...row, cwd: "/srv/work/demo/.worktrees/seat-z-1" });
 const shepherdMerge: AwaitVerdictResult = { kind: "verdict", verdict: "MERGE", head: HEAD, locator: locatorIn(SHEPHERD_RV.sessionId), reviewer: { agentId: SHEPHERD_RV.agentId, sessionId: SHEPHERD_RV.sessionId } };
 
@@ -324,7 +326,9 @@ describe("seatFixFirst", () => {
   describe("a single-session seat reviewer whose read fails the same every time and shows nothing", () => {
     const missing = Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" });
     const failing: ReviewerReader = { read: async () => Promise.reject(missing) };
-    const task = { ...target, owner: { implementer: "tc-tp-9-a", branch: "agent-chat/tc-tp-9-a" } };
+    const owner = { implementer: "tc-tp-9-a", branch: "agent-chat/tc-tp-9-a" };
+    const task = { ...target, owner, others: [{ implementer: "tc-tp-5-b", branch: "agent-chat/tc-tp-5-b", label: `${REPO}#5` }] };
+    const untied = (name: string, missing: string) => `seat check: the transcript of ${name} could not be read and nothing says whose reviewer it is (no record names a PR; ${missing}): Error`;
 
     it("blocks the PR whose implementer the roster names as the reviewer's", async () => {
       const own = agent("tc-tp-9-a-review");
@@ -339,31 +343,40 @@ describe("seatFixFirst", () => {
       expect(await seatFixFirst(rosterOf(own), failing, task, vi.fn())).toMatchObject({ kind: "none", reason: expect.stringContaining("ties it to this PR's implementer") });
     });
 
-    it("clears with a warning when the roster places the reviewer in another task's worktree, as for an old reviewer whose transcript was deleted", async () => {
-      const other = { ...agent("tc-tp-5-b-review"), cwd: "/srv/work/demo/.worktrees/tc-tp-5-b" };
+    it("clears with a warning when the roster places the reviewer in another registered PR's worktree, as for an old reviewer whose transcript was deleted", async () => {
+      const other = { ...agent("x-review"), cwd: "/srv/work/demo/.worktrees/tc-tp-5-b" };
       const warn = vi.fn();
 
       expect(await unlessSeatFixFirst(rosterOf(other), failing, task, shepherdMerge, warn)).toEqual(shepherdMerge);
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining(`${other.name} is not the reviewer of ${REPO}#4 (the roster places it in another agent's directory)`));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(`${other.name} is not the reviewer of ${REPO}#4 (the roster ties it to ${REPO}#5's registration)`));
+    });
+
+    it("clears with a warning when the reviewer's name stem is another registered PR's implementer", async () => {
+      const warn = vi.fn();
+
+      expect(await seatFixFirst(rosterOf(agent("tc-tp-5-b-review")), failing, task, warn)).toEqual({ kind: "clear" });
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(`tc-tp-5-b-review is not the reviewer of ${REPO}#4 (the roster ties it to ${REPO}#5's registration)`));
     });
 
     it.each([
-      ["no working directory", agent("tc-tp-5-b-review"), task],
-      ["only the repo's shared checkout", { ...agent("tc-tp-5-b-review"), cwd: "/srv/work/demo" }, task],
-      ["no registration for the PR", { ...agent("tc-tp-5-b-review"), cwd: "/srv/work/demo/.worktrees/tc-tp-5-b" }, target],
-    ])("blocks with a retry, naming the missing evidence, when the roster gives %s", async (_label, row, at) => {
+      ["a directory no registration owns", { ...agent("rv-tp-9-a-review"), cwd: "/srv/work/demo/.worktrees/rv-tp-9-a-review" }, task, 'no registration\'s implementer or branch is "rv-tp-9-a" or "rv-tp-9-a-review"'],
+      ["a scratch directory", { ...agent("bd-tp-9-review"), cwd: "/tmp/ac-x/scratch" }, task, 'no registration\'s implementer or branch is "bd-tp-9" or "scratch"'],
+      ["a stem the registration does not name", agent("tc-tp-9-a-review"), { ...task, owner: { implementer: "titan-coord", branch: "fix/tp-9" } }, 'no registration\'s implementer or branch is "tc-tp-9-a"'],
+      ["only the repo's shared checkout", { ...agent("tc-tp-7-c-review"), cwd: "/srv/work/demo" }, task, 'no registration\'s implementer or branch is "tc-tp-7-c"'],
+      ["no registration for the PR", { ...agent("tc-tp-5-b-review"), cwd: "/srv/work/demo/.worktrees/tc-tp-5-b" }, target, `Shepherd holds no registration for ${REPO}#4`],
+    ])("blocks with a retry, naming the reviewer and the missing evidence, when the roster gives %s", async (_label, row, at, missing) => {
       const check = await seatFixFirst(rosterOf(row), failing, at, vi.fn());
 
-      expect(check).toEqual({ kind: "none", reason: "seat check: the transcript of tc-tp-5-b-review could not be read and no record, registration or roster directory says whose reviewer it is: Error", retry: true });
+      expect(check).toEqual({ kind: "none", reason: untied(row.name, missing), retry: true });
     });
 
-    it("holds Shepherd's MERGE for the next round when no evidence turns up within the seat wait", async () => {
+    it("holds Shepherd's MERGE for the next round, naming the reviewer and the missing evidence, when none turns up within the seat wait", async () => {
       let clock = 0;
       const seatWait = { timing: { now: () => clock, sleep: async (ms: number) => void (clock += ms), pollMs: SEAT_POLL_MS, timeoutMs: SEAT_BOUND_MS }, signal: new AbortController().signal };
 
-      const result = await unlessSeatFixFirst(rosterOf(agent("tc-tp-5-b-review")), failing, task, shepherdMerge, vi.fn(), Date.now, seatWait);
+      const result = await unlessSeatFixFirst(rosterOf(agent("tc-tp-7-c-review")), failing, task, shepherdMerge, vi.fn(), Date.now, seatWait);
 
-      expect(result).toEqual({ kind: "none", reason: expect.stringContaining("no record, registration or roster directory"), seatHeld: shepherdMerge });
+      expect(result).toEqual({ kind: "none", reason: untied("tc-tp-7-c-review", 'no registration\'s implementer or branch is "tc-tp-7-c"'), seatHeld: shepherdMerge });
     });
   });
 
@@ -410,7 +423,7 @@ describe("seatFixFirst", () => {
     it("blocks with a retry when the damaged transcript names no PR and nothing else says whose reviewer it is", async () => {
       const check = await seatFixFirst(rosterOf(damaged), damagedReader([said(damaged, "Reading the diff.", 2)]), target, vi.fn());
 
-      expect(check).toMatchObject({ kind: "none", retry: true, reason: expect.stringContaining("no record, registration or roster directory says whose reviewer it is") });
+      expect(check).toMatchObject({ kind: "none", retry: true, reason: expect.stringContaining(`Shepherd holds no registration for ${REPO}#4`) });
     });
 
     it("still blocks on its own reviewer's failed read after an unrelated damaged transcript", async () => {
@@ -680,14 +693,14 @@ describe("G10 disagreement between a seat reviewer and Shepherd", () => {
   it("ties or unties an unreadable seat reviewer by the PR's registered owner when seatVetoed is given one", async () => {
     const stale = elsewhere(agent("seat-z-1-review"));
     const unreadable = { ...wiring(stale)!, reader: { read: async () => Promise.reject(new Error("ENOENT")) } } as Parameters<typeof seatVetoed>[0];
-    const ownerOf = vi.fn(() => owned.owner);
+    const ownersOf = vi.fn(() => ({ owner: owned.owner, others: owned.others }));
 
-    const registered = await seatVetoed(unreadable, async () => shepherdMerge, Date.now, undefined, ownerOf)(ownInput, new AbortController().signal);
+    const registered = await seatVetoed(unreadable, async () => shepherdMerge, Date.now, undefined, ownersOf)(ownInput, new AbortController().signal);
     const unregistered = await seatVetoed(unreadable, async () => shepherdMerge)(ownInput, new AbortController().signal);
 
     expect(registered).toMatchObject({ kind: "verdict", verdict: "MERGE" });
-    expect(ownerOf).toHaveBeenCalledWith({ repo: REPO, pr: 4, head: HEAD });
-    expect(unregistered).toMatchObject({ kind: "none", reason: expect.stringContaining("no record, registration or roster directory") });
+    expect(ownersOf).toHaveBeenCalledWith({ repo: REPO, pr: 4, head: HEAD });
+    expect(unregistered).toMatchObject({ kind: "none", reason: expect.stringContaining("nothing says whose reviewer it is") });
   });
 
   it("is waited out inside the verdict step when seatVetoed is given the timing", async () => {
