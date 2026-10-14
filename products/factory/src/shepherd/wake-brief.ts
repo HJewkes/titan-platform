@@ -321,12 +321,13 @@ async function fixProofWake(port: GitHubPort, input: WakeFacts, pr: PullRequest)
   const why = NO_REPRO_REASON[verdict] ?? "its result follows";
   const carry = await carryGlobs(port, input.repo, mergeBase);
   const reason = [
-    `The fix-proof check at head ${head} returned NO_REPRO: ${why}. It ran your tests at merge base ${mergeBase} and at the head.`,
-    `Add or change a test on branch \`${pr.headRef}\` that fails at the merge base and passes at the head; support files it needs must match the carry globs below, or the proof will not copy them to the merge-base side.`,
+    `The fix-proof check at head ${head} returned NO_REPRO: ${why}.`,
+    ...(verdict === "vacuous" ? [`It ran your tests at merge base ${mergeBase} and at the head.`] : [`The merge base is ${mergeBase}.`]),
+    "Add or change a test on the head branch named in the fence below that fails at the merge base and passes at the head; support files it needs must match the carry globs below, or the proof will not copy them to the merge-base side.",
     ...(carry.ok ? [] : [CARRY_UNREADABLE]),
   ].join(" ");
   const globs = carry.ok ? dataFence("carry globs", carry.globs.join("\n")) : dataFence("carry globs error", carry.error);
-  return { reason, payload: `${globs}\n\n${fenced}` };
+  return { reason, payload: `${dataFence("head branch", pr.headRef)}\n\n${globs}\n\n${fenced}` };
 }
 
 export const HEAD_LINE = "end with a line `Head: <full sha>` naming the head you pushed.";
