@@ -23,7 +23,7 @@ export function parseLedgerJson(text: string): Ledger {
   return raw;
 }
 
-const isLedger = (raw: unknown): raw is Ledger => LedgerSchema.safeParse(raw).success;
+export const isLedger = (raw: unknown): raw is Ledger => LedgerSchema.safeParse(raw).success;
 
 /** The `burndown.json` bytes for `ledger`. */
 export const exportLedgerJson = (ledger: Ledger): string => `${JSON.stringify(ledger, null, 2)}\n`;
