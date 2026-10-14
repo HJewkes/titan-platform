@@ -324,6 +324,9 @@ importers:
       '@titan-design/embed':
         specifier: workspace:^
         version: link:../embed
+      '@titan-design/evidence':
+        specifier: workspace:^
+        version: link:../evidence
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../retrieval
@@ -429,6 +432,12 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/dispatch-ledger:
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
   packages/egress-scan:
     dependencies:
       '@titan-design/fix-proof':
@@ -465,6 +474,15 @@ importers:
       '@octokit/plugin-throttling':
         specifier: ^11.0.5
         version: 11.0.5(@octokit/core@7.0.8)
+
+  packages/graph-layout:
+    dependencies:
+      '@titan-design/code-graph':
+        specifier: workspace:^
+        version: link:../code-graph
+      elkjs:
+        specifier: 0.10.2
+        version: 0.10.2
 
   packages/health:
     dependencies:
@@ -4631,6 +4649,9 @@ packages:
 
   electron-to-chromium@1.5.433:
     resolution: {integrity: sha512-5lCAbyZBjtmUt/RAGHRqrL2q0oEFRThDAsZHHDn9XHa89Qw7gMYOeSicBTy+AHfvo0r6vwsZvqNJTQIQy1BLzA==}
+
+  elkjs@0.10.2:
+    resolution: {integrity: sha512-Yx3ORtbAFrXelYkAy2g0eYyVY8QG0XEmGdQXmy0eithKKjbWRfl3Xe884lfkszfBF6UKyIy4LwfcZ3AZc8oxFw==}
 
   emoji-regex-xs@1.0.0:
     resolution: {integrity: sha512-LRlerrMYoIDrT6jgpeZ2YYl/L8EulRTt5hQcYjy5AInh7HWXKimpqx68aknBFpGL2+/IcogTcaydJEgaTmOpDg==}
@@ -10985,6 +11006,8 @@ snapshots:
   ee-first@1.1.1: {}
 
   electron-to-chromium@1.5.433: {}
+
+  elkjs@0.10.2: {}
 
   emoji-regex-xs@1.0.0: {}
 

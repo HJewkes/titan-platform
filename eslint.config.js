@@ -19,6 +19,12 @@ export default tseslint.config(
   titan,
   // A describe or it callback holds a whole suite, so the function limit applies to source only.
   { files: ["**/*.test.{ts,tsx,mts,mjs,js}"], rules: { "titan/max-function-lines": "off" } },
+  // Test tables and fixtures hold long data rows by design, so the cap targets packed logic in source.
+  {
+    files: ["packages/*/src/**", "products/*/src/**"],
+    ignores: ["**/*.test.*", "**/fixtures/**", "**/__fixtures__/**", "**/test-support/**"],
+    rules: { "titan/max-line-length": ["error", { max: 200 }] },
+  },
   { languageOptions: { globals: globals.node } },
   { files: ["apps/*/src/**"], languageOptions: { globals: globals.browser } },
   {
