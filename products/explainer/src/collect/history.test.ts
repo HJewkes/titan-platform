@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } 
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { mineHistory, validateDecisions, type Decision } from "./history.js";
+import { gitEnv, mineHistory, validateDecisions, type Decision } from "./history.js";
 
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<{ execFileSync: typeof execFileSync }>();
@@ -136,6 +136,7 @@ describe("mineHistory against a hostile clone", () => {
   afterEach(() => {
     vi.mocked(execFileSync).mockClear();
     delete process.env.GIT_DIR;
+    delete process.env.GIT_ALLOW_PROTOCOL;
   });
 
   it("keeps record separators in a commit body as body text, never as a forged record", () => {
@@ -199,7 +200,10 @@ describe("mineHistory against a hostile clone", () => {
     expect(history.map((h) => h.subject)).toEqual(["Sign the reader", "Add the reader"]);
   });
 
-  it("fails closed in a treeless partial clone without running the clone's ssh command", () => {
+  it.each([
+    ["only a remote and ssh command", {}],
+    ["protocol.ssh.allow=always overriding the protocol pin", { "protocol.ssh.allow": "always" }],
+  ])("fails closed in a treeless partial clone whose config sets %s, without running its ssh command", (_label, extra: Record<string, string>) => {
     const source = newRepo();
     gitAt(source, "config", "uploadpack.allowFilter", "true");
     commitAt(source, "Add the reader", { "a.ts": "export {};\n", "b.ts": "export {};\n" });
@@ -212,9 +216,19 @@ describe("mineHistory against a hostile clone", () => {
     chmodSync(program, 0o755);
     gitAt(clone, "config", "remote.origin.url", "ssh://fixture.invalid/reader.git");
     gitAt(clone, "config", "core.sshCommand", program);
+    for (const [key, value] of Object.entries(extra)) gitAt(clone, "config", key, value);
 
     expect(() => mineHistory(clone)).toThrow();
     expect(existsSync(marker)).toBe(false);
+  });
+
+  it("gives git an empty protocol allow-list and no lazy fetch even when the parent allows ssh", () => {
+    process.env.GIT_ALLOW_PROTOCOL = "ssh";
+
+    const env = gitEnv();
+
+    expect(env.GIT_ALLOW_PROTOCOL).toBe("");
+    expect(env.GIT_NO_LAZY_FETCH).toBe("1");
   });
 
   it("mines the directory it was given even when GIT_DIR points elsewhere", () => {

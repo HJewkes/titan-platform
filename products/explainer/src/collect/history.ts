@@ -62,9 +62,11 @@ const PINNED_CONFIG = [
 ];
 
 // An inherited GIT_DIR, GIT_CONFIG_PARAMETERS or the like would override `-C dir` and the pins.
-function gitEnv(): NodeJS.ProcessEnv {
+// The clone's own protocol.<name>.allow beats the protocol.allow pin; an empty GIT_ALLOW_PROTOCOL beats that config,
+// and it still holds on git older than 2.44, which ignores GIT_NO_LAZY_FETCH.
+export function gitEnv(): NodeJS.ProcessEnv {
   const inherited = Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_"));
-  return { ...Object.fromEntries(inherited), GIT_NO_LAZY_FETCH: "1" };
+  return { ...Object.fromEntries(inherited), GIT_NO_LAZY_FETCH: "1", GIT_ALLOW_PROTOCOL: "" };
 }
 
 function gitIn(dir: string, timeoutMs = GIT_TIMEOUT_MS): Git {
@@ -137,7 +139,8 @@ function decisionFrom(commit: Commit): Decision | undefined {
 
 /**
  * K2: mines a local clone's history for decisions with a quotable why. Shells out to git only and never fetches:
- * lazy fetches and every transport are disabled, so a partial clone missing the objects it needs throws instead.
+ * GIT_NO_LAZY_FETCH=1 (git 2.44 and later) stops lazy fetches. On older git, an empty GIT_ALLOW_PROTOCOL refuses
+ * every transport whatever the clone's config allows. Either way, a partial clone missing objects it needs throws.
  */
 export function mineHistory(dir: string, ref = "HEAD", { timeoutMs }: MineOptions = {}): HistoryMine {
   const git = gitIn(dir, timeoutMs);
