@@ -100,25 +100,24 @@ function topicFact({ row, selector }: Located): ExplainerFact | GatherDiagnostic
 
 // Gotchas are kept unless refuted, so a partly checked pitfall still reaches the script; guards
 // are kept only when fully verified, since a guard is told as a promise the code keeps.
-function ledgerVerified(kind: string, verified: string): ExplainerFact["verified"] | undefined {
+function ledgerKept(kind: string, verified: string): Pick<ExplainerFact, "kind" | "verified"> | undefined {
   const confirmed = verified === "yes" || verified === "citation-ok";
-  if (kind === "guard") return confirmed ? "yes" : undefined;
+  if (kind === "guard") return confirmed ? { kind, verified: "yes" } : undefined;
   if (kind !== "gotcha") return undefined;
-  if (confirmed) return "yes";
-  return verified === "partial" ? "partial" : undefined;
+  if (confirmed) return { kind, verified: "yes" };
+  return verified === "partial" ? { kind, verified: "partial" } : undefined;
 }
 
 function ledgerFact({ row }: Located): ExplainerFact | undefined {
-  const verified = ledgerVerified(row.kind!, row.verified!);
-  if (verified === undefined) return undefined;
+  const kept = ledgerKept(row.kind!, row.verified!);
+  if (kept === undefined) return undefined;
   return {
     id: row.id!,
     source: "row",
-    kind: row.kind as "gotcha" | "guard",
+    ...kept,
     text: row.claim!,
     evidence: parseCites(row.evidence!),
     tier: row.tier!,
-    verified,
     license_safe: row["license-safe"]!.startsWith("yes"),
   };
 }
