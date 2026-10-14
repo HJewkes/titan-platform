@@ -34,9 +34,16 @@ async function runOwnerRelease(io: CliIo, routes: FactoryRoutes, ref: string, he
     io.stdout(`released the owner-asked hold on ${target.repo}#${target.pr} at ${head} as ${resolver.class} ${resolver.id}${after.held ? `; still held: ${after.holdReason ?? "held"}` : ""}\n`);
     return EXIT.OK;
   } catch (err) {
-    const code = (err as { code?: unknown }).code;
-    return fail(io, (err as Error).message, Number.isInteger(code) ? (code as number) : EXIT.FAILURE);
+    return fail(io, messageOf(err), exitOf(err));
   }
+}
+
+const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
+/** The sysexits code a refusal carries; any other error is a plain failure. */
+function exitOf(err: unknown): number {
+  const code: unknown = err instanceof Error && "code" in err ? err.code : undefined;
+  return typeof code === "number" && Number.isInteger(code) ? code : EXIT.FAILURE;
 }
 
 function parseTarget(ref: string, head: string): ReturnType<typeof parsePrRef> | string {
@@ -44,7 +51,7 @@ function parseTarget(ref: string, head: string): ReturnType<typeof parsePrRef> |
   try {
     return parsePrRef(ref);
   } catch (err) {
-    return (err as Error).message;
+    return messageOf(err);
   }
 }
 
