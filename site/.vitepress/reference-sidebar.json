@@ -156,6 +156,10 @@
         "link": "/reference/decider"
       },
       {
+        "text": "dispatch-ledger",
+        "link": "/reference/dispatch-ledger"
+      },
+      {
         "text": "graph-layout",
         "link": "/reference/graph-layout"
       },
