@@ -36,3 +36,17 @@ focus boxes that keeps them above the 83 % caption line.
 unchanged. Every cue must be a word the beat speaks. `deriveEvalView` computes the view the
 evals read (`nodes_shown`, `you_are_here`, `state_changes`), and `migrateTourV0` lifts a
 spike tour to v1, writing `TODO:` for fields the spike never had.
+
+`eval-store.ts` is the eval data layer. `scriptSha` names a script by the first 12 hex of
+sha256 over its canonical JSON (keys sorted by code point, no whitespace, UTF-8), the same
+bytes Python's `json.dumps(sort_keys=True, separators=(",", ":"), ensure_ascii=False)` gives,
+so shas minted by the pilot's Python tooling still resolve. A bench keeps its rows under
+`<bench>/evals/` (`structure.tsv`, `runs.jsonl`) and frozen scripts under
+`<bench>/scripts/<script_sha>.json`, each with its `parent_sha`. Every row carries
+`rules_sha`, the sha of the rule registry file it ran under.
+
+`explainer eval l0 <script.json> --config <id> --rules <registry> [--bench <dir>]
+[--layout <layout.json>] [--parent <sha>]` runs the deterministic L0 checks (today the map
+lints, which need `--layout`), freezes the script and appends its rows and run record. It
+exits 0 on a pass, 1 when an error-severity check fails (warnings never fail) and 2 on bad
+input. L0 filters only: never rank scripts by how many checks they pass.
