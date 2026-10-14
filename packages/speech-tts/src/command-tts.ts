@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, realpath, rm, stat } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Readable } from "node:stream";
+import { FileRefused, readRegularFile } from "./bounded-read.js";
 import { assertSupported } from "./capabilities.js";
 import { withDeadline } from "./deadline.js";
 import { TtsFailedError, TtsUnavailableError } from "./errors.js";
@@ -153,7 +154,10 @@ const escapes = (dir: string, path: string): boolean => {
   return rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
 };
 
-/** Reads the named WAV only from inside this call's `outDir`, after resolving symlinks, and only up to the limit. */
+/**
+ * Reads the named WAV only from inside this call's `outDir`, after resolving symlinks. The read itself goes through
+ * one descriptor opened without following links, so a swap after the path checks cannot redirect it.
+ */
 async function readConfinedWav(opts: CommandTtsOptions, dir: string, wav: string): Promise<Uint8Array> {
   const fail = (why: string): never => {
     throw new TtsFailedError(opts.id, `wav "${wav}" ${why}`);
@@ -163,9 +167,12 @@ async function readConfinedWav(opts: CommandTtsOptions, dir: string, wav: string
   const realDir = await realpath(dir);
   const realFile = await realpath(resolve(dir, wav)).catch(() => fail("does not exist in outDir"));
   if (escapes(realDir, realFile)) fail("links outside outDir");
-  const limit = opts.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
-  if ((await stat(realFile)).size > limit) fail(`is larger than maxOutputBytes (${limit})`);
-  return readFile(realFile);
+  try {
+    return await readRegularFile(realFile, opts.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES);
+  } catch (error) {
+    if (error instanceof FileRefused) return fail(error.message);
+    throw error;
+  }
 }
 
 async function parseJsonOutput(opts: CommandTtsOptions, stdout: Buffer, dir: string): Promise<Synthesis> {

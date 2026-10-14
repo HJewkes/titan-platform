@@ -176,6 +176,34 @@ describe("commandTts hardening", () => {
     expect(String(error).length).toBeLessThan(2_200);
   });
 
+  // Mutation caught: expanding `${env:}` values replaces the profile's own `secrets` list, so a literal secret leaks.
+  it("redacts a literal secret the profile declares, alongside expanded ones", async () => {
+    const config = resolveTtsConfig({
+      env: { OTHER_TOKEN: "expanded-value" },
+      profile: {
+        version: 1,
+        tts: {
+          providers: {
+            gpu: {
+              kind: "command",
+              argv: stub("--mode", "secret-stderr"),
+              output: "stdout-wav",
+              env: { STUB_TOKEN: "lit3ral-secret", OTHER: "${env:OTHER_TOKEN}" },
+              secrets: ["lit3ral-secret"],
+              capabilities: { voices: ["narrator"], sampleRate: 24_000 },
+            },
+          },
+        },
+      },
+    });
+    const { provider: tts } = defaultTtsRegistry().select(config);
+
+    const error = await tts.synthesize({ text: "hi" }, "narrator").catch((e: unknown) => e);
+
+    expect(String(error)).toContain("auth failed for token [redacted] near the end");
+    expect(String(error)).not.toContain("lit3ral-secret");
+  });
+
   // Mutation caught: an absolute `wav` path is read as given.
   it("refuses an absolute wav path", async () => {
     const tts = provider(stub("--mode", "json-absolute"), { output: "json" });

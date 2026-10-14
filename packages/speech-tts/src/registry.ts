@@ -33,7 +33,7 @@ function tryProvider(
   if (!entry) return { id, reason: "is not configured in the profile", misconfigured: true };
   if (config.unusable[id]) return { id, reason: `is misconfigured: ${config.unusable[id]}`, misconfigured: true };
   const factory = factories.get(entry.kind);
-  if (!factory) return { id, reason: `has kind "${entry.kind}", which is not registered` };
+  if (!factory) return { id, reason: `has kind "${entry.kind}", which is not registered`, misconfigured: true };
   let provider: TtsProvider;
   try {
     provider = factory(id, entry);
@@ -62,6 +62,12 @@ function failClosed(broken: SkippedProvider, skipped: readonly SkippedProvider[]
   return new TtsConfigError(SELECTOR, message, skipped);
 }
 
+function unknownKind(id: string, kind: string, registered: readonly string[], skipped: readonly SkippedProvider[]): TtsConfigError {
+  const known = registered.length > 0 ? registered.join(", ") : "none";
+  const message = `${id} has kind "${kind}", which is not registered (registered: ${known}). Fix the kind, or register a factory for it`;
+  return new TtsConfigError(SELECTOR, message, skipped, "unknown-kind");
+}
+
 /** An empty registry. Use `defaultTtsRegistry` for the built-in kinds. */
 export function createTtsRegistry(): TtsRegistry {
   const factories = new Map<string, TtsProviderFactory>();
@@ -77,6 +83,8 @@ export function createTtsRegistry(): TtsRegistry {
         const result = tryProvider(factories, config, id, requirements);
         if ("synthesize" in result) return { provider: result, skipped };
         skipped.push(result);
+        const kind = config.providers[id]?.kind;
+        if (kind !== undefined && !factories.has(kind)) throw unknownKind(id, kind, [...factories.keys()], skipped);
         if (result.misconfigured && !config.fallback) throw failClosed(result, skipped);
       }
       throw noProvider(config, skipped);

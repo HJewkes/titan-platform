@@ -100,9 +100,36 @@ describe("provider selection", () => {
     const withKokoro: TtsProfile = { version: 1, tts: { providers: { kokoro: { kind: "kokoro" } } } };
     const registry = createTtsRegistry();
 
-    expect(() => registry.select(config({}, withKokoro))).toThrow('kokoro has kind "kokoro", which is not registered');
+    expect(() => registry.select(config({}, withKokoro))).toThrow('kokoro has kind "kokoro", which is not registered (registered: none)');
     registry.register("kokoro", (id) => fakeTts({ id }));
     expect(registry.select(config({}, withKokoro)).provider.id).toBe("kokoro");
+  });
+
+  // Mutations caught: an unknown kind is skipped like a capability gap; tts.fallback lets a typo fall through to the next,
+  // remote, provider.
+  it("refuses a mistyped kind with unknown-kind, naming the registered kinds, even with fallback set", () => {
+    const typo: TtsProfile = {
+      version: 1,
+      tts: {
+        fallback: true,
+        providers: {
+          local: { kind: "comand", argv: ["tts-cli"], capabilities: caps() },
+          remote: { kind: "http", url: "https://tts.example.com/speak", request: { body: {} }, capabilities: caps() },
+        },
+      },
+    };
+
+    const error: unknown = (() => {
+      try {
+        return defaultTtsRegistry().select(config({}, typo));
+      } catch (e) {
+        return e;
+      }
+    })();
+
+    expect(error).toBeInstanceOf(TtsConfigError);
+    expect(error).toMatchObject({ code: "unknown-kind", skipped: [{ id: "local", misconfigured: true }] });
+    expect(String(error)).toContain('local has kind "comand", which is not registered (registered: command, http, fake)');
   });
 });
 

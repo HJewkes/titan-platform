@@ -123,7 +123,8 @@ function expandSecrets(entry: TtsProviderConfig, env: Env): { entry: TtsProvider
     entry: {
       ...entry,
       ...Object.fromEntries(expanded.map(([f, e]) => [f, e.values])),
-      secrets: expanded.flatMap(([, e]) => e.secrets),
+      // A profile's own literal secrets stay; the expanded values are added to them.
+      secrets: [...(isStringArray(entry.secrets) ? entry.secrets : []), ...expanded.flatMap(([, e]) => e.secrets)],
     },
     problems: expanded.flatMap(([, e]) => e.problems),
   };
