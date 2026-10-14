@@ -1,9 +1,15 @@
 import type { GraphEdge } from "@titan-design/code-graph";
 
-/** The package a file id belongs to: the segment after `packages/`, else the first path segment. */
+// `products/` and `apps/` keep their root in the id, so a product cannot collide with a package of the same name.
+const WORKSPACE_MEMBER = /^(?:packages\/([^/]+)|((?:products|apps)\/[^/]+)\/)/;
+
+/**
+ * The package a file id belongs to: the segment after `packages/`, `products/<name>` or
+ * `apps/<name>` for a file inside one, else the first path segment.
+ */
 export function packageOf(id: string): string {
-  const m = /^packages\/([^/]+)/.exec(id);
-  return m?.[1] ?? id.split("/")[0] ?? id;
+  const m = WORKSPACE_MEMBER.exec(id);
+  return m?.[1] ?? m?.[2] ?? id.split("/")[0] ?? id;
 }
 
 interface WeightedPair {

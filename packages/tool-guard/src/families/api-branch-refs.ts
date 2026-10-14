@@ -89,13 +89,25 @@ export function fieldKey(word: WordToken): { key: string; literal: boolean } {
 }
 
 /**
+ * Whether the text before a value's first gh placeholder already keeps it outside `refs/heads/`. A branch name may
+ * hold `/`, so a filled `{branch}` turns `refs/{branch}` or `refs/he{branch}` into `refs/heads/main`.
+ */
+function pinnedOffHeads(value: string): boolean {
+  const literal = value.slice(0, value.search(RUN_TIME_BRANCH_RE));
+  if (!literal.startsWith("refs/")) return false;
+  const rest = literal.slice("refs/".length);
+  return !"heads/".startsWith(rest) && !rest.startsWith("heads/");
+}
+
+/**
  * The branch a `ref` field value names; undefined for a ref outside `refs/heads`. A value read from a file (`-F
- * ref=@f`), expanded at run time or case-unsure is null.
+ * ref=@f`), expanded at run time, case-unsure or filled by gh where it may still reach `refs/heads` is null.
  */
 export function refBranch(word: WordToken): string | null | undefined {
   if (word.dynamic || isCaseUnsure(word)) return null;
   const value = word.value.slice(word.value.indexOf("=") + 1);
   if (value.startsWith("@")) return null;
+  if (RUN_TIME_BRANCH_RE.test(value)) return pinnedOffHeads(value) ? undefined : null;
   const unqualified = value.replace(/^refs\//, "");
   if (unqualified !== value && !/^heads\//.test(unqualified)) return undefined;
   return knownBranch(unqualified.replace(/^heads\//, ""));

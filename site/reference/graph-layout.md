@@ -52,6 +52,39 @@ For nested boxes, pass a `GroupOf` that names each node's ancestor groups, outer
 import { computeCompoundLayout } from "@titan-design/graph-layout";
 
 const layout = await computeCompoundLayout(fileGraph, null, (n) => [`pkg:${n.id.split("/")[1]}`]);
+// layout.groups: [{ id: "pkg:api", x, y, width, height }, ...], each box around its files
+```
+
+Edges may name a group id as either end. Such an edge is routed between the group boxes in
+the same pass, so a package view drawn over the file layout needs no second layout:
+
+```ts
+import { computeCompoundLayout, routeOf, routeToPathD } from "@titan-design/graph-layout";
+
+const pkgEdge = { srcId: "pkg:web", dstId: "pkg:api", kind: "imports" };
+const layout = await computeCompoundLayout(
+  { ...fileGraph, edges: [...fileGraph.edges, pkgEdge] },
+  null,
+  (n) => [`pkg:${n.id.split("/")[1]}`],
+);
+const trunk = layout.edges.find((e) => e.srcId === "pkg:web" && e.dstId === "pkg:api")!;
+const d = routeToPathD(routeOf(trunk) ?? []); // "M x y L x y …", web's border to api's
+```
+
+A group box is sized for everything inside it, so the package view of a compound layout is
+mostly empty boxes. To show the package level at its own size, lay the collapsed graph out
+alone with boxes sized for their labels. No two labels overlap, because each sits inside a box
+ELK keeps clear of the others. These boxes are not the compound layout's boxes, so a view that
+zooms from one level to the other moves between two layouts:
+
+```ts
+import { collapseToPackages, computeLayout, labelBoxSizing } from "@titan-design/graph-layout";
+
+const packages = collapseToPackages(fileGraph);
+const labels = new Map(packages.nodes.map((n) => [n.id, n.name]));
+// Monospace labels at 28 units: each box is the label's width plus 10 on each side, and 64 tall.
+const sizing = labelBoxSizing(labels, { fontSize: 28, charWidth: 0.6, padding: 10, bodyHeight: 16 });
+const level1 = await computeLayout(packages, sizing);
 ```
 
 ## What it deliberately does not do
@@ -66,12 +99,16 @@ const layout = await computeCompoundLayout(fileGraph, null, (n) => [`pkg:${n.id.
 ## Gotchas
 
 - Results list nodes and edges sorted by id, not in input order.
-- `x` and `y` are box centres, not top-left corners.
+- `x` and `y` are box centres, not top-left corners, for nodes and group boxes alike.
+- A group-endpoint edge attaches only when its id equals one `groupOf` returns; any other
+  edge whose ends are not node or group ids is dropped from the layout.
+- `elkjs` is pinned to an exact version: a minor release can move every coordinate.
 - A route is keyed by its `(srcId, dstId)` pair, so two edges of different kinds between
   the same pair share one route.
 - When ELK throws or places nothing, the layout falls back to a grid rather than throwing.
-- The `packages/<name>` rule for a file's package is fixed; other layouts group by the id's
-  first segment.
+- The rule for a file's package is fixed (`packageOf`): `packages/<name>` gives `<name>`,
+  `products/<name>` and `apps/<name>` keep their root, and any other path groups by its first
+  segment.
 
 ## Where it came from
 
