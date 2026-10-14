@@ -42,7 +42,7 @@ const DECLARED_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[[^[\]]*\])?\+?$/s;
  * Where a store builtin takes the name it stores into, so only a dynamic word there may name an alias parameter.
  * `names`: option letters whose value is the name; `values`: option letters whose value is anything else.
  * `operands`: which operands are names; `declare`, the part before `=`; `spec`, zparseopts specs; `store`, any once
- * an option in `stores` is given.
+ * an option in `stores` is given. `anywhere`: options may follow operands and `--` ends nothing, so every word is read.
  */
 interface StoreSpec {
   names?: string;
@@ -51,6 +51,7 @@ interface StoreSpec {
   stores?: string;
   /** Option letters under which a dynamic operand only names, never assigns: `typeset -f "$fn"`, `declare -p "$n"`. */
   inert?: string;
+  anywhere?: true;
 }
 
 const DECLARE: StoreSpec = { operands: "declare", inert: "fp" };
@@ -74,12 +75,36 @@ const STORE_BUILTINS = new Map<string, StoreSpec>([
   // zsh/stat names its builtin both `zstat` and `stat`; `-H` fills a hash with a file's fields, `link` among them.
   ["zstat", { names: "AH", values: "fF" }],
   ["stat", { names: "AH", values: "fF" }],
-  ["zselect", { names: "aA", values: "rwet" }],
+  // -r, -w and -e are mode flags for the fds that follow them.
+  ["zselect", { names: "aA", values: "t", anywhere: true }],
   ["pcre_match", { names: "vaA", values: "n" }],
+  ["syswrite", { names: "c", values: "o" }],
+  ["sysopen", { names: "u", values: "mo" }],
+  ["syserror", { names: "e", values: "p" }],
+  // Read through SUBCOMMAND_STORES; listed so a static alias parameter in any word refuses.
+  ["zsystem", {}],
+  ["zcurses", {}],
+  ["zgetattr", { operands: 2 }],
+  ["zlistattr", { operands: 1 }],
+  ["zpty", { operands: "store", stores: "r" }],
+  ["zregexparse", { operands: "all" }],
   ["unset", {}],
 ]);
 /** Declarations whose `-n` makes each name a reference to the parameter its value names. */
 const NAMEREF_DECLARERS = new Set(["typeset", "declare", "local"]);
+/** `zsystem flock`'s options, read after the subcommand: `-f` names the parameter that gets the lock's fd. */
+const FLOCK: StoreSpec = { names: "f", values: "ti" };
+/** zcurses subcommands that store into the parameters after their window; the rest only draw or configure. */
+const ZCURSES_STORES = new Set(["input", "querychar", "position"]);
+const ZCURSES_OTHERS = new Set([
+  "init", "end", "addwin", "delwin", "refresh", "touch", "move", "clear", "char", "string", "border", "attr", "bg",
+  "scroll", "timeout", "mouse", "resize",
+]);
+/** Builtins led by a subcommand, whose store options or operands follow it. */
+const SUBCOMMAND_STORES = new Map<string, (args: WordToken[]) => boolean>([
+  ["zsystem", zsystemStores],
+  ["zcurses", zcursesStores],
+]);
 /** Options `alias` itself takes, so a dynamic command word that may be `alias` is read past them. */
 const ALIAS_OPTION_RE = /^[-+][gsrLm]+$/;
 const DEFINITION_RE = /^[^=/\s]+=/;
@@ -129,6 +154,33 @@ function storesAliasParam(name: string, args: WordToken[]): boolean {
   const spec = STORE_BUILTINS.get(name);
   if (!spec) return false;
   if (args.some((w) => STORED_PARAM_RE.test(w.value) || (mayBraceExpand(w) && BRACED_PARAM_RE.test(w.value)))) return true;
+  const bySubcommand = SUBCOMMAND_STORES.get(name);
+  if (bySubcommand) return bySubcommand(args);
+  if (spec.anywhere) return interleavedStores(args, spec);
+  return readsStore(name, args, spec);
+}
+
+/** A varying subcommand may be `flock`, whose `-f` follows it. */
+function zsystemStores(args: WordToken[]): boolean {
+  const [sub, ...rest] = args;
+  if (sub === undefined) return false;
+  return varies(sub) || (sub.value === "flock" && readsStore("zsystem", rest, FLOCK));
+}
+
+/** A varying or unknown subcommand may be one that stores, so only a known drawing one is read as storing nothing. */
+function zcursesStores(args: WordToken[]): boolean {
+  const [sub, ...rest] = args;
+  if (sub === undefined) return false;
+  if (varies(sub) || !(ZCURSES_STORES.has(sub.value) || ZCURSES_OTHERS.has(sub.value))) return true;
+  return ZCURSES_STORES.has(sub.value) && readsStore("zcurses", rest, { operands: "all" });
+}
+
+/**
+ * The store reading of a builtin's options and operands under its spec: a varying or splitting target, a varying
+ * operand where the spec reads a name, an option place that may supply a name-taking option, or a nameref bound to an
+ * alias parameter.
+ */
+function readsStore(name: string, args: WordToken[], spec: StoreSpec): boolean {
   const { options, targets, operands, mayBeOption, ended } = readOptions(args, spec);
   if (targets.some((w) => varies(w) || yieldsSeveral(w)) || dynamicTargetOperand(spec, options, operands)) return true;
   const optionPlace = ended ? options : [...options, ...operands.slice(0, 1)];
@@ -189,15 +241,38 @@ function readOptions(args: WordToken[], spec: StoreSpec = {}): OptionWords {
   for (let w = args[0]; w && isOptionWord(w); w = args[++i]) {
     options.push(w);
     if (w.value.startsWith("--")) continue;
-    const at = [...w.value.slice(1)].findIndex((c) => `${spec.names ?? ""}${spec.values ?? ""}`.includes(c));
-    if (at === -1) continue;
-    const attached = w.value.length > at + 2;
-    const value = attached ? w : args[++i];
-    if (value && spec.names?.includes(w.value.charAt(at + 1))) targets.push(value);
+    const taken = valueLetter(w, spec);
+    if (!taken) continue;
+    const value = taken.attached ? w : args[++i];
+    if (value && spec.names?.includes(taken.letter)) targets.push(value);
   }
   const first = args[i];
   const ends = first !== undefined && !varies(first) && (first.value === "--" || first.value === "-");
   return { options, targets, operands: args.slice(ends ? i + 1 : i), mayBeOption: first !== undefined && varies(first), ended: ends };
+}
+
+/** The first letter of an option word that takes a value, and whether that value is attached to the word. */
+function valueLetter(w: WordToken, spec: StoreSpec): { letter: string; attached: boolean } | null {
+  const at = [...w.value.slice(1)].findIndex((c) => `${spec.names ?? ""}${spec.values ?? ""}`.includes(c));
+  if (at === -1) return null;
+  return { letter: w.value.charAt(at + 1), attached: w.value.length > at + 2 };
+}
+
+/**
+ * Options read wherever they stand: a varying word not led by a static digit, or one that may split, may be an option
+ * with its name attached, and a varying word where a name is read may be an alias parameter.
+ */
+function interleavedStores(args: WordToken[], spec: StoreSpec): boolean {
+  for (let i = 0; i < args.length; i++) {
+    const w = args[i]!;
+    if (yieldsSeveral(w) || (varies(w) && !/^\d/.test(w.value))) return true;
+    if (varies(w) || !w.value.startsWith("-")) continue;
+    const taken = valueLetter(w, spec);
+    if (!taken) continue;
+    const value = taken.attached ? w : args[++i];
+    if (value && spec.names?.includes(taken.letter) && varies(value)) return true;
+  }
+  return false;
 }
 
 /** A word led by `-` or `+`, other than `--`; one that varies only when a letter follows its dashes statically. */
