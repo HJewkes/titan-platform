@@ -90,7 +90,7 @@ describe("toDiagramMapTimeline", () => {
     };
 
     const keyframes = convert([mapBeat("beat-01", state)], words).keyframes;
-    const shuffled = convert([mapBeat("beat-01", reverseAll(state) as Record<string, unknown>)], words).keyframes;
+    const shuffled = convert([mapBeat("beat-01", reverseFields(state))], words).keyframes;
 
     expect(keyframes.map((k) => [k.atS, k.op])).toEqual([
       [0, "camera"],
@@ -147,5 +147,9 @@ describe("toDiagramMapTimeline", () => {
 function reverseAll(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(reverseAll).reverse();
   if (value === null || typeof value !== "object") return value;
+  return reverseFields(value);
+}
+
+function reverseFields(value: object): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value).reverse().map(([k, v]) => [k, reverseAll(v)]));
 }

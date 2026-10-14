@@ -7,6 +7,7 @@ import type { MapEvent, MapSegment, MapTimeline } from "./map-timeline.js";
 // renamed or added field in the copied fixture fails diagram-map.test.ts instead of drifting silently.
 const BoxSchema = z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }).strict();
 const Ids = z.array(z.string().min(1));
+const MarkSchema = z.enum(["circle", "box", "underline", "arrow", "marker"]);
 const timed = <T extends z.ZodRawShape>(shape: T) => z.object({ atS: z.number().nonnegative(), durS: z.number().nonnegative(), ...shape }).strict();
 
 export const DiagramMapKeyframeSchema = z.discriminatedUnion("op", [
@@ -24,7 +25,7 @@ export const DiagramMapKeyframeSchema = z.discriminatedUnion("op", [
     hopAtS: z.array(z.number()).optional(),
     untilAtS: z.number().optional(),
   }),
-  timed({ op: z.literal("annotate"), anchor: z.string().min(1), mark: z.enum(["circle", "box", "underline", "arrow", "marker"]) }),
+  timed({ op: z.literal("annotate"), anchor: z.string().min(1), mark: MarkSchema }),
   timed({ op: z.literal("pin"), anchor: z.string().min(1), text: z.string() }),
 ]);
 
@@ -68,7 +69,7 @@ const DUR_S: Record<DiagramMapKeyframe["op"], number> = {
 
 type Op = DiagramMapKeyframe extends infer K ? (K extends DiagramMapKeyframe ? Omit<K, "atS" | "durS"> : never) : never;
 
-const keyframe = (atS: number, op: Op): DiagramMapKeyframe => ({ atS, durS: DUR_S[op.op], ...op }) as DiagramMapKeyframe;
+const keyframe = (atS: number, op: Op): DiagramMapKeyframe => ({ atS, durS: DUR_S[op.op], ...op });
 
 function cameraOp(event: MapEvent, beatId: string, cameraBox: CameraBoxResolver | undefined): Op {
   if (!cameraBox) throw new Error(`${beatId} moves the camera, but no cameraBox resolver was given`);
@@ -87,7 +88,7 @@ function eventOp(event: MapEvent, beatId: string, cameraBox: CameraBoxResolver |
       return { op: "flow", ...event.walk };
     case "annotation": {
       const [mark, ...anchor] = event.id.split(":");
-      return { op: "annotate", anchor: anchor.join(":"), mark: mark as Extract<Op, { op: "annotate" }>["mark"] };
+      return { op: "annotate", anchor: anchor.join(":"), mark: MarkSchema.parse(mark) };
     }
     case "pin":
       return { op: "pin", anchor: event.id, text: event.text ?? "" };
