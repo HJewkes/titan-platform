@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Db, Migration } from '@titan-design/store-sqlite';
 
 /**
  * The burndown claim ledger: which task each tick-spawned agent holds.
@@ -678,4 +679,52 @@ declare const exportLedgerJson: (ledger: Ledger) => string;
  */
 declare function writeLedgerExport(file: string, ledger: Ledger): void;
 
-export { AGENT_PHASES, type AgentPhase, type BrakeState, CONTRACT_OPS, type Claim, type ClaimKey, type ClaimPatch, ClaimSchema, type Contract, type ContractOp, ContractSchema, DESTRUCTIVE_OPS, type DeciderState, EMPTY_LEDGER, EXCEPTION_CLASSES, type ExceptionClass, type IllegalEdge, IllegalPhaseEdgeError, LADDER_CODES, type LadderRecord, type Ledger, type LedgerAction, LedgerMalformedError, LedgerSchema, type LivenessRecord, PARK_CLASS, PHASES, PHASE_EDGES, PHASE_TIMEOUT_MS, type Phase, type ReleaseAction, type ReleaseRecord, SLOT_MISMATCH_TOLERANCE, STALE_CLASSES, STALL_CODES, type SeatState, type StackPredicate, type StackedOn, type StaleClass, type StallCode, type WakeRecord, addClaim, applyActions, claimKey, exportLedgerJson, firstCode, heldClaims, illegalEdgeError, illegalEdges, isStalled, laneClaims, ledgerImplementers, parkUpdate, parseLedgerJson, readySlices, sameClaim, slotMismatch, writeLedgerExport };
+interface LedgerRead {
+    ledger: Ledger;
+    /** Bumped by every write; 0 before the first. */
+    revision: number;
+}
+/** Where the ledger lives. A write checks the revision it read and the phase edges, and commits whole or not at all. */
+interface LedgerStore {
+    read(): LedgerRead;
+    /** Throws `StaleRevisionError`, `IllegalPhaseEdgeError` or `LedgerMalformedError`, leaving the store unchanged. */
+    write(next: Ledger, expectedRevision?: number): {
+        revision: number;
+    };
+}
+/** A write whose `expectedRevision` another writer has moved past; the caller re-reads and retries. */
+declare class StaleRevisionError extends Error {
+    name: string;
+}
+/**
+ * zod's output, laid out in `raw`'s key order with keys zod added at the end: keys the schema does not name are
+ * dropped and contract scopes trimmed as agent-chat's read does, while a ledger already in that form keeps its bytes.
+ */
+declare function normalizeLedger(raw: unknown): Ledger;
+/** Validates `text` as `burndown.json` and writes it to `store`, normalized. */
+declare function importLedgerJson(store: LedgerStore, text: string, expectedRevision?: number): {
+    revision: number;
+};
+/** An in-process store for tests and dry runs; it hands out copies, so a caller's edits never reach it unwritten. */
+declare function memoryLedgerStore(initial?: Ledger): LedgerStore;
+
+/**
+ * One row per claim, in ledger order, holding the claim's own JSON; the meta row holds the rest of the ledger with
+ * `claims: []` in place, so the export keeps the file's key order.
+ */
+declare function dispatchLedgerDdl(): string;
+declare function dispatchLedgerMigration(version: number): Migration;
+/** The ledger on tables made by `dispatchLedgerDdl`; each write is one immediate transaction. */
+declare class SqliteLedgerStore implements LedgerStore {
+    private readonly db;
+    constructor(db: Db);
+    read(): LedgerRead;
+    write(next: Ledger, expectedRevision?: number): {
+        revision: number;
+    };
+    private readInside;
+    private claims;
+    private writeInside;
+}
+
+export { AGENT_PHASES, type AgentPhase, type BrakeState, CONTRACT_OPS, type Claim, type ClaimKey, type ClaimPatch, ClaimSchema, type Contract, type ContractOp, ContractSchema, DESTRUCTIVE_OPS, type DeciderState, EMPTY_LEDGER, EXCEPTION_CLASSES, type ExceptionClass, type IllegalEdge, IllegalPhaseEdgeError, LADDER_CODES, type LadderRecord, type Ledger, type LedgerAction, LedgerMalformedError, type LedgerRead, LedgerSchema, type LedgerStore, type LivenessRecord, PARK_CLASS, PHASES, PHASE_EDGES, PHASE_TIMEOUT_MS, type Phase, type ReleaseAction, type ReleaseRecord, SLOT_MISMATCH_TOLERANCE, STALE_CLASSES, STALL_CODES, type SeatState, SqliteLedgerStore, type StackPredicate, type StackedOn, type StaleClass, StaleRevisionError, type StallCode, type WakeRecord, addClaim, applyActions, claimKey, dispatchLedgerDdl, dispatchLedgerMigration, exportLedgerJson, firstCode, heldClaims, illegalEdgeError, illegalEdges, importLedgerJson, isStalled, laneClaims, ledgerImplementers, memoryLedgerStore, normalizeLedger, parkUpdate, parseLedgerJson, readySlices, sameClaim, slotMismatch, writeLedgerExport };

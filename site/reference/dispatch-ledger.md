@@ -1,6 +1,6 @@
 # dispatch-ledger
 
-**Tier 2.** No titan dependencies yet.
+**Tier 2.** Depends on [`store-sqlite`](/reference/store-sqlite).
 
 ```sh
 npm install @titan-design/dispatch-ledger
@@ -25,6 +25,9 @@ dispatcher, a store and a thin CLI client all validate against one definition.
 - Answering ledger questions without re-deriving them: which claims hold a lane
   (`laneClaims`), which slices are ready to dispatch (`readySlices`), whether a claim stalled
   (`isStalled`), and folding a tick's actions into the next ledger (`applyActions`).
+- Keeping the ledger in a product's sqlite database with optimistic revisions and the
+  phase-edge check on every write: `dispatchLedgerDdl` (or `dispatchLedgerMigration`),
+  `SqliteLedgerStore` and `importLedgerJson`; `memoryLedgerStore` for tests and dry runs.
 
 For the seat config and charter a coordinator reads, use
 [`coordinator`](/reference/coordinator). For agent execution state with fenced ownership,
@@ -55,6 +58,10 @@ logs: it returns the edges or an error, and the caller logs.
 - `parseLedgerJson` validates with zod but returns the raw parsed JSON, not zod's output.
   zod emits keys in schema order and drops unknown ones, so only the raw value exports back
   to the same bytes. Treat any key the schema does not name as opaque.
+- A store write keeps `normalizeLedger(next)`, which drops keys the schema does not name
+  and trims contract scopes but keeps the input's key order. A ledger written by a newer
+  agent-chat whose schema names more fields loses them in the store; re-port the schema
+  first.
 - `illegalEdges` pairs claims by `taskId#slice` and then by position, so a released claim
   that drops the newest entry of a key is not read as an edge.
 - `applyActions` passes `spawn`, `retire` and `register` through without reading them. A
