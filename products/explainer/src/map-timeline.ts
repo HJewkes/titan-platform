@@ -76,3 +76,5 @@ export function compileMapTimeline(beats: readonly MapBeat[], resolveCue: CueRes
   });
   return { segments };
 }
+
+export { cuedChanges };
