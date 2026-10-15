@@ -56,14 +56,20 @@ export type ModuleImporter = (name: string) => Promise<unknown>;
 export async function loadTransformersPipeline(
   importModule: ModuleImporter = (name) => import(name),
 ): Promise<AsrFactory> {
-  let mod: { pipeline?: unknown };
+  let mod: unknown;
   try {
-    mod = (await importModule(PEER)) as { pipeline?: unknown };
+    mod = await importModule(PEER);
   } catch (err) {
     throw new Error(MISSING, { cause: err });
   }
-  if (typeof mod.pipeline !== "function") throw new Error(MISSING);
-  return mod.pipeline as AsrFactory;
+  const pipeline = typeof mod === "object" && mod !== null && "pipeline" in mod ? mod.pipeline : undefined;
+  if (!isAsrFactory(pipeline)) throw new Error(MISSING);
+  return pipeline;
+}
+
+// The peer's pipeline is untyped here; its signature is checked by the smoke test, not at run time.
+function isAsrFactory(value: unknown): value is AsrFactory {
+  return typeof value === "function";
 }
 
 /** Joins sub-word chunks into words. A null end, which Whisper gives the last chunk of a window, takes the start. */

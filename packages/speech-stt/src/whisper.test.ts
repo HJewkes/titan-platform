@@ -23,8 +23,8 @@ function fakeAsr(output: AsrOutput = SPLIT_WORD_OUTPUT) {
     vi.fn(async (_samples: Float32Array, _options: unknown) => output),
     { dispose: vi.fn(async () => undefined) },
   );
-  const factory = vi.fn(async () => asr);
-  return { asr, factory, loadPipeline: vi.fn(async () => factory as unknown as AsrFactory) };
+  const factory = vi.fn<AsrFactory>(async () => asr);
+  return { asr, factory, loadPipeline: vi.fn(async () => factory) };
 }
 
 const tone = (n: number, sampleRate = 16000): Audio => ({
@@ -108,7 +108,7 @@ describe("whisperStt", () => {
     const loadPipeline = vi
       .fn<() => Promise<AsrFactory>>()
       .mockRejectedValueOnce(new Error("offline"))
-      .mockResolvedValue(factory as unknown as AsrFactory);
+      .mockResolvedValue(factory);
     const stt = whisperStt({ loadPipeline });
 
     await expect(stt.transcribe(tone(160))).rejects.toThrow("offline");

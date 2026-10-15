@@ -1,7 +1,7 @@
 {
   "name": "@titan-design/speech-stt",
   "version": "0.0.0",
-  "description": "Pure TypeScript speech-recognition helpers: a CPython-parity SequenceMatcher, script alignment, transcript diff, Word and Transcript schemas, and a resampler",
+  "description": "Speech-recognition helpers: a transformers.js Whisper recogniser with an audio-hash cache, a CPython-parity SequenceMatcher, script alignment, transcript diff, Word and Transcript schemas, and a resampler",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
