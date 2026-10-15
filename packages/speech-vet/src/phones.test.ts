@@ -25,7 +25,7 @@ describe("AB phone cases: cleaning and distance", () => {
     expect(phonemeDistance("bɛɾɚ", "bɛtɚ")).toBe(0.0);
   });
 
-  // Mutation caught: rewriting a syllabic consonant as consonant plus schwa (nə) instead of schwa first (ən).
+  // Mutation caught: rewriting a syllabic consonant as consonant then schwa (nə) instead of schwa first (ən).
   it("test_clean_ipa_folds_glottal_stop_and_syllabic_nasal", () => {
     expect(cleanIpa("sˈɜːʔn̩")).toBe("sɜtən");
     expect(cleanIpa("bˈɑːɾl̩")).toBe("bɑtəl");
@@ -42,7 +42,7 @@ describe("AB phone cases: cleaning and distance", () => {
     expect(phonemeDistance("wɪθənʃɔ", "wɪθənʃɔ")).toBe(0.0);
   });
 
-  // Mutation caught: the same inversion; far would score below near.
+  // Mutation caught: the same inversion, which scores far below near.
   it("test_phoneme_distance_orders_similar_before_different", () => {
     const near = phonemeDistance("wɪθənʃɔ", "wɪðɪnʃɔ");
     const far = phonemeDistance("wɪθənʃɔ", "bɒʃtaɪstɪk");
@@ -51,7 +51,7 @@ describe("AB phone cases: cleaning and distance", () => {
     expect(far).toBeGreaterThan(0.5);
   });
 
-  // Mutation caught: expectedPhones returning "" (an unwired G2P).
+  // Mutation caught: expectedPhones dropping the G2P's output.
   it("test_g2p_produces_phonemes_for_proper_noun_and_coinage", () => {
     const g2p = recordedG2p("test_g2p_produces_phonemes_for_proper_noun_and_coinage");
 
@@ -59,7 +59,7 @@ describe("AB phone cases: cleaning and distance", () => {
     expect(expectedPhones("boshtastic", { g2p })).not.toBe("");
   });
 
-  // Mutation caught: phonemeDistance comparing the inputs uncleaned and unequal-length as 0.
+  // Mutation caught: the distance read as the ratio, 1 - distance.
   it("test_g2p_distinguishes_distinct_words", () => {
     const g2p = recordedG2p("test_g2p_distinguishes_distinct_words");
 
@@ -82,7 +82,7 @@ describe("AB phone cases: cleaning and distance", () => {
   });
 
   // A constructed name stands in for AB's, which comes from third-party text.
-  // Mutation caught: looking weak forms up on a plain object, so the key is not stripped or lowercased first.
+  // Mutation caught: looking the word up unstripped, so "Our," finds no weak form.
   it("test_only_function_words_carry_weak_forms", () => {
     expect(admissiblePhones("Jofar", "dʒɑfɑɹ")).toEqual(["dʒɑfɑɹ"]);
     expect(admissiblePhones("our", "aʊɚ")).toContain("ɑɹ");
@@ -111,7 +111,7 @@ describe("Python semantics", () => {
     expect(cleanIpa("b﻿ɛt")).toBe("b﻿ɛt");
   });
 
-  // Mutation caught: splitting on / +/ or on JavaScript's \s, which joins words split by U+001F or splits on U+FEFF.
+  // Mutation caught: JavaScript's \s, which joins the words split by U+001F and splits the one holding U+FEFF.
   it("splits sentence phones on Python whitespace only", () => {
     const g2p: PhoneG2p = () => "hˈɛ\u001Flo wɜ﻿ld\n";
 

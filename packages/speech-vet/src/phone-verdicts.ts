@@ -156,7 +156,7 @@ export function chunkWordVerdicts(text: string, actualFull: string, options: Wor
     const [lo, hi] = locate(citation, expectedFull);
     if (hi <= lo) continue;
     const actualHi = hi - 1 < mapping.length ? mapping[hi - 1]! + 1 : actual.length;
-    out.push(wordVerdict(word, citation.join(""), actual.slice(mapping[lo]!, actualHi).join(""), unusual));
+    out.push(wordVerdict(word, citation.join(""), actual.slice(mapping[lo], actualHi).join(""), unusual));
   }
   return out;
 }

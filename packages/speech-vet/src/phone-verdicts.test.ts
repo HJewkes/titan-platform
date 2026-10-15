@@ -42,7 +42,7 @@ describe("AB phone cases: recognizer", () => {
 });
 
 describe("AB phone cases: word verdicts", () => {
-  // Mutation caught: scoring the word's best window anywhere in the chunk instead of its aligned span.
+  // Mutation caught: the distance read as the ratio, which scores the garbled word low.
   it("test_positional_verdict_flags_garbled_word_not_neighbours", () => {
     const g2p = recordedG2p("test_positional_verdict_flags_garbled_word_not_neighbours");
     const text = "the match in Bochum ended";
@@ -68,7 +68,7 @@ describe("AB phone cases: word verdicts", () => {
     expect(verdict?.distance).toBe(0.0);
   });
 
-  // Mutation caught: taking the largest distance's form, or any weak-form word as correct.
+  // Mutation caught: never calling a word that has weak forms an xtts fault.
   it("test_weak_form_does_not_rescue_a_genuine_mismatch", () => {
     const g2p = recordedG2p("test_weak_form_does_not_rescue_a_genuine_mismatch");
     const text = "they have the ball";
@@ -78,7 +78,7 @@ describe("AB phone cases: word verdicts", () => {
     expect(chunkWordVerdicts(text, parts.join(""), { g2p, targets: ["have"] })[0]?.source).toBe("xtts");
   });
 
-  // Mutation caught: treating no targets as every word of the chunk.
+  // Mutation caught: defaulting missing targets to the chunk's words.
   it("test_verdict_without_targets_returns_empty", () => {
     const g2p = recordedG2p("test_verdict_without_targets_returns_empty");
 
@@ -137,7 +137,7 @@ describe("AB phone cases: word verdicts", () => {
     expect(chunkWordVerdicts(text, near.join(""), { g2p, targets: ["Dye"] })[0]?.source).toBe("whisper");
   });
 
-  // Mutation caught: applying the short threshold to every word.
+  // Mutation caught: judging every word at the short threshold.
   it("test_long_word_keeps_the_ordinary_threshold", () => {
     const g2p = recordedG2p("test_long_word_keeps_the_ordinary_threshold");
     const text = "the match in Salford ended";
@@ -152,7 +152,8 @@ describe("AB phone cases: word verdicts", () => {
   });
 
   // AB's case quotes third-party text; this is the owner-authored analogue from phones-replay.golden.json.
-  // Mutation caught: indexMap's j1 + ... + 1 off-by-one, which widens the span past the guard and gives xtts.
+  // The span collapses to one stray phone from the start of the next word, as in AB's case.
+  // Mutation caught: dropping the span guard, which gives xtts; indexMap's j1 + ... + 1 off-by-one, which reads "o".
   it("test_degenerate_span_from_duplicate_prefix_is_inconclusive_not_xtts", () => {
     const g2p = recordedG2p("test_degenerate_span_from_duplicate_prefix_is_inconclusive_not_xtts");
     const analogue = replay.cases.find((c) => c.id === "analogue-duplicate-prefix")!;
@@ -160,6 +161,7 @@ describe("AB phone cases: word verdicts", () => {
     const verdicts = byWord(chunkWordVerdicts(analogue.text, analogue.raw, { g2p, targets: ["Jofar"] }));
 
     expect(verdicts.get("jofar")?.source).toBe("inconclusive");
+    expect(verdicts.get("jofar")?.actualPhones).toBe("ɹ");
   });
 });
 
@@ -177,7 +179,7 @@ describe("AB phone cases: hallucinations", () => {
     expect(found[0]?.length).toBeGreaterThanOrEqual(5);
   });
 
-  // Mutation caught: reporting every replace opcode as babble.
+  // Mutation caught: counting equal opcodes as babble.
   it("test_clean_audio_has_no_hallucination", () => {
     const g2p = recordedG2p("test_clean_audio_has_no_hallucination");
     const text = "absolutely perfect Heli eyed me";
@@ -199,7 +201,7 @@ describe("AB phone cases: tail artifacts", () => {
     expect(artifact?.length).toBe(3);
   });
 
-  // Mutation caught: flagging a final equal opcode.
+  // Mutation caught: dropping both the equal-opcode and the displaced-length guards.
   it("test_clean_tail_is_not_an_artifact", () => {
     const g2p = recordedG2p("test_clean_tail_is_not_an_artifact");
 
@@ -221,7 +223,7 @@ describe("AB phone cases: tail artifacts", () => {
     expect(detectTailArtifact(text, cleanIpa(expectedPhones(text, { g2p })) + "l", { g2p })).not.toBeNull();
   });
 
-  // Mutation caught: < instead of <= against the displaced phones.
+  // Mutation caught: dropping the guard that the stray run must outnumber the displaced phones.
   it("test_mispronounced_last_word_is_not_a_tail_artifact", () => {
     const g2p = recordedG2p("test_mispronounced_last_word_is_not_a_tail_artifact");
     const text = "the same career paths";
@@ -238,7 +240,7 @@ describe("AB phone cases: tail artifacts", () => {
   });
 
   // The digit guard returns before any G2P call, so AB recorded the phones only for the actual side.
-  // Mutation caught: \d$ without the \W* run, which misses the ] after "rated 8".
+  // Mutation caught: dropping the guard fails all four; \d$ without the \W* run fails the two ending in punctuation.
   it.each(["the final score was 8", "the C A 74.", "added time 90+2", "rated 8]"])(
     "test_chunks_ending_in_a_digit_are_never_tail_artifacts[%s]",
     (text) => {
@@ -289,6 +291,14 @@ describe("Python semantics in the verdicts", () => {
     expect(detectHallucinations("ab", "ab" + "\u{1D465}".repeat(5), { g2p })).toEqual([
       { phones: "\u{1D465}".repeat(5), length: 5, position: 0.29, severity: 0.5 },
     ]);
+  });
+
+  // Mutation caught: < instead of <= against the displaced phones, which flags the equal-length swap.
+  it("flags a final run only when it outnumbers the expected phones it displaced", () => {
+    const g2p = fakeG2p({ ab: "abcd" });
+
+    expect(detectTailArtifact("ab", "abxy", { g2p })).toBeNull();
+    expect(detectTailArtifact("ab", "abxyz", { g2p })).toEqual({ phones: "xyz", length: 3, displaced: "cd", severity: 0.7 });
   });
 
   // Mutation caught: an ASCII \d, which misses the Arabic-Indic digit three.

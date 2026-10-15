@@ -14,8 +14,9 @@ export const DEFAULT_PHONE_VOICE = "en-us";
 // Python's `\s` on str, which is not JavaScript's: it adds U+001C-U+001F and U+0085 and omits U+FEFF.
 const PY_SPACE = "\\t\\n\\v\\f\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000";
 const PY_SPACE_RUN = new RegExp(`[${PY_SPACE}]+`, "u");
-// Stress, length, zero-width joiner, tie-bar and separator marks.
-const IPA_NOISE = new RegExp(`[ˈˌːˑ\\u200d\\u0361${PY_SPACE}'_]`, "gu");
+// Stress, length, zero-width joiner, tie-bar and separator marks. The joiner and the tie-bar sit outside
+// the class because a lone combining mark inside one reads as a misleading character class.
+const IPA_NOISE = new RegExp(`[ˈˌːˑ${PY_SPACE}'_]|\\u200d|\\u0361`, "gu");
 const SYLLABIC = /([nlm])̩/gu;
 const ALLOPHONES = /[ɾʔɐ]/gu;
 const ALLOPHONE_FOLD: Readonly<Record<string, string>> = { ɾ: "t", ʔ: "t", ɐ: "ə" };

@@ -82,6 +82,13 @@ declare function diff(expected: string, heard: string | Pick<Transcript, "text">
 declare function resample(audio: Audio, toRate: number): Audio;
 
 /**
+ * Python's `round(x, digits)`: round half to even on the exact binary value. `toFixed` breaks
+ * exact ties upward, so `roundHalfEven(0.0625, 3)` would give 0.063 where Python gives 0.062.
+ * `digits` is a whole number from 0 to 20.
+ */
+declare function roundHalfEven(x: number, digits: number): number;
+
+/**
  * A port of CPython's `difflib.SequenceMatcher` without `isjunk`. Callers that port Python
  * scoring code depend on its exact blocks and tie-breaking, not just on any longest match.
  */
@@ -272,4 +279,4 @@ declare function whisperStt(options?: WhisperSttOptions): SttProvider & {
     dispose(): Promise<void>;
 };
 
-export { type AsrChunk, type AsrFactory, type AsrOutput, type AsrPipeline, type Audio, type Block, CTC_BLANK_ID, type CtcFactory, type CtcLoadOptions, type CtcLogits, type CtcRecognition, type CtcSession, type DiffOptions, type ModuleImporter, type Opcode, type OpcodeTag, type PhonesCache, type Segment, SegmentSchema, SequenceMatcher, type SequenceMatcherOptions, type SttProvider, type Transcript, type TranscriptCache, TranscriptSchema, WAV2VEC2_MODEL, WAV2VEC2_REVISION, type Wav2vec2Dtype, type Wav2vec2Options, type Wav2vec2Recognizer, type WhisperSttOptions, type Word, type WordDiff, WordSchema, align, argmaxFrames, ctcGreedyDecode, diff, loadTransformersCtc, loadTransformersPipeline, normalize, normalizeInput, resample, wav2vec2Recognizer, whisperStt };
+export { type AsrChunk, type AsrFactory, type AsrOutput, type AsrPipeline, type Audio, type Block, CTC_BLANK_ID, type CtcFactory, type CtcLoadOptions, type CtcLogits, type CtcRecognition, type CtcSession, type DiffOptions, type ModuleImporter, type Opcode, type OpcodeTag, type PhonesCache, type Segment, SegmentSchema, SequenceMatcher, type SequenceMatcherOptions, type SttProvider, type Transcript, type TranscriptCache, TranscriptSchema, WAV2VEC2_MODEL, WAV2VEC2_REVISION, type Wav2vec2Dtype, type Wav2vec2Options, type Wav2vec2Recognizer, type WhisperSttOptions, type Word, type WordDiff, WordSchema, align, argmaxFrames, ctcGreedyDecode, diff, loadTransformersCtc, loadTransformersPipeline, normalize, normalizeInput, resample, roundHalfEven, wav2vec2Recognizer, whisperStt };
