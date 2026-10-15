@@ -84,7 +84,7 @@ describe("land rounds", () => {
 
     expect(run.status).toBe("completed");
     expect(outcomes.map((outcome) => [outcome.kind, outcome.headSha])).toEqual([["ci-failed", H1], ["merged", H2]]);
-    expect(stepIds(host, run.id)).toEqual(["land-rules", "ci-wait:0", "land-rules:r1", "ci-wait:r1:0", "merge-policy:r1:0", "ci-wait:r1:1", "base-check:r1:0", "merge:r1:0"]);
+    expect(stepIds(host, run.id)).toEqual(["land-rules", "ci-wait:0", "land-rules:r1", "ci-wait:r1:0", "base-check:r1:0", "merge-policy:r1:0", "ci-wait:r1:1", "base-check:r1:1", "merge:r1:0"]);
   });
 
   it("asks afresh in a later round instead of replaying the earlier round's approve-merge answer", async () => {
@@ -177,7 +177,7 @@ describe("land merge policy", () => {
 
     expect(outcomes.at(-1)).toMatchObject({ kind: "stopped", reason: "merge-denied", detail: "frozen" });
     expect(host.gates.listPending()).toEqual([]);
-    expect(stepIds(host, run.id)).toEqual(["land-rules", "ci-wait:0", "merge-policy:0"]);
+    expect(stepIds(host, run.id)).toEqual(["land-rules", "ci-wait:0", "base-check:0", "merge-policy:0"]);
     expect(host.runtime.status(run.id)!.stepResults["merge-policy:0:0"]!.data).toMatchObject({ result: { outcome: "deny", headSha: H1 } });
     expect(fake.calls).not.toContain("merge");
   });

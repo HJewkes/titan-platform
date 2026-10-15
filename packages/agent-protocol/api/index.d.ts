@@ -66,10 +66,13 @@ type ExecutionTerminal<TResult = unknown> = {
 } | {
     outcome: "cancelled";
     reason: string;
-} | {
+}
+/** usage is what the harness reported spending before it was stopped, so budgets can count it. */
+ | {
     outcome: "cancellation_unknown";
     reason: string;
     evidence: string;
+    usage?: readonly UsageMeasurement[];
 }
 /** The process was observed gone without a harness result, so success cannot be claimed. */
  | {

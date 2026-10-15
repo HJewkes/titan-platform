@@ -14,6 +14,11 @@ const oneLine = z.string().min(1).max(280).regex(/^[^\n]*$/, "one line");
 /** The evidenceRef convention: an https URL, an absolute path, or a `$ <command>` to re-run. */
 const shownRef = z.string().regex(/^(https:\/\/\S+|\/[^\n]*|\$ [^\n]+)$/, "an https URL, an absolute path or `$ <command>`");
 
+const commitSha = z.string().regex(/^[0-9a-f]{40}$/, "a 40-hex commit id");
+/** A code anchor such as `head/src/a.ts#L10-L20`, resolved against the item's `pins`. */
+const anchorsSchema = z.array(z.string().min(1).max(500).regex(/^(head|base|diff)\//, "an anchor: head/, base/ or diff/<path>#L<n>")).min(1).max(8);
+const pinsSchema = z.strictObject({ repo: z.string().min(1), head: commitSha, base: commitSha.optional() });
+
 const onSilenceSchema = z.discriminatedUnion("action", [
   z.strictObject({ action: z.literal("wait") }),
   z.strictObject({ action: z.enum(["apply-default", "expire"]), afterHours: z.number().int().min(1).max(720) }),
@@ -30,6 +35,7 @@ const optionSchema = z.object({
   description: z.string().optional(),
   /** What picking this option sets in motion, so the owner sees the cost before choosing. */
   consequence: oneLine.optional(),
+  anchors: anchorsSchema.optional(),
 });
 
 const recommendationSchema = z.object({
@@ -74,6 +80,9 @@ export const ownerItemSchema = z.object({
   recommended: recommendationSchema.optional(),
   command: z.string().min(1).optional(),
   evidenceRef: z.string().min(1).optional(),
+  anchors: anchorsSchema.optional(),
+  /** The commits every anchor on the item and its options resolves against. */
+  pins: pinsSchema.optional(),
   keys: z.array(z.string().min(1)),
   asker: z.string().optional(),
   seat: z.string().optional(),

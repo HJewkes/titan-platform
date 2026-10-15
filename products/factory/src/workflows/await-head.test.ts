@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { AWAIT_HEAD_BACKSTOP_MS, PUSH_WATCH_TICK_MS, pushSignal } from "../shepherd/push-signal.js";
 import { H1, REPO } from "../test-support/land.js";
 import { fixtureClone } from "../test-support/reflog.js";
-import { CHECKS_RECHECK_MS, awaitHeadOrExit, awaitNewHead, awaitNewHeadRoute } from "./await-head.js";
+import { BASE_RED_RECHECK_MS, CHECKS_RECHECK_MS, awaitHeadOrExit, awaitNewHead, awaitNewHeadRoute } from "./await-head.js";
 import { prSnapshot } from "./pr-snapshot.js";
 
 const H2 = fakeSha("head2");
@@ -105,6 +105,59 @@ describe("awaitHeadOrExit after a red ci-wait", () => {
     const outcome = await route.runner.run({ runId: "run-1", workflowName: "w", stepId: "sh-await-new-head:0", iteration: 0, prompt: JSON.stringify(afterRed), signal: new AbortController().signal, attempt: 0, requestKey: "k" });
 
     expect(outcome.ok && JSON.parse(outcome.output)).toMatchObject({ result: { headSha: H1, state: "open", green: true } });
+  });
+});
+
+describe("awaitHeadOrExit after a ci-red whose failing checks may be the base's", () => {
+  const afterCiRed = { ...target, failing: ["validate"] };
+  const hook = (answer: () => Promise<boolean>) => {
+    let calls = 0;
+    return { calls: () => calls, inheritedRed: () => () => (calls++, answer()) };
+  };
+
+  it("ends baseRed at the unchanged head once the checker judges the red the base's", async () => {
+    const { fake, sleeps, sleep } = world();
+    let asked = 0;
+    const checker = hook(async () => ++asked >= 2);
+
+    const outcome = await awaitHeadOrExit(githubPort(fake.wire), afterCiRed, new AbortController().signal, { sleep, inheritedRed: checker.inheritedRed });
+
+    expect(outcome).toEqual({ pr: expect.objectContaining({ headSha: H1, state: "open" }), exited: false, baseRed: true });
+    expect(sleeps).toHaveLength(1);
+  });
+
+  it("never asks the checker when the wait carries no failing checks, and ends only on a new head", async () => {
+    const { fake, sleep } = world();
+    fake.onGetPr = (pr, reads) => void (reads === 3 && (pr.headSha = H2));
+    const checker = hook(async () => true);
+
+    const outcome = await awaitHeadOrExit(githubPort(fake.wire), target, new AbortController().signal, { sleep, inheritedRed: checker.inheritedRed });
+
+    expect(outcome).toEqual({ pr: expect.objectContaining({ headSha: H2 }), exited: false });
+    expect(checker.calls()).toBe(0);
+  });
+
+  it("reports a checker that throws and keeps waiting for a new head", async () => {
+    const { fake, sleep } = world();
+    fake.onGetPr = (pr, reads) => void (reads === 3 && (pr.headSha = H2));
+    const reported: string[] = [];
+    const checker = hook(async () => {
+      throw new Error("HTTP 502: bad gateway");
+    });
+
+    const outcome = await awaitHeadOrExit(githubPort(fake.wire), afterCiRed, new AbortController().signal, { sleep, inheritedRed: checker.inheritedRed, onReadError: (message) => void reported.push(message) });
+
+    expect(outcome).toEqual({ pr: expect.objectContaining({ headSha: H2 }), exited: false });
+    expect(reported).toEqual([expect.stringContaining("502"), expect.stringContaining("502")]);
+  });
+
+  it("as a route, records baseRed on the unchanged head", async () => {
+    const { fake, sleep } = world();
+    const route = awaitNewHeadRoute({ port: githubPort(fake.wire), sleep, now: () => 0, inheritedRed: hook(async () => true).inheritedRed });
+
+    const outcome = await route.runner.run({ runId: "run-1", workflowName: "w", stepId: "await-new-head:0", iteration: 0, prompt: JSON.stringify(afterCiRed), signal: new AbortController().signal, attempt: 0, requestKey: "k" });
+
+    expect(outcome.ok && JSON.parse(outcome.output)).toMatchObject({ result: { headSha: H1, state: "open", baseRed: true } });
   });
 });
 
@@ -305,5 +358,17 @@ describe("awaitNewHead on the push reflog", () => {
 
     await expect(wait).rejects.toThrow("test over");
     expect(world.fake.calls.filter((call) => call === "listCheckRuns")).toHaveLength(3);
+  });
+
+  it("after a ci-red, asks the base-red checker once per its cadence, not per tick", async () => {
+    const world = pushWorld();
+    world.after((slept) => void (slept >= 3 * BASE_RED_RECHECK_MS && world.controller.abort(new Error("test over"))));
+    let calls = 0;
+    const inheritedRed = () => async () => (calls++, false);
+
+    const wait = awaitHeadOrExit(githubPort(world.fake.wire), { ...target, failing: ["validate"] }, world.controller.signal, { ...world.timing, inheritedRed });
+
+    await expect(wait).rejects.toThrow("test over");
+    expect(calls).toBe(3);
   });
 });
