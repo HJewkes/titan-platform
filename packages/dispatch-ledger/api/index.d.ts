@@ -733,6 +733,7 @@ interface LedgerRead {
 }
 /** Where the ledger lives. A write checks the revision it read and the phase edges, and commits whole or not at all. */
 interface LedgerStore {
+    /** Throws `LedgerMalformedError` on a malformed store; it never guesses an empty ledger, which would double-dispatch. */
     read(): LedgerRead;
     /** Throws `StaleRevisionError`, `IllegalPhaseEdgeError` or `LedgerMalformedError`, leaving the store unchanged. */
     write(next: Ledger, expectedRevision?: number): {
@@ -769,7 +770,9 @@ declare class SqliteLedgerStore implements LedgerStore {
     write(next: Ledger, expectedRevision?: number): {
         revision: number;
     };
+    /** Throws `LedgerMalformedError` for any stored shape it cannot read, never guessing an empty ledger. */
     private readInside;
+    private emptyUnlessOrphaned;
     private claims;
     private writeInside;
 }
