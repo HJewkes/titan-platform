@@ -184,6 +184,26 @@ describe("an approve-merge answer following the head", () => {
     expect(r.steps.map((step) => step.stepId).filter((id) => id.startsWith("sh-approval-carry") || id.startsWith("sh-remerge"))).toEqual([`sh-approval-carry:own:${MERGED_UP}`]);
   });
 
+  it.each(["packages/authority/src/table.json", "packages/tool-guard/src/x.ts", ".github/workflows/ci.yml"])("asks a security run's owner again when a recorded own merge-up answer's main side touches %s", async (path) => {
+    const r = rig({ kind: "security", own: { ...OWN, mainPaths: ["other.txt", path] } });
+
+    await r.ask("approve-merge", landPrompt(APPROVED));
+    await r.ask("approve-merge:1", landPrompt(MERGED_UP));
+
+    expect(r.gates).toEqual([APPROVED, MERGED_UP]);
+    expect(r.steps.some((step) => step.stepId === `sh-approval-carry:${MERGED_UP}`)).toBe(false);
+  });
+
+  it("asks a security run's owner again when a recorded own merge-up answer names no main paths", async () => {
+    const r = rig({ kind: "security", own: { ...OWN, mainPaths: undefined } });
+
+    await r.ask("approve-merge", landPrompt(APPROVED));
+    await r.ask("approve-merge:1", landPrompt(MERGED_UP));
+
+    expect(r.gates).toEqual([APPROVED, MERGED_UP]);
+    expect(r.steps.some((step) => step.stepId === `sh-approval-carry:${MERGED_UP}`)).toBe(false);
+  });
+
   it.each(["unknown", "none"])("never follows a %s run through the own merge-up rule", async (kind) => {
     const r = rig({ kind: kind === "none" ? null : kind, own: OWN, remerge: RESOLVED });
 

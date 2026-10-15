@@ -78,6 +78,13 @@ describe("the tests brief and fix-proof", () => {
     expect(brief).toMatch(/blocking/);
   });
 
+  it("reads a padded fix-proof/v1 line the way aggregate does", () => {
+    const brief = shapeBrief("tests", { ...target, fixProof: `  ${fixProof()}\n` });
+
+    expect(brief).toContain("fix-proof/v1 verdict for this head: reproduced");
+    expect(brief).not.toContain("could not be read");
+  });
+
   it("the tests member reads an errored proof as blocking", () => {
     const brief = shapeBrief("tests", { ...target, fixProof: fixProof({ verdict: "error" }) });
 

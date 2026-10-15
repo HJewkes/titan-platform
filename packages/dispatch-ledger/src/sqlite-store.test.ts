@@ -1,6 +1,6 @@
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
-import { exportLedgerJson } from "./json.js";
+import { LedgerMalformedError, exportLedgerJson, parseLedgerJson } from "./json.js";
 import type { Claim } from "./schema.js";
 import { SqliteLedgerStore, dispatchLedgerDdl, dispatchLedgerMigration } from "./sqlite-store.js";
 import { importLedgerJson } from "./store.js";
@@ -60,5 +60,49 @@ describe("SqliteLedgerStore", () => {
     runMigrations(db, [dispatchLedgerMigration(1)]);
 
     expect(new SqliteLedgerStore(db).read().revision).toBe(0);
+  });
+});
+
+const tables = (db: Db) => ({
+  claims: db.prepare("SELECT * FROM dispatch_claim ORDER BY ordinal").all(),
+  meta: db.prepare("SELECT * FROM dispatch_ledger_meta").all(),
+});
+
+function importedDb(): Db {
+  const db = memoryDb();
+  importLedgerJson(new SqliteLedgerStore(db), FIXTURE);
+  return db;
+}
+
+const CORRUPTIONS: Record<string, (db: Db) => void> = {
+  "a meta doc that is not JSON": (db) => db.exec("UPDATE dispatch_ledger_meta SET doc = '{'"),
+  "a claim row that is not JSON": (db) => db.exec("UPDATE dispatch_claim SET claim = 'secret-text{' WHERE ordinal = 1"),
+  "a meta row with a non-integer revision": (db) => db.exec("UPDATE dispatch_ledger_meta SET revision = 1.5"),
+  "claim rows with no meta row": (db) => db.exec("DELETE FROM dispatch_ledger_meta"),
+};
+
+describe("SqliteLedgerStore over a malformed store", () => {
+  it.each(Object.entries(CORRUPTIONS))("reads %s as LedgerMalformedError, not an empty ledger", (_, corrupt) => {
+    const db = importedDb();
+    corrupt(db);
+
+    expect(() => new SqliteLedgerStore(db).read()).toThrow(LedgerMalformedError);
+  });
+
+  it("names a corrupt claim row by ordinal and never echoes its text", () => {
+    const db = importedDb();
+    db.exec("UPDATE dispatch_claim SET claim = 'secret-text{' WHERE ordinal = 1");
+
+    expect(() => new SqliteLedgerStore(db).read()).toThrow("stored dispatch claim 1 is not JSON");
+    expect(() => new SqliteLedgerStore(db).read()).not.toThrow(/secret-text/);
+  });
+
+  it.each(Object.entries(CORRUPTIONS))("refuses a write over %s and leaves both tables unchanged", (_, corrupt) => {
+    const db = importedDb();
+    corrupt(db);
+    const before = tables(db);
+
+    expect(() => new SqliteLedgerStore(db).write(parseLedgerJson(FIXTURE))).toThrow(LedgerMalformedError);
+    expect(tables(db)).toEqual(before);
   });
 });

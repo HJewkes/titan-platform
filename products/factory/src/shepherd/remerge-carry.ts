@@ -4,6 +4,7 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { codeRoute, step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
+import { changedPathsBetween } from "./changed-paths.js";
 import generatedPathsJson from "./generated-paths.json" with { type: "json" };
 import { isRepoKey } from "./seats.js";
 import {
@@ -75,11 +76,6 @@ async function remergeOf(git: Git, dir: string, fromHead: string, base: string, 
   return { tree, conflicted };
 }
 
-async function changedBetween(git: Git, dir: string, from: string, to: string, signal?: AbortSignal): Promise<string[]> {
-  const out = await must(git, dir, ["diff-tree", "-r", "--no-renames", "--name-only", "-z", from, to], signal);
-  return out.split("\0").filter((path) => path !== "");
-}
-
 type RemergeFacts = Pick<RemergeResult, "base" | "headTree" | "remergeTree">;
 
 function classify(touched: string[], generated: readonly string[], facts: RemergeFacts): RemergeResult {
@@ -97,7 +93,7 @@ async function probe(git: Git, dir: string, url: string, input: RemergeInput, si
   if (typeof base !== "string") return base;
   const remerged = await remergeOf(git, dir, input.fromHead, base, signal);
   const headTree = await must(git, dir, ["rev-parse", `${input.head}^{tree}`], signal);
-  const changed = await changedBetween(git, dir, remerged.tree, headTree, signal);
+  const changed = await changedPathsBetween(git, dir, remerged.tree, headTree, signal);
   const touched = [...new Set([...remerged.conflicted, ...changed])].sort();
   return classify(touched, input.generated, { base, headTree, remergeTree: remerged.tree });
 }
