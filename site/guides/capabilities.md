@@ -682,7 +682,7 @@ Key exports:
 - `errors`: `TtsConfigError`, `TtsError`, `TtsFailedError`, `TtsTimeoutError`, `TtsUnavailableError`, `TtsUnsupportedError`
 - `capabilities`: `assertSupported`, `languageMatches`, `missingCapabilities`, `requirementsOf`
 - `wav`: `decodeWav`, `encodeWav`
-- +45 more in the [reference page](/reference/speech-tts)
+- +51 more in the [reference page](/reference/speech-tts)
 
 <a id="cap-worktree"></a>
 
