@@ -52,6 +52,18 @@ describe("explainer eval calibrate", () => {
     });
   });
 
+  it("keeps JSON rows with no script_sha when filtering by --script-sha", async () => {
+    const tsv = structure([row("other", "Q-E7", ["r2-1-jobs"])]);
+    const judged = join(dir, "m3.json");
+    writeFileSync(judged, JSON.stringify([{ check_id: "M3", severity: "warning", pass: false, detail_beats: ["r2-1-jobs", "r1-5-seams"] }]));
+
+    const result = await calibrateJson(tsv, judged, "--script-sha", "v4sha");
+
+    expect(result).toMatchObject({
+      checks: [{ check: "M1", ran: false }, { check: "M2" }, { check: "M3", ran: true, precision: 0.5, recall: 0.25 }, { check: "M4" }, { check: "M5" }, { check: "M7" }],
+    });
+  });
+
   it("prints a per-check table with precision, recall and the owner-named recall line", async () => {
     const tsv = structure([row("s", "Q-E7", ["r2-1-jobs"])]);
 

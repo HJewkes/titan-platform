@@ -33,15 +33,16 @@ function readRows(path: string): Row[] {
   return z.array(RowSchema).parse(raw);
 }
 
+/** A JSON row with no script_sha is kept under --script-sha: a judge file is scored for the script it was run on. */
 function loadRows(files: readonly string[], scriptSha: string | undefined): CalibrationRow[] {
   const rows = files.flatMap(readRows);
-  return scriptSha === undefined ? rows : rows.filter((row) => row.script_sha === scriptSha);
+  return scriptSha === undefined ? rows : rows.filter((row) => row.script_sha === undefined || row.script_sha === scriptSha);
 }
 
 const fixed = (value: number | null): string => (value === null ? "-" : value.toFixed(2));
 const list = (values: readonly string[]): string => (values.length === 0 ? "-" : values.join(","));
 
-export function formatCalibration(result: Calibration): string {
+function formatCalibration(result: Calibration): string {
   const header = ["check", "ran", "tp", "fp", "borderline", "unlabelled", "precision", "recall", "missed"];
   const rows = result.checks.map((c) => [
     c.check, c.ran ? "yes" : "no", c.true_positives.length, c.false_positives.length, c.borderline.length,
