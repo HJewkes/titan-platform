@@ -1,6 +1,6 @@
 import path from "node:path";
 import { appDirs } from "@titan-design/app-paths";
-import { SPEECH_COMPONENTS, type SpeechComponent, type SpeechEnv, type TtsProfile } from "./config.js";
+import { type SpeechComponent, type SpeechEnv, type TtsProfile } from "./config.js";
 
 /** The transformers.js device names P1 knows. Only `cpu` is used without an explicit, verified opt-in. */
 export type SpeechDevice = "cpu" | "cuda" | "coreml" | "webgpu";
@@ -54,7 +54,7 @@ export const SPEECH_CACHE_ENV = "TITAN_SPEECH_CACHE";
 /** `TITAN_SPEECH_DEVICE_<TTS|STT|PHONES>`: one component's device, which beats `TITAN_SPEECH_DEVICE`. */
 export const speechDeviceEnvName = (component: SpeechComponent): string => `${SPEECH_DEVICE_ENV}_${component.toUpperCase()}`;
 
-const KNOWN_DEVICES: readonly string[] = ["cpu", "cuda", "coreml", "webgpu"];
+const KNOWN_DEVICES: readonly SpeechDevice[] = ["cpu", "cuda", "coreml", "webgpu"];
 // The layout of onnxruntime-node 1.21, the version transformers 3.x pulls in; 1.30 moved to napi-v6.
 const CUDA_PROVIDER_LIB = path.posix.join("bin", "napi-v3", "linux", "x64", "libonnxruntime_providers_cuda.so");
 const NVIDIA_DRIVER = "/proc/driver/nvidia/version";
@@ -113,17 +113,15 @@ function checkCuda(label: string, choice: Choice, input: SpeechRuntimeInput): vo
 
 function validateDevice(choice: Choice, input: SpeechRuntimeInput): SpeechDevice {
   const label = `${choice.name}=${choice.value}`;
-  if (!KNOWN_DEVICES.includes(choice.value)) {
+  const device = KNOWN_DEVICES.find((d) => d === choice.value);
+  if (device === undefined) {
     throw new SpeechRuntimeError("unknown-device", `${label}: unknown device; expected one of ${KNOWN_DEVICES.join(", ")}`);
   }
-  if (choice.value === "coreml" || choice.value === "webgpu") {
-    throw new SpeechRuntimeError(
-      "unsupported-device",
-      `${label}: ${choice.value} needs @huggingface/transformers 4.x; speech packages support 3.x`,
-    );
+  if (device === "coreml" || device === "webgpu") {
+    throw new SpeechRuntimeError("unsupported-device", `${label}: ${device} needs @huggingface/transformers 4.x; speech packages support 3.x`);
   }
-  if (choice.value === "cuda") checkCuda(label, choice, input);
-  return choice.value as SpeechDevice;
+  if (device === "cuda") checkCuda(label, choice, input);
+  return device;
 }
 
 function checkCacheDir(name: string, cacheDir: string, platform: NodeJS.Platform): void {
@@ -148,6 +146,13 @@ function chooseCacheDir(input: SpeechRuntimeInput): { cacheDir: string; source: 
   return { cacheDir: cache, source: "default" };
 }
 
+// Spelled out per key, in tts, stt, phones order, so the record is complete by type and validation order is fixed.
+const perComponent = <T>(pick: (component: SpeechComponent) => T): Record<SpeechComponent, T> => ({
+  tts: pick("tts"),
+  stt: pick("stt"),
+  phones: pick("phones"),
+});
+
 /**
  * Picks each speech model's device and the model cache from the platform, `TITAN_SPEECH_*` env and the profile's
  * `runtime` section. Pure: the host is passed in. Per component, `TITAN_SPEECH_DEVICE_<C>` beats
@@ -155,20 +160,15 @@ function chooseCacheDir(input: SpeechRuntimeInput): { cacheDir: string; source: 
  */
 export function detectSpeechRuntime(input: SpeechRuntimeInput): SpeechRuntime {
   assertPlatform(input);
-  const device = {} as Record<SpeechComponent, SpeechDevice>;
-  const deviceSource = {} as Record<SpeechComponent, Source>;
-  for (const component of SPEECH_COMPONENTS) {
-    const choice = chooseDevice(component, input);
-    device[component] = validateDevice(choice, input);
-    deviceSource[component] = choice.source;
-  }
+  const choices = perComponent((c) => chooseDevice(c, input));
+  const device = perComponent((c) => validateDevice(choices[c], input));
   const cache = chooseCacheDir(input);
   return {
     device,
     available: availableDevices(input),
     cacheDir: cache.cacheDir,
     offline: Boolean(input.env.TITAN_SPEECH_OFFLINE),
-    source: { device: deviceSource, cacheDir: cache.source },
+    source: { device: perComponent((c) => choices[c].source), cacheDir: cache.source },
   };
 }
 

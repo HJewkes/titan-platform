@@ -7,7 +7,7 @@ export type TtsProviderConfig = { kind: string } & Readonly<Record<string, unkno
 /** The speech models a runtime places on a device. */
 export type SpeechComponent = "tts" | "stt" | "phones";
 
-export const SPEECH_COMPONENTS: readonly SpeechComponent[] = ["tts", "stt", "phones"];
+const SPEECH_COMPONENTS: readonly SpeechComponent[] = ["tts", "stt", "phones"];
 
 /** The profile's `runtime` section. Device names are checked by `detectSpeechRuntime`, not here. */
 export interface SpeechRuntimeProfile {
@@ -66,11 +66,12 @@ export function parseTtsProfile(raw: unknown, source = "profile"): TtsProfile {
 
 function parseRuntimeDevice(device: unknown, fail: Fail): SpeechRuntimeProfile["device"] {
   if (!isRecord(device)) return fail("runtime.device must be an object keyed by tts, stt or phones");
+  const parsed: Partial<Record<SpeechComponent, string>> = {};
   for (const [key, value] of Object.entries(device)) {
-    if (!(SPEECH_COMPONENTS as readonly string[]).includes(key)) fail(`runtime.device.${key} is not tts, stt or phones`);
-    if (typeof value !== "string") fail(`runtime.device.${key} must be a device name string`);
+    const component = SPEECH_COMPONENTS.find((c) => c === key) ?? fail(`runtime.device.${key} is not tts, stt or phones`);
+    parsed[component] = typeof value === "string" ? value : fail(`runtime.device.${key} must be a device name string`);
   }
-  return device as SpeechRuntimeProfile["device"];
+  return parsed;
 }
 
 function parseRuntimeSection(runtime: unknown, fail: Fail): SpeechRuntimeProfile {
