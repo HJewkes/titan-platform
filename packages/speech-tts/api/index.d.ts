@@ -339,4 +339,69 @@ interface Calibration {
 /** Synthesizes until the speaking rate lands within tolerance of the target, else returns the closest try. */
 declare function calibrateSpeed(provider: TtsProvider, input: TtsInput, voice: string, opts: CalibrateOptions): Promise<Calibration>;
 
-export { type Audio, type CalibrateOptions, type CalibrateTry, type Calibration, type CommandOutput, type CommandRequest, type CommandTtsOptions, DEFAULT_MAX_OUTPUT_BYTES, FAKE_TTS_CAPABILITIES, type FakeTtsCall, type FakeTtsOptions, type FakeTtsProvider, type HttpResponseMapping, type HttpTtsOptions, INHERITED_ENV, PREFER_ENV, PROFILE_ENV, type PhonemeAlphabet, type ResolvedTtsConfig, type SelectTtsOptions, type SkippedProvider, type SpeakingOptions, type Synthesis, type SynthesizeOptions, type TtsCapabilities, TtsConfigError, TtsError, type TtsErrorCode, TtsFailedError, type TtsInput, type TtsProfile, type TtsProvider, type TtsProviderConfig, type TtsProviderFactory, type TtsRegistry, type TtsRequirements, type TtsSelection, TtsTimeoutError, type TtsToken, TtsUnavailableError, TtsUnsupportedError, type TtsVoice, type WordTiming, assertSupported, calibrateSpeed, commandTts, createTtsRegistry, decodeWav, defaultTtsRegistry, encodeWav, fakeTts, fillTemplate, httpTts, languageMatches, loadTtsProfile, missingCapabilities, parseCapabilities, parseTtsProfile, providerEnvName, requirementsOf, resolveTtsConfig, selectTts, speakingSeconds };
+/** The model behind `kokoroProvider`, which loads the real fp32 one unless given a `loadEngine`. */
+interface KokoroEngine {
+    /** Kokoro's input ids for one chunk's phonemes, `<bos>` and `<eos>` included. */
+    tokenize(ps: string): number[];
+    /** A voice's style pack: rows of 256 floats, one per phoneme count. */
+    voicePack(voice: string): Promise<Float32Array>;
+    /** One forward pass. `durations` are the unrounded frames per id. */
+    run(input: {
+        ids: readonly number[];
+        style: Float32Array;
+        speed: number;
+    }, signal: AbortSignal): Promise<{
+        waveform: Float32Array;
+        durations: Float32Array;
+    }>;
+    dispose(): Promise<void>;
+}
+type ModuleImporter = (name: string) => Promise<unknown>;
+interface KokoroEngineOptions {
+    /** Where transformers.js caches the model. Its default sits inside node_modules, so products pass one. */
+    cacheDir?: string;
+    device: string;
+    /** Injectable for tests; defaults to a dynamic import. */
+    importModule?: ModuleImporter;
+    /** Where the `<voice>.bin` packs live; defaults to the kokoro-js peer's `voices/`. */
+    voicesDir?: string;
+}
+
+declare const KOKORO_CAPABILITIES: TtsCapabilities;
+/** The G2P Kokoro reads. speech-g2p's `misakiEnglish()` satisfies it, so this package does not depend on it. */
+interface KokoroG2p {
+    tokens(text: string): readonly {
+        text: string;
+        phonemes: string | null;
+        whitespace: string;
+    }[];
+}
+interface KokoroProviderOptions {
+    id?: string;
+    g2p: KokoroG2p;
+    /** Defaults to the fp32 model over the transformers.js peer. Called on first use, and again after a failed load. */
+    loadEngine?: (options: KokoroEngineOptions) => Promise<KokoroEngine>;
+    /** Voice ids offered, a subset of Kokoro's US voices. All of them by default. */
+    voices?: readonly string[];
+    device?: string;
+    cacheDir?: string;
+    /** Covers a cold load, which may download the 325 MB model. */
+    timeoutMs?: number;
+    /** Hears about words Kokoro will not speak; they keep a zero-width timing. Defaults to a process warning. */
+    onWarning?: (message: string) => void;
+}
+/**
+ * Kokoro-82M in process, at fp32, with word timings from the model's own durations, matching Python's
+ * `KPipeline.join_timestamps`. Text goes through the injected G2P; misaki token input is spoken verbatim.
+ */
+declare function kokoroProvider(opts: KokoroProviderOptions): TtsProvider;
+/** Register as `registry.register("kokoro", kokoroFactory({ g2p }))`; profile entries of kind `kokoro` then build it. */
+declare function kokoroFactory(deps: Pick<KokoroProviderOptions, "g2p" | "loadEngine" | "onWarning">): TtsProviderFactory;
+
+/** Seconds from the chunk start; null where Python leaves `start_ts`/`end_ts` unset. */
+interface TokenTime {
+    readonly start: number | null;
+    readonly end: number | null;
+}
+
+export { type Audio, type CalibrateOptions, type CalibrateTry, type Calibration, type CommandOutput, type CommandRequest, type CommandTtsOptions, DEFAULT_MAX_OUTPUT_BYTES, FAKE_TTS_CAPABILITIES, type FakeTtsCall, type FakeTtsOptions, type FakeTtsProvider, type HttpResponseMapping, type HttpTtsOptions, INHERITED_ENV, KOKORO_CAPABILITIES, type KokoroEngine, type KokoroEngineOptions, type KokoroG2p, type KokoroProviderOptions, PREFER_ENV, PROFILE_ENV, type PhonemeAlphabet, type ResolvedTtsConfig, type SelectTtsOptions, type SkippedProvider, type SpeakingOptions, type Synthesis, type SynthesizeOptions, type TokenTime, type TtsCapabilities, TtsConfigError, TtsError, type TtsErrorCode, TtsFailedError, type TtsInput, type TtsProfile, type TtsProvider, type TtsProviderConfig, type TtsProviderFactory, type TtsRegistry, type TtsRequirements, type TtsSelection, TtsTimeoutError, type TtsToken, TtsUnavailableError, TtsUnsupportedError, type TtsVoice, type WordTiming, assertSupported, calibrateSpeed, commandTts, createTtsRegistry, decodeWav, defaultTtsRegistry, encodeWav, fakeTts, fillTemplate, httpTts, kokoroFactory, kokoroProvider, languageMatches, loadTtsProfile, missingCapabilities, parseCapabilities, parseTtsProfile, providerEnvName, requirementsOf, resolveTtsConfig, selectTts, speakingSeconds };

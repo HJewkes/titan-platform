@@ -10,7 +10,7 @@ const MODEL = "onnx-community/Kokoro-82M-v1.0-ONNX-timestamped";
 const MODEL_FILES = ["config.json", "tokenizer.json", "tokenizer_config.json", "onnx/model.onnx"];
 const STYLE_DIM = 256;
 
-/** The model behind `kokoroProvider`. Tests pass a fake; `loadKokoroEngine` builds the real one. */
+/** The model behind `kokoroProvider`, which loads the real fp32 one unless given a `loadEngine`. */
 export interface KokoroEngine {
   /** Kokoro's input ids for one chunk's phonemes, `<bos>` and `<eos>` included. */
   tokenize(ps: string): number[];

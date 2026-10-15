@@ -36,7 +36,7 @@ export interface KokoroG2p {
 export interface KokoroProviderOptions {
   id?: string;
   g2p: KokoroG2p;
-  /** Defaults to `loadKokoroEngine`, the fp32 model over the transformers.js peer. Called once, on first use. */
+  /** Defaults to the fp32 model over the transformers.js peer. Called on first use, and again after a failed load. */
   loadEngine?: (options: KokoroEngineOptions) => Promise<KokoroEngine>;
   /** Voice ids offered, a subset of Kokoro's US voices. All of them by default. */
   voices?: readonly string[];
