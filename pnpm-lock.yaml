@@ -758,6 +758,10 @@ importers:
       kokoro-js:
         specifier: ^1.2.1
         version: 1.2.1
+    devDependencies:
+      '@titan-design/speech-g2p':
+        specifier: workspace:*
+        version: link:../speech-g2p
 
   packages/speech-vet:
     dependencies:

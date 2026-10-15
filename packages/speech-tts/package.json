@@ -30,6 +30,9 @@
   "publishConfig": {
     "access": "public"
   },
+  "devDependencies": {
+    "@titan-design/speech-g2p": "workspace:*"
+  },
   "peerDependencies": {
     "@huggingface/transformers": "^3.8.1",
     "kokoro-js": "^1.2.1"
