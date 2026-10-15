@@ -92,13 +92,15 @@ function turboRoot(prefix, turbo, { runsProcess }) {
   return root;
 }
 
-function pythonRoot(prefix, { file, scripts }) {
+function pythonRoot(prefix, { files = {}, scripts = { build: "tsup" }, group = "products", name = "explainer" }) {
   const root = tempRoot(prefix);
-  const dir = join(root, "products", "explainer");
-  mkdirSync(join(dir, "tools"), { recursive: true });
-  mkdirSync(join(dir, "fixtures"), { recursive: true });
-  writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "@titan-design/explainer", scripts }));
-  if (file) writeFileSync(join(dir, file), "print('x')\n");
+  const dir = join(root, group, name);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "package.json"), JSON.stringify({ name: `@titan-design/${name}`, scripts }));
+  for (const [path, content] of Object.entries(files)) {
+    mkdirSync(dirname(join(dir, path)), { recursive: true });
+    writeFileSync(join(dir, path), content);
+  }
   return root;
 }
 
@@ -209,14 +211,14 @@ const cases = [
   {
     rule: "R59 no Python file in a package or product",
     check: checkNoPython,
-    root: () => pythonRoot("structure-py-file-", { file: "tools/x.py", scripts: { build: "tsup" } }),
+    root: () => pythonRoot("structure-py-file-", { files: { "tools/x.py": "print(1)\n" } }),
     message: "`products/explainer/tools/x.py` is Python. Write it in TypeScript",
   },
   {
     rule: "R59 no python, pip or uv invocation in a script",
     check: checkNoPython,
     root: () => pythonRoot("structure-py-script-", { scripts: { build: "tsup", align: "cd tools && uv run align.py" } }),
-    message: "`products/explainer` script `align` runs python, pip or uv.",
+    message: "`products/explainer` script `align` runs python, pip, uv or another Python runner.",
   },
   {
     rule: "R10 no lint rule at warn severity",
@@ -226,9 +228,63 @@ const cases = [
   },
 ];
 
-describe("R59 Python sample input under fixtures is data, not a tool", () => {
-  it("is allowed", () => {
-    const root = pythonRoot("structure-py-fixture-", { file: "fixtures/sample.py", scripts: { build: "tsup" } });
+describe("R59 Python sample input is data only under the two named style fixtures", () => {
+  it.each(["style-analyzer", "style-checker"])("allows .py under packages/%s/fixtures", (name) => {
+    const root = pythonRoot("structure-py-sample-", { group: "packages", name, files: { "fixtures/sample.py": "x = 1\n" } });
+    expect(checkNoPython(root)).toEqual([]);
+  });
+
+  it("rejects .py under another package's fixtures directory", () => {
+    const root = pythonRoot("structure-py-other-fixture-", { files: { "fixtures/sample.py": "x = 1\n" } });
+    expect(checkNoPython(root)).toEqual([expect.stringContaining("`products/explainer/fixtures/sample.py` is Python.")]);
+  });
+});
+
+describe("R59 Python files of every kind", () => {
+  it.each([
+    ["a .pyw file", "tools/win.pyw", "x = 1\n"],
+    ["a .pyi stub", "tools/stub.pyi", "x: int\n"],
+    ["pyproject.toml", "pyproject.toml", "[project]\n"],
+    ["requirements.txt", "requirements.txt", "requests\n"],
+    ["requirements-dev.txt", "tools/requirements-dev.txt", "pytest\n"],
+    ["an env python shebang", "bin/run", "#!/usr/bin/env python\nprint(1)\n"],
+    ["a /usr/bin/python3 shebang", "bin/run", "#!/usr/bin/python3\nprint(1)\n"],
+    ["a python3.12 shebang", "bin/run", "#!/usr/bin/env python3.12\nprint(1)\n"],
+  ])("rejects %s", (_kind, path, content) => {
+    const root = pythonRoot("structure-py-kind-", { files: { [path]: content } });
+    expect(checkNoPython(root)).toEqual([expect.stringContaining(`\`products/explainer/${path}\` is Python.`)]);
+  });
+
+  it("rejects a .py file under apps/*", () => {
+    const root = pythonRoot("structure-py-app-", { group: "apps", name: "web", files: { "scripts/x.py": "x = 1\n" } });
+    expect(checkNoPython(root)).toEqual([expect.stringContaining("`apps/web/scripts/x.py` is Python.")]);
+  });
+
+  it("allows an extensionless file with a node shebang", () => {
+    const root = pythonRoot("structure-py-node-shebang-", { files: { "bin/run": "#!/usr/bin/env node\n" } });
+    expect(checkNoPython(root)).toEqual([]);
+  });
+});
+
+describe("R59 Python invocations in scripts", () => {
+  it.each([
+    'sh -c "python x.py"',
+    ".venv/bin/python x.py",
+    "/usr/bin/python3 x.py",
+    "python3.12 x.py",
+    "pdm run x",
+    "hatch run x",
+    "pipenv run x",
+    "poetry run x",
+    "pip install x",
+    "tsup && uv run x",
+  ])("rejects script %s", (command) => {
+    const root = pythonRoot("structure-py-cmd-", { scripts: { align: command } });
+    expect(checkNoPython(root)).toEqual([expect.stringContaining("script `align` runs python")]);
+  });
+
+  it.each(["tsup", "vitest run python-fixtures", "node scripts/pipeline.mjs"])("allows script %s", (command) => {
+    const root = pythonRoot("structure-py-ok-", { scripts: { build: command } });
     expect(checkNoPython(root)).toEqual([]);
   });
 });

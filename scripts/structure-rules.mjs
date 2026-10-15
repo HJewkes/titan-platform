@@ -1,7 +1,7 @@
 // Structure checks for the rules in CLAUDE.md that no linter enforces (TP-897 plan S5).
 // Each check takes a repo root and returns one remediation message per violation.
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { basename, dirname, join, relative } from "node:path";
+import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
+import { basename, dirname, extname, join, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { findTiersRule, layersFromTiers, productIsolationRules } from "./new-package.mjs";
 
@@ -235,16 +235,41 @@ export function checkWorkspaceImportsDeclared(root) {
   return [...new Set(dirs.flatMap((dir) => undeclaredImports(root, dir, members)))];
 }
 
-const PYTHON_INVOCATION = /(?:^|[\s;&|(])(?:python3?|pip3?|uvx?|pipx|poetry)(?=\s|$)/;
-const PYTHON_GROUPS = ["packages", "products"];
+const PYTHON_GROUPS = ["packages", "products", "apps"];
+const BOUNDARY_BEFORE = "(?:^|[\\s;&|(=\"'/])";
+const BOUNDARY_AFTER = "(?=$|[\\s;&|)\"'])";
+// Any python entry point (python, python3, python3.12, a path ending /python*) or a Python package runner, anywhere in the command.
+const PYTHON_INVOCATION = new RegExp(`${BOUNDARY_BEFORE}(?:python[\\d.]*|uvx?|pip[\\d.]*|pipx|pdm|hatch|pipenv|poetry)${BOUNDARY_AFTER}`);
+const PYTHON_EXTENSIONS = new Set([".py", ".pyw", ".pyi"]);
+const PYTHON_SHEBANG = /^#!.*\bpython[\d.]*\b/;
+const PYTHON_MANIFEST = /^(?:pyproject\.toml|requirements.*\.txt)$/;
 // style-analyzer and style-checker ship Python source as sample input for analysing Python code; it is data, never run as a tool.
-const PYTHON_SAMPLE_DIRS = new Set([...SKIPPED_DIRS, "fixtures"]);
+const PYTHON_SAMPLE_DIRS = new Set(["packages/style-analyzer/fixtures", "packages/style-checker/fixtures"]);
 
-function pythonFiles(dir) {
+function startsWithPythonShebang(path) {
+  const fd = openSync(path, "r");
+  try {
+    const buffer = Buffer.alloc(128);
+    const length = readSync(fd, buffer, 0, buffer.length, 0);
+    return PYTHON_SHEBANG.test(buffer.toString("utf8", 0, length).split("\n")[0]);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function isPythonFile(path, name) {
+  if (PYTHON_EXTENSIONS.has(extname(name)) || PYTHON_MANIFEST.test(name)) return true;
+  return extname(name) === "" && startsWithPythonShebang(path);
+}
+
+function pythonFiles(root, dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name);
-    if (entry.isDirectory()) return PYTHON_SAMPLE_DIRS.has(entry.name) ? [] : pythonFiles(path);
-    return entry.isFile() && entry.name.endsWith(".py") ? [path] : [];
+    if (entry.isDirectory()) {
+      const skipped = SKIPPED_DIRS.has(entry.name) || PYTHON_SAMPLE_DIRS.has(relative(root, path).split(sep).join("/"));
+      return skipped ? [] : pythonFiles(root, path);
+    }
+    return entry.isFile() && isPythonFile(path, entry.name) ? [path] : [];
   });
 }
 
@@ -252,12 +277,12 @@ function pythonScripts(root, dir) {
   const manifest = readJson(join(dir, "package.json"));
   return Object.entries(manifest.scripts ?? {})
     .filter(([, command]) => PYTHON_INVOCATION.test(command))
-    .map(([name]) => `\`${relative(root, dir)}\` script \`${name}\` runs python, pip or uv. Write the tool in TypeScript; a Python engine is reached only as an external command from a product (decision 373).`);
+    .map(([name]) => `\`${relative(root, dir)}\` script \`${name}\` runs python, pip, uv or another Python runner. Write the tool in TypeScript; a Python engine is reached only as an external command from a product (decision 373).`);
 }
 
-/** R59: no Python file and no python, pip or uv script under packages/* and products/* (decision 373). */
+/** R59: no Python file, manifest or script under packages/*, products/* and apps/* (decision 373). */
 export function checkNoPython(root) {
-  const files = PYTHON_GROUPS.flatMap((group) => subdirs(join(root, group))).flatMap(pythonFiles);
+  const files = PYTHON_GROUPS.flatMap((group) => subdirs(join(root, group))).flatMap((dir) => pythonFiles(root, dir));
   const fileViolations = files.map((file) => `\`${relative(root, file)}\` is Python. Write it in TypeScript; titan-platform releases no Python tools (decision 373).`);
   const scriptViolations = workspaceDirs(root, PYTHON_GROUPS).flatMap((dir) => pythonScripts(root, dir));
   return [...fileViolations, ...scriptViolations];
