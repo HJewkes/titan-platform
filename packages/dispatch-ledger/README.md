@@ -89,3 +89,73 @@ bytes.
 `claims: []` in place. The product mounts the DDL in its own database.
 `memoryLedgerStore(initial?)` keeps the ledger in process for tests and dry runs. Both hand
 out copies.
+
+### Storage
+
+Every `Ledger` section, where `SqliteLedgerStore` keeps it, the guards a write passes before
+it is stored, and what a malformed stored value does. The doc is written whole, with every
+section, in the same transaction as the claim rows and the revision bump.
+
+| Section | Table and column | Write guard | Malformed |
+|---|---|---|---|
+| `version` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `lastTickAt` | `dispatch_ledger_meta.doc` key, copied to `last_tick_at` | revision, schema | read throws |
+| `claims` | `dispatch_claim` rows by `ordinal`: `claim` JSON plus index columns; `[]` in the doc | revision, phase edges, schema | read throws, naming the ordinal |
+| `decider` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `seats` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `dailyRetire` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `humanFiled` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `leakScanner` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `leakScans` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `releases` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `slicesReleased` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `slicesFlagged` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `triageStarts` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `liveness` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `ladder` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `brake` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `serviceCheck` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| `wake` | `dispatch_ledger_meta.doc` key | revision, schema | read throws |
+| owed holds (not a `Ledger` section) | `dispatch_owed_hold` rows by `ordinal`, keyed by `repo` and `pr` | schema only, outside the revision | read throws, naming the position |
+
+The guards are the revision check (`StaleRevisionError`), the phase edges against the stored
+claims (`IllegalPhaseEdgeError`, claims only) and the schema (`LedgerMalformedError`).
+"Read throws" means `read()`, and so any `write()`, throws `LedgerMalformedError` and changes
+nothing: a meta doc or claim row that is not JSON, a meta row whose revision is not an
+integer, a doc plus claims the schema refuses, and claim rows with no meta row. Only a store
+with no rows in either table reads as `EMPTY_LEDGER`; guessing empty over orphaned claims
+would dispatch them twice. Error messages never carry stored text.
+
+## Owed holds
+
+```ts
+import {
+  SqliteOwedHoldStore,
+  dispatchOwedHoldsMigration,
+  exportOwedHoldsJson,
+  parseOwedHoldsJson,
+} from "@titan-design/dispatch-ledger";
+
+runMigrations(db, [dispatchLedgerMigration(7), dispatchOwedHoldsMigration(8)]);
+const holds = new SqliteOwedHoldStore(db);
+holds.write(parseOwedHoldsJson(text)); // agent-chat's burndown-owed-holds.json
+exportOwedHoldsJson(holds.read()) === text; // true for a file agent-chat wrote
+```
+
+An owed hold (CC-931) is a Shepherd hold a tick owes on a run it registered and then failed
+to hold. `OwedHoldSchema` is `{ seat, repo, pr, reason }`, ported from agent-chat
+`src/agents/burndown/owed-holds.ts`. Owed holds are not a `Ledger` section: `OwedHoldStore`
+writes at once, outside the ledger revision and any lease fence, so a hold owed by a tick that
+dies before it commits survives, and one bad hold never makes the ledger unreadable.
+
+`OwedHoldStore` is `read()` and `write(holds)`. A write replaces the whole set in order,
+keeping one hold per repo and PR: a later hold replaces an earlier one in the earlier one's
+place. It refuses a hold the schema refuses with `LedgerMalformedError` and changes nothing.
+An empty store reads `[]`. `SqliteOwedHoldStore` writes in one immediate transaction on the
+`dispatch_owed_hold` table of `dispatchOwedHoldsDdl()` and refuses a stored row the schema
+refuses with `LedgerMalformedError`. `memoryOwedHoldStore(initial?)` keeps the set in process.
+
+`parseOwedHoldsJson(text)` reads like agent-chat's `readOwedHolds`: missing (`undefined`),
+non-JSON or non-array text owes nothing, and a malformed entry is dropped while the rest are
+kept. `exportOwedHoldsJson(holds)` is `JSON.stringify(holds, null, 2)` plus a newline, the
+bytes agent-chat writes.

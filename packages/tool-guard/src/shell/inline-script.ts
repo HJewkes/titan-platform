@@ -45,7 +45,8 @@ function splicedReadings(words: WordToken[], budget: UnsureBudget): string[] {
   return [...new Set([...plain, ...added])];
 }
 
-function shellOperands(args: WordToken[]): { hasC: boolean; positional: WordToken | null } {
+/** Whether a shell's options include `-c`, and its first operand: the `-c` string, or else a script file. */
+export function shellOperands(args: WordToken[]): { hasC: boolean; positional: WordToken | null } {
   let hasC = false;
   for (let i = 0; i < args.length; i++) {
     const v = (args[i] as WordToken).value;
