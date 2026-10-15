@@ -167,6 +167,19 @@ describe("check-then-act port over the fake", () => {
     expect(fake.pr(pr.number).baseRef).toBe("stack/parent");
   });
 
+  it("deleting a branch closes the open PR based on it and leaves a PR on another base open", async () => {
+    const fake = fakeGitHub();
+    fake.refs.set("stack/parent", H1);
+    const child = fake.addPr({ headSha: H2, baseRef: "stack/parent" });
+    const sibling = fake.addPr({ headSha: H1, headRef: "stack/parent" });
+
+    await fake.wire.deleteRef(REPO, "stack/parent");
+
+    expect(fake.pr(child.number).state).toBe("closed");
+    expect(fake.pr(sibling.number).state).toBe("open");
+    expect(fake.refs.has("stack/parent")).toBe(false);
+  });
+
   it("rerunFailed does nothing while the run is already re-running", async () => {
     const fake = fakeGitHub();
     const port = githubPort(fake.wire);
