@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "digest_id": "WB-W3-001",
+    "head": "2ddf3eb6"
+  },
+  "summary": "Test-glance bundle: Ask thread and watch tests (ACP agent conversation lifecycle, read-only permission policy, change-stream backlog), file-ref parsing tests, diffr plugin docstring-detection and settings-schema tests, trace config file tests, plus small Rust fixtures. Tiers: agent, daemon, hitl, workflow, none.",
+  "files": [
+    {
+      "path": "apps/review-desktop/scripts/e2e/fixtures/lsp/rust/src/lib.rs",
+      "purpose_one_line": "Tiny Rust LSP e2e fixture that queues an order via a storage module.",
+      "notable": false
+    },
+    {
+      "path": "diffr/tests/fixtures/concurrent-guest/src/lib.rs",
+      "purpose_one_line": "Test guest component using raw WIT bindings with no SDK.",
+      "notable": true
+    },
+    {
+      "path": "diffr/packages/tui/src/diffr/config.test.ts",
+      "purpose_one_line": "Tests for flattening the config schema into settings and filtering them.",
+      "notable": true
+    }
+  ]
+}
