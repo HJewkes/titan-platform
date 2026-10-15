@@ -116,10 +116,12 @@ graph TD
   graphLayout --> codeGraph
   health --> storeSqlite
   hitl --> authority
+  hitl --> evidence
   hitl --> storeSqlite
   memory --> embed
   memory --> retrieval
   memory --> storeSqlite
+  ownerQueue --> evidence
   queueMirror --> hitl
   queueMirror --> matrixBus
   queueMirror --> storeSqlite

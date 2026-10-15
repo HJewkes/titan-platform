@@ -1,6 +1,7 @@
 import { ZodType } from 'zod';
 import { G as GateRecord, a as GateQuestion, b as GateStore, c as GateResolver, d as GateEvidence, B as BaseGateStore, e as GateAuthorize, f as GateAnswerAllowance, g as GateEvidencePolicy, J as JsonSchema } from './base-store.js';
 export { h as GateAborted, i as GateAlreadyExists, j as GateAlreadySettled, k as GateAuthorization, l as GateAuthorizeInvalid, m as GateBrief, n as GateBriefInvalid, o as GateCancelled, p as GateError, q as GateEvidenceInvalid, r as GateExpired, s as GateExpiryInvalid, t as GateInput, u as GateNotFound, v as GatePayloadInvalid, w as GateQuestionOption, x as GateResolverRefused, y as GateRule, z as GateRuleInvalid, A as GateStatus, C as GateStoreSchemaOutdated } from './base-store.js';
+import { AnchorPins, RevisionSource } from '@titan-design/evidence';
 import '@titan-design/authority';
 
 declare const DEFAULT_POLL_MS = 250;
@@ -100,11 +101,17 @@ interface GateBriefSnapshot {
     evidenceRef: string | undefined;
     questions: GateQuestion[] | undefined;
 }
+/** The pinned commits and their file text, against which an anchor-form evidenceRef is checked. */
+interface BriefAnchorCheck {
+    pins: AnchorPins;
+    source: RevisionSource;
+}
 /**
  * Checks the brief fields and returns a copy holding only the declared ones, so a caller
  * cannot change the stored questions after `create`. `required` makes `summary` and `evidenceRef` mandatory; without it they are still checked when present.
+ * With `anchors`, an evidenceRef written as an anchor (`head/<path>#L10-L20`) must hold at its pinned commit; free text stays legal.
  */
-declare function snapshotBrief(gateId: string, raw: unknown, required: boolean): Readonly<GateBriefSnapshot>;
+declare function snapshotBrief(gateId: string, raw: unknown, required: boolean, anchors?: BriefAnchorCheck): Readonly<GateBriefSnapshot>;
 
 /**
  * A deliberately small structural check over the JSON Schema subset `z.toJSONSchema`
