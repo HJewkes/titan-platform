@@ -771,13 +771,13 @@ importers:
 
   packages/speech-vet:
     dependencies:
+      '@titan-design/speech-g2p':
+        specifier: workspace:^
+        version: link:../speech-g2p
       '@titan-design/speech-stt':
         specifier: workspace:^
         version: link:../speech-stt
     devDependencies:
-      '@titan-design/speech-g2p':
-        specifier: workspace:*
-        version: link:../speech-g2p
       zod:
         specifier: ^4.4.3
         version: 4.5.4
