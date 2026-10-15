@@ -48,14 +48,32 @@ async function readFiles(port: GitHubPort, repo: RepoSlug, pr: number): Promise<
   }
 }
 
-/** The config's globs come from the PR's base ref, never its head, so a PR cannot widen what counts as a test. */
-async function readBaseConfig(port: GitHubPort, repo: RepoSlug, pr: number): Promise<{ text: string | null } | { unread: string }> {
+const SHA = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
+
+/**
+ * A stacked PR's base is a parent PR's branch, which any agent can push to, so only a PR based on the default branch is
+ * classified. Its merge base with the default branch is owner-reviewed history; the branch tip may have moved past it.
+ */
+async function trustedBase(port: GitHubPort, repo: RepoSlug, pr: number): Promise<{ sha: string } | { unread: string }> {
+  const { baseRef, headSha } = await port.getPr(repo, pr);
+  const defaultBranch = await port.defaultBranch(repo);
+  if (baseRef !== defaultBranch) {
+    return { unread: `the PR's base ${JSON.stringify(baseRef)} is not the default branch ${JSON.stringify(defaultBranch)}, so its ${CONFIG_PATH} is not trusted` };
+  }
+  const { mergeBaseSha } = await port.compareFiles(repo, defaultBranch, headSha);
+  if (!SHA.test(mergeBaseSha)) return { unread: `the merge base of ${JSON.stringify(defaultBranch)} and the PR's head is not a commit sha` };
+  return { sha: mergeBaseSha };
+}
+
+/** The config's globs come from the default branch's merge base, never the PR's head or base branch, so no PR can widen what counts as a test. */
+async function readTrustedConfig(port: GitHubPort, repo: RepoSlug, pr: number): Promise<{ text: string | null } | { unread: string }> {
   try {
-    const { baseRef } = await port.getPr(repo, pr);
-    const file = await port.getFile(repo, CONFIG_PATH, baseRef);
+    const base = await trustedBase(port, repo, pr);
+    if ("unread" in base) return base;
+    const file = await port.getFile(repo, CONFIG_PATH, base.sha);
     return { text: file?.content ?? null };
   } catch (error) {
-    return { unread: `${CONFIG_PATH} could not be read at the PR's base: ${failureOf(error)}` };
+    return { unread: `${CONFIG_PATH} could not be read at the default branch's merge base: ${failureOf(error)}` };
   }
 }
 
@@ -67,7 +85,7 @@ export async function testOnlyDiff(port: GitHubPort, repo: RepoSlug, pr: number 
   if (files.length === 0) return { kind: "unread", reason: "the PR lists no changed files" };
   const nameStatus = nameStatusOf(files);
   if ("unread" in nameStatus) return { kind: "unread", reason: nameStatus.unread };
-  const config = await readBaseConfig(port, repo, pr);
+  const config = await readTrustedConfig(port, repo, pr);
   if ("unread" in config) return { kind: "unread", reason: config.unread };
   const planned = planFixProof({ nameStatus: nameStatus.text, baseConfig: config.text });
   if (!planned.ok) return { kind: "unread", reason: `the PR's diff could not be planned: ${planned.error}` };
