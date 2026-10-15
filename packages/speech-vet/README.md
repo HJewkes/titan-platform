@@ -40,6 +40,11 @@ as speech-stt's `wav2vec2Recognizer`.
 - `detectHallucinations(text, actualPhones, { g2p })`: runs of audio phones with no source text.
 - `detectTailArtifact(text, actualPhones, { g2p })`: phones after the last expected phone, or `null`.
 - `recognizePhones(recognizer, audio)`: the recognizer's raw decode, cleaned.
+- `espeakCliG2p({ voice?, bin?, run?, onError? })`: a `PhoneG2p` that runs
+  `espeak-ng -q --ipa=3 -v <voice> <text>` with a 10 second timeout. On failure it returns `""`
+  and calls `onError`, as the audiobook backend does. `espeakVersion()` reports the installed
+  version. Install espeak-ng yourself (apt or brew): it is a GPL binary, called as a process,
+  not bundled.
 - `cleanIpa`, `phonemeDistance`, `phoneMatchDistance`, `admissiblePhones`, `g2pSentence`,
   `WEAK_FORMS` and the thresholds the verdicts use.
 

@@ -21,7 +21,9 @@ rewrites, respellings and phoneme overrides.
 After synthesis, a word the transcriber gets wrong may still be read correctly: Whisper is
 biased toward known words. The phone check compares pronunciation directly. Expected phones
 come from espeak-ng's G2P; actual phones come from a wav2vec2 phone recognizer. A small
-distance blames the transcriber, a large one blames the voice.
+distance blames the transcriber, a large one blames the voice. `espeakCliG2p` runs
+`espeak-ng -q --ipa=3` for you through an injectable runner; install espeak-ng (apt or brew),
+which is a GPL binary called as a process and not bundled.
 
 ## When to reach for it
 
