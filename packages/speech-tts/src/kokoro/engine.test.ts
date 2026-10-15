@@ -102,6 +102,23 @@ describe("loadKokoroEngine", () => {
     expect(importModule).toHaveBeenCalledTimes(2);
   });
 
+  // Mutation caught: the shape check accepts only typeof "object", but the real model and tokenizer are classes.
+  it("accepts model and tokenizer classes, which are functions, like the real peer", async () => {
+    const runtime = fakeTransformers();
+    class StyleTextToSpeech2Model {
+      static from_pretrained = runtime.loads;
+    }
+    class AutoTokenizer {
+      static from_pretrained = () => Promise.resolve((text: string) => ({ input_ids: new FakeTensor("int64", BigInt64Array.from([0, ...[...text].map(() => 1), 0], BigInt), []) }));
+    }
+    const module = { StyleTextToSpeech2Model, AutoTokenizer, Tensor: FakeTensor };
+
+    const load = loadKokoroEngine({ device: "cpu", cacheDir: temp(filledCache()), importModule: () => Promise.resolve(module) });
+
+    await expect(load).resolves.toHaveProperty("tokenize");
+    expect(typeof StyleTextToSpeech2Model).toBe("function");
+  });
+
   it("names the transformers version it needs when the peer predates Kokoro", async () => {
     const load = loadKokoroEngine({ device: "cpu", cacheDir: temp(filledCache()), importModule: () => Promise.resolve({ Tensor: FakeTensor }) });
 
