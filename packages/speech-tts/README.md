@@ -5,7 +5,8 @@ from a deployment's profile and environment, and adapters for any external engin
 about the host is assumed. A deployment says which engines it has; callers say which
 capabilities they need.
 
-Tier 1 of the titan-platform DAG. No runtime dependencies and no model downloads.
+Tier 1 of the titan-platform DAG. No runtime dependencies. The Kokoro adapter needs two
+optional peers and a model download, and only when you use it.
 
 ```sh
 npm install @titan-design/speech-tts
@@ -109,8 +110,8 @@ pass `appDirs("titan-speech").config` from `@titan-design/app-paths`, joined wit
 
 Each machine gets its own profile. Code that calls `selectTts` stays the same everywhere.
 
-**A laptop, CPU only.** The in-process Kokoro adapter is the default once it ships (see
-"Adding a provider kind"). The fallback is a local CPU engine wrapped in the command contract.
+**A laptop, CPU only.** The in-process Kokoro adapter is the first choice (see "Kokoro, in
+process"). The fallback is a local CPU engine wrapped in the command contract.
 Until the host registers the `kokoro` kind, selection stops at that entry with
 `unknown-kind`. Set `TITAN_SPEECH_TTS=local-cli` on such a host so the entry is never tried.
 
@@ -270,11 +271,10 @@ These defaults assume the profile is trusted, but the engine and the network are
 ## Adding a provider kind
 
 The registry maps a profile's `kind` to a factory. `defaultTtsRegistry()` has `command`,
-`http` and `fake`. An in-process engine, such as the Kokoro ONNX adapter planned as the next
-slice, registers its own kind:
+`http` and `fake`. An in-process engine registers its own kind. Kokoro does it like this:
 
 ```ts
-const registry = defaultTtsRegistry().register("kokoro", (id, config) => kokoroProvider({ id, ...config }));
+const registry = defaultTtsRegistry().register("kokoro", kokoroFactory({ g2p }));
 await selectTts({ registry, requirements });
 ```
 
@@ -286,6 +286,67 @@ Every adapter must pass the conformance kit in `src/conformance.ts`: `runTtsConf
 { working, unavailable, hung })`. It checks that capabilities are honoured, that errors are
 typed and carry the provider id, and that a hung engine times out at the deadline. Run it
 once for each capability shape the adapter supports.
+
+## Kokoro, in process
+
+`kokoroProvider` runs Kokoro-82M in the host process and returns word timings taken from the
+model's own durations. They match Python's `KPipeline.join_timestamps`.
+
+Install the two optional peers where you use it:
+
+```sh
+npm install @huggingface/transformers kokoro-js
+```
+
+```ts
+import { kokoroProvider } from "@titan-design/speech-tts";
+
+const tts = kokoroProvider({ g2p, cacheDir });
+const { audio, words } = await tts.synthesize({ text: "Hello there." }, "af_heart", { speed: 0.9 });
+```
+
+- **G2P is injected.** `g2p` is any object with `tokens(text)` that returns
+  `{ text, phonemes, whitespace }` items. `misakiEnglish()` from `@titan-design/speech-g2p`
+  fits. This package does not depend on it.
+- **Input.** Text goes through `g2p`. Token input in the `misaki` alphabet is spoken as given.
+  A token with no `phonemes` is sent to `g2p` alone.
+- **Voices.** The US `af_*` and `am_*` voices, all `en-US`. Voice packs come from the
+  `kokoro-js` peer.
+- **fp32 only.** A profile `dtype` other than `fp32` is refused. Lower precisions shift the
+  durations, and so every word time.
+- **Cache.** Pass `cacheDir`; the default sits inside `node_modules`. The model is about
+  325 MB at `<cacheDir>/onnx-community/Kokoro-82M-v1.0-ONNX-timestamped/`. A cold first call
+  downloads it, so the default `timeoutMs` is 300000. Warm the provider at startup.
+- **Offline.** With `TITAN_SPEECH_OFFLINE` set, a model not fully in `cacheDir` is refused
+  before any network call, with `TtsUnavailableError`. A missing peer is also
+  `TtsUnavailableError`, and a failed load is retried on the next call.
+- **Long text** is cut into chunks of at most 510 phonemes, and word times are offset by the
+  chunks before them.
+- **Unknown words.** A word Kokoro cannot phonemize is not spoken. It still gets a
+  `WordTiming` of zero width at the end of the last spoken word, and a `KokoroWarning` is
+  emitted (or `onWarning` is called) naming it.
+- **Failures.** If the model's output breaks the contract, the call rejects with
+  `TtsFailedError`. That covers phonemes the tokenizer drops and frames that do not add up to
+  the audio length.
+- **Word times are Python's heuristic.** The offset of the start is Python's choice, not
+  measured from the audio. Parity with Python is the bar.
+
+### Smoke check
+
+`src/kokoro.smoke.test.ts` runs the real model against the golden beats. It is skipped unless
+`SPEECH_TTS_SMOKE_CACHE` names a cache that already holds the model, because vitest sets
+`TITAN_SPEECH_OFFLINE`. Fill the cache once with a short `node` script that calls
+`StyleTextToSpeech2Model.from_pretrained` and `AutoTokenizer.from_pretrained` with
+`{ dtype: "fp32", cache_dir }` for `onnx-community/Kokoro-82M-v1.0-ONNX-timestamped`. Then:
+
+```sh
+SPEECH_TTS_SMOKE_CACHE=<cache dir> pnpm vitest run kokoro.smoke
+```
+
+It asserts exact rounded durations, word boundaries within 1 ms of Python, and frames times
+600 equal to the waveform length. It logs load time, inference time and the real-time factor.
+
+`speakingSeconds` and `calibrateSpeed` help tune `speed` to a target words-per-minute.
 
 ## Testing without an engine
 
