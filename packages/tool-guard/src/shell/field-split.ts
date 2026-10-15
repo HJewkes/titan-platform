@@ -17,10 +17,17 @@ const DEFAULT_IFS = " \t\n";
  * as bash 5 splits it. zsh does not split, so this is a reading beside the as-written one, never instead of
  * it. A word this cannot split exactly (mixed quoting, an unknown or unmodelled IFS, a value a case attribute
  * may change) is left raw and dynamic, so it fails closed. Null when every word reads as `expandWord` gives it.
+ * `ifsOverride` splits with an IFS the line may hold at run time but the walk does not hold at this word (an
+ * IFS assigned later in a loop or function, or bash's default after `unset IFS`).
  */
-export function splitReading(words: WordToken[], vars: Vars, home: string | null): WordToken[] | null {
+export function splitReading(
+  words: WordToken[],
+  vars: Vars,
+  home: string | null,
+  ifsOverride?: string,
+): WordToken[] | null {
   const resolve: Resolve = (name) => lookup(vars, home, name);
-  const ifs = knownIfs(vars, home);
+  const ifs = ifsOverride ?? knownIfs(vars, home);
   const kept = assignmentSlots(words);
   const split = words.map((word, i) => (kept.has(i) ? null : splitWord(word, resolve, ifs)));
   if (split.every((fields) => fields === null)) return null;
