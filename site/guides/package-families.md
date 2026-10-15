@@ -158,3 +158,9 @@ merge. The [factory](/guides/factory) product composes `github`, `authority`, `h
   capabilities. A registry picks a provider from a deployment's profile and `TITAN_SPEECH_*`
   env. The `commandTts` and `httpTts` adapters fit any external engine. It is the first of the
   speech packages; G2P, STT and vetting follow.
+- [`speech-stt`](/reference/speech-stt): a CPython-parity `SequenceMatcher`, `align` to
+  time script words from a transcript, `diff` and `normalize` to score a take, the `Word`
+  and `Transcript` schemas, and a pure TypeScript resampler. No model runtime yet.
+- [`speech-vet`](/reference/speech-vet): text-side pronunciation vetting. It parses override
+  and declaration markup, checks G2P heteronym readings against the declarations, defines
+  the `lexicon.v1` schema, and spells out initialisms. It runs no G2P or model.

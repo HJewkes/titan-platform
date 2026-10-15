@@ -118,6 +118,18 @@ export {
 export { L0_CHECKS, l0HardPass, mapLintCheck, runL0, type L0Check, type L0Input, type L0Result } from "./eval-l0.js";
 export { L0_EVAL_ID, runEvalCli, type EvalCliDeps } from "./eval-cli.js";
 export {
+  calibrate,
+  LabelsSchema,
+  ownerRecall,
+  scoreCheck,
+  type Calibration,
+  type CalibrationRow,
+  type CheckLabels,
+  type CheckScore,
+  type Labels,
+  type OwnerRecall,
+} from "./eval-calibrate.js";
+export {
   OWNER_COLUMNS,
   ownerSessionDir,
   prepareOwnerSession,
@@ -181,6 +193,27 @@ export {
   type ReferenceEdge,
   type ViewerAnswer,
 } from "./eval-viewer.js";
+export {
+  COLD_EVAL_ID,
+  MAX_SUMMARY_LINES,
+  ODD_ONE_OUT_MIN_ITEMS,
+  agreedOddOnes,
+  chaptersOf,
+  clampSummary,
+  coldEvalVersion,
+  coldQuestions,
+  playbackTranscript,
+  runCold,
+  scoreAnswer,
+  type ColdChapter,
+  type ColdChapterBeats,
+  type ColdGrade,
+  type ColdInput,
+  type ColdQuestion,
+  type ColdResult,
+  type ColdScore,
+  type OddOneOutPick,
+} from "./eval-cold.js";
 export { BEAT_SCORE_COLUMNS, CANARY_COLUMNS, SCRIPT_SCORE_COLUMNS, VIEWER_COLUMNS } from "./eval-judge-cli.js";
 export { canonicalSha } from "./eval-store.js";
 export { MAX_SENTENCE_WORDS, MIN_PROJECT_SHARE, voiceCheck, voiceCheckWith } from "./lint-voice.js";

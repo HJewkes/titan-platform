@@ -64,6 +64,17 @@ implemented or pending. `--rules` defaults to the shipped registry and must pars
 `rules/v1`. It exits 0 on a pass, 1 when an error-severity check fails (warnings never fail)
 and 2 on bad input. L0 filters only: never rank scripts by how many checks they pass.
 
+`explainer eval calibrate <rows...> --labels <labels.json> [--script-sha <sha>] [--format
+table|json]` scores check rows against a `labels/v1` labelled set
+(`fixtures/spike/redesign-explainer-v4/labels.json` for v4). Rows come from a `structure.tsv`
+or a JSON array of `{check_id, severity, pass, detail_beats}` (`--script-sha` keeps JSON rows
+with no `script_sha`); a labelled check (M1, M3 and so
+on) scores the rows whose `check_id` is its name or one of its `check_ids` (Q-E7 for M1). It
+prints precision and recall per check, and the owner-named recall: the share of owner-named
+beats that fail at least one error-severity row. Borderline labels count as neither a hit nor
+a false positive, a flagged beat with no label is reported as unlabelled, and a check no row
+carries is "not run", not zero.
+
 L1 and L2 are the model-judged layers. The judge is configuration, never a constant: a JSON
 file names `provider` (`claude-print`, the Claude CLI's own login, or `codex`, a cached
 `codex login`), `model`, and optionally `reasoning_effort`, `max_budget_usd`, `wall_time_s`

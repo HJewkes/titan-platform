@@ -1,0 +1,43 @@
+{
+  "name": "@titan-design/speech-stt",
+  "version": "0.0.0",
+  "description": "Pure TypeScript speech-recognition helpers: a CPython-parity SequenceMatcher, script alignment, transcript diff, Word and Transcript schemas, and a resampler",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "author": "Henry Jewkes",
+  "license": "MIT",
+  "homepage": "https://github.com/HJewkes/titan-platform#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HJewkes/titan-platform.git",
+    "directory": "packages/speech-stt"
+  },
+  "bugs": "https://github.com/HJewkes/titan-platform/issues",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "zod": "^4.4.3"
+  }
+}

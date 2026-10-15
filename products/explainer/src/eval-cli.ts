@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { Command, CommanderError } from "commander";
+import { calibrateCommand } from "./eval-calibrate-cli.js";
 import { l0HardPass, runL0, type L0Check, type L0Result } from "./eval-l0.js";
 import type { JudgeConfig, JudgeHarness } from "./eval-harness.js";
 import { l1Command, l2Command, smokeCommand } from "./eval-judge-cli.js";
@@ -120,7 +121,8 @@ export async function runEvalCli(argv: readonly string[], deps: EvalCliDeps = {}
     .addCommand(l0Command(deps, onResult))
     .addCommand(l1Command(deps, onResult))
     .addCommand(l2Command(deps, onResult))
-    .addCommand(smokeCommand(deps, onResult));
+    .addCommand(smokeCommand(deps, onResult))
+    .addCommand(calibrateCommand(onResult));
   const program = new Command("explainer").exitOverride().addCommand(evalCommand);
   try {
     await program.parseAsync([...argv], { from: "user" });

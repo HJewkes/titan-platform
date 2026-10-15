@@ -130,6 +130,10 @@
         "link": "/reference/rpc-client"
       },
       {
+        "text": "speech-stt",
+        "link": "/reference/speech-stt"
+      },
+      {
         "text": "speech-tts",
         "link": "/reference/speech-tts"
       },
@@ -198,6 +202,10 @@
       {
         "text": "session-read",
         "link": "/reference/session-read"
+      },
+      {
+        "text": "speech-vet",
+        "link": "/reference/speech-vet"
       },
       {
         "text": "style-analyzer",
