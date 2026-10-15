@@ -21,12 +21,41 @@ export {
   type MapLayout,
   type MapLevel,
   type MapState,
+  type MessageInFlight,
   type Visual,
 } from "./map-state.js";
 export { cueResolverFromWords, type CueResolver, type WordTiming } from "./cues.js";
-export { MAX_FULL_WEIGHT, MAX_NEW_BOXES, lintMapBeats, type MapLint, type MapLintRule } from "./map-lints.js";
+export {
+  HOP_DWELL_S,
+  HOP_MIN_TRAVEL_S,
+  MAX_FULL_WEIGHT,
+  MAX_NEW_BOXES,
+  lintMapBeats,
+  lintMapCues,
+  type MapCueLintRule,
+  type MapLint,
+  type MapLintRule,
+} from "./map-lints.js";
 export type { CameraTarget, MapView } from "./map-run.js";
-export { compileMapTimeline, type MapEvent, type MapEventKind, type MapSegment, type MapTimeline } from "./map-timeline.js";
+export {
+  compileMapTimeline,
+  type MapEvent,
+  type MapEventKind,
+  type MapFlowWalk,
+  type MapSegment,
+  type MapTimeline,
+} from "./map-timeline.js";
+export {
+  DiagramMapKeyframeSchema,
+  DiagramMapTimelineSchema,
+  toDiagramMapTimeline,
+  type CameraBoxResolver,
+  type DiagramMapBox,
+  type DiagramMapKeyframe,
+  type DiagramMapOptions,
+  type DiagramMapTimeline,
+} from "./diagram-map.js";
+export { placeTimelinePins, type PinLayout, type PinnedMapTimeline, type PinnedSegment, type PlacedPin } from "./map-pins.js";
 export {
   CAPTION_KEEP_OUT,
   CameraStationSchema,
@@ -56,6 +85,20 @@ export {
   type ScriptVisual,
 } from "./script-schema.js";
 export { deriveEvalView, toMapBeats, type EvalBeat, type StateChange } from "./eval-view.js";
+export {
+  CUE_KIND_ROLES,
+  buildPaceBeats,
+  cueKindRole,
+  fromScriptV1,
+  type PaceBeat,
+  type PaceItem,
+  type PaceRole,
+  type PaceSource,
+  type PaceSourceBeat,
+} from "./pace-items.js";
+export { chapterPace, paceCheck, paceRows, type ChapterPace } from "./lint-pace.js";
+export { fromSpikeScript, readSpikeScript, type SpikePace, type SpikeRead, type SpikeScript } from "./spike-script.js";
+export { readTiming, type BeatTiming, type ScriptTiming } from "./timing.js";
 export { migrateTourV0, type MigrateOptions, type TourProbe, type TourV0 } from "./migrate.js";
 export {
   SHORT_SHA_LENGTH,
@@ -74,6 +117,18 @@ export {
 } from "./eval-store.js";
 export { L0_CHECKS, l0HardPass, mapLintCheck, runL0, type L0Check, type L0Input, type L0Result } from "./eval-l0.js";
 export { L0_EVAL_ID, runEvalCli, type EvalCliDeps } from "./eval-cli.js";
+export {
+  calibrate,
+  LabelsSchema,
+  ownerRecall,
+  scoreCheck,
+  type Calibration,
+  type CalibrationRow,
+  type CheckLabels,
+  type CheckScore,
+  type Labels,
+  type OwnerRecall,
+} from "./eval-calibrate.js";
 export {
   OWNER_COLUMNS,
   ownerSessionDir,
@@ -138,6 +193,27 @@ export {
   type ReferenceEdge,
   type ViewerAnswer,
 } from "./eval-viewer.js";
+export {
+  COLD_EVAL_ID,
+  MAX_SUMMARY_LINES,
+  ODD_ONE_OUT_MIN_ITEMS,
+  agreedOddOnes,
+  chaptersOf,
+  clampSummary,
+  coldEvalVersion,
+  coldQuestions,
+  playbackTranscript,
+  runCold,
+  scoreAnswer,
+  type ColdChapter,
+  type ColdChapterBeats,
+  type ColdGrade,
+  type ColdInput,
+  type ColdQuestion,
+  type ColdResult,
+  type ColdScore,
+  type OddOneOutPick,
+} from "./eval-cold.js";
 export { BEAT_SCORE_COLUMNS, CANARY_COLUMNS, SCRIPT_SCORE_COLUMNS, VIEWER_COLUMNS } from "./eval-judge-cli.js";
 export { canonicalSha } from "./eval-store.js";
 export { MAX_SENTENCE_WORDS, MIN_PROJECT_SHARE, voiceCheck, voiceCheckWith } from "./lint-voice.js";
