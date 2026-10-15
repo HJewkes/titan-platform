@@ -285,4 +285,54 @@ declare function whisperStt(options?: WhisperSttOptions): SttProvider & {
     dispose(): Promise<void>;
 };
 
-export { type AsrChunk, type AsrFactory, type AsrOutput, type AsrPipeline, type Audio, type Block, CTC_BLANK_ID, type CtcFactory, type CtcLoadOptions, type CtcLogits, type CtcRecognition, type CtcSession, type DiffOptions, type ModuleImporter, type Opcode, type OpcodeTag, type PhonesCache, type Segment, SegmentSchema, SequenceMatcher, type SequenceMatcherOptions, type SttCapabilities, type SttProvider, type Transcript, type TranscriptCache, TranscriptSchema, WAV2VEC2_MODEL, WAV2VEC2_REVISION, type Wav2vec2Dtype, type Wav2vec2Options, type Wav2vec2Recognizer, type WhisperSttOptions, type Word, type WordDiff, WordSchema, align, argmaxFrames, ctcGreedyDecode, diff, loadTransformersCtc, loadTransformersPipeline, normalize, normalizeInput, resample, roundHalfEven, wav2vec2Recognizer, whisperStt };
+type VoiceFamily = "kokoro" | "xtts";
+/** A calibrated voice family, or an explicit start offset in seconds for a voice that has none. */
+type AlignVoice = VoiceFamily | {
+    startOffsetS: number;
+};
+interface AlignWordsOptions {
+    /** Token text by id, as `Wav2vec2Recognizer.vocab`. */
+    vocab: readonly string[];
+    /** Required, so a caller cannot forget the offset. */
+    voice: AlignVoice;
+}
+/**
+ * Seconds added to a raw forced-alignment start. The E2 spike measured the raw start bias against reference
+ * timings (q8 +56.3 ms Kokoro, +29.3 ms XTTS; fp32 +56.1 / +28.8) with wav2vec2-lv-60 at the pinned revision
+ * and espeak en-us targets, so these are the negated biases.
+ */
+declare const CTC_START_OFFSET_S: Readonly<Record<VoiceFamily, number>>;
+/**
+ * IPA to vocab ids by greedy longest match. Characters the vocab lacks are skipped, and `<…>` special tokens
+ * never match.
+ */
+declare function tokenizeIpa(ipa: string, vocab: readonly string[]): number[];
+/**
+ * Force-aligns a script to CTC logits and times each word. `phones` holds one raw IPA string per script word,
+ * from the caller's G2P. Starts are shifted by the voice's offset; ends stay raw, so they land early and a
+ * caption should end at the next word's start. A word with no alignable phones gets a zero-length span.
+ */
+declare function alignWords(script: readonly string[], phones: readonly string[], logits: CtcLogits, options: AlignWordsOptions): Word[];
+
+/** Where one target token sits in the frames: `[startFrame, endFrame)`, and the same span in seconds. */
+interface CtcTokenSpan {
+    tokenId: number;
+    startFrame: number;
+    /** Exclusive. */
+    endFrame: number;
+    /** `startFrame * frameS`. */
+    start: number;
+    /** `endFrame * frameS`. */
+    end: number;
+}
+/**
+ * CTC Viterbi forced alignment: the single best path through `blank, y1, blank, y2, …, blank` that emits
+ * `targetIds` in order, and each target's frame span on it. A repeated token needs a blank between its copies.
+ *
+ * This is a port of the E2 spike harness, and its frame convention is part of the contract: a span starts at
+ * `startFrame * frameS` and ends at `(lastFrame + 1) * frameS`. The per-voice start offsets were fitted on exactly
+ * this convention and these tie-breaks, so changing either shifts every calibrated start.
+ */
+declare function ctcForcedAlign(logits: CtcLogits, targetIds: readonly number[], frameS?: number): CtcTokenSpan[];
+
+export { type AlignVoice, type AlignWordsOptions, type AsrChunk, type AsrFactory, type AsrOutput, type AsrPipeline, type Audio, type Block, CTC_BLANK_ID, CTC_START_OFFSET_S, type CtcFactory, type CtcLoadOptions, type CtcLogits, type CtcRecognition, type CtcSession, type CtcTokenSpan, type DiffOptions, type ModuleImporter, type Opcode, type OpcodeTag, type PhonesCache, type Segment, SegmentSchema, SequenceMatcher, type SequenceMatcherOptions, type SttCapabilities, type SttProvider, type Transcript, type TranscriptCache, TranscriptSchema, type VoiceFamily, WAV2VEC2_MODEL, WAV2VEC2_REVISION, type Wav2vec2Dtype, type Wav2vec2Options, type Wav2vec2Recognizer, type WhisperSttOptions, type Word, type WordDiff, WordSchema, align, alignWords, argmaxFrames, ctcForcedAlign, ctcGreedyDecode, diff, loadTransformersCtc, loadTransformersPipeline, normalize, normalizeInput, resample, roundHalfEven, tokenizeIpa, wav2vec2Recognizer, whisperStt };

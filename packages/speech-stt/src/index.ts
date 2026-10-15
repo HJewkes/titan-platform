@@ -46,3 +46,5 @@ export {
   type TranscriptCache,
   type WhisperSttOptions,
 } from "./whisper.js";
+export { alignWords, CTC_START_OFFSET_S, tokenizeIpa, type AlignVoice, type AlignWordsOptions, type VoiceFamily } from "./align-words.js";
+export { ctcForcedAlign, type CtcTokenSpan } from "./ctc-align.js";

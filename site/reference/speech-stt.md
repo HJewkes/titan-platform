@@ -74,6 +74,17 @@ logits.frames; // one row of logits.vocabSize scores per 20 ms (logits.frameS)
 await phones.dispose();
 ```
 
+`alignWords` times a script against those logits. The caller supplies one IPA string per
+script word from its own G2P, and the voice family picks the start offset.
+
+```ts
+import { alignWords } from "@titan-design/speech-stt";
+
+const { logits } = await phones.recognizeWithLogits(audio16k);
+alignWords(["all", "llamas"], ["ɔːl", "lɑːməz"], logits, { vocab: phones.vocab, voice: "kokoro" });
+// [{ text: "all", start: 0.084, end: 0.2 }, { text: "llamas", start: 0.164, end: 0.34 }]
+```
+
 ## What it deliberately does not do
 
 - One word recogniser backend, Whisper. A spike compared it with Parakeet over sherpa-onnx.
@@ -119,10 +130,18 @@ await phones.dispose();
   chunk-length audio, 30 s or less. Audio under 400 samples at 16 kHz is refused.
 - Whisper's word times run early, by 80 to 170 ms on average with a long tail. Use a forced
   aligner when captions need tight boundaries.
+- `alignWords` offsets were fitted on espeak en-us targets and wav2vec2-lv-60 at the pinned
+  revision. Another G2P, model or voice needs its own `startOffsetS`.
+- Only starts are calibrated. Ends land about 30 to 60 ms early, so take a caption's end from
+  the next word's start in the renderer.
+- Feed `alignWords` the same chunk-length audio the recogniser takes (30 s or less): the
+  Viterbi keeps one byte per frame and state.
+- A word with no alignable phones (punctuation, or a G2P miss that returned `""`) gets a
+  zero-length span, so the output stays one-to-one with the script.
 
 ## Where it came from
 
 Ported from two Python narration pipelines: one's word alignment (`align`) and the other's
 text comparison (`normalize`, `diff`), with `difflib.SequenceMatcher` ported from CPython.
 It is slice T1 of the speech packages (TP-2956). The Whisper recogniser is slice T2 (TP-3028),
-and the wav2vec2 phone recogniser is part of T8 (TP-3033).
+and the wav2vec2 phone recogniser is part of T8 (TP-3033). Forced alignment is T14 (TP-3035).
