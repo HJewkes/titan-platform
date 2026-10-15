@@ -11,7 +11,14 @@ import {
 const WHISPER_RATE = 16000;
 const FEATURE = "whisperStt";
 
+/** What a provider can report beyond text and timings. */
+export interface SttCapabilities {
+  /** Word `probability` and segment `avgLogprob` / `compressionRatio` come from token log-probs; true when filled. */
+  tokenLogprobs: boolean;
+}
+
 export interface SttProvider {
+  readonly capabilities: SttCapabilities;
   transcribe(audio: Audio): Promise<Transcript>;
 }
 
@@ -128,6 +135,8 @@ export function whisperStt(options: WhisperSttOptions = {}): SttProvider & { dis
   const cache = options.cache ?? new Map<string, Transcript>();
   const asr = lazyPipeline(model, options);
   return {
+    // transformers.js 3.8.1 drops generate()'s scores (models.js:1926-1932), so no token log-probs reach us.
+    capabilities: { tokenLogprobs: false },
     async transcribe(audio) {
       const key = audioKey(model, audio);
       const hit = cache.get(key);
