@@ -184,6 +184,24 @@ export const deterministicRun = (run: DeterministicRun): RunRecord => ({
   started_at: run.started.toISOString(),
 });
 
+/** What a judged (L1, L2) run record is built from: a deterministic run plus the judge, its version and spend. */
+export interface JudgedRun extends DeterministicRun {
+  evalVersion: string;
+  judge: string;
+  run: number;
+  spend: { usd: number; tokensIn: number; tokensOut: number };
+}
+
+export const judgedRun = (run: JudgedRun): RunRecord => ({
+  ...deterministicRun(run),
+  eval_version: run.evalVersion,
+  judge: run.judge,
+  run: run.run,
+  usd: run.spend.usd,
+  tokens_in: run.spend.tokensIn,
+  tokens_out: run.spend.tokensOut,
+});
+
 export function appendRun(layout: BenchLayout, record: RunRecord): void {
   mkdirSync(layout.evals, { recursive: true });
   appendFileSync(layout.runs, `${JSON.stringify(record)}\n`);

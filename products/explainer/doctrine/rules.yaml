@@ -398,7 +398,8 @@ rules:
     fields: [beats.spoken]
     aliases: [K12]
     owner_support: none
-    judge: { layer: L2, status: pending, owner: SQ7 }
+    note: "`explainer eval cold` measures it: undefined items per chapter minute, from a viewer streamed one chapter at a time."
+    judge: { layer: L1, status: cited, rubric: rubrics/l1-cold.md }
   - id: Q-E7
     rule: "At most 4 new on-screen items a beat (cue targets, map reveals, pins, cards and new_terms)"
     fields: [beats.visual, beats.new_terms]

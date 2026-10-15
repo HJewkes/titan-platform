@@ -13,7 +13,7 @@ const EXIT = { OK: 0, FAILURE: 1, USAGE: 2 } as const;
 
 const PACE_EVAL_ID = "L0-pace";
 
-type ScriptFormat = "spike" | "v1";
+export type ScriptFormat = "spike" | "v1";
 
 interface PaceFlags {
   format: ScriptFormat;
@@ -30,7 +30,8 @@ interface PaceCliDeps {
 
 const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"));
 
-function paceBeats(raw: unknown, format: ScriptFormat, timing: ScriptTiming | undefined): PaceBeat[] {
+/** The item track of a spike or script/v1 file, so pace and the cold probe read a script the same way. */
+export function paceBeats(raw: unknown, format: ScriptFormat, timing: ScriptTiming | undefined): PaceBeat[] {
   if (format === "v1") return fromScriptV1(ScriptSchema.parse(raw), timing);
   const { beats, ignored } = fromSpikeScript(raw, timing);
   if (ignored.length > 0) console.error(`note: the spike reader skipped ${ignored.join(", ")}`);

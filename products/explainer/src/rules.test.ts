@@ -66,6 +66,7 @@ describe("the shipped Q-rule registry", () => {
       expect(existsSync(rubric), `${r.id} cites ${rubric}`).toBe(true);
       expect(readFileSync(rubric, "utf8")).toContain(r.id);
     }
+    expect(resolveRule(registry, "Q-E6")?.judge).toEqual({ layer: "L1", status: "cited", rubric: "rubrics/l1-cold.md" });
   });
 
   it("reads only fields script/v1 defines", () => {
