@@ -223,7 +223,13 @@ declare function loadTransformersCtc(importModule?: ModuleImporter): Promise<Ctc
  */
 declare function wav2vec2Recognizer(options?: Wav2vec2Options): Wav2vec2Recognizer;
 
+/** What a provider can report beyond text and timings. */
+interface SttCapabilities {
+    /** Word `probability` and segment `avgLogprob` / `compressionRatio` come from token log-probs; true when filled. */
+    tokenLogprobs: boolean;
+}
 interface SttProvider {
+    readonly capabilities: SttCapabilities;
     transcribe(audio: Audio): Promise<Transcript>;
 }
 /** One chunk of transformers.js word-timestamp output. A chunk not led by whitespace continues the previous word. */
@@ -279,4 +285,4 @@ declare function whisperStt(options?: WhisperSttOptions): SttProvider & {
     dispose(): Promise<void>;
 };
 
-export { type AsrChunk, type AsrFactory, type AsrOutput, type AsrPipeline, type Audio, type Block, CTC_BLANK_ID, type CtcFactory, type CtcLoadOptions, type CtcLogits, type CtcRecognition, type CtcSession, type DiffOptions, type ModuleImporter, type Opcode, type OpcodeTag, type PhonesCache, type Segment, SegmentSchema, SequenceMatcher, type SequenceMatcherOptions, type SttProvider, type Transcript, type TranscriptCache, TranscriptSchema, WAV2VEC2_MODEL, WAV2VEC2_REVISION, type Wav2vec2Dtype, type Wav2vec2Options, type Wav2vec2Recognizer, type WhisperSttOptions, type Word, type WordDiff, WordSchema, align, argmaxFrames, ctcGreedyDecode, diff, loadTransformersCtc, loadTransformersPipeline, normalize, normalizeInput, resample, roundHalfEven, wav2vec2Recognizer, whisperStt };
+export { type AsrChunk, type AsrFactory, type AsrOutput, type AsrPipeline, type Audio, type Block, CTC_BLANK_ID, type CtcFactory, type CtcLoadOptions, type CtcLogits, type CtcRecognition, type CtcSession, type DiffOptions, type ModuleImporter, type Opcode, type OpcodeTag, type PhonesCache, type Segment, SegmentSchema, SequenceMatcher, type SequenceMatcherOptions, type SttCapabilities, type SttProvider, type Transcript, type TranscriptCache, TranscriptSchema, WAV2VEC2_MODEL, WAV2VEC2_REVISION, type Wav2vec2Dtype, type Wav2vec2Options, type Wav2vec2Recognizer, type WhisperSttOptions, type Word, type WordDiff, WordSchema, align, argmaxFrames, ctcGreedyDecode, diff, loadTransformersCtc, loadTransformersPipeline, normalize, normalizeInput, resample, roundHalfEven, wav2vec2Recognizer, whisperStt };

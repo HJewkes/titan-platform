@@ -3,7 +3,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { Audio } from "./schemas.js";
-import { loadTransformersPipeline, whisperStt, type AsrChunk, type AsrFactory, type AsrOutput, type AsrPipeline } from "./whisper.js";
+import {
+  loadTransformersPipeline,
+  whisperStt,
+  type AsrChunk,
+  type AsrFactory,
+  type AsrOutput,
+  type AsrPipeline,
+  type SttProvider,
+} from "./whisper.js";
 
 const chunk = (text: string, start: number, end: number | null): AsrChunk => ({ text, timestamp: [start, end] });
 
@@ -33,6 +41,30 @@ function fakeAsr(output: AsrOutput = SPLIT_WORD_OUTPUT) {
 const tone = (n: number, sampleRate = 16000): Audio => ({
   samples: Float32Array.from({ length: n }, (_, i) => Math.sin(i / 7) * 0.5),
   sampleRate,
+});
+
+describe("whisperStt capabilities", () => {
+  it("declares no token log-probs without loading the pipeline", () => {
+    const { loadPipeline } = fakeAsr();
+
+    expect(whisperStt({ loadPipeline }).capabilities.tokenLogprobs).toBe(false);
+    expect(loadPipeline).not.toHaveBeenCalled();
+  });
+
+  it("returns words without probability and no segments, which is why the flag is off", async () => {
+    const { loadPipeline } = fakeAsr();
+    const transcript = await whisperStt({ loadPipeline }).transcribe(tone(1600));
+
+    expect(transcript.segments).toEqual([]);
+    expect(transcript.words.every((w) => !("probability" in w))).toBe(true);
+  });
+
+  it("requires every provider to declare capabilities", () => {
+    // @ts-expect-error capabilities is required on SttProvider
+    const missing: SttProvider = { transcribe: async () => ({ text: "", words: [], segments: [] }) };
+
+    expect(missing).toBeDefined();
+  });
 });
 
 describe("whisperStt", () => {
