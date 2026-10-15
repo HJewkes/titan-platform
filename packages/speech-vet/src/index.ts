@@ -78,3 +78,23 @@ export {
   type WordVerdict,
   type WordVerdictOptions,
 } from "./phone-verdicts.js";
+export {
+  bestTailTake,
+  DEFAULT_RETRIES,
+  keepTake,
+  KEEP_TAKE_MARGIN,
+  MIN_TARGET_WORD_LENGTH,
+  regressions,
+  synthesizeVerified,
+  WORSE_MARGIN,
+  wordDistances,
+  type BestTailTakeOptions,
+  type RawTake,
+  type SynthesizeVerifiedOptions,
+  type TailCandidate,
+  type TailFix,
+  type TakeScore,
+  type VerifiedTake,
+  type WordDistance,
+  type WordDistanceOptions,
+} from "./retake.js";
