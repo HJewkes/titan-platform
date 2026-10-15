@@ -21,7 +21,7 @@ describe("get_number against misaki", () => {
       .map((c) => ({ k: key(c), want: c.result, got: getNumber(c.word, c.currency, c.isHead, c.flags, lexicon) }))
       .filter((c) => JSON.stringify(c.want) !== JSON.stringify(c.got));
     expect(misses).toEqual([]);
-    expect(golden.getNumber.length).toBeGreaterThan(400);
+    expect(golden.getNumber.length).toBeGreaterThan(600);
   });
 
   it("reads $5.99 as dollars and cents, $1 as a singular dollar", () => {
@@ -36,6 +36,20 @@ describe("get_number against misaki", () => {
 
   it("reads a non-head digit run digit by digit rather than as a cardinal", () => {
     expect(getNumber("1234", "$", false, "", lexicon)[0]).toBe("<one> <two> <three> <four>");
+  });
+});
+
+describe("exactness beyond JS number", () => {
+  it("reads a currency amount above 2^53 digit for digit", () => {
+    const [ps] = getNumber("12345678901234567890", "$", true, "", lexicon);
+    expect(ps).toBe(
+      "<twelve> <quintillion> <three> <hundred> <forty> <five> <quadrillion> <six> <hundred> <seventy> <eight> <trillion> <nine> <hundred> <one> <billion> <two> <hundred> <thirty> <four> <million> <five> <hundred> <sixty> <seven> <thousand> <eight> <hundred> <ninety> <dollar>S",
+    );
+  });
+
+  it("rejects a lookup miss the way misaki's join would raise", () => {
+    const missing: NumberLexicon = { ...lexicon, lookup: () => [null, null] };
+    expect(() => getNumber("5", null, true, "", missing)).toThrow(/no reading/);
   });
 });
 

@@ -75,11 +75,30 @@ export function year(value: number): string {
   return `${cardinal(high)} ${low < 10 ? `oh-${ONES[low]!}` : underHundred(low)}`;
 }
 
-/** Reads a decimal literal digit by digit after the point; a whole value reads as its cardinal (recorded: 5.0 is "five"). */
+/**
+ * Plain positional text for a finite float, with no exponent. The digits are the shortest
+ * round-trip digits, which JS and Python's repr share; only the exponent layout differs.
+ */
+function expandFloat(value: number): string {
+  const match = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]\d+))?$/.exec(String(value));
+  if (!match) throw new RangeError(`unreadable float: ${value}`);
+  const [, sign = "", whole = "", fraction = "", exponent = "0"] = match;
+  const digits = whole + fraction;
+  const point = whole.length + Number(exponent);
+  if (point <= 0) return `${sign}0.${"0".repeat(-point)}${digits}`;
+  if (point >= digits.length) return `${sign}${digits}${"0".repeat(point - digits.length)}`;
+  return `${sign}${digits.slice(0, point)}.${digits.slice(point)}`;
+}
+
+/**
+ * Reads a decimal literal as Python's float would: a whole value reads as its exact integer
+ * (recorded: 5.0 is "five"), anything else digit by digit after the point.
+ */
 export function decimal(literal: string): string {
   const parsed = Number(literal);
-  if (Number.isInteger(parsed)) return cardinal(parsed);
-  const text = String(parsed);
+  if (!Number.isFinite(parsed)) throw new RangeError(`number too large: ${literal}`);
+  if (Number.isInteger(parsed)) return cardinal(BigInt(parsed));
+  const text = expandFloat(parsed);
   const negative = text.startsWith("-");
   const [whole = "0", fraction = ""] = text.replace("-", "").split(".");
   const digits = [...fraction].map((d) => ONES[Number(d)]!).join(" ");

@@ -38,4 +38,13 @@ describe("num2words golden", () => {
     expect(decimal("5.0")).toBe("five");
     expect(decimal("1.50")).toBe("one point five");
   });
+
+  it("expands exponent-form floats instead of re-stringifying them", () => {
+    expect(decimal("0.0000001")).toBe("zero point zero zero zero zero zero zero one");
+    expect(decimal("0.00000012")).toBe("zero point zero zero zero zero zero zero one two");
+  });
+
+  it("reads a float above 2^53 as its exact integer value", () => {
+    expect(decimal("99999999999999999999.5")).toBe("one hundred quintillion");
+  });
 });
