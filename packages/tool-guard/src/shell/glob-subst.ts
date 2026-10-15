@@ -7,17 +7,17 @@ import type { Unwrapped } from "./unwrap.js";
  * time, so the reading fails closed: `unsetopt noglobsubst` enables it and `setopt $o` may.
  */
 export function mayEnableGlobSubst(cmd: Unwrapped): boolean {
-  if (cmd.assigned.some(([name]) => name === "options") || cmd.args.some(readsOptions)) return true;
+  if (cmd.assigned.some(([name]) => name === "options") || cmd.args.some(namesOptions)) return true;
   if (cmd.name === null) return cmd.args.length > 0 && dynamicCommand(cmd.args);
-  if (WRITERS.has(cmd.name) && cmd.args.some((a) => OPTIONS_OPERAND_RE.test(a.value))) return true;
   if ((cmd.name === "print" || cmd.name === "printf") && printsToOptions(cmd.args)) return true;
   const check = Object.hasOwn(ENABLERS, cmd.name) ? ENABLERS[cmd.name] : undefined;
   return check?.(cmd.args) ?? false;
 }
 
-/** Commands that write the parameter a word names; `set -A` is read with `set`'s own options. */
-const WRITERS = new Set(["local", "export", "declare", "typeset", "readonly", "integer", "float", "read", "vared", "getopts", "zparseopts"]);
-/** `options`, `options[k]=v` or `options+=v`, alone or attached to a short option as in `zparseopts -Aoptions`. */
+/**
+ * `options`, `options[k]=v` or `options+=v`, alone or attached to a short option as in `zparseopts -Aoptions`. Any
+ * command may write the parameter such a word names (`strftime -s`, `zstat -A`, `sysread`), so none is trusted.
+ */
 const OPTIONS_OPERAND_RE = /^(?:-[A-Za-z]*)?options(?:\[|\+?=|$)/;
 /** A `print -v` or `printf -v` cluster whose value, attached or in the next word, may be `options`. */
 const PRINT_TARGET_RE = /^-[A-Za-z]*v(.*)$/s;
@@ -44,8 +44,8 @@ function namesGlobSubst(name: string): boolean {
   return norm === "globsubst";
 }
 
-function readsOptions(w: WordToken): boolean {
-  return w.refs.some((ref) => ref.name === "options") || (w.dynamic && OPTIONS_EXPANSION_RE.test(w.value));
+function namesOptions(w: WordToken): boolean {
+  return OPTIONS_OPERAND_RE.test(w.value) || w.refs.some((ref) => ref.name === "options") || (w.dynamic && OPTIONS_EXPANSION_RE.test(w.value));
 }
 
 interface OptionScan {
@@ -163,7 +163,7 @@ function zshEnables(args: WordToken[]): boolean {
 function dynamicCommand(args: WordToken[]): boolean {
   const [, ...rest] = args;
   const scan = scanOptions(rest, "o", false);
-  return [...scan.names, ...scan.operands].some(namesGlobSubst) || rest.some((a) => OPTIONS_OPERAND_RE.test(a.value));
+  return [...scan.names, ...scan.operands].some(namesGlobSubst);
 }
 
 function printsToOptions(args: WordToken[]): boolean {
