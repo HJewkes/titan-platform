@@ -72,6 +72,7 @@ Modules that know about a subject: transcripts, code, rules.
 | [`session-analytics`](/reference/session-analytics) | Pricing, session classification, banding, the cost report and the session timeline over mined session data | `agent-protocol`, `review-panel`, `session-graph`, `session-read`, `store-sqlite` |
 | [`session-graph`](/reference/session-graph) | Fold session events into the activity graph on store-sqlite | `locator`, `session-read`, `store-sqlite`, `agent-protocol` |
 | [`session-read`](/reference/session-read) | Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators | `locator`, `agent-protocol`, `anthropic-account` |
+| [`speech-vet`](/reference/speech-vet) | Speech text vetting: pronunciation override markup, heteronym reading checks, lexicon.v1 and initialism spelling | none |
 | [`style-analyzer`](/reference/style-analyzer) | Tree-sitter style extractors that turn source files into observations, and the aggregator that turns observations into a style profile with confidence and stability | `code-parser`, `style-profile` |
 | [`style-checker`](/reference/style-checker) | Run external lint tools (ruff, ESLint) against configs generated from a style profile, normalize their output into one diagnostic shape, and diff observations against a profile | `style-analyzer`, `style-profile` |
 | [`style-profile`](/reference/style-profile) | Declare one code-style profile and export it as enforcement artifacts: ESLint and ruff configs, EditorConfig, Claude rules, hooks, a skill, and markdown | none |

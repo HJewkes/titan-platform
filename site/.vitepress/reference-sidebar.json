@@ -204,6 +204,10 @@
         "link": "/reference/session-read"
       },
       {
+        "text": "speech-vet",
+        "link": "/reference/speech-vet"
+      },
+      {
         "text": "style-analyzer",
         "link": "/reference/style-analyzer"
       },
