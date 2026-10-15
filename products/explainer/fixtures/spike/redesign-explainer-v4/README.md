@@ -26,3 +26,11 @@ A durations-only extract of motion-spike `examples/samples/redesign-explainer-v4
 all 75 beats, 742.53 s in total. Word timings, voice and density fields are dropped. The four beats whose
 spoken text differs from the frozen script (`r3-2-sentence`, `r3b-5-insert`, `r3b-6-upstream`,
 `r3b-7-claim`) are not in `script.json`.
+
+## `labels.json`
+
+The v4 labelled set (`labels/v1`) from the script-evals plan section 4.1, read by `explainer eval calibrate`.
+It is hand-written, not frozen from a source file: beat labels for M1, M2, M3, M4 and M5, chapter labels for
+M7, the owner-named beats, and the reader-gap item groups with the beats that first use them. Each check is
+labelled true, false or borderline; a beat nobody flagged is unlabelled, not negative. Beat ids span all 75
+beats of `durations.json`, not only the subset in `script.json`.
