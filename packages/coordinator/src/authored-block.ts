@@ -73,7 +73,7 @@ function valueAt(raw: unknown, path: readonly PropertyKey[]): unknown {
   let node = raw;
   for (const key of path) {
     if (node === null || typeof node !== "object") return undefined;
-    node = (node as Record<PropertyKey, unknown>)[key];
+    node = Reflect.get(node, key);
   }
   return node;
 }
