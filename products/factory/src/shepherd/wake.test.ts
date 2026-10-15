@@ -5,7 +5,9 @@ import { SpawnDeferred } from "./spawn-gate.js";
 import { BrokerUnavailableError, DispatchError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type PullRequest } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
+import type { DispatchOptions, RoutedStepInput, StepResult } from "@titan-design/workflow";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { TEST_BRIEF } from "../test-support/brief.js";
@@ -20,7 +22,7 @@ import { TURN_START_MS } from "./turn-check.js";
 import { LOG_BUDGET_BYTES, tailBytes } from "./wake-brief.js";
 import { recordFixFirst } from "./routed.js";
 import { HEAD_READ_GIVE_UP_MS } from "./head-read.js";
-import { MAX_FIX_PROOF_WAKES } from "./fix-proof-cap.js";
+import { FIX_PROOF_WAKE_STEP, MAX_FIX_PROOF_WAKES } from "./fix-proof-cap.js";
 import { isHeld } from "./held-wake.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
 import type { Warmth } from "./warmth.js";
@@ -48,7 +50,7 @@ type Asked = { verb: "resume" | "spawn" | "message"; name: string; message: stri
 /** An in-memory roster where a spawn adds a live row; `fail` throws from the next calls of a verb, one error per call. */
 function fakeAgents(rows: AgentRow[]) {
   const asked: Asked[] = [];
-  const fail: Partial<Record<"roster" | "resume" | "spawn" | "message", Error[]>> = {};
+  const fail: Partial<Record<"roster" | "resume" | "spawn" | "message", (Error | undefined)[]>> = {};
   const next = (verb: keyof typeof fail) => {
     const error = fail[verb]?.shift();
     if (error) throw error;
@@ -93,6 +95,8 @@ interface Scene {
 const warmAt = (minutesAgo: number, fill = 50_000): Warmth => ({ lastEventAt: T0 - minutesAgo * MINUTE, fill });
 
 /** The sh-wake-implementer step run alone over a fake GitHub and a fake roster. */
+const WakeRecord = z.looseObject({ result: z.custom<WakeStepResult>() });
+
 function wakeStep(scene: Scene = {}) {
   const fake = fakeGitHub({ repo: REPO });
   fake.addPr({ headSha: H1, headRef: "feat/demo-fix", ...scene.pr });
@@ -106,8 +110,9 @@ function wakeStep(scene: Scene = {}) {
   const route = wakeRoutes(deps, wiring).find((candidate) => candidate.match === "sh-wake-implementer")!;
   const run = async (kind: WakeRequest["kind"], payload: unknown = {}, fixFirst?: number) => {
     const input = { kind, repo: REPO, pr: 1, round: 0, headSha: H1, payload, runId: "run-1", ...(fixFirst !== undefined && { fixFirst }) };
-    const outcome = await route.runner.run({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 0, requestKey: "k", stepId: "sh-wake-implementer:0" } as never);
-    return { outcome, result: (outcome.ok ? JSON.parse(outcome.output).result : undefined) as WakeStepResult | undefined };
+    const step: RoutedStepInput = { runId: "run-1", workflowName: "wake-test", iteration: 0, prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 0, requestKey: "k", stepId: "sh-wake-implementer:0" };
+    const outcome = await route.runner.run(step);
+    return { outcome, result: outcome.ok ? WakeRecord.parse(JSON.parse(outcome.output)).result : undefined };
   };
   return { fake, agents, clock, store, run };
 }
@@ -383,7 +388,7 @@ describe("sh-wake-implementer: the woken agent must start a turn", () => {
       ["message", "impl-a"],
     ]);
     expect(scene.clock.now - T0).toBeGreaterThanOrEqual(TURN_START_MS);
-    expect((result as { askedAt: number }).askedAt - T0).toBeGreaterThanOrEqual(TURN_START_MS);
+    expect(result?.kind === "woken" ? result.askedAt : undefined).toBeGreaterThanOrEqual(T0 + TURN_START_MS);
   });
 
   it("resumes an agent that ended without starting the turn its resume asked for", async () => {
@@ -421,7 +426,7 @@ describe("sh-wake-implementer: the woken agent must start a turn", () => {
 
   it("returns unhandled with the error class, never its text, when the fallback ask is refused", async () => {
     const scene = wakeStep({ rows: [row("impl-a", { presence: "live" })], turnSince: () => false });
-    scene.agents.fail.message = [undefined as never, new DispatchError(LEAKY_MESSAGE)];
+    scene.agents.fail.message = [undefined, new DispatchError(LEAKY_MESSAGE)];
 
     const { result } = await scene.run("review", fixFirst("fix it"));
 
@@ -816,7 +821,7 @@ describe("wakePhase", () => {
     store.get().register({ ...registration, runId });
     await host.runtime.wait(runId);
     const recorded = Object.values(host.runtime.status(runId)!.stepResults);
-    const results = Object.fromEntries(recorded.map((result) => [result.stepId, (result.data as { result: unknown }).result]));
+    const results = Object.fromEntries(recorded.map((result) => [result.stepId, result.data?.["result"]]));
     return { outcome: outcomes[0], stepIds: recorded.map((result) => result.stepId), results };
   }
 
@@ -1015,6 +1020,15 @@ describe("the fix-proof bounce cap", () => {
   });
   const capReason = `${MAX_FIX_PROOF_WAKES} fix-proof wakes on ${REPO}#1 have not produced a test that reproduces the bug, so the owner decides`;
   const HOLD = "sh-test-hold";
+  /** Stands in for the review steps a real run records before any fix-proof wake, so a replay reads a record there. */
+  const REVIEWED = "sh-test-reviewed";
+
+  /** The wake phase as built before TP-545 b: a fix-proof wake records no cap step, so the record goes straight on to the implementer wake. */
+  const wakeBeforeTp545b: typeof wakePhase = (ctx, request) => {
+    const unrecorded = <T extends Record<string, unknown>>(stepId: string, options: DispatchOptions<T> | undefined): StepResult<T> => ({ stepId, iteration: 0, agentId: null, signal: null, completedAt: "", ...(options?.schema && { data: options.schema.parse({ result: { wake: 1 } }) }) });
+    const uncapped: typeof ctx = { ...ctx, dispatch: async (stepId, template, options) => (stepId === FIX_PROOF_WAKE_STEP ? unrecorded(stepId, options) : ctx.dispatch(stepId, template, options)) };
+    return wakePhase(uncapped, request);
+  };
 
   interface Wake {
     wakePhase: typeof wakePhase;
@@ -1046,7 +1060,7 @@ describe("the fix-proof bounce cap", () => {
       const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
       const wiring: WakeWiring = { agents, readWarmth: async () => warmAt(1), turnSince: async () => true, checkoutFor: () => MAIN_CHECKOUT };
       const routes = Object.assign([...wakeModule.wakeRoutes(deps, wiring)], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5), sliceMigration(8)], bind: store.bind } });
-      const host = openFactoryHost({ dbPath, workflows: [defineWorkflow({ name: "bounce-test", steps: [...wakeModule.WAKE_STEPS, { id: HOLD, kind: "assisted" }], run })], routes, gatePollMs: 5 });
+      const host = openFactoryHost({ dbPath, workflows: [defineWorkflow({ name: "bounce-test", steps: [...wakeModule.WAKE_STEPS, { id: HOLD, kind: "assisted" }, { id: REVIEWED, kind: "seed" }], run })], routes, gatePollMs: 5 });
       hosts.push(host);
       return { host, store };
     };
@@ -1097,6 +1111,36 @@ describe("the fix-proof bounce cap", () => {
 
     expect(scene.outcomes.at(-1)).toEqual({ kind: "unhandled", reason: capReason });
     expect(scene.agents.asked).toHaveLength(MAX_FIX_PROOF_WAKES);
+  });
+
+  it("replays a fix-proof wake recorded before the cap existed without diverging, and counts only the wakes after the restart", async () => {
+    const scene = bouncing();
+    const dir = mkdtempSync(join(tmpdir(), "tp3067-bounce-"));
+    dirs.push(dir);
+    const dbPath = join(dir, "factory.sqlite3");
+    const run = async (ctx: Parameters<typeof wakePhase>[0]) => {
+      await ctx.seed(REVIEWED, async () => ({ data: {} }));
+      await scene.wake(ctx, 0);
+      await ctx.assisted(HOLD, "Go on?", { brief: TEST_BRIEF });
+      await scene.wake(ctx, 1);
+    };
+    const first = scene.open(dbPath, run, { wakePhase: wakeBeforeTp545b, wakeRoutes, WAKE_STEPS });
+    const runId = first.host.runtime.start("bounce-test");
+    first.store.get().register({ ...registration, runId });
+    await vi.waitFor(() => expect(first.host.gates.get(`${runId}/${HOLD}`)?.status).toBe("pending"));
+    expect(scene.stepIds(first.host, runId)).not.toContain(FIX_PROOF_WAKE_STEP);
+    first.host.close();
+
+    const second = scene.open(dbPath, run, await import("./wake.js"));
+    await second.host.runtime.hydrate();
+    await vi.waitFor(() => expect(second.host.gates.get(`${runId}/${HOLD}`)?.status).toBe("pending"));
+    second.host.runtime.signal(runId, HOLD, {}, OWNER);
+    const finished = await second.host.runtime.wait(runId);
+
+    expect(finished.status).toBe("completed");
+    expect(scene.outcomes.at(-1)?.kind).toBe("woken");
+    expect(scene.agents.asked).toHaveLength(2);
+    expect(scene.stepIds(second.host, runId).filter((id) => id === FIX_PROOF_WAKE_STEP)).toHaveLength(1);
   });
 
   it("never counts a fix-proof wake as a FIX_FIRST, so a later review wake keeps the first FIX_FIRST's brief", async () => {

@@ -110,6 +110,16 @@ describe("the playback transcript", () => {
     expect(text).toContain("[c1-2] from 4.0 s\nspoken: Each parcel gets exactly one label");
     expect(text).toContain("on screen: `one label per parcel` from 6.8 s\nbeat ends at 8.5 s");
   });
+
+  // Mutation: reading a null atS as 0 shows the label "from" the beat's start second.
+  it("does not place a label with no word timing at the beat's start second", () => {
+    const [a, b] = track();
+
+    const text = playbackTranscript([{ ...a!, durationS: 4 }, { ...b!, items: [{ ...b!.items[0]!, atS: null }] }]);
+
+    expect(text).toContain("on screen: `one label per parcel` at an unknown second\n");
+    expect(text).not.toContain("`one label per parcel` from");
+  });
 });
 
 describe("the streamed cold-viewer probe", () => {
@@ -178,6 +188,17 @@ describe("the streamed cold-viewer probe", () => {
     expect(careful.chapters.map((c) => c.canary.pass)).toEqual([true, true]);
     expect(guesser.trusted).toBe(false);
     expect(guesser.chapters.map((c) => c.canary.got)).toEqual(["answered", "answered"]);
+  });
+
+  // Mutation: recording a placeholder per chapter instead of the label the viewer was asked about.
+  it("records each chapter's canary under the relay label its prompt asked about", async () => {
+    const viewer = fakeViewer();
+
+    const result = await runCold(input(viewer.harness));
+
+    const asked = viewer.calls.map((prompt) => /"(relay-[0-9a-f]{6})"/.exec(prompt)?.[1]);
+    expect(asked).toEqual([expect.stringMatching(/^relay-[0-9a-f]{6}$/), expect.stringMatching(/^relay-[0-9a-f]{6}$/)]);
+    expect(result.chapters.map((c) => c.canary.canary)).toEqual(asked);
   });
 
   it("does not trust a run with a failed call, and carries the last good summary past it", async () => {

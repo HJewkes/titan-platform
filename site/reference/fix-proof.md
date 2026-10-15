@@ -47,12 +47,16 @@ fix-proof run --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
 when it succeeds.
 
 1. Plans the diff `git diff -M --name-status <base> <head>` with the base's config.
-2. Adds a detached worktree at that side's commit. It runs `pnpm install --frozen-lockfile`
-   when a `pnpm-lock.yaml` is present, then the config's `build` (default `pnpm build`).
+2. Adds a detached worktree at that side's commit and installs from the lockfile in that tree:
+   `pnpm install --frozen-lockfile` for a `pnpm-lock.yaml`, or `npm ci --no-audit --no-fund` for a
+   `package-lock.json` with no `pnpm-lock.yaml` beside it. A tree with neither installs nothing.
+   It then runs the config's `build`, which defaults to `pnpm build`, or to
+   `npm run build --if-present` in an npm tree so a repo with no build script still reaches its tests.
 3. On the base side only, it then checks out the head's tests and carried files over the tree
    and removes `overlayRemovals`. The base install and build finish before any head file lands,
    so nothing the PR carries runs during them, and the base run still lacks the fix.
-4. Runs the config's `command` (default `pnpm exec vitest run`) with
+4. Runs the config's `command` (default `pnpm exec vitest run`, or `npm exec --no -- vitest run` in
+   an npm tree, which fails rather than downloads a vitest the repo does not install) with
    `--reporter=json --outputFile <tmp> --testTimeout 30000 <tests>` appended. The base side runs
    it twice, as `base.report` and `base-rerun.report`, so a reproducer that flaked green once
    can be ruled out. The head side writes `head.report`.

@@ -19,7 +19,9 @@ the `fix-proof` bin does the git and vitest work.
 
 - `fix-proof exec --side base|head --out <dir> --base <mergeBase> --head <sha>` builds and tests
   one side and writes encoded reports (`base.report` and `base-rerun.report`, or `head.report`)
-  to `<dir>`. The base side installs and builds before any head file is overlaid. With
+  to `<dir>`. The base side installs and builds before any head file is overlaid. The install,
+  build and test defaults follow the tree's lockfile: pnpm for `pnpm-lock.yaml`, npm for a lone
+  `package-lock.json`. With
   `--sandbox-user <name>`, each base-side vitest run goes through `sudo -n` into a fresh PID
   namespace as that user, with `no_new_privs` and no capabilities, so no process a head test
   starts outlives the run or writes the runner's files. A sandbox that cannot be set up writes
@@ -29,7 +31,11 @@ the `fix-proof` bin does the git and vitest work.
   prints one result line. It spawns nothing but git. `dist/judge.js` is the same command on its
   own; it cannot run `exec` or `run`.
 - `fix-proof run --base <mergeBase> --head <sha>` runs both sides and the judge in one process,
-  for local use. `execSide()`, `judge()` and `run()` are the same as functions.
+  for local use. Each side and the judge read their own bare snapshot of the two commits, fetched
+  before either side runs, and the base reports are read before the head side starts, so head code
+  cannot plant config, filters or objects in the caller's repo or the judge's. The head side still
+  runs as the caller's uid and could reach the judge's snapshot on purpose. `execSide()`,
+  `judge()` and `run()` are the same as functions.
 
 Every subcommand takes `[--repo <dir>] [--budget-ms <n>]`, always exits 0 and turns any
 failure into an `error` result line. In CI each side is its own job and the judge, the only job

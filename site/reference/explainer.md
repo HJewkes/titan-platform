@@ -159,3 +159,30 @@ and the next map beat resumes it.
   names two rules fails. `resolveRule` maps a Q-id or alias to its rule, and
   `unimplementedL0Rules(registry, emittedIds)` lists rules whose claimed check ids no
   registered check emits. Tracked by TP-2811.
+
+## The doctrine registry
+
+`doctrine/craft/<source>.yaml` holds the craft doctrine (`doctrine-craft/v1`): every rule id the
+video-types study lists from DIRECTION and the six craft doctrines, one file per source. It is a
+separate registry from the Q-rules in `doctrine/rules.yaml`, and its ids never start `Q-`.
+
+Each rule sits on two axes:
+
+- **Scope:** layer `U` (every type and beat), `U*` (universal, with a value a type profile
+  supplies through `param`), `B` (named `beats`) or `T` (named `types` or `audiences`). The allowed
+  names are in `doctrine/vocabulary.yaml`.
+- **Enforcement:** `token`, `component`, `lint`, `gate`, `planner`, `packet`, `base` or `human`,
+  plus the pipeline `stages` that load it (`gather` through `publish`). A `lint` or `gate` rule
+  has a `check`; a `token` rule names titan-design `tokens`, never their values.
+
+`loadDoctrine(dir?)` reads the craft files with `vocabulary.yaml` and `evidence.tsv` (a copy of
+the narrative evidence ledger) and throws on a shape error, naming the file and rule id.
+`checkDoctrine(registry, loadRuleRegistry())` returns every other issue as a coded
+`DoctrineIssue`: a missing evidence id, a grade the cited rows do not state, a scope that breaks
+its layer, an unknown vocabulary name, a duplicate id, an unresolved `supersedes`, and a `qrule`
+check that names no Q-rule or whose `live` disagrees with the Q-rule's L0 status.
+
+**The leak rule.** `isCodeEnforced` is true for a rule whose check is live, or whose tokens are
+all live. Such a rule must not list `planner`, `packet` or `base`, because what code enforces
+never goes into a prompt. A rule whose check is not live yet keeps its prompt enforcement as the
+fallback. Tracked by TP-2745.

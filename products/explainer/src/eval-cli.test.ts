@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runEvalCli } from "./eval-cli.js";
 import { mapLintCheck } from "./eval-l0.js";
 import { rulesSha, scriptSha } from "./eval-store.js";
+import { paceCheck } from "./lint-pace.js";
 import { layout } from "./map-fixtures.test-helpers.js";
 import { DEFAULT_RULES_PATH } from "./rules.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
@@ -70,6 +71,17 @@ describe("explainer eval l0", () => {
     expect(code).toBe(0);
     expect(structureLines()).toEqual(["config_id\tscript_sha\trules_sha\tcheck_id\tmode\tseverity\tvalue\tthreshold\tpass\tdetail_beats"]);
     expect(readFileSync(join(dir, "bench/evals/runs.jsonl"), "utf8").trim().split("\n")).toHaveLength(1);
+  });
+
+  it("reads heard durations from --timing, so a four-item beat voiced over 9 s is not rushed", async () => {
+    const run = (...extra: string[]) =>
+      runEvalCli(["eval", "l0", write("script.json", fourBoxes), "--config", "c", "--rules", join(dir, "rules.yaml"), "--bench", join(dir, "bench"), ...extra], { checks: [paceCheck] });
+    const rushed = () => structureLines().filter((line) => line.includes("\tQ-E8\t")).map((line) => line.split("\t")[8]);
+
+    await run();
+    await run("--timing", write("words.json", { beats: [{ id: "c2-1-stations", durationS: 9 }] }));
+
+    expect(rushed()).toEqual(["false", "true"]);
   });
 
   it("exits 2 on a script that is not script/v1, and on a registry that is not rules/v1", async () => {
