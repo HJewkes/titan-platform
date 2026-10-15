@@ -20,8 +20,9 @@ export interface AggregateInput {
   /** File text at the head; advisory findings whose citations it cannot confirm are dropped. */
   source: LineSource;
   /**
-   * fix-proof's verdict word or its `fix-proof/v1` line, when one ran. `vacuous`, `no-tests`, `error`, a line naming
-   * another head, or anything unreadable makes the tests member blocking.
+   * fix-proof's verdict word or its `fix-proof/v1` line, when one ran. `vacuous`, `no-tests`, `error`, `unproven`, a
+   * line naming another head, or anything unreadable makes the tests member blocking. A bare word never satisfies G10;
+   * only a line pinned to the head can.
    */
   fixProof?: string;
   /** The opus profiles, as `planPanel`'s policy lists them; satisfiesG10 needs the correctness member at one. */
@@ -38,7 +39,7 @@ interface Seat {
 }
 
 const SHAPE_ORDER: readonly ReviewShape[] = ["correctness", "adversary", "tests", "visual", "perf"];
-const BAD_FIX_PROOF = new Set<string>(["vacuous", "no-tests", "error"]);
+const BAD_FIX_PROOF = new Set<string>(["vacuous", "no-tests", "error", "unproven"]);
 const KNOWN_FIX_PROOF = new Set<string>(VERDICTS);
 const CITATION = /(?<![\w./-])((?:[\w.-]+\/)*[\w-][\w.-]*\.[A-Za-z]\w*):(\d+)(?:-(\d+))?/g;
 const FINDING_START = /^\s*(?:[-*+]|\d+[.)])\s/;
@@ -74,6 +75,13 @@ function badFixProof(input: AggregateInput): boolean {
   if (text.startsWith(RESULT_PREFIX)) return badResultLine(text, input.head);
   const word = text.toLowerCase();
   return word !== "" && (BAD_FIX_PROOF.has(word) || !KNOWN_FIX_PROOF.has(word));
+}
+
+/** A bare word names no head, so it cannot vouch for this one; G10 needs the pinned line. */
+function unpinnedProof(input: AggregateInput): boolean {
+  if (typeof input.fixProof !== "string") return false;
+  const text = input.fixProof.trim();
+  return text !== "" && !text.startsWith(RESULT_PREFIX);
 }
 
 function seatOf(member: PanelMember, results: readonly MemberResult[], input: AggregateInput): Seat {
@@ -175,7 +183,8 @@ function satisfiesG10(plan: PanelPlan, seats: readonly Seat[], outcome: PanelOut
     degraded.length === 0 &&
     correctness?.status === "MERGE" &&
     Object.hasOwn(opusProfiles, correctness.member.profile) &&
-    adversary?.status === "MERGE"
+    adversary?.status === "MERGE" &&
+    !unpinnedProof(input)
   );
 }
 

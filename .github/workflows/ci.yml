@@ -9,6 +9,10 @@ concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# onnxruntime-node would otherwise fetch CUDA binaries on install; no job uses them.
+env:
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -78,6 +82,30 @@ jobs:
       # redirect-corpus.test.ts runs every redirect form under real bash and zsh; it fails on CI without both.
       - name: Install zsh for the redirect corpus
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends zsh
+      # frame-capture's tests drive a real headless Chromium, at the revision its pinned playwright-core expects.
+      # The browser is cached per playwright-core version; --with-deps still installs the system libraries each run.
+      - name: Read the playwright-core version
+        id: playwright
+        run: |
+          version=$(pnpm --filter @titan-design/frame-capture exec node -p "require('playwright-core/package.json').version")
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "could not read the playwright-core version (got '$version')" >&2; exit 1 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Restore the Chromium cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - name: Install Chromium for frame-capture
+        run: pnpm --filter @titan-design/frame-capture exec playwright-core install --with-deps --only-shell chromium
+      - name: Save the Chromium cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
       # A pull request runs the packages its diff reaches through the workspace graph; main runs everything.
       - name: Run the tests in scope
         env:

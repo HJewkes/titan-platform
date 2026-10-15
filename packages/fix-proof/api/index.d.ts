@@ -205,11 +205,13 @@ interface Shas {
 /** A verdict error line for the given commits, standing in a zero sha for any that is not a full sha. */
 declare function errorLine(refs: Shas, error: string): string;
 
-/** Leaves headroom under the CI job's 20-minute timeout so the runner, not the job, reports the overrun. */
-declare const DEFAULT_BUDGET_MS: number;
 declare const DEFAULT_BUILD = "pnpm build";
 /** The vitest invocation; the runner appends the JSON reporter flags and the selected test paths. */
 declare const DEFAULT_COMMAND = "pnpm exec vitest run";
+
+/** Leaves headroom under the CI job's 20-minute timeout so the runner, not the job, reports the overrun. */
+declare const DEFAULT_BUDGET_MS: number;
+
 type Side = "base" | "head";
 /** The reports each side writes, as `<name>.report` in its out dir; the base runs twice so a flaky reproducer can be ruled out. */
 declare const SIDE_REPORTS: Readonly<Record<Side, readonly string[]>>;
@@ -246,7 +248,8 @@ interface RunOptions {
 }
 /**
  * Runs both exec sides and the judge in this process and returns one fix-proof/v1 line; the local mode of the three CI jobs.
- * Failures become a verdict error line, never a throw.
+ * Each side and the judge read their own bare snapshot of the two commits, so nothing either side writes reaches the
+ * caller's repo or the judge's. Failures become a verdict error line, never a throw.
  */
 declare function run(options: RunOptions): Promise<string>;
 

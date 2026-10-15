@@ -39,7 +39,7 @@ describe("compileMapTimeline", () => {
     expect(segments[0]?.events).toEqual([
       { atS: 0.9, kind: "camera", id: "api,web" },
       { atS: 1.4, kind: "reveal", id: "web" },
-      { atS: 3, kind: "focus", id: "api" },
+      { atS: 3, kind: "focus", id: "api", ids: ["api"] },
       { atS: 3, kind: "reveal", id: "api" },
     ]);
     expect(segments[1]?.events).toEqual([{ atS: 22, kind: "reveal", id: "store" }]);

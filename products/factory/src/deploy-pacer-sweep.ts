@@ -5,7 +5,7 @@ import { z } from "zod";
 import { cachedAncestry, gitAncestry, runningHolds } from "./build-ancestry.js";
 import { FACTORY_REPO } from "./build-info.js";
 import { factoryStateDir } from "./config.js";
-import { readDeployPause } from "./deploy-pause.js";
+import { readDeployHolds } from "./deploy-pause.js";
 import { readLastDeploy } from "./deploy-ports.js";
 import type { CommandResult } from "./service-control.js";
 import { runCommand } from "./service-ports.js";
@@ -79,7 +79,7 @@ export function startDeployPacer(options: DeployPacerOptions | undefined, servic
       express: (sha) => sha === settled.express,
       lastDeploy: () => readLastDeploy(stateDir) ?? undefined,
       busy: service.busy,
-      paused: () => readDeployPause(pauseReadPorts, stateDir).paused,
+      paused: () => readDeployHolds(pauseReadPorts, stateDir).held,
       spawn,
       log: (line) => log.info({}, line),
     });

@@ -1,0 +1,237 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it, vi } from "vitest";
+import type { Audio } from "./schemas.js";
+import {
+  loadTransformersPipeline,
+  whisperStt,
+  type AsrChunk,
+  type AsrFactory,
+  type AsrOutput,
+  type AsrPipeline,
+  type SttProvider,
+} from "./whisper.js";
+
+const chunk = (text: string, start: number, end: number | null): AsrChunk => ({ text, timestamp: [start, end] });
+
+// Whisper splits a rare word into sub-word chunks; only the first of them carries the leading space.
+const SPLIT_WORD_OUTPUT: AsrOutput = {
+  text: " Litestream replicates the database.",
+  chunks: [
+    chunk(" Lite", 0.32, 0.6),
+    chunk("str", 0.6, 0.74),
+    chunk("eam", 0.74, 0.9),
+    chunk(" replicates", 0.9, 1.5),
+    chunk(" the", 1.5, 1.62),
+    chunk(" data", 1.62, 1.9),
+    chunk("base.", 1.9, null),
+  ],
+};
+
+function fakeAsr(output: AsrOutput = SPLIT_WORD_OUTPUT) {
+  const asr = Object.assign(
+    vi.fn(async (_samples: Float32Array, _options: unknown) => output),
+    { dispose: vi.fn(async () => undefined) },
+  );
+  const factory = vi.fn<AsrFactory>(async () => asr);
+  return { asr, factory, loadPipeline: vi.fn(async () => factory) };
+}
+
+const tone = (n: number, sampleRate = 16000): Audio => ({
+  samples: Float32Array.from({ length: n }, (_, i) => Math.sin(i / 7) * 0.5),
+  sampleRate,
+});
+
+describe("whisperStt capabilities", () => {
+  it("declares no token log-probs without loading the pipeline", () => {
+    const { loadPipeline } = fakeAsr();
+
+    expect(whisperStt({ loadPipeline }).capabilities.tokenLogprobs).toBe(false);
+    expect(loadPipeline).not.toHaveBeenCalled();
+  });
+
+  it("returns words without probability and no segments, which is why the flag is off", async () => {
+    const { loadPipeline } = fakeAsr();
+    const transcript = await whisperStt({ loadPipeline }).transcribe(tone(1600));
+
+    expect(transcript.segments).toEqual([]);
+    expect(transcript.words.every((w) => !("probability" in w))).toBe(true);
+  });
+
+  it("requires every provider to declare capabilities", () => {
+    // @ts-expect-error capabilities is required on SttProvider
+    const missing: SttProvider = { transcribe: async () => ({ text: "", words: [], segments: [] }) };
+
+    expect(missing).toBeDefined();
+  });
+});
+
+describe("whisperStt", () => {
+  it("merges sub-word chunks into whole words timed in seconds", async () => {
+    const { loadPipeline } = fakeAsr();
+    const transcript = await whisperStt({ loadPipeline }).transcribe(tone(1600));
+
+    expect(transcript.text).toBe("Litestream replicates the database.");
+    expect(transcript.words).toEqual([
+      { text: "Litestream", start: 0.32, end: 0.9 },
+      { text: "replicates", start: 0.9, end: 1.5 },
+      { text: "the", start: 1.5, end: 1.62 },
+      { text: "database.", start: 1.62, end: 1.9 },
+    ]);
+    expect(transcript.segments).toEqual([]);
+  });
+
+  it("makes no recognizer call for audio it has already transcribed", async () => {
+    const { asr, loadPipeline } = fakeAsr();
+    const stt = whisperStt({ loadPipeline });
+
+    const first = await stt.transcribe(tone(1600));
+    const second = await stt.transcribe(tone(1600));
+
+    expect(asr).toHaveBeenCalledTimes(1);
+    expect(second).toEqual(first);
+  });
+
+  it("transcribes again when one sample changes", async () => {
+    const { asr, loadPipeline } = fakeAsr();
+    const stt = whisperStt({ loadPipeline });
+    const edited = tone(1600);
+    edited.samples[800] = 0.25;
+
+    await stt.transcribe(tone(1600));
+    await stt.transcribe(edited);
+
+    expect(asr).toHaveBeenCalledTimes(2);
+  });
+
+  it("passes model, dtype, device and cacheDir to the pipeline", async () => {
+    const { factory, loadPipeline } = fakeAsr();
+    const stt = whisperStt({ model: "org/whisper-x", dtype: "q8", device: "cpu", cacheDir: "/models", loadPipeline });
+
+    await stt.transcribe(tone(160));
+
+    expect(factory).toHaveBeenCalledWith("automatic-speech-recognition", "org/whisper-x", {
+      dtype: "q8",
+      device: "cpu",
+      cache_dir: "/models",
+    });
+  });
+
+  it("resamples audio to 16 kHz before recognition", async () => {
+    const { asr, loadPipeline } = fakeAsr();
+
+    await whisperStt({ loadPipeline }).transcribe(tone(2400, 24000));
+
+    expect(asr.mock.calls[0]?.[0]).toHaveLength(1600);
+  });
+
+  it("loads the pipeline once and disposes it", async () => {
+    const { asr, loadPipeline } = fakeAsr();
+    const stt = whisperStt({ loadPipeline });
+
+    await stt.transcribe(tone(160));
+    await stt.transcribe(tone(320));
+    await stt.dispose();
+
+    expect(loadPipeline).toHaveBeenCalledTimes(1);
+    expect(asr.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries the load after a failed one", async () => {
+    const { factory } = fakeAsr();
+    const loadPipeline = vi
+      .fn<() => Promise<AsrFactory>>()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue(factory);
+    const stt = whisperStt({ loadPipeline });
+
+    await expect(stt.transcribe(tone(160))).rejects.toThrow("offline");
+    await expect(stt.transcribe(tone(160))).resolves.toMatchObject({ text: "Litestream replicates the database." });
+  });
+});
+
+describe("loadTransformersPipeline", () => {
+  it("names the install command when the peer is missing", async () => {
+    const missing = () => Promise.reject(new Error("Cannot find package '@huggingface/transformers'"));
+
+    await expect(loadTransformersPipeline(missing)).rejects.toThrow("npm i @huggingface/transformers");
+    await expect(whisperStt({ loadPipeline: () => loadTransformersPipeline(missing) }).transcribe(tone(160))).rejects.toThrow(
+      "npm i @huggingface/transformers",
+    );
+  });
+
+  it("rejects a module without a pipeline export", async () => {
+    await expect(loadTransformersPipeline(async () => ({}))).rejects.toThrow("npm i @huggingface/transformers");
+  });
+
+  it("returns a factory that calls the module's pipeline", async () => {
+    const asr: AsrPipeline = Object.assign(async () => ({ text: "" }), { dispose: async () => {} });
+    const pipeline = vi.fn(async () => asr);
+    vi.stubEnv("TITAN_SPEECH_OFFLINE", "");
+    const factory = await loadTransformersPipeline(async () => ({ pipeline }));
+
+    const result = await factory("automatic-speech-recognition", "m", { dtype: "fp32" });
+
+    expect(result).toBe(asr);
+    expect(pipeline).toHaveBeenCalledWith("automatic-speech-recognition", "m", { dtype: "fp32" });
+    vi.unstubAllEnvs();
+  });
+});
+
+describe("offline guard", () => {
+  const MODEL = "org/model";
+  async function offlineFactory(cacheDir: string, pipeline: AsrFactory) {
+    vi.stubEnv("TITAN_SPEECH_OFFLINE", "1");
+    const factory = await loadTransformersPipeline(async () => ({ pipeline }));
+    return factory("automatic-speech-recognition", MODEL, { dtype: "fp32", cache_dir: cacheDir });
+  }
+
+  it("passes when the model is cached", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "speech-cache-"));
+    mkdirSync(join(cacheDir, MODEL), { recursive: true });
+    writeFileSync(join(cacheDir, MODEL, "config.json"), "{}");
+    const asr: AsrPipeline = Object.assign(async () => ({ text: "" }), { dispose: async () => {} });
+    try {
+      await expect(offlineFactory(cacheDir, async () => asr)).resolves.toBe(asr);
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
+  });
+
+  it("throws offline: when the model dir exists but is empty", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "speech-cache-"));
+    mkdirSync(join(cacheDir, MODEL), { recursive: true });
+    const pipeline = vi.fn<AsrFactory>();
+    try {
+      await expect(offlineFactory(cacheDir, pipeline)).rejects.toThrow(/^offline:/);
+      expect(pipeline).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
+  });
+
+  it("throws offline: and never fetches when the cache is empty", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "speech-cache-"));
+    const fetchFake = vi.fn();
+    const factory: AsrFactory = async () => {
+      await fetchFake("https://huggingface.co/model");
+      throw new Error("the factory must not run offline");
+    };
+    vi.stubEnv("TITAN_SPEECH_OFFLINE", "1");
+    try {
+      const stt = whisperStt({
+        cacheDir,
+        loadPipeline: () => loadTransformersPipeline(async () => ({ pipeline: factory })),
+      });
+
+      await expect(stt.transcribe(tone(160))).rejects.toThrow(/^offline:/);
+      expect(fetchFake).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
+  });
+});

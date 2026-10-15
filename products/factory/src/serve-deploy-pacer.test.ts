@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineWorkflow } from "./definition.js";
 import { ghDeployNow } from "./deploy-pacer-sweep.js";
-import { deployPausePath } from "./deploy-pause.js";
+import { deployHoldPath, deployPausePath } from "./deploy-pause.js";
 import { startFactoryServer, type FactoryServer, type FactoryServerOptions } from "./serve.js";
 import { DEPLOY_MAX_WAIT_MS, DEPLOY_NOW_LABEL, DEPLOY_QUIET_MS, nodeWantedStore, noteWanted, writeWanted, type DeployPacerOptions, type WantedStore } from "./shepherd/deploy-pacer.js";
 import { landScenario } from "./test-support/land.js";
@@ -109,6 +109,17 @@ describe("serve's deploy pacer sweep", () => {
   it("never spawns while TP-2268's deploy pause is on disk, even past the cap", async () => {
     const world = pacerWorld();
     writeFileSync(deployPausePath(world.stateDir), "{}\n");
+    world.clock.now = T0 + DEPLOY_MAX_WAIT_MS + MIN;
+    await serve(world);
+
+    await world.ticks(3);
+
+    expect(world.spawned).toEqual([]);
+  });
+
+  it("never spawns while a manual deploy hold is on disk, even past the cap", async () => {
+    const world = pacerWorld();
+    writeFileSync(deployHoldPath(world.stateDir), JSON.stringify({ heldAt: new Date(T0).toISOString(), reason: "owner hold" }));
     world.clock.now = T0 + DEPLOY_MAX_WAIT_MS + MIN;
     await serve(world);
 

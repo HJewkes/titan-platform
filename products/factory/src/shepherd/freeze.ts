@@ -280,7 +280,7 @@ export async function greenAfterRed(port: GitHubPort, repo: RepoSlug, sha: strin
 }
 
 /** The names of the Actions checks whose newest run completed red at `sha`. */
-export async function failingAt(port: GitHubPort, repo: RepoSlug, sha: string): Promise<string[]> {
+async function failingAt(port: GitHubPort, repo: RepoSlug, sha: string): Promise<string[]> {
   return [...new Set((await actionsRuns(port, repo, sha)).filter((run) => run.status === "completed" && !isPassing(run)).map((run) => run.name))];
 }
 

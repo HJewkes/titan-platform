@@ -83,6 +83,63 @@ describe("ownMergeUp", { timeout: 30_000 }, () => {
     expect(result.mergeTree).toBe(result.headTree);
   });
 
+  it.each(["packages/authority/src/table.json", "packages/tool-guard/src/x.ts", ".github/workflows/ci.yml"])("refuses a merge-up whose main side changes the carry-fenced %s", async (path) => {
+    const h1 = approvedFeature();
+    mainCommit("other.txt", "main moved\n");
+    mainCommit(path, "fenced\n");
+
+    const result = await probe(h1, mergeMain());
+
+    expect(result).toMatchObject({ carries: false, reason: expect.stringContaining(`carry-fenced path(s): ${path}`), mainPaths: expect.arrayContaining([path]) });
+  });
+
+  it("refuses a case-folded workflows path on main's side", async () => {
+    const h1 = approvedFeature();
+    mainCommit(".GitHub/Workflows/release.yml", "fenced\n");
+
+    expect(await probe(h1, mergeMain())).toMatchObject({ carries: false, reason: expect.stringContaining(".GitHub/Workflows/release.yml") });
+  });
+
+  it("refuses a main-side rename out of a fenced directory, which still lists the old path", async () => {
+    commit("packages/authority/a.ts", body("fenced"));
+    const h1 = approvedFeature();
+    git("checkout", "-q", "main");
+    mkdirSync(join(origin, "lib"));
+    git("mv", "packages/authority/a.ts", "lib/a.ts");
+    git("commit", "-q", "-m", "move a out of authority");
+    git("checkout", "-q", "feature");
+
+    const result = await probe(h1, mergeMain());
+
+    expect(result).toMatchObject({ carries: false, reason: expect.stringContaining("packages/authority/a.ts"), mainPaths: ["lib/a.ts", "packages/authority/a.ts"] });
+  });
+
+  it.each([
+    { from: ".github/workflows/old.yml", to: "docs/old.yml", fenced: ".github/workflows/old.yml" },
+    { from: "docs/new.yml", to: ".github/workflows/new.yml", fenced: ".github/workflows/new.yml" },
+  ])("refuses a main-side rename $from -> $to under diff.renames, naming $fenced", async ({ from, to, fenced }) => {
+    git("config", "diff.renames", "true");
+    commit(from, body("moved"));
+    const h1 = approvedFeature();
+    git("checkout", "-q", "main");
+    mkdirSync(dirname(join(origin, to)), { recursive: true });
+    git("mv", from, to);
+    git("commit", "-q", "-m", `move ${from}`);
+    git("checkout", "-q", "feature");
+
+    const result = await probe(h1, mergeMain());
+
+    expect(result).toMatchObject({ carries: false, reason: expect.stringContaining(`carry-fenced path(s): ${fenced}`), mainPaths: [from, to].sort() });
+  });
+
+  it("carries when main's side only nears a fenced prefix", async () => {
+    const h1 = approvedFeature();
+    mainCommit("packages/authority-x/a.ts", "near\n");
+    mainCommit("docs/tool-guard.md", "near\n");
+
+    expect(await probe(h1, mergeMain())).toMatchObject({ carries: true, mainPaths: ["docs/tool-guard.md", "packages/authority-x/a.ts"] });
+  });
+
   it("carries a second merge-up from the head the first one made", async () => {
     const h1 = approvedFeature();
     mainCommit("other.txt", "one\n");
