@@ -168,6 +168,7 @@ graph TD
   explainer --> agentProtocol
   explainer --> evidence
   explainer --> graphLayout
+  explainer --> speechVet
   factory --> agent
   factory --> agentDispatch
   factory --> appPaths
