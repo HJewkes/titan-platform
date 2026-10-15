@@ -79,6 +79,8 @@ const PROTECTED_FILES = new Set(["codeowners", "docs/codeowners", ".github/codeo
 // pnpm-lock.yaml) stays unfenced: it was reviewed on main and runs on the merged head before required contexts pass, and
 // fencing it would end the carry for almost every merge-up.
 const CARRY_FENCED_PREFIXES = ["packages/authority/", "packages/tool-guard/", ".github/", ".codewatch/"];
+// A symlink, submodule or file at a prefix's bare name stands in for that whole tree, which the prefix test never sees.
+const CARRY_FENCED_ENTRIES = new Set(CARRY_FENCED_PREFIXES.map((prefix) => prefix.slice(0, -1)));
 // Exact files, so a sibling such as .egress-allow.md stays unfenced.
 const CARRY_FENCED_FILES = new Set([".egress-allow"]);
 const NON_CANONICAL_SEGMENTS = new Set(["", ".", ".."]);
@@ -166,7 +168,7 @@ function isProtectedPath(path: unknown): boolean {
 export function isCarryFencedPath(path: unknown): boolean {
   if (typeof path !== "string" || isNonCanonical(path)) return true;
   const folded = path.toLowerCase();
-  return CARRY_FENCED_FILES.has(folded) || CARRY_FENCED_PREFIXES.some((prefix) => folded.startsWith(prefix));
+  return CARRY_FENCED_FILES.has(folded) || CARRY_FENCED_ENTRIES.has(folded) || CARRY_FENCED_PREFIXES.some((prefix) => folded.startsWith(prefix));
 }
 
 function isWellFormedRun(run: CheckRunFact): boolean {
