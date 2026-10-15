@@ -1,8 +1,8 @@
 # speech-stt
 
-**Tier 1 · engines.** No titan dependencies. Its one dependency is `zod`. The Whisper
-recogniser needs the optional peer `@huggingface/transformers` (`^3`); everything else runs
-without a model runtime or native code.
+**Tier 1 · engines.** No titan dependencies. Its one dependency is `zod`. The Whisper and
+wav2vec2 recognisers need the optional peer `@huggingface/transformers` (`^3`); everything
+else runs without a model runtime or native code.
 
 ```sh
 npm install @titan-design/speech-stt
@@ -26,6 +26,8 @@ replaces the ffmpeg call.
 You compare a script with a transcript, or you port Python code that calls `difflib`. Use
 `align` to give every script word a time, `diff` to score a take, and `resample` to feed a
 16 kHz recogniser. Use `whisperStt` to get a `Transcript` with word timestamps from audio.
+Use `wav2vec2Recognizer` to hear which phones were actually spoken, or to get CTC logits for
+forced alignment.
 Speech synthesis belongs to `speech-tts`.
 
 ## Example
@@ -59,9 +61,22 @@ transcript.words; // [{ text: "The", start: 0, end: 0.68 }, { text: "redesign", 
 await stt.dispose();
 ```
 
+The phone recogniser runs `onnx-community/wav2vec2-lv-60-espeak-cv-ft-ONNX`, pinned to
+`WAV2VEC2_REVISION`, and decodes greedily over a vocab vendored in `data/`.
+
+```ts
+import { wav2vec2Recognizer } from "@titan-design/speech-stt";
+
+const phones = wav2vec2Recognizer({ device: "cpu", cacheDir: "/var/cache/models" });
+await phones.recognize({ samples, sampleRate: 24000 }); // "w ʌ n s ɪ t ɹ iː tʃ ᵻ z ..."
+const { ids, logits } = await phones.recognizeWithLogits(audio);
+logits.frames; // one row of logits.vocabSize scores per 20 ms (logits.frameS)
+await phones.dispose();
+```
+
 ## What it deliberately does not do
 
-- One recogniser backend, Whisper. A spike compared it with Parakeet over sherpa-onnx.
+- One word recogniser backend, Whisper. A spike compared it with Parakeet over sherpa-onnx.
   Parakeet scored a lower word error rate, but it read garbled synthetic speech as the
   intended words, which makes it worse at catching bad takes. So there is no sherpa peer.
 - No segment confidence. Word-timestamp decoding in transformers.js reports none, so
@@ -86,6 +101,20 @@ await stt.dispose();
   naming `npm i @huggingface/transformers`. Importing the package never loads the peer.
 - Audio at any rate is resampled to 16 kHz with `resample` first. Whisper gives a window's
   last word a null end time; that word ends where it starts.
+- `wav2vec2Recognizer` defaults to `fp32`, which gives the same frame ids as the PyTorch
+  model. `q8` is opt-in: it uses about 1.3 GB of memory instead of 3 GB, but a parity run
+  changed the phone-check verdict on 7 of 30 chunks, so thresholds tuned on fp32 do not hold
+  for it. There is no silent fallback to q8.
+- `recognize` returns the raw decode: space-separated vocab tokens with `<pad>`, `<s>`,
+  `</s>` and `<unk>` dropped and nothing folded. Cleaning is the caller's job. Decodes are
+  cached by model, dtype, revision and audio; `recognizeWithLogits` always runs the model.
+- Without `cacheDir`, transformers.js caches weights inside `node_modules`, which a reinstall
+  wipes. A pinned revision lives under `<cacheDir>/<model>/<revision>/`.
+- With `TITAN_SPEECH_OFFLINE` set, `wav2vec2Recognizer` throws `offline:` before any network
+  call unless that exact weights file (`onnx/model.onnx`, or `onnx/model_quantized.onnx` for
+  q8) is cached.
+- wav2vec2 attends over the whole input, so memory grows with the square of its length. Feed
+  chunk-length audio, 30 s or less. Audio under 400 samples at 16 kHz is refused.
 - Whisper's word times run early, by 80 to 170 ms on average with a long tail. Use a forced
   aligner when captions need tight boundaries.
 
@@ -93,4 +122,5 @@ await stt.dispose();
 
 Ported from two Python narration pipelines: one's word alignment (`align`) and the other's
 text comparison (`normalize`, `diff`), with `difflib.SequenceMatcher` ported from CPython.
-It is slice T1 of the speech packages (TP-2956). The Whisper recogniser is slice T2 (TP-3028).
+It is slice T1 of the speech packages (TP-2956). The Whisper recogniser is slice T2 (TP-3028),
+and the wav2vec2 phone recogniser is part of T8 (TP-3033).

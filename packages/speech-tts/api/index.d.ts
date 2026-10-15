@@ -306,4 +306,37 @@ interface SelectTtsOptions {
 /** Loads the profile, applies env overrides and selects: the one call a product needs. */
 declare function selectTts(opts?: SelectTtsOptions): Promise<TtsSelection>;
 
-export { type Audio, type CommandOutput, type CommandRequest, type CommandTtsOptions, DEFAULT_MAX_OUTPUT_BYTES, FAKE_TTS_CAPABILITIES, type FakeTtsCall, type FakeTtsOptions, type FakeTtsProvider, type HttpResponseMapping, type HttpTtsOptions, INHERITED_ENV, PREFER_ENV, PROFILE_ENV, type PhonemeAlphabet, type ResolvedTtsConfig, type SelectTtsOptions, type SkippedProvider, type Synthesis, type SynthesizeOptions, type TtsCapabilities, TtsConfigError, TtsError, type TtsErrorCode, TtsFailedError, type TtsInput, type TtsProfile, type TtsProvider, type TtsProviderConfig, type TtsProviderFactory, type TtsRegistry, type TtsRequirements, type TtsSelection, TtsTimeoutError, type TtsToken, TtsUnavailableError, TtsUnsupportedError, type TtsVoice, type WordTiming, assertSupported, commandTts, createTtsRegistry, decodeWav, defaultTtsRegistry, encodeWav, fakeTts, fillTemplate, httpTts, languageMatches, loadTtsProfile, missingCapabilities, parseCapabilities, parseTtsProfile, providerEnvName, requirementsOf, resolveTtsConfig, selectTts };
+interface SpeakingOptions {
+    /** Silent runs at least this long between voiced frames are pauses and are not counted. */
+    pauseS?: number;
+    /** Frames quieter than this many dB below the loudest frame are silent. */
+    silenceDb?: number;
+}
+/**
+ * Seconds of speech in `audio`: leading and trailing silence trimmed, and silent runs
+ * of `pauseS` or more removed, so a words-per-minute figure ignores deliberate pauses.
+ */
+declare function speakingSeconds(audio: Audio, opts?: SpeakingOptions): number;
+
+interface CalibrateOptions {
+    targetWpm: number;
+    /** Words in the spoken text. The caller counts them: plain-text rules belong to the caller. */
+    wordCount: number;
+    toleranceWpm?: number;
+    maxTries?: number;
+    startSpeed?: number;
+}
+interface CalibrateTry {
+    speed: number;
+    wpm: number;
+}
+interface Calibration {
+    best: CalibrateTry & {
+        synthesis: Synthesis;
+    };
+    tries: CalibrateTry[];
+}
+/** Synthesizes until the speaking rate lands within tolerance of the target, else returns the closest try. */
+declare function calibrateSpeed(provider: TtsProvider, input: TtsInput, voice: string, opts: CalibrateOptions): Promise<Calibration>;
+
+export { type Audio, type CalibrateOptions, type CalibrateTry, type Calibration, type CommandOutput, type CommandRequest, type CommandTtsOptions, DEFAULT_MAX_OUTPUT_BYTES, FAKE_TTS_CAPABILITIES, type FakeTtsCall, type FakeTtsOptions, type FakeTtsProvider, type HttpResponseMapping, type HttpTtsOptions, INHERITED_ENV, PREFER_ENV, PROFILE_ENV, type PhonemeAlphabet, type ResolvedTtsConfig, type SelectTtsOptions, type SkippedProvider, type SpeakingOptions, type Synthesis, type SynthesizeOptions, type TtsCapabilities, TtsConfigError, TtsError, type TtsErrorCode, TtsFailedError, type TtsInput, type TtsProfile, type TtsProvider, type TtsProviderConfig, type TtsProviderFactory, type TtsRegistry, type TtsRequirements, type TtsSelection, TtsTimeoutError, type TtsToken, TtsUnavailableError, TtsUnsupportedError, type TtsVoice, type WordTiming, assertSupported, calibrateSpeed, commandTts, createTtsRegistry, decodeWav, defaultTtsRegistry, encodeWav, fakeTts, fillTemplate, httpTts, languageMatches, loadTtsProfile, missingCapabilities, parseCapabilities, parseTtsProfile, providerEnvName, requirementsOf, resolveTtsConfig, selectTts, speakingSeconds };
