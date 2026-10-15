@@ -674,9 +674,6 @@
   "products/factory/src/serve.ts": {
     "titan/max-function-lines": {
       "count": 1
-    },
-    "titan/max-line-length": {
-      "count": 1
     }
   },
   "products/factory/src/service-check.ts": {
@@ -1035,11 +1032,6 @@
       "count": 15
     }
   },
-  "products/factory/src/shepherd/reviewer-brief.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/reviewer-dispatch.ts": {
     "titan/max-line-length": {
       "count": 1
@@ -1182,7 +1174,7 @@
   },
   "products/factory/src/workflows/land.ts": {
     "titan/max-line-length": {
-      "count": 5
+      "count": 3
     }
   },
   "products/factory/src/workflows/pr-snapshot.test.ts": {

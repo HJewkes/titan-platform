@@ -1,0 +1,61 @@
+# The allowed scope values of doctrine/craft/ rules: beat types, video types and audiences.
+#
+# Beats are DIRECTION §5's catalogue plus the repo-tour beats of the video-types study (VT §2.3),
+# and the render components VT §4 scopes B rules to (chart, list). Types are VT §3's taxonomy;
+# audiences are the parameter packs of VT §5.2. A data slice that needs a name missing here stops
+# and reports instead of adding it, so a new beat or type is a reviewed change of its own.
+schema: doctrine-vocabulary/v1
+beats:
+  - hook
+  - promise
+  - claim-card
+  - stat
+  - entry-points
+  - user-flow
+  - misconception
+  - stakes
+  - arch-map
+  - zoom
+  - info-flow
+  - sequence
+  - schema
+  - code-walk
+  - algo-trace
+  - compare
+  - docs-vs-code
+  - issue-pin
+  - fix
+  - chapter
+  - history
+  - held
+  - takeaways
+  - button
+  - outro
+  - context-map
+  - request-walk
+  - metrics-panel
+  - dsm
+  - chapter-open
+  - verdict-chip
+  - scorecard
+  - reading-list
+  - fact-flash
+  - chart
+  - list
+types:
+  - repo-tour
+  - repo-argument
+  - repo-comparison
+  - repo-delta
+  - pr-overview
+  - decision-brief
+  - plan-explainer
+  - paper-summary
+  - research-synthesis
+  - daily-overview
+  - incident-postmortem
+  - tutorial
+  - release-changelog
+audiences:
+  - owner-internal
+  - public-youtube

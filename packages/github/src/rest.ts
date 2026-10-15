@@ -34,6 +34,9 @@ export interface Rest {
 /** A GraphQL query that has not answered by now is dead; the caller gets a rejection, not a hang. */
 export const GRAPHQL_TIMEOUT_MS = 30_000;
 
+/** Twice the GraphQL deadline because a job log read through `text()` follows a redirect to blob storage; a hung `gh` is killed, not waited on. */
+export const CORE_TIMEOUT_MS = 60_000;
+
 const API_ORIGIN = "https://api.github.com/";
 
 /** A response whose JSON body has already parsed, so the cache never holds a body that does not. */
@@ -117,7 +120,7 @@ function runner(exec: GhExec, budget: RateBudget): Run {
   return async (args, input, resource = "core") => {
     await budget.acquire(resource);
     const full = ["api", "-i", ...args];
-    const result = await exec(full, input, resource === "graphql" ? { timeoutMs: GRAPHQL_TIMEOUT_MS } : undefined);
+    const result = await exec(full, input, { timeoutMs: resource === "graphql" ? GRAPHQL_TIMEOUT_MS : CORE_TIMEOUT_MS });
     const response = parseIncluded(result.stdout);
     if (response) budget.observe(response.headers);
     if (response?.status === 304) return response;
