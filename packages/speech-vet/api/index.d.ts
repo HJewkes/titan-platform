@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { G2p } from '@titan-design/speech-g2p';
-import { Audio } from '@titan-design/speech-stt';
+import { Audio, Transcript, SttCapabilities } from '@titan-design/speech-stt';
 
 /** The text the voice is given: `[w](/phonemes/)` overrides stay for misaki, `[w](=reading)` declarations become the bare word. */
 declare function g2pText(spoken: string): string;
@@ -465,4 +465,59 @@ interface TailFix<T> {
  */
 declare function bestTailTake<T>(options: BestTailTakeOptions<T>): Promise<TailFix<T>>;
 
-export { type BestTailTakeOptions, DEFAULT_NORMALIZE_STEPS, DEFAULT_PHONE_VOICE, DEFAULT_RETRIES, ESPEAK_TIMEOUT_MS, type EspeakCliOptions, type EspeakRunner, HALLUCINATION_MIN_PHONES, type Hallucination, type HallucinationOptions, type HeardReading, type HeardReadingOptions, type HeardStatus, type HeteronymTable, HeteronymTableSchema, type InitialismOptions, KEEP_TAKE_MARGIN, type Lexicon, type LexiconEntry, LexiconEntrySchema, LexiconSchema, MIN_PHONES_FOR_VERDICT, MIN_SPAN_RATIO_FOR_VERDICT, MIN_TARGET_WORD_LENGTH, type MisakiToIpa, NUMBER_STEPS, type NormalizeStep, type PhoneG2p, type PhoneG2pOptions, type PhoneRecognizer, type PhoneSource, type PhonemeToken, RATE_UNITS, type RawTake, type ReadingFinding, type ReadingStatus, type Respeller, SHORT_WORD_MAX_PHONES, SHOUTED_TWO_LETTER_WORDS, SPELLED_INITIALISMS, type SynthesizeVerifiedOptions, TAIL_STRAY_MIN_PHONES, type TailArtifact, type TailArtifactOptions, type TailCandidate, type TailFix, type TakeScore, VOWELLESS_INTERJECTIONS, type VerifiedTake, WEAK_FORMS, WORSE_MARGIN, type WordDistance, type WordDistanceOptions, type WordVerdict, type WordVerdictOptions, XTTS_FAULT_THRESHOLD, XTTS_FAULT_THRESHOLD_SHORT, XTTS_FAULT_THRESHOLD_UNUSUAL, admissiblePhones, ageStep, bestTailTake, cardinalStep, checkHeardReadings, checkReadings, chunkWordVerdicts, cleanIpa, currencyStep, decimalStep, detectHallucinations, detectTailArtifact, englishHeteronyms, espeakCliG2p, espeakVersion, expandReading, expectedPhones, g2pSentence, g2pText, generateCandidates, initialismStep, isInitialism, keepTake, loadLexicon, misakiIpaG2p, normalize, numberToOrdinal, numberToWords, ordinalStep, phoneMatchDistance, phonemeDistance, plainText, rateStep, readingIpa, readingOf, recognizePhones, regressions, respeller, respellingsOf, spellDigits, spellInitialisms, synthesizeVerified, timeStep, tokenDump, whitespaceStep, wordDistances };
+/** The audiobook also declares `insertion`, but never emits it: extra heard words are STT noise. */
+type DefectKind = "substitution" | "omission" | "low_confidence";
+/** `smushed` is absent: the audiobook looks for `-` or `/` inside a token, and its tokens never hold one. */
+type DefectCause = "number" | "stylized_elongation" | "unusual_word" | "chunk_boundary" | "muddy_audio";
+/** One suspected TTS defect in a chunk. Audio times are seconds; absent when the transcript had none. */
+interface Defect {
+    kind: DefectKind;
+    expected: string;
+    heard: string;
+    /** Unrounded, in [0, 1]. */
+    severity: number;
+    causes: DefectCause[];
+    audioStart?: number;
+    audioEnd?: number;
+    context: string;
+}
+interface DefectOptions {
+    /**
+     * Read signal A: word `probability` (the severity boost) and segment `avgLogprob` /
+     * `compressionRatio` (`low_confidence` defects). Default false, which ignores them even when
+     * the transcript carries them. Derive it with `defectOptionsFor(stt)` rather than setting it.
+     */
+    confidence?: boolean;
+}
+/** A source word: its text as written, its match form (lowercase, elongation collapsed) and its code-point offset. */
+interface WordToken {
+    original: string;
+    norm: string;
+    start: number;
+}
+/** Signal A only when the provider's transcripts carry token log-probs. */
+declare function defectOptionsFor(stt: {
+    readonly capabilities: SttCapabilities;
+}): DefectOptions;
+/** Splits text into match tokens, keeping each word's written form and code-point offset. */
+declare function tokenizeWords(text: string): WordToken[];
+/** A capitalised word longer than three letters: a proper noun or coinage, which TTS and G2P both guess at. */
+declare function isUnusualWord(word: string): boolean;
+/**
+ * Aligns a chunk's source text against its transcript and returns suspected defects, most
+ * severe first (ties keep alignment order).
+ */
+declare function detectDefects(expected: string, transcript: Transcript, options?: DefectOptions): Defect[];
+/**
+ * Keeps the base defects a second, stronger STT pass agrees on: its own defects that share a
+ * content word with a base defect, or for `low_confidence` overlap a base time window. The
+ * confirming STT can differ from the base one, so it takes its own options.
+ */
+declare function confirmDefects(base: readonly Defect[], expected: string, confirmTranscript: Transcript, options?: DefectOptions): Defect[];
+
+/** The metaphone code of `word`, equal to jellyfish 1.2.1's `metaphone` (Rust build). Empty when nothing is pronounceable. */
+declare function metaphone(word: string): string;
+/** Normalized phonetic distance in [0, 1]; 0 is a homophone. Falls back to character distance when a side has no code (numbers, symbols). */
+declare function phoneticDistance(a: string, b: string): number;
+
+export { type BestTailTakeOptions, DEFAULT_NORMALIZE_STEPS, DEFAULT_PHONE_VOICE, DEFAULT_RETRIES, type Defect, type DefectCause, type DefectKind, type DefectOptions, ESPEAK_TIMEOUT_MS, type EspeakCliOptions, type EspeakRunner, HALLUCINATION_MIN_PHONES, type Hallucination, type HallucinationOptions, type HeardReading, type HeardReadingOptions, type HeardStatus, type HeteronymTable, HeteronymTableSchema, type InitialismOptions, KEEP_TAKE_MARGIN, type Lexicon, type LexiconEntry, LexiconEntrySchema, LexiconSchema, MIN_PHONES_FOR_VERDICT, MIN_SPAN_RATIO_FOR_VERDICT, MIN_TARGET_WORD_LENGTH, type MisakiToIpa, NUMBER_STEPS, type NormalizeStep, type PhoneG2p, type PhoneG2pOptions, type PhoneRecognizer, type PhoneSource, type PhonemeToken, RATE_UNITS, type RawTake, type ReadingFinding, type ReadingStatus, type Respeller, SHORT_WORD_MAX_PHONES, SHOUTED_TWO_LETTER_WORDS, SPELLED_INITIALISMS, type SynthesizeVerifiedOptions, TAIL_STRAY_MIN_PHONES, type TailArtifact, type TailArtifactOptions, type TailCandidate, type TailFix, type TakeScore, VOWELLESS_INTERJECTIONS, type VerifiedTake, WEAK_FORMS, WORSE_MARGIN, type WordDistance, type WordDistanceOptions, type WordToken, type WordVerdict, type WordVerdictOptions, XTTS_FAULT_THRESHOLD, XTTS_FAULT_THRESHOLD_SHORT, XTTS_FAULT_THRESHOLD_UNUSUAL, admissiblePhones, ageStep, bestTailTake, cardinalStep, checkHeardReadings, checkReadings, chunkWordVerdicts, cleanIpa, confirmDefects, currencyStep, decimalStep, defectOptionsFor, detectDefects, detectHallucinations, detectTailArtifact, englishHeteronyms, espeakCliG2p, espeakVersion, expandReading, expectedPhones, g2pSentence, g2pText, generateCandidates, initialismStep, isInitialism, isUnusualWord, keepTake, loadLexicon, metaphone, misakiIpaG2p, normalize, numberToOrdinal, numberToWords, ordinalStep, phoneMatchDistance, phonemeDistance, phoneticDistance, plainText, rateStep, readingIpa, readingOf, recognizePhones, regressions, respeller, respellingsOf, spellDigits, spellInitialisms, synthesizeVerified, timeStep, tokenDump, tokenizeWords, whitespaceStep, wordDistances };

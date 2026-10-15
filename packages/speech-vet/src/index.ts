@@ -108,3 +108,16 @@ export {
   type WordDistance,
   type WordDistanceOptions,
 } from "./retake.js";
+export {
+  confirmDefects,
+  defectOptionsFor,
+  detectDefects,
+  isUnusualWord,
+  tokenizeWords,
+  type Defect,
+  type DefectCause,
+  type DefectKind,
+  type DefectOptions,
+  type WordToken,
+} from "./defects.js";
+export { metaphone, phoneticDistance } from "./metaphone.js";
