@@ -36,19 +36,21 @@ interface Match {
   key: string;
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
 function isPatternSpec(v: unknown): v is PatternSpec | null {
-  if (v === null) return true;
-  return typeof v === "object" && typeof (v as PatternSpec).pattern === "string" && typeof (v as PatternSpec).flags === "number";
+  return v === null || (isRecord(v) && typeof v.pattern === "string" && typeof v.flags === "number");
 }
 
 function isTokenizerData(v: unknown): v is SpacyTokenizerData {
-  if (typeof v !== "object" || v === null) return false;
-  const { rules, patterns } = v as Partial<SpacyTokenizerData>;
-  const rulesOk =
-    typeof rules === "object" &&
-    rules !== null &&
-    Object.values(rules).every((parts) => Array.isArray(parts) && parts.every((p) => typeof p === "string"));
-  return rulesOk && typeof patterns === "object" && patterns !== null && PATTERN_NAMES.every((n) => isPatternSpec(patterns[n]));
+  if (!isRecord(v) || !isRecord(v.rules) || !isRecord(v.patterns)) return false;
+  const patterns = v.patterns;
+  const rulesOk = Object.values(v.rules).every(
+    (parts) => Array.isArray(parts) && parts.every((p) => typeof p === "string"),
+  );
+  return rulesOk && PATTERN_NAMES.every((n) => isPatternSpec(patterns[n]));
 }
 
 export function loadSpacyTokenizerData(): SpacyTokenizerData {

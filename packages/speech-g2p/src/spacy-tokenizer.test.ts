@@ -8,9 +8,13 @@ interface GoldenUnit {
   tokens: { text: string; idx: number; ws: string }[];
 }
 
-const golden = JSON.parse(
+// Only the array is checked; each unit's tokens are compared below.
+const hasUnits = (v: unknown): v is { units: GoldenUnit[] } =>
+  typeof v === "object" && v !== null && "units" in v && Array.isArray(v.units);
+const golden: unknown = JSON.parse(
   readFileSync(new URL("./fixtures/spacy-tokens.golden.json", import.meta.url), "utf8"),
-) as { units: GoldenUnit[] };
+);
+if (!hasUnits(golden)) throw new Error("spaCy golden has no units");
 const tokenizer = spacyTokenizer();
 const texts = (text: string): string[] => tokenizer.tokenize(text).map((t) => t.text);
 
@@ -57,8 +61,8 @@ describe("spacyTokenizer", () => {
 
   it("rejoins a special case that affix splitting broke apart, as spaCy's phrase matcher does", () => {
     const data = loadSpacyTokenizerData();
-    const { "(:": _emoticon, ...withoutEmoticon } = data.rules;
-    const withoutRule = spacyTokenizer({ ...data, rules: withoutEmoticon });
+    const rules = Object.fromEntries(Object.entries(data.rules).filter(([key]) => key !== "(:"));
+    const withoutRule = spacyTokenizer({ ...data, rules });
 
     expect(texts("(:word")).toEqual(["(:", "word"]);
     expect(withoutRule.tokenize("(:word").map((t) => t.text)).toEqual(["(", ":", "word"]);

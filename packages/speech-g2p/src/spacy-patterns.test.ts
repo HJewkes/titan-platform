@@ -12,8 +12,12 @@ interface Probe {
   url_match: [number, number] | null;
 }
 
+// Only the array is checked; each probe's fields are compared below.
+const hasProbes = (v: unknown): v is { probes: Probe[] } =>
+  typeof v === "object" && v !== null && "probes" in v && Array.isArray(v.probes);
 const dump: unknown = JSON.parse(readFileSync(new URL("../data/spacy-en-tokenizer.json", import.meta.url), "utf8"));
-const probes = (dump as { probes: Probe[] }).probes;
+if (!hasProbes(dump)) throw new Error("tokenizer dump has no probes");
+const probes = dump.probes;
 const patterns = compileSpacyPatterns(loadSpacyTokenizerData().patterns);
 
 // Python reports code-point offsets; JS spans are UTF-16.

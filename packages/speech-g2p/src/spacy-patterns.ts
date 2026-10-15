@@ -128,7 +128,7 @@ export function compilePattern(name: string, spec: PatternSpec, extraFlags = "")
     const { source, flags } = translatePattern(spec.pattern, spec.flags);
     return new RegExp(source, flags + extraFlags);
   } catch (err) {
-    throw new Error(`spaCy pattern ${name} does not compile in JS: ${(err as Error).message}`, { cause: err });
+    throw new Error(`spaCy pattern ${name} does not compile in JS: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
   }
 }
 
