@@ -25,10 +25,11 @@ diagnostics it found (`E-LABEL`, `E-UNREAD`, `E-PIN`, `E-CLONE`, `E-TOPICS`, `E-
 the rest in `GATHER_CODES`) instead of throwing. A `repo-argument` gather with no pain fact
 warns `W-NO-PAIN`. `fixtures/review-whiteboard/` is a trimmed real review the tests gather.
 
-`video_type` and each beat's `type` are open kebab-case strings on purpose. Their allowed
-values come from a doctrine registry planned at `products/explainer/doctrine/` (one profile
-per video type, such as `repo-tour` or `repo-argument`, and one spec per beat type), which
-will validate a storyboard against them. Until that lands, any kebab-case value parses.
+`video_type` and each beat's `type` are open kebab-case strings on purpose. The doctrine
+registry under `products/explainer/doctrine/` now names the allowed beats, video types and
+audiences (`vocabulary.yaml`) and holds the craft rules (`craft/`). Type profiles (TP-2746) and
+beat specs (TP-2867), which will validate a storyboard against them, are still pending; until
+they land, any kebab-case value parses.
 
 `beats.json` has no version field. A format change adds an optional field or a migration;
 the zod shape is what validates a file.
@@ -63,6 +64,16 @@ ids it absorbed (`aliases`, each resolving to one rule), its `owner_support`, an
 it) or `pending` with the slice that owns it. `loadRuleRegistry` parses it and rejects a
 duplicate id or alias; `unimplementedL0Rules` lists rules whose claimed check ids no registered
 check emits.
+
+`doctrine/craft/<source>.yaml` is a second registry, kept apart from the Q-rules: the craft
+doctrine (`doctrine-craft/v1`), every rule id the video-types study lists from DIRECTION and the
+six craft doctrines. Each rule carries its scope (layer `U`, `U*`, `B` or `T`, plus beats, types
+or audiences), its enforcement (token, lint, gate, planner, packet, base, human, ...), its pipeline
+stages, and the evidence-ledger ids and grade the source gives it. `loadDoctrine` reads it with
+`vocabulary.yaml` and `evidence.tsv`; `checkDoctrine` reports a missing evidence id, a grade the
+cited rows do not state, a live code-checked rule that still lists a prompt enforcement, a `qrule`
+check that does not resolve in `rules.yaml` or disagrees with its L0 status, and every scope
+refinement. `doctrine/README.md` says how to add a rule.
 
 Q-V10 (`heteronymCheck`) runs `@titan-design/speech-vet`'s heteronym table over each beat's
 `spoken`: every occurrence needs a `[w](=reading)` declaration naming one of the table's readings,

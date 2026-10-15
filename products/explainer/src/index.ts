@@ -233,6 +233,26 @@ export {
   type RuleRegistry,
 } from "./rules.js";
 export {
+  DOCTRINE_ENFORCEMENTS,
+  DOCTRINE_STAGES,
+  DoctrineRuleSchema,
+  DOCTRINE_GRADES,
+  DOCTRINE_LAYERS,
+  PROMPT_ENFORCEMENTS,
+  DOCTRINE_SOURCES,
+  DoctrineVocabularySchema,
+  type DoctrineEnforcement,
+  type DoctrineLayer,
+  type DoctrineRegistry,
+  type DoctrineRule,
+  type DoctrineStage,
+  type DoctrineGrade,
+  type DoctrineSource,
+  type DoctrineVocabulary,
+} from "./doctrine-schema.js";
+export { DEFAULT_DOCTRINE_DIR, loadDoctrine, parseEvidenceTsv } from "./doctrine-load.js";
+export { DOCTRINE_ISSUE_CODES, checkDoctrine, isCodeEnforced, type DoctrineIssue, type DoctrineIssueCode } from "./doctrine-checks.js";
+export {
   EvidenceSpanSchema,
   ExplainerFactSchema,
   FACT_KINDS,
