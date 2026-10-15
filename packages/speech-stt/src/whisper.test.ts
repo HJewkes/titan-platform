@@ -1,9 +1,9 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { Audio } from "./schemas.js";
-import { loadTransformersPipeline, whisperStt, type AsrChunk, type AsrFactory, type AsrOutput } from "./whisper.js";
+import { loadTransformersPipeline, whisperStt, type AsrChunk, type AsrFactory, type AsrOutput, type AsrPipeline } from "./whisper.js";
 
 const chunk = (text: string, start: number, end: number | null): AsrChunk => ({ text, timestamp: [start, end] });
 
@@ -134,18 +134,53 @@ describe("loadTransformersPipeline", () => {
   });
 
   it("returns a factory that calls the module's pipeline", async () => {
-    const pipeline = vi.fn(async () => ({}));
+    const asr: AsrPipeline = Object.assign(async () => ({ text: "" }), { dispose: async () => {} });
+    const pipeline = vi.fn(async () => asr);
     vi.stubEnv("TITAN_SPEECH_OFFLINE", "");
     const factory = await loadTransformersPipeline(async () => ({ pipeline }));
 
-    await factory("automatic-speech-recognition", "m", { dtype: "fp32" });
+    const result = await factory("automatic-speech-recognition", "m", { dtype: "fp32" });
 
+    expect(result).toBe(asr);
     expect(pipeline).toHaveBeenCalledWith("automatic-speech-recognition", "m", { dtype: "fp32" });
     vi.unstubAllEnvs();
   });
 });
 
 describe("offline guard", () => {
+  const MODEL = "org/model";
+  async function offlineFactory(cacheDir: string, pipeline: AsrFactory) {
+    vi.stubEnv("TITAN_SPEECH_OFFLINE", "1");
+    const factory = await loadTransformersPipeline(async () => ({ pipeline }));
+    return factory("automatic-speech-recognition", MODEL, { dtype: "fp32", cache_dir: cacheDir });
+  }
+
+  it("passes when the model is cached", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "speech-cache-"));
+    mkdirSync(join(cacheDir, MODEL), { recursive: true });
+    writeFileSync(join(cacheDir, MODEL, "config.json"), "{}");
+    const asr: AsrPipeline = Object.assign(async () => ({ text: "" }), { dispose: async () => {} });
+    try {
+      await expect(offlineFactory(cacheDir, async () => asr)).resolves.toBe(asr);
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
+  });
+
+  it("throws offline: when the model dir exists but is empty", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "speech-cache-"));
+    mkdirSync(join(cacheDir, MODEL), { recursive: true });
+    const pipeline = vi.fn<AsrFactory>();
+    try {
+      await expect(offlineFactory(cacheDir, pipeline)).rejects.toThrow(/^offline:/);
+      expect(pipeline).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
+  });
+
   it("throws offline: and never fetches when the cache is empty", async () => {
     const cacheDir = mkdtempSync(join(tmpdir(), "speech-cache-"));
     const fetchFake = vi.fn();

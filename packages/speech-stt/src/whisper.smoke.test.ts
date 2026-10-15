@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import type { Audio } from "./schemas.js";
 import { whisperStt } from "./whisper.js";
 
-// Downloads the real model, so it runs only on request:
+// Runs only on request, and offline: vitest's test.env forces TITAN_SPEECH_OFFLINE, so SPEECH_STT_SMOKE_CACHE must
+// already hold the model. Download it once outside vitest (a node script calling transformers.js `pipeline` with
+// `cache_dir` set to that directory), then:
 // SPEECH_STT_SMOKE_WAV=<16-bit mono PCM wav> SPEECH_STT_SMOKE_CACHE=<model dir> pnpm vitest run whisper.smoke
 const wavPath = process.env.SPEECH_STT_SMOKE_WAV ?? "";
 const cacheDir = process.env.SPEECH_STT_SMOKE_CACHE;

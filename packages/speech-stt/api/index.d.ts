@@ -159,7 +159,10 @@ interface WhisperSttOptions {
     loadPipeline?: () => Promise<AsrFactory>;
 }
 type ModuleImporter = (name: string) => Promise<unknown>;
-/** Resolves the peer's `pipeline` through `importModule`, naming the install command when the peer is absent. */
+/**
+ * Resolves the peer's `pipeline` through `importModule`, naming the install command when the peer is absent. The
+ * returned factory refuses an uncached model while TITAN_SPEECH_OFFLINE is set.
+ */
 declare function loadTransformersPipeline(importModule?: ModuleImporter): Promise<AsrFactory>;
 /**
  * Whisper over transformers.js with word timestamps. Audio at any rate is resampled to 16 kHz. Transcripts are
