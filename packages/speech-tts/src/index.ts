@@ -48,3 +48,5 @@ export {
   type TtsRegistry,
   type TtsSelection,
 } from "./registry.js";
+export { speakingSeconds, type SpeakingOptions } from "./speaking.js";
+export { calibrateSpeed, type CalibrateOptions, type CalibrateTry, type Calibration } from "./calibrate.js";
