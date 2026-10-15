@@ -38,6 +38,13 @@ export {
 } from "./normalize.js";
 export { numberToOrdinal, numberToWords, spellDigits } from "./number-words.js";
 export {
+  ESPEAK_TIMEOUT_MS,
+  espeakCliG2p,
+  espeakVersion,
+  type EspeakCliOptions,
+  type EspeakRunner,
+} from "./espeak-g2p.js";
+export {
   admissiblePhones,
   cleanIpa,
   DEFAULT_PHONE_VOICE,
