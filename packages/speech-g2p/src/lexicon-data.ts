@@ -2,10 +2,10 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 /** A gold or silver entry: one pronunciation, or a map from tag (always with `DEFAULT`) to pronunciation. */
-type LexiconEntry = string | Record<string, string | null>;
+export type LexiconEntry = string | Record<string, string | null>;
 type LexiconDict = Record<string, LexiconEntry>;
 
-interface LexiconData {
+export interface LexiconData {
   golds: LexiconDict;
   silvers: LexiconDict;
 }
