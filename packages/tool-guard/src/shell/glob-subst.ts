@@ -9,7 +9,7 @@ import type { Unwrapped } from "./unwrap.js";
 export function mayEnableGlobSubst(cmd: Unwrapped): boolean {
   if (cmd.assigned.some(([name]) => name === "options") || cmd.args.some(namesOptions)) return true;
   if (cmd.name === null) return cmd.args.length > 0 && dynamicCommand(cmd.args);
-  if ((cmd.name === "print" || cmd.name === "printf") && printsToOptions(cmd.args)) return true;
+  if (writesUnknownTarget(cmd.name, cmd.args)) return true;
   const check = Object.hasOwn(ENABLERS, cmd.name) ? ENABLERS[cmd.name] : undefined;
   return check?.(cmd.args) ?? false;
 }
@@ -19,9 +19,9 @@ export function mayEnableGlobSubst(cmd: Unwrapped): boolean {
  * command may write the parameter such a word names (`strftime -s`, `zstat -A`, `sysread`), so none is trusted.
  */
 const OPTIONS_OPERAND_RE = /^(?:-[A-Za-z]*)?options(?:\[|\+?=|$)/;
-/** A `print -v` or `printf -v` cluster whose value, attached or in the next word, may be `options`. */
-const PRINT_TARGET_RE = /^-[A-Za-z]*v(.*)$/s;
 const OPTIONS_NAME_RE = /^options(?:\[|$)/;
+/** A target spelled with a literal name, as in `x=$y` or `x[$k]`, writes that name whatever the rest expands to. */
+const NAMED_TARGET_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[|\+?=)/;
 /** Characters brace expansion or filename generation reads, extendedglob's `^`, `#` and `~` included;
  * a leading `~` is tilde expansion instead, safe only bare or as `~/`, since `~name` and `~1` read a named dir or
  * the dirstack. A split quote may leave any of them unquoted. */
@@ -166,12 +166,92 @@ function dynamicCommand(args: WordToken[]): boolean {
   return [...scan.names, ...scan.operands].some(namesGlobSubst);
 }
 
-function printsToOptions(args: WordToken[]): boolean {
-  return args.some((a, i) => {
-    const target = PRINT_TARGET_RE.exec(a.value);
-    if (!target) return false;
-    const word = target[1] ? a : args[i + 1];
-    if (!word) return false;
-    return unknowable(word) || OPTIONS_NAME_RE.test(target[1] || word.value);
-  });
+interface WriterSpec {
+  /** Option letters whose value, attached or in the next word, names the parameter written. */
+  targets?: string;
+  /** Other option letters that take a value. */
+  values?: string;
+  /** Which operands name a parameter: every one, or the one at this index. */
+  operands?: "all" | number;
+  /** Operands are `zparseopts` specs, which name a parameter after their last `=`. */
+  specs?: true;
+}
+
+const DECLARER_SPEC: WriterSpec = { operands: "all" };
+
+/** Commands that write a parameter they are given by name; a name only known at run time may be `options`. */
+const WRITER_SPECS: Record<string, WriterSpec> = {
+  print: { targets: "v", values: "CfuxX" },
+  printf: { targets: "v" },
+  read: { values: "du", operands: "all" },
+  vared: { values: "prMmift", operands: 0 },
+  getopts: { operands: 1 },
+  getln: { operands: "all" },
+  local: DECLARER_SPEC,
+  export: DECLARER_SPEC,
+  declare: DECLARER_SPEC,
+  typeset: DECLARER_SPEC,
+  readonly: DECLARER_SPEC,
+  integer: DECLARER_SPEC,
+  float: DECLARER_SPEC,
+  zparseopts: { targets: "aA", specs: true },
+  zstat: { targets: "AH", values: "fF" },
+  strftime: { targets: "s" },
+  sysread: { targets: "c", values: "iost", operands: 0 },
+  zformat: { operands: 0 },
+  ztcp: { targets: "v" },
+  zsocket: { targets: "v" },
+  sysopen: { targets: "u", values: "mo" },
+  zselect: { targets: "aA", values: "rwet" },
+};
+
+/** A word naming the parameter a command writes, and the text of that name. */
+interface Target {
+  word: WordToken;
+  text: string;
+}
+
+function writesUnknownTarget(name: string, args: WordToken[]): boolean {
+  const spec = Object.hasOwn(WRITER_SPECS, name) ? WRITER_SPECS[name] : undefined;
+  if (!spec) return false;
+  return writerTargets(args, spec).some(({ word, text }) => OPTIONS_NAME_RE.test(text) || (unknowable(word) && !NAMED_TARGET_RE.test(text)));
+}
+
+/**
+ * Option words come first, up to `--` or the first operand. A word starting with `-` or `+` is read as options even
+ * when part of it is only known at run time, as in `zstat -H"$n"`; one that may expand to options is not modelled.
+ */
+function writerTargets(args: WordToken[], spec: WriterSpec): Target[] {
+  const out: Target[] = [];
+  let operand = -1;
+  for (let i = 0; i < args.length; i++) {
+    const w = args[i];
+    if (w === undefined) break;
+    if (operand < 0 && w.value === "--" && !w.dynamic) operand = 0;
+    else if (operand < 0 && isOptionWord(w.value)) i = writerCluster(w, args[i + 1], i, spec, out);
+    else {
+      operand = Math.max(operand, 0);
+      out.push(...operandTargets(w, operand++, spec));
+    }
+  }
+  return out;
+}
+
+function operandTargets(w: WordToken, index: number, spec: WriterSpec): Target[] {
+  if (spec.specs) return [{ word: w, text: w.value.slice(w.value.lastIndexOf("=") + 1) }];
+  return spec.operands === "all" || spec.operands === index ? [{ word: w, text: w.value }] : [];
+}
+
+/** Reads one option cluster, adding the target a letter of `spec.targets` takes; returns the index of the last word read. */
+function writerCluster(w: WordToken, next: WordToken | undefined, i: number, spec: WriterSpec, out: Target[]): number {
+  for (let j = 1; j < w.value.length; j++) {
+    const letter = w.value.charAt(j);
+    const isTarget = spec.targets?.includes(letter) ?? false;
+    if (!isTarget && !spec.values?.includes(letter)) continue;
+    const attached = w.value.slice(j + 1);
+    if (isTarget && attached) out.push({ word: w, text: attached });
+    else if (isTarget && next) out.push({ word: next, text: next.value });
+    return attached ? i : i + 1;
+  }
+  return i;
 }
