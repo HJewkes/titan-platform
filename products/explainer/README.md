@@ -69,14 +69,28 @@ Q-V10 (`heteronymCheck`) runs `@titan-design/speech-vet`'s heteronym table over 
 or a `[w](/phonemes/)` override. No G2P runs here, so a declared reading is trusted, not verified.
 
 `explainer eval l0 <script.json> --config <id> [--rules <registry>] [--bench <dir>]
-[--layout <layout.json>] [--parent <sha>] [--fail-on-ghosts]` runs the deterministic L0 checks
+[--layout <layout.json>] [--timing <words.json>] [--parent <sha>] [--fail-on-ghosts]` runs the deterministic L0 checks
 (`L0_CHECKS`: the map, why, evidence, voice, flow, pace and heteronym lints; the map lints need `--layout` and are
-skipped without it), freezes the script and appends its rows and run record. A rule that claims
+skipped without it), freezes the script and appends its rows and run record. `--timing` takes a words.json, or a
+durations-only extract, and the pace lints then read heard durations instead of `plannedS`. A rule that claims
 a check id no run check emits is a ghost: each prints one warning on stderr, and
 `--fail-on-ghosts` turns them into exit 1. `doctrine/rules.yaml` holds which rules are
 implemented or pending. `--rules` defaults to the shipped registry and must parse as
 `rules/v1`. It exits 0 on a pass, 1 when an error-severity check fails (warnings never fail)
 and 2 on bad input. L0 filters only: never rank scripts by how many checks they pass.
+
+`explainer eval pace <script.json> [--format spike|v1] [--timing <words.json>] [--config <id>]
+[--rules <registry>] [--bench <dir>] [--parent <sha>]` runs only the pace lints (`paceCheck`'s
+Q-E7, Q-E8, Q-E9 and Q-E10, plan ids M1, M2, M4 and M7). The other L0 checks read script/v1 fields
+a spike script lacks, so they would pass one without checking anything. `--format spike`, the
+default, reads a Python-emitted spike script.json loosely and notes on stderr the keys it skipped.
+`--format v1` parses strict script/v1. The command freezes the script, appends four
+`structure.tsv` rows and an `L0-pace` run record under `--config` (by default `unconfigured`), and
+prints one line a chapter: new items, heard (or planned) seconds, items a minute and the M7 verdict.
+An item is anything new on screen, so a chip cue counts too. On the v4 fixture with its
+durations, ch2 shows 20 items over 39.1 s, 30.7 a minute. Exit codes are the same as `eval l0`:
+1 only when an error row (Q-E7) fails. A warning row is recorded as failing but never changes
+the exit code.
 
 `explainer eval calibrate <rows...> --labels <labels.json> [--script-sha <sha>] [--format
 table|json]` scores check rows against a `labels/v1` labelled set
