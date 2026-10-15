@@ -5,7 +5,7 @@ import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step, type FailingCheck, type LandOutcome } from "../workflows/land.js";
 import { UpdateResultResult } from "../workflows/land-steps.js";
 import { UPDATE_RESENDS } from "../workflows/land-update.js";
-import { failingNotIn, redRunsAt } from "./failing-step.js";
+import { failingNotIn, failureReader, redRunsAt, type FailureReader } from "./failing-step.js";
 import { FREEZE_RECHECK_MS, actionsRunsAt, greenHead, isFixersPr, type FreezeStore, type Red } from "./freeze.js";
 import { noticeHeldSeat } from "./gate-route.js";
 import type { GateRun, PrTarget } from "./gates.js";
@@ -28,7 +28,7 @@ const FREEZE_WAIT_LIMIT_MS = 60 * 60_000;
 const CI_BASE_WALK = 20;
 
 /**
- * The base the hold waits past, red on every check the PR's head fails and at the same step; records from before base-red carry none. `stale`:
+ * The base the hold waits past, red on every check the PR's head fails, at the same step with the same failures; records from before base-red carry none. `stale`:
  * the head's CI ran against this base commit, and the base head has already moved past it.
  */
 const BaseRed = z.object({ baseRef: z.string(), baseSha: z.string(), seat: z.string().optional(), stale: z.boolean().optional() });
@@ -127,15 +127,15 @@ async function decideHold(deps: ShepherdDeps, freezes: FreezeStore | undefined, 
   const red = freeze.redSha.slice(0, 7);
   if (input.failing.length === 0 || own.length > 0) return pass(`failing here but not on frozen main at ${red}: ${own.join(", ") || "no check named"}`);
   const baseRef = await deps.port.getPr(input.repo, input.pr).then((pr) => pr.baseRef, () => undefined);
-  return { hold: true, reason: `waiting for the thaw: main is frozen red at ${red}, and every failing check (${input.failing.join(", ")}) fails there too at the same step`, episode: freeze.episode, baseRef };
+  return { hold: true, reason: `waiting for the thaw: main is frozen red at ${red}, and every failing check (${input.failing.join(", ")}) fails there too at the same step with the same failures`, episode: freeze.episode, baseRef };
 }
 
 /**
- * The failing checks of `input` that are not red at `sha` at the same step. A check whose newest run there was cancelled
- * does not count: like `redOnlyFromCancels`, a cancel is no red the base owns.
+ * The failing checks of `input` that are not red at `sha` at the same step with the same failures. A check whose newest
+ * run there was cancelled does not count: like `redOnlyFromCancels`, a cancel is no red the base owns.
  */
-async function notRedAt(port: GitHubPort, input: HoldInput, sha: string): Promise<string[]> {
-  return failingNotIn(port, input, await redRunsAt(port, input.repo, sha, (run) => run.conclusion !== "cancelled"));
+async function notRedAt(port: GitHubPort, input: HoldInput, sha: string, read: FailureReader): Promise<string[]> {
+  return failingNotIn(port, input, await redRunsAt(port, input.repo, sha, (run) => run.conclusion !== "cancelled"), read);
 }
 
 /** When the earliest failing run at the head started, since a pull_request run tests the base as it stood then. */
@@ -166,7 +166,7 @@ async function ciBaseOf(port: GitHubPort, input: HoldInput, baseSha: string): Pr
 
 function baseRedHold(deps: ShepherdDeps, input: HoldInput, base: Omit<BaseRed, "seat">, why: string): Hold {
   const seat = singleSeat(deps.store.get().byPr(input.repo, input.pr)?.policy.seat);
-  const reason = `${why}, and every failing check (${input.failing.join(", ")}) fails there too at the same step`;
+  const reason = `${why}, and every failing check (${input.failing.join(", ")}) fails there too at the same step with the same failures`;
   return { hold: true, reason, episode: null, baseRed: { ...base, ...(seat && { seat }) } };
 }
 
@@ -181,10 +181,11 @@ async function decideBaseRed(deps: ShepherdDeps, input: HoldInput, unfrozen: str
     const { baseRef } = await deps.port.getPr(input.repo, input.pr);
     const baseSha = await deps.port.getHeadSha(input.repo, baseRef);
     if (baseSha === null) return pass(`${unfrozen}; the base ${baseRef} has no head`);
-    const own = await notRedAt(deps.port, input, baseSha);
+    const read = failureReader(deps.port, input.repo);
+    const own = await notRedAt(deps.port, input, baseSha, read);
     if (own.length === 0) return baseRedHold(deps, input, { baseRef, baseSha }, `the base ${baseRef} is red at ${baseSha.slice(0, 7)}`);
     const ciBase = await ciBaseOf(deps.port, input, baseSha).catch(() => undefined);
-    if (ciBase !== undefined && (await notRedAt(deps.port, input, ciBase)).length === 0) {
+    if (ciBase !== undefined && (await notRedAt(deps.port, input, ciBase, read)).length === 0) {
       return baseRedHold(deps, input, { baseRef, baseSha: ciBase, stale: true }, `this head's CI ran against ${baseRef} at ${ciBase.slice(0, 7)}, red there and since moved to ${baseSha.slice(0, 7)}`);
     }
     return pass(`${unfrozen}; failing here but not on ${baseRef} at ${baseSha.slice(0, 7)}: ${own.join(", ")}`);
