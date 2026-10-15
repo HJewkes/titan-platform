@@ -9,7 +9,7 @@ export interface Respeller {
   apply(text: string): string;
 }
 
-function wholeWords(keys: readonly string[]): RegExp | null {
+export function wholeWords(keys: readonly string[]): RegExp | null {
   if (keys.length === 0) return null;
   // Longest first, so a key that prefixes another never wins the alternation.
   const alternatives = [...keys].sort((a, b) => b.length - a.length).map(escapeRegExp);
