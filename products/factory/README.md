@@ -831,6 +831,12 @@ A refusal that still stands finds its own hold and waits again with no second al
 with no usable reviewer never reaches approve-merge unreviewed. The restart drain does not wait on
 `sh-no-reviewer-wait`.
 
+The same holds for `sh-review-intent`, which reads the roster before choosing a reviewer. A roster
+read that times out (`ReviewerAskTimedOut`) is read again every poll for the session-start window,
+then the step answers `notStarted` and the review is retried with no round counted. Any other
+refusal at the intent holds the run as `no-reviewer` and alerts the seat once. An exhausted account
+keeps its own `sh-account-hold`. None of these three counts as a failed review round (TP-2966).
+
 The config file is read when the routes are first built, so restart `serve` after a change to
 these keys. The seat book is read again on every spawn.
 

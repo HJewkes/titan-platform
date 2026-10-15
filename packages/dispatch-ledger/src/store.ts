@@ -10,6 +10,7 @@ export interface LedgerRead {
 
 /** Where the ledger lives. A write checks the revision it read and the phase edges, and commits whole or not at all. */
 export interface LedgerStore {
+  /** Throws `LedgerMalformedError` on a malformed store; it never guesses an empty ledger, which would double-dispatch. */
   read(): LedgerRead;
   /** Throws `StaleRevisionError`, `IllegalPhaseEdgeError` or `LedgerMalformedError`, leaving the store unchanged. */
   write(next: Ledger, expectedRevision?: number): { revision: number };
