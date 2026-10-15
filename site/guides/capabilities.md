@@ -1099,7 +1099,7 @@ Key exports:
 - `attribute`: `attributeFindings`
 - `map-state`: `MapBeatSchema`, `MapLayoutSchema`, `MapStateSchema`, `VisualSchema`
 - `cues`: `cueResolverFromWords`
-- +226 more in `products/explainer/src/index.ts`
+- +245 more in `products/explainer/src/index.ts`
 
 <a id="cap-factory"></a>
 
