@@ -148,4 +148,19 @@ describe("paceCheck as an L0 check", () => {
     expect(rushed).toMatchObject({ pass: false, detail_beats: ["c2-1-stations"] });
     expect(l0HardPass(rushed ? [rushed] : [])).toBe(true);
   });
+
+  // Regression: a plain target such as "scanner" made the item track throw, and the default run lost every check.
+  it("fails the pace rows on a cue target with no known kind, and the other L0 checks still report", () => {
+    const plain = ScriptSchema.parse(
+      scriptWith({ visual: { assertion: "One server sits between every scanner and the ledger", job: "map", cues: [{ action: "V11", target: "scanner", atCue: "scan" }] } }),
+    );
+
+    const results = runL0(plain);
+    const pace = results.filter((r) => ["Q-E7", "Q-E8", "Q-E9", "Q-E10"].includes(r.check_id));
+
+    expect(results.map((r) => r.check_id)).toEqual(expect.arrayContaining(["Q-E1", "Q-F1"]));
+    expect(pace).toHaveLength(4);
+    expect(pace.every((r) => !r.pass && r.detail_beats.join() === "c2-1-stations")).toBe(true);
+    expect(l0HardPass(results.filter((r) => r.check_id === "Q-E7"))).toBe(false);
+  });
 });
