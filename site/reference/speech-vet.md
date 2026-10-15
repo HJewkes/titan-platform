@@ -79,6 +79,17 @@ detectTailArtifact(text, "ð ə m æ t ʃ ɪ n s æ l f ɚ d ɛ n d ᵻ d k u", 
 // { phones: "ku", length: 2, displaced: "", severity: 0.6 }
 ```
 
+The reading check after synthesis, espeak-free, with misaki tokens and speech-g2p's `misakiToIpa`:
+
+```ts
+import { misakiToIpa } from "@titan-design/speech-g2p";
+import { checkHeardReadings } from "@titan-design/speech-vet";
+
+const tokens = [["the", "ðə"], ["show", "ʃˈO"], ["is", "ɪz"], ["live", "lˈIv"]].map(([text, phonemes]) => ({ text, phonemes, whitespace: " " }));
+checkHeardReadings("The show is [live](=verb)", tokens, "ðəʃoʊɪzlaɪv", { toIpa: misakiToIpa });
+// [{ word: "live", occurrence: 1, declared: "verb", heard: "adj", heardPhones: "laɪv", distance: 0, status: "fail" }]
+```
+
 ## What it deliberately does not do
 
 Take selection is pure too: `synthesizeVerified` re-rolls a babbled take through a `synthesize`
