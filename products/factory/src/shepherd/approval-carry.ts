@@ -52,11 +52,12 @@ async function followProof(ctx: WorkflowContext, target: CarryTarget, baseRef: s
   const remerge = await remergeStep(ctx, { repo: target.repo, baseRef, fromHead, head });
   if (remerge.carries && remerge.rule) return { rule: remerge.rule, proof: { headTree: remerge.headTree, mergeTree: remerge.remergeTree, paths: remerge.paths }, paths: remerge.paths };
   const fix = await fixCarryStep(ctx, { repo: target.repo, baseRef, fromHead, head });
-  if (!fix.carries || !fix.rule) return undefined;
+  // A recorded small-fix answer (pre TP-3070) replays as carries: true, so the consumer re-checks the rule.
+  if (!fix.carries || fix.rule !== "merge-up") return undefined;
   return { rule: fix.rule, proof: { base: fix.base, headTree: fix.headTree, mergeTree: fix.mergeTree, changedLines: fix.changedLines, paths: fix.paths }, paths: fix.paths };
 }
 
-/** Shepherd's own disjoint merge-up and nothing wider, for a kind that never follows the remerge or small-fix rules. */
+/** Shepherd's own disjoint merge-up and nothing wider, for a kind that never follows the remerge or fix probes. */
 async function ownMergeUpProof(ctx: WorkflowContext, target: CarryTarget, baseRef: string, fromHead: string, head: string): Promise<Followed | undefined> {
   const own = await ownMergeUpStep(ctx, { repo: target.repo, baseRef, fromHead, head });
   if (!own.carries || !own.rule) return undefined;
@@ -65,7 +66,7 @@ async function ownMergeUpProof(ctx: WorkflowContext, target: CarryTarget, baseRe
   return { rule: own.rule, proof: { base: own.base, headTree: own.headTree, mergeTree: own.mergeTree, prPaths: own.prPaths, mainPaths: own.mainPaths }, paths: own.prPaths };
 }
 
-/** The proof for the run's kind: the remerge and small-fix rules for a carrying kind, else the own-merge-up rule, else none. */
+/** The proof for the run's kind: the remerge and merge-up rules for a carrying kind, else the own-merge-up rule, else none. */
 async function followedProof(ctx: WorkflowContext, target: CarryTarget, fromHead: string, head: string): Promise<Followed | undefined> {
   const bases = await followBases(ctx, target, `approve:${head}`);
   if (bases.carrying !== undefined) return followProof(ctx, target, bases.carrying, fromHead, head);
@@ -84,7 +85,7 @@ async function followedAnswer(ctx: WorkflowContext, target: CarryTarget, fromHea
 /**
  * Wraps `assisted` so a merge answer at land's gate, the owner's or a review round's ship pick, follows to a later gate at a
  * head that is the approved head plus one merge of the base whose remerge-diff is empty or touches only declared generated
- * files, or the approved head merged with the base plus a small fix (see `SMALL_FIX_LIMITS`). A security run follows only
+ * files, or a head whose whole tree equals the approved head merged with the base (any fixer commit in between re-asks, TP-3070). A security run follows only
  * Shepherd's own clean merge-up whose base side touches none of the PR's files and no carry-fenced path (`ownMergeUp`). A skill-path gate, or a proof whose paths hold a repo skill, asks again. Any other head, a kind that
  * follows nothing, an escalation, a gate on another base or a head without a standing MERGE asks again.
  */
