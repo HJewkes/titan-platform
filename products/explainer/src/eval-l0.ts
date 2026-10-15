@@ -7,6 +7,7 @@ import type { ScriptV1 } from "./script-schema.js";
 import type { StructureRow } from "./eval-store.js";
 import { flowCheck } from "./lint-flow.js";
 import { voiceCheck } from "./lint-voice.js";
+import { heteronymCheck } from "./lint-heteronyms.js";
 
 /** One check's verdict before it is keyed to a config, script and registry. */
 export type L0Result = Omit<StructureRow, "config_id" | "script_sha" | "rules_sha">;
@@ -43,7 +44,7 @@ export const mapLintCheck: L0Check = ({ script, layout }) => {
   });
 };
 
-export const L0_CHECKS: readonly L0Check[] = [mapLintCheck, whyCheck, evidenceCheck, voiceCheck, flowCheck];
+export const L0_CHECKS: readonly L0Check[] = [mapLintCheck, whyCheck, evidenceCheck, voiceCheck, flowCheck, heteronymCheck];
 
 export function runL0(script: ScriptV1, layout?: MapLayout, checks: readonly L0Check[] = L0_CHECKS): L0Result[] {
   const input: L0Input = { script, view: deriveEvalView(script, layout), ...(layout ? { layout } : {}) };

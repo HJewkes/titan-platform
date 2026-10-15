@@ -46,7 +46,7 @@ so shas minted by the pilot's Python tooling still resolve. A bench keeps its ro
 `<bench>/scripts/<script_sha>.json`, each with its `parent_sha`. Every row carries
 `rules_sha`, the sha of the rule registry file it ran under.
 
-`doctrine/rules.yaml` is the Q-rule registry (`rules/v1`): 55 script-quality rules in one id
+`doctrine/rules.yaml` is the Q-rule registry (`rules/v1`): 56 script-quality rules in one id
 space, each a hypothesis with a check. A rule row names the script fields it reads, the phase-1
 ids it absorbed (`aliases`, each resolving to one rule), its `owner_support`, and an `l0` and/or
 `judge` check that is either implemented (the L0 check ids it emits, or the rubric file citing
@@ -54,9 +54,13 @@ it) or `pending` with the slice that owns it. `loadRuleRegistry` parses it and r
 duplicate id or alias; `unimplementedL0Rules` lists rules whose claimed check ids no registered
 check emits.
 
+Q-V10 (`heteronymCheck`) runs `@titan-design/speech-vet`'s heteronym table over each beat's
+`spoken`: every occurrence needs a `[w](=reading)` declaration naming one of the table's readings,
+or a `[w](/phonemes/)` override. No G2P runs here, so a declared reading is trusted, not verified.
+
 `explainer eval l0 <script.json> --config <id> [--rules <registry>] [--bench <dir>]
 [--layout <layout.json>] [--parent <sha>] [--fail-on-ghosts]` runs the deterministic L0 checks
-(`L0_CHECKS`: the map, why, evidence, voice and flow lints; the map lints need `--layout` and are
+(`L0_CHECKS`: the map, why, evidence, voice, flow and heteronym lints; the map lints need `--layout` and are
 skipped without it), freezes the script and appends its rows and run record. A rule that claims
 a check id no run check emits is a ghost: each prints one warning on stderr, and
 `--fail-on-ghosts` turns them into exit 1. `doctrine/rules.yaml` holds which rules are
