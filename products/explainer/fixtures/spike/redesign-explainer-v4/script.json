@@ -1,0 +1,1749 @@
+{
+  "schema": "script/v1",
+  "id": "redesign-explainer-v4-2026-10-13",
+  "profile": "repo-tour",
+  "facts_pack": "facts.md",
+  "video": {
+    "audience": {
+      "persona": "the owner: built the factory, saw the pipeline explainer, decides the redesign's open forks after watching",
+      "proximity": "builder",
+      "viewer_knows": [
+        "the pipeline explainer",
+        "Shepherd",
+        "the burndown tick",
+        "seats"
+      ],
+      "viewer_needs": [
+        "what the design keeps, removes and adds",
+        "why the removals are safe",
+        "the eleven owner calls"
+      ],
+      "gloss": "engineer"
+    },
+    "stake": {
+      "who": "the owner",
+      "loses_what": "one task's state is split over four stores, and every seam needs a patch",
+      "number": "claimed 143 vs about 60 real; DONE seen up to 13 min late; 313 hand resumes in two weeks",
+      "fact_ids": [
+        "R02",
+        "R03",
+        "R05"
+      ]
+    },
+    "promise": "By the end, you can name what the redesign keeps, removes and adds, and the eleven calls that are yours.",
+    "thesis_mechanism": "A recipe is a script; a step is memoized at its head; a wait or claim is a return; an event re-enters the script.",
+    "thesis_refs": [
+      "r3-2-sentence",
+      "r3b-3-replay",
+      "r10-9-close"
+    ],
+    "generic_model": {
+      "name": "seven nouns",
+      "slots": [
+        "work item",
+        "fact",
+        "step",
+        "wait and claim",
+        "event",
+        "pool",
+        "service"
+      ]
+    },
+    "predecessor": {
+      "name": "today's factory: the burndown tick plus Shepherd, joined by the seat (pipeline explainer, 337)",
+      "how_shaped_differently": "two orchestrators and four stores joined by polling and a coordinator; the design keeps one marker table and one clock",
+      "fact_ids": [
+        "R01"
+      ]
+    },
+    "running_example": {
+      "scenario": "one unnamed slice, followed from plan to main in chapter 4 (design §2.6)",
+      "anchor": "one task",
+      "fact_ids": [
+        "R17",
+        "R25"
+      ]
+    },
+    "invariants": [
+      "CI passes on the merged tree.",
+      "A verdict counts only at its exact head.",
+      "Authority and security changes get stronger review.",
+      "Pool caps hold.",
+      "No agent widens its own permissions.",
+      "Stalls get picked up without a human.",
+      "State survives restarts."
+    ],
+    "simplifications": [
+      "Leaves out pool policy details, risk table rows and stacking; each is data in a table, a policy or a plan."
+    ],
+    "scope": "pipeline-redesign-2026-10-13.md v4 (memoized workflow as code), before its adversary round converges; R-D corrects two of its facts",
+    "non_scope": [
+      "latency targets (after F1)",
+      "follow-up methods",
+      "per-repo ruleset details"
+    ],
+    "close_type": "callback",
+    "map": {
+      "id": "factory-maps",
+      "layout_source": "hand",
+      "variants": [
+        "old",
+        "new",
+        "split"
+      ]
+    }
+  },
+  "chapters": [
+    {
+      "id": "ch1",
+      "label": "Today · Where does one task live?",
+      "question": "Where does one task's state live today?"
+    },
+    {
+      "id": "ch2",
+      "label": "Jobs · What must a factory do?",
+      "question": "What must any factory do, and keep true?"
+    },
+    {
+      "id": "ch3",
+      "label": "Model · What replaces the parts?",
+      "question": "What are the new model's parts?"
+    },
+    {
+      "id": "ch3b",
+      "label": "Recipe · How does a recipe run?",
+      "question": "How does a recipe run, crash and recover?"
+    },
+    {
+      "id": "ch4",
+      "label": "One task · How does it reach main?",
+      "question": "How does one task travel from plan to main?"
+    },
+    {
+      "id": "ch5",
+      "label": "Side by side · What changes?",
+      "question": "What does each old mechanism become?"
+    },
+    {
+      "id": "ch9",
+      "label": "Ladder · In what order?",
+      "question": "In what order does it ship?"
+    },
+    {
+      "id": "ch10",
+      "label": "Your calls · What is open?",
+      "question": "Which calls are the owner's?"
+    }
+  ],
+  "beats": [
+    {
+      "id": "r1-1-hook",
+      "chapter": "ch1",
+      "function": "HOOK",
+      "mode": "explain",
+      "band": "hook",
+      "spoken": "Four stores hold one task's state today, joined by two orchestrators that poll each other.",
+      "fact_ids": [
+        "R01"
+      ],
+      "visual": {
+        "assertion": "One task, four stores, two orchestrators",
+        "job": "numbers",
+        "render": "HookBeat",
+        "cues": [
+          {
+            "action": "V11",
+            "target": "card:4 stores",
+            "atCue": "Four"
+          },
+          {
+            "action": "V11",
+            "target": "card:2 orchestrators",
+            "atCue": "Two"
+          }
+        ],
+        "chips": [
+          {
+            "kind": "measured",
+            "text": "adversarial-review-2026-10-13.md §1",
+            "fact_id": "R01"
+          }
+        ]
+      },
+      "origin": "v2",
+      "plannedS": 6
+    },
+    {
+      "id": "r1-2-stake",
+      "chapter": "ch1",
+      "function": "STAKE",
+      "mode": "explain",
+      "band": "hook",
+      "spoken": "The tick counted a hundred and forty-three claims when about sixty were real. A finished report can wait up to thirteen minutes to be seen.",
+      "fact_ids": [
+        "R02",
+        "R03"
+      ],
+      "visual": {
+        "assertion": "Seams between stores show up as errors",
+        "job": "numbers",
+        "render": "StatBeat",
+        "cues": [
+          {
+            "action": "V11",
+            "target": "stat:143 claimed",
+            "atCue": "forty-three"
+          },
+          {
+            "action": "V11",
+            "target": "stat:60 real claims",
+            "atCue": "sixty"
+          },
+          {
+            "action": "V11",
+            "target": "stat:13 min late",
+            "atCue": "thirteen"
+          }
+        ],
+        "chips": [
+          {
+            "kind": "measured",
+            "text": "adversarial-review-2026-10-13.md §1; system-review-2026-10-13.md B2",
+            "fact_id": "R02"
+          },
+          {
+            "kind": "estimated",
+            "text": "adversarial-review-2026-10-13.md §1; system-review-2026-10-13.md line 252",
+            "fact_id": "R03"
+          }
+        ]
+      },
+      "origin": "v2",
+      "plannedS": 9
+    },
+    {
+      "id": "r1-3-stores",
+      "chapter": "ch1",
+      "function": "WHAT",
+      "mode": "explain",
+      "band": "diagram",
+      "spoken": "The backlog holds the task file. The burndown tick keeps a ledger, and the broker keeps a roster of agents.",
+      "fact_ids": [
+        "R01"
+      ],
+      "visual": {
+        "assertion": "Each part keeps its own store",
+        "job": "map",
+        "render": "StationMap",
+        "layout_source": "hand",
+        "edge_sources": [
+          "design"
+        ],
+        "map_state": {
+          "map": "old",
+          "level": "containers",
+          "reveal": [
+            {
+              "id": "backlog",
+              "atCue": "backlog"
+            },
+            {
+              "id": "tick",
+              "atCue": "tick"
+            },
+            {
+              "id": "broker",
+              "atCue": "broker"
+            }
+          ],
+          "edges": [
+            {
+              "id": "e:backlog->tick",
+              "atCue": "ledger"
+            },
+            {
+              "id": "e:tick->broker",
+              "atCue": "roster"
+            }
+          ],
+          "pins": [
+            {
+              "anchor": "backlog",
+              "text": "task file",
+              "atCue": "file"
+            },
+            {
+              "anchor": "tick",
+              "text": "burndown.json",
+              "atCue": "ledger"
+            },
+            {
+              "anchor": "broker",
+              "text": "roster",
+              "atCue": "roster"
+            }
+          ]
+        },
+        "chips": [
+          {
+            "kind": "measured",
+            "text": "adversarial-review-2026-10-13.md §1",
+            "fact_id": "R01"
+          },
+          {
+            "kind": "our-framing",
+            "text": "hand layout of the factory maps",
+            "fact_id": null
+          }
+        ]
+      },
+      "origin": "v2",
+      "connector_in": "and",
+      "plannedS": 8
+    },
+    {
+      "id": "r1-4-shepherd",
+      "chapter": "ch1",
+      "function": "WHAT",
+      "mode": "explain",
+      "band": "diagram",
+      "spoken": "An implementer opens a pull request for Shepherd, which keeps a fourth store and merges to main.",
+      "fact_ids": [
+        "R01"
+      ],
+      "visual": {
+        "assertion": "Shepherd keeps a fourth store",
+        "job": "map",
+        "render": "StationMap",
+        "layout_source": "hand",
+        "edge_sources": [
+          "design"
+        ],
+        "map_state": {
+          "map": "old",
+          "level": "containers",
+          "reveal": [
+            {
+              "id": "implementer",
+              "atCue": "implementer"
+            },
+            {
+              "id": "shepherd",
+              "atCue": "Shepherd"
+            },
+            {
+              "id": "main",
+              "atCue": "main"
+            }
+          ],
+          "edges": [
+            {
+              "id": "e:broker->implementer",
+              "atCue": "implementer"
+            },
+            {
+              "id": "e:implementer->shepherd",
+              "atCue": "request"
+            },
+            {
+              "id": "e:shepherd->main",
+              "atCue": "merges"
+            }
+          ],
+          "pins": [
+            {
+              "anchor": "shepherd",
+              "text": "sqlite3",
+              "atCue": "store"
+            }
+          ]
+        },
+        "chips": [
+          {
+            "kind": "measured",
+            "text": "adversarial-review-2026-10-13.md §1",
+            "fact_id": "R01"
+          },
+          {
+            "kind": "our-framing",
+            "text": "hand layout of the factory maps",
+            "fact_id": null
+          }
+        ]
+      },
+      "origin": "v2",
+      "connector_in": "then",
+      "plannedS": 7
+    },
+    {
+      "id": "r1-5-seams",
+      "chapter": "ch1",
+      "function": "WHAT",
+      "mode": "explain",
+      "band": "diagram",
+      "spoken": "Around them: a reviewer, a coordinator seat, and you. Shepherd's asks for reviewers time out in batches, and the tick re-registers pull requests as a backstop.",
+      "fact_ids": [
+        "R04",
+        "R06"
+      ],
+      "visual": {
+        "assertion": "Every seam needs a patch",
+        "job": "map",
+        "render": "StationMap",
+        "layout_source": "hand",
+        "edge_sources": [
+          "design"
+        ],
+        "map_state": {
+          "map": "old",
+          "level": "containers",
+          "reveal": [
+            {
+              "id": "reviewer",
+              "atCue": "reviewer"
+            },
+            {
+              "id": "seat",
+              "atCue": "seat"
+            },
+            {
+              "id": "owner",
+              "atCue": "you"
+            }
+          ],
+          "edges": [
+            {
+              "id": "e:reviewer->shepherd",
+              "atCue": "reviewer"
+            },
+            {
+              "id": "e:shepherd->seat",
+              "atCue": "seat"
+            },
+            {
+              "id": "e:shepherd->owner",
+              "atCue": "you"
+            },
+            {
+              "id": "e:seat->owner",
+              "atCue": "you"
+            },
+            {
+              "id": "e:shepherd->broker",
+              "atCue": "batches"
+            },
+            {
+              "id": "e:tick->shepherd",
+              "atCue": "re-registers"
+            }
+          ],
+          "annotations": [
+            {
+              "kind": "box",
+              "anchor": "broker",
+              "atCue": "batches"
+            }
+          ]
+        },
+        "chips": [
+          {
+            "kind": "estimated",
+            "text": "adversarial-review-2026-10-13.md §1, §5.5; pipeline-redesign-2026-10-13.md §9",
+            "fact_id": "R04"
+          },
+          {
+            "kind": "docs-claim",
+            "text": "adversarial-review-2026-10-13.md §2 row 7; pipeline-redesign-2026-10-13.md §3.4",
+            "fact_id": "R06"
+          },
+          {
+            "kind": "our-framing",
+            "text": "hand layout of the factory maps",
+            "fact_id": null
+          }
+        ]
+      },
+      "origin": "v2",
+      "connector_in": "and",
+      "plannedS": 10
+    },
+    {
+      "id": "r1-6-seat",
+      "chapter": "ch1",
+      "function": "STAKE",
+      "mode": "explain",
+      "band": "hook",
+      "spoken": "One thousand six hundred and twenty-six messages went to the seat. In two weeks, three hundred and thirteen held fix rounds waited on a hand resume.",
+      "fact_ids": [
+        "R05"
+      ],
+      "visual": {
+        "assertion": "The seat patches seams by hand",
+        "job": "numbers",
+        "render": "StatBeat",
+        "cues": [
+          {
+            "action": "V11",
+            "target": "stat:1,626 messages",
+            "atCue": "twenty-six"
+          },
+          {
+            "action": "V11",
+            "target": "stat:313 hand resumes",
+            "atCue": "thirteen"
+          }
+        ],
+        "chips": [
+          {
+            "kind": "measured",
+            "text": "pipeline-redesign-2026-10-13.md §9; adversarial-review-2026-10-13.md §1, §2 row 1",
+            "fact_id": "R05"
+          }
+        ]
+      },
+      "origin": "v2",
+      "connector_in": "and",
+      "plannedS": 9
+    },
+    {
+      "id": "r1-7-promise",
+      "chapter": "ch1",
+      "function": "PROMISE",
+      "mode": "explain",
+      "band": "hook",
+      "spoken": "The redesign keeps, removes and adds parts, and leaves eleven calls to you.",
+      "fact_ids": [
+        "R51"
+      ],
+      "visual": {
+        "assertion": "Keeps, removes, adds, and your calls",
+        "job": "numbers",
+        "render": "HookBeat",
+        "cues": [
+          {
+            "action": "V11",
+            "target": "card:keeps",
+            "atCue": "keeps"
+          },
+          {
+            "action": "V11",
+            "target": "card:removes",
+            "atCue": "removes"
+          },
+          {
+            "action": "V11",
+            "target": "card:adds",
+            "atCue": "adds"
+          },
+          {
+            "action": "V11",
+            "target": "card:11 calls",
+            "atCue": "eleven"
+          }
+        ],
+        "chips": [
+          {
+            "kind": "docs-claim",
+            "text": "pipeline-redesign-2026-10-13.md §11",
+            "fact_id": "R51"
+          }
+        ]
+      },
+      "origin": "v4",
+      "connector_in": "so",
+      "plannedS": 5
+    },
+    {
+      "id": "r2-1-jobs",
+      "chapter": "ch2",
+      "function": "WHAT",
+      "mode": "explain",
+      "band": "takeaways",
+      "spoken": "Seven jobs come first: choose, make and prove. Then land, keep going, ask the owner, and stay legible.",
+      "fact_ids": [
+        "R07"
+      ],
+      "visual": {
+        "assertion": "Seven jobs any factory must do",
+        "job": "artifact-filling",
+        "render": "ScorecardTable",
+        "cues": [
+          {
+            "action": "V11",
+            "target": "job:choose",
+            "atCue": "choose"
+          },
+          {
+            "action": "V11",
+            "target": "job:make",
+            "atCue": "make"
+          },
+          {
+            "action": "V11",
+            "target": "job:prove",
+            "atCue": "prove"
+          },
+          {
+            "action": "V11",
+            "target": "job:land",
+            "atCue": "land"
+          },
+          {
+            "action": "V11",
+            "target": "job:keep going",
+            "atCue": "going"
+          },
+          {
+            "action": "V11",
+            "target": "job:ask the owner",
+            "atCue": "ask"
+          },
+          {
+            "action": "V11",
+            "target": "job:be legible",
+            "atCue": "legible"
+          }
+        ],
+        "chips": [
+          {
+            "kind": "docs-claim",
+            "text": "pipeline-redesign-2026-10-13.md §2.1",
+            "fact_id": "R07"
+          }
+        ]
+      },
+      "origin": "v2",
+      "plannedS": 7
+    },
+    {
+      "id": "r2-2-inv",
+      "chapter": "ch2",
+      "function": "WHAT",
+      "mode": "explain",
+      "band": "takeaways",
+      "spoken": "CI passes on the merged tree; a verdict counts only at its exact head; authority and security get stronger review. Caps hold, no agent widens its permissions, stalls heal unaided, and state survives restarts.",
+      "fact_ids": [
+        "R08"
+      ],
+      "visual": {
+        "assertion": "Seven invariants hold whatever the mechanism",
+        "job": "artifact-filling",
+        "render": "ScorecardTable",
+        "cues": [
+          {
+            "action": "V11",
+            "target": "inv:I1 merged tree CI",
+            "atCue": "CI"
+          },
+          {
+            "action": "V11",
+            "target": "inv:I2 verdict at head",
+            "atCue": "verdict"
+          },
+          {
+            "action": "V11",
+            "target": "inv:I3 stronger review",
+            "atCue": "stronger"
+          },
+          {
+            "action": "V11",
+            "target": "inv:I4 pool caps hold",
+            "atCue": "Caps"
+          },
+          {
+            "action": "V11",
+            "target": "inv:I5 no self-widening",
+            "atCue": "widens"
+          },
+          {
+            "action": "V11",
+            "target": "inv:I6 stalls picked up",
+            "atCue": "stalls"
+          },
+          {
+            "action": "V11",
+            "target": "inv:I7 survives restart",
+            "atCue": "survives"
+          }
+        ],
+        "chips": [
+          {
+            "kind": "docs-claim",
+            "text": "pipeline-redesign-2026-10-13.md header",
+            "fact_id": "R08"
+          }
+        ]
+      },
+      "origin": "v2",
+      "connector_in": "and",
+      "plannedS": 13
+    },
+    {
+      "id": "r2-3-limits",
+      "chapter": "ch2",
+      "function": "WHAT",
+      "mode": "explain",
+      "band": "diagram",
+      "spoken": "No webhooks reach this box, CI has twenty runners, agents crash, you want to be asked rarely.",
+      "fact_ids": [
+        "R09"
+      ],
+      "visual": {
+        "assertion": "Four limits the design cannot change",
+        "job": "numbers",
+        "render": "ListBeat",
+        "cues": [
+          {
+            "action": "V11",
+            "target": "row:no webhooks · poll GitHub",
+            "atCue": "webhooks"
+          },
+          {
+            "action": "V11",
+            "target": "row:20 runner slots",
+            "atCue": "twenty"
+          },
+          {
+            "action": "V11",
+            "target": "row:agents crash and stall",
+            "atCue": "crash"
+          },
+          {
+            "action": "V11",
+            "target": "row:owner asked rarely, well",
+            "atCue": "rarely"
+          }
+        ],
+        "chips": [
+          {
+            "kind": "docs-claim",
+            "text": "pipeline-redesign-2026-10-13.md header",
+            "fact_id": "R09"
+          }
+        ]
+      },
+      "origin": "v2",
+      "connector_in": "but",
+      "plannedS": 7
+    },
+    {
+      "id": "r2-4-measure",
+      "chapter": "ch2",
+      "function": "WHAT",
+      "mode": "explain",
+      "band": "diagram",
+      "spoken": "Twenty mechanisms exist only to patch others. The design aims for under five, with one clock and one store.",
+      "fact_ids": [
+        "R10"
+      ],
+      "visual": {
+        "assertion": "Twenty patches today; the aim is under five",
+        "job": "numbers",
+        "render": "StatBeat",
+        "cues": [
+          {
+            "action": "V11",
+            "target": "stat:20 compensators",
+            "atCue": "twenty"
+          },
+          {
+            "action": "V11",
+            "target": "chip:aim: under five, one clock, one store",
+            "atCue": "aims"
+          }
+        ],
+        "chips": [
+          {
+            "kind": "target",
+            "text": "pipeline-redesign-2026-10-13.md §1; adversarial-review-2026-10-13.md §2",
+            "fact_id": "R10"
+          }
+        ]
+      },
+      "origin": "v2",
+      "connector_in": "so",
+      "plannedS": 8
+    },
+    {
+      "id": "r3-1-nouns",
+      "chapter": "ch3",
+      "function": "WHAT",
+      "mode": "explain",
+      "band": "diagram",
+      "spoken": "Seven nouns carry the new model. Item, fact and step; wait and claim; event, pool and service.",
+      "fact_ids": [
+        "R58"
+      ],
+      "visual": {
+        "assertion": "Seven nouns carry the whole model",
+        "job": "artifact-filling",
+        "render": "HookBeat",
+        "cues": [
+          {
+            "action": "V11",
+            "target": "card:7 nouns",
+            "atCue": "Seven"
+          },
+          {
+            "action": "V11",
+            "target": "card:item",
+            "atCue": "item"
+          },
+          {
+            "action": "V11",
+            "target": "card:fact",
+            "atCue": "fact"
+          },
+          {
+            "action": "V11",
+            "target": "card:step",
+            "atCue": "step"
+          },
+          {
+            "action": "V11",
+            "target": "card:wait + claim",
+            "atCue": "wait"
+          },
+          {
+            "action": "V11",
+            "target": "card:event",
+            "atCue": "event"
+          },
+          {
+            "action": "V11",
+            "target": "card:pool",
+            "atCue": "pool"
+          },
+          {
+            "action": "V11",
+            "target": "card:service",
+            "atCue": "service"
+          }
+        ],
+        "chips": [
+          {
+            "kind": "docs-claim",
+            "text": "pipeline-redesign-2026-10-13.md §2.2",
+            "fact_id": "R58"
+          }
+        ]
+      },
+      "origin": "v4",
+      "plannedS": 7
+    },
+    {
+      "id": "r3-3-plans",
+      "chapter": "ch3",
+      "function": "WHAT",
+      "mode": "explain",
+      "band": "diagram",
+      "spoken": "On the new map, backlog and broker keep their places. Plans carry a contract for every slice.",
+      "fact_ids": [
+        "R17"
+      ],
+      "visual": {
+        "assertion": "Backlog and broker stay put; plans gain contracts",
+        "job": "map",
+        "render": "StationMap",
+        "layout_source": "hand",
+        "edge_sources": [
+          "design"
+        ],
+        "map_state": {
+          "map": "new",
+          "level": "containers",
+          "reveal": [
+            {
+              "id": "backlog",
+              "atCue": "backlog"
+            },
+            {
+              "id": "broker",
+              "atCue": "broker"
+            },
+            {
+              "id": "plans",
+              "atCue": "Plans"
+            }
+          ],
+          "edges": [
+            {
+              "id": "e:backlog->plans",
+              "atCue": "contract"
+            }
+          ],
+          "pins": [
+            {
+              "anchor": "plans",
+              "text": "contract per slice",
+              "atCue": "slice"
+            }
+          ]
+        },
+        "chips": [
+          {
+            "kind": "docs-claim",
+            "text": "pipeline-redesign-2026-10-13.md §2.6 step 1",
+            "fact_id": "R17"
+          },
+          {
+            "kind": "our-framing",
+            "text": "hand layout of the factory maps",
+            "fact_id": null
+          }
+        ]
+      },
+      "origin": "v2",
+      "connector_in": "so",
+      "plannedS": 7
+    },
+    {
+      "id": "r3b-1-run",
+      "chapter": "ch3b",
+      "function": "HOW",
+      "mode": "explain",
+      "band": "code",
+      "spoken": "A recipe is a plain script; here are five of its steps. Each step runs, writes a marker for its fact, and returns. A landed run averages fifty-one and a half steps.",
+      "fact_ids": [
+        "R64",
+        "R60"
+      ],
+      "visual": {
+        "assertion": "A recipe is a script of steps",
+        "job": "code-proof",
+        "render": "RecipeRunBeat",
+        "cues": [
+          {
+            "action": "V11",
+            "target": "note:a five-step recipe",
+            "atCue": "five"
+          },
+          {
+            "action": "V11",
+            "target": "run:plan-ci",
+            "atCue": "runs"
+          },
+          {
+            "action": "V11",
+            "target": "note:51.5 steps per run",
+            "atCue": "fifty-one"
+          }
+        ],
+        "chips": [
+          {
+            "kind": "docs-claim",
+            "text": "pipeline-redesign-2026-10-13.md §2.3",
+            "fact_id": "R64"
+          },
+          {
+            "kind": "measured",
+            "text": "research/R-D-2026-10-13.md §0 item 6",
+            "fact_id": "R60"
+          }
+        ],
+        "recipe": {
+          "file": "recipes/slice.ts",
+          "keying": "fact",
+          "steps": [
+            {
+              "id": "plan",
+              "code": "await step('plan')",
+              "fact": "contract:approved",
+              "reads": []
+            },
+            {
+              "id": "claim",
+              "code": "await claim('implementer')",
+              "fact": "claim:implementer",
+              "reads": [
+                "plan"
+              ],
+              "claim": true
+            },
+            {
+              "id": "push",
+              "code": "await step('push')",
+              "fact": "head:pushed@h",
+              "reads": [
+                "claim"
+              ],
+              "agent": true
+            },
+            {
+              "id": "conformance",
+              "code": "await step('conformance')",
+              "fact": "conformance:ok@h",
+              "reads": [
+                "push"
+              ],
+              "inserted": true
+            },
+            {
+              "id": "ci",
+              "code": "await step('ci')",
+              "fact": "ci:green@h",
+              "reads": [
+                "push"
+              ]
+            },
+            {
+              "id": "proof",
+              "code": "await step('proof')",
+              "fact": "proof:reproduced@h",
+              "reads": [
+                "ci"
+              ]
+            }
+          ],
+          "start": {
+            "markers": {},
+            "tokens": {
+              "free": 2,
+              "held": []
+            }
+          }
+        }
+      },
+      "origin": "v4",
+      "connector_in": "so",
+      "plannedS": 13
+    },
+    {
+      "id": "r3b-3-replay",
+      "chapter": "ch3b",
+      "function": "HOW",
+      "mode": "explain",
+      "band": "code",
+      "spoken": "Recovery re-runs the script from the top. Four markers match, so it fast-forwards and runs the fifth step.",
+      "fact_ids": [
+        "R64"
+      ],
+      "visual": {
+        "assertion": "Recovery is a re-run from the top",
+        "job": "code-proof",
+        "render": "RecipeRunBeat",
+        "cues": [
+          {
+            "action": "V11",
+            "target": "replay",
+            "atCue": "re-runs"
+          }
+        ],
+        "chips": [
+          {
+            "kind": "docs-claim",
+            "text": "pipeline-redesign-2026-10-13.md §2.3",
+            "fact_id": "R64"
+          }
+        ],
+        "recipe": {
+          "file": "recipes/slice.ts",
+          "keying": "fact",
+          "steps": [
+            {
+              "id": "plan",
+              "code": "await step('plan')",
+              "fact": "contract:approved",
+              "reads": []
+            },
+            {
+              "id": "claim",
+              "code": "await claim('implementer')",
+              "fact": "claim:implementer",
+              "reads": [
+                "plan"
+              ],
+              "claim": true
+            },
+            {
+              "id": "push",
+              "code": "await step('push')",
+              "fact": "head:pushed@h",
+              "reads": [
+                "claim"
+              ],
+              "agent": true
+            },
+            {
+              "id": "conformance",
+              "code": "await step('conformance')",
+              "fact": "conformance:ok@h",
+              "reads": [
+                "push"
+              ],
+              "inserted": true
+            },
+            {
+              "id": "ci",
+              "code": "await step('ci')",
+              "fact": "ci:green@h",
+              "reads": [
+                "push"
+              ]
+            },
+            {
+              "id": "proof",
+              "code": "await step('proof')",
+              "fact": "proof:reproduced@h",
+              "reads": [
+                "ci"
+              ]
+            }
+          ],
+          "start": {
+            "markers": {
+              "plan": "valid",
+              "claim": "valid",
+              "push": "valid",
+              "ci": "valid"
+            },
+            "tokens": {
+              "free": 2,
+              "held": []
+            }
+          }
+        }
+      },
+      "origin": "v4",
+      "connector_in": "so",
+      "plannedS": 8
+    },
+    {
+      "id": "r4-1-plan",
+      "chapter": "ch4",
+      "function": "HOW",
+      "mode": "explain",
+      "band": "diagram",
+      "spoken": "A planner splits it into slices with contracts: risk class, requirements, the change in one sentence, exclusive paths. You approve them in one plan sitting.",
+      "fact_ids": [
+        "R17"
+      ],
+      "visual": {
+        "assertion": "Every slice carries a contract you approve",
+        "job": "cast-in-motion",
+        "render": "StationMap",
+        "layout_source": "hand",
+        "edge_sources": [
+          "design"
+        ],
+        "map_state": {
+          "map": "new",
+          "level": "containers",
+          "camera": {
+            "follow": "item",
+            "atCue": "planner"
+          },
+          "item": {
+            "path": [
+              {
+                "at": "plans",
+                "atCue": "slices"
+              }
+            ],
+            "chips": []
+          },
+          "pins": [
+            {
+              "anchor": "plans",
+              "text": "risk class",
+              "atCue": "risk"
+            },
+            {
+              "anchor": "plans",
+              "text": "exclusive paths",
+              "atCue": "paths"
+            },
+            {
+              "anchor": "owner",
+              "text": "plan sitting",
+              "atCue": "sitting"
+            }
+          ]
+        },
+        "chips": [
+          {
+            "kind": "docs-claim",
+            "text": "pipeline-redesign-2026-10-13.md §2.6 step 1",
+            "fact_id": "R17"
+          },
+          {
+            "kind": "our-framing",
+            "text": "hand layout of the factory maps",
+            "fact_id": null
+          }
+        ]
+      },
+      "origin": "v2",
+      "plannedS": 10
+    },
+    {
+      "id": "r5-1-holds",
+      "chapter": "ch5",
+      "function": "HOW",
+      "mode": "explain",
+      "band": "diagram",
+      "spoken": "Side by side: hold slots, each class with its own release, become one requirement set per head.",
+      "fact_ids": [
+        "R28"
+      ],
+      "visual": {
+        "assertion": "Hold slots become per-head requirements",
+        "job": "alternatives-vs-ours",
+        "render": "SplitMapBeat",
+        "layout_source": "hand",
+        "edge_sources": [
+          "design"
+        ],
+        "map_state": {
+          "map": "split",
+          "level": "containers",
+          "old": {
+            "focus": {
+              "ids": [
+                "shepherd"
+              ],
+              "atCue": "hold"
+            },
+            "pins": [
+              {
+                "anchor": "shepherd",
+                "text": "two hold slots",
+                "atCue": "slots"
+              }
+            ]
+          },
+          "new": {
+            "focus": {
+              "ids": [
+                "ledger"
+              ],
+              "atCue": "requirement"
+            },
+            "pins": [
+              {
+                "anchor": "ledger",
+                "text": "set per head",
+                "atCue": "head"
+              }
+            ]
+          }
+        },
+        "chips": [
+          {
+            "kind": "docs-claim",
+            "text": "pipeline-redesign-2026-10-13.md §3.2",
+            "fact_id": "R28"
+          },
+          {
+            "kind": "our-framing",
+            "text": "hand layout of the factory maps",
+            "fact_id": null
+          }
+        ]
+      },
+      "origin": "v2",
+      "plannedS": 7
+    },
+    {
+      "id": "r9-1-ladder",
+      "chapter": "ch9",
+      "function": "HOW",
+      "mode": "explain",
+      "band": "diagram",
+      "spoken": "It ships as eleven rungs, each behind a flag or in shadow, naming what it deletes.",
+      "fact_ids": [
+        "R48"
+      ],
+      "visual": {
+        "assertion": "Eleven rungs, each reversible by a flag",
+        "job": "artifact-filling",
+        "render": "LadderBeat",
+        "cues": [
+          {
+            "action": "V11",
+            "target": "rung:M0–M10",
+            "atCue": "eleven"
+          },
+          {
+            "action": "V11",
+            "target": "detail:flag or shadow",
+            "atCue": "flag"
+          },
+          {
+            "action": "V11",
+            "target": "detail:names what it deletes",
+            "atCue": "deletes"
+          }
+        ],
+        "chips": [
+          {
+            "kind": "docs-claim",
+            "text": "pipeline-redesign-2026-10-13.md §5",
+            "fact_id": "R48"
+          }
+        ]
+      },
+      "origin": "v2",
+      "plannedS": 7
+    },
+    {
+      "id": "r10-2-q1",
+      "chapter": "ch10",
+      "function": "WHAT",
+      "mode": "explain",
+      "band": "takeaways",
+      "spoken": "First, landing per repo. Option a: the token bypasses the ruleset and main fast-forwards to the tested candidate. Option b: API merges, a tree-hash check, the up-to-date rule off.",
+      "fact_ids": [
+        "R52"
+      ],
+      "visual": {
+        "assertion": "Q1: two ways to land, per repo",
+        "job": "alternatives-vs-ours",
+        "render": "CompareBeat",
+        "cues": [
+          {
+            "action": "V11",
+            "target": "left:token on the bypass list",
+            "atCue": "bypasses"
+          },
+          {
+            "action": "V11",
+            "target": "left:main fast-forwards",
+            "atCue": "fast-forwards"
+          },
+          {
+            "action": "V11",
+            "target": "right:API merges",
+            "atCue": "API"
+          },
+          {
+            "action": "V11",
+            "target": "right:tree-hash check",
+            "atCue": "tree-hash"
+          },
+          {
+            "action": "V11",
+            "target": "right:up-to-date rule off",
+            "atCue": "up-to-date"
+          }
+        ],
+        "chips": [
+          {
+            "kind": "docs-claim",
+            "text": "pipeline-redesign-2026-10-13.md §11 Q1, §2.6 step 7",
+            "fact_id": "R52"
+          }
+        ],
+        "titles": [
+          "(a) fast-forward",
+          "(b) API merges"
+        ]
+      },
+      "origin": "v2",
+      "connector_in": "and",
+      "plannedS": 11
+    },
+    {
+      "id": "r10-10-outro",
+      "chapter": "ch10",
+      "function": "CLOSE",
+      "mode": "explain",
+      "band": "hook",
+      "spoken": "Find the wake, and you find the wait.",
+      "fact_ids": [],
+      "visual": {
+        "assertion": "Find the wake, find the wait",
+        "job": "numbers",
+        "render": "OutroBeat",
+        "cues": [
+          {
+            "action": "V11",
+            "target": "title:find the wake",
+            "atCue": "wake"
+          }
+        ],
+        "chips": []
+      },
+      "origin": "v2",
+      "connector_in": "so",
+      "plannedS": 4
+    }
+  ],
+  "maps": {
+    "old": {
+      "nodeBox": {
+        "w": 280,
+        "h": 116
+      },
+      "nodes": [
+        {
+          "id": "backlog",
+          "label": "Backlog",
+          "actor": "store",
+          "centre": [
+            200,
+            230
+          ],
+          "level": "containers"
+        },
+        {
+          "id": "tick",
+          "label": "Tick",
+          "actor": "software",
+          "centre": [
+            770,
+            230
+          ],
+          "level": "containers"
+        },
+        {
+          "id": "broker",
+          "label": "Broker",
+          "actor": "software",
+          "centre": [
+            1340,
+            230
+          ],
+          "level": "containers"
+        },
+        {
+          "id": "implementer",
+          "label": "Implementer",
+          "actor": "agent",
+          "centre": [
+            1720,
+            230
+          ],
+          "level": "containers"
+        },
+        {
+          "id": "seat",
+          "label": "Seat",
+          "actor": "agent",
+          "centre": [
+            960,
+            495
+          ],
+          "level": "containers"
+        },
+        {
+          "id": "shepherd",
+          "label": "Shepherd",
+          "actor": "software",
+          "centre": [
+            1340,
+            495
+          ],
+          "level": "containers"
+        },
+        {
+          "id": "reviewer",
+          "label": "Reviewer",
+          "actor": "agent",
+          "centre": [
+            1720,
+            495
+          ],
+          "level": "containers"
+        },
+        {
+          "id": "owner",
+          "label": "Owner",
+          "actor": "human",
+          "centre": [
+            960,
+            750
+          ],
+          "level": "containers"
+        },
+        {
+          "id": "main",
+          "label": "Main",
+          "actor": "software",
+          "centre": [
+            1720,
+            750
+          ],
+          "level": "containers"
+        }
+      ],
+      "edges": [
+        {
+          "id": "e:backlog->tick",
+          "from": "backlog",
+          "to": "tick",
+          "label": "reads"
+        },
+        {
+          "id": "e:tick->broker",
+          "from": "tick",
+          "to": "broker",
+          "label": "spawn"
+        },
+        {
+          "id": "e:broker->implementer",
+          "from": "broker",
+          "to": "implementer",
+          "label": ""
+        },
+        {
+          "id": "e:implementer->shepherd",
+          "from": "implementer",
+          "to": "shepherd",
+          "label": "PR"
+        },
+        {
+          "id": "e:shepherd->main",
+          "from": "shepherd",
+          "to": "main",
+          "label": "merge"
+        },
+        {
+          "id": "e:tick->shepherd",
+          "from": "tick",
+          "to": "shepherd",
+          "label": "re-register"
+        },
+        {
+          "id": "e:shepherd->broker",
+          "from": "shepherd",
+          "to": "broker",
+          "label": ""
+        },
+        {
+          "id": "e:reviewer->shepherd",
+          "from": "reviewer",
+          "to": "shepherd",
+          "label": ""
+        },
+        {
+          "id": "e:shepherd->seat",
+          "from": "shepherd",
+          "to": "seat",
+          "label": ""
+        },
+        {
+          "id": "e:shepherd->owner",
+          "from": "shepherd",
+          "to": "owner",
+          "label": "gates"
+        },
+        {
+          "id": "e:seat->owner",
+          "from": "seat",
+          "to": "owner",
+          "label": "asks"
+        }
+      ],
+      "flows": {
+        "flow:old": [
+          "backlog",
+          "tick",
+          "broker",
+          "implementer",
+          "shepherd",
+          "main"
+        ]
+      }
+    },
+    "new": {
+      "nodeBox": {
+        "w": 280,
+        "h": 116
+      },
+      "nodes": [
+        {
+          "id": "backlog",
+          "label": "Backlog",
+          "actor": "store",
+          "centre": [
+            200,
+            230
+          ],
+          "level": "containers"
+        },
+        {
+          "id": "plans",
+          "label": "Plans",
+          "actor": "store",
+          "centre": [
+            770,
+            230
+          ],
+          "level": "containers"
+        },
+        {
+          "id": "broker",
+          "label": "Broker",
+          "actor": "software",
+          "centre": [
+            1340,
+            230
+          ],
+          "level": "containers"
+        },
+        {
+          "id": "agents",
+          "label": "Agents",
+          "actor": "agent",
+          "centre": [
+            1720,
+            230
+          ],
+          "level": "containers"
+        },
+        {
+          "id": "ops",
+          "label": "Ops alarms",
+          "actor": "software",
+          "centre": [
+            960,
+            495
+          ],
+          "level": "containers"
+        },
+        {
+          "id": "ledger",
+          "label": "Runner",
+          "actor": "software",
+          "centre": [
+            1340,
+            495
+          ],
+          "level": "containers"
+        },
+        {
+          "id": "github",
+          "label": "GitHub + CI",
+          "actor": "software",
+          "centre": [
+            1720,
+            495
+          ],
+          "level": "containers"
+        },
+        {
+          "id": "owner",
+          "label": "Owner",
+          "actor": "human",
+          "centre": [
+            960,
+            750
+          ],
+          "level": "containers"
+        },
+        {
+          "id": "queue",
+          "label": "Merge queue",
+          "actor": "software",
+          "centre": [
+            1340,
+            750
+          ],
+          "level": "containers"
+        },
+        {
+          "id": "main",
+          "label": "Main",
+          "actor": "software",
+          "centre": [
+            1720,
+            750
+          ],
+          "level": "containers"
+        }
+      ],
+      "edges": [
+        {
+          "id": "e:backlog->plans",
+          "from": "backlog",
+          "to": "plans",
+          "label": "plan"
+        },
+        {
+          "id": "e:plans->ledger",
+          "from": "plans",
+          "to": "ledger",
+          "label": "contracts"
+        },
+        {
+          "id": "e:ledger->broker",
+          "from": "ledger",
+          "to": "broker",
+          "label": "spawn"
+        },
+        {
+          "id": "e:broker->ledger",
+          "from": "broker",
+          "to": "ledger",
+          "label": "events"
+        },
+        {
+          "id": "e:broker->agents",
+          "from": "broker",
+          "to": "agents",
+          "label": ""
+        },
+        {
+          "id": "e:agents->github",
+          "from": "agents",
+          "to": "github",
+          "label": "push"
+        },
+        {
+          "id": "e:ledger->github",
+          "from": "ledger",
+          "to": "github",
+          "label": "polls"
+        },
+        {
+          "id": "e:ledger->queue",
+          "from": "ledger",
+          "to": "queue",
+          "label": ""
+        },
+        {
+          "id": "e:queue->main",
+          "from": "queue",
+          "to": "main",
+          "label": ""
+        },
+        {
+          "id": "e:ledger->owner",
+          "from": "ledger",
+          "to": "owner",
+          "label": ""
+        },
+        {
+          "id": "e:ledger->ops",
+          "from": "ledger",
+          "to": "ops",
+          "label": ""
+        }
+      ],
+      "flows": {
+        "flow:item": [
+          "backlog",
+          "plans",
+          "ledger",
+          "broker",
+          "agents",
+          "github",
+          "ledger",
+          "queue",
+          "main"
+        ],
+        "flow:ask": [
+          "ledger",
+          "owner"
+        ]
+      }
+    }
+  },
+  "shared_nodes": [
+    "backlog",
+    "broker",
+    "owner",
+    "main"
+  ]
+}
