@@ -25,11 +25,17 @@ interface MisakiRow {
   spacy: { text: string; ph: string }[];
 }
 
-function readJsonl<T>(name: string): T[] {
+// Only the keys each row is read by are checked.
+function readJsonl<T>(name: string, keys: readonly string[]): T[] {
+  const isRow = (v: unknown): v is T => typeof v === "object" && v !== null && keys.every((k) => k in v);
   return readFileSync(join(corpusDir, name), "utf8")
     .split("\n")
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as T);
+    .map((line) => {
+      const row: unknown = JSON.parse(line);
+      if (!isRow(row)) throw new Error(`unexpected row in ${name}`);
+      return row;
+    });
 }
 
 const summary = (t: Tally) => ({ ...t, parity: percent(t.agree, t.tokens), parityNoStress: percent(t.agreeNoStress, t.tokens) });
@@ -37,7 +43,7 @@ const summary = (t: Tally) => ({ ...t, parity: percent(t.agree, t.tokens), parit
 describe.skipIf(!corpusDir)("E4 corpus parity (opt-in)", () => {
   it("matches spaCy's tokenizer on every unit", () => {
     const tokenizer = spacyTokenizer();
-    const rows = readJsonl<TokensRow>("e4-tokens.jsonl");
+    const rows = readJsonl<TokensRow>("e4-tokens.jsonl", ["id", "text", "tokens"]);
     const differing = rows.filter((row) => {
       const got = tokenizer.tokenize(row.text).map((t) => [t.text, t.idx, t.whitespace]);
       return JSON.stringify(got) !== JSON.stringify(row.tokens.map((t) => [t.text, t.idx, t.ws]));
@@ -47,8 +53,8 @@ describe.skipIf(!corpusDir)("E4 corpus parity (opt-in)", () => {
   });
 
   it("reads at least 99 % of non-heteronym word tokens as misaki with spaCy does, stress included", () => {
-    const texts = new Map(readJsonl<CorpusRow>("e4-corpus.jsonl").map((u) => [u.id, u.text]));
-    const rows = readJsonl<MisakiRow>("e4-misaki-v2.jsonl");
+    const texts = new Map(readJsonl<CorpusRow>("e4-corpus.jsonl", ["id", "text"]).map((u) => [u.id, u.text]));
+    const rows = readJsonl<MisakiRow>("e4-misaki-v2.jsonl", ["id", "spacy"]);
     // The reference run had espeak for unknown words; its readings of those words stand in for it.
     const espeak = new Map(rows.flatMap((row) => row.spacy.map((t) => [t.text, t.ph] as const)));
     const run = (fallback?: (tk: G2pToken) => string | null): Comparison[] => {
