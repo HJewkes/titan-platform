@@ -116,6 +116,106 @@ declare class SequenceMatcher<T> {
     private extendOverEqualNeighbours;
 }
 
+/** Per-frame CTC logits, row-major: frame `t`, token `v` is `data[t * vocabSize + v]`. */
+interface CtcLogits {
+    data: Float32Array;
+    frames: number;
+    vocabSize: number;
+    /** Seconds per frame. Frame `t` covers the audio from about `t * frameS`. */
+    frameS: number;
+}
+/** The token every CTC model here uses as its blank, `<pad>`. */
+declare const CTC_BLANK_ID = 0;
+/**
+ * `Wav2Vec2FeatureExtractor`'s zero-mean, unit-variance normalization: population variance, eps 1e-7, sums in
+ * float64. A constant signal becomes zeros rather than a division by zero.
+ */
+declare function normalizeInput(samples: Float32Array): Float32Array;
+/** The best token per frame. A tie goes to the lower id, as `torch.argmax` gives. */
+declare function argmaxFrames(logits: CtcLogits): number[];
+/**
+ * Greedy CTC decode: collapse runs of one id, then drop the blank and every `<…>` special token, and join the
+ * remaining tokens with a space. A blank between two equal ids keeps both.
+ */
+declare function ctcGreedyDecode(ids: readonly number[], tokens: readonly string[]): string;
+
+type ModuleImporter = (name: string) => Promise<unknown>;
+
+declare const WAV2VEC2_MODEL = "onnx-community/wav2vec2-lv-60-espeak-cv-ft-ONNX";
+/** The ONNX export's commit. A re-export changes the numerics, so it is pinned rather than `main`. */
+declare const WAV2VEC2_REVISION = "c69750f5043e5e1f8a71ab95dd3b98338c280c92";
+type Wav2vec2Dtype = "fp32" | "q8";
+interface CtcLoadOptions {
+    dtype: Wav2vec2Dtype;
+    device?: string;
+    cache_dir?: string;
+    revision?: string;
+    session_options?: {
+        intraOpNumThreads: number;
+        interOpNumThreads: number;
+    };
+}
+/** A loaded CTC model. `run` takes normalized 16 kHz samples and returns `[1, frames, vocab]` logits. */
+interface CtcSession {
+    run(inputValues: Float32Array): Promise<{
+        data: Float32Array;
+        dims: readonly number[];
+    }>;
+    dispose(): Promise<void>;
+}
+type CtcFactory = (model: string, options: CtcLoadOptions) => Promise<CtcSession>;
+/** Holds raw decodes by audio hash. A `Map` fits; a product can pass a persistent store with the same two methods. */
+interface PhonesCache {
+    get(key: string): string | undefined;
+    set(key: string, phones: string): unknown;
+}
+interface Wav2vec2Options {
+    /**
+     * `fp32` (default) matches the PyTorch model frame for frame. `q8` uses a quarter of the memory but gives
+     * different verdicts: thresholds tuned on fp32 do not hold for it.
+     */
+    dtype?: Wav2vec2Dtype;
+    /** A transformers.js device, e.g. `cpu`. The runtime picks when unset. */
+    device?: string;
+    /** Where the runtime caches model weights. Pass one: the runtime's default sits inside `node_modules`. */
+    cacheDir?: string;
+    /** A commit of the model repo. Defaults to `WAV2VEC2_REVISION`. */
+    revision?: string;
+    /** Intra-op threads for the ONNX session. The runtime picks when unset. */
+    threads?: number;
+    cache?: PhonesCache;
+    /** Injectable for tests; defaults to importing `@huggingface/transformers`. */
+    loadModel?: () => Promise<CtcFactory>;
+}
+interface CtcRecognition {
+    /** The raw greedy decode: space-separated vocab tokens, uncleaned. */
+    phones: string;
+    /** The best token id per frame. */
+    ids: number[];
+    logits: CtcLogits;
+}
+interface Wav2vec2Recognizer {
+    /** The raw decode of `audio`, cached by audio hash. */
+    recognize(audio: Audio): Promise<string>;
+    /** The decode with its per-frame ids and logits. Always runs the model, and fills the decode cache. */
+    recognizeWithLogits(audio: Audio): Promise<CtcRecognition>;
+    /** Token text by id. */
+    readonly vocab: readonly string[];
+    readonly blankId: number;
+    dispose(): Promise<void>;
+}
+/**
+ * Resolves the peer's `AutoModelForCTC` and `Tensor` through `importModule`, naming the install command when the
+ * peer is absent. The factory refuses weights that are not cached while TITAN_SPEECH_OFFLINE is set.
+ */
+declare function loadTransformersCtc(importModule?: ModuleImporter): Promise<CtcFactory>;
+/**
+ * Phone recognition with `wav2vec2-lv-60-espeak-cv-ft` over transformers.js: espeak-style IPA tokens per 20 ms
+ * frame, greedy-decoded. Audio at any rate is resampled to 16 kHz; feed chunk-length audio (30 s or less), since
+ * memory grows with the square of the length. Decodes are cached by a hash of the model, dtype, revision and audio.
+ */
+declare function wav2vec2Recognizer(options?: Wav2vec2Options): Wav2vec2Recognizer;
+
 interface SttProvider {
     transcribe(audio: Audio): Promise<Transcript>;
 }
@@ -158,7 +258,6 @@ interface WhisperSttOptions {
     /** Injectable for tests; defaults to importing `@huggingface/transformers`. */
     loadPipeline?: () => Promise<AsrFactory>;
 }
-type ModuleImporter = (name: string) => Promise<unknown>;
 /**
  * Resolves the peer's `pipeline` through `importModule`, naming the install command when the peer is absent. The
  * returned factory refuses an uncached model while TITAN_SPEECH_OFFLINE is set.
@@ -173,4 +272,4 @@ declare function whisperStt(options?: WhisperSttOptions): SttProvider & {
     dispose(): Promise<void>;
 };
 
-export { type AsrChunk, type AsrFactory, type AsrOutput, type AsrPipeline, type Audio, type Block, type DiffOptions, type ModuleImporter, type Opcode, type OpcodeTag, type Segment, SegmentSchema, SequenceMatcher, type SequenceMatcherOptions, type SttProvider, type Transcript, type TranscriptCache, TranscriptSchema, type WhisperSttOptions, type Word, type WordDiff, WordSchema, align, diff, loadTransformersPipeline, normalize, resample, whisperStt };
+export { type AsrChunk, type AsrFactory, type AsrOutput, type AsrPipeline, type Audio, type Block, CTC_BLANK_ID, type CtcFactory, type CtcLoadOptions, type CtcLogits, type CtcRecognition, type CtcSession, type DiffOptions, type ModuleImporter, type Opcode, type OpcodeTag, type PhonesCache, type Segment, SegmentSchema, SequenceMatcher, type SequenceMatcherOptions, type SttProvider, type Transcript, type TranscriptCache, TranscriptSchema, WAV2VEC2_MODEL, WAV2VEC2_REVISION, type Wav2vec2Dtype, type Wav2vec2Options, type Wav2vec2Recognizer, type WhisperSttOptions, type Word, type WordDiff, WordSchema, align, argmaxFrames, ctcGreedyDecode, diff, loadTransformersCtc, loadTransformersPipeline, normalize, normalizeInput, resample, wav2vec2Recognizer, whisperStt };
