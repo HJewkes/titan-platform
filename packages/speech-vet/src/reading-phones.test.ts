@@ -3,11 +3,18 @@ import { describe, expect, it } from "vitest";
 import { englishHeteronyms, type PhonemeToken } from "./heteronyms.js";
 import { checkHeardReadings, expandReading, readingIpa } from "./reading-phones.js";
 
-// Synthetic lines. Tokens are in misaki notation as misakiEnglish().tokens() emits them; the recognizer
-// strings are constructed in wav2vec2's espeak-style output, one packed and one space-separated.
+// Synthetic lines. Tokens are in misaki notation as misakiEnglish().tokens() emits them. Apart from the
+// recorded fixture below, the recognizer strings are constructed in wav2vec2's espeak-style output.
 function tokens(...pairs: Array<[text: string, phonemes: string | null]>): PhonemeToken[] {
   return pairs.map(([text, phonemes]) => ({ text, phonemes, whitespace: " " }));
 }
+
+// Recorded: misakiEnglish().tokens("the show is live") → kokoroProvider (Kokoro-82M-v1.0-ONNX-timestamped, fp32, af_heart)
+// → resample to 16 kHz → wav2vec2Recognizer (onnx-community/wav2vec2-lv-60-espeak-cv-ft-ONNX@c69750f5, fp32, cpu).
+const RECORDED_SHOW_IS_LIVE = {
+  tokens: tokens(["the", "ðə"], ["show", "ʃˈO"], ["is", "ɪz"], ["live", "lˈIv"]),
+  recognized: "ð ə ʃ oʊ ɪ z l aɪ v",
+};
 
 const SHOW_IS_LIVE_ADJ = tokens(["the", "ðə"], ["show", "ʃˈO"], ["is", "ɪz"], ["live", "lˈIv"], [".", "."]);
 const PRONOUN_I_LIVE_VERB = tokens(["I", "ˈI"], ["live", "lˈɪv"], ["here", "hˈɪɹ"], [".", "."]);
@@ -19,13 +26,19 @@ function heard(spoken: string, line: PhonemeToken[], recognized: string): Array<
 
 describe("checkHeardReadings", () => {
   // Catches: the heard reading taken from the tokens instead of the audio, so the declared verb passes.
-  it("the show is live, heard as the adjective against a declared verb, fails", () => {
-    expect(heard("The show is [live](=verb).", SHOW_IS_LIVE_ADJ, "ðəʃoʊɪzlaɪv")).toEqual([["verb", "adj", "fail"]]);
+  it("the recorded show is live, heard as the adjective against a declared verb, fails", () => {
+    const { tokens: line, recognized } = RECORDED_SHOW_IS_LIVE;
+    expect(heard("the show is [live](=verb)", line, recognized)).toEqual([["verb", "adj", "fail"]]);
   });
 
-  it("the show is live, heard as the declared adjective in spaced output, is ok", () => {
-    const [reading] = checkHeardReadings("The show is [live](=adj).", SHOW_IS_LIVE_ADJ, "ð ə ʃ oʊ ɪ z l aɪ v", { toIpa: misakiToIpa });
+  it("the recorded show is live against a declared adjective is ok", () => {
+    const { tokens: line, recognized } = RECORDED_SHOW_IS_LIVE;
+    const [reading] = checkHeardReadings("the show is [live](=adj)", line, recognized, { toIpa: misakiToIpa });
     expect(reading).toEqual({ word: "live", occurrence: 1, declared: "adj", heard: "adj", heardPhones: "laɪv", distance: 0, status: "ok" });
+  });
+
+  it("packed recognizer output aligns as the spaced output does", () => {
+    expect(heard("The show is [live](=verb).", SHOW_IS_LIVE_ADJ, "ðəʃoʊɪzlaɪv")).toEqual([["verb", "adj", "fail"]]);
   });
 
   // Catches: the voice departing from tokens that already carry the declared reading going unseen.
