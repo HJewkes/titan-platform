@@ -1,5 +1,5 @@
 /** A token reduced to what parity compares. `phonemes` is null when nothing was read. */
-export interface Reading {
+interface Reading {
   text: string;
   phonemes: string | null;
 }
