@@ -37,3 +37,37 @@ export {
   type NormalizeStep,
 } from "./normalize.js";
 export { numberToOrdinal, numberToWords, spellDigits } from "./number-words.js";
+export {
+  admissiblePhones,
+  cleanIpa,
+  DEFAULT_PHONE_VOICE,
+  expectedPhones,
+  g2pSentence,
+  MIN_PHONES_FOR_VERDICT,
+  MIN_SPAN_RATIO_FOR_VERDICT,
+  phonemeDistance,
+  phoneMatchDistance,
+  SHORT_WORD_MAX_PHONES,
+  WEAK_FORMS,
+  XTTS_FAULT_THRESHOLD,
+  XTTS_FAULT_THRESHOLD_SHORT,
+  XTTS_FAULT_THRESHOLD_UNUSUAL,
+  type PhoneG2p,
+  type PhoneG2pOptions,
+} from "./phones.js";
+export {
+  chunkWordVerdicts,
+  detectHallucinations,
+  detectTailArtifact,
+  HALLUCINATION_MIN_PHONES,
+  recognizePhones,
+  TAIL_STRAY_MIN_PHONES,
+  type Hallucination,
+  type HallucinationOptions,
+  type PhoneRecognizer,
+  type PhoneSource,
+  type TailArtifact,
+  type TailArtifactOptions,
+  type WordVerdict,
+  type WordVerdictOptions,
+} from "./phone-verdicts.js";
