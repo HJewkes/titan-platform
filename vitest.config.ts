@@ -33,6 +33,8 @@ export default defineConfig({
   // Apps render @titan-design/react-ui, which is written against React Native primitives; no package imports react-native.
   resolve: { alias: { "react-native": "react-native-web" } },
   test: {
+    // The speech loaders refuse an uncached model before any network call, so no test can download weights.
+    env: { TITAN_SPEECH_OFFLINE: "1" },
     // Inlined so the alias above applies; left external, Node would load react-native's Flow source.
     server: { deps: { inline: [/@titan-design\/react-ui/] } },
     globalSetup: ["scripts/vitest-tmpdir.mjs"],

@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { resample } from "./resample.js";
 import type { Audio, Transcript, Word } from "./schemas.js";
 
@@ -96,6 +98,16 @@ function audioKey(model: string, audio: Audio): string {
     .digest("hex");
 }
 
+/** With TITAN_SPEECH_OFFLINE set, an uncached model is refused before the factory can reach the network. */
+function assertCachedWhenOffline(model: string, cacheDir: string | undefined): void {
+  if (!process.env.TITAN_SPEECH_OFFLINE) return;
+  if (cacheDir === undefined) throw new Error(`offline: TITAN_SPEECH_OFFLINE is set and no cacheDir is given for ${model}`);
+  const dir = join(cacheDir, model);
+  if (!existsSync(dir) || readdirSync(dir).length === 0) {
+    throw new Error(`offline: ${model} is not in ${cacheDir} and TITAN_SPEECH_OFFLINE is set`);
+  }
+}
+
 /** Loads the pipeline on first use. A failed load is forgotten, so the next call retries instead of replaying it. */
 function lazyPipeline(model: string, options: WhisperSttOptions) {
   const loadPipeline = options.loadPipeline ?? (() => loadTransformersPipeline());
@@ -108,7 +120,10 @@ function lazyPipeline(model: string, options: WhisperSttOptions) {
   return {
     get(): Promise<AsrPipeline> {
       asr ??= loadPipeline()
-        .then((factory) => factory("automatic-speech-recognition", model, pipelineOptions))
+        .then((factory) => {
+          assertCachedWhenOffline(model, options.cacheDir);
+          return factory("automatic-speech-recognition", model, pipelineOptions);
+        })
         .catch((err: unknown) => {
           asr = null;
           throw err;

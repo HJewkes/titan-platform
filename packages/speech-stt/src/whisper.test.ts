@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { Audio } from "./schemas.js";
 import { loadTransformersPipeline, whisperStt, type AsrChunk, type AsrFactory, type AsrOutput } from "./whisper.js";
@@ -133,5 +136,29 @@ describe("loadTransformersPipeline", () => {
   it("returns the module's pipeline", async () => {
     const pipeline = vi.fn();
     await expect(loadTransformersPipeline(async () => ({ pipeline }))).resolves.toBe(pipeline);
+  });
+});
+
+describe("offline guard", () => {
+  it("throws offline: and never fetches when the cache is empty", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "speech-cache-"));
+    const fetchFake = vi.fn();
+    const factory = (async () => {
+      await fetchFake("https://huggingface.co/model");
+      return {};
+    }) as unknown as AsrFactory;
+    vi.stubEnv("TITAN_SPEECH_OFFLINE", "1");
+    try {
+      const stt = whisperStt({
+        cacheDir,
+        loadPipeline: () => loadTransformersPipeline(async () => ({ pipeline: factory })),
+      });
+
+      await expect(stt.transcribe(tone(160))).rejects.toThrow(/^offline:/);
+      expect(fetchFake).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
   });
 });
