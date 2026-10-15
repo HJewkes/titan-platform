@@ -1,16 +1,18 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { levenshteinDistance, metaphone, phoneticDistance } from "./metaphone.js";
 import { sequenceDistance } from "./phones.js";
 
-interface Golden {
-  allowedDifferences: { word: string; code: string; reason: string }[];
-  cases: { word: string; code: string }[];
-}
+const Case = z.object({ word: z.string(), code: z.string() });
+const Golden = z.object({
+  allowedDifferences: z.array(Case.extend({ reason: z.string() })),
+  cases: z.array(Case),
+});
 
-const golden = JSON.parse(
-  readFileSync(new URL("./fixtures/metaphone.golden.json", import.meta.url), "utf8"),
-) as Golden;
+const golden = Golden.parse(
+  JSON.parse(readFileSync(new URL("./fixtures/metaphone.golden.json", import.meta.url), "utf8")),
+);
 
 describe("metaphone against jellyfish 1.2.1 (Rust)", () => {
   // Mutation caught: treating a missing character as jellyfish's Python-fallback sentinel "*****"
