@@ -133,4 +133,57 @@ declare function isInitialism(token: string, spelled?: ReadonlySet<string>): boo
 /** Replaces every initialism in `text` with its dotted letters. */
 declare function spellInitialisms(text: string, opts?: InitialismOptions): string;
 
-export { type HeteronymTable, HeteronymTableSchema, type InitialismOptions, type Lexicon, type LexiconEntry, LexiconEntrySchema, LexiconSchema, type PhonemeToken, type ReadingFinding, type ReadingStatus, type Respeller, SHOUTED_TWO_LETTER_WORDS, SPELLED_INITIALISMS, VOWELLESS_INTERJECTIONS, checkReadings, englishHeteronyms, g2pText, generateCandidates, isInitialism, loadLexicon, plainText, readingOf, respeller, respellingsOf, spellInitialisms, tokenDump };
+/**
+ * Text normalization for narration: the general-purpose expansions any voice needs before it reads a text.
+ *
+ * Each step is one rewrite, and `normalize` runs a list of them in order. The default list is the mechanism half
+ * of the audiobook normalizer: rates ("/week" to " per week"), initialisms, clock times, ages, ordinals, currency,
+ * decimals, large cardinals and whitespace. A product's own rules (book preambles, house punctuation, its
+ * lexicon) are steps it writes and splices into the list.
+ *
+ * Order matters inside the number steps: currency runs before decimals, so "£1.4m" is read as one amount, and
+ * decimals run before cardinals, so "147.8" is not split into "one hundred forty-seven.8". Numbers under 100 are
+ * left as digits, which voices read well.
+ */
+
+interface NormalizeStep {
+    readonly name: string;
+    readonly apply: (text: string) => string;
+}
+/** Rate units a slash reads as "per"; a domain adds its own ("match", "game") through `rateStep`. */
+declare const RATE_UNITS: readonly string[];
+/** "/week" reads as " per week"; any other slash is left to the caller's policy. */
+declare function rateStep(units?: Iterable<string>): NormalizeStep;
+/** Dotted letters for all-caps initialisms, through {@link spellInitialisms}. */
+declare function initialismStep(opts?: InitialismOptions): NormalizeStep;
+/** "7 pm" and "7 p.m." read as "seven P M". */
+declare const timeStep: NormalizeStep;
+/** "15-year-old" reads as "fifteen-year-old". */
+declare const ageStep: NormalizeStep;
+/** "21st" reads as "twenty-first"; only one- and two-digit ordinals are expanded. */
+declare const ordinalStep: NormalizeStep;
+/** "£1.4m" reads as "one point four million pounds", with the currency word last. */
+declare const currencyStep: NormalizeStep;
+/** "147.8" reads as "one hundred forty-seven point eight", and "0.28m" as "two hundred eighty thousand". */
+declare const decimalStep: NormalizeStep;
+/** Comma-grouped numbers and numbers of 100 or more read as words; "007" and "42" stay digits. */
+declare const cardinalStep: NormalizeStep;
+/** Tabs and runs of spaces become one space, three or more newlines a paragraph break, and the ends are trimmed. */
+declare const whitespaceStep: NormalizeStep;
+/** The audiobook normalizer's `normalize_numbers`, in its order. */
+declare const NUMBER_STEPS: readonly NormalizeStep[];
+declare const DEFAULT_NORMALIZE_STEPS: readonly NormalizeStep[];
+/** Runs `steps` over `text` in order; a caller filters or splices the default list to pick its own. */
+declare function normalize(text: string, steps?: readonly NormalizeStep[]): string;
+
+/**
+ * American cardinal words, with no "and": 147 is "one hundred forty-seven". From a trillion up the digits are
+ * returned unchanged, as the audiobook original does.
+ */
+declare function numberToWords(n: number): string;
+/** Ordinal words: 21 is "twenty-first", 42 is "forty-second". */
+declare function numberToOrdinal(n: number): string;
+/** A decimal fraction read digit by digit: "176" is "one seven six". */
+declare function spellDigits(digits: string): string;
+
+export { DEFAULT_NORMALIZE_STEPS, type HeteronymTable, HeteronymTableSchema, type InitialismOptions, type Lexicon, type LexiconEntry, LexiconEntrySchema, LexiconSchema, NUMBER_STEPS, type NormalizeStep, type PhonemeToken, RATE_UNITS, type ReadingFinding, type ReadingStatus, type Respeller, SHOUTED_TWO_LETTER_WORDS, SPELLED_INITIALISMS, VOWELLESS_INTERJECTIONS, ageStep, cardinalStep, checkReadings, currencyStep, decimalStep, englishHeteronyms, g2pText, generateCandidates, initialismStep, isInitialism, loadLexicon, normalize, numberToOrdinal, numberToWords, ordinalStep, plainText, rateStep, readingOf, respeller, respellingsOf, spellDigits, spellInitialisms, timeStep, tokenDump, whitespaceStep };

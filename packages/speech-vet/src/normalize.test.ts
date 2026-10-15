@@ -58,7 +58,8 @@ describe("currency", () => {
 
   // Catches: only the pound sign mapped to a currency word.
   it("dollars and euros", () => {
-    expect([numbers("$5.24m"), numbers("€3k")]).toEqual(["five million two hundred forty thousand dollars", "three thousand euros"]);
+    expect(numbers("$5.24m")).toBe("five million two hundred forty thousand dollars");
+    expect(numbers("€3k")).toBe("three thousand euros");
   });
 
   // Catches: single-digit fractions multiplied out too, giving "one million four hundred thousand pounds".
@@ -112,7 +113,8 @@ describe("decimals", () => {
 
   // Catches: the magnitude suffix dropped from non-currency decimals.
   it("decimal with magnitude suffix", () => {
-    expect([numbers("3.1m"), numbers("0.28m")]).toEqual(["three point one million", "two hundred eighty thousand"]);
+    expect(numbers("3.1m")).toBe("three point one million");
+    expect(numbers("0.28m")).toBe("two hundred eighty thousand");
   });
 
   // Catches: the percent sign consumed or spoken; the original leaves it for the voice.
