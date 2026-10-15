@@ -35,6 +35,9 @@ const VisualPathsSchema = z
     }
   }, "every glob must compile");
 
+/** The check that diffs rendered output against committed baselines, and the globs naming those baseline files. */
+const VisualBaselinesSchema = z.object({ check: z.string().min(1, "name the check that diffs the baselines"), paths: VisualPathsSchema });
+
 /** A path as written (slashes tidied, case kept, for spawn cwds) and its one comparison key. */
 export interface RepoPath {
   written: string;
@@ -91,6 +94,10 @@ function seatFileSchema(home: string) {
     deny_repos: z.array(path).default([]),
     grants_extra: z.array(z.string()).default([]),
     visual_paths: VisualPathsSchema.optional(),
+    visual_baselines: VisualBaselinesSchema.optional(),
+  }).refine((data) => data.visual_baselines === undefined || data.visual_paths !== undefined, {
+    message: "visual_baselines needs visual_paths, since baselines only narrow which visual paths gate",
+    path: ["visual_baselines"],
   });
 }
 
@@ -105,6 +112,8 @@ export interface Seat {
   grants: string[];
   /** Repo-relative globs a PR must touch none of to merge without the owner; absent means the seat has not opted in. */
   visualPaths?: string[];
+  /** The check and baseline globs that let a visual-path PR changing no baseline merge on a green check; absent keeps the glob gate. */
+  visualBaselines?: { check: string; paths: string[] };
 }
 
 export interface SeatBook {
@@ -171,7 +180,20 @@ function narrowest(seats: Seat[]): Seat {
   const grants = seats[0]!.grants.filter((g) => seats.every((s) => s.grants.includes(g)));
   const paths = Object.assign({}, ...seats.map((s) => s.paths)) as Record<string, string>;
   const visualPaths = sharedVisualPaths(seats);
-  return { name: seats.map((s) => s.name).join("+"), remotes: [...new Set(seats.flatMap((s) => s.remotes))], paths, grants, ...(visualPaths && { visualPaths }) };
+  const visualBaselines = visualPaths && sharedVisualBaselines(seats);
+  const visual = { ...(visualPaths && { visualPaths }), ...(visualBaselines && { visualBaselines }) };
+  return { name: seats.map((s) => s.name).join("+"), remotes: [...new Set(seats.flatMap((s) => s.remotes))], paths, grants, ...visual };
+}
+
+/** Baselines loosen the glob gate, so a shared remote keeps them only when every seat with visual paths declares the same ones. */
+function sharedVisualBaselines(seats: Seat[]): Seat["visualBaselines"] {
+  const declared = seats.filter((s) => s.visualPaths !== undefined).map((s) => s.visualBaselines);
+  const keys = new Set(declared.map(baselinesKey));
+  return keys.size === 1 && declared[0] !== undefined ? declared[0] : undefined;
+}
+
+function baselinesKey(baselines: Seat["visualBaselines"]): string | undefined {
+  return baselines && JSON.stringify([baselines.check, [...new Set(baselines.paths)].sort()]);
 }
 
 /**
@@ -267,9 +289,12 @@ function globReason(glob: string): string | undefined {
  */
 function checkVisualPathsRelative(files: NamedSeatFile[]): void {
   for (const { file, data } of files) {
-    for (const glob of data.visual_paths ?? []) {
-      const reason = globReason(glob);
-      if (reason !== undefined) throw new SeatBookInvalid(`seat ${data.name} visual_paths glob ${JSON.stringify(glob)} ${reason}, so it matches no repo-relative path (${file})`);
+    const fields = { visual_paths: data.visual_paths ?? [], visual_baselines: data.visual_baselines?.paths ?? [] };
+    for (const [field, globs] of Object.entries(fields)) {
+      for (const glob of globs) {
+        const reason = globReason(glob);
+        if (reason !== undefined) throw new SeatBookInvalid(`seat ${data.name} ${field} glob ${JSON.stringify(glob)} ${reason}, so it matches no repo-relative path (${file})`);
+      }
     }
   }
 }
@@ -299,7 +324,8 @@ function toSeat(data: SeatFile): Seat {
   const owned = data.repos.filter((r) => r.read_only !== true);
   const remotes = owned.flatMap((r) => (r.remote ? [r.remote] : []));
   const paths = Object.fromEntries(owned.flatMap((r) => (r.remote && r.path ? [[r.remote, r.path.written]] : [])));
-  return { name: data.name, remotes, paths, grants: data.grants_extra, ...(data.visual_paths && { visualPaths: data.visual_paths }) };
+  const visual = { ...(data.visual_paths && { visualPaths: data.visual_paths }), ...(data.visual_baselines && { visualBaselines: data.visual_baselines }) };
+  return { name: data.name, remotes, paths, grants: data.grants_extra, ...visual };
 }
 
 /** No configured charter means no hard stops; a configured one must exist and parse. */

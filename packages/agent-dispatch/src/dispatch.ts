@@ -70,6 +70,7 @@ import {
   type SafeExecResult,
 } from "./exec.js";
 import { assertInstalledHeadless } from "./profile-guard.js";
+import { timeAgentChatCall } from "./call-timing.js";
 
 /** Each class carries a fixed `name`, so a caller can record which kind of failure it was without its message. */
 export class DispatchError extends Error {
@@ -219,13 +220,9 @@ export async function dispatchToAgentChat(
   let result;
   try {
     const bin = resolveBinaryPath(req.agentChatBinPath, "agent-chat");
-    result = await execSafeAsync(
-      bin,
-      buildSpawnArgs(req),
-      agentChatEnv(),
-      timeoutMs,
-      req.brief,
-      req.cwd,
+    const args = buildSpawnArgs(req);
+    result = await timeAgentChatCall(args, () =>
+      execSafeAsync(bin, args, agentChatEnv(), timeoutMs, req.brief, req.cwd),
     );
   } catch (err) {
     if (err instanceof ExecTimeoutError) throw new DispatchTimeoutError(err.message);

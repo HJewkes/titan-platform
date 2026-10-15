@@ -268,6 +268,67 @@ describe("normal work classifies nothing", () => {
   });
 });
 
+describe("an HTTP write to a URL that may reach GitHub's API only at run time reads as a merge", () => {
+  const merges = (command: string) => bash(command).filter((a) => a.action === "merge");
+
+  it.each([
+    'curl -X PUT "$URL"',
+    "curl -XPUT $U",
+    'curl --request PUT "$U"',
+    'wget --method=PUT "$U"',
+    'http PUT "$U"',
+    'curl -d x=1 "$U"',
+    'curl -T f "$U"',
+    'curl -X "$M" "$U"',
+    'curl -X PUT "https://api.github.com/repos/$R/pulls/1/merge"',
+    'curl -X PUT "https://api.github.com/repos/o/r/pulls/$N"',
+    'http "$M" "$U"',
+    'http put "$U"',
+    'curl -X PUT "$U" --next -X GET https://example.com/x',
+    'curl -X PUT "$U" -: -X GET https://example.com/x',
+    'echo "$U" | xargs curl -X PUT',
+    "wget --method=PUT -i urls",
+    "wget --method=PUT --input-file=urls https://example.com/x",
+    "curl -X PUT",
+    'curl --variable %P --expand-url "https://api.github.com/{{P}}" -X PUT',
+    'curl -X GET "$U" --next -I https://example.com/x',
+  ])("%s", (command) => {
+    expect(merges(command)).toEqual([expect.objectContaining({ spelling: "bash.merge.curl-api", subject: {} })]);
+  });
+
+  it.each(['curl -X PUT "https://api.github.com/repos/o/r/pulls/1/merg{e}"', "curl -X PUT 'https://api.github.com/repos/o/r/pulls/[1-2]/merge'"])(
+    "expands curl's own glob in %s to the literal endpoint it names",
+    (command) => {
+      expect(merges(command)).toEqual([expect.objectContaining({ spelling: "bash.merge.curl-api", subject: { pr: "1" } })]);
+    },
+  );
+
+  it("lets a literal merge endpoint name its PR", () => {
+    expect(merges('curl -X PUT "https://$H/repos/o/r/pulls/1/merge"')).toEqual([expect.objectContaining({ spelling: "bash.merge.curl-api", subject: { pr: "1" } })]);
+  });
+
+  it.each([
+    'curl "$U"',
+    'curl -X GET "$U"',
+    'curl -I "$U"',
+    'curl -G -d q=1 "$U"',
+    'curl -X PUT "https://example.com/$P"',
+    'curl -X PUT "http://localhost:8080/$P"',
+    'U=https://example.com/x; curl -X PUT "$U"',
+    "curl -X PUT https://example.com/x",
+    "curl -X PUT 'https://example.com/a[1-2]'",
+    "curl -g -X PUT 'https://api.github.com/repos/o/r/pulls/1/merg{e}'",
+    "curl -X PUT 'http://[::1]:8080/x'",
+    'curl -I https://example.com/x --next -X GET "$U"',
+    'echo "$U" | xargs curl',
+    "wget -i urls",
+    'http "$U" Accept:json',
+    'http get "$U"',
+  ])("leaves %s to egress", (command) => {
+    expect(merges(command)).toEqual([]);
+  });
+});
+
 describe("xargs -I runs the command once per input line", () => {
   it("denies a push hidden behind a read-only line", () => {
     expect(bash("printf 'status\\npush origin HEAD:main' | xargs -I{} git {}")).toEqual([
