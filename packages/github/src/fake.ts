@@ -57,6 +57,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     readFaults: {},
     refs: new Map([[base, options.baseSha ?? fakeSha("base")]]),
     jobLogs: new Map(),
+    jobSteps: new Map(),
     files: new Map(),
     actor: "shepherd-bot",
     prFiles: new Map(),
@@ -141,6 +142,11 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       const log = fake.jobLogs.get(jobId);
       if (log === undefined) throw new FakeHttpError(404, `no job ${jobId}`);
       return record("getJobLog", log);
+    },
+    getJobSteps: async (_repo, jobId) => {
+      const steps = fake.jobSteps.get(jobId);
+      if (steps === undefined) throw new FakeHttpError(404, `no job ${jobId}`);
+      return record("getJobSteps", steps.map((one) => ({ ...one })));
     },
     updateBranch: async (_repo, number, expected) => record("updateBranch", updateBranch(fake, mustPr(prs, number), expected, nextSha)),
     setPrBase: async (_repo, number, base) => record("setPrBase", setPrBase(fake, mustPr(prs, number), base)),
