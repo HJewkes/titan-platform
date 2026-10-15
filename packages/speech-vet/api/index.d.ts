@@ -316,4 +316,113 @@ declare function detectTailArtifact(text: string, actualFull: string, options: T
 /** The recognizer's phones, cleaned. Cleaning runs on every read, so a cache of raw decodes follows fold changes. */
 declare function recognizePhones(recognizer: PhoneRecognizer, audio: Audio): Promise<string>;
 
-export { DEFAULT_NORMALIZE_STEPS, DEFAULT_PHONE_VOICE, ESPEAK_TIMEOUT_MS, type EspeakCliOptions, type EspeakRunner, HALLUCINATION_MIN_PHONES, type Hallucination, type HallucinationOptions, type HeteronymTable, HeteronymTableSchema, type InitialismOptions, type Lexicon, type LexiconEntry, LexiconEntrySchema, LexiconSchema, MIN_PHONES_FOR_VERDICT, MIN_SPAN_RATIO_FOR_VERDICT, NUMBER_STEPS, type NormalizeStep, type PhoneG2p, type PhoneG2pOptions, type PhoneRecognizer, type PhoneSource, type PhonemeToken, RATE_UNITS, type ReadingFinding, type ReadingStatus, type Respeller, SHORT_WORD_MAX_PHONES, SHOUTED_TWO_LETTER_WORDS, SPELLED_INITIALISMS, TAIL_STRAY_MIN_PHONES, type TailArtifact, type TailArtifactOptions, VOWELLESS_INTERJECTIONS, WEAK_FORMS, type WordVerdict, type WordVerdictOptions, XTTS_FAULT_THRESHOLD, XTTS_FAULT_THRESHOLD_SHORT, XTTS_FAULT_THRESHOLD_UNUSUAL, admissiblePhones, ageStep, cardinalStep, checkReadings, chunkWordVerdicts, cleanIpa, currencyStep, decimalStep, detectHallucinations, detectTailArtifact, englishHeteronyms, espeakCliG2p, espeakVersion, expectedPhones, g2pSentence, g2pText, generateCandidates, initialismStep, isInitialism, loadLexicon, normalize, numberToOrdinal, numberToWords, ordinalStep, phoneMatchDistance, phonemeDistance, plainText, rateStep, readingOf, recognizePhones, respeller, respellingsOf, spellDigits, spellInitialisms, timeStep, tokenDump, whitespaceStep };
+/**
+ * Take selection, a port of the audiobook backend's `tts/verified.py` (the re-roll loop) and the
+ * tail-fix half of `scripts/fix_pass.py` (`keepTake`, regressions, best-of-N). Every model or file
+ * touch is injected, so nothing here synthesizes, recognizes or writes.
+ */
+
+/** A take must beat the shipped audio's flagged-word distance by this much to count as an improvement. */
+declare const KEEP_TAKE_MARGIN = 0.06;
+/**
+ * How much further an already-faulty word must degrade to count as a regression. Only words the take
+ * leaves over the fault threshold are judged: a whole-chunk re-synthesis re-renders every word, so
+ * sub-threshold distances jitter and scoring that jitter rejects good takes.
+ */
+declare const WORSE_MARGIN = 0.06;
+/** Re-rolls after the first take. */
+declare const DEFAULT_RETRIES = 5;
+/** The shortest word, in letters, that a tail check scores for regressions. */
+declare const MIN_TARGET_WORD_LENGTH = 3;
+interface TakeScore {
+    /** Words the take pronounces worse than the shipped audio. */
+    brokeWords: number;
+    /** Phones the audio runs on with past the last word. */
+    strayLength: number;
+    /** The flagged word's phone distance; 0 when nothing was flagged. */
+    distance: number;
+}
+/**
+ * Whether `take` replaces `shipped`. Never a take that damages a word, however clean its tail. Between
+ * the rest, a shorter stray wins outright; at equal stray the distance must fall by more than `margin`,
+ * so a tie keeps what is already on disk.
+ */
+declare function keepTake(shipped: TakeScore, take: TakeScore, margin?: number): boolean;
+/** A word's phone distance and whether the audio mispronounces it (`xtts` source). */
+interface WordDistance {
+    distance: number;
+    faulty: boolean;
+}
+/**
+ * Words this take actively damages: left genuinely mispronounced AND worse than shipped, either because
+ * it was fine before or because it was already faulty and has degraded past `margin`. Distances, not a
+ * set of faulty words: a word that was already faulty and degrades never enters or leaves such a set.
+ */
+declare function regressions(shipped: ReadonlyMap<string, WordDistance>, take: ReadonlyMap<string, WordDistance>, margin?: number): string[];
+interface WordDistanceOptions extends PhoneG2pOptions {
+    /** Defaults to the words of `text` with at least `MIN_TARGET_WORD_LENGTH` letters. */
+    targets?: readonly string[];
+    unusual?: Iterable<string>;
+}
+/** Per-word distance for one rendering's phones, keyed by word. */
+declare function wordDistances(text: string, actualPhones: string, options: WordDistanceOptions): Map<string, WordDistance>;
+interface RawTake<T> {
+    /** The caller's handle on the take, such as a file path; returned for the winner. */
+    value: T;
+    audio: Audio;
+}
+interface VerifiedTake<T> {
+    value: T;
+    /** Takes made, the winner included. */
+    attempts: number;
+    /** False when every take babbled and the least severe was kept. */
+    clean: boolean;
+    /** Hallucinations of the kept take. */
+    hallucinations: Hallucination[];
+}
+interface SynthesizeVerifiedOptions<T> extends PhoneG2pOptions {
+    synthesize: (attempt: number) => Promise<RawTake<T>>;
+    /** Absent, one plain take is made and returned unchecked. */
+    recognizer?: PhoneRecognizer;
+    retries?: number;
+    minRun?: number;
+    /** Called once for every take that is not returned, so temp files do not accumulate. */
+    discard?: (value: T) => void | Promise<void>;
+}
+/**
+ * Synthesizes `text`, re-rolling babbled takes. The first hallucination-free take wins; if every attempt
+ * babbles, the least severe is kept (the earliest on a tie), so a chunk is never dropped.
+ */
+declare function synthesizeVerified<T>(text: string, options: SynthesizeVerifiedOptions<T>): Promise<VerifiedTake<T>>;
+interface TailCandidate<T> {
+    label: string;
+    /** Synthesizes one take and returns its recognized phones. */
+    take: () => Promise<{
+        value: T;
+        phones: string;
+    }>;
+}
+interface BestTailTakeOptions<T> extends WordDistanceOptions {
+    text: string;
+    shippedPhones: string;
+    /** The tail artifact the shipped audio was flagged for. */
+    before: Pick<TailArtifact, "length">;
+    candidates: readonly TailCandidate<T>[];
+    margin?: number;
+}
+interface TailFix<T> {
+    label: string;
+    value: T;
+    kept: boolean;
+    brokeWords: string[];
+    afterLength: number;
+    afterPhones: string;
+}
+/**
+ * Tries every candidate and returns the best: fewest damaged words first, then shortest stray. It is
+ * kept only through `keepTake`, so a take that clears the stray but breaks a word is disqualified
+ * outright, and a take no better than the shipped audio never ships.
+ */
+declare function bestTailTake<T>(options: BestTailTakeOptions<T>): Promise<TailFix<T>>;
+
+export { type BestTailTakeOptions, DEFAULT_NORMALIZE_STEPS, DEFAULT_PHONE_VOICE, DEFAULT_RETRIES, ESPEAK_TIMEOUT_MS, type EspeakCliOptions, type EspeakRunner, HALLUCINATION_MIN_PHONES, type Hallucination, type HallucinationOptions, type HeteronymTable, HeteronymTableSchema, type InitialismOptions, KEEP_TAKE_MARGIN, type Lexicon, type LexiconEntry, LexiconEntrySchema, LexiconSchema, MIN_PHONES_FOR_VERDICT, MIN_SPAN_RATIO_FOR_VERDICT, MIN_TARGET_WORD_LENGTH, NUMBER_STEPS, type NormalizeStep, type PhoneG2p, type PhoneG2pOptions, type PhoneRecognizer, type PhoneSource, type PhonemeToken, RATE_UNITS, type RawTake, type ReadingFinding, type ReadingStatus, type Respeller, SHORT_WORD_MAX_PHONES, SHOUTED_TWO_LETTER_WORDS, SPELLED_INITIALISMS, type SynthesizeVerifiedOptions, TAIL_STRAY_MIN_PHONES, type TailArtifact, type TailArtifactOptions, type TailCandidate, type TailFix, type TakeScore, VOWELLESS_INTERJECTIONS, type VerifiedTake, WEAK_FORMS, WORSE_MARGIN, type WordDistance, type WordDistanceOptions, type WordVerdict, type WordVerdictOptions, XTTS_FAULT_THRESHOLD, XTTS_FAULT_THRESHOLD_SHORT, XTTS_FAULT_THRESHOLD_UNUSUAL, admissiblePhones, ageStep, bestTailTake, cardinalStep, checkReadings, chunkWordVerdicts, cleanIpa, currencyStep, decimalStep, detectHallucinations, detectTailArtifact, englishHeteronyms, espeakCliG2p, espeakVersion, expectedPhones, g2pSentence, g2pText, generateCandidates, initialismStep, isInitialism, keepTake, loadLexicon, normalize, numberToOrdinal, numberToWords, ordinalStep, phoneMatchDistance, phonemeDistance, plainText, rateStep, readingOf, recognizePhones, regressions, respeller, respellingsOf, spellDigits, spellInitialisms, synthesizeVerified, timeStep, tokenDump, whitespaceStep, wordDistances };

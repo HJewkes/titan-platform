@@ -81,6 +81,11 @@ detectTailArtifact(text, "ð ə m æ t ʃ ɪ n s æ l f ɚ d ɛ n d ᵻ d k u", 
 
 ## What it deliberately does not do
 
+Take selection is pure too: `synthesizeVerified` re-rolls a babbled take through a `synthesize`
+callback you supply, and `keepTake`, `regressions` and `bestTailTake` decide whether a
+regenerated take replaces the shipped one (a tie keeps the shipped take; a take that damages a
+word never wins).
+
 It loads no model and runs no G2P, TTS, STT or phone recognizer itself: the phone check takes
 a `PhoneG2p` and a recognizer from the caller. A product's lexicon data stays in the
 product; only the schema lives here. Its initialism list holds general English, and a
