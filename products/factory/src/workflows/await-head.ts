@@ -11,6 +11,9 @@ import { headPoll, type PushWatch } from "../shepherd/push-signal.js";
 /** The snapshot's pending cadence: an unchanged head's checks are read no more often than a pending head's in the snapshot. */
 export const CHECKS_RECHECK_MS = 3 * 60_000;
 
+/** The freeze recheck's cadence: a ci-red head's failing checks are re-weighed against the base no more often than this. */
+export const BASE_RED_RECHECK_MS = 5 * 60_000;
+
 /** The pull request and the head a human saw fail; the wait ends once the PR shows any other head. */
 export interface AwaitHeadTarget {
   repo: RepoSlug;
@@ -20,13 +23,19 @@ export interface AwaitHeadTarget {
   agent?: string;
   /** Set after a red ci-wait: every required check passing at the unchanged head, as after a rerun of the failed jobs, also ends the wait. */
   untilGreen?: boolean;
+  /** The red check names the wait was entered with; with an `inheritedRed` hook, a red the base turns out to own also ends the wait. */
+  failing?: string[];
 }
 
-/** How the wait ended: `exited` when the fixer ended with the head unchanged and the PR open, `green` when the unchanged head's required checks all passed. */
+/**
+ * How the wait ended: `exited` when the fixer ended with the head unchanged and the PR open, `green` when the unchanged
+ * head's required checks all passed, `baseRed` when the unchanged head's failing checks are now judged the base's red.
+ */
 export interface AwaitHeadOutcome {
   pr: PullRequest;
   exited: boolean;
   green?: true;
+  baseRed?: true;
 }
 
 export interface AwaitHeadTiming {
@@ -39,6 +48,8 @@ export interface AwaitHeadTiming {
   snapshot?: Pick<PrSnapshot, "invalidate" | "getPr" | "checkRuns">;
   /** Told of each transient read failure, so a wait stuck on one is visible while it runs. */
   onReadError?: (message: string) => void;
+  /** Built once per wait, so the checker can keep its own memo of the base it last weighed; true means the head's red is the base's. */
+  inheritedRed?: (target: AwaitHeadTarget) => (pr: PullRequest, signal: AbortSignal) => Promise<boolean>;
 }
 
 const FATAL_STATUSES: ReadonlySet<number> = new Set([401, 403, 404]);
@@ -92,13 +103,44 @@ function confirmReader(target: AwaitHeadTarget, timing: AwaitHeadTiming, read: (
   };
 }
 
-/** Like `awaitNewHead`, but also ends when the fixer exits with the head unchanged, or, with `untilGreen`, when that head turns green. */
+interface BaseRedWatch {
+  check(pr: PullRequest, signal: AbortSignal): Promise<boolean>;
+  advance(ms: number): void;
+}
+
+/** Absent unless the wait carries failing checks and a hook; a thrown check is reported and counts as not the base's. */
+function baseRedWatch(target: AwaitHeadTarget, timing: AwaitHeadTiming): BaseRedWatch | undefined {
+  if (!target.failing?.length || timing.inheritedRed === undefined) return undefined;
+  const inherited = timing.inheritedRed(target);
+  let since: number | undefined;
+  return {
+    async check(pr, signal) {
+      if (since !== undefined && since < BASE_RED_RECHECK_MS) return false;
+      since = 0;
+      try {
+        return await inherited(pr, signal);
+      } catch (error) {
+        timing.onReadError?.(`${target.repo}#${target.pr} base red at ${pr.headSha}: ${error instanceof Error ? error.message : String(error)}`);
+        return false;
+      }
+    },
+    advance(ms) {
+      if (since !== undefined) since += ms;
+    },
+  };
+}
+
+/**
+ * Like `awaitNewHead`, but also ends when the fixer exits with the head unchanged, with `untilGreen` when that head
+ * turns green, or with `failing` and an `inheritedRed` hook when the base turns out to own that head's red.
+ */
 export async function awaitHeadOrExit(port: GitHubPort, target: AwaitHeadTarget, signal: AbortSignal, timing: AwaitHeadTiming = {}): Promise<AwaitHeadOutcome> {
   const pause = timing.sleep ?? sleep;
   const read = headReader(port, target, timing);
   const poll = headPoll({ pushes: timing.pushes, repo: target.repo, headSha: target.headSha, read, confirm: confirmReader(target, timing, read) });
   let pr: PullRequest | undefined;
   let sinceGreen: number | undefined;
+  const baseRed = baseRedWatch(target, timing);
   for (;;) {
     signal.throwIfAborted();
     const polled = await poll.next();
@@ -108,6 +150,7 @@ export async function awaitHeadOrExit(port: GitHubPort, target: AwaitHeadTarget,
       sinceGreen = 0;
       if (await greenAtHead(port, target, pr, timing)) return { pr, exited: false, green: true };
     }
+    if (pr && baseRed && (await baseRed.check(pr, signal))) return { pr, exited: false, baseRed: true };
     if (pr && target.agent !== undefined && (await timing.agentExited?.(target.agent, signal))) {
       // Re-read after the exit is seen, so a push made just before it is not mistaken for no push.
       const last = await port.getPr(target.repo, target.pr).catch(() => undefined);
@@ -115,12 +158,19 @@ export async function awaitHeadOrExit(port: GitHubPort, target: AwaitHeadTarget,
     }
     await pause(poll.tickMs, signal);
     if (sinceGreen !== undefined) sinceGreen += poll.tickMs;
+    baseRed?.advance(poll.tickMs);
   }
 }
 
 export const AWAIT_HEAD_STEPS: readonly StepDeclaration[] = [{ id: "await-new-head", kind: "dispatch" }];
 
-export const AwaitHeadResult = z.looseObject({ headSha: z.string(), state: z.enum(["open", "closed"]), exited: z.boolean().optional(), green: z.boolean().optional() });
+export const AwaitHeadResult = z.looseObject({
+  headSha: z.string(),
+  state: z.enum(["open", "closed"]),
+  exited: z.boolean().optional(),
+  green: z.boolean().optional(),
+  baseRed: z.boolean().optional(),
+});
 
 export interface AwaitHeadDeps extends AwaitHeadTiming {
   port: GitHubPort;
@@ -134,8 +184,9 @@ export interface AwaitHeadDeps extends AwaitHeadTiming {
  */
 export function awaitNewHeadRoute(deps: AwaitHeadDeps, match = "await-new-head"): StepRoute {
   return codeRoute(match, deps.now ?? Date.now, async (target: AwaitHeadTarget, signal) => {
-    const { pr, exited, green } = await awaitHeadOrExit(deps.port, target, signal, deps);
+    const { pr, exited, green, baseRed } = await awaitHeadOrExit(deps.port, target, signal, deps);
     deps.snapshot?.invalidate(target.repo);
-    return { headSha: pr.headSha, state: pr.state, merged: pr.merged, ...(exited && { exited }), ...(green && { green }) };
+    const ended = { ...(exited && { exited }), ...(green && { green }), ...(baseRed && { baseRed }) };
+    return { headSha: pr.headSha, state: pr.state, merged: pr.merged, ...ended };
   });
 }
