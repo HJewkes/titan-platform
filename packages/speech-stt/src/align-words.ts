@@ -37,10 +37,7 @@ export function tokenizeIpa(ipa: string, vocab: readonly string[]): number[] {
   vocab.forEach((token, id) => {
     if (!token.startsWith("<") && !ids.has(token)) ids.set(token, id);
   });
-  const maxLength = Math.max(
-    0,
-    ...[...ids.keys()].map((token) => token.length)
-  );
+  const maxLength = Math.max(0, ...[...ids.keys()].map((token) => token.length));
   const text = ipa.replace(IPA_NOISE, "");
   const out: number[] = [];
   let i = 0;
@@ -70,26 +67,21 @@ export function alignWords(
   script: readonly string[],
   phones: readonly string[],
   logits: CtcLogits,
-  options: AlignWordsOptions
+  options: AlignWordsOptions,
 ): Word[] {
   if (script.length !== phones.length) {
-    throw new RangeError(
-      `alignWords: ${script.length} script words but ${phones.length} phone strings`
-    );
+    throw new RangeError(`alignWords: ${script.length} script words but ${phones.length} phone strings`);
   }
   const offset = startOffset(options.voice);
   const tokens = phones.map((ipa) => tokenizeIpa(ipa, options.vocab));
   const ids = tokens.flat();
-  if (ids.length === 0)
-    throw new RangeError("alignWords: no word has any alignable phones");
+  if (ids.length === 0) throw new RangeError("alignWords: no word has any alignable phones");
   const spans = ctcForcedAlign(logits, ids);
   let next = 0;
   const raw = tokens.map((word) => {
     const own = spans.slice(next, next + word.length);
     next += word.length;
-    return own.length === 0
-      ? null
-      : { start: Math.max(0, own[0]!.start + offset), end: own.at(-1)!.end };
+    return own.length === 0 ? null : { start: Math.max(0, own[0]!.start + offset), end: own.at(-1)!.end };
   });
   return placeWords(raw).map(({ start, end }, k) => ({
     text: script[k]!,
@@ -99,13 +91,7 @@ export function alignWords(
 }
 
 function startOffset(voice: AlignVoice): number {
-  if (typeof voice === "object" && voice !== null) return voice.startOffsetS;
-  if (voice === "kokoro" || voice === "xtts") return CTC_START_OFFSET_S[voice];
-  throw new RangeError(
-    `alignWords: voice must be "kokoro", "xtts" or { startOffsetS }, got ${String(
-      voice
-    )}`
-  );
+  return typeof voice === "object" ? voice.startOffsetS : CTC_START_OFFSET_S[voice];
 }
 
 /** Fills the unaligned words and clips each end that a shifted next start would overlap. */
@@ -119,8 +105,7 @@ function placeWords(raw: readonly (Span | null)[]): Span[] {
       placed.push({ start: at, end: at });
       return;
     }
-    if (prev && span.start < prev.end)
-      prev.end = Math.max(prev.start, span.start);
+    if (prev && span.start < prev.end) prev.end = Math.max(prev.start, span.start);
     placed.push({ ...span });
   });
   return placed;
