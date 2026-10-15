@@ -39,6 +39,16 @@ declare function quoteFragments(quote: string): string[];
  * Returns null when the quote has no fragment long enough to check.
  */
 declare function quoteInRange(fileLines: readonly string[], range: Omit<LineRange, "path">, quote: string): boolean | null;
+type RangeCheck = {
+    ok: true;
+    fileLines: readonly string[];
+} | {
+    ok: false;
+    reason: CitationRejection;
+    detail: string;
+};
+/** Checks a range's shape, path, end-of-file and visibility, with no quote; the first failure wins. */
+declare function verifyRange(source: LineSource, range: LineRange, options?: VerifyOptions): RangeCheck;
 /** Checks a citation's path, range, visibility and quote. Rejections carry a machine-readable reason. */
 declare function verifyCitation(source: LineSource, citation: Citation, options?: VerifyOptions): CitationCheck;
 
@@ -78,6 +88,8 @@ type AnchorParse = {
     reason: AnchorRejection;
     detail: string;
 };
+/** True when `text` is written as an anchor, so it is checked as one rather than read as free text. */
+declare function isAnchorForm(text: string): boolean;
 /** True for a full, lowercase 40-hex git object id; abbreviations and ref names are not pins. */
 declare function isFullSha(rev: string): boolean;
 /**
@@ -87,6 +99,25 @@ declare function isFullSha(rev: string): boolean;
  * the caller's check, by verifyCitation over a LineSource at the anchor's revision.
  */
 declare function parseAnchor(text: string, pins: AnchorPins): AnchorParse;
+
+/** File text at one commit, for each pinned commit an anchor may name. */
+type RevisionSource = (rev: string) => LineSource;
+type AnchorCheck = {
+    ok: true;
+    anchor: Anchor;
+    first: string;
+    last: string;
+} | {
+    ok: false;
+    reason: CitationRejection | "bad-anchor";
+    detail: string;
+};
+/**
+ * Parses `text` against `pins`, then checks each line it names exists at its pinned commit.
+ * A refusal's detail starts with the anchor text and names the file's line count when past EOF;
+ * success quotes the first and last anchored lines back.
+ */
+declare function verifyAnchorText(text: string, pins: AnchorPins, source: RevisionSource): AnchorCheck;
 
 /** True when two ranges share a path and at least one line. Touching ranges (10-12, 12-14) overlap. */
 declare function rangesOverlap(a: LineRange, b: LineRange): boolean;
@@ -143,4 +174,4 @@ declare function scoreControls(expected: readonly LabeledAnswer[], answered: rea
 /** A deterministic generator of floats in [0, 1) from a string or number seed (mulberry32). */
 declare function seededRandom(seed: string | number): () => number;
 
-export { type Anchor, type AnchorParse, type AnchorPins, type AnchorRejection, type Citation, type CitationCheck, type CitationRejection, type ControlScore, type DiffAnchor, type DiffEndpoint, type GroupOptions, type LabelScore, type LabeledAnswer, type LineRange, type LineSource, type Placement, type Planted, type RevisionAnchor, type ShownLines, type VerifyOptions, groupByOverlap, isFullSha, lineSourceFromTexts, parseAnchor, pickControls, placeControls, quoteFragments, quoteInRange, rangesOverlap, scoreControls, seededRandom, splitLines, verifyCitation };
+export { type Anchor, type AnchorCheck, type AnchorParse, type AnchorPins, type AnchorRejection, type Citation, type CitationCheck, type CitationRejection, type ControlScore, type DiffAnchor, type DiffEndpoint, type GroupOptions, type LabelScore, type LabeledAnswer, type LineRange, type LineSource, type Placement, type Planted, type RangeCheck, type RevisionAnchor, type RevisionSource, type ShownLines, type VerifyOptions, groupByOverlap, isAnchorForm, isFullSha, lineSourceFromTexts, parseAnchor, pickControls, placeControls, quoteFragments, quoteInRange, rangesOverlap, scoreControls, seededRandom, splitLines, verifyAnchorText, verifyCitation, verifyRange };

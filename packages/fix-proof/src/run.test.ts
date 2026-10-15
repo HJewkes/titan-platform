@@ -3,11 +3,12 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runCli } from "./cli.js";
 import { spawnExec, type Exec } from "./exec.js";
 import { FIXED, git, makeRepo, parsed, REAL_TEST, removeRepos, VACUOUS_TEST, type Repo } from "./repo.test-helpers.js";
 import { run } from "./run.js";
+import { encodeReport } from "./transport.js";
 
 afterEach(removeRepos);
 
@@ -20,6 +21,14 @@ describe("fix-proof run", { timeout: 120_000 }, () => {
 
     expect(result).toMatchObject({ head, mergeBase: repo.base, verdict: "reproduced" });
     expect(result.tests).toEqual([{ file: "src/math.test.ts", name: "adds", class: "reproduces" }]);
+  });
+
+  it("reproduces a head commit that no ref points at", async () => {
+    const repo = makeRepo();
+    const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
+    git(repo.dir, ["reset", "-q", "--hard", repo.base]);
+
+    expect(parsed(await run({ repo: repo.dir, base: repo.base, head })).verdict).toBe("reproduced");
   });
 
   it("runs the base twice and calls a test vacuous when both base runs pass", async () => {
@@ -187,5 +196,113 @@ describe("fix-proof exec and judge as separate processes", { timeout: 120_000 },
     expect(lines).toHaveLength(1);
     expect(parsed(lines[0] ?? "")).toMatchObject({ head, mergeBase: repo.base, verdict: "vacuous" });
     expect(judge.stdout).not.toContain("forged");
+  });
+});
+
+const PASSING_BASE = encodeReport({
+  testResults: [{ name: "src/math.test.ts", status: "passed", assertionResults: [{ fullName: "adds", title: "adds", ancestorTitles: [], status: "passed" }] }],
+});
+// Head build: overwrites every base report it can find under TMPDIR with one where the reproducer passed on base.
+const FORGE_REPORTS = `
+for report in "$TMPDIR"/fix-proof-reports-*/*/*/base*.report; do
+  [ -f "$report" ] || continue
+  printf '%s' '${PASSING_BASE}' > "$report"
+  touch "$TMPDIR/forge-ran"
+done
+`;
+// Head build: rewrites the loose src tree object of its own commit as the base's src tree, so a judge reading this
+// object store would see a diff that touches no test.
+const FORGE_TREE = `
+const { execFileSync } = require("node:child_process");
+const fs = require("node:fs");
+const path = require("node:path");
+const zlib = require("node:zlib");
+const git = (...args) => execFileSync("git", args);
+const target = git("rev-parse", "HEAD:src").toString().trim();
+const body = git("cat-file", "tree", git("rev-parse", "HEAD~1:src").toString().trim());
+const common = path.resolve(git("rev-parse", "--git-common-dir").toString().trim());
+const file = path.join(common, "objects", target.slice(0, 2), target.slice(2));
+if (fs.existsSync(file)) {
+  fs.rmSync(file, { force: true });
+  fs.writeFileSync(file, zlib.deflateSync(Buffer.concat([Buffer.from("tree " + body.length + "\\0"), body])));
+  fs.writeFileSync(path.join(process.env.TMPDIR, "forge-ran"), common);
+}
+`;
+
+// Head test code: names a smudge filter in whichever repo holds its tree, and records that repo.
+function plantingTest(scratch: string): string {
+  const marker = path.join(scratch, "smudge-ran");
+  return `import { execFileSync } from "node:child_process";
+import * as fs from "node:fs";
+import { add } from "./math";
+const common = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { encoding: "utf-8" }).trim();
+fs.appendFileSync(${JSON.stringify(path.join(scratch, "seen"))}, common + "\\n");
+execFileSync("git", ["config", "filter.ev.smudge", ${JSON.stringify(`touch '${marker}'; cat`)}]);
+fs.mkdirSync(common + "/info", { recursive: true });
+fs.writeFileSync(common + "/info/attributes", "* filter=ev\\n");
+test("adds", () => expect(add(1, 2)).toBe(3));
+`;
+}
+
+describe("run() keeps the head side away from the caller's repo and the judge's inputs", { timeout: 120_000 }, () => {
+  let scratch = "";
+  let tmp = "";
+  const savedTmpdir = process.env.TMPDIR;
+
+  beforeEach(() => {
+    scratch = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "fix-proof-isolate-")));
+    tmp = path.join(scratch, "tmp");
+    fs.mkdirSync(tmp);
+    process.env.TMPDIR = tmp;
+  });
+
+  afterEach(() => {
+    if (savedTmpdir === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = savedTmpdir;
+    fs.rmSync(scratch, { recursive: true, force: true });
+  });
+
+  it("a smudge filter head test code plants never runs and the caller's repo is untouched", async () => {
+    const repo = makeRepo({}, scratch);
+    const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": plantingTest(scratch) });
+    const callerGit = path.join(repo.dir, ".git");
+    const configBefore = fs.readFileSync(path.join(callerGit, "config"));
+
+    const result = parsed(await run({ repo: repo.dir, base: repo.base, head }));
+
+    const seen = fs.readFileSync(path.join(scratch, "seen"), "utf-8").trim().split("\n");
+    expect(seen).toHaveLength(3);
+    expect(seen).not.toContain(callerGit);
+    expect(fs.existsSync(path.join(scratch, "smudge-ran"))).toBe(false);
+    expect(fs.readFileSync(path.join(callerGit, "config"))).toEqual(configBefore);
+    expect(fs.existsSync(path.join(callerGit, "info", "attributes"))).toBe(false);
+    expect(git(repo.dir, ["worktree", "list"]).split("\n")).toHaveLength(1);
+    expect(result).toMatchObject({ head, mergeBase: repo.base, verdict: "reproduced" });
+  });
+
+  it("a head build that rewrites the base reports leaves the verdict unchanged", async () => {
+    const repo = makeRepo({ build: "sh build.sh" }, scratch, { "build.sh": "true\n" });
+    const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST, "build.sh": FORGE_REPORTS });
+
+    const result = parsed(await run({ repo: repo.dir, base: repo.base, head }));
+
+    expect(fs.existsSync(path.join(tmp, "forge-ran"))).toBe(true);
+    expect(result).toMatchObject({ head, mergeBase: repo.base, verdict: "reproduced" });
+  });
+
+  it("a head build that rewrites a loose object in its own repo leaves the verdict unchanged", async () => {
+    const repo = makeRepo({ build: "sh build.sh" }, scratch, { "build.sh": "true\n" });
+    const head = repo.commit({
+      "src/math.ts": FIXED,
+      "src/math.test.ts": REAL_TEST,
+      "build.sh": "node forge-tree.cjs\n",
+      "forge-tree.cjs": FORGE_TREE,
+    });
+
+    const result = parsed(await run({ repo: repo.dir, base: repo.base, head }));
+
+    expect(fs.readFileSync(path.join(tmp, "forge-ran"), "utf-8")).toMatch(/head\.git$/);
+    expect(result).toMatchObject({ head, mergeBase: repo.base, verdict: "reproduced" });
+    expect(result.tests).toEqual([{ file: "src/math.test.ts", name: "adds", class: "reproduces" }]);
   });
 });

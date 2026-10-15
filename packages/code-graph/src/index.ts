@@ -102,6 +102,8 @@ export type { PageRankOptions, PageRankResult, PageRankRow } from "./analysis/pa
 export { computePageRank, getEdgeWeight } from "./analysis/pagerank.js";
 export type { RelevanceOptions } from "./analysis/relevance.js";
 export { computeRelevance } from "./analysis/relevance.js";
+export type { CallPathOptions, LevelEdge, ProjectedHop } from "./analysis/call-path.js";
+export { findCallPath, projectCallPath, snapshotCallPath } from "./analysis/call-path.js";
 export {
   DEFAULT_MAX_LINE_CHARS,
   ELISION_MARKER,

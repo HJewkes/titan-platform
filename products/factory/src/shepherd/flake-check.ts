@@ -74,6 +74,9 @@ export async function rerunFlakyHead(run: ExitRun, kind: WakeRequest["kind"], he
   return true;
 }
 
+/** Whether this run already spent its one rerun at the head. */
+export const headWasRerun = (run: ExitRun, headSha: string): boolean => headsRerun(run).has(headSha);
+
 /** Heads rerun, per run, whether before the wake or after a fixer's exit; a head gets one, and a replay of the run's steps rebuilds the set. */
 const rerunHeads = new WeakMap<object, Set<string>>();
 
