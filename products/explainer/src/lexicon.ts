@@ -1,15 +1,11 @@
+import { LexiconEntrySchema, type LexiconEntry } from "@titan-design/speech-vet";
 import { z } from "zod";
 
-const LexiconEntrySchema = z.object({
-  term: z.string().min(1),
-  spoken: z.string().min(1),
-});
-
-/** `lexicon.json`: how a written term is said aloud, so the display text and the narration can differ. */
-export const LexiconSchema = z.object({ entries: z.array(LexiconEntrySchema) });
+/** `lexicon.json`: how a written term is said aloud. The entry shape is speech-vet's `lexicon.v1`; the `schema` tag is optional so packets written before it existed still load. */
+export const LexiconSchema = z.object({ schema: z.literal("lexicon.v1").optional(), entries: z.array(LexiconEntrySchema) });
 
 export type Lexicon = z.infer<typeof LexiconSchema>;
-export type LexiconEntry = Lexicon["entries"][number];
+export type { LexiconEntry };
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

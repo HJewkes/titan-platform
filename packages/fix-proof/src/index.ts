@@ -1,13 +1,30 @@
 export {
+  CHANGESET_GLOB,
   CONFIG_PATH,
   DEFAULT_CARRY_GLOBS,
   DEFAULT_TEST_GLOBS,
+  FIX_PROOF_HARNESS,
+  isHarnessPath,
+  MUTATION_SPEC_GLOB,
   parseFixProofConfig,
   type ConfigResult,
   type FixProofConfig,
 } from "./config.js";
 export { compileGlobs, expandBraces } from "./glob.js";
-export { planFixProof, type FixProofPlan, type PlanInput, type PlanResult } from "./plan.js";
+export { planFixProof, testOnlyOf, type FixProofPlan, type PlanInput, type PlanResult } from "./plan.js";
+export {
+  checkMutation,
+  MAX_KILLS,
+  MAX_MUTATION_EDIT,
+  MAX_MUTATION_NAME,
+  MAX_MUTATIONS,
+  MAX_SPEC_BYTES,
+  parseMutationSpec,
+  type Mutation,
+  type MutationCheck,
+  type MutationSpec,
+  type MutationSpecResult,
+} from "./mutation.js";
 export {
   classifyReports,
   TEST_CLASSES,

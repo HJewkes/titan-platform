@@ -16,6 +16,10 @@ concurrency:
   group: pages-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# onnxruntime-node would otherwise fetch CUDA binaries on install; no job uses them.
+env:
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+
 jobs:
   build:
     runs-on: ubuntu-latest
