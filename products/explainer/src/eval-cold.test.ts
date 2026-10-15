@@ -55,6 +55,7 @@ const quoteOf = (text: string, from = 0): string => text.split(" ").slice(from, 
 
 interface ViewerOptions {
   why?: "found" | "none" | "invented" | "other-chapter";
+  inventWhat?: boolean;
   answerCanary?: boolean;
   notStated?: boolean;
   summary?: string;
@@ -83,7 +84,7 @@ function fakeViewer(options: ViewerOptions = {}) {
         qid,
         not_stated: blank,
         what: blank ? "" : "a thing the desk does",
-        what_quotes: blank ? [] : [{ beat: first.id, quote: quoteOf(first.spoken) }],
+        what_quotes: blank ? [] : [{ beat: first.id, quote: options.inventWhat ? "a sentence nobody spoke" : quoteOf(first.spoken) }],
         why: blank ? "" : "so parcels ship once",
         why_quotes: blank ? [] : whyQuote,
         odd_one_out: options.oddPick ?? null,
@@ -155,9 +156,11 @@ describe("the streamed cold-viewer probe", () => {
   it("scores 0 when a quote is not found in this chapter's spoken words", async () => {
     const invented = (await chapterScores({ why: "invented" }))[0]!.scores[0]!;
     const misplaced = (await chapterScores({ why: "other-chapter" }))[1]!.scores[0]!;
+    const noWhat = (await chapterScores({ why: "found", inventWhat: true }))[0]!.scores[0]!;
 
     expect(invented).toMatchObject({ score: 0, void_reason: "quote not found in c1-1" });
     expect(misplaced).toMatchObject({ score: 0, void_reason: "cites unknown beat c1-1" });
+    expect(noWhat).toMatchObject({ score: 0, void_reason: "quote not found in c1-1" });
   });
 
   it("reports undefined items per chapter minute", async () => {
