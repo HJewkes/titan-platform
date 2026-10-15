@@ -14,7 +14,7 @@ export const VOCABULARY = {
   audiences: ["public-youtube"],
 };
 
-export const EVIDENCE_TSV = ["id\tclaim\tgrade", "E01\tWords with pictures\tA", "E02\tA practitioner habit\tC", "E03\tTwo halves\tC (bounds) / D (bands)", "E04\tNo grade yet\t—"].join("\n");
+const EVIDENCE_TSV = ["id\tclaim\tgrade", "E01\tWords with pictures\tA", "E02\tA practitioner habit\tC", "E03\tTwo halves\tC (bounds) / D (bands)", "E04\tNo grade yet\t—"].join("\n");
 
 const EVIDENCE: ReadonlyMap<string, readonly DoctrineGrade[]> = new Map<string, DoctrineGrade[]>([
   ["E01", ["A"]],
