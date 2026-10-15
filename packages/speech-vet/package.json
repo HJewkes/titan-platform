@@ -14,7 +14,8 @@
   "files": [
     "dist",
     "conformance",
-    "README.md"
+    "README.md",
+    "NOTICE"
   ],
   "author": "Henry Jewkes",
   "license": "MIT",
