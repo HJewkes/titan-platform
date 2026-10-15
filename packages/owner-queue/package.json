@@ -39,6 +39,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@titan-design/evidence": "workspace:^",
     "@titan-design/review-schema": "^0.1.0"
   },
   "peerDependencies": {

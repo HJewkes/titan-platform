@@ -6,8 +6,7 @@ import { checkRunBody } from "./check-run-create.js";
 import { GhError, execGh, type GhExec } from "./exec.js";
 import { COMPARE_FILE_CAP } from "./port.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
-import type { CheckRun, Commit, CommitStatus, CompareResult, GitHubWire, IssueComment, PrFile, PullRequest, RepoFile } from "./port.js";
-import type { SquashSource } from "./port-types.js";
+import type { CheckRun, Commit, CommitStatus, CompareResult, GitHubWire, IssueComment, JobStep, PrFile, PullRequest, RepoFile, SquashSource } from "./port.js";
 import type { OpenPrList } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import { restCaller, type Rest } from "./rest.js";
@@ -78,6 +77,7 @@ export function wireOver(api: Rest, postCheckRun: CheckRunPoster): GitHubWire {
     listCommitStatuses: (repo, sha) => listCommitStatuses(api, repo, sha),
     getWorkflowRunStatus: async (repo, runId) => (await api.get<{ status: string }>(`repos/${repo}/actions/runs/${runId}`)).status,
     getJobLog: async (repo, jobId) => stripEscapes(await api.text(`repos/${repo}/actions/jobs/${jobId}/logs`)),
+    getJobSteps: async (repo, jobId) => (await api.get<{ steps?: JobStep[] }>(`repos/${repo}/actions/jobs/${jobId}`)).steps?.map(({ name, conclusion }) => ({ name, conclusion })) ?? [],
     updateBranch: async (repo, number, expectedHeadSha) => void (await api.send("PUT", `repos/${repo}/pulls/${number}/update-branch`, { expected_head_sha: expectedHeadSha })),
     setPrBase: async (repo, number, base) => void (await api.send("PATCH", `repos/${repo}/pulls/${number}`, {}, JSON.stringify({ base }))),
     merge: async (repo, number, sha, method, message) => {

@@ -54,7 +54,7 @@ ETag of the same request's last 200 as `If-None-Match`, and a 304 answers with t
 body. Lists follow `Link: rel="next"` page by page, each page conditional on its own ETag, and
 only to `api.github.com`. One `RateBudget` per process (`sharedRateBudget`, or pass `budget`)
 reads `x-ratelimit-*`; below 500 remaining core calls, each call waits the time left until
-reset divided by the calls left. `jobLogTail(repo, jobId, lines)` reads an Actions job log.
+reset divided by the calls left. `jobLogTail(repo, jobId, lines)` reads an Actions job log, and `jobSteps(repo, jobId)` its steps.
 
 `octokitWire({ client?, appToken? })` is the same port for a long-running service, over Octokit
 instead of one `gh` process per call. `octokitRest(client)` implements the `Rest` interface
@@ -66,9 +66,9 @@ with the same ETag cache, 304 rules and next-page guard. The client, `octokitCli
 - `@octokit/plugin-retry` retries 5xx answers on GET and HEAD only, so a write that may have
   landed is never sent twice.
 - Errors carry the status and a redacted message, with no body and no token.
-- It has the same two guards as `restCaller`:
+- It has the same rate-floor guard as `restCaller`, and its GraphQL deadline only:
   - Every call first acquires `sharedRateBudget`, or the client's `budget`, so below `RATE_FLOOR` remaining, calls spread over the time left.
-  - A GraphQL call fails after `GRAPHQL_TIMEOUT_MS` (30 s).
+  - A GraphQL call fails after `GRAPHQL_TIMEOUT_MS` (30 s). `restCaller` also kills a core REST call's `gh` and fails it after `CORE_TIMEOUT_MS` (60 s); a timed-out read is not retried. The Octokit core lane has no deadline yet.
 
 `client.budget()` reports the last `x-ratelimit-*` window per lane (`rest`, `graphql`), and the
 cooldowns the throttle is still waiting out. `createCheckRun` posts as the App on its own
