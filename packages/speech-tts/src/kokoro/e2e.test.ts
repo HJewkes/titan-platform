@@ -89,7 +89,7 @@ describe("kokoroProvider with the real misaki G2P on r4-8", () => {
 
     const misses = tokens.filter((t) => t.phonemes === null).map((t) => t.text);
     expect(misses).toEqual(DICTIONARY_MISSES);
-    const read = (list: typeof tokens) => describeTokens(list.filter((t) => !DICTIONARY_MISSES.includes(t.text)));
+    const read = (list: readonly { text: string; phonemes: string | null; whitespace: string }[]) => describeTokens(list.filter((t) => !DICTIONARY_MISSES.includes(t.text)));
     expect(read(tokens)).toEqual(read(golden.tokens));
     expect(tokens.map((t) => t.text)).toEqual(golden.tokens.map((t) => t.text));
   });
