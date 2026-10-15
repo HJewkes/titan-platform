@@ -4,11 +4,13 @@
 // The lock holder indexes in a child process, so a signal or an OOM in the indexer still releases the lock and cleans up at once;
 // an OOM exits 2 and says so. --db <path> keeps the finished graph there for `dead:check --db`, which would otherwise re-index.
 // --seed-db <path> starts from a graph a CI cache restored: the indexer re-parses only changed files and drops deleted ones (TP-1854).
+// Without one, a local run seeds from the machine-wide graph the last finished run left (DAG_CHECK_NO_SEED=1 opts out).
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { collectReport, writeReport } from "./codewatch-report.mjs";
+import { MACHINE_SEED, refreshSeed, seedArgs, usesMachineSeed } from "./dag-check-seed.mjs";
 import { BUSY_EXIT_CODE, DEFAULT_LOCK_DIR, LockTimeoutError, acquire, lockWaitMs, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
 
 const SCRIPT = fileURLToPath(import.meta.url);
@@ -165,18 +167,30 @@ export function keepDb({ workDb, dbPath, code }) {
   copyFileSync(workDb, dbPath);
 }
 
+// A seed that cannot be written costs the next run a cold index, never this run's result.
+function refreshMachineSeed(code) {
+  try {
+    if (refreshSeed({ workDb: WORK_DB, seedPath: MACHINE_SEED, code })) console.error(`refreshed the machine seed ${MACHINE_SEED}`);
+  } catch (err) {
+    console.error(`machine seed not refreshed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 async function indexUnderLock(cleanups, dbPath) {
   clearWorkDir();
   mkdirSync(WORK_DIR, { recursive: true });
-  const seed = seedDbPath(process.argv.slice(2));
+  // Read under the lock: only a holder refreshes the machine seed.
+  const argv = seedArgs(process.argv.slice(2), process.env, existsSync);
+  const seed = seedDbPath(argv);
   if (seed && existsSync(seed)) {
     copyFileSync(seed, WORK_DB);
     console.error(`seeded the graph from ${seed}`);
   }
-  const args = [WORKER_FLAG, ...process.argv.slice(2)];
+  const args = [WORKER_FLAG, ...argv];
   const log = (m) => console.error(m);
   const code = await runCappedWorker({ script: SCRIPT, args, name: "dag-check indexer", heapCapMb: HEAP_CAP_MB, cleanups, log });
   if (dbPath) keepDb({ workDb: WORK_DB, dbPath, code });
+  if (usesMachineSeed(process.argv.slice(2), process.env)) refreshMachineSeed(code);
   return code;
 }
 
