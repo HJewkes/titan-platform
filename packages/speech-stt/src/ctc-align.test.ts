@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CtcLogits } from "./ctc.js";
-import { ctcForcedAlign } from "./ctc-align.js";
+import { ctcForcedAlign, type CtcTokenSpan } from "./ctc-align.js";
 
 const VOCAB = ["<pad>", "l", "ə", "b", "ɛ", "f"];
 const [BLANK, L, SCHWA, B, EH] = [0, 1, 2, 3, 4] as const;
@@ -15,7 +15,7 @@ function favour(...ids: number[]): number[] {
   return VOCAB.map((_, v) => (ids.includes(v) ? 0 : LOW));
 }
 
-const frameSpans = (spans: ReturnType<typeof ctcForcedAlign>) => spans.map((s) => [s.startFrame, s.endFrame]);
+const frameSpans = (spans: CtcTokenSpan[]) => spans.map((s) => [s.startFrame, s.endFrame]);
 
 describe("ctcForcedAlign", () => {
   const bellPath = [BLANK, B, B, EH, BLANK, L, L, BLANK].map((id) => favour(id));
