@@ -12,6 +12,7 @@ import {
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { espeakCliG2p, espeakVersion } from "./espeak-g2p.js";
+import { DEFAULT_PHONE_VOICE } from "./phones.js";
 
 // Opt-in evidence that `alignWords` reproduces the E2 spike's CTC aligner and meets the start-error bar. The inputs
 // are owner-authored beats and third-party chunks, so they live outside the repo; no text or timing from them
@@ -144,7 +145,7 @@ async function alignItems(items: z.infer<typeof ManifestSchema>, voice: "kokoro"
       const audio = readWav(item.wav);
       const started = performance.now();
       const words = scriptWords(item.text)
-        .map((word) => ({ word, ipa: g2p(word) }))
+        .map((word) => ({ word, ipa: g2p(word, DEFAULT_PHONE_VOICE) }))
         .filter(({ ipa }) => tokenizeIpa(ipa, recognizer.vocab).length > 0);
       const { logits } = await recognizer.recognizeWithLogits(resample(audio, 16000));
       const text = words.map((w) => w.word);
