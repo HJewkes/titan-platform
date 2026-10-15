@@ -17,7 +17,7 @@ const DATA_URL = new URL("../data/spacy-en-tokenizer.json", import.meta.url);
 const PY_SPACE_RUN = new RegExp(`[${PY_SPACE_CLASS}]+`, "u");
 const PY_SPACE_ONLY = new RegExp(`^[${PY_SPACE_CLASS}]+$`, "u");
 
-export interface SpacyTokenizerData {
+interface SpacyTokenizerData {
   /** Special cases: the string, then the ORTH of each token it becomes. */
   rules: Record<string, string[]>;
   patterns: Record<PatternName, PatternSpec | null>;
