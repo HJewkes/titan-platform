@@ -648,6 +648,7 @@ Tier 1, `@titan-design/speech-g2p@0.0.0`. English text to misaki phoneme tokens 
 Key exports:
 
 - `types`: `G2pToken`, `PosTagger`, `RawToken`, `Tokenizer`
+- `misaki-to-ipa`: `misakiToIpa`, `MisakiToIpaOptions`
 
 <a id="cap-speech-stt"></a>
 
