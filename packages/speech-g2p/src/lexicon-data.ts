@@ -2,10 +2,10 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 /** A gold or silver entry: one pronunciation, or a map from tag (always with `DEFAULT`) to pronunciation. */
-export type LexiconEntry = string | Record<string, string | null>;
-export type LexiconDict = Record<string, LexiconEntry>;
+type LexiconEntry = string | Record<string, string | null>;
+type LexiconDict = Record<string, LexiconEntry>;
 
-export interface LexiconData {
+interface LexiconData {
   golds: LexiconDict;
   silvers: LexiconDict;
 }
@@ -36,21 +36,24 @@ function capitalise(s: string): string {
 }
 
 function isEntry(v: unknown): v is LexiconEntry {
-  return (
-    typeof v === "string" ||
-    (typeof v === "object" && v !== null && "DEFAULT" in v)
-  );
+  if (typeof v === "string") return true;
+  if (typeof v !== "object" || v === null || !("DEFAULT" in v)) return false;
+  return Object.values(v).every((p) => p === null || typeof p === "string");
 }
 
 function isDict(v: unknown): v is LexiconDict {
   return typeof v === "object" && v !== null && Object.values(v).every(isEntry);
 }
 
+/** Validates parsed lexicon JSON: every value is a pronunciation or a tag map that carries `DEFAULT`. */
+export function parseLexiconDict(parsed: unknown): LexiconDict {
+  if (!isDict(parsed)) throw new Error("not a misaki lexicon");
+  return parsed;
+}
+
 function readDict(url: URL): LexiconDict {
   const parsed: unknown = JSON.parse(readFileSync(url, "utf8"));
-  if (!isDict(parsed))
-    throw new Error(`${url.pathname} is not a misaki lexicon`);
-  return parsed;
+  return parseLexiconDict(parsed);
 }
 
 export function loadLexiconData(): LexiconData {
