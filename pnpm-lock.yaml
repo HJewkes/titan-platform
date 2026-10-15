@@ -506,6 +506,9 @@ importers:
       '@titan-design/authority':
         specifier: workspace:^
         version: link:../authority
+      '@titan-design/evidence':
+        specifier: workspace:^
+        version: link:../evidence
       '@titan-design/store-sqlite':
         specifier: workspace:*
         version: link:../store-sqlite
@@ -545,6 +548,9 @@ importers:
 
   packages/owner-queue:
     dependencies:
+      '@titan-design/evidence':
+        specifier: workspace:^
+        version: link:../evidence
       '@titan-design/review-schema':
         specifier: ^0.1.0
         version: 0.1.0(zod@4.5.4)
@@ -729,6 +735,10 @@ importers:
         version: link:../locator
 
   packages/speech-stt:
+    dependencies:
+      '@huggingface/transformers':
+        specifier: ^3.0.0
+        version: 3.8.1
     devDependencies:
       zod:
         specifier: ^4.4.3
@@ -913,6 +923,9 @@ importers:
       '@titan-design/graph-layout':
         specifier: workspace:^
         version: link:../../packages/graph-layout
+      '@titan-design/speech-vet':
+        specifier: workspace:^
+        version: link:../../packages/speech-vet
       commander:
         specifier: ^14.0.3
         version: 14.0.3

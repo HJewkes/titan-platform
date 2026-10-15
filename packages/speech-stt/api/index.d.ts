@@ -116,4 +116,58 @@ declare class SequenceMatcher<T> {
     private extendOverEqualNeighbours;
 }
 
-export { type Audio, type Block, type DiffOptions, type Opcode, type OpcodeTag, type Segment, SegmentSchema, SequenceMatcher, type SequenceMatcherOptions, type Transcript, TranscriptSchema, type Word, type WordDiff, WordSchema, align, diff, normalize, resample };
+interface SttProvider {
+    transcribe(audio: Audio): Promise<Transcript>;
+}
+/** One chunk of transformers.js word-timestamp output. A chunk not led by whitespace continues the previous word. */
+interface AsrChunk {
+    text: string;
+    timestamp: [start: number, end: number | null];
+}
+interface AsrOutput {
+    text: string;
+    chunks?: AsrChunk[];
+}
+/** The slice of a transformers.js ASR pipeline this module uses, so the package can stay an optional peer. */
+interface AsrPipeline {
+    (samples: Float32Array, options: {
+        return_timestamps: "word";
+        chunk_length_s: number;
+    }): Promise<AsrOutput>;
+    dispose(): Promise<void>;
+}
+type AsrFactory = (task: "automatic-speech-recognition", model: string, options: {
+    dtype: string;
+    device?: string;
+    cache_dir?: string;
+}) => Promise<AsrPipeline>;
+/** Holds transcripts by audio hash. A `Map` fits; a product can pass a persistent store with the same two methods. */
+interface TranscriptCache {
+    get(key: string): Transcript | undefined;
+    set(key: string, transcript: Transcript): unknown;
+}
+interface WhisperSttOptions {
+    /** A Hugging Face Whisper model with ONNX weights and word timestamps. */
+    model?: string;
+    dtype?: "fp32" | "fp16" | "q8" | "q4";
+    /** A transformers.js device, e.g. `cpu`, `cuda` or `webgpu`. The runtime picks when unset. */
+    device?: string;
+    /** Where the runtime caches model weights. The runtime's default when unset. */
+    cacheDir?: string;
+    cache?: TranscriptCache;
+    /** Injectable for tests; defaults to importing `@huggingface/transformers`. */
+    loadPipeline?: () => Promise<AsrFactory>;
+}
+type ModuleImporter = (name: string) => Promise<unknown>;
+/** Resolves the peer's `pipeline` through `importModule`, naming the install command when the peer is absent. */
+declare function loadTransformersPipeline(importModule?: ModuleImporter): Promise<AsrFactory>;
+/**
+ * Whisper over transformers.js with word timestamps. Audio at any rate is resampled to 16 kHz. Transcripts are
+ * cached by a hash of the model, rate and samples, so re-checking unchanged audio never runs the model.
+ * `segments` is empty: word-timestamp decoding reports no per-segment confidence.
+ */
+declare function whisperStt(options?: WhisperSttOptions): SttProvider & {
+    dispose(): Promise<void>;
+};
+
+export { type AsrChunk, type AsrFactory, type AsrOutput, type AsrPipeline, type Audio, type Block, type DiffOptions, type ModuleImporter, type Opcode, type OpcodeTag, type Segment, SegmentSchema, SequenceMatcher, type SequenceMatcherOptions, type SttProvider, type Transcript, type TranscriptCache, TranscriptSchema, type WhisperSttOptions, type Word, type WordDiff, WordSchema, align, diff, loadTransformersPipeline, normalize, resample, whisperStt };
