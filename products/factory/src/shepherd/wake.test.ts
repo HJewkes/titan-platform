@@ -5,7 +5,9 @@ import { SpawnDeferred } from "./spawn-gate.js";
 import { BrokerUnavailableError, DispatchError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type PullRequest } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
+import type { DispatchOptions, RoutedStepInput, StepResult } from "@titan-design/workflow";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { TEST_BRIEF } from "../test-support/brief.js";
@@ -48,7 +50,7 @@ type Asked = { verb: "resume" | "spawn" | "message"; name: string; message: stri
 /** An in-memory roster where a spawn adds a live row; `fail` throws from the next calls of a verb, one error per call. */
 function fakeAgents(rows: AgentRow[]) {
   const asked: Asked[] = [];
-  const fail: Partial<Record<"roster" | "resume" | "spawn" | "message", Error[]>> = {};
+  const fail: Partial<Record<"roster" | "resume" | "spawn" | "message", (Error | undefined)[]>> = {};
   const next = (verb: keyof typeof fail) => {
     const error = fail[verb]?.shift();
     if (error) throw error;
@@ -93,6 +95,8 @@ interface Scene {
 const warmAt = (minutesAgo: number, fill = 50_000): Warmth => ({ lastEventAt: T0 - minutesAgo * MINUTE, fill });
 
 /** The sh-wake-implementer step run alone over a fake GitHub and a fake roster. */
+const WakeRecord = z.looseObject({ result: z.custom<WakeStepResult>() });
+
 function wakeStep(scene: Scene = {}) {
   const fake = fakeGitHub({ repo: REPO });
   fake.addPr({ headSha: H1, headRef: "feat/demo-fix", ...scene.pr });
@@ -106,8 +110,9 @@ function wakeStep(scene: Scene = {}) {
   const route = wakeRoutes(deps, wiring).find((candidate) => candidate.match === "sh-wake-implementer")!;
   const run = async (kind: WakeRequest["kind"], payload: unknown = {}, fixFirst?: number) => {
     const input = { kind, repo: REPO, pr: 1, round: 0, headSha: H1, payload, runId: "run-1", ...(fixFirst !== undefined && { fixFirst }) };
-    const outcome = await route.runner.run({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 0, requestKey: "k", stepId: "sh-wake-implementer:0" } as never);
-    return { outcome, result: (outcome.ok ? JSON.parse(outcome.output).result : undefined) as WakeStepResult | undefined };
+    const step: RoutedStepInput = { runId: "run-1", workflowName: "wake-test", iteration: 0, prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 0, requestKey: "k", stepId: "sh-wake-implementer:0" };
+    const outcome = await route.runner.run(step);
+    return { outcome, result: outcome.ok ? WakeRecord.parse(JSON.parse(outcome.output)).result : undefined };
   };
   return { fake, agents, clock, store, run };
 }
@@ -383,7 +388,7 @@ describe("sh-wake-implementer: the woken agent must start a turn", () => {
       ["message", "impl-a"],
     ]);
     expect(scene.clock.now - T0).toBeGreaterThanOrEqual(TURN_START_MS);
-    expect((result as { askedAt: number }).askedAt - T0).toBeGreaterThanOrEqual(TURN_START_MS);
+    expect(result?.kind === "woken" ? result.askedAt : undefined).toBeGreaterThanOrEqual(T0 + TURN_START_MS);
   });
 
   it("resumes an agent that ended without starting the turn its resume asked for", async () => {
@@ -421,7 +426,7 @@ describe("sh-wake-implementer: the woken agent must start a turn", () => {
 
   it("returns unhandled with the error class, never its text, when the fallback ask is refused", async () => {
     const scene = wakeStep({ rows: [row("impl-a", { presence: "live" })], turnSince: () => false });
-    scene.agents.fail.message = [undefined as never, new DispatchError(LEAKY_MESSAGE)];
+    scene.agents.fail.message = [undefined, new DispatchError(LEAKY_MESSAGE)];
 
     const { result } = await scene.run("review", fixFirst("fix it"));
 
@@ -816,7 +821,7 @@ describe("wakePhase", () => {
     store.get().register({ ...registration, runId });
     await host.runtime.wait(runId);
     const recorded = Object.values(host.runtime.status(runId)!.stepResults);
-    const results = Object.fromEntries(recorded.map((result) => [result.stepId, (result.data as { result: unknown }).result]));
+    const results = Object.fromEntries(recorded.map((result) => [result.stepId, result.data?.["result"]]));
     return { outcome: outcomes[0], stepIds: recorded.map((result) => result.stepId), results };
   }
 
@@ -1020,7 +1025,8 @@ describe("the fix-proof bounce cap", () => {
 
   /** The wake phase as built before TP-545 b: a fix-proof wake records no cap step, so the record goes straight on to the implementer wake. */
   const wakeBeforeTp545b: typeof wakePhase = (ctx, request) => {
-    const uncapped: typeof ctx = { ...ctx, dispatch: async (stepId, template, options) => (stepId === FIX_PROOF_WAKE_STEP ? ({ data: { result: { wake: 1 } } } as never) : ctx.dispatch(stepId, template, options)) };
+    const unrecorded = <T extends Record<string, unknown>>(stepId: string, options: DispatchOptions<T> | undefined): StepResult<T> => ({ stepId, iteration: 0, agentId: null, signal: null, completedAt: "", ...(options?.schema && { data: options.schema.parse({ result: { wake: 1 } }) }) });
+    const uncapped: typeof ctx = { ...ctx, dispatch: async (stepId, template, options) => (stepId === FIX_PROOF_WAKE_STEP ? unrecorded(stepId, options) : ctx.dispatch(stepId, template, options)) };
     return wakePhase(uncapped, request);
   };
 
@@ -1125,7 +1131,7 @@ describe("the fix-proof bounce cap", () => {
     expect(scene.stepIds(first.host, runId)).not.toContain(FIX_PROOF_WAKE_STEP);
     first.host.close();
 
-    const second = scene.open(dbPath, run);
+    const second = scene.open(dbPath, run, await import("./wake.js"));
     await second.host.runtime.hydrate();
     await vi.waitFor(() => expect(second.host.gates.get(`${runId}/${HOLD}`)?.status).toBe("pending"));
     second.host.runtime.signal(runId, HOLD, {}, OWNER);
