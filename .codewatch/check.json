@@ -39,7 +39,8 @@
           "packages/agent-surface",
           "packages/worktree",
           "packages/health",
-          "packages/speech-tts"
+          "packages/speech-tts",
+          "packages/speech-stt"
         ],
         "2": [
           "packages/session-read",
@@ -112,7 +113,8 @@
           "packages/agent-surface",
           "packages/worktree",
           "packages/health",
-          "packages/speech-tts"
+          "packages/speech-tts",
+          "packages/speech-stt"
         ],
         [
           "packages/session-read",

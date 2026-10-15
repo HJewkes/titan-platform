@@ -3,6 +3,7 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { codeRoute, step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
+import { changedPathsBetween } from "./changed-paths.js";
 import { isRepoKey } from "./seats.js";
 import {
   BranchName,
@@ -46,16 +47,11 @@ export type OwnMergeUpResult = z.infer<typeof ResultSchema>;
 
 const refuse = (reason: string, rest: Partial<OwnMergeUpResult> = {}): OwnMergeUpResult => ({ ...rest, carries: false, reason });
 
-async function changedPaths(git: Git, dir: string, from: string, to: string, signal?: AbortSignal): Promise<string[]> {
-  const out = await must(git, dir, ["diff-tree", "-r", "--no-renames", "--name-only", "-z", from, to], signal);
-  return out.split("\0").filter((path) => path !== "").sort();
-}
-
 /** The paths both the PR and the base changed since they last shared a commit; a rename counts as a delete and an add, so both of its sides meet. */
 async function overlap(git: Git, dir: string, input: OwnMergeUpInput, base: string, signal?: AbortSignal): Promise<{ prPaths: string[]; mainPaths: string[]; shared: string[] }> {
   const fork = await must(git, dir, ["merge-base", input.fromHead, base], signal);
-  const prPaths = await changedPaths(git, dir, fork, input.fromHead, signal);
-  const mainPaths = await changedPaths(git, dir, fork, base, signal);
+  const prPaths = (await changedPathsBetween(git, dir, fork, input.fromHead, signal)).sort();
+  const mainPaths = (await changedPathsBetween(git, dir, fork, base, signal)).sort();
   const main = new Set(mainPaths);
   return { prPaths, mainPaths, shared: prPaths.filter((path) => main.has(path)) };
 }
