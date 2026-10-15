@@ -123,6 +123,21 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     ['zformat -a "$n" : x:y'],
     ['ztcp -v "$n" host'],
     ['zselect -A "$n" 0'],
+    ['zstyle -s ctx style "$n"'],
+    ['zstyle -a ctx style "$n"'],
+    ['zstyle -g "$n" ctx style'],
+    ['pcre_match -v "$n" x'],
+    ['pcre_match -a "$n" x'],
+    ['zpty -r name "$n"'],
+    ['stat -A "$n" f'],
+    ['stat -H "$n" f'],
+    ["shift $n"],
+    ["mytool $x"],
+    [": ${(P)n::=on}"],
+    [": ${(P)n:=on}"],
+    [": ${(P)n=on}"],
+    ['echo "${(P)n::=on}"'],
+    [": ${(kP)n::=on}"],
   ])("reads the run-time or expanded operand of %s as a possible enabler", (src) => {
     expect(enables(src)).toBe(true);
   });
@@ -180,6 +195,15 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     ['print -v out "$x"'],
     ['printf -v out "$fmt" a'],
     ['printf "$fmt" a'],
+    ['git commit -m "$msg"'],
+    ['grep "$pat" f'],
+    ['echo "$x"'],
+    ['ls "$dir"'],
+    ['cd "$d"'],
+    ['stat -A arr "$f"'],
+    [": ${(P)n}"],
+    [": ${(P)n:-x}"],
+    [": ${x::=on}"],
   ])("leaves %s alone", (src) => {
     expect(enables(src)).toBe(false);
   });

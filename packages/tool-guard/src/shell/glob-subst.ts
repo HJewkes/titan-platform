@@ -28,6 +28,8 @@ const NAMED_TARGET_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[|\+?=)/;
 const PATTERN_RE = /[{*?[^#]|.~|^~(?!\/|$)/s;
 /** `${options[globsubst]::=on}` assigns through an expansion; `refs` hold only plain names, so the text is read too. */
 const OPTIONS_EXPANSION_RE = /\$\{[^}]*\boptions\b/;
+/** `${(P)n::=on}` assigns the parameter `$n` names, which may be `options[globsubst]`; `=` and `:=` assign too. */
+const INDIRECT_ASSIGN_RE = /\$\{\([^)]*P[^)]*\)[^}]*=/;
 
 const ENABLERS: Record<string, (args: WordToken[]) => boolean> = {
   setopt: setoptEnables,
@@ -45,7 +47,8 @@ function namesGlobSubst(name: string): boolean {
 }
 
 function namesOptions(w: WordToken): boolean {
-  return OPTIONS_OPERAND_RE.test(w.value) || w.refs.some((ref) => ref.name === "options") || (w.dynamic && OPTIONS_EXPANSION_RE.test(w.value));
+  if (OPTIONS_OPERAND_RE.test(w.value) || w.refs.some((ref) => ref.name === "options")) return true;
+  return w.dynamic && (OPTIONS_EXPANSION_RE.test(w.value) || INDIRECT_ASSIGN_RE.test(w.value));
 }
 
 interface OptionScan {
@@ -196,6 +199,7 @@ const WRITER_SPECS: Record<string, WriterSpec> = {
   float: DECLARER_SPEC,
   zparseopts: { targets: "aA", specs: true },
   zstat: { targets: "AH", values: "fF" },
+  stat: { targets: "AH", values: "fF" },
   strftime: { targets: "s" },
   sysread: { targets: "c", values: "iost", operands: 0 },
   zformat: { operands: 0 },
@@ -211,11 +215,41 @@ interface Target {
   text: string;
 }
 
+/**
+ * A command that may write a parameter it is given by name writes `options` when that name is only known at run time.
+ * WRITER_SPECS reads known writers more tightly; ENABLERS commands have their own check; NEVER_WRITES are left alone.
+ * Any other command may be a zsh builtin or module builtin (`zstyle -s`, `pcre_match -v`, `zpty -r`), so every word
+ * of it that is only known at run time and does not start with a literal `name=` or `name[` may be such a name.
+ */
 function writesUnknownTarget(name: string, args: WordToken[]): boolean {
   const spec = Object.hasOwn(WRITER_SPECS, name) ? WRITER_SPECS[name] : undefined;
-  if (!spec) return false;
-  return writerTargets(args, spec).some(({ word, text }) => OPTIONS_NAME_RE.test(text) || (unknowable(word) && !NAMED_TARGET_RE.test(text)));
+  if (spec) return writerTargets(args, spec).some(({ word, text }) => OPTIONS_NAME_RE.test(text) || unknownName(word, text));
+  if (Object.hasOwn(ENABLERS, name) || NEVER_WRITES.has(name)) return false;
+  return args.some((w) => unknownName(w, w.value));
 }
+
+function unknownName(word: WordToken, text: string): boolean {
+  return unknowable(word) && !NAMED_TARGET_RE.test(text);
+}
+
+/**
+ * Commands that never write a shell parameter by name: external programs, which cannot, and builtins whose manual
+ * names no parameter they write. Add a name only when it is one of those. Never add a builtin a zsh module loads
+ * (`stat`, `zstat`, `zstyle`, `zpty`, `pcre_match`, `zformat`, `sysread`, `strftime`), `read`, `vared`, `getopts`,
+ * a declarer, `print`/`printf`, or a command that runs shell text (`eval`, `source`, `.`).
+ */
+const NEVER_WRITES = new Set([
+  // builtins
+  ":", "[", "test", "true", "false", "echo", "pwd", "cd", "pushd", "popd", "dirs", "exit", "return", "wait", "kill",
+  "jobs", "type", "which", "whence", "where", "unset", "unalias", "unhash", "umask", "ulimit", "sleep",
+  // external programs
+  "git", "gh", "grep", "egrep", "rg", "ls", "cat", "head", "tail", "less", "wc", "sort", "uniq", "cut", "tr", "sed",
+  "awk", "find", "fd", "curl", "wget", "jq", "yq", "node", "npm", "pnpm", "yarn", "bun", "deno", "python", "python3",
+  "pip", "uv", "cargo", "go", "make", "mkdir", "rmdir", "rm", "cp", "mv", "touch", "chmod", "chown", "ln", "diff",
+  "patch", "tee", "date", "basename", "dirname", "realpath", "readlink", "tar", "gzip", "gunzip", "zip", "unzip",
+  "docker", "ssh", "scp", "rsync", "du", "df", "ps", "file", "xxd", "od", "base64", "shasum", "sha256sum", "md5sum",
+  "tsc", "vitest", "eslint", "prettier", "open", "pbcopy", "column", "paste", "comm", "join", "seq", "yes",
+]);
 
 /**
  * Option words come first, up to `--` or the first operand. A word starting with `-` or `+` is read as options even
