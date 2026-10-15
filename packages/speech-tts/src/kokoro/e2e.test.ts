@@ -26,7 +26,10 @@ const ONE_MS = 0.001;
 const IS_WORD = /[\p{L}\p{N}]/u;
 
 function loadGolden(): Golden {
-  return JSON.parse(readFileSync(new URL("../fixtures/kokoro/r4-8.golden.json", import.meta.url), "utf8")) as Golden;
+  const parsed: unknown = JSON.parse(readFileSync(new URL("../fixtures/kokoro/r4-8.golden.json", import.meta.url), "utf8"));
+  const isGolden = (v: unknown): v is Golden => typeof v === "object" && v !== null && ["voice", "speed", "pred_dur", "tokens"].every((k) => k in v);
+  if (!isGolden(parsed)) throw new Error("unexpected fixture shape: r4-8.golden.json");
+  return parsed;
 }
 
 /** Replays Python's frames: the integer durations round to themselves, and the waveform is `sum × 600` samples. */
