@@ -736,6 +736,12 @@ importers:
 
   packages/speech-tts: {}
 
+  packages/speech-vet:
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
   packages/store-sqlite:
     dependencies:
       better-sqlite3:
