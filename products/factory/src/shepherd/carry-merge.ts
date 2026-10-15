@@ -37,7 +37,8 @@ export const CARRYING_KINDS: ReadonlySet<string> = new Set(["correctness", "feat
 
 /**
  * Kinds whose owner approve-merge answer may follow Shepherd's own disjoint clean merge-up and nothing else (G10): the
- * remerge and small-fix rules stay closed to them, and a reviewed MERGE never carries (`CARRYING_KINDS`).
+ * remerge and small-fix rules stay closed to them, and a reviewed MERGE never carries (`CARRYING_KINDS`). It never follows
+ * across a merge-up whose main side touches a carry-fenced path (TP-2495).
  * Why: the 2026-10-11 owner decision (TP-2252) lets an owner's approval carry across Shepherd's own merge-up for security PRs.
  */
 const OWN_MERGE_UP_KINDS: ReadonlySet<string> = new Set(["security"]);

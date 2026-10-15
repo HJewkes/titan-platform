@@ -279,7 +279,9 @@ A store built with `requireBrief: true` refuses `create` without a `summary` and
 checked. A refused brief throws `GateBriefInvalid`, whose `issues` names each problem, and
 writes no row. `questions` is the presentation contract only: `schema` still validates the
 answer, and hitl does not cross-check the two. `snapshotBrief` is the same check, exported for
-a surface that wants to validate before it opens a gate.
+a surface that wants to validate before it opens a gate. `snapshotBrief(gateId, raw, required, { pins, source })` also checks an
+`evidenceRef` written as an anchor (`head/<path>#L10-L20`) at its pinned commit, through
+`verifyAnchorText` from `@titan-design/evidence`, and refuses one past EOF. Free text stays legal.
 
 On SQLite the brief lives in `summary`, `evidence_ref` and `questions` columns that
 `gateBriefMigration(n)` adds. It is idempotent and does not backfill: gates opened before it

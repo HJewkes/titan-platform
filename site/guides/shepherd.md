@@ -849,6 +849,12 @@ reviews the new head, then comes back to the merge step there, where the same ho
 The push never releases or changes the hold. A merge that waited on a hold does not go
 through on release: land reads CI again first, because the base or the head may have moved.
 
+A held run wakes no fixer. When its head goes red, Shepherd first reruns the failed jobs once at
+that head, the same one rerun per head an unheld run gets, because a rerun pushes nothing. If the
+rerun turns the head green, the run reviews it with the hold kept. If the head is still red, the
+seat is told once that the rerun is spent, and the run waits in `sh-held-wait` for a release, a
+push, or a rerun by hand that turns the head green.
+
 A hold whose reason starts `g10-review:` and names no `--reviewer` releases itself in the
 `sh-g10-release` step when an opus reviewer Shepherd spawned says `MERGE` and the required
 checks are green at that head. A hold that names a reviewer waits for that reviewer's `MERGE`.
