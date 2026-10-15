@@ -7,6 +7,7 @@ import { codeRoute, step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
 import { failureOf } from "./error-class.js";
 import { seatFixFirst } from "./external-review.js";
+import { registeredOwners } from "./seat-tie.js";
 import { registeredKind } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { mergeVerdict, type ReviewWiring } from "./review.js";
@@ -36,7 +37,8 @@ export const CARRYING_KINDS: ReadonlySet<string> = new Set(["correctness", "feat
 
 /**
  * Kinds whose owner approve-merge answer may follow Shepherd's own disjoint clean merge-up and nothing else (G10): the
- * remerge and small-fix rules stay closed to them, and a reviewed MERGE never carries (`CARRYING_KINDS`).
+ * remerge and small-fix rules stay closed to them, and a reviewed MERGE never carries (`CARRYING_KINDS`). It never follows
+ * across a merge-up whose main side touches a carry-fenced path (TP-2495).
  * Why: the 2026-10-11 owner decision (TP-2252) lets an owner's approval carry across Shepherd's own merge-up for security PRs.
  */
 const OWN_MERGE_UP_KINDS: ReadonlySet<string> = new Set(["security"]);
@@ -156,16 +158,18 @@ async function seatHeads(port: ShepherdDeps["port"], input: SeatInput): Promise<
 /**
  * Reads every seat reviewer at each head a carry would vouch for, so a FIX_FIRST at any of them refuses it, as the fresh review
  * at that head would have. An unreadable roster, transcript, commit list or force-push list refuses too. With no dispatch wired there is no
- * roster to read.
+ * roster to read. The store, when given, names the registered owners that tie a seat reviewer whose transcript shows nothing.
  */
-export function carrySeatRoute(deps: Pick<ShepherdDeps, "now" | "port">, wiring: ReviewWiring | undefined): StepRoute {
+export function carrySeatRoute(deps: Pick<ShepherdDeps, "now" | "port"> & Partial<Pick<ShepherdDeps, "store">>, wiring: ReviewWiring | undefined): StepRoute {
   return codeRoute(CARRY_SEAT_STEP, deps.now, async (input: SeatInput) => {
     const dispatch = wiring?.dispatch;
     if (!dispatch) return { clear: true };
     const walked = await seatHeads(deps.port, input);
     if ("reason" in walked) return { clear: false, reason: walked.reason };
     for (const head of walked.heads) {
-      const check = await seatFixFirst(() => dispatch.roster(), wiring.reader, { repo: input.repo, pr: input.pr, head });
+      const target = { repo: input.repo, pr: input.pr, head };
+      const owners = deps.store && registeredOwners(deps.store, target);
+      const check = await seatFixFirst(() => dispatch.roster(), wiring.reader, { ...target, ...owners });
       if (check.kind !== "clear") return { clear: false, reason: check.kind === "none" ? check.reason : `a seat reviewer said FIX_FIRST at ${head}` };
     }
     return { clear: true };

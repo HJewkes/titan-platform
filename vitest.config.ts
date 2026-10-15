@@ -1,6 +1,12 @@
+import { fileURLToPath } from "node:url";
 import { setFlagsFromString } from "node:v8";
 import { defineConfig } from "vitest/config";
-import { FORCE_RERUN_TRIGGERS, REPO_TIER_INCLUDE } from "./scripts/test-affected.mjs";
+import { strayDependency } from "./scripts/own-node-modules.mjs";
+import { forceRerunTriggers, REPO_TIER_INCLUDE } from "./scripts/test-affected.mjs";
+
+// Refuse rather than run a parent checkout's vitest, which can be a major version behind this lockfile.
+const strayVitest = strayDependency(fileURLToPath(new URL(".", import.meta.url)), "vitest");
+if (strayVitest) throw new Error(strayVitest);
 
 // These stub HOME (os.homedir() ignores that in a worker thread), call process.chdir (unsupported in one) or set TZ
 // (a worker thread keeps the host zone).
@@ -36,7 +42,7 @@ export default defineConfig({
       exclude: ["**/*.test.{ts,tsx}", "**/index.ts"],
     },
     maxWorkers: 4,
-    forceRerunTriggers: FORCE_RERUN_TRIGGERS,
+    forceRerunTriggers: forceRerunTriggers(),
     projects: [
       {
         extends: true,

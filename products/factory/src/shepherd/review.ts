@@ -2,7 +2,7 @@ import type { AgentIdentity } from "@titan-design/authority";
 import { OVERLAY_SHAPES, type AcceptedVerdict as PanelAcceptedVerdict, type AwaitVerdictInput, type PanelPolicy, type ReviewTarget, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
 import type { OwnerOverride } from "./override-stats.js";
 import type { StepDeclaration } from "../definition.js";
-import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
+import type { StepRoute } from "@titan-design/workflow";
 import { join } from "node:path";
 import { z } from "zod";
 import { codeRoute, step } from "../workflows/land.js";
@@ -14,13 +14,14 @@ import { ACCOUNT_STEPS, accountHeld, accountRoutes, billIntent, dispatchFor } fr
 import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./account-limit.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { awaitExternalVerdict, isExternalVerdictInput, seatVetoed } from "./external-review.js";
+import { ownerIn } from "./seat-tie.js";
 import { removeReviewCheckout, reviewCheckoutRoot } from "./review-checkout.js";
 import { Dispatched, Intended, ReviewCauseSchema } from "./review-schemas.js";
 import { MERGE_EVIDENCE_STEPS } from "./merge-evidence-gate.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
-import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
+import type { ShepherdDeps, ShepherdPhases } from "./phases.js";
 import { PUBLISH_REVIEW_STEPS, publishReviewRoute } from "./publish-review.js";
-import { DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, busyWaits, clearReviewWait, notStarted, noteReviewWait, startedSession, timedOutUnseen, whileBrokerBusy, whileBrokerDown, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
+import { DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, busyWaits, clearReviewWait, notStarted, noteReviewWait, rosterUnread, startedSession, timedOutUnseen, whileBrokerBusy, whileBrokerDown, whileRosterSlow, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
 import { reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
 import { spawnFacts } from "./spawn-facts.js";
@@ -36,7 +37,8 @@ import { REVIEW_STOP_STEPS, reviewStopRoute } from "./review-stop.js";
 import { withoutPlan, type PanelMode } from "./review-panel-plan.js";
 import { PANEL_STEPS, panelOn, panelReview, panelVerdictRoute, plannedPanel, type MemberBase, type PanelOnPlan } from "./review-panel-step.js";
 import { LATE_VERDICT_STEP, SEAT_RECHECK_STEP, asksOwnerBrief, mergeVerdict, recheckSeat, takeVerdict, type ProofStanding } from "./take-verdict.js";
-import { NO_REVIEWER_STEPS, noReviewerHeld, noReviewerRoutes } from "./no-reviewer-hold.js";
+import { NO_REVIEWER_STEPS, noReviewerRoutes } from "./no-reviewer-hold.js";
+import { notReviewed } from "./not-reviewed.js";
 import { heldMerge, recordsRecheck } from "./seat-recheck.js";
 
 export const REVIEW_INTENT_STEP = "sh-review-intent";
@@ -80,7 +82,7 @@ export type ReviewInput = z.infer<typeof ReviewInputSchema>;
 export type ReviewIntent = z.infer<typeof ReviewIntentSchema>;
 /** `refused` is the failure class of a dispatch the broker or port refused outright, which no retry at once can fix. */
 type NoReview = { kind: "none"; reason: string; exhausted?: string; refused?: string };
-export type ReviewIntentResult = ({ kind: "intent" } & ReviewIntent & Partial<PanelOnPlan>) | NoReview;
+export type ReviewIntentResult = ({ kind: "intent" } & ReviewIntent & Partial<PanelOnPlan>) | NoReview | NotStarted;
 export type ReviewDispatchInput = z.infer<typeof ReviewDispatchInputSchema>;
 export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string; startedAt: number; codewatch?: CodewatchEvidence } & ReviewIntent & BusyWaits & { profile?: string }) | NoReview | NotStarted;
 
@@ -213,7 +215,10 @@ const brokerStep = <I, T extends object>(deps: ShepherdDeps, wiring: ReviewWirin
  */
 const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (deps, wired, input, signal) => {
   const { dispatch, accounts } = wired;
-  const roster = await whileBrokerDown(brokerTiming(deps), signal, () => dispatch.roster());
+  const timing = brokerTiming(deps);
+  const budgetMs = wired.sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS;
+  const roster = await whileRosterSlow(timing, signal, budgetMs, () => whileBrokerDown(timing, signal, () => dispatch.roster())).catch(rosterUnread);
+  if ("kind" in roster) return roster;
   const store = deps.store.get();
   const registration = store.byRun(input.runId);
   const billed = billIntent(deps, accounts, input.runId, chooseReviewer(input, registration, roster, input.fresh), () => chooseReviewer(input, registration, roster, true));
@@ -306,10 +311,10 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     fixProofRoute(deps),
     codeRoute(REVIEW_INTENT_STEP, deps.now, brokerStep(deps, wiring, ReviewInputSchema, reviewIntent)),
     repeatAwareRoute(REVIEW_STEP, deps.now, brokerStep(deps, wiring, ReviewDispatchInputSchema, dispatchReview)),
-    codeRoute(AWAIT_VERDICT_STEP, deps.now, seatVetoed(wiring, run, deps.now, seatWait)),
-    codeRoute(LATE_VERDICT_STEP, deps.now, (raw: unknown, signal, clock) => seatVetoed(wiring, (late: unknown, lateSignal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(late), lateSignal, clock.firstStartedAtMs), deps.now, seatWait)(raw, signal)),
+    codeRoute(AWAIT_VERDICT_STEP, deps.now, seatVetoed(wiring, run, deps.now, seatWait, ownerIn(deps.store))),
+    codeRoute(LATE_VERDICT_STEP, deps.now, (raw: unknown, signal, clock) => seatVetoed(wiring, (late: unknown, lateSignal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(late), lateSignal, clock.firstStartedAtMs), deps.now, seatWait, ownerIn(deps.store))(raw, signal)),
     repeatAwareRoute(CORRECT_VERDICT_STEP, deps.now, brokerStep(deps, wiring, CorrectVerdictInputSchema, correctReviewer)),
-    codeRoute(SEAT_RECHECK_STEP, deps.now, seatVetoed(wiring, async (raw: unknown) => heldMerge(raw), deps.now, seatWait)),
+    codeRoute(SEAT_RECHECK_STEP, deps.now, seatVetoed(wiring, async (raw: unknown) => heldMerge(raw), deps.now, seatWait, ownerIn(deps.store))),
     codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, isFrozen, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) }, wiring?.reviewAppId)),
     carryRoute(deps.now, wiring?.carry),
     publishReviewRoute(deps),
@@ -331,16 +336,6 @@ async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined,
 }
 
 /**
- * A busy broker that started nobody retries the review. A refusal holds the run as no-reviewer rather than counting a failed
- * round, so a repo with no usable reviewer never reaches approve-merge unreviewed (TP-2446). Any other none is a round with no verdict.
- */
-function notDispatched(ctx: WorkflowContext, target: ReviewTarget, dispatched: Readonly<Record<string, unknown>>): Promise<Verdict> | Verdict {
-  if (dispatched.notStarted === true) return { kind: "none", cause: "not-started" };
-  if (typeof dispatched.refused === "string") return noReviewerHeld(ctx, target, dispatched.refused);
-  return { kind: "none", cause: "no-verdict" };
-}
-
-/**
  * Read the head's fix-proof result, record which reviewer this head gets, start or adopt it, wait for its verdict, and take a
  * MERGE through the evidence step. A vacuous or test-less proof ends the review as NO_REPRO before any reviewer is started; an
  * unverified one goes to the reviewer marked unverified, and its MERGE records that standing but keeps the policy's grant (decision 303).
@@ -356,12 +351,12 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const standing: ProofStanding = unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {};
   if (request.seatHeld?.head === target.head && recordsRecheck(ctx, target.head)) return recheckSeat(ctx, target, request.seatHeld, standing);
   const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }) }, Intended);
-  if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : { kind: "none", cause: "no-verdict" };
+  if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : notReviewed(ctx, target, intent);
   if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined, DEFAULT_ACCOUNT, standing);
   const fixFirsts = fixFirstCount(ctx);
   const base: MemberBase = { ...target, runId: ctx.runId, ...(fixFirsts > 0 && { fixFirsts }), ...(proof.kind === "result" && { fixProof: proof.line }), ...(standing.unverified && { fixProofUnverified: standing.unverified }) };
   const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent: withoutPlan(intent), ...(fixFirsts > 0 && { fixFirsts }), ...(asksOwnerBrief(ctx) && { ownerBrief: true }), ...(base.fixProof !== undefined && { fixProof: base.fixProof }), ...(standing.unverified && { fixProofUnverified: standing.unverified }) }, Dispatched);
-  if (dispatched.kind !== "dispatched") return notDispatched(ctx, target, dispatched);
+  if (dispatched.kind !== "dispatched") return notReviewed(ctx, target, dispatched);
   const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
   const awaiting: AwaitVerdictInput & { reviewerProfile?: string } = {
     ...target,

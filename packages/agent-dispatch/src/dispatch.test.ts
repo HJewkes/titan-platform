@@ -73,6 +73,21 @@ const request = (bin: string, over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+describe("broker reply timeout", () => {
+  it("rejects a spawn whose stderr is the broker's reply-timeout line with a timeout", async () => {
+    const bin = fakeAgentChat(`echo "broker did not answer spawn_result" >&2\nexit 1\n`);
+    const error = await dispatchToAgentChat(request(bin), 10_000).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DispatchTimeoutError);
+  });
+
+  it("keeps the same text on stdout a plain refusal", async () => {
+    const bin = fakeAgentChat(`echo "broker did not answer spawn_result"\nexit 1\n`);
+    const error = await dispatchToAgentChat(request(bin), 10_000).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DispatchError);
+    expect(error).not.toBeInstanceOf(DispatchTimeoutError);
+  });
+});
+
 describe("profile allowlist", () => {
   it("refuses a profile that is neither the implementer nor the reviewer", async () => {
     const bin = fakeAgentChat();

@@ -10,6 +10,27 @@ export const DEFAULT_CARRY_GLOBS: readonly string[] = [
   "**/testdata/**",
 ];
 
+/**
+ * Mutation specs sit next to their test as `<test file minus extension>.mutations.json`. A fixed glob, not a config key:
+ * the config parser refuses unknown keys, so a key would fail every run whose merge base predates it.
+ */
+export const MUTATION_SPEC_GLOB = "**/*.mutations.json";
+export const CHANGESET_GLOB = ".changeset/*.md";
+/**
+ * On `pull_request` the PR merge ref supplies the workflow file and the run script, so a PR touching any of these
+ * chose the code that printed its own result line. Each entry is a path prefix.
+ */
+export const FIX_PROOF_HARNESS: readonly string[] = [
+  ".github/workflows/",
+  ".github/actions/",
+  CONFIG_PATH,
+  "scripts/fix-proof-run.sh",
+];
+
+export function isHarnessPath(path: string): boolean {
+  return FIX_PROOF_HARNESS.some((prefix) => path.startsWith(prefix));
+}
+
 export interface FixProofConfig {
   tests: string[];
   carry: string[];

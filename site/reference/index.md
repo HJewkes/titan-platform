@@ -48,6 +48,8 @@ Reusable machinery over the primitives.
 | [`registry`](/reference/registry) | zod command registry projected to CLI, MCP, and HTTP surfaces | `rpc-protocol` |
 | [`retrieval`](/reference/retrieval) | FTS + vector + graph retrieval with RRF fusion, rerank cascade, and fail-open | `embed`, `store-sqlite` |
 | [`rpc-client`](/reference/rpc-client) | Browser-safe typed client for titan daemons, with live (HTTP + SSE) and static (snapshot file) data sources | `rpc-protocol` |
+| [`speech-stt`](/reference/speech-stt) | Speech-recognition helpers: a transformers.js Whisper recogniser with an audio-hash cache, a CPython-parity SequenceMatcher, script alignment, transcript diff, Word and Transcript schemas, and a resampler | none |
+| [`speech-tts`](/reference/speech-tts) | Swappable text-to-speech provider contract, registry and command/HTTP adapters | none |
 | [`worktree`](/reference/worktree) | Git worktree mechanics for headless agents: budgeted allocation, release safety, park, re-create and sweep | none |
 
 ## Tier 2 — domain
@@ -60,6 +62,7 @@ Modules that know about a subject: transcripts, code, rules.
 | [`code-read`](/reference/code-read) | Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands | `code-graph`, `registry`, `rpc-protocol` |
 | [`coordinator`](/reference/coordinator) | Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types). | `agent-dispatch` |
 | [`decider`](/reference/decider) | Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source | `locator`, `memory`, `session-read`, `store-sqlite` |
+| [`dispatch-ledger`](/reference/dispatch-ledger) | Burndown claim ledger: zod schema, phase edges, and burndown.json parse and export. | `store-sqlite` |
 | [`graph-layout`](/reference/graph-layout) | Level collapses and deterministic ELK layered layouts (flat and compound) over a code-graph snapshot | `code-graph` |
 | [`memory`](/reference/memory) | Decaying rule playbook: bullets, feedback, deterministic curation, recall | `embed`, `retrieval`, `store-sqlite` |
 | [`owner-queue`](/reference/owner-queue) | The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions | `evidence`, `review-schema` |
@@ -69,6 +72,7 @@ Modules that know about a subject: transcripts, code, rules.
 | [`session-analytics`](/reference/session-analytics) | Pricing, session classification, banding, the cost report and the session timeline over mined session data | `agent-protocol`, `review-panel`, `session-graph`, `session-read`, `store-sqlite` |
 | [`session-graph`](/reference/session-graph) | Fold session events into the activity graph on store-sqlite | `locator`, `session-read`, `store-sqlite`, `agent-protocol` |
 | [`session-read`](/reference/session-read) | Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators | `locator`, `agent-protocol`, `anthropic-account` |
+| [`speech-vet`](/reference/speech-vet) | Speech text vetting: pronunciation override markup, heteronym reading checks, lexicon.v1, initialism spelling and number normalization | none |
 | [`style-analyzer`](/reference/style-analyzer) | Tree-sitter style extractors that turn source files into observations, and the aggregator that turns observations into a style profile with confidence and stability | `code-parser`, `style-profile` |
 | [`style-checker`](/reference/style-checker) | Run external lint tools (ruff, ESLint) against configs generated from a style profile, normalize their output into one diagnostic shape, and diff observations against a profile | `style-analyzer`, `style-profile` |
 | [`style-profile`](/reference/style-profile) | Declare one code-style profile and export it as enforcement artifacts: ESLint and ruff configs, EditorConfig, Claude rules, hooks, a skill, and markdown | none |
@@ -91,7 +95,7 @@ Thin compositions of the tiers. Private, not published.
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
 | `evals` | Eval registry: spec schemas for units, variants, cases, suites, checks and scorecards, with canonical content hashing | `agent`, `authority`, `evidence`, `health`, `hitl`, `review-panel`, `session-analytics`, `session-read`, `store-sqlite`, `workflow` |
-| `explainer` | Explainer video pipeline: beats.json and digest.json schemas, packet builder, finding attribution | none |
+| `explainer` | Explainer video pipeline: beats.json and digest.json schemas, packet builder, finding attribution | `agent`, `agent-protocol`, `evidence`, `graph-layout` |
 | `factory` | Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams | `agent`, `agent-dispatch`, `app-paths`, `authority`, `coordinator`, `daemon`, `fix-proof`, `github`, `health`, `hitl`, `owner-queue`, `registry`, `review-panel`, `review-schema`, `rpc-client`, `session-analytics`, `session-read`, `store-sqlite`, `workflow`, `worktree` |
 | `retrieval-eval` | Retrieval eval harness: transcript-mined query/label pairs scored over candidate retrievers | `app-paths`, `embed`, `retrieval`, `store-sqlite` |
 | `session-miner` | The session miner: index Claude Code transcripts into a session graph and serve it over CLI, MCP, and HTTP | `app-paths`, `cluster`, `daemon`, `embed`, `github`, `locator`, `memory`, `pm`, `registry`, `retrieval`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite`, `throughput` |

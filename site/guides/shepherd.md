@@ -746,7 +746,8 @@ visual_paths:
 
 A seat with `visual_paths` resolves to `auto` even without `merge-on-green-approve`. At each
 head Shepherd decides, it matches the changed files the merge evidence read at that head
-(both sides of a rename) against the globs:
+(both sides of a rename) against the globs. Files that cannot render never match: names
+with `.test.` or `.spec.`, and names ending `.md` or `.d.ts`.
 
 - no file matches: the merge goes on to `MRG-AU-RV`, which still needs a `MERGE` at the head
   and green required checks;
@@ -847,6 +848,12 @@ merge waiting at the old head ends at its next poll without merging. The run rea
 reviews the new head, then comes back to the merge step there, where the same hold applies.
 The push never releases or changes the hold. A merge that waited on a hold does not go
 through on release: land reads CI again first, because the base or the head may have moved.
+
+A held run wakes no fixer. When its head goes red, Shepherd first reruns the failed jobs once at
+that head, the same one rerun per head an unheld run gets, because a rerun pushes nothing. If the
+rerun turns the head green, the run reviews it with the hold kept. If the head is still red, the
+seat is told once that the rerun is spent, and the run waits in `sh-held-wait` for a release, a
+push, or a rerun by hand that turns the head green.
 
 A hold whose reason starts `g10-review:` and names no `--reviewer` releases itself in the
 `sh-g10-release` step when an opus reviewer Shepherd spawned says `MERGE` and the required

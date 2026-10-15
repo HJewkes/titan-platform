@@ -10,7 +10,8 @@ const COMMAND_PREFIXES = new Set(["if", "then", "elif", "else", "do", "while", "
 const EXTGLOB_PREFIXES = "?*+@!";
 /** Words that open a compound command, the only body bash accepts after a function header. */
 const COMPOUND_OPENERS = new Set(["{", "if", "for", "while", "until", "case", "select", "[["]);
-const BLOCK_OPENERS = new Set(["if", "for", "while", "until", "select"]);
+const HEREDOC_OPENERS = new Set(["<<", "<<-", "<<<"]);
+const BLOCK_OPENERS =new Set(["if", "for", "while", "until", "select"]);
 const BLOCK_CLOSERS = new Set(["fi", "done"]);
 /** Prefix words bash accepts only inside an `if` or a loop. */
 const BLOCK_WORDS = new Set(["then", "elif", "else", "do"]);
@@ -87,11 +88,16 @@ function bareWord(t: Token | undefined): string | null {
   return t?.type === "word" && !t.quoted && !t.spliced ? t.value : null;
 }
 
-/** Bash reads a redirect inside a compound assignment as a syntax error, and inside a `=~` operand's parens as text. */
-export function refuseRedirect(s: LexState): void {
+/**
+ * Bash reads a redirect inside a compound assignment as a syntax error, and inside a `=~` operand's parens as text.
+ * No heredoc opener is legal in `[[ ]]`, and inside an extglob paren there bash reads it as pattern text; `<` and `>`
+ * stay, since `[[ a < b ]]` compares.
+ */
+export function refuseRedirect(s: LexState, op: string): void {
   if (s.compoundDepth !== -1) throw new ParseError("a redirect inside a compound assignment ( … ) is a bash syntax error");
   const at = regexDepth(s);
   if (at !== -1 && s.depth > at) throw new ParseError("bash reads a redirect inside a =~ operand's ( … ) as regex text");
+  if (s.regex.conditionalAt !== -1 && HEREDOC_OPENERS.has(op)) throw new ParseError(`bash reads \`${op}\` inside [[ ]] as pattern text or a syntax error, never a heredoc`);
   if (s.regex.bodyPending) throw new ParseError("bash rejects a redirect between a function header and its body");
 }
 

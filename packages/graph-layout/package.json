@@ -36,6 +36,6 @@
   },
   "dependencies": {
     "@titan-design/code-graph": "workspace:^",
-    "elkjs": "^0.10.0"
+    "elkjs": "0.10.2"
   }
 }

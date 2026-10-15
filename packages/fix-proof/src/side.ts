@@ -6,13 +6,12 @@ import type { Exec } from "./exec.js";
 import { relativeToRoot } from "./paths.js";
 import type { FixProofPlan } from "./plan.js";
 import { assertSandboxUser, sandboxCommand } from "./sandbox.js";
+import { toolchainOf } from "./toolchain.js";
 import { encodeError, encodeReport } from "./transport.js";
 
 /** Leaves headroom under the CI job's 20-minute timeout so the runner, not the job, reports the overrun. */
 export const DEFAULT_BUDGET_MS = 18 * 60_000;
-export const DEFAULT_BUILD = "pnpm build";
-/** The vitest invocation; the runner appends the JSON reporter flags and the selected test paths. */
-export const DEFAULT_COMMAND = "pnpm exec vitest run";
+export { DEFAULT_BUILD, DEFAULT_COMMAND } from "./toolchain.js";
 const TEARDOWN_TIMEOUT_MS = 60_000;
 /** Far above any real vitest JSON report; a larger file is refused rather than read into memory. */
 export const MAX_VITEST_REPORT_BYTES = 16 * 1024 * 1024;
@@ -64,11 +63,12 @@ async function shell(ctx: Context, tree: string, script: string, what: string): 
   if (result.status !== 0) throw new RunError(`${what} failed (exit ${result.status ?? "signal"})`);
 }
 
-async function prepare(ctx: Context, tree: string, side: Side, config: FixProofConfig): Promise<void> {
-  if (fs.existsSync(path.join(tree, "pnpm-lock.yaml"))) {
-    await shell(ctx, tree, "pnpm install --frozen-lockfile", `${side}: install`);
-  }
-  await shell(ctx, tree, config.build ?? DEFAULT_BUILD, `${side}: build`);
+/** Installs and builds the tree with its lockfile's toolchain and returns the test command it resolved. */
+async function prepare(ctx: Context, tree: string, side: Side, config: FixProofConfig): Promise<string> {
+  const tools = toolchainOf(tree);
+  if (tools.install !== null) await shell(ctx, tree, tools.install, `${side}: install`);
+  await shell(ctx, tree, config.build ?? tools.build, `${side}: build`);
+  return config.command ?? tools.command;
 }
 
 // Repo-relative names let the judge read the report without knowing where this side's tree was.
@@ -117,14 +117,14 @@ function vitest(ctx: Context, tree: string, script: string, args: readonly strin
   return call(ctx, tree, command.file, command.args);
 }
 
-async function runTests(ctx: Context, tree: string, plan: FixProofPlan, name: string, sandboxUser?: string): Promise<string> {
+async function runTests(ctx: Context, tree: string, plan: FixProofPlan, command: string, name: string, sandboxUser?: string): Promise<string> {
   // A fresh dir per run, handed to the sandbox only now, so an earlier run cannot plant this run's report.
   const dir = path.join(ctx.tmp, `${name}-out`);
   fs.mkdirSync(dir);
   if (sandboxUser !== undefined) await sudo(ctx, ["chown", `${sandboxUser}:`, dir]);
   const out = path.join(dir, `${name}.json`);
   const args = ["--reporter=json", "--outputFile", out, "--testTimeout", "30000", ...plan.tests];
-  const result = await vitest(ctx, tree, plan.config.command ?? DEFAULT_COMMAND, args, sandboxUser);
+  const result = await vitest(ctx, tree, command, args, sandboxUser);
   const json = readReportFile(out, name);
   if (json === null) throw new RunError(`${name}: vitest wrote no report (exit ${result.status ?? "signal"})`);
   return encodeReport(relativeNames(JSON.parse(json), tree));
@@ -165,10 +165,11 @@ async function runSide(ctx: Context, shas: Shas, side: Side, sandboxUser?: strin
   if (plan.tests.length === 0) return SIDE_REPORTS[side].map(() => encodeError("no tests planned"));
   const tree = await addTree(ctx, side, shas[side]);
   // The base builds before any head file lands in its tree, so nothing the PR carries runs during its install or build.
-  await prepare(ctx, tree, side, plan.config);
-  if (side === "head") return [await runTests(ctx, tree, plan, "head")];
+  const command = await prepare(ctx, tree, side, plan.config);
+  if (side === "head") return [await runTests(ctx, tree, plan, command, "head")];
   await overlay(ctx, tree, shas.head, plan);
-  const both = async () => [await runTests(ctx, tree, plan, "base", sandboxUser), await runTests(ctx, tree, plan, "base-rerun", sandboxUser)];
+  const test = (name: string) => runTests(ctx, tree, plan, command, name, sandboxUser);
+  const both = async () => [await test("base"), await test("base-rerun")];
   return sandboxUser === undefined ? both() : withSandbox(ctx, tree, sandboxUser, both);
 }
 

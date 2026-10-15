@@ -7,14 +7,22 @@ import map from "./burndown-port-map.json" with { type: "json" };
 const DISPATCH = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(DISPATCH, "..", "..", "..", "..");
 
-type Entry = { file: string; dest: string; portSlice?: string; reason?: string; imports: string[]; ported: boolean };
+type Entry = {
+  file: string;
+  dest: string;
+  portSlice?: string;
+  reason?: string;
+  imports: string[];
+  ported: boolean;
+  portedFrom?: string;
+};
 const files: Entry[] = map.files;
 const count = (pick: (f: Entry) => boolean) => files.filter(pick).length;
 
 describe("burndown port map", () => {
   it("holds one entry per file in agent-chat's burndown directory", () => {
     expect(files).toHaveLength(map.fileCount);
-    expect(map.fileCount).toBe(100);
+    expect(map.fileCount).toBe(110);
     expect(new Set(files.map((f) => f.file)).size).toBe(files.length);
   });
 
@@ -38,7 +46,7 @@ describe("burndown port map", () => {
   it("keeps the per-destination counts the F-slice done-whens carry", () => {
     const byDest = Object.fromEntries(Object.keys(map.destinations).map((d) => [d, count((f) => f.dest === d)]));
 
-    expect(byDest).toEqual({ L1: 3, F1: 1, F2: 19, F3: 28, F4: 28, "G-1": 1, "G-2": 17, "G-4": 1, "G-10": 2, DROP: 0 });
+    expect(byDest).toEqual({ L1: 3, F1: 1, F2: 19, F3: 30, F4: 35, "G-1": 1, "G-2": 17, "G-4": 1, "G-10": 2, S0: 1, DROP: 0 });
     expect(count((f) => f.dest === "G-2" && f.portSlice === "F3")).toBe(14);
     expect(count((f) => f.dest === "G-2" && f.portSlice === "F4")).toBe(3);
   });
@@ -60,6 +68,17 @@ describe("burndown port map", () => {
     });
 
     expect(problems).toEqual([]);
+  });
+
+  it("records the agent-chat commit L1 was ported from, matching the package README", () => {
+    const shas = files.filter((f) => f.dest === "L1").map((f) => f.portedFrom ?? "");
+    const readme = readFileSync(join(ROOT, "packages", "dispatch-ledger", "README.md"), "utf8");
+    const named = /Ported from agent-chat `[^`]+` at commit `([0-9a-f]{7,40})`/.exec(readme)?.[1] ?? "";
+    const [sha = ""] = shas;
+
+    expect(shas.every((s) => /^[0-9a-f]{40}$/.test(s) && s === sha)).toBe(true);
+    expect(named.length).toBeGreaterThanOrEqual(7);
+    expect(sha.startsWith(named)).toBe(true);
   });
 
   it("resolves every internal import to another entry", () => {

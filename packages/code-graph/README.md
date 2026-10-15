@@ -621,7 +621,7 @@ re-exports transitively from package-manifest entries.
 ### SCBench complexity rollup
 
 TP-2474 h ports the complexity half of SlopCodeBench's code-quality metrics to TypeScript.
-`qualitySection(symbolNodes, ctx, packages)` returns the report's optional `quality` section:
+`qualitySection(nodes, ctx, packages, edges)` returns the report's optional `quality` section:
 `complexity.total` over every kept file and `complexity.packages`, one row per `PackageRoot`
 (`""` for files under none). `complexityDistribution(callables, packages)` and
 `summarizeComplexity(callables)` are the same arithmetic over plain `CallableComplexity` rows.
@@ -635,6 +635,30 @@ the same over `symbol_cognitive`. The row also carries `ccMax`, `ccMean`, `ccStd
 are not counted, so erosion can read lower than a tool that measures every function, such as
 scb-check. Splitting a function lowers erosion without improving the design, so read it beside
 `symbol_pass_through` and `symbol_single_caller_helper`.
+
+### SCBench dependency-graph metrics
+
+TP-2474 i ports SlopCodeBench's dependency-graph measures. `quality.dependencies` holds one
+`PackageDependencyRow` per package; `dependencyGraphMetrics(nodes, edges, packages)` builds the
+rows from any node set, and `callGraphMetrics` and `importCyclicMass` are the same arithmetic
+over plain `WeightedLink` lists. Only edges with both ends in one package count, and there is no
+whole-tree row because propagation cost is O(n·(n + e)).
+
+`calls` holds the call graph over the callables the complexity rollup measured, each edge
+weighted by its call-site count:
+
+- `cyclicDependencyMass` (`cyclic_dependency_mass`): the share of call weight on edges inside a
+  strongly connected component of two or more callables. A function calling only itself is not
+  a cycle.
+- `propagationCost` (`propagation_cost`): ordered pairs (a, b), a ≠ b, with b reachable from a,
+  over n(n − 1).
+- `dependencyEntropy` (`dependency_entropy`): the mean over callables of the Shannon entropy of
+  out-edge weights, normalized by log(out-degree), and 0 at out-degree 1 or less.
+
+`imports` splits the cyclic mass of the package's file imports (edge `weight`, default 1).
+`value` is the weight of value imports inside cycles that value imports close on their own, and
+`typeOnly` is the rest of the cyclic weight, the part only a type-only import closes. Both share
+the denominator of all import weight, so they sum to the cyclic mass of the whole import graph.
 
 ### Growth and untested risks
 

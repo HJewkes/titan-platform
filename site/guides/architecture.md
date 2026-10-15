@@ -52,6 +52,8 @@ graph TD
     registry["registry"]
     retrieval["retrieval"]
     rpcClient["rpc-client"]
+    speechStt["speech-stt"]
+    speechTts["speech-tts"]
     worktree["worktree"]
   end
   subgraph T2["Tier 2 · domain"]
@@ -59,6 +61,7 @@ graph TD
     codeRead["code-read"]
     coordinator["coordinator"]
     decider["decider"]
+    dispatchLedger["dispatch-ledger"]
     graphLayout["graph-layout"]
     memory["memory"]
     ownerQueue["owner-queue"]
@@ -68,6 +71,7 @@ graph TD
     sessionAnalytics["session-analytics"]
     sessionGraph["session-graph"]
     sessionRead["session-read"]
+    speechVet["speech-vet"]
     styleAnalyzer["style-analyzer"]
     styleChecker["style-checker"]
     styleProfile["style-profile"]
@@ -107,6 +111,7 @@ graph TD
   decider --> memory
   decider --> sessionRead
   decider --> storeSqlite
+  dispatchLedger --> storeSqlite
   egressScan --> fixProof
   graphLayout --> codeGraph
   health --> storeSqlite
@@ -162,6 +167,10 @@ graph TD
   evals --> sessionRead
   evals --> storeSqlite
   evals --> workflow
+  explainer --> agent
+  explainer --> agentProtocol
+  explainer --> evidence
+  explainer --> graphLayout
   factory --> agent
   factory --> agentDispatch
   factory --> appPaths
@@ -227,7 +236,7 @@ Same-tier edges such as `daemon --> registry`, `agent --> agent-lifecycle` and
 `session-graph --> session-read` are legal when they remain acyclic.
 
 <!-- generated:arch-leaves start -->
-`agent-protocol`, `anthropic-account`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `eslint-plugin`, `evidence`, `fix-proof`, `locator`, `rpc-protocol`, `store-sqlite`, `test-kit`, `agent-dispatch`, `agent-surface`, `github`, `matrix-bus`, `messaging`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
+`agent-protocol`, `anthropic-account`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `eslint-plugin`, `evidence`, `fix-proof`, `locator`, `rpc-protocol`, `store-sqlite`, `test-kit`, `agent-dispatch`, `agent-surface`, `github`, `matrix-bus`, `messaging`, `speech-stt`, `speech-tts`, `worktree`, `pm`, `speech-vet`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
 <!-- generated:arch-leaves end -->
 
 The [package families](/guides/package-families) guide groups the same packages by job.

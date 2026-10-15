@@ -26,7 +26,9 @@ await dispatchToAgentChat(
   `agent-chat agent spawn <name> <profile> [--briefing <slug>] --brief-stdin`. A zero exit
   means the broker accepted the spawn, not that the work is done. A non-zero exit rejects
   with `DispatchError` carrying the CLI's stdout reason, else its stderr; a CLI that hangs
-  rejects with `DispatchTimeoutError`, since the spawn may still have happened. It runs the
+  rejects with `DispatchTimeoutError`, since the spawn may still have happened. So does a
+  stderr line `broker did not answer <frame>_result` (the broker missed its reply window,
+  and the frame may have landed), on this and every other verb here. It runs the
   CLI in `req.cwd`, which agent-chat sends to the broker as the spawn location.
 - `assertInstalledHeadless(profile, dir?)` reads `<dir>/<profile>.json` (default
   `installedProfilesDir()`: `$AGENT_CHAT_HOME/profiles`, else `$HOME/.agent-chat/profiles`)
@@ -83,6 +85,11 @@ await dispatchToAgentChat(
 - `execSafe`, `execSafeAsync`, `minimalEnv` and `resolveBinaryPath` never use `PATH` lookup
   or `process.env`, and never a shell. `execSafeAsync(bin, args, env, timeoutMs, input?,
   cwd?)` is the non-blocking form; `input` and `cwd` are opt-in.
+- `observeAgentChatCalls(report, { now? })` reports `{ verb, ms, outcome }` for every
+  agent-chat call this package makes, spawn included, and returns the unsubscribe. The verb
+  is `agent <sub>` or the first argv word, so no peer name or briefing is ever reported.
+  `outcome` is `ok`, `refused` (non-zero exit), `timeout` or `error`. An observer that
+  throws is ignored, and nothing is timed while no observer is registered.
 
 Profile names, peer-name derivation and profile installation are the caller's policy and
 are not in this package.
