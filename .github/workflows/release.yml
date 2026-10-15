@@ -27,6 +27,10 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+# onnxruntime-node would otherwise fetch CUDA binaries on install; no job uses them.
+env:
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+
 jobs:
   release:
     # changesets/action bases the version commit and the release tags on github.sha,

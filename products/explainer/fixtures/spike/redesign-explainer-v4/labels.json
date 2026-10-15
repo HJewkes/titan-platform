@@ -1,0 +1,74 @@
+{
+  "schema": "labels/v1",
+  "script": "redesign-explainer-v4",
+  "source": "script-evals plan section 4.1: the owner's feedback on v4 and the method review's judged flags. One video, one owner; a beat nobody flagged is unlabelled, not negative.",
+  "checks": [
+    {
+      "check": "M1",
+      "check_ids": ["Q-E7"],
+      "level": "beat",
+      "true": ["r2-1-jobs", "r2-2-inv", "r3-1-nouns", "r10-1-calls", "r10-7-followups"],
+      "false": [],
+      "borderline": [],
+      "note": "r10-1-calls is a true positive at lower severity: it is the roadmap."
+    },
+    {
+      "check": "M2",
+      "check_ids": ["Q-E8"],
+      "level": "beat",
+      "true": ["r2-1-jobs", "r2-3-limits", "r3-1-nouns", "r10-1-calls", "r10-7-followups"],
+      "false": ["r1-7-promise"],
+      "borderline": [],
+      "note": "r1-7-promise is exempted as a PROMISE beat."
+    },
+    {
+      "check": "M3",
+      "check_ids": [],
+      "level": "beat",
+      "true": ["r2-1-jobs", "r10-7-followups", "r10-7b-research", "r7-3-caps"],
+      "false": ["r1-5-seams", "r1-7-promise", "r3-7-simple", "r10-6b-q10-q11"],
+      "borderline": ["r4-1-plan", "r7-4b-score"],
+      "note": "Judged: the ten beats the M3 pre-check routes to the item judge."
+    },
+    {
+      "check": "M4",
+      "check_ids": ["Q-E9"],
+      "level": "beat",
+      "true": ["r2-1-jobs", "r2-2-inv", "r2-3-limits", "r3-1-nouns"],
+      "false": ["r9-3-middle", "r10-5-q5-q6", "r10-6-q7-q9", "r10-7b-research", "r10-8-measures"],
+      "borderline": [],
+      "note": "The false positives are flagged only by the broad variant of the check."
+    },
+    {
+      "check": "M5",
+      "check_ids": [],
+      "level": "beat",
+      "true": ["r2-2-inv"],
+      "false": ["r2-4-measure"],
+      "borderline": [],
+      "note": "The judge clears r2-4-measure."
+    },
+    {
+      "check": "M7",
+      "check_ids": ["Q-E10"],
+      "level": "chapter",
+      "true": ["ch2"],
+      "false": [],
+      "borderline": ["ch10"],
+      "note": "ch2 measures 29.1 new items a minute; ch10 measures 24.9, expected for the owner's call list."
+    }
+  ],
+  "owner_named": {
+    "true": ["r2-1-jobs", "r2-2-inv"],
+    "borderline": ["r2-3-limits", "r2-4-measure"],
+    "note": "The borderline beats are in the owner's feedback table but not in the verbatim complaint."
+  },
+  "items": [
+    { "group": "head and chip", "items": ["head", "chip"], "first_used": ["r4-3-open"] },
+    { "group": "grant and token", "items": ["grant", "token"], "first_used": ["r3b-7-claim"] },
+    { "group": "carry", "items": ["rung", "carry modules", "the 3-41 stopgap"], "first_used": ["r7-1-carry"] },
+    { "group": "F-numbers", "items": ["F-numbers"], "first_used": ["r5-5-release", "r7-6-risk23"] },
+    { "group": "ch1 nouns", "items": ["tick", "Shepherd", "broker", "seat"], "first_used": ["r1-2-stake", "r1-3-stores", "r1-4-shepherd", "r1-5-seams"] },
+    { "group": "the seven jobs", "items": ["the seven jobs"], "first_used": ["r2-1-jobs"] }
+  ]
+}
