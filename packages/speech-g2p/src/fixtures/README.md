@@ -14,6 +14,7 @@ here because `scripts/structure.test.mjs` forbids `.py` files in a package.
 | `misaki-golden.json` | per unit: preprocessed text, the spaCy tokens and tags misaki consumed, misaki's output tokens `{text, tag, phonemes, whitespace, rating}`, the joined phoneme string. Also `fallback` (espeak output per OOV token text, 65 entries) and `subtokens` (misaki's `subtokenize` for 1,867 token texts) | 418 units, 7,502 output tokens, 83 of them rating 2 | `misaki.en.G2P(trf=False, british=False, fallback=EspeakFallback, unk="")` over `corpus.json`, as Kokoro's `KPipeline` builds it |
 | `spacy-tokens.golden.json` | spaCy's tokenizer output `{text, idx, ws}` over each unit's preprocessed text, whitespace tokens included | 418 units, 7,882 tokens | `nlp.tokenizer`; the generator asserts `Tokenizer.explain` yields the same non-space tokens |
 | `num2words.golden.json` | `{form, value, words}` for cardinals, negatives, floats, years and ordinals | 170 cases | `num2words(value, to=...)`, lang `en` |
+| `numbers.golden.json` | misaki's number code (`get_number`, `is_number`, `is_currency`, `append_currency`, `numeric_if_needed`) over stand-in lookups: `{word, currency, isHead, flags, result}` and the helper verdicts | 608 `get_number` cases, 34 `is_number`, 8 `is_currency`, 6 `append_currency`, 27 `numeric_if_needed` | `misaki.en.Lexicon` 0.9.4 subclassed with `<word>` lookups; generator below |
 | `../../data/spacy-en-tokenizer.json` | the tokenizer's special-case rules (1,347, ORTH only), the prefix, suffix, infix and URL patterns with their flags, and 2,266 probe strings with Python's spans for each pattern | 337 KB | `nlp.tokenizer` of the same pipeline |
 
 Total under `src/fixtures` is about 1.5 MB; the test holds it under 2 MB.
@@ -287,4 +288,98 @@ def main(corpus_path, out_dir, data_dir):
 
 if __name__ == "__main__":
     main(*sys.argv[1:4])
+```
+
+### gen-numbers-golden.py
+
+Written in the TP-3027 S5 slice, run the same way as `gen-fixtures.py` but needing only misaki
+(no espeak, no spaCy model). 82 lines. It writes `numbers.golden.json` byte for byte.
+
+```sh
+HF_HUB_OFFLINE=1 "$VENV/bin/python" -I gen-numbers-golden.py "$PKG/src/fixtures/numbers.golden.json"
+```
+
+```python
+import json
+import sys
+from importlib.metadata import version
+
+from misaki.en import Lexicon
+
+assert version("misaki") == "0.9.4", version("misaki")
+
+
+class StandIn(Lexicon):
+    """misaki's number code with the lexicon replaced by readable stand-ins."""
+
+    def __init__(self):
+        pass
+
+    def lookup(self, w, t, s, c):
+        return (f"<{w}>", 3 if w == "point" else 4)
+
+    def stem_s(self, w, t, s, c):
+        return (f"<{w[:-1]}>S", 2)
+
+    def _s(self, p):
+        return p + "+s"
+
+    def _ed(self, p):
+        return p + "+ed"
+
+    def _ing(self, p):
+        return p + "+ing"
+
+
+WORDS = ["5", "123", "147", "1984", "2000", "007", "1,000", "10,000", "1000000", "12", "100", "305", "300",
+         "3rd", "21st", "1,000th", "0.5", ".5", "3.14", "1.2.3", "10.0.0.1", "5.", "-4", "-5.5", "5.99",
+         "1.00", "0.99", "0.05", "5.5", "1,234.56", "12s", "5's", "5ed", "5ing", "5'd", "100s", "1.5.0",
+         "2.50", "1000", "0", "00", "10", "1,5", "7.0",
+         # Python int/float exactness: tiny floats (JS prints exponents), huge integers, long mantissas
+         "0.0000001", "0.00000012", "0.00001", "1.0000001", "0.1234567890123456", "123456789.123456789",
+         "0.30000000000000004", "2.675", "12345678901234567890", "9007199254740993", "9007199254740993.5",
+         "12345678901234567890.5", "99999999999999999999.5", "10000000000000000.0", "0.1234567890123456789",
+         "-0.0000001", "12345678901234567890th"]
+# Amounts above 2**53 under each currency symbol
+CURRENCY_ONLY = ["12345678901234567890", "12345678901234567890.50", "9007199254740993.99", "0.0000001",
+                 "1234567890123456789012.01", "0.00000012"]
+FLAG_WORDS = {"5", "100", "1.2.3", "2000", "123", "147", "12", "305", "1,234.56"}
+
+
+def get_number_cases(lex):
+    cases = []
+    for word in WORDS + CURRENCY_ONLY:
+        for is_head in (True, False):
+            for currency in (None, "$", "£", "€"):
+                for flags in ("", "a", "n", "&", "an"):
+                    if flags and (currency or word not in FLAG_WORDS):
+                        continue
+                    result = lex.get_number(word, currency, is_head, flags)
+                    cases.append({"word": word, "currency": currency, "isHead": is_head, "flags": flags,
+                                  "result": list(result)})
+    return cases
+
+
+def main(out_path):
+    lex = StandIn()
+    out = {"getNumber": get_number_cases(lex), "isNumber": [], "isCurrency": [], "append": [], "numeric": []}
+    for w in ["5", "abc", "12th", "1,000", "5s", "5's", "5ing", "-5", "5-", "1.2.3", "th", "", "12abc",
+              "1984ed", "st", "1st2", "٣"]:
+        for h in (True, False):
+            out["isNumber"].append({"word": w, "isHead": h, "result": Lexicon.is_number(w, h)})
+    for w in ["5", "5.99", "5.999", "5.00", "1.2.3", "5.0", ".5", "5.5"]:
+        out["isCurrency"].append({"word": w, "result": Lexicon.is_currency(w)})
+    for c in [None, "$", "£", "€", "¥", ""]:
+        out["append"].append({"ps": "x", "currency": c, "result": lex.append_currency("x", c)})
+    for c in ["5", "a", "٣", "²", "½", "①", "𝟓", "⑩", "x", "٠", "१",
+              "\u1369", "\u1371", "\u19da", "\u24ff", "\U00010a40", "\U00010a43", "\U00010e60", "\U00010e68",
+              "\U00011052", "\U0001105a", "\U0001f100", "\U0001f101", "\U0001f102", "\U0001f10a", "\u2189", "\u3007"]:
+        out["numeric"].append({"char": c, "result": Lexicon.numeric_if_needed(c)})
+    with open(out_path, "w", encoding="utf8") as f:
+        json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
+        f.write("\n")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1])
 ```
