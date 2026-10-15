@@ -57,14 +57,14 @@ function pickByTag(
   return key !== null && has(entry, key) ? (entry[key] ?? null) : (entry["DEFAULT"] ?? null);
 }
 
-function suffixS(stem: string | null): string | null {
+export function suffixS(stem: string | null): string | null {
   if (!stem) return null;
   if ("ptkfθ".includes(stem.at(-1)!)) return stem + "s";
   if ("szʃʒʧʤ".includes(stem.at(-1)!)) return stem + "ᵻz";
   return stem + "z";
 }
 
-function suffixEd(stem: string | null): string | null {
+export function suffixEd(stem: string | null): string | null {
   if (!stem) return null;
   const last = stem.at(-1)!;
   if ("pkfθʃsʧ".includes(last)) return stem + "t";
@@ -75,7 +75,7 @@ function suffixEd(stem: string | null): string | null {
   return stem + "ᵻd";
 }
 
-function suffixIng(stem: string | null): string | null {
+export function suffixIng(stem: string | null): string | null {
   if (!stem) return null;
   if (stem.length > 1 && stem.at(-1) === "t" && US_TAUS.has(stem.at(-2)!)) {
     return stem.slice(0, -1) + "ɾɪŋ";
