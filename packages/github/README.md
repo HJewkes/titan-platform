@@ -54,7 +54,7 @@ ETag of the same request's last 200 as `If-None-Match`, and a 304 answers with t
 body. Lists follow `Link: rel="next"` page by page, each page conditional on its own ETag, and
 only to `api.github.com`. One `RateBudget` per process (`sharedRateBudget`, or pass `budget`)
 reads `x-ratelimit-*`; below 500 remaining core calls, each call waits the time left until
-reset divided by the calls left. `jobLogTail(repo, jobId, lines)` reads an Actions job log.
+reset divided by the calls left. `jobLogTail(repo, jobId, lines)` reads an Actions job log, and `jobSteps(repo, jobId)` its steps.
 
 `octokitWire({ client?, appToken? })` is the same port for a long-running service, over Octokit
 instead of one `gh` process per call. `octokitRest(client)` implements the `Rest` interface
