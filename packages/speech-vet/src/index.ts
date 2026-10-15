@@ -44,6 +44,7 @@ export {
   type EspeakCliOptions,
   type EspeakRunner,
 } from "./espeak-g2p.js";
+export { misakiIpaG2p } from "./misaki-ipa-g2p.js";
 export {
   admissiblePhones,
   cleanIpa,

@@ -45,6 +45,9 @@ as speech-stt's `wav2vec2Recognizer`.
   and calls `onError`, as the audiobook backend does. `espeakVersion()` reports the installed
   version. Install espeak-ng yourself (apt or brew): it is a GPL binary, called as a process,
   not bundled.
+- `misakiIpaG2p(g2p)`: a `PhoneG2p` over speech-g2p's `misakiEnglish()`, with no espeak-ng binary.
+  One IPA word per token, stress stripped, unreadable tokens dropped; US English only. The
+  verdict thresholds were tuned on espeak, so verdicts can differ from the espeak path.
 - `cleanIpa`, `phonemeDistance`, `phoneMatchDistance`, `admissiblePhones`, `g2pSentence`,
   `WEAK_FORMS` and the thresholds the verdicts use.
 

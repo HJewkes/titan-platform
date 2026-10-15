@@ -24,6 +24,7 @@ come from espeak-ng's G2P; actual phones come from a wav2vec2 phone recognizer. 
 distance blames the transcriber, a large one blames the voice. `espeakCliG2p` runs
 `espeak-ng -q --ipa=3` for you through an injectable runner; install espeak-ng (apt or brew),
 which is a GPL binary called as a process and not bundled.
+`misakiIpaG2p` is the binary-free alternative, built on speech-g2p's misaki G2P.
 
 ## When to reach for it
 

@@ -771,6 +771,9 @@ importers:
 
   packages/speech-vet:
     dependencies:
+      '@titan-design/speech-g2p':
+        specifier: workspace:^
+        version: link:../speech-g2p
       '@titan-design/speech-stt':
         specifier: workspace:^
         version: link:../speech-stt

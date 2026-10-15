@@ -36,6 +36,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@titan-design/speech-g2p": "workspace:^",
     "@titan-design/speech-stt": "workspace:^"
   },
   "peerDependencies": {

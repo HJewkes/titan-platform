@@ -148,6 +148,7 @@ graph TD
   sessionRead --> agentProtocol
   sessionRead --> anthropicAccount
   sessionRead --> locator
+  speechVet --> speechG2p
   speechVet --> speechStt
   styleAnalyzer --> codeParser
   styleAnalyzer --> styleProfile
