@@ -81,6 +81,8 @@ export interface ExtractOptions {
    */
   stopPastCap?: boolean;
   aliases?: AliasTable;
+  /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
+  onScript?: (text: string) => void;
 }
 
 interface Scope {
@@ -110,6 +112,7 @@ interface Walk {
   unsure: UnsureBudget;
   /** What the line stores and whether it evaluates arithmetic, shared by every walk of it. */
   marks: ValueMarks;
+  onScript: ((text: string) => void) | null;
 }
 
 /**
@@ -121,12 +124,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   const out: SimpleCommand[] = [];
   const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
   const foldCase = options.foldCase === true;
-  const unsure = {
-    left: MAX_UNSURE_WORDS,
-    splicedLeft: SPLICED_WEIGHT * src.length,
-    decides: decider(options.guarded),
-    stopPastCap: options.stopPastCap === true,
-  };
+  const unsure = lineBudget(src, options);
   const w: Walk = {
     scope,
     stack: [],
@@ -142,10 +140,21 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
     aliases: options.aliases ?? null,
     unsure,
     marks: newMarks(),
+    onScript: options.onScript ?? null,
   };
   walk(tokenizeLine(src), observed(w));
   settle(w.marks);
   return out;
+}
+
+/** The line's budget of `unsure` reading words and spliced text, shared by every walk of it. */
+function lineBudget(src: string, options: ExtractOptions): UnsureBudget {
+  return {
+    left: MAX_UNSURE_WORDS,
+    splicedLeft: SPLICED_WEIGHT * src.length,
+    decides: decider(options.guarded),
+    stopPastCap: options.stopPastCap === true,
+  };
 }
 
 /** A line bash 5 and bash 3.2 read differently is refused outright, whatever it names; a plain ParseError is not. */
@@ -327,6 +336,7 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[]): void {
   for (const text of script.texts) {
     if (w.walked?.has(text)) continue;
     w.walked?.add(text);
+    w.onScript?.(text);
     // A shell's arguments and input become its positional parameters and what its `read` stores.
     if (script.wrap !== "eval") w.marks.opaque = true;
     walk(tokenizeLine(text), child(w, [...wrapping, script.wrap]));

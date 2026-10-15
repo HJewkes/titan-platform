@@ -80,7 +80,9 @@ await phones.dispose();
   Parakeet scored a lower word error rate, but it read garbled synthetic speech as the
   intended words, which makes it worse at catching bad takes. So there is no sherpa peer.
 - No segment confidence. Word-timestamp decoding in transformers.js reports none, so
-  `Transcript.segments` is empty.
+  `Transcript.segments` is empty and `whisperStt` declares `capabilities.tokenLogprobs: false`.
+  `SttProvider.capabilities` is required; a provider that fills word `probability` and segment
+  `avgLogprob` / `compressionRatio` from token log-probs declares it `true`.
 - No prompt or language option yet. The default model is English only.
 - No `isjunk` callback on `SequenceMatcher`. None of the ported callers used one.
 - No file or WAV handling. `resample` takes and returns `{ samples, sampleRate }`.

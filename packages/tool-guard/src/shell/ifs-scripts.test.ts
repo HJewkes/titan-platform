@@ -1,0 +1,60 @@
+import { describe, expect, it } from "vitest";
+import { extractCommands } from "./commands.js";
+import { scriptsOf, tokenLists } from "./ifs-scripts.js";
+import { tokenize } from "./lexer.js";
+
+const W = "R=origin,HEAD:main; for i in 1 2; do git push $R; declare $a$b=,; done";
+const q = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
+
+const LINES = [
+  `bash -c ${q(W)}`,
+  `sh -c ${q(W)}`,
+  `bash <<'EOF'\n${W}\nEOF`,
+  `bash <<< ${q(W)}`,
+  `echo ${q(W)} | bash`,
+  `echo ${q(W)} | tee log | bash`,
+  `{ echo ${q(W)}; } | bash`,
+  `(echo ${q(W)}) | bash`,
+  `printf '%s' ${q(W)} | xargs -0 sh -c`,
+  `sudo -u x bash -c ${q(W)}`,
+  `timeout 5 env A=1 sh -c ${q(W)}`,
+  `find . -exec bash -c ${q(W)} \\;`,
+  `find -execdir sh -c ${q(W)} {} +`,
+  `bash -c "$(printf %s ${q(W)})"`,
+  `eval ${q(W)}`,
+  `eval eval ${q(q(W))}`,
+  `x=$(bash -c ${q(W)})`,
+  `bash -c ${q(`sh -c ${q(W)}`)}`,
+];
+
+/** Every script text the walk reads, nested scripts included. */
+function walkScripts(line: string): string[] {
+  const texts: string[] = [];
+  extractCommands(line, { cwd: "/home/you/app", home: "/home/you", onScript: (text) => texts.push(text) });
+  return texts;
+}
+
+/** Every script scriptsOf finds in the line and, in turn, in each script it finds. */
+function matcherScripts(line: string): string[] {
+  const found: string[] = [];
+  const visit = (text: string) => {
+    for (const list of tokenLists(tokenize(text))) {
+      for (const script of scriptsOf(list, text.length).texts.filter((t) => !found.includes(t))) {
+        found.push(script);
+        visit(script);
+      }
+    }
+  };
+  visit(line);
+  return found;
+}
+
+describe("scriptsOf covers every script the walk runs", () => {
+  it.each(LINES)("%s", (line) => {
+    const walkTexts = walkScripts(line);
+    const matcherTexts = matcherScripts(line);
+
+    expect(walkTexts.length).toBeGreaterThan(0);
+    for (const text of walkTexts) expect(matcherTexts.some((m) => m.includes(text))).toBe(true);
+  });
+});

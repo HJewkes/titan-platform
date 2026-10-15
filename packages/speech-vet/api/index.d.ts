@@ -316,6 +316,37 @@ declare function detectTailArtifact(text: string, actualFull: string, options: T
 /** The recognizer's phones, cleaned. Cleaning runs on every read, so a cache of raw decodes follows fold changes. */
 declare function recognizePhones(recognizer: PhoneRecognizer, audio: Audio): Promise<string>;
 
+/** Misaki phonemes to IPA; speech-g2p's `misakiToIpa` fits. */
+type MisakiToIpa = (misaki: string) => string;
+interface HeardReadingOptions {
+    toIpa: MisakiToIpa;
+    table?: HeteronymTable;
+}
+/** `inconclusive`: the word's span in the audio is too short, or two readings fit it equally well. */
+type HeardStatus = "ok" | "fail" | "inconclusive";
+interface HeardReading {
+    word: string;
+    /** One-based ordinal among the occurrences of this spelling in the line. */
+    occurrence: number;
+    declared: string;
+    /** The reading the audio's phones fit best, or `unknown`. */
+    heard: string;
+    /** The audio's phones aligned to the word. */
+    heardPhones: string;
+    /** The heard reading's distance, rounded to 3 places, half to even. */
+    distance: number;
+    status: HeardStatus;
+}
+/** Every literal string a reading pattern matches. Only literals and `[...]` classes occur in the tables. */
+declare function expandReading(pattern: string): string[];
+/** Per reading of `word`, the cleaned IPA of every string its pattern matches. */
+declare function readingIpa(word: string, toIpa: MisakiToIpa, table?: HeteronymTable): Record<string, string[]>;
+/**
+ * Per declared heteronym (`[w](=reading)`) among the tokens the voice was given, the reading the
+ * recognizer heard and whether it is the declared one. `recognized` is the recognizer's raw phone string.
+ */
+declare function checkHeardReadings(spoken: string, tokens: readonly PhonemeToken[], recognized: string, { toIpa, table }: HeardReadingOptions): HeardReading[];
+
 /**
  * Take selection, a port of the audiobook backend's `tts/verified.py` (the re-roll loop) and the
  * tail-fix half of `scripts/fix_pass.py` (`keepTake`, regressions, best-of-N). Every model or file
@@ -425,4 +456,4 @@ interface TailFix<T> {
  */
 declare function bestTailTake<T>(options: BestTailTakeOptions<T>): Promise<TailFix<T>>;
 
-export { type BestTailTakeOptions, DEFAULT_NORMALIZE_STEPS, DEFAULT_PHONE_VOICE, DEFAULT_RETRIES, ESPEAK_TIMEOUT_MS, type EspeakCliOptions, type EspeakRunner, HALLUCINATION_MIN_PHONES, type Hallucination, type HallucinationOptions, type HeteronymTable, HeteronymTableSchema, type InitialismOptions, KEEP_TAKE_MARGIN, type Lexicon, type LexiconEntry, LexiconEntrySchema, LexiconSchema, MIN_PHONES_FOR_VERDICT, MIN_SPAN_RATIO_FOR_VERDICT, MIN_TARGET_WORD_LENGTH, NUMBER_STEPS, type NormalizeStep, type PhoneG2p, type PhoneG2pOptions, type PhoneRecognizer, type PhoneSource, type PhonemeToken, RATE_UNITS, type RawTake, type ReadingFinding, type ReadingStatus, type Respeller, SHORT_WORD_MAX_PHONES, SHOUTED_TWO_LETTER_WORDS, SPELLED_INITIALISMS, type SynthesizeVerifiedOptions, TAIL_STRAY_MIN_PHONES, type TailArtifact, type TailArtifactOptions, type TailCandidate, type TailFix, type TakeScore, VOWELLESS_INTERJECTIONS, type VerifiedTake, WEAK_FORMS, WORSE_MARGIN, type WordDistance, type WordDistanceOptions, type WordVerdict, type WordVerdictOptions, XTTS_FAULT_THRESHOLD, XTTS_FAULT_THRESHOLD_SHORT, XTTS_FAULT_THRESHOLD_UNUSUAL, admissiblePhones, ageStep, bestTailTake, cardinalStep, checkReadings, chunkWordVerdicts, cleanIpa, currencyStep, decimalStep, detectHallucinations, detectTailArtifact, englishHeteronyms, espeakCliG2p, espeakVersion, expectedPhones, g2pSentence, g2pText, generateCandidates, initialismStep, isInitialism, keepTake, loadLexicon, normalize, numberToOrdinal, numberToWords, ordinalStep, phoneMatchDistance, phonemeDistance, plainText, rateStep, readingOf, recognizePhones, regressions, respeller, respellingsOf, spellDigits, spellInitialisms, synthesizeVerified, timeStep, tokenDump, whitespaceStep, wordDistances };
+export { type BestTailTakeOptions, DEFAULT_NORMALIZE_STEPS, DEFAULT_PHONE_VOICE, DEFAULT_RETRIES, ESPEAK_TIMEOUT_MS, type EspeakCliOptions, type EspeakRunner, HALLUCINATION_MIN_PHONES, type Hallucination, type HallucinationOptions, type HeardReading, type HeardReadingOptions, type HeardStatus, type HeteronymTable, HeteronymTableSchema, type InitialismOptions, KEEP_TAKE_MARGIN, type Lexicon, type LexiconEntry, LexiconEntrySchema, LexiconSchema, MIN_PHONES_FOR_VERDICT, MIN_SPAN_RATIO_FOR_VERDICT, MIN_TARGET_WORD_LENGTH, type MisakiToIpa, NUMBER_STEPS, type NormalizeStep, type PhoneG2p, type PhoneG2pOptions, type PhoneRecognizer, type PhoneSource, type PhonemeToken, RATE_UNITS, type RawTake, type ReadingFinding, type ReadingStatus, type Respeller, SHORT_WORD_MAX_PHONES, SHOUTED_TWO_LETTER_WORDS, SPELLED_INITIALISMS, type SynthesizeVerifiedOptions, TAIL_STRAY_MIN_PHONES, type TailArtifact, type TailArtifactOptions, type TailCandidate, type TailFix, type TakeScore, VOWELLESS_INTERJECTIONS, type VerifiedTake, WEAK_FORMS, WORSE_MARGIN, type WordDistance, type WordDistanceOptions, type WordVerdict, type WordVerdictOptions, XTTS_FAULT_THRESHOLD, XTTS_FAULT_THRESHOLD_SHORT, XTTS_FAULT_THRESHOLD_UNUSUAL, admissiblePhones, ageStep, bestTailTake, cardinalStep, checkHeardReadings, checkReadings, chunkWordVerdicts, cleanIpa, currencyStep, decimalStep, detectHallucinations, detectTailArtifact, englishHeteronyms, espeakCliG2p, espeakVersion, expandReading, expectedPhones, g2pSentence, g2pText, generateCandidates, initialismStep, isInitialism, keepTake, loadLexicon, normalize, numberToOrdinal, numberToWords, ordinalStep, phoneMatchDistance, phonemeDistance, plainText, rateStep, readingIpa, readingOf, recognizePhones, regressions, respeller, respellingsOf, spellDigits, spellInitialisms, synthesizeVerified, timeStep, tokenDump, whitespaceStep, wordDistances };

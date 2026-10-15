@@ -41,6 +41,7 @@ export {
   type AsrFactory,
   type AsrOutput,
   type AsrPipeline,
+  type SttCapabilities,
   type SttProvider,
   type TranscriptCache,
   type WhisperSttOptions,
