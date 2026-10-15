@@ -36,7 +36,9 @@ describe("suiteRules", () => {
 
     expect(fixer).toContain("`basement-suite <repo> <branch> --agent <your name> --run <script>`");
     expect(fixer).toContain("Exit 75 means busy: retry every 5 minutes.");
-    expect(fixer).toMatch(/dead:check.*dag:check/);
+    expect(fixer).toContain("dag:check");
+    expect(fixer).toContain("never run dead:check separately");
+    expect(fixer).not.toMatch(/dead:check and dag:check|dag:check and dead:check/);
     expect(fixer).toContain("never through ssh");
     expect(fixer).not.toContain("ssh basement");
     expect(fixer).not.toContain("Mac");

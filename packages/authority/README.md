@@ -29,6 +29,9 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "coordinator", tainted: false }); /
 - A rule with `when` (MRG-AU-RV, MRG-AU-RC, MRG-AU-RM, MRG-AU-RS and ANS-DC-QA today) applies only when every condition holds on
   `request.facts` and `request.tainted` is an own property set to exactly `false`; otherwise the pair's unconditional rule
   decides and the reason names what was unmet. `unmetConditions(when, facts)` lists the failing conditions.
+  MRG-AU-RS never carries across a merge-up whose base side has a path that is or is under `packages/authority/`,
+  `packages/tool-guard/`, `.github/` or `.codewatch/` (a symlink or submodule at that name counts), or is the file
+  `.egress-allow`; `isCarryFencedPath(path)` is that test.
   `evaluate` reads each request field once, then copies the facts with `structuredClone`
   and rebuilds them as plain data on null-prototype objects. Facts holding a function, a `toJSON` method, a Proxy, a Map, a Set, a Date, a BigInt, a cycle or a throwing getter fail every condition instead of
   throwing, and so does a sparse array (a hole would read through to the prototype).

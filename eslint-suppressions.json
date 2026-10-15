@@ -674,9 +674,6 @@
   "products/factory/src/serve.ts": {
     "titan/max-function-lines": {
       "count": 1
-    },
-    "titan/max-line-length": {
-      "count": 1
     }
   },
   "products/factory/src/service-check.ts": {
@@ -1033,11 +1030,6 @@
   "products/factory/src/shepherd/review.ts": {
     "titan/max-line-length": {
       "count": 15
-    }
-  },
-  "products/factory/src/shepherd/reviewer-brief.ts": {
-    "titan/max-function-lines": {
-      "count": 1
     }
   },
   "products/factory/src/shepherd/reviewer-dispatch.ts": {

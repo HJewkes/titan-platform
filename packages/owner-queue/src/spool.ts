@@ -2,9 +2,13 @@ import { randomUUID } from "node:crypto";
 import { link, lstat, mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import type { RevisionSource } from "@titan-design/evidence";
+import { verifyDepositAnchors, type QuotedAnchor } from "./deposit-anchors.js";
 import { fromDeposit, ownerItemDepositSchema, type OwnerItemDeposit } from "./deposit.js";
 import { forAudience } from "./audience.js";
 import { ownerItemSchema, type Audience, type OwnerAnswer, type OwnerItem } from "./schema.js";
+
+export { DepositAnchorError, type QuotedAnchor } from "./deposit-anchors.js";
 
 /** The cap on one deposit file, so a runaway context cannot fill the spool or the console. */
 export const MAX_DEPOSIT_BYTES = 64 * 1024;
@@ -15,6 +19,12 @@ const ANSWER_SUFFIX = ".answer.json";
 const answerSchema = ownerItemSchema.shape.answer.unwrap();
 
 export type WriteResult = { file: string; created: boolean };
+/** `anchors` quotes back each anchor checked against `source`; absent when none were checked. */
+export type DepositWriteResult = WriteResult & { anchors?: QuotedAnchor[] };
+export interface WriteDepositOptions {
+  /** File text at a pinned commit. With it, a deposit whose anchor does not hold is refused unwritten. */
+  source?: RevisionSource;
+}
 export type SpoolReject = { file: string; reason: string };
 export type SpoolContents = { items: OwnerItem[]; rejects: SpoolReject[] };
 
@@ -141,10 +151,13 @@ async function assertHeldBy(file: string, deposit: { asker: string; depositId: s
 /**
  * Validates a deposit and files it once. A repeat of the same asker and depositId, under its
  * current or its legacy name, leaves the first file in place and returns `created: false`.
- * Throws on a refused or oversized deposit, and on a name held by a different deposit.
+ * Throws on a refused or oversized deposit, and on a name held by a different deposit. With a
+ * `source`, an anchor past EOF or on a path that is not a file at its pinned commit throws
+ * DepositAnchorError before anything is written.
  */
-export async function writeDeposit(dir: string, deposit: OwnerItemDeposit): Promise<WriteResult> {
+export async function writeDeposit(dir: string, deposit: OwnerItemDeposit, options: WriteDepositOptions = {}): Promise<DepositWriteResult> {
   const parsed = ownerItemDepositSchema.parse(deposit);
+  const anchors = options.source ? verifyDepositAnchors(parsed, options.source) : [];
   const body = JSON.stringify(parsed);
   if (Buffer.byteLength(body) > MAX_DEPOSIT_BYTES) {
     throw new RangeError(`deposit exceeds ${MAX_DEPOSIT_BYTES} bytes`);
@@ -154,7 +167,7 @@ export async function writeDeposit(dir: string, deposit: OwnerItemDeposit): Prom
   const filedEarlier = await firstPresent(dir, legacy);
   const result = filedEarlier ? { file: filedEarlier, created: false } : await writeOnce(dir, name, body);
   if (!result.created) await assertHeldBy(result.file, parsed);
-  return result;
+  return anchors.length > 0 ? { ...result, anchors } : result;
 }
 
 function isDepositFile(name: string): boolean {

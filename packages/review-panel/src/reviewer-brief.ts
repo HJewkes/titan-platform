@@ -97,7 +97,7 @@ const CHECK_NAME = /^[A-Za-z0-9][A-Za-z0-9 ._/-]{0,39}$/;
 
 /** True only for a result that parses, is for this head and reproduced the bug; any other verdict leaves the judging to the reviewer. */
 function fixProofReproduced(head: string, line: string | undefined): boolean {
-  const parsed = line === undefined ? undefined : parseResultLine(line);
+  const parsed = line === undefined ? undefined : parseResultLine(line.trim());
   return parsed?.ok === true && parsed.result.head === head && parsed.result.verdict === "reproduced";
 }
 
