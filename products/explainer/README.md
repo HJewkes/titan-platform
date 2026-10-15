@@ -26,7 +26,8 @@ the zod shape is what validates a file.
 The map track (`map-state.ts`, `map-lints.ts`, `map-timeline.ts`) parses each beat's
 optional `visual.map_state`, lints it against the layout's ids, and compiles it to timed
 segments. A beat without `map_state` is off the map; the next map beat resumes where the map
-last was.
+last was. `map-pins.ts` places each segment's pins at build time with graph-layout's
+`placePills` and writes their boxes into the timeline, so the painter takes them as props.
 
 `camera.ts` computes each beat's `camera/<beat>.json` station: a 16:9 box around the beat's
 focus boxes that keeps them above the 83 % caption line.
@@ -54,10 +55,14 @@ duplicate id or alias; `unimplementedL0Rules` lists rules whose claimed check id
 check emits.
 
 `explainer eval l0 <script.json> --config <id> [--rules <registry>] [--bench <dir>]
-[--layout <layout.json>] [--parent <sha>]` runs the deterministic L0 checks (today the map
-lints, which need `--layout`), freezes the script and appends its rows and run record. `--rules` defaults to
-the shipped registry and must parse as `rules/v1`. It exits 0 on a pass, 1 when an error-severity check fails (warnings never fail) and 2 on bad
-input. L0 filters only: never rank scripts by how many checks they pass.
+[--layout <layout.json>] [--parent <sha>] [--fail-on-ghosts]` runs the deterministic L0 checks
+(`L0_CHECKS`: the map, why, evidence, voice and flow lints; the map lints need `--layout` and are
+skipped without it), freezes the script and appends its rows and run record. A rule that claims
+a check id no run check emits is a ghost: each prints one warning on stderr, and
+`--fail-on-ghosts` turns them into exit 1. `doctrine/rules.yaml` holds which rules are
+implemented or pending. `--rules` defaults to the shipped registry and must parse as
+`rules/v1`. It exits 0 on a pass, 1 when an error-severity check fails (warnings never fail)
+and 2 on bad input. L0 filters only: never rank scripts by how many checks they pass.
 
 L1 and L2 are the model-judged layers. The judge is configuration, never a constant: a JSON
 file names `provider` (`claude-print`, the Claude CLI's own login, or `codex`, a cached

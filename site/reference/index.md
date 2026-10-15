@@ -48,6 +48,7 @@ Reusable machinery over the primitives.
 | [`registry`](/reference/registry) | zod command registry projected to CLI, MCP, and HTTP surfaces | `rpc-protocol` |
 | [`retrieval`](/reference/retrieval) | FTS + vector + graph retrieval with RRF fusion, rerank cascade, and fail-open | `embed`, `store-sqlite` |
 | [`rpc-client`](/reference/rpc-client) | Browser-safe typed client for titan daemons, with live (HTTP + SSE) and static (snapshot file) data sources | `rpc-protocol` |
+| [`speech-tts`](/reference/speech-tts) | Swappable text-to-speech provider contract, registry and command/HTTP adapters | none |
 | [`worktree`](/reference/worktree) | Git worktree mechanics for headless agents: budgeted allocation, release safety, park, re-create and sweep | none |
 
 ## Tier 2 — domain
@@ -92,7 +93,7 @@ Thin compositions of the tiers. Private, not published.
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
 | `evals` | Eval registry: spec schemas for units, variants, cases, suites, checks and scorecards, with canonical content hashing | `agent`, `authority`, `evidence`, `health`, `hitl`, `review-panel`, `session-analytics`, `session-read`, `store-sqlite`, `workflow` |
-| `explainer` | Explainer video pipeline: beats.json and digest.json schemas, packet builder, finding attribution | `agent`, `agent-protocol` |
+| `explainer` | Explainer video pipeline: beats.json and digest.json schemas, packet builder, finding attribution | `agent`, `agent-protocol`, `evidence`, `graph-layout` |
 | `factory` | Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams | `agent`, `agent-dispatch`, `app-paths`, `authority`, `coordinator`, `daemon`, `fix-proof`, `github`, `health`, `hitl`, `owner-queue`, `registry`, `review-panel`, `review-schema`, `rpc-client`, `session-analytics`, `session-read`, `store-sqlite`, `workflow`, `worktree` |
 | `retrieval-eval` | Retrieval eval harness: transcript-mined query/label pairs scored over candidate retrievers | `app-paths`, `embed`, `retrieval`, `store-sqlite` |
 | `session-miner` | The session miner: index Claude Code transcripts into a session graph and serve it over CLI, MCP, and HTTP | `app-paths`, `cluster`, `daemon`, `embed`, `github`, `locator`, `memory`, `pm`, `registry`, `retrieval`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite`, `throughput` |

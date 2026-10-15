@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MergeFacts } from "./conditions.js";
-import { unmetConditions } from "./conditions.js";
+import { isCarryFencedPath, unmetConditions } from "./conditions.js";
 import { evaluate } from "./evaluate.js";
 import { DEFAULT_TABLE } from "./table.js";
 
@@ -75,12 +75,28 @@ describe("MRG-AU-RS: an automation merge on a verdict carried across a merge-up 
     ["a carry from a head the verdict does not name", (f) => { f.carry!.fromHead = "e".repeat(40); }],
     ["a short from-head", (f) => { f.carry!.fromHead = "b".repeat(12); f.verdict.head = "b".repeat(12); }],
     ["a FIX_FIRST verdict", (f) => { f.verdict.value = "FIX_FIRST"; }],
+    ["a base side that touches packages/authority/", (f) => { f.carry!.basePaths = ["src/c.ts", "packages/authority/src/table.json"]; }],
+    ["a base side that touches packages/tool-guard/", (f) => { f.carry!.basePaths = ["packages/tool-guard/src/guard.ts"]; }],
+    ["a base side that touches .github/workflows/", (f) => { f.carry!.basePaths = [".github/workflows/ci.yml"]; }],
+    ["a fenced base path that differs only by case", (f) => { f.carry!.basePaths = [".GitHub/Workflows/release.yml"]; }],
+    ["a fenced base path on an unknown kind", (f) => { f.kind = "unknown"; f.carry!.basePaths = ["packages/authority/src/conditions.ts"]; }],
+    ["a fenced base path on an unregistered kind", (f) => { Reflect.deleteProperty(f, "kind"); f.carry!.basePaths = ["packages/tool-guard/src/guard.ts"]; }],
   ];
 
   it.each(REFUSALS)("falls back to the owner gate on %s", (_name, patch) => {
     const facts = patched(patch);
     expect(unmetConditions([DISJOINT], { merge: facts })).toEqual([DISJOINT]);
     expect(decide(facts)).toMatchObject({ verdict: "gate", ruleId: "MRG-AU" });
+  });
+
+  it("allows a base side under sibling prefixes of the fenced directories", () => {
+    const facts = patched((f) => { f.carry!.basePaths = ["packages/authority-tools/a.ts", "packages/tool-guardian/b.ts", ".github/workflows-old.md"]; });
+    expect(decide(facts)).toEqual({ verdict: "allow", ruleId: "MRG-AU-RS" });
+  });
+
+  it("leaves a non-security carry across a fenced base side to MRG-AU-RC, since the carve-out covers MRG-AU-RS only", () => {
+    const facts = patched((f) => { f.kind = "correctness"; f.carry!.basePaths = ["packages/authority/src/table.json"]; });
+    expect(decide(facts)).toEqual({ verdict: "allow", ruleId: "MRG-AU-RC" });
   });
 
   it("leaves a security tree-equal carry to the owner gate, matching neither MRG-AU-RC nor MRG-AU-RS", () => {
@@ -90,5 +106,19 @@ describe("MRG-AU-RS: an automation merge on a verdict carried across a merge-up 
 
   it("leaves a non-security disjoint carry, whose trees are equal, to MRG-AU-RC first", () => {
     expect(decide(patched((f) => { f.kind = "correctness"; }))).toEqual({ verdict: "allow", ruleId: "MRG-AU-RC" });
+  });
+});
+
+describe("isCarryFencedPath", () => {
+  it.each(["packages/authority/src/table.json", "packages/tool-guard/src/guard.ts", ".github/workflows/ci.yml", "Packages/Authority/x.ts"])("fences %s", (path) => {
+    expect(isCarryFencedPath(path)).toBe(true);
+  });
+
+  it.each([42, undefined, "packages/authority/../x", "packages/./authority/x", "src/a.ts\\b"])("fails closed on %s", (path) => {
+    expect(isCarryFencedPath(path)).toBe(true);
+  });
+
+  it.each(["src/a.ts", "packages/authority-tools/a.ts", ".github/workflows-old.md"])("leaves %s unfenced", (path) => {
+    expect(isCarryFencedPath(path)).toBe(false);
   });
 });
