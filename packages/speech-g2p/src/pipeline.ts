@@ -4,9 +4,9 @@ import { isPySpace, mergeTokens, underscore, type MToken } from "./merge.js";
 import type { RawToken } from "./types.js";
 
 /** A stress level (number), an override `/phonemes`, or number-reading `#flags`. */
-export type Feature = number | string;
+type Feature = number | string;
 
-export interface Preprocessed {
+interface Preprocessed {
   text: string;
   /** The text split on whitespace, except that each link's text is one word even when it has spaces. */
   words: string[];

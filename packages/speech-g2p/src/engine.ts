@@ -1,13 +1,13 @@
 // Port of misaki 0.9.4 `Lexicon.__call__`, `G2P.token_context`, `resolve_tokens` and `G2P.__call__`
 // (en.py:476-493, 619-712), Apache-2.0. US English, misaki version 1.0 phonemes (ɾ as T, ʔ as t).
-import { Lexicon, suffixEd, suffixIng, suffixS, type Pronunciation, type TokenContext } from "./lexicon.js";
+import { suffixEd, suffixIng, suffixS, type Lexicon, type Pronunciation, type TokenContext } from "./lexicon.js";
 import { mergeTokens, stressWeight, type MToken } from "./merge.js";
 import { appendCurrency, getNumber, isNumber, numericIfNeeded, type NumberLexicon } from "./numbers.js";
 import { foldLeft, preprocess, retokenize, tokenize, type TaggedToken, type Word } from "./pipeline.js";
 import { applyStress, PRIMARY_STRESS } from "./stress.js";
 import type { G2pToken } from "./types.js";
 
-export interface EngineOptions {
+interface EngineOptions {
   lexicon: Lexicon;
   /** Tokens and Penn tags for the preprocessed text, as spaCy's pipeline gives them. */
   analyze: (text: string) => TaggedToken[];
@@ -24,12 +24,12 @@ const NON_QUOTE_PUNCTS = new Set(";:,.!?—…");
 const SUBTOKEN_JUNKS = new Set("',-._‘’/");
 const isJunk = (text: string): boolean => [...text].every((c) => SUBTOKEN_JUNKS.has(c));
 
-export function toG2pToken(tk: MToken): G2pToken {
+function toG2pToken(tk: MToken): G2pToken {
   return { text: tk.text, tag: tk.tag, phonemes: tk.phonemes, whitespace: tk.whitespace, rating: tk._.rating ?? tk.rating };
 }
 
 /** misaki `token_context`: whether the word read just now (the next one in text order) starts with a vowel. */
-export function tokenContext(ctx: TokenContext, ps: string | null, token: MToken): TokenContext {
+function tokenContext(ctx: TokenContext, ps: string | null, token: MToken): TokenContext {
   let futureVowel = ctx.futureVowel;
   const first = ps ? [...ps].find((c) => VOWELS.has(c) || CONSONANTS.has(c) || NON_QUOTE_PUNCTS.has(c)) : undefined;
   if (first !== undefined) futureVowel = NON_QUOTE_PUNCTS.has(first) ? null : VOWELS.has(first);
@@ -65,7 +65,7 @@ function demoteWeakerStress(tokens: MToken[]): void {
 }
 
 /** misaki `resolve_tokens`: fills punctuation and junk parts of a word, then spaces or destresses its parts. */
-export function resolveTokens(tokens: MToken[]): void {
+function resolveTokens(tokens: MToken[]): void {
   const prespace = needsPrespace(mergeTokens(tokens).text);
   tokens.forEach((tk, i) => {
     if (tk.phonemes === null) {

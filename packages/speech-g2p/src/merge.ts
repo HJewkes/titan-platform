@@ -1,7 +1,7 @@
 // Port of misaki 0.9.4 `MToken` (token.py) and `merge_tokens` (en.py:13-41), Apache-2.0.
 
 /** misaki's `token._` extension fields. */
-export interface Underscore {
+interface Underscore {
   isHead: boolean;
   /** Text to look up in place of the token's own, as when "2" between letters reads "to". */
   alias: string | null;
@@ -40,8 +40,12 @@ export function underscore(fields: Partial<Underscore> = {}): Underscore {
 }
 
 // Python str.isspace() over one character.
-const PY_SPACE = /^[\t\n\v\f\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]$/;
-export const isPySpace = (c: string): boolean => PY_SPACE.test(c);
+const PY_SPACE = new Set([
+  0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x85, 0xa0, 0x1680,
+  0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a,
+  0x2028, 0x2029, 0x202f, 0x205f, 0x3000,
+]);
+export const isPySpace = (c: string): boolean => [...c].length === 1 && PY_SPACE.has(c.codePointAt(0)!);
 
 const byCodePoint = (a: string, b: string): number => a.codePointAt(0)! - b.codePointAt(0)!;
 
@@ -63,7 +67,7 @@ function joinPhonemes(tokens: readonly MToken[], unk: string): string {
 function mergedUnderscore(tokens: readonly MToken[]): Underscore {
   const stresses = new Set(tokens.map((tk) => tk._.stress).filter((s) => s !== null));
   const currencies = tokens.map((tk) => tk._.currency).filter((c) => c !== null);
-  const ratings = tokens.map((tk) => tk._.rating);
+  const ratings = tokens.map((tk) => tk._.rating).filter((r) => r !== null);
   const flags = new Set(tokens.flatMap((tk) => [...tk._.numFlags]));
   return underscore({
     isHead: tokens[0]!._.isHead,
@@ -71,7 +75,7 @@ function mergedUnderscore(tokens: readonly MToken[]): Underscore {
     currency: currencies.length > 0 ? currencies.sort(byCodePoint).at(-1)! : null,
     numFlags: [...flags].sort(byCodePoint).join(""),
     prespace: tokens[0]!._.prespace,
-    rating: ratings.includes(null) ? null : Math.min(...(ratings as number[])),
+    rating: ratings.length < tokens.length ? null : Math.min(...ratings),
   });
 }
 

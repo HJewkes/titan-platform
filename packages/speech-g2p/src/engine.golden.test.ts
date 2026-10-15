@@ -19,9 +19,20 @@ interface Golden {
   units: GoldenUnit[];
 }
 
-const readJson = <T>(name: string): T => JSON.parse(readFileSync(new URL(`fixtures/${name}`, import.meta.url), "utf8")) as T;
-const golden = readJson<Golden>("misaki-golden.json");
-const corpus = new Map(readJson<{ units: { id: string; text: string }[] }>("corpus.json").units.map((u) => [u.id, u.text]));
+interface Corpus {
+  units: { id: string; text: string }[];
+}
+
+// Only the top-level keys are checked; the tests check the contents.
+function readJson<T>(name: string, keys: readonly string[]): T {
+  const parsed: unknown = JSON.parse(readFileSync(new URL(`fixtures/${name}`, import.meta.url), "utf8"));
+  const isShape = (v: unknown): v is T => typeof v === "object" && v !== null && keys.every((k) => k in v);
+  if (!isShape(parsed)) throw new Error(`unexpected fixture shape: ${name}`);
+  return parsed;
+}
+
+const golden = readJson<Golden>("misaki-golden.json", ["fallback", "subtokens", "units"]);
+const corpus = new Map(readJson<Corpus>("corpus.json", ["units"]).units.map((u) => [u.id, u.text]));
 const lexicon = new Lexicon(loadLexiconData());
 
 const recordedFallback = (token: G2pToken): string | null => golden.fallback[token.text] ?? null;
