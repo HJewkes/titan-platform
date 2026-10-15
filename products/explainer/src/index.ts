@@ -218,6 +218,7 @@ export { BEAT_SCORE_COLUMNS, CANARY_COLUMNS, SCRIPT_SCORE_COLUMNS, VIEWER_COLUMN
 export { canonicalSha } from "./eval-store.js";
 export { MAX_SENTENCE_WORDS, MIN_PROJECT_SHARE, voiceCheck, voiceCheckWith } from "./lint-voice.js";
 export { flowCheck } from "./lint-flow.js";
+export { heteronymCheck, heteronymCheckWith } from "./lint-heteronyms.js";
 export { maskEntities, repoEntities } from "./lint-text.js";
 export {
   DEFAULT_RULES_PATH,

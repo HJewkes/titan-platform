@@ -78,6 +78,11 @@ rules:
     related: ["EL 5"]
     owner_support: none
     l0: { severity: error, status: implemented, checks: ["Q-V9"] }
+  - id: Q-V10
+    rule: "Every heteronym in spoken carries a reading declaration [w](=reading) or an override [w](/phonemes/), so a tagger change cannot flip it unheard"
+    fields: [beats.spoken]
+    owner_support: none
+    l0: { severity: error, status: implemented, checks: ["Q-V10"] }
 
   - id: Q-W1
     rule: 'Stake voiced before 15 %, by a named role or "you", with a number or artifact'
