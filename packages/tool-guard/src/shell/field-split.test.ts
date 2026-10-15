@@ -134,3 +134,27 @@ describe("splitReading returns null when nothing splits differently", () => {
     expect(read(src, vars)).toBeNull();
   });
 });
+
+describe("splitReading splits with an IFS override in place of the one the walk holds", () => {
+  const readWith = (src: string, vars: Record<string, string | null>, ifs: string) =>
+    values(splitReading(words(src), new Map(Object.entries(vars)), null, ifs));
+
+  it.each([
+    ["a comma IFS while vars hold the default", "git $X", { X: "push,origin,HEAD:main" }, ",", ["git", "push", "origin", "HEAD:main"]],
+    ["the default IFS while IFS is unknown", "$E", { IFS: null, E: "git push origin HEAD:main" }, " \t\n", ["git", "push", "origin", "HEAD:main"]],
+    ["the default IFS while vars hold a comma IFS", "$E", { IFS: ",", E: "git push origin HEAD:main" }, " \t\n", ["git", "push", "origin", "HEAD:main"]],
+    ["a colon IFS while vars hold a comma IFS", "$E", { IFS: ",", E: "gh:pr:merge:1" }, ":", ["gh", "pr", "merge", "1"]],
+  ])("splits on %s", (_name, src, vars, ifs, expected) => {
+    expect(readWith(src, vars, ifs)).toEqual(expected);
+  });
+
+  it("an empty override never splits", () => {
+    expect(readWith("git $X", { X: "push origin" }, "")).toBeNull();
+  });
+
+  it("an override in place of an IFS a case attribute may change", () => {
+    const vars: Vars = new Map([["IFS", "x"], ["X", "push,origin"]]);
+    markCase(vars, "IFS", "u");
+    expect(values(splitReading(words("git $X"), vars, null, ","))).toEqual(["git", "push", "origin"]);
+  });
+});

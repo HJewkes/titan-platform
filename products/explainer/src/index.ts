@@ -192,6 +192,27 @@ export {
   type ReferenceEdge,
   type ViewerAnswer,
 } from "./eval-viewer.js";
+export {
+  COLD_EVAL_ID,
+  MAX_SUMMARY_LINES,
+  ODD_ONE_OUT_MIN_ITEMS,
+  agreedOddOnes,
+  chaptersOf,
+  clampSummary,
+  coldEvalVersion,
+  coldQuestions,
+  playbackTranscript,
+  runCold,
+  scoreAnswer,
+  type ColdChapter,
+  type ColdChapterBeats,
+  type ColdGrade,
+  type ColdInput,
+  type ColdQuestion,
+  type ColdResult,
+  type ColdScore,
+  type OddOneOutPick,
+} from "./eval-cold.js";
 export { BEAT_SCORE_COLUMNS, CANARY_COLUMNS, SCRIPT_SCORE_COLUMNS, VIEWER_COLUMNS } from "./eval-judge-cli.js";
 export { canonicalSha } from "./eval-store.js";
 export { MAX_SENTENCE_WORDS, MIN_PROJECT_SHARE, voiceCheck, voiceCheckWith } from "./lint-voice.js";
