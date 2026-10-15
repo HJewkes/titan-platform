@@ -16,7 +16,9 @@ import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
 import { timestampConsole } from "./serve-log.js";
 import { startUnlessLive, type HealthProbe } from "./serve-beside-live.js";
 import { startLoopDelayWatch } from "./serve-loop-delay.js";
+import { SHUTDOWN_SWEEP_GRACE_MS, closeServer } from "./serve-shutdown.js";
 import { untilStopped } from "./serve-signal.js";
+import { logAgentChatCalls } from "./serve-agent-chat-timing.js";
 import { recordServeStart, serveStartsHealth, type ServeStart } from "./serve-starts.js";
 import type { FactoryHost, FactoryHostOptions } from "./host.js";
 import type { NeedsSources } from "./needs/rpc.js";
@@ -91,6 +93,8 @@ export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweep
   needsSources?: NeedsSources;
   /** Replaces the /health probe that tells a live factory from a refused start; tests inject it. */
   probe?: HealthProbe;
+  /** Replaces `SHUTDOWN_SWEEP_GRACE_MS`; tests shorten it. */
+  shutdownGraceMs?: number;
 }
 
 interface OwnerProofs {
@@ -102,7 +106,7 @@ export interface FactoryServer {
   readonly port: number;
   readonly host: FactoryHost;
   readonly hub: EventHub;
-  /** Stop the sweep and the daemon, then release every lease and close the database. Idempotent. */
+  /** Halt the sweeps, release every lease, give running sweep ticks a bounded grace, then stop the daemon and close the database. Idempotent. */
   close(): Promise<void>;
 }
 
@@ -120,9 +124,10 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const unbindCarry = bindCarryStateDir(stateDir);
   const services = options.routes.shepherd;
   const held = new Set<string>();
+  let closing: Promise<void> | null = null;
   const thaws = watchThaws(services);
   if (services && options.resyncOnStart !== false) await resync(host, services, log, held);
-  const sweep = startSweep(() => adopt(host, services, held, log), options.leaseMs ?? DEFAULT_LEASE_MS, "adoption sweep", log);
+  const sweep = startSweep(() => adopt(host, services, held, log, () => closing !== null), options.leaseMs ?? DEFAULT_LEASE_MS, "adoption sweep", log);
   await sweep.tick();
   const goneSweep = services && startSweep(() => endGone(host, services, log, thaws.thawed), options.goneSweepMs ?? GONE_SWEEP_MS, "merged-elsewhere sweep", log);
   const fixerSweep = services?.freeze && options.fixerRetire && startSweep(() => sweepFixers(options.fixerRetire!, services.freeze!, log), FIXER_RETIRE_MS, "ended main-red fixer sweep", log);
@@ -144,22 +149,15 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const busy = () => busyRuns(host.runtime.list(["running"]), routedRunner(options.routes).routeFor, heldRun(services)).length;
   const pacerSweep = startDeployPacer(options.deployPacer, { now: options.now ?? Date.now, runningSha: build.sha, busy }, log);
   const notifySweep = notify?.start();
-  let closing: Promise<void> | null = null;
-  const close = async (): Promise<void> => {
-    await sweep.stop();
-    thaws.stop();
-    for (const later of [frames, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep, notifySweep, loopDelay]) await later?.stop();
-    mainWatch?.close();
-    await daemon.close();
-    unbindCarry();
-    host.close();
-  };
+  const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep, notifySweep];
+  const close = () => closeServer({ sweeps, watches: [thaws, frames, loopDelay], mainWatch, daemon, unbindCarry, host }, log, options.shutdownGraceMs ?? SHUTDOWN_SWEEP_GRACE_MS);
   return { port: daemon.port, host, hub: daemon.hub, close: () => (closing ??= close()) };
 }
 
 /** Start, then run until SIGTERM, SIGINT or `stop` aborts, then close. Resolves after shutdown completes. */
 export async function serveFactoryUntilSignal(options: FactoryServerOptions, stop?: AbortSignal): Promise<void> {
   const restoreConsole = timestampConsole();
+  const agentChatTiming = logAgentChatCalls({ log: options.logger ?? consoleLogger });
   try {
     const server = await startUnlessLive(() => startFactoryServer(options), options.logger ?? consoleLogger, options.probe);
     if (server === null) return;
@@ -167,6 +165,7 @@ export async function serveFactoryUntilSignal(options: FactoryServerOptions, sto
     (options.logger ?? consoleLogger).info({ signal: reason }, "shutting down");
     await server.close();
   } finally {
+    agentChatTiming.stop();
     restoreConsole();
   }
 }
@@ -283,9 +282,10 @@ function startSeatDigest(host: FactoryHost, services: ShepherdServices | undefin
   return startSweep(tickOnce, SEAT_DIGEST_MS, "seat digest", log);
 }
 
-/** Runs resync could not end are rechecked against their PR just before they are claimed, then dropped once claimed or settled. */
-async function adopt(host: FactoryHost, services: ShepherdServices | undefined, held: Set<string>, log: Logger): Promise<void> {
+/** Runs resync could not end are rechecked against their PR just before they are claimed, then dropped once claimed or settled. A recheck still running when close starts claims nothing, because the runtime has already let its runs go. */
+async function adopt(host: FactoryHost, services: ShepherdServices | undefined, held: Set<string>, log: Logger, closing: () => boolean): Promise<void> {
   const exclude = services ? await recheckBeforeAdopt(host, services, held, log) : new Set<string>();
+  if (closing()) return;
   const ids = await host.adopt({ exclude });
   for (const id of ids) held.delete(id);
   if (ids.length > 0) log.info({ runs: ids }, "adopted runs");
@@ -351,7 +351,7 @@ async function resync(host: FactoryHost, services: ShepherdServices, log: Logger
     for (const ended of report.ended) log.info({ ...ended }, "resync ended a run whose PR left Shepherd");
     for (const failed of report.cancelErrors) log.warn({ ...failed }, "resync could not cancel a run whose PR left Shepherd");
     if (report.supersedeError) log.error({ err: report.supersedeError }, "shepherd resync could not supersede moved gates");
-    log.info({ ended: report.ended.length, orphanGates: report.orphanGates.length, superseded: report.superseded.length }, "shepherd resync at start");
+    log.info({ ended: report.ended.length, orphanGates: report.orphanGates.length, superseded: report.superseded.length, phaseMs: report.phaseMs }, "shepherd resync at start");
   } catch (err) {
     log.error({ err }, "shepherd resync at start failed");
   }
