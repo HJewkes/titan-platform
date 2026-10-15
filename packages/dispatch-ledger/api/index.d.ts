@@ -733,6 +733,7 @@ interface LedgerRead {
 }
 /** Where the ledger lives. A write checks the revision it read and the phase edges, and commits whole or not at all. */
 interface LedgerStore {
+    /** Throws `LedgerMalformedError` on a malformed store; it never guesses an empty ledger, which would double-dispatch. */
     read(): LedgerRead;
     /** Throws `StaleRevisionError`, `IllegalPhaseEdgeError` or `LedgerMalformedError`, leaving the store unchanged. */
     write(next: Ledger, expectedRevision?: number): {
@@ -769,9 +770,49 @@ declare class SqliteLedgerStore implements LedgerStore {
     write(next: Ledger, expectedRevision?: number): {
         revision: number;
     };
+    /** Throws `LedgerMalformedError` for any stored shape it cannot read, never guessing an empty ledger. */
     private readInside;
+    private emptyUnlessOrphaned;
     private claims;
     private writeInside;
 }
 
-export { AGENT_PHASES, type AcceptedOverlap, AcceptedOverlapSchema, type AgentPhase, type BrakeState, CONTRACT_OPS, type Claim, type ClaimKey, type ClaimPatch, ClaimSchema, type Contract, type ContractOp, ContractSchema, DESTRUCTIVE_OPS, type DeciderState, EMPTY_LEDGER, EXCEPTION_CLASSES, type ExceptionClass, type IllegalEdge, IllegalPhaseEdgeError, LADDER_CODES, type LadderRecord, type Ledger, type LedgerAction, LedgerMalformedError, type LedgerRead, LedgerSchema, type LedgerStore, type LivenessRecord, PARK_CLASS, PHASES, PHASE_EDGES, PHASE_TIMEOUT_MS, type Phase, type ReleaseAction, type ReleaseRecord, SLOT_MISMATCH_TOLERANCE, STALE_CLASSES, STALL_CODES, type SeatState, SqliteLedgerStore, type StackPredicate, type StackedOn, type StaleClass, StaleRevisionError, type StallCode, type WakeRecord, addClaim, applyActions, claimKey, dispatchLedgerDdl, dispatchLedgerMigration, exportLedgerJson, firstCode, heldClaims, illegalEdgeError, illegalEdges, importLedgerJson, isStalled, laneClaims, ledgerImplementers, memoryLedgerStore, normalizeLedger, parkUpdate, parseLedgerJson, readySlices, sameClaim, slotMismatch, writeLedgerExport };
+/**
+ * CC-931: a hold the tick owes on a run it registered and then failed to hold. Shepherd lists that run from then on,
+ * so no adopt pass reaches it again; this record is what brings each later tick back to it.
+ */
+declare const OwedHoldSchema: z.ZodObject<{
+    seat: z.ZodString;
+    repo: z.ZodString;
+    pr: z.ZodNumber;
+    reason: z.ZodString;
+}, z.core.$strip>;
+type OwedHold = z.infer<typeof OwedHoldSchema>;
+/**
+ * Where owed holds live. Not a `Ledger` section: a hold is written at once, outside the ledger revision and lease
+ * fence, so one owed by a tick that dies before commit survives it.
+ */
+interface OwedHoldStore {
+    /** Holds in write order; an empty store owes nothing. */
+    read(): OwedHold[];
+    /** Replaces the whole set; a later hold on the same repo and PR replaces an earlier one in its place. */
+    write(holds: readonly OwedHold[]): void;
+}
+/** A missing, non-JSON or non-array file owes nothing; a malformed entry is dropped and the rest kept. */
+declare function parseOwedHoldsJson(text: string | undefined): OwedHold[];
+/** The `burndown-owed-holds.json` bytes agent-chat writes for `holds`. */
+declare const exportOwedHoldsJson: (holds: readonly OwedHold[]) => string;
+/** An in-process store for tests and dry runs; it hands out copies. */
+declare function memoryOwedHoldStore(initial?: readonly OwedHold[]): OwedHoldStore;
+declare function dispatchOwedHoldsDdl(): string;
+declare function dispatchOwedHoldsMigration(version: number): Migration;
+/** Owed holds on the table made by `dispatchOwedHoldsDdl`; each write is one immediate transaction. */
+declare class SqliteOwedHoldStore implements OwedHoldStore {
+    private readonly db;
+    constructor(db: Db);
+    /** Throws `LedgerMalformedError` naming the ordinal, never the stored text, for a row the schema refuses. */
+    read(): OwedHold[];
+    write(holds: readonly OwedHold[]): void;
+}
+
+export { AGENT_PHASES, type AcceptedOverlap, AcceptedOverlapSchema, type AgentPhase, type BrakeState, CONTRACT_OPS, type Claim, type ClaimKey, type ClaimPatch, ClaimSchema, type Contract, type ContractOp, ContractSchema, DESTRUCTIVE_OPS, type DeciderState, EMPTY_LEDGER, EXCEPTION_CLASSES, type ExceptionClass, type IllegalEdge, IllegalPhaseEdgeError, LADDER_CODES, type LadderRecord, type Ledger, type LedgerAction, LedgerMalformedError, type LedgerRead, LedgerSchema, type LedgerStore, type LivenessRecord, type OwedHold, OwedHoldSchema, type OwedHoldStore, PARK_CLASS, PHASES, PHASE_EDGES, PHASE_TIMEOUT_MS, type Phase, type ReleaseAction, type ReleaseRecord, SLOT_MISMATCH_TOLERANCE, STALE_CLASSES, STALL_CODES, type SeatState, SqliteLedgerStore, SqliteOwedHoldStore, type StackPredicate, type StackedOn, type StaleClass, StaleRevisionError, type StallCode, type WakeRecord, addClaim, applyActions, claimKey, dispatchLedgerDdl, dispatchLedgerMigration, dispatchOwedHoldsDdl, dispatchOwedHoldsMigration, exportLedgerJson, exportOwedHoldsJson, firstCode, heldClaims, illegalEdgeError, illegalEdges, importLedgerJson, isStalled, laneClaims, ledgerImplementers, memoryLedgerStore, memoryOwedHoldStore, normalizeLedger, parkUpdate, parseLedgerJson, parseOwedHoldsJson, readySlices, sameClaim, slotMismatch, writeLedgerExport };
