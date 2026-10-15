@@ -1,0 +1,468 @@
+{
+ "_source": {
+  "audiobookSha": "b13d8acbedfc280b805422dfde84f1e36d0b3bac",
+  "espeakVersion": "1.52.0",
+  "command": "espeak-ng -q --ipa=3 -v <voice> <text>, stdout verbatim",
+  "recordedFrom": "backend/tests/test_phonemes.py, every espeak-ng call per test",
+  "note": "test_degenerate_span_from_duplicate_prefix_is_inconclusive_not_xtts is recorded against the constructed analogue, not AB's quote"
+ },
+ "entries": [
+  {
+   "voice": "en-gb",
+   "text": "career",
+   "ipa": "kəɹˈi‍ə\n"
+  },
+  {
+   "voice": "en-gb",
+   "text": "his career was over",
+   "ipa": "hɪz kəɹˈi‍ə wɒz ˈə‍ʊvə\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "\"Dye Hard,\" I said.",
+   "ipa": "dˈa‍ɪ hˈɑː‍ɹd\na‍ɪ sˈɛd\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "Bochum",
+   "ipa": "bˈɑːt‍ʃəm\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "Dye",
+   "ipa": "dˈa‍ɪ\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "I",
+   "ipa": "ˈa‍ɪ\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "I am here",
+   "ipa": "a‍ɪɐm hˈɪ‍ɹ\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "If I benched Jo Jofar, Rovers would be short of options. Two games, if we were being honest.",
+   "ipa": "ɪf a‍ɪ bˈɛnt‍ʃt d‍ʒˈo‍ʊ d‍ʒˈɑːfɑː‍ɹ\nɹˈo‍ʊvɚz wʊd biː ʃˈɔː‍ɹt ʌv ˈɑːpʃənz\ntˈuː ɡˈe‍ɪmz\nɪf wiː wɜː bˌiːɪŋ ˈɑːnɪst\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "Jofar",
+   "ipa": "d‍ʒˈɑːfɑː‍ɹ\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "Salford",
+   "ipa": "sˈælfɚd\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "Wednesday, May second",
+   "ipa": "wˈɛnzde‍ɪ\nmˈe‍ɪ sˈɛkənd\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "Wrexham",
+   "ipa": "ɹˈɛksæm\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "Wythenshawe",
+   "ipa": "wˈɪθənʃˌɔː\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "absolutely perfect Heli eyed me",
+   "ipa": "ˌæbsəlˈuːtli pɚfˈɛkt hˈɛli ˈa‍ɪd mˌiː\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "added time 90+2",
+   "ipa": "ˈædᵻd tˈa‍ɪm nˈa‍ɪnti plˈʌs tˈuː\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "boshtastic",
+   "ipa": "bəʃtˈe‍ɪstɪk\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "career",
+   "ipa": "kɚɹˈɪ‍ɹ\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "have",
+   "ipa": "hˈæv\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "he scored 2 goals before the break",
+   "ipa": "hiː skˈɔː‍ɹd tˈuː ɡˈo‍ʊlz bᵻfˌɔː‍ɹ ðə bɹˈe‍ɪk\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "hegemony over English women's football",
+   "ipa": "hˈɛd‍ʒɪməni ˌo‍ʊvɚɹ ˈɪŋɡlɪʃ wˈɪmɪnz fˈʊtbɔːl\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "hello world",
+   "ipa": "həlˈo‍ʊ wˈɜːld\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "his career was over",
+   "ipa": "hɪz kɚɹˈɪ‍ɹ wʌz ˈo‍ʊvɚ\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "match",
+   "ipa": "mˈæt‍ʃ\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "our",
+   "ipa": "ˈa‍ʊɚ\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "rated 8]",
+   "ipa": "ɹˈe‍ɪɾᵻd ˈe‍ɪt\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "the C A 74.",
+   "ipa": "ðə sˈiː ɐ sˈɛvənti fˈɔː‍ɹ\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "the final score was 8",
+   "ipa": "ðə fˈa‍ɪnə‍l skˈɔː‍ɹ wʌz ˈe‍ɪt\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "the match in Bochum ended",
+   "ipa": "ðə mˈæt‍ʃ ɪn bˈɑːt‍ʃəm ˈɛndᵻd\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "the match in Salford ended",
+   "ipa": "ðə mˈæt‍ʃ ɪn sˈælfɚd ˈɛndᵻd\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "the same career paths",
+   "ipa": "ðə sˈe‍ɪm kɚɹˈɪ‍ɹ pˈæθs\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "they have the ball",
+   "ipa": "ðe‍ɪ hæv ðə bˈɔːl\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "we kept our heads",
+   "ipa": "wiː kˈɛpt ˌa‍ʊɚ hˈɛdz\n"
+  },
+  {
+   "voice": "en-us",
+   "text": "we need to get him here",
+   "ipa": "wiː nˈiːd tə ɡɛt hˌɪm hˈɪ‍ɹ\n"
+  }
+ ],
+ "cases": {
+  "test_g2p_produces_phonemes_for_proper_noun_and_coinage": [
+   [
+    "en-us",
+    "Wrexham"
+   ],
+   [
+    "en-us",
+    "boshtastic"
+   ]
+  ],
+  "test_g2p_distinguishes_distinct_words": [
+   [
+    "en-us",
+    "Wythenshawe"
+   ],
+   [
+    "en-us",
+    "boshtastic"
+   ]
+  ],
+  "test_positional_verdict_flags_garbled_word_not_neighbours": [
+   [
+    "en-us",
+    "the match in Bochum ended"
+   ],
+   [
+    "en-us",
+    "the match in Bochum ended"
+   ],
+   [
+    "en-us",
+    "Bochum"
+   ],
+   [
+    "en-us",
+    "match"
+   ]
+  ],
+  "test_reduced_function_word_is_not_a_fault": [
+   [
+    "en-us",
+    "we kept our heads"
+   ],
+   [
+    "en-us",
+    "we kept our heads"
+   ],
+   [
+    "en-us",
+    "our"
+   ]
+  ],
+  "test_weak_form_does_not_rescue_a_genuine_mismatch": [
+   [
+    "en-us",
+    "they have the ball"
+   ],
+   [
+    "en-us",
+    "they have the ball"
+   ],
+   [
+    "en-us",
+    "have"
+   ]
+  ],
+  "test_verdict_without_targets_returns_empty": [
+   [
+    "en-us",
+    "hello world"
+   ]
+  ],
+  "test_detect_hallucination_flags_inserted_babble": [
+   [
+    "en-us",
+    "absolutely perfect Heli eyed me"
+   ],
+   [
+    "en-us",
+    "absolutely perfect Heli eyed me"
+   ]
+  ],
+  "test_tail_artifact_flags_phantom_syllable_after_last_word": [
+   [
+    "en-us",
+    "we need to get him here"
+   ],
+   [
+    "en-us",
+    "we need to get him here"
+   ]
+  ],
+  "test_clean_tail_is_not_an_artifact": [
+   [
+    "en-us",
+    "we need to get him here"
+   ],
+   [
+    "en-us",
+    "we need to get him here"
+   ]
+  ],
+  "test_single_stray_phone_is_a_tail_artifact": [
+   [
+    "en-us",
+    "we need to get him here"
+   ],
+   [
+    "en-us",
+    "we need to get him here"
+   ]
+  ],
+  "test_stray_echoing_the_final_phone_still_counts": [
+   [
+    "en-us",
+    "hegemony over English women's football"
+   ],
+   [
+    "en-us",
+    "hegemony over English women's football"
+   ]
+  ],
+  "test_mispronounced_last_word_is_not_a_tail_artifact": [
+   [
+    "en-us",
+    "the same career paths"
+   ],
+   [
+    "en-us",
+    "the same career paths"
+   ]
+  ],
+  "test_ordinal_reading_of_a_final_digit_is_not_a_tail_artifact": [
+   [
+    "en-us",
+    "Wednesday, May second"
+   ]
+  ],
+  "test_chunks_ending_in_a_digit_are_never_tail_artifacts[the final score was 8]": [
+   [
+    "en-us",
+    "the final score was 8"
+   ]
+  ],
+  "test_chunks_ending_in_a_digit_are_never_tail_artifacts[the C A 74.]": [
+   [
+    "en-us",
+    "the C A 74."
+   ]
+  ],
+  "test_chunks_ending_in_a_digit_are_never_tail_artifacts[added time 90+2]": [
+   [
+    "en-us",
+    "added time 90+2"
+   ]
+  ],
+  "test_chunks_ending_in_a_digit_are_never_tail_artifacts[rated 8]]": [
+   [
+    "en-us",
+    "rated 8]"
+   ]
+  ],
+  "test_digit_inside_a_chunk_does_not_disable_tail_detection": [
+   [
+    "en-us",
+    "he scored 2 goals before the break"
+   ],
+   [
+    "en-us",
+    "he scored 2 goals before the break"
+   ]
+  ],
+  "test_clean_audio_has_no_hallucination": [
+   [
+    "en-us",
+    "absolutely perfect Heli eyed me"
+   ],
+   [
+    "en-us",
+    "absolutely perfect Heli eyed me"
+   ]
+  ],
+  "test_short_word_not_called_xtts_fault_despite_high_distance": [
+   [
+    "en-us",
+    "I am here"
+   ],
+   [
+    "en-us",
+    "I am here"
+   ],
+   [
+    "en-us",
+    "I"
+   ]
+  ],
+  "test_unusual_word_needs_a_bigger_gap_before_it_is_called_an_xtts_fault": [
+   [
+    "en-us",
+    "the match in Bochum ended"
+   ],
+   [
+    "en-us",
+    "the match in Bochum ended"
+   ],
+   [
+    "en-us",
+    "Bochum"
+   ],
+   [
+    "en-us",
+    "the match in Bochum ended"
+   ],
+   [
+    "en-us",
+    "Bochum"
+   ]
+  ],
+  "test_configured_accent_decides_whether_rhotic_audio_is_a_fault": [
+   [
+    "en-us",
+    "his career was over"
+   ],
+   [
+    "en-us",
+    "his career was over"
+   ],
+   [
+    "en-us",
+    "career"
+   ],
+   [
+    "en-gb",
+    "his career was over"
+   ],
+   [
+    "en-gb",
+    "career"
+   ]
+  ],
+  "test_short_word_needs_a_wider_gap_than_a_long_one": [
+   [
+    "en-us",
+    "\"Dye Hard,\" I said."
+   ],
+   [
+    "en-us",
+    "\"Dye Hard,\" I said."
+   ],
+   [
+    "en-us",
+    "\"Dye Hard,\" I said."
+   ],
+   [
+    "en-us",
+    "Dye"
+   ],
+   [
+    "en-us",
+    "\"Dye Hard,\" I said."
+   ],
+   [
+    "en-us",
+    "Dye"
+   ]
+  ],
+  "test_long_word_keeps_the_ordinary_threshold": [
+   [
+    "en-us",
+    "the match in Salford ended"
+   ],
+   [
+    "en-us",
+    "the match in Salford ended"
+   ],
+   [
+    "en-us",
+    "Salford"
+   ]
+  ],
+  "test_degenerate_span_from_duplicate_prefix_is_inconclusive_not_xtts": [
+   [
+    "en-us",
+    "If I benched Jo Jofar, Rovers would be short of options. Two games, if we were being honest."
+   ],
+   [
+    "en-us",
+    "Jofar"
+   ]
+  ]
+ }
+}

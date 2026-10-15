@@ -469,3 +469,89 @@ describe("visual_paths", () => {
     expect(lookup).toMatchObject({ kind: "seat", seat: { visualPaths: ["site/**", "docs/**/*.png", ".storybook/**", "a..b/**"] } });
   });
 });
+
+describe("visual_baselines", () => {
+  const remote = "repos:\n  - {path: ~/src/design, remote: acme/design}\n";
+  const visual = 'visual_paths: ["packages/ui/**"]\n';
+  const baselines = (paths: string[], check = "visual") => `visual_baselines: {check: ${JSON.stringify(check)}, paths: ${JSON.stringify(paths)}}\n`;
+  const lookupDesign = (files: Record<string, string>) => lookupSeat(loadSeatBook({ seatsDir: writeSeats(files) }), "acme/design");
+  const designSeat = (name: string, paths: string[], check?: string) => seat(name, `${remote}${visual}${baselines(paths, check)}`);
+
+  it("reads a seat's visual baselines beside its visual paths", () => {
+    const lookup = lookupDesign({ "a.md": designSeat("design-seat", ["packages/ui/specimen/baseline/**"]) });
+
+    expect(lookup).toMatchObject({ kind: "seat", seat: { visualPaths: ["packages/ui/**"], visualBaselines: { check: "visual", paths: ["packages/ui/specimen/baseline/**"] } } });
+  });
+
+  it("leaves a seat with visual paths alone without baselines", () => {
+    const lookup = lookupDesign({ "a.md": seat("design-seat", `${remote}${visual}`) });
+
+    expect(lookup.kind === "seat" && "visualBaselines" in lookup.seat).toBe(false);
+  });
+
+  it("refuses visual baselines on a seat without visual paths", () => {
+    const load = () => loadSeatBook({ seatsDir: writeSeats({ "a.md": seat("design-seat", `${remote}${baselines(["baseline/**"])}`) }) });
+
+    expect(load).toThrow(SeatBookInvalid);
+    expect(load).toThrow(/visual_baselines: visual_baselines needs visual_paths/);
+  });
+
+  it.each([
+    ["an empty check", baselines(["baseline/**"], "")],
+    ["no check", 'visual_baselines: {paths: ["baseline/**"]}\n'],
+    ["no paths", "visual_baselines: {check: visual}\n"],
+    ["an empty path list", baselines([])],
+    ["a glob that cannot compile", baselines(["{a,b}".repeat(40)])],
+  ])("refuses a seat file whose baselines have %s", (_case, field) => {
+    expect(() => loadSeatBook({ seatsDir: writeSeats({ "a.md": seat("design-seat", `${remote}${visual}${field}`) }) })).toThrow(/visual_baselines/);
+  });
+
+  it.each([
+    ["./baseline/**", "has a . or .. segment"],
+    ["{baseline,/snapshots}/**", 'has the alternative "/snapshots/**", which has an empty segment (a leading, doubled or trailing /)'],
+    ["baseline／**", "has a fullwidth slash (U+FF0F)"],
+  ])("refuses baseline glob %j, naming visual_baselines, since it matches no repo-relative path", (glob, reason) => {
+    const load = () => loadSeatBook({ seatsDir: writeSeats({ "a.md": designSeat("design-seat", ["baseline/**", glob]) }) });
+
+    expect(load).toThrow(SeatBookInvalid);
+    expect(load).toThrow(`seat design-seat visual_baselines glob ${JSON.stringify(glob)} ${reason}, so it matches no repo-relative path`);
+  });
+
+  it("keeps the baselines on a shared remote whose visual seats declare the same ones in any order", () => {
+    const lookup = lookupDesign({
+      "a.md": designSeat("design-seat", ["baseline/**", "snapshots/**"]),
+      "b.md": designSeat("app-seat", ["snapshots/**", "baseline/**"]),
+    });
+
+    expect(lookup).toMatchObject({ kind: "seat", seat: { name: "design-seat+app-seat", visualBaselines: { check: "visual", paths: ["baseline/**", "snapshots/**"] } } });
+  });
+
+  it.each([
+    ["other paths", designSeat("app-seat", ["baseline/**", "more/**"])],
+    ["another check", designSeat("app-seat", ["baseline/**"], "pixels")],
+    ["no baselines", seat("app-seat", `${remote}${visual}`)],
+  ])("drops the baselines on a shared remote when another visual seat declares %s", (_case, other) => {
+    const lookup = lookupDesign({ "a.md": designSeat("design-seat", ["baseline/**"]), "b.md": other });
+
+    expect(lookup).toMatchObject({ kind: "seat", seat: { visualPaths: ["packages/ui/**"] } });
+    expect(lookup.kind === "seat" && "visualBaselines" in lookup.seat).toBe(false);
+  });
+
+  it("drops the baselines when the later visual seat alone declares them", () => {
+    const lookup = lookupDesign({ "a.md": seat("app-seat", `${remote}${visual}`), "b.md": designSeat("design-seat", ["baseline/**"]) });
+
+    expect(lookup.kind === "seat" && "visualBaselines" in lookup.seat).toBe(false);
+  });
+
+  it("keeps the baselines when the other seat sharing the remote holds the merge grant without visual paths", () => {
+    const lookup = lookupDesign({ "a.md": designSeat("design-seat", ["baseline/**"]), "b.md": seat("trusted-seat", `${remote}grants_extra: [merge-on-green-approve]\n`) });
+
+    expect(lookup).toMatchObject({ kind: "seat", seat: { visualBaselines: { check: "visual", paths: ["baseline/**"] } } });
+  });
+
+  it("drops the baselines when the shared remote has no visual paths", () => {
+    const lookup = lookupDesign({ "a.md": designSeat("design-seat", ["baseline/**"]), "b.md": seat("plain-seat", remote) });
+
+    expect(lookup.kind === "seat" && "visualBaselines" in lookup.seat).toBe(false);
+  });
+});

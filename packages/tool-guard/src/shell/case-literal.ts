@@ -31,6 +31,6 @@ export function foldCommandWords(words: WordToken[]): WordToken[] {
 }
 
 /** Upper then lower, so the long s and ligatures APFS folds (`baſh`, `ﬆdbuf`) reach `bash` and `stdbuf` too. */
-function foldCase(value: string): string {
+export function foldCase(value: string): string {
   return value.toUpperCase().toLowerCase();
 }
