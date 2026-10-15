@@ -15,11 +15,11 @@ import { readTiming } from "./timing.js";
 const EXIT = { OK: 0, UNTRUSTED: 1, USAGE: 2 } as const;
 
 /** The fewest runs in which two can outvote a third, the odd-one-out quorum. */
-export const COLD_RUNS = 3;
+const COLD_RUNS = 3;
 
 const RUN_KEY = ["config_id", "script_sha", "eval_id", "eval_version", "judge", "run", "chapter"] as const;
-export const COLD_SCORE_COLUMNS = [...RUN_KEY, "qid", "kind", "beat", "item", "score", "void_reason"] as const;
-export const COLD_CHAPTER_COLUMNS = [...RUN_KEY, "minutes", "undefined_items", "undefined_per_minute", "summary"] as const;
+const COLD_SCORE_COLUMNS = [...RUN_KEY, "qid", "kind", "beat", "item", "score", "void_reason"] as const;
+const COLD_CHAPTER_COLUMNS = [...RUN_KEY, "minutes", "undefined_items", "undefined_per_minute", "summary"] as const;
 
 interface ColdFlags {
   judge: string;
