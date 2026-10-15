@@ -3,6 +3,7 @@ import { readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import shingles from "./fixtures/ab-chunk-shingles.json" with { type: "json" };
 import defects from "./fixtures/defects.golden.json" with { type: "json" };
 import metaphone from "./fixtures/metaphone.golden.json" with { type: "json" };
@@ -14,19 +15,21 @@ const WORD = /^[a-zſ0-9']+$/u;
 const CONSTRUCTED_NAMES = new Set(["Vela", "ASAP"]);
 const BUDGET_BYTES = 100 * 1024;
 
-interface Defect {
-  kind: string;
-  causes: string[];
-}
-interface DefectCase {
-  id: string;
-  tags: string[];
-  expected: string;
-  on: Defect[];
-  off: Defect[];
-}
-const cases = defects.cases as unknown as DefectCase[];
-const confirms = defects.confirm as unknown as DefectCase[];
+const heardSchema = z.object({ text: z.string(), words: z.array(z.object({ text: z.string() })) });
+const defectSchema = z.object({ kind: z.string(), severity: z.number(), causes: z.array(z.string()) });
+const caseSchema = z.object({
+  id: z.string(),
+  tags: z.array(z.string()),
+  expected: z.string(),
+  transcript: heardSchema.optional(),
+  base: heardSchema.optional(),
+  confirm: heardSchema.optional(),
+  on: z.array(defectSchema),
+  off: z.array(defectSchema),
+});
+type DefectCase = z.infer<typeof caseSchema>;
+const cases = z.array(caseSchema).parse(defects.cases);
+const confirms = z.array(caseSchema).parse(defects.confirm);
 
 function wordShingles(text: string, size: number): string[] {
   const tokens = text.toLowerCase().replaceAll("’", "'").match(TOKEN) ?? [];
@@ -56,17 +59,11 @@ function midSentenceCapitals(text: string): string[] {
     .map((match) => match[0]);
 }
 
-interface Heard {
-  text: string;
-  words: { text: string }[];
-}
-
 function transcriptTexts(c: DefectCase): string[] {
-  const held = c as unknown as { transcript?: Heard; base?: Heard; confirm?: Heard };
-  return [held.transcript, held.base, held.confirm].flatMap((t) => (t ? [t.text, ...t.words.map((w) => w.text)] : []));
+  return [c.transcript, c.base, c.confirm].flatMap((t) => (t ? [t.text, ...t.words.map((w) => w.text)] : []));
 }
 
-const outputs =[...cases, ...confirms].flatMap((c) => [...c.on, ...c.off]);
+const outputs = [...cases, ...confirms].flatMap((c) => [...c.on, ...c.off]);
 
 describe("fixture headers", () => {
   it("record the AB sha, jellyfish 1.2.1 (rust) and the python version", () => {
