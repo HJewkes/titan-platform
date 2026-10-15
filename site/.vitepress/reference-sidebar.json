@@ -130,6 +130,10 @@
         "link": "/reference/rpc-client"
       },
       {
+        "text": "speech-g2p",
+        "link": "/reference/speech-g2p"
+      },
+      {
         "text": "speech-stt",
         "link": "/reference/speech-stt"
       },

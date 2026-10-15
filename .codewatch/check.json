@@ -40,7 +40,8 @@
           "packages/worktree",
           "packages/health",
           "packages/speech-tts",
-          "packages/speech-stt"
+          "packages/speech-stt",
+          "packages/speech-g2p"
         ],
         "2": [
           "packages/session-read",
@@ -114,7 +115,8 @@
           "packages/worktree",
           "packages/health",
           "packages/speech-tts",
-          "packages/speech-stt"
+          "packages/speech-stt",
+          "packages/speech-g2p"
         ],
         [
           "packages/session-read",
