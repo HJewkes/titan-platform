@@ -9,6 +9,7 @@ import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
+import { FIX_PROOF_KINDS } from "./task-kind.js";
 
 const FIX_PROOF_STEP = "sh-fix-proof";
 export const FIX_PROOF_STEPS: readonly StepDeclaration[] = [{ id: FIX_PROOF_STEP, kind: "dispatch" }];
@@ -26,7 +27,6 @@ const DEFAULT_FIX_PROOF_WAIT_MS = 35 * 60_000;
  */
 const DEFAULT_NO_ACTIONS_GRACE_MS = 3 * 60_000;
 const LOG_TAIL_LINES = 200;
-const GATED_KINDS: ReadonlySet<string> = new Set(["correctness", "security"]);
 const FIX_BRANCH_PREFIX = "fix/";
 const NO_REPRO_VERDICTS: ReadonlySet<string> = new Set(["vacuous", "no-tests"]);
 const ACTIONS_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z /;
@@ -64,7 +64,7 @@ async function gateOf(port: GitHubPort, store: ShepherdStoreRef, runId: string):
     return { open: false, reason: `the registered kind is unreadable: ${failureOf(error)}` };
   }
   if (registration === undefined) return { open: false, reason: "no registration for this run" };
-  if (GATED_KINDS.has(registration.kind)) return { open: true, pr: registration.pr };
+  if (FIX_PROOF_KINDS.has(registration.kind)) return { open: true, pr: registration.pr };
   const branch = await headBranchOf(port, registration);
   if (typeof branch !== "string") return { open: false, reason: branch.unreadable };
   // A branch only ever tightens the kind: a fix/ branch runs the gate whatever kind was registered.
