@@ -94,19 +94,22 @@ function startOffset(voice: AlignVoice): number {
   return typeof voice === "object" ? voice.startOffsetS : CTC_START_OFFSET_S[voice];
 }
 
-/** Fills the unaligned words and clips each end that a shifted next start would overlap. */
+/**
+ * Clips each real span's end to the next real span's shifted start first, then puts every unaligned word at the
+ * previous word's end, so a word with no phones never hides an overlap between its neighbours.
+ */
 function placeWords(raw: readonly (Span | null)[]): Span[] {
-  const firstStart = raw.find((span) => span !== null)!.start;
-  const placed: Span[] = [];
-  raw.forEach((span, k) => {
-    const prev = placed[k - 1];
-    if (span === null) {
-      const at = prev ? prev.end : firstStart;
-      placed.push({ start: at, end: at });
-      return;
-    }
-    if (prev && span.start < prev.end) prev.end = Math.max(prev.start, span.start);
-    placed.push({ ...span });
+  const real = raw.filter((span): span is Span => span !== null).map((span) => ({ ...span }));
+  real.forEach((span, k) => {
+    const next = real[k + 1];
+    if (next && next.start < span.end) span.end = Math.max(span.start, next.start);
   });
+  const firstStart = real[0]!.start;
+  const placed: Span[] = [];
+  let used = 0;
+  for (const span of raw) {
+    const at = placed.at(-1)?.end ?? firstStart;
+    placed.push(span === null ? { start: at, end: at } : real[used++]!);
+  }
   return placed;
 }

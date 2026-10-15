@@ -98,6 +98,18 @@ describe("alignWords", () => {
     for (const w of words) expect(w.end).toBeGreaterThanOrEqual(w.start);
   });
 
+  it("keeps timings monotonic when a shifted start overlaps across a word with no phones", () => {
+    const logits = logitsFor(["_", "ð", "ð", "ə", "_", "b", "ɛ", "ɛ", "l", "_"]);
+
+    const words = alignWords(["the", "—", "bell"], ["ðə", "", "bɛl"], logits, options("kokoro"));
+
+    expect(words.map((w) => [w.start, w.end])).toEqual([
+      [0, 0.044],
+      [0.044, 0.044],
+      [0.044, 0.18],
+    ]);
+  });
+
   it("keeps a word with no phones, zero-length at the previous word's end", () => {
     const logits = logitsFor(["_", "ð", "ð", "ə", "_", "b", "ɛ", "ɛ", "l", "_"]);
 
