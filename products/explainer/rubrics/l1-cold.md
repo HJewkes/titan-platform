@@ -21,3 +21,5 @@ than saying so. Answer every question listed, using its id as `qid`.
 
 Last, write `summary`: at most three lines of what you will remember going into the next chapter.
 Only those three lines carry forward.
+
+Your answers measure how many names a first viewer is left unable to explain (Q-E6).

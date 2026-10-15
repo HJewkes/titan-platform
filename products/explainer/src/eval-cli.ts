@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { Command, CommanderError } from "commander";
 import { calibrateCommand } from "./eval-calibrate-cli.js";
+import { coldCommand } from "./eval-cold-cli.js";
 import { failedChecks, l0HardPass, runL0, type L0Check, type L0Result } from "./eval-l0.js";
 import type { JudgeConfig, JudgeHarness } from "./eval-harness.js";
 import { l1Command, l2Command, smokeCommand } from "./eval-judge-cli.js";
@@ -95,7 +96,7 @@ function l0Command(deps: EvalCliDeps, onResult: (code: number) => void): Command
 }
 
 /**
- * Exit 0 when the script passes (l0, pace) or the run is trusted (l1, l2), 1 when an error-severity check
+ * Exit 0 when the script passes (l0, pace) or the run is trusted (l1, l2, cold), 1 when an error-severity check
  * fails or a canary or judge call fails, 2 on bad input or usage.
  */
 export async function runEvalCli(argv: readonly string[], deps: EvalCliDeps = {}): Promise<number> {
@@ -108,6 +109,7 @@ export async function runEvalCli(argv: readonly string[], deps: EvalCliDeps = {}
     .addCommand(paceCommand(deps, onResult))
     .addCommand(l1Command(deps, onResult))
     .addCommand(l2Command(deps, onResult))
+    .addCommand(coldCommand(deps, onResult))
     .addCommand(smokeCommand(deps, onResult))
     .addCommand(calibrateCommand(onResult));
   const program = new Command("explainer").exitOverride().addCommand(evalCommand);
