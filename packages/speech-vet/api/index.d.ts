@@ -225,6 +225,30 @@ declare function expectedPhones(text: string, { g2p, voice }: PhoneG2pOptions): 
 /** Per-word phones of a whole sentence, so each word gets its in-context reading; words that clean to nothing are dropped. */
 declare function g2pSentence(text: string, { g2p, voice }: PhoneG2pOptions): string[];
 
+/** Runs `argv[0]` with the rest as arguments and returns its stdout. Throws on a failed or timed-out run. */
+type EspeakRunner = (argv: readonly string[], options: {
+    timeoutMs: number;
+}) => string;
+interface EspeakCliOptions {
+    /** Defaults to `DEFAULT_PHONE_VOICE`. */
+    voice?: string;
+    /** The espeak-ng executable; defaults to `espeak-ng` on the PATH. */
+    bin?: string;
+    /** Replaces the process spawn, so tests never need the binary. */
+    run?: EspeakRunner;
+    /** Called once per failed run; the G2P itself returns "" so one bad chunk never aborts a scan. */
+    onError?: (error: unknown) => void;
+}
+declare const ESPEAK_TIMEOUT_MS = 10000;
+/**
+ * A `PhoneG2p` backed by the espeak-ng CLI, run exactly as the audiobook backend runs it:
+ * `espeak-ng -q --ipa=3 -v <voice> <text>`. espeak-ng is a GPL binary the caller installs
+ * (apt or brew); it is called as a process and never bundled or linked.
+ */
+declare function espeakCliG2p(options?: EspeakCliOptions): PhoneG2p;
+/** The espeak-ng version (`1.52.0`), or `null` when the binary is missing or prints no version. */
+declare function espeakVersion(options?: Pick<EspeakCliOptions, "bin" | "run">): string | null;
+
 /**
  * Positional verdicts over a chunk's phones, a port of the verdict half of the audiobook backend's
  * `validation/phonemes.py`. Arrays here hold one code point per item, so indexes match Python's.
@@ -292,4 +316,4 @@ declare function detectTailArtifact(text: string, actualFull: string, options: T
 /** The recognizer's phones, cleaned. Cleaning runs on every read, so a cache of raw decodes follows fold changes. */
 declare function recognizePhones(recognizer: PhoneRecognizer, audio: Audio): Promise<string>;
 
-export { DEFAULT_NORMALIZE_STEPS, DEFAULT_PHONE_VOICE, HALLUCINATION_MIN_PHONES, type Hallucination, type HallucinationOptions, type HeteronymTable, HeteronymTableSchema, type InitialismOptions, type Lexicon, type LexiconEntry, LexiconEntrySchema, LexiconSchema, MIN_PHONES_FOR_VERDICT, MIN_SPAN_RATIO_FOR_VERDICT, NUMBER_STEPS, type NormalizeStep, type PhoneG2p, type PhoneG2pOptions, type PhoneRecognizer, type PhoneSource, type PhonemeToken, RATE_UNITS, type ReadingFinding, type ReadingStatus, type Respeller, SHORT_WORD_MAX_PHONES, SHOUTED_TWO_LETTER_WORDS, SPELLED_INITIALISMS, TAIL_STRAY_MIN_PHONES, type TailArtifact, type TailArtifactOptions, VOWELLESS_INTERJECTIONS, WEAK_FORMS, type WordVerdict, type WordVerdictOptions, XTTS_FAULT_THRESHOLD, XTTS_FAULT_THRESHOLD_SHORT, XTTS_FAULT_THRESHOLD_UNUSUAL, admissiblePhones, ageStep, cardinalStep, checkReadings, chunkWordVerdicts, cleanIpa, currencyStep, decimalStep, detectHallucinations, detectTailArtifact, englishHeteronyms, expectedPhones, g2pSentence, g2pText, generateCandidates, initialismStep, isInitialism, loadLexicon, normalize, numberToOrdinal, numberToWords, ordinalStep, phoneMatchDistance, phonemeDistance, plainText, rateStep, readingOf, recognizePhones, respeller, respellingsOf, spellDigits, spellInitialisms, timeStep, tokenDump, whitespaceStep };
+export { DEFAULT_NORMALIZE_STEPS, DEFAULT_PHONE_VOICE, ESPEAK_TIMEOUT_MS, type EspeakCliOptions, type EspeakRunner, HALLUCINATION_MIN_PHONES, type Hallucination, type HallucinationOptions, type HeteronymTable, HeteronymTableSchema, type InitialismOptions, type Lexicon, type LexiconEntry, LexiconEntrySchema, LexiconSchema, MIN_PHONES_FOR_VERDICT, MIN_SPAN_RATIO_FOR_VERDICT, NUMBER_STEPS, type NormalizeStep, type PhoneG2p, type PhoneG2pOptions, type PhoneRecognizer, type PhoneSource, type PhonemeToken, RATE_UNITS, type ReadingFinding, type ReadingStatus, type Respeller, SHORT_WORD_MAX_PHONES, SHOUTED_TWO_LETTER_WORDS, SPELLED_INITIALISMS, TAIL_STRAY_MIN_PHONES, type TailArtifact, type TailArtifactOptions, VOWELLESS_INTERJECTIONS, WEAK_FORMS, type WordVerdict, type WordVerdictOptions, XTTS_FAULT_THRESHOLD, XTTS_FAULT_THRESHOLD_SHORT, XTTS_FAULT_THRESHOLD_UNUSUAL, admissiblePhones, ageStep, cardinalStep, checkReadings, chunkWordVerdicts, cleanIpa, currencyStep, decimalStep, detectHallucinations, detectTailArtifact, englishHeteronyms, espeakCliG2p, espeakVersion, expectedPhones, g2pSentence, g2pText, generateCandidates, initialismStep, isInitialism, loadLexicon, normalize, numberToOrdinal, numberToWords, ordinalStep, phoneMatchDistance, phonemeDistance, plainText, rateStep, readingOf, recognizePhones, respeller, respellingsOf, spellDigits, spellInitialisms, timeStep, tokenDump, whitespaceStep };
