@@ -108,14 +108,28 @@ const { placed, dropped } = placePills(
 // placed: [{ id: "p1", anchor: "api", rect: { x: 530, y: 228, width: 140, height: 32 }, candidate: "below0" }]
 ```
 
+For an animated architecture diagram, `emitRepoMap` writes the whole map at once: package
+boxes hold directory boxes, which hold file boxes, and the edges at all three levels are routed
+in one pass. The result is `repo-map/v1` data that titan-design's map painter reads as is:
+
+```ts
+import { emitRepoMap } from "@titan-design/graph-layout";
+
+const map = await emitRepoMap(fileGraph, { maxFilesPerBox: 6 });
+// map.nodes: [{ id: "pkg:api", level: 1, box: { x, y, w, h } }, { id: "dir:packages/api/src", level: 2, parentId: "pkg:api", ... }, ...]
+// map.edges: [{ id: "pkg:web->pkg:api", level: 1, weight: 3, edgeSource: "import", route: [[x, y], ...] }, ...]
+// map.sha: the same for the same snapshot in any order, and it covers the elkjs version
+```
+
 ## What it deliberately does not do
 
 - No rendering. It returns coordinates and routes; drawing them is the product's job.
 - No layout with fixed node positions. ELK layered places every node itself. Its
   interactive strategies read input positions only as ordering hints, ELK's `fixed`
   algorithm keeps positions but routes no edges, and elkjs does not bundle libavoid.
-- No pruning or label text. Box sizes come from the caller's `sizing` map, defaulting to
-  180 x 48, and a pill's size comes from its `PinSpec`.
+- No pruning or label text outside the repo map. Box sizes come from the caller's `sizing`
+  map, defaulting to 180 x 48, and a pill's size comes from its `PinSpec`. `emitRepoMap`
+  alone prunes (`+N more`) and sizes boxes for 44 px labels.
 - No caption policy. `placePills` takes the keep-out line as `config.keepOut`; the product
   owns the number.
 
@@ -131,7 +145,9 @@ const { placed, dropped } = placePills(
 - `elkjs` is pinned to an exact version: a minor release can move every coordinate.
 - A route is keyed by its `(srcId, dstId)` pair, so two edges of different kinds between
   the same pair share one route.
-- When ELK throws or places nothing, the layout falls back to a grid rather than throwing.
+- When ELK throws or places nothing, `computeLayout` and `computeCompoundLayout` fall back to a
+  grid rather than throwing. `computeCompoundLayoutStrict` and `emitRepoMap` reject, because a
+  grid has no routes.
 - The rule for a file's package is fixed (`packageOf`): `packages/<name>` gives `<name>`,
   `products/<name>` and `apps/<name>` keep their root, and any other path groups by its first
   segment.

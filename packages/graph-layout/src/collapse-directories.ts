@@ -31,7 +31,7 @@ export function collapseToDirectories(
   const dirByFile = new Map<string, string>();
   const fileCount = new Map<string, number>();
   for (const n of input.nodes) {
-    if (n.kind !== "file" || (n.role && SKIP_ROLES.has(n.role))) continue;
+    if (!isSourceFile(n)) continue;
     const dir = dirOf(n.id);
     dirByFile.set(n.id, dir);
     fileCount.set(dir, (fileCount.get(dir) ?? 0) + 1);
@@ -63,7 +63,13 @@ function connectedDirectories(fileCount: Map<string, number>, edges: GraphEdge[]
     }));
 }
 
-function dirOf(id: string): string {
+/** A `file` node that is not a test, fixture, config or script file. */
+export function isSourceFile(n: GraphNode): boolean {
+  return n.kind === "file" && !(n.role && SKIP_ROLES.has(n.role));
+}
+
+/** The directory a file id sits in: the id up to its last slash, or the id itself at the top level. */
+export function dirOf(id: string): string {
   const slash = id.lastIndexOf("/");
   return slash === -1 ? id : id.slice(0, slash);
 }
