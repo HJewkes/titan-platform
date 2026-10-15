@@ -5,15 +5,25 @@ Explainer video pipeline: beats.json and digest.json schemas, packet builder, fi
 Tier product of the titan-platform DAG. May import only packages in the same tier or
 below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
 
-Private, never published. This slice holds only pure code: file schemas and the two helpers
-the build and repair steps share. Gather, plan, audio, assembly, render and the CLI land in
-later slices.
+Private, never published. Most of it is pure code: file schemas and the helpers the build
+and repair steps share. The repo-explainer preset's gather step reads a finished repo review
+from disk; plan, audio, assembly and render land in later slices.
 
 | File | Contract |
 |---|---|
 | `beats.json` | `StoryboardSchema`: `video_type`, `title`, `chapters`, `beats` |
 | `digest.json` | `DigestSchema`: a `since`/`until` window of items with stable ids |
 | `lexicon.json` | `LexiconSchema`: written term to spoken form |
+| `review-bundle.json` | `ReviewBundleSchema` (`review-bundle/v1`): repo pin, label, coverage, licenses, per-file sha256, fact counts |
+| `facts.jsonl` | `ExplainerFactSchema`: one fact per line, with its source, kind, evidence spans, verified level and license safety |
+
+`gatherReview` (`src/presets/repo-explainer/`) reads a repo review's README, SUMMARY,
+`licenses.tsv`, ledger, `synthesis/final/` TSVs and digests into a bundle and its facts,
+including the tour kinds (what-it-is, entry-point, read-first, should-not, integration-rec,
+capability). It checks every precondition before deciding, and refuses with all the coded
+diagnostics it found (`E-LABEL`, `E-UNREAD`, `E-PIN`, `E-CLONE`, `E-TOPICS`, `E-COLUMNS`, and
+the rest in `GATHER_CODES`) instead of throwing. A `repo-argument` gather with no pain fact
+warns `W-NO-PAIN`. `fixtures/review-whiteboard/` is a trimmed real review the tests gather.
 
 `video_type` and each beat's `type` are open kebab-case strings on purpose. Their allowed
 values come from a doctrine registry planned at `products/explainer/doctrine/` (one profile

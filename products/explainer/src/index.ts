@@ -239,13 +239,20 @@ export {
   FACT_SOURCES,
   FactKindSchema,
   FactSourceSchema,
+  GATHER_CODES,
   ReviewBundleSchema,
   VERIFIED_LEVELS,
+  diag,
+  gatherReview,
+  parseCites,
   type EvidenceSpan,
   type ExplainerFact,
   type FactKind,
   type FactSource,
+  type GatherCode,
+  type GatherDiagnostic,
+  type GatherOptions,
+  type GatherProfile,
+  type GatherResult,
   type ReviewBundle,
-} from "./presets/repo-explainer/schemas.js";
-export { GATHER_CODES, diag, type GatherCode, type GatherDiagnostic } from "./presets/repo-explainer/diagnostics.js";
-export { parseCites } from "./presets/repo-explainer/cite.js";
+} from "./presets/repo-explainer/index.js";
