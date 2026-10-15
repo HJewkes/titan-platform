@@ -144,7 +144,7 @@
       "action": "merge",
       "actor": "automation",
       "verdict": "allow",
-      "condition": "Owner decision of 2026-10-11 (review-rounds audit Rec 1): a head that is a clean merge-up of the reviewed head inherits the run-dispatched reviewer's MERGE for any kind, security included, when the merge's base side touches none of the PR's changed files, attested by the factory's probe and re-checked against GitHub's file list. Every other MRG-AU-RC condition still holds. A separate row, so deleting it revokes the disjoint carry alone.",
+      "condition": "Owner decision of 2026-10-11 (review-rounds audit Rec 1): a head that is a clean merge-up of the reviewed head inherits the run-dispatched reviewer's MERGE for any kind, security included, when the merge's base side touches none of the PR's changed files, attested by the factory's probe and re-checked against GitHub's file list. Every other MRG-AU-RC condition still holds. A separate row, so deleting it revokes the disjoint carry alone. Owner decision of 2026-10-12 (TP-2440): never when the base side touches packages/authority/, packages/tool-guard/ or .github/workflows/; such a merge-up gets a fresh review.",
       "when": [
         "resolver-is-dispatched-reviewer",
         "verdict-merge-carried-merge-up-disjoint",
