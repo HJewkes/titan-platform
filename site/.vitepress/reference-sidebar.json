@@ -98,6 +98,10 @@
         "link": "/reference/daemon"
       },
       {
+        "text": "frame-capture",
+        "link": "/reference/frame-capture"
+      },
+      {
         "text": "github",
         "link": "/reference/github"
       },
@@ -128,6 +132,18 @@
       {
         "text": "rpc-client",
         "link": "/reference/rpc-client"
+      },
+      {
+        "text": "speech-g2p",
+        "link": "/reference/speech-g2p"
+      },
+      {
+        "text": "speech-stt",
+        "link": "/reference/speech-stt"
+      },
+      {
+        "text": "speech-tts",
+        "link": "/reference/speech-tts"
       },
       {
         "text": "worktree",
@@ -194,6 +210,10 @@
       {
         "text": "session-read",
         "link": "/reference/session-read"
+      },
+      {
+        "text": "speech-vet",
+        "link": "/reference/speech-vet"
       },
       {
         "text": "style-analyzer",

@@ -47,7 +47,7 @@ export function loadDoneTasks(root: string, initiatives: readonly string[]): Don
 }
 
 /** The parsed task, or why it would not parse. */
-function parseTask(file: string): Task | string {
+export function parseTask(file: string): Task | string {
   let raw: unknown;
   try {
     raw = parse(readFileSync(file, "utf8"));
@@ -65,7 +65,7 @@ function toDoneTask(task: Task, initiative: string, doneAt: string): DoneTask {
 }
 
 // No task file sets the `kind` field; the kind lives in a `kind:<x>` tag, so the tag wins.
-function kindTags(task: Task): string[] {
+export function kindTags(task: Task): string[] {
   return (task.tags ?? []).filter((tag) => tag.startsWith(KIND_TAG)).map((tag) => tag.slice(KIND_TAG.length)).filter(Boolean);
 }
 

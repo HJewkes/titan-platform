@@ -1,4 +1,5 @@
 import { PEER_NAME_PATTERN, dataFence } from "@titan-design/agent-dispatch";
+import { CONFIG_PATH, DEFAULT_CARRY_GLOBS, parseFixProofConfig } from "@titan-design/fix-proof";
 import { isPassing, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug, type ReviewComment } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
@@ -285,8 +286,51 @@ async function wakeBody(port: GitHubPort, input: WakeFacts, pr: PullRequest): Pr
       return { reason: conflictReason(input, conflict), payload: `${dataFence("base branch", pr.baseRef)}\n\n${dataFence("conflict candidates", conflictList(conflict))}` };
     }
     case "fix-proof":
-      return { reason: `The fix-proof check at head ${head} did not pass. Its result follows.`, payload: dataFence("fix-proof result", JSON.stringify(input.payload ?? null, null, 2)) };
+      return fixProofWake(port, input, pr);
   }
+}
+
+const SHA = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
+/** The payload is a replayed step record, so its shape is checked again; only a sha-shaped merge base is written outside the fence. */
+const NoReproPayload = z.looseObject({ kind: z.literal("NO_REPRO"), result: z.looseObject({ head: z.string().regex(SHA), mergeBase: z.string().regex(SHA), verdict: z.string() }) });
+
+/**
+ * The only two NO_REPRO verdicts, each in fixed words so no result text reaches `reason`. Each says only what the
+ * verdict guarantees: `vacuous` covers a test that passes on base, fails at head or never ran, so which one stays in the fenced result.
+ */
+const NO_REPRO_REASON: Readonly<Record<string, string>> = {
+  vacuous: "no test the proof ran fails at the merge base and passes at the head; each test's class is in the fenced result",
+  "no-tests": "no test added: the PR adds or changes no test file the proof could run",
+};
+const CARRY_UNREADABLE = "The carry globs could not be read at the merge base, so the error follows in their place.";
+
+/** The carry globs the runner uses, read at the merge base as the runner reads them, so a head edit to the config is never believed. */
+async function carryGlobs(port: GitHubPort, repo: RepoSlug, mergeBase: string): Promise<{ ok: true; globs: readonly string[] } | { ok: false; error: string }> {
+  try {
+    const file = await port.getFile(repo, CONFIG_PATH, mergeBase);
+    if (file === null) return { ok: true, globs: DEFAULT_CARRY_GLOBS };
+    const parsed = parseFixProofConfig(file.content);
+    return parsed.ok ? { ok: true, globs: parsed.config.carry } : parsed;
+  } catch (error) {
+    return { ok: false, error: failureOf(error) };
+  }
+}
+
+async function fixProofWake(port: GitHubPort, input: WakeFacts, pr: PullRequest): Promise<{ reason: string; payload: string }> {
+  const fenced = dataFence("fix-proof result", JSON.stringify(input.payload ?? null, null, 2));
+  const parsed = NoReproPayload.safeParse(input.payload);
+  if (!parsed.success) return { reason: `The fix-proof check at head ${input.headSha} did not pass. Its result follows.`, payload: fenced };
+  const { head, mergeBase, verdict } = parsed.data.result;
+  const why = NO_REPRO_REASON[verdict] ?? "its result follows";
+  const carry = await carryGlobs(port, input.repo, mergeBase);
+  const reason = [
+    `The fix-proof check at head ${head} returned NO_REPRO: ${why}.`,
+    `The merge base is ${mergeBase}.`,
+    "Add or change a test on the head branch named in the fence below that fails at the merge base and passes at the head; support files it needs must match the carry globs below, or the proof will not copy them to the merge-base side.",
+    ...(carry.ok ? [] : [CARRY_UNREADABLE]),
+  ].join(" ");
+  const globs = carry.ok ? dataFence("carry globs", carry.globs.join("\n")) : dataFence("carry globs error", carry.error);
+  return { reason, payload: `${dataFence("head branch", pr.headRef)}\n\n${globs}\n\n${fenced}` };
 }
 
 export const HEAD_LINE = "end with a line `Head: <full sha>` naming the head you pushed.";
