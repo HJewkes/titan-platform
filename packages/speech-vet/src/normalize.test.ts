@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import conformance from "../conformance/normalize.json" with { type: "json" };
 import {
+  currencyStep,
   DEFAULT_NORMALIZE_STEPS,
   NUMBER_STEPS,
   normalize,
@@ -48,6 +49,11 @@ describe("currency", () => {
   // Catches: number words capped below a million.
   it("multimillion with commas", () => {
     expect(numbers("£4,163,432")).toBe("four million one hundred sixty-three thousand four hundred thirty-two pounds");
+  });
+
+  // Catches: commas kept in the amount, which the cardinal step otherwise hides, giving "50,000 pounds".
+  it("currency step alone reads a comma-grouped amount", () => {
+    expect(normalize("£50,000", [currencyStep])).toBe("fifty thousand pounds");
   });
 
   // Catches: only the pound sign mapped to a currency word.
