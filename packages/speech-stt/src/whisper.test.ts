@@ -133,9 +133,15 @@ describe("loadTransformersPipeline", () => {
     await expect(loadTransformersPipeline(async () => ({}))).rejects.toThrow("npm i @huggingface/transformers");
   });
 
-  it("returns the module's pipeline", async () => {
-    const pipeline = vi.fn();
-    await expect(loadTransformersPipeline(async () => ({ pipeline }))).resolves.toBe(pipeline);
+  it("returns a factory that calls the module's pipeline", async () => {
+    const pipeline = vi.fn(async () => ({}));
+    vi.stubEnv("TITAN_SPEECH_OFFLINE", "");
+    const factory = await loadTransformersPipeline(async () => ({ pipeline }));
+
+    await factory("automatic-speech-recognition", "m", { dtype: "fp32" });
+
+    expect(pipeline).toHaveBeenCalledWith("automatic-speech-recognition", "m", { dtype: "fp32" });
+    vi.unstubAllEnvs();
   });
 });
 

@@ -54,7 +54,10 @@ export interface WhisperSttOptions {
 
 export type ModuleImporter = (name: string) => Promise<unknown>;
 
-/** Resolves the peer's `pipeline` through `importModule`, naming the install command when the peer is absent. */
+/**
+ * Resolves the peer's `pipeline` through `importModule`, naming the install command when the peer is absent. The
+ * returned factory refuses an uncached model while TITAN_SPEECH_OFFLINE is set.
+ */
 export async function loadTransformersPipeline(
   importModule: ModuleImporter = (name) => import(name),
 ): Promise<AsrFactory> {
@@ -66,7 +69,10 @@ export async function loadTransformersPipeline(
   }
   const pipeline = typeof mod === "object" && mod !== null && "pipeline" in mod ? mod.pipeline : undefined;
   if (!isAsrFactory(pipeline)) throw new Error(MISSING);
-  return pipeline;
+  return (task, model, options) => {
+    assertCachedWhenOffline(model, options.cache_dir);
+    return pipeline(task, model, options);
+  };
 }
 
 // The peer's pipeline is untyped here; its signature is checked by the smoke test, not at run time.
@@ -120,10 +126,7 @@ function lazyPipeline(model: string, options: WhisperSttOptions) {
   return {
     get(): Promise<AsrPipeline> {
       asr ??= loadPipeline()
-        .then((factory) => {
-          assertCachedWhenOffline(model, options.cacheDir);
-          return factory("automatic-speech-recognition", model, pipelineOptions);
-        })
+        .then((factory) => factory("automatic-speech-recognition", model, pipelineOptions))
         .catch((err: unknown) => {
           asr = null;
           throw err;
