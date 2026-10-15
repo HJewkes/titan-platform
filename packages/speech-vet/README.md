@@ -48,6 +48,19 @@ as speech-stt's `wav2vec2Recognizer`.
 - `cleanIpa`, `phonemeDistance`, `phoneMatchDistance`, `admissiblePhones`, `g2pSentence`,
   `WEAK_FORMS` and the thresholds the verdicts use.
 
+## Reading check
+
+After synthesis, `checkHeardReadings(spoken, tokens, recognizedPhones, { toIpa, table? })`
+says which reading of each declared `[word](=reading)` heteronym the audio carries. It aligns
+the recognizer's phones to the IPA of the tokens the voice was given, then scores each
+reading's pattern against the word's aligned span: `ok`, `fail` (another reading was heard), or
+`inconclusive` (the span is too short, or two readings fit it equally).
+
+It is espeak-free: expected phones are `toIpa` of the misaki tokens, and speech-g2p's
+`misakiToIpa` fits. It compares readings only and gives no whole-chunk verdict.
+`readingIpa(word, toIpa)` lists each reading's IPA; `expandReading` expands a pattern's
+`[...]` classes.
+
 ## Conformance fixtures
 
 `conformance/normalize.json` ships in the package. Each case names the steps run, the input,
