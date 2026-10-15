@@ -60,7 +60,8 @@
           "packages/pm",
           "packages/throughput",
           "packages/graph-layout",
-          "packages/dispatch-ledger"
+          "packages/dispatch-ledger",
+          "packages/speech-vet"
         ],
         "ui": [
           "packages/react-app"
@@ -132,7 +133,8 @@
           "packages/pm",
           "packages/throughput",
           "packages/graph-layout",
-          "packages/dispatch-ledger"
+          "packages/dispatch-ledger",
+          "packages/speech-vet"
         ],
         [
           "packages/react-app"
