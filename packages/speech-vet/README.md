@@ -1,8 +1,9 @@
 # @titan-design/speech-vet
 
 Pronunciation vetting for narration: override markup, heteronym reading checks, the
-`lexicon.v1` schema with respelling, initialism spelling, and phone-level verdicts on what a
-voice actually said. Pure TypeScript; it loads no model, and G2P is injected.
+`lexicon.v1` schema with respelling, initialism spelling, phone-level verdicts on what a
+voice actually said, and word-level defects from a transcript. Pure TypeScript; it loads no
+model, and transcripts and G2P are injected.
 
 Tier 2 of the titan-platform DAG. May import only packages in the same tier or
 below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
@@ -77,6 +78,33 @@ Pure logic over takes you synthesize yourself; no model or file is touched.
 - `regressions(shipped, take)`: words a take leaves mispronounced and worse than shipped.
 - `bestTailTake({ text, shippedPhones, before, candidates, g2p })`: tries every candidate and
   returns the best, with `kept` decided by `keepTake`.
+
+## Defect check
+
+A port of the audiobook pipeline's `validation/defects.py`, at output parity, with severity
+equal bit for bit.
+
+- `detectDefects(expected, transcript, options?)`: aligns a chunk's source text against a
+  speech-stt `Transcript` and returns `Defect`s, most severe first. Each one is a
+  `substitution`, an `omission` or a `low_confidence` segment, with the heard text, an audio
+  window, a context snippet and causes (`number`, `stylized_elongation`, `unusual_word`,
+  `chunk_boundary`, `muddy_audio`). A digit read as words ("312" as "three hundred twelve"),
+  a letter read as its name and a confident homophone are not defects.
+- `confirmDefects(base, expected, confirmTranscript, options?)`: keeps only the base defects
+  that a second, stronger STT pass agrees on. It takes its own options, because the
+  confirming STT can differ from the base one.
+- `defectOptionsFor(stt)`: the options for a provider's transcripts, read from its
+  `capabilities.tokenLogprobs`.
+- `isUnusualWord(word)`, `tokenizeWords(text)`, `phoneticDistance(a, b)` and `metaphone(word)`
+  (jellyfish 1.2.1 parity) are the pieces the check uses.
+
+Signal A, the recogniser's own confidence, is off unless `options.confidence` is true. It has
+two parts: word `probability`, which boosts severity, and segment `avgLogprob` and
+`compressionRatio`, which raise `low_confidence` defects. With the flag off, both are ignored
+even when the transcript carries them. **Always pass `defectOptionsFor(stt)`.** A caller
+holding transcripts with token log-probs that leaves the options out silently loses signal A.
+A `vet()` that composes this check must call it. `whisperStt` declares `tokenLogprobs: false`, so on the
+transformers.js path the flag stays off.
 
 ## Conformance fixtures
 

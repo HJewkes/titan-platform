@@ -16,7 +16,8 @@ const WORD_RE = /[a-z0-9\u{130}\u{131}\u{17f}\u{212a}]+(?:'[a-z\u{130}\u{131}\u{
 const ELONGATION = /(.)\1{2,}/u;
 const ELONGATION_RUNS = /(.)\1{2,}/gu;
 // Python's \s and str.strip() whitespace. JS's \s lacks \x1c-\x1f and \x85, and adds U+FEFF.
-const PY_SPACE_RUN = /[\t-\r\x1c-\x20\x85\xa0\u{1680}\u{2000}-\u{200a}\u{2028}\u{2029}\u{202f}\u{205f}\u{3000}]+/gu;
+// eslint-disable-next-line no-control-regex -- Python counts \x1c-\x1f as whitespace
+const PY_SPACE_RUN =/[\t-\r\x1c-\x20\x85\xa0\u{1680}\u{2000}-\u{200a}\u{2028}\u{2029}\u{202f}\u{205f}\u{3000}]+/gu;
 const UPPERCASE = /^\p{Uppercase}$/u;
 
 const STOPWORDS = new Set(
@@ -232,7 +233,10 @@ function groupedSub(exp: WordToken[], hyps: HypWord[], chunk: Chunk, boost: numb
       heard: originals(hyps),
       severity: Math.min(1.0, distance * 0.7 + boost),
       causes: [...new Set(exp.flatMap((tok) => causesFor(tok, chunk)))].sort(),
-      ...timed(hyps.find((h) => h.start !== undefined)?.start, [...hyps].reverse().find((h) => h.end !== undefined)?.end),
+      ...timed(
+        hyps.find((h) => h.start !== undefined)?.start,
+        [...hyps].reverse().find((h) => h.end !== undefined)?.end,
+      ),
       context: contextSnippet(chunk, exp[0]!.start),
     },
   ];
@@ -258,14 +262,26 @@ function omissionDefect(exp: WordToken[], chunk: Chunk, near: number | undefined
 
 /** Whole segments transcribed with low confidence, even where the words still aligned. */
 function confidenceDefects({ segments }: Transcript, existing: Defect[]): Defect[] {
-  const covered = new Set(existing.flatMap((d) => (d.audioStart === undefined ? [] : [roundHalfEven(d.audioStart, 1)])));
+  const covered = new Set(
+    existing.flatMap((d) => (d.audioStart === undefined ? [] : [roundHalfEven(d.audioStart, 1)])),
+  );
   return segments.flatMap(({ text, start, end, avgLogprob, compressionRatio }): Defect[] => {
     const logprobGap = avgLogprob !== undefined && avgLogprob < LOW_LOGPROB ? LOW_LOGPROB - avgLogprob : undefined;
     const badRatio = compressionRatio !== undefined && compressionRatio > HIGH_COMPRESSION;
     if ((logprobGap === undefined && !badRatio) || covered.has(roundHalfEven(start, 1))) return [];
     const severity = 0.5 + (logprobGap === undefined ? 0.2 : Math.min(0.4, logprobGap));
-    const causes: DefectCause[] = ["muddy_audio"];
-    return [{ kind: "low_confidence", expected: "(segment)", heard: text, severity: Math.min(1.0, severity), causes, audioStart: start, audioEnd: end, context: text }];
+    return [
+      {
+        kind: "low_confidence",
+        expected: "(segment)",
+        heard: text,
+        severity: Math.min(1.0, severity),
+        causes: ["muddy_audio"],
+        audioStart: start,
+        audioEnd: end,
+        context: text,
+      },
+    ];
   });
 }
 
