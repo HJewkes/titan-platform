@@ -38,7 +38,9 @@
           "packages/agent-dispatch",
           "packages/agent-surface",
           "packages/worktree",
-          "packages/health"
+          "packages/health",
+          "packages/speech-tts",
+          "packages/speech-stt"
         ],
         "2": [
           "packages/session-read",
@@ -59,7 +61,8 @@
           "packages/pm",
           "packages/throughput",
           "packages/graph-layout",
-          "packages/dispatch-ledger"
+          "packages/dispatch-ledger",
+          "packages/speech-vet"
         ],
         "ui": [
           "packages/react-app"
@@ -109,7 +112,9 @@
           "packages/agent-dispatch",
           "packages/agent-surface",
           "packages/worktree",
-          "packages/health"
+          "packages/health",
+          "packages/speech-tts",
+          "packages/speech-stt"
         ],
         [
           "packages/session-read",
@@ -130,7 +135,8 @@
           "packages/pm",
           "packages/throughput",
           "packages/graph-layout",
-          "packages/dispatch-ledger"
+          "packages/dispatch-ledger",
+          "packages/speech-vet"
         ],
         [
           "packages/react-app"
@@ -597,9 +603,44 @@
     {
       "id": "no-titan-design-library-imports",
       "type": "forbid-import",
-      "$comment": "Libraries never import across the repo line: titan-design may use titan-platform packages, not the reverse. Only products and apps may import @titan-design/react-ui.",
+      "$comment": "No library in titan-platform imports one from titan-design or the reverse; only products cross that line (site/guides/where-code-goes.md). Only products and apps may import @titan-design/react-ui.",
       "from": "packages/**",
       "to": "npm:@titan-design/react-ui"
+    },
+    {
+      "id": "no-titan-design-library-imports:beats",
+      "type": "forbid-import",
+      "$comment": "No library in titan-platform imports one from titan-design or the reverse; only products cross that line (site/guides/where-code-goes.md). Only products and apps may import @titan-design/beats.",
+      "from": "packages/**",
+      "to": "npm:@titan-design/beats"
+    },
+    {
+      "id": "video-mechanism-no-react:frame-capture",
+      "type": "forbid-import",
+      "$comment": "The video mechanism packages (frame-capture, render-qa, graph-layout, speech-*) run without React: pixels live in titan-design, and these hold engines with no pixels. One rule per package because codewatch globs have no braces; a glob that matches nothing, as render-qa does until it exists, is accepted.",
+      "from": "packages/frame-capture/src/**",
+      "to": "npm:react*"
+    },
+    {
+      "id": "video-mechanism-no-react:render-qa",
+      "type": "forbid-import",
+      "$comment": "The video mechanism packages (frame-capture, render-qa, graph-layout, speech-*) run without React: pixels live in titan-design, and these hold engines with no pixels. One rule per package because codewatch globs have no braces; a glob that matches nothing, as render-qa does until it exists, is accepted.",
+      "from": "packages/render-qa/src/**",
+      "to": "npm:react*"
+    },
+    {
+      "id": "video-mechanism-no-react:graph-layout",
+      "type": "forbid-import",
+      "$comment": "The video mechanism packages (frame-capture, render-qa, graph-layout, speech-*) run without React: pixels live in titan-design, and these hold engines with no pixels. One rule per package because codewatch globs have no braces; a glob that matches nothing, as render-qa does until it exists, is accepted.",
+      "from": "packages/graph-layout/src/**",
+      "to": "npm:react*"
+    },
+    {
+      "id": "video-mechanism-no-react:speech-*",
+      "type": "forbid-import",
+      "$comment": "The video mechanism packages (frame-capture, render-qa, graph-layout, speech-*) run without React: pixels live in titan-design, and these hold engines with no pixels. One rule per package because codewatch globs have no braces; a glob that matches nothing, as render-qa does until it exists, is accepted.",
+      "from": "packages/speech-*/src/**",
+      "to": "npm:react*"
     },
     {
       "id": "codewatch-browser-no-node",

@@ -1,6 +1,6 @@
 import { fakeGitHub, fakeSha, githubPort, successRun } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
@@ -72,7 +72,7 @@ describe("Shepherd's reviewer says MERGE and a seat reviewer says FIX_FIRST at t
 });
 
 /** Shepherd one PR at HELD under the real review phase and an owner-gate policy, until the approve-merge gate opens. */
-async function gatedRun(review: { dispatch: ReviewerDispatch; reader: ReviewerReader }) {
+async function gatedRun(review: { dispatch: ReviewerDispatch; reader: ReviewerReader }, until: "gate" | "no-reviewer-hold" = "gate") {
   const fake = fakeGitHub();
   fake.onGetPr = (open) => fake.setRuns(open.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const phases = { review: reviewPhase, wake: async () => ({ kind: "unhandled" as const, reason: "test" }) };
@@ -84,7 +84,8 @@ async function gatedRun(review: { dispatch: ReviewerDispatch; reader: ReviewerRe
   fake.addPr({ headSha: HELD });
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
   store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
-  await gateOpened(host, gateId(runId, "approve-merge"));
+  if (until === "gate") await gateOpened(host, gateId(runId, "approve-merge"));
+  else await vi.waitFor(() => expect(Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId)).toContain(`sh-no-reviewer-hold:${HELD}`), { timeout: 5_000 });
   const results = Object.values(host.runtime.status(runId)!.stepResults);
   const resultOf = (stepId: string) => (results.find((result) => result.stepId === stepId)?.data as { result?: unknown } | undefined)?.result;
   return { stepIds: results.map((result) => result.stepId), resultOf, prompt: host.gates.get(gateId(runId, "approve-merge"))?.prompt ?? "", merged: fake.pr(1).merged };
@@ -122,13 +123,12 @@ describe("a seat check that cannot read the roster at every round", () => {
     expect(merged).toBe(false);
   });
 
-  it("holds nothing when the reads are refused for good, so the failed rounds reach the owner and nothing merges", async () => {
-    const { stepIds, resultOf, prompt, merged } = await gatedRun(rosterFailingAfterMerge(() => Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" })));
+  it("holds the run as no-reviewer when a later intent's roster read is refused for good, and merges nothing", async () => {
+    const { stepIds, resultOf, merged } = await gatedRun(rosterFailingAfterMerge(() => Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" })), "no-reviewer-hold");
 
     expect(resultOf(`sh-await-verdict:${HELD}`)).toEqual({ kind: "none", reason: "seat check: the roster could not be read: Error" });
     expect(stepIds.filter((id) => id.startsWith("sh-seat-recheck"))).toEqual([]);
     expect(stepIds).not.toContain(`sh-merge-evidence:${HELD}`);
-    expect(prompt).toContain("review rounds failed");
     expect(merged).toBe(false);
   });
 });

@@ -150,11 +150,17 @@ jobs:
       # The key covers the indexer's own code, so a schema or extractor change misses; the ISO week in the
       # key and the restore-key bounds a stale chain to a week, so each week's first main run indexes cold.
       # Source only: after the build, node_modules and dist sit under the same package directories.
+      # A pull request may also seed from any graph at the same INDEX_VERSION, so a lockfile-only merge no longer
+      # sends every PR cold until main saves; the indexer refuses a basis from another version. Main stays exact.
       - name: Compute the cache key
         id: key
         env:
           SOURCE_HASH: ${{ hashFiles('packages/code-graph/src/**', 'packages/code-graph/package.json', 'packages/code-parser/src/**', 'packages/code-parser/package.json', 'packages/embed/src/**', 'packages/retrieval/src/**', 'packages/store-sqlite/src/**', 'scripts/dag-check-self.mjs', 'pnpm-lock.yaml') }}
-        run: echo "prefix=dag-graph-$SOURCE_HASH-$(date -u +%G-%V)-" >> "$GITHUB_OUTPUT"
+        run: |
+          iv=$(sed -n 's/^export const INDEX_VERSION = "\([0-9.]*\)";$/\1/p' packages/code-graph/src/indexer.ts)
+          test -n "$iv"
+          echo "version=dag-graph-iv$iv-" >> "$GITHUB_OUTPUT"
+          echo "prefix=dag-graph-iv$iv-$SOURCE_HASH-$(date -u +%G-%V)-" >> "$GITHUB_OUTPUT"
       - name: Restore the dag-check graph
         id: graph-cache
         uses: actions/cache/restore@v4
@@ -163,6 +169,7 @@ jobs:
           key: ${{ steps.key.outputs.prefix }}${{ github.sha }}
           restore-keys: |
             ${{ steps.key.outputs.prefix }}
+            ${{ github.event_name == 'pull_request' && steps.key.outputs.version || '' }}
       - name: Check the package DAG
         env:
           BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}

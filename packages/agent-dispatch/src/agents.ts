@@ -19,6 +19,7 @@ import {
   isBrokerReplyTimeout,
   isBrokerUnavailable,
 } from "./dispatch.js";
+import { timeAgentChatCall } from "./call-timing.js";
 import {
   ExecError,
   ExecTimeoutError,
@@ -179,15 +180,16 @@ function toAgentRow(value: unknown): AgentRow | undefined {
 }
 
 /** Every agent-chat call goes through here, so none blocks a long-lived caller's event loop. */
-export async function runAgentChatAsync(
+async function runAgentChatUntimed(
   binPath: string,
   args: string[],
   timeoutMs: number,
   input?: string,
+  signal?: AbortSignal,
 ): Promise<SafeExecResult> {
   try {
     const bin = resolveBinaryPath(binPath, "agent-chat");
-    return await execSafeAsync(bin, args, agentChatEnv(), timeoutMs, input);
+    return await execSafeAsync(bin, args, agentChatEnv(), timeoutMs, input, undefined, signal);
   } catch (err) {
     throw mapExecError(err);
   }
@@ -197,6 +199,12 @@ function mapExecError(err: unknown): unknown {
   if (err instanceof ExecTimeoutError) return new DispatchTimeoutError(err.message);
   if (err instanceof ExecError) return new DispatchError(err.message);
   return err;
+}
+
+export function runAgentChatAsync(
+  ...call: Parameters<typeof runAgentChatUntimed>
+): Promise<SafeExecResult> {
+  return timeAgentChatCall(call[1], () => runAgentChatUntimed(...call));
 }
 
 /** Same stream rule as a spawn: a broker refusal is on stdout, a usage error on stderr. */

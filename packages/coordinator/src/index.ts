@@ -32,6 +32,23 @@ export type {
 export { SEAT_EVENT_KINDS, seatEventSchema } from "./seat-events.js";
 export type { SeatEvent } from "./seat-events.js";
 export {
+  AUTHORED_MAX_CHARS,
+  authoredBlockSchema,
+  authoredContinuationSchema,
+  openQuestionSchema,
+  parseAuthored,
+  renderAuthored,
+  standingRuleSchema,
+} from "./authored-block.js";
+export type {
+  AuthoredBlock,
+  AuthoredContinuation,
+  AuthoredError,
+  AuthoredResult,
+  OpenQuestion,
+  StandingRule,
+} from "./authored-block.js";
+export {
   emptySeatState,
   foldSeatEvents,
   scratchPathOf,
