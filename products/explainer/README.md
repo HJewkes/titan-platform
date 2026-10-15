@@ -56,7 +56,7 @@ check emits.
 
 `explainer eval l0 <script.json> --config <id> [--rules <registry>] [--bench <dir>]
 [--layout <layout.json>] [--parent <sha>] [--fail-on-ghosts]` runs the deterministic L0 checks
-(`L0_CHECKS`: the map, why, evidence, voice and flow lints; the map lints need `--layout` and are
+(`L0_CHECKS`: the map, why, evidence, voice, flow and pace lints; the map lints need `--layout` and are
 skipped without it), freezes the script and appends its rows and run record. A rule that claims
 a check id no run check emits is a ghost: each prints one warning on stderr, and
 `--fail-on-ghosts` turns them into exit 1. `doctrine/rules.yaml` holds which rules are
