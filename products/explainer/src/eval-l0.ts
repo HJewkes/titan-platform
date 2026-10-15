@@ -28,6 +28,8 @@ const MAP_LINT_SEVERITY: Record<MapLintRule, MapLint["severity"]> = {
   "edge-source": "error",
   "hand-framing": "error",
   "card-per-cue": "error",
+  "flow-hops": "error",
+  "flow-replay": "error",
   "return-to-map": "warning",
 };
 

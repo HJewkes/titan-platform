@@ -85,6 +85,11 @@ await dispatchToAgentChat(
 - `execSafe`, `execSafeAsync`, `minimalEnv` and `resolveBinaryPath` never use `PATH` lookup
   or `process.env`, and never a shell. `execSafeAsync(bin, args, env, timeoutMs, input?,
   cwd?)` is the non-blocking form; `input` and `cwd` are opt-in.
+- `observeAgentChatCalls(report, { now? })` reports `{ verb, ms, outcome }` for every
+  agent-chat call this package makes, spawn included, and returns the unsubscribe. The verb
+  is `agent <sub>` or the first argv word, so no peer name or briefing is ever reported.
+  `outcome` is `ok`, `refused` (non-zero exit), `timeout` or `error`. An observer that
+  throws is ignored, and nothing is timed while no observer is registered.
 
 Profile names, peer-name derivation and profile installation are the caller's policy and
 are not in this package.
