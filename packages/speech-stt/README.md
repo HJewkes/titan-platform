@@ -6,6 +6,8 @@ nothing else needs a model runtime or native code.
 
 - `SequenceMatcher`: CPython's `difflib.SequenceMatcher` (matching blocks, opcodes, ratio,
   autojunk), checked against goldens recorded from CPython.
+- `roundHalfEven(x, digits)`: Python's `round(x, digits)`, half to even on the exact binary
+  value, where `toFixed` breaks exact ties upward (0.0625 to 3 places is 0.062, not 0.063).
 - `align(script, heard)`: times each script word from a transcript's words. Matched words
   take their times; unmatched runs share the gap between matches evenly.
 - `normalize(text)` and `diff(expected, heard)`: fold punctuation and formatting, then score

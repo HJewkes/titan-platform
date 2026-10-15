@@ -1,6 +1,7 @@
 export { align } from "./align.js";
 export { diff, normalize, type DiffOptions, type WordDiff } from "./diff.js";
 export { resample } from "./resample.js";
+export { roundHalfEven } from "./round.js";
 export {
   SegmentSchema,
   TranscriptSchema,

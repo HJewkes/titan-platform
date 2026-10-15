@@ -753,6 +753,10 @@ importers:
   packages/speech-tts: {}
 
   packages/speech-vet:
+    dependencies:
+      '@titan-design/speech-stt':
+        specifier: workspace:^
+        version: link:../speech-stt
     devDependencies:
       zod:
         specifier: ^4.4.3
