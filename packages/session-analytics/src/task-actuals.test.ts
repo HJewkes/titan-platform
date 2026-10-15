@@ -1,6 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFixtureGraph, insertOrigin, insertPrices, insertRequest, insertSignal, type FixtureGraph } from "./fixture.js";
 import { taskActuals, type ActualsTask } from "./task-actuals.js";
+import type { Db } from "@titan-design/store-sqlite";
 
 let fixture: FixtureGraph;
 
@@ -57,6 +58,36 @@ function addContexts(sessionId: string, contexts: Record<string, number>): void 
 
 function addSignal(sessionId: string, minute: string, signal: string): void {
   insertSignal(fixture.graph.db, { sessionId, ts: `2026-09-20T09:${minute}:00.000Z`, signal });
+}
+
+function at(minute: string): string {
+  return `2026-09-20T09:${minute}:00.000Z`;
+}
+
+function numberField(row: unknown, key: string): number | null {
+  const value: unknown = typeof row === "object" && row !== null ? Reflect.get(row, key) : null;
+  return typeof value === "number" ? value : null;
+}
+
+// The pre-TP-2568 per-task reads through the request_cost view, kept as the oracle for the batched pass.
+function oraclePeak(db: Db, sessionIds: string[]): number | null {
+  const row: unknown = db
+    .prepare("SELECT MAX(context_tokens) AS peak FROM request_cost WHERE session_id IN (SELECT value FROM json_each(@ids)) AND is_sidechain = 0")
+    .get({ ids: JSON.stringify(sessionIds) });
+  return numberField(row, "peak");
+}
+
+function oracleFirstDeliverable(db: Db, sessionIds: string[]): number | null {
+  const row: unknown = db
+    .prepare(
+      `WITH first AS (
+         SELECT session_id, ts FROM session_signal WHERE session_id IN (SELECT value FROM json_each(@ids)) AND signal IN ('status_report', 'pr_create')
+         ORDER BY ts, byte_offset LIMIT 1)
+       SELECT r.context_tokens AS context FROM request_cost r JOIN first f ON r.session_id = f.session_id
+       WHERE r.is_sidechain = 0 AND r.ts >= f.ts ORDER BY r.ts LIMIT 1`,
+    )
+    .get({ ids: JSON.stringify(sessionIds) });
+  return numberField(row, "context");
 }
 
 describe("taskActuals", () => {
@@ -263,6 +294,53 @@ describe("taskActuals", () => {
 
       expect(row!.peakContext).toBeNull();
       expect(row!.contextAtFirstDeliverable).toBeNull();
+    });
+
+    it("matches the per-task request_cost reads with request copies, sidechains and shared sessions", () => {
+      addSession({ id: "a", tasks: ["T-1", "T-2"], gaps: [] });
+      addSession({ id: "b", tasks: ["T-2"], gaps: [] });
+      addSession({ id: "c", tasks: ["T-3"], gaps: [] });
+      addSession({ id: "d", tasks: ["T-3"], gaps: [] });
+      addContexts("a", { "10": 40_000, "30": 90_000 });
+      insertRequest(fixture.graph.db, { sessionId: "a", ts: at("12"), requestId: "copied", inputTokens: 70_000 });
+      insertRequest(fixture.graph.db, { sessionId: "b", ts: at("17"), requestId: "copied", transcriptId: 2, inputTokens: 200_000 });
+      addContexts("b", { "11": 30_000, "18": 60_000 });
+      addSignal("a", "25", "status_report");
+      addSignal("b", "15", "pr_create");
+      addContexts("c", { "10": 50_000, "20": 80_000 });
+      insertRequest(fixture.graph.db, { sessionId: "c", ts: at("55"), isSidechain: true, inputTokens: 300_000 });
+      addSignal("c", "50", "status_report");
+      addSignal("d", "52", "pr_create");
+      addContexts("d", { "53": 65_000 });
+      const db = fixture.openReadOnly();
+      const implIds: Record<string, string[]> = { "T-1": ["a"], "T-2": ["a", "b"], "T-3": ["c", "d"] };
+
+      const rows = taskActuals(db, [task("T-1"), task("T-2"), task("T-3")], OPTIONS);
+
+      expect(rows.map((r) => [r.taskId, r.peakContext, r.contextAtFirstDeliverable])).toEqual(
+        rows.map((r) => [r.taskId, oraclePeak(db, implIds[r.taskId]!), oracleFirstDeliverable(db, implIds[r.taskId]!)]),
+      );
+      expect(rows.map((r) => [r.peakContext, r.contextAtFirstDeliverable])).toEqual([
+        [90_000, 90_000],
+        [90_000, 60_000],
+        [80_000, null],
+      ]);
+    });
+
+    it("reads requests the same number of times for 2 tasks as for 20", () => {
+      const requestReads = (taskCount: number): number => {
+        const tasks = Array.from({ length: taskCount }, (_, i) => `T-${taskCount}-${i}`);
+        for (const id of tasks) {
+          addSession({ id: `s-${id}`, tasks: [id], gaps: [1] });
+          addSignal(`s-${id}`, "00", "pr_create");
+        }
+        const db = fixture.openReadOnly();
+        const prepare = vi.spyOn(db, "prepare");
+        taskActuals(db, tasks.map((id) => task(id)), OPTIONS);
+        return prepare.mock.calls.filter(([sql]) => /\brequest(_cost)?\b/.test(sql)).length;
+      };
+
+      expect(requestReads(20)).toBe(requestReads(2));
     });
   });
 });
