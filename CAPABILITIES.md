@@ -47,7 +47,7 @@ Before adding code:
 | [`registry`](#cap-registry) | 1 | You define a command once and want it served as a CLI, an MCP tool and an HTTP route. Adopt it the moment a second surface is plausible. |
 | [`retrieval`](#cap-retrieval) | 1 | You need search over a store-sqlite corpus that fuses FTS, vectors and graph hops and keeps answering when one retriever is down. `fuseByRRF` and `gatherFailOpen` work over your own retrievers too. |
 | [`rpc-client`](#cap-rpc-client) | 1 | Browser or Node code calls a registry-backed daemon, live over HTTP and SSE or from a static snapshot export, with typed commands. |
-| [`speech-g2p`](#cap-speech-g2p) | 1 | You turn English text into misaki phoneme tokens without Python, for Kokoro or for vetting pronunciations. This first slice ships the `G2pToken`, `Tokenizer` and `PosTagger` types and vendors misaki 0.9.4's US lexicon; the engine follows. Synthesis is `speech-tts`, and checking readings against declarations is `speech-vet`. |
+| [`speech-g2p`](#cap-speech-g2p) | 1 | You turn English text into misaki 0.9.4 phoneme tokens without Python, for Kokoro or for vetting pronunciations: `misakiEnglish()` gives per-token phonemes, the joined string and a cache `version`, honours `[word](/phonemes/)` overrides, and `ttsTokens` hands them to speech-tts. `misakiToIpa` converts the result to IPA. Words outside misaki's lexicon come back unread (`phonemes: null`) unless you pass a `fallback`. Synthesis is `speech-tts`, and checking readings against declarations is `speech-vet`. |
 | [`speech-stt`](#cap-speech-stt) | 1 | You compare a script with what a recogniser heard, or port Python that calls `difflib`: a CPython-parity `SequenceMatcher`, `align` to time script words from a transcript, `diff` and `normalize` to score a take, the `Word` and `Transcript` schemas, and a pure TS `resample` (24 kHz to 16 kHz without ffmpeg). `whisperStt` transcribes audio to word-timed `Transcript`s through transformers.js Whisper (optional peer), cached by audio hash. Synthesis is `speech-tts`. |
 | [`speech-tts`](#cap-speech-tts) | 1 | You need speech audio and the engine must differ per deployment: an in-process model, a GPU box behind a command or ssh, or a hosted HTTP API. Callers state the capabilities they need (voice, word timestamps, phoneme input, speed), and a profile plus `TITAN_SPEECH_*` env picks the provider. Recognition and alignment are not here; they belong to the planned speech-stt package. |
 | [`worktree`](#cap-worktree) | 1 | You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. Inputs are plain records and the budget is a parameter, so the caller keeps its own roster and journal. Launching the agent process is agent-surface; deciding which isolation strategy applies is agent-dispatch. |
@@ -643,11 +643,12 @@ Key exports:
 
 Tier 1, `@titan-design/speech-g2p@0.0.0`. English text to misaki phoneme tokens in pure TypeScript: lexicon G2P, spaCy-compatible tokenizer, compromise POS tagger
 
-**Use this when:** You turn English text into misaki phoneme tokens without Python, for Kokoro or for vetting pronunciations. This first slice ships the `G2pToken`, `Tokenizer` and `PosTagger` types and vendors misaki 0.9.4's US lexicon; the engine follows. Synthesis is `speech-tts`, and checking readings against declarations is `speech-vet`.
+**Use this when:** You turn English text into misaki 0.9.4 phoneme tokens without Python, for Kokoro or for vetting pronunciations: `misakiEnglish()` gives per-token phonemes, the joined string and a cache `version`, honours `[word](/phonemes/)` overrides, and `ttsTokens` hands them to speech-tts. `misakiToIpa` converts the result to IPA. Words outside misaki's lexicon come back unread (`phonemes: null`) unless you pass a `fallback`. Synthesis is `speech-tts`, and checking readings against declarations is `speech-vet`.
 
 Key exports:
 
 - `types`: `G2pToken`, `PosTagger`, `RawToken`, `Tokenizer`
+- `misaki-english`: `misakiEnglish`, `ttsTokens`, `G2p`, `MisakiEnglishOptions`, `TtsReadyToken`
 - `misaki-to-ipa`: `misakiToIpa`, `MisakiToIpaOptions`
 
 <a id="cap-speech-stt"></a>
