@@ -155,6 +155,35 @@ export interface RunRecord {
   started_at: string;
 }
 
+/** What a deterministic (L0) run record is built from. */
+export interface DeterministicRun {
+  configId: string;
+  scriptSha: string;
+  parentSha: string | null;
+  rulesSha: string;
+  evalId: string;
+  started: Date;
+  finished: Date;
+}
+
+/** A deterministic eval has no rubric, so its eval_version is the registry it ran under. */
+export const deterministicRun = (run: DeterministicRun): RunRecord => ({
+  config_id: run.configId,
+  script_sha: run.scriptSha,
+  parent_sha: run.parentSha,
+  rules_sha: run.rulesSha,
+  eval_id: run.evalId,
+  eval_version: run.rulesSha,
+  judge: null,
+  run: 0,
+  batch_id: null,
+  usd: 0,
+  tokens_in: 0,
+  tokens_out: 0,
+  wall_s: (run.finished.getTime() - run.started.getTime()) / 1000,
+  started_at: run.started.toISOString(),
+});
+
 export function appendRun(layout: BenchLayout, record: RunRecord): void {
   mkdirSync(layout.evals, { recursive: true });
   appendFileSync(layout.runs, `${JSON.stringify(record)}\n`);
