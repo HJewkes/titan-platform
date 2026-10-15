@@ -262,13 +262,18 @@ async function baseWait(ctx: WorkflowContext, input: LandInput, headSha: string,
 /**
  * The base the merge would be decided on, checked before the decision so a refused base waits with no gate open. Undefined
  * sends land back to CI: after the wait, or once a base the rules were not read on is allowed and the rules are re-read.
- * A record that continues past CI with no base check predates this one and replays without it.
+ * A record that continues past CI with no base check predates this one and replays without it. A wait on a refused base
+ * marks the head retargeted, as `untrust` does, because the evidence it was read with describes the refused base.
  */
 async function decisionBase(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState, options: LandOptions): Promise<string | undefined> {
   const next = ctx.historyNext();
   if (next !== undefined && !next.startsWith("base-check")) return ci.baseRef ?? state.rules.base;
   const check = await baseCheck(ctx, input, state, options);
-  if (!check.allowed) return void (await baseWait(ctx, input, ci.headSha, check, state));
+  if (!check.allowed) {
+    await baseWait(ctx, input, ci.headSha, check, state);
+    state.retargeted = ci.headSha;
+    return undefined;
+  }
   if (check.base === state.rules.base) return check.base;
   state.rules = await step(ctx, roundId("land-rules", state.round, ++state.rulesReads), { repo: input.repo, pr: input.pr }, LandRulesResult);
   return undefined;

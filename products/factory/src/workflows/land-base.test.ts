@@ -155,6 +155,24 @@ describe("land on a base that is not the default branch", () => {
     expect(seen[0]!.some((id) => id.startsWith("merge-policy"))).toBe(false);
   });
 
+  it("re-reads merge evidence once before the decision after a wait on a feature base ends in a retarget to main", async () => {
+    const seen: string[][] = [];
+    const refresh = vi.fn(async (ctx: WorkflowContext, _headSha: string) => void seen.push(stepIds(world.host, ctx.runId)));
+    const world = baseWorld("feat/x", landOnce({ policy: gateEverything, unsettled: { transient: () => false, refresh } }));
+    const runId = world.host.runtime.start("land-base");
+
+    await waitingAt(world.host, runId, "base-wait:0");
+    const refreshesWhileWaiting = refresh.mock.calls.length;
+    world.fake.pr(1).baseRef = "main";
+    await gateOpened(world.host, gateId(runId, "approve-merge"));
+
+    expect(refreshesWhileWaiting).toBe(0);
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(refresh.mock.calls[0]![1]).toBe(H1);
+    expect(seen[0]).toContain("land-rules:1");
+    expect(seen[0]!.some((id) => id.startsWith("merge-policy"))).toBe(false);
+  });
+
   it("merges into the feature base when the run's policy allows one, with no wait", async () => {
     const world = baseWorld("feat/x", landOnce({ policy: allowMerges, featureBase: () => true }));
 
