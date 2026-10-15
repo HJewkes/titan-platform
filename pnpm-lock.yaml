@@ -734,6 +734,12 @@ importers:
         specifier: workspace:^
         version: link:../locator
 
+  packages/speech-g2p:
+    dependencies:
+      compromise:
+        specifier: 14.18.0
+        version: 14.18.0
+
   packages/speech-stt:
     dependencies:
       '@huggingface/transformers':
@@ -4338,6 +4344,10 @@ packages:
     resolution: {integrity: sha512-R2rze/hDX30uul4NZoIZ76ImSJLFxn/1/ZxtKC1L77y2X1k+yYu1joKbAtMA2Fg3hZrTOiw0I5mwVMo0cf250w==}
     engines: {node: '>= 6'}
 
+  compromise@14.18.0:
+    resolution: {integrity: sha512-SCNTeMZN8ZnvDz96igAjV2QuvvmcKA1bVDbFr8IH672Ec9w+fTSxixIPGgrlivaxU+jyk/Ei3AT3gGtP23n6Vg==}
+    engines: {node: '>=18'}
+
   concat-map@0.0.1:
     resolution: {integrity: sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg==}
 
@@ -4696,6 +4706,10 @@ packages:
 
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
+
+  efrt@2.9.0:
+    resolution: {integrity: sha512-ZMAvlcu4AfmtJ4K/0hs0uofVUZPSeLG/w4yOyZawQLl9YEy8iDKIxIIPsUAlS907clC7bgD17e73vi5unwNE/g==}
+    engines: {node: '>=12.0.0'}
 
   electron-to-chromium@1.5.433:
     resolution: {integrity: sha512-5lCAbyZBjtmUt/RAGHRqrL2q0oEFRThDAsZHHDn9XHa89Qw7gMYOeSicBTy+AHfvo0r6vwsZvqNJTQIQy1BLzA==}
@@ -5067,6 +5081,10 @@ packages:
 
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
+
+  grad-school@0.0.9:
+    resolution: {integrity: sha512-/aoG9CJz/1gB7x5XKp9i7ggA4k+MqZD7Neph3crfrOLWERkeJFXDXzNefvPW0j97iGTNYqTL+rpBEcz83MTmZw==}
+    engines: {node: '>=12'}
 
   guid-typescript@1.0.9:
     resolution: {integrity: sha512-Y8T4vYhEfwJOTbouREvG+3XDsjr8E3kIr7uf+JZ0BYloFsttiHU0WfvANVsR7TxNUJa/WpCnw/Ino/p+DeBhBQ==}
@@ -6533,6 +6551,10 @@ packages:
     resolution: {integrity: sha512-DhuTmvZWux4H1UOnWMB3sk0sbaCVOoQZjv8u1rDoTV0HTdGem9hkAZtl4JZy8P2z4Bg0nT+YMeOFyVr4zcG5Tw==}
     engines: {node: '>=16 || 14 >=14.17'}
     hasBin: true
+
+  suffix-thumb@6.0.0:
+    resolution: {integrity: sha512-HsCTMLaupbob5ZG//ZW6PSj446tHT5kSJ1qXS5F/qO2Nt13uAn6ZLPhJQ/H6bN/jVQCb+pcqe2psEwy4Mp5+Vw==}
+    engines: {node: '>=18'}
 
   superjson@2.2.6:
     resolution: {integrity: sha512-H+ue8Zo4vJmV2nRjpx86P35lzwDT3nItnIsocgumgr0hHMQ+ZGq5vrERg9kJBo5AWGmxZDhzDo+WVIJqkB0cGA==}
@@ -10683,6 +10705,12 @@ snapshots:
       array-timsort: 1.0.3
       esprima: 4.0.1
 
+  compromise@14.18.0:
+    dependencies:
+      efrt: 2.9.0
+      grad-school: 0.0.9
+      suffix-thumb: 6.0.0
+
   concat-map@0.0.1: {}
 
   confbox@0.1.8: {}
@@ -11054,6 +11082,8 @@ snapshots:
       gopd: 1.2.0
 
   ee-first@1.1.1: {}
+
+  efrt@2.9.0: {}
 
   electron-to-chromium@1.5.433: {}
 
@@ -11530,6 +11560,8 @@ snapshots:
   gopd@1.2.0: {}
 
   graceful-fs@4.2.11: {}
+
+  grad-school@0.0.9: {}
 
   guid-typescript@1.0.9: {}
 
@@ -13204,6 +13236,8 @@ snapshots:
       pirates: 4.0.7
       tinyglobby: 0.2.17
       ts-interface-checker: 0.1.13
+
+  suffix-thumb@6.0.0: {}
 
   superjson@2.2.6:
     dependencies:
