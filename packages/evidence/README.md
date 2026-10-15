@@ -47,6 +47,12 @@ with no 40-hex pin (`base/` and `diff/` need `base`). It only parses; whether th
 exist is `verifyCitation` over a `LineSource` at the anchor's `rev`, such as
 `revisionLineSource` from `@titan-design/code-graph/history`. `isFullSha` is the pin test.
 
+`verifyAnchorText(text, pins, source)` does both: it parses, then checks each anchored line
+with `verifyRange` (the location half of `verifyCitation`, no quote) over `source(rev)`.
+A `diff/` anchor spanning both sides checks each endpoint at its own commit. A refusal reads
+`head/a.ts#L10-L20: past EOF (15 lines)`; success quotes the first and last lines back.
+`isAnchorForm` tells anchor-form text from a free string.
+
 ## Grouping overlapping findings
 
 ```ts
