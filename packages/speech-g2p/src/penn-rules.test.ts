@@ -20,19 +20,30 @@ describe("wordTag", () => {
   });
 
   it("tags used before to as VBD even when compromise says otherwise", () => {
-    expect(wordTag("used", new Set(["Adjective"]), { governing: null, nextWord: "to" })).toBe("VBD");
+    expect(
+      wordTag("used", new Set(["Adjective"]), {
+        governing: null,
+        nextWord: "to",
+      })
+    ).toBe("VBD");
   });
 
   it("tags a verb after a modal as VB despite a past-tense tag", () => {
     const tags = new Set(["Verb", "PastTense"]);
-    expect(wordTag("read", tags, { governing: "MD", nextWord: undefined })).toBe("VB");
-    expect(wordTag("read", tags, { governing: null, nextWord: undefined })).toBe("VBD");
+    expect(
+      wordTag("read", tags, { governing: "MD", nextWord: undefined })
+    ).toBe("VB");
+    expect(
+      wordTag("read", tags, { governing: null, nextWord: undefined })
+    ).toBe("VBD");
   });
 });
 
 describe("governingTag", () => {
   it("steps back over adverbs to a modal", () => {
-    expect(governingTag(["PRP", "MD", "RB", "RB"], ["it", "can", "not", "easily"])).toBe("MD");
+    expect(
+      governingTag(["PRP", "MD", "RB", "RB"], ["it", "can", "not", "easily"])
+    ).toBe("MD");
   });
 
   it("identifies a do-form by its word", () => {

@@ -13,7 +13,7 @@ interface CompromiseSentence {
 }
 
 function termsOf(text: string): Term[] {
-  const sentences = nlp(text).json({ offset: true }) as CompromiseSentence[];
+  const sentences: CompromiseSentence[] = nlp(text).json({ offset: true });
   return sentences
     .flatMap((s) => s.terms)
     .filter((t) => t.offset.length > 0)
@@ -25,7 +25,10 @@ function termsOf(text: string): Term[] {
 }
 
 // compromise has no term for clitics and punctuation, so a token takes the tags of the term it overlaps most.
-function overlappingTags(tok: RawToken, terms: readonly Term[]): ReadonlySet<string> {
+function overlappingTags(
+  tok: RawToken,
+  terms: readonly Term[]
+): ReadonlySet<string> {
   const lo = tok.idx;
   const hi = tok.idx + tok.text.length;
   let best: Term | null = null;

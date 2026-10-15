@@ -8,13 +8,14 @@ function tokenize(text: string): RawToken[] {
   const re = /\S+/g;
   for (const m of text.matchAll(re)) {
     let rest = m[0];
-    let idx = m.index ?? 0;
+    let idx = m.index;
     const pieces: string[] = [];
     const trail = /[.,?!]$/.exec(rest);
     if (trail) rest = rest.slice(0, -1);
     const lower = rest.toLowerCase();
     if (lower === "cannot") pieces.push(rest.slice(0, 3), rest.slice(3));
-    else if (lower.endsWith("n't")) pieces.push(rest.slice(0, -3), rest.slice(-3));
+    else if (lower.endsWith("n't"))
+      pieces.push(rest.slice(0, -3), rest.slice(-3));
     else pieces.push(rest);
     if (trail) pieces.push(trail[0]);
     for (const [k, text] of pieces.entries()) {
@@ -27,7 +28,7 @@ function tokenize(text: string): RawToken[] {
   return out;
 }
 
-function tags(text: string): Record<string, string> {
+function tags(text: string): Record<string, string | undefined> {
   const toks = tokenize(text);
   const penn = compromiseTagger().tag(text, toks);
   return Object.fromEntries(toks.map((t, i) => [t.text, penn[i]]));
