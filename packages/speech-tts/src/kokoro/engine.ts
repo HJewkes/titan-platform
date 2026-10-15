@@ -48,7 +48,7 @@ interface KokoroRuntime {
   Tensor: TensorCtor;
 }
 
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
+const isRecord = (v: unknown): v is Record<string, unknown> => (typeof v === "object" || typeof v === "function") && v !== null;
 const hasPretrained = (v: unknown): boolean => isRecord(v) && typeof v.from_pretrained === "function";
 
 // Only the shape is checked here; the opt-in smoke test proves the real classes behave.
