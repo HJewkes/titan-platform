@@ -1,3 +1,4 @@
+import { isCarryFencedPath } from "@titan-design/authority";
 import type { StepResult, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
@@ -59,6 +60,8 @@ async function followProof(ctx: WorkflowContext, target: CarryTarget, baseRef: s
 async function ownMergeUpProof(ctx: WorkflowContext, target: CarryTarget, baseRef: string, fromHead: string, head: string): Promise<Followed | undefined> {
   const own = await ownMergeUpStep(ctx, { repo: target.repo, baseRef, fromHead, head });
   if (!own.carries || !own.rule) return undefined;
+  // A result recorded before TP-2495 replays as carries: true across a fenced base side, so the consumer re-checks.
+  if (own.mainPaths === undefined || own.mainPaths.some(isCarryFencedPath)) return undefined;
   return { rule: own.rule, proof: { base: own.base, headTree: own.headTree, mergeTree: own.mergeTree, prPaths: own.prPaths, mainPaths: own.mainPaths }, paths: own.prPaths };
 }
 
@@ -82,7 +85,7 @@ async function followedAnswer(ctx: WorkflowContext, target: CarryTarget, fromHea
  * Wraps `assisted` so a merge answer at land's gate, the owner's or a review round's ship pick, follows to a later gate at a
  * head that is the approved head plus one merge of the base whose remerge-diff is empty or touches only declared generated
  * files, or the approved head merged with the base plus a small fix (see `SMALL_FIX_LIMITS`). A security run follows only
- * Shepherd's own clean merge-up whose base side touches none of the PR's files (`ownMergeUp`). A skill-path gate, or a proof whose paths hold a repo skill, asks again. Any other head, a kind that
+ * Shepherd's own clean merge-up whose base side touches none of the PR's files and no carry-fenced path (`ownMergeUp`). A skill-path gate, or a proof whose paths hold a repo skill, asks again. Any other head, a kind that
  * follows nothing, an escalation, a gate on another base or a head without a standing MERGE asks again.
  */
 export function followingApprovals(ctx: WorkflowContext, assisted: WorkflowContext["assisted"], carry: ApprovalCarry): WorkflowContext["assisted"] {

@@ -1,0 +1,304 @@
+{
+  "beats": [
+    {
+      "id": "r1-1-hook",
+      "durationS": 6.7
+    },
+    {
+      "id": "r1-2-stake",
+      "durationS": 9.9
+    },
+    {
+      "id": "r1-3-stores",
+      "durationS": 9.566666666666666
+    },
+    {
+      "id": "r1-4-shepherd",
+      "durationS": 8.0
+    },
+    {
+      "id": "r1-5-seams",
+      "durationS": 11.5
+    },
+    {
+      "id": "r1-6-seat",
+      "durationS": 10.6
+    },
+    {
+      "id": "r1-7-promise",
+      "durationS": 5.9
+    },
+    {
+      "id": "r2-1-jobs",
+      "durationS": 8.466666666666667
+    },
+    {
+      "id": "r2-2-inv",
+      "durationS": 14.2
+    },
+    {
+      "id": "r2-3-limits",
+      "durationS": 7.466666666666667
+    },
+    {
+      "id": "r2-4-measure",
+      "durationS": 9.0
+    },
+    {
+      "id": "r3-1-nouns",
+      "durationS": 8.2
+    },
+    {
+      "id": "r3-2-sentence",
+      "durationS": 12.833333333333334
+    },
+    {
+      "id": "r3-3-plans",
+      "durationS": 8.166666666666666
+    },
+    {
+      "id": "r3-4-runner",
+      "durationS": 11.0
+    },
+    {
+      "id": "r3-5-runtime",
+      "durationS": 9.6
+    },
+    {
+      "id": "r3-6-owner",
+      "durationS": 9.0
+    },
+    {
+      "id": "r3-7-simple",
+      "durationS": 8.6
+    },
+    {
+      "id": "r3b-1-run",
+      "durationS": 15.933333333333334
+    },
+    {
+      "id": "r3b-2-crash",
+      "durationS": 8.866666666666667
+    },
+    {
+      "id": "r3b-3-replay",
+      "durationS": 9.333333333333334
+    },
+    {
+      "id": "r3b-4-today",
+      "durationS": 14.1
+    },
+    {
+      "id": "r3b-5-insert",
+      "durationS": 13.5
+    },
+    {
+      "id": "r3b-6-upstream",
+      "durationS": 13.8
+    },
+    {
+      "id": "r3b-7-claim",
+      "durationS": 13.2
+    },
+    {
+      "id": "r4-0-pivot",
+      "durationS": 4.333333333333333
+    },
+    {
+      "id": "r4-1-plan",
+      "durationS": 11.4
+    },
+    {
+      "id": "r4-2-start",
+      "durationS": 10.933333333333334
+    },
+    {
+      "id": "r4-3-open",
+      "durationS": 12.3
+    },
+    {
+      "id": "r4-4-prove",
+      "durationS": 10.0
+    },
+    {
+      "id": "r4-5-raise",
+      "durationS": 10.866666666666667
+    },
+    {
+      "id": "r4-6-fix",
+      "durationS": 8.5
+    },
+    {
+      "id": "r4-7-owner",
+      "durationS": 12.233333333333333
+    },
+    {
+      "id": "r4-8-rules",
+      "durationS": 12.266666666666667
+    },
+    {
+      "id": "r4-9-queue",
+      "durationS": 13.266666666666667
+    },
+    {
+      "id": "r4-10-main",
+      "durationS": 11.4
+    },
+    {
+      "id": "r4-11-stall",
+      "durationS": 10.8
+    },
+    {
+      "id": "r5-1-holds",
+      "durationS": 7.933333333333334
+    },
+    {
+      "id": "r5-2-mergeup",
+      "durationS": 10.5
+    },
+    {
+      "id": "r5-4-tick",
+      "durationS": 5.766666666666667
+    },
+    {
+      "id": "r5-5-release",
+      "durationS": 8.766666666666667
+    },
+    {
+      "id": "r5-6-pull",
+      "durationS": 4.966666666666667
+    },
+    {
+      "id": "r5-7-gates",
+      "durationS": 13.133333333333333
+    },
+    {
+      "id": "r6-1-seat",
+      "durationS": 10.733333333333333
+    },
+    {
+      "id": "r6-2-class",
+      "durationS": 7.033333333333333
+    },
+    {
+      "id": "r6-3-owner",
+      "durationS": 8.1
+    },
+    {
+      "id": "r6-4-steps",
+      "durationS": 6.966666666666667
+    },
+    {
+      "id": "r7-1-carry",
+      "durationS": 8.966666666666667
+    },
+    {
+      "id": "r7-2-holds",
+      "durationS": 9.466666666666667
+    },
+    {
+      "id": "r7-3-caps",
+      "durationS": 9.466666666666667
+    },
+    {
+      "id": "r7-4-notices",
+      "durationS": 9.933333333333334
+    },
+    {
+      "id": "r7-4b-score",
+      "durationS": 8.133333333333333
+    },
+    {
+      "id": "r7-4c-replay",
+      "durationS": 10.8
+    },
+    {
+      "id": "r7-5-risk1",
+      "durationS": 14.4
+    },
+    {
+      "id": "r7-6-risk23",
+      "durationS": 9.566666666666666
+    },
+    {
+      "id": "r8-1-core",
+      "durationS": 10.733333333333333
+    },
+    {
+      "id": "r8-2-claims",
+      "durationS": 10.966666666666667
+    },
+    {
+      "id": "r8-3-review",
+      "durationS": 12.866666666666667
+    },
+    {
+      "id": "r8-4-tools",
+      "durationS": 7.0
+    },
+    {
+      "id": "r9-1-ladder",
+      "durationS": 8.0
+    },
+    {
+      "id": "r9-2-first",
+      "durationS": 10.033333333333333
+    },
+    {
+      "id": "r9-3-middle",
+      "durationS": 8.033333333333333
+    },
+    {
+      "id": "r9-4-late",
+      "durationS": 11.333333333333334
+    },
+    {
+      "id": "r10-1-calls",
+      "durationS": 5.3
+    },
+    {
+      "id": "r10-2-q1",
+      "durationS": 12.8
+    },
+    {
+      "id": "r10-3-q1-default",
+      "durationS": 11.2
+    },
+    {
+      "id": "r10-4-q2-q4",
+      "durationS": 10.0
+    },
+    {
+      "id": "r10-5-q5-q6",
+      "durationS": 8.8
+    },
+    {
+      "id": "r10-6-q7-q9",
+      "durationS": 12.1
+    },
+    {
+      "id": "r10-6b-q10-q11",
+      "durationS": 10.333333333333334
+    },
+    {
+      "id": "r10-7-followups",
+      "durationS": 6.4
+    },
+    {
+      "id": "r10-7b-research",
+      "durationS": 9.066666666666666
+    },
+    {
+      "id": "r10-8-measures",
+      "durationS": 10.3
+    },
+    {
+      "id": "r10-9-close",
+      "durationS": 12.666666666666666
+    },
+    {
+      "id": "r10-10-outro",
+      "durationS": 4.233333333333333
+    }
+  ]
+}
