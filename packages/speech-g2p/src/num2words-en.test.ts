@@ -11,7 +11,7 @@ const render: Record<string, (value: number) => string> = {
 describe("num2words golden", () => {
   it("every recorded num2words 0.5.14 value matches", () => {
     const misses = golden.cases
-      .map((c) => ({ ...c, got: render[c.form]!(c.value as number) }))
+      .map((c) => ({ ...c, got: render[c.form]!(c.value) }))
       .filter((c) => c.got !== c.words);
     expect(misses).toEqual([]);
     expect(golden.cases).toHaveLength(170);
