@@ -28,7 +28,7 @@ export function localBasementSuite(env: NodeJS.ProcessEnv = process.env, host: s
 }
 
 const BASEMENT_SUITE_TAIL =
-  "run the full suite, typecheck, lint, dead:check and dag:check with `basement-suite <repo> <branch> --agent <your name> --run <script>`, called directly and never through ssh; `<repo>` is the repository name without its owner and `<branch>` the PR's head branch. Exit 75 means busy: retry every 5 minutes.";
+  "run the full suite, typecheck, lint and dag:check (which also runs dead:check on the same graph, so never run dead:check separately) with `basement-suite <repo> <branch> --agent <your name> --run <script>`, called directly and never through ssh; `<repo>` is the repository name without its owner and `<branch>` the PR's head branch. Exit 75 means busy: retry every 5 minutes.";
 
 /** `test:affected` follows the import graph from the change set, so a fixer gets the tests its edit can break without a full suite. */
 const AFFECTED_TESTS = "`pnpm test:affected` where the repo has that script, else the files your fix touches";
