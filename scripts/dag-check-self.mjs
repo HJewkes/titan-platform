@@ -2,7 +2,7 @@
 // scripts/dag-check.sh on the ported code-graph engine; BASE_REF marks existing violations carryover, --json prints the result, exit 0/1/2 as codewatch.
 // --report <file> also writes codewatch-pr-report@1 (scripts/codewatch-report.mjs); a failed write never changes the exit code.
 // The lock holder indexes in a child process, so a signal or an OOM in the indexer still releases the lock and cleans up at once;
-// an OOM exits 2 and says so. --db <path> keeps the finished graph there for `dead:check --db`, which would otherwise re-index.
+// an OOM exits 2 and says so, except a seeded run, which retries once cold. --db <path> keeps the finished graph there for `dead:check --db`, which would otherwise re-index.
 // --seed-db <path> starts from a graph a CI cache restored: the indexer re-parses only changed files and drops deleted ones (TP-1854).
 // Without one, a local run seeds from the machine-wide graph the last finished run left (DAG_CHECK_NO_SEED=1 opts out).
 import { execFileSync } from "node:child_process";
@@ -10,7 +10,7 @@ import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { collectReport, writeReport } from "./codewatch-report.mjs";
-import { MACHINE_SEED, refreshSeed, seedArgs, usesMachineSeed } from "./dag-check-seed.mjs";
+import { MACHINE_SEED, refreshSeed, runWithColdRetry, seedArgs, usesMachineSeed } from "./dag-check-seed.mjs";
 import { BUSY_EXIT_CODE, DEFAULT_LOCK_DIR, LockTimeoutError, acquire, lockWaitMs, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
 
 const SCRIPT = fileURLToPath(import.meta.url);
@@ -186,9 +186,18 @@ async function indexUnderLock(cleanups, dbPath) {
     copyFileSync(seed, WORK_DB);
     console.error(`seeded the graph from ${seed}`);
   }
-  const args = [WORKER_FLAG, ...argv];
   const log = (m) => console.error(m);
-  const code = await runCappedWorker({ script: SCRIPT, args, name: "dag-check indexer", heapCapMb: HEAP_CAP_MB, cleanups, log });
+  const runWorker = async (workerArgv) => {
+    const outcome = {};
+    const args = [WORKER_FLAG, ...workerArgv];
+    const code = await runCappedWorker({ script: SCRIPT, args, name: "dag-check indexer", heapCapMb: HEAP_CAP_MB, cleanups, log, outcome });
+    return { code, heapAbort: outcome.heapAbort };
+  };
+  const clearWork = () => {
+    clearWorkDir();
+    mkdirSync(WORK_DIR, { recursive: true });
+  };
+  const code = await runWithColdRetry({ argv, runWorker, clearWork, log });
   if (dbPath) keepDb({ workDb: WORK_DB, dbPath, code });
   if (usesMachineSeed(process.argv.slice(2), process.env)) refreshMachineSeed(code);
   return code;

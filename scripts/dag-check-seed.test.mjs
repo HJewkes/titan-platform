@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_LOCK_DIR } from "./dag-check-lock.mjs";
-import { MACHINE_SEED, refreshSeed, seedArgs } from "./dag-check-seed.mjs";
+import { MACHINE_SEED, refreshSeed, runWithColdRetry, seedArgs } from "./dag-check-seed.mjs";
 import { seedDbPath } from "./dag-check-self.mjs";
 
 const ENTRY = new URL("../packages/code-graph/dist/index.js", import.meta.url);
@@ -101,4 +101,44 @@ describe.skipIf(!existsSync(ENTRY))("a seeded index (needs pnpm build for code-g
     expect(cold.reused).toBe(0);
     expect(warm.reused).toBe(3);
   }, 60_000);
+});
+
+describe("retrying a seeded index that ran out of memory", () => {
+  const setup = (results) => {
+    const calls = [];
+    const logs = [];
+    let cleared = 0;
+    const runWorker = async (argv) => {
+      calls.push(argv);
+      return results.shift();
+    };
+    return { calls, logs, cleared: () => cleared, run: (argv) => runWithColdRetry({ argv, runWorker, clearWork: () => cleared++, log: (m) => logs.push(m) }) };
+  };
+
+  it("runs once more without the seed and returns that run's exit code", async () => {
+    const t = setup([{ code: 2, heapAbort: true }, { code: 0, heapAbort: false }]);
+    const code = await t.run(["--json", "--seed-db", "/seed.db"]);
+    expect(code).toBe(0);
+    expect(t.calls).toEqual([["--json", "--seed-db", "/seed.db"], ["--json"]]);
+    expect(t.cleared()).toBe(1);
+    expect(t.logs).toHaveLength(1);
+  });
+
+  it("does not retry an unseeded run that ran out of memory", async () => {
+    const t = setup([{ code: 2, heapAbort: true }]);
+    expect(await t.run(["--json"])).toBe(2);
+    expect(t.calls).toHaveLength(1);
+  });
+
+  it("does not retry a seeded run that failed for another reason", async () => {
+    const t = setup([{ code: 1, heapAbort: false }]);
+    expect(await t.run(["--seed-db", "/seed.db"])).toBe(1);
+    expect(t.calls).toHaveLength(1);
+  });
+
+  it("stops after one retry", async () => {
+    const t = setup([{ code: 2, heapAbort: true }, { code: 2, heapAbort: true }]);
+    expect(await t.run(["--seed-db", "/seed.db"])).toBe(2);
+    expect(t.calls).toHaveLength(2);
+  });
 });
