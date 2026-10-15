@@ -48,6 +48,20 @@ as speech-stt's `wav2vec2Recognizer`.
 - `cleanIpa`, `phonemeDistance`, `phoneMatchDistance`, `admissiblePhones`, `g2pSentence`,
   `WEAK_FORMS` and the thresholds the verdicts use.
 
+## Take selection
+
+Pure logic over takes you synthesize yourself; no model or file is touched.
+
+- `synthesizeVerified(text, { synthesize, recognizer?, g2p, retries?, minRun?, discard? })`:
+  re-rolls takes until one has no hallucinated run, else keeps the least severe. Every other
+  take goes to `discard`.
+- `keepTake(shipped, take, margin?)`: whether a take replaces the shipped one. A take that
+  damages a word never does; a shorter stray wins; otherwise the distance must fall by more
+  than `margin` (0.06), so a tie keeps the shipped take.
+- `regressions(shipped, take)`: words a take leaves mispronounced and worse than shipped.
+- `bestTailTake({ text, shippedPhones, before, candidates, g2p })`: tries every candidate and
+  returns the best, with `kept` decided by `keepTake`.
+
 ## Conformance fixtures
 
 `conformance/normalize.json` ships in the package. Each case names the steps run, the input,
