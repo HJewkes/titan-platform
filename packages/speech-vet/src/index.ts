@@ -78,3 +78,12 @@ export {
   type WordVerdict,
   type WordVerdictOptions,
 } from "./phone-verdicts.js";
+export {
+  checkHeardReadings,
+  expandReading,
+  readingIpa,
+  type HeardReading,
+  type HeardReadingOptions,
+  type HeardStatus,
+  type MisakiToIpa,
+} from "./reading-phones.js";
