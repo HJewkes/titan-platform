@@ -20,3 +20,15 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   heuristic respelling candidates.
 - `spellInitialisms(text, { spelled? })` and `isInitialism(token)`: dotted letters for
   all-caps initialisms, with a caller-supplied list for a domain's vowel-bearing ones.
+- `normalize(text, steps?)`: runs `NormalizeStep`s in order. `DEFAULT_NORMALIZE_STEPS` is
+  rates (`/week` to ` per week`), initialisms, clock times, then `NUMBER_STEPS` (ages,
+  ordinals, currency with k/m/bn magnitudes, decimals, cardinals of 100 or more), then
+  whitespace. Filter the list by `step.name` or splice in a product's own steps; `rateStep(units)`
+  and `initialismStep(opts)` take a domain's extra units and initialisms.
+- `numberToWords(n)`, `numberToOrdinal(n)`, `spellDigits(digits)`: the number words the steps use.
+
+## Conformance fixtures
+
+`conformance/normalize.json` ships in the package. Each case names the steps run, the input,
+the expected output, and the audiobook `TextNormalizer` method that must agree, so a Python
+port can pin a release and check itself against the same cases.

@@ -1,7 +1,7 @@
 {
   "name": "@titan-design/speech-vet",
   "version": "0.0.0",
-  "description": "Speech text vetting: pronunciation override markup, heteronym reading checks, lexicon.v1 and initialism spelling",
+  "description": "Speech text vetting: pronunciation override markup, heteronym reading checks, lexicon.v1, initialism spelling and number normalization",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -13,6 +13,7 @@
   },
   "files": [
     "dist",
+    "conformance",
     "README.md"
   ],
   "author": "Henry Jewkes",
