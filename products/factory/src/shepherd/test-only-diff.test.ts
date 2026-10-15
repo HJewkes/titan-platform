@@ -15,7 +15,15 @@ const HEAD = fakeSha("head");
 const MERGE_BASE = fakeSha("merge-base");
 const LOOSE_CONFIG = JSON.stringify({ tests: ["**/*.test.ts"], carry: ["**/*.ts"] });
 
-type SceneOptions = { baseConfig?: string | null; changedFiles?: number; baseRef?: string; branchConfig?: string };
+// Paths that are source under the repo config but test-only under the plan's wider built-in globs.
+const DEFAULTS_ONLY_TESTS = ["packages/x/test/evil.test.ts", "packages/x/src/hook.spec.ts", "products/factory/vitest.setup.test.js"];
+
+/** `baseConfig` sits at the merge base, `tipConfig` (default: the same) at main's tip, `parentConfig` at a non-main base ref. */
+type SceneOptions = { baseConfig?: string | null; tipConfig?: string | null; changedFiles?: number; baseRef?: string; parentConfig?: string };
+
+function seedConfig(fake: ReturnType<typeof fakeGitHub>, ref: string, content: string | null): void {
+  if (content !== null) fake.files.set(`${ref}:${CONFIG_PATH}`, { content, blobSha: fakeSha(content) });
+}
 
 function sceneFake(files: PrFile[], options: SceneOptions = {}) {
   const fake = fakeGitHub();
@@ -25,8 +33,9 @@ function sceneFake(files: PrFile[], options: SceneOptions = {}) {
   if (options.changedFiles !== undefined) fake.prChangedFiles.set(1, options.changedFiles);
   fake.compares.set(`main...${HEAD}`, { mergeBaseSha: MERGE_BASE, files: [] });
   const baseConfig = options.baseConfig === undefined ? REPO_CONFIG : options.baseConfig;
-  if (baseConfig !== null) fake.files.set(`${MERGE_BASE}:${CONFIG_PATH}`, { content: baseConfig, blobSha: "b".repeat(40) });
-  if (options.branchConfig !== undefined) fake.files.set(`${baseRef}:${CONFIG_PATH}`, { content: options.branchConfig, blobSha: "c".repeat(40) });
+  seedConfig(fake, MERGE_BASE, baseConfig);
+  seedConfig(fake, "main", options.tipConfig === undefined ? baseConfig : options.tipConfig);
+  if (options.parentConfig !== undefined) seedConfig(fake, baseRef, options.parentConfig);
   return fake;
 }
 
@@ -82,23 +91,42 @@ describe("testOnlyDiff", () => {
   });
 
   it("never reads a stacked PR's parent branch config that loosens the globs", async () => {
-    const port = scene(testAndSource, { baseRef: "parent", branchConfig: LOOSE_CONFIG });
+    const port = scene(testAndSource, { baseRef: "parent", parentConfig: LOOSE_CONFIG });
 
     const diff = await testOnlyDiff(port, REPO, 1);
 
     expect(diff).toMatchObject({ kind: "unread", reason: expect.stringMatching(/"parent".*"main"/) });
   });
 
-  it("reads the merge-base config, not the default branch's tip", async () => {
-    const port = scene(testAndSource, { branchConfig: LOOSE_CONFIG });
+  it("does not let a wider tip config widen the merge-base config", async () => {
+    const port = scene(testAndSource, { tipConfig: LOOSE_CONFIG });
 
     expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "source", paths: ["packages/x/src/x.ts"] });
   });
 
-  it("uses the built-in globs when the merge base has no config", async () => {
-    const port = scene([modified("packages/x/src/a.test.ts")], { baseConfig: null, branchConfig: LOOSE_CONFIG });
+  it("does not let a fork point's wider config widen the tip's", async () => {
+    const port = scene(testAndSource, { baseConfig: LOOSE_CONFIG, tipConfig: REPO_CONFIG });
+
+    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "source", paths: ["packages/x/src/x.ts"] });
+  });
+
+  it("does not let a fork point that predates the config fall back to the wider defaults", async () => {
+    const port = scene(DEFAULTS_ONLY_TESTS.map(modified), { baseConfig: null, tipConfig: REPO_CONFIG });
+
+    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "source", paths: [...DEFAULTS_ONLY_TESTS].sort() });
+  });
+
+  it("uses the built-in globs when neither the merge base nor the tip has a config", async () => {
+    const port = scene([modified("packages/x/src/a.test.ts")], { baseConfig: null });
 
     expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "test-only" });
+  });
+
+  it("fails closed when the tip config cannot be read", async () => {
+    const healthy = scene([modified("packages/x/src/a.test.ts")]);
+    const port: GitHubPort = { ...healthy, getFile: (repo, path, ref) => (ref === "main" ? Promise.reject(new Error("HTTP 502")) : healthy.getFile(repo, path, ref)) };
+
+    expect(await testOnlyDiff(port, REPO, 1)).toMatchObject({ kind: "unread", reason: expect.stringContaining(`${CONFIG_PATH} could not be read`) });
   });
 
   it("fails closed when the default branch cannot be read", async () => {
@@ -115,7 +143,7 @@ describe("testOnlyDiff", () => {
   });
 
   it("fails closed when the merge base is not a commit sha", async () => {
-    const fake = sceneFake([modified("packages/x/src/a.test.ts")], { branchConfig: REPO_CONFIG });
+    const fake = sceneFake([modified("packages/x/src/a.test.ts")], { baseConfig: null, tipConfig: REPO_CONFIG });
     fake.compares.set(`main...${HEAD}`, { mergeBaseSha: "main", files: [] });
 
     expect(await testOnlyDiff(githubPort(fake.wire), REPO, 1)).toMatchObject({ kind: "unread", reason: expect.stringContaining("not a commit sha") });
