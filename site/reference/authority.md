@@ -147,8 +147,8 @@ merge-base to second parent, changed) shares no path with `changedPaths` after c
 `changedPaths` is GitHub's own file list, read independently of the caller's probe; it must be
 non-empty, and a non-canonical path in either list fails the condition. A separate row, so
 deleting it revokes the disjoint carry alone. The owner decided it on 2026-10-11.
-It never applies when any `carry.basePaths` entry, case-folded, is under `packages/authority/`,
-`packages/tool-guard/`, `.github/` or `.codewatch/`, is exactly `.egress-allow`, or is not a
+It never applies when any `carry.basePaths` entry, case-folded, is, or is under, `packages/authority/`,
+`packages/tool-guard/`, `.github/` or `.codewatch/` (a symlink or submodule at that name counts), is exactly `.egress-allow`, or is not a
 canonical path: such a merge-up gets a fresh review (owner decision of 2026-10-12, widened in
 TP-2951). The fence covers config that decides which checks run or what they accept. Code the
 checks execute (`scripts/`, `package.json`, `pnpm-lock.yaml`) is not fenced: it was reviewed when it

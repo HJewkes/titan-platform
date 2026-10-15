@@ -729,6 +729,10 @@ importers:
         version: link:../locator
 
   packages/speech-stt:
+    dependencies:
+      '@huggingface/transformers':
+        specifier: ^3.0.0
+        version: 3.8.1
     devDependencies:
       zod:
         specifier: ^4.4.3

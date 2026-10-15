@@ -17,3 +17,15 @@ export {
   type OpcodeTag,
   type SequenceMatcherOptions,
 } from "./sequence-matcher.js";
+export {
+  loadTransformersPipeline,
+  whisperStt,
+  type AsrChunk,
+  type AsrFactory,
+  type AsrOutput,
+  type AsrPipeline,
+  type ModuleImporter,
+  type SttProvider,
+  type TranscriptCache,
+  type WhisperSttOptions,
+} from "./whisper.js";
