@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { argmaxFrames, ctcGreedyDecode, normalizeInput, type CtcLogits } from "./ctc.js";
 
 const TOKENS = ["<pad>", "<s>", "</s>", "<unk>", "l", "ə", "aɪ"];
-const [PAD, BOS, EOS, UNK, L, SCHWA, AI] = TOKENS.map((_, id) => id) as [number, number, number, number, number, number, number];
+const [PAD, BOS, EOS, UNK, L, SCHWA, AI] = [0, 1, 2, 3, 4, 5, 6] as const;
 
 describe("ctcGreedyDecode", () => {
   it("collapses repeats, drops blanks and keeps a repeat split by a blank", () => {
