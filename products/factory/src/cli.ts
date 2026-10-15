@@ -78,10 +78,12 @@ export interface CliDeps {
   seatDigest?: (env: NodeJS.ProcessEnv) => SeatDigestPorts | undefined;
   /** The serve verb's gate notifier; absent, or undefined for an env, means serve posts no gate to agent-chat. */
   gateNotify?: (env: NodeJS.ProcessEnv) => GateNotifyOptions | undefined;
+  /** Ends the process once serve has closed, so a child an abandoned tick still holds cannot keep it alive; absent means serve returns instead. */
+  exitAfterServe?: () => void;
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
-const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), deployPacer: (env) => configuredDeployPacer(env, deployCheckoutFor(env)), mainWatch: configuredMainWatch, fixerRetire: configuredFixerRetire, seatDigest: configuredSeatDigest, gateNotify: configuredGateNotify };
+const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), deployPacer: (env) => configuredDeployPacer(env, deployCheckoutFor(env)), mainWatch: configuredMainWatch, fixerRetire: configuredFixerRetire, seatDigest: configuredSeatDigest, gateNotify: configuredGateNotify, exitAfterServe: () => process.exit() };
 
 export interface Verbs {
   io: CliIo;

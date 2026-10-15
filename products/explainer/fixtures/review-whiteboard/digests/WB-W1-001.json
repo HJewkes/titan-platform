@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "digest_id": "WB-W1-001",
+    "head": "2ddf3eb6"
+  },
+  "summary": "Root-wave bundle: two plugin marketplace manifests plus the Whiteboard desktop shell, a Code OSS fork under vs/review. Covers the canvas editor pane, which mounts the React canvas bundle behind a bridge, the fixed-grid workbench, and common helpers: loopback server discovery, SSE reader with size guard, reconnect backoff, error-report limiter, structural-diff fold and lens projection math, viewed-coverage progress. Tiers are mostly dashboard-kit, daemon and hitl, with some none; no agent logic appears here.",
+  "files": [
+    {
+      "path": ".agents/plugins/marketplace.json",
+      "purpose_one_line": "Codex plugin marketplace manifest listing the local whiteboard plugin.",
+      "notable": true
+    },
+    {
+      "path": ".claude-plugin/marketplace.json",
+      "purpose_one_line": "Claude Code marketplace manifest with whiteboard and diffr plugins.",
+      "notable": true
+    },
+    {
+      "path": "apps/review-desktop/code-oss/src/vs/review/browser/parts/canvas/reviewApiEditorSerializer.ts",
+      "purpose_one_line": "Persists and validates canvas tab targets across workbench restarts.",
+      "notable": true
+    }
+  ]
+}
