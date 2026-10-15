@@ -375,6 +375,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/actions\/runs\/\d+$/, { status: "completed" }],
   [/rerun-failed-jobs$/, undefined],
   [/actions\/jobs\/\d+\/logs$/, "line 1\nline 2\nline 3\n"],
+  [/actions\/jobs\/\d+$/, { id: 42, steps: [{ name: "Set up job", conclusion: "success", number: 1 }, { name: "Run pnpm test", conclusion: "failure", number: 2 }] }],
   [/^repos\/octo\/demo$/, { default_branch: "main" }],
   [/^graphql$/, { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] }, timelineItems: { pageInfo: { hasNextPage: false }, nodes: [] } } } } }],
 ];
@@ -421,6 +422,7 @@ describe("gh api adapter, REST only", () => {
       resolveCommit: () => port.resolveCommit(REPO, H1.slice(0, 7)),
       commitStatuses: () => port.commitStatuses(REPO, H1),
       jobLogTail: () => port.jobLogTail(REPO, 42, 2),
+      jobSteps: () => port.jobSteps(REPO, 42),
       updateBranch: () => port.updateBranch(REPO, 7, H1),
       setPrBase: () => port.setPrBase(REPO, 7, "release"),
       pushEmptyCommit: () => port.pushEmptyCommit(REPO, "topic", H1, "m"),
@@ -465,6 +467,15 @@ describe("gh api adapter, REST only", () => {
     expect(gh.argv).toContainEqual(["api", "-i", "-X", "GET", "repos/octo/demo/pulls", "-f", "state=open", "-f", "per_page=100"]);
     expect(gh.argv).toContainEqual(["api", "-i", "-X", "DELETE", "repos/octo/demo/git/refs/heads/topic"]);
     expect(gh.argv).toContainEqual(["api", "-i", "-X", "GET", "repos/octo/demo/actions/jobs/42/logs", "--allow-escape-sequences"]);
+  });
+
+  it("reads an Actions job's steps in run order, each as its name and conclusion only", async () => {
+    const gh = routedGh();
+
+    const steps = await githubPort(ghCliWire(gh.exec)).jobSteps(REPO, 42);
+
+    expect(steps).toEqual([{ name: "Set up job", conclusion: "success" }, { name: "Run pnpm test", conclusion: "failure" }]);
+    expect(gh.argv).toContainEqual(["api", "-i", "-X", "GET", "repos/octo/demo/actions/jobs/42"]);
   });
 
   it("reads a job log whose colour codes make gh refuse it unless escape sequences are allowed, and returns it without them", async () => {

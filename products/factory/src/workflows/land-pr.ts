@@ -7,7 +7,7 @@ import { gateEverything } from "../gate-policy.js";
 import { requireBaseRequiredChecks } from "../required-checks.js";
 import { askAtHead } from "../shepherd/stale-gates.js";
 import { localMergeTree } from "../shepherd/tree-carry.js";
-import { AWAIT_HEAD_STEPS, AwaitHeadResult, awaitNewHeadRoute } from "./await-head.js";
+import { AWAIT_HEAD_STEPS, AwaitHeadResult, awaitNewHeadRoute, type AwaitHeadTiming } from "./await-head.js";
 import { deadline } from "./deadline.js";
 import { taskIdOf } from "./land-merge-message.js";
 import { LAND_STEPS, afterWrite, codeRoute, land, landRoutes, sleep, step, type FailingCheck, type LandDeps, type LandOptions, type LandOutcome, type Timing } from "./land.js";
@@ -115,6 +115,8 @@ export interface LandPrDeps extends LandDeps, PostMergeDeps {
   rerunQueueMs?: number;
   /** The seat clones' push reflogs `await-new-head` watches; absent means it reads the PR once per backstop. */
   pushes?: PushWatch;
+  /** Weighs a ci-red wait's unchanged head against its base, so a red main has since owned ends the wait; absent means only a new head does. */
+  inheritedRed?: AwaitHeadTiming["inheritedRed"];
 }
 
 /** Every route `land-pr` dispatches to; each reads before it writes, so each repeats safely after a crash. */
@@ -123,7 +125,7 @@ export function landPrRoutes(deps: LandPrDeps): StepRoute[] {
   const timing = { now, sleep: deps.sleep ?? sleep, pollMs: deps.pollMs ?? 30_000, timeoutMs: deps.rerunSettleMs ?? 5 * 60_000, queueMs: deps.rerunQueueMs ?? 20 * 60_000 };
   return [
     ...landRoutes({ mergeTree: (input, signal) => localMergeTree(input, { signal }), ...deps }),
-    awaitNewHeadRoute({ port: deps.port, now, sleep: deps.sleep, pushes: deps.pushes, snapshot: deps.snapshot }),
+    awaitNewHeadRoute({ port: deps.port, now, sleep: deps.sleep, pushes: deps.pushes, snapshot: deps.snapshot, inheritedRed: deps.inheritedRed }),
     codeRoute("snapshot", now, (input: LandPrParams) => snapshot(deps.port, input)),
     codeRoute("rerun", now, (input: RerunInput, signal) => afterWrite(deps, input, rerunFailed(deps.port, input, timing, signal))),
     postMergeRoute(deps),

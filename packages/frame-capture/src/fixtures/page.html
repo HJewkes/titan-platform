@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>frame-capture fixture page</title>
+    <style>
+      @font-face {
+        font-family: 'Space Grotesk';
+        src: url('./fonts/space-grotesk-latin.woff2') format('woff2');
+        font-weight: 300 700;
+        font-display: block;
+      }
+      /* Drawn by nothing, so it loads only if the capture loads every face before frame 0. */
+      @font-face {
+        font-family: 'Unused Face';
+        src: url('./fonts/space-grotesk-latin.woff2') format('woff2');
+        font-display: block;
+      }
+      body { margin: 0; background: #000; }
+      #stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+        background: #fff; color: #000; font: 200px 'Space Grotesk'; }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <script>
+      // Speaks the __titanMotion protocol with no framework, so the capture is tested against the
+      // protocol alone. `?page=` picks the behaviour:
+      //   clock          shows t to three places
+      //   static-clock   the same markup with no motion API; a test sets its text
+      //   throws         like clock, but from `?fail-at=<s>` on, a seek empties the stage and reports an
+      //                  uncaught error, as a framework does when a render throws and unmounts the tree
+      //   missing-font   like clock, but declares a face whose file does not exist
+      //   throws-at-load publishes the API, empties the stage and throws while loading; later seeks do nothing
+      //   drift          like clock, plus boxes and labels on fractional, rotating transforms that move with t
+      // `?duration=nan` or `?duration=null` publishes a broken duration on any page.
+      const query = new URLSearchParams(location.search)
+      const page = query.get('page')
+      const stage = document.getElementById('stage')
+      const DURATIONS = { nan: NaN, null: null }
+      const duration = query.has('duration') ? DURATIONS[query.get('duration')] : 3
+      const failAt = query.has('fail-at') ? Number(query.get('fail-at')) : Infinity
+      const boxes = page === 'drift' ? Array.from({ length: 36 }, (_, i) => {
+        const box = document.createElement('div')
+        box.textContent = `box ${i}`
+        box.style.cssText = 'position: absolute; left: 0; top: 0; padding: 6px 10px; font: 24px "Space Grotesk"; color: #fff; border-radius: 9px; box-shadow: 0 3px 11px rgba(0,0,0,.45)'
+        // Seeded by the virtual-time script, so two loads of the page draw the same colours.
+        box.style.background = `hsl(${Math.round(Math.random() * 360)} 60% 45%)`
+        document.body.appendChild(box)
+        return box
+      }) : []
+
+      if (page === 'missing-font') {
+        document.fonts.add(new FontFace('MissingFace', "url('./fonts/missing.woff2')"))
+      }
+
+      function seek(t) {
+        if (t >= failAt) {
+          stage.textContent = ''
+          reportError(new Error(`throws fixture fails at ${t.toFixed(2)} s`))
+          return
+        }
+        stage.textContent = t.toFixed(3)
+        if (page === 'drift') moveBoxes(t)
+      }
+
+      // Fractional positions and angles put anti-aliased edges in every tile, where partial raster shows up.
+      function moveBoxes(t) {
+        boxes.forEach((box, i) => {
+          const x = 40 + i * 47.3 + Math.sin(t * 2.1 + i) * 31.7
+          const y = 60 + (i % 8) * 121.9 + Math.cos(t * 1.7 + i) * 23.3
+          box.style.transform = `translate(${x}px, ${y}px) rotate(${t * 37.1 + i * 7.3}deg) scale(${0.8 + 0.3 * Math.sin(t + i)})`
+          box.style.opacity = String(0.35 + 0.6 * Math.abs(Math.sin(t * 1.3 + i)))
+        })
+      }
+
+      // A framework page renders t = 0 on mount, before any seek.
+      if (page !== 'static-clock') {
+        seek(0)
+        window.__titanMotion = { seek, ready: () => document.fonts.ready.then(() => undefined), duration }
+      }
+
+      if (page === 'throws-at-load') {
+        stage.textContent = ''
+        window.__titanMotion.seek = () => {}
+        throw new Error('throws-at-load fixture fails while loading')
+      }
+    </script>
+  </body>
+</html>

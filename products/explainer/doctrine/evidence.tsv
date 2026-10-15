@@ -1,0 +1,99 @@
+id	claim	value	sources	source_type	tested_or_advised	grade	direction_section
+E01	Present narration and the matching graphic at the same time (temporal contiguity)	median d=1.30 (deflate per E16)	Mayer 2017 JCAL abstract; Dartmouth summary; Ginns 2006 via Beege 2019	review of experiments / meta-analysis	tested	A	§2 P1; C2; C12; defaults AV sync
+E02	Words plus graphics beat words alone (multimedia principle)	median d=1.67 (5 comparisons)	Mayer 2017 abstract	review of experiments	tested	A	§2 P1
+E03	Exclude extraneous words, pictures and sounds (coherence)	median d=0.70	Mayer 2017 abstract; Dartmouth summary	review of experiments	tested	A	§2 P2
+E04	One throughline per talk or video; every part ties to it	—	Anderson (TED); Heath Made to Stick (commander's intent); Evans (jvns.ca); Linus (scope); Winston	practitioner/expert, 5 independent	advised	C	§2 P2; §6 item 1
+E05	Redundant on-screen text (same words as narration) depresses learning	median d=0.87; Mayer: 16 of 16 studies	Mayer 2017 abstract; Mayer HILT 2014 transcript AJ3wSf-ccXo 43:23	review of experiments + author statement	tested	A	§2 P4; C6; C19
+E06	Short redundant text next to the graphic helps; hard-to-hear technical terms belong on screen	—	Mayer HILT 2014 transcript AJ3wSf-ccXo 44:12	author of the principle stating its boundary conditions (refers to own studies, uncited)	advised (reports findings)	B	C6
+E07	Key terms on screen, not verbatim text, account for most of the spoken+written benefit	—	Adesope & Nesbit 2012 (abstract and secondary only)	meta-analysis (57 studies)	tested	B	C6
+E08	Slightly condensed on-screen text helps; identical or very discrepant text hurts	—	Yue, Bjork & Bjork 2013 (via visual-info doctrine; PDF not read in full)	experiment	tested	B	C6
+E09	Place words next to the part of the graphic they describe (spatial contiguity)	d=0.79 (Mayer); d≈0.85 (Ginns; 0.78 high complexity, 0.28 ns low)	Mayer 2017; Ginns 2006 via Beege 2019; Mayer HILT 44:58	meta-analysis	tested	A	§2 P4; defaults labels
+E10	Signaling (cueing) improves retention more than transfer	retention g=0.53, transfer g=0.33 (Schneider); Mayer d=0.46; Richter r=0.17	Schneider et al. 2018 (secondary); Mayer 2017; Richter 2016	meta-analysis	tested	A	§2 P5; defaults code focus
+E11	A cue directs attention but is insufficient alone; narration must explain it	—	de Koning et al. 2009	framework + experiments	tested (partly)	B	§2 P5
+E12	Segmenting helps, including system-paced video	median d=0.70 (alt 0.77); Rey 2019 small-to-medium, 56 investigations	Mayer 2017; Rey et al. 2019 abstract	meta-analysis	tested	A	§2 P6; C7; C14; defaults chapters
+E13	No benefit of segmentation for software tutorials	—	Garrett 2020 via BERA blog	experiment (secondary report)	tested	B	§2 P6 dissent
+E14	Pre-training on names and characteristics before a process	d=0.46 (Mayer 2017); "0.75" median 13 of 16 tests (Mayer HILT 53:00)	Mayer 2017; Mayer HILT transcript	review of experiments	tested	A	§2 P6
+E15	Spoken beats printed words with graphics; boundary: fast-paced complex lessons	median d=0.72	Mayer 2017; Mayer HILT 56:20	review of experiments	tested	A	§2 P4
+E16	Mayer-corpus overall effect is moderate and declining; weaker for animation	g=0.37 (92 articles, 181 studies, 591 effects)	Cromley et al. 2025 via NSF PAR abstract	meta-analysis (abstract only)	tested	A	§2 P1; C14
+E17	Expertise reversal: novice supports can stop helping or hurt experts	—	Kalyuga et al. 2003; Kalyuga 2007; Spanjers 2011; Mayer HILT 41:48	experiments + author statement	tested	A	C20
+E18	Animated transitions between related statistical graphics beat static cuts for tracking and change estimation	tracking error ≈3–10× lower; F(2,286)≥22.03 p<0.001	Heer & Robertson 2007 Exp 1 and 2 (papers/heer-robertson-2007.md)	controlled experiment n=24, silent, desktop	tested	A	§2 P3
+E19	Animation beats static pictures, modestly	d=0.37 (Höffler & Leutner); g=0.226 (Berney & Bétrancourt)	Höffler & Leutner 2007; Berney & Bétrancourt 2016	meta-analysis	tested	A	§2 P3
+E20	Animate only content that is change (congruence); animations fail when too fast or complex (apprehension)	—	Tversky, Morrison & Bétrancourt 2002 (snippets); quoted in H&R p1	expert review of experiments	advised (from reviewed evidence)	B	§2 P3; C5
+E21	Object constancy by key; cut or dissolve when no data dimension is shared	—	Bostock "Object Constancy"; H&R §4 design choice; manim TransformMatching	practitioner + paper design choice	advised	C	§2 P3; §5 compare
+E22	Simple staging (≈2 stages) modestly lowers error and is strongly preferred	staged < direct error in most Exp 1 conditions (sig. at .05 in 2, .10 in 2); preference p<0.003	H&R 2007 Exp 1, survey	controlled experiment	tested	B	§2 P7; C1
+E23	Heavy multi-stage ("one thing at a time") staging raised error and won no preference	4-stage donut: staged worse than direct (p=0.024)	H&R 2007 Exp 2, §6.2	controlled experiment	tested	B	C1
+E24	About 1 s per stage	≈1 s per stage (0.5 s judged too fast)	H&R §6.2 post-hoc; Robertson et al. 2002 ≈1 s	paper recommendation	advised	C	C1; defaults per stage
+E25	Two rapid stages (rescale then move) raised tracking error	Timestep Scatter staged ≈68 vs direct ≈50 px	H&R 2007 Exp 1	controlled experiment	tested	B	C1
+E26	Run only one action or motion at a time	—	Zongker & Salesin (cited by H&R p1); Lago blog; visual-info rule 35	practitioner	advised	C	C1 dissent
+E27	Axis rescaling hampers change estimation; keep common scales; stage rescales separately	more errors and '?' responses	H&R 2007 Exp 2 §6.4	controlled experiment	tested	B	§5 stat and compare
+E28	Ease every move: slow-in/slow-out; ease-out entrances; ease-in exits	—	H&R (applied, untested); Material M1; Carbon; manim smooth; D3 easeCubic; Motion Canvas; HF motion-principles	design systems + practitioners	advised	C	§2 P14; defaults ease
+E29	No overshoot by default; bounce ≤0.15 for a payoff, avoid >0.3	bounce 0 default; 0.15 brisk	Apple WWDC23/WWDC18; HF motion-language; Remotion timing.md	design system + practitioners	advised	C	§2 P14; defaults overshoot
+E30	Video-scaled durations: no tween <0.2 s or >2 s; small 0.4–0.6, standard 0.8–1.2, camera 1.2–2 s	ranges as stated	HF motion-principles + animation-map; motion doctrine Derived (Material/Carbon ×2.5–4)	practitioner + our derivation	advised/derived	C (bounds) / D (bands)	defaults durations
+E31	Stagger reads as one arrival; total span ≤ ~0.5 s	40–80 ms per item	HF rules-index; manim LaggedStart 0.05; D3 i*10 ms; motion G8 derived	practitioner	advised	C	defaults stagger
+E32	Narration timing drives animation timing	—	Kurzgesagt process page; Motion Canvas time events; HF frame-worker-core	first-party process accounts	advised	C	§2 P1
+E33	Faster speaking rate correlates with higher engagement in longer videos	48–254 wpm, mean 156; up to 2× within length bucket; best 185–254	Guo, Kim & Rubin 2014 §3.6 (papers/guo-2014.md)	observational, 862 videos, 6.9M sessions	observed (correlational)	B	C5; §2 P12
+E34	145–165 wpm was a trough for 6–12 min videos; least energetic instructors	normalised ≈0.70 (6–9) and ≈0.33 (9–12)	Guo 2014 Fig 6 p7–8	observational	observed	B	C5
+E35	Under 6 min, engagement is at ceiling regardless of speaking rate	≈1.0 at all rates for 0–3 and 3–6 min	Guo 2014 Fig 6	observational	observed	B	C5 (fit to our 4-min medium)
+E36	Slow speech beat mid-speed only with continuous blackboard writing	48–130 wpm	Guo 2014 p8 qualitative	observational + qualitative	observed	C	C5
+E37	Rate is a surface feature of enthusiasm; speeding a flat speaker may not help	—	Guo 2014 p8 caveat	authors' caveat	advised	B	C5 guardrail; §2 P12
+E38	Edit out fillers and pauses; pauses are unnecessary on video	—	Guo 2014 p8 (producer practice, not measured)	practitioner report	advised	C	defaults dead air
+E39	Narrated exemplar explainers run 151–232 wpm over runtime, median ≈184 (≈3.1 w/s)	13 videos; Fireship code tutorial ≈225; Rosling ≈156	our count: sources/transcripts .status.tsv word counts ÷ estimated runtime (DIRECTION Appendix A)	own measurement	observed	C	C5; C15; Appendix A
+E40	The whiteboard pilot's narration averaged 2.2 words/s	≈132 wpm over runtime	pilot-whiteboard/critique.md §1.7	own pilot	observed	C	C15; §6 item 7
+E41	Word budget ≤2.5 words/s; script should feel shorter than the video	2.5 w/s	HF narration.md via skills-and-taste rule 21; workflow S5c	practitioner (product-launch videos)	advised	C	C15
+E42	Narration speed varies by beat type: faster for hooks and story, slower for code	—	owner, decision 301 (further-research.md §1)	owner decision	constraint (not evidence)	—	C5; C15
+E43	Median engagement time capped at ≈6 min; segment lectures into chunks "ideally less than 6 minutes"	problem attempts 56/48/43/41/31% by length bucket	Guo 2014 §3.1 p4–5	observational	observed	B	C7
+E44	Tutorials: 2–3 min watched regardless of length; re-watched and skimmed	—	Guo 2014 §3.7	observational	observed	B	C7
+E45	Khan-style continuous drawing gets 1.5–2× the engagement of slides or code screencasts (tutorials)	problem attempts 40% vs 31%	Guo 2014 §3.4	observational	observed	B	C2; C16; §2 P15
+E46	First 30 s is "the intro"; audiences shrink over a video; move top moments earlier	—	YouTube Help 9314415	platform documentation	observed (platform, unquantified)	B	§2 P10; C10; C13
+E47	First ~7 s confirm the click; introduce a new unexpected hook by 30 s	7 s; 30 s	Galloway transcript L9CO1FcRHCM 81:06; Colin & Samir Playbook 8XSssH3B_Dk 7:10	practitioner (2 sources, same circle)	advised	C	C9; defaults hook
+E48	Pay off the title and thumbnail within 10–13 s	10–13 s	Linus Sebastian on Colin & Samir (unofficial transcript)	practitioner	advised	C	C9; defaults hook
+E49	First minute most important; re-engage around 3:00 and 6:00	3:00; 6:00	MrBeast production guide (leaked); MrBeast 2021 c8VcUnz3nVc	practitioner with own analytics	advised	C	C9
+E50	New information roughly every 6 s in one MrBeast opening	≈6 s	Samir in c8VcUnz3nVc 74:42	single observation of one video	observed	D	C2
+E51	Kurzgesagt ≈200 panels per video implies one panel per 2.5–3 s	2.5–3 s	Kurzgesagt 1200-hours (kottke/Patreon) + motion doctrine arithmetic	our derivation	derived	D	C2
+E52	One beat per 10–30 s; no static frame over 30 s	10–30 s	talks doctrine B7 (UNV synthesis)	synthesis	advised	D	C2
+E53	Meaningful visual change every 4–8 s (mass) / 6–12 s (technical)	4–12 s	creator doctrine P1 [synth]	synthesis	advised	D	C2
+E54	Shots 1.5–3.5 s; first motion ≤0.2 s; hero by 0.5 s; dead zones ≥1 s flagged; keepsMoving	as stated	HF storyboard-recipe, frame-worker-core, animation-map (skills-and-taste §1.1)	practitioner (product-launch clips)	advised	C	C2; C16; defaults
+E55	Misconception-confronting videos produced learning gains; "clear" expository videos did not and raised confidence in wrong ideas	—	Muller PhD (Sydney) via THE Journal, Scientific American	experiment (physics; read via news)	tested	B	§2 P8; §5 misconception
+E56	Link beats with but/therefore, never "and then" (ABT)	—	Olson; Parker & Stone (transcript j9jEg9uiLOU); Coats rule 4; Adams story spine	practitioner, 3+ independent	advised	C	§2 P9
+E57	Sections are content blocks; the dominant finding chooses the structure, which orders them	—	story-structure doctrine §4 and rule 3; pilot critique §3.1	synthesis + own pilot observation	advised/observed	C	§2 P9; C17
+E58	Curiosity is a felt information gap and needs prior knowledge	—	Loewenstein 1994 (abstract only)	theory/review	advised (from reviewed evidence)	B	§2 P8; §2 P10
+E59	Assertion-evidence slides improved comprehension and recall vs topic-bullets	p<.01, immediate and ~1 week	Garner, Alley, Wolfe & Sawarynski 2013 (PSU research page)	experiment (live/recorded talks)	tested	B	C6 dissent
+E60	Show only a few lines of code; strip noise; highlight the key line; overview then detail	"a few lines"	Meeting C++; frantic.im; EuroPython guide; Hanselman	practitioner, 4 independent	advised	C	C3; §5 code-walk
+E61	Code font floor and phone arithmetic: 36 px at 1080p ≈ 14–17 css px in landscape full screen, ≈7 px in portrait	36 px floor; 32 px absolute	TD-856 (backlog item 15); visual-info derived 32 px; my arithmetic (1920 px → 360 / 740–930 css px)	derivation	derived	D	C3; defaults code
+E62	Prose overlays: body 40–60 px at 1080p; ≤30 chars/line; ≤3 lines; dwell 13 chars/s; ≥1 s stillness per 13 chars animated	as stated	legibility.info (DBSV, from FFA/ARD/ORF/SRF/ZDF subtitle standards)	accessibility guideline	advised	C	C4; defaults text
+E63	Reading hold 0.25 s/word (min 1 s) or 0.3 s/word (min 1.5 s)	—	motion G7 (UNV); creator V2 (UNV)	synthesis	advised	D	C4 dissent
+E64	Dim de-emphasised elements to 20–30% / 30% / 40%	20–40%	motion A1, F2, C1 (UNV)	synthesis	advised	D	C8
+E65	Similar semantic operators get similar transitions (consistent mappings)	—	H&R 2007 §3.2	literature-derived principle	advised	C	C8; C11
+E66	Fade items in and out for filter, not grow from baseline	—	H&R 2007 §4 DynaVis design choice	paper design choice	advised	C	C11
+E67	Bars and lines grow from the baseline on intro, staggered in data order	—	motion N3; D3 practice; Remotion charts guidance	practitioner	advised	C	C11; §5 stat
+E68	AV sync tolerance ±0.5 s; transition lead 0.2–0.4 s; cue gate ±0.3 s	as stated	visual-info rule 31 (UNV); motion T5 (UNV); skills-and-taste rule 1 (EST)	synthesis	advised	D	C12
+E69	30 s retention targets of 50% / 70%	50%; 70%	third-party glossaries; Galloway client figure (X post snippet)	secondary / anecdote	advised	D	C13
+E70	Read retention only against similar-length videos; pre-register a 1–10 prediction	—	Galloway via Colin & Samir	practitioner	advised	C	C13
+E71	Introduce axes before data; slow for important events; freeze for punchline; isolate; replay at full speed	timestamps 0:32–3:58	chezvoila frame analysis; Rosling transcript jbkSRLYSojo; Roslingifier	exemplar analysis	observed	C	§5 stat, info-flow, algo-trace
+E72	C4: context and containers suffice for most; title, key, labelled one-way arrows with protocol	—	c4model.com notation	expert official	advised	C	§5 arch-map; §6 item 9
+E73	Overview first, zoom and filter, details on demand	—	Shneiderman 1996	expert, highly cited	advised	C	§5 arch-map, zoom
+E74	Concrete example first, then general, then concrete again	—	Victor (Ladder of Abstraction); 3b1b FAQ; Evans; Anderson; Heath	expert/practitioner, 5 independent	advised	C	§2 P11
+E75	Every number traces to a source; never invent figures	—	HF FRAME.md Numerals & Claims; Cairo; archify anchors; pilot S5c	practitioner + our gates	advised	C	§2 P13
+E76	Stillness over breathing loops; held frame is fine; no slow pan in back half	—	HF pr-to-video motion-language (overrides HF house-style)	practitioner	advised	C	§2 P15; C16
+E77	A mechanism beat shows the behaviour running and must not enter then freeze	—	HF pr-to-video visual-design (skills-and-taste rule 22)	practitioner	advised	C	C16
+E78	Rosling stops the animation for a pause and a joke, then resumes	2:12	chezvoila analysis; transcript jbkSRLYSojo	exemplar	observed	C	C16
+E79	End abruptly to protect retention; no long outro	—	MrBeast production guide	practitioner	advised	C	C18
+E80	End on contributions; say key ideas about three times (cycling); build a fence	—	Winston "How to Speak" (summaries; transcript queued)	expert teacher	advised	C	C18; §2 P8
+E81	Set up payoffs by ~25%; no new concept in the final 15%; callback ending	25%; 15%	story-structure rules 6 and 12 (Chekhov; UNV percentages); pilot critique §1.3	judgement + pilot observation	advised	D (numbers) / C (callback)	C10; C18; §6 item 3
+E82	Offer captions as a separate accessibility track, not burned into content	—	visual-info rule 32 (derived from redundancy)	derived	advised	C	C19
+E83	Acts in fixed order A0→A6	—	workflow-plan §2.3	plan	advised	—	C17
+E84	Video length 3:00–5:00, 4-min target	—	MVP done-when (via workflow plan); workflow §1.3; creator 2–10 min band	plan + practitioner	advised	C	C7
+E85	Talking head interspersed with slides out-engaged slides alone (2 courses; problem attempts in 1)	46% vs 33% (6.00x only)	Guo 2014 §3.2	observational	observed	C	C22
+E86	Lessig-style rapid one-phrase slides in sync with speech suit hooks and lists	1–3 s per item	Lessig / Hardt (secondary)	practitioner	advised	C	§5 promise
+E87	Hook is a specific image or event that opens a loop the viewer can feel	—	story rule 11 (UNV); Linus open loops; Abrams; Heath	practitioner	advised	C	§5 hook; §6 item 2
+E88	Order list or countdown items by rising stakes	—	story rule 16 (judgement)	judgement	advised	D	§6 item 6
+E89	About one major concept per minute	≈1/min	talks O5 extrapolated from Kawasaki 10/20/30	synthesis	advised	D	defaults concept budget; §6 item 7
+E90	Tracking error rises with number of animated elements	8 vs 16 marks, sig. in most transitions	H&R 2007 Exp 1	controlled experiment	tested	B	C3; defaults marks per transition
+E91	Display text vs narration shared-run gate held across all 21 pilot beats	no shared run ≥5 words	pilot-whiteboard/critique.md §4	own pilot	observed	C	C6
+E92	Reveal each element when the voice names it; resolved by end − 1 s; no front-loading	—	HF frame-worker-core, motion-language; skills-and-taste rule 1	practitioner	advised	C	§2 P1
+E93	One focal element per frame; accent colour once; don't show two competing text elements	3–6× dominance	HF FRAME.md; Remotion video-layout; Galloway "20 notes"	practitioner, 3 independent	advised	C	defaults focal
+E94	Caption keep-out: content in top 83% of frame	83%	HF frame-worker-core; motion-spike contract	practitioner	advised	C	C19
+E95	Changes across an interruption (cut, blank) are missed: change blindness	—	Healey "Perception in Visualization"	review of experiments	tested	A	§2 P3; §5 compare
+E96	One pop-out feature per frame; conjunctions need serial search; motion is the strongest attention cue	<200–250 ms preattentive	Healey	review of experiments	tested	A	§2 P5; C1
+E97	Position on a common scale is read most accurately, then length, angle, area	—	Cleveland & McGill 1984; Heer & Bostock 2010	experiments (replicated)	tested	A	§5 stat
+E98	Transient information adds load; segmenting, slowing and a persistent residue help	—	cognitive load theory; Spanjers et al. 2011	experiments	tested	B	§2 P6; C5

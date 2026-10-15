@@ -1,0 +1,21 @@
+prefix	license	evidence
+apps/review-desktop/code-oss/	MIT	apps/review-desktop/code-oss/LICENSE.txt:1-3 "MIT License / Copyright (c) 2015 - present Microsoft Corporation"; apps/review-desktop/UPSTREAM:3-4 microsoft/vscode at 8a7abeba; all 65 code-oss extension manifests declare MIT; whiteboard additions inside code-oss (src/vs/review, extensions/review-themes) fall under apps/review-desktop/LICENSE MIT
+apps/review-desktop/	MIT	apps/review-desktop/package.json:5 "license": "MIT"; apps/review-desktop/LICENSE:1-3 "MIT License / Copyright (c) 2026 dev.fast"
+diffr/vendored_parsers/tree-sitter-janet-simple	CC0-1.0	diffr/vendored_parsers/tree-sitter-janet-simple/LICENSE:1-3 "Creative Commons Legal Code / CC0 1.0 Universal"; diffr/NOTICE lists it as CC0
+diffr/vendored_parsers/tree-sitter-	MIT	diffr/vendored_parsers/tree-sitter-{kotlin,latex,smali,tsx,tsx-src}/LICENSE each MIT (fwcd, Patrick Foerster, Yotam Nachum/Amaan Qureshi, Max Brunsfeld)
+diffr/vendored_parsers/	MIT	diffr/NOTICE "tree-sitter grammars (vendored_parsers/): each grammar directory carries its upstream license file"; highlights/*.scm are query files for those grammars
+diffr/packages/viewer/themes/	MPL-2.0	diffr/packages/viewer/themes/LICENSE:1-2 "Mozilla Public License Version 2.0"; diffr/NOTICE "Helix editor themes ... Mozilla Public License 2.0"
+diffr/packages/tui/	MIT	diffr/packages/tui/package.json:4 "license": "MIT"; diffr/packages/tui/LICENSE:3 "Copyright (c) Modem Labs Inc."; diffr/TUI_UPSTREAM.md:3 imported from modem-dev/hunk
+diffr/plugins/classify/rust/src/linguist/	MIT	diffr/plugins/classify/rust/src/linguist/LICENSE:1 "Copyright (c) 2017 GitHub, Inc." MIT text; diffr/NOTICE GitHub Linguist language data
+diffr/	MIT	diffr/Cargo.toml:6 license = "MIT"; diffr/LICENSE:3-4 "Copyright (c) 2021-2025 Wilfred Hughes / Copyright (c) 2026 dev.fast" (difftastic fork, diffr/NOTICE:3-5)
+packages/review/	MIT	packages/review/package.json:5 "license": "MIT"; packages/review/LICENSE
+packages/trace-core/	MIT	packages/trace-core/package.json:6 "license": "MIT"
+packages/trace-protocol/	MIT	packages/trace-protocol/package.json:5 "license": "MIT"
+packages/review-protocol/	MIT	packages/review-protocol/package.json:5 "license": "MIT"; packages/review-protocol/LICENSE
+packages/review-share-protocol/	MIT	packages/review-share-protocol/package.json:5 "license": "MIT"
+packages/local-vcs/	MIT	packages/local-vcs/package.json:4 "license": "MIT"; packages/local-vcs/LICENSE
+packages/json/	MIT	packages/json/package.json:5 "license": "MIT"
+packages/agent-plugins/	MIT	packages/agent-plugins/pi/package.json:8 "license": "MIT"; packages/agent-plugins/pi/LICENSE:3 "Copyright (c) 2026 dev.fast"; claude/codex/cursor plugin dirs carry no manifest license so the root applies
+tools/oxlint/anti-slop/vendor/eslint-stylistic/	MIT	tools/oxlint/anti-slop/vendor/eslint-stylistic/LICENSE:1-3 "MIT License / Copyright OpenJS Foundation and other contributors"
+tools/oxlint/anti-slop/	MIT	tools/oxlint/anti-slop/UPSTREAM.md:3 copied from github.com/dmmulroy/anti-slop; no license file or manifest field in the directory (package.json is only {"type":"module"}); treated as covered by the root MIT but the upstream license was not verified
+(root)	MIT	LICENSE:1-3 "MIT License / Copyright (c) 2026 dev.fast"; package.json:6 "license": "MIT"
