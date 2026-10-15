@@ -4,7 +4,7 @@ import { DIRTY_SUFFIX } from "./build-info.js";
 import { closureDirs, FACTORY_PACKAGE, nativeBuildChanges, readWorkspace, touchedPaths, versionOnlyManifestChange } from "./deploy-closure.js";
 import type { DeployIncident } from "./deploy-incident.js";
 import { deployLockPath, releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
-import { describePause, readDeployPause, writeDeployPause, type DeployPause } from "./deploy-pause.js";
+import { describeHolds, readDeployHolds, writeDeployPause, type DeployPause } from "./deploy-pause.js";
 import { buildLog, detail, writeBuildLog } from "./deploy-output.js";
 import { buildShaOf, DEFAULT_WATCH_WINDOW, watchServe, type WatchWindow } from "./deploy-watch-window.js";
 import { restartService, type CommandResult, type RestartDrain, type ServiceIo, type ServicePorts } from "./service-control.js";
@@ -127,8 +127,8 @@ function record(deploy: Deploy, fields: Omit<DeployRecord, "at">): DeployRecord 
 
 /** Read under the lock and before any sha is resolved, so no target, however new, gets past a pause. */
 function pauseHold({ ports, options }: Deploy): Stop | undefined {
-  const state = readDeployPause(ports, options.stateDir);
-  return state.paused ? { kind: "stop", code: FAILURE, message: `deploy held: ${describePause(state)}; clear with titan-factory service pause --clear` } : undefined;
+  const state = readDeployHolds(ports, options.stateDir);
+  return state.held ? { kind: "stop", code: FAILURE, message: `deploy held: ${describeHolds(state).join("; ")}; clear with titan-factory service pause --clear` } : undefined;
 }
 
 function refuse(why: string): Stop {
