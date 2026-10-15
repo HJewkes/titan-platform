@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import golden from "./numbers.golden.json" with { type: "json" };
+import golden from "./fixtures/numbers.golden.json" with { type: "json" };
 import { appendCurrency, getNumber, isCurrency, isNumber, numericIfNeeded, type NumberLexicon } from "./numbers.js";
 
 // Expected values recorded from misaki 0.9.4 `Lexicon.get_number` and friends, with the same
