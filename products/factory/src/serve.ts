@@ -18,6 +18,7 @@ import { startUnlessLive, type HealthProbe } from "./serve-beside-live.js";
 import { startLoopDelayWatch } from "./serve-loop-delay.js";
 import { SHUTDOWN_SWEEP_GRACE_MS, closeServer } from "./serve-shutdown.js";
 import { untilStopped } from "./serve-signal.js";
+import { logAgentChatCalls } from "./serve-agent-chat-timing.js";
 import { recordServeStart, serveStartsHealth, type ServeStart } from "./serve-starts.js";
 import type { FactoryHost, FactoryHostOptions } from "./host.js";
 import type { NeedsSources } from "./needs/rpc.js";
@@ -156,6 +157,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
 /** Start, then run until SIGTERM, SIGINT or `stop` aborts, then close. Resolves after shutdown completes. */
 export async function serveFactoryUntilSignal(options: FactoryServerOptions, stop?: AbortSignal): Promise<void> {
   const restoreConsole = timestampConsole();
+  const agentChatTiming = logAgentChatCalls({ log: options.logger ?? consoleLogger });
   try {
     const server = await startUnlessLive(() => startFactoryServer(options), options.logger ?? consoleLogger, options.probe);
     if (server === null) return;
@@ -163,6 +165,7 @@ export async function serveFactoryUntilSignal(options: FactoryServerOptions, sto
     (options.logger ?? consoleLogger).info({ signal: reason }, "shutting down");
     await server.close();
   } finally {
+    agentChatTiming.stop();
     restoreConsole();
   }
 }

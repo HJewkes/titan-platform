@@ -30,7 +30,7 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "coordinator", tainted: false }); /
   `request.facts` and `request.tainted` is an own property set to exactly `false`; otherwise the pair's unconditional rule
   decides and the reason names what was unmet. `unmetConditions(when, facts)` lists the failing conditions.
   MRG-AU-RS never carries across a merge-up whose base side touches `packages/authority/`,
-  `packages/tool-guard/` or `.github/workflows/`; `isCarryFencedPath(path)` is that test.
+  `packages/tool-guard/`, `.github/`, `.codewatch/` or the file `.egress-allow`; `isCarryFencedPath(path)` is that test.
   `evaluate` reads each request field once, then copies the facts with `structuredClone`
   and rebuilds them as plain data on null-prototype objects. Facts holding a function, a `toJSON` method, a Proxy, a Map, a Set, a Date, a BigInt, a cycle or a throwing getter fail every condition instead of
   throwing, and so does a sparse array (a hole would read through to the prototype).

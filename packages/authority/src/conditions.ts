@@ -75,7 +75,12 @@ const FULL_SHA = /^[0-9a-f]{40}$/;
 const PRINTABLE_ASCII = /^[\x20-\x7e]+$/;
 const PROTECTED_FILES = new Set(["codeowners", "docs/codeowners", ".github/codeowners", ".gitmodules"]);
 // Owner decision of 2026-10-12 (TP-2440): main-side changes to the code that decides authority, guards tools or runs CI always earn a fresh review.
-const CARRY_FENCED_PREFIXES = ["packages/authority/", "packages/tool-guard/", ".github/workflows/"];
+// TP-2951 fences config that decides which checks run or what they accept. Code the checks execute (scripts/, package.json,
+// pnpm-lock.yaml) stays unfenced: it was reviewed on main and runs on the merged head before required contexts pass, and
+// fencing it would end the carry for almost every merge-up.
+const CARRY_FENCED_PREFIXES = ["packages/authority/", "packages/tool-guard/", ".github/", ".codewatch/"];
+// Exact files, so a sibling such as .egress-allow.md stays unfenced.
+const CARRY_FENCED_FILES = new Set([".egress-allow"]);
 const NON_CANONICAL_SEGMENTS = new Set(["", ".", ".."]);
 const TRAILING_SPACE_OR_DOT = /[ .]$/;
 
@@ -161,7 +166,7 @@ function isProtectedPath(path: unknown): boolean {
 export function isCarryFencedPath(path: unknown): boolean {
   if (typeof path !== "string" || isNonCanonical(path)) return true;
   const folded = path.toLowerCase();
-  return CARRY_FENCED_PREFIXES.some((prefix) => folded.startsWith(prefix));
+  return CARRY_FENCED_FILES.has(folded) || CARRY_FENCED_PREFIXES.some((prefix) => folded.startsWith(prefix));
 }
 
 function isWellFormedRun(run: CheckRunFact): boolean {

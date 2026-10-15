@@ -6,7 +6,7 @@ import type { EvalCliDeps } from "./eval-cli.js";
 import { readRubric } from "./eval-evidence.js";
 import { codexUnavailable, createJudgeHarness, JudgeConfigSchema, judgeLabel, type JudgeConfig, type JudgeHarness } from "./eval-harness.js";
 import { L1_EVAL_ID, runL1, type CanaryResult, type L1Result } from "./eval-judge.js";
-import { appendRun, appendTsv, benchLayout, freezeScript, rulesSha, type BenchLayout } from "./eval-store.js";
+import { appendRun, appendTsv, benchLayout, freezeScript, readTsv, rulesSha, type BenchLayout } from "./eval-store.js";
 import { deriveEvalView } from "./eval-view.js";
 import { L2_EVAL_ID, runL2, type AnswerKeyRow, type L2Result, type ReferenceEdge } from "./eval-viewer.js";
 import { MapLayoutSchema } from "./map-state.js";
@@ -34,13 +34,6 @@ interface JudgedFlags {
 
 const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"));
 const readJudge = (path: string): JudgeConfig => JudgeConfigSchema.parse(readJson(path));
-
-/** Reads a header-first TSV into records; list cells are comma-separated. */
-function readTsv(path: string): Record<string, string>[] {
-  const [header, ...lines] = readFileSync(path, "utf8").trimEnd().split("\n");
-  const columns = (header ?? "").split("\t");
-  return lines.map((line) => Object.fromEntries(line.split("\t").map((cell, i) => [columns[i], cell])));
-}
 
 const readAnswerKey = (path: string): AnswerKeyRow[] =>
   readTsv(path).map((row) => ({ qid: row.qid ?? "", required_terms: (row.required_terms ?? "").split(",").map((t) => t.trim()).filter(Boolean) }));
