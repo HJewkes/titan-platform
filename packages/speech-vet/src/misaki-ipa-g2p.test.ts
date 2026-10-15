@@ -35,6 +35,12 @@ describe("misakiIpaG2p", () => {
     expect(words).toEqual(["heɪ", "koʊ"]);
   });
 
+  it("gives a punctuated sentence the words of the unpunctuated one, with no punctuation phones", () => {
+    expect(g2pSentence("We live here.", { g2p })).toEqual(g2pSentence("We live here", { g2p }));
+    expect(g2pSentence("Wait \u2014 what, really?", { g2p })).toEqual(g2pSentence("Wait what really", { g2p }));
+    expect(g2pSentence("\u201cWe live (here)!\u201d", { g2p }).join("")).not.toMatch(/\p{P}/u);
+  });
+
   it("ignores the voice, since misaki reads US English only", () => {
     expect(g2p("We live here", "en-gb")).toBe(g2p("We live here", "en-us"));
   });
