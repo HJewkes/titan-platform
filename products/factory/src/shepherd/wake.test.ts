@@ -20,7 +20,7 @@ import { TURN_START_MS } from "./turn-check.js";
 import { LOG_BUDGET_BYTES, tailBytes } from "./wake-brief.js";
 import { recordFixFirst } from "./routed.js";
 import { HEAD_READ_GIVE_UP_MS } from "./head-read.js";
-import { MAX_FIX_PROOF_WAKES } from "./fix-proof-cap.js";
+import { FIX_PROOF_WAKE_STEP, MAX_FIX_PROOF_WAKES } from "./fix-proof-cap.js";
 import { isHeld } from "./held-wake.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
 import type { Warmth } from "./warmth.js";
@@ -1015,6 +1015,14 @@ describe("the fix-proof bounce cap", () => {
   });
   const capReason = `${MAX_FIX_PROOF_WAKES} fix-proof wakes on ${REPO}#1 have not produced a test that reproduces the bug, so the owner decides`;
   const HOLD = "sh-test-hold";
+  /** Stands in for the review steps a real run records before any fix-proof wake, so a replay reads a record there. */
+  const REVIEWED = "sh-test-reviewed";
+
+  /** The wake phase as built before TP-545 b: a fix-proof wake records no cap step, so the record goes straight on to the implementer wake. */
+  const wakeBeforeTp545b: typeof wakePhase = (ctx, request) => {
+    const uncapped: typeof ctx = { ...ctx, dispatch: async (stepId, template, options) => (stepId === FIX_PROOF_WAKE_STEP ? ({ data: { result: { wake: 1 } } } as never) : ctx.dispatch(stepId, template, options)) };
+    return wakePhase(uncapped, request);
+  };
 
   interface Wake {
     wakePhase: typeof wakePhase;
@@ -1046,7 +1054,7 @@ describe("the fix-proof bounce cap", () => {
       const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
       const wiring: WakeWiring = { agents, readWarmth: async () => warmAt(1), turnSince: async () => true, checkoutFor: () => MAIN_CHECKOUT };
       const routes = Object.assign([...wakeModule.wakeRoutes(deps, wiring)], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5), sliceMigration(8)], bind: store.bind } });
-      const host = openFactoryHost({ dbPath, workflows: [defineWorkflow({ name: "bounce-test", steps: [...wakeModule.WAKE_STEPS, { id: HOLD, kind: "assisted" }], run })], routes, gatePollMs: 5 });
+      const host = openFactoryHost({ dbPath, workflows: [defineWorkflow({ name: "bounce-test", steps: [...wakeModule.WAKE_STEPS, { id: HOLD, kind: "assisted" }, { id: REVIEWED, kind: "seed" }], run })], routes, gatePollMs: 5 });
       hosts.push(host);
       return { host, store };
     };
@@ -1097,6 +1105,36 @@ describe("the fix-proof bounce cap", () => {
 
     expect(scene.outcomes.at(-1)).toEqual({ kind: "unhandled", reason: capReason });
     expect(scene.agents.asked).toHaveLength(MAX_FIX_PROOF_WAKES);
+  });
+
+  it("replays a fix-proof wake recorded before the cap existed without diverging, and counts only the wakes after the restart", async () => {
+    const scene = bouncing();
+    const dir = mkdtempSync(join(tmpdir(), "tp3067-bounce-"));
+    dirs.push(dir);
+    const dbPath = join(dir, "factory.sqlite3");
+    const run = async (ctx: Parameters<typeof wakePhase>[0]) => {
+      await ctx.seed(REVIEWED, async () => ({ data: {} }));
+      await scene.wake(ctx, 0);
+      await ctx.assisted(HOLD, "Go on?", { brief: TEST_BRIEF });
+      await scene.wake(ctx, 1);
+    };
+    const first = scene.open(dbPath, run, { wakePhase: wakeBeforeTp545b, wakeRoutes, WAKE_STEPS });
+    const runId = first.host.runtime.start("bounce-test");
+    first.store.get().register({ ...registration, runId });
+    await vi.waitFor(() => expect(first.host.gates.get(`${runId}/${HOLD}`)?.status).toBe("pending"));
+    expect(scene.stepIds(first.host, runId)).not.toContain(FIX_PROOF_WAKE_STEP);
+    first.host.close();
+
+    const second = scene.open(dbPath, run);
+    await second.host.runtime.hydrate();
+    await vi.waitFor(() => expect(second.host.gates.get(`${runId}/${HOLD}`)?.status).toBe("pending"));
+    second.host.runtime.signal(runId, HOLD, {}, OWNER);
+    const finished = await second.host.runtime.wait(runId);
+
+    expect(finished.status).toBe("completed");
+    expect(scene.outcomes.at(-1)?.kind).toBe("woken");
+    expect(scene.agents.asked).toHaveLength(2);
+    expect(scene.stepIds(second.host, runId).filter((id) => id === FIX_PROOF_WAKE_STEP)).toHaveLength(1);
   });
 
   it("never counts a fix-proof wake as a FIX_FIRST, so a later review wake keeps the first FIX_FIRST's brief", async () => {
