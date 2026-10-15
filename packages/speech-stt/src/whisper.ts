@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { resample } from "./resample.js";
 import type { Audio, Transcript, Word } from "./schemas.js";
 
@@ -52,7 +54,10 @@ export interface WhisperSttOptions {
 
 export type ModuleImporter = (name: string) => Promise<unknown>;
 
-/** Resolves the peer's `pipeline` through `importModule`, naming the install command when the peer is absent. */
+/**
+ * Resolves the peer's `pipeline` through `importModule`, naming the install command when the peer is absent. The
+ * returned factory refuses an uncached model while TITAN_SPEECH_OFFLINE is set.
+ */
 export async function loadTransformersPipeline(
   importModule: ModuleImporter = (name) => import(name),
 ): Promise<AsrFactory> {
@@ -64,7 +69,10 @@ export async function loadTransformersPipeline(
   }
   const pipeline = typeof mod === "object" && mod !== null && "pipeline" in mod ? mod.pipeline : undefined;
   if (!isAsrFactory(pipeline)) throw new Error(MISSING);
-  return pipeline;
+  return (task, model, options) => {
+    assertCachedWhenOffline(model, options.cache_dir);
+    return pipeline(task, model, options);
+  };
 }
 
 // The peer's pipeline is untyped here; its signature is checked by the smoke test, not at run time.
@@ -94,6 +102,16 @@ function audioKey(model: string, audio: Audio): string {
     .update(`${model}\0${audio.sampleRate}\0`)
     .update(new Uint8Array(buffer, byteOffset, byteLength))
     .digest("hex");
+}
+
+/** With TITAN_SPEECH_OFFLINE set, an uncached model is refused before the factory can reach the network. */
+function assertCachedWhenOffline(model: string, cacheDir: string | undefined): void {
+  if (!process.env.TITAN_SPEECH_OFFLINE) return;
+  if (cacheDir === undefined) throw new Error(`offline: TITAN_SPEECH_OFFLINE is set and no cacheDir is given for ${model}`);
+  const dir = join(cacheDir, model);
+  if (!existsSync(dir) || readdirSync(dir).length === 0) {
+    throw new Error(`offline: ${model} is not in ${cacheDir} and TITAN_SPEECH_OFFLINE is set`);
+  }
 }
 
 /** Loads the pipeline on first use. A failed load is forgotten, so the next call retries instead of replaying it. */

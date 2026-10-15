@@ -65,7 +65,10 @@ export function chapterPace(beats: readonly PaceBeat[]): ChapterPace[] {
   return [...byChapter].map(([chapter, { newItems, seconds }]) => ({ chapter, newItems, seconds, perMinute: (newItems * 60) / seconds }));
 }
 
-const beatRow = (check_id: string, severity: L0Result["severity"], beats: readonly string[]): L0Result =>
+/** M7: a chapter whose new items outrun the per-minute cap. */
+export const tooFast = (c: ChapterPace): boolean => c.newItems * 60 > MAX_NEW_ITEMS_PER_MINUTE * c.seconds;
+
+const beatRow =(check_id: string, severity: L0Result["severity"], beats: readonly string[]): L0Result =>
   ruleRow(check_id, { value: beats.length, threshold: 0, pass: beats.length === 0, beats, mode: "tagged", severity });
 
 /**
@@ -73,7 +76,7 @@ const beatRow = (check_id: string, severity: L0Result["severity"], beats: readon
  * chapters, not beats, since its rate is a chapter's.
  */
 export function paceRows(beats: readonly PaceBeat[]): L0Result[] {
-  const fast = chapterPace(beats).filter((c) => c.newItems * 60 > MAX_NEW_ITEMS_PER_MINUTE * c.seconds);
+  const fast = chapterPace(beats).filter(tooFast);
   return [
     beatRow("Q-E7", "error", beats.filter(overcrowded).map((b) => b.id)),
     beatRow("Q-E8", "warning", beats.filter(rushed).map((b) => b.id)),

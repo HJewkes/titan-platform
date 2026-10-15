@@ -58,3 +58,7 @@ export function runL0(script: ScriptV1, layout?: MapLayout, checks: readonly L0C
 /** L0 filters on errors only; a warning is recorded but never fails a script. */
 export const l0HardPass = (results: readonly L0Result[]): boolean =>
   results.every((result) => result.severity === "warning" || result.pass);
+
+/** The failing check ids, a warning marked so a reader does not take it for a gate. */
+export const failedChecks = (results: readonly L0Result[]): string[] =>
+  results.filter((r) => !r.pass).map((r) => `${r.check_id}${r.severity === "warning" ? " (warning)" : ""}`);
