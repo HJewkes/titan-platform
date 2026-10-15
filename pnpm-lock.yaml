@@ -506,6 +506,9 @@ importers:
       '@titan-design/authority':
         specifier: workspace:^
         version: link:../authority
+      '@titan-design/evidence':
+        specifier: workspace:^
+        version: link:../evidence
       '@titan-design/store-sqlite':
         specifier: workspace:*
         version: link:../store-sqlite
@@ -545,6 +548,9 @@ importers:
 
   packages/owner-queue:
     dependencies:
+      '@titan-design/evidence':
+        specifier: workspace:^
+        version: link:../evidence
       '@titan-design/review-schema':
         specifier: ^0.1.0
         version: 0.1.0(zod@4.5.4)
@@ -728,6 +734,12 @@ importers:
         specifier: workspace:^
         version: link:../locator
 
+  packages/speech-g2p:
+    dependencies:
+      compromise:
+        specifier: 14.18.0
+        version: 14.18.0
+
   packages/speech-stt:
     dependencies:
       '@huggingface/transformers':
@@ -738,9 +750,20 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
-  packages/speech-tts: {}
+  packages/speech-tts:
+    dependencies:
+      '@huggingface/transformers':
+        specifier: ^3.8.1
+        version: 3.8.1
+      kokoro-js:
+        specifier: ^1.2.1
+        version: 1.2.1
 
   packages/speech-vet:
+    dependencies:
+      '@titan-design/speech-stt':
+        specifier: workspace:^
+        version: link:../speech-stt
     devDependencies:
       zod:
         specifier: ^4.4.3
@@ -917,6 +940,9 @@ importers:
       '@titan-design/graph-layout':
         specifier: workspace:^
         version: link:../../packages/graph-layout
+      '@titan-design/speech-vet':
+        specifier: workspace:^
+        version: link:../../packages/speech-vet
       commander:
         specifier: ^14.0.3
         version: 14.0.3
@@ -4329,6 +4355,10 @@ packages:
     resolution: {integrity: sha512-R2rze/hDX30uul4NZoIZ76ImSJLFxn/1/ZxtKC1L77y2X1k+yYu1joKbAtMA2Fg3hZrTOiw0I5mwVMo0cf250w==}
     engines: {node: '>= 6'}
 
+  compromise@14.18.0:
+    resolution: {integrity: sha512-SCNTeMZN8ZnvDz96igAjV2QuvvmcKA1bVDbFr8IH672Ec9w+fTSxixIPGgrlivaxU+jyk/Ei3AT3gGtP23n6Vg==}
+    engines: {node: '>=18'}
+
   concat-map@0.0.1:
     resolution: {integrity: sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg==}
 
@@ -4687,6 +4717,10 @@ packages:
 
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
+
+  efrt@2.9.0:
+    resolution: {integrity: sha512-ZMAvlcu4AfmtJ4K/0hs0uofVUZPSeLG/w4yOyZawQLl9YEy8iDKIxIIPsUAlS907clC7bgD17e73vi5unwNE/g==}
+    engines: {node: '>=12.0.0'}
 
   electron-to-chromium@1.5.433:
     resolution: {integrity: sha512-5lCAbyZBjtmUt/RAGHRqrL2q0oEFRThDAsZHHDn9XHa89Qw7gMYOeSicBTy+AHfvo0r6vwsZvqNJTQIQy1BLzA==}
@@ -5059,6 +5093,10 @@ packages:
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
 
+  grad-school@0.0.9:
+    resolution: {integrity: sha512-/aoG9CJz/1gB7x5XKp9i7ggA4k+MqZD7Neph3crfrOLWERkeJFXDXzNefvPW0j97iGTNYqTL+rpBEcz83MTmZw==}
+    engines: {node: '>=12'}
+
   guid-typescript@1.0.9:
     resolution: {integrity: sha512-Y8T4vYhEfwJOTbouREvG+3XDsjr8E3kIr7uf+JZ0BYloFsttiHU0WfvANVsR7TxNUJa/WpCnw/Ino/p+DeBhBQ==}
 
@@ -5337,6 +5375,9 @@ packages:
 
   khroma@2.1.0:
     resolution: {integrity: sha512-Ls993zuzfayK269Svk9hzpeGUKob/sIgZzyHYdjQoAdQetRKpOLj+k/QQQ/6Qi0Yz65mlROrfd+Ev+1+7dz9Kw==}
+
+  kokoro-js@1.2.1:
+    resolution: {integrity: sha512-oq0HZJWis3t8lERkMJh84WLU86dpYD0EuBPtqYnLlQzyFP1OkyBRDcweAqCfhNOpltyN9j/azp1H6uuC47gShw==}
 
   layout-base@1.0.2:
     resolution: {integrity: sha512-8h2oVEZNktL4BH2JCOI90iD1yXwL6iNW7KcCKT2QZgQJR2vbqDsldCTPRU9NifTCqHZci57XvQQ15YTu+sTYPg==}
@@ -5951,6 +5992,9 @@ packages:
   perfect-debounce@1.0.0:
     resolution: {integrity: sha512-xCy9V055GLEqoFaHoC1SoLIaLmWctgCUaBaWxDZ7/Zx4CTyX7cJQLJOok/orfjZAh9kEYpjJa4d0KcJmCbctZA==}
 
+  phonemizer@1.2.1:
+    resolution: {integrity: sha512-v0KJ4mi2T4Q7eJQ0W15Xd4G9k4kICSXE8bpDeJ8jisL4RyJhNWsweKTOi88QXFc4r4LZlz5jVL5lCHhkpdT71A==}
+
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
 
@@ -6524,6 +6568,10 @@ packages:
     resolution: {integrity: sha512-DhuTmvZWux4H1UOnWMB3sk0sbaCVOoQZjv8u1rDoTV0HTdGem9hkAZtl4JZy8P2z4Bg0nT+YMeOFyVr4zcG5Tw==}
     engines: {node: '>=16 || 14 >=14.17'}
     hasBin: true
+
+  suffix-thumb@6.0.0:
+    resolution: {integrity: sha512-HsCTMLaupbob5ZG//ZW6PSj446tHT5kSJ1qXS5F/qO2Nt13uAn6ZLPhJQ/H6bN/jVQCb+pcqe2psEwy4Mp5+Vw==}
+    engines: {node: '>=18'}
 
   superjson@2.2.6:
     resolution: {integrity: sha512-H+ue8Zo4vJmV2nRjpx86P35lzwDT3nItnIsocgumgr0hHMQ+ZGq5vrERg9kJBo5AWGmxZDhzDo+WVIJqkB0cGA==}
@@ -10674,6 +10722,12 @@ snapshots:
       array-timsort: 1.0.3
       esprima: 4.0.1
 
+  compromise@14.18.0:
+    dependencies:
+      efrt: 2.9.0
+      grad-school: 0.0.9
+      suffix-thumb: 6.0.0
+
   concat-map@0.0.1: {}
 
   confbox@0.1.8: {}
@@ -11045,6 +11099,8 @@ snapshots:
       gopd: 1.2.0
 
   ee-first@1.1.1: {}
+
+  efrt@2.9.0: {}
 
   electron-to-chromium@1.5.433: {}
 
@@ -11522,6 +11578,8 @@ snapshots:
 
   graceful-fs@4.2.11: {}
 
+  grad-school@0.0.9: {}
+
   guid-typescript@1.0.9: {}
 
   hachure-fill@0.5.2: {}
@@ -11795,6 +11853,11 @@ snapshots:
       json-buffer: 3.0.1
 
   khroma@2.1.0: {}
+
+  kokoro-js@1.2.1:
+    dependencies:
+      '@huggingface/transformers': 3.8.1
+      phonemizer: 1.2.1
 
   layout-base@1.0.2: {}
 
@@ -12460,6 +12523,8 @@ snapshots:
   pathe@2.0.3: {}
 
   perfect-debounce@1.0.0: {}
+
+  phonemizer@1.2.1: {}
 
   picocolors@1.1.1: {}
 
@@ -13195,6 +13260,8 @@ snapshots:
       pirates: 4.0.7
       tinyglobby: 0.2.17
       ts-interface-checker: 0.1.13
+
+  suffix-thumb@6.0.0: {}
 
   superjson@2.2.6:
     dependencies:

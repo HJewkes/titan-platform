@@ -48,15 +48,48 @@ async function readFiles(port: GitHubPort, repo: RepoSlug, pr: number): Promise<
   }
 }
 
-/** The config's globs come from the PR's base ref, never its head, so a PR cannot widen what counts as a test. */
-async function readBaseConfig(port: GitHubPort, repo: RepoSlug, pr: number): Promise<{ text: string | null } | { unread: string }> {
-  try {
-    const { baseRef } = await port.getPr(repo, pr);
-    const file = await port.getFile(repo, CONFIG_PATH, baseRef);
-    return { text: file?.content ?? null };
-  } catch (error) {
-    return { unread: `${CONFIG_PATH} could not be read at the PR's base: ${failureOf(error)}` };
+const SHA = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
+
+/**
+ * A stacked PR's base is a parent PR's branch, which any agent can push to, so only a PR based on the default branch is
+ * classified. Its merge base with the default branch is owner-reviewed history, but the author picks it by branching from any old commit.
+ */
+async function trustedBase(port: GitHubPort, repo: RepoSlug, pr: number): Promise<{ mergeBase: string; tip: string } | { unread: string }> {
+  const { baseRef, headSha } = await port.getPr(repo, pr);
+  const defaultBranch = await port.defaultBranch(repo);
+  if (baseRef !== defaultBranch) {
+    return { unread: `the PR's base ${JSON.stringify(baseRef)} is not the default branch ${JSON.stringify(defaultBranch)}, so its ${CONFIG_PATH} is not trusted` };
   }
+  const { mergeBaseSha } = await port.compareFiles(repo, defaultBranch, headSha);
+  if (!SHA.test(mergeBaseSha)) return { unread: `the merge base of ${JSON.stringify(defaultBranch)} and the PR's head is not a commit sha` };
+  return { mergeBase: mergeBaseSha, tip: defaultBranch };
+}
+
+/**
+ * The config at the merge base and at the default branch's tip, never the PR's head or base branch. An old fork point may
+ * predate the config or hold wider globs, so the diff must be test-only under both; neither read alone can widen the result.
+ */
+async function readTrustedConfigs(port: GitHubPort, repo: RepoSlug, pr: number): Promise<{ texts: (string | null)[] } | { unread: string }> {
+  try {
+    const base = await trustedBase(port, repo, pr);
+    if ("unread" in base) return base;
+    const files = await Promise.all([base.mergeBase, base.tip].map((ref) => port.getFile(repo, CONFIG_PATH, ref)));
+    return { texts: files.map((file) => file?.content ?? null) };
+  } catch (error) {
+    return { unread: `${CONFIG_PATH} could not be read at the default branch's merge base and tip: ${failureOf(error)}` };
+  }
+}
+
+/** Plans the diff under each config; it is test-only only when every plan says so, and the source paths are their union. */
+function classify(nameStatus: string, configs: readonly (string | null)[]): TestOnlyDiff {
+  const source = new Set<string>();
+  for (const baseConfig of configs) {
+    const planned = planFixProof({ nameStatus, baseConfig });
+    if (!planned.ok) return { kind: "unread", reason: `the PR's diff could not be planned: ${planned.error}` };
+    for (const path of planned.plan.source) source.add(path);
+  }
+  const paths = [...source].sort();
+  return testOnlyOf({ source: paths }) ? { kind: "test-only" } : { kind: "source", paths };
 }
 
 /** Classifies the PR's diff; every read error, a list at the file cap, a harness path or an unparseable entry fails closed. */
@@ -67,9 +100,7 @@ export async function testOnlyDiff(port: GitHubPort, repo: RepoSlug, pr: number 
   if (files.length === 0) return { kind: "unread", reason: "the PR lists no changed files" };
   const nameStatus = nameStatusOf(files);
   if ("unread" in nameStatus) return { kind: "unread", reason: nameStatus.unread };
-  const config = await readBaseConfig(port, repo, pr);
-  if ("unread" in config) return { kind: "unread", reason: config.unread };
-  const planned = planFixProof({ nameStatus: nameStatus.text, baseConfig: config.text });
-  if (!planned.ok) return { kind: "unread", reason: `the PR's diff could not be planned: ${planned.error}` };
-  return testOnlyOf(planned.plan) ? { kind: "test-only" } : { kind: "source", paths: planned.plan.source };
+  const configs = await readTrustedConfigs(port, repo, pr);
+  if ("unread" in configs) return { kind: "unread", reason: configs.unread };
+  return classify(nameStatus.text, configs.texts);
 }

@@ -1,7 +1,7 @@
 {
   "name": "@titan-design/speech-vet",
   "version": "0.0.0",
-  "description": "Speech text vetting: pronunciation override markup, heteronym reading checks, lexicon.v1, initialism spelling and number normalization",
+  "description": "Speech text vetting: pronunciation override markup, heteronym reading checks, lexicon.v1, initialism spelling, number normalization and phone-level pronunciation verdicts",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -34,6 +34,9 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@titan-design/speech-stt": "workspace:^"
   },
   "peerDependencies": {
     "zod": "^4.0.0"

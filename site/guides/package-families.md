@@ -164,3 +164,6 @@ merge. The [factory](/guides/factory) product composes `github`, `authority`, `h
 - [`speech-vet`](/reference/speech-vet): text-side pronunciation vetting. It parses override
   and declaration markup, checks G2P heteronym readings against the declarations, defines
   the `lexicon.v1` schema, and spells out initialisms. It runs no G2P or model.
+- [`speech-g2p`](/reference/speech-g2p): English text to misaki phoneme tokens in pure
+  TypeScript. This first release carries the `G2pToken`, `Tokenizer` and `PosTagger` types and
+  the vendored misaki 0.9.4 US lexicon; the engine, tokenizer and tagger follow.

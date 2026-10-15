@@ -109,6 +109,8 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       record("deleteRef", undefined);
       if (!fake.refs.delete(branch)) throw new FakeHttpError(422, "Reference does not exist");
       effects.deleteRef += 1;
+      // An API branch delete closes the PRs based on it; only GitHub's delete-on-merge setting retargets them.
+      for (const pr of prs.values()) if (pr.state === "open" && pr.baseRef === branch) pr.state = "closed";
     },
     getDefaultBranch: async () => read("getDefaultBranch", () => base),
     getContent: async (_repo, path, ref) => {

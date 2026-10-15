@@ -1,10 +1,15 @@
-import { createHash } from "node:crypto";
+import { audioKey } from "./audio-key.js";
 import { resample } from "./resample.js";
 import type { Audio, Transcript, Word } from "./schemas.js";
+import {
+  assertCachedWhenOffline,
+  loadTransformersModule,
+  missingPeerMessage,
+  type ModuleImporter,
+} from "./transformers-loader.js";
 
 const WHISPER_RATE = 16000;
-const PEER = "@huggingface/transformers";
-const MISSING = `${PEER} is not installed; run \`npm i ${PEER}\` to use whisperStt`;
+const FEATURE = "whisperStt";
 
 export interface SttProvider {
   transcribe(audio: Audio): Promise<Transcript>;
@@ -50,21 +55,19 @@ export interface WhisperSttOptions {
   loadPipeline?: () => Promise<AsrFactory>;
 }
 
-export type ModuleImporter = (name: string) => Promise<unknown>;
-
-/** Resolves the peer's `pipeline` through `importModule`, naming the install command when the peer is absent. */
+/**
+ * Resolves the peer's `pipeline` through `importModule`, naming the install command when the peer is absent. The
+ * returned factory refuses an uncached model while TITAN_SPEECH_OFFLINE is set.
+ */
 export async function loadTransformersPipeline(
   importModule: ModuleImporter = (name) => import(name),
 ): Promise<AsrFactory> {
-  let mod: unknown;
-  try {
-    mod = await importModule(PEER);
-  } catch (err) {
-    throw new Error(MISSING, { cause: err });
-  }
-  const pipeline = typeof mod === "object" && mod !== null && "pipeline" in mod ? mod.pipeline : undefined;
-  if (!isAsrFactory(pipeline)) throw new Error(MISSING);
-  return pipeline;
+  const { pipeline } = await loadTransformersModule(importModule, FEATURE);
+  if (!isAsrFactory(pipeline)) throw new Error(missingPeerMessage(FEATURE));
+  return (task, model, options) => {
+    assertCachedWhenOffline(model, options.cache_dir);
+    return pipeline(task, model, options);
+  };
 }
 
 // The peer's pipeline is untyped here; its signature is checked by the smoke test, not at run time.
@@ -86,14 +89,6 @@ function chunksToWords(chunks: readonly AsrChunk[]): Word[] {
     }
   }
   return words.filter((w) => w.text.trim().length > 0).map((w) => ({ ...w, text: w.text.trim() }));
-}
-
-function audioKey(model: string, audio: Audio): string {
-  const { buffer, byteOffset, byteLength } = audio.samples;
-  return createHash("sha256")
-    .update(`${model}\0${audio.sampleRate}\0`)
-    .update(new Uint8Array(buffer, byteOffset, byteLength))
-    .digest("hex");
 }
 
 /** Loads the pipeline on first use. A failed load is forgotten, so the next call retries instead of replaying it. */

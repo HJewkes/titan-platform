@@ -218,6 +218,7 @@ export { BEAT_SCORE_COLUMNS, CANARY_COLUMNS, SCRIPT_SCORE_COLUMNS, VIEWER_COLUMN
 export { canonicalSha } from "./eval-store.js";
 export { MAX_SENTENCE_WORDS, MIN_PROJECT_SHARE, voiceCheck, voiceCheckWith } from "./lint-voice.js";
 export { flowCheck } from "./lint-flow.js";
+export { heteronymCheck, heteronymCheckWith } from "./lint-heteronyms.js";
 export { maskEntities, repoEntities } from "./lint-text.js";
 export {
   DEFAULT_RULES_PATH,
@@ -232,19 +233,46 @@ export {
   type RuleRegistry,
 } from "./rules.js";
 export {
+  DOCTRINE_ENFORCEMENTS,
+  DOCTRINE_STAGES,
+  DoctrineRuleSchema,
+  DOCTRINE_GRADES,
+  DOCTRINE_LAYERS,
+  PROMPT_ENFORCEMENTS,
+  DOCTRINE_SOURCES,
+  DoctrineVocabularySchema,
+  type DoctrineEnforcement,
+  type DoctrineLayer,
+  type DoctrineRegistry,
+  type DoctrineRule,
+  type DoctrineStage,
+  type DoctrineGrade,
+  type DoctrineSource,
+  type DoctrineVocabulary,
+} from "./doctrine-schema.js";
+export { DEFAULT_DOCTRINE_DIR, loadDoctrine, parseEvidenceTsv } from "./doctrine-load.js";
+export { DOCTRINE_ISSUE_CODES, checkDoctrine, isCodeEnforced, type DoctrineIssue, type DoctrineIssueCode } from "./doctrine-checks.js";
+export {
   EvidenceSpanSchema,
   ExplainerFactSchema,
   FACT_KINDS,
   FACT_SOURCES,
   FactKindSchema,
   FactSourceSchema,
+  GATHER_CODES,
   ReviewBundleSchema,
   VERIFIED_LEVELS,
+  diag,
+  gatherReview,
+  parseCites,
   type EvidenceSpan,
   type ExplainerFact,
   type FactKind,
   type FactSource,
+  type GatherCode,
+  type GatherDiagnostic,
+  type GatherOptions,
+  type GatherProfile,
+  type GatherResult,
   type ReviewBundle,
-} from "./presets/repo-explainer/schemas.js";
-export { GATHER_CODES, diag, type GatherCode, type GatherDiagnostic } from "./presets/repo-explainer/diagnostics.js";
-export { parseCites } from "./presets/repo-explainer/cite.js";
+} from "./presets/repo-explainer/index.js";

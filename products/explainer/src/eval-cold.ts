@@ -48,8 +48,11 @@ export function chaptersOf(beats: readonly PaceBeat[]): ColdChapterBeats[] {
 
 const seconds = (s: number): string => `${s.toFixed(1)} s`;
 
+// An untimed label is not pinned to the beat's first second: that would claim a longer exposure than anyone measured.
+const exposure = (atS: number | null, startS: number): string => (atS === null ? "at an unknown second" : `from ${seconds(startS + atS)}`);
+
 function playbackBeat(beat: PaceBeat, startS: number): string {
-  const shown = beat.items.map((i) => `\`${i.label}\` from ${seconds(startS + (i.atS ?? 0))}`);
+  const shown = beat.items.map((i) => `\`${i.label}\` ${exposure(i.atS, startS)}`);
   return [
     `[${beat.id}] from ${seconds(startS)}`,
     `spoken: ${beat.spoken}`,
@@ -186,12 +189,18 @@ function pickOf(answer: ColdAnswer | undefined, items: readonly string[]): strin
   return items.find((i) => i.trim().toLowerCase() === key) ?? null;
 }
 
-function canaryResult(chapter: string, answer: ColdAnswer | undefined): CanaryResult {
+function canaryResult(canary: string, answer: ColdAnswer | undefined): CanaryResult {
   const got = answer ? (answer.not_stated ? "not_stated" : "answered") : "missing";
-  return { canary: `unknown-item-${chapter}`, dim: "canary", got, pass: got === "not_stated" };
+  return { canary, dim: "canary", got, pass: got === "not_stated" };
 }
 
-function gradeChapter(chapter: ColdChapterBeats, posed: readonly PosedQuestion[], reply: ColdReply, summary: string): ColdChapter {
+interface PosedChapter {
+  chapter: ColdChapterBeats;
+  canary: string;
+  posed: readonly PosedQuestion[];
+}
+
+function gradeChapter({ chapter, canary: canaryLabel, posed }: PosedChapter, reply: ColdReply, summary: string): ColdChapter {
   const answerOf = (qid: string) => (reply.ok ? reply.output.answers.find((a) => a.qid === qid) : undefined);
   const spoken = new Map(chapter.beats.map((b) => [b.id, b.spoken]));
   const scores: ColdScore[] = [];
@@ -201,7 +210,7 @@ function gradeChapter(chapter: ColdChapterBeats, posed: readonly PosedQuestion[]
     if (question?.kind === "odd-one-out") oddOneOut.push({ qid, beat: question.beat, items: question.items, picked: pickOf(answer, question.items) });
     else if (question) scores.push({ qid, kind: question.kind, beat: question.beat, item: question.item, ...(answer ? scoreAnswer(answer, spoken) : missing(reply)) });
   }
-  const canary = canaryResult(chapter.chapter, answerOf(posed.find((q) => q.question === null)!.qid));
+  const canary = canaryResult(canaryLabel, answerOf(posed.find((q) => q.question === null)!.qid));
   const minutes = chapter.beats.reduce((sum, b) => sum + b.durationS, 0) / 60;
   const undefinedItems = scores.filter((s) => s.kind === "what-why" && s.score === 0).length;
   return { chapter: chapter.chapter, minutes, summary, scores, odd_one_out: oddOneOut, undefined_items: undefinedItems, undefined_per_minute: minutes > 0 ? undefinedItems / minutes : 0, canary };
@@ -216,11 +225,12 @@ export async function runCold(input: ColdInput): Promise<ColdResult> {
   const replies: ColdReply[] = [];
   let summary = "";
   for (const chapter of chaptersOf(input.beats)) {
-    const posed = poseQuestions(coldQuestions(chapter.beats), canaryItem(input, chapter.chapter));
+    const canary = canaryItem(input, chapter.chapter);
+    const posed = poseQuestions(coldQuestions(chapter.beats), canary);
     const reply = await input.harness({ prompt: coldPrompt(input.rubric, chapter, summary, posed), schema: ReplySchema });
     replies.push(reply);
     if (reply.ok) summary = clampSummary(reply.output.summary);
-    chapters.push(gradeChapter(chapter, posed, reply, summary));
+    chapters.push(gradeChapter({ chapter, canary, posed }, reply, summary));
   }
   const failures = replies.flatMap((r) => (r.ok ? [] : [r.reason]));
   return {

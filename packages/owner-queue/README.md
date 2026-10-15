@@ -37,6 +37,12 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   every byte outside `[a-z0-9_]`, so no asker or depositId can name a path outside `dir`, and
   `Bob` and `bob` stay apart on a case-insensitive filesystem. A lone surrogate is refused.
   Readers still accept a deposit filed under its name from before A-Z was escaped.
+- Code anchors: an item and each option may carry `anchors` (`head/<path>#L10-L20`,
+  `base/…`, `diff/…#L84-R90`) resolved against the item's `pins { repo, head, base? }`
+  (40-hex commits). The deposit schema refuses anchors with no pins or bad grammar.
+  `writeDeposit(dir, deposit, { source })`, where `source(rev)` is a `LineSource` at that
+  commit, refuses with `DepositAnchorError` and writes nothing when an anchor is past EOF or
+  not a file there; on success `result.anchors` quotes each anchor's first and last line.
 - `QueueSource` is the adapter port: `open()`, `tail(cursor, signal)` and `resolve(ref, answer)`.
 - `mergeByKeys(items)` joins items that share an exact key: `pr:<owner>/<repo>#<n>@<sha>`
   with the full 40-hex head sha (compared case-insensitively), `task:<id>`, `gate:<id>` or

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Audio } from '@titan-design/speech-stt';
 
 /** The text the voice is given: `[w](/phonemes/)` overrides stay for misaki, `[w](=reading)` declarations become the bare word. */
 declare function g2pText(spoken: string): string;
@@ -186,4 +187,133 @@ declare function numberToOrdinal(n: number): string;
 /** A decimal fraction read digit by digit: "176" is "one seven six". */
 declare function spellDigits(digits: string): string;
 
-export { DEFAULT_NORMALIZE_STEPS, type HeteronymTable, HeteronymTableSchema, type InitialismOptions, type Lexicon, type LexiconEntry, LexiconEntrySchema, LexiconSchema, NUMBER_STEPS, type NormalizeStep, type PhonemeToken, RATE_UNITS, type ReadingFinding, type ReadingStatus, type Respeller, SHOUTED_TWO_LETTER_WORDS, SPELLED_INITIALISMS, VOWELLESS_INTERJECTIONS, ageStep, cardinalStep, checkReadings, currencyStep, decimalStep, englishHeteronyms, g2pText, generateCandidates, initialismStep, isInitialism, loadLexicon, normalize, numberToOrdinal, numberToWords, ordinalStep, plainText, rateStep, readingOf, respeller, respellingsOf, spellDigits, spellInitialisms, timeStep, tokenDump, whitespaceStep };
+/** Raw espeak-style IPA for `text` in `voice` (`espeak-ng -q --ipa=3 -v <voice>`), or "" on failure. */
+type PhoneG2p = (text: string, voice: string) => string;
+/** The accent expected phones are predicted in when the caller names none. */
+declare const DEFAULT_PHONE_VOICE = "en-us";
+/** Above this distance the audio mispronounces the word; below it a text mismatch is the transcriber's. */
+declare const XTTS_FAULT_THRESHOLD = 0.45;
+/** Proper nouns and coinages, where the expected side is the unreliable one. */
+declare const XTTS_FAULT_THRESHOLD_UNUSUAL = 0.7;
+/** Words with fewer expected phones never get an `xtts` verdict: the distance is too coarse. */
+declare const MIN_PHONES_FOR_VERDICT = 3;
+/** Words of up to this many expected phones are judged at `XTTS_FAULT_THRESHOLD_SHORT`. */
+declare const SHORT_WORD_MAX_PHONES = 4;
+declare const XTTS_FAULT_THRESHOLD_SHORT = 0.7;
+/** A mapped span shorter than this share of the expected phones means the alignment degenerated. */
+declare const MIN_SPAN_RATIO_FOR_VERDICT = 0.5;
+/**
+ * Drops stress, length and tie marks and folds the allophones the two sides disagree on for free:
+ * the flap and glottal stop to t, open schwa to schwa, and a syllabic n, l or m to schwa plus the consonant.
+ */
+declare function cleanIpa(ipa: string): string;
+/** Normalized phone edit distance in [0, 1] after cleaning both sides; 0 is the same pronunciation. */
+declare function phonemeDistance(expected: string, actual: string): number;
+/** The best distance of `expected` against any window of a whole chunk's phones; 1 when it is not found. */
+declare function phoneMatchDistance(expected: string, actualFull: string): number;
+/** Documented weak forms of English function words, in espeak's en-us inventory. Deliberately closed. */
+declare const WEAK_FORMS: ReadonlyMap<string, readonly string[]>;
+/** Every pronunciation accepted for `word`: the citation form, then its cleaned weak forms. */
+declare function admissiblePhones(word: string, citation: string): string[];
+interface PhoneG2pOptions {
+    g2p: PhoneG2p;
+    /** Defaults to `DEFAULT_PHONE_VOICE`. */
+    voice?: string;
+}
+/** Cleaned phones of `text` from the G2P. */
+declare function expectedPhones(text: string, { g2p, voice }: PhoneG2pOptions): string;
+/** Per-word phones of a whole sentence, so each word gets its in-context reading; words that clean to nothing are dropped. */
+declare function g2pSentence(text: string, { g2p, voice }: PhoneG2pOptions): string[];
+
+/** Runs `argv[0]` with the rest as arguments and returns its stdout. Throws on a failed or timed-out run. */
+type EspeakRunner = (argv: readonly string[], options: {
+    timeoutMs: number;
+}) => string;
+interface EspeakCliOptions {
+    /** Defaults to `DEFAULT_PHONE_VOICE`. */
+    voice?: string;
+    /** The espeak-ng executable; defaults to `espeak-ng` on the PATH. */
+    bin?: string;
+    /** Replaces the process spawn, so tests never need the binary. */
+    run?: EspeakRunner;
+    /** Called once per failed run; the G2P itself returns "" so one bad chunk never aborts a scan. */
+    onError?: (error: unknown) => void;
+}
+declare const ESPEAK_TIMEOUT_MS = 10000;
+/**
+ * A `PhoneG2p` backed by the espeak-ng CLI, run exactly as the audiobook backend runs it:
+ * `espeak-ng -q --ipa=3 -v <voice> <text>`. espeak-ng is a GPL binary the caller installs
+ * (apt or brew); it is called as a process and never bundled or linked.
+ */
+declare function espeakCliG2p(options?: EspeakCliOptions): PhoneG2p;
+/** The espeak-ng version (`1.52.0`), or `null` when the binary is missing or prints no version. */
+declare function espeakVersion(options?: Pick<EspeakCliOptions, "bin" | "run">): string | null;
+
+/**
+ * Positional verdicts over a chunk's phones, a port of the verdict half of the audiobook backend's
+ * `validation/phonemes.py`. Arrays here hold one code point per item, so indexes match Python's.
+ */
+
+/** A run of at least this many audio phones with no source text is a hallucinated outburst. */
+declare const HALLUCINATION_MIN_PHONES = 5;
+/** Phones after the last expected phone count from one: nothing follows for the recognizer to smear into. */
+declare const TAIL_STRAY_MIN_PHONES = 1;
+/** `xtts`: the audio mispronounces the word. `whisper`: the audio is fine. `inconclusive`: the alignment degenerated. */
+type PhoneSource = "xtts" | "whisper" | "inconclusive";
+interface WordVerdict {
+    word: string;
+    /** The admissible form the audio came closest to. */
+    expectedPhones: string;
+    actualPhones: string;
+    /** Rounded to 3 places, half to even. */
+    distance: number;
+    source: PhoneSource;
+}
+interface Hallucination {
+    phones: string;
+    length: number;
+    /** Where the run starts, 0 to 1 through the audio, rounded to 2 places. */
+    position: number;
+    severity: number;
+}
+interface TailArtifact {
+    phones: string;
+    length: number;
+    /** The expected phones the stray run replaced, usually none. */
+    displaced: string;
+    severity: number;
+}
+interface WordVerdictOptions extends PhoneG2pOptions {
+    /** The words to score; none scores nothing. */
+    targets?: Iterable<string>;
+    /** Targets judged at `XTTS_FAULT_THRESHOLD_UNUSUAL`, such as proper nouns. */
+    unusual?: Iterable<string>;
+}
+interface HallucinationOptions extends PhoneG2pOptions {
+    minRun?: number;
+}
+interface TailArtifactOptions extends PhoneG2pOptions {
+    minPhones?: number;
+}
+/** Recognizes raw phones; `wav2vec2Recognizer` from speech-stt fits. */
+interface PhoneRecognizer {
+    recognize(audio: Audio): Promise<string>;
+}
+/**
+ * A verdict per target word: its expected phones are located in the chunk's expected phones, and the
+ * positionally aligned span of the audio's phones is scored, so a garbled word scores high even when
+ * its phones occur elsewhere in the chunk.
+ */
+declare function chunkWordVerdicts(text: string, actualFull: string, options: WordVerdictOptions): WordVerdict[];
+/** Runs of audio phones that match no source text: the babble a voice model injects, usually at boundaries. */
+declare function detectHallucinations(text: string, actualFull: string, options: HallucinationOptions): Hallucination[];
+/**
+ * Phones the audio runs on with after the chunk's last expected phone, or null. Only the final alignment
+ * opcode counts, and the stray run must outnumber the expected phones it displaced, so a mispronounced last
+ * word stays the word verdict's job. A chunk whose text ends in a digit is never flagged.
+ */
+declare function detectTailArtifact(text: string, actualFull: string, options: TailArtifactOptions): TailArtifact | null;
+/** The recognizer's phones, cleaned. Cleaning runs on every read, so a cache of raw decodes follows fold changes. */
+declare function recognizePhones(recognizer: PhoneRecognizer, audio: Audio): Promise<string>;
+
+export { DEFAULT_NORMALIZE_STEPS, DEFAULT_PHONE_VOICE, ESPEAK_TIMEOUT_MS, type EspeakCliOptions, type EspeakRunner, HALLUCINATION_MIN_PHONES, type Hallucination, type HallucinationOptions, type HeteronymTable, HeteronymTableSchema, type InitialismOptions, type Lexicon, type LexiconEntry, LexiconEntrySchema, LexiconSchema, MIN_PHONES_FOR_VERDICT, MIN_SPAN_RATIO_FOR_VERDICT, NUMBER_STEPS, type NormalizeStep, type PhoneG2p, type PhoneG2pOptions, type PhoneRecognizer, type PhoneSource, type PhonemeToken, RATE_UNITS, type ReadingFinding, type ReadingStatus, type Respeller, SHORT_WORD_MAX_PHONES, SHOUTED_TWO_LETTER_WORDS, SPELLED_INITIALISMS, TAIL_STRAY_MIN_PHONES, type TailArtifact, type TailArtifactOptions, VOWELLESS_INTERJECTIONS, WEAK_FORMS, type WordVerdict, type WordVerdictOptions, XTTS_FAULT_THRESHOLD, XTTS_FAULT_THRESHOLD_SHORT, XTTS_FAULT_THRESHOLD_UNUSUAL, admissiblePhones, ageStep, cardinalStep, checkReadings, chunkWordVerdicts, cleanIpa, currencyStep, decimalStep, detectHallucinations, detectTailArtifact, englishHeteronyms, espeakCliG2p, espeakVersion, expectedPhones, g2pSentence, g2pText, generateCandidates, initialismStep, isInitialism, loadLexicon, normalize, numberToOrdinal, numberToWords, ordinalStep, phoneMatchDistance, phonemeDistance, plainText, rateStep, readingOf, recognizePhones, respeller, respellingsOf, spellDigits, spellInitialisms, timeStep, tokenDump, whitespaceStep };

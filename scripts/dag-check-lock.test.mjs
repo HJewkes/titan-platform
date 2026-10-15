@@ -1,10 +1,25 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
 import { afterEach, describe, expect, it } from "vitest";
-import { LockTimeoutError, acquire, holdLogPath, lockWaitMs, medianHoldMs, readHolder, release, runCappedWorker, tryAcquire, workerExitCode } from "./dag-check-lock.mjs";
+import {
+  LockTimeoutError,
+  acquire,
+  busyLogPath,
+  holdLogPath,
+  lockWaitMs,
+  medianHoldMs,
+  ownerKey,
+  readBusy,
+  readHolder,
+  readHolds,
+  release,
+  runCappedWorker,
+  tryAcquire,
+  workerExitCode,
+} from "./dag-check-lock.mjs";
 
 const MODULE = new URL("./dag-check-lock.mjs", import.meta.url).href;
 const roots = [];
@@ -288,6 +303,150 @@ describe("the dag-check hold log", () => {
     seedHolds(lockDir, [10, 20, 30], ["not json", '{"check":"dag:check","acquiredAt":1']);
 
     expect(medianHoldMs(lockDir)).toBe(20000);
+  });
+});
+
+describe("parked tickets", () => {
+  const quiet = { pollMs: 5, log: () => {} };
+
+  function parkedFile(lockDir, owner) {
+    return join(`${lockDir}.parked`, ownerKey(owner));
+  }
+
+  function ageFile(file, ms) {
+    const then = new Date(Date.now() - ms);
+    utimesSync(file, then, then);
+  }
+
+  /** A live queue ticket that arrived now, as another worktree would take it. */
+  function laterArrival(lockDir) {
+    const name = `${String(Date.now()).padStart(15, "0")}-${String(process.pid).padStart(10, "0")}-later0`;
+    writeFileSync(join(`${lockDir}.queue`, name), "");
+  }
+
+  it("keeps a retrying worktree ahead of anyone who arrived after its first attempt", async () => {
+    const lockDir = lockPath();
+    tryAcquire(lockDir);
+    await expect(acquire({ lockDir, owner: "wtA", timeoutMs: 30, ...quiet })).rejects.toBeInstanceOf(LockTimeoutError);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    laterArrival(lockDir);
+    const lines = [];
+
+    const retry = acquire({ lockDir, owner: "wtA", timeoutMs: 30, pollMs: 5, log: (m) => lines.push(m) });
+
+    await expect(retry).rejects.toBeInstanceOf(LockTimeoutError);
+    expect(lines[0]).toBe(`waiting for dag-check lock held by ${process.pid}, 0 ahead of you`);
+  });
+
+  it("drops a park older than the TTL and rejoins with a fresh arrival", async () => {
+    const lockDir = lockPath();
+    tryAcquire(lockDir);
+    await acquire({ lockDir, owner: "wtA", timeoutMs: 30, ...quiet }).catch(() => {});
+    ageFile(parkedFile(lockDir, "wtA"), 31 * 60 * 1000);
+    laterArrival(lockDir);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const lines = [];
+
+    const retry = acquire({ lockDir, owner: "wtA", timeoutMs: 30, pollMs: 5, log: (m) => lines.push(m) });
+
+    await expect(retry).rejects.toBeInstanceOf(LockTimeoutError);
+    expect(lines[0]).toBe(`waiting for dag-check lock held by ${process.pid}, 1 ahead of you`);
+  });
+
+  it("deletes an expired park when any waiter scans the parked tickets", async () => {
+    const lockDir = lockPath();
+    tryAcquire(lockDir);
+    await acquire({ lockDir, owner: "wtA", timeoutMs: 30, ...quiet }).catch(() => {});
+    ageFile(parkedFile(lockDir, "wtA"), 31 * 60 * 1000);
+    release(lockDir);
+
+    await acquire({ lockDir, owner: "wtB", timeoutMs: 1000, ...quiet });
+
+    expect(existsSync(parkedFile(lockDir, "wtA"))).toBe(false);
+  });
+
+  it("never lets a plain parked ticket block another worktree", async () => {
+    const lockDir = lockPath();
+    tryAcquire(lockDir);
+    await acquire({ lockDir, owner: "wtA", timeoutMs: 30, ...quiet }).catch(() => {});
+    release(lockDir);
+
+    await acquire({ lockDir, owner: "wtB", timeoutMs: 200, ...quiet });
+
+    expect(readHolder(lockDir)).toBe(process.pid);
+    expect(existsSync(parkedFile(lockDir, "wtA"))).toBe(true);
+  });
+
+  it("holds a gate's place for its next check within the handoff grace, and not after it", async () => {
+    const lockDir = lockPath();
+    const hold = await acquire({ lockDir, owner: "wtA", handoff: true, timeoutMs: 1000, ...quiet });
+    hold.exit = 0;
+    release(lockDir, hold);
+
+    await expect(acquire({ lockDir, owner: "wtB", timeoutMs: 100, ...quiet })).rejects.toBeInstanceOf(LockTimeoutError);
+    ageFile(parkedFile(lockDir, "wtA"), 20 * 1000);
+    await acquire({ lockDir, owner: "wtB", timeoutMs: 1000, ...quiet });
+
+    expect(readHolder(lockDir)).toBe(process.pid);
+  });
+
+  it("lets the handing-off worktree take the lock at once and logs no park field in the hold", async () => {
+    const lockDir = lockPath();
+    const hold = await acquire({ lockDir, owner: "wtA", handoff: true, timeoutMs: 1000, ...quiet });
+    hold.exit = 1;
+    release(lockDir, hold);
+
+    await acquire({ lockDir, owner: "wtA", timeoutMs: 100, ...quiet });
+
+    expect(readHolder(lockDir)).toBe(process.pid);
+    expect(readHolds(lockDir)[0]).not.toHaveProperty("park");
+  });
+
+  it("parks no handoff when the check failed to run", async () => {
+    const lockDir = lockPath();
+    const hold = await acquire({ lockDir, owner: "wtA", handoff: true, timeoutMs: 1000, ...quiet });
+    hold.exit = 2;
+    release(lockDir, hold);
+
+    await acquire({ lockDir, owner: "wtB", timeoutMs: 100, ...quiet });
+
+    expect(readHolder(lockDir)).toBe(process.pid);
+  });
+
+  it("clears both the queue ticket and the park once a reclaimed ticket acquires", async () => {
+    const lockDir = lockPath();
+    tryAcquire(lockDir);
+    await acquire({ lockDir, owner: "wtA", timeoutMs: 30, ...quiet }).catch(() => {});
+    release(lockDir);
+
+    await acquire({ lockDir, owner: "wtA", timeoutMs: 1000, ...quiet });
+
+    expect(readdirSync(`${lockDir}.queue`)).toEqual([]);
+    expect(readdirSync(`${lockDir}.parked`)).toEqual([]);
+  });
+
+  it("logs every exit-75 to the busy log with its reason, leaving the hold log and median alone", async () => {
+    const lockDir = lockPath();
+    const holds = [100, 120, 140].map((s, i) => JSON.stringify({ check: "dag:check", acquiredAt: i * 1e6, releasedAt: i * 1e6 + s * 1000 }));
+    mkdirSync(join(lockDir, ".."), { recursive: true });
+    writeFileSync(holdLogPath(lockDir), `${holds.join("\n")}\n`);
+    tryAcquire(lockDir);
+
+    const fresh = lockPath();
+    tryAcquire(fresh);
+
+    await acquire({ lockDir, owner: "wtA", check: "dag:check", timeoutMs: 60 * 1000, ...quiet }).catch(() => {});
+    await acquire({ lockDir, owner: "wtA", check: "dag:check", timeoutMs: 60 * 1000, ...quiet }).catch(() => {});
+    await acquire({ lockDir: fresh, owner: "wtB", check: "dead:check", timeoutMs: 30, ...quiet }).catch(() => {});
+
+    expect(readBusy(lockDir)).toEqual([
+      expect.objectContaining({ owner: ownerKey("wtA"), check: "dag:check", ahead: 0, reason: "too-deep" }),
+      expect.objectContaining({ owner: ownerKey("wtA"), check: "dag:check", ahead: 0, reason: "too-deep" }),
+    ]);
+    expect(readFileSync(busyLogPath(lockDir), "utf8").trim().split("\n")).toHaveLength(2);
+    expect(readBusy(fresh)).toEqual([expect.objectContaining({ owner: ownerKey("wtB"), check: "dead:check", reason: "timeout" })]);
+    expect(readHolds(lockDir)).toHaveLength(3);
+    expect(medianHoldMs(lockDir)).toBe(120000);
   });
 });
 

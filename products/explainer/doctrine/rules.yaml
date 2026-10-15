@@ -78,6 +78,11 @@ rules:
     related: ["EL 5"]
     owner_support: none
     l0: { severity: error, status: implemented, checks: ["Q-V9"] }
+  - id: Q-V10
+    rule: "Every heteronym in spoken carries a reading declaration [w](=reading) or an override [w](/phonemes/), so a tagger change cannot flip it unheard"
+    fields: [beats.spoken]
+    owner_support: none
+    l0: { severity: error, status: implemented, checks: ["Q-V10"] }
 
   - id: Q-W1
     rule: 'Stake voiced before 15 %, by a named role or "you", with a number or artifact'
@@ -393,7 +398,8 @@ rules:
     fields: [beats.spoken]
     aliases: [K12]
     owner_support: none
-    judge: { layer: L2, status: pending, owner: SQ7 }
+    note: "`explainer eval cold` measures it: undefined items per chapter minute, from a viewer streamed one chapter at a time."
+    judge: { layer: L1, status: cited, rubric: rubrics/l1-cold.md }
   - id: Q-E7
     rule: "At most 4 new on-screen items a beat (cue targets, map reveals, pins, cards and new_terms)"
     fields: [beats.visual, beats.new_terms]

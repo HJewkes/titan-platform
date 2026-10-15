@@ -11,15 +11,36 @@ const REPO_CONFIG = JSON.stringify({
 
 const modified = (path: string): PrFile => ({ path, status: "modified" });
 
-function scene(files: PrFile[], options: { baseConfig?: string | null; changedFiles?: number } = {}) {
+const HEAD = fakeSha("head");
+const MERGE_BASE = fakeSha("merge-base");
+const LOOSE_CONFIG = JSON.stringify({ tests: ["**/*.test.ts"], carry: ["**/*.ts"] });
+
+// Paths that are source under the repo config but test-only under the plan's wider built-in globs.
+const DEFAULTS_ONLY_TESTS = ["packages/x/test/evil.test.ts", "packages/x/src/hook.spec.ts", "products/factory/vitest.setup.test.js"];
+
+/** `baseConfig` sits at the merge base, `tipConfig` (default: the same) at main's tip, `parentConfig` at a non-main base ref. */
+type SceneOptions = { baseConfig?: string | null; tipConfig?: string | null; changedFiles?: number; baseRef?: string; parentConfig?: string };
+
+function seedConfig(fake: ReturnType<typeof fakeGitHub>, ref: string, content: string | null): void {
+  if (content !== null) fake.files.set(`${ref}:${CONFIG_PATH}`, { content, blobSha: fakeSha(content) });
+}
+
+function sceneFake(files: PrFile[], options: SceneOptions = {}) {
   const fake = fakeGitHub();
-  fake.addPr({ headSha: fakeSha("head") });
+  const baseRef = options.baseRef ?? "main";
+  fake.addPr({ headSha: HEAD, baseRef });
   fake.prFiles.set(1, files);
   if (options.changedFiles !== undefined) fake.prChangedFiles.set(1, options.changedFiles);
+  fake.compares.set(`main...${HEAD}`, { mergeBaseSha: MERGE_BASE, files: [] });
   const baseConfig = options.baseConfig === undefined ? REPO_CONFIG : options.baseConfig;
-  if (baseConfig !== null) fake.files.set(`main:${CONFIG_PATH}`, { content: baseConfig, blobSha: "b".repeat(40) });
-  return githubPort(fake.wire);
+  seedConfig(fake, MERGE_BASE, baseConfig);
+  seedConfig(fake, "main", options.tipConfig === undefined ? baseConfig : options.tipConfig);
+  if (options.parentConfig !== undefined) seedConfig(fake, baseRef, options.parentConfig);
+  return fake;
 }
+
+const scene = (files: PrFile[], options: SceneOptions = {}) => githubPort(sceneFake(files, options).wire);
+const testAndSource = [modified("packages/x/src/a.test.ts"), modified("packages/x/src/x.ts")];
 
 describe("testOnlyDiff", () => {
   it("reads Z7's tests-and-changeset diff as test-only", async () => {
@@ -63,10 +84,69 @@ describe("testOnlyDiff", () => {
     expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "source", paths: [".github/actions/fixtures/setup.json", ".github/workflows/fix-proof.yml"] });
   });
 
-  it("classifies with the base ref's globs, not the defaults", async () => {
+  it("classifies with the default branch's merge-base globs, not the defaults", async () => {
     const port = scene([modified("packages/x/src/a.test.ts")], { baseConfig: JSON.stringify({ tests: ["apps/**/*.test.ts"] }) });
 
     expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "source", paths: ["packages/x/src/a.test.ts"] });
+  });
+
+  it("never reads a stacked PR's parent branch config that loosens the globs", async () => {
+    const port = scene(testAndSource, { baseRef: "parent", parentConfig: LOOSE_CONFIG });
+
+    const diff = await testOnlyDiff(port, REPO, 1);
+
+    expect(diff).toMatchObject({ kind: "unread", reason: expect.stringMatching(/"parent".*"main"/) });
+  });
+
+  it("does not let a wider tip config widen the merge-base config", async () => {
+    const port = scene(testAndSource, { tipConfig: LOOSE_CONFIG });
+
+    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "source", paths: ["packages/x/src/x.ts"] });
+  });
+
+  it("does not let a fork point's wider config widen the tip's", async () => {
+    const port = scene(testAndSource, { baseConfig: LOOSE_CONFIG, tipConfig: REPO_CONFIG });
+
+    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "source", paths: ["packages/x/src/x.ts"] });
+  });
+
+  it("does not let a fork point that predates the config fall back to the wider defaults", async () => {
+    const port = scene(DEFAULTS_ONLY_TESTS.map(modified), { baseConfig: null, tipConfig: REPO_CONFIG });
+
+    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "source", paths: [...DEFAULTS_ONLY_TESTS].sort() });
+  });
+
+  it("uses the built-in globs when neither the merge base nor the tip has a config", async () => {
+    const port = scene([modified("packages/x/src/a.test.ts")], { baseConfig: null });
+
+    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "test-only" });
+  });
+
+  it("fails closed when the tip config cannot be read", async () => {
+    const healthy = scene([modified("packages/x/src/a.test.ts")]);
+    const port: GitHubPort = { ...healthy, getFile: (repo, path, ref) => (ref === "main" ? Promise.reject(new Error("HTTP 502")) : healthy.getFile(repo, path, ref)) };
+
+    expect(await testOnlyDiff(port, REPO, 1)).toMatchObject({ kind: "unread", reason: expect.stringContaining(`${CONFIG_PATH} could not be read`) });
+  });
+
+  it("fails closed when the default branch cannot be read", async () => {
+    const fake = sceneFake([modified("packages/x/src/a.test.ts")]);
+    fake.readFaults.getDefaultBranch = [new Error("HTTP 502")];
+
+    expect(await testOnlyDiff(githubPort(fake.wire), REPO, 1)).toMatchObject({ kind: "unread", reason: expect.stringContaining("could not be read at the default branch's merge base") });
+  });
+
+  it("fails closed when the compare fails", async () => {
+    const port: GitHubPort = { ...scene([modified("packages/x/src/a.test.ts")]), compareFiles: () => Promise.reject(new Error("HTTP 404")) };
+
+    expect(await testOnlyDiff(port, REPO, 1)).toMatchObject({ kind: "unread", reason: expect.stringContaining("could not be read at the default branch's merge base") });
+  });
+
+  it("fails closed when the merge base is not a commit sha", async () => {
+    const fake = sceneFake([modified("packages/x/src/a.test.ts")], { baseConfig: null, tipConfig: REPO_CONFIG });
+    fake.compares.set(`main...${HEAD}`, { mergeBaseSha: "main", files: [] });
+
+    expect(await testOnlyDiff(githubPort(fake.wire), REPO, 1)).toMatchObject({ kind: "unread", reason: expect.stringContaining("not a commit sha") });
   });
 
   it("fails closed on a list at GitHub's file cap", async () => {
