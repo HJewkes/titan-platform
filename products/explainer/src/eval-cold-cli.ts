@@ -70,8 +70,8 @@ function writeRows(p: Prepared, result: ColdResult, run: number): void {
 function report(p: Prepared, run: number, r: ColdResult): void {
   const perMinute = Object.fromEntries(r.chapters.map((c) => [c.chapter, Number(c.undefined_per_minute.toFixed(2))]));
   const failedCanaries = r.chapters.filter((c) => !c.canary.pass).map((c) => `${c.canary.canary}=${c.canary.got}`);
-  const line = { script_sha: p.record.scriptSha, run, eval_version: r.eval_version, judge: r.judge, trusted: r.trusted, undefined_per_minute: perMinute, failed_canaries: failedCanaries, failures: r.failures, usd: r.spend.usd };
-  console.log(JSON.stringify(line));
+  const verdict = { trusted: r.trusted, undefined_per_minute: perMinute, failed_canaries: failedCanaries, failures: r.failures, usd: r.spend.usd };
+  console.log(JSON.stringify({ script_sha: p.record.scriptSha, run, eval_version: r.eval_version, judge: r.judge, ...verdict }));
 }
 
 /** Each run is a fresh viewer; every run's rows are kept, and the command is trusted only if all of them are. */

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runEvalCli } from "./eval-cli.js";
-import { readTsv, scriptSha, type RunRecord } from "./eval-store.js";
+import { readTsv, scriptSha } from "./eval-store.js";
 import type { JudgeCall, JudgeHarness, JudgeReply } from "./eval-harness.js";
 
 const spikeBeat = (id: string, chapter: string, spoken: string, titles: string[]) => ({ id, chapter, function: "EXPLAIN", plannedS: 12, spoken, visual: { titles } });
@@ -37,8 +37,7 @@ const write = (name: string, value: unknown): string => {
 const judgeFile = (model: string) => write(`judge-${model}.json`, { provider: "claude-print", model });
 const cold = (harness: JudgeHarness, model = "sonnet", ...extra: string[]) =>
   runEvalCli(["eval", "cold", write("script.json", script), "--judge", judgeFile(model), "--bench", join(dir, "bench"), ...extra], { harness: () => harness });
-const runRecords = (): RunRecord[] =>
-  readFileSync(join(dir, "bench/evals/runs.jsonl"), "utf8").trimEnd().split("\n").map((line) => JSON.parse(line) as RunRecord);
+const runRecords = () => readFileSync(join(dir, "bench/evals/runs.jsonl"), "utf8").trimEnd().split("\n").map((line) => JSON.parse(line));
 const evalRows = (name: string) => readTsv(join(dir, "bench/evals", name));
 
 beforeEach(() => {
