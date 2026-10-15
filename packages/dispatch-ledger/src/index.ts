@@ -62,3 +62,15 @@ export { LedgerMalformedError, exportLedgerJson, parseLedgerJson, writeLedgerExp
 export { StaleRevisionError, importLedgerJson, memoryLedgerStore, normalizeLedger } from "./store.js";
 export type { LedgerRead, LedgerStore } from "./store.js";
 export { SqliteLedgerStore, dispatchLedgerDdl, dispatchLedgerMigration } from "./sqlite-store.js";
+
+// Owed holds: their own table, outside the ledger revision.
+export {
+  OwedHoldSchema,
+  SqliteOwedHoldStore,
+  dispatchOwedHoldsDdl,
+  dispatchOwedHoldsMigration,
+  exportOwedHoldsJson,
+  memoryOwedHoldStore,
+  parseOwedHoldsJson,
+} from "./owed-holds.js";
+export type { OwedHold, OwedHoldStore } from "./owed-holds.js";

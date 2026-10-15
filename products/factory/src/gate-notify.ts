@@ -19,9 +19,11 @@ export interface GateNotifyPorts {
   getGate(gateId: string): GateRecord | undefined;
   resolve(gateId: string, payload: unknown, resolver: GateResolver): void;
   asks: GateAskStore;
-  askHuman(req: AskRequest): Promise<string>;
-  readAnswers(label: string, since: string | undefined): Promise<AnswersPage>;
-  dismissAsk(msgId: string): Promise<void>;
+  askHuman(req: AskRequest, signal?: AbortSignal): Promise<string>;
+  readAnswers(label: string, since: string | undefined, signal?: AbortSignal): Promise<AnswersPage>;
+  dismissAsk(msgId: string, signal?: AbortSignal): Promise<void>;
+  /** Aborted when serve gives up on the tick at shutdown; each agent-chat call is passed it, so its child is killed and no later call starts one. */
+  signal?: AbortSignal;
   log(line: string): void;
 }
 
@@ -88,7 +90,7 @@ async function askPass(ports: GateNotifyPorts): Promise<void> {
   for (const gate of ports.pendingGates()) {
     if (!askable(gate, ports.resolverClass) || ports.asks.get(gate.id) !== undefined) continue;
     try {
-      const msgId = await ports.askHuman(askRequest(ports.label, gate));
+      const msgId = await ports.askHuman(askRequest(ports.label, gate), ports.signal);
       ports.asks.record(gate.id, msgId);
     } catch (error) {
       ports.log(`gate notify: could not ask ${gate.id}: ${messageOf(error)}`);
@@ -114,7 +116,7 @@ async function withdrawPass(ports: GateNotifyPorts): Promise<void> {
     if (ports.getGate(ask.gateId)?.status === "pending") continue;
     if (!ports.asks.settle(ask.gateId, "withdrawn", "gate settled by another route")) continue;
     try {
-      await ports.dismissAsk(ask.msgId);
+      await ports.dismissAsk(ask.msgId, ports.signal);
     } catch (error) {
       ports.log(`gate notify: could not dismiss the ask for ${ask.gateId}: ${messageOf(error)}`);
     }
@@ -124,7 +126,7 @@ async function withdrawPass(ports: GateNotifyPorts): Promise<void> {
 async function answerPass(ports: GateNotifyPorts): Promise<void> {
   let page: AnswersPage;
   try {
-    page = await ports.readAnswers(ports.label, ports.asks.cursor(ports.label));
+    page = await ports.readAnswers(ports.label, ports.asks.cursor(ports.label), ports.signal);
   } catch (error) {
     ports.log(`gate notify: could not read answers: ${messageOf(error)}`);
     return;

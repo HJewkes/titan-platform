@@ -130,6 +130,13 @@ export function appendTsv<T extends object>(path: string, columns: readonly (key
   if (lines.length > 0) appendFileSync(path, `${lines.join("\n")}\n`);
 }
 
+/** Reads a header-first TSV into records; list cells are comma-separated. */
+export function readTsv(path: string): Record<string, string>[] {
+  const [header, ...lines] = readFileSync(path, "utf8").trimEnd().split("\n");
+  const columns = (header ?? "").split("\t");
+  return lines.map((line) => Object.fromEntries(line.split("\t").map((cell, i) => [columns[i], cell])));
+}
+
 /** One eval invocation, a line of `runs.jsonl`. L0 runs cost nothing and have no judge. */
 export interface RunRecord {
   config_id: string;
