@@ -48,16 +48,17 @@ const BASE_JOBS = 201;
 
 const BASE_FAILURE = "packages/demo/src/widget.test.ts > widget > renders";
 
-/** A vitest log tail as GitHub serves it: timestamped, with the failure banner over one heading per failing test. */
+/** A vitest log tail as GitHub serves it: timestamped, the failure banner over one heading and divider per failing test, then the summary. */
 function vitestLog(ids: readonly string[]): string {
-  const lines = [" RUN  v3.2.4", ` Failed Tests ${ids.length} `, ...ids.flatMap((id) => [` FAIL  ${id}`, "AssertionError: expected 1 to be 2"]), "##[error]Process completed with exit code 1."];
+  const failures = ids.flatMap((id, i) => [` FAIL  ${id}`, "AssertionError: expected 1 to be 2", `⎯⎯[${i + 1}/${ids.length}]⎯`]);
+  const lines = [" RUN  v4.1.11", `⎯⎯ Failed Tests ${ids.length} ⎯⎯`, ...failures, `      Tests  ${ids.length} failed | 9 passed (${ids.length + 9})`, "##[error]Process completed with exit code 1."];
   return lines.map((line) => `2026-10-13T12:00:00.0000000Z ${line}`).join("\n");
 }
 
-/** Every job from `firstId` failed at `step`, after a green setup step, and its log names `ids` failing. */
-function jobsFailAt(fake: FakeGitHub, firstId: number, step = TEST_STEP, ids: readonly string[] = [BASE_FAILURE]): void {
+/** Every job from `firstId` ended `step` with `conclusion`, after a green setup step, and its log names `ids` failing. */
+function jobsFailAt(fake: FakeGitHub, firstId: number, step = TEST_STEP, ids: readonly string[] = [BASE_FAILURE], conclusion = "failure"): void {
   for (const id of [firstId, firstId + 1]) {
-    fake.jobSteps.set(id, [{ name: "Set up job", conclusion: "success" }, { name: step, conclusion: "failure" }, { name: "Complete job", conclusion: "skipped" }]);
+    fake.jobSteps.set(id, [{ name: "Set up job", conclusion: "success" }, { name: step, conclusion }, { name: "Complete job", conclusion: "skipped" }]);
     fake.jobLogs.set(id, vitestLog(ids));
   }
 }
@@ -418,6 +419,19 @@ describe("a ci-red wake on a PR whose base head is red", () => {
     const w = world(["validate"], []);
     baseFails(w, ["validate"]);
     for (const id of [HEAD_JOBS, HEAD_JOBS + 1]) w.fake.jobLogs.set(id, "2026-10-13T12:00:00.0000000Z ##[error]Process completed with exit code 1.");
+    const runId = start(w);
+
+    await gateOpened(w.host, gateId(runId, "ci-failed"));
+
+    expect(w.wakes.map((wake) => wake.kind)).toEqual(["ci-red"]);
+    expect(stepIds(w, runId)).not.toContain("sh-base-wait:0");
+  });
+
+  // Mutation caught: dropping the step-conclusion check, which reads the identical logs and holds the head as base-red.
+  it.each(["timed_out", "cancelled"])("wakes a fixer when the head's and base's failing step both ended %s, whose logs say nothing of what failed", async (stopped) => {
+    const w = world(["validate"], []);
+    baseFails(w, ["validate"]);
+    [HEAD_JOBS, BASE_JOBS].forEach((firstId) => jobsFailAt(w.fake, firstId, TEST_STEP, [BASE_FAILURE], stopped));
     const runId = start(w);
 
     await gateOpened(w.host, gateId(runId, "ci-failed"));
