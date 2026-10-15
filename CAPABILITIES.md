@@ -758,7 +758,7 @@ Key exports:
 - `vocab`: `AcceptedOverlapSchema`, `ContractSchema`
 - `claim-phase`: `IllegalPhaseEdgeError`, `illegalEdgeError`, `illegalEdges`
 - `ops`: `addClaim`, `claimKey`, `heldClaims`, `isStalled`, `laneClaims`
-- +57 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/dispatch-ledger)
+- +66 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/dispatch-ledger)
 
 <a id="cap-graph-layout"></a>
 
