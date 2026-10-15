@@ -1,6 +1,6 @@
 import type { L0Check, L0Result } from "./eval-l0.js";
 import { ruleRow, wordsOf } from "./lint-text.js";
-import { CUE_KIND_ROLES, fromScriptV1, type PaceBeat } from "./pace-items.js";
+import { fromScriptV1, type PaceBeat } from "./pace-items.js";
 
 /** M1: the most new items one beat may put on screen. */
 export const MAX_NEW_ITEMS_PER_BEAT = 4;
@@ -82,15 +82,33 @@ export function paceRows(beats: readonly PaceBeat[]): L0Result[] {
   ];
 }
 
-const cueKind = (target: string): string => target.split(":", 1)[0] ?? target;
-
-// script/v1 admits any cue target, but the item track throws on a kind it cannot classify. Failing the pace rows
-// on those beats keeps one unclassified cue from crashing every other L0 check in the run.
 const PACE_RULES: readonly [string, L0Result["severity"]][] = [["Q-E7", "error"], ["Q-E8", "warning"], ["Q-E9", "warning"], ["Q-E10", "warning"]];
 
+const throws = (build: () => unknown): boolean => {
+  try {
+    build();
+    return false;
+  } catch {
+    return true;
+  }
+};
+
+// script/v1 admits inputs the item track refuses (a cue kind outside CUE_KIND_ROLES, a cue word the words.json
+// never heard), and runL0 runs every check in one pass. Failing the pace rows on the beats that cannot be projected
+// keeps one of them from taking every other L0 check's rows down with it.
+function unprojectable({ script, timing }: Parameters<L0Check>[0]): L0Result[] {
+  const bad = script.beats.filter((beat) => throws(() => fromScriptV1({ ...script, beats: [beat] }, timing))).map((b) => b.id);
+  const named = bad.length > 0 ? bad : script.beats.map((b) => b.id);
+  return PACE_RULES.map(([id, severity]) => beatRow(id, severity, named));
+}
+
 /** The pace lints on a script/v1, with heard durations when the run has a words.json. */
-export const paceCheck: L0Check = ({ script, timing }) => {
-  const unknown = script.beats.filter((b) => b.visual.cues.some((c) => !Object.hasOwn(CUE_KIND_ROLES, cueKind(c.target))));
-  if (unknown.length > 0) return PACE_RULES.map(([id, severity]) => beatRow(id, severity, unknown.map((b) => b.id)));
-  return paceRows(fromScriptV1(script, timing));
+export const paceCheck: L0Check = (input) => {
+  let beats: PaceBeat[];
+  try {
+    beats = fromScriptV1(input.script, input.timing);
+  } catch {
+    return unprojectable(input);
+  }
+  return paceRows(beats);
 };

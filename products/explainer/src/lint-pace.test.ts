@@ -149,18 +149,29 @@ describe("paceCheck as an L0 check", () => {
     expect(l0HardPass(rushed ? [rushed] : [])).toBe(true);
   });
 
-  // Regression: a plain target such as "scanner" made the item track throw, and the default run lost every check.
-  it("fails the pace rows on a cue target with no known kind, and the other L0 checks still report", () => {
-    const plain = ScriptSchema.parse(
-      scriptWith({ visual: { assertion: "One server sits between every scanner and the ledger", job: "map", cues: [{ action: "V11", target: "scanner", atCue: "scan" }] } }),
+  const oneCue = (target: string) =>
+    ScriptSchema.parse(
+      scriptWith({ visual: { assertion: "One server sits between every scanner and the ledger", job: "map", cues: [{ action: "V11", target, atCue: "scan" }] } }),
     );
 
-    const results = runL0(plain);
+  const expectPaceFailedAndOthersReported = (results: ReturnType<typeof runL0>) => {
     const pace = results.filter((r) => ["Q-E7", "Q-E8", "Q-E9", "Q-E10"].includes(r.check_id));
 
     expect(results.map((r) => r.check_id)).toEqual(expect.arrayContaining(["Q-E1", "Q-F1"]));
     expect(pace).toHaveLength(4);
     expect(pace.every((r) => !r.pass && r.detail_beats.join() === "c2-1-stations")).toBe(true);
     expect(l0HardPass(results.filter((r) => r.check_id === "Q-E7"))).toBe(false);
+  };
+
+  // Regression: a plain target such as "scanner" made the item track throw, and the default run lost every check.
+  it("fails the pace rows on a cue target with no known kind, and the other L0 checks still report", () => {
+    expectPaceFailedAndOthersReported(runL0(oneCue("scanner")));
+  });
+
+  // Regression: a cue word missing from the heard words (a lexicon rewrite, an older take) threw the same way.
+  it("fails the pace rows on a cue the words.json never heard, and the other L0 checks still report", () => {
+    const timing = readTiming({ beats: [{ id: "c2-1-stations", durationS: 9, words: [{ word: "every", start: 0 }, { word: "desk", start: 1.2 }] }] });
+
+    expectPaceFailedAndOthersReported(runL0(oneCue("row:scanner"), undefined, L0_CHECKS, timing));
   });
 });
