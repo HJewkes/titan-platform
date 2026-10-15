@@ -117,6 +117,18 @@ export {
 export { L0_CHECKS, l0HardPass, mapLintCheck, runL0, type L0Check, type L0Input, type L0Result } from "./eval-l0.js";
 export { L0_EVAL_ID, runEvalCli, type EvalCliDeps } from "./eval-cli.js";
 export {
+  calibrate,
+  LabelsSchema,
+  ownerRecall,
+  scoreCheck,
+  type Calibration,
+  type CalibrationRow,
+  type CheckLabels,
+  type CheckScore,
+  type Labels,
+  type OwnerRecall,
+} from "./eval-calibrate.js";
+export {
   OWNER_COLUMNS,
   ownerSessionDir,
   prepareOwnerSession,
