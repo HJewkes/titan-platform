@@ -147,6 +147,10 @@ merge-base to second parent, changed) shares no path with `changedPaths` after c
 `changedPaths` is GitHub's own file list, read independently of the caller's probe; it must be
 non-empty, and a non-canonical path in either list fails the condition. A separate row, so
 deleting it revokes the disjoint carry alone. The owner decided it on 2026-10-11.
+It never applies when any `carry.basePaths` entry, case-folded, is under `packages/authority/`,
+`packages/tool-guard/` or `.github/workflows/`, or is not a canonical path: such a merge-up gets a
+fresh review (owner decision of 2026-10-12). `isCarryFencedPath(path)` exports that test so the
+caller can refuse the carry before it asks.
 
 ANS-DC-QA allows the decider to answer a question gate. It reads `facts.question` and checks
 `gate-rule-is-question` (`ruleKind` is exactly `question`) and `category-mode-auto` (`mode` is
@@ -205,6 +209,6 @@ taint and agent classes are refused.
 
 ## Where it came from
 
-MRG-AU-RV was added in TP-461 for the Shepherd merge path, MRG-AU-RC in TP-778, MRG-AU-RM in TP-1907, MRG-AU-RS in TP-2392, and the `decider` class with the `answer-question` rows in TP-713. The rest is new in TP-400, the first slice of the software-factory authority policy (TP-380). The rows
+MRG-AU-RV was added in TP-461 for the Shepherd merge path, MRG-AU-RC in TP-778, MRG-AU-RM in TP-1907, MRG-AU-RS in TP-2392 (carve-out in TP-2440), and the `decider` class with the `answer-question` rows in TP-713. The rest is new in TP-400, the first slice of the software-factory authority policy (TP-380). The rows
 are the owner-approved table of 2026-09-28, including the change that makes spend
 monitor-only.

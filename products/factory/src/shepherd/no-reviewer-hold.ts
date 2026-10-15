@@ -8,7 +8,7 @@ import { SHEPHERD_ACTOR } from "./events.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { ShepherdStore } from "./store.js";
 
-const NO_REVIEWER_HOLD_STEP = "sh-no-reviewer-hold";
+export const NO_REVIEWER_HOLD_STEP = "sh-no-reviewer-hold";
 const NO_REVIEWER_WAIT_STEP = "sh-no-reviewer-wait";
 export const NO_REVIEWER_STEPS: readonly StepDeclaration[] = [
   { id: NO_REVIEWER_HOLD_STEP, kind: "dispatch" },
