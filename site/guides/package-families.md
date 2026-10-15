@@ -157,3 +157,10 @@ merge. The [factory](/guides/factory) product composes `github`, `authority`, `h
 - [`frame-capture`](/reference/frame-capture): renders any page that publishes the
   `__titanMotion` protocol (`seek`, `ready`, `duration`) to PNG frames under a virtual clock,
   in parallel chunks, and encodes them with ffmpeg. It knows nothing of beats or React.
+
+## Speech
+
+- [`speech-tts`](/reference/speech-tts): one `TtsProvider` contract with declared
+  capabilities. A registry picks a provider from a deployment's profile and `TITAN_SPEECH_*`
+  env. The `commandTts` and `httpTts` adapters fit any external engine. It is the first of the
+  speech packages; G2P, STT and vetting follow.

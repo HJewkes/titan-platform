@@ -734,6 +734,8 @@ importers:
         specifier: workspace:^
         version: link:../locator
 
+  packages/speech-tts: {}
+
   packages/store-sqlite:
     dependencies:
       better-sqlite3:

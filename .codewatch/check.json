@@ -39,7 +39,8 @@
           "packages/agent-surface",
           "packages/worktree",
           "packages/health",
-          "packages/frame-capture"
+          "packages/frame-capture",
+          "packages/speech-tts"
         ],
         "2": [
           "packages/session-read",
@@ -111,7 +112,8 @@
           "packages/agent-surface",
           "packages/worktree",
           "packages/health",
-          "packages/frame-capture"
+          "packages/frame-capture",
+          "packages/speech-tts"
         ],
         [
           "packages/session-read",
