@@ -13,7 +13,7 @@ export interface TimedToken {
 }
 
 /** Seconds from the chunk start; null where Python leaves `start_ts`/`end_ts` unset. */
-interface TokenTime {
+export interface TokenTime {
   readonly start: number | null;
   readonly end: number | null;
 }
