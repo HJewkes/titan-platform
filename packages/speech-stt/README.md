@@ -17,7 +17,9 @@ nothing else needs a model runtime or native code.
   16 kHz recogniser.
 - `whisperStt(options)`: Whisper word timestamps through transformers.js, with sub-word
   chunks merged into words and transcripts cached by audio hash. `device` and `cacheDir`
-  go to the pipeline.
+  go to the pipeline. Its `capabilities.tokenLogprobs` is `false`: transformers.js 3.8.1
+  returns no token log-probs, so words carry no `probability` and `segments` is empty.
+  Every `SttProvider` declares `capabilities: SttCapabilities`.
 - `wav2vec2Recognizer(options)`: espeak-style IPA phones from `wav2vec2-lv-60-espeak-cv-ft`
   through transformers.js, pinned to one ONNX revision. `recognize` returns the raw greedy
   decode, cached by audio hash; `recognizeWithLogits` adds the per-frame ids and `CtcLogits`
