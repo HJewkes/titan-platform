@@ -31,7 +31,7 @@ export interface FakeEngineOptions {
   hang?: boolean;
 }
 
-export interface FakeEngine extends KokoroEngine {
+interface FakeEngine extends KokoroEngine {
   readonly tokenized: string[];
   readonly runs: { ids: readonly number[]; styleRow: number; speed: number }[];
 }
