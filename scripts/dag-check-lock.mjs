@@ -428,10 +428,11 @@ function killGroup(pid) {
 }
 
 /** Run a script under a heap cap in its own process group, so one kill also stops the git it is waiting on. */
-export async function runCappedWorker({ script, args, name, heapCapMb, cleanups, log }) {
+export async function runCappedWorker({ script, args, name, heapCapMb, cleanups, log, outcome = {} }) {
   const argv = [`--max-old-space-size=${heapCapMb}`, script, ...args];
   const child = spawn(process.execPath, argv, { stdio: "inherit", detached: true });
   cleanups.push(() => killGroup(child.pid));
   const [code, signal] = await once(child, "exit");
+  outcome.heapAbort = signal === "SIGABRT" || code === 134;
   return workerExitCode({ code, signal, name, heapCapMb, log });
 }
