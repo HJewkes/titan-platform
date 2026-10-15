@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runEvalCli } from "./eval-cli.js";
 import { mapLintCheck } from "./eval-l0.js";
 import { rulesSha, scriptSha } from "./eval-store.js";
+import { paceCheck } from "./lint-pace.js";
 import { layout } from "./map-fixtures.test-helpers.js";
 import { DEFAULT_RULES_PATH } from "./rules.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
@@ -51,7 +52,7 @@ describe("explainer eval l0", () => {
     expect(code).toBe(0);
     expect(readdirSync(join(dir, "bench/scripts"))).toEqual([`${sha}.json`]);
     const rows = structureLines().slice(1).map((line) => line.split("\t"));
-    expect(rows).toHaveLength(8);
+    expect(rows).toHaveLength(10);
     expect(rows.every(([config, s, rules]) => config === "tour-short/script-v1-01" && s === sha && rules === rulesSha(RULES))).toBe(true);
     const run = JSON.parse(readFileSync(join(dir, "bench/evals/runs.jsonl"), "utf8"));
     expect(run).toMatchObject({ script_sha: sha, parent_sha: "0123456789ab", rules_sha: rulesSha(RULES), eval_id: "L0-script", eval_version: rulesSha(RULES), usd: 0, wall_s: 1.5, started_at: "2026-10-13T10:00:00.000Z" });
@@ -72,6 +73,17 @@ describe("explainer eval l0", () => {
     expect(readFileSync(join(dir, "bench/evals/runs.jsonl"), "utf8").trim().split("\n")).toHaveLength(1);
   });
 
+  it("reads heard durations from --timing, so a four-item beat voiced over 9 s is not rushed", async () => {
+    const run = (...extra: string[]) =>
+      runEvalCli(["eval", "l0", write("script.json", fourBoxes), "--config", "c", "--rules", join(dir, "rules.yaml"), "--bench", join(dir, "bench"), ...extra], { checks: [paceCheck] });
+    const rushed = () => structureLines().filter((line) => line.includes("\tQ-E8\t")).map((line) => line.split("\t")[8]);
+
+    await run();
+    await run("--timing", write("words.json", { beats: [{ id: "c2-1-stations", durationS: 9 }] }));
+
+    expect(rushed()).toEqual(["false", "true"]);
+  });
+
   it("exits 2 on a script that is not script/v1, and on a registry that is not rules/v1", async () => {
     expect(await l0(write("bad.json", { schema: "script/v0" }))).toBe(2);
     write("rules.yaml", "rules:\n  - id: Q-D2\n");
@@ -84,5 +96,67 @@ describe("explainer eval l0", () => {
     expect(await runEvalCli(["eval", "l0", script, "--config", "c", "--bench", join(dir, "bench")], { now: clock(), checks: [mapLintCheck] })).toBe(0);
     const shipped = rulesSha(readFileSync(DEFAULT_RULES_PATH));
     expect(structureLines().slice(1).every((line) => line.split("\t")[2] === shipped)).toBe(true);
+  });
+
+  describe("ghost check ids", () => {
+    const GHOST = "schema: rules/v1\nrules:\n  - { id: Q-V9, rule: synthetic, fields: [beats.spoken], owner_support: none, l0: { severity: error, status: implemented, checks: [synthetic:ghost] } }\n";
+    const CLEAN = "schema: rules/v1\nrules:\n  - { id: Q-V9, rule: synthetic, fields: [beats.visual.job], owner_support: none, l0: { severity: error, status: implemented, checks: [map:new-boxes] } }\n";
+    const warnings = (): string[] => vi.mocked(console.error).mock.calls.map(([line]) => String(line));
+
+    it("warns once naming a ghost id and still exits 0 by default", async () => {
+      write("rules.yaml", GHOST);
+
+      const code = await l0(write("script.json", scriptWith()), "--layout", write("layout.json", layout));
+
+      expect(code).toBe(0);
+      expect(warnings()).toHaveLength(1);
+      expect(warnings()[0]).toContain("synthetic:ghost");
+    });
+
+    const rule = (id: string, checks: string): string => `  - { id: ${id}, rule: synthetic, fields: [beats.spoken], owner_support: none, l0: { severity: error, status: implemented, checks: [${checks}] } }\n`;
+
+    it("does not call a skipped map lint a ghost when no layout is given", async () => {
+      write("rules.yaml", `schema: rules/v1\nrules:\n${rule("Q-V9", "map:new-boxes, synthetic:ghost")}`);
+
+      await l0(write("script.json", scriptWith()));
+
+      expect(warnings()).toHaveLength(1);
+      expect(warnings()[0]).toContain("synthetic:ghost");
+      expect(warnings()[0]).not.toContain("map:");
+    });
+
+    it("names only the ghost when one rule claims an emitted id and a ghost id", async () => {
+      write("rules.yaml", `schema: rules/v1\nrules:\n${rule("Q-V9", "map:new-boxes, synthetic:ghost")}`);
+
+      await l0(write("script.json", scriptWith()), "--layout", write("layout.json", layout));
+
+      expect(warnings()).toHaveLength(1);
+      expect(warnings()[0]).toContain("synthetic:ghost");
+    });
+
+    it("warns once when a rule lists the same ghost id twice", async () => {
+      write("rules.yaml", `schema: rules/v1\nrules:\n${rule("Q-V9", "synthetic:ghost, synthetic:ghost")}`);
+
+      await l0(write("script.json", scriptWith()), "--layout", write("layout.json", layout));
+
+      expect(warnings()).toHaveLength(1);
+    });
+
+    it("exits non-zero under --fail-on-ghosts", async () => {
+      write("rules.yaml", GHOST);
+
+      const code = await l0(write("script.json", scriptWith()), "--layout", write("layout.json", layout), "--fail-on-ghosts");
+
+      expect(code).toBe(1);
+    });
+
+    it("stays silent when every claimed id is emitted", async () => {
+      write("rules.yaml", CLEAN);
+
+      const code = await l0(write("script.json", scriptWith()), "--layout", write("layout.json", layout), "--fail-on-ghosts");
+
+      expect(code).toBe(0);
+      expect(warnings()).toEqual([]);
+    });
   });
 });

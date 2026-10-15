@@ -89,9 +89,10 @@ export async function askHuman(
   agentChatBinPath: string,
   req: AskRequest,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<string> {
   requireLabel(req.as);
-  const result = await runAgentChatAsync(agentChatBinPath, buildAskArgs(req), timeoutMs, req.text);
+  const result = await runAgentChatAsync(agentChatBinPath, buildAskArgs(req), timeoutMs, req.text, signal);
   if (result.status !== 0) throw askFailure("ask", result);
   const parsed = z.object({ msgId: z.string().min(1) }).safeParse(parseJson("ask", result.stdout));
   if (!parsed.success) throw new DispatchError("agent-chat ask --json printed no msgId");
@@ -104,9 +105,10 @@ export async function readAnswers(
   label: string,
   since: string | undefined,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<AnswersPage> {
   requireLabel(label);
-  const result = await runAgentChatAsync(agentChatBinPath, buildAnswersArgs(label, since), timeoutMs);
+  const result = await runAgentChatAsync(agentChatBinPath, buildAnswersArgs(label, since), timeoutMs, undefined, signal);
   if (result.status !== 0) throw askFailure("answers", result);
   const parsed = answersPageSchema.safeParse(parseJson("answers", result.stdout));
   if (!parsed.success) {
@@ -120,9 +122,10 @@ export async function dismissAsk(
   agentChatBinPath: string,
   msgId: string,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (msgId === "" || msgId.startsWith("-")) throw new DispatchError(`invalid msg_id: '${msgId}'`);
-  const result = await runAgentChatAsync(agentChatBinPath, ["dismiss", msgId], timeoutMs);
+  const result = await runAgentChatAsync(agentChatBinPath, ["dismiss", msgId], timeoutMs, undefined, signal);
   if (result.status !== 0) throw askFailure("dismiss", result);
 }
 

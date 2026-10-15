@@ -31,6 +31,8 @@ guarded file stays readable by that user. The OS account is the real boundary.
 
 - Commands built at run time (`$(...)`, `read`, `printf -v`, `eval "$x"`) are not followed.
   A script run by path is read one level deep.
+- An HTTP client that sends a write method to a URL whose host, or whose `api.github.com` path, is known only at run time reads as a merge.
+- A curl, wget or httpie config file is checked only within one command line: an rc file planted by an earlier Bash call (`echo method=PUT > ~/.wgetrc`, then `wget <merge URL>` in the next call) is not seen (TP-2861 tracks the path-layer guard). A download that names its file from the URL (`curl -O`/`-J`, a bare `wget "$U"`) is not read as an rc write either. An archive extract (tar, bsdtar or cpio extract, unzip, pax -r, 7z x/e, ar x, jar x) counts as an rc write in any directory, because its member paths may be absolute. Other unpackers and interpreters are not read.
 - A Bash command the tokenizer cannot parse passes, unless its text names a guarded
   path, a distinctive credential file name, or `gh pr merge`, `/merge`, `publish`, `deploy`,
   `gist` (owner decision D6). Then it denies and asks for simpler commands. The text is checked
@@ -41,6 +43,12 @@ guarded file stays readable by that user. The OS account is the real boundary.
   call runs. The bin exits 0 on every path and gives stdin 2 s. A Bash command over 8 KiB
   (`MAX_COMMAND_BYTES`) is not classified, since padding could push classification past the
   timeout. It denies whatever it names, and the reason asks for shorter commands or a script file.
+- `definesAlias` reads any word that is not wholly quoted and holds `*`, `?`, `[`, `^`, `#`,
+  `~`, a leading `=` or a brace expansion as varying, since zsh may turn it into file names, a
+  directory or a command's path. A `(` glob qualifier is already refused by the lexer. So
+  `alias *`, `typeset ali*` and `printf *` are refused in any directory, and so are harmless
+  forms such as `printf *.txt` or `"$CMD" *`. Only the plain `NAME=VALUE` form of a
+  declaration is spared, as neither shell globs it: `typeset a[1]=2` passes (TP-2705).
 - The mention rule is broad: any argument naming a secret path counts as a read, so
   `echo ~/.npmrc` and a `gh pr create --body` that names `~/.npmrc` deny too.
 

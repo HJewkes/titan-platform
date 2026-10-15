@@ -89,8 +89,10 @@ declare function execSafe(bin: string, args: string[], env: Record<string, strin
  * error mapping, for callers (a long-lived server) that cannot afford to
  * stall while a slow child answers. `input` and `cwd` follow `execSafe`'s
  * opt-in rule; `cwd` is last so existing `input` callers keep their order.
+ * Aborting `signal` kills the child and rejects with `ExecAbortedError`; a
+ * signal already aborted starts no child.
  */
-declare function execSafeAsync(bin: string, args: string[], env: Record<string, string>, timeoutMs: number, input?: string, cwd?: string): Promise<SafeExecResult>;
+declare function execSafeAsync(bin: string, args: string[], env: Record<string, string>, timeoutMs: number, input?: string, cwd?: string, signal?: AbortSignal): Promise<SafeExecResult>;
 
 /**
  * R-61: hand a claimed item to agent-chat's own agent machinery instead of
@@ -226,6 +228,24 @@ declare function buildSpawnArgs(req: {
  * close from agent-chat's own event stream.
  */
 declare function dispatchToAgentChat(req: DispatchRequest, timeoutMs: number, allowedProfiles: readonly string[]): Promise<DispatchResult>;
+
+/**
+ * Duration of each agent-chat CLI call, reported to opt-in observers so a
+ * long-lived caller can tell a slow roster read from a slow spawn.
+ *
+ * Only the verb is reported. Later argv words carry peer names and, for a
+ * spawn, `--briefing` text, so they never leave this module.
+ */
+
+type AgentChatCall = {
+    verb: string;
+    ms: number;
+    outcome: "ok" | "refused" | "timeout" | "error";
+};
+/** Returns the unsubscribe. `now` is injectable so tests need no real waiting. */
+declare function observeAgentChatCalls(report: (call: AgentChatCall) => void, options?: {
+    now?: () => number;
+}): () => void;
 
 /**
  * Refuse a dispatch unless the profile agent-chat is about to load says
@@ -419,10 +439,10 @@ interface AnswersPage {
     next?: string;
 }
 /** Files the question and returns its msg_id, the id its answer is read back by. */
-declare function askHuman(agentChatBinPath: string, req: AskRequest, timeoutMs: number): Promise<string>;
+declare function askHuman(agentChatBinPath: string, req: AskRequest, timeoutMs: number, signal?: AbortSignal): Promise<string>;
 /** Answers and dismissals to `label`'s asks after `since`, oldest first. */
-declare function readAnswers(agentChatBinPath: string, label: string, since: string | undefined, timeoutMs: number): Promise<AnswersPage>;
+declare function readAnswers(agentChatBinPath: string, label: string, since: string | undefined, timeoutMs: number, signal?: AbortSignal): Promise<AnswersPage>;
 /** Withdraws an ask nobody needs answered any more. A refusal means it is already closed. */
-declare function dismissAsk(agentChatBinPath: string, msgId: string, timeoutMs: number): Promise<void>;
+declare function dismissAsk(agentChatBinPath: string, msgId: string, timeoutMs: number, signal?: AbortSignal): Promise<void>;
 
-export { ASK_LABEL_PATTERN, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, PEER_NAME_PATTERN, type ParkResult, type ResumeAgentResult, ResumeError, type RetireResult, type SafeExecResult, type ServiceAnswer, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgents, messageAgent, minimalEnv, parkAgent, parseAgentRows, readAnswers, resolveBinaryPath, resumeAgent, resumeArgs, retire };
+export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, PEER_NAME_PATTERN, type ParkResult, type ResumeAgentResult, ResumeError, type RetireResult, type SafeExecResult, type ServiceAnswer, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgents, messageAgent, minimalEnv, observeAgentChatCalls, parkAgent, parseAgentRows, readAnswers, resolveBinaryPath, resumeAgent, resumeArgs, retire };

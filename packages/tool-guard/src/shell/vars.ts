@@ -24,9 +24,9 @@ export type Assignment = [name: string, value: string | null, kind?: "append" | 
 export const ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[.*\])?\+?=/s;
 const ASSIGNMENT_PARTS_RE = /^([A-Za-z_][A-Za-z0-9_]*)(\[.*\])?(\+?)=/s;
 /** A name a declaration lists, with or without a subscript or a value. */
-const DECLARED_RE = /^([A-Za-z_][A-Za-z0-9_]*)(\[.*\])?(?:\+?=|$)/s;
+export const DECLARED_RE = /^([A-Za-z_][A-Za-z0-9_]*)(\[.*\])?(?:\+?=|$)/s;
 const ANY_READONLY = "readonly@*";
-const DECLARERS = new Set(["export", "declare", "typeset", "local", "readonly"]);
+export const DECLARERS = new Set(["export", "declare", "typeset", "local", "readonly"]);
 /** Bash rejects a subscripted name here as no valid identifier, so the variable keeps its value. */
 const SCALAR_DECLARERS = new Set(["export", "readonly"]);
 /** An `r` in an option word, even one bash must still expand, may make every name the declaration lists readonly. */
@@ -306,10 +306,14 @@ function unreadableDeclareWord(name: string, arg: WordToken): boolean {
   return letters.length === 0 || letters.some((c) => !OPTION_LETTERS[name]?.has(c));
 }
 
-/** Nulls every tracked variable, `HOME` included, after a declaration this walk cannot read. */
+/**
+ * Nulls every tracked variable after a declaration this walk cannot read. `HOME` and `IFS` are read even when
+ * never assigned, so they are nulled too: an untracked IFS would otherwise read as the default and split.
+ */
 function forgetAll(vars: Vars, heard = true): void {
   for (const key of vars.keys()) vars.set(key, null);
   vars.set("HOME", null);
+  vars.set("IFS", null);
   if (heard) observers.get(vars)?.(null);
 }
 

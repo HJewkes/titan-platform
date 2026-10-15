@@ -6,7 +6,7 @@ import type { EvalCliDeps } from "./eval-cli.js";
 import { readRubric } from "./eval-evidence.js";
 import { codexUnavailable, createJudgeHarness, JudgeConfigSchema, judgeLabel, type JudgeConfig, type JudgeHarness } from "./eval-harness.js";
 import { L1_EVAL_ID, runL1, type CanaryResult, type L1Result } from "./eval-judge.js";
-import { appendRun, appendTsv, benchLayout, freezeScript, rulesSha, type BenchLayout } from "./eval-store.js";
+import { appendRun, appendTsv, benchLayout, freezeScript, judgedRun, readTsv, rulesSha, type BenchLayout } from "./eval-store.js";
 import { deriveEvalView } from "./eval-view.js";
 import { L2_EVAL_ID, runL2, type AnswerKeyRow, type L2Result, type ReferenceEdge } from "./eval-viewer.js";
 import { MapLayoutSchema } from "./map-state.js";
@@ -35,13 +35,6 @@ interface JudgedFlags {
 const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"));
 const readJudge = (path: string): JudgeConfig => JudgeConfigSchema.parse(readJson(path));
 
-/** Reads a header-first TSV into records; list cells are comma-separated. */
-function readTsv(path: string): Record<string, string>[] {
-  const [header, ...lines] = readFileSync(path, "utf8").trimEnd().split("\n");
-  const columns = (header ?? "").split("\t");
-  return lines.map((line) => Object.fromEntries(line.split("\t").map((cell, i) => [columns[i], cell])));
-}
-
 const readAnswerKey = (path: string): AnswerKeyRow[] =>
   readTsv(path).map((row) => ({ qid: row.qid ?? "", required_terms: (row.required_terms ?? "").split(",").map((t) => t.trim()).filter(Boolean) }));
 const readReferenceGraph = (path: string): ReferenceEdge[] => readTsv(path).map((row) => ({ from: row.from ?? "", to: row.to ?? "" }));
@@ -69,22 +62,8 @@ function prepare(file: string, flags: JudgedFlags, deps: EvalCliDeps): Prepared 
 type Judged = Pick<L1Result, "eval_version" | "judge" | "spend">;
 
 function recordRun(p: Prepared, flags: JudgedFlags, evalId: string, run: number, result: Judged, started: Date, finished: Date): void {
-  appendRun(p.bench, {
-    config_id: flags.config,
-    script_sha: p.sha,
-    parent_sha: flags.parent ?? null,
-    rules_sha: p.rules,
-    eval_id: evalId,
-    eval_version: result.eval_version,
-    judge: result.judge,
-    run,
-    batch_id: null,
-    usd: result.spend.usd,
-    tokens_in: result.spend.tokensIn,
-    tokens_out: result.spend.tokensOut,
-    wall_s: (finished.getTime() - started.getTime()) / 1000,
-    started_at: started.toISOString(),
-  });
+  const { eval_version: evalVersion, judge, spend } = result;
+  appendRun(p.bench, judgedRun({ configId: flags.config, scriptSha: p.sha, parentSha: flags.parent ?? null, rulesSha: p.rules, evalId, evalVersion, judge, run, spend, started, finished }));
 }
 
 const keyed = (flags: JudgedFlags, p: Prepared, evalId: string, result: Judged, run: number) =>

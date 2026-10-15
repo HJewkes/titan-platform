@@ -8,6 +8,7 @@ Exports `seatConfigSchema` (zod) and its inferred types for `autonomy-seat/v1` s
 matter, `charterPolicySchema` and `parseCharterPolicy` for `autonomy-charter/v1` charter
 front matter, and `foldSeatEvents`, a pure fold from a seat's event log (`seatEventSchema`) to
 `SeatState`. `coordinatorConfigSchema` and `checkCoordinatorConfig` validate a whole
-`titan-coordinator/v1` document and its cross-references. Pure code: no fs, process, network or broker. See `site/reference/coordinator.md`.
+`titan-coordinator/v1` document and its cross-references. `authoredBlockSchema`, `parseAuthored` and
+`renderAuthored` validate and render the seat's authored handoff block. Pure code: no fs, process, network or broker. See `site/reference/coordinator.md`.
 
 The first npm publish is pending and owner-only; trusted publishing is set up after it.
