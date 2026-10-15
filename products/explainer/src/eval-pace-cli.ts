@@ -11,7 +11,7 @@ import { readTiming, type ScriptTiming } from "./timing.js";
 
 const EXIT = { OK: 0, FAILURE: 1, USAGE: 2 } as const;
 
-export const PACE_EVAL_ID = "L0-pace";
+const PACE_EVAL_ID = "L0-pace";
 
 type ScriptFormat = "spike" | "v1";
 
@@ -24,7 +24,7 @@ interface PaceFlags {
   parent?: string;
 }
 
-export interface PaceCliDeps {
+interface PaceCliDeps {
   now?: () => Date;
 }
 
@@ -38,7 +38,7 @@ function paceBeats(raw: unknown, format: ScriptFormat, timing: ScriptTiming | un
 }
 
 /** One line a chapter: its new items, heard (or planned) seconds, items a minute and the M7 verdict. */
-export function formatChapterPace(chapters: readonly ChapterPace[]): string {
+function formatChapterPace(chapters: readonly ChapterPace[]): string {
   const header = ["chapter", "new_items", "seconds", "per_minute", "M7"];
   const rows = chapters.map((c) => [c.chapter, c.newItems, c.seconds.toFixed(1), c.perMinute.toFixed(1), tooFast(c) ? "fail" : "pass"].join("\t"));
   return [header.join("\t"), ...rows].join("\n");
