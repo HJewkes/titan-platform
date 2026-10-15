@@ -35,13 +35,13 @@ const rule = (overrides: Partial<Rule> = {}): Rule => ({
 const registryText = (...rules: Rule[]): string => stringify({ schema: "rules/v1", rules });
 
 describe("the shipped Q-rule registry", () => {
-  it("holds the 56 rules: 37 L0, 12 L0+J and 7 judge-only, with Q-F14, Q-F15 and Q-D1 as L0 warnings", () => {
+  it("holds the 60 rules: 41 L0, 12 L0+J and 7 judge-only, with Q-F14, Q-F15, Q-D1 and the pace rates as L0 warnings", () => {
     const byType = (type: string) => registry.rules.filter((r) => checkType(r) === type).length;
     const warnings = registry.rules.filter((r) => r.l0?.severity === "warning").map((r) => r.id);
 
-    expect(registry.rules).toHaveLength(56);
-    expect([byType("L0"), byType("L0+J"), byType("J")]).toEqual([37, 12, 7]);
-    expect(warnings.sort()).toEqual(["Q-D1", "Q-F14", "Q-F15"]);
+    expect(registry.rules).toHaveLength(60);
+    expect([byType("L0"), byType("L0+J"), byType("J")]).toEqual([41, 12, 7]);
+    expect(warnings.sort()).toEqual(["Q-D1", "Q-E10", "Q-E8", "Q-E9", "Q-F14", "Q-F15"]);
   });
 
   it("resolves every phase-1 alias to the one rule that absorbed it", () => {

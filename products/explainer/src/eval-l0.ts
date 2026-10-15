@@ -8,6 +8,8 @@ import type { StructureRow } from "./eval-store.js";
 import { flowCheck } from "./lint-flow.js";
 import { voiceCheck } from "./lint-voice.js";
 import { heteronymCheck } from "./lint-heteronyms.js";
+import { paceCheck } from "./lint-pace.js";
+import type { ScriptTiming } from "./timing.js";
 
 /** One check's verdict before it is keyed to a config, script and registry. */
 export type L0Result = Omit<StructureRow, "config_id" | "script_sha" | "rules_sha">;
@@ -16,6 +18,8 @@ export interface L0Input {
   script: ScriptV1;
   view: EvalBeat[];
   layout?: MapLayout;
+  /** Heard durations from a words.json; without them the pace lints read planned lengths. */
+  timing?: ScriptTiming;
 }
 
 /** A deterministic check over a script. It reports every rule it owns, passing or not, so a pass is a row too. */
@@ -44,10 +48,10 @@ export const mapLintCheck: L0Check = ({ script, layout }) => {
   });
 };
 
-export const L0_CHECKS: readonly L0Check[] = [mapLintCheck, whyCheck, evidenceCheck, voiceCheck, flowCheck, heteronymCheck];
+export const L0_CHECKS: readonly L0Check[] = [mapLintCheck, whyCheck, evidenceCheck, voiceCheck, flowCheck, paceCheck, heteronymCheck];
 
-export function runL0(script: ScriptV1, layout?: MapLayout, checks: readonly L0Check[] = L0_CHECKS): L0Result[] {
-  const input: L0Input = { script, view: deriveEvalView(script, layout), ...(layout ? { layout } : {}) };
+export function runL0(script: ScriptV1, layout?: MapLayout, checks: readonly L0Check[] = L0_CHECKS, timing?: ScriptTiming): L0Result[] {
+  const input: L0Input = { script, view: deriveEvalView(script, layout), ...(layout ? { layout } : {}), ...(timing ? { timing } : {}) };
   return checks.flatMap((check) => check(input));
 }
 
