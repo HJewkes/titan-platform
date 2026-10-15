@@ -84,6 +84,10 @@ describe("MRG-AU-RS: an automation merge on a verdict carried across a merge-up 
     ["a base side that touches .codewatch/", (f) => { f.carry!.basePaths = [".codewatch/check.json"]; }],
     ["a base side that touches .egress-allow", (f) => { f.carry!.basePaths = [".egress-allow"]; }],
     ["a base path under .github/actions/ that differs only by case", (f) => { f.carry!.basePaths = [".GitHub/Actions/x/action.yml"]; }],
+    ["a carried commit that creates a .github symlink", (f) => { f.carry!.basePaths = ["src/c.ts", ".github"]; }],
+    ["a .codewatch submodule", (f) => { f.carry!.basePaths = [".codewatch"]; }],
+    ["a bare fenced entry that differs only by case", (f) => { f.carry!.basePaths = [".GitHub"]; }],
+    ["a packages/authority symlink", (f) => { f.carry!.basePaths = ["packages/authority"]; }],
     ["a fenced base path on an unknown kind", (f) => { f.kind = "unknown"; f.carry!.basePaths = ["packages/authority/src/conditions.ts"]; }],
     ["a fenced base path on an unregistered kind", (f) => { Reflect.deleteProperty(f, "kind"); f.carry!.basePaths = ["packages/tool-guard/src/guard.ts"]; }],
   ];
@@ -95,7 +99,8 @@ describe("MRG-AU-RS: an automation merge on a verdict carried across a merge-up 
   });
 
   it("allows a base side under sibling prefixes of the fenced directories and files", () => {
-    const siblings = ["packages/authority-tools/a.ts", "packages/tool-guardian/b.ts", ".githubx/a.yml", ".codewatchx/a.json", ".egress-allow.md"];
+    const siblings = ["packages/authority-tools/a.ts", "packages/tool-guardian/b.ts", ".githubx/a.yml", ".codewatchx/a.json", ".egress-allow.md",
+      ".githubx", ".codewatchx", ".github.md"];
     expect(decide(patched((f) => { f.carry!.basePaths = siblings; }))).toEqual({ verdict: "allow", ruleId: "MRG-AU-RS" });
   });
 
@@ -126,7 +131,8 @@ describe("MRG-AU-RS: an automation merge on a verdict carried across a merge-up 
 
 describe("isCarryFencedPath", () => {
   it.each(["packages/authority/src/table.json", "packages/tool-guard/src/guard.ts", ".github/workflows/ci.yml", "Packages/Authority/x.ts",
-    ".github/workflows-old.md", ".github/actions/a/action.yml", ".github/fix-proof.json", ".codewatch/fixtures/x", ".egress-allow", ".EGRESS-ALLOW"])("fences %s", (path) => {
+    ".github/workflows-old.md", ".github/actions/a/action.yml", ".github/fix-proof.json", ".codewatch/fixtures/x", ".egress-allow", ".EGRESS-ALLOW",
+    ".github", ".codewatch", ".GITHUB", "packages/tool-guard"])("fences %s", (path) => {
     expect(isCarryFencedPath(path)).toBe(true);
   });
 
@@ -134,7 +140,8 @@ describe("isCarryFencedPath", () => {
     expect(isCarryFencedPath(path)).toBe(true);
   });
 
-  it.each(["src/a.ts", "packages/authority-tools/a.ts", ".githubx/a", ".egress-allow.md", "scripts/a.mjs", "package.json", "pnpm-lock.yaml"])("leaves %s unfenced", (path) => {
+  it.each(["src/a.ts", "packages/authority-tools/a.ts", ".githubx/a", ".egress-allow.md", "scripts/a.mjs", "package.json", "pnpm-lock.yaml",
+    ".githubx", ".github.md", "packages/tool-guardian"])("leaves %s unfenced", (path) => {
     expect(isCarryFencedPath(path)).toBe(false);
   });
 });
