@@ -49,3 +49,17 @@ describe("handle: a worker writing an http client rc file", () => {
     expect(deniedRow(log)).toEqual(["deny", "CFG-WK", "authority-config", "bash.config.cp-mv-ln"]);
   });
 });
+
+describe("handle: one line that writes an rc file and merges", () => {
+  const agentPort: HookPort = { ...workerPort, loadDecide: async () => decide };
+  const MERGE = "wget https://api.github.com/repos/o/r/pulls/1/merge";
+
+  it.each([
+    ["rc write before the merge", `echo method=PUT > ~/.wgetrc; ${MERGE}`],
+    ["merge before the rc write", `${MERGE}; echo method=PUT > ~/.wgetrc`],
+  ])("reports the merge, not the config write, with the %s", async (_order, command) => {
+    const { log } = await handle(event("Bash", { command }), {}, agentPort);
+
+    expect(deniedRow(log)).toEqual(["deny", "MRG-WK", "merge", "bash.merge.curl-api"]);
+  });
+});
