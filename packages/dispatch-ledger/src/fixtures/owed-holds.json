@@ -1,0 +1,20 @@
+[
+  {
+    "seat": "seat-b",
+    "repo": "Acme/Widgets",
+    "pr": 12,
+    "reason": "burndown: sensitive word \"gate\" in T-4"
+  },
+  {
+    "seat": "seat-a",
+    "repo": "Acme/Gadgets",
+    "pr": 7,
+    "reason": "burndown: hold refused (exit 65)"
+  },
+  {
+    "seat": "seat-a",
+    "repo": "Acme/Widgets",
+    "pr": 3,
+    "reason": "burndown: security slice T-9 b"
+  }
+]
