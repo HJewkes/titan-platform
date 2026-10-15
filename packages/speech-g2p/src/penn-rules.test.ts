@@ -65,4 +65,19 @@ describe("punctTag", () => {
     expect(punctTag(tok("-", ""), tok("well", ""))).toBe("HYPH");
     expect(punctTag(tok("-"), tok("well"))).toBe(":");
   });
+
+  it("tags a run of spaces, tabs or newlines as _SP, as spaCy does", () => {
+    expect(punctTag(tok("  ", ""), tok("between", ""))).toBe("_SP");
+    expect(punctTag(tok("\n", ""), tok(".", ""))).toBe("_SP");
+  });
+
+  it("tags every currency symbol $, so misaki reads the amount in that currency", () => {
+    expect(punctTag(tok("£", ""), tok("is"))).toBe("$");
+    expect(punctTag(tok("€", ""), tok("about"))).toBe("$");
+  });
+
+  it("tags an apostrophe attached to a plural as POS, not as a closing quote", () => {
+    expect(punctTag(tok("'"), tok("agents", ""))).toBe("POS");
+    expect(punctTag(tok("'", ""), tok("n", ""))).toBe("''");
+  });
 });

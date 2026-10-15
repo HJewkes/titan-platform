@@ -67,11 +67,19 @@ function closedClassTag(word: string, tags: CompromiseTags): string | null {
   return null;
 }
 
+// misaki merges a POS apostrophe into the word before it ("agents'"), so a quote tag would split the word.
+function isPluralPossessive(tok: RawToken, prev: RawToken | undefined): boolean {
+  return prev !== undefined && prev.whitespace === "" && /s$/i.test(prev.text) && tok.whitespace !== "";
+}
+
 /** Tags a token that holds no letter or digit, from its text and its neighbours' spacing. */
 export function punctTag(tok: RawToken, prev: RawToken | undefined): string {
   const t = tok.text;
+  if (/^\s+$/u.test(t)) return "_SP";
   if (BRACKET[t]) return BRACKET[t];
+  if (t === "'" && isPluralPossessive(tok, prev)) return "POS";
   if (t === "$" || t === "#") return t;
+  if (t === "£" || t === "€" || t === "¥") return "$";
   if (t === "“" || t === "‘") return "``";
   if (t === "”" || t === "’") return "''";
   if (t === '"' || t === "'")
