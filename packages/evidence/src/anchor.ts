@@ -41,6 +41,11 @@ const ANCHOR = /^(head|base|diff)\/(.*)#([LR]?)(\d+)(?:-([LR]?)(\d+))?$/;
 // Control characters cannot appear in a line-oriented `git cat-file --batch` request.
 const hasControlChar = (text: string): boolean => [...text].some((char) => char < " " || char === "\u007f");
 
+/** True when `text` is written as an anchor, so it is checked as one rather than read as free text. */
+export function isAnchorForm(text: string): boolean {
+  return /^(head|base|diff)\/[^#]*#/.test(text);
+}
+
 /** True for a full, lowercase 40-hex git object id; abbreviations and ref names are not pins. */
 export function isFullSha(rev: string): boolean {
   return FULL_SHA.test(rev);
