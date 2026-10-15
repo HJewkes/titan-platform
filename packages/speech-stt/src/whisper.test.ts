@@ -149,10 +149,10 @@ describe("offline guard", () => {
   it("throws offline: and never fetches when the cache is empty", async () => {
     const cacheDir = mkdtempSync(join(tmpdir(), "speech-cache-"));
     const fetchFake = vi.fn();
-    const factory = (async () => {
+    const factory: AsrFactory = async () => {
       await fetchFake("https://huggingface.co/model");
-      return {};
-    }) as unknown as AsrFactory;
+      throw new Error("the factory must not run offline");
+    };
     vi.stubEnv("TITAN_SPEECH_OFFLINE", "1");
     try {
       const stt = whisperStt({
