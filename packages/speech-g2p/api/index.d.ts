@@ -20,4 +20,10 @@ interface PosTagger {
     tag(text: string, tokens: readonly RawToken[]): string[];
 }
 
-export type { G2pToken, PosTagger, RawToken, Tokenizer };
+interface MisakiToIpaOptions {
+    /** "keep" leaves ˈ and ˌ in place (default); "strip" removes them. */
+    stress?: "keep" | "strip";
+}
+declare function misakiToIpa(phonemes: string, options?: MisakiToIpaOptions): string;
+
+export { type G2pToken, type MisakiToIpaOptions, type PosTagger, type RawToken, type Tokenizer, misakiToIpa };
