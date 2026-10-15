@@ -7,13 +7,15 @@ export const REDACTED = "[redacted]";
 // boundary, keeps words like risk-assessment-… and task-sk-… from reading as keys.
 const ESCAPE = String.raw`\\[nrt]|\\u[0-9A-Fa-f]{4}|%[0-9A-Fa-f]{2}|\x1b\[[0-9;]{0,16}[A-Za-z]`;
 const AFTER = String.raw`(?:(?<![A-Za-z0-9-])|(?<=${ESCAPE}))`;
+// gh tokens have prefixes no English word carries, so they also match after `-` (--token-ghp_…), as \b did.
+const AFTER_GH = String.raw`(?:(?<![A-Za-z0-9])|(?<=${ESCAPE}))`;
 // `_` is in the JWT class and the JWT needs dots after its first run, so a start after `_` or `-`
 // would rescan that run from every eyJ inside it.
 const AFTER_NON_JWT = String.raw`(?:(?<![\w-])|(?<=${ESCAPE}))`;
 // Length floors keep npm_config_* env names and ids like task-sk-123 out; the `_` in npm_config falls outside the class.
 const TOKEN = new RegExp(
   [
-    String.raw`${AFTER}(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)`,
+    String.raw`${AFTER_GH}(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)`,
     String.raw`${AFTER}npm_[A-Za-z0-9]{30,}`,
     String.raw`${AFTER}sk-[A-Za-z0-9_-]{20,}`,
     String.raw`${AFTER_NON_JWT}eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+`,

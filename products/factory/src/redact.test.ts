@@ -42,6 +42,8 @@ describe("error text stored as evidence", () => {
     ["empty-user redis userinfo", "redis://:secretpassword@host:6379", `redis://${REDACTED}@host:6379`],
     ["empty-user https userinfo", "https://:TOKEN@h", `https://${REDACTED}@h`],
     ["a long password", `ssh://u:${"p".repeat(300)}@h`, `ssh://${REDACTED}@h`],
+    ["a gh token after a dash", `x-ghp_${"a1B2".repeat(9)}`, `x-${REDACTED}`],
+    ["a gh token in a dashed flag", `--token-ghp_${"a1B2".repeat(9)}`, `--token-${REDACTED}`],
   ])("replaces %s", (_name, input, expected) => {
     expect(redactCredentials(input)).toBe(expected);
   });
@@ -50,6 +52,7 @@ describe("error text stored as evidence", () => {
     "npm_config_cache=/tmp",
     "task-sk-123",
     `task-sk-${"a".repeat(30)}`,
+    `pkg-npm_${"a1B2".repeat(9)}`,
     "pkg.json.lock",
     "eyJ alone",
     "ssh://git@github.com:org/repo",
@@ -70,6 +73,7 @@ describe("error text stored as evidence", () => {
     ["JWT runs after .", ".eyJaaaaaaa"],
     ["sk- runs", "-sk-"],
     ["gh token runs", "_ghp_"],
+    ["gh token runs after -", "-ghp_"],
     ["npm runs", "_npm_"],
     ["URL schemes", "a.b.c."],
     ["userinfo with no @", "a://b:"],
