@@ -24,6 +24,17 @@ interface LayoutResult {
     nodes: LaidOutNode[];
     edges: GraphEdge[];
 }
+/** A group box from a compound layout; `x` and `y` are its centre in the root frame. */
+interface LaidOutGroup extends NodeSize, Point {
+    id: string;
+}
+/**
+ * A compound layout: leaf nodes, every group box `groupOf` named (sorted by id),
+ * and edges, including edges whose ends are group ids.
+ */
+interface CompoundLayoutResult extends LayoutResult {
+    groups: LaidOutGroup[];
+}
 /**
  * Ordered ancestor group ids for a node, outermost first (e.g. package then
  * subdirectory). An empty list places the node directly at the top level.
@@ -99,15 +110,209 @@ declare function packagesInSnapshot(input: GraphInput): string[];
  */
 declare function computeLayout(input: GraphInput, sizing?: NodeSizing, layoutOptions?: Record<string, string>): Promise<LayoutResult>;
 
+/** What a strict compound layout needs besides the graph. */
+interface CompoundLayoutSpec {
+    sizing: NodeSizing;
+    groupOf: GroupOf;
+    layoutOptions?: Record<string, string>;
+    /** A header band per group id: the group's top padding is its height and its minimum width is its width. */
+    groupHeaders?: ReadonlyMap<string, NodeSize>;
+}
+/**
+ * `computeCompoundLayout` without the grid fallback: it rejects when ELK throws or
+ * places no node, so a caller that needs routes never gets a grid without them.
+ */
+declare function computeCompoundLayoutStrict(input: GraphInput, spec: CompoundLayoutSpec): Promise<CompoundLayoutResult>;
 /**
  * Lay a graph out as an ELK compound hierarchy (nodes nested in the groups
  * `groupOf` names), returning absolute node centres and absolute orthogonal edge
- * routes in the same shape, rounding and order as `computeLayout`.
+ * routes in the same shape, rounding and order as `computeLayout`, plus every
+ * group's absolute box. An edge may name a group id as either end; it is routed
+ * in the same pass, so every level of the map reads one layout.
  */
-declare function computeCompoundLayout(input: GraphInput, sizing: NodeSizing, groupOf: GroupOf, layoutOptions?: Record<string, string>): Promise<LayoutResult>;
+declare function computeCompoundLayout(input: GraphInput, sizing: NodeSizing, groupOf: GroupOf, layoutOptions?: Record<string, string>): Promise<CompoundLayoutResult>;
+
+/** How a renderer draws a box label; every length is in layout units. */
+interface LabelMetrics {
+    fontSize: number;
+    /** Advance width of one character as a fraction of `fontSize`; 0.6 fits a monospace face. */
+    charWidth?: number;
+    /** Space between the label and the box edge on every side. */
+    padding: number;
+    /** Fixed empty height under the label, so a box reads as a box rather than a caption. */
+    bodyHeight: number;
+}
+/**
+ * Boxes sized for their labels alone: a box exactly fits its label plus padding and a
+ * fixed body. Lay a collapsed level out with these and no label can overlap another,
+ * because the label sits inside a box that ELK keeps clear of every other box.
+ */
+declare function labelBoxSizing(labels: ReadonlyMap<string, string>, metrics: LabelMetrics): Map<string, NodeSize>;
+
+/** An axis-aligned box in the layout's one absolute frame, in px; `x` and `y` are its top-left. */
+interface MapBox {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+}
+/** A point in the layout frame, in px. */
+type MapPoint = readonly [number, number];
+/** Where an edge's evidence comes from. `traced` is inferred and paints dashed. */
+type MapEdgeSource = "import" | "call" | "protocol" | "traced";
+/** One zoom level. Level 0 is the coarsest; a node's children sit one or more levels deeper. */
+interface MapLevel {
+    id: number;
+    name: string;
+}
+/** A box on the map. Its box lies inside its parent's box, so every level shares one frame. */
+interface MapNode {
+    id: string;
+    label: string;
+    sublabel?: string;
+    level: number;
+    parentId?: string;
+    kind?: string;
+    box: MapBox;
+    /** An overflow node stands for this many pruned siblings. */
+    hidden?: number;
+}
+/** A directed edge. `route` is the absolute polyline from the source's border to the target's. */
+interface MapEdge {
+    id: string;
+    source: string;
+    target: string;
+    level: number;
+    kind?: string;
+    edgeSource: MapEdgeSource;
+    label?: string;
+    weight?: number;
+    route?: readonly MapPoint[];
+}
+/** One numbered step of a flow, along one edge. */
+interface MapFlowHop {
+    step: number;
+    edgeId: string;
+    from: string;
+    to: string;
+    edgeSource: MapEdgeSource;
+}
+/** A path through the map, such as one request. `projected` folds the hops to a coarser level. */
+interface MapFlow {
+    id: string;
+    title?: string;
+    hops: readonly MapFlowHop[];
+    projected?: Readonly<Record<number, readonly {
+        from: string;
+        to: string;
+    }[]>>;
+}
+/** A pop-out card anchored to a node. */
+interface MapCardRef {
+    id: string;
+    kind: string;
+    anchor: string;
+}
+/** The precomputed layout: one frame, every level, every route. */
+interface MapLayout {
+    version: "repo-map/v1";
+    width: number;
+    height: number;
+    levels: readonly MapLevel[];
+    nodes: readonly MapNode[];
+    edges: readonly MapEdge[];
+    flows: readonly MapFlow[];
+    cards: readonly MapCardRef[];
+    sha: string;
+}
+
+/** The pinned elkjs version. It is part of every map's sha, because a release can move every coordinate. */
+declare const ELK_VERSION = "0.10.2";
+/** 44 px labels in a face whose advance is 0.501 em, padded by 0.583 em: legible in a third-of-screen 1080p embed. */
+declare const MAP_LABEL_METRICS: LabelMetrics;
+interface RepoMapOptions {
+    /** At most this many boxes per directory; past it the lowest-degree files fold into one `+N more` box. */
+    maxFilesPerBox?: number;
+    label?: LabelMetrics;
+    layoutOptions?: Record<string, string>;
+}
+/**
+ * Lay a file-level snapshot out as one repo-map/v1: packages hold directories, directories
+ * hold files, and every level's edges are routed in the same ELK pass, so every zoom level
+ * reads one frame. Rejects, rather than falling back to a grid, when ELK throws or leaves a
+ * box or an edge unplaced, because a map without routes breaks every consumer downstream.
+ */
+declare function emitRepoMap(input: GraphInput, options?: RepoMapOptions): Promise<MapLayout>;
 
 /** The route a layout attached to `edge.attrs.route`, or undefined when the edge has none. */
 declare function routeOf(edge: GraphEdge): Point[] | undefined;
+
+/** An SVG path `d` through every route point in order: `M x y L x y …`, or "" for an empty route. */
+declare function routeToPathD(route: readonly Point[]): string;
+
+/** An axis-aligned box by its top-left corner, in layout units. */
+interface Rect {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+interface SceneRect {
+    id: string;
+    rect: Rect;
+}
+/** The geometry a pill must respect; every rect is in the same layout frame. */
+interface PillScene {
+    /** The visible frame. Pills stay inside it and above its keep-out band. */
+    frame: Rect;
+    /** Boxes a pin can anchor to, by id. */
+    anchors: readonly SceneRect[];
+    /** Rects no pill may touch: box labels, edge labels, a legend. */
+    obstacles: readonly SceneRect[];
+}
+/** One pill to place beside the anchor box it names. Lower `rank` places first; ties break on id. */
+interface PinSpec extends NodeSize {
+    id: string;
+    anchor: string;
+    rank?: number;
+}
+interface PillConfig {
+    /** Clear space between a pill and its anchor, an obstacle or another pill. */
+    gap: number;
+    /** Fraction of the frame's height where the keep-out band starts, e.g. 0.83 above a caption band. */
+    keepOut: number;
+    /** A pill sits at most this many pill heights from its anchor. Default 3. */
+    reachSlots?: number;
+}
+interface PlacedPill {
+    id: string;
+    anchor: string;
+    rect: Rect;
+    /** The candidate that won, e.g. `below0`, `above1R0.5`, `side0L`. */
+    candidate: string;
+}
+interface DroppedPill {
+    id: string;
+    reason: "no-anchor" | "no-spot";
+}
+/** Placed and dropped pills, each in placement order. */
+interface PillPlacement {
+    placed: PlacedPill[];
+    dropped: DroppedPill[];
+}
+/**
+ * Places each pin's pill beside its anchor box: inside the frame above its keep-out band, clear of
+ * every obstacle and every pill placed before it, and within reach of the anchor. Greedy in rank
+ * order, so the input order of `pins` does not matter. A pill with no clear spot is dropped, never
+ * drawn over something; a painter falls back for it.
+ */
+declare function placePills(scene: PillScene, pins: readonly PinSpec[], config: PillConfig): PillPlacement;
+
+/**
+ * The package a file id belongs to: the segment after `packages/`, `products/<name>` or
+ * `apps/<name>` for a file inside one, else the first path segment.
+ */
+declare function packageOf(id: string): string;
 
 /** ELK options for a flat package-level graph. */
 declare const ELK_LAYOUT_OPTIONS: Record<string, string>;
@@ -122,4 +327,4 @@ declare const FOCUS_LAYOUT_OPTIONS: Record<string, string>;
 /** ELK options for a nested graph: `INCLUDE_CHILDREN` lays the whole hierarchy out in one pass. */
 declare const COMPOUND_LAYOUT_OPTIONS: Record<string, string>;
 
-export { COMPOUND_LAYOUT_OPTIONS, ELK_LAYOUT_OPTIONS, FOCUS_LAYOUT_OPTIONS, type FocusOptions, type GraphInput, type GroupOf, type LaidOutNode, type LayoutResult, type NodeSize, type NodeSizing, type Point, collapseToDirectories, collapseToPackages, computeCompoundLayout, computeLayout, focusPackage, packagesInSnapshot, routeOf };
+export { COMPOUND_LAYOUT_OPTIONS, type CompoundLayoutResult, type CompoundLayoutSpec, type DroppedPill, ELK_LAYOUT_OPTIONS, ELK_VERSION, FOCUS_LAYOUT_OPTIONS, type FocusOptions, type GraphInput, type GroupOf, type LabelMetrics, type LaidOutGroup, type LaidOutNode, type LayoutResult, MAP_LABEL_METRICS, type MapBox, type MapCardRef, type MapEdge, type MapEdgeSource, type MapFlow, type MapFlowHop, type MapLayout, type MapLevel, type MapNode, type MapPoint, type NodeSize, type NodeSizing, type PillConfig, type PillPlacement, type PillScene, type PinSpec, type PlacedPill, type Point, type Rect, type RepoMapOptions, type SceneRect, collapseToDirectories, collapseToPackages, computeCompoundLayout, computeCompoundLayoutStrict, computeLayout, emitRepoMap, focusPackage, labelBoxSizing, packageOf, packagesInSnapshot, placePills, routeOf, routeToPathD };

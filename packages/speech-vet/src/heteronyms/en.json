@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "notation": "misaki",
+  "words": {
+    "live": { "readings": { "verb": "lɪv", "adj": "lIv" }, "forms": ["live", "lives"] },
+    "read": { "readings": { "present": "ɹid", "past": "ɹɛd" }, "forms": ["read"] },
+    "lead": { "readings": { "guide": "lid", "metal": "lɛd" }, "forms": ["lead", "leads"] },
+    "close": { "readings": { "shut": "klOz", "near": "klOs" }, "forms": ["close"] },
+    "wind": { "readings": { "air": "wɪnd", "turn": "wInd" }, "forms": ["wind", "winds"] },
+    "tear": { "readings": { "cry": "tɪɹ", "rip": "tɛɹ" }, "forms": ["tear", "tears"] },
+    "wound": { "readings": { "injury": "wund", "coiled": "wWnd" }, "forms": ["wound", "wounds"] },
+    "minute": { "readings": { "time": "mɪn", "tiny": "mIn" }, "forms": ["minute", "minutes"] },
+    "record": { "readings": { "noun": "ɹɛk", "verb": "ɹ[əɪ]k" }, "forms": ["record", "records"] },
+    "present": { "readings": { "noun": "pɹɛz", "verb": "pɹ[iəɪ]z" }, "forms": ["present", "presents"] },
+    "object": { "readings": { "noun": "ɑb", "verb": "əb" }, "forms": ["object", "objects"] },
+    "content": { "readings": { "noun": "kɑn", "adj": "kən" }, "forms": ["content", "contents"] },
+    "project": { "readings": { "noun": "pɹɑ", "verb": "pɹə" }, "forms": ["project", "projects"] },
+    "produce": { "readings": { "noun": "pɹOd", "verb": "pɹəd" }, "forms": ["produce", "produces"] },
+    "use": { "readings": { "noun": "jus", "verb": "juz" }, "forms": ["use", "uses"] },
+    "desert": { "readings": { "noun": "dɛz", "verb": "d[əɪ]z" }, "forms": ["desert", "deserts"] },
+    "refuse": { "readings": { "verb": "ɹ[əɪi]f", "noun": "ɹɛf" }, "forms": ["refuse", "refuses"] },
+    "row": { "readings": { "line": "ɹO", "quarrel": "ɹW" }, "forms": ["row", "rows"] },
+    "bow": { "readings": { "ribbon": "bO", "bend": "bW" }, "forms": ["bow", "bows"] }
+  }
+}

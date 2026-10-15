@@ -1625,15 +1625,27 @@ describe("reviewPhase", () => {
     });
   });
 
-  it("returns none after the intent step alone when the roster read is refused", async () => {
+  it("holds the run as no-reviewer when the intent's roster read is refused", async () => {
     const dispatch = fakeDispatch();
     dispatch.roster = async () => Promise.reject(new Error("the roster is not readable"));
 
     const { verdicts, stepIds, resultOf } = await review({ dispatch });
 
-    expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict" }]);
-    expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`]);
+    expect(verdicts).toEqual([{ kind: "none", cause: "not-started", reason: `no-reviewer: Error at ${H1}; TP-2446` }]);
+    expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-no-reviewer-hold:${H1}`, `sh-no-reviewer-wait:${H1}`]);
     expect(resultOf(`sh-review-intent:${H1}`)).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: Error", refused: "Error" });
+  });
+
+  it("a timed-out roster read at the intent returns notStarted after the session-start window and starts no reviewer", async () => {
+    const dispatch = fakeDispatch();
+    dispatch.roster = async () => Promise.reject(new ReviewerAskTimedOut("agent-chat timed out"));
+
+    const { verdicts, stepIds, resultOf } = await review({ dispatch });
+
+    expect(verdicts).toEqual([{ kind: "none", cause: "not-started" }]);
+    expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`]);
+    expect(resultOf(`sh-review-intent:${H1}`)).toEqual({ kind: "none", notStarted: true, reason: "the reviewer dispatch was refused: ReviewerAskTimedOut (roster unread after 5 min)" });
+    expect(dispatch.spawns).toEqual([]);
   });
 
   /** Kills the host inside one step, before the step's body runs or after it ran and before its output is stored. */
@@ -2219,6 +2231,13 @@ describe("reviewPhase", () => {
       if (late && now < 18_000) return [];
       return dispatch.agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, verdictAt(input.head), now));
     };
+    /** The seat's earlier session reviewed PR 1 at an older head, so a failed read of its latest session is this PR's reviewer's. */
+    const earlier = agent(seat.name, { spawnedBy: "coord", sessionId: `${seat.sessionId}-earlier` });
+    const seatFailing = (failure: () => Error): NonNullable<Scene["read"]> => (input, dispatch, now) => {
+      if (input.reviewerSessionId === earlier.sessionId) return [said(earlier, verdictAt(fakeSha("review-head-0")), 1)];
+      if (input.reviewerAgentId === seat.agentId) throw failure();
+      return withSeat([])(input, dispatch, now);
+    };
 
     it("sends the head back on the seat reviewer's FIX_FIRST at the head Shepherd's own reviewer passed, and collects no merge evidence", async () => {
       const dispatch = fakeDispatch(crew(seat));
@@ -2248,11 +2267,8 @@ describe("reviewPhase", () => {
     });
 
     it("does not merge when the seat reviewer's transcript cannot be parsed, and records why without holding the own MERGE", async () => {
-      const dispatch = fakeDispatch(crew(seat));
-      const unreadable: Scene["read"] = (input, held, now) => {
-        if (input.reviewerAgentId === seat.agentId) throw new SyntaxError("unexpected end of JSON input");
-        return withSeat([])(input, held, now);
-      };
+      const dispatch = fakeDispatch(crew(earlier, seat));
+      const unreadable = seatFailing(() => new SyntaxError("unexpected end of JSON input"));
 
       const { verdicts, stepIds, resultOf } = await review({ dispatch, read: unreadable, policy: AUTO });
 
@@ -2263,11 +2279,8 @@ describe("reviewPhase", () => {
     });
 
     it("does not merge when every read of the seat reviewer's transcript times out, and holds the own MERGE with why", async () => {
-      const dispatch = fakeDispatch(crew(seat));
-      const timingOut: Scene["read"] = (input, held, now) => {
-        if (input.reviewerAgentId === seat.agentId) throw new ReviewerAskTimedOut("agent-chat timed out");
-        return withSeat([])(input, held, now);
-      };
+      const dispatch = fakeDispatch(crew(earlier, seat));
+      const timingOut = seatFailing(() => new ReviewerAskTimedOut("agent-chat timed out"));
 
       const { verdicts, stepIds, resultOf } = await review({ dispatch, read: timingOut, policy: AUTO });
 

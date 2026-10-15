@@ -226,6 +226,14 @@ function ciPolicyGate(evidence: DecidableEvidence): GateDecision | undefined {
   return { outcome: "gate", rule: guardRule("github-path"), reason: `${GITHUB_PATH_REASON_PREFIX}${shownPaths(github)}` };
 }
 
+/** Tests, markdown and type declarations under a visual glob change no rendered output (decision 303, Q2). */
+const NON_RENDERING = /(\.(test|spec)\.[^/]*|\.md|\.d\.ts)$/;
+
+function cannotRender(path: string): boolean {
+  const name = path.toLowerCase().split("/").pop() ?? "";
+  return NON_RENDERING.test(name);
+}
+
 /**
  * Case is folded on both sides, as a case-insensitive checkout writes `Packages/UI/x` into `packages/ui/`. A glob list
  * that cannot compile matches every path, so a bad policy gates instead of throwing or allowing.
@@ -237,7 +245,7 @@ function visualMatches(paths: readonly string[], visualPaths: readonly string[])
   } catch {
     isVisual = () => true;
   }
-  return paths.filter((path) => isVisual(path.toLowerCase()));
+  return paths.filter((path) => !cannotRender(path) && isVisual(path.toLowerCase()));
 }
 
 /** A run with no app id is counted from no app, so it cannot satisfy a required context. */

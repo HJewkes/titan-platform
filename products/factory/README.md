@@ -34,6 +34,7 @@ titan-factory service deploy [--expect <sha>]                 # fast-forward the
 titan-factory service plist                                   # print the LaunchAgent plist (systemd unit on Linux) for titan-factory serve
 titan-factory shepherd register owner/repo#N --task <t> --implementer <agent>  # or owner/repo --branch <b>
 titan-factory shepherd status|list|timeline|hold|release|merge ...  # --json prints the result as JSON
+titan-factory shepherd owner-release owner/repo#N --head <sha>  # the owner lifts their owner-asked hold; local only
 titan-factory digest run [--since 6h] [--dry-run] [--full]   # write the owner digest for the current slot
 titan-factory queue-counts                                    # open owner-queue items per source, split by kind; counts only
 titan-factory needs [--json]                                  # everything waiting on the owner, merged across the four sources
@@ -53,7 +54,7 @@ It must be an `http` or `https` URL with no user or password, and a key that onl
 names the remote, says this host's database is frozen, and the verb exits 2:
 
 - `serve`, `resume`, `land`, `gate resolve` (and `gate resolve-batch`, once it lands), and
-  `shepherd register|hold|release|resync` are refused before they probe `--port` or open anything.
+  `shepherd register|hold|release|owner-release|resync` are refused before they probe `--port` or open anything.
   A serve answering that port on this host may be the frozen one, and nothing yet proves it is the
   remote, so these never go over RPC either.
 - Every other verb still reads from a serve that answers, but refuses rather than open the local
@@ -241,7 +242,7 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
     `--reviewer` MERGE (at the head or carried to a tree-equal one), and not `shepherd release`, which refuses
     `--class owner-asked` with exit 65 and a bare release of a PR held by it alone. `shepherd hold` refuses it with
     `--reviewer` (exit 65). Every merge route reads it first and holds whatever MERGE stands. Only the owner's own
-    release lifts it (`ShepherdStore.releaseOwnerHold`, and the forthcoming `shepherd owner-release` verb, TP-2408 b). A PR merged
+    release lifts it: `titan-factory shepherd owner-release <owner/repo#N> --head <sha>`, described below. A PR merged
     outside Shepherd with one in force clears it at cleanup, with the release event `owner hold bypassed: merged
     outside Shepherd`.
 - `merge` reports the policy decision for the current head and what the run waits on. It
@@ -249,6 +250,15 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
 
 Gate resolution is not a registry command, so no MCP or `/rpc` caller can answer a gate. It
 stays the local `titan-factory gate resolve`.
+
+`shepherd owner-release <owner/repo#N> --head <sha>` is the owner's release of an `owner-asked` hold, and the only
+verb that lifts one. Like `gate resolve`, it is local: it opens this host's database and is not in
+`SHEPHERD_COMMAND_MAP`, so no registry, MCP or `/rpc` caller reaches it. Its resolver is `ownerResolver` in
+`src/gate-resolve.ts`: a shell agent-chat launched (`AGENT_CHAT_AGENT_ID` set) needs the owner's presence
+proof and is refused with exit 77 without one; no coordinator allowance or evidence admits it. Any other shell
+is `owner-terminal`. It refuses, writing nothing, a PR not at `--head` and a run with no `owner-asked` hold
+(both exit 65), and lifts only the owner slot, so any other hold stays in force. The release event's actor is
+`owner-terminal:<user>`, plus `proof <id>` when presence was proved.
 
 ### Escalations
 
@@ -820,6 +830,12 @@ no-reviewer`), the head moves, the PR closes, or an hour passes. The head is the
 A refusal that still stands finds its own hold and waits again with no second alert. So a repo
 with no usable reviewer never reaches approve-merge unreviewed. The restart drain does not wait on
 `sh-no-reviewer-wait`.
+
+The same holds for `sh-review-intent`, which reads the roster before choosing a reviewer. A roster
+read that times out (`ReviewerAskTimedOut`) is read again every poll for the session-start window,
+then the step answers `notStarted` and the review is retried with no round counted. Any other
+refusal at the intent holds the run as `no-reviewer` and alerts the seat once. An exhausted account
+keeps its own `sh-account-hold`. None of these three counts as a failed review round (TP-2966).
 
 The config file is read when the routes are first built, so restart `serve` after a change to
 these keys. The seat book is read again on every spawn.

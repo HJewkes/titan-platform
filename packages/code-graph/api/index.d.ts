@@ -1,5 +1,5 @@
 import { N as NodeKind, G as GraphNode, a as GraphEdge, b as GraphMetric, I as IdAlias, F as FileFingerprint, S as SnapshotRow, c as GraphFragment, d as NodeRole, E as EdgeKind, e as IdAliasReason, T as TestSourceLink, f as NodeMetrics, B as BlastRadiusEntry, R as ReferenceEdgeLite, g as SymbolConsumers, h as SymbolCouplingOptions, i as SymbolCouplingPair, C as CheckRule, j as CheckResult, k as CheckViolation, l as Severity, V as ViolationBuckets } from './browser.js';
-export { A as ArchEdge, m as ArchPackage, n as ArchResult, o as ArchSubNode, p as BucketableViolation, q as BusFactorChange, r as BusFactorRow, s as CentralRow, t as CheckRulesFile, u as ComputeArchInput, v as ComputeDriftInput, w as CouplingClass, x as CouplingDelta, y as CouplingRow, z as CycleKind, D as DEFAULT_HEALTH_WEIGHTS, H as DEFAULT_MAX_PACKAGE_SIZE, J as DeadModuleConsumer, K as DeadModuleRow, L as DeadModuleView, M as DeadModulesOptions, O as EXTERNAL_BUCKET, P as ExcessChange, Q as ForbidImportRule, U as GraphReportResult, W as GrowthRiskRow, X as HealthComponent, Y as HealthComponentKey, Z as HealthInput, _ as HealthWeights, $ as HotExport, a0 as HotspotDelta, a1 as HotspotRow, a2 as LayeredDepsRule, a3 as LinkMethod, a4 as LinkTestsOptions, a5 as MetricMaxRule, a6 as MetricMinRule, a7 as MetricOutlierRule, a8 as MetricProductMaxRule, a9 as NODE_KINDS, aa as NODE_ROLES, ab as NewHotspot, ac as NoImportCyclesRule, ad as NoInternalOnlyBarrelsRule, ae as PackageFlag, af as PackageLayer, ag as PackageRoot, ah as PackageStats, ai as PairCoupling, aj as PairFlag, ak as PartitionQualityInput, al as PartitionQualityResult, am as PenaltyWeight, an as ReportContext, ao as ReportContextInput, ap as ReportDrift, aq as SnapshotContext, ar as SymbolConsumerGroup, as as SymbolConsumerRow, at as SymbolCouplingPayload, au as SymbolCouplingRow, av as SymbolUtil, aw as TestCoverageRow, ax as UnchangedViolation, ay as UntestedRiskRow, az as UnusedExportRow, aA as ViolationIdentity, aB as aggregateEdges, aC as bucketFilesByPackage, aD as bucketViolations, aE as buildBlastRadius, aF as buildCentralFiles, aG as buildHotExports, aH as buildNodeMetrics, aI as buildReportContext, aJ as buildSymbolCouplingPayload, aK as busFactorOf, aL as classifyCoupling, aM as collectNodeMetrics, aN as collectSymbolUtil, aO as compareExcess, aP as computeArch, aQ as computeHealth, aR as computePartitionQuality, aS as computeReportDrift, aT as computeSymbolConsumers, aU as computeSymbolCoupling, aV as filteredFileIds, aW as groupTestsBySource, aX as hotspotScoreOf, aY as invertBuckets, aZ as keepNode, a_ as linkTestsToSources, a$ as lookupMetric, b0 as packagesReferencedByEdges, b1 as pairKey, b2 as publicApiFiles, b3 as rebasedViolationKey, b4 as referencedNodes, b5 as testCoverageCountMetrics, b6 as toSortedEdges, b7 as topBusFactorRisks, b8 as topCentralFiles, b9 as topDeadModules, ba as topGrowthRisks, bb as topHotspots, bc as topTestCoverageRisks, bd as topUntestedRisks, be as topUnusedExports, bf as violationExcess, bg as violationKey } from './browser.js';
+export { A as ArchEdge, m as ArchPackage, n as ArchResult, o as ArchSubNode, p as BucketableViolation, q as BusFactorChange, r as BusFactorRow, s as CallGraphMetrics, t as CallableComplexity, u as CentralRow, v as CheckRulesFile, w as ComplexityDistribution, x as ComplexityRollup, y as ComputeArchInput, z as ComputeDriftInput, D as CouplingClass, H as CouplingDelta, J as CouplingRow, K as CycleKind, L as DEFAULT_HEALTH_WEIGHTS, M as DEFAULT_MAX_PACKAGE_SIZE, O as DeadModuleConsumer, P as DeadModuleRow, Q as DeadModuleView, U as DeadModulesOptions, W as EXTERNAL_BUCKET, X as EXTREME_CC, Y as ExcessChange, Z as ForbidImportRule, _ as GraphReportResult, $ as GrowthRiskRow, a0 as HIGH_CC, a1 as HealthComponent, a2 as HealthComponentKey, a3 as HealthInput, a4 as HealthWeights, a5 as HotExport, a6 as HotspotDelta, a7 as HotspotRow, a8 as ImportCyclicMass, a9 as LayeredDepsRule, aa as LinkMethod, ab as LinkTestsOptions, ac as MetricMaxRule, ad as MetricMinRule, ae as MetricOutlierRule, af as MetricProductMaxRule, ag as NODE_KINDS, ah as NODE_ROLES, ai as NewHotspot, aj as NoImportCyclesRule, ak as NoInternalOnlyBarrelsRule, al as PackageComplexityRow, am as PackageDependencyRow, an as PackageFlag, ao as PackageLayer, ap as PackageRoot, aq as PackageStats, ar as PairCoupling, as as PairFlag, at as PartitionQualityInput, au as PartitionQualityResult, av as PenaltyWeight, aw as QualitySection, ax as ReportContext, ay as ReportContextInput, az as ReportDrift, aA as SnapshotContext, aB as SymbolConsumerGroup, aC as SymbolConsumerRow, aD as SymbolCouplingPayload, aE as SymbolCouplingRow, aF as SymbolUtil, aG as TestCoverageRow, aH as UnchangedViolation, aI as UntestedRiskRow, aJ as UnusedExportRow, aK as ViolationIdentity, aL as WeightedLink, aM as aggregateEdges, aN as bucketFilesByPackage, aO as bucketViolations, aP as buildBlastRadius, aQ as buildCentralFiles, aR as buildHotExports, aS as buildNodeMetrics, aT as buildReportContext, aU as buildSymbolCouplingPayload, aV as busFactorOf, aW as callGraphMetrics, aX as classifyCoupling, aY as collectNodeMetrics, aZ as collectSymbolUtil, a_ as compareExcess, a$ as complexityDistribution, b0 as computeArch, b1 as computeHealth, b2 as computePartitionQuality, b3 as computeReportDrift, b4 as computeSymbolConsumers, b5 as computeSymbolCoupling, b6 as dependencyGraphMetrics, b7 as filteredFileIds, b8 as groupTestsBySource, b9 as hotspotScoreOf, ba as importCyclicMass, bb as invertBuckets, bc as keepNode, bd as linkTestsToSources, be as lookupMetric, bf as packagesReferencedByEdges, bg as pairKey, bh as publicApiFiles, bi as qualitySection, bj as rebasedViolationKey, bk as referencedNodes, bl as summarizeComplexity, bm as testCoverageCountMetrics, bn as toSortedEdges, bo as topBusFactorRisks, bp as topCentralFiles, bq as topDeadModules, br as topGrowthRisks, bs as topHotspots, bt as topTestCoverageRisks, bu as topUntestedRisks, bv as topUnusedExports, bw as violationExcess, bx as violationKey } from './browser.js';
 import { Db, Migration } from '@titan-design/store-sqlite';
 import { FileSystemHost, Project } from 'ts-morph';
 import { Extractor, ParsedFile } from '@titan-design/code-parser';
@@ -999,6 +999,42 @@ interface RelevanceOptions {
  */
 declare function computeRelevance(nodes: readonly GraphNode[], edges: readonly GraphEdge[], seedIds: readonly string[], options?: RelevanceOptions): Map<string, number>;
 
+interface CallPathOptions {
+    /** Edge kinds the path may follow. Defaults to `calls`. */
+    kinds?: readonly EdgeKind[];
+}
+/**
+ * One edge of a coarser level, such as a repo-map/v1 aggregate edge. Structural, so a
+ * caller passes graph-layout's `MapEdge` without code-graph importing a higher tier.
+ */
+interface LevelEdge {
+    id: string;
+    source: string;
+    target: string;
+}
+/** One hop of a path projected to a level, riding that level's aggregate edge `edgeId`. */
+interface ProjectedHop {
+    from: string;
+    to: string;
+    edgeId: string;
+}
+/**
+ * The shortest directed path from `from` to `to`, as node ids, or null when none exists.
+ * Among equally short paths it returns the one whose id sequence sorts first: breadth-first
+ * search over id-sorted neighbours reaches every node first along that path.
+ */
+declare function findCallPath(edges: readonly GraphEdge[], from: string, to: string, options?: CallPathOptions): string[] | null;
+/** {@link findCallPath} over one snapshot's stored edges, the symbol layer's `calls` included. */
+declare function snapshotCallPath(store: CodeGraphStore, snapshotId: number, from: string, to: string, options?: CallPathOptions): string[] | null;
+/**
+ * Project a node path to a coarser level. `groupOf` maps a node to its box at that level
+ * (graph-layout's repo-map levels live a tier above, so the caller supplies the mapping).
+ * Consecutive nodes in one box fold into one stop; a revisit (a, b, a) stays three stops,
+ * so a round trip is never erased. Each hop names the level edge it rides and throws when
+ * the level has none, because a hop with no edge has no route to animate along.
+ */
+declare function projectCallPath(path: readonly string[], groupOf: (nodeId: string) => string, levelEdges: readonly LevelEdge[]): ProjectedHop[];
+
 /** Marks a gap between two symbols that are not adjacent in their file. */
 declare const ELISION_MARKER = "...";
 /** Ends a line cut at `maxLineChars`; it counts toward the limit. */
@@ -1830,7 +1866,7 @@ declare function getConventionMap(store: CodeGraphStore, snapshotId: number, mod
  */
 declare function findConventions(store: CodeGraphStore, snapshotId: number, query: string, embedder: Embedder, model: string, opts?: FindConventionsOptions): Promise<ConventionQueryResult>;
 
-export { ALIAS_BASE_ATTR, ALL_ROLES, type AliasChain, type AliasChainInput, type AliasChainOptions, type AliasLoader, type AliasResolution, type AnnotateRolesOptions, type AssembledIndexerMetrics, BUNDLE_SCHEMA_VERSION, BlastRadiusEntry, type BundleBuildInput, type BundleEdge, type BundleEdges, COMMUNITY_SUMMARY_NAMESPACE, SCHEMA_VERSION as CONTEXT_SCHEMA_VERSION, COVERAGE_METRIC_NAME, type CachedEmbedResult, type CheckDiff, CheckResult, CheckRule, type CheckSnapshotOptions, type CheckSnapshotResult, CheckViolation, CodeGraphStore, type Consumers, type ContextBuildInput, type ContextBundle, type ContextDossier, type ConventionArea, type ConventionCorpus, type ConventionCoverage, type ConventionMap, type ConventionMatch, type ConventionOptions, type ConventionQueryResult, type ConventionSymbol, type Coverage, DEAD_CODE_METRIC_NAMES, DEFAULT_CHURN_WINDOWS, DEFAULT_MAX_LINE_CHARS, DEFAULT_OUTLIER_MIN_SAMPLE, DOMAIN_DDL, type DeepAst, type DeepAstInput, type DiffCheckResultsOptions, type DiffFootprintsOptions, type DiffSnapshotsOptions, ELISION_MARKER, EXCEPTION_METRIC_NAMES, EdgeKind, type EmbedAttempt, type EmbedCoverage, type EmbedSnapshotResult, type EmbeddableSymbol, type ExternalDiagnostic, FINDING_DDL, type FileDossier, FileFingerprint, type FileOwnership, type FindConventionsOptions, type FindSimilarOptions, type Finding, type FindingKeyInput, type FootprintChange, type FootprintChangeReason, type FootprintDiff, type FootprintGraph, type FootprintOptions, type FootprintParts, type FootprintUnit, GROWTH_RISK_METRIC_NAMES, type GateResult, type GateUnitsInput, type GraphDiff, type GraphDiffSummary, GraphEdge, GraphFragment, GraphMetric, GraphNode, type HistoryMetricsOptions, INDEX_VERSION, IdAlias, IdAliasReason, type IndexOptions, type IndexResult, type IndexSource, type IstanbulCoverage, KIT, LanguageExtractor, type LanguageExtractorOptions, type LineSpan, type Lineage, type LineageSnapshot, type LineageStep, type LoadedHistory, METRIC_CATALOGUE, MIGRATIONS, type MemberInfo, type MetricAbsence, type MetricAggregate, type MetricDelta, type MetricDescriptor, type MetricDirection, type MetricRollup, type MetricSource, type MetricUnit, type MinifiedSource, type MinifyLanguage, NodeKind, NodeMetrics, type NodeRename, NodeRole, type PageRankOptions, type PageRankResult, type PageRankRow, type ParamInfo, type PriorSnapshotOptions, type Provenance, type PruneOptions, type PrunePlan, type PruneResult, PythonGraphExtractor, type ReadFile, ReferenceEdgeLite, type RegenerateReason, type RelevanceOptions, type ResolveAliasOptions, type ReuseBasis, type RoleGlobs, type RoleHints, type RuleStore, type RunChecksOptions, SCHEMA_VERSION$1 as SCHEMA_VERSION, SNAPSHOT_SCOPED_TABLES, SOURCE_METRIC_NAMES, SYMBOL_EMBEDDING_NAMESPACE, SYMBOL_ID_SEP, SYMBOL_METRIC_NAMES, Severity, type SignatureTreeOptions, type SimilarCandidate, type SimilarResult, type SnapshotInsert, SnapshotRow, type SnapshotSpec, type SourceChunk, type SourceLanguage, type StoredFinding, type StoredVerdict, type SummarizeConventionsResult, type Summarizer, SymbolConsumers, SymbolCouplingOptions, SymbolCouplingPair, type SymbolDossier, type SymbolFootprint, type SymbolLine, type SymbolSpan, TRUNCATION_SUFFIX, type TestCoverageOwnershipOptions, TestSourceLink, type TopMetricRow, TsMorphGraphExtractor, type TsMorphGraphExtractorOptions, UNIMPORTED_ROLES, type UnitProvenance, type UnitProvenanceInput, type UnitRegeneration, type ValidateRulesOptions, type VerdictCitation, type VerdictLabel, ViolationBuckets, aggregateMetrics, aliasChain, annotateRoles, assembleIndexerMetrics, attributeCoverage, buildAliases, buildContextBundle, buildContextDossier, buildConventionAreas, buildEmbedText, buildFileModuleNodes, buildIndexerMetrics, buildLineage, canonicalEdgeKind, canonicalMetricName, canonicalRole, carryForwardVerdicts, checkSnapshot, classifyRole, collectDeclaredNames, collectDeclaredSpans, compilePatterns, computeDeadCodeMetrics, computeDeepAst, computeFootprints, computeGrowthRiskMetrics, computeMetrics, computePageRank, computeRecencyWindows, computeRelevance, computeRoleHints, computeSourceMetrics, computeTestCoverageOwnership, createAliasChain, defaultTargetCount, describeMetric, describeMetrics, detectCommunities, detectGitHead, detectRenames, diffCheckResults, diffFootprints, diffSnapshots, edgeWeight, embedSnapshot, embedTextsCached, externalId, externalToFinding, fileId, findConventions, findSimilarCapability, findingKey, gateUnits, getConventionMap, getEdgeWeight, gitTreeSource, hashContent, hashEmbedText, hashText, importMarker, indexPaths, isGeneratedByHeuristic, isGeneratedFile, isInsideGitRepo, isMinifyLanguage, keyFindings, lineagePath, listEdges, listEdgesTouching, listEmbeddableSymbols, listFindings, listMetrics, listMetricsForNode, listNodes, listVerdicts, loadCheckRules, loadGeneratedPatterns, loadHistoryMetrics, loadLineage, loadRoleGlobs, matchesAny, minifySource, moduleId, normalizeFlaggedText, openCodeGraph, originalLine, packageId, parentModuleId, parseSymbolId, patternToRegex, percentileOf, planPrune, priorSnapshotForRef, pruneDanglingReferences, readSourceFiles, renderBundleText, renderContextMarkdown, renderSignatureTree, resolveAlias, resolveBarrelEdges, resolveChurnWindows, resolveGitRef, resolveSnapshot, runChecks, runPrune, saveFindings, saveVerdicts, snapshotPageRank, snapshotReferenceEdges, snapshotRelevance, snapshotSymbolConsumers, snapshotSymbolCoupling, snapshotViolations, structuralSignature, summarizeConventions, symbolId, symbolSetHash, toFindings, tryEmbedSnapshot, unitProvenance, validateRules, walkSourceFiles, windowSuffix, workingTreeSource };
+export { ALIAS_BASE_ATTR, ALL_ROLES, type AliasChain, type AliasChainInput, type AliasChainOptions, type AliasLoader, type AliasResolution, type AnnotateRolesOptions, type AssembledIndexerMetrics, BUNDLE_SCHEMA_VERSION, BlastRadiusEntry, type BundleBuildInput, type BundleEdge, type BundleEdges, COMMUNITY_SUMMARY_NAMESPACE, SCHEMA_VERSION as CONTEXT_SCHEMA_VERSION, COVERAGE_METRIC_NAME, type CachedEmbedResult, type CallPathOptions, type CheckDiff, CheckResult, CheckRule, type CheckSnapshotOptions, type CheckSnapshotResult, CheckViolation, CodeGraphStore, type Consumers, type ContextBuildInput, type ContextBundle, type ContextDossier, type ConventionArea, type ConventionCorpus, type ConventionCoverage, type ConventionMap, type ConventionMatch, type ConventionOptions, type ConventionQueryResult, type ConventionSymbol, type Coverage, DEAD_CODE_METRIC_NAMES, DEFAULT_CHURN_WINDOWS, DEFAULT_MAX_LINE_CHARS, DEFAULT_OUTLIER_MIN_SAMPLE, DOMAIN_DDL, type DeepAst, type DeepAstInput, type DiffCheckResultsOptions, type DiffFootprintsOptions, type DiffSnapshotsOptions, ELISION_MARKER, EXCEPTION_METRIC_NAMES, EdgeKind, type EmbedAttempt, type EmbedCoverage, type EmbedSnapshotResult, type EmbeddableSymbol, type ExternalDiagnostic, FINDING_DDL, type FileDossier, FileFingerprint, type FileOwnership, type FindConventionsOptions, type FindSimilarOptions, type Finding, type FindingKeyInput, type FootprintChange, type FootprintChangeReason, type FootprintDiff, type FootprintGraph, type FootprintOptions, type FootprintParts, type FootprintUnit, GROWTH_RISK_METRIC_NAMES, type GateResult, type GateUnitsInput, type GraphDiff, type GraphDiffSummary, GraphEdge, GraphFragment, GraphMetric, GraphNode, type HistoryMetricsOptions, INDEX_VERSION, IdAlias, IdAliasReason, type IndexOptions, type IndexResult, type IndexSource, type IstanbulCoverage, KIT, LanguageExtractor, type LanguageExtractorOptions, type LevelEdge, type LineSpan, type Lineage, type LineageSnapshot, type LineageStep, type LoadedHistory, METRIC_CATALOGUE, MIGRATIONS, type MemberInfo, type MetricAbsence, type MetricAggregate, type MetricDelta, type MetricDescriptor, type MetricDirection, type MetricRollup, type MetricSource, type MetricUnit, type MinifiedSource, type MinifyLanguage, NodeKind, NodeMetrics, type NodeRename, NodeRole, type PageRankOptions, type PageRankResult, type PageRankRow, type ParamInfo, type PriorSnapshotOptions, type ProjectedHop, type Provenance, type PruneOptions, type PrunePlan, type PruneResult, PythonGraphExtractor, type ReadFile, ReferenceEdgeLite, type RegenerateReason, type RelevanceOptions, type ResolveAliasOptions, type ReuseBasis, type RoleGlobs, type RoleHints, type RuleStore, type RunChecksOptions, SCHEMA_VERSION$1 as SCHEMA_VERSION, SNAPSHOT_SCOPED_TABLES, SOURCE_METRIC_NAMES, SYMBOL_EMBEDDING_NAMESPACE, SYMBOL_ID_SEP, SYMBOL_METRIC_NAMES, Severity, type SignatureTreeOptions, type SimilarCandidate, type SimilarResult, type SnapshotInsert, SnapshotRow, type SnapshotSpec, type SourceChunk, type SourceLanguage, type StoredFinding, type StoredVerdict, type SummarizeConventionsResult, type Summarizer, SymbolConsumers, SymbolCouplingOptions, SymbolCouplingPair, type SymbolDossier, type SymbolFootprint, type SymbolLine, type SymbolSpan, TRUNCATION_SUFFIX, type TestCoverageOwnershipOptions, TestSourceLink, type TopMetricRow, TsMorphGraphExtractor, type TsMorphGraphExtractorOptions, UNIMPORTED_ROLES, type UnitProvenance, type UnitProvenanceInput, type UnitRegeneration, type ValidateRulesOptions, type VerdictCitation, type VerdictLabel, ViolationBuckets, aggregateMetrics, aliasChain, annotateRoles, assembleIndexerMetrics, attributeCoverage, buildAliases, buildContextBundle, buildContextDossier, buildConventionAreas, buildEmbedText, buildFileModuleNodes, buildIndexerMetrics, buildLineage, canonicalEdgeKind, canonicalMetricName, canonicalRole, carryForwardVerdicts, checkSnapshot, classifyRole, collectDeclaredNames, collectDeclaredSpans, compilePatterns, computeDeadCodeMetrics, computeDeepAst, computeFootprints, computeGrowthRiskMetrics, computeMetrics, computePageRank, computeRecencyWindows, computeRelevance, computeRoleHints, computeSourceMetrics, computeTestCoverageOwnership, createAliasChain, defaultTargetCount, describeMetric, describeMetrics, detectCommunities, detectGitHead, detectRenames, diffCheckResults, diffFootprints, diffSnapshots, edgeWeight, embedSnapshot, embedTextsCached, externalId, externalToFinding, fileId, findCallPath, findConventions, findSimilarCapability, findingKey, gateUnits, getConventionMap, getEdgeWeight, gitTreeSource, hashContent, hashEmbedText, hashText, importMarker, indexPaths, isGeneratedByHeuristic, isGeneratedFile, isInsideGitRepo, isMinifyLanguage, keyFindings, lineagePath, listEdges, listEdgesTouching, listEmbeddableSymbols, listFindings, listMetrics, listMetricsForNode, listNodes, listVerdicts, loadCheckRules, loadGeneratedPatterns, loadHistoryMetrics, loadLineage, loadRoleGlobs, matchesAny, minifySource, moduleId, normalizeFlaggedText, openCodeGraph, originalLine, packageId, parentModuleId, parseSymbolId, patternToRegex, percentileOf, planPrune, priorSnapshotForRef, projectCallPath, pruneDanglingReferences, readSourceFiles, renderBundleText, renderContextMarkdown, renderSignatureTree, resolveAlias, resolveBarrelEdges, resolveChurnWindows, resolveGitRef, resolveSnapshot, runChecks, runPrune, saveFindings, saveVerdicts, snapshotCallPath, snapshotPageRank, snapshotReferenceEdges, snapshotRelevance, snapshotSymbolConsumers, snapshotSymbolCoupling, snapshotViolations, structuralSignature, summarizeConventions, symbolId, symbolSetHash, toFindings, tryEmbedSnapshot, unitProvenance, validateRules, walkSourceFiles, windowSuffix, workingTreeSource };
 
 // ./dist/browser.d.ts
 import { a as ChurnWindow, c as CoEditPair } from './change-coupling.js';
@@ -1889,6 +1925,176 @@ interface FileFingerprint {
      */
     structuralHash?: string;
 }
+
+interface PackageRoot {
+    /** Path relative to repo root, posix-separated (e.g., "packages/cli"). Empty for repo-root package. */
+    id: string;
+    /** Display name from package.json or directory basename. */
+    name: string;
+}
+/**
+ * For each file id, find the longest matching package prefix.
+ * Returns a Map from package id → file ids assigned to it.
+ * Files matching no package are returned under the empty-string key.
+ */
+declare function bucketFilesByPackage(fileIds: readonly string[], packages: readonly PackageRoot[]): Map<string, string[]>;
+
+/** One weighted dependency between two nodes of the same package. */
+interface WeightedLink {
+    src: string;
+    dst: string;
+    weight: number;
+}
+/** SCBench's dependency-graph measures over one package's call graph. Every ratio is 0 when its denominator is. */
+interface CallGraphMetrics {
+    nodes: number;
+    edges: number;
+    /** `cyclic_dependency_mass`: the share of call weight on edges inside a strongly connected component of two or more callables. */
+    cyclicDependencyMass: number;
+    /** `propagation_cost`: ordered pairs (a, b), a ≠ b, where b is reachable from a, over n(n − 1). */
+    propagationCost: number;
+    /** `dependency_entropy`: the mean over callables of the Shannon entropy of out-edge weights, normalized by log(out-degree); 0 at out-degree ≤ 1. */
+    dependencyEntropy: number;
+}
+/**
+ * Cyclic mass over a package's file imports, split by what closes the cycle. Both share one
+ * denominator, all import weight, so they sum to the cyclic mass of the whole import graph.
+ */
+interface ImportCyclicMass {
+    /** Weight of value imports inside cycles that value imports alone close. */
+    value: number;
+    /** The rest of the cyclic weight: cycles, or parts of them, that only type-only imports close. */
+    typeOnly: number;
+}
+interface PackageDependencyRow {
+    /** The {@link PackageRoot.id}; `""` for nodes under no package. */
+    packageId: string;
+    calls: CallGraphMetrics;
+    imports: ImportCyclicMass;
+}
+/** CY, PC and ENT over one graph, ignoring links to unlisted nodes; parallel links should already be merged into one weight. */
+declare function callGraphMetrics(nodeIds: readonly string[], allLinks: readonly WeightedLink[]): CallGraphMetrics;
+/** {@link ImportCyclicMass} over file imports between listed files, `typeOnly` marking the links that carry only types. */
+declare function importCyclicMass(fileIds: readonly string[], allLinks: readonly (WeightedLink & {
+    typeOnly: boolean;
+})[]): ImportCyclicMass;
+/**
+ * The SCBench dependency-graph measures per package: CY, PC and ENT over `calls` between the
+ * symbol nodes given, and cyclic import mass between the file nodes given. Only edges whose
+ * ends are both given, of the right kind and in one package count, so a call made at module
+ * level, which the extractors attribute to the file, is left out. PC costs O(n·(n + e)) per package, so there is
+ * deliberately no whole-tree row.
+ */
+declare function dependencyGraphMetrics(nodes: readonly GraphNode[], edges: readonly GraphEdge[], packages: readonly PackageRoot[]): PackageDependencyRow[];
+
+interface ReportContext {
+    nodes: readonly GraphNode[];
+    nodeById: Map<string, GraphNode>;
+    metricsByName: Map<string, Map<string, number>>;
+    excluders: readonly RegExp[];
+    excludedRoles: ReadonlySet<string>;
+    windowDays: ChurnWindow;
+    /** Metric-name suffix for {@link windowDays} (`30d` … or `lifetime`). */
+    windowSuffix: string;
+}
+interface ReportContextInput {
+    nodes: readonly GraphNode[];
+    metrics: readonly GraphMetric[];
+    excluders: readonly RegExp[];
+    excludedRoles: ReadonlySet<string>;
+    windowDays: ChurnWindow;
+}
+declare function buildReportContext(input: ReportContextInput): ReportContext;
+declare function keepNode(ctx: ReportContext, nodeId: string): boolean;
+declare function lookupMetric(ctx: ReportContext, name: string, nodeId: string): number | undefined;
+/**
+ * Files ranked by hotspot score: change frequency × complexity, the idea from
+ * Adam Tornhill's "Your Code as a Crime Scene" and CodeScene. High scores mark
+ * where change and complexity meet, a good place to look first.
+ */
+declare function topHotspots(ctx: ReportContext, limit: number): HotspotRow[];
+declare function hotspotScoreOf(ctx: ReportContext, nodeId: string): number;
+/** The complexity factor a file's hotspot score multiplies, read even when the file has no churn; undefined when unmeasured. */
+declare function hotspotComplexityOf(ctx: ReportContext, nodeId: string): number | undefined;
+declare function busFactorOf(ctx: ReportContext, nodeId: string): number | undefined;
+declare function topBusFactorRisks(ctx: ReportContext, limit: number): BusFactorRow[];
+/**
+ * Sources whose *test coverage* is a single-author silo (test bus factor = 1)
+ * — the honest, role-split view: production code can be well-spread while the
+ * tests that guard it are owned by one person (or vice versa).
+ */
+declare function topTestCoverageRisks(ctx: ReportContext, limit: number): TestCoverageRow[];
+declare function topCentralFiles(nodes: readonly GraphNode[], edges: readonly GraphEdge[], ctx: ReportContext, limit: number): CentralRow[];
+
+/** SCBench's `cc_high_count` cut: a callable above it counts toward erosion. */
+declare const HIGH_CC = 10;
+/** SCBench's `cc_extreme_count` cut. */
+declare const EXTREME_CC = 30;
+/** One measured function: its declaring file, both complexities and its source lines. */
+interface CallableComplexity {
+    fileId: string;
+    cyclomatic: number;
+    cognitive: number;
+    /** Non-blank, non-comment lines of the body; docstrings, the signature and a lone closing brace are not counted. */
+    sloc: number;
+}
+/**
+ * SCBench's complexity summary over a set of callables; the SCBench key each field ports
+ * is named on it. Every ratio is 0 when its denominator is.
+ */
+interface ComplexityDistribution {
+    callables: number;
+    /** Σ CC·√SLOC over every callable. */
+    mass: number;
+    /** `mass.high_cc_pct`: the share of {@link mass} in callables with CC above {@link HIGH_CC}. */
+    erosion: number;
+    /** Σ cognitive·√SLOC over every callable. */
+    cogMass: number;
+    /** `cog_erosion`: the share of {@link cogMass} in callables with cognitive above {@link HIGH_CC}. */
+    cogErosion: number;
+    /** `cc_max`. */
+    ccMax: number;
+    /** `cc_mean`. */
+    ccMean: number;
+    /** `cc_std`, the population standard deviation. */
+    ccStd: number;
+    /** `cc_high_count`: callables with CC above {@link HIGH_CC}. */
+    ccHighCount: number;
+    /** `cc_extreme_count`: callables with CC above {@link EXTREME_CC}. */
+    ccExtremeCount: number;
+    /** `high_cc_mean`: the mean CC of the callables {@link ccHighCount} counts. */
+    highCcMean: number;
+    /** `cc_concentration`: the Gini coefficient of CC across callables, 0 when spread evenly. */
+    ccGini: number;
+}
+interface PackageComplexityRow extends ComplexityDistribution {
+    /** The {@link PackageRoot.id}; `""` for files under no package. */
+    packageId: string;
+}
+interface ComplexityRollup {
+    /** Every callable at once, the figure scb-check reports for a whole tree. */
+    total: ComplexityDistribution;
+    /** One row per package with a callable, ordered by package id. */
+    packages: PackageComplexityRow[];
+}
+/** The report's `quality` section. */
+interface QualitySection {
+    /** SCBench erosion and the CC distribution, over named functions in kept files. */
+    complexity: ComplexityRollup;
+    /** SCBench CY, PC and ENT over each package's calls, and its cyclic import mass split value and type-only. */
+    dependencies: PackageDependencyRow[];
+}
+/** SCBench's complexity measures over `callables`, whatever unit they were gathered from. */
+declare function summarizeComplexity(callables: readonly CallableComplexity[]): ComplexityDistribution;
+/** {@link summarizeComplexity} for the whole set and for each package's share of it. */
+declare function complexityDistribution(callables: readonly CallableComplexity[], packages: readonly PackageRoot[]): ComplexityRollup;
+/**
+ * The SCBench rollups for the report's `quality` section. Symbols stand in for SCBench's
+ * callables, so a function with no symbol node of its own (a nested closure, an unexported
+ * helper the extractor does not name) is not counted. The same callables are the call graph's
+ * nodes, and kept files the import graph's.
+ */
+declare function qualitySection(nodes: readonly GraphNode[], ctx: ReportContext, packages: readonly PackageRoot[], edges: readonly GraphEdge[]): QualitySection;
 
 interface HotspotRow {
     nodeId: string;
@@ -2015,6 +2221,8 @@ interface GraphReportResult {
     /** User-facing guidance shown when emptyWindow is true. */
     hint?: string;
     drift?: ReportDrift;
+    /** SCBench-aligned code-quality rollups; absent from reports that did not compute them. */
+    quality?: QualitySection;
 }
 interface HotspotDelta {
     nodeId: string;
@@ -2049,45 +2257,6 @@ interface ReportDrift {
     newCoupling: CouplingRow[];
     intensifiedCoupling: CouplingDelta[];
 }
-
-interface ReportContext {
-    nodes: readonly GraphNode[];
-    nodeById: Map<string, GraphNode>;
-    metricsByName: Map<string, Map<string, number>>;
-    excluders: readonly RegExp[];
-    excludedRoles: ReadonlySet<string>;
-    windowDays: ChurnWindow;
-    /** Metric-name suffix for {@link windowDays} (`30d` … or `lifetime`). */
-    windowSuffix: string;
-}
-interface ReportContextInput {
-    nodes: readonly GraphNode[];
-    metrics: readonly GraphMetric[];
-    excluders: readonly RegExp[];
-    excludedRoles: ReadonlySet<string>;
-    windowDays: ChurnWindow;
-}
-declare function buildReportContext(input: ReportContextInput): ReportContext;
-declare function keepNode(ctx: ReportContext, nodeId: string): boolean;
-declare function lookupMetric(ctx: ReportContext, name: string, nodeId: string): number | undefined;
-/**
- * Files ranked by hotspot score: change frequency × complexity, the idea from
- * Adam Tornhill's "Your Code as a Crime Scene" and CodeScene. High scores mark
- * where change and complexity meet, a good place to look first.
- */
-declare function topHotspots(ctx: ReportContext, limit: number): HotspotRow[];
-declare function hotspotScoreOf(ctx: ReportContext, nodeId: string): number;
-/** The complexity factor a file's hotspot score multiplies, read even when the file has no churn; undefined when unmeasured. */
-declare function hotspotComplexityOf(ctx: ReportContext, nodeId: string): number | undefined;
-declare function busFactorOf(ctx: ReportContext, nodeId: string): number | undefined;
-declare function topBusFactorRisks(ctx: ReportContext, limit: number): BusFactorRow[];
-/**
- * Sources whose *test coverage* is a single-author silo (test bus factor = 1)
- * — the honest, role-split view: production code can be well-spread while the
- * tests that guard it are owned by one person (or vice versa).
- */
-declare function topTestCoverageRisks(ctx: ReportContext, limit: number): TestCoverageRow[];
-declare function topCentralFiles(nodes: readonly GraphNode[], edges: readonly GraphEdge[], ctx: ReportContext, limit: number): CentralRow[];
 
 /**
  * The set of files re-exported by a `barrel`-role node (1-hop `re-exports`
@@ -2654,19 +2823,6 @@ declare function classifyCoupling(a: string, b: string, ctx: SnapshotContext): C
 /** Order-independent key for an undirected file pair (JSON tuple; no in-band separator). */
 declare function pairKey(a: string, b: string): string;
 
-interface PackageRoot {
-    /** Path relative to repo root, posix-separated (e.g., "packages/cli"). Empty for repo-root package. */
-    id: string;
-    /** Display name from package.json or directory basename. */
-    name: string;
-}
-/**
- * For each file id, find the longest matching package prefix.
- * Returns a Map from package id → file ids assigned to it.
- * Files matching no package are returned under the empty-string key.
- */
-declare function bucketFilesByPackage(fileIds: readonly string[], packages: readonly PackageRoot[]): Map<string, string[]>;
-
 /**
  * Per-package and per-pair structural quality metrics, plus an overall
  * Newman-Girvan modularity Q for the package partition.
@@ -2834,7 +2990,7 @@ declare function testCoverageCountMetrics(links: readonly TestSourceLink[]): Gra
 /** Map each covered source to the set of test files that link to it. */
 declare function groupTestsBySource(links: readonly TestSourceLink[]): Map<string, Set<string>>;
 
-export { type HotExport as $, type ArchEdge as A, type BlastRadiusEntry as B, type CheckRule as C, DEFAULT_HEALTH_WEIGHTS as D, type EdgeKind as E, type FileFingerprint as F, type GraphNode as G, DEFAULT_MAX_PACKAGE_SIZE as H, type IdAlias as I, type DeadModuleConsumer as J, type DeadModuleRow as K, type DeadModuleView as L, type DeadModulesOptions as M, type NodeKind as N, EXTERNAL_BUCKET as O, type ExcessChange as P, type ForbidImportRule as Q, type ReferenceEdgeLite as R, type SnapshotRow as S, type TestSourceLink as T, type GraphReportResult as U, type ViolationBuckets as V, type GrowthRiskRow as W, type HealthComponent as X, type HealthComponentKey as Y, type HealthInput as Z, type HealthWeights as _, type GraphEdge as a, lookupMetric as a$, type HotspotDelta as a0, type HotspotRow as a1, type LayeredDepsRule as a2, type LinkMethod as a3, type LinkTestsOptions as a4, type MetricMaxRule as a5, type MetricMinRule as a6, type MetricOutlierRule as a7, type MetricProductMaxRule as a8, NODE_KINDS as a9, type ViolationIdentity as aA, aggregateEdges as aB, bucketFilesByPackage as aC, bucketViolations as aD, buildBlastRadius as aE, buildCentralFiles as aF, buildHotExports as aG, buildNodeMetrics as aH, buildReportContext as aI, buildSymbolCouplingPayload as aJ, busFactorOf as aK, classifyCoupling as aL, collectNodeMetrics as aM, collectSymbolUtil as aN, compareExcess as aO, computeArch as aP, computeHealth as aQ, computePartitionQuality as aR, computeReportDrift as aS, computeSymbolConsumers as aT, computeSymbolCoupling as aU, filteredFileIds as aV, groupTestsBySource as aW, hotspotScoreOf as aX, invertBuckets as aY, keepNode as aZ, linkTestsToSources as a_, NODE_ROLES as aa, type NewHotspot as ab, type NoImportCyclesRule as ac, type NoInternalOnlyBarrelsRule as ad, type PackageFlag as ae, type PackageLayer as af, type PackageRoot as ag, type PackageStats as ah, type PairCoupling as ai, type PairFlag as aj, type PartitionQualityInput as ak, type PartitionQualityResult as al, type PenaltyWeight as am, type ReportContext as an, type ReportContextInput as ao, type ReportDrift as ap, type SnapshotContext as aq, type SymbolConsumerGroup as ar, type SymbolConsumerRow as as, type SymbolCouplingPayload as at, type SymbolCouplingRow as au, type SymbolUtil as av, type TestCoverageRow as aw, type UnchangedViolation as ax, type UntestedRiskRow as ay, type UnusedExportRow as az, type GraphMetric as b, packagesReferencedByEdges as b0, pairKey as b1, publicApiFiles as b2, rebasedViolationKey as b3, referencedNodes as b4, testCoverageCountMetrics as b5, toSortedEdges as b6, topBusFactorRisks as b7, topCentralFiles as b8, topDeadModules as b9, topGrowthRisks as ba, topHotspots as bb, topTestCoverageRisks as bc, topUntestedRisks as bd, topUnusedExports as be, violationExcess as bf, violationKey as bg, hotspotComplexityOf as bh, type GraphFragment as c, type NodeRole as d, type IdAliasReason as e, type NodeMetrics as f, type SymbolConsumers as g, type SymbolCouplingOptions as h, type SymbolCouplingPair as i, type CheckResult as j, type CheckViolation as k, type Severity as l, type ArchPackage as m, type ArchResult as n, type ArchSubNode as o, type BucketableViolation as p, type BusFactorChange as q, type BusFactorRow as r, type CentralRow as s, type CheckRulesFile as t, type ComputeArchInput as u, type ComputeDriftInput as v, type CouplingClass as w, type CouplingDelta as x, type CouplingRow as y, type CycleKind as z };
+export { type GrowthRiskRow as $, type ArchEdge as A, type BlastRadiusEntry as B, type CheckRule as C, type CouplingClass as D, type EdgeKind as E, type FileFingerprint as F, type GraphNode as G, type CouplingDelta as H, type IdAlias as I, type CouplingRow as J, type CycleKind as K, DEFAULT_HEALTH_WEIGHTS as L, DEFAULT_MAX_PACKAGE_SIZE as M, type NodeKind as N, type DeadModuleConsumer as O, type DeadModuleRow as P, type DeadModuleView as Q, type ReferenceEdgeLite as R, type SnapshotRow as S, type TestSourceLink as T, type DeadModulesOptions as U, type ViolationBuckets as V, EXTERNAL_BUCKET as W, EXTREME_CC as X, type ExcessChange as Y, type ForbidImportRule as Z, type GraphReportResult as _, type GraphEdge as a, complexityDistribution as a$, HIGH_CC as a0, type HealthComponent as a1, type HealthComponentKey as a2, type HealthInput as a3, type HealthWeights as a4, type HotExport as a5, type HotspotDelta as a6, type HotspotRow as a7, type ImportCyclicMass as a8, type LayeredDepsRule as a9, type SnapshotContext as aA, type SymbolConsumerGroup as aB, type SymbolConsumerRow as aC, type SymbolCouplingPayload as aD, type SymbolCouplingRow as aE, type SymbolUtil as aF, type TestCoverageRow as aG, type UnchangedViolation as aH, type UntestedRiskRow as aI, type UnusedExportRow as aJ, type ViolationIdentity as aK, type WeightedLink as aL, aggregateEdges as aM, bucketFilesByPackage as aN, bucketViolations as aO, buildBlastRadius as aP, buildCentralFiles as aQ, buildHotExports as aR, buildNodeMetrics as aS, buildReportContext as aT, buildSymbolCouplingPayload as aU, busFactorOf as aV, callGraphMetrics as aW, classifyCoupling as aX, collectNodeMetrics as aY, collectSymbolUtil as aZ, compareExcess as a_, type LinkMethod as aa, type LinkTestsOptions as ab, type MetricMaxRule as ac, type MetricMinRule as ad, type MetricOutlierRule as ae, type MetricProductMaxRule as af, NODE_KINDS as ag, NODE_ROLES as ah, type NewHotspot as ai, type NoImportCyclesRule as aj, type NoInternalOnlyBarrelsRule as ak, type PackageComplexityRow as al, type PackageDependencyRow as am, type PackageFlag as an, type PackageLayer as ao, type PackageRoot as ap, type PackageStats as aq, type PairCoupling as ar, type PairFlag as as, type PartitionQualityInput as at, type PartitionQualityResult as au, type PenaltyWeight as av, type QualitySection as aw, type ReportContext as ax, type ReportContextInput as ay, type ReportDrift as az, type GraphMetric as b, computeArch as b0, computeHealth as b1, computePartitionQuality as b2, computeReportDrift as b3, computeSymbolConsumers as b4, computeSymbolCoupling as b5, dependencyGraphMetrics as b6, filteredFileIds as b7, groupTestsBySource as b8, hotspotScoreOf as b9, importCyclicMass as ba, invertBuckets as bb, keepNode as bc, linkTestsToSources as bd, lookupMetric as be, packagesReferencedByEdges as bf, pairKey as bg, publicApiFiles as bh, qualitySection as bi, rebasedViolationKey as bj, referencedNodes as bk, summarizeComplexity as bl, testCoverageCountMetrics as bm, toSortedEdges as bn, topBusFactorRisks as bo, topCentralFiles as bp, topDeadModules as bq, topGrowthRisks as br, topHotspots as bs, topTestCoverageRisks as bt, topUntestedRisks as bu, topUnusedExports as bv, violationExcess as bw, violationKey as bx, hotspotComplexityOf as by, type GraphFragment as c, type NodeRole as d, type IdAliasReason as e, type NodeMetrics as f, type SymbolConsumers as g, type SymbolCouplingOptions as h, type SymbolCouplingPair as i, type CheckResult as j, type CheckViolation as k, type Severity as l, type ArchPackage as m, type ArchResult as n, type ArchSubNode as o, type BucketableViolation as p, type BusFactorChange as q, type BusFactorRow as r, type CallGraphMetrics as s, type CallableComplexity as t, type CentralRow as u, type CheckRulesFile as v, type ComplexityDistribution as w, type ComplexityRollup as x, type ComputeArchInput as y, type ComputeDriftInput as z };
 
 // ./dist/change-coupling.d.ts
 /**
