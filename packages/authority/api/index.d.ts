@@ -91,6 +91,8 @@ interface ConditionFacts {
     merge?: MergeFacts;
     question?: QuestionFacts;
 }
+/** Whether a base-side path bars a MERGE carry across a merge-up; a path that cannot be compared exactly counts as fenced. */
+declare function isCarryFencedPath(path: unknown): boolean;
 /** The conditions that do not hold. Missing or non-plain facts fail every condition, so a caller that observed nothing gets nothing. */
 declare function unmetConditions(conditions: readonly ConditionKind[], facts: ConditionFacts | undefined): ConditionKind[];
 
@@ -206,4 +208,4 @@ declare function canResolve(table: PolicyTable, ruleId: string, resolver: {
 /** The owner-approved decision table, validated on load. The same data ships as `@titan-design/authority/table.json`. */
 declare const DEFAULT_TABLE: PolicyTable;
 
-export { ACTION_CLASSES, ACTOR_CLASSES, type ActionClass, type ActorClass, type AgentIdentity, type AuthorityRequest, CONDITION_KINDS, type CarryFact, type CheckRunFact, type ConditionFacts, type ConditionKind, DEFAULT_TABLE, DELEGATE_RESOLVER_CLASSES, type Decision, type DelegateResolverClass, EVIDENCE_KINDS, type EvidenceKind, MERGE_CONDITION_KINDS, type MergeConditionKind, type MergeFacts, type PolicyTable, QUESTION_CONDITION_KINDS, type QuestionConditionKind, type QuestionFacts, RESOLVER_CLASSES, type ResolverClass, type Rule, VERDICTS, type Verdict, canResolve, evaluate, policyTableSchema, unmetConditions };
+export { ACTION_CLASSES, ACTOR_CLASSES, type ActionClass, type ActorClass, type AgentIdentity, type AuthorityRequest, CONDITION_KINDS, type CarryFact, type CheckRunFact, type ConditionFacts, type ConditionKind, DEFAULT_TABLE, DELEGATE_RESOLVER_CLASSES, type Decision, type DelegateResolverClass, EVIDENCE_KINDS, type EvidenceKind, MERGE_CONDITION_KINDS, type MergeConditionKind, type MergeFacts, type PolicyTable, QUESTION_CONDITION_KINDS, type QuestionConditionKind, type QuestionFacts, RESOLVER_CLASSES, type ResolverClass, type Rule, VERDICTS, type Verdict, canResolve, evaluate, isCarryFencedPath, policyTableSchema, unmetConditions };

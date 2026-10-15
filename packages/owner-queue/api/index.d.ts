@@ -59,6 +59,7 @@ declare const ownerCardSchema: zod.ZodObject<{
         label: zod.ZodString;
         description: zod.ZodOptional<zod.ZodString>;
         consequence: zod.ZodOptional<zod.ZodString>;
+        anchors: zod.ZodOptional<zod.ZodArray<zod.ZodString>>;
     }, zod_v4_core.$strip>>>;
     recommended: zod.ZodOptional<zod.ZodObject<{
         optionId: zod.ZodString;
@@ -70,6 +71,12 @@ declare const ownerCardSchema: zod.ZodObject<{
     }, zod_v4_core.$strip>>;
     command: zod.ZodOptional<zod.ZodString>;
     evidenceRef: zod.ZodOptional<zod.ZodString>;
+    anchors: zod.ZodOptional<zod.ZodArray<zod.ZodString>>;
+    pins: zod.ZodOptional<zod.ZodObject<{
+        repo: zod.ZodString;
+        head: zod.ZodString;
+        base: zod.ZodOptional<zod.ZodString>;
+    }, zod_v4_core.$strict>>;
     keys: zod.ZodArray<zod.ZodString>;
     asker: zod.ZodOptional<zod.ZodString>;
     seat: zod.ZodOptional<zod.ZodString>;
@@ -567,6 +574,7 @@ declare const ownerItemSchema: z.ZodObject<{
         label: z.ZodString;
         description: z.ZodOptional<z.ZodString>;
         consequence: z.ZodOptional<z.ZodString>;
+        anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
     }, z.core.$strip>>>;
     recommended: z.ZodOptional<z.ZodObject<{
         optionId: z.ZodString;
@@ -578,6 +586,12 @@ declare const ownerItemSchema: z.ZodObject<{
     }, z.core.$strip>>;
     command: z.ZodOptional<z.ZodString>;
     evidenceRef: z.ZodOptional<z.ZodString>;
+    anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    pins: z.ZodOptional<z.ZodObject<{
+        repo: z.ZodString;
+        head: z.ZodString;
+        base: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>>;
     keys: z.ZodArray<z.ZodString>;
     asker: z.ZodOptional<z.ZodString>;
     seat: z.ZodOptional<z.ZodString>;
@@ -685,6 +699,7 @@ declare const ownerItemDepositSchema: z.ZodObject<{
         label: z.ZodString;
         description: z.ZodOptional<z.ZodString>;
         consequence: z.ZodOptional<z.ZodString>;
+        anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
     }, z.core.$strict>>>;
     recommended: z.ZodOptional<z.ZodObject<{
         optionId: z.ZodString;
@@ -695,6 +710,12 @@ declare const ownerItemDepositSchema: z.ZodObject<{
     }, z.core.$strict>>;
     command: z.ZodOptional<z.ZodString>;
     evidenceRef: z.ZodOptional<z.ZodString>;
+    anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    pins: z.ZodOptional<z.ZodObject<{
+        repo: z.ZodString;
+        head: z.ZodString;
+        base: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>>;
     keys: z.ZodDefault<z.ZodArray<z.ZodString>>;
     seat: z.ZodOptional<z.ZodString>;
     initiative: z.ZodOptional<z.ZodString>;

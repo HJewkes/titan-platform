@@ -18,7 +18,9 @@ This package is the pure core of that gate. It adds three primitives:
 
 - `planFixProof` turns `git diff -M --name-status <mergeBase> <head>` and the merge base's
   `.github/fix-proof.json` into the tests to run, the support files to carry, the tests the PR
-  deletes, and the old paths to remove from the overlay.
+  deletes, and the old paths to remove from the overlay. It also lists the PR's mutation specs
+  (`mutations`) and every path that is not test material (`source`); `testOnlyOf(plan)` is
+  true when `source` is empty.
 - `classifyReports` compares the base and head vitest JSON reports per test and returns a
   verdict: `reproduced`, `unproven`, `vacuous`, `no-tests` or `error`.
 - `formatResultLine` and `parseResultLine` encode that verdict as one `fix-proof/v1 <json>`
@@ -45,12 +47,16 @@ fix-proof run --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
 when it succeeds.
 
 1. Plans the diff `git diff -M --name-status <base> <head>` with the base's config.
-2. Adds a detached worktree at that side's commit. It runs `pnpm install --frozen-lockfile`
-   when a `pnpm-lock.yaml` is present, then the config's `build` (default `pnpm build`).
+2. Adds a detached worktree at that side's commit and installs from the lockfile in that tree:
+   `pnpm install --frozen-lockfile` for a `pnpm-lock.yaml`, or `npm ci --no-audit --no-fund` for a
+   `package-lock.json` with no `pnpm-lock.yaml` beside it. A tree with neither installs nothing.
+   It then runs the config's `build`, which defaults to `pnpm build`, or to
+   `npm run build --if-present` in an npm tree so a repo with no build script still reaches its tests.
 3. On the base side only, it then checks out the head's tests and carried files over the tree
    and removes `overlayRemovals`. The base install and build finish before any head file lands,
    so nothing the PR carries runs during them, and the base run still lacks the fix.
-4. Runs the config's `command` (default `pnpm exec vitest run`) with
+4. Runs the config's `command` (default `pnpm exec vitest run`, or `npm exec --no -- vitest run` in
+   an npm tree, which fails rather than downloads a vitest the repo does not install) with
    `--reporter=json --outputFile <tmp> --testTimeout 30000 <tests>` appended. The base side runs
    it twice, as `base.report` and `base-rerun.report`, so a reproducer that flaked green once
    can be ruled out. The head side writes `head.report`.
@@ -190,6 +196,30 @@ Every ambiguous, missing or malformed input classifies away from `reproduced`.
 - **Result lines are strict.** `parseResultLine` refuses a line over 4 KB, another version,
   an unknown field, duplicate or reordered keys, and a `reproduced` verdict with no
   reproducing test.
+
+## Test-only diffs and mutation specs
+
+A PR that only adds or changes tests, such as a characterization test, is vacuous under
+base-vs-head by construction. For such a PR the gate asks for mutations instead (TP-2732).
+
+- **Test-only.** A changed path is test material when it matches the base config's `tests` or
+  `carry` globs, `MUTATION_SPEC_GLOB` (`**/*.mutations.json`) or `CHANGESET_GLOB`
+  (`.changeset/*.md`), and is not under `FIX_PROOF_HARNESS`. Every other path, deleted ones and
+  both sides of a rename included, lands in `plan.source`. A copy's old path is unchanged, so it
+  does not count.
+- **Spec files.** A spec sits next to its test as `<test file minus extension>.mutations.json`,
+  for example `serve.test.mutations.json` beside `serve.test.ts`. Its shape is
+  `{ v: 1, mutations: [{ name, file, find, replace, kills }] }`.
+- **`parseMutationSpec(text)`** is strict. It refuses unknown keys, more than 5 mutations or
+  none, a duplicate or over-80-character `name`, a `find` or `replace` over 400 characters, a
+  `find` equal to its `replace`, an unnormalized `file`, and an empty or duplicate `kills` list.
+- **`checkMutation(mutation, baseText, config)`** checks one mutation against the merge base.
+  Its `file` must exist there (`baseText` null means it does not) and must not be a test, a
+  carried file, a spec, a changeset or a harness path. Its `find` must occur exactly once,
+  counting overlapping matches.
+
+Carried files count as test material on path alone. A fix placed in a carried file that
+production code imports would pass as test-only.
 
 ## What it deliberately does not do
 

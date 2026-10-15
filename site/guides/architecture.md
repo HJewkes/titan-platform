@@ -44,6 +44,7 @@ graph TD
     agentLifecycle["agent-lifecycle"]
     agentSurface["agent-surface"]
     daemon["daemon"]
+    frameCapture["frame-capture"]
     github["github"]
     health["health"]
     hitl["hitl"]
@@ -52,6 +53,9 @@ graph TD
     registry["registry"]
     retrieval["retrieval"]
     rpcClient["rpc-client"]
+    speechG2p["speech-g2p"]
+    speechStt["speech-stt"]
+    speechTts["speech-tts"]
     worktree["worktree"]
   end
   subgraph T2["Tier 2 · domain"]
@@ -69,6 +73,7 @@ graph TD
     sessionAnalytics["session-analytics"]
     sessionGraph["session-graph"]
     sessionRead["session-read"]
+    speechVet["speech-vet"]
     styleAnalyzer["style-analyzer"]
     styleChecker["style-checker"]
     styleProfile["style-profile"]
@@ -113,10 +118,12 @@ graph TD
   graphLayout --> codeGraph
   health --> storeSqlite
   hitl --> authority
+  hitl --> evidence
   hitl --> storeSqlite
   memory --> embed
   memory --> retrieval
   memory --> storeSqlite
+  ownerQueue --> evidence
   queueMirror --> hitl
   queueMirror --> matrixBus
   queueMirror --> storeSqlite
@@ -141,6 +148,8 @@ graph TD
   sessionRead --> agentProtocol
   sessionRead --> anthropicAccount
   sessionRead --> locator
+  speechVet --> speechG2p
+  speechVet --> speechStt
   styleAnalyzer --> codeParser
   styleAnalyzer --> styleProfile
   styleChecker --> styleAnalyzer
@@ -164,6 +173,9 @@ graph TD
   evals --> workflow
   explainer --> agent
   explainer --> agentProtocol
+  explainer --> evidence
+  explainer --> graphLayout
+  explainer --> speechVet
   factory --> agent
   factory --> agentDispatch
   factory --> appPaths
@@ -229,7 +241,7 @@ Same-tier edges such as `daemon --> registry`, `agent --> agent-lifecycle` and
 `session-graph --> session-read` are legal when they remain acyclic.
 
 <!-- generated:arch-leaves start -->
-`agent-protocol`, `anthropic-account`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `eslint-plugin`, `evidence`, `fix-proof`, `locator`, `rpc-protocol`, `store-sqlite`, `test-kit`, `agent-dispatch`, `agent-surface`, `github`, `matrix-bus`, `messaging`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
+`agent-protocol`, `anthropic-account`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `eslint-plugin`, `evidence`, `fix-proof`, `locator`, `rpc-protocol`, `store-sqlite`, `test-kit`, `agent-dispatch`, `agent-surface`, `frame-capture`, `github`, `matrix-bus`, `messaging`, `speech-g2p`, `speech-stt`, `speech-tts`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
 <!-- generated:arch-leaves end -->
 
 The [package families](/guides/package-families) guide groups the same packages by job.
