@@ -20,3 +20,20 @@ export {
   VOWELLESS_INTERJECTIONS,
   type InitialismOptions,
 } from "./initialisms.js";
+export {
+  ageStep,
+  cardinalStep,
+  currencyStep,
+  decimalStep,
+  DEFAULT_NORMALIZE_STEPS,
+  initialismStep,
+  normalize,
+  NUMBER_STEPS,
+  ordinalStep,
+  RATE_UNITS,
+  rateStep,
+  timeStep,
+  whitespaceStep,
+  type NormalizeStep,
+} from "./normalize.js";
+export { numberToOrdinal, numberToWords, spellDigits } from "./number-words.js";
