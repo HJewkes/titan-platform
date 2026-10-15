@@ -2,7 +2,14 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { loadTtsProfile, parseTtsProfile, providerEnvName, resolveTtsConfig, type TtsProfile } from "./config.js";
+import {
+  loadTtsProfile,
+  parseTtsProfile,
+  providerEnvName,
+  resolveTtsConfig,
+  type SpeechComponent,
+  type TtsProfile,
+} from "./config.js";
 
 const profile: TtsProfile = {
   version: 1,
@@ -88,5 +95,36 @@ describe("profile files", () => {
 
   it("rejects a document without version 1", () => {
     expect(() => parseTtsProfile({ tts: {} })).toThrow(/version/);
+  });
+});
+
+describe("profile runtime section", () => {
+  // Mutation caught: a profile without a tts section returns early and drops runtime.
+  it("keeps a runtime-only profile", () => {
+    const stt: SpeechComponent = "stt";
+    const raw = { version: 1, runtime: { device: { [stt]: "cpu" } } };
+
+    expect(parseTtsProfile(raw)).toEqual(raw);
+  });
+
+  it("keeps runtime beside tts", () => {
+    const raw = { version: 1, tts: { prefer: [], providers: {} }, runtime: { cacheDir: "/Volumes/Models/cache" } };
+
+    expect(parseTtsProfile(raw)).toEqual(raw);
+  });
+
+  it("refuses a device key that is not a speech component", () => {
+    expect(() => parseTtsProfile({ version: 1, runtime: { device: { gpu: "cuda" } } })).toThrow(
+      "profile: runtime.device.gpu is not tts, stt or phones",
+    );
+  });
+
+  it("refuses a non-string device or cacheDir", () => {
+    expect(() => parseTtsProfile({ version: 1, runtime: { device: { tts: 1 } } })).toThrow(/runtime\.device\.tts must be/);
+    expect(() => parseTtsProfile({ version: 1, runtime: { cacheDir: 7 } })).toThrow("profile: runtime.cacheDir must be a string");
+  });
+
+  it("refuses a runtime that is not an object", () => {
+    expect(() => parseTtsProfile({ version: 1, runtime: "cpu" })).toThrow("profile: runtime must be an object");
   });
 });
