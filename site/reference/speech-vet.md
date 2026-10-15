@@ -1,7 +1,7 @@
 # speech-vet
 
-**Tier 2.** Depends on [`speech-stt`](/reference/speech-stt) (for `SequenceMatcher` and
-`roundHalfEven`) and `zod`.
+**Tier 2.** Depends on [`speech-stt`](/reference/speech-stt) (for `SequenceMatcher`,
+`roundHalfEven`, `Transcript` and `SttCapabilities`) and `zod`.
 
 ```sh
 npm install @titan-design/speech-vet
@@ -33,7 +33,9 @@ pronunciation lexicon, or spell out initialisms before synthesis. Producing audi
 [`speech-tts`](/reference/speech-tts). The tokens `checkReadings` reads come from a G2P that
 this package does not run. Reach for the phone check when you hold narrated audio and must
 say whether a flagged word was mispronounced, or find babble and stray tail phones the voice
-added.
+added. Reach for `detectDefects` when you hold a chunk's source text and its transcript and
+want each mangled, dropped or muddy word, with an audio window to listen at and a likely
+cause.
 
 ## Example
 
@@ -91,6 +93,23 @@ checkHeardReadings("The show is [live](=verb)", tokens, "ðəʃoʊɪzlaɪv", { t
 // [{ word: "live", occurrence: 1, declared: "verb", heard: "adj", heardPhones: "laɪv", distance: 0, status: "fail" }]
 ```
 
+The defect check on a transcript, with the options read from the provider that made it:
+
+```ts
+import { whisperStt } from "@titan-design/speech-stt";
+import { defectOptionsFor, detectDefects } from "@titan-design/speech-vet";
+
+const words = [["chapter", 0], ["fifteen", 0.5], ["begins", 1]] as const;
+const transcript = {
+  text: "chapter fifteen begins",
+  words: words.map(([text, start]) => ({ text, start, end: start + 0.4 })),
+  segments: [],
+};
+detectDefects("chapter 50 begins", transcript, defectOptionsFor(whisperStt()));
+// [{ kind: "substitution", expected: "50", heard: "fifteen", severity: 0.23333333333333334,
+//    causes: ["number"], audioStart: 0.5, audioEnd: 0.9, context: "chapter 50 begins" }]
+```
+
 ## What it deliberately does not do
 
 Take selection is pure too: `synthesizeVerified` re-rolls a babbled take through a `synthesize`
@@ -122,6 +141,12 @@ source's preambles or boilerplate are steps the product writes.
   non-rhotic accent such as `en-gb` turns r-coloured words into false `xtts` faults.
 - The phone functions index by code point and round half to even, as the Python original
   does, so their output deep-equals the original's on the same phones.
+- `detectDefects` ignores word probabilities and segment confidence unless
+  `options.confidence` is true, and it defaults to false. Pass `defectOptionsFor(stt)`
+  rather than leaving the options out, or transcripts that carry token log-probs silently
+  lose that signal. `whisperStt` has none, so its flag stays off.
+- `detectDefects` keeps the original's number grammar, which stops at "and": "five hundred
+  and twenty" reads as 500 then 20.
 - `inconclusive` means the aligned span is under half the word's expected phones. The
   alignment collapsed, often after a near-duplicate word; neither verdict is safe.
 
@@ -132,4 +157,6 @@ an audiobook pipeline's pronunciation lexicon, initialism rules and text normali
 their names and assertion counts. The phone check is a port of the same pipeline's phoneme
 validation. Its 34 test cases run on recorded espeak-ng output, and a replay of 30
 owner-authored beats plus 10 perturbed or constructed cases checks every output against the
-original's.
+original's. The defect check is a port of that pipeline's defect detector; its tests keep
+the original's names, and 60 constructed cases replay the original's output with the flag on
+and off. `metaphone` matches jellyfish 1.2.1 (MIT).

@@ -27,9 +27,13 @@ nothing else needs a model runtime or native code.
   model frame for frame. `q8` is opt-in and gives **different verdicts**: it uses about 1.3 GB
   instead of 3 GB, but thresholds tuned on fp32 do not hold for it. Always pass `cacheDir`, and
   `dispose()` between phases. Feed chunk-length audio (30 s or less).
+- `alignWords(script, phones, logits, { vocab, voice })`: force-aligns a script to those logits
+  (`ctcForcedAlign` is the Viterbi underneath) and returns a `Word` per script word. `phones`
+  is one raw IPA string per word, from your G2P. `voice` is required: `"kokoro"` or `"xtts"`
+  shifts starts by a fitted offset, or pass `{ startOffsetS }`. Only starts are calibrated.
 
 ```ts
-import { align, diff, resample, wav2vec2Recognizer, whisperStt } from "@titan-design/speech-stt";
+import { align, alignWords, diff, resample, wav2vec2Recognizer, whisperStt } from "@titan-design/speech-stt";
 
 const audio16k = resample({ samples, sampleRate: 24000 }, 16000);
 const words = align(scriptWords, transcript.words);
@@ -39,6 +43,7 @@ const transcript = await whisperStt({ device: "cpu" }).transcribe(audio16k);
 
 const phones = wav2vec2Recognizer({ device: "cpu", cacheDir });
 const { phones: raw, logits } = await phones.recognizeWithLogits(audio16k);
+const timed = alignWords(scriptWords, ipaPerWord, logits, { vocab: phones.vocab, voice: "kokoro" });
 await phones.dispose();
 ```
 
