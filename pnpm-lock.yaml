@@ -728,6 +728,12 @@ importers:
         specifier: workspace:^
         version: link:../locator
 
+  packages/speech-stt:
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
   packages/speech-tts: {}
 
   packages/store-sqlite:
