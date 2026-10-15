@@ -42,6 +42,7 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@titan-design/speech-g2p": "workspace:*",
     "zod": "^4.4.3"
   }
 }
