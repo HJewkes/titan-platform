@@ -238,7 +238,10 @@ judge adds `mutants: { verdict, results: [{ spec, name, outcome, failed? }], err
   - `load-error`: the test file failed to load, or some test failed with a load or new-API
     message, such as `Cannot find module`.
   - `baseline`: a `kills` test did not pass exactly once in the baseline.
-  - `error`: the mutation's run is missing.
+  - `error`: the mutation's run is missing, or some test failed with anything but an
+    `AssertionError` (from an `expect` matcher or `node:assert`). A thrown TypeError, a
+    timeout or a crash is not a kill. Neither is a failure from `.rejects` or `.resolves`,
+    because vitest reports those as a plain `Error`.
 - **Fitting the 4 KB line.** `failed` lists the failing tests only for `overkill` and
   `survived`. To fit the line, the judge drops `killed` results before the others and keeps
   the verdict.

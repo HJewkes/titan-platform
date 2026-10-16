@@ -10,7 +10,8 @@ import type { DecodedMutants, MutantRun } from "./transport.js";
  * - `unbuilt`: the rebuild under the mutation failed.
  * - `load-error`: the test file failed to load, or some test failed with a load or new-API error.
  * - `baseline`: a `kills` test did not pass exactly once in the unmutated baseline run.
- * - `error`: the mutation's run is missing from the report.
+ * - `error`: the mutation's run is missing from the report, or some test failed with anything but an assertion failure:
+ *   a thrown TypeError, a timeout, a crash, or no failure message at all.
  */
 export const MUTANT_OUTCOMES = ["killed", "overkill", "survived", "unbuilt", "load-error", "baseline", "error"] as const;
 export type MutantOutcome = (typeof MUTANT_OUTCOMES)[number];
@@ -74,6 +75,13 @@ function passesOnceInBaseline(baseline: FileRun | undefined, kill: string): bool
   return runs.length === 1 && runs[0]?.status === "passed";
 }
 
+// expect matchers and node:assert both throw AssertionError; a timeout, a crash or any other throw is not evidence of a kill.
+const ASSERTION_FAILURE = /^\s*AssertionError(?: \[ERR_ASSERTION\])?:/;
+
+function failedOnAssertion(test: TestRun): boolean {
+  return test.failures.length > 0 && test.failures.every((message) => ASSERTION_FAILURE.test(message));
+}
+
 function failedUnder(run: FileRun): TestRun[] {
   return [...run.tests.values()].filter((test) => test.status === "failed");
 }
@@ -82,6 +90,7 @@ function outcomeOfRun(file: FileRun | undefined, kills: readonly string[]): Omit
   if (file === undefined) return { outcome: "error" };
   const failures = failedUnder(file);
   if (file.loadError || failures.some((test) => test.failures.some(isNewApiFailure))) return { outcome: "load-error" };
+  if (!failures.every(failedOnAssertion)) return { outcome: "error" };
   const failed = [...new Set(failures.map((test) => test.name))].sort();
   if (!kills.every((kill) => failed.includes(kill))) return { outcome: "survived", failed };
   return failed.length === kills.length ? { outcome: "killed" } : { outcome: "overkill", failed };

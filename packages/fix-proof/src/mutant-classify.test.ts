@@ -11,7 +11,7 @@ type Case = Status | { status: Status; message: string };
 
 function fileReport(tests: Record<string, Case>, file = TEST_FILE): unknown {
   const assertionResults = Object.entries(tests).map(([fullName, test]) => {
-    const { status, message } = typeof test === "string" ? { status: test, message: "expected 3, got -1" } : test;
+    const { status, message } = typeof test === "string" ? { status: test, message: "AssertionError: expected -1 to be 3 // Object.is equality" } : test;
     return { fullName, status, failureMessages: status === "failed" ? [message] : [] };
   });
   return { testResults: [{ name: file, status: assertionResults.some((test) => test.status === "failed") ? "failed" : "passed", assertionResults }] };
@@ -51,6 +51,32 @@ describe("classifyMutants", () => {
 
     expect(result.verdict).toBe("not-killed");
     expect(result.results[0]?.outcome).toBe("load-error");
+  });
+
+  it.each([
+    ["a TypeError", "TypeError: Cannot read properties of undefined (reading 'x')"],
+    ["a timeout", "Error: Test timed out in 5000ms."],
+    ["a plain thrown error", "Error: boom"],
+  ])("a kills test failing with %s is an error, not a kill", (_label, message) => {
+    const result = judged({ built: true, report: fileReport({ adds: { status: "failed", message }, subtracts: "passed" }) });
+
+    expect(result.verdict).toBe("not-killed");
+    expect(result.results[0]?.outcome).toBe("error");
+  });
+
+  it("a failed test with no failure message is not a kill", () => {
+    const report = { testResults: [{ name: TEST_FILE, status: "failed", assertionResults: [{ fullName: "adds", status: "failed", failureMessages: [] }, { fullName: "subtracts", status: "passed" }] }] };
+
+    expect(judged({ built: true, report }).results[0]?.outcome).toBe("error");
+  });
+
+  it.each([
+    ["an expect matcher", "AssertionError: expected 1 to be 2 // Object.is equality"],
+    ["node:assert", "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"],
+  ])("a kills test failing with %s is killed", (_label, message) => {
+    const result = judged({ built: true, report: fileReport({ adds: { status: "failed", message }, subtracts: "passed" }) });
+
+    expect(result.results[0]?.outcome).toBe("killed");
   });
 
   it("a test file that fails to load under the mutant is a load error", () => {

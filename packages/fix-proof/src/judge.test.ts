@@ -139,7 +139,7 @@ describe("judge with mutation specs", () => {
   const specText = (find = mutation.find) => JSON.stringify({ v: 1, mutations: [{ ...mutation, find }] });
 
   function zeroReport(status: "passed" | "failed"): unknown {
-    const failureMessages = status === "failed" ? ["expected 1 to be 0"] : [];
+    const failureMessages = status === "failed" ? ["AssertionError: expected 1 to be +0 // Object.is equality"] : [];
     return { testResults: [{ name: "src/math.test.ts", status, assertionResults: [{ fullName: "adds zero", status, failureMessages }] }] };
   }
 

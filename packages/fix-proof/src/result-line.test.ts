@@ -148,6 +148,32 @@ describe("the mutants field", () => {
     expect(parseResultLine(mutate(formatResultLine(killed()))).ok).toBe(false);
   });
 
+  it("drops killed mutants from the end first, then the others from the end", () => {
+    const named = (name: string, outcome: "killed" | "survived" | "unbuilt") => ({ spec: SPEC, name: name.padEnd(150, "."), outcome });
+    const results = [named("k0", "killed"), named("s0", "survived"), named("k1", "killed"), named("u0", "unbuilt"), named("k2", "killed")];
+    const mixed = { ...killed(), mutants: { verdict: "not-killed" as const, results: [...results, ...Array.from({ length: 30 }, (_, index) => named(`k${index + 3}`, "killed"))] } };
+
+    const parsed = parseResultLine(formatResultLine(mixed));
+    const kept = parsed.ok ? (parsed.result.mutants?.results ?? []).map((result) => result.name.replace(/\.+$/, "")) : [];
+
+    expect(parsed.ok && parsed.result.truncated).toBe(true);
+    expect(kept.filter((name) => !name.startsWith("k"))).toEqual(["s0", "u0"]);
+    const keptKilled = kept.filter((name) => name.startsWith("k"));
+    expect(keptKilled).toEqual(Array.from({ length: keptKilled.length }, (_, index) => `k${index}`));
+    expect(keptKilled.length).toBeLessThan(33);
+  });
+
+  it("drops non-killed mutants from the end once no killed mutant is left", () => {
+    const named = (index: number) => ({ spec: SPEC, name: `s${index}`.padEnd(150, "."), outcome: "survived" as const });
+    const big = { ...killed(), mutants: { verdict: "not-killed" as const, results: Array.from({ length: 40 }, (_, index) => named(index)) } };
+
+    const parsed = parseResultLine(formatResultLine(big));
+    const kept = parsed.ok ? (parsed.result.mutants?.results ?? []).map((result) => result.name) : [];
+
+    expect(kept.length).toBeLessThan(40);
+    expect(kept).toEqual(Array.from({ length: kept.length }, (_, index) => named(index).name));
+  });
+
   it("drops killed mutants before the ones a not-killed verdict rests on, and keeps the verdict", () => {
     const many = Array.from({ length: 60 }, (_, index) => ({ spec: SPEC, name: `killed ${index}`, outcome: "killed" as const }));
     const survived = { spec: SPEC, name: "the gap", outcome: "survived" as const, failed: [] };

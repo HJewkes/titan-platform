@@ -178,7 +178,8 @@ declare function decodeMutantsReport(text: string | undefined, options?: DecodeO
  * - `unbuilt`: the rebuild under the mutation failed.
  * - `load-error`: the test file failed to load, or some test failed with a load or new-API error.
  * - `baseline`: a `kills` test did not pass exactly once in the unmutated baseline run.
- * - `error`: the mutation's run is missing from the report.
+ * - `error`: the mutation's run is missing from the report, or some test failed with anything but an assertion failure:
+ *   a thrown TypeError, a timeout, a crash, or no failure message at all.
  */
 declare const MUTANT_OUTCOMES: readonly ["killed", "overkill", "survived", "unbuilt", "load-error", "baseline", "error"];
 type MutantOutcome = (typeof MUTANT_OUTCOMES)[number];
