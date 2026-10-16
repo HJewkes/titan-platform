@@ -10,7 +10,7 @@ const WEEK = /^(\d{4})-W(\d{2})$/;
  * The one owner-resolved predicate the audit and the weekly report share: an owner-class resolve made under no grant.
  * A delegate's resolve under a grant was not the owner's decision, so auditing it would audit the wrong person.
  */
-const isOwnerResolved = (gate: GateRecord): boolean => isOwnerTouch(gate) && gate.resolvedAt !== undefined;
+export const isOwnerResolved = (gate: GateRecord): boolean => isOwnerTouch(gate) && gate.resolvedAt !== undefined;
 
 /** `[start, end)` in epoch ms of an ISO week such as `2026-W41`; week 1 holds the year's first Thursday, so it holds 4 January. */
 export function weekBounds(week: string): { start: number; end: number } {
