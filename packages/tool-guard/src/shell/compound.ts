@@ -152,13 +152,13 @@ function scanCommandWord(r: RegexScan, t: Token, bare: string | null): void {
 }
 
 /**
- * bash reads `time`, then `-p` once, then `--` once, as a timespec; any further option word is the command. The lexer
- * must not open a `[[` bash does not, since `&&` and `||` inside one are words, so `-p` counts only directly after
- * `time` and `--` only directly after it or `-p`.
+ * zsh's `time` takes no option, and bash reads only `-p` and then `--`; the two disagree after either, so a `[[` there
+ * is not trusted to be a conditional (whose `&&` and `||` are words) and `-p`, `--` or a `time` after them leaves
+ * the state at "done". A `[[` opens only after no `time` or a bare one.
  */
 function nextTimeState(r: RegexScan, bare: string | null): TimeState {
   if (!r.commandStart) return "none";
-  if (bare === "time") return "time";
+  if (bare === "time") return r.timeState === "none" || r.timeState === "time" ? "time" : "done";
   if (r.timeState === "time" && bare === "-p") return "p";
   if (r.timeState === "time" && bare === "--") return "dash";
   if (r.timeState === "p" && bare === "--") return "done";
@@ -168,8 +168,7 @@ function nextTimeState(r: RegexScan, bare: string | null): TimeState {
 /** Counts the `case`s, `if`s and loops a word in command position opens or closes, and opens a `[[`. */
 function noteKeyword(r: RegexScan, bare: string | null): void {
   if (bare === null) return;
-  // 5.3 reads `time -- [[` as a conditional and older bash runs `--`, so neither reading is trusted.
-  if (bare === "[[" && r.timeState !== "dash") r.conditionalAt = r.depth;
+  if (bare === "[[" && (r.timeState === "none" || r.timeState === "time")) r.conditionalAt = r.depth;
   if (bare === "case") openCase(r);
   if (bare === "esac") closeCase(r);
   noteCaseBlock(r, bare);

@@ -69,7 +69,7 @@ export interface CaseFrame {
 }
 
 /** Tokens scanned so far, their paren depth, and the depths a `[[` and a `=~` in it sat at, or -1. */
-/** After `time`; after `time -p`; after `time --`, which bash versions disagree on; after `-p --`, past the options. */
+/** After `time`; after `time -p`; after `time --`; after `-p --`, or a `time` that follows an option: where bash and zsh read a command differently. */
 export type TimeState = "none" | "time" | "p" | "dash" | "done";
 
 export interface RegexScan {
