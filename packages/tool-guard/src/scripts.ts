@@ -2,7 +2,8 @@ import { INTERPRETERS, SHELLS } from "./mentions.js";
 import type { SimpleCommand } from "./shell/commands.js";
 import type { WordToken } from "./shell/lexer.js";
 import { resolvePath, resolveValue } from "./shell/path.js";
-import { shellOperands } from "./shell/shell-options.js";
+import { shellOperands, shellStdin } from "./shell/shell-options.js";
+import { UnknownStdinError } from "./shell/unsure-readings.js";
 
 /** A script a command runs by path: shell scripts are classified in full, others get the mention rule. */
 export interface ScriptTarget {
@@ -13,11 +14,16 @@ export interface ScriptTarget {
 export const SOURCERS: ReadonlySet<string> = new Set(["source", "."]);
 const INLINE_FLAG_RE = /^-[A-Za-z]*[ceEpm]$|^--(eval|print)(=|$)/;
 
-export function scriptTarget(cmd: SimpleCommand, home: string): ScriptTarget | null {
+/** The scripts a command runs by path; a shell runs every file on the descriptor it reads, as zsh's MULTIOS joins them. */
+export function scriptTargets(cmd: SimpleCommand, home: string): ScriptTarget[] {
   const name = cmd.name;
-  if (name === null) return null;
+  if (name !== null && SHELLS.has(name)) return shellTargets(cmd, home);
+  const one = name === null ? null : scriptTarget(cmd, name, home);
+  return one === null ? [] : [one];
+}
+
+function scriptTarget(cmd: SimpleCommand, name: string, home: string): ScriptTarget | null {
   if (SOURCERS.has(name)) return target(cmd, cmd.args[0], home, "shell");
-  if (SHELLS.has(name)) return shellTarget(cmd, home);
   if (INTERPRETERS.has(name)) return target(cmd, firstOperand(cmd.args, INLINE_FLAG_RE, new Set()), home, "interpreter");
   return cmd.path?.endsWith(".sh") ? typedTarget(cmd, cmd.path, home) : null;
 }
@@ -28,13 +34,17 @@ function typedTarget(cmd: SimpleCommand, typed: string, home: string): ScriptTar
   return path === null ? null : { path, kind: "shell" };
 }
 
-/** `bash x.sh`, or `bash < x.sh`. `bash -c` text and heredocs are already walked by `extractCommands`. */
-function shellTarget(cmd: SimpleCommand, home: string): ScriptTarget | null {
-  const { hasC, positional } = shellOperands(cmd.args, cmd.name);
-  const operand = hasC ? null : positional;
-  if (operand !== null) return target(cmd, operand, home, "shell");
-  const stdin = cmd.redirects.find((r) => r.op === "<");
-  return stdin ? target(cmd, stdin.target ?? undefined, home, "shell") : null;
+/**
+ * `bash x.sh`, or each file on the descriptor it runs: `bash < x.sh`, `bash /dev/stdin < x.sh`, `bash /dev/fd/3 3< x.sh`.
+ * A `-c` string may read stdin too. `bash -c` text and heredocs are already walked by `extractCommands`. A descriptor
+ * whose text the line cannot show is refused.
+ */
+function shellTargets(cmd: SimpleCommand, home: string): ScriptTarget[] {
+  const { scriptFile, sources, unknowable } = shellStdin(shellOperands(cmd.args, cmd.name), cmd.redirects, false);
+  if (unknowable) throw new UnknownStdinError();
+  const script = scriptFile === null ? null : target(cmd, scriptFile, home, "shell");
+  if (script !== null) return [script];
+  return sources.flatMap((s) => (s.kind === "file" ? [target(cmd, s.target, home, "shell")].filter((t): t is ScriptTarget => t !== null) : []));
 }
 
 /** The first non-option word, null when an option in `inline` means the program text is inline. */
