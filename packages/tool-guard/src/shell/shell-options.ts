@@ -26,7 +26,7 @@ interface ShellStdin {
 }
 
 /** The redirects that feed a descriptor, whether the pipe does, text a parent's pipe left there, and whether some source is unknowable. */
-export interface Feeds {
+interface Feeds {
   redirects: Set<RedirectToken>;
   pipe: boolean;
   texts: string[];
