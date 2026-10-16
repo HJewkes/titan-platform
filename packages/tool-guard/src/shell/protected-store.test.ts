@@ -76,6 +76,23 @@ describe("a command that stores into zsh's options parameter", () => {
     "compquote options",
     "typeset -n r=options",
     "typeset -n r; r=options",
+    "sysopen -m 600 -u options -w f",
+    "syswrite -c options x",
+    "zmodload -F -l -P options zsh/zutil",
+    "comparguments -O options",
+    "compvalues -O options",
+    "comptags -i options",
+    "compdescribe -g options",
+    "compfiles -p options",
+    "compadd -o -O options a",
+    "exec {options}>|f",
+    "{options}>f",
+    ": {options}<f",
+    ": {options}>>f",
+    ": {options}<>f",
+    ": {options}>&2",
+    "exec {options}<<<x",
+    ": {$n}>f",
   ])("reads %s as a write", (line) => {
     expect(protectedWrite(line)).toBeTruthy();
   });
@@ -94,6 +111,12 @@ describe("a command that stores into zsh's options parameter", () => {
     "syserror -e line",
     "zlistattr options line",
     "shift 1 line",
+    "zmodload zsh/zutil",
+    "syswrite x",
+    "exec 3>f",
+    "exec {fd}>f",
+    "echo {options}",
+    "compadd -o match a",
   ])("reads %s as no write", (line) => {
     expect(protectedWrite(line)).toBeNull();
   });
@@ -107,6 +130,12 @@ describe("the hooked-parameter reader on the writers added with the name set", (
     "zsystem flock -f PS4 f",
     "zgetattr f a PS4",
     "zlistattr f PS4",
+    "sysopen -m 600 -u PS4 -w f",
+    "syswrite -c PS4 x",
+    "zmodload -F -l -P PS4 zsh/zutil",
+    "comparguments -O PS4",
+    "compadd -o -A PS4 a",
+    "exec {PS4}>|f",
   ])("reads %s as a PS4 write", (line) => {
     expect(hookedWrite(line)).toBe("PS4");
   });

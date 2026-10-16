@@ -36,6 +36,9 @@ const DECLARE: WriterSpec = { flags: "aAfFgGhHiIklLmnprRtTuUxzEZ", numeric: "EFL
 
 const ZSTAT: WriterSpec = { names: "AH", values: "fF", flags: "gnNolLtTrs", operands: "none" };
 
+/** zsh/computil's builtins name the arrays they fill in operands whose positions depend on the mode, so each operand counts. */
+const COMPLETION_INTERNAL: WriterSpec = { anyFlag: true, operands: "names" };
+
 const SPECS: Record<string, WriterSpec> = {
   export: DECLARE, declare: DECLARE, typeset: DECLARE, local: DECLARE, readonly: DECLARE, private: DECLARE,
   integer: DECLARE, float: DECLARE,
@@ -60,16 +63,20 @@ const SPECS: Record<string, WriterSpec> = {
   sysread: { names: "c", values: "iost", operands: "names" },
   zregexparse: { flags: "c", operands: "names" },
   pcre_match: { names: "va", values: "n", flags: "b", operands: "none" },
-  zpty: { flags: "ebdtLrwnz", skip: 1, operands: "names" },
+  zpty: { flags: "ebdtLrwnm", skip: 1, operands: "names" },
   zsystem: { operands: "names" },
   syserror: { names: "e", values: "p", operands: "none" },
-  sysopen: { names: "u", values: "op", flags: "arwmnczx", operands: "none" },
+  sysopen: { names: "u", values: "mo", flags: "arw", operands: "none" },
+  syswrite: { names: "c", values: "o", operands: "none" },
+  zmodload: { names: "P", flags: "dLsiFabcpfIeARulm", operands: "none" },
   zgetattr: { flags: "h", skip: 2, operands: "names" },
   zlistattr: { flags: "h", skip: 1, operands: "names" },
   ztie: { values: "df", flags: "rzZS", operands: "names" },
   zcurses: { operands: "names" },
   shift: { flags: "p", operands: "names" },
-  compadd: { names: "OAD", values: "PSpsiIWdJVXxrRMEFo", flags: "UQqaklfn12C", operands: "none" },
+  compadd: { names: "OAD", values: "PSpsiIWdJVXxrRMEF", either: "o", flags: "UQqaklfn12C", operands: "none" },
+  comparguments: COMPLETION_INTERNAL, compvalues: COMPLETION_INTERNAL, compdescribe: COMPLETION_INTERNAL,
+  comptags: COMPLETION_INTERNAL, compfiles: COMPLETION_INTERNAL,
   compquote: { flags: "p", operands: "names" },
 };
 
@@ -111,6 +118,7 @@ export function writesProtectedParam(
     slotsHooked(slots, names) ??
     namerefHooked(cmd, names) ??
     expansionHooked([...words, ...cmd.args]) ??
+    fdVariableHooked([...words, ...cmd.args], redirects, names) ??
     arithmeticHookedIn(cmd, words, typeof slots === "string" ? [] : slots, redirects)
   );
 }
@@ -268,6 +276,23 @@ function namerefHooked({ name, args }: Unwrapped, names: ReadonlySet<string>): s
     const named = target === null ? undefined : TARGET_RE.exec(target)?.[1];
     if (named !== undefined && names.has(named)) return named;
     if (nameref && (named === undefined || (word.dynamic && /[$`]/.test(target ?? "")) || word.cuts?.length)) return word.value;
+  }
+  return null;
+}
+
+const FD_VARIABLE_RE = /^\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
+
+/**
+ * `exec {PS4}>f` stores a descriptor number into PS4. The lexer keeps `{PS4}` as a word with no sign of the
+ * redirection it belongs to, so any redirection on the command makes a `{name}` word a possible store, and so does
+ * a `{...}` word an expansion computes.
+ */
+function fdVariableHooked(words: WordToken[], redirects: RedirectToken[], names: ReadonlySet<string>): string | null {
+  if (redirects.length === 0) return null;
+  for (const word of words) {
+    const named = FD_VARIABLE_RE.exec(word.value)?.[1];
+    if (named !== undefined && names.has(named)) return named;
+    if (named === undefined && word.dynamic && /^\{[^{}]*[$`][^{}]*\}$/.test(word.value)) return word.value;
   }
   return null;
 }
