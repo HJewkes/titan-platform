@@ -1,3 +1,4 @@
+import { contentTerms } from "@titan-design/speech-vet";
 import type { L0Result } from "./eval-l0.js";
 import type { MapLayout } from "./map-state.js";
 import type { ScriptBeat, ScriptV1 } from "./script-schema.js";
@@ -10,25 +11,7 @@ export const sentencesOf = (text: string): string[] =>
 
 export const wordsOf = (text: string): string[] => text.split(/\s+/).filter((w) => /\w/.test(w));
 
-const STOPWORDS = new Set(
-  ("the a an and or but so of to in on at by for with from into onto as is are was were be been it its this that these those " +
-    "there their they them then than what which who whom where when why how does do did can could will would should may " +
-    "might must has have had not no one two three four five six seven eight nine ten every each all any some more most " +
-    "here now just also only very your you our we us his her he she chapter chapters about after before over under").split(" "),
-);
-
-// A crude suffix fold, enough for "reader", "reads" and "reading" to meet; no lexicon ships with it.
-const stem = (word: string): string => word.replace(/(ing|ers|er|ed|es|s)$/, "") || word;
-
-/** Lower-cased, stemmed content words, so "the reader" and "reads it" share a term. */
-export function contentTerms(text: string): Set<string> {
-  const terms = text
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((w) => w.length > 2 && !STOPWORDS.has(w))
-    .map((w) => (w.length > 4 ? stem(w) : w));
-  return new Set(terms);
-}
+export { contentTerms };
 
 export const sharesTerm = (a: string, b: string): boolean => {
   const left = contentTerms(a);

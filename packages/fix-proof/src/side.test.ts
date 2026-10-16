@@ -1,11 +1,11 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { GIT_SAFETY } from "./context.js";
 import { spawnExec, type Exec, type ExecResult } from "./exec.js";
-import { FIXED, makeRepo, REAL_TEST, removeRepos } from "./repo.test-helpers.js";
+import { FIXED, git, makeRepo, REAL_TEST, removeRepos } from "./repo.test-helpers.js";
 import { execSide, MAX_VITEST_REPORT_BYTES } from "./side.js";
 import { decodeReport } from "./transport.js";
 
@@ -67,6 +67,40 @@ async function sandboxedBase(options: StubOptions) {
 
 function readReports(out: string, names: readonly string[]) {
   return names.map((name) => decodeReport(fs.readFileSync(path.join(out, `${name}.report`), "utf-8")));
+}
+
+/** An executable that records it ran by creating `<dir>/ran`, then fails as a hostile fsmonitor or hook would be free to. */
+function markerScript(dir: string): { script: string; ran: string } {
+  const script = path.join(dir, "marker.sh");
+  const ran = path.join(dir, "ran");
+  fs.writeFileSync(script, `#!/bin/sh\ntouch '${ran}'\nexit 1\n`, { mode: 0o755 });
+  return { script, ran };
+}
+
+/** A head test file whose top-level code runs `plant` in the base side's tree before its "adds" test. */
+function plantingTest(plant: string): string {
+  return ['import { execFileSync, spawnSync } from "node:child_process";', 'import * as fs from "node:fs";', plant, REAL_TEST].join("\n");
+}
+
+// The base side runs the head's test code first, so whatever it plants in the shared .git is there for the head side.
+async function baseThenHead(files: Record<string, string>) {
+  const repo = makeRepo();
+  const head = repo.commit({ "src/math.ts": FIXED, ...files });
+  const out = outDir();
+  await execSide({ repo: repo.dir, base: repo.base, head, side: "base", out });
+  await execSide({ repo: repo.dir, base: repo.base, head, side: "head", out });
+  return { repo, reports: readReports(out, ["base", "head"]) };
+}
+
+// A runner's environment can carry its own core.hooksPath (GIT_CONFIG_COUNT), which would mask a hook the repo enables.
+async function withoutEnvGitConfig<T>(body: () => Promise<T>): Promise<T> {
+  const saved = Object.entries(process.env).filter(([key]) => key.startsWith("GIT_CONFIG"));
+  saved.forEach(([key]) => delete process.env[key]);
+  try {
+    return await body();
+  } finally {
+    saved.forEach(([key, value]) => (process.env[key] = value));
+  }
 }
 
 afterEach(() => {
@@ -134,8 +168,65 @@ describe("execSide", { timeout: 120_000 }, () => {
 
     await execSide({ repo: repo.dir, base: repo.base, head, side: "base", out: outDir(), exec });
 
-    expect(calls.map((args) => args.find((arg) => !arg.startsWith("-")))).toEqual(expect.arrayContaining(["worktree", "checkout"]));
+    const subcommand = (args: readonly string[]) => args.find((arg, index) => !arg.startsWith("-") && args[index - 1] !== "-c");
+    expect(calls.map(subcommand)).toEqual(expect.arrayContaining(["worktree", "checkout"]));
     calls.forEach((args) => expect(args.slice(0, GIT_SAFETY.length)).toEqual([...GIT_SAFETY]));
+  });
+
+  it("a core.fsmonitor that head test code plants on the base side never runs in the head side's worktree add", async () => {
+    const marker = markerScript(outDir());
+    const plant = `execFileSync("git", ["config", "core.fsmonitor", ${JSON.stringify(marker.script)}]);`;
+
+    const { repo, reports } = await baseThenHead({ "src/math.test.ts": plantingTest(plant) });
+
+    expect(git(repo.dir, ["config", "--get", "core.fsmonitor"])).toBe(marker.script);
+    expect(reports[1]?.ok && reports[1].report.testResults).toMatchObject([{ name: "src/math.test.ts", status: "passed" }]);
+    expect(fs.existsSync(marker.ran)).toBe(false);
+  });
+
+  it("a post-checkout hook that head test code plants on the base side never runs in the head side's worktree add", async () => {
+    const marker = markerScript(outDir());
+    const plant = [
+      'spawnSync("git", ["config", "--unset", "core.hooksPath"]);',
+      'const common = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { encoding: "utf-8" }).trim();',
+      'fs.mkdirSync(`${common}/hooks`, { recursive: true });',
+      `fs.copyFileSync(${JSON.stringify(marker.script)}, \`\${common}/hooks/post-checkout\`);`,
+      'fs.chmodSync(`${common}/hooks/post-checkout`, 0o755);',
+    ].join("\n");
+
+    const { repo, reports } = await withoutEnvGitConfig(() => baseThenHead({ "src/math.test.ts": plantingTest(plant) }));
+
+    expect(spawnSync("git", ["config", "--local", "--get", "core.hooksPath"], { cwd: repo.dir }).status).toBe(1);
+    expect(fs.existsSync(path.join(repo.dir, ".git", "hooks", "post-checkout"))).toBe(true);
+    expect(reports[1]?.ok && reports[1].report.testResults).toMatchObject([{ name: "src/math.test.ts", status: "passed" }]);
+    expect(fs.existsSync(marker.ran)).toBe(false);
+  });
+
+  it("a head test file named with pathspec magic overlays only itself", async () => {
+    const repo = makeRepo();
+    const name = ":(exclude)x.test.ts";
+    const head = repo.commit({ "src/math.ts": FIXED, [name]: REAL_TEST.replace('"./math"', '"./src/math"') });
+    const out = outDir();
+
+    await execSide({ repo: repo.dir, base: repo.base, head, side: "base", out });
+
+    const [base] = readReports(out, ["base"]);
+    expect(base?.ok && base.report.testResults).toMatchObject([{ name, status: "failed" }]);
+  });
+
+  it("the plan's git diff runs no external diff or textconv program", async () => {
+    const calls: (readonly string[])[] = [];
+    const exec: Exec = (file, args, options) => {
+      if (file === "git") calls.push(args);
+      return spawnExec(file, args, options);
+    };
+    const repo = makeRepo();
+    const head = repo.commit({ "src/math.ts": FIXED });
+
+    await execSide({ repo: repo.dir, base: repo.base, head, side: "head", out: outDir(), exec });
+
+    const diff = calls.find((args) => args.includes("diff"));
+    expect(diff).toEqual(expect.arrayContaining(["--no-ext-diff", "--no-textconv"]));
   });
 
   it("base side with a sandbox user runs every vitest call through the sandbox and chowns the tree first", async () => {

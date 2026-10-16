@@ -9,6 +9,10 @@ concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# onnxruntime-node would otherwise fetch CUDA binaries on install; no job uses them.
+env:
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -78,7 +82,38 @@ jobs:
       # redirect-corpus.test.ts runs every redirect form under real bash and zsh; it fails on CI without both.
       - name: Install zsh for the redirect corpus
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends zsh
-      - run: pnpm test
+      # frame-capture's tests drive a real headless Chromium, at the revision its pinned playwright-core expects.
+      # The browser is cached per playwright-core version; --with-deps still installs the system libraries each run.
+      - name: Read the playwright-core version
+        id: playwright
+        run: |
+          version=$(pnpm --filter @titan-design/frame-capture exec node -p "require('playwright-core/package.json').version")
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "could not read the playwright-core version (got '$version')" >&2; exit 1 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Restore the Chromium cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - name: Install Chromium for frame-capture
+        run: pnpm --filter @titan-design/frame-capture exec playwright-core install --with-deps --only-shell chromium
+      - name: Save the Chromium cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      # A pull request runs the packages its diff reaches through the workspace graph; main runs everything.
+      - name: Run the tests in scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: pnpm test:scope --run
       - name: Save vitest results
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v4
@@ -88,6 +123,12 @@ jobs:
       # CAPABILITIES.md and site/guides/capabilities.md are committed; a stale copy fails here.
       - run: pnpm capabilities:check
       - run: pnpm metrics:check
+      # Drift in agent-chat's roots only warns here: agent-chat moves independently, so it must not redden this required check.
+      - name: Check the sunset manifest against agent-chat main
+        run: |
+          git clone --depth 1 https://github.com/HJewkes/agent-chat "$RUNNER_TEMP/agent-chat"
+          echo "agent-chat main: $(git -C "$RUNNER_TEMP/agent-chat" rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          node scripts/sunset-manifest.mjs check --agent-chat "$RUNNER_TEMP/agent-chat" --agent-chat-drift warn
       # Unfiltered, unlike pages.yml's PR trigger: a package added without
       # site/reference/<name>.md has to redden the required check, not the deploy.
       - run: pnpm docs:build
@@ -143,11 +184,17 @@ jobs:
       # The key covers the indexer's own code, so a schema or extractor change misses; the ISO week in the
       # key and the restore-key bounds a stale chain to a week, so each week's first main run indexes cold.
       # Source only: after the build, node_modules and dist sit under the same package directories.
+      # A pull request may also seed from any graph at the same INDEX_VERSION, so a lockfile-only merge no longer
+      # sends every PR cold until main saves; the indexer refuses a basis from another version. Main stays exact.
       - name: Compute the cache key
         id: key
         env:
           SOURCE_HASH: ${{ hashFiles('packages/code-graph/src/**', 'packages/code-graph/package.json', 'packages/code-parser/src/**', 'packages/code-parser/package.json', 'packages/embed/src/**', 'packages/retrieval/src/**', 'packages/store-sqlite/src/**', 'scripts/dag-check-self.mjs', 'pnpm-lock.yaml') }}
-        run: echo "prefix=dag-graph-$SOURCE_HASH-$(date -u +%G-%V)-" >> "$GITHUB_OUTPUT"
+        run: |
+          iv=$(sed -n 's/^export const INDEX_VERSION = "\([0-9.]*\)";$/\1/p' packages/code-graph/src/indexer.ts)
+          test -n "$iv"
+          echo "version=dag-graph-iv$iv-" >> "$GITHUB_OUTPUT"
+          echo "prefix=dag-graph-iv$iv-$SOURCE_HASH-$(date -u +%G-%V)-" >> "$GITHUB_OUTPUT"
       - name: Restore the dag-check graph
         id: graph-cache
         uses: actions/cache/restore@v4
@@ -156,6 +203,7 @@ jobs:
           key: ${{ steps.key.outputs.prefix }}${{ github.sha }}
           restore-keys: |
             ${{ steps.key.outputs.prefix }}
+            ${{ github.event_name == 'pull_request' && steps.key.outputs.version || '' }}
       - name: Check the package DAG
         env:
           BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}

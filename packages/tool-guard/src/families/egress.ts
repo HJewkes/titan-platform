@@ -4,64 +4,14 @@ import type { WordToken } from "../shell/lexer.js";
 import { classified } from "../spellings.js";
 import type { SpellingId } from "../spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
-import { hasFlag, lastValue, readOptions, set, valuesOf } from "./options.js";
-import type { Options } from "./options.js";
+import { httpRequest, UNKNOWN_METHOD } from "./http-request.js";
+import { readOptions, set } from "./options.js";
 
 /** Hosts data may be sent to (D5). `registry.npmjs.org` is allowed for reads only, so it is absent. */
 const ALLOWED_HOSTS = set("github.com", "api.github.com", "localhost", "127.0.0.1", "::1");
 /** A host only known at run time; never allowed. */
 const UNKNOWN = "unknown";
-const UPLOAD_METHODS = set("POST", "PUT", "PATCH");
-
-const CURL_BODY = ["-d", "--data", "--data-raw", "--data-binary", "--data-urlencode", "--data-ascii", "--json", "-F", "--form", "--form-string", "-T", "--upload-file"];
-const CURL_VALUES = set(...CURL_BODY, "-X", "--request", "-H", "--header", "-o", "--output", "-u", "--user", "-A", "--user-agent", "-e", "--referer", "-b", "--cookie", "-c", "--cookie-jar", "-w", "--write-out", "-m", "--max-time", "--connect-timeout", "-x", "--proxy", "--retry", "-K", "--config", "--cacert", "--cert", "-E", "--key", "-r", "--range", "-C", "--continue-at", "-D", "--dump-header", "--resolve", "--connect-to", "--url", "--oauth2-bearer", "--unix-socket", "--output-dir", "--variable");
-const WGET_BODY = ["--post-data", "--post-file", "--body-data", "--body-file"];
-const WGET_VALUES = set(...WGET_BODY, "--method", "-O", "--output-document", "-o", "--output-file", "-a", "-e", "-U", "--user-agent", "-t", "-T", "-w", "-P", "-i", "--header");
-const HTTPIE_VALUES = set("-a", "--auth", "-A", "--auth-type", "-o", "--output", "--session", "--session-read-only", "-p", "--print", "-s", "--style", "--pretty", "--verify", "--cert", "--cert-key", "--timeout", "--proxy", "--raw", "--format-options", "--default-scheme");
-/** An httpie request item; the earliest separator decides its kind. */
-const HTTPIE_ITEM_RE = /==|:=@|:=|=@|=|@|:/;
-
-export interface HttpRequest {
-  method: string;
-  body: boolean;
-  urls: WordToken[];
-}
-
-/** The request `curl`, `wget`, `http` or `https` would send, or null for any other command. */
-export function httpRequest(cmd: SimpleCommand): HttpRequest | null {
-  if (cmd.name === "curl") return curlRequest(readOptions(cmd.args, CURL_VALUES));
-  if (cmd.name === "wget") return wgetRequest(readOptions(cmd.args, WGET_VALUES));
-  if (cmd.name === "http" || cmd.name === "https") return httpieRequest(readOptions(cmd.args, HTTPIE_VALUES));
-  return null;
-}
-
-function curlRequest(o: Options): HttpRequest {
-  const body = hasFlag(o, ...CURL_BODY);
-  const upload = hasFlag(o, "-T", "--upload-file");
-  const implied = hasFlag(o, "-G", "--get") ? "GET" : upload ? "PUT" : body ? "POST" : "GET";
-  const method = lastValue(o, "-X", "--request")?.value.toUpperCase() ?? implied;
-  return { method, body, urls: [...o.positionals, ...valuesOf(o, "--url")] };
-}
-
-function wgetRequest(o: Options): HttpRequest {
-  const body = hasFlag(o, ...WGET_BODY);
-  const method = lastValue(o, "--method")?.value.toUpperCase() ?? (body ? "POST" : "GET");
-  return { method, body, urls: o.positionals };
-}
-
-/** `http [METHOD] URL [ITEM...]`; `key=value`, `key:=json` and `key@file` items make a body, headers and `==` queries do not. */
-function httpieRequest(o: Options): HttpRequest {
-  const [first, ...rest] = o.positionals;
-  const explicit = first && /^[A-Z]+$/.test(first.value) ? first.value : null;
-  const [url, ...items] = explicit ? rest : o.positionals;
-  const body = hasFlag(o, "--raw") || items.some((i) => isBodyItem(i.value));
-  return { method: explicit ?? (body ? "POST" : "GET"), body, urls: url ? [url] : [] };
-}
-
-function isBodyItem(item: string): boolean {
-  const sep = HTTPIE_ITEM_RE.exec(item)?.[0];
-  return sep !== undefined && sep !== "==" && sep !== ":";
-}
+const UPLOAD_METHODS = set("POST", "PUT", "PATCH", UNKNOWN_METHOD);
 
 /** Host a URL word names, lowercased; `unknown` when the host part is only known at run time. */
 export function hostOf(word: WordToken): string {
@@ -82,17 +32,18 @@ function actionsFor(spelling: SpellingId, hosts: string[]): ClassifiedAction[] {
   return [...new Set(hosts)].filter((h) => !allowed(h)).map((host) => classified(spelling, { host }));
 }
 
-const HTTP_SPELLINGS: Record<string, SpellingId> = {
+const HTTP_SPELLINGS: Partial<Record<string, SpellingId>> = {
   curl: "bash.egress.curl-upload",
   wget: "bash.egress.wget-upload",
   http: "bash.egress.httpie",
   https: "bash.egress.httpie",
 };
 
-function upload(cmd: SimpleCommand): ClassifiedAction[] {
-  const request = httpRequest(cmd);
-  if (!request || !(request.body || UPLOAD_METHODS.has(request.method))) return [];
-  return actionsFor(HTTP_SPELLINGS[cmd.name ?? ""] as SpellingId, request.urls.map(hostOf));
+function upload(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
+  const request = httpRequest(cmd, ctx);
+  const spelling = HTTP_SPELLINGS[cmd.name ?? ""];
+  if (!request || !spelling || !(request.body || UPLOAD_METHODS.has(request.method))) return [];
+  return actionsFor(spelling, request.urls.map(hostOf));
 }
 
 const GH_GIST_WRITES = set("create", "new", "edit");
@@ -197,7 +148,7 @@ function pushUrl(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
 function bash(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
   if (cmd.name === "gh") return gist(cmd);
   if (cmd.name === "git") return pushUrl(cmd, ctx);
-  return [...upload(cmd), ...socket(cmd), ...remoteCopy(cmd), ...cloudCopy(cmd)];
+  return [...upload(cmd, ctx), ...socket(cmd), ...remoteCopy(cmd), ...cloudCopy(cmd)];
 }
 
 /** Named commands that send data off the machine: the EXT rows of the authority table. */

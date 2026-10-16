@@ -1,5 +1,5 @@
 import { Chain, SimpleCommand } from './shell/index.js';
-export { ExtractOptions, GitInvocation, OpToken, ParseError, ReadingLimitError, RedirectToken, SplitArgs, SubsToken, Token, VarRef, WordToken, Wrapping, extractCommands, parseGit, resolvePath, splitArgs, tokenize } from './shell/index.js';
+export { AliasTable, ExtractOptions, GitInvocation, OpToken, ParseError, ReadingLimitError, RedirectToken, SplitArgs, SubsToken, Token, VarRef, WordToken, Wrapping, extractCommands, parseGit, resolvePath, splitArgs, tokenize } from './shell/index.js';
 import { ActorClass, PolicyTable } from '@titan-design/authority';
 
 interface EventMeta {
@@ -88,6 +88,8 @@ interface ClassifyContext {
         chain: Chain;
         fallback: ClassifyContext;
     };
+    /** Set by the classifier when the line may choose or write the config file wget or curl reads. */
+    httpConfigUnseen?: true;
 }
 type GuardedAction = "merge" | "release" | "secret-read" | "authority-config" | "private-egress";
 /** What an event would do, with no actor attached. */

@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { RESYNC_CONCURRENCY, mapBounded, settledValue } from "./bounded.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { RESYNC_CONCURRENCY, ReadTimedOut, mapBounded, readValue, settledValue } from "./bounded.js";
+
+afterEach(() => vi.useRealTimers());
 
 /** A promise the test resolves or rejects from outside. */
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (reason: unknown) => void } {
@@ -46,6 +48,27 @@ describe("mapBounded", () => {
     expect(results.filter((_, i) => i !== 7)).toEqual(items.filter((i) => i !== 7).map((i) => ({ status: "fulfilled", value: `item ${i}` })));
   });
 
+  it("an item that never settles times out and the rest still resolve in order", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let settled = false;
+    const mapping = mapBounded([0, 1, 2], 2, (i) => (i === 1 ? new Promise<number>(() => undefined) : Promise.resolve(i * 10)), { timeoutMs: 1_000 }).finally(() => (settled = true));
+
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(settled).toBe(true);
+    const results = await mapping;
+    expect(results[0]).toEqual({ status: "fulfilled", value: 0 });
+    expect(results[1]).toMatchObject({ status: "rejected", reason: expect.any(ReadTimedOut) });
+    expect(results[2]).toEqual({ status: "fulfilled", value: 20 });
+  });
+
+  it("an item that answers before its deadline leaves no timer behind", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+    expect(await mapBounded([1, 2], 2, async (i) => i, { timeoutMs: 1_000 })).toEqual([1, 2].map((value) => ({ status: "fulfilled", value })));
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("returns no results for no items", async () => {
     expect(await mapBounded([], RESYNC_CONCURRENCY, async () => 1)).toEqual([]);
   });
@@ -57,5 +80,15 @@ describe("settledValue", () => {
 
     expect(settledValue({ status: "fulfilled", value: 3 })).toBe(3);
     expect(() => settledValue({ status: "rejected", reason: failure })).toThrow(failure);
+  });
+});
+
+describe("readValue", () => {
+  it("reads a timeout as no value and rethrows any other failure", () => {
+    const failure = new Error("store unavailable");
+
+    expect(readValue({ status: "fulfilled", value: "head" })).toBe("head");
+    expect(readValue({ status: "rejected", reason: new ReadTimedOut(1_000) })).toBeUndefined();
+    expect(() => readValue({ status: "rejected", reason: failure })).toThrow(failure);
   });
 });

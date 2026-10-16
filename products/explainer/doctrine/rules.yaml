@@ -78,6 +78,11 @@ rules:
     related: ["EL 5"]
     owner_support: none
     l0: { severity: error, status: implemented, checks: ["Q-V9"] }
+  - id: Q-V10
+    rule: "Every heteronym in spoken carries a reading declaration [w](=reading) or an override [w](/phonemes/), so a tagger change cannot flip it unheard"
+    fields: [beats.spoken]
+    owner_support: none
+    l0: { severity: error, status: implemented, checks: ["Q-V10"] }
 
   - id: Q-W1
     rule: 'Stake voiced before 15 %, by a named role or "you", with a number or artifact'
@@ -393,4 +398,33 @@ rules:
     fields: [beats.spoken]
     aliases: [K12]
     owner_support: none
-    judge: { layer: L2, status: pending, owner: SQ7 }
+    note: "`explainer eval cold` measures it: undefined items per chapter minute, from a viewer streamed one chapter at a time."
+    judge: { layer: L1, status: cited, rubric: rubrics/l1-cold.md }
+  - id: Q-E7
+    rule: "At most 4 new on-screen items a beat (cue targets, map reveals, pins, cards and new_terms)"
+    fields: [beats.visual, beats.new_terms]
+    related: [Q-F8, "SM M1"]
+    owner_support: for
+    note: "Owner feedback named two overloaded beats. Q-F8 still counts spoken names; this counts what is on screen too."
+    l0: { severity: error, status: implemented, checks: ["Q-E7"] }
+  - id: Q-E8
+    rule: "A beat with 4 or more new items gives each at least 2.0 s heard, or 4 spoken words when untimed; a PROMISE with at most 3 items plus a count is exempt"
+    fields: [beats.visual, beats.spoken, beats.plannedS, beats.function]
+    related: ["SM M2"]
+    owner_support: none
+    note: "A warning until one owner-labelled script beyond the calibration video agrees with it."
+    l0: { severity: warning, status: implemented, checks: ["Q-E8"] }
+  - id: Q-E9
+    rule: "At least 15 s from the end of a dense beat (fails Q-E7 or Q-E8) to the start of the next dense beat"
+    fields: [beats.visual, beats.plannedS]
+    related: ["SM M4"]
+    owner_support: none
+    note: "A warning until a timed human check confirms the 15 s gap."
+    l0: { severity: warning, status: implemented, checks: ["Q-E9"] }
+  - id: Q-E10
+    rule: "At most 20 new on-screen items a chapter minute"
+    fields: [beats.visual, beats.chapter, beats.plannedS]
+    related: [Q-E4, "SM M7"]
+    owner_support: none
+    note: "A warning: a call list or roadmap chapter may run fast on purpose."
+    l0: { severity: warning, status: implemented, checks: ["Q-E10"] }

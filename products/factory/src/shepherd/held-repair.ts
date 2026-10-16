@@ -5,7 +5,7 @@ import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { CHECKS_RECHECK_MS, greenAtHead } from "../workflows/await-head.js";
 import { codeRoute, step } from "../workflows/land.js";
 import type { LandPrState } from "../workflows/land-pr.js";
-import { rerunFlakyHead } from "./flake-check.js";
+import { headWasRerun, rerunFlakyHead } from "./flake-check.js";
 import { noticeHeldSeat } from "./gate-route.js";
 import type { GateRun } from "./gates.js";
 import type { ShepherdDeps, WakeRequest } from "./phases.js";
@@ -133,14 +133,22 @@ function recordedWithout(run: GateRun, records: (stepId: string) => boolean): bo
   return next !== undefined && !records(next);
 }
 
+const rerunUnlessRecorded = async (run: GateRun & { state: LandPrState }, kind: WakeRequest["kind"], headSha: string, payload: unknown): Promise<boolean> =>
+  !recordedWithout(run, isRerunStep) && rerunFlakyHead(run, kind, headSha, payload);
+
+/** A ci-red notice says the one rerun at this head is spent, because a seat that thinks the hold blocks CI deadlocks it. */
+const spentRerun = (run: GateRun & { state: LandPrState }, kind: WakeRequest["kind"], headSha: string): string =>
+  kind === "ci-red" && headWasRerun(run, headSha) ? `. Shepherd's one rerun of the failed jobs at this head is spent and the head is still red; a rerun that turns it green ends the wait and the review goes ahead with the hold kept` : "";
+
 /**
  * G10: a held run wakes no fixer and spends no repair, so nothing pushes while it is held. The seat is told once per
  * hold, head and cause, and the run waits. True means the head moved, or a ci-red head turned green as after a rerun,
  * and the next round lands and reads CI afresh, the hold kept; false means the run is not held, or its hold was
  * released at this head, and the repair goes ahead as usual. A head ends a wait on green once, so a ci-wait that still
  * reads it red holds it until release or a push.
- * A run that is not held first reruns a red head's failed jobs once, so a flaky check never wakes the implementer.
- * The hold check and the rerun shipped in separate deploys, so a replay checks its record before each: a record that
+ * A red head's failed jobs are rerun once per head, held or not, before anything else: a flaky check never wakes the
+ * implementer, and a held run never waits on a red that a rerun clears (TP-2836). A rerun pushes nothing, so G10 allows it.
+ * The hold check and the reruns shipped in separate deploys, so a replay checks its record before each: a record that
  * went on without one took the path from before it, and a run that landed on that path must not touch CI again.
  */
 export async function heldRepair(run: GateRun & { state: LandPrState }, kind: WakeRequest["kind"], headSha: string, payload: unknown): Promise<boolean> {
@@ -150,9 +158,10 @@ export async function heldRepair(run: GateRun & { state: LandPrState }, kind: Wa
   const untilGreen = kind === "ci-red" && !headsGreen(run).has(headSha);
   for (;;) {
     const hold = await step(run.ctx, ids.check, input, HeldCheckResult);
-    if (!hold.held) return !recordedWithout(run, isRerunStep) && rerunFlakyHead(run, kind, headSha, payload);
+    if (!hold.held) return rerunUnlessRecorded(run, kind, headSha, payload);
+    if (await rerunUnlessRecorded(run, kind, headSha, payload)) return true;
     const reason = hold.reason ?? "held";
-    const why = `the run is held (${reason}), so Shepherd woke no fixer for the ${kind} wake: ${causeOf(kind, payload)}`;
+    const why = `the run is held (${reason}), so Shepherd woke no fixer for the ${kind} wake: ${causeOf(kind, payload)}${spentRerun(run, kind, headSha)}`;
     await noticeHeldSeat(run, JSON.stringify(["held", reason, headSha, kind]), { headSha, why, ...(hold.seat && { seat: hold.seat }) });
     const waited = await step(run.ctx, ids.wait, { ...input, reason, ...(untilGreen && { untilGreen }) }, HeldWaitResult);
     if (waited.green === true) headsGreen(run).add(headSha);

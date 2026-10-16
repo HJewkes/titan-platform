@@ -71,10 +71,50 @@ describe("the G10 hold Shepherd places at registration", () => {
     expect(await holdOf(large)).toBe("g10-adversary: authority touch");
   });
 
-  it("holds a security kind g10-adversary whatever its paths", async () => {
+  it("holds a security kind with no sensitive path g10-review", async () => {
     const r = rig([file("packages/x/src/a.ts", 10)], "security");
 
+    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-review: security kind, no sensitive path");
+    expect(r.store.byRun("run-1")?.holdReason).toBe("g10-review: security kind, no sensitive path");
+  });
+
+  it("holds a large security kind with no sensitive path g10-review", async () => {
+    const r = rig([file("packages/x/src/a.ts", 500)], "security");
+
+    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toMatch(/^g10-review:/);
+  });
+
+  it("keeps a security kind on a tool-guard path g10-adversary", async () => {
+    const r = rig([file("packages/tool-guard/src/a.ts", 10)], "security");
+
     expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: security touch");
+  });
+
+  it("names only the path touch of a security kind on a policy path", async () => {
+    const r = rig([file("products/factory/src/shepherd/g10-release.ts", 10)], "security");
+
+    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: policy touch");
+  });
+
+  it("leaves a test-only change to a Shepherd policy file unheld", async () => {
+    const r = rig([file("products/factory/src/shepherd/g10-release.test.ts", 10)]);
+
+    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBeUndefined();
+  });
+
+  it.each(["src/leak-guard/scan.ts", "src/leak-guard/deep/x.ts", "src/agents/worker-self-grant.ts", "src/cli/verbs/permission-hook.ts", "src/broker/host-directory.ts"])(
+    "holds an agent-chat security path %s g10-adversary",
+    async (path) => {
+      const r = rig([file(path, 10)]);
+
+      expect(await holdOf(r)).toBe("g10-adversary: security touch");
+    },
+  );
+
+  it.each(["src/leak-guard/scan.test.ts", "src/broker/host-directory.test.ts"])("leaves a test file %s of an agent-chat security path unheld", async (path) => {
+    const r = rig([file(path, 10)]);
+
+    expect(await holdOf(r)).toBeUndefined();
   });
 
   it.each(["store-migrations.ts", "store.ts", "events.ts", "train.ts", "account-store.ts"])("holds a factory store migration in %s g10-review", async (name) => {
