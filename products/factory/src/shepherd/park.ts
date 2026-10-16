@@ -141,7 +141,8 @@ type ReviewerPark = ParkOutcome;
 /** Shepherd's own reviewers of this PR and their panel members that have exited; a running one is a running round, and the standing reviewer is never Shepherd's to park. */
 async function exitedReviewers(roster: RosterReader, registration: Registration): Promise<string[]> {
   const read = await roster.read();
-  if (read.kind === "unknown" || registration.pr === null) return [];
+  if (read.kind === "unknown") throw read.error;
+  if (registration.pr === null) return [];
   const own = isOwnReviewer(registration.repo, registration.pr);
   const exited = read.rows.filter((row) => own(row.name) && row.presence === "exited" && row.status !== "retired" && row.name !== registration.policy.reviewer);
   return [...new Set(exited.map((row) => row.name))];
@@ -156,7 +157,11 @@ function settleRetired(outcome: ParkOutcome): ParkOutcome {
 async function parkReviewers(store: ShepherdStoreRef, wiring: ParkWiring, runId: string, gone: readonly string[]): Promise<ReviewerPark[]> {
   const registration = store.get().byRun(runId);
   if (wiring.roster === undefined || registration === undefined) return [];
-  const names = (await exitedReviewers(wiring.roster, registration).catch(() => [])).filter((name) => !gone.includes(name));
+  const exited = await exitedReviewers(wiring.roster, registration).catch((error: unknown): undefined => {
+    console.error(`shepherd: ${registration.repo}#${registration.pr}: the roster could not be read, so no reviewer is parked this tick: ${error instanceof Error ? error.message : String(error)}`);
+    return undefined;
+  });
+  const names = (exited ?? []).filter((name) => !gone.includes(name));
   const outcomes: ReviewerPark[] = [];
   for (const name of names) outcomes.push(settleRetired(await attemptPark(wiring.park, name)));
   for (const outcome of outcomes) {

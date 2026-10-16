@@ -2,7 +2,7 @@ import { dispatchToAgentChat, messageAgent, resumeAgent, type AgentRow } from "@
 import { agentChatRoster, mutating, type RosterReader } from "./roster.js";
 import type { ReviewAsk, SpawnGate } from "./spawn-gate.js";
 
-export const AGENT_CALL_TIMEOUT_MS = 30_000;
+export const AGENT_CALL_TIMEOUT_MS = 90_000;
 
 export interface AgentChatOptions {
   /** The Claude config directory every spawn runs under; absent means agent-chat's default account. */

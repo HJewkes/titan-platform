@@ -1,5 +1,7 @@
 import { tmpdir } from "node:os";
-import { describe, expect, it } from "vitest";
+import { createServer, type Server } from "node:http";
+import { afterEach, describe, expect, it } from "vitest";
+import { UNAVAILABLE } from "./deploy-watch-window.js";
 import { deployPnpmEnv, runCommand, systemDeployPorts } from "./deploy-ports.js";
 
 const INSTALL = ["install", "--frozen-lockfile"];
@@ -77,5 +79,44 @@ describe("systemDeployPorts liveness", () => {
     const ports = systemDeployPorts(tmpdir());
 
     expect(ports.isAlive(process.pid)).toBe(true);
+  });
+});
+
+describe("systemDeployPorts healthWithin (A17: a rate-limited probe never rolls back)", () => {
+  let server: Server | undefined;
+  afterEach(() => void server?.close());
+
+  async function serving(status: number, headers: Record<string, string> = {}): Promise<number> {
+    server = createServer((_, res) => {
+      res.writeHead(status, { "content-type": "application/json", ...headers });
+      res.end(JSON.stringify({ ok: true }));
+    });
+    await new Promise<void>((done) => server!.listen(0, "127.0.0.1", done));
+    const address = server.address();
+    return typeof address === "object" && address !== null ? address.port : 0;
+  }
+
+  it.each([
+    [403, {}],
+    [403, { "x-ratelimit-remaining": "0" }],
+    [422, {}],
+    [429, { "retry-after": "30" }],
+    [429, {}],
+  ])("reads a %i answer as unavailable", async (status, headers) => {
+    const port = await serving(status, headers);
+
+    expect(await systemDeployPorts(tmpdir()).healthWithin(port, 2_000)).toBe(UNAVAILABLE);
+  });
+
+  it.each([500, 502, 503])("reads a %i answer as no answer, which still counts as an error", async (status) => {
+    const port = await serving(status);
+
+    expect(await systemDeployPorts(tmpdir()).healthWithin(port, 2_000)).toBeNull();
+  });
+
+  it("reads a 200 answer as the health body", async () => {
+    const port = await serving(200);
+
+    expect(await systemDeployPorts(tmpdir()).healthWithin(port, 2_000)).toEqual({ ok: true });
   });
 });

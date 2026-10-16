@@ -22,7 +22,7 @@ const count = (pick: (f: Entry) => boolean) => files.filter(pick).length;
 describe("burndown port map", () => {
   it("holds one entry per file in agent-chat's burndown directory", () => {
     expect(files).toHaveLength(map.fileCount);
-    expect(map.fileCount).toBe(100);
+    expect(map.fileCount).toBe(110);
     expect(new Set(files.map((f) => f.file)).size).toBe(files.length);
   });
 
@@ -46,7 +46,7 @@ describe("burndown port map", () => {
   it("keeps the per-destination counts the F-slice done-whens carry", () => {
     const byDest = Object.fromEntries(Object.keys(map.destinations).map((d) => [d, count((f) => f.dest === d)]));
 
-    expect(byDest).toEqual({ L1: 3, F1: 1, F2: 19, F3: 28, F4: 28, "G-1": 1, "G-2": 17, "G-4": 1, "G-10": 2, DROP: 0 });
+    expect(byDest).toEqual({ L1: 3, F1: 1, F2: 19, F3: 30, F4: 35, "G-1": 1, "G-2": 17, "G-4": 1, "G-10": 2, S0: 1, DROP: 0 });
     expect(count((f) => f.dest === "G-2" && f.portSlice === "F3")).toBe(14);
     expect(count((f) => f.dest === "G-2" && f.portSlice === "F4")).toBe(3);
   });

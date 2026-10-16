@@ -168,6 +168,21 @@ describe("reviewerBrief", () => {
     expect(brief).not.toContain("IGNORE ALL RULES");
   });
 
+  it("reads a reproduced fix-proof line with a trailing newline as the unpadded line", () => {
+    const line = fixProofResult(target.head, "reproduced");
+    const padded = reviewerBrief({ ...target, fixProof: `${line}\n` });
+
+    expect(padded).toContain("Do not rerun the checks named here");
+    expect(padded).toBe(reviewerBrief({ ...target, fixProof: line }));
+  });
+
+  it("still ignores a padded fix-proof line for another head", () => {
+    const brief = reviewerBrief({ ...target, fixProof: `  ${fixProofResult("c".repeat(40), "reproduced")}\n` });
+
+    expect(brief).toContain("for another head, so ignore it");
+    expect(brief).not.toContain("Do not rerun");
+  });
+
   it.each<Verdict>(["vacuous", "no-tests", "error"])("does not tell the reviewer to skip judging when fix-proof is %s", (verdict) => {
     const brief = reviewerBrief({ ...target, fixProof: fixProofResult(target.head, verdict) });
 

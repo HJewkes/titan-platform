@@ -12,8 +12,9 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_BASE = "origin/main";
 
 // Vitest matches these against absolute paths; a hit runs every file in the selected projects. Setting the option
-// replaces vitest's defaults, so the first two restate them.
-export const FORCE_RERUN_TRIGGERS = [
+// replaces vitest's defaults, so the first two restate them. picomatch's ** skips dot segments, so a bare **/ prefix
+// misses a checkout under .worktrees/ or ~/.cache; anchoring at the literal root matches through them.
+const RERUN_PATTERNS = [
   "**/package.json/**",
   "**/{vitest,vite}.config.*/**",
   "**/package.json",
@@ -22,6 +23,12 @@ export const FORCE_RERUN_TRIGGERS = [
   "**/tsconfig*.json",
   "**/scripts/fixtures/**",
 ];
+
+const escapeGlob = (path) => path.replace(/[\\*?[\]{}()!+@]/g, "\\$&");
+
+export function forceRerunTriggers(root = ROOT) {
+  return RERUN_PATTERNS.map((pattern) => `${escapeGlob(root)}/${pattern}`);
+}
 
 // The git-heavy files the TP-1685 kalloc sweep ranked highest; test:affected runs them only when their package changed.
 export const REPO_TIER_INCLUDE = [

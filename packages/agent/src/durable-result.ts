@@ -19,12 +19,13 @@ export function terminalFromHarnessResult<T, H extends Harness>(
     };
   }
   const reason = `${result.failure.kind}: ${result.failure.reason}`;
+  // Omitting empty usage keeps stored records for spend-free failures and cancellations unchanged.
+  const spend = result.usage.length > 0 ? { usage: result.usage } : {};
   if (result.failure.kind === "aborted" || result.failure.kind === "cancelled_unknown" || result.failure.kind === "wall_time_exceeded") {
-    return { outcome: "cancellation_unknown", reason, evidence: cancellationEvidence(result.failure) };
+    return { outcome: "cancellation_unknown", reason, evidence: cancellationEvidence(result.failure), ...spend };
   }
   // The shared failure contract does not prove the native invocation was absent.
-  // Omitting empty usage keeps stored records for spend-free failures unchanged.
-  return { outcome: "failed", reason, retryable: false, ...(result.usage.length > 0 ? { usage: result.usage } : {}) };
+  return { outcome: "failed", reason, retryable: false, ...spend };
 }
 
 function cancellationEvidence(failure: HarnessRunFailure): string {

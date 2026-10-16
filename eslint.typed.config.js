@@ -2,8 +2,9 @@
 // packages resolve each other's types through dist, and it is uncached: a file's verdict depends on other files.
 import tseslint from "typescript-eslint";
 
-const TYPED_FILES = [
+export const TYPED_FILES = [
   "packages/*/src/**/*.{ts,mts,cts,tsx}",
+  "packages/*/scripts/**/*.ts",
   "products/*/src/**/*.{ts,mts,cts,tsx}",
   "apps/codewatch/{src,server,scripts}/**/*.{ts,tsx}",
   "apps/console/{src,server}/**/*.{ts,tsx}",

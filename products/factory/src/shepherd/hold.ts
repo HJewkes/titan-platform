@@ -41,14 +41,18 @@ export interface HoldSatisfierDeps {
   carry?: (input: CarryInput) => Promise<CarryResult>;
 }
 
-/** A reviewer not on the roster, or one not provably independent of the code's authors, changes nothing; a read that fails, a damaged transcript included, withdraws a satisfaction at this head and never keeps or grants one. */
+/** A reviewer not on the roster, or one not provably independent of the code's authors, changes nothing; a read that fails, a damaged transcript included, withdraws a satisfaction at this head and never keeps or grants one. A roster outage leaves the hold as it is, so an existing satisfaction stays until the roster reads again. */
 export function holdSatisfier(deps: HoldSatisfierDeps): HoldSatisfier {
   return async (repo, pr, sha, baseRef) => {
     const store = deps.store();
     const registration = store.byPr(repo, pr);
     const reviewer = externalReviewer(registration);
     if (registration === undefined || reviewer === undefined) return;
-    const roster = await deps.roster().catch((): readonly ReviewerAgent[] => []);
+    const roster = await deps.roster().catch((error: unknown): undefined => {
+      console.error(`shepherd: ${repo}#${pr}: the roster could not be read, so the hold stays as it is: ${error instanceof Error ? error.message : String(error)}`);
+      return undefined;
+    });
+    if (roster === undefined) return;
     const row = latestSession(reviewer, roster);
     if (row === undefined || !independent(row, registration, roster, store)) return;
     const read = { repo, pr, head: sha, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 };
