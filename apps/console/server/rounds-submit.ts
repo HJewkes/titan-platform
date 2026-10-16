@@ -173,7 +173,8 @@ async function submitRound({ dir }: RoundsSource, args: SubmitArgs, now = new Da
   const manifestBytes = await readManifestBytes(roundDir);
   if (sha256(manifestBytes) !== args.manifestSha256) refuse(`${ROUND_FILE} has changed since it was shown; reload the round`);
   const manifest = parseManifest(manifestBytes);
-  if (manifest.variants.length > 0) refuse("a design round is answered in the review harness");
+  // A Ship round's variants are the PR's changed images, which the console's Ship view shows.
+  if (manifest.variants.length > 0 && !manifest.questions.some((question) => question.merge)) refuse("a design round is answered in the review harness");
   checkAnswers(manifest, args.answers);
   const headSha = shippedHead(manifest, args);
   const bytes = feedbackBytes(manifest, args, now);

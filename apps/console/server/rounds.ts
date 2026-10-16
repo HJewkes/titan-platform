@@ -9,6 +9,7 @@
  * open) up to a size cap, and only `rounds.frame` opens a path a manifest names, through
  * `round-frames.ts`. A round is `sent` once a `feedback.json` sits beside it.
  */
+import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, open, readdir, type FileHandle } from "node:fs/promises";
 import path from "node:path";
@@ -35,6 +36,14 @@ const roundStatus = z.enum(["open", "sent"]);
 type RoundStatus = z.infer<typeof roundStatus>;
 
 const roundHead = { id: z.string(), status: roundStatus, updatedAt: z.string().nullable() };
+
+/** The factory's outcome for a Ship or Send back answer (titan-console/gate-answer@1); absent until the listener writes one. */
+const gateAnswer = z.object({
+  status: z.enum(["resolved", "already", "moved", "gone", "refused", "off"]),
+  at: z.string(),
+  currentHead: z.string().optional(),
+  reason: z.string().optional(),
+});
 const invalidRound = z.object({ ...roundHead, valid: z.literal(false), reason: z.string() });
 
 const roundSummary = z.discriminatedUnion("valid", [
@@ -54,13 +63,18 @@ const roundDetail = z.discriminatedUnion("valid", [
   z.object({
     ...roundHead,
     valid: z.literal(true),
-    /** A round with frames is a design round; the console renders questions only, so it points to the harness. */
+    /** A round with frames and no merge-bound question is a design round, answered in the harness. */
     design: z.boolean(),
+    /** A round with a merge-bound pick-one: the console shows its frames and answers it with Ship or Send back. */
+    ship: z.boolean(),
+    /** The sha256 of the round.json shown, which `rounds.submit` binds an answer to. */
+    manifestSha256: z.string(),
     /** True while an after-answer round is unsent: every question's recommendation is stripped. */
     recommendationsWithheld: z.boolean(),
     /** Null unless the manifest's Storybook host is loopback. */
     storybookUrl: z.string().nullable(),
     manifest: z.custom<Manifest>(),
+    answer: gateAnswer.optional(),
   }),
   invalidRound,
 ]);
@@ -68,7 +82,7 @@ const roundDetail = z.discriminatedUnion("valid", [
 export type RoundSummary = z.infer<typeof roundSummary>;
 export type RoundDetail = z.infer<typeof roundDetail>;
 
-type Parsed = { ok: true; manifest: Manifest } | { ok: false; reason: string };
+type Parsed = { ok: true; manifest: Manifest; sha256: string } | { ok: false; reason: string };
 
 interface LoadedRound {
   id: string;
@@ -86,15 +100,16 @@ function schemaReason(error: z.ZodError): string {
   return more > 0 ? `${issues.join("; ")}; and ${more} more` : issues.join("; ");
 }
 
-function parseManifest(text: string): Parsed {
+function parseManifest(bytes: Buffer): Parsed {
   let json: unknown;
   try {
-    json = JSON.parse(text);
+    json = JSON.parse(bytes.toString("utf8"));
   } catch {
     return { ok: false, reason: `${ROUND_FILE} is not JSON` };
   }
   const result = RoundSchema.safeParse(json);
-  return result.success ? { ok: true, manifest: result.data } : { ok: false, reason: schemaReason(result.error) };
+  if (!result.success) return { ok: false, reason: schemaReason(result.error) };
+  return { ok: true, manifest: result.data, sha256: createHash("sha256").update(bytes).digest("hex") };
 }
 
 /** Reads at most one byte past the cap, so a file that grew after its fstat is still refused. */
@@ -131,7 +146,7 @@ export async function readManifest(roundDir: string): Promise<{ parsed: Parsed; 
     const tooBig = { ok: false as const, reason: `${ROUND_FILE} is over ${MAX_ROUND_BYTES} bytes` };
     if (stats.size > MAX_ROUND_BYTES) return { parsed: tooBig, updatedAt };
     const bytes = await readCapped(handle, MAX_ROUND_BYTES);
-    return { parsed: bytes === null ? tooBig : parseManifest(bytes.toString("utf8")), updatedAt };
+    return { parsed: bytes === null ? tooBig : parseManifest(bytes), updatedAt };
   } finally {
     await handle.close();
   }
@@ -156,12 +171,15 @@ export async function roundDirExists(dir: string, id: string): Promise<boolean> 
   return stats?.isDirectory() ?? false;
 }
 
+const isShip = (manifest: Manifest): boolean => manifest.questions.some((question) => question.kind === "pick-one" && question.merge !== undefined);
+const isDesign = (manifest: Manifest): boolean => manifest.variants.length > 0 && !isShip(manifest);
+
 function summaryOf({ id, status, updatedAt, parsed }: LoadedRound): RoundSummary {
   if (!parsed.ok) return { id, status, updatedAt, valid: false, reason: parsed.reason };
   const { manifest } = parsed;
   return {
     id, status, updatedAt, valid: true, unit: manifest.unit, round: manifest.round,
-    questions: manifest.questions.length, design: manifest.variants.length > 0, recommendations: manifest.recommendations,
+    questions: manifest.questions.length, design: isDesign(manifest), recommendations: manifest.recommendations,
   };
 }
 
@@ -177,8 +195,8 @@ function detailOf({ id, status, updatedAt, parsed }: LoadedRound): RoundDetail {
   const withheld = parsed.manifest.recommendations === "after-answer" && status === "open";
   const manifest = withheld ? { ...parsed.manifest, questions: parsed.manifest.questions.map(withoutRecommendation) } : parsed.manifest;
   return {
-    id, status, updatedAt, valid: true, design: manifest.variants.length > 0, recommendationsWithheld: withheld,
-    storybookUrl: isLoopbackUrl(manifest.storybookUrl) ? manifest.storybookUrl : null, manifest,
+    id, status, updatedAt, valid: true, design: isDesign(manifest), ship: isShip(manifest), manifestSha256: parsed.sha256,
+    recommendationsWithheld: withheld, storybookUrl: isLoopbackUrl(manifest.storybookUrl) ? manifest.storybookUrl : null, manifest,
   };
 }
 
