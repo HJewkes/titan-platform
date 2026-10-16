@@ -602,6 +602,10 @@ describe.each([
     expect(run()).toEqual([{ admittedBy: expected }]);
   });
 
+  it("an owner with a blank id still resolves, as it did before admission was reported", () => {
+    expect(admittedBy({}, { ...OWNER, id: " " })).toEqual([{ admittedBy: "owner-class" }]);
+  });
+
   it("a two-argument authorize still decides as before", () => {
     const { store, dispose } = build({ authorize: (_gate: unknown, resolver: GateResolver): { allowed: boolean } => ({ allowed: resolver.class === "owner-terminal" }) });
     disposers.push(dispose);

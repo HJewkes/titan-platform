@@ -57,8 +57,9 @@ export interface Admission {
  */
 export function resolverRefusal(gate: GateRecord, resolver: GateResolver, payload: unknown, admission: Admission): ResolverVerdict {
   const refusal = defaultResolverRefusal(resolver);
-  const admittedBy = refusal === undefined ? "owner-class" : widenedBy(gate, resolver, payload, admission);
-  if (admittedBy === undefined) return { refusal: refusal ?? "" };
+  if (refusal === undefined) return { admittedBy: "owner-class" };
+  const admittedBy = widenedBy(gate, resolver, payload, admission);
+  if (admittedBy === undefined) return { refusal };
   if (resolver.id.trim() === "") return { refusal: `actor class ${resolver.class} must name itself to resolve this gate` };
   return { admittedBy };
 }
