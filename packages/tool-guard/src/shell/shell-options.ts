@@ -4,7 +4,7 @@ import type { WordToken } from "./lexer.js";
 const LONG_VALUES = new Set(["--rcfile", "--init-file", "--emulate"]);
 const CLUSTER_RE = /^[-+][A-Za-z]+$/;
 
-export interface ShellOperands {
+interface ShellOperands {
   hasC: boolean;
   /** The `-c` string, or else a script file; null when there is none, or `-s` makes stdin the script. */
   positional: WordToken | null;
