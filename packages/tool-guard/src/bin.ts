@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { readWithin, runCli } from "./cli.js";
 import { nodeContext } from "./context.js";
+import { answerWithin, remainingMs, startWorker } from "./deadline.js";
 
 // Resolved, so a HOME set with a doubled or trailing slash still matches the guarded paths.
 const home = path.resolve(os.homedir());
@@ -37,6 +38,13 @@ process.exitCode = await runCli(process.argv.slice(2), {
   realpath: (p) => fs.realpathSync.native(p),
   now: () => new Date(),
   loadDecide: async () => (await import("./decide.js")).decide,
+  answer: (input) =>
+    answerWithin(input, {
+      env: process.env,
+      now: () => new Date(),
+      deadlineMs: remainingMs(performance.now()),
+      start: (text) => startWorker({ input: text, env: { ...process.env }, home }),
+    }),
   out: (line) => process.stdout.write(`${line}\n`),
   err: (line) => process.stderr.write(`${line}\n`),
 });

@@ -70,6 +70,8 @@ and appends one log line; otherwise it prints nothing. It never answers `ask` or
 | stdin that is not JSON, or a known tool with the wrong input shape | silent, one `error shape` line |
 | a Bash command that cannot be parsed | deny if its text, as typed or with quotes and backslashes removed and whitespace collapsed, names a guarded path, credential file name, `gh pr merge`, `/merge`, `publish`, `deploy` or `gist`; otherwise silent with an `error parse` line. A name spelled through a variable or glob is not seen |
 | a Bash command over 8 KiB | not classified; always denies, asking for shorter commands or a script file |
+| any call still unchecked 3.5 s after node starts (`HOOK_DEADLINE_MS`) | deny, asking to split the command into smaller Bash calls; one `deny` line with action `timeout`. An answer that arrives later is dropped |
+| any call whose worker thread throws, exits or answers with the wrong shape | deny, one `deny` line with action `crash` |
 | an authority table that cannot load | deny every classified call; unclassified calls are silent |
 
 The log is `$TITAN_TOOL_GUARD_LOG`, else
@@ -106,7 +108,11 @@ through a symlinked parent, is refused just before the append.
   `command` and `exec`, so `noglob git push origin HEAD:main` denies. The reading is generous:
   `command noglob git push` denies although zsh would fail to run it.
 - Claude Code treats a hook that times out or exits non-zero as a non-blocking error and runs
-  the call, so the bin exits 0 on every path.
+  the call, so the bin exits 0 on every path. The check runs in a worker thread, so the main
+  thread's deadline timer fires during a long synchronous classification; the bin then stops
+  the worker. The 3.5 s deadline leaves 1.5 s of the 5 s `timeout` in the printed settings entry
+  for node start-up, the deny and the log append. The worker adds about 50 ms to every call.
+  A crash of the bin's main thread still lets the call run.
 
 ## Where it came from
 

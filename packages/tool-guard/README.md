@@ -40,9 +40,13 @@ guarded file stays readable by that user. The OS account is the real boundary.
   `gh pr mer''ge` counts. A name spelled through a variable or a glob (`F=mrc; cat ~/.np$F`,
   `cat ~/.np*rc`) in an unparseable command is not seen and passes: D6's residual.
 - Claude Code treats a hook that times out (5 s) or crashes as a non-blocking error, so the
-  call runs. The bin exits 0 on every path and gives stdin 2 s. A Bash command over 8 KiB
-  (`MAX_COMMAND_BYTES`) is not classified, since padding could push classification past the
-  timeout. It denies whatever it names, and the reason asks for shorter commands or a script file.
+  call runs. The bin exits 0 on every path and gives stdin 2 s. It classifies in a worker
+  thread and denies any call it has not answered 3.5 s after node starts (`HOOK_DEADLINE_MS`),
+  or whose worker throws, exits or answers with the wrong shape; the reason asks the agent to
+  split the command (TP-3224). An answer arriving after the deadline is dropped. A crash of the
+  bin's main thread, or stdin that does not end within 2 s, still lets the call run. A Bash
+  command over 8 KiB (`MAX_COMMAND_BYTES`) is not classified: it denies at once, whatever it
+  names, and the reason asks for shorter commands or a script file.
 - `definesAlias` reads any word that is not wholly quoted and holds `*`, `?`, `[`, `^`, `#`,
   `~`, a leading `=` or a brace expansion as varying, since zsh may turn it into file names, a
   directory or a command's path. A `(` glob qualifier is already refused by the lexer. So

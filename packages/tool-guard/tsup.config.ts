@@ -1,7 +1,7 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: { index: "src/index.ts", "shell/index": "src/shell/index.ts", bin: "src/bin.ts" },
+  entry: { index: "src/index.ts", "shell/index": "src/shell/index.ts", bin: "src/bin.ts", deadline: "src/deadline.ts", "hook-worker": "src/hook-worker.ts" },
   format: ["esm"],
   dts: { entry: { index: "src/index.ts", "shell/index": "src/shell/index.ts" } },
   clean: true,
