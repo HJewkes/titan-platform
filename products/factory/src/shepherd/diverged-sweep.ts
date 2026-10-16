@@ -46,7 +46,7 @@ export async function restartDivergedRuns(ctx: FactoryContext, closing: () => bo
     try {
       const pr = await services.port.getPr(known.repo, known.pr);
       if (pr.state !== "open") {
-        const reason = pr.state === "closed" ? DIVERGED_PR_CLOSED : `replay diverged; PR ${pr.state}`;
+        const reason = DIVERGED_PR_CLOSED;
         ctx.host.runtime.cancel(known.runId, reason);
         sweep.ended.push({ runId: known.runId, reason });
         continue;
