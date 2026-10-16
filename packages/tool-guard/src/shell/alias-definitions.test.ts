@@ -35,8 +35,6 @@ describe("a command that defines a shell alias", () => {
     ["set -A aliases", "set -A aliases y git"],
     ["read -A saliases", "read -A saliases"],
     ["printf -v into an aliases element", "printf -v 'aliases[y]' git"],
-    ["an assigning expansion of aliases", ": ${aliases[y]::=git}"],
-    ["an assigning expansion as the command word", "${aliases[y]::=git}"],
     ["a dynamic command word with a definition operand", '"$C" y=git'],
     ["a dynamic command word with alias options first", '"$C" -g P=x'],
     ["a dynamic command word past a lone -", '"$C" - y=git'],
@@ -53,7 +51,6 @@ describe("a command that defines a shell alias", () => {
     ["a plain read of the alias table", ": $aliases"],
     ["an element store into BASH_ALIASES", "BASH_ALIASES[y]=git"],
     ["declare -A BASH_ALIASES", "declare -A BASH_ALIASES"],
-    ["an assigning expansion of BASH_ALIASES", ": ${BASH_ALIASES[y]:=git}"],
     ["enable with a dynamic option word", 'enable "$O" y'],
     ["printf -v with a dynamic name", 'printf -v "$n" x'],
     ["printf -v with a dynamic name attached", "printf -v$n x"],
@@ -289,8 +286,13 @@ describe("AliasDefinitionError", () => {
   });
 });
 
-describe("an indirect assigning expansion that would define an alias", () => {
-  it("is refused before the matcher reads it", () => {
-    expect(() => defines(": ${(P)n::=git}")).toThrow(ParseError);
+describe("an assigning expansion that would define an alias", () => {
+  it.each([
+    ["an indirect name", ": ${(P)n::=git}"],
+    ["an assigning expansion of aliases", ": ${aliases[y]::=git}"],
+    ["an assigning expansion as the command word", "${aliases[y]::=git}"],
+    ["an assigning expansion of BASH_ALIASES", ": ${BASH_ALIASES[y]:=git}"],
+  ])("is refused before the matcher reads it: %s", (_how, src) => {
+    expect(() => defines(src)).toThrow(ParseError);
   });
 });

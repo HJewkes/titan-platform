@@ -51,6 +51,21 @@ const REFUSED = [
   ["an assignment inside a double-quoted default", ': "${y:-${options[globsubst]::=on}}"'],
   ["a hooked name", ": ${module_path::=x}"],
   ["a rebinding name", ": ${nameddirs[x]::=/y}"],
+  ["a positional indirect name", "set -- PS4; : ${!1:=x}"],
+  ["a multi-digit positional indirect name", ": ${!10:=x}"],
+  ["a zsh positional indirect name", ": ${(P)1::=x}"],
+  ["a zsh indirect name of all arguments", ": ${(P)@::=x}"],
+  ["an indirect special parameter", ": ${!#=x}"],
+  ["an indirect name that is text", ": ${! x:=y}"],
+  ["a brace splice past the read window", `: {$,}{${",".repeat(700)}}{PS4:=x}`],
+  ["a brace splice with a long head", `: {$,${"a".repeat(700)}}{PS4:=x}`],
+  ["a pad flag width writing functions", ": ${(l:functions[ls]=1:)x}"],
+  ["a pad flag width writing aliases", ": ${(r:aliases[ls]=1:)x}"],
+  ["an index flag writing options", ": ${(I:options[globsubst]=1:)x#a}"],
+  ["an alias table element", ": ${aliases[ls]::=git}"],
+  ["a global alias table element", ": ${galiases[ls]::=git}"],
+  ["a suffix alias table element", ": ${saliases[ls]::=git}"],
+  ["a bash alias table element", ": ${BASH_ALIASES[ls]=git}"],
 ] as const;
 
 /** Text the lexer reads as a quoted word; the command walk lexes it again where `eval` or `-c` runs it. */
@@ -73,6 +88,9 @@ const PASSED = [
   ["a longer name that starts like a protected one", ": ${optionsx::=1} ${PS44:=x}"],
   ["a flag argument holding a P", ": ${(j:P:)x}"],
   ["a quoted P", "echo '${(P)n::=x}'"],
+  ["a positional indirect read", "echo ${!1} ${(P)1} ${(P)@:-x} ${!#}"],
+  ["a pad flag width that only reads", ": ${(l:width:)x} ${(l:5:)x}"],
+  ["a literal dollar and comma far from any brace", `echo '$,' ${"a".repeat(700)}`],
 ] as const;
 
 describe("an assigning expansion with an indirect, nested or protected target is refused by the lexer (TP-3172)", () => {

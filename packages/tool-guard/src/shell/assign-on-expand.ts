@@ -1,4 +1,4 @@
-import { HOOKED, mentionedIn } from "./hooked-names.js";
+import { HOOKED } from "./hooked-names.js";
 import { dropJoins, nextAfter } from "./joins.js";
 import { PROTECTED } from "./protected-params.js";
 
@@ -14,6 +14,9 @@ const MATH_FLAGS = new Set(["l", "r", "I"]);
 const NESTED_NAME_RE = /[$`'"]/;
 /** Brace expansion run on `{$,}{NAME:=x}` leaves `${NAME:=x}` for bash to expand: a `$` ending an alternative, then a brace group holding an `=`. */
 const BRACE_SPLICE_RE = /^[,}][^]*\{[^]*=/;
+const BRACE_SPLICE_START_RE = /^[,}]/;
+/** The positional and special parameters an indirect expansion may name: `${!1}`, `${(P)@}`, `${!#}`. */
+const SPECIAL_NAME_AT_RE = /[0-9]+|[-@*#?$!]/y;
 const ASSIGN_OPERATOR_AT_RE = /:{0,2}=/y;
 /** What an assign-on-expand through a name the shell resolves writes: only known at run time. */
 const INDIRECT = Symbol("indirect");
@@ -62,7 +65,7 @@ function expansionHead(
   let indirect = text[i] === "!";
   if (indirect) i++;
   else if (text[i] === "(") {
-    const group = flagGroup(text, i + 1);
+    const group = flagGroup(text, i + 1, names);
     if (group === null) return "cut";
     if (group.evaluated !== null) return { evaluated: group.evaluated };
     indirect = group.indirect;
@@ -71,7 +74,7 @@ function expansionHead(
   if (indirect && NESTED_NAME_RE.test(text.charAt(i))) return "cut";
   IDENTIFIER_AT_RE.lastIndex = i;
   const name = IDENTIFIER_AT_RE.exec(text)?.[0];
-  if (name === undefined) return null;
+  if (name === undefined) return indirect ? indirectSpecial(text, i) : null;
   const target = indirect ? INDIRECT : names.has(name) ? name : null;
   return { target, end: i + name.length };
 }
@@ -86,7 +89,22 @@ export function assignsProtectedAt(src: string, dollar: number): boolean {
   const open = nextAfter(src, dollar);
   const body = dropJoins(src.slice(open, open + MAX_BODY));
   if (body.startsWith("{")) return assignedAt(body, 1, PROTECTED) !== null;
-  return BRACE_SPLICE_RE.test(body);
+  if (!BRACE_SPLICE_START_RE.test(body)) return false;
+  // a window that ends before a decision cannot show that no assigning group follows
+  return BRACE_SPLICE_RE.test(body) || src.length > open + MAX_BODY;
+}
+
+/** An indirect name that is no identifier, `${!1}` or zsh `${(P)@}`, still names a parameter at run time; any other text there is unreadable. */
+function indirectSpecial(text: string, at: number): { target: typeof INDIRECT; end: number } | "cut" {
+  SPECIAL_NAME_AT_RE.lastIndex = at;
+  const special = SPECIAL_NAME_AT_RE.exec(text)?.[0];
+  return special === undefined ? "cut" : { target: INDIRECT, end: at + special.length };
+}
+
+/** The first name in `names` the text mentions as a whole identifier. */
+function mentionedIn(text: string, names: ReadonlySet<string>): string | null {
+  for (const word of text.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? []) if (names.has(word)) return word;
+  return null;
 }
 
 /** zsh `${=…}`, `${~…}`, `${^…}`, `${#…}`, `${+…}` and their doubled forms, before or after a flag group; each still assigns. */
@@ -101,7 +119,7 @@ function skipZshPrefixes(text: string, at: number): number {
  * take arguments in their own delimiters, which may hold `)`, `P` or `$`. Null when it does not close within
  * `MAX_FLAG_GROUP` characters, which also bounds the work per `${`.
  */
-function flagGroup(text: string, from: number): { indirect: boolean; evaluated: string | null; end: number } | null {
+function flagGroup(text: string, from: number, names: ReadonlySet<string>): { indirect: boolean; evaluated: string | null; end: number } | null {
   const limit = Math.min(text.length, from + MAX_FLAG_GROUP);
   let indirect = false;
   let evaluated: string | null = null;
@@ -112,7 +130,7 @@ function flagGroup(text: string, from: number): { indirect: boolean; evaluated: 
     else if (FLAG_ARG_COUNTS.has(flag)) {
       const end = flagArgs(text, i + 1, FLAG_ARG_COUNTS.get(flag) ?? 1, limit);
       if (end < 0) return null;
-      if (MATH_FLAGS.has(flag)) evaluated ??= mentionedIn(text.slice(i + 2, flagArgs(text, i + 1, 1, limit) - 1));
+      if (MATH_FLAGS.has(flag)) evaluated ??= mentionedIn(text.slice(i + 2, flagArgs(text, i + 1, 1, limit) - 1), names);
       i = end - 1;
     }
   }
