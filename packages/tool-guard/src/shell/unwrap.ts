@@ -160,7 +160,10 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       const spec = wrapperSpec(w.value) ?? PACKAGE_OPTS;
       const script =
         runnerShellScript(words, i, start) ?? wrapperScript(words, start, spec) ?? joinedScript(words, start, spec);
-      if (script !== null) return { name: commandName(w.value), path: w.value, args: words.slice(i + 1), assigned, script };
+      if (script !== null) {
+        const named = argv0Values(commandName(w.value), words.slice(start)).concat(assignedArgv0(assigned));
+        return { name: commandName(w.value), path: w.value, args: words.slice(i + 1), assigned, script, ...(named.length > 0 ? { argv0: named } : {}) };
+      }
       i = skipWrapper(words, start, spec);
       if (i < 0) return null;
       argv0.push(...argv0Values(commandName(w.value), words.slice(start, i)));
@@ -171,30 +174,38 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
   const cmd = command(words, i, assigned);
   if (cmd.name === null && cmd.args[0]) loose.push(cmd.args[0]);
   const unsure = loose.length > 0 ? words.filter((w) => !loose.includes(w)) : null;
-  argv0.push(...assigned.filter(([name]) => name === "ARGV0").map(([, value]) => value));
+  argv0.push(...assignedArgv0(assigned));
   const named = argv0.length > 0 ? { argv0 } : {};
   return { ...cmd, ...named, ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}), ...(unsure ? { unsure } : {}) };
 }
 
+/** `--argv0` or any prefix of it, which a dynamic command word may leave unspelled. */
+const LONG_ARGV0_RE = /^--a(?:r(?:g(?:v(?:0)?)?)?)?$/;
+const LONG_ARGV0_EQ_RE = /^--a(?:r(?:g(?:v(?:0)?)?)?)?=/;
+
 /** Short options of `env` and `exec` that take a value, the rest of the cluster or the next word. */
-const ARGV0_VALUED: Record<string, string> = { exec: "a", env: "uCSPa" };
+const ARGV0_VALUED: Record<string, string> = { exec: "a", env: `S${SHORT_VALUES.env.map((v) => v.slice(1)).join("")}` };
+
+function assignedArgv0(assigned: Assignment[]): Array<string | null> {
+  return assigned.filter(([name]) => name === "ARGV0").map(([, value]) => value);
+}
 
 /**
  * The values of `exec -a NAME` and `env -a NAME`/`--argv0[=]NAME`, in cluster or attached form. A letter inside another
  * option's value (`env -uabc`) is not an option, so each cluster is read letter by letter and stops at its first valued one.
  */
-function argv0Values(wrapper: string, options: WordToken[]): Array<string | null> {
+export function argv0Values(wrapper: string, options: WordToken[]): Array<string | null> {
   const valued = Object.hasOwn(ARGV0_VALUED, wrapper) ? ARGV0_VALUED[wrapper] : undefined;
   if (valued === undefined) return [];
   const out: Array<string | null> = [];
   for (let k = 0; k < options.length; k++) {
     const o = options[k] as WordToken;
     if (o.value === "--") break;
-    if (o.value === "--argv0" && wrapper === "env") {
+    if (wrapper === "env" && LONG_ARGV0_RE.test(o.value)) {
       const next = options[++k];
       if (next) out.push(next.dynamic ? null : next.value);
-    } else if (o.value.startsWith("--argv0=") && wrapper === "env") {
-      out.push(o.dynamic ? null : o.value.slice("--argv0=".length));
+    } else if (wrapper === "env" && LONG_ARGV0_EQ_RE.test(o.value)) {
+      out.push(o.dynamic ? null : o.value.slice(o.value.indexOf("=") + 1));
     } else if (/^-[^-]/.test(o.value)) {
       const read = readArgv0Cluster(o, options[k + 1], valued);
       if (read.value !== undefined) out.push(read.value);

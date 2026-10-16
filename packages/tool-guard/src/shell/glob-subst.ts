@@ -1,4 +1,5 @@
 import type { WordToken } from "./lexer.js";
+import { argv0Values } from "./unwrap.js";
 import type { Unwrapped } from "./unwrap.js";
 
 /**
@@ -10,7 +11,8 @@ import type { Unwrapped } from "./unwrap.js";
  */
 export function namesGlobSubstOption(cmd: Unwrapped): boolean {
   const unknownProgram = cmd.name === null || (cmd.path !== null && mayExpand(cmd.path));
-  if ((unknownProgram || cmd.name === "zsh") && cmd.argv0?.some(argv0Emulates)) return true;
+  const runsZsh = unknownProgram || cmd.script !== undefined || cmd.name === "zsh" || cmd.name === "rzsh";
+  if (runsZsh && cmd.argv0?.some(argv0Emulates)) return true;
   if (cmd.name === null) return dynamicCommand(cmd.args.slice(1));
   if (unknownProgram) return dynamicCommand(cmd.args);
   const check = Object.hasOwn(ENABLERS, cmd.name) ? ENABLERS[cmd.name] : undefined;
@@ -28,6 +30,7 @@ const ENABLERS: Record<string, (args: WordToken[]) => boolean> = {
   set: setEnables,
   emulate: emulateEnables,
   zsh: zshEnables,
+  rzsh: zshEnables,
 };
 
 /** A command word brace expansion or a glob may rewrite; the test words `[` and `[[` are none. */
@@ -164,9 +167,10 @@ const EMULATION_RE = /^r?[cksb]/;
 
 /**
  * A command word only known at run time, or one brace expansion or a glob may rewrite (`s{etopt,}`), may stand for any
- * ENABLERS entry, so the words after it are held to all of their checks at once, a superset of what a literal `zsh`,
+ * ENABLERS entry, or for `exec` or `env` with an argv0 option, so the words after it are held to all of their checks at once, a superset of what a literal `zsh`,
  * `setopt`, `set` or `emulate` gets; the caller has already read its argv0.
  */
 function dynamicCommand(rest: WordToken[]): boolean {
-  return rest.some(unknowable) || Object.values(ENABLERS).some((check) => check(rest));
+  const emulating = ["exec", "env"].some((wrapper) => argv0Values(wrapper, rest).some(argv0Emulates));
+  return emulating || rest.some(unknowable) || Object.values(ENABLERS).some((check) => check(rest));
 }

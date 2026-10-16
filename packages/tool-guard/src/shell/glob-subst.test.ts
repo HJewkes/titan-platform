@@ -107,6 +107,15 @@ describe("a command that may name zsh GLOB_SUBST", () => {
     ["/bin/zs[h] --emulate sh -c 'ls $x'"],
     ["$c --emulate=ksh -c 'ls $x'"],
     ["{zsh,zsh} --emulate sh -c x"],
+    ["$c -a -sh zsh -c x"],
+    ["$c -a /bin/sh zsh -c x"],
+    ["ex{ec,ec} -a -sh zsh -c x"],
+    ["/usr/bin/en[v] --argv0 /bin/sh zsh -c x"],
+    ["/usr/bin/en[v] --argv /bin/sh zsh -c x"],
+    ["$c --argv0=sh zsh -c x"],
+    ["env -a sh -S 'zsh -c x'"],
+    ["rzsh -o globsubst -c x"],
+    ["rzsh --emulate sh -c x"],
     ["ARGV0=sh $c -c 'ls $x'"],
     ["exec -a sh /bin/zs[h] -c x"],
     ["env -a ksh {zsh,zsh} -c x"],
@@ -154,6 +163,9 @@ describe("a command that may name zsh GLOB_SUBST", () => {
     ["[[ -f $f ]]"],
     ["[[ $a == b* ]]"],
     ["ARGV0=zsh zsh -c x"],
+    ["rzsh -o pipefail -c x"],
+    ["$c -a zsh zsh -c x"],
+    ["env -a zsh -S 'zsh -c x'"],
     ["exec -a myzsh zsh -c x"],
     ["exec -a sh git status"],
     ["env --argv0 foo zsh -c x"],
@@ -178,13 +190,16 @@ describe("argv0 of a wrapped command", () => {
     ["env --argv0=sh zsh -c x", ["sh"]],
     ["env -a sh zsh -c x", ["sh"]],
     ["env -u FOO -a sh zsh -c x", ["sh"]],
+    ["env -a sh -S 'zsh -c x'", ["sh"]],
+    ["env -L x -a sh zsh -c x", ["sh"]],
+    ["ARGV0=sh env -S 'zsh -c x'", ["sh"]],
     ["ARGV0=sh zsh -c x", ["sh"]],
     ["exec -a $a zsh -c x", [null]],
   ])("reads %s", (src, expected) => {
     expect(argv0(src)).toEqual(expected);
   });
 
-  it.each([["env -uabc zsh -c x"], ["env -u a zsh -c x"], ["env -Sabc zsh -c x"], ["env -C a zsh -c x"], ["exec zsh -c x"], ["git status"]])(
+  it.each([["env -uabc zsh -c x"], ["env -Uabc zsh -c x"], ["env -L a zsh -c x"], ["env -u a zsh -c x"], ["env -Sabc zsh -c x"], ["env -C a zsh -c x"], ["exec zsh -c x"], ["git status"]])(
     "finds none in %s",
     (src) => {
       expect(argv0(src)).toBeUndefined();
