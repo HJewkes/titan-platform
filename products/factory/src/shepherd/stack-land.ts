@@ -175,7 +175,9 @@ async function retarget(deps: StackLandDeps, input: RestackInput, child: PullReq
 }
 
 async function attempt(deps: StackLandDeps, input: RestackInput): Promise<Restacked | Refusal> {
-  if (!input.child.headRef.startsWith(AGENT_CHAT_BRANCH) || !BranchName.safeParse(input.child.headRef).success) return { outcome: "skipped", reason: "skipped: the head branch is not an agent-chat/* branch" };
+  if (!input.child.headRef.startsWith(AGENT_CHAT_BRANCH) || !BranchName.safeParse(input.child.headRef).success) {
+    return { outcome: "skipped", reason: "skipped: the head branch is not an agent-chat/* branch" };
+  }
   const [child, parent, defaultBranch] = await Promise.all([deps.port.getPr(input.repo, input.child.pr), deps.port.getPr(input.repo, input.parentPr), deps.port.defaultBranch(input.repo)]);
   const miss = prMiss(input, child, parent, defaultBranch);
   if (miss !== undefined) return miss;
@@ -215,7 +217,16 @@ async function restackChildren(ctx: WorkflowContext, parent: LandedParent & { pa
 }
 
 /** Only the run's own merge write restacks; a PR GitHub reports merged elsewhere restacks nothing, even with `landed` set. */
-export async function restackLanded(ctx: WorkflowContext, target: { repo: RepoSlug; pr: number; mergeSha: string; own?: true; landed?: { headRef: string; headRepo: string | null; headSha: string } }): Promise<void> {
+export async function restackLanded(
+  ctx: WorkflowContext,
+  target: {
+    repo: RepoSlug;
+    pr: number;
+    mergeSha: string;
+    own?: true;
+    landed?: { headRef: string; headRepo: string | null; headSha: string };
+  },
+): Promise<void> {
   if (target.own !== true || target.landed === undefined || target.mergeSha === "") return;
   const { headRef, headRepo, headSha } = target.landed;
   await restackChildren(ctx, { repo: target.repo, parentPr: target.pr, parentHeadRef: headRef, parentHeadRepo: headRepo, parentFinal: headSha, squash: target.mergeSha });
