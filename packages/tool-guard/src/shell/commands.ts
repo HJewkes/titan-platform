@@ -1,11 +1,11 @@
-import { ParseError, SplitParseError, tokenize } from "./lexer.js";
-import { NestingLimitError } from "./nesting.js";
-import type { RedirectToken, Token, WordToken } from "./lexer.js";
+import { ParseError } from "./lexer.js";
+import { tokenizeLine } from "./tokenize-line.js";
+import type { OpToken, RedirectToken, Token, WordToken } from "./lexer.js";
+import { changeDir, folded, literalEnv } from "./command-env.js";
 import { resolvePath } from "./path.js";
 import { nextShellStdin, nextStdin, xargsStdin } from "./piped-stdin.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed } from "./case-script.js";
-import { foldCommandWords } from "./case-literal.js";
 import { aliasCommands, type AliasTable } from "./alias-words.js";
 import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
@@ -21,8 +21,9 @@ import type { Vars } from "./vars.js";
 import { newMarks, noteRedirect, recordValue, settle } from "./value-marks.js";
 import { noteCommand, noteWord } from "./stored-words.js";
 import type { ValueMarks } from "./value-marks.js";
-import { MAX_UNSURE_WORDS, NestingReadingError, ReadingLimitError, SPLICED_WEIGHT, SplitReadingError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
+import { MAX_UNSURE_WORDS, ReadingLimitError, SPLICED_WEIGHT, unsureReadings, ValueWalkError } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
+import { arithmeticSpanEnd } from "./arith-span.js";
 
 const MAX_DEPTH = 8;
 const RUNNERS = new Set([...SHELLS, "eval", "emulate", "find"]);
@@ -166,35 +167,26 @@ function lineBudget(src: string, options: ExtractOptions): UnsureBudget {
   };
 }
 
-/** A line bash 5 and bash 3.2 read differently is refused outright, whatever it names; a plain ParseError is not. */
-function tokenizeLine(src: string): Token[] {
-  try {
-    return tokenize(src);
-  } catch (error) {
-    if (error instanceof SplitParseError) throw new SplitReadingError(error.split);
-    if (error instanceof NestingLimitError) throw new NestingReadingError();
-    throw error;
-  }
-}
-
 function walk(tokens: Token[], w: Walk): void {
   if (w.depth > MAX_DEPTH) throw new ParseError("nesting too deep");
   let words: WordToken[] = [];
   let redirects: RedirectToken[] = [];
-  for (const token of noteSureCommands(normalizeDeclarations(tokens))) {
+  const list = noteSureCommands(normalizeDeclarations(tokens));
+  let arithEnd = -1;
+  for (const [at, token] of list.entries()) {
+    if (at <= arithEnd) {
+      inArithmetic(token, at === arithEnd, w);
+      continue;
+    }
+    const end = arithmeticEnd(list, at, words, w);
+    if (end > 0) {
+      arithEnd = end;
+      continue;
+    }
     if (token.type === "op") {
-      noteValues(token, words, w);
-      const cmd = emit(words, redirects, w, token.value);
-      const empty = words.length + redirects.length === 0;
-      w.shellStdin = nextShellStdin(token.value, cmd, empty, w.shellStdin);
-      w.stdin = groupStdin(w, token.value, words, redirects, cmd, nextStdin(token.value, cmd, empty, w.stdin));
+      endCommand(token, words, redirects, w);
       words = [];
       redirects = [];
-      w.prev = token.value;
-      if (token.value !== "|" && token.value !== "|&") w.negated = false;
-      if (token.value !== "&&") w.chain = { start: token.value };
-      trackCompound(token, w.scope.vars);
-      scope(token.value, w);
       continue;
     }
     if (token.type === "word") words.push(noteWord(token, w.marks));
@@ -204,6 +196,41 @@ function walk(tokens: Token[], w: Walk): void {
   }
   noteValues(null, words, w);
   emit(words, redirects, w, null);
+}
+
+/** An operator ends the command gathered before it: emit it, then carry what it leaves to the next. */
+function endCommand(token: OpToken, words: WordToken[], redirects: RedirectToken[], w: Walk): void {
+  noteValues(token, words, w);
+  const cmd = emit(words, redirects, w, token.value);
+  const empty = words.length + redirects.length === 0;
+  w.shellStdin = nextShellStdin(token.value, cmd, empty, w.shellStdin);
+  w.stdin = groupStdin(w, token.value, words, redirects, cmd, nextStdin(token.value, cmd, empty, w.stdin));
+  w.prev = token.value;
+  if (token.value !== "|" && token.value !== "|&") w.negated = false;
+  if (token.value !== "&&") w.chain = { start: token.value };
+  trackCompound(token, w.scope.vars);
+  scope(token.value, w);
+}
+
+/**
+ * The index of the `)` that ends the arithmetic command a marked `(` opens, or -1 when the token opens none. It
+ * still notes what the command evaluates and writes, in the current shell.
+ */
+function arithmeticEnd(list: Token[], at: number, words: WordToken[], w: Walk): number {
+  const token = list[at];
+  const end = arithmeticSpanEnd(list, at, words);
+  if (end < 0 || token?.type !== "op") return -1;
+  noteValues(token, words, w);
+  trackCompound(token, w.scope.vars);
+  return end;
+}
+
+/** A token of an arithmetic command runs nothing, but a substitution in it does; its `)` leaves the shell as it was. */
+function inArithmetic(token: Token, last: boolean, w: Walk): void {
+  for (const sub of nestedLists(token)) walk(sub, child(w, [...w.scope.wrapping, "subshell"]));
+  if (!last) return;
+  Object.assign(w, { prev: ")", negated: false, chain: { start: ")" }, stdin: null, shellStdin: [] });
+  trackCompound(token, w.scope.vars);
 }
 
 /** Notes what a command evaluates and stores, before it runs. */
@@ -345,19 +372,4 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descrip
     if (script.wrap !== "eval") w.marks.opaque = true;
     walk(tokenizeLine(text), child(w, [...wrapping, script.wrap], descriptors));
   }
-}
-
-function folded(words: WordToken[], w: Walk): WordToken[] {
-  return w.foldCase ? foldCommandWords(words) : words;
-}
-
-function literalEnv(cmd: Unwrapped): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const [name, value, kind] of cmd.assigned) if (value !== null && !kind) env[name] = value;
-  return env;
-}
-
-function changeDir(dir: string | null, word: WordToken | undefined, home: string | null): string | null {
-  if (!word) return home;
-  return word.value === "-" ? null : resolvePath(dir, word, home);
 }
