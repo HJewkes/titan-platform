@@ -13,8 +13,8 @@ describe("lexer arithmetic marker", () => {
   );
 
   it("marks only the first of the two parens", () => {
-    const ops = tokenize("((1))").filter((t) => t.type === "op");
-    expect(ops.map((t) => [t.value, t.type === "op" ? t.arith : undefined])).toEqual([
+    const ops = tokenize("((1))").flatMap((t) => (t.type === "op" ? [t] : []));
+    expect(ops.map((t) => [t.value, t.arith])).toEqual([
       ["(", true],
       ["(", undefined],
       [")", undefined],
