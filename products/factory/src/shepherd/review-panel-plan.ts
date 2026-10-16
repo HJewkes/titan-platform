@@ -84,7 +84,7 @@ function withHoldMember(policy: PanelPolicy, member: HoldMember, fullPanel: bool
 }
 
 /** How the head is planned beyond its files: a held head's adversary member, and whether the rest of the panel table applies. */
-export interface PlanOptions {
+interface PlanOptions {
   holdMember?: HoldMember;
   fullPanel?: boolean;
 }

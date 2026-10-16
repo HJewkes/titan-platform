@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { ShepherdDeps } from "./phases.js";
 import { removeReviewCheckout, reviewCheckoutRoot } from "./review-checkout.js";
 
-export type MemberShape = (typeof OVERLAY_SHAPES)[number];
+type MemberShape = (typeof OVERLAY_SHAPES)[number];
 
 /** The hold reason an adversary aims its probes at; an unreadable store gives the brief none. */
 export function holdContextOf(deps: ShepherdDeps, runId: string | undefined): AdversaryHoldContext | undefined {
