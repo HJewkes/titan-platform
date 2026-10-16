@@ -16,7 +16,7 @@ import { cachedByHead, localPrFiles } from "./git-pr-files.js";
 import { applyRegistrationHold } from "./registration-hold.js";
 import { hostPrsSources, shepherdPrs, type PrRow } from "./prs.js";
 import { PrArg, RegisterArgs, RepoArg, coded, headBranch, policyFor, refuseKindMove, sliceAfter } from "./register-args.js";
-import { endSuperseded, isReplayDiverged, restartFor } from "./restart.js";
+import { endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./restart.js";
 import { lastReadHead } from "./last-read-head.js";
 import { sizeFlagFor, type SliceFlag } from "./size-flag.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
@@ -91,8 +91,7 @@ export async function restartRegistered(ctx: FactoryContext, store: ShepherdStor
   refuseKindMove(known, args);
   const previousRunId = known.runId;
   const previousRun = ctx.host.runtime.status(previousRunId)!;
-  const diverged = isReplayDiverged(previousRun);
-  const seeded = diverged ? { ...args, head: args.head ?? lastReadHead(previousRun) } : args;
+  const seeded = isDivergedEnd(previousRun) ? { ...args, head: args.head ?? lastReadHead(previousRun) } : args;
   let runId: string;
   try {
     runId = startRun(ctx, args, known.branch ?? undefined, policy, (started) => store.repoint(previousRunId, started));
@@ -104,7 +103,7 @@ export async function restartRegistered(ctx: FactoryContext, store: ShepherdStor
     }
     return refresh(store, winner, args, policy);
   }
-  if (diverged) endSuperseded(ctx.host, previousRunId, runId);
+  if (isReplayDiverged(previousRun)) endSuperseded(ctx.host, previousRunId, runId);
   return { ...refresh(store, store.byRun(runId)!, seeded, policy), created: true, previousRunId, ...restart };
 }
 
@@ -149,7 +148,11 @@ async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Regist
  * The hold and the slice-cap flag share one git read of the head's files.
  */
 async function registerWithHold(args: RegisterArgs, ctx: FactoryContext): Promise<Registered> {
-  const registered = await register(args, ctx);
+  return classifyRegistered(ctx, await register(args, ctx));
+}
+
+/** Holds and flags a registration for the diff it has now; a run Shepherd restarts is classed the way a live register would class it. */
+export async function classifyRegistered(ctx: FactoryContext, registered: Registered): Promise<Registered> {
   const services = servicesOf(ctx);
   const local = cachedByHead(services.prFiles ?? localPrFiles);
   const g10Hold = await applyRegistrationHold(services.port, services.store.get(), registered.runId, { local });
