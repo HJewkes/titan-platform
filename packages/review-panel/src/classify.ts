@@ -33,6 +33,9 @@ export const DEFAULT_CLASS_RULES: ClassRules = {
     // Under apps only what can change rendered output: server code, tests, docs and manifests stay out.
     "apps/*/src/**",
     "apps/*/public/**",
+    "apps/*/tailwind.config.*",
+    "apps/*/postcss.config.*",
+    "apps/*/vite.config.*",
     "apps/**/*.tsx",
     "apps/**/*.jsx",
     "apps/**/*.html",

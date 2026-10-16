@@ -74,7 +74,7 @@ describe("classifyPr", () => {
     expect(result.touches).not.toContain("visual");
   });
 
-  it.each(["apps/console/src/pages/RoundDetailPage.tsx", "apps/console/src/styles.css", "apps/console/index.html", "apps/console/public/logo.svg", "packages/react-app/src/a.ts"])(
+  it.each(["apps/console/src/pages/RoundDetailPage.tsx", "apps/console/src/styles.css", "apps/console/index.html", "apps/console/public/logo.svg", "apps/console/tailwind.config.cjs", "apps/codewatch/postcss.config.cjs", "apps/console/vite.config.ts", "packages/react-app/src/a.ts"])(
     "classes %s as visual",
     (path) => {
       expect(pathTouches([{ path }])).toContain("visual");
