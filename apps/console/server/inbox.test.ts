@@ -54,6 +54,7 @@ beforeEach(async () => {
     lanTls: null,
     lanTokenPath: path.join(dir, "state", "lan.token"),
     ownerWrites: false,
+    gateAnswers: false,
     inboxDir: path.join(dir, "state", "inbox", "deposits"),
     roundsDir: path.join(dir, "state", "rounds"),
     decisionsFile: null,

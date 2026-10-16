@@ -1,0 +1,74 @@
+{
+  "schema": "titan-review/round@2",
+  "unit": "sample-batch",
+  "round": 2,
+  "storybookUrl": "http://localhost:6006",
+  "widths": [
+    1280
+  ],
+  "recommendations": "after-answer",
+  "variants": [
+    {
+      "key": "card-light",
+      "image": "frames/card-light.png",
+      "label": "Card, light"
+    },
+    {
+      "key": "card-dark",
+      "image": "frames/card-dark.png",
+      "label": "Card, dark"
+    }
+  ],
+  "sections": [
+    {
+      "id": "cards",
+      "title": "Card spacing",
+      "kind": "STATES",
+      "deciding": "Whether the tighter card spacing ships.",
+      "changed": "The card body padding dropped from sixteen to twelve pixels.",
+      "context": "Only the card component changed in this round.",
+      "parts": [
+        {
+          "id": "padding",
+          "label": "Card padding",
+          "proposed": "twelve pixels"
+        }
+      ],
+      "variantKeys": [
+        "card-light",
+        "card-dark"
+      ],
+      "questionIds": [
+        "ship-cards"
+      ]
+    }
+  ],
+  "questions": [
+    {
+      "id": "ship-cards",
+      "kind": "pick-one",
+      "prompt": "Ship example/cards#2 at 0123456789ab?",
+      "options": [
+        "Ship",
+        "Don't ship"
+      ],
+      "required": true,
+      "page": "example/cards#2",
+      "signsOff": "padding",
+      "merge": {
+        "repo": "example/cards",
+        "pr": 2,
+        "headSha": "0123456789abcdef0123456789abcdef01234567",
+        "ship": [
+          "Ship"
+        ]
+      },
+      "recommendation": {
+        "answer": "Ship",
+        "rationale": "Both themes keep the text inside the card at the new padding.",
+        "confidence": 0.7,
+        "by": "fixture-agent"
+      }
+    }
+  ]
+}

@@ -34,9 +34,18 @@ type Theme = (typeof THEME_MODES)[number];
 const sha256Hex = z.string().regex(/^[0-9a-f]{64}$/);
 const indexedFile = z.object({ file: z.string(), sha256: sha256Hex });
 
-/** frames@1 as review-harness writes it, plus the base and diff files a CI packet adds; other record fields are ignored. */
-const FramesIndexSchema = z.object({
+/**
+ * frames@1 as review-harness writes it, plus the base and diff files a CI packet adds; other record fields are ignored.
+ * `unit`, `round` and `manifestSha256` bind the index to its round.json; the reader here ignores them, the importer requires them.
+ * `packet` and `prose` name a CI packet's JSON beside round.json, and `after` a record's after image; only the importer reads them.
+ */
+export const FramesIndexSchema = z.object({
   schema: z.literal("titan-review/frames@1"),
+  unit: z.string().optional(),
+  round: z.number().int().optional(),
+  manifestSha256: sha256Hex.optional(),
+  packet: indexedFile.optional(),
+  prose: indexedFile.optional(),
   frames: z.array(
     z.object({
       key: z.string(),
@@ -45,6 +54,7 @@ const FramesIndexSchema = z.object({
       sha256: sha256Hex,
       base: indexedFile.optional(),
       diff: indexedFile.optional(),
+      after: indexedFile.optional(),
     }),
   ),
 });
@@ -168,12 +178,18 @@ export async function frameIndex(roundDir: string): Promise<FrameIndex> {
   return index;
 }
 
-async function readFrame(roundDir: string, rel: string, expectedSha256?: string): Promise<FrameRead> {
+/** The one path rule for a file a round names, shared with `round-import.ts`: a relative .png path that stays inside the round. */
+export async function readFrameBytes(roundDir: string, rel: string, expectedSha256?: string): Promise<{ bytes: Buffer; sha256: string }> {
   if (!IMAGE_PATH.test(rel)) throw refusal("its path is not a relative .png path");
   const bytes = await readInside(roundDir, rel, MAX_FRAME_BYTES);
   if (!bytes.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) throw refusal("the file is not a PNG");
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   if (expectedSha256 !== undefined && sha256 !== expectedSha256) throw refusal("the PNG does not match the frames index sha256");
+  return { bytes, sha256 };
+}
+
+async function readFrame(roundDir: string, rel: string, expectedSha256?: string): Promise<FrameRead> {
+  const { bytes, sha256 } = await readFrameBytes(roundDir, rel, expectedSha256);
   return { contentType: "image/png", bytes: bytes.length, sha256, base64: bytes.toString("base64") };
 }
 

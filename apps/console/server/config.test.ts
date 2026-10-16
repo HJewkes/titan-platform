@@ -195,6 +195,12 @@ describe("console LAN config", () => {
     expect(lan({ TITAN_CONSOLE_OWNER_WRITES: "1" }).ownerWrites).toBe(true);
   });
 
+  it("keeps gate answers off unless TITAN_CONSOLE_GATE_ANSWERS is 1, and refuses a typo", () => {
+    expect([lan({}), lan({ TITAN_CONSOLE_GATE_ANSWERS: "" }), lan({ TITAN_CONSOLE_GATE_ANSWERS: "0" })].map((c) => c.gateAnswers)).toEqual([false, false, false]);
+    expect(lan({ TITAN_CONSOLE_GATE_ANSWERS: "1" }).gateAnswers).toBe(true);
+    expect(() => lan({ TITAN_CONSOLE_GATE_ANSWERS: "yes" })).toThrow(/TITAN_CONSOLE_GATE_ANSWERS must be 1 or 0/);
+  });
+
   it.each(["true", "yes", "on", " 1"])("refuses TITAN_CONSOLE_OWNER_WRITES=%j rather than guess", (value) => {
     expect(() => lan({ TITAN_CONSOLE_OWNER_WRITES: value })).toThrow(/TITAN_CONSOLE_OWNER_WRITES/);
   });

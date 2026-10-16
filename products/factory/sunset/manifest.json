@@ -1472,6 +1472,20 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/owner-send-back.test.ts",
+   "fate": "delete",
+   "task": "D-M7-01",
+   "milestone": "M7"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/owner-send-back.ts",
+   "fate": "delete",
+   "task": "D-M7-01",
+   "milestone": "M7"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/package-sweeps.ts",
    "fate": "kept",
    "reason": "drift, not an event, starts a toolchain fanout, so no event replaces it (v8 l.1011); TP-3218, plan Q4"
@@ -4311,7 +4325,7 @@
    "name": "Backstop sweep and start pass",
    "builtBy": "D-M1a-05",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C2",
@@ -4319,7 +4333,7 @@
    "name": "Safety sweep",
    "builtBy": "D-M2-01",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C3",
@@ -4327,7 +4341,7 @@
    "name": "TTL pin",
    "builtBy": "D-M1b-02, D-M1b-03",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C4",
@@ -4335,7 +4349,7 @@
    "name": "Attestation",
    "builtBy": "D-M1b-05",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C5",
@@ -4343,7 +4357,7 @@
    "name": "Parent-relative per-merge tree check",
    "builtBy": "D-M3-20",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C6",
@@ -4351,7 +4365,7 @@
    "name": "Landing lock and expected-main chain",
    "builtBy": "D-M3-20",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C7",
@@ -4359,7 +4373,7 @@
    "name": "Deploy gate, including PR-run reuse",
    "builtBy": "D-M3-14",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C8",
@@ -4367,7 +4381,7 @@
    "name": "Merge operation log and owner-intent verification",
    "builtBy": "D-M1a-11, D-M3-02, D-M3-03, D-M3-11",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C9",
@@ -4375,7 +4389,7 @@
    "name": "Self and system classification",
    "builtBy": "D-M3-10",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C10",
@@ -4383,7 +4397,7 @@
    "name": "Owner-intent re-verification per commit",
    "builtBy": "D-M3-10",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C11",
@@ -4391,7 +4405,7 @@
    "name": "Monotonic-read guard",
    "builtBy": "D-M1a-04",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C12",
@@ -4399,7 +4413,7 @@
    "name": "`Unavailable` and the probe",
    "builtBy": "D-M1a-03",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C13",
@@ -4407,7 +4421,7 @@
    "name": "The `github-api` pool",
    "builtBy": "D-M1a-03",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C14",
@@ -4415,7 +4429,7 @@
    "name": "Pacer extension, restart and no-rollback rule",
    "builtBy": "D-M0-02",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C15",
@@ -4423,7 +4437,7 @@
    "name": "Transient-405 backoff",
    "builtBy": "D-M3-06",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C16",
@@ -4431,7 +4445,7 @@
    "name": "Land-rule preconditions on every listed ruleset",
    "builtBy": "D-M3-01",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C17",
@@ -4439,7 +4453,7 @@
    "name": "`gh:approved` re-request and live review read",
    "builtBy": "D-M3-07",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C18",
@@ -4447,7 +4461,7 @@
    "name": "Conditional confirmation CI",
    "builtBy": "D-M3-14",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C19",
@@ -4455,7 +4469,7 @@
    "name": "`LandedDrift`",
    "builtBy": "D-M3-15",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C20",
@@ -4463,7 +4477,7 @@
    "name": "Held-but-stale token accounting",
    "builtBy": "D-M2-03",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C21",
@@ -4471,7 +4485,7 @@
    "name": "Superseded PR adopted or closed",
    "builtBy": "D-M2-03",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C22",
@@ -4479,7 +4493,7 @@
    "name": "Grant-to-use timeout",
    "builtBy": "D-M2-03",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C23",
@@ -4487,7 +4501,7 @@
    "name": "`T_reserve`",
    "builtBy": "D-M2-03",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C24",
@@ -4495,7 +4509,7 @@
    "name": "Cross-tier ageing",
    "builtBy": "D-M6-04",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C25",
@@ -4503,7 +4517,7 @@
    "name": "`T_max` alarm",
    "builtBy": "D-M6-04",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C26",
@@ -4511,7 +4525,7 @@
    "name": "Stalled path holder to triager",
    "builtBy": "D-M6-03",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C27",
@@ -4519,7 +4533,7 @@
    "name": "Orphan trap",
    "builtBy": "D-M1b-07",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C28",
@@ -4527,7 +4541,7 @@
    "name": "Advisory gate plus `not-after`",
    "builtBy": "D-M1b-07",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C29",
@@ -4535,7 +4549,7 @@
    "name": "Frozen deploy predicate",
    "builtBy": "D-M3-14",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C30",
@@ -4543,7 +4557,7 @@
    "name": "Deploy refused while an intent is open",
    "builtBy": "D-M3-14",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C31",
@@ -4551,7 +4565,7 @@
    "name": "Per-entry budget",
    "builtBy": "D-M1b-07",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C32",
@@ -4559,7 +4573,7 @@
    "name": "Interleaved landing",
    "builtBy": "D-M3-09",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C34",
@@ -4567,7 +4581,7 @@
    "name": "`PRMerged` landing for outside merges",
    "builtBy": "D-M3-12",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C35",
@@ -4575,7 +4589,7 @@
    "name": "In-transaction requirement re-check and review dismissal",
    "builtBy": "D-M3-09",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "C36",
@@ -4583,7 +4597,7 @@
    "name": "F14 runtime tripwire",
    "builtBy": "D-M3-13",
    "deletedBy": null,
-   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "X1",
@@ -4591,7 +4605,7 @@
    "name": "Live head read",
    "builtBy": "D-M1a-04",
    "deletedBy": null,
-   "reason": "arguable: no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "X2",
@@ -4599,7 +4613,7 @@
    "name": "Exclusion 2",
    "builtBy": "D-M1b-04",
    "deletedBy": null,
-   "reason": "arguable: no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "X3",
@@ -4607,7 +4621,7 @@
    "name": "Bisect",
    "builtBy": "M9 (out of scope)",
    "deletedBy": null,
-   "reason": "arguable: no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "X4",
@@ -4615,7 +4629,7 @@
    "name": "Ambiguous base and hardened git environment",
    "builtBy": "D-M1b-04",
    "deletedBy": null,
-   "reason": "arguable: no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "X5",
@@ -4623,7 +4637,7 @@
    "name": "The fairness key",
    "builtBy": "D-M6-04",
    "deletedBy": null,
-   "reason": "arguable: no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "X6",
@@ -4631,7 +4645,7 @@
    "name": "The Litestream mount check",
    "builtBy": "none (retired in v9)",
    "deletedBy": null,
-   "reason": "arguable: no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "X7",
@@ -4639,7 +4653,7 @@
    "name": "F14 pattern predicates and explained-mismatch state",
    "builtBy": "D-M3-13",
    "deletedBy": null,
-   "reason": "arguable: no v9.1 task deletes it"
+   "reason": "no v9.1 task deletes it: neither v9.1-amendments-421.md nor v9.1-decomposition-draft-r2.md names a deleting D-task for it"
   },
   {
    "id": "T1",

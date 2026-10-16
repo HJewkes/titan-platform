@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { RequestAuth } from "@titan-design/daemon";
 import { EXIT, invokeCommand } from "@titan-design/registry";
 import { ANSWERS_FILE, createDecisionLog, type DecisionLog, type DecisionLogResult } from "./decision-log.js";
+import type { RoundListeners } from "./listeners.js";
 import type { ConsoleContext } from "./owner-guard.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
 import { FeedbackDocument } from "./round2-adapter.js";
@@ -25,8 +26,8 @@ function ownerContext(ownerWrites = true): ConsoleContext {
   return { warnings: [], format: "json", surface: "http", auth: SESSION_AUTH, ownerWrites };
 }
 
-function submit(args: Record<string, unknown>, ctx = ownerContext(), decisionLog?: DecisionLog) {
-  return invokeCommand(roundsSubmitCommands({ dir }, decisionLog)["rounds.submit"], args, ctx);
+function submit(args: Record<string, unknown>, ctx = ownerContext(), decisionLog?: DecisionLog, listeners?: RoundListeners) {
+  return invokeCommand(roundsSubmitCommands({ dir }, decisionLog, listeners)["rounds.submit"], args, ctx);
 }
 
 function spyLog(result: DecisionLogResult = { ledger: "written", decisions: "not-a-decision" }) {
@@ -181,6 +182,21 @@ describe("rounds.submit", () => {
     expect(rows).toEqual([
       expect.objectContaining({ key: `round:${ROUND}:ship-backoff:${submittedAt}`, question: "Ship the capped backoff?", answer: "Ship", recommended: "Ship", decisions: null }),
     ]);
+  });
+
+  it("runs the decision log and then the round listener for a submitted round", async () => {
+    const order: string[] = [];
+    const { log } = spyLog();
+    const recording: DecisionLog = { record: async (...args) => (order.push("log"), log.record(...args)) };
+    const listeners: RoundListeners = {
+      afterRoundSubmit: async (id, result) => void order.push(`listener:${id}:${result.status}`),
+      sweep: async () => undefined,
+    };
+
+    const { envelope } = await submit(shipArgs(), ownerContext(), recording, listeners);
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", log: [{ questionId: "ship-backoff" }] } });
+    expect(order).toEqual(["log", `listener:${ROUND}:submitted`]);
   });
 
   it("records nothing for a comment-only answer", async () => {

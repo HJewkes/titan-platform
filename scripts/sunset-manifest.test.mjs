@@ -225,6 +225,14 @@ describe("the checked-in manifest", () => {
     expect(manifest.compensators.filter((c) => c.class === "temporary").map((c) => c.deletedBy)).toEqual(["D-M3-19", "D-M3-19", "D-M3-19", "D-M3-19", "D-M3-19", "D-M8-09"]);
   });
 
+  it("says plainly which docs were searched for every compensator with no deleting task", () => {
+    const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
+    const undeleted = manifest.compensators.filter((c) => !c.deletedBy);
+
+    expect(undeleted.length).toBeGreaterThan(0);
+    expect(undeleted.filter((c) => !/^no v9\.1 task deletes it: .*v9\.1-amendments-421\.md.*v9\.1-decomposition-draft-r2\.md/.test(c.reason))).toEqual([]);
+  });
+
   it("carries the three root defaults, with burndown on its D-M8-08 rung", () => {
     const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
 

@@ -234,6 +234,7 @@ describe.skipIf(process.platform !== "linux")("rounds.frame over the LAN listene
       lanTls: { certFile: pair.certFile, keyFile: pair.keyFile },
       lanTokenPath: path.join(root, "state", "lan.token"),
       ownerWrites: false,
+      gateAnswers: false,
       inboxDir: path.join(root, "state", "inbox", "deposits"),
       roundsDir: dir,
       decisionsFile: null,

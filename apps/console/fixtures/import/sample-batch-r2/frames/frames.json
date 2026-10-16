@@ -1,0 +1,39 @@
+{
+  "schema": "titan-review/frames@1",
+  "unit": "sample-batch",
+  "round": 2,
+  "manifestSha256": "850990b8edeead7bae326bba8db238631a4028805d005caac93567277ac43792",
+  "storybookUrl": "http://localhost:6006",
+  "frames": [
+    {
+      "key": "card-light",
+      "variant": "card-light",
+      "theme": "light",
+      "viewport": {
+        "width": 8,
+        "height": 6
+      },
+      "file": "frames/card-light.png",
+      "sha256": "9162a2a587794d617d2f1aa8266cdf5984668f9cd36b75433fc927f0f7be74b2",
+      "base": {
+        "file": "frames/base/card-light.png",
+        "sha256": "e1d200e7692daf8e64cf39708c0c222a74f83cb71f7172313024839a4d4810c8"
+      },
+      "diff": {
+        "file": "frames/diff/card-light.png",
+        "sha256": "39dcf3fe5008239e3f1cc61a98691291368d98f1d5f4ccead3ec93735bb60fdd"
+      }
+    },
+    {
+      "key": "card-dark",
+      "variant": "card-dark",
+      "theme": "dark",
+      "viewport": {
+        "width": 8,
+        "height": 6
+      },
+      "file": "frames/card-dark.png",
+      "sha256": "5fdc93774010d63761c2611c18660d80fa25805c25bbfb089ccb6a1c9cdd57b1"
+    }
+  ]
+}

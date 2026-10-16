@@ -790,6 +790,42 @@ resolving them (refused, dismissed, unmappable), `unasked` gates an answer canno
 `answersError` while the label's answers cannot be read. Each of those still waits on
 `titan-factory gate resolve`. Without the key serve asks nothing.
 
+### Answering approve-merge from the console: `shepherd.consoleAnswers`
+
+With `"consoleAnswers": {"roundsDir": "<absolute path>"}` set, serve mounts `POST /gates/answer-ship`
+(`src/gate-answer-rpc.ts`); without it the route 404s. The body is
+`{runId, gateId, headSha, tree, packetSha, roundId, choice}`, at most 64 KiB, and `choice` is `merge`,
+`merge-pick-later` or `send-back`. The route reads `round.json`, `packet.json` and `feedback.json` from
+`<roundsDir>/<roundId>` with `O_NOFOLLOW`, refusing a symlinked round dir or file, and runs
+`checkAnswer` (`src/gate-answer-check.ts`). The gate it resolves is the request's own: an answer for
+a gate the run has moved past never resolves the newer one. It resolves as `owner-remote`, id
+`titan-console`, channel `console:ship`, confirm event `packet:<packetSha>`. `merge-pick-later` also
+appends one `{at, runId, gateId, headSha, packetSha, roundId, kind: "pick-later"}` line to
+`follow-ups.jsonl` (0600) in the state directory, only when this call resolved the gate.
+
+The same key makes each shepherd-pr approve-merge gate offer a third answer, `send-back`, recorded per
+gate as step `sh-send-back-offer`. Its payload is `{decision: "send-back", headSha, note}`, and the gate
+store refuses it without a note, so gateNotify's bare option and the coordinator allowances can never
+give it. The route builds the note from `feedback.json` alone: the round's `general` text, then the
+Ship question's `comment`, cut at 4000 characters; a revision with neither is refused. Land then stops
+with `sent-back`, and Shepherd wakes the implementer with a `review` wake carrying the note. The run
+waits for a new head and never merges the sent-back one; with no agent to wake it opens the seat's
+`sh-sent-back` gate. `shepherd waiting` lists no approve-merge gate for it, and the run reads as
+`fixing`. A gate opened before the key was set offers no send-back, and the route answers 422 `payload`.
+
+| Answer | When |
+| --- | --- |
+| 200 `resolved` / `already` | this call resolved the gate, or the same answer already had |
+| 400 / 413 | the body is malformed (a round id outside `[A-Za-z0-9_-]{1,64}` included), or over 64 KiB |
+| 403 `refused resolver` | the gate store refused the owner-remote resolver |
+| 409 `moved` | the gate or GitHub is at another head, or the run waits on a newer gate |
+| 410 `gone` | the gate is cancelled or settled otherwise, or the PR is closed or merged |
+| 422 `refused` | a binding failed: round files, tree, packet, feedback (a revision with no note included), choice, or a payload the gate does not offer |
+| 503 | GitHub could not be read, or serve runs without the shepherd routes |
+
+There is no token, as with `gateNotify`: any process of the same OS user can post. The route is no
+registry command and no MCP tool, and the choice comes from the owner's `feedback.json`, not the request.
+
 ### A reviewer account out of usage
 
 Only Claude Code's own usage-limit record counts: a final message whose transcript record has the

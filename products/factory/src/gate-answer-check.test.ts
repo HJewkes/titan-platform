@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { fakeGitHub, githubPort, type FakeGitHub } from "@titan-design/github";
 import { GATE_CANCELLED_SIGNAL } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { z } from "zod";
 import { defineWorkflow } from "./definition.js";
-import { checkAnswer, type AnswerRequest } from "./gate-answer-check.js";
+import { MAX_NOTE_CHARS, checkAnswer, type AnswerRequest } from "./gate-answer-check.js";
+import { approveMergeDecision } from "./gate-brief.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
 import { TEST_BRIEF } from "./test-support/brief.js";
 
@@ -33,7 +33,7 @@ const mergeGate = defineWorkflow({
     for (;;) {
       const head = askedHead.get(pr)!;
       const prompt = `Merge PR #${pr} in ${REPO} at head ${head}? CI is green. Policy authority/MRG-AU: synthetic reason`;
-      const schema = z.object({ decision: z.enum(["merge", "abandon"]), headSha: z.literal(head) });
+      const { schema } = approveMergeDecision({ repo: REPO, pr: Number(pr), headSha: head, reason: "synthetic reason", reviewedMerge: false, sendBack: true });
       const answer = await ctx.assisted("approve-merge", prompt, { schema, brief: TEST_BRIEF, recordCancel: true });
       if (answer.signal !== GATE_CANCELLED_SIGNAL || settleOnCancel.has(pr)) return;
     }
@@ -90,14 +90,16 @@ interface RoundOptions {
   ageMs?: number;
   manifestSha256?: string;
   packet?: Record<string, unknown>;
+  general?: string;
+  comment?: string;
 }
 
 function roundFiles(pr: number, options: RoundOptions = {}) {
   const merge = { repo: REPO, pr, headSha: options.boundHead ?? H, ship: ["Ship it"] };
   const round = bytes({ unit: "example-unit", round: 1, questions: [{ id: "q-ship", kind: "pick-one", options: ["Ship it", "Revise"], merge }] });
-  const answer = { questionId: "q-ship", pick: options.pick ?? "Ship it", ...(options.revisionRequested ? { revisionRequested: true } : {}) };
+  const answer = { questionId: "q-ship", pick: options.pick ?? "Ship it", ...(options.revisionRequested ? { revisionRequested: true } : {}), ...(options.comment !== undefined && { comment: options.comment }) };
   const submittedAt = new Date(NOW.getTime() - (options.ageMs ?? 10 * MINUTE)).toISOString();
-  const feedback = bytes({ unit: "example-unit", round: 1, manifestSha256: options.manifestSha256 ?? hash(round), submittedAt, answers: [answer] });
+  const feedback = bytes({ unit: "example-unit", round: 1, manifestSha256: options.manifestSha256 ?? hash(round), submittedAt, answers: [answer, { questionId: "q-other", comment: "not about the merge" }], ...(options.general !== undefined && { general: options.general }) });
   const packet = bytes({ schema: "titan-review/ci-packet@1", packetId: "p-1", repo: REPO, pr, headSha: H, headTree: TREE, mainSha: sha("e"), images: [], warnings: [], ...options.packet });
   return { round, feedback, packet };
 }
@@ -228,12 +230,36 @@ describe("checkAnswer", () => {
     expect(await check(w, {}, { choice: "send-back" })).toMatchObject({ kind: "refused", reason: "choice" });
   });
 
-  it("refuses an agreed send-back until the gate offers that answer", async () => {
+  it("resolves an agreed send-back with the owner's general note, then the Ship question's comment, as the note", async () => {
     const w = await world();
 
-    const outcome = await check(w, { pick: "Revise", revisionRequested: true }, { choice: "send-back" });
+    const outcome = await check(w, { pick: "Revise", revisionRequested: true, general: " Close, but not yet. ", comment: "Rename the flag." }, { choice: "send-back" });
 
-    expect(outcome).toMatchObject({ kind: "refused", reason: "send-back-unsupported" });
+    expect(outcome).toEqual({ kind: "resolve", gateId: w.gateId, choice: "send-back", payload: { decision: "send-back", headSha: H, note: "Close, but not yet.\n\nRename the flag." } });
+  });
+
+  it("cuts the owner's note at the cap the gate payload carries", async () => {
+    const w = await world();
+
+    const outcome = await check(w, { pick: "Revise", revisionRequested: true, general: "x".repeat(MAX_NOTE_CHARS + 10) }, { choice: "send-back" });
+
+    expect(outcome).toMatchObject({ kind: "resolve", payload: { note: "x".repeat(MAX_NOTE_CHARS) } });
+  });
+
+  it("refuses a send-back whose feedback holds no words for the implementer", async () => {
+    const w = await world();
+
+    const outcome = await check(w, { pick: "Revise", revisionRequested: true, general: "  ", comment: "" }, { choice: "send-back" });
+
+    expect(outcome).toMatchObject({ kind: "refused", reason: "feedback", detail: expect.stringContaining("no note") });
+  });
+
+  it("reports already when the gate was resolved with this very send-back", async () => {
+    const w = await world();
+    const options = { pick: "Revise", revisionRequested: true, comment: "Rename the flag." };
+    w.host.gates.resolve(w.gateId, { decision: "send-back", headSha: H, note: "Rename the flag." }, OWNER);
+
+    expect(await check(w, options, { choice: "send-back" })).toEqual({ kind: "already", gateId: w.gateId });
   });
 
   it("refuses a gate id that belongs to another run", async () => {

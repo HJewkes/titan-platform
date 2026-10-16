@@ -62,6 +62,17 @@ function rig({ kind = "correctness", remerge = EMPTY, fix = NO_FIX, own = { carr
 }
 
 describe("an approve-merge answer following the head", () => {
+  it("follows no earlier approval once the owner sends a later head back", async () => {
+    const r = rig({ answer: (head) => (head === MERGED_UP ? { decision: "send-back", headSha: head, note: "rename" } : { decision: "merge", headSha: head }) });
+
+    await r.ask("approve-merge", landPrompt(APPROVED));
+    await r.ask("approve-merge:1", landPrompt(MERGED_UP, "shepherd-merge-guard", "skill-path"));
+    await r.ask("approve-merge:2", landPrompt(LATER));
+
+    expect(r.gates).toEqual([APPROVED, MERGED_UP, LATER]);
+    expect(r.steps.some((step) => step.stepId === `sh-approval-carry:${LATER}`)).toBe(false);
+  });
+
   it("answers the gate at the approved head plus an empty-remerge merge of the base without asking the owner", async () => {
     const r = rig();
 

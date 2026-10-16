@@ -18,6 +18,7 @@ import { z } from "zod";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import { decisionLogResult, type DecisionLog } from "./decision-log.js";
+import type { RoundListeners } from "./listeners.js";
 import { ownerWriteCommand } from "./owner-guard.js";
 import { roundDecisions, type SubmittedRound } from "./round-decisions.js";
 import {
@@ -206,12 +207,24 @@ async function logRound(decisionLog: DecisionLog, round: SubmittedRound): Promis
 }
 
 /** Runs only once the feedback file is written; a log failure shows in `log` and never undoes the submit. */
-async function afterSubmit(decisionLog: DecisionLog | undefined, { result, round }: Submission): Promise<SubmitResult> {
+async function recordDecisions(decisionLog: DecisionLog | undefined, { result, round }: Submission): Promise<SubmitResult> {
   if (decisionLog === undefined || round === null || result.status !== "submitted") return result;
   return { ...result, log: await logRound(decisionLog, round) };
 }
 
-export function roundsSubmitCommands(source: RoundsSource, decisionLog?: DecisionLog) {
+/** The listener runs after the answer is on disk and never changes what the owner is told. */
+async function afterSubmit(hooks: SubmitHooks, id: string, submission: Submission): Promise<SubmitResult> {
+  const result = await recordDecisions(hooks.decisionLog, submission);
+  await hooks.listeners?.afterRoundSubmit(id, result);
+  return result;
+}
+
+interface SubmitHooks {
+  decisionLog?: DecisionLog;
+  listeners?: RoundListeners;
+}
+
+export function roundsSubmitCommands(source: RoundsSource, decisionLog?: DecisionLog, listeners?: RoundListeners) {
   return {
     "rounds.submit": ownerWriteCommand({
       name: "rounds.submit",
@@ -219,7 +232,7 @@ export function roundsSubmitCommands(source: RoundsSource, decisionLog?: Decisio
       args: submitArgs,
       result: submitResult,
       ownerWrite: true,
-      run: async (args) => afterSubmit(decisionLog, await submitRound(source, args)),
+      run: async (args) => afterSubmit({ decisionLog, listeners }, args.id, await submitRound(source, args)),
     }),
   };
 }

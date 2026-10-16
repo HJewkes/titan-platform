@@ -54,6 +54,7 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
     mountRoutes: staticRoot ? (app) => mountStaticApp(app, { root: staticRoot }) : undefined,
     logger,
   });
+  void sources.listeners?.sweep();
   const relay = startEventsRelay({ hub: handle.hub, upstreams: relayUpstreams(config), logger });
   const close = async (): Promise<void> => {
     await Promise.all([relay.close(), handle.close()]);

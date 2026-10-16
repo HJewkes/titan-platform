@@ -55,6 +55,8 @@ export interface ConsoleConfig {
    * `TITAN_CONSOLE_DECISIONS_FILE`. Owner-configured; never from a request. Null writes the ledger only.
    */
   decisionsFile: string | null;
+  /** `TITAN_CONSOLE_GATE_ANSWERS=1` relays a submitted Ship or Send back to the factory's gate; off, the console only writes feedback.json. */
+  gateAnswers: boolean;
 }
 
 export const LAN_NEEDS_TLS = "TITAN_CONSOLE_HOST needs TITAN_CONSOLE_TLS_CERT and TITAN_CONSOLE_TLS_KEY: the LAN listener serves HTTPS only";
@@ -103,10 +105,11 @@ export function resolveConfig(
     lanNames: lanNamesFrom(env.TITAN_CONSOLE_LAN_NAMES, machine),
     lanTls: lanTlsFrom(env, home),
     lanTokenPath: expandHome(env.TITAN_CONSOLE_TOKEN || path.join(stateDir, "lan.token"), home),
-    ownerWrites: ownerWritesFrom(env.TITAN_CONSOLE_OWNER_WRITES),
+    ownerWrites: flagFrom("TITAN_CONSOLE_OWNER_WRITES", env.TITAN_CONSOLE_OWNER_WRITES),
     inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
     roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
     decisionsFile: decisionsFileFrom(env.TITAN_CONSOLE_DECISIONS_FILE, home),
+    gateAnswers: flagFrom("TITAN_CONSOLE_GATE_ANSWERS", env.TITAN_CONSOLE_GATE_ANSWERS),
   };
   assertCoherent(config);
   return config;
@@ -146,11 +149,11 @@ function decisionsFileFrom(raw: string | undefined, home: string): string | null
   return file;
 }
 
-/** Only `1` turns owner writes on; any other value is refused rather than read as off, so a typo is never silent. */
-function ownerWritesFrom(raw: string | undefined): boolean {
+/** Only `1` turns a flag on; any other value is refused rather than read as off, so a typo is never silent. */
+function flagFrom(name: string, raw: string | undefined): boolean {
   if (raw === undefined || raw === "" || raw === "0") return false;
   if (raw === "1") return true;
-  throw new Error(`TITAN_CONSOLE_OWNER_WRITES must be 1 or 0, got "${raw}"`);
+  throw new Error(`${name} must be 1 or 0, got "${raw}"`);
 }
 
 const WILDCARDS = new BlockList();

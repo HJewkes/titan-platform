@@ -7,6 +7,8 @@ import type { ConsoleSources } from "./commands.js";
 import type { ConsoleConfig } from "./config.js";
 import { createDecisionLog, type HumanOnly } from "./decision-log.js";
 import { factoryNeeds } from "./factory.js";
+import { factoryGateAnswer } from "./gate-answer.js";
+import { createRoundListeners } from "./listeners.js";
 import { shepherdReader } from "./shepherd.js";
 
 export const UPSTREAM_IDS = ["work", "agents", "sessions"] as const;
@@ -107,6 +109,7 @@ export function humanOnlyFrom(activeWork: ActiveWork): () => Promise<HumanOnly> 
 
 export function createSources(config: ConsoleConfig, logger: Logger = consoleLogger): ConsoleSources {
   const activeWork = activeWorkClient(config.activeWorkPort);
+  const shepherd = shepherdReader(config.factoryPort);
   return {
     upstreams: createUpstreams(config),
     activeWork,
@@ -118,8 +121,14 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     sessions: { graphPath: config.sessionGraphPath, codewatchUrl: config.codewatchUrl },
     inbox: { dir: config.inboxDir },
     rounds: { dir: config.roundsDir },
-    shepherd: shepherdReader(config.factoryPort),
+    shepherd,
     factory: factoryNeeds(config.factoryPort),
     decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger }),
+    listeners: createRoundListeners({
+      enabled: config.gateAnswers,
+      roundsDir: config.roundsDir,
+      shepherd,
+      answer: factoryGateAnswer(config.factoryPort),
+    }),
   };
 }

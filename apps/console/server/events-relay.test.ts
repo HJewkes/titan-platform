@@ -102,6 +102,7 @@ function consoleConfig(activeWorkPort: number, agentChatPort: number): ConsoleCo
     lanTls: null,
     lanTokenPath: path.join(dir, "state", "lan.token"),
     ownerWrites: false,
+    gateAnswers: false,
     inboxDir: path.join(dir, "state", "inbox"),
     roundsDir: path.join(dir, "state", "rounds"),
     decisionsFile: null,
