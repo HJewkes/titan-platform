@@ -69,7 +69,8 @@ interface SupersededRun {
 }
 
 /**
- * A re-review drops the head's review; a failed-rounds gate the head moved past hands the owner's question to the new head, whose rounds count afresh or it would gate at once.
+ * A re-review drops the head's review; a route gate the head moved past hands the owner's question to the new head, so its
+ * cancel is never the owner's answer (TP-3083). A failed-rounds gate's rounds also count afresh at the new head.
  * A stuck-behind gate the head moved past starts the update budget over, or a new head still behind would gate again before any update.
  */
 export function clearSuperseded(run: SupersededRun, rereview: string | undefined, gated: string | undefined, stepId: string): void {
@@ -79,7 +80,7 @@ export function clearSuperseded(run: SupersededRun, rereview: string | undefined
     const here = run.escalations.get(gated);
     const escalated = run.carried ?? here;
     if (here?.escalation === "failed-rounds") run.failedRounds = 0;
-    else if (escalated) run.carried = { ...escalated, carriedFrom: gated };
+    if (escalated) run.carried = { ...escalated, carriedFrom: gated };
   }
 }
 

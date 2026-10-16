@@ -225,9 +225,10 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
 - `hold` and `release` write the registration's hold, which every merge route checks.
   A hold's class is the text of its reason before the first colon (`--reason "g10-review: <detail>; <task>"`);
   `shepherd hold` refuses, with exit 65 and before anything is held, a reason whose class is not one of `serve-down`,
-  `stalled`, `no-reviewer`, `run-failed`, `visual-gate2`, `g10-review`, `g10-adversary` or `owner-asked`, and a reason in one of the
+  `stalled`, `no-reviewer`, `run-failed`, `visual-gate2`, `g10-review`, `g10-adversary`, `owner-asked` or `owner-review`, and a reason in one of the
   first four (factory-defect) classes that cites no task ID (`src/shepherd/hold-reason.ts`). Two classes carry the G10 rule:
-  - `g10-review` releases itself. When the run's `sh-await-verdict` at the PR's head, read fresh, is a MERGE from the
+  - `g10-review` releases itself unless it names a `--reviewer` or has no hold event on record (an unreadable history
+    counts as none), since either may be a review the owner assigned. When the run's `sh-await-verdict` at the PR's head, read fresh, is a MERGE from the
     configured opus reviewer (`shepherd.review.profile`; `bd-reviewer`, or a profile named for opus) and the required
     checks are green at that head, the `sh-g10-release:<head>:<n>` step releases the hold and records the verdict
     ref (reviewer, session, locator). A FIX_FIRST, a head that moved, a verdict carried from another head, or a
@@ -237,6 +238,9 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
     Registration holds it only for a sensitive path: a `kind=security` PR with no such path takes `g10-review`
     (`g10-review: security kind, no sensitive path`), and test files are not sensitive paths. The security paths include
     agent-chat's `src/leak-guard/**`, `src/agents/*self-grant*`, `src/cli/verbs/permission-hook.ts` and `src/broker/host-directory.ts`.
+
+  - `owner-review` records that the owner assigned the review to a person; no Shepherd MERGE releases it, only
+    `shepherd release`.
 
   Any other class waits for `shepherd release <pr> --head <sha>`. While a `g10-adversary` hold sits over a
   hold of another class, `release` must name the hold it lifts with `--class <class>`.

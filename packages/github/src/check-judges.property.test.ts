@@ -29,24 +29,26 @@ function oracleIsNewer(run: CheckRun, than: CheckRun): boolean {
 }
 
 type OracleFinding = { kind: "pending" | "bad"; text: string };
+type Picker = (runs: readonly CheckRun[], name: string, app: number) => CheckRun | null;
 
-function oracleCiVerdict(input: CiVerdictInput): CiVerdict {
-  const findings = input.rules.contexts.length > 0 ? oracleRequired(input) : oracleAll(input.runs, input.statuses);
+/** `pick` swaps only the newest-run picker, so a divergence can be pinned on the picker and nothing else. */
+function oracleCiVerdict(input: CiVerdictInput, pick: Picker = oracleNewest): CiVerdict {
+  const findings = input.rules.contexts.length > 0 ? oracleRequired(input, pick) : oracleAll(input.runs, input.statuses);
   const pending = findings.filter((finding) => finding.kind === "pending").map((finding) => finding.text);
   if (pending.length > 0) return { verdict: "pending", reasons: pending };
   const bad = findings.map((finding) => finding.text);
   return bad.length > 0 ? { verdict: "red", reasons: bad } : { verdict: "green", reasons: [] };
 }
 
-function oracleRequired({ rules, runs, statuses }: CiVerdictInput): OracleFinding[] {
+function oracleRequired({ rules, runs, statuses }: CiVerdictInput, pick: Picker): OracleFinding[] {
   const findings: (OracleFinding | null)[] = [];
   for (const context of rules.contexts) {
     const pins = rules.pins?.[context];
     if (pins) {
-      findings.push(...pins.map((app) => oracleJudge(context, oracleNewest(runs, context, app), null)));
+      findings.push(...pins.map((app) => oracleJudge(context, pick(runs, context, app), null)));
     } else {
       const state = statuses.find((status) => status.context === context)?.state ?? null;
-      findings.push(oracleJudge(context, oracleNewest(runs, context, ORACLE_ACTIONS), state));
+      findings.push(oracleJudge(context, pick(runs, context, ORACLE_ACTIONS), state));
     }
   }
   return findings.filter((finding): finding is OracleFinding => finding !== null);
@@ -200,13 +202,38 @@ function unstartedBesideStarted(runs: readonly CheckRun[]): boolean {
   return runs.some((unstarted) => unstarted.startedAt === null && runs.some((other) => other !== unstarted && other.name === unstarted.name && (other.startedAt !== null || other.status === "completed")));
 }
 
+const slotOf = (runs: readonly CheckRun[], name: string, app: number) => runs.filter((run) => run.name === name && run.appId === app);
+const unfinished = (run: CheckRun) => run.status !== "completed";
+
+/**
+ * The pick ciVerdict must make (TP-2465 c), written out rather than borrowed from `latestPerName` so the harness does
+ * not trust the code under test: any unfinished run of the context and app decides it (each reads pending alike);
+ * among completed runs a null start or a tied start goes to the higher id, otherwise the later start wins.
+ */
+const specPick: Picker = (runs, name, app) => {
+  const slot = slotOf(runs, name, app);
+  const open = slot.find(unfinished);
+  if (open) return open;
+  const byId = (a: CheckRun, b: CheckRun) => (b.id > a.id ? b : a);
+  if (slot.some((run) => run.startedAt === null)) return slot.reduce(byId, slot[0]!);
+  return slot.reduce<CheckRun | null>((best, run) => (!best || run.startedAt! > best.startedAt! || (run.startedAt === best.startedAt && run.id > best.id) ? run : best), null);
+};
+
+const requiredSlots = ({ rules, runs }: Snapshot): CheckRun[][] =>
+  rules.contexts.flatMap((name) => (rules.pins?.[name] ?? [GITHUB_ACTIONS_APP_ID]).map((app) => slotOf(runs, name, app)));
+
+/** Where the pick may now differ from origin/main's first-wins, null-oldest picker. */
+const unfinishedBesideAnother = (snapshot: Snapshot) => requiredSlots(snapshot).some((slot) => slot.length > 1 && slot.some(unfinished));
+const completedTieOrNullStart = (snapshot: Snapshot) =>
+  requiredSlots(snapshot).some((slot) => slot.some((a) => slot.some((b) => a !== b && (a.startedAt === b.startedAt || a.startedAt === null || b.startedAt === null))));
+
 /** Collects mismatches instead of asserting per case, so one failure reports its first few cases, not 50k. */
 function mismatches(snapshots: Iterable<Snapshot>): { count: number; first: unknown[] } {
   const first: unknown[] = [];
   let count = 0;
   for (const snapshot of snapshots) {
     const checks = [
-      ["ciVerdict", ciVerdict(snapshot), oracleCiVerdict(snapshot)],
+      ["ciVerdict", ciVerdict(snapshot), oracleCiVerdict(snapshot, specPick)],
       ["headCheckFindings", headCheckFindings(headInput(snapshot)), oracleHeadCheckFindings(headInput(snapshot))],
       ["latestPerName", latestPerName(snapshot.runs), oracleLatestPerName(snapshot.runs)],
     ] as const;
@@ -237,6 +264,29 @@ describe("check judges against their origin/main oracles", () => {
     const pickJustified = (runs: readonly CheckRun[]) => latestPerName(runs).every((picked) => picked.startedAt !== null || picked.status !== "completed" || highestId(picked, runs));
     expect(diverged.every((runs) => unstartedBesideStarted(runs) && pickJustified(runs))).toBe(true);
   });
+
+  it("ciVerdict diverges only where the pick may differ, and does diverge there", () => {
+    const diverged = Array.from(sampledSnapshots(20_000, 2465)).filter((snapshot) => JSON.stringify(ciVerdict(snapshot)) !== JSON.stringify(oracleCiVerdict(snapshot)));
+
+    expect(diverged.filter(unfinishedBesideAnother).length).toBeGreaterThan(0);
+    expect(diverged.filter(completedTieOrNullStart).length).toBeGreaterThan(0);
+    expect(diverged.filter((snapshot) => !unfinishedBesideAnother(snapshot) && !completedTieOrNullStart(snapshot))).toEqual([]);
+  });
+
+  it("ciVerdict turns green only where every run of a diverging slot completed", () => {
+    const newlyGreen = Array.from(sampledSnapshots(20_000, 2465)).filter((snapshot) => ciVerdict(snapshot).verdict === "green" && oracleCiVerdict(snapshot).verdict !== "green");
+
+    expect(newlyGreen.filter((snapshot) => unfinishedBesideAnother(snapshot) || !completedTieOrNullStart(snapshot))).toEqual([]);
+  });
+
+  /** A success status on an unpinned context still overrides its runs, as on origin/main; TP-2485 tracks failing it closed. */
+  it("ciVerdict is never green while a run of a required context and app is unfinished, bar the TP-2485 status override", () => {
+    const statusOverride = ({ rules, statuses }: Snapshot) => statuses.some((status) => status.state === "success" && rules.contexts.includes(status.context) && !rules.pins?.[status.context]);
+    const open = (snapshot: Snapshot) => !statusOverride(snapshot) && requiredSlots(snapshot).some((slot) => slot.some(unfinished));
+    const greenWhileOpen = [...exhaustiveSnapshots(), ...sampledSnapshots(20_000, 2465)].filter((snapshot) => open(snapshot) && ciVerdict(snapshot).verdict === "green");
+
+    expect(greenWhileOpen.slice(0, 3)).toEqual([]);
+  });
 });
 
 /*
@@ -254,8 +304,8 @@ function comparableSnapshot(random: () => number): Snapshot {
 const ciGreen = (snapshot: Snapshot, judge: (input: CiVerdictInput) => CiVerdict) => judge(snapshot).verdict === "green";
 const headGreen = (snapshot: Snapshot, judge: (input: HeadChecksInput) => CheckFinding[]) => judge(headInput(snapshot)).length === 0;
 
-function classify({ rules, runs }: Snapshot): Disagreement | "unexplained" {
-  const picks = rules.contexts.map((name) => oracleNewest(runs, name, ORACLE_ACTIONS));
+function classify({ rules, runs }: Snapshot, pickNewest: Picker = oracleNewest): Disagreement | "unexplained" {
+  const picks = rules.contexts.map((name) => pickNewest(runs, name, ORACLE_ACTIONS));
   if (runs.some((candidate) => !picks.includes(candidate) && !oracleIsPassing(candidate))) return "non-picked-run-not-passing";
   const supersededSuccess = picks.some((picked) => picked && !oracleIsSucceeded(picked) && runs.some((other) => other.name === picked.name && oracleIsSucceeded(other)));
   return supersededSuccess ? "picked-run-not-success-but-another-succeeded" : "unexplained";
@@ -275,11 +325,13 @@ describe("old ciVerdict and old headCheckFindings on the comparable domain", () 
     expect([...seen.keys()].sort()).toEqual(["non-picked-run-not-passing", "picked-run-not-success-but-another-succeeded"]);
   });
 
-  it("give the same answer live wherever the old pair agreed", () => {
+  it("give the same answer live wherever the old pair agreed, unless the documented pick change splits them into a documented class", () => {
     const broken = snapshots.filter((snapshot) => {
       const old = ciGreen(snapshot, oracleCiVerdict);
       if (old !== headGreen(snapshot, oracleHeadCheckFindings)) return false;
-      return ciGreen(snapshot, ciVerdict) !== old || headGreen(snapshot, headCheckFindings) !== old;
+      if (headGreen(snapshot, headCheckFindings) !== old) return true;
+      if (ciGreen(snapshot, ciVerdict) === old) return false;
+      return !(unfinishedBesideAnother(snapshot) || completedTieOrNullStart(snapshot)) || classify(snapshot, specPick) === "unexplained";
     });
     expect(broken.slice(0, 3)).toEqual([]);
   });
