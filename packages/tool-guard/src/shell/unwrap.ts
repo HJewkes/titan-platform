@@ -1,3 +1,4 @@
+import { argv0Values, assignedArgv0, splitStringArgv0 } from "./argv0.js";
 import { splitCluster, takesNextWord } from "./cluster.js";
 import { envSplitString } from "./env-argv.js";
 import type { EnvSyntax } from "./env-argv.js";
@@ -131,6 +132,8 @@ export interface Unwrapped {
    * Such a word may expand to nothing, an option or a wrapper, so `timeout $O 5 git push` may run git.
    */
   unsure?: WordToken[];
+  /** Names `exec -a`, `env -a`/`--argv0` or an `ARGV0=` prefix run the command under; null where one is only known at run time. */
+  argv0?: Array<string | null>;
 }
 
 /**
@@ -149,6 +152,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
   const loose: WordToken[] = [];
   let xargs: Unwrapped["xargs"];
   let negated = false;
+  const argv0: Array<string | null> = [];
   let i = 0;
   while (i < words.length) {
     const w = words[i] as WordToken;
@@ -175,9 +179,13 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       }
       const script =
         runnerShellScript(words, i, start) ?? wrapperScript(words, start, spec) ?? joinedScript(words, start, spec);
-      if (script !== null) return { name: commandName(w.value), path: w.value, args: words.slice(i + 1), assigned, script };
+      if (script !== null) {
+        const named = [...argv0Values(commandName(w.value), words.slice(start)), ...splitStringArgv0(commandName(w.value), script), ...assignedArgv0(assigned)];
+        return { name: commandName(w.value), path: w.value, args: words.slice(i + 1), assigned, script, ...(named.length > 0 ? { argv0: named } : {}) };
+      }
       i = skipWrapper(words, start, spec);
       if (i < 0) return null;
+      argv0.push(...argv0Values(commandName(w.value), words.slice(start, i)));
       loose.push(...words.slice(i - (spec.positionals ?? 0), i).filter((p) => p.dynamic));
       if (commandName(w.value) === "xargs") xargs = { ...xargsOptions(words.slice(start, i), xargs), words: words.slice(i) };
     } else break;
@@ -185,7 +193,9 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
   const cmd = command(words, i, assigned);
   if (cmd.name === null && cmd.args[0]) loose.push(cmd.args[0]);
   const unsure = loose.length > 0 ? words.filter((w) => !loose.includes(w)) : null;
-  return { ...cmd, ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}), ...(unsure ? { unsure } : {}) };
+  argv0.push(...assignedArgv0(assigned));
+  const named = argv0.length > 0 ? { argv0 } : {};
+  return { ...cmd, ...named, ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}), ...(unsure ? { unsure } : {}) };
 }
 
 function command(words: WordToken[], i: number, assigned: Unwrapped["assigned"]): Unwrapped {

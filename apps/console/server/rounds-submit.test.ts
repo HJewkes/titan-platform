@@ -1,0 +1,158 @@
+import { createHash } from "node:crypto";
+import { cp, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { RequestAuth } from "@titan-design/daemon";
+import { EXIT, invokeCommand } from "@titan-design/registry";
+import type { ConsoleContext } from "./owner-guard.js";
+import { FIXTURE_ROUNDS } from "./round-fixtures.js";
+import { MAX_FEEDBACK_BYTES, roundsSubmitCommands } from "./rounds-submit.js";
+
+const ROUND = "orbit-retry-r1";
+const HEAD = "0123456789abcdef0123456789abcdef01234567";
+const SESSION_AUTH: RequestAuth = { credential: "session", issuedAt: 1_000, peerLocal: false };
+
+let root: string;
+let dir: string;
+let manifestSha256: string;
+
+const sha256 = (bytes: Buffer): string => createHash("sha256").update(bytes).digest("hex");
+
+function ownerContext(ownerWrites = true): ConsoleContext {
+  return { warnings: [], format: "json", surface: "http", auth: SESSION_AUTH, ownerWrites };
+}
+
+function submit(args: Record<string, unknown>, ctx = ownerContext()) {
+  return invokeCommand(roundsSubmitCommands({ dir })["rounds.submit"], args, ctx);
+}
+
+function shipArgs(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return { id: ROUND, manifestSha256, headSha: HEAD, answers: [{ questionId: "ship-backoff", pick: "Ship" }], ...overrides };
+}
+
+const feedbackOf = (id = ROUND) => path.join(dir, id, "feedback.json");
+const exists = (file: string) => stat(file).then(() => true, () => false);
+
+beforeEach(async () => {
+  root = await mkdtemp(path.join(tmpdir(), "rounds-submit-"));
+  dir = path.join(root, "rounds");
+  await mkdir(dir);
+  await cp(path.join(FIXTURE_ROUNDS.dir, ROUND), path.join(dir, ROUND), { recursive: true });
+  manifestSha256 = sha256(await readFile(path.join(dir, ROUND, "round.json")));
+});
+
+afterEach(async () => {
+  await rm(root, { recursive: true, force: true });
+});
+
+describe("rounds.submit", () => {
+  it("writes one feedback@1 file at mode 0600 and returns its path, sha256 and the shipped head", async () => {
+    const { envelope } = await submit(shipArgs({ general: "Looks right." }));
+
+    const bytes = await readFile(feedbackOf());
+    expect(envelope).toEqual({ ok: true, data: { status: "submitted", path: feedbackOf(), sha256: sha256(bytes), headSha: HEAD } });
+    expect((await stat(feedbackOf())).mode & 0o777).toBe(0o600);
+    expect(JSON.parse(bytes.toString("utf8"))).toEqual({
+      schema: "titan-review/feedback@1",
+      unit: "orbit-retry",
+      round: 1,
+      manifestSha256,
+      submittedAt: expect.any(String),
+      answers: [{ questionId: "ship-backoff", pick: "Ship", recommendationSeen: true }],
+      variants: [],
+      general: "Looks right.",
+    });
+  });
+
+  it("is refused without the owner-write class and writes nothing", async () => {
+    const { envelope, exitCode } = await submit(shipArgs(), ownerContext(false));
+
+    expect(exitCode).toBe(EXIT.NOPERM);
+    expect(envelope).toMatchObject({ ok: false, error: "owner-write command refused: owner writes are off" });
+    expect(await exists(feedbackOf())).toBe(false);
+  });
+
+  it.each([
+    ["a parent segment", ".."],
+    ["a path through the parent", `../rounds/${ROUND}`],
+    ["an absolute path", path.sep + ROUND],
+    ["an unknown id", "no-such-round"],
+    ["a symlinked round dir", "linked-r1"],
+  ])("resolves only a real round dir inside the rounds dir: refuses %s as not found", async (_label, id) => {
+    await symlink(path.join(dir, ROUND), path.join(dir, "linked-r1"));
+
+    const { envelope, exitCode } = await submit(shipArgs({ id }));
+
+    expect(exitCode).toBe(EXIT.NOINPUT);
+    expect(envelope).toMatchObject({ ok: false, error: `No round named "${id}"` });
+    expect(await exists(feedbackOf())).toBe(false);
+  });
+
+  it("writes once: a second submit is already-submitted and leaves the first file's bytes", async () => {
+    await submit(shipArgs({ general: "first" }));
+    const first = await readFile(feedbackOf());
+
+    const { envelope } = await submit(shipArgs({ answers: [{ questionId: "ship-backoff", pick: "Don't ship" }], general: "second" }));
+
+    expect(envelope).toEqual({ ok: true, data: { status: "already-submitted" } });
+    expect(await readFile(feedbackOf())).toEqual(first);
+  });
+
+  it("never writes through a symlink planted at feedback.json", async () => {
+    const target = path.join(root, "elsewhere.json");
+    await writeFile(target, "untouched");
+    await symlink(target, feedbackOf());
+
+    const { envelope } = await submit(shipArgs());
+
+    expect(envelope).toEqual({ ok: true, data: { status: "already-submitted" } });
+    expect(await readFile(target, "utf8")).toBe("untouched");
+  });
+
+  it.each([
+    ["a manifest sha256 that is not the file on disk", { manifestSha256: "f".repeat(64) }, "round.json has changed since it was shown; reload the round"],
+    ["a Ship with no head sha", { headSha: undefined }, "a Ship answer must carry the head sha its question names"],
+    ["a Ship naming another head sha", { headSha: "f".repeat(40) }, 'question "ship-backoff" names a different head sha'],
+  ])("binds to what was shown: refuses %s", async (_label, overrides, error) => {
+    const { envelope, exitCode } = await submit(shipArgs(overrides));
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error });
+    expect(await exists(feedbackOf())).toBe(false);
+  });
+
+  it("needs no head sha when the answer does not ship", async () => {
+    const { envelope } = await submit(shipArgs({ headSha: undefined, answers: [{ questionId: "ship-backoff", pick: "Don't ship" }] }));
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null } });
+  });
+
+  it.each([
+    ["an unknown question id", [{ questionId: "ship-other", pick: "Ship" }], 'no question "ship-other" in this round'],
+    ["a question answered twice", [{ questionId: "ship-backoff", pick: "Ship" }, { questionId: "ship-backoff", pick: "Ship" }], 'question "ship-backoff" is answered twice'],
+    ["a pick outside the options", [{ questionId: "ship-backoff", pick: "Merge it" }], 'question "ship-backoff": "Merge it" is not one of its options'],
+    ["a field the question kind does not take", [{ questionId: "ship-backoff", value: 3 }], 'question "ship-backoff": value does not answer a pick-one question'],
+  ])("validates the answers: refuses %s", async (_label, answers, error) => {
+    const { envelope, exitCode } = await submit(shipArgs({ answers }));
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error });
+    expect(await exists(feedbackOf())).toBe(false);
+  });
+
+  it("refuses an answer field outside the feedback@1 shape", async () => {
+    const { exitCode } = await submit(shipArgs({ answers: [{ questionId: "ship-backoff", pick: "Ship", approvedBy: "agent" }] }));
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(await exists(feedbackOf())).toBe(false);
+  });
+
+  it("refuses feedback over the size cap", async () => {
+    const { envelope, exitCode } = await submit(shipArgs({ general: "x".repeat(MAX_FEEDBACK_BYTES) }));
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: `the feedback is over ${MAX_FEEDBACK_BYTES} bytes` });
+    expect(await exists(feedbackOf())).toBe(false);
+  });
+});

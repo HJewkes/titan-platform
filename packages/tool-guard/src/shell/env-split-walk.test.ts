@@ -53,6 +53,7 @@ const PUSH_ROUTES = [
   ["a bare $NAME in a double-quoted -S string", `env -S "\\$G push --no-verify origin HEAD:main"`],
   ["a positional $1 command word", "env -S '$1 push --no-verify origin HEAD:main'"],
   ["a $( command word", "env -S '$(echo git) push --no-verify origin HEAD:main'"],
+  ["a bare $NAME argv0", `env -S '-a $D zsh -c "git push --no-verify origin HEAD:main"'`],
 ] as const;
 
 describe("env -S is split by env's rules and read as env's argv (TP-3210)", () => {
