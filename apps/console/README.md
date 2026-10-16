@@ -59,6 +59,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_OWNER_WRITES` | `0` | `1` lets owner-write commands run on the LAN (see "Who may run a command"). Turning it on is an owner step. Any value but `0` or `1` is refused |
 | `TITAN_CONSOLE_INBOX_DIR` | `$TITAN_CONSOLE_STATE/inbox/deposits` | The owner-inbox spool `inbox.deposit` files into, created 0700 on the first deposit |
 | `TITAN_CONSOLE_ROUNDS_DIR` | `$TITAN_CONSOLE_STATE/rounds` | Review rounds, one `<round-id>/round.json` each, read by `rounds.list`, `rounds.get` and `approvals.flow`. `fixtures/rounds` holds synthetic ones for a browser check |
+| `TITAN_CONSOLE_DECISIONS_FILE` | none | The owner's decisions file the decision log appends one-way, A/B and policy answers to (see "The decision log"). Owner config only, never taken from a request; a relative path is refused. Unset, only `answers.jsonl` is written |
 
 The active-work root is `ACTIVE_ROOT` when set. Otherwise it is the data directory
 active-work's own CLI resolves through `env-paths`: the platform's application data
@@ -151,6 +152,19 @@ Three rules hold for every later slice.
   `rounds.submit`, an `owner-write`, records the owner's answers to a round as its
   `feedback.json` and resolves nothing itself. No command controls an agent. A later write must
   take a class below.
+
+### The decision log
+
+After `rounds.submit` writes `feedback.json`, the console records each answered question in
+`$TITAN_CONSOLE_STATE/answers.jsonl`: one row per answer, in the `@titan-design/decider` ledger
+shape (`source: "queue"`, keyed `round:<round>:<question>:<submittedAt>`), appended with
+`O_APPEND|O_NOFOLLOW` to a file kept at mode 0600. A one-way, A/B (a decide with two or more options
+and a pick) or policy (a D-row `class`, or category `policy`) answer also gets one bullet under
+`## Queue answers <date>` in `TITAN_CONSOLE_DECISIONS_FILE`, which must already exist. A Ship
+approval is two-way, so it reaches the ledger only. A personal item, an item of a human-only
+initiative, or any answer while active-work cannot say which initiatives are human-only writes
+nothing. A failed log write never undoes the submit: the result's `log` array says what was
+written per question, with a reason that names no path, and the daemon log has the error.
 
 ## Live updates
 
@@ -246,6 +260,34 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   can spread past the per-asker cap across invented names, up to the spool-wide 2000. A
   deposit still cannot answer or resolve anything, so this costs inbox noise, not owner
   authority.
+
+## Importing a review round
+
+A review-harness round dir, or a CI visual packet built into one, lands in the rounds dir from a
+shell:
+
+```sh
+titan-console rounds import <round-dir>          # id, frames: N, feedback: copied|kept|none, URLs
+titan-console rounds import <round-dir> --json   # one line: {id, created, frames, feedback, url, lanUrl}
+```
+
+It writes to `TITAN_CONSOLE_ROUNDS_DIR` as `<unit>-r<round>/` and prints
+`http://127.0.0.1:$TITAN_CONSOLE_PORT/#/rounds/<id>`, plus the LAN URL when `TITAN_CONSOLE_HOST`
+is set. Run it with the same `TITAN_CONSOLE_*` settings as the service, or the round lands in a dir
+the service does not read. A refusal prints its reason to stderr and no URL, exits non-zero, and
+writes nothing. The verb is local only: no `/rpc` command imports a round.
+
+- **Validated as the console reads it.** `round.json` and `feedback.json` must pass the parsers
+  `rounds.list` and the owner queue use. `frames/frames.json` must carry the sha256 of that
+  `round.json` and its unit and round. Only the files it lists (`file`, `base`, `diff`, `after`)
+  are copied, each sha256-checked through the `rounds.frame` reader.
+- **CI packets.** A `packet.json` or `prose.json` that frames.json names is copied beside
+  `round.json` after a sha256 and JSON check. The packet's repo, PR and head must equal every
+  merge-bound Ship question in the round, because the factory's Ship answer route reads it there.
+- **No symlinks.** A symlink at the source dir, `frames/`, or any file it reads is refused.
+- **Idempotent.** A new round is staged in a dot-named dir and renamed into place. A re-import of
+  the same `round.json` and `frames.json` adds only missing files. A changed `round.json` is
+  refused with "build round n+1", and an existing `feedback.json` is never replaced.
 
 ## The approvals flow
 

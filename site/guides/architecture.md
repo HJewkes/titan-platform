@@ -227,6 +227,7 @@ graph TD
   console --> appPaths
   console --> chatProtocol
   console --> daemon
+  console --> decider
   console --> github
   console --> ownerQueue
   console --> pm

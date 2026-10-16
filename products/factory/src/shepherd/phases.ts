@@ -139,4 +139,6 @@ export interface ShepherdDeps {
   heldRepair?: "off" | "on";
   /** `shepherd.visualPacket`: whether a visual approve-merge gate spawns its review packager; absent means `off`. */
   visualPacket?: VisualPacketPorts;
+  /** `shepherd.consoleAnswers` is configured, so each approve-merge gate offers the owner `send-back`; absent means none does. */
+  consoleAnswers?: boolean;
 }

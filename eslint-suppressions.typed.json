@@ -3393,11 +3393,6 @@
       "count": 1
     }
   },
-  "products/factory/src/workflows/land-approval.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    }
-  },
   "products/factory/src/workflows/land-deadline.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1

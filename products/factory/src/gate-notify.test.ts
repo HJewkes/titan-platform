@@ -48,8 +48,8 @@ function host(): FactoryHost {
   return opened;
 }
 
-function openMergeGate(target: FactoryHost, id = GATE): void {
-  const { schema, brief } = approveMergeDecision({ repo: "HJewkes/demo", pr: 7, headSha: HEAD, reason: "Ready.", reviewedMerge: true });
+function openMergeGate(target: FactoryHost, id = GATE, sendBack = false): void {
+  const { schema, brief } = approveMergeDecision({ repo: "HJewkes/demo", pr: 7, headSha: HEAD, reason: "Ready.", reviewedMerge: true, sendBack });
   target.gates.create({ id, prompt: "Merge?", schema: toJSONSchema(schema), ...brief });
 }
 
@@ -246,5 +246,33 @@ describe("which gates are asked", () => {
   it("maps an option's label as well as its id, and nothing else", () => {
     expect(answerPayload(gate(), "merge at this head")).toEqual({ decision: "merge", headSha: HEAD });
     expect(answerPayload(gate(), "yes")).toBeUndefined();
+  });
+});
+
+describe("gate notify: an approve-merge gate that offers send-back", () => {
+  it("leaves a send-back answer unmappable, since an option alone carries no note", async () => {
+    const factory = host();
+    const queue = new FakeQueue();
+    openMergeGate(factory, GATE, true);
+    await notifyTick(ports(factory, queue));
+
+    queue.answer("q1", "send-back");
+    await notifyTick(ports(factory, queue));
+
+    expect(queue.asked[0]?.options).toEqual(["merge", "abandon", "send-back"]);
+    expect(factory.gates.get(GATE)?.status).toBe("pending");
+    expect(factory.asks.get(GATE)).toMatchObject({ state: "unmappable", detail: expect.stringContaining("does not match its schema") });
+  });
+
+  it("still resolves a merge answer at the pinned head", async () => {
+    const factory = host();
+    const queue = new FakeQueue();
+    openMergeGate(factory, GATE, true);
+    await notifyTick(ports(factory, queue));
+
+    queue.answer("q1", "merge");
+    await notifyTick(ports(factory, queue));
+
+    expect(factory.gates.get(GATE)).toMatchObject({ status: "resolved", payload: { decision: "merge", headSha: HEAD } });
   });
 });

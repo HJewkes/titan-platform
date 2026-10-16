@@ -150,6 +150,9 @@ importers:
       '@titan-design/daemon':
         specifier: workspace:^
         version: link:../../packages/daemon
+      '@titan-design/decider':
+        specifier: workspace:^
+        version: link:../../packages/decider
       '@titan-design/github':
         specifier: workspace:^
         version: link:../../packages/github

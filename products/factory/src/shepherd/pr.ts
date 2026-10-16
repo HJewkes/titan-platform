@@ -48,6 +48,7 @@ import { taskIdOf } from "../workflows/land-merge-message.js";
 import { SHEPHERD_STEPS } from "./shepherd-steps.js";
 import { withEarlier, type FixFirstTrail } from "./fix-first-trail.js";
 import { packetTriggering, visualPacketRoutes } from "./visual-packet-trigger.js";
+import { OWNER_SEND_BACK_KIND, isSentBack, ownerSendBack, sendBackOffer, sendBackOfferRoute } from "./owner-send-back.js";
 
 export { SHEPHERD_STEPS };
 
@@ -123,7 +124,7 @@ function shepherdOptions(run: ShepherdRun, verdictFor: (headSha: string) => Verd
   const options = shepherdLandOptions(() => run.policy, verdictFor, (headSha) => liveEscalation(run, headSha));
   const unsettled = options.unsettled && { ...options.unsettled, notice: unsettledMergeNotice(run) };
   const merge = { reviewedMerge: (headSha: string) => verdictIsMergeAt(verdictFor(headSha), headSha) };
-  return { ...options, ...(unsettled && { unsettled }), ...merge, ownerBriefAt: (headSha) => ownerBriefAt(verdictFor(headSha), headSha) };
+  return { ...options, ...(unsettled && { unsettled }), ...merge, ownerBriefAt: (headSha) => ownerBriefAt(verdictFor(headSha), headSha), sendBackOffered: sendBackOffer() };
 }
 
 /** Undefined means a review send-back ended this round from inside `land` and the next round lands. */
@@ -144,6 +145,7 @@ async function routeLanded(run: ShepherdRun, outcome: LandOutcome): Promise<Land
     if (await woken(run, "ci-red", outcome.headSha, { failing: outcome.failing })) return undefined;
     return ciFailedRoute(run, outcome);
   }
+  if (isSentBack(outcome)) return (await woken(run, "review", outcome.headSha, ownerSendBack(outcome))) ? undefined : unhandledSendBack(run, OWNER_SEND_BACK_KIND, outcome.headSha, outcome.detail);
   if (!isConflict(run, outcome)) return outcome;
   run.failedRounds += 1;
   return onConflict(run, outcome.headSha);
@@ -355,6 +357,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...g10ReholdRoutes(deps, wiring.review?.carry),
     ...heldRepairRoutes(deps),
     ...visualPacketRoutes(deps),
+    sendBackOfferRoute(deps),
     headOriginRoute(deps),
     reviewRefusedRoute(deps.now),
   ];

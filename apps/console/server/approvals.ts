@@ -1,10 +1,11 @@
 /**
  * `approvals.flow`: the owner's one merged queue, read only. Three legs (the factory's needs.list,
  * the console's deposit spool and its rounds dir) go through owner-queue `consolidate`. Each leg
- * catches its own failure into a gap line, so a dead source never reads as an empty queue.
+ * catches its own failure into a gap line, so a dead source never reads as an empty queue. A withdrawn
+ * round's questions skip consolidation and join the Flow's `withdrawn` list beside superseded items.
  */
 import { z } from "zod";
-import { consolidate, type Flow, type OwnerItem } from "@titan-design/owner-queue";
+import { consolidate, type Flow, type OwnerItem, type WithdrawnItem } from "@titan-design/owner-queue";
 import { roundQueueItems, spoolQueueItems } from "./approval-items.js";
 import type { factoryNeeds } from "./factory.js";
 import type { InboxSource } from "./inbox.js";
@@ -31,6 +32,7 @@ export interface ApprovalsFlow {
 interface Leg {
   open: OwnerItem[];
   answered: OwnerItem[];
+  withdrawn?: WithdrawnItem[];
   gaps: string[];
 }
 
@@ -99,7 +101,8 @@ export async function readFlow({ factory, rounds, inbox }: ApprovalsSources): Pr
   ]);
   const open = legs.flatMap((leg) => leg.open);
   const asks = open.filter((item) => item.lens !== "fyi");
-  const flow = consolidate(asks, { answered: legs.flatMap((leg) => leg.answered) });
+  const consolidated = consolidate(asks, { answered: legs.flatMap((leg) => leg.answered) });
+  const flow = { ...consolidated, withdrawn: [...consolidated.withdrawn, ...legs.flatMap((leg) => leg.withdrawn ?? [])] };
   return { flow: stripHiddenPicks(flow), gaps: legs.flatMap((leg) => leg.gaps), fyiCount: open.length - asks.length, readAt: new Date().toISOString() };
 }
 

@@ -38,9 +38,9 @@ export interface ConsoleDaemonOptions {
 export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise<DaemonHandle> {
   const { config, staticRoot } = options;
   const remote = lanListener(config);
-  const sources = createSources(config);
-  const { upstreams } = sources;
   const logger = options.logger ?? consoleLogger;
+  const sources = createSources(config, logger);
+  const { upstreams } = sources;
   const handle = await startDaemon({
     registry: createConsoleRegistry(sources, options.extraCommands),
     createContext: consoleContextFor(config.ownerWrites),
@@ -54,6 +54,7 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
     mountRoutes: staticRoot ? (app) => mountStaticApp(app, { root: staticRoot }) : undefined,
     logger,
   });
+  void sources.listeners?.sweep();
   const relay = startEventsRelay({ hub: handle.hub, upstreams: relayUpstreams(config), logger });
   const close = async (): Promise<void> => {
     await Promise.all([relay.close(), handle.close()]);

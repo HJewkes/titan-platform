@@ -75,6 +75,13 @@ describe("console config", () => {
     expect(() => resolveConfig({ TITAN_CONSOLE_CODEWATCH_URL: "http://127.0.0.1:7433/#/home" }, HOME)).toThrow(/no #fragment/);
   });
 
+  it("takes the decisions file only from TITAN_CONSOLE_DECISIONS_FILE, never a guessed default", () => {
+    expect(resolveConfig({}, HOME).decisionsFile).toBeNull();
+    expect(resolveConfig({ TITAN_CONSOLE_DECISIONS_FILE: "" }, HOME).decisionsFile).toBeNull();
+    expect(resolveConfig({ TITAN_CONSOLE_DECISIONS_FILE: "~/d.md" }, HOME).decisionsFile).toBe(path.join(HOME, "d.md"));
+    expect(() => resolveConfig({ TITAN_CONSOLE_DECISIONS_FILE: "d.md" }, HOME)).toThrow(/TITAN_CONSOLE_DECISIONS_FILE must be an absolute/);
+  });
+
   it("parses seat prefixes and refuses a malformed pair", () => {
     expect(resolveConfig({}, HOME).seatPrefixes).toEqual([]);
     expect(resolveConfig({ TITAN_CONSOLE_SEATS: "alpha=al, beta=be" }, HOME).seatPrefixes).toEqual([
@@ -186,6 +193,12 @@ describe("console LAN config", () => {
   it("keeps owner writes off unless TITAN_CONSOLE_OWNER_WRITES is 1", () => {
     expect([lan({}), lan({ TITAN_CONSOLE_OWNER_WRITES: "" }), lan({ TITAN_CONSOLE_OWNER_WRITES: "0" })].map((c) => c.ownerWrites)).toEqual([false, false, false]);
     expect(lan({ TITAN_CONSOLE_OWNER_WRITES: "1" }).ownerWrites).toBe(true);
+  });
+
+  it("keeps gate answers off unless TITAN_CONSOLE_GATE_ANSWERS is 1, and refuses a typo", () => {
+    expect([lan({}), lan({ TITAN_CONSOLE_GATE_ANSWERS: "" }), lan({ TITAN_CONSOLE_GATE_ANSWERS: "0" })].map((c) => c.gateAnswers)).toEqual([false, false, false]);
+    expect(lan({ TITAN_CONSOLE_GATE_ANSWERS: "1" }).gateAnswers).toBe(true);
+    expect(() => lan({ TITAN_CONSOLE_GATE_ANSWERS: "yes" })).toThrow(/TITAN_CONSOLE_GATE_ANSWERS must be 1 or 0/);
   });
 
   it.each(["true", "yes", "on", " 1"])("refuses TITAN_CONSOLE_OWNER_WRITES=%j rather than guess", (value) => {
