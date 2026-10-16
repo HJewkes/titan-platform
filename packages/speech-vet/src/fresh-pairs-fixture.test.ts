@@ -6,13 +6,13 @@ import { misakiToIpa } from "@titan-design/speech-g2p";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import shingles from "./fixtures/ab-chunk-shingles.json" with { type: "json" };
+import { phoneSegments } from "./feature-distance.js";
 import fresh from "./fixtures/fresh-pairs.json" with { type: "json" };
 import { cleanIpa } from "./phones.js";
 
 const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "fresh-pairs.json");
 const BUDGET_BYTES = 40 * 1024;
 const TOKEN = /[\p{L}\p{N}]+(?:'[\p{L}\p{N}]+)*/gu;
-const MULTI_SEGMENTS = ["eɪ", "aɪ", "oʊ", "aʊ", "ɔɪ", "tʃ", "dʒ"];
 const QUOTAS: Readonly<Record<string, number>> = {
   "eɪ/aɪ": 10,
   "oʊ/aʊ": 6,
@@ -61,18 +61,6 @@ const sessions = z.array(z.object({ session: z.string(), items: z.array(itemSche
 const practiceItems = z.array(itemSchema).parse(fresh.owner.practice);
 const allPairs = [...pairs, ...practice];
 const readings = allPairs.flatMap((p) => [p.A, p.B]);
-
-/** Cleaned phones split greedily into lv-60 segments; a local stand-in until S2's `phoneSegments` lands. */
-function segments(ipa: string): string[] {
-  const phones = cleanIpa(ipa);
-  const out: string[] = [];
-  for (let i = 0; i < phones.length; ) {
-    const segment = MULTI_SEGMENTS.find((m) => phones.startsWith(m, i)) ?? /^.\p{M}*/su.exec(phones.slice(i))![0];
-    out.push(segment);
-    i += segment.length;
-  }
-  return out;
-}
 
 /** The one substitution or indel that turns `a` into `b`, as [a side, b side] with "" for absence. */
 function contrastOf(a: string[], b: string[]): [string, string] | undefined {
@@ -136,7 +124,7 @@ describe("fresh pair quotas", () => {
 describe("fresh pair readings", () => {
   it("differ by exactly the stated contrast: one segment substitution, or one indel", () => {
     const wrong = allPairs.filter((p) => {
-      const found = contrastOf(segments(p.A.ipa), segments(p.B.ipa));
+      const found = contrastOf(phoneSegments(p.A.ipa), phoneSegments(p.B.ipa));
       return found?.join("/") !== p.contrast.join("/");
     });
     expect(wrong.map((p) => p.id)).toEqual([]);
