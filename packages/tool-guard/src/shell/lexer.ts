@@ -74,6 +74,8 @@ function step(s: LexState): void {
   if (c === "&" && ahead.text[1] === ">") return readRedirect(s);
   const op = OPERATORS.find((o) => ahead.text.startsWith(o));
   if (op === "&&" || op === "||") {
+    // A `]]` glued to the operator is still the pending word, and closes the `[[` only once it ends.
+    endWord(s);
     if (inConditional(s)) return appendConditionalOperator(s, op, end(2));
   }
   if (op) return readOperator(s, op, end(op.length));
