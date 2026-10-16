@@ -30,6 +30,9 @@
   "publishConfig": {
     "access": "public"
   },
+  "dependencies": {
+    "@titan-design/app-paths": "workspace:^"
+  },
   "devDependencies": {
     "@titan-design/speech-g2p": "workspace:*"
   },

@@ -761,6 +761,9 @@ importers:
       '@huggingface/transformers':
         specifier: ^3.8.1
         version: 3.8.1
+      '@titan-design/app-paths':
+        specifier: workspace:^
+        version: link:../app-paths
       kokoro-js:
         specifier: ^1.2.1
         version: 1.2.1

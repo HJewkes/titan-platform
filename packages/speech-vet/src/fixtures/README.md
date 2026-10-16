@@ -828,3 +828,279 @@ for w in unknown + capitalised:
     print(f"{w}\t{hits}")
 print("checked", len(unknown) + len(capitalised), "words; total hit files", total)
 ```
+
+## Fresh minimal pairs (TP-3034 T8b)
+
+The pre-registration for the feature-distance bar and its owner-fitted thresholds. It is committed
+before any pair is rendered, so the merge commit that adds it is the pre-registration timestamp.
+
+| File | What |
+|---|---|
+| `fresh-pairs.json` | 48 constructed minimal pairs to the class quotas (10 eɪ/aɪ, 6 oʊ/aʊ, 4 ɔɪ/aɪ, 4 affricate, 4 diphthong/monophthong, 8 vowel, 8 consonant, 4 indel) and 3 practice pairs. Each reading is held as misaki (the Kokoro override), IPA (`misakiToIpa` of the misaki) and an owner-facing respelling. Also: the isolated and carrier templates, the E5 deny list, the `analysis` rules (bar, thresholds, the option A/B extension, the D-T8b-2 guard, the freeze) and the owner playlist with its seed. |
+
+### Data rule (fresh pairs)
+
+Every word is an invented two-syllable name and every reading is constructed. Nothing comes from AB's
+books, `tts_defects.jsonl`, E4/E5 recognitions or any audio. The E5 deny list is E5's own 40
+constructed pair names, plus a 12-hex hash of each E5 reading pair, so the fresh set is proved
+disjoint without holding E5's readings. Each word was checked with `grep -rIiwl <word> <AB>/data/books`
+(counts only): zero hits for all 51. `fresh-pairs-fixture.test.ts` enforces the quotas, the one
+contrast per pair, the misaki/IPA agreement, E5 disjointness, the shingle deny list and a 40 KB budget.
+
+### Owner playlist
+
+Option A is session A: 6 practice items, then 96 first hearings (every pair-reading once, both readings
+of a pair in one condition) and 10 repeats. Option B appends session B: the same 96 pair-readings in
+the condition that differs in both voice and context, and 10 more repeats. Session A is drawn from the
+seed before any of session B's draws, so A is an exact prefix of B and adding B changes nothing in A.
+Items are `[pair, reading, voice, context, left, kind]`; `left` is the reading shown on the left.
+
+### Provenance (fresh pairs)
+
+- Readings use only symbols `misakiToIpa` and E5's scorer spell the same way: no `əɹ`, `ɚ`, `ɜ`, `T`,
+  `ᵻ` or `Q`. Misaki has no plain `e`, so the diphthong/monophthong class uses ɔɪ/ɔ (a diphthong
+  against its own first component) in place of the plan's "eɪ/e-like".
+- Generated from a built checkout (`pnpm install --frozen-lockfile && pnpm build`), with `<E5>` the
+  spike's out-of-repo `e4-e5` directory, read-only, and `<AB>` the audiobook checkout:
+
+```sh
+node gen_fresh_pairs.mjs packages/speech-g2p/dist/index.js packages/speech-vet/dist/index.js \
+  "<E5>/harness/minimal-pairs.json" packages/speech-vet/src/fixtures/fresh-pairs.json
+node grep_check.mjs packages/speech-vet/src/fixtures/fresh-pairs.json "<AB>/data/books"
+```
+
+- `analysis.json`, saved next to the generator, is the fixture's `analysis` block, written by hand;
+  the generator copies it verbatim.
+
+### gen_fresh_pairs.mjs
+
+```js
+// Writes fresh-pairs.json: TP-3034's constructed minimal pairs, the owner playlist and the pre-registered rules.
+// Usage: node gen_fresh_pairs.mjs <speech-g2p dist/index.js> <speech-vet dist/index.js> <E5 minimal-pairs.json> <out.json>
+import { createHash } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const [g2pPath, vetPath, e5Path, outPath] = process.argv.slice(2);
+const { misakiToIpa } = await import(pathToFileURL(g2pPath).href);
+const { cleanIpa } = await import(pathToFileURL(vetPath).href);
+
+const SEED = 3034;
+const VOICES = ["af_heart", "am_michael"];
+const CONTEXTS = ["isolated", "carrier"];
+// Index i and 3 - i differ in both voice and context.
+const CONDITIONS = VOICES.flatMap((voice) => CONTEXTS.map((context) => ({ voice, context })));
+const MIN_REPEAT_GAP = 20;
+const MAX_CONDITION_RUN = 3;
+const REPEATS_PER_SESSION = 10;
+
+// id, class, word, contrast [A side, B side] ("" = absent), then misaki and respelling for A and for B.
+const PAIRS = [
+  ["fp01", "eɪ/aɪ", "Vaylen", ["eɪ", "aɪ"], "vˈAlən", "VAY-lun", "vˈIlən", "VY-lun"],
+  ["fp02", "eɪ/aɪ", "Pellane", ["eɪ", "aɪ"], "pəlˈAn", "puh-LAYN", "pəlˈIn", "puh-LYN"],
+  ["fp03", "eɪ/aɪ", "Zaydon", ["eɪ", "aɪ"], "zˈAdən", "ZAY-dun", "zˈIdən", "ZY-dun"],
+  ["fp04", "eɪ/aɪ", "Brayvik", ["eɪ", "aɪ"], "bɹˈAvɪk", "BRAY-vik", "bɹˈIvɪk", "BRY-vik"],
+  ["fp05", "eɪ/aɪ", "Maytrel", ["eɪ", "aɪ"], "mˈAtɹəl", "MAY-trul", "mˈItɹəl", "MY-trul"],
+  ["fp06", "eɪ/aɪ", "Kaybris", ["eɪ", "aɪ"], "kˈAbɹɪs", "KAY-bris", "kˈIbɹɪs", "KY-bris"],
+  ["fp07", "eɪ/aɪ", "Laysom", ["eɪ", "aɪ"], "lˈAsəm", "LAY-sum", "lˈIsəm", "LY-sum"],
+  ["fp08", "eɪ/aɪ", "Faymish", ["eɪ", "aɪ"], "fˈAmɪʃ", "FAY-mish", "fˈImɪʃ", "FY-mish"],
+  ["fp09", "eɪ/aɪ", "Graylon", ["eɪ", "aɪ"], "ɡɹˈAlən", "GRAY-lun", "ɡɹˈIlən", "GRY-lun"],
+  ["fp10", "eɪ/aɪ", "Hayvet", ["eɪ", "aɪ"], "hˈAvət", "HAY-vut", "hˈIvət", "HY-vut"],
+  ["fp11", "oʊ/aʊ", "Dovrin", ["oʊ", "aʊ"], "dˈOvɹɪn", "DOH-vrin", "dˈWvɹɪn", "DOW-vrin"],
+  ["fp12", "oʊ/aʊ", "Molvast", ["oʊ", "aʊ"], "mˈOlvəst", "MOHL-vust", "mˈWlvəst", "MOWL-vust"],
+  ["fp13", "oʊ/aʊ", "Brosket", ["oʊ", "aʊ"], "bɹˈOskət", "BROH-skut", "bɹˈWskət", "BROW-skut"],
+  ["fp14", "oʊ/aʊ", "Tovan", ["oʊ", "aʊ"], "tˈOvən", "TOH-vun", "tˈWvən", "TOW-vun"],
+  ["fp15", "oʊ/aʊ", "Gromby", ["oʊ", "aʊ"], "ɡɹˈOmbi", "GROHM-bee", "ɡɹˈWmbi", "GROWM-bee"],
+  ["fp16", "oʊ/aʊ", "Zonnick", ["oʊ", "aʊ"], "zˈOnɪk", "ZOH-nik", "zˈWnɪk", "ZOW-nik"],
+  ["fp17", "ɔɪ/aɪ", "Hoylen", ["ɔɪ", "aɪ"], "hˈYlən", "HOY-lun", "hˈIlən", "HY-lun"],
+  ["fp18", "ɔɪ/aɪ", "Doymas", ["ɔɪ", "aɪ"], "dˈYməs", "DOY-mus", "dˈIməs", "DY-mus"],
+  ["fp19", "ɔɪ/aɪ", "Croyvet", ["ɔɪ", "aɪ"], "kɹˈYvət", "KROY-vut", "kɹˈIvət", "KRY-vut"],
+  ["fp20", "ɔɪ/aɪ", "Moydek", ["ɔɪ", "aɪ"], "mˈYdɛk", "MOY-dek", "mˈIdɛk", "MY-dek"],
+  ["fp21", "affricate", "Jessom", ["dʒ", "j"], "ʤˈɛsəm", "JEH-sum", "jˈɛsəm", "YEH-sum"],
+  ["fp22", "affricate", "Chelvin", ["tʃ", "ʃ"], "ʧˈɛlvɪn", "CHEL-vin", "ʃˈɛlvɪn", "SHEL-vin"],
+  ["fp23", "affricate", "Chobrin", ["tʃ", "t"], "ʧˈɑbɹɪn", "CHAH-brin", "tˈɑbɹɪn", "TAH-brin"],
+  ["fp24", "affricate", "Jandris", ["dʒ", "d"], "ʤˈændɹɪs", "JAN-dris", "dˈændɹɪs", "DAN-dris"],
+  ["fp25", "diphthong/monophthong", "Taymon", ["eɪ", "ɛ"], "tˈAmən", "TAY-mun", "tˈɛmən", "TEH-mun"],
+  ["fp26", "diphthong/monophthong", "Sidrel", ["aɪ", "ɪ"], "sˈIdɹəl", "SY-drul", "sˈɪdɹəl", "SIH-drul"],
+  ["fp27", "diphthong/monophthong", "Lomvik", ["oʊ", "ɔ"], "lˈOmvɪk", "LOHM-vik", "lˈɔmvɪk", "LAWM-vik"],
+  ["fp28", "diphthong/monophthong", "Boyten", ["ɔɪ", "ɔ"], "bˈYtən", "BOY-tun", "bˈɔtən", "BAW-tun"],
+  ["fp29", "vowel", "Pemrick", ["ɛ", "æ"], "pˈɛmɹɪk", "PEM-rik", "pˈæmɹɪk", "PAM-rik"],
+  ["fp30", "vowel", "Delvish", ["ɛ", "æ"], "dˈɛlvɪʃ", "DEL-vish", "dˈælvɪʃ", "DAL-vish"],
+  ["fp31", "vowel", "Vinsel", ["ɪ", "i"], "vˈɪnsəl", "VIN-sul", "vˈinsəl", "VEEN-sul"],
+  ["fp32", "vowel", "Sibron", ["ɪ", "i"], "sˈɪbɹən", "SIH-brun", "sˈibɹən", "SEE-brun"],
+  ["fp33", "vowel", "Hudrin", ["ʊ", "u"], "hˈʊdɹɪn", "HUU-drin", "hˈudɹɪn", "HOO-drin"],
+  ["fp34", "vowel", "Gundrel", ["ʌ", "ɑ"], "ɡˈʌndɹəl", "GUHN-drul", "ɡˈɑndɹəl", "GAHN-drul"],
+  ["fp35", "vowel", "Mubsen", ["ʌ", "ɑ"], "mˈʌbsən", "MUHB-sun", "mˈɑbsən", "MAHB-sun"],
+  ["fp36", "vowel", "Fesdal", ["ɛ", "ɪ"], "fˈɛsdəl", "FES-dul", "fˈɪsdəl", "FIS-dul"],
+  ["fp37", "consonant", "Thalben", ["θ", "t"], "θˈælbən", "THAL-bun", "tˈælbən", "TAL-bun"],
+  ["fp38", "consonant", "Lothem", ["ð", "d"], "lˈʌðəm", "LUH-dhum", "lˈʌdəm", "LUH-dum"],
+  ["fp39", "consonant", "Selvik", ["s", "z"], "sˈɛlvɪk", "SEL-vik", "zˈɛlvɪk", "ZEL-vik"],
+  ["fp40", "consonant", "Vossel", ["v", "b"], "vˈɑsəl", "VAH-sul", "bˈɑsəl", "BAH-sul"],
+  ["fp41", "consonant", "Kessin", ["n", "ŋ"], "kˈɛsɪn", "KEH-sin", "kˈɛsɪŋ", "KEH-sing"],
+  ["fp42", "consonant", "Lumbet", ["l", "ɹ"], "lˈʌmbət", "LUHM-but", "ɹˈʌmbət", "RUHM-but"],
+  ["fp43", "consonant", "Pentrel", ["p", "b"], "pˈɛntɹəl", "PEN-trul", "bˈɛntɹəl", "BEN-trul"],
+  ["fp44", "consonant", "Kelvash", ["k", "ɡ"], "kˈɛlvæʃ", "KEL-vash", "ɡˈɛlvæʃ", "GEL-vash"],
+  ["fp45", "indel", "Brennik", ["ɹ", ""], "bɹˈɛnɪk", "BREH-nik", "bˈɛnɪk", "BEH-nik"],
+  ["fp46", "indel", "Stavel", ["t", ""], "stˈævəl", "STA-vul", "sˈævəl", "SA-vul"],
+  ["fp47", "indel", "Dalvest", ["t", ""], "dˈælvɛst", "DAL-vest", "dˈælvɛs", "DAL-ves"],
+  ["fp48", "indel", "Pavelt", ["l", ""], "pˈævɛlt", "PA-velt", "pˈævɛt", "PA-vet"],
+];
+const PRACTICE = [
+  ["pr1", "eɪ/aɪ", "Taybrin", ["eɪ", "aɪ"], "tˈAbɹɪn", "TAY-brin", "tˈIbɹɪn", "TY-brin"],
+  ["pr2", "vowel", "Nelbin", ["ɛ", "æ"], "nˈɛlbɪn", "NEL-bin", "nˈælbɪn", "NAL-bin"],
+  ["pr3", "oʊ/aʊ", "Gofrin", ["oʊ", "aʊ"], "ɡˈOfɹɪn", "GOH-frin", "ɡˈWfɹɪn", "GOW-frin"],
+];
+
+const reading = (misaki, respell) => ({ misaki, ipa: misakiToIpa(misaki), respell });
+const toPair = ([id, cls, word, contrast, mA, rA, mB, rB]) =>
+  ({ id, class: cls, word, contrast, A: reading(mA, rA), B: reading(mB, rB) });
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rng = mulberry32(SEED);
+const pick = (n) => Math.floor(rng() * n);
+function shuffle(xs) {
+  const a = [...xs];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = pick(i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Within each class in fixture order, a seeded order of its pairs takes the next condition round-robin.
+function firstConditions(pairs) {
+  const out = new Map();
+  let k = 0;
+  for (const cls of new Set(pairs.map((p) => p.class))) {
+    for (const p of shuffle(pairs.filter((q) => q.class === cls))) out.set(p.id, k++ % 4);
+  }
+  return out;
+}
+
+const condKey = (c) => `${c.voice}|${c.context}`;
+function orderOk(list) {
+  let run = 1;
+  for (let i = 1; i < list.length; i++) {
+    if (list[i].pair === list[i - 1].pair) return false;
+    run = condKey(list[i]) === condKey(list[i - 1]) ? run + 1 : 1;
+    if (run > MAX_CONDITION_RUN) return false;
+  }
+  return true;
+}
+
+function withRepeats(firsts) {
+  const order = firsts.map((c) => ({ ...c, kind: "first" }));
+  for (const c of shuffle(firsts).slice(0, REPEATS_PER_SESSION)) {
+    const from = order.findIndex((x) => x.kind === "first" && x.pair === c.pair && x.reading === c.reading) + MIN_REPEAT_GAP;
+    if (from > order.length) return null;
+    order.splice(from + pick(order.length - from + 1), 0, { ...c, kind: "repeat" });
+  }
+  return orderOk(order) ? order : null;
+}
+
+function session(name, pairs, condOf) {
+  const clips = pairs.flatMap((p) => ["A", "B"].map((r) => ({ pair: p.id, reading: r, ...CONDITIONS[condOf(p.id)] })));
+  for (let attempts = 1; ; attempts++) {
+    const firsts = shuffle(clips);
+    const order = orderOk(firsts) ? withRepeats(firsts) : null;
+    if (order) {
+      const items = order.map((c) => [c.pair, c.reading, c.voice, c.context, rng() < 0.5 ? "A" : "B", c.kind]);
+      return { session: name, attempts, items };
+    }
+  }
+}
+
+function e5Hashes() {
+  const rows = JSON.parse(readFileSync(e5Path, "utf8"));
+  const clean = (m) => cleanIpa(misakiToIpa(m));
+  const hash = (a, b) => createHash("sha256").update([clean(a), clean(b)].sort().join("|")).digest("hex").slice(0, 12);
+  return { words: rows.map((r) => r[1]), readingPairHashes: rows.map((r) => hash(r[2], r[3])).sort() };
+}
+
+const pairs = PAIRS.map(toPair);
+const practice = PRACTICE.map(toPair);
+const first = firstConditions(pairs);
+const practiceItems = practice.flatMap((p, k) =>
+  ["A", "B"].map((r, i) => {
+    const c = CONDITIONS[(2 * k + i) % 4];
+    return [p.id, r, c.voice, c.context, rng() < 0.5 ? "A" : "B", "practice"];
+  }),
+);
+const sessionA = session("A", pairs, (id) => first.get(id));
+const sessionB = session("B", pairs, (id) => 3 - first.get(id));
+const e5 = e5Hashes();
+
+const analysis = JSON.parse(readFileSync(new URL("./analysis.json", import.meta.url), "utf8"));
+const fixture = {
+  _source: {
+    task: "TP-3034 L1",
+    data: "synthetic: invented two-syllable names and constructed readings; nothing from AB's books, tts_defects.jsonl or E5's recognitions",
+    ipa: "misakiToIpa(misaki) from @titan-design/speech-g2p, stress kept",
+    generator: "src/fixtures/README.md, gen_fresh_pairs.mjs",
+  },
+  contexts: {
+    isolated: { text: "[{word}](/{misaki}/).", misaki: "{misaki}.", ipa: "{ipa}." },
+    carrier: {
+      text: "The name is [{word}](/{misaki}/), is it not?",
+      misaki: "ðə nˈAm ɪz {misaki}, ɪz ɪt nˈɑt?",
+      ipa: misakiToIpa("ðə nˈAm ɪz ") + "{ipa}" + misakiToIpa(", ɪz ɪt nˈɑt?"),
+    },
+  },
+  e5Deny: {
+    note: "E5's own 40 constructed pair names, and a hash of each E5 reading pair so the fresh set can be proved disjoint without holding the readings",
+    hash: "sha256 hex prefix (12) of the two readings' cleanIpa(misakiToIpa(misaki)), sorted by code point, joined by |",
+    ...e5,
+  },
+  analysis,
+  pairs: "@pairs",
+  practice: "@practice",
+  owner: {
+    seed: SEED,
+    rng: "mulberry32",
+    conditions: CONDITIONS.map(condKey),
+    item: ["pair", "reading", "voice", "context", "left", "kind"],
+    practice: practiceItems,
+    sessions: [sessionA, sessionB],
+  },
+};
+
+const rows = (xs) => "[\n  " + xs.map((x) => JSON.stringify(x)).join(",\n  ") + "\n ]";
+const text = JSON.stringify(fixture, null, 1)
+  .replace(/\[\n\s*((?:"[^"\n]*"|-?\d+),?(?:\n\s*(?:"[^"\n]*"|-?\d+),?)*)\n\s*\]/g, (_, body) =>
+    "[" + body.split("\n").map((s) => s.trim()).join(" ") + "]",
+  )
+  .replace('"@pairs"', () => rows(pairs))
+  .replace('"@practice"', () => rows(practice));
+writeFileSync(outPath, text + "\n");
+console.log("pairs", pairs.length, "practice", practice.length, "session attempts", sessionA.attempts, sessionB.attempts, "bytes", Buffer.byteLength(text) + 1);
+```
+
+### grep_check.mjs
+
+```js
+// Prints, per fresh-pair word, the number of AB book files that contain it (counts only, never the text).
+// Usage: node grep_check.mjs <fresh-pairs.json> <AB data/books>
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+
+const [fixturePath, books] = process.argv.slice(2);
+const fixture = JSON.parse(readFileSync(fixturePath, "utf8"));
+const words = [...fixture.pairs, ...fixture.practice].map((p) => p.word);
+let total = 0;
+for (const word of words) {
+  const files = spawnSync("grep", ["-rIiwl", "--", word, books], { encoding: "utf8" }).stdout;
+  const hits = files.split("\n").filter(Boolean).length;
+  total += hits;
+  console.log(`${word}\t${hits}`);
+}
+console.log("checked", words.length, "words; total hit files", total);
+```
