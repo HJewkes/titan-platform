@@ -145,7 +145,7 @@ async function routeLanded(run: ShepherdRun, outcome: LandOutcome): Promise<Land
     if (await woken(run, "ci-red", outcome.headSha, { failing: outcome.failing })) return undefined;
     return ciFailedRoute(run, outcome);
   }
-  if (isSentBack(outcome)) return (await woken(run, "review", outcome.headSha, ownerSendBack(outcome))) ? undefined : unhandledSendBack(run, OWNER_SEND_BACK_KIND, outcome.headSha);
+  if (isSentBack(outcome)) return (await woken(run, "review", outcome.headSha, ownerSendBack(outcome))) ? undefined : unhandledSendBack(run, OWNER_SEND_BACK_KIND, outcome.headSha, outcome.detail);
   if (!isConflict(run, outcome)) return outcome;
   run.failedRounds += 1;
   return onConflict(run, outcome.headSha);

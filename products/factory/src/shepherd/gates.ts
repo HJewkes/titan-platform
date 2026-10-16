@@ -96,8 +96,8 @@ export async function conflictGate(run: GateRun, headSha: string): Promise<LandO
 }
 
 /** A human chooses between waiting for a fix and abandoning; a pushed head answers for them. Undefined lands the next round. */
-export async function sentBackGate(run: GateRun, headSha: string, prompt: string, abandoned: string): Promise<LandOutcome | undefined> {
-  const { schema, brief } = sentBackDecision({ ...run.target, headSha, situation: prompt });
+export async function sentBackGate(run: GateRun, headSha: string, prompt: string, abandoned: string, situation = prompt): Promise<LandOutcome | undefined> {
+  const { schema, brief } = sentBackDecision({ ...run.target, headSha, situation });
   const answered = await askAtHead(run.ctx, "sh-sent-back", prompt, { schema, brief });
   const answer = answered ? schema.parse(answered.data) : { decision: "await-new-head" };
   if (answer.decision === "abandon") return { kind: "stopped", reason: "abandoned", headSha, detail: abandoned };
