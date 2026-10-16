@@ -116,6 +116,8 @@ export interface LexState {
   wholeEnd: number;
   /** Paren depth a `NAME=(` or `NAME+=(` opened at, or -1; bash rejects any redirect before that paren closes. */
   compoundDepth: number;
+  /** A word spelled `case` or `esac` has been read; until then no case is open and the scan can wait. */
+  caseWords: boolean;
   /** Where the scan for a `[[ … =~ … ]]` operand, which `NAME=(` only groups in, has reached. */
   regex: RegexScan;
   trials: ArithTrials;

@@ -41,8 +41,7 @@ export function newRegexScan(): RegexScan {
  * groups.
  */
 export function noteParen(s: LexState, op: string, glued: string | null): void {
-  regexDepth(s);
-  if (isCaseParen(s.regex, op)) return;
+  if (s.caseWords && isCaseParen(scanned(s), op)) return;
   if (op === "(") s.depth++;
   if (op === ")") s.depth = Math.max(0, s.depth - 1);
   if (s.compoundDepth !== -1 && op !== ")" && op !== "\n") throw new ParseError(`\`${op}\` inside a compound assignment ( … ) is a bash syntax error`);
@@ -107,6 +106,15 @@ export function refuseRedirect(s: LexState, op: string): void {
 export function inOpenCase(s: LexState): boolean {
   regexDepth(s);
   return s.regex.cases.length > 0;
+}
+
+/**
+ * The scan brought up to the tokens so far. Before any `case` or `esac` word no case is open, so `noteParen` skips it
+ * and the arithmetic trials, which scan nothing else, stay as cheap as before.
+ */
+function scanned(s: LexState): RegexScan {
+  regexDepth(s);
+  return s.regex;
 }
 
 /** The paren depth of the `=~` whose operand the tokens so far end inside, or -1. Scans each token once. */
