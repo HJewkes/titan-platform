@@ -10,12 +10,13 @@ import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
+import type { WorkflowContext } from "@titan-design/workflow";
 import type { SpawnRequest } from "./agents.js";
 import type { ShepherdPhases } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
-import { isVisualGate, packetDirFor, visualPacket, type PacketInput, type VisualPacketMode, type VisualPacketPorts } from "./visual-packet-trigger.js";
+import { isVisualGate, packetDirFor, packetTriggering, visualPacket, type PacketInput, type VisualPacketMode, type VisualPacketPorts } from "./visual-packet-trigger.js";
 
 const H2 = fakeSha("visual-next-head");
 const VISUAL: EffectivePolicy = { ...OWNER_GATE_POLICY, ownerGateReason: "gate-2-visual", seat: "design-seat" };
@@ -227,5 +228,71 @@ describe("the packet step's route", () => {
     const result = await visualPacket(githubPort(fakeGitHub().wire), ports("on", undefined), input);
 
     expect(result).toMatchObject({ event: "visual-packet-spawn-failed", reason: "no agent-chat is configured" });
+  });
+});
+
+describe("the replay guard around the packet step", () => {
+  const packetStep = `sh-visual-packet:${H1}`;
+  const gatePrompt = `Merge PR #1 in ${REPO} at head ${H1}? CI is green. Policy shepherd-merge-guard/visual-path: synthetic reason`;
+
+  interface Position {
+    next?: string;
+    resumed?: string;
+    iterations?: Record<string, number>;
+  }
+
+  /** A run context at a given replay position; `dispatched` collects the steps the trigger records. */
+  async function reachGate(position: Position) {
+    const dispatched: string[] = [];
+    const ctx = {
+      runId: "run-synthetic-1",
+      historyNext: () => position.next,
+      resumedGate: () => position.resumed,
+      iteration: (id: string) => position.iterations?.[id] ?? 0,
+      dispatch: async (stepId: string) => {
+        dispatched.push(stepId);
+        return { data: { result: { event: "visual-packet-off" } } };
+      },
+    } as unknown as WorkflowContext;
+    const assisted = vi.fn(async () => ({ data: {} })) as unknown as WorkflowContext["assisted"];
+    const run = { ctx, target: { repo: REPO, pr: 1 } as never, ownerGateReason: () => undefined };
+
+    await packetTriggering(run, assisted)("approve-merge", gatePrompt, {} as never);
+
+    return { dispatched, assisted };
+  }
+
+  it("a replay whose recorded next step is this head's packet step replays it", async () => {
+    const { dispatched, assisted } = await reachGate({ next: packetStep });
+
+    expect(dispatched).toEqual([packetStep]);
+    expect(assisted).toHaveBeenCalledOnce();
+  });
+
+  it("a replay whose recorded next step is something else records no packet step", async () => {
+    const { dispatched, assisted } = await reachGate({ next: "sh-policy" });
+
+    expect(dispatched).toEqual([]);
+    expect(assisted).toHaveBeenCalledOnce();
+  });
+
+  it("a gate resumed from before the packet step existed spawns no packager", async () => {
+    const { dispatched, assisted } = await reachGate({ resumed: "approve-merge" });
+
+    expect(dispatched).toEqual([]);
+    expect(assisted).toHaveBeenCalledOnce();
+  });
+
+  it("a fresh gate with nothing resumed records the packet step", async () => {
+    const { dispatched } = await reachGate({});
+
+    expect(dispatched).toEqual([packetStep]);
+  });
+
+  it("a second visual gate at a head that already has its packet step records no second one", async () => {
+    const { dispatched, assisted } = await reachGate({ iterations: { [packetStep]: 1 } });
+
+    expect(dispatched).toEqual([]);
+    expect(assisted).toHaveBeenCalledOnce();
   });
 });
