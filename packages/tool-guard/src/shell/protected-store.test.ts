@@ -103,6 +103,8 @@ describe("a command that stores into zsh's options parameter", () => {
     "read -d $d options",
     "sysread -i {0,x} options",
     "print {-v,options} x",
+    'print ""{-v,options} x',
+    "print ''{-v,options} x",
     "zparseopts $spec",
   ])("reads %s as a write", (line) => {
     expect(protectedWrite(line)).toBeTruthy();

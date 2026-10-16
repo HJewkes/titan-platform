@@ -3,6 +3,7 @@ import type { Unwrapped } from "./unwrap.js";
 import { arithmeticHookedIn } from "./arith-hooked.js";
 import { assignOnExpand } from "./assign-on-expand.js";
 import { HOOKED } from "./hooked-names.js";
+import { mayBeUnquoted, mayGenerate } from "./word-generation.js";
 import { TARGET_RE } from "./writers.js";
 
 
@@ -182,7 +183,7 @@ function specSlots(spec: WriterSpec, args: WordToken[]): WordToken[] | string {
 /**
  * One step of the walk: the states it leads to, or the text of an option word that fails closed. Any attached tail
  * is a slot, and so is the next word after a name or either-letter. A character no shell takes as an option ends
- * the reading, since the shell then refuses the command.
+ * the reading, since the shell then refuses the command, unless the word may expand past it.
  */
 function step(spec: WriterSpec, args: WordToken[], [i, k]: [number, number], walk: OptionWalk): Array<[number, number]> | string {
   const word = args[i];
@@ -200,7 +201,7 @@ function step(spec: WriterSpec, args: WordToken[], [i, k]: [number, number], wal
   }
   if (has(spec.numeric, letter)) return [[i, k + 1 + (/^\d*/.exec(tail)?.[0].length ?? 0)]];
   if (has(spec.flags, letter) || (spec.anyFlag === true && /[A-Za-z0-9]/.test(letter))) return [[i, k + 1]];
-  return /[A-Za-z0-9]/.test(letter) ? word.value : [];
+  return /[A-Za-z0-9]/.test(letter) || generates(word) ? word.value : [];
 }
 
 /** Past this length an option word is not walked letter by letter, and it counts as a hooked write. */
@@ -212,7 +213,7 @@ function startWord(spec: WriterSpec, i: number, word: WordToken, walk: OptionWal
     walk.operandsFrom = Math.min(walk.operandsFrom, i);
     return [];
   }
-  if (word.dynamic || word.value.length > MAX_OPTION_WORD || bracesExpand(word)) return word.value;
+  if (word.dynamic || word.value.length > MAX_OPTION_WORD || !/^[-+]/.test(word.value)) return word.value;
   if (word.value === "--" || word.value === "-") {
     walk.operandsFrom = Math.min(walk.operandsFrom, i + 1);
     return [];
@@ -221,15 +222,22 @@ function startWord(spec: WriterSpec, i: number, word: WordToken, walk: OptionWal
   return [[i, 1]];
 }
 
-/** A dynamic word that opens with an expansion may expand to an option. */
+/** A dynamic word that opens with an expansion, or a generating word not led by a literal, may expand to an option. */
 function mayBeOption(word: WordToken, spec: WriterSpec): boolean {
   if (word.value.startsWith("-") || (spec.plus === true && word.value.startsWith("+"))) return true;
-  if (bracesExpand(word)) return true;
+  if (generates(word) && !LITERAL_LEAD_RE.test(word.value)) return true;
   return word.dynamic && (/^[$`]/.test(word.value) || word.cuts?.some((cut) => cut.at === 0) === true);
 }
 
-/** An unquoted brace may expand into several words, any of them an option: `print {-v,PS4}`. */
-const bracesExpand = (word: WordToken) => !word.quoted && !word.dynamic && word.value.includes("{");
+/**
+ * A word that is not wholly quoted and holds a brace, glob or tilde may expand into other words, any of them an
+ * option: `print {-v,PS4}`, `print ""{-v,PS4}`, `print -[v] PS4` once a file `-v` exists. Any brace counts, since
+ * zsh's braceccl expands `-{v}` too. The walk cannot read such a word, so it fails closed rather than expanding it.
+ */
+const generates = (word: WordToken) => mayGenerate(word) || (mayBeUnquoted(word) && word.value.includes("{"));
+
+/** A first character no expansion changes, so every word the word yields starts with it and none is an option. */
+const LITERAL_LEAD_RE = /^[A-Za-z0-9_./]/;
 
 /**
  * A single word the shell reads as written: no expansion, glob or brace can turn it into other words. A word that
