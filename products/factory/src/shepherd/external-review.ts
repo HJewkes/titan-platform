@@ -87,7 +87,11 @@ function readNamedReviewerOrNone(reader: ReviewerReader, input: AwaitVerdictInpu
 export async function awaitExternalVerdict(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, input: ExternalVerdictInput, timing: AwaitVerdictTiming, signal: AbortSignal): Promise<AwaitVerdictResult> {
   const clock = deadline(timing);
   for (;;) {
-    const row = latestSession(input.external, await roster().catch(() => []));
+    const rows = await roster().catch((error: unknown): undefined => {
+      console.error(`shepherd: ${input.repo}#${input.pr}: the roster could not be read, so ${input.external}'s verdict is not read this poll: ${failureText(error)}`);
+      return undefined;
+    });
+    const row = rows && latestSession(input.external, rows);
     if (row) {
       const read = { repo: input.repo, pr: input.pr, head: input.head, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 };
       const result = acceptExternalVerdict(input, row, await readNamedReviewerOrNone(reader, read));

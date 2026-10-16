@@ -69,12 +69,12 @@ const branchOf = (pr: number): string => `${BRANCH}-${pr}`;
 const ctxOf = (next: Deploy) => factoryContext(next.host, next.routes);
 
 /** Registered runs recorded on build N, one per pull request number; nothing adopts them yet. */
-async function recorded(dbPath: string, prs: number[]): Promise<string[]> {
+async function recorded(dbPath: string, prs: number[], base?: string): Promise<string[]> {
   const first = deploy(dbPath, build(false));
   const ids = prs.map((pr) => first.host.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: String(pr), branch: branchOf(pr), policy: JSON.stringify(OWNER_GATE_POLICY), task: "demo/T-1" }));
   for (const id of ids) await vi.waitFor(() => expect(first.host.runtime.status(id)?.stepResults).toHaveProperty(["ci-wait:0"]));
   const store = first.routes.shepherd!.store.get();
-  prs.forEach((pr, i) => store.register({ repo: REPO, pr, task: "demo/T-1", implementer: "impl-a", kind: "feature", branch: branchOf(pr), runId: ids[i]!, policy: OWNER_GATE_POLICY }));
+  prs.forEach((pr, i) => store.register({ repo: REPO, pr, task: "demo/T-1", implementer: "impl-a", kind: "feature", branch: branchOf(pr), runId: ids[i]!, policy: OWNER_GATE_POLICY, ...(base !== undefined && { base }) }));
   first.host.close();
   return ids;
 }
@@ -86,9 +86,9 @@ interface Parked {
 }
 
 /** Registered runs parked by strictReplay when build N+1 adopts them. */
-async function parkedRuns(prs: number[] = [1], prState: "open" | "closed" = "open"): Promise<Parked> {
+async function parkedRuns(prs: number[] = [1], prState: "open" | "closed" = "open", base?: string): Promise<Parked> {
   const dbPath = join(mkdtempSync(join(tmpdir(), "tp2697b-")), "factory.db");
-  const oldRunIds = await recorded(dbPath, prs);
+  const oldRunIds = await recorded(dbPath, prs, base);
   const next = deploy(dbPath, build(true));
   prs.forEach((pr) => next.fake.addPr({ headSha: HEAD_B, headRef: branchOf(pr), state: prState }));
   await next.host.adopt();
@@ -178,6 +178,35 @@ describe("restartDivergedRuns reclassification", () => {
     const restarted = next.routes.shepherd!.store.get().byRun(sweep.restarted[0]!.newRunId);
     expect(sweep.restarted[0]!.runId).toBe(oldRunIds[0]);
     expect(restarted?.holdReason).toBe("g10-review: 450 changed lines");
+  });
+
+  it("classes a restarted run at the head the sweep read, not the last read head it was seeded with", async () => {
+    const { next } = await parkedRuns([1], "open", "main");
+    const heads: Array<string | undefined> = [];
+    next.routes.shepherd!.prFiles = async (target) => (heads.push(target.head), []);
+
+    await restartDivergedRuns(ctxOf(next));
+
+    expect(heads).not.toContain(HEAD_A);
+    expect(heads).toContain(HEAD_B);
+  });
+
+  it("holds a restarted run g10-adversary when classing it throws, so it is not left unclassified", async () => {
+    const { next } = await parkedRuns();
+    const store = next.routes.shepherd!.store.get();
+    next.fake.prFiles.set(1, [{ path: "src/big.ts", status: "modified", additions: 450, deletions: 0 }]);
+    vi.spyOn(store, "changeMark").mockImplementation(() => {
+      throw new Error("store unreadable");
+    });
+    const unclassed = vi.spyOn(store, "holdUnlessAdversary").mockImplementationOnce(() => {
+      throw new Error("store unreadable");
+    });
+
+    const sweep = await restartDivergedRuns(ctxOf(next));
+
+    expect(unclassed).toHaveBeenCalledTimes(2);
+    expect(sweep.errors).toHaveLength(1);
+    expect(store.byRun(sweep.restarted[0]!.newRunId)?.holdReason).toMatch(/^g10-adversary/);
   });
 
   it("acts on no run once the server is closing", async () => {
