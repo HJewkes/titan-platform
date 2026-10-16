@@ -150,7 +150,7 @@ describe("rounds.get", () => {
 
     expect(validDetail(await getRound({ dir }, "ship-tile-r1"))).toMatchObject({ ship: true, design: false, manifestSha256: createHash("sha256").update(bytes).digest("hex") });
     expect(validDetail(await getRound({ dir }, "lantern-cards-r1"))).toMatchObject({ ship: false, design: true });
-    expect(summaryOf((await listRounds({ dir })).rounds, "ship-tile-r1")).toMatchObject({ design: false });
+    expect(summaryOf((await listRounds({ dir })).rounds, "ship-tile-r1")).toMatchObject({ design: false, ship: true });
   });
 
   it("answers an invalid round with its reason rather than failing", async () => {

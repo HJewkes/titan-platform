@@ -54,6 +54,7 @@ const roundSummary = z.discriminatedUnion("valid", [
     round: z.number(),
     questions: z.number(),
     design: z.boolean(),
+    ship: z.boolean(),
     recommendations: z.enum(["after-answer", "shown"]),
   }),
   invalidRound,
@@ -179,7 +180,7 @@ function summaryOf({ id, status, updatedAt, parsed }: LoadedRound): RoundSummary
   const { manifest } = parsed;
   return {
     id, status, updatedAt, valid: true, unit: manifest.unit, round: manifest.round,
-    questions: manifest.questions.length, design: isDesign(manifest), recommendations: manifest.recommendations,
+    questions: manifest.questions.length, design: isDesign(manifest), ship: isShip(manifest), recommendations: manifest.recommendations,
   };
 }
 

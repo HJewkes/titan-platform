@@ -6,7 +6,7 @@ import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { FIXTURE_ROUNDS as source } from "../server/round-fixtures.js";
 import { getFrame } from "../server/round-frames.js";
-import { getRound, type RoundDetail } from "../server/rounds.js";
+import { getRound, listRounds, type RoundDetail } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
 
@@ -103,6 +103,14 @@ describe("the Ship view", () => {
 
     expect(screen.getByText("Ships example/tiles#1 at 89abcde")).toBeTruthy();
     expect(screen.queryByText("design round: open in the harness")).toBeNull();
+  });
+
+  it("labels the Ship round in the rounds list", async () => {
+    const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", { format: SNAPSHOT_FORMAT, createdAt: "2031-03-05T00:00:00.000Z", calls: { [snapshotKey("rounds.list", {})]: successEnvelope(await listRounds(source)) } }), "text/html");
+    window.location.hash = "#/rounds";
+    render(<RpcProvider source={pageDataSource({ doc: page })}><App /></RpcProvider>);
+
+    expect(within(await screen.findByTestId(`round-row-${SHIP}`)).getByText("ship")).toBeTruthy();
   });
 
   it("shows a changed image as BEFORE, AFTER and DIFF, and a new one as NEW with AFTER only", async () => {
