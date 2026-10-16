@@ -10,7 +10,7 @@ import { landGateHead } from "./approval-carry.js";
 import type { PrTarget } from "./gates.js";
 import type { OwnerGateReason } from "./policy.js";
 
-export const VISUAL_PACKET_STEP = "sh-visual-packet";
+const VISUAL_PACKET_STEP = "sh-visual-packet";
 export const VISUAL_PACKET_STEPS: readonly StepDeclaration[] = [{ id: VISUAL_PACKET_STEP, kind: "dispatch" }];
 
 export type VisualPacketMode = "off" | "shadow" | "on";
@@ -36,7 +36,7 @@ const PacketResult = z.looseObject({
   profile: z.string().optional(),
   reason: z.string().optional(),
 });
-export type PacketResult = z.infer<typeof PacketResult>;
+type PacketResult = z.infer<typeof PacketResult>;
 
 export interface PacketInput {
   runId: string;
@@ -55,7 +55,7 @@ export function isVisualGate(stepId: string, prompt: string, ownerGateReason: Ow
 }
 
 /** What the trigger reads from the run: its target and the policy as narrowed so far. */
-export interface PacketRun {
+interface PacketRun {
   ctx: WorkflowContext;
   target: PrTarget;
   ownerGateReason: () => OwnerGateReason | undefined;
@@ -92,7 +92,7 @@ export function packetDirFor(stateDir: string, runId: string, headSha: string): 
 }
 
 /** Unique per run and head, and one argv word agent-chat takes as a name. */
-export function packagerName(runId: string, headSha: string): string {
+function packagerName(runId: string, headSha: string): string {
   return `packager-${headSha.slice(0, 8)}-${runId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toLowerCase()}`;
 }
 
@@ -109,7 +109,7 @@ async function packetFacts(port: GitHubPort, input: PacketInput): Promise<Packet
   return { ...(tree && { headTree: tree }), ...(ciRunId !== undefined && { ciRunId }) };
 }
 
-export function packagerBrief(input: PacketInput, facts: PacketFacts, packetDir: string): string {
+function packagerBrief(input: PacketInput, facts: PacketFacts, packetDir: string): string {
   const run = facts.ciRunId === undefined ? "<the CI run id of the visual job at this head; Shepherd found none>" : String(facts.ciRunId);
   return [
     `Build the visual review packet for ${input.repo}#${input.pr} at head ${input.headSha}.`,
