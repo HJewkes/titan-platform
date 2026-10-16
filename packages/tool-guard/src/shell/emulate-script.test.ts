@@ -52,8 +52,14 @@ describe("emulate -c text is walked as eval (TP-3207)", () => {
     expect(await verdict(`${prefix}emulate zsh -c "$s"`)).toBe(await verdict(`${prefix}eval "$s"`));
   });
 
-  it.each(["emulate -L zsh", "emulate zsh -c 'echo hi'", "emulate", "emulate -LR sh", "emulate sh -o errexit"])("allows %s", async (line) => {
+  it.each(["emulate -L zsh", "emulate zsh -c 'echo hi'", "emulate"])("allows %s", async (line) => {
     expect(await verdict(line)).toBe("pass");
+  });
+});
+
+describe("an emulation other than zsh is refused whatever its text (FP2 of TP-2938)", () => {
+  it.each(["emulate -LR sh", "emulate sh -o errexit"])("denies %s", async (line) => {
+    expect(await verdict(line)).toBe("deny");
   });
 });
 
@@ -168,7 +174,9 @@ describe.skipIf(!zsh)("the guard denies an emulate line exactly where real zsh r
     const disagreements: string[] = [];
     for (const [i, line] of lines.entries()) {
       const denied = (await verdict(line)) === "deny";
-      const overRead = denied && !ran.has(i) && [own, sh].some((run) => /no such option|bad option/.test(run.stderr[i] ?? ""));
+      // FP2 (TP-2938): the guard refuses every non-zsh emulation mode, whether or not zsh runs the text.
+      const nonZshMode = /^emulate (?:-\S* )*(?:sh|ksh) /.test(line);
+      const overRead = denied && !ran.has(i) && (nonZshMode || [own, sh].some((run) => /no such option|bad option/.test(run.stderr[i] ?? "")));
       if (denied !== ran.has(i) && !overRead) disagreements.push(`${ran.has(i) ? "zsh runs" : "zsh refuses"}: ${line}`);
     }
     expect(ran.size).toBeGreaterThan(100);

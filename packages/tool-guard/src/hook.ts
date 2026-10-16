@@ -3,12 +3,14 @@ import type { ActorObservation } from "./actor.js";
 import { classify } from "./classify.js";
 import type { GuardDecision, Matched } from "./decide.js";
 import { parseHookEvent } from "./event.js";
-import type { HookEvent, MalformedEvent } from "./event.js";
+import type { BashEvent, HookEvent, MalformedEvent } from "./event.js";
+import { extractCommands } from "./shell/commands.js";
 import { formatDecisionLine, formatErrorLine } from "./log.js";
 import type { ErrorClass } from "./log.js";
 import { GUARDED_PATHS } from "./paths.js";
 import { ParseError } from "./shell/lexer.js";
 import { MAX_NESTING } from "./shell/nesting.js";
+import { GlobSubstError } from "./shell/glob-subst-refusal.js";
 import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, NestingReadingError, ReadingLimitError, ScriptBudgetError, SplicedReadingError, SplitReadingError, UnknownStdinError, UntrackedWriteError, ValueWalkError } from "./shell/unsure-readings.js";
 import type { ScriptOverrun } from "./shell/unsure-readings.js";
 import type { Split } from "./shell/parse-error.js";
@@ -69,6 +71,8 @@ const UNTRACKED_REASON =
   "authority-guard does not check this Bash command: it writes a file the guard cannot follow (output it cannot reproduce, a target only known at run time, another fd, `>!`, `<>`), then runs a script, which may be that file; run the script in its own command, where the guard reads the file as it is.";
 const STDIN_REASON =
   "authority-guard does not check this Bash command: a shell runs its stdin or another descriptor as its script, and the line does not show that text (`bash < $F`, `bash /dev/stdin <&3`, `bash /dev/fd/3`); run the script by a literal path, so the guard reads the file.";
+const GLOB_SUBST_REASON =
+  "authority-guard does not check this Bash command: it may turn on zsh's GLOB_SUBST (`setopt globsubst`, `emulate sh`, a store into `options` or ARGV0, or an option name it cannot read), after which an unquoted `$x` holding `*(e:CODE:)` runs CODE; drop the option change, or write the steps to a script file and run that.";
 const TABLE_REASON = "authority-guard could not load the authority table, so it refuses every guarded action. Report this to the owner.";
 const UNFINISHED_REASONS: Record<Unfinished, string> = {
   timeout: "authority-guard could not finish checking this call in time, so it was not run. Split the command into smaller Bash calls.",
@@ -127,8 +131,19 @@ async function answer(input: string, env: Env, port: HookPort): Promise<HookResu
   const result = classifyEvent(event, port.context);
   if (!result.ok && result.limit) return oversized(event, actor, result.limit, port);
   if (!result.ok) return failed(event, actor, result.cls, port);
-  if (result.actions.length === 0) return PASS;
-  return decided(event, actor, result.actions, port);
+  const decision = result.actions.length === 0 ? PASS : await decided(event, actor, result.actions, port);
+  const refuse = decision.stdout === "" && event.kind === "bash" && mayEnableGlobSubst(event, port.context.home);
+  return refuse ? oversized(event, actor, GLOB_SUBST_REASON, port) : decision;
+}
+
+/** Whether the line may turn on GLOB_SUBST. A line the walk cannot finish is classify's to refuse, so it reads as no. */
+function mayEnableGlobSubst(event: BashEvent, home: string): boolean {
+  try {
+    extractCommands(event.command, { cwd: event.cwd, home, refuseGlobSubst: true, stopPastCap: true });
+    return false;
+  } catch (error) {
+    return error instanceof GlobSubstError;
+  }
 }
 
 function parseInput(input: string): HookEvent | MalformedEvent {

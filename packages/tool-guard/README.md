@@ -53,6 +53,11 @@ guarded file stays readable by that user. The OS account is the real boundary.
   `alias *`, `typeset ali*` and `printf *` are refused in any directory, and so are harmless
   forms such as `printf *.txt` or `"$CMD" *`. Only the plain `NAME=VALUE` form of a
   declaration is spared, as neither shell globs it: `typeset a[1]=2` passes (TP-2705).
+- The hook denies a Bash command that may turn on zsh `GLOB_SUBST` (`setopt globsubst` in any spelling, `emulate` in a
+  mode other than zsh, `zsh -o globsubst`, a store into `options` or `ARGV0`, or an option name it cannot read), since
+  an unquoted `$x` holding `*(e:CODE:)` then runs CODE. `setopt nonomatch` and `emulate -L zsh` pass. A sourced script
+  is not read for this, and a prefix-assignment value such as `x=${options[globsubst]::=on} cmd` is left to the lexer
+  (TP-2938).
 - The mention rule is broad: any argument naming a secret path counts as a read, so
   `echo ~/.npmrc` and a `gh pr create --body` that names `~/.npmrc` deny too.
 

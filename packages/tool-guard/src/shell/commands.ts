@@ -17,6 +17,7 @@ import { xargsCommands } from "./xargs-runs.js";
 import { runReadings } from "./xargs-readings.js";
 import type { Vars } from "./vars.js";
 import { newMarks, noteRedirect, recordValue, settle } from "./value-marks.js";
+import { GLOB_SUBST_READERS, refuseGlobSubst } from "./glob-subst-refusal.js";
 import { noteCommand, noteWord } from "./stored-words.js";
 import type { ValueMarks } from "./value-marks.js";
 import { MAX_UNSURE_WORDS, NestingReadingError, ReadingLimitError, SPLICED_WEIGHT, SplitReadingError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
@@ -80,6 +81,8 @@ export interface ExtractOptions {
    */
   stopPastCap?: boolean;
   aliases?: AliasTable;
+  /** Throws `GlobSubstError` for a command that may turn on zsh GLOB_SUBST, which the hook alone refuses (the walk is also a reader of lines it must not refuse). */
+  refuseGlobSubst?: boolean;
   /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
   onScript?: (text: string) => void;
 }
@@ -114,6 +117,7 @@ interface Walk {
   /** What the line stores and whether it evaluates arithmetic, shared by every walk of it. */
   marks: ValueMarks;
   onScript: ((text: string) => void) | null;
+  refuseGlobSubst: boolean;
 }
 
 /**
@@ -143,6 +147,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
     unsure,
     marks: newMarks(),
     onScript: options.onScript ?? null,
+    refuseGlobSubst: options.refuseGlobSubst === true,
   };
   walk(tokenizeLine(src), observed(w));
   settle(w.marks);
@@ -267,11 +272,16 @@ function walkAdded(runs: Unwrapped[], redirects: RedirectToken[], w: Walk, next:
 
 /** A dynamic or guarded command word, or one that runs more commands: shell text, a `.sh` script, `xargs` or `find -exec`. */
 function decider(guarded: ReadonlySet<string> | undefined): (cmd: Unwrapped) => boolean {
-  return (cmd) => cmd.name === null || cmd.xargs !== undefined || cmd.script !== undefined || RUNNERS.has(cmd.name) || cmd.name.endsWith(".sh") || (guarded?.has(cmd.name) ?? true);
+  return (cmd) => cmd.name === null || cmd.xargs !== undefined || cmd.script !== undefined || isRunner(cmd.name) || (guarded?.has(cmd.name) ?? true);
+}
+
+function isRunner(name: string): boolean {
+  return RUNNERS.has(name) || GLOB_SUBST_READERS.has(name) || name.endsWith(".sh");
 }
 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
   if (raw.name === null && raw.args.length === 0 && !raw.xargs?.words.length) {
+    if (w.refuseGlobSubst) refuseGlobSubst(raw);
     for (const assignment of raw.assigned) assign(w.scope.vars, assignment);
     if (redirects.length === 0) return;
   }
@@ -307,6 +317,7 @@ function addedReading(w: Walk, read: (copy: Walk) => void): void {
 }
 
 function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {
+  if (w.refuseGlobSubst) refuseGlobSubst(cmd);
   trackVars(cmd, w.scope.vars);
   // A prefix assignment stores its value only for the command, which the variables do not hold; an element is heard where typed.
   if (cmd.name !== null || cmd.args.length > 0) for (const [, value, kind] of cmd.assigned) if (kind !== "hidden" && kind !== "element") hear(w, value);
