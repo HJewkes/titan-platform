@@ -103,8 +103,8 @@ two parts: word `probability`, which boosts severity, and segment `avgLogprob` a
 `compressionRatio`, which raise `low_confidence` defects. With the flag off, both are ignored
 even when the transcript carries them. **Always pass `defectOptionsFor(stt)`.** A caller
 holding transcripts with token log-probs that leaves the options out silently loses signal A.
-A `vet()` that composes this check must call it. `whisperStt` declares `tokenLogprobs: false`, so on the
-transformers.js path the flag stays off.
+A `vet()` that composes this check must call it. `whisperStt` declares `tokenLogprobs: true` unless built
+with `tokenLogprobs: false`, so on the transformers.js path signal A is on by default.
 
 ## Conformance fixtures
 

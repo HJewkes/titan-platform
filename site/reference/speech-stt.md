@@ -90,10 +90,15 @@ alignWords(["all", "llamas"], ["ɔːl", "lɑːməz"], logits, { vocab: phones.vo
 - One word recogniser backend, Whisper. A spike compared it with Parakeet over sherpa-onnx.
   Parakeet scored a lower word error rate, but it read garbled synthetic speech as the
   intended words, which makes it worse at catching bad takes. So there is no sherpa peer.
-- No segment confidence. Word-timestamp decoding in transformers.js reports none, so
-  `Transcript.segments` is empty and `whisperStt` declares `capabilities.tokenLogprobs: false`.
-  `SttProvider.capabilities` is required; a provider that fills word `probability` and segment
-  `avgLogprob` / `compressionRatio` from token log-probs declares it `true`.
+- No sentence-level segments. `whisperStt` reports one segment per 30 s decode window (windows
+  start 20 s apart and overlap), with `avgLogprob` and `compressionRatio` but no
+  `noSpeechProb`. A word in an overlap takes its probability from whichever window the matcher
+  pairs it with.
+- No temperature fallback. faster-whisper re-decodes a window whose `avgLogprob` is under -1 or
+  whose compression ratio is over 2.4; transformers.js decodes once, so a low `avgLogprob`
+  survives here where faster-whisper would have retried. Decoding runs without timestamp
+  tokens, which scores higher than faster-whisper's default timestamp mode on the same audio.
+  `tokenLogprobs: false` turns the capture off and declares `capabilities.tokenLogprobs: false`.
 - No prompt or language option yet. The default model is English only.
 - No `isjunk` callback on `SequenceMatcher`. None of the ported callers used one.
 - No file or WAV handling. `resample` takes and returns `{ samples, sampleRate }`.
@@ -110,6 +115,8 @@ alignWords(["all", "llamas"], ["ɔːl", "lɑːməz"], logits, { vocab: phones.vo
 - `whisperStt` caches transcripts by a SHA-256 of the model, sample rate and samples, in a
   `Map` per recogniser unless you pass `cache`. A second `transcribe` of the same audio does
   not run the model. The map is unbounded, so pass your own store for long-lived processes.
+  With `tokenLogprobs` on, the key also carries a version tag, so a store written before word
+  probabilities existed misses instead of replaying transcripts without them.
 - Without `@huggingface/transformers` installed, the first `transcribe` throws an error
   naming `npm i @huggingface/transformers`. Importing the package never loads the peer.
 - Audio at any rate is resampled to 16 kHz with `resample` first. Whisper gives a window's

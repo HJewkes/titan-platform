@@ -223,6 +223,15 @@ declare function loadTransformersCtc(importModule?: ModuleImporter): Promise<Ctc
  */
 declare function wav2vec2Recognizer(options?: Wav2vec2Options): Wav2vec2Recognizer;
 
+/** The slice of a transformers.js logits `Tensor` the capture reads: `logits[batch].data` is a view, not a copy. */
+interface LogitsBatch {
+    readonly [batch: number]: {
+        readonly data: ArrayLike<number>;
+    } | undefined;
+}
+
+/** A transformers.js logits processor: called once per decode step, it may edit the logits in place and returns them. */
+type LogitsProcessorFn = <L extends LogitsBatch>(inputIds: readonly (readonly (number | bigint)[])[], logits: L) => L;
 /** What a provider can report beyond text and timings. */
 interface SttCapabilities {
     /** Word `probability` and segment `avgLogprob` / `compressionRatio` come from token log-probs; true when filled. */
@@ -246,8 +255,19 @@ interface AsrPipeline {
     (samples: Float32Array, options: {
         return_timestamps: "word";
         chunk_length_s: number;
+        logits_processor?: LogitsProcessorFn[];
     }): Promise<AsrOutput>;
     dispose(): Promise<void>;
+    /** Read only when `tokenLogprobs` is on, to turn captured token ids back into text. */
+    tokenizer?: {
+        decode(ids: number[]): string;
+    };
+    /** Read only when `tokenLogprobs` is on: the end-of-text id splits text tokens from special ones. */
+    model?: {
+        generation_config?: {
+            eos_token_id?: number;
+        };
+    };
 }
 type AsrFactory = (task: "automatic-speech-recognition", model: string, options: {
     dtype: string;
@@ -268,6 +288,12 @@ interface WhisperSttOptions {
     /** Where the runtime caches model weights. The runtime's default when unset. */
     cacheDir?: string;
     cache?: TranscriptCache;
+    /**
+     * Fill `Word.probability` and one `Segment` per 30 s decode window from token log-probs, with faster-whisper's
+     * semantics. On by default; the capture costs about 1-4 ms per audio second. False gives words without
+     * `probability` and no segments.
+     */
+    tokenLogprobs?: boolean;
     /** Injectable for tests; defaults to importing `@huggingface/transformers`. */
     loadPipeline?: () => Promise<AsrFactory>;
 }
@@ -279,7 +305,7 @@ declare function loadTransformersPipeline(importModule?: ModuleImporter): Promis
 /**
  * Whisper over transformers.js with word timestamps. Audio at any rate is resampled to 16 kHz. Transcripts are
  * cached by a hash of the model, rate and samples, so re-checking unchanged audio never runs the model.
- * `segments` is empty: word-timestamp decoding reports no per-segment confidence.
+ * With `tokenLogprobs` on (the default), words carry `probability` and each 30 s decode window is one segment.
  */
 declare function whisperStt(options?: WhisperSttOptions): SttProvider & {
     dispose(): Promise<void>;
