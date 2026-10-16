@@ -21,6 +21,7 @@ export const CorrectVerdictInputSchema = z.object({
   startedAt: z.number().optional(),
   malformed: MalformedSchema,
   ownerBrief: z.boolean().optional(),
+  shape: z.enum(["correctness", "adversary", "tests", "visual", "perf"]).optional(),
 });
 export type CorrectVerdictInput = z.infer<typeof CorrectVerdictInputSchema>;
 
@@ -93,10 +94,10 @@ function silentExit(awaited: AwaitedOutput): Malformed | null {
  * `replyStep` from the message written after it. Only the first await's result reaches here, never the reply's, so a reviewer is
  * corrected at most once per head.
  */
-export async function correctOnce(ctx: WorkflowContext, awaiting: AwaitVerdictInput, awaited: AwaitedOutput, options: { ownerBrief: boolean; replyStep: string }): Promise<AwaitedOutput> {
+export async function correctOnce(ctx: WorkflowContext, awaiting: AwaitVerdictInput, awaited: AwaitedOutput, options: { ownerBrief: boolean; replyStep: string; correctStep?: string }): Promise<AwaitedOutput> {
   const malformed = readMalformed(awaited) ?? silentExit(awaited);
   if (!malformed) return awaited;
-  const asked = await step(ctx, `${CORRECT_VERDICT_STEP}:${awaiting.head}`, { ...awaiting, malformed, ...(options.ownerBrief && { ownerBrief: true }) }, Corrected);
+  const asked = await step(ctx, options.correctStep ?? `${CORRECT_VERDICT_STEP}:${awaiting.head}`, { ...awaiting, malformed, ...(options.ownerBrief && { ownerBrief: true }) }, Corrected);
   if (asked.kind !== "asked") return asked;
   const reply = await step(ctx, options.replyStep, { ...awaiting, dispatchedAt: malformed.writtenAt, startedAt: asked.startedAt }, Awaited);
   // A usage limit is the reviewer's last word, not a failed correction: the caller holds its account instead of retrying.

@@ -42,6 +42,7 @@ const AwaitVerdictInputSchema = z.object({
   repo: text("repo"),
   reviewerAgentId: text("reviewerAgentId"),
   reviewerSessionId: text("reviewerSessionId"),
+  shape: z.enum(["correctness", "adversary", "tests", "visual", "perf"]).optional(),
 });
 
 /** A step input that is not an object reads as one with no fields, so it fails on its first required field. */
@@ -50,8 +51,8 @@ const asObject = (raw: unknown): object => (typeof raw === "object" && raw !== n
 export function parseAwaitVerdictInput(raw: unknown): AwaitVerdictInput {
   const parsed = AwaitVerdictInputSchema.safeParse(asObject(raw));
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message);
-  const { repo, pr, head, reviewerAgentId, reviewerSessionId, dispatchedAt, startedAt } = parsed.data;
-  return { repo, pr, head, reviewerAgentId, reviewerSessionId, dispatchedAt, ...(startedAt !== undefined && { startedAt }) };
+  const { repo, pr, head, reviewerAgentId, reviewerSessionId, dispatchedAt, startedAt, shape } = parsed.data;
+  return { repo, pr, head, reviewerAgentId, reviewerSessionId, dispatchedAt, ...(startedAt !== undefined && { startedAt }), ...(shape !== undefined && { shape }) };
 }
 
 export const bounded = (result: AwaitVerdictResult): AwaitVerdictResult => (result.kind === "verdict" && result.verdict === "FIX_FIRST" ? { ...result, text: boundedFindings(result.text) } : result);

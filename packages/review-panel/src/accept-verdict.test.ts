@@ -73,9 +73,32 @@ describe("acceptVerdict malformed record", () => {
   });
 
   it("covers every refusal the schema lists", () => {
-    const exercised = new Set(["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target", "ci_policy_malformed"]);
+    const exercised = new Set(["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target", "ci_policy_malformed", "probes_missing"]);
 
     expect(new Set(Object.keys(MALFORMED_REFUSALS))).toEqual(exercised);
+  });
+
+  describe("an adversary member's Probes line", () => {
+    const adversary: AwaitVerdictInput = { ...input, shape: "adversary" };
+    const merge = `Verdict: MERGE\n${goodPr}\n${goodHead}\n`;
+
+    it("refuses an adversary MERGE with no Probes line above the block, for one correction", () => {
+      expect(acceptVerdict(adversary, [said(`Looked at it.\n\n${merge}`)])).toEqual({ kind: "none", malformed: { refusal: "probes_missing", writtenAt: WRITTEN_AT } });
+    });
+
+    it("refuses a Probes line that names no probe, or one written below the block", () => {
+      expect(readMalformed(acceptVerdict(adversary, [said(`Probes:\n${merge}`)]))?.refusal).toBe("probes_missing");
+      expect(readMalformed(acceptVerdict(adversary, [said(`${merge}Probes: empty token -> refused\n`)]))?.refusal).toBe("probes_missing");
+    });
+
+    it("accepts an adversary MERGE that lists its probes", () => {
+      expect(acceptVerdict(adversary, [said(`Probes: empty token -> refused; expired token -> refused\n\n${merge}`)])).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+    });
+
+    it("accepts a correctness MERGE with no Probes line, so the rule binds the adversary alone", () => {
+      expect(acceptVerdict({ ...input, shape: "correctness" }, [said(merge)])).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+      expect(acceptVerdict(input, [said(merge)])).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+    });
   });
 
   it("records nothing for silence", () => {

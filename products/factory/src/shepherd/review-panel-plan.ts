@@ -1,6 +1,6 @@
 import type { PrFile } from "@titan-design/github";
 import { classifyPr, DEFAULT_CLASS_RULES, DEFAULT_PANEL_TABLE, planPanel } from "@titan-design/review-panel";
-import type { ChangedFile, ClassRules, Headroom, PanelPlan, PanelPolicy, PrClass, PrFacts, ReviewClass, ReviewTarget } from "@titan-design/review-panel";
+import type { ChangedFile, ClassRules, Headroom, PanelPlan, PanelPolicy, PrClass, PrFacts, ReviewClass, ReviewTarget, ShapeRule } from "@titan-design/review-panel";
 import { prFilesOf, registeredBase } from "./git-pr-files.js";
 import { registeredKind } from "./merge-facts.js";
 import type { ShepherdDeps } from "./phases.js";
@@ -65,11 +65,36 @@ function stricter(found: PrClass): PrClass {
   return { class: "g10", touches: found.touches.includes("large") ? found.touches : [...found.touches, "large"] };
 }
 
+/** The profile of the adversary member a g10-adversary hold adds, whatever the panel table says; absent adds none. */
+export interface HoldMember {
+  profile: string;
+}
+
+export const DEFAULT_ADVERSARY_PROFILE = "fable-reviewer";
+
+const HOLD_RULE: ShapeRule = { shape: "adversary", classes: ["g10", "standard"], touches: [], blocking: true, always: true };
+
+/**
+ * The hold's adversary member goes first among the shapes beside correctness, so the member cap never drops it, and at the hold's
+ * profile, so it never shares the correctness member's. Under a panel other than `on` it is the only member beside correctness.
+ */
+function withHoldMember(policy: PanelPolicy, member: HoldMember, fullPanel: boolean): PanelPolicy {
+  const rest = fullPanel ? (policy.panel ?? []).filter((rule) => rule.shape !== "adversary") : [];
+  return { ...policy, panel: [HOLD_RULE, ...rest], shapeRoles: { ...policy.shapeRoles, adversary: { g10: member.profile, standard: member.profile } } };
+}
+
+/** How the head is planned beyond its files: a held head's adversary member, and whether the rest of the panel table applies. */
+export interface PlanOptions {
+  holdMember?: HoldMember;
+  fullPanel?: boolean;
+}
+
 /** The class, touches and panel plan for one head. Pure. */
-export function intentPlan({ facts, sizeUnread }: PanelFacts, policy: PanelPolicy, headroom: Headroom = OPEN_HEADROOM, rules: ClassRules = DEFAULT_CLASS_RULES): IntentPlan {
+export function intentPlan({ facts, sizeUnread }: PanelFacts, policy: PanelPolicy, headroom: Headroom = OPEN_HEADROOM, rules: ClassRules = DEFAULT_CLASS_RULES, options: PlanOptions = {}): IntentPlan {
   const found = classifyPr(facts, rules);
   const cls = sizeUnread ? stricter(found) : found;
-  return { class: cls.class, touches: cls.touches, plan: planPanel(cls, policy, headroom) };
+  const planned = options.holdMember ? withHoldMember(policy, options.holdMember, options.fullPanel ?? true) : policy;
+  return { class: cls.class, touches: cls.touches, plan: planPanel(cls, planned, headroom) };
 }
 
 const PLAN_KEYS: ReadonlySet<string> = new Set(["class", "touches", "plan", "panel", "panelReviewers"]);
