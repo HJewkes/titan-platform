@@ -6,6 +6,23 @@ export interface WatchWindow {
   intervalMs: number;
   /** Probes in a row with no answer before serve counts as down; one slow answer under load is not. */
   missLimit: number;
+  /** How long reads may be unavailable, in total across the watch, before the deploy is held; absent keeps `UNAVAILABLE_CAP_MS`. */
+  unavailableCapMs?: number;
+}
+
+/** A 403, 422 or 429 from `/health` says serve is rate limited or cannot be read, not that it is down, so it is neither healthy nor an error. */
+export const UNAVAILABLE: unique symbol = Symbol("unavailable");
+const UNAVAILABLE_CAP_MS = 10 * 60_000;
+
+/** One `/health` probe: the body, no answer, or `UNAVAILABLE`. */
+export type Probe = Health | null | typeof UNAVAILABLE;
+
+/** Outside the watch an unavailable read is no answer; only the watch tells it from an error. */
+export const answerOf = (probe: Probe): Health | null => (probe === UNAVAILABLE ? null : probe);
+
+/** A watch that ends neither steady nor failed: the deploy stays on the new build and is held for a person. */
+export interface WatchHeld {
+  held: string;
 }
 
 /**
@@ -29,7 +46,7 @@ export interface WatchIntent {
 
 /** What the watch reads; the deployer passes its own `/health` probe, clock and pid check. */
 interface WatchPorts {
-  probe: (timeoutMs: number) => Promise<Health | null>;
+  probe: (timeoutMs: number) => Promise<Probe>;
   sleep: (ms: number) => Promise<void>;
   now: () => number;
   alive: (pid: number) => boolean;
@@ -104,17 +121,19 @@ function drift(baseline: Health, health: Health, target: string): string | undef
 type Reading = { kind: "answer"; health: Health; slow: boolean; latencyMs: number } | { kind: "miss"; slow: boolean; latencyMs: number };
 
 /** A live pid earns a null a second, longer probe before the tick gives up; a dead pid cannot answer, so it gets none. */
-async function read(ports: WatchPorts, baseline: Health): Promise<Reading> {
+async function read(ports: WatchPorts, baseline: Health): Promise<Reading | typeof UNAVAILABLE> {
   const started = ports.now();
   const answered = (health: Health | null, slow: boolean): Reading => {
     const latencyMs = ports.now() - started;
     return health === null ? { kind: "miss", slow, latencyMs } : { kind: "answer", health, slow, latencyMs };
   };
   const quick = await ports.probe(FAST_PROBE_TIMEOUT_MS);
+  if (quick === UNAVAILABLE) return UNAVAILABLE;
   if (quick !== null) return answered(quick, false);
   const pid = baseline.pid;
   if (typeof pid !== "number" || !ports.alive(pid)) return answered(null, false);
-  return answered(await ports.probe(SLOW_PROBE_TIMEOUT_MS), true);
+  const retried = await ports.probe(SLOW_PROBE_TIMEOUT_MS);
+  return retried === UNAVAILABLE ? UNAVAILABLE : answered(retried, true);
 }
 
 const describeLatency = (reading: Reading): string => (reading.kind === "miss" ? `no answer in ${Math.round(reading.latencyMs / 1000)} s` : `${(reading.latencyMs / 1000).toFixed(1)} s`);
@@ -131,23 +150,48 @@ function atWindowEnd(readings: readonly Reading[], baseline: WatchBaseline, duri
   return readings.every((reading) => reading.slow) ? `serve answered slowly on every probe (${readings.map(describeLatency).join(", ")}) ${during}` : undefined;
 }
 
+/** Starts the window now and records it; a copy goes out so the record is a snapshot. */
+function openWindow(ports: WatchPorts, intent: WatchIntent, window: WatchWindow): WatchIntent {
+  intent.windowEnd = ports.now() + window.windowMs;
+  ports.record?.({ ...intent });
+  return intent;
+}
+
+function heldAtCap(unavailableMs: number, capMs: number, during: string): WatchHeld | undefined {
+  return unavailableMs >= capMs ? { held: `/health stayed unavailable (rate limited or unreadable) for ${Math.round(capMs / 1000)} s ${during}` } : undefined;
+}
+
 /**
  * Undefined when serve held steady for the whole window, else why not; `baseline.confirmed` is the answer that confirmed the sha.
  * Every tick with no answer counts toward the miss limit, whether or not the pid lives; a live pid only buys the slower retry first.
  * An answer that needed the retry is slow, not a miss, and a window of nothing but slow probes rolls back.
  * A miss still open when the window ends keeps the watch probing until an answer or the miss limit, so a serve that dies or hangs late is not deployed.
  * Run errors are judged at the end only: a run re-adopted after the restart may read recovery_required for a tick or two.
+ * An unavailable read is neither: it keeps the window open, and when reads return the window restarts on fresh probes.
+ * Unavailable time adds up across the whole watch and is never reset by a restart, so reads that flicker still end it: as held, never as a rollback.
  */
-export async function watchServe(ports: WatchPorts, baseline: WatchBaseline, target: string, window: WatchWindow): Promise<string | undefined> {
-  const interval = Math.max(1, window.intervalMs);
-  const intent: WatchIntent = { sha: target, windowEnd: ports.now() + window.windowMs };
-  ports.record?.(intent);
+export async function watchServe(ports: WatchPorts, baseline: WatchBaseline, target: string, window: WatchWindow): Promise<string | WatchHeld | undefined> {
+  const intent = openWindow(ports, { sha: target, windowEnd: 0 }, window);
   const during = `during the ${Math.round(window.windowMs / 1000)} s watch`;
-  const readings: Reading[] = [];
+  let readings: Reading[] = [];
   let misses = 0;
-  while (ports.now() < intent.windowEnd || misses > 0) {
-    await ports.sleep(interval);
+  let unavailableMs = 0;
+  let streak = false;
+  while (ports.now() < intent.windowEnd || misses > 0 || streak) {
+    const tickStart = ports.now();
+    await ports.sleep(Math.max(1, window.intervalMs));
     const reading = await read(ports, baseline.confirmed);
+    if (reading === UNAVAILABLE) {
+      unavailableMs += ports.now() - tickStart;
+      streak = true;
+      const held = heldAtCap(unavailableMs, window.unavailableCapMs ?? UNAVAILABLE_CAP_MS, during);
+      if (held !== undefined) return held;
+      continue;
+    }
+    if (streak) {
+      [streak, readings, misses] = [false, [], 0];
+      openWindow(ports, intent, window);
+    }
     readings.push(reading);
     misses = reading.kind === "miss" ? misses + 1 : 0;
     if (misses >= Math.max(1, window.missLimit)) return `serve stopped answering /health (${misses} probes in a row) ${during}`;
