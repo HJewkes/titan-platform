@@ -27,8 +27,8 @@ export function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], piped: 
   if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
   const operands = shellOperands(cmd.args, cmd.name);
   const { hasC, positional } = operands;
-  const { runs, source } = shellStdin(operands, redirects, piped.length > 0);
-  const stdin = runs ? stdinReading(cmd.name, source, piped) : null;
+  const { runs, sources } = shellStdin(operands, redirects, piped.length > 0);
+  const stdin = runs ? stdinReading(cmd.name, sources, piped) : null;
   if (!hasC) return stdin;
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
   const texts = positional ? splicedReadings([positional], budget) : piped;
@@ -36,10 +36,11 @@ export function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], piped: 
   return all.length > 0 ? { texts: all, wrap: "sh-c" } : null;
 }
 
-/** Heredoc, here-string or piped text on the shell's stdin; a `<` file is the script target `scripts.ts` reads. */
-function stdinReading(shell: string | null, source: StdinSource, piped: string[]): Inline | null {
-  if (source.kind === "text") return { texts: pipedShellTexts(shell, source.text), wrap: "heredoc-shell" };
-  return source.kind === "pipe" ? { texts: piped.flatMap((t) => pipedShellTexts(shell, t)), wrap: "piped-shell" } : null;
+/** Heredoc, here-string and piped text on the descriptor the shell runs; a `<` file is the script target `scripts.ts` reads. */
+function stdinReading(shell: string | null, sources: StdinSource[], piped: string[]): Inline | null {
+  const texts = sources.flatMap((s) => (s.kind === "text" ? [s.text] : s.kind === "pipe" ? piped : []));
+  if (texts.length === 0) return null;
+  return { texts: texts.flatMap((t) => pipedShellTexts(shell, t)), wrap: sources.some((s) => s.kind === "text") ? "heredoc-shell" : "piped-shell" };
 }
 
 /**

@@ -3,25 +3,29 @@ import type { RedirectToken, WordToken } from "./lexer.js";
 /** Long options that take the next word. */
 const BASH_LONG_VALUES = new Set(["--rcfile", "--init-file"]);
 /** Paths that name a descriptor, matched on their tail: `/dev/stdin`, `/dev/fd/N`, `/proc/self/fd/N`. */
-const NAMED_FDS: Record<string, string> = { stdin: "0", stdout: "1", stderr: "2" };
+const NAMED_FDS: Record<string, number> = { stdin: 0, stdout: 1, stderr: 2 };
 const FD_PATH_RE = /\/(?:dev\/(stdin|stdout|stderr)|(?:dev|proc\/(?:self|thread-self|\d+))\/fd\/(\d+))$/;
 const STDIN_OPS = new Set(["<", "<>", "<<", "<<-", "<<<", "<&"]);
 
-/**
- * What the descriptor a shell runs holds: heredoc, here-string or `< <(...)` text, a file `<` or `<>` opens, the pipe,
- * a descriptor the line does not show (`<&3`, or an inherited fd 3), or none.
- */
-export type StdinSource = { kind: "text"; text: string } | { kind: "file"; target: WordToken | null } | { kind: "pipe" } | { kind: "fd" } | { kind: "none" };
+/** One source on the descriptor a shell runs: heredoc, here-string or `< <(...)` text, a file `<` or `<>` opens, or the pipe. */
+export type StdinSource = { kind: "text"; text: string } | { kind: "file"; target: WordToken } | { kind: "pipe" };
 
 interface ShellStdin {
   /** Whether the shell runs a descriptor: stdin as `readsStdin` says, or one a script operand names or may name. */
   runs: boolean;
   /** The script file the shell runs that is not a descriptor; null with `-c`, under `-s`, or when the operand names one. */
   scriptFile: WordToken | null;
-  /** What that descriptor holds, or stdin when it runs none, which a `-c` string may still read. */
-  source: StdinSource;
+  /** Every source on that descriptor, or on stdin when it runs none, which a `-c` string may still read. */
+  sources: StdinSource[];
   /** Whether the shell runs a descriptor whose text the line cannot show: a dup, an inherited fd, or a run-time file. */
   unknowable: boolean;
+}
+
+/** The redirects that feed a descriptor, whether the pipe does, and whether some source is unknowable. */
+interface Feeds {
+  redirects: Set<RedirectToken>;
+  pipe: boolean;
+  unknown: boolean;
 }
 
 interface ShellOperands {
@@ -136,35 +140,76 @@ function setsShLetters(name: string, on: boolean): boolean | null {
 
 /**
  * The one answer to what a shell runs from stdin or another descriptor, for every consumer. A script operand only
- * known at run time may name stdin, so its stdin runs too. The last redirect of a descriptor wins, else for stdin the pipe.
+ * known at run time may name stdin, so its stdin runs too. zsh's MULTIOS joins every source opened on a descriptor,
+ * the pipe included, so all of them are read; under bash or dash, where the last one wins, that only over-reads.
  */
 export function shellStdin({ hasC, positional, readsStdin }: ShellOperands, redirects: RedirectToken[], piped: boolean): ShellStdin {
   const file = hasC ? null : positional;
   const fd = file === null ? null : pathFd(file.value);
   const runs = readsStdin || fd !== null || (file !== null && (file.dynamic || file.computed));
-  const source = fdSource(redirects, fd ?? "0", piped);
-  return { runs, scriptFile: fd === null ? file : null, source, unknowable: runs && isUnknowable(source) };
+  const feeds = feedsOf(redirects, piped)(fd ?? 0, redirects.length);
+  return { runs, scriptFile: fd === null ? file : null, sources: sourcesOf(feeds), unknowable: runs && feeds.unknown };
 }
 
-function isUnknowable(source: StdinSource): boolean {
-  return source.kind === "fd" || (source.kind === "file" && (source.target === null || source.target.dynamic));
+function sourcesOf({ redirects, pipe }: Feeds): StdinSource[] {
+  const sources = [...redirects].flatMap((r): StdinSource[] => {
+    if (r.body !== null) return [{ kind: "text", text: r.body }];
+    if (r.target === null) return [];
+    return [r.op === "<<<" ? { kind: "text", text: r.target.value } : { kind: "file", target: r.target }];
+  });
+  return pipe ? [...sources, { kind: "pipe" }] : sources;
 }
 
-/** An fd other than stdin with no redirect on the line is inherited, so its text is unknowable. */
-function fdSource(redirects: RedirectToken[], fd: string, piped: boolean): StdinSource {
-  const last = [...redirects].reverse().find((r) => (r.fd ?? "0") === fd && STDIN_OPS.has(r.op));
-  if (!last) return fd !== "0" ? { kind: "fd" } : piped ? { kind: "pipe" } : { kind: "none" };
-  if (last.body !== null) return { kind: "text", text: last.body };
-  if (last.op === "<&") return { kind: "fd" };
-  if (last.op === "<" || last.op === "<>") return { kind: "file", target: last.target };
-  return last.target === null ? { kind: "none" } : { kind: "text", text: last.target.value };
+/**
+ * What feeds descriptor `fd` from the first `end` redirects, read left to right as the shells open them: stdin starts
+ * on the pipe, any other descriptor is inherited unless a redirect opens it. A dup or a target naming a descriptor
+ * (`<&3`, `< /dev/fd/3`, `< /dev/stdin`) feeds what that descriptor held just before it, so `< /dev/stdin` keeps the pipe.
+ */
+function feedsOf(redirects: RedirectToken[], piped: boolean): (fd: number, end: number) => Feeds {
+  const memo = new Map<string, Feeds>();
+  const feeds = (fd: number, end: number): Feeds => {
+    const key = `${fd}:${end}`;
+    const hit = memo.get(key);
+    if (hit) return hit;
+    const out: Feeds = { redirects: new Set(), pipe: fd === 0 && piped, unknown: false };
+    let opened = false;
+    redirects.slice(0, end).forEach((r, i) => {
+      if (Number(r.fd ?? "0") !== fd || !STDIN_OPS.has(r.op)) return;
+      opened = true;
+      join(out, redirectFeeds(r, (named) => feeds(named, i)));
+    });
+    out.unknown ||= fd !== 0 && !opened;
+    memo.set(key, out);
+    return out;
+  };
+  return feeds;
+}
+
+/** What one redirect feeds: its text or file, or, through `before`, what the descriptor it dups or names held. */
+function redirectFeeds(r: RedirectToken, before: (fd: number) => Feeds): Feeds {
+  const target = r.target;
+  if (r.body !== null || r.op === "<<<") return fed(r.body !== null || target !== null ? r : null, false);
+  if (target === null || target.dynamic) return fed(null, true);
+  if (r.op === "<&") return target.value === "-" ? fed(null, false) : /^\d+$/.test(target.value) ? before(Number(target.value)) : fed(null, true);
+  const named = pathFd(target.value);
+  return named === null ? fed(r, false) : before(named);
+}
+
+function fed(r: RedirectToken | null, unknown: boolean): Feeds {
+  return { redirects: new Set(r ? [r] : []), pipe: false, unknown };
+}
+
+function join(into: Feeds, from: Feeds): void {
+  for (const r of from.redirects) into.redirects.add(r);
+  into.pipe ||= from.pipe;
+  into.unknown ||= from.unknown;
 }
 
 /**
  * The descriptor a script path names however it is spelled (`//dev/stdin`, `/dev/./fd/3`, `/dev/../dev/stdin`), or
  * null. The path is matched on its tail: enough `..` reach `/` from any directory, so a relative path may name one too.
  */
-function pathFd(path: string): string | null {
+function pathFd(path: string): number | null {
   const parts: string[] = [];
   for (const part of path.split("/")) {
     if (part === "..") parts.pop();
@@ -172,5 +217,5 @@ function pathFd(path: string): string | null {
   }
   const match = FD_PATH_RE.exec(`/${parts.join("/")}`);
   if (!match) return null;
-  return match[1] !== undefined ? (NAMED_FDS[match[1]] ?? null) : String(Number(match[2]));
+  return match[1] !== undefined ? (NAMED_FDS[match[1]] ?? null) : Number(match[2]);
 }
