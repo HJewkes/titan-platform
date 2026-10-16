@@ -7,7 +7,9 @@ import { codeRoute, step } from "../workflows/land.js";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
 import type { FixProofUnverified } from "./fix-proof.js";
 import type { PanelMerge, ShepherdDeps, Verdict } from "./phases.js";
-import { classRulesFor, intentPlan, panelFacts, panelPolicyFor, withoutPlan, type IntentPlan, type PanelMode } from "./review-panel-plan.js";
+import { classRulesFor, intentPlan, panelFacts, panelPolicyFor, withoutPlan, type HoldMember, type IntentPlan, type PanelMode } from "./review-panel-plan.js";
+import { isAdversaryHold } from "./hold-slots.js";
+import { CORRECT_VERDICT_STEP, correctOnce } from "./correct-verdict.js";
 import { Awaited, Dispatched } from "./review-schemas.js";
 import { freshReviewerBase } from "./cleanup.js";
 import { REVIEW_STEP } from "./review-steps.js";
@@ -70,18 +72,33 @@ interface PanelWiring {
   panel?: PanelMode;
   panelPolicy?: PanelPolicy;
   roles?: ReviewerRoles;
+  /** Set while `shepherd.gateReset.twoMergeRelease` is not `off`: a g10-adversary hold's member. */
+  holdMember?: HoldMember;
+}
+
+/** The hold's member, when the run is held for an adversary; an unreadable store plans none, as it would with the flag off. */
+function holdMemberOf(deps: Pick<ShepherdDeps, "store">, runId: string, holdMember: HoldMember | undefined): HoldMember | undefined {
+  if (holdMember === undefined) return undefined;
+  try {
+    const registration = deps.store.get().byRun(runId);
+    return registration?.held && isAdversaryHold(registration.holdReason) ? holdMember : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
  * Under `shadow` or `on` the intent records the head's class, touches and panel plan; an external review starts nobody, so it gets none.
- * Under `on` it also names the members, so the review phase knows to run them.
+ * Under `on`, or for a g10-adversary hold whatever the panel says, it also names the members, so the review phase knows to run them.
  */
-export async function plannedPanel(deps: Pick<ShepherdDeps, "store" | "port">, { panel, panelPolicy, roles }: PanelWiring, input: ReviewTarget & { runId: string; reviewer: string; mode: string }, roster: readonly ReviewerAgent[]): Promise<IntentPlan | PanelOnPlan | undefined> {
-  if (panel === undefined || panel === "off") return undefined;
+export async function plannedPanel(deps: Pick<ShepherdDeps, "store" | "port">, { panel, panelPolicy, roles, holdMember }: PanelWiring, input: ReviewTarget & { runId: string; reviewer: string; mode: string }, roster: readonly ReviewerAgent[]): Promise<IntentPlan | PanelOnPlan | undefined> {
+  const held = holdMemberOf(deps, input.runId, holdMember);
+  if ((panel === undefined || panel === "off") && held === undefined) return undefined;
   const rules = classRulesFor(roles);
   const target = { repo: input.repo, pr: input.pr, head: input.head };
-  const planned = intentPlan(await panelFacts(deps, target, input.runId, rules), panelPolicy ?? panelPolicyFor(roles), undefined, rules);
-  return panel === "on" ? { ...planned, panel: "on", panelReviewers: panelReviewerNames(input, planned.plan, roster) } : planned;
+  const options = held === undefined ? {} : { holdMember: held, fullPanel: panel === "on" };
+  const planned = intentPlan(await panelFacts(deps, target, input.runId, rules), panelPolicy ?? panelPolicyFor(roles), undefined, rules, options);
+  return panel === "on" || held !== undefined ? { ...planned, panel: "on", panelReviewers: panelReviewerNames(input, planned.plan, roster) } : planned;
 }
 
 /** What every member's dispatch shares with the correctness reviewer's; members never write the owner brief. */
@@ -124,6 +141,14 @@ function memberResultOf(awaited: AwaitedResult): MemberResult["result"] {
   return { ...verdict, verdict: "FIX_FIRST", text: awaited.text ?? "", ...(closer !== undefined && { closer }) };
 }
 
+/** Only the adversary's verdict has a form beyond the block, so only it gets the correctness member's one correction turn. */
+async function awaitMember(ctx: WorkflowContext, target: ReviewTarget, shape: OverlayShape, awaiting: AwaitVerdictInput & { shape: OverlayShape }): Promise<AwaitedResult> {
+  const awaited = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}:${shape}`, awaiting, Awaited);
+  if (shape !== "adversary") return awaited;
+  const replyStep = `${AWAIT_VERDICT_STEP}:${target.head}:${shape}:corrected`;
+  return correctOnce(ctx, awaiting, awaited, { ownerBrief: false, replyStep, correctStep: `${CORRECT_VERDICT_STEP}:${target.head}:${shape}` });
+}
+
 /** One `sh-await-verdict:<head>:<shape>` per started member; a member that never started gave no verdict. */
 async function awaitMembers(ctx: WorkflowContext, target: ReviewTarget, members: readonly DispatchedMember[]): Promise<MemberResult[]> {
   const results: MemberResult[] = [];
@@ -133,7 +158,7 @@ async function awaitMembers(ctx: WorkflowContext, target: ReviewTarget, members:
       continue;
     }
     const awaiting = { ...target, shape, reviewerAgentId: dispatched.agentId, reviewerSessionId: dispatched.sessionId, dispatchedAt: dispatched.at, ...(dispatched.startedAt !== undefined && { startedAt: dispatched.startedAt }) };
-    results.push({ shape, result: memberResultOf(await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}:${shape}`, awaiting, Awaited)) });
+    results.push({ shape, result: memberResultOf(await awaitMember(ctx, target, shape, awaiting)) });
   }
   return results;
 }

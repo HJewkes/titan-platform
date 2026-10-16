@@ -37,6 +37,7 @@ import { redeployRoute, systemDeployer, type Deployer } from "./shepherd/redeplo
 import { codewatchReader, ghCodewatchReport } from "./shepherd/codewatch-questions.js";
 import type { ReviewTarget, ReviewWiring } from "./shepherd/review.js";
 import { agentChatReviewerDispatch, type AgentChatReviewerDispatch } from "./shepherd/reviewer-dispatch.js";
+import { DEFAULT_ADVERSARY_PROFILE } from "./shepherd/review-panel-plan.js";
 import { configuredRoles } from "./shepherd/reviewer-roles.js";
 import { agentChatRoster, type RosterReader } from "./shepherd/roster.js";
 import { transcriptReviewerReader } from "./shepherd/reviewer-reader.js";
@@ -218,7 +219,17 @@ function configuredReview(shepherd: FactoryConfig["shepherd"], seats: () => Seat
   const under = (configDir: string | undefined) => agentChatReviewerDispatch({ agentChatBin, roles: configuredRoles(review), configDir, cwdFor: (repo) => boundCheckout(seats(), repo, repos()), roster, gate, isFixer, onMachineHold: machineStop.note });
   const { primary: dispatch, accounts } = reviewAccounts(review, under, seatAlert(agentChatBin, seats, roster));
   const codewatch = review.codewatchRepos && codewatchReader(ghCodewatchReport(), review.codewatchRepos);
-  return { dispatch, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, roles: configuredRoles(review), machineStop, ...(codewatch && { codewatch }), ...(review.panel && { panel: review.panel }) };
+  return { dispatch, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, roles: configuredRoles(review), machineStop, ...(codewatch && { codewatch }), ...(review.panel && { panel: review.panel }), ...holdAdversary(shepherd, under) };
+}
+
+/** Decision 422(1)'s second reviewer: a g10-adversary hold gets its own adversary member unless `twoMergeRelease` is off or absent. */
+type HoldAdversary = Pick<NonNullable<FactoryRouteDeps["review"]>, "holdMember" | "adversaryDispatch">;
+
+function holdAdversary(shepherd: FactoryConfig["shepherd"], under: (configDir: string | undefined) => AgentChatReviewerDispatch): HoldAdversary {
+  const mode = shepherd?.gateReset?.twoMergeRelease ?? "off";
+  const review = shepherd?.review;
+  if (mode === "off" || !review) return {};
+  return { holdMember: { profile: review.adversaryProfile ?? DEFAULT_ADVERSARY_PROFILE }, ...(review.adversaryConfigDir !== undefined && { adversaryDispatch: under(review.adversaryConfigDir) }) };
 }
 
 /** Cleanup retires agents through the configured `agent-chat`, so no binary configured means no retire and no task close. */

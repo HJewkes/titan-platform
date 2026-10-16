@@ -7,7 +7,7 @@ import type { PrFilesRead } from "./git-pr-files.js";
 import { holdSlotsMigration, registrationFactsMigration } from "./store-migrations.js";
 import { spawnFacts } from "./spawn-facts.js";
 import { holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
-import { classRulesFor, intentPlan, panelFacts, panelPolicyFor, withoutPlan, type PanelFacts } from "./review-panel-plan.js";
+import { DEFAULT_ADVERSARY_PROFILE, classRulesFor, intentPlan, panelFacts, panelPolicyFor, withoutPlan, type PanelFacts } from "./review-panel-plan.js";
 
 const HEAD = "c".repeat(40);
 const target = { repo: "octo/demo", pr: 7, head: HEAD };
@@ -147,6 +147,37 @@ describe("intentPlan", () => {
     const planned = intentPlan(facts("correctness", [source("src/a.ts", 60), source("src/a.test.ts", 0)]), panelPolicyFor(roles), undefined, classRulesFor(roles));
 
     expect(planned).toMatchObject({ class: "g10", touches: ["large"] });
+  });
+
+  describe("a g10-adversary hold's member", () => {
+    const holdMember = { profile: DEFAULT_ADVERSARY_PROFILE };
+    const plain = facts("correctness", [source("src/a.ts", 20), source("src/a.test.ts", 10)]);
+    const large = facts("correctness", [source("src/a.ts", 1)], true);
+
+    it("plans exactly one adversary beside correctness at fable-reviewer when the files touch nothing that asks for one", () => {
+      const planned = intentPlan(plain, panelPolicyFor(), undefined, undefined, { holdMember, fullPanel: false });
+
+      expect(shapes(planned)).toEqual(["correctness:reviewer", "adversary:fable-reviewer"]);
+      expect(planned.plan.members[1]).toMatchObject({ blocking: true, degraded: false });
+    });
+
+    it("plans none without the hold's member, as with the flag off", () => {
+      expect(shapes(intentPlan(plain, panelPolicyFor()))).toEqual(["correctness:reviewer"]);
+    });
+
+    it("keeps only correctness and the adversary when the panel is not on, so a held head starts no other member", () => {
+      const planned = intentPlan(large, panelPolicyFor(), undefined, undefined, { holdMember, fullPanel: false });
+
+      expect(shapes(planned)).toEqual(["correctness:bd-reviewer", "adversary:fable-reviewer"]);
+    });
+
+    it("puts the hold's adversary first among the panel's shapes under on, at the hold's profile rather than the table's", () => {
+      const security = facts("security", [source("src/auth.ts", 20)], true);
+
+      const planned = intentPlan(security, panelPolicyFor(), undefined, undefined, { holdMember });
+
+      expect(shapes(planned)).toEqual(["correctness:bd-reviewer", "adversary:fable-reviewer", "tests:reviewer"]);
+    });
   });
 });
 

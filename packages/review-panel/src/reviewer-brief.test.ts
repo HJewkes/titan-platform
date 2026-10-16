@@ -27,6 +27,7 @@ const REFUSAL_SET: Record<MalformedRefusal, true> = {
   bad_head: true,
   wrong_target: true,
   ci_policy_malformed: true,
+  probes_missing: true,
 };
 const REFUSALS = Object.keys(REFUSAL_SET).filter((key): key is MalformedRefusal => Object.hasOwn(REFUSAL_SET, key));
 

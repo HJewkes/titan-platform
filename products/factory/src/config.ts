@@ -45,6 +45,10 @@ export const ReviewConfigSchema = z.strictObject({
   maxConcurrent: z.number().int().positive().optional(),
   /** `shadow` records the review panel's plan on each intent and spawns nothing more; `on` reviews with the panel. Absent means `off`. */
   panel: z.enum(["off", "shadow", "on"]).optional(),
+  /** The profile of the adversary member a g10-adversary hold gets under `shepherd.gateReset.twoMergeRelease`; absent means `fable-reviewer`. */
+  adversaryProfile: profileName.optional(),
+  /** The Claude config directory that adversary member runs under, for account diversity; absent means `configDir`. */
+  adversaryConfigDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
 });
 
 export type ReviewConfig = z.infer<typeof ReviewConfigSchema>;
@@ -190,6 +194,8 @@ export const FactoryConfigSchema = z.object({
       hubSeat: z.string().min(1).optional(),
       deployAlarm: DeployAlarmConfigSchema.optional(),
       gateNotify: GateNotifyConfigSchema.optional(),
+      /** Decision 422's stopgaps, each off when absent; `twoMergeRelease` other than `off` gives a g10-adversary hold Shepherd's own adversary member. */
+      gateReset: z.strictObject({ twoMergeRelease: z.enum(["off", "shadow", "on"]).optional() }).optional(),
     })
     .refine((s) => !s.hardStopRepos || s.charterPath, { message: "hardStopRepos needs a charterPath", path: ["charterPath"] })
     .refine((s) => !s.review || s.agentChatBin, { message: "review needs an agentChatBin", path: ["agentChatBin"] })

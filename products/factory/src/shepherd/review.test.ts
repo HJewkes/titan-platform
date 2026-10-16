@@ -45,7 +45,7 @@ import type { ReviewerFacts, ReviewerRoles } from "./reviewer-roles.js";
 import { shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type RegistrationInput, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import type { Presence } from "./presence.js";
 import { machineStopWatch, type MachineStopWatch } from "./machine-stop.js";
-import type { PanelMode } from "./review-panel-plan.js";
+import { DEFAULT_ADVERSARY_PROFILE, type HoldMember, type PanelMode } from "./review-panel-plan.js";
 
 const HEAD = "a".repeat(40);
 const OTHER_HEAD = "b".repeat(40);
@@ -395,7 +395,8 @@ describe("reviewRoutes", () => {
     });
 
     it("removes only a panel member's own checkout dir, under its shape, once the member reaches a verdict", async () => {
-      const route = reviewRoutes(withFakeFs, { reader: { read: async () => [message()] } }).find((candidate) => candidate.match === "sh-await-verdict")!;
+      const probed = message({ text: `Probes: empty token -> refused\n\n${block()}` });
+      const route = reviewRoutes(withFakeFs, { reader: { read: async () => [probed] } }).find((candidate) => candidate.match === "sh-await-verdict")!;
 
       const stepId = `sh-await-verdict:${HEAD}:adversary`;
       const memberAwait: RoutedStepInput = { runId: "run-1", workflowName: "review-test", stepId, iteration: 0, prompt: JSON.stringify({ ...input, shape: "adversary" }), signal: new AbortController().signal, attempt: 1, requestKey: "k" };
@@ -1324,6 +1325,9 @@ describe("reviewPhase", () => {
   /** What an agent said last, attributed to it and its session, in a transcript of that session. */
   const said = (who: ReviewerAgent, text: string, writtenAt: number): ReviewerMessage => ({ agentId: who.agentId, sessionId: who.sessionId, writtenAt, text, locator: locatorIn(who.sessionId) });
   const verdictAt = (head: string, verdict = "MERGE") => `Read it all.\n\nVerdict: ${verdict}\nPR: ${REPO}#1\nHead: ${head}\n`;
+  /** An adversary member's verdict carries the probes it ran, or it is refused. */
+  const probedAt = (head: string, verdict = "MERGE") => `Probes: empty token -> refused\n\n${verdictAt(head, verdict)}`;
+  const verdictBy = (who: ReviewerAgent, head: string) => (who.name.endsWith("-adversary") ? probedAt(head) : verdictAt(head));
 
   interface Scene {
     dispatch: FakeDispatch;
@@ -1348,6 +1352,8 @@ describe("reviewPhase", () => {
     removals?: string[];
     machineStop?: MachineStopWatch;
     panel?: PanelMode;
+    /** A g10-adversary hold's member, as `shepherd.gateReset.twoMergeRelease` other than off wires it. */
+    holdMember?: HoldMember;
     /** The PR's changed files; absent means one source file with no line counts. */
     files?: PrFile[];
   }
@@ -1360,7 +1366,7 @@ describe("reviewPhase", () => {
     let clock = 10_000;
     const store = shepherdStoreRef();
     const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async (path) => void scene.removals?.push(path) } };
-    const own = (input: AwaitVerdictInput) => scene.dispatch.agents.filter((candidate) => candidate.agentId === input.reviewerAgentId).map((who) => said(who, verdictAt(input.head), clock + 1));
+    const own = (input: AwaitVerdictInput) => scene.dispatch.agents.filter((candidate) => candidate.agentId === input.reviewerAgentId).map((who) => said(who, verdictBy(who, input.head), clock + 1));
     const reader: ReviewerReader = { read: async (input) => (scene.read ? scene.read(input, scene.dispatch, clock) : own(input)) };
     const verdicts: Verdict[] = [];
     const run = async (ctx: Parameters<typeof reviewPhase>[0]) => {
@@ -1368,7 +1374,7 @@ describe("reviewPhase", () => {
       for (const { headSha, fresh } of requests) verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha, ...(fresh && { fresh: true }), ...(scene.cause && { cause: scene.cause }) }));
     };
     const { awaited } = scene;
-    const wired = reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000, ...(scene.roles && { roles: scene.roles }), ...(scene.machineStop && { machineStop: scene.machineStop }), ...(scene.panel && { panel: scene.panel }) });
+    const wired = reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000, ...(scene.roles && { roles: scene.roles }), ...(scene.machineStop && { machineStop: scene.machineStop }), ...(scene.panel && { panel: scene.panel }), ...(scene.holdMember && { holdMember: scene.holdMember }) });
     const swapped = wired.map((route) => (awaited && route.match === "sh-await-verdict" ? codeRoute(route.match, deps.now, async (input: AwaitVerdictInput) => awaited(input)) : route));
     const inputs: Record<string, unknown> = {};
     const recorded = swapped.map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(step)) } }));
@@ -1462,7 +1468,7 @@ describe("reviewPhase", () => {
     });
 
     it("on sends the head back when the adversary alone says FIX_FIRST, with its findings and the panel's defect class", async () => {
-      const findings = `The token check is skipped on retry, see src/auth.ts:3.\n\nDefect class: unchecked retry path\n\nVerdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${H1}\n`;
+      const findings = `The token check is skipped on retry, see src/auth.ts:3.\n\nDefect class: unchecked retry path\n\nProbes: retried request -> token unchecked\n\nVerdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${H1}\n`;
 
       const { verdicts, stepIds } = await review({ dispatch: fakeDispatch(), policy: AUTO, panel: "on", files: securityFiles, read: split(findings) });
 
@@ -1494,6 +1500,52 @@ describe("reviewPhase", () => {
       expect(stepIds).toContain(`sh-await-verdict:${H1}:perf`);
       expect(stepIds).toContain(`sh-await-verdict:${H1}:tests`);
       expect(verdicts).toEqual([expect.objectContaining({ kind: "MERGE", headSha: H1 })]);
+    });
+
+    describe("a g10-adversary hold under gateReset.twoMergeRelease", () => {
+      const HOLD = "g10-adversary: merge-policy change";
+      const holdMember = { profile: DEFAULT_ADVERSARY_PROFILE };
+
+      it("spawns the hold's adversary beside correctness with the panel off, at its own profile and with the hold in its brief", async () => {
+        const dispatch = fakeDispatch();
+
+        const { verdicts, stepIds, resultOf } = await review({ dispatch, policy: AUTO, hold: HOLD, holdMember });
+
+        expect(stepIds).toEqual([...panelSteps, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
+        expect(dispatch.spawns.map(({ name, facts }) => [name, facts?.profile])).toEqual([["rv-octo-demo-1", undefined], [adversary, "fable-reviewer"]]);
+        expect(resultOf(`sh-review-intent:${H1}`)).toMatchObject({ plan: { members: [{ shape: "correctness", profile: "bd-reviewer" }, { shape: "adversary", profile: "fable-reviewer" }] } });
+        expect(dispatch.spawns[1]?.brief).toContain(`HOLD-CONTEXT\nHold reason: ${HOLD}\nEND-HOLD-CONTEXT`);
+        expect(dispatch.spawns[0]?.brief).not.toContain("HOLD-CONTEXT");
+        expect(verdicts).toEqual([expect.objectContaining({ kind: "MERGE", panel: expect.objectContaining({ members: [expect.objectContaining({ shape: "correctness" }), expect.objectContaining({ shape: "adversary" })] }) })]);
+      });
+
+      it("spawns one reviewer with the flag off, or for a hold of another class", async () => {
+        const off = await review({ dispatch: fakeDispatch(), policy: AUTO, hold: HOLD });
+        const sized = await review({ dispatch: fakeDispatch(), policy: AUTO, hold: "g10-review: over the line limit", holdMember });
+
+        expect(off.stepIds).toEqual(singleReviewerSteps);
+        expect(sized.stepIds).toEqual(singleReviewerSteps);
+      });
+
+      it("gives an adversary verdict with no Probes line one correction in its own session, and takes the probed reply", async () => {
+        const dispatch = fakeDispatch();
+        let firstAt: number | undefined;
+        const read = (input: AwaitVerdictInput, held: FakeDispatch, now: number) =>
+          held.agents.filter((who) => who.agentId === input.reviewerAgentId).flatMap((who) => {
+            if (who.name !== adversary) return [said(who, verdictAt(input.head), now + 1)];
+            who.presence = "exited";
+            firstAt ??= now + 1;
+            const resumed = held.resumes.some((each) => each.name === adversary);
+            return [said(who, verdictAt(input.head), firstAt), ...(resumed ? [said(who, probedAt(input.head), now + 1)] : [])];
+          });
+
+        const { verdicts, stepIds } = await review({ dispatch, policy: AUTO, hold: HOLD, holdMember, read });
+
+        expect(stepIds).toEqual(expect.arrayContaining([`sh-correct-verdict:${H1}:adversary`, `sh-await-verdict:${H1}:adversary:corrected`]));
+        expect(dispatch.resumes.map(({ name }) => name)).toEqual([adversary]);
+        expect(dispatch.resumes[0]?.brief).toContain("it had no Probes line above the Verdict line");
+        expect(verdicts).toEqual([expect.objectContaining({ kind: "MERGE", headSha: H1 })]);
+      });
     });
   });
 
