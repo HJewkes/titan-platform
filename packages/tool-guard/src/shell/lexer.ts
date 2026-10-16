@@ -1,7 +1,7 @@
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, sameSpend, spent } from "./arith-trials.js";
 import { backtickEnd, balancedEnd, type DollarOpener, dollarOpener, type NestedReaders, QUOTED_LITERAL_OPENERS } from "./balanced.js";
 import { dropJoins, joinedDollar, nextAfter, pastJoins, readAhead } from "./joins.js";
-import { newRegexScan, noteParen, refuseRedirect } from "./compound.js";
+import { inOpenCase, newRegexScan, noteParen, refuseRedirect } from "./compound.js";
 import { nested } from "./nesting.js";
 import { ParseError, refusingAs, SplitParseError } from "./parse-error.js";
 import { readLineEnd } from "./procsub-heredoc.js";
@@ -31,11 +31,17 @@ function newState(src: string, i: number, nested: boolean, trials: ArithTrials):
 
 function lex(s: LexState): void {
   while (s.i < s.src.length) {
-    if (s.nested && s.depth === 0 && s.src[s.i] === ")") return endWord(s);
+    if (s.nested && s.depth <= 0 && s.src[s.i] === ")" && closesSubstitution(s)) return endWord(s);
     step(s);
   }
   if (s.nested) throw new ParseError("unterminated $(");
   endWord(s);
+}
+
+/** A `)` left unmatched inside an open `case` ends a pattern, as `a)` in `$(case x in a) cmd;; esac)`; only one after `esac` closes. */
+function closesSubstitution(s: LexState): boolean {
+  endWord(s);
+  return !inOpenCase(s);
 }
 
 const READERS: Record<string, (s: LexState) => void> = {

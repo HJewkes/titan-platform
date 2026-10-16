@@ -101,6 +101,12 @@ export function refuseRedirect(s: LexState, op: string): void {
   if (s.regex.bodyPending) throw new ParseError("bash rejects a redirect between a function header and its body");
 }
 
+/** Whether the tokens so far leave a `case` without its `esac`. */
+export function inOpenCase(s: LexState): boolean {
+  regexDepth(s);
+  return s.regex.caseDepth > 0;
+}
+
 /** The paren depth of the `=~` whose operand the tokens so far end inside, or -1. Scans each token once. */
 function regexDepth(s: LexState): number {
   const r = s.regex;
