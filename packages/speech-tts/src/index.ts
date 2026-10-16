@@ -65,3 +65,4 @@ export {
   type SpeechRuntime,
   type SpeechRuntimeInput,
 } from "./runtime.js";
+export { resolveSpeechRuntime, type ResolveSpeechRuntimeOptions } from "./resolve-runtime.js";

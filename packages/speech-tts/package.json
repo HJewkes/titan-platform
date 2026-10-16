@@ -34,7 +34,8 @@
     "@titan-design/app-paths": "workspace:^"
   },
   "devDependencies": {
-    "@titan-design/speech-g2p": "workspace:*"
+    "@titan-design/speech-g2p": "workspace:*",
+    "@titan-design/speech-stt": "workspace:*"
   },
   "peerDependencies": {
     "@huggingface/transformers": "^3.8.1",

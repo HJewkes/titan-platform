@@ -701,7 +701,7 @@ Key exports:
 - `errors`: `TtsConfigError`, `TtsError`, `TtsFailedError`, `TtsTimeoutError`, `TtsUnavailableError`, `TtsUnsupportedError`
 - `capabilities`: `assertSupported`, `languageMatches`, `missingCapabilities`, `requirementsOf`
 - `wav`: `decodeWav`, `encodeWav`
-- +70 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/speech-tts)
+- +72 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/speech-tts)
 
 <a id="cap-worktree"></a>
 

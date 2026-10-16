@@ -348,6 +348,54 @@ interface Calibration {
 /** Synthesizes until the speaking rate lands within tolerance of the target, else returns the closest try. */
 declare function calibrateSpeed(provider: TtsProvider, input: TtsInput, voice: string, opts: CalibrateOptions): Promise<Calibration>;
 
+/** The transformers.js device names P1 knows. Only `cpu` is used without an explicit, verified opt-in. */
+type SpeechDevice = "cpu" | "cuda" | "coreml" | "webgpu";
+type Source = "env" | "profile" | "default";
+interface SpeechRuntime {
+    device: Readonly<Record<SpeechComponent, SpeechDevice>>;
+    /** Devices this host could run. Listing `cuda` does not select it. */
+    available: readonly SpeechDevice[];
+    cacheDir: string;
+    offline: boolean;
+    /** Where each value came from, so a caller can let an env choice beat its own default. */
+    source: {
+        device: Readonly<Record<SpeechComponent, Source>>;
+        cacheDir: Source;
+    };
+}
+interface SpeechRuntimeInput {
+    platform: NodeJS.Platform;
+    arch: string;
+    env: SpeechEnv;
+    home: string;
+    exists: (path: string) => boolean;
+    /** The onnxruntime-node package directory, when one was found. Without it, cuda is never available. */
+    ortDir?: string;
+    profile?: TtsProfile;
+    /** Lets an explicit cuda choice through before spike E9 has verified it. */
+    allowUnverifiedCuda?: boolean;
+}
+type SpeechRuntimeErrorCode = "unknown-device" | "unsupported-device" | "unavailable-device" | "unverified-device" | "unsupported-platform" | "bad-cache-dir";
+declare class SpeechRuntimeError extends Error {
+    readonly code: SpeechRuntimeErrorCode;
+    constructor(code: SpeechRuntimeErrorCode, message: string);
+}
+declare const SPEECH_DEVICE_ENV = "TITAN_SPEECH_DEVICE";
+declare const SPEECH_CACHE_ENV = "TITAN_SPEECH_CACHE";
+/** `TITAN_SPEECH_DEVICE_<TTS|STT|PHONES>`: one component's device, which beats `TITAN_SPEECH_DEVICE`. */
+declare const speechDeviceEnvName: (component: SpeechComponent) => string;
+/**
+ * Picks each speech model's device and the model cache from the platform, `TITAN_SPEECH_*` env and the profile's
+ * `runtime` section. Pure: the host is passed in. Per component, `TITAN_SPEECH_DEVICE_<C>` beats
+ * `TITAN_SPEECH_DEVICE`, which beats the profile, which beats `cpu`.
+ */
+declare function detectSpeechRuntime(input: SpeechRuntimeInput): SpeechRuntime;
+/** The `{ device, cacheDir }` options one component's provider takes: Kokoro, Whisper or wav2vec2. */
+declare function runtimeOptions(runtime: SpeechRuntime, component: SpeechComponent): {
+    device: SpeechDevice;
+    cacheDir: string;
+};
+
 /** The model behind `kokoroProvider`, which loads the real fp32 one unless given a `loadEngine`. */
 interface KokoroEngine {
     /** Kokoro's input ids for one chunk's phonemes, `<bos>` and `<eos>` included. */
@@ -405,7 +453,11 @@ interface KokoroProviderOptions {
  */
 declare function kokoroProvider(opts: KokoroProviderOptions): TtsProvider;
 /** Register as `registry.register("kokoro", kokoroFactory({ g2p }))`; profile entries of kind `kokoro` then build it. */
-declare function kokoroFactory(deps: Pick<KokoroProviderOptions, "g2p" | "loadEngine" | "onWarning">): TtsProviderFactory;
+declare function kokoroFactory(deps: KokoroFactoryDeps): TtsProviderFactory;
+interface KokoroFactoryDeps extends Pick<KokoroProviderOptions, "g2p" | "loadEngine" | "onWarning"> {
+    /** `resolveSpeechRuntime()`'s result: its device and cache fill what a profile entry omits, and its env choices beat the entry. */
+    runtime?: Pick<SpeechRuntime, "device" | "cacheDir" | "source">;
+}
 
 /** Seconds from the chunk start; null where Python leaves `start_ts`/`end_ts` unset. */
 interface TokenTime {
@@ -413,52 +465,16 @@ interface TokenTime {
     readonly end: number | null;
 }
 
-/** The transformers.js device names P1 knows. Only `cpu` is used without an explicit, verified opt-in. */
-type SpeechDevice = "cpu" | "cuda" | "coreml" | "webgpu";
-type Source = "env" | "profile" | "default";
-interface SpeechRuntime {
-    device: Readonly<Record<SpeechComponent, SpeechDevice>>;
-    /** Devices this host could run. Listing `cuda` does not select it. */
-    available: readonly SpeechDevice[];
-    cacheDir: string;
-    offline: boolean;
-    /** Where each value came from, so a caller can let an env choice beat its own default. */
-    source: {
-        device: Readonly<Record<SpeechComponent, Source>>;
-        cacheDir: Source;
-    };
-}
-interface SpeechRuntimeInput {
-    platform: NodeJS.Platform;
-    arch: string;
-    env: SpeechEnv;
-    home: string;
-    exists: (path: string) => boolean;
-    /** The onnxruntime-node package directory, when one was found. Without it, cuda is never available. */
-    ortDir?: string;
-    profile?: TtsProfile;
-    /** Lets an explicit cuda choice through before spike E9 has verified it. */
+interface ResolveSpeechRuntimeOptions {
+    /** Defaults to `process.env`. */
+    env?: SpeechEnv;
+    /** Falls back to `TITAN_SPEECH_PROFILE`. With neither, only env and defaults apply. */
+    profilePath?: string;
     allowUnverifiedCuda?: boolean;
+    /** Injectable for tests; defaults to looking for onnxruntime-node beside the transformers.js peer. */
+    findOrtDir?: () => string | undefined;
 }
-type SpeechRuntimeErrorCode = "unknown-device" | "unsupported-device" | "unavailable-device" | "unverified-device" | "unsupported-platform" | "bad-cache-dir";
-declare class SpeechRuntimeError extends Error {
-    readonly code: SpeechRuntimeErrorCode;
-    constructor(code: SpeechRuntimeErrorCode, message: string);
-}
-declare const SPEECH_DEVICE_ENV = "TITAN_SPEECH_DEVICE";
-declare const SPEECH_CACHE_ENV = "TITAN_SPEECH_CACHE";
-/** `TITAN_SPEECH_DEVICE_<TTS|STT|PHONES>`: one component's device, which beats `TITAN_SPEECH_DEVICE`. */
-declare const speechDeviceEnvName: (component: SpeechComponent) => string;
-/**
- * Picks each speech model's device and the model cache from the platform, `TITAN_SPEECH_*` env and the profile's
- * `runtime` section. Pure: the host is passed in. Per component, `TITAN_SPEECH_DEVICE_<C>` beats
- * `TITAN_SPEECH_DEVICE`, which beats the profile, which beats `cpu`.
- */
-declare function detectSpeechRuntime(input: SpeechRuntimeInput): SpeechRuntime;
-/** The `{ device, cacheDir }` options one component's provider takes: Kokoro, Whisper or wav2vec2. */
-declare function runtimeOptions(runtime: SpeechRuntime, component: SpeechComponent): {
-    device: SpeechDevice;
-    cacheDir: string;
-};
+/** Loads the profile, finds the host's onnxruntime-node and runs `detectSpeechRuntime` on the real platform. */
+declare function resolveSpeechRuntime(opts?: ResolveSpeechRuntimeOptions): Promise<SpeechRuntime>;
 
-export { type Audio, type CalibrateOptions, type CalibrateTry, type Calibration, type CommandOutput, type CommandRequest, type CommandTtsOptions, DEFAULT_MAX_OUTPUT_BYTES, FAKE_TTS_CAPABILITIES, type FakeTtsCall, type FakeTtsOptions, type FakeTtsProvider, type HttpResponseMapping, type HttpTtsOptions, INHERITED_ENV, KOKORO_CAPABILITIES, type KokoroEngine, type KokoroEngineOptions, type KokoroG2p, type KokoroProviderOptions, PREFER_ENV, PROFILE_ENV, type PhonemeAlphabet, type ResolvedTtsConfig, SPEECH_CACHE_ENV, SPEECH_DEVICE_ENV, type SelectTtsOptions, type SkippedProvider, type SpeakingOptions, type SpeechComponent, type SpeechDevice, type SpeechEnv, type SpeechRuntime, SpeechRuntimeError, type SpeechRuntimeInput, type Synthesis, type SynthesizeOptions, type TokenTime, type TtsCapabilities, TtsConfigError, TtsError, type TtsErrorCode, TtsFailedError, type TtsInput, type TtsProfile, type TtsProvider, type TtsProviderConfig, type TtsProviderFactory, type TtsRegistry, type TtsRequirements, type TtsSelection, TtsTimeoutError, type TtsToken, TtsUnavailableError, TtsUnsupportedError, type TtsVoice, type WordTiming, assertSupported, calibrateSpeed, commandTts, createTtsRegistry, decodeWav, defaultTtsRegistry, detectSpeechRuntime, encodeWav, fakeTts, fillTemplate, httpTts, kokoroFactory, kokoroProvider, languageMatches, loadTtsProfile, missingCapabilities, parseCapabilities, parseTtsProfile, providerEnvName, requirementsOf, resolveTtsConfig, runtimeOptions, selectTts, speakingSeconds, speechDeviceEnvName };
+export { type Audio, type CalibrateOptions, type CalibrateTry, type Calibration, type CommandOutput, type CommandRequest, type CommandTtsOptions, DEFAULT_MAX_OUTPUT_BYTES, FAKE_TTS_CAPABILITIES, type FakeTtsCall, type FakeTtsOptions, type FakeTtsProvider, type HttpResponseMapping, type HttpTtsOptions, INHERITED_ENV, KOKORO_CAPABILITIES, type KokoroEngine, type KokoroEngineOptions, type KokoroG2p, type KokoroProviderOptions, PREFER_ENV, PROFILE_ENV, type PhonemeAlphabet, type ResolveSpeechRuntimeOptions, type ResolvedTtsConfig, SPEECH_CACHE_ENV, SPEECH_DEVICE_ENV, type SelectTtsOptions, type SkippedProvider, type SpeakingOptions, type SpeechComponent, type SpeechDevice, type SpeechEnv, type SpeechRuntime, SpeechRuntimeError, type SpeechRuntimeInput, type Synthesis, type SynthesizeOptions, type TokenTime, type TtsCapabilities, TtsConfigError, TtsError, type TtsErrorCode, TtsFailedError, type TtsInput, type TtsProfile, type TtsProvider, type TtsProviderConfig, type TtsProviderFactory, type TtsRegistry, type TtsRequirements, type TtsSelection, TtsTimeoutError, type TtsToken, TtsUnavailableError, TtsUnsupportedError, type TtsVoice, type WordTiming, assertSupported, calibrateSpeed, commandTts, createTtsRegistry, decodeWav, defaultTtsRegistry, detectSpeechRuntime, encodeWav, fakeTts, fillTemplate, httpTts, kokoroFactory, kokoroProvider, languageMatches, loadTtsProfile, missingCapabilities, parseCapabilities, parseTtsProfile, providerEnvName, requirementsOf, resolveSpeechRuntime, resolveTtsConfig, runtimeOptions, selectTts, speakingSeconds, speechDeviceEnvName };
