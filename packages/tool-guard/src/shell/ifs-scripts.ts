@@ -112,7 +112,7 @@ function commandsRun(words: WordToken[], budget: UnsureBudget): Unwrapped[] {
 }
 
 function commandScripts(cmd: Unwrapped, { redirects, piped }: Stage, before: Stage[], budget: UnsureBudget): string[] {
-  const stdin = piped ? before.flatMap(stageTexts).join("\n") : null;
+  const stdin = piped ? [before.flatMap(stageTexts).join("\n")] : [];
   const inline = inlineScript(cmd, redirects, stdin, budget)?.texts ?? [];
   if (cmd.name === "trap") return [...inline, ...cmd.args.filter((a) => a.value !== "--").slice(0, 1).map((a) => a.value)];
   if (cmd.name === "alias") return [...inline, ...cmd.args.flatMap((a) => (a.value.includes("=") ? [a.value.slice(a.value.indexOf("=") + 1)] : []))];
