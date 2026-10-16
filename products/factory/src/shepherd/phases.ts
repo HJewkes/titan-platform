@@ -122,4 +122,6 @@ export interface ShepherdDeps {
   prFiles?: PrFilesRead;
   /** Repos whose stacked children Shepherd restacks after its own merge; absent means none. */
   stackRestack?: (repo: RepoSlug) => boolean;
+  /** `on` repairs a run held only under a g10 class while the hold keeps gating its merge; absent means `off`. */
+  heldRepair?: "off" | "on";
 }

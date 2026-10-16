@@ -862,6 +862,12 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/held-repair-g10.test.ts",
+   "fate": "kept",
+   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/held-repair.test.ts",
    "fate": "kept",
    "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
