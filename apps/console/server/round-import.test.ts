@@ -46,7 +46,10 @@ async function editJson(rel: string, edit: (json: Record<string, unknown>) => vo
   await writeFile(path.join(source, rel), JSON.stringify(json));
 }
 
-const frameRecords = z.array(z.looseObject({ key: z.string(), file: z.string(), sha256: z.string(), base: z.looseObject({ file: z.string() }).optional() }));
+const indexedFile = z.looseObject({ file: z.string(), sha256: z.string() });
+const frameRecords = z.array(
+  z.looseObject({ key: z.string(), file: z.string(), sha256: z.string(), base: z.looseObject({ file: z.string() }).optional(), after: indexedFile.optional() }),
+);
 type FrameRecord = z.infer<typeof frameRecords>[number];
 
 /** The fixture lists card-light (with base and diff) and then card-dark. */
@@ -291,3 +294,135 @@ describe("importRound refuses a round or an answer file the console would not re
     await expect(runImport()).rejects.toMatchObject({ code: EXIT.NOINPUT, message: expect.stringMatching(/no round\.json/) });
   });
 });
+
+// The fixture's one Ship question merges example/cards#2 at this head.
+const SHIP = { repo: "example/cards", pr: 2, headSha: "0123456789abcdef0123456789abcdef01234567" };
+const AFTER = "frames/after/card-light.png";
+
+/** Turns the fixture into a CI visual packet: packet.json and prose.json beside round.json, named in frames.json. */
+async function addPacket(packet: Record<string, unknown> = {}): Promise<{ packet: Buffer; prose: Buffer }> {
+  const packetBytes = Buffer.from(JSON.stringify({ schema: "titan-review/ci-packet@1", ...SHIP, headTree: "f".repeat(40), images: [], ...packet }));
+  const proseBytes = Buffer.from(JSON.stringify({ summary: "Card padding drops to twelve pixels." }));
+  await writeFile(path.join(source, "packet.json"), packetBytes);
+  await writeFile(path.join(source, "prose.json"), proseBytes);
+  await editJson("frames/frames.json", (json) => {
+    json.packet = { file: "packet.json", sha256: sha256Of(packetBytes) };
+    json.prose = { file: "prose.json", sha256: sha256Of(proseBytes) };
+  });
+  return { packet: packetBytes, prose: proseBytes };
+}
+
+describe("importRound copies a CI packet's files", () => {
+  it("copies packet.json and prose.json 0600 beside round.json", async () => {
+    const { packet, prose } = await addPacket();
+
+    await runImport();
+
+    const dest = path.join(roundsDir, ID);
+    expect(await readFile(path.join(dest, "packet.json"))).toEqual(packet);
+    expect(await readFile(path.join(dest, "prose.json"))).toEqual(prose);
+    expect((await stat(path.join(dest, "packet.json"))).mode & 0o777).toBe(0o600);
+  });
+
+  it("copies no packet.json when frames.json names none", async () => {
+    await writeFile(path.join(source, "packet.json"), "{}");
+
+    await runImport();
+
+    expect(await entries(path.join(roundsDir, ID))).not.toContain("packet.json");
+  });
+
+  it("adds a packet.json a re-import finds missing", async () => {
+    const { packet } = await addPacket();
+    await runImport();
+    await rm(path.join(roundsDir, ID, "packet.json"));
+
+    await runImport();
+
+    expect(await readFile(path.join(roundsDir, ID, "packet.json"))).toEqual(packet);
+  });
+
+  it("copies and sha-checks a record's after image", async () => {
+    const after = await readFile(path.join(source, LISTED[0]));
+    await mkdir(path.join(source, "frames", "after"));
+    await writeFile(path.join(source, AFTER), after);
+    await editFrames((_frames, light) => (light.after = { file: AFTER, sha256: sha256Of(after) }));
+
+    expect((await runImport()).frames).toBe(5);
+    expect(await readFile(path.join(roundsDir, ID, AFTER))).toEqual(after);
+  });
+
+  it("refuses an after image whose sha256 does not match", async () => {
+    await mkdir(path.join(source, "frames", "after"));
+    await writeFile(path.join(source, AFTER), await readFile(path.join(source, LISTED[0])));
+    await editFrames((_frames, light) => (light.after = { file: AFTER, sha256: "0".repeat(64) }));
+
+    await expectRefused(/does not match the frames index sha256/);
+    expect(await entries()).toEqual([]);
+  });
+
+  const bindings: [string, Record<string, unknown>][] = [
+    ["another head", { headSha: "1".repeat(40) }],
+    ["another PR", { pr: 3 }],
+    ["another repo", { repo: "example/other" }],
+  ];
+
+  it.each(bindings)("refuses a packet.json that binds %s than the Ship question", async (_name, packet) => {
+    await addPacket(packet);
+
+    await expectRefused(/packet\.json binds .* a Ship question example\/cards#2 at 0123456789abcdef/);
+    expect(await entries()).toEqual([]);
+  });
+
+  const refusals: [string, () => Promise<void>, RegExp][] = [
+    ["a packet.json sha256 mismatch", () => editJson("frames/frames.json", (json) => (json.packet = { file: "packet.json", sha256: "0".repeat(64) })), /packet\.json does not match/],
+    ["a prose.json sha256 mismatch", () => writeFile(path.join(source, "prose.json"), "{}"), /prose\.json does not match/],
+    ["a packet named away from round.json", () => editJson("frames/frames.json", (json) => (json.packet = { ...indexedFile.parse(json.packet), file: "frames/packet.json" })), /must name packet\.json beside round\.json/],
+    ["a named packet.json that is missing", () => rm(path.join(source, "packet.json")), /names packet\.json but the source has none/],
+    ["a symlinked packet.json", () => symlinkInPlace("packet.json"), /packet\.json is a symlink/],
+    ["a round with no merge-bound question", () => dropShipBinding(), /has no merge-bound Ship question/],
+  ];
+
+  it.each(refusals)("refuses %s and writes nothing", async (_name, arrange, message) => {
+    await addPacket();
+    await arrange();
+
+    await expectRefused(message);
+    expect(await entries()).toEqual([]);
+  });
+
+  it("refuses a packet.json that is not JSON or not a ci-packet@1 packet", async () => {
+    await addPacket();
+    await rebindPacket(Buffer.from("{"));
+    await expectRefused(/packet\.json is not JSON/);
+
+    await rebindPacket(Buffer.from(JSON.stringify({ ...SHIP, schema: "titan-review/ci-packet@2" })));
+    await expectRefused(/packet\.json is not a ci-packet@1 packet/);
+    expect(await entries()).toEqual([]);
+  });
+});
+
+async function symlinkInPlace(rel: string): Promise<void> {
+  const real = path.join(root, `real-${path.basename(rel)}`);
+  await cp(path.join(source, rel), real);
+  await rm(path.join(source, rel));
+  await symlink(real, path.join(source, rel));
+}
+
+async function rebindPacket(bytes: Buffer): Promise<void> {
+  await writeFile(path.join(source, "packet.json"), bytes);
+  await editJson("frames/frames.json", (json) => (json.packet = { file: "packet.json", sha256: sha256Of(bytes) }));
+}
+
+/** Strips the Ship question's merge binding and its page (the schema requires a Ship question per page), then rebinds frames.json and feedback.json to the new round.json. */
+async function dropShipBinding(): Promise<void> {
+  await editJson("round.json", (json) => {
+    const questions = z.array(z.looseObject({ merge: z.unknown().optional(), page: z.unknown().optional() })).parse(json.questions);
+    for (const question of questions) {
+      delete question.merge;
+      delete question.page;
+    }
+    json.questions = questions;
+  });
+  await rebind();
+}

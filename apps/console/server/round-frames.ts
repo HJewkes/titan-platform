@@ -37,12 +37,15 @@ const indexedFile = z.object({ file: z.string(), sha256: sha256Hex });
 /**
  * frames@1 as review-harness writes it, plus the base and diff files a CI packet adds; other record fields are ignored.
  * `unit`, `round` and `manifestSha256` bind the index to its round.json; the reader here ignores them, the importer requires them.
+ * `packet` and `prose` name a CI packet's JSON beside round.json, and `after` a record's after image; only the importer reads them.
  */
 export const FramesIndexSchema = z.object({
   schema: z.literal("titan-review/frames@1"),
   unit: z.string().optional(),
   round: z.number().int().optional(),
   manifestSha256: sha256Hex.optional(),
+  packet: indexedFile.optional(),
+  prose: indexedFile.optional(),
   frames: z.array(
     z.object({
       key: z.string(),
@@ -51,6 +54,7 @@ export const FramesIndexSchema = z.object({
       sha256: sha256Hex,
       base: indexedFile.optional(),
       diff: indexedFile.optional(),
+      after: indexedFile.optional(),
     }),
   ),
 });
