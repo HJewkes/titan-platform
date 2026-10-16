@@ -1,5 +1,6 @@
 import { deflateSync } from "node:zlib";
-import type { Segment } from "./schemas.js";
+import type { Segment, Word } from "./schemas.js";
+import { SequenceMatcher } from "./sequence-matcher.js";
 
 /** One generated token: its log-prob over the full vocab, and over text tokens only (`null` for ids at or past EOT). */
 interface TokenScore {
@@ -15,7 +16,7 @@ export interface CapturedWindow {
 }
 
 /** The slice of a transformers.js logits `Tensor` the capture reads: `logits[batch].data` is a view, not a copy. */
-interface LogitsBatch {
+export interface LogitsBatch {
   readonly [batch: number]: { readonly data: ArrayLike<number> } | undefined;
 }
 
@@ -153,4 +154,24 @@ export function windowSegment(window: CapturedWindow, decode: Decode, span: { st
     avgLogprob: total / (textIds.length + 1),
     compressionRatio: bytes.length / deflateSync(bytes).length,
   };
+}
+
+const wordKey = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}']/gu, "");
+
+/**
+ * Copies captured word probabilities onto the pipeline's words. Windows overlap and the pipeline merges their tokens,
+ * so the two word lists differ; only words on an `equal` opcode take a probability. Autojunk is off because common
+ * words such as "the" pass its 1% bar in any transcript of 200 words or more.
+ */
+export function attachProbabilities(words: readonly Word[], windows: readonly CapturedWindow[], decode: Decode): Word[] {
+  const captured = windows.flatMap((window) => windowWords(window, decode));
+  const matcher = new SequenceMatcher(words.map((w) => wordKey(w.text)), captured.map((w) => wordKey(w.text)), {
+    autojunk: false,
+  });
+  const out = words.map((w) => ({ ...w }));
+  for (const [tag, i1, i2, j1] of matcher.opcodes()) {
+    if (tag !== "equal") continue;
+    for (let k = 0; k < i2 - i1; k++) out[i1 + k]!.probability = captured[j1 + k]!.probability;
+  }
+  return out;
 }

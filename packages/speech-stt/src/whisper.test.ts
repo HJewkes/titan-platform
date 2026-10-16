@@ -1,8 +1,10 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { deflateSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
-import type { Audio } from "./schemas.js";
+import { audioKey } from "./audio-key.js";
+import type { Audio, Transcript } from "./schemas.js";
 import {
   loadTransformersPipeline,
   whisperStt,
@@ -29,13 +31,72 @@ const SPLIT_WORD_OUTPUT: AsrOutput = {
   ],
 };
 
-function fakeAsr(output: AsrOutput = SPLIT_WORD_OUTPUT) {
+// A toy vocabulary: ids below EOT (20) are text, 21 and 22 are the prompt's special tokens.
+const EOT = 20;
+const VOCAB = 23;
+const PROMPT = [21, 22];
+const PIECES: Record<number, string> = {
+  0: " Lite",
+  1: "str",
+  2: "eam",
+  3: " replicates",
+  4: " the",
+  5: " data",
+  6: "base",
+  7: ".",
+  8: " zorptrix",
+  9: " hummed",
+  [EOT]: "<|endoftext|>",
+  21: "<|startoftranscript|>",
+  22: "<|notimestamps|>",
+};
+const decode = (ids: number[]) => ids.map((id) => PIECES[id]!).join("");
+const LN3 = Math.log(3);
+
+/** One greedy step: the chosen id and its probability, which two live logits (0 and ln 3) make derivable by hand. */
+type Step = [id: number, p: 1 | 0.75 | 0.25];
+
+function stepRow([id, p]: Step): Float32Array {
+  const data = new Float32Array(VOCAB).fill(-Infinity);
+  data[id] = p === 0.75 ? LN3 : 0;
+  if (p !== 1) data[id === 0 ? 1 : 0] = p === 0.25 ? LN3 : 0;
+  return data;
+}
+
+type LogitsProcessors = NonNullable<Parameters<AsrPipeline>[1]["logits_processor"]>;
+
+/** One decode window as transformers.js runs it: generate appends a processor, then every step calls them all in order. */
+function playWindow(processors: LogitsProcessors, steps: Step[]): void {
+  processors.push((_ids, logits) => logits);
+  steps.forEach((step, i) => {
+    const ids = [...PROMPT, ...steps.slice(0, i).map(([id]) => id)];
+    const logits = [{ data: stepRow(step) }];
+    for (const processor of processors) processor([ids], logits);
+  });
+}
+
+// Litestream (0.75, 0.25, 1) averages 2/3; database (0.75, 0.25) averages 1/2; "." stays out of every word.
+const SPLIT_WORD_STEPS: Step[][] = [
+  [[0, 0.75], [1, 0.25], [2, 1], [3, 1], [4, 0.75], [5, 0.75], [6, 0.25], [7, 0.25], [EOT, 1]],
+];
+
+function fakeAsr(output: AsrOutput = SPLIT_WORD_OUTPUT, windows: Step[][] = SPLIT_WORD_STEPS) {
+  const processorCounts: number[] = [];
   const asr = Object.assign(
-    vi.fn(async (_samples: Float32Array, _options: unknown) => output),
-    { dispose: vi.fn(async () => undefined) },
+    vi.fn(async (_samples: Float32Array, options: Parameters<AsrPipeline>[1]) => {
+      const processors = options.logits_processor;
+      if (processors) processorCounts.push(processors.length);
+      if (processors) windows.forEach((steps) => playWindow(processors, steps));
+      return output;
+    }),
+    {
+      dispose: vi.fn(async () => undefined),
+      tokenizer: { decode },
+      model: { generation_config: { eos_token_id: EOT } },
+    },
   );
   const factory = vi.fn<AsrFactory>(async () => asr);
-  return { asr, factory, loadPipeline: vi.fn(async () => factory) };
+  return { asr, factory, loadPipeline: vi.fn(async () => factory), processorCounts };
 }
 
 const tone = (n: number, sampleRate = 16000): Audio => ({
@@ -43,20 +104,31 @@ const tone = (n: number, sampleRate = 16000): Audio => ({
   sampleRate,
 });
 
+const probabilities = (transcript: Transcript) => transcript.words.map((w) => w.probability);
+
 describe("whisperStt capabilities", () => {
-  it("declares no token log-probs without loading the pipeline", () => {
+  // Mutation caught: hard-coding capabilities: { tokenLogprobs: false }.
+  it("declares token log-probs by default without loading the pipeline", () => {
     const { loadPipeline } = fakeAsr();
 
-    expect(whisperStt({ loadPipeline }).capabilities.tokenLogprobs).toBe(false);
+    expect(whisperStt({ loadPipeline }).capabilities.tokenLogprobs).toBe(true);
     expect(loadPipeline).not.toHaveBeenCalled();
   });
 
-  it("returns words without probability and no segments, which is why the flag is off", async () => {
+  it("declares none when opted out, without loading the pipeline", () => {
     const { loadPipeline } = fakeAsr();
-    const transcript = await whisperStt({ loadPipeline }).transcribe(tone(1600));
+
+    expect(whisperStt({ tokenLogprobs: false, loadPipeline }).capabilities.tokenLogprobs).toBe(false);
+    expect(loadPipeline).not.toHaveBeenCalled();
+  });
+
+  it("returns words without probability and no segments when opted out, passing no logits processor", async () => {
+    const { asr, loadPipeline } = fakeAsr();
+    const transcript = await whisperStt({ tokenLogprobs: false, loadPipeline }).transcribe(tone(1600));
 
     expect(transcript.segments).toEqual([]);
     expect(transcript.words.every((w) => !("probability" in w))).toBe(true);
+    expect(asr.mock.calls[0]?.[1]).not.toHaveProperty("logits_processor");
   });
 
   it("requires every provider to declare capabilities", () => {
@@ -67,10 +139,84 @@ describe("whisperStt capabilities", () => {
   });
 });
 
+describe("whisperStt token log-probs", () => {
+  it("gives each word the mean of its text tokens' probabilities and one segment for the window", async () => {
+    const { loadPipeline } = fakeAsr();
+    const transcript = await whisperStt({ loadPipeline }).transcribe(tone(1600));
+    const bytes = Buffer.from("Litestream replicates the database.", "utf8");
+
+    // Float32 holds ln 3 to about 1e-8, so the probabilities are close rather than exact.
+    [2 / 3, 1, 0.75, 0.5].forEach((p, i) => expect(probabilities(transcript)[i]).toBeCloseTo(p, 6));
+    expect(transcript.segments).toHaveLength(1);
+    expect(transcript.segments[0]).toMatchObject({ text: "Litestream replicates the database.", start: 0, end: 0.1 });
+    expect(transcript.segments[0]!.avgLogprob).toBeCloseTo((Math.log(0.75) + Math.log(0.25)) / 3, 6);
+    expect(transcript.segments[0]!.compressionRatio).toBe(bytes.length / deflateSync(bytes).length);
+  });
+
+  it("maps overlapping windows onto the merged words and spans each window's 30 s", async () => {
+    const output: AsrOutput = {
+      text: " the zorptrix hummed softly",
+      chunks: [chunk(" the", 0, 1), chunk(" zorptrix", 1, 22), chunk(" hummed", 22, 40), chunk(" softly", 40, 44)],
+    };
+    const windows: Step[][] = [
+      [[4, 0.75], [8, 0.25], [EOT, 1]],
+      [[8, 1], [9, 0.75], [EOT, 1]],
+    ];
+    const { loadPipeline } = fakeAsr(output, windows);
+
+    const transcript = await whisperStt({ loadPipeline }).transcribe(tone(16000 * 45));
+
+    // "zorptrix" is in both windows; the matcher takes the first window's, as CPython's difflib would.
+    [0.75, 0.25, 0.75].forEach((p, i) => expect(probabilities(transcript)[i]).toBeCloseTo(p, 6));
+    expect(transcript.words[3]).not.toHaveProperty("probability");
+    expect(transcript.segments.map(({ text, start, end }) => ({ text, start, end }))).toEqual([
+      { text: "the zorptrix", start: 0, end: 30 },
+      { text: "zorptrix hummed", start: 20, end: 45 },
+    ]);
+  });
+
+  // Mutation caught: one processor array shared by every call, which Whisper's generate grows on each window.
+  it("passes a fresh processor array on every call", async () => {
+    const { loadPipeline, processorCounts } = fakeAsr();
+    const stt = whisperStt({ loadPipeline });
+
+    await stt.transcribe(tone(160));
+    await stt.transcribe(tone(320));
+
+    expect(processorCounts).toEqual([1, 1]);
+  });
+
+  it("rejects a pipeline without a tokenizer, naming the opt-out", async () => {
+    const { asr, loadPipeline } = fakeAsr();
+    Reflect.deleteProperty(asr, "tokenizer");
+
+    await expect(whisperStt({ loadPipeline }).transcribe(tone(160))).rejects.toThrow("tokenLogprobs: false");
+  });
+
+  it("rejects a pipeline that never calls the processor, naming the verified transformers.js", async () => {
+    const { loadPipeline } = fakeAsr(SPLIT_WORD_OUTPUT, []);
+
+    await expect(whisperStt({ loadPipeline }).transcribe(tone(160))).rejects.toThrow("@huggingface/transformers 3.8.1");
+  });
+
+  it("keys the cache apart per mode, leaving the opted-out key as it was", async () => {
+    const { asr, loadPipeline } = fakeAsr();
+    const cache = new Map<string, Transcript>();
+    const audio = tone(1600);
+
+    await whisperStt({ cache, loadPipeline }).transcribe(audio);
+    await whisperStt({ cache, tokenLogprobs: false, loadPipeline }).transcribe(audio);
+
+    expect(asr).toHaveBeenCalledTimes(2);
+    expect(cache.size).toBe(2);
+    expect(cache.has(audioKey("onnx-community/whisper-base.en_timestamped", audio))).toBe(true);
+  });
+});
+
 describe("whisperStt", () => {
   it("merges sub-word chunks into whole words timed in seconds", async () => {
     const { loadPipeline } = fakeAsr();
-    const transcript = await whisperStt({ loadPipeline }).transcribe(tone(1600));
+    const transcript = await whisperStt({ tokenLogprobs: false, loadPipeline }).transcribe(tone(1600));
 
     expect(transcript.text).toBe("Litestream replicates the database.");
     expect(transcript.words).toEqual([

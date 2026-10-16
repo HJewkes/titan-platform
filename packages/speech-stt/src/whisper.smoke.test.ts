@@ -17,5 +17,12 @@ describe.skipIf(!wavPath || !cacheDir)("whisperStt on a real model", () => {
 
     expect(transcript.words.length).toBeGreaterThan(0);
     expect(transcript.words.every((w, i, all) => w.start <= w.end && (i === 0 || all[i - 1]!.start <= w.start))).toBe(true);
+    const scored = transcript.words.filter((w) => w.probability !== undefined && w.probability > 0 && w.probability <= 1);
+    expect(scored.length).toBeGreaterThanOrEqual(0.9 * transcript.words.length);
+    expect(transcript.segments.length).toBeGreaterThanOrEqual(1);
+    for (const { avgLogprob } of transcript.segments) {
+      expect(Number.isFinite(avgLogprob)).toBe(true);
+      expect(avgLogprob).toBeLessThanOrEqual(0);
+    }
   }, 300_000);
 });

@@ -165,7 +165,8 @@ source's preambles or boilerplate are steps the product writes.
 - `detectDefects` ignores word probabilities and segment confidence unless
   `options.confidence` is true, and it defaults to false. Pass `defectOptionsFor(stt)`
   rather than leaving the options out, or transcripts that carry token log-probs silently
-  lose that signal. `whisperStt` has none, so its flag stays off.
+  lose that signal. `whisperStt` fills both unless built with `tokenLogprobs: false`, which
+  turns its flag off.
 - `detectDefects` keeps the original's number grammar, which stops at "and": "five hundred
   and twenty" reads as 500 then 20.
 - `vet()` takes a `recognizer` only with a `phoneG2p`, which has no default: whether misaki
