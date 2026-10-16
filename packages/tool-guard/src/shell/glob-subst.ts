@@ -15,7 +15,7 @@ import type { Unwrapped } from "./unwrap.js";
  */
 export function namesGlobSubstOption(cmd: Unwrapped): boolean {
   if (cmd.argv0?.some((name) => name === null)) return true;
-  const runsZsh = cmd.script !== undefined || cmd.name === "zsh";
+  const runsZsh = cmd.script !== undefined || cmd.name === "zsh" || cmd.name === null;
   if (runsZsh && cmd.argv0?.some(argv0Emulates)) return true;
   if (cmd.name === null) return namesFromDynamicWord(cmd.args);
   if (cmd.path === null || literalText(cmd.path.startsWith("=") && cmd.path.length > 1 ? cmd.path.slice(1) : cmd.path) === null) return true;
