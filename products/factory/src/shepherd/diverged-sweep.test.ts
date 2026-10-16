@@ -133,6 +133,32 @@ describe("restartDivergedRuns", () => {
     expect((await next.host.runtime.wait(oldRunIds[0]!)).status).toBe("cancelled");
   });
 
+  it("ends a diverged run with a step in flight, PR closed, as cancelled in one sweep, and no adopt replays it", async () => {
+    const { next, oldRunIds } = await parkedRuns([1], "closed");
+    const runId = oldRunIds[0]!;
+    expect(Object.keys(next.host.runtime.status(runId)!.activeSteps)).not.toEqual([]);
+
+    const sweep = await restartDivergedRuns(ctxOf(next));
+    const adopted = await next.host.adopt();
+
+    expect(sweep.ended).toEqual([{ runId, reason: "replay diverged; PR closed" }]);
+    expect(next.host.runtime.status(runId)).toMatchObject({ status: "cancelled", error: "replay diverged; PR closed", activeSteps: {} });
+    expect(adopted).not.toContain(runId);
+    expect(await restartDivergedRuns(ctxOf(next))).toEqual({ restarted: [], ended: [], errors: [] });
+  });
+
+  it("ends the superseded run of an open PR with a step in flight as cancelled in the same sweep", async () => {
+    const { next, oldRunIds } = await parkedRuns();
+    const runId = oldRunIds[0]!;
+    expect(Object.keys(next.host.runtime.status(runId)!.activeSteps)).not.toEqual([]);
+
+    const sweep = await restartDivergedRuns(ctxOf(next));
+
+    expect(sweep.restarted.map((restart) => restart.runId)).toEqual([runId]);
+    expect(next.host.runtime.status(runId)).toMatchObject({ status: "cancelled", activeSteps: {} });
+    expect(await next.host.adopt()).not.toContain(runId);
+  });
+
   it("reports a run whose pull request cannot be read and still restarts the others", async () => {
     const { next, oldRunIds } = await parkedRuns([1, 2]);
     const port = next.routes.shepherd!.port;

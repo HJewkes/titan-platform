@@ -248,7 +248,11 @@ export class WorkflowRuntime {
     const isPending = (gateId: string): boolean => gateIsPending(this.options.gates, gateId);
     this.options.gates.resolve(run ? pendingGateId(run, stepId, isPending) : gateIdFor(runId, stepId), payload, resolvedBy);
   }
-  cancel(runId: string, reason: string): void {
+  /**
+   * `abandon` ends a run no runtime drives without replaying it to settle its in-flight steps, for a run whose replay cannot
+   * reach them on this build; those steps are dropped unsettled.
+   */
+  cancel(runId: string, reason: string, options: { abandon?: boolean } = {}): void {
     const live = this.live.get(runId);
     const run = live?.ctx.run ?? this.claim(runId);
     if (!run) {
@@ -261,7 +265,7 @@ export class WorkflowRuntime {
     this.save(run);
     this.cancelGates(runId, reason);
     if (live) live.controller.abort(new WorkflowCancelledError(runId, reason));
-    else if (!this.isQuiesced && Object.keys(run.activeSteps).length === 0) this.finish(run, "cancelled", reason);
+    else if (options.abandon || (!this.isQuiesced && Object.keys(run.activeSteps).length === 0)) this.finish(run, "cancelled", reason);
     else this.release(run);
   }
 
