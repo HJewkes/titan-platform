@@ -2322,6 +2322,12 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/take-verdict.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/take-verdict.ts",
    "fate": "kept",
    "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
