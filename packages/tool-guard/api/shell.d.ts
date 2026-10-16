@@ -53,6 +53,8 @@ interface WordToken {
 interface OpToken {
     type: "op";
     value: string;
+    /** Set on the first `(` of a `((` the lexer reads as an arithmetic command; absent on nested subshells. */
+    arith?: true;
 }
 /** Process substitutions, `<(...)` and `>(...)`. */
 interface SubsToken {
