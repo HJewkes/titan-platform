@@ -301,11 +301,18 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
 }
 
 /** The packager spawns through the shared roster and spawn gate, under agent-chat's default account; `off` wires nothing. */
-function configuredVisualPacket(shepherd: FactoryConfig["shepherd"], env: NodeJS.ProcessEnv, roster: RosterReader | undefined, gate: SpawnGate, cwdFor: (repo: string) => string | undefined): VisualPacketPorts | undefined {
+function configuredVisualPacket(
+  shepherd: FactoryConfig["shepherd"],
+  env: NodeJS.ProcessEnv,
+  roster: RosterReader | undefined,
+  gate: SpawnGate,
+  cwdFor: (repo: string) => string | undefined,
+): VisualPacketPorts | undefined {
   const mode = shepherd?.visualPacket ?? "off";
   if (mode === "off") return undefined;
   const agentChatBin = shepherd?.agentChatBin;
-  return { mode, profile: shepherd?.visualPacketProfile ?? DEFAULT_PACKAGER_PROFILE, stateDir: factoryStateDir(env), cwdFor, ...(agentChatBin && { agents: agentChatAgents(agentChatBin, { roster, gate }) }) };
+  const agents = agentChatBin && { agents: agentChatAgents(agentChatBin, { roster, gate }) };
+  return { mode, profile: shepherd?.visualPacketProfile ?? DEFAULT_PACKAGER_PROFILE, stateDir: factoryStateDir(env), cwdFor, ...agents };
 }
 
 function logGhCall(line: GhCallLine): void {
