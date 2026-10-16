@@ -17,7 +17,7 @@ const context: ClassifyContext = {
   home: "/home/you",
   readLink: () => null,
   readHead: (dir) => (dir === REPO ? "main" : null),
-  readScript: (file) => (file === `${REPO}/x.sh` ? `${PUSH}\n` : null),
+  readScript: (file) => (file === `${REPO}/x.sh` ? `${PUSH}\n` : file === `${REPO}/ok.sh` ? "echo hi\n" : null),
 };
 
 async function verdict(command: string): Promise<"deny" | "pass"> {
@@ -91,6 +91,16 @@ const PUSH_ROUTES = [
   ["/dev/../dev/stdin as the script file", `bash /dev/../dev/stdin <<< ${TEXT}`],
   ["/proc/thread-self/fd/0 as the script file", `bash /proc/thread-self/fd/0 <<< ${TEXT}`],
   ["a pipe into //dev/stdin as the script file", `echo ${TEXT} | bash //dev/stdin`],
+  ["/dev/stdin naming a < file", "bash /dev/stdin < ./x.sh"],
+  ["/dev/stdin after -- naming a < file", "bash -- /dev/stdin < ./x.sh"],
+  ["/dev/stdin after - naming a < file", "bash - /dev/stdin < ./x.sh"],
+  ["zsh's /dev/fd/0 naming a < file", "zsh /dev/fd/0 < ./x.sh"],
+  ["sh's /proc/self/fd/0 naming a < file", "sh /proc/self/fd/0 < ./x.sh"],
+  ["dash's /dev/stdin naming a < file", "dash /dev/stdin < ./x.sh"],
+  ["a <> file on stdin", "bash <> ./x.sh"],
+  ["a < file replacing an earlier here-string", "bash /dev/stdin <<< 'echo hi' < ./x.sh"],
+  ["a run-time script operand, which may name stdin", `bash $X <<< ${TEXT}`],
+  ["a run-time script operand before a < file", "bash $X < ./x.sh"],
 ] as const;
 
 describe("a shell's options are read as the shell reads them (TP-3221)", () => {
@@ -107,6 +117,12 @@ describe("a shell's options are read as the shell reads them (TP-3221)", () => {
     "bash +c 'echo hi'",
     "zsh -c0 'echo hi'",
     "dash -sc 'echo hi' <<< 'echo hi'",
+    "bash /dev/stdin < ./ok.sh",
+    "bash -- /dev/stdin < ./ok.sh",
+    "bash - /dev/stdin < ./ok.sh",
+    "zsh /dev/fd/0 < ./ok.sh",
+    "sh /proc/self/fd/0 < ./ok.sh",
+    "dash /dev/stdin < ./ok.sh",
   ])("allows %s", async (line) => {
     expect(await verdict(line)).toBe("pass");
   });
@@ -136,13 +152,18 @@ describe("zsh's option lexer, which its startup and emulate share (TP-3221)", ()
 const has = (shell: string): boolean => spawnSync(shell, ["-c", "true"]).status === 0;
 const SHELLS_HERE = new Set([...KNOWN_SHELLS].filter(has));
 
-/** Runs `line` under bash in a scratch dir holding `x.sh`, with zsh reading no startup files, and reports whether it created `mk`. */
-function runs(line: string): boolean {
+/**
+ * Runs `line` under `runner` in a scratch dir holding `x.sh`, with zsh reading no startup files, and reports whether it
+ * created `mk`. A run that hangs is cut off.
+ */
+function runs(line: string, runner = "bash"): boolean {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "shell-options-"));
   try {
     fs.writeFileSync(path.join(dir, "s.sh"), `${line}\n`);
     fs.writeFileSync(path.join(dir, "x.sh"), "touch mk\n");
-    spawnSync("bash", ["s.sh"], { cwd: dir, env: { ...process.env, ZDOTDIR: dir }, stdio: ["ignore", "ignore", "ignore"] });
+    fs.writeFileSync(path.join(dir, "ok.sh"), "true\n");
+    const [program = "bash", ...flags] = runner.split(" ");
+    spawnSync(program, [...flags, "s.sh"], { cwd: dir, env: { ...process.env, ZDOTDIR: dir }, stdio: ["ignore", "ignore", "ignore"], timeout: 10_000 });
     return fs.existsSync(path.join(dir, "mk"));
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -165,5 +186,116 @@ describe.skipIf(!SHELLS_HERE.has("bash"))("each shell runs the text behind its o
 
   it("runs nothing behind --emulate=sh, so its denial only over-reads", () => {
     expect(runs("zsh --emulate=sh -c 'touch mk'")).toBe(false);
+  });
+});
+
+const FD_SHELLS = ["bash", "zsh -f", "dash", "sh"];
+const FD_OPERANDS = ["/dev/stdin", "-- /dev/stdin", "- /dev/stdin", "/dev/fd/0", "/proc/self/fd/0"];
+/** Each shell runs the file a `<` redirect opens on the descriptor its script operand names; a file name completes the line. */
+const FD_FILE_LINES = FD_SHELLS.flatMap((shell) => [...FD_OPERANDS.map((operand) => `${shell} ${operand} <`), `${shell} /dev/fd/3 3<`]);
+/** Each shell runs a descriptor the line cannot show; the premise sets it up first, as an earlier line or the caller could. */
+const UNKNOWABLE = FD_SHELLS.flatMap((shell) => [
+  [`${shell} < $F`, "F=./x.sh"],
+  [`${shell} /dev/stdin < $F`, "F=./x.sh"],
+  [`${shell} $X < $F`, "F=./x.sh"],
+  [`${shell} -s < $F`, "F=./x.sh"],
+  [`${shell} /dev/stdin <&3`, "exec 3< ./x.sh"],
+  [`${shell} <&3`, "exec 3< ./x.sh"],
+  [`${shell} /dev/fd/3`, "exec 3< ./x.sh"],
+  [`${shell} < /dev/fd/3`, "exec 3< ./x.sh"],
+  [`${shell} /dev/stdin < /dev/fd/3 3< ./ok.sh`, "exec 3< ./x.sh"],
+  [`${shell} 0>&3`, "exec 3< ./x.sh"],
+]);
+const shellHere = (line: string): boolean => SHELLS_HERE.has(line.split(" ")[0] ?? "");
+
+describe("a shell's stdin source is read from one model (TP-3241)", () => {
+  it.each(FD_FILE_LINES)("denies %s a script holding a push", async (line) => {
+    expect(await verdict(`${line} ./x.sh`)).toBe("deny");
+  });
+
+  it.each(FD_FILE_LINES)("allows %s a harmless script", async (line) => {
+    expect(await verdict(`${line} ./ok.sh`)).toBe("pass");
+  });
+
+  it.each(UNKNOWABLE)("denies %s, whose script the line cannot show", async (line) => {
+    expect(await verdict(line)).toBe("deny");
+  });
+
+  it.each(["bash -c 'echo hi' < $F", "bash $X", "bash ./ok.sh < $F"])("allows %s, which runs no unknowable descriptor", async (line) => {
+    expect(await verdict(line)).toBe("pass");
+  });
+});
+
+describe.skipIf(!SHELLS_HERE.has("bash"))("each shell runs the descriptor its operand names (TP-3241)", () => {
+  it.each(FD_FILE_LINES.filter(shellHere))("%s runs the file, and only it", (line) => {
+    expect([runs(`${line} ./x.sh`), runs(`${line} ./ok.sh`)]).toEqual([true, false]);
+  });
+
+  it.each(UNKNOWABLE.filter(([line]) => shellHere(line ?? "")))("%s runs the script %s sets up", (line, setup) => {
+    expect(runs(`${setup}; ${line}`)).toBe(true);
+  });
+});
+
+const ALL = ["bash", "zsh -f", "dash"];
+/**
+ * Each line, given the text it pipes or redirects and its script file, and the shells that run that text when they
+ * run the line. A target naming a descriptor feeds what that descriptor held (`< /dev/stdin` keeps the pipe); zsh's
+ * MULTIOS joins every source on a descriptor; `00<` is fd 0.
+ */
+const SOURCE_ROWS: Array<[string, (text: string, file: string) => string, string[]]> = [
+  ...["/dev/stdin", "/dev/fd/0", "/proc/self/fd/0", "/proc/thread-self/fd/0", "//dev/stdin", "/dev/./stdin", '"/dev/stdin"'].map(
+    (target): [string, (text: string) => string, string[]] => [`a pipe kept by < ${target}`, (text) => `echo '${text}' | bash < ${target}`, ALL],
+  ),
+  ["a pipe kept by 0< /dev/stdin", (text) => `echo '${text}' | bash 0< /dev/stdin`, ALL],
+  // `<>` holds the pipe open for writing, so the shell never reads its end and the text has to exit.
+  ["a pipe kept by <> /dev/stdin", (text) => `echo '${text}; exit' | bash <> /dev/stdin`, ALL],
+  ["a pipe kept by < /dev/stdin under a /dev/stdin operand", (text) => `echo '${text}' | bash /dev/stdin < /dev/stdin`, ALL],
+  ...["bash -s", "sh -s", "dash -s", "zsh -s", "bash --", "bash -", "bash --norc"].map(
+    (shell): [string, (text: string) => string, string[]] => [`a pipe into ${shell} kept by < /dev/stdin`, (text) => `echo '${text}' | ${shell} < /dev/stdin`, ALL],
+  ),
+  ["a here-string kept by < /dev/stdin", (text) => `bash <<< '${text}' < /dev/stdin`, ["bash", "zsh -f"]],
+  ["a heredoc kept by < /dev/stdin", (text) => `bash <<E < /dev/stdin\n${text}\nE`, ALL],
+  ["a pipe on fd 3 through 3< /dev/stdin", (text) => `echo '${text}' | bash /dev/fd/3 3< /dev/stdin`, ALL],
+  ["stdin naming fd 3 after 3< opens it", (_text, file) => `bash /dev/stdin 3< ${file} < /dev/fd/3`, ALL],
+  ["zsh joining a pipe with a < file", (text) => `zsh -c "echo '${text}' | bash < ./ok.sh"`, ALL],
+  ["zsh joining two < files", (_text, file) => `zsh -c 'bash < ${file} < ./ok.sh'`, ALL],
+  ["zsh joining a < file with a here-string", (_text, file) => `zsh -c "bash < ${file} <<< 'echo hi'"`, ALL],
+  ["zsh joining a < file with a heredoc", (_text, file) => `zsh -c 'bash < ${file} <<E\necho hi\nE'`, ALL],
+  ["zsh joining a here-string with a < file", (text) => `zsh -c "bash <<< '${text}' < ./ok.sh"`, ALL],
+  ["zsh joining two < files under /dev/stdin", (_text, file) => `zsh -c 'bash /dev/stdin < ${file} < ./ok.sh'`, ALL],
+  ["zsh joining a < file and a here-string under /dev/stdin", (_text, file) => `zsh -c "bash /dev/stdin < ${file} <<< 'echo hi'"`, ALL],
+  ["zsh joining two files on fd 3", (_text, file) => `zsh -c 'bash /dev/fd/3 3< ${file} 3< ./ok.sh'`, ALL],
+  ["a zsh line joining a < file and a here-string", (_text, file) => `bash /dev/stdin < ${file} <<< 'echo hi'`, ["zsh -f"]],
+  ["a zsh line joining a pipe and a < file", (text) => `echo '${text}' | bash < ./ok.sh`, ["zsh -f"]],
+  ["00< as stdin", (_text, file) => `bash 00< ${file}`, ["bash"]],
+  ["00< under a /dev/stdin operand", (_text, file) => `bash /dev/stdin 00< ${file}`, ALL],
+  ["000< under a /dev/fd/0 operand", (_text, file) => `bash /dev/fd/0 000< ${file}`, ALL],
+  ["0>&3, a dup onto stdin", (_text, file) => `bash 3< ${file} 0>&3`, ALL],
+  ["0>&3 under a /dev/stdin operand", (_text, file) => `bash /dev/stdin 3< ${file} 0>&3`, ALL],
+  ["0>&3 from a 3<> file", (_text, file) => `bash 3<> ${file} 0>&3`, ALL],
+  ["a >& chain onto stdin", (_text, file) => `bash 3< ${file} 4>&3 0>&4`, ALL],
+  ["a >& then <& chain onto stdin", (_text, file) => `bash 3< ${file} 4>&3 <&4`, ALL],
+  ["0>&3 under zsh -c", (_text, file) => `zsh -c 'bash 3< ${file} 0>&3'`, ALL],
+  ["0>&3 under dash -c", (_text, file) => `dash -c 'bash 3< ${file} 0>&3'`, ALL],
+  ["bash's move 0>&3-", (_text, file) => `bash 3< ${file} 0>&3-`, ["bash"]],
+  ["a pipe on fd 3 through 3>&0", (text) => `echo '${text}' | bash /dev/fd/3 3>&0`, ALL],
+];
+const unescaped = (line: string): string => line.replaceAll("\\n", "\n");
+
+describe("every source on the descriptor a shell runs is read (TP-3241)", () => {
+  it.each(SOURCE_ROWS)("denies a push behind %s", async (_form, line) => {
+    expect(await verdict(unescaped(line(PUSH, "./x.sh")))).toBe("deny");
+  });
+
+  it.each(SOURCE_ROWS)("allows a harmless script behind %s", async (_form, line) => {
+    expect(await verdict(unescaped(line("echo hi", "./ok.sh")))).toBe("pass");
+  });
+});
+
+describe.skipIf(!["bash", "zsh", "dash"].every((shell) => SHELLS_HERE.has(shell)))("each shell runs the sources the model reads (TP-3241)", () => {
+  it.each(SOURCE_ROWS)("%s runs the push in the shells listed, and the harmless line in none", (_form, line, pushers) => {
+    const ran = ALL.filter((runner) => runs(unescaped(line("touch mk", "./x.sh")), runner));
+    const harmless = ALL.filter((runner) => runs(unescaped(line("true", "./ok.sh")), runner));
+    expect([ran, harmless]).toEqual([pushers, []]);
   });
 });

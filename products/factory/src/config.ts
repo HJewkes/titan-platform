@@ -202,6 +202,11 @@ export const FactoryConfigSchema = z.object({
        * `heldRepair: on` lets a g10 hold gate only the merge, so its run repairs as usual.
        */
       gateReset: z.strictObject({ twoMergeRelease: z.enum(["off", "shadow", "on"]).optional(), heldRepair: z.enum(["off", "on"]).optional() }).optional(),
+      /**
+       * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer
+       * read out of `roundsDir`. No token: any same-user caller can post, as for gateNotify. Absent means the route 404s.
+       */
+      consoleAnswers: z.strictObject({ roundsDir: absolutePath }).optional(),
       /** Off when absent. `shadow` records where a visual approve-merge gate would spawn its review packager; `on` spawns it. */
       visualPacket: z.enum(["off", "shadow", "on"]).optional(),
       /** The profile that packager spawns under; absent means `review-packager`. */
