@@ -174,6 +174,13 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     ["trap 'setopt globsubst' DEBUG"],
     ["trap 'echo hi' EXIT"],
     ["alias s='setopt globsubst'"],
+    ["/bin/zs[h] --emulate sh -c 'ls $x'"],
+    ["$c --emulate=ksh -c 'ls $x'"],
+    ["{zsh,zsh} --emulate sh -c x"],
+    ["ARGV0=sh $c -c 'ls $x'"],
+    ["exec -a sh /bin/zs[h] -c x"],
+    ["env -a ksh {zsh,zsh} -c x"],
+    ['$c x="$y"'],
   ])("reads the run-time or expanded operand of %s as a possible enabler", (src) => {
     expect(enables(src)).toBe(true);
   });
@@ -242,7 +249,6 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     [": ${x::=on}"],
     ["$c foo bar"],
     ["$c -o pipefail"],
-    ['$c x="$y"'],
     ["{echo,echo} hi there"],
     ["$c foo"],
     ["$c rzsh"],
@@ -255,6 +261,8 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     ["exec -a myzsh zsh -c x"],
     ["exec -a sh git status"],
     ["env --argv0 foo zsh -c x"],
+    ["emulate foo"],
+    ["ARGV0=sh git status"],
   ])("leaves %s alone", (src) => {
     expect(enables(src)).toBe(false);
   });

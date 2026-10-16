@@ -11,9 +11,10 @@ import type { Unwrapped } from "./unwrap.js";
 export function mayEnableGlobSubst(cmd: Unwrapped): boolean {
   if (cmd.assigned.some(([name]) => name === "options") || cmd.args.some(namesOptions)) return true;
   if (cmd.name !== null && (SOURCERS.has(cmd.name) || STORED_CODE.has(cmd.name))) return true;
-  if (cmd.name === null) return cmd.args.length > 0 && dynamicCommand(cmd.args.slice(1));
-  if (cmd.path !== null && mayExpand(cmd.path)) return dynamicCommand(cmd.args);
-  if (cmd.name === "zsh" && cmd.argv0?.some(argv0Emulates)) return true;
+  const unknownProgram = cmd.name === null || (cmd.path !== null && mayExpand(cmd.path));
+  if ((unknownProgram || cmd.name === "zsh") && cmd.argv0?.some(argv0Emulates)) return true;
+  if (cmd.name === null) return dynamicCommand(cmd.args.slice(1));
+  if (unknownProgram) return dynamicCommand(cmd.args);
   if (writesUnknownTarget(cmd.name, cmd.args)) return true;
   const check = Object.hasOwn(ENABLERS, cmd.name) ? ENABLERS[cmd.name] : undefined;
   return check?.(cmd.args) ?? false;
@@ -165,10 +166,10 @@ function setEnables(args: WordToken[]): boolean {
   return scan.dynamic || scan.names.some(namesGlobSubst) || scan.arrays.includes("options");
 }
 
-/** Every mode but zsh sets GLOB_SUBST; zsh 5.9 still ran no qualifier under sh or ksh, but later options may change that. */
+/** The first operand is the mode; zsh 5.9 still ran no qualifier under sh or ksh, but later options may change that. */
 function emulateEnables(args: WordToken[]): boolean {
   const scan = scanOptions(args, "oc", false);
-  return scan.dynamic || scan.names.some(namesGlobSubst) || scan.operands.some((mode) => mode !== "zsh");
+  return scan.dynamic || scan.names.some(namesGlobSubst) || EMULATION_RE.test(scan.operands[0] ?? "");
 }
 
 /** Only zsh evaluates glob qualifiers, so `bash -o globsubst` is left alone. */
@@ -184,14 +185,12 @@ function zshEnables(args: WordToken[]): boolean {
 const EMULATION_RE = /^r?[cksb]/;
 
 /**
- * A command word only known at run time, or one brace expansion or a glob may rewrite (`s{etopt,}`), may be `setopt`,
- * `emulate` or any writer, so it is never proven harmless: `setopt -m`, an emulation mode, a GLOB_SUBST name or a word
- * only known at run time among the words after it may each enable it.
+ * A command word only known at run time, or one brace expansion or a glob may rewrite (`s{etopt,}`), may stand for any
+ * writer or any ENABLERS entry, so the words after it are held to all of their checks at once, a superset of what a
+ * literal `zsh`, `setopt`, `set` or `emulate` gets; the caller has already read its argv0.
  */
 function dynamicCommand(rest: WordToken[]): boolean {
-  if (rest.some((w) => unknownName(w, w.value))) return true;
-  const scan = scanOptions(rest, "o", false);
-  return scan.flags.includes("m") || EMULATION_RE.test(scan.operands[0] ?? "") || [...scan.names, ...scan.operands].some(namesGlobSubst);
+  return rest.some((w) => unknownName(w, w.value)) || Object.values(ENABLERS).some((check) => check(rest));
 }
 
 interface WriterSpec {
