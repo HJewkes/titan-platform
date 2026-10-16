@@ -5,8 +5,8 @@
 // names no commit, an unknown flag, a --db path that does not exist or holds no "head" snapshot, or an
 // out-of-memory abort at the 1 GB heap cap, which the check runs under in a child process.
 // --update drops fixed entries from the baseline and never adds one. --db <path> reads the latest "head"
-// snapshot of an existing code-graph database instead of indexing; it still takes the dag-check lock, which
-// every writer of that database holds, so it never reads a snapshot still being written.
+// snapshot of an existing code-graph database instead of indexing; dag:check writes that database by rename,
+// so it never reads a snapshot still being written.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +14,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { identifierMentions, maskSource, wholeImportSpecifiers } from "./dead-code-check-source.mjs";
-import { BUSY_EXIT_CODE, DEFAULT_LOCK_DIR, LockTimeoutError, acquire, lockWaitMs, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
+import { BUSY_EXIT_CODE, DEFAULT_LOCK_DIR, LockTimeoutError, acquire, lockSlots, lockWaitMs, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
 
 const SCRIPT = fileURLToPath(import.meta.url);
 const ROOT = path.resolve(path.dirname(SCRIPT), "..");
@@ -287,7 +287,7 @@ async function check(workDir, args) {
   return exitCode({ growth, fresh: result.fresh, reportOnly });
 }
 
-/** Holds the dag-check lock for the whole check, so dead:check and dag:check never hold a graph in memory at once. */
+/** Holds a dag-check lock slot for the whole check, so it counts against the same bound on graphs in memory as dag:check. */
 async function supervise(args) {
   if (!existsSync(ENTRY)) {
     console.error(`${ENTRY} not found; run pnpm build first`);
@@ -299,7 +299,7 @@ async function supervise(args) {
   cleanupOnSignal(cleanups);
   let hold;
   try {
-    hold = await acquire({ check: "dead:check", timeoutMs: lockWaitMs(), log });
+    hold = await acquire({ slots: lockSlots(), check: "dead:check", timeoutMs: lockWaitMs(), log });
   } catch (err) {
     if (!(err instanceof LockTimeoutError)) throw err;
     log(err.message);
