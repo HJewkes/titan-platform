@@ -1,4 +1,4 @@
-import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -6,6 +6,7 @@ import { depositItemId, type OwnerItemDeposit } from "@titan-design/owner-queue"
 import { answerFileName, writeAnswer, writeDeposit } from "@titan-design/owner-queue/spool";
 import { roundQueueItems, spoolQueueItems } from "./approval-items.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
+import { withdrawRound } from "./round-withdraw.js";
 import { readQueueRounds, type QueueRound } from "./rounds.js";
 
 const ASKER = "pc-test-agent";
@@ -21,9 +22,10 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-async function fixtureRounds(): Promise<QueueRound[]> {
+async function fixtureRounds(prepare: (dir: string) => Promise<unknown> = async () => undefined): Promise<QueueRound[]> {
   const dir = path.join(root, "rounds");
   await cp(FIXTURE_ROUNDS.dir, dir, { recursive: true });
+  await prepare(dir);
   return (await readQueueRounds({ dir })).rounds;
 }
 
@@ -70,7 +72,41 @@ describe("roundQueueItems", () => {
   it("reports a round only review-schema 0.3 reads as a gap, not as queue items", async () => {
     const items = roundQueueItems([roundOf(await fixtureRounds(), "td920-packet-r1")]);
 
-    expect(items).toEqual({ open: [], answered: [], gaps: ["td920-packet-r1: needs review-schema 0.3 in owner-queue (TP-3232)"] });
+    expect(items).toEqual({ open: [], answered: [], withdrawn: [], gaps: ["td920-packet-r1: needs review-schema 0.3 in owner-queue (TP-3232)"] });
+  });
+
+  it("lists a withdrawn round's questions as withdrawn, with their hidden picks kept hidden", async () => {
+    const rounds = await fixtureRounds((dir) => withdrawRound(dir, "kiln-schedule-r2", "closed"));
+
+    const items = roundQueueItems([roundOf(rounds, "kiln-schedule-r2")]);
+
+    expect(items.open).toEqual([]);
+    expect(items.withdrawn.map((each) => [each.item.status, each.was, each.pr, each.reason])).toContainEqual(["withdrawn", "open", "", "closed"]);
+    for (const each of items.withdrawn) expect(each.item.recommended?.hidden ?? true).toBe(true);
+  });
+
+  it("keeps an answered round answered even when a withdrawn.json sits beside it", async () => {
+    const rounds = await fixtureRounds((dir) => writeFile(path.join(dir, "kiln-schedule-r1", "withdrawn.json"), "{}"));
+
+    const items = roundQueueItems([roundOf(rounds, "kiln-schedule-r1")]);
+
+    expect(items.withdrawn).toEqual([]);
+    expect(items.answered.map((item) => item.id)).toEqual(["round:kiln-schedule-r1/unit-start"]);
+  });
+
+  it("withdraws a round whose withdrawn.json does not parse, and ignores one that is a directory", async () => {
+    const rounds = await fixtureRounds(async (dir) => {
+      await writeFile(path.join(dir, "kiln-schedule-r2", "withdrawn.json"), "not json");
+      await mkdir(path.join(dir, "orbit-retry-r1", "withdrawn.json"));
+    });
+
+    const garbled = roundQueueItems([roundOf(rounds, "kiln-schedule-r2")]);
+    const directory = roundQueueItems([roundOf(rounds, "orbit-retry-r1")]);
+
+    expect(garbled.open).toEqual([]);
+    expect(new Set(garbled.withdrawn.map((each) => each.reason))).toEqual(new Set(["unreadable"]));
+    expect(directory.withdrawn).toEqual([]);
+    expect(directory.open.length).toBeGreaterThan(0);
   });
 
   it("keeps a round open and reports a gap when its feedback is for another unit", async () => {

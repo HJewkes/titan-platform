@@ -9,6 +9,7 @@ import { ANSWERS_FILE, createDecisionLog, type DecisionLog, type DecisionLogResu
 import type { RoundListeners } from "./listeners.js";
 import type { ConsoleContext } from "./owner-guard.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
+import { withdrawRound } from "./round-withdraw.js";
 import { FeedbackDocument } from "./round2-adapter.js";
 import { MAX_FEEDBACK_BYTES, roundsSubmitCommands } from "./rounds-submit.js";
 
@@ -237,5 +238,20 @@ describe("rounds.submit", () => {
     expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", log: [{ ledger: "failed", reason: "ledger write failed" }] } });
     expect(await exists(feedbackOf())).toBe(true);
     expect(calls).toHaveLength(1);
+  });
+
+  it("refuses a withdrawn round before writing, so neither the decision log nor a listener runs", async () => {
+    await withdrawRound(dir, ROUND, "closed");
+    const { log, calls } = spyLog();
+    const heard: string[] = [];
+    const listeners: RoundListeners = { afterRoundSubmit: async (id) => void heard.push(id), sweep: async () => undefined };
+
+    const { envelope, exitCode } = await submit(shipArgs(), ownerContext(), log, listeners);
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/^refused: withdrawn/) });
+    expect(await exists(feedbackOf())).toBe(false);
+    expect(calls).toEqual([]);
+    expect(heard).toEqual([]);
   });
 });

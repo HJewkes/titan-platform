@@ -1,12 +1,12 @@
 /**
  * The console's own two legs of the owner queue as OwnerItems: review rounds from the rounds dir and
- * deposits from the inbox spool. Each leg answers `{ open, answered, gaps }` and never throws, so one
- * bad file costs a gap line, never the queue. Gap lines name a round, file or item, never its contents.
+ * deposits from the inbox spool. Each leg answers `{ open, answered, gaps }`, the rounds leg also
+ * `withdrawn`, and never throws, so one bad file costs a gap line, never the queue. Gap lines name a round, file or item, never its contents.
  */
-import { answeredFromFeedback, fromRoundQuestions, type OwnerItem } from "@titan-design/owner-queue";
+import { answeredFromFeedback, fromRoundQuestions, type OwnerItem, type WithdrawnItem } from "@titan-design/owner-queue";
 import { readAnswer, readSpool } from "@titan-design/owner-queue/spool";
 import { ManifestSchema, type Manifest as OwnerQueueManifest } from "@titan-design/review-schema";
-import type { QueueRound } from "./rounds.js";
+import type { QueueRound, Withdrawal } from "./rounds.js";
 
 interface QueueItems {
   open: OwnerItem[];
@@ -14,11 +14,29 @@ interface QueueItems {
   gaps: string[];
 }
 
+interface RoundItems extends QueueItems {
+  withdrawn: WithdrawnItem[];
+}
+
 const empty = (): QueueItems => ({ open: [], answered: [], gaps: [] });
 
-function openItems(round: QueueRound, manifest: OwnerQueueManifest, items: QueueItems): void {
+/** `<owner>/<repo>#<n>` from a merge-bound question's pinned PR key, or empty for any other question. */
+function prOf(item: OwnerItem): string {
+  const key = item.keys.find((each) => each.startsWith("pr:"));
+  return key === undefined ? "" : key.slice("pr:".length, key.lastIndexOf("@"));
+}
+
+function withdrawnItem(item: OwnerItem, { reason }: Withdrawal): WithdrawnItem {
+  return { item: { ...item, status: "withdrawn" }, was: item.status, pr: prOf(item), reason };
+}
+
+/** An unsent round's questions are asked, unless the round was withdrawn: then they are listed as withdrawn only. */
+function openItems(round: QueueRound, manifest: OwnerQueueManifest, items: RoundItems): void {
   try {
-    items.open.push(...fromRoundQuestions(manifest, round.id, { openedAt: round.updatedAt }));
+    const asked = fromRoundQuestions(manifest, round.id, { openedAt: round.updatedAt });
+    const { withdrawn } = round;
+    if (withdrawn === null) items.open.push(...asked);
+    else items.withdrawn.push(...asked.map((item) => withdrawnItem(item, withdrawn)));
   } catch {
     items.gaps.push(`${round.id}: its questions could not be read as queue items`);
   }
@@ -35,7 +53,7 @@ function ownerQueueManifest(round: QueueRound, items: QueueItems): OwnerQueueMan
 }
 
 /** A sent round is closed, so its questions are answered items only; feedback that does not fit leaves it open. */
-function roundItems(round: QueueRound, items: QueueItems): void {
+function roundItems(round: QueueRound, items: RoundItems): void {
   const manifest = ownerQueueManifest(round, items);
   if (manifest === undefined) return;
   if (round.feedback === null) {
@@ -51,8 +69,8 @@ function roundItems(round: QueueRound, items: QueueItems): void {
   }
 }
 
-export function roundQueueItems(rounds: readonly QueueRound[]): QueueItems {
-  const items = empty();
+export function roundQueueItems(rounds: readonly QueueRound[]): RoundItems {
+  const items = { ...empty(), withdrawn: [] };
   for (const round of rounds) roundItems(round, items);
   return items;
 }
