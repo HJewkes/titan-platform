@@ -47,8 +47,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** A CI packet's tile-light: its head is the montage and `after` the changed image alone. */
+const PACKET_FRAMES = [{ key: "tile-light", theme: "light", views: ["head", "base", "after", "diff"] }, ...FRAMES.slice(1)];
+
 /** The daemon's answers over the synthetic Ship fixture; `detail` overrides the recorded rounds.get fields. */
-async function recorded(detail: Partial<RoundDetail> = {}): Promise<Snapshot> {
+async function recorded(detail: Partial<RoundDetail> = {}, listed: readonly unknown[] = FRAMES): Promise<Snapshot> {
   const frames = await Promise.all(
     FRAMES.flatMap(({ key, views }) => views.map(async (view) => [snapshotKey("rounds.frame", { id: SHIP, key, view }), successEnvelope(await getFrame(source, SHIP, key, view))] as const)),
   );
@@ -57,8 +60,9 @@ async function recorded(detail: Partial<RoundDetail> = {}): Promise<Snapshot> {
     createdAt: "2031-03-05T00:00:00.000Z",
     calls: {
       [snapshotKey("rounds.get", { id: SHIP })]: successEnvelope({ ...(await getRound(source, SHIP)), ...detail }),
-      [snapshotKey("rounds.frames", { id: SHIP })]: successEnvelope({ frames: FRAMES }),
+      [snapshotKey("rounds.frames", { id: SHIP })]: successEnvelope({ frames: listed }),
       ...Object.fromEntries(frames),
+      [snapshotKey("rounds.frame", { id: SHIP, key: "tile-light", view: "after" })]: successEnvelope(await getFrame(source, SHIP, "tile-light", "head")),
     },
   };
 }
@@ -68,8 +72,8 @@ interface Rendered {
 }
 
 /** Renders the Ship round over a recorded snapshot; with `answers` the page may send, and rounds.submit answers "submitted". */
-async function renderShip(options: { answers?: boolean; detail?: Partial<RoundDetail> } = {}): Promise<Rendered> {
-  const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", await recorded(options.detail)), "text/html");
+async function renderShip(options: { answers?: boolean; detail?: Partial<RoundDetail>; listed?: readonly unknown[] } = {}): Promise<Rendered> {
+  const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", await recorded(options.detail, options.listed)), "text/html");
   const inner = pageDataSource({ doc: page });
   const calls: Rendered["calls"] = [];
   const submitted = successEnvelope({ status: "submitted", path: "feedback.json", sha256: "0".repeat(64), headSha: HEAD });
@@ -130,6 +134,16 @@ describe("the Ship view", () => {
     await waitFor(() => expect(screen.getAllByRole("img")).toHaveLength(IMAGE_COUNT));
     expect(frameCalls(rendered)).toHaveLength(IMAGE_COUNT);
     expect(frameCalls(rendered)).toContainEqual({ name: "rounds.frame", args: { id: SHIP, key: "tile-dark", view: "diff" } });
+  });
+
+  it("reads AFTER from a CI packet's after image, not its montage head", async () => {
+    const rendered = await renderShip({ listed: PACKET_FRAMES });
+
+    scrollAll();
+
+    await waitFor(() => expect(frameCalls(rendered)).toHaveLength(IMAGE_COUNT));
+    const tileLight = frameCalls(rendered).filter((call) => (call.args as { key: string }).key === "tile-light").map((call) => (call.args as { view: string }).view);
+    expect(tileLight.sort()).toEqual(["after", "base", "diff"]);
   });
 
   it("keeps the recommendation out of the page while the round is open", async () => {
