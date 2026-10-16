@@ -42,7 +42,7 @@ describe("literalValue", () => {
 });
 
 describe("commandWordShape", () => {
-  it.each([['"$CC"'], ['"${CC}"'], ['"$HOME/bin/tool"']])("reads %s as one word", (src) => {
+  it.each([['"$CC"'], ['"${CC}"'], ['"$HOME/bin/tool"'], ['"${a}[@]"']])("reads %s as one word", (src) => {
     expect(commandWordShape(word(src))).toEqual({ kind: "one" });
   });
 
@@ -53,6 +53,9 @@ describe("commandWordShape", () => {
     ['"${(f)x}"'],
     ['"${(s.:.)x}"'],
     ['"${a[@]}"'],
+    ['"$a[@]"'],
+    ['"$a[*]"'],
+    ['"x$a[@]"'],
     ['"$@"'],
     ["$(ls)"],
     ["{a,b}"],

@@ -30,9 +30,15 @@ export function literalValue(w: WordToken): string | null {
   return w.quoted && !w.spliced ? w.value : literalText(w.value);
 }
 
+/** zsh subscripts an unbraced `$a` too, so `"$a[@]"` splices every element; `"${a}[@]"` keeps the `[` as text. */
+function subscriptsUnbraced(value: string, r: { start: number; end: number }): boolean {
+  return value[r.start + 1] !== "{" && value[r.end] === "[";
+}
+
 function isOneWord(w: WordToken): boolean {
   if (!w.dynamic || !w.quoted || w.spliced || w.computed || w.unquotedExpansion || w.subs.length > 0) return false;
   if (w.refs.length === 0 || !w.refs.every((r) => PLAIN_REF_RE.test(r.name))) return false;
+  if (w.refs.some((r) => subscriptsUnbraced(w.value, r))) return false;
   let rest = "";
   let at = 0;
   for (const r of [...w.refs].sort((a, b) => a.start - b.start)) {
