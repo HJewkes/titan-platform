@@ -11,7 +11,7 @@ import { readLastDeploy } from "./deploy-ports.js";
 import { DEPLOY_WATCH_MS, type DeployWatch } from "./deploy-watch.js";
 import { gateNotifyWatch, type GateNotifyOptions, type GateNotifyWatch } from "./gate-notify-sweep.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
-import { restartDivergedLogged } from "./shepherd/diverged-sweep.js";
+import { divergedPrClosed, restartDivergedLogged } from "./shepherd/diverged-sweep.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
 import { heldRun } from "./serve-holds.js";
@@ -230,7 +230,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
     toolPrefix: TOOL_PREFIX,
     mcpName: "titan-factory",
     health: () => ({
-      ...factoryHealth(host, routeFor, heldRun(options.routes.shepherd)),
+      ...factoryHealth(host, routeFor, heldRun(options.routes.shepherd), divergedPrClosed(options.routes.shepherd)),
       github: github.status(),
       ...(options.routes.shepherd?.pacing && { snapshotTick: options.routes.shepherd.pacing.status() }),
       build: { sha: build.sha, behindMain: build.status() },
@@ -257,16 +257,15 @@ function buildHealth(options: FactoryServerOptions): BuildHealth {
   return { sha, status: probe.status, refresh: probe.refresh };
 }
 
-/**
- * Without `routeFor`, `busy` cannot see park-routed steps and lists only review and merging steps. Finished runs are counted, not listed, so a probe never parses
- * every one (TP-2419); recovery_required runs are listed by id, so a deploy's watch can tell a run its restart interrupted from one that broke after it.
- */
-export function factoryHealth(host: FactoryHost, routeFor: RoutedRunner["routeFor"] = () => undefined, isHeld?: HoldPredicate): Record<string, unknown> {
+/** Without `routeFor`, `busy` cannot see park-routed steps. Finished runs are counted, not listed, so a probe never parses every one (TP-2419); recovery_required
+ * runs are listed by id, so a deploy's watch can tell a run its restart interrupted, or one on a closed PR, from one that broke after it. */
+export function factoryHealth(host: FactoryHost, routeFor: RoutedRunner["routeFor"] = () => undefined, isHeld?: HoldPredicate, prClosed: ReadonlySet<string> = new Set()): Record<string, unknown> {
   const runs = Object.fromEntries(host.countRuns(STATUSES));
   const running = host.runtime.list(["running"]);
   const held = isHeld ? heldSkipped(running, routeFor, isHeld) : [];
   const recoveryRequired = host.runtime.list(["recovery_required"]).map((run) => run.id);
-  return { runs, recoveryRequired, pendingGates: host.pendingGates().length, busy: busyRuns(running, routeFor, isHeld), heldSkipped: held };
+  const busy = busyRuns(running, routeFor, isHeld);
+  return { runs, recoveryRequired, recoveryPrClosed: recoveryRequired.filter((id) => prClosed.has(id)), pendingGates: host.pendingGates().length, busy, heldSkipped: held };
 }
 
 function startSeatDigest(host: FactoryHost, services: ShepherdServices | undefined, ports: SeatDigestPorts | undefined, stateDir: string, log: Logger): Sweep | undefined {

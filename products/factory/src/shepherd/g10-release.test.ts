@@ -172,7 +172,7 @@ describe("which reviewer's verdict releases", () => {
 /** A run whose CI read green at `ciHead` and whose release step answers `result`; only the fields releaseG10Hold reads are filled. */
 function stubRun(reviews: [string, Verdict][], ciHead: string, result: object) {
   const dispatch = vi.fn(async (_id: string, _kind: string, _input: { vars: Record<string, string> }) => ({ data: { result } }));
-  const ctx = { runId: "run-1", iteration: () => 0, dispatch } as never;
+  const ctx = { runId: "run-1", iteration: () => 0, historyNext: () => undefined, dispatch } as never;
   const asked = (): unknown => JSON.parse(Object.values(dispatch.mock.calls[0]![2].vars)[0]!);
   return { dispatch, asked, run: { ctx, target: { repo: REPO, pr: 1 }, reviews: new Map(reviews), lastCi: { headSha: ciHead, verdict: "green" } as never } };
 }

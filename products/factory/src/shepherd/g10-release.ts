@@ -264,14 +264,25 @@ function askFor(holdClass: string | undefined, reviews: ReadonlyMap<string, Verd
 }
 
 /**
+ * The two-MERGE ask is newer than the adversary member, so an older build recorded panels that now qualify and went on
+ * without the step. Such a record replays as it ran; at the frontier the ask is made live.
+ */
+function recordedWithoutAsk(ctx: WorkflowContext, holdClass: string | undefined): boolean {
+  if (holdClass !== G10_ADVERSARY_CLASS) return false;
+  const next = ctx.historyNext();
+  return next !== undefined && !stepIdMatches(G10_RELEASE_STEP, next);
+}
+
+/**
  * Records the release as a step, so `shepherd status` and the ledger show it; the route re-reads the PR head and the hold before it
  * writes. A `g10-review` hold is judged on one opus MERGE, a `g10-adversary` hold on Shepherd's correctness and adversary MERGEs.
  * A shadow would-release is asked once per pair of verdicts, as a release is.
  */
 export async function releaseG10Hold(run: G10WorkflowRun, holdReason: string | null | undefined): Promise<void> {
   const ci = run.lastCi;
-  const ask = ci && askFor(holdClassOf(holdReason), run.reviews, ci.headSha);
-  if (!ci || !ask || used.get(run.ctx)?.has(ask.key)) return;
+  const holdClass = holdClassOf(holdReason);
+  const ask = ci && askFor(holdClass, run.reviews, ci.headSha);
+  if (!ci || !ask || used.get(run.ctx)?.has(ask.key) || recordedWithoutAsk(run.ctx, holdClass)) return;
   const attempt = run.ctx.iteration(G10_RELEASE_STEP);
   const input = { runId: run.ctx.runId, ...run.target, head: ci.headSha, ...ask.refs, checks: { head: ci.headSha, green: greenAt(ci, ask.refs.mergeUp) } };
   const done = await step(run.ctx, `${G10_RELEASE_STEP}:${ci.headSha}:${attempt}`, input, G10ReleaseResult);
