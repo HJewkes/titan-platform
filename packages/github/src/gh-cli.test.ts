@@ -425,6 +425,7 @@ describe("gh api adapter, REST only", () => {
       jobSteps: () => port.jobSteps(REPO, 42),
       updateBranch: () => port.updateBranch(REPO, 7, H1),
       setPrBase: () => port.setPrBase(REPO, 7, "release"),
+      closePr: () => port.closePr(REPO, 7),
       pushEmptyCommit: () => port.pushEmptyCommit(REPO, "topic", H1, "m"),
       merge: () => port.merge(REPO, 7, H1, "squash"),
       mergeIntoBranch: () => port.mergeIntoBranch(REPO, { branch: "topic", head: H1 }),
