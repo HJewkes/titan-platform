@@ -36,8 +36,9 @@ the `repo` project, which `test:affected` runs only when their package changed. 
 
 CI also runs `pnpm lint:types` as its own `lint-types` job. It applies the type-aware rules
 `no-unsafe-type-assertion`, `no-unnecessary-type-assertion` and `no-unnecessary-condition`
-(`eslint.typed.config.js`) to source and tests. It needs `pnpm build` first and takes about
-half a minute. Existing hits live in `eslint-suppressions.typed.json` and are fixed when the
+(`eslint.typed.config.js`) to source and tests. It needs `pnpm build` first. It runs one
+eslint process per chunk of workspace `src` dirs, in sequence, so no process nears the V8
+heap cap; it takes about a minute and names any chunk that runs out of heap. Existing hits live in `eslint-suppressions.typed.json` and are fixed when the
 file is next touched. Fix a new hit with a type guard or a parse, not a disable comment:
 `pnpm lint` does not run these rules, so it reports such a comment as unused.
 

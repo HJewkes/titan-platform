@@ -206,3 +206,23 @@ Exported on their own because they are the reusable pieces:
 - `buildHttpApp(options)` — the hono app alone, testable through `app.request()`.
 - `createMcpServer`, `attachHandlers`, `listTools`, `invokeTool`, `runMcpStdio` — the MCP
   projection, usable over stdio without running a daemon.
+
+## Service units (`./service`)
+
+`@titan-design/daemon/service` holds the pieces a product needs to write its own systemd
+user unit or launchd plist for a daemon. It is a separate entry so `node:fs` stays out of
+the main one.
+
+- `noSpecifiers`, `quoteIfNeeded`, `execArg` — systemd expands `%` specifiers in every
+  value and `$VAR` in `ExecStart`, and splits on whitespace; these double the literal `%`
+  and `$` and quote a word with whitespace, a quote or a backslash, so a path such as
+  `/srv/my x/50%` reaches the process unchanged.
+- `userUnitDir(home, xdgConfigHome?)` — `<config>/systemd/user`, ignoring a relative
+  `XDG_CONFIG_HOME` as the XDG spec requires.
+- `stableNodePath(execPath, probe?)` — prefers the Homebrew prefix symlink
+  (`/opt/homebrew/bin/node`, or `opt/<formula>` for `node@20`) over a versioned Cellar
+  path, which `brew upgrade` deletes, but only when the symlink resolves to the same binary.
+- `servicePath(which, nodePath, binaries)` and `SYSTEM_PATH` — a supervisor starts a job
+  with the four system directories only, so this builds a PATH from the directories of the
+  binaries the service runs by bare name, then node's, then `SYSTEM_PATH`, de-duplicated.
+  It throws on a directory containing `:` and reports binaries `which` did not find.

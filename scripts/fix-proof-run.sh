@@ -7,7 +7,13 @@
 #   exec <base|head> <runner> <repo> <base> <head> <out>  run one side, writing <name>.report files into <out>
 #   emit <base|head> <out>                                copy those files into $GITHUB_OUTPUT as report (and rerun)
 #   receive <dir>                                         write REPORT_BASE, REPORT_BASE_RERUN, REPORT_HEAD into <dir>
-#   judge <runner> <repo> <base> <head> <dir>             print the verdict from the reports in <dir>
+#   judge <runner> <repo> <base> <head> <dir>             print the verdict from the reports in <dir>, or an error
+#                                                         line when FIX_PROOF_REFUSED holds a reason
+#   merge-base <repo> <base> <head>                       write sha=<merge base> into $GITHUB_OUTPUT, or refused=<reason>
+#                                                         when env BASE_REF is not env DEFAULT_BRANCH
+#
+# A stacked PR's base is a parent branch any agent can push, so a runner from its merge base would take the plan's
+# config and the judge's own source from the parent. merge-base therefore refuses any base but the default branch.
 #
 # The runner always comes from the merge base. A merge base that predates the split has no dist/judge.js, so every
 # mode treats it as "nothing to prove with": exec writes skipped markers and judge prints a skipped line.
@@ -30,7 +36,7 @@ readonly SANDBOX_USER=fix-proof-sandbox
 readonly SANDBOX_TOOLS=${FIX_PROOF_SANDBOX_TOOLS:-/opt/fix-proof-sandbox}
 
 usage() {
-  echo "usage: fix-proof-run.sh exec|emit|receive|judge ... (see the header)" >&2
+  echo "usage: fix-proof-run.sh exec|emit|receive|judge|merge-base ... (see the header)" >&2
   exit 64
 }
 
@@ -166,15 +172,46 @@ receive() {
   receive_one REPORT_HEAD "$1/head.report"
 }
 
+# The error verdict printed without a runner. Quotes, backslashes and control characters are dropped from the
+# message so the line stays one valid JSON object.
+error_line() {
+  local message=${3//[\"\\[:cntrl:]]/}
+  printf 'fix-proof/v1 {"head":"%s","mergeBase":"%s","verdict":"error","counts":{"reproduces":0,"passes-on-base":0,"new-api":0,"fails-on-head":0,"not-run":0},"notCollected":[],"deletedTests":[],"configEdited":false,"tests":[],"truncated":false,"error":"%s"}\n' "$1" "$2" "$message"
+}
+
 judge() {
   local runner=$1 repo=$2 base=$3 head=$4 dir=$5
+  if [ -n "${FIX_PROOF_REFUSED:-}" ]; then
+    echo "fix-proof: refused: $FIX_PROOF_REFUSED" >&2
+    error_line "$head" "$base" "$FIX_PROOF_REFUSED"
+    return 0
+  fi
   if ! has_judge "$runner"; then
     echo "fix-proof: no judge at merge base ($runner)" >&2
-    printf 'fix-proof/v1 {"head":"%s","mergeBase":"%s","verdict":"error","counts":{"reproduces":0,"passes-on-base":0,"new-api":0,"fails-on-head":0,"not-run":0},"notCollected":[],"deletedTests":[],"configEdited":false,"tests":[],"truncated":false,"error":"%s"}\n' "$head" "$base" "$SKIPPED"
+    error_line "$head" "$base" "$SKIPPED"
     return 0
   fi
   node "$runner/packages/fix-proof/dist/judge.js" --repo "$repo" --base "$base" --head "$head" \
     --base-report "$dir/base.report" --base-rerun-report "$dir/base-rerun.report" --head-report "$dir/head.report"
+}
+
+# A branch name as the refusal may show it: anything outside a plain ref alphabet becomes ?, so the reason cannot
+# add a line to $GITHUB_OUTPUT.
+shown_ref() {
+  local ref=${1//[^A-Za-z0-9._\/+-]/?}
+  printf '%s' "${ref:-<none>}"
+}
+
+merge_base() {
+  local repo=$1 base=$2 head=$3 base_ref=${BASE_REF:-} default=${DEFAULT_BRANCH:-}
+  if [ -z "$base_ref" ] || [ -z "$default" ] || [[ $base_ref == *$'\n'* ]] || [ "$base_ref" != "$default" ]; then
+    printf 'refused=fix-proof runs only against the default branch: base %s is not %s\n' \
+      "$(shown_ref "$base_ref")" "$(shown_ref "$default")" >>"${GITHUB_OUTPUT:?}"
+    return 0
+  fi
+  local sha
+  sha=$(git -C "$repo" merge-base "$base" "$head")
+  printf 'sha=%s\n' "$sha" >>"${GITHUB_OUTPUT:?}"
 }
 
 mode=${1:-}
@@ -184,5 +221,6 @@ case $mode in
   emit) [ $# -eq 2 ] || usage; emit "$@" ;;
   receive) [ $# -eq 1 ] || usage; receive "$@" ;;
   judge) [ $# -eq 5 ] || usage; judge "$@" ;;
+  merge-base) [ $# -eq 3 ] || usage; merge_base "$@" ;;
   *) usage ;;
 esac

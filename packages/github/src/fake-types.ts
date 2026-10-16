@@ -2,7 +2,7 @@ import type { CreateCheckRunRequest } from "./check-run-create.js";
 import type { ForcePush } from "./force-pushes.js";
 import type { MergeIntoBranchResult } from "./merge-into-branch.js";
 import type { ReviewComment } from "./review-comment.js";
-import type { CheckRun, Commit, CommitStatus, GitHubWire, IssueComment, LoggedCommit, MergeMessage, PrFile, PullRequest, RequiredChecks, SquashSource } from "./port.js";
+import type { CheckRun, Commit, CommitStatus, GitHubWire, IssueComment, JobStep, LoggedCommit, MergeMessage, PrFile, PullRequest, RequiredChecks, SquashSource } from "./port.js";
 
 /** Counts of calls that change GitHub; a crash test asserts each is at most one. */
 export interface FakeEffects {
@@ -62,6 +62,8 @@ export interface FakeGitHub {
   refs: Map<string, string>;
   /** Job id to full log text, for `getJobLog`. */
   jobLogs: Map<number, string>;
+  /** Job id to its steps, for `getJobSteps`; a job with none seeded answers 404. */
+  jobSteps: Map<number, JobStep[]>;
   files: Map<string, { content: string; blobSha: string }>;
   /** The login `createComment` posts as and `getAuthenticatedLogin` answers with. */
   actor: string;
