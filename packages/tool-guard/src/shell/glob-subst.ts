@@ -162,11 +162,18 @@ function zshEnables(args: WordToken[]): boolean {
   return scan.dynamic || scan.names.some(namesGlobSubst) || scan.modes.some((mode) => mode !== "zsh");
 }
 
-/** A command word only known at run time may be `setopt` or an assignment builtin. */
+/** Modes `emulate` turns GLOB_SUBST on for; zsh reads `bash` as sh. */
+const EMULATIONS = new Set(["sh", "ksh", "csh", "bash"]);
+
+/**
+ * A command word only known at run time may be `setopt`, `emulate` or any writer, so it is never proven harmless:
+ * `setopt -m`, an emulation mode, a GLOB_SUBST name or a word only known at run time may each enable it.
+ */
 function dynamicCommand(args: WordToken[]): boolean {
   const [, ...rest] = args;
+  if (rest.some((w) => unknownName(w, w.value))) return true;
   const scan = scanOptions(rest, "o", false);
-  return [...scan.names, ...scan.operands].some(namesGlobSubst);
+  return scan.flags.includes("m") || scan.operands.some((v) => EMULATIONS.has(v)) || [...scan.names, ...scan.operands].some(namesGlobSubst);
 }
 
 interface WriterSpec {

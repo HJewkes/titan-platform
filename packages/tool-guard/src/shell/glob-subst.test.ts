@@ -138,6 +138,13 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     [": ${(P)n=on}"],
     ['echo "${(P)n::=on}"'],
     [": ${(kP)n::=on}"],
+    ["$c $o"],
+    ['$c -o "$o"'],
+    ['$c "$n"'],
+    ["$(tr x x <<<setopt) $(tr x x <<<globsubst)"],
+    ["$c sh"],
+    ["$c -R ksh"],
+    ["$c -m '*subst'"],
   ])("reads the run-time or expanded operand of %s as a possible enabler", (src) => {
     expect(enables(src)).toBe(true);
   });
@@ -204,6 +211,9 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     [": ${(P)n}"],
     [": ${(P)n:-x}"],
     [": ${x::=on}"],
+    ["$c foo bar"],
+    ["$c -o pipefail"],
+    ['$c x="$y"'],
   ])("leaves %s alone", (src) => {
     expect(enables(src)).toBe(false);
   });
