@@ -1,5 +1,5 @@
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, sameSpend, spent } from "./arith-trials.js";
-import { backtickEnd, balancedEnd, type DollarOpener, dollarOpener, type NestedReaders, QUOTED_LITERAL_OPENERS } from "./balanced.js";
+import { backtickEnd, balancedEnd, type DollarOpener, dollarOpener, type NestedReaders, QUOTED_LITERAL_OPENERS, refuseValueRun } from "./balanced.js";
 import { dropJoins, joinedDollar, nextAfter, pastJoins, readAhead } from "./joins.js";
 import { newRegexScan, noteParen, refuseRedirect } from "./compound.js";
 import { nested } from "./nesting.js";
@@ -198,6 +198,7 @@ const DOLLAR_READERS: Record<DollarOpener, (s: LexState, w: WordToken) => void> 
 function readDollar(s: LexState): void {
   const w = ensureWord(s);
   s.i = joinedDollar(s.src, s.i);
+  refuseValueRun(s.src, s.i);
   const opener = dollarOpener(s.src, s.i);
   if (opener) return DOLLAR_READERS[opener](s, w);
   readVariable(s, w);
@@ -338,10 +339,16 @@ export function scanSubstitutions(src: string, from: number, to: number, trials 
   for (let j = from; j < to; j++) {
     const c = src[j];
     if (c === "\\") j++;
-    else if (c === "$" && src[joinedDollar(src, j) + 1] === "(") j = dollarParen(src, joinedDollar(src, j), read);
+    else if (c === "$") j = scanDollar(src, j, read);
     else if (c === "`") j = read.backtick(j);
   }
   return found;
+}
+
+function scanDollar(src: string, j: number, read: NestedReaders): number {
+  const dollar = joinedDollar(src, j);
+  refuseValueRun(src, dollar);
+  return src[dollar + 1] === "(" ? dollarParen(src, dollar, read) : j;
 }
 
 function dollarParen(src: string, dollar: number, read: NestedReaders): number {
