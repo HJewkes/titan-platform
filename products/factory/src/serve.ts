@@ -26,7 +26,7 @@ import type { FactoryHost, FactoryHostOptions } from "./host.js";
 import type { NeedsSources } from "./needs/rpc.js";
 import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
-import { mountResolveProof } from "./resolve-proof.js";
+import { mountServeRoutes, type ConsoleAnswersServeOptions } from "./serve-routes.js";
 import { startSweep, type Sweep } from "./sweep.js";
 import type { ShepherdServices } from "./shepherd/services.js";
 import { openFramedHost, type FramedHostOptions } from "./shepherd/frames.js";
@@ -53,7 +53,7 @@ const CHECKOUT_SWEEP_MS = 3_600_000;
 const STATUSES: readonly WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
 const { version: FACTORY_VERSION } = createRequire(import.meta.url)("../package.json") as { version: string };
 
-export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweepOptions, FramedHostOptions {
+export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweepOptions, FramedHostOptions, ConsoleAnswersServeOptions {
   /** Holds the daemon pid file, the one-server-per-directory lock; defaults to the database's directory. */
   stateDir?: string;
   /** Defaults to 7410; 0 binds an ephemeral port. */
@@ -242,7 +242,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
       ownerKeys: proofs.keys.ok ? { count: proofs.keys.ids.length, ids: proofs.keys.ids } : { count: 0, refusal: proofs.keys.refusal },
       ...startHealth(start(), options),
     }),
-    mountRoutes: (app) => mountResolveProof(app, { host, ...proofs, now: options.now ?? Date.now, port: options.routes.shepherd?.port, store: options.routes.shepherd?.store, log }),
+    mountRoutes: (app) => mountServeRoutes(app, { host, ...proofs, now: options.now ?? Date.now, routes: options.routes, consoleAnswers: options.consoleAnswers, stateDir: stateDirOf(options), log }),
     logger: options.logger,
   };
 }

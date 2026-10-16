@@ -103,7 +103,7 @@ function schemaReason(error: z.ZodError): string {
   return more > 0 ? `${issues.join("; ")}; and ${more} more` : issues.join("; ");
 }
 
-function parseManifest(bytes: Buffer): Parsed {
+export function parseManifest(bytes: Buffer): Parsed {
   let json: unknown;
   try {
     json = JSON.parse(bytes.toString("utf8"));
@@ -234,7 +234,7 @@ export interface QueueRound {
 
 type FeedbackRead = { ok: true; feedback: Feedback | null } | { ok: false; reason: string };
 
-function parseFeedback(text: string): FeedbackRead {
+export function parseFeedback(text: string): FeedbackRead {
   let json: unknown;
   try {
     json = JSON.parse(text);
