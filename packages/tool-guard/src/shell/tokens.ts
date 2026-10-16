@@ -58,12 +58,14 @@ export type Token = WordToken | OpToken | SubsToken | RedirectToken;
 
 /**
  * One open `case`: reading its subject word, its `in`, the start of a pattern list (where `esac` closes), a pattern
- * word after a leading `(` or a `|`, the rest of a pattern list, or a body, at the paren depth its `case` sat at. `amp` marks a `;` or `;;` that an `&` may complete.
+ * word after a leading `(` or a `|`, the rest of a pattern list, or a body, at the paren depth its `case` sat at. `amp` marks a `;` or `;;` that an `&` may complete, and
+ * `blocks` counts the braces, `if`s and loops open in the body.
  */
 export interface CaseFrame {
   phase: "subject" | "in" | "patterns" | "alternative" | "pattern" | "body" | "stuck";
   depth: number;
   amp: boolean;
+  blocks: number;
 }
 
 /** Tokens scanned so far, their paren depth, and the depths a `[[` and a `=~` in it sat at, or -1. */

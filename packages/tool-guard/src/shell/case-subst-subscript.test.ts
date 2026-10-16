@@ -79,6 +79,8 @@ describe("case and esac read by their grammar position inside $( )", () => {
     ["an (esac) pattern, in a subscript", `x[$(${esacPattern})]=1`],
     ["an esac with no case", "echo $(esac)"],
     ["an esac with no case before a pattern end, quoted", `echo "$(esac; c) ${PUSH})"`],
+    ["an esac inside a brace group in a body, quoted", `echo "$(case x in a) :; { esac; };; c) ${PUSH};; esac)"`],
+    ["an esac inside an if in a body, quoted", `echo "$(case x in a) if :; then esac; fi;; c) ${PUSH};; esac)"`],
   ])("guard refuses %s", async (_name, command) => {
     expect(await decisionOf(command)).toBe("deny");
   });

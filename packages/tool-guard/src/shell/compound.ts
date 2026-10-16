@@ -1,4 +1,4 @@
-import { caseOperator, caseWord, closeCase, isCaseParen, openCase } from "./case-grammar.js";
+import { caseOperator, caseWord, closeCase, isCaseParen, noteCaseBlock, openCase } from "./case-grammar.js";
 import { nextAfter } from "./joins.js";
 import { ParseError } from "./parse-error.js";
 import type { LexState, RegexScan, Token } from "./tokens.js";
@@ -143,6 +143,7 @@ function noteKeyword(r: RegexScan, bare: string | null): void {
   if (bare === "[[") r.conditionalAt = r.depth;
   if (bare === "case") openCase(r);
   if (bare === "esac") closeCase(r);
+  noteCaseBlock(r, bare);
   if (BLOCK_OPENERS.has(bare)) r.blockDepth++;
   if (BLOCK_CLOSERS.has(bare)) r.blockDepth = Math.max(0, r.blockDepth - 1);
 }
