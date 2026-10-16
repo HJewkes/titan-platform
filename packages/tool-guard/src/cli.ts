@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import type { Readable } from "node:stream";
 import { handle } from "./hook.js";
-import type { DecideFn } from "./hook.js";
+import type { DecideFn, HookResult } from "./hook.js";
 import { logPath } from "./log.js";
 import { GUARDED_PATHS, matchGuarded } from "./paths.js";
 import type { ClassifyContext } from "./types.js";
@@ -20,6 +20,8 @@ export interface CliIo {
   realpath(p: string): string;
   now(): Date;
   loadDecide(): Promise<DecideFn>;
+  /** Answers one event under the hook's deadline, off this thread; absent, `hook` answers inline with `context`. */
+  answer?(input: string): Promise<HookResult>;
   out(line: string): void;
   err(line: string): void;
 }
@@ -58,7 +60,7 @@ async function runHook(io: CliIo): Promise<number> {
   try {
     const input = await io.readStdin(STDIN_TIMEOUT_MS);
     if (input === null) return 0;
-    const result = await handle(input, io.env, { context: io.context, now: io.now, loadDecide: io.loadDecide });
+    const result = io.answer ? await io.answer(input) : await handle(input, io.env, { context: io.context, now: io.now, loadDecide: io.loadDecide });
     if (result.stdout !== "") io.out(result.stdout);
     if (result.log.length > 0) appendQuietly(io, result.log);
   } catch {

@@ -52,7 +52,7 @@ describe("the rounds list", () => {
     await renderConsole("#/rounds");
     await screen.findByText("Open rounds");
     const rows = screen.getAllByTestId(/^round-row-/).map((row) => row.getAttribute("data-testid"));
-    expect(rows).toHaveLength(6);
+    expect(rows).toHaveLength(7);
     expect(rows.at(-1)).toBe("round-row-kiln-schedule-r1");
     expect(screen.getByText("Sent rounds")).toBeTruthy();
   });
