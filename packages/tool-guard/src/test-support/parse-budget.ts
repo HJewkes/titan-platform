@@ -3,14 +3,14 @@ import type { HookResult } from "../hook.js";
 /** Runs the hook on one event, usually a closure over `handle` with a test port. */
 export type HookRun = (input: string) => Promise<Pick<HookResult, "stdout">>;
 
-export interface ParseBudgetOptions {
+interface ParseBudgetOptions {
   /** Thread CPU the run may spend. */
   ms?: number;
   /** The hook must deny the command. */
   mustDeny?: boolean;
 }
 
-export interface ParseBudgetResult {
+interface ParseBudgetResult {
   cpuMs: number;
   denied: boolean;
   /** Empty only when the run stayed under budget and, if asked, denied. */
@@ -18,7 +18,7 @@ export interface ParseBudgetResult {
 }
 
 /** Well under Claude Code's 5 s hook timeout, past which a command runs unchecked. */
-export const DEFAULT_PARSE_BUDGET_MS = 250;
+const DEFAULT_PARSE_BUDGET_MS = 250;
 
 const DENY_MARK = '"permissionDecision":"deny"';
 
