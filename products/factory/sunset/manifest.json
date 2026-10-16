@@ -1438,6 +1438,12 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/owner-hold-timeline.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/owner-release.test.ts",
    "fate": "delete",
    "task": "D-M7-06",
@@ -3323,8 +3329,10 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/backoff.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
@@ -3362,14 +3370,18 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/checkpoint.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/claim-hold.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
@@ -3410,8 +3422,10 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/custody.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
@@ -3515,14 +3529,17 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/exited-adopt.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/finding.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "reason": "the dispatch recipe's lease and stall bodies (TP-3219, plan Q6)"
   },
   {
    "repo": "agent-chat",
@@ -3542,8 +3559,10 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/hold-reason.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M5-03",
+   "milestone": "M5",
+   "filing": "TP-3153"
   },
   {
    "repo": "agent-chat",
@@ -3557,8 +3576,10 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/in-flight.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
@@ -3572,20 +3593,25 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/landed-sweep.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/leak-check.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/lease.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "reason": "the dispatch recipe's lease and stall bodies (TP-3219, plan Q6)"
   },
   {
    "repo": "agent-chat",
@@ -3622,8 +3648,10 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/ms-role.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
@@ -3646,8 +3674,10 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/off-ledger-adopt.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
@@ -3739,8 +3769,9 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/plan-order.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "reason": "class-of-service order, an input of the recipe's two rules (TP-3219, plan Q7)"
   },
   {
    "repo": "agent-chat",
@@ -3762,8 +3793,9 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/policy.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "reason": "charter and seat frontmatter reads, an input of the recipe's two rules (TP-3219, plan Q7)"
   },
   {
    "repo": "agent-chat",
@@ -3796,8 +3828,10 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/pr-state.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
@@ -3811,8 +3845,9 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/progress.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "reason": "the dispatch recipe's lease and stall bodies (TP-3219, plan Q6)"
   },
   {
    "repo": "agent-chat",
@@ -3835,8 +3870,10 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/reconcile.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
@@ -3850,8 +3887,9 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/relint-queued.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M6-02",
+   "reason": "plan-contract seeding and its lint (TP-3219, plan Q6)"
   },
   {
    "repo": "agent-chat",
@@ -3892,14 +3930,17 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/score-render.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M6-05",
+   "milestone": "M6",
+   "filing": "TP-3159"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/score-source.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "reason": "the task reader, an input of the recipe's two rules (TP-3219, plan Q7)"
   },
   {
    "repo": "agent-chat",
@@ -3912,8 +3953,10 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/seat-compare.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M6-05",
+   "milestone": "M6",
+   "filing": "TP-3159"
   },
   {
    "repo": "agent-chat",
@@ -3972,8 +4015,9 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/seed-slices.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M6-02",
+   "reason": "plan-contract seeding and its lint (TP-3219, plan Q6)"
   },
   {
    "repo": "agent-chat",
@@ -4044,8 +4088,9 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/slices-complete.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M6-02",
+   "reason": "plan-contract seeding and its lint (TP-3219, plan Q6)"
   },
   {
    "repo": "agent-chat",
@@ -4077,26 +4122,32 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/stack.ts",
-   "fate": "kept",
-   "reason": "unclear: stacking; D-M6-05 deletes only the lock-driven parts; which parts of this file are lock-driven?"
+   "fate": "delete",
+   "task": "D-M6-05",
+   "milestone": "M6",
+   "filing": "TP-3159"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/stale-claim.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/stall-code.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "reason": "the dispatch recipe's lease and stall bodies (TP-3219, plan Q6)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/stall.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "reason": "the dispatch recipe's lease and stall bodies (TP-3219, plan Q6)"
   },
   {
    "repo": "agent-chat",
@@ -4163,8 +4214,10 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/tree-hold.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
