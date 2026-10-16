@@ -204,6 +204,7 @@ const UNKNOWABLE = FD_SHELLS.flatMap((shell) => [
   [`${shell} /dev/fd/3`, "exec 3< ./x.sh"],
   [`${shell} < /dev/fd/3`, "exec 3< ./x.sh"],
   [`${shell} /dev/stdin < /dev/fd/3 3< ./ok.sh`, "exec 3< ./x.sh"],
+  [`${shell} 0>&3`, "exec 3< ./x.sh"],
 ]);
 const shellHere = (line: string): boolean => SHELLS_HERE.has(line.split(" ")[0] ?? "");
 
@@ -269,6 +270,15 @@ const SOURCE_ROWS: Array<[string, (text: string, file: string) => string, string
   ["00< as stdin", (_text, file) => `bash 00< ${file}`, ["bash"]],
   ["00< under a /dev/stdin operand", (_text, file) => `bash /dev/stdin 00< ${file}`, ALL],
   ["000< under a /dev/fd/0 operand", (_text, file) => `bash /dev/fd/0 000< ${file}`, ALL],
+  ["0>&3, a dup onto stdin", (_text, file) => `bash 3< ${file} 0>&3`, ALL],
+  ["0>&3 under a /dev/stdin operand", (_text, file) => `bash /dev/stdin 3< ${file} 0>&3`, ALL],
+  ["0>&3 from a 3<> file", (_text, file) => `bash 3<> ${file} 0>&3`, ALL],
+  ["a >& chain onto stdin", (_text, file) => `bash 3< ${file} 4>&3 0>&4`, ALL],
+  ["a >& then <& chain onto stdin", (_text, file) => `bash 3< ${file} 4>&3 <&4`, ALL],
+  ["0>&3 under zsh -c", (_text, file) => `zsh -c 'bash 3< ${file} 0>&3'`, ALL],
+  ["0>&3 under dash -c", (_text, file) => `dash -c 'bash 3< ${file} 0>&3'`, ALL],
+  ["bash's move 0>&3-", (_text, file) => `bash 3< ${file} 0>&3-`, ["bash"]],
+  ["a pipe on fd 3 through 3>&0", (text) => `echo '${text}' | bash /dev/fd/3 3>&0`, ALL],
 ];
 const unescaped = (line: string): string => line.replaceAll("\\n", "\n");
 

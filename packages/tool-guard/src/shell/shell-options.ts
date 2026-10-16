@@ -5,7 +5,8 @@ const BASH_LONG_VALUES = new Set(["--rcfile", "--init-file"]);
 /** Paths that name a descriptor, matched on their tail: `/dev/stdin`, `/dev/fd/N`, `/proc/self/fd/N`. */
 const NAMED_FDS: Record<string, number> = { stdin: 0, stdout: 1, stderr: 2 };
 const FD_PATH_RE = /\/(?:dev\/(stdin|stdout|stderr)|(?:dev|proc\/(?:self|thread-self|\d+))\/fd\/(\d+))$/;
-const STDIN_OPS = new Set(["<", "<>", "<<", "<<-", "<<<", "<&"]);
+/** Ops that can put text on a descriptor; `>&` is a dup like `<&`, since dup2 has no direction (`0>&3` reads fd 3). */
+const STDIN_OPS = new Set(["<", "<>", "<<", "<<-", "<<<", "<&", ">&"]);
 
 /** One source on the descriptor a shell runs: heredoc, here-string or `< <(...)` text, a file `<` or `<>` opens, or the pipe. */
 export type StdinSource = { kind: "text"; text: string } | { kind: "file"; target: WordToken } | { kind: "pipe" };
@@ -174,7 +175,7 @@ function feedsOf(redirects: RedirectToken[], piped: boolean): (fd: number, end: 
     const out: Feeds = { redirects: new Set(), pipe: fd === 0 && piped, unknown: false };
     let opened = false;
     redirects.slice(0, end).forEach((r, i) => {
-      if (Number(r.fd ?? "0") !== fd || !STDIN_OPS.has(r.op)) return;
+      if (Number(r.fd ?? (r.op.startsWith(">") ? "1" : "0")) !== fd || !STDIN_OPS.has(r.op)) return;
       opened = true;
       join(out, redirectFeeds(r, (named) => feeds(named, i)));
     });
@@ -190,9 +191,16 @@ function redirectFeeds(r: RedirectToken, before: (fd: number) => Feeds): Feeds {
   const target = r.target;
   if (r.body !== null || r.op === "<<<") return fed(r.body !== null || target !== null ? r : null, false);
   if (target === null || target.dynamic) return fed(null, true);
-  if (r.op === "<&") return target.value === "-" ? fed(null, false) : /^\d+$/.test(target.value) ? before(Number(target.value)) : fed(null, true);
+  if (r.op === "<&" || r.op === ">&") return dupFeeds(target.value, before);
   const named = pathFd(target.value);
   return named === null ? fed(r, false) : before(named);
+}
+
+/** A dup `N`, or bash's move `N-`, feeds what fd N held; `-` closes the descriptor. */
+function dupFeeds(value: string, before: (fd: number) => Feeds): Feeds {
+  if (value === "-") return fed(null, false);
+  const from = /^(\d+)-?$/.exec(value)?.[1];
+  return from === undefined ? fed(null, true) : before(Number(from));
 }
 
 function fed(r: RedirectToken | null, unknown: boolean): Feeds {
