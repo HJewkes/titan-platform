@@ -151,6 +151,7 @@ graph TD
   speechTts --> appPaths
   speechVet --> speechG2p
   speechVet --> speechStt
+  speechVet --> speechTts
   styleAnalyzer --> codeParser
   styleAnalyzer --> styleProfile
   styleChecker --> styleAnalyzer
