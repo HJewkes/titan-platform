@@ -3,7 +3,7 @@ import { holdClassOf } from "./g10-release.js";
 import { OWNER_HOLD_CLASS } from "./owner-hold-rows.js";
 
 /** The owner assigned the PR's review to a person: no Shepherd MERGE releases it, only that person's release (TP-3083). */
-export const OWNER_REVIEW_CLASS = "owner-review";
+const OWNER_REVIEW_CLASS = "owner-review";
 
 /**
  * The closed list of break-glass hold classes in charter section 8; add a class here when the charter adds it, or seats
