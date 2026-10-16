@@ -196,8 +196,8 @@ export const FactoryConfigSchema = z.object({
       hubSeat: z.string().min(1).optional(),
       deployAlarm: DeployAlarmConfigSchema.optional(),
       gateNotify: GateNotifyConfigSchema.optional(),
-      /** Decision 422's stopgaps, each off when absent; `twoMergeRelease` other than `off` gives a g10-adversary hold Shepherd's own adversary member. */
-      gateReset: z.strictObject({ twoMergeRelease: z.enum(["off", "shadow", "on"]).optional() }).optional(),
+      /** Decisions 422 and 423's stopgaps, each off when absent: `twoMergeRelease` other than `off` gives a g10-adversary hold Shepherd's own adversary member; `heldRepair: on` lets a g10 hold gate only the merge, so its run repairs as usual. */
+      gateReset: z.strictObject({ twoMergeRelease: z.enum(["off", "shadow", "on"]).optional(), heldRepair: z.enum(["off", "on"]).optional() }).optional(),
     })
     .refine((s) => !s.hardStopRepos || s.charterPath, { message: "hardStopRepos needs a charterPath", path: ["charterPath"] })
     .refine((s) => !s.review || s.agentChatBin, { message: "review needs an agentChatBin", path: ["agentChatBin"] })

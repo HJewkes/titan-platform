@@ -1,3 +1,4 @@
+import { BrokerUnavailableError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
 import type { StepResult, StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
@@ -54,22 +55,46 @@ function addressee(ports: ExitNoticePorts, input: SeatNoticeInput): string | und
   return input.gate === "held" ? ports.hubSeat?.() : ports.seatFor(input.repo);
 }
 
-/** Never throws: no ports, no seat, or a failed send records `sent: false`, and the run takes the owner gate. */
-async function sendSeatNotice(ports: ExitNoticePorts | undefined, input: SeatNoticeInput): Promise<SeatNoticeResult> {
+type Sleep = (ms: number, signal: AbortSignal) => Promise<void>;
+
+/**
+ * The waits before each resend of a notice the broker timed out or could not take: a dropped held notice left a seat
+ * never told (tp#1513). A timed-out send may still have arrived, so the seat can hear one twice.
+ */
+const SEAT_NOTICE_RETRY_MS = [5_000, 30_000, 120_000] as const;
+
+const transient = (error: unknown): boolean => error instanceof DispatchTimeoutError || error instanceof BrokerUnavailableError;
+
+async function sendWithRetry(send: () => Promise<void>, sleep: Sleep, signal: AbortSignal): Promise<void> {
+  for (const waitMs of SEAT_NOTICE_RETRY_MS) {
+    try {
+      return await send();
+    } catch (error) {
+      if (!transient(error)) throw error;
+    }
+    await sleep(waitMs, signal);
+  }
+  await send();
+}
+
+/** Throws only on abort: no ports, no seat, or a send failed past its retries records `sent: false`, and the run takes the owner gate. */
+async function sendSeatNotice(ports: ExitNoticePorts | undefined, input: SeatNoticeInput, sleep: Sleep, signal: AbortSignal): Promise<SeatNoticeResult> {
   if (ports === undefined) return { sent: false, detail: "no seat notice is wired" };
   let seat: string | undefined;
   try {
     seat = addressee(ports, input);
     if (seat === undefined) return { sent: false, detail: input.gate === "held" ? "the run names no seat and no hub seat is set" : `no single seat owns ${input.repo}` };
-    await ports.send(seat, seatNoticeText(input));
+    const to = seat;
+    await sendWithRetry(() => ports.send(to, seatNoticeText(input)), sleep, signal);
     return { sent: true, seat, gate: input.gate, headSha: input.headSha, detail: `told ${seat}` };
   } catch (error) {
+    signal.throwIfAborted();
     return { sent: false, ...(seat && { seat }), detail: `the seat notice failed: ${failureOf(error)}` };
   }
 }
 
-export const seatNoticeRoute = (now: () => number, ports: ExitNoticePorts | undefined): StepRoute =>
-  codeRoute(SEAT_NOTICE_STEP, now, async (raw: unknown) => sendSeatNotice(ports, SeatNoticeInput.parse(raw)));
+export const seatNoticeRoute = (now: () => number, ports: ExitNoticePorts | undefined, sleep: Sleep): StepRoute =>
+  codeRoute(SEAT_NOTICE_STEP, now, async (raw: unknown, signal) => sendSeatNotice(ports, SeatNoticeInput.parse(raw), sleep, signal));
 
 /** What a seat notice came to; undefined means none was tried. */
 type Told = { sent: boolean; detail: string } | undefined;
