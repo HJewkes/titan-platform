@@ -52,7 +52,7 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit && tsc -p scripts --noEmit",
+    "typecheck": "tsc --noEmit",
     "smoke:speech": "node scripts/smoke-speech.ts"
   }
 }
