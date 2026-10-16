@@ -1,4 +1,4 @@
-import type { ReviewerAgent } from "./review.js";
+import type { ReviewerAgent } from "@titan-design/review-panel";
 
 type Parents = (agent: ReviewerAgent) => readonly (string | null | undefined)[];
 const takeovers: Parents = (agent) => [agent.predecessor];

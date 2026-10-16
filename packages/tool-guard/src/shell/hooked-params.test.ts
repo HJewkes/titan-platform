@@ -126,6 +126,16 @@ describe("a name slot the shell computes", () => {
     ["a zsh ^ under extendedglob", "typeset ^X=x", "^X=x"],
     ["a zsh # under extendedglob", "read P#S4", "P#S4"],
     ["a zsh ~ under extendedglob", "read PS4~x", "PS4~x"],
+    ["a brace option after an empty double quote", 'print ""{-v,PS4} x', "{-v,PS4}"],
+    ["a brace option after an empty single quote", "print ''{-v,PS4} x", "{-v,PS4}"],
+    ["a brace option before an expansion", "print {-v,PS4}$e x", "{-v,PS4}$e"],
+    ["a quoted dash before a brace cluster", "print ''-{v,x} PS4 y", "-{v,x}"],
+    ["a zsh braceccl cluster", "print -{v} PS4 x", "-{v}"],
+    ["a glob that may match an option file", "print ?v PS4 x", "?v"],
+    ["a bracket option glob", "print -[v] PS4 x", "-[v]"],
+    ["a bracket option glob after an empty quote", 'print ""-[v] PS4 x', "-[v]"],
+    ["a bare glob in option position", "print * x", "*"],
+    ["a tilde that may expand to OLDPWD", "print ~- PS4 x", "~-"],
   ])("counts as a hooked write: %s", (_how, line, slot) => {
     expect(hooked(line)).toBe(slot);
   });
@@ -185,6 +195,8 @@ describe("a command that only reads, mentions or writes another name", () => {
     ["for over one name", "for x in PS4"],
     ["a glob in a command that writes no named parameter", "ls P?4"],
     ["a brace word in a command that writes no named parameter", "echo {P,}S4"],
+    ["a glob led by a literal in option position", "print a* x"],
+    ["a path glob in option position", "stat ./*.json"],
   ])("returns null: %s", (_how, line) => {
     expect(hooked(line)).toBeNull();
   });

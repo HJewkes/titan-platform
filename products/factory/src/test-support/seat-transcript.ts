@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Presence } from "../shepherd/presence.js";
-import type { ReviewerAgent } from "../shepherd/review.js";
+import type { ReviewerAgent } from "@titan-design/review-panel";
 import type { TranscriptRow } from "../shepherd/reviewer-reader.js";
 
 type Json = Record<string, unknown>;

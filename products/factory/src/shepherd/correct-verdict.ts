@@ -3,10 +3,9 @@ import { z } from "zod";
 import type { DeadlineTiming } from "../workflows/deadline.js";
 import { step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
-import type { AwaitVerdictInput, ReviewerAgent, ReviewerDispatch } from "./review.js";
 import { Awaited } from "./review-schemas.js";
 import { clearReviewWait, noteReviewWait, startedSession, whileBrokerBusy, whileBrokerDown, type BusyTiming, type PollTiming } from "./review-wait.js";
-import { MalformedSchema, correctionPrompt, isUsageLimit, readMalformed, type Malformed } from "@titan-design/review-panel";
+import { MalformedSchema, correctionPrompt, isUsageLimit, readMalformed, type AwaitVerdictInput, type Malformed, type ReviewerAgent, type ReviewerDispatch } from "@titan-design/review-panel";
 
 export const CORRECT_VERDICT_STEP = "sh-correct-verdict";
 
