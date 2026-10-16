@@ -5,7 +5,7 @@ const REWRITTEN_RE = /[{*?[^#~<>()|]/;
 /** A `$NAME`, `${NAME}` or positional parameter; `@` and `*` expand to several words. */
 const PLAIN_REF_RE = /^(?:[A-Za-z_][A-Za-z0-9_]*|\d+)$/;
 
-export type CommandWordShape = { kind: "literal"; name: string } | { kind: "one" } | { kind: "many" };
+type CommandWordShape = { kind: "literal"; name: string } | { kind: "one" } | { kind: "many" };
 
 /** The part of an unquoted word that zsh may rewrite: `~` and `~/` lead a path, every other `~` is a name or a pattern. */
 function rewrittenPart(text: string): string {

@@ -1,4 +1,4 @@
-export interface EnvWord {
+interface EnvWord {
   value: string;
   /** A `${NAME}` outside single quotes: env expands it, so the word is only known at run time. */
   dynamic: boolean;
