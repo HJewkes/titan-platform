@@ -95,7 +95,8 @@ function heldBehindRun({ shape = "clean", hold = G10_REVIEW, redAtH2 = false, se
   fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
   fake.onGetPr = (pr) => {
     const red = redAtH2 && pr.headSha !== H1;
-    fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, red ? "failure" : "success"), successRun("dag-check", 2)]);
+    // A rerun replaces the failed run with a new one, so Shepherd's held rerun of a red H2 settles and H2 stays red.
+    fake.setRuns(pr.headSha, [successRun("validate", 1 + 10 * fake.effects.rerunFailedJobs, undefined, red ? "failure" : "success"), successRun("dag-check", 2)]);
     if (pr.headSha !== H1) pr.mergeableState = "clean";
     if (pr.headSha !== H1 && treeClean) pr.mergeSha = treeClean.value ? fakeSha("test-merge") : null;
   };
@@ -210,6 +211,7 @@ describe("a head move that is not a clean merge-up", () => {
     await vi.waitFor(() => expect(settledAtH2(w)).toBe(true), { timeout: 5_000 });
 
     expect(stepIds(w).filter((id) => id.startsWith(MERGE_UP_STEP) || id.startsWith(`${G10_RELEASE_STEP}:${h2(w)}`))).toEqual([]);
+    expect(w.fake.effects.rerunFailedJobs).toBe(1);
     expect(w.store.byRun(w.runId)).toMatchObject({ held: true, holdReason: G10_REVIEW });
     expect(w.fake.pr(1).merged).toBe(false);
   });

@@ -135,6 +135,13 @@ describe("sh-fix-proof in reviewPhase", () => {
     expect(spawns).toEqual([]);
   });
 
+  it("gates a fresh test-only registration like correctness, so a vacuous proof ends as NO_REPRO", async () => {
+    const { verdicts, spawns } = await review({ kind: "test-only", runs: [fixProofRun()], log: actionsLog(resultLine(H, "vacuous")), files: [{ path: "packages/x/src/a.test.ts", status: "modified" }] });
+
+    expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
+    expect(spawns).toEqual([]);
+  });
+
   it("ignores a vacuous line naming an older head and reviews on this head's reproduced line", async () => {
     const reproduced = resultLine(H, "reproduced");
 

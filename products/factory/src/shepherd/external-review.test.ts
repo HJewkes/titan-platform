@@ -3,10 +3,11 @@ import type { SourceTextLocator } from "@titan-design/session-read";
 import { appendFileSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { partialFake } from "@titan-design/test-kit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { seatTranscript, type SeatRow } from "../test-support/seat-transcript.js";
-import type { AwaitVerdictResult } from "./review.js";
-import { FINDINGS_SEPARATOR, type ReviewerAgent, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
+import type { AwaitVerdictResult, ReviewWiring } from "./review.js";
+import { FINDINGS_SEPARATOR, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
 import { BrokerUnavailableError, DispatchError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
 import { ReviewerAskTimedOut, ReviewerBrokerBusy, ReviewerBrokerDown, reviewWait } from "./review-wait.js";
 import { transcriptReviewerReader } from "./reviewer-reader.js";
@@ -863,6 +864,20 @@ describe("awaitExternalVerdict over a real transcript", () => {
   });
 });
 
+describe("awaitExternalVerdict with an unreadable roster", () => {
+  it("logs that the roster could not be read and returns no verdict", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const reader = { read: async () => [] };
+    const timing = { now: () => 0, sleep: async () => undefined, pollMs: 1, timeoutMs: 0 };
+
+    const result = await awaitExternalVerdict(() => Promise.reject(new Error("broker down")), reader, { ...target, external: "seat-c-9-review" }, timing, new AbortController().signal);
+
+    expect(result).toEqual({ kind: "none" });
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("roster could not be read"));
+    log.mockRestore();
+  });
+});
+
 describe("seat check roster reads", () => {
   let dir: string;
 
@@ -887,5 +902,21 @@ describe("seat check roster reads", () => {
 
     expect(calls).toBe(1);
     expect(check).toMatchObject({ verdict: "FIX_FIRST" });
+  });
+});
+
+describe("the author's profile when the roster fails after the seat check", () => {
+  it("logs the unknown profile and records the verdict without one", async () => {
+    let reads = 0;
+    const roster = async () => (++reads === 1 ? [] : Promise.reject(new Error("broker down")));
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const step = seatVetoed(partialFake<ReviewWiring>({ dispatch: partialFake<ReviewerDispatch>({ roster }), reader: readerOf([]) }), async () => shepherdMerge);
+
+    const result = await step({ ...target, reviewerAgentId: SHEPHERD_RV.agentId, reviewerSessionId: SHEPHERD_RV.sessionId }, new AbortController().signal);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+    expect(result).not.toHaveProperty("reviewerProfile");
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("profile is unknown"));
+    log.mockRestore();
   });
 });

@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type * as childProcess from "node:child_process";
 import { DispatchError } from "@titan-design/agent-dispatch";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReviewTarget } from "@titan-design/review-panel";
@@ -9,6 +10,17 @@ import { ReviewerAskTimedOut, ReviewerMachineHold } from "./review-wait.js";
 import { agentChatReviewerDispatch, expandHome, runningReviewStarts, type ReviewerRosterRow, type AgentChatReviewerDispatchOptions } from "./reviewer-dispatch.js";
 import { createRosterReader } from "./roster.js";
 import { spawnGate } from "./spawn-gate.js";
+
+type ExecFileDone = (error: Error | null, stdout: string, stderr: string) => void;
+type ExecFileOverride = (bin: string, args: string[], options: { timeout: number }, done: ExecFileDone) => unknown;
+const execFileHook = vi.hoisted(() => ({ override: undefined as ExecFileOverride | undefined }));
+
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof childProcess>();
+  const execFile = (bin: string, args: string[], options: { timeout: number }, done: ExecFileDone): unknown =>
+    execFileHook.override ? execFileHook.override(bin, args, options, done) : Reflect.apply(actual.execFile, undefined, [bin, args, options, done]);
+  return { ...actual, execFile };
+});
 
 const PROFILE = "rv-readonly";
 const BRIEF = "Review octo/demo#7. BRIEF-SENTINEL-4f2a";
@@ -339,6 +351,42 @@ describe("agentChatReviewerDispatch spawn", () => {
     const dispatch = agentChatReviewerDispatch({ agentChatBin: join(dir, "absent"), roles: { g10: PROFILE, standard: PROFILE }, cwdFor: () => checkout });
 
     expectRefusal(await failure(dispatch.spawn("rv-demo-7", BRIEF, target)), "not found");
+  });
+
+  describe("with the default spawn timeout", () => {
+    /** A broker that answers after `ms`; execFile kills a child still running at its `timeout` option, as here. */
+    const brokerAnsweringAfter = (ms: number): void => {
+      execFileHook.override = (_bin, _args, { timeout }, done) => {
+        const killed = ms > timeout;
+        setTimeout(() => done(killed ? Object.assign(new Error("killed"), { killed: true, signal: "SIGTERM" }) : null, "", ""), Math.min(ms, timeout));
+        return { stdin: { on: () => undefined, end: () => undefined } };
+      };
+    };
+
+    afterEach(() => {
+      vi.useRealTimers();
+      execFileHook.override = undefined;
+    });
+
+    it("lets a broker that answers after 45 s finish the spawn", async () => {
+      vi.useFakeTimers();
+      brokerAnsweringAfter(45_000);
+
+      const spawned = dispatchOver().spawn("rv-demo-7", BRIEF, target);
+      await vi.advanceTimersByTimeAsync(45_000);
+
+      await expect(spawned).resolves.toBeUndefined();
+    });
+
+    it("maps a broker that hangs past 90 s to a timed-out ask", async () => {
+      vi.useFakeTimers();
+      brokerAnsweringAfter(10 * 60_000);
+
+      const outcome = failure(dispatchOver().spawn("rv-demo-7", BRIEF, target));
+      await vi.advanceTimersByTimeAsync(90_000);
+
+      expect(await outcome).toBeInstanceOf(ReviewerAskTimedOut);
+    });
   });
 });
 

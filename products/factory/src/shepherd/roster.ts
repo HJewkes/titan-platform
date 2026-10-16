@@ -2,7 +2,7 @@ import { listAgents, type AgentRow } from "@titan-design/agent-dispatch";
 
 /** How long one `agent ls --json` answers every caller in the serve process. */
 export const ROSTER_TTL_MS = 12_000;
-export const ROSTER_TIMEOUT_MS = 30_000;
+export const ROSTER_TIMEOUT_MS = 90_000;
 
 /** `unknown` carries the read's own error, so a caller can still tell a broker that is down from a refusal. */
 export type RosterRead = { kind: "known"; rows: readonly AgentRow[] } | { kind: "unknown"; error: unknown };

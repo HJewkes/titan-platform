@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { SEAT_REVIEWER, seatFixFirst } from "./external-review.js";
-import type { ReviewerReader } from "./review.js";
+import type { ReviewerReader } from "@titan-design/review-panel";
 import { awaitingTranscript, registeredOwners, rosterTie, type SeatRow } from "./seat-tie.js";
 
 const target = { repo: "octo/demo", pr: 4, head: "a".repeat(40) };

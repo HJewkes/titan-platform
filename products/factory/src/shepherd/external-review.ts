@@ -87,7 +87,11 @@ function readNamedReviewerOrNone(reader: ReviewerReader, input: AwaitVerdictInpu
 export async function awaitExternalVerdict(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, input: ExternalVerdictInput, timing: AwaitVerdictTiming, signal: AbortSignal): Promise<AwaitVerdictResult> {
   const clock = deadline(timing);
   for (;;) {
-    const row = latestSession(input.external, await roster().catch(() => []));
+    const rows = await roster().catch((error: unknown): undefined => {
+      console.error(`shepherd: ${input.repo}#${input.pr}: the roster could not be read, so ${input.external}'s verdict is not read this poll: ${failureText(error)}`);
+      return undefined;
+    });
+    const row = rows && latestSession(input.external, rows);
     if (row) {
       const read = { repo: input.repo, pr: input.pr, head: input.head, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 };
       const result = acceptExternalVerdict(input, row, await readNamedReviewerOrNone(reader, read));
@@ -300,8 +304,11 @@ const SpawnedProfile = z.looseObject({ reviewerAgentId: z.string(), reviewerProf
 async function authorProfile(raw: unknown, author: AgentIdentity, roster: () => Promise<readonly ReviewerAgent[]>): Promise<string | undefined> {
   const spawned = SpawnedProfile.safeParse(raw);
   if (spawned.success && spawned.data.reviewerAgentId === author.agentId) return spawned.data.reviewerProfile;
-  const rows = await roster().catch((): readonly ReviewerAgent[] => []);
-  return rows.find((row) => row.agentId === author.agentId && row.sessionId === author.sessionId)?.profile;
+  const rows = await roster().catch((error: unknown): undefined => {
+    console.error(`shepherd: author ${author.agentId}'s profile is unknown, the roster could not be read: ${failureText(error)}`);
+    return undefined;
+  });
+  return rows?.find((row) => row.agentId === author.agentId && row.sessionId === author.sessionId)?.profile;
 }
 
 /** Every acceptor's verdict passes here, so the recorded step names the profile of the reviewer whose message it took. */

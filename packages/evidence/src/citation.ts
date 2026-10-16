@@ -60,7 +60,7 @@ function reject(citation: Citation, reason: CitationRejection, detail: string): 
   return { ok: false, citation, reason, detail };
 }
 
-function unshownLine(citation: Citation, shown: ShownLines): number | undefined {
+function unshownLine(citation: LineRange, shown: ShownLines): number | undefined {
   const lines = shown.get(citation.path);
   for (let line = citation.lineStart; line <= citation.lineEnd; line++) {
     if (!lines?.has(line)) return line;
@@ -68,28 +68,31 @@ function unshownLine(citation: Citation, shown: ShownLines): number | undefined 
   return undefined;
 }
 
-function checkLocation(citation: Citation, source: LineSource, options: VerifyOptions): CitationCheck | { fileLines: readonly string[] } {
-  const { path, lineStart, lineEnd } = citation;
+export type RangeCheck = { ok: true; fileLines: readonly string[] } | { ok: false; reason: CitationRejection; detail: string };
+
+/** Checks a range's shape, path, end-of-file and visibility, with no quote; the first failure wins. */
+export function verifyRange(source: LineSource, range: LineRange, options: VerifyOptions = {}): RangeCheck {
+  const { path, lineStart, lineEnd } = range;
   if (!Number.isInteger(lineStart) || !Number.isInteger(lineEnd) || lineStart < 1 || lineEnd < lineStart) {
-    return reject(citation, "bad-range", `bad range ${lineStart}-${lineEnd}`);
+    return { ok: false, reason: "bad-range", detail: `bad range ${lineStart}-${lineEnd}` };
   }
   if (options.allowedPaths && !new Set(options.allowedPaths).has(path)) {
-    return reject(citation, "path-not-allowed", `${path} is not among the allowed paths`);
+    return { ok: false, reason: "path-not-allowed", detail: `${path} is not among the allowed paths` };
   }
   const fileLines = source.lines(path);
-  if (!fileLines) return reject(citation, "path-unreadable", `${path} could not be read`);
+  if (!fileLines) return { ok: false, reason: "path-unreadable", detail: `${path} could not be read` };
   if (lineEnd > fileLines.length) {
-    return reject(citation, "past-eof", `range ends at ${lineEnd} but ${path} has ${fileLines.length} lines`);
+    return { ok: false, reason: "past-eof", detail: `range ends at ${lineEnd} but ${path} has ${fileLines.length} lines` };
   }
-  const hidden = options.shown && unshownLine(citation, options.shown);
-  if (hidden !== undefined) return reject(citation, "not-shown", `${path}:${hidden} was not shown`);
-  return { fileLines };
+  const hidden = options.shown && unshownLine(range, options.shown);
+  if (hidden !== undefined) return { ok: false, reason: "not-shown", detail: `${path}:${hidden} was not shown` };
+  return { ok: true, fileLines };
 }
 
 /** Checks a citation's path, range, visibility and quote. Rejections carry a machine-readable reason. */
 export function verifyCitation(source: LineSource, citation: Citation, options: VerifyOptions = {}): CitationCheck {
-  const located = checkLocation(citation, source, options);
-  if (!("fileLines" in located)) return located;
+  const located = verifyRange(source, citation, options);
+  if (!located.ok) return reject(citation, located.reason, located.detail);
   const found = quoteInRange(located.fileLines, citation, citation.quote);
   if (found === null) return reject(citation, "quote-empty", "quote has no fragment of 3 or more characters");
   if (!found) return reject(citation, "quote-mismatch", `quote not found in ${citation.path}:${citation.lineStart}-${citation.lineEnd}`);

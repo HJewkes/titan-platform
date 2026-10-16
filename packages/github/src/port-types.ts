@@ -9,6 +9,12 @@ export interface Commit {
   message?: string;
 }
 
+/** One step of an Actions job, in run order; `conclusion` is null until the step completes. */
+export interface JobStep {
+  name: string;
+  conclusion: string | null;
+}
+
 /** The newest commit status per context on a sha, as the combined status endpoint reports it. */
 export interface CommitStatus {
   context: string;

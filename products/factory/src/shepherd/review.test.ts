@@ -1619,15 +1619,27 @@ describe("reviewPhase", () => {
     });
   });
 
-  it("returns none after the intent step alone when the roster read is refused", async () => {
+  it("holds the run as no-reviewer when the intent's roster read is refused", async () => {
     const dispatch = fakeDispatch();
     dispatch.roster = async () => Promise.reject(new Error("the roster is not readable"));
 
     const { verdicts, stepIds, resultOf } = await review({ dispatch });
 
-    expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict" }]);
-    expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`]);
+    expect(verdicts).toEqual([{ kind: "none", cause: "not-started", reason: `no-reviewer: Error at ${H1}; TP-2446` }]);
+    expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-no-reviewer-hold:${H1}`, `sh-no-reviewer-wait:${H1}`]);
     expect(resultOf(`sh-review-intent:${H1}`)).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: Error", refused: "Error" });
+  });
+
+  it("a timed-out roster read at the intent returns notStarted after the session-start window and starts no reviewer", async () => {
+    const dispatch = fakeDispatch();
+    dispatch.roster = async () => Promise.reject(new ReviewerAskTimedOut("agent-chat timed out"));
+
+    const { verdicts, stepIds, resultOf } = await review({ dispatch });
+
+    expect(verdicts).toEqual([{ kind: "none", cause: "not-started" }]);
+    expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`]);
+    expect(resultOf(`sh-review-intent:${H1}`)).toEqual({ kind: "none", notStarted: true, reason: "the reviewer dispatch was refused: ReviewerAskTimedOut (roster unread after 5 min)" });
+    expect(dispatch.spawns).toEqual([]);
   });
 
   /** Kills the host inside one step, before the step's body runs or after it ran and before its output is stored. */

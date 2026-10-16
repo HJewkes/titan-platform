@@ -2,10 +2,11 @@ import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@t
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import { H1, REPO } from "../test-support/land.js";
+import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { G10_RELEASE_STEP } from "./g10-release.js";
+import { supersedeMovedGates } from "./head-moved.js";
 import type { ShepherdPhases } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
@@ -45,24 +46,37 @@ interface World {
   fake: FakeGitHub;
   store: ShepherdStore;
   runId: string;
+  services: NonNullable<ReturnType<typeof factoryRoutesFor>["shepherd"]>;
+}
+
+interface Scene {
+  policy?: EffectivePolicy;
+  hold?: string;
+  /** A head whose every review round ends with no verdict, as tp#1558's did before its fix push. */
+  silentAt?: string;
 }
 
 /** A security PR held as `g10-review`, reviewed for real by a reviewer spawned with the profile `roles` gives its class. */
 function heldSecurityRun(roles: ReviewerRoles, policy: EffectivePolicy = AUTO_POLICY, hold = G10_HOLD): World {
+  return heldRun(roles, { policy, hold });
+}
+
+function heldRun(roles: ReviewerRoles, { policy = AUTO_POLICY, hold = G10_HOLD, silentAt }: Scene): World {
   const fake = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const wake: ShepherdPhases["wake"] = async () => ({ kind: "unhandled", reason: "no fixer in this test" });
   const ref = shepherdStoreRef();
   const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), review: { ...mergingReviewers(), roles } });
-  const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review: reviewPhase, wake })], routes, gatePollMs: 5 });
+  const review: ShepherdPhases["review"] = async (ctx, request) => (request.headSha === silentAt ? { kind: "none", cause: "no-verdict", reason: "no_block" } : reviewPhase(ctx, request));
+  const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review, wake })], routes, gatePollMs: 5 });
   hosts.push(host);
   fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge") });
   fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
   const store = ref.get();
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(policy) });
   store.register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy, kind: "security" });
-  store.hold(runId, hold);
-  return { host, fake, store, runId };
+  store.hold(runId, hold, undefined, { actor: "seat" });
+  return { host, fake, store, runId, services: routes.shepherd! };
 }
 
 const stepIds = (w: World): string[] => Object.values(w.host.runtime.status(w.runId)!.stepResults).map((result) => result.stepId);
@@ -109,6 +123,42 @@ describe("a hold no reviewer of Shepherd's releases, on a run waiting at merge w
     expect(reviewMode(w, H2)).toMatchObject({ kind: "dispatched" });
     expect(w.store.byRun(w.runId)).toMatchObject({ held: true, holdReason: hold });
     expect(w.fake.calls).not.toContain("merge");
+    expect(w.fake.pr(1).merged).toBe(false);
+  });
+});
+
+const OPUS = { g10: "bd-reviewer", standard: "reviewer" } as const;
+const pendingApproveMerge = (w: World) => w.host.pendingGates().filter((pending) => pending.runId === w.runId && pending.stepId === "approve-merge");
+
+describe("tp#1558: a failed-rounds owner gate whose head a fix push moves (TP-3083)", () => {
+  const H2 = fakeSha("tp1558-fix-push");
+
+  it("asks the owner again at the new head after Shepherd's own opus MERGE there, and merges nothing", async () => {
+    const w = heldRun(OPUS, { silentAt: H1 });
+    await gateOpened(w.host, gateId(w.runId, "approve-merge"), 10_000);
+    expect(w.host.gates.get(gateId(w.runId, "approve-merge"))?.prompt).toContain(`at head ${H1} into main? CI is green. Policy shepherd-route/failed-rounds`);
+
+    w.fake.pushHead(1, H2);
+    await supersedeMovedGates(w.host, w.services);
+    await gateOpened(w.host, gateId(w.runId, "approve-merge", 1), 10_000);
+
+    expect(w.host.gates.get(gateId(w.runId, "approve-merge"))?.status).toBe("cancelled");
+    expect(pendingApproveMerge(w).map((pending) => pending.gate.prompt)).toEqual([expect.stringContaining(`at head ${H2} into main? CI is green. Policy shepherd-route/failed-rounds`)]);
+    expect(w.fake.calls).not.toContain("merge");
+    expect(w.fake.pr(1).merged).toBe(false);
+  });
+});
+
+describe("a review the owner assigned to a person (TP-3083)", () => {
+  it("keeps an owner-review hold through Shepherd's own opus MERGE at a green head, and merges nothing", async () => {
+    const hold = "owner-review: assigned to a seat reviewer";
+    const w = heldRun(OPUS, { hold });
+
+    await vi.waitFor(() => expect(w.host.runtime.status(w.runId)?.currentStep).toBe("merge:0"), { timeout: 5_000 });
+
+    expect(reviewMode(w)).toMatchObject({ kind: "dispatched" });
+    expect(w.store.byRun(w.runId)).toMatchObject({ held: true, holdReason: hold });
+    expect(w.store.eventsOf(w.runId).filter((event) => event.kind === "release")).toEqual([]);
     expect(w.fake.pr(1).merged).toBe(false);
   });
 });

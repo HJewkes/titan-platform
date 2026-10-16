@@ -1,3 +1,4 @@
+import type { GitBehindProbe } from "../deploy-behind.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -66,11 +67,14 @@ async function deadPort(): Promise<number> {
   return port;
 }
 
-async function cli(argv: string[], fixture: ShepherdFixture): Promise<{ code: number; out: string; err: string }> {
+/** Stands in for the deploy checkout's git, so no test reads the host's. */
+const noLag: GitBehindProbe = async () => ({ commitTimes: [] });
+
+async function cli(argv: string[], fixture: ShepherdFixture, deployBehind: GitBehindProbe = noLag): Promise<{ code: number; out: string; err: string }> {
   let out = "";
   let err = "";
   const io = { stdout: (t: string) => void (out += t), stderr: (t: string) => void (err += t), env: {} };
-  const code = await runCli(argv, io, { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger });
+  const code = await runCli(argv, io, { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger, deployBehind });
   return { code, out, err };
 }
 
@@ -136,6 +140,29 @@ describe("the deploy block on shepherd status", () => {
 
     expect(JSON.parse(withDeploy.out)).toMatchObject({ rows: [], reviewSlots: null, deploy: { alarm: true, behind: 1, behindMinutes: 120, runningSha: SHA, consecutiveRefusals: 0, lastRefusal: null } });
     expect(JSON.parse(bare.out)).toEqual([]);
+  });
+
+  it("reports origin/main's lag from git as behind N, and alarms, when no deploy was asked", async () => {
+    const fixture = shepherdFixture({ frozen: true });
+    const watch = deployWatch({ readLog: () => "", runningSha: () => SHA, indexLock: async () => ({ state: "absent", path: "" }), now: Date.now });
+    const server = await serve(fixture, watch);
+    await watch.tick();
+    const tenBehind: GitBehindProbe = async () => ({ commitTimes: Array.from({ length: 10 }, (_, i) => Date.now() - (30 + i * 10) * 60_000) });
+
+    const status = await cli(["shepherd", "status", "--json", "--deploy", "--port", String(server.port)], fixture, tenBehind);
+
+    expect(JSON.parse(status.out)).toMatchObject({ deploy: { behind: 10, behindMinutes: 120, alarm: true, originLag: { merges: 10, asked: 0 } } });
+  });
+
+  it("alarms rather than reading behind 0 when git cannot be read", async () => {
+    const fixture = shepherdFixture({ frozen: true });
+    const watch = deployWatch({ readLog: () => "", runningSha: () => SHA, indexLock: async () => ({ state: "absent", path: "" }), now: Date.now });
+    const server = await serve(fixture, watch);
+    await watch.tick();
+
+    const status = await cli(["shepherd", "status", "--json", "--deploy", "--port", String(server.port)], fixture, async () => ({ unknown: "git is not on PATH" }));
+
+    expect(JSON.parse(status.out)).toMatchObject({ deploy: { alarm: true, unverified: expect.stringContaining("unknown") } });
   });
 
   it("ends the human view with the deploy line, then the reviewer slots", async () => {

@@ -37,8 +37,31 @@ interface Wiring {
   told: string[];
 }
 
-const actionsRuns = (failing: readonly string[]) => ["validate", "dag-check"].map((name, i) => successRun(name, i + 1, undefined, failing.includes(name) ? "failure" : "success"));
-const runs = (failing: readonly string[]) => actionsRuns(failing).map(outsideActions);
+/** `firstId` keeps each sha's job ids apart, as GitHub's are, so each job's steps are its own. */
+const actionsRuns = (failing: readonly string[], firstId = 1, conclusion = "failure") =>
+  ["validate", "dag-check"].map((name, i) => successRun(name, firstId + i, undefined, failing.includes(name) ? conclusion : "success"));
+const runs = (failing: readonly string[], firstId?: number, conclusion?: string) => actionsRuns(failing, firstId, conclusion).map(outsideActions);
+const TEST_STEP = "Run pnpm test";
+const HEAD_JOBS = 1;
+const RED_JOBS = 101;
+const BASE_JOBS = 201;
+
+const BASE_FAILURE = "packages/demo/src/widget.test.ts > widget > renders";
+
+/** A vitest log tail as GitHub serves it: timestamped, the failure banner over one heading and divider per failing test, then the summary. */
+function vitestLog(ids: readonly string[]): string {
+  const failures = ids.flatMap((id, i) => [` FAIL  ${id}`, "AssertionError: expected 1 to be 2", `⎯⎯[${i + 1}/${ids.length}]⎯`]);
+  const lines = [" RUN  v4.1.11", `⎯⎯ Failed Tests ${ids.length} ⎯⎯`, ...failures, `      Tests  ${ids.length} failed | 9 passed (${ids.length + 9})`, "##[error]Process completed with exit code 1."];
+  return lines.map((line) => `2026-10-13T12:00:00.0000000Z ${line}`).join("\n");
+}
+
+/** Every job from `firstId` ended `step` with `conclusion`, after a green setup step, and its log names `ids` failing. */
+function jobsFailAt(fake: FakeGitHub, firstId: number, step = TEST_STEP, ids: readonly string[] = [BASE_FAILURE], conclusion = "failure"): void {
+  for (const id of [firstId, firstId + 1]) {
+    fake.jobSteps.set(id, [{ name: "Set up job", conclusion: "success" }, { name: step, conclusion }, { name: "Complete job", conclusion: "skipped" }]);
+    fake.jobLogs.set(id, vitestLog(ids));
+  }
+}
 
 /**
  * Every wake is unhandled and the repo has no single seat, so a wake ends at the ci-failed gate and only a run whose
@@ -58,7 +81,8 @@ function openHost({ fake, ref, freeze, wakes, told }: Wiring, dbPath = ":memory:
 function world(prFailing: readonly string[], mainFailing: readonly string[], dbPath?: string): World {
   const fake = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, runs(prFailing));
-  fake.setRuns(RED, runs(mainFailing));
+  fake.setRuns(RED, runs(mainFailing, RED_JOBS));
+  [HEAD_JOBS, RED_JOBS, BASE_JOBS].forEach((firstId) => jobsFailAt(fake, firstId));
   fake.addPr({ headSha: H1 });
   let clock = 0;
   const wiring: Wiring = { fake, ref: shepherdStoreRef(), freeze: freezeStoreRef(() => clock++), wakes: [], told: [] };
@@ -120,6 +144,18 @@ describe("a ci-red wake under a frozen main", () => {
     expect(w.wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["ci-red", H1]]);
     expect(stepIds(w, runId)).toContain("sh-repair");
     expect(holdOf(w, runId)).toMatchObject({ result: { hold: false, reason: expect.stringContaining("dag-check") } });
+  });
+
+  it("wakes and spends a repair when a failing check fails on the red sha at another step", async () => {
+    const w = world(["validate"], ["validate"]);
+    jobsFailAt(w.fake, RED_JOBS, "Require a changeset for package changes");
+    w.freeze.get().freeze(REPO, RED);
+    const runId = start(w);
+
+    await gateOpened(w.host, gateId(runId, "ci-failed"));
+
+    expect(w.wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["ci-red", H1]]);
+    expect(holdOf(w, runId)).toMatchObject({ result: { hold: false, reason: expect.stringContaining("validate") } });
   });
 
   it("wakes and spends a repair as before when the repo is not frozen", async () => {
@@ -290,7 +326,7 @@ const BASE = fakeSha("base");
 
 /** The PR's base head, `main` at BASE, ends every check in `failing` with `conclusion`. */
 function baseFails(w: World, failing: readonly string[], conclusion = "failure"): void {
-  w.fake.setRuns(BASE, ["validate", "dag-check"].map((name, i) => outsideActions(successRun(name, i + 1, undefined, failing.includes(name) ? conclusion : "success"))));
+  w.fake.setRuns(BASE, runs(failing, BASE_JOBS, conclusion));
 }
 
 async function waitingOnBase(w: World, runId: string): Promise<void> {
@@ -324,6 +360,83 @@ describe("a ci-red wake on a PR whose base head is red", () => {
 
     expect(w.wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["ci-red", H1]]);
     expect(holdOf(w, runId)).toMatchObject({ result: { hold: false, reason: expect.stringContaining("dag-check") } });
+    expect(stepIds(w, runId)).not.toContain("sh-base-wait:0");
+  });
+
+  it("wakes a fixer when the head fails the base's red check at another step: an out-of-memory test run under a base red on its changeset step", async () => {
+    const w = world(["validate"], []);
+    baseFails(w, ["validate"]);
+    jobsFailAt(w.fake, BASE_JOBS, "Require a changeset for package changes");
+    const runId = start(w, { ...OWNER_GATE_POLICY, seat: "demo-seat" });
+
+    await gateOpened(w.host, gateId(runId, "ci-failed"));
+
+    expect(w.wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["ci-red", H1]]);
+    expect(holdOf(w, runId)).toMatchObject({ result: { hold: false, reason: expect.stringContaining("failing here but not on main") } });
+    expect(stepIds(w, runId)).not.toContain("sh-base-wait:0");
+    expect(w.told.filter((text) => text.includes("base-red"))).toEqual([]);
+  });
+
+  it("wakes a fixer when no job's failing step can be read, though the head's check fails at the base head", async () => {
+    const w = world(["validate"], []);
+    baseFails(w, ["validate"]);
+    w.fake.jobSteps.clear();
+    const runId = start(w);
+
+    await gateOpened(w.host, gateId(runId, "ci-failed"));
+
+    expect(w.wakes.map((wake) => wake.kind)).toEqual(["ci-red"]);
+    expect(stepIds(w, runId)).not.toContain("sh-base-wait:0");
+  });
+
+  it("wakes a fixer when the head fails the base's red step with a failing test the base lacks", async () => {
+    const w = world(["validate"], []);
+    baseFails(w, ["validate"]);
+    jobsFailAt(w.fake, HEAD_JOBS, TEST_STEP, [BASE_FAILURE, "products/demo/src/new.test.ts > new > regresses"]);
+    const runId = start(w, { ...OWNER_GATE_POLICY, seat: "demo-seat" });
+
+    await gateOpened(w.host, gateId(runId, "ci-failed"));
+
+    expect(w.wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["ci-red", H1]]);
+    expect(holdOf(w, runId)).toMatchObject({ result: { hold: false, reason: expect.stringContaining("failing here but not on main") } });
+    expect(stepIds(w, runId)).not.toContain("sh-base-wait:0");
+    expect(w.told.filter((text) => text.includes("base-red"))).toEqual([]);
+  });
+
+  it("holds a head whose failing tests at the base's red step are all failing on the base, which fails more", async () => {
+    const w = world(["validate"], []);
+    baseFails(w, ["validate"]);
+    jobsFailAt(w.fake, BASE_JOBS, TEST_STEP, [BASE_FAILURE, "packages/demo/src/other.test.ts > other"]);
+    const runId = start(w);
+
+    await waitingOnBase(w, runId);
+
+    expect(w.wakes).toEqual([]);
+    expect(holdOf(w, runId)).toMatchObject({ result: { hold: true, baseRed: { baseRef: "main", baseSha: BASE }, reason: expect.stringContaining("with the same failures") } });
+  });
+
+  it("wakes a fixer when the head's log at the base's red step names no failure it can compare", async () => {
+    const w = world(["validate"], []);
+    baseFails(w, ["validate"]);
+    for (const id of [HEAD_JOBS, HEAD_JOBS + 1]) w.fake.jobLogs.set(id, "2026-10-13T12:00:00.0000000Z ##[error]Process completed with exit code 1.");
+    const runId = start(w);
+
+    await gateOpened(w.host, gateId(runId, "ci-failed"));
+
+    expect(w.wakes.map((wake) => wake.kind)).toEqual(["ci-red"]);
+    expect(stepIds(w, runId)).not.toContain("sh-base-wait:0");
+  });
+
+  // Mutation caught: dropping the step-conclusion check, which reads the identical logs and holds the head as base-red.
+  it.each(["timed_out", "cancelled"])("wakes a fixer when the head's and base's failing step both ended %s, whose logs say nothing of what failed", async (stopped) => {
+    const w = world(["validate"], []);
+    baseFails(w, ["validate"]);
+    [HEAD_JOBS, BASE_JOBS].forEach((firstId) => jobsFailAt(w.fake, firstId, TEST_STEP, [BASE_FAILURE], stopped));
+    const runId = start(w);
+
+    await gateOpened(w.host, gateId(runId, "ci-failed"));
+
+    expect(w.wakes.map((wake) => wake.kind)).toEqual(["ci-red"]);
     expect(stepIds(w, runId)).not.toContain("sh-base-wait:0");
   });
 

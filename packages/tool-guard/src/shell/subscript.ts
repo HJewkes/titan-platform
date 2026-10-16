@@ -64,7 +64,7 @@ interface SourceScan {
   brackets: Map<number, number>;
   /** Each `[` whose pairing crossed a `$( )`, `${ }` or backquote span the scan read one character at a time. */
   unsurePairs: Set<number>;
-  /** What `selfContainedEnd` found for each `${` or backquote opener it has read, so each is read once. */
+  /** What `selfContainedEnd` found for each `${`, `$(` or backquote opener it has read, so each is read once. */
   selfContained: Map<number, number>;
   spans: SpanEnds;
 }

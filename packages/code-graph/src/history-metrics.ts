@@ -1,14 +1,18 @@
 import {
+  accreteSymbols,
   aggregateChurnWindows,
   authorLinesByPath,
   computeOwnership,
   entriesWithin,
   loadChurnResult,
+  loadFileEditsResult,
   loadFirstSeenResult,
   type ChurnEntry,
   type ChurnWindow,
+  type FileEdit,
   type PathChurn,
   summarizeOwnership,
+  type SymbolSpan,
 } from "./history/index.js";
 import { groupTestsBySource, type TestSourceLink } from "./analysis/test-linker.js";
 import { computeRecencyWindows, round3, windowSuffix } from "./history-recency.js";
@@ -25,7 +29,14 @@ export interface HistoryMetricsOptions {
   nowEpoch?: number;
   /** Read history up to this rev instead of HEAD; pair it with the rev's commit time as `nowEpoch`. */
   rev?: string;
+  /** Day windows to store per-symbol accretion for; default {@link DEFAULT_ACCRETION_WINDOWS}, [] turns it off. */
+  accretionWindows?: number[];
+  /** Task ids read from commit subjects for `symbol_task_ids_{w}`; default `DEFAULT_TASK_ID_PATTERN`. */
+  taskIdPattern?: RegExp;
 }
+
+/** Re-edits of one function across distinct tasks within a week is the accretion signal the slop audit asked for. */
+export const DEFAULT_ACCRETION_WINDOWS = [7];
 
 /** Windows the dashboard switcher offers; churn is stored for each by default. */
 export const DEFAULT_CHURN_WINDOWS = [30, 90, 180];
@@ -74,16 +85,11 @@ export function loadHistoryMetrics(
   idRoot: string,
   options: HistoryMetricsOptions = {},
 ): LoadedHistory | null {
-  const knownPaths = collectFileIds(nodes);
+  const nodeList = [...nodes];
+  const knownPaths = collectFileIds(nodeList);
   const primaryWindow = options.churnWindowDays ?? 30;
   const windows = resolveChurnWindows(options.churnWindows, primaryWindow, options.includeLifetime === true);
-  // Load the widest window once and slice it per window; lifetime sorts widest.
-  const load = loadChurnResult({
-    repoRoot: idRoot,
-    windowDays: windows[windows.length - 1]!,
-    rev: options.rev,
-    untilEpoch: options.nowEpoch,
-  });
+  const load = loadWidestChurn(idRoot, windows, options);
   if (!load.ok) return load.reason === "not-git" ? null : { metrics: [], primaryEntries: [], warnings: [historyWarning("churn", load)] };
   const wide = load.value;
   const nowEpoch = options.nowEpoch ?? Math.floor(Date.now() / 1000);
@@ -94,10 +100,16 @@ export function loadHistoryMetrics(
     ...churnMetrics(churnByWindow),
     ...ownershipMetrics(primaryEntries, primaryWindow, knownPaths),
     ...recencyMetrics({ idRoot, rev: options.rev, knownPaths, nowEpoch, warnings }, churnByWindow),
+    ...accretionMetrics({ idRoot, nodes: nodeList, options, nowEpoch, warnings }),
   ];
   // Lifetime ownership is the dominant owner over full history; `wide` is full history when lifetime is on.
   if (options.includeLifetime === true) metrics.push(...ownershipMetrics(wide, "lifetime", knownPaths));
   return { metrics, primaryEntries, warnings };
+}
+
+/** Load the widest window once so each narrower one is a slice of it; lifetime sorts widest. */
+function loadWidestChurn(idRoot: string, windows: readonly ChurnWindow[], options: HistoryMetricsOptions) {
+  return loadChurnResult({ repoRoot: idRoot, windowDays: windows.at(-1)!, rev: options.rev, untilEpoch: options.nowEpoch });
 }
 
 export function collectFileIds(nodes: Iterable<GraphNode>): Set<string> {
@@ -211,6 +223,69 @@ function recencyMetrics(
   return computeRecencyWindows(load.ok ? load.value : new Map<string, number>(), churnedByWindow, at.nowEpoch);
 }
 
-function historyWarning(log: "churn" | "first-seen", failure: { reason: string; detail: string }): string {
+interface AccretionInput {
+  idRoot: string;
+  nodes: readonly GraphNode[];
+  options: HistoryMetricsOptions;
+  nowEpoch: number;
+  warnings: string[];
+}
+
+/** `symbol_task_ids_{w}` and `symbol_edit_commits_{w}` per edited symbol, from one patch log over the widest window. */
+function accretionMetrics(at: AccretionInput): GraphMetric[] {
+  const windows = [...new Set(at.options.accretionWindows ?? DEFAULT_ACCRETION_WINDOWS)].filter((w) => w > 0);
+  if (windows.length === 0) return [];
+  const load = loadFileEditsResult({
+    repoRoot: at.idRoot,
+    windowDays: Math.max(...windows),
+    rev: at.options.rev,
+    untilEpoch: at.options.nowEpoch,
+    taskIdPattern: at.options.taskIdPattern,
+  });
+  if (!load.ok) {
+    if (load.reason !== "not-git") at.warnings.push(historyWarning("patch", load));
+    return [];
+  }
+  const spans = symbolSpansByFile(at.nodes);
+  return windows.flatMap((w) => symbolAccretionMetrics(editsWithin(load.value, w, at.nowEpoch), spans, w));
+}
+
+function editsWithin(edits: readonly FileEdit[], windowDays: number, nowEpoch: number): FileEdit[] {
+  const cutoff = nowEpoch - windowDays * 86400;
+  return edits.filter((e) => e.epoch >= cutoff);
+}
+
+/** Name per-symbol accretion for one window as `symbol_task_ids_{w}` and `symbol_edit_commits_{w}`. */
+export function symbolAccretionMetrics(
+  edits: readonly FileEdit[],
+  spansByFile: ReadonlyMap<string, readonly SymbolSpan[]>,
+  window: number,
+): GraphMetric[] {
+  const suffix = windowSuffix(window);
+  const out: GraphMetric[] = [];
+  for (const [nodeId, acc] of accreteSymbols(edits, spansByFile)) {
+    out.push(
+      { nodeId, name: `symbol_task_ids_${suffix}`, value: acc.taskIds.size, unit: "count" },
+      { nodeId, name: `symbol_edit_commits_${suffix}`, value: acc.commits.size, unit: "count" },
+    );
+  }
+  return out;
+}
+
+/** Symbols that carry a line span (functions, methods, classes), grouped by their file id. */
+export function symbolSpansByFile(nodes: Iterable<GraphNode>): Map<string, SymbolSpan[]> {
+  const out = new Map<string, SymbolSpan[]>();
+  for (const n of nodes) {
+    const start = n.attrs?.startLine;
+    const end = n.attrs?.endLine;
+    if (n.kind !== "symbol" || !n.parentId || typeof start !== "number" || typeof end !== "number") continue;
+    const bucket = out.get(n.parentId) ?? [];
+    bucket.push({ id: n.id, startLine: start, endLine: end });
+    out.set(n.parentId, bucket);
+  }
+  return out;
+}
+
+function historyWarning(log: "churn" | "first-seen" | "patch", failure: { reason: string; detail: string }): string {
   return `git ${log} log ${failure.reason}: ${failure.detail}; history metrics are incomplete`;
 }

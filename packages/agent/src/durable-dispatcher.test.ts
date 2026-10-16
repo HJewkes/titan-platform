@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import { codexExecCapabilities } from "./codex-exec.js";
 import { createDurableHarnessDispatcher } from "./durable-dispatcher.js";
 import type { DurableHarnessSuccess } from "./durable-types.js";
-import type { CodexRunRequest, HarnessAdapter, HarnessRunResult } from "./harness-contracts.js";
+import type { CodexRunRequest, HarnessAdapter, HarnessRunFailure, HarnessRunResult } from "./harness-contracts.js";
 
 type Stored = DurableHarnessSuccess<unknown, "codex">;
 
@@ -73,14 +73,21 @@ function success<T>(value: T): HarnessRunResult<T, "codex"> {
   };
 }
 
+const spend: UsageMeasurement = {
+  model: "gpt-6",
+  tokens: { input: 900, output: 100, cachedInput: null, cacheWriteInput: null, reasoningOutput: null, total: 1_000 },
+  cost: { usd: 0.07, kind: "reported" },
+  source: "codex-exec",
+  kind: "delta",
+  responseId: "response-1",
+};
+
+function failedRun(failure: HarnessRunFailure, usage: UsageMeasurement[]): HarnessRunResult<unknown, "codex"> {
+  return { ok: false, harness: "codex", execution: { executionId: "adapter-execution" }, failure, usage };
+}
+
 function invalidOutput(usage: UsageMeasurement[]): HarnessRunResult<unknown, "codex"> {
-  return {
-    ok: false,
-    harness: "codex",
-    execution: { executionId: "adapter-execution" },
-    failure: { kind: "output_invalid", reason: "schema mismatch" },
-    usage,
-  };
+  return failedRun({ kind: "output_invalid", reason: "schema mismatch" }, usage);
 }
 
 function setup(
@@ -280,14 +287,6 @@ describe("durable harness dispatch", () => {
   });
 
   it("keeps the spend of a harness failure on the failed terminal", async () => {
-    const spend: UsageMeasurement = {
-      model: "gpt-6",
-      tokens: { input: 900, output: 100, cachedInput: null, cacheWriteInput: null, reasoningOutput: null, total: 1_000 },
-      cost: { usd: 0.07, kind: "reported" },
-      source: "codex-exec",
-      kind: "delta",
-      responseId: "response-1",
-    };
     const { dispatcher, ledger } = setup(controlledAdapter(async () => invalidOutput([spend])));
     const ack = await dispatcher.dispatch({ executionId: "spent", requestKey: "request-spent", request: request() });
 
@@ -301,6 +300,26 @@ describe("durable harness dispatch", () => {
 
     await expect(ack.completion).resolves.toMatchObject({ kind: "terminal", terminal: { outcome: "failed" } });
     expect(ledger.get("unspent")?.terminal).not.toHaveProperty("usage");
+  });
+
+  it.each<[string, HarnessRunFailure]>([
+    ["an aborted", { kind: "aborted", reason: "signalled" }],
+    ["a wall-time-exceeded", { kind: "wall_time_exceeded", reason: "deadline", wallTimeMs: 1_000 }],
+    ["a cancelled_unknown", { kind: "cancelled_unknown", reason: "inactivity" }],
+  ])("keeps the spend of %s harness on the cancellation_unknown terminal", async (_, failure) => {
+    const { dispatcher, ledger } = setup(controlledAdapter(async () => failedRun(failure, [spend])));
+    const ack = await dispatcher.dispatch({ executionId: "stopped", requestKey: "request-stopped", request: request() });
+
+    await expect(ack.completion).resolves.toMatchObject({ kind: "terminal", terminal: { outcome: "cancellation_unknown", usage: [spend] } });
+    expect(ledger.get("stopped")?.terminal).toMatchObject({ outcome: "cancellation_unknown", usage: [spend] });
+  });
+
+  it("stores no usage key on a cancellation_unknown terminal that spent nothing", async () => {
+    const { dispatcher, ledger } = setup(controlledAdapter(async () => failedRun({ kind: "aborted", reason: "signalled" }, [])));
+    const ack = await dispatcher.dispatch({ executionId: "stopped", requestKey: "request-stopped", request: request() });
+
+    await expect(ack.completion).resolves.toMatchObject({ kind: "terminal", terminal: { outcome: "cancellation_unknown" } });
+    expect(ledger.get("stopped")?.terminal).not.toHaveProperty("usage");
   });
 
   it("settles ownership lost when a failure-path ledger read throws", async () => {
