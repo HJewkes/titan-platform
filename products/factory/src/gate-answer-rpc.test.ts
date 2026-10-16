@@ -1,0 +1,242 @@
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { CLIENT_HEADER, silentLogger } from "@titan-design/daemon";
+import { fakeGitHub, githubPort, type FakeGitHub, type GitHubPort } from "@titan-design/github";
+import { GateResolverRefused } from "@titan-design/hitl";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
+import { defineWorkflow } from "./definition.js";
+import { ANSWER_SHIP_PATH, MAX_ANSWER_BODY_BYTES } from "./gate-answer-rpc.js";
+import { createFactoryRegistry } from "./registry.js";
+import { startFactoryServer, type FactoryServer } from "./serve.js";
+import { TEST_BRIEF } from "./test-support/brief.js";
+import { shepherdFixture } from "./test-support/shepherd.js";
+
+const REPO = "example-org/example-repo";
+const NOW_MS = Date.parse("2026-10-16T12:00:00.000Z");
+const H = "a".repeat(40);
+const H2 = "b".repeat(40);
+const TREE = "c".repeat(40);
+const ROUND_ID = "r-1";
+
+const mergeGate = defineWorkflow({
+  name: "merge-gate",
+  steps: [{ id: "approve-merge", kind: "assisted" }],
+  run: async (ctx) => {
+    const pr = ctx.param("pr")!;
+    const prompt = `Merge PR #${pr} in ${REPO} at head ${H}? CI is green. Policy authority/MRG-AU: synthetic reason`;
+    await ctx.assisted("approve-merge", prompt, { schema: z.object({ decision: z.enum(["merge", "abandon"]), headSha: z.literal(H) }), brief: TEST_BRIEF });
+  },
+});
+
+const dirs: string[] = [];
+const servers: FactoryServer[] = [];
+afterEach(async () => {
+  for (const server of servers.splice(0)) await server.close();
+  dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
+});
+
+interface World {
+  server: FactoryServer;
+  github: FakeGitHub;
+  dir: string;
+  roundsDir: string;
+  runId: string;
+  gateId: string;
+  pr: number;
+}
+
+async function world({ mounted = true, port }: { mounted?: boolean; port?: (base: GitHubPort) => GitHubPort } = {}): Promise<World> {
+  const dir = mkdtempSync(join(tmpdir(), "factory-answer-ship-"));
+  dirs.push(dir);
+  const roundsDir = join(dir, "rounds");
+  mkdirSync(roundsDir);
+  const github = fakeGitHub({ repo: REPO });
+  const base = githubPort(github.wire);
+  const fixture = shepherdFixture({ frozen: true, port: port ? port(base) : base });
+  const server = await startFactoryServer({
+    dbPath: join(dir, "factory.sqlite3"),
+    workflows: [mergeGate],
+    routes: fixture.routes,
+    resyncOnStart: false,
+    now: () => NOW_MS,
+    gatePollMs: 10,
+    port: 0,
+    logger: silentLogger,
+    github: { status: () => "ok", refresh: async () => undefined },
+    build: { sha: "test", behindMain: { status: () => 0, refresh: async () => undefined } },
+    ...(mounted && { consoleAnswers: { roundsDir } }),
+  });
+  servers.push(server);
+  const { number: pr } = github.addPr({ headSha: H });
+  github.commits.set(H, { sha: H, parents: [], tree: TREE });
+  const runId = server.host.runtime.start("merge-gate", { pr: String(pr) });
+  const gateId = `${runId}/approve-merge`;
+  await vi.waitFor(() => expect(server.host.gates.get(gateId)?.status).toBe("pending"));
+  return { server, github, dir, roundsDir, runId, gateId, pr };
+}
+
+const hash = (data: string): string => createHash("sha256").update(data).digest("hex");
+
+/** Writes a round the owner shipped at H, and returns the packet's sha256. */
+function writeRound({ roundsDir, pr }: World, roundId = ROUND_ID): string {
+  const dir = join(roundsDir, roundId);
+  mkdirSync(dir);
+  const merge = { repo: REPO, pr, headSha: H, ship: ["Ship it"] };
+  const round = JSON.stringify({ unit: "example-unit", round: 1, questions: [{ id: "q-ship", kind: "pick-one", options: ["Ship it", "Revise"], merge }] });
+  const submittedAt = new Date(NOW_MS - 10 * 60_000).toISOString();
+  const feedback = JSON.stringify({ unit: "example-unit", round: 1, manifestSha256: hash(round), submittedAt, answers: [{ questionId: "q-ship", pick: "Ship it" }] });
+  const packet = JSON.stringify({ schema: "titan-review/ci-packet@1", packetId: "p-1", repo: REPO, pr, headSha: H, headTree: TREE, mainSha: "e".repeat(40), images: [] });
+  writeFileSync(join(dir, "round.json"), round);
+  writeFileSync(join(dir, "feedback.json"), feedback);
+  writeFileSync(join(dir, "packet.json"), packet);
+  return hash(packet);
+}
+
+function answer(w: World, packetSha: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return { runId: w.runId, gateId: w.gateId, headSha: H, tree: TREE, packetSha, roundId: ROUND_ID, choice: "merge", ...extra };
+}
+
+const post = (server: FactoryServer, body: unknown): Promise<Response> =>
+  fetch(`http://127.0.0.1:${server.port}${ANSWER_SHIP_PATH}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", [CLIENT_HEADER]: "test" },
+    body: typeof body === "string" ? body : JSON.stringify(body),
+  });
+
+const followUps = (w: World): string[] => {
+  try {
+    return readFileSync(join(w.dir, "follow-ups.jsonl"), "utf8").split("\n").filter(Boolean);
+  } catch {
+    return [];
+  }
+};
+
+describe("POST /gates/answer-ship", () => {
+  it("is not mounted without consoleAnswers, so the route 404s and the gate stays pending", async () => {
+    const w = await world({ mounted: false });
+    const packetSha = writeRound(w);
+
+    const res = await post(w.server, answer(w, packetSha));
+
+    expect(res.status).toBe(404);
+    expect(w.server.host.gates.get(w.gateId)?.status).toBe("pending");
+  });
+
+  it("resolves the gate as merge at the head, as owner-remote from the console's Ship channel bound to the packet", async () => {
+    const w = await world();
+    const packetSha = writeRound(w);
+
+    const res = await post(w.server, answer(w, packetSha));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ outcome: "resolved", gateId: w.gateId, choice: "merge" });
+    const gate = w.server.host.gates.get(w.gateId);
+    expect(gate?.payload).toEqual({ decision: "merge", headSha: H });
+    expect(gate?.resolvedBy).toEqual({ class: "owner-remote", id: "titan-console", channel: "console:ship", confirmEvent: `packet:${packetSha}` });
+    expect(followUps(w)).toEqual([]);
+  });
+
+  it("refuses with 403 when the gate store refuses the owner-remote resolver, leaving the gate pending", async () => {
+    const w = await world();
+    const packetSha = writeRound(w);
+    vi.spyOn(w.server.host.gates, "resolve").mockImplementation((id, _payload, resolver) => {
+      throw new GateResolverRefused(id, resolver.class, "the rule admits owner-terminal only");
+    });
+
+    const res = await post(w.server, answer(w, packetSha));
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ outcome: "refused", reason: "resolver" });
+    expect(w.server.host.gates.get(w.gateId)?.status).toBe("pending");
+  });
+
+  it("appends one 0600 pick-later follow-up when merge-pick-later resolves, and none for a replay", async () => {
+    const w = await world();
+    const packetSha = writeRound(w);
+
+    const first = await post(w.server, answer(w, packetSha, { choice: "merge-pick-later" }));
+    const replay = await post(w.server, answer(w, packetSha, { choice: "merge-pick-later" }));
+
+    expect(await first.json()).toEqual({ outcome: "resolved", gateId: w.gateId, choice: "merge-pick-later" });
+    expect([replay.status, await replay.json()]).toEqual([200, { outcome: "already", gateId: w.gateId }]);
+    const lines = followUps(w).map((line) => JSON.parse(line) as unknown);
+    expect(lines).toEqual([{ at: new Date(NOW_MS).toISOString(), runId: w.runId, gateId: w.gateId, headSha: H, packetSha, roundId: ROUND_ID, kind: "pick-later" }]);
+    expect(statSync(join(w.dir, "follow-ups.jsonl")).mode & 0o777).toBe(0o600);
+  });
+
+  it("resolves once under a concurrent double call: the second reads already, and only one follow-up is written", async () => {
+    let release: () => void = () => undefined;
+    const bothChecked = new Promise<void>((resolve) => (release = resolve));
+    let waiting = 0;
+    const port = (base: GitHubPort): GitHubPort => ({
+      ...base,
+      getCommit: async (repo, sha) => {
+        if (++waiting === 2) release();
+        await bothChecked;
+        return base.getCommit(repo, sha);
+      },
+    });
+    const w = await world({ port });
+    const packetSha = writeRound(w);
+    const body = answer(w, packetSha, { choice: "merge-pick-later" });
+
+    const responses = await Promise.all([post(w.server, body), post(w.server, body)]);
+
+    const outcomes = await Promise.all(responses.map(async (res) => z.object({ outcome: z.string() }).parse(await res.json()).outcome));
+    expect(outcomes.sort()).toEqual(["already", "resolved"]);
+    expect(followUps(w)).toHaveLength(1);
+  });
+
+  it("refuses a symlinked packet.json and a symlinked round dir instead of following them", async () => {
+    const w = await world();
+    const packetSha = writeRound(w, "elsewhere");
+    mkdirSync(join(w.roundsDir, ROUND_ID));
+    for (const name of ["round.json", "feedback.json"]) writeFileSync(join(w.roundsDir, ROUND_ID, name), readFileSync(join(w.roundsDir, "elsewhere", name)));
+    symlinkSync(join(w.roundsDir, "elsewhere", "packet.json"), join(w.roundsDir, ROUND_ID, "packet.json"));
+    symlinkSync(join(w.roundsDir, "elsewhere"), join(w.roundsDir, "linked"));
+
+    const file = await post(w.server, answer(w, packetSha));
+    const dir = await post(w.server, answer(w, packetSha, { roundId: "linked" }));
+
+    expect([file.status, await file.json()]).toMatchObject([422, { outcome: "refused", reason: "round-unreadable", detail: expect.stringContaining("packet.json") }]);
+    expect([dir.status, await dir.json()]).toMatchObject([422, { outcome: "refused", reason: "round-unreadable" }]);
+    expect(w.server.host.gates.get(w.gateId)?.status).toBe("pending");
+  });
+
+  it("rejects a round id that climbs out of the rounds dir, and a body over the cap", async () => {
+    const w = await world();
+    const packetSha = writeRound(w);
+
+    const climbing = await post(w.server, answer(w, packetSha, { roundId: `../rounds/${ROUND_ID}` }));
+    const oversize = await post(w.server, JSON.stringify({ ...answer(w, packetSha), pad: "x".repeat(MAX_ANSWER_BODY_BYTES) }));
+
+    expect(climbing.status).toBe(400);
+    expect(oversize.status).toBe(413);
+    expect(w.server.host.gates.get(w.gateId)?.status).toBe("pending");
+  });
+
+  it("maps a moved head to 409, a closed PR to 410 and a wrong packet to 422, resolving nothing", async () => {
+    const w = await world();
+    const packetSha = writeRound(w);
+
+    const wrongPacket = await post(w.server, answer(w, "f".repeat(64)));
+    w.github.pushHead(w.pr, H2);
+    const moved = await post(w.server, answer(w, packetSha));
+    await w.github.wire.closePr(REPO, w.pr);
+    const gone = await post(w.server, answer(w, packetSha));
+
+    expect([wrongPacket.status, await wrongPacket.json()]).toMatchObject([422, { outcome: "refused", reason: "packet" }]);
+    expect([moved.status, await moved.json()]).toEqual([409, { outcome: "moved", currentHead: H2 }]);
+    expect([gone.status, await gone.json()]).toMatchObject([410, { outcome: "gone" }]);
+    expect(w.server.host.gates.get(w.gateId)?.status).toBe("pending");
+  });
+
+  it("is no registry command, and so no MCP tool, so only the mounted route can answer a Ship", () => {
+    const names = createFactoryRegistry().list().map((cmd) => cmd.name);
+
+    expect(names.filter((name) => /answer|ship/i.test(name))).toEqual([]);
+  });
+});

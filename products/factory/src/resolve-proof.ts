@@ -18,7 +18,7 @@ type App = Parameters<NonNullable<StartDaemonOptions["mountRoutes"]>>[0];
 type Status = 400 | 403 | 409 | 413 | 500 | 503;
 type Answer = { body: object; status: 200 | Status };
 
-const TOO_LARGE = Symbol("too-large");
+export const TOO_LARGE = Symbol("too-large");
 const ProofBody = z.strictObject({ statement: z.string().min(1), signature: z.string().min(1) });
 
 interface ResolveProofDeps {
@@ -115,7 +115,7 @@ function parseBody(raw: string): z.infer<typeof ProofBody> | undefined {
 }
 
 /** Stops reading at `max` bytes, so an oversize body costs no more memory than the limit, whatever Content-Length claims. */
-async function readCapped(request: Request, max: number): Promise<string | typeof TOO_LARGE> {
+export async function readCapped(request: Request, max: number): Promise<string | typeof TOO_LARGE> {
   if (Number(request.headers.get("content-length") ?? 0) > max) return TOO_LARGE;
   const reader = request.body?.getReader();
   if (reader === undefined) return "";

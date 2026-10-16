@@ -11,7 +11,7 @@ import { readLastDeploy } from "./deploy-ports.js";
 import { DEPLOY_WATCH_MS, type DeployWatch } from "./deploy-watch.js";
 import { gateNotifyWatch, type GateNotifyOptions, type GateNotifyWatch } from "./gate-notify-sweep.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
-import { restartDivergedLogged } from "./shepherd/diverged-sweep.js";
+import { divergedPrClosed, restartDivergedLogged } from "./shepherd/diverged-sweep.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
 import { heldRun } from "./serve-holds.js";
@@ -26,7 +26,7 @@ import type { FactoryHost, FactoryHostOptions } from "./host.js";
 import type { NeedsSources } from "./needs/rpc.js";
 import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
-import { mountResolveProof } from "./resolve-proof.js";
+import { mountServeRoutes, type ConsoleAnswersServeOptions } from "./serve-routes.js";
 import { startSweep, type Sweep } from "./sweep.js";
 import type { ShepherdServices } from "./shepherd/services.js";
 import { openFramedHost, type FramedHostOptions } from "./shepherd/frames.js";
@@ -53,7 +53,7 @@ const CHECKOUT_SWEEP_MS = 3_600_000;
 const STATUSES: readonly WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
 const { version: FACTORY_VERSION } = createRequire(import.meta.url)("../package.json") as { version: string };
 
-export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweepOptions, FramedHostOptions {
+export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweepOptions, FramedHostOptions, ConsoleAnswersServeOptions {
   /** Holds the daemon pid file, the one-server-per-directory lock; defaults to the database's directory. */
   stateDir?: string;
   /** Defaults to 7410; 0 binds an ephemeral port. */
@@ -230,7 +230,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
     toolPrefix: TOOL_PREFIX,
     mcpName: "titan-factory",
     health: () => ({
-      ...factoryHealth(host, routeFor, heldRun(options.routes.shepherd)),
+      ...factoryHealth(host, routeFor, heldRun(options.routes.shepherd), divergedPrClosed(options.routes.shepherd)),
       github: github.status(),
       ...(options.routes.shepherd?.pacing && { snapshotTick: options.routes.shepherd.pacing.status() }),
       build: { sha: build.sha, behindMain: build.status() },
@@ -242,7 +242,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
       ownerKeys: proofs.keys.ok ? { count: proofs.keys.ids.length, ids: proofs.keys.ids } : { count: 0, refusal: proofs.keys.refusal },
       ...startHealth(start(), options),
     }),
-    mountRoutes: (app) => mountResolveProof(app, { host, ...proofs, now: options.now ?? Date.now, port: options.routes.shepherd?.port, store: options.routes.shepherd?.store, log }),
+    mountRoutes: (app) => mountServeRoutes(app, { host, ...proofs, now: options.now ?? Date.now, routes: options.routes, consoleAnswers: options.consoleAnswers, stateDir: stateDirOf(options), log }),
     logger: options.logger,
   };
 }
@@ -257,16 +257,15 @@ function buildHealth(options: FactoryServerOptions): BuildHealth {
   return { sha, status: probe.status, refresh: probe.refresh };
 }
 
-/**
- * Without `routeFor`, `busy` cannot see park-routed steps and lists only review and merging steps. Finished runs are counted, not listed, so a probe never parses
- * every one (TP-2419); recovery_required runs are listed by id, so a deploy's watch can tell a run its restart interrupted from one that broke after it.
- */
-export function factoryHealth(host: FactoryHost, routeFor: RoutedRunner["routeFor"] = () => undefined, isHeld?: HoldPredicate): Record<string, unknown> {
+/** Without `routeFor`, `busy` cannot see park-routed steps. Finished runs are counted, not listed, so a probe never parses every one (TP-2419); recovery_required
+ * runs are listed by id, so a deploy's watch can tell a run its restart interrupted, or one on a closed PR, from one that broke after it. */
+export function factoryHealth(host: FactoryHost, routeFor: RoutedRunner["routeFor"] = () => undefined, isHeld?: HoldPredicate, prClosed: ReadonlySet<string> = new Set()): Record<string, unknown> {
   const runs = Object.fromEntries(host.countRuns(STATUSES));
   const running = host.runtime.list(["running"]);
   const held = isHeld ? heldSkipped(running, routeFor, isHeld) : [];
   const recoveryRequired = host.runtime.list(["recovery_required"]).map((run) => run.id);
-  return { runs, recoveryRequired, pendingGates: host.pendingGates().length, busy: busyRuns(running, routeFor, isHeld), heldSkipped: held };
+  const busy = busyRuns(running, routeFor, isHeld);
+  return { runs, recoveryRequired, recoveryPrClosed: recoveryRequired.filter((id) => prClosed.has(id)), pendingGates: host.pendingGates().length, busy, heldSkipped: held };
 }
 
 function startSeatDigest(host: FactoryHost, services: ShepherdServices | undefined, ports: SeatDigestPorts | undefined, stateDir: string, log: Logger): Sweep | undefined {

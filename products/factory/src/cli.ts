@@ -10,6 +10,7 @@ import { configuredDeployPacer } from "./deploy-pacer-sweep.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import { configuredFixerRetire, configuredMainWatch } from "./main-watch-ports.js";
 import { configuredSeatDigest } from "./seat-digest-ports.js";
+import { configuredConsoleAnswers, type ConsoleAnswersOptions } from "./gate-answer-rpc.js";
 import { configuredGateNotify, type GateNotifyOptions } from "./gate-notify-sweep.js";
 import type { FixerRetirePorts } from "./shepherd/fixer-retire.js";
 import { EXIT } from "./exit-codes.js";
@@ -18,6 +19,7 @@ import type { WorkflowDefinition } from "./definition.js";
 import { registerDigest } from "./digest/cli.js";
 import { registerQueueCounts } from "./needs/counts.js";
 import { registerNeeds } from "./needs/command.js";
+import { registerOwnerGates } from "./owner-gates/command.js";
 import { FROZEN_HOST_WRITE_VERBS, FrozenHostError, refuseFrozenHost } from "./remote-factory.js";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHostOptions } from "./host.js";
 import type { StepRoute } from "@titan-design/workflow";
@@ -81,12 +83,14 @@ export interface CliDeps {
   seatDigest?: (env: NodeJS.ProcessEnv) => SeatDigestPorts | undefined;
   /** The serve verb's gate notifier; absent, or undefined for an env, means serve posts no gate to agent-chat. */
   gateNotify?: (env: NodeJS.ProcessEnv) => GateNotifyOptions | undefined;
+  /** The serve verb's console Ship route; absent, or undefined for an env, means serve does not mount it. */
+  consoleAnswers?: (env: NodeJS.ProcessEnv) => ConsoleAnswersOptions | undefined;
   /** Ends the process once serve has closed, so a child an abandoned tick still holds cannot keep it alive; absent means serve returns instead. */
   exitAfterServe?: () => void;
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
-const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), deployPacer: (env) => configuredDeployPacer(env, deployCheckoutFor(env)), mainWatch: configuredMainWatch, fixerRetire: configuredFixerRetire, seatDigest: configuredSeatDigest, gateNotify: configuredGateNotify, exitAfterServe: () => process.exit() };
+const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), deployPacer: (env) => configuredDeployPacer(env, deployCheckoutFor(env)), mainWatch: configuredMainWatch, fixerRetire: configuredFixerRetire, seatDigest: configuredSeatDigest, gateNotify: configuredGateNotify, consoleAnswers: configuredConsoleAnswers, exitAfterServe: () => process.exit() };
 
 export interface Verbs {
   io: CliIo;
@@ -120,7 +124,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
     }
   };
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
-  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerToolchain, registerScorecard]) register(program, verbs);
+  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerToolchain, registerScorecard, registerOwnerGates]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 

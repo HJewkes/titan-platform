@@ -65,6 +65,15 @@ export class UntrackedWriteError extends ReadingLimitError {
   }
 }
 
+/** A shell that runs stdin, or another descriptor, whose text the line cannot show; the hook denies it unchecked. */
+export class UnknownStdinError extends ReadingLimitError {
+  constructor() {
+    super();
+    this.message = "a shell runs a descriptor whose text the line cannot show";
+    this.name = "UnknownStdinError";
+  }
+}
+
 /** A line bash 5 and bash 3.2 read differently; the hook denies it unchecked. */
 export class SplitReadingError extends ReadingLimitError {
   constructor(readonly split: Split) {

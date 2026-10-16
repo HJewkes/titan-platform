@@ -28,7 +28,7 @@ import { reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { standingVerdict } from "./review-request.js";
 import { reviewKeepingSeatHold } from "./seat-recheck.js";
 import { reviewRefusedRoute, standingMerge } from "./merge-standing.js";
-import { LeaveLand } from "./leave-land.js";
+import { LeaveLand, untilLeft } from "./leave-land.js";
 import { observePr, observeRoute } from "./observe.js";
 import { recordedRoute } from "./recorded-route.js";
 import { newCauseTrail, noteCarryStep, takeCause, tapped, type CarryProbe, type CauseTrail } from "./review-cause.js";
@@ -47,6 +47,7 @@ import { headOriginRoute, recordHeadOrigin } from "./head-origin.js";
 import { taskIdOf } from "../workflows/land-merge-message.js";
 import { SHEPHERD_STEPS } from "./shepherd-steps.js";
 import { withEarlier, type FixFirstTrail } from "./fix-first-trail.js";
+import { packetTriggering, visualPacketRoutes } from "./visual-packet-trigger.js";
 
 export { SHEPHERD_STEPS };
 
@@ -126,23 +127,14 @@ function shepherdOptions(run: ShepherdRun, verdictFor: (headSha: string) => Verd
 }
 
 /** Undefined means a review send-back ended this round from inside `land` and the next round lands. */
-async function landRound(ctx: WorkflowContext, run: ShepherdRun, options: LandOptions): Promise<LandOutcome | undefined> {
-  try {
-    return await land(ctx, { ...run.target, method: run.policy.mergeMethod, taskIds: taskIdOf(run.task), round: run.state.round, updateBound: run.updateBound, settleHold: run.settleHold }, options);
-  } catch (error) {
-    if (error instanceof LeaveLand) return error.outcome;
-    throw error;
-  }
+function landRound(ctx: WorkflowContext, run: ShepherdRun, options: LandOptions): Promise<LandOutcome | undefined> {
+  const request = { ...run.target, method: run.policy.mergeMethod, taskIds: taskIdOf(run.task), round: run.state.round, updateBound: run.updateBound, settleHold: run.settleHold };
+  return untilLeft(() => land(ctx, request, options));
 }
 
 /** Undefined means land the next round; anything else ends the run. */
-async function afterLand(run: ShepherdRun, outcome: LandOutcome): Promise<LandOutcome | undefined> {
-  try {
-    return await routeLanded(run, outcome);
-  } catch (error) {
-    if (error instanceof LeaveLand) return error.outcome;
-    throw error;
-  }
+function afterLand(run: ShepherdRun, outcome: LandOutcome): Promise<LandOutcome | undefined> {
+  return untilLeft(() => routeLanded(run, outcome));
 }
 
 async function routeLanded(run: ShepherdRun, outcome: LandOutcome): Promise<LandOutcome | undefined> {
@@ -189,6 +181,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     clearSuperseded(run, rereview, gated, stepId), rereview && run.trail.ownerAsked.add(rereview), new LeaveLand()
   );
   const conflictCheck = (headSha: string) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha });
+  const packetRun = { ctx, target: run.target, ownerGateReason: () => run.policy.ownerGateReason };
   return {
     runId: ctx.runId,
     workflowName: ctx.workflowName,
@@ -200,7 +193,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
     assisted: routingStuckBehind(run, () => run.lastCi?.headSha, recordingOverrides(followingApprovals(ctx, conflictCheckedGates(
-      supersedingGates(ctx, supersede, () => (run.carried = undefined)), conflictCheck, leaveOnConflict), { target: run.target, reviewedMerge }),
+      packetTriggering(packetRun, supersedingGates(ctx, supersede, () => (run.carried = undefined))), conflictCheck, leaveOnConflict), { target: run.target, reviewedMerge }),
       reviewedMerge, (override) => recordOverride(ctx, run.target, override))),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
     dispatch: async (stepId, template, options) => {
@@ -361,6 +354,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...g10ReleaseRoutes(deps, wiring.review?.twoMergeRelease),
     ...g10ReholdRoutes(deps, wiring.review?.carry),
     ...heldRepairRoutes(deps),
+    ...visualPacketRoutes(deps),
     headOriginRoute(deps),
     reviewRefusedRoute(deps.now),
   ];

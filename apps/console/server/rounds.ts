@@ -6,8 +6,8 @@
  * Another process writes the dir, so every read is defended: a round id is a plain name (no
  * dot, no slash), a round directory or file that is a symlink is refused, `round.json` and
  * `feedback.json` are read through `O_NOFOLLOW` and `O_NONBLOCK` (a planted FIFO cannot hang the
- * open) up to a size cap, and no path a manifest names (an image, a frame) is ever opened. A
- * round is `sent` once a `feedback.json` sits beside it.
+ * open) up to a size cap, and only `rounds.frame` opens a path a manifest names, through
+ * `round-frames.ts`. A round is `sent` once a `feedback.json` sits beside it.
  */
 import { constants } from "node:fs";
 import { lstat, open, readdir, type FileHandle } from "node:fs/promises";
@@ -25,7 +25,7 @@ export interface RoundsSource {
 export const MAX_ROUND_BYTES = 1024 * 1024;
 /** The list stops here, so a dir full of junk cannot make one read unbounded. */
 const MAX_ROUNDS = 500;
-const ROUND_ID = /^[A-Za-z0-9_-]{1,64}$/;
+export const ROUND_ID = /^[A-Za-z0-9_-]{1,64}$/;
 export const ROUND_FILE = "round.json";
 export const FEEDBACK_FILE = "feedback.json";
 const MAX_REASON_ISSUES = 5;
@@ -86,7 +86,7 @@ function schemaReason(error: z.ZodError): string {
   return more > 0 ? `${issues.join("; ")}; and ${more} more` : issues.join("; ");
 }
 
-function parseManifest(text: string): Parsed {
+export function parseManifest(text: string): Parsed {
   let json: unknown;
   try {
     json = JSON.parse(text);
@@ -98,20 +98,16 @@ function parseManifest(text: string): Parsed {
 }
 
 /** Reads at most one byte past the cap, so a file that grew after its fstat is still refused. */
-export async function readCappedBytes(handle: FileHandle): Promise<Buffer | null> {
-  const buffer = Buffer.alloc(MAX_ROUND_BYTES + 1);
+export async function readCapped(handle: FileHandle, cap: number): Promise<Buffer | null> {
+  const buffer = Buffer.alloc(cap + 1);
   let filled = 0;
   for (;;) {
     const { bytesRead } = await handle.read(buffer, filled, buffer.length - filled, filled);
     if (bytesRead === 0) break;
     filled += bytesRead;
-    if (filled > MAX_ROUND_BYTES) return null;
+    if (filled > cap) return null;
   }
   return buffer.subarray(0, filled);
-}
-
-async function readCapped(handle: FileHandle): Promise<string | null> {
-  return (await readCappedBytes(handle))?.toString("utf8") ?? null;
 }
 
 function unreadableReason(error: unknown): string {
@@ -121,7 +117,7 @@ function unreadableReason(error: unknown): string {
   return `${ROUND_FILE} could not be read`;
 }
 
-async function readManifest(roundDir: string): Promise<{ parsed: Parsed; updatedAt: string | null }> {
+export async function readManifest(roundDir: string): Promise<{ parsed: Parsed; updatedAt: string | null }> {
   let handle: FileHandle;
   try {
     handle = await open(path.join(roundDir, ROUND_FILE), OPEN_FLAGS);
@@ -134,8 +130,8 @@ async function readManifest(roundDir: string): Promise<{ parsed: Parsed; updated
     if (!stats.isFile()) return { parsed: { ok: false, reason: `${ROUND_FILE} is not a regular file` }, updatedAt };
     const tooBig = { ok: false as const, reason: `${ROUND_FILE} is over ${MAX_ROUND_BYTES} bytes` };
     if (stats.size > MAX_ROUND_BYTES) return { parsed: tooBig, updatedAt };
-    const text = await readCapped(handle);
-    return { parsed: text === null ? tooBig : parseManifest(text), updatedAt };
+    const bytes = await readCapped(handle, MAX_ROUND_BYTES);
+    return { parsed: bytes === null ? tooBig : parseManifest(bytes.toString("utf8")), updatedAt };
   } finally {
     await handle.close();
   }
@@ -217,7 +213,7 @@ export interface QueueRound {
 
 type FeedbackRead = { ok: true; feedback: Feedback | null } | { ok: false; reason: string };
 
-function parseFeedback(text: string): FeedbackRead {
+export function parseFeedback(text: string): FeedbackRead {
   let json: unknown;
   try {
     json = JSON.parse(text);
@@ -242,7 +238,7 @@ async function readFeedback(roundDir: string): Promise<FeedbackRead> {
   try {
     const stats = await handle.stat();
     if (!stats.isFile()) return { ok: true, feedback: null };
-    text = stats.size > MAX_ROUND_BYTES ? null : await readCapped(handle);
+    text = stats.size > MAX_ROUND_BYTES ? null : ((await readCapped(handle, MAX_ROUND_BYTES))?.toString("utf8") ?? null);
   } catch {
     return { ok: false, reason: `${FEEDBACK_FILE} could not be read` };
   } finally {

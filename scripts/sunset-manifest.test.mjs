@@ -212,6 +212,10 @@ describe("the checked-in manifest", () => {
     expect(checkManifest(manifest, listRoots(manifest, { "titan-platform": REPO }), exitedMilestones(JSON.parse(readFileSync(MILESTONES_PATH, "utf8"))))).toEqual([]);
   });
 
+  it("carries no entry whose reason starts with unclear:", () => {
+    expect(manifest.entries.filter((e) => (e.reason ?? "").startsWith("unclear:")).map((e) => `${e.repo}:${e.path}`)).toEqual([]);
+  });
+
   it("lists every A.2 compensator against a deleting task or a reason it has none", () => {
     const ids = manifest.compensators.map((c) => c.id);
     const firm = Array.from({ length: 36 }, (_, i) => `C${i + 1}`).filter((id) => id !== "C33");
@@ -219,6 +223,14 @@ describe("the checked-in manifest", () => {
     expect(firm.filter((id) => !ids.includes(id))).toEqual([]);
     expect(manifest.compensators.filter((c) => !c.deletedBy && !c.reason)).toEqual([]);
     expect(manifest.compensators.filter((c) => c.class === "temporary").map((c) => c.deletedBy)).toEqual(["D-M3-19", "D-M3-19", "D-M3-19", "D-M3-19", "D-M3-19", "D-M8-09"]);
+  });
+
+  it("says plainly which docs were searched for every compensator with no deleting task", () => {
+    const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
+    const undeleted = manifest.compensators.filter((c) => !c.deletedBy);
+
+    expect(undeleted.length).toBeGreaterThan(0);
+    expect(undeleted.filter((c) => !/^no v9\.1 task deletes it: .*v9\.1-amendments-421\.md.*v9\.1-decomposition-draft-r2\.md/.test(c.reason))).toEqual([]);
   });
 
   it("carries the three root defaults, with burndown on its D-M8-08 rung", () => {
