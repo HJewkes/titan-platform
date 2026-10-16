@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
+import { packageDir } from "../package-dir.js";
 
 const TRANSFORMERS_PEER = "@huggingface/transformers";
 const VOICES_PEER = "kokoro-js";
@@ -77,9 +77,7 @@ async function importRuntime(importModule: ModuleImporter): Promise<KokoroRuntim
 
 // kokoro-js ships its packs as data beside its code; its exports map hides them, so walk up from the entry.
 function kokoroJsVoicesDir(): string {
-  let dir = dirname(createRequire(import.meta.url).resolve(VOICES_PEER));
-  while (!existsSync(join(dir, "package.json")) && dirname(dir) !== dir) dir = dirname(dir);
-  return join(dir, "voices");
+  return join(packageDir(VOICES_PEER, import.meta.url), "voices");
 }
 
 /** Reads `<voicesDir>/<voice>.bin`: float32 rows of 256, as kokoro-js ships them. */

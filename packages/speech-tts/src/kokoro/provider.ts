@@ -4,6 +4,7 @@ import { withDeadline } from "../deadline.js";
 import { TtsError, TtsFailedError, TtsUnavailableError } from "../errors.js";
 import type { TtsProviderFactory } from "../factories.js";
 import { errorMessage, isStringArray } from "../guards.js";
+import type { SpeechRuntime } from "../runtime.js";
 import { toSynthesis } from "../synthesis.js";
 import type { Synthesis, SynthesizeOptions, TtsCapabilities, TtsInput, TtsProvider, TtsToken, WordTiming } from "../types.js";
 import { chunkTokens, offsetWords, styleRow } from "./chunk.js";
@@ -219,6 +220,23 @@ function parseKokoroConfig(id: string, config: TtsProviderConfig): Omit<KokoroPr
 }
 
 /** Register as `registry.register("kokoro", kokoroFactory({ g2p }))`; profile entries of kind `kokoro` then build it. */
-export function kokoroFactory(deps: Pick<KokoroProviderOptions, "g2p" | "loadEngine" | "onWarning">): TtsProviderFactory {
-  return (id, config) => kokoroProvider({ ...deps, ...parseKokoroConfig(id, config) });
+export function kokoroFactory(deps: KokoroFactoryDeps): TtsProviderFactory {
+  const { runtime, ...providerDeps } = deps;
+  return (id, config) => {
+    const entry = parseKokoroConfig(id, config);
+    return kokoroProvider({ ...providerDeps, ...entry, ...runtimeDefaults(entry, runtime) });
+  };
+}
+
+interface KokoroFactoryDeps extends Pick<KokoroProviderOptions, "g2p" | "loadEngine" | "onWarning"> {
+  /** `resolveSpeechRuntime()`'s result: its device and cache fill what a profile entry omits, and its env choices beat the entry. */
+  runtime?: Pick<SpeechRuntime, "device" | "cacheDir" | "source">;
+}
+
+// Env over profile entry over the runtime's own default, as the README promises for every TITAN_SPEECH_* variable.
+function runtimeDefaults(entry: Pick<KokoroProviderOptions, "device" | "cacheDir">, runtime: KokoroFactoryDeps["runtime"]) {
+  if (!runtime) return {};
+  const device = runtime.source.device.tts === "env" ? runtime.device.tts : (entry.device ?? runtime.device.tts);
+  const cacheDir = runtime.source.cacheDir === "env" ? runtime.cacheDir : (entry.cacheDir ?? runtime.cacheDir);
+  return { device, cacheDir };
 }

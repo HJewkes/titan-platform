@@ -39,6 +39,42 @@ describe("kokoroFactory in a registry", () => {
   });
 });
 
+describe("kokoroFactory with a speech runtime", () => {
+  const CACHE = "/tmp/Test Cache/titan speech";
+  const runtime = (tts: "cpu" | "cuda", source: "env" | "default") => ({
+    device: { tts, stt: "cpu", phones: "cpu" } as const,
+    cacheDir: CACHE,
+    source: { device: { tts: source, stt: source, phones: source }, cacheDir: source },
+  });
+  const loadedWith = async (entry: Record<string, unknown>, rt?: ReturnType<typeof runtime>) => {
+    const seen: unknown[] = [];
+    const loadEngine = (options: unknown) => {
+      seen.push(options);
+      return Promise.resolve(fakeEngine());
+    };
+    const config = profile(entry).providers.local ?? {};
+    await kokoroFactory({ g2p: letterG2p(), loadEngine, ...(rt ? { runtime: rt } : {}) })("local", config).synthesize(misaki([{ text: "a", phonemes: "a" }]), "af_heart");
+    return seen;
+  };
+
+  // Mutation caught: kokoroFactory ignores runtime.source, so the profile entry always wins over an env choice.
+  it("lets an env-sourced runtime device beat the entry's own", async () => {
+    expect(await loadedWith({ device: "cpu" }, runtime("cuda", "env"))).toEqual([{ device: "cuda", cacheDir: CACHE }]);
+  });
+
+  it("keeps the entry's device and cache over a default-sourced runtime", async () => {
+    expect(await loadedWith({ device: "cpu", cacheDir: "/entry/cache" }, runtime("cuda", "default"))).toEqual([{ device: "cpu", cacheDir: "/entry/cache" }]);
+  });
+
+  it("takes the runtime's values for what the entry omits", async () => {
+    expect(await loadedWith({}, runtime("cpu", "default"))).toEqual([{ device: "cpu", cacheDir: CACHE }]);
+  });
+
+  it("loads on cpu with no cache when there is neither a runtime nor an entry value", async () => {
+    expect(await loadedWith({})).toEqual([{ device: "cpu" }]);
+  });
+});
+
 describe("kokoroProvider", () => {
   // Mutation caught (TP-2955): the provider re-runs G2P on the token text instead of speaking the override.
   it("speaks override phonemes verbatim and reports the ps it sent", async () => {
