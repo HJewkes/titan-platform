@@ -357,7 +357,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     conflictCheckRoute(deps),
     seatNoticeRoute(deps.now, deps.exitNotice),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
-    ...g10ReleaseRoutes(deps),
+    ...g10ReleaseRoutes(deps, wiring.review?.twoMergeRelease),
     ...g10ReholdRoutes(deps, wiring.review?.carry),
     ...heldRepairRoutes(deps),
     headOriginRoute(deps),

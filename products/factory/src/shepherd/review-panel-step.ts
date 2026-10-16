@@ -234,16 +234,26 @@ function panelFixFirst(head: string, verdict: PanelVerdict): Verdict {
   return { kind: "FIX_FIRST", headSha: head, text: panelFindingsText(verdict), ...(verdict.closer !== undefined && { closer: verdict.closer }) };
 }
 
-const MemberVerdict = z.looseObject({ kind: z.literal("verdict"), reviewer: z.object({ agentId: z.string(), sessionId: z.string() }), locator: z.unknown() });
+const MemberVerdict = z.looseObject({ kind: z.literal("verdict"), reviewer: z.object({ agentId: z.string(), sessionId: z.string() }), locator: z.unknown(), verdict: z.enum(["MERGE", "FIX_FIRST"]).optional(), head: z.string().optional() });
 
-/** The members that gave a verdict, for TP-1927's record of who reviewed the head. */
-export function panelMerge(verdict: PanelVerdict, results: readonly { shape: MemberResult["shape"]; result: object }[]): PanelMerge {
+/**
+ * The members that gave a verdict, for TP-1927's record of who reviewed the head, each with what it said and the profile it was
+ * spawned at, so the two-MERGE release can tell an adversary's MERGE from another account of the same reviewer.
+ */
+export function panelMerge(verdict: PanelVerdict, results: readonly { shape: MemberResult["shape"]; result: object }[], profiles: Readonly<Partial<Record<string, string>>> = {}): PanelMerge {
   const members = results.flatMap(({ shape, result }) => {
     const read = MemberVerdict.safeParse(result);
-    return read.success ? [{ shape, ...read.data.reviewer, locator: read.data.locator }] : [];
+    if (!read.success) return [];
+    const { reviewer, locator, verdict: said, head } = read.data;
+    const profile = profiles[shape];
+    return [{ shape, ...reviewer, locator, ...(said !== undefined && { verdict: said }), ...(head !== undefined && { head }), ...(profile !== undefined && { profile }) }];
   });
   return { satisfiesG10: verdict.satisfiesG10, degraded: verdict.degraded, members };
 }
+
+/** The profile each member but correctness was spawned at; a member that never started has none. */
+const memberProfiles = (members: readonly DispatchedMember[]): Record<string, string> =>
+  Object.fromEntries(members.flatMap(({ shape, dispatched }) => (dispatched.kind === "dispatched" && dispatched.profile !== undefined ? [[shape, dispatched.profile]] : [])));
 
 /**
  * Every member but correctness is started before any verdict is awaited, so they review side by side; correctness keeps its
@@ -259,5 +269,5 @@ export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, bas
   if (verdict.outcome === "FIX_FIRST") return panelFixFirst(target.head, verdict);
   if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return { kind: "none", cause: verdict.outcome === "timeout" ? "timeout" : "no-verdict", reason: "a blocking panel member gave no verdict" };
   const decided = await verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing);
-  return decided.kind === "MERGE" && verdict.outcome === "MERGE" ? { ...decided, panel: panelMerge(verdict, results) } : decided;
+  return decided.kind === "MERGE" && verdict.outcome === "MERGE" ? { ...decided, panel: panelMerge(verdict, results, memberProfiles(members)) } : decided;
 }

@@ -226,13 +226,13 @@ function configuredReview(shepherd: FactoryConfig["shepherd"], seats: () => Seat
 }
 
 /** Decision 422(1)'s second reviewer: a g10-adversary hold gets its own adversary member unless `twoMergeRelease` is off or absent. */
-type HoldAdversary = Pick<NonNullable<FactoryRouteDeps["review"]>, "holdMember" | "adversaryDispatch">;
+type HoldAdversary = Pick<NonNullable<FactoryRouteDeps["review"]>, "holdMember" | "adversaryDispatch" | "twoMergeRelease">;
 
 function holdAdversary(shepherd: FactoryConfig["shepherd"], under: (configDir: string | undefined) => AgentChatReviewerDispatch): HoldAdversary {
   const mode = shepherd?.gateReset?.twoMergeRelease ?? "off";
   const review = shepherd?.review;
   if (mode === "off" || !review) return {};
-  return { holdMember: { profile: review.adversaryProfile ?? DEFAULT_ADVERSARY_PROFILE }, ...(review.adversaryConfigDir !== undefined && { adversaryDispatch: under(review.adversaryConfigDir) }) };
+  return { holdMember: { profile: review.adversaryProfile ?? DEFAULT_ADVERSARY_PROFILE }, twoMergeRelease: mode, ...(review.adversaryConfigDir !== undefined && { adversaryDispatch: under(review.adversaryConfigDir) }) };
 }
 
 /** Cleanup retires agents through the configured `agent-chat`, so no binary configured means no retire and no task close. */
