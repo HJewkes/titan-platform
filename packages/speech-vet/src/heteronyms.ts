@@ -110,10 +110,15 @@ function declarationsOf(spoken: string): Declaration[] {
 }
 
 /** The spelling a token is an occurrence of: the form itself, or a table form followed by an apostrophe suffix. */
-function declarableForm(form: string, forms: ReadonlyMap<string, string>): { base: string; possessive: boolean } | undefined {
-  if (forms.has(form)) return { base: form, possessive: false };
+function declarableForm(
+  form: string,
+  forms: ReadonlyMap<string, string>,
+): { base: string; tableWord: string; possessive: boolean } | undefined {
+  const own = forms.get(form);
+  if (own !== undefined) return { base: form, tableWord: own, possessive: false };
   const base = POSSESSIVE_TOKEN.exec(form)?.[1];
-  return base !== undefined && forms.has(base) ? { base, possessive: true } : undefined;
+  const tableWord = base === undefined ? undefined : forms.get(base);
+  return base !== undefined && tableWord !== undefined ? { base, tableWord, possessive: true } : undefined;
 }
 
 interface ResolvedReadings {
@@ -133,7 +138,7 @@ function resolveReadings(spoken: string, tokens: readonly PhonemeToken[], table:
     const form = token.text.toLowerCase();
     const spelling = declarableForm(form, forms);
     if (spelling === undefined) return;
-    const tableWord = forms.get(spelling.base) as string;
+    const { tableWord } = spelling;
     const counter = spelling.possessive ? `${spelling.base}'` : spelling.base;
     const ordinal = (seen.get(counter) ?? -1) + 1;
     seen.set(counter, ordinal);
