@@ -1,5 +1,9 @@
 import { splitCluster, takesNextWord } from "./cluster.js";
+import { envSplitWords } from "./env-split.js";
+import type { EnvWord } from "./env-split.js";
 import type { WordToken } from "./lexer.js";
+import { tokenize } from "./lexer.js";
+import { ParseError } from "./parse-error.js";
 import { basename } from "./path.js";
 import { parseAssignment } from "./vars.js";
 import type { Assignment } from "./vars.js";
@@ -35,8 +39,10 @@ const KEYWORDS = new Set(["if", "then", "else", "elif", "fi", "do", "done", "whi
 const COMPOUND_STARTS = new Set(["{", "if", "while", "until", "for", "case", "select", "[[", "(("]);
 const PACKAGE_OPTS: WrapperSpec = { values: ["-p", "--package"], script: ["-c", "--call", "--shell-mode"] };
 
+const ENV: WrapperSpec = { values: [...SHORT_VALUES.env, "--unset", "--chdir", "--argv0"], script: ["-S", "--split-string"], attached: true, digits: true };
+
 const WRAPPERS: Record<string, WrapperSpec> = {
-  env: { values: [...SHORT_VALUES.env, "--unset", "--chdir", "--argv0"], script: ["-S", "--split-string"], attached: true, digits: true },
+  env: ENV,
   command: { stop: ["-v", "-V"] },
   builtin: {},
   // zsh precommand modifiers, which run the next word as the command; Claude Code runs Bash under zsh.
@@ -70,6 +76,7 @@ const WRAPPERS: Record<string, WrapperSpec> = {
     joined: true, direct: ["-x", "--exec"] },
 };
 
+const ENV_PARAM_RE = /\$\{[A-Za-z_][A-Za-z0-9_]*\}/g;
 const FIND_EXEC = new Set(["-exec", "-execdir", "-ok", "-okdir"]);
 
 /** Package managers that run a command only through a subcommand: `pnpm exec x`, `yarn dlx x`, `npm exec x`. */
@@ -155,6 +162,13 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       words = spelled;
       const start = wrapperSpec(w.value) ? i + 1 : runnerEnd(words, i);
       const spec = wrapperSpec(w.value) ?? PACKAGE_OPTS;
+      const split = commandName(w.value) === "env" ? envSplitString(words, start) : undefined;
+      // As a `-c` string with an unclosed quote is, so the hook refuses the line when it names a guarded action.
+      if (split === null) throw new ParseError("env -S string whose words cannot be known");
+      if (split !== undefined) {
+        words = split;
+        continue;
+      }
       const script =
         runnerShellScript(words, i, start) ?? wrapperScript(words, start, spec) ?? joinedScript(words, start, spec);
       if (script !== null) return { name: commandName(w.value), path: w.value, args: words.slice(i + 1), assigned, script };
@@ -248,6 +262,57 @@ function wrapperScript(words: WordToken[], i: number, spec: WrapperSpec): string
   }
   if (!spec.positionals || !spec.script) return null;
   return wrapperScript(words, i + spec.positionals, { ...spec, positionals: 0 });
+}
+
+/**
+ * env's argv with its `-S` string split into words by env's rules, so env's own options at its head (`-u X`, `-a sh`,
+ * `-i`) are read as options, not as a command. Undefined when no `-S` comes before the command; null when env's
+ * words cannot be known: a dynamic `-S` word, a missing one, an unclosed quote or a backslash.
+ */
+function envSplitString(words: WordToken[], i: number): WordToken[] | null | undefined {
+  for (let option = words[i]; option?.value.startsWith("-"); option = words[i]) {
+    if (option.value === "--") return undefined;
+    const at = scriptOption(option.value, ENV);
+    if (at === null) {
+      i += takesNextWord(option.value, ENV) ? 2 : 1;
+      continue;
+    }
+    const text = at === "next" ? words[i + 1] : option;
+    if (text === undefined || option.dynamic || text.dynamic) return null;
+    const split = envSplitWords(at === "next" ? text.value : at.attached);
+    if (split === null) return null;
+    const argv = envTokens([...clusterBefore(option.value, at), ...split]);
+    return [...words.slice(0, i), ...argv, ...words.slice(i + (at === "next" ? 2 : 1))];
+  }
+  return undefined;
+}
+
+/** The short options a cluster holds before its `S` (`-i` of `-iS`), as a word of their own. */
+function clusterBefore(v: string, at: { attached: string } | "next"): EnvWord[] {
+  if (v.startsWith("--")) return [];
+  const flags = at === "next" ? v.slice(0, -1) : v.slice(0, v.length - at.attached.length - 1);
+  return flags.length > 1 ? [{ value: flags, dynamic: false }] : [];
+}
+
+/** env's words as the shell words that read the same, so a `${NAME}` env expands carries its reference as `"${NAME}"` does. */
+function envTokens(words: EnvWord[]): WordToken[] {
+  return tokenize(words.map(envShellWord).join(" ")).filter((t): t is WordToken => t.type === "word");
+}
+
+/** Literal text single-quoted, since env expands no `~`, glob or `$NAME`, and each `${NAME}` left live. */
+function envShellWord(word: EnvWord): string {
+  if (!word.dynamic) return singleQuoted(word.value);
+  let out = "";
+  let last = 0;
+  for (const m of word.value.matchAll(ENV_PARAM_RE)) {
+    out += `${singleQuoted(word.value.slice(last, m.index))}"${m[0]}"`;
+    last = m.index + m[0].length;
+  }
+  return out + singleQuoted(word.value.slice(last));
+}
+
+function singleQuoted(text: string): string {
+  return `'${text.replaceAll("'", "'\\''")}'`;
 }
 
 /** `watch git push`: the words after the options, joined by spaces, are shell text. */

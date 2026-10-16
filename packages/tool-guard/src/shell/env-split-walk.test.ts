@@ -1,0 +1,95 @@
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import { decide } from "../decide.js";
+import { handle } from "../hook.js";
+import type { HookPort } from "../hook.js";
+import type { ClassifyContext } from "../types.js";
+
+const REPO = "/home/you/projects/app";
+const PUSH = "git push origin HEAD:main";
+
+const context: ClassifyContext = {
+  home: "/home/you",
+  readLink: () => null,
+  readHead: (dir) => (dir === REPO ? "main" : null),
+  readScript: () => null,
+};
+
+async function hookStdout(command: string): Promise<string> {
+  const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
+  const event = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: REPO, tool_input: { command } });
+  return (await handle(event, { PATH: "/usr/bin" }, port)).stdout;
+}
+
+async function verdict(command: string): Promise<"deny" | "pass"> {
+  return (await hookStdout(command)).includes('"permissionDecision":"deny"') ? "deny" : "pass";
+}
+
+/**
+ * env's own options at the head of its `-S` string. GNU and uutils env have `-a`; BSD env has `-S`, `-u`, `-i` and
+ * `-C` but no `-a`, so reading `-a` everywhere only over-reads there.
+ */
+const PUSH_ROUTES = [
+  ["an argv0 option (GNU, uutils)", `env -S '-a sh zsh -c "${PUSH}"'`],
+  ["an unset option", `env -S '-u X ${PUSH}'`],
+  ["an empty environment", `env -S '-i ${PUSH}'`],
+  ["a chdir option", `env -S '-C /tmp ${PUSH}'`],
+  ["no option at all", `env -S '${PUSH}'`],
+  ["a -S string attached to its option", `env -S"-u X" ${PUSH}`],
+  ["a cluster ending in S", `env -iS '-u X ${PUSH}'`],
+  ["a long option", `env --split-string='-u X ${PUSH}'`],
+  ["a -S string inside a -S string", `env -S '-S "-u X ${PUSH}"'`],
+  ["an unclosed quote", `env -S '-a "sh zsh -c x' ${PUSH}`],
+  ["a backslash, one of env's escapes", `env -S 'git\\_push origin HEAD:main'`],
+  ["a dynamic -S string", `s='-u X ${PUSH}'; env -S "$s"`],
+  ["a command word env expands from an exported variable", "export G=git; env -S '-u X ${G} push origin HEAD:main'"],
+  ["a command word env expands from an unknown variable", "env -S '-u X ${G} push origin HEAD:main'"],
+] as const;
+
+describe("env -S is split by env's rules and read as env's argv (TP-3210)", () => {
+  it.each(PUSH_ROUTES)("denies a push behind %s", async (_form, line) => {
+    expect(await verdict(line)).toBe("deny");
+  });
+
+  it.each([
+    ["a ${NAME} env expands, read as the shell's reference", "env -S '-u X cat ${HOME}/.npmrc'"],
+    ["a tilde env leaves literal, still read by name", "env -S 'cat ~/.npmrc'"],
+  ])("still denies a secret read through %s", async (_form, line) => {
+    expect(await hookStdout(line)).toContain("secret-read");
+  });
+
+  it.each(["env -S 'echo hi'", "env -S '-u X echo hi'", "env -S '-i FOO=1 echo hi'", "env -S '-a sh echo hi'"])("allows %s", async (line) => {
+    expect(await verdict(line)).toBe("pass");
+  });
+});
+
+const envSplits = spawnSync("env", ["-S", "-u X true"]).status === 0;
+const envArgv0 = spawnSync("env", ["-S", "-a x true"]).status === 0;
+const zsh = spawnSync("zsh", ["-f", "-c", "true"]).status === 0;
+
+describe.skipIf(!envSplits)("env runs the command after its own -S options (TP-3210)", () => {
+  function runs(split: string): boolean {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "env-split-"));
+    try {
+      spawnSync("env", ["-S", split], { cwd: dir, stdio: ["ignore", "ignore", "ignore"] });
+      return fs.existsSync(path.join(dir, "mk"));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  it("runs the command after -u X", () => {
+    expect(runs("-u X touch mk")).toBe(true);
+  });
+
+  it("runs the command after -i", () => {
+    expect(runs("-i /usr/bin/env touch mk")).toBe(true);
+  });
+
+  it.skipIf(!envArgv0 || !zsh).each([`-a "sh"`, `-a 'sh'`, `-a s"h"`, "-a sh"])("runs zsh as sh behind %s (GNU, uutils)", (argv0) => {
+    expect(runs(`${argv0} zsh -f -c "[[ -o shwordsplit ]] && touch mk"`)).toBe(true);
+  });
+});
