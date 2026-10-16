@@ -154,6 +154,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
   let xargs: Unwrapped["xargs"];
   let negated = false;
   const argv0: Array<string | null> = [];
+  let env: WordToken | undefined;
   let i = 0;
   while (i < words.length) {
     const w = words[i] as WordToken;
@@ -165,12 +166,17 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
     else if (assignment) {
       assigned.push(assignment);
       i++;
-    } else if (!w.dynamic && (wrapperSpec(w.value) || runnerEnd(words, i) > i)) {
+    } else if (env && !w.dynamic && w.value.startsWith("-")) {
+      // uutils env still reads a `-S` after its `NAME=VALUE` words, so env's options resume here.
+      words = [...words.slice(0, i), env, ...words.slice(i)];
+    } else if (env && !w.dynamic && w.value.includes("=")) i++;
+    else if (!w.dynamic && (wrapperSpec(w.value) || runnerEnd(words, i) > i)) {
       const spelled = spellXargs(words, i, assigned);
       if (!Array.isArray(spelled)) return spelled;
       words = spelled;
       const start = wrapperSpec(w.value) ? i + 1 : runnerEnd(words, i);
       const spec = wrapperSpec(w.value) ?? PACKAGE_OPTS;
+      env = commandName(w.value) === "env" ? w : undefined;
       const split = envSplitOrThrow(w.value, words, start);
       if (split !== undefined) {
         words = split;

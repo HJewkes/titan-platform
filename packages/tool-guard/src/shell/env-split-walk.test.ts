@@ -57,6 +57,11 @@ const PUSH_ROUTES = [
   ["an exported option letter env expands at the head", `export O=-u; env -S '\${O} x ${PUSH}'`],
   ["a prefix-assigned option env expands at the head", `O=-u env -S '\${O} x ${PUSH}'`],
   ["an option env expands after a static one", `export O=-u; env -S '-i \${O} x ${PUSH}'`],
+  ["a -S after an assignment, which uutils env honours (TP-3280)", `env FOO=1 -S '${PUSH}'`],
+  ["a -S after an empty environment and an assignment", `env -i FOO=1 -S '${PUSH}'`],
+  ["a --split-string after two assignments", `env FOO=1 BAR=2 --split-string='${PUSH}'`],
+  ["an option in a -S string after an assignment", `env FOO=1 -S '-u X ${PUSH}'`],
+  ["an assignment the shell does not name, which env still takes", `env a.b=1 ${PUSH}`],
 ] as const;
 
 describe("env -S is split by env's rules and read as env's argv (TP-3210)", () => {
@@ -68,6 +73,7 @@ describe("env -S is split by env's rules and read as env's argv (TP-3210)", () =
     ["a backslash escape", `env -S '${PUSH} \\c'`],
     ["a dynamic -S string", `s='-u X ${PUSH}'; env -S "$s"`],
     ["an exported option env expands at the head", `export O=-u; env -S '\${O} x ${PUSH}'`],
+    ["a -S after an assignment", `env FOO=1 -S '${PUSH}'`],
   ])("denies a script file that pushes behind %s", async (_form, line) => {
     const readScript = (p: string) => (p === `${REPO}/p.sh` ? line : null);
     expect(await verdict("bash ./p.sh", { ...context, readScript })).toBe("deny");
@@ -80,7 +86,7 @@ describe("env -S is split by env's rules and read as env's argv (TP-3210)", () =
     expect(await hookStdout(line)).toContain("secret-read");
   });
 
-  it.each(["env -S 'echo hi'", "env -S '-u X echo hi'", "env -S '-i FOO=1 echo hi'", "env -S '-a sh echo hi'", "env -S \"echo '\\$G'\""])("allows %s", async (line) => {
+  it.each(["env -S 'echo hi'", "env -S '-u X echo hi'", "env -S '-i FOO=1 echo hi'", "env -S '-a sh echo hi'", "env -S \"echo '\\$G'\"", "env FOO=1 echo hi", "env FOO=1 -S 'echo hi'"])("allows %s", async (line) => {
     expect(await verdict(line)).toBe("pass");
   });
 });
