@@ -152,6 +152,7 @@ function reviewScene(options: ReviewSceneOptions = {}): ReviewScene {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "factory-review-")));
   dirs.push(dir);
   vi.stubEnv("HOME", dir);
+  vi.stubEnv("AGENT_CHAT_HOME", join(dir, ".agent-chat"));
   mkdirSync(join(dir, ".agent-chat", "profiles"), { recursive: true });
   for (const profile of [PROFILE, "rv-other"]) writeFileSync(join(dir, ".agent-chat", "profiles", `${profile}.json`), JSON.stringify({ surface: "headless" }));
   const checkout = join(dir, "checkouts", "demo");
