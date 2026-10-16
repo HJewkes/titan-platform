@@ -1,7 +1,7 @@
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, spent } from "./arith-trials.js";
 import { balancedEnd, type DollarOpener, dollarOpener, QUOTED_LITERAL_OPENERS, refuseValueRun } from "./balanced.js";
 import { dropJoins, joinedDollar, nextAfter, pastJoins, readAhead } from "./joins.js";
-import { inOpenCase, newRegexScan, noteParen, refuseRedirect } from "./compound.js";
+import { inConditional, inOpenCase, newRegexScan, noteParen, refuseRedirect } from "./compound.js";
 import { nested } from "./nesting.js";
 import { ParseError, refusingAs } from "./parse-error.js";
 import { arithmeticExpansionEnd, lineReading, nestedReaders, scanBacktick } from "./nested-reading.js";
@@ -73,6 +73,9 @@ function step(s: LexState): void {
   if (c === "#" && !s.word && s.i >= s.arithEnd) return skipComment(s);
   if (c === "&" && ahead.text[1] === ">") return readRedirect(s);
   const op = OPERATORS.find((o) => ahead.text.startsWith(o));
+  if (op === "&&" || op === "||") {
+    if (inConditional(s)) return appendConditionalOperator(s, op, end(2));
+  }
   if (op) return readOperator(s, op, end(op.length));
   if (s.word?.quoted) s.word.spliced = true;
   appendChar(s, c);
@@ -148,6 +151,14 @@ function doubleParenClose(s: LexState, body: number): number {
   }
   if (!chargeTrial(s.trials, reached - s.i)) throw new ParseError("arithmetic command too costly to scan");
   return reached < s.src.length ? reached : -1;
+}
+
+/** `&&` and `||` between the tests of a `[[ ]]` are words of that one command, not list operators. */
+function appendConditionalOperator(s: LexState, op: string, end: number): void {
+  endWord(s);
+  ensureWord(s).value = op;
+  endWord(s);
+  s.i = end;
 }
 
 function appendShift(s: LexState, end: number): void {
