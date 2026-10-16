@@ -1,4 +1,5 @@
 import { fakeSha, type FakeGitHub } from "@titan-design/github";
+import { GatePayloadInvalid, GateResolverRefused, type GateResolver } from "@titan-design/hitl";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { gateEverything } from "../gate-policy.js";
@@ -83,5 +84,63 @@ describe("land without an askApproval hook", () => {
     expect(run.status).toBe("completed");
     expect(scenario.fake.effects.merge).toBe(1);
     expect(scenario.outcomes.at(-1)).toEqual({ kind: "merged", headSha: H1, mergeSha: scenario.fake.pr(1).mergeSha, landed: expect.objectContaining({ baseRef: "main", headSha: H1 }), own: true });
+  });
+});
+
+/** A land run at the approve-merge gate with no hook; `sendBack` is what the flag step would read, absent as before it existed. */
+async function gatedRun(sendBack?: boolean) {
+  const scenario = landScenario();
+  const outcomes: LandOutcome[] = [];
+  const sendBackOffered = sendBack === undefined ? undefined : async () => sendBack;
+  const workflow = defineWorkflow({ name: "land-gated", steps: LAND_STEPS, run: async (ctx) => void outcomes.push(await land(ctx, { repo: REPO, pr: 1 }, { policy: gateEverything, sendBackOffered })) });
+  const host = openFactoryHost({ dbPath: ":memory:", workflows: [workflow], routes: scenario.routes, gatePollMs: 5 });
+  hosts.push(host);
+  const runId = host.runtime.start("land-gated");
+  const gate = gateId(runId, "approve-merge");
+  await gateOpened(host, gate);
+  return { host, fake: scenario.fake, outcomes, runId, gate };
+}
+
+const offered = (host: FactoryHost, gate: string): unknown => host.gates.get(gate)?.questions?.[0]?.options.map((option) => option.id);
+const COORDINATOR: GateResolver = { class: "coordinator", id: "coord-a", channel: "test" };
+
+describe("approve-merge send-back", () => {
+  it("stops sent-back with the owner's note and never merges the head", async () => {
+    const { host, fake, outcomes, runId, gate } = await gatedRun(true);
+
+    host.gates.resolve(gate, { decision: "send-back", headSha: H1, note: "rename the flag" }, OWNER);
+    await host.runtime.wait(runId);
+
+    expect(offered(host, gate)).toEqual(["merge", "abandon", "send-back"]);
+    expect(fake.effects.merge).toBe(0);
+    expect(outcomes.at(-1)).toEqual({ kind: "stopped", reason: "sent-back", headSha: H1, detail: "rename the flag" });
+  });
+
+  it.each([
+    ["the flag reads false", false],
+    ["no flag is wired", undefined],
+  ])("offers no send-back and the store refuses one when %s", async (_case, sendBack) => {
+    const { host, gate } = await gatedRun(sendBack);
+
+    const sent = () => host.gates.resolve(gate, { decision: "send-back", headSha: H1, note: "rename the flag" }, OWNER);
+
+    expect(offered(host, gate)).toEqual(["merge", "abandon"]);
+    expect(sent).toThrow(GatePayloadInvalid);
+    expect(host.gates.get(gate)?.status).toBe("pending");
+  });
+
+  it("refuses a send-back that carries no note at the store, so the gate stays pending", async () => {
+    const { host, gate } = await gatedRun(true);
+
+    expect(() => host.gates.resolve(gate, { decision: "send-back", headSha: H1 }, OWNER)).toThrow(GatePayloadInvalid);
+    expect(() => host.gates.resolve(gate, { decision: "send-back", headSha: H2, note: "rename" }, OWNER)).toThrow(GatePayloadInvalid);
+    expect(host.gates.get(gate)?.status).toBe("pending");
+  });
+
+  it("never lets a coordinator send back, whatever the note", async () => {
+    const { host, gate } = await gatedRun(true);
+
+    expect(() => host.gates.resolve(gate, { decision: "send-back", headSha: H1, note: "rename the flag" }, COORDINATOR)).toThrow(GateResolverRefused);
+    expect(host.gates.get(gate)?.status).toBe("pending");
   });
 });

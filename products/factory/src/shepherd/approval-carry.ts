@@ -2,6 +2,7 @@ import { isCarryFencedPath } from "@titan-design/authority";
 import type { StepResult, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
+import { SEND_BACK } from "../gate-brief.js";
 import { step } from "../workflows/land.js";
 import { APPROVAL_CARRY_STEP, followBases, type CarryTarget } from "./carry-merge.js";
 import { fixCarryStep } from "./fix-carry.js";
@@ -15,6 +16,8 @@ const LAND_GATE = /^Merge PR #\d+ in \S+ at head ([0-9a-f]{40})(?: into (\S+))?\
 const ESCALATION_TABLE = "shepherd-route";
 
 const MergeAnswer = z.looseObject({ decision: z.literal("merge"), headSha: z.string() });
+/** The owner's later word on the PR: an earlier approval no longer follows to the fixer's next head. */
+const SendBackAnswer = z.looseObject({ decision: z.literal(SEND_BACK) });
 
 interface ApprovalCarry {
   target: CarryTarget;
@@ -99,6 +102,7 @@ export function followingApprovals(ctx: WorkflowContext, assisted: WorkflowConte
     const followed = from === undefined ? undefined : await followedAnswer(ctx, carry.target, from, asked);
     const answer = followed ?? (await assisted(stepId, prompt, options));
     if (MergeAnswer.safeParse(answer.data).data?.headSha === asked) approved = { head: asked, base };
+    else if (SendBackAnswer.safeParse(answer.data).success) approved = undefined;
     return answer;
   };
 }

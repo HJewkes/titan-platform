@@ -93,7 +93,34 @@ interface ApproveMergeTarget extends PrHead {
   carriedFrom?: string;
   ownerBrief?: OwnerBrief;
   skillPaths?: readonly string[];
+  /** Offers `send-back`, whose answer must carry the owner's note; only `shepherd.consoleAnswers` turns it on. */
+  sendBack?: boolean;
 }
+
+export const SEND_BACK = "send-back";
+
+/**
+ * The gate store checks a payload against the JSON schema alone, and its check reads `anyOf` in place of the top-level
+ * properties. So each answer shape is spelled out there in full, and a send-back with no note fails at the store, before
+ * any resolver (gateNotify's bare option, a coordinator) can settle the gate with it. The top level keeps `headSha.const`
+ * for the readers that take the gate's head from it.
+ */
+function sendBackShapes(headSha: string): Record<string, unknown>[] {
+  const shapes = [
+    z.strictObject({ decision: z.enum(["merge", "abandon"]), headSha: z.literal(headSha) }),
+    z.strictObject({ decision: z.literal(SEND_BACK), headSha: z.literal(headSha), note: z.string() }),
+  ];
+  return shapes.map((shape) => {
+    const json: Record<string, unknown> = z.toJSONSchema(shape);
+    delete json.$schema;
+    return json;
+  });
+}
+
+const sendBackNeedsNote = (answer: { decision: string; note?: unknown }, ctx: z.RefinementCtx): void => {
+  const noted = typeof answer.note === "string" && answer.note.trim() !== "";
+  if (answer.decision === SEND_BACK && !noted) ctx.addIssue({ code: "custom", path: ["note"], message: "a send-back carries the owner's note" });
+};
 
 /**
  * `carriedFrom` is the reviewed head whose MERGE stands at this tree-equal head, so the owner is not told the reviewer saw
@@ -102,15 +129,18 @@ interface ApproveMergeTarget extends PrHead {
 export function approveMergeDecision(target: ApproveMergeTarget) {
   const skills = target.skillPaths ?? [];
   const asked = skills.length > 0 ? `Land ${target.headSha}? ${skillChangeNote(target.repo, target.pr, skills)}` : `Land ${target.headSha}?`;
+  const sendBack = target.sendBack ? [{ id: SEND_BACK, label: "Send back to the implementer with your note" } as const] : [];
   const { schema, questions } = decisionGate({
     question: target.ownerBrief ? oneLine(`${asked} Reviewer's owner brief: ${ownerBriefLines(target.ownerBrief).join(" ")}`, MAX_QUESTION) : oneLine(asked, MAX_QUESTION),
     options: [
       { id: "merge", label: "Merge at this head", recommended: target.reviewedMerge && skills.length === 0 },
       { id: "abandon", label: "Abandon the PR" },
+      ...sendBack,
     ],
-    shape: { headSha: z.literal(target.headSha) },
+    shape: { headSha: z.literal(target.headSha), ...(target.sendBack && { note: z.string().optional() }) },
   });
-  return { schema, brief: skills.length > 0 ? skillMergeBrief(target, skills, questions) : mergeBrief(target, questions) };
+  const checked = target.sendBack ? schema.superRefine(sendBackNeedsNote).meta({ anyOf: sendBackShapes(target.headSha) }) : schema;
+  return { schema: checked, brief: skills.length > 0 ? skillMergeBrief(target, skills, questions) : mergeBrief(target, questions) };
 }
 
 function mergeBrief(target: ApproveMergeTarget, questions: GateQuestion[]): GateBrief {

@@ -8,7 +8,7 @@ import { EXIT, errorEnvelope } from "@titan-design/registry";
 import { z } from "zod";
 import { configPath, loadConfig } from "./config.js";
 import { MERGE_GATE } from "./coordinator-evidence.js";
-import { checkAnswer, type AnswerRequest } from "./gate-answer-check.js";
+import { checkAnswer, type AnswerPayload, type AnswerRequest } from "./gate-answer-check.js";
 import { repeatedResolution } from "./gate-resolve.js";
 import type { FactoryHost } from "./host.js";
 import { readCapped, TOO_LARGE } from "./resolve-proof.js";
@@ -115,7 +115,7 @@ async function answered(request: AnswerRequest, port: NonNullable<GateAnswerDeps
 }
 
 /** The store settles a gate once, so of two concurrent answers only one resolves; the other reads back what happened. */
-function resolveOnce(request: AnswerRequest, payload: { decision: "merge"; headSha: string }, deps: GateAnswerDeps): Outcome {
+function resolveOnce(request: AnswerRequest, payload: AnswerPayload, deps: GateAnswerDeps): Outcome {
   const resolver: GateResolver = { class: "owner-remote", id: "titan-console", channel: "console:ship", confirmEvent: `packet:${request.packetSha}` };
   try {
     deps.host.gates.resolve(request.gateId, payload, resolver);

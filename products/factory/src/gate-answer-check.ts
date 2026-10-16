@@ -29,10 +29,12 @@ interface AnswerInputs {
   now: Date;
 }
 
-type RefusalCode = "unknown-gate" | "not-land-gate" | "github-unreadable" | "tree-mismatch" | "packet" | "feedback" | "choice" | "send-back-unsupported";
+type RefusalCode = "unknown-gate" | "not-land-gate" | "github-unreadable" | "tree-mismatch" | "packet" | "feedback" | "choice";
+
+export type AnswerPayload = { decision: "merge"; headSha: string } | { decision: "send-back"; headSha: string; note: string };
 
 type AnswerCheck =
-  | { kind: "resolve"; gateId: string; choice: AnswerRequest["choice"]; payload: { decision: "merge"; headSha: string } }
+  | { kind: "resolve"; gateId: string; choice: AnswerRequest["choice"]; payload: AnswerPayload }
   | { kind: "already"; gateId: string }
   | { kind: "moved"; currentHead: string | undefined; waitsOn?: string }
   | { kind: "gone"; reason: string }
@@ -53,6 +55,11 @@ const PacketBinding = z.object({ schema: z.literal(PACKET_SCHEMA), repo: z.strin
 
 const RoundBindings = z.object({ questions: z.array(z.object({ id: z.string(), merge: z.object({ repo: z.string(), pr: z.number().int() }).optional() })) });
 
+/** The owner's words in feedback.json: the round's general note and each answer's comment. */
+const FeedbackWords = z.object({ general: z.string().optional(), answers: z.array(z.object({ questionId: z.string(), comment: z.string().optional() })) });
+/** The most of the owner's note the gate payload carries; the rest stays in feedback.json. */
+export const MAX_NOTE_CHARS = 4000;
+
 const refused = (reason: RefusalCode, detail: string): AnswerCheck => ({ kind: "refused", reason, detail });
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
@@ -68,12 +75,34 @@ export async function checkAnswer(inputs: AnswerInputs): Promise<AnswerCheck> {
   if (!gate || !stepIdMatches(`${request.runId}/${MERGE_GATE}`, gate.id)) return refused("unknown-gate", `run ${request.runId} has no approve-merge gate ${request.gateId}`);
   const land = landGate(gate);
   if (!land) return refused("not-land-gate", `gate ${gate.id} does not pin a PR head`);
-  const payload = { decision: "merge" as const, headSha: request.headSha };
+  const payload = answerPayload(inputs, land);
   const item = { gate: gate.id, runId: request.runId, stepId: MERGE_GATE, repo: land.repo, pr: land.pr, headSha: request.headSha, payload };
   const stale = await gateStaleness(host, item, undefined);
   if (stale) return storeOutcome(host, request.runId, { gate, land, payload }, stale.detail);
-  const binding = (await githubOutcome(inputs, land)) ?? packetRefusal(inputs, land) ?? choiceRefusal(inputs, land);
+  const binding = (await githubOutcome(inputs, land)) ?? packetRefusal(inputs, land) ?? choiceRefusal(inputs, land) ?? noteRefusal(payload);
   return binding ?? { kind: "resolve", gateId: gate.id, choice: request.choice, payload };
+}
+
+/**
+ * What the owner's feedback answers, worked out before the store is read so a replay of a send-back reads as `already`.
+ * The note comes from feedback.json alone, never from the request: the general note, then the Ship question's comment.
+ */
+function answerPayload(inputs: AnswerInputs, land: LandGate): AnswerPayload {
+  const { headSha } = inputs.request;
+  if (feedbackChoice(inputs, land) !== "send-back") return { decision: "merge", headSha };
+  return { decision: "send-back", headSha, note: [...ownerNote(inputs, land)].slice(0, MAX_NOTE_CHARS).join("") };
+}
+
+function ownerNote({ files }: AnswerInputs, land: LandGate): string {
+  const words = parseJson(FeedbackWords, files.feedback);
+  const bound = new Set(boundQuestions(files.round, land).map((question) => question.id));
+  const comments = words?.answers.filter((answer) => bound.has(answer.questionId)).map((answer) => answer.comment) ?? [];
+  return [words?.general, ...comments].map((text) => text?.trim() ?? "").filter((text) => text !== "").join("\n\n");
+}
+
+/** The gate's send-back answer must carry the owner's words, so a revision with none is refused rather than sent. */
+function noteRefusal(payload: AnswerPayload): AnswerCheck | undefined {
+  return payload.decision === "send-back" && payload.note === "" ? refused("feedback", "the owner asked for a revision but wrote no note for the implementer") : undefined;
 }
 
 /** The gate store says the answer is late: the run waits on a newer gate, the gate pins another head, or it is settled. */
@@ -119,8 +148,7 @@ function choiceRefusal(inputs: AnswerInputs, land: LandGate): AnswerCheck | unde
   const answered = feedbackChoice(inputs, land);
   if (typeof answered !== "string") return answered;
   const { choice } = inputs.request;
-  if (answered !== (choice === "send-back" ? "send-back" : "merge")) return refused("choice", `the owner's feedback answers ${answered}, the request says ${choice}`);
-  return answered === "send-back" ? refused("send-back-unsupported", "the approve-merge gate offers no send-back answer yet") : undefined;
+  return answered === (choice === "send-back" ? "send-back" : "merge") ? undefined : refused("choice", `the owner's feedback answers ${answered}, the request says ${choice}`);
 }
 
 function feedbackChoice({ files, request, now }: AnswerInputs, land: LandGate): Answered | AnswerCheck {
@@ -131,9 +159,11 @@ function feedbackChoice({ files, request, now }: AnswerInputs, land: LandGate): 
   return revisionRequested(files.round, feedback.answers, land) ? "send-back" : refused("feedback", ship.reason);
 }
 
+const boundQuestions = (roundBytes: Uint8Array, land: LandGate) =>
+  parseJson(RoundBindings, roundBytes)?.questions.filter((q) => q.merge?.repo === land.repo && q.merge.pr === land.pr) ?? [];
+
 function revisionRequested(roundBytes: Uint8Array, answers: z.infer<typeof RoundFeedbackSchema>["answers"], land: LandGate): boolean {
-  const bound = parseJson(RoundBindings, roundBytes)?.questions.filter((q) => q.merge?.repo === land.repo && q.merge.pr === land.pr) ?? [];
-  return bound.some((q) => answers.some((a) => a.questionId === q.id && a.revisionRequested === true));
+  return boundQuestions(roundBytes, land).some((q) => answers.some((a) => a.questionId === q.id && a.revisionRequested === true));
 }
 
 function parseJson<T>(schema: z.ZodType<T>, bytes: Uint8Array): T | undefined {
