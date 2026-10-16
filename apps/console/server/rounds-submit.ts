@@ -167,7 +167,7 @@ async function writeOnce(file: string, bytes: Buffer): Promise<string | null> {
   return file;
 }
 
-export async function submitRound({ dir }: RoundsSource, args: SubmitArgs, now = new Date()): Promise<SubmitResult> {
+async function submitRound({ dir }: RoundsSource, args: SubmitArgs, now = new Date()): Promise<SubmitResult> {
   if (!(await roundDirExists(dir, args.id))) throw failure(`No round named "${args.id}"`, EXIT.NOINPUT);
   const roundDir = path.join(dir, args.id);
   const manifestBytes = await readManifestBytes(roundDir);

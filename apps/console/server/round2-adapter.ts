@@ -6,7 +6,7 @@
  */
 import { z } from "zod";
 
-export const MANIFEST_SCHEMA_ID = "titan-review/round@2";
+const MANIFEST_SCHEMA_ID = "titan-review/round@2";
 export const FEEDBACK_SCHEMA_ID = "titan-review/feedback@1";
 
 const mergeBinding = z.looseObject({
