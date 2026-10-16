@@ -1,11 +1,12 @@
-// A machine-wide exclusive lock for dag-check: a directory holding the owner pid, taken by an atomic rename.
-// Every writer of a dag-check graph.db holds it, so a reader that takes it never sees a half-written snapshot.
+// A machine-wide counting lock for dag-check: `slots` directories, each holding its owner pid, taken by an atomic rename.
+// It bounds how many indexers hold a graph in memory at once; each slot owns its own work dir, so holders never share files.
+// Slot 0 is the lock dir itself, the single lock of older checkouts, so an old and a new run still exclude each other there.
 // Waiters queue by arrival; a waiter that gives up parks its arrival stamp by worktree, so its retry keeps its place.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, totalmem } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -15,7 +16,7 @@ export const DEFAULT_LOCK_DIR = path.join(homedir(), ".cache", "titan-platform",
 // basement-suite reads 75 as "busy, retry later".
 export const BUSY_EXIT_CODE = 75;
 const DEFAULT_WAIT_MS = 8 * 60 * 1000;
-// Only the holder appends, so the log needs no lock of its own; the tail bounds both its size and a stale median.
+// Holders rewrite the log by rename, so two releasing at once may drop a line but never tear one; the tail bounds both its size and a stale median.
 // Holds logged with exit null (killed by a signal, or the check threw) are not representative and skip the median.
 const LOG_KEEP_LINES = 200;
 const ESTIMATE_LINES = 20;
@@ -26,9 +27,42 @@ const DEFAULT_PARK_TTL_MS = 30 * 60 * 1000;
 // Long enough for a gate to start its dead:check after its dag:check releases, short enough not to stall the queue.
 export const HANDOFF_GRACE_MS = 15 * 1000;
 
+// A seeded dag:check indexer peaks near 2 GB RSS at its 2 GB heap cap; 8 GiB of RAM per slot keeps indexers to a quarter of it.
+const RAM_PER_SLOT = 8 * 1024 ** 3;
+const MAX_DEFAULT_SLOTS = 6;
+
 const SIGNAL_EXIT = { SIGINT: 130, SIGTERM: 143 };
 
 export class LockTimeoutError extends Error {}
+
+/** How many checks may hold the lock at once: DAG_CHECK_SLOTS, else one per 8 GiB of RAM, between 1 and 6. */
+export function lockSlots(env = process.env, memBytes = totalmem()) {
+  const slots = Number(env.DAG_CHECK_SLOTS);
+  if (Number.isInteger(slots) && slots >= 1) return slots;
+  return Math.min(MAX_DEFAULT_SLOTS, Math.max(1, Math.floor(memBytes / RAM_PER_SLOT)));
+}
+
+export function slotDir(lockDir, slot) {
+  return slot === 0 ? lockDir : `${lockDir}.slot${slot}`;
+}
+
+/** The live pids holding any of the slots. */
+export function liveHolders(lockDir, slots) {
+  const pids = [];
+  for (let slot = 0; slot < slots; slot++) {
+    const pid = readHolder(slotDir(lockDir, slot));
+    if (pid !== null && isAlive(pid)) pids.push(pid);
+  }
+  return pids;
+}
+
+/** Takes the first free slot: its number, or null when every slot has a live holder. */
+export function tryAcquireSlot(lockDir, slots) {
+  for (let slot = 0; slot < slots; slot++) {
+    if (tryAcquire(slotDir(lockDir, slot)) === null) return slot;
+  }
+  return null;
+}
 
 export function readHolder(lockDir) {
   try {
@@ -122,25 +156,33 @@ export function readHolds(lockDir) {
 }
 
 function appendHold(lockDir, hold) {
+  const file = holdLogPath(lockDir);
   const line = JSON.stringify({ ...hold, pid: process.pid, releasedAt: Date.now() });
   const kept = readHolds(lockDir).slice(-(LOG_KEEP_LINES - 1)).map((h) => JSON.stringify(h));
-  writeFileSync(holdLogPath(lockDir), `${[...kept, line].join("\n")}\n`);
+  const tmp = `${file}.tmp-${process.pid}`;
+  try {
+    writeFileSync(tmp, `${[...kept, line].join("\n")}\n`);
+    renameSync(tmp, file);
+  } finally {
+    rmSync(tmp, { force: true });
+  }
 }
 
 /**
- * Remove the lock if this process holds it. Safe to call more than once. Given the hold acquire returned, first
- * appends one line to the hold log; set hold.exit beforehand to record the check's exit code. A failed log write
- * still removes the lock, then throws.
+ * Remove the hold's slot (slot 0 without one) if this process holds it. Safe to call more than once. Given the hold
+ * acquire returned, first appends one line to the hold log; set hold.exit beforehand to record the check's exit code.
+ * A failed log write still removes the lock, then throws.
  */
 export function release(lockDir, hold) {
-  if (readHolder(lockDir) !== process.pid) return;
+  const held = slotDir(lockDir, hold?.slot ?? 0);
+  if (readHolder(held) !== process.pid) return;
   const { park, ...record } = hold ?? {};
   try {
     // Parked before the lock goes, so no waiter behind it can take the lock in between.
     if (park?.handoff && (record.exit === 0 || record.exit === 1)) parkTicket(lockDir, park);
     if (hold) appendHold(lockDir, { check: null, exit: null, ...record });
   } finally {
-    rmSync(lockDir, { recursive: true, force: true });
+    rmSync(held, { recursive: true, force: true });
   }
 }
 
@@ -156,18 +198,22 @@ export function medianHoldMs(lockDir) {
   return held.length % 2 ? held[mid] : (held[mid - 1] + held[mid]) / 2;
 }
 
+function holdersText(count) {
+  return count === 1 ? "the holder" : `${count} holders`;
+}
+
 /**
- * The fail-fast message when a live holder plus the waiters ahead cannot clear within the budget at the median hold,
- * else null.
+ * The fail-fast message when the live holders plus the waiters ahead cannot clear within the budget at the median hold,
+ * else null. The holds that must end before this waiter starts drain `slots` at a time.
  */
-export function queueTooDeep(lockDir, ahead, budgetMs) {
+export function queueTooDeep(lockDir, ahead, budgetMs, slots = 1) {
   const median = medianHoldMs(lockDir);
   if (median === null) return null;
-  const holder = readHolder(lockDir);
-  const holding = holder !== null && isAlive(holder);
-  const estimate = (ahead + (holding ? 1 : 0)) * median;
+  const holders = liveHolders(lockDir, slots).length;
+  const before = Math.max(0, ahead + holders - slots + 1);
+  const estimate = Math.ceil(before / slots) * median;
   if (estimate <= budgetMs) return null;
-  const queue = holding ? `the holder and ${ahead} ahead` : `${ahead} ahead`;
+  const queue = holders > 0 ? `${holdersText(holders)} and ${ahead} ahead` : `${ahead} ahead`;
   return (
     `dag-check lock: ${queue}, about ${Math.round(estimate / 60000)} min at the median hold of ${Math.round(median / 1000)} s; ` +
     `exit ${BUSY_EXIT_CODE}. CI's dag-check job runs dag:check and dead:check on the PR.`
@@ -326,10 +372,12 @@ function dropTicket(lockDir, name) {
  * first wait and every logEveryMs after. Throws LockTimeoutError once timeoutMs has passed, or at once on joining when
  * the hold log says the live holder and the queue ahead cannot clear within timeoutMs. A waiter that gives up parks its
  * arrival stamp under owner's key and logs a busy line; the next acquire from that owner within the TTL rejoins at that
- * stamp. With handoff, release parks the stamp for HANDOFF_GRACE_MS so the owner's next check goes next.
+ * stamp. With handoff, release parks the stamp for HANDOFF_GRACE_MS so the owner's next check goes next. A waiter
+ * takes a slot only while fewer are ahead of it than slots are free; the hold names the slot it took.
  */
 export async function acquire({
   lockDir = DEFAULT_LOCK_DIR,
+  slots = 1,
   check = null,
   timeoutMs,
   pollMs = 2000,
@@ -343,7 +391,7 @@ export async function acquire({
   const park = { key, stamp: ticketStamp(ticket), handoff };
   const wait = { ahead: null };
   try {
-    const hold = await waitForTurn(lockDir, ticket, wait, { check, timeoutMs, pollMs, logEveryMs, log });
+    const hold = await waitForTurn(lockDir, ticket, wait, { slots, check, timeoutMs, pollMs, logEveryMs, log });
     return handoff ? { ...hold, park } : hold;
   } catch (err) {
     if (err instanceof LockTimeoutError) {
@@ -360,7 +408,7 @@ function busyError(message, reason) {
   return Object.assign(new LockTimeoutError(message), { reason });
 }
 
-async function waitForTurn(lockDir, ticket, wait, { check, timeoutMs, pollMs, logEveryMs, log }) {
+async function waitForTurn(lockDir, ticket, wait, { slots, check, timeoutMs, pollMs, logEveryMs, log }) {
   const start = Date.now();
   let lastLog = -Infinity;
   let aheadAtJoin = null;
@@ -369,11 +417,13 @@ async function waitForTurn(lockDir, ticket, wait, { check, timeoutMs, pollMs, lo
     wait.ahead = ahead;
     if (aheadAtJoin === null) {
       aheadAtJoin = ahead;
-      const tooDeep = queueTooDeep(lockDir, ahead, timeoutMs);
+      const tooDeep = queueTooDeep(lockDir, ahead, timeoutMs, slots);
       if (tooDeep) throw busyError(tooDeep, "too-deep");
     }
-    const holder = ahead === 0 ? tryAcquire(lockDir) : (readHolder(lockDir) ?? "unknown");
-    if (ahead === 0 && holder === null) return { check, joinedAt: start, acquiredAt: Date.now(), aheadAtJoin };
+    const holders = liveHolders(lockDir, slots);
+    const slot = ahead < slots - holders.length ? tryAcquireSlot(lockDir, slots) : null;
+    if (slot !== null) return { check, joinedAt: start, acquiredAt: Date.now(), aheadAtJoin, slot };
+    const holder = holders.join(", ") || "unknown";
     const waited = Date.now() - start;
     if (waited >= timeoutMs) {
       throw busyError(`dag-check lock busy (held by ${holder}, ${ahead} ahead of you); retry later`, "timeout");

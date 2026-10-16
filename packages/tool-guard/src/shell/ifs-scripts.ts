@@ -1,5 +1,6 @@
 import { caseNamed } from "./case-script.js";
-import { inlineScript, SHELLS, shellOperands } from "./inline-script.js";
+import { inlineScript, SHELLS } from "./inline-script.js";
+import { shellOperands } from "./shell-options.js";
 import { cutReading } from "./piped-nul.js";
 import type { RedirectToken, Token, WordToken } from "./tokens.js";
 import { MAX_UNSURE_WORDS, SPLICED_WEIGHT, unsureReadings } from "./unsure-readings.js";
@@ -126,7 +127,7 @@ function commandScripts(cmd: Unwrapped, { redirects, piped }: Stage, before: Sta
 function runsRunTimeScript(cmd: Unwrapped): boolean {
   if (!isShell(cmd)) return false;
   if (cmd.assigned.some(([name]) => STARTUP_VAR_RE.test(`${name}=`))) return true;
-  const { hasC, positional } = shellOperands(cmd.args);
+  const { hasC, positional } = shellOperands(cmd.args, cmd.name);
   const options = positional ? cmd.args.slice(0, cmd.args.indexOf(positional)) : cmd.args;
   if (options.some((a) => STARTUP_OPTION_RE.test(a.value))) return true;
   return hasC && positional !== null && (positional.dynamic || positional.computed);

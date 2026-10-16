@@ -1,6 +1,7 @@
 // A machine-wide warm graph for local dag:check runs, beside the lock (TP-2695 c). Code-graph file ids are repo-relative,
 // so a graph any worktree indexed lets the next holder re-parse only the files that differ.
-// Every reader and writer runs under the dag-check lock; tmp+rename still keeps a killed refresh from leaving a partial seed.
+// Readers and writers hold dag-check lock slots, possibly several at once; tmp+rename means a reader copies a whole seed, old or new,
+// and a killed refresh leaves no partial one. Concurrent refreshes race harmlessly: the last finished graph wins.
 import { copyFileSync, renameSync, rmSync } from "node:fs";
 import path from "node:path";
 import { DEFAULT_LOCK_DIR } from "./dag-check-lock.mjs";
