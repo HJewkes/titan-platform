@@ -1,6 +1,7 @@
 import { joinedDollar, nextAfter } from "./joins.js";
 import { type Nesting, nested } from "./nesting.js";
 import { ParseError, SplitParseError } from "./parse-error.js";
+import { zshRunsValue } from "./zsh-value-flags.js";
 
 /** The lexer's own readers, lent so a `${ }` or `$(( ))` body is read with the rules of the rest of the line. */
 export interface NestedReaders {
@@ -89,8 +90,14 @@ const DOLLAR_ENDS: Record<DollarOpener, (src: string, j: number, read: NestedRea
   locale: (_src, j) => j,
 };
 
+/** zsh runs the value of `${~x}`, `${(e)x}` and `$~x` as a glob qualifier or as code, so the line is refused where it is read. */
+export function refuseValueRun(src: string, dollar: number): void {
+  if (zshRunsValue(src, dollar)) throw new ParseError("zsh runs this expansion's value as code");
+}
+
 function dollarEnd(src: string, j: number, read: NestedReaders): number {
   const at = joinedDollar(src, j);
+  refuseValueRun(src, at);
   const opener = dollarOpener(src, at);
   return opener ? DOLLAR_ENDS[opener](src, at, read) : at;
 }
