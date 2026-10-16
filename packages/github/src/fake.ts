@@ -150,6 +150,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     },
     updateBranch: async (_repo, number, expected) => record("updateBranch", updateBranch(fake, mustPr(prs, number), expected, nextSha)),
     setPrBase: async (_repo, number, base) => record("setPrBase", setPrBase(fake, mustPr(prs, number), base)),
+    closePr: async (_repo, number) => record("closePr", void (mustPr(prs, number).state = "closed")),
     merge: async (_repo, number, sha, method, message) => {
       record("merge", undefined);
       fake.merges.push({ number, message });

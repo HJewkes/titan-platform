@@ -104,6 +104,7 @@ export function advisoryPort(port: GitHubPort, isAdvisory: IsAdvisory): GitHubPo
     ...port,
     merge: async (repo, ...rest) => (refuse(repo, "merges"), port.merge(repo, ...rest)),
     updateBranch: async (repo, ...rest) => (refuse(repo, "updates a branch"), port.updateBranch(repo, ...rest)),
+    closePr: async (repo, ...rest) => (refuse(repo, "closes a PR"), port.closePr(repo, ...rest)),
     pushEmptyCommit: async (repo, ...rest) => (refuse(repo, "pushes"), port.pushEmptyCommit(repo, ...rest)),
     deleteRef: async (repo, ...rest) => (refuse(repo, "deletes a ref"), port.deleteRef(repo, ...rest)),
   };
