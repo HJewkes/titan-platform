@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { packageDirOf, repoTierDirs, resolveBase, vitestArgs } from "./test-affected.mjs";
+import { forceRerunTriggers, packageDirOf, repoTierDirs, resolveBase, vitestArgs } from "./test-affected.mjs";
 
 const PLAIN = ["run", "--changed", "origin/main", "--passWithNoTests", "--project", "threads", "--project", "forks"];
 
@@ -52,5 +52,17 @@ describe("packageDirOf", () => {
     ["vitest.config.ts", null],
   ])("maps %s to %s", (path, dir) => {
     expect(packageDirOf(path)).toBe(dir);
+  });
+});
+
+describe("force-rerun triggers", () => {
+  it("anchors every trigger at the root, through dot segments", () => {
+    const triggers = forceRerunTriggers("/r/.wt/x");
+
+    expect(triggers.every((trigger) => trigger.startsWith("/r/.wt/x/"))).toBe(true);
+  });
+
+  it("escapes glob metacharacters in the root", () => {
+    expect(forceRerunTriggers("/r/p(1)")[0]).toBe("/r/p\\(1\\)/**/package.json/**");
   });
 });

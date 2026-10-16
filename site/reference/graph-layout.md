@@ -87,25 +87,67 @@ const sizing = labelBoxSizing(labels, { fontSize: 28, charWidth: 0.6, padding: 1
 const level1 = await computeLayout(packages, sizing);
 ```
 
+A pin is a short pill of text beside one box. `placePills` places each pill outside its box,
+inside the visible frame above a keep-out band, and clear of every label you list and every
+pill placed before it. It reads geometry only, so a product can run it at build time and hand
+the boxes to a painter. A pill with no clear spot comes back in `dropped`, never drawn over
+something:
+
+```ts
+import { placePills } from "@titan-design/graph-layout";
+
+const { placed, dropped } = placePills(
+  {
+    frame: { x: 0, y: 0, width: 1200, height: 675 },
+    anchors: [{ id: "api", rect: { x: 520, y: 160, width: 160, height: 60 } }],
+    obstacles: [{ id: "web->api", rect: { x: 300, y: 176, width: 200, height: 28 } }],
+  },
+  [{ id: "p1", anchor: "api", width: 140, height: 32 }],
+  { gap: 8, keepOut: 0.83 },
+);
+// placed: [{ id: "p1", anchor: "api", rect: { x: 530, y: 228, width: 140, height: 32 }, candidate: "below0" }]
+```
+
+For an animated architecture diagram, `emitRepoMap` writes the whole map at once: package
+boxes hold directory boxes, which hold file boxes, and the edges at all three levels are routed
+in one pass. The result is `repo-map/v1` data that titan-design's map painter reads as is:
+
+```ts
+import { emitRepoMap } from "@titan-design/graph-layout";
+
+const map = await emitRepoMap(fileGraph, { maxFilesPerBox: 6 });
+// map.nodes: [{ id: "pkg:api", level: 1, box: { x, y, w, h } }, { id: "dir:packages/api/src", level: 2, parentId: "pkg:api", ... }, ...]
+// map.edges: [{ id: "pkg:web->pkg:api", level: 1, weight: 3, edgeSource: "import", route: [[x, y], ...] }, ...]
+// map.sha: the same for the same snapshot in any order, and it covers the elkjs version
+```
+
 ## What it deliberately does not do
 
 - No rendering. It returns coordinates and routes; drawing them is the product's job.
 - No layout with fixed node positions. ELK layered places every node itself. Its
   interactive strategies read input positions only as ordering hints, ELK's `fixed`
   algorithm keeps positions but routes no edges, and elkjs does not bundle libavoid.
-- No pruning or labels. Box sizes come from the caller's `sizing` map, defaulting to
-  180 x 48.
+- No pruning or label text outside the repo map. Box sizes come from the caller's `sizing`
+  map, defaulting to 180 x 48, and a pill's size comes from its `PinSpec`. `emitRepoMap`
+  alone prunes (`+N more`) and sizes boxes for 44 px labels.
+- No caption policy. `placePills` takes the keep-out line as `config.keepOut`; the product
+  owns the number.
 
 ## Gotchas
 
 - Results list nodes and edges sorted by id, not in input order.
-- `x` and `y` are box centres, not top-left corners, for nodes and group boxes alike.
+- `x` and `y` are box centres, not top-left corners, for nodes and group boxes alike. A
+  `Rect` in `placePills` is the other way round: `x` and `y` are its top-left corner.
+- `placePills` places in `rank` order, then by id, whatever order the pins come in. Give a
+  later-cued pin a higher rank so earlier pins keep the spots nearest their boxes.
 - A group-endpoint edge attaches only when its id equals one `groupOf` returns; any other
   edge whose ends are not node or group ids is dropped from the layout.
 - `elkjs` is pinned to an exact version: a minor release can move every coordinate.
 - A route is keyed by its `(srcId, dstId)` pair, so two edges of different kinds between
   the same pair share one route.
-- When ELK throws or places nothing, the layout falls back to a grid rather than throwing.
+- When ELK throws or places nothing, `computeLayout` and `computeCompoundLayout` fall back to a
+  grid rather than throwing. `computeCompoundLayoutStrict` and `emitRepoMap` reject, because a
+  grid has no routes.
 - The rule for a file's package is fixed (`packageOf`): `packages/<name>` gives `<name>`,
   `products/<name>` and `apps/<name>` keep their root, and any other path groups by its first
   segment.

@@ -24,7 +24,7 @@ export function mayReachGitHubApi(word: WordToken): boolean {
  * Where the first run-time part of a dynamic word lands in its `value`. Command substitutions are cut
  * out of `value`, so their `cuts` mark them; a dynamic word with no marked part is unknown from the start.
  */
-function firstExpansion(word: WordToken): number {
+export function firstExpansion(word: WordToken): number {
   const marked = word.value.search(/[$`]/);
   const starts = [...word.refs.map((r) => r.start), ...(word.cuts ?? []).map((c) => c.at), ...(marked >= 0 ? [marked] : [])];
   return starts.length > 0 ? Math.min(...starts) : 0;

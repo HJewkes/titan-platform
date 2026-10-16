@@ -117,6 +117,11 @@ for (const item of items) {
   needed, writes a 0600 temp file and links it into place. A link, unlike a rename, refuses
   to replace an existing file, so the first write of an asker and `depositId` wins; a repeat
   returns `created: false` and changes nothing, even when many writers race.
+- `writeDeposit(dir, deposit, { source })` also checks every `anchors` entry, on the item and
+  on its options, at the item's `pins`. `source(rev)` returns a `LineSource` for that commit,
+  for example `revisionLineSource` from `@titan-design/code-graph/history`. An anchor past
+  EOF throws `DepositAnchorError` ("head/src/a.ts#L10-L20: past EOF (15 lines)") before any
+  file is written; on success `result.anchors` quotes each anchor's first and last line.
 - `readSpool(dir)` returns `{ items, rejects }`. Each valid deposit becomes an open item
   through `fromDeposit`, opened at the file's mtime. Invalid JSON, a schema failure, a file
   over the cap, a symlink, or a file whose name does not match its own asker and
