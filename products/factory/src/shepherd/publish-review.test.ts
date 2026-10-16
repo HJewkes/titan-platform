@@ -9,7 +9,8 @@ import type { ShepherdPhases } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { REVIEW_CHECK_NAME } from "./publish-review.js";
-import { reviewPhase, type AwaitVerdictInput, type ReviewerAgent, type ReviewerDispatch, type ReviewerReader } from "./review.js";
+import type { AwaitVerdictInput, ReviewerAgent, ReviewerDispatch, ReviewerReader } from "@titan-design/review-panel";
+import { reviewPhase } from "./review.js";
 import { shepherdStoreRef } from "./store.js";
 
 const A = fakeSha("publish-review-a");
