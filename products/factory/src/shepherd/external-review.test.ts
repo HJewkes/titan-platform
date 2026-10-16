@@ -864,6 +864,20 @@ describe("awaitExternalVerdict over a real transcript", () => {
   });
 });
 
+describe("awaitExternalVerdict with an unreadable roster", () => {
+  it("logs that the roster could not be read and returns no verdict", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const reader = { read: async () => [] };
+    const timing = { now: () => 0, sleep: async () => undefined, pollMs: 1, timeoutMs: 0 };
+
+    const result = await awaitExternalVerdict(() => Promise.reject(new Error("broker down")), reader, { ...target, external: "seat-c-9-review" }, timing, new AbortController().signal);
+
+    expect(result).toEqual({ kind: "none" });
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("roster could not be read"));
+    log.mockRestore();
+  });
+});
+
 describe("seat check roster reads", () => {
   let dir: string;
 

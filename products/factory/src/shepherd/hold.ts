@@ -41,7 +41,7 @@ export interface HoldSatisfierDeps {
   carry?: (input: CarryInput) => Promise<CarryResult>;
 }
 
-/** A reviewer not on the roster, or one not provably independent of the code's authors, changes nothing; a read that fails, a damaged transcript included, withdraws a satisfaction at this head and never keeps or grants one. */
+/** A reviewer not on the roster, or one not provably independent of the code's authors, changes nothing; a read that fails, a damaged transcript included, withdraws a satisfaction at this head and never keeps or grants one. A roster outage leaves the hold as it is, so an existing satisfaction stays until the roster reads again. */
 export function holdSatisfier(deps: HoldSatisfierDeps): HoldSatisfier {
   return async (repo, pr, sha, baseRef) => {
     const store = deps.store();

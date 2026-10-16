@@ -114,14 +114,25 @@ describe("sunset check --agent-chat-drift", () => {
   });
 
   it("still fails an overdue agent-chat delete under warn, and passes once the file is gone", () => {
-    const box = sandbox(["a.ts"], ["a.ts"]);
+    const box = sandbox(["a.ts", "keep.ts"], ["a.ts"]);
+    const kept = { ...del("old/keep.ts"), repo: "agent-chat", fate: "kept", reason: "stays" };
+    writeFileSync(box.manifest, JSON.stringify({ roots: [{ repo: "agent-chat", path: "old" }], entries: [{ ...del("old/a.ts"), repo: "agent-chat" }, kept] }));
     const red = withMode(box, "warn", exitM3(box));
     rmSync(join(box.dir, "old", "a.ts"));
     execFileSync("git", ["-C", box.dir, "rm", "-q", "--cached", "old/a.ts"]);
-    writeFileSync(box.manifest, JSON.stringify({ roots: [{ repo: "agent-chat", path: "old" }], entries: [] }));
+    writeFileSync(box.manifest, JSON.stringify({ roots: [{ repo: "agent-chat", path: "old" }], entries: [kept] }));
 
     expect({ status: red.status, stderr: red.stderr }).toEqual({ status: 1, stderr: "agent-chat:old/a.ts: still exists but D-M3-19 was due at the exit of M3\n" });
     expect(withMode(box, "warn", exitM3(box)).status).toBe(0);
+  });
+
+  it("fails under warn when the agent-chat checkout lists no files at all", () => {
+    const box = sandbox([], ["a.ts"]);
+
+    const empty = withMode(box, "warn");
+
+    expect(empty.status).toBe(1);
+    expect(empty.stderr).toContain("agent-chat: every root lists 0 files");
   });
 
   it("rejects a mode other than fail or warn", () => {

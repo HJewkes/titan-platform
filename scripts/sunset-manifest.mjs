@@ -117,12 +117,21 @@ export function listRoots(manifest, repoDirs) {
   return listings;
 }
 
+/** An agent-chat checkout whose every root lists nothing is an empty or moved clone; its mapped files would only warn as drift, so the check names it itself. */
+export function emptyCheckoutProblem(manifest, listings) {
+  const listed = manifest.roots.filter(({ repo, path }) => repo === "agent-chat" && listings[`${repo}:${path}`]);
+  return listed.length > 0 && listed.every(({ repo, path }) => listings[`${repo}:${path}`].length === 0) ? "agent-chat: every root lists 0 files; the --agent-chat checkout is empty or moved" : undefined;
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     const opts = parseArgs(process.argv.slice(2));
     const manifest = JSON.parse(readFileSync(opts.manifest, "utf8"));
     const exited = exitedMilestones(JSON.parse(readFileSync(opts.milestones, "utf8")));
-    const problems = classifyManifest(manifest, listRoots(manifest, { "titan-platform": ROOT, "agent-chat": opts.agentChat }), exited);
+    const listings = listRoots(manifest, { "titan-platform": ROOT, "agent-chat": opts.agentChat });
+    const problems = classifyManifest(manifest, listings, exited);
+    const empty = emptyCheckoutProblem(manifest, listings);
+    if (empty) problems.push({ kind: "empty", text: empty });
     const warnOnly = (problem) => opts.agentChatDrift === "warn" && problem.kind === "drift" && problem.text.startsWith("agent-chat:");
     for (const problem of problems) console.error(warnOnly(problem) ? `::warning::${problem.text}` : problem.text);
     if (!opts.agentChat) console.error("agent-chat roots checked for shape only (no --agent-chat)");

@@ -1,7 +1,8 @@
 import type { Logger } from "@titan-design/daemon";
 import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../registry.js";
-import { classifyRegistered, restartRegistered } from "./commands.js";
+import { SHEPHERD_ACTOR } from "./events.js";
+import { classifyRegistered, restartRegistered, type Registered } from "./commands.js";
 import type { RegisterArgs } from "./register-args.js";
 import { DIVERGED_PR_CLOSED, isReplayDiverged } from "./restart.js";
 import type { ShepherdServices } from "./services.js";
@@ -29,6 +30,16 @@ function argsOf(known: Registration): RegisterArgs {
   };
 }
 
+/** A restarted run is no longer diverged, so no later sweep would class it; one that cannot be classed is held adversary rather than left unclassified. */
+async function classifyOrHold(ctx: FactoryContext, restarted: Registered, head: string): Promise<void> {
+  try {
+    await classifyRegistered(ctx, restarted, head);
+  } catch (error) {
+    ctx.shepherd!.store.get().holdUnlessAdversary(restarted.runId, "g10-adversary: restarted run could not be classed", { actor: SHEPHERD_ACTOR });
+    throw error;
+  }
+}
+
 /**
  * Restarts each registration whose run strict replay parked as diverged, and cancels the run when its pull request has closed.
  * A branch-only registration is left parked: its restart is unchecked against any pull request, so only a register may widen to it.
@@ -54,7 +65,7 @@ export async function restartDivergedRuns(ctx: FactoryContext, closing: () => bo
       const restarted = await restartRegistered(ctx, store, known, argsOf(known), known.policy);
       if (!restarted.created) continue;
       sweep.restarted.push({ runId: known.runId, newRunId: restarted.runId });
-      await classifyRegistered(ctx, restarted);
+      await classifyOrHold(ctx, restarted, pr.headSha);
     } catch (error) {
       sweep.errors.push({ runId: known.runId, cause: error instanceof Error ? error.message : String(error) });
     }

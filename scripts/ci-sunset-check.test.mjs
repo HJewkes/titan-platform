@@ -15,4 +15,10 @@ describe("validate job sunset check", () => {
     expect(step.run).toContain("--agent-chat-drift warn");
     expect(step.run).toContain("$GITHUB_STEP_SUMMARY");
   });
+
+  it("cannot be turned green by swallowing its exit status", () => {
+    expect(step.run).not.toContain("|| true");
+    expect(step["continue-on-error"]).toBeUndefined();
+    expect(workflow.jobs.validate["continue-on-error"]).toBeUndefined();
+  });
 });
