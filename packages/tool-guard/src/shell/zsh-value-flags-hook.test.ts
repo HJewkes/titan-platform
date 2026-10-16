@@ -28,6 +28,7 @@ async function handled(command: string): Promise<"deny" | "pass"> {
 
 const REFUSED = [
   ["a braced tilde flag", "echo ${~x}"],
+  ["a tilde flag on an assign-on-expand", ": ${~PS4::=x}"],
   ["a doubled braced tilde flag", "echo ${~~x}"],
   ["a bare tilde expansion", "echo $~x"],
   ["an equals-tilde flag", "echo ${=~x}"],
