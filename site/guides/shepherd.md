@@ -854,11 +854,12 @@ rerun turns the head green, the run reviews it with the hold kept. If the head i
 seat is told once that the rerun is spent, and the run waits in `sh-held-wait` for a release, a
 push, or a rerun by hand that turns the head green.
 
-A hold whose reason starts `g10-review:`, names no `--reviewer` and was placed by Shepherd
-itself releases itself in the `sh-g10-release` step when an opus reviewer Shepherd spawned says
-`MERGE` and the required checks are green at that head. A hold that names a reviewer waits for
-that reviewer's `MERGE`. A `g10-review` hold a seat or the owner placed with `shepherd hold`, or
-one whose hold event is not on record, is a review someone assigned: it never releases itself.
+A hold whose reason starts `g10-review:` and names no `--reviewer` releases itself in the
+`sh-g10-release` step when an opus reviewer Shepherd spawned says `MERGE` and the required
+checks are green at that head. A hold that names a reviewer waits for that reviewer's `MERGE`.
+A review the owner assigned to a person is recorded as an `owner-review:` hold, or as a hold that
+names that person with `--reviewer`; neither releases itself. A `g10-review` hold with no hold
+event on record, or whose history cannot be read, may be one of them, so it stays held too.
 When Shepherd's own update-branch then moves the head by a clean merge-up of main, that
 `MERGE` stands at the new head: the step releases the hold there once its checks are green,
 with no fresh review and no seat release. A head reached by any other move, or carried by the

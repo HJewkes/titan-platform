@@ -51,8 +51,6 @@ interface World {
 interface Scene {
   policy?: EffectivePolicy;
   hold?: string;
-  /** Who places the hold; absent is Shepherd itself, as at registration. */
-  holdActor?: string;
   /** A head whose every review round ends with no verdict, as tp#1558's did before its fix push. */
   silentAt?: string;
 }
@@ -62,7 +60,7 @@ function heldSecurityRun(roles: ReviewerRoles, policy: EffectivePolicy = AUTO_PO
   return heldRun(roles, { policy, hold });
 }
 
-function heldRun(roles: ReviewerRoles, { policy = AUTO_POLICY, hold = G10_HOLD, holdActor, silentAt }: Scene): World {
+function heldRun(roles: ReviewerRoles, { policy = AUTO_POLICY, hold = G10_HOLD, silentAt }: Scene): World {
   const fake = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const wake: ShepherdPhases["wake"] = async () => ({ kind: "unhandled", reason: "no fixer in this test" });
@@ -76,7 +74,7 @@ function heldRun(roles: ReviewerRoles, { policy = AUTO_POLICY, hold = G10_HOLD, 
   const store = ref.get();
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(policy) });
   store.register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy, kind: "security" });
-  store.hold(runId, hold, undefined, holdActor === undefined ? {} : { actor: holdActor });
+  store.hold(runId, hold, undefined, { actor: "seat" });
   return { host, fake, store, runId, services: routes.shepherd! };
 }
 
@@ -151,11 +149,9 @@ describe("tp#1558: a failed-rounds owner gate whose head a fix push moves (TP-30
 });
 
 describe("a review the owner assigned to a person (TP-3083)", () => {
-  it.each([
-    ["an owner-review hold", "owner-review: assigned to a seat reviewer", undefined],
-    ["a g10-review hold a seat placed for a full review", G10_HOLD, "seat-reviewer"],
-  ])("keeps %s through Shepherd's own opus MERGE at a green head, and merges nothing", async (_case, hold, holdActor) => {
-    const w = heldRun(OPUS, { hold, ...(holdActor && { holdActor }) });
+  it("keeps an owner-review hold through Shepherd's own opus MERGE at a green head, and merges nothing", async () => {
+    const hold = "owner-review: assigned to a seat reviewer";
+    const w = heldRun(OPUS, { hold });
 
     await vi.waitFor(() => expect(w.host.runtime.status(w.runId)?.currentStep).toBe("merge:0"), { timeout: 5_000 });
 

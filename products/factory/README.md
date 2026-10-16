@@ -227,8 +227,8 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
   `shepherd hold` refuses, with exit 65 and before anything is held, a reason whose class is not one of `serve-down`,
   `stalled`, `no-reviewer`, `run-failed`, `visual-gate2`, `g10-review`, `g10-adversary`, `owner-asked` or `owner-review`, and a reason in one of the
   first four (factory-defect) classes that cites no task ID (`src/shepherd/hold-reason.ts`). Two classes carry the G10 rule:
-  - `g10-review` releases itself only when Shepherd placed it (its newest hold event under that reason has actor
-    `shepherd`); one a seat or the owner placed, or one with no hold event on record, is an assigned review. When the run's `sh-await-verdict` at the PR's head, read fresh, is a MERGE from the
+  - `g10-review` releases itself unless it names a `--reviewer` or has no hold event on record (an unreadable history
+    counts as none), since either may be a review the owner assigned. When the run's `sh-await-verdict` at the PR's head, read fresh, is a MERGE from the
     configured opus reviewer (`shepherd.review.profile`; `bd-reviewer`, or a profile named for opus) and the required
     checks are green at that head, the `sh-g10-release:<head>:<n>` step releases the hold and records the verdict
     ref (reviewer, session, locator). A FIX_FIRST, a head that moved, a verdict carried from another head, or a
@@ -236,7 +236,8 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
   - `g10-adversary` never releases itself. Seats use it for authority, merge-policy and security PRs, which also
     need a seat's fail-open reviewer until Shepherd has one (TP-1931); release it with `shepherd release <pr> --head <sha>`.
 
-  - `owner-review` records that the owner assigned the review to a person; no Shepherd MERGE releases it.
+  - `owner-review` records that the owner assigned the review to a person; no Shepherd MERGE releases it, only
+    `shepherd release`.
 
   Any other class waits for `shepherd release <pr> --head <sha>`. While a `g10-adversary` hold sits over a
   hold of another class, `release` must name the hold it lifts with `--class <class>`.

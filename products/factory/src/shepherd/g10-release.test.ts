@@ -14,7 +14,7 @@ const REPO = "octo/demo";
 const HEAD = fakeSha("head-1");
 const MOVED = fakeSha("head-2");
 
-const held = (reason: string | null, placedBy: string | null = "shepherd") => ({ held: reason !== null, holdReason: reason, placedBy });
+const held = (reason: string | null, recorded = true) => ({ held: reason !== null, holdReason: reason, recorded });
 const mergeAt = (head: string): G10Verdict => ({ value: "MERGE", head, reviewer: { agentId: "a-1", sessionId: "s-1" }, locator: { source: { conversation: { nativeId: "s-1" } } } as unknown as G10Verdict["locator"] });
 const green = (head: string) => ({ head, green: true });
 
@@ -48,11 +48,12 @@ describe("satisfiesG10", () => {
     expect(satisfiesG10(held("g10-review: x"), mergeAt(HEAD), HEAD, green(HEAD), undefined)).toBe(false);
   });
 
-  it.each([
-    ["a seat placed", "seat-reviewer"],
-    ["has no hold event on record", null],
-  ])("keeps a g10-review hold that %s: the owner may have assigned that review", (_case, placedBy) => {
-    expect(satisfiesG10(held("g10-review: x", placedBy), mergeAt(HEAD), HEAD, green(HEAD), "bd-reviewer")).toBe(false);
+  it("keeps a g10-review hold with no hold event on record: the owner may have assigned that review", () => {
+    expect(satisfiesG10(held("g10-review: x", false), mergeAt(HEAD), HEAD, green(HEAD), "bd-reviewer")).toBe(false);
+  });
+
+  it("keeps a g10-review hold that names the person the review was assigned to", () => {
+    expect(satisfiesG10({ ...held("g10-review: x"), holdReviewer: "seat-reviewer" }, mergeAt(HEAD), HEAD, green(HEAD), "bd-reviewer")).toBe(false);
   });
 
   it("keeps an owner-review hold", () => {
@@ -109,11 +110,19 @@ describe(G10_RELEASE_STEP, () => {
     expect(store.byRun("run-1")?.held).toBe(true);
   });
 
-  it("keeps a g10-review hold a seat placed with shepherd hold", async () => {
-    const { store, pr, deps } = rig("g10-review: full review; TP-1", HEAD, "seat-reviewer");
+  it("releases a g10-review hold a seat placed with no reviewer, as before", async () => {
+    const { store, pr, deps } = rig("g10-review: auth; TP-1", HEAD, "seat");
+    const done = await runStep(g10ReleaseRoutes(deps)[0]!, stepInput(pr, HEAD));
+    expect(done.released).toBe(true);
+    expect(store.byRun("run-1")?.held).toBe(false);
+  });
+
+  it("keeps a g10-review hold that names an assigned reviewer", async () => {
+    const { store, pr, deps } = rig("g10-review: auth; TP-1");
+    store.hold("run-1", "g10-review: auth; TP-1", "seat-reviewer", { actor: "seat" });
     const done = await runStep(g10ReleaseRoutes(deps)[0]!, stepInput(pr, HEAD));
     expect(done.released).toBe(false);
-    expect(store.byRun("run-1")?.held).toBe(true);
+    expect(store.byRun("run-1")).toMatchObject({ held: true, holdReviewer: "seat-reviewer" });
   });
 
   it("keeps a g10-review hold when the hold history cannot be read", async () => {
