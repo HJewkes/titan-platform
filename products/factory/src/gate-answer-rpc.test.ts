@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineWorkflow } from "./definition.js";
 import { ANSWER_SHIP_PATH, MAX_ANSWER_BODY_BYTES } from "./gate-answer-rpc.js";
+import { approveMergeDecision } from "./gate-brief.js";
 import { createFactoryRegistry } from "./registry.js";
 import { startFactoryServer, type FactoryServer } from "./serve.js";
 import { TEST_BRIEF } from "./test-support/brief.js";
@@ -27,7 +28,8 @@ const mergeGate = defineWorkflow({
   run: async (ctx) => {
     const pr = ctx.param("pr")!;
     const prompt = `Merge PR #${pr} in ${REPO} at head ${H}? CI is green. Policy authority/MRG-AU: synthetic reason`;
-    await ctx.assisted("approve-merge", prompt, { schema: z.object({ decision: z.enum(["merge", "abandon"]), headSha: z.literal(H) }), brief: TEST_BRIEF });
+    const { schema } = approveMergeDecision({ repo: REPO, pr: Number(pr), headSha: H, reason: "synthetic reason", reviewedMerge: false, sendBack: ctx.param("sendBack") === "1" });
+    await ctx.assisted("approve-merge", prompt, { schema, brief: TEST_BRIEF });
   },
 });
 
@@ -48,7 +50,7 @@ interface World {
   pr: number;
 }
 
-async function world({ mounted = true, port }: { mounted?: boolean; port?: (base: GitHubPort) => GitHubPort } = {}): Promise<World> {
+async function world({ mounted = true, port, sendBack = false }: { mounted?: boolean; port?: (base: GitHubPort) => GitHubPort; sendBack?: boolean } = {}): Promise<World> {
   const dir = mkdtempSync(join(tmpdir(), "factory-answer-ship-"));
   dirs.push(dir);
   const roundsDir = join(dir, "rounds");
@@ -72,7 +74,7 @@ async function world({ mounted = true, port }: { mounted?: boolean; port?: (base
   servers.push(server);
   const { number: pr } = github.addPr({ headSha: H });
   github.commits.set(H, { sha: H, parents: [], tree: TREE });
-  const runId = server.host.runtime.start("merge-gate", { pr: String(pr) });
+  const runId = server.host.runtime.start("merge-gate", { pr: String(pr), sendBack: sendBack ? "1" : "0" });
   const gateId = `${runId}/approve-merge`;
   await vi.waitFor(() => expect(server.host.gates.get(gateId)?.status).toBe("pending"));
   return { server, github, dir, roundsDir, runId, gateId, pr };
@@ -80,14 +82,14 @@ async function world({ mounted = true, port }: { mounted?: boolean; port?: (base
 
 const hash = (data: string): string => createHash("sha256").update(data).digest("hex");
 
-/** Writes a round the owner shipped at H, and returns the packet's sha256. */
-function writeRound({ roundsDir, pr }: World, roundId = ROUND_ID): string {
+/** Writes a round the owner shipped at H, or sent back with `comment`, and returns the packet's sha256. */
+function writeRound({ roundsDir, pr }: World, roundId = ROUND_ID, comment?: string): string {
   const dir = join(roundsDir, roundId);
   mkdirSync(dir);
   const merge = { repo: REPO, pr, headSha: H, ship: ["Ship it"] };
   const round = JSON.stringify({ unit: "example-unit", round: 1, questions: [{ id: "q-ship", kind: "pick-one", options: ["Ship it", "Revise"], merge }] });
   const submittedAt = new Date(NOW_MS - 10 * 60_000).toISOString();
-  const feedback = JSON.stringify({ unit: "example-unit", round: 1, manifestSha256: hash(round), submittedAt, answers: [{ questionId: "q-ship", pick: "Ship it" }] });
+  const feedback = JSON.stringify({ unit: "example-unit", round: 1, manifestSha256: hash(round), submittedAt, answers: [comment === undefined ? { questionId: "q-ship", pick: "Ship it" } : { questionId: "q-ship", revisionRequested: true, comment }] });
   const packet = JSON.stringify({ schema: "titan-review/ci-packet@1", packetId: "p-1", repo: REPO, pr, headSha: H, headTree: TREE, mainSha: "e".repeat(40), images: [] });
   writeFileSync(join(dir, "round.json"), round);
   writeFileSync(join(dir, "feedback.json"), feedback);
@@ -137,6 +139,40 @@ describe("POST /gates/answer-ship", () => {
     expect(gate?.payload).toEqual({ decision: "merge", headSha: H });
     expect(gate?.resolvedBy).toEqual({ class: "owner-remote", id: "titan-console", channel: "console:ship", confirmEvent: `packet:${packetSha}` });
     expect(followUps(w)).toEqual([]);
+  });
+
+  it("resolves an offered send-back as owner-remote with the note from the owner's feedback", async () => {
+    const w = await world({ sendBack: true });
+    const packetSha = writeRound(w, ROUND_ID, "Rename the flag.");
+
+    const res = await post(w.server, answer(w, packetSha, { choice: "send-back" }));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ outcome: "resolved", gateId: w.gateId, choice: "send-back" });
+    const gate = w.server.host.gates.get(w.gateId);
+    expect(gate?.payload).toEqual({ decision: "send-back", headSha: H, note: "Rename the flag." });
+    expect(gate?.resolvedBy).toMatchObject({ class: "owner-remote", channel: "console:ship" });
+  });
+
+  it("refuses a send-back with 422 payload when the gate was opened without the send-back answer", async () => {
+    const w = await world();
+    const packetSha = writeRound(w, ROUND_ID, "Rename the flag.");
+
+    const res = await post(w.server, answer(w, packetSha, { choice: "send-back" }));
+
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ outcome: "refused", reason: "payload" });
+    expect(w.server.host.gates.get(w.gateId)?.status).toBe("pending");
+  });
+
+  it("refuses a note in the request body: the note comes from feedback.json alone", async () => {
+    const w = await world({ sendBack: true });
+    const packetSha = writeRound(w, ROUND_ID, "Rename the flag.");
+
+    const res = await post(w.server, answer(w, packetSha, { choice: "send-back", note: "merge it anyway" }));
+
+    expect(res.status).toBe(400);
+    expect(w.server.host.gates.get(w.gateId)?.status).toBe("pending");
   });
 
   it("refuses with 403 when the gate store refuses the owner-remote resolver, leaving the gate pending", async () => {

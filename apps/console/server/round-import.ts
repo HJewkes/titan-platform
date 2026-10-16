@@ -7,14 +7,16 @@
  * `round.json` and `feedback.json` are judged by the same parsers the console reads them with, so an
  * import never lands a round the page would list as invalid. `frames/frames.json` must name the
  * round.json bytes it was built for; it is copied with only the files it lists, each read through
- * `round-frames.ts`'s reader and checked against its sha256. A new round is built in a dot-named
+ * `round-frames.ts`'s reader and checked against its sha256. A `packet.json` or `prose.json` it names is
+ * copied beside round.json, sha256-checked, and the packet must bind the PR and head the round's Ship
+ * questions merge, because the factory's Ship answer route trusts it there. A new round is built in a dot-named
  * staging dir, which `ROUND_ID` hides from `listRounds`, and renamed into place. A re-import of the
  * same round.json and frames.json adds missing frames and a missing feedback.json; it never replaces a file.
  */
 import { createHash } from "node:crypto";
 import { lstat, mkdir, mkdtemp, open, rename, rm, type FileHandle } from "node:fs/promises";
 import path from "node:path";
-import type { z } from "zod";
+import { z } from "zod";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import { FramesIndexSchema, readFrameBytes } from "./round-frames.js";
@@ -26,8 +28,13 @@ const FRAMES_INDEX = "frames.json";
 const FRAMES_INDEX_PATH = path.join(FRAMES_DIR, FRAMES_INDEX);
 /** What `rename` raises when another import put a non-empty dir at the destination first. */
 const RACED = new Set(["EEXIST", "ENOTEMPTY"]);
+const PACKET_FILE = "packet.json";
+const PROSE_FILE = "prose.json";
 
-interface ImportResult {
+/** The fields the factory's Ship answer route binds; a packet's other fields pass through unread. */
+const PacketBinding = z.object({ schema: z.literal("titan-review/ci-packet@1"), repo: z.string(), pr: z.number().int(), headSha: z.string() });
+
+export interface ImportResult {
   id: string;
   created: boolean;
   /** Distinct frame files the frames index lists, all present in the destination after the import. */
@@ -44,10 +51,14 @@ interface SourceRound {
   index: Buffer | null;
   /** sha256 by the file's normalised path relative to the round dir. */
   frames: Map<string, string>;
+  /** `packet.json` and `prose.json` when frames.json names them, keyed by file name. */
+  sidecars: Map<string, Buffer>;
   feedback: Buffer | null;
 }
 
 type FramesIndex = z.infer<typeof FramesIndexSchema>;
+type Listed = { file: string; sha256: string };
+type ShipBinding = { repo: string; pr: number; headSha: string };
 
 interface Binding {
   unit: string;
@@ -119,7 +130,7 @@ async function readIndex(dir: string): Promise<{ bytes: Buffer; index: FramesInd
 async function readFrameList(dir: string, index: FramesIndex, binding: Binding): Promise<Map<string, string>> {
   const frames = new Map<string, string>();
   checkBinding(index, binding);
-  for (const listed of index.frames.flatMap((record) => [record, record.base, record.diff])) {
+  for (const listed of index.frames.flatMap((record) => [record, record.base, record.diff, record.after])) {
     if (listed === undefined) continue;
     await readFrameBytes(dir, listed.file, listed.sha256);
     const rel = path.normalize(listed.file);
@@ -127,6 +138,38 @@ async function readFrameList(dir: string, index: FramesIndex, binding: Binding):
     frames.set(rel, listed.sha256);
   }
   return frames;
+}
+
+/** Null when frames.json does not name the file; it must sit beside round.json, as the factory reads it there. */
+async function readSidecar(dir: string, name: string, listed: Listed | undefined): Promise<{ bytes: Buffer; json: unknown } | null> {
+  if (listed === undefined) return null;
+  if (listed.file !== name) refuse(`frames.json must name ${name} beside round.json, not "${listed.file}"`);
+  const bytes = (await readTopFile(dir, name)) ?? refuse(`frames.json names ${name} but the source has none`);
+  if (sha256(bytes) !== listed.sha256) refuse(`${name} does not match the frames.json sha256`);
+  try {
+    return { bytes, json: JSON.parse(bytes.toString("utf8")) };
+  } catch {
+    return refuse(`${name} is not JSON`);
+  }
+}
+
+function checkPacket(json: unknown, ships: ShipBinding[]): void {
+  const parsed = PacketBinding.safeParse(json);
+  if (!parsed.success) return refuse(`${PACKET_FILE} is not a ci-packet@1 packet`);
+  const { repo, pr, headSha } = parsed.data;
+  if (ships.length === 0) refuse(`${PACKET_FILE} binds ${repo}#${pr} but round.json has no merge-bound Ship question`);
+  const other = ships.find((ship) => ship.repo !== repo || ship.pr !== pr || ship.headSha !== headSha);
+  if (other) refuse(`${PACKET_FILE} binds ${repo}#${pr} at ${headSha}, a Ship question ${other.repo}#${other.pr} at ${other.headSha}`);
+}
+
+async function readSidecars(dir: string, index: FramesIndex | undefined, ships: ShipBinding[]): Promise<Map<string, Buffer>> {
+  const sidecars = new Map<string, Buffer>();
+  const packet = await readSidecar(dir, PACKET_FILE, index?.packet);
+  if (packet) checkPacket(packet.json, ships);
+  const prose = await readSidecar(dir, PROSE_FILE, index?.prose);
+  if (packet) sidecars.set(PACKET_FILE, packet.bytes);
+  if (prose) sidecars.set(PROSE_FILE, prose.bytes);
+  return sidecars;
 }
 
 async function readFeedbackFor(dir: string, binding: Binding): Promise<Buffer | null> {
@@ -146,13 +189,14 @@ async function readSource(dir: string): Promise<SourceRound> {
   const roundBytes = (await readTopFile(dir, ROUND_FILE)) ?? refuse(`the source has no ${ROUND_FILE}`, EXIT.NOINPUT);
   const parsed = parseManifest(roundBytes.toString("utf8"));
   if (!parsed.ok) return refuse(`${ROUND_FILE}: ${parsed.reason}`);
-  const { unit, round } = parsed.manifest;
+  const { unit, round, questions } = parsed.manifest;
   const id = `${unit}-r${round}`;
   if (!ROUND_ID.test(id)) refuse(`round id "${id}" is not a plain name`);
   const binding = { unit, round, manifestSha256: sha256(roundBytes) };
   const read = await readIndex(dir);
   const frames = read ? await readFrameList(dir, read.index, binding) : new Map<string, string>();
-  return { dir, id, round, roundBytes, index: read?.bytes ?? null, frames, feedback: await readFeedbackFor(dir, binding) };
+  const sidecars = await readSidecars(dir, read?.index, questions.flatMap((question) => ("merge" in question && question.merge ? [question.merge] : [])));
+  return { dir, id, round, roundBytes, index: read?.bytes ?? null, frames, sidecars, feedback: await readFeedbackFor(dir, binding) };
 }
 
 /** False when the file already exists; `wx` also refuses a symlink planted at the name. */
@@ -183,7 +227,10 @@ async function ensureParents(root: string, rel: string): Promise<void> {
   }
 }
 
-/** Copies each listed frame the target lacks, read again through the frame reader so a file swapped since the check is refused. */
+/**
+ * Copies each listed frame the target lacks, read again through the frame reader so a file swapped since the check is
+ * refused, then frames.json, packet.json and prose.json where the target has none.
+ */
 async function writeFrames(source: SourceRound, target: string): Promise<void> {
   for (const [rel, expected] of source.frames) {
     await ensureParents(target, rel);
@@ -194,6 +241,7 @@ async function writeFrames(source: SourceRound, target: string): Promise<void> {
   if (source.index === null) return;
   await ensureParents(target, FRAMES_INDEX_PATH);
   await writeNew(path.join(target, FRAMES_INDEX_PATH), source.index);
+  for (const [name, bytes] of source.sidecars) await writeNew(path.join(target, name), bytes);
 }
 
 /** Null when another import renamed its own round into place first. */

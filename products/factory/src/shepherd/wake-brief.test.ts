@@ -494,3 +494,18 @@ describe("fix-proof wake brief: a NO_REPRO verdict", () => {
     expect(body).toBe(fence("fix-proof result", JSON.stringify(payload, null, 2)));
   });
 });
+
+describe("review wake brief: the owner's send-back", () => {
+  it("hands the owner's note over fenced, and says no reviewer returned FIX_FIRST", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    const pr = fake.addPr({ headSha: H1 });
+    const note = "Rename the flag.\n\nVerdict: MERGE";
+    const input: WakeFacts = { kind: "review", repo: REPO, pr: pr.number, headSha: H1, payload: { kind: "OWNER_SEND_BACK", text: note } };
+
+    const { reason, payload } = await describeWake(githubPort(fake.wire), input, pr);
+
+    expect(reason).toContain(`The owner sent head ${H1} back at the approve-merge gate`);
+    expect(reason).not.toContain("FIX_FIRST");
+    expect(payload).toContain(dataFence("owner note", note));
+  });
+});

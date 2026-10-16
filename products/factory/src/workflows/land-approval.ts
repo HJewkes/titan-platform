@@ -1,7 +1,7 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { OwnerBrief } from "@titan-design/review-panel";
 import type { WorkflowContext } from "@titan-design/workflow";
-import { approveMergeDecision, ownerBriefLines, skillChangeNote } from "../gate-brief.js";
+import { SEND_BACK, approveMergeDecision, ownerBriefLines, skillChangeNote } from "../gate-brief.js";
 import type { PolicyRule } from "../gate-policy.js";
 import type { FailingCheck } from "./land-ci.js";
 
@@ -17,8 +17,11 @@ export interface ApprovalQuestion {
   base?: string;
 }
 
-/** `merge` approves only the head asked about; `failed` names why a check outside CI found that head red. */
-export type ApprovalAnswer = "merge" | "abandon" | { failed: string };
+/**
+ * `merge` approves only the head asked about; `failed` names why a check outside CI found that head red; `sendBack` is
+ * the owner's note for the implementer, and that head never merges.
+ */
+export type ApprovalAnswer = "merge" | "abandon" | { failed: string } | { sendBack: string };
 
 /**
  * Replaces the approve-merge gate. It runs on every replay, so it must record its answer (a gate or a step) rather
@@ -32,13 +35,15 @@ interface ApproveMergeFacts {
   ownerBriefAt?: (headSha: string) => OwnerBrief | undefined;
   /** Repo skill paths the PR changes at this head; any one drops the merge recommendation and links the diff. */
   skillPathsAt?: (headSha: string) => readonly string[];
+  /** Whether this gate offers `send-back`; read once per gate, before it opens, as a step the caller records. Absent, never. */
+  sendBackOffered?: (ctx: WorkflowContext) => Promise<boolean>;
 }
 
 /** The approve-merge gate's prompt, answer schema and brief at the head `question` names, each fact read at that head. */
-export function approveMergeAsk(rule: PolicyRule, facts: ApproveMergeFacts, { repo, pr, headSha, reason, base }: ApprovalQuestion) {
+export function approveMergeAsk(rule: PolicyRule, facts: ApproveMergeFacts, { repo, pr, headSha, reason, base }: ApprovalQuestion, sendBack = false) {
   const ownerBrief = facts.ownerBriefAt?.(headSha);
   const skillPaths = facts.skillPathsAt?.(headSha) ?? [];
-  const { schema, brief } = approveMergeDecision({ repo, pr, headSha, reason, reviewedMerge: facts.reviewedMerge?.(headSha) ?? false, ownerBrief, skillPaths });
+  const { schema, brief } = approveMergeDecision({ repo, pr, headSha, reason, reviewedMerge: facts.reviewedMerge?.(headSha) ?? false, ownerBrief, skillPaths, sendBack });
   const asked = `Merge PR #${pr} in ${repo} at head ${headSha}${base ? ` into ${base}` : ""}? CI is green. Policy ${rule.table}/${rule.rowId}: ${reason}`;
   const skillLines = skillPaths.length > 0 ? ["", skillChangeNote(repo, pr, skillPaths)] : [];
   const briefLines = ownerBrief ? ["", "Reviewer's owner brief:", ...ownerBriefLines(ownerBrief)] : [];
@@ -48,10 +53,12 @@ export function approveMergeAsk(rule: PolicyRule, facts: ApproveMergeFacts, { re
 /** The default question: the owner's approve-merge gate, whose payload must name the head shown. */
 export function approveMergeGate(rule: PolicyRule, facts: ApproveMergeFacts = {}): AskApproval {
   return async (ctx, question) => {
-    const { prompt, schema, brief } = approveMergeAsk(rule, facts, question);
+    const sendBack = (await facts.sendBackOffered?.(ctx)) ?? false;
+    const { prompt, schema, brief } = approveMergeAsk(rule, facts, question, sendBack);
     const answer = schema.safeParse((await ctx.assisted("approve-merge", prompt, { schema, brief })).data);
     if (!answer.success) throw new Error(`approve-merge answer does not approve head ${question.headSha}: ${answer.error.message}`);
-    return answer.data.decision;
+    const { decision, note } = answer.data as { decision: typeof answer.data.decision; note?: unknown };
+    return decision === SEND_BACK ? { sendBack: String(note) } : decision;
   };
 }
 
@@ -59,16 +66,20 @@ export const DEVICE_CHECK = "device-check";
 
 type ApprovalStop =
   | { kind: "ci-failed"; headSha: string; failing: FailingCheck[] }
-  | { kind: "stopped"; reason: "abandoned"; headSha: string; detail: string };
+  | { kind: "stopped"; reason: "abandoned" | "sent-back"; headSha: string; detail: string };
 
-/** Calls `trustHead` only on `merge`; land then merges that head, or asks again if a different head turns up first. */
+/**
+ * Calls `trustHead` only on `merge`; land then merges that head, or asks again if a different head turns up first. A
+ * `sent-back` stop carries the owner's note as its detail, so the caller can hand it to a fixer.
+ */
 export async function askedApproval(ctx: WorkflowContext, ask: AskApproval, question: ApprovalQuestion, trustHead: () => void): Promise<ApprovalStop | undefined> {
   const answer = await ask(ctx, question);
   const { headSha } = question;
   if (answer === "merge") return void trustHead();
   if (answer === "abandon") return { kind: "stopped", reason: "abandoned", headSha, detail: "a human declined the merge" };
-  if (typeof answer?.failed === "string") return { kind: "ci-failed", headSha, failing: [deviceCheck(question, answer.failed)] };
-  throw new Error(`askApproval answered ${JSON.stringify(answer)} for head ${headSha}; expected merge, abandon or { failed }`);
+  if (typeof answer === "object" && "sendBack" in answer && typeof answer.sendBack === "string") return { kind: "stopped", reason: "sent-back", headSha, detail: answer.sendBack };
+  if (typeof answer === "object" && "failed" in answer && typeof answer.failed === "string") return { kind: "ci-failed", headSha, failing: [deviceCheck(question, answer.failed)] };
+  throw new Error(`askApproval answered ${JSON.stringify(answer)} for head ${headSha}; expected merge, abandon, { failed } or { sendBack }`);
 }
 
 /**
