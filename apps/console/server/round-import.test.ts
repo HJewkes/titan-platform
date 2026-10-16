@@ -145,6 +145,30 @@ describe("importRound re-imports the same round", () => {
     expect(await readFile(path.join(roundsDir, ID, LISTED[1]))).toEqual(await readFile(path.join(source, LISTED[1])));
   });
 
+  it("refuses a destination frame that differs from the index and overwrites nothing", async () => {
+    await runImport();
+    const tampered = Buffer.from("not the frame");
+    await writeFile(path.join(roundsDir, ID, LISTED[1]), tampered);
+
+    await expectRefused(/not the frame frames\.json names/);
+    expect(await readFile(path.join(roundsDir, ID, LISTED[1]))).toEqual(tampered);
+  });
+
+  it("refuses a symlinked destination parent before writing any missing frame", async () => {
+    await runImport();
+    const dest = path.join(roundsDir, ID);
+    const elsewhere = path.join(root, "elsewhere");
+    await mkdir(elsewhere);
+    await cp(path.join(dest, "frames", "base"), path.join(elsewhere, "base"), { recursive: true });
+    await rm(path.join(dest, "frames", "base"), { recursive: true });
+    await symlink(path.join(elsewhere, "base"), path.join(dest, "frames", "base"));
+    await rm(path.join(dest, "frames", "frames.json"));
+    await rm(path.join(dest, LISTED[0]));
+
+    await expectRefused(/is a symlink or not a directory/);
+    expect(await entries(path.join(dest, "frames"))).not.toContain("card-light.png");
+  });
+
   it("keeps a feedback.json the owner wrote in the destination", async () => {
     await rm(path.join(source, "feedback.json"));
     await runImport();
