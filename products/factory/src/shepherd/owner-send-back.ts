@@ -1,6 +1,7 @@
 import { dataFence } from "@titan-design/agent-dispatch";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
+import { MAX_NOTE_CHARS } from "../gate-answer-check.js";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 
@@ -45,4 +46,11 @@ export function ownerSendBackWake(headSha: string, payload: unknown): { reason: 
   if (!sent.success) return undefined;
   const reason = `The owner sent head ${headSha} back at the approve-merge gate instead of merging it. Their note follows: address it, and say in your final message what you changed.`;
   return { reason, payload: dataFence("owner note", sent.data.text) };
+}
+
+/** What the owner's own gate says when no agent took the wake: plain words, the PR and head, and the capped, fenced note. */
+export function ownerSentBackPrompt(target: { repo: string; pr: number }, headSha: string, note: string, unsent: string): { prompt: string; situation: string } {
+  const situation = `The owner sent PR #${target.pr} in ${target.repo} back at head ${headSha} instead of merging it, and no agent took the fix. A new head that addresses the owner's note is needed${unsent}.`;
+  const shown = [...note].slice(0, MAX_NOTE_CHARS).join("");
+  return { situation, prompt: `${situation} Wait for a new head or abandon?\n${dataFence("owner note", shown)}` };
 }

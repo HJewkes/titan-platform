@@ -8,6 +8,7 @@ import type { UnsettledMerge } from "../workflows/land-settle.js";
 import { failureOf } from "./error-class.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
 import { awaitNewHead, sentBackGate, type GateRun } from "./gates.js";
+import { ownerSentBackPrompt } from "./owner-send-back.js";
 
 /**
  * Only owner approvals open an owner gate: approve-merge under an owner-gate or visual policy, one-way items, and holds
@@ -179,11 +180,15 @@ export function ciFailedRoute(run: GateRun & { state: LandPrState }, red: RedHea
 }
 
 /** A send-back no agent took is the seat's fix round; undefined lands the next round. */
-export function unhandledSendBack(run: GateRun, kind: string, headSha: string): Promise<LandOutcome | undefined> {
+export function unhandledSendBack(run: GateRun, kind: string, headSha: string, ownerNote?: string): Promise<LandOutcome | undefined> {
   return seatOrGate(
     () => noticeGate(run, "sh-sent-back", headSha, `the review said ${kind}, and no agent took the wake`),
     () => awaitNewHead(run, headSha),
     (unsent) => {
+      if (ownerNote !== undefined) {
+        const { prompt, situation } = ownerSentBackPrompt(run.target, headSha, ownerNote, unsent);
+        return sentBackGate(run, headSha, prompt, "a human abandoned the PR after the owner sent it back", situation);
+      }
       const prompt = `The review of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} said ${kind}, and no agent took the wake${unsent}. Await a new head or abandon?`;
       return sentBackGate(run, headSha, prompt, `a human abandoned the PR after a ${kind} review`);
     },
