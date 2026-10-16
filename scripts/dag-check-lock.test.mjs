@@ -9,6 +9,8 @@ import {
   acquire,
   busyLogPath,
   holdLogPath,
+  liveHolders,
+  lockSlots,
   lockWaitMs,
   medianHoldMs,
   ownerKey,
@@ -17,6 +19,7 @@ import {
   readHolds,
   release,
   runCappedWorker,
+  slotDir,
   tryAcquire,
   workerExitCode,
 } from "./dag-check-lock.mjs";
@@ -448,6 +451,107 @@ describe("parked tickets", () => {
     expect(readHolds(lockDir)).toHaveLength(3);
     expect(medianHoldMs(lockDir)).toBe(120000);
   });
+});
+
+describe("lock slots", () => {
+  const quiet = { pollMs: 5, log: () => {} };
+  const GIB = 1024 ** 3;
+
+  /** A process that takes a slot under DAG_CHECK_SLOTS, holds it for holdMs, releases, and exits 0, or 75 when it gives up. */
+  function spawnCheck(lockDir, { slots, holdMs, timeoutMs }) {
+    const script = `
+      import { LockTimeoutError, acquire, lockSlots, release } from ${JSON.stringify(MODULE)};
+      const dir = ${JSON.stringify(lockDir)};
+      try {
+        const hold = await acquire({ lockDir: dir, slots: lockSlots(), timeoutMs: ${timeoutMs}, pollMs: 10, log: () => {} });
+        await new Promise((resolve) => setTimeout(resolve, ${holdMs}));
+        hold.exit = 0;
+        release(dir, hold);
+      } catch (err) {
+        process.exit(err instanceof LockTimeoutError ? 75 : 2);
+      }
+    `;
+    const env = { ...process.env, DAG_CHECK_SLOTS: String(slots) };
+    const child = spawn(process.execPath, ["--input-type=module", "-e", script], { env, stdio: "ignore" });
+    return once(child, "exit").then(([code]) => code);
+  }
+
+  it("reads DAG_CHECK_SLOTS, else allows one slot per 8 GiB of RAM, from 1 up to 6", () => {
+    expect(lockSlots({ DAG_CHECK_SLOTS: "3" }, 128 * GIB)).toBe(3);
+    expect(lockSlots({ DAG_CHECK_SLOTS: "0" }, 16 * GIB)).toBe(2);
+    expect(lockSlots({}, 4 * GIB)).toBe(1);
+    expect(lockSlots({}, 32 * GIB)).toBe(4);
+    expect(lockSlots({}, 128 * GIB)).toBe(6);
+  });
+
+  it("lets as many checks hold at once as there are slots, each in its own slot, and queues the next", async () => {
+    const lockDir = lockPath();
+    const first = await acquire({ lockDir, slots: 2, timeoutMs: 1000, ...quiet });
+    const second = await acquire({ lockDir, slots: 2, timeoutMs: 1000, ...quiet });
+
+    await expect(acquire({ lockDir, slots: 2, timeoutMs: 50, ...quiet })).rejects.toThrow(
+      `dag-check lock busy (held by ${process.pid}, ${process.pid}, 0 ahead of you); retry later`,
+    );
+    expect([first.slot, second.slot]).toEqual([0, 1]);
+    expect(liveHolders(lockDir, 2)).toEqual([process.pid, process.pid]);
+    release(lockDir, second);
+    expect(readHolder(slotDir(lockDir, 0))).toBe(process.pid);
+    expect(existsSync(slotDir(lockDir, 1))).toBe(false);
+    expect((await acquire({ lockDir, slots: 2, timeoutMs: 1000, ...quiet })).slot).toBe(1);
+  });
+
+  it("keeps a free slot for the waiter ahead rather than the one behind it", async () => {
+    const lockDir = lockPath();
+    await acquire({ lockDir, slots: 2, timeoutMs: 1000, ...quiet });
+    mkdirSync(`${lockDir}.queue`, { recursive: true });
+    writeFileSync(join(`${lockDir}.queue`, `${String(1).padStart(15, "0")}-${String(process.pid).padStart(10, "0")}-ahead0`), "");
+
+    await expect(acquire({ lockDir, slots: 2, timeoutMs: 50, ...quiet })).rejects.toThrow("1 ahead of you");
+  });
+
+  it("estimates the queue draining a slot-count at a time before failing fast", async () => {
+    const lockDir = lockPath();
+    const holds = [100, 120, 140].map((s, i) => JSON.stringify({ check: "dag:check", exit: 0, acquiredAt: i * 1e6, releasedAt: i * 1e6 + s * 1000 }));
+    mkdirSync(join(lockDir, ".."), { recursive: true });
+    writeFileSync(holdLogPath(lockDir), `${holds.join("\n")}\n`);
+    tryAcquire(slotDir(lockDir, 0));
+    tryAcquire(slotDir(lockDir, 1));
+    mkdirSync(`${lockDir}.queue`, { recursive: true });
+    for (let i = 0; i < 4; i++) writeFileSync(join(`${lockDir}.queue`, `${String(i + 1).padStart(15, "0")}-${String(process.pid).padStart(10, "0")}-seed${i}`), "");
+
+    const twoSlots = acquire({ lockDir, slots: 2, timeoutMs: 6 * 60 * 1000, pollMs: 5, log: () => {} });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(readBusy(lockDir)).toEqual([]);
+    await expect(acquire({ lockDir, slots: 2, timeoutMs: 5 * 60 * 1000, ...quiet })).rejects.toThrow(
+      "dag-check lock: 2 holders and 5 ahead, about 6 min at the median hold of 120 s",
+    );
+    release(lockDir, { slot: 0 });
+    release(lockDir, { slot: 1 });
+    readdirSync(`${lockDir}.queue`).filter((name) => name.includes("seed")).forEach((name) => rmSync(join(`${lockDir}.queue`, name)));
+    await twoSlots;
+  });
+
+  it("finishes six parallel checks within the wait bound when there are six slots, with no exit 75", async () => {
+    const lockDir = lockPath();
+    const bound = 3000;
+    const started = Date.now();
+
+    const codes = await Promise.all(Array.from({ length: 6 }, () => spawnCheck(lockDir, { slots: 6, holdMs: 800, timeoutMs: bound })));
+
+    expect(codes).toEqual([0, 0, 0, 0, 0, 0]);
+    expect(Date.now() - started).toBeLessThan(bound);
+    expect(readHolds(lockDir)).toHaveLength(6);
+    expect(new Set(readHolds(lockDir).map((h) => h.slot))).toEqual(new Set([0, 1, 2, 3, 4, 5]));
+  }, 15000);
+
+  it("still serializes on one slot, so the same six checks overrun the bound and some exit 75", async () => {
+    const lockDir = lockPath();
+
+    const codes = await Promise.all(Array.from({ length: 6 }, () => spawnCheck(lockDir, { slots: 1, holdMs: 800, timeoutMs: 3000 })));
+
+    expect(codes).toContain(75);
+  }, 15000);
 });
 
 describe("the capped indexer child", () => {
