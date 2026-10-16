@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { setFlagsFromString } from "node:v8";
 import { defineConfig } from "vitest/config";
 import { strayDependency } from "./scripts/own-node-modules.mjs";
-import { FORCE_RERUN_TRIGGERS, REPO_TIER_INCLUDE } from "./scripts/test-affected.mjs";
+import { forceRerunTriggers, REPO_TIER_INCLUDE } from "./scripts/test-affected.mjs";
 
 // Refuse rather than run a parent checkout's vitest, which can be a major version behind this lockfile.
 const strayVitest = strayDependency(fileURLToPath(new URL(".", import.meta.url)), "vitest");
@@ -33,6 +33,8 @@ export default defineConfig({
   // Apps render @titan-design/react-ui, which is written against React Native primitives; no package imports react-native.
   resolve: { alias: { "react-native": "react-native-web" } },
   test: {
+    // The speech loaders refuse an uncached model before any network call, so no test can download weights.
+    env: { TITAN_SPEECH_OFFLINE: "1" },
     // Inlined so the alias above applies; left external, Node would load react-native's Flow source.
     server: { deps: { inline: [/@titan-design\/react-ui/] } },
     globalSetup: ["scripts/vitest-tmpdir.mjs"],
@@ -42,7 +44,7 @@ export default defineConfig({
       exclude: ["**/*.test.{ts,tsx}", "**/index.ts"],
     },
     maxWorkers: 4,
-    forceRerunTriggers: FORCE_RERUN_TRIGGERS,
+    forceRerunTriggers: forceRerunTriggers(),
     projects: [
       {
         extends: true,
@@ -52,6 +54,7 @@ export default defineConfig({
           pool: "threads",
           include: [
             "packages/*/src/**/*.test.{ts,tsx}",
+            "packages/*/scripts/**/*.test.ts",
             "products/*/src/**/*.test.{ts,tsx}",
             "apps/*/src/**/*.test.{ts,tsx}",
             "apps/*/scripts/**/*.test.ts",

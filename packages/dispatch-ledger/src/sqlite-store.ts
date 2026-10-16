@@ -33,7 +33,16 @@ export function dispatchLedgerMigration(version: number): Migration {
 }
 
 const MetaRowSchema = z.object({ revision: z.number().int(), doc: z.string() });
-const ClaimRowsSchema = z.array(z.object({ claim: z.string() }));
+const ClaimRowsSchema = z.array(z.object({ ordinal: z.number().int(), claim: z.string() }));
+
+/** Parses stored JSON; the message never carries the stored text, which can hold claim detail. */
+function parseStored(text: string, what: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new LedgerMalformedError(`${what} is not JSON`);
+  }
+}
 
 /** The stored meta doc with the claim rows put back in its `claims` slot, which keeps the doc's key position. */
 function withClaims(doc: unknown, claims: unknown[]): Ledger {
@@ -55,17 +64,27 @@ export class SqliteLedgerStore implements LedgerStore {
     return this.db.transaction(() => this.writeInside(normalized, expectedRevision)).immediate();
   }
 
+  /** Throws `LedgerMalformedError` for any stored shape it cannot read, never guessing an empty ledger. */
   private readInside(): LedgerRead {
     const row: unknown = this.db.prepare("SELECT revision, doc FROM dispatch_ledger_meta WHERE id = 1").get();
-    if (row === undefined) return { ledger: structuredClone(EMPTY_LEDGER), revision: 0 };
-    const meta = MetaRowSchema.parse(row);
-    const doc: unknown = JSON.parse(meta.doc);
-    return { ledger: withClaims(doc, this.claims()), revision: meta.revision };
+    if (row === undefined) return this.emptyUnlessOrphaned();
+    const meta = MetaRowSchema.safeParse(row);
+    if (!meta.success) throw new LedgerMalformedError("stored dispatch ledger meta row does not match the schema");
+    const doc = parseStored(meta.data.doc, "stored dispatch ledger meta doc");
+    return { ledger: withClaims(doc, this.claims()), revision: meta.data.revision };
+  }
+
+  private emptyUnlessOrphaned(): LedgerRead {
+    if (this.db.prepare("SELECT 1 FROM dispatch_claim LIMIT 1").get() !== undefined) {
+      throw new LedgerMalformedError("stored dispatch ledger has claim rows but no meta row");
+    }
+    return { ledger: structuredClone(EMPTY_LEDGER), revision: 0 };
   }
 
   private claims(): unknown[] {
-    const rows = ClaimRowsSchema.parse(this.db.prepare("SELECT claim FROM dispatch_claim ORDER BY ordinal").all());
-    return rows.map((row): unknown => JSON.parse(row.claim));
+    const rows = ClaimRowsSchema.safeParse(this.db.prepare("SELECT ordinal, claim FROM dispatch_claim ORDER BY ordinal").all());
+    if (!rows.success) throw new LedgerMalformedError("stored dispatch claim rows do not match the schema");
+    return rows.data.map((row) => parseStored(row.claim, `stored dispatch claim ${row.ordinal}`));
   }
 
   private writeInside(next: Ledger, expectedRevision: number | undefined): { revision: number } {

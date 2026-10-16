@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_IFS, lineIfsValues } from "./ifs-values.js";
 import { tokenize } from "./lexer.js";
+import { ParseError } from "./parse-error.js";
 
 const values = (line: string) => lineIfsValues(tokenize(line));
 
@@ -216,7 +217,6 @@ describe("lineIfsValues on subscripted names and indirection", () => {
     ["a [[ -v ]] test of a subscripted name", `${k}[[ -v a[k] ]]`],
     ["a test -v of a subscripted name", `${k}test -v 'a[k]'`],
     ["an indirect expansion", `${k}: "\${!k}"`],
-    ["an indirect expansion with a default", `${k}: "\${!k:=,}"`],
   ])("gives null for %s", (_how, line) => {
     expect(values(line)).toBeNull();
   });
@@ -263,7 +263,6 @@ describe("lineIfsValues on unquoted heredoc bodies", () => {
   it.each([
     ["an arithmetic expansion", `${k}cat <<EOF\n$(( k ))\nEOF`],
     ["a substring offset", `${k}cat <<EOF\n\${x:k}\nEOF`],
-    ["an indirect default", `${k}cat <<EOF\n\${!k:=,}\nEOF`],
     ["arithmetic on names built from parts", "a=I; b=FS=1; cat <<EOF\n$(( $a$b ))\nEOF"],
     ["a tab-stripped heredoc", `${k}cat <<-EOF\n\t$(( k ))\nEOF`],
   ])("gives null for %s", (_how, line) => {
@@ -467,5 +466,15 @@ describe("lineIfsValues on IFS values outside the unrewritten character set", ()
     ["letters, digits and blanks", "IFS='a1 '; $A", ["a1 "]],
   ])("resolves %s", (_how, line, expected) => {
     expect(values(line)).toEqual([DEFAULT_IFS, ...expected]);
+  });
+});
+
+describe("lineIfsValues on an indirect assigning expansion", () => {
+  const k = "k=$(printf %sFS=1 I); ";
+  it.each([
+    ["a default in double quotes", `${k}: "\${!k:=,}"`],
+    ["a default in an unquoted heredoc body", `${k}cat <<EOF\n\${!k:=,}\nEOF`],
+  ])("is refused by the lexer before it is read: %s", (_how, line) => {
+    expect(() => values(line)).toThrow(ParseError);
   });
 });

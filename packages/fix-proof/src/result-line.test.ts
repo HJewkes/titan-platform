@@ -11,6 +11,8 @@ const plan: FixProofPlan = {
   carried: [],
   deletedTests: ["src/gone.test.ts"],
   overlayRemovals: [],
+  mutations: [],
+  source: [],
   config: { tests: ["**/*.test.ts"], carry: [] },
   configEdited: false,
 };
@@ -112,5 +114,75 @@ describe("formatResultLine and parseResultLine", () => {
     ["a reproduced verdict with no reproducing test", (line: string) => line.replace('"reproduces":1', '"reproduces":0')],
   ])("refuses %s", (_label, mutate) => {
     expect(parseResultLine(mutate(formatResultLine(result()))).ok).toBe(false);
+  });
+});
+
+describe("the mutants field", () => {
+  const SPEC = "src/a.test.mutations.json";
+  const killed = (): FixProofResult => ({
+    ...result(),
+    verdict: "vacuous",
+    counts: { ...result().counts, reproduces: 0 },
+    tests: [],
+    mutants: { verdict: "killed", results: [{ spec: SPEC, name: "flip", outcome: "killed" }] },
+  });
+
+  it("round-trips a result carrying mutants", () => {
+    expect(parseResultLine(formatResultLine(killed()))).toEqual({ ok: true, result: killed() });
+  });
+
+  it("refuses a line whose mutants keys are reordered", () => {
+    const line = formatResultLine(killed()).replace('"mutants":{"verdict":"killed","results":', '"mutants":{"results":');
+    const reordered = line.replace(/}$/, "").replace(/]}$/, '],"verdict":"killed"}}');
+
+    expect(parseResultLine(reordered)).toMatchObject({ ok: false, error: expect.stringMatching(/canonical/) });
+  });
+
+  it.each([
+    ["a killed verdict over a survived mutant", (line: string) => line.replace('"outcome":"killed"', '"outcome":"survived"')],
+    ["an unknown mutant outcome", (line: string) => line.replace('"outcome":"killed"', '"outcome":"dead"')],
+    ["an unknown mutants verdict", (line: string) => line.replace('"verdict":"killed"', '"verdict":"proven"')],
+    ["an unknown field inside a mutant", (line: string) => line.replace('"outcome":"killed"', '"outcome":"killed","trusted":true')],
+    ["a killed verdict with no mutant", (line: string) => line.replace(/"results":\[[^\]]*\]/, '"results":[]')],
+  ])("refuses %s", (_label, mutate) => {
+    expect(parseResultLine(mutate(formatResultLine(killed()))).ok).toBe(false);
+  });
+
+  it("drops killed mutants from the end first, then the others from the end", () => {
+    const named = (name: string, outcome: "killed" | "survived" | "unbuilt") => ({ spec: SPEC, name: name.padEnd(150, "."), outcome });
+    const results = [named("k0", "killed"), named("s0", "survived"), named("k1", "killed"), named("u0", "unbuilt"), named("k2", "killed")];
+    const mixed = { ...killed(), mutants: { verdict: "not-killed" as const, results: [...results, ...Array.from({ length: 30 }, (_, index) => named(`k${index + 3}`, "killed"))] } };
+
+    const parsed = parseResultLine(formatResultLine(mixed));
+    const kept = parsed.ok ? (parsed.result.mutants?.results ?? []).map((result) => result.name.replace(/\.+$/, "")) : [];
+
+    expect(parsed.ok && parsed.result.truncated).toBe(true);
+    expect(kept.filter((name) => !name.startsWith("k"))).toEqual(["s0", "u0"]);
+    const keptKilled = kept.filter((name) => name.startsWith("k"));
+    expect(keptKilled).toEqual(Array.from({ length: keptKilled.length }, (_, index) => `k${index}`));
+    expect(keptKilled.length).toBeLessThan(33);
+  });
+
+  it("drops non-killed mutants from the end once no killed mutant is left", () => {
+    const named = (index: number) => ({ spec: SPEC, name: `s${index}`.padEnd(150, "."), outcome: "survived" as const });
+    const big = { ...killed(), mutants: { verdict: "not-killed" as const, results: Array.from({ length: 40 }, (_, index) => named(index)) } };
+
+    const parsed = parseResultLine(formatResultLine(big));
+    const kept = parsed.ok ? (parsed.result.mutants?.results ?? []).map((result) => result.name) : [];
+
+    expect(kept.length).toBeLessThan(40);
+    expect(kept).toEqual(Array.from({ length: kept.length }, (_, index) => named(index).name));
+  });
+
+  it("drops killed mutants before the ones a not-killed verdict rests on, and keeps the verdict", () => {
+    const many = Array.from({ length: 60 }, (_, index) => ({ spec: SPEC, name: `killed ${index}`, outcome: "killed" as const }));
+    const survived = { spec: SPEC, name: "the gap", outcome: "survived" as const, failed: [] };
+    const big = { ...killed(), mutants: { verdict: "not-killed" as const, results: [survived, ...many] } };
+
+    const parsed = parseResultLine(formatResultLine(big));
+
+    expect(parsed.ok && parsed.result.truncated).toBe(true);
+    expect(parsed.ok && parsed.result.mutants?.verdict).toBe("not-killed");
+    expect(parsed.ok && parsed.result.mutants?.results).toContainEqual(survived);
   });
 });

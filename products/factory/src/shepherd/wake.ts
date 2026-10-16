@@ -7,6 +7,7 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { AwaitHeadResult, awaitNewHeadRoute } from "../workflows/await-head.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { FIXER_EXIT_STEPS, fixerExitRoutes } from "./flake-check.js";
+import { FIX_PROOF_WAKE_STEP, fixProofBounce } from "./fix-proof-cap.js";
 import { agentChatAgents, type AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps, ShepherdPhases, WakeEvidence, WakeOutcome, WakeRequest } from "./phases.js";
 import { failureOf } from "./error-class.js";
@@ -28,6 +29,7 @@ export const WAKE_STEPS: readonly StepDeclaration[] = [
   { id: AWAIT_NEW_HEAD_STEP, kind: "dispatch" },
   { id: FIX_FIRST_STEP, kind: "dispatch" },
   { id: REPAIR_STEP, kind: "dispatch" },
+  { id: FIX_PROOF_WAKE_STEP, kind: "dispatch" },
   ...FIXER_EXIT_STEPS,
 ];
 
@@ -301,8 +303,11 @@ function exitedOn(deps: ShepherdDeps, wiring: WakeWiring): ((name: string, signa
   const agents = agentsFor(deps, wiring);
   if (agents === undefined) return undefined;
   return async (name) => {
-    const row = latestRow(name, await agents.roster().catch(() => []));
-    return row !== undefined && row.presence === "exited";
+    const rows = await agents.roster().catch((error: unknown): undefined => {
+      console.error(`shepherd: ${name} is read as live, the roster could not be read: ${error instanceof Error ? error.message : String(error)}`);
+      return undefined;
+    });
+    return rows !== undefined && latestRow(name, rows)?.presence === "exited";
   };
 }
 
@@ -333,6 +338,7 @@ export const wakeRoutes = (deps: ShepherdDeps, wiring: WakeWiring = {}): readonl
   awaitNewHeadRoute({ ...deps, agentExited: exitedOn(deps, wiring) }, AWAIT_NEW_HEAD_STEP),
   codeRoute(FIX_FIRST_STEP, deps.now, async (input: object) => input),
   codeRoute(REPAIR_STEP, deps.now, async (input: object) => input),
+  codeRoute(FIX_PROOF_WAKE_STEP, deps.now, async (input: object) => input),
   ...fixerExitRoutes(deps.port, deps.now, deps.exitNotice),
 ];
 
@@ -353,6 +359,8 @@ function fixFirstOf(ctx: WorkflowContext, request: WakeRequest): number | undefi
  * same head turned green on a rerun, so the next round's ci-wait collects its merge facts. A second wake in one round replays at the next index.
  */
 export const wakePhase: ShepherdPhases["wake"] = async (ctx, request) => {
+  const capped = await fixProofBounce(ctx, request);
+  if (capped !== undefined) return capped;
   const fixFirst = fixFirstOf(ctx, request);
   const woke = await wakeStep(ctx, request, fixFirst);
   return woke.kind === "woken" ? redeliverAfterLiveExit(ctx, request, await awaitFixerHead(ctx, request, woke), woke, fixFirst) : notWoken(woke);

@@ -30,6 +30,10 @@ export const MapStateSchema = z
       fromHop: z.number().int().nonnegative(),
       toHop: z.number().int().nonnegative(),
       speed: z.union([z.literal(1), z.literal(3)]).optional(),
+      // Repeats the walk at speed 1 until this cue; a walk that cannot finish before it does not start.
+      untilCue: Cue.optional(),
+      // One cue per hop, fromHop to toHop inclusive, so each hop leaves on the word that names it.
+      hopCues: z.array(Cue).min(1).optional(),
     }).optional(),
     cards: z.array(atCue({ ref: Id, untilCue: Cue.nullable() })).optional(),
     annotations: z
@@ -67,6 +71,7 @@ export const MapLayoutSchema = z.object({
 
 export type MapLevel = (typeof MAP_LEVELS)[number];
 export type MapState = z.infer<typeof MapStateSchema>;
+export type MessageInFlight = NonNullable<MapState["message_in_flight"]>;
 export type Visual = z.infer<typeof VisualSchema>;
 export type MapBeat = z.infer<typeof MapBeatSchema>;
 export type MapLayout = z.infer<typeof MapLayoutSchema>;

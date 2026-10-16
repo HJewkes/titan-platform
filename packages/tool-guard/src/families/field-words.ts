@@ -38,7 +38,7 @@ function zshModified(word: WordToken): boolean {
  * literal only when every character outside its variables is in a safe set; the lexer keeps no record of which
  * characters partial quotes or escapes cover, so they all count as bare.
  */
-function expandsAtRunTime(word: WordToken): boolean {
+export function expandsAtRunTime(word: WordToken): boolean {
   if (zshModified(word)) return true;
   if (word.quoted && !word.spliced) return false;
   if (word.unquotedExpansion) return true;

@@ -1,6 +1,6 @@
 import { stepIdMatches } from "../definition.js";
 import type { FactoryHost } from "../host.js";
-import { RESYNC_CONCURRENCY, mapBounded, settledValue } from "./bounded.js";
+import { RESYNC_CONCURRENCY, RESYNC_READ_TIMEOUT_MS, mapBounded, readValue } from "./bounded.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import { openHead } from "./head-moved.js";
 import { AFTER_HOLD } from "./hold.js";
@@ -30,10 +30,10 @@ function activeMerges(host: FactoryHost): { runId: string; stepId: string; head:
 export async function supersedeStaleMerges(host: FactoryHost, services: ShepherdServices, { dryRun = false } = {}): Promise<SupersededMerge[]> {
   const superseded: SupersededMerge[] = [];
   const merges = activeMerges(host);
-  const heads = await mapBounded(merges, RESYNC_CONCURRENCY, ({ runId }) => openHead(services, runId));
+  const heads = await mapBounded(merges, RESYNC_CONCURRENCY, ({ runId }) => openHead(services, runId), { timeoutMs: RESYNC_READ_TIMEOUT_MS });
   for (const [index, { runId, stepId, head }] of merges.entries()) {
-    const current = settledValue(heads[index]!);
-    if (!current || current === head) continue;
+    const current = readValue(heads[index]!);
+    if (!current || current === head || !host.runtime.status(runId)?.activeSteps[stepId]) continue;
     if (dryRun || host.runtime.completeStep(runId, stepId, JSON.stringify({ result: AFTER_HOLD }))) superseded.push({ runId, stepId, from: head, to: current });
   }
   return superseded;

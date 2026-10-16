@@ -422,27 +422,25 @@ whose prompt names an older head. A gate at the current head stays pending.
 ### An owner's merge answer follows a clean head move {#carried-answer}
 
 An owner's `merge` answer at a head follows to a later land gate at the run's next head, so the
-owner is not asked twice, in two cases and no others:
+owner is not asked twice, in one case and no other:
 
 - **Merge-up.** The new head is the approved head merged with a commit of the base branch, and
   its tree equals `git merge-tree --write-tree` of the two (or the merge resolved only declared
   generated files). A hand-resolved conflict asks again.
-- **Small reviewed fix.** The new head is the approved head merged with the base it already
-  contains, plus a fix whose own diff, past what the base merge brought, is at most
-  `SMALL_FIX_LIMITS.maxChangedLines` (40) changed lines across at most
-  `SMALL_FIX_LIMITS.maxFiles` (3) files (`products/factory/src/shepherd/fix-carry.ts`). Every
-  file must already be in the pull request at the approved head, with no file added, deleted,
-  renamed or mode-changed, and no change under `.github/`, to a lockfile or to a `package.json`
-  dependency field.
 
-Both need a standing reviewer verdict `MERGE` at exactly the new head, and land opens the gate
+A fixer commit pushed after the approval never follows (TP-3070): the whole range from the approved head
+to the new head is judged by tree equality with `git merge-tree --write-tree` of the approved head and
+the base (`products/factory/src/shepherd/fix-carry.ts`), not by the shape of the last commit. A tree that
+differs by one line asks the owner again; a base that is unknown or a merge-tree that cannot be computed
+asks again too.
+
+The merge-up needs a standing reviewer verdict `MERGE` at exactly the new head, and land opens the gate
 only after required CI is green at that head, so a head with no verdict or a red check asks the
 owner again. An `unknown` run never carries, and neither does an escalation gate. A `security` run follows
 only the rule below.
 Any error computing the tree or the diff asks again. The run records an
 `sh-approval-carry:<head>` step with the approved head, the new head, the rule (`remerge-empty`,
-`remerge-generated-only`, `merge-up` or `small-fix`) and the proof: both trees, or the changed line count and
-paths. The probe itself is the `sh-approval-carry:fix:<head>` step.
+`remerge-generated-only` or `merge-up`) and the proof: both trees and the paths. The probe itself is the `sh-approval-carry:fix:<head>` step.
 
 A `security` run's answer follows one head move only: Shepherd's own clean merge-up
 (`products/factory/src/shepherd/own-merge-up.ts`, step `sh-approval-carry:own:<head>`). The new head
@@ -848,6 +846,12 @@ merge waiting at the old head ends at its next poll without merging. The run rea
 reviews the new head, then comes back to the merge step there, where the same hold applies.
 The push never releases or changes the hold. A merge that waited on a hold does not go
 through on release: land reads CI again first, because the base or the head may have moved.
+
+A held run wakes no fixer. When its head goes red, Shepherd first reruns the failed jobs once at
+that head, the same one rerun per head an unheld run gets, because a rerun pushes nothing. If the
+rerun turns the head green, the run reviews it with the hold kept. If the head is still red, the
+seat is told once that the rerun is spent, and the run waits in `sh-held-wait` for a release, a
+push, or a rerun by hand that turns the head green.
 
 A hold whose reason starts `g10-review:` and names no `--reviewer` releases itself in the
 `sh-g10-release` step when an opus reviewer Shepherd spawned says `MERGE` and the required
