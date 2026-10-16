@@ -2154,6 +2154,12 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stacked-base.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/stage-times.test.ts",
    "fate": "kept",
    "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
