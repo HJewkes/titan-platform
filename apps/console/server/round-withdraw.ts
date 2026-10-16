@@ -15,11 +15,11 @@ import { failure } from "./active-work.js";
 import { FEEDBACK_FILE, ROUND_ID, WITHDRAWN_FILE, WITHDRAWN_SCHEMA_ID } from "./rounds.js";
 
 /** `new-head` may name the sha the PR moved to. */
-export const WITHDRAW_REASON = /^(new-head(:[0-9a-f]{40})?|closed|answered-elsewhere)$/;
+const WITHDRAW_REASON = /^(new-head(:[0-9a-f]{40})?|closed|answered-elsewhere)$/;
 /** `O_EXCL` already refuses a symlink at the name; `O_NOFOLLOW` keeps that true if the flags ever change. */
 export const WITHDRAW_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
 
-export interface WithdrawResult {
+interface WithdrawResult {
   id: string;
   outcome: "withdrawn" | "already-withdrawn" | "kept-answered";
 }
