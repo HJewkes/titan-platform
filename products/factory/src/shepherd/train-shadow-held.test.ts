@@ -5,7 +5,7 @@ import { WorkflowRunStore, workflowDefinitionVersionMigration, workflowMigration
 import { afterEach, describe, expect, it } from "vitest";
 import { SHEPHERD_MIGRATIONS, factoryRoutesFor } from "../workflows.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import type { ReviewerAgent, ReviewerDispatch } from "./review.js";
+import type { ReviewerAgent, ReviewerDispatch } from "@titan-design/review-panel";
 import { stepName } from "./stats.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
 import { shadowsIn } from "./train-shadow.js";
