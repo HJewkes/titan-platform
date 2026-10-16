@@ -63,7 +63,7 @@ const count = (health: Health, status: string): number => {
 /** The ids `/health` lists as recovery_required, or undefined from a build that counts them only. */
 function recoveryIds(health: Health): readonly string[] | undefined {
   const ids = health.recoveryRequired;
-  return Array.isArray(ids) && ids.every((id) => typeof id === "string") ? (ids as string[]) : undefined;
+  return Array.isArray(ids) && ids.every((id) => typeof id === "string") ? ids : undefined;
 }
 
 /** The ids the drain still saw busy when it let the restart go. */

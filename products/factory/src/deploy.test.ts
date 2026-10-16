@@ -115,7 +115,8 @@ function fakeGit(state: { head: string }, init: MachineInit): (args: readonly st
 
 function parkedAnswer(answer: Record<string, unknown>, parks: NonNullable<MachineInit["parks"]>, probe: number): Record<string, unknown> {
   const ids = probe >= parks.from && probe <= parks.to ? parks.ids : [];
-  return { ...answer, runs: { ...(answer.runs as object), recovery_required: ids.length }, recoveryRequired: ids };
+  const runs = typeof answer.runs === "object" && answer.runs !== null ? answer.runs : {};
+  return { ...answer, runs: { ...runs, recovery_required: ids.length }, recoveryRequired: ids };
 }
 
 /** A launchd whose kickstart loads whatever build sits in products/factory/dist at that moment. */
@@ -756,10 +757,9 @@ describe("service deploy rollback pause", () => {
 
     await deploy(machine);
 
-    const intent = JSON.parse(machine.files.get(deployWindowPath(STATE)) ?? "null") as { sha: string; windowEnd: number } | null;
-    expect(intent?.sha).toBe(TIP);
-    expect(intent?.windowEnd).toBeLessThanOrEqual(machine.elapsed());
-    expect(intent?.windowEnd).toBeGreaterThanOrEqual(120_000);
+    const intent: unknown = JSON.parse(machine.files.get(deployWindowPath(STATE)) ?? "null");
+    const closed = (windowEnd: number): boolean => windowEnd >= 120_000 && windowEnd <= machine.elapsed();
+    expect(intent).toEqual({ sha: TIP, windowEnd: expect.toSatisfy(closed) });
   });
 
   it("deploys when the watch window cannot be recorded", async () => {
