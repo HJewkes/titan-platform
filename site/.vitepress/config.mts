@@ -32,6 +32,7 @@ export default withMermaid(
             { text: "Architecture", link: "/guides/architecture" },
             { text: "The binding pattern", link: "/guides/binding-pattern" },
             { text: "Where code goes", link: "/guides/where-code-goes" },
+            { text: "Where logic goes", link: "/guides/where-logic-goes" },
             { text: "Package families", link: "/guides/package-families" },
             { text: "Multi-harness contracts", link: "/guides/multi-harness-contracts" },
           ],
