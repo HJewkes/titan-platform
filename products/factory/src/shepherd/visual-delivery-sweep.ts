@@ -22,17 +22,22 @@ export interface VisualDeliveryWatch {
   status(): VisualDeliveryStatus;
 }
 
+type Shepherd = FactoryConfig["shepherd"];
+type CwdFor = (repo: string) => string | undefined;
+
 /** `shepherd.visualDelivery`; absent or `off` wires nothing, and with no agent-chat roster no packager's exit can be seen. */
-export function configuredVisualDelivery(shepherd: FactoryConfig["shepherd"], env: NodeJS.ProcessEnv, roster: RosterReader | undefined, cwdFor: (repo: string) => string | undefined): VisualDeliveryWatch | undefined {
+export function configuredVisualDelivery(shepherd: Shepherd, env: NodeJS.ProcessEnv, roster: RosterReader | undefined, cwdFor: CwdFor): VisualDeliveryWatch | undefined {
   const ports = deliveryPortsOf(shepherd, env, roster, cwdFor);
   return ports && visualDeliveryWatch(ports, shepherd?.visualDelivery?.everyMs ?? VISUAL_DELIVERY_MS);
 }
 
-export function deliveryPortsOf(shepherd: FactoryConfig["shepherd"], env: NodeJS.ProcessEnv, roster: RosterReader | undefined, cwdFor: (repo: string) => string | undefined, exec?: DeliveryExec): VisualDeliveryPorts | undefined {
+export function deliveryPortsOf(shepherd: Shepherd, env: NodeJS.ProcessEnv, roster: RosterReader | undefined, cwdFor: CwdFor, exec?: DeliveryExec): VisualDeliveryPorts | undefined {
   const config = shepherd?.visualDelivery;
   if (!config || config.mode === "off" || !roster) return undefined;
   const titanReviewBin = shepherd.titanReviewBin ?? defaultTitanReviewBin();
-  return { mode: config.mode, stateDir: factoryStateDir(env), titanReviewBin, console: config.console, roster, cwdFor, exec: exec ?? systemDeliveryExec(config.roundsDir), now: Date.now, readyTimeoutMs: config.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS };
+  const readyTimeoutMs = config.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
+  const run = exec ?? systemDeliveryExec(config.roundsDir);
+  return { mode: config.mode, stateDir: factoryStateDir(env), titanReviewBin, console: config.console, roster, cwdFor, exec: run, now: Date.now, readyTimeoutMs };
 }
 
 export function visualDeliveryWatch(ports: VisualDeliveryPorts, everyMs: number): VisualDeliveryWatch {

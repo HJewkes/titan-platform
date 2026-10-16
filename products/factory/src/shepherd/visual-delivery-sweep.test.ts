@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { consoleLogger } from "@titan-design/daemon";
 import { fakeSha } from "@titan-design/github";
+import type { GateRecord } from "@titan-design/hitl";
+import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import { FactoryConfigSchema, type FactoryConfig } from "../config.js";
 import type { FactoryHost } from "../host.js";
@@ -22,7 +24,7 @@ describe("visualDelivery config", () => {
   it("starts nothing when visualDelivery is absent or off", () => {
     expect(configuredVisualDelivery(shepherdOf({}), {}, roster, () => undefined)).toBeUndefined();
     expect(configuredVisualDelivery(shepherdOf({ visualDelivery: { mode: "off", console: CONSOLE } }), {}, roster, () => undefined)).toBeUndefined();
-    expect(startVisualDeliverySweep({} as FactoryHost, {} as ShepherdServices, consoleLogger)).toBeUndefined();
+    expect(startVisualDeliverySweep(partialFake<FactoryHost>(), partialFake<ShepherdServices>(), consoleLogger)).toBeUndefined();
   });
 
   it("refuses an empty or relative console argv and a delivery with no agentChatBin", () => {
@@ -56,9 +58,12 @@ describe("visual delivery health", () => {
     const stateDir = mkdtempSync(join(tmpdir(), "visual-delivery-sweep-"));
     const [waiting, failing, plain] = ["wait", "fail", "plain"].map((name) => ({ runId: `run-${name}`, head: fakeSha(name) }));
     for (const gate of [waiting, failing]) mkdirSync(packetDirFor(stateDir, gate!.runId, gate!.head), { recursive: true });
-    const gates = [waiting, failing, plain].map((gate) => ({ runId: gate!.runId, stepId: "approve-merge", gate: { id: `${gate!.runId}/approve-merge`, prompt: prompt(gate!.head), status: "pending", createdAt: new Date(gate === failing ? 0 : Date.now()).toISOString() } }));
-    const host = { pendingGates: () => gates, gates: { get: () => ({ status: "pending" }) } } as unknown as FactoryHost;
-    const services = { store: { get: () => ({ byRun: () => undefined }) } } as unknown as ShepherdServices;
+    const gates = [waiting, failing, plain].map((gate) => {
+      const createdAt = new Date(gate === failing ? 0 : Date.now()).toISOString();
+      return { runId: gate!.runId, stepId: "approve-merge", gate: partialFake<GateRecord>({ id: `${gate!.runId}/approve-merge`, prompt: prompt(gate!.head), status: "pending", createdAt }) };
+    });
+    const host = partialFake<FactoryHost>({ pendingGates: () => gates, gates: partialFake<FactoryHost["gates"]>({ get: () => partialFake<GateRecord>({ status: "pending" }) }) });
+    const services = partialFake<ShepherdServices>({ store: partialFake<ShepherdServices["store"]>({ get: () => partialFake<ReturnType<ShepherdServices["store"]["get"]>>({ byRun: () => undefined }) }) });
     const exec = async () => ({ status: 0, stdout: "", stderr: "" });
     const watch = visualDeliveryWatch({ mode: "shadow", stateDir, titanReviewBin: BIN, console: CONSOLE, roster, cwdFor: () => stateDir, exec, now: Date.now, readyTimeoutMs: 60_000 }, 30_000);
     await watch.tick(host, services, consoleLogger, new AbortController().signal);

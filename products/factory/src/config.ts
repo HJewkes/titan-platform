@@ -219,7 +219,13 @@ export const FactoryConfigSchema = z.object({
        * `TITAN_CONSOLE_ROUNDS_DIR`; absent, the console's own default applies.
        */
       visualDelivery: z
-        .strictObject({ mode: z.enum(["off", "shadow", "on"]), console: z.array(absolutePath).min(1), roundsDir: absolutePath.optional(), everyMs: z.number().int().positive().optional(), readyTimeoutMs: z.number().int().positive().optional() })
+        .strictObject({
+          mode: z.enum(["off", "shadow", "on"]),
+          console: z.array(absolutePath).min(1),
+          roundsDir: absolutePath.optional(),
+          everyMs: z.number().int().positive().optional(),
+          readyTimeoutMs: z.number().int().positive().optional(),
+        })
         .optional(),
     })
     .refine((s) => (s.visualDelivery?.mode ?? "off") === "off" || s.agentChatBin, { message: "visualDelivery needs an agentChatBin", path: ["agentChatBin"] })
