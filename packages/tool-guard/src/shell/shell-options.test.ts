@@ -154,16 +154,19 @@ const SHELLS_HERE = new Set([...KNOWN_SHELLS].filter(has));
 
 /**
  * Runs `line` under `runner` in a scratch dir holding `x.sh`, with zsh reading no startup files, and reports whether it
- * created `mk`. A run that hangs is cut off.
+ * created `mk`, as the fake `git` on PATH does too. A run that hangs is cut off.
  */
-function runs(line: string, runner = "bash"): boolean {
+function runs(line: string, runner = "bash", script = "touch mk"): boolean {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "shell-options-"));
   try {
     fs.writeFileSync(path.join(dir, "s.sh"), `${line}\n`);
-    fs.writeFileSync(path.join(dir, "x.sh"), "touch mk\n");
+    fs.writeFileSync(path.join(dir, "x.sh"), `${script}\n`);
     fs.writeFileSync(path.join(dir, "ok.sh"), "true\n");
+    fs.mkdirSync(path.join(dir, "bin"));
+    fs.writeFileSync(path.join(dir, "bin", "git"), "#!/bin/sh\ntouch mk\n", { mode: 0o755 });
     const [program = "bash", ...flags] = runner.split(" ");
-    spawnSync(program, [...flags, "s.sh"], { cwd: dir, env: { ...process.env, ZDOTDIR: dir }, stdio: ["ignore", "ignore", "ignore"], timeout: 10_000 });
+    const env = { ...process.env, ZDOTDIR: dir, PATH: `${path.join(dir, "bin")}:${process.env.PATH ?? ""}` };
+    spawnSync(program, [...flags, "s.sh"], { cwd: dir, env, stdio: ["ignore", "ignore", "ignore"], timeout: 10_000 });
     return fs.existsSync(path.join(dir, "mk"));
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -205,6 +208,10 @@ const UNKNOWABLE = FD_SHELLS.flatMap((shell) => [
   [`${shell} < /dev/fd/3`, "exec 3< ./x.sh"],
   [`${shell} /dev/stdin < /dev/fd/3 3< ./ok.sh`, "exec 3< ./x.sh"],
   [`${shell} 0>&3`, "exec 3< ./x.sh"],
+  [`${shell} -c bash < $F`, "F=./x.sh"],
+  [`${shell} -c 'echo hi; bash' < $F`, "F=./x.sh"],
+  [`${shell} -c "${shell} -c bash" < $F`, "F=./x.sh"],
+  [`${shell} -c 'bash /dev/fd/3' 3< $F`, "F=./x.sh"],
 ]);
 const shellHere = (line: string): boolean => SHELLS_HERE.has(line.split(" ")[0] ?? "");
 
@@ -221,7 +228,7 @@ describe("a shell's stdin source is read from one model (TP-3241)", () => {
     expect(await verdict(line)).toBe("deny");
   });
 
-  it.each(["bash -c 'echo hi' < $F", "bash $X", "bash ./ok.sh < $F"])("allows %s, which runs no unknowable descriptor", async (line) => {
+  it.each(["bash -c 'echo hi' < $F", "bash $X", "bash ./ok.sh < $F", "bash -c 'bash ./ok.sh' < $F"])("allows %s, which runs no unknowable descriptor", async (line) => {
     expect(await verdict(line)).toBe("pass");
   });
 });
@@ -279,6 +286,12 @@ const SOURCE_ROWS: Array<[string, (text: string, file: string) => string, string
   ["0>&3 under dash -c", (_text, file) => `dash -c 'bash 3< ${file} 0>&3'`, ALL],
   ["bash's move 0>&3-", (_text, file) => `bash 3< ${file} 0>&3-`, ["bash"]],
   ["a pipe on fd 3 through 3>&0", (text) => `echo '${text}' | bash /dev/fd/3 3>&0`, ALL],
+  ["a < file a -c string's shell inherits", (_text, file) => `bash -c bash < ${file}`, ALL],
+  ["an fd 3 file a -c string's shell inherits", (_text, file) => `bash -c 'bash /dev/fd/3' 3< ${file}`, ALL],
+  ["a pipe a -c string's shell inherits", (text) => `echo '${text}' | bash -c bash`, ALL],
+  ["a pipe eval's shell inherits", (text) => `echo '${text}' | eval bash`, ALL],
+  ["a here-string a -c string's shell inherits", (text) => `bash -c bash <<< '${text}'`, ["bash", "zsh -f"]],
+  ["a heredoc a -c string's shell inherits after a command", (text) => `bash -c 'echo hi; bash' <<E\n${text}\nE`, ALL],
 ];
 const unescaped = (line: string): string => line.replaceAll("\\n", "\n");
 
@@ -296,6 +309,52 @@ describe.skipIf(!["bash", "zsh", "dash"].every((shell) => SHELLS_HERE.has(shell)
   it.each(SOURCE_ROWS)("%s runs the push in the shells listed, and the harmless line in none", (_form, line, pushers) => {
     const ran = ALL.filter((runner) => runs(unescaped(line("touch mk", "./x.sh")), runner));
     const harmless = ALL.filter((runner) => runs(unescaped(line("true", "./ok.sh")), runner));
+    expect([ran, harmless]).toEqual([pushers, []]);
+  });
+});
+
+const BZ = ["bash", "zsh -f"];
+type Row = [string, (text: string, file: string) => string, string[]];
+/** Each runner form of `S`, for eval and for zsh's `emulate -c`, which only zsh has. */
+const runnerForms = (s: string): Row[] =>
+  (
+    [
+      ["eval", BZ],
+      ["emulate zsh -c", ["zsh -f"]],
+    ] as const
+  ).flatMap(([runner, shells]): Row[] => [
+    [`${runner} '${s} /dev/stdin' <<<`, (text) => `${runner} '${s} /dev/stdin' <<< '${text}'`, [...shells]],
+    [`${runner} '${s} -s' <<<`, (text) => `${runner} '${s} -s' <<< '${text}'`, [...shells]],
+    [`${runner} ${s} <<<`, (text) => `${runner} ${s} <<< '${text}'`, [...shells]],
+    [`a pipe into ${runner} '${s} /dev/stdin'`, (text) => `echo '${text}' | ${runner} '${s} /dev/stdin'`, [...shells]],
+    [`a pipe into ${runner} "${s}"`, (text) => `echo '${text}' | ${runner} "${s}"`, [...shells]],
+  ]);
+/** A shell that eval, `emulate -c`, a `-c` string or `find -exec` starts runs what its runner's stdin holds. */
+const RUNNER_ROWS: Row[] = [
+  ...["zsh", "bash", "sh"].flatMap(runnerForms),
+  ["a pipe into bash -c 'bash /dev/stdin'", (text) => `echo '${text}' | bash -c 'bash /dev/stdin'`, BZ],
+  ["find -exec bash /dev/stdin with a < file", (_text, file) => `find . -exec bash /dev/stdin \\; < ${file}`, BZ],
+  ["eval 'bash /dev/stdin' with a < file", (_text, file) => `eval 'bash /dev/stdin' < ${file}`, BZ],
+];
+
+describe("a shell a runner starts inherits its stdin and descriptors (TP-3250)", () => {
+  it.each(RUNNER_ROWS)("denies a push behind %s", async (_form, line) => {
+    expect(await verdict(line(PUSH, "./x.sh"))).toBe("deny");
+  });
+
+  it.each(RUNNER_ROWS)("allows a harmless script behind %s", async (_form, line) => {
+    expect(await verdict(line("echo hi", "./ok.sh"))).toBe("pass");
+  });
+
+  it.each(["eval 'cat' <<< 'hi'", `eval 'cat' <<< '${PUSH}'`, "echo 'echo hi' | eval 'zsh -s'"])("allows %s", async (line) => {
+    expect(await verdict(line)).toBe("pass");
+  });
+});
+
+describe.skipIf(!["bash", "zsh"].every((shell) => SHELLS_HERE.has(shell)))("each shell runs the push a runner hands on (TP-3250)", () => {
+  it.each(RUNNER_ROWS)("%s runs git push in the shells listed, and the harmless line in none", (_form, line, pushers) => {
+    const ran = BZ.filter((runner) => runs(line(PUSH, "./x.sh"), runner, PUSH));
+    const harmless = BZ.filter((runner) => runs(line("echo hi", "./ok.sh"), runner, PUSH));
     expect([ran, harmless]).toEqual([pushers, []]);
   });
 });

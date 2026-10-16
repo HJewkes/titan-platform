@@ -40,7 +40,7 @@ function typedTarget(cmd: SimpleCommand, typed: string, home: string): ScriptTar
  * whose text the line cannot show is refused.
  */
 function shellTargets(cmd: SimpleCommand, home: string): ScriptTarget[] {
-  const { scriptFile, sources, unknowable } = shellStdin(shellOperands(cmd.args, cmd.name), cmd.redirects, false);
+  const { scriptFile, sources, unknowable } = shellStdin(shellOperands(cmd.args, cmd.name), cmd.redirects, false, cmd.inherited);
   if (unknowable) throw new UnknownStdinError();
   const script = scriptFile === null ? null : target(cmd, scriptFile, home, "shell");
   if (script !== null) return [script];
