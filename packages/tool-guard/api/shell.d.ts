@@ -84,6 +84,16 @@ declare function tokenize(src: string, trials?: ArithTrials): Token[];
  */
 type AliasTable = ReadonlyMap<string, readonly string[]>;
 
+/** The redirects that feed a descriptor, whether the pipe does, text a parent's pipe left there, and whether some source is unknowable. */
+interface Feeds {
+    redirects: Set<RedirectToken>;
+    pipe: boolean;
+    texts: string[];
+    unknown: boolean;
+}
+/** What each descriptor holds before a command's own redirects open: the shell's, or the command's that runs it. */
+type Descriptors = (fd: number) => Feeds;
+
 /**
  * How a command was reached: a `( )` subshell or a substitution, a shell's `-c` string or a wrapper's
  * script option, `eval`, `xargs`, a heredoc or here-string fed to a shell, text piped into one, `find -exec`.
@@ -117,6 +127,8 @@ interface SimpleCommand {
     chain: Chain;
     /** Set on a command only an added xargs reading runs; it may add actions but never fails the line or moves its state. */
     added?: true;
+    /** What its descriptors held before its own redirects, when a command that runs it set them up (`bash -c bash < f`). */
+    inherited?: Descriptors;
 }
 interface ExtractOptions {
     cwd?: string | null;
