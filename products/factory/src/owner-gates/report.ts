@@ -130,7 +130,12 @@ export function formatOwnerGatesReport(report: OwnerGatesReport): string {
   const lines = [
     `owner gates ${report.from} to ${report.to}`,
     ...(report.provenanceFrom ? [`provenance reliable from ${report.provenanceFrom}; earlier delegate resolves read as owner`] : []),
-    ...(report.classes.length === 0 ? ["no owner-answered gates in window"] : report.classes.map((row) => `${row.class}  answered ${row.answered}  approve ${percent(row.rate)}  cancelled-unanswered ${row.cancelledUnanswered}  median ${row.medianWaitHours}h`)),
+    ...(report.classes.length === 0
+      ? ["no owner-answered gates in window"]
+      : report.classes.map(
+          (row) =>
+            `${row.class}  answered ${row.answered}  approve ${percent(row.rate)}  cancelled-unanswered ${row.cancelledUnanswered}  median ${row.medianWaitHours}h`,
+        )),
     ...report.flagged.map(flagLine),
     ...report.grants.map(grantLine),
   ];
