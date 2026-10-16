@@ -1,6 +1,6 @@
 import type { GateRecord } from "@titan-design/hitl";
 import { describe, expect, it } from "vitest";
-import { gateStats, policyRow } from "./gate-stats.js";
+import { gateStats, policyRow, visualGateStats } from "./gate-stats.js";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -71,5 +71,39 @@ describe("gateStats", () => {
     const rows = gateStats([gate("main-red", "p", NOW - HOUR, { status: "resolved", resolvedAt: iso(NOW), payload: { approve: false }, resolvedBy: { class: "owner-remote", id: "x", channel: "slack" } })], NOW, WEEK);
 
     expect(rows[0]).toMatchObject({ resolver: "owner-remote", decisions: { decline: 1 } });
+  });
+});
+
+describe("visualGateStats", () => {
+  const head = "a".repeat(40);
+  const visualPrompt = (pr: number, rule = "visual-path"): string => `Merge PR #${pr} in acme/widgets at head ${head}? CI is green. Policy shepherd-merge-guard/${rule}: the pull request changes visual paths`;
+  const visual = (pr: number, opened: number, hours?: number, rule?: string): GateRecord => {
+    const schema = { type: "object", properties: { headSha: { const: head } } } as GateRecord["schema"];
+    const base = hours === undefined ? gate("approve-merge", visualPrompt(pr, rule), opened) : answered("approve-merge", visualPrompt(pr, rule), opened, hours, "owner-terminal", "merge");
+    return { ...base, schema };
+  };
+
+  it("takes the latency median over a PR's two resolved visual gates and counts one re-ask", () => {
+    const opened = NOW - DAY;
+
+    const stats = visualGateStats([visual(7, opened, 1), visual(7, opened, 3)], NOW, WEEK);
+
+    expect(stats).toEqual({ count: 2, open: 0, resolved: 2, medianHours: 2, p90Hours: 3, reAsks: 1, prsWithReAsk: 1 });
+  });
+
+  it("leaves a non-visual approve-merge gate out", () => {
+    const stats = visualGateStats([visual(7, NOW - DAY, 1, "ci-policy-weakened"), visual(8, NOW - DAY, 1)], NOW, WEEK);
+
+    expect(stats).toMatchObject({ count: 1, reAsks: 0, prsWithReAsk: 0 });
+  });
+
+  it("counts an unresolved visual gate as open, with no latency of zero", () => {
+    const stats = visualGateStats([visual(7, NOW - HOUR)], NOW, WEEK);
+
+    expect(stats).toEqual({ count: 1, open: 1, resolved: 0, medianHours: null, p90Hours: null, reAsks: 0, prsWithReAsk: 0 });
+  });
+
+  it("windows on when the gate opened", () => {
+    expect(visualGateStats([visual(7, NOW - 8 * DAY, 1)], NOW, WEEK).count).toBe(0);
   });
 });

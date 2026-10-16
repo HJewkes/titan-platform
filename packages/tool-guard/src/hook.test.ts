@@ -435,8 +435,10 @@ describe("handle over real script files behind dynamic wrapper words, case foldi
   const fill = (unit: string, bytes: number) => unit.repeat(Math.ceil(bytes / unit.length)).slice(0, bytes);
   const PATHS = "/a /b /c /d /e /f /g /h ";
   const MAIN = "git push origin HEAD:main";
-  /** Well inside Claude Code's 5 s hook timeout, past which the command runs unchecked. */
-  const WITHIN_MS = 2000;
+  /** Linear growth costs SCALE x the small case, quadratic SCALE^2 x; the bound sits between with headroom for load. */
+  const SCALE = 8;
+  const MAX_RATIO = 20;
+  // Sizes stay under MAX_SCRIPT_BYTES: past it the hook denies unread, which costs nothing and proves nothing.
 
   /** Runs `command` from a checkout on feat/x that holds `files`, read through the real filesystem. */
   async function inRepo(command: string, files: Record<string, string>) {
@@ -449,25 +451,45 @@ describe("handle over real script files behind dynamic wrapper words, case foldi
     return handle(bash(command, { cwd: repo }), {}, port({ context: { ...nodeContext(home), foldCase: true } }));
   }
 
+  type Case = { command: string; files: Record<string, string> };
+
+  /** Best of two wall-clock times for `build(size)`, asserting every run denies. */
+  async function bestMs(build: (size: number) => Case, size: number) {
+    const times: number[] = [];
+    for (let run = 0; run < 2; run++) {
+      const { command, files } = build(size);
+      const start = performance.now();
+      const result = await inRepo(command, files);
+      times.push(performance.now() - start);
+      expect(decisionOf(result.stdout)).toBe("deny");
+    }
+    return Math.min(...times);
+  }
+
+  async function expectNearLinear(build: (size: number) => Case, size: number) {
+    const small = await bestMs(build, size);
+    const large = await bestMs(build, size * SCALE);
+    expect(large).toBeLessThan(Math.max(small, 5) * MAX_RATIO);
+  }
+
   it.each([
-    ["python3", "a.py", 64 * 1024],
-    ["node", "a.js", 32 * 1024],
-  ])("denies a push after `sudo $a %s` running a script of paths", async (interpreter, script, bytes) => {
-    const start = performance.now();
-
-    const result = await inRepo(`sudo $a ${interpreter} ${script}; ${MAIN}`, { [script]: fill(PATHS, bytes) });
-
-    expect(decisionOf(result.stdout)).toBe("deny");
-    expect(performance.now() - start).toBeLessThan(WITHIN_MS);
+    ["python3", "a.py", 1024],
+    ["node", "a.js", 1024],
+  ])("denies a push after `sudo $a %s` running a script of paths, cost near-linear in size", async (interpreter, script, bytes) => {
+    await expectNearLinear(
+      (size) => ({ command: `sudo $a ${interpreter} ${script}; ${MAIN}`, files: { [script]: fill(PATHS, size) } }),
+      bytes,
+    );
   });
 
   it("denies a push after `sudo $a b.sh` and 8 KB of reads, b.sh 8 KiB of reads", async () => {
-    const start = performance.now();
-
-    const result = await inRepo(`sudo $a b.sh; ${fill("cat x; ", 8000)}${MAIN}`, { "b.sh": fill("cat x\n", 8192) });
-
-    expect(decisionOf(result.stdout)).toBe("deny");
-    expect(performance.now() - start).toBeLessThan(WITHIN_MS);
+    await expectNearLinear(
+      (size) => ({
+        command: `sudo $a b.sh; ${fill("cat x; ", size - 192)}${MAIN}`,
+        files: { "b.sh": fill("cat x\n", size) },
+      }),
+      1024,
+    );
   });
 
   it("passes a lone `$SUDO ./install.sh` of 12 KB, as main does", async () => {

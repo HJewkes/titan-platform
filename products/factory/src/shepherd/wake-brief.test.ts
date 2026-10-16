@@ -179,7 +179,7 @@ describe("review wake brief: the PR's review comments", () => {
 
     const wake = await describeWake(port, { kind: "ci-red", repo: REPO, pr: pr.number, headSha: H1, payload: null }, pr, "TEST RULE");
 
-    expect(wake.reason).toContain("dag-check: the `dag:check` and `dead:check` scripts");
+    expect(wake.reason).toContain("dag-check: the `dag:check`, `dead:check` and `lint:types` scripts");
     expect(wake.reason).toContain("run as your test rule below says");
     expect(wake.reason).not.toMatch(/pnpm |npx /);
     expect(wake.reason.endsWith("\n\nTEST RULE")).toBe(true);

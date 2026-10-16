@@ -3,12 +3,15 @@ import { existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { gitTreeSource } from "./git-tree-source.js";
 import { readSnapshot, type Snapshot } from "./incremental.test-helpers.js";
 import { indexPaths, type IndexOptions } from "./indexer.js";
 import { isolatedGitEnv } from "./history/test-repo.js";
 import { openCodeGraph } from "./store.js";
+
+// Each test indexes a real git repo through ts-morph; CI run 38183124631 saw up to 7 s.
+vi.setConfig({ testTimeout: 30_000 });
 
 // HEAD~1: b calls into a, and a root dir named `..foo` holds a source file.
 // b/src/links.ts also imports through two symlinks the commit tracks (LINKS).
