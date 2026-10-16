@@ -232,7 +232,8 @@ function holdAdversary(shepherd: FactoryConfig["shepherd"], under: (configDir: s
   const mode = shepherd?.gateReset?.twoMergeRelease ?? "off";
   const review = shepherd?.review;
   if (mode === "off" || !review) return {};
-  return { holdMember: { profile: review.adversaryProfile ?? DEFAULT_ADVERSARY_PROFILE }, twoMergeRelease: mode, ...(review.adversaryConfigDir !== undefined && { adversaryDispatch: under(review.adversaryConfigDir) }) };
+  const adversaryDispatch = review.adversaryConfigDir === undefined ? {} : { adversaryDispatch: under(review.adversaryConfigDir) };
+  return { holdMember: { profile: review.adversaryProfile ?? DEFAULT_ADVERSARY_PROFILE }, twoMergeRelease: mode, ...adversaryDispatch };
 }
 
 /** Cleanup retires agents through the configured `agent-chat`, so no binary configured means no retire and no task close. */

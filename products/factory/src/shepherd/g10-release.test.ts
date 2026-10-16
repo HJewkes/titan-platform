@@ -76,12 +76,13 @@ describe("hold classes and opus profiles", () => {
   });
 });
 
-function rig(reason: string, prHead = HEAD, actor?: string) {
+function rig(reason: string, prHead = HEAD, actor?: string, files: PrFile[] = []) {
   const db = openDatabase(":memory:");
   runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)]);
   const store = new ShepherdStore(db);
   const fake = fakeGitHub({ repo: REPO });
   const { number: pr } = fake.addPr({ headSha: prHead });
+  fake.prFiles.set(pr, files);
   store.register({ repo: REPO, pr, runId: "run-1", task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
   store.hold("run-1", reason, undefined, actor === undefined ? {} : { actor });
   const deps = { port: githubPort(fake.wire), store: { get: () => store }, now: () => 0 } as unknown as Parameters<typeof g10ReleaseRoutes>[0];
@@ -310,16 +311,8 @@ describe("the g10-adversary/two-merge release (decision 422(1))", () => {
   const twoInput = (pr: number, head: string, extra: object = {}) => ({ runId: "run-1", repo: REPO, pr, head, rule: TWO_MERGE_RULE, ...merges(head), checks: green(head), ...extra });
 
   function twoRig(prHead = HEAD, files: PrFile[] = [{ path: "src/policy.ts", status: "modified" }]) {
-    const db = openDatabase(":memory:");
-    runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)]);
-    const store = new ShepherdStore(db);
-    const fake = fakeGitHub({ repo: REPO });
-    const { number: pr } = fake.addPr({ headSha: prHead });
-    fake.prFiles.set(pr, files);
-    store.register({ repo: REPO, pr, runId: "run-1", task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
-    store.hold("run-1", ADVERSARY_HOLD, undefined, { actor: "shepherd" });
-    const deps = { port: githubPort(fake.wire), store: { get: () => store }, now: () => 0 } as unknown as Parameters<typeof g10ReleaseRoutes>[0];
-    return { store, pr, deps, route: (mode?: TwoMergeMode) => g10ReleaseRoutes(deps, mode)[0]! };
+    const rigged = rig(ADVERSARY_HOLD, prHead, "shepherd", files);
+    return { ...rigged, route: (mode?: TwoMergeMode) => g10ReleaseRoutes(rigged.deps, mode)[0]! };
   }
 
   describe("satisfiesTwoMerge", () => {

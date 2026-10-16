@@ -234,7 +234,13 @@ function panelFixFirst(head: string, verdict: PanelVerdict): Verdict {
   return { kind: "FIX_FIRST", headSha: head, text: panelFindingsText(verdict), ...(verdict.closer !== undefined && { closer: verdict.closer }) };
 }
 
-const MemberVerdict = z.looseObject({ kind: z.literal("verdict"), reviewer: z.object({ agentId: z.string(), sessionId: z.string() }), locator: z.unknown(), verdict: z.enum(["MERGE", "FIX_FIRST"]).optional(), head: z.string().optional() });
+const MemberVerdict = z.looseObject({
+  kind: z.literal("verdict"),
+  reviewer: z.object({ agentId: z.string(), sessionId: z.string() }),
+  locator: z.unknown(),
+  verdict: z.enum(["MERGE", "FIX_FIRST"]).optional(),
+  head: z.string().optional(),
+});
 
 /**
  * The members that gave a verdict, for TP-1927's record of who reviewed the head, each with what it said and the profile it was

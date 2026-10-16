@@ -108,7 +108,10 @@ export function satisfiesTwoMerge(run: G10Run, merges: TwoMerge, prHead: string,
 
 const ChecksSchema = z.looseObject({ head: z.string(), green: z.boolean() });
 const G10ReleaseInput = z.looseObject({ runId: z.string(), repo: z.string(), pr: z.number(), head: z.string(), verdict: G10VerdictSchema, reviewerProfile: z.string(), checks: ChecksSchema, mergeUp: MergeUpSchema.optional() });
-const TwoMergeInput = z.looseObject({ runId: z.string(), repo: z.string(), pr: z.number(), head: z.string(), rule: z.literal(TWO_MERGE_RULE), correctness: ReviewerMergeSchema, adversary: ReviewerMergeSchema, checks: ChecksSchema, mergeUp: MergeUpSchema.optional() });
+const TwoMergeInput = z.looseObject({
+  ...{ runId: z.string(), repo: z.string(), pr: z.number(), head: z.string(), rule: z.literal(TWO_MERGE_RULE) },
+  ...{ correctness: ReviewerMergeSchema, adversary: ReviewerMergeSchema, checks: ChecksSchema, mergeUp: MergeUpSchema.optional() },
+});
 const G10ReleaseResult = z.looseObject({ released: z.boolean(), head: z.string(), verdict: G10VerdictSchema.optional(), wouldRelease: z.boolean().optional() });
 
 /** True when the run recorded a hold event under exactly `reason`; false when it did not or the history cannot be read. */
