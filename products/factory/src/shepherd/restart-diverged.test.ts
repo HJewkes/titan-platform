@@ -116,14 +116,18 @@ describe("shepherd.register on a replay-diverged run", () => {
 
     const again = await register(next);
 
+    expect(again).toMatchObject({ created: true, previousRunId: oldRunId });
+    expect(again.runId).not.toBe(oldRunId);
     expect(again.registration).toMatchObject({ holdReason: "g10-review", holdReviewer: "rev", ownerHold: { reason: "owner-asked: wait for the owner" } });
   });
 
   it("lets an explicit head win over the last read head", async () => {
-    const { next } = await parkedRun();
+    const { next, oldRunId } = await parkedRun();
 
     const again = await register(next, { head: HEAD_C });
 
+    expect(again.created).toBe(true);
+    expect(again.runId).not.toBe(oldRunId);
     expect(again.registration.headSha).toBe(HEAD_C);
   });
 
