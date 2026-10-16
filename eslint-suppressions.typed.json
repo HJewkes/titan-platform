@@ -2453,11 +2453,6 @@
       "count": 2
     }
   },
-  "packages/tool-guard/src/shell/wrapper-long.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
   "packages/tool-guard/src/shell/xargs-input.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1

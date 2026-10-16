@@ -91,6 +91,33 @@ describe("env -S is split by env's rules and read as env's argv (TP-3210)", () =
   });
 });
 
+describe("env's leading words are read in one pass", () => {
+  // Linear growth costs SCALE x the small case, quadratic SCALE^2 x; the bound sits between with headroom for load.
+  const SCALE = 8;
+  const MAX_RATIO = 24;
+  const largeBytes = 64 * 1024 - 32;
+
+  async function bestMs(script: string): Promise<number> {
+    const readScript = (p: string) => (p === `${REPO}/p.sh` ? script : null);
+    const times: number[] = [];
+    for (let run = 0; run < 3; run++) {
+      const started = performance.now();
+      await verdict("bash ./p.sh", { ...context, readScript });
+      times.push(performance.now() - started);
+    }
+    return Math.min(...times);
+  }
+
+  const envLine = (unit: string, bytes: number) => `env ${unit.repeat(Math.floor(bytes / unit.length))}true\n`;
+
+  it.each([["A=1 - "], ["-- "], ["-S "], ["A=1 -i "], ["A=1 -S '' "]])("reads a script of env %j words in linear time", async (unit) => {
+    const small = await bestMs(envLine(unit, largeBytes / SCALE));
+    const large = await bestMs(envLine(unit, largeBytes));
+
+    expect(large).toBeLessThan(Math.max(small, 5) * MAX_RATIO);
+  }, 60_000);
+});
+
 const envSplits = spawnSync("env", ["-S", "-u X true"]).status === 0;
 const envArgv0 = spawnSync("env", ["-S", "-a x true"]).status === 0;
 const zsh = spawnSync("zsh", ["-f", "-c", "true"]).status === 0;

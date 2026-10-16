@@ -12,29 +12,18 @@ export interface EnvSyntax {
 const ENV_PARAM_RE = /\$\{[A-Za-z_][A-Za-z0-9_]*\}/g;
 
 /**
- * env's argv with its `-S` string split into words by env's rules, so env's own options at its head (`-u X`, `-a sh`,
- * `-i`) are read as options, not as a command. Undefined when no `-S` comes before the command; null when env's
- * words cannot be known: a dynamic `-S` word, a missing one, an unclosed quote, a backslash, or a `${NAME}` among env's
- * options or as its command, which the walk never expands since it rebuilds these words after expanding the line's.
+ * The words env puts in place of a `-S` option and its string, split by env's rules, so env's own options at its head
+ * (`-u X`, `-a sh`, `-i`) are read as options, not as a command. Null when they cannot be known: a dynamic `-S` word,
+ * a missing one, an unclosed quote, a backslash, or a `${NAME}` among env's options or as its command, which the walk
+ * never expands since it rebuilds these words after expanding the line's.
  */
-export function envSplitString(words: WordToken[], i: number, syntax: EnvSyntax): WordToken[] | null | undefined {
-  for (let option = words[i]; option?.value.startsWith("-"); option = words[i]) {
-    if (option.value === "--") return undefined;
-    const at = syntax.scriptAt(option.value);
-    if (at === null) {
-      i += syntax.takesValue(option.value) ? 2 : 1;
-      continue;
-    }
-    const text = at === "next" ? words[i + 1] : option;
-    if (text === undefined || option.dynamic || text.dynamic) return null;
-    const split = envSplitWords(at === "next" ? text.value : at.attached);
-    if (split === null) return null;
-    const head = [...clusterBefore(option.value, at), ...split];
-    if (dynamicHead(head, syntax)) return null;
-    const argv = envTokens(head);
-    return [...words.slice(0, i), ...argv, ...words.slice(i + (at === "next" ? 2 : 1))];
-  }
-  return undefined;
+export function envArgv(option: WordToken, at: { attached: string } | "next", next: WordToken | undefined, syntax: EnvSyntax): WordToken[] | null {
+  const text = at === "next" ? next : option;
+  if (text === undefined || option.dynamic || text.dynamic) return null;
+  const split = envSplitWords(at === "next" ? text.value : at.attached);
+  if (split === null) return null;
+  const head = [...clusterBefore(option.value, at), ...split];
+  return dynamicHead(head, syntax) ? null : envTokens(head);
 }
 
 /** Whether a `${NAME}` sits among env's leading options or in the command word after them, where its value decides what runs. */

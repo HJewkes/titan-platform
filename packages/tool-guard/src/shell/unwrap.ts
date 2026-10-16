@@ -1,14 +1,14 @@
 import { argv0Values, assignedArgv0, splitStringArgv0 } from "./argv0.js";
 import { splitCluster, takesNextWord } from "./cluster.js";
-import { envSplitString } from "./env-argv.js";
-import type { EnvSyntax } from "./env-argv.js";
+import { walkEnv } from "./env-walk.js";
+import type { EnvWalkSyntax } from "./env-walk.js";
 import type { WordToken } from "./lexer.js";
 import { basename } from "./path.js";
 import { canonicalShell } from "./shell-names.js";
 import { EnvSplitError } from "./unsure-readings.js";
 import { parseAssignment } from "./vars.js";
 import type { Assignment } from "./vars.js";
-import { SHORT_VALUES, SUDO_LONG_VALUES, spellLongOptions } from "./wrapper-long.js";
+import { SHORT_VALUES, SUDO_LONG_VALUES, spellLongOptions, spellOption } from "./wrapper-long.js";
 import { xargsBatch, xargsDelimiters } from "./xargs-options.js";
 import type { XargsSyntax } from "./xargs-options.js";
 import { replaceStrings } from "./xargs-replace.js";
@@ -79,7 +79,12 @@ const WRAPPERS: Record<string, WrapperSpec> = {
     joined: true, direct: ["-x", "--exec"] },
 };
 
-const ENV_SYNTAX: EnvSyntax = { scriptAt: (word) => scriptOption(word, ENV), takesValue: (word) => takesNextWord(word, ENV) };
+const ENV_WALK: EnvWalkSyntax = {
+  scriptAt: (word) => scriptOption(word, ENV),
+  takesValue: (word) => takesNextWord(word, ENV),
+  spell: (word) => spellOption("env", word),
+  keyword: (word) => KEYWORDS.has(word.value) && !word.quoted,
+};
 
 /** Package managers that run a command only through a subcommand: `pnpm exec x`, `yarn dlx x`, `npm exec x`. */
 const RUNNERS: Record<string, { subs: string[]; values: string[]; shellMode?: boolean }> = {
@@ -154,7 +159,6 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
   let xargs: Unwrapped["xargs"];
   let negated = false;
   const argv0: Array<string | null> = [];
-  let env: WordToken | undefined;
   let i = 0;
   while (i < words.length) {
     const w = words[i] as WordToken;
@@ -166,22 +170,19 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
     else if (assignment) {
       assigned.push(assignment);
       i++;
-    } else if (env && !w.dynamic && w.value.startsWith("-")) {
-      // uutils env still reads a `-S` after its `NAME=VALUE` words, so env's options resume here.
-      words = [...words.slice(0, i), env, ...words.slice(i)];
-    } else if (env && !w.dynamic && w.value.includes("=")) i++;
-    else if (!w.dynamic && (wrapperSpec(w.value) || runnerEnd(words, i) > i)) {
+    } else if (!w.dynamic && commandName(w.value) === "env") {
+      const walked = walkEnv(words, i + 1, assigned, ENV_WALK);
+      if (walked === null) throw new EnvSplitError();
+      if (walked.ambiguousAt !== undefined) return { ...command(walked.words, i, assigned), script: ambiguousReadings(walked.words, i, walked.ambiguousAt) };
+      ({ words, end: i } = walked);
+      argv0.push(...walked.argv0);
+      negated ||= walked.negated;
+    } else if (!w.dynamic && (wrapperSpec(w.value) || runnerEnd(words, i) > i)) {
       const spelled = spellXargs(words, i, assigned);
       if (!Array.isArray(spelled)) return spelled;
       words = spelled;
       const start = wrapperSpec(w.value) ? i + 1 : runnerEnd(words, i);
       const spec = wrapperSpec(w.value) ?? PACKAGE_OPTS;
-      env = commandName(w.value) === "env" ? w : undefined;
-      const split = envSplitOrThrow(w.value, words, start);
-      if (split !== undefined) {
-        words = split;
-        continue;
-      }
       const script =
         runnerShellScript(words, i, start) ?? wrapperScript(words, start, spec) ?? joinedScript(words, start, spec);
       if (script !== null) {
@@ -201,14 +202,6 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
   argv0.push(...assignedArgv0(assigned));
   const named = argv0.length > 0 ? { argv0 } : {};
   return { ...cmd, ...named, ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}), ...(unsure ? { unsure } : {}) };
-}
-
-/** env's argv with its `-S` string split, or undefined for no `-S` or another wrapper; throws where env's words cannot be known. */
-function envSplitOrThrow(wrapper: string, words: WordToken[], start: number): WordToken[] | undefined {
-  if (commandName(wrapper) !== "env") return undefined;
-  const split = envSplitString(words, start, ENV_SYNTAX);
-  if (split === null) throw new EnvSplitError();
-  return split;
 }
 
 function command(words: WordToken[], i: number, assigned: Unwrapped["assigned"]): Unwrapped {
