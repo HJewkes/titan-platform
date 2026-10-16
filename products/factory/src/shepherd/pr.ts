@@ -99,16 +99,11 @@ interface ShepherdRun extends WakeRun, FixFirstTrail {
 export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams, phases: ShepherdPhases): Promise<LandOutcome> {
   const pr = params.pr ?? (await awaitPrStep(ctx, params.repo, params.branch));
   const run: ShepherdRun = {
-    ...{
-      ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 },
-      reviews: new Map(), merged: new Map(), policy: params.policy, policyReads: 0, carryScopeReads: 0,
-      release: params.release, task: params.task,
-    },
-    ...{
-      failedRounds: 0, throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0,
-      fresh: new Set(), seatHeld: new Map(), seatHeldRounds: new Map(), updateBound: newUpdateBound(), settleHold: {},
-      escalations: new Map(), wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [],
-    },
+    ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), merged: new Map() },
+    ...{ policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release, task: params.task },
+    ...{ failedRounds: 0, throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set() },
+    ...{ seatHeld: new Map(), seatHeldRounds: new Map(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map() },
+    ...{ wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [] },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : shepherdOptions(run, verdictFor);
@@ -126,12 +121,8 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
 function shepherdOptions(run: ShepherdRun, verdictFor: (headSha: string) => Verdict | undefined): LandOptions {
   const options = shepherdLandOptions(() => run.policy, verdictFor, (headSha) => liveEscalation(run, headSha));
   const unsettled = options.unsettled && { ...options.unsettled, notice: unsettledMergeNotice(run) };
-  return {
-    ...options,
-    ...(unsettled && { unsettled }),
-    reviewedMerge: (headSha) => verdictIsMergeAt(verdictFor(headSha), headSha),
-    ownerBriefAt: (headSha) => ownerBriefAt(verdictFor(headSha), headSha),
-  };
+  const merge = { reviewedMerge: (headSha: string) => verdictIsMergeAt(verdictFor(headSha), headSha) };
+  return { ...options, ...(unsettled && { unsettled }), ...merge, ownerBriefAt: (headSha) => ownerBriefAt(verdictFor(headSha), headSha) };
 }
 
 /** Undefined means a review send-back ended this round from inside `land` and the next round lands. */
@@ -190,40 +181,14 @@ function leaveOnConflict(headSha: string): LeaveLand {
   return new LeaveLand({ kind: "stopped", reason: "conflict", headSha, detail: `the pull request at ${headSha} conflicts with its base` });
 }
 
-/** The assisted-gate chain of the reviewing context: supersede, conflict-check, follow approvals, then record overrides. */
-function assistedGates(run: ShepherdRun, reviewedMerge: (headSha: string) => boolean): WorkflowContext["assisted"] {
-  const { ctx } = run;
-  return routingStuckBehind(
-    run,
-    () => run.lastCi?.headSha,
-    recordingOverrides(
-      followingApprovals(
-        ctx,
-        conflictCheckedGates(
-          supersedingGates(
-            ctx,
-            (rereview, gated, stepId) => (
-              clearSuperseded(run, rereview, gated, stepId),
-              rereview && run.trail.ownerAsked.add(rereview),
-              new LeaveLand()
-            ),
-            () => (run.carried = undefined),
-          ),
-          (headSha) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha }),
-          leaveOnConflict,
-        ),
-        { target: run.target, reviewedMerge },
-      ),
-      reviewedMerge,
-      (override) => recordOverride(ctx, run.target, override),
-    ),
-  );
-}
-
 /** Runs the review at every green head `land` reads, before `land` asks the policy or the owner about that head. */
 function reviewingContext(run: ShepherdRun): WorkflowContext {
   const { ctx } = run;
   const reviewedMerge = (headSha: string): boolean => !run.release && verdictIsMergeAt(run.reviews.get(headSha), headSha);
+  const supersede = (rereview: string | undefined, gated: string | undefined, stepId: string): LeaveLand => (
+    clearSuperseded(run, rereview, gated, stepId), rereview && run.trail.ownerAsked.add(rereview), new LeaveLand()
+  );
+  const conflictCheck = (headSha: string) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha });
   return {
     runId: ctx.runId,
     workflowName: ctx.workflowName,
@@ -234,7 +199,9 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     resumedGate: () => ctx.resumedGate(),
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
-    assisted: assistedGates(run, reviewedMerge),
+    assisted: routingStuckBehind(run, () => run.lastCi?.headSha, recordingOverrides(followingApprovals(ctx, conflictCheckedGates(
+      supersedingGates(ctx, supersede, () => (run.carried = undefined)), conflictCheck, leaveOnConflict), { target: run.target, reviewedMerge }),
+      reviewedMerge, (override) => recordOverride(ctx, run.target, override))),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
     dispatch: async (stepId, template, options) => {
       const done = await ctx.dispatch(stepId, template, options);
@@ -320,27 +287,13 @@ async function reviewHead(run: ShepherdRun, headSha: string): Promise<Verdict> {
   const standing = merged && (await standingMerge(run.ctx, merged, headSha, () => takeCause(run.trail, headSha, {})));
   if (standing) return standing;
   const probe: CarryProbe = {};
-  const carried = run.trail.seatAsked.has(headSha)
-    ? undefined
-    : await carriedVerdict(
-        tapped(run.ctx, (stepId, result) => noteCarryStep(probe, stepId, result)),
-        run.target,
-        run.reviews,
-        headSha,
-        run.carryScopeReads++,
-      );
+  const tap = tapped(run.ctx, (stepId, result) => noteCarryStep(probe, stepId, result));
+  const carried = run.trail.seatAsked.has(headSha) ? undefined : await carriedVerdict(tap, run.target, run.reviews, headSha, run.carryScopeReads++);
   if (carried) return carried;
   const cause = takeCause(run.trail, headSha, probe);
+  const request = { ...run.target, round: run.state.round, headSha };
   const verdict = await reviewKeepingSeatHold(run.seatHeld, headSha, (seatHeld) =>
-    run.phases.review(run.ctx, {
-      ...run.target,
-      round: run.state.round,
-      headSha,
-      ...(run.fresh.has(headSha) && { fresh: true }),
-      cause,
-      ...(seatHeld && { seatHeld }),
-    }),
-  );
+    run.phases.review(run.ctx, { ...request, ...(run.fresh.has(headSha) && { fresh: true }), cause, ...(seatHeld && { seatHeld }) }));
   return verdict.kind === "none" || verdict.headSha === headSha ? verdict : { kind: "none", cause: "no-verdict" };
 }
 
@@ -367,22 +320,11 @@ async function onConflict(run: ShepherdRun, headSha: string): Promise<LandOutcom
 async function landed(ctx: WorkflowContext, run: ShepherdRun, merged: Extract<LandOutcome, { kind: "merged" }>, after: readonly AfterStage[]): Promise<LandOutcome> {
   await recordLanded(ctx, run.target, merged);
   // The main-CI read answers `none` for an empty merge sha and hands that run to the owner.
-  const mainCi = await shepherdMainCi(
-    ctx,
-    {
-      ...run.target,
-      mergeSha: merged.mergeSha ?? "",
-      ...(merged.landed && { landed: merged.landed }),
-      ...(merged.own && { own: true as const }),
-    },
-    after,
-    run.policy.fixer,
-  );
+  const own = { ...(merged.own && { own: true as const }) };
+  const mainCi = await shepherdMainCi(ctx, { ...run.target, mergeSha: merged.mergeSha ?? "", ...(merged.landed && { landed: merged.landed }), ...own }, after, run.policy.fixer);
   // A red or unread main already went to its own route, and a release built on it would not publish.
-  if (run.release && mainCi.verdict === "green" && merged.mergeSha) {
-    const versions = releasePreflightAt(merged.headSha, (headSha) => run.reviews.get(headSha))?.versions ?? {};
-    await releaseFollowStep(ctx, { ...run.target, mergeSha: merged.mergeSha }, versions);
-  }
+  const versions = () => releasePreflightAt(merged.headSha, (headSha) => run.reviews.get(headSha))?.versions ?? {};
+  if (run.release && mainCi.verdict === "green" && merged.mergeSha) await releaseFollowStep(ctx, { ...run.target, mergeSha: merged.mergeSha }, versions());
   return merged;
 }
 
