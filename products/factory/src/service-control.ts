@@ -367,10 +367,11 @@ async function fenceForeignHolder(ports: ServicePorts, io: ServiceIo, port: numb
   return fenced.ok ? undefined : fenced.why;
 }
 
-/** The /health budget starts only once the new main process exists, so a slow stop cannot spend it. */
-export async function restartService(ports: ServicePorts, io: ServiceIo, port: number, logDir: string, drain: RestartDrain): Promise<number> {
+/** The /health budget starts only once the new main process exists, so a slow stop cannot spend it. `onDrained` gets the drain's last answer before the restart. */
+export async function restartService(ports: ServicePorts, io: ServiceIo, port: number, logDir: string, drain: RestartDrain, onDrained?: (atRestart: Record<string, unknown> | null) => void): Promise<number> {
   const drained = await drainForRestart(ports, io.stdout, { ...drain, port });
   if (!drained.proceed) return fail(io, drained.why);
+  onDrained?.(drained.atRestart);
   const foreign = await fenceForeignHolder(ports, io, port);
   if (foreign !== undefined) return fail(io, foreign);
   const restarted = await restartJob(ports, io);

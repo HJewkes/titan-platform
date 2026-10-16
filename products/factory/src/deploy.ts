@@ -6,7 +6,7 @@ import type { DeployIncident } from "./deploy-incident.js";
 import { deployLockPath, releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
 import { describeHolds, readDeployHolds, writeDeployPause, type DeployPause } from "./deploy-pause.js";
 import { buildLog, detail, writeBuildLog } from "./deploy-output.js";
-import { buildShaOf, DEFAULT_WATCH_WINDOW, watchServe, type WatchWindow } from "./deploy-watch-window.js";
+import { buildShaOf, DEFAULT_WATCH_WINDOW, watchServe, type WatchIntent, type WatchWindow } from "./deploy-watch-window.js";
 import { restartService, type CommandResult, type RestartDrain, type ServiceIo, type ServicePorts } from "./service-control.js";
 
 /** Every effect the deployer has beyond the service verbs'; tests pass fakes, so none of them reaches git, pnpm or launchd. */
@@ -85,6 +85,8 @@ const SHA_PROBE_TIMEOUT_MS = 5_000;
 const LOCKFILE = "pnpm-lock.yaml";
 
 export const deployRecordPath = (stateDir: string): string => join(stateDir, "deploy.json");
+/** The open or last watch window's `{sha, windowEnd}`. */
+export const deployWindowPath = (stateDir: string): string => join(stateDir, "deploy-window.json");
 const backupRoot = (stateDir: string): string => join(stateDir, "deploy-backup");
 
 export function parseDeployRecord(text: string | undefined): DeployRecord | undefined {
@@ -315,15 +317,30 @@ async function installAndBuild(deploy: Deploy, target: string): Promise<string |
   return undefined;
 }
 
-/** restartService confirms launchd's pid and github ok; the sha check proves the new build is the one answering, and the watch that it stays up without new step errors. */
-async function restartAndConfirm({ ports, io, options }: Deploy, target: string): Promise<string | undefined> {
-  if ((await restartService(ports, io, options.port, options.logDir, options.drain)) !== 0) return "the restarted service did not come up healthy";
+/**
+ * restartService confirms launchd's pid and github ok; the sha check proves the new build is the one answering, and the watch that it stays up without new step errors.
+ * The drain's last answer goes to the watch, so runs the restart interrupted are told from runs that broke after it.
+ */
+async function restartAndConfirm(deploy: Deploy, target: string): Promise<string | undefined> {
+  const { ports, io, options } = deploy;
+  let atRestart: Record<string, unknown> | null = null;
+  if ((await restartService(ports, io, options.port, options.logDir, options.drain, (drained) => (atRestart = drained))) !== 0) return "the restarted service did not come up healthy";
   const health = await answeredHealth(ports, options.port);
   const sha = buildShaOf(health);
   if (health === undefined || sha === undefined) return `/health answered no build sha in ${SHA_POLLS} tries`;
   if (sha !== target) return `/health reports build ${sha}, not ${target}`;
   const probe = (timeoutMs: number) => ports.healthWithin(options.port, timeoutMs);
-  return watchServe({ probe, sleep: ports.sleep, now: ports.now, alive: ports.isAlive }, health, target, { ...DEFAULT_WATCH_WINDOW, ...options.watch });
+  const watch = { probe, sleep: ports.sleep, now: ports.now, alive: ports.isAlive, record: (intent: WatchIntent) => recordWindow(deploy, intent) };
+  return watchServe(watch, { confirmed: health, atRestart }, target, { ...DEFAULT_WATCH_WINDOW, ...options.watch });
+}
+
+/** The record is for readers of the window, never a reason to fail the deploy it describes. */
+function recordWindow({ ports, io, options }: Deploy, intent: WatchIntent): void {
+  try {
+    ports.writeFile(deployWindowPath(options.stateDir), `${JSON.stringify(intent)}\n`);
+  } catch (error) {
+    io.stderr(`warning: the watch window could not be recorded: ${error instanceof Error ? error.message : String(error)}\n`);
+  }
 }
 
 /** A failed build may have half-cleaned dist while the old process still runs, so restore before anything respawns it. */
