@@ -193,7 +193,7 @@ function step(spec: WriterSpec, args: WordToken[], [i, k]: [number, number], wal
   const tail = word.value.slice(k + 1);
   const either = has(spec.either, letter);
   if (either || has(spec.names, letter) || has(spec.values, letter)) {
-    const value = tail ? { ...word, value: tail } : has(spec.values, letter) ? null : (args[i + 1] ?? null);
+    const value = tail ? { ...word, value: tail } : optionValue(spec, letter, args[i + 1]);
     if (value !== null) walk.slots.push(value);
     const after: [number, number] = tail ? [i + 1, 0] : [i + 2, 0];
     return either ? [after, [i, k + 1]] : [after];
@@ -212,7 +212,7 @@ function startWord(spec: WriterSpec, i: number, word: WordToken, walk: OptionWal
     walk.operandsFrom = Math.min(walk.operandsFrom, i);
     return [];
   }
-  if (word.dynamic || word.value.length > MAX_OPTION_WORD) return word.value;
+  if (word.dynamic || word.value.length > MAX_OPTION_WORD || bracesExpand(word)) return word.value;
   if (word.value === "--" || word.value === "-") {
     walk.operandsFrom = Math.min(walk.operandsFrom, i + 1);
     return [];
@@ -224,15 +224,39 @@ function startWord(spec: WriterSpec, i: number, word: WordToken, walk: OptionWal
 /** A dynamic word that opens with an expansion may expand to an option. */
 function mayBeOption(word: WordToken, spec: WriterSpec): boolean {
   if (word.value.startsWith("-") || (spec.plus === true && word.value.startsWith("+"))) return true;
+  if (bracesExpand(word)) return true;
   return word.dynamic && (/^[$`]/.test(word.value) || word.cuts?.some((cut) => cut.at === 0) === true);
+}
+
+/** An unquoted brace may expand into several words, any of them an option: `print {-v,PS4}`. */
+const bracesExpand = (word: WordToken) => !word.quoted && !word.dynamic && word.value.includes("{");
+
+/**
+ * A single word the shell reads as written: no expansion, glob or brace can turn it into other words. A word that
+ * fails this may hold a name in a position the readers skip, so each skip keeps it as a slot.
+ */
+function literalWord(word: WordToken): boolean {
+  return !word.dynamic && !word.spliced && (word.quoted || !EXPANDING_RE.test(word.value));
+}
+
+/** The word after a value-taking letter: a name slot, or the value, which counts only if it may expand into words. */
+function optionValue(spec: WriterSpec, letter: string, next: WordToken | undefined): WordToken | null {
+  if (next === undefined) return null;
+  return has(spec.values, letter) && literalWord(next) ? null : next;
 }
 
 const has = (letters: string | undefined, letter: string) => letters?.includes(letter) === true;
 
 function operandSlots(spec: WriterSpec, operands: WordToken[]): WordToken[] {
-  if (spec.operands === "names") return operands.slice(spec.skip ?? 0);
+  if (spec.operands === "names") {
+    const skip = spec.skip ?? 0;
+    return [...operands.slice(0, skip).filter((w) => !literalWord(w)), ...operands.slice(skip)];
+  }
   if (spec.operands === "none") return [];
-  return operands.flatMap((w) => (w.value.includes("=") ? [{ ...w, value: w.value.slice(w.value.indexOf("=") + 1) }] : []));
+  return operands.flatMap((w) => {
+    if (!literalWord(w)) return [w];
+    return w.value.includes("=") ? [{ ...w, value: w.value.slice(w.value.indexOf("=") + 1) }] : [];
+  });
 }
 
 /**
@@ -290,7 +314,7 @@ const FD_VARIABLE_RE = /^\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
 function fdVariableHooked(words: WordToken[], redirects: RedirectToken[], names: ReadonlySet<string>): string | null {
   if (redirects.length === 0) return null;
   for (const word of words) {
-    if (word.quoted || word.dynamic) continue;
+    if (word.quoted || word.dynamic || word.spliced) continue;
     const named = FD_VARIABLE_RE.exec(word.value)?.[1];
     if (named !== undefined && names.has(named)) return named;
   }

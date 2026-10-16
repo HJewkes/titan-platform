@@ -92,6 +92,18 @@ describe("a command that stores into zsh's options parameter", () => {
     ": {options}<>f",
     ": {options}>&2",
     "exec {options}<<<x",
+    "zlistattr {f,options}",
+    "zgetattr {f,a,options}",
+    "zpty -r {p,options}",
+    "zpty {-r,p,options}",
+    "zpty -r -- $a",
+    "zlistattr x$a",
+    "zgetattr $f a options",
+    "read -d {x,options}",
+    "read -d $d options",
+    "sysread -i {0,x} options",
+    "print {-v,options} x",
+    "zparseopts $spec",
   ])("reads %s as a write", (line) => {
     expect(protectedWrite(line)).toBeTruthy();
   });
@@ -123,6 +135,10 @@ describe("a command that stores into zsh's options parameter", () => {
     ": {\\options} >f",
     ": \\{options} >f",
     ": '{options}' >f",
+    "zpty -r p 'a b'",
+    'read -d "," line',
+    "read -d , line",
+    "zparseopts -D -E a=flag",
   ])("reads %s as no write", (line) => {
     expect(protectedWrite(line)).toBeNull();
   });
