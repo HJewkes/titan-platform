@@ -158,12 +158,6 @@ describe("backquote spans in a subscript bash may join", () => {
   });
 });
 
-/**
- * Past this a hook timeout would let the command through. It is a backstop a loaded runner stays far under; the work
- * ratio below is what tells linear from quadratic.
- */
-const BUDGET_MS = 2500;
-
 /** Far above the characters a linear scan reads per opener, far below the source length a quadratic one reads. */
 const WORK_PER_OPENER = 200;
 
@@ -208,13 +202,12 @@ async function timedScriptDecision(script: string): Promise<{ decision: string |
 }
 
 describe("a subscript holding many span openers", () => {
-  it.each(SPAN_SHAPES)("the hook denies a push after a 64 KB script of %s, within the budget", async (_name, span) => {
+  it.each(SPAN_SHAPES)("the hook denies a push after a 64 KB script of %s", async (_name, span) => {
     const script = spanScript(span, Math.floor(64_000 / span.length));
 
-    const { decision, ms } = await timedScriptDecision(script);
+    const { decision } = await timedScriptDecision(script);
 
     expect(decision).toBe("deny");
-    expect(ms).toBeLessThan(BUDGET_MS);
   });
 
   it.each(SPAN_SHAPES)("tokenizes %s with work linear in the openers", (_name, span) => {

@@ -3,6 +3,7 @@ import { arithmeticHooked } from "./arith-hooked.js";
 import { writesHookedParam } from "./hooked-params.js";
 import { tokenize } from "./lexer.js";
 import type { RedirectToken, WordToken } from "./lexer.js";
+import { expectLinearTime } from "./test-linearity.js";
 import { unwrap } from "./unwrap.js";
 
 const hooked = (line: string) => {
@@ -136,14 +137,14 @@ describe("a name slot the shell computes", () => {
   });
 
   it("reads a 100 KB line of brace words without expanding them", () => {
-    const words = tokenize(`read ${"{1..1000} ".repeat(10_000)}`).filter((t): t is WordToken => t.type === "word");
-    const cmd = unwrap(words);
-    const started = performance.now();
+    const prepare = (n: number) => {
+      const words = tokenize(`read ${"{1..1000} ".repeat(n)}`).filter((t): t is WordToken => t.type === "word");
+      const cmd = unwrap(words);
+      return () => cmd && writesHookedParam(cmd, words);
+    };
 
-    const named = cmd && writesHookedParam(cmd, words);
-
-    expect(named).toBe("{1..1000}");
-    expect(performance.now() - started).toBeLessThan(100);
+    expect(prepare(10_000)()).toBe("{1..1000}");
+    expectLinearTime((n) => { const run = prepare(n); return () => void run(); }, 10_000);
   });
 });
 
@@ -197,28 +198,28 @@ describe("a command that only reads, mentions or writes another name", () => {
 
 describe("an option word the walk reads both ways", () => {
   it("reads a long run of either-letters in linear time", () => {
-    const words = tokenize(`stat ${"-t ".repeat(20_000)}-A module_path`).filter((t): t is WordToken => t.type === "word");
-    const cmd = unwrap(words);
-    const started = performance.now();
+    const prepare = (n: number) => {
+      const words = tokenize(`stat ${"-t ".repeat(n)}-A module_path`).filter((t): t is WordToken => t.type === "word");
+      const cmd = unwrap(words);
+      return () => cmd && writesHookedParam(cmd, words);
+    };
 
-    const named = cmd && writesHookedParam(cmd, words);
-
-    expect(named).toBe("module_path");
-    expect(performance.now() - started).toBeLessThan(200);
+    expect(prepare(20_000)()).toBe("module_path");
+    expectLinearTime((n) => { const run = prepare(n); return () => void run(); }, 20_000);
   });
 
   it.each([
     ["read, whose -p ends options in zsh", "read", "-p a "],
     ["stat, whose -t ends options in BSD stat", "stat", "-t a "],
   ])("slots the operands once when many readings end options: %s", (_how, name, unit) => {
-    const words = tokenize(`${name} ${unit.repeat(20_000)}-A module_path`).filter((t): t is WordToken => t.type === "word");
-    const cmd = unwrap(words);
-    const started = performance.now();
+    const prepare = (n: number) => {
+      const words = tokenize(`${name} ${unit.repeat(n)}-A module_path`).filter((t): t is WordToken => t.type === "word");
+      const cmd = unwrap(words);
+      return () => cmd && writesHookedParam(cmd, words);
+    };
 
-    const named = cmd && writesHookedParam(cmd, words);
-
-    expect(named).toBe("module_path");
-    expect(performance.now() - started).toBeLessThan(200);
+    expect(prepare(20_000)()).toBe("module_path");
+    expectLinearTime((n) => { const run = prepare(n); return () => void run(); }, 20_000);
   });
 
   it("fails closed on an option word too long to walk", () => {
@@ -294,21 +295,19 @@ describe("a zsh flag group too long to read", () => {
 
 describe("reading assign-on-expand in a long word", () => {
   it.each([
-    ["nested zsh flag openers", "${(".repeat(33_000)],
-    ["a zsh flag group that never closes", `\${(${"P".repeat(100_000)}`],
-    ["hooked subscripts that never close", "${PS4[".repeat(16_000)],
-    ["indirect subscripts that never close", "${!a[".repeat(20_000)],
-    ["P-flag subscripts that never close", "${(P)a[".repeat(14_000)],
-    ["many flag-argument delimiters that never close", `\${(${"s:a:".repeat(30_000)}`],
-    ["many readable flag groups", "${(s:$:)x}".repeat(10_000)],
-    ["many l flags with three arguments", "${(l:1::a::b:".repeat(8_000)],
-  ])("reads it in linear time: %s", (_how, value) => {
-    const word: WordToken = { type: "word", value, dynamic: true, quoted: false, spliced: false, computed: true, refs: [], subs: [] };
-    const started = performance.now();
-
-    writesHookedParam({ name: ":", path: ":", args: [word], assigned: [] }, [word]);
-
-    expect(performance.now() - started).toBeLessThan(100);
+    ["nested zsh flag openers", (n: number) => "${(".repeat(n), 33_000],
+    ["a zsh flag group that never closes", (n: number) => `\${(${"P".repeat(n)}`, 100_000],
+    ["hooked subscripts that never close", (n: number) => "${PS4[".repeat(n), 16_000],
+    ["indirect subscripts that never close", (n: number) => "${!a[".repeat(n), 20_000],
+    ["P-flag subscripts that never close", (n: number) => "${(P)a[".repeat(n), 14_000],
+    ["many flag-argument delimiters that never close", (n: number) => `\${(${"s:a:".repeat(n)}`, 30_000],
+    ["many readable flag groups", (n: number) => "${(s:$:)x}".repeat(n), 10_000],
+    ["many l flags with three arguments", (n: number) => "${(l:1::a::b:".repeat(n), 8_000],
+  ])("reads it in linear time: %s", (_how, build, top) => {
+    expectLinearTime((n) => {
+      const word: WordToken = { type: "word", value: build(n), dynamic: true, quoted: false, spliced: false, computed: true, refs: [], subs: [] };
+      return () => void writesHookedParam({ name: ":", path: ":", args: [word], assigned: [] }, [word]);
+    }, top);
   });
 });
 
@@ -420,13 +419,11 @@ describe("arithmetic that mentions a hooked parameter", () => {
   });
 
   it("reads a long word in linear time", () => {
-    const value = `$((${"a[".repeat(30_000)}`;
-    const word: WordToken = { type: "word", value, dynamic: true, quoted: false, spliced: false, computed: true, refs: [], subs: [] };
-    const started = performance.now();
-
-    writesHookedParam({ name: ":", path: ":", args: [word], assigned: [] }, [word]);
-
-    expect(performance.now() - started).toBeLessThan(100);
+    expectLinearTime((n) => {
+      const value = `$((${"a[".repeat(n)}`;
+      const word: WordToken = { type: "word", value, dynamic: true, quoted: false, spliced: false, computed: true, refs: [], subs: [] };
+      return () => void writesHookedParam({ name: ":", path: ":", args: [word], assigned: [] }, [word]);
+    }, 30_000);
   });
 });
 
@@ -472,13 +469,11 @@ describe("an assignment whose bound name the shell computes", () => {
   });
 
   it("reads a long word in linear time", () => {
-    const value = `${"]=".repeat(40_000)}`;
-    const word: WordToken = { type: "word", value, dynamic: false, quoted: false, spliced: false, computed: false, refs: [], subs: [] };
-    const started = performance.now();
-
-    writesHookedParam({ name: "f", path: "f", args: [word], assigned: [] }, [word]);
-
-    expect(performance.now() - started).toBeLessThan(100);
+    expectLinearTime((n) => {
+      const value = "]=".repeat(n);
+      const word: WordToken = { type: "word", value, dynamic: false, quoted: false, spliced: false, computed: false, refs: [], subs: [] };
+      return () => void writesHookedParam({ name: "f", path: "f", args: [word], assigned: [] }, [word]);
+    }, 40_000);
   });
 });
 
@@ -557,15 +552,13 @@ describe("every math write operator, spacing and side around a computed name", (
   });
 
   it.each([
-    ["spaced operators between literal names", "a ++ b -- c = d ".repeat(10_000)],
-    ["many # patterns", "${x#*}".repeat(10_000)],
-    ["subscripts that never open", "]=".repeat(30_000)],
-  ])("reads a long text without a hit in linear time: %s", (_how, value) => {
-    const word: WordToken = { type: "word", value, dynamic: true, quoted: true, spliced: false, computed: true, refs: [], subs: [] };
-    const started = performance.now();
-
-    writesHookedParam({ name: "f", path: "f", args: [word], assigned: [] }, [word]);
-
-    expect(performance.now() - started).toBeLessThan(150);
+    ["spaced operators between literal names", "a ++ b -- c = d ", 10_000],
+    ["many # patterns", "${x#*}", 10_000],
+    ["subscripts that never open", "]=", 30_000],
+  ])("reads a long text without a hit in linear time: %s", (_how, unit, top) => {
+    expectLinearTime((n) => {
+      const word: WordToken = { type: "word", value: unit.repeat(n), dynamic: true, quoted: true, spliced: false, computed: true, refs: [], subs: [] };
+      return () => void writesHookedParam({ name: "f", path: "f", args: [word], assigned: [] }, [word]);
+    }, top);
   });
 });
