@@ -17,6 +17,7 @@ import path from "node:path";
 import { z } from "zod";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
+import type { RoundListeners } from "./listeners.js";
 import { ownerWriteCommand } from "./owner-guard.js";
 import {
   FEEDBACK_SCHEMA_ID,
@@ -181,7 +182,13 @@ async function submitRound({ dir }: RoundsSource, args: SubmitArgs, now = new Da
   return written === null ? { status: "already-submitted" } : { status: "submitted", path: written, sha256: sha256(bytes), headSha };
 }
 
-export function roundsSubmitCommands(source: RoundsSource) {
+/** The listener runs after the answer is on disk and never changes what the owner is told. */
+async function afterSubmit(listeners: RoundListeners | undefined, id: string, result: SubmitResult): Promise<SubmitResult> {
+  await listeners?.afterRoundSubmit(id, result);
+  return result;
+}
+
+export function roundsSubmitCommands(source: RoundsSource, listeners?: RoundListeners) {
   return {
     "rounds.submit": ownerWriteCommand({
       name: "rounds.submit",
@@ -189,7 +196,7 @@ export function roundsSubmitCommands(source: RoundsSource) {
       args: submitArgs,
       result: submitResult,
       ownerWrite: true,
-      run: (args) => submitRound(source, args),
+      run: async (args) => afterSubmit(listeners, args.id, await submitRound(source, args)),
     }),
   };
 }

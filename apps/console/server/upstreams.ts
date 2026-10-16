@@ -6,6 +6,8 @@ import { brokerReader } from "./broker.js";
 import type { ConsoleSources } from "./commands.js";
 import type { ConsoleConfig } from "./config.js";
 import { factoryNeeds } from "./factory.js";
+import { factoryGateAnswer } from "./gate-answer.js";
+import { createRoundListeners } from "./listeners.js";
 import { shepherdReader } from "./shepherd.js";
 
 export const UPSTREAM_IDS = ["work", "agents", "sessions"] as const;
@@ -96,6 +98,7 @@ export async function probeUpstreams(upstreams: readonly Upstream[]): Promise<Up
 }
 
 export function createSources(config: ConsoleConfig): ConsoleSources {
+  const shepherd = shepherdReader(config.factoryPort);
   return {
     upstreams: createUpstreams(config),
     activeWork: activeWorkClient(config.activeWorkPort),
@@ -107,7 +110,13 @@ export function createSources(config: ConsoleConfig): ConsoleSources {
     sessions: { graphPath: config.sessionGraphPath, codewatchUrl: config.codewatchUrl },
     inbox: { dir: config.inboxDir },
     rounds: { dir: config.roundsDir },
-    shepherd: shepherdReader(config.factoryPort),
+    shepherd,
     factory: factoryNeeds(config.factoryPort),
+    listeners: createRoundListeners({
+      enabled: config.gateAnswers,
+      roundsDir: config.roundsDir,
+      shepherd,
+      answer: factoryGateAnswer(config.factoryPort),
+    }),
   };
 }
