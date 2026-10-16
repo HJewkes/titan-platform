@@ -79,6 +79,8 @@ export interface LandOptions {
   ownerBriefAt?: (headSha: string) => OwnerBrief | undefined;
   /** Repo skill paths the PR changes at exactly this head; the approve-merge gate then links the diff and recommends nothing. */
   skillPathsAt?: (headSha: string) => readonly string[];
+  /** Read before each approve-merge gate opens; true offers the owner `send-back`, and land returns a `sent-back` stop on it. */
+  sendBackOffered?: (ctx: WorkflowContext) => Promise<boolean>;
   /** A gate this names waits at its head on recorded backoff steps, refreshing the facts each time, before the owner is asked. */
   unsettled?: UnsettledMerge;
   /** Asked in place of the approve-merge gate at the head the policy gated; absent, land opens approve-merge. */
@@ -93,7 +95,8 @@ export type LandOutcome =
   /** `mergeSha` is null when GitHub reports the PR merged but names no merge commit; `landed` is absent for a merge made elsewhere. */
   | { kind: "merged"; headSha: string; mergeSha: string | null; landed?: LandedPr; /** Set only when this run's own merge write landed, never for a PR GitHub reports merged elsewhere. */ own?: true }
   | { kind: "ci-failed"; headSha: string; failing: FailingCheck[] }
-  | { kind: "stopped"; reason: "closed" | "not-mergeable" | "conflict" | "abandoned" | "stuck-behind" | "merge-denied" | "update-branch-unmoved"; headSha: string; detail: string };
+  /** On `sent-back`, `detail` is the owner's note for the implementer. */
+  | { kind: "stopped"; reason: "closed" | "not-mergeable" | "conflict" | "abandoned" | "sent-back" | "stuck-behind" | "merge-denied" | "update-branch-unmoved"; headSha: string; detail: string };
 
 interface LandState {
   round: number;
