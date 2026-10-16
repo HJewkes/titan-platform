@@ -50,6 +50,7 @@ describe("a command that may name zsh GLOB_SUBST", () => {
     ["emulate -- sh"],
     ["setopt -m -- 'glob*'"],
     ["=zsh -o globsubst -c x"],
+    ["setopt =x"],
     ["zsh5 -o globsubst -c x"],
     ["/bin/zsh5 --emulate sh -c x"],
   ])("reads %s as naming the option", (src) => {
