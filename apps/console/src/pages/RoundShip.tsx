@@ -159,12 +159,18 @@ function ShipAnswer({ round, question }: { round: ValidRound; question: MergeQue
   );
 }
 
+/** A resolved outcome names the answer it applied; one that does not still says the gate is settled, without claiming a merge. */
+function resolvedLine(answer: NonNullable<GateAnswer>, headSha: string): string {
+  if (answer.choice === "merge") return `Merging at ${sha7(headSha)}`;
+  return answer.choice === "send-back" ? "Sent back: the implementer gets your note" : "Answer applied";
+}
+
 /** The ledger's gate-answer lines; with no outcome yet the factory has not picked the answer up. */
 function outcomeLine(answer: GateAnswer, headSha: string): { status: "info" | "success" | "warning"; message: string } {
   if (answer === undefined) return { status: "info", message: "Waiting for the factory" };
   const reason = answer.reason ?? "no reason given";
   const lines = {
-    resolved: { status: "success", message: `Merging at ${sha7(headSha)}` },
+    resolved: { status: "success", message: resolvedLine(answer, headSha) },
     already: { status: "info", message: "Already answered" },
     moved: { status: "warning", message: `Head moved to ${sha7(answer.currentHead ?? "unknown")}; a new round follows` },
     gone: { status: "warning", message: `Gate closed (${reason})` },

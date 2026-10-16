@@ -213,9 +213,18 @@ describe("answering a Ship round", () => {
     expect(submits(rendered)).toHaveLength(0);
   });
 
+  it("never says Merging for a resolved Send back", async () => {
+    await renderShip({ answers: true, detail: { status: "sent", answer: { status: "resolved", at: "2031-03-05T00:01:00.000Z", choice: "send-back" } } });
+
+    expect(screen.getByText("Sent back: the implementer gets your note")).toBeTruthy();
+    expect(screen.queryByText(/^Merging at/)).toBeNull();
+  });
+
   it.each([
     [undefined, "Waiting for the factory"],
-    [{ status: "resolved", at: "2031-03-05T00:01:00.000Z" }, "Merging at 89abcde"],
+    [{ status: "resolved", at: "2031-03-05T00:01:00.000Z", choice: "merge" }, "Merging at 89abcde"],
+    [{ status: "resolved", at: "2031-03-05T00:01:00.000Z", choice: "send-back" }, "Sent back: the implementer gets your note"],
+    [{ status: "resolved", at: "2031-03-05T00:01:00.000Z" }, "Answer applied"],
     [{ status: "moved", at: "2031-03-05T00:01:00.000Z", currentHead: "fedcba9876543210fedcba9876543210fedcba98" }, "Head moved to fedcba9; a new round follows"],
     [{ status: "refused", at: "2031-03-05T00:01:00.000Z", reason: "the gate is held" }, "Not applied: the gate is held"],
   ] as const)("shows a sent round's gate outcome %j as %j in place of the buttons", async (answer, line) => {
