@@ -2440,7 +2440,7 @@
   },
   "packages/tool-guard/src/shell/unwrap.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 10
+      "count": 8
     }
   },
   "packages/tool-guard/src/shell/vars.ts": {
