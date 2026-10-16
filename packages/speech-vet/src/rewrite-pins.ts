@@ -51,7 +51,7 @@ export class RewritePins {
     try {
       raw = await readFile(path, "utf8");
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return new RewritePins(undefined, options);
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") return new RewritePins(undefined, options);
       throw error;
     }
     return RewritePins.fromJson(JSON.parse(raw), options);

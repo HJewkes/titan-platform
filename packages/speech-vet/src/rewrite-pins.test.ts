@@ -144,7 +144,7 @@ describe("applyPins", () => {
     const error = catchError(() => applyPins(line, pinsAt(), ["live"]));
 
     expect(error).toBeInstanceOf(UnpinnedRewriteError);
-    expect((error as UnpinnedRewriteError).sentences).toEqual(["the show is live."]);
+    expect(error).toMatchObject({ sentences: ["the show is live."] });
   });
 
   it("replaces the pinned sentence and leaves the others byte-identical", () => {
