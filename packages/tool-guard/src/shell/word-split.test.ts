@@ -33,4 +33,18 @@ describe("operators inside [[ ]]", () => {
   ])("splits git off a test closed by ]] with %s", (_scenario, line) => {
     expect(names(line)).toContain("git");
   });
+
+  it.each([
+    "time -p -p [[ a || git push ]]",
+    "time -- -- [[ a || git push ]]",
+    "time -- -p [[ a || git push ]]",
+    "time -p -p -- [[ a || git push ]]",
+    "time -- [[ a || git push ]]",
+  ])("splits git off a [[ bash does not open: %s", (line) => {
+    expect(names(line)).toContain("git");
+  });
+
+  it.each(["time [[ a || b ]]", "time -p [[ a || b ]]", "time -p -- [[ a || b ]]"])("keeps one conditional after a timespec bash reads: %s", (line) => {
+    expect(names(line)).not.toContain("b");
+  });
 });

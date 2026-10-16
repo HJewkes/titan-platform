@@ -69,6 +69,9 @@ export interface CaseFrame {
 }
 
 /** Tokens scanned so far, their paren depth, and the depths a `[[` and a `=~` in it sat at, or -1. */
+/** After `time`; after `time -p`; after `time --`, which bash versions disagree on; after `-p --`, past the options. */
+export type TimeState = "none" | "time" | "p" | "dash" | "done";
+
 export interface RegexScan {
   scanned: number;
   depth: number;
@@ -77,8 +80,8 @@ export interface RegexScan {
   regexAt: number;
   /** The last word stood in command position, so a `(` after it may open a function header `name ( )`. */
   wordAtStart: boolean;
-  /** The last words were `time` and its options, after which bash still reads a command. */
-  timed: boolean;
+  /** How far `time` and its options have been read, after which bash still reads a command; see `nextTimeState`. */
+  timeState: TimeState;
   /** The last word was `function` or `coproc` in command position, so the next word is a name a `(` may follow. */
   nameNext: boolean;
   /** The last word named a function or coproc, so a `(` after it opens a header or a subshell body. */

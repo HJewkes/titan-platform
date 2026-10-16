@@ -1,7 +1,7 @@
 import { caseOperator, caseWord, closeCase, isCaseParen, noteCaseBlock, openCase } from "./case-grammar.js";
 import { nextAfter } from "./joins.js";
 import { ParseError } from "./parse-error.js";
-import type { LexState, RegexScan, Token } from "./tokens.js";
+import type { LexState, RegexScan, TimeState, Token } from "./tokens.js";
 
 /** The word before a compound assignment's `(`; quotes are already removed from the value. */
 const ASSIGNMENT_HEAD_RE = /^[A-Za-z_]\w*(?:\[.*\])?\+?=/s;
@@ -25,7 +25,7 @@ export function newRegexScan(): RegexScan {
     conditionalAt: -1,
     regexAt: -1,
     wordAtStart: false,
-    timed: false,
+    timeState: "none",
     nameNext: false,
     named: false,
     cases: [],
@@ -140,21 +140,36 @@ function scanToken(r: RegexScan, t: Token): void {
 }
 
 function scanCommandWord(r: RegexScan, t: Token, bare: string | null): void {
-  if (caseWord(r, t, bare)) return void Object.assign(r, { commandStart: false, wordAtStart: false, timed: false, nameNext: false, named: false });
+  if (caseWord(r, t, bare)) return void Object.assign(r, { commandStart: false, wordAtStart: false, timeState: "none", nameNext: false, named: false });
   if (r.commandStart) noteKeyword(r, bare);
-  const timeOption = r.timed && (bare === "-p" || bare === "--");
+  const timeState = nextTimeState(r, bare);
   r.named = r.nameNext;
   r.nameNext = r.commandStart && (bare === "function" || bare === "coproc");
   r.wordAtStart = r.commandStart && t.type === "word";
-  r.timed = r.commandStart && (bare === "time" || timeOption);
+  r.timeState = timeState;
   if (bare !== null && COMPOUND_OPENERS.has(bare)) r.bodyPending = false;
-  r.commandStart = r.commandStart && bare !== null && (COMMAND_PREFIXES.has(bare) || timeOption);
+  r.commandStart = r.commandStart && bare !== null && (COMMAND_PREFIXES.has(bare) || timeState === "p" || timeState === "dash" || timeState === "done");
+}
+
+/**
+ * bash reads `time`, then `-p` once, then `--` once, as a timespec; any further option word is the command. The lexer
+ * must not open a `[[` bash does not, since `&&` and `||` inside one are words, so `-p` counts only directly after
+ * `time` and `--` only directly after it or `-p`.
+ */
+function nextTimeState(r: RegexScan, bare: string | null): TimeState {
+  if (!r.commandStart) return "none";
+  if (bare === "time") return "time";
+  if (r.timeState === "time" && bare === "-p") return "p";
+  if (r.timeState === "time" && bare === "--") return "dash";
+  if (r.timeState === "p" && bare === "--") return "done";
+  return "none";
 }
 
 /** Counts the `case`s, `if`s and loops a word in command position opens or closes, and opens a `[[`. */
 function noteKeyword(r: RegexScan, bare: string | null): void {
   if (bare === null) return;
-  if (bare === "[[") r.conditionalAt = r.depth;
+  // 5.3 reads `time -- [[` as a conditional and older bash runs `--`, so neither reading is trusted.
+  if (bare === "[[" && r.timeState !== "dash") r.conditionalAt = r.depth;
   if (bare === "case") openCase(r);
   if (bare === "esac") closeCase(r);
   noteCaseBlock(r, bare);
@@ -180,5 +195,5 @@ function scanOperator(r: RegexScan, op: string): void {
 function noteHeader(r: RegexScan, op: string, closesHeader: boolean): void {
   if (closesHeader) Object.assign(r, { headerAt: -1, bodyPending: true });
   else if (op === "(") r.bodyPending = false;
-  Object.assign(r, { wordAtStart: false, timed: false, nameNext: false, named: false });
+  Object.assign(r, { wordAtStart: false, timeState: "none", nameNext: false, named: false });
 }
