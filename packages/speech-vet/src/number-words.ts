@@ -10,6 +10,10 @@ const SCALES: readonly (readonly [number, string])[] = [
   [1e3, "thousand"],
   [100, "hundred"],
 ];
+/** Every word {@link numberToWords} can produce, so a reader can find spoken numbers in text. */
+export const NUMBER_WORDS: ReadonlySet<string> = new Set(
+  ["zero", ...ONES, ...TENS, ...SCALES.map(([, word]) => word)].filter(Boolean),
+);
 const IRREGULAR_ORDINALS: Readonly<Record<string, string>> = {
   one: "first", two: "second", three: "third", five: "fifth", eight: "eighth", nine: "ninth", twelve: "twelfth",
 };
