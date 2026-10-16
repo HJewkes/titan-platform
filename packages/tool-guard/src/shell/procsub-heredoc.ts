@@ -1,7 +1,6 @@
 import { sameSpend } from "./arith-trials.js";
 import { trailingBackslashes } from "./joins.js";
-import { type LexState, SplitParseError } from "./lexer.js";
-import { scanSubstitutions } from "./nested-reading.js";
+import { type LexState, scanSubstitutions, SplitParseError } from "./lexer.js";
 
 /**
  * A heredoc still open when a `$( )` or `<( )` closes takes its body from the lines after this one in bash 5,

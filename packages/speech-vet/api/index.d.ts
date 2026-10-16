@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { G2p } from '@titan-design/speech-g2p';
-import { Audio, Transcript, SttCapabilities } from '@titan-design/speech-stt';
+import { Audio, Transcript, SttCapabilities, SttProvider, WordDiff } from '@titan-design/speech-stt';
+import { TtsProvider, SynthesizeOptions, Synthesis } from '@titan-design/speech-tts';
 
 /** The text the voice is given: `[w](/phonemes/)` overrides stay for misaki, `[w](=reading)` declarations become the bare word. */
 declare function g2pText(spoken: string): string;
@@ -520,4 +521,141 @@ declare function metaphone(word: string): string;
 /** Normalized phonetic distance in [0, 1]; 0 is a homophone. Falls back to character distance when a side has no code (numbers, symbols). */
 declare function phoneticDistance(a: string, b: string): number;
 
-export { type BestTailTakeOptions, DEFAULT_NORMALIZE_STEPS, DEFAULT_PHONE_VOICE, DEFAULT_RETRIES, type Defect, type DefectCause, type DefectKind, type DefectOptions, ESPEAK_TIMEOUT_MS, type EspeakCliOptions, type EspeakRunner, HALLUCINATION_MIN_PHONES, type Hallucination, type HallucinationOptions, type HeardReading, type HeardReadingOptions, type HeardStatus, type HeteronymTable, HeteronymTableSchema, type InitialismOptions, KEEP_TAKE_MARGIN, type Lexicon, type LexiconEntry, LexiconEntrySchema, LexiconSchema, MIN_PHONES_FOR_VERDICT, MIN_SPAN_RATIO_FOR_VERDICT, MIN_TARGET_WORD_LENGTH, type MisakiToIpa, NUMBER_STEPS, type NormalizeStep, type PhoneG2p, type PhoneG2pOptions, type PhoneRecognizer, type PhoneSource, type PhonemeToken, RATE_UNITS, type RawTake, type ReadingFinding, type ReadingStatus, type Respeller, SHORT_WORD_MAX_PHONES, SHOUTED_TWO_LETTER_WORDS, SPELLED_INITIALISMS, type SynthesizeVerifiedOptions, TAIL_STRAY_MIN_PHONES, type TailArtifact, type TailArtifactOptions, type TailCandidate, type TailFix, type TakeScore, VOWELLESS_INTERJECTIONS, type VerifiedTake, WEAK_FORMS, WORSE_MARGIN, type WordDistance, type WordDistanceOptions, type WordToken, type WordVerdict, type WordVerdictOptions, XTTS_FAULT_THRESHOLD, XTTS_FAULT_THRESHOLD_SHORT, XTTS_FAULT_THRESHOLD_UNUSUAL, admissiblePhones, ageStep, bestTailTake, cardinalStep, checkHeardReadings, checkReadings, chunkWordVerdicts, cleanIpa, confirmDefects, currencyStep, decimalStep, defectOptionsFor, detectDefects, detectHallucinations, detectTailArtifact, englishHeteronyms, espeakCliG2p, espeakVersion, expandReading, expectedPhones, g2pSentence, g2pText, generateCandidates, initialismStep, isInitialism, isUnusualWord, keepTake, loadLexicon, metaphone, misakiIpaG2p, normalize, numberToOrdinal, numberToWords, ordinalStep, phoneMatchDistance, phonemeDistance, phoneticDistance, plainText, rateStep, readingIpa, readingOf, recognizePhones, regressions, respeller, respellingsOf, spellDigits, spellInitialisms, synthesizeVerified, timeStep, tokenDump, tokenizeWords, whitespaceStep, wordDistances };
+/**
+ * Applies the lexicon's pronunciation levers to a spoken line, for the voice that will say it.
+ *
+ * `"misaki"` wraps each whole-term occurrence of a `phonemes.misaki` entry as `[word](/phonemes/)`, keeping the
+ * original casing and leaving occurrences already inside a link alone. `"text"` strips the markup and applies the
+ * `respell` entries. `spoken` rewrites are ignored because they change captions, which the caller applies itself, and
+ * `phonemes.ipa` is espeak intent that no vet voice takes as input.
+ */
+declare function applyLexicon(spoken: string, lexicon: Lexicon, alphabet: "misaki" | "text"): string;
+
+/**
+ * The decision half of the vet cycle: which findings on a take are faults, which of two faulty takes to
+ * keep, when retaking is futile, and what the kept take's remaining faults ask the caller to do. Pure:
+ * the checks that produce the findings run elsewhere.
+ */
+
+/**
+ * `hallucination`, `tail`, `omission` and `low-confidence` are stochastic: another take of the same input
+ * can clear them. `word` and `reading` are the voice's pronunciation, which a retake rarely changes.
+ */
+type FaultKind = "hallucination" | "tail" | "omission" | "low-confidence" | "word" | "reading";
+interface Fault {
+    kind: FaultKind;
+    /** The source word, for word, reading, omission and low-confidence faults. */
+    word?: string;
+    /** In [0, 1]; for an adjudicated word fault, its phone distance. */
+    severity: number;
+    detail: string;
+}
+/** The fields of a speech-vet `Defect` this module reads, plus the verdicts S3 attaches to it. */
+interface DefectFinding {
+    kind: "substitution" | "omission" | "low_confidence";
+    expected: string;
+    heard: string;
+    severity: number;
+    /** Word verdicts over this defect's words; absent when no recognizer ran, leaving it unadjudicated. */
+    verdicts?: readonly WordVerdict[];
+}
+type Decision = {
+    status: "accepted";
+} | {
+    status: "needs-override";
+    word: string;
+    evidence: Fault[];
+} | {
+    status: "needs-rewrite";
+    span: string;
+    reason: "reading";
+} | {
+    status: "retakes-exhausted";
+    faults: Fault[];
+};
+
+/**
+ * The vet cycle: precheck a line's declared readings, synthesize it, check every take in full, retake while a
+ * fault remains, keep the best take, and say what its remaining faults ask of the caller. Every model arrives
+ * as a provider, so nothing here loads one. The caller passes normalized text: `vet` does not normalize.
+ */
+
+interface VetDeps {
+    tts: TtsProvider;
+    voice: string;
+    stt: SttProvider;
+    /** Required when `tts` takes misaki phonemes; with a text voice it only gives the heard-reading check its spans. */
+    g2p?: Pick<G2p, "tokens" | "version">;
+    recognizer?: PhoneRecognizer;
+    /** Required with a recognizer: whether misaki may drive verdicts is the caller's call, so there is no default. */
+    phoneG2p?: PhoneG2p;
+    confirmStt?: SttProvider;
+    lexicon?: Lexicon;
+    /** Defaults to speech-g2p's `misakiToIpa`. */
+    toIpa?: MisakiToIpa;
+}
+interface VetPolicy {
+    /** Retakes after the first take; defaults to `DEFAULT_RETRIES`. */
+    maxRetakes?: number;
+    /** Defaults to `KEEP_TAKE_MARGIN`. */
+    margin?: number;
+    /** `fail` stops on an undeclared heteronym before any audio is made. Default `warn`. */
+    undeclaredHeteronym?: "warn" | "fail";
+    table?: HeteronymTable;
+    synthesize?: Pick<SynthesizeOptions, "speed" | "language" | "timeoutMs" | "signal">;
+}
+interface VetTake {
+    /** One-based. */
+    attempt: number;
+    synthesis: Synthesis;
+    transcript: Transcript;
+}
+/** One take's checks, JSON-safe. */
+interface TakeReport {
+    attempt: number;
+    transcript: string;
+    textDiff: WordDiff;
+    defects: DefectFinding[];
+    phones?: string;
+    hallucinations: Hallucination[];
+    tail: TailArtifact | null;
+    heard: HeardReading[];
+    /** Undeclared heteronyms the audio contradicts: warnings, not faults, while owner decision D-T11-3 is open. */
+    warnings: HeardReading[];
+    faults: Fault[];
+    dismissed: WordVerdict[];
+    kept: boolean;
+}
+/** `unverifiable`: the voice takes text, so the G2P reading checked is not the one it speaks. */
+interface Precheck {
+    status: "verified" | "unverifiable" | "stopped";
+    findings: ReadingFinding[];
+}
+/** JSON-safe: no audio. */
+interface VetReport {
+    tts: string;
+    voice: string;
+    g2pVersion?: string;
+    tableVersion: number;
+    precheck: Precheck;
+    defectOptions: {
+        stt: DefectOptions;
+        confirmStt?: DefectOptions;
+    };
+    takes: TakeReport[];
+    keptAttempt?: number;
+    /** `futile`: a take heard the same as the one before it, so the voice is deterministic and retakes cannot help. */
+    stopReason: "clean" | "futile" | "budget" | "precheck";
+}
+type VetResult = (Decision & {
+    take: VetTake;
+    report: VetReport;
+}) | {
+    status: "stopped";
+    findings: ReadingFinding[];
+    report: VetReport;
+};
+/** Runs the vet cycle over `spoken`, a normalized line with optional `[w](=reading)` and `[w](/phonemes/)` markup. */
+declare function vet(spoken: string, deps: VetDeps, policy?: VetPolicy): Promise<VetResult>;
+
+export { type BestTailTakeOptions, DEFAULT_NORMALIZE_STEPS, DEFAULT_PHONE_VOICE, DEFAULT_RETRIES, type Defect, type DefectCause, type DefectKind, type DefectOptions, ESPEAK_TIMEOUT_MS, type EspeakCliOptions, type EspeakRunner, type Fault, type FaultKind, HALLUCINATION_MIN_PHONES, type Hallucination, type HallucinationOptions, type HeardReading, type HeardReadingOptions, type HeardStatus, type HeteronymTable, HeteronymTableSchema, type InitialismOptions, KEEP_TAKE_MARGIN, type Lexicon, type LexiconEntry, LexiconEntrySchema, LexiconSchema, MIN_PHONES_FOR_VERDICT, MIN_SPAN_RATIO_FOR_VERDICT, MIN_TARGET_WORD_LENGTH, type MisakiToIpa, NUMBER_STEPS, type NormalizeStep, type PhoneG2p, type PhoneG2pOptions, type PhoneRecognizer, type PhoneSource, type PhonemeToken, RATE_UNITS, type RawTake, type ReadingFinding, type ReadingStatus, type Respeller, SHORT_WORD_MAX_PHONES, SHOUTED_TWO_LETTER_WORDS, SPELLED_INITIALISMS, type SynthesizeVerifiedOptions, TAIL_STRAY_MIN_PHONES, type TailArtifact, type TailArtifactOptions, type TailCandidate, type TailFix, type TakeScore, VOWELLESS_INTERJECTIONS, type VerifiedTake, type VetDeps, type VetPolicy, type VetReport, type VetResult, type VetTake, WEAK_FORMS, WORSE_MARGIN, type WordDistance, type WordDistanceOptions, type WordToken, type WordVerdict, type WordVerdictOptions, XTTS_FAULT_THRESHOLD, XTTS_FAULT_THRESHOLD_SHORT, XTTS_FAULT_THRESHOLD_UNUSUAL, admissiblePhones, ageStep, applyLexicon, bestTailTake, cardinalStep, checkHeardReadings, checkReadings, chunkWordVerdicts, cleanIpa, confirmDefects, currencyStep, decimalStep, defectOptionsFor, detectDefects, detectHallucinations, detectTailArtifact, englishHeteronyms, espeakCliG2p, espeakVersion, expandReading, expectedPhones, g2pSentence, g2pText, generateCandidates, initialismStep, isInitialism, isUnusualWord, keepTake, loadLexicon, metaphone, misakiIpaG2p, normalize, numberToOrdinal, numberToWords, ordinalStep, phoneMatchDistance, phonemeDistance, phoneticDistance, plainText, rateStep, readingIpa, readingOf, recognizePhones, regressions, respeller, respellingsOf, spellDigits, spellInitialisms, synthesizeVerified, timeStep, tokenDump, tokenizeWords, vet, whitespaceStep, wordDistances };

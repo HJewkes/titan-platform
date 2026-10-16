@@ -1,5 +1,5 @@
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, spent } from "./arith-trials.js";
-import { balancedEnd, type DollarOpener, dollarOpener, QUOTED_LITERAL_OPENERS } from "./balanced.js";
+import { balancedEnd, type DollarOpener, dollarOpener, QUOTED_LITERAL_OPENERS, refuseValueRun } from "./balanced.js";
 import { dropJoins, joinedDollar, nextAfter, pastJoins, readAhead } from "./joins.js";
 import { inOpenCase, newRegexScan, noteParen, refuseRedirect } from "./compound.js";
 import { nested } from "./nesting.js";
@@ -11,6 +11,7 @@ import type { LexState, RedirectToken, Token, WordToken } from "./tokens.js";
 import { appendChar, endWord, ensureWord, markComputed, markCut, markQuoted, pushRef, readAnsiC, readEscape, readSingle, variableName } from "./word-build.js";
 
 export { ParseError, SplitParseError } from "./parse-error.js";
+export { scanSubstitutions } from "./substitutions.js";
 export type { LexState, OpToken, RedirectToken, SubsToken, Token, VarRef, WordToken } from "./tokens.js";
 
 const OPERATORS = ["&&", "||", ";;", "|&", "|", ";", "&", "(", ")", "\n"];
@@ -205,6 +206,7 @@ const DOLLAR_READERS: Record<DollarOpener, (s: LexState, w: WordToken) => void> 
 function readDollar(s: LexState): void {
   const w = ensureWord(s);
   s.i = joinedDollar(s.src, s.i);
+  refuseValueRun(s.src, s.i);
   const opener = dollarOpener(s.src, s.i);
   if (opener) return DOLLAR_READERS[opener](s, w);
   readVariable(s, w);

@@ -69,8 +69,10 @@ const { provider } = await selectTts({ registry, profilePath, requirements: { wo
   so warm the provider at startup. The default `timeoutMs` is 300000.
 - **Offline.** With `TITAN_SPEECH_OFFLINE` set, a model missing from `cacheDir` is refused
   with `TtsUnavailableError` before any network call.
-- **Unknown words.** A word Kokoro cannot phonemize is not spoken. It gets a zero-width
-  timing and a warning.
+- **Unknown words.** A word Kokoro cannot phonemize is not spoken. By default it gets a
+  zero-width timing and a warning, and the words after it are timed late, as in Python. Set
+  `"unknownWords": "fail"` on the profile entry to reject the call instead, with
+  `TtsUnknownWordsError` listing every such word and its token index, before the model loads.
 - **Timings.** They follow Python's heuristic, which offsets the start by a fixed guess.
   Parity with Python is the bar, not acoustic truth.
 - **Licence.** The weights are Apache-2.0, and so are `kokoro-js` and transformers.js.

@@ -1,13 +1,14 @@
-import { type ArithTrials, newTrials, sameSpend } from "./arith-trials.js";
+import { type ArithTrials, sameSpend } from "./arith-trials.js";
 import { backtickEnd, balancedEnd, type NestedReaders } from "./balanced.js";
-import { joinedDollar, nextAfter } from "./joins.js";
+import { nextAfter } from "./joins.js";
 import { lexNested, tokenize } from "./lexer.js";
 import { nested } from "./nesting.js";
 import { ParseError, refusingAs, SplitParseError } from "./parse-error.js";
+import { quotedSpanSubstitutions } from "./substitutions.js";
 import type { LexState, Token } from "./tokens.js";
 
 /** Where substitutions are lexed: `line` is null in a heredoc body or a quoted span, which has no line to leave a heredoc open on. */
-interface Reading {
+export interface Reading {
   src: string;
   trials: ArithTrials;
   line: LexState | null;
@@ -60,31 +61,6 @@ export function nestedReaders(at: Reading, found: Token[][]): NestedReaders {
       }),
   };
   return read;
-}
-
-/**
- * Bash runs a substitution in a single-quoted span only when its `${ }` sits in double quotes, and
- * otherwise reads the text as literal, so one left unclosed there cannot be a pass: it is refused.
- */
-function quotedSpanSubstitutions(at: Reading, from: number, to: number): Token[][] {
-  return refusingAs("quoted-substitution", () => scanSubstitutions(at.src.slice(from, to), 0, to - from, sameSpend(at.trials)));
-}
-
-/** Token lists of every substitution in `src` between `from` and `to`, such as a heredoc body's. */
-export function scanSubstitutions(src: string, from: number, to: number, trials = newTrials(src)): Token[][] {
-  const found: Token[][] = [];
-  const read = nestedReaders({ src, trials, line: null }, found);
-  for (let j = from; j < to; j++) {
-    const c = src[j];
-    if (c === "\\") j++;
-    else if (c === "$" && src[joinedDollar(src, j) + 1] === "(") j = dollarParen(src, joinedDollar(src, j), read);
-    else if (c === "`") j = read.backtick(j);
-  }
-  return found;
-}
-
-function dollarParen(src: string, dollar: number, read: NestedReaders): number {
-  return src[nextAfter(src, dollar + 1)] === "(" ? read.dollarParens(dollar) : read.substitution(dollar + 2);
 }
 
 export function scanBacktick(src: string, start: number, found: Token[][], trials: ArithTrials): number {

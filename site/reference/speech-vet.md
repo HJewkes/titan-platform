@@ -1,7 +1,8 @@
 # speech-vet
 
 **Tier 2.** Depends on [`speech-stt`](/reference/speech-stt) (for `SequenceMatcher`,
-`roundHalfEven`, `Transcript` and `SttCapabilities`) and `zod`.
+`roundHalfEven`, `Transcript` and `SttCapabilities`), [`speech-tts`](/reference/speech-tts)
+(for `vet()`'s provider types) and `zod`.
 
 ```sh
 npm install @titan-design/speech-vet
@@ -110,7 +111,27 @@ detectDefects("chapter 50 begins", transcript, defectOptionsFor(whisperStt()));
 //    causes: ["number"], audioStart: 0.5, audioEnd: 0.9, context: "chapter 50 begins" }]
 ```
 
+The whole cycle, over a scripted voice and recognizer (a real run passes `kokoroTts`, `whisperStt` and the rest):
+
+```ts
+import { vet } from "@titan-design/speech-vet";
+
+const result = await vet("The show is [live](=verb) tonight.", { tts, voice: "af_heart", stt, g2p });
+// { status: "accepted", take: { attempt: 1, ... }, report: { precheck: { status: "verified", ... }, stopReason: "clean", ... } }
+// Other statuses: "needs-override" ({ word, evidence }), "needs-rewrite" ({ span }),
+// "retakes-exhausted" ({ faults }) and "stopped" ({ findings }, with zero synth calls).
+```
+
 ## What it deliberately does not do
+
+`vet()` does not normalize: the caller passes normalized text (owner decision D-T11-1, working
+default). It has no override search: a persistent word fault returns `needs-override` with
+evidence (D-T11-2). It does not rewrite text, and it computes no word timings, so a caller
+that wants them calls speech-stt's `alignWords` on the kept take's audio. When the audio
+contradicts the G2P reading of an undeclared heteronym it only warns (D-T11-3, behind the
+internal constant `ESCALATE_UNDECLARED_HETERONYMS`). When every take keeps a stochastic fault
+it returns `retakes-exhausted` with the kept take (D-T11-4). A fault-free take always wins
+over a faulty one, whatever the comparator would say.
 
 Take selection is pure too: `synthesizeVerified` re-rolls a babbled take through a `synthesize`
 callback you supply, and `keepTake`, `regressions` and `bestTailTake` decide whether a
@@ -144,9 +165,20 @@ source's preambles or boilerplate are steps the product writes.
 - `detectDefects` ignores word probabilities and segment confidence unless
   `options.confidence` is true, and it defaults to false. Pass `defectOptionsFor(stt)`
   rather than leaving the options out, or transcripts that carry token log-probs silently
-  lose that signal. `whisperStt` has none, so its flag stays off.
+  lose that signal. `whisperStt` fills both unless built with `tokenLogprobs: false`, which
+  turns its flag off.
 - `detectDefects` keeps the original's number grammar, which stops at "and": "five hundred
   and twenty" reads as 500 then 20.
+- `vet()` takes a `recognizer` only with a `phoneG2p`, which has no default: whether misaki
+  may drive phone verdicts is the caller's call. A voice that takes misaki phonemes also needs
+  a `g2p`; both cases throw a `TypeError` before any synth call.
+- A deterministic voice such as Kokoro returns the same audio on a retake, so `vet()` stops
+  as `futile` after the second identical take instead of spending the budget.
+- Words with an override or a lexicon phoneme entry are judged at the looser "unusual word"
+  threshold, because the expected phones come from the dictionary reading, which knows
+  nothing of the override. An override's phones are not checked exactly.
+- A text voice (no misaki input) reports the precheck `unverifiable`, since the reading
+  checked is not the one it speaks, and gets respellings from the lexicon instead of phonemes.
 - `inconclusive` means the aligned span is under half the word's expected phones. The
   alignment collapsed, often after a near-duplicate word; neither verdict is safe.
 

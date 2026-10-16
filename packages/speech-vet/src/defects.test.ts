@@ -159,14 +159,19 @@ describe("signal A behind the confidence flag", () => {
   const throwingLoader = vi.fn(() => Promise.reject(new Error("unit tests load no model")));
   const lowProbability = rich([["the", 0.3], ["empire", 0.3], ["stood", 0.3], ["firm", 0.3]], [MUDDY_SEGMENT]);
 
-  // Mutation caught: whisperStt declaring tokenLogprobs true, or detectDefects ignoring the flag.
-  it("gives whisperStt's transcripts no low-confidence segment and no severity boost", () => {
-    const options = defectOptionsFor(whisperStt({ loadPipeline: throwingLoader }));
+  // Mutation caught: whisperStt ignoring tokenLogprobs: false, or detectDefects ignoring the flag.
+  it("gives an opted-out whisperStt's transcripts no low-confidence segment and no severity boost", () => {
+    const options = defectOptionsFor(whisperStt({ tokenLogprobs: false, loadPipeline: throwingLoader }));
     const expected = "the empire stood fine";
 
     expect(options).toEqual({ confidence: false });
     expect(detectDefects(expected, lowProbability, options)).toEqual(detectDefects(expected, stripped(lowProbability), ON));
     expect(kinds(detectDefects(expected, lowProbability, options))).not.toContain<DefectKind>("low_confidence");
+    expect(throwingLoader).not.toHaveBeenCalled();
+  });
+
+  it("turns signal A on for a default whisperStt without loading a model", () => {
+    expect(defectOptionsFor(whisperStt({ loadPipeline: throwingLoader }))).toEqual({ confidence: true });
     expect(throwingLoader).not.toHaveBeenCalled();
   });
 

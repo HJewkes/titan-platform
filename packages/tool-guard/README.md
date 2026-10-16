@@ -164,7 +164,8 @@ const inv = parseGit(commands[0].args, commands[0].dir, "/home/you");
 ```
 
 - `tokenize(src)` returns words, operators, redirections (with their targets and heredoc
-  bodies) and process substitutions. Throws `ParseError` on unterminated quoting.
+  bodies) and process substitutions. Throws `ParseError` on unterminated quoting, and on a zsh `~` or
+  `e` flag (`${~x}`, `$~x`, `${(e)x}`) that would run a value as a glob qualifier or as code.
 - `extractCommands(src, { cwd, home })` returns every simple command the shell would run,
   each with its working directory. Literal assignments (`F=~/.x; cat "$F"`) and `$HOME` are
   expanded; anything computed stays `dynamic`. Each command also records how it was reached

@@ -17,6 +17,7 @@ export {
   TtsFailedError,
   TtsTimeoutError,
   TtsUnavailableError,
+  TtsUnknownWordsError,
   TtsUnsupportedError,
   type TtsErrorCode,
 } from "./errors.js";
