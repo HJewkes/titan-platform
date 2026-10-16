@@ -285,6 +285,7 @@ describe("every factory-started agent passes the one gate", () => {
     dir = mkdtempSync(join(tmpdir(), "titan-spawn-gate-"));
     // agent-dispatch reads ~/.agent-chat/profiles before a spawn; keep it off the real home.
     vi.stubEnv("HOME", dir);
+    vi.stubEnv("AGENT_CHAT_HOME", join(dir, ".agent-chat"));
     mkdirSync(join(dir, ".agent-chat", "profiles"), { recursive: true });
     writeFileSync(join(dir, ".agent-chat", "profiles", "rv.json"), JSON.stringify({ surface: "headless" }));
   });
