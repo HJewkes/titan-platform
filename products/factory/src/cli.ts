@@ -1,3 +1,4 @@
+import type { GitBehindProbe } from "./deploy-behind.js";
 import type { Logger } from "@titan-design/daemon";
 import { registerAudit } from "./audit/command.js";
 import { Command, CommanderError } from "commander";
@@ -67,6 +68,8 @@ export interface CliDeps {
   headRef?: HeadRefRead;
   /** How long a shepherd verb waits on a serve that holds the connection but does not answer; defaults to 20 s. */
   serveWaitMs?: number;
+  /** How `shepherd status` reads how far origin/main is past serve's build; defaults to git in the deploy checkout. */
+  deployBehind?: GitBehindProbe;
   /** The serve verb's deploy alarm; absent means serve keeps no deploy block and tells no hub seat. */
   deployWatch?: (env: NodeJS.ProcessEnv) => DeployWatch;
   /** The serve verb's deploy pacer, which spawns the deployer for Shepherd's queued sha; absent means serve spawns none. */

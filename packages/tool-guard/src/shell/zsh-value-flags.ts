@@ -2,8 +2,9 @@ import { nextAfter } from "./joins.js";
 
 /**
  * zsh runs code held in a parameter's value two ways: the `~` flag (`${~x}`, `$~x`) globs the value, so `*(e:CODE:)`
- * runs CODE as a qualifier, and the `e` flag (`${(e)x}`) runs the value's substitutions. The guard cannot know the
- * value, so the lexer refuses any `$` that opens either.
+ * runs CODE as a qualifier, and the `e` flag (`${(e)x}`) runs the value's substitutions. Two `%` flags (`${(%%)x}`)
+ * expand the value's prompt escapes with `$(...)` and `${...}` substitution. The guard cannot know the value, so the
+ * lexer refuses any `$` that opens one.
  */
 
 /** Characters zsh reads between `${` and the name; `~` among them turns globbing of the value on. */
@@ -39,10 +40,11 @@ function runHoldsTilde(src: string, at: number, run: Set<string>): boolean {
 
 /** Index past the `)` that closes the flag group opened at `open`, or RUNS. */
 function flagGroupEnd(src: string, open: number): number {
+  let prompts = 0;
   for (let i = nextAfter(src, open); i < src.length; ) {
     const flag = src.charAt(i);
     if (flag === ")") return nextAfter(src, i);
-    if (flag === "e") return RUNS;
+    if (flag === "e" || (flag === "%" && ++prompts > 1)) return RUNS;
     i = nextAfter(src, i);
     if (ARGUMENT_FLAGS.has(flag)) i = argumentsEnd(src, i, PADDING_FLAGS.has(flag) ? 3 : 1);
     if (i === RUNS) return RUNS;

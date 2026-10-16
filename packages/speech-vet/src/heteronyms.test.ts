@@ -67,6 +67,38 @@ describe("HeteronymCheck", () => {
       ["live", "adj", "ok"],
     ]);
   });
+
+  // Catches: the silent drop of a declaration no token matches (the orphan-drop mutant), so a typo'd or stale declaration passes unseen.
+  it("declaration with no matching token fails and names the declaration", () => {
+    const tokens: PhonemeToken[] = [{ text: "Quiet", phonemes: "kwˈIᵊt", whitespace: "" }];
+
+    expect(checkReadings("Quiet [live](=verb)", tokens)).toEqual([
+      { word: "live", occurrence: 1, phonemes: null, reading: "unknown", declared: "verb", status: "fail" },
+    ]);
+  });
+
+  // Tokens as misakiEnglish().tokens() returned them for this line (misaki 0.9.4): "lead's" comes back as one token, not "lead" and "'s".
+  // Catches: a possessive token skipped as a non-form, so its declaration is dropped or skews the next occurrence's ordinal.
+  it("possessive token reads as the declared word and does not skew the next occurrence", () => {
+    const spoken = "The [lead](=guide)'s cable snapped before the [lead](=metal) singer arrived.";
+    const tokens: PhonemeToken[] = [
+      { text: "The", phonemes: "ðə", whitespace: " " },
+      { text: "lead's", phonemes: "lˈidz", whitespace: " " },
+      { text: "cable", phonemes: "kˈAbᵊl", whitespace: " " },
+      { text: "snapped", phonemes: "snˈæpt", whitespace: " " },
+      { text: "before", phonemes: "bəfˈɔɹ", whitespace: " " },
+      { text: "the", phonemes: "ðə", whitespace: " " },
+      { text: "lead", phonemes: "lˈid", whitespace: " " },
+      { text: "singer", phonemes: "sˈɪŋəɹ", whitespace: " " },
+      { text: "arrived", phonemes: "əɹˈIvd", whitespace: "" },
+      { text: ".", phonemes: ".", whitespace: "" },
+    ];
+
+    expect(checkReadings(spoken, tokens).map((f) => [f.word, f.reading, f.declared, f.status])).toEqual([
+      ["lead's", "guide", "guide", "ok"],
+      ["lead", "guide", "metal", "fail"],
+    ]);
+  });
 });
 
 describe("PronunciationOverride", () => {

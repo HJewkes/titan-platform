@@ -19,8 +19,8 @@ describe("pronunciation lexicon", () => {
 
   // Catches: a respelling that is re-matched as a key on a second pass.
   it("apply is idempotent", () => {
-    const lex = respeller({ Brochel: "Brokel" });
-    const once = lex.apply("a match in Brochel tonight");
+    const lex = respeller({ Vrennick: "Vrenik" });
+    const once = lex.apply("a match in Vrennick tonight");
     expect(lex.apply(once)).toBe(once);
   });
 
@@ -94,6 +94,13 @@ describe("lexicon.v1", () => {
   it("rejects a respelling that is not a single token", () => {
     const result = LexiconSchema.safeParse({ schema: "lexicon.v1", entries: [{ term: "Tavi", respell: "Taa vee" }] });
     expect(result.success).toBe(false);
+  });
+
+  // Catches: terms that differ only in case both accepted, so the matcher's last-one-wins silently discards one respelling.
+  it("rejects terms that differ only in case, naming both", () => {
+    const load = () => loadLexicon({ schema: "lexicon.v1", entries: [{ term: "Vrennick", respell: "Vrenik" }, { term: "vrennick", respell: "Vrenick" }] });
+
+    expect(load).toThrow('lexicon: terms differ only in case: "Vrennick" and "vrennick"');
   });
 
   // Catches: the phonemes and evidence fields dropped from the schema, or unknown keys passed through silently.

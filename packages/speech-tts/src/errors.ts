@@ -1,4 +1,4 @@
-export type TtsErrorCode = "unavailable" | "unsupported" | "timeout" | "failed" | "misconfigured" | "unknown-kind";
+export type TtsErrorCode = "unavailable" | "unsupported" | "timeout" | "failed" | "misconfigured" | "unknown-kind" | "unknown-words";
 
 /** A provider that selection passed over, and why. */
 export interface SkippedProvider {
@@ -75,5 +75,20 @@ export class TtsFailedError extends TtsError {
   constructor(providerId: string, message: string, options?: { cause?: unknown }) {
     super("failed", providerId, message, options);
     this.name = "TtsFailedError";
+  }
+}
+
+/**
+ * Refused before the engine ran: the text has words with no phonemes, which would be silent at zero width.
+ * `words` lists each one with `index`, its 0-based position among the input tokens (or the G2P's tokens for text).
+ */
+export class TtsUnknownWordsError extends TtsError {
+  constructor(
+    providerId: string,
+    readonly words: readonly { word: string; index: number }[],
+  ) {
+    const listed = words.map((w) => `${JSON.stringify(w.word)} at token ${w.index}`).join(", ");
+    super("unknown-words", providerId, `no phonemes for ${words.length} word(s): ${listed}`);
+    this.name = "TtsUnknownWordsError";
   }
 }
