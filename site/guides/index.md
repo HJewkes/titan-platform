@@ -16,6 +16,9 @@
   titan-design, policy in products; how a product's own npm scope shrinks as its engine is
   ported; and what a port pull request must prove.
 
+- **[Where logic goes](/guides/where-logic-goes)** — the four homes for pipeline logic: rule
+  file, recipe, step and service, and when old-path code is a valid home.
+
 - **[Package families](/guides/package-families)** — the packages grouped by the job they
   share (storage, command surfaces, the front-end kit, agent execution, landing a change,
   session mining, code audit, messaging), with a line and a link for each.
@@ -48,7 +51,7 @@ every command with an invocation, where state and logs live, and how it fails.
 
 ## End-to-end stories
 
-- **[Case study: the session miner](/guides/session-miner)** — <!-- generated:miner-count start -->twelve<!-- generated:miner-count end --> packages composed into
+- **[Case study: the session miner](/guides/session-miner)** — <!-- generated:miner-count start -->fifteen<!-- generated:miner-count end --> packages composed into
   one product. Follows a refresh and a search through the DAG, with real output.
 - **[Case study: adopting registry and daemon](/guides/adopting-a-package)** — active-work
   replacing two hand-written modules with packages: about a thousand lines deleted, 1,321

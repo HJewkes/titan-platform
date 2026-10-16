@@ -98,6 +98,10 @@
         "link": "/reference/daemon"
       },
       {
+        "text": "frame-capture",
+        "link": "/reference/frame-capture"
+      },
+      {
         "text": "github",
         "link": "/reference/github"
       },
@@ -130,6 +134,18 @@
         "link": "/reference/rpc-client"
       },
       {
+        "text": "speech-g2p",
+        "link": "/reference/speech-g2p"
+      },
+      {
+        "text": "speech-stt",
+        "link": "/reference/speech-stt"
+      },
+      {
+        "text": "speech-tts",
+        "link": "/reference/speech-tts"
+      },
+      {
         "text": "worktree",
         "link": "/reference/worktree"
       }
@@ -154,6 +170,14 @@
       {
         "text": "decider",
         "link": "/reference/decider"
+      },
+      {
+        "text": "dispatch-ledger",
+        "link": "/reference/dispatch-ledger"
+      },
+      {
+        "text": "graph-layout",
+        "link": "/reference/graph-layout"
       },
       {
         "text": "memory",
@@ -186,6 +210,10 @@
       {
         "text": "session-read",
         "link": "/reference/session-read"
+      },
+      {
+        "text": "speech-vet",
+        "link": "/reference/speech-vet"
       },
       {
         "text": "style-analyzer",

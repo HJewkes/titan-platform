@@ -1,4 +1,4 @@
-import type { GitHubPort, RepoSlug } from "@titan-design/github";
+import type { RepoSlug } from "@titan-design/github";
 import type { GateRecord } from "@titan-design/hitl";
 import { EXIT, defineCommand, type AnyCommand } from "@titan-design/registry";
 import type { WorkflowRun } from "@titan-design/workflow";
@@ -6,52 +6,47 @@ import { z } from "zod";
 import type { GateDecision } from "../gate-policy.js";
 import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../registry.js";
-import type { FreezeStoreRef } from "./freeze.js";
 import { RegistrationRefused, runPolicyCeiling, shepherdGatePolicy, stricterPolicy, type EffectivePolicy } from "./policy.js";
 import { HoldReasonSchema, OWNER_HOLD_CLASS, ReleasableClassSchema, type HoldResult } from "./hold-reason.js";
 import { isOwnerHold } from "./owner-hold-rows.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
+import { ownUpdatedHeads } from "./merge-up-release.js";
 import { ReleaseHeadArg, releaseAtHead } from "./release-head.js";
+import { cachedByHead, localPrFiles } from "./git-pr-files.js";
 import { applyRegistrationHold } from "./registration-hold.js";
+import { hostPrsSources, shepherdPrs, type PrRow } from "./prs.js";
 import { PrArg, RegisterArgs, RepoArg, coded, headBranch, policyFor, refuseKindMove, sliceAfter } from "./register-args.js";
-import { restartFor } from "./restart.js";
+import { endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./restart.js";
+import { lastReadHead } from "./last-read-head.js";
+import { sizeFlagFor, type SliceFlag } from "./size-flag.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
 import { reviewCommand } from "./review-request.js";
 import { findRegistration, releaseFinishedBranch } from "./registration-lookup.js";
-import type { SeatBook } from "./seats.js";
-import type { Registration, ShepherdStore, ShepherdStoreRef } from "./store.js";
-import type { MergeTrainRef } from "./train.js";
-import type { SnapshotServices } from "./snapshot-reads.js";
+import type { Registration, ShepherdStore } from "./store.js";
+import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import type { Phase } from "./step-phase.js";
+import { carry, type CarryInput } from "./tree-carry.js";
 import { waitingCommand } from "./waiting.js";
 import { timelineEntries, type PrTimeline, type WatchRow } from "./view.js";
-import { LIST_FILTER, rowOf, waitingFilter, watchRows } from "./watch-rows.js";
+import { LIST_FILTER, rowOf, rowsWithRuns, waitingFilter, watchRows } from "./watch-rows.js";
+import { stackFrozen } from "./stack-cascade.js";
 
-export const SHEPHERD_WORKFLOW = "shepherd-pr";
-
-/** What the shepherd commands read beyond the host; the route set that binds the store carries it. */
-export interface ShepherdServices extends SnapshotServices {
-  store: ShepherdStoreRef;
-  port: GitHubPort;
-  /** Read on every register, so a seat or deny change applies without a restart; an unreadable seat book refuses. */
-  seats: () => SeatBook;
-  /** Absent means no row reports a run waiting for its repo's merge train. */
-  train?: MergeTrainRef;
-  /** Read before a gate a freeze caused is superseded, and watched for thaws; absent means no repo is ever frozen. */
-  freeze?: FreezeStoreRef;
-}
+/** Transitional, for workflows.ts until TP-2466 b repoints it. */
+export type { ShepherdServices } from "./services.js";
 
 export interface Registered {
   runId: string;
   /** False when `repo#pr`, or the PR's head branch, was already registered and its run came back instead. */
   created: boolean;
   registration: Registration;
-  /** Set when a failed or restartable stopped run was replaced: the run this registration pointed at before. */
+  /** Set when a failed, replay-diverged or restartable stopped run was replaced: the run this registration pointed at before. */
   previousRunId?: string;
   /** Why the replaced run stopped, when it completed rather than failed. */
   previousStop?: string;
   /** The G10 hold Shepherd placed at this registration, when the PR's class needs one. */
   g10Hold?: string;
+  /** Set when a security-kind or guard-area PR is over the 400 non-generated line slice cap; advisory, never a hold. */
+  sizeFlag?: SliceFlag;
 }
 
 export interface MergeEvaluation {
@@ -74,7 +69,7 @@ function servicesOf(ctx: FactoryContext): ShepherdServices {
 function refresh(store: ShepherdStore, existing: Registration, args: RegisterArgs, policy: EffectivePolicy): Registered {
   const { runId } = existing;
   try {
-    store.update(runId, { task: args.task, implementer: args.implementer, reviewer: args.reviewer, policy, kind: args.kind, slice: sliceAfter(existing, args) });
+    store.update(runId, { task: args.task, implementer: args.implementer, reviewer: args.reviewer, policy, kind: args.kind, slice: sliceAfter(existing, args), headSha: args.head, base: args.base });
   } catch (error) {
     if (error instanceof RegistrationRefused) throw coded(`registration refused: ${error.message}`, EXIT.DATAERR);
     throw error;
@@ -90,11 +85,13 @@ function startRun(ctx: FactoryContext, args: RegisterArgs, branch: string | unde
 }
 
 /** A dead run's registration moves to a new run, which starts at the pull request's current head; any other run comes back unchanged. */
-async function reuseOrRestart(ctx: FactoryContext, store: ShepherdStore, known: Registration, args: RegisterArgs, policy: EffectivePolicy): Promise<Registered> {
+export async function restartRegistered(ctx: FactoryContext, store: ShepherdStore, known: Registration, args: RegisterArgs, policy: EffectivePolicy): Promise<Registered> {
   const restart = await restartFor(ctx.host, servicesOf(ctx), known);
   if (!restart) return refresh(store, known, args, policy);
   refuseKindMove(known, args);
   const previousRunId = known.runId;
+  const previousRun = ctx.host.runtime.status(previousRunId)!;
+  const seeded = isDivergedEnd(previousRun) ? { ...args, head: args.head ?? lastReadHead(previousRun) } : args;
   let runId: string;
   try {
     runId = startRun(ctx, args, known.branch ?? undefined, policy, (started) => store.repoint(previousRunId, started));
@@ -106,7 +103,8 @@ async function reuseOrRestart(ctx: FactoryContext, store: ShepherdStore, known: 
     }
     return refresh(store, winner, args, policy);
   }
-  return { ...refresh(store, store.byRun(runId)!, args, policy), created: true, previousRunId, ...restart };
+  if (isReplayDiverged(previousRun)) endSuperseded(ctx.host, previousRunId, runId);
+  return { ...refresh(store, store.byRun(runId)!, seeded, policy), created: true, previousRunId, ...restart };
 }
 
 /**
@@ -117,7 +115,7 @@ async function startRegistered(ctx: FactoryContext, store: ShepherdStore, args: 
   let registration: Registration | undefined;
   try {
     const runId = startRun(ctx, args, branch, policy, (started) => {
-      registration = store.register({ ...args, kind: args.kind ?? DEFAULT_KIND, branch, runId: started, policy });
+      registration = store.register({ ...args, kind: args.kind ?? DEFAULT_KIND, branch, runId: started, policy, headSha: args.head });
     });
     return { runId, created: true, registration: registration! };
   } catch (error) {
@@ -126,7 +124,7 @@ async function startRegistered(ctx: FactoryContext, store: ShepherdStore, args: 
       releaseFinishedBranch(ctx, store, args.repo, args.pr, branch);
       throw error;
     }
-    return reuseOrRestart(ctx, store, winner, args, policy);
+    return restartRegistered(ctx, store, winner, args, policy);
   }
 }
 
@@ -134,12 +132,12 @@ async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Regist
   const services = servicesOf(ctx);
   const policy = policyFor(services.seats, args);
   const known = findRegistration(ctx, services.store.get(), args.repo, args.pr, args.branch);
-  if (known) return reuseOrRestart(ctx, services.store.get(), known, args, policy);
+  if (known) return restartRegistered(ctx, services.store.get(), known, args, policy);
   releaseFinishedBranch(ctx, services.store.get(), args.repo, args.pr, args.branch);
   const branch = await headBranch(services.port, args);
   const store = services.store.get();
   const existing = findRegistration(ctx, store, args.repo, args.pr, branch);
-  if (existing) return reuseOrRestart(ctx, store, existing, args, policy);
+  if (existing) return restartRegistered(ctx, store, existing, args, policy);
   releaseFinishedBranch(ctx, store, args.repo, args.pr, branch);
   return startRegistered(ctx, store, args, branch, policy);
 }
@@ -147,12 +145,20 @@ async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Regist
 /**
  * Only a seat's registration is classed: the release and toolchain PRs Shepherd registers itself carry no seat to release a hold.
  * A repeat registration is classed again, so a diff that grew past the size limit or into a stronger class gets its hold.
+ * The hold and the slice-cap flag share one git read of the head's files.
  */
 async function registerWithHold(args: RegisterArgs, ctx: FactoryContext): Promise<Registered> {
-  const registered = await register(args, ctx);
+  return classifyRegistered(ctx, await register(args, ctx));
+}
+
+/** Holds and flags a registration for the diff it has now; a run Shepherd restarts is classed the way a live register would class it. */
+export async function classifyRegistered(ctx: FactoryContext, registered: Registered, head?: string): Promise<Registered> {
   const services = servicesOf(ctx);
-  const g10Hold = await applyRegistrationHold(services.port, services.store.get(), registered.runId);
-  return g10Hold === undefined ? registered : { ...registered, g10Hold, registration: services.store.get().byRun(registered.runId)! };
+  const local = cachedByHead(services.prFiles ?? localPrFiles);
+  const g10Hold = await applyRegistrationHold(services.port, services.store.get(), registered.runId, { local, ...(head !== undefined && { head }) });
+  const held = g10Hold === undefined ? registered : { ...registered, g10Hold, registration: services.store.get().byRun(registered.runId)! };
+  const sizeFlag = await sizeFlagFor(services.port, head === undefined ? held.registration : { ...held.registration, headSha: head }, { local });
+  return sizeFlag === undefined ? held : { ...held, sizeFlag };
 }
 
 /** Registers the changesets PR the way `shepherd register` would, with no fixer: no agent wrote it, so none can fix it. */
@@ -227,13 +233,18 @@ const registerCommand = defineCommand<RegisterArgs, Registered, FactoryContext>(
   run: registerWithHold,
 });
 
-const statusCommand = defineCommand<{ repo?: string; pr?: number }, WatchRow[], FactoryContext>({
+/** `stackFrozen` is read by agent-chat, which stacks no new child on a parent past its fix-round limit. */
+export type StatusRow = WatchRow & { stackFrozen: boolean };
+
+const statusCommand = defineCommand<{ repo?: string; pr?: number }, StatusRow[], FactoryContext>({
   name: "shepherd.status",
-  description: "One row per shepherded PR, optionally narrowed to a repo or a PR: phase, head, next action and blockers",
+  description: "One row per shepherded PR, optionally narrowed to a repo or a PR: phase, head, next action, blockers, and whether new stacking on it is frozen",
   args: z.object({ repo: RepoArg.optional(), pr: PrArg.optional() }),
-  result: z.custom<WatchRow[]>(),
-  run: async ({ repo, pr }, ctx) =>
-    watchRows(ctx.host, servicesOf(ctx), (registration) => (repo === undefined || registration.repo === repo.toLowerCase()) && (pr === undefined || registration.pr === pr)),
+  result: z.custom<StatusRow[]>(),
+  run: async ({ repo, pr }, ctx) => {
+    const rows = await rowsWithRuns(ctx.host, servicesOf(ctx), (registration) => (repo === undefined || registration.repo === repo.toLowerCase()) && (pr === undefined || registration.pr === pr));
+    return rows.map(({ row, run }) => ({ ...row, stackFrozen: stackFrozen(run) }));
+  },
 });
 
 const waiting = waitingCommand((ctx) => watchRows(ctx.host, servicesOf(ctx), waitingFilter(ctx.host)));
@@ -283,13 +294,15 @@ const ReleaseArgs = PrRefArgs.extend({ actor: ActorArg, head: ReleaseHeadArg, ho
 
 const releaseCommand = defineCommand<z.infer<typeof ReleaseArgs>, HoldResult, FactoryContext>({
   name: "shepherd.release",
-  description: "Release one hold on owner/repo#pr at the head the seat reviewed (--head): the hold of --class, or the only hold; refused when the PR's head is another sha",
+  description: "Release one hold on owner/repo#pr at the head the seat reviewed (--head): the hold of --class, or the only hold; refused when the PR's head is another sha, unless a g10-adversary release and that head is Shepherd's own clean merge-up of it",
   args: ReleaseArgs,
   result: z.custom<HoldResult>(),
   async run({ repo, pr, head, actor, holdClass }, ctx) {
     const services = servicesOf(ctx);
-    const { runId } = await locate(services, repo, pr);
-    const after = await releaseAtHead(services.store.get(), services.port, { runId, repo, pr, head, actor, ...(holdClass && { holdClass }) });
+    const registration = await locate(services, repo, pr);
+    const { runId } = registration;
+    const reads = { ownUpdates: () => ownUpdatedHeads(runOf(ctx.host, registration)), carry: (input: CarryInput) => carry(input) };
+    const after = await releaseAtHead(services.store.get(), services.port, { runId, repo, pr, head, actor, ...(holdClass && { holdClass }) }, reads);
     return { runId, held: after.held ? { reason: after.holdReason ?? "held", ...(after.holdReviewer !== null && { reviewer: after.holdReviewer }) } : null };
   },
 });
@@ -310,6 +323,19 @@ const resyncCommand = defineCommand<{ dryRun?: boolean }, ResyncReport, FactoryC
   run: async ({ dryRun }, ctx) => resyncShepherd(ctx.host, servicesOf(ctx), { dryRun }),
 });
 
+/** Answers from the snapshot alone: a host with none wired refuses rather than reading GitHub per call. */
+const prsCommand = defineCommand<{ repo?: string }, PrRow[], FactoryContext>({
+  name: "shepherd.prs",
+  description: "Every open PR of each seat repo (or of --repo) from Shepherd's snapshot, plus the PRs Shepherd merged in the last 24 h, with head, base, run and cached CI; no GitHub call while the list is under a minute old",
+  args: z.object({ repo: RepoArg.optional() }),
+  result: z.custom<PrRow[]>(),
+  async run({ repo }, ctx) {
+    const services = servicesOf(ctx);
+    if (!services.snapshot) throw coded("shepherd prs reads the PR snapshot, and this host was opened without one", EXIT.UNAVAILABLE);
+    return shepherdPrs(hostPrsSources(ctx.host, services, services.snapshot), repo);
+  },
+});
+
 /** Keyed by name so a consumer can type itself per verb; each key must equal its command's `name`. */
 export const SHEPHERD_COMMAND_MAP = {
   "shepherd.register": registerCommand,
@@ -322,6 +348,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.merge": mergeCommand,
   "shepherd.review": reviewCommand,
   "shepherd.resync": resyncCommand,
+  "shepherd.prs": prsCommand,
 };
 
 export type ShepherdCommandName = keyof typeof SHEPHERD_COMMAND_MAP;

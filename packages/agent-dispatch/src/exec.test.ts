@@ -1,10 +1,11 @@
-import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  ExecAbortedError,
   ExecError,
   ExecTimeoutError,
   execSafe,
@@ -148,4 +149,39 @@ describe("execSafeAsync", () => {
     const result = await execSafeAsync("/bin/pwd", ["-P"], minimalEnv(), 5_000);
     expect(result.stdout.trim()).toBe(realpathSync(process.cwd()));
   });
+
+  it("kills a running child when the signal aborts", async () => {
+    const pidFile = join(dir, "pid");
+    const controller = new AbortController();
+    const run = execSafeAsync("/bin/sh", ["-c", `echo $$ > ${pidFile}; exec sleep 60`], minimalEnv(), 60_000, undefined, undefined, controller.signal);
+    await waitFor(() => existsSync(pidFile) && readFileSync(pidFile, "utf8").trim() !== "");
+    const pid = Number(readFileSync(pidFile, "utf8"));
+
+    controller.abort();
+
+    await expect(run).rejects.toBeInstanceOf(ExecAbortedError);
+    await vi.waitFor(() => expect(isAlive(pid)).toBe(false), { timeout: 2_000 });
+  });
+
+  it("starts no child once the signal has aborted", async () => {
+    const marker = join(dir, "ran");
+
+    const run = execSafeAsync("/bin/sh", ["-c", `touch ${marker}`], minimalEnv(), 5_000, undefined, undefined, AbortSignal.abort());
+
+    await expect(run).rejects.toBeInstanceOf(ExecAbortedError);
+    expect(existsSync(marker)).toBe(false);
+  });
 });
+
+async function waitFor(ready: () => boolean): Promise<void> {
+  while (!ready()) await new Promise((resolve) => setTimeout(resolve, 10));
+}
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}

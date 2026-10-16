@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { bakedShaOf, distBuildSha } from "./dist-build.js";
+import { bakedShaOf, bundleBuildSha, distBuildSha } from "./dist-build.js";
 
 const SHA = "a".repeat(40);
 const bundle = (sha: string): string => `var x = 1;\nfunction buildSha() {\n  return "${sha}";\n}\n`;
@@ -35,5 +35,17 @@ describe("bakedShaOf", () => {
   it("keeps a dirty suffix and an unknown bake", () => {
     expect(bakedShaOf(bundle(`${SHA}-dirty`))).toBe(`${SHA}-dirty`);
     expect(bakedShaOf(bundle("unknown"))).toBe("unknown");
+  });
+});
+
+describe("bundleBuildSha", () => {
+  it("reads the sha baked into a chunk of the dist directory it is given", () => {
+    const dist = join(checkoutWithDist({ "bin.js": "import './chunk-1.js';", "chunk-1.js": bundle(SHA) }), "products", "factory", "dist");
+
+    expect(bundleBuildSha(dist)).toBe(SHA);
+  });
+
+  it("is undefined for a missing directory", () => {
+    expect(bundleBuildSha(join(tmpdir(), "no-such-dist-build-dir"))).toBeUndefined();
   });
 });

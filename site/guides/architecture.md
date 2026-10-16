@@ -44,6 +44,7 @@ graph TD
     agentLifecycle["agent-lifecycle"]
     agentSurface["agent-surface"]
     daemon["daemon"]
+    frameCapture["frame-capture"]
     github["github"]
     health["health"]
     hitl["hitl"]
@@ -52,6 +53,9 @@ graph TD
     registry["registry"]
     retrieval["retrieval"]
     rpcClient["rpc-client"]
+    speechG2p["speech-g2p"]
+    speechStt["speech-stt"]
+    speechTts["speech-tts"]
     worktree["worktree"]
   end
   subgraph T2["Tier 2 · domain"]
@@ -59,6 +63,8 @@ graph TD
     codeRead["code-read"]
     coordinator["coordinator"]
     decider["decider"]
+    dispatchLedger["dispatch-ledger"]
+    graphLayout["graph-layout"]
     memory["memory"]
     ownerQueue["owner-queue"]
     pm["pm"]
@@ -67,6 +73,7 @@ graph TD
     sessionAnalytics["session-analytics"]
     sessionGraph["session-graph"]
     sessionRead["session-read"]
+    speechVet["speech-vet"]
     styleAnalyzer["style-analyzer"]
     styleChecker["style-checker"]
     styleProfile["style-profile"]
@@ -78,6 +85,7 @@ graph TD
   end
   subgraph P["Products"]
     evals["evals"]
+    explainer["explainer"]
     factory["factory"]
     retrievalEval["retrieval-eval"]
     sessionMiner["session-miner"]
@@ -92,6 +100,7 @@ graph TD
   agentLifecycle --> storeSqlite
   codeGraph --> codeParser
   codeGraph --> embed
+  codeGraph --> evidence
   codeGraph --> retrieval
   codeGraph --> storeSqlite
   codeRead --> codeGraph
@@ -104,13 +113,17 @@ graph TD
   decider --> memory
   decider --> sessionRead
   decider --> storeSqlite
+  dispatchLedger --> storeSqlite
   egressScan --> fixProof
+  graphLayout --> codeGraph
   health --> storeSqlite
   hitl --> authority
+  hitl --> evidence
   hitl --> storeSqlite
   memory --> embed
   memory --> retrieval
   memory --> storeSqlite
+  ownerQueue --> evidence
   queueMirror --> hitl
   queueMirror --> matrixBus
   queueMirror --> storeSqlite
@@ -124,6 +137,7 @@ graph TD
   reviewPanel --> sessionRead
   rpcClient --> rpcProtocol
   sessionAnalytics --> agentProtocol
+  sessionAnalytics --> reviewPanel
   sessionAnalytics --> sessionGraph
   sessionAnalytics --> sessionRead
   sessionAnalytics --> storeSqlite
@@ -134,6 +148,10 @@ graph TD
   sessionRead --> agentProtocol
   sessionRead --> anthropicAccount
   sessionRead --> locator
+  speechTts --> appPaths
+  speechVet --> speechG2p
+  speechVet --> speechStt
+  speechVet --> speechTts
   styleAnalyzer --> codeParser
   styleAnalyzer --> styleProfile
   styleChecker --> styleAnalyzer
@@ -145,16 +163,26 @@ graph TD
   workflow --> authority
   workflow --> hitl
   workflow --> storeSqlite
+  evals --> agent
   evals --> authority
   evals --> evidence
   evals --> health
+  evals --> hitl
   evals --> reviewPanel
   evals --> sessionAnalytics
   evals --> sessionRead
+  evals --> storeSqlite
+  evals --> workflow
+  explainer --> agent
+  explainer --> agentProtocol
+  explainer --> evidence
+  explainer --> graphLayout
+  explainer --> speechVet
   factory --> agent
   factory --> agentDispatch
   factory --> appPaths
   factory --> authority
+  factory --> coordinator
   factory --> daemon
   factory --> fixProof
   factory --> github
@@ -173,18 +201,21 @@ graph TD
   retrievalEval --> embed
   retrievalEval --> retrieval
   retrievalEval --> storeSqlite
+  sessionMiner --> appPaths
   sessionMiner --> clusterPkg
   sessionMiner --> daemon
   sessionMiner --> embed
   sessionMiner --> github
   sessionMiner --> locator
   sessionMiner --> memory
+  sessionMiner --> pm
   sessionMiner --> registry
   sessionMiner --> retrieval
   sessionMiner --> sessionAnalytics
   sessionMiner --> sessionGraph
   sessionMiner --> sessionRead
   sessionMiner --> storeSqlite
+  sessionMiner --> throughput
   titan --> daemon
   titan --> health
   codewatch --> codeRead
@@ -212,7 +243,7 @@ Same-tier edges such as `daemon --> registry`, `agent --> agent-lifecycle` and
 `session-graph --> session-read` are legal when they remain acyclic.
 
 <!-- generated:arch-leaves start -->
-`agent-protocol`, `anthropic-account`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `eslint-plugin`, `evidence`, `fix-proof`, `locator`, `rpc-protocol`, `store-sqlite`, `test-kit`, `agent-dispatch`, `agent-surface`, `github`, `matrix-bus`, `messaging`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
+`agent-protocol`, `anthropic-account`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `eslint-plugin`, `evidence`, `fix-proof`, `locator`, `rpc-protocol`, `store-sqlite`, `test-kit`, `agent-dispatch`, `agent-surface`, `frame-capture`, `github`, `matrix-bus`, `messaging`, `speech-g2p`, `speech-stt`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
 <!-- generated:arch-leaves end -->
 
 The [package families](/guides/package-families) guide groups the same packages by job.
@@ -261,14 +292,14 @@ those live in the separate `@titan-design/react-ui` design system.
 command definitions — and gets everything else from the tiers.
 
 <!-- generated:arch-products start -->
-The `product` tier holds seven units: `evals`, `factory`, `retrieval-eval`, `session-miner`, `titan`, and the `codewatch` and `console` apps.
+The `product` tier holds eight units: `evals`, `explainer`, `factory`, `retrieval-eval`, `session-miner`, `titan`, and the `codewatch` and `console` apps.
 <!-- generated:arch-products end -->
 
 The usage guides are under [Guides](/guides/#running-the-products).
 
 ## What a product actually looks like
 
-The session miner composes <!-- generated:miner-count start -->twelve<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
+The session miner composes <!-- generated:miner-count start -->fifteen<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
 Its structure generalises: one context type, one registry, one binding of the daemon, and a
 set of commands.
 

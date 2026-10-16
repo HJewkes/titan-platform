@@ -1,4 +1,5 @@
 import { SHEPHERD_ACTOR, type ShepherdEvent } from "./events.js";
+import { reclassedUnread } from "./g10-reclass-events.js";
 import { NO_HOLDS, afterHold, afterRelease, isAdversaryHold, type HoldSlots } from "./hold-slots.js";
 import { isCleanMergeUpOf } from "./merge-up-carry.js";
 import type { ShepherdStore } from "./store.js";
@@ -23,18 +24,21 @@ function lift(slots: HoldSlots, reason: string | null): HoldSlots {
 /**
  * The run's adversary history replayed from its events through the store's slot rule. A hold of another class, placed or
  * lifted, never moves the released head: lifting a stall at a new head is no adversary review of that head. An adversary
- * release with no head vouches for no head.
+ * release with no head vouches for no head. An unread-files hold Shepherd re-classed, and its release, move the slots only:
+ * no seat reviewed that run, so it has no adversary history.
  */
 function replay(events: readonly ShepherdEvent[]): Replayed {
   let slots = NO_HOLDS;
   const state: Replayed = { seen: false, pending: false };
+  const reclassed = reclassedUnread(events);
   for (const event of events) {
+    const counts = !reclassed.has(event);
     if (event.kind === "hold") {
       slots = afterHold(slots, { reason: event.reason ?? "", reviewer: null });
-      if (isAdversaryHold(event.reason)) [state.seen, state.adversaryHold] = [true, event];
+      if (counts && isAdversaryHold(event.reason)) [state.seen, state.adversaryHold] = [true, event];
     }
     if (event.kind !== "release") continue;
-    if (isAdversaryHold(event.reason ?? slots.top?.reason)) [state.seen, state.released, state.adversaryHold] = [true, event.headSha ?? undefined, undefined];
+    if (counts && isAdversaryHold(event.reason ?? slots.top?.reason)) [state.seen, state.released, state.adversaryHold] = [true, event.headSha ?? undefined, undefined];
     slots = lift(slots, event.reason);
   }
   return { ...state, pending: isAdversaryHold(slots.top?.reason) };

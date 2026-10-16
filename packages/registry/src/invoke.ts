@@ -1,5 +1,6 @@
 import type { ZodError } from "zod";
 import { EXIT, describeError, errorEnvelope, successEnvelope, type ErrorDescription, type JsonEnvelope } from "./envelope.js";
+import type { CommandRegistry } from "./registry.js";
 import type { AnyCommand, BaseContext } from "./types.js";
 
 export interface InvokeOptions {
@@ -37,6 +38,24 @@ export async function invokeCommand<Ctx extends BaseContext>(
     const { message, code } = formatError(err);
     return { envelope: errorEnvelope(message, code), exitCode: code };
   }
+}
+
+export type InProcessCall = (name: string, args: unknown) => Promise<JsonEnvelope<unknown>>;
+
+/**
+ * Call registry commands by name in process. An unknown name yields a USAGE envelope, never a throw.
+ * The context is a thunk so each call gets its own `warnings` and one call's warnings never leak into the next.
+ */
+export function inProcessCaller<Ctx extends BaseContext>(
+  registry: CommandRegistry<Ctx>,
+  context: () => Ctx,
+  options?: InvokeOptions,
+): InProcessCall {
+  return async (name, args) => {
+    const cmd = registry.get(name);
+    if (!cmd) return errorEnvelope(`Unknown command: ${name}`, EXIT.USAGE);
+    return (await invokeCommand(cmd, args, context(), options)).envelope;
+  };
 }
 
 function formatZodError(error: ZodError): string {

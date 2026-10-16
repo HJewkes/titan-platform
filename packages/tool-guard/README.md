@@ -31,6 +31,8 @@ guarded file stays readable by that user. The OS account is the real boundary.
 
 - Commands built at run time (`$(...)`, `read`, `printf -v`, `eval "$x"`) are not followed.
   A script run by path is read one level deep.
+- An HTTP client that sends a write method to a URL whose host, or whose `api.github.com` path, is known only at run time reads as a merge.
+- A curl, wget or httpie config file is checked only within one command line: an rc file planted by an earlier Bash call (`echo method=PUT > ~/.wgetrc`, then `wget <merge URL>` in the next call) is not seen (TP-2861 tracks the path-layer guard). A download that names its file from the URL (`curl -O`/`-J`, a bare `wget "$U"`) is not read as an rc write either. An archive extract (tar, bsdtar or cpio extract, unzip, pax -r, 7z x/e, ar x, jar x) counts as an rc write in any directory, because its member paths may be absolute. Other unpackers and interpreters are not read.
 - A Bash command the tokenizer cannot parse passes, unless its text names a guarded
   path, a distinctive credential file name, or `gh pr merge`, `/merge`, `publish`, `deploy`,
   `gist` (owner decision D6). Then it denies and asks for simpler commands. The text is checked
@@ -41,6 +43,12 @@ guarded file stays readable by that user. The OS account is the real boundary.
   call runs. The bin exits 0 on every path and gives stdin 2 s. A Bash command over 8 KiB
   (`MAX_COMMAND_BYTES`) is not classified, since padding could push classification past the
   timeout. It denies whatever it names, and the reason asks for shorter commands or a script file.
+- `definesAlias` reads any word that is not wholly quoted and holds `*`, `?`, `[`, `^`, `#`,
+  `~`, a leading `=` or a brace expansion as varying, since zsh may turn it into file names, a
+  directory or a command's path. A `(` glob qualifier is already refused by the lexer. So
+  `alias *`, `typeset ali*` and `printf *` are refused in any directory, and so are harmless
+  forms such as `printf *.txt` or `"$CMD" *`. Only the plain `NAME=VALUE` form of a
+  declaration is spared, as neither shell globs it: `typeset a[1]=2` passes (TP-2705).
 - The mention rule is broad: any argument naming a secret path counts as a read, so
   `echo ~/.npmrc` and a `gh pr create --body` that names `~/.npmrc` deny too.
 
@@ -156,14 +164,16 @@ const inv = parseGit(commands[0].args, commands[0].dir, "/home/you");
 ```
 
 - `tokenize(src)` returns words, operators, redirections (with their targets and heredoc
-  bodies) and process substitutions. Throws `ParseError` on unterminated quoting.
+  bodies) and process substitutions. Throws `ParseError` on unterminated quoting, and on a zsh `~` or
+  `e` flag (`${~x}`, `$~x`, `${(e)x}`) that would run a value as a glob qualifier or as code.
 - `extractCommands(src, { cwd, home })` returns every simple command the shell would run,
   each with its working directory. Literal assignments (`F=~/.x; cat "$F"`) and `$HOME` are
   expanded; anything computed stays `dynamic`. Each command also records how it was reached
   (`wrapping`: a subshell, `sh -c`, `eval`, `xargs`, a heredoc or pipe into a shell, `find -exec`),
   its command word as typed (`path`), the operators joining it to the commands before and after
   it (`prev`, `next`), whether a `!` negates its pipeline (`negated`), and the operator that
-  started its `&&` chain (`chain`).
+  started its `&&` chain (`chain`). It reads past wrappers such as `command`, `exec` and
+  `sudo`, and past zsh's precommand modifiers `noglob`, `nocorrect` and `-`.
 - `parseGit` and `splitArgs` read git's global options and flag clusters.
 
 Nothing here touches the filesystem, the environment or a clock.
@@ -199,8 +209,11 @@ do instead. Commands nested in `bash -c`, `eval`, heredocs, substitutions and wr
 | R133 | a merge the merge family classifies, when `ctx.seat` | `seat-merge`, any merge outside a seat |
 | R64 | `active-work` with `XDG_DATA_HOME` set and no `ACTIVE_ROOT` | `ACTIVE_ROOT=<dir> active-work` |
 | R164 | git `--no-verify`, `commit -n`, `-c core.hooksPath=` | `-m "--no-verify"`, `push -n` |
+| R175 | `pnpm test`, `npm test` and their `t`, `tst`, `run test` and `run-script test` forms, `pnpm -c test`, `vitest`, `vitest run`, `vitest watch`, `npx vitest [run\|watch]`, `pnpm [exec] vitest [run\|watch]` with no path argument, including options after `--`, when `ctx.agentWorktree` | a path argument (also after `--`), a bare `--changed`, `pnpm --filter <pkg> test`, `pnpm test:affected`, any run outside an agent worktree |
 
 The checker is pure. A shell loop's keywords never reach the command list, so R127 reads a
-`sleep` beside a CI read as the loop. The merge spellings that need the checked-out branch
-(`git merge`, a bare `git push`) are skipped, since reading it needs the filesystem.
+`sleep` beside a CI read as the loop. R175 names `pnpm test:affected` because CI runs the full
+suite on every pull request, so a local whole-suite run only spends machine memory. The merge
+spellings that need the checked-out branch (`git merge`, a bare `git push`) are skipped, since
+reading it needs the filesystem.
 `checkPreferences` only reports; no hook blocks on a preference hit yet.

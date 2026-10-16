@@ -2,11 +2,12 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   DispatchError,
   DispatchTimeoutError,
+  agentChatEnv,
   buildSpawnArgs,
   dispatchToAgentChat as dispatchWithAllowlist,
   type DispatchRequest,
@@ -70,6 +71,21 @@ const request = (bin: string, over: Record<string, unknown> = {}) => ({
     [REVIEW_PROFILE]: "headless",
   }),
   ...over,
+});
+
+describe("broker reply timeout", () => {
+  it("rejects a spawn whose stderr is the broker's reply-timeout line with a timeout", async () => {
+    const bin = fakeAgentChat(`echo "broker did not answer spawn_result" >&2\nexit 1\n`);
+    const error = await dispatchToAgentChat(request(bin), 10_000).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DispatchTimeoutError);
+  });
+
+  it("keeps the same text on stdout a plain refusal", async () => {
+    const bin = fakeAgentChat(`echo "broker did not answer spawn_result"\nexit 1\n`);
+    const error = await dispatchToAgentChat(request(bin), 10_000).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DispatchError);
+    expect(error).not.toBeInstanceOf(DispatchTimeoutError);
+  });
 });
 
 describe("profile allowlist", () => {
@@ -260,6 +276,29 @@ describe("installed profile guard", () => {
       /installed profile 'relay-implementer' is unreadable/,
     );
     expect(existsSync(join(dir, "argv"))).toBe(false);
+  });
+});
+
+describe("AGENT_CHAT_HOME", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("sends the CLI to the broker whose profiles the guard checked", async () => {
+    const chatHome = join(dir, "chat");
+    vi.stubEnv("AGENT_CHAT_HOME", chatHome);
+    installProfiles(chatHome, { [DISPATCH_PROFILE]: "headless" });
+    const bin = fakeAgentChat(`printf '%s' "$AGENT_CHAT_HOME" >"${dir}/chat-home"\n`);
+
+    await dispatchToAgentChat(request(bin, { profilesDir: undefined }), 10_000);
+
+    expect(readFileSync(join(dir, "chat-home"), "utf8")).toBe(chatHome);
+  });
+
+  it.each([
+    ["unset", undefined],
+    ["empty", ""],
+  ])("is absent from the CLI env when %s", (_label, value) => {
+    vi.stubEnv("AGENT_CHAT_HOME", value);
+    expect(agentChatEnv()).not.toHaveProperty("AGENT_CHAT_HOME");
   });
 });
 

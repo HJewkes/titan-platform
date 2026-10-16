@@ -1,13 +1,15 @@
-import type { WorkflowRun } from "@titan-design/workflow";
+import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { resolveCommand } from "../registry.js";
+import { formatShepherd } from "./format.js";
 import { clearReviewWait, noteReviewWait } from "./review-wait.js";
 import { spawnGate } from "./spawn-gate.js";
 import type { Registration } from "./store.js";
 import { SHEPHERD_STEPS } from "./pr.js";
 import { PhaseSchema, PrTimelineSchema, TimelineEntrySchema, stepPhase, timelineEntries, watchRow } from "./view.js";
 
-const gateRecord = (id: string) => ({ id, createdAt: "2026-01-01T00:00:00.000Z" }) as never;
+const MINUTE_MS = 60_000;
+const gateRecord =(id: string) => ({ id, createdAt: "2026-01-01T00:00:00.000Z" }) as never;
 
 const registration = { repo: "acme/widgets", pr: 1, branch: "feat/x", runId: "run-1", task: "demo/T-1", held: false, policy: { merge: "owner-gate", mergeMethod: "squash", fixer: false, seat: "none" } } as unknown as Registration;
 
@@ -40,12 +42,55 @@ describe("shepherd view outcomes", () => {
     expect(row).toMatchObject({ phase: "done", outcome: { kind: "stopped", reason: "closed" } });
   });
 
+  it("carries no last await on a finished run whose last await gave none", () => {
+    const run = completedWith("sh-await-verdict:" + "1".repeat(40), { kind: "none", ended: "deadline" });
+
+    expect(watchRow({ registration, run }).lastNone).toBeNull();
+  });
+
   it("reads a completed run that passed sh-landed as merged", () => {
     expect(watchRow({ registration, run: completedWith("sh-landed", { mergeSha: "def5678" }) }).outcome).toEqual({ kind: "merged", reason: null });
   });
 
   it("leaves the outcome unknown for a completed run with neither record", () => {
     expect(watchRow({ registration, run: completedWith("merge", {}) }).outcome).toBeNull();
+  });
+});
+
+describe("a run parked in recovery after it recorded its outcome", () => {
+  const RECONCILE = "workflow returned while step ci-wait:r3:17 still required reconciliation";
+  const ENDED = "2026-01-01T01:00:00.000Z";
+  const now = new Date(Date.parse(ENDED) + 140 * 60 * MINUTE_MS);
+
+  function parkedWith(status: WorkflowRun["status"], currentStep: string, steps: Record<string, object>): WorkflowRun {
+    const stepResults = Object.fromEntries(Object.entries(steps).map(([stepId, result]): [string, StepResult] => [stepId, { stepId, iteration: 0, agentId: null, completedAt: ENDED, signal: null, data: { result } }]));
+    return { ...pausedAt(currentStep), status, error: status === "recovery_required" ? RECONCILE : null, stepResults };
+  }
+
+  it("reads a merged run as done with its stall kept and its ages stopped at the merge", () => {
+    const row = watchRow({ registration, run: parkedWith("recovery_required", "sh-review:abc1234", { "sh-landed": { mergeSha: "def5678" } }), now });
+
+    expect(row).toMatchObject({ phase: "done", outcome: { kind: "merged", reason: null }, stalled: { reason: RECONCILE }, phaseSince: ENDED, totalMinutes: 60, stage: null });
+    expect(formatShepherd("shepherd.status", [row])).toContain(` done - none (60m total) [stalled: ${RECONCILE}]`);
+  });
+
+  it("reads a stopped run as done with its stop reason", () => {
+    const row = watchRow({ registration, run: parkedWith("recovery_required", "sh-review:abc1234", { "sh-stopped": { kind: "stopped", reason: "closed" } }), now });
+
+    expect(row).toMatchObject({ phase: "done", outcome: { kind: "stopped", reason: "closed" }, stalled: { reason: RECONCILE } });
+  });
+
+  it("keeps the step's phase for a run in recovery that recorded no outcome", () => {
+    const row = watchRow({ registration, run: parkedWith("recovery_required", "sh-review:abc1234", {}), now });
+
+    expect(row).toMatchObject({ phase: "review", outcome: null, stalled: { reason: RECONCILE } });
+  });
+
+  it("keeps a paused run watching main CI after its merge in post-merge", () => {
+    const row = watchRow({ registration, run: parkedWith("paused", "sh-main-ci:0", { "sh-landed": { mergeSha: "def5678" } }), now });
+
+    expect(row).toMatchObject({ phase: "post-merge", outcome: { kind: "merged" } });
+    expect(row.totalMinutes).toBeGreaterThan(60);
   });
 });
 
@@ -201,6 +246,101 @@ describe("a run held at registration waiting in its merge step", () => {
     const owner = { ...held, holdReviewer: null } as Registration;
 
     expect(watchRow({ registration: owner, run: mergingAt(H1), now: twentyMinutesIn }).nextAction).toBe(`waiting for the hold to be released (${reason})`);
+  });
+});
+
+describe("a g10-review hold whose review recorded no verdict (TP-2455)", () => {
+  const H1 = "1".repeat(40);
+  const waitedFrom = Date.parse("2026-01-01T00:10:00.000Z");
+  const reason = "g10-review: +415/-0 diff over 400";
+  const held = { ...registration, held: true, holdReason: reason, holdSatisfied: null } as Registration;
+  const minutesIn = (minutes: number) => new Date(waitedFrom + minutes * MINUTE_MS);
+
+  /** Shepherd's review at `H1` recorded `verdict` (none unless given), CI went green, and the run has sat in `currentStep` since. */
+  function waitingAt(currentStep: string, verdict: object = { kind: "none" }): WorkflowRun {
+    const run = { ...pausedAt(currentStep), status: "running" } as WorkflowRun;
+    const record = (stepId: string, at: number, result: object) => {
+      run.stepResults[stepId] = { stepId, iteration: 0, agentId: null, signal: null, completedAt: new Date(at).toISOString(), data: { result } };
+    };
+    record(`sh-await-verdict:${H1}`, waitedFrom - 2000, verdict);
+    record("ci-wait:1", waitedFrom, { verdict: "green", headSha: H1 });
+    return run;
+  }
+
+  it("reads the merge wait as stalled after 61 minutes, and not after 59", () => {
+    const early = watchRow({ registration: held, run: waitingAt("merge:0"), now: minutesIn(59) });
+    const late = watchRow({ registration: held, run: waitingAt("merge:0"), now: minutesIn(61) });
+
+    expect(early.stalled).toBeNull();
+    expect(late.stalled?.reason).toMatch(/^g10-review hold at 1111111 has no reviewer MERGE \(last await: no verdict read\); 61 min waiting, over the 60 min limit$/);
+  });
+
+  it("reads a run parked in sh-held-wait as stalled after 61 minutes", () => {
+    const row = watchRow({ registration: held, run: waitingAt(`sh-held-wait:r0:${H1}`), now: minutesIn(61) });
+
+    expect(row).toMatchObject({ phase: "awaiting-approval", stalled: { reason: expect.stringMatching(/^g10-review hold at 1111111 has no reviewer MERGE \(last await: no verdict read\)/) } });
+  });
+
+  it("leaves a hold of another class unstalled at 61 minutes", () => {
+    const adversary = { ...held, holdReason: "g10-adversary: touches auth" } as Registration;
+
+    expect(watchRow({ registration: adversary, run: waitingAt("merge:0"), now: minutesIn(61) }).stalled).toBeNull();
+  });
+
+  it("leaves a g10-review hold with a recorded MERGE at the head unstalled at 61 minutes", () => {
+    const merge = { kind: "verdict", verdict: "MERGE", head: H1, locator: {}, reviewer: { agentId: "agent-rv-own" } };
+
+    expect(watchRow({ registration: held, run: waitingAt("merge:0", merge), now: minutesIn(61) }).stalled).toBeNull();
+  });
+
+  it("leaves a g10-review hold with a recorded FIX_FIRST at the head unstalled at 61 minutes", () => {
+    const fixFirst = { kind: "verdict", verdict: "FIX_FIRST", head: H1, locator: {}, reviewer: { agentId: "agent-rv-own" } };
+
+    expect(watchRow({ registration: held, run: waitingAt("merge:0", fixFirst), now: minutesIn(61) }).stalled).toBeNull();
+  });
+
+  describe("at a head a clean merge-up made from the reviewed head", () => {
+    const A = "a".repeat(40);
+
+    /** The reviewer's verdict at `A`, then a merge-up to `H1` recorded as clean, and no review of its own at `H1`. */
+    function carriedTo(verdictAtA: string): WorkflowRun {
+      const run = waitingAt("merge:0");
+      const record = (stepId: string, result: object) => {
+        run.stepResults[stepId] = { stepId, iteration: 0, agentId: null, signal: null, completedAt: new Date(waitedFrom - 5000).toISOString(), data: { result } };
+      };
+      record(`sh-await-verdict:${A}`, { kind: "verdict", verdict: verdictAtA, head: A, locator: {}, reviewer: { agentId: "agent-rv-own" } });
+      record(`sh-merge-up:${H1}`, { fromHead: A, head: H1, base: "b".repeat(40), rule: "clean-merge-up" });
+      return run;
+    }
+
+    it("leaves the hold unstalled at 61 minutes when the carried verdict is a MERGE", () => {
+      expect(watchRow({ registration: held, run: carriedTo("MERGE"), now: minutesIn(61) }).stalled).toBeNull();
+    });
+
+    it("still stalls when the reviewed head has no MERGE", () => {
+      expect(watchRow({ registration: held, run: carriedTo("FIX_FIRST"), now: minutesIn(61) }).stalled?.reason).toMatch(/^g10-review hold at 1111111 has no reviewer MERGE \(last await: no verdict read\)/);
+    });
+  });
+
+  it("names the seat WAIT that ended the last await in the stall line and on the row (TP-2625)", () => {
+    const seatWait = { kind: "none", reason: `seat check: rv-seat-x said WAIT at ${H1}, so its required checks had not finished`, seat: "rv-seat-x" };
+    const row = watchRow({ registration: held, run: waitingAt("merge:0", seatWait), now: minutesIn(61) });
+
+    expect(row.stalled?.reason).toBe("g10-review hold at 1111111 has no reviewer MERGE (last await: seat WAIT from rv-seat-x); 61 min waiting, over the 60 min limit");
+    expect(row.lastNone).toEqual({ kind: "seat-wait", text: "seat WAIT from rv-seat-x" });
+  });
+
+  it("keeps the plain words when no review step was recorded", () => {
+    const run = waitingAt("merge:0");
+    delete run.stepResults[`sh-await-verdict:${H1}`];
+
+    expect(watchRow({ registration: held, run, now: minutesIn(61) }).stalled?.reason).toMatch(/^g10-review hold at 1111111 has no reviewer verdict; 61 min/);
+  });
+
+  it("leaves an owner hold unstalled at 61 minutes", () => {
+    const owner: Registration = { ...held, ownerHold: { reason: "owner wants a look", at: new Date(waitedFrom).toISOString(), askedAt: null } };
+
+    expect(watchRow({ registration: owner, run: waitingAt("merge:0"), now: minutesIn(61) }).stalled).toBeNull();
   });
 });
 

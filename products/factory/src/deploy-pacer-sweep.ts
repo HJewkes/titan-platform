@@ -1,11 +1,15 @@
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { Logger } from "@titan-design/daemon";
+import { z } from "zod";
 import { cachedAncestry, gitAncestry, runningHolds } from "./build-ancestry.js";
+import { FACTORY_REPO } from "./build-info.js";
 import { factoryStateDir } from "./config.js";
-import { readDeployPause } from "./deploy-pause.js";
+import { readDeployHolds } from "./deploy-pause.js";
 import { readLastDeploy } from "./deploy-ports.js";
-import { nodeWantedStore, PACER_SWEEP_MS, pacerStatus, pacerTick, readWanted, type DeployPacerOptions } from "./shepherd/deploy-pacer.js";
+import type { CommandResult } from "./service-control.js";
+import { runCommand } from "./service-ports.js";
+import { DEPLOY_NOW_LABEL, nodeWantedStore, PACER_SWEEP_MS, pacerStatus, pacerTick, readWanted, type DeployPacerOptions, type ExpressProbe } from "./shepherd/deploy-pacer.js";
 import { deployPacerPorts } from "./shepherd/redeploy.js";
 import { startSweep, type Sweep } from "./sweep.js";
 
@@ -19,11 +23,45 @@ interface ServiceView {
 
 const pauseReadPorts = { exists: existsSync, readFile: (path: string) => readFileSync(path, "utf8") };
 
-/** The wanted sha the running build descends from, if any; a git failure reads as not held, so the deployer is still asked. */
-async function heldWanted(options: DeployPacerOptions, runningSha: string): Promise<string | undefined> {
+type Run = (file: string, args: readonly string[]) => Promise<CommandResult | undefined>;
+
+const LabelNames = z.array(z.string());
+
+/** Any gh failure reads as unlabelled, so a GitHub outage falls back to normal pacing instead of deploying early. */
+async function carriesDeployNow(run: Run, repo: string, sha: string): Promise<boolean> {
+  const result = await run("gh", ["api", `repos/${repo}/commits/${sha}/pulls`, "--jq", "[.[].labels[].name]"]);
+  if (result?.code !== 0) return false;
+  try {
+    return LabelNames.parse(JSON.parse(result.stdout)).includes(DEPLOY_NOW_LABEL);
+  } catch {
+    return false;
+  }
+}
+
+/** A label found stays found for that sha; a miss is asked again, since the label may be added after the merge. */
+export function ghDeployNow(repo: string, run: Run = runCommand): ExpressProbe {
+  const labelled = new Set<string>();
+  return async (sha) => {
+    if (labelled.has(sha)) return true;
+    const found = await carriesDeployNow(run, repo, sha);
+    if (found) labelled.add(sha);
+    return found;
+  };
+}
+
+/** What the tick needs that only an async probe can answer, keyed by the wanted sha it was asked about. */
+interface Settled {
+  held?: string;
+  express?: string;
+}
+
+/** A git failure reads as not held, so the deployer is still asked; a sha already spawned is not looked up on GitHub, since the label no longer changes anything. */
+async function settle(options: DeployPacerOptions, runningSha: string): Promise<Settled> {
   const wanted = readWanted(options.stateDir, options.store ?? nodeWantedStore);
-  if (wanted === undefined || options.isAncestor === undefined) return undefined;
-  return (await runningHolds(options.isAncestor, runningSha, wanted.sha)) === true ? wanted.sha : undefined;
+  if (wanted === undefined) return {};
+  const held = options.isAncestor !== undefined && (await runningHolds(options.isAncestor, runningSha, wanted.sha)) === true;
+  const express = options.express !== undefined && wanted.spawnedSha !== wanted.sha && (await options.express(wanted.sha));
+  return { ...(held && { held: wanted.sha }), ...(express && { express: wanted.sha }) };
 }
 
 /** The first tick is not awaited, so a record a restart already answered clears soon after start without holding it up. */
@@ -31,16 +69,17 @@ export function startDeployPacer(options: DeployPacerOptions | undefined, servic
   if (options === undefined) return undefined;
   const { stateDir, spawn } = options;
   const tick = async (): Promise<void> => {
-    const held = await heldWanted(options, service.runningSha);
+    const settled = await settle(options, service.runningSha);
     pacerTick({
       stateDir,
       store: options.store ?? nodeWantedStore,
       now: service.now,
       runningSha: () => service.runningSha,
-      runningHolds: (sha) => sha === held,
+      runningHolds: (sha) => sha === settled.held,
+      express: (sha) => sha === settled.express,
       lastDeploy: () => readLastDeploy(stateDir) ?? undefined,
       busy: service.busy,
-      paused: () => readDeployPause(pauseReadPorts, stateDir).paused,
+      paused: () => readDeployHolds(pauseReadPorts, stateDir).held,
       spawn,
       log: (line) => log.info({}, line),
     });
@@ -60,4 +99,5 @@ export function deployPendingHealth(options: DeployPacerOptions | undefined): { 
 export const configuredDeployPacer = (env: NodeJS.ProcessEnv, checkout: string): DeployPacerOptions => ({
   ...deployPacerPorts({ bin: fileURLToPath(new URL("./bin.js", import.meta.url)), stateDir: factoryStateDir(env) }),
   isAncestor: cachedAncestry(gitAncestry(checkout)),
+  ...(FACTORY_REPO !== undefined && { express: ghDeployNow(FACTORY_REPO) }),
 });

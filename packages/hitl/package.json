@@ -41,6 +41,7 @@
   },
   "dependencies": {
     "@titan-design/authority": "workspace:^",
+    "@titan-design/evidence": "workspace:^",
     "@titan-design/store-sqlite": "workspace:*"
   },
   "peerDependencies": {

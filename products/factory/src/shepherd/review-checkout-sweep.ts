@@ -1,5 +1,6 @@
 import { lstat, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { OVERLAY_SHAPES } from "@titan-design/review-panel";
 import { reviewCheckoutRoot } from "./review-checkout.js";
 
 export const REVIEW_CHECKOUT_MAX_AGE_MS = 24 * 3_600_000;
@@ -41,9 +42,10 @@ export async function sweepReviewCheckouts(deps: ReviewCheckoutSweepDeps = {}): 
     });
   const remove = deps.remove ?? ((path: string) => rm(path, { recursive: true, force: true }));
   const removed: string[] = [];
-  for (const name of await list(root)) {
-    if (!REVIEW_CHECKOUT_NAME.test(name)) continue;
-    const path = join(root, name);
+  const runDirs = async (dir: string) => (await list(dir)).filter((name) => REVIEW_CHECKOUT_NAME.test(name)).map((name) => join(dir, name));
+  // A panel member other than correctness checks out under `<root>/<shape>`, so two members never remove each other's tree.
+  const paths = (await Promise.all([root, ...OVERLAY_SHAPES.map((shape) => join(root, shape))].map(runDirs))).flat();
+  for (const path of paths) {
     try {
       const info = await stat(path);
       if (!info.isDirectory || now - info.mtimeMs <= REVIEW_CHECKOUT_MAX_AGE_MS) continue;

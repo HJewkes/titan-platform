@@ -28,6 +28,7 @@ export const CiSnapshotResult = z.looseObject({
   checksGreen: z.boolean().optional(),
   baseMoved: z.boolean().optional(),
   readAt: z.number().optional(),
+  contexts: z.array(z.string()).optional(),
 });
 
 export const UpdateResultResult = z.looseObject({ headSha: z.string(), own: z.boolean(), conflict: z.boolean().optional(), unmoved: z.boolean().optional(), at: z.number().optional() });

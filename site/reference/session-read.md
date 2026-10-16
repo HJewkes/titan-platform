@@ -135,7 +135,7 @@ PR: octo/demo#12
 Head: 0123456789abcdef0123456789abcdef01234567
 ```
 
-It returns `{ ok: true, verdict: "MERGE" | "FIX_FIRST", repo, pr, head, lineOffset }` or
+It returns `{ ok: true, verdict: "MERGE" | "FIX_FIRST", repo, pr, head, lineOffset, closer?, ciPolicy? }` or
 `{ ok: false, reason }`, where `lineOffset` is the zero-based line of the `Verdict:` line.
 It fails closed. The three lines must be consecutive and exact: `Verdict:` is `MERGE` or
 `FIX_FIRST` in upper case, `PR:` is `owner/name#n` (GitHub's `[A-Za-z0-9._-]`, no `.git`
@@ -143,7 +143,22 @@ suffix, no URL, `n` a positive integer without leading zeros), and `Head:` is ex
 lowercase hex characters with nothing after it. A `FIX_FIRST` block may add one optional fourth line, `Closer: yes|no` (is this head closer to
 `MERGE` than the last reviewed one), directly after `Head:`. It is returned as `closer`. On
 `MERGE`, with any other value, duplicated anywhere visible, or anywhere but directly after
-`Head:`, it is ignored and the block parses as it would without it. Text that may be someone
+`Head:`, it is ignored and the block parses as it would without it. A `MERGE` block may add a
+different optional fourth line directly after `Head:`, `CI-policy: unchanged` or
+`CI-policy: weakened <keys>` (TP-2407), where the keys are comma-and-space separated, each at most
+once, from the closed set `CI_POLICY_KEYS`: `required-check`, `permissions`, `pull_request_target`,
+`secrets`, `ruleset` and `other`. It is returned as `ciPolicy` (`{ kind: "unchanged" }` or
+`{ kind: "weakened", keys }`). Unlike the block lines, the label is looked for on every raw line,
+fenced, indented, commented out or not: a line is labelled when, after NFKC, lower case and the
+removal of every non-alphanumeric character and any leading list number, it starts `cipolicy`
+(`**CI-policy:**`, `## CI-policy:`, `| CI-policy |`, `CI/policy:`, `CI-policy weakened`). With no
+labelled line, `ciPolicy` is undefined. A labelled line whose rest folds to `weakened` and known keys
+reads weakened wherever it sits. `unchanged` counts only as the one labelled line, exact and visible
+directly after `Head:`. Any other labelled line returns `{ kind: "malformed" }`: an unknown or repeated
+key, an empty list, a trailing note, a decorated, hidden or misplaced `unchanged`, or a second one.
+Across several labelled lines the strictest reading wins: weakened (keys merged) over malformed over
+unchanged. Shepherd's merge guard gates a weakened or malformed
+line on any PR. On `FIX_FIRST` or `WAIT` the line is ignored. Text that may be someone
 else's only makes the parser stricter. A line is read only when indented 0 to 3 spaces (a tab counts 4, and any
 other character `trim` strips, such as U+00A0, counts 1), since
 a deeper line is an indented code block. Trailing whitespace and CRLF are harmless. A quoted
@@ -153,6 +168,10 @@ unclosed fence hides the rest of the message. Lines that start inside an HTML co
 skipped up to a line holding `-->` with no `<!--` after its last `-->`. A `Status:` line is ignored. Any visible line starting
 `Verdict:` is a second block and refuses the message, even when identical. Refusal reasons are `no_block`, `multiple_blocks`, `bad_verdict`, `missing_pr_line`,
 `bad_pr`, `missing_head_line` and `bad_head`. It shares no grammar with `parseReviewVerdicts`.
+
+`visibleLines(text)` is the visibility pass the parser runs first: one entry per line, its trimmed text, or
+`null` when the line is fenced, inside an HTML comment or indented as code. It is exported so other parsers
+of a reviewer's message (review-panel's `parseFollowUps`) agree with the verdict on what is visible.
 
 ## Audit events
 

@@ -77,21 +77,56 @@ interface PrHead {
 
 const where = ({ repo, pr, headSha }: PrHead): string => `${repo}#${pr} at ${headSha}`;
 
-/** `carriedFrom` is the reviewed head whose MERGE stands at this tree-equal head, so the owner is not told the reviewer saw this one. */
-export function approveMergeDecision(target: PrHead & { reason: string; reviewedMerge: boolean; carriedFrom?: string; ownerBrief?: OwnerBrief }) {
-  const asked = `Land ${target.headSha}?`;
+const prFilesEvidence = (repo: string, pr: number): string => `${prEvidence(repo, pr)}/files`;
+
+/** Each path is flattened to one line, so a path holding a newline cannot pose as a line of the prompt it is shown in. */
+const shownSkillPaths = (skillPaths: readonly string[]): string => skillPaths.map((path) => oneLine(path, MAX_EVIDENCE_REF)).join(", ");
+
+/** The owner reads a repo skill change in the diff itself. The link leads, so a long path list cut to fit a field never cuts it. */
+export function skillChangeNote(repo: string, pr: number, skillPaths: readonly string[]): string {
+  return `Review the repo skill diff: ${prFilesEvidence(repo, pr)}. Repo skill changes: ${shownSkillPaths(skillPaths)}.`;
+}
+
+interface ApproveMergeTarget extends PrHead {
+  reason: string;
+  reviewedMerge: boolean;
+  carriedFrom?: string;
+  ownerBrief?: OwnerBrief;
+  skillPaths?: readonly string[];
+}
+
+/**
+ * `carriedFrom` is the reviewed head whose MERGE stands at this tree-equal head, so the owner is not told the reviewer saw
+ * this one. A skill change is never recommended: a reviewer's MERGE does not stand in for the owner reading that diff.
+ */
+export function approveMergeDecision(target: ApproveMergeTarget) {
+  const skills = target.skillPaths ?? [];
+  const asked = skills.length > 0 ? `Land ${target.headSha}? ${skillChangeNote(target.repo, target.pr, skills)}` : `Land ${target.headSha}?`;
   const { schema, questions } = decisionGate({
-    question: target.ownerBrief ? oneLine(`${asked} Reviewer's owner brief: ${ownerBriefLines(target.ownerBrief).join(" ")}`, MAX_QUESTION) : asked,
+    question: target.ownerBrief ? oneLine(`${asked} Reviewer's owner brief: ${ownerBriefLines(target.ownerBrief).join(" ")}`, MAX_QUESTION) : oneLine(asked, MAX_QUESTION),
     options: [
-      { id: "merge", label: "Merge at this head", recommended: target.reviewedMerge },
+      { id: "merge", label: "Merge at this head", recommended: target.reviewedMerge && skills.length === 0 },
       { id: "abandon", label: "Abandon the PR" },
     ],
     shape: { headSha: z.literal(target.headSha) },
   });
+  return { schema, brief: skills.length > 0 ? skillMergeBrief(target, skills, questions) : mergeBrief(target, questions) };
+}
+
+function mergeBrief(target: ApproveMergeTarget, questions: GateQuestion[]): GateBrief {
   const said = target.carriedFrom ? `Reviewer said MERGE at ${target.carriedFrom}, carried from a tree-equal head` : "Reviewer said MERGE at this head";
   const verdict = target.reviewedMerge ? `${said}; recommend merge.` : "No reviewer MERGE at this head; no recommendation.";
-  const summary = summarize(`Merge ${where(target)}? CI green.`, target.reason, verdict);
-  return { schema, brief: brief(summary, prEvidence(target.repo, target.pr), questions) };
+  return brief(summarize(`Merge ${where(target)}? CI green.`, target.reason, verdict), prEvidence(target.repo, target.pr), questions);
+}
+
+/**
+ * The files URL rides in the fixed tail, so a long path list or reason can never cut it. The evidence link stays the
+ * plain PR URL, the form the coordinator reads a PR gate's PR from.
+ */
+function skillMergeBrief(target: ApproveMergeTarget, skills: readonly string[], questions: GateQuestion[]): GateBrief {
+  const files = prFilesEvidence(target.repo, target.pr);
+  const summary = summarize(`Merge ${where(target)}? CI green.`, `Repo skill changes: ${shownSkillPaths(skills)}. ${target.reason}`, `Review the diff: ${files}; no recommendation.`);
+  return brief(summary, prEvidence(target.repo, target.pr), questions);
 }
 
 export function conflictDecision(target: PrHead & { reason: string }) {

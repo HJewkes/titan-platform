@@ -117,6 +117,28 @@ If the requested port is taken, `startDaemon` rejects with `DaemonPortInUseError
 the original error. The listener is removed once the server is listening, so a later runtime
 error is not reported as a bind failure.
 
+## Inherited socket (systemd socket activation)
+
+Pass `listenFd` to serve on a socket that is already listening instead of binding
+`host:port`. `systemdListenFd()` returns fd 3 when systemd passed exactly one socket to this
+process (`LISTEN_PID` is this pid and `LISTEN_FDS` is 1). It removes `LISTEN_PID`,
+`LISTEN_FDS` and `LISTEN_FDNAMES` from the environment so no child sees them. It returns
+`undefined` when none were passed, or when `LISTEN_PID` names another process. It throws when
+`LISTEN_FDS` is anything but 1.
+
+```ts
+import { startDaemon, systemdListenFd } from "@titan-design/daemon";
+
+await startDaemon({ ...options, listenFd: systemdListenFd(), port: 7400 });
+```
+
+With no fd the daemon binds `port` exactly as before. With one, `handle.port`, `/health`
+and the pid metadata report the socket's real port, and the `daemon started` log line names
+`listenFd`. Requests the socket queued before this process listened are held until the pid
+file exists rather than answered 503. `close()` closes this process's copy of the socket
+only, so its owner keeps it listening and the next process accepts what queues in between.
+A restart then refuses no connections. The remote listener still binds its own port.
+
 ## Bind address
 
 The daemon has no authentication, so `startDaemon` throws `NonLoopbackBindError` (carrying
@@ -184,3 +206,23 @@ Exported on their own because they are the reusable pieces:
 - `buildHttpApp(options)` — the hono app alone, testable through `app.request()`.
 - `createMcpServer`, `attachHandlers`, `listTools`, `invokeTool`, `runMcpStdio` — the MCP
   projection, usable over stdio without running a daemon.
+
+## Service units (`./service`)
+
+`@titan-design/daemon/service` holds the pieces a product needs to write its own systemd
+user unit or launchd plist for a daemon. It is a separate entry so `node:fs` stays out of
+the main one.
+
+- `noSpecifiers`, `quoteIfNeeded`, `execArg` — systemd expands `%` specifiers in every
+  value and `$VAR` in `ExecStart`, and splits on whitespace; these double the literal `%`
+  and `$` and quote a word with whitespace, a quote or a backslash, so a path such as
+  `/srv/my x/50%` reaches the process unchanged.
+- `userUnitDir(home, xdgConfigHome?)` — `<config>/systemd/user`, ignoring a relative
+  `XDG_CONFIG_HOME` as the XDG spec requires.
+- `stableNodePath(execPath, probe?)` — prefers the Homebrew prefix symlink
+  (`/opt/homebrew/bin/node`, or `opt/<formula>` for `node@20`) over a versioned Cellar
+  path, which `brew upgrade` deletes, but only when the symlink resolves to the same binary.
+- `servicePath(which, nodePath, binaries)` and `SYSTEM_PATH` — a supervisor starts a job
+  with the four system directories only, so this builds a PATH from the directories of the
+  binaries the service runs by bare name, then node's, then `SYSTEM_PATH`, de-duplicated.
+  It throws on a directory containing `:` and reports binaries `which` did not find.

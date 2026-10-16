@@ -5,6 +5,14 @@ export interface Commit {
   tree?: string;
   /** The committer date; for a commit GitHub made on merge, when it landed. Absent when the wire does not report it. */
   committedAt?: string;
+  /** The full commit message; absent when the wire does not report it. */
+  message?: string;
+}
+
+/** One step of an Actions job, in run order; `conclusion` is null until the step completes. */
+export interface JobStep {
+  name: string;
+  conclusion: string | null;
 }
 
 /** The newest commit status per context on a sha, as the combined status endpoint reports it. */

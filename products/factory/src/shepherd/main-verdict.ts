@@ -31,18 +31,20 @@ export async function readMainRules(port: GitHubPort, repo: RepoSlug, base: stri
 
 export type RulesReader = () => Promise<MainRules | undefined>;
 
+/** Answers the merged PR's base branch. */
+export type BaseReader = () => Promise<string>;
+
 /**
- * The base branch's required contexts, read once a clean answer arrives. No PR, or any unreadable answer, is undefined
+ * The base branch's required contexts, read once a clean answer arrives. No base, or any unreadable answer, is undefined
  * for that poll, so every Actions check judges main as before and an API failure never thaws a red main.
  */
-export function mainRulesReader(port: GitHubPort, repo: RepoSlug, pr: number | undefined): RulesReader {
+export function mainRulesReader(port: GitHubPort, repo: RepoSlug, base: BaseReader | undefined): RulesReader {
   let settled: { rules: MainRules | undefined } | undefined;
   return async () => {
-    if (pr === undefined) return undefined;
+    if (base === undefined) return undefined;
     if (settled !== undefined) return settled.rules;
     try {
-      const { baseRef } = await port.getPr(repo, pr);
-      const read = await readMainRules(port, repo, baseRef);
+      const read = await readMainRules(port, repo, await base());
       if (read.readable) settled = { rules: read.rules };
       return read.rules;
     } catch {

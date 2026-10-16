@@ -63,7 +63,7 @@ describe("rankDigest", () => {
 
     expect(ranked.merged.map((m) => m.ref)).toEqual(["acme/widgets#7", "acme/widgets#6", "acme/widgets#5", "acme/widgets#4", "acme/widgets#3"]);
     expect(ranked.stuck.map((s) => s.ref)).toEqual(["b", "a"]);
-    expect(ranked.totals).toEqual({ needsYou: 0, merged: 7, stuck: 2 });
+    expect(ranked.totals).toEqual({ needsYou: 0, merged: 7, stuck: 2, decided: 0 });
     expect(ranked.overflow).toBe(2);
   });
 

@@ -1,5 +1,5 @@
 import { Chain, SimpleCommand } from './shell/index.js';
-export { ExtractOptions, GitInvocation, OpToken, ParseError, ReadingLimitError, RedirectToken, SplitArgs, SubsToken, Token, VarRef, WordToken, Wrapping, extractCommands, parseGit, resolvePath, splitArgs, tokenize } from './shell/index.js';
+export { AliasTable, ExtractOptions, GitInvocation, OpToken, ParseError, ReadingLimitError, RedirectToken, SplitArgs, SubsToken, Token, VarRef, WordToken, Wrapping, extractCommands, parseGit, resolvePath, splitArgs, tokenize } from './shell/index.js';
 import { ActorClass, PolicyTable } from '@titan-design/authority';
 
 interface EventMeta {
@@ -88,6 +88,8 @@ interface ClassifyContext {
         chain: Chain;
         fallback: ClassifyContext;
     };
+    /** Set by the classifier when the line may choose or write the config file wget or curl reads. */
+    httpConfigUnseen?: true;
 }
 type GuardedAction = "merge" | "release" | "secret-read" | "authority-config" | "private-egress";
 /** What an event would do, with no actor attached. */
@@ -194,11 +196,13 @@ type SpellingId = keyof typeof SPELLINGS;
  */
 declare function classify(event: HookEvent, ctx: ClassifyContext): ClassifiedAction[];
 
-type PreferenceId = "R86" | "R50" | "R31" | "R127" | "R133" | "R64" | "R164";
+type PreferenceId = "R86" | "R50" | "R31" | "R127" | "R133" | "R64" | "R164" | "R175";
 /** What a row needs that the command text does not carry. */
 interface PreferenceContext {
     /** Whether the session is a seat, where every merge goes through `seat-merge`. */
     seat: boolean;
+    /** Whether the session works in an agent worktree, where CI runs the full suite on the PR. Default false. */
+    agentWorktree?: boolean;
 }
 interface PreferenceHit {
     id: PreferenceId;

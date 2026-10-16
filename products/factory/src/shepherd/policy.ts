@@ -3,11 +3,14 @@ import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { GateDecision, GatePolicy, PolicyRule } from "../gate-policy.js";
 import type { LandOptions } from "../workflows/land.js";
-import { decideAutoMerge, isUnsettledGate, type MergeEvidence } from "./merge-facts.js";
+import { decideAutoMerge, isUnsettledGate, MERGE_BY_REVIEWER_RULE, type MergeEvidence } from "./merge-facts.js";
+import { shownPaths } from "./visual-gate.js";
 import { refreshMergeEvidence } from "./merge-settle.js";
+import { CiPolicySchema } from "./review-schemas.js";
 import type { Verdict } from "./phases.js";
-import { escalationReason, type Escalated } from "./route-table.js";
+import { escalationReason, type Escalated, type Escalation } from "./route-table.js";
 import { FEATURE_BASE_GRANT, MERGE_ON_GREEN_GRANT, RELEASE_MERGE_GRANT, type SeatLookup } from "./seats.js";
+import { skillPathsIn } from "./skill-paths.js";
 
 const MERGE_ORDER = ["never", "owner-gate", "auto"] as const;
 
@@ -148,7 +151,7 @@ export function shepherdGatePolicy(effective: EffectivePolicy, verdictFor: (head
     decide: (action, target): GateDecision => {
       if (effective.merge === "never") return { outcome: "deny", rule, reason: `seat ${effective.seat} policy never allows ${action}` };
       if (effective.merge === "auto" && action === "merge" && target?.headSha !== undefined) return decideAutoMerge(target.headSha, mergeEvidenceAt(target.headSha, verdictFor), effective.visualPaths);
-      return { outcome: "gate", rule, reason: `seat ${effective.seat} policy ${effective.merge}${reasonNote(effective)} waits for the owner on ${action}${reviewNote(target?.headSha, verdictFor)}` };
+      return { outcome: "gate", rule, reason: `seat ${effective.seat} policy ${effective.merge}${reasonNote(effective)} waits for the owner on ${action}${reviewNote(target?.headSha, verdictFor)}${skillNote(target?.headSha, verdictFor)}` };
     },
   };
 }
@@ -177,20 +180,43 @@ export function shepherdLandOptions(
     const decision = shepherdGatePolicy(effective(), current).decide(action, target);
     if (decision.outcome === "deny") return decision;
     const escalated = target?.headSha === undefined ? undefined : escalationAt(target.headSha);
-    // A carried escalation gates even a head the policy would allow: the owner's question must be asked again, never resolved for them.
+    if (escalated !== undefined && target?.headSha !== undefined && clearedByFreshMerge(escalated, decision, target.headSha, current)) return clearedDecision(escalated, decision, target.headSha);
+    // Any other carried escalation gates even a head the policy would allow: only a fresh review at the head answers it.
     if (escalated !== undefined && (decision.outcome === "gate" || escalated.carriedFrom !== undefined)) return { outcome: "gate", rule: routeRule(escalated.escalation), reason: escalatedReason(escalated, target?.headSha, current) };
     if (decision.outcome !== "gate") return decision;
     return { ...decision, reason: escalationReason("policy-denial", decision.reason) };
   };
-  return { policy: { decide }, allowEvidence: (merge) => ({ ...mergeEvidenceAt(merge.headSha, current)?.record }), unsettled: { transient: isUnsettledGate, refresh }, featureBase: () => effective().featureBase === true };
+  const allowEvidence = (merge: { headSha: string }) => ({ ...mergeEvidenceAt(merge.headSha, current)?.record });
+  return { policy: { decide }, allowEvidence, unsettled: { transient: isUnsettledGate, refresh }, featureBase: () => effective().featureBase === true, evidenceBase: (headSha) => mergeEvidenceAt(headSha, current)?.record.baseRef, skillPathsAt: (headSha) => skillPathsAt(headSha, current) };
 }
 
 function escalatedReason(escalated: Escalated, headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {
-  const reason = escalationReason(escalated.escalation, escalated.detail);
+  const reason = escalationReason(escalated.escalation, escalated.detail, escalated.words);
   return escalated.carriedFrom === undefined ? reason : `${reason}; carried from the gate at head ${escalated.carriedFrom}${reviewNote(headSha, verdictFor)}`;
 }
 
 const routeRule = (rowId: string): PolicyRule => ({ table: "shepherd-route", rowId, version: 1 });
+
+/** Escalations about the review loop, which a later reviewer's MERGE answers; any other carried escalation still asks the owner. */
+const CLEARED_BY_MERGE: ReadonlySet<Escalation> = new Set(["fix-first-runaway", "no-progress", "conflict"]);
+
+/**
+ * Owner decision 303: a carried review-loop escalation stops gating once the dispatched reviewer writes a MERGE at exactly
+ * this head and MRG-AU-RV allows it there. A MERGE carried by tree, remerge or merge-up is not a review of this head.
+ */
+function clearedByFreshMerge(escalated: Escalated, decision: GateDecision, headSha: string, verdictFor: (headSha: string) => Verdict | undefined): boolean {
+  if (escalated.carriedFrom === undefined || !CLEARED_BY_MERGE.has(escalated.escalation)) return false;
+  if (decision.outcome !== "allow" || decision.rule.table !== "authority" || decision.rule.rowId !== MERGE_BY_REVIEWER_RULE) return false;
+  const verdict = verdictFor(headSha);
+  const evidence = mergeEvidenceAt(headSha, verdictFor);
+  if (verdict?.kind !== "MERGE" || verdict.mergeUpFrom !== undefined || !evidence) return false;
+  return evidence.record.head === headSha && evidence.merge.verdict.head === headSha && evidence.merge.carry === undefined && evidence.record.carry === undefined;
+}
+
+function clearedDecision(escalated: Escalated, decision: GateDecision, headSha: string): GateDecision {
+  const reason = `${decision.reason}; the ${escalated.escalation} escalation carried from head ${escalated.carriedFrom} is cleared by the dispatched reviewer's MERGE at head ${headSha}`;
+  return { outcome: "allow", rule: routeRule(`${escalated.escalation}/cleared-by-merge`), reason };
+}
 
 /** The evidence a MERGE review carries; a malformed one reads as none, so the merge gates. */
 export function mergeEvidenceAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): MergeEvidence | undefined {
@@ -205,12 +231,26 @@ export function mergeEvidenceAt(headSha: string, verdictFor: (headSha: string) =
     typeof evidence.record === "object" &&
     evidence.record !== null &&
     (evidence.changedFilesUnread === undefined || typeof evidence.changedFilesUnread === "string");
-  return wellFormed ? (evidence as MergeEvidence) : undefined;
+  if (!wellFormed) return undefined;
+  const stored = evidence as MergeEvidence;
+  // Only an absent line parses to undefined, so the stored evidence is returned as it is in that case.
+  const ciPolicy = CiPolicySchema.parse(stored.ciPolicy);
+  return ciPolicy ? { ...stored, ciPolicy } : stored;
 }
 
 function reviewNote(headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {
   const verdict = headSha === undefined ? undefined : verdictFor(headSha);
   return verdict ? `; review at this head: ${verdict.kind}` : "";
+}
+
+/** Read from the MERGE evidence at that head; a head with no well-formed evidence names none. */
+function skillPathsAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): string[] {
+  return skillPathsIn(mergeEvidenceAt(headSha, verdictFor)?.merge.changedPaths ?? []);
+}
+
+function skillNote(headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {
+  const skills = headSha === undefined ? [] : skillPathsAt(headSha, verdictFor);
+  return skills.length > 0 ? `; repo skill changes: ${shownPaths(skills)}` : "";
 }
 
 function reasonNote(effective: EffectivePolicy): string {

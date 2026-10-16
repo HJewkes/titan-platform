@@ -178,6 +178,19 @@ const SOURCE: readonly MetricDescriptor[] = [
     description: "Handlers whose body is empty, pass, ..., continue, a bare or empty return, or a single logging call. Exempts Python's `except ImportError`/`ModuleNotFoundError` (alone or paired), the standard optional-dependency idiom.",
   },
   {
+    name: "long_line_share_160", unit: "ratio", appliesTo: FILE, rollup: "none", direction: "higher-worse",
+    absent: "zero", source: "line-density", description: "Share of the file's non-blank lines longer than 160 characters.",
+  },
+  {
+    name: "chars_per_sloc", unit: "ratio", appliesTo: FILE, rollup: "none", direction: "higher-worse",
+    absent: "zero", source: "line-density", description: "Characters per non-blank line, leading and trailing whitespace excluded.",
+  },
+  {
+    name: "bool_ops_per_line", unit: "ratio", appliesTo: FILE, rollup: "none", direction: "higher-worse",
+    absent: "zero", source: "line-density",
+    description: "Syntax-tree `&&`, `||`, `??` and ternaries (Python `and`, `or` and conditional expressions) per non-blank line; strings and comments never count.",
+  },
+  {
     name: "class_count", unit: "count", appliesTo: FILE, rollup: "sum", direction: "neutral",
     absent: "zero", source: "lcom", description: "Classes declared in the file; written only when there is one.",
   },

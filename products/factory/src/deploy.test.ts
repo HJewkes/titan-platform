@@ -4,9 +4,11 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { EXIT, runCli } from "./cli.js";
 import { releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
+import { deployBuildLogPath, deployWindowPath } from "./deploy-output.js";
+import { UNAVAILABLE } from "./deploy-watch-window.js";
 import { deployRecordPath, deployService, parseDeployRecord, type DeployOptions, type DeployPorts } from "./deploy.js";
 import type { DeployIncident } from "./deploy-incident.js";
-import { clearDeployPause, deployPausePath, readDeployPause } from "./deploy-pause.js";
+import { clearDeployPause, deployHoldPath, deployPausePath, readDeployHolds, readDeployPause } from "./deploy-pause.js";
 import { plistPath, SERVICE_LABEL } from "./service.js";
 import type { CommandResult } from "./service-control.js";
 
@@ -24,6 +26,7 @@ const FACTORY_DIST = `${CHECKOUT}/products/factory/dist`;
 const WORKFLOW_DIST = `${CHECKOUT}/packages/workflow/dist`;
 const CHARTS_DIST = `${CHECKOUT}/packages/charts/dist`;
 const RECORD = deployRecordPath(STATE);
+const BUILD_LOG = deployBuildLogPath(STATE);
 const ok = (stdout = ""): CommandResult => ({ code: 0, stdout, stderr: "" });
 const failed = (code: number, stderr: string): CommandResult => ({ code, stdout: "", stderr });
 
@@ -55,6 +58,10 @@ interface MachineInit {
   misreports?: string;
   /** After a kickstart onto a build other than the starting one, this many probes answer before `runs.failed` goes up by one. */
   failsRunAfter?: number;
+  /** Runs the serve running before the restart reports busy on every /health. */
+  busy?: { runId: string; step: string; phase: string }[];
+  /** After a kickstart onto a new build, `healthWithin` probes `from` to `to` (1-based, inclusive) list these runs as recovery_required. */
+  parks?: { ids: string[]; from: number; to: number };
   /** pnpm-lock.yaml per commit; others get the base lockfile. */
   lockfiles?: Record<string, string>;
   /** The deploy checkout does not exist yet, so deploy must clone it. */
@@ -67,6 +74,10 @@ interface MachineInit {
   changes?: Record<string, string[]>;
   /** What `git show <sha>:<path>` prints, keyed by `<sha>:<path>`. */
   blobs?: Record<string, string>;
+  /** `writeFile` throws for this path. */
+  writeFails?: string;
+  /** The running serve ignores SIGTERM: `kickstart -k` leaves its pid in place until `launchctl kill SIGKILL`. */
+  wedged?: boolean;
 }
 
 const lockfile = (sqlite: string): string => `lockfileVersion: '9.0'\n\npackages:\n\n  better-sqlite3@${sqlite}:\n    resolution: {integrity: sha512-x}\n\n  zod@4.4.3:\n    resolution: {integrity: sha512-y}\n`;
@@ -103,6 +114,12 @@ function fakeGit(state: { head: string }, init: MachineInit): (args: readonly st
   return (args) => verbs[args[0]!]?.(args) ?? failed(1, `unexpected git ${args.join(" ")}`);
 }
 
+function parkedAnswer(answer: Record<string, unknown>, parks: NonNullable<MachineInit["parks"]>, probe: number): Record<string, unknown> {
+  const ids = probe >= parks.from && probe <= parks.to ? parks.ids : [];
+  const runs = typeof answer.runs === "object" && answer.runs !== null ? answer.runs : {};
+  return { ...answer, runs: { ...runs, recovery_required: ids.length }, recoveryRequired: ids };
+}
+
 /** A launchd whose kickstart loads whatever build sits in products/factory/dist at that moment. */
 function fakeMachine(init: MachineInit = {}) {
   const unit = `<string>${init.unitElsewhere || init.absent ? "/srv/dev-tree" : CHECKOUT}/products/factory/dist/bin.js</string>`;
@@ -119,7 +136,9 @@ function fakeMachine(init: MachineInit = {}) {
   const incidents: DeployIncident[] = [];
   const replaced = () => job.restarted && job.serving !== running;
   const git = fakeGit(state, init);
+  let stuck = init.wedged ?? false;
   const kickstart = (): CommandResult => {
+    if (stuck) return ok();
     const sha = trees.get(FACTORY_DIST)?.replace("build:", "") ?? null;
     job = { pid: job.pid + 1, serving: sha !== null && !init.crashes?.includes(sha) ? sha : null, restarted: true };
     silent = init.silentProbes ?? 0;
@@ -144,6 +163,10 @@ function fakeMachine(init: MachineInit = {}) {
     launchctl: async (args) => {
       if (args[0] !== "print") calls.push(`launchctl ${args.join(" ")}`);
       if (args[0] === "kickstart") return kickstart();
+      if (args[0] === "kill" && args[1] === "SIGKILL") {
+        stuck = false;
+        return kickstart();
+      }
       return ok(`${TARGET} = {\n\tpid = ${job.pid}\n}\n`);
     },
     systemctl: async (args) => {
@@ -168,7 +191,7 @@ function fakeMachine(init: MachineInit = {}) {
     claude: async () => undefined,
     isDirectory: () => false,
     which: (binary) => `/opt/tools/bin/${binary}`,
-    health: async () => (job.serving === null ? null : { ok: true, pid: job.pid, github: "ok", build: { sha: job.serving, behindMain: 0 }, busy: [], runs: { failed: 2 } }),
+    health: async () => (job.serving === null ? null : { ok: true, pid: job.pid, github: "ok", build: { sha: job.serving, behindMain: 0 }, busy: job.restarted ? [] : (init.busy ?? []), runs: { failed: 2 } }),
     healthWithin: async (port) => {
       probes += 1;
       if (silent > 0) {
@@ -179,11 +202,15 @@ function fakeMachine(init: MachineInit = {}) {
       probesSinceStart += 1;
       if (!answer || !replaced()) return answer;
       if (init.misreports) return { ...answer, build: { sha: init.misreports } };
-      return init.failsRunAfter !== undefined && probesSinceStart > init.failsRunAfter ? { ...answer, runs: { failed: 3 } } : answer;
+      const failing = init.failsRunAfter !== undefined && probesSinceStart > init.failsRunAfter ? { ...answer, runs: { failed: 3 } } : answer;
+      return init.parks ? parkedAnswer(failing, init.parks, probesSinceStart) : failing;
     },
     incident: async (incident) => void incidents.push(incident),
     mkdir: () => undefined,
-    writeFile: (path, text) => void files.set(path, text),
+    writeFile: (path, text) => {
+      if (path === init.writeFails) throw new Error(`EACCES: permission denied, open '${path}'`);
+      files.set(path, text);
+    },
     readFile: (path) => files.get(path),
     exists: (path) => files.has(path) || trees.has(path),
     remove: (path) => void files.delete(path),
@@ -205,7 +232,8 @@ function fakeMachine(init: MachineInit = {}) {
   const record = () => parseDeployRecord(files.get(RECORD));
   const mutations = () => calls.filter((call) => /^(git (merge --|reset)|pnpm|launchctl)/.test(call));
   const pause = () => readDeployPause(ports, STATE);
-  return { ports, calls, files, trees, state, record, mutations, incidents, pause, serving: () => job.serving, probes: () => probes, elapsed: () => clock };
+  const holds = () => readDeployHolds(ports, STATE);
+  return { ports, calls, files, trees, state, record, mutations, incidents, pause, holds, serving: () => job.serving, probes: () => probes, elapsed: () => clock };
 }
 
 const REMOTE = "https://example.test/org/titan-platform.git";
@@ -506,6 +534,50 @@ describe("titan-factory service deploy", () => {
     expect(failing.record()).toMatchObject({ outcome: "rolled-back", target: TIP, from: BASE, why: expect.stringContaining(why) });
     expect(failing.record()?.why).not.toContain("did not answer");
     expect(failing.calls.some((call) => call.startsWith("git reset"))).toBe(false);
+    expect(failing.files.get(BUILD_LOG)).toContain(`command: ${why.replace(" failed", "")}\ntarget: ${TIP}\n`);
+    expect(failing.record()?.why).toContain(`full output: ${BUILD_LOG}`);
+  });
+
+  it("keeps the last 200 lines of each stream of a failed build in a log the rollback record names", async () => {
+    const numbered = (name: string, count: number) => Array.from({ length: count }, (_, line) => `${name} line ${line}`).join("\n");
+    const failing = fakeMachine({ buildFails: { code: 1, stdout: numbered("out", 250), stderr: numbered("err", 60) } });
+
+    await deploy(failing);
+
+    const log = failing.files.get(BUILD_LOG) ?? "";
+    expect(log).toContain("command: pnpm --filter @titan-design/factory... build\n");
+    expect(log).toContain(`target: ${TIP}\n`);
+    expect(log).toContain("exit 1\nstderr:\nerr line 0\n");
+    expect(log).toContain("err line 59\nstdout:\nout line 50\n");
+    expect(log).toContain("out line 249");
+    expect(log).not.toContain("out line 49\n");
+    const why = failing.record()?.why ?? "";
+    expect(why).toContain("stderr:\nerr line 40\n");
+    expect(why).not.toContain("err line 39\n");
+    expect(why).toContain(`full output: ${BUILD_LOG}`);
+  });
+
+  it("redacts credential shapes in the build log, even outside the record's tail", async () => {
+    const token = `ghp_${"a".repeat(36)}`;
+    const stderr = Array.from({ length: 60 }, (_, line) => (line === 5 ? `auth with ${token}` : `err line ${line}`)).join("\n");
+    const failing = fakeMachine({ buildFails: { code: 1, stdout: "", stderr } });
+
+    await deploy(failing);
+
+    const log = failing.files.get(BUILD_LOG) ?? "";
+    expect(log).toContain("auth with [redacted]");
+    expect(log).not.toContain(token);
+  });
+
+  it("still restores and records the rollback when the build log cannot be written", async () => {
+    const failing = fakeMachine({ buildFails: true, writeFails: BUILD_LOG });
+
+    const result = await deploy(failing);
+
+    expect(result.code).toBe(1);
+    expect(failing.trees.get(FACTORY_DIST)).toBe(`build:${BASE}`);
+    expect(failing.files.has(BUILD_LOG)).toBe(false);
+    expect(failing.record()).toMatchObject({ outcome: "rolled-back", target: TIP, why: expect.stringContaining("full output not written: EACCES") });
   });
 
   it("records the exit code and the stdout tail when a build fails with nothing on stderr", async () => {
@@ -534,6 +606,23 @@ describe("titan-factory service deploy", () => {
     expect(why).not.toContain(token);
     expect(why).not.toContain("line 0 ");
     expect(why.length).toBeLessThan(2_200);
+  });
+
+  it("fences a serve that ignores SIGTERM through launchctl kill and lands the target with no rollback", async () => {
+    const machine = fakeMachine({ wedged: true });
+
+    const { code, out, err } = await deploy(machine);
+
+    expect(err).toBe("");
+    expect(code).toBe(0);
+    expect(out).toContain(`fenced pid ${OLD_PID} (${SERVICE_LABEL} MainPID, alive 45 s after SIGTERM): SIGKILL via launchctl kill`);
+    expect(machine.mutations().filter((call) => call.startsWith("launchctl"))).toEqual([`launchctl kickstart -k ${TARGET}`, `launchctl kill SIGKILL ${TARGET}`]);
+    expect(machine.serving()).toBe(TIP);
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+    expect(machine.pause()).toEqual({ paused: false });
+    expect(out).toContain(`deployed ${TIP}`);
+    expect(out).not.toContain("rolled-back");
+    expect(machine.elapsed()).toBeGreaterThanOrEqual(45_000);
   });
 
   it("restores the old build when the new one never answers /health, and confirms the old sha answers", async () => {
@@ -619,6 +708,71 @@ describe("service deploy rollback pause", () => {
     expect(machine.incidents.map((incident) => incident.kind)).toEqual(["rolled-back"]);
   });
 
+  describe("after a drain that timed out on runs parked behind a stalled train head", () => {
+    const parked = ["p1", "p2", "p3", "p4", "p5", "p6"];
+    const busy = parked.map((runId) => ({ runId, step: "merge:0", phase: "merging" }));
+
+    it("restarts and keeps the new build when those runs read recovery_required for a few ticks and then recover cleanly", async () => {
+      const machine = fakeMachine({ busy, parks: { ids: parked, from: 2, to: 4 } });
+
+      const { code, out } = await deploy(machine);
+
+      expect(out).toContain("the drain timed out; restarting with 6 busy run(s)");
+      expect(code).toBe(0);
+      expect(machine.serving()).toBe(TIP);
+      expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+      expect(machine.pause()).toEqual({ paused: false });
+    });
+
+    it("keeps the new build when the runs busy at the restart still need recovery at the window's end", async () => {
+      const machine = fakeMachine({ busy, parks: { ids: parked, from: 2, to: Infinity } });
+
+      const { code } = await deploy(machine);
+
+      expect(code).toBe(0);
+      expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+    });
+
+    it("rolls back when a run that was idle at the restart needs recovery at the window's end", async () => {
+      const machine = fakeMachine({ busy, parks: { ids: [...parked, "idle"], from: 2, to: Infinity } });
+
+      const { code } = await deploy(machine);
+
+      expect(code).toBe(1);
+      expect(machine.serving()).toBe(BASE);
+      expect(machine.record()).toMatchObject({ outcome: "rolled-back", why: expect.stringContaining("1 more run(s) failed or need recovery during the 120 s watch") });
+    });
+
+    it("rolls back when a run fails inside the window", async () => {
+      const machine = fakeMachine({ busy, failsRunAfter: 3 });
+
+      const { code } = await deploy(machine);
+
+      expect(code).toBe(1);
+      expect(machine.record()).toMatchObject({ outcome: "rolled-back", why: expect.stringContaining("1 more run(s) failed or need recovery during the 120 s watch") });
+    });
+  });
+
+  it("records the watch window's sha and end as the window opens", async () => {
+    const machine = fakeMachine();
+
+    await deploy(machine);
+
+    const intent: unknown = JSON.parse(machine.files.get(deployWindowPath(STATE)) ?? "null");
+    const closed = (windowEnd: number): boolean => windowEnd >= 120_000 && windowEnd <= machine.elapsed();
+    expect(intent).toEqual({ sha: TIP, windowEnd: expect.toSatisfy(closed) });
+  });
+
+  it("deploys when the watch window cannot be recorded", async () => {
+    const machine = fakeMachine({ writeFails: deployWindowPath(STATE) });
+
+    const { code, err } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(err).toContain("warning: the watch window could not be recorded");
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+  });
+
   it("rolls back and pauses when serve stops answering inside the watch window", async () => {
     const machine = fakeMachine();
     const health = machine.ports.healthWithin;
@@ -644,6 +798,36 @@ describe("service deploy rollback pause", () => {
     expect(machine.serving()).toBe(BASE);
     expect(machine.record()).toMatchObject({ outcome: "rolled-back", why: expect.stringContaining("serve stopped answering /health (3 probes in a row)") });
     expect(machine.pause()).toMatchObject({ paused: true, pause: { rollback: "verified" } });
+  });
+
+  it("deploys when the watch reads are unavailable for a while and then return", async () => {
+    const machine = fakeMachine();
+    const health = machine.ports.healthWithin;
+    let answered = 0;
+    machine.ports.healthWithin = async (port, timeoutMs) => (machine.serving() === TIP && ++answered >= 3 && answered <= 8 ? UNAVAILABLE : health(port, timeoutMs));
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.serving()).toBe(TIP);
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+    expect(machine.pause()).toEqual({ paused: false });
+  });
+
+  it("holds with an alarm, and does not roll back, when reads stay unavailable past the cap", async () => {
+    const machine = fakeMachine();
+    const health = machine.ports.healthWithin;
+    let answered = 0;
+    machine.ports.healthWithin = async (port, timeoutMs) => (machine.serving() === TIP && ++answered >= 3 ? UNAVAILABLE : health(port, timeoutMs));
+
+    const { code, err } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(machine.serving()).toBe(TIP);
+    expect(err).toContain("ALERT");
+    expect(machine.record()).toMatchObject({ outcome: "held", target: TIP });
+    expect(machine.pause()).toEqual({ paused: false });
+    expect(machine.files.has(deployHoldPath(STATE))).toBe(true);
   });
 
   it("deploys when a miss near the window's end is followed by an answer", async () => {
@@ -777,6 +961,37 @@ describe("service deploy rollback pause", () => {
     expect(machine.pause()).toEqual({ paused: false });
     expect(code).toBe(0);
   });
+  it("refuses with the manual hold's reason and mutates nothing while deploy-hold.json stands", async () => {
+    const hold = { heldAt: "2026-10-11T17:35:00.000Z", reason: "owner hold for migration" };
+    const machine = fakeMachine({ files: { [deployHoldPath(STATE)]: JSON.stringify(hold) } });
+
+    const { code, err } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(err).toContain("deploy held: deploys are held by hand since 2026-10-11T17:35:00.000Z: owner hold for migration");
+    expect(machine.mutations()).toEqual([]);
+    expect(machine.files.has(`${STATE}/deploy.lock`)).toBe(false);
+  });
+
+  it("stays held when the manual hold file does not parse", async () => {
+    const machine = fakeMachine({ files: { [deployHoldPath(STATE)]: "{\"heldAt\": " } });
+
+    const { code, err } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(err).toContain("deploy-hold.json exists but does not parse");
+    expect(machine.mutations()).toEqual([]);
+  });
+
+  it("keeps the manual hold while a live deployer holds the lock", () => {
+    const hold = { heldAt: "2026-10-11T17:35:00.000Z", reason: "owner hold" };
+    const machine = fakeMachine({ files: { [deployHoldPath(STATE)]: JSON.stringify(hold), [`${STATE}/deploy.lock`]: "777" }, alive: [777] });
+
+    const refused = clearDeployPause(machine.ports, STATE);
+
+    expect(refused).toContain("another deploy is running");
+    expect(machine.holds()).toMatchObject({ held: true, manual: { set: true, hold } });
+  });
 });
 
 describe("deploy lock", () => {
@@ -879,6 +1094,97 @@ describe("titan-factory service deploy verb", () => {
     expect(out).toContain(`deploys are paused since ${pause.pausedAt}: ${CORE} over ${BASE} rolled back (rollback failed)`);
     expect(out).toContain("cleared the deploy pause");
     expect(machine.pause()).toEqual({ paused: false });
+  });
+
+  async function pauseCli(argv: string[], machine: ReturnType<typeof fakeMachine>): Promise<{ code: number; out: string; err: string }> {
+    let out = "";
+    let err = "";
+    const io = { stdout: (t: string) => void (out += t), stderr: (t: string) => void (err += t), env: { XDG_STATE_HOME: "/xdg/state" } };
+    const code = await runCli(["service", "pause", ...argv], io, { workflows: [], routes: [], deploy: machine.ports });
+    return { code, out, err };
+  }
+
+  const failurePause = { pausedAt: "2026-10-02T00:00:00.000Z", target: CORE, from: BASE, why: "watch failed", rollback: "verified" };
+
+  it("writes a manual hold with service pause --set that service pause shows with its reason", async () => {
+    const machine = fakeMachine();
+
+    const set = await pauseCli(["--set", "owner hold for migration"], machine);
+    const shown = await pauseCli([], machine);
+
+    expect([set.code, shown.code]).toEqual([0, 0]);
+    expect(machine.files.has(deployHoldPath(STATE))).toBe(true);
+    expect(shown.out).toMatch(/deploys are held by hand since \S+: owner hold for migration/);
+  });
+
+  it("keeps a failure pause's reason and the manual reason visible in service pause and in the deploy refusal", async () => {
+    const machine = fakeMachine({ files: { [deployPausePath(STATE)]: JSON.stringify(failurePause) } });
+
+    await pauseCli(["--set", "x marks the hold"], machine);
+    const shown = await pauseCli([], machine);
+    const refused = await deploy(machine);
+
+    for (const text of [shown.out, refused.err]) {
+      expect(text).toContain("watch failed");
+      expect(text).toContain("x marks the hold");
+    }
+    expect(refused.code).toBe(1);
+    expect(machine.mutations()).toEqual([]);
+  });
+
+  it("lifts both holds with service pause --clear, naming each, and the next deploy runs", async () => {
+    const hold = { heldAt: "2026-10-11T17:35:00.000Z", reason: "owner hold" };
+    const machine = fakeMachine({ files: { [deployPausePath(STATE)]: JSON.stringify(failurePause), [deployHoldPath(STATE)]: JSON.stringify(hold) } });
+
+    const cleared = await pauseCli(["--clear"], machine);
+    const { code } = await deploy(machine);
+
+    expect(cleared.code).toBe(0);
+    expect(cleared.out).toContain("cleared the deploy pause");
+    expect(cleared.out).toContain("cleared the manual hold (deploys are held by hand since 2026-10-11T17:35:00.000Z: owner hold)");
+    expect(machine.holds().held).toBe(false);
+    expect(code).toBe(0);
+  });
+
+  it("refuses service pause --clear while a live deployer holds the lock and keeps the manual hold", async () => {
+    const hold = { heldAt: "2026-10-11T17:35:00.000Z", reason: "owner hold" };
+    const machine = fakeMachine({ files: { [deployHoldPath(STATE)]: JSON.stringify(hold), [`${STATE}/deploy.lock`]: "777" }, alive: [777] });
+
+    const { code, err } = await pauseCli(["--clear"], machine);
+
+    expect(code).toBe(1);
+    expect(err).toContain("another deploy is running");
+    expect(machine.holds().manual).toEqual({ set: true, hold });
+  });
+
+  it("sets a hold while a deployer runs and says it applies from the next deploy", async () => {
+    const machine = fakeMachine({ files: { [`${STATE}/deploy.lock`]: "777" }, alive: [777] });
+
+    const { code, out } = await pauseCli(["--set", "hold the next one"], machine);
+
+    expect(code).toBe(0);
+    expect(machine.holds().manual).toMatchObject({ set: true, hold: { reason: "hold the next one" } });
+    expect(out).toContain("a deploy is running now (pid 777); the hold applies from the next deploy");
+    expect(machine.files.get(`${STATE}/deploy.lock`)).toBe("777");
+  });
+
+  it("replaces an earlier manual hold and names the old reason", async () => {
+    const machine = fakeMachine();
+
+    await pauseCli(["--set", "first"], machine);
+    const { out } = await pauseCli(["--set", "second"], machine);
+
+    expect(out).toContain("replaced the manual hold: first");
+    expect(machine.holds().manual).toMatchObject({ hold: { reason: "second" } });
+  });
+
+  it.each([[["--set", "   "]], [["--set", "x", "--clear"]]])("rejects service pause %j and writes nothing", async (argv) => {
+    const machine = fakeMachine();
+
+    const { code } = await pauseCli(argv, machine);
+
+    expect(code).toBe(1);
+    expect(machine.holds().held).toBe(false);
   });
 
   it("rejects an --expect value that is not a hex sha", async () => {

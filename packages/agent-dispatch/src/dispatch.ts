@@ -70,6 +70,7 @@ import {
   type SafeExecResult,
 } from "./exec.js";
 import { assertInstalledHeadless } from "./profile-guard.js";
+import { timeAgentChatCall } from "./call-timing.js";
 
 /** Each class carries a fixed `name`, so a caller can record which kind of failure it was without its message. */
 export class DispatchError extends Error {
@@ -109,9 +110,28 @@ export function isBrokerUnavailable(result: SafeExecResult): boolean {
   );
 }
 
-/** Every agent-chat call runs with this; autostart would leave a broker owned by the caller. */
+/**
+ * The CLI's own message when the broker misses a reply window (BrokerClient.request).
+ * The frame may have landed, so it is a timeout, not a refusal. stderr only, whole line.
+ */
+const BROKER_REPLY_TIMEOUT_LINE = /^broker did not answer [a-z_]+_result$/m;
+
+export function isBrokerReplyTimeout(result: SafeExecResult): boolean {
+  return result.status !== 0 && BROKER_REPLY_TIMEOUT_LINE.test(result.stderr);
+}
+
+/**
+ * Every agent-chat call runs with this; autostart would leave a broker owned by the caller.
+ * A non-empty `AGENT_CHAT_HOME` is forwarded so the CLI reaches the broker whose
+ * profiles `installedProfilesDir()` just checked, not the default one.
+ */
 export function agentChatEnv(): Record<string, string> {
-  return { ...minimalEnv(), AGENT_CHAT_NO_AUTOSTART: "1" };
+  const agentChatHome = process.env.AGENT_CHAT_HOME;
+  return {
+    ...minimalEnv(),
+    AGENT_CHAT_NO_AUTOSTART: "1",
+    ...(agentChatHome ? { AGENT_CHAT_HOME: agentChatHome } : {}),
+  };
 }
 
 export interface DispatchRequest {
@@ -200,13 +220,9 @@ export async function dispatchToAgentChat(
   let result;
   try {
     const bin = resolveBinaryPath(req.agentChatBinPath, "agent-chat");
-    result = await execSafeAsync(
-      bin,
-      buildSpawnArgs(req),
-      agentChatEnv(),
-      timeoutMs,
-      req.brief,
-      req.cwd,
+    const args = buildSpawnArgs(req);
+    result = await timeAgentChatCall(args, () =>
+      execSafeAsync(bin, args, agentChatEnv(), timeoutMs, req.brief, req.cwd),
     );
   } catch (err) {
     if (err instanceof ExecTimeoutError) throw new DispatchTimeoutError(err.message);
@@ -227,6 +243,11 @@ export async function dispatchToAgentChat(
     // friendlier message would hide which of the supervisor's several preflight
     // gates actually refused.
     if (isBrokerUnavailable(result)) throw brokerUnavailable("agent spawn", result);
+    if (isBrokerReplyTimeout(result)) {
+      throw new DispatchTimeoutError(
+        `agent-chat refused the spawn: ${result.stderr.trim()}`,
+      );
+    }
     const reason = result.stdout.trim() || result.stderr.trim();
     throw new DispatchError(
       reason === ""

@@ -15,7 +15,7 @@ import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep, step } from "../workflows/land.js";
 import { MergeResultResult } from "../workflows/land-steps.js";
-import { SHEPHERD_WORKFLOW } from "./commands.js";
+import { SHEPHERD_WORKFLOW } from "./services.js";
 import { CLOSED_ELSEWHERE, DELETED_ELSEWHERE, LANDED_ELSEWHERE, endRunsGoneElsewhere, mergedByShepherd } from "./gone-elsewhere.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { authorityGate } from "./head-moved.js";
@@ -26,6 +26,8 @@ import { ORPHANED, resyncShepherd, supersedeTransientGates, transientOnlyConditi
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
 import { shepherdStoreRef } from "./store.js";
+import { supersedeStaleReviews } from "./stale-reviews.js";
+import { RESYNC_READ_TIMEOUT_MS } from "./bounded.js";
 import { TEST_BRIEF } from "../test-support/brief.js";
 
 const T0 = Date.parse("2026-01-01T00:00:00.000Z");
@@ -37,6 +39,7 @@ const AWAIT_VERDICT = "sh-await-verdict";
 const dirs: string[] = [];
 const cleanups: (() => Promise<void> | void)[] = [];
 afterEach(async () => {
+  vi.useRealTimers();
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
 });
@@ -1057,9 +1060,44 @@ describe("resyncShepherd on an active review step", () => {
     expect(report.supersededReviews).toEqual([]);
     expect(activeIn(host, moved)).toEqual([`sh-review:${HEAD}`]);
   });
+
+  it.each([
+    ["live", false],
+    ["dry run", true],
+  ])("a review step that finishes while its head read is in flight is not superseded (%s)", async (_case, dryRun) => {
+    const { w, moved } = await twoReviews();
+    const routes = w.freshRoutes();
+    const host = restarted(w, routes);
+    const services = routes.shepherd!;
+    const getPr: typeof services.port.getPr = async (repo, pr) => {
+      if (pr === 1) host.runtime.completeStep(moved, `sh-review:${HEAD}`, JSON.stringify({ result: { kind: "none", reason: "answered by another host" } }));
+      return services.port.getPr(repo, pr);
+    };
+
+    expect(await supersedeStaleReviews(host, { ...services, port: { ...services.port, getPr } }, { dryRun })).toEqual([]);
+    expect(activeIn(host, moved)).toEqual([]);
+  });
 });
 
 describe("resyncShepherd over many runs", () => {
+  it("a PR read that never answers holds its run and the other runs in the phase still end", async () => {
+    const w = world();
+    const runs = [await gatedRun(w, 1), await gatedRun(w, 2)];
+    [1, 2].forEach((pr) => merge(w.fake, pr));
+    const services = w.routes.shepherd!;
+    const hanging = { ...services, port: { ...services.port, getPr: (repo: string, pr: number) => (pr === 1 ? new Promise<never>(() => undefined) : services.port.getPr(repo, pr)) } };
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let settled = false;
+
+    const resyncing = resyncShepherd(w.seed, hanging).finally(() => (settled = true));
+    for (let phase = 0; phase < 4; phase++) await vi.advanceTimersByTimeAsync(RESYNC_READ_TIMEOUT_MS);
+
+    expect(settled).toBe(true);
+    const report = await resyncing;
+    expect(report.held).toEqual([runs[0]]);
+    expect(report.ended).toEqual([{ runId: runs[1], reason: `${LANDED_ELSEWHERE}${REPO}#2 was merged outside Shepherd` }]);
+  });
+
   /** Holds every PR read until the test releases them, counting how many wait at once. */
   function heldReads(services: NonNullable<FactoryRoutes["shepherd"]>): { services: NonNullable<FactoryRoutes["shepherd"]>; peak: () => number; release: () => void } {
     let release!: () => void;

@@ -1,1 +1,1 @@
-export const EXIT = { OK: 0, FAILURE: 1, USAGE: 2, UNAVAILABLE: 69 } as const;
+export const EXIT = { OK: 0, FAILURE: 1, USAGE: 2, UNAVAILABLE: 69, TEMPFAIL: 75 } as const;

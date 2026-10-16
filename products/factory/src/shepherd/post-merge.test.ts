@@ -6,6 +6,7 @@ import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import type { CleanupPorts } from "./cleanup.js";
 import { freezeStoreRef } from "./freeze.js";
+import { MainCiReads } from "./main-watch.js";
 import type { MainRedWiring } from "./main-red.js";
 import { readMainCi, SH_MAIN_CI_TIMEOUT_MS, type Classified, type MainCiInput } from "./post-merge.js";
 import { shepherdPrWorkflow } from "./pr.js";
@@ -142,6 +143,24 @@ describe("readMainCi", () => {
     it("waits out the deadline when the step input names no PR to read the base branch from", async () => {
       expect((await read(superseded("success"))).verdict).toBe("none");
     });
+
+    it("follows the newer push on the base the merge step recorded, reading no PR", async () => {
+      const fake = superseded("success");
+
+      const result = await read(fake, clockedTiming(), { ...input, pr: 1, baseRef: "main" });
+
+      expect(result).toMatchObject({ verdict: "green", readSha: NEWER });
+      expect(fake.calls).not.toContain("getPr");
+    });
+
+    it("reads the PR's base at most once in a run when the step input names none", async () => {
+      const fake = superseded("success");
+      fake.refs.set("main", MERGE);
+
+      await read(fake, clockedTiming(), { ...input, pr: 1 });
+
+      expect(fake.calls.filter((call) => call === "getPr")).toHaveLength(1);
+    });
   });
 
   describe("a run still queued at the wait limit", () => {
@@ -232,8 +251,11 @@ describe("readMainCi", () => {
       expect(await readLater(world)).toMatchObject({ verdict: "green", readSha: TIP, warning: "not required, so not blocking: lint" });
     });
 
-    it("acknowledges a merge sha with no run yet on a later commit green on every required context", async () => {
-      expect(await readLater(laterMain([], [...requiredGreen, failing("lint")]))).toMatchObject({ verdict: "green", acknowledgedSha: TIP });
+    it("reads a merge sha with no run as superseded by the later commit, green on every required context", async () => {
+      const result = await readLater(laterMain([], [...requiredGreen, failing("lint")]));
+
+      expect(result).toMatchObject({ verdict: "green", readSha: TIP, warning: "not required, so not blocking: lint" });
+      expect(result.acknowledgedSha).toBeUndefined();
     });
 
     it("is green on the merge sha itself, with a warning, when it is red only on a check that is not required", async () => {
@@ -330,6 +352,47 @@ describe("readMainCi", () => {
 
 type MisroutedTable = Omit<typeof MAIN_CI_ROUTES, "cancelled"> & { readonly cancelled: "read-newer-run" };
 
+/** Releases every sleeper together once all `count` runs are asleep, then advances the shared clock by one poll. */
+function lockstep(count: number) {
+  let clock = 0;
+  let polls = 0;
+  let asleep: (() => void)[] = [];
+  const sleep = (ms: number) =>
+    new Promise<void>((wake) => {
+      asleep.push(wake);
+      if (asleep.length < count) return;
+      clock += ms;
+      polls += 1;
+      const woken = asleep;
+      asleep = [];
+      woken.forEach((resume) => resume());
+    });
+  return { timing: { now: () => clock, sleep, pollMs: 30_000, timeoutMs: SH_MAIN_CI_TIMEOUT_MS }, polls: () => polls };
+}
+
+describe("post-merge runs polling one repo", () => {
+  it("make one check-run read per poll between them, all reading the same tip", async () => {
+    const fake = fakeGitHub();
+    const running = { ...successRun("validate", 1), status: "in_progress", conclusion: null };
+    fake.setRuns(MERGE, [running]);
+    const { timing, polls } = lockstep(3);
+    const shared = new MainCiReads(githubPort(fake.wire), timing.now, timing.pollMs);
+    const port = shared.over(githubPort(fake.wire));
+    const signal = new AbortController().signal;
+    const finishAfter = 3;
+    const original = timing.sleep;
+    const sleep = async (ms: number) => {
+      await original(ms);
+      if (polls() === finishAfter) fake.setRuns(MERGE, [successRun("validate", 1), successRun("dag-check", 2)]);
+    };
+
+    const results = await Promise.all([1, 2, 3].map((pr) => readMainCi(port, { ...input, pr, baseRef: "main" }, { ...timing, sleep }, signal)));
+
+    expect(results.map((result) => result.verdict)).toEqual(["green", "green", "green"]);
+    expect(fake.calls.filter((call) => call === "listCheckRuns")).toHaveLength(finishAfter + 1);
+  });
+});
+
 describe("a classified main CI read", () => {
   it("carries a newer sha exactly when the table routes it to read-newer-run", () => {
     const superseded: Classified = { read: "cancelled-superseded", newer: MERGE };
@@ -402,11 +465,33 @@ describe("shepherd-pr after land", () => {
     expect(w.fake.refs.has(w.fake.pr(1).headRef)).toBe(false);
   });
 
+  it("reads the PR no more after its own merge: main CI and cleanup take the base, head ref and merge sha from the merge", async () => {
+    const notes: string[] = [];
+    const cleanup: CleanupPorts = {
+      tasks: { state: async () => "open", slicing: async () => ({ tags: [], notes: "", plan: undefined }), done: async () => undefined, appendNote: async (_initiative, _id, line) => void notes.push(line) },
+      agents: { invalidate: () => undefined, roster: async () => [], retire: async () => undefined },
+    };
+    const w = shepherdWorld(() => [successRun("validate", 5)], cleanup);
+    w.fake.pr(1).headRepo = REPO;
+    w.fake.refs.set(w.fake.pr(1).headRef, H1);
+    const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
+    w.store.get().register({ repo: REPO, pr: 1, runId, task: "demo/TP-1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
+
+    await w.host.runtime.wait(runId);
+
+    const afterMerge = w.fake.calls.slice(w.fake.calls.lastIndexOf("merge") + 1);
+    expect(afterMerge).not.toContain("getPr");
+    expect(w.fake.refs.has(w.fake.pr(1).headRef)).toBe(false);
+    expect(notes).toEqual([`closed by Shepherd: ${REPO}#1 at ${w.fake.pr(1).mergeSha} merged`]);
+  });
+
   it("closes the registration's task and retires its implementer through the wired cleanup ports", async () => {
     const closed: string[] = [];
     const retired: string[] = [];
     const cleanup: CleanupPorts = {
-      tasks: { state: async () => "open", done: async (initiative, id) => void closed.push(`${initiative}/${id}`), appendNote: async () => undefined },
+      tasks: { state: async () => "open", slicing: async () => ({ tags: [], notes: "", plan: undefined }), done: async (initiative, id) => void closed.push(`${initiative}/${id}`), appendNote: async () => undefined },
       agents: { invalidate: () => undefined, roster: async () => (retired.includes("impl-a") ? [] : [{ name: "impl-a", presence: "exited", status: "finished" }]), retire: async (name) => void retired.push(name) },
     };
     const w = shepherdWorld(() => [successRun("validate", 5)], cleanup);
@@ -683,6 +768,39 @@ describe("shepherd-pr on a red main", () => {
 
     expect(frozenAtGate).toBe(true);
     expect(w.freezes().isFrozen(REPO)).toBe(false);
+  });
+
+  it("spawns no fixer and opens no main-frozen gate when a seat marks its fix PR before the spawn step", async () => {
+    const ports = mainRedPorts();
+    let mark = (): void => undefined;
+    const tasks = ports.mainRed.tasks!;
+    const mainRed = { ...ports.mainRed, tasks: { ...tasks, add: async (...args: Parameters<typeof tasks.add>) => (mark(), tasks.add(...args)) } };
+    const w = shepherdWorld(() => [successRun("validate", 5, undefined, "failure")], undefined, mainRed);
+    mark = () => void w.freezes().markFixPr(REPO, 1, 1, "coord-a");
+    const runId = await registeredToMerge(w, "demo/TP-1", "impl-a");
+
+    await w.host.runtime.wait(runId);
+
+    expect(ports.spawned).toEqual([]);
+    expect(stepIds(w, runId)).not.toContain("main-frozen");
+    expect(w.host.gates.listPending()).toEqual([]);
+    expect(w.freezes().get(REPO)).toMatchObject({ fixTask: "demo/FX-1", fixer: null, fixPr: 1 });
+  });
+
+  it("opens main-red-again naming the marked fix PR on a red while it is marked, and spawns no fixer", async () => {
+    const ports = mainRedPorts();
+    const w = shepherdWorld(() => [successRun("validate", 5, undefined, "failure")], undefined, ports.mainRed);
+    const freezes = w.freezes();
+    freezes.freeze(REPO, EARLIER_RED);
+    freezes.setFixTask(REPO, 1, "demo/FX-1");
+    freezes.markFixPr(REPO, 1, 1, "coord-a");
+    const runId = await registeredToMerge(w, "demo/TD-473", "coord-a");
+
+    await gateOpened(w.host, gateId(runId, "main-red-again"));
+
+    expect(w.host.gates.get(gateId(runId, "main-red-again"))?.prompt).toContain("already frozen with fix PR #1 on task demo/FX-1");
+    expect(ports.added).toEqual([]);
+    expect(ports.spawned).toEqual([]);
   });
 
   it("opens no gate when the fixer's green merge thaws the repo", async () => {

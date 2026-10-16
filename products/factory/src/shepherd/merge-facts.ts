@@ -1,14 +1,16 @@
-import { compileGlobs } from "@titan-design/fix-proof";
 import { DEFAULT_TABLE, evaluate, type AgentIdentity, type CarryFact, type CheckRunFact, type MergeFacts } from "@titan-design/authority";
-import { FileListTruncatedError, GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PrFile, type PullRequest, type RepoSlug } from "@titan-design/github";
-import type { SourceTextLocator } from "@titan-design/session-read";
+import { GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug } from "@titan-design/github";
+import type { CiPolicy, SourceTextLocator } from "@titan-design/session-read";
 import { readRequiredChecks, statusOf } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import { errorClass } from "./error-class.js";
-import { SKILL_REASON_PREFIX, VISUAL_REASON_PREFIX, evidenceComment, evidenceMarker } from "./evidence-comment.js";
+import { grantWithheldField, withGrantWithheld, type GrantWithheldField } from "./grant-withheld.js";
+import { CI_POLICY_MALFORMED_REASON, CI_POLICY_WEAKENED_PREFIX, GITHUB_PATH_REASON_PREFIX, SKILL_REASON_PREFIX, VISUAL_REASON_PREFIX, evidenceComment, evidenceMarker } from "./evidence-comment.js";
+import { pinnedPaths } from "./pr-changed-paths.js";
 import { REVIEW_CHECK_NAME } from "./publish-review.js";
 import type { ShepherdStoreRef } from "./store.js";
 import { skillPathsIn } from "./skill-paths.js";
+import { baselineCheckGreen, changedBaselines, shownPaths, visualClearance, visualMatches, type VisualBaselines, type VisualPolicy } from "./visual-gate.js";
 import { remergeFact, type CarryRule, type RemergeResult } from "./remerge-carry.js";
 import type { CarryResult } from "./tree-carry.js";
 
@@ -48,7 +50,7 @@ export type IsFrozen = (repo: RepoSlug, pr: number) => Promise<boolean>;
 /** A stand-in until TP-523 adds the freeze store: no repo can be frozen before it exists. */
 export const noFreezeStoreUntilTp523: IsFrozen = async () => false;
 
-export interface MergeEvidenceInput {
+export interface MergeEvidenceInput extends GrantWithheldField {
   runId: string;
   repo: RepoSlug;
   pr: number;
@@ -63,6 +65,12 @@ export interface MergeEvidenceInput {
   carry?: { fromHead: string; head: string; result: CarryResult; rule?: CarryRule; remerge?: RemergeResult };
   /** The run policy's visual globs, so the evidence comment records the same decision `decide` reaches. */
   visualPaths?: string[];
+  /** The seat's baseline check and files, so a visual head that changes no baseline can clear on that check. */
+  visualBaselines?: VisualBaselines;
+  /** The reviewer's CI-policy line on the MERGE; absent gates a `.github/` change. */
+  ciPolicy?: CiPolicy;
+  /** The head's unverified fix-proof standing and read reason; recorded, never gated on (decision 303). */
+  proofUnverified?: string;
 }
 
 export interface EvidenceCheckRun {
@@ -88,10 +96,12 @@ export interface EvidenceRecord {
   mergeableState: string;
   /** Set when the verdict was reviewed at another head and carried here: both heads and both trees. */
   carry?: CarryFact;
+  ciPolicy?: CiPolicy;
+  proofUnverified?: string;
 }
 
 /** The facts observed at one head, and the record of what they decided there. */
-export interface MergeEvidence {
+export interface MergeEvidence extends GrantWithheldField {
   head: string;
   merge: MergeFacts;
   record: EvidenceRecord;
@@ -102,10 +112,12 @@ export interface MergeEvidence {
   unreadFacts?: string[];
   /** Why the PR's changed files could not be read; set means the merge gates. */
   changedFilesUnread?: string;
+  /** The reviewer's CI-policy line, kept beside the facts because authority reads no reviewer text. */
+  ciPolicy?: CiPolicy;
 }
 
 /** Just what `decideAutoMerge` reads, so the evidence step can decide before its record exists. */
-export interface DecidableEvidence {
+export interface DecidableEvidence extends GrantWithheldField {
   head: string;
   merge: MergeFacts;
   record: Pick<EvidenceRecord, "repo" | "pr">;
@@ -113,10 +125,11 @@ export interface DecidableEvidence {
   requiredChecksUnknown?: string;
   unreadFacts?: string[];
   changedFilesUnread?: string;
+  ciPolicy?: CiPolicy;
 }
 
 /** Every row the merge guard gates on; the owner section words each one (why-asked.ts), as do the evidence comment and the decision class. */
-export const MERGE_GUARD_ROWS = ["no-facts", "head-mismatch", "files-unread", "skill-path", "visual-path", "required-checks-unknown", "merge-state-unsettled"] as const;
+export const MERGE_GUARD_ROWS = ["no-facts", "head-mismatch", "files-unread", "skill-path", "visual-path", "required-checks-unknown", "merge-state-unsettled", "github-path", "ci-policy-weakened", "ci-policy-malformed"] as const;
 export type MergeGuardRow = (typeof MERGE_GUARD_ROWS)[number];
 
 function guardRule(rowId: MergeGuardRow): PolicyRule {
@@ -150,40 +163,37 @@ function withUnreadFacts(decision: GateDecision, evidence: DecidableEvidence | u
 /**
  * The pure decision both the evidence step and `decide` use; only MRG-AU-RV at this exact head, MRG-AU-RC for a
  * tree-equal carry of the verdict to it, or MRG-AU-RM for a remerge-clean one, allows. A head that changes a repo skill
- * gates under any policy, and under `visualPaths` so does a head whose changed files match one.
+ * gates under any policy, and under `visualPaths` so does a head whose changed files match one, unless `visualBaselines`
+ * shows no baseline changed and its check passed there.
  */
-export function decideAutoMerge(headSha: string, evidence: DecidableEvidence | undefined, visualPaths?: readonly string[]): GateDecision {
-  return withUnreadFacts(decideOnFacts(headSha, evidence, visualPaths), evidence);
+export function decideAutoMerge(headSha: string, evidence: DecidableEvidence | undefined, visualPaths?: readonly string[], visualBaselines?: VisualBaselines): GateDecision {
+  return withUnreadFacts(decideOnFacts(headSha, evidence, { visualPaths, visualBaselines }), evidence);
 }
 
-function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined, visualPaths: readonly string[] | undefined): GateDecision {
+function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined, visual: VisualPolicy): GateDecision {
   if (!evidence) return { outcome: "gate", rule: guardRule("no-facts"), reason: `no merge facts were collected at ${headSha}` };
   if (evidence.head !== headSha || evidence.merge.head !== headSha) {
     return { outcome: "gate", rule: guardRule("head-mismatch"), reason: `merge facts were collected at ${evidence.head}, not ${headSha}` };
   }
-  const pathGate = changedFilesGate(evidence, visualPaths);
+  const pathGate = changedFilesGate(evidence, visual);
   if (pathGate) return pathGate;
+  const policyGate = ciPolicyGate(evidence);
+  if (policyGate) return policyGate;
   if (evidence.requiredChecksUnknown !== undefined) return { outcome: "gate", rule: guardRule("required-checks-unknown"), reason: evidence.requiredChecksUnknown };
   if (evidence.mergeableState === "unknown") return { outcome: "gate", rule: guardRule(UNSETTLED_ROW), reason: `mergeable_state unknown after ${SETTLE_MAX_READS} reads` };
   const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject: { repo: evidence.record.repo, pr: String(evidence.record.pr) }, facts: { merge: evidence.merge } });
   if (decision.verdict === "allow" && decision.ruleId !== null && AUTO_MERGE_RULES.includes(decision.ruleId)) {
-    return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}` };
+    return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}${visualClearance(evidence.merge.changedPaths, evidence.head, visual)}` };
   }
   const reason = decision.verdict === "allow" ? `${decision.ruleId} allows, but only ${AUTO_MERGE_RULES.join(" and ")} merge without the owner` : decision.reason;
-  return { outcome: "gate", rule: authorityRule(decision.ruleId), reason };
-}
-
-const SHOWN_VISUAL_PATHS = 10;
-
-function shownPaths(paths: readonly string[]): string {
-  return paths.slice(0, SHOWN_VISUAL_PATHS).join(", ") + (paths.length > SHOWN_VISUAL_PATHS ? ` and ${paths.length - SHOWN_VISUAL_PATHS} more` : "");
+  return { outcome: "gate", rule: authorityRule(decision.ruleId), reason: withGrantWithheld(reason, evidence) };
 }
 
 /**
  * Unread changed files gate under any policy; under visual paths they count as visual, as does an empty list. A skill
  * change gates under any policy too, with a guard row the coordinator-evidence resolve never admits, so only the owner clears it.
  */
-function changedFilesGate(evidence: DecidableEvidence, visualPaths: readonly string[] | undefined): GateDecision | undefined {
+function changedFilesGate(evidence: DecidableEvidence, { visualPaths, visualBaselines }: VisualPolicy): GateDecision | undefined {
   const asVisual = visualPaths === undefined ? "" : ", so the PR counts as visual";
   if (evidence.changedFilesUnread !== undefined) return { outcome: "gate", rule: guardRule("files-unread"), reason: `${evidence.changedFilesUnread}${asVisual}; the owner decides` };
   const skills = skillPathsIn(evidence.merge.changedPaths);
@@ -192,49 +202,34 @@ function changedFilesGate(evidence: DecidableEvidence, visualPaths: readonly str
   if (evidence.merge.changedPaths.length === 0) return { outcome: "gate", rule: guardRule("files-unread"), reason: `no changed files were read at ${evidence.head}${asVisual}; the owner decides` };
   const visual = visualMatches(evidence.merge.changedPaths, visualPaths);
   if (visual.length === 0) return undefined;
-  return { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shownPaths(visual)}` };
+  const globGate: GateDecision = { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shownPaths(visual)}` };
+  return visualBaselines === undefined ? globGate : baselineGate(evidence.merge, visualBaselines, globGate);
 }
 
 /**
- * Case is folded on both sides, as a case-insensitive checkout writes `Packages/UI/x` into `packages/ui/`. A glob list
- * that cannot compile matches every path, so a bad policy gates instead of throwing or allowing.
+ * A changed baseline is a rendered diff the owner reviews; none, with the baseline check green at the head, clears the glob
+ * gate. A list of only blank globs, or a blank check name, can show no rendered diff, so it keeps the glob gate.
  */
-function visualMatches(paths: readonly string[], visualPaths: readonly string[]): string[] {
-  let isVisual: (path: string) => boolean;
-  try {
-    isVisual = compileGlobs(visualPaths.map((glob) => glob.toLowerCase()));
-  } catch {
-    isVisual = () => true;
-  }
-  return paths.filter((path) => isVisual(path.toLowerCase()));
-}
-
-/** Both sides of every rename, so moving a file out of `.github/` still counts as touching it. */
-export function changedPaths(files: readonly PrFile[]): string[] {
-  return files.flatMap((file) => (file.previousPath === undefined ? [file.path] : [file.path, file.previousPath]));
-}
-
-interface PathsRead {
-  paths: string[];
-  /** Why the list could not be read whole. */
-  unread?: string;
+function baselineGate(merge: MergeFacts, baselines: VisualBaselines, globGate: GateDecision): GateDecision | undefined {
+  const changed = changedBaselines(merge.changedPaths, baselines);
+  if (changed === undefined) return globGate;
+  if (changed.length > 0) return { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shownPaths(changed)}` };
+  return baselineCheckGreen(merge, baselines.check, ALLOWED_CHECK_APPS) ? undefined : globGate;
 }
 
 /**
- * A truncated or failed list is no list: empty paths fail authority's path condition, and the unread reason gates first.
- * GitHub lists a PR's files at whatever head it has now, so the list counts only when the PR sits at `head` both before
- * and after it is read. The compare endpoint would pin the sha itself, but it drops rename sources and stops at 300 files.
+ * A reviewer who says CI policy is weakened, or writes the line in a shape the parser refuses, gates any PR for the owner.
+ * A `.github/` change, rename sources included, with no line gates too, so a stored record from before the line existed
+ * fails closed.
  */
-async function pinnedPaths(port: GitHubPort, { repo, pr, head }: MergeEvidenceInput, readHead: string): Promise<PathsRead> {
-  const unread = (why: string): PathsRead => ({ paths: [], unread: `the changed files of ${repo}#${pr} are unknown: ${why}` });
-  if (readHead !== head) return unread(`the PR is at ${readHead}, not ${head}`);
-  try {
-    const files = await port.listPrFiles(repo, pr);
-    const after = (await port.getPr(repo, pr)).headSha;
-    return after === head ? { paths: changedPaths(files) } : unread(`the head moved to ${after} during the read`);
-  } catch (error) {
-    return unread(error instanceof FileListTruncatedError ? "the list is truncated" : `the read failed: ${statusOf(error)}`);
-  }
+function ciPolicyGate(evidence: DecidableEvidence): GateDecision | undefined {
+  const { ciPolicy } = evidence;
+  if (ciPolicy?.kind === "malformed") return { outcome: "gate", rule: guardRule("ci-policy-malformed"), reason: CI_POLICY_MALFORMED_REASON };
+  if (ciPolicy?.kind === "weakened") return { outcome: "gate", rule: guardRule("ci-policy-weakened"), reason: `${CI_POLICY_WEAKENED_PREFIX}${shownPaths(ciPolicy.keys)}` };
+  if (ciPolicy?.kind === "unchanged") return undefined;
+  const github = evidence.merge.changedPaths.filter(isGithubPath);
+  if (github.length === 0) return undefined;
+  return { outcome: "gate", rule: guardRule("github-path"), reason: `${GITHUB_PATH_REASON_PREFIX}${shownPaths(github)}` };
 }
 
 /** A run with no app id is counted from no app, so it cannot satisfy a required context. */
@@ -344,7 +339,9 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
   const { pr, merge, runs, requiredChecksUnknown, unreadFacts, changedFilesUnread } = await collectMergeFacts(port, input, isFrozen, kind, clock, reviewAppId);
   const mergeableState = pr.mergeableState;
   const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
-  const decision = decideAutoMerge(input.head, { head: input.head, merge, record: input, mergeableState, ...unknown }, input.visualPaths);
+  const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy };
+  const decidable: DecidableEvidence = { head: input.head, merge, record: input, mergeableState, ...unknown, ...ciPolicy, ...grantWithheldField(input) };
+  const decision = decideAutoMerge(input.head, decidable, input.visualPaths, input.visualBaselines);
   const record: EvidenceRecord = {
     runId: input.runId,
     repo: input.repo,
@@ -358,7 +355,9 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
     decision,
     mergeableState,
     ...(merge.carry && { carry: merge.carry }),
+    ...ciPolicy,
+    ...(input.proofUnverified !== undefined && { proofUnverified: input.proofUnverified }),
   };
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
-  return { head: input.head, merge, record, mergeableState, ...unknown, commentId: comment.id };
+  return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...grantWithheldField(input), commentId: comment.id };
 }

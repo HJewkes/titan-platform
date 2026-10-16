@@ -76,6 +76,15 @@ replaces the stored kind, unless it would move a `correctness` run to `feature`,
 reason naming both kinds. Moving `correctness` to `security`, or `feature`, `refactor` or
 `unknown` to any kind, still applies.
 
+On a `correctness` or `security` run, or any `fix/` branch, Shepherd reads the head's
+fix-proof result before the review. A vacuous or test-less proof ends the round as
+`NO_REPRO`. A proof that shows nothing about the head goes to the reviewer marked unverified.
+That covers an `error` verdict (a skipped base included), an untrusted run, and a result that
+could not be read although one was due. A read that fails is read once more at the same head
+first. A MERGE on such a head keeps the policy's merge-on-green grant (owner decision 303), so
+under an `auto` policy it merges on the usual conditions. The merge evidence record and the
+evidence PR comment name the unverified standing and the read's reason.
+
 A branch registered first and its pull request registered later share one run. A
 registration by number reads the pull request from GitHub to learn its head branch, so it
 needs `gh`. A `--branch` that is not the pull request's head is refused.
@@ -117,6 +126,41 @@ reason, and the `WatchRow` `outcome` field reads `merged` or `stopped` with that
 
 Shepherd runs no deploy, release or activation stage and does not run the factory's
 `postMerge` chore.
+
+### Review panel {#review-panel}
+
+`shepherd.review.panel` in the factory config chooses how many reviewers a head gets. It
+takes `off`, `shadow` or `on`, and an absent key means `off`.
+
+| Value | What a head's review does |
+| --- | --- |
+| `off` | One reviewer, under `sh-review:<head>` and `sh-await-verdict:<head>`, as before the flag |
+| `shadow` | The same single reviewer; `sh-review-intent` also records the head's `class`, `touches` and panel `plan` |
+| `on` | The planned panel: every member reviews the head, and `sh-review-panel:<head>` records their aggregate verdict |
+
+Under `on` the intent also records `panel: "on"` and `panelReviewers`, the name of each
+member other than correctness: the correctness reviewer's name with the shape as a suffix
+(`rv-octo-demo-12-adversary`). A standing reviewer serves many PRs, so its members take the
+PR's fresh-reviewer base instead. Either way, round-end parking and cleanup find a member by
+the PR's base, just as they find its fresh reviewers. The correctness member keeps today's steps, including its late
+read, correction turn and usage-limit hold. Every other member gets `sh-review:<head>:<shape>`
+and `sh-await-verdict:<head>:<shape>`, at its planned profile, with its shape's brief, and
+checks out under `<review checkouts>/<shape>`. All members are started before any verdict is
+awaited.
+
+The aggregate decides:
+
+- A `FIX_FIRST` from any blocking member sends the head back. The findings carry each
+  member's text under its shape, and end with the panel's `Defect class:` line, which the
+  fixer's structural brief reads.
+- A MERGE needs a MERGE at the head from every blocking member. It carries
+  `panel: {satisfiesG10, degraded, members}`, naming each member that gave a verdict.
+- A blocking member that gave no verdict ends the review with no verdict, never a MERGE.
+- An advisory member's finding is kept only when the files it cites read at the head.
+
+The plan is read from the recorded intent, so a run whose intent was recorded with no plan
+(before the flag, or under `off` or `shadow`) finishes as a single reviewer even after a
+restart onto `on`.
 
 ## After the merge {#after-the-merge}
 
@@ -232,8 +276,11 @@ request moved head is superseded. That covers a seat-policy, merge-guard, MRG-AU
 superseded failed-rounds gate starts the new head's review rounds from zero, so the run does not
 ask the owner again before the new head has failed its own rounds. A superseded fix-first-runaway,
 no-progress or conflict gate is only cancelled, never answered: the run reviews the new head and
-asks the owner again there, with the gate naming the carried reason and the new review, even
-under an `auto` policy that would allow the merge. The carried reason stays on the run across
+asks the owner again there, with the gate naming the carried reason and the new review. The one
+exception (owner decision 303) is a head where the dispatched reviewer wrote a fresh `MERGE` at
+exactly that head and an `auto` policy allows it under MRG-AU-RV: the run merges with no gate and
+records the rule `shepherd-route/<escalation>/cleared-by-merge` naming both heads. A `MERGE`
+carried by tree, remerge or merge-up does not clear it. The carried reason stays on the run across
 send-backs, fixer pushes and further head moves until the owner answers an `approve-merge` gate. A superseded `ci-failed` gate reads as
 `await-fix`, so the run lands the new head with no owner answer. A superseded `stuck-behind`
 gate starts a new land round at the new head with a fresh update budget. Resync also answers
@@ -291,10 +338,15 @@ ask for Shepherd's own review with [`shepherd review`](#own-review).
 - `shepherd-route/failed-rounds`: 3 review rounds failed at this task. Only a stuck round
   counts: a fresh reviewer after silence or a timeout, a re-read of a hold's reviewer, or a
   conflict. A `FIX_FIRST` that yields a new head is progress and does not count.
-- `shepherd-route/fix-first-runaway`: 6 `FIX_FIRST` reviews at this task.
+- `shepherd-route/fix-first-runaway`: 3 `FIX_FIRST` reviews at this task, for every kind of PR.
+  Two fix rounds that did not converge mean point fixes are not working, so Shepherd wakes no
+  third fixer. Route the task to the planner to redesign or split it; Shepherd files no planner
+  task itself. It is checked before `no-progress`, so a third `FIX_FIRST` always names this
+  route.
 - `shepherd-route/no-progress`: 2 `FIX_FIRST` reviews in a row ended with `Closer: no`, meaning
   the head is no closer to `MERGE` than the last one. A `FIX_FIRST` with `Closer: yes` or no
-  Closer line, and any other round, resets the count. It is checked before the runaway cap.
+  Closer line, and any other round, resets the count. Under the cap of 3 it can only fire at
+  the second `FIX_FIRST`.
 - a policy that did not allow an automated merge, such as an `owner-gate` seat or an unmet
   `MRG-AU-RV` fact. The prompt starts `the authority policy did not allow an automated merge`.
 
@@ -370,27 +422,25 @@ whose prompt names an older head. A gate at the current head stays pending.
 ### An owner's merge answer follows a clean head move {#carried-answer}
 
 An owner's `merge` answer at a head follows to a later land gate at the run's next head, so the
-owner is not asked twice, in two cases and no others:
+owner is not asked twice, in one case and no other:
 
 - **Merge-up.** The new head is the approved head merged with a commit of the base branch, and
   its tree equals `git merge-tree --write-tree` of the two (or the merge resolved only declared
   generated files). A hand-resolved conflict asks again.
-- **Small reviewed fix.** The new head is the approved head merged with the base it already
-  contains, plus a fix whose own diff, past what the base merge brought, is at most
-  `SMALL_FIX_LIMITS.maxChangedLines` (40) changed lines across at most
-  `SMALL_FIX_LIMITS.maxFiles` (3) files (`products/factory/src/shepherd/fix-carry.ts`). Every
-  file must already be in the pull request at the approved head, with no file added, deleted,
-  renamed or mode-changed, and no change under `.github/`, to a lockfile or to a `package.json`
-  dependency field.
 
-Both need a standing reviewer verdict `MERGE` at exactly the new head, and land opens the gate
+A fixer commit pushed after the approval never follows (TP-3070): the whole range from the approved head
+to the new head is judged by tree equality with `git merge-tree --write-tree` of the approved head and
+the base (`products/factory/src/shepherd/fix-carry.ts`), not by the shape of the last commit. A tree that
+differs by one line asks the owner again; a base that is unknown or a merge-tree that cannot be computed
+asks again too.
+
+The merge-up needs a standing reviewer verdict `MERGE` at exactly the new head, and land opens the gate
 only after required CI is green at that head, so a head with no verdict or a red check asks the
 owner again. An `unknown` run never carries, and neither does an escalation gate. A `security` run follows
 only the rule below.
 Any error computing the tree or the diff asks again. The run records an
 `sh-approval-carry:<head>` step with the approved head, the new head, the rule (`remerge-empty`,
-`remerge-generated-only`, `merge-up` or `small-fix`) and the proof: both trees, or the changed line count and
-paths. The probe itself is the `sh-approval-carry:fix:<head>` step.
+`remerge-generated-only` or `merge-up`) and the proof: both trees and the paths. The probe itself is the `sh-approval-carry:fix:<head>` step.
 
 A `security` run's answer follows one head move only: Shepherd's own clean merge-up
 (`products/factory/src/shepherd/own-merge-up.ts`, step `sh-approval-carry:own:<head>`). The new head
@@ -410,6 +460,7 @@ titan-factory shepherd status owner/repo#123   # one pull request
 titan-factory shepherd status --active --branch-prefix pc-   # live runs on agent-chat/pc-* branches
 titan-factory shepherd status --phase review,merging --task TP-42
 titan-factory shepherd waiting                 # pending gates, oldest first
+titan-factory shepherd prs owner/repo --json   # open PRs from the snapshot, plus Shepherd's merges
 titan-factory shepherd list --state all        # active (default), finished or all
 titan-factory shepherd timeline owner/repo#123
 titan-factory shepherd timeline owner/repo#123 --last 8 --width 300
@@ -473,6 +524,19 @@ the gate names is the run's current head, false when the run has moved on, null 
 none. The verb exits 1 when an owner gate is older than 24 hours, and its text says how many are.
 The factory digest lists the five oldest owner gates under "Waiting on you".
 
+`shepherd prs [owner/repo] [--json]` lists the open PRs of every seat repo, or of the repo
+named, from Shepherd's PR snapshot (`products/factory/src/shepherd/prs.ts`). A seat repo with no
+run in it is listed too. The answer makes no GitHub call while the repo's open list is under a
+minute old, and concurrent callers share one list read. The PRs Shepherd itself merged in the last
+24 hours follow, built from each run's `merge` step, so their `mergeSha` costs no PR read. Each
+row is `{ repo, number, branch, headSha, base, state, mergedAt, mergeSha, title, body, draft,
+registered, runId?, phase?, ci?, source, at }`. `state` is `open` or `merged`. `source` is
+`snapshot` or `merge-step`, and `at` is when that source was read. `ci` is
+`{ head, state, requiredMissing, at }`, where `state` is `pending`, `green`, `red` or `none`. It
+appears only when the snapshot already holds the head's check runs. A head it holds none for
+leaves `ci` out rather than reading GitHub. `requiredMissing` names the run's required contexts
+that have no check run on the head. A serve wired without a snapshot refuses with exit 69.
+
 ## Stats {#stats}
 
 ```
@@ -489,14 +553,15 @@ Reads the store read-only, so it is safe beside a running `serve`. Two reports, 
   - `mergeUps`: Shepherd's own update-branch steps, by the CI read before each one.
     `landTime` is a refresh after the merge decision, when the base had moved since the green.
     `strictChase` is an update before the decision, which only a strict repo forces.
-    `freezeHold` is an update from a freeze hold, and `retry` is an update after
+    `freezeHold` is an update from a freeze hold after a thaw, `baseRed` is an update from a
+    freeze hold after the red base it waited on moved, and `retry` is an update after
     `update-backoff`.
   - `strictRounds`: land rounds whose `land-rules` read found the repo requires up-to-date heads.
     Anything above 0 means the strict setting is back on.
   - `foreignMergeUps`: heads Shepherd did not make that are a merge of the base. It stays 0
     until Shepherd records the origin of foreign heads (`sh-head-origin`).
 
-  The text line prints them as `slow owner-gated`, `merge-ups land/strict/freeze/retry`,
+  The text line prints them as `slow owner-gated`, `merge-ups land/strict/freeze/base/retry`,
   `strict rounds` and `foreign merge-ups`.
 - Per day, the owner's friction. **Owner touches** counts the gates an owner class resolved that
   day. For each gate kind (the gate's step id without its iteration, such as `approve-merge`,
@@ -531,7 +596,7 @@ the minutes it has been there, and the minutes since registration. `status --jso
 as `stage` and `totalMinutes`.
 
 `--json` returns `{ "merges": [...], "ownerFriction": [...], "stageTimes": [...], "redAfterMerge": [...] }`;
-each `merges` row carries `mergeUps` (`{ landTime, strictChase, freezeHold, retry }`), `strictRounds`,
+each `merges` row carries `mergeUps` (`{ landTime, strictChase, freezeHold, baseRed, retry }`), `strictRounds`,
 `slowOwnerGated` and `foreignMergeUps`;
 each `redAfterMerge` row carries `merged`, `red`, `rate`, `redPrs`, `reverted` and `revertedPrs`. The morning digest shows today's
 two lines, "Owner touches" and "Owner wait (median/max hours)", under "Owner friction".
@@ -679,7 +744,8 @@ visual_paths:
 
 A seat with `visual_paths` resolves to `auto` even without `merge-on-green-approve`. At each
 head Shepherd decides, it matches the changed files the merge evidence read at that head
-(both sides of a rename) against the globs:
+(both sides of a rename) against the globs. Files that cannot render never match: names
+with `.test.` or `.spec.`, and names ending `.md` or `.d.ts`.
 
 - no file matches: the merge goes on to `MRG-AU-RV`, which still needs a `MERGE` at the head
   and green required checks;
@@ -781,6 +847,12 @@ reviews the new head, then comes back to the merge step there, where the same ho
 The push never releases or changes the hold. A merge that waited on a hold does not go
 through on release: land reads CI again first, because the base or the head may have moved.
 
+A held run wakes no fixer. When its head goes red, Shepherd first reruns the failed jobs once at
+that head, the same one rerun per head an unheld run gets, because a rerun pushes nothing. If the
+rerun turns the head green, the run reviews it with the hold kept. If the head is still red, the
+seat is told once that the rerun is spent, and the run waits in `sh-held-wait` for a release, a
+push, or a rerun by hand that turns the head green.
+
 A hold whose reason starts `g10-review:` and names no `--reviewer` releases itself in the
 `sh-g10-release` step when an opus reviewer Shepherd spawned says `MERGE` and the required
 checks are green at that head. A hold that names a reviewer waits for that reviewer's `MERGE`.
@@ -837,6 +909,20 @@ The rule fails closed. The run's registration row decides whether a hold gates n
 decide only where the seat released. A repoint carries the run's events and proofs to the run that
 replaces it. A proof is kept per base branch, so a head shown clean onto another branch is probed
 again onto the pull request's own base. A release records the hold it lifted.
+
+At registration Shepherd classes the pull request by path to pick its G10 hold
+(`products/factory/src/shepherd/registration-hold.ts`). Each changed file's new path, plus the old
+path of a file GitHub reports as renamed or copied, is matched against `SHEPHERD_CLASS_RULES`. A
+policy, authority or security path, or a `security` kind, takes `g10-adversary`. More than 400
+changed lines or a store migration takes `g10-review`. A file list Shepherd cannot read whole
+takes `g10-adversary`.
+
+**Accepted residual.** A new file that copies a policy file under a fresh name, made live by an
+edit to a file that is not policy, is not classed policy. GitHub usually reports such a copy as
+added, so only its new path is matched. Classing by content or by import graph would need every
+changed file's contents read at registration, and Shepherd does not read them. What still catches
+it: the `g10-review` hold past 400 changed lines, the `g10-adversary` hold a `security` kind
+places, and the seat's own review of the pull request.
 
 ### Ask for Shepherd's own review {#own-review}
 
@@ -904,7 +990,8 @@ Agents (seats, implementers and fixers) merge the base into a registered PR only
 
 - A conflict wake, or a run that stopped with `conflict` or `not-mergeable`. The conflict brief
   tells the agent to merge the base and resolve the conflict.
-- A freeze hold that updates the branch is Shepherd's own step, counted as `mergeUps.freezeHold`.
+- A freeze hold that updates the branch is Shepherd's own step, counted as `mergeUps.freezeHold`,
+  or as `mergeUps.baseRed` when it waited on a red base.
 
 They do not merge the base in these cases:
 
@@ -1050,10 +1137,31 @@ hold at the exact head being merged (`packages/authority/src/table.json`):
 
 Shepherd adds its own guards before it asks authority
 (`products/factory/src/shepherd/merge-facts.ts`). No collected facts, facts collected at
-another head sends the merge to the owner. A changed path under `.github/` no longer does: by the owner decision of 2026-10-07 (TP-1886), Shepherd leaves `.github/` to the authority table and the required checks, like any other path. A file list
+another head sends the merge to the owner. A file list
 that GitHub truncated, or that failed to read, counts as no list and gates on `files-unread`. Every fact is read from GitHub or from the run's
 own step outputs, never from the reviewer's text. Any other authority rule that allows still
 gates: only `MRG-AU-RV` merges without the owner.
+
+The one reviewer line the guard reads is `CI-policy:` (TP-2407), which every MERGE carries
+directly after `Head:` as `CI-policy: unchanged` or `CI-policy: weakened <keys>`. It never
+allows a merge; it only gates one:
+
+- `weakened` gates any PR on `ci-policy-weakened` (class D21), because only the owner accepts
+  a weaker CI policy.
+- The label is read on every raw line, fenced, indented or commented out, and with any casing,
+  decoration or punctuation, so a hidden or decorated `weakened` still reads weakened. Across
+  several lines the strictest reading wins.
+- A line that is present but malformed, or an `unchanged` that is not the one exact line after
+  `Head:`, gates any PR on `ci-policy-malformed` (class D21), because a misspelt `weakened` must
+  not read as silence. So does a stored line of an unknown shape.
+- A PR whose changed paths, rename sources included, touch `.github/` gates on `github-path`
+  (class D6) when the line is missing. Evidence stored before the line existed reads as
+  missing, so it fails closed; answer it with a fresh review.
+- `unchanged` leaves a `.github/` change to the authority table and the required checks, as
+  TP-1886 left every path.
+
+The line rides with the MERGE through an unsettled re-read, a carried verdict and an external
+review. A coordinator never resolves any of these gates.
 
 The `sh-merge-evidence` step collects those facts once per head and posts one comment on the
 pull request. The comment starts with the marker `<!-- shepherd-evidence:<head sha> -->`, so

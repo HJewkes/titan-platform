@@ -105,6 +105,15 @@ export function ownerHoldMigration(version = 22): Migration {
   return { version, name: "factory:shepherd_registration_owner_hold", up: addOwnerHoldColumns };
 }
 
+const TP2556_DDL = `
+  ALTER TABLE shepherd_registration ADD COLUMN head_sha TEXT;
+  ALTER TABLE shepherd_registration ADD COLUMN base TEXT;`;
+
+/** The head and base branch a registration named, so Shepherd diffs the PR in its git cache instead of asking GitHub. */
+export function registrationFactsMigration(version = 24): Migration {
+  return { version, name: "factory:shepherd_registration_head_base", up: (db) => db.exec(TP2556_DDL) };
+}
+
 const LINEAGE_DDL = `
   CREATE TABLE shepherd_lineage (
     run_id      TEXT NOT NULL,

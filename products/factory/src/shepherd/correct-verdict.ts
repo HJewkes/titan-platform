@@ -6,7 +6,7 @@ import { HEAD } from "./await-verdict.js";
 import type { AwaitVerdictInput, ReviewerAgent, ReviewerDispatch } from "./review.js";
 import { Awaited } from "./review-schemas.js";
 import { clearReviewWait, noteReviewWait, startedSession, whileBrokerBusy, whileBrokerDown, type BusyTiming, type PollTiming } from "./review-wait.js";
-import { MalformedSchema, correctionPrompt, isUsageLimit, readMalformed } from "@titan-design/review-panel";
+import { MalformedSchema, correctionPrompt, isUsageLimit, readMalformed, type Malformed } from "@titan-design/review-panel";
 
 export const CORRECT_VERDICT_STEP = "sh-correct-verdict";
 
@@ -75,16 +75,26 @@ type AwaitedOutput = z.infer<typeof Awaited>;
 
 /** How a correction that came to no verdict is worded, so a later review can tell a malformed verdict from silence. */
 export const UNPARSED_AFTER_CORRECTION = "the reviewer's verdict did not parse after one correction";
-const SILENT_AFTER_CORRECTION = "the reviewer wrote no verdict after its correction";
+export const SILENT_AFTER_CORRECTION = "the reviewer wrote no verdict after its correction";
 
 export const isCorrectionFailure = (reason: unknown): boolean => typeof reason === "string" && (reason.startsWith(UNPARSED_AFTER_CORRECTION) || reason === SILENT_AFTER_CORRECTION);
 
 /**
- * A malformed final message gets one correction turn in the reviewer's own session, read by `replyStep` from the message written
- * after it. Only the first await's result reaches here, never the reply's, so a reviewer is corrected at most once per head.
+ * A reviewer that left with nothing Shepherd can read wrote no Verdict line, so it is corrected like a final message without
+ * one, at once, rather than handed to a fresh reviewer (TP-2804). Its writes since `goneAt` are the resume's.
+ */
+function silentExit(awaited: AwaitedOutput): Malformed | null {
+  if (awaited.kind !== "none" || awaited.reason !== undefined || typeof awaited.goneAt !== "number") return null;
+  return { refusal: "no_block", writtenAt: awaited.goneAt };
+}
+
+/**
+ * A malformed final message, or a reviewer that exited silent, gets one correction turn in the reviewer's own session, read by
+ * `replyStep` from the message written after it. Only the first await's result reaches here, never the reply's, so a reviewer is
+ * corrected at most once per head.
  */
 export async function correctOnce(ctx: WorkflowContext, awaiting: AwaitVerdictInput, awaited: AwaitedOutput, options: { ownerBrief: boolean; replyStep: string }): Promise<AwaitedOutput> {
-  const malformed = readMalformed(awaited);
+  const malformed = readMalformed(awaited) ?? silentExit(awaited);
   if (!malformed) return awaited;
   const asked = await step(ctx, `${CORRECT_VERDICT_STEP}:${awaiting.head}`, { ...awaiting, malformed, ...(options.ownerBrief && { ownerBrief: true }) }, Corrected);
   if (asked.kind !== "asked") return asked;

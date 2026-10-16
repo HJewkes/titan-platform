@@ -423,6 +423,38 @@ describe("parkStep reviewer trees", () => {
     ]);
   });
 
+  it("parks no reviewer and logs when the roster read fails, then parks them on the next tick", async () => {
+    const asked: string[] = [];
+    let down = true;
+    const roster = createRosterReader(async () => (down ? Promise.reject(new Error("broker down")) : ROUNDS));
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await parkStep(storeWith({ implementer: "impl-a" }), { park: refusing({}, asked), roster, notice: undefined }, input);
+    expect(asked).toEqual(["impl-a"]);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("roster could not be read"));
+
+    down = false;
+    await parkStep(storeWith({ implementer: "impl-a" }), { park: refusing({}, asked), roster, notice: undefined }, input);
+    expect(asked).toEqual(["impl-a", "rv-o-r-7", "rv-o-r-7-2", "impl-a"]);
+    log.mockRestore();
+  });
+
+  it("parks the exited panel members of this pull request's reviewers, and of its standing reviewer, at the round end", async () => {
+    const asked: string[] = [];
+    const members = [
+      row("rv-o-r-7-adversary", "exited"),
+      row("rv-o-r-7-2-perf", "exited"),
+      row("rv-o-r-7-tests-2", "exited"),
+      row("rv-o-r-7-2-tests", "live", "running"),
+      row("rv-o-r-70-adversary", "exited"),
+      row("rv-o-r-7-review", "exited"),
+    ];
+
+    await parkStep(storeWith({ implementer: "impl-a" }), wiringFor(members, refusing({}, asked)), input);
+
+    expect(asked).toEqual(["rv-o-r-7-adversary", "rv-o-r-7-2-perf", "rv-o-r-7-tests-2", "impl-a"]);
+  });
+
   it("tells the seat when a reviewer's tree is dirty and asks again at the next round end", async () => {
     const notice = noticePorts("hub");
     const refused = refusing({

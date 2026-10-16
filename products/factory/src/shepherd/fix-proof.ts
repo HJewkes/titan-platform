@@ -1,24 +1,32 @@
 import { RESULT_PREFIX, parseResultLine, type FixProofResult } from "@titan-design/fix-proof";
 import { GITHUB_ACTIONS_APP_ID, PR_FILES_CAP, type CheckRun, type GitHubPort, type PrFile, type RepoSlug } from "@titan-design/github";
-import type { StepRoute } from "@titan-design/workflow";
+import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
+import { CHECKS_RECHECK_MS } from "../workflows/await-head.js";
 import { deadline, type DeadlineTiming } from "../workflows/deadline.js";
-import { codeRoute } from "../workflows/land.js";
+import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
+import { FIX_PROOF_KINDS } from "./task-kind.js";
 
-export const FIX_PROOF_STEP = "sh-fix-proof";
+const FIX_PROOF_STEP = "sh-fix-proof";
 export const FIX_PROOF_STEPS: readonly StepDeclaration[] = [{ id: FIX_PROOF_STEP, kind: "dispatch" }];
 export const FIX_PROOF_CHECK = "fix-proof";
-/** Above the fix-proof job's own 20-minute timeout, so a job that runs to its limit is still read. */
-const DEFAULT_FIX_PROOF_WAIT_MS = 25 * 60_000;
-/** A head that has no Actions run this long after the first poll never will: the repo runs no Actions on it. */
+/** The judge sits behind `needs:` on these jobs, so GitHub creates it only after both have finished. */
+const FIX_PROOF_EXEC_CHECKS: ReadonlySet<string> = new Set(["fix-proof-base", "fix-proof-head"]);
+/**
+ * Above the three-job run's worst case: the 15-minute exec jobs, then the 8-minute judge created only after them, plus
+ * queue gaps. A judge that runs to its limit is still read.
+ */
+const DEFAULT_FIX_PROOF_WAIT_MS = 35 * 60_000;
+/**
+ * A head that has no Actions run this long after the first poll never will: the repo runs no Actions on it, or the head opted out
+ * with `[skip ci]`. In a repo whose base runs fix-proof, the grace ends in `error`, not `missing`.
+ */
 const DEFAULT_NO_ACTIONS_GRACE_MS = 3 * 60_000;
-const DEFAULT_POLL_MS = 30_000;
 const LOG_TAIL_LINES = 200;
-const GATED_KINDS: ReadonlySet<string> = new Set(["correctness", "security"]);
 const FIX_BRANCH_PREFIX = "fix/";
 const NO_REPRO_VERDICTS: ReadonlySet<string> = new Set(["vacuous", "no-tests"]);
 const ACTIONS_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z /;
@@ -27,6 +35,8 @@ const ACTIONS_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z /;
  * chose the code that printed its own result line.
  */
 const FIX_PROOF_HARNESS: readonly string[] = [".github/workflows/", ".github/actions/", ".github/fix-proof.json", "scripts/fix-proof-run.sh"];
+/** Read at the PR's base ref, so a PR cannot delete its way out of the gate. */
+const FIX_PROOF_WORKFLOW = ".github/workflows/fix-proof.yml";
 
 type Parsed = { line: string; verdict: FixProofResult["verdict"] };
 type FixProofRead = ({ kind: "result" } & Parsed) | ({ kind: "untrusted"; reason: string } & Parsed) | { kind: "skipped" | "missing" | "error"; reason: string };
@@ -54,7 +64,7 @@ async function gateOf(port: GitHubPort, store: ShepherdStoreRef, runId: string):
     return { open: false, reason: `the registered kind is unreadable: ${failureOf(error)}` };
   }
   if (registration === undefined) return { open: false, reason: "no registration for this run" };
-  if (GATED_KINDS.has(registration.kind)) return { open: true, pr: registration.pr };
+  if (FIX_PROOF_KINDS.has(registration.kind)) return { open: true, pr: registration.pr };
   const branch = await headBranchOf(port, registration);
   if (typeof branch !== "string") return { open: false, reason: branch.unreadable };
   // A branch only ever tightens the kind: a fix/ branch runs the gate whatever kind was registered.
@@ -108,31 +118,46 @@ function chooseRun(candidates: readonly CheckRun[], binding: Binding): { run: Ch
 
 const actionsAt = (runs: readonly CheckRun[], head: string): CheckRun[] => runs.filter((run) => run.appId === GITHUB_ACTIONS_APP_ID && run.headSha === head);
 
-/** Every Actions run at the head finished and none is fix-proof: the repo has no such job, or it was skipped. */
-const settledWithout = (runs: readonly CheckRun[], head: string): boolean => {
+const execAt = (runs: readonly CheckRun[], head: string): boolean => actionsAt(runs, head).some((run) => FIX_PROOF_EXEC_CHECKS.has(run.name));
+
+/**
+ * Every Actions run at the head finished and none is fix-proof: the repo has no such job, or it was skipped. An exec job seen at
+ * the head on any poll means the workflow runs here and its judge is still to be created, so its absence proves nothing.
+ */
+const settledWithout = (runs: readonly CheckRun[], head: string, execSeen: boolean): boolean => {
   const actions = actionsAt(runs, head);
-  return actions.length > 0 && actions.every((run) => run.status === "completed") && !actions.some(isFixProofRun(head));
+  return actions.length > 0 && actions.every((run) => run.status === "completed") && !actions.some(isFixProofRun(head)) && !execSeen;
 };
 
-/** `stalled` is a fix-proof run that existed at the head but never completed, so its absence of a line is not believed. */
+/**
+ * `stalled` is a fix-proof run that existed at the head but never completed, or exec jobs that ran with no judge after them by the
+ * deadline, so the absence of a line is not believed.
+ */
 type Polled = { run: CheckRun; distrust?: string } | { missing: string } | { stalled: string };
+
+function deadlineRead(chosen: { run: CheckRun } | undefined, execSeen: boolean): Polled {
+  if (chosen !== undefined) return { stalled: `the ${FIX_PROOF_CHECK} run at this head was still ${chosen.run.status} at the deadline` };
+  if (execSeen) return { stalled: `the ${FIX_PROOF_CHECK} exec jobs ran at this head but no ${FIX_PROOF_CHECK} judge run completed before the deadline` };
+  return { missing: `no completed ${FIX_PROOF_CHECK} check run from GitHub Actions at this head before the deadline` };
+}
 
 /** Absence is believed only on two polls in a row, since a job behind `needs:` is created after the runs it waits on finish. */
 async function completedRun(port: GitHubPort, repo: RepoSlug, head: string, binding: Binding, timing: PollTiming, signal: AbortSignal): Promise<Polled> {
   const clock = deadline({ ...timing, timeoutMs: timing.timeoutMs ?? DEFAULT_FIX_PROOF_WAIT_MS });
-  const grace = deadline({ ...timing, timeoutMs: timing.noActionsGraceMs ?? DEFAULT_NO_ACTIONS_GRACE_MS });
+  const grace = deadline({ ...timing, startedAt: undefined, timeoutMs: timing.noActionsGraceMs ?? DEFAULT_NO_ACTIONS_GRACE_MS });
   let settledBefore = false;
+  let execSeen = false;
   for (;;) {
     const runs = await port.checkRuns(repo, head);
     const chosen = chooseRun(runs.filter(isFixProofRun(head)), binding);
     if (chosen?.run.status === "completed") return chosen;
-    const settled = settledWithout(runs, head);
+    execSeen ||= execAt(runs, head);
+    const settled = settledWithout(runs, head, execSeen);
     if (settled && settledBefore) return { missing: `every GitHub Actions run at this head completed with no ${FIX_PROOF_CHECK} check run` };
-    if (actionsAt(runs, head).length === 0 && grace.expired()) return { missing: "no GitHub Actions run at this head" };
-    if (clock.expired() && chosen !== undefined) return { stalled: `the ${FIX_PROOF_CHECK} run at this head was still ${chosen.run.status} at the deadline` };
-    if (clock.expired()) return { missing: `no completed ${FIX_PROOF_CHECK} check run from GitHub Actions at this head before the deadline` };
+    if (actionsAt(runs, head).length === 0 && !execSeen && grace.expired()) return { missing: "no GitHub Actions run at this head" };
+    if (clock.expired()) return deadlineRead(chosen, execSeen);
     settledBefore = settled;
-    await clock.sleep(timing.pollMs ?? DEFAULT_POLL_MS, signal);
+    await clock.sleep(timing.pollMs ?? CHECKS_RECHECK_MS, signal);
   }
 }
 
@@ -170,17 +195,37 @@ async function distrustOf(port: GitHubPort, repo: RepoSlug, pr: number | null, r
   return harnessTouch(port, repo, pr);
 }
 
-/** A missing run is believed only when the PR left the harness alone; deleting the workflow is otherwise a way to dodge the gate. */
-async function missingRead(port: GitHubPort, repo: RepoSlug, pr: number | null, missing: string): Promise<FixProofRead> {
+/**
+ * Why the base ref may run fix-proof on this PR, or undefined only when the base is known to have no such workflow. A contents 404
+ * also covers a base ref that does not exist, so a missing file is believed only once the branch itself is read.
+ */
+async function workflowAtBase(port: GitHubPort, repo: RepoSlug, binding: Binding): Promise<string | undefined> {
+  if ("unbound" in binding) return binding.unbound;
+  try {
+    if ((await port.getFile(repo, FIX_PROOF_WORKFLOW, binding.baseRef)) !== null) return `${FIX_PROOF_WORKFLOW} exists at the base ${binding.baseRef}`;
+    if ((await port.getHeadSha(repo, binding.baseRef)) === null) return `the base ${binding.baseRef} does not exist, so ${FIX_PROOF_WORKFLOW} could not be read there`;
+    return undefined;
+  } catch (error) {
+    return `${FIX_PROOF_WORKFLOW} could not be read at the base ${binding.baseRef}: ${failureOf(error)}`;
+  }
+}
+
+/**
+ * A missing run is believed only when the PR left the harness alone and its base runs no fix-proof workflow. Otherwise deleting
+ * the workflow, or a `[skip ci]` head that starts no Actions run, is a way to dodge the gate.
+ */
+async function missingRead(port: GitHubPort, repo: RepoSlug, pr: number | null, binding: Binding, missing: string): Promise<FixProofRead> {
   const touched = await harnessTouch(port, repo, pr);
-  return touched === undefined ? { kind: "missing", reason: missing } : { kind: "error", reason: `${missing}, and ${touched}` };
+  if (touched !== undefined) return { kind: "error", reason: `${missing}, and ${touched}` };
+  const atBase = await workflowAtBase(port, repo, binding);
+  return atBase === undefined ? { kind: "missing", reason: missing } : { kind: "error", reason: `${missing}, but ${atBase}` };
 }
 
 async function readResult(port: GitHubPort, input: FixProofInput, pr: number | null, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
   const binding = await bindingOf(port, input.repo, pr);
   const polled = await completedRun(port, input.repo, input.head, binding, timing, signal);
   if ("stalled" in polled) return { kind: "error", reason: polled.stalled };
-  if ("missing" in polled) return missingRead(port, input.repo, pr, polled.missing);
+  if ("missing" in polled) return missingRead(port, input.repo, pr, binding, polled.missing);
   const line = lastResultLine(await port.jobLogTail(input.repo, polled.run.id, LOG_TAIL_LINES), input.head);
   if (line === undefined) return { kind: "error", reason: `the ${FIX_PROOF_CHECK} job log has no result line for this head` };
   const parsed = parseResultLine(line);
@@ -204,7 +249,20 @@ export async function readFixProof(deps: Pick<ShepherdDeps, "port" | "store">, r
 }
 
 export const fixProofRoute = (deps: ShepherdDeps): StepRoute =>
-  codeRoute(FIX_PROOF_STEP, deps.now, (input: unknown, signal) => readFixProof(deps, input, { now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs }, signal));
+  codeRoute(FIX_PROOF_STEP, deps.now, (input: unknown, signal, clock) => readFixProof(deps, input, { now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs, startedAt: clock.firstStartedAtMs }, signal));
+
+/**
+ * The head's fix-proof read, taken once more when it failed (TP-2660 b), so a transient read error is not the head's standing.
+ * Only the round's first read is retried, and a replay whose record took another step after that read keeps the one read.
+ */
+export async function readFixProofAt(ctx: WorkflowContext, target: { repo: string; head: string }): Promise<z.infer<typeof FixProofReadSchema>> {
+  const stepId = `${FIX_PROOF_STEP}:${target.head}`;
+  const input = { repo: target.repo, head: target.head, runId: ctx.runId };
+  const first = await step(ctx, stepId, input, FixProofReadSchema);
+  const next = ctx.historyNext();
+  const rereads = first.kind === "error" && ctx.iteration(stepId) <= 1 && (next === undefined || next === stepId);
+  return rereads ? step(ctx, stepId, input, FixProofReadSchema) : first;
+}
 
 /** A vacuous or test-less proof at `head` is NO_REPRO, carrying the parsed result; anything else lets the review proceed. */
 export function fixProofVerdict(read: z.infer<typeof FixProofReadSchema>, head: string): Extract<Verdict, { kind: "NO_REPRO" }> | undefined {
@@ -214,7 +272,7 @@ export function fixProofVerdict(read: z.infer<typeof FixProofReadSchema>, head: 
   return { kind: "NO_REPRO", headSha: head, result: parsed.result };
 }
 
-type FixProofUnverified = "error" | "untrusted" | "unread";
+export type FixProofUnverified = "error" | "untrusted" | "unread";
 
 /**
  * Why a gated proof that is not NO_REPRO still proves nothing about `head`, or undefined when it stands or no proof was expected.

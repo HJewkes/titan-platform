@@ -1,6 +1,7 @@
 import { dollarOpener } from "./balanced.js";
 import { joinedDollar, joinedWithIndex, readAhead } from "./joins.js";
 import type { Token, WordToken } from "./lexer.js";
+import { opensUnsureSpan, selfContainedEnd } from "./span-scan.js";
 
 const ASSIGNMENT_WORD_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[.*\])?\+?=/s;
 /** `(` is left out: inside a case pattern it opens no command, and a subshell then splits as on main. */
@@ -11,7 +12,7 @@ const COMMAND_STARTS = new Set(["{", "then", "do", "else", "elif", "if", "while"
  * Case statements, `[[ ]]`, `(( ))`, `$(( ))`, here-docs and extglob patterns such as `@(a|b)` hold operators and
  * newlines that start no command, so no token position can say where an assignment stands. Any of them before the
  * `[`, quoted or not, refuses the join. Bash lexes left to right, so one after it cannot move the `[` and leaves
- * the join alone.
+ * the join alone. The split reading stays for such a `[`, and `looseSubscriptEnd` keeps its body from hiding text.
  */
 const UNPLACEABLE_RE = /\b(?:case|esac)\b|\[\[|\]\]|\(\(|\)\)|<<|[?*+@!]\(/g;
 const IDENTIFIER_START = /[A-Za-z_]/;
@@ -33,12 +34,38 @@ export function assignmentSubscriptEnd(src: string, open: number, tokens: Token[
 }
 
 /**
+ * Index of the `]` matching the `[` of a bare `NAME[` whose join `assignmentSubscriptEnd` did not take, or -1 when
+ * it took it. Bash joins on position alone, and positions it joins at keep turning up that the token model misses
+ * (a redirect prefix, `coproc`, `time -p`, a subshell, a function body), so every such `[` is treated as one bash may
+ * join. Bash skips `$( )`, `${ }` and backquotes whole while the scan here cannot, so when the scan never closes or
+ * crossed such an unsure span, bash may close later: the span then runs to the end of the source.
+ */
+export function looseSubscriptEnd(src: string, open: number, tokens: Token[]): number {
+  if (assignmentSubscriptEnd(src, open, tokens) !== -1) return -1;
+  return wordStartSubscriptEnd(src, open);
+}
+
+/**
+ * The end of the span bash may read as one word from a `[` that starts a word, as it does for `[ … ]=x` inside
+ * `NAME=( … )`: its matching `]`, or the end of the source when the scan never closes or crossed an unsure span.
+ */
+export function wordStartSubscriptEnd(src: string, open: number): number {
+  const scan = scanOf(src);
+  const close = matchingBracket(src, open, scan);
+  return close === -1 || scan.unsurePairs.has(open) ? src.length : close;
+}
+
+/**
  * What one source's subscript checks share, so each `[` costs constant time however long the source: the first
  * index from which `UNPLACEABLE_RE` has matched the source before it, and the brackets and spans found so far.
  */
 interface SourceScan {
   unplaceableFrom: number;
   brackets: Map<number, number>;
+  /** Each `[` whose pairing crossed a `$( )`, `${ }` or backquote span the scan read one character at a time. */
+  unsurePairs: Set<number>;
+  /** What `selfContainedEnd` found for each `${`, `$(` or backquote opener it has read, so each is read once. */
+  selfContained: Map<number, number>;
   spans: SpanEnds;
 }
 
@@ -49,7 +76,13 @@ const MAX_SOURCES = 64;
 function scanOf(src: string): SourceScan {
   const known = SCANS.get(src);
   if (known) return known;
-  const scan = { unplaceableFrom: unplaceableFrom(src), brackets: new Map<number, number>(), spans: new Map<number, number>() };
+  const scan = {
+    unplaceableFrom: unplaceableFrom(src),
+    brackets: new Map<number, number>(),
+    unsurePairs: new Set<number>(),
+    selfContained: new Map<number, number>(),
+    spans: new Map<number, number>(),
+  };
   if (SCANS.size >= MAX_SOURCES) SCANS.clear();
   SCANS.set(src, scan);
   return scan;
@@ -145,13 +178,22 @@ function matchingBracket(src: string, open: number, scan: SourceScan): number {
   const known = scan.brackets.get(open);
   if (known !== undefined) return known;
   const pending: number[] = [];
+  let lastUnsure = -1;
   for (let j = open; j < src.length; j++) {
-    const end = skipQuoted(src, j, scan.spans);
+    let end = skipQuoted(src, j, scan.spans);
     if (end === -1) break;
+    if (end === j && opensUnsureSpan(src, j)) {
+      end = selfContainedEnd(src, j, scan.selfContained);
+      if (end === -1) {
+        lastUnsure = j;
+        end = j;
+      }
+    }
     const c = end === j ? src[j] : "";
     if (c === "[") pending.push(j);
     const paired = c === "]" ? pending.pop() : undefined;
     if (paired !== undefined) scan.brackets.set(paired, j);
+    if (paired !== undefined && lastUnsure > paired) scan.unsurePairs.add(paired);
     if (paired === open) return j;
     j = end;
   }

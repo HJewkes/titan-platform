@@ -1,10 +1,11 @@
 import { execFile, type ExecFileException } from "node:child_process";
 import { cpSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { probeHealth } from "@titan-design/daemon";
+import { isProcessAlive } from "@titan-design/daemon";
 import { gitChildEnv, setupEnv } from "@titan-design/worktree";
 import { deployRecordPath, parseDeployRecord, type DeployPorts, type DeployRecord } from "./deploy.js";
 import type { CommandResult } from "./service-control.js";
+import { UNAVAILABLE, type Probe } from "./deploy-watch-window.js";
 import { systemServicePorts } from "./service-ports.js";
 
 const GIT_TIMEOUT_MS = 120_000;
@@ -63,16 +64,6 @@ function rename(from: string, to: string): boolean {
   }
 }
 
-/** EPERM means the pid exists under another user, which still holds the lock. */
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return (err as NodeJS.ErrnoException).code === "EPERM";
-  }
-}
-
 /**
  * The service checkout only ever holds a reviewed main commit, so its packageManager pin is
  * trusted: without the switch a global pnpm 10 installs a layout every pinned pnpm then purges.
@@ -91,12 +82,32 @@ export function deployPnpmEnv(env: NodeJS.ProcessEnv, args: readonly string[]): 
   return args[0] === "install" ? pinned : { ...pinned, npm_config_ignore_scripts: "false", NPM_CONFIG_IGNORE_SCRIPTS: "false" };
 }
 
+/** Statuses a rate limiter or a proxy answers with; they say nothing about whether serve is up. */
+const UNAVAILABLE_STATUSES: ReadonlySet<number> = new Set([403, 422, 429]);
+
+/** GET `/health`: the body, null on any other failure, or `UNAVAILABLE` when the answer is a rate limit or a refusal to read. */
+async function probeServe(port: number, timeoutMs: number): Promise<Probe> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/health`, { signal: controller.signal });
+    if (UNAVAILABLE_STATUSES.has(res.status)) return UNAVAILABLE;
+    if (!res.ok) return null;
+    const body: unknown = await res.json();
+    return typeof body === "object" && body !== null ? Object.fromEntries(Object.entries(body)) : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function systemDeployPorts(checkout: string): DeployPorts {
   const gitEnv = gitChildEnv(process.env);
   return {
     ...systemServicePorts(),
     pid: process.pid,
-    healthWithin: (port, timeoutMs) => probeHealth(port, { timeoutMs }),
+    healthWithin: probeServe,
     clone: (remote, dest) => runCommand("git", ["clone", "--branch", "main", "--", remote, dest], dirname(dest), CLONE_TIMEOUT_MS, gitEnv),
     git: (args) => runCommand("git", args, checkout, GIT_TIMEOUT_MS, gitEnv),
     pnpm: (args) => runCommand("pnpm", args, checkout, PNPM_TIMEOUT_MS, deployPnpmEnv(process.env, args)),
@@ -105,7 +116,7 @@ export function systemDeployPorts(checkout: string): DeployPorts {
     removeTree: (path) => rmSync(path, { recursive: true, force: true }),
     createExclusive,
     rename,
-    isAlive,
+    isAlive: isProcessAlive,
   };
 }
 

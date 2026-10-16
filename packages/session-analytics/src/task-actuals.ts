@@ -1,16 +1,18 @@
 import type { Db } from "@titan-design/store-sqlite";
 import { roleFromProfile, type WorkerRole } from "./roles.js";
 import {
-  readContextAtFirstDeliverable,
   readOriginsOf,
-  readPeakContext,
   readPrSessions,
+  readSessionContextFacts,
   readSessionPrs,
   readSessionStats,
   readTaskOrigins,
   type OriginLink,
+  type SessionContextFacts,
   type SessionStats,
 } from "./task-actuals-queries.js";
+import type { ClassRules } from "@titan-design/review-panel";
+import { prFeaturesFor, type PrDiff, type PrFeatures } from "./task-actuals-pr.js";
 import { shepherdFactsFor, shepherdWindowStart, type ShepherdFacts, type ShepherdRunRecord } from "./task-actuals-shepherd.js";
 
 export const DEFAULT_ACTIVE_CAP_MINUTES = 15;
@@ -19,7 +21,7 @@ const LONG_CAP_MINUTES = 60;
 const MS_PER_HOUR = 3_600_000;
 const WEAK_SOURCES: ReadonlySet<string> = new Set(["brief-paragraph", "brief-anchor"]);
 
-export type TaskActualsFlag = "no-impl-session" | "weak-link" | "multi-task" | "reopened" | "unpriced" | "unmapped-role";
+export type TaskActualsFlag = "no-impl-session" | "weak-link" | "multi-task" | "reopened" | "unpriced" | "unmapped-role" | "pr-diff-missing";
 
 /**
  * Profiles the plan counts toward a task that `PROFILE_ROLES` does not map. Kept here so the worker
@@ -38,6 +40,8 @@ export interface ActualsTask {
   initiative: string;
   /** An ISO datetime, or a date alone for tasks written before the store kept the time. */
   doneAt: string | null;
+  /** The task's `kind:` tag, which `classifyPr` reads; absent or null classifies strict. */
+  kind?: string | null;
 }
 
 export interface TaskActualsOptions {
@@ -49,6 +53,10 @@ export interface TaskActualsOptions {
   shepherdRuns?: readonly ShepherdRunRecord[];
   /** Where Shepherd's ledger begins; defaults to the earliest run. A row merged before it gets null Shepherd facts. */
   shepherdSince?: string;
+  /** The gh backfill's changed files keyed by PR ref; when passed, every row carries the review-panel PR features. */
+  prDiffs?: ReadonlyMap<string, PrDiff>;
+  /** Review-panel's path tables for those features; defaults to `DEFAULT_CLASS_RULES`. */
+  classRules?: ClassRules;
 }
 
 /** Agent-hours at three idle caps. */
@@ -85,6 +93,9 @@ export interface TaskActuals {
   stageMinutes?: ShepherdFacts["stageMinutes"];
   serviceWallHours?: ShepherdFacts["serviceWallHours"];
   mergePath?: ShepherdFacts["mergePath"];
+  prClass?: PrFeatures["prClass"];
+  touches?: PrFeatures["touches"];
+  changedLines?: PrFeatures["changedLines"];
 }
 
 interface SessionRecord {
@@ -110,11 +121,24 @@ export function taskActuals(minerDb: Db, tasks: readonly ActualsTask[], options:
   const records = buildRecords(minerDb, origins, caps);
   const attached = attachByName(records, wanted);
   attachReviewersByPr(minerDb, records, attached, wanted, caps);
-  const rows = done.map((task) => rowFor(task, attached, minerDb));
+  const contexts = readSessionContextFacts(minerDb, implementerIds(attached));
+  const rows = done.map((task) => rowFor(task, attached, contexts, minerDb));
+  const withShepherd = withShepherdFacts(rows, options);
+  return options.prDiffs === undefined ? withShepherd : withPrFeatures(withShepherd, done, options.prDiffs, options.classRules);
+}
+
+function withShepherdFacts(rows: TaskActuals[], options: TaskActualsOptions): TaskActuals[] {
   const runs = options.shepherdRuns;
   if (runs === undefined) return rows;
   const windowStart = shepherdWindowStart(runs, options.shepherdSince);
   return rows.map((row) => ({ ...row, ...shepherdFactsFor(row, runs, windowStart) }));
+}
+
+function withPrFeatures(rows: TaskActuals[], tasks: readonly ActualsTask[], diffs: ReadonlyMap<string, PrDiff>, rules: ClassRules | undefined): TaskActuals[] {
+  return rows.map((row, i) => {
+    const { missing, ...features } = prFeaturesFor(row, tasks[i]!.kind, diffs, rules);
+    return { ...row, ...features, flags: missing ? [...row.flags, "pr-diff-missing"] : row.flags };
+  });
 }
 
 function buildRecords(db: Db, origins: readonly OriginLink[], caps: readonly number[]): Map<string, SessionRecord> {
@@ -179,7 +203,24 @@ function hoursOf(items: readonly Contribution[]): CappedHours {
   return { capped: sum(0), at5m: sum(1), at60m: sum(2) };
 }
 
-function rowFor(task: ActualsTask & { doneAt: string }, attached: Attachments, db: Db): TaskActuals {
+function implementerIds(attached: Attachments): string[] {
+  return [...attached.values()].flatMap((sessions) => [...sessions.values()].filter((r) => r.role === "implementer").map((r) => r.origin.sessionId));
+}
+
+type ContextFacts = Map<string, SessionContextFacts>;
+
+/** Exact `(ts, offset)` ties across sessions resolve to the first session listed, where SQLite's pick was arbitrary. */
+function contextOf(implIds: readonly string[], contexts: ContextFacts): Pick<TaskActuals, "peakContext" | "contextAtFirstDeliverable"> {
+  const facts = implIds.map((id) => contexts.get(id)).filter((f): f is SessionContextFacts => f !== undefined);
+  const peaks = facts.map((f) => f.peak).filter((p): p is number => p !== null);
+  let first: SessionContextFacts["firstDeliverable"] = null;
+  for (const { firstDeliverable: d } of facts) {
+    if (d !== null && (first === null || d.ts < first.ts || (d.ts === first.ts && d.offset < first.offset))) first = d;
+  }
+  return { peakContext: peaks.length === 0 ? null : Math.max(...peaks), contextAtFirstDeliverable: first?.context ?? null };
+}
+
+function rowFor(task: ActualsTask & { doneAt: string }, attached: Attachments, contexts: ContextFacts, db: Db): TaskActuals {
   const all = [...(attached.get(task.id)?.values() ?? [])].map((record): Contribution => ({ record, share: shareOf(record, attached) }));
   const impl = all.filter((c) => c.record.role === "implementer");
   const review = all.filter((c) => c.record.role === "reviewer");
@@ -199,8 +240,7 @@ function rowFor(task: ActualsTask & { doneAt: string }, attached: Attachments, d
     firstImplAt: starts[0] ?? null,
     lastImplAt: impl.map((c) => c.record.stats.lastTs).sort().at(-1) ?? null,
     prs,
-    peakContext: readPeakContext(db, implIds),
-    contextAtFirstDeliverable: readContextAtFirstDeliverable(db, implIds),
+    ...contextOf(implIds, contexts),
     unmappedSessions: unmapped,
     flags: flagsFor(task.doneAt, impl, used, unmapped),
   };

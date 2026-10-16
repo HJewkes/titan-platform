@@ -18,7 +18,9 @@ This package is the pure core of that gate. It adds three primitives:
 
 - `planFixProof` turns `git diff -M --name-status <mergeBase> <head>` and the merge base's
   `.github/fix-proof.json` into the tests to run, the support files to carry, the tests the PR
-  deletes, and the old paths to remove from the overlay.
+  deletes, and the old paths to remove from the overlay. It also lists the PR's mutation specs
+  (`mutations`) and every path that is not test material (`source`); `testOnlyOf(plan)` is
+  true when `source` is empty.
 - `classifyReports` compares the base and head vitest JSON reports per test and returns a
   verdict: `reproduced`, `unproven`, `vacuous`, `no-tests` or `error`.
 - `formatResultLine` and `parseResultLine` encode that verdict as one `fix-proof/v1 <json>`
@@ -36,7 +38,7 @@ The bin has three subcommands. In CI each runs in its own job, so code from the 
 runs in the job that prints the verdict.
 
 ```sh
-fix-proof exec --side base|head --out <dir> --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
+fix-proof exec --side base|head --out <dir> [--sandbox-user <name>] --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
 fix-proof judge --base-report <file> --head-report <file> [--base-rerun-report <file>] --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
 fix-proof run --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
 ```
@@ -45,12 +47,16 @@ fix-proof run --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
 when it succeeds.
 
 1. Plans the diff `git diff -M --name-status <base> <head>` with the base's config.
-2. Adds a detached worktree at that side's commit. It runs `pnpm install --frozen-lockfile`
-   when a `pnpm-lock.yaml` is present, then the config's `build` (default `pnpm build`).
+2. Adds a detached worktree at that side's commit and installs from the lockfile in that tree:
+   `pnpm install --frozen-lockfile` for a `pnpm-lock.yaml`, or `npm ci --no-audit --no-fund` for a
+   `package-lock.json` with no `pnpm-lock.yaml` beside it. A tree with neither installs nothing.
+   It then runs the config's `build`, which defaults to `pnpm build`, or to
+   `npm run build --if-present` in an npm tree so a repo with no build script still reaches its tests.
 3. On the base side only, it then checks out the head's tests and carried files over the tree
    and removes `overlayRemovals`. The base install and build finish before any head file lands,
    so nothing the PR carries runs during them, and the base run still lacks the fix.
-4. Runs the config's `command` (default `pnpm exec vitest run`) with
+4. Runs the config's `command` (default `pnpm exec vitest run`, or `npm exec --no -- vitest run` in
+   an npm tree, which fails rather than downloads a vitest the repo does not install) with
    `--reporter=json --outputFile <tmp> --testTimeout 30000 <tests>` appended. The base side runs
    it twice, as `base.report` and `base-rerun.report`, so a reproducer that flaked green once
    can be ruled out. The head side writes `head.report`.
@@ -58,6 +64,26 @@ when it succeeds.
    gzipped and base64-encoded: no space or newline, so it fits a job output and can never form a
    `fix-proof/v1 ` log line. A failed git call, install or build, a missing vitest report or the
    `--budget-ms` deadline (default 18 minutes) writes an error marker in place of each report.
+
+**The base-side sandbox.** The base side runs head test code on the runner. Without a sandbox, a
+`setsid` child of a head test outlives vitest under the job's own uid and can rewrite the base
+reports before they are passed on. `--sandbox-user <name>` closes that:
+
+- The tree's directories and a fresh output directory per run are handed to that user. Files
+  stay runner-owned, because pnpm hardlinks `node_modules` files to its store.
+- Each vitest run is `sudo -n -- timeout -k 5 <budget> unshare --pid --fork --kill-child
+  --mount-proc -- setpriv --reuid <name> --regid <name> --init-groups --no-new-privs
+  --bounding-set=-all -- env -i PATH=… HOME=<tree> CI=1 sh -c <command>`. Every process the
+  tests start dies when the namespace's init exits, and none can regain root.
+- A user that resolves to uid 0 or to the runner's own uid is refused as a setup failure.
+- The vitest output is read only as a regular file of at most 16 MiB, never through a symlink.
+- Everything is handed back to the runner afterwards so cleanup can remove it.
+
+A failed `sudo` setup writes an error marker for both base reports; vitest never falls back to an
+unsandboxed run. The head side ignores the flag. The caller creates the user, which must not be
+able to `sudo`. Code running inside the sandbox during the
+run can still rewrite that run's own vitest output, as the test itself could by failing on
+purpose; the sandbox removes the survivors, not the test code's own reach.
 
 **`judge`** reads the report files and prints one `fix-proof/v1` line.
 
@@ -168,8 +194,66 @@ Every ambiguous, missing or malformed input classifies away from `reproduced`.
 - **A failure on both sides is not proof.** A test that fails at head is `fails-on-head`
   whatever base did.
 - **Result lines are strict.** `parseResultLine` refuses a line over 4 KB, another version,
-  an unknown field, duplicate or reordered keys, and a `reproduced` verdict with no
-  reproducing test.
+  an unknown field, duplicate or reordered keys, a `reproduced` verdict with no
+  reproducing test, and a `killed` mutants verdict over a mutant that was not killed.
+
+## Test-only diffs and mutation specs
+
+A PR that only adds or changes tests, such as a characterization test, is vacuous under
+base-vs-head by construction. For such a PR the gate asks for mutations instead (TP-2732).
+
+- **Test-only.** A changed path is test material when it matches the base config's `tests` or
+  `carry` globs, `MUTATION_SPEC_GLOB` (`**/*.mutations.json`) or `CHANGESET_GLOB`
+  (`.changeset/*.md`), and is not under `FIX_PROOF_HARNESS`. Every other path, deleted ones and
+  both sides of a rename included, lands in `plan.source`. A copy's old path is unchanged, so it
+  does not count.
+- **Spec files.** A spec sits next to its test as `<test file minus extension>.mutations.json`,
+  for example `serve.test.mutations.json` beside `serve.test.ts`. Its shape is
+  `{ v: 1, mutations: [{ name, file, find, replace, kills }] }`.
+- **`parseMutationSpec(text)`** is strict. It refuses unknown keys, more than 5 mutations or
+  none, a duplicate or over-80-character `name`, a `find` or `replace` over 400 characters, a
+  `find` equal to its `replace`, an unnormalized `file`, and an empty or duplicate `kills` list.
+- **`checkMutation(mutation, baseText, config)`** checks one mutation against the merge base.
+  Its `file` must exist there (`baseText` null means it does not) and must not be a test, a
+  carried file, a spec, a changeset or a harness path. Its `find` must occur exactly once,
+  counting overlapping matches.
+
+**The mutation check.** For a diff of test material alone that adds or changes a spec, the
+judge adds `mutants: { verdict, results: [{ spec, name, outcome, failed? }], error? }` to the
+`fix-proof/v1` line. Any other diff gets no `mutants` field.
+
+- **Reading the specs.** The judge reads each spec at head with git and runs `checkMutation`
+  on it against the merge base. It pairs the spec with the one test file beside it
+  (`testFileOfSpec`). A spec that does not parse, fails the check or has no single test beside
+  it makes the field `{ verdict: "error" }`. The base-vs-head verdict is left alone.
+- **The mutants report.** The mutants side writes one report with `encodeMutantsReport`: a
+  baseline run of the merge base with the head's tests overlaid, then one run per mutation. A
+  run is keyed by spec path and mutation name. The judge decodes it with
+  `decodeMutantsReport`. A run named twice makes the report unreadable, and runs no spec
+  declares are ignored. A skipped marker (`encodeMutantsSkipped`) or an error marker gives
+  verdict `error`.
+- **Outcomes.** `classifyMutants` gives each mutation one outcome, and the verdict is `killed`
+  only when every outcome is.
+  - `killed`: the mutant built, and the tests that fail under it are exactly its `kills`.
+    Every one of those failures is an assertion failure.
+  - `overkill`: every `kills` test failed, and so did another test.
+  - `survived`: some `kills` test still passed.
+  - `unbuilt`: the rebuild failed under the mutation.
+  - `load-error`: the test file failed to load, or some test failed with a load or new-API
+    message, such as `Cannot find module`.
+  - `baseline`: a `kills` test did not pass exactly once in the baseline.
+  - `error`: the mutation's run is missing, or some test failed with anything but an
+    `AssertionError` (from an `expect` matcher or `node:assert`). A thrown TypeError, a
+    timeout or a crash is not a kill. Neither is a failure from `.rejects` or `.resolves`,
+    because vitest reports those as a plain `Error`.
+- **Fitting the 4 KB line.** `failed` lists the failing tests only for `overkill` and
+  `survived`. To fit the line, the judge drops `killed` results before the others and keeps
+  the verdict.
+- **Old parsers.** A parser from before this field refuses the line as an unknown field. A
+  Shepherd that has not been redeployed therefore reads the proof as an error.
+
+Carried files count as test material on path alone. A fix placed in a carried file that
+production code imports would pass as test-only.
 
 ## What it deliberately does not do
 

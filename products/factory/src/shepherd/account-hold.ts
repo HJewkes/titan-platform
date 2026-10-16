@@ -6,6 +6,7 @@ import { codeRoute, step } from "../workflows/land.js";
 import { DEFAULT_ACCOUNT, accountAlertText, accountHoldReason, believedReset, parseLimitReset, type ReviewAccounts } from "./account-limit.js";
 import type { AccountLimitStore } from "./account-store.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
+import { PUSH_WATCH_TICK_MS, headPoll, type HeadPoll } from "./push-signal.js";
 
 const ACCOUNT_HOLD_STEP = "sh-account-hold";
 const ACCOUNT_WAIT_STEP = "sh-account-wait";
@@ -13,7 +14,6 @@ export const ACCOUNT_STEPS: readonly StepDeclaration[] = [
   { id: ACCOUNT_HOLD_STEP, kind: "dispatch" },
   { id: ACCOUNT_WAIT_STEP, kind: "dispatch" },
 ];
-const DEFAULT_POLL_MS = 30_000;
 /** How long one wait holds the run before it reads the head and reviews again; a hold that still applies waits again. */
 export const ACCOUNT_WAIT_LIMIT_MS = 60 * 60_000;
 
@@ -154,11 +154,13 @@ function released(deps: ShepherdDeps, input: WaitInput): boolean {
  * A closed PR gets no next review intent, so it drops the run's own hold here; anyone else's hold stays.
  * Only a read of state "closed" releases (a merged PR reads closed too); anything else keeps the hold.
  */
-async function resumeReason(deps: ShepherdDeps, accounts: AccountsView, input: WaitInput): Promise<Waited["resumed"] | undefined> {
+async function resumeReason(deps: ShepherdDeps, accounts: AccountsView, input: WaitInput, poll: HeadPoll): Promise<Waited["resumed"] | undefined> {
   if (released(deps, input)) return "released";
   const limits = accountLimitsOf(deps);
   if (usableAccount(limits, accounts.dirs) !== undefined) return "headroom";
-  const pr = await deps.port.getPr(input.repo, input.pr);
+  const polled = await poll.next();
+  const pr = polled.read ? polled.pr : undefined;
+  if (pr === undefined) return undefined;
   if (pr.state === "closed") {
     limits.releaseRun(input.runId);
     return "head-moved";
@@ -166,15 +168,16 @@ async function resumeReason(deps: ShepherdDeps, accounts: AccountsView, input: W
   return pr.headSha !== input.head ? "head-moved" : undefined;
 }
 
-/** Any read that fails keeps the hold and is polled again. */
+/** Any read that fails keeps the hold and is read again; the PR is read only on a push to its branch or once per backstop. */
 async function awaitHeadroom(deps: ShepherdDeps, accounts: AccountsView, input: WaitInput, signal: AbortSignal): Promise<Waited> {
   const startedAt = deps.now();
+  const poll = headPoll({ pushes: deps.pushes, repo: input.repo, headSha: input.head, tickMs: PUSH_WATCH_TICK_MS, read: () => deps.port.getPr(input.repo, input.pr).catch(() => undefined) });
   for (;;) {
     signal.throwIfAborted();
-    const resumed = await resumeReason(deps, accounts, input).catch(() => undefined);
+    const resumed = await resumeReason(deps, accounts, input, poll).catch(() => undefined);
     if (resumed !== undefined) return { resumed };
     if (deps.now() - startedAt >= ACCOUNT_WAIT_LIMIT_MS) return { resumed: "expired" };
-    await deps.sleep(deps.pollMs ?? DEFAULT_POLL_MS, signal);
+    await deps.sleep(poll.tickMs, signal);
   }
 }
 

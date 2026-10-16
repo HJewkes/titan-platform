@@ -1,5 +1,6 @@
 import { H as HistoryLoad, C as ChurnEntry, a as ChurnWindow } from '../change-coupling.js';
 export { b as ChangeCouplingResult, c as CoEditPair, d as ComputeChangeCouplingOptions, e as CouplingPartner, G as GitHistoryError, f as GitLargeFailure, L as LoadChurnOptions, g as computeChangeCoupling, h as couplingFor, i as entriesWithin, l as loadChurnEntries, j as loadChurnResult, p as parseChurnLog, r as resolveRenamedPath } from '../change-coupling.js';
+import { LineSource } from '@titan-design/evidence';
 
 /** A regular file or symlink in a commit's tree: its repo-relative path and blob id. */
 interface TreeBlob {
@@ -19,6 +20,13 @@ declare function resolveCommit(repoRoot: string, rev: string): ResolvedCommit;
 declare function listTreeBlobs(repoRoot: string, commit: string): TreeBlob[];
 /** UTF-8 content of each blob in `oids`, read with a single `git cat-file --batch`. */
 declare function readBlobs(repoRoot: string, oids: readonly string[]): Map<string, string>;
+
+/**
+ * A LineSource over the blobs of commit `rev`, never the working tree. `rev` must be a full 40-hex
+ * commit id, so a moving ref cannot change what an anchor was checked against. A path that is not a
+ * blob at `rev` (missing, a directory, a submodule) reads as unreadable.
+ */
+declare function revisionLineSource(repoRoot: string, rev: string): LineSource;
 
 interface FirstSeenOptions {
     /** Directory paths are made relative to; paths outside it are dropped. */
@@ -116,7 +124,7 @@ interface SymbolAccretion {
  */
 declare function accreteSymbols(edits: readonly FileEdit[], spansByFile: ReadonlyMap<string, readonly SymbolSpan[]>): Map<string, SymbolAccretion>;
 
-export { ChurnEntry, ChurnWindow, type ComputeOwnershipOptions, DEFAULT_TASK_ID_PATTERN, type FileEdit, type FirstSeenOptions, HistoryLoad, type OwnershipForFile, type PathChurn, type ResolvedCommit, type SymbolAccretion, type SymbolSpan, type TreeBlob, accreteSymbols, aggregateChurn, aggregateChurnWindows, authorLinesByPath, computeOwnership, listTreeBlobs, loadFileEditsResult, loadFileFirstSeen, loadFirstSeenResult, readBlobs, resolveCommit, summarizeOwnership };
+export { ChurnEntry, ChurnWindow, type ComputeOwnershipOptions, DEFAULT_TASK_ID_PATTERN, type FileEdit, type FirstSeenOptions, HistoryLoad, type OwnershipForFile, type PathChurn, type ResolvedCommit, type SymbolAccretion, type SymbolSpan, type TreeBlob, accreteSymbols, aggregateChurn, aggregateChurnWindows, authorLinesByPath, computeOwnership, listTreeBlobs, loadFileEditsResult, loadFileFirstSeen, loadFirstSeenResult, readBlobs, resolveCommit, revisionLineSource, summarizeOwnership };
 
 // ./dist/change-coupling.d.ts
 /**

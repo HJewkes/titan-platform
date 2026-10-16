@@ -1,6 +1,6 @@
 import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
-import { readSessionCosts, readSessionsByName, readSessionsByTask } from "./cost-per-outcome-queries.js";
+import { readSessionSpend, readSessionsByName, readSessionsByTask, type SessionSpend } from "./cost-per-outcome-queries.js";
 import type { ReportWindow } from "./cost-report-queries.js";
 import { LIST_PRICE_CAVEAT, table, usd } from "./render-text.js";
 
@@ -41,6 +41,10 @@ const outcomeBucketSchema = z.object({
   /** Bucket cost over merged assignments, parked and failed ones' cost included; null at zero merges. */
   usdPerMerged: z.number().nullable(),
   usdPerDone: z.number().nullable(),
+  /** Window requests of the bucket's agents, split over each agent's assignments like `costUsd`. */
+  requests: z.number().nonnegative(),
+  /** Bucket requests over merged plus done assignments; null at zero finished. */
+  requestsPerFinished: z.number().nullable(),
 });
 
 export const costPerOutcomeSchema = z.object({
@@ -75,11 +79,11 @@ interface AgentJoin {
 export function costPerOutcome(db: Db, assignments: readonly Assignment[], options: CostPerOutcomeOptions): CostPerOutcomeReport {
   const rows = z.array(assignmentSchema).parse(assignments);
   const window = { since: options.since, until: options.until };
-  const costs = readSessionCosts(db, window);
+  const spend = readSessionSpend(db, window);
   const seats = [...new Set(rows.map((row) => row.seat))];
   const byName = readSessionsByName(db);
   const joins = joinAgents(db, rows, seats, byName);
-  const shares = shareOf(rows, joins, costs);
+  const shares = shareOf(rows, joins, spend);
   const merged = new Set(options.mergedOutcomes ?? DEFAULT_MERGED_OUTCOMES);
   const done = new Set(options.doneOutcomes ?? DEFAULT_DONE_OUTCOMES);
   const group = (keyOf: (row: Assignment) => string | null) => buckets(rows, shares, keyOf, merged, done);
@@ -90,7 +94,7 @@ export function costPerOutcome(db: Db, assignments: readonly Assignment[], optio
     byKind: group((row) => row.kind),
     byInitiative: group((row) => row.initiative),
     byValue: group((row) => row.value),
-    seatCostUsd: seatCosts(seats, byName, costs),
+    seatCostUsd: seatCosts(seats, byName, spend),
     joinSource: joinSourceCounts(rows, joins),
     unmatchedAgents: [...joins].filter(([, join]) => join.source === "none").map(([agent]) => agent).sort(),
   };
@@ -117,24 +121,28 @@ function joinByTask(rows: readonly Assignment[], agent: string, byTask: Map<stri
   return sessions.length > 0 ? { source: "taskId", sessions } : { source: "none", sessions: [] };
 }
 
-function shareOf(rows: readonly Assignment[], joins: Map<string, AgentJoin>, costs: Map<string, number>): Map<string, number> {
-  const shares = new Map<string, number>();
+function shareOf(rows: readonly Assignment[], joins: Map<string, AgentJoin>, spend: Map<string, SessionSpend>): Map<string, SessionSpend> {
+  const shares = new Map<string, SessionSpend>();
   for (const [agent, join] of joins) {
-    const spend = sumCosts(new Set(join.sessions), costs);
-    shares.set(agent, spend / rows.filter((row) => row.agent === agent).length);
+    const total = sumSpend(new Set(join.sessions), spend);
+    const n = rows.filter((row) => row.agent === agent).length;
+    shares.set(agent, { costUsd: total.costUsd / n, requests: total.requests / n });
   }
   return shares;
 }
 
-function sumCosts(sessions: Iterable<string>, costs: Map<string, number>): number {
-  let total = 0;
-  for (const id of sessions) total += costs.get(id) ?? 0;
+function sumSpend(sessions: Iterable<string>, spend: Map<string, SessionSpend>): SessionSpend {
+  const total = { costUsd: 0, requests: 0 };
+  for (const id of sessions) {
+    total.costUsd += spend.get(id)?.costUsd ?? 0;
+    total.requests += spend.get(id)?.requests ?? 0;
+  }
   return total;
 }
 
 function buckets(
   rows: readonly Assignment[],
-  shares: Map<string, number>,
+  shares: Map<string, SessionSpend>,
   keyOf: (row: Assignment) => string | null,
   merged: Set<string>,
   done: Set<string>,
@@ -146,27 +154,30 @@ function buckets(
     bucket.assignments += 1;
     if (row.outcome !== null && merged.has(row.outcome)) bucket.merged += 1;
     if (row.outcome !== null && done.has(row.outcome)) bucket.done += 1;
-    bucket.costUsd += shares.get(row.agent) ?? 0;
+    bucket.costUsd += shares.get(row.agent)?.costUsd ?? 0;
+    bucket.requests += shares.get(row.agent)?.requests ?? 0;
     groups.set(key, bucket);
   }
   return byCost([...groups.values()].map(withRates));
 }
 
 function emptyBucket(key: string): OutcomeBucket {
-  return { key, assignments: 0, merged: 0, done: 0, costUsd: 0, usdPerMerged: null, usdPerDone: null };
+  return { key, assignments: 0, merged: 0, done: 0, costUsd: 0, usdPerMerged: null, usdPerDone: null, requests: 0, requestsPerFinished: null };
 }
 
 function withRates(bucket: OutcomeBucket): OutcomeBucket {
   const per = (n: number) => (n > 0 ? bucket.costUsd / n : null);
-  return { ...bucket, usdPerMerged: per(bucket.merged), usdPerDone: per(bucket.done) };
+  const finished = bucket.merged + bucket.done;
+  const requestsPerFinished = finished > 0 ? bucket.requests / finished : null;
+  return { ...bucket, usdPerMerged: per(bucket.merged), usdPerDone: per(bucket.done), requestsPerFinished };
 }
 
 function byCost<T extends { key: string; costUsd: number }>(rows: T[]): T[] {
   return rows.sort((a, b) => b.costUsd - a.costUsd || a.key.localeCompare(b.key));
 }
 
-function seatCosts(seats: readonly string[], byName: Map<string, string[]>, costs: Map<string, number>): CostPerOutcomeReport["seatCostUsd"] {
-  return byCost(seats.map((seat) => ({ key: seat, costUsd: sumCosts(new Set(byName.get(seat) ?? []), costs) })));
+function seatCosts(seats: readonly string[], byName: Map<string, string[]>, spend: Map<string, SessionSpend>): CostPerOutcomeReport["seatCostUsd"] {
+  return byCost(seats.map((seat) => ({ key: seat, costUsd: sumSpend(new Set(byName.get(seat) ?? []), spend).costUsd })));
 }
 
 function joinSourceCounts(rows: readonly Assignment[], joins: Map<string, AgentJoin>): CostPerOutcomeReport["joinSource"] {
@@ -196,6 +207,11 @@ export function renderCostPerOutcomeText(report: CostPerOutcomeReport): string {
 
 function bucketTable(title: string, rows: readonly OutcomeBucket[]): string {
   const rate = (value: number | null) => (value === null ? "-" : usd(value));
-  const head = ["key", "assignments", "merged", "done", "cost", "per merged", "per done"];
-  return table(title, head, rows.map((row) => [row.key, row.assignments, row.merged, row.done, usd(row.costUsd), rate(row.usdPerMerged), rate(row.usdPerDone)]));
+  const perFinished = (value: number | null) => (value === null ? "-" : value.toFixed(1));
+  const head = ["key", "assignments", "merged", "done", "cost", "per merged", "per done", "req/finished"];
+  return table(
+    title,
+    head,
+    rows.map((row) => [row.key, row.assignments, row.merged, row.done, usd(row.costUsd), rate(row.usdPerMerged), rate(row.usdPerDone), perFinished(row.requestsPerFinished)]),
+  );
 }

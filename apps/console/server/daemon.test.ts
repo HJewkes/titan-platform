@@ -5,7 +5,7 @@ import { createServer } from "node:http";
 import type * as NetModule from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import * as daemonPackage from "@titan-design/daemon";
 import { SESSION_COOKIE, SESSION_MAX_AGE_MS, TlsFileError, TokenFileError, daemonPaths, readPidFile, signSession, silentLogger, type DaemonHandle, type Logger } from "@titan-design/daemon";
 import { createRpcClient, liveSource, snapshotKey } from "@titan-design/rpc-client";
@@ -57,6 +57,7 @@ beforeEach(async () => {
     stateDir: path.join(dir, "state"),
     activeWorkPort: activeWork.port,
     agentChatPort: await closedPort(),
+    factoryPort: await closedPort(),
     agentChatTokenPath: path.join(dir, "ui.token"),
     agentChatEventsDbPath: path.join(dir, "events.db"),
     seatPrefixes: [],
@@ -83,6 +84,21 @@ afterEach(async () => {
 const origin = (): string => `http://127.0.0.1:${handle!.port}`;
 
 const SESSION = "0a1b2c3d-0000-4000-8000-0000000000aa";
+
+const SHEPHERD_ROW = {
+  repo: "hjewkes/titan-design",
+  pr: 794,
+  branch: "agent-chat/td-759",
+  runId: "cc347d3e-9a84-431a-afa5-ce157e10b664",
+  task: "titan-design/TD-759",
+  phase: "awaiting-approval",
+  headSha: "45e81c1c13ad727bcbf74430c119c834ae021e60",
+  phaseSince: "2026-10-09T15:20:51.359Z",
+  nextAction: "owner: approve-merge",
+  pendingGate: null,
+  held: null,
+  stalled: null,
+};
 
 /** An indexed session whose transcript edits each path once, beside a clone of `widget` at `<dir>/checkout`. */
 async function seedSessionTouching(files: readonly string[]): Promise<readonly string[]> {
@@ -339,6 +355,46 @@ describe.skipIf(process.platform !== "linux")("the console in LAN mode (127.0.0.
 
     expect([health.status, shell.status, daemonHealth.status]).toEqual([401, 401, 401]);
     expect(shell.body).not.toContain("console shell");
+  });
+
+  /** A fake titan-factory on loopback that records each Shepherd read the console makes of it. */
+  async function startFakeFactory(): Promise<{ hosts: string[] }> {
+    const hosts: string[] = [];
+    const server = createServer((req, res) => {
+      hosts.push(req.headers.host ?? "");
+      req.resume().on("end", () => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true, data: [SHEPHERD_ROW] }));
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("fake factory bound no TCP port");
+    config.factoryPort = address.port;
+    onTestFinished(() => new Promise<void>((resolve) => server.close(() => resolve())));
+    return { hosts };
+  }
+
+  it("answers 401 to an unauthenticated LAN /rpc/shepherd.list and /rpc/rounds.list, and never calls the factory", async () => {
+    const factory = await startFakeFactory();
+    await startLan();
+
+    const shepherd = await rpc("shepherd.list");
+    const rounds = await rpc("rounds.list");
+
+    expect([shepherd.status, rounds.status]).toEqual([401, 401]);
+    expect(factory.hosts).toEqual([]);
+  });
+
+  it("serves a signed-in LAN /rpc/shepherd.list from the factory, which sees only a loopback Host", async () => {
+    const factory = await startFakeFactory();
+    const credential = await signIn(await startLan());
+
+    const reply = await rpc("shepherd.list", credential);
+
+    expect(reply.status).toBe(200);
+    expect(JSON.parse(reply.body)).toMatchObject({ ok: true, data: [{ runId: SHEPHERD_ROW.runId }] });
+    expect(factory.hosts).toEqual([`127.0.0.1:${config.factoryPort}`]);
   });
 
   it("answers 401 to an unauthenticated LAN /events, which carries the upstream relay", async () => {

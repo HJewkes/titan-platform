@@ -315,14 +315,17 @@ describe("reading an existing code-graph database", () => {
     expect(parseCliArgs([]).db).toBeNull();
   });
 
-  it("reads the head snapshot, where a real namespace import leaves only a file-level edge", async () => {
+  it("reads the head snapshot, where a namespace member access also credits the export (TP-2474 c)", async () => {
     const dbPath = await indexFixture({
       "src/lib.ts": "export const viaNamespace = 1;\n",
       "src/main.ts": 'import * as lib from "./lib.js";\nexport const total = lib.viaNamespace;\n',
     });
     const { nodes, edges } = await graphFromDb(dbPath);
     const lib = nodes.find((n) => n.kind === "file" && n.id.endsWith("src/lib.ts")).id;
-    expect(edges.filter((e) => e.dstId.startsWith(lib)).map((e) => e.kind)).toEqual(["imports"]);
+    expect(edges.filter((e) => e.dstId.startsWith(lib)).map((e) => [e.kind, e.dstId]).sort()).toEqual([
+      ["imports", lib],
+      ["references", `${lib}#viaNamespace`],
+    ]);
   });
 
   it("waits for a writer holding the dag-check lock instead of reading its half-written head snapshot", async () => {

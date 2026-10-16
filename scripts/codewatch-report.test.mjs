@@ -1,9 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SCHEMA_ID, collectReport, renderQuestions, writeReport } from "./codewatch-report.mjs";
+import { SCHEMA_ID, collectReport, gitNumstat, parseNumstat, renderQuestions, sizeBlock, writeReport } from "./codewatch-report.mjs";
 
 const readJson = (rel) => JSON.parse(readFileSync(new URL(`../.codewatch/${rel}`, import.meta.url), "utf8"));
 const roots = [];
@@ -212,5 +213,111 @@ describe("collectReport", () => {
     const report = collectReport(graph, store, { snapshot: HEAD, result }, RULES);
 
     expect(report).toMatchObject({ base: null, deltas: [], exports: [], questions: [], check: { carryover: 0 } });
+  });
+});
+
+describe("size block", () => {
+  const validate = new Ajv2020({ allErrors: true }).compile(readJson("pr-report.schema.json"));
+  // The fixtures keep one record per line for review; git's -z output separates them with NUL.
+  const numstat = (name) => () => readFileSync(new URL(`../.codewatch/fixtures/${name}`, import.meta.url), "utf8").replaceAll("\n", "\0");
+  const reportFor = (readNumstat) => {
+    const { graph, store } = fakeGraph();
+    return collectReport(graph, store, { snapshot: HEAD, baselineSnapshot: BASE, result: passing }, RULES, { readNumstat });
+  };
+
+  it("flags a guard-area PR over the cap by additions plus deletions, leaving generated files out", () => {
+    const report = reportFor(numstat("numstat-security-oversize.txt"));
+
+    expect(report.size).toEqual({
+      lines: 500,
+      cap: 400,
+      guardPaths: ["packages/tool-guard/src/heredoc.ts", "packages/tool-guard/src/heredoc.test.ts"],
+      flagged: true,
+    });
+    expect(validate(report)).toBe(true);
+  });
+
+  it.each([
+    ["a 399-line guard-area PR", "numstat-security-399.txt", 399],
+    ["a 900-line PR outside the guard area", "numstat-large-nonguard.txt", 900],
+  ])("does not flag %s", (_, fixture, lines) => {
+    const report = reportFor(numstat(fixture));
+
+    expect(report.size).toEqual({ lines, cap: 400, guardPaths: [], flagged: false });
+    expect(validate(report)).toBe(true);
+  });
+
+  it("leaves the size out and still writes a valid report when numstat fails", () => {
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    const file = join(tempDir(), "report.json");
+
+    writeReport(file, () => reportFor(() => { throw new Error("git diff failed"); }));
+
+    const report = JSON.parse(readFileSync(file, "utf8"));
+    expect(report).not.toHaveProperty("size");
+    expect(validate(report)).toBe(true);
+    expect(stderr).toHaveBeenCalledWith(expect.stringMatching(/size left out: git diff failed/));
+  });
+});
+
+describe("parseNumstat", () => {
+  it("reads -z records and renames", () => {
+    const text = "3\t1\tsrc/a.ts\0" + "2\t2\t\0src/old.ts\0src/new.ts\0";
+
+    expect(parseNumstat(text)).toEqual([
+      { path: "src/a.ts", additions: 3, deletions: 1 },
+      { path: "src/new.ts", previousPath: "src/old.ts", additions: 2, deletions: 2 },
+    ]);
+  });
+
+  it("keeps a newline or tab inside a path as part of that path", () => {
+    const text = "1\t0\todd\nname.ts\0" + "4\t0\ttab\tname.ts\0";
+
+    expect(parseNumstat(text)).toEqual([
+      { path: "odd\nname.ts", additions: 1, deletions: 0 },
+      { path: "tab\tname.ts", additions: 4, deletions: 0 },
+    ]);
+  });
+
+  it("reads a binary file's missing counts as unknown, not zero", () => {
+    expect(parseNumstat("-\t-\tlogo.png\0")).toEqual([{ path: "logo.png", additions: Number.NaN, deletions: Number.NaN }]);
+  });
+});
+
+describe("size block against crafted diffs", () => {
+  const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+  const lines = (n) => Array.from({ length: n }, (_, i) => `export const v${i} = ${i};`).join("\n") + "\n";
+
+  it("still flags a 450-line guard edit next to a file whose name holds a newline", () => {
+    const text = "450\t0\tpackages/tool-guard/src/heredoc.ts\0" + "1\t0\todd\nname.ts\0";
+
+    expect(sizeBlock(() => text)).toMatchObject({ lines: 451, flagged: true, guardPaths: ["packages/tool-guard/src/heredoc.ts"] });
+  });
+
+  it("leaves the size out, so it reads as unknown, when a guard file shows as binary", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(sizeBlock(() => "-\t-\tpackages/tool-guard/src/heredoc.ts\0")).toBeUndefined();
+  });
+
+  it("counts a binary file outside the guard area as no lines", () => {
+    expect(sizeBlock(() => "10\t0\tsrc/a.ts\0" + "-\t-\tsite/public/logo.png\0")).toEqual({ lines: 10, cap: 400, guardPaths: [], flagged: false });
+  });
+
+  it("counts a guard edit that the PR's own .gitattributes marks -diff", () => {
+    const repo = tempDir();
+    git(repo, "init", "-q");
+    writeFileSync(join(repo, ".gitattributes"), "packages/tool-guard/** -diff\n");
+    git(repo, "add", ".");
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base");
+    const base = git(repo, "rev-parse", "HEAD");
+    mkdirSync(join(repo, "packages/tool-guard/src"), { recursive: true });
+    writeFileSync(join(repo, "packages/tool-guard/src/heredoc.ts"), lines(450));
+    git(repo, "add", ".");
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "head");
+
+    const size = sizeBlock(gitNumstat(base, git(repo, "rev-parse", "HEAD"), repo));
+
+    expect(size).toEqual({ lines: 450, cap: 400, guardPaths: ["packages/tool-guard/src/heredoc.ts"], flagged: true });
   });
 });

@@ -89,8 +89,10 @@ declare function execSafe(bin: string, args: string[], env: Record<string, strin
  * error mapping, for callers (a long-lived server) that cannot afford to
  * stall while a slow child answers. `input` and `cwd` follow `execSafe`'s
  * opt-in rule; `cwd` is last so existing `input` callers keep their order.
+ * Aborting `signal` kills the child and rejects with `ExecAbortedError`; a
+ * signal already aborted starts no child.
  */
-declare function execSafeAsync(bin: string, args: string[], env: Record<string, string>, timeoutMs: number, input?: string, cwd?: string): Promise<SafeExecResult>;
+declare function execSafeAsync(bin: string, args: string[], env: Record<string, string>, timeoutMs: number, input?: string, cwd?: string, signal?: AbortSignal): Promise<SafeExecResult>;
 
 /**
  * R-61: hand a claimed item to agent-chat's own agent machinery instead of
@@ -169,7 +171,11 @@ declare class DispatchTimeoutError extends DispatchError {
 }
 /** Same shape agent-chat's own registry enforces, checked before we spend a spawn. */
 declare const PEER_NAME_PATTERN: RegExp;
-/** Every agent-chat call runs with this; autostart would leave a broker owned by the caller. */
+/**
+ * Every agent-chat call runs with this; autostart would leave a broker owned by the caller.
+ * A non-empty `AGENT_CHAT_HOME` is forwarded so the CLI reaches the broker whose
+ * profiles `installedProfilesDir()` just checked, not the default one.
+ */
 declare function agentChatEnv(): Record<string, string>;
 interface DispatchRequest {
     agentChatBinPath: string;
@@ -224,10 +230,29 @@ declare function buildSpawnArgs(req: {
 declare function dispatchToAgentChat(req: DispatchRequest, timeoutMs: number, allowedProfiles: readonly string[]): Promise<DispatchResult>;
 
 /**
+ * Duration of each agent-chat CLI call, reported to opt-in observers so a
+ * long-lived caller can tell a slow roster read from a slow spawn.
+ *
+ * Only the verb is reported. Later argv words carry peer names and, for a
+ * spawn, `--briefing` text, so they never leave this module.
+ */
+
+type AgentChatCall = {
+    verb: string;
+    ms: number;
+    outcome: "ok" | "refused" | "timeout" | "error";
+};
+/** Returns the unsubscribe. `now` is injectable so tests need no real waiting. */
+declare function observeAgentChatCalls(report: (call: AgentChatCall) => void, options?: {
+    now?: () => number;
+}): () => void;
+
+/**
  * Refuse a dispatch unless the profile agent-chat is about to load says
  * `"surface": "headless"` (relay R-71 slice A, ported from relay PR #59).
  *
- * agent-chat re-reads `~/.agent-chat/profiles/<name>.json` on every spawn, and
+ * agent-chat re-reads `<name>.json` from its profiles dir (`$AGENT_CHAT_HOME/profiles`,
+ * default `~/.agent-chat/profiles`) on every spawn, and
  * a dispatched implementer holds `Write` and blanket `Bash`, neither
  * path-limited. So one agent can rewrite the installed profile to an
  * interactive surface, and the NEXT dispatch then puts its brief in `claude`'s
@@ -240,8 +265,11 @@ declare function dispatchToAgentChat(req: DispatchRequest, timeoutMs: number, al
  * closes that window.
  */
 /**
- * Resolved per call so it tracks `HOME`. Read from `process.env` first because
- * `homedir()` sees the process-wide variable, not a worker thread's own env.
+ * agent-chat's own rule: `$AGENT_CHAT_HOME/profiles`, else
+ * `$HOME/.agent-chat/profiles`. `||` rather than `??` so an empty variable
+ * falls back instead of yielding a relative `profiles`. Resolved per call so
+ * it tracks both variables. Read from `process.env` first because `homedir()`
+ * sees the process-wide variable, not a worker thread's own env.
  */
 declare function installedProfilesDir(): string;
 declare function assertInstalledHeadless(profile: string, dir?: string): void;
@@ -411,10 +439,10 @@ interface AnswersPage {
     next?: string;
 }
 /** Files the question and returns its msg_id, the id its answer is read back by. */
-declare function askHuman(agentChatBinPath: string, req: AskRequest, timeoutMs: number): Promise<string>;
+declare function askHuman(agentChatBinPath: string, req: AskRequest, timeoutMs: number, signal?: AbortSignal): Promise<string>;
 /** Answers and dismissals to `label`'s asks after `since`, oldest first. */
-declare function readAnswers(agentChatBinPath: string, label: string, since: string | undefined, timeoutMs: number): Promise<AnswersPage>;
+declare function readAnswers(agentChatBinPath: string, label: string, since: string | undefined, timeoutMs: number, signal?: AbortSignal): Promise<AnswersPage>;
 /** Withdraws an ask nobody needs answered any more. A refusal means it is already closed. */
-declare function dismissAsk(agentChatBinPath: string, msgId: string, timeoutMs: number): Promise<void>;
+declare function dismissAsk(agentChatBinPath: string, msgId: string, timeoutMs: number, signal?: AbortSignal): Promise<void>;
 
-export { ASK_LABEL_PATTERN, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, PEER_NAME_PATTERN, type ParkResult, type ResumeAgentResult, ResumeError, type RetireResult, type SafeExecResult, type ServiceAnswer, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgents, messageAgent, minimalEnv, parkAgent, parseAgentRows, readAnswers, resolveBinaryPath, resumeAgent, resumeArgs, retire };
+export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, PEER_NAME_PATTERN, type ParkResult, type ResumeAgentResult, ResumeError, type RetireResult, type SafeExecResult, type ServiceAnswer, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgents, messageAgent, minimalEnv, observeAgentChatCalls, parkAgent, parseAgentRows, readAnswers, resolveBinaryPath, resumeAgent, resumeArgs, retire };

@@ -64,6 +64,112 @@ describe("fix-proof-run.sh", () => {
           `--base-rerun-report ${reports}/base-rerun.report --head-report ${reports}/head.report`,
       );
     });
+
+    describe("with a refusal from the merge-base step", () => {
+      const refusal = "fix-proof runs only against the default branch: base parent is not main";
+      beforeEach(() => {
+        writeFileSync(path.join(dist, "bin.js"), echoArgs);
+        writeFileSync(path.join(dist, "judge.js"), `console.log('fix-proof/v1 {"verdict":"reproduces"}');\n`);
+      });
+
+      it("prints one error line naming the stacked base and never runs the runner's judge.js", () => {
+        const result = sh(["judge", runner, path.join(tmp, "repo"), base, head, path.join(tmp, "reports")], { FIX_PROOF_REFUSED: refusal });
+
+        expect(result.status).toBe(0);
+        expect(result.stdout).not.toContain("reproduces\"}");
+        expect(result.stdout.split("\n").filter(Boolean)).toHaveLength(1);
+        const parsed = parseResultLine(result.stdout.trim());
+        expect(parsed.ok).toBe(true);
+        expect(parsed.result).toMatchObject({ head, mergeBase: base, verdict: "error", error: refusal });
+      });
+
+      it("keeps the line valid JSON when the reason holds a quote or a backslash", () => {
+        const result = sh(["judge", runner, path.join(tmp, "repo"), base, head, path.join(tmp, "reports")], { FIX_PROOF_REFUSED: 'base a"b\\c is not main' });
+
+        const parsed = parseResultLine(result.stdout.trim());
+        expect(parsed.ok).toBe(true);
+        expect(parsed.result.error).toBe("base abc is not main");
+      });
+
+      it("runs the runner's judge.js when the refusal output is empty", () => {
+        const result = sh(["judge", runner, path.join(tmp, "repo"), base, head, path.join(tmp, "reports")], { FIX_PROOF_REFUSED: "" });
+
+        expect(result.stdout.trim()).toBe('fix-proof/v1 {"verdict":"reproduces"}');
+      });
+    });
+  });
+
+  describe("merge-base", () => {
+    let repo;
+    let shas;
+    const git = (...args) => {
+      const result = spawnSync("git", ["-C", repo, ...args], { encoding: "utf8" });
+      if (result.status !== 0) throw new Error(result.stderr);
+      return result.stdout.trim();
+    };
+    const commit = (files, message) => {
+      for (const [file, content] of Object.entries(files)) {
+        mkdirSync(path.dirname(path.join(repo, file)), { recursive: true });
+        writeFileSync(path.join(repo, file), content);
+      }
+      git("add", "-A");
+      git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", message);
+      return git("rev-parse", "HEAD");
+    };
+    // main holds the real config; parent, a pushable branch the child stacks on, loosens it.
+    beforeEach(() => {
+      repo = path.join(tmp, "repo");
+      mkdirSync(repo);
+      git("init", "-q", "-b", "main");
+      const main = commit({ ".github/fix-proof.json": '{"tests":["**/*.test.ts"]}\n' }, "main");
+      git("checkout", "-qb", "parent");
+      const parent = commit({ ".github/fix-proof.json": '{"tests":["**/*.ts"]}\n' }, "parent");
+      git("checkout", "-qb", "child");
+      const child = commit({ "x.ts": "export const x = 1;\n", "x.test.ts": "import './x';\n" }, "child");
+      shas = { main, parent, child };
+    });
+    const outputFile = () => path.join(tmp, "github-output");
+    const mergeBase = (baseSha, env) => sh(["merge-base", repo, baseSha, shas.child], { GITHUB_OUTPUT: outputFile(), ...env });
+    const output = () => readFileSync(outputFile(), "utf8");
+
+    it("refuses a stacked base, naming both branches, and writes no sha", () => {
+      const result = mergeBase(shas.parent, { BASE_REF: "parent", DEFAULT_BRANCH: "main" });
+
+      expect(result.status).toBe(0);
+      expect(readOutputs(outputFile())).toEqual({ refused: "fix-proof runs only against the default branch: base parent is not main" });
+      expect(output()).not.toMatch(/[0-9a-f]{40}/);
+    });
+
+    it("writes git merge-base of the event base and the head for a default-branch base", () => {
+      const result = mergeBase(shas.main, { BASE_REF: "main", DEFAULT_BRANCH: "main" });
+
+      expect(result.status).toBe(0);
+      expect(readOutputs(outputFile())).toEqual({ sha: git("merge-base", shas.main, shas.child) });
+    });
+
+    it.each([
+      ["the base ref", { BASE_REF: "", DEFAULT_BRANCH: "main" }],
+      ["the default branch", { BASE_REF: "main", DEFAULT_BRANCH: "" }],
+      ["both", { BASE_REF: "", DEFAULT_BRANCH: "" }],
+    ])("refuses when the payload lacks %s", (_, env) => {
+      mergeBase(shas.main, env);
+
+      expect(Object.keys(readOutputs(outputFile()))).toEqual(["refused"]);
+    });
+
+    it("refuses a base ref that would add a line to GITHUB_OUTPUT", () => {
+      mergeBase(shas.main, { BASE_REF: `main\nsha=${"d".repeat(40)}`, DEFAULT_BRANCH: `main\nsha=${"d".repeat(40)}` });
+
+      expect(output().trimEnd().split("\n")).toHaveLength(1);
+      expect(readOutputs(outputFile())).toEqual({ refused: `fix-proof runs only against the default branch: base main?sha?${"d".repeat(40)} is not main?sha?${"d".repeat(40)}` });
+    });
+
+    it("refuses a stacked base whose name holds a newline without letting it write a sha", () => {
+      mergeBase(shas.parent, { BASE_REF: `parent\nsha=${shas.parent}`, DEFAULT_BRANCH: "main" });
+
+      expect(Object.keys(readOutputs(outputFile()))).toEqual(["refused"]);
+      expect(output().trimEnd().split("\n")).toHaveLength(1);
+    });
   });
 
   describe("exec", () => {
@@ -93,6 +199,152 @@ describe("fix-proof-run.sh", () => {
 
     it("refuses a side other than base or head", () => {
       expect(exec("other").status).toBe(64);
+    });
+
+    describe("base side sandbox", () => {
+      let shims;
+      let sudoLog;
+      let tools;
+      // sudo shim: logs each call, runs the root shell that stages pnpm, and exits with the code an env var names so a
+      // test can fail one step.
+      const sudoShim = `#!/usr/bin/env bash
+echo "$*" >>"$SUDO_LOG"
+case "$*" in
+  "-n true") exit "\${SUDO_TRUE_EXIT:-0}" ;;
+  "-n useradd "*) exit "\${USERADD_EXIT:-0}" ;;
+  "-n -u fix-proof-sandbox sudo -n true") exit "\${SANDBOX_SUDO_EXIT:-1}" ;;
+  "-n sh -c "*) shift; exec "$@" ;;
+esac
+exit 0
+`;
+      // id shim: the sandbox user is absent until useradd, and has only its own group unless a test says otherwise.
+      const idShim = `#!/usr/bin/env bash
+case "$1" in
+  -u) exit "\${SANDBOX_ID_EXIT:-1}" ;;
+  -G) echo "\${SANDBOX_GROUPS:-999}" ;;
+  -g) echo 999 ;;
+esac
+`;
+      // Laid out as pnpm/action-setup leaves it: a .bin shim beside node_modules/pnpm, whose exports map hides package.json.
+      const installPnpm = () => {
+        const pkg = path.join(tmp, "setup-pnpm/node_modules/pnpm");
+        mkdirSync(path.join(pkg, "bin"), { recursive: true });
+        writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name: "pnpm", bin: { pnpm: "bin/pnpm.cjs", pnpx: "bin/pnpx.cjs" }, exports: { ".": "./package.json" } }));
+        writeFileSync(path.join(pkg, "bin/pnpm.cjs"), "console.log(`pnpm at ${__filename} ${process.argv.slice(2).join(' ')}`);\n");
+        const bin = path.join(tmp, "setup-pnpm/node_modules/.bin");
+        mkdirSync(bin);
+        writeFileSync(path.join(bin, "pnpm"), `#!/bin/sh\nexec node ${path.join(pkg, "bin/pnpm.cjs")} "$@"\n`, { mode: 0o755 });
+        return bin;
+      };
+      // Prints its args, then which pnpm a sandboxed `pnpm exec` would get from the PATH the runner forwards.
+      const binJs = `${echoArgs}console.log(require("node:child_process").execFileSync("pnpm", ["exec"], { encoding: "utf8" }).trim());\n`;
+      let searchPath;
+      beforeEach(() => {
+        shims = path.join(tmp, "shims");
+        sudoLog = path.join(tmp, "sudo.log");
+        tools = path.join(tmp, "opt/fix-proof-sandbox");
+        mkdirSync(shims);
+        writeFileSync(path.join(shims, "sudo"), sudoShim, { mode: 0o755 });
+        writeFileSync(path.join(shims, "id"), idShim, { mode: 0o755 });
+        for (const tool of ["unshare", "setpriv", "timeout"]) writeFileSync(path.join(shims, tool), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+        searchPath = `${shims}:${installPnpm()}:${process.env.PATH}`;
+        writeFileSync(path.join(dist, "bin.js"), binJs);
+        writeFileSync(path.join(dist, "judge.js"), echoArgs);
+      });
+      const withSandboxSupport = () => writeFileSync(path.join(dist, "chunk-ABC.js"), 'var SANDBOX_FLAG = "sandbox-user";\n');
+      const execWith = (side, env = {}) =>
+        sh(["exec", side, runner, path.join(tmp, "repo"), base, head, out()], { PATH: searchPath, SUDO_LOG: sudoLog, FIX_PROOF_SANDBOX_TOOLS: tools, ...env });
+      const expectBaseMarkers = (error) => {
+        for (const name of ["base", "base-rerun"]) {
+          const decoded = decodeReport(readFileSync(path.join(out(), `${name}.report`), "utf8"));
+          expect(decoded).toEqual({ ok: false, error, reported: true });
+        }
+      };
+
+      it("exec base on a runner with sandbox support passes --sandbox-user fix-proof-sandbox", () => {
+        withSandboxSupport();
+
+        const result = execWith("base");
+
+        expect(result.status).toBe(0);
+        expect(result.stdout.split("\n")[0]).toBe(
+          `exec --side base --repo ${path.join(tmp, "repo")} --base ${base} --head ${head} --out ${out()} --budget-ms 780000 --sandbox-user fix-proof-sandbox`,
+        );
+        expect(readFileSync(sudoLog, "utf8")).toContain("-n -u fix-proof-sandbox sudo -n true");
+      });
+
+      it("exec base runs pnpm from a copy outside the runner's home, which the sandbox user cannot traverse", () => {
+        withSandboxSupport();
+
+        const result = execWith("base");
+
+        expect(result.status).toBe(0);
+        expect(result.stdout.split("\n")[1]).toBe(`pnpm at ${path.join(tools, "pnpm/bin/pnpm.cjs")} exec`);
+      });
+
+      it("exec base writes error markers when pnpm cannot be staged for the sandbox", () => {
+        withSandboxSupport();
+        rmSync(path.join(tmp, "setup-pnpm/node_modules/pnpm/package.json"));
+
+        const result = execWith("base");
+
+        expect(result.stdout).toBe("");
+        expectBaseMarkers("base: sandbox unavailable: staging pnpm for the sandbox failed");
+      });
+
+      it("exec base writes error markers when an existing sandbox user has supplementary groups", () => {
+        withSandboxSupport();
+
+        const result = execWith("base", { SANDBOX_ID_EXIT: "0", SANDBOX_GROUPS: "999 118" });
+
+        expect(result.stdout).toBe("");
+        expectBaseMarkers("base: sandbox unavailable: fix-proof-sandbox has supplementary groups");
+      });
+
+      it("exec base on a merge-base runner without sandbox support writes error markers for both base reports", () => {
+        const result = execWith("base");
+
+        expect(result.status).toBe(0);
+        expect(result.stdout).toBe("");
+        expectBaseMarkers("base: sandbox unavailable: the merge-base runner has no sandbox support");
+      });
+
+      it("exec base writes error markers when the sandbox user can sudo", () => {
+        withSandboxSupport();
+
+        const result = execWith("base", { SANDBOX_SUDO_EXIT: "0" });
+
+        expect(result.stdout).toBe("");
+        expectBaseMarkers("base: sandbox unavailable: fix-proof-sandbox can sudo");
+      });
+
+      it("exec base writes error markers when the job cannot sudo, rather than reading a failed sudo check as safe", () => {
+        withSandboxSupport();
+
+        const result = execWith("base", { SUDO_TRUE_EXIT: "1" });
+
+        expect(result.stdout).toBe("");
+        expectBaseMarkers("base: sandbox unavailable: the job cannot sudo");
+      });
+
+      it("exec base writes error markers when the sandbox user cannot be created", () => {
+        withSandboxSupport();
+
+        const result = execWith("base", { USERADD_EXIT: "1" });
+
+        expect(result.stdout).toBe("");
+        expectBaseMarkers("base: sandbox unavailable: useradd failed");
+      });
+
+      it("exec head never passes --sandbox-user and never touches sudo", () => {
+        withSandboxSupport();
+
+        const result = execWith("head");
+
+        expect(result.stdout.split("\n")[0]).not.toContain("sandbox-user");
+        expect(result.stdout).not.toContain(tools);
+        expect(existsSync(sudoLog)).toBe(false);
+      });
     });
   });
 

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { addAnchorIssues } from "./deposit-anchors.js";
 import { ownerItemSchema, type ITEM_KINDS, type LENSES, type OwnerItem } from "./schema.js";
 
 const item = ownerItemSchema.shape;
@@ -27,6 +28,8 @@ export const ownerItemDepositSchema = z.strictObject({
   recommended: z.strictObject(recommendation.omit({ hidden: true }).shape).optional(),
   command: item.command,
   evidenceRef: item.evidenceRef,
+  anchors: item.anchors,
+  pins: item.pins,
   keys: item.keys.default([]),
   seat: item.seat,
   initiative: item.initiative,
@@ -34,7 +37,7 @@ export const ownerItemDepositSchema = z.strictObject({
   unblocks: item.unblocks.default([]),
   audience: item.audience,
   expiresAt: item.expiresAt,
-});
+}).superRefine(addAnchorIssues);
 
 export type OwnerItemDeposit = z.input<typeof ownerItemDepositSchema>;
 

@@ -3,7 +3,7 @@ import type { Freeze } from "./freeze.js";
 import { retireEndedFixers, type FixerRetirePorts } from "./fixer-retire.js";
 import type { Presence } from "./presence.js";
 
-const frozen = (repo: string, fixer: string | null): Freeze => ({ repo, redSha: "a".repeat(40), fixTask: "titan-platform/TP-1", fixer, redCount: 1, frozenAt: "2026-10-11T00:00:00Z", episode: 1, cancelOnly: false });
+const frozen = (repo: string, fixer: string | null): Freeze => ({ repo, redSha: "a".repeat(40), fixTask: "titan-platform/TP-1", fixer, redCount: 1, frozenAt: "2026-10-11T00:00:00Z", episode: 1, cancelOnly: false, fixPr: null, fixPrActor: null });
 
 function rig(rows: Record<string, Presence>, refuse: Record<string, string> = {}) {
   const calls: string[] = [];

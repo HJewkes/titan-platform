@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { holdSlotsMigration } from "./store-migrations.js";
 import { shepherdEventMigration } from "./events.js";
 import { G10_RELEASE_STEP, g10ReleaseRoutes, holdClassOf, isOpusProfile, releaseG10Hold, satisfiesG10, withReviewerProfile, type G10Verdict } from "./g10-release.js";
+import type { CiSnapshot } from "../workflows/land.js";
 import type { Verdict } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
@@ -74,7 +75,7 @@ function rig(reason: string, prHead = HEAD) {
   return { store, pr, deps };
 }
 
-async function runStep(route: StepRoute, input: object): Promise<{ released: boolean; head: string; verdict?: unknown }> {
+async function runStep(route: StepRoute, input: unknown): Promise<{ released: boolean; head: string; verdict?: unknown }> {
   const result = await route.runner.run({ prompt: JSON.stringify(input), signal: new AbortController().signal } as never);
   if (!result.ok) throw new Error(result.error);
   return (JSON.parse(result.output) as { result: { released: boolean; head: string; verdict?: unknown } }).result;
@@ -193,7 +194,7 @@ describe("a release at a clean merge-up of the reviewed head", () => {
   });
 
   function mergeUpRun(mark: string | undefined) {
-    const dispatch = vi.fn(async () => ({ data: { result: { released: true, head: MOVED } } }));
+    const dispatch = vi.fn(async (_id: string, _kind: string, _input: { vars: Record<string, string> }) => ({ data: { result: { released: true, head: MOVED } } }));
     const evidence = { record: { head: HEAD, verdictLocator: mergeAt(HEAD).locator, reviewer: { agentId: "a-1", sessionId: "s-1" } } };
     const reviewed = { kind: "MERGE" as const, headSha: HEAD, evidence, reviewerProfile: "bd-reviewer" };
     const carried = { kind: "MERGE" as const, headSha: MOVED, evidence: { record: { head: MOVED, carry: { fromHead: HEAD } } }, ...(mark && { mergeUpFrom: mark }) };
@@ -214,5 +215,48 @@ describe("a release at a clean merge-up of the reviewed head", () => {
     const adversary = mergeUpRun(HEAD);
     await releaseG10Hold(adversary.run, "g10-adversary: x");
     expect([unmarked.dispatch, adversary.dispatch].map((d) => d.mock.calls.length)).toEqual([0, 0]);
+  });
+
+  describe("when CI reads behind with the head's own checks green", () => {
+    const behindAt = (headSha: string, checksGreen: boolean): CiSnapshot => ({ headSha, verdict: "behind", mergeableState: "behind", ...(checksGreen && { checksGreen }) });
+    const askedInput = (dispatch: ReturnType<typeof mergeUpRun>["dispatch"]): unknown => JSON.parse(Object.values(dispatch.mock.calls[0]![2].vars)[0]!);
+
+    it("releases the hold at the moved head on the MERGE written at the reviewed head", async () => {
+      const { dispatch, run } = mergeUpRun(HEAD);
+      const { store, deps } = rig("g10-review: auth; TP-1", MOVED);
+
+      await releaseG10Hold({ ...run, lastCi: behindAt(MOVED, true) }, "g10-review: auth; TP-1");
+      const done = await runStep(g10ReleaseRoutes(deps)[0]!, askedInput(dispatch));
+
+      expect(done).toMatchObject({ released: true, head: MOVED, verdict: { head: HEAD } });
+      expect(store.byRun("run-1")?.held).toBe(false);
+    });
+
+    it("keeps the hold when the behind read's own checks are not green", async () => {
+      const { dispatch, run } = mergeUpRun(HEAD);
+      const { store, deps } = rig("g10-review: auth; TP-1", MOVED);
+
+      await releaseG10Hold({ ...run, lastCi: behindAt(MOVED, false) }, "g10-review: auth; TP-1");
+      const done = await runStep(g10ReleaseRoutes(deps)[0]!, askedInput(dispatch));
+
+      expect(done.released).toBe(false);
+      expect(store.byRun("run-1")?.held).toBe(true);
+    });
+
+    it("asks with checks not green at a reviewed head that is itself behind, which waits for its update", async () => {
+      const { dispatch, run } = mergeUpRun(HEAD);
+
+      await releaseG10Hold({ ...run, lastCi: behindAt(HEAD, true) }, "g10-review: auth; TP-1");
+
+      expect(askedInput(dispatch)).toMatchObject({ head: HEAD, checks: { head: HEAD, green: false } });
+    });
+
+    it("asks for nothing when the carry was not a recorded clean merge-up", async () => {
+      const { dispatch, run } = mergeUpRun(undefined);
+
+      await releaseG10Hold({ ...run, lastCi: behindAt(MOVED, true) }, "g10-review: auth; TP-1");
+
+      expect(dispatch).not.toHaveBeenCalled();
+    });
   });
 });

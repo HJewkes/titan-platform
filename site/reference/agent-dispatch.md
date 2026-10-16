@@ -49,7 +49,7 @@ await dispatchToAgentChat(
 );
 // { peerName: "item-42" } once the broker accepts the spawn
 
-assertInstalledHeadless("headless-reviewer"); // throws DispatchError unless ~/.agent-chat/profiles/headless-reviewer.json is headless
+assertInstalledHeadless("headless-reviewer"); // throws DispatchError unless <agent-chat home>/profiles/headless-reviewer.json is headless
 
 const ended = (await listAgents("/opt/homebrew/bin/agent-chat", 15_000)).filter((a) => a.presence === "exited");
 await retire("/opt/homebrew/bin/agent-chat", "item-42", 15_000); // { name: "item-42", caveats: [] }
@@ -123,8 +123,9 @@ decide whether an agent is live before a resume, or talk to the broker's socket 
 ## Gotchas
 
 - A zero exit from `dispatchToAgentChat` means "started", not "done".
-- `dispatchToAgentChat` reads `$HOME/.agent-chat/profiles/<profile>.json` before the
-  spawn (or `profilesDir` when given) and refuses one that is missing or not headless.
+- `dispatchToAgentChat` reads `<profile>.json` from `$AGENT_CHAT_HOME/profiles` (else
+  `$HOME/.agent-chat/profiles`) before the spawn (or `profilesDir` when given) and refuses
+  one that is missing or not headless.
   Tests that spawn through a fake binary must install that file. The broker re-reads the
   profile afterwards, so a write in between still reaches it until agent-chat's surface
   lock lands.
@@ -160,8 +161,9 @@ decide whether an agent is live before a resume, or talk to the broker's socket 
 ## Where it came from
 
 Ported unchanged from relay's `daemon/src/dispatch.ts`, `exec.ts` and the `resumeArgs`
-builder in `session.ts` (TP-460), with their tests. relay consumes the release and deletes
-its copy in a follow-up. `listAgents` and `retire` were added afterwards for Shepherd, then `resumeAgent`,
+builder in `session.ts` (TP-460), with their tests. relay's daemon now depends on the
+package and its copy is deleted; relay keeps only its profile policy
+in `agent-profiles.ts`. `listAgents` and `retire` were added afterwards for Shepherd, then `resumeAgent`,
 `configDir`, `BrokerUnavailableError` and `dataFence` (ported from agent-chat's burndown
 brief) by TP-518, `parkAgent` by TP-548, `messageAgent` by TP-728, and
 `assertInstalledHeadless` (ported from relay's `daemon/src/profile-guard.ts`, PR #59) by

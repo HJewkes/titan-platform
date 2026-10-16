@@ -87,16 +87,31 @@ async function cliResolver(
   presence: OwnerPresence,
   evidenceFor: (coordinator: GateResolver) => Promise<CoordinatorEvidence | undefined>,
 ): Promise<Resolution | string> {
-  const owner: GateResolver = { class: "owner-terminal", id: userInfo().username, channel: "factory-cli" };
-  if (!env.AGENT_CHAT_AGENT_ID) return { resolver: owner };
-  const coordinator: GateResolver = { class: "coordinator", id: env.AGENT_CHAT_NAME || env.AGENT_CHAT_AGENT_ID, channel: "factory-cli" };
+  if (!env.AGENT_CHAT_AGENT_ID) return { resolver: ownerTerminal() };
+  const coordinator = coordinatorOf(env.AGENT_CHAT_NAME || env.AGENT_CHAT_AGENT_ID);
   if (gateId === undefined || matchesAllowance(FACTORY_ANSWER_ALLOWANCES, gateId, coordinator, payload)) return { resolver: coordinator };
   const evidence = await evidenceFor(coordinator);
   if (evidence !== undefined) return { resolver: coordinator, evidence };
   const reason = presenceReason(gateId, payload);
   if (reason === undefined) return `gate ${JSON.stringify(gateId)} or its decision or headSha has an unexpected shape; refusing to ask for owner presence`;
+  const owner = await ownerResolver(env, reason, presence);
+  return { resolver: typeof owner === "string" ? coordinator : owner };
+}
+
+const ownerTerminal = (): GateResolver => ({ class: "owner-terminal", id: userInfo().username, channel: "factory-cli" });
+const coordinatorOf = (id: string): GateResolver => ({ class: "coordinator", id, channel: "factory-cli" });
+
+/**
+ * The owner-only part of `cliResolver`, for an action no coordinator may take: no allowance and no evidence admit one.
+ * A shell agent-chat launched (AGENT_CHAT_AGENT_ID) is the owner only with a presence proof for `reason`; without one
+ * it is refused. Any other shell is owner-terminal without a dialog, as for gates. Returns the refusal as a string.
+ */
+export async function ownerResolver(env: NodeJS.ProcessEnv, reason: string, presence: OwnerPresence): Promise<GateResolver | string> {
+  const owner = ownerTerminal();
+  if (!env.AGENT_CHAT_AGENT_ID) return owner;
   const proof = await presence(reason);
-  return { resolver: proof === undefined ? coordinator : { ...owner, confirmEvent: proof } };
+  if (!proof) return `owner presence was not confirmed, so ${env.AGENT_CHAT_NAME || env.AGENT_CHAT_AGENT_ID}, a shell agent-chat launched, is refused: only the owner may ${reason}`;
+  return { ...owner, confirmEvent: proof };
 }
 
 const GATE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/;

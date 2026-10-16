@@ -1,5 +1,7 @@
-import type { GitHubPort, RepoSlug } from "@titan-design/github";
+import type { GitHubPort, PullRequest, RepoSlug } from "@titan-design/github";
+import { OVERLAY_SHAPES } from "@titan-design/review-panel";
 import { z } from "zod";
+import { hasSlicesBlock, readSlices } from "../dispatch/report.js";
 import { deadline, type Deadline } from "../workflows/deadline.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import type { Presence } from "./presence.js";
@@ -27,8 +29,16 @@ export interface CleanupAgents {
 
 export type TaskState = "open" | "done" | "missing";
 
+/** What tells an unsliced PR whether it may close its task: the task's tags and notes, and its plan's text when it has one. */
+export interface TaskSlicing {
+  tags: readonly string[];
+  notes: string;
+  plan: string | undefined;
+}
+
 export interface CleanupTasks {
   state(initiative: string, id: string): Promise<TaskState>;
+  slicing(initiative: string, id: string): Promise<TaskSlicing>;
   done(initiative: string, id: string): Promise<void>;
   /** Adds a line to the task's notes unless the notes already hold it, so a repeated cleanup adds nothing. */
   appendNote(initiative: string, id: string, line: string): Promise<void>;
@@ -50,10 +60,26 @@ export interface CleanupDeps {
   advisory?: (repo: RepoSlug) => boolean;
 }
 
+/** What the run's own merge step knew of the PR it merged; with it, cleanup reads no PR. */
+export interface MergedPr {
+  headRef: string;
+  headRepo: RepoSlug | null;
+  headSha: string;
+  mergeSha: string;
+}
+
 export interface CleanupInput {
   repo: RepoSlug;
   pr: number;
   runId: string;
+  /** Absent for a PR merged outside the run, or a step recorded before the field: each part then reads the PR. */
+  merged?: MergedPr;
+}
+
+type PrAfterMerge = Pick<PullRequest, "merged" | "headRef" | "headRepo" | "headSha" | "mergeSha">;
+
+async function prAfterMerge(port: GitHubPort, input: CleanupInput): Promise<PrAfterMerge> {
+  return input.merged === undefined ? port.getPr(input.repo, input.pr) : { merged: true, ...input.merged };
 }
 
 export const CleanupResult = z.looseObject({
@@ -92,7 +118,7 @@ export async function runCleanup(deps: CleanupDeps, input: CleanupInput, signal:
 /** The ref lives in the head repo, so a fork's same-named branch in the base repo is never touched; the port skips forks and the default branch. */
 async function deleteHead({ port, advisory }: CleanupDeps, input: CleanupInput): Promise<string> {
   if (advisory?.(input.repo)) return "advisory";
-  const pr = await port.getPr(input.repo, input.pr);
+  const pr = await prAfterMerge(port, input);
   if (!pr.merged) return "not-merged";
   const result = await port.deleteRef(input.repo, { branch: pr.headRef, repo: pr.headRepo });
   return result.done ? "deleted" : result.skipped;
@@ -108,7 +134,7 @@ async function releaseLanded(deps: CleanupDeps, input: CleanupInput): Promise<vo
   const store = deps.store.get();
   const registration = store.byRun(input.runId);
   if (registration?.held !== true) return;
-  const pr = await deps.port.getPr(input.repo, input.pr);
+  const pr = await prAfterMerge(deps.port, input);
   if (!pr.merged) return;
   const by = { actor: CLEANUP_ACTOR, headSha: pr.headSha };
   if (registration.ownerHold) store.releaseOwnerHold(input.runId, by, `${OWNER_HOLD_BYPASSED} (${registration.ownerHold.reason})`);
@@ -124,23 +150,46 @@ function satisfiedReason(registration: Registration | undefined): string | undef
 
 /**
  * A slice PR notes its task and leaves it open, because the task's other slices have not landed. Any other PR cites itself
- * and its merge sha in the task's notes, then closes it. A slice with an unread merge sha writes nothing, so a retry cannot add a second
- * line for the landing; a close still goes ahead then, citing the PR alone, because an unreadable GitHub must not keep a
- * merged task open.
+ * and its merge sha in the task's notes, then closes it, unless the task is sliced or an epic (CC-1150 closed on one
+ * unregistered slice). A note with an unread merge sha is never written, so a retry cannot add a second line for the
+ * landing; a close still goes ahead then, citing the PR alone, because an unreadable GitHub must not keep a merged task open.
  */
 async function settleTask(deps: CleanupDeps, registration: Registration, input: CleanupInput, wait: Waiter): Promise<string> {
   const tasks = deps.cleanup!.tasks;
-  const pr = await retrying(`merge sha of #${input.pr}`, () => deps.port.getPr(input.repo, input.pr), wait);
+  const pr = await retrying(`merge sha of #${input.pr}`, () => prAfterMerge(deps.port, input), wait);
   const landing = `${input.repo}#${input.pr} at ${pr?.mergeSha ?? "unknown"}`;
-  if (registration.slice === null) return closeTask(tasks, registration.task, `closed by Shepherd: ${landing} merged`, wait);
+  if (registration.slice === null) return onOpenTask(registration.task, wait, closeUnlessSliced(tasks, landing, pr !== undefined), tasks);
   if (pr === undefined) return "unread";
   return onOpenTask(registration.task, wait, (initiative, id) => tasks.appendNote(initiative, id, `${registration.slice} landed in ${landing}`).then(() => "noted"), tasks);
 }
 
 /** The note goes first: a crash between the two leaves an open task with its citation, and the replay finds the line already there. */
-async function closeTask(tasks: CleanupTasks, key: string, note: string, wait: Waiter): Promise<string> {
-  const closed = (initiative: string, id: string): Promise<string> => tasks.appendNote(initiative, id, note).then(() => tasks.done(initiative, id)).then(() => "done");
-  return onOpenTask(key, wait, closed, tasks);
+function closeUnlessSliced(tasks: CleanupTasks, landing: string, shaRead: boolean): (initiative: string, id: string) => Promise<string> {
+  return async (initiative, id) => {
+    const heldBy = heldOpenBy(await tasks.slicing(initiative, id));
+    if (heldBy === undefined) {
+      await tasks.appendNote(initiative, id, `closed by Shepherd: ${landing} merged`);
+      await tasks.done(initiative, id);
+      return "done";
+    }
+    if (!shaRead) return "unread";
+    await tasks.appendNote(initiative, id, `PR ${landing} merged; task left open: ${heldBy}`);
+    return "left-open";
+  };
+}
+
+const EPIC_TAG = "epic";
+
+/** Why one unsliced PR cannot close its task, or undefined when nothing else is due to land on it. */
+function heldOpenBy({ tags, notes, plan }: TaskSlicing): string | undefined {
+  if (plan !== undefined && hasSlicesBlock(plan)) {
+    const slices = readSlices(plan).slices;
+    if (slices === undefined) return "its plan has a burndown-slices block that does not read";
+    const landed = new Set(notes.split("\n").flatMap((line) => /^(\S+) landed in /.exec(line)?.[1] ?? []));
+    const unlanded = slices.map((slice) => slice.n).filter((n) => !landed.has(n));
+    return unlanded.length === 0 ? "it is sliced, and every slice is noted landed" : `it has slices ${unlanded.join(", ")}`;
+  }
+  return tags.includes(EPIC_TAG) ? `it is tagged ${EPIC_TAG}` : undefined;
 }
 
 async function onOpenTask(key: string, wait: Waiter, act: (initiative: string, id: string) => Promise<string>, tasks: CleanupTasks): Promise<string> {
@@ -172,7 +221,8 @@ async function retrying<T>(what: string, attempt: () => Promise<T>, wait: Waiter
   }
 }
 
-/** Newest successor first, then the implementer, then this PR's fresh reviewers; the standing reviewer is never among them. */
+
+/** Newest successor first, then the implementer, then this PR's fresh reviewers and their panel members; the standing reviewer is never among them. */
 export function retireOrder(registration: Registration, lineageSuccessors: readonly string[], roster: readonly CleanupAgent[], input: CleanupInput): string[] {
   const successorName = new RegExp(`^${escapeRegExp(registration.implementer)}-s(\\d+)$`);
   const numbered = roster.flatMap((agent) => {
@@ -180,10 +230,20 @@ export function retireOrder(registration: Registration, lineageSuccessors: reado
     return k === undefined ? [] : [{ name: agent.name, k: Number(k) }];
   });
   const successors = [...[...lineageSuccessors].reverse(), ...numbered.sort((a, b) => b.k - a.k).map((agent) => agent.name)];
-  const reviewerName = new RegExp(`^${escapeRegExp(freshReviewerBase(input.repo, input.pr))}(-\\d+)?$`);
-  const reviewers = roster.map((agent) => agent.name).filter((name) => reviewerName.test(name));
+  const reviewers = roster.map((agent) => agent.name).filter(isOwnReviewer(input.repo, input.pr));
   const standing = registration.policy.reviewer;
   return [...new Set([...successors, registration.implementer, ...reviewers])].filter((name) => name !== standing);
+}
+
+const MEMBER_SUFFIX = `(?:-(?:${OVERLAY_SHAPES.join("|")})(?:-\\d+)?)?`;
+
+/**
+ * Shepherd's own reviewers of one PR: its fresh reviewers, and the panel members named after one of them or after the PR's
+ * base. Park and cleanup both find them by this one test, so a new name form cannot reach only one of them.
+ */
+export function isOwnReviewer(repo: RepoSlug, pr: number): (name: string) => boolean {
+  const own = new RegExp(`^${escapeRegExp(freshReviewerBase(repo, pr))}(?:-\\d+)?${MEMBER_SUFFIX}$`);
+  return (name) => own.test(name);
 }
 
 /** The name `sh-review` gives the first fresh reviewer of a PR; later ones append `-<k>`. */

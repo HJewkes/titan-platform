@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "tts": {
+    "providers": {
+      "hosted": {
+        "kind": "http",
+        "url": "https://tts.example.com/v1/audio/speech",
+        "headers": { "authorization": "Bearer ${env:EXAMPLE_TTS_API_KEY}" },
+        "timeoutMs": 60000,
+        "request": {
+          "body": {
+            "model": "tts-1",
+            "input": "{{text}}",
+            "voice": "{{voice}}",
+            "speed": "{{speed}}",
+            "response_format": "wav"
+          }
+        },
+        "response": { "type": "wav" },
+        "capabilities": {
+          "speedControl": true,
+          "voices": ["alloy", "nova"],
+          "languages": ["en"],
+          "sampleRate": 24000
+        }
+      }
+    }
+  }
+}

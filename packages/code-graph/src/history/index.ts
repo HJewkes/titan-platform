@@ -15,6 +15,7 @@ export {
   type ResolvedCommit,
   type TreeBlob,
 } from "./git-tree.js";
+export { revisionLineSource } from "./revision-line-source.js";
 export { loadFileFirstSeen, loadFirstSeenResult, type FirstSeenOptions } from "./first-seen.js";
 export { GitHistoryError, type GitLargeFailure, type HistoryLoad } from "./git.js";
 export { aggregateChurn, aggregateChurnWindows, type PathChurn } from "./churn.js";

@@ -142,6 +142,21 @@ describe("titan-factory serve", () => {
   });
 });
 
+describe("the serve verb's exit", () => {
+  it("ends the process through exitAfterServe once serve has closed", async () => {
+    const dbPath = dbFile();
+    const stop = new AbortController();
+    const exitAfterServe = vi.fn();
+    const serving = cli(["--db", dbPath, "serve", "--port", "0"], { ...landDeps("land-rules"), stop: stop.signal, exitAfterServe });
+    await vi.waitFor(async () => (await readPidFile(daemonPaths(dirname(dbPath))))!.meta.port);
+
+    stop.abort();
+    await serving;
+
+    expect(exitAfterServe).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("gates in the resume report", () => {
   const record = { id: "run-1/approve-merge", prompt: "Merge PR #1 in octo/demo at head abc?", schema: undefined, status: "pending", createdAt: "2026-10-06T00:00:00.000Z" };
   const report = (gate: object): Parameters<typeof formatResume>[0] => ({ resumed: [], held: [], gates: [{ runId: "run-1", stepId: "approve-merge", gate: gate as never }] });
@@ -313,7 +328,7 @@ describe("shepherd register with only a target", () => {
   const taskIndex = (async () => new Response(JSON.stringify({ ok: true, data: { tasks: [{ id: "TP-2239", slug: "titan-platform" }] } }))) as typeof globalThis.fetch;
 
   function inferDeps(headRef: string): CliDeps {
-    const fixture = shepherdFixture({ frozen: true });
+    const fixture = shepherdFixture({ frozen: true, prFiles: async () => [] });
     fixture.fake.addPr({ headSha: H1, headRef });
     return { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger, fetch: taskIndex, headRef: async () => headRef };
   }
@@ -343,6 +358,15 @@ describe("shepherd register with only a target", () => {
     expect(result.code).toBe(EXIT.USAGE);
     expect(result.err).toContain("agent-chat/review-errors");
     expect(result.err).toContain("pass --task");
+  });
+
+  it("passes --head and --base through and infers from --branch without reading the pull request", async () => {
+    const deps = { ...inferDeps(AGENT_BRANCH), headRef: async () => { throw new Error("headRef read"); } };
+
+    const result = await cli(["--db", dbFile(), "shepherd", "register", `${REPO}#1`, "--branch", AGENT_BRANCH, "--head", H1, "--base", "main", "--offline", "--json", "--port", String(await deadPort())], deps);
+
+    expect(result.code).toBe(EXIT.OK);
+    expect(JSON.parse(result.out).registration).toMatchObject({ task: "titan-platform/TP-2239", implementer: "tc-tp-2239", branch: AGENT_BRANCH, headSha: H1, base: "main" });
   });
 
   it("reads --branch instead of the pull request's head", async () => {

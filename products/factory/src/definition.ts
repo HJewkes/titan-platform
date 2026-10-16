@@ -7,6 +7,8 @@ export interface StepDeclaration {
   /** A bare id, or a family whose calls are `<id>:<suffix>` (for example `ci-wait:2`). */
   id: string;
   kind: StepKind;
+  /** A read-only step: a replay that moved past it never needs its result, so a restart's orphan of it is dropped. */
+  orphanSafe?: true;
 }
 
 export interface WorkflowDefinition {
@@ -45,6 +47,11 @@ export function assertDistinctStepIds(definition: WorkflowDefinition): void {
 /** Step ids of the dispatch steps, the ones a route must cover. */
 export function dispatchStepIds(definition: WorkflowDefinition): string[] {
   return definition.steps.filter((step) => step.kind === "dispatch").map((step) => step.id);
+}
+
+/** The runtime's `abandonsOrphan` predicate: true for a step id whose declaration is orphan-safe. */
+export function orphanSafe(definition: WorkflowDefinition): (stepId: string) => boolean {
+  return (stepId) => declarationFor(definition.steps, stepId)?.orphanSafe === true;
 }
 
 /** Wraps the runtime context so a call whose id or kind differs from the declaration fails the run. */

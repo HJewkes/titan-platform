@@ -3,7 +3,7 @@ import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
 import { holdSlotsMigration } from "./store-migrations.js";
 import { shepherdEventMigration } from "./events.js";
-import { freshReviewerBase, runCleanup, SH_CLEANUP_GIVE_UP_MS, SH_CLEANUP_RETRY_MS, type CleanupAgent, type CleanupAgents, type CleanupPorts, type CleanupTasks, type TaskState } from "./cleanup.js";
+import { freshReviewerBase, runCleanup, SH_CLEANUP_GIVE_UP_MS, SH_CLEANUP_RETRY_MS, type CleanupAgent, type CleanupAgents, type CleanupPorts, type CleanupTasks, type MergedPr, type TaskSlicing, type TaskState } from "./cleanup.js";
 import { DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
 import { createRosterReader } from "./roster.js";
 import { agentChatCleanupAgents, activeWorkTasks, type AgentChatCalls } from "./cleanup-ports.js";
@@ -48,21 +48,25 @@ function fakeAgents(clock: { now: number }, agents: FakeAgent[]): CleanupAgents 
   };
 }
 
-function fakeTasks(state: TaskState): CleanupTasks & { closed: string[]; notes: string[] } {
+const NO_SLICING: TaskSlicing = { tags: [], notes: "", plan: undefined };
+
+function fakeTasks(state: TaskState, slicing: TaskSlicing = NO_SLICING): CleanupTasks & { closed: string[]; notes: string[] } {
   const closed: string[] = [];
   const notes: string[] = [];
-  return { closed, notes, state: async () => state, done: async (initiative, id) => void closed.push(`${initiative}/${id}`), appendNote: async (initiative, id, line) => void notes.push(`${initiative}/${id}: ${line}`) };
+  return { closed, notes, state: async () => state, slicing: async () => slicing, done: async (initiative, id) => void closed.push(`${initiative}/${id}`), appendNote: async (initiative, id, line) => void notes.push(`${initiative}/${id}: ${line}`) };
 }
 
-function world(options: { fake?: FakeGitHub; port?: GitHubPort; agents?: FakeAgent[]; task?: TaskState; registration?: RegistrationInput; advisory?: (repo: string) => boolean } = {}) {
+const planOf = (...names: string[]): string => `# Plan\n\n\`\`\`burndown-slices\n${JSON.stringify(names.map((n) => ({ n, title: `slice ${n}`, points: 1, doneWhen: "a test passes", owns: [`src/${n}.ts`] })))}\n\`\`\`\n`;
+
+function world(options: { fake?: FakeGitHub; port?: GitHubPort; agents?: FakeAgent[]; task?: TaskState; slicing?: TaskSlicing; registration?: RegistrationInput; advisory?: (repo: string) => boolean; merged?: MergedPr } = {}) {
   const fake = options.fake ?? mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO });
   const clock = { now: 0 };
   const agents = fakeAgents(clock, options.agents ?? []);
-  const tasks = fakeTasks(options.task ?? "open");
+  const tasks = fakeTasks(options.task ?? "open", options.slicing);
   const { ref, store } = storeRef(options.registration);
   const cleanup: CleanupPorts = { agents, tasks };
   const deps = { port: options.port ?? githubPort(fake.wire), store: ref, now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 30_000, cleanup, ...(options.advisory && { advisory: options.advisory }) };
-  const run = () => runCleanup(deps, { repo: REPO, pr: 1, runId: RUN }, new AbortController().signal);
+  const run = () => runCleanup(deps, { repo: REPO, pr: 1, runId: RUN, ...(options.merged && { merged: options.merged }) }, new AbortController().signal);
   return { fake, clock, agents, tasks, store, run };
 }
 
@@ -81,6 +85,57 @@ describe("sh-cleanup task", () => {
     expect(result.task).toBe("done");
     expect(w.tasks.closed).toEqual(["demo/TP-1"]);
     expect(w.tasks.notes).toEqual([`demo/TP-1: closed by Shepherd: ${REPO}#1 at ${fakeSha("merge")} merged`]);
+  });
+
+  it("leaves a sliced task open when an unsliced PR merges, naming the slices still to land", async () => {
+    const w = world({ slicing: { tags: [], notes: `b landed in ${REPO}#7 at ${fakeSha("b")}`, plan: planOf("a", "b", "c") } });
+
+    const result = await w.run();
+
+    expect(result.task).toBe("left-open");
+    expect(w.tasks.closed).toEqual([]);
+    expect(w.tasks.notes).toEqual([`demo/TP-1: PR ${REPO}#1 at ${fakeSha("merge")} merged; task left open: it has slices a, c`]);
+  });
+
+  it("leaves an epic open when an unsliced PR merges, though it has no plan", async () => {
+    const w = world({ slicing: { ...NO_SLICING, tags: ["epic"] } });
+
+    const result = await w.run();
+
+    expect(result.task).toBe("left-open");
+    expect(w.tasks.notes).toEqual([`demo/TP-1: PR ${REPO}#1 at ${fakeSha("merge")} merged; task left open: it is tagged epic`]);
+  });
+
+  it("leaves a task open when its plan's slices block does not read", async () => {
+    const w = world({ slicing: { ...NO_SLICING, plan: "```burndown-slices\n[{ \"n\": \n```\n" } });
+
+    const result = await w.run();
+
+    expect(result.task).toBe("left-open");
+    expect(w.tasks.closed).toEqual([]);
+  });
+
+  it("closes a task whose plan has no slices block", async () => {
+    const w = world({ slicing: { ...NO_SLICING, plan: "# Plan\nOne PR does it.\n" } });
+
+    const result = await w.run();
+
+    expect(result.task).toBe("done");
+    expect(w.tasks.closed).toEqual(["demo/TP-1"]);
+  });
+
+  it("keeps a sliced task open, writing nothing, while the merge sha cannot be read", async () => {
+    const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO });
+    const real = githubPort(fake.wire);
+    let reads = 0;
+    const port: GitHubPort = { ...real, getPr: async (repo, pr) => (++reads === 1 ? real.getPr(repo, pr) : Promise.reject(new Error("timeout"))) };
+    const w = world({ fake, port, slicing: { ...NO_SLICING, plan: planOf("a", "b") } });
+
+    const result = await w.run();
+
+    expect(result.task).toBe("unread");
+    expect(w.tasks.closed).toEqual([]);
+    expect(w.tasks.notes).toEqual([]);
   });
 
   it("notes the landing and leaves the task open when the registration names a slice", async () => {
@@ -218,6 +273,36 @@ describe("sh-cleanup hold", () => {
   });
 });
 
+describe("sh-cleanup after its own merge", () => {
+  const MERGED: MergedPr = { headRef: "feat/x", headRepo: REPO, headSha: fakeSha("head"), mergeSha: fakeSha("merge") };
+  const getPrs = (fake: FakeGitHub): number => fake.calls.filter((call) => call === "getPr").length;
+
+  it("reads no PR: deletes the head, releases the hold and closes the task from the merge's own result", async () => {
+    const w = world({ merged: MERGED });
+    w.store.hold(RUN, "owner review");
+
+    const result = await w.run();
+
+    expect(getPrs(w.fake)).toBe(0);
+    expect(result).toMatchObject({ ref: "deleted", task: "done" });
+    expect(w.fake.refs.has("feat/x")).toBe(false);
+    expect(w.store.eventsOf(RUN).find((event) => event.kind === "release")).toMatchObject({ headSha: fakeSha("head") });
+    expect(w.tasks.notes).toEqual([`demo/TP-1: closed by Shepherd: ${REPO}#1 at ${fakeSha("merge")} merged`]);
+  });
+
+  it("deletes a fork head in the head repo the merge named", async () => {
+    const deleted: HeadRef[] = [];
+    const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO });
+    const port: GitHubPort = { ...githubPort(fake.wire), deleteRef: async (_repo, head) => (deleted.push(head), { done: true }) };
+    const w = world({ fake, port, merged: { ...MERGED, headRepo: "fork/demo" } });
+
+    await w.run();
+
+    expect(deleted).toEqual([{ branch: "feat/x", repo: "fork/demo" }]);
+    expect(getPrs(fake)).toBe(0);
+  });
+});
+
 describe("sh-cleanup task", () => {
   it("marks the registration's open task done", async () => {
     const w = world({ task: "open" });
@@ -282,6 +367,27 @@ describe("sh-cleanup retire", () => {
 
     expect(result.retired).toEqual([`${IMPLEMENTER}-s2`, `${IMPLEMENTER}-s1`, IMPLEMENTER, "rv-octo-demo-1-2"]);
     expect(w.agents.retires.map((retire) => retire.name)).not.toContain(STANDING);
+  });
+
+  it("retires the panel members a standing reviewer's review named after this PR, and never the standing reviewer", async () => {
+    const names = [STANDING, "rv-octo-demo-1-adversary", "rv-octo-demo-1-perf-2"];
+    const w = world({ registration: { ...base, policy }, agents: names.map((name) => ({ name, exitAt: 0 })) });
+
+    const result = await w.run();
+
+    expect(result.retired).toEqual(expect.arrayContaining(["rv-octo-demo-1-adversary", "rv-octo-demo-1-perf-2"]));
+    expect(result.retired).not.toContain(STANDING);
+  });
+
+  it("retires a fresh reviewer's panel members, and no name that only looks like one", async () => {
+    const names = ["rv-octo-demo-1-2-adversary", "rv-octo-demo-1-2-perf-2", "rv-octo-demo-1-2-review", "rv-octo-demo-1-2-adversary-x"];
+    const w = world({ registration: { ...base, policy }, agents: names.map((name) => ({ name, exitAt: 0 })) });
+
+    const result = await w.run();
+
+    expect(result.retired).toEqual(expect.arrayContaining(["rv-octo-demo-1-2-adversary", "rv-octo-demo-1-2-perf-2"]));
+    expect(result.retired).not.toContain("rv-octo-demo-1-2-review");
+    expect(result.retired).not.toContain("rv-octo-demo-1-2-adversary-x");
   });
 
   it("retires no sooner than 3 minutes after the agent is seen exited", async () => {
@@ -502,5 +608,26 @@ describe("cleanup ports", () => {
 
     const edits = bodies.filter((call) => call.url.endsWith("task.edit"));
     expect(edits).toEqual([{ url: "http://127.0.0.1:7400/rpc/task.edit", body: { slug: "demo", id: "TP-2", field: "notes", value: "first\nS1 landed" } }]);
+  });
+
+  it("reads a task's tags, notes and plan, and reads no plan the initiative's sources do not list", async () => {
+    const reads: unknown[] = [];
+    const answers: Record<string, unknown> = {
+      "task.list": { tasks: [{ id: "TP-2", status: "open", notes: "a landed in x", tags: ["epic"] }, { id: "TP-3", status: "open" }] },
+      "source.list": { sources: [{ filename: "TP-2-plan.md" }, { filename: "TP-30-plan.md" }] },
+      "source.read": { content: "# Plan" },
+    };
+    const fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const command = String(url).split("/rpc/")[1]!;
+      if (command === "source.read") reads.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ ok: true, data: answers[command] }));
+    });
+    const tasks = activeWorkTasks({ origin: "http://127.0.0.1:7400", fetch });
+
+    const [planned, unplanned] = [await tasks.slicing("demo", "TP-2"), await tasks.slicing("demo", "TP-3")];
+
+    expect(planned).toEqual({ tags: ["epic"], notes: "a landed in x", plan: "# Plan" });
+    expect(unplanned).toEqual({ tags: [], notes: "", plan: undefined });
+    expect(reads).toEqual([{ slug: "demo", path: "sources/TP-2-plan.md" }]);
   });
 });
