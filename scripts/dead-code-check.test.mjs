@@ -277,9 +277,9 @@ describe("reading an existing code-graph database", () => {
     writeNodes(store, store.createSnapshot({ ref: "head", indexVersion: "" }), name);
   }
 
-  /** The real CLI, with HOME moved so its dag-check lock is this test's own. */
+  /** The real CLI, with HOME moved so its dag-check lock is this test's own, and one slot so a holder excludes it. */
   function spawnDeadCheck(dbPath, home) {
-    const env = { ...process.env, HOME: home };
+    const env = { ...process.env, HOME: home, DAG_CHECK_SLOTS: "1" };
     delete env.BASE_REF;
     const child = spawn(process.execPath, [SCRIPT, "--report-only", "--db", dbPath], { env });
     child.out = "";
@@ -328,7 +328,7 @@ describe("reading an existing code-graph database", () => {
     ]);
   });
 
-  it("waits for a writer holding the dag-check lock instead of reading its half-written head snapshot", async () => {
+  it("with one lock slot, waits for a writer holding it instead of reading its half-written head snapshot", async () => {
     const graph = await import(ENTRY.href);
     const home = scratchDir();
     const dbPath = path.join(home, "graph.db");
