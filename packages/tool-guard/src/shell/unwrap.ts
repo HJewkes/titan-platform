@@ -119,6 +119,8 @@ export interface Unwrapped {
   };
   /** Set when `!` negates the command's status. */
   negated?: true;
+  /** Names `exec -a`, `env -a`/`--argv0` or an `ARGV0=` prefix run the command under; null where one is only known at run time. */
+  argv0?: Array<string | null>;
   /**
    * The words without each dynamic word read as a wrapper's positional or as the command word, set only when there is one.
    * Such a word may expand to nothing, an option or a wrapper, so `timeout $O 5 git push` may run git.
@@ -138,6 +140,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
   const loose: WordToken[] = [];
   let xargs: Unwrapped["xargs"];
   let negated = false;
+  const argv0: Array<string | null> = [];
   let i = 0;
   while (i < words.length) {
     const w = words[i] as WordToken;
@@ -161,13 +164,29 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       i = skipWrapper(words, start, spec);
       if (i < 0) return null;
       loose.push(...words.slice(i - (spec.positionals ?? 0), i).filter((p) => p.dynamic));
+      argv0.push(...argv0Values(commandName(w.value), words.slice(start, i)));
       if (commandName(w.value) === "xargs") xargs = { ...xargsOptions(words.slice(start, i), xargs), words: words.slice(i) };
     } else break;
   }
   const cmd = command(words, i, assigned);
   if (cmd.name === null && cmd.args[0]) loose.push(cmd.args[0]);
   const unsure = loose.length > 0 ? words.filter((w) => !loose.includes(w)) : null;
-  return { ...cmd, ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}), ...(unsure ? { unsure } : {}) };
+  argv0.push(...assigned.filter(([name]) => name === "ARGV0").map(([, value]) => value));
+  const named = argv0.length > 0 ? { argv0 } : {};
+  return { ...cmd, ...named, ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}), ...(unsure ? { unsure } : {}) };
+}
+
+/** The values of `exec -a NAME` and `env -a NAME`/`--argv0[=]NAME`, in either cluster or attached form. */
+function argv0Values(wrapper: string, options: WordToken[]): Array<string | null> {
+  if (wrapper !== "exec" && wrapper !== "env") return [];
+  const out: Array<string | null> = [];
+  options.forEach((o, k) => {
+    const attached = /^--argv0=(.*)$/s.exec(o.value)?.[1] ?? /^-[A-Za-z0-9]*a(.+)$/s.exec(o.value)?.[1];
+    const next = o.value === "--argv0" || /^-[A-Za-z0-9]*a$/.test(o.value) ? options[k + 1] : undefined;
+    if (attached !== undefined) out.push(o.dynamic ? null : attached);
+    else if (next) out.push(next.dynamic ? null : next.value);
+  });
+  return out;
 }
 
 function command(words: WordToken[], i: number, assigned: Unwrapped["assigned"]): Unwrapped {

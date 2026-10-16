@@ -9,7 +9,8 @@ import type { Unwrapped } from "./unwrap.js";
 export function mayEnableGlobSubst(cmd: Unwrapped): boolean {
   if (cmd.assigned.some(([name]) => name === "options") || cmd.args.some(namesOptions)) return true;
   if (cmd.name === null) return cmd.args.length > 0 && dynamicCommand(cmd.args.slice(1));
-  if (cmd.path !== null && PATTERN_RE.test(cmd.path)) return dynamicCommand(cmd.args);
+  if (cmd.path !== null && mayExpand(cmd.path)) return dynamicCommand(cmd.args);
+  if (cmd.name === "zsh" && cmd.argv0?.some(argv0Emulates)) return true;
   if (writesUnknownTarget(cmd.name, cmd.args)) return true;
   const check = Object.hasOwn(ENABLERS, cmd.name) ? ENABLERS[cmd.name] : undefined;
   return check?.(cmd.args) ?? false;
@@ -41,6 +42,16 @@ const ENABLERS: Record<string, (args: WordToken[]) => boolean> = {
 };
 
 /** zsh ignores case, `_` and `-` in an option name, and each leading `no` flips it. */
+/** A command word brace expansion or a glob may rewrite; the test words `[` and `[[` are none. */
+function mayExpand(path: string): boolean {
+  return path !== "[" && path !== "[[" && PATTERN_RE.test(path);
+}
+
+/** zsh started as `sh`, `-ksh` or `/bin/rksh` emulates that shell, read like an `emulate` mode, so GLOB_SUBST is on. */
+function argv0Emulates(name: string | null): boolean {
+  return name === null || EMULATION_RE.test(name.replace(/^.*\//s, "").replace(/^-/, ""));
+}
+
 function namesGlobSubst(name: string): boolean {
   let norm = name.toLowerCase().replace(/[_-]/g, "");
   while (norm.startsWith("no")) norm = norm.slice(2);
@@ -251,7 +262,7 @@ function unknownName(word: WordToken, text: string): boolean {
  */
 const NEVER_WRITES = new Set([
   // builtins
-  ":", "[", "test", "true", "false", "echo", "pwd", "cd", "pushd", "popd", "dirs", "exit", "return", "wait", "kill",
+  ":", "[", "[[", "test", "true", "false", "echo", "pwd", "cd", "pushd", "popd", "dirs", "exit", "return", "wait", "kill",
   "jobs", "type", "which", "whence", "where", "unset", "unalias", "unhash", "umask", "ulimit", "sleep",
   // external programs
   "git", "gh", "grep", "egrep", "rg", "ls", "cat", "head", "tail", "less", "wc", "sort", "uniq", "cut", "tr", "sed",

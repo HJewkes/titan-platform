@@ -157,6 +157,15 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     ["$c bourne"],
     ["$c ksh93"],
     ["{emulate,emulate} -R cfoo"],
+    ["ARGV0=sh zsh -c 'ls $x'"],
+    ["ARGV0=$a zsh -c x"],
+    ["exec -a ksh zsh -c 'ls $x'"],
+    ["exec -cla -ksh zsh -c x"],
+    ["exec -a /bin/rksh zsh -c x"],
+    ["exec -a $a zsh -c x"],
+    ["env --argv0 sh zsh -c 'ls $x'"],
+    ["env --argv0=bourne zsh -c x"],
+    ["env -a csh zsh -c x"],
   ])("reads the run-time or expanded operand of %s as a possible enabler", (src) => {
     expect(enables(src)).toBe(true);
   });
@@ -230,6 +239,14 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     ["$c foo"],
     ["$c rzsh"],
     ["~/bin/tool hi"],
+    ['[ -n "$x" ]'],
+    ['[ -f "$f" ]'],
+    ["[[ -f $f ]]"],
+    ["[[ $a == b* ]]"],
+    ["ARGV0=zsh zsh -c x"],
+    ["exec -a myzsh zsh -c x"],
+    ["exec -a sh git status"],
+    ["env --argv0 foo zsh -c x"],
   ])("leaves %s alone", (src) => {
     expect(enables(src)).toBe(false);
   });
