@@ -62,7 +62,7 @@ function recordOf(id: string, keyId: string, statement: Statement, proof: ProofI
 async function fireAll(host: FactoryHost, signed: Signed, items: readonly ProofItem[]): Promise<ItemOutcome[]> {
   const outcomes: ItemOutcome[] = items.map(({ gate }) => ({ gate, outcome: "signed" }));
   for (const [seq, item] of items.entries()) {
-    const skip = await staleness(host, item, signed.port);
+    const skip = await gateStaleness(host, item, signed.port);
     const done = skip ?? fireOne(host, signed, seq, item);
     if (skip) host.batches.mark(signed.batchId, seq, skip.outcome, skip.detail);
     outcomes[seq] = { gate: item.gate, ...done };
@@ -86,7 +86,7 @@ function fireOne(host: FactoryHost, signed: Signed, seq: number, item: ProofItem
 }
 
 /** Why the item must not fire now, read just before it would: its gate closed or moved, or a merge gate's PR did on GitHub. */
-async function staleness(host: FactoryHost, item: ProofItem, port: Signed["port"]): Promise<Skip | undefined> {
+export async function gateStaleness(host: FactoryHost, item: ProofItem, port: Signed["port"]): Promise<Skip | undefined> {
   const gate = host.gates.get(item.gate);
   if (gate?.status !== "pending") return { outcome: "skipped-closed", detail: `the gate is ${gate?.status ?? "gone"}` };
   const waiting = pendingGateId(host, item.runId, item.stepId);
