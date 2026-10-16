@@ -28,6 +28,7 @@ import {
   transformsIfs,
 } from "./ifs-words.js";
 import type { RedirectToken, Token, WordToken } from "./tokens.js";
+import { SOURCERS, STORED_CODE } from "./shell-text-runners.js";
 
 /** What bash starts with and what `unset IFS` restores. */
 export const DEFAULT_IFS = " \t\n";
@@ -40,13 +41,9 @@ const DECLARERS = new Set(["local", "export", "declare", "typeset", "readonly", 
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "mksh"]);
 /** Builtins that write a variable named by an operand; a dynamic operand may name IFS. */
 const NAME_WRITERS = new Set(["read", "mapfile", "readarray", "getopts", "wait", "let", "select"]);
-/** Builtins that run shell text from a file or stdin, which no word on the line spells out. */
-const SOURCERS = new Set(["source", "."]);
 /** Commands that run another command or stored shell text; a dynamic operand may be any code at all. */
 const RUNNERS = new Set(["trap", "alias", "exec", "coproc", "nohup", "env", "sudo", "doas", "timeout", "nice", "xargs", "stdbuf", "setsid", "watch", "parallel", "su"]);
 const ARITHMETIC_TESTS = new Set(["-eq", "-ne", "-lt", "-le", "-gt", "-ge"]);
-/** Commands whose operands are stored as code, run later by name. */
-const STORED_CODE = new Set(["trap", "alias"]);
 
 interface Scan {
   found: Set<string>;

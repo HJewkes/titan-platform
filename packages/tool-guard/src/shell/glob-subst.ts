@@ -1,13 +1,16 @@
 import type { WordToken } from "./lexer.js";
+import { SOURCERS, STORED_CODE } from "./shell-text-runners.js";
 import type { Unwrapped } from "./unwrap.js";
 
 /**
  * Whether a command may turn on zsh's GLOB_SUBST, under which a later unquoted `$x` holding `*(e:CODE:)` runs CODE
  * as a glob qualifier. Both polarities and every spelling zsh accepts count, as does any operand only known at run
- * time, so the reading fails closed: `unsetopt noglobsubst` enables it and `setopt $o` may.
+ * time, so the reading fails closed: `unsetopt noglobsubst` enables it and `setopt $o` may. So does any command that
+ * runs shell text the walk does not read: a sourced file, or `trap` and `alias` text run later.
  */
 export function mayEnableGlobSubst(cmd: Unwrapped): boolean {
   if (cmd.assigned.some(([name]) => name === "options") || cmd.args.some(namesOptions)) return true;
+  if (cmd.name !== null && (SOURCERS.has(cmd.name) || STORED_CODE.has(cmd.name))) return true;
   if (cmd.name === null) return cmd.args.length > 0 && dynamicCommand(cmd.args.slice(1));
   if (cmd.path !== null && mayExpand(cmd.path)) return dynamicCommand(cmd.args);
   if (cmd.name === "zsh" && cmd.argv0?.some(argv0Emulates)) return true;
@@ -41,7 +44,6 @@ const ENABLERS: Record<string, (args: WordToken[]) => boolean> = {
   zsh: zshEnables,
 };
 
-/** zsh ignores case, `_` and `-` in an option name, and each leading `no` flips it. */
 /** A command word brace expansion or a glob may rewrite; the test words `[` and `[[` are none. */
 function mayExpand(path: string): boolean {
   return path !== "[" && path !== "[[" && PATTERN_RE.test(path);
@@ -52,6 +54,7 @@ function argv0Emulates(name: string | null): boolean {
   return name === null || EMULATION_RE.test(name.replace(/^.*\//s, "").replace(/^-/, ""));
 }
 
+/** zsh ignores case, `_` and `-` in an option name, and each leading `no` flips it. */
 function namesGlobSubst(name: string): boolean {
   let norm = name.toLowerCase().replace(/[_-]/g, "");
   while (norm.startsWith("no")) norm = norm.slice(2);

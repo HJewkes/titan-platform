@@ -166,6 +166,14 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     ["env --argv0 sh zsh -c 'ls $x'"],
     ["env --argv0=bourne zsh -c x"],
     ["env -a csh zsh -c x"],
+    ["source ./f"],
+    [". ./f"],
+    ["source ~/.zshrc arg"],
+    ["builtin source f"],
+    ["command . f"],
+    ["trap 'setopt globsubst' DEBUG"],
+    ["trap 'echo hi' EXIT"],
+    ["alias s='setopt globsubst'"],
   ])("reads the run-time or expanded operand of %s as a possible enabler", (src) => {
     expect(enables(src)).toBe(true);
   });
