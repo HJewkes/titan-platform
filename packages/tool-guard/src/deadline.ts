@@ -34,7 +34,7 @@ export const WORKER_INPUT = z.object({
   home: z.string(),
   foldCase: z.boolean().optional(),
 });
-export type WorkerInput = z.infer<typeof WORKER_INPUT>;
+type WorkerInput =z.infer<typeof WORKER_INPUT>;
 
 const ANSWER = z.object({ stdout: z.string(), log: z.array(z.string()) });
 
