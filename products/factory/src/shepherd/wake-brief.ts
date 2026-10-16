@@ -9,6 +9,7 @@ import { failureOf } from "./error-class.js";
 import { boundedFindings, findingsText } from "@titan-design/review-panel";
 import { FixFirstEntrySchema, defectClassSection, fixFirstEntry, sameClassAsEarlier, type FixFirstEntry } from "./fix-first-trail.js";
 import { MAC_SUITE_RULES } from "./suite-host.js";
+import { ownerSendBackWake } from "./owner-send-back.js";
 
 /** Recorded once per FIX_FIRST round, woken or not, so the run's count of them survives a replay and a new head. */
 export const FIX_FIRST_STEP = "sh-wake-fix-first";
@@ -176,6 +177,8 @@ function earlierFence(entry: FixFirstEntry, index: number): string {
 
 /** A repeat FIX_FIRST carries every earlier round's findings and class, then the reviewer's defect class and the findings whole, so no blocking item is summarised away. */
 function reviewWake(input: WakeFacts): { reason: string; payload: string } {
+  const owner = ownerSendBackWake(input.headSha, input.payload);
+  if (owner) return owner;
   const { text = "", earlier = [] } = FixFirst.parse(input.payload);
   if (findingsText(text) === "") return noFindingsWake(input, text);
   const nth = input.fixFirst ?? 1;

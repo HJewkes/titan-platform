@@ -18,6 +18,7 @@ import { HELD_REPAIR_STEPS } from "./held-repair.js";
 import { HEAD_ORIGIN_STEPS } from "./head-origin.js";
 import { REVIEW_REFUSED_STEPS } from "./merge-standing.js";
 import { VISUAL_PACKET_STEPS } from "./visual-packet-trigger.js";
+import { OWNER_SEND_BACK_STEPS } from "./owner-send-back.js";
 
 /** Steps shared with land-pr are declared here too; their routes are registered once, in `factoryRoutes`. */
 export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
@@ -46,4 +47,5 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   ...HEAD_ORIGIN_STEPS,
   ...REVIEW_REFUSED_STEPS,
   ...VISUAL_PACKET_STEPS,
+  ...OWNER_SEND_BACK_STEPS,
 ];
