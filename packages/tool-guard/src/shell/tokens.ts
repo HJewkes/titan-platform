@@ -68,10 +68,10 @@ export interface CaseFrame {
   blocks: number;
 }
 
-/** Tokens scanned so far, their paren depth, and the depths a `[[` and a `=~` in it sat at, or -1. */
 /** After `time`; after `time -p`; after `time --`; after `-p --`, or a `time` that follows an option: where bash and zsh read a command differently. */
 export type TimeState = "none" | "time" | "p" | "dash" | "done";
 
+/** Tokens scanned so far, their paren depth, and the depths a `[[` and a `=~` in it sat at, or -1. */
 export interface RegexScan {
   scanned: number;
   depth: number;
@@ -82,6 +82,8 @@ export interface RegexScan {
   wordAtStart: boolean;
   /** How far `time` and its options have been read, after which bash still reads a command; see `nextTimeState`. */
   timeState: TimeState;
+  /** A prefix word since the last operator that bash and zsh read differently, so no `[[` after it is trusted to open. */
+  distrust: boolean;
   /** The last word was `function` or `coproc` in command position, so the next word is a name a `(` may follow. */
   nameNext: boolean;
   /** The last word named a function or coproc, so a `(` after it opens a header or a subshell body. */

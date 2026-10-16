@@ -56,7 +56,28 @@ describe("operators inside [[ ]]", () => {
     expect(names(line)).toContain("git");
   });
 
-  it.each(["time [[ a || b ]]", "! time [[ a || b ]]", "time time [[ a || b ]]"])("keeps one conditional after a bare time: %s", (line) => {
+  it.each(["time [[ a || b ]]", "! time [[ a || b ]]", "{ ! [[ a || b ]]; }"])("keeps one conditional after a bare time: %s", (line) => {
     expect(names(line)).not.toContain("b");
+  });
+
+  it.each([
+    "time -p ! [[ a || git push ]]",
+    "time -- ! [[ a || git push ]]",
+    "time -p -- ! [[ a || git push ]]",
+    "time -p time ! [[ a || git push ]]",
+    "time time [[ a || git push ]]",
+  ])("keeps a [[ closed after a time option zsh reads as the command, whatever prefix follows: %s", (line) => {
+    expect(names(line)).toContain("git");
+  });
+
+  it.each([
+    "$(true)! [[ a || git push ]]",
+    "$(true)[[ a || git push ]]",
+    "`true`[[ a || git push ]]",
+    "[[$(true) a || git push ]]",
+    "$(true)time [[ a || git push ]]",
+    "[[ a ]]$(true) && git push",
+  ])("splits git off a [[ or prefix with an expansion glued to it: %s", (line) => {
+    expect(names(line)).toContain("git");
   });
 });

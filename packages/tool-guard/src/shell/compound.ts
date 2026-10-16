@@ -26,6 +26,7 @@ export function newRegexScan(): RegexScan {
     regexAt: -1,
     wordAtStart: false,
     timeState: "none",
+    distrust: false,
     nameNext: false,
     named: false,
     cases: [],
@@ -89,6 +90,14 @@ function bareWord(t: Token | undefined): string | null {
   return t?.type === "word" && !t.quoted && !t.spliced ? t.value : null;
 }
 
+/** Like `bareWord`, but null for a word an expansion is glued to: neither shell reads `$(x)[[` or `[[$(x)` as a reserved word. */
+function reservedWord(t: Token): string | null {
+  return t.type === "word" && !t.computed && !t.dynamic ? bareWord(t) : null;
+}
+
+/** The prefix words both bash and zsh read the same way before a command; any other word that keeps command position is not trusted. */
+const AGREED_PREFIXES = new Set(["if", "then", "elif", "else", "do", "while", "until", "!", "{"]);
+
 /**
  * Bash reads a redirect inside a compound assignment as a syntax error, and inside a `=~` operand's parens as text.
  * No heredoc opener is legal in `[[ ]]`, and inside an extglob paren there bash reads it as pattern text; `<` and `>`
@@ -141,20 +150,32 @@ function scanToken(r: RegexScan, t: Token): void {
 
 function scanCommandWord(r: RegexScan, t: Token, bare: string | null): void {
   if (caseWord(r, t, bare)) return void Object.assign(r, { commandStart: false, wordAtStart: false, timeState: "none", nameNext: false, named: false });
-  if (r.commandStart) noteKeyword(r, bare);
-  const timeState = nextTimeState(r, bare);
+  const reserved = reservedWord(t);
+  if (r.commandStart) noteKeyword(r, bare, reserved);
+  const timeState = nextTimeState(r, reserved);
+  noteDistrust(r, reserved);
   r.named = r.nameNext;
   r.nameNext = r.commandStart && (bare === "function" || bare === "coproc");
   r.wordAtStart = r.commandStart && t.type === "word";
   r.timeState = timeState;
   if (bare !== null && COMPOUND_OPENERS.has(bare)) r.bodyPending = false;
-  r.commandStart = r.commandStart && bare !== null && (COMMAND_PREFIXES.has(bare) || timeState === "p" || timeState === "dash" || timeState === "done");
+  r.commandStart = r.commandStart && reserved !== null && (COMMAND_PREFIXES.has(reserved) || timeState === "p" || timeState === "dash" || timeState === "done");
 }
 
 /**
- * zsh's `time` takes no option, and bash reads only `-p` and then `--`; the two disagree after either, so a `[[` there
- * is not trusted to be a conditional (whose `&&` and `||` are words) and `-p`, `--` or a `time` after them leaves
- * the state at "done". A `[[` opens only after no `time` or a bare one.
+ * A `[[` opens only when every prefix word since the last operator is one both shells read alike (`!`, `{`, a block
+ * keyword, a first bare `time`). Once a word they read differently appears (a `time` option, a second `time`, `coproc`,
+ * an expansion), no later prefix word restores trust, since a wrongly opened `[[` swallows the `&&` and `||` after it.
+ */
+function noteDistrust(r: RegexScan, reserved: string | null): void {
+  if (!r.commandStart) return;
+  const agreed = reserved !== null && (AGREED_PREFIXES.has(reserved) || (reserved === "time" && r.timeState === "none"));
+  if (!agreed) r.distrust = true;
+}
+
+/**
+ * Which options of `time` keep command position: zsh takes none, bash `-p` and then `--`, and the two disagree after
+ * either. `noteDistrust` decides whether a `[[` may open; this only tracks where command position lasts.
  */
 function nextTimeState(r: RegexScan, bare: string | null): TimeState {
   if (!r.commandStart) return "none";
@@ -166,9 +187,9 @@ function nextTimeState(r: RegexScan, bare: string | null): TimeState {
 }
 
 /** Counts the `case`s, `if`s and loops a word in command position opens or closes, and opens a `[[`. */
-function noteKeyword(r: RegexScan, bare: string | null): void {
+function noteKeyword(r: RegexScan, bare: string | null, reserved: string | null): void {
+  if (reserved === "[[" && !r.distrust) r.conditionalAt = r.depth;
   if (bare === null) return;
-  if (bare === "[[" && (r.timeState === "none" || r.timeState === "time")) r.conditionalAt = r.depth;
   if (bare === "case") openCase(r);
   if (bare === "esac") closeCase(r);
   noteCaseBlock(r, bare);
@@ -194,5 +215,5 @@ function scanOperator(r: RegexScan, op: string): void {
 function noteHeader(r: RegexScan, op: string, closesHeader: boolean): void {
   if (closesHeader) Object.assign(r, { headerAt: -1, bodyPending: true });
   else if (op === "(") r.bodyPending = false;
-  Object.assign(r, { wordAtStart: false, timeState: "none", nameNext: false, named: false });
+  Object.assign(r, { wordAtStart: false, timeState: "none", distrust: false, nameNext: false, named: false });
 }

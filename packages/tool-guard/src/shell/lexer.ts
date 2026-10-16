@@ -73,11 +73,6 @@ function step(s: LexState): void {
   if (c === "#" && !s.word && s.i >= s.arithEnd) return skipComment(s);
   if (c === "&" && ahead.text[1] === ">") return readRedirect(s);
   const op = OPERATORS.find((o) => ahead.text.startsWith(o));
-  if (op === "&&" || op === "||") {
-    // A `]]` glued to the operator is still the pending word, and closes the `[[` only once it ends.
-    endWord(s);
-    if (inConditional(s)) return appendConditionalOperator(s, op, end(2));
-  }
   if (op) return readOperator(s, op, end(op.length));
   if (s.word?.quoted) s.word.spliced = true;
   appendChar(s, c);
@@ -155,16 +150,14 @@ function doubleParenClose(s: LexState, body: number): number {
   return reached < s.src.length ? reached : -1;
 }
 
-/** `&&` and `||` between the tests of a `[[ ]]` are words of that one command, not list operators. */
-function appendConditionalOperator(s: LexState, op: string, end: number): void {
-  endWord(s);
-  ensureWord(s).value = op;
-  endWord(s);
+function appendShift(s: LexState, end: number): void {
+  ensureWord(s).value += "<<";
   s.i = end;
 }
 
-function appendShift(s: LexState, end: number): void {
-  ensureWord(s).value += "<<";
+function appendWord(s: LexState, text: string, end: number): void {
+  ensureWord(s).value = text;
+  endWord(s);
   s.i = end;
 }
 
@@ -178,6 +171,9 @@ function readOperator(s: LexState, op: string, end: number): void {
   const inWholeSpan = s.i < s.wholeEnd;
   const glued = op === "(" && s.word ? s.word.value.slice(-1) : null;
   endWord(s);
+  // The pending word may be a glued `]]`, so the `[[` is judged only once it has ended. `&&` and `||` between the tests
+  // of a `[[ ]]` are words of that one command, not list operators.
+  if ((op === "&&" || op === "||") && inConditional(s)) return appendWord(s, op, end);
   noteParen(s, op, glued);
   s.i = end;
   s.tokens.push({ type: "op", value: op });
