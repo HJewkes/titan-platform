@@ -4,7 +4,18 @@ import { isRecord, isStringArray } from "./guards.js";
 /** One provider entry. `kind` picks the registry factory; the factory validates the rest. */
 export type TtsProviderConfig = { kind: string } & Readonly<Record<string, unknown>>;
 
-/** The `profile.json` document, version 1. Only the `tts` section is read here. */
+/** The speech models a runtime places on a device. */
+export type SpeechComponent = "tts" | "stt" | "phones";
+
+const SPEECH_COMPONENTS: readonly SpeechComponent[] = ["tts", "stt", "phones"];
+
+/** The profile's `runtime` section. Device names are checked by `detectSpeechRuntime`, not here. */
+export interface SpeechRuntimeProfile {
+  device?: Readonly<Partial<Record<SpeechComponent, string>>>;
+  cacheDir?: string;
+}
+
+/** The `profile.json` document, version 1. The `tts` and `runtime` sections are read here. */
 export interface TtsProfile {
   version: 1;
   tts?: {
@@ -14,6 +25,7 @@ export interface TtsProfile {
     /** Lets selection move past a misconfigured provider. Off by default: a broken preferred engine fails closed. */
     fallback?: boolean;
   };
+  runtime?: SpeechRuntimeProfile;
 }
 
 export interface ResolvedTtsConfig {
@@ -25,7 +37,8 @@ export interface ResolvedTtsConfig {
   fallback: boolean;
 }
 
-type Env = Readonly<Record<string, string | undefined>>;
+export type SpeechEnv = Readonly<Record<string, string | undefined>>;
+type Env = SpeechEnv;
 
 export const PROFILE_ENV = "TITAN_SPEECH_PROFILE";
 export const PREFER_ENV = "TITAN_SPEECH_TTS";
@@ -36,14 +49,41 @@ export const providerEnvName = (id: string, field: string): string =>
 
 const isProviderConfig = (v: unknown): v is TtsProviderConfig => isRecord(v) && typeof v.kind === "string";
 
+type Fail = (why: string) => never;
+
 /** Validates the document's shape; each provider's own fields are left to its factory. */
 export function parseTtsProfile(raw: unknown, source = "profile"): TtsProfile {
   const fail = (why: string): never => {
     throw new TypeError(`${source}: ${why}`);
   };
   if (!isRecord(raw) || raw.version !== 1) return fail('expected { "version": 1, ... }');
-  const tts = raw.tts;
-  if (tts === undefined) return { version: 1 };
+  return {
+    version: 1,
+    ...(raw.tts !== undefined ? { tts: parseTtsSection(raw.tts, fail) } : {}),
+    ...(raw.runtime !== undefined ? { runtime: parseRuntimeSection(raw.runtime, fail) } : {}),
+  };
+}
+
+function parseRuntimeDevice(device: unknown, fail: Fail): SpeechRuntimeProfile["device"] {
+  if (!isRecord(device)) return fail("runtime.device must be an object keyed by tts, stt or phones");
+  const parsed: Partial<Record<SpeechComponent, string>> = {};
+  for (const [key, value] of Object.entries(device)) {
+    const component = SPEECH_COMPONENTS.find((c) => c === key) ?? fail(`runtime.device.${key} is not tts, stt or phones`);
+    parsed[component] = typeof value === "string" ? value : fail(`runtime.device.${key} must be a device name string`);
+  }
+  return parsed;
+}
+
+function parseRuntimeSection(runtime: unknown, fail: Fail): SpeechRuntimeProfile {
+  if (!isRecord(runtime)) return fail("runtime must be an object");
+  if (runtime.cacheDir !== undefined && typeof runtime.cacheDir !== "string") fail("runtime.cacheDir must be a string");
+  return {
+    ...(runtime.device !== undefined ? { device: parseRuntimeDevice(runtime.device, fail) } : {}),
+    ...(typeof runtime.cacheDir === "string" ? { cacheDir: runtime.cacheDir } : {}),
+  };
+}
+
+function parseTtsSection(tts: unknown, fail: Fail): NonNullable<TtsProfile["tts"]> {
   if (!isRecord(tts)) return fail("tts must be an object");
   const prefer = tts.prefer ?? [];
   if (!isStringArray(prefer)) return fail("tts.prefer must be an array of provider ids");
@@ -54,7 +94,7 @@ export function parseTtsProfile(raw: unknown, source = "profile"): TtsProfile {
   for (const [id, entry] of Object.entries(declared)) {
     providers[id] = isProviderConfig(entry) ? entry : fail(`tts.providers.${id} needs a string "kind"`);
   }
-  return { version: 1, tts: { prefer, providers, ...(tts.fallback !== undefined ? { fallback: tts.fallback } : {}) } };
+  return { prefer, providers, ...(tts.fallback !== undefined ? { fallback: tts.fallback } : {}) };
 }
 
 /** Reads a profile file. A missing file is no profile, not an error: nothing about the host is assumed. */
