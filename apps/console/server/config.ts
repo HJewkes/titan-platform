@@ -50,6 +50,11 @@ export interface ConsoleConfig {
   inboxDir: string;
   /** Review rounds, one `<round-id>/round.json` each; `TITAN_CONSOLE_ROUNDS_DIR` overrides. */
   roundsDir: string;
+  /**
+   * The owner's decisions file the decision log appends one-way, A/B and policy answers to, from
+   * `TITAN_CONSOLE_DECISIONS_FILE`. Owner-configured; never from a request. Null writes the ledger only.
+   */
+  decisionsFile: string | null;
 }
 
 export const LAN_NEEDS_TLS = "TITAN_CONSOLE_HOST needs TITAN_CONSOLE_TLS_CERT and TITAN_CONSOLE_TLS_KEY: the LAN listener serves HTTPS only";
@@ -101,6 +106,7 @@ export function resolveConfig(
     ownerWrites: ownerWritesFrom(env.TITAN_CONSOLE_OWNER_WRITES),
     inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
     roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
+    decisionsFile: decisionsFileFrom(env.TITAN_CONSOLE_DECISIONS_FILE, home),
   };
   assertCoherent(config);
   return config;
@@ -130,6 +136,14 @@ function urlFrom(env: NodeJS.ProcessEnv, name: string, fallback: string): string
   const url = URL.canParse(raw) ? new URL(raw) : null;
   if (!url || !["http:", "https:"].includes(url.protocol) || url.hash !== "") throw new Error(`${name} must be an http(s) address with no #fragment, got "${raw}"`);
   return raw;
+}
+
+/** No default: a guessed path would append the owner's answers to a file nobody chose. */
+function decisionsFileFrom(raw: string | undefined, home: string): string | null {
+  if (raw === undefined || raw === "") return null;
+  const file = expandHome(raw, home);
+  if (!path.isAbsolute(file)) throw new Error(`TITAN_CONSOLE_DECISIONS_FILE must be an absolute or ~/ path, got "${raw}"`);
+  return file;
 }
 
 /** Only `1` turns owner writes on; any other value is refused rather than read as off, so a typo is never silent. */

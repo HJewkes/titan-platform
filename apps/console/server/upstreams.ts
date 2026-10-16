@@ -1,10 +1,11 @@
 import { stat } from "node:fs/promises";
 import os from "node:os";
-import { probeHealth } from "@titan-design/daemon";
-import { activeWorkClient } from "./active-work.js";
+import { consoleLogger, probeHealth, type Logger } from "@titan-design/daemon";
+import { activeWorkClient, type ActiveWork } from "./active-work.js";
 import { brokerReader } from "./broker.js";
 import type { ConsoleSources } from "./commands.js";
 import type { ConsoleConfig } from "./config.js";
+import { createDecisionLog, type HumanOnly } from "./decision-log.js";
 import { factoryNeeds } from "./factory.js";
 import { shepherdReader } from "./shepherd.js";
 
@@ -95,10 +96,20 @@ export async function probeUpstreams(upstreams: readonly Upstream[]): Promise<Up
   return Promise.all(upstreams.map(async ({ id, label, target, probe }) => ({ id, label, target, ...(await probe()) })));
 }
 
-export function createSources(config: ConsoleConfig): ConsoleSources {
+/** Active-work owns the charter read; an unreadable charter or a down daemon reads as unknown, which excludes every answer. */
+export function humanOnlyFrom(activeWork: ActiveWork): () => Promise<HumanOnly> {
+  return async () => {
+    const inventory = await activeWork.read("inventory").catch(() => null);
+    if (inventory === null || !inventory.human_only_known) return { known: false };
+    return { known: true, initiatives: new Set(inventory.initiatives.filter((entry) => entry.human_only).map((entry) => entry.slug)) };
+  };
+}
+
+export function createSources(config: ConsoleConfig, logger: Logger = consoleLogger): ConsoleSources {
+  const activeWork = activeWorkClient(config.activeWorkPort);
   return {
     upstreams: createUpstreams(config),
-    activeWork: activeWorkClient(config.activeWorkPort),
+    activeWork,
     agents: {
       broker: brokerReader({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
       eventsDbPath: config.agentChatEventsDbPath,
@@ -109,5 +120,6 @@ export function createSources(config: ConsoleConfig): ConsoleSources {
     rounds: { dir: config.roundsDir },
     shepherd: shepherdReader(config.factoryPort),
     factory: factoryNeeds(config.factoryPort),
+    decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger }),
   };
 }

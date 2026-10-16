@@ -59,6 +59,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_OWNER_WRITES` | `0` | `1` lets owner-write commands run on the LAN (see "Who may run a command"). Turning it on is an owner step. Any value but `0` or `1` is refused |
 | `TITAN_CONSOLE_INBOX_DIR` | `$TITAN_CONSOLE_STATE/inbox/deposits` | The owner-inbox spool `inbox.deposit` files into, created 0700 on the first deposit |
 | `TITAN_CONSOLE_ROUNDS_DIR` | `$TITAN_CONSOLE_STATE/rounds` | Review rounds, one `<round-id>/round.json` each, read by `rounds.list`, `rounds.get` and `approvals.flow`. `fixtures/rounds` holds synthetic ones for a browser check |
+| `TITAN_CONSOLE_DECISIONS_FILE` | none | The owner's decisions file the decision log appends one-way, A/B and policy answers to (see "The decision log"). Owner config only, never taken from a request; a relative path is refused. Unset, only `answers.jsonl` is written |
 
 The active-work root is `ACTIVE_ROOT` when set. Otherwise it is the data directory
 active-work's own CLI resolves through `env-paths`: the platform's application data
@@ -149,6 +150,19 @@ Three rules hold for every later slice.
   `rounds.submit`, an `owner-write`, records the owner's answers to a round as its
   `feedback.json` and resolves nothing itself. No command controls an agent. A later write must
   take a class below.
+
+### The decision log
+
+After `rounds.submit` writes `feedback.json`, the console records each answered question in
+`$TITAN_CONSOLE_STATE/answers.jsonl`: one row per answer, in the `@titan-design/decider` ledger
+shape (`source: "queue"`, keyed `round:<round>:<question>:<submittedAt>`), appended with
+`O_APPEND|O_NOFOLLOW` to a file kept at mode 0600. A one-way, A/B (a decide with two or more options
+and a pick) or policy (a D-row `class`, or category `policy`) answer also gets one bullet under
+`## Queue answers <date>` in `TITAN_CONSOLE_DECISIONS_FILE`, which must already exist. A Ship
+approval is two-way, so it reaches the ledger only. A personal item, an item of a human-only
+initiative, or any answer while active-work cannot say which initiatives are human-only writes
+nothing. A failed log write never undoes the submit: the result's `log` array says what was
+written per question, with a reason that names no path, and the daemon log has the error.
 
 ## Live updates
 

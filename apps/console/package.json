@@ -20,6 +20,7 @@
     "@titan-design/app-paths": "workspace:*",
     "@titan-design/chat-protocol": "workspace:^",
     "@titan-design/daemon": "workspace:^",
+    "@titan-design/decider": "workspace:^",
     "@titan-design/github": "workspace:^",
     "@titan-design/owner-queue": "workspace:^",
     "@titan-design/pm": "workspace:^",

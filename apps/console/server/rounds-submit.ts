@@ -17,7 +17,9 @@ import path from "node:path";
 import { z } from "zod";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
+import { decisionLogResult, type DecisionLog } from "./decision-log.js";
 import { ownerWriteCommand } from "./owner-guard.js";
+import { roundDecisions, type SubmittedRound } from "./round-decisions.js";
 import {
   FEEDBACK_SCHEMA_ID,
   FeedbackDocument,
@@ -43,18 +45,32 @@ const submitArgs = z.strictObject({
 type SubmitArgs = z.infer<typeof submitArgs>;
 
 const submitResult = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("submitted"), path: z.string(), sha256: z.string(), headSha: z.string().nullable() }),
+  z.object({
+    status: z.literal("submitted"),
+    path: z.string(),
+    sha256: z.string(),
+    headSha: z.string().nullable(),
+    /** One decision-log result per answered question; absent when the console has no decision log. */
+    log: z.array(decisionLogResult.extend({ questionId: z.string() })).optional(),
+  }),
   z.object({ status: z.literal("already-submitted") }),
 ]);
 
 type SubmitResult = z.infer<typeof submitResult>;
+type LogEntry = NonNullable<Extract<SubmitResult, { status: "submitted" }>["log"]>[number];
+
+interface Submission {
+  result: SubmitResult;
+  /** Null unless this call wrote the feedback file. */
+  round: SubmittedRound | null;
+}
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 const refuse = (message: string): never => {
   throw failure(message, EXIT.DATAERR);
 };
 
-async function readManifestBytes(roundDir: string): Promise<Buffer> {
+async function readManifest(roundDir: string): Promise<{ bytes: Buffer; modifiedAt: string }> {
   let handle: FileHandle;
   try {
     handle = await open(path.join(roundDir, ROUND_FILE), OPEN_FLAGS);
@@ -64,7 +80,7 @@ async function readManifestBytes(roundDir: string): Promise<Buffer> {
   try {
     const stats = await handle.stat();
     const bytes = stats.isFile() && stats.size <= MAX_ROUND_BYTES ? await readCappedBytes(handle) : null;
-    return bytes ?? refuse(`${ROUND_FILE} is not a regular file of at most ${MAX_ROUND_BYTES} bytes`);
+    return { bytes: bytes ?? refuse(`${ROUND_FILE} is not a regular file of at most ${MAX_ROUND_BYTES} bytes`), modifiedAt: stats.mtime.toISOString() };
   } finally {
     await handle.close();
   }
@@ -167,10 +183,10 @@ async function writeOnce(file: string, bytes: Buffer): Promise<string | null> {
   return file;
 }
 
-async function submitRound({ dir }: RoundsSource, args: SubmitArgs, now = new Date()): Promise<SubmitResult> {
+async function submitRound({ dir }: RoundsSource, args: SubmitArgs, now = new Date()): Promise<Submission> {
   if (!(await roundDirExists(dir, args.id))) throw failure(`No round named "${args.id}"`, EXIT.NOINPUT);
   const roundDir = path.join(dir, args.id);
-  const manifestBytes = await readManifestBytes(roundDir);
+  const { bytes: manifestBytes, modifiedAt } = await readManifest(roundDir);
   if (sha256(manifestBytes) !== args.manifestSha256) refuse(`${ROUND_FILE} has changed since it was shown; reload the round`);
   const manifest = parseManifest(manifestBytes);
   if (manifest.variants.length > 0) refuse("a design round is answered in the review harness");
@@ -178,10 +194,24 @@ async function submitRound({ dir }: RoundsSource, args: SubmitArgs, now = new Da
   const headSha = shippedHead(manifest, args);
   const bytes = feedbackBytes(manifest, args, now);
   const written = await writeOnce(path.join(roundDir, FEEDBACK_FILE), bytes);
-  return written === null ? { status: "already-submitted" } : { status: "submitted", path: written, sha256: sha256(bytes), headSha };
+  if (written === null) return { result: { status: "already-submitted" }, round: null };
+  const round = { roundId: args.id, manifest, answers: args.answers, openedAt: modifiedAt, submittedAt: now.toISOString() };
+  return { result: { status: "submitted", path: written, sha256: sha256(bytes), headSha }, round };
 }
 
-export function roundsSubmitCommands(source: RoundsSource) {
+async function logRound(decisionLog: DecisionLog, round: SubmittedRound): Promise<LogEntry[]> {
+  const entries: LogEntry[] = [];
+  for (const { questionId, item, answer } of roundDecisions(round)) entries.push({ questionId, ...(await decisionLog.record(item, answer)) });
+  return entries;
+}
+
+/** Runs only once the feedback file is written; a log failure shows in `log` and never undoes the submit. */
+async function afterSubmit(decisionLog: DecisionLog | undefined, { result, round }: Submission): Promise<SubmitResult> {
+  if (decisionLog === undefined || round === null || result.status !== "submitted") return result;
+  return { ...result, log: await logRound(decisionLog, round) };
+}
+
+export function roundsSubmitCommands(source: RoundsSource, decisionLog?: DecisionLog) {
   return {
     "rounds.submit": ownerWriteCommand({
       name: "rounds.submit",
@@ -189,7 +219,7 @@ export function roundsSubmitCommands(source: RoundsSource) {
       args: submitArgs,
       result: submitResult,
       ownerWrite: true,
-      run: (args) => submitRound(source, args),
+      run: async (args) => afterSubmit(decisionLog, await submitRound(source, args)),
     }),
   };
 }

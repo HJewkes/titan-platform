@@ -2,8 +2,10 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { ActiveWork } from "./active-work.js";
+import { fixtureActiveWork } from "./fixtures.js";
 import { closedPort, startFakeDaemon } from "./test-support.js";
-import { fileUpstream, httpUpstream, probeUpstreams } from "./upstreams.js";
+import { fileUpstream, httpUpstream, humanOnlyFrom, probeUpstreams } from "./upstreams.js";
 
 let dir: string;
 beforeEach(async () => {
@@ -95,5 +97,18 @@ describe("probing every upstream", () => {
     } finally {
       await daemon.close();
     }
+  });
+});
+
+describe("the decision log's human-only reader", () => {
+  it("names the initiatives active-work flags human-only", async () => {
+    const humanOnly = await humanOnlyFrom(fixtureActiveWork())();
+    expect(humanOnly).toEqual({ known: true, initiatives: new Set(["garden-plan"]) });
+  });
+
+  it("reads as unknown when the charter is unread or active-work does not answer (fail closed)", async () => {
+    const down: ActiveWork = { read: () => Promise.reject(new Error("connection refused")) };
+    expect(await humanOnlyFrom(fixtureActiveWork({ humanOnlyKnown: false }))()).toEqual({ known: false });
+    expect(await humanOnlyFrom(down)()).toEqual({ known: false });
   });
 });
