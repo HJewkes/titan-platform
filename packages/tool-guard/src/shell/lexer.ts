@@ -291,8 +291,7 @@ function skipComment(s: LexState): void {
 function readRedirect(s: LexState): void {
   const w = s.word;
   let fd: string | null = null;
-  // bash's and zsh's `{name}>f` stores the descriptor it opens in `name`; dash reads `{name}` as a word.
-  if (w && !w.quoted && !w.dynamic && /^(?:\d+|\{[A-Za-z_]\w*\})$/.test(w.value)) {
+  if (w && !w.quoted && !w.dynamic && /^\d+$/.test(w.value)) {
     fd = w.value;
     s.word = null;
   } else endWord(s);

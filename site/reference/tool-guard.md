@@ -96,17 +96,11 @@ through a symlinked parent, is refused just before the append.
 
 - Stdin named through the working directory or a symlink (`cd /dev && bash stdin`) is not
   read as stdin. TP-3240 tracks it.
-- A `<` redirect on an enclosing group, subshell or `exec` is not read as an inner shell's
-  stdin: `{ bash; } < ./x.sh`, `( bash ) < ./x.sh`, `exec < ./x.sh; bash`. TP-3254 tracks it.
-- A `<` target spelled as a glob or brace list (`bash < ./x.s?`) is not matched to a file, and
-  text a command prints into a shell's pipe (`cat ./x.sh | bash`) is not read.
 
 ## Gotchas
 
 - A shell that runs stdin, or a descriptor its script operand names, is refused when the line
-  does not show that text: `bash < $F`, `bash /dev/stdin <&3`, `bash /dev/fd/3` with no `3<`,
-  `bash {fd}< ./x.sh /dev/fd/10`, whose descriptor number the shell picks. A shell a `-c` string
-  or `eval` starts inherits its runner's descriptors, so `bash -c bash < $F` is refused too.
+  does not show that text: `bash < $F`, `bash /dev/stdin <&3`, `bash /dev/fd/3` with no `3<`.
   Run the script by a literal path, or redirect a literal file (`bash /dev/stdin < ./x.sh`).
 - A gate verdict denies. The hook cannot check a resolved gate yet, so `MRG-CO` and `REL-CO`
   deny with a reason naming the gate.

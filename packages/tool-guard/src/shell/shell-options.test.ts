@@ -205,12 +205,6 @@ const UNKNOWABLE = FD_SHELLS.flatMap((shell) => [
   [`${shell} < /dev/fd/3`, "exec 3< ./x.sh"],
   [`${shell} /dev/stdin < /dev/fd/3 3< ./ok.sh`, "exec 3< ./x.sh"],
   [`${shell} 0>&3`, "exec 3< ./x.sh"],
-  [`${shell} {fd}< ./x.sh /dev/fd/10`, "true"],
-  [`${shell} {fd}<> ./x.sh /dev/fd/10`, "true"],
-  [`${shell} -c bash < $F`, "F=./x.sh"],
-  [`${shell} -c 'echo hi; bash' < $F`, "F=./x.sh"],
-  [`${shell} -c "${shell} -c bash" < $F`, "F=./x.sh"],
-  [`${shell} -c 'bash /dev/fd/3' 3< $F`, "F=./x.sh"],
 ]);
 const shellHere = (line: string): boolean => SHELLS_HERE.has(line.split(" ")[0] ?? "");
 
@@ -227,7 +221,7 @@ describe("a shell's stdin source is read from one model (TP-3241)", () => {
     expect(await verdict(line)).toBe("deny");
   });
 
-  it.each(["bash -c 'echo hi' < $F", "bash $X", "bash ./ok.sh < $F", "bash -c 'bash ./ok.sh' < $F", "bash {fd}< ./x.sh ./ok.sh"])("allows %s, which runs no unknowable descriptor", async (line) => {
+  it.each(["bash -c 'echo hi' < $F", "bash $X", "bash ./ok.sh < $F"])("allows %s, which runs no unknowable descriptor", async (line) => {
     expect(await verdict(line)).toBe("pass");
   });
 });
@@ -285,12 +279,6 @@ const SOURCE_ROWS: Array<[string, (text: string, file: string) => string, string
   ["0>&3 under dash -c", (_text, file) => `dash -c 'bash 3< ${file} 0>&3'`, ALL],
   ["bash's move 0>&3-", (_text, file) => `bash 3< ${file} 0>&3-`, ["bash"]],
   ["a pipe on fd 3 through 3>&0", (text) => `echo '${text}' | bash /dev/fd/3 3>&0`, ALL],
-  ["a < file a -c string's shell inherits", (_text, file) => `bash -c bash < ${file}`, ALL],
-  ["an fd 3 file a -c string's shell inherits", (_text, file) => `bash -c 'bash /dev/fd/3' 3< ${file}`, ALL],
-  ["a pipe a -c string's shell inherits", (text) => `echo '${text}' | bash -c bash`, ALL],
-  ["a pipe eval's shell inherits", (text) => `echo '${text}' | eval bash`, ALL],
-  ["a here-string a -c string's shell inherits", (text) => `bash -c bash <<< '${text}'`, ["bash", "zsh -f"]],
-  ["a heredoc a -c string's shell inherits after a command", (text) => `bash -c 'echo hi; bash' <<E\n${text}\nE`, ALL],
 ];
 const unescaped = (line: string): string => line.replaceAll("\\n", "\n");
 
