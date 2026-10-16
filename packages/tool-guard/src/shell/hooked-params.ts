@@ -28,6 +28,8 @@ interface WriterSpec {
   longOptions?: boolean;
   /** Which operands are names: all of them, none, or each zparseopts spec's array after `=`. */
   operands: "names" | "none" | "specs";
+  /** Leading operands that are not names, such as the file operand of `zlistattr`. */
+  skip?: number;
 }
 
 const DECLARE: WriterSpec = { flags: "aAfFgGhHiIklLmnprRtTuUxzEZ", numeric: "EFLRZip", plus: true, operands: "names" };
@@ -58,6 +60,17 @@ const SPECS: Record<string, WriterSpec> = {
   sysread: { names: "c", values: "iost", operands: "names" },
   zregexparse: { flags: "c", operands: "names" },
   pcre_match: { names: "va", values: "n", flags: "b", operands: "none" },
+  zpty: { flags: "ebdtLrwnz", skip: 1, operands: "names" },
+  zsystem: { operands: "names" },
+  syserror: { names: "e", values: "p", operands: "none" },
+  sysopen: { names: "u", values: "op", flags: "arwmnczx", operands: "none" },
+  zgetattr: { flags: "h", skip: 2, operands: "names" },
+  zlistattr: { flags: "h", skip: 1, operands: "names" },
+  ztie: { values: "df", flags: "rzZS", operands: "names" },
+  zcurses: { operands: "names" },
+  shift: { flags: "p", operands: "names" },
+  compadd: { names: "OAD", values: "PSpsiIWdJVXxrRMEFo", flags: "UQqaklfn12C", operands: "none" },
+  compquote: { flags: "p", operands: "names" },
 };
 
 const NAMEREF_DECLARERS = new Set(["declare", "typeset", "local", "private"]);
@@ -78,24 +91,38 @@ const SUBSCRIPTED_RE = /^([A-Za-z_][A-Za-z0-9_]*)\[([A-Za-z0-9_]*)\]$/;
  * `redirects` are its redirections: a herestring or heredoc body may hold text a later `(( x ))` reads as math.
  */
 export function writesHookedParam(cmd: Unwrapped, words: WordToken[], redirects: RedirectToken[] = []): string | null {
+  return writesProtectedParam(cmd, words, redirects, HOOKED);
+}
+
+/**
+ * The same store reader over any set of names, such as zsh's `options`. Only the stores read the set: the
+ * assign-on-expand scan and the arithmetic half stay on `HOOKED`, because a math write to `options` is an error
+ * in zsh and `assignOnExpand` takes no set yet.
+ */
+export function writesProtectedParam(
+  cmd: Unwrapped,
+  words: WordToken[],
+  redirects: RedirectToken[],
+  names: ReadonlySet<string>,
+): string | null {
   const slots = nameSlots(cmd);
   return (
-    assignedHooked(cmd) ??
-    slotsHooked(slots) ??
-    namerefHooked(cmd) ??
+    assignedHooked(cmd, names) ??
+    slotsHooked(slots, names) ??
+    namerefHooked(cmd, names) ??
     expansionHooked([...words, ...cmd.args]) ??
     arithmeticHookedIn(cmd, words, typeof slots === "string" ? [] : slots, redirects)
   );
 }
 
-function assignedHooked(cmd: Unwrapped): string | null {
-  return cmd.assigned.find(([name]) => HOOKED.has(name))?.[0] ?? null;
+function assignedHooked(cmd: Unwrapped, names: ReadonlySet<string>): string | null {
+  return cmd.assigned.find(([name]) => names.has(name))?.[0] ?? null;
 }
 
-function slotsHooked(slots: WordToken[] | string): string | null {
+function slotsHooked(slots: WordToken[] | string, names: ReadonlySet<string>): string | null {
   if (typeof slots === "string") return slots;
   for (const slot of slots) {
-    const hooked = slotHooked(slot);
+    const hooked = slotHooked(slot, names);
     if (hooked !== null) return hooked;
   }
   return null;
@@ -195,7 +222,7 @@ function mayBeOption(word: WordToken, spec: WriterSpec): boolean {
 const has = (letters: string | undefined, letter: string) => letters?.includes(letter) === true;
 
 function operandSlots(spec: WriterSpec, operands: WordToken[]): WordToken[] {
-  if (spec.operands === "names") return operands;
+  if (spec.operands === "names") return operands.slice(spec.skip ?? 0);
   if (spec.operands === "none") return [];
   return operands.flatMap((w) => (w.value.includes("=") ? [{ ...w, value: w.value.slice(w.value.indexOf("=") + 1) }] : []));
 }
@@ -204,14 +231,14 @@ function operandSlots(spec: WriterSpec, operands: WordToken[]): WordToken[] {
  * A slot passes when it is literal and names no hooked parameter: an identifier with an optional literal
  * subscript, or any other literal text, which the shell rejects as a name without writing.
  */
-function slotHooked(slot: WordToken): string | null {
+function slotHooked(slot: WordToken, names: ReadonlySet<string>): string | null {
   const name = namePart(slot);
   if (name === null) return slot.value;
   const quoted = slot.quoted && !slot.spliced;
   if (!quoted && !PLAIN_NAME_RE.test(name) && EXPANDING_RE.test(name)) return slot.value;
   const identifier = IDENTIFIER_PREFIX_RE.exec(name)?.[0];
-  if (identifier !== undefined && HOOKED.has(identifier)) return identifier;
-  return !quoted && subscriptGlobsHooked(name) ? slot.value : null;
+  if (identifier !== undefined && names.has(identifier)) return identifier;
+  return !quoted && subscriptGlobsHooked(name, names) ? slot.value : null;
 }
 
 /** The text before the first `=` (and a `+=`'s `+`), or null when an expansion sits there. */
@@ -224,22 +251,22 @@ function namePart(slot: WordToken): string | null {
 }
 
 /** An unquoted `PS[4]` is a bracket expression too, and globs to PS4 once a file of that name exists. */
-function subscriptGlobsHooked(name: string): boolean {
+function subscriptGlobsHooked(name: string, names: ReadonlySet<string>): boolean {
   const [, base, chars] = SUBSCRIPTED_RE.exec(name) ?? [];
-  return base !== undefined && [...(chars ?? "")].some((ch) => HOOKED.has(base + ch));
+  return base !== undefined && [...(chars ?? "")].some((ch) => names.has(base + ch));
 }
 
 /**
  * A nameref's target: `declare -n R=PS4[0]` makes every later `R=` a PS4 write. Under `-n` a target must be a
  * literal name, and a bare `declare -n r` counts too, since a later `r=PS4` binds it.
  */
-function namerefHooked({ name, args }: Unwrapped): string | null {
+function namerefHooked({ name, args }: Unwrapped, names: ReadonlySet<string>): string | null {
   if (name === null || !Object.hasOwn(SPECS, name) || SPECS[name] !== DECLARE) return null;
   const nameref = NAMEREF_DECLARERS.has(name) && args.some((a) => !a.dynamic && /^-[A-Za-z0-9]*n/.test(a.value));
   for (const word of args.filter((a) => !/^[-+]/.test(a.value))) {
     const target = word.value.includes("=") ? word.value.slice(word.value.indexOf("=") + 1) : null;
     const named = target === null ? undefined : TARGET_RE.exec(target)?.[1];
-    if (named !== undefined && HOOKED.has(named)) return named;
+    if (named !== undefined && names.has(named)) return named;
     if (nameref && (named === undefined || (word.dynamic && /[$`]/.test(target ?? "")) || word.cuts?.length)) return word.value;
   }
   return null;
