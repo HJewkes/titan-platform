@@ -37,6 +37,7 @@ const PUSH_ROUTES = [
   ["a lone dash between -c and the text", `emulate sh -c - '${PUSH}'`],
   ["a dynamic word that may be -c", `emulate sh $f '${PUSH}'`],
   ["the builtin prefix", `builtin emulate zsh -c '${PUSH}'`],
+  ["a dynamic word after a wrapper, an over-read since nohup runs no builtin", `nohup $X emulate zsh -c '${PUSH}'`],
 ] as const;
 
 describe("emulate -c text is walked as eval (TP-3207)", () => {
