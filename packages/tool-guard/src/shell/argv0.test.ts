@@ -77,6 +77,9 @@ describe("envSplitWords", () => {
 });
 
 const zshOnPath = spawnSync("zsh", ["-f", "-c", "true"]).status === 0;
+const envSetsArgv0 =
+  spawnSync("env", ["-a", "probe-argv0", "sh", "-c", 'printf %s "$0"'], { encoding: "utf-8" }).stdout ===
+  "probe-argv0";
 
 describe.skipIf(!zshOnPath)("zsh under each argv0 form", () => {
   let scratch = "";
@@ -89,8 +92,13 @@ describe.skipIf(!zshOnPath)("zsh under each argv0 form", () => {
   const run = (line: string) =>
     spawnSync("zsh", ["-f", "-c", line], { cwd: scratch, encoding: "utf-8", input: "", timeout: 5000 }).stdout.trim();
 
-  it.each([
-    ["exec -a =sh zsh -f probe.zsh"],
+  it("turns GLOB_SUBST on for exec -a =sh zsh -f probe.zsh", () => {
+    expect(run("exec -a =sh zsh -f probe.zsh")).toBe("on");
+  });
+
+  // GNU env gained -a/--argv0 after coreutils 9.4 (ubuntu-24.04), so the ground truth needs a
+  // capable env; the guard's own verdict on these lines is asserted unconditionally above.
+  it.runIf(envSetsArgv0).each([
     [`env -S '-a "sh" zsh -f probe.zsh'`],
     [`env -S "-a 'sh' zsh -f probe.zsh"`],
     [`env -S '-a s"h" zsh -f probe.zsh'`],
