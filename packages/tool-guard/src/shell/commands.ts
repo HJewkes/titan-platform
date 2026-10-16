@@ -1,5 +1,6 @@
 import { ParseError, SplitParseError, tokenize } from "./lexer.js";
 import { NestingLimitError } from "./nesting.js";
+import { namedFdReadings } from "./named-fd.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { nextShellStdin, nextStdin, xargsStdin } from "./piped-stdin.js";
@@ -254,20 +255,13 @@ function scope(op: string, w: Walk): void {
   if (op === ")") w.scope = w.stack.pop() ?? w.scope;
 }
 
-/**
- * bash and zsh read a `{name}` word before a redirect as the descriptor it stores; dash, and bash a space apart, as a
- * word. Each reading is walked in full, the word's on a copy of the scope, and either one's refusal refuses the line.
- */
+/** Both readings of a `{name}` redirect are walked in full, the word's on a copy of the scope; either can refuse the line. */
 function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Unwrapped | null {
-  if (!rawWords.some((word) => word.namedFd)) return emitReading(rawWords, rawRedirects, w, next);
-  const asWord = rawRedirects.map((r): RedirectToken => ({ ...r, named: undefined }));
-  besideReading(w, (copy) => emitReading(rawWords.map(withoutNamedFd), asWord, copy, next));
-  const asFd = rawRedirects.map((r): RedirectToken => (r.named === undefined ? r : { ...r, fd: r.named }));
-  return emitReading(rawWords.filter((word) => !word.namedFd), asFd, w, next);
-}
-
-function withoutNamedFd({ namedFd: _named, ...word }: WordToken): WordToken {
-  return word;
+  const readings = namedFdReadings(rawWords, rawRedirects);
+  if (!readings) return emitReading(rawWords, rawRedirects, w, next);
+  const [kept, asFd] = readings;
+  besideReading(w, (copy) => emitReading(kept.words, kept.redirects, copy, next));
+  return emitReading(asFd.words, asFd.redirects, w, next);
 }
 
 function emitReading(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Unwrapped | null {
