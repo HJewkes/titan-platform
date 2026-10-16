@@ -37,4 +37,13 @@ node scripts/sunset-manifest.mjs check [--agent-chat <checkout>]
 Without `--agent-chat` the agent-chat roots are checked for shape only. `scripts/sunset-manifest.test.mjs` runs the
 titan-platform root in CI, and fails when it gains a file the manifest does not map.
 
+## Milestone exit (D-M0-07)
+
+`milestones.json` is the one file that says which milestones have exited: M0, M1a, M1b, M2 to M8, each with
+`exited: false`. A milestone-exit task sets its own entry to `true` or to its exit date in the same change that exits it.
+A D-task id gives its milestone (D-M3-12 is M3, D-M1b-02 is M1b), not the entry's `milestone` field. Once a milestone has
+exited, the check fails for every `delete` entry of that milestone whose file `git ls-files` still lists. Kept and
+surviving files never fail it. The check runs inside `scripts/sunset-manifest.test.mjs`, so the `pnpm test` step of the
+validate job carries it; no new workflow was added.
+
 R15's scoreboard (D-M0-05) does not exist as a file yet, so there is nothing to link from. D-M0-05 links this manifest when it lands.

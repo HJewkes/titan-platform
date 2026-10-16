@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { MANIFEST_PATH, checkManifest, listRoots } from "./sunset-manifest.mjs";
+import { MANIFEST_PATH, MILESTONES_PATH, checkManifest, exitedMilestones, listRoots, milestoneOf } from "./sunset-manifest.mjs";
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "sunset-manifest.mjs");
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -67,11 +67,53 @@ describe("sunset manifest check", () => {
   });
 });
 
+describe("sunset check by milestone exit", () => {
+  const exitedM3 = new Set(["M3"]);
+
+  it("reads the milestone from the task id", () => {
+    expect([milestoneOf("D-M3-12"), milestoneOf("D-M1b-02"), milestoneOf("D-M0-07"), milestoneOf("nope")]).toEqual(["M3", "M1b", "M0", undefined]);
+  });
+
+  it("fails a file whose deleting task sits in an exited milestone", () => {
+    expect(checkManifest(manifestOf(del("old/a.ts")), listing("old/a.ts"), exitedM3)).toEqual(["titan-platform:old/a.ts: still exists but D-M3-19 was due at the exit of M3"]);
+  });
+
+  it("passes once the file is deleted, or while its milestone has not exited", () => {
+    expect(checkManifest(manifestOf(del("old/a.ts")), listing("old/a.ts"), new Set(["M2"]))).toEqual([]);
+    expect(checkManifest(manifestOf(), listing(), exitedM3)).toEqual([]);
+  });
+
+  it("ignores kept and surviving files in an exited milestone", () => {
+    const entries = [{ repo: "titan-platform", path: "old/k.ts", fate: "kept", reason: "r" }, { repo: "titan-platform", path: "old/s.ts", fate: "survives", task: "D-M3-12" }];
+
+    expect(checkManifest(manifestOf(...entries), listing("old/k.ts", "old/s.ts"), exitedM3)).toEqual([]);
+  });
+
+  it("exits non-zero from the command line when a milestone exits with the file still present, zero when it is unexited", () => {
+    const box = sandbox(["a.ts"], ["a.ts"]);
+    const milestones = join(box.dir, "milestones.json");
+    writeFileSync(milestones, JSON.stringify({ milestones: [{ id: "M3", exited: "2026-01-01" }] }));
+    const withMilestones = () => spawnSync(process.execPath, [SCRIPT, "check", "--agent-chat", box.dir, "--manifest", box.manifest, "--milestones", milestones], { encoding: "utf8" });
+    const red = withMilestones();
+    writeFileSync(milestones, JSON.stringify({ milestones: [{ id: "M3", exited: false }] }));
+
+    expect({ status: red.status, stderr: red.stderr }).toEqual({ status: 1, stderr: "agent-chat:old/a.ts: still exists but D-M3-19 was due at the exit of M3\n" });
+    expect(withMilestones().status).toBe(0);
+  });
+});
+
 describe("the checked-in manifest", () => {
+  it("lists M0 to M8 with none exited, so main stays green", () => {
+    const file = JSON.parse(readFileSync(MILESTONES_PATH, "utf8"));
+
+    expect(file.milestones.map((m) => m.id)).toEqual(["M0", "M1a", "M1b", "M2", "M3", "M4", "M5", "M6", "M7", "M8"]);
+    expect(exitedMilestones(file).size).toBe(0);
+  });
+
   const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
 
   it("maps every file under products/factory/src/shepherd", () => {
-    expect(checkManifest(manifest, listRoots(manifest, { "titan-platform": REPO }))).toEqual([]);
+    expect(checkManifest(manifest, listRoots(manifest, { "titan-platform": REPO }), exitedMilestones(JSON.parse(readFileSync(MILESTONES_PATH, "utf8"))))).toEqual([]);
   });
 
   it("lists every A.2 compensator against a deleting task or a reason it has none", () => {
