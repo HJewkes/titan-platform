@@ -3,7 +3,8 @@
 Pronunciation vetting for narration: override markup, heteronym reading checks, the
 `lexicon.v1` schema with respelling, initialism spelling, phone-level verdicts on what a
 voice actually said, and word-level defects from a transcript. Pure TypeScript; it loads no
-model, and transcripts and G2P are injected.
+model, and transcripts and G2P are injected. `vet()` runs the whole vet cycle over injected
+providers.
 
 Tier 2 of the titan-platform DAG. May import only packages in the same tier or
 below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
@@ -106,8 +107,61 @@ holding transcripts with token log-probs that leaves the options out silently lo
 A `vet()` that composes this check must call it. `whisperStt` declares `tokenLogprobs: false`, so on the
 transformers.js path the flag stays off.
 
+## Vetting cycle
+
+`vet(spoken, deps, policy?)` runs the vet cycle over injected providers and loads no model:
+precheck the line's declared readings, synthesize, transcribe, check the take, retake while
+a fault remains, keep the best take, and say what the kept take asks of the caller.
+`applyLexicon(spoken, lexicon, "misaki" | "text")` is the lexicon step it uses: phoneme
+override markup for a misaki voice, respelling for a text voice.
+
+- `deps`: `tts`, `voice`, `stt`; `g2p` (required when the voice takes misaki phonemes);
+  `recognizer` with `phoneG2p` (no default, because whether misaki may drive verdicts is the
+  caller's call); `confirmStt`, `lexicon`, `toIpa`.
+- `policy`: `maxRetakes` (5, so at most six takes), `margin` (`KEEP_TAKE_MARGIN`),
+  `undeclaredHeteronym` (`"warn"` or `"fail"`), `table`, `synthesize`.
+- The result is `accepted`, `needs-override` (a word or reading the voice keeps getting wrong,
+  with the evidence), `needs-rewrite` (a reading a text voice cannot be made to say),
+  `retakes-exhausted` (only stochastic faults remain) or `stopped` (the precheck failed, with
+  zero synth calls). Each carries a JSON-safe `report`; the first four also carry the kept take.
+
+| Fault | Source | Class | If it persists |
+| --- | --- | --- | --- |
+| hallucination, tail | `detectHallucinations`, `detectTailArtifact` | stochastic, retake | `retakes-exhausted` |
+| omission, low confidence | `detectDefects` through `defectOptionsFor(stt)` | stochastic, retake | `retakes-exhausted` |
+| substitution the phones call `xtts`, or with no recognizer | defects plus `chunkWordVerdicts` | word, retake | `needs-override` |
+| declared reading heard wrong | `checkHeardReadings` | reading, retake | `needs-override` (misaki voice) or `needs-rewrite` (text voice) |
+| substitution the phones call `whisper` or `inconclusive` | `chunkWordVerdicts` | not a fault | reported as dismissed |
+
+Working defaults for four open owner decisions. A different answer is a docs and code edit,
+not a redesign:
+
+- **D-T11-1, no normalizing.** `vet()` does not normalize. The caller passes normalized text,
+  because a product's own steps run first and `normalize` could rewrite inside override markup.
+- **D-T11-2, no override search.** There is no respelling search. A persistent word fault
+  returns `needs-override` with evidence, and the caller or a rewriter decides what to try.
+- **D-T11-3, undeclared heteronyms warn.** When the audio contradicts the G2P reading of a
+  heteronym the line did not declare, the take reports a warning, not a fault. Promoting it to
+  a fault is gated behind the internal constant `ESCALATE_UNDECLARED_HETERONYMS` (`false`, not
+  exported), so it stays off until the owner decides.
+- **D-T11-4, `retakes-exhausted`.** When every take still has a stochastic fault, the result is
+  a fifth status carrying the kept take and its faults, so it cannot be mistaken for
+  `accepted`, and a caller that wants to ship the least bad take still can.
+
+Take choice: every take is checked in full, and a take replaces the best one only through the
+comparator (lower hallucination severity first, then `keepTake`, so a take that breaks a word
+never wins and a tie keeps the earlier take). **A fault-free take always wins**, because the
+comparator ranks only hallucination, tail and word faults and would otherwise keep a take that
+carries an omission, a low-confidence segment or a reading fault. A take that repeats the
+previous one's phones and transcript ends the loop as `futile`: a deterministic voice gives the
+same audio again.
+
 ## Conformance fixtures
 
 `conformance/normalize.json` ships in the package. Each case names the steps run, the input,
 the expected output, and the audiobook `TextNormalizer` method that must agree, so a Python
 port can pin a release and check itself against the same cases.
+
+`conformance/take-selection.json` holds constructed `keepTake` and `betterTake` cases at the
+shared margin of 0.06, with edge cases at 0.055, so a port can check its margin against the
+same file.

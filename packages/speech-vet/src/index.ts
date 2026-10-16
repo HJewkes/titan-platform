@@ -121,3 +121,6 @@ export {
   type WordToken,
 } from "./defects.js";
 export { metaphone, phoneticDistance } from "./metaphone.js";
+export { applyLexicon } from "./apply-lexicon.js";
+export { vet, type VetDeps, type VetPolicy, type VetReport, type VetResult, type VetTake } from "./vet.js";
+export { type Fault, type FaultKind } from "./vet-decide.js";
