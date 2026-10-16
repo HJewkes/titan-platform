@@ -34,10 +34,11 @@ export function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], piped: 
 
 /** zsh's `emulate [-lLR] [{+|-}o opt]... [mode] -c TEXT` evals TEXT, so it is walked as `eval` is. */
 function emulateText(args: WordToken[], budget: UnsureBudget): Inline | null {
-  for (let i = 0; i < args.length; i++) {
-    const v = (args[i] as WordToken).value;
-    if (v === "-o" || v === "+o") i++;
-    else if (/^-[A-Za-z]*c[A-Za-z]*$/.test(v)) return args[i + 1] ? { texts: splicedReadings([args[i + 1] as WordToken], budget), wrap: "eval" } : null;
+  for (const [i, arg] of args.entries()) {
+    if (arg.value === "-o" || arg.value === "+o") continue;
+    if (!/^-[A-Za-z]*c[A-Za-z]*$/.test(arg.value) || args[i - 1]?.value === "-o" || args[i - 1]?.value === "+o") continue;
+    const text = args[i + 1];
+    return text ? { texts: splicedReadings([text], budget), wrap: "eval" } : null;
   }
   return null;
 }
