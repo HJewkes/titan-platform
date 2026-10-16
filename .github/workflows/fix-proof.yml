@@ -25,6 +25,9 @@ jobs:
   # head at the workspace root, pnpm/action-setup would install the head's packageManager and copy its .npmrc, and
   # that pnpm would build the runner and run the base side's vitest.
   fix-proof-base:
+    # The Version Packages PR only bumps versions and changelogs, so it has no fix to prove. Every job skips, the judge
+    # included, so no judge prints an error verdict from reports that never came. A fork's branch of that name still runs.
+    if: github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -85,6 +88,7 @@ jobs:
         run: bash .fix-proof-workflow/scripts/fix-proof-run.sh emit base "$RUNNER_TEMP/fix-proof-out"
 
   fix-proof-head:
+    if: github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -138,7 +142,7 @@ jobs:
   # comes from the merge-base tree in runner/; the head checkout in src/ is only read by git, never built or run.
   fix-proof:
     needs: [fix-proof-base, fix-proof-head]
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && (github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository) }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
