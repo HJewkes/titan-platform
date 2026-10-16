@@ -219,7 +219,7 @@ describe("the CI-policy line across the review's own steps", () => {
     const asked: Asked[] = [];
     const awaited = { kind: "verdict" as const, verdict: "MERGE" as const, head: HEAD, locator, reviewer: REVIEWER, ciPolicy: UNCHANGED };
 
-    await verdictOf(recordingCtx(asked, await evidenceFor(modified(CI_YML), UNCHANGED)), { repo: REPO, pr: 1, head: HEAD }, { repo: REPO, pr: 1, head: HEAD, external: "seat-rv" }, undefined, awaited);
+    await verdictOf(recordingCtx(asked, await evidenceFor(modified(CI_YML), UNCHANGED)), { repo: REPO, pr: 1, head: HEAD }, { repo: REPO, pr: 1, head: HEAD, external: "seat-rv" }, undefined, awaited, {});
 
     expect(evidenceInput(asked).ciPolicy).toEqual(UNCHANGED);
   });

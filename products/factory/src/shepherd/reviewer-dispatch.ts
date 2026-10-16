@@ -12,12 +12,14 @@ import { ReviewerAskTimedOut, ReviewerMachineHold, ReviewerSpawnQueued } from ".
 import { SpawnDeferred, type ReviewAsk, type SpawnGate } from "./spawn-gate.js";
 
 export const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
-export const DEFAULT_SPAWN_TIMEOUT_MS = 30_000;
+export const DEFAULT_SPAWN_TIMEOUT_MS = 90_000;
 
 /** A roster row plus its transcript fields; `predecessor` and `fillTokens` stay absent, so no such agent is resumed, and `lastWrittenAt` comes from the transcript file. */
 export interface ReviewerRosterRow extends ReviewerAgent {
   transcriptPath: string | null;
   transcriptExists: boolean;
+  /** Where agent-chat started the agent; the seat check reads it as whose reviewer a seat reviewer is. */
+  cwd?: string;
 }
 
 export interface AgentChatReviewerDispatchOptions {
@@ -135,6 +137,7 @@ function rosterRow(row: AgentRow): ReviewerRosterRow {
     transcriptPath,
     transcriptExists: row.transcriptExists === true,
     ...(row.profile !== "" && { profile: row.profile }),
+    ...(row.cwd !== "" && { cwd: row.cwd }),
     ...lastWrittenAt(transcriptPath),
   };
 }

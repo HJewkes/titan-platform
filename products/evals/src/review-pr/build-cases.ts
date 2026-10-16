@@ -1,11 +1,12 @@
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { join, relative } from "node:path";
 import { promisify } from "node:util";
 import type { CorpusRow } from "../corpus/index.js";
 import { citesPath } from "../corpus/cited-paths.js";
 import { caseHash, sha256Hex, suiteHash } from "../hash.js";
 import { assertNoPrivate, engineeringInitiativeOf, filterPrivate, type ExclusionPolicy } from "../private/exclusion.js";
+import { assertFreshOut, assertOutsideWorkTree } from "../private/out-dir.js";
 import { EvalCaseSchema, SuiteSpecSchema, type EvalCase, type SuiteSpec } from "../spec/index.js";
 import { materializeBundle, type BundleGit } from "./bundle.js";
 import { REVIEW_PR_CHECKS } from "./checks.js";
@@ -63,7 +64,7 @@ const caseId = (heads: Heads, kind: string): string => `${repoSlug(heads.repo)}-
 const bump = (counts: Record<string, number>, key: string): void => void (counts[key] = (counts[key] ?? 0) + 1);
 
 /** A seeded hash, so a case keeps its split across rebuilds and a new seed reshuffles them all. */
-function splitOf(seed: string, id: string): EvalCase["split"] {
+export function splitOf(seed: string, id: string): EvalCase["split"] {
   const draw = parseInt(sha256Hex(`${seed}\0${id}`).slice(0, 8), 16) / 2 ** 32;
   return draw < 0.6 ? "dev" : draw < 0.8 ? "validation" : "holdout";
 }
@@ -74,17 +75,6 @@ function taskInitiativeOf(task: string | null): string | null {
   const slash = task.indexOf("/");
   if (slash > 0) return task.slice(0, slash);
   return engineeringInitiativeOf(task) ?? task.split("-")[0] ?? task;
-}
-
-/** Refuses an out dir inside any git work tree, so a private case can never be committed by accident. */
-async function assertOutsideWorkTree(outDir: string): Promise<void> {
-  let probe = resolve(outDir);
-  while (!existsSync(probe)) probe = dirname(probe);
-  const inside = await run("git", ["-C", probe, "rev-parse", "--is-inside-work-tree"]).then(
-    ({ stdout }) => stdout.trim() === "true",
-    () => false,
-  );
-  if (inside) throw new Error(`--out ${outDir} is inside a git work tree; private cases must be written outside every repo`);
 }
 
 /** A head merged with a merge commit is its own merge base with main, so its base is the merge's first parent. */
@@ -269,10 +259,6 @@ function writeOutput(outDir: string, cases: readonly Draft[], manifest: Omit<Bui
   const full: BuildManifest = { ...manifest, suite: suiteHash(suite) };
   writeFileSync(join(outDir, "manifest.json"), `${JSON.stringify(full, null, 2)}\n`);
   return full;
-}
-
-function assertFreshOut(outDir: string): void {
-  if (existsSync(outDir) && readdirSync(outDir).length > 0) throw new Error(`--out ${outDir} is not empty; build into a fresh directory`);
 }
 
 /**

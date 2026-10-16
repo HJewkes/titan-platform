@@ -4,6 +4,7 @@ import { CommandRebindingError, rebindsCommand } from "./command-rebinding.js";
 import { normalizeDeclarations } from "./declarations.js";
 import type { WordToken } from "./lexer.js";
 import { tokenize } from "./lexer.js";
+import { ParseError } from "./parse-error.js";
 import { ReadingLimitError } from "./unsure-readings.js";
 
 const rebinds = (src: string) => {
@@ -39,10 +40,6 @@ describe("a command that rebinds a command name", () => {
     ["export", "export functions=x"],
     ["printf -v", "printf -v 'commands[y]' /x"],
     ["read -A", "read -A commands"],
-    ["an ::= expansion", ": ${commands[y]::=/x}"],
-    ["a := expansion", ": ${functions[y]:=x}"],
-    ["a bash = expansion", ": ${BASH_CMDS[y]=/x}"],
-    ["an expansion in a declared value", "local X=${commands[y]::=/x}"],
     ["an append in a declaration", "typeset commands+=(y /x)"],
     ["printf -v attached", "printf -vcommands x"],
     ["read after a prompt", "read -p prompt -A commands"],
@@ -59,8 +56,6 @@ describe("a command that rebinds a command name", () => {
     ["a dynamic option word", "declare $F r=BASH_CMDS"],
     ["a name spliced from a substitution", "export BASH$(echo _CMDS)[y]=/x"],
     ["a name spliced from a variable", "export ${n}=x"],
-    ["a bash indirect expansion", ": ${!n=/x}"],
-    ["a zsh (P) expansion", ": ${(P)n::=/x}"],
     ["read after an attached prompt", "read -pinput 'BASH_CMDS[y]'"],
     ["read after a cluster ending in a value option", "read -rpt 'BASH_CMDS[y]'"],
     ["bash read -a", "read -a BASH_CMDS"],
@@ -106,6 +101,11 @@ describe("a command that rebinds a command name", () => {
     ["print behind a lone dynamic word, as zsh print -vNAME stores \"\"", 'print "$f"'],
     ["print -r behind a lone dynamic word", 'print -r "$f"'],
     ["builtin print behind a lone dynamic word", 'builtin print "$f"'],
+    ["strftime -s", "strftime -s 'commands[y]' 0"],
+    ["zstat -A", "zstat -A commands f"],
+    ["sysread", "sysread functions"],
+    ["pcre_match -v", "pcre_match -v commands x"],
+    ["zselect -a", "zselect -a commands"],
   ])("is caught: %s", (_how, src) => {
     expect(rebinds(src)).toBe(true);
   });
@@ -151,5 +151,18 @@ describe("a command that rebinds a command name", () => {
 
     expect(error).toBeInstanceOf(ReadingLimitError);
     expect(error.message).toBe("a command that rebinds a command name");
+  });
+});
+
+describe("an assigning expansion that would rebind a command name", () => {
+  it.each([
+    ["an ::= expansion", ": ${commands[y]::=/x}"],
+    ["a := expansion", ": ${functions[y]:=x}"],
+    ["a bash = expansion", ": ${BASH_CMDS[y]=/x}"],
+    ["an expansion in a declared value", "local X=${commands[y]::=/x}"],
+    ["a bash indirect expansion", ": ${!n=/x}"],
+    ["a zsh (P) expansion", ": ${(P)n::=/x}"],
+  ])("is refused before the matcher reads it: %s", (_how, src) => {
+    expect(() => rebinds(src)).toThrow(ParseError);
   });
 });

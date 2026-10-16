@@ -33,7 +33,7 @@ describe("land with an askApproval hook", () => {
     expect(asked).toEqual([{ repo: REPO, pr: 1, headSha: H1, round: 0, reason: expect.any(String), base: "main" }]);
     expect(host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
     expect(fake.effects.merge).toBe(1);
-    expect(outcomes.at(-1)).toEqual({ kind: "merged", headSha: H1, mergeSha: fake.pr(1).mergeSha, landed: expect.objectContaining({ baseRef: "main", headSha: H1 }) });
+    expect(outcomes.at(-1)).toEqual({ kind: "merged", headSha: H1, mergeSha: fake.pr(1).mergeSha, landed: expect.objectContaining({ baseRef: "main", headSha: H1 }), own: true });
   });
 
   it("reports a failed answer as a red head with one device check that CI cannot rerun", async () => {
@@ -82,6 +82,6 @@ describe("land without an askApproval hook", () => {
 
     expect(run.status).toBe("completed");
     expect(scenario.fake.effects.merge).toBe(1);
-    expect(scenario.outcomes.at(-1)).toEqual({ kind: "merged", headSha: H1, mergeSha: scenario.fake.pr(1).mergeSha, landed: expect.objectContaining({ baseRef: "main", headSha: H1 }) });
+    expect(scenario.outcomes.at(-1)).toEqual({ kind: "merged", headSha: H1, mergeSha: scenario.fake.pr(1).mergeSha, landed: expect.objectContaining({ baseRef: "main", headSha: H1 }), own: true });
   });
 });

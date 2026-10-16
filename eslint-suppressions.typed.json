@@ -2324,11 +2324,6 @@
       "count": 4
     }
   },
-  "packages/tool-guard/src/families/egress.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "packages/tool-guard/src/families/merge.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 3
@@ -2396,7 +2391,7 @@
   },
   "packages/tool-guard/src/shell/commands.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
+      "count": 1
     }
   },
   "packages/tool-guard/src/shell/declarations.ts": {
@@ -2412,6 +2407,11 @@
   "packages/tool-guard/src/shell/group-stdin.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
+    }
+  },
+  "packages/tool-guard/src/shell/inline-script.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 2
     }
   },
   "packages/tool-guard/src/shell/lexer.test.ts": {
@@ -2991,9 +2991,6 @@
     }
   },
   "products/factory/src/shepherd/external-review.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 5
     }
@@ -3233,16 +3230,6 @@
       "count": 8
     }
   },
-  "products/factory/src/shepherd/reviewer-reader.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/reviewer-reader.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/round-merge.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 2
@@ -3356,11 +3343,6 @@
       "count": 3
     }
   },
-  "products/factory/src/shepherd/wake.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
-    }
-  },
   "products/factory/src/slow-register.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 2
@@ -3449,7 +3431,7 @@
       "count": 1
     }
   },
-  "products/factory/src/workflows/land.ts": {
+  "products/factory/src/workflows/land-routes.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }

@@ -1,5 +1,5 @@
 import { FileListTruncatedError, type GitHubPort, type PrFile, type RepoSlug } from "@titan-design/github";
-import { classifyPr, DEFAULT_CLASS_RULES, type ClassRules } from "@titan-design/review-panel";
+import { classifyPr, DEFAULT_CLASS_RULES, pathTouches, type ClassRules } from "@titan-design/review-panel";
 import { SHEPHERD_ACTOR } from "./events.js";
 import { holdClassOf } from "./g10-release.js";
 import { reclassedUnread, UNREAD_FILES_PREFIX } from "./g10-reclass-events.js";
@@ -14,10 +14,17 @@ const MERGE_POLICY_FILES = ["g10-*.ts", "adversary-*.ts", "merge-evidence-gate.t
 /** Shepherd's hold, release, seat and reviewer-choice code, matched by exact path because the names are common elsewhere. */
 const HOLD_COMMAND_FILES = ["commands.ts", "operator-hold.ts", "seats.ts", "release.ts", "reviewer-choice.ts"].map((name) => `products/factory/src/shepherd/${name}`);
 
+/** The one rule file decision 422(1) keeps with the owner: a diff touching it is never released on two MERGEs, whatever its class. */
+export const OWNER_PACKET_FILES: readonly string[] = ["packages/authority/src/table.json"];
+
+/** agent-chat's leak guard, self-grant, permission hook and host directory (owner decision 350 Q5); test files stay exempt in the panel. */
+const AGENT_CHAT_SECURITY_FILES = ["src/leak-guard/**", "src/agents/*self-grant*", "src/cli/verbs/permission-hook.ts", "src/broker/host-directory.ts"];
+
 /** Factory's store migrations and Shepherd's merge policy live in plain source files, which the panel's default globs miss. */
 const SHEPHERD_CLASS_RULES: ClassRules = {
   ...DEFAULT_CLASS_RULES,
   policy: [...DEFAULT_CLASS_RULES.policy, ...MERGE_POLICY_FILES, ...HOLD_COMMAND_FILES],
+  security: [...DEFAULT_CLASS_RULES.security, ...AGENT_CHAT_SECURITY_FILES],
   migration: [...DEFAULT_CLASS_RULES.migration, "**/store-migrations.ts", "**/*-migration*.ts", "**/*-store.ts", ...SHEPHERD_MIGRATION_FILES],
 };
 
@@ -47,22 +54,25 @@ interface HoldFiles {
 /**
  * The panel's class reads an absent kind as unread; only these touches name a hold, so an unread kind alone holds nothing.
  * The panel matches a file's new path only, so a rename's old path is classed as a file of its own: renaming a policy file
- * away keeps its class. Lines are counted from the real list, so the extra entries add none.
+ * away keeps its class. Lines are counted from the real list, so the extra entries add none. `paths` are the touches the
+ * files alone make: `touches` also holds the security touch that a security kind forces, which names no path.
  */
-function classOf(files: readonly PrFile[], kind: string): { touches: readonly string[]; lines: number | undefined } {
+function classOf(files: readonly PrFile[], kind: string): { touches: readonly string[]; paths: readonly string[]; lines: number | undefined } {
   const lines = prChangedLines(files, SHEPHERD_CLASS_RULES.largeLines);
   const changedFiles = files.flatMap(({ path, previousPath, additions, deletions }) => [
     { path, ...(previousPath !== undefined && { previousPath }), additions: additions ?? 0, deletions: deletions ?? 0 },
     ...(previousPath === undefined ? [] : [{ path: previousPath, additions: 0, deletions: 0 }]),
   ]);
   const { touches } = classifyPr({ repo: "", pr: 0, head: "", base: "", kind, changedFiles }, SHEPHERD_CLASS_RULES);
-  return { touches, lines };
+  return { touches, paths: pathTouches(changedFiles, SHEPHERD_CLASS_RULES), lines };
 }
 
 function reasonFor(files: readonly PrFile[], kind: string): string | undefined {
-  const { touches, lines } = classOf(files, kind);
-  const adversary = ADVERSARY_TOUCHES.filter((t) => touches.includes(t));
+  const { touches, paths, lines } = classOf(files, kind);
+  const adversary = ADVERSARY_TOUCHES.filter((t) => paths.includes(t));
   if (adversary.length > 0) return `g10-adversary: ${adversary.join(", ")} touch`;
+  // The 2026-10-13 G10 audit (decision 287): the kind alone held adversary for hours and caught nothing a review missed.
+  if (kind === "security") return "g10-review: security kind, no sensitive path";
   if (lines === undefined) return "g10-review: changed lines unread";
   if (lines > SHEPHERD_CLASS_RULES.largeLines) return `g10-review: ${lines} changed lines`;
   return touches.includes("migration") ? "g10-review: store migration" : undefined;

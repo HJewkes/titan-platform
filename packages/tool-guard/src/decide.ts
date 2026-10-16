@@ -41,8 +41,18 @@ function verdictFor(table: PolicyTable, action: ClassifiedAction, cls: ActorClas
   return { action, actor: cls, decision };
 }
 
+/**
+ * Among equally strict verdicts a merge wins, whatever order the line spelled it in: a line that
+ * writes an rc file and then merges through it is reported as the merge (TP-2850).
+ */
 function strictest(verdicts: readonly Verdict[]): Verdict | null {
-  return verdicts.reduce<Verdict | null>((best, v) => (!best || RANK[v.decision.verdict] > RANK[best.decision.verdict] ? v : best), null);
+  return verdicts.reduce<Verdict | null>((best, v) => (!best || outranks(v, best) ? v : best), null);
+}
+
+function outranks(v: Verdict, best: Verdict): boolean {
+  const byVerdict = RANK[v.decision.verdict] - RANK[best.decision.verdict];
+  if (byVerdict !== 0) return byVerdict > 0;
+  return v.action.action === "merge" && best.action.action !== "merge";
 }
 
 /** One line: what was refused and why, any owner gate it would need, then what to do instead. */

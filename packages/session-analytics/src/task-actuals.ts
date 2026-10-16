@@ -1,14 +1,14 @@
 import type { Db } from "@titan-design/store-sqlite";
 import { roleFromProfile, type WorkerRole } from "./roles.js";
 import {
-  readContextAtFirstDeliverable,
   readOriginsOf,
-  readPeakContext,
   readPrSessions,
+  readSessionContextFacts,
   readSessionPrs,
   readSessionStats,
   readTaskOrigins,
   type OriginLink,
+  type SessionContextFacts,
   type SessionStats,
 } from "./task-actuals-queries.js";
 import type { ClassRules } from "@titan-design/review-panel";
@@ -121,7 +121,8 @@ export function taskActuals(minerDb: Db, tasks: readonly ActualsTask[], options:
   const records = buildRecords(minerDb, origins, caps);
   const attached = attachByName(records, wanted);
   attachReviewersByPr(minerDb, records, attached, wanted, caps);
-  const rows = done.map((task) => rowFor(task, attached, minerDb));
+  const contexts = readSessionContextFacts(minerDb, implementerIds(attached));
+  const rows = done.map((task) => rowFor(task, attached, contexts, minerDb));
   const withShepherd = withShepherdFacts(rows, options);
   return options.prDiffs === undefined ? withShepherd : withPrFeatures(withShepherd, done, options.prDiffs, options.classRules);
 }
@@ -202,7 +203,24 @@ function hoursOf(items: readonly Contribution[]): CappedHours {
   return { capped: sum(0), at5m: sum(1), at60m: sum(2) };
 }
 
-function rowFor(task: ActualsTask & { doneAt: string }, attached: Attachments, db: Db): TaskActuals {
+function implementerIds(attached: Attachments): string[] {
+  return [...attached.values()].flatMap((sessions) => [...sessions.values()].filter((r) => r.role === "implementer").map((r) => r.origin.sessionId));
+}
+
+type ContextFacts = Map<string, SessionContextFacts>;
+
+/** Exact `(ts, offset)` ties across sessions resolve to the first session listed, where SQLite's pick was arbitrary. */
+function contextOf(implIds: readonly string[], contexts: ContextFacts): Pick<TaskActuals, "peakContext" | "contextAtFirstDeliverable"> {
+  const facts = implIds.map((id) => contexts.get(id)).filter((f): f is SessionContextFacts => f !== undefined);
+  const peaks = facts.map((f) => f.peak).filter((p): p is number => p !== null);
+  let first: SessionContextFacts["firstDeliverable"] = null;
+  for (const { firstDeliverable: d } of facts) {
+    if (d !== null && (first === null || d.ts < first.ts || (d.ts === first.ts && d.offset < first.offset))) first = d;
+  }
+  return { peakContext: peaks.length === 0 ? null : Math.max(...peaks), contextAtFirstDeliverable: first?.context ?? null };
+}
+
+function rowFor(task: ActualsTask & { doneAt: string }, attached: Attachments, contexts: ContextFacts, db: Db): TaskActuals {
   const all = [...(attached.get(task.id)?.values() ?? [])].map((record): Contribution => ({ record, share: shareOf(record, attached) }));
   const impl = all.filter((c) => c.record.role === "implementer");
   const review = all.filter((c) => c.record.role === "reviewer");
@@ -222,8 +240,7 @@ function rowFor(task: ActualsTask & { doneAt: string }, attached: Attachments, d
     firstImplAt: starts[0] ?? null,
     lastImplAt: impl.map((c) => c.record.stats.lastTs).sort().at(-1) ?? null,
     prs,
-    peakContext: readPeakContext(db, implIds),
-    contextAtFirstDeliverable: readContextAtFirstDeliverable(db, implIds),
+    ...contextOf(implIds, contexts),
     unmappedSessions: unmapped,
     flags: flagsFor(task.doneAt, impl, used, unmapped),
   };

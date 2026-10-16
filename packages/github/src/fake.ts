@@ -57,6 +57,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     readFaults: {},
     refs: new Map([[base, options.baseSha ?? fakeSha("base")]]),
     jobLogs: new Map(),
+    jobSteps: new Map(),
     files: new Map(),
     actor: "shepherd-bot",
     prFiles: new Map(),
@@ -108,6 +109,8 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       record("deleteRef", undefined);
       if (!fake.refs.delete(branch)) throw new FakeHttpError(422, "Reference does not exist");
       effects.deleteRef += 1;
+      // An API branch delete closes the PRs based on it; only GitHub's delete-on-merge setting retargets them.
+      for (const pr of prs.values()) if (pr.state === "open" && pr.baseRef === branch) pr.state = "closed";
     },
     getDefaultBranch: async () => read("getDefaultBranch", () => base),
     getContent: async (_repo, path, ref) => {
@@ -140,8 +143,14 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       if (log === undefined) throw new FakeHttpError(404, `no job ${jobId}`);
       return record("getJobLog", log);
     },
+    getJobSteps: async (_repo, jobId) => {
+      const steps = fake.jobSteps.get(jobId);
+      if (steps === undefined) throw new FakeHttpError(404, `no job ${jobId}`);
+      return record("getJobSteps", steps.map((one) => ({ ...one })));
+    },
     updateBranch: async (_repo, number, expected) => record("updateBranch", updateBranch(fake, mustPr(prs, number), expected, nextSha)),
     setPrBase: async (_repo, number, base) => record("setPrBase", setPrBase(fake, mustPr(prs, number), base)),
+    closePr: async (_repo, number) => record("closePr", void (mustPr(prs, number).state = "closed")),
     merge: async (_repo, number, sha, method, message) => {
       record("merge", undefined);
       fake.merges.push({ number, message });

@@ -1,4 +1,5 @@
 import { parseResultLine } from "@titan-design/fix-proof";
+import { PROBES_HEADING } from "./briefs/adversary.js";
 import { fixProofLines, unverifiedLines, type FixProofUnverified } from "./briefs/tests.js";
 import type { VerdictBlockRefusal } from "@titan-design/session-read";
 import { OWNER_PICK_CONTRADICTED, boundedFindings, findingsText } from "./fix-first-findings.js";
@@ -12,7 +13,7 @@ export const OWNER_BRIEF_START = "OWNER-BRIEF";
 export const OWNER_BRIEF_END = "END-OWNER-BRIEF";
 
 /** Why a reviewer's final message was no verdict: the parser refused its block, the block named another repo, PR or head, or a MERGE's CI-policy line was off-format. */
-export type MalformedRefusal = VerdictBlockRefusal | "wrong_target" | "ci_policy_malformed";
+export type MalformedRefusal = VerdictBlockRefusal | "wrong_target" | "ci_policy_malformed" | "probes_missing";
 
 /** The name a reviewer extracts into: `review-<pr>-<first 12 hex of the head sha>`. */
 export function reviewCheckoutName(pr: number, head: string): string {
@@ -97,7 +98,7 @@ const CHECK_NAME = /^[A-Za-z0-9][A-Za-z0-9 ._/-]{0,39}$/;
 
 /** True only for a result that parses, is for this head and reproduced the bug; any other verdict leaves the judging to the reviewer. */
 function fixProofReproduced(head: string, line: string | undefined): boolean {
-  const parsed = line === undefined ? undefined : parseResultLine(line);
+  const parsed = line === undefined ? undefined : parseResultLine(line.trim());
   return parsed?.ok === true && parsed.result.head === head && parsed.result.verdict === "reproduced";
 }
 
@@ -319,8 +320,8 @@ export function reviewerBrief(input: ReviewerBriefInput): string {
   ].join("\n");
 }
 
-/** The most a correction prompt may hold, owner block included; raised from 1500 when the CI-policy exactness sentence joined it. */
-export const MAX_CORRECTION_PROMPT_CHARS = 1600;
+/** The most a correction prompt may hold, owner block included; raised from 1500 for the CI-policy exactness sentence, then from 1600 for the adversary's Probes sentence. */
+export const MAX_CORRECTION_PROMPT_CHARS = 1700;
 
 /** One fixed sentence per refusal; a closed map, so no reviewer text can reach the prompt. */
 export const REFUSAL_SENTENCES: Record<MalformedRefusal, string> = {
@@ -333,7 +334,12 @@ export const REFUSAL_SENTENCES: Record<MalformedRefusal, string> = {
   bad_head: "its Head line was not 40 lowercase hex characters",
   wrong_target: "its block named another repo, PR or head",
   ci_policy_malformed: "its CI-policy line held more than the exact form",
+  probes_missing: "it had no Probes line above the Verdict line",
 };
+
+/** An adversary that wrote no probes is told the form again; the other refusals keep the prompt as it was. */
+const probesReminder = (refusal: MalformedRefusal): string[] =>
+  refusal === "probes_missing" ? [`Above the verdict lines add \`${PROBES_HEADING} <input> -> <what the code did>; ...\` for each probe you ran.`] : [];
 
 interface CorrectionPromptInput {
   repo: RepoSlug;
@@ -350,6 +356,7 @@ export function correctionPrompt(input: CorrectionPromptInput): string {
   return [
     `Your last message did not end with a verdict Shepherd can read: ${REFUSAL_SENTENCES[input.refusal]}.`,
     CI_POLICY_REMINDER,
+    ...probesReminder(input.refusal),
     "Do not review again from scratch. Send one message that holds your whole review again, every blocking item included if your verdict is FIX_FIRST, and end it with exactly these three lines, the verdict filled in and " +
       (input.ownerBrief ? "followed only by the CI-policy line and the owner block described below:" : "nothing after them but the CI-policy line:"),
     "",

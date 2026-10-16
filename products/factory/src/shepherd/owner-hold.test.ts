@@ -16,7 +16,8 @@ import type { ShepherdPhases } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import type { Presence } from "./presence.js";
-import { reviewPhase, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "./review.js";
+import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
+import { reviewPhase } from "./review.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
 
 const hosts: FactoryHost[] = [];

@@ -450,6 +450,64 @@ topUnusedExports(symbols, publicApiFiles(nodes, edges), ctx, 10);
 Neither is `pnpm dead:check`, which reads edges rather than `utilization` and follows
 re-exports transitively from package-manifest entries.
 
+### SCBench complexity rollup
+
+`qualitySection` fills the report's optional `quality` section with SlopCodeBench's
+complexity measures, for the whole tree and per package:
+
+```ts
+import { buildReportContext, qualitySection } from "@titan-design/code-graph/analysis";
+
+const nodes = [
+  { id: "packages/a/x.ts", kind: "file", name: "x.ts" },
+  { id: "packages/a/x.ts#run", kind: "symbol", name: "run", parentId: "packages/a/x.ts" },
+];
+const metrics = [
+  { nodeId: "packages/a/x.ts#run", name: "symbol_cyclomatic", value: 12 },
+  { nodeId: "packages/a/x.ts#run", name: "symbol_loc", value: 9 },
+];
+const ctx = buildReportContext({ nodes, metrics, excluders: [], excludedRoles: new Set(), windowDays: 30 });
+
+qualitySection(nodes, ctx, [{ id: "packages/a", name: "a" }], []).complexity.packages;
+// [ { packageId: 'packages/a', callables: 1, mass: 36, erosion: 1, ccMax: 12, ccGini: 0, … } ]
+```
+
+- Mass is CC·√SLOC, with SLOC taken as `symbol_loc` minus `symbol_comment_lines`.
+  `erosion` (SCBench `mass.high_cc_pct`) is the share of mass in callables with CC above 10;
+  `cogErosion` is the same over cognitive complexity.
+- The rows also carry `ccMax`, `ccMean`, `ccStd` (population), `ccHighCount` (CC > 10),
+  `ccExtremeCount` (CC > 30), `highCcMean` and `ccGini` (SCBench `cc_concentration`).
+- Only functions with a symbol node count, so nested closures are left out. Erosion drops when a
+  function is split, whether or not the design improved; read it beside `symbol_pass_through`
+  and `symbol_single_caller_helper`.
+
+### SCBench dependency-graph metrics
+
+`quality.dependencies` carries SlopCodeBench's dependency-graph measures, one row per package.
+`dependencyGraphMetrics(nodes, edges, packages)` builds the rows from any node set:
+
+```ts
+import { callGraphMetrics, importCyclicMass } from "@titan-design/code-graph/analysis";
+
+callGraphMetrics(["a", "b", "c"], [
+  { src: "a", dst: "b", weight: 2 },
+  { src: "b", dst: "a", weight: 1 },
+  { src: "b", dst: "c", weight: 1 },
+]);
+// { nodes: 3, edges: 3, cyclicDependencyMass: 0.75, propagationCost: 0.666…, dependencyEntropy: 0.333… }
+```
+
+- `calls` is the call graph over the callables the complexity rollup measured, each edge
+  weighted by its call-site count. `cyclicDependencyMass` is the share of call weight inside a
+  component of two or more callables, so plain recursion is not a cycle. `propagationCost` is
+  reachable ordered pairs over n(n − 1). `dependencyEntropy` is the mean normalized Shannon
+  entropy of each callable's out-edge weights.
+- `imports` splits the cyclic mass of the package's file imports: `value` is held by cycles that
+  value imports close on their own, and `typeOnly` is the part only a type-only import closes.
+  Both are shares of all import weight, so they sum to the whole cyclic mass.
+- Only edges inside one package count, and there is no whole-tree row, because propagation cost
+  is O(n·(n + e)).
+
 ### Growth and untested risks
 
 The scaling-smell and under-tested-hotspot sections of codewatch's `graph report` are pure
@@ -715,6 +773,20 @@ plus `churnWindowDays` (the primary, default 30); `churnWindows` replaces the de
 `lifetime: true` adds an all-history window with its own ownership. `computeChurn: false`
 turns all of it off. Outside git, or without a git binary, the index simply has no history
 metrics.
+
+Each index also writes function-level accretion on symbol nodes: `symbol_task_ids_{w}`, the
+distinct task ids (`\b[A-Z][A-Z0-9]*-\d+\b` in commit subjects, or `taskIdPattern`) whose
+commits edited the function, and `symbol_edit_commits_{w}`, for each of `accretionWindows`
+(default `DEFAULT_ACCRETION_WINDOWS`, `[7]`; `[]` turns it off). One
+`git log -p -U0 -M -C` over the widest window supplies the hunks. Each hunk's lines are carried
+forward through every later commit's hunks on the same file, following renames, so an edit
+made before lines were inserted above the function still lands on it at HEAD. An edit credits
+the innermost symbol it overlaps, so a method edit does not count again for its class. A
+threshold such as "3+ ids in 7 days" is a finding policy, not part of the metric. The patch
+log has a 256 MiB buffer; overflow lands in `warnings` like the churn log's.
+The carry assumes linear history: `--no-merges` reads commits in date order, so on a repo that
+merges side branches an edit can be carried through mainline hunks that are not its ancestors
+and land on the wrong lines. Squash- or rebase-merged repos are exact.
 
 When git is present but its log overflowed or failed, the index has no (or partial) history
 metrics and `IndexResult.warnings` says why. The field is absent when history loaded, and

@@ -47,7 +47,7 @@ describe("land core", () => {
     expect(run.status).toBe("completed");
     expect(scenario.fake.effects).toMatchObject({ updateBranch: 1, merge: 1 });
     expect(scenario.fake.commits.get(pr.headSha)?.parents[0]).toBe(H1);
-    expect(scenario.outcomes.at(-1)).toEqual({ kind: "merged", headSha: pr.headSha, mergeSha: pr.mergeSha, landed: { baseRef: pr.baseRef, headRef: pr.headRef, headRepo: pr.headRepo, headSha: pr.headSha } });
+    expect(scenario.outcomes.at(-1)).toEqual({ kind: "merged", headSha: pr.headSha, mergeSha: pr.mergeSha, landed: { baseRef: pr.baseRef, headRef: pr.headRef, headRepo: pr.headRepo, headSha: pr.headSha }, own: true });
     expect(host.gates.get(gateId(runId, "approve-merge", 1))).toBeUndefined();
   });
 
@@ -65,7 +65,7 @@ describe("land core", () => {
     const pr = scenario.fake.pr(1);
     expect(run.status).toBe("completed");
     expect(scenario.fake.effects).toMatchObject({ updateBranch: 1, merge: 1 });
-    expect(scenario.outcomes.at(-1)).toEqual({ kind: "merged", headSha: pr.headSha, mergeSha: pr.mergeSha, landed: { baseRef: pr.baseRef, headRef: pr.headRef, headRepo: pr.headRepo, headSha: pr.headSha } });
+    expect(scenario.outcomes.at(-1)).toEqual({ kind: "merged", headSha: pr.headSha, mergeSha: pr.mergeSha, landed: { baseRef: pr.baseRef, headRef: pr.headRef, headRepo: pr.headRepo, headSha: pr.headSha }, own: true });
   });
 
   it("stops as update-branch-unmoved after two re-sends when the head never moves", async () => {
@@ -330,9 +330,9 @@ describe("land core", () => {
     const results = Object.values(host.runtime.status(runId)!.stepResults).filter((result) => result.output);
     const records = results.map((result) => JSON.parse(result.output!));
 
-    expect(records.map((record) => record.kind)).toEqual(["land.land-rules", "land.ci-wait", "land.merge-policy", "land.ci-wait", "land.base-check", "land.merge"]);
+    expect(records.map((record) => record.kind)).toEqual(["land.land-rules", "land.ci-wait", "land.base-check", "land.merge-policy", "land.ci-wait", "land.base-check", "land.merge"]);
     expect(records.every((record) => record.v === 1 && record.traceId === runId)).toBe(true);
-    expect(records[5].spanId).toBe(`workflow:${runId}:merge%3A0:0:0`);
+    expect(records[6].spanId).toBe(`workflow:${runId}:merge%3A0:0:0`);
   });
 
   it("fails a step whose evidence record lacks result, so the branch never reads undefined", async () => {

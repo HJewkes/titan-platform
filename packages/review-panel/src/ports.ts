@@ -1,4 +1,5 @@
 import type { SourceTextLocator } from "@titan-design/session-read";
+import type { ReviewShape } from "./types.js";
 
 /** The pull request head a reviewer is asked about. */
 export interface ReviewTarget {
@@ -70,6 +71,8 @@ export interface AwaitVerdictInput extends ReviewTarget {
   dispatchedAt: number;
   /** Epoch milliseconds when the reviewer's session was up; the wait counts from it. Absent on a run recorded before it existed. */
   startedAt?: number;
+  /** The panel member awaited; absent means correctness. An adversary verdict must carry a `Probes:` line. */
+  shape?: ReviewShape;
 }
 
 /** One assistant message, attributed by the reader to the agent and session it came from. */

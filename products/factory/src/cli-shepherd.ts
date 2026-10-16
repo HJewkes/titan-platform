@@ -1,12 +1,15 @@
 import type { JsonEnvelope } from "@titan-design/registry";
 import type { Command } from "commander";
 import type { CliIo, Verbs } from "./cli.js";
+import { deployCheckoutFor } from "./cli-service.js";
 import { registerShepherdCoverage } from "./cli-coverage.js";
+import { registerOwnerRelease } from "./cli-owner-release.js";
 import { callerOf, parsePort, parsePositiveInt, parseTarget, statusRows, withStatusFilters, type StatusFilter } from "./cli-options.js";
 import { localEnvelope, postRpc, unansweredMessage } from "./cli-shepherd-rpc.js";
 import { registerShepherdWait } from "./cli-shepherd-wait.js";
 import { registerShepherdStats } from "./cli-stats.js";
-import { deployBlockOf, deploySummary, type DeployHealth } from "./deploy-health.js";
+import { gitBehind } from "./deploy-behind.js";
+import { deployBlockOf, deploySummary, withGitBehind, type DeployHealth } from "./deploy-health.js";
 import { EXIT } from "./exit-codes.js";
 import { parsePayload } from "./gate-resolve.js";
 import { parsePrRef } from "./registry.js";
@@ -32,7 +35,7 @@ type RegisterOpts = ShepherdOpts & { branch?: string; head?: string; base?: stri
 
 /** The shepherd.* registry commands as verbs: on titan-factory serve when one answers, else against the database here; register needs --offline for that. */
 export function registerShepherd(program: Command, verbs: Verbs): void {
-  const shepherd = program.command("shepherd").description("shepherd PRs to a merge; gate resolve stays its own verb and is never a shepherd command");
+  const shepherd = program.command("shepherd").description("shepherd PRs to a merge; gate resolve and owner-release stay local verbs and are never shepherd commands");
   const verb: VerbOf = (spec, description) =>
     shepherd
       .command(spec)
@@ -44,6 +47,7 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
   registerShepherdStats(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdCoverage(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdWait(shepherd, verbs);
+  registerOwnerRelease(shepherd, verbs);
   registerRefVerbs(verb, verbs);
 }
 
@@ -126,7 +130,7 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
   }
   const probe = await probeServe(opts.port, verbs.deps.serveWaitMs);
   const health = probe.state === "up" ? probe.health : null;
-  const tail = name === "shepherd.status" ? { deploy: deployBlockOf(health), reviewSlots: reviewSlotsOf(health) } : undefined;
+  const tail = name === "shepherd.status" ? { deploy: await checkedDeploy(verbs, deployBlockOf(health)), reviewSlots: reviewSlotsOf(health) } : undefined;
   if (health) return verbs.setExit(printShepherd(verbs.io, name, await postRpc(opts.port, name, args), opts, tail));
   if (name === "shepherd.register" && !opts.offline) {
     verbs.io.stderr(`error: ${unansweredMessage(probe, opts.port)}; nothing was recorded (pass --offline to record the run here anyway)\n`);
@@ -135,6 +139,13 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
   const envelope = await localEnvelope(verbs, name, args);
   if (name === "shepherd.register" && envelope.ok) verbs.io.stderr(`no titan-factory serve answered on port ${opts.port}, so the run was recorded here; titan-factory serve drives it\n`);
   verbs.setExit(printShepherd(verbs.io, name, envelope, opts, tail));
+}
+
+/** Serve's block counts only asked deploys; git says how far main has really moved, and an unreadable git alarms. */
+async function checkedDeploy(verbs: Verbs, block: DeployHealth | null): Promise<DeployHealth | null> {
+  if (block === null) return null;
+  const probe = verbs.deps.deployBehind ?? gitBehind(deployCheckoutFor(verbs.io.env));
+  return withGitBehind(block, await probe(block.runningSha), Date.now());
 }
 
 /** A serve built before envelopes carried a code must still fail the shell, never exit 0 on a refusal. */

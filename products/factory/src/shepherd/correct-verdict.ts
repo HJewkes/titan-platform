@@ -3,10 +3,9 @@ import { z } from "zod";
 import type { DeadlineTiming } from "../workflows/deadline.js";
 import { step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
-import type { AwaitVerdictInput, ReviewerAgent, ReviewerDispatch } from "./review.js";
 import { Awaited } from "./review-schemas.js";
 import { clearReviewWait, noteReviewWait, startedSession, whileBrokerBusy, whileBrokerDown, type BusyTiming, type PollTiming } from "./review-wait.js";
-import { MalformedSchema, correctionPrompt, isUsageLimit, readMalformed, type Malformed } from "@titan-design/review-panel";
+import { MalformedSchema, correctionPrompt, isUsageLimit, readMalformed, type AwaitVerdictInput, type Malformed, type ReviewerAgent, type ReviewerDispatch } from "@titan-design/review-panel";
 
 export const CORRECT_VERDICT_STEP = "sh-correct-verdict";
 
@@ -21,6 +20,7 @@ export const CorrectVerdictInputSchema = z.object({
   startedAt: z.number().optional(),
   malformed: MalformedSchema,
   ownerBrief: z.boolean().optional(),
+  shape: z.enum(["correctness", "adversary", "tests", "visual", "perf"]).optional(),
 });
 export type CorrectVerdictInput = z.infer<typeof CorrectVerdictInputSchema>;
 
@@ -88,15 +88,22 @@ function silentExit(awaited: AwaitedOutput): Malformed | null {
   return { refusal: "no_block", writtenAt: awaited.goneAt };
 }
 
+interface CorrectionSteps {
+  ownerBrief: boolean;
+  replyStep: string;
+  /** A panel member's own correction step; absent means the correctness reviewer's `sh-correct-verdict:<head>`. */
+  correctStep?: string;
+}
+
 /**
  * A malformed final message, or a reviewer that exited silent, gets one correction turn in the reviewer's own session, read by
  * `replyStep` from the message written after it. Only the first await's result reaches here, never the reply's, so a reviewer is
  * corrected at most once per head.
  */
-export async function correctOnce(ctx: WorkflowContext, awaiting: AwaitVerdictInput, awaited: AwaitedOutput, options: { ownerBrief: boolean; replyStep: string }): Promise<AwaitedOutput> {
+export async function correctOnce(ctx: WorkflowContext, awaiting: AwaitVerdictInput, awaited: AwaitedOutput, options: CorrectionSteps): Promise<AwaitedOutput> {
   const malformed = readMalformed(awaited) ?? silentExit(awaited);
   if (!malformed) return awaited;
-  const asked = await step(ctx, `${CORRECT_VERDICT_STEP}:${awaiting.head}`, { ...awaiting, malformed, ...(options.ownerBrief && { ownerBrief: true }) }, Corrected);
+  const asked = await step(ctx, options.correctStep ?? `${CORRECT_VERDICT_STEP}:${awaiting.head}`, { ...awaiting, malformed, ...(options.ownerBrief && { ownerBrief: true }) }, Corrected);
   if (asked.kind !== "asked") return asked;
   const reply = await step(ctx, options.replyStep, { ...awaiting, dispatchedAt: malformed.writtenAt, startedAt: asked.startedAt }, Awaited);
   // A usage limit is the reviewer's last word, not a failed correction: the caller holds its account instead of retrying.

@@ -66,6 +66,8 @@ composes all three.
   per-repository budget, with release, park, re-create and sweep.
 - [`coordinator`](/reference/coordinator): the zod schema and types for the seat config an
   autonomy coordinator reads.
+- [`dispatch-ledger`](/reference/dispatch-ledger): the burndown claim ledger's zod schema,
+  its claim-phase transition table, and a byte-preserving `burndown.json` parse and export.
 - [`pm`](/reference/pm): the zod schema and type for an active-work task record.
 - [`hitl`](/reference/hitl): a durable `gate()` that a human resolves from any process.
 - [`workflow`](/reference/workflow): an ordinary async function whose `dispatch`, `seed`,
@@ -124,6 +126,9 @@ merge. The [factory](/guides/factory) product composes `github`, `authority`, `h
 - [`fix-proof`](/reference/fix-proof): decides whether a fix pull request's new tests fail on
   the merge base and pass at head. It plans the overlay and classifies two vitest reports; a
   runner does the git and test work.
+- [`owner-proof`](/reference/owner-proof): verifies a statement the owner signed with a
+  P-256 key, over its exact bytes, before parsing it; the caller supplies the schema and keeps
+  the nonce ledger.
 - [`review-panel`](/reference/review-panel): the review-panel types, the reviewer ports a
   caller satisfies, and `classifyPr`, which picks a pull request's review class from its
   signals.
@@ -149,3 +154,25 @@ merge. The [factory](/guides/factory) product composes `github`, `authority`, `h
   record, the `QueueSource` port, and merge-by-keys and rank as pure functions.
 - [`decider`](/reference/decider): the owner-decision ledger. Its row schema, outcome
   classifier, exclusion check and append-only store record how the owner answered.
+
+## Video capture
+
+- [`frame-capture`](/reference/frame-capture): renders any page that publishes the
+  `__titanMotion` protocol (`seek`, `ready`, `duration`) to PNG frames under a virtual clock,
+  in parallel chunks, and encodes them with ffmpeg. It knows nothing of beats or React.
+
+## Speech
+
+- [`speech-tts`](/reference/speech-tts): one `TtsProvider` contract with declared
+  capabilities. A registry picks a provider from a deployment's profile and `TITAN_SPEECH_*`
+  env. The `commandTts` and `httpTts` adapters fit any external engine. It is the first of the
+  speech packages; G2P, STT and vetting follow.
+- [`speech-stt`](/reference/speech-stt): a CPython-parity `SequenceMatcher`, `align` to
+  time script words from a transcript, `diff` and `normalize` to score a take, the `Word`
+  and `Transcript` schemas, and a pure TypeScript resampler. No model runtime yet.
+- [`speech-vet`](/reference/speech-vet): text-side pronunciation vetting. It parses override
+  and declaration markup, checks G2P heteronym readings against the declarations, defines
+  the `lexicon.v1` schema, and spells out initialisms. It runs no G2P or model.
+- [`speech-g2p`](/reference/speech-g2p): English text to misaki phoneme tokens in pure
+  TypeScript. This first release carries the `G2pToken`, `Tokenizer` and `PosTagger` types and
+  the vendored misaki 0.9.4 US lexicon; the engine, tokenizer and tagger follow.

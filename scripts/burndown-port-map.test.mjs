@@ -95,8 +95,9 @@ describe("burndown-port-map", () => {
     expect(forwardEdges(map.files, map.order, map.leafPorts)).toEqual(map.knownForwardEdges);
   });
 
-  // The two non-leaf targets, and three imports of types no ported code uses yet, so F2 declares them when it ports.
-  it("leaves no F3 import of F2, and only the F2 imports of F3 that TP-2627 did not port", () => {
+  // F2 -> F3: the two non-leaf targets, and three imports of types no ported code uses yet, so F2 declares them when it
+  // ports. F3 -> F2: both are `import type { Action }`, which F3 takes from dispatch-ledger's `LedgerAction` instead.
+  it("pins the F2/F3 imports in each direction: the F2 imports of F3 TP-2627 did not port, and F3's type-only Action imports", () => {
     const map = JSON.parse(readFileSync(MAP_PATH, "utf8"));
     const between = forwardEdges(map.files, map.order, map.leafPorts).filter((e) => [e.fromDest, e.toDest].sort().join() === "F2,F3");
 
@@ -106,6 +107,8 @@ describe("burndown-port-map", () => {
       "observe.ts->collision.ts",
       "observe.ts->plan.ts",
       "owns-adjudicate.ts->collision.ts",
+      "seed-slices.ts->advance.ts",
+      "slice-repo.ts->advance.ts",
     ]);
   });
 

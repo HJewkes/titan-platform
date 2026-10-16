@@ -1,0 +1,4425 @@
+{
+ "schema": 1,
+ "generatedFrom": "git ls-files over the roots below",
+ "roots": [
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat"
+  }
+ ],
+ "defaults": [
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd",
+   "fate": "kept",
+   "reason": "default: a file added after the manifest; its entry is owed (TP-3180), listed by the check's defaulted notice"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "reason": "default: the burndown tick and its ledger are deleted at M8 (v9.1 sec. 3.4, 5.1); an entry is still owed"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat",
+   "fate": "kept",
+   "reason": "default: seat scripts retire per scripts/seat/README.md's retirement list (CC-746), not a D-task; an entry is still owed"
+  }
+ ],
+ "entries": [
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/account-exhausted.test.ts",
+   "fate": "kept",
+   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/account-hold.test.ts",
+   "fate": "kept",
+   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/account-hold.ts",
+   "fate": "kept",
+   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/account-limit.test.ts",
+   "fate": "kept",
+   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/account-limit.ts",
+   "fate": "kept",
+   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/account-store.ts",
+   "fate": "kept",
+   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/adversary-anchor.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/adversary-guard.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/adversary-guard.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/advisory-file.test.ts",
+   "fate": "kept",
+   "reason": "a repo policy read; held, policy and observe are re-keyed as observed (v9.1 sec. 3.1), with no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/advisory-file.ts",
+   "fate": "kept",
+   "reason": "a repo policy read; held, policy and observe are re-keyed as observed (v9.1 sec. 3.1), with no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/advisory.test.ts",
+   "fate": "kept",
+   "reason": "a repo policy read; held, policy and observe are re-keyed as observed (v9.1 sec. 3.1), with no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/advisory.ts",
+   "fate": "kept",
+   "reason": "a repo policy read; held, policy and observe are re-keyed as observed (v9.1 sec. 3.1), with no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/agents.ts",
+   "fate": "kept",
+   "reason": "the agent-chat port and roster read across the process boundary; v9.1 sec. 3.1 re-keys roster reads and does not delete them"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/approval-carry-skill.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/approval-carry.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/approval-carry.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/author-types.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/await-pr.test.ts",
+   "fate": "kept",
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/await-pr.ts",
+   "fate": "kept",
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/await-verdict.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/await-verdict.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/behind.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/bounded.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/bounded.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/busy-serve.test.ts",
+   "fate": "kept",
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/carried-escalation.test.ts",
+   "fate": "kept",
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/carry-merge.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/carry-merge.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/changed-paths.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/changed-paths.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/ci-norun.test.ts",
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/ci-norun.ts",
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/ci-policy-gate.test.ts",
+   "fate": "kept",
+   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/cleanup-ports.ts",
+   "fate": "survives",
+   "task": "D-M3-12",
+   "reason": "sh-cleanup runs on `landed` (v8 3.1); task close is D-M3-12"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/cleanup.test.ts",
+   "fate": "survives",
+   "task": "D-M3-12",
+   "reason": "sh-cleanup runs on `landed` (v8 3.1); task close is D-M3-12"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/cleanup.ts",
+   "fate": "survives",
+   "task": "D-M3-12",
+   "reason": "sh-cleanup runs on `landed` (v8 3.1); task close is D-M3-12"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/codewatch-questions.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/codewatch-questions.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/commands.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/commands.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/conflict-check.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/conflict-check.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/conflict-escalation.test.ts",
+   "fate": "kept",
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/correct-verdict.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/correct-verdict.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/coverage-read.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/coverage.test.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/coverage.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/deploy-pacer.test.ts",
+   "fate": "survives",
+   "task": "D-M3-14",
+   "reason": "deploy pacer kept with outbox and deploy gate (v9.1 sec. 3)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/deploy-pacer.ts",
+   "fate": "survives",
+   "task": "D-M3-14",
+   "reason": "deploy pacer kept with outbox and deploy gate (v9.1 sec. 3)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/diverged-sweep.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/diverged-sweep.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/error-class.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/error-class.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/escalation-docs.test.ts",
+   "fate": "kept",
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/events.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/events.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/evidence-comment.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/exit-notice.test.ts",
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/exit-notice.ts",
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/external-review.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/external-review.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/failing-step.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/failing-step.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/failure-class.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/failure-class.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/fix-carry.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/fix-carry.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/fix-first-trail-run.test.ts",
+   "fate": "survives",
+   "task": "D-M7-04",
+   "milestone": "M7",
+   "filing": "TP-3163",
+   "reason": "the Q19 planner spawn replaces fix-first-runaway and the trail is its input (v9.1 sec. 3.3)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/fix-first-trail.test.ts",
+   "fate": "survives",
+   "task": "D-M7-04",
+   "milestone": "M7",
+   "filing": "TP-3163",
+   "reason": "the Q19 planner spawn replaces fix-first-runaway and the trail is its input (v9.1 sec. 3.3)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/fix-first-trail.ts",
+   "fate": "survives",
+   "task": "D-M7-04",
+   "milestone": "M7",
+   "filing": "TP-3163",
+   "reason": "the Q19 planner spawn replaces fix-first-runaway and the trail is its input (v9.1 sec. 3.3)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/fix-initiative.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/fix-proof-cap.ts",
+   "fate": "survives",
+   "task": "D-M1b-02",
+   "reason": "sh-fix-proof is kept as a step (v8 3.1); the registry classifies it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/fix-proof-standing.test.ts",
+   "fate": "survives",
+   "task": "D-M1b-02",
+   "reason": "sh-fix-proof is kept as a step (v8 3.1); the registry classifies it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/fix-proof.test.ts",
+   "fate": "survives",
+   "task": "D-M1b-02",
+   "reason": "sh-fix-proof is kept as a step (v8 3.1); the registry classifies it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/fix-proof.ts",
+   "fate": "survives",
+   "task": "D-M1b-02",
+   "reason": "sh-fix-proof is kept as a step (v8 3.1); the registry classifies it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/fixer-retire.test.ts",
+   "fate": "survives",
+   "task": "D-M3-14",
+   "milestone": "M3",
+   "filing": "TP-3136",
+   "reason": "sh-main-ci, freeze and sh-spawn-fixer are kept (v9.1 sec. 3.1); same family as freeze.ts"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/fixer-retire.ts",
+   "fate": "survives",
+   "task": "D-M3-14",
+   "milestone": "M3",
+   "filing": "TP-3136",
+   "reason": "sh-main-ci, freeze and sh-spawn-fixer are kept (v9.1 sec. 3.1); same family as freeze.ts"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/fixtures/5e47c0de-0000-4000-8000-000000000001.jsonl",
+   "fate": "kept",
+   "reason": "unclear: test fixture read only by reviewer-reader.test.ts, which is a Q1 (review) row; fate joins Q1"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/fixtures/owner-section-ac311.json",
+   "fate": "kept",
+   "reason": "observability read model (A14); the fixture belongs to owner-section.test.ts"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/fixtures/owner-section-ac311.md",
+   "fate": "kept",
+   "reason": "observability read model (A14); the fixture belongs to owner-section.test.ts"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/fixtures/round-merge/pending-gates.json",
+   "fate": "kept",
+   "reason": "the owner's round console; gate batches, console and packet (TP-2660) are Kept (v9.1 sec. 3.3)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/fixtures/round-merge/round.json",
+   "fate": "kept",
+   "reason": "the owner's round console; gate batches, console and packet (TP-2660) are Kept (v9.1 sec. 3.3)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/fixtures/round-merge/runs.json",
+   "fate": "kept",
+   "reason": "the owner's round console; gate batches, console and packet (TP-2660) are Kept (v9.1 sec. 3.3)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/flake-check.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/flake-check.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/format.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/format.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/frames.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/frames.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/freeze-hold.test.ts",
+   "fate": "survives",
+   "task": "D-M3-14",
+   "reason": "sh-main-ci, freeze and sh-spawn-fixer are kept; confirmation CI is D-M3-14 (v8 3.1)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/freeze-hold.ts",
+   "fate": "survives",
+   "task": "D-M3-14",
+   "reason": "sh-main-ci, freeze and sh-spawn-fixer are kept; confirmation CI is D-M3-14 (v8 3.1)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/freeze-policy.test.ts",
+   "fate": "survives",
+   "task": "D-M3-14",
+   "reason": "sh-main-ci, freeze and sh-spawn-fixer are kept; confirmation CI is D-M3-14 (v8 3.1)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/freeze.test.ts",
+   "fate": "survives",
+   "task": "D-M3-14",
+   "reason": "sh-main-ci, freeze and sh-spawn-fixer are kept; confirmation CI is D-M3-14 (v8 3.1)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/freeze.ts",
+   "fate": "survives",
+   "task": "D-M3-14",
+   "reason": "sh-main-ci, freeze and sh-spawn-fixer are kept; confirmation CI is D-M3-14 (v8 3.1)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/g10-reclass-events.ts",
+   "fate": "kept",
+   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/g10-rehold-workflow.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/g10-rehold.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/g10-rehold.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/g10-release-workflow.test.ts",
+   "fate": "kept",
+   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/g10-release.test.ts",
+   "fate": "kept",
+   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/g10-release.ts",
+   "fate": "kept",
+   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/g10-unreviewed-stall.ts",
+   "fate": "kept",
+   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/gate-route.test.ts",
+   "fate": "delete",
+   "task": "D-M7-06",
+   "milestone": "M7",
+   "filing": "TP-3165"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/gate-route.ts",
+   "fate": "delete",
+   "task": "D-M7-06",
+   "milestone": "M7",
+   "filing": "TP-3165"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/gate-stats.test.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/gate-stats.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/gates.test.ts",
+   "fate": "survives",
+   "task": "D-M7-01",
+   "milestone": "M7",
+   "filing": "TP-3160",
+   "reason": "settle-then-ask, cancel-before-delivery, one owner class (D-M7-01; v9.1 sec. 3.3)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/gates.ts",
+   "fate": "survives",
+   "task": "D-M7-01",
+   "milestone": "M7",
+   "filing": "TP-3160",
+   "reason": "settle-then-ask, cancel-before-delivery, one owner class (D-M7-01; v9.1 sec. 3.3)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/generated-paths.json",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/gh-gateway-port.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/gh-gateway.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/gh-gateway.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/gh-retry.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/gh-retry.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/git-pr-files.repo.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/git-pr-files.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/git-pr-files.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/gone-elsewhere-gates.test.ts",
+   "fate": "kept",
+   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/gone-elsewhere.test.ts",
+   "fate": "kept",
+   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/gone-elsewhere.ts",
+   "fate": "kept",
+   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/grant-withheld.test.ts",
+   "fate": "kept",
+   "reason": "unclear: land-loop or approve-merge code; v9.1 deletes the land loop at D-M3-19 and approve-merge at D-M3-22/M7, but neither list names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/grant-withheld.ts",
+   "fate": "kept",
+   "reason": "unclear: land-loop or approve-merge code; v9.1 deletes the land loop at D-M3-19 and approve-merge at D-M3-22/M7, but neither list names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/green-checks.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/green-checks.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/handoff.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/handoff.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/head-moved-sweep.ts",
+   "fate": "kept",
+   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/head-moved.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/head-moved.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/head-origin.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/head-origin.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/head-read.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/held-repair-g10.test.ts",
+   "fate": "kept",
+   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/held-repair.test.ts",
+   "fate": "kept",
+   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/held-repair.ts",
+   "fate": "kept",
+   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/held-wake-view.test.ts",
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/held-wake.ts",
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/hold-reason.test.ts",
+   "fate": "kept",
+   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/hold-reason.ts",
+   "fate": "kept",
+   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/hold-satisfaction.ts",
+   "fate": "kept",
+   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/hold-slot-rows.ts",
+   "fate": "delete",
+   "task": "D-M5-03",
+   "milestone": "M5",
+   "filing": "TP-3153"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/hold-slots.ts",
+   "fate": "delete",
+   "task": "D-M5-03",
+   "milestone": "M5",
+   "filing": "TP-3153"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/hold.test.ts",
+   "fate": "kept",
+   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/hold.ts",
+   "fate": "kept",
+   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/last-read-head.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/leave-land.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/ledger-replay.test.ts",
+   "fate": "kept",
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/lineage.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/machine-linux.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/machine-linux.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/machine-stop.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/machine-stop.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/main-red.test.ts",
+   "fate": "survives",
+   "task": "D-M3-14",
+   "reason": "sh-main-ci, freeze and sh-spawn-fixer are kept; confirmation CI is D-M3-14 (v8 3.1)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/main-red.ts",
+   "fate": "survives",
+   "task": "D-M3-14",
+   "reason": "sh-main-ci, freeze and sh-spawn-fixer are kept; confirmation CI is D-M3-14 (v8 3.1)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/main-verdict.test.ts",
+   "fate": "survives",
+   "task": "D-M3-14",
+   "reason": "sh-main-ci, freeze and sh-spawn-fixer are kept; confirmation CI is D-M3-14 (v8 3.1)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/main-verdict.ts",
+   "fate": "survives",
+   "task": "D-M3-14",
+   "reason": "sh-main-ci, freeze and sh-spawn-fixer are kept; confirmation CI is D-M3-14 (v8 3.1)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/main-watch-ledger.ts",
+   "fate": "kept",
+   "reason": "feeds the reconciler (A7 builds on main-watch.ts); no deletion task names it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/main-watch-serve.test.ts",
+   "fate": "kept",
+   "reason": "feeds the reconciler (A7 builds on main-watch.ts); no deletion task names it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/main-watch.test.ts",
+   "fate": "kept",
+   "reason": "feeds the reconciler (A7 builds on main-watch.ts); no deletion task names it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/main-watch.ts",
+   "fate": "kept",
+   "reason": "feeds the reconciler (A7 builds on main-watch.ts); no deletion task names it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-evidence-gate.ts",
+   "fate": "kept",
+   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-facts.test.ts",
+   "fate": "kept",
+   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-facts.ts",
+   "fate": "kept",
+   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-settle.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-standing.test.ts",
+   "fate": "kept",
+   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-standing.ts",
+   "fate": "kept",
+   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-state-unsettled.test.ts",
+   "fate": "kept",
+   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-up-carry.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-up-carry.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-up-release.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-verdict-round.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/no-progress.test.ts",
+   "fate": "kept",
+   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/no-reviewer-hold.test.ts",
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/no-reviewer-hold.ts",
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/no-reviewer.scene.test.ts",
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/none-reason.test.ts",
+   "fate": "kept",
+   "reason": "observability read model (A14); the fixture belongs to owner-section.test.ts"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/none-reason.ts",
+   "fate": "kept",
+   "reason": "observability read model (A14); the fixture belongs to owner-section.test.ts"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/not-reviewed.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/observe.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/operator-hold.test.ts",
+   "fate": "kept",
+   "reason": "grants, hard stops, guards and classifier are Kept (v9.1 sec. 3.5, I5)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/operator-hold.ts",
+   "fate": "kept",
+   "reason": "grants, hard stops, guards and classifier are Kept (v9.1 sec. 3.5, I5)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/outcome.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/override-gate.test.ts",
+   "fate": "kept",
+   "reason": "unclear: land-loop or approve-merge code; v9.1 deletes the land loop at D-M3-19 and approve-merge at D-M3-22/M7, but neither list names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/override-gate.ts",
+   "fate": "kept",
+   "reason": "unclear: land-loop or approve-merge code; v9.1 deletes the land loop at D-M3-19 and approve-merge at D-M3-22/M7, but neither list names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/override-stats.test.ts",
+   "fate": "kept",
+   "reason": "observability read model (A14); the fixture belongs to owner-section.test.ts"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/override-stats.ts",
+   "fate": "kept",
+   "reason": "observability read model (A14); the fixture belongs to owner-section.test.ts"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/own-merge-up.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/own-merge-up.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/own-review.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/owner-brief-gate.test.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/owner-friction-read.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/owner-friction.test.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/owner-friction.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/owner-hold-reviewer.test.ts",
+   "fate": "kept",
+   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/owner-hold-rows.ts",
+   "fate": "kept",
+   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/owner-hold.test.ts",
+   "fate": "kept",
+   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/owner-release.test.ts",
+   "fate": "kept",
+   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/owner-release.ts",
+   "fate": "kept",
+   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/owner-section.test.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/owner-section.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/package-sweeps.ts",
+   "fate": "kept",
+   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/park-retry.ts",
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/park-serve.test.ts",
+   "fate": "survives",
+   "task": "D-M4-01",
+   "milestone": "M4",
+   "filing": "TP-3148",
+   "reason": "sh-park moves at first green (v9.1 sec. 3.1); D-M4-01 covers park and worktree re-claim"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/park-settled.ts",
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/park.test.ts",
+   "fate": "survives",
+   "task": "D-M4-01",
+   "milestone": "M4",
+   "filing": "TP-3148",
+   "reason": "sh-park moves at first green (v9.1 sec. 3.1); D-M4-01 covers park and worktree re-claim"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/park.ts",
+   "fate": "survives",
+   "task": "D-M4-01",
+   "milestone": "M4",
+   "filing": "TP-3148",
+   "reason": "sh-park moves at first green (v9.1 sec. 3.1); D-M4-01 covers park and worktree re-claim"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/per-run-export.test.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/per-run-export.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/phases.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/phases.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/policy.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/policy.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/post-merge-superseded.test.ts",
+   "fate": "kept",
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/post-merge.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/post-merge.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/pr-changed-paths.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/pr-params.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/pr.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/pr.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/presence.test.ts",
+   "fate": "kept",
+   "reason": "the agent-chat port and roster read across the process boundary; v9.1 sec. 3.1 re-keys roster reads and does not delete them"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/presence.ts",
+   "fate": "kept",
+   "reason": "the agent-chat port and roster read across the process boundary; v9.1 sec. 3.1 re-keys roster reads and does not delete them"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/prs.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/prs.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/publish-review.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/publish-review.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/push-signal.test.ts",
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/push-signal.ts",
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/recorded-route.ts",
+   "fate": "kept",
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/redeploy.test.ts",
+   "fate": "survives",
+   "task": "D-M3-14",
+   "reason": "deploy pacer kept with outbox and deploy gate (v9.1 sec. 3)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/redeploy.ts",
+   "fate": "survives",
+   "task": "D-M3-14",
+   "reason": "deploy pacer kept with outbox and deploy gate (v9.1 sec. 3)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/register-args.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/register-identity.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/register-infer.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/register-infer.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/registration-facts.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/registration-hold.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/registration-hold.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/registration-lookup.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/registration-policy.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/registration-row.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/release-follow-workflow.test.ts",
+   "fate": "kept",
+   "reason": "the Version Packages publish path, not agent release; D-M3-03 makes version-packages a merge-log writer and D-M8-07 keeps it beside the lander"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/release-follow.test.ts",
+   "fate": "kept",
+   "reason": "the Version Packages publish path, not agent release; D-M3-03 makes version-packages a merge-log writer and D-M8-07 keeps it beside the lander"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/release-follow.ts",
+   "fate": "kept",
+   "reason": "the Version Packages publish path, not agent release; D-M3-03 makes version-packages a merge-log writer and D-M8-07 keeps it beside the lander"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/release-head.test.ts",
+   "fate": "delete",
+   "task": "D-M5-03",
+   "milestone": "M5",
+   "filing": "TP-3153"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/release-head.ts",
+   "fate": "delete",
+   "task": "D-M5-03",
+   "milestone": "M5",
+   "filing": "TP-3153"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/release.test.ts",
+   "fate": "kept",
+   "reason": "the Version Packages publish path, not agent release; D-M3-03 makes version-packages a merge-log writer and D-M8-07 keeps it beside the lander"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/release.ts",
+   "fate": "kept",
+   "reason": "the Version Packages publish path, not agent release; D-M3-03 makes version-packages a merge-log writer and D-M8-07 keeps it beside the lander"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/remerge-carry.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/remerge-carry.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/repair.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/rerun-green.test.ts",
+   "fate": "kept",
+   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/rerun-in-progress.test.ts",
+   "fate": "kept",
+   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/restart-diverged.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/restart-replay.test.ts",
+   "fate": "kept",
+   "reason": "register-restart stops and replay classification (RESTART_WRITE_STEPS lives in restart-contract.test.ts, outside the root): engine and registration core"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/restart.ts",
+   "fate": "kept",
+   "reason": "register-restart stops and replay classification (RESTART_WRITE_STEPS lives in restart-contract.test.ts, outside the root): engine and registration core"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/resumed-waits.test.ts",
+   "fate": "kept",
+   "reason": "register-restart stops and replay classification (RESTART_WRITE_STEPS lives in restart-contract.test.ts, outside the root): engine and registration core"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/resync.test.ts",
+   "fate": "kept",
+   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/resync.ts",
+   "fate": "kept",
+   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/reverts.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/reverts.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-cause.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-cause.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-check.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-check.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-checkout-disk.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-checkout-disk.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-checkout-sweep.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-checkout-sweep.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-checkout.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-checkout.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-intent-refused.scene.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-intent-replay.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-member.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-panel-plan.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-panel-plan.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-panel-step.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-panel-step.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-request.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-request.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-schemas.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-schemas.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-slots.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-stats-cli.test.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-stats-report.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-stats-store.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-stats.test.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-stats.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-steps.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-stop.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-wait.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review-wait.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/review.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/reviewer-choice.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/reviewer-dispatch.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/reviewer-dispatch.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/reviewer-reader.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/reviewer-reader.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/reviewer-roles.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/reviewer-roles.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/roster.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/roster.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/round-merge.test.ts",
+   "fate": "kept",
+   "reason": "the owner's round console; gate batches, console and packet (TP-2660) are Kept (v9.1 sec. 3.3)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/round-merge.ts",
+   "fate": "kept",
+   "reason": "the owner's round console; gate batches, console and packet (TP-2660) are Kept (v9.1 sec. 3.3)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/route-table.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/route-table.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/routed.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/run-end.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/run-status.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/seat-checkout.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/seat-digest.test.ts",
+   "fate": "kept",
+   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/seat-digest.ts",
+   "fate": "kept",
+   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/seat-evidence.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/seat-fix-first.test.ts",
+   "fate": "kept",
+   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/seat-recheck.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/seat-recheck.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/seat-tie.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/seat-tie.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/seat-wait.test.ts",
+   "fate": "delete",
+   "task": "D-M7-06",
+   "milestone": "M7",
+   "filing": "TP-3165"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/seats.test.ts",
+   "fate": "kept",
+   "reason": "grants, hard stops, guards and classifier are Kept (v9.1 sec. 3.5, I5)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/seats.ts",
+   "fate": "kept",
+   "reason": "grants, hard stops, guards and classifier are Kept (v9.1 sec. 3.5, I5)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/services.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/services.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/shepherd-steps.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/size-flag.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/size-flag.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/skill-brief.test.ts",
+   "fate": "kept",
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/skill-path-gate.test.ts",
+   "fate": "kept",
+   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/skill-paths.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/slice-row.test.ts",
+   "fate": "kept",
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/slo-queries.test.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/slo-queries.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/slo.test.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/slo.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/snapshot-reads.ts",
+   "fate": "kept",
+   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/snapshot-sweeps.test.ts",
+   "fate": "kept",
+   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/spawn-facts.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/spawn-gate.test.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates 1-26 are reduced to pools (v9.1 sec. 3.4); D-M8-03 one limits file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/spawn-gate.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates 1-26 are reduced to pools (v9.1 sec. 3.4); D-M8-03 one limits file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/spawn-profile.test.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates 1-26 are reduced to pools (v9.1 sec. 3.4); D-M8-03 one limits file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stack-cascade.test.ts",
+   "fate": "survives",
+   "task": "D-M3-22",
+   "milestone": "M3",
+   "filing": "TP-3126",
+   "reason": "base:default with the stacked-child rule (D-M3-22); stacking is plan-declared (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stack-cascade.ts",
+   "fate": "survives",
+   "task": "D-M3-22",
+   "milestone": "M3",
+   "filing": "TP-3126",
+   "reason": "base:default with the stacked-child rule (D-M3-22); stacking is plan-declared (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stack-land.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stack-land.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stack-restack.ts",
+   "fate": "survives",
+   "task": "D-M3-22",
+   "milestone": "M3",
+   "filing": "TP-3126",
+   "reason": "base:default with the stacked-child rule (D-M3-22); stacking is plan-declared (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stack-squash-proof.test.ts",
+   "fate": "survives",
+   "task": "D-M3-22",
+   "milestone": "M3",
+   "filing": "TP-3126",
+   "reason": "base:default with the stacked-child rule (D-M3-22); stacking is plan-declared (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stacked-base.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stage-times.test.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stage-times.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stale-gates.ts",
+   "fate": "survives",
+   "task": "D-M7-01",
+   "milestone": "M7",
+   "filing": "TP-3160",
+   "reason": "settle-then-ask, cancel-before-delivery, one owner class (D-M7-01; v9.1 sec. 3.3)"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stale-merges.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stale-merges.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stale-reviews.ts",
+   "fate": "kept",
+   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stats-cost.test.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stats-cost.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stats-failures.test.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stats-failures.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stats-quality.test.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stats-quality.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stats.test.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stats.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/status-filter.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/status-filter.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/step-phase.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/store-migrations.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/store.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/store.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/structural-pass.test.ts",
+   "fate": "kept",
+   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/suite-host.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/suite-host.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/surface.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/take-verdict.test.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/take-verdict.ts",
+   "fate": "kept",
+   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/task-kind.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/task-kind.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/task-ref.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/task-ref.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/test-only-diff.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/test-only-diff.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/timeouts.ts",
+   "fate": "kept",
+   "reason": "one shared GitHub-read constant; GitHub read utility code, kept with no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/toolchain-sweep.test.ts",
+   "fate": "kept",
+   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/toolchain-sweep.ts",
+   "fate": "kept",
+   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/train-shadow-disjoint.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/train-shadow-held.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/train-shadow-held.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/train-shadow-peers.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/train-shadow-stats.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/train-shadow-stats.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/train-shadow.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/train-shadow.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/train.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/train.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/tree-carry.repo.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/tree-carry.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/turn-check.test.ts",
+   "fate": "kept",
+   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/turn-check.ts",
+   "fate": "kept",
+   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/version-packages.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/version-packages.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/view.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/view.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/visual-baseline.test.ts",
+   "fate": "kept",
+   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/visual-gate.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/visual-render.test.ts",
+   "fate": "kept",
+   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/waiting.test.ts",
+   "fate": "delete",
+   "task": "D-M7-06",
+   "milestone": "M7",
+   "filing": "TP-3165"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/waiting.ts",
+   "fate": "delete",
+   "task": "D-M7-06",
+   "milestone": "M7",
+   "filing": "TP-3165"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/wake-brief.test.ts",
+   "fate": "kept",
+   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/wake-brief.ts",
+   "fate": "kept",
+   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/wake-roster.ts",
+   "fate": "kept",
+   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/wake-wait.ts",
+   "fate": "kept",
+   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/wake.test.ts",
+   "fate": "kept",
+   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/wake.ts",
+   "fate": "kept",
+   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/warmth.test.ts",
+   "fate": "kept",
+   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/warmth.ts",
+   "fate": "kept",
+   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/watch-rows.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/why-asked.test.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/why-asked.ts",
+   "fate": "kept",
+   "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/README.md",
+   "fate": "kept",
+   "reason": "documents the kept scripts; goes with the last of them"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/ci-wait",
+   "fate": "kept",
+   "reason": "retires when TP-1539 and TP-1587 land and the charter stops naming it (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/factory-config",
+   "fate": "kept",
+   "reason": "CC-1148 deployment-config store; no retirement named (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/log",
+   "fate": "kept",
+   "reason": "retired by charter sec. 10 (CC-1058); removal stays with CC-1021 / TP-1570 (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/merge",
+   "fate": "delete",
+   "task": "D-M8-07",
+   "milestone": "M8",
+   "filing": "CC-1389",
+   "note": "seat-merge runs these scripts (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/pace",
+   "fate": "kept",
+   "reason": "retires when CC-742 lands and the charter reads agent-chat seats status (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/premerge",
+   "fate": "delete",
+   "task": "D-M8-07",
+   "milestone": "M8",
+   "filing": "CC-1389",
+   "note": "seat-merge runs these scripts (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/queue",
+   "fate": "kept",
+   "reason": "stays while seats keep a queue file (TP-1570); queue-turns is its CC-315 counter (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/queue-turns",
+   "fate": "kept",
+   "reason": "stays while seats keep a queue file (TP-1570); queue-turns is its CC-315 counter (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/scorecard",
+   "fate": "kept",
+   "reason": "no TS home; stays until TP-1537 or a new TP task ports its rows (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/task-note",
+   "fate": "kept",
+   "reason": "retires when active-work task edit --append is lock-safe (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/test-ci-wait.sh",
+   "fate": "kept",
+   "reason": "retires when TP-1539 and TP-1587 land and the charter stops naming it (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/test-log.sh",
+   "fate": "kept",
+   "reason": "retired by charter sec. 10 (CC-1058); removal stays with CC-1021 / TP-1570 (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/test-merge.sh",
+   "fate": "delete",
+   "task": "D-M8-07",
+   "milestone": "M8",
+   "filing": "CC-1389",
+   "note": "seat-merge runs these scripts (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/test-pace.sh",
+   "fate": "kept",
+   "reason": "retires when CC-742 lands and the charter reads agent-chat seats status (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/test-premerge.sh",
+   "fate": "delete",
+   "task": "D-M8-07",
+   "milestone": "M8",
+   "filing": "CC-1389",
+   "note": "seat-merge runs these scripts (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/test-queue-turns.sh",
+   "fate": "kept",
+   "reason": "stays while seats keep a queue file (TP-1570); queue-turns is its CC-315 counter (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/test-queue.sh",
+   "fate": "kept",
+   "reason": "stays while seats keep a queue file (TP-1570); queue-turns is its CC-315 counter (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/test-scorecard.sh",
+   "fate": "kept",
+   "reason": "no TS home; stays until TP-1537 or a new TP task ports its rows (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/test-task-note.sh",
+   "fate": "kept",
+   "reason": "retires when active-work task edit --append is lock-safe (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/pace/agents/status-cache/sessions/s1.json",
+   "fate": "kept",
+   "reason": "retires when CC-742 lands and the charter reads agent-chat seats status (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/pace/charter.md.in",
+   "fate": "kept",
+   "reason": "retires when CC-742 lands and the charter reads agent-chat seats status (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/pace/claude/status-cache/sessions/s1.json",
+   "fate": "kept",
+   "reason": "retires when CC-742 lands and the charter reads agent-chat seats status (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/pace/old/status-cache/sessions/s1.json",
+   "fate": "kept",
+   "reason": "retires when CC-742 lands and the charter reads agent-chat seats status (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/pace/watchdog.json",
+   "fate": "kept",
+   "reason": "retires when CC-742 lands and the charter reads agent-chat seats status (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/pace/workout/status-cache/sessions/s1.json",
+   "fate": "kept",
+   "reason": "retires when CC-742 lands and the charter reads agent-chat seats status (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/premerge/base/commits_SHA_check_runs_per_page_100.json",
+   "fate": "delete",
+   "task": "D-M8-07",
+   "milestone": "M8",
+   "filing": "CC-1389",
+   "note": "seat-merge runs these scripts (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/premerge/base/commits_SHA_status.json",
+   "fate": "delete",
+   "task": "D-M8-07",
+   "milestone": "M8",
+   "filing": "CC-1389",
+   "note": "seat-merge runs these scripts (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/premerge/base/commits_mergesha_check_runs_per_page_100.json",
+   "fate": "delete",
+   "task": "D-M8-07",
+   "milestone": "M8",
+   "filing": "CC-1389",
+   "note": "seat-merge runs these scripts (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/premerge/base/compare_main___SHA.json",
+   "fate": "delete",
+   "task": "D-M8-07",
+   "milestone": "M8",
+   "filing": "CC-1389",
+   "note": "seat-merge runs these scripts (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/premerge/base/pulls_7.json",
+   "fate": "delete",
+   "task": "D-M8-07",
+   "milestone": "M8",
+   "filing": "CC-1389",
+   "note": "seat-merge runs these scripts (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/premerge/base/pulls_7_commits_per_page_100.json",
+   "fate": "delete",
+   "task": "D-M8-07",
+   "milestone": "M8",
+   "filing": "CC-1389",
+   "note": "seat-merge runs these scripts (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/premerge/base/rules_branches_main.json",
+   "fate": "delete",
+   "task": "D-M8-07",
+   "milestone": "M8",
+   "filing": "CC-1389",
+   "note": "seat-merge runs these scripts (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/premerge/lib.sh",
+   "fate": "delete",
+   "task": "D-M8-07",
+   "milestone": "M8",
+   "filing": "CC-1389",
+   "note": "seat-merge runs these scripts (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/premerge/stubs/agent-chat",
+   "fate": "delete",
+   "task": "D-M8-07",
+   "milestone": "M8",
+   "filing": "CC-1389",
+   "note": "seat-merge runs these scripts (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/premerge/stubs/gh",
+   "fate": "delete",
+   "task": "D-M8-07",
+   "milestone": "M8",
+   "filing": "CC-1389",
+   "note": "seat-merge runs these scripts (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/premerge/stubs/titan-factory",
+   "fate": "delete",
+   "task": "D-M8-07",
+   "milestone": "M8",
+   "filing": "CC-1389",
+   "note": "seat-merge runs these scripts (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/premerge/stubs/titan-squash-message",
+   "fate": "delete",
+   "task": "D-M8-07",
+   "milestone": "M8",
+   "filing": "CC-1389",
+   "note": "seat-merge runs these scripts (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/queue-turns/mixed/proj-a/s1.jsonl",
+   "fate": "kept",
+   "reason": "stays while seats keep a queue file (TP-1570); queue-turns is its CC-315 counter (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/queue-turns/pair/proj-b/s2.jsonl",
+   "fate": "kept",
+   "reason": "stays while seats keep a queue file (TP-1570); queue-turns is its CC-315 counter (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/queue-turns/tz/proj-c/s3.jsonl",
+   "fate": "kept",
+   "reason": "stays while seats keep a queue file (TP-1570); queue-turns is its CC-315 counter (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/queue/alpha.md",
+   "fate": "kept",
+   "reason": "stays while seats keep a queue file (TP-1570); queue-turns is its CC-315 counter (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/queue/prose.md",
+   "fate": "kept",
+   "reason": "stays while seats keep a queue file (TP-1570); queue-turns is its CC-315 counter (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/scorecard/events.sql",
+   "fate": "kept",
+   "reason": "no TS home; stays until TP-1537 or a new TP task ports its rows (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/scorecard/factory.sql",
+   "fate": "kept",
+   "reason": "no TS home; stays until TP-1537 or a new TP task ports its rows (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/scorecard/logs-lowcov/seat-coord/dispatch.jsonl",
+   "fate": "kept",
+   "reason": "no TS home; stays until TP-1537 or a new TP task ports its rows (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/scorecard/logs/loose/dispatch.jsonl",
+   "fate": "kept",
+   "reason": "no TS home; stays until TP-1537 or a new TP task ports its rows (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/scorecard/logs/seat-coord/dispatch.jsonl",
+   "fate": "kept",
+   "reason": "no TS home; stays until TP-1537 or a new TP task ports its rows (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/scorecard/tasks/proj/tasks/T-1.yml",
+   "fate": "kept",
+   "reason": "no TS home; stays until TP-1537 or a new TP task ports its rows (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/scorecard/tasks/proj/tasks/T-2.yml",
+   "fate": "kept",
+   "reason": "no TS home; stays until TP-1537 or a new TP task ports its rows (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/LICENSE.openrig",
+   "fate": "kept",
+   "reason": "waste.ts is ported from openrig; the licence file travels with it; no deletion task names either"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/advance.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/backoff.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/billed-pool.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/brief-approve.ts",
+   "fate": "kept",
+   "reason": "brief approval is kept (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/brief.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "the recipe still briefs agents and reads their return contract; the deleted tick briefer is planning-supply.ts"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/budget-gate.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/checkpoint.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/claim-hold.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/claim-phase.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/classify-task.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/collision.ts",
+   "fate": "delete",
+   "task": "D-M6-05",
+   "milestone": "M6",
+   "filing": "TP-3159",
+   "reason": "file-overlap refusals and the open-PR lock (v9.1 sec. 5.1 M6)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/critical-path.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/custody.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/daily-retire.ts",
+   "fate": "kept",
+   "reason": "a charter cleanup procedure; the M10 charter shrink has no D-task"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/decider.ts",
+   "fate": "kept",
+   "reason": "decider and factory-planner revision are kept (v9.1 sec. 3.5)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/dep-edges.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/dispatch-cost-source.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/dispatch-cost.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/dispatch-stats-source.ts",
+   "fate": "kept",
+   "reason": "observability and reports (A14)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/dispatch-stats.ts",
+   "fate": "kept",
+   "reason": "observability and reports (A14)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/egress-runner.ts",
+   "fate": "kept",
+   "reason": "grants, hard stops, guards and classifier are kept (v9.1 sec. 3.5, I5); stop-the-line is a hard stop"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/eligibility.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/exception.ts",
+   "fate": "survives",
+   "task": "D-M7-02",
+   "milestone": "M7",
+   "filing": "TP-3161",
+   "reason": "the triager (A13)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/exec.ts",
+   "fate": "kept",
+   "reason": "import shims; their headers name the tasks that remove them (CC-1197 C3, CC-1216)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/execute.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/exit-latency.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "measures or heals the tick's own slots and queue, so it goes with the tick"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/exited-adopt.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/finding.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/flow-gate.ts",
+   "fate": "kept",
+   "reason": "grants, hard stops, guards and classifier are kept (v9.1 sec. 3.5, I5); stop-the-line is a hard stop"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/gate-reading.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "refusal classes are replaced by an open claim with its rank and skip reason (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/hold-reason.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/human-steps.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/in-flight.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/ladder.ts",
+   "fate": "survives",
+   "task": "D-M7-02",
+   "milestone": "M7",
+   "filing": "TP-3161",
+   "reason": "the triager (A13)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/landed-sweep.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/leak-check.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/lease.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/ledger.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/liveness.ts",
+   "fate": "kept",
+   "reason": "observability and reports (A14)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/milestone-report.ts",
+   "fate": "kept",
+   "reason": "observability and reports (A14)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/milestone-source.ts",
+   "fate": "kept",
+   "reason": "observability and reports (A14)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/milestones.ts",
+   "fate": "kept",
+   "reason": "observability and reports (A14)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/ms-role.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/no-dispatch.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "per-tick seat notices; eliminated with the tick (v9.1 sec. 3.5)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/observe.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/off-ledger-adopt.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/off-plan.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/ops.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/orphan-queue.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "measures or heals the tick's own slots and queue, so it goes with the tick"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/overlap-exempt.ts",
+   "fate": "delete",
+   "task": "D-M6-05",
+   "milestone": "M6",
+   "filing": "TP-3159",
+   "reason": "file-overlap refusals and the open-PR lock (v9.1 sec. 5.1 M6)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/owed-holds.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick register-then-hold debt; tick re-registration is eliminated (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/owner-queue-spool.ts",
+   "fate": "kept",
+   "reason": "the titan console's deposit spool; the console is kept (v9.1 sec. 3.3)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/owns-adjudicate.ts",
+   "fate": "survives",
+   "task": "D-M6-03",
+   "milestone": "M6",
+   "filing": "TP-3156",
+   "reason": "contract-path claims (A5 long-scope) replace owns as the path contract"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/owns-fence.ts",
+   "fate": "survives",
+   "task": "D-M6-03",
+   "milestone": "M6",
+   "filing": "TP-3156",
+   "reason": "contract-path claims (A5 long-scope) replace owns as the path contract"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/park-sweep.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "measures or heals the tick's own slots and queue, so it goes with the tick"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/plan-class.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/plan-order.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/plan.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/planning-supply.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/policy.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/pr-adopt-ports.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/pr-adopt.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/pr-facts.ts",
+   "fate": "kept",
+   "reason": "GitHub read utilities; D-M1a-03 builds the pool beside them"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/pr-files-git.ts",
+   "fate": "kept",
+   "reason": "GitHub read utilities; D-M1a-03 builds the pool beside them"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/pr-state.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/prior-route.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/progress.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/project-shares.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/ready-order.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the ready floor is deleted with the tick (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/reconcile.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/refusal-snapshot.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "refusal classes are replaced by an open claim with its rank and skip reason (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/relint-queued.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/report.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "the recipe still briefs agents and reads their return contract; the deleted tick briefer is planning-supply.ts"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/review-backlog.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/review-diff.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "the recipe still briefs agents and reads their return contract; the deleted tick briefer is planning-supply.ts"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/run-tick.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/score-render.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/score-source.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/score.ts",
+   "fate": "delete",
+   "task": "D-M6-05",
+   "milestone": "M6",
+   "filing": "TP-3159"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/seat-compare.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/seat-deliver.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "per-tick seat notices; eliminated with the tick (v9.1 sec. 3.5)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/seat-dispatch.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/seat-events.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "per-tick seat notices; eliminated with the tick (v9.1 sec. 3.5)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/seat-plan.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/seat-scope.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/seat-tick.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/seed-slices.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/service-check.ts",
+   "fate": "kept",
+   "reason": "grants, hard stops, guards and classifier are kept (v9.1 sec. 3.5, I5); stop-the-line is a hard stop"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/settings-resolve.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/settings-store.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/settings.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/shadow-record.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "records ticks for the dispatch-workflow shadow diff; closes with D-M8-08, not the M1b marker shadow D-M8-09 deletes"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/shepherd.ts",
+   "fate": "kept",
+   "reason": "import shims; their headers name the tasks that remove them (CC-1197 C3, CC-1216)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/slice-lint.ts",
+   "fate": "survives",
+   "task": "D-M6-02",
+   "milestone": "M6",
+   "filing": "TP-3155",
+   "reason": "the plan contract and its lint (A9)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/slice-repo.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/slices-complete.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/source.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/spend-cap.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/spend-meter.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/stack.ts",
+   "fate": "kept",
+   "reason": "unclear: stacking; D-M6-05 deletes only the lock-driven parts; which parts of this file are lock-driven?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/stale-claim.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/stall-code.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/stall.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/status-report.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "the recipe still briefs agents and reads their return contract; the deleted tick briefer is planning-supply.ts"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/step-timer.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/steps.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/task-tags.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/tick-status.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/tick-summary.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/tick.ts",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/tree-hold.ts",
+   "fate": "kept",
+   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/triage.ts",
+   "fate": "survives",
+   "task": "D-M7-02",
+   "milestone": "M7",
+   "filing": "TP-3161",
+   "reason": "the triager (A13)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/trust-gate.ts",
+   "fate": "kept",
+   "reason": "grants, hard stops, guards and classifier are kept (v9.1 sec. 3.5, I5); stop-the-line is a hard stop"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/waste-source.ts",
+   "fate": "kept",
+   "reason": "observability and reports (A14)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/waste.ts",
+   "fate": "kept",
+   "reason": "waste.ts is ported from openrig; the licence file travels with it; no deletion task names either"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown/workflow-table.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/backlog",
+   "fate": "kept",
+   "reason": "stays beside queue and retires with it (TP-1570) (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/backlog.mjs",
+   "fate": "kept",
+   "reason": "stays beside queue and retires with it (TP-1570) (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/test-backlog.sh",
+   "fate": "kept",
+   "reason": "stays beside queue and retires with it (TP-1570) (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/backlog/records/tc-129.yml",
+   "fate": "kept",
+   "reason": "stays beside queue and retires with it (TP-1570) (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/backlog/records/tc-130.2.yml",
+   "fate": "kept",
+   "reason": "stays beside queue and retires with it (TP-1570) (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/backlog/records/tc-131.yml",
+   "fate": "kept",
+   "reason": "stays beside queue and retires with it (TP-1570) (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/backlog/records/tc-131/img/after.png",
+   "fate": "kept",
+   "reason": "stays beside queue and retires with it (TP-1570) (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/backlog/records/tc-131/img/before.png",
+   "fate": "kept",
+   "reason": "stays beside queue and retires with it (TP-1570) (scripts/seat/README.md)"
+  }
+ ],
+ "compensators": [
+  {
+   "id": "C1",
+   "class": "firm",
+   "name": "Backstop sweep and start pass",
+   "builtBy": "D-M1a-05",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C2",
+   "class": "firm",
+   "name": "Safety sweep",
+   "builtBy": "D-M2-01",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C3",
+   "class": "firm",
+   "name": "TTL pin",
+   "builtBy": "D-M1b-02, D-M1b-03",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C4",
+   "class": "firm",
+   "name": "Attestation",
+   "builtBy": "D-M1b-05",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C5",
+   "class": "firm",
+   "name": "Parent-relative per-merge tree check",
+   "builtBy": "D-M3-20",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C6",
+   "class": "firm",
+   "name": "Landing lock and expected-main chain",
+   "builtBy": "D-M3-20",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C7",
+   "class": "firm",
+   "name": "Deploy gate, including PR-run reuse",
+   "builtBy": "D-M3-14",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C8",
+   "class": "firm",
+   "name": "Merge operation log and owner-intent verification",
+   "builtBy": "D-M1a-11, D-M3-02, D-M3-03, D-M3-11",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C9",
+   "class": "firm",
+   "name": "Self and system classification",
+   "builtBy": "D-M3-10",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C10",
+   "class": "firm",
+   "name": "Owner-intent re-verification per commit",
+   "builtBy": "D-M3-10",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C11",
+   "class": "firm",
+   "name": "Monotonic-read guard",
+   "builtBy": "D-M1a-04",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C12",
+   "class": "firm",
+   "name": "`Unavailable` and the probe",
+   "builtBy": "D-M1a-03",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C13",
+   "class": "firm",
+   "name": "The `github-api` pool",
+   "builtBy": "D-M1a-03",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C14",
+   "class": "firm",
+   "name": "Pacer extension, restart and no-rollback rule",
+   "builtBy": "D-M0-02",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C15",
+   "class": "firm",
+   "name": "Transient-405 backoff",
+   "builtBy": "D-M3-06",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C16",
+   "class": "firm",
+   "name": "Land-rule preconditions on every listed ruleset",
+   "builtBy": "D-M3-01",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C17",
+   "class": "firm",
+   "name": "`gh:approved` re-request and live review read",
+   "builtBy": "D-M3-07",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C18",
+   "class": "firm",
+   "name": "Conditional confirmation CI",
+   "builtBy": "D-M3-14",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C19",
+   "class": "firm",
+   "name": "`LandedDrift`",
+   "builtBy": "D-M3-15",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C20",
+   "class": "firm",
+   "name": "Held-but-stale token accounting",
+   "builtBy": "D-M2-03",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C21",
+   "class": "firm",
+   "name": "Superseded PR adopted or closed",
+   "builtBy": "D-M2-03",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C22",
+   "class": "firm",
+   "name": "Grant-to-use timeout",
+   "builtBy": "D-M2-03",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C23",
+   "class": "firm",
+   "name": "`T_reserve`",
+   "builtBy": "D-M2-03",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C24",
+   "class": "firm",
+   "name": "Cross-tier ageing",
+   "builtBy": "D-M6-04",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C25",
+   "class": "firm",
+   "name": "`T_max` alarm",
+   "builtBy": "D-M6-04",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C26",
+   "class": "firm",
+   "name": "Stalled path holder to triager",
+   "builtBy": "D-M6-03",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C27",
+   "class": "firm",
+   "name": "Orphan trap",
+   "builtBy": "D-M1b-07",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C28",
+   "class": "firm",
+   "name": "Advisory gate plus `not-after`",
+   "builtBy": "D-M1b-07",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C29",
+   "class": "firm",
+   "name": "Frozen deploy predicate",
+   "builtBy": "D-M3-14",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C30",
+   "class": "firm",
+   "name": "Deploy refused while an intent is open",
+   "builtBy": "D-M3-14",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C31",
+   "class": "firm",
+   "name": "Per-entry budget",
+   "builtBy": "D-M1b-07",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C32",
+   "class": "firm",
+   "name": "Interleaved landing",
+   "builtBy": "D-M3-09",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C34",
+   "class": "firm",
+   "name": "`PRMerged` landing for outside merges",
+   "builtBy": "D-M3-12",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C35",
+   "class": "firm",
+   "name": "In-transaction requirement re-check and review dismissal",
+   "builtBy": "D-M3-09",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "C36",
+   "class": "firm",
+   "name": "F14 runtime tripwire",
+   "builtBy": "D-M3-13",
+   "deletedBy": null,
+   "reason": "steady-state: A.2 counts it until a named deletion task is done, and no v9.1 task deletes it"
+  },
+  {
+   "id": "X1",
+   "class": "arguable",
+   "name": "Live head read",
+   "builtBy": "D-M1a-04",
+   "deletedBy": null,
+   "reason": "arguable: no v9.1 task deletes it"
+  },
+  {
+   "id": "X2",
+   "class": "arguable",
+   "name": "Exclusion 2",
+   "builtBy": "D-M1b-04",
+   "deletedBy": null,
+   "reason": "arguable: no v9.1 task deletes it"
+  },
+  {
+   "id": "X3",
+   "class": "arguable",
+   "name": "Bisect",
+   "builtBy": "M9 (out of scope)",
+   "deletedBy": null,
+   "reason": "arguable: no v9.1 task deletes it"
+  },
+  {
+   "id": "X4",
+   "class": "arguable",
+   "name": "Ambiguous base and hardened git environment",
+   "builtBy": "D-M1b-04",
+   "deletedBy": null,
+   "reason": "arguable: no v9.1 task deletes it"
+  },
+  {
+   "id": "X5",
+   "class": "arguable",
+   "name": "The fairness key",
+   "builtBy": "D-M6-04",
+   "deletedBy": null,
+   "reason": "arguable: no v9.1 task deletes it"
+  },
+  {
+   "id": "X6",
+   "class": "arguable",
+   "name": "The Litestream mount check",
+   "builtBy": "none (retired in v9)",
+   "deletedBy": null,
+   "reason": "arguable: no v9.1 task deletes it"
+  },
+  {
+   "id": "X7",
+   "class": "arguable",
+   "name": "F14 pattern predicates and explained-mismatch state",
+   "builtBy": "D-M3-13",
+   "deletedBy": null,
+   "reason": "arguable: no v9.1 task deletes it"
+  },
+  {
+   "id": "T1",
+   "class": "temporary",
+   "name": "The 341(1) stopgap",
+   "builtBy": null,
+   "deletedBy": "D-M3-19"
+  },
+  {
+   "id": "T2",
+   "class": "temporary",
+   "name": "TP-2697's restart sweep",
+   "builtBy": null,
+   "deletedBy": "D-M3-19"
+  },
+  {
+   "id": "T3",
+   "class": "temporary",
+   "name": "The 13 compat shims",
+   "builtBy": null,
+   "deletedBy": "D-M3-19"
+  },
+  {
+   "id": "T4",
+   "class": "temporary",
+   "name": "`strictReplay`",
+   "builtBy": null,
+   "deletedBy": "D-M3-19"
+  },
+  {
+   "id": "T5",
+   "class": "temporary",
+   "name": "Drain-then-flip",
+   "builtBy": null,
+   "deletedBy": "D-M3-19"
+  },
+  {
+   "id": "T6",
+   "class": "temporary",
+   "name": "M1b's shadow tooling (SHD-2 comparator, disagreement log)",
+   "builtBy": null,
+   "deletedBy": "D-M8-09"
+  }
+ ]
+}

@@ -16,8 +16,10 @@ import {
   PEER_NAME_PATTERN,
   agentChatEnv,
   brokerUnavailable,
+  isBrokerReplyTimeout,
   isBrokerUnavailable,
 } from "./dispatch.js";
+import { timeAgentChatCall } from "./call-timing.js";
 import {
   ExecError,
   ExecTimeoutError,
@@ -178,15 +180,16 @@ function toAgentRow(value: unknown): AgentRow | undefined {
 }
 
 /** Every agent-chat call goes through here, so none blocks a long-lived caller's event loop. */
-export async function runAgentChatAsync(
+async function runAgentChatUntimed(
   binPath: string,
   args: string[],
   timeoutMs: number,
   input?: string,
+  signal?: AbortSignal,
 ): Promise<SafeExecResult> {
   try {
     const bin = resolveBinaryPath(binPath, "agent-chat");
-    return await execSafeAsync(bin, args, agentChatEnv(), timeoutMs, input);
+    return await execSafeAsync(bin, args, agentChatEnv(), timeoutMs, input, undefined, signal);
   } catch (err) {
     throw mapExecError(err);
   }
@@ -198,9 +201,20 @@ function mapExecError(err: unknown): unknown {
   return err;
 }
 
+export function runAgentChatAsync(
+  ...call: Parameters<typeof runAgentChatUntimed>
+): Promise<SafeExecResult> {
+  return timeAgentChatCall(call[1], () => runAgentChatUntimed(...call));
+}
+
 /** Same stream rule as a spawn: a broker refusal is on stdout, a usage error on stderr. */
 export function refusal(verb: string, result: SafeExecResult): DispatchError {
   if (isBrokerUnavailable(result)) return brokerUnavailable(verb, result);
+  if (isBrokerReplyTimeout(result)) {
+    return new DispatchTimeoutError(
+      `agent-chat refused ${verb}: ${result.stderr.trim()}`,
+    );
+  }
   const reason = result.stdout.trim() || result.stderr.trim();
   return new DispatchError(
     reason === ""

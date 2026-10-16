@@ -8,7 +8,8 @@ import { sleep } from "../workflows/land.js";
 import type { ReviewAccounts } from "./account-limit.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
-import { reviewPhase, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage } from "./review.js";
+import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage } from "@titan-design/review-panel";
+import { reviewPhase } from "./review.js";
 import { accountLimitStoreRef, type AccountLimitStore } from "./account-store.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
 

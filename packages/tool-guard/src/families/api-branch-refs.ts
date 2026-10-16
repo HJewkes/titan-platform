@@ -89,13 +89,25 @@ export function fieldKey(word: WordToken): { key: string; literal: boolean } {
 }
 
 /**
+ * Whether the text before a value's first gh placeholder already keeps it outside `refs/heads/`. A branch name may
+ * hold `/`, so a filled `{branch}` turns `refs/{branch}` or `refs/he{branch}` into `refs/heads/main`.
+ */
+function pinnedOffHeads(value: string): boolean {
+  const literal = value.slice(0, value.search(RUN_TIME_BRANCH_RE));
+  if (!literal.startsWith("refs/")) return false;
+  const rest = literal.slice("refs/".length);
+  return !"heads/".startsWith(rest) && !rest.startsWith("heads/");
+}
+
+/**
  * The branch a `ref` field value names; undefined for a ref outside `refs/heads`. A value read from a file (`-F
- * ref=@f`), expanded at run time or case-unsure is null.
+ * ref=@f`), expanded at run time, case-unsure or filled by gh where it may still reach `refs/heads` is null.
  */
 export function refBranch(word: WordToken): string | null | undefined {
   if (word.dynamic || isCaseUnsure(word)) return null;
   const value = word.value.slice(word.value.indexOf("=") + 1);
   if (value.startsWith("@")) return null;
+  if (RUN_TIME_BRANCH_RE.test(value)) return pinnedOffHeads(value) ? undefined : null;
   const unqualified = value.replace(/^refs\//, "");
   if (unqualified !== value && !/^heads\//.test(unqualified)) return undefined;
   return knownBranch(unqualified.replace(/^heads\//, ""));
@@ -116,6 +128,11 @@ const SAFE_SLOT_POSTS: [RegExp, ReadonlySet<string>][] = [
   [/^\/labels$/i, new Set(["name", "color", "description"])],
 ];
 
+/** A field key without its `[…]` suffix, as gh sends `base[]=x` under the `base` key. */
+function bareKey(word: WordToken): string {
+  return fieldKey(word).key.replace(/\[.*$/s, "");
+}
+
 /** The allowlisted tail's key set, when every field is a literal key it takes; null otherwise. */
 function safeSlotKeys(url: string, fields: WordToken[]): ReadonlySet<string> | null {
   if (/[?#]/.test(url)) return null;
@@ -123,21 +140,29 @@ function safeSlotKeys(url: string, fields: WordToken[]): ReadonlySet<string> | n
   if (path === null || path === "unsure") return null;
   const tail = (SLOT_TAIL_RE.exec(path)?.[1] ?? "").replace(/\/+$/, "");
   const keys = SAFE_SLOT_POSTS.find(([re]) => re.test(tail))?.[1] ?? null;
-  const allTaken = fields.map(fieldKey).every(({ key, literal }) => literal && keys?.has(key.replace(/\[.*$/s, "")));
+  const allTaken = fields.every((f) => fieldKey(f).literal && keys?.has(bareKey(f)));
   return keys && allTaken ? keys : null;
+}
+
+/** A base field's branch; null when an `=` inside its `[…]` leaves gh reading the value from mid-key. */
+function baseBranch(word: WordToken): string | null {
+  return /\[[^\]]*$/.test(fieldKey(word).key) ? null : (refBranch(word) ?? null);
 }
 
 /**
  * With a filled repo slot (`repoSlotFilled`) the route is unknown, so a request passes only on an allowlist. Null
- * when it is not on it; else the `base` values it names, empty but for a pull request create, which a fill cut with
- * `#` can turn into a Merges API call. A null method with no fields is gh's GET; any other method but POST, and an
+ * when it is not on it; else the `base` and `base[…]` values it names, empty but for a pull request create, which a
+ * fill cut with `#` can turn into a Merges API call. A pull request create with no base field reads as one unknown
+ * base, since the call it may become merges into a branch nobody named. A null method with no fields is gh's GET; any other method but POST, and an
  * unread body, are never safe, since GitHub routes a POST as a PATCH.
  */
 export function slotSafePost(url: string, verb: string | null, fields: WordToken[] | "unread"): (string | null)[] | null {
   if (fields === "unread" || (verb !== null && verb !== "POST")) return null;
   if (verb === null && fields.length === 0) return [];
-  if (!safeSlotKeys(url, fields)) return null;
-  return fields.filter((f) => fieldKey(f).key === "base").map((f) => refBranch(f) ?? null);
+  const keys = safeSlotKeys(url, fields);
+  if (!keys) return null;
+  const bases = fields.filter((f) => bareKey(f) === "base").map(baseBranch);
+  return keys.has("base") && bases.length === 0 ? [null] : bases;
 }
 
 /** POST `git/refs`: every `ref` field, and every field whose key is not literal, is a candidate. */

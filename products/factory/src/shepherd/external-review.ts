@@ -1,16 +1,21 @@
-import { BrokerUnavailableError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
+import { BrokerUnavailableError, DispatchError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
 import type { AgentIdentity } from "@titan-design/authority";
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 import { bounded, type AwaitVerdictTiming } from "./await-verdict.js";
-import { failureOf } from "./error-class.js";
+import { redactCredentials } from "../redact.js";
+import { consoleTextOf, failureOf } from "./error-class.js";
 import { holdClassOf } from "./g10-release.js";
 import { ReviewerAskTimedOut, ReviewerBrokerBusy, ReviewerBrokerDown, clearReviewWait, noteReviewWait } from "./review-wait.js";
-import type { AwaitVerdictInput, AwaitVerdictResult, ReviewTarget, ReviewWiring, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
+import type { AwaitVerdictResult, ReviewWiring } from "./review.js";
 import type { OwnerOverride } from "./override-stats.js";
 import type { Registration } from "./store.js";
-import { fixFirstFindings, namesTarget } from "@titan-design/review-panel";
+import { rosterTie, type SeatRow, type SeatTarget } from "./seat-tie.js";
+import { DamagedTranscriptError, ownRecordsNameOtherPr, reviewsThisPr, type NameRead } from "./seat-evidence.js";
+
+export { DamagedTranscriptError } from "./seat-evidence.js";
+import { fixFirstFindings, namesTarget, type AwaitVerdictInput, type ReviewerAgent, type ReviewerMessage, type ReviewerReader, type ReviewTarget } from "@titan-design/review-panel";
 
 /** The reviewer a hold waits on, from `hold --reviewer` alone; a name in the hold's reason text is never read as one. */
 export function externalReviewer(registration: Registration | undefined): string | undefined {
@@ -60,12 +65,17 @@ export function latestSession(name: string, roster: readonly ReviewerAgent[]): R
   return roster.filter((agent) => agent.name === name && agent.sessionId !== "").at(-1);
 }
 
+/** A `ReviewerReader` whose seat read can take the roster its caller already holds, so a check reads the roster once. */
+export type SeatReader = Omit<ReviewerReader, "readSeat"> & {
+  readSeat?: (input: AwaitVerdictInput, roster?: readonly ReviewerAgent[]) => Promise<readonly ReviewerMessage[]>;
+};
+
 /**
  * A named reviewer's session read as a seat reviewer's is: at any presence, `chat_send` messages counted, and cached until
  * the transcript changes. A reader with no seat read falls back to the finished-session read. A failure propagates.
  */
-export function readNamedReviewer(reader: ReviewerReader, input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]> {
-  return reader.readSeat ? reader.readSeat(input) : reader.read(input);
+export function readNamedReviewer(reader: SeatReader, input: AwaitVerdictInput, roster?: readonly ReviewerAgent[]): Promise<readonly ReviewerMessage[]> {
+  return reader.readSeat ? reader.readSeat(input, roster) : reader.read(input);
 }
 
 /** The awaiting release-side read: any failure, a damaged transcript included, is no messages. A damaged transcript's complete records can hold a MERGE written before a cut-off FIX_FIRST, so they may only block a merge (the seat read), never release one. */
@@ -77,7 +87,11 @@ function readNamedReviewerOrNone(reader: ReviewerReader, input: AwaitVerdictInpu
 export async function awaitExternalVerdict(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, input: ExternalVerdictInput, timing: AwaitVerdictTiming, signal: AbortSignal): Promise<AwaitVerdictResult> {
   const clock = deadline(timing);
   for (;;) {
-    const row = latestSession(input.external, await roster().catch(() => []));
+    const rows = await roster().catch((error: unknown): undefined => {
+      console.error(`shepherd: ${input.repo}#${input.pr}: the roster could not be read, so ${input.external}'s verdict is not read this poll: ${failureText(error)}`);
+      return undefined;
+    });
+    const row = rows && latestSession(input.external, rows);
     if (row) {
       const read = { repo: input.repo, pr: input.pr, head: input.head, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 };
       const result = acceptExternalVerdict(input, row, await readNamedReviewerOrNone(reader, read));
@@ -110,37 +124,24 @@ export function newestAtHead(target: ReviewTarget, messages: readonly ReviewerMe
   return newest;
 }
 
-/** A stopped reviewer's transcript that ends in a partial record; `readable` and `brief` are what its complete records said. */
-export class DamagedTranscriptError extends Error {
-  readonly readable: readonly ReviewerMessage[];
-  readonly brief: string | null;
-
-  constructor(message: string, readable: readonly ReviewerMessage[], brief: string | null = null) {
-    super(message);
-    this.name = "DamagedTranscriptError";
-    this.readable = readable;
-    this.brief = brief;
-  }
-}
-
-/** One name's sessions, each read on its own: what every complete record said, and the reads that failed. */
-interface NameRead {
-  messages: readonly ReviewerMessage[];
-  failures: readonly unknown[];
-}
-
 /** Every session the roster lists under one name; a message the reader attributes to any other session is dropped. A damaged session still gives its complete records. */
-async function readReviewer(reader: ReviewerReader, target: ReviewTarget, rows: readonly ReviewerAgent[]): Promise<NameRead> {
-  const read = (row: ReviewerAgent) => readNamedReviewer(reader, { ...target, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 });
+async function readReviewer(reader: SeatReader, target: ReviewTarget, rows: readonly SeatRow[], listed: readonly ReviewerAgent[]): Promise<NameRead> {
+  const read = (row: ReviewerAgent) => readNamedReviewer(reader, { ...target, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 }, listed);
   const owned = (message: ReviewerMessage) => rows.some((row) => row.agentId === message.agentId && row.sessionId === message.sessionId);
   const messages: ReviewerMessage[] = [];
   const failures: unknown[] = [];
-  for (const outcome of await Promise.allSettled(rows.map(read))) {
-    if (outcome.status === "fulfilled") messages.push(...outcome.value);
-    else failures.push(outcome.reason);
-    if (outcome.status === "rejected" && outcome.reason instanceof DamagedTranscriptError) messages.push(...outcome.reason.readable);
+  const failedRows: SeatRow[] = [];
+  const settled = (row: SeatRow) => read(row).then((value) => ({ row, value }), (reason: unknown) => ({ row, reason }));
+  for (const outcome of await Promise.all(rows.map(settled))) {
+    if ("value" in outcome) {
+      messages.push(...outcome.value);
+      continue;
+    }
+    failures.push(outcome.reason);
+    failedRows.push(outcome.row);
+    if (outcome.reason instanceof DamagedTranscriptError) messages.push(...outcome.reason.readable);
   }
-  return { messages: messages.filter(owned), failures };
+  return { messages: messages.filter(owned), failures, failedRows };
 }
 
 /**
@@ -149,46 +150,57 @@ async function readReviewer(reader: ReviewerReader, target: ReviewTarget, rows: 
  */
 export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string; wait?: true; retry?: true; seat?: string } | { kind: "clear"; merged?: string };
 
-const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-/** True when `text` names this PR as `<owner>/<repo>#<n>` or `<repo>#<n>`, the repo in any letter case. */
-function namesPr(target: ReviewTarget, text: string): boolean {
-  const [owner = "", repo = ""] = target.repo.split("/");
-  const pattern = new RegExp(`(?:^|[^\\w./-])(?:${escaped(owner)}/)?${escaped(repo)}#${target.pr}(?!\\d)`, "i");
-  return pattern.test(text);
-}
-
-/** A brief naming this PR, or a verdict block naming it at any head, marks the reviewer as the PR's own. */
-function reviewsThisPr(target: ReviewTarget, read: NameRead): boolean {
-  const briefs = read.failures.flatMap((failure) => (failure instanceof DamagedTranscriptError && failure.brief !== null ? [failure.brief] : []));
-  if (briefs.some((brief) => namesPr(target, brief))) return true;
-  return read.messages.some((message) => {
-    const block = parseVerdictBlock(message.text);
-    return "repo" in block && block.repo.toLowerCase() === target.repo.toLowerCase() && block.pr === target.pr;
-  });
-}
-
 /** The broker's own failures that clear with time; a permission, missing-file or parse failure reads the same every time. */
 const TRANSIENT = [ReviewerAskTimedOut, ReviewerBrokerDown, ReviewerBrokerBusy, DispatchTimeoutError, BrokerUnavailableError];
 
-const transient = (error: unknown): boolean => TRANSIENT.some((kind) => error instanceof kind) || /^HTTP 5\d\d$/.test(failureOf(error));
+const transient = (error: unknown): boolean =>
+  TRANSIENT.some((kind) => error instanceof kind) || /^HTTP 5\d\d$/.test(failureOf(error));
 
 const retryIf = (clears: boolean) => (clears ? { retry: true as const } : {});
 
+const DETAIL_CHARS = 200;
+const URL_TEXT = /\bhttps?:\/\/\S+/g;
+const HOME_DIR = /\/(?:Users|home)\/[^/\s]+/g;
+
+/** agent-dispatch's errors carry the agent-chat CLI's own words, which say why it failed; any other error's text may hold anything, so it stays its class. */
+function failureText(error: unknown): string {
+  const kind = failureOf(error);
+  if (!(error instanceof DispatchError)) return kind;
+  const text = redactCredentials(consoleTextOf(error)).replace(URL_TEXT, "[url]").replace(HOME_DIR, "~").replace(/\s+/g, " ").trim();
+  if (text === "") return kind;
+  return `${kind}: ${text.length <= DETAIL_CHARS ? text : `${text.slice(0, DETAIL_CHARS)}…`}`;
+}
+
+const unread = (name: string, failure: unknown, clears: boolean): SeatCheck => {
+  const reason = `seat check: the transcript of ${name} could not be read: ${failureText(failure)}`;
+  return { kind: "none", reason, ...retryIf(clears) };
+};
+
 /**
- * A damaged transcript blocks only the PR its brief or a verdict block ties it to; one tied to no PR, or only to
- * other PRs, warns instead of blocking every PR on the machine. Any other failure blocks.
+ * A failed read of a reviewer a brief or verdict block ties to this PR blocks. A failure that may clear blocks with a retry,
+ * so the seat wait bounds it. One that reads the same every time clears with a warning only on evidence that the reviewer is
+ * another PR's: every failed session is damaged and its own records name a PR with another number, or the failed sessions' name stem or
+ * directory is another registered PR's implementer or branch. A row of the name tied to this PR still blocks. With no evidence either
+ * way it blocks with a retry, so the seat wait holds the MERGE, and the reason names what was missing.
  */
-function failedRead(name: string, target: ReviewTarget, read: NameRead, warn: (line: string) => void): SeatCheck | undefined {
-  const hard = read.failures.find((failure) => !(failure instanceof DamagedTranscriptError));
-  const failure = hard ?? read.failures[0];
-  if (failure === undefined) return undefined;
-  if (hard === undefined && !reviewsThisPr(target, read)) {
-    warn(`seat check: ${name} is not the reviewer of ${target.repo}#${target.pr}, so its damaged transcript does not block it: ${failureOf(failure)}`);
-    return undefined;
-  }
+function failedRead(name: string, target: SeatTarget, read: NameRead, rows: readonly SeatRow[], warn: (line: string) => void): SeatCheck | undefined {
   const hards = read.failures.filter((each) => !(each instanceof DamagedTranscriptError));
-  return { kind: "none", reason: `seat check: the transcript of ${name} could not be read: ${failureOf(failure)}`, ...retryIf(hards.length > 0 && hards.every(transient)) };
+  const failure = hards[0] ?? read.failures[0];
+  if (failure === undefined) return undefined;
+  if (reviewsThisPr(target, read)) return unread(name, failure, hards.length > 0 && hards.every(transient));
+  const clearing = hards.find(transient);
+  if (clearing !== undefined) return unread(name, clearing, true);
+  const tieOf = (of: readonly SeatRow[]) => rosterTie(target, of, (stem) => stem.replace(SEAT_REVIEWER, ""));
+  const tie = tieOf(rows).kind === "own" ? { kind: "own" as const } : tieOf(read.failedRows);
+  if (tie.kind !== "own" && read.failures.every((each) => ownRecordsNameOtherPr(target, each))) return untied(name, target, "its records name another PR", failure, warn);
+  if (tie.kind === "other") return untied(name, target, `the roster ties it to ${tie.pr}'s registration`, failure, warn);
+  const why = tie.kind === "own" ? "the roster ties it to this PR's implementer" : `nothing says whose reviewer it is (no record names a PR; ${tie.missing})`;
+  return { kind: "none", reason: `seat check: the transcript of ${name} could not be read and ${why}: ${failureText(failure)}`, ...retryIf(tie.kind === "none") };
+}
+
+function untied(name: string, target: ReviewTarget, evidence: string, failure: unknown, warn: (line: string) => void): undefined {
+  warn(`seat check: ${name} is not the reviewer of ${target.repo}#${target.pr} (${evidence}), so its unreadable transcript does not block it: ${failureText(failure)}`);
+  return undefined;
 }
 
 function sentBack(name: string, target: ReviewTarget, message: ReviewerMessage, messages: readonly ReviewerMessage[]): SeatCheck {
@@ -197,26 +209,28 @@ function sentBack(name: string, target: ReviewTarget, message: ReviewerMessage, 
 }
 
 /**
- * Fails closed: an unreadable roster, or a seat reviewer's transcript that cannot be read or parsed, blocks the head. A
- * reviewer with no finished transcript yet reads as no verdict. Any FIX_FIRST is preferred over a failed read, since a fixer can act on it.
+ * Fails closed: an unreadable roster blocks the head, and so does a seat reviewer's transcript that cannot be read, unless its
+ * readable records or the roster show it is another PR's reviewer (see `failedRead`). A reviewer with no finished transcript
+ * yet reads as no verdict. Any FIX_FIRST is preferred over a failed read, since a fixer can act on it.
  */
-export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, warn: (line: string) => void = console.warn): Promise<SeatCheck> {
+export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: SeatReader, target: SeatTarget, warn: (line: string) => void = console.warn): Promise<SeatCheck> {
   let listed: readonly ReviewerAgent[];
   try {
     listed = await roster();
   } catch (error) {
-    return { kind: "none", reason: `seat check: the roster could not be read: ${failureOf(error)}`, ...retryIf(transient(error)) };
+    return { kind: "none", reason: `seat check: the roster could not be read: ${failureText(error)}`, ...retryIf(transient(error)) };
   }
   const rows = listed.filter((row) => SEAT_REVIEWER.test(row.name) && row.sessionId !== "");
   let failed: SeatCheck | undefined;
   let merged: string | undefined;
   for (const name of new Set(rows.map((row) => row.name))) {
-    const read = await readReviewer(reader, target, rows.filter((row) => row.name === name));
+    const named = rows.filter((row) => row.name === name);
+    const read = await readReviewer(reader, target, named, listed);
     const newest = newestAtHead(target, read.messages);
     if (newest?.verdict === "FIX_FIRST") return sentBack(name, target, newest.message, read.messages);
     if (newest?.verdict === "WAIT") return { kind: "none", reason: `seat check: ${name} said WAIT at ${target.head}, so its required checks had not finished`, wait: true, seat: name };
     if (newest?.verdict === "MERGE") merged ??= name;
-    failed ??= failedRead(name, target, read, warn);
+    failed ??= failedRead(name, target, read, named, warn);
   }
   return failed ?? { kind: "clear", ...(merged !== undefined && { merged }) };
 }
@@ -250,7 +264,7 @@ const unsettled = (check: SeatCheck): boolean => check.kind === "none" && (check
  * its verdict and a broker timeout does not cost the own MERGE; the deadline returns the standing check. The hold shows in the view,
  * because the step records nothing until it ends.
  */
-async function awaitSeatSettled(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, timing: SeatWaitTiming, signal: AbortSignal, warn?: (line: string) => void): Promise<SeatCheck> {
+async function awaitSeatSettled(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: SeatTarget, timing: SeatWaitTiming, signal: AbortSignal, warn?: (line: string) => void): Promise<SeatCheck> {
   const clock = deadline(timing);
   try {
     for (;;) {
@@ -269,7 +283,7 @@ async function awaitSeatSettled(roster: () => Promise<readonly ReviewerAgent[]>,
  * recorded on the result. With `seatWait`, a seat WAIT or a read that can clear is waited out, and one that outlasts it holds the MERGE
  * as `seatHeld`, so the next round re-checks the seat instead of reviewing again. A damaged transcript blocks with no hold.
  */
-export async function unlessSeatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, result: AwaitVerdictResult, warn?: (line: string) => void, now: () => number = Date.now, seatWait?: SeatWait): Promise<AwaitVerdictResult> {
+export async function unlessSeatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: SeatTarget, result: AwaitVerdictResult, warn?: (line: string) => void, now: () => number = Date.now, seatWait?: SeatWait): Promise<AwaitVerdictResult> {
   if (result.kind !== "verdict" || result.verdict !== "MERGE") return result;
   const check = seatWait ? await awaitSeatSettled(roster, reader, target, seatWait.timing, seatWait.signal, warn) : await seatFixFirst(roster, reader, target, warn);
   if (check.kind === "clear") return result;
@@ -290,8 +304,11 @@ const SpawnedProfile = z.looseObject({ reviewerAgentId: z.string(), reviewerProf
 async function authorProfile(raw: unknown, author: AgentIdentity, roster: () => Promise<readonly ReviewerAgent[]>): Promise<string | undefined> {
   const spawned = SpawnedProfile.safeParse(raw);
   if (spawned.success && spawned.data.reviewerAgentId === author.agentId) return spawned.data.reviewerProfile;
-  const rows = await roster().catch((): readonly ReviewerAgent[] => []);
-  return rows.find((row) => row.agentId === author.agentId && row.sessionId === author.sessionId)?.profile;
+  const rows = await roster().catch((error: unknown): undefined => {
+    console.error(`shepherd: author ${author.agentId}'s profile is unknown, the roster could not be read: ${failureText(error)}`);
+    return undefined;
+  });
+  return rows?.find((row) => row.agentId === author.agentId && row.sessionId === author.sessionId)?.profile;
 }
 
 /** Every acceptor's verdict passes here, so the recorded step names the profile of the reviewer whose message it took. */
@@ -316,22 +333,32 @@ function authoredByDispatched(raw: unknown, result: AwaitVerdictResult): AwaitVe
   return { kind: "none", reason: `verdict author ${agentId} is not the dispatched reviewer${input.success ? ` ${input.data.reviewerAgentId}` : ""}` };
 }
 
-/** Inside the step, so the replay reads the recorded outcome; with no dispatch wired there is no roster to read seat reviewers from. With `seatWaitTiming`, a seat WAIT over the MERGE is waited out under the step's signal. */
-export function seatVetoed(wiring: ReviewWiring | undefined, body: VerdictStep, now: () => number = Date.now, seatWaitTiming?: SeatWaitTiming): VerdictStep {
+/**
+ * Inside the step, so the replay reads the recorded outcome; with no dispatch wired there is no roster to read seat reviewers from. With
+ * `seatWaitTiming`, a seat WAIT over the MERGE is waited out under the step's signal. `ownersOf` names who Shepherd registered as opening the PR and every other PR.
+ */
+export function seatVetoed(
+  wiring: ReviewWiring | undefined,
+  body: VerdictStep,
+  now: () => number = Date.now,
+  seatWaitTiming?: SeatWaitTiming,
+  ownersOf?: (target: ReviewTarget) => Pick<SeatTarget, "owner" | "others">,
+): VerdictStep {
   return async (raw, signal) => {
     const result = authoredByDispatched(raw, await body(raw, signal));
     const dispatch = wiring?.dispatch;
     if (!dispatch) return result;
     const { repo, pr, head } = raw as ReviewTarget;
+    const target: SeatTarget = { repo, pr, head, ...ownersOf?.({ repo, pr, head }) };
     const roster = () => dispatch.roster();
     const seatWait = seatWaitTiming && { timing: seatWaitTiming, signal };
-    const vetoed = await unlessSeatFixFirst(roster, wiring.reader, { repo, pr, head }, result, undefined, now, seatWait);
-    return withAuthorProfile(raw, bounded(vetoed === result ? await seatMergeOverFixFirst(roster, wiring.reader, { repo, pr, head }, result, now) : vetoed), roster);
+    const vetoed = await unlessSeatFixFirst(roster, wiring.reader, target, result, undefined, now, seatWait);
+    return withAuthorProfile(raw, bounded(vetoed === result ? await seatMergeOverFixFirst(roster, wiring.reader, target, result, now) : vetoed), roster);
   };
 }
 
 /** The reverse G10 disagreement: Shepherd's own review sent the head back while a seat reviewer said MERGE at it. The verdict stands. */
-async function seatMergeOverFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, result: AwaitVerdictResult, now: () => number): Promise<AwaitVerdictResult> {
+async function seatMergeOverFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: SeatTarget, result: AwaitVerdictResult, now: () => number): Promise<AwaitVerdictResult> {
   if (result.kind !== "verdict" || result.verdict !== "FIX_FIRST") return result;
   const check = await seatFixFirst(roster, reader, target);
   return check.kind === "clear" && check.merged !== undefined ? { ...result, ownerOverride: disagreement(target.head, "FIX_FIRST", "MERGE", now) } : result;

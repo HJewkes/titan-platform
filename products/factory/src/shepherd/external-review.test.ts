@@ -3,11 +3,12 @@ import type { SourceTextLocator } from "@titan-design/session-read";
 import { appendFileSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { partialFake } from "@titan-design/test-kit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { seatTranscript, type SeatRow } from "../test-support/seat-transcript.js";
-import type { AwaitVerdictResult, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
-import { FINDINGS_SEPARATOR } from "@titan-design/review-panel";
-import { BrokerUnavailableError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
+import type { AwaitVerdictResult, ReviewWiring } from "./review.js";
+import { FINDINGS_SEPARATOR, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
+import { BrokerUnavailableError, DispatchError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
 import { ReviewerAskTimedOut, ReviewerBrokerBusy, ReviewerBrokerDown, reviewWait } from "./review-wait.js";
 import { transcriptReviewerReader } from "./reviewer-reader.js";
 import { DamagedTranscriptError, acceptExternalVerdict, awaitExternalVerdict, SEAT_REVIEWER, newestAtHead, seatFixFirst, seatVetoed, unlessSeatFixFirst } from "./external-review.js";
@@ -30,6 +31,19 @@ const readerOf = (messages: readonly ReviewerMessage[]): ReviewerReader => ({
 const SEAT = agent("seat-c-9-review");
 const SHEPHERD_RV = agent("rv-octo-demo-4");
 const rosterOf = (...rows: ReviewerAgent[]) => async () => rows;
+/** An earlier session of SEAT that reviewed PR 4, so a failed read of SEAT's own session is this PR's reviewer's. */
+const SEAT_EARLIER = agent(SEAT.name, "session-earlier");
+/** SEAT's session fails with `error`; its earlier session's MERGE at an older head ties the name to PR 4. */
+const tiedFailing = (error: unknown): ReviewerReader => ({
+  read: async (input) => (input.reviewerSessionId === SEAT.sessionId ? Promise.reject(error) : [said(SEAT_EARLIER, verdictAt("MERGE", OLD_HEAD), 3)]),
+});
+const tiedRoster = rosterOf(SEAT_EARLIER, SEAT);
+/** PR 5 as Shepherd registered it: opened by `seat-z-1`, in its own worktree. */
+const OTHER_PR = { implementer: "seat-z-1", branch: "agent-chat/seat-z-1", label: `${REPO}#5` };
+/** The PR as Shepherd registered it: opened by the implementer `seat-c-9`, whose seat reviewer is `seat-c-9-review`, beside PR 5. */
+const owned = { ...target, owner: { implementer: "seat-c-9", branch: "agent-chat/seat-c-9" }, others: [OTHER_PR] };
+/** The row as the roster lists an agent started in PR 5's implementer's worktree. */
+const elsewhere = <T extends ReviewerAgent>(row: T) => ({ ...row, cwd: "/srv/work/demo/.worktrees/seat-z-1" });
 const shepherdMerge: AwaitVerdictResult = { kind: "verdict", verdict: "MERGE", head: HEAD, locator: locatorIn(SHEPHERD_RV.sessionId), reviewer: { agentId: SHEPHERD_RV.agentId, sessionId: SHEPHERD_RV.sessionId } };
 
 describe("SEAT_REVIEWER", () => {
@@ -200,10 +214,9 @@ describe("seatFixFirst", () => {
     ["an HTTP 403", Object.assign(new Error("forbidden"), { status: 403 })],
   ])("never marks a roster or transcript read failed by %s as one that may clear", async (_name, error) => {
     const roster = async () => Promise.reject(error);
-    const reader: ReviewerReader = { read: async () => Promise.reject(error) };
 
     const unreadRoster = await seatFixFirst(roster, readerOf([]), target);
-    const unreadTranscript = await seatFixFirst(rosterOf(SEAT), reader, target);
+    const unreadTranscript = await seatFixFirst(tiedRoster, tiedFailing(error), target);
 
     expect(unreadRoster).toMatchObject({ kind: "none" });
     expect(unreadRoster).not.toHaveProperty("retry");
@@ -212,24 +225,19 @@ describe("seatFixFirst", () => {
   });
 
   it("marks a transcript read that timed out as one that may clear", async () => {
-    const reader: ReviewerReader = { read: async () => Promise.reject(new ReviewerAskTimedOut("agent-chat timed out")) };
-
-    expect(await seatFixFirst(rosterOf(SEAT), reader, target)).toEqual({ kind: "none", reason: `seat check: the transcript of ${SEAT.name} could not be read: ReviewerAskTimedOut`, retry: true });
+    expect(await seatFixFirst(tiedRoster, tiedFailing(new ReviewerAskTimedOut("agent-chat timed out")), target)).toEqual({ kind: "none", reason: `seat check: the transcript of ${SEAT.name} could not be read: ReviewerAskTimedOut`, retry: true });
   });
 
-  it("blocks the head with the reviewer named when a seat reviewer's transcript cannot be read", async () => {
-    const reader: ReviewerReader = { read: async () => Promise.reject(new Error("EACCES: permission denied")) };
-
-    expect(await seatFixFirst(rosterOf(SEAT), reader, target)).toEqual({ kind: "none", reason: `seat check: the transcript of ${SEAT.name} could not be read: Error` });
+  it("blocks the head with the reviewer named when its own seat reviewer's transcript cannot be read", async () => {
+    expect(await seatFixFirst(tiedRoster, tiedFailing(new Error("EACCES: permission denied")), target)).toEqual({ kind: "none", reason: `seat check: the transcript of ${SEAT.name} could not be read: Error` });
   });
 
   it("keeps neither a URL nor a token from a failed roster or transcript read in the reason", async () => {
     const leaky = new Error("https://db.example.invalid/x tok_FAKE0000SECRET");
     const roster = async () => Promise.reject(Object.assign(leaky, { status: 503 }));
-    const reader: ReviewerReader = { read: async () => Promise.reject(new Error(leaky.message)) };
 
     const unreadRoster = await seatFixFirst(roster, readerOf([]), target);
-    const unreadTranscript = await seatFixFirst(rosterOf(SEAT), reader, target);
+    const unreadTranscript = await seatFixFirst(tiedRoster, tiedFailing(new Error(leaky.message)), target);
 
     expect(unreadRoster).toEqual({ kind: "none", reason: "seat check: the roster could not be read: HTTP 503", retry: true });
     expect(unreadTranscript).toEqual({ kind: "none", reason: `seat check: the transcript of ${SEAT.name} could not be read: Error` });
@@ -237,6 +245,149 @@ describe("seatFixFirst", () => {
       expect(text).not.toContain("db.example.invalid");
       expect(text).not.toContain("tok_FAKE0000SECRET");
     }
+  });
+
+  describe("a seat reviewer whose read fails with agent-chat's DispatchError", () => {
+    const slow = new DispatchTimeoutError("agent-chat refused agent ls: broker did not answer agents_result");
+    const unrelated = agent("seat-k-8-review");
+    const unrelatedFailing: ReviewerReader = { read: async (input) => (input.reviewerAgentId === unrelated.agentId ? Promise.reject(slow) : []) };
+
+    /** A seat wait on a fake clock, so the deadline bounds how long a read that may clear holds the MERGE. */
+    const seatWait = () => {
+      let clock = 0;
+      return { timing: { now: () => clock, sleep: async (ms: number) => void (clock += ms), pollMs: SEAT_POLL_MS, timeoutMs: SEAT_BOUND_MS }, signal: new AbortController().signal };
+    };
+
+    it("leaves Shepherd's MERGE standing and warns with the error's text when an untied reviewer's refusal reads the same every time", async () => {
+      const refused = new DispatchError("agent-chat agent ls --json printed invalid JSON");
+      const reader: ReviewerReader = { read: async (input) => (input.reviewerAgentId === unrelated.agentId ? Promise.reject(refused) : []) };
+      const warn = vi.fn();
+
+      expect(await unlessSeatFixFirst(rosterOf(elsewhere(unrelated), SEAT), reader, owned, shepherdMerge, warn)).toEqual(shepherdMerge);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(`${unrelated.name} is not the reviewer of ${REPO}#4`));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("printed invalid JSON"));
+    });
+
+    it("blocks with a retry when an untied reviewer's read fails in a way that may clear, since it may be this PR's own", async () => {
+      const warn = vi.fn();
+
+      expect(await seatFixFirst(rosterOf(unrelated, SEAT), unrelatedFailing, target, warn)).toEqual({
+        kind: "none",
+        reason: `seat check: the transcript of ${unrelated.name} could not be read: DispatchTimeoutError: agent-chat refused agent ls: broker did not answer agents_result`,
+        retry: true,
+      });
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("no longer treats a plain DispatchError carrying the broker's no-reply text as transient", async () => {
+      const plain = new DispatchError("agent-chat refused agent ls: broker did not answer agents_result");
+      const reader: ReviewerReader = { read: async (input) => (input.reviewerAgentId === unrelated.agentId ? Promise.reject(plain) : []) };
+      const warn = vi.fn();
+
+      expect(await seatFixFirst(rosterOf(elsewhere(unrelated), SEAT), reader, owned, warn)).toEqual({ kind: "clear" });
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(`${unrelated.name} is not the reviewer of`));
+    });
+
+    it("blocks with a retry when the PR's own sole-session reviewer's read fails in a way that may clear", async () => {
+      const own = agent("x-review");
+      const reader: ReviewerReader = { read: async () => Promise.reject(slow) };
+
+      expect(await unlessSeatFixFirst(rosterOf(own), reader, target, shepherdMerge, vi.fn())).toMatchObject({ kind: "none", reason: expect.stringContaining(own.name) });
+      expect(await seatFixFirst(rosterOf(own), reader, target, vi.fn())).toMatchObject({ kind: "none", retry: true });
+    });
+
+    it("lets Shepherd's MERGE stand once an untied reviewer's failed read clears within the seat wait", async () => {
+      let reads = 0;
+      const reader: ReviewerReader = { read: async (input) => (input.reviewerAgentId === unrelated.agentId && ++reads === 1 ? Promise.reject(slow) : []) };
+
+      expect(await unlessSeatFixFirst(rosterOf(unrelated, SEAT), reader, target, shepherdMerge, vi.fn(), Date.now, seatWait())).toBe(shepherdMerge);
+      expect(reads).toBe(2);
+    });
+
+    it("holds Shepherd's MERGE for the next round when an untied reviewer's read still fails at the seat wait's deadline", async () => {
+      const result = await unlessSeatFixFirst(rosterOf(unrelated, SEAT), unrelatedFailing, target, shepherdMerge, vi.fn(), Date.now, seatWait());
+
+      expect(result).toEqual({ kind: "none", reason: expect.stringContaining("broker did not answer agents_result"), seatHeld: shepherdMerge });
+    });
+
+    it("blocks the PR its own reviewer is tied to, naming the error's text, as a read that may clear", async () => {
+      expect(await seatFixFirst(tiedRoster, tiedFailing(slow), target, vi.fn())).toEqual({
+        kind: "none",
+        reason: `seat check: the transcript of ${SEAT.name} could not be read: DispatchTimeoutError: agent-chat refused agent ls: broker did not answer agents_result`,
+        retry: true,
+      });
+    });
+
+    it("blocks its own PR without a retry when the refusal will read the same again", async () => {
+      const refused = new DispatchError("agent-chat agent ls --json printed invalid JSON");
+
+      expect(await seatFixFirst(tiedRoster, tiedFailing(refused), target, vi.fn())).toEqual({ kind: "none", reason: `seat check: the transcript of ${SEAT.name} could not be read: DispatchError: agent-chat agent ls --json printed invalid JSON` });
+    });
+
+    it("keeps no home path, URL or token from the error's text in the reason", async () => {
+      const leaky = new DispatchError(`profile at ${os.homedir()}/.agent-chat/x.json via https://db.example.invalid/x ghp_FAKE0000SECRET`);
+
+      const check = await seatFixFirst(async () => Promise.reject(leaky), readerOf([]), target);
+
+      expect(check).toEqual({ kind: "none", reason: "seat check: the roster could not be read: DispatchError: profile at ~/.agent-chat/x.json via [url] [redacted]" });
+    });
+  });
+
+  describe("a single-session seat reviewer whose read fails the same every time and shows nothing", () => {
+    const missing = Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" });
+    const failing: ReviewerReader = { read: async () => Promise.reject(missing) };
+    const owner = { implementer: "tc-tp-9-a", branch: "agent-chat/tc-tp-9-a" };
+    const task = { ...target, owner, others: [{ implementer: "tc-tp-5-b", branch: "agent-chat/tc-tp-5-b", label: `${REPO}#5` }] };
+    const untied = (name: string, missing: string) => `seat check: the transcript of ${name} could not be read and nothing says whose reviewer it is (no record names a PR; ${missing}): Error`;
+
+    it("blocks the PR whose implementer the roster names as the reviewer's", async () => {
+      const own = agent("tc-tp-9-a-review");
+      const check = await seatFixFirst(rosterOf(own), failing, task, vi.fn());
+
+      expect(check).toEqual({ kind: "none", reason: "seat check: the transcript of tc-tp-9-a-review could not be read and the roster ties it to this PR's implementer: Error" });
+    });
+
+    it("blocks the PR whose worktree the roster says the reviewer ran in, whatever its name", async () => {
+      const own = { ...agent("x-review"), cwd: "/srv/work/demo/.worktrees/tc-tp-9-a" };
+
+      expect(await seatFixFirst(rosterOf(own), failing, task, vi.fn())).toMatchObject({ kind: "none", reason: expect.stringContaining("ties it to this PR's implementer") });
+    });
+
+    it("clears with a warning when the roster places the reviewer in another registered PR's worktree, as for an old reviewer whose transcript was deleted", async () => {
+      const other = { ...agent("x-review"), cwd: "/srv/work/demo/.worktrees/tc-tp-5-b" };
+      const warn = vi.fn();
+
+      expect(await unlessSeatFixFirst(rosterOf(other), failing, task, shepherdMerge, warn)).toEqual(shepherdMerge);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(`${other.name} is not the reviewer of ${REPO}#4 (the roster ties it to ${REPO}#5's registration)`));
+    });
+
+    it("clears with a warning when the reviewer's name stem is another registered PR's implementer", async () => {
+      const warn = vi.fn();
+
+      expect(await seatFixFirst(rosterOf(agent("tc-tp-5-b-review")), failing, task, warn)).toEqual({ kind: "clear" });
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(`tc-tp-5-b-review is not the reviewer of ${REPO}#4 (the roster ties it to ${REPO}#5's registration)`));
+    });
+
+    it.each([
+      ["a directory no registration owns", { ...agent("rv-tp-9-a-review"), cwd: "/srv/work/demo/.worktrees/rv-tp-9-a-review" }, task, 'no registration\'s implementer or branch is "rv-tp-9-a" or "rv-tp-9-a-review"'],
+      ["a scratch directory", { ...agent("bd-tp-9-review"), cwd: "/tmp/ac-x/scratch" }, task, 'no registration\'s implementer or branch is "bd-tp-9" or "scratch"'],
+      ["a stem the registration does not name", agent("tc-tp-9-a-review"), { ...task, owner: { implementer: "titan-coord", branch: "fix/tp-9" } }, 'no registration\'s implementer or branch is "tc-tp-9-a"'],
+      ["only the repo's shared checkout", { ...agent("tc-tp-7-c-review"), cwd: "/srv/work/demo" }, task, 'no registration\'s implementer or branch is "tc-tp-7-c"'],
+      ["no registration for the PR", { ...agent("tc-tp-5-b-review"), cwd: "/srv/work/demo/.worktrees/tc-tp-5-b" }, target, `Shepherd holds no registration for ${REPO}#4`],
+    ])("blocks with a retry, naming the reviewer and the missing evidence, when the roster gives %s", async (_label, row, at, missing) => {
+      const check = await seatFixFirst(rosterOf(row), failing, at, vi.fn());
+
+      expect(check).toEqual({ kind: "none", reason: untied(row.name, missing), retry: true });
+    });
+
+    it("holds Shepherd's MERGE for the next round, naming the reviewer and the missing evidence, when none turns up within the seat wait", async () => {
+      let clock = 0;
+      const seatWait = { timing: { now: () => clock, sleep: async (ms: number) => void (clock += ms), pollMs: SEAT_POLL_MS, timeoutMs: SEAT_BOUND_MS }, signal: new AbortController().signal };
+
+      const result = await unlessSeatFixFirst(rosterOf(agent("tc-tp-7-c-review")), failing, task, shepherdMerge, vi.fn(), Date.now, seatWait);
+
+      expect(result).toEqual({ kind: "none", reason: untied("tc-tp-7-c-review", 'no registration\'s implementer or branch is "tc-tp-7-c"'), seatHeld: shepherdMerge });
+    });
   });
 
   it("prefers another seat reviewer's FIX_FIRST over a transcript that cannot be read", async () => {
@@ -272,20 +423,25 @@ describe("seatFixFirst", () => {
       expect(warn).not.toHaveBeenCalled();
     });
 
-    it("warns without blocking when the damaged transcript names no PR, since it cannot be tied to this one", async () => {
+    it("warns without blocking when the damaged transcript names no PR and the roster places the reviewer elsewhere", async () => {
       const warn = vi.fn();
 
-      expect(await seatFixFirst(rosterOf(damaged), damagedReader([said(damaged, "Reading the diff.", 2)]), target, warn)).toEqual({ kind: "clear" });
+      expect(await seatFixFirst(rosterOf(elsewhere(damaged)), damagedReader([said(damaged, "Reading the diff.", 2)]), owned, warn)).toEqual({ kind: "clear" });
       expect(warn).toHaveBeenCalledOnce();
     });
 
-    it("still blocks on a later reviewer's failed read after an unrelated damaged transcript", async () => {
-      const broken = agent("seat-g-4-review");
+    it("blocks with a retry when the damaged transcript names no PR and nothing else says whose reviewer it is", async () => {
+      const check = await seatFixFirst(rosterOf(damaged), damagedReader([said(damaged, "Reading the diff.", 2)]), target, vi.fn());
+
+      expect(check).toMatchObject({ kind: "none", retry: true, reason: expect.stringContaining(`Shepherd holds no registration for ${REPO}#4`) });
+    });
+
+    it("still blocks on its own reviewer's failed read after an unrelated damaged transcript", async () => {
       const reader: ReviewerReader = {
-        read: async (input) => (input.reviewerAgentId === broken.agentId ? Promise.reject(new Error("EACCES")) : damagedReader(reviewing(5)).read(input)),
+        read: async (input) => (input.reviewerAgentId === SEAT.agentId ? tiedFailing(new Error("EACCES")).read(input) : damagedReader(reviewing(5)).read(input)),
       };
 
-      expect(await seatFixFirst(rosterOf(damaged, broken), reader, target, vi.fn())).toMatchObject({ kind: "none", reason: expect.stringContaining(broken.name) });
+      expect(await seatFixFirst(rosterOf(damaged, SEAT_EARLIER, SEAT), reader, target, vi.fn())).toMatchObject({ kind: "none", reason: expect.stringContaining(SEAT.name) });
     });
 
     it("blocks the PR its brief names when the reviewer was torn before any verdict, and leaves another PR's MERGE standing", async () => {
@@ -299,9 +455,16 @@ describe("seatFixFirst", () => {
       expect(await seatFixFirst(rosterOf(damaged), damagedReader([], brief), target, vi.fn())).toMatchObject({ kind: "none" });
     });
 
-    it.each([`Review octo/demo#40 now.`, `Review other/demo#4 now.`, `Review octo/demo-x#4 now.`])("does not tie the reviewer to PR 4 by the brief %s", async (brief) => {
-      expect(await seatFixFirst(rosterOf(damaged), damagedReader([], brief), target, vi.fn())).toEqual({ kind: "clear" });
+    it("clears by the brief Review octo/demo#40 now., which names another PR's number", async () => {
+      expect(await seatFixFirst(rosterOf(damaged), damagedReader([], "Review octo/demo#40 now."), target, vi.fn())).toEqual({ kind: "clear" });
     });
+
+    it.each([`Review other/demo#4 now.`, `Review octo/demo-x#4 now.`, `Review tp#4 at head`, `Review #4 at head`, `Review pull/4 now.`, `Review demo#5, then tp#4`])(
+      "neither ties nor clears by the brief %s, whose PR number may be this one's, so it blocks with a retry",
+      async (brief) => {
+        expect(await seatFixFirst(rosterOf(damaged), damagedReader([], brief), target, vi.fn())).toMatchObject({ kind: "none", retry: true });
+      },
+    );
 
     it("ties the reviewer to the PR by a verdict block that names the repo in another letter case", async () => {
       const shouted = [said(damaged, `Findings.\n\nVerdict: MERGE\nPR: OCTO/Demo#4\nHead: ${OLD_HEAD}\n`, 3)];
@@ -329,11 +492,62 @@ describe("seatFixFirst", () => {
         expect(await seatFixFirst(rosterOf(first, second), reader, target, vi.fn())).toMatchObject({ kind: "none", reason: expect.stringContaining(first.name) });
       });
 
-      it("warns without blocking when neither session ties the name to the PR", async () => {
+      it("warns without blocking when neither session ties the name to the PR and the roster places it elsewhere", async () => {
         const warn = vi.fn();
 
-        expect(await seatFixFirst(rosterOf(first, second), twoSessions([said(first, "Reading.", 5)]), target, warn)).toEqual({ kind: "clear" });
+        expect(await seatFixFirst(rosterOf(elsewhere(first), elsewhere(second)), twoSessions([said(first, "Reading.", 5)]), owned, warn)).toEqual({ kind: "clear" });
         expect(warn).toHaveBeenCalledOnce();
+      });
+
+      /** Session 1 is whole with a MERGE for PR 5; session 2, a resume that may be reviewing PR 4, fails with `failure`. */
+      const resumedFailing = (failure: unknown): ReviewerReader => ({
+        read: async (input) => (input.reviewerSessionId === second.sessionId ? Promise.reject(failure) : [said(first, `Findings.\n\nVerdict: MERGE\nPR: ${REPO}#5\nHead: ${OLD_HEAD}\n`, 5)]),
+      });
+      const unownedTarget = { ...owned, owner: { implementer: "tc-tp-9-a", branch: "agent-chat/tc-tp-9-a" } };
+
+      it.each([
+        ["ENOENT", Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" })],
+        ["EACCES", Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" })],
+        ["SyntaxError", new SyntaxError("Unexpected token")],
+      ])("blocks with a retry when session 2's read fails with %s and only session 1 names another PR", async (_label, failure) => {
+        expect(await seatFixFirst(rosterOf(first, second), resumedFailing(failure), target, vi.fn())).toMatchObject({ kind: "none", retry: true, reason: expect.stringContaining(first.name) });
+        expect(await seatFixFirst(rosterOf(first, second), resumedFailing(failure), unownedTarget, vi.fn())).toMatchObject({ kind: "none", retry: true });
+      });
+
+      it("blocks with a retry when damaged session 2's own records name no PR and only session 1 names another", async () => {
+        expect(await seatFixFirst(rosterOf(first, second), resumedFailing(torn([said(second, "Reading.", 9)])), target, vi.fn())).toMatchObject({ kind: "none", retry: true });
+      });
+
+      it("ties the name by the failed session's roster row only, never a readable sibling's", async () => {
+        const readable = { ...agent("bd-x-review", "s1"), cwd: "/w/tc-tp-5-b" };
+        const failed = agent("bd-x-review", "s2");
+        const denied = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+        const reader: ReviewerReader = { read: async (input) => (input.reviewerSessionId === failed.sessionId ? Promise.reject(denied) : [said(readable, "Reading.", 5)]) };
+        const at = { ...target, owner: { implementer: "tc-tp-9-a", branch: "agent-chat/tc-tp-9-a" }, others: [{ implementer: "tc-tp-5-b", branch: "agent-chat/tc-tp-5-b", label: `${REPO}#5` }] };
+
+        expect(await seatFixFirst(rosterOf(readable, failed), reader, at, vi.fn())).toMatchObject({ kind: "none", retry: true, reason: expect.stringContaining("bd-x-review") });
+        const failedInOther = { ...failed, cwd: "/w/tc-tp-5-b" };
+        expect(await seatFixFirst(rosterOf(agent("bd-x-review", "s1"), failedInOther), reader, at, vi.fn())).toEqual({ kind: "clear" });
+      });
+
+      it.each([
+        ["session 1 damaged with a brief for PR 5, session 2 EACCES", torn([], `Review ${REPO}#5 now.`), new Error("EACCES: permission denied")],
+        ["both damaged, session 2 with no brief and no records", torn([], `Review ${REPO}#5 now.`), torn([], null)],
+      ])("blocks with a retry when %s", async (_label, one, two) => {
+        const reader: ReviewerReader = { read: async (input) => Promise.reject(input.reviewerSessionId === second.sessionId ? two : one) };
+
+        expect(await seatFixFirst(rosterOf(first, second), reader, target, vi.fn())).toMatchObject({ kind: "none", retry: true });
+      });
+
+      it("blocks a damaged session whose brief names this PR beside another", async () => {
+        expect(await seatFixFirst(rosterOf(first, second), resumedFailing(torn([], `Review ${REPO}#4 plus #5`)), target, vi.fn())).toMatchObject({ kind: "none" });
+      });
+
+      it("warns without blocking when damaged session 2's own brief names another PR", async () => {
+        const warn = vi.fn();
+
+        expect(await seatFixFirst(rosterOf(first, second), resumedFailing(torn([], `Review ${REPO}#5 now.`)), target, warn)).toEqual({ kind: "clear" });
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining("its records name another PR"));
       });
     });
   });
@@ -465,9 +679,12 @@ describe("Shepherd's MERGE meeting a seat WAIT", () => {
   it("lets the own MERGE stand when a seat transcript read times out once and the seat then says MERGE", async () => {
     const seat = seatSaying("MERGE");
     let seatReads = 0;
-    const reader: ReviewerReader = { read: async (input) => (++seatReads === 1 ? Promise.reject(new ReviewerAskTimedOut("agent-chat timed out")) : seat.reader.read(input)) };
+    const earlier = tiedFailing(new Error("unused"));
+    const reader: ReviewerReader = {
+      read: async (input) => (input.reviewerSessionId !== SEAT.sessionId ? earlier.read(input) : ++seatReads === 1 ? Promise.reject(new ReviewerAskTimedOut("agent-chat timed out")) : seat.reader.read(input)),
+    };
 
-    const result = await unlessSeatFixFirst(rosterOf(SEAT), reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
+    const result = await unlessSeatFixFirst(tiedRoster, reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
 
     expect(result).toBe(shepherdMerge);
     expect(seatReads).toBe(2);
@@ -517,7 +734,7 @@ describe("seat and hold reviewers: the findings a FIX_FIRST hands over", () => {
 describe("G10 disagreement between a seat reviewer and Shepherd", () => {
   const wiring = (...rows: ReviewerAgent[]) => ({ dispatch: { roster: rosterOf(...rows), spawn: async () => undefined, resume: async () => undefined }, reader: readerOf([]) }) as unknown as Parameters<typeof seatVetoed>[0];
   const withReader = (messages: ReviewerMessage[], ...rows: ReviewerAgent[]) => ({ ...wiring(...rows)!, reader: readerOf(messages) }) as Parameters<typeof seatVetoed>[0];
-  const shepherdFixFirst: AwaitVerdictResult = { ...shepherdMerge, verdict: "FIX_FIRST", text: "rename" } as AwaitVerdictResult;
+  const shepherdFixFirst: AwaitVerdictResult = { ...shepherdMerge, verdict: "FIX_FIRST", text: "rename" };
   const ownInput = { ...target, reviewerAgentId: SHEPHERD_RV.agentId, reviewerSessionId: SHEPHERD_RV.sessionId };
   const seatMerge: AwaitVerdictResult = { ...shepherdMerge, locator: locatorIn(SEAT.sessionId), reviewer: { agentId: SEAT.agentId, sessionId: SEAT.sessionId } };
 
@@ -539,6 +756,19 @@ describe("G10 disagreement between a seat reviewer and Shepherd", () => {
 
     expect(await merged(ownInput, new AbortController().signal)).not.toHaveProperty("ownerOverride");
     expect(await sentBack(ownInput, new AbortController().signal)).not.toHaveProperty("ownerOverride");
+  });
+
+  it("ties or unties an unreadable seat reviewer by the PR's registered owner when seatVetoed is given one", async () => {
+    const stale = elsewhere(agent("seat-z-1-review"));
+    const unreadable = { ...wiring(stale)!, reader: { read: async () => Promise.reject(new Error("ENOENT")) } } as Parameters<typeof seatVetoed>[0];
+    const ownersOf = vi.fn(() => ({ owner: owned.owner, others: owned.others }));
+
+    const registered = await seatVetoed(unreadable, async () => shepherdMerge, Date.now, undefined, ownersOf)(ownInput, new AbortController().signal);
+    const unregistered = await seatVetoed(unreadable, async () => shepherdMerge)(ownInput, new AbortController().signal);
+
+    expect(registered).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+    expect(ownersOf).toHaveBeenCalledWith({ repo: REPO, pr: 4, head: HEAD });
+    expect(unregistered).toMatchObject({ kind: "none", reason: expect.stringContaining("nothing says whose reviewer it is") });
   });
 
   it("is waited out inside the verdict step when seatVetoed is given the timing", async () => {
@@ -631,5 +861,62 @@ describe("awaitExternalVerdict over a real transcript", () => {
     const reader = transcriptReviewerReader({ roster: async () => [seat.row], namespace: "host-a" });
 
     expect(await seatFixFirst(rosterOf(seat.row), reader, target)).toMatchObject({ verdict: "FIX_FIRST" });
+  });
+});
+
+describe("awaitExternalVerdict with an unreadable roster", () => {
+  it("logs that the roster could not be read and returns no verdict", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const reader = { read: async () => [] };
+    const timing = { now: () => 0, sleep: async () => undefined, pollMs: 1, timeoutMs: 0 };
+
+    const result = await awaitExternalVerdict(() => Promise.reject(new Error("broker down")), reader, { ...target, external: "seat-c-9-review" }, timing, new AbortController().signal);
+
+    expect(result).toEqual({ kind: "none" });
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("roster could not be read"));
+    log.mockRestore();
+  });
+});
+
+describe("seat check roster reads", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), "titan-seat-roster-"));
+  });
+
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("reads the roster once for two seat reviewers, and a later roster failure cannot turn the verdict into none", async () => {
+    const first = seatTranscript(dir, "seat-a-1-review", "exited").user("Review octo/demo#4.").send(verdictAt("FIX_FIRST"));
+    const second = seatTranscript(dir, "seat-b-2-review", "exited").user("Review octo/demo#4.").send(verdictAt("MERGE"));
+    const rows = [first.row, second.row];
+    let calls = 0;
+    const roster = async () => {
+      if (++calls > 1) throw new ReviewerAskTimedOut("broker did not answer agents_result");
+      return rows;
+    };
+    const reader = transcriptReviewerReader({ roster, namespace: "host-a" });
+
+    const check = await seatFixFirst(roster, reader, target, vi.fn());
+
+    expect(calls).toBe(1);
+    expect(check).toMatchObject({ verdict: "FIX_FIRST" });
+  });
+});
+
+describe("the author's profile when the roster fails after the seat check", () => {
+  it("logs the unknown profile and records the verdict without one", async () => {
+    let reads = 0;
+    const roster = async () => (++reads === 1 ? [] : Promise.reject(new Error("broker down")));
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const step = seatVetoed(partialFake<ReviewWiring>({ dispatch: partialFake<ReviewerDispatch>({ roster }), reader: readerOf([]) }), async () => shepherdMerge);
+
+    const result = await step({ ...target, reviewerAgentId: SHEPHERD_RV.agentId, reviewerSessionId: SHEPHERD_RV.sessionId }, new AbortController().signal);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+    expect(result).not.toHaveProperty("reviewerProfile");
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("profile is unknown"));
+    log.mockRestore();
   });
 });

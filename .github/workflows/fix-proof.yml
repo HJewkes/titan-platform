@@ -16,6 +16,10 @@ concurrency:
   group: fix-proof-${{ github.ref }}
   cancel-in-progress: true
 
+# onnxruntime-node would otherwise fetch CUDA binaries on install; no job uses them.
+env:
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+
 jobs:
   # Laid out like the judge: the head goes to src/ and every tool comes from the merge-base tree in runner/. With the
   # head at the workspace root, pnpm/action-setup would install the head's packageManager and copy its .npmrc, and

@@ -92,6 +92,17 @@ describe("a subscript bash may join but the guard splits", () => {
     ["in an argument position", "echo a[ # git push origin HEAD:main ]"],
     ["after ((, a ${ with an unbalanced [", "((1)); a[ ${x:-[} ]=1 # ]; git push origin HEAD:main"],
     ["after ((, a ${ with a bare { inside", "((1)); a[ ${x:-{[} # ]; git push origin HEAD:main"],
+    ["after ((, a ] inside a quote in $( )", '((1)); a[ $(echo "]") # ]; git push origin HEAD:main'],
+    ["after ((, a ] in a second adjacent $( )", "((1)); a[ $([)$(]) # ]; git push origin HEAD:main"],
+    ["after ((, a [ inside $( ) inside ${ }", "((1)); a[ ${x:-$(echo [)} # ]; git push origin HEAD:main"],
+    ["in a subshell, a case pattern ) inside $( )", "( ((1)); a[ $(case x in [x]) esac | : ] ) # ]=1; git push origin HEAD:main )"],
+    ["in a subshell, a ) commented out inside $( )", "( ( ((1)); a[ $(: # ) ] ) \n) # ]=1; git push origin HEAD:main ) )"],
+    ["in a subshell, a ) inside a subscript inside $( )", "( ((1)); a[ $( ( x[ ) ] ) | : ] ) # ]; git push origin HEAD:main )"],
+    ["in a subshell, a ) inside a double quote inside $( )", '( ( ((1)); a[ $(: [x] " ) ] ) \n" ) # ]=1; git push origin HEAD:main ) )'],
+    ["in a subshell, a ) inside a single quote inside $( )", "( ( ((1)); a[ $(: [x] ' ) ] ) \n' ) # ]=1; git push origin HEAD:main ) )"],
+    ["in a subshell, a ) inside backquotes inside $( )", "( ( ((1)); a[ $(: [x] ` ) ] ) \n` ) # ]=1; git push origin HEAD:main ) )"],
+    ["in a subshell, an escaped ) inside $( )", "( ((1)); a[ $(: [x] \\) ] ) # ]=1; git push origin HEAD:main )"],
+    ["in a subshell, a heredoc opener inside $( )", "( ((1)); a[ $(: <<E ] ) # ]=1; git push origin HEAD:main )\nE\n)"],
   ])("denies a push hidden behind # %s", async (_scenario, command) => {
     expect(await decisionOf(command)).toBe("deny");
   });
@@ -124,6 +135,12 @@ describe("a subscript bash may join but the guard splits", () => {
     ["arithmetic then an append by length", "((n++)); a[${#a[@]}]=x; echo ok"],
     ["arithmetic then a comment after a closed subscript", "((1)); echo a[0] # git push origin HEAD:main"],
     ["a test then a spaced subscript argument", "[[ -n $x ]]; echo a[ $x ]"],
+    ["arithmetic then an append by arithmetic on the length", "((1)); a[$(( ${#a[@]} + 1 ))]=x # next"],
+    ["arithmetic then a bracket inside a substituted subscript", "((1)); a[$(echo [1])]=x # c"],
+    ["a test then an arithmetic subscript", "[[ 1 ]]; m[$(( i + 1 ))]=$x # c"],
+    ["a test on a substitution holding a bracket glob", "[ -z $(grep -c [0-9] f) ] # c"],
+    ["a double-bracket test on a substitution holding a glob", "[[ $(ls [a-z]*) ]] # c"],
+    ["arithmetic nested in an element-indexed subscript", "((1)); a[${b[$(( i+1 ))]}]=x # c"],
   ])("passes %s", async (_scenario, command) => {
     expect(await decisionOf(command)).toBeNull();
   });
@@ -159,8 +176,8 @@ describe("backquote spans in a subscript bash may join", () => {
 });
 
 /**
- * Past this a hook timeout would let the command through. It is a backstop a loaded runner stays far under; the work
- * ratio below is what tells linear from quadratic.
+ * Past this a hook timeout would let the command through. It is counted in this thread's CPU time, which a loaded runner
+ * does not stretch; the work ratio below is what tells linear from quadratic.
  */
 const BUDGET_MS = 2500;
 
@@ -194,27 +211,31 @@ const SPAN_SHAPES: Array<[string, string]> = [
   ["nested ${ openers", "${x["],
   ["closed ${ spans", "${x[0]}"],
   ["backquote spans", "`[]`"],
+  ["nested $( openers", "$(x["],
+  ["closed $( spans", "$(f [0])"],
+  ["closed $(( spans", "$(( ${#a[@]} ))"],
 ];
 
 const spanScript = (span: string, count: number) => `echo a[ ${span.repeat(count)} ]\n`;
 
-async function timedScriptDecision(script: string): Promise<{ decision: string | null; ms: number }> {
+async function timedScriptDecision(script: string): Promise<{ decision: string | null; cpuMs: number }> {
   const context = { ...nodeContext(HOME, noFs), foldCase: true, readScript: (p: string) => (p === `${HOME}/app/a.sh` ? script : null) };
   const scriptPort: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
   const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: `${HOME}/app`, tool_input: { command: "bash a.sh; git push origin HEAD:main" } });
-  const start = performance.now();
+  const start = process.threadCpuUsage();
   const { stdout } = await handle(input, { PATH: "/usr/bin" }, scriptPort);
-  return { decision: stdout.includes('"permissionDecision":"deny"') ? "deny" : stdout, ms: performance.now() - start };
+  const { user, system } = process.threadCpuUsage(start);
+  return { decision: stdout.includes('"permissionDecision":"deny"') ? "deny" : stdout, cpuMs: (user + system) / 1000 };
 }
 
 describe("a subscript holding many span openers", () => {
   it.each(SPAN_SHAPES)("the hook denies a push after a 64 KB script of %s, within the budget", async (_name, span) => {
     const script = spanScript(span, Math.floor(64_000 / span.length));
 
-    const { decision, ms } = await timedScriptDecision(script);
+    const { decision, cpuMs } = await timedScriptDecision(script);
 
     expect(decision).toBe("deny");
-    expect(ms).toBeLessThan(BUDGET_MS);
+    expect(cpuMs).toBeLessThan(BUDGET_MS);
   });
 
   it.each(SPAN_SHAPES)("tokenizes %s with work linear in the openers", (_name, span) => {

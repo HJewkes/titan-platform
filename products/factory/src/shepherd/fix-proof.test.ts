@@ -10,7 +10,8 @@ import { shepherdEventMigration } from "./events.js";
 import { FIX_PROOF_CHECK, FixProofReadSchema, fixProofStanding, lastResultLine, readFixProof } from "./fix-proof.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
-import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "./review.js";
+import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
+import { REVIEW_STEPS, reviewPhase, reviewRoutes } from "./review.js";
 import { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
 
 const REPO = "octo/demo";
@@ -131,6 +132,13 @@ describe("sh-fix-proof in reviewPhase", () => {
     const { verdicts, spawns } = await review({ kind: "security", runs: [fixProofRun()], log: actionsLog(resultLine(H, "no-tests")) });
 
     expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H, result: { verdict: "no-tests" } }]);
+    expect(spawns).toEqual([]);
+  });
+
+  it("gates a fresh test-only registration like correctness, so a vacuous proof ends as NO_REPRO", async () => {
+    const { verdicts, spawns } = await review({ kind: "test-only", runs: [fixProofRun()], log: actionsLog(resultLine(H, "vacuous")), files: [{ path: "packages/x/src/a.test.ts", status: "modified" }] });
+
+    expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
     expect(spawns).toEqual([]);
   });
 

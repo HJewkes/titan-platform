@@ -79,6 +79,12 @@ declare class ParseError extends Error {
 declare function tokenize(src: string, trials?: ArithTrials): Token[];
 
 /**
+ * Alias name to the shell texts it may expand to; a name can carry more than one (a built-in floor and the shell's own).
+ * An aliased command is read as its expansion as well as as written, so the alias reading only adds commands.
+ */
+type AliasTable = ReadonlyMap<string, readonly string[]>;
+
+/**
  * How a command was reached: a `( )` subshell or a substitution, a shell's `-c` string or a wrapper's
  * script option, `eval`, `xargs`, a heredoc or here-string fed to a shell, text piped into one, `find -exec`.
  */
@@ -129,6 +135,9 @@ interface ExtractOptions {
      * `ReadingLimitError`. For a script the line runs, which the user cannot split further.
      */
     stopPastCap?: boolean;
+    aliases?: AliasTable;
+    /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
+    onScript?: (text: string) => void;
 }
 /**
  * Every simple command the shell would run, including ones nested in substitutions, `bash -c`
@@ -167,4 +176,4 @@ declare function splitArgs(args: WordToken[], valueOpts?: Set<string>): SplitArg
 /** Absolute path a word names from `dir`, or null when the word is dynamic or the base is unknown. */
 declare function resolvePath(dir: string | null, word: WordToken | null | undefined, home: string | null): string | null;
 
-export { type Chain, type ExtractOptions, type GitInvocation, type OpToken, ParseError, ReadingLimitError, type RedirectToken, type SimpleCommand, type SplitArgs, type SubsToken, type Token, type VarRef, type WordToken, type Wrapping, extractCommands, parseGit, resolvePath, splitArgs, tokenize };
+export { type AliasTable, type Chain, type ExtractOptions, type GitInvocation, type OpToken, ParseError, ReadingLimitError, type RedirectToken, type SimpleCommand, type SplitArgs, type SubsToken, type Token, type VarRef, type WordToken, type Wrapping, extractCommands, parseGit, resolvePath, splitArgs, tokenize };

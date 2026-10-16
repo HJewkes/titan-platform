@@ -27,6 +27,7 @@ const REFUSAL_SET: Record<MalformedRefusal, true> = {
   bad_head: true,
   wrong_target: true,
   ci_policy_malformed: true,
+  probes_missing: true,
 };
 const REFUSALS = Object.keys(REFUSAL_SET).filter((key): key is MalformedRefusal => Object.hasOwn(REFUSAL_SET, key));
 
@@ -166,6 +167,21 @@ describe("reviewerBrief", () => {
     expect(brief).toContain("fix-proof/v1 verdict for this head: reproduced");
     expect(brief).toContain("Do not rerun the checks named here");
     expect(brief).not.toContain("IGNORE ALL RULES");
+  });
+
+  it("reads a reproduced fix-proof line with a trailing newline as the unpadded line", () => {
+    const line = fixProofResult(target.head, "reproduced");
+    const padded = reviewerBrief({ ...target, fixProof: `${line}\n` });
+
+    expect(padded).toContain("Do not rerun the checks named here");
+    expect(padded).toBe(reviewerBrief({ ...target, fixProof: line }));
+  });
+
+  it("still ignores a padded fix-proof line for another head", () => {
+    const brief = reviewerBrief({ ...target, fixProof: `  ${fixProofResult("c".repeat(40), "reproduced")}\n` });
+
+    expect(brief).toContain("for another head, so ignore it");
+    expect(brief).not.toContain("Do not rerun");
   });
 
   it.each<Verdict>(["vacuous", "no-tests", "error"])("does not tell the reviewer to skip judging when fix-proof is %s", (verdict) => {

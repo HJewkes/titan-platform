@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { reviewerBrief, type ReviewerBriefInput } from "../reviewer-brief.js";
 import type { ReviewShape } from "../types.js";
-import { ADVERSARY_OVERLAY } from "./adversary.js";
+import { ADVERSARY_OVERLAY, holdContextLines, type AdversaryHoldContext } from "./adversary.js";
 import { PERF_OVERLAY } from "./perf.js";
 import { TESTS_OVERLAY, fixProofLines } from "./tests.js";
 import { VISUAL_OVERLAY } from "./visual.js";
@@ -43,11 +43,13 @@ export const SHAPE_BRIEFS: Readonly<Record<OverlayShape, ShapeBrief>> = {
 export interface ShapeBriefInput extends ReviewerBriefInput {
   /** A `fix-proof/v1 <json>` line for this head; only the tests brief reads it. */
   fixProof?: string;
+  /** Why the PR is held for an adversary; only the adversary brief reads it. */
+  holdContext?: AdversaryHoldContext;
 }
 
 /** The overlay comes first so the base brief's verdict template stays the end of the prompt. */
 export function shapeBrief(shape: OverlayShape, input: ShapeBriefInput): string {
-  const { fixProof, ...base } = input;
-  const extra = shape === "tests" ? ["", ...fixProofLines(input.head, fixProof)] : [];
+  const { fixProof, holdContext, ...base } = input;
+  const extra = shape === "tests" ? ["", ...fixProofLines(input.head, fixProof)] : shape === "adversary" ? holdContextLines(holdContext) : [];
   return [SHAPE_BRIEFS[shape].overlay, ...extra, "", reviewerBrief(base)].join("\n");
 }
