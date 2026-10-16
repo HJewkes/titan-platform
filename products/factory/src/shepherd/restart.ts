@@ -55,7 +55,7 @@ export async function restartFor(host: FactoryHost, services: ShepherdServices, 
 /** The registration already moved to the new run, so a run leased elsewhere is left for its owner and never seen again. */
 export function endSuperseded(host: FactoryHost, runId: string, newRunId: string): void {
   try {
-    host.runtime.cancel(runId, `superseded: replay diverged; restarted as ${newRunId}`);
+    host.runtime.cancel(runId, `superseded: replay diverged; restarted as ${newRunId}`, { abandon: true });
   } catch (error) {
     if (!(error instanceof WorkflowNotOwnedError)) throw error;
   }
