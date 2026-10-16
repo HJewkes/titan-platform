@@ -151,9 +151,10 @@ function atWindowEnd(readings: readonly Reading[], baseline: WatchBaseline, duri
 }
 
 /** Starts the window now and records it; a copy goes out so the record is a snapshot. */
-function openWindow(ports: WatchPorts, intent: WatchIntent, window: WatchWindow): void {
+function openWindow(ports: WatchPorts, intent: WatchIntent, window: WatchWindow): WatchIntent {
   intent.windowEnd = ports.now() + window.windowMs;
   ports.record?.({ ...intent });
+  return intent;
 }
 
 function heldAtCap(unavailableMs: number, capMs: number, during: string): WatchHeld | undefined {
@@ -170,9 +171,7 @@ function heldAtCap(unavailableMs: number, capMs: number, during: string): WatchH
  * Unavailable time adds up across the whole watch and is never reset by a restart, so reads that flicker still end it: as held, never as a rollback.
  */
 export async function watchServe(ports: WatchPorts, baseline: WatchBaseline, target: string, window: WatchWindow): Promise<string | WatchHeld | undefined> {
-  const interval = Math.max(1, window.intervalMs);
-  const intent: WatchIntent = { sha: target, windowEnd: 0 };
-  openWindow(ports, intent, window);
+  const intent = openWindow(ports, { sha: target, windowEnd: 0 }, window);
   const during = `during the ${Math.round(window.windowMs / 1000)} s watch`;
   let readings: Reading[] = [];
   let misses = 0;
@@ -180,7 +179,7 @@ export async function watchServe(ports: WatchPorts, baseline: WatchBaseline, tar
   let streak = false;
   while (ports.now() < intent.windowEnd || misses > 0 || streak) {
     const tickStart = ports.now();
-    await ports.sleep(interval);
+    await ports.sleep(Math.max(1, window.intervalMs));
     const reading = await read(ports, baseline.confirmed);
     if (reading === UNAVAILABLE) {
       unavailableMs += ports.now() - tickStart;
