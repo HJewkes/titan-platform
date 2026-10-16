@@ -3,6 +3,7 @@ import type { SimpleCommand } from "./shell/commands.js";
 import type { WordToken } from "./shell/lexer.js";
 import { resolvePath, resolveValue } from "./shell/path.js";
 import { shellOperands, shellStdin } from "./shell/shell-options.js";
+import { UnknownStdinError } from "./shell/unsure-readings.js";
 
 /** A script a command runs by path: shell scripts are classified in full, others get the mention rule. */
 export interface ScriptTarget {
@@ -29,11 +30,13 @@ function typedTarget(cmd: SimpleCommand, typed: string, home: string): ScriptTar
 }
 
 /**
- * `bash x.sh`, or the file on its stdin: `bash < x.sh`, `bash /dev/stdin < x.sh`. A `-c` string may read stdin too.
- * `bash -c` text and heredocs are already walked by `extractCommands`.
+ * `bash x.sh`, or the file on the descriptor it runs: `bash < x.sh`, `bash /dev/stdin < x.sh`, `bash /dev/fd/3 3< x.sh`.
+ * A `-c` string may read stdin too. `bash -c` text and heredocs are already walked by `extractCommands`. A descriptor
+ * whose text the line cannot show is refused.
  */
 function shellTarget(cmd: SimpleCommand, home: string): ScriptTarget | null {
-  const { scriptFile, source } = shellStdin(shellOperands(cmd.args, cmd.name), cmd.redirects, false);
+  const { scriptFile, source, unknowable } = shellStdin(shellOperands(cmd.args, cmd.name), cmd.redirects, false);
+  if (unknowable) throw new UnknownStdinError();
   const script = scriptFile === null ? null : target(cmd, scriptFile, home, "shell");
   return script ?? (source.kind === "file" ? target(cmd, source.target, home, "shell") : null);
 }

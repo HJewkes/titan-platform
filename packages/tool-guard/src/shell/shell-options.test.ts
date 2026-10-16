@@ -192,3 +192,47 @@ describe.skipIf(!SHELLS_HERE.has("bash"))("each shell runs the text behind its o
     expect(runs("zsh --emulate=sh -c 'touch mk'")).toBe(false);
   });
 });
+
+const FD_SHELLS = ["bash", "zsh -f", "dash", "sh"];
+const FD_OPERANDS = ["/dev/stdin", "-- /dev/stdin", "- /dev/stdin", "/dev/fd/0", "/proc/self/fd/0"];
+/** Each shell runs the file a `<` redirect opens on the descriptor its script operand names; a file name completes the line. */
+const FD_FILE_LINES = FD_SHELLS.flatMap((shell) => [...FD_OPERANDS.map((operand) => `${shell} ${operand} <`), `${shell} /dev/fd/3 3<`]);
+/** Each shell runs a descriptor the line cannot show; the premise sets it up first, as an earlier line or the caller could. */
+const UNKNOWABLE = FD_SHELLS.flatMap((shell) => [
+  [`${shell} < $F`, "F=./x.sh"],
+  [`${shell} /dev/stdin < $F`, "F=./x.sh"],
+  [`${shell} $X < $F`, "F=./x.sh"],
+  [`${shell} -s < $F`, "F=./x.sh"],
+  [`${shell} /dev/stdin <&3`, "exec 3< ./x.sh"],
+  [`${shell} <&3`, "exec 3< ./x.sh"],
+  [`${shell} /dev/fd/3`, "exec 3< ./x.sh"],
+]);
+const shellHere = (line: string): boolean => SHELLS_HERE.has(line.split(" ")[0] ?? "");
+
+describe("a shell's stdin source is read from one model (TP-3241)", () => {
+  it.each(FD_FILE_LINES)("denies %s a script holding a push", async (line) => {
+    expect(await verdict(`${line} ./x.sh`)).toBe("deny");
+  });
+
+  it.each(FD_FILE_LINES)("allows %s a harmless script", async (line) => {
+    expect(await verdict(`${line} ./ok.sh`)).toBe("pass");
+  });
+
+  it.each(UNKNOWABLE)("denies %s, whose script the line cannot show", async (line) => {
+    expect(await verdict(line)).toBe("deny");
+  });
+
+  it.each(["bash -c 'echo hi' < $F", "bash $X", "bash ./ok.sh < $F"])("allows %s, which runs no unknowable descriptor", async (line) => {
+    expect(await verdict(line)).toBe("pass");
+  });
+});
+
+describe.skipIf(!SHELLS_HERE.has("bash"))("each shell runs the descriptor its operand names (TP-3241)", () => {
+  it.each(FD_FILE_LINES.filter(shellHere))("%s runs the file, and only it", (line) => {
+    expect([runs(`${line} ./x.sh`), runs(`${line} ./ok.sh`)]).toEqual([true, false]);
+  });
+
+  it.each(UNKNOWABLE.filter(([line]) => shellHere(line ?? "")))("%s runs the script %s sets up", (line, setup) => {
+    expect(runs(`${setup}; ${line}`)).toBe(true);
+  });
+});

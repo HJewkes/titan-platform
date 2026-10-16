@@ -94,15 +94,14 @@ through a symlinked parent, is refused just before the append.
 
 ## Known gaps
 
-- A file on a shell's stdin is not read when a script operand names stdin, or when `<>` opens
-  it: `bash /dev/stdin < f`, `bash -- /dev/stdin < f`, `bash - /dev/stdin < f`,
-  `zsh /dev/fd/0 < f`, `sh /proc/self/fd/0 < f`, and `bash <> f`. A heredoc, here-string or
-  pipe on such an operand is read. TP-3241 tracks it.
 - Stdin named through the working directory or a symlink (`cd /dev && bash stdin`) is not
   read as stdin. TP-3240 tracks it.
 
 ## Gotchas
 
+- A shell that runs stdin, or a descriptor its script operand names, is refused when the line
+  does not show that text: `bash < $F`, `bash /dev/stdin <&3`, `bash /dev/fd/3` with no `3<`.
+  Run the script by a literal path, or redirect a literal file (`bash /dev/stdin < ./x.sh`).
 - A gate verdict denies. The hook cannot check a resolved gate yet, so `MRG-CO` and `REL-CO`
   deny with a reason naming the gate.
 - The mention rule is broad: `echo ~/.npmrc`, or a pull request body that names `~/.npmrc`,
