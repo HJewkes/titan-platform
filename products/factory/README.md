@@ -234,6 +234,9 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
     profile that is not an opus one keeps the hold.
   - `g10-adversary` never releases itself. Seats use it for authority, merge-policy and security PRs, which also
     need a seat's fail-open reviewer until Shepherd has one (TP-1931); release it with `shepherd release <pr> --head <sha>`.
+    Registration holds it only for a sensitive path: a `kind=security` PR with no such path takes `g10-review`
+    (`g10-review: security kind, no sensitive path`), and test files are not sensitive paths. The security paths include
+    agent-chat's `src/leak-guard/**`, `src/agents/*self-grant*`, `src/cli/verbs/permission-hook.ts` and `src/broker/host-directory.ts`.
 
   Any other class waits for `shepherd release <pr> --head <sha>`. While a `g10-adversary` hold sits over a
   hold of another class, `release` must name the hold it lifts with `--class <class>`.
