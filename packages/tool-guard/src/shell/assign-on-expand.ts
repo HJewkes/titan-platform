@@ -1,4 +1,6 @@
 import { HOOKED, mentionedIn } from "./hooked-names.js";
+import { dropJoins, nextAfter } from "./joins.js";
+import { PROTECTED } from "./protected-params.js";
 
 const IDENTIFIER_AT_RE = /[A-Za-z_][A-Za-z0-9_]*/y;
 const ZSH_PREFIXES_AT_RE = /[=~^#+]*/y;
@@ -8,26 +10,32 @@ const DELIMITER_PAIRS = new Map([["(", ")"], ["[", "]"], ["{", "}"], ["<", ">"]]
 const MAX_FLAG_GROUP = 256;
 /** Flags whose first argument zsh evaluates as math: the `l` and `r` widths and the `I` match index. */
 const MATH_FLAGS = new Set(["l", "r", "I"]);
+/** What opens a name that is computed, not spelled: a nested expansion, a substitution or a quote. */
+const NESTED_NAME_RE = /[$`'"]/;
+/** Brace expansion run on `{$,}{NAME:=x}` leaves `${NAME:=x}` for bash to expand: a `$` ending an alternative, then a brace group holding an `=`. */
+const BRACE_SPLICE_RE = /^[,}][^]*\{[^]*=/;
 const ASSIGN_OPERATOR_AT_RE = /:{0,2}=/y;
 /** What an assign-on-expand through a name the shell resolves writes: only known at run time. */
 const INDIRECT = Symbol("indirect");
+/** How much of a `${` body is read for its target: past the longest flag group and name, so a longer subscript fails closed. */
+const MAX_BODY = 600;
 
 /**
  * The name a `${…}` in the text assigns while it expands: `${PS4:=x}`, `${PS4[0]=x}`, zsh `${(A)module_path::=x}`,
  * or the whole text for an indirect name, bash `${!N:=x}` or zsh `${(P)N::=x}`. Each scan stops at the next `$`,
  * where the next `${` is read, so the read is linear in the text.
  */
-export function assignOnExpand(text: string): string | null {
+export function assignOnExpand(text: string, names: ReadonlySet<string> = HOOKED): string | null {
   for (let at = text.indexOf("${"); at >= 0; at = text.indexOf("${", at + 2)) {
-    const target = assignedAt(text, at + 2);
+    const target = assignedAt(text, at + 2, names);
     if (target !== null) return target === INDIRECT ? text : target;
   }
   return null;
 }
 
 /** The target of the expansion whose body starts at `at`, if it assigns; a scan cut short by a `$` fails closed. */
-function assignedAt(text: string, at: number): string | typeof INDIRECT | null {
-  const head = expansionHead(text, at);
+function assignedAt(text: string, at: number, names: ReadonlySet<string>): string | typeof INDIRECT | null {
+  const head = expansionHead(text, at, names);
   if (head === "cut") return INDIRECT;
   if (head !== null && "evaluated" in head) return head.evaluated;
   if (head === null || head.target === null) return null;
@@ -48,6 +56,7 @@ function assignedAt(text: string, at: number): string | typeof INDIRECT | null {
 function expansionHead(
   text: string,
   at: number,
+  names: ReadonlySet<string>,
 ): { target: string | typeof INDIRECT | null; end: number } | { evaluated: string } | "cut" | null {
   let i = skipZshPrefixes(text, at);
   let indirect = text[i] === "!";
@@ -59,12 +68,25 @@ function expansionHead(
     indirect = group.indirect;
     i = skipZshPrefixes(text, group.end);
   }
-  if (indirect && text.startsWith("${", i)) return "cut";
+  if (indirect && NESTED_NAME_RE.test(text.charAt(i))) return "cut";
   IDENTIFIER_AT_RE.lastIndex = i;
   const name = IDENTIFIER_AT_RE.exec(text)?.[0];
   if (name === undefined) return null;
-  const target = indirect ? INDIRECT : HOOKED.has(name) ? name : null;
+  const target = indirect ? INDIRECT : names.has(name) ? name : null;
   return { target, end: i + name.length };
+}
+
+/**
+ * Whether the `$` at `dollar` opens an expansion that assigns while it expands and whose target is not a plain
+ * literal name the guard leaves alone: an indirect or nested name, or a protected one. The body is read as the shell
+ * reads it, without the backslash-newlines it drops. A `$` that brace expansion may join to a later `{` counts when
+ * that group assigns, since the line cannot say which name it spells.
+ */
+export function assignsProtectedAt(src: string, dollar: number): boolean {
+  const open = nextAfter(src, dollar);
+  const body = dropJoins(src.slice(open, open + MAX_BODY));
+  if (body.startsWith("{")) return assignedAt(body, 1, PROTECTED) !== null;
+  return BRACE_SPLICE_RE.test(body);
 }
 
 /** zsh `${=…}`, `${~…}`, `${^…}`, `${#…}`, `${+…}` and their doubled forms, before or after a flag group; each still assigns. */

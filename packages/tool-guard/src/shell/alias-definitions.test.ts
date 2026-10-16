@@ -4,6 +4,7 @@ import { caseNamed } from "./case-script.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { tokenize } from "./lexer.js";
 import type { WordToken } from "./lexer.js";
+import { ParseError } from "./parse-error.js";
 import { ReadingLimitError } from "./unsure-readings.js";
 
 const defines = (src: string) => {
@@ -49,7 +50,6 @@ describe("a command that defines a shell alias", () => {
     ["zstyle -s into aliases", "zstyle -s ':ctx' style aliases"],
     ["zformat -f into galiases", "zformat -f galiases '%a' a:x"],
     ["strftime -s into saliases", "strftime -s saliases '%Y' 0"],
-    ["an indirect assigning expansion", ": ${(P)n::=git}"],
     ["a plain read of the alias table", ": $aliases"],
     ["an element store into BASH_ALIASES", "BASH_ALIASES[y]=git"],
     ["declare -A BASH_ALIASES", "declare -A BASH_ALIASES"],
@@ -286,5 +286,11 @@ describe("AliasDefinitionError", () => {
     expect(error).toBeInstanceOf(ReadingLimitError);
     expect(error.name).toBe("AliasDefinitionError");
     expect(error.message).toBe("a command that defines a shell alias");
+  });
+});
+
+describe("an indirect assigning expansion that would define an alias", () => {
+  it("is refused before the matcher reads it", () => {
+    expect(() => defines(": ${(P)n::=git}")).toThrow(ParseError);
   });
 });

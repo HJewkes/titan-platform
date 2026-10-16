@@ -3,6 +3,7 @@ import { arithmeticHooked } from "./arith-hooked.js";
 import { writesHookedParam } from "./hooked-params.js";
 import { tokenize } from "./lexer.js";
 import type { RedirectToken, WordToken } from "./lexer.js";
+import { ParseError } from "./parse-error.js";
 import { expectLinearTime } from "./test-linearity.js";
 import { unwrap } from "./unwrap.js";
 
@@ -73,13 +74,6 @@ describe("a command that writes a parameter the shell later runs", () => {
     ["zsh zselect -A", "zselect -A module_path 0", "module_path"],
     ["zsh for over two names", "for X PS4 in a b", "PS4"],
     ["zsh read -t's next word as a name", "read -t PS4", "PS4"],
-    ["a default-assign expansion", ": ${PS4:=x}", "PS4"],
-    ["a plain default-assign expansion", ": ${PS4=x}", "PS4"],
-    ["a zsh array default-assign expansion", ": ${(A)module_path::=/tmp/m}", "module_path"],
-    ["a default-assign in another assignment's value", "X=${PS4:=x}", "PS4"],
-    ["a default-assign in a prefix assignment's value", "X=${PS4:=x} true", "PS4"],
-    ["a default-assign of an element", ": ${PS4[0]:='$(x)'}", "PS4"],
-    ["a plain default-assign of an element", ": ${PS4[0]=x}", "PS4"],
   ])("names it: %s", (_how, line, name) => {
     expect(hooked(line)).toBe(name);
   });
@@ -262,8 +256,18 @@ describe("an assign-on-expand through a name the shell resolves", () => {
     ["zsh + after the P flag", ": ${(P)+N::=x}"],
     ["# with :=, a bad substitution in bash that zsh assigns", ": ${#PS4:=x}"],
     ["+ with :=, a bad substitution in bash that zsh assigns", ": ${+PS4:=x}"],
-  ])("counts as a hooked write: %s", (_how, line) => {
-    expect(hooked(line)).not.toBeNull();
+    ["a default-assign expansion", ": ${PS4:=x}"],
+    ["a plain default-assign expansion", ": ${PS4=x}"],
+    ["a zsh array default-assign expansion", ": ${(A)module_path::=/tmp/m}"],
+    ["a default-assign in another assignment's value", "X=${PS4:=x}"],
+    ["a default-assign in a prefix assignment's value", "X=${PS4:=x} true"],
+    ["a default-assign of an element", ": ${PS4[0]:='$(x)'}"],
+    ["a plain default-assign of an element", ": ${PS4[0]=x}"],
+    ["zsh l flag width", ": ${(l:MODULE_PATH=4:)x}"],
+    ["zsh r flag width", ": ${(r:MODULE_PATH=5:)x}"],
+    ["zsh I flag index", ": ${(I:PS4=12:)x#a}"],
+  ])("is refused by the lexer: %s", (_how, line) => {
+    expect(() => hooked(line)).toThrow(ParseError);
   });
 
   it.each([
@@ -338,9 +342,6 @@ describe("arithmetic that mentions a hooked parameter", () => {
     ["zsh exit's status", "exit 'PS4=1'", "PS4"],
     ["zsh break's count", "break 'PS4=7'", "PS4"],
     ["zsh continue's count", "continue 'PS4=8'", "PS4"],
-    ["zsh l flag width", ": ${(l:MODULE_PATH=4:)x}", "MODULE_PATH"],
-    ["zsh r flag width", ": ${(r:MODULE_PATH=5:)x}", "MODULE_PATH"],
-    ["zsh I flag index", ": ${(I:PS4=12:)x#a}", "PS4"],
     ["a value (( x )) evaluates later", "x='MODULE_PATH=6'", "MODULE_PATH"],
     ["a double-quoted value evaluated later", 'x="PS4=21"', "PS4"],
     ["a value with an increment", "x='PS4++'", "PS4"],
