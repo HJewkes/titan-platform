@@ -7,6 +7,7 @@ import type { DecisionLog } from "./decision-log.js";
 import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
 import { readCommand } from "./owner-guard.js";
+import { roundFramesCommands } from "./round-frames.js";
 import { roundsCommands, type RoundsSource } from "./rounds.js";
 import { roundsSubmitCommands } from "./rounds-submit.js";
 import { sessionsCommands, type SessionsSource } from "./sessions.js";
@@ -62,6 +63,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...knowledgeCommands(activeWork, work),
     ...inboxCommands(inbox),
     ...roundsCommands(rounds),
+    ...roundFramesCommands(rounds),
     ...roundsSubmitCommands(rounds, decisionLog),
     ...approvalsCommands({ factory, rounds, inbox }),
     ...shepherdCommands(shepherd),

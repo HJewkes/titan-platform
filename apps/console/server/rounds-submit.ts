@@ -27,7 +27,7 @@ import {
   SubmittedAnswer,
   type Round2Question,
 } from "./round2-adapter.js";
-import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, readCappedBytes, roundDirExists, type RoundsSource } from "./rounds.js";
+import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, readCapped, roundDirExists, type RoundsSource } from "./rounds.js";
 
 export const MAX_FEEDBACK_BYTES = 64 * 1024;
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -79,7 +79,7 @@ async function readManifest(roundDir: string): Promise<{ bytes: Buffer; modified
   }
   try {
     const stats = await handle.stat();
-    const bytes = stats.isFile() && stats.size <= MAX_ROUND_BYTES ? await readCappedBytes(handle) : null;
+    const bytes = stats.isFile() && stats.size <= MAX_ROUND_BYTES ? await readCapped(handle, MAX_ROUND_BYTES) : null;
     return { bytes: bytes ?? refuse(`${ROUND_FILE} is not a regular file of at most ${MAX_ROUND_BYTES} bytes`), modifiedAt: stats.mtime.toISOString() };
   } finally {
     await handle.close();

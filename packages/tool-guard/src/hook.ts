@@ -30,11 +30,14 @@ export interface HookResult {
 }
 
 type Env = Readonly<Record<string, string | undefined>>;
+type Clock = Pick<HookPort, "now">;
 type Event = Exclude<HookEvent, { kind: "other" }>;
 /** A decision's logged fields; an unclassified command logs action `unparsed` or `oversize` and spelling `<kind>.<action>`. */
 type Logged = Omit<Matched, "action" | "spelling"> & { action: string; spelling: string };
 /** A failure past one of classify's limits carries the reason the deny gives. */
 type Classified = { ok: true; actions: ClassifiedAction[] } | { ok: false; cls: ErrorClass; limit?: string };
+/** Why an answer never came: it ran past the hook's deadline, or the thread computing it died. */
+export type Unfinished = "timeout" | "crash";
 
 const PASS: HookResult = { stdout: "", log: [] };
 const UNREADABLE_REASON =
@@ -65,10 +68,14 @@ const SPLICED_REASON =
 const UNTRACKED_REASON =
   "authority-guard does not check this Bash command: it writes a file the guard cannot follow (output it cannot reproduce, a target only known at run time, another fd, `>!`, `<>`), then runs a script, which may be that file; run the script in its own command, where the guard reads the file as it is.";
 const TABLE_REASON = "authority-guard could not load the authority table, so it refuses every guarded action. Report this to the owner.";
+const UNFINISHED_REASONS: Record<Unfinished, string> = {
+  timeout: "authority-guard could not finish checking this call in time, so it was not run. Split the command into smaller Bash calls.",
+  crash: "authority-guard stopped before it finished checking this call, so it was not run. Split the command into smaller Bash calls; if a short call is refused too, report this to the owner.",
+};
 const GUARDED_KEYWORDS = ["gh pr merge", "/merge", "publish", "deploy", "gist"];
 /**
- * Classifying costs about 50 ms per KiB of arguments, so padding a command past Claude Code's 5 s
- * hook timeout would let it run. Every command over this size denies, whatever it names, because
+ * Classifying costs about 50 ms per KiB of arguments, so a padded command would only reach the
+ * deadline deny after seconds. Every command over this size denies at once, whatever it names, because
  * quoting and variables hide a guarded name from any check of the raw text.
  */
 export const MAX_COMMAND_BYTES = 8 * 1024;
@@ -83,6 +90,21 @@ export async function handle(input: string, env: Env, port: HookPort): Promise<H
     return await answer(input, env, port);
   } catch {
     return exceptionResult(port);
+  }
+}
+
+/**
+ * The answer for an event whose check never finished. It denies whatever the event is: an allow
+ * would let a command padded to outrun the check run unchecked (TP-3224). Never throws.
+ */
+export function unfinishedResult(input: string, env: Env, now: () => Date, why: Unfinished): HookResult {
+  const reason = UNFINISHED_REASONS[why];
+  try {
+    const event = parseInput(input);
+    if (event.kind === "malformed" || event.kind === "other") return { stdout: denyAnswer(reason), log: [] };
+    return unclassified(event, observeActor(env, event.sessionId), why, reason, { now });
+  } catch {
+    return { stdout: denyAnswer(reason), log: [] };
   }
 }
 
@@ -159,7 +181,7 @@ function oversized(event: Event, actor: ActorObservation, reason: string, port: 
   return unclassified(event, actor, "oversize", reason, port);
 }
 
-function unclassified(event: Event, actor: ActorObservation, action: string, reason: string, port: HookPort): HookResult {
+function unclassified(event: Event, actor: ActorObservation, action: string, reason: string, port: Clock): HookResult {
   const fields: Logged = { ruleId: null, action, spelling: `${event.kind}.${action}`, subject: {} };
   return { stdout: denyAnswer(reason), log: [decisionLine(event, actor, fields, "deny", port)] };
 }
@@ -182,7 +204,7 @@ function tableFailure(event: Event, actor: ActorObservation, actions: Classified
   return { stdout: denyAnswer(TABLE_REASON), log: [error, decisionLine(event, actor, matched, "deny", port)] };
 }
 
-function decisionLine(event: Event, actor: ActorObservation, m: Logged, kind: "deny", port: HookPort): string {
+function decisionLine(event: Event, actor: ActorObservation, m: Logged, kind: "deny", port: Clock): string {
   return formatDecisionLine({
     ts: port.now(),
     kind,
