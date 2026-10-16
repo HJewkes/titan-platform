@@ -1,3 +1,4 @@
+import { isPassing, isSucceeded, latestPerName } from "./checks.js";
 import { GITHUB_ACTIONS_APP_ID } from "./readiness.js";
 import type { CheckRun, CommitStatus, GitHubPort, RepoSlug, RequiredChecks } from "./port.js";
 
@@ -41,38 +42,39 @@ function requiredFindings({ rules, runs, statuses }: CiVerdictInput): Finding[] 
   for (const context of rules.contexts) {
     const pins = rules.pins?.[context];
     if (pins) {
-      findings.push(...pins.map((app) => judge(context, newest(runs, context, app), null)));
+      findings.push(...pins.map((app) => judge(context, decidingRun(runs, context, app), null)));
     } else {
       const state = statuses.find((status) => status.context === context)?.state ?? null;
-      findings.push(judge(context, newest(runs, context, GITHUB_ACTIONS_APP_ID), state));
+      findings.push(judge(context, decidingRun(runs, context, GITHUB_ACTIONS_APP_ID), state));
     }
   }
   return findings.filter((finding): finding is Finding => finding !== null);
 }
 
-function newest(runs: readonly CheckRun[], name: string, app: number): CheckRun | null {
-  let best: CheckRun | null = null;
-  for (const run of runs) {
-    if (run.name === name && run.appId === app && (!best || (run.startedAt ?? "") > (best.startedAt ?? ""))) best = run;
-  }
-  return best;
+/**
+ * Any unfinished run of the context and app decides it, so it reads pending whatever the start times and ids say: one
+ * job name shared by push and pull_request workflows can start both runs in the same second, and no ordering can prove
+ * a finished run superseded an unfinished one. Once every run has completed, `latestPerName` picks the newest.
+ */
+function decidingRun(runs: readonly CheckRun[], name: string, app: number): CheckRun | null {
+  const slot = runs.filter((run) => run.name === name && run.appId === app);
+  const unfinished = slot.filter((run) => run.status !== "completed");
+  return latestPerName(unfinished.length > 0 ? unfinished : slot)[0] ?? null;
 }
 
-/** A required context is green only on `success`: skipped and neutral are red here, unlike the all-runs rule. */
+/** A required context needs `isSucceeded`, as checks.ts documents: skipped and neutral are red here, unlike the all-runs rule. */
 function judge(name: string, run: CheckRun | null, state: string | null): Finding | null {
-  if ((run?.status === "completed" && run.conclusion === "success") || state === "success") return null;
+  if ((run && isSucceeded(run)) || state === "success") return null;
   if ((run && run.status !== "completed") || state === "pending" || (!run && state === null)) return { kind: "pending", text: name };
   return { kind: "bad", text: `${name}=${run ? run.conclusion : state}` };
 }
-
-const PASSING_CONCLUSIONS = new Set(["success", "skipped", "neutral"]);
 
 /** A status-only sha stays pending: a status can land before the check suites have even been created. */
 function allFindings(runs: readonly CheckRun[], statuses: readonly CommitStatus[]): Finding[] {
   const findings: Finding[] = [];
   for (const run of runs) {
     if (run.status !== "completed") findings.push({ kind: "pending", text: run.name });
-    else if (!PASSING_CONCLUSIONS.has(run.conclusion ?? "")) findings.push({ kind: "bad", text: `${run.name}=${run.conclusion}` });
+    else if (!isPassing(run)) findings.push({ kind: "bad", text: `${run.name}=${run.conclusion}` });
   }
   for (const status of statuses) {
     if (status.state === "pending") findings.push({ kind: "pending", text: status.context });

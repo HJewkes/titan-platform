@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { isPassingConclusion } from "@titan-design/github";
 import { checkAgainstJsonSchema, type GateEvidencePolicy, type GateRecord } from "@titan-design/hitl";
 import { z } from "zod";
 import { escalationReason } from "./shepherd/route-table.js";
@@ -78,7 +79,6 @@ export const MERGE_GATE = "approve-merge";
 export const MAIN_GATES = { "main-red": "acknowledged", "main-frozen": "unfreeze" } as const;
 /** Gates about one PR whose `abandon` a coordinator may give once that PR is merged or closed. */
 export const PR_GATES: ReadonlySet<string> = new Set([MERGE_GATE, "stuck-behind", "sh-sent-back", "ci-failed"]);
-const PASSING: ReadonlySet<string> = new Set(["success", "neutral", "skipped"]);
 
 /** The step id of a gate id: the text after the last `/`, without a repeat suffix `:<n>`. */
 export function stepOf(gateId: string): string {
@@ -206,7 +206,7 @@ function mainGreenAdmits(gate: GateRecord, payload: unknown, evidence: Of<"main-
   const main = mainGate(gate);
   if (!main || !isDeepStrictEqual(payload, { decision: MAIN_GATES[stepOf(gate.id) as keyof typeof MAIN_GATES], mergeSha: main.mergeSha })) return false;
   if (evidence.repo !== main.repo || evidence.pr !== main.pr || evidence.mergeSha !== main.mergeSha || evidence.mergeBaseSha !== main.mergeSha) return false;
-  return evidence.runs.length > 0 && evidence.runs.every((run) => run.headSha === evidence.greenSha && PASSING.has(run.conclusion));
+  return evidence.runs.length > 0 && evidence.runs.every((run) => run.headSha === evidence.greenSha && isPassingConclusion(run.conclusion));
 }
 
 /** The abandon a gate's schema accepts: one that pins `headSha` gets that head, as its owner answer would. */

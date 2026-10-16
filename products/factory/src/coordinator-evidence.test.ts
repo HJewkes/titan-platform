@@ -104,6 +104,12 @@ describe("coordinatorEvidencePolicy over main-red and PR gates", () => {
     expect(admits({ ...mainRed, schema: undefined }, ack, green)).toBe(false);
   });
 
+  it("reads main green on success, skipped and neutral runs, and red on cancelled, stale, failure or an unknown conclusion", () => {
+    const admitsConclusion = (conclusion: string) => admits(mainRed, ack, { ...green, runs: [{ ...green.runs[0], conclusion }] });
+    expect(["success", "skipped", "neutral"].map(admitsConclusion)).toEqual([true, true, true]);
+    expect(["cancelled", "stale", "failure", "bogus"].map(admitsConclusion)).toEqual([false, false, false, false]);
+  });
+
   it("admits an abandon of a merged PR's red-CI gate only with the head its schema pins, never one still open", () => {
     const failing = [{ name: "validate", url: "https://example.test/job/1" }] as never;
     const { schema, brief } = ciFailedDecision({ repo: "o/r", pr: 1, headSha: HEAD, failing });
