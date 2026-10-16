@@ -7,7 +7,7 @@ import { ParseError, refusingAs, SplitParseError } from "./parse-error.js";
 import type { LexState, Token } from "./tokens.js";
 
 /** Where substitutions are lexed: `line` is null in a heredoc body or a quoted span, which has no line to leave a heredoc open on. */
-export interface Reading {
+interface Reading {
   src: string;
   trials: ArithTrials;
   line: LexState | null;
