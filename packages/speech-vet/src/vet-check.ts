@@ -28,7 +28,7 @@ import { classifyFaults, type DefectFinding, type Fault } from "./vet-decide.js"
 export const ESCALATE_UNDECLARED_HETERONYMS = false;
 
 /** The audio of one take; a speech-tts `Synthesis` fits. */
-export interface CheckedTake {
+interface CheckedTake {
   audio: Audio;
 }
 
@@ -52,7 +52,7 @@ export interface CheckContext {
   escalateUndeclared?: boolean;
 }
 
-export interface TakeCheck {
+interface TakeCheck {
   transcript: Transcript;
   textDiff: WordDiff;
   /** Confirmed when `confirmStt` is set; substitutions and omissions carry their word verdicts. */
