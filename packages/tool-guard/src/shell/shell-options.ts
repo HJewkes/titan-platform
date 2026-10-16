@@ -1,7 +1,20 @@
-import type { WordToken } from "./lexer.js";
+import type { RedirectToken, WordToken } from "./lexer.js";
 
 /** Long options that take the next word. */
 const BASH_LONG_VALUES = new Set(["--rcfile", "--init-file"]);
+const STDIN_PATH_RE = /\/(?:dev\/stdin|dev\/fd\/0|proc\/(?:self|thread-self|\d+)\/fd\/0)$/;
+const STDIN_OPS = new Set(["<", "<>", "<<", "<<-", "<<<", "<&"]);
+
+/** What a shell's stdin holds: heredoc, here-string or `< <(...)` text, a file `<` or `<>` opens, the pipe, a descriptor, or none. */
+export type StdinSource = { kind: "text"; text: string } | { kind: "file"; target: WordToken | null } | { kind: "pipe" } | { kind: "fd" } | { kind: "none" };
+
+interface ShellStdin {
+  /** Whether the shell runs its stdin: as `readsStdin` says, or through a script operand that names stdin or may. */
+  runs: boolean;
+  /** The script file the shell runs that is not stdin; null with `-c`, under `-s`, or when the operand names stdin. */
+  scriptFile: WordToken | null;
+  source: StdinSource;
+}
 
 interface ShellOperands {
   hasC: boolean;
@@ -111,4 +124,37 @@ function setsShLetters(name: string, on: boolean): boolean | null {
   const plain = name.toLowerCase().replaceAll(/[-_]/g, "");
   if (plain === "shoptionletters") return on;
   return plain === "noshoptionletters" ? !on : null;
+}
+
+/**
+ * The one answer to what a shell runs from stdin, for every consumer. A script operand only known at run time may
+ * name stdin, so its stdin runs too. The last redirect of descriptor 0 wins, else the pipe.
+ */
+export function shellStdin({ hasC, positional, readsStdin }: ShellOperands, redirects: RedirectToken[], piped: boolean): ShellStdin {
+  const file = hasC ? null : positional;
+  const namesStdin = file !== null && isStdinPath(file.value);
+  const mayNameStdin = file !== null && (file.dynamic || file.computed);
+  return { runs: readsStdin || namesStdin || mayNameStdin, scriptFile: namesStdin ? null : file, source: stdinSource(redirects, piped) };
+}
+
+function stdinSource(redirects: RedirectToken[], piped: boolean): StdinSource {
+  const last = [...redirects].reverse().find((r) => (r.fd === null || r.fd === "0") && STDIN_OPS.has(r.op));
+  if (!last) return piped ? { kind: "pipe" } : { kind: "none" };
+  if (last.body !== null) return { kind: "text", text: last.body };
+  if (last.op === "<&") return { kind: "fd" };
+  if (last.op === "<" || last.op === "<>") return { kind: "file", target: last.target };
+  return last.target === null ? { kind: "none" } : { kind: "text", text: last.target.value };
+}
+
+/**
+ * Whether a script path names stdin however it is spelled (`//dev/stdin`, `/dev/./stdin`, `/dev/../dev/stdin`). The
+ * path is matched on its tail: enough `..` reach `/` from any directory, so a relative path may name it too.
+ */
+function isStdinPath(path: string): boolean {
+  const parts: string[] = [];
+  for (const part of path.split("/")) {
+    if (part === "..") parts.pop();
+    else if (part !== "" && part !== ".") parts.push(part);
+  }
+  return STDIN_PATH_RE.test(`/${parts.join("/")}`);
 }

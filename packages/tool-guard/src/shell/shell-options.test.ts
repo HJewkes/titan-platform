@@ -17,7 +17,7 @@ const context: ClassifyContext = {
   home: "/home/you",
   readLink: () => null,
   readHead: (dir) => (dir === REPO ? "main" : null),
-  readScript: (file) => (file === `${REPO}/x.sh` ? `${PUSH}\n` : null),
+  readScript: (file) => (file === `${REPO}/x.sh` ? `${PUSH}\n` : file === `${REPO}/ok.sh` ? "echo hi\n" : null),
 };
 
 async function verdict(command: string): Promise<"deny" | "pass"> {
@@ -91,7 +91,20 @@ const PUSH_ROUTES = [
   ["/dev/../dev/stdin as the script file", `bash /dev/../dev/stdin <<< ${TEXT}`],
   ["/proc/thread-self/fd/0 as the script file", `bash /proc/thread-self/fd/0 <<< ${TEXT}`],
   ["a pipe into //dev/stdin as the script file", `echo ${TEXT} | bash //dev/stdin`],
+  ["/dev/stdin naming a < file", "bash /dev/stdin < ./x.sh"],
+  ["/dev/stdin after -- naming a < file", "bash -- /dev/stdin < ./x.sh"],
+  ["/dev/stdin after - naming a < file", "bash - /dev/stdin < ./x.sh"],
+  ["zsh's /dev/fd/0 naming a < file", "zsh /dev/fd/0 < ./x.sh"],
+  ["sh's /proc/self/fd/0 naming a < file", "sh /proc/self/fd/0 < ./x.sh"],
+  ["dash's /dev/stdin naming a < file", "dash /dev/stdin < ./x.sh"],
+  ["a <> file on stdin", "bash <> ./x.sh"],
+  ["a < file replacing an earlier here-string", "bash /dev/stdin <<< 'echo hi' < ./x.sh"],
+  ["a run-time script operand, which may name stdin", `bash $X <<< ${TEXT}`],
+  ["a run-time script operand before a < file", "bash $X < ./x.sh"],
 ] as const;
+
+/** Each reads a harmless script or text: the last stdin redirect replaces earlier ones and the pipe. */
+const QUIET_STDIN = ["bash /dev/stdin < ./x.sh <<< 'echo hi'", `echo ${TEXT} | bash < ./ok.sh`];
 
 describe("a shell's options are read as the shell reads them (TP-3221)", () => {
   it.each(PUSH_ROUTES)("denies a push behind %s", async (_form, line) => {
@@ -107,6 +120,13 @@ describe("a shell's options are read as the shell reads them (TP-3221)", () => {
     "bash +c 'echo hi'",
     "zsh -c0 'echo hi'",
     "dash -sc 'echo hi' <<< 'echo hi'",
+    "bash /dev/stdin < ./ok.sh",
+    "bash -- /dev/stdin < ./ok.sh",
+    "bash - /dev/stdin < ./ok.sh",
+    "zsh /dev/fd/0 < ./ok.sh",
+    "sh /proc/self/fd/0 < ./ok.sh",
+    "dash /dev/stdin < ./ok.sh",
+    ...QUIET_STDIN,
   ])("allows %s", async (line) => {
     expect(await verdict(line)).toBe("pass");
   });
@@ -142,6 +162,7 @@ function runs(line: string): boolean {
   try {
     fs.writeFileSync(path.join(dir, "s.sh"), `${line}\n`);
     fs.writeFileSync(path.join(dir, "x.sh"), "touch mk\n");
+    fs.writeFileSync(path.join(dir, "ok.sh"), "true\n");
     spawnSync("bash", ["s.sh"], { cwd: dir, env: { ...process.env, ZDOTDIR: dir }, stdio: ["ignore", "ignore", "ignore"] });
     return fs.existsSync(path.join(dir, "mk"));
   } finally {
@@ -161,6 +182,10 @@ describe.skipIf(!SHELLS_HERE.has("bash"))("each shell runs the text behind its o
 
   it.skipIf(!SHELLS_HERE.has("zsh"))("runs the text behind an EQUALS zsh's --emulate, under zsh", () => {
     expect(runs("zsh -f -c \"=zsh --emulate ksh -c 'touch mk'\"")).toBe(true);
+  });
+
+  it.each(QUIET_STDIN.map((line) => line.replaceAll(TEXT, "'touch mk'")))("runs no push behind %s", (line) => {
+    expect(runs(line)).toBe(false);
   });
 
   it("runs nothing behind --emulate=sh, so its denial only over-reads", () => {
