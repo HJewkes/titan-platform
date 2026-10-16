@@ -1516,11 +1516,10 @@ describe("reviewPhase", () => {
         const dispatch = fakeDispatch();
 
         const { verdicts, stepIds, resultOf } = await review({ dispatch, policy: AUTO, hold: HOLD, holdMember });
-        const correctness = (resultOf(`sh-review-intent:${H1}`) as { plan: { members: { profile: string }[] } }).plan.members[0]?.profile;
 
         expect(stepIds).toEqual([...panelSteps, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
         expect(dispatch.spawns.map(({ name, facts }) => [name, facts?.profile])).toEqual([["rv-octo-demo-1", undefined], [adversary, "fable-reviewer"]]);
-        expect(correctness).toBe("bd-reviewer");
+        expect(resultOf(`sh-review-intent:${H1}`)).toMatchObject({ plan: { members: [{ shape: "correctness", profile: "bd-reviewer" }, { shape: "adversary", profile: "fable-reviewer" }] } });
         expect(dispatch.spawns[1]?.brief).toContain(`HOLD-CONTEXT\nHold reason: ${HOLD}\nEND-HOLD-CONTEXT`);
         expect(dispatch.spawns[0]?.brief).not.toContain("HOLD-CONTEXT");
         expect(verdicts).toEqual([expect.objectContaining({ kind: "MERGE", panel: expect.objectContaining({ members: [expect.objectContaining({ shape: "correctness" }), expect.objectContaining({ shape: "adversary" })] }) })]);
