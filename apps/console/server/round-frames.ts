@@ -55,7 +55,6 @@ export const FramesIndexSchema = z.object({
       base: indexedFile.optional(),
       after: indexedFile.optional(),
       diff: indexedFile.optional(),
-      after: indexedFile.optional(),
     }),
   ),
 });
