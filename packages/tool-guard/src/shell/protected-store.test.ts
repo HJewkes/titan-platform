@@ -92,7 +92,6 @@ describe("a command that stores into zsh's options parameter", () => {
     ": {options}<>f",
     ": {options}>&2",
     "exec {options}<<<x",
-    ": {$n}>f",
   ])("reads %s as a write", (line) => {
     expect(protectedWrite(line)).toBeTruthy();
   });
@@ -117,6 +116,13 @@ describe("a command that stores into zsh's options parameter", () => {
     "exec {fd}>f",
     "echo {options}",
     "compadd -o match a",
+    ": {$n}>f",
+    'jq -n "{a: $x}" > out.json',
+    'curl -d "{\\"k\\":\\"$v\\"}" url > out',
+    ': {options}"" >f',
+    ": {\\options} >f",
+    ": \\{options} >f",
+    ": '{options}' >f",
   ])("reads %s as no write", (line) => {
     expect(protectedWrite(line)).toBeNull();
   });

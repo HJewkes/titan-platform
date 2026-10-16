@@ -284,15 +284,15 @@ const FD_VARIABLE_RE = /^\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
 
 /**
  * `exec {PS4}>f` stores a descriptor number into PS4. The lexer keeps `{PS4}` as a word with no sign of the
- * redirection it belongs to, so any redirection on the command makes a `{name}` word a possible store, and so does
- * a `{...}` word an expansion computes.
+ * redirection it belongs to, so any redirection on the command makes an unquoted literal `{name}` word a possible
+ * store. A quoted, escaped or computed `{...}` is text to the shell and stores nothing.
  */
 function fdVariableHooked(words: WordToken[], redirects: RedirectToken[], names: ReadonlySet<string>): string | null {
   if (redirects.length === 0) return null;
   for (const word of words) {
+    if (word.quoted || word.dynamic) continue;
     const named = FD_VARIABLE_RE.exec(word.value)?.[1];
     if (named !== undefined && names.has(named)) return named;
-    if (named === undefined && word.dynamic && /^\{[^{}]*[$`][^{}]*\}$/.test(word.value)) return word.value;
   }
   return null;
 }
