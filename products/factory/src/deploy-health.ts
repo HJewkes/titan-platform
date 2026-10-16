@@ -188,7 +188,8 @@ export function withGitBehind(health: DeployHealth, git: GitBehind, now: number)
   const merges = aged.length;
   const minutes = merges === 0 ? 0 : Math.max(0, Math.floor((now - Math.min(...aged)) / 60_000));
   const causes = [...health.causes, ...gitCauses(merges, minutes, health.runningSha)];
-  return { ...health, behind: Math.max(health.behind, merges), behindMinutes: Math.max(health.behindMinutes, minutes), originLag: { merges, minutes, asked: health.behind }, alarm: causes.length > 0, causes };
+  const originLag = { merges, minutes, asked: health.behind };
+  return { ...health, behind: Math.max(health.behind, merges), behindMinutes: Math.max(health.behindMinutes, minutes), originLag, alarm: causes.length > 0, causes };
 }
 
 function gitCauses(merges: number, minutes: number, runningSha: string): string[] {
@@ -225,7 +226,8 @@ export function deploySummary(health: DeployHealth): string {
   const state = health.alarm ? `ALARM: ${health.causes.join("; ")}` : "ok";
   const unverified = health.unverified === undefined ? "" : `; ${health.unverified}`;
   const lag = !health.originLag?.merges ? "" : `, origin/main ${health.originLag.merges} commit(s) ahead (${health.originLag.minutes} min)`;
-  return `deploy: running ${health.runningSha}, ${health.originLag?.asked ?? health.behind} asked deploy(s) not landed${lag}, ${health.consecutiveRefusals} refusal(s) in a row; ${state}${unverified}\n`;
+  const asked = health.originLag?.asked ?? health.behind;
+  return `deploy: running ${health.runningSha}, ${asked} asked deploy(s) not landed${lag}, ${health.consecutiveRefusals} refusal(s) in a row; ${state}${unverified}\n`;
 }
 
 /** The deploy block from a `/health` answer; null when serve answered none or keeps none. */
