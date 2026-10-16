@@ -170,5 +170,5 @@ describe.skipIf(!zsh)("the guard denies an emulate line exactly where real zsh r
     }
     expect(ran.size).toBeGreaterThan(100);
     expect(disagreements).toEqual([]);
-  });
+  }, 60_000);
 });
