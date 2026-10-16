@@ -17,7 +17,7 @@ import type { SeatHeld, ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } fro
 import { ownerBriefAt, verdictIsMergeAt } from "../gate-brief.js";
 import { shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 import { shepherdPrParams, type ShepherdPrParams } from "./pr-params.js";
-import { g10ReleaseRoutes, releaseG10Hold } from "./g10-release.js";
+import { g10ReleaseRoutes, releaseBeforeLeaving, releaseG10Hold } from "./g10-release.js";
 import { g10ReholdRoutes, reholdMovedHead } from "./g10-rehold.js";
 import { narrowToRegistration, registrationPolicy } from "./registration-policy.js";
 import { type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
@@ -166,7 +166,7 @@ function isConflict(run: ShepherdRun, outcome: LandOutcome): boolean {
 /**
  * A woken agent has already awaited its new head, so the caller goes straight to the next land round.
  * Every wake kind spends one repair budget per run, recorded as a step so a replay and a new head keep the count;
- * a wake past the budget asks the owner instead and leaves the round. A held run spends none and wakes nobody.
+ * a wake past the budget asks the owner instead and leaves the round. A held run spends none, unless `heldRepair` lets it.
  */
 async function woken(run: ShepherdRun, kind: WakeRequest["kind"], headSha: string, payload: unknown): Promise<boolean> {
   run.trail.woken = kind;
@@ -265,6 +265,7 @@ async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
       return false;
     case "wake-fixer":
       if (routed.outcome === "FIX_FIRST") return sendBack(run, headSha, routed.verdict);
+      await releaseBeforeLeaving(run);
       throw new LeaveLand(await onConflict(run, headSha));
     case "end-run":
       throw new LeaveLand(endedOutcome(routed));
@@ -355,9 +356,9 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...postMergeRoutes(deps, wiring.mainRed),
     observeRoute(deps.port, deps.now, deps.snapshot),
     conflictCheckRoute(deps),
-    seatNoticeRoute(deps.now, deps.exitNotice),
+    seatNoticeRoute(deps.now, deps.exitNotice, deps.sleep),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
-    ...g10ReleaseRoutes(deps),
+    ...g10ReleaseRoutes(deps, wiring.review?.twoMergeRelease),
     ...g10ReholdRoutes(deps, wiring.review?.carry),
     ...heldRepairRoutes(deps),
     headOriginRoute(deps),

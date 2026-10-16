@@ -85,44 +85,48 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/adversary-guard.test.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/adversary-guard.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/advisory-file.test.ts",
    "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "reason": "a repo policy read; held, policy and observe are re-keyed as observed (v9.1 sec. 3.1), with no deletion"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/advisory-file.ts",
    "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "reason": "a repo policy read; held, policy and observe are re-keyed as observed (v9.1 sec. 3.1), with no deletion"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/advisory.test.ts",
    "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "reason": "a repo policy read; held, policy and observe are re-keyed as observed (v9.1 sec. 3.1), with no deletion"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/advisory.ts",
    "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "reason": "a repo policy read; held, policy and observe are re-keyed as observed (v9.1 sec. 3.1), with no deletion"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/agents.ts",
    "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "reason": "the agent-chat port and roster read across the process boundary; v9.1 sec. 3.1 re-keys roster reads and does not delete them"
   },
   {
    "repo": "titan-platform",
@@ -158,13 +162,13 @@
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/await-pr.test.ts",
    "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/await-pr.ts",
    "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
   },
   {
    "repo": "titan-platform",
@@ -181,8 +185,10 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/behind.ts",
-   "fate": "kept",
-   "reason": "unclear: land-loop or approve-merge code; v9.1 deletes the land loop at D-M3-19 and approve-merge at D-M3-22/M7, but neither list names this file"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
@@ -200,13 +206,13 @@
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/busy-serve.test.ts",
    "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/carried-escalation.test.ts",
    "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
   },
   {
    "repo": "titan-platform",
@@ -239,14 +245,18 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/ci-norun.test.ts",
-   "fate": "kept",
-   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/ci-norun.ts",
-   "fate": "kept",
-   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
@@ -315,7 +325,7 @@
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/conflict-escalation.test.ts",
    "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
   },
   {
    "repo": "titan-platform",
@@ -364,14 +374,18 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/diverged-sweep.test.ts",
-   "fate": "kept",
-   "reason": "unclear: holds RESTART_WRITE_STEPS (deleted D-M3-19) among other restart logic; which of the file survives?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/diverged-sweep.ts",
-   "fate": "kept",
-   "reason": "unclear: holds RESTART_WRITE_STEPS (deleted D-M3-19) among other restart logic; which of the file survives?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
@@ -389,7 +403,7 @@
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/escalation-docs.test.ts",
    "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
   },
   {
    "repo": "titan-platform",
@@ -480,20 +494,29 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/fix-first-trail-run.test.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "survives",
+   "task": "D-M7-04",
+   "milestone": "M7",
+   "filing": "TP-3163",
+   "reason": "the Q19 planner spawn replaces fix-first-runaway and the trail is its input (v9.1 sec. 3.3)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/fix-first-trail.test.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "survives",
+   "task": "D-M7-04",
+   "milestone": "M7",
+   "filing": "TP-3163",
+   "reason": "the Q19 planner spawn replaces fix-first-runaway and the trail is its input (v9.1 sec. 3.3)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/fix-first-trail.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "survives",
+   "task": "D-M7-04",
+   "milestone": "M7",
+   "filing": "TP-3163",
+   "reason": "the Q19 planner spawn replaces fix-first-runaway and the trail is its input (v9.1 sec. 3.3)"
   },
   {
    "repo": "titan-platform",
@@ -532,50 +555,56 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/fixer-retire.test.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "survives",
+   "task": "D-M3-14",
+   "milestone": "M3",
+   "filing": "TP-3136",
+   "reason": "sh-main-ci, freeze and sh-spawn-fixer are kept (v9.1 sec. 3.1); same family as freeze.ts"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/fixer-retire.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "survives",
+   "task": "D-M3-14",
+   "milestone": "M3",
+   "filing": "TP-3136",
+   "reason": "sh-main-ci, freeze and sh-spawn-fixer are kept (v9.1 sec. 3.1); same family as freeze.ts"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/fixtures/5e47c0de-0000-4000-8000-000000000001.jsonl",
    "fate": "kept",
-   "reason": "unclear: test fixture; fate follows the tests that read it"
+   "reason": "unclear: test fixture read only by reviewer-reader.test.ts, which is a Q1 (review) row; fate joins Q1"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/fixtures/owner-section-ac311.json",
    "fate": "kept",
-   "reason": "unclear: test fixture; fate follows the tests that read it"
+   "reason": "observability read model (A14); the fixture belongs to owner-section.test.ts"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/fixtures/owner-section-ac311.md",
    "fate": "kept",
-   "reason": "unclear: test fixture; fate follows the tests that read it"
+   "reason": "observability read model (A14); the fixture belongs to owner-section.test.ts"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/fixtures/round-merge/pending-gates.json",
    "fate": "kept",
-   "reason": "unclear: test fixture; fate follows the tests that read it"
+   "reason": "the owner's round console; gate batches, console and packet (TP-2660) are Kept (v9.1 sec. 3.3)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/fixtures/round-merge/round.json",
    "fate": "kept",
-   "reason": "unclear: test fixture; fate follows the tests that read it"
+   "reason": "the owner's round console; gate batches, console and packet (TP-2660) are Kept (v9.1 sec. 3.3)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/fixtures/round-merge/runs.json",
    "fate": "kept",
-   "reason": "unclear: test fixture; fate follows the tests that read it"
+   "reason": "the owner's round console; gate batches, console and packet (TP-2660) are Kept (v9.1 sec. 3.3)"
   },
   {
    "repo": "titan-platform",
@@ -705,14 +734,18 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/gate-route.test.ts",
-   "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "fate": "delete",
+   "task": "D-M7-06",
+   "milestone": "M7",
+   "filing": "TP-3165"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/gate-route.ts",
-   "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "fate": "delete",
+   "task": "D-M7-06",
+   "milestone": "M7",
+   "filing": "TP-3165"
   },
   {
    "repo": "titan-platform",
@@ -729,20 +762,28 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/gates.test.ts",
-   "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "fate": "survives",
+   "task": "D-M7-01",
+   "milestone": "M7",
+   "filing": "TP-3160",
+   "reason": "settle-then-ask, cancel-before-delivery, one owner class (D-M7-01; v9.1 sec. 3.3)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/gates.ts",
-   "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "fate": "survives",
+   "task": "D-M7-01",
+   "milestone": "M7",
+   "filing": "TP-3160",
+   "reason": "settle-then-ask, cancel-before-delivery, one owner class (D-M7-01; v9.1 sec. 3.3)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/generated-paths.json",
-   "fate": "kept",
-   "reason": "unclear: generated-paths data file; who reads it after the old path goes?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
@@ -884,6 +925,12 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/held-repair-g10.test.ts",
+   "fate": "kept",
+   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/held-repair.test.ts",
    "fate": "kept",
    "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
@@ -897,14 +944,18 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/held-wake-view.test.ts",
-   "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/held-wake.ts",
-   "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
   },
   {
    "repo": "titan-platform",
@@ -955,20 +1006,24 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/last-read-head.ts",
-   "fate": "kept",
-   "reason": "unclear: land-loop or approve-merge code; v9.1 deletes the land loop at D-M3-19 and approve-merge at D-M3-22/M7, but neither list names this file"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/leave-land.ts",
-   "fate": "kept",
-   "reason": "unclear: land-loop or approve-merge code; v9.1 deletes the land loop at D-M3-19 and approve-merge at D-M3-22/M7, but neither list names this file"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/ledger-replay.test.ts",
    "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
   },
   {
    "repo": "titan-platform",
@@ -1073,8 +1128,10 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/merge-settle.ts",
-   "fate": "kept",
-   "reason": "unclear: land-loop or approve-merge code; v9.1 deletes the land loop at D-M3-19 and approve-merge at D-M3-22/M7, but neither list names this file"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
@@ -1113,8 +1170,10 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/merge-up-release.ts",
-   "fate": "kept",
-   "reason": "unclear: land-loop or approve-merge code; v9.1 deletes the land loop at D-M3-19 and approve-merge at D-M3-22/M7, but neither list names this file"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
@@ -1156,13 +1215,13 @@
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/none-reason.test.ts",
    "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "reason": "observability read model (A14); the fixture belongs to owner-section.test.ts"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/none-reason.ts",
    "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "reason": "observability read model (A14); the fixture belongs to owner-section.test.ts"
   },
   {
    "repo": "titan-platform",
@@ -1180,13 +1239,13 @@
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/operator-hold.test.ts",
    "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "reason": "grants, hard stops, guards and classifier are Kept (v9.1 sec. 3.5, I5)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/operator-hold.ts",
    "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "reason": "grants, hard stops, guards and classifier are Kept (v9.1 sec. 3.5, I5)"
   },
   {
    "repo": "titan-platform",
@@ -1210,13 +1269,13 @@
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/override-stats.test.ts",
    "fate": "kept",
-   "reason": "unclear: land-loop or approve-merge code; v9.1 deletes the land loop at D-M3-19 and approve-merge at D-M3-22/M7, but neither list names this file"
+   "reason": "observability read model (A14); the fixture belongs to owner-section.test.ts"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/override-stats.ts",
    "fate": "kept",
-   "reason": "unclear: land-loop or approve-merge code; v9.1 deletes the land loop at D-M3-19 and approve-merge at D-M3-22/M7, but neither list names this file"
+   "reason": "observability read model (A14); the fixture belongs to owner-section.test.ts"
   },
   {
    "repo": "titan-platform",
@@ -1315,32 +1374,45 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/park-retry.ts",
-   "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/park-serve.test.ts",
-   "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "fate": "survives",
+   "task": "D-M4-01",
+   "milestone": "M4",
+   "filing": "TP-3148",
+   "reason": "sh-park moves at first green (v9.1 sec. 3.1); D-M4-01 covers park and worktree re-claim"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/park-settled.ts",
-   "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/park.test.ts",
-   "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "fate": "survives",
+   "task": "D-M4-01",
+   "milestone": "M4",
+   "filing": "TP-3148",
+   "reason": "sh-park moves at first green (v9.1 sec. 3.1); D-M4-01 covers park and worktree re-claim"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/park.ts",
-   "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "fate": "survives",
+   "task": "D-M4-01",
+   "milestone": "M4",
+   "filing": "TP-3148",
+   "reason": "sh-park moves at first green (v9.1 sec. 3.1); D-M4-01 covers park and worktree re-claim"
   },
   {
    "repo": "titan-platform",
@@ -1382,7 +1454,7 @@
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/post-merge-superseded.test.ts",
    "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
   },
   {
    "repo": "titan-platform",
@@ -1424,13 +1496,13 @@
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/presence.test.ts",
    "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "reason": "the agent-chat port and roster read across the process boundary; v9.1 sec. 3.1 re-keys roster reads and does not delete them"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/presence.ts",
    "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "reason": "the agent-chat port and roster read across the process boundary; v9.1 sec. 3.1 re-keys roster reads and does not delete them"
   },
   {
    "repo": "titan-platform",
@@ -1459,20 +1531,24 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/push-signal.test.ts",
-   "fate": "kept",
-   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/push-signal.ts",
-   "fate": "kept",
-   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/recorded-route.ts",
    "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
   },
   {
    "repo": "titan-platform",
@@ -1552,19 +1628,19 @@
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/release-follow-workflow.test.ts",
    "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "reason": "the Version Packages publish path, not agent release; D-M3-03 makes version-packages a merge-log writer and D-M8-07 keeps it beside the lander"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/release-follow.test.ts",
    "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "reason": "the Version Packages publish path, not agent release; D-M3-03 makes version-packages a merge-log writer and D-M8-07 keeps it beside the lander"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/release-follow.ts",
    "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "reason": "the Version Packages publish path, not agent release; D-M3-03 makes version-packages a merge-log writer and D-M8-07 keeps it beside the lander"
   },
   {
    "repo": "titan-platform",
@@ -1586,13 +1662,13 @@
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/release.test.ts",
    "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "reason": "the Version Packages publish path, not agent release; D-M3-03 makes version-packages a merge-log writer and D-M8-07 keeps it beside the lander"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/release.ts",
    "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "reason": "the Version Packages publish path, not agent release; D-M3-03 makes version-packages a merge-log writer and D-M8-07 keeps it beside the lander"
   },
   {
    "repo": "titan-platform",
@@ -1631,26 +1707,28 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/restart-diverged.test.ts",
-   "fate": "kept",
-   "reason": "unclear: holds RESTART_WRITE_STEPS (deleted D-M3-19) among other restart logic; which of the file survives?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/restart-replay.test.ts",
    "fate": "kept",
-   "reason": "unclear: holds RESTART_WRITE_STEPS (deleted D-M3-19) among other restart logic; which of the file survives?"
+   "reason": "register-restart stops and replay classification (RESTART_WRITE_STEPS lives in restart-contract.test.ts, outside the root): engine and registration core"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/restart.ts",
    "fate": "kept",
-   "reason": "unclear: holds RESTART_WRITE_STEPS (deleted D-M3-19) among other restart logic; which of the file survives?"
+   "reason": "register-restart stops and replay classification (RESTART_WRITE_STEPS lives in restart-contract.test.ts, outside the root): engine and registration core"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/resumed-waits.test.ts",
    "fate": "kept",
-   "reason": "unclear: holds RESTART_WRITE_STEPS (deleted D-M3-19) among other restart logic; which of the file survives?"
+   "reason": "register-restart stops and replay classification (RESTART_WRITE_STEPS lives in restart-contract.test.ts, outside the root): engine and registration core"
   },
   {
    "repo": "titan-platform",
@@ -1932,13 +2010,13 @@
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/round-merge.test.ts",
    "fate": "kept",
-   "reason": "unclear: land-loop or approve-merge code; v9.1 deletes the land loop at D-M3-19 and approve-merge at D-M3-22/M7, but neither list names this file"
+   "reason": "the owner's round console; gate batches, console and packet (TP-2660) are Kept (v9.1 sec. 3.3)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/round-merge.ts",
    "fate": "kept",
-   "reason": "unclear: land-loop or approve-merge code; v9.1 deletes the land loop at D-M3-19 and approve-merge at D-M3-22/M7, but neither list names this file"
+   "reason": "the owner's round console; gate batches, console and packet (TP-2660) are Kept (v9.1 sec. 3.3)"
   },
   {
    "repo": "titan-platform",
@@ -2027,20 +2105,22 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/seat-wait.test.ts",
-   "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "fate": "delete",
+   "task": "D-M7-06",
+   "milestone": "M7",
+   "filing": "TP-3165"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/seats.test.ts",
    "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "reason": "grants, hard stops, guards and classifier are Kept (v9.1 sec. 3.5, I5)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/seats.ts",
    "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "reason": "grants, hard stops, guards and classifier are Kept (v9.1 sec. 3.5, I5)"
   },
   {
    "repo": "titan-platform",
@@ -2076,7 +2156,7 @@
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/skill-brief.test.ts",
    "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
   },
   {
    "repo": "titan-platform",
@@ -2094,7 +2174,7 @@
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/slice-row.test.ts",
    "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "reason": "engine, route-table, view or post-merge subject, all kept by slice a"
   },
   {
    "repo": "titan-platform",
@@ -2141,32 +2221,47 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/spawn-gate.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates 1-26 are reduced to pools (v9.1 sec. 3.4); D-M8-03 one limits file"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/spawn-gate.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates 1-26 are reduced to pools (v9.1 sec. 3.4); D-M8-03 one limits file"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/spawn-profile.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates 1-26 are reduced to pools (v9.1 sec. 3.4); D-M8-03 one limits file"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/stack-cascade.test.ts",
-   "fate": "kept",
-   "reason": "unclear: stacking; D-M6-05 deletes only the lock-driven parts; which parts of this file are lock-driven?"
+   "fate": "survives",
+   "task": "D-M3-22",
+   "milestone": "M3",
+   "filing": "TP-3126",
+   "reason": "base:default with the stacked-child rule (D-M3-22); stacking is plan-declared (v9.1 sec. 3.4)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/stack-cascade.ts",
-   "fate": "kept",
-   "reason": "unclear: stacking; D-M6-05 deletes only the lock-driven parts; which parts of this file are lock-driven?"
+   "fate": "survives",
+   "task": "D-M3-22",
+   "milestone": "M3",
+   "filing": "TP-3126",
+   "reason": "base:default with the stacked-child rule (D-M3-22); stacking is plan-declared (v9.1 sec. 3.4)"
   },
   {
    "repo": "titan-platform",
@@ -2183,14 +2278,20 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/stack-restack.ts",
-   "fate": "kept",
-   "reason": "unclear: stacking; D-M6-05 deletes only the lock-driven parts; which parts of this file are lock-driven?"
+   "fate": "survives",
+   "task": "D-M3-22",
+   "milestone": "M3",
+   "filing": "TP-3126",
+   "reason": "base:default with the stacked-child rule (D-M3-22); stacking is plan-declared (v9.1 sec. 3.4)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/stack-squash-proof.test.ts",
-   "fate": "kept",
-   "reason": "unclear: stacking; D-M6-05 deletes only the lock-driven parts; which parts of this file are lock-driven?"
+   "fate": "survives",
+   "task": "D-M3-22",
+   "milestone": "M3",
+   "filing": "TP-3126",
+   "reason": "base:default with the stacked-child rule (D-M3-22); stacking is plan-declared (v9.1 sec. 3.4)"
   },
   {
    "repo": "titan-platform",
@@ -2213,20 +2314,27 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/stale-gates.ts",
-   "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "fate": "survives",
+   "task": "D-M7-01",
+   "milestone": "M7",
+   "filing": "TP-3160",
+   "reason": "settle-then-ask, cancel-before-delivery, one owner class (D-M7-01; v9.1 sec. 3.3)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/stale-merges.test.ts",
-   "fate": "kept",
-   "reason": "unclear: land-loop or approve-merge code; v9.1 deletes the land loop at D-M3-19 and approve-merge at D-M3-22/M7, but neither list names this file"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/stale-merges.ts",
-   "fate": "kept",
-   "reason": "unclear: land-loop or approve-merge code; v9.1 deletes the land loop at D-M3-19 and approve-merge at D-M3-22/M7, but neither list names this file"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
@@ -2394,7 +2502,7 @@
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/timeouts.ts",
    "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "reason": "one shared GitHub-read constant; GitHub read utility code, kept with no deletion"
   },
   {
    "repo": "titan-platform",
@@ -2411,50 +2519,66 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/train-shadow-disjoint.ts",
-   "fate": "kept",
-   "reason": "unclear: measures the old merge train; deleted with the train (D-M3-19) or when candidates ship in shadow (D-M3-20)?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/train-shadow-held.test.ts",
-   "fate": "kept",
-   "reason": "unclear: measures the old merge train; deleted with the train (D-M3-19) or when candidates ship in shadow (D-M3-20)?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/train-shadow-held.ts",
-   "fate": "kept",
-   "reason": "unclear: measures the old merge train; deleted with the train (D-M3-19) or when candidates ship in shadow (D-M3-20)?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/train-shadow-peers.ts",
-   "fate": "kept",
-   "reason": "unclear: measures the old merge train; deleted with the train (D-M3-19) or when candidates ship in shadow (D-M3-20)?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/train-shadow-stats.test.ts",
-   "fate": "kept",
-   "reason": "unclear: measures the old merge train; deleted with the train (D-M3-19) or when candidates ship in shadow (D-M3-20)?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/train-shadow-stats.ts",
-   "fate": "kept",
-   "reason": "unclear: measures the old merge train; deleted with the train (D-M3-19) or when candidates ship in shadow (D-M3-20)?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/train-shadow.test.ts",
-   "fate": "kept",
-   "reason": "unclear: measures the old merge train; deleted with the train (D-M3-19) or when candidates ship in shadow (D-M3-20)?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/train-shadow.ts",
-   "fate": "kept",
-   "reason": "unclear: measures the old merge train; deleted with the train (D-M3-19) or when candidates ship in shadow (D-M3-20)?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
@@ -2545,14 +2669,18 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/waiting.test.ts",
-   "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "fate": "delete",
+   "task": "D-M7-06",
+   "milestone": "M7",
+   "filing": "TP-3165"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/waiting.ts",
-   "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "fate": "delete",
+   "task": "D-M7-06",
+   "milestone": "M7",
+   "filing": "TP-3165"
   },
   {
    "repo": "titan-platform",
@@ -2624,25 +2752,25 @@
    "repo": "agent-chat",
    "path": "scripts/seat/README.md",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "documents the kept scripts; goes with the last of them"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/ci-wait",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "retires when TP-1539 and TP-1587 land and the charter stops naming it (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/factory-config",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "CC-1148 deployment-config store; no retirement named (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/log",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "retired by charter sec. 10 (CC-1058); removal stays with CC-1021 / TP-1570 (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
@@ -2657,7 +2785,7 @@
    "repo": "agent-chat",
    "path": "scripts/seat/pace",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "retires when CC-742 lands and the charter reads agent-chat seats status (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
@@ -2672,37 +2800,37 @@
    "repo": "agent-chat",
    "path": "scripts/seat/queue",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "stays while seats keep a queue file (TP-1570); queue-turns is its CC-315 counter (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/queue-turns",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "stays while seats keep a queue file (TP-1570); queue-turns is its CC-315 counter (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/scorecard",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "no TS home; stays until TP-1537 or a new TP task ports its rows (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/task-note",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "retires when active-work task edit --append is lock-safe (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/test-ci-wait.sh",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "retires when TP-1539 and TP-1587 land and the charter stops naming it (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/test-log.sh",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "retired by charter sec. 10 (CC-1058); removal stays with CC-1021 / TP-1570 (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
@@ -2717,7 +2845,7 @@
    "repo": "agent-chat",
    "path": "scripts/seat/test-pace.sh",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "retires when CC-742 lands and the charter reads agent-chat seats status (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
@@ -2732,61 +2860,61 @@
    "repo": "agent-chat",
    "path": "scripts/seat/test-queue-turns.sh",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "stays while seats keep a queue file (TP-1570); queue-turns is its CC-315 counter (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/test-queue.sh",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "stays while seats keep a queue file (TP-1570); queue-turns is its CC-315 counter (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/test-scorecard.sh",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "no TS home; stays until TP-1537 or a new TP task ports its rows (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/test-task-note.sh",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "retires when active-work task edit --append is lock-safe (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/testdata/pace/agents/status-cache/sessions/s1.json",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "retires when CC-742 lands and the charter reads agent-chat seats status (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/testdata/pace/charter.md.in",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "retires when CC-742 lands and the charter reads agent-chat seats status (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/testdata/pace/claude/status-cache/sessions/s1.json",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "retires when CC-742 lands and the charter reads agent-chat seats status (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/testdata/pace/old/status-cache/sessions/s1.json",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "retires when CC-742 lands and the charter reads agent-chat seats status (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/testdata/pace/watchdog.json",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "retires when CC-742 lands and the charter reads agent-chat seats status (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/testdata/pace/workout/status-cache/sessions/s1.json",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "retires when CC-742 lands and the charter reads agent-chat seats status (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
@@ -2900,73 +3028,73 @@
    "repo": "agent-chat",
    "path": "scripts/seat/testdata/queue-turns/mixed/proj-a/s1.jsonl",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "stays while seats keep a queue file (TP-1570); queue-turns is its CC-315 counter (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/testdata/queue-turns/pair/proj-b/s2.jsonl",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "stays while seats keep a queue file (TP-1570); queue-turns is its CC-315 counter (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/testdata/queue-turns/tz/proj-c/s3.jsonl",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "stays while seats keep a queue file (TP-1570); queue-turns is its CC-315 counter (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/testdata/queue/alpha.md",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "stays while seats keep a queue file (TP-1570); queue-turns is its CC-315 counter (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/testdata/queue/prose.md",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "stays while seats keep a queue file (TP-1570); queue-turns is its CC-315 counter (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/testdata/scorecard/events.sql",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "no TS home; stays until TP-1537 or a new TP task ports its rows (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/testdata/scorecard/factory.sql",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "no TS home; stays until TP-1537 or a new TP task ports its rows (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/testdata/scorecard/logs-lowcov/seat-coord/dispatch.jsonl",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "no TS home; stays until TP-1537 or a new TP task ports its rows (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/testdata/scorecard/logs/loose/dispatch.jsonl",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "no TS home; stays until TP-1537 or a new TP task ports its rows (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/testdata/scorecard/logs/seat-coord/dispatch.jsonl",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "no TS home; stays until TP-1537 or a new TP task ports its rows (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/testdata/scorecard/tasks/proj/tasks/T-1.yml",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "no TS home; stays until TP-1537 or a new TP task ports its rows (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
    "path": "scripts/seat/testdata/scorecard/tasks/proj/tasks/T-2.yml",
    "fate": "kept",
-   "reason": "unclear: seat script (CC-746) that retires \"one by one behind factory land and Shepherd\"; the docs give no per-script task"
+   "reason": "no TS home; stays until TP-1537 or a new TP task ports its rows (scripts/seat/README.md)"
   },
   {
    "repo": "agent-chat",
@@ -2977,8 +3105,11 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/advance.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
@@ -2989,26 +3120,35 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/billed-pool.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/brief-approve.ts",
    "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "reason": "brief approval is kept (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/brief.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "the recipe still briefs agents and reads their return contract; the deleted tick briefer is planning-supply.ts"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/budget-gate.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
   },
   {
    "repo": "agent-chat",
@@ -3025,26 +3165,38 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/claim-phase.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/classify-task.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/collision.ts",
-   "fate": "kept",
-   "reason": "unclear: D-M0-04 deletes line 152 and D-M6-05 deletes the open-PR lock; which of the rest of the file survives?"
+   "fate": "delete",
+   "task": "D-M6-05",
+   "milestone": "M6",
+   "filing": "TP-3159",
+   "reason": "file-overlap refusals and the open-PR lock (v9.1 sec. 5.1 M6)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/critical-path.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
@@ -3056,79 +3208,100 @@
    "repo": "agent-chat",
    "path": "src/agents/burndown/daily-retire.ts",
    "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "reason": "a charter cleanup procedure; the M10 charter shrink has no D-task"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/decider.ts",
    "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "reason": "decider and factory-planner revision are kept (v9.1 sec. 3.5)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/dep-edges.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/dispatch-cost-source.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/dispatch-cost.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/dispatch-stats-source.ts",
    "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "reason": "observability and reports (A14)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/dispatch-stats.ts",
    "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "reason": "observability and reports (A14)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/egress-runner.ts",
    "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "reason": "grants, hard stops, guards and classifier are kept (v9.1 sec. 3.5, I5); stop-the-line is a hard stop"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/eligibility.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/exception.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M7-02",
+   "milestone": "M7",
+   "filing": "TP-3161",
+   "reason": "the triager (A13)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/exec.ts",
    "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "reason": "import shims; their headers name the tasks that remove them (CC-1197 C3, CC-1216)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/execute.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/exit-latency.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "measures or heals the tick's own slots and queue, so it goes with the tick"
   },
   {
    "repo": "agent-chat",
@@ -3146,13 +3319,16 @@
    "repo": "agent-chat",
    "path": "src/agents/burndown/flow-gate.ts",
    "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "reason": "grants, hard stops, guards and classifier are kept (v9.1 sec. 3.5, I5); stop-the-line is a hard stop"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/gate-reading.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "refusal classes are replaced by an open claim with its rank and skip reason (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
@@ -3163,8 +3339,11 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/human-steps.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
@@ -3175,8 +3354,11 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/ladder.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M7-02",
+   "milestone": "M7",
+   "filing": "TP-3161",
+   "reason": "the triager (A13)"
   },
   {
    "repo": "agent-chat",
@@ -3208,25 +3390,25 @@
    "repo": "agent-chat",
    "path": "src/agents/burndown/liveness.ts",
    "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "reason": "observability and reports (A14)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/milestone-report.ts",
    "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "reason": "observability and reports (A14)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/milestone-source.ts",
    "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "reason": "observability and reports (A14)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/milestones.ts",
    "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "reason": "observability and reports (A14)"
   },
   {
    "repo": "agent-chat",
@@ -3237,14 +3419,20 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/no-dispatch.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "per-tick seat notices; eliminated with the tick (v9.1 sec. 3.5)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/observe.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
@@ -3255,62 +3443,89 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/off-plan.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/ops.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/orphan-queue.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "measures or heals the tick's own slots and queue, so it goes with the tick"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/overlap-exempt.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M6-05",
+   "milestone": "M6",
+   "filing": "TP-3159",
+   "reason": "file-overlap refusals and the open-PR lock (v9.1 sec. 5.1 M6)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/owed-holds.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick register-then-hold debt; tick re-registration is eliminated (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/owner-queue-spool.ts",
    "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "reason": "the titan console's deposit spool; the console is kept (v9.1 sec. 3.3)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/owns-adjudicate.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M6-03",
+   "milestone": "M6",
+   "filing": "TP-3156",
+   "reason": "contract-path claims (A5 long-scope) replace owns as the path contract"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/owns-fence.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M6-03",
+   "milestone": "M6",
+   "filing": "TP-3156",
+   "reason": "contract-path claims (A5 long-scope) replace owns as the path contract"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/park-sweep.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "measures or heals the tick's own slots and queue, so it goes with the tick"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/plan-class.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
@@ -3321,8 +3536,11 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/plan.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
@@ -3358,13 +3576,13 @@
    "repo": "agent-chat",
    "path": "src/agents/burndown/pr-facts.ts",
    "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "reason": "GitHub read utilities; D-M1a-03 builds the pool beside them"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/pr-files-git.ts",
    "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "reason": "GitHub read utilities; D-M1a-03 builds the pool beside them"
   },
   {
    "repo": "agent-chat",
@@ -3375,8 +3593,11 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/prior-route.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
@@ -3387,14 +3608,20 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/project-shares.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/ready-order.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the ready floor is deleted with the tick (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
@@ -3405,8 +3632,11 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/refusal-snapshot.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "refusal classes are replaced by an open claim with its rank and skip reason (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
@@ -3417,26 +3647,38 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/report.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "the recipe still briefs agents and reads their return contract; the deleted tick briefer is planning-supply.ts"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/review-backlog.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/review-diff.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "the recipe still briefs agents and reads their return contract; the deleted tick briefer is planning-supply.ts"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/run-tick.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
@@ -3467,38 +3709,56 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/seat-deliver.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "per-tick seat notices; eliminated with the tick (v9.1 sec. 3.5)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/seat-dispatch.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/seat-events.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "per-tick seat notices; eliminated with the tick (v9.1 sec. 3.5)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/seat-plan.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/seat-scope.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/seat-tick.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
@@ -3510,49 +3770,67 @@
    "repo": "agent-chat",
    "path": "src/agents/burndown/service-check.ts",
    "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "reason": "grants, hard stops, guards and classifier are kept (v9.1 sec. 3.5, I5); stop-the-line is a hard stop"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/settings-resolve.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/settings-store.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/settings.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/shadow-record.ts",
-   "fate": "kept",
-   "reason": "unclear: records ticks for the dispatch-workflow shadow diff (CC-1193, closed in D-M8-08); is this the tooling D-M8-09 deletes or a separate artefact?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "records ticks for the dispatch-workflow shadow diff; closes with D-M8-08, not the M1b marker shadow D-M8-09 deletes"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/shepherd.ts",
    "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "reason": "import shims; their headers name the tasks that remove them (CC-1197 C3, CC-1216)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/slice-lint.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M6-02",
+   "milestone": "M6",
+   "filing": "TP-3155",
+   "reason": "the plan contract and its lint (A9)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/slice-repo.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
@@ -3563,20 +3841,29 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/source.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/spend-cap.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/spend-meter.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "spawn gates are reduced to pools; one limits file (v9.1 sec. 3.4, D-M8-03)"
   },
   {
    "repo": "agent-chat",
@@ -3605,26 +3892,38 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/status-report.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "the recipe still briefs agents and reads their return contract; the deleted tick briefer is planning-supply.ts"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/step-timer.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/steps.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/task-tags.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
@@ -3637,14 +3936,20 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/tick-summary.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/tick.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390",
+   "reason": "the tick driver, phases and executor; the 600-s tick is replaced by the dispatch recipe (v9.1 sec. 3.4)"
   },
   {
    "repo": "agent-chat",
@@ -3655,20 +3960,23 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/triage.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M7-02",
+   "milestone": "M7",
+   "filing": "TP-3161",
+   "reason": "the triager (A13)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/trust-gate.ts",
    "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "reason": "grants, hard stops, guards and classifier are kept (v9.1 sec. 3.5, I5); stop-the-line is a hard stop"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/waste-source.ts",
    "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "reason": "observability and reports (A14)"
   },
   {
    "repo": "agent-chat",
@@ -3679,8 +3987,59 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/workflow-table.ts",
+   "fate": "survives",
+   "task": "D-M8-03",
+   "milestone": "M8",
+   "filing": "TP-3168",
+   "reason": "scope filter, tiers and routing are kept as data (v9.1 sec. 3.4)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/backlog",
    "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "reason": "stays beside queue and retires with it (TP-1570) (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/backlog.mjs",
+   "fate": "kept",
+   "reason": "stays beside queue and retires with it (TP-1570) (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/test-backlog.sh",
+   "fate": "kept",
+   "reason": "stays beside queue and retires with it (TP-1570) (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/backlog/records/tc-129.yml",
+   "fate": "kept",
+   "reason": "stays beside queue and retires with it (TP-1570) (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/backlog/records/tc-130.2.yml",
+   "fate": "kept",
+   "reason": "stays beside queue and retires with it (TP-1570) (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/backlog/records/tc-131.yml",
+   "fate": "kept",
+   "reason": "stays beside queue and retires with it (TP-1570) (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/backlog/records/tc-131/img/after.png",
+   "fate": "kept",
+   "reason": "stays beside queue and retires with it (TP-1570) (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat/testdata/backlog/records/tc-131/img/before.png",
+   "fate": "kept",
+   "reason": "stays beside queue and retires with it (TP-1570) (scripts/seat/README.md)"
   }
  ],
  "compensators": [

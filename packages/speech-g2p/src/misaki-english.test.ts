@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, it } from "vitest";
+import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
 import { misakiEnglish, ttsTokens } from "./misaki-english.js";
 import type { G2pToken, RawToken } from "./types.js";
 
@@ -17,7 +17,16 @@ interface TtsToken {
 
 const g2p = misakiEnglish();
 
-describe("misakiEnglish", () => {
+// Each misakiEnglish() reloads the dictionary (~0.6 s measured); CI load once stretched one test past vitest's 5 s default.
+const LOAD_TIMEOUT_MS = 20_000;
+
+describe("misakiEnglish", { timeout: LOAD_TIMEOUT_MS }, () => {
+  let fallbackG2p: ReturnType<typeof misakiEnglish>;
+
+  beforeAll(() => {
+    fallbackG2p = misakiEnglish({ fallback: (tk) => (tk.text === "Zxqv" ? "zˈɪk" : null) });
+  }, LOAD_TIMEOUT_MS);
+
   it("reads a sentence into misaki tokens and their joined phoneme string", () => {
     const { phonemes, tokens } = g2p.phonemize("We live here.");
 
@@ -37,8 +46,8 @@ describe("misakiEnglish", () => {
   });
 
   it("leaves a word no lexicon knows unread unless a fallback reads it", () => {
-    const unread = misakiEnglish().tokens("Zxqv here.")[0];
-    const read = misakiEnglish({ fallback: (tk) => (tk.text === "Zxqv" ? "zˈɪk" : null) }).tokens("Zxqv here.")[0];
+    const unread = g2p.tokens("Zxqv here.")[0];
+    const read = fallbackG2p.tokens("Zxqv here.")[0];
 
     expect(unread?.phonemes).toBeNull();
     expect(read).toMatchObject({ phonemes: "zˈɪk", rating: 2 });

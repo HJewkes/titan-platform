@@ -61,7 +61,19 @@ export type NoVerdictCause = "no-verdict" | "timeout" | "external-hold" | "not-s
 export interface PanelMerge {
   satisfiesG10: boolean;
   degraded: readonly ReviewShape[];
-  members: readonly { shape: ReviewShape; agentId: string; sessionId: string; locator: unknown }[];
+  members: readonly PanelMember[];
+}
+
+/** One member's verdict; `verdict`, `head` and `profile` are absent on a MERGE recorded before the two-MERGE release read them. */
+export interface PanelMember {
+  shape: ReviewShape;
+  agentId: string;
+  sessionId: string;
+  locator: unknown;
+  verdict?: "MERGE" | "FIX_FIRST";
+  head?: string;
+  /** The profile Shepherd spawned the member at. */
+  profile?: string;
 }
 
 /** Shepherd's own MERGE at `head` that a seat reviewer's WAIT, or a seat read that can clear, still held when the seat wait ran out. */
@@ -122,4 +134,6 @@ export interface ShepherdDeps {
   prFiles?: PrFilesRead;
   /** Repos whose stacked children Shepherd restacks after its own merge; absent means none. */
   stackRestack?: (repo: RepoSlug) => boolean;
+  /** `on` repairs a run held only under a g10 class while the hold keeps gating its merge; absent means `off`. */
+  heldRepair?: "off" | "on";
 }

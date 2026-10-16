@@ -24,7 +24,7 @@ import { DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, busyWaits, clearReviewWait, 
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
 import { reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
 import { spawnFacts } from "./spawn-facts.js";
-import { withReviewerProfile } from "./g10-release.js";
+import { withReviewerProfile, type TwoMergeMode } from "./g10-release.js";
 import { chooseReviewer } from "./reviewer-choice.js";
 import { isRepoKey } from "./seats.js";
 import { REVIEW_REQUEST_STEPS, reviewPendingAt, reviewRequestRoute } from "./review-request.js";
@@ -188,6 +188,8 @@ export interface ReviewWiring {
   holdMember?: HoldMember;
   /** The adversary member's account (`review.adversaryConfigDir`); absent means the intent's. */
   adversaryDispatch?: ReviewerDispatch;
+  /** `shepherd.gateReset.twoMergeRelease` other than off: whether two MERGEs release a g10-adversary hold or only record that they would. */
+  twoMergeRelease?: TwoMergeMode;
 }
 
 type Wired = ReviewWiring & { dispatch: ReviewerDispatch };
