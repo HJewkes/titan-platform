@@ -294,7 +294,7 @@ const ReleaseArgs = PrRefArgs.extend({ actor: ActorArg, head: ReleaseHeadArg, ho
 
 const releaseCommand = defineCommand<z.infer<typeof ReleaseArgs>, HoldResult, FactoryContext>({
   name: "shepherd.release",
-  description: "Release one hold on owner/repo#pr at the head the seat reviewed (--head): the hold of --class, or the only hold; refused when the PR's head is another sha, unless a g10-adversary release and that head is Shepherd's own clean merge-up of it",
+  description: "Release one hold on owner/repo#pr at the head the seat reviewed (--head): the hold of --class, or the only hold; refused when the PR's head is another sha, unless a g10-review or g10-adversary release and that head is Shepherd's own clean merge-up of it",
   args: ReleaseArgs,
   result: z.custom<HoldResult>(),
   async run({ repo, pr, head, actor, holdClass }, ctx) {

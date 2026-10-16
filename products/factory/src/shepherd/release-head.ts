@@ -1,7 +1,7 @@
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import { z } from "zod";
 import type { Vouch } from "./hold-slot-rows.js";
-import { isAdversaryHold } from "./hold-slots.js";
+import { holdClassOf } from "./g10-release.js";
 import { mergeUpProof, type MergeUpReads } from "./merge-up-release.js";
 import type { Registration, ShepherdStore } from "./store.js";
 import { EXIT } from "@titan-design/registry";
@@ -22,20 +22,25 @@ interface ReleaseAt {
   holdClass?: string;
 }
 
-/** Only a `g10-adversary` release may name a head Shepherd has since merged the base into. */
-const liftsAdversary = (registration: Registration, holdClass: string | undefined): boolean =>
-  holdClass === undefined ? isAdversaryHold(registration.holdReason) : holdClass === "g10-adversary";
+const G10_CLASSES: ReadonlySet<string> = new Set(["g10-review", "g10-adversary"]);
+
+/**
+ * Only a G10 release may name a head Shepherd has since merged the base into: land's own update-branch merges main into a
+ * held PR whenever it reads behind, and a seat review covers the PR's diff, which a clean merge-up leaves as it was.
+ */
+const liftsG10 = (registration: Registration, holdClass: string | undefined): boolean =>
+  G10_CLASSES.has(holdClass ?? holdClassOf(registration.holdReason) ?? "");
 
 /**
  * A release is a statement about one head, the one the seat reviewed: a head that cannot be read refuses it, and so does a
- * PR at another head, unless the release lifts a `g10-adversary` hold and that head is Shepherd's own clean merge-up of the
- * reviewed one. Then the proof comes back, so the release records which head it carries to.
+ * PR at another head, unless the release lifts a G10 hold and that head is Shepherd's own clean merge-up of the reviewed
+ * one. Then the proof comes back, so the release records which head it carries to.
  */
-export async function assertReleasableAt(port: GitHubPort, at: ReleaseAt, adversary: boolean, reads?: MergeUpReads): Promise<Vouch | undefined> {
+export async function assertReleasableAt(port: GitHubPort, at: ReleaseAt, g10: boolean, reads?: MergeUpReads): Promise<Vouch | undefined> {
   const now = await port.getPr(at.repo, at.pr).catch(() => undefined);
   if (now === undefined) throw refused(`${at.repo}#${at.pr}: the PR's head could not be read, so the release is refused`, EXIT.UNAVAILABLE);
   if (now.headSha === at.head) return undefined;
-  const proof = adversary && reads ? await mergeUpProof(reads, { repo: at.repo, baseRef: now.baseRef, reviewed: at.head, current: now.headSha }) : undefined;
+  const proof = g10 && reads ? await mergeUpProof(reads, { repo: at.repo, baseRef: now.baseRef, reviewed: at.head, current: now.headSha }) : undefined;
   if (proof === undefined) throw refused(`${at.repo}#${at.pr} is at ${now.headSha}, not ${at.head}, and is no clean merge-up Shepherd made of it: review the new head, then release at it`, EXIT.DATAERR);
   return proof;
 }
@@ -52,7 +57,7 @@ export async function releaseAtHead(store: ShepherdStore, port: GitHubPort, at: 
   const ref = `${at.repo}#${at.pr}`;
   const registration = store.byRun(at.runId);
   if (!registration?.held) throw refused(`${ref} is not held, so there is nothing to release`, EXIT.DATAERR);
-  const proof = await assertReleasableAt(port, at, liftsAdversary(registration, at.holdClass), reads);
+  const proof = await assertReleasableAt(port, at, liftsG10(registration, at.holdClass), reads);
   if (store.releaseClass(at.runId, at.holdClass, { actor: at.actor, headSha: at.head })) {
     if (proof) store.vouch(at.runId, proof);
     return store.byRun(at.runId)!;
