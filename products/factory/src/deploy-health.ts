@@ -1,3 +1,5 @@
+import type { GitBehind } from "./deploy-behind.js";
+
 const REFUSALS_TO_ALARM = 2;
 const BEHIND_MERGES_TO_ALARM = 3;
 const BEHIND_MINUTES_TO_ALARM = 60;
@@ -168,6 +170,21 @@ function alarmCauses(health: Omit<DeployHealth, "alarm" | "causes">): string[] {
   if (behind > BEHIND_MERGES_TO_ALARM) causes.push(`serve runs ${runningSha}, and ${behind} green merges asked to deploy have not landed`);
   if (behindMinutes > BEHIND_MINUTES_TO_ALARM) causes.push(`a deploy asked for ${behindMinutes} min ago has not landed`);
   return causes;
+}
+
+/**
+ * Folds git's reading of origin/main into the block: the larger of the log's count and git's wins, since a merge that
+ * never asked for a deploy is invisible to redeploy.log. A reading git could not give alarms rather than reads as 0.
+ */
+export function withGitBehind(health: DeployHealth, git: GitBehind, now: number): DeployHealth {
+  if ("unknown" in git) {
+    const cause = `serve's lag behind origin/main is unknown: ${git.unknown}`;
+    return { ...health, alarm: true, causes: [...health.causes, cause], unverified: health.unverified ?? cause };
+  }
+  const minutes = git.oldestAt === null ? 0 : Math.max(0, Math.floor((now - git.oldestAt) / 60_000));
+  const merged = { ...health, behind: Math.max(health.behind, git.merges), behindMinutes: Math.max(health.behindMinutes, minutes) };
+  const causes = alarmCauses(merged);
+  return { ...merged, alarm: causes.length > 0, causes };
 }
 
 /**
