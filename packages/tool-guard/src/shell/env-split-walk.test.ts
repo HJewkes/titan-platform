@@ -47,6 +47,12 @@ const PUSH_ROUTES = [
   ["a dynamic -S string", `s='-u X ${PUSH}'; env -S "$s"`],
   ["a command word env expands from an exported variable", "export G=git; env -S '-u X ${G} push origin HEAD:main'"],
   ["a command word env expands from an unknown variable", "env -S '-u X ${G} push origin HEAD:main'"],
+  ["a bare $NAME command word, which env rejects", "env -S '$G push --no-verify origin HEAD:main'"],
+  ["a bare $NAME after an unset option", "env -S '-u X $G push --no-verify origin HEAD:main'"],
+  ["a bare $NAME double-quoted inside the -S string", `env -S '"$G" push --no-verify origin HEAD:main'`],
+  ["a bare $NAME in a double-quoted -S string", `env -S "\\$G push --no-verify origin HEAD:main"`],
+  ["a positional $1 command word", "env -S '$1 push --no-verify origin HEAD:main'"],
+  ["a $( command word", "env -S '$(echo git) push --no-verify origin HEAD:main'"],
 ] as const;
 
 describe("env -S is split by env's rules and read as env's argv (TP-3210)", () => {
@@ -61,7 +67,7 @@ describe("env -S is split by env's rules and read as env's argv (TP-3210)", () =
     expect(await hookStdout(line)).toContain("secret-read");
   });
 
-  it.each(["env -S 'echo hi'", "env -S '-u X echo hi'", "env -S '-i FOO=1 echo hi'", "env -S '-a sh echo hi'"])("allows %s", async (line) => {
+  it.each(["env -S 'echo hi'", "env -S '-u X echo hi'", "env -S '-i FOO=1 echo hi'", "env -S '-a sh echo hi'", "env -S \"echo '\\$G'\""])("allows %s", async (line) => {
     expect(await verdict(line)).toBe("pass");
   });
 });

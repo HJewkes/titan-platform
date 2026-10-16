@@ -8,8 +8,9 @@ const BLANK_RE = /[ \t\n\v\f\r]/;
 
 /**
  * The words `env -S` makes of its string, by env's rules and not a shell's: blanks split, quotes group, a `#` that
- * starts a word ends the string, and `${NAME}` outside single quotes expands. Null for an unclosed quote or any
- * backslash (env's escapes), which fail closed.
+ * starts a word ends the string, and `${NAME}` outside single quotes expands. Null for an unclosed quote, any
+ * backslash (env's escapes) or a `$` outside single quotes with no `{` after it (`$G`, `$$`, `$1`, `$?`, `$(`, a
+ * trailing `$`), which GNU and uutils env both reject; all fail closed.
  */
 export function envSplitWords(text: string): EnvWord[] | null {
   if (text.includes("\\")) return null;
@@ -27,6 +28,7 @@ export function envSplitWords(text: string): EnvWord[] | null {
       quote = c;
       word ??= { value: "", dynamic: false };
     } else {
+      if (c === "$" && quote !== "'" && text.charAt(i + 1) !== "{") return null;
       word ??= { value: "", dynamic: false };
       word.value += c;
       if (c === "$" && quote !== "'" && text.charAt(i + 1) === "{") word.dynamic = true;
