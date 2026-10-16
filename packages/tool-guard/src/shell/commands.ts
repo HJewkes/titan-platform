@@ -13,6 +13,8 @@ import { cutReading } from "./piped-nul.js";
 import { inlineScript, SHELLS } from "./inline-script.js";
 import type { Inline } from "./inline-script.js";
 import { addRedirect, groupStdin } from "./group-stdin.js";
+import { descriptorsAfter, pipedInto, TOP_DESCRIPTORS } from "./shell-options.js";
+import type { Descriptors } from "./shell-options.js";
 import { xargsCommands } from "./xargs-runs.js";
 import { runReadings } from "./xargs-readings.js";
 import type { Vars } from "./vars.js";
@@ -60,6 +62,8 @@ export interface SimpleCommand {
   chain: Chain;
   /** Set on a command only an added xargs reading runs; it may add actions but never fails the line or moves its state. */
   added?: true;
+  /** What its descriptors held before its own redirects, when a command that runs it set them up (`bash -c bash < f`). */
+  inherited?: Descriptors;
 }
 
 export interface ExtractOptions {
@@ -100,6 +104,8 @@ interface Walk {
   stdin: string | null;
   /** bash's and zsh's texts of a print piped straight in, where they differ from `stdin` (`printf 'echo \c; …' | bash`). */
   shellStdin: string[];
+  /** What the shell running this walk's commands holds on each descriptor before their own redirects. */
+  descriptors: Descriptors;
   /** The operator before the command being emitted. */
   prev: string | null;
   chain: Chain;
@@ -134,6 +140,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
     depth: 0,
     stdin: null,
     shellStdin: [],
+    descriptors: TOP_DESCRIPTORS,
     prev: null,
     chain: { start: null },
     negated: false,
@@ -232,9 +239,10 @@ function nestedLists(token: Token): Token[][] {
   return token.type === "op" ? [] : token.subs;
 }
 
-function child(w: Walk, wrapping: Wrapping[]): Walk {
+function child(w: Walk, wrapping: Wrapping[], descriptors = w.descriptors): Walk {
   const scope = { dir: w.scope.dir, vars: childVars(w.scope.vars), wrapping };
-  return observed({ ...w, scope, stack: [], depth: w.depth + 1, stdin: null, shellStdin: [], prev: null, chain: { start: null }, negated: false, walked: null });
+  const fresh = { stack: [], depth: w.depth + 1, stdin: null, shellStdin: [], descriptors, prev: null, chain: { start: null }, negated: false, walked: null };
+  return observed({ ...w, scope, ...fresh });
 }
 
 function scope(op: string, w: Walk): void {
@@ -314,23 +322,28 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   const { name, path, args } = cmd;
   w.negated ||= cmd.negated === true;
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
-  w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links });
+  const inherited = w.prev === "|" || w.prev === "|&" ? pipedInto(w.descriptors) : w.descriptors;
+  const set = inherited === TOP_DESCRIPTORS ? {} : { inherited };
+  w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set });
   const piped = stdin === null ? [] : [stdin, ...(stdin === w.stdin ? w.shellStdin : [])];
-  const script = inlineScript(cmd, redirects, piped, w.unsure);
-  if (script !== null) walkScript(script, w, wrapping);
+  const held = descriptorsAfter(redirects, piped, inherited);
+  const script = inlineScript(cmd, redirects, piped, w.unsure, inherited);
+  if (script !== null) walkScript(script, w, wrapping, held);
   if (cmd.name !== "find") return;
-  for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(folded(words, w)))) run(exec, [], child(w, [...wrapping, "find-exec"]), null);
+  for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(folded(words, w)))) run(exec, [], child(w, [...wrapping, "find-exec"], held), null);
 }
 
 /** Two readings of one command often run the same script (`flock $F sh -c '...'`); walking it again per nesting level would double the cost. */
-function walkScript(script: Inline, w: Walk, wrapping: Wrapping[]): void {
+function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descriptors): void {
+  // A shell reading its script from stdin leaves the rest of that stream to it, which is the text walked here.
+  const descriptors = script.wrap === "heredoc-shell" || script.wrap === "piped-shell" ? pipedInto(held) : held;
   for (const text of script.texts) {
     if (w.walked?.has(text)) continue;
     w.walked?.add(text);
     w.onScript?.(text);
     // A shell's arguments and input become its positional parameters and what its `read` stores.
     if (script.wrap !== "eval") w.marks.opaque = true;
-    walk(tokenizeLine(text), child(w, [...wrapping, script.wrap]));
+    walk(tokenizeLine(text), child(w, [...wrapping, script.wrap], descriptors));
   }
 }
 

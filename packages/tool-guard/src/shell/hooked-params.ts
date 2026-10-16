@@ -315,11 +315,15 @@ function namerefHooked({ name, args }: Unwrapped, names: ReadonlySet<string>): s
 const FD_VARIABLE_RE = /^\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
 
 /**
- * `exec {PS4}>f` stores a descriptor number into PS4. The lexer keeps `{PS4}` as a word with no sign of the
- * redirection it belongs to, so any redirection on the command makes an unquoted literal `{name}` word a possible
- * store. A quoted, escaped or computed `{...}` is text to the shell and stores nothing.
+ * `exec {PS4}>f` stores a descriptor number into PS4. The lexer reads a `{PS4}` glued to the operator as the
+ * redirection's fd. With any redirection on the command, an unquoted literal `{name}` word still counts as a possible
+ * store, which only over-reads. A quoted, escaped or computed `{...}` is text to the shell and stores nothing.
  */
 function fdVariableHooked(words: WordToken[], redirects: RedirectToken[], names: ReadonlySet<string>): string | null {
+  for (const r of redirects) {
+    const named = FD_VARIABLE_RE.exec(r.fd ?? "")?.[1];
+    if (named !== undefined && names.has(named)) return named;
+  }
   if (redirects.length === 0) return null;
   for (const word of words) {
     if (word.quoted || word.dynamic || word.spliced) continue;
