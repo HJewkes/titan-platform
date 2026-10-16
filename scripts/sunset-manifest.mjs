@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Checks the old-code sunset manifest (D-M0-06) against `git ls-files` of every root it covers.
 // It also fails when a delete entry's file still exists after its D-task's milestone has exited (D-M0-07).
-// Usage: node scripts/sunset-manifest.mjs check [--agent-chat <dir>] [--manifest <file>] [--milestones <file>]
+// Usage: node scripts/sunset-manifest.mjs check [--agent-chat <dir>] [--agent-chat-drift fail|warn] [--manifest <file>] [--milestones <file>]
+// --agent-chat-drift warn prints drift problems found in agent-chat roots as ::warning:: lines and keeps the exit code for the rest.
 // Without --agent-chat the agent-chat roots are checked for shape only, since CI has no checkout of that repo.
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -12,18 +13,19 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const MANIFEST_PATH = join(ROOT, "products", "factory", "sunset", "manifest.json");
 export const MILESTONES_PATH = join(ROOT, "products", "factory", "sunset", "milestones.json");
 const FATES = new Set(["delete", "survives", "kept"]);
-const USAGE = "usage: sunset-manifest check [--agent-chat <dir>] [--manifest <file>] [--milestones <file>]";
+const USAGE = "usage: sunset-manifest check [--agent-chat <dir>] [--agent-chat-drift fail|warn] [--manifest <file>] [--milestones <file>]";
 
 export function parseArgs(argv) {
   const [command, ...rest] = argv;
   if (command !== "check") throw new Error(USAGE);
-  const opts = { agentChat: undefined, manifest: MANIFEST_PATH, milestones: MILESTONES_PATH };
-  const flags = { "--agent-chat": "agentChat", "--manifest": "manifest", "--milestones": "milestones" };
+  const opts = { agentChat: undefined, agentChatDrift: "fail", manifest: MANIFEST_PATH, milestones: MILESTONES_PATH };
+  const flags = { "--agent-chat": "agentChat", "--agent-chat-drift": "agentChatDrift", "--manifest": "manifest", "--milestones": "milestones" };
   for (let i = 0; i < rest.length; i++) {
     const key = flags[rest[i]];
     if (!key || rest[i + 1] === undefined) throw new Error(`unknown argument ${rest[i]}; ${USAGE}`);
-    opts[key] = resolve(rest[++i]);
+    opts[key] = key === "agentChatDrift" ? rest[++i] : resolve(rest[++i]);
   }
+  if (!["fail", "warn"].includes(opts.agentChatDrift)) throw new Error(`--agent-chat-drift takes fail or warn; ${USAGE}`);
   return opts;
 }
 
@@ -51,31 +53,37 @@ export function exitedMilestones(milestones) {
  * or leaves a repo's roots out when its checkout is not available.
  */
 export function checkManifest(manifest, listings, exited = new Set()) {
+  return classifyManifest(manifest, listings, exited).map((problem) => problem.text);
+}
+
+/** The same problems as checkManifest, each tagged `overdue` (a delete past its milestone exit), `drift` (a root and the manifest disagree) or `shape` (a malformed entry). */
+export function classifyManifest(manifest, listings, exited = new Set()) {
   const problems = [];
+  const add = (kind, text) => problems.push({ kind, text });
   const seen = new Set();
   for (const entry of manifest.entries) {
     const key = `${entry.repo}:${entry.path}`;
-    if (seen.has(key)) problems.push(`${key}: mapped twice`);
+    if (seen.has(key)) add("shape", `${key}: mapped twice`);
     seen.add(key);
     const problem = entryProblem(entry);
-    if (problem) problems.push(problem);
+    if (problem) add("shape", problem);
   }
   for (const { repo, path } of manifest.roots) {
     const listed = listings[`${repo}:${path}`];
     if (!listed) continue;
     for (const entry of manifest.entries) {
       const rung = milestoneOf(entry.task);
-      if (entry.fate === "delete" && entry.repo === repo && listed.includes(entry.path) && exited.has(rung)) problems.push(`${repo}:${entry.path}: still exists but ${entry.task} was due at the exit of ${rung}`);
+      if (entry.fate === "delete" && entry.repo === repo && listed.includes(entry.path) && exited.has(rung)) add("overdue", `${repo}:${entry.path}: still exists but ${entry.task} was due at the exit of ${rung}`);
     }
-    for (const file of listed) if (!seen.has(`${repo}:${file}`)) problems.push(`${repo}:${file}: unmapped`);
+    for (const file of listed) if (!seen.has(`${repo}:${file}`)) add("drift", `${repo}:${file}: unmapped`);
     const present = new Set(listed.map((file) => `${repo}:${file}`));
     for (const entry of manifest.entries) {
       const key = `${entry.repo}:${entry.path}`;
-      if (entry.repo === repo && entry.path.startsWith(`${path}/`) && !present.has(key)) problems.push(`${key}: mapped but not in git`);
+      if (entry.repo === repo && entry.path.startsWith(`${path}/`) && !present.has(key)) add("drift", `${key}: mapped but not in git`);
     }
   }
   for (const entry of manifest.entries) {
-    if (!manifest.roots.some((root) => root.repo === entry.repo && entry.path.startsWith(`${root.path}/`))) problems.push(`${entry.repo}:${entry.path}: under no root`);
+    if (!manifest.roots.some((root) => root.repo === entry.repo && entry.path.startsWith(`${root.path}/`))) add("shape", `${entry.repo}:${entry.path}: under no root`);
   }
   return problems;
 }
@@ -95,10 +103,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const opts = parseArgs(process.argv.slice(2));
     const manifest = JSON.parse(readFileSync(opts.manifest, "utf8"));
     const exited = exitedMilestones(JSON.parse(readFileSync(opts.milestones, "utf8")));
-    const problems = checkManifest(manifest, listRoots(manifest, { "titan-platform": ROOT, "agent-chat": opts.agentChat }), exited);
-    for (const problem of problems) console.error(problem);
+    const problems = classifyManifest(manifest, listRoots(manifest, { "titan-platform": ROOT, "agent-chat": opts.agentChat }), exited);
+    const warnOnly = (problem) => opts.agentChatDrift === "warn" && problem.kind === "drift" && problem.text.startsWith("agent-chat:");
+    for (const problem of problems) console.error(warnOnly(problem) ? `::warning::${problem.text}` : problem.text);
     if (!opts.agentChat) console.error("agent-chat roots checked for shape only (no --agent-chat)");
-    process.exitCode = problems.length ? 1 : 0;
+    process.exitCode = problems.some((problem) => !warnOnly(problem)) ? 1 : 0;
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;

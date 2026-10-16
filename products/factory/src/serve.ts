@@ -282,7 +282,7 @@ function startSeatDigest(host: FactoryHost, services: ShepherdServices | undefin
 
 /** Runs resync could not end are rechecked against their PR just before they are claimed, then dropped once claimed or settled. A recheck still running when close starts claims nothing, because the runtime has already let its runs go. */
 async function adopt(host: FactoryHost, services: ShepherdServices | undefined, held: Set<string>, log: Logger, closing: () => boolean): Promise<void> {
-  if (services) await restartDivergedLogged(host, services, log);
+  if (services) await restartDivergedLogged(host, services, log, closing);
   const exclude = services ? await recheckBeforeAdopt(host, services, held, log) : new Set<string>();
   if (closing()) return;
   const ids = await host.adopt({ exclude });

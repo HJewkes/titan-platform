@@ -140,6 +140,28 @@ describe("shepherd.register on a replay-diverged run", () => {
     expect(next.host.runtime.status(oldRunId)?.status).toBe("recovery_required");
   });
 
+  it("revives a run the sweep cancelled for a closed PR once the PR reopens", async () => {
+    const { next, oldRunId } = await parkedRun();
+    next.host.runtime.cancel(oldRunId, "replay diverged; PR closed");
+    await next.host.adopt();
+    await next.host.runtime.wait(oldRunId);
+
+    const again = await register(next);
+
+    expect(again).toMatchObject({ created: true, previousRunId: oldRunId, registration: { runId: again.runId, headSha: HEAD_A } });
+  });
+
+  it("leaves a run cancelled for another reason", async () => {
+    const { next, oldRunId } = await parkedRun();
+    next.host.runtime.cancel(oldRunId, "owner stopped it");
+    await next.host.adopt();
+    await next.host.runtime.wait(oldRunId);
+
+    const again = await register(next);
+
+    expect(again).toMatchObject({ created: false, runId: oldRunId });
+  });
+
   it("leaves a park that is not a replay divergence", async () => {
     const { next, oldRunId } = await parkedRun();
     const run = next.host.runtime.status(oldRunId)!;
