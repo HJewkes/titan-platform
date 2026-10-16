@@ -1,5 +1,4 @@
 import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { factoryGateAnswer, type GateAnswerRequest } from "./gate-answer.js";
 
@@ -26,7 +25,9 @@ async function factoryAnswering(status: number, body: unknown): Promise<number> 
     });
   });
   await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
-  return (server.address() as AddressInfo).port;
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("no port");
+  return address.port;
 }
 
 afterEach(async () => {

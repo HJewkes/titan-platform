@@ -50,7 +50,7 @@ function row(overrides: Record<string, unknown> = {}): Row {
     held: null,
     stalled: null,
     ...overrides,
-  } as Row;
+  };
 }
 
 function deps(overrides: Partial<ListenerDeps> = {}): ListenerDeps {
