@@ -101,6 +101,11 @@ describe("a command that rebinds a command name", () => {
     ["print behind a lone dynamic word, as zsh print -vNAME stores \"\"", 'print "$f"'],
     ["print -r behind a lone dynamic word", 'print -r "$f"'],
     ["builtin print behind a lone dynamic word", 'builtin print "$f"'],
+    ["strftime -s", "strftime -s 'commands[y]' 0"],
+    ["zstat -A", "zstat -A commands f"],
+    ["sysread", "sysread functions"],
+    ["pcre_match -v", "pcre_match -v commands x"],
+    ["zselect -a", "zselect -a commands"],
   ])("is caught: %s", (_how, src) => {
     expect(rebinds(src)).toBe(true);
   });
