@@ -94,6 +94,15 @@ through a symlinked parent, is refused just before the append.
 - A curl, wget or httpie config file is checked only within one command line: an rc file planted by an earlier Bash call (`echo method=PUT > ~/.wgetrc`, then `wget <merge URL>` in the next call) is not seen (TP-2861 tracks the path-layer guard). A download that names its file from the URL (`curl -O`/`-J`, a bare `wget "$U"`) is not read as an rc write either. An archive extract (tar, bsdtar or cpio extract, unzip, pax -r, 7z x/e, ar x, jar x) counts as an rc write in any directory, because its member paths may be absolute. Other unpackers and interpreters are not read.
 - It does not classify `titan-factory` verbs.
 
+## Known gaps
+
+- A file on a shell's stdin is not read when a script operand names stdin, or when `<>` opens
+  it: `bash /dev/stdin < f`, `bash -- /dev/stdin < f`, `bash - /dev/stdin < f`,
+  `zsh /dev/fd/0 < f`, `sh /proc/self/fd/0 < f`, and `bash <> f`. A heredoc, here-string or
+  pipe on such an operand is read. TP-3241 tracks it.
+- Stdin named through the working directory or a symlink (`cd /dev && bash stdin`) is not
+  read as stdin. TP-3240 tracks it.
+
 ## Gotchas
 
 - A gate verdict denies. The hook cannot check a resolved gate yet, so `MRG-CO` and `REL-CO`
