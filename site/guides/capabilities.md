@@ -30,6 +30,7 @@ Before adding code:
 | [`evidence`](#cap-evidence) | 0 | A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. Its `./stats` subpath puts honest intervals and paired tests on eval pass rates at 20 to 50 cases. |
 | [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. For a tests-only diff it also tells test material from source (`testOnlyOf`) and parses `*.mutations.json` specs, and `classifyMutants` decides whether every declared mutation was killed, which the judge adds to the line as `mutants`. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority. |
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
+| [`owner-proof`](#cap-owner-proof) | 0 | You must accept an action only when the owner signed a statement for it with an ECDSA P-256 key (such as the Secure Enclave key behind Touch ID). `verifySigned` checks the DER signature over the exact received bytes against a `keyRing` of installed public keys before it parses anything, then the zod schema, the issue and expiry window, the audience and your statement kind's own checks; `canonical` gives sorted-key JSON for digests. It keeps no state, so nonce replay is yours to record. To decide which actions need the owner at all, use authority. |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
 | [`test-kit`](#cap-test-kit) | 0 | A test needs a value of an interface type but the code under test reads only a few of its fields: `partialFake<T>({ ... })` builds it without an `as unknown as T` double cast. For a whole fake service with behaviour, use the package's own fake (for example `fakeGitHub()` in `github`). |
@@ -349,6 +350,18 @@ Key exports:
 - `transcript-table`: `emptyTable`, `resumePoint`, `transcriptIndexFor`
 - `read-locator`: `readLocatorBytes`, `readLocatorText`
 - +11 more in the [reference page](/reference/locator)
+
+<a id="cap-owner-proof"></a>
+
+### [`owner-proof`](/reference/owner-proof)
+
+Tier 0, `@titan-design/owner-proof@0.0.0`. Owner-signed statements: canonical JSON, P-256 key ring and an exact-bytes ECDSA verify core generic over a zod schema
+
+**Use this when:** You must accept an action only when the owner signed a statement for it with an ECDSA P-256 key (such as the Secure Enclave key behind Touch ID). `verifySigned` checks the DER signature over the exact received bytes against a `keyRing` of installed public keys before it parses anything, then the zod schema, the issue and expiry window, the audience and your statement kind's own checks; `canonical` gives sorted-key JSON for digests. It keeps no state, so nonce replay is yours to record. To decide which actions need the owner at all, use authority.
+
+Key exports:
+
+- `statement`: `canonical`, `keyIdOf`, `keyRing`, `verifySigned`, `Envelope`, `KeyRing`, `ProofInput`, `Refusal`, `StatementKind`, `Verified`
 
 <a id="cap-rpc-protocol"></a>
 

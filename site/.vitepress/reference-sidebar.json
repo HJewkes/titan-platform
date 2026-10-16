@@ -56,6 +56,10 @@
         "link": "/reference/locator"
       },
       {
+        "text": "owner-proof",
+        "link": "/reference/owner-proof"
+      },
+      {
         "text": "rpc-protocol",
         "link": "/reference/rpc-protocol"
       },

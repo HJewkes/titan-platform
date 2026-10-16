@@ -126,6 +126,9 @@ merge. The [factory](/guides/factory) product composes `github`, `authority`, `h
 - [`fix-proof`](/reference/fix-proof): decides whether a fix pull request's new tests fail on
   the merge base and pass at head. It plans the overlay and classifies two vitest reports; a
   runner does the git and test work.
+- [`owner-proof`](/reference/owner-proof): verifies a statement the owner signed with a
+  P-256 key, over its exact bytes, before parsing it; the caller supplies the schema and keeps
+  the nonce ledger.
 - [`review-panel`](/reference/review-panel): the review-panel types, the reviewer ports a
   caller satisfies, and `classifyPr`, which picks a pull request's review class from its
   signals.
