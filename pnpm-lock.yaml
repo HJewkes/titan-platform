@@ -774,6 +774,9 @@ importers:
       '@titan-design/speech-stt':
         specifier: workspace:*
         version: link:../speech-stt
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   packages/speech-vet:
     dependencies:
