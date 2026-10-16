@@ -9,6 +9,7 @@ import { readFlow, type ApprovalsFlow, type ApprovalsSources } from "./approvals
 import { consoleCommands } from "./commands.js";
 import { resolveConfig } from "./config.js";
 import { factoryNeeds } from "./factory.js";
+import { withdrawRound } from "./round-withdraw.js";
 import { closedPort, startFakeDaemon, type FakeDaemon } from "./test-support.js";
 import { createSources } from "./upstreams.js";
 
@@ -134,6 +135,20 @@ describe("approvals.flow", () => {
 
     expect(result.flow.withdrawn).toMatchObject([{ item: { id: "round:ship-r1/ship" }, reason: `new-head:${SHA_B}` }]);
     expect(ids(result.flow.order)).toEqual(["gate-newer"]);
+  });
+
+  it("lists a withdrawn round's questions as withdrawn with its reason, never as open", async () => {
+    await writeRound("ship-r1", manifest("ship", [shipQuestion(SHA_A)]));
+    await writeRound("kept-r1", manifest("kept", [{ id: "fill", kind: "pick-one", prompt: "Fill?", options: ["a", "b"], signsOff: "change" }]));
+    await withdrawRound(path.join(root, "rounds"), "ship-r1", `new-head:${SHA_B}`);
+
+    const result = await readFlow(sources(undefined));
+
+    expect(ids(result.flow.order)).toEqual(["round:kept-r1/fill"]);
+    expect(result.flow.withdrawn).toEqual([
+      { item: expect.objectContaining({ id: "round:ship-r1/ship", status: "withdrawn" }), was: "open", pr: PR, reason: `new-head:${SHA_B}` },
+    ]);
+    expect(prGroup(result)).toBeUndefined();
   });
 
   it("drops an open factory ask that a spool answer on the same ask key already settled", async () => {
