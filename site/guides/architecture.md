@@ -166,6 +166,7 @@ graph TD
   evals --> agent
   evals --> authority
   evals --> evidence
+  evals --> fixProof
   evals --> health
   evals --> hitl
   evals --> reviewPanel
