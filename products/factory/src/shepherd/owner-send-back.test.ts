@@ -90,9 +90,11 @@ describe("an owner send-back at approve-merge", () => {
 describe("the send-back offer step", () => {
   const ctxWith = (next: string | undefined) => {
     const dispatched: string[] = [];
-    const result = (stepId: string) => ({ stepId, iteration: 0, agentId: null, signal: null, completedAt: "", data: { result: { offered: true } } });
-    const dispatch = async (stepId: string) => (dispatched.push(stepId), result(stepId));
-    return { ctx: partialFake<WorkflowContext>({ historyNext: () => next, dispatch: dispatch as WorkflowContext["dispatch"] }), dispatched };
+    const dispatch: WorkflowContext["dispatch"] = async (stepId, _template, options) => {
+      dispatched.push(stepId);
+      return { stepId, iteration: 0, agentId: null, signal: null, completedAt: "", data: options?.schema?.parse({ result: { offered: true } }) };
+    };
+    return { ctx: partialFake<WorkflowContext>({ historyNext: () => next, dispatch }), dispatched };
   };
 
   it("replays a record from before the step as no offer, dispatching nothing", async () => {
