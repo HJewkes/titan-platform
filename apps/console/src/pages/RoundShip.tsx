@@ -175,7 +175,7 @@ function outcomeLine(answer: GateAnswer, headSha: string): { status: "info" | "s
 }
 
 function AnswerOutcome({ answer, headSha, state }: { answer: GateAnswer; headSha: string; state: SubmitState }): ReactNode {
-  const already = state.status === "sent" && state.result.status === "already-submitted";
+  const already = state.status === "sent" && state.already;
   const { status, message } = already ? { status: "info" as const, message: "Already answered" } : outcomeLine(answer, headSha);
   return <Alert status={status} message={message} />;
 }

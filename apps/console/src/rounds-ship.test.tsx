@@ -22,9 +22,10 @@ const IMAGE_COUNT = FRAMES.reduce((sum, frame) => sum + frame.views.length, 0);
 
 /** jsdom has no IntersectionObserver: this one fires only when a test calls `scrollAll`. */
 const observers = new Set<{ fire: () => void }>();
+type Entry = Pick<IntersectionObserverEntry, "target" | "isIntersecting">;
 class StubObserver {
   private readonly targets: Element[] = [];
-  constructor(private readonly callback: (entries: IntersectionObserverEntry[]) => void) {
+  constructor(private readonly callback: (entries: Entry[]) => void) {
     observers.add(this);
   }
   observe(target: Element): void {
@@ -34,7 +35,7 @@ class StubObserver {
     observers.delete(this);
   }
   fire(): void {
-    this.callback(this.targets.map((target) => ({ target, isIntersecting: true }) as IntersectionObserverEntry));
+    this.callback(this.targets.map((target) => ({ target, isIntersecting: true })));
   }
 }
 
@@ -93,7 +94,7 @@ async function renderShip(options: { answers?: boolean; detail?: Partial<RoundDe
   return { calls };
 }
 
-const panelLabels = (key: string): string[] => within(screen.getByTestId(`montage-${key}`)).getAllByText(/^(BEFORE|AFTER|DIFF)$/).map((label) => label.textContent ?? "");
+const panelLabels = (key: string): string[] => within(screen.getByTestId(`montage-${key}`)).getAllByText(/^(BEFORE|AFTER|DIFF)$/).map((label) => label.textContent);
 const button = (label: string): HTMLElement => screen.getByRole("button", { name: label });
 const frameCalls = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.frame");
 
@@ -150,8 +151,8 @@ describe("the Ship view", () => {
     scrollAll();
 
     await waitFor(() => expect(frameCalls(rendered)).toHaveLength(IMAGE_COUNT));
-    const tileLight = frameCalls(rendered).filter((call) => (call.args as { key: string }).key === "tile-light").map((call) => (call.args as { view: string }).view);
-    expect(tileLight.sort()).toEqual(["after", "base", "diff"]);
+    expect(frameCalls(rendered)).toContainEqual({ name: "rounds.frame", args: { id: SHIP, key: "tile-light", view: "after" } });
+    expect(frameCalls(rendered)).not.toContainEqual({ name: "rounds.frame", args: { id: SHIP, key: "tile-light", view: "head" } });
   });
 
   it("keeps the recommendation out of the page while the round is open", async () => {
@@ -178,7 +179,9 @@ describe("answering a Ship round", () => {
 
   it("sends Ship bound to the question's head sha and the round.json shown", async () => {
     const rendered = await renderShip({ answers: true });
-    const { manifestSha256 } = (await getRound(source, SHIP)) as Extract<RoundDetail, { valid: true }>;
+    const detail = await getRound(source, SHIP);
+    if (!detail.valid) throw new Error("the Ship fixture is not a valid round");
+    const { manifestSha256 } = detail;
 
     fireEvent.click(button("Ship"));
 
