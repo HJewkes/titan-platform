@@ -31,7 +31,7 @@ function newState(src: string, i: number, nested: boolean, trials: ArithTrials):
 
 function lex(s: LexState): void {
   while (s.i < s.src.length) {
-    if (s.nested && s.depth <= 0 && s.src[s.i] === ")" && closesSubstitution(s)) return endWord(s);
+    if (s.nested && s.depth === 0 && s.src[s.i] === ")" && closesSubstitution(s)) return endWord(s);
     step(s);
   }
   if (s.nested) throw new ParseError("unterminated $(");

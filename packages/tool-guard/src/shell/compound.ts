@@ -1,3 +1,4 @@
+import { caseOperator, caseWord, closeCase, isCaseParen, openCase } from "./case-grammar.js";
 import { nextAfter } from "./joins.js";
 import { ParseError } from "./parse-error.js";
 import type { LexState, RegexScan, Token } from "./tokens.js";
@@ -27,7 +28,7 @@ export function newRegexScan(): RegexScan {
     timed: false,
     nameNext: false,
     named: false,
-    caseDepth: 0,
+    cases: [],
     blockDepth: 0,
     headerAt: -1,
     bodyPending: false,
@@ -40,8 +41,10 @@ export function newRegexScan(): RegexScan {
  * groups.
  */
 export function noteParen(s: LexState, op: string, glued: string | null): void {
+  regexDepth(s);
+  if (isCaseParen(s.regex, op)) return;
   if (op === "(") s.depth++;
-  if (op === ")") s.depth--;
+  if (op === ")") s.depth = Math.max(0, s.depth - 1);
   if (s.compoundDepth !== -1 && op !== ")" && op !== "\n") throw new ParseError(`\`${op}\` inside a compound assignment ( … ) is a bash syntax error`);
   if (op === ")" && s.depth < s.compoundDepth) s.compoundDepth = -1;
   if (op !== "(" || s.compoundDepth !== -1 || s.i < s.arithEnd) return;
@@ -66,12 +69,11 @@ function opensCommand(s: LexState): boolean {
   const r = s.regex;
   const last = s.tokens[s.tokens.length - 1];
   if (r.commandStart) return r.blockDepth > 0 || !BLOCK_WORDS.has(bareWord(last) ?? "");
-  if (last?.type === "op" && last.value === ")") return r.bodyPending || r.caseDepth > 0;
+  if (last?.type === "op" && last.value === ")") return r.bodyPending;
   if (r.named) {
     markHeader(s);
     return true;
   }
-  if (bareWord(last) === "in" && r.caseDepth > 0) return true;
   return r.wordAtStart && markHeader(s);
 }
 
@@ -104,7 +106,7 @@ export function refuseRedirect(s: LexState, op: string): void {
 /** Whether the tokens so far leave a `case` without its `esac`. */
 export function inOpenCase(s: LexState): boolean {
   regexDepth(s);
-  return s.regex.caseDepth > 0;
+  return s.regex.cases.length > 0;
 }
 
 /** The paren depth of the `=~` whose operand the tokens so far end inside, or -1. Scans each token once. */
@@ -124,6 +126,7 @@ function scanToken(r: RegexScan, t: Token): void {
 }
 
 function scanCommandWord(r: RegexScan, t: Token, bare: string | null): void {
+  if (caseWord(r, t, bare)) return void Object.assign(r, { commandStart: false, wordAtStart: false, timed: false, nameNext: false, named: false });
   if (r.commandStart) noteKeyword(r, bare);
   const timeOption = r.timed && (bare === "-p" || bare === "--");
   r.named = r.nameNext;
@@ -138,21 +141,23 @@ function scanCommandWord(r: RegexScan, t: Token, bare: string | null): void {
 function noteKeyword(r: RegexScan, bare: string | null): void {
   if (bare === null) return;
   if (bare === "[[") r.conditionalAt = r.depth;
-  if (bare === "case") r.caseDepth++;
-  if (bare === "esac") r.caseDepth = Math.max(0, r.caseDepth - 1);
+  if (bare === "case") openCase(r);
+  if (bare === "esac") closeCase(r);
   if (BLOCK_OPENERS.has(bare)) r.blockDepth++;
   if (BLOCK_CLOSERS.has(bare)) r.blockDepth = Math.max(0, r.blockDepth - 1);
 }
 
 /** A `=~` operand ends at an operator other than a paren at its depth; a conditional also allows `&&` and `||`. */
 function scanOperator(r: RegexScan, op: string): void {
-  const closesHeader = op === ")" && r.depth === r.headerAt;
-  if (op === "(") r.depth++;
-  if (op === ")") r.depth--;
+  const pattern = isCaseParen(r, op);
+  caseOperator(r, op);
+  const closesHeader = !pattern && op === ")" && r.depth === r.headerAt;
+  if (op === "(" && !pattern) r.depth++;
+  if (op === ")" && !pattern) r.depth = Math.max(0, r.depth - 1);
   const paren = op === "(" || op === ")";
   if (r.depth < r.regexAt || (r.depth === r.regexAt && !paren)) r.regexAt = -1;
   if (r.depth < r.conditionalAt || (r.depth === r.conditionalAt && !paren && op !== "&&" && op !== "||")) r.conditionalAt = -1;
-  if (r.conditionalAt === -1) r.commandStart = op !== ")" || closesHeader;
+  if (r.conditionalAt === -1) r.commandStart = op !== ")" || closesHeader || pattern;
   noteHeader(r, op, closesHeader);
 }
 

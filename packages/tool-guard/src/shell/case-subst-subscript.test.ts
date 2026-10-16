@@ -66,3 +66,26 @@ describe("a substitution holding a case statement that is harmless", () => {
     expect(await decisionOf(`echo $(case x in a) ${PUSH})`)).toBe("deny");
   });
 });
+
+describe("case and esac read by their grammar position inside $( )", () => {
+  const nested = `case x in a) case y in b) :;; esac;; c) ${PUSH};; esac`;
+  const esacPattern = `case x in (esac) :;; c) ${PUSH};; esac`;
+  it.each([
+    ["a case nested in a pattern body, quoted", `echo "$(${nested})"`],
+    ["a case nested in a pattern body", `echo $(${nested})`],
+    ["a case nested in a pattern body, in a subscript", `x[$(${nested})]=1`],
+    ["an (esac) pattern, quoted", `echo "$(${esacPattern})"`],
+    ["an (esac) pattern", `echo $(${esacPattern})`],
+    ["an (esac) pattern, in a subscript", `x[$(${esacPattern})]=1`],
+    ["an esac with no case", "echo $(esac)"],
+    ["an esac with no case before a pattern end, quoted", `echo "$(esac; c) ${PUSH})"`],
+  ])("guard refuses %s", async (_name, command) => {
+    expect(await decisionOf(command)).toBe("deny");
+  });
+
+  it.each([
+    ["a (case) pattern", "echo $(case x in (case) echo hi;; esac)"],
+  ])("guard allows %s", async (_name, command) => {
+    expect(await decisionOf(command)).toBeNull();
+  });
+});
