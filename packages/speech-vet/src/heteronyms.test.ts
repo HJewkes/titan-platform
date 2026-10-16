@@ -67,6 +67,28 @@ describe("HeteronymCheck", () => {
       ["live", "adj", "ok"],
     ]);
   });
+
+  // Catches: the silent drop of a declaration no token matches (the orphan-drop mutant), so a typo'd or stale declaration passes unseen.
+  it("declaration with no matching token fails and names the declaration", () => {
+    const tokens: PhonemeToken[] = [{ text: "Quiet", phonemes: "kwˈIᵊt", whitespace: "" }];
+
+    expect(checkReadings("Quiet [live](=verb)", tokens)).toEqual([
+      { word: "live", occurrence: 1, phonemes: null, reading: "unknown", declared: "verb", status: "fail" },
+    ]);
+  });
+
+  // Catches: a possessive token skipped as a non-form, so its declaration is dropped or skews the next occurrence's ordinal.
+  it("possessive token reads as the declared word and does not skew the next occurrence", () => {
+    const tokens: PhonemeToken[] = [
+      { text: "lead's", phonemes: "lˈidz", whitespace: " " },
+      { text: "lead", phonemes: "lˈɛd", whitespace: "" },
+    ];
+
+    expect(checkReadings("[lead](=guide)'s [lead](=metal)", tokens).map((f) => [f.word, f.reading, f.declared, f.status])).toEqual([
+      ["lead's", "guide", "guide", "ok"],
+      ["lead", "metal", "metal", "ok"],
+    ]);
+  });
 });
 
 describe("PronunciationOverride", () => {
