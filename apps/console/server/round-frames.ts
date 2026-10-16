@@ -50,19 +50,19 @@ const FramesIndexSchema = z.object({
 });
 type FramesIndex = z.infer<typeof FramesIndexSchema>;
 
-export interface FrameEntry {
+interface FrameEntry {
   files: Partial<Record<FrameView, string>>;
   theme?: Theme;
 }
 
-export interface FrameIndex {
+interface FrameIndex {
   entries: Map<string, FrameEntry>;
   /** Keyed by the file's path relative to the round dir, normalised, so `./a.png` and `a.png` share one sha. */
   sha256: Map<string, string>;
 }
 
 const frameResult = z.object({ contentType: z.literal("image/png"), bytes: z.number(), sha256: z.string(), base64: z.string() });
-export type FrameRead = z.infer<typeof frameResult>;
+type FrameRead = z.infer<typeof frameResult>;
 
 const refusal = (reason: string): Error => failure(`frame refused: ${reason}`, EXIT.NOINPUT);
 
@@ -168,7 +168,7 @@ export async function frameIndex(roundDir: string): Promise<FrameIndex> {
   return index;
 }
 
-export async function readFrame(roundDir: string, rel: string, expectedSha256?: string): Promise<FrameRead> {
+async function readFrame(roundDir: string, rel: string, expectedSha256?: string): Promise<FrameRead> {
   if (!IMAGE_PATH.test(rel)) throw refusal("its path is not a relative .png path");
   const bytes = await readInside(roundDir, rel, MAX_FRAME_BYTES);
   if (!bytes.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) throw refusal("the file is not a PNG");
