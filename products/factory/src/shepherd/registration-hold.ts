@@ -14,6 +14,9 @@ const MERGE_POLICY_FILES = ["g10-*.ts", "adversary-*.ts", "merge-evidence-gate.t
 /** Shepherd's hold, release, seat and reviewer-choice code, matched by exact path because the names are common elsewhere. */
 const HOLD_COMMAND_FILES = ["commands.ts", "operator-hold.ts", "seats.ts", "release.ts", "reviewer-choice.ts"].map((name) => `products/factory/src/shepherd/${name}`);
 
+/** The one rule file decision 422(1) keeps with the owner: a diff touching it is never released on two MERGEs, whatever its class. */
+export const OWNER_PACKET_FILES: readonly string[] = ["packages/authority/src/table.json"];
+
 /** agent-chat's leak guard, self-grant, permission hook and host directory (owner decision 350 Q5); test files stay exempt in the panel. */
 const AGENT_CHAT_SECURITY_FILES = ["src/leak-guard/**", "src/agents/*self-grant*", "src/cli/verbs/permission-hook.ts", "src/broker/host-directory.ts"];
 

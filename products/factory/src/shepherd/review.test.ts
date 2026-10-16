@@ -1519,6 +1519,13 @@ describe("reviewPhase", () => {
         expect(verdicts).toEqual([expect.objectContaining({ kind: "MERGE", panel: expect.objectContaining({ members: [expect.objectContaining({ shape: "correctness" }), expect.objectContaining({ shape: "adversary" })] }) })]);
       });
 
+      it("records the adversary's MERGE, its head and its spawn profile on the panel MERGE, for the two-MERGE release", async () => {
+        const { verdicts } = await review({ dispatch: fakeDispatch(), policy: AUTO, hold: HOLD, holdMember });
+
+        const members = verdicts[0]?.kind === "MERGE" ? verdicts[0].panel?.members : undefined;
+        expect(members?.find((member) => member.shape === "adversary")).toMatchObject({ verdict: "MERGE", head: H1, profile: "fable-reviewer" });
+      });
+
       it("spawns one reviewer with the flag off, or for a hold of another class", async () => {
         const off = await review({ dispatch: fakeDispatch(), policy: AUTO, hold: HOLD });
         const sized = await review({ dispatch: fakeDispatch(), policy: AUTO, hold: "g10-review: over the line limit", holdMember });

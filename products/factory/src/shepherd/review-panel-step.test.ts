@@ -41,6 +41,15 @@ describe("the sh-review-panel step", () => {
     ]);
   });
 
+  it("records what each member said, at which head, and the profile it was spawned at, for the two-MERGE release", async () => {
+    const results = [verdict("correctness", "MERGE"), verdict("adversary", "MERGE"), verdict("perf", "MERGE")];
+
+    const members = panelMerge(await aggregateStep(results), results, { adversary: "fable-reviewer" }).members;
+
+    expect(members.find((member) => member.shape === "adversary")).toMatchObject({ verdict: "MERGE", head: HEAD, profile: "fable-reviewer", sessionId: "session-adversary" });
+    expect(members.find((member) => member.shape === "perf")).not.toHaveProperty("profile");
+  });
+
   it("sends the head back on a split panel, with each member's findings under its shape and the class last for the fixer's brief", async () => {
     const adversary = "Retries skip the token check.\n\nDefect class: unchecked retry path";
 
