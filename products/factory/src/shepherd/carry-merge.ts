@@ -20,7 +20,7 @@ import { carryStep, type CarryInput, type CarryResult } from "./tree-carry.js";
 
 const CARRY_SCOPE_STEP = "sh-carry-scope";
 const CARRY_SEAT_STEP = "sh-carry-seat";
-/** Records an approve-merge answer that followed a head to its remerge-clean update or small fix, so the ledger shows why no gate opened. */
+/** Records an approve-merge answer that followed a head to its remerge-clean update or tree-equal merge-up, so the ledger shows why no gate opened. */
 export const APPROVAL_CARRY_STEP = "sh-approval-carry";
 export const CARRY_SCOPE_STEPS: readonly StepDeclaration[] = [
   { id: CARRY_SCOPE_STEP, kind: "dispatch" },
@@ -37,7 +37,7 @@ export const CARRYING_KINDS: ReadonlySet<string> = new Set(["correctness", "feat
 
 /**
  * Kinds whose owner approve-merge answer may follow Shepherd's own disjoint clean merge-up and nothing else (G10): the
- * remerge and small-fix rules stay closed to them, and a reviewed MERGE never carries (`CARRYING_KINDS`). It never follows
+ * remerge and fix-probe rules stay closed to them, and a reviewed MERGE never carries (`CARRYING_KINDS`). It never follows
  * across a merge-up whose main side touches a carry-fenced path (TP-2495).
  * Why: the 2026-10-11 owner decision (TP-2252) lets an owner's approval carry across Shepherd's own merge-up for security PRs.
  */

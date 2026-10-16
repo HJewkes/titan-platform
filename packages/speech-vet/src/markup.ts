@@ -12,6 +12,24 @@ export function plainText(spoken: string): string {
   return spoken.replace(LINK, (_link, word: string) => word);
 }
 
+export interface MarkupSegment {
+  kind: "plain" | "link";
+  text: string;
+}
+
+/** The line as alternating plain and `[w](target)` link segments; joining their text gives back the input. */
+export function splitLinks(spoken: string): MarkupSegment[] {
+  const segments: MarkupSegment[] = [];
+  let last = 0;
+  for (const match of spoken.matchAll(LINK)) {
+    if (match.index > last) segments.push({ kind: "plain", text: spoken.slice(last, match.index) });
+    segments.push({ kind: "link", text: match[0] });
+    last = match.index + match[0].length;
+  }
+  if (last < spoken.length) segments.push({ kind: "plain", text: spoken.slice(last) });
+  return segments;
+}
+
 /** How many times `form` occurs in `text` as a whole word, case-insensitively. */
 export function countOccurrences(text: string, form: string): number {
   return text.match(new RegExp(`(?<![A-Za-z'])${escapeRegExp(form)}(?![A-Za-z'])`, "gi"))?.length ?? 0;

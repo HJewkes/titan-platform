@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { MAX_STORED_ERROR_CHARS, REDACTED, redactForEvidence } from "./redact.js";
+import { MAX_STORED_ERROR_CHARS, REDACTED, redactCredentials, redactForEvidence } from "./redact.js";
+
+const JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.sig_-x";
 
 describe("error text stored as evidence", () => {
   it.each(["ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_11AB_"])("replaces a %s token with a marker", (prefix) => {
@@ -14,6 +16,76 @@ describe("error text stored as evidence", () => {
     const stored = redactForEvidence("> Authorization: token abc123\n> authorization: Bearer xyz.789\n> Authorization:raw");
 
     expect(stored).toBe(`> Authorization: ${REDACTED}\n> authorization: ${REDACTED}\n> Authorization:${REDACTED}`);
+  });
+
+  it("keeps the Authorization rule ahead of the JWT rule for a bearer token", () => {
+    expect(redactCredentials(`Authorization: Bearer ${JWT}`)).toBe(`Authorization: ${REDACTED}`);
+  });
+
+  it.each([
+    ["an npm token", `npm ERR! token npm_${"a1B2".repeat(9)}`, `npm ERR! token ${REDACTED}`],
+    ["an sk-proj key", `key sk-proj-${"aB3_-".repeat(8)} end`, `key ${REDACTED} end`],
+    ["an sk-ant key", `key=sk-ant-api03-${"Zx9".repeat(10)}`, `key=${REDACTED}`],
+    ["a three-segment JWT", `jwt ${JWT} ok`, `jwt ${REDACTED} ok`],
+    ["ssh userinfo", "ssh://deploy:hunter2@host/repo", `ssh://${REDACTED}@host/repo`],
+    ["postgres userinfo", "postgres://u:p%40ss@db:5432/x", `postgres://${REDACTED}@db:5432/x`],
+    ["https userinfo", "fetch https://u:p@github.com failed", `fetch https://${REDACTED}@github.com failed`],
+    ["userinfo with a raw @ in the password", "ssh://u:p@ss@host/x", `ssh://${REDACTED}@host/x`],
+    ["JSON-escaped userinfo", String.raw`"https:\/\/u:p@h"`, String.raw`"https:\/\/${REDACTED}@h"`],
+    ["a token after an ANSI colour code", `\x1b[31mghp_${"a1B2".repeat(9)}`, `\x1b[31m${REDACTED}`],
+    ["a key after a JSON-escaped newline", String.raw`"a\nsk-ant-api03-${"Zx9".repeat(10)}"`, String.raw`"a\n${REDACTED}"`],
+    ["a key after an env-name underscore", `KEY_sk-${"Zx9".repeat(10)}`, `KEY_${REDACTED}`],
+    ["a token after a percent escape", `%22ghp_${"a1B2".repeat(9)}%22`, `%22${REDACTED}%22`],
+    ["a token after a JSON unicode escape", String.raw`"\u0022ghp_${"a1B2".repeat(9)}\u0022"`, String.raw`"\u0022${REDACTED}\u0022"`],
+    ["a token after an ANSI erase code", `\x1b[0Kghp_${"a1B2".repeat(9)}`, `\x1b[0K${REDACTED}`],
+    ["a token after a truecolour code", `\x1b[38;2;255;0;0mghp_${"a1B2".repeat(9)}`, `\x1b[38;2;255;0;0m${REDACTED}`],
+    ["empty-user redis userinfo", "redis://:secretpassword@host:6379", `redis://${REDACTED}@host:6379`],
+    ["empty-user https userinfo", "https://:TOKEN@h", `https://${REDACTED}@h`],
+    ["a long password", `ssh://u:${"p".repeat(300)}@h`, `ssh://${REDACTED}@h`],
+    ["a gh token after a dash", `x-ghp_${"a1B2".repeat(9)}`, `x-${REDACTED}`],
+    ["a gh token in a dashed flag", `--token-ghp_${"a1B2".repeat(9)}`, `--token-${REDACTED}`],
+  ])("replaces %s", (_name, input, expected) => {
+    expect(redactCredentials(input)).toBe(expected);
+  });
+
+  it.each([
+    "npm_config_cache=/tmp",
+    "task-sk-123",
+    `task-sk-${"a".repeat(30)}`,
+    `pkg-npm_${"a1B2".repeat(9)}`,
+    "pkg.json.lock",
+    "eyJ alone",
+    "ssh://git@github.com:org/repo",
+    "mailto:a@b.c",
+    `risk-assessment-for-the-quarterly-review`,
+    "https://registry.npmjs.org:443/@titan-design/factory",
+    "https://localhost:3000?email=a@b.com",
+    "https://localhost:3000#a@b",
+    `{"url":"https://h:8080","by":"a@b"}`,
+    `{'url':'https://h:8080','by':'a@b'}`,
+  ])("leaves %s unchanged", (input) => {
+    expect(redactCredentials(input)).toBe(input);
+  });
+
+  it.each([
+    ["JWT runs after -", "-eyJ"],
+    ["JWT runs after _", "_eyJ"],
+    ["JWT runs after .", ".eyJaaaaaaa"],
+    ["sk- runs", "-sk-"],
+    ["gh token runs", "_ghp_"],
+    ["gh token runs after -", "-ghp_"],
+    ["npm runs", "_npm_"],
+    ["URL schemes", "a.b.c."],
+    ["userinfo with no @", "a://b:"],
+    ["dotted schemes before one long password", `${"a.".repeat(15)}a://u:${"p".repeat(100_000)}`],
+    ["escaped prefixes", "\\neyJ%22sk-"],
+  ])("scans 100 kB of %s in linear time", (_name, unit) => {
+    const input = unit.repeat(Math.ceil(100_000 / unit.length));
+
+    const started = performance.now();
+    redactCredentials(input);
+
+    expect(performance.now() - started).toBeLessThan(100);
   });
 
   it("caps stored text at a fixed length", () => {

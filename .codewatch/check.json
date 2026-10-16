@@ -39,6 +39,7 @@
           "packages/agent-surface",
           "packages/worktree",
           "packages/health",
+          "packages/frame-capture",
           "packages/speech-tts",
           "packages/speech-stt",
           "packages/speech-g2p"
@@ -114,6 +115,7 @@
           "packages/agent-surface",
           "packages/worktree",
           "packages/health",
+          "packages/frame-capture",
           "packages/speech-tts",
           "packages/speech-stt",
           "packages/speech-g2p"

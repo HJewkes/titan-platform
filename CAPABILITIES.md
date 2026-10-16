@@ -28,7 +28,7 @@ Before adding code:
 | [`embed`](#cap-embed) | 0 | You need embedding vectors and a model download must not be a hard requirement. Pair it with retrieval, which takes the same `Embedder`. |
 | [`eslint-plugin`](#cap-eslint-plugin) | 0 | You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function), the opt-in `max-line-length` (no code line over 200 characters), `no-commented-code` (no code in comments), `no-chained-type-assertions` (no `as unknown as T`), `no-internal-module-mock` (tests mock only external dependencies) and `todo-needs-issue` (every TODO names a task id). To run ESLint against a style profile and normalize its output, use `style-checker` instead. |
 | [`evidence`](#cap-evidence) | 0 | A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. Its `./stats` subpath puts honest intervals and paired tests on eval pass rates at 20 to 50 cases. |
-| [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. For a tests-only diff it also tells test material from source (`testOnlyOf`) and parses `*.mutations.json` specs. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority. |
+| [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. For a tests-only diff it also tells test material from source (`testOnlyOf`) and parses `*.mutations.json` specs, and `classifyMutants` decides whether every declared mutation was killed, which the judge adds to the line as `mutants`. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority. |
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
@@ -39,6 +39,7 @@ Before adding code:
 | [`agent-lifecycle`](#cap-agent-lifecycle) | 1 | You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one. |
 | [`agent-surface`](#cap-agent-surface) | 1 | A host must present a long-lived agent somewhere: detached and headless, or in an iTerm2 pane, tab or window it can later close and confirm closed. The host injects its launcher argv; `titan-agent-launch <plan.json>` is the launcher that execs a written plan with no shell, stamps its own pid, and keeps a stderr tail. For a bounded `claude -p` run that returns a result, use `runAgent` from `@titan-design/agent` with `harness: "claude-print"` instead. |
 | [`daemon`](#cap-daemon) | 1 | You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. It also carries a token-file, login-link and session-cookie auth gate for a listener beyond loopback. |
+| [`frame-capture`](#cap-frame-capture) | 1 | You need deterministic PNG frames, or an MP4, of a web page that animates on a timeline: the page publishes `window.__titanMotion` (`seek(t)`, `ready()`, `duration`) and `captureFrames` drives it under a virtual clock (`VIRTUAL_TIME_SCRIPT`) across parallel Playwright browsers, failing on any page error or unloaded font face; `startEncoder` and `mixAudio` wrap ffmpeg. It does not know what a beat or a timeline is: the motion runtime that publishes the protocol is titan-design's react-ui `/motion`, and composing a video is a product's job. |
 | [`github`](#cap-github) | 1 | Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. A long-running service uses `octokitWire()` on `sharedOctokit()`: the same port, with one throttled, GET-only-retry budget per process. Use `fakeGitHub()` in tests instead of stubbing `gh`. `formatSquashMessage` (and the `titan-squash-message` bin) builds a deterministic, trailer- and email-free squash commit message from a PR and its commits. `ciVerdict` and `ciWait` (and `titan-gh ci-wait`) judge or wait on a sha's CI over the base branch's required contexts. A shell or agent reading one PR uses `titan-gh pr-status` and `titan-gh pr-context` instead of `gh pr view --json` piped to `jq`. |
 | [`health`](#cap-health) | 1 | You emit or read a health route's payload and want one open contract: `healthReportSchema` for health/v1 (pass, warn or fail with named checks, after draft-inadarei-api-health-check) and `parseHealthReport` to read any payload, legacy `ok`-only ones included, without ever reading better than its worst check. `healthSampleSchema` is the strict row for storing one probe result; `openHealthStore` and `appendSamples` keep every one in an append-only SQLite table (one transaction per tick), and `uptime` reports up, down, unknown and missing slots separately. `probeHttp` takes one such sample of a health route, with a timeout and a pid/port identity check, and never throws for a target that is down. To serve the health route itself, use daemon. The `./metrics` subpath adds `validateEntry(entry, "write" \| "read")` and the zod schemas for `titan.metrics/v1` registry entries and `titan.measurement-audit/v1` audit reports (write refuses unknown keys, read keeps them); use it to author or load a system's metric registry. |
 | [`hitl`](#cap-hitl) | 1 | A step must pause for a human decision and resume, possibly in another process, after a restart. A gate can carry an owner-facing brief (one-line summary, evidence pointer, bounded button questions), required per store with `requireBrief`. |
@@ -47,9 +48,9 @@ Before adding code:
 | [`registry`](#cap-registry) | 1 | You define a command once and want it served as a CLI, an MCP tool and an HTTP route. Adopt it the moment a second surface is plausible. |
 | [`retrieval`](#cap-retrieval) | 1 | You need search over a store-sqlite corpus that fuses FTS, vectors and graph hops and keeps answering when one retriever is down. `fuseByRRF` and `gatherFailOpen` work over your own retrievers too. |
 | [`rpc-client`](#cap-rpc-client) | 1 | Browser or Node code calls a registry-backed daemon, live over HTTP and SSE or from a static snapshot export, with typed commands. |
-| [`speech-g2p`](#cap-speech-g2p) | 1 | You turn English text into misaki phoneme tokens without Python, for Kokoro or for vetting pronunciations. This first slice ships the `G2pToken`, `Tokenizer` and `PosTagger` types and vendors misaki 0.9.4's US lexicon; the engine follows. Synthesis is `speech-tts`, and checking readings against declarations is `speech-vet`. |
-| [`speech-stt`](#cap-speech-stt) | 1 | You compare a script with what a recogniser heard, or port Python that calls `difflib`: a CPython-parity `SequenceMatcher`, `align` to time script words from a transcript, `diff` and `normalize` to score a take, the `Word` and `Transcript` schemas, and a pure TS `resample` (24 kHz to 16 kHz without ffmpeg). `whisperStt` transcribes audio to word-timed `Transcript`s through transformers.js Whisper (optional peer), cached by audio hash. Synthesis is `speech-tts`. |
-| [`speech-tts`](#cap-speech-tts) | 1 | You need speech audio and the engine must differ per deployment: an in-process model, a GPU box behind a command or ssh, or a hosted HTTP API. Callers state the capabilities they need (voice, word timestamps, phoneme input, speed), and a profile plus `TITAN_SPEECH_*` env picks the provider. Recognition and alignment are not here; they belong to the planned speech-stt package. |
+| [`speech-g2p`](#cap-speech-g2p) | 1 | You turn English text into misaki 0.9.4 phoneme tokens without Python, for Kokoro or for vetting pronunciations: `misakiEnglish()` gives per-token phonemes, the joined string and a cache `version`, honours `[word](/phonemes/)` overrides, and `ttsTokens` hands them to speech-tts. `misakiToIpa` converts the result to IPA. Words outside misaki's lexicon come back unread (`phonemes: null`) unless you pass a `fallback`. Synthesis is `speech-tts`, and checking readings against declarations is `speech-vet`. |
+| [`speech-stt`](#cap-speech-stt) | 1 | You compare a script with what a recogniser heard, or port Python that calls `difflib`: a CPython-parity `SequenceMatcher` and `roundHalfEven` (Python's `round`), `align` to time script words from a transcript, `diff` and `normalize` to score a take, the `Word` and `Transcript` schemas, and a pure TS `resample` (24 kHz to 16 kHz without ffmpeg). `whisperStt` transcribes audio to word-timed `Transcript`s through transformers.js Whisper (optional peer), cached by audio hash, and declares `capabilities.tokenLogprobs: false` (no word probabilities or segment confidence). `wav2vec2Recognizer` gives espeak-style IPA phones per 20 ms frame (fp32 by default, at parity with the PyTorch model; q8 opt-in changes verdicts) and exposes the CTC logits for forced alignment. `alignWords` force-aligns a script to those logits for word starts within a frame or two, with a per-voice-family offset. Synthesis is `speech-tts`. |
+| [`speech-tts`](#cap-speech-tts) | 1 | You need speech audio and the engine must differ per deployment: an in-process model, a GPU box behind a command or ssh, or a hosted HTTP API. Callers state the capabilities they need (voice, word timestamps, phoneme input, speed), and a profile plus `TITAN_SPEECH_*` env picks the provider. It ships an in-process Kokoro provider (fp32, misaki phonemes, word timings from the model's own durations) and helpers to tune speed to a words-per-minute target. `detectSpeechRuntime` picks each speech model's device (CPU by default, CUDA reported but opt-in) and cache directory from the platform, `TITAN_SPEECH_*` env and the profile, for speech-tts and speech-stt alike. Recognition and alignment are not here; they belong to speech-stt. |
 | [`worktree`](#cap-worktree) | 1 | You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. Inputs are plain records and the budget is a parameter, so the caller keeps its own roster and journal. Launching the agent process is agent-surface; deciding which isolation strategy applies is agent-dispatch. |
 | [`code-graph`](#cap-code-graph) | 2 | A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python. |
 | [`code-read`](#cap-code-read) | 2 | A product serves code-graph snapshots to a UI, an agent or a workflow through a versioned read API, registered on a registry and hosted by daemon. |
@@ -65,7 +66,7 @@ Before adding code:
 | [`session-analytics`](#cap-session-analytics) | 2 | You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Also for agent-chat operations: it reads agent-chat's events.db through a connection the caller opened, parses broker.log lines, transcript denials and seat journals the caller reads, and reports blocked merges, dark agents and review fill. Also for a coordinator duty meter over seat transcript lines the caller reads. Session parsing is session-read; storage is session-graph. |
 | [`session-graph`](#cap-session-graph) | 2 | You query a growing corpus of Claude Code and Codex sessions repeatedly and want it folded into an incrementally maintained SQLite graph. |
 | [`session-read`](#cap-session-read) | 2 | You parse Claude Code or Codex transcripts into typed events with locators and do not want session-graph's storage. |
-| [`speech-vet`](#cap-speech-vet) | 2 | You hold narration text and must say how its hard words are read before any audio exists: `[word](/phonemes/)` overrides and `[word](=reading)` declarations, a heteronym check of G2P tokens against those declarations, a `lexicon.v1` file of rewrites, respellings and phonemes, dotted-letter initialisms, and `normalize()`, composable steps that spell out numbers, decimals, currency, ordinals, clock times and per-unit rates. It is text-only and runs no G2P or model; tokens come from the caller. Synthesis belongs to speech-tts. |
+| [`speech-vet`](#cap-speech-vet) | 2 | You hold narration text and must say how its hard words are read before any audio exists: `[word](/phonemes/)` overrides and `[word](=reading)` declarations, a heteronym check of G2P tokens against those declarations, a `lexicon.v1` file of rewrites, respellings and phonemes, dotted-letter initialisms, and `normalize()`, composable steps that spell out numbers, decimals, currency, ordinals, clock times and per-unit rates. Once audio exists, `chunkWordVerdicts`, `detectHallucinations` and `detectTailArtifact` judge a recognizer's phones against espeak-style expected phones (a port of the audiobook phone check, at verdict parity). `espeakCliG2p` supplies those expected phones by running the espeak-ng binary you install (GPL, called as a process, not bundled); `misakiIpaG2p` supplies them from speech-g2p with no binary. `checkHeardReadings` checks each declared heteronym reading against the recognized phones, espeak-free, through an injected misaki-to-IPA map. `synthesizeVerified` re-rolls babbled takes, and `keepTake`, `regressions` and `bestTailTake` choose between a shipped take and a regenerated one without shipping a worse take. `detectDefects` and `confirmDefects` find mangled, dropped and muddy words by aligning source text against a speech-stt transcript (a port of the audiobook defect check, at output parity); pass `defectOptionsFor(stt)` so the recogniser's confidence is used only when its provider has token log-probs. It loads no model; tokens, phones and transcripts come from the caller. Synthesis belongs to speech-tts. |
 | [`style-analyzer`](#cap-style-analyzer) | 2 | You measure how a codebase is actually written and build a style profile from real code. |
 | [`style-checker`](#cap-style-checker) | 2 | You run ESLint, ruff and the Python audit tools against a profile and want every finding in one normalized diagnostic shape. |
 | [`style-profile`](#cap-style-profile) | 2 | You hold a code-style profile and need the ESLint, ruff, EditorConfig or agent-rule output that enforces it. |
@@ -320,7 +321,7 @@ Key exports:
 
 Tier 0, `@titan-design/fix-proof@0.4.0`. Proves a fix PR's new tests fail on the merge base and pass at head: diff plan, vitest report classification, fix-proof/v1 result line
 
-**Use this when:** You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. For a tests-only diff it also tells test material from source (`testOnlyOf`) and parses `*.mutations.json` specs. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority.
+**Use this when:** You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. For a tests-only diff it also tells test material from source (`testOnlyOf`) and parses `*.mutations.json` specs, and `classifyMutants` decides whether every declared mutation was killed, which the judge adds to the line as `mutants`. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority.
 
 Key exports:
 
@@ -328,9 +329,9 @@ Key exports:
 - `glob`: `compileGlobs`, `expandBraces`
 - `plan`: `planFixProof`, `testOnlyOf`
 - `mutation`: `checkMutation`, `parseMutationSpec`
-- `classify`: `classifyReports`
-- `result-line`: `formatResultLine`, `parseResultLine`, `toResult`
-- +61 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/fix-proof)
+- `mutant-classify`: `classifyMutants`, `testFileOfSpec`
+- `classify`: `classifyReports`, `isNewApiFailure`
+- +78 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/fix-proof)
 
 <a id="cap-locator"></a>
 
@@ -500,6 +501,23 @@ Key exports:
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `getProcessStartTime`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`
 - +70 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/daemon)
 
+<a id="cap-frame-capture"></a>
+
+### [`frame-capture`](https://hjewkes.github.io/titan-platform/reference/frame-capture)
+
+Tier 1, `@titan-design/frame-capture@0.0.0`. Deterministic frame capture of any page that speaks the __titanMotion protocol
+
+**Use this when:** You need deterministic PNG frames, or an MP4, of a web page that animates on a timeline: the page publishes `window.__titanMotion` (`seek(t)`, `ready()`, `duration`) and `captureFrames` drives it under a virtual clock (`VIRTUAL_TIME_SCRIPT`) across parallel Playwright browsers, failing on any page error or unloaded font face; `startEncoder` and `mixAudio` wrap ffmpeg. It does not know what a beat or a timeline is: the motion runtime that publishes the protocol is titan-design's react-ui `/motion`, and composing a video is a product's job.
+
+Key exports:
+
+- `protocol`: `TITAN_MOTION_GLOBAL`, `TitanMotionApi`
+- `virtual-time`: `VIRTUAL_TIME_SCRIPT`, `VirtualTimeApi`
+- `capture`: `captureFrame`, `launch`, `openCapturePage`, `settleFonts`, `CapturePage`
+- `frames`: `captureFrames`
+- `encode`: `mixAudio`, `startEncoder`
+- +7 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/frame-capture)
+
 <a id="cap-github"></a>
 
 ### [`github`](https://hjewkes.github.io/titan-platform/reference/github)
@@ -516,7 +534,7 @@ Key exports:
 - `checks`: `isPassing`, `isPassingConclusion`, `isSucceeded`, `latestPerName`
 - `ci-verdict`: `ciVerdict`, `loadRequiredContexts`
 - `ci-wait`: `ciWait`
-- +102 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
+- +103 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-health"></a>
 
@@ -643,30 +661,32 @@ Key exports:
 
 Tier 1, `@titan-design/speech-g2p@0.0.0`. English text to misaki phoneme tokens in pure TypeScript: lexicon G2P, spaCy-compatible tokenizer, compromise POS tagger
 
-**Use this when:** You turn English text into misaki phoneme tokens without Python, for Kokoro or for vetting pronunciations. This first slice ships the `G2pToken`, `Tokenizer` and `PosTagger` types and vendors misaki 0.9.4's US lexicon; the engine follows. Synthesis is `speech-tts`, and checking readings against declarations is `speech-vet`.
+**Use this when:** You turn English text into misaki 0.9.4 phoneme tokens without Python, for Kokoro or for vetting pronunciations: `misakiEnglish()` gives per-token phonemes, the joined string and a cache `version`, honours `[word](/phonemes/)` overrides, and `ttsTokens` hands them to speech-tts. `misakiToIpa` converts the result to IPA. Words outside misaki's lexicon come back unread (`phonemes: null`) unless you pass a `fallback`. Synthesis is `speech-tts`, and checking readings against declarations is `speech-vet`.
 
 Key exports:
 
 - `types`: `G2pToken`, `PosTagger`, `RawToken`, `Tokenizer`
+- `misaki-english`: `misakiEnglish`, `ttsTokens`, `G2p`, `MisakiEnglishOptions`, `TtsReadyToken`
 - `misaki-to-ipa`: `misakiToIpa`, `MisakiToIpaOptions`
 
 <a id="cap-speech-stt"></a>
 
 ### [`speech-stt`](https://hjewkes.github.io/titan-platform/reference/speech-stt)
 
-Tier 1, `@titan-design/speech-stt@0.0.0`. Speech-recognition helpers: a transformers.js Whisper recogniser with an audio-hash cache, a CPython-parity SequenceMatcher, script alignment, transcript diff, Word and Transcript schemas, and a resampler
+Tier 1, `@titan-design/speech-stt@0.0.0`. Speech-recognition helpers: a transformers.js Whisper recogniser with an audio-hash cache, a wav2vec2 phone recogniser with CTC logits, a CPython-parity SequenceMatcher, script alignment, transcript diff, Word and Transcript schemas, and a resampler
 
-**Use this when:** You compare a script with what a recogniser heard, or port Python that calls `difflib`: a CPython-parity `SequenceMatcher`, `align` to time script words from a transcript, `diff` and `normalize` to score a take, the `Word` and `Transcript` schemas, and a pure TS `resample` (24 kHz to 16 kHz without ffmpeg). `whisperStt` transcribes audio to word-timed `Transcript`s through transformers.js Whisper (optional peer), cached by audio hash. Synthesis is `speech-tts`.
+**Use this when:** You compare a script with what a recogniser heard, or port Python that calls `difflib`: a CPython-parity `SequenceMatcher` and `roundHalfEven` (Python's `round`), `align` to time script words from a transcript, `diff` and `normalize` to score a take, the `Word` and `Transcript` schemas, and a pure TS `resample` (24 kHz to 16 kHz without ffmpeg). `whisperStt` transcribes audio to word-timed `Transcript`s through transformers.js Whisper (optional peer), cached by audio hash, and declares `capabilities.tokenLogprobs: false` (no word probabilities or segment confidence). `wav2vec2Recognizer` gives espeak-style IPA phones per 20 ms frame (fp32 by default, at parity with the PyTorch model; q8 opt-in changes verdicts) and exposes the CTC logits for forced alignment. `alignWords` force-aligns a script to those logits for word starts within a frame or two, with a per-voice-family offset. Synthesis is `speech-tts`.
 
 Key exports:
 
 - `align`: `align`
-- `diff`: `diff`, `normalize`, `DiffOptions`, `WordDiff`
+- `diff`: `diff`, `normalize`
 - `resample`: `resample`
+- `round`: `roundHalfEven`
 - `schemas`: `SegmentSchema`, `TranscriptSchema`, `WordSchema`
 - `sequence-matcher`: `SequenceMatcher`
-- `whisper`: `loadTransformersPipeline`, `whisperStt`
-- +16 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/speech-stt)
+- `ctc`: `argmaxFrames`, `ctcGreedyDecode`, `normalizeInput`
+- +43 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/speech-stt)
 
 <a id="cap-speech-tts"></a>
 
@@ -674,14 +694,14 @@ Key exports:
 
 Tier 1, `@titan-design/speech-tts@0.0.0`. Swappable text-to-speech provider contract, registry and command/HTTP adapters
 
-**Use this when:** You need speech audio and the engine must differ per deployment: an in-process model, a GPU box behind a command or ssh, or a hosted HTTP API. Callers state the capabilities they need (voice, word timestamps, phoneme input, speed), and a profile plus `TITAN_SPEECH_*` env picks the provider. Recognition and alignment are not here; they belong to the planned speech-stt package.
+**Use this when:** You need speech audio and the engine must differ per deployment: an in-process model, a GPU box behind a command or ssh, or a hosted HTTP API. Callers state the capabilities they need (voice, word timestamps, phoneme input, speed), and a profile plus `TITAN_SPEECH_*` env picks the provider. It ships an in-process Kokoro provider (fp32, misaki phonemes, word timings from the model's own durations) and helpers to tune speed to a words-per-minute target. `detectSpeechRuntime` picks each speech model's device (CPU by default, CUDA reported but opt-in) and cache directory from the platform, `TITAN_SPEECH_*` env and the profile, for speech-tts and speech-stt alike. Recognition and alignment are not here; they belong to speech-stt.
 
 Key exports:
 
 - `errors`: `TtsConfigError`, `TtsError`, `TtsFailedError`, `TtsTimeoutError`, `TtsUnavailableError`, `TtsUnsupportedError`
 - `capabilities`: `assertSupported`, `languageMatches`, `missingCapabilities`, `requirementsOf`
 - `wav`: `decodeWav`, `encodeWav`
-- +45 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/speech-tts)
+- +72 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/speech-tts)
 
 <a id="cap-worktree"></a>
 
@@ -963,9 +983,9 @@ Key exports:
 
 ### [`speech-vet`](https://hjewkes.github.io/titan-platform/reference/speech-vet)
 
-Tier 2, `@titan-design/speech-vet@0.0.0`. Speech text vetting: pronunciation override markup, heteronym reading checks, lexicon.v1, initialism spelling and number normalization
+Tier 2, `@titan-design/speech-vet@0.0.0`. Speech text vetting: pronunciation override markup, heteronym reading checks, lexicon.v1, initialism spelling, number normalization and phone-level pronunciation verdicts
 
-**Use this when:** You hold narration text and must say how its hard words are read before any audio exists: `[word](/phonemes/)` overrides and `[word](=reading)` declarations, a heteronym check of G2P tokens against those declarations, a `lexicon.v1` file of rewrites, respellings and phonemes, dotted-letter initialisms, and `normalize()`, composable steps that spell out numbers, decimals, currency, ordinals, clock times and per-unit rates. It is text-only and runs no G2P or model; tokens come from the caller. Synthesis belongs to speech-tts.
+**Use this when:** You hold narration text and must say how its hard words are read before any audio exists: `[word](/phonemes/)` overrides and `[word](=reading)` declarations, a heteronym check of G2P tokens against those declarations, a `lexicon.v1` file of rewrites, respellings and phonemes, dotted-letter initialisms, and `normalize()`, composable steps that spell out numbers, decimals, currency, ordinals, clock times and per-unit rates. Once audio exists, `chunkWordVerdicts`, `detectHallucinations` and `detectTailArtifact` judge a recognizer's phones against espeak-style expected phones (a port of the audiobook phone check, at verdict parity). `espeakCliG2p` supplies those expected phones by running the espeak-ng binary you install (GPL, called as a process, not bundled); `misakiIpaG2p` supplies them from speech-g2p with no binary. `checkHeardReadings` checks each declared heteronym reading against the recognized phones, espeak-free, through an injected misaki-to-IPA map. `synthesizeVerified` re-rolls babbled takes, and `keepTake`, `regressions` and `bestTailTake` choose between a shipped take and a regenerated one without shipping a worse take. `detectDefects` and `confirmDefects` find mangled, dropped and muddy words by aligning source text against a speech-stt transcript (a port of the audiobook defect check, at output parity); pass `defectOptionsFor(stt)` so the recogniser's confidence is used only when its provider has token log-probs. It loads no model; tokens, phones and transcripts come from the caller. Synthesis belongs to speech-tts.
 
 Key exports:
 
@@ -973,7 +993,7 @@ Key exports:
 - `heteronyms`: `checkReadings`, `englishHeteronyms`, `HeteronymTableSchema`, `readingOf`, `tokenDump`
 - `lexicon`: `LexiconEntrySchema`, `LexiconSchema`, `loadLexicon`, `respellingsOf`
 - `respell`: `generateCandidates`
-- +31 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/speech-vet)
+- +104 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/speech-vet)
 
 <a id="cap-style-analyzer"></a>
 

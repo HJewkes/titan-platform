@@ -65,23 +65,35 @@ function statusOf(reading: string, target: string): { declared: string | null; s
   return { declared: null, status: target.startsWith("/") ? "forced" : "warn" };
 }
 
-/** One finding per heteronym occurrence among the G2P tokens of `g2pText(spoken)`: its reading, its declaration, and its status. */
-export function checkReadings(spoken: string, tokens: readonly PhonemeToken[], table: HeteronymTable = englishHeteronyms): ReadingFinding[] {
+/** A heteronym occurrence's finding, with the table word it belongs to and its index among the tokens. */
+export interface HeteronymOccurrence {
+  tokenIndex: number;
+  tableWord: string;
+  finding: ReadingFinding;
+}
+
+export function heteronymOccurrences(spoken: string, tokens: readonly PhonemeToken[], table: HeteronymTable): HeteronymOccurrence[] {
   const forms = formsOf(table);
   const targets = markupTargets(spoken);
   const seen = new Map<string, number>();
-  const findings: ReadingFinding[] = [];
-  for (const token of tokens) {
+  const occurrences: HeteronymOccurrence[] = [];
+  tokens.forEach((token, tokenIndex) => {
     const form = token.text.toLowerCase();
-    const word = forms.get(form);
-    if (word === undefined) continue;
+    const tableWord = forms.get(form);
+    if (tableWord === undefined) return;
     const ordinal = (seen.get(form) ?? -1) + 1;
     seen.set(form, ordinal);
-    const reading = readingOf(word, token.phonemes, table);
+    const reading = readingOf(tableWord, token.phonemes, table);
     const target = targets.get(occurrenceKey(form, ordinal)) ?? "";
-    findings.push({ word: token.text, occurrence: ordinal + 1, phonemes: token.phonemes, reading, ...statusOf(reading, target) });
-  }
-  return findings;
+    const finding = { word: token.text, occurrence: ordinal + 1, phonemes: token.phonemes, reading, ...statusOf(reading, target) };
+    occurrences.push({ tokenIndex, tableWord, finding });
+  });
+  return occurrences;
+}
+
+/** One finding per heteronym occurrence among the G2P tokens of `g2pText(spoken)`: its reading, its declaration, and its status. */
+export function checkReadings(spoken: string, tokens: readonly PhonemeToken[], table: HeteronymTable = englishHeteronyms): ReadingFinding[] {
+  return heteronymOccurrences(spoken, tokens, table).map(({ finding }) => finding);
 }
 
 /** Token text and the phonemes G2P chose for it, as the voice received them. */

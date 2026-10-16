@@ -5,7 +5,9 @@ from a deployment's profile and environment, and adapters for any external engin
 about the host is assumed. A deployment says which engines it has; callers say which
 capabilities they need.
 
-Tier 1 of the titan-platform DAG. No runtime dependencies and no model downloads.
+Tier 1 of the titan-platform DAG. One runtime dependency, `@titan-design/app-paths`, for the
+default model cache. The Kokoro adapter needs two optional peers and a model download, and
+only when you use it.
 
 ```sh
 npm install @titan-design/speech-tts
@@ -97,20 +99,79 @@ providers, and selection says how to add one.
 | `TITAN_SPEECH_TTS_<ID>_ARGV` | Overrides a `command` provider's `argv`, as a JSON array. |
 | `TITAN_SPEECH_TTS_<ID>_TIMEOUT_MS` | Overrides a provider's `timeoutMs`. |
 | `profile.json`, `tts.fallback` | `true` lets selection move past a misconfigured provider. Default `false`. |
+| `TITAN_SPEECH_DEVICE_<TTS\|STT\|PHONES>` | One model's device (`TITAN_SPEECH_DEVICE_STT=cpu`). Beats `TITAN_SPEECH_DEVICE`. See "Choosing a device and cache". |
+| `TITAN_SPEECH_DEVICE` | The device for every model that has no `TITAN_SPEECH_DEVICE_<C>`. |
+| `TITAN_SPEECH_CACHE` | Absolute path of the model cache. Beats `profile.json` `runtime.cacheDir`. |
+| `profile.json`, `runtime` | `{ "device": { "tts"?, "stt"?, "phones"? }, "cacheDir"? }`: the device and cache when no variable sets them. |
 | `${env:NAME}` in a `headers` or command `env` value | Expanded from the environment, so a profile can be shared without its secrets. An unset or empty `NAME` makes the provider misconfigured, naming `NAME`; an empty header is never sent. Expanded values are redacted from error text. |
 
 `<ID>` is the provider id upper-cased, with every other character as `_`.
 
-The package never chooses a path on its own. A product that wants a default location can
+The package never chooses the profile's path. A product that wants a default location can
 pass `appDirs("titan-speech").config` from `@titan-design/app-paths`, joined with
-`profile.json`.
+`profile.json`. It does choose a default model cache and device (next section).
+
+## Choosing a device and cache
+
+Speech models run on a device and keep their weights in a cache directory.
+`resolveSpeechRuntime()` picks both for the three in-process models, and the result feeds
+Kokoro (here), Whisper and wav2vec2 (`@titan-design/speech-stt`) alike:
+
+```ts
+import { resolveSpeechRuntime, runtimeOptions } from "@titan-design/speech-tts";
+
+const runtime = await resolveSpeechRuntime();
+runtime.available;                           // ["cpu"], or ["cpu", "cuda"]
+const tts = kokoroProvider({ g2p, ...runtimeOptions(runtime, "tts") });
+const stt = whisperStt({ ...runtimeOptions(runtime, "stt") });
+const phones = wav2vec2Recognizer({ ...runtimeOptions(runtime, "phones") });
+```
+
+`detectSpeechRuntime({ platform, arch, env, home, exists, ortDir?, profile?, allowUnverifiedCuda? })`
+is the same decision as a pure function. `resolveSpeechRuntime` supplies the real host and
+loads the profile through `TITAN_SPEECH_PROFILE`, like `selectTts`.
+
+**Device.** Each model takes the first of `TITAN_SPEECH_DEVICE_<TTS|STT|PHONES>`,
+`TITAN_SPEECH_DEVICE`, the profile's `runtime.device.<tts|stt|phones>`, then `cpu`. An empty
+variable counts as unset. `runtime.source` says which one won.
+
+**Cache.** `TITAN_SPEECH_CACHE`, then the profile's `runtime.cacheDir`, then
+`appDirs("titan-speech").cache` (`~/Library/Caches/titan-speech` on macOS, `$XDG_CACHE_HOME`
+or `~/.cache` on Linux). The path must be absolute; a `~` the shell did not expand is refused
+with `bad-cache-dir`. It reaches the providers byte for byte, so a path with a space, such as
+one under `Application Support`, works.
+
+**Kokoro profile entries.** When you give `kokoroFactory` the `runtime`
+(`kokoroFactory({ g2p, runtime })`), an entry's own `device` or `cacheDir` loses to a value
+set by a `TITAN_SPEECH_*` variable, and beats the profile's `runtime` section and the
+defaults.
+
+**What is refused**, each as a `SpeechRuntimeError` with a `code`:
+
+| `code` | When |
+|---|---|
+| `unknown-device` | The name is not `cpu`, `cuda`, `coreml` or `webgpu`. |
+| `unsupported-device` | `coreml` or `webgpu` (they need `@huggingface/transformers` 4.x; the speech packages support 3.x), or `cuda` off linux-x64. |
+| `unavailable-device` | `cuda` on linux-x64 without the ONNX Runtime CUDA library or the NVIDIA driver. The message names the missing path. |
+| `unverified-device` | `cuda` is available but not yet verified. See below. |
+| `unsupported-platform` | macOS with an x64 Node (Rosetta or an Intel Mac). Run an arm64 Node. This is checked before any override. |
+| `bad-cache-dir` | The cache path is not absolute. |
+
+**CUDA is listed, not used.** On linux-x64, `runtime.available` includes `cuda` when
+`onnxruntime-node` has its CUDA provider library and `/proc/driver/nvidia/version` exists.
+That does not prove a CUDA session works, so an explicit `cuda` choice throws
+`unverified-device` until spike E9 has run one. A caller running E9 itself passes
+`allowUnverifiedCuda: true`. Without a choice, every model stays on `cpu`.
+
+Install the peers (`@huggingface/transformers`, which brings `onnxruntime-node`) for `cuda`
+to be detected; without them `available` is `["cpu"]`, and nothing throws.
 
 ## Swapping providers for your deployment
 
 Each machine gets its own profile. Code that calls `selectTts` stays the same everywhere.
 
-**A laptop, CPU only.** The in-process Kokoro adapter is the default once it ships (see
-"Adding a provider kind"). The fallback is a local CPU engine wrapped in the command contract.
+**A laptop, CPU only.** The in-process Kokoro adapter is the first choice (see "Kokoro, in
+process"). The fallback is a local CPU engine wrapped in the command contract.
 Until the host registers the `kokoro` kind, selection stops at that entry with
 `unknown-kind`. Set `TITAN_SPEECH_TTS=local-cli` on such a host so the entry is never tried.
 
@@ -270,11 +331,10 @@ These defaults assume the profile is trusted, but the engine and the network are
 ## Adding a provider kind
 
 The registry maps a profile's `kind` to a factory. `defaultTtsRegistry()` has `command`,
-`http` and `fake`. An in-process engine, such as the Kokoro ONNX adapter planned as the next
-slice, registers its own kind:
+`http` and `fake`. An in-process engine registers its own kind. Kokoro does it like this:
 
 ```ts
-const registry = defaultTtsRegistry().register("kokoro", (id, config) => kokoroProvider({ id, ...config }));
+const registry = defaultTtsRegistry().register("kokoro", kokoroFactory({ g2p }));
 await selectTts({ registry, requirements });
 ```
 
@@ -286,6 +346,68 @@ Every adapter must pass the conformance kit in `src/conformance.ts`: `runTtsConf
 { working, unavailable, hung })`. It checks that capabilities are honoured, that errors are
 typed and carry the provider id, and that a hung engine times out at the deadline. Run it
 once for each capability shape the adapter supports.
+
+## Kokoro, in process
+
+`kokoroProvider` runs Kokoro-82M in the host process and returns word timings taken from the
+model's own durations. They match Python's `KPipeline.join_timestamps`.
+
+Install the two optional peers where you use it:
+
+```sh
+npm install @huggingface/transformers kokoro-js
+```
+
+```ts
+import { kokoroProvider } from "@titan-design/speech-tts";
+
+const tts = kokoroProvider({ g2p, cacheDir });
+const { audio, words } = await tts.synthesize({ text: "Hello there." }, "af_heart", { speed: 0.9 });
+```
+
+- **G2P is injected.** `g2p` is any object with `tokens(text)` that returns
+  `{ text, phonemes, whitespace }` items. `misakiEnglish()` from `@titan-design/speech-g2p`
+  fits. This package does not depend on it.
+- **Input.** Text goes through `g2p`. Token input in the `misaki` alphabet is spoken as given.
+  A token with no `phonemes` is sent to `g2p` alone.
+- **Voices.** The US `af_*` and `am_*` voices, all `en-US`. Voice packs come from the
+  `kokoro-js` peer.
+- **fp32 only.** A profile `dtype` other than `fp32` is refused. Lower precisions shift the
+  durations, and so every word time.
+- **Cache.** Pass `cacheDir`, or `runtimeOptions(runtime, "tts")` (see "Choosing a device and
+  cache"); the transformers.js default sits inside `node_modules`. The model is about
+  325 MB at `<cacheDir>/onnx-community/Kokoro-82M-v1.0-ONNX-timestamped/`. A cold first call
+  downloads it, so the default `timeoutMs` is 300000. Warm the provider at startup.
+- **Offline.** With `TITAN_SPEECH_OFFLINE` set, a model not fully in `cacheDir` is refused
+  before any network call, with `TtsUnavailableError`. A missing peer is also
+  `TtsUnavailableError`, and a failed load is retried on the next call.
+- **Long text** is cut into chunks of at most 510 phonemes, and word times are offset by the
+  chunks before them.
+- **Unknown words.** A word Kokoro cannot phonemize is not spoken. It still gets a
+  `WordTiming` of zero width at the end of the last spoken word, and a `KokoroWarning` is
+  emitted (or `onWarning` is called) naming it.
+- **Failures.** If the model's output breaks the contract, the call rejects with
+  `TtsFailedError`. That covers phonemes the tokenizer drops and frames that do not add up to
+  the audio length.
+- **Word times are Python's heuristic.** The offset of the start is Python's choice, not
+  measured from the audio. Parity with Python is the bar.
+
+### Smoke check
+
+`src/kokoro.smoke.test.ts` runs the real model against the golden beats. It is skipped unless
+`SPEECH_TTS_SMOKE_CACHE` names a cache that already holds the model, because vitest sets
+`TITAN_SPEECH_OFFLINE`. Fill the cache once with a short `node` script that calls
+`StyleTextToSpeech2Model.from_pretrained` and `AutoTokenizer.from_pretrained` with
+`{ dtype: "fp32", cache_dir }` for `onnx-community/Kokoro-82M-v1.0-ONNX-timestamped`. Then:
+
+```sh
+SPEECH_TTS_SMOKE_CACHE=<cache dir> pnpm vitest run kokoro.smoke
+```
+
+It asserts exact rounded durations, word boundaries within 1 ms of Python, and frames times
+600 equal to the waveform length. It logs load time, inference time and the real-time factor.
+
+`speakingSeconds` and `calibrateSpeed` help tune `speed` to a target words-per-minute.
 
 ## Testing without an engine
 

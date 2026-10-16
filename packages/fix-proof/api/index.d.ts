@@ -113,6 +113,109 @@ declare function parseMutationSpec(text: string): MutationSpecResult;
  */
 declare function checkMutation(mutation: Mutation, baseText: string | null, config: FixProofConfig): MutationCheck;
 
+/** Under GitHub's 1 MB per-job output limit, leaving room for the base job's second report. */
+declare const MAX_ENCODED_BYTES = 900000;
+declare const MAX_INFLATED_BYTES: number;
+/** `reported` marks an error the exec side wrote itself, as opposed to a report that failed to arrive or decode. */
+type DecodedReport = {
+    ok: true;
+    report: {
+        testResults: unknown[];
+    };
+} | {
+    ok: false;
+    error: string;
+    reported: boolean;
+};
+interface DecodeOptions {
+    maxBytes?: number;
+}
+/** A vitest JSON report reduced to the fields the classifier reads, gzipped and base64-encoded: no space, no newline. */
+declare function encodeReport(report: unknown): string;
+/** An encoded marker saying this side produced no report, carrying why; the judge turns it into a verdict error. */
+declare function encodeError(error: string): string;
+/** Decodes one encoded report under an encoded and an inflated byte cap; anything missing, oversized or malformed is an error, never a throw. */
+declare function decodeReport(text: string | undefined, options?: DecodeOptions): DecodedReport;
+/** One mutation's run on the mutants side: `built` false means its rebuild failed and `report` is absent. */
+interface MutantRun {
+    spec: string;
+    name: string;
+    built: boolean;
+    report?: unknown;
+}
+interface MutantsReport {
+    /** The merge base with the head's tests overlaid, run once before any mutation. */
+    baseline: unknown;
+    runs: MutantRun[];
+}
+/** `skipped` marks a mutants side that chose not to run: no spec in the diff, or a diff with source paths. */
+type DecodedMutants = {
+    ok: true;
+    skipped: string;
+} | {
+    ok: true;
+    skipped?: undefined;
+    baseline: {
+        testResults: unknown[];
+    };
+    runs: MutantRun[];
+} | {
+    ok: false;
+    error: string;
+    reported: boolean;
+};
+/** The mutants side's one combined report: the baseline and each mutation's run, encoded like `encodeReport`. */
+declare function encodeMutantsReport(report: MutantsReport): string;
+/** An encoded marker saying the mutants side had nothing to run, carrying why. */
+declare function encodeMutantsSkipped(reason: string): string;
+/** Decodes the mutants side's report under the same caps as `decodeReport`; anything malformed is an error, never a throw. */
+declare function decodeMutantsReport(text: string | undefined, options?: DecodeOptions): DecodedMutants;
+
+/**
+ * - `killed`: the mutant built and the tests failing under it, every one an assertion failure, are exactly its `kills`.
+ * - `overkill`: every `kills` test failed, and so did another test.
+ * - `survived`: some `kills` test did not fail.
+ * - `unbuilt`: the rebuild under the mutation failed.
+ * - `load-error`: the test file failed to load, or some test failed with a load or new-API error.
+ * - `baseline`: a `kills` test did not pass exactly once in the unmutated baseline run.
+ * - `error`: the mutation's run is missing from the report, or some test failed with anything but an assertion failure:
+ *   a thrown TypeError, a timeout, a crash, or no failure message at all.
+ */
+declare const MUTANT_OUTCOMES: readonly ["killed", "overkill", "survived", "unbuilt", "load-error", "baseline", "error"];
+type MutantOutcome = (typeof MUTANT_OUTCOMES)[number];
+/** `killed` only when every declared mutation is killed; `error` when the specs or the report could not be read at all. */
+declare const MUTANT_VERDICTS: readonly ["killed", "not-killed", "error"];
+type MutantVerdict = (typeof MUTANT_VERDICTS)[number];
+interface MutantResult {
+    spec: string;
+    name: string;
+    outcome: MutantOutcome;
+    /** The tests that failed under the mutant, named only when that set is the evidence: `overkill` and `survived`. */
+    failed?: string[];
+}
+interface MutantsResult {
+    verdict: MutantVerdict;
+    results: MutantResult[];
+    error?: string;
+}
+/** One spec as the judge read it at head, with the test file its `kills` name tests in. */
+interface SpecUnderTest {
+    path: string;
+    testFile: string;
+    mutations: Mutation[];
+}
+declare const SPEC_SUFFIX = ".mutations.json";
+/**
+ * The test file a spec sits beside: `<stem>.mutations.json` belongs to the one test at `<stem>.<ext>`, with no dot in ext.
+ * Null when no test or more than one matches, since the kills could then name tests in either.
+ */
+declare function testFileOfSpec(spec: string, files: readonly string[], isTest: (path: string) => boolean): string | null;
+/**
+ * Classifies every declared mutation against the mutants side's decoded report, whose test file paths are repo-relative.
+ * Runs the specs do not declare are ignored, so a report cannot add evidence the specs did not ask for.
+ */
+declare function classifyMutants(specs: readonly SpecUnderTest[], decoded: DecodedMutants): MutantsResult;
+
 declare const TEST_CLASSES: readonly ["reproduces", "passes-on-base", "new-api", "fails-on-head", "not-run"];
 type TestClass = (typeof TEST_CLASSES)[number];
 declare const VERDICTS: readonly ["reproduced", "unproven", "vacuous", "no-tests", "error"];
@@ -146,6 +249,8 @@ interface Classification {
     files: FileOutcome[];
     error?: string;
 }
+/** A failure that says the code under test is missing or reshaped, not that it computed the wrong answer. */
+declare function isNewApiFailure(message: string): boolean;
 /** Compares base and head vitest reports for the selected test files; anything missing or malformed classifies away from `reproduced`. */
 declare function classifyReports(input: ClassifyInput): Classification;
 
@@ -163,6 +268,8 @@ interface FixProofResult {
     /** True when format dropped entries to fit the 4 KB line. */
     truncated: boolean;
     error?: string;
+    /** The mutation check, present only for a diff of test material alone that adds or changes a mutation spec. */
+    mutants?: MutantsResult;
 }
 type ParsedResultLine = {
     ok: true;
@@ -248,7 +355,8 @@ interface RunOptions {
 }
 /**
  * Runs both exec sides and the judge in this process and returns one fix-proof/v1 line; the local mode of the three CI jobs.
- * Failures become a verdict error line, never a throw.
+ * Each side and the judge read their own bare snapshot of the two commits, so nothing either side writes reaches the
+ * caller's repo or the judge's. Failures become a verdict error line, never a throw.
  */
 declare function run(options: RunOptions): Promise<string>;
 
@@ -267,6 +375,8 @@ interface JudgeReports {
     base?: string;
     baseRerun?: string;
     head?: string;
+    /** The mutants side's combined report, as `encodeMutantsReport`, `encodeMutantsSkipped` or `encodeError` wrote it. */
+    mutants?: string;
 }
 interface JudgeOptions {
     /** The git checkout holding both commits; the judge reads it with git and never builds or runs it. */
@@ -283,28 +393,4 @@ interface JudgeOptions {
  */
 declare function judge(options: JudgeOptions): Promise<string>;
 
-/** Under GitHub's 1 MB per-job output limit, leaving room for the base job's second report. */
-declare const MAX_ENCODED_BYTES = 900000;
-declare const MAX_INFLATED_BYTES: number;
-/** `reported` marks an error the exec side wrote itself, as opposed to a report that failed to arrive or decode. */
-type DecodedReport = {
-    ok: true;
-    report: {
-        testResults: unknown[];
-    };
-} | {
-    ok: false;
-    error: string;
-    reported: boolean;
-};
-interface DecodeOptions {
-    maxBytes?: number;
-}
-/** A vitest JSON report reduced to the fields the classifier reads, gzipped and base64-encoded: no space, no newline. */
-declare function encodeReport(report: unknown): string;
-/** An encoded marker saying this side produced no report, carrying why; the judge turns it into a verdict error. */
-declare function encodeError(error: string): string;
-/** Decodes one encoded report under an encoded and an inflated byte cap; anything missing, oversized or malformed is an error, never a throw. */
-declare function decodeReport(text: string | undefined, options?: DecodeOptions): DecodedReport;
-
-export { CHANGESET_GLOB, CONFIG_PATH, type Classification, type ClassifyInput, type ConfigResult, DEFAULT_BUDGET_MS, DEFAULT_BUILD, DEFAULT_CARRY_GLOBS, DEFAULT_COMMAND, DEFAULT_JUDGE_BUDGET_MS, DEFAULT_TEST_GLOBS, type DecodeOptions, type DecodedReport, type Exec, type ExecOptions, type ExecResult, type ExecSideOptions, FIX_PROOF_HARNESS, type FileOutcome, type FileState, type FixProofConfig, type FixProofPlan, type FixProofResult, type JudgeOptions, type JudgeReports, MAX_ENCODED_BYTES, MAX_INFLATED_BYTES, MAX_KILLS, MAX_MUTATIONS, MAX_MUTATION_EDIT, MAX_MUTATION_NAME, MAX_SPEC_BYTES, MUTATION_SPEC_GLOB, type Mutation, type MutationCheck, type MutationSpec, type MutationSpecResult, type ParsedResultLine, type PlanInput, type PlanResult, RESULT_LINE_MAX_BYTES, RESULT_PREFIX, type ReportRun, type RunOptions, SIDE_REPORTS, type Side, TEST_CLASSES, type TestClass, type TestOutcome, USAGE, VERDICTS, type Verdict, checkMutation, classifyReports, compileGlobs, decodeReport, encodeError, encodeReport, errorLine, execSide, expandBraces, formatResultLine, isHarnessPath, judge, parseFixProofConfig, parseMutationSpec, parseResultLine, planFixProof, run, runCli, spawnExec, testOnlyOf, toResult };
+export { CHANGESET_GLOB, CONFIG_PATH, type Classification, type ClassifyInput, type ConfigResult, DEFAULT_BUDGET_MS, DEFAULT_BUILD, DEFAULT_CARRY_GLOBS, DEFAULT_COMMAND, DEFAULT_JUDGE_BUDGET_MS, DEFAULT_TEST_GLOBS, type DecodeOptions, type DecodedMutants, type DecodedReport, type Exec, type ExecOptions, type ExecResult, type ExecSideOptions, FIX_PROOF_HARNESS, type FileOutcome, type FileState, type FixProofConfig, type FixProofPlan, type FixProofResult, type JudgeOptions, type JudgeReports, MAX_ENCODED_BYTES, MAX_INFLATED_BYTES, MAX_KILLS, MAX_MUTATIONS, MAX_MUTATION_EDIT, MAX_MUTATION_NAME, MAX_SPEC_BYTES, MUTANT_OUTCOMES, MUTANT_VERDICTS, MUTATION_SPEC_GLOB, type MutantOutcome, type MutantResult, type MutantRun, type MutantVerdict, type MutantsReport, type MutantsResult, type Mutation, type MutationCheck, type MutationSpec, type MutationSpecResult, type ParsedResultLine, type PlanInput, type PlanResult, RESULT_LINE_MAX_BYTES, RESULT_PREFIX, type ReportRun, type RunOptions, SIDE_REPORTS, SPEC_SUFFIX, type Side, type SpecUnderTest, TEST_CLASSES, type TestClass, type TestOutcome, USAGE, VERDICTS, type Verdict, checkMutation, classifyMutants, classifyReports, compileGlobs, decodeMutantsReport, decodeReport, encodeError, encodeMutantsReport, encodeMutantsSkipped, encodeReport, errorLine, execSide, expandBraces, formatResultLine, isHarnessPath, isNewApiFailure, judge, parseFixProofConfig, parseMutationSpec, parseResultLine, planFixProof, run, runCli, spawnExec, testFileOfSpec, testOnlyOf, toResult };

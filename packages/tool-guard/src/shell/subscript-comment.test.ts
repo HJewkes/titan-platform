@@ -159,8 +159,8 @@ describe("backquote spans in a subscript bash may join", () => {
 });
 
 /**
- * Past this a hook timeout would let the command through. It is a backstop a loaded runner stays far under; the work
- * ratio below is what tells linear from quadratic.
+ * Past this a hook timeout would let the command through. It is counted in this thread's CPU time, which a loaded runner
+ * does not stretch; the work ratio below is what tells linear from quadratic.
  */
 const BUDGET_MS = 2500;
 
@@ -198,23 +198,24 @@ const SPAN_SHAPES: Array<[string, string]> = [
 
 const spanScript = (span: string, count: number) => `echo a[ ${span.repeat(count)} ]\n`;
 
-async function timedScriptDecision(script: string): Promise<{ decision: string | null; ms: number }> {
+async function timedScriptDecision(script: string): Promise<{ decision: string | null; cpuMs: number }> {
   const context = { ...nodeContext(HOME, noFs), foldCase: true, readScript: (p: string) => (p === `${HOME}/app/a.sh` ? script : null) };
   const scriptPort: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
   const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: `${HOME}/app`, tool_input: { command: "bash a.sh; git push origin HEAD:main" } });
-  const start = performance.now();
+  const start = process.threadCpuUsage();
   const { stdout } = await handle(input, { PATH: "/usr/bin" }, scriptPort);
-  return { decision: stdout.includes('"permissionDecision":"deny"') ? "deny" : stdout, ms: performance.now() - start };
+  const { user, system } = process.threadCpuUsage(start);
+  return { decision: stdout.includes('"permissionDecision":"deny"') ? "deny" : stdout, cpuMs: (user + system) / 1000 };
 }
 
 describe("a subscript holding many span openers", () => {
   it.each(SPAN_SHAPES)("the hook denies a push after a 64 KB script of %s, within the budget", async (_name, span) => {
     const script = spanScript(span, Math.floor(64_000 / span.length));
 
-    const { decision, ms } = await timedScriptDecision(script);
+    const { decision, cpuMs } = await timedScriptDecision(script);
 
     expect(decision).toBe("deny");
-    expect(ms).toBeLessThan(BUDGET_MS);
+    expect(cpuMs).toBeLessThan(BUDGET_MS);
   });
 
   it.each(SPAN_SHAPES)("tokenizes %s with work linear in the openers", (_name, span) => {

@@ -1,14 +1,24 @@
-import { createHash } from "node:crypto";
-import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { audioKey } from "./audio-key.js";
 import { resample } from "./resample.js";
 import type { Audio, Transcript, Word } from "./schemas.js";
+import {
+  assertCachedWhenOffline,
+  loadTransformersModule,
+  missingPeerMessage,
+  type ModuleImporter,
+} from "./transformers-loader.js";
 
 const WHISPER_RATE = 16000;
-const PEER = "@huggingface/transformers";
-const MISSING = `${PEER} is not installed; run \`npm i ${PEER}\` to use whisperStt`;
+const FEATURE = "whisperStt";
+
+/** What a provider can report beyond text and timings. */
+export interface SttCapabilities {
+  /** Word `probability` and segment `avgLogprob` / `compressionRatio` come from token log-probs; true when filled. */
+  tokenLogprobs: boolean;
+}
 
 export interface SttProvider {
+  readonly capabilities: SttCapabilities;
   transcribe(audio: Audio): Promise<Transcript>;
 }
 
@@ -52,8 +62,6 @@ export interface WhisperSttOptions {
   loadPipeline?: () => Promise<AsrFactory>;
 }
 
-export type ModuleImporter = (name: string) => Promise<unknown>;
-
 /**
  * Resolves the peer's `pipeline` through `importModule`, naming the install command when the peer is absent. The
  * returned factory refuses an uncached model while TITAN_SPEECH_OFFLINE is set.
@@ -61,14 +69,8 @@ export type ModuleImporter = (name: string) => Promise<unknown>;
 export async function loadTransformersPipeline(
   importModule: ModuleImporter = (name) => import(name),
 ): Promise<AsrFactory> {
-  let mod: unknown;
-  try {
-    mod = await importModule(PEER);
-  } catch (err) {
-    throw new Error(MISSING, { cause: err });
-  }
-  const pipeline = typeof mod === "object" && mod !== null && "pipeline" in mod ? mod.pipeline : undefined;
-  if (!isAsrFactory(pipeline)) throw new Error(MISSING);
+  const { pipeline } = await loadTransformersModule(importModule, FEATURE);
+  if (!isAsrFactory(pipeline)) throw new Error(missingPeerMessage(FEATURE));
   return (task, model, options) => {
     assertCachedWhenOffline(model, options.cache_dir);
     return pipeline(task, model, options);
@@ -94,24 +96,6 @@ function chunksToWords(chunks: readonly AsrChunk[]): Word[] {
     }
   }
   return words.filter((w) => w.text.trim().length > 0).map((w) => ({ ...w, text: w.text.trim() }));
-}
-
-function audioKey(model: string, audio: Audio): string {
-  const { buffer, byteOffset, byteLength } = audio.samples;
-  return createHash("sha256")
-    .update(`${model}\0${audio.sampleRate}\0`)
-    .update(new Uint8Array(buffer, byteOffset, byteLength))
-    .digest("hex");
-}
-
-/** With TITAN_SPEECH_OFFLINE set, an uncached model is refused before the factory can reach the network. */
-function assertCachedWhenOffline(model: string, cacheDir: string | undefined): void {
-  if (!process.env.TITAN_SPEECH_OFFLINE) return;
-  if (cacheDir === undefined) throw new Error(`offline: TITAN_SPEECH_OFFLINE is set and no cacheDir is given for ${model}`);
-  const dir = join(cacheDir, model);
-  if (!existsSync(dir) || readdirSync(dir).length === 0) {
-    throw new Error(`offline: ${model} is not in ${cacheDir} and TITAN_SPEECH_OFFLINE is set`);
-  }
 }
 
 /** Loads the pipeline on first use. A failed load is forgotten, so the next call retries instead of replaying it. */
@@ -151,6 +135,8 @@ export function whisperStt(options: WhisperSttOptions = {}): SttProvider & { dis
   const cache = options.cache ?? new Map<string, Transcript>();
   const asr = lazyPipeline(model, options);
   return {
+    // transformers.js 3.8.1 drops generate()'s scores (models.js:1926-1932), so no token log-probs reach us.
+    capabilities: { tokenLogprobs: false },
     async transcribe(audio) {
       const key = audioKey(model, audio);
       const hit = cache.get(key);

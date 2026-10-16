@@ -1,0 +1,7 @@
+@titan-design/speech-stt vendors data from a third-party model.
+
+facebook/wav2vec2-lv-60-espeak-cv-ft (https://huggingface.co/facebook/wav2vec2-lv-60-espeak-cv-ft),
+commit ae45363bf3413b374fecd9dc8bc1df0e24c3b7f4
+  File: data/wav2vec2-lv60-espeak-vocab.json (verbatim copy of vocab.json).
+  Licence: Apache License 2.0. Copyright Facebook, Inc. and its affiliates.
+  The Apache-2.0 text is at https://www.apache.org/licenses/LICENSE-2.0

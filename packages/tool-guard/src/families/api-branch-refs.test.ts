@@ -161,6 +161,8 @@ describe("a filled repo slot passes only an allowlisted POST", () => {
     ["repos/{owner}/{repo}/issues", "title=x body=@b.md labels[]=bug assignees[]=me"],
     ["repos/{owner}/{repo}/issues/12/comments", "body=x"],
     ["repos/{owner}/{repo}/pulls", "title=x head=feat/x base=main body=y draft=true"],
+    ["repos/{owner}/{repo}/pulls", "base[]=main head=x"],
+    ["repos/{owner}/{repo}/pulls", "head=x"],
     ["repos/{owner}/{repo}/pulls/12/comments", "body=x commit_id=c path=p line=1 side=RIGHT"],
     ["repos/:owner/:repo/pulls/12/reviews", "body=x event=APPROVE comments[][path]=p"],
     ["repos/{owner}/{repo}/labels", "name=bug color=f00 description=d"],

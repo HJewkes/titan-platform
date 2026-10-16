@@ -48,3 +48,21 @@ export {
   type TtsRegistry,
   type TtsSelection,
 } from "./registry.js";
+export { speakingSeconds, type SpeakingOptions } from "./speaking.js";
+export { calibrateSpeed, type CalibrateOptions, type CalibrateTry, type Calibration } from "./calibrate.js";
+export { KOKORO_CAPABILITIES, kokoroFactory, kokoroProvider, type KokoroG2p, type KokoroProviderOptions } from "./kokoro/provider.js";
+export type { KokoroEngine, KokoroEngineOptions } from "./kokoro/engine.js";
+export type { TokenTime } from "./kokoro/timestamps.js";
+export type { SpeechComponent, SpeechEnv } from "./config.js";
+export {
+  detectSpeechRuntime,
+  runtimeOptions,
+  speechDeviceEnvName,
+  SPEECH_CACHE_ENV,
+  SPEECH_DEVICE_ENV,
+  SpeechRuntimeError,
+  type SpeechDevice,
+  type SpeechRuntime,
+  type SpeechRuntimeInput,
+} from "./runtime.js";
+export { resolveSpeechRuntime, type ResolveSpeechRuntimeOptions } from "./resolve-runtime.js";

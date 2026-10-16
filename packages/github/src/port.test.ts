@@ -99,6 +99,14 @@ describe("listOpenPrs and jobLogTail", () => {
     expect(await port.jobLogTail(REPO, 9, 10)).toBe("one\ntwo\nthree");
     await expect(port.jobLogTail(REPO, 9, 0)).rejects.toBeInstanceOf(GitHubInputError);
   });
+
+  it("reads a job's steps and refuses a job id that is not a positive integer before any call", async () => {
+    const { fake, port } = setup();
+    fake.jobSteps.set(9, [{ name: "Run pnpm test", conclusion: "failure" }]);
+
+    expect(await port.jobSteps(REPO, 9)).toEqual([{ name: "Run pnpm test", conclusion: "failure" }]);
+    await expect(port.jobSteps(REPO, 0)).rejects.toBeInstanceOf(GitHubInputError);
+  });
 });
 
 describe("checkRuns", () => {

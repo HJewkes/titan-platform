@@ -1,208 +1,17 @@
 import type { SimpleCommand } from "../shell/commands.js";
-import { isCaseUnsure } from "../shell/case-attrs.js";
 import { parseGit } from "../shell/git.js";
 import type { WordToken } from "../shell/lexer.js";
 import { classified } from "../spellings.js";
 import type { SpellingId } from "../spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
-import { expandCurlGlob } from "./curl-glob.js";
-import { hasFlag, lastValue, readOptions, set, valuesOf } from "./options.js";
-import type { Option, Options } from "./options.js";
+import { httpRequest, UNKNOWN_METHOD } from "./http-request.js";
+import { readOptions, set } from "./options.js";
 
 /** Hosts data may be sent to (D5). `registry.npmjs.org` is allowed for reads only, so it is absent. */
 const ALLOWED_HOSTS = set("github.com", "api.github.com", "localhost", "127.0.0.1", "::1");
 /** A host only known at run time; never allowed. */
 const UNKNOWN = "unknown";
-const UPLOAD_METHODS = set("POST", "PUT", "PATCH");
-
-const CURL_BODY = ["-d", "--data", "--data-raw", "--data-binary", "--data-urlencode", "--data-ascii", "--json", "-F", "--form", "--form-string", "-T", "--upload-file"];
-const CURL_PLAIN_VALUES = [...CURL_BODY, "-X", "--request", "-H", "--header", "-o", "--output", "-u", "--user", "-A", "--user-agent", "-e", "--referer", "-b", "--cookie", "-c", "--cookie-jar", "-w", "--write-out", "-m", "--max-time", "--connect-timeout", "-x", "--proxy", "--retry", "-K", "--config", "--cacert", "--cert", "-E", "--key", "-r", "--range", "-C", "--continue-at", "-D", "--dump-header", "--resolve", "--connect-to", "--url", "--oauth2-bearer", "--unix-socket", "--output-dir", "--variable", "--request-target"];
-/** curl 8.3's `--expand-<option>` takes the same value as `<option>`, after `{{name}}` substitution. */
-const CURL_VALUES = set(...CURL_PLAIN_VALUES, ...CURL_PLAIN_VALUES.filter((f) => f.startsWith("--")).map((f) => `--expand-${f.slice(2)}`));
-/** Inputs that make curl's method and URL unknowable from the line: a config file and a raw request target. */
-const CURL_HIDDEN = set("-K", "--config", "--request-target");
-const WGET_BODY = ["--post-data", "--post-file", "--body-data", "--body-file"];
-const WGET_VALUES = set(...WGET_BODY, "--method", "-O", "--output-document", "-o", "--output-file", "-a", "-e", "-U", "--user-agent", "-t", "-T", "-w", "-P", "-i", "--header");
-const HTTPIE_VALUES = set("-a", "--auth", "-A", "--auth-type", "-o", "--output", "--session", "--session-read-only", "-p", "--print", "-s", "--style", "--pretty", "--verify", "--cert", "--cert-key", "--timeout", "--proxy", "--raw", "--format-options", "--default-scheme");
-/** An httpie request item; the earliest separator decides its kind. */
-const HTTPIE_ITEM_RE = /==|:=@|:=|=@|=|@|:/;
-
-/** A method known only at run time: a dynamic `-X`, or one a config file or raw request target may set. */
-export const UNKNOWN_METHOD = "UNKNOWN";
-
-export interface HttpRequest {
-  method: string;
-  body: boolean;
-  /** The literal body texts sent, or null when any part comes from a file or is only known at run time. */
-  bodies: string[] | null;
-  urls: WordToken[];
-}
-
-/** The request `curl`, `wget`, `http` or `https` would send, or null for any other command. */
-export function httpRequest(cmd: SimpleCommand): HttpRequest | null {
-  if (cmd.name === "curl") return curlRequest(cmd.args);
-  if (cmd.name === "wget") return wgetRequest(readOptions(cmd.args, WGET_VALUES));
-  if (cmd.name === "http" || cmd.name === "https") return httpieRequest(readOptions(cmd.args, HTTPIE_VALUES));
-  return null;
-}
-
-/** Each `-:`/`--next` part is its own request; parts that disagree on the method make it unknown for the line. */
-function curlRequest(args: WordToken[]): HttpRequest {
-  const parts = curlParts(args).map(curlPart);
-  const methods = new Set(parts.map((p) => p.method));
-  const [only] = methods;
-  return {
-    method: methods.size === 1 && only !== undefined ? only : UNKNOWN_METHOD,
-    body: parts.some((p) => p.body),
-    bodies: parts.some((p) => p.bodies === null) ? null : parts.flatMap((p) => p.bodies ?? []),
-    urls: parts.flatMap((p) => p.urls),
-  };
-}
-
-/** The words of each part; always at least one, so a bare `curl` still reads as a GET. */
-function curlParts(args: WordToken[]): WordToken[][] {
-  const parts: WordToken[][] = [[]];
-  for (const word of args) {
-    if (isNextWord(word)) parts.push([]);
-    else parts.at(-1)?.push(word);
-  }
-  const filled = parts.filter((p) => p.length > 0);
-  return filled.length > 0 ? filled : [[]];
-}
-
-/** `--next`, or a short cluster such as `-s:` whose `:` no earlier letter takes as its value. */
-function isNextWord(word: WordToken): boolean {
-  if (word.dynamic) return false;
-  if (word.value === "--next") return true;
-  const colon = word.value.indexOf(":");
-  if (!/^-[^-]/.test(word.value) || colon < 0) return false;
-  return [...word.value.slice(1, colon)].every((c) => !CURL_VALUES.has(`-${c}`));
-}
-
-/**
- * Every check reads the normalized options, so a spelling such as `--expand-config` meets the same checks as `--config`.
- * A hidden input makes the method unknown and adds one URL word known only at run time; a config file may also hold a body.
- */
-function curlPart(args: WordToken[]): HttpRequest {
-  const o = curlOptions(args);
-  const body = hasFlag(o, ...CURL_BODY);
-  const urls = curlUrls(o);
-  const bodies = hasFlag(o, "-K", "--config") ? null : curlBodies(o);
-  if (!o.opts.some(isHiddenInput)) {
-    const explicit = lastValue(o, "-X", "--request");
-    return { method: explicit ? explicitMethod(explicit) : curlImpliedMethod(o, body), body, bodies, urls };
-  }
-  const base = o.opts.find((opt) => isHiddenInput(opt) && opt.flag !== "--url");
-  const hiddenUrl = base && (base.value ?? args[0]);
-  return { method: UNKNOWN_METHOD, body, bodies, urls: hiddenUrl ? [...urls, runtimeUrl(hiddenUrl)] : urls };
-}
-
-interface CurlOption extends Option {
-  /** An `--expand-*` value holding `{{` or only known at run time; its value is already a run-time word. */
-  templated: boolean;
-}
-
-interface CurlOptions extends Options {
-  opts: CurlOption[];
-}
-
-/** A templated `--url` is itself the run-time URL, so it adds no second one. */
-const isHiddenInput = (opt: CurlOption) => CURL_HIDDEN.has(opt.flag) || opt.templated;
-const isLiteralValue = ({ value }: Option) => value !== null && !value.dynamic && !value.value.includes("{{");
-
-function curlOptions(args: WordToken[]): CurlOptions {
-  const raw = readOptions(args, CURL_VALUES);
-  return { opts: raw.opts.map(normalizedOption), positionals: raw.positionals };
-}
-
-/** `--expand-<option>` reads as `<option>`; a templated value becomes a run-time word, so a templated body cannot be read. */
-function normalizedOption(opt: Option): CurlOption {
-  if (!opt.flag.startsWith("--expand-")) return { ...opt, templated: false };
-  const flag = `--${opt.flag.slice("--expand-".length)}`;
-  if (isLiteralValue(opt)) return { flag, value: opt.value, templated: false };
-  return { flag, value: opt.value && runtimeUrl(opt.value), templated: true };
-}
-
-function curlImpliedMethod(o: Options, body: boolean): string {
-  if (hasFlag(o, "-G", "--get")) return "GET";
-  if (hasFlag(o, "-T", "--upload-file")) return "PUT";
-  return body ? "POST" : "GET";
-}
-
-function explicitMethod(word: WordToken): string {
-  return word.dynamic || isCaseUnsure(word) ? UNKNOWN_METHOD : word.value.toUpperCase();
-}
-
-function runtimeUrl(base: WordToken): WordToken {
-  return { ...base, value: "", typed: "", dynamic: true, refs: [], subs: [], cuts: [] };
-}
-
-/** curl globs each URL itself unless `-g`/`--globoff`; a glob it cannot expand here is a run-time URL. */
-function curlUrls(o: Options): WordToken[] {
-  const words = [...o.positionals, ...valuesOf(o, "--url")];
-  return hasFlag(o, "-g", "--globoff") ? words : words.flatMap(globUrls);
-}
-
-/** A dynamic word keeps its own reading only when its literal lead holds no glob. */
-function globUrls(word: WordToken): WordToken[] {
-  const cut = word.dynamic ? word.value.search(/[$`]/) : -1;
-  const literal = cut >= 0 ? word.value.slice(0, cut) : word.value;
-  const urls = expandCurlGlob(literal);
-  if (!urls) return [runtimeUrl(word)];
-  if (!word.dynamic) return urls.map((value) => ({ ...word, value }));
-  return urls.length === 1 && urls[0] === literal ? [word] : [runtimeUrl(word)];
-}
-
-function curlBodies(o: Options): string[] | null {
-  const texts: string[] = [];
-  for (const opt of o.opts.filter((x) => CURL_BODY.includes(x.flag))) {
-    const text = curlBodyText(opt);
-    if (text === null) return null;
-    texts.push(text);
-  }
-  return texts;
-}
-
-function curlBodyText({ flag, value }: Option): string | null {
-  if (!value || value.dynamic || flag === "-T" || flag === "--upload-file") return null;
-  return curlReadsFile(flag, value.value) ? null : value.value;
-}
-
-/** `@file` loads a file except under `--data-raw`; `--data-urlencode` reads `name@file`; a form field reads `=@file` and `=<file`. */
-function curlReadsFile(flag: string, text: string): boolean {
-  if (flag === "--data-raw" || flag === "--form-string") return false;
-  if (flag === "-F" || flag === "--form") return /=[@<]/.test(text);
-  if (flag !== "--data-urlencode") return text.startsWith("@");
-  const at = text.indexOf("@");
-  const eq = text.indexOf("=");
-  return at >= 0 && (eq < 0 || at < eq);
-}
-
-function wgetRequest(o: Options): HttpRequest {
-  const body = hasFlag(o, ...WGET_BODY);
-  const explicit = lastValue(o, "--method");
-  return { method: explicit ? explicitMethod(explicit) : body ? "POST" : "GET", body, bodies: wgetBodies(o), urls: o.positionals };
-}
-
-function wgetBodies(o: Options): string[] | null {
-  const texts = valuesOf(o, "--post-data", "--body-data");
-  if (hasFlag(o, "--post-file", "--body-file") || texts.some((t) => t.dynamic)) return null;
-  return texts.map((t) => t.value);
-}
-
-/** `http [METHOD] URL [ITEM...]`; `key=value`, `key:=json` and `key@file` items make a body, headers and `==` queries do not. */
-function httpieRequest(o: Options): HttpRequest {
-  const [first, ...rest] = o.positionals;
-  const explicit = first && /^[A-Z]+$/.test(first.value) ? first.value : null;
-  const [url, ...items] = explicit ? rest : o.positionals;
-  const body = hasFlag(o, "--raw") || items.some((i) => isBodyItem(i.value));
-  return { method: explicit ?? (body ? "POST" : "GET"), body, bodies: body ? null : [], urls: url ? [url] : [] };
-}
-
-function isBodyItem(item: string): boolean {
-  const sep = HTTPIE_ITEM_RE.exec(item)?.[0];
-  return sep !== undefined && sep !== "==" && sep !== ":";
-}
+const UPLOAD_METHODS = set("POST", "PUT", "PATCH", UNKNOWN_METHOD);
 
 /** Host a URL word names, lowercased; `unknown` when the host part is only known at run time. */
 export function hostOf(word: WordToken): string {
@@ -223,17 +32,18 @@ function actionsFor(spelling: SpellingId, hosts: string[]): ClassifiedAction[] {
   return [...new Set(hosts)].filter((h) => !allowed(h)).map((host) => classified(spelling, { host }));
 }
 
-const HTTP_SPELLINGS: Record<string, SpellingId> = {
+const HTTP_SPELLINGS: Partial<Record<string, SpellingId>> = {
   curl: "bash.egress.curl-upload",
   wget: "bash.egress.wget-upload",
   http: "bash.egress.httpie",
   https: "bash.egress.httpie",
 };
 
-function upload(cmd: SimpleCommand): ClassifiedAction[] {
-  const request = httpRequest(cmd);
-  if (!request || !(request.body || UPLOAD_METHODS.has(request.method) || request.method === UNKNOWN_METHOD)) return [];
-  return actionsFor(HTTP_SPELLINGS[cmd.name ?? ""] as SpellingId, request.urls.map(hostOf));
+function upload(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
+  const request = httpRequest(cmd, ctx);
+  const spelling = HTTP_SPELLINGS[cmd.name ?? ""];
+  if (!request || !spelling || !(request.body || UPLOAD_METHODS.has(request.method))) return [];
+  return actionsFor(spelling, request.urls.map(hostOf));
 }
 
 const GH_GIST_WRITES = set("create", "new", "edit");
@@ -338,7 +148,7 @@ function pushUrl(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
 function bash(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
   if (cmd.name === "gh") return gist(cmd);
   if (cmd.name === "git") return pushUrl(cmd, ctx);
-  return [...upload(cmd), ...socket(cmd), ...remoteCopy(cmd), ...cloudCopy(cmd)];
+  return [...upload(cmd, ctx), ...socket(cmd), ...remoteCopy(cmd), ...cloudCopy(cmd)];
 }
 
 /** Named commands that send data off the machine: the EXT rows of the authority table. */

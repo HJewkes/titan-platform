@@ -26,7 +26,20 @@ export {
   type MutationSpecResult,
 } from "./mutation.js";
 export {
+  classifyMutants,
+  MUTANT_OUTCOMES,
+  MUTANT_VERDICTS,
+  SPEC_SUFFIX,
+  testFileOfSpec,
+  type MutantOutcome,
+  type MutantResult,
+  type MutantsResult,
+  type MutantVerdict,
+  type SpecUnderTest,
+} from "./mutant-classify.js";
+export {
   classifyReports,
+  isNewApiFailure,
   TEST_CLASSES,
   VERDICTS,
   type Classification,
@@ -53,11 +66,17 @@ export { DEFAULT_BUDGET_MS, DEFAULT_BUILD, DEFAULT_COMMAND, errorLine, run, type
 export { execSide, SIDE_REPORTS, type ExecSideOptions, type Side } from "./side.js";
 export { DEFAULT_JUDGE_BUDGET_MS, judge, type JudgeOptions, type JudgeReports } from "./judge.js";
 export {
+  decodeMutantsReport,
   decodeReport,
   encodeError,
+  encodeMutantsReport,
+  encodeMutantsSkipped,
   encodeReport,
   MAX_ENCODED_BYTES,
   MAX_INFLATED_BYTES,
+  type DecodedMutants,
   type DecodedReport,
   type DecodeOptions,
+  type MutantRun,
+  type MutantsReport,
 } from "./transport.js";

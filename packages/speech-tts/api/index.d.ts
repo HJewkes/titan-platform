@@ -241,7 +241,14 @@ declare function fillTemplate(template: unknown, values: TemplateValues): unknow
 type TtsProviderConfig = {
     kind: string;
 } & Readonly<Record<string, unknown>>;
-/** The `profile.json` document, version 1. Only the `tts` section is read here. */
+/** The speech models a runtime places on a device. */
+type SpeechComponent = "tts" | "stt" | "phones";
+/** The profile's `runtime` section. Device names are checked by `detectSpeechRuntime`, not here. */
+interface SpeechRuntimeProfile {
+    device?: Readonly<Partial<Record<SpeechComponent, string>>>;
+    cacheDir?: string;
+}
+/** The `profile.json` document, version 1. The `tts` and `runtime` sections are read here. */
 interface TtsProfile {
     version: 1;
     tts?: {
@@ -251,6 +258,7 @@ interface TtsProfile {
         /** Lets selection move past a misconfigured provider. Off by default: a broken preferred engine fails closed. */
         fallback?: boolean;
     };
+    runtime?: SpeechRuntimeProfile;
 }
 interface ResolvedTtsConfig {
     /** Every provider id, in the order selection tries them. */
@@ -260,7 +268,8 @@ interface ResolvedTtsConfig {
     unusable: Readonly<Record<string, string>>;
     fallback: boolean;
 }
-type Env = Readonly<Record<string, string | undefined>>;
+type SpeechEnv = Readonly<Record<string, string | undefined>>;
+type Env = SpeechEnv;
 declare const PROFILE_ENV = "TITAN_SPEECH_PROFILE";
 declare const PREFER_ENV = "TITAN_SPEECH_TTS";
 /** `TITAN_SPEECH_TTS_<ID>_<FIELD>`, with the id upper-cased and every other character as `_`. */
@@ -306,4 +315,166 @@ interface SelectTtsOptions {
 /** Loads the profile, applies env overrides and selects: the one call a product needs. */
 declare function selectTts(opts?: SelectTtsOptions): Promise<TtsSelection>;
 
-export { type Audio, type CommandOutput, type CommandRequest, type CommandTtsOptions, DEFAULT_MAX_OUTPUT_BYTES, FAKE_TTS_CAPABILITIES, type FakeTtsCall, type FakeTtsOptions, type FakeTtsProvider, type HttpResponseMapping, type HttpTtsOptions, INHERITED_ENV, PREFER_ENV, PROFILE_ENV, type PhonemeAlphabet, type ResolvedTtsConfig, type SelectTtsOptions, type SkippedProvider, type Synthesis, type SynthesizeOptions, type TtsCapabilities, TtsConfigError, TtsError, type TtsErrorCode, TtsFailedError, type TtsInput, type TtsProfile, type TtsProvider, type TtsProviderConfig, type TtsProviderFactory, type TtsRegistry, type TtsRequirements, type TtsSelection, TtsTimeoutError, type TtsToken, TtsUnavailableError, TtsUnsupportedError, type TtsVoice, type WordTiming, assertSupported, commandTts, createTtsRegistry, decodeWav, defaultTtsRegistry, encodeWav, fakeTts, fillTemplate, httpTts, languageMatches, loadTtsProfile, missingCapabilities, parseCapabilities, parseTtsProfile, providerEnvName, requirementsOf, resolveTtsConfig, selectTts };
+interface SpeakingOptions {
+    /** Silent runs at least this long between voiced frames are pauses and are not counted. */
+    pauseS?: number;
+    /** Frames quieter than this many dB below the loudest frame are silent. */
+    silenceDb?: number;
+}
+/**
+ * Seconds of speech in `audio`: leading and trailing silence trimmed, and silent runs
+ * of `pauseS` or more removed, so a words-per-minute figure ignores deliberate pauses.
+ */
+declare function speakingSeconds(audio: Audio, opts?: SpeakingOptions): number;
+
+interface CalibrateOptions {
+    targetWpm: number;
+    /** Words in the spoken text. The caller counts them: plain-text rules belong to the caller. */
+    wordCount: number;
+    toleranceWpm?: number;
+    maxTries?: number;
+    startSpeed?: number;
+}
+interface CalibrateTry {
+    speed: number;
+    wpm: number;
+}
+interface Calibration {
+    best: CalibrateTry & {
+        synthesis: Synthesis;
+    };
+    tries: CalibrateTry[];
+}
+/** Synthesizes until the speaking rate lands within tolerance of the target, else returns the closest try. */
+declare function calibrateSpeed(provider: TtsProvider, input: TtsInput, voice: string, opts: CalibrateOptions): Promise<Calibration>;
+
+/** The transformers.js device names P1 knows. Only `cpu` is used without an explicit, verified opt-in. */
+type SpeechDevice = "cpu" | "cuda" | "coreml" | "webgpu";
+type Source = "env" | "profile" | "default";
+interface SpeechRuntime {
+    device: Readonly<Record<SpeechComponent, SpeechDevice>>;
+    /** Devices this host could run. Listing `cuda` does not select it. */
+    available: readonly SpeechDevice[];
+    cacheDir: string;
+    offline: boolean;
+    /** Where each value came from, so a caller can let an env choice beat its own default. */
+    source: {
+        device: Readonly<Record<SpeechComponent, Source>>;
+        cacheDir: Source;
+    };
+}
+interface SpeechRuntimeInput {
+    platform: NodeJS.Platform;
+    arch: string;
+    env: SpeechEnv;
+    home: string;
+    exists: (path: string) => boolean;
+    /** The onnxruntime-node package directory, when one was found. Without it, cuda is never available. */
+    ortDir?: string;
+    profile?: TtsProfile;
+    /** Lets an explicit cuda choice through before spike E9 has verified it. */
+    allowUnverifiedCuda?: boolean;
+}
+type SpeechRuntimeErrorCode = "unknown-device" | "unsupported-device" | "unavailable-device" | "unverified-device" | "unsupported-platform" | "bad-cache-dir";
+declare class SpeechRuntimeError extends Error {
+    readonly code: SpeechRuntimeErrorCode;
+    constructor(code: SpeechRuntimeErrorCode, message: string);
+}
+declare const SPEECH_DEVICE_ENV = "TITAN_SPEECH_DEVICE";
+declare const SPEECH_CACHE_ENV = "TITAN_SPEECH_CACHE";
+/** `TITAN_SPEECH_DEVICE_<TTS|STT|PHONES>`: one component's device, which beats `TITAN_SPEECH_DEVICE`. */
+declare const speechDeviceEnvName: (component: SpeechComponent) => string;
+/**
+ * Picks each speech model's device and the model cache from the platform, `TITAN_SPEECH_*` env and the profile's
+ * `runtime` section. Pure: the host is passed in. Per component, `TITAN_SPEECH_DEVICE_<C>` beats
+ * `TITAN_SPEECH_DEVICE`, which beats the profile, which beats `cpu`.
+ */
+declare function detectSpeechRuntime(input: SpeechRuntimeInput): SpeechRuntime;
+/** The `{ device, cacheDir }` options one component's provider takes: Kokoro, Whisper or wav2vec2. */
+declare function runtimeOptions(runtime: SpeechRuntime, component: SpeechComponent): {
+    device: SpeechDevice;
+    cacheDir: string;
+};
+
+/** The model behind `kokoroProvider`, which loads the real fp32 one unless given a `loadEngine`. */
+interface KokoroEngine {
+    /** Kokoro's input ids for one chunk's phonemes, `<bos>` and `<eos>` included. */
+    tokenize(ps: string): number[];
+    /** A voice's style pack: rows of 256 floats, one per phoneme count. */
+    voicePack(voice: string): Promise<Float32Array>;
+    /** One forward pass. `durations` are the unrounded frames per id. */
+    run(input: {
+        ids: readonly number[];
+        style: Float32Array;
+        speed: number;
+    }, signal: AbortSignal): Promise<{
+        waveform: Float32Array;
+        durations: Float32Array;
+    }>;
+    dispose(): Promise<void>;
+}
+type ModuleImporter = (name: string) => Promise<unknown>;
+interface KokoroEngineOptions {
+    /** Where transformers.js caches the model. Its default sits inside node_modules, so products pass one. */
+    cacheDir?: string;
+    device: string;
+    /** Injectable for tests; defaults to a dynamic import. */
+    importModule?: ModuleImporter;
+    /** Where the `<voice>.bin` packs live; defaults to the kokoro-js peer's `voices/`. */
+    voicesDir?: string;
+}
+
+declare const KOKORO_CAPABILITIES: TtsCapabilities;
+/** The G2P Kokoro reads. speech-g2p's `misakiEnglish()` satisfies it, so this package does not depend on it. */
+interface KokoroG2p {
+    tokens(text: string): readonly {
+        text: string;
+        phonemes: string | null;
+        whitespace: string;
+    }[];
+}
+interface KokoroProviderOptions {
+    id?: string;
+    g2p: KokoroG2p;
+    /** Defaults to the fp32 model over the transformers.js peer. Called on first use, and again after a failed load. */
+    loadEngine?: (options: KokoroEngineOptions) => Promise<KokoroEngine>;
+    /** Voice ids offered, a subset of Kokoro's US voices. All of them by default. */
+    voices?: readonly string[];
+    device?: string;
+    cacheDir?: string;
+    /** Covers a cold load, which may download the 325 MB model. */
+    timeoutMs?: number;
+    /** Hears about words Kokoro will not speak; they keep a zero-width timing. Defaults to a process warning. */
+    onWarning?: (message: string) => void;
+}
+/**
+ * Kokoro-82M in process, at fp32, with word timings from the model's own durations, matching Python's
+ * `KPipeline.join_timestamps`. Text goes through the injected G2P; misaki token input is spoken verbatim.
+ */
+declare function kokoroProvider(opts: KokoroProviderOptions): TtsProvider;
+/** Register as `registry.register("kokoro", kokoroFactory({ g2p }))`; profile entries of kind `kokoro` then build it. */
+declare function kokoroFactory(deps: KokoroFactoryDeps): TtsProviderFactory;
+interface KokoroFactoryDeps extends Pick<KokoroProviderOptions, "g2p" | "loadEngine" | "onWarning"> {
+    /** `resolveSpeechRuntime()`'s result: its device and cache fill what a profile entry omits, and its env choices beat the entry. */
+    runtime?: Pick<SpeechRuntime, "device" | "cacheDir" | "source">;
+}
+
+/** Seconds from the chunk start; null where Python leaves `start_ts`/`end_ts` unset. */
+interface TokenTime {
+    readonly start: number | null;
+    readonly end: number | null;
+}
+
+interface ResolveSpeechRuntimeOptions {
+    /** Defaults to `process.env`. */
+    env?: SpeechEnv;
+    /** Falls back to `TITAN_SPEECH_PROFILE`. With neither, only env and defaults apply. */
+    profilePath?: string;
+    allowUnverifiedCuda?: boolean;
+    /** Injectable for tests; defaults to looking for onnxruntime-node beside the transformers.js peer. */
+    findOrtDir?: () => string | undefined;
+}
+/** Loads the profile, finds the host's onnxruntime-node and runs `detectSpeechRuntime` on the real platform. */
+declare function resolveSpeechRuntime(opts?: ResolveSpeechRuntimeOptions): Promise<SpeechRuntime>;
+
+export { type Audio, type CalibrateOptions, type CalibrateTry, type Calibration, type CommandOutput, type CommandRequest, type CommandTtsOptions, DEFAULT_MAX_OUTPUT_BYTES, FAKE_TTS_CAPABILITIES, type FakeTtsCall, type FakeTtsOptions, type FakeTtsProvider, type HttpResponseMapping, type HttpTtsOptions, INHERITED_ENV, KOKORO_CAPABILITIES, type KokoroEngine, type KokoroEngineOptions, type KokoroG2p, type KokoroProviderOptions, PREFER_ENV, PROFILE_ENV, type PhonemeAlphabet, type ResolveSpeechRuntimeOptions, type ResolvedTtsConfig, SPEECH_CACHE_ENV, SPEECH_DEVICE_ENV, type SelectTtsOptions, type SkippedProvider, type SpeakingOptions, type SpeechComponent, type SpeechDevice, type SpeechEnv, type SpeechRuntime, SpeechRuntimeError, type SpeechRuntimeInput, type Synthesis, type SynthesizeOptions, type TokenTime, type TtsCapabilities, TtsConfigError, TtsError, type TtsErrorCode, TtsFailedError, type TtsInput, type TtsProfile, type TtsProvider, type TtsProviderConfig, type TtsProviderFactory, type TtsRegistry, type TtsRequirements, type TtsSelection, TtsTimeoutError, type TtsToken, TtsUnavailableError, TtsUnsupportedError, type TtsVoice, type WordTiming, assertSupported, calibrateSpeed, commandTts, createTtsRegistry, decodeWav, defaultTtsRegistry, detectSpeechRuntime, encodeWav, fakeTts, fillTemplate, httpTts, kokoroFactory, kokoroProvider, languageMatches, loadTtsProfile, missingCapabilities, parseCapabilities, parseTtsProfile, providerEnvName, requirementsOf, resolveSpeechRuntime, resolveTtsConfig, runtimeOptions, selectTts, speakingSeconds, speechDeviceEnvName };

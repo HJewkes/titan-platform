@@ -1,7 +1,7 @@
 {
   "name": "@titan-design/speech-vet",
   "version": "0.0.0",
-  "description": "Speech text vetting: pronunciation override markup, heteronym reading checks, lexicon.v1, initialism spelling and number normalization",
+  "description": "Speech text vetting: pronunciation override markup, heteronym reading checks, lexicon.v1, initialism spelling, number normalization and phone-level pronunciation verdicts",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -14,7 +14,9 @@
   "files": [
     "dist",
     "conformance",
-    "README.md"
+    "data",
+    "README.md",
+    "NOTICE"
   ],
   "author": "Henry Jewkes",
   "license": "MIT",
@@ -34,6 +36,11 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@titan-design/speech-g2p": "workspace:^",
+    "@titan-design/speech-stt": "workspace:^",
+    "@titan-design/speech-tts": "workspace:^"
   },
   "peerDependencies": {
     "zod": "^4.0.0"

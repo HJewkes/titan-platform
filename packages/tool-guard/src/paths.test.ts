@@ -56,6 +56,69 @@ describe("matchGuarded", () => {
     ]);
   });
 
+  it.each([
+    ["/home/you/.curlrc", "any:.curlrc"],
+    ["/opt/curl-home/.curlrc", "any:.curlrc"],
+    ["/home/you/.config/curlrc", "any:curlrc"],
+    ["/home/you/_curlrc", "any:_curlrc"],
+    ["/home/you/.wgetrc", "any:.wgetrc"],
+    ["/etc/wgetrc", "any:wgetrc"],
+    ["/home/you/.config/wget/wgetrc", "any:wgetrc"],
+    ["/home/you/.config/httpie/config.json", "any:httpie/config.json"],
+    ["/home/you/.httpie/config.json", "any:.httpie/config.json"],
+    ["/home/you/.wget2rc", "any:.wget2rc"],
+    ["/home/you/.config/wget/wget2rc", "any:wget2rc"],
+    ["/home/you/.config/xh/config.json", "any:xh/config.json"],
+  ])("guards the http client rc file %s as config, not as a secret", (path, id) => {
+    expect(configId(path)).toBe(id);
+    expect(secretId(path)).toBeNull();
+  });
+
+  it.each([
+    "/home/you/projects/app/curlrc.md",
+    "/home/you/.curlrc.bak",
+    "/home/you/projects/app/src/httpie/config.ts",
+    "/home/you/.config/httpie/other.json",
+  ])("does not guard %s, which only resembles an rc file", (path) => {
+    expect(configId(path)).toBeNull();
+  });
+
+  it.each([
+    ["bash.config.redirect-out", "echo 'request = PUT' >> ~/.curlrc"],
+    ["bash.config.cp-mv-ln", "cp /tmp/rc ~/.curlrc"],
+    ["bash.config.tee", "printf 'request = PUT' | tee ~/.curlrc"],
+  ])("reads a later-call write to ~/.curlrc as %s", (spelling, command) => {
+    const ctx = { home: HOME, readLink: () => null, readHead: () => null, readScript: () => null };
+    const input = { kind: "bash" as const, command, toolName: "Bash", cwd: REPO_DIR, sessionId: null, toolUseId: null };
+
+    expect(classify(input, ctx)).toEqual([expect.objectContaining({ spelling, subject: { pattern: "any:.curlrc" } })]);
+  });
+
+  it.each([
+    ["cp /tmp/rc ~/.config/wget/wget2rc", "any:wget2rc"],
+    ["cp /tmp/rc ~/.wget2rc", "any:.wget2rc"],
+    ["cp x ~/.config/xh/config.json", "any:xh/config.json"],
+  ])("reads a later-call %s as a config copy", (command, pattern) => {
+    const ctx = { home: HOME, readLink: () => null, readHead: () => null, readScript: () => null };
+    const input = { kind: "bash" as const, command, toolName: "Bash", cwd: REPO_DIR, sessionId: null, toolUseId: null };
+
+    expect(classify(input, ctx)).toEqual([expect.objectContaining({ spelling: "bash.config.cp-mv-ln", subject: { pattern } })]);
+  });
+
+  it("reads a client naming ~/.curlrc as a config mention, since the hook cannot see what it does with the file", () => {
+    const ctx = { home: HOME, readLink: () => null, readHead: () => null, readScript: () => null };
+    const input = { kind: "bash" as const, command: "curl -K ~/.curlrc https://example.com", toolName: "Bash", cwd: REPO_DIR, sessionId: null, toolUseId: null };
+
+    expect(classify(input, ctx)).toContainEqual(expect.objectContaining({ spelling: "bash.config.mention", subject: { pattern: "any:.curlrc" } }));
+  });
+
+  it("reads ~/.curlrc without classifying the read", () => {
+    const ctx = { home: HOME, readLink: () => null, readHead: () => null, readScript: () => null };
+    const input = { kind: "bash" as const, command: "cat ~/.curlrc", toolName: "Bash", cwd: REPO_DIR, sessionId: null, toolUseId: null };
+
+    expect(classify(input, ctx)).toEqual([]);
+  });
+
   it("anchors home patterns at the given home", () => {
     expect(matchGuarded("/srv/other/.npmrc", GUARDED_PATHS.secret, "/srv/other")?.id).toBe("home:.npmrc");
     expect(matchGuarded("/srv/other/.npmrc", GUARDED_PATHS.secret, HOME)).toBeNull();
