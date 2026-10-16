@@ -48,18 +48,16 @@ function emulateScript(args: WordToken[], budget: UnsureBudget): Inline | null {
  * character is a digit is MODE itself. zsh refuses `-c` with `-L` or `-l`, and any other letter there.
  */
 function emulateTextWords(args: WordToken[]): WordToken[] {
-  let i = 0;
   let flags = "";
-  for (; i < args.length; i++) {
-    const w = args[i] as WordToken;
+  for (const [i, w] of args.entries()) {
     if (w.dynamic) return args.slice(i);
-    if (!w.value.startsWith("-") || /^-\d/.test(w.value)) break;
+    if (!w.value.startsWith("-") || /^-\d/.test(w.value)) return optionTextWords(args, i + 1, flags);
     const body = w.value.startsWith("--") ? w.value.slice(2) : w.value.slice(1);
     if (body === "") return optionTextWords(args, i + 2, flags);
     if (!/^[lLR]+$/.test(body)) return [];
     flags += body;
   }
-  return optionTextWords(args, i + 1, flags);
+  return optionTextWords(args, args.length + 1, flags);
 }
 
 function optionTextWords(args: WordToken[], start: number, flags: string): WordToken[] {
@@ -74,8 +72,7 @@ function optionTextWords(args: WordToken[], start: number, flags: string): WordT
  * are depends on the calling shell's options. `b` ends the options only under zsh's own letters, so both are read.
  */
 function parsedText(args: WordToken[], start: number, hasC: boolean): WordToken[] {
-  for (let j = start; j < args.length; j++) {
-    const w = args[j] as WordToken;
+  for (let j = start, w = args[j]; w !== undefined; w = args[++j]) {
     if (w.dynamic) return args.slice(j);
     if (!/^[-+]/.test(w.value)) return hasC ? [w] : [];
     const read = readCluster(w.value);
@@ -103,7 +100,7 @@ function readCluster(word: string): Cluster | null {
   const read: Cluster = { c: false, b: false, end: "word" };
   if (word.length === 1) return { ...read, end: "options" };
   for (let k = 1; k < word.length; k++) {
-    const ch = word[k] as string;
+    const ch = word.charAt(k);
     if (ch === "-") return k === word.length - 1 ? { ...read, end: "options" } : null;
     if (ch === "o") return { ...read, end: k === word.length - 1 ? "name" : "word" };
     if (/\s/.test(ch)) return /^\s*$/.test(word.slice(k)) ? read : null;
@@ -130,14 +127,14 @@ function splicedReadings(words: WordToken[], budget: UnsureBudget): string[] {
 /** Whether a shell's options include `-c`, and its first operand: the `-c` string, or else a script file. */
 export function shellOperands(args: WordToken[]): { hasC: boolean; positional: WordToken | null } {
   let hasC = false;
-  for (let i = 0; i < args.length; i++) {
-    const v = (args[i] as WordToken).value;
+  for (let i = 0, arg = args[i]; arg !== undefined; arg = args[++i]) {
+    const v = arg.value;
     if (v === "-") break;
     if (v === "--") return { hasC, positional: args[i + 1] ?? null };
     if (SHELL_VALUE_OPTS.has(v)) i++;
     else if (v.startsWith("--")) continue;
     else if (/^[-+][A-Za-z]+$/.test(v)) hasC ||= v.startsWith("-") && v.includes("c");
-    else return { hasC, positional: args[i] as WordToken };
+    else return { hasC, positional: arg };
   }
   return { hasC, positional: null };
 }

@@ -165,7 +165,7 @@ describe.skipIf(!zsh)("the guard denies an emulate line exactly where real zsh r
     const disagreements: string[] = [];
     for (const [i, line] of lines.entries()) {
       const denied = (await verdict(line)) === "deny";
-      const overRead = denied && !ran.has(i) && [own, sh].some((run) => /no such option|bad option/.test(run.stderr[i] as string));
+      const overRead = denied && !ran.has(i) && [own, sh].some((run) => /no such option|bad option/.test(run.stderr[i] ?? ""));
       if (denied !== ran.has(i) && !overRead) disagreements.push(`${ran.has(i) ? "zsh runs" : "zsh refuses"}: ${line}`);
     }
     expect(ran.size).toBeGreaterThan(100);
