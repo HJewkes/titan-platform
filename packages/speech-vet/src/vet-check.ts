@@ -37,7 +37,7 @@ export interface CheckContext {
   plain: string;
   /** The line with its `[w](=reading)` declarations, as the precheck read it. */
   voiceSpoken: string;
-  /** The G2P tokens the voice was given; absent for a text voice, which skips the reading check. */
+  /** The g2p's tokens for the line; `vet()` passes them whenever a g2p is given, even for a text voice. Absent skips the reading check. */
   tokens?: readonly PhonemeToken[];
   stt: SttProvider;
   confirmStt?: SttProvider;
