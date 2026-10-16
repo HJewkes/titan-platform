@@ -189,6 +189,7 @@ Shepherd sweep also marks a merged run `sh-reverted` when a later main commit re
 | `POST /rpc/<command>` | one registry command; the body is its JSON arguments |
 | `POST /gates/resolve-proof` | applies an owner-signed proof and returns each item's outcome; see [Owner-signed proofs](#owner-signed-proofs) |
 | `POST /holds/release-proof` | lifts one Shepherd hold on an owner-signed release; see [Owner-signed hold release](#owner-signed-hold-release) |
+| `POST /gates/answer-ship` | only with `shepherd.consoleAnswers` set: resolves an approve-merge gate as `owner-remote` from a console Ship answer; see the factory README |
 | `/mcp` | the same commands as MCP tools over streamable HTTP |
 
 ```sh
