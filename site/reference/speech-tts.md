@@ -1,7 +1,7 @@
 # speech-tts
 
-**Tier 1 · engines.** No dependencies. The Kokoro provider needs two optional peers and a
-model download, and only when you use it.
+**Tier 1 · engines.** One dependency, `@titan-design/app-paths`, for the default model cache.
+The Kokoro provider needs two optional peers and a model download, and only when you use it.
 
 ```sh
 npm install @titan-design/speech-tts
@@ -64,8 +64,9 @@ const { provider } = await selectTts({ registry, profilePath, requirements: { wo
 
 - **fp32 only.** Other precisions shift the durations, so a profile `dtype` other than
   `fp32` is refused.
-- **Cache.** Give the profile entry a `cacheDir`. The model is about 325 MB and downloads on
-  the first call, so warm the provider at startup. The default `timeoutMs` is 300000.
+- **Cache.** Give the profile entry a `cacheDir`, or let `resolveSpeechRuntime()` choose
+  one (see "Device and cache"). The model is about 325 MB and downloads on the first call,
+  so warm the provider at startup. The default `timeoutMs` is 300000.
 - **Offline.** With `TITAN_SPEECH_OFFLINE` set, a model missing from `cacheDir` is refused
   with `TtsUnavailableError` before any network call.
 - **Unknown words.** A word Kokoro cannot phonemize is not spoken. It gets a zero-width
@@ -76,12 +77,35 @@ const { provider } = await selectTts({ registry, profilePath, requirements: { wo
 - **Voices.** The US `af_*` and `am_*` voices, from the `kokoro-js` peer.
 - **Smoke test.** An opt-in test runs the real model. See the package README.
 
+## Device and cache
+
+One call picks the device and model cache for Kokoro here and for Whisper and wav2vec2 in
+`speech-stt`:
+
+```ts
+import { resolveSpeechRuntime, runtimeOptions } from "@titan-design/speech-tts";
+
+const runtime = await resolveSpeechRuntime();
+const tts = kokoroProvider({ g2p, ...runtimeOptions(runtime, "tts") });
+```
+
+- **Order.** Per model: `TITAN_SPEECH_DEVICE_<TTS|STT|PHONES>`, then `TITAN_SPEECH_DEVICE`,
+  then the profile's `runtime.device`, then `cpu`. The cache is `TITAN_SPEECH_CACHE`, then
+  `runtime.cacheDir`, then the per-user cache directory for `titan-speech`.
+- **Absolute paths only.** A `TITAN_SPEECH_CACHE` starting with `~` is refused. A space in
+  the path is kept as is.
+- **CUDA is listed, not used.** `runtime.available` shows `cuda` on linux-x64 when the
+  ONNX Runtime CUDA library and the NVIDIA driver exist. Choosing it throws
+  `unverified-device` until spike E9 has verified a real session.
+- **Refused.** `coreml` and `webgpu` need transformers.js 4.x. An x64 Node on macOS throws
+  `unsupported-platform`: run an arm64 Node.
+
 ## What it deliberately does not do
 
 - No vendor SDK. The in-process Kokoro adapter is the only engine it ships, and it plugs in
   through `registry.register("kokoro", kokoroFactory({ g2p }))`.
 - It does not decide where the profile lives. The caller passes a path, or sets
-  `TITAN_SPEECH_PROFILE`.
+  `TITAN_SPEECH_PROFILE`. It does pick a default model cache and a device.
 - It does not resample. `audio.sampleRate` is whatever the engine produced.
 
 ## Gotchas
@@ -90,6 +114,10 @@ const { provider } = await selectTts({ registry, profilePath, requirements: { wo
   only reorders them.
 - Word timings an engine returns are dropped unless the provider declares `wordTimestamps`.
   Selection is what promises timings to the caller.
+- `TITAN_SPEECH_DEVICE_STT` beats `TITAN_SPEECH_DEVICE`, which beats the profile. An empty
+  variable counts as unset.
+- A Kokoro entry's `device` loses to an env-chosen device only when the runtime is passed to
+  `kokoroFactory`.
 - A speed of exactly 1 needs no `speedControl`. Any other speed does.
 - A command times out by killing its whole process group, so wrap engines in a program that
   exits when killed, not a daemon that detaches.
