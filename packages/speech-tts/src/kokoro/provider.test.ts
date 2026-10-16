@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { resolveTtsConfig } from "../config.js";
-import { TtsConfigError, TtsFailedError } from "../errors.js";
+import { TtsConfigError, TtsFailedError, TtsUnknownWordsError } from "../errors.js";
 import { createTtsRegistry } from "../registry.js";
 import type { TtsToken } from "../types.js";
 import { fakeEngine, letterG2p, type FakeEngineOptions } from "./fake-engine.test-helpers.js";
-import { kokoroFactory, kokoroProvider } from "./provider.js";
+import { kokoroFactory, kokoroProvider, type KokoroG2p } from "./provider.js";
 
 const misaki = (tokens: TtsToken[]) => ({ tokens, alphabet: "misaki" as const });
 
@@ -155,5 +155,66 @@ describe("kokoroProvider", () => {
 
     await expect(call).rejects.toBeInstanceOf(TtsFailedError);
     await expect(call).rejects.toThrow(/gave 5 ids for 4 phonemes; it drops "ʔ"/);
+  });
+});
+
+describe("kokoroProvider unknown words", () => {
+  const SENTENCE = { text: "the Zyxquor met a Vrebnik today" };
+  const UNKNOWN = ["Zyxquor", "Vrebnik"];
+
+  /** letterG2p, except the constructed words come back with null phonemes, as misaki gives a word it cannot read. */
+  function gapG2p(): KokoroG2p {
+    const letters = letterG2p();
+    return { tokens: (text) => letters.tokens(text).map((t) => (UNKNOWN.includes(t.text) ? { ...t, phonemes: null } : t)) };
+  }
+
+  function strictSetup(unknownWords?: "warn" | "fail") {
+    const loadEngine = vi.fn(() => Promise.resolve(fakeEngine()));
+    const onWarning = vi.fn<(message: string) => void>();
+    const provider = kokoroProvider({ g2p: gapG2p(), onWarning, loadEngine, ...(unknownWords ? { unknownWords } : {}) });
+    return { loadEngine, onWarning, provider };
+  }
+
+  // Mutation caught: the check runs after the engine call, or keeps only the first unknown word.
+  it("fails before loading the engine, listing every unknown word with its token position", async () => {
+    const { loadEngine, provider } = strictSetup("fail");
+
+    const error = await provider.synthesize(SENTENCE, "af_heart").catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(TtsUnknownWordsError);
+    expect(error).toMatchObject({ code: "unknown-words", providerId: "kokoro", words: [{ word: "Zyxquor", index: 1 }, { word: "Vrebnik", index: 4 }] });
+    expect(String(error)).toContain('no phonemes for 2 word(s): "Zyxquor" at token 1, "Vrebnik" at token 4');
+    expect(loadEngine).not.toHaveBeenCalled();
+  });
+
+  it("fails on a misaki token that brings empty phonemes", async () => {
+    const { provider } = strictSetup("fail");
+
+    const call = provider.synthesize(misaki([{ text: "one", phonemes: "wˈʌn", whitespace: " " }, { text: "Zyx", phonemes: "" }]), "af_heart");
+
+    await expect(call).rejects.toMatchObject({ words: [{ word: "Zyx", index: 1 }] });
+  });
+
+  it("by default still speaks the sentence, timing each unknown word at zero width and warning", async () => {
+    const { onWarning, provider } = strictSetup();
+
+    const { words } = await provider.synthesize(SENTENCE, "af_heart");
+
+    expect(words.filter((w) => UNKNOWN.includes(w.word)).every((w) => w.start === w.end)).toBe(true);
+    expect(onWarning).toHaveBeenCalledWith(expect.stringContaining("Zyxquor, Vrebnik"));
+  });
+
+  // Mutation caught: parseKokoroConfig drops unknownWords, so a profile asking for "fail" silently warns.
+  it("takes unknownWords from a profile entry through the registry", async () => {
+    const registry = createTtsRegistry().register("kokoro", kokoroFactory({ g2p: gapG2p(), loadEngine: () => Promise.resolve(fakeEngine()) }));
+    const { provider } = registry.select(profile({ unknownWords: "fail" }), {});
+
+    await expect(provider.synthesize(SENTENCE, "af_heart")).rejects.toBeInstanceOf(TtsUnknownWordsError);
+  });
+
+  it("refuses a profile unknownWords other than warn or fail", () => {
+    const select = () => createTtsRegistry().register("kokoro", kokoroFactory({ g2p: gapG2p() })).select(profile({ unknownWords: "skip" }), {});
+
+    expect(select).toThrow(/unknownWords must be "warn" or "fail"/);
   });
 });
