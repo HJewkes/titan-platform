@@ -137,6 +137,7 @@ describe("shepherd stats verb", () => {
       ["unanswered", {}, 1],
     ]);
     expect(rows[0]).toMatchObject({ policyRow: "authority/MRG-AU", count: 1, medianHours: 2, maxHours: 2 });
+    expect(JSON.parse(out.join("")).visual).toEqual({ count: 0, open: 0, resolved: 0, medianHours: null, p90Hours: null, reAsks: 0, prsWithReAsk: 0 });
   });
 
   it.each([

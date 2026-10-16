@@ -7,7 +7,7 @@ import { WorkflowRunStore, type WorkflowRun, type WorkflowStatus } from "@titan-
 import type { Command } from "commander";
 import type { CliIo } from "./cli.js";
 import { parseSinceOption } from "./digest/command.js";
-import { gateStats, type GateStatsRow } from "./shepherd/gate-stats.js";
+import { gateStats, visualGateStats, type GateStatsRow, type VisualGateStats } from "./shepherd/gate-stats.js";
 import { SHEPHERD_WORKFLOW } from "./shepherd/services.js";
 import { eventsSince } from "./shepherd/events.js";
 import { readAllGates } from "./shepherd/owner-friction-read.js";
@@ -120,10 +120,20 @@ function gateLine(r: GateStatsRow): string {
   return `${r.policyRow}  ${r.resolver}  gates ${r.count}  decisions ${decisions || "-"}  cancelled-unanswered ${r.cancelledUnanswered}  pending ${r.pending}  median ${r.medianHours}h  max ${r.maxHours}h`;
 }
 
+function visualLines(v: VisualGateStats): string[] {
+  const hours = (h: number | null): string => (h === null ? "-" : `${h}h`);
+  return [
+    `visual gates  opened ${v.count}  resolved ${v.resolved}  open ${v.open}  latency median ${hours(v.medianHours)}  p90 ${hours(v.p90Hours)}`,
+    `visual re-asks  total ${v.reAsks}  PRs with a re-ask ${v.prsWithReAsk}`,
+  ];
+}
+
 function gatesReport(db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: number): string {
-  const rows = gateStats(readAllGates(db), now, opts.since!);
-  if (opts.json) return `${JSON.stringify({ gates: rows }, null, 2)}\n`;
-  return `${(rows.length === 0 ? ["no gates in window"] : rows.map(gateLine)).join("\n")}\n`;
+  const all = readAllGates(db);
+  const rows = gateStats(all, now, opts.since!);
+  const visual = visualGateStats(all, now, opts.since!);
+  if (opts.json) return `${JSON.stringify({ gates: rows, visual }, null, 2)}\n`;
+  return `${[...(rows.length === 0 ? ["no gates in window"] : rows.map(gateLine)), ...visualLines(visual)].join("\n")}\n`;
 }
 
 /** `--since` is the meter's own window, so it pairs only with `--gates` and never with the day range. */
@@ -212,7 +222,7 @@ export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () =
     .option("--registry <file>", "the titan.metrics/v1 entry --slo reads (default: this checkout's metrics/shepherd.yml)")
     .option("--per-run", "instead, with --json: one record per shepherd-pr run started in range, with its stage minutes, review rounds and merge path")
     .option("--failures", "also count failed runs per repo and ISO week by failure class (ci-timeout, gh-api-5xx, land-rules, update-branch, other)")
-    .option("--gates", "instead, with --since: gates opened in the window per policy row and resolver (owner-terminal, owner-remote, coordinator, delegate, unanswered), with decisions by value, cancelled-unanswered, pending, and median and max wait hours")
+    .option("--gates", "instead, with --since: gates opened in the window per policy row and resolver (owner-terminal, owner-remote, coordinator, delegate, unanswered), with decisions by value, cancelled-unanswered, pending, and median and max wait hours; plus visual-gate latency (median, p90) and re-asks per PR")
     .option("--since <window>", "the --gates window back from now: 90m, 6h or 7d", parseSinceOption)
     .action((opts: StatsOpts) => statsAction(opts, io, dbPath, setExit, now));
 }

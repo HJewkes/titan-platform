@@ -5,7 +5,8 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
-import { G10_RELEASE_STEP } from "./g10-release.js";
+import { G10_RELEASE_STEP, TWO_MERGE_RULE, type TwoMergeMode } from "./g10-release.js";
+import { DEFAULT_ADVERSARY_PROFILE } from "./review-panel-plan.js";
 import { supersedeMovedGates } from "./head-moved.js";
 import type { ShepherdPhases } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
@@ -36,7 +37,7 @@ function mergingReviewers(): { dispatch: ReviewerDispatch; reader: ReviewerReade
   const resume = async (name: string) => agents.forEach((agent, i) => agent.name === name && (agents[i] = { ...agent, presence: "live" }));
   const dispatch: ReviewerDispatch = { roster: async () => [...agents], spawn: async (name) => void agents.push(row(name)), resume };
   const reader: ReviewerReader = {
-    read: async (input) => agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, `Read it all.\n\nVerdict: MERGE\nPR: ${REPO}#1\nHead: ${input.head}\n`)),
+    read: async (input) => agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, `Read it all.\n\nProbes: an empty list -> refused\nVerdict: MERGE\nPR: ${REPO}#1\nHead: ${input.head}\n`)),
   };
   return { dispatch, reader };
 }
@@ -54,6 +55,11 @@ interface Scene {
   hold?: string;
   /** A head whose every review round ends with no verdict, as tp#1558's did before its fix push. */
   silentAt?: string;
+  /** `shepherd.gateReset.twoMergeRelease`, as `workflows.ts` wires it: a g10-adversary hold's member and the release mode. */
+  twoMerge?: TwoMergeMode;
+  files?: string[];
+  /** A head whose review ends with the PR conflicting, so the round leaves through the conflict route. */
+  conflictsAfter?: string;
 }
 
 /** A security PR held as `g10-review`, reviewed for real by a reviewer spawned with the profile `roles` gives its class. */
@@ -61,17 +67,23 @@ function heldSecurityRun(roles: ReviewerRoles, policy: EffectivePolicy = AUTO_PO
   return heldRun(roles, { policy, hold });
 }
 
-function heldRun(roles: ReviewerRoles, { policy = AUTO_POLICY, hold = G10_HOLD, silentAt }: Scene): World {
+function heldRun(roles: ReviewerRoles, { policy = AUTO_POLICY, hold = G10_HOLD, silentAt, twoMerge, files = ["src/a.ts"], conflictsAfter }: Scene): World {
   const fake = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const wake: ShepherdPhases["wake"] = async () => ({ kind: "unhandled", reason: "no fixer in this test" });
   const ref = shepherdStoreRef();
-  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), review: { ...mergingReviewers(), roles } });
-  const review: ShepherdPhases["review"] = async (ctx, request) => (request.headSha === silentAt ? { kind: "none", cause: "no-verdict", reason: "no_block" } : reviewPhase(ctx, request));
+  const adversary = twoMerge && { holdMember: { profile: DEFAULT_ADVERSARY_PROFILE }, twoMergeRelease: twoMerge };
+  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), review: { ...mergingReviewers(), roles, ...adversary } });
+  const reviewed: ShepherdPhases["review"] = async (ctx, request) => (request.headSha === silentAt ? { kind: "none", cause: "no-verdict", reason: "no_block" } : reviewPhase(ctx, request));
+  const review: ShepherdPhases["review"] = async (ctx, request) => {
+    const verdict = await reviewed(ctx, request);
+    if (request.headSha === conflictsAfter) fake.pr(1).mergeableState = "dirty";
+    return verdict;
+  };
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review, wake })], routes, gatePollMs: 5 });
   hosts.push(host);
   fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge") });
-  fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
+  fake.prFiles.set(1, files.map((path) => ({ path, status: "modified" })));
   const store = ref.get();
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(policy) });
   store.register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy, kind: "security" });
@@ -123,6 +135,44 @@ describe("a hold no reviewer of Shepherd's releases, on a run waiting at merge w
     expect(reviewMode(w, H2)).toMatchObject({ kind: "dispatched" });
     expect(w.store.byRun(w.runId)).toMatchObject({ held: true, holdReason: hold });
     expect(w.fake.calls).not.toContain("merge");
+    expect(w.fake.pr(1).merged).toBe(false);
+  });
+});
+
+describe("a g10-adversary hold under gateReset.twoMergeRelease (decision 422(1))", () => {
+  const ADVERSARY_HOLD = "g10-adversary: policy touch";
+  const opus = { g10: "bd-reviewer", standard: "reviewer" } as const;
+  const releaseResult = (w: World): unknown => Object.values(w.host.runtime.status(w.runId)!.stepResults).find((result) => result.stepId.startsWith(G10_RELEASE_STEP))?.data?.["result"];
+
+  it("releases on Shepherd's correctness and adversary MERGEs at a green head, with no seat, and the PR merges", async () => {
+    const w = heldRun(opus, { hold: ADVERSARY_HOLD, twoMerge: "on" });
+
+    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), { timeout: 5_000 });
+
+    expect(stepIds(w)).toContain(`sh-await-verdict:${H1}:adversary`);
+    expect(releaseResult(w)).toMatchObject({ released: true, rule: TWO_MERGE_RULE, correctness: { profile: "bd-reviewer" }, adversary: { profile: DEFAULT_ADVERSARY_PROFILE } });
+    expect(w.store.eventsOf(w.runId).at(-1)).toMatchObject({ kind: "release", actor: "shepherd", headSha: H1 });
+  });
+
+  it("releases on both MERGEs before a conflict read after the review leaves the round (TP-3198 cause E)", async () => {
+    const w = heldRun(opus, { hold: ADVERSARY_HOLD, twoMerge: "on", conflictsAfter: H1 });
+
+    await vi.waitFor(() => expect(w.store.byRun(w.runId)?.held).toBe(false), { timeout: 5_000 });
+
+    expect(releaseResult(w)).toMatchObject({ released: true, rule: TWO_MERGE_RULE, correctness: { profile: "bd-reviewer" }, adversary: { profile: DEFAULT_ADVERSARY_PROFILE } });
+    expect(w.fake.pr(1).merged).toBe(false);
+  });
+
+  it.each([
+    ["under shadow, recording that it would release", { twoMerge: "shadow" as const }, { released: false, wouldRelease: true }],
+    ["when the diff changes the owner's rule file", { twoMerge: "on" as const, files: ["src/a.ts", "packages/authority/src/table.json"] }, { released: false }],
+  ])("stays held %s, and merges nothing", async (_case, scene, result) => {
+    const w = heldRun(opus, { hold: ADVERSARY_HOLD, ...scene });
+
+    await vi.waitFor(() => expect(releaseResult(w)).toMatchObject(result), { timeout: 5_000 });
+    await vi.waitFor(() => expect(w.host.runtime.status(w.runId)?.currentStep).toBe("merge:0"), { timeout: 5_000 });
+
+    expect(w.store.byRun(w.runId)).toMatchObject({ held: true, holdReason: ADVERSARY_HOLD });
     expect(w.fake.pr(1).merged).toBe(false);
   });
 });

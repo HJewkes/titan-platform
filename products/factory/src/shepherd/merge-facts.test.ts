@@ -121,11 +121,11 @@ describe("evidenceComment layout", () => {
   };
   const jsonOf = (body: string) => JSON.parse(/```json\n([\s\S]*?)\n```/.exec(body)![1]!) as EvidenceRecord;
 
-  it("leads a merged comment with the marker, a one-line outcome and the check table, then the collapsed JSON", () => {
+  it("leads a cleared comment with the marker, a one-line outcome and the check table, then the collapsed JSON", () => {
     expect(evidenceComment(base).split("\n").slice(0, 10)).toEqual([
       `<!-- shepherd-evidence:${H} -->`,
       "",
-      `**Shepherd merged** at \`0123456\`: MRG-AU-RV holds at ${H}`,
+      `**Shepherd cleared to merge** at \`0123456\`: MRG-AU-RV holds at ${H}`,
       "",
       "| Check | Conclusion |",
       "| --- | --- |",
@@ -134,6 +134,24 @@ describe("evidenceComment layout", () => {
       "| Reviewer verdict | MERGE at `0123456` |",
       "",
     ]);
+  });
+
+  it.each([["allowed", base], ["gated", gated], ["refused", refused]])("never says merged in an %s comment at a head that did not merge", (_name, record) => {
+    expect(evidenceComment(record)).not.toMatch(/\bmerged\b/i);
+  });
+
+  it("adds the merge commit on the line after the headline once merged", () => {
+    const lines = evidenceComment(base, { mergeSha: "fedcba9876543210fedcba9876543210fedcba98" }).split("\n");
+
+    expect(lines[0]).toBe(evidenceMarker(H));
+    expect(lines[2]).toBe(`**Shepherd cleared to merge** at \`0123456\`: MRG-AU-RV holds at ${H}`);
+    expect(lines[3]).toBe("**Merged** at `fedcba9`.");
+  });
+
+  it("says GitHub named no merge commit when the merge sha is null", () => {
+    const lines = evidenceComment(base, { mergeSha: null }).split("\n");
+
+    expect(lines[3]).toBe("**Merged** (GitHub named no merge commit).");
   });
 
   it("states the gate rule in words and lists a long path set inside details, with the omitted count", () => {
@@ -160,7 +178,7 @@ describe("evidenceComment layout", () => {
     expect(body).toContain("Rule: authority/MRG-AU-X (authority/MRG-AU-X).");
   });
 
-  it.each([["merged", base], ["gated", gated], ["refused", refused]])("keeps the full %s record as JSON inside a collapsed Machine evidence block", (_name, record) => {
+  it.each([["allowed", base], ["gated", gated], ["refused", refused]])("keeps the full %s record as JSON inside a collapsed Machine evidence block", (_name, record) => {
     const body = evidenceComment(record);
     const jsonStart = body.indexOf("<details><summary>Machine evidence</summary>");
 
