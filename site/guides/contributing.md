@@ -34,7 +34,7 @@ or `scripts/fixtures/` runs every test. Git-heavy tests are named `*.repo.test.t
 the `repo` project, which `test:affected` runs only when their package changed. CI's full
 `pnpm test` runs all of them and stays the required check.
 
-CI also runs `pnpm lint:types` as its own `lint-types` job. It applies the type-aware rules
+CI also runs `pnpm lint:types` as a step of the `dag-check` job. It applies the type-aware rules
 `no-unsafe-type-assertion`, `no-unnecessary-type-assertion` and `no-unnecessary-condition`
 (`eslint.typed.config.js`) to source and tests. It needs `pnpm build` first. It runs one
 eslint process per chunk of workspace `src` dirs, in sequence, so no process nears the V8
