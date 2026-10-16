@@ -34,12 +34,6 @@ const NAMED_TARGET_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[|\+?=)/;
 const PATTERN_RE = /[{*?[^#]|.~|^~(?!\/|$)/s;
 /** `${options[globsubst]::=on}` assigns through an expansion; `refs` hold only plain names, so the text is read too. */
 const OPTIONS_EXPANSION_RE = /\$\{[^}]*\boptions\b/;
-/**
- * `${(P)n::=on}` assigns the parameter `$n` names, which may be `options[globsubst]`; `=` and `:=` assign too. Nested
- * braces (`${(P)${n}::=on}`) and delimited flag arguments may sit anywhere between, so any `P` after a `${(` flag
- * opener with any `=` after it counts. The text is matched because the lexer keeps no parsed flags; it fails closed.
- */
-const INDIRECT_ASSIGN_RE = /\$\{\([^]*?P[^]*=/;
 
 const ENABLERS: Record<string, (args: WordToken[]) => boolean> = {
   setopt: setoptEnables,
@@ -68,7 +62,7 @@ function namesGlobSubst(name: string): boolean {
 
 function namesOptions(w: WordToken): boolean {
   if (OPTIONS_OPERAND_RE.test(w.value) || w.refs.some((ref) => ref.name === "options")) return true;
-  return w.dynamic && (OPTIONS_EXPANSION_RE.test(w.value) || INDIRECT_ASSIGN_RE.test(w.value));
+  return w.dynamic && (OPTIONS_EXPANSION_RE.test(w.value) || flagsMayAssign(w.value));
 }
 
 interface OptionScan {
@@ -316,4 +310,39 @@ function writerCluster(w: WordToken, next: WordToken | undefined, i: number, spe
     return attached ? i : i + 1;
   }
   return i;
+}
+
+/** Flags whose argument is delimited text, as in `j:,:`; `l` and `r` may take a second and third argument. */
+const DELIMITED_FLAGS = "jslrZgI_";
+const CLOSERS: Record<string, string> = { "(": ")", "[": "]", "{": "}", "<": ">" };
+
+/**
+ * Whether a `${(…)` flag group may assign or re-evaluate. `e` expands the value again in this shell, so a value holding
+ * `${options[globsubst]::=on}` assigns; `P` with any `=` after it assigns the parameter a value names, whatever braces sit
+ * between (`${(P)${n}::=on}`). The lexer keeps no parsed flags, so the text is read, and a group that never closes counts.
+ */
+function flagsMayAssign(text: string): boolean {
+  for (let at = text.indexOf("${("); at >= 0; at = text.indexOf("${(", at + 1)) {
+    const flags = flagLetters(text, at + 3);
+    if (flags === null || flags.includes("e") || (flags.includes("P") && text.includes("=", at))) return true;
+  }
+  return false;
+}
+
+/** The flag letters of a group opening at `i`, skipping delimited arguments; null when the group never closes. */
+function flagLetters(text: string, i: number): string | null {
+  let letters = "";
+  while (i < text.length && text[i] !== ")") {
+    const letter = text.charAt(i++);
+    letters += letter;
+    if (!DELIMITED_FLAGS.includes(letter)) continue;
+    const open = text.charAt(i);
+    const close = CLOSERS[open] ?? open;
+    while (text.charAt(i) === open && open !== "" && open !== ")") {
+      const end = text.indexOf(close, i + 1);
+      if (end < 0) return null;
+      i = end + 1;
+    }
+  }
+  return i < text.length ? letters : null;
 }

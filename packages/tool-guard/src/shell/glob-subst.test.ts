@@ -186,6 +186,12 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     [': "${(P)${n}:=on}"'],
     ["[[ -n ${(P)${${n}}::=on} ]]"],
     ["git log ${(j:):P)n::=on}"],
+    [": ${(e)y}"],
+    ["echo ${(e)y}"],
+    [": ${(Pe)n}"],
+    ['echo "${(L)${(e)y}}"'],
+    [": ${(j:,:e)y}"],
+    [": ${(l:2::):e)y}"],
   ])("reads the run-time or expanded operand of %s as a possible enabler", (src) => {
     expect(enables(src)).toBe(true);
   });
@@ -271,6 +277,11 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     [": ${(P)${n}}"],
     [": ${(j:,:)a}"],
     ['echo "${x}=on"'],
+    [": ${(j:,:)names}"],
+    ["echo ${(j:e:)a}"],
+    ["echo ${(s.e.)line}"],
+    ["echo ${(l:5::e:)n}"],
+    ["echo ${(U)name}=on"],
   ])("leaves %s alone", (src) => {
     expect(enables(src)).toBe(false);
   });
