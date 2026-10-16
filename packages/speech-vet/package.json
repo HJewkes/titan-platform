@@ -39,7 +39,8 @@
   },
   "dependencies": {
     "@titan-design/speech-g2p": "workspace:^",
-    "@titan-design/speech-stt": "workspace:^"
+    "@titan-design/speech-stt": "workspace:^",
+    "@titan-design/speech-tts": "workspace:^"
   },
   "peerDependencies": {
     "zod": "^4.0.0"

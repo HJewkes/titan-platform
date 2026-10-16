@@ -783,6 +783,9 @@ importers:
       '@titan-design/speech-stt':
         specifier: workspace:^
         version: link:../speech-stt
+      '@titan-design/speech-tts':
+        specifier: workspace:^
+        version: link:../speech-tts
     devDependencies:
       zod:
         specifier: ^4.4.3
