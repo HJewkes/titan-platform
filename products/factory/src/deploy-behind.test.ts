@@ -8,6 +8,7 @@ const minutesAgo = (minutes: number): number => NOW - minutes * 60_000;
 const quiet = deployHealth({ entries: [], runningSha: RUNNING, now: NOW });
 
 const gitLog = (times: number[], code = 0, stderr = "") => async () => ({ code, stdout: times.map((time) => `${time / 1000}\n`).join(""), stderr });
+const GRACE_MIN = 20;
 
 describe("a running sha behind origin/main with no deploy asked", () => {
   it("reports the merges behind and the age of the oldest, and alarms past the threshold", async () => {
@@ -16,14 +17,21 @@ describe("a running sha behind origin/main with no deploy asked", () => {
     const git = await gitBehind("/checkout", gitLog(times))(RUNNING);
     const result = withGitBehind(quiet, git, NOW);
 
-    expect(result).toMatchObject({ behind: 10, behindMinutes: 110, alarm: true });
-    expect(result.causes).toEqual(expect.arrayContaining([expect.stringContaining("10 green merges"), expect.stringContaining("110 min ago")]));
+    expect(result).toMatchObject({ behind: 9, behindMinutes: 110, alarm: true, originLag: { merges: 9, minutes: 110, asked: 0 } });
+    expect(result.causes).toEqual([expect.stringContaining("origin/main holds 9 commits"), expect.stringContaining("for 110 min")]);
+    expect(result.causes.join()).not.toContain("asked");
   });
 
   it("stays quiet when a few recent merges are behind", async () => {
     const git = await gitBehind("/checkout", gitLog([minutesAgo(5), minutesAgo(2)]))(RUNNING);
 
-    expect(withGitBehind(quiet, git, NOW)).toMatchObject({ behind: 2, behindMinutes: 5, alarm: false });
+    expect(withGitBehind(quiet, git, NOW)).toMatchObject({ behind: 0, alarm: false });
+  });
+
+  it("ignores commits younger than the grace, so a fresh burst does not alarm", async () => {
+    const git = await gitBehind("/checkout", gitLog([1, 5, 10, 15, GRACE_MIN - 1].map(minutesAgo)))(RUNNING);
+
+    expect(withGitBehind(quiet, git, NOW)).toMatchObject({ behind: 0, behindMinutes: 0, alarm: false });
   });
 
   it("reads 0 only when origin/main holds nothing the build lacks", async () => {
@@ -35,7 +43,7 @@ describe("a running sha behind origin/main with no deploy asked", () => {
   it("keeps the larger of git's count and the log's", () => {
     const logged = { ...quiet, behind: 7, behindMinutes: 80 };
 
-    expect(withGitBehind(logged, { merges: 2, oldestAt: minutesAgo(10) }, NOW)).toMatchObject({ behind: 7, behindMinutes: 80 });
+    expect(withGitBehind(logged, { commitTimes: [minutesAgo(30)] }, NOW)).toMatchObject({ behind: 7, behindMinutes: 80 });
   });
 });
 
