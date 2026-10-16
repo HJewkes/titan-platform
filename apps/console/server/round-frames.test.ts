@@ -78,6 +78,12 @@ describe("rounds.frame reads a listed frame", () => {
     expect(await frame("badge-new")).toMatchObject({ bytes: bytes.length, sha256: sha256Of(bytes) });
   });
 
+  it("serves a CI packet round's montage, which only review-schema 0.3 reads", async () => {
+    const bytes = await readFile(path.join(dir, "td920-packet-r1", "montage", "img-001.png"));
+
+    expect(await frame("img-001", "head", "td920-packet-r1")).toMatchObject({ contentType: "image/png", bytes: bytes.length, sha256: sha256Of(bytes) });
+  });
+
   it("returns the base and diff files a frames record names for each view", async () => {
     const base = await readFile(path.join(round, "base", "tile-dark.png"));
     const diff = await readFile(path.join(round, "diff", "tile-dark.png"));

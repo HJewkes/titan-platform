@@ -1,6 +1,6 @@
 import { useCallback, useState, type ReactNode } from "react";
 import { Alert, BreadcrumbItem, Breadcrumbs, DateTime, HStack, Heading, Pill, Section, SectionContent, SectionHeader, Spinner, Typography, VStack } from "@titan-design/react-ui";
-import type { Manifest, Question, Section as RoundSection } from "@titan-design/review-schema";
+import type { Manifest, Question, Section as RoundSection } from "../../server/round-schema.js";
 import type { RoundDetail } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
@@ -61,7 +61,7 @@ function DesignNotice({ storybookUrl }: { storybookUrl: string | null }): ReactN
 /** Questions in section order, then any no section claims. */
 function orderedQuestions(manifest: Manifest): { section: RoundSection | null; questions: Question[] }[] {
   const byId = new Map(manifest.questions.map((question) => [question.id, question]));
-  const sections = (manifest.sections ?? []).map((section) => ({ section, questions: section.questionIds.flatMap((questionId) => byId.get(questionId) ?? []) }));
+  const sections = manifest.sections.map((section) => ({ section, questions: section.questionIds.flatMap((questionId) => byId.get(questionId) ?? []) }));
   const claimed = new Set(sections.flatMap(({ questions }) => questions.map((question) => question.id)));
   const loose = manifest.questions.filter((question) => !claimed.has(question.id));
   return loose.length > 0 ? [...sections, { section: null, questions: loose }] : sections;

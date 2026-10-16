@@ -705,6 +705,9 @@
       "metric": "loc",
       "kind": "file",
       "max": 350,
+      "exclude": [
+        "apps/console/server/review-schema-0.3/schema.ts"
+      ],
       "excludeRoles": [
         "test",
         "fixture"

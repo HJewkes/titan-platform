@@ -67,6 +67,12 @@ describe("roundQueueItems", () => {
     expect(items.gaps).toEqual([]);
   });
 
+  it("reports a round only review-schema 0.3 reads as a gap, not as queue items", async () => {
+    const items = roundQueueItems([roundOf(await fixtureRounds(), "td920-packet-r1")]);
+
+    expect(items).toEqual({ open: [], answered: [], gaps: ["td920-packet-r1: needs review-schema 0.3 in owner-queue (TP-3232)"] });
+  });
+
   it("keeps a round open and reports a gap when its feedback is for another unit", async () => {
     const sent = roundOf(await fixtureRounds(), "kiln-schedule-r1");
     if (sent.feedback === null) throw new Error("the kiln-schedule-r1 fixture has no feedback");

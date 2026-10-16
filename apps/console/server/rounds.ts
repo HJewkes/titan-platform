@@ -1,7 +1,7 @@
 /**
  * The review rounds the owner answers in the console: one `<round-id>/round.json` per directory
- * under the rounds dir, validated with review-schema's `RoundSchema`. This module only reads;
- * `rounds-submit.ts` is the one writer, of `feedback.json`.
+ * under the rounds dir, validated with review-schema 0.3's strict `RoundSchema` (`round-schema.ts`).
+ * This module only reads; `rounds-submit.ts` is the one writer, of `feedback.json`.
  *
  * Another process writes the dir, so every read is defended: a round id is a plain name (no
  * dot, no slash), a round directory or file that is a symlink is refused, `round.json` and
@@ -13,10 +13,11 @@ import { constants } from "node:fs";
 import { lstat, open, readdir, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { FeedbackSchema, RoundSchema, isLoopbackUrl, type Feedback, type Manifest, type Question } from "@titan-design/review-schema";
+import { FeedbackSchema, isLoopbackUrl, type Feedback } from "@titan-design/review-schema";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import { readCommand } from "./owner-guard.js";
+import { RoundSchema, type Manifest, type Question } from "./round-schema.js";
 
 export interface RoundsSource {
   dir: string;

@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from "react";
 import { Alert, Card, CardContent, Checkbox, CheckboxGroup, HStack, Pill, Radio, RadioGroup, Typography, VStack } from "@titan-design/react-ui";
-import type { Question } from "@titan-design/review-schema";
+import type { Question } from "../../server/round-schema.js";
 
 /** A pick is held in the page only; nothing here sends it anywhere. */
 export type QuestionAnswer = { pick: string } | { picks: string[] } | { value: number };
