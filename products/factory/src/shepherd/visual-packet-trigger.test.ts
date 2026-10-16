@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { partialFake } from "@titan-design/test-kit";
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -10,7 +11,7 @@ import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
-import type { WorkflowContext } from "@titan-design/workflow";
+import type { StepResult, WorkflowContext } from "@titan-design/workflow";
 import type { SpawnRequest } from "./agents.js";
 import type { ShepherdPhases } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
@@ -244,17 +245,17 @@ describe("the replay guard around the packet step", () => {
   /** A run context at a given replay position; `dispatched` collects the steps the trigger records. */
   async function reachGate(position: Position) {
     const dispatched: string[] = [];
-    const ctx = {
+    const ctx = partialFake<WorkflowContext>({
       runId: "run-synthetic-1",
       historyNext: () => position.next,
       resumedGate: () => position.resumed,
       iteration: (id: string) => position.iterations?.[id] ?? 0,
-      dispatch: async (stepId: string) => {
+      dispatch: async <T extends Record<string, unknown>>(stepId: string) => {
         dispatched.push(stepId);
-        return { data: { result: { event: "visual-packet-off" } } };
+        return partialFake<StepResult<T>>({ data: partialFake<T>({}) });
       },
-    } as unknown as WorkflowContext;
-    const assisted = vi.fn(async () => ({ data: {} })) as unknown as WorkflowContext["assisted"];
+    });
+    const assisted = vi.fn<WorkflowContext["assisted"]>(async () => partialFake<Awaited<ReturnType<WorkflowContext["assisted"]>>>({ data: {} }));
     const run = { ctx, target: { repo: REPO, pr: 1 } as never, ownerGateReason: () => undefined };
 
     await packetTriggering(run, assisted)("approve-merge", gatePrompt, {} as never);
