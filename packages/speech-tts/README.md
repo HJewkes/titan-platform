@@ -53,6 +53,7 @@ Errors are typed, and `code` is the field to branch on:
 | `TtsUnsupportedError` | `unsupported` | The call or the selection needs a capability that is not declared. `missing` lists each gap. |
 | `TtsTimeoutError` | `timeout` | No audio before the deadline. A command's process group is killed. |
 | `TtsFailedError` | `failed` | The engine answered with an error or with output that breaks the contract, including a refused redirect or output past `maxOutputBytes`. |
+| `TtsUnknownWordsError` | `unknown-words` | A Kokoro provider with `unknownWords: "fail"` was given words with no phonemes. `words` lists each one with its token `index`. The engine never ran. |
 | `TtsConfigError` | `misconfigured` | Selection reached a provider whose config is wrong, and the profile does not set `tts.fallback`. `skipped` lists every provider passed over. |
 | `TtsConfigError` | `unknown-kind` | Selection reached a provider whose `kind` has no registered factory. The message names the kind and the registered kinds. `tts.fallback` does not apply. |
 
@@ -385,7 +386,12 @@ const { audio, words } = await tts.synthesize({ text: "Hello there." }, "af_hear
   chunks before them.
 - **Unknown words.** A word Kokoro cannot phonemize is not spoken. It still gets a
   `WordTiming` of zero width at the end of the last spoken word, and a `KokoroWarning` is
-  emitted (or `onWarning` is called) naming it.
+  emitted (or `onWarning` is called) naming it. Kokoro also skips an extra id after such a
+  word, as Python does, so the words after it are timed late. Where that matters, such as
+  narration for video, set `unknownWords: "fail"` (option or profile field; the default is
+  `"warn"`): the call then rejects with `TtsUnknownWordsError`, listing every word with no
+  phonemes and its token index, before the model loads. Give those words phonemes, or
+  respell them, and call again.
 - **Failures.** If the model's output breaks the contract, the call rejects with
   `TtsFailedError`. That covers phonemes the tokenizer drops and frames that do not add up to
   the audio length.
