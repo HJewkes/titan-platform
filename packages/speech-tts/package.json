@@ -35,7 +35,8 @@
   },
   "devDependencies": {
     "@titan-design/speech-g2p": "workspace:*",
-    "@titan-design/speech-stt": "workspace:*"
+    "@titan-design/speech-stt": "workspace:*",
+    "zod": "^4.4.3"
   },
   "peerDependencies": {
     "@huggingface/transformers": "^3.8.1",
@@ -51,6 +52,7 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p scripts --noEmit",
+    "smoke:speech": "node scripts/smoke-speech.ts"
   }
 }

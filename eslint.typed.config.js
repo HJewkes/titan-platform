@@ -4,6 +4,7 @@ import tseslint from "typescript-eslint";
 
 export const TYPED_FILES = [
   "packages/*/src/**/*.{ts,mts,cts,tsx}",
+  "packages/*/scripts/**/*.ts",
   "products/*/src/**/*.{ts,mts,cts,tsx}",
   "apps/codewatch/{src,server,scripts}/**/*.{ts,tsx}",
   "apps/console/{src,server}/**/*.{ts,tsx}",

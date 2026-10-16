@@ -415,6 +415,32 @@ It asserts exact rounded durations, word boundaries within 1 ms of Python, and f
 
 `speakingSeconds` and `calibrateSpeed` help tune `speed` to a target words-per-minute.
 
+## Speech smoke (`smoke:speech`)
+
+An unpublished script in `scripts/` that runs Kokoro, Whisper `base.en` and wav2vec2 on one
+constructed sentence and prints a JSON report per machine. It imports the built package, so
+build first:
+
+```sh
+pnpm build
+pnpm --filter @titan-design/speech-tts smoke:speech --suite all --device cpu --out report.json
+```
+
+- `--suite` takes `all` (the default when bare) or a list of `tts,stt,phones`; without it only
+  `tts` runs. Kokoro writes a WAV (`--wav`, else a temp file); `stt` and `phones` read that file
+  back. Without `tts` in the suite, `--wav` must name an existing file.
+- `--device` and `--profile` go through `resolveSpeechRuntime`: `--device` beats every
+  `TITAN_SPEECH_DEVICE*` variable, and the profile's `runtime` section and `TITAN_SPEECH_CACHE`
+  apply as they do in the packages. An unknown or unavailable device exits 2 before any model
+  loads.
+- Each stage reports load seconds (cold call minus warm call), the warm call's wall seconds,
+  audio seconds, the real-time factor and max RSS. Here RTF is audio seconds / wall seconds,
+  so above 1 is faster than real time; the Kokoro smoke test above logs the inverse.
+- The report is checked against the zod schema in `scripts/smoke-report.ts` before it is
+  written. Exit codes: 0 all stages passed, 1 a stage failed, 2 bad usage or device, 3 crash.
+
+The first run downloads about 1.9 GB of weights into the cache.
+
 ## Testing without an engine
 
 `fakeTts()` renders 0.3 s of 220 Hz tone per word, plus a 0.1 s gap, divided by `speed`. It
