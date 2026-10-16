@@ -38,13 +38,29 @@ function fromRespellingMap(map: Record<string, string>): Lexicon {
 
 /**
  * Parses a `lexicon.v1` document. Also upgrades the two shapes that predate it: a flat `{ term: respelling }` map,
- * whose `_comment` key is dropped, and an unversioned `{ entries }` list. Throws a `ZodError` on anything else.
+ * whose `_comment` key is dropped, and an unversioned `{ entries }` list. Throws a `ZodError` on anything else, and an
+ * `Error` naming both terms when two terms differ only in case, since terms match case-insensitively and one would be lost.
  */
 export function loadLexicon(json: unknown): Lexicon {
+  const lexicon = parseLexicon(json);
+  rejectCaseDuplicates(lexicon);
+  return lexicon;
+}
+
+function parseLexicon(json: unknown): Lexicon {
   if (typeof json === "object" && json !== null && "schema" in json) return LexiconSchema.parse(json);
   const unversioned = UnversionedSchema.safeParse(json);
   if (unversioned.success) return { schema: "lexicon.v1", entries: unversioned.data.entries };
   return fromRespellingMap(RespellingMapSchema.parse(json));
+}
+
+function rejectCaseDuplicates(lexicon: Lexicon): void {
+  const firstSeen = new Map<string, string>();
+  for (const { term } of lexicon.entries) {
+    const earlier = firstSeen.get(term.toLowerCase());
+    if (earlier !== undefined && earlier !== term) throw new Error(`lexicon: terms differ only in case: "${earlier}" and "${term}"`);
+    firstSeen.set(term.toLowerCase(), term);
+  }
 }
 
 /** The `{ term: respelling }` map of the entries that carry a respelling. */

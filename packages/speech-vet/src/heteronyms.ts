@@ -1,6 +1,7 @@
 import { z } from "zod";
 import enJson from "./heteronyms/en.json" with { type: "json" };
-import { markupTargets, occurrenceKey } from "./markup.js";
+import { countOccurrences, markupTargets, occurrenceKey, plainText } from "./markup.js";
+import { escapeRegExp } from "./regexp.js";
 
 const STRESS = /[ˈˌ]/g;
 
@@ -72,28 +73,100 @@ export interface HeteronymOccurrence {
   finding: ReadingFinding;
 }
 
-export function heteronymOccurrences(spoken: string, tokens: readonly PhonemeToken[], table: HeteronymTable): HeteronymOccurrence[] {
+const POSSESSIVE_TOKEN = /^(.+?)'s?$/;
+const DECLARATION = /\[([^\]]+)\]\(([^)]*)\)('s?(?![A-Za-z']))?/g;
+
+/** A `[w](=reading)` declaration, keyed apart from the plain spelling when an apostrophe suffix follows it. */
+interface Declaration {
+  key: string;
+  word: string;
+  ordinal: number;
+  declared: string;
+}
+
+function declarationKey(form: string, possessive: boolean, ordinal: number): string {
+  return occurrenceKey(possessive ? `${form}'` : form, ordinal);
+}
+
+function countPossessives(text: string, form: string): number {
+  return text.match(new RegExp(`(?<![A-Za-z'])${escapeRegExp(form)}'s?(?![A-Za-z'])`, "gi"))?.length ?? 0;
+}
+
+function declarationsOf(spoken: string): Declaration[] {
+  const declarations: Declaration[] = [];
+  let plain = "";
+  let last = 0;
+  for (const match of spoken.matchAll(DECLARATION)) {
+    const [link, word = "", target = "", suffix] = match;
+    plain += plainText(spoken.slice(last, match.index));
+    const form = word.toLowerCase();
+    const possessive = suffix !== undefined;
+    const ordinal = possessive ? countPossessives(plain, form) : countOccurrences(plain, form);
+    if (target.startsWith("=")) declarations.push({ key: declarationKey(form, possessive, ordinal), word, ordinal, declared: target.slice(1) });
+    plain += word;
+    last = match.index + link.length - (suffix?.length ?? 0);
+  }
+  return declarations;
+}
+
+/** The spelling a token is an occurrence of: the form itself, or a table form followed by an apostrophe suffix. */
+function declarableForm(
+  form: string,
+  forms: ReadonlyMap<string, string>,
+): { base: string; tableWord: string; possessive: boolean } | undefined {
+  const own = forms.get(form);
+  if (own !== undefined) return { base: form, tableWord: own, possessive: false };
+  const base = POSSESSIVE_TOKEN.exec(form)?.[1];
+  const tableWord = base === undefined ? undefined : forms.get(base);
+  return base !== undefined && tableWord !== undefined ? { base, tableWord, possessive: true } : undefined;
+}
+
+interface ResolvedReadings {
+  occurrences: HeteronymOccurrence[];
+  orphans: ReadingFinding[];
+}
+
+function resolveReadings(spoken: string, tokens: readonly PhonemeToken[], table: HeteronymTable): ResolvedReadings {
   const forms = formsOf(table);
-  const targets = markupTargets(spoken);
+  const declarations = declarationsOf(spoken);
+  const targets = new Map(declarations.map((declaration) => [declaration.key, declaration.declared]));
+  const markup = markupTargets(spoken);
   const seen = new Map<string, number>();
+  const claimed = new Set<string>();
   const occurrences: HeteronymOccurrence[] = [];
   tokens.forEach((token, tokenIndex) => {
     const form = token.text.toLowerCase();
-    const tableWord = forms.get(form);
-    if (tableWord === undefined) return;
-    const ordinal = (seen.get(form) ?? -1) + 1;
-    seen.set(form, ordinal);
+    const spelling = declarableForm(form, forms);
+    if (spelling === undefined) return;
+    const { tableWord } = spelling;
+    const counter = spelling.possessive ? `${spelling.base}'` : spelling.base;
+    const ordinal = (seen.get(counter) ?? -1) + 1;
+    seen.set(counter, ordinal);
+    const key = declarationKey(spelling.base, spelling.possessive, ordinal);
     const reading = readingOf(tableWord, token.phonemes, table);
-    const target = targets.get(occurrenceKey(form, ordinal)) ?? "";
+    const declared = targets.get(key);
+    if (declared !== undefined) claimed.add(key);
+    const target = declared === undefined ? (spelling.possessive ? "" : (markup.get(occurrenceKey(form, ordinal)) ?? "")) : `=${declared}`;
     const finding = { word: token.text, occurrence: ordinal + 1, phonemes: token.phonemes, reading, ...statusOf(reading, target) };
     occurrences.push({ tokenIndex, tableWord, finding });
   });
-  return occurrences;
+  const orphans = declarations
+    .filter(({ key }) => !claimed.has(key))
+    .map(({ word, ordinal, declared }) => ({ word, occurrence: ordinal + 1, phonemes: null, reading: "unknown", declared, status: "fail" as const }));
+  return { occurrences, orphans };
 }
 
-/** One finding per heteronym occurrence among the G2P tokens of `g2pText(spoken)`: its reading, its declaration, and its status. */
+export function heteronymOccurrences(spoken: string, tokens: readonly PhonemeToken[], table: HeteronymTable): HeteronymOccurrence[] {
+  return resolveReadings(spoken, tokens, table).occurrences;
+}
+
+/**
+ * One finding per heteronym occurrence among the G2P tokens of `g2pText(spoken)`: its reading, its declaration, and its status.
+ * A `[w](=reading)` declaration that no token matches is a `fail` finding with `phonemes: null`, never dropped.
+ */
 export function checkReadings(spoken: string, tokens: readonly PhonemeToken[], table: HeteronymTable = englishHeteronyms): ReadingFinding[] {
-  return heteronymOccurrences(spoken, tokens, table).map(({ finding }) => finding);
+  const { occurrences, orphans } = resolveReadings(spoken, tokens, table);
+  return [...occurrences.map(({ finding }) => finding), ...orphans];
 }
 
 /** Token text and the phonemes G2P chose for it, as the voice received them. */
