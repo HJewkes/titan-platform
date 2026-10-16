@@ -105,6 +105,7 @@ function consoleConfig(activeWorkPort: number, agentChatPort: number): ConsoleCo
     gateAnswers: false,
     inboxDir: path.join(dir, "state", "inbox"),
     roundsDir: path.join(dir, "state", "rounds"),
+    decisionsFile: null,
   };
 }
 

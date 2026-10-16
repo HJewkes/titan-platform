@@ -5,8 +5,11 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { RequestAuth } from "@titan-design/daemon";
 import { EXIT, invokeCommand } from "@titan-design/registry";
+import { ANSWERS_FILE, createDecisionLog, type DecisionLog, type DecisionLogResult } from "./decision-log.js";
+import type { RoundListeners } from "./listeners.js";
 import type { ConsoleContext } from "./owner-guard.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
+import { FeedbackDocument } from "./round2-adapter.js";
 import { MAX_FEEDBACK_BYTES, roundsSubmitCommands } from "./rounds-submit.js";
 
 const ROUND = "orbit-retry-r1";
@@ -23,8 +26,19 @@ function ownerContext(ownerWrites = true): ConsoleContext {
   return { warnings: [], format: "json", surface: "http", auth: SESSION_AUTH, ownerWrites };
 }
 
-function submit(args: Record<string, unknown>, ctx = ownerContext()) {
-  return invokeCommand(roundsSubmitCommands({ dir })["rounds.submit"], args, ctx);
+function submit(args: Record<string, unknown>, ctx = ownerContext(), decisionLog?: DecisionLog, listeners?: RoundListeners) {
+  return invokeCommand(roundsSubmitCommands({ dir }, decisionLog, listeners)["rounds.submit"], args, ctx);
+}
+
+function spyLog(result: DecisionLogResult = { ledger: "written", decisions: "not-a-decision" }) {
+  const calls: Parameters<DecisionLog["record"]>[] = [];
+  const log: DecisionLog = {
+    record: async (...args) => {
+      calls.push(args);
+      return result;
+    },
+  };
+  return { log, calls };
 }
 
 function shipArgs(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -154,5 +168,74 @@ describe("rounds.submit", () => {
     expect(exitCode).toBe(EXIT.DATAERR);
     expect(envelope).toMatchObject({ ok: false, error: `the feedback is over ${MAX_FEEDBACK_BYTES} bytes` });
     expect(await exists(feedbackOf())).toBe(false);
+  });
+
+  it("records the answered question in the decision log after the file is written", async () => {
+    const stateDir = path.join(root, "state");
+    const decisionLog = createDecisionLog({ stateDir, decisionsFile: null, humanOnly: async () => ({ known: true, initiatives: new Set<string>() }) });
+
+    const { envelope } = await submit(shipArgs(), ownerContext(), decisionLog);
+
+    const { submittedAt } = FeedbackDocument.parse(JSON.parse(await readFile(feedbackOf(), "utf8")));
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", log: [{ questionId: "ship-backoff", ledger: "written", decisions: "not-a-decision" }] } });
+    const rows = (await readFile(path.join(stateDir, ANSWERS_FILE), "utf8")).trim().split("\n").map((line): unknown => JSON.parse(line));
+    expect(rows).toEqual([
+      expect.objectContaining({ key: `round:${ROUND}:ship-backoff:${submittedAt}`, question: "Ship the capped backoff?", answer: "Ship", recommended: "Ship", decisions: null }),
+    ]);
+  });
+
+  it("runs the decision log and then the round listener for a submitted round", async () => {
+    const order: string[] = [];
+    const { log } = spyLog();
+    const recording: DecisionLog = { record: async (...args) => (order.push("log"), log.record(...args)) };
+    const listeners: RoundListeners = {
+      afterRoundSubmit: async (id, result) => void order.push(`listener:${id}:${result.status}`),
+      sweep: async () => undefined,
+    };
+
+    const { envelope } = await submit(shipArgs(), ownerContext(), recording, listeners);
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", log: [{ questionId: "ship-backoff" }] } });
+    expect(order).toEqual(["log", `listener:${ROUND}:submitted`]);
+  });
+
+  it("records nothing for a comment-only answer", async () => {
+    const { log, calls } = spyLog();
+
+    const { envelope } = await submit(shipArgs({ headSha: undefined, answers: [{ questionId: "ship-backoff", comment: "Looking." }] }), ownerContext(), log);
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", log: [] } });
+    expect(calls).toEqual([]);
+  });
+
+  it.each([
+    ["a refused submit", shipArgs({ manifestSha256: "f".repeat(64) })],
+    ["an owner-write refusal", shipArgs(), ownerContext(false)],
+  ] as const)("records nothing for %s", async (_label, args, ctx = ownerContext()) => {
+    const { log, calls } = spyLog();
+
+    await submit(args, ctx, log);
+
+    expect(calls).toEqual([]);
+  });
+
+  it("records nothing when the round was already submitted", async () => {
+    await submit(shipArgs());
+    const { log, calls } = spyLog();
+
+    const { envelope } = await submit(shipArgs(), ownerContext(), log);
+
+    expect(envelope).toEqual({ ok: true, data: { status: "already-submitted" } });
+    expect(calls).toEqual([]);
+  });
+
+  it("keeps the submit when the decision log fails, and says so in log", async () => {
+    const { log, calls } = spyLog({ ledger: "failed", decisions: "not-a-decision", reason: "ledger write failed" });
+
+    const { envelope } = await submit(shipArgs(), ownerContext(), log);
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", log: [{ ledger: "failed", reason: "ledger write failed" }] } });
+    expect(await exists(feedbackOf())).toBe(true);
+    expect(calls).toHaveLength(1);
   });
 });

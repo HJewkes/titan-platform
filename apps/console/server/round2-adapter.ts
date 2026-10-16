@@ -19,6 +19,7 @@ const mergeBinding = z.looseObject({
 const roundQuestion = z.looseObject({
   id: z.string(),
   kind: z.string(),
+  prompt: z.string().optional(),
   options: z.array(z.string()).optional(),
   recommendation: z.unknown().optional(),
   merge: mergeBinding.optional(),

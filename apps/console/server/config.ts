@@ -50,6 +50,11 @@ export interface ConsoleConfig {
   inboxDir: string;
   /** Review rounds, one `<round-id>/round.json` each; `TITAN_CONSOLE_ROUNDS_DIR` overrides. */
   roundsDir: string;
+  /**
+   * The owner's decisions file the decision log appends one-way, A/B and policy answers to, from
+   * `TITAN_CONSOLE_DECISIONS_FILE`. Owner-configured; never from a request. Null writes the ledger only.
+   */
+  decisionsFile: string | null;
   /** `TITAN_CONSOLE_GATE_ANSWERS=1` relays a submitted Ship or Send back to the factory's gate; off, the console only writes feedback.json. */
   gateAnswers: boolean;
 }
@@ -100,13 +105,21 @@ export function resolveConfig(
     lanNames: lanNamesFrom(env.TITAN_CONSOLE_LAN_NAMES, machine),
     lanTls: lanTlsFrom(env, home),
     lanTokenPath: expandHome(env.TITAN_CONSOLE_TOKEN || path.join(stateDir, "lan.token"), home),
-    ownerWrites: flagFrom("TITAN_CONSOLE_OWNER_WRITES", env.TITAN_CONSOLE_OWNER_WRITES),
     inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
     roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
-    gateAnswers: flagFrom("TITAN_CONSOLE_GATE_ANSWERS", env.TITAN_CONSOLE_GATE_ANSWERS),
+    ...ownerOptionsFrom(env, home),
   };
   assertCoherent(config);
   return config;
+}
+
+/** The settings only the owner turns on or points; none is ever read from a request. */
+function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "ownerWrites" | "decisionsFile" | "gateAnswers"> {
+  return {
+    ownerWrites: flagFrom("TITAN_CONSOLE_OWNER_WRITES", env.TITAN_CONSOLE_OWNER_WRITES),
+    decisionsFile: decisionsFileFrom(env.TITAN_CONSOLE_DECISIONS_FILE, home),
+    gateAnswers: flagFrom("TITAN_CONSOLE_GATE_ANSWERS", env.TITAN_CONSOLE_GATE_ANSWERS),
+  };
 }
 
 /** Settings that are each valid but unsafe or ambiguous together. */
@@ -133,6 +146,14 @@ function urlFrom(env: NodeJS.ProcessEnv, name: string, fallback: string): string
   const url = URL.canParse(raw) ? new URL(raw) : null;
   if (!url || !["http:", "https:"].includes(url.protocol) || url.hash !== "") throw new Error(`${name} must be an http(s) address with no #fragment, got "${raw}"`);
   return raw;
+}
+
+/** No default: a guessed path would append the owner's answers to a file nobody chose. */
+function decisionsFileFrom(raw: string | undefined, home: string): string | null {
+  if (raw === undefined || raw === "") return null;
+  const file = expandHome(raw, home);
+  if (!path.isAbsolute(file)) throw new Error(`TITAN_CONSOLE_DECISIONS_FILE must be an absolute or ~/ path, got "${raw}"`);
+  return file;
 }
 
 /** Only `1` turns a flag on; any other value is refused rather than read as off, so a typo is never silent. */

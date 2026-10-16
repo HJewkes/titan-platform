@@ -14,6 +14,8 @@ export type StdinSource = { kind: "text"; text: string } | { kind: "file"; targe
 interface ShellStdin {
   /** Whether the shell runs a descriptor: stdin as `readsStdin` says, or one a script operand names or may name. */
   runs: boolean;
+  /** The descriptor it runs, or reads `sources` from: the one its script operand names, else stdin. */
+  fd: number;
   /** The script file the shell runs that is not a descriptor; null with `-c`, under `-s`, or when the operand names one. */
   scriptFile: WordToken | null;
   /** Every source on that descriptor, or on stdin when it runs none, which a `-c` string may still read. */
@@ -22,12 +24,19 @@ interface ShellStdin {
   unknowable: boolean;
 }
 
-/** The redirects that feed a descriptor, whether the pipe does, and whether some source is unknowable. */
+/** The redirects that feed a descriptor, whether the pipe does, text a parent's pipe left there, and whether some source is unknowable. */
 interface Feeds {
   redirects: Set<RedirectToken>;
   pipe: boolean;
+  texts: string[];
   unknown: boolean;
 }
+
+/** What each descriptor holds before a command's own redirects open: the shell's, or the command's that runs it. */
+export type Descriptors = (fd: number) => Feeds;
+
+/** The guard's own shell: stdin holds nothing, and any other descriptor was set up where the line cannot show it. */
+export const TOP_DESCRIPTORS: Descriptors = (fd) => ({ redirects: new Set(), pipe: false, texts: [], unknown: fd !== 0 });
 
 interface ShellOperands {
   hasC: boolean;
@@ -144,42 +153,91 @@ function setsShLetters(name: string, on: boolean): boolean | null {
  * known at run time may name stdin, so its stdin runs too. zsh's MULTIOS joins every source opened on a descriptor,
  * the pipe included, so all of them are read; under bash or dash, where the last one wins, that only over-reads.
  */
-export function shellStdin({ hasC, positional, readsStdin }: ShellOperands, redirects: RedirectToken[], piped: boolean): ShellStdin {
+export function shellStdin(
+  { hasC, positional, readsStdin }: ShellOperands,
+  redirects: RedirectToken[],
+  piped: boolean,
+  inherited: Descriptors = TOP_DESCRIPTORS,
+): ShellStdin {
   const file = hasC ? null : positional;
   const fd = file === null ? null : pathFd(file.value);
   const runs = readsStdin || fd !== null || (file !== null && (file.dynamic || file.computed));
-  const feeds = feedsOf(redirects, piped)(fd ?? 0, redirects.length);
-  return { runs, scriptFile: fd === null ? file : null, sources: sourcesOf(feeds), unknowable: runs && feeds.unknown };
+  const feeds = feedsOf(redirects, piped, inherited)(fd ?? 0, redirects.length);
+  return { runs, fd: fd ?? 0, scriptFile: fd === null ? file : null, sources: sourcesOf(feeds), unknowable: runs && feeds.unknown };
 }
 
-function sourcesOf({ redirects, pipe }: Feeds): StdinSource[] {
+/**
+ * What each descriptor holds once a command's redirects are open, for the commands it runs (a `-c` string's, `eval`'s,
+ * `find -exec`'s) to inherit, so `bash -c bash < $F` runs what `bash < $F` does. Piped text becomes text there. A file
+ * is opened where the command runs, so `resolve` fixes its path there before a `cd` in the commands moves them; a
+ * file whose path that cannot fix is unknowable.
+ */
+export function descriptorsAfter(
+  redirects: RedirectToken[],
+  piped: string[],
+  inherited: Descriptors,
+  resolve: (target: WordToken) => string | null,
+): Descriptors {
+  const feeds = feedsOf(redirects, piped.length > 0, inherited);
+  return (fd) => {
+    const held = resolvedFiles(feeds(fd, redirects.length), resolve);
+    return held.pipe ? { ...held, pipe: false, texts: [...held.texts, ...piped] } : held;
+  };
+}
+
+function resolvedFiles(feeds: Feeds, resolve: (target: WordToken) => string | null): Feeds {
+  const out: Feeds = { ...feeds, redirects: new Set() };
+  for (const r of feeds.redirects) {
+    const isFile = r.body === null && r.op !== "<<<" && r.target !== null;
+    const path = isFile && r.target ? resolve(r.target) : null;
+    if (!isFile) out.redirects.add(r);
+    else if (path === null) out.unknown = true;
+    else if (r.target) out.redirects.add({ ...r, target: { ...r.target, value: path } });
+  }
+  return out;
+}
+
+/** A descriptor a command no longer shares: stdin after `|`, or the one a shell reads its script from. */
+export function emptied(inherited: Descriptors, gone: number): Descriptors {
+  if (inherited === TOP_DESCRIPTORS && gone === 0) return inherited;
+  return (fd) => (fd === gone ? { redirects: new Set(), pipe: false, texts: [], unknown: false } : inherited(fd));
+}
+
+/** The text a descriptor view holds on stdin, which a `cat` or `tee` in the commands passes on; null when none. */
+export function stdinText(descriptors: Descriptors): string | null {
+  const texts = sourcesOf(descriptors(0)).flatMap((s) => (s.kind === "text" ? [s.text] : []));
+  return texts.length === 0 ? null : texts.join("\n");
+}
+
+function sourcesOf({ redirects, pipe, texts }: Feeds): StdinSource[] {
   const sources = [...redirects].flatMap((r): StdinSource[] => {
     if (r.body !== null) return [{ kind: "text", text: r.body }];
     if (r.target === null) return [];
     return [r.op === "<<<" ? { kind: "text", text: r.target.value } : { kind: "file", target: r.target }];
   });
-  return pipe ? [...sources, { kind: "pipe" }] : sources;
+  const inheritedTexts = texts.map((text): StdinSource => ({ kind: "text", text }));
+  return [...sources, ...inheritedTexts, ...(pipe ? [{ kind: "pipe" } as const] : [])];
 }
 
 /**
  * What feeds descriptor `fd` from the first `end` redirects, read left to right as the shells open them: stdin starts
- * on the pipe, any other descriptor is inherited unless a redirect opens it. A dup or a target naming a descriptor
+ * on the pipe, and a descriptor no redirect opens holds what it inherited. A dup or a target naming a descriptor
  * (`<&3`, `< /dev/fd/3`, `< /dev/stdin`) feeds what that descriptor held just before it, so `< /dev/stdin` keeps the pipe.
  */
-function feedsOf(redirects: RedirectToken[], piped: boolean): (fd: number, end: number) => Feeds {
+function feedsOf(redirects: RedirectToken[], piped: boolean, inherited: Descriptors): (fd: number, end: number) => Feeds {
   const memo = new Map<string, Feeds>();
   const feeds = (fd: number, end: number): Feeds => {
     const key = `${fd}:${end}`;
     const hit = memo.get(key);
     if (hit) return hit;
-    const out: Feeds = { redirects: new Set(), pipe: fd === 0 && piped, unknown: false };
-    let opened = false;
+    const out: Feeds = { redirects: new Set(), pipe: fd === 0 && piped, texts: [], unknown: false };
+    let opened = out.pipe;
     redirects.slice(0, end).forEach((r, i) => {
       if (Number(r.fd ?? (r.op.startsWith(">") ? "1" : "0")) !== fd || !STDIN_OPS.has(r.op)) return;
       opened = true;
       join(out, redirectFeeds(r, (named) => feeds(named, i)));
     });
-    out.unknown ||= fd !== 0 && !opened;
+    if (!opened) join(out, inherited(fd));
     memo.set(key, out);
     return out;
   };
@@ -204,12 +262,13 @@ function dupFeeds(value: string, before: (fd: number) => Feeds): Feeds {
 }
 
 function fed(r: RedirectToken | null, unknown: boolean): Feeds {
-  return { redirects: new Set(r ? [r] : []), pipe: false, unknown };
+  return { redirects: new Set(r ? [r] : []), pipe: false, texts: [], unknown };
 }
 
 function join(into: Feeds, from: Feeds): void {
   for (const r of from.redirects) into.redirects.add(r);
   into.pipe ||= from.pipe;
+  into.texts.push(...from.texts);
   into.unknown ||= from.unknown;
 }
 

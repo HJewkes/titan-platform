@@ -75,6 +75,13 @@ describe("console config", () => {
     expect(() => resolveConfig({ TITAN_CONSOLE_CODEWATCH_URL: "http://127.0.0.1:7433/#/home" }, HOME)).toThrow(/no #fragment/);
   });
 
+  it("takes the decisions file only from TITAN_CONSOLE_DECISIONS_FILE, never a guessed default", () => {
+    expect(resolveConfig({}, HOME).decisionsFile).toBeNull();
+    expect(resolveConfig({ TITAN_CONSOLE_DECISIONS_FILE: "" }, HOME).decisionsFile).toBeNull();
+    expect(resolveConfig({ TITAN_CONSOLE_DECISIONS_FILE: "~/d.md" }, HOME).decisionsFile).toBe(path.join(HOME, "d.md"));
+    expect(() => resolveConfig({ TITAN_CONSOLE_DECISIONS_FILE: "d.md" }, HOME)).toThrow(/TITAN_CONSOLE_DECISIONS_FILE must be an absolute/);
+  });
+
   it("parses seat prefixes and refuses a malformed pair", () => {
     expect(resolveConfig({}, HOME).seatPrefixes).toEqual([]);
     expect(resolveConfig({ TITAN_CONSOLE_SEATS: "alpha=al, beta=be" }, HOME).seatPrefixes).toEqual([

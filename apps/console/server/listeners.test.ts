@@ -77,7 +77,7 @@ function ownerContext(): ConsoleContext {
 
 function submit(listeners: RoundListeners, pick = "Ship") {
   const args = { id: ROUND, manifestSha256, headSha: HEAD, answers: [{ questionId: "ship-backoff", pick }] };
-  return invokeCommand(roundsSubmitCommands({ dir }, listeners)["rounds.submit"], args, ownerContext());
+  return invokeCommand(roundsSubmitCommands({ dir }, undefined, listeners)["rounds.submit"], args, ownerContext());
 }
 
 beforeEach(async () => {
