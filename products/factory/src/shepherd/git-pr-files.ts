@@ -1,6 +1,6 @@
 import type { GitHubPort, PrFile, RepoSlug } from "@titan-design/github";
 import type { ShepherdStoreRef } from "./store.js";
-import { carryCacheDir, carryStateDir, ensureCache, githubRemote, isAncestor, must, remoteBase, serialized, systemGit, type CarryOptions, type Git } from "./tree-carry.js";
+import { CarryRefusal, carryCacheDir, carryStateDir, ensureCache, githubRemote, isAncestor, must, remoteBase, serialized, systemGit, type CarryOptions, type Git } from "./tree-carry.js";
 
 /** A PR's diff as GitHub's file list sees it: the head against its merge base with the base branch. */
 export interface DiffTarget {
@@ -25,6 +25,14 @@ class EmptyPrDiff extends Error {
   constructor() {
     super("git diff of the pull request is empty");
     this.name = "EmptyPrDiff";
+  }
+}
+
+/** Past its rename limit git exits 0 but skips copy sources, so a policy file's copy could read as a plain add. */
+export class CopyDetectionSkipped extends Error {
+  constructor() {
+    super("git skipped copy detection on the pull request's diff");
+    this.name = "CopyDetectionSkipped";
   }
 }
 
@@ -93,8 +101,28 @@ function fetchArgs(url: string, { pr, base }: DiffTarget): string[] {
 }
 
 /**
+ * Copies are sought against every base file, unmodified ones included, so a fresh-name copy of a policy file is listed
+ * with the policy file as its source and keeps that file's class. Lines are counted without copies, so a copy counts
+ * whole, as GitHub counts it: a large file copied from a base file still crosses the line threshold.
+ */
+const COPY_FLAGS = ["-z", "-M", "-C", "--find-copies-harder"] as const;
+const LINE_FLAGS = ["-z", "-M"] as const;
+
+/** Git's rename-limit warnings; the config name is matched because git does not translate it, the phrase as a fallback. */
+const SKIPPED_COPIES = /diff\.renameLimit|too many files/;
+
+/** Stderr is only matched, never quoted, since it can echo the remote's URL. */
+async function diffNameStatus(git: Git, dir: string, range: string, signal?: AbortSignal): Promise<string> {
+  const result = await git(dir, ["diff", "--name-status", ...COPY_FLAGS, range], signal);
+  if (result.code !== 0) throw new CarryRefusal("diff", result.code);
+  if (SKIPPED_COPIES.test(result.stderr)) throw new CopyDetectionSkipped();
+  return result.stdout.trim();
+}
+
+/**
  * Fetches the base branch and the PR's pull refs into Shepherd's git cache and diffs the head there, over the git
- * protocol, so no REST read is spent. A refused git command, a fact that is not the PR's, or an empty diff throws.
+ * protocol, so no REST read is spent. A refused git command, a fact that is not the PR's, an empty diff, or a diff
+ * whose copy detection git skipped throws.
  */
 export async function gitPrFiles(target: DiffTarget, options: CarryOptions = {}): Promise<PrFile[]> {
   const git = options.git ?? systemGit;
@@ -104,9 +132,9 @@ export async function gitPrFiles(target: DiffTarget, options: CarryOptions = {})
     await ensureCache(git, dir, options.signal);
     await must(git, dir, fetchArgs(url, target), options.signal);
     const range = `${await verifiedBase(git, dir, target, options.signal)}...${target.head}`;
-    const nameStatus = await must(git, dir, ["diff", "--name-status", "-z", "-M", range], options.signal);
+    const nameStatus = await diffNameStatus(git, dir, range, options.signal);
     if (nameStatus === "") throw new EmptyPrDiff();
-    const numstat = await must(git, dir, ["diff", "--numstat", "-z", "-M", range], options.signal);
+    const numstat = await must(git, dir, ["diff", "--numstat", ...LINE_FLAGS, range], options.signal);
     return prFilesOfDiff(nameStatus, numstat);
   });
 }
@@ -155,7 +183,8 @@ interface FilesTarget {
 /**
  * The PR's files from local git when the head and base are known, else from GitHub. A head or base that is not the
  * PR's, or any other git failure, falls back to GitHub's list, so a wrong fact still gets the PR's real class. An empty
- * diff throws, so every caller reads it as unread and fails closed.
+ * diff, or one whose copy detection git skipped, throws, so every caller reads it as unread and fails closed: GitHub's
+ * list reports a copy as added and would hide its source.
  */
 export async function prFilesOf(port: GitHubPort, target: FilesTarget, local: PrFilesRead = localPrFiles): Promise<PrFile[]> {
   const { repo, pr, head, base } = target;
@@ -163,7 +192,7 @@ export async function prFilesOf(port: GitHubPort, target: FilesTarget, local: Pr
   try {
     return await local({ repo, pr, base, head });
   } catch (error) {
-    if (error instanceof EmptyPrDiff) throw error;
+    if (error instanceof EmptyPrDiff || error instanceof CopyDetectionSkipped) throw error;
     return port.listPrFiles(repo, pr);
   }
 }

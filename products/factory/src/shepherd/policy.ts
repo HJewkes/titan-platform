@@ -3,7 +3,8 @@ import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { GateDecision, GatePolicy, PolicyRule } from "../gate-policy.js";
 import type { LandOptions } from "../workflows/land.js";
-import { decideAutoMerge, isUnsettledGate, MERGE_BY_REVIEWER_RULE, shownPaths, type MergeEvidence } from "./merge-facts.js";
+import { decideAutoMerge, isUnsettledGate, MERGE_BY_REVIEWER_RULE, type MergeEvidence } from "./merge-facts.js";
+import { shownPaths } from "./visual-gate.js";
 import { refreshMergeEvidence } from "./merge-settle.js";
 import { CiPolicySchema } from "./review-schemas.js";
 import type { Verdict } from "./phases.js";
@@ -186,7 +187,7 @@ export function shepherdLandOptions(
     return { ...decision, reason: escalationReason("policy-denial", decision.reason) };
   };
   const allowEvidence = (merge: { headSha: string }) => ({ ...mergeEvidenceAt(merge.headSha, current)?.record });
-  return { policy: { decide }, allowEvidence, unsettled: { transient: isUnsettledGate, refresh }, featureBase: () => effective().featureBase === true, skillPathsAt: (headSha) => skillPathsAt(headSha, current) };
+  return { policy: { decide }, allowEvidence, unsettled: { transient: isUnsettledGate, refresh }, featureBase: () => effective().featureBase === true, evidenceBase: (headSha) => mergeEvidenceAt(headSha, current)?.record.baseRef, skillPathsAt: (headSha) => skillPathsAt(headSha, current) };
 }
 
 function escalatedReason(escalated: Escalated, headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {

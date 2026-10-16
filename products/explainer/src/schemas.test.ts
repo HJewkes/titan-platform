@@ -86,3 +86,21 @@ describe("lexiconEntriesFor", () => {
     expect(lexiconEntriesFor(lexicon, ["written in C++."])).toEqual([{ term: "C++", spoken: "C plus plus" }]);
   });
 });
+
+describe("lexicon.v1", () => {
+  const v1 = { schema: "lexicon.v1", entries: [{ term: "Zelvanian", phonemes: { ipa: "zɛlˈveɪniən" } }] };
+
+  it("loads and round-trips an entry that has phonemes and no spoken rewrite", () => {
+    const parsed = LexiconSchema.parse(v1);
+
+    expect(parsed).toEqual(v1);
+    expect(LexiconSchema.parse(JSON.parse(JSON.stringify(parsed)))).toEqual(v1);
+    expect(lexiconEntriesFor(parsed, ["a Zelvanian name"])).toEqual(v1.entries);
+  });
+
+  it("still loads an unversioned lexicon from an older packet", () => {
+    const old = { entries: [{ term: "CI", spoken: "C I" }] };
+
+    expect(LexiconSchema.parse(old)).toEqual(old);
+  });
+});

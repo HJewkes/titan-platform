@@ -10,9 +10,17 @@ import { formatResultLine, toResult } from "./result-line.js";
 const CLEANUP_TIMEOUT_MS = 60_000;
 const ZERO_SHA = "0".repeat(40);
 const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
-// The head side runs PR code in the shared checkout before the judge, so it could plant refs/replace objects or name files
-// with pathspec magic; every git call ignores both so the trees the judge and the base side read are the commits named.
-export const GIT_SAFETY = ["--no-replace-objects", "--literal-pathspecs"] as const;
+// The head side runs PR code in the shared checkout before the judge, so it could plant refs/replace objects, name files
+// with pathspec magic, or write a core.fsmonitor or hook into .git; every git call ignores all of them so the trees read
+// are the commits named and no program the PR names runs. A smudge filter's driver name is the PR's, so no -c stops it.
+export const GIT_SAFETY = [
+  "--no-replace-objects",
+  "--literal-pathspecs",
+  "-c",
+  "core.fsmonitor=false",
+  "-c",
+  "core.hooksPath=/dev/null",
+] as const;
 
 export interface Shas {
   base: string;
@@ -65,7 +73,7 @@ async function readConfig(ctx: Context, sha: string): Promise<string | null> {
 
 /** The plan from git alone, so each side and the judge derive the same test set without trusting one another. */
 export async function planDiff(ctx: Context, shas: Shas): Promise<FixProofPlan> {
-  const nameStatus = await git(ctx, ["diff", "-M", "--name-status", shas.base, shas.head], "git diff");
+  const nameStatus = await git(ctx, ["diff", "--no-ext-diff", "--no-textconv", "-M", "--name-status", shas.base, shas.head], "git diff");
   const planned = planFixProof({ nameStatus, baseConfig: await readConfig(ctx, shas.base), headConfig: await readConfig(ctx, shas.head) });
   if (!planned.ok) throw new RunError(planned.error);
   return planned.plan;
@@ -76,7 +84,7 @@ export function errorLine(refs: Shas, error: string): string {
   const shas = { base: asSha(refs.base), head: asSha(refs.head) };
   const parsed = parseFixProofConfig(null);
   const config = parsed.ok ? parsed.config : { tests: [], carry: [] };
-  const plan: FixProofPlan = { tests: [], carried: [], deletedTests: [], overlayRemovals: [], config, configEdited: false };
+  const plan: FixProofPlan = { tests: [], carried: [], deletedTests: [], overlayRemovals: [], mutations: [], source: [], config, configEdited: false };
   const classification: Classification = { verdict: "error", tests: [], files: [], error };
   return formatResultLine(toResult({ head: shas.head, mergeBase: shas.base, plan, classification }));
 }

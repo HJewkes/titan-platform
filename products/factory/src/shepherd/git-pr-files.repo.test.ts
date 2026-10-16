@@ -6,10 +6,11 @@ import { fakeGitHub, fakeSha, githubPort, type PrFile } from "@titan-design/gith
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { shepherdEventMigration } from "./events.js";
-import { cachedByHead, gitPrFiles, type PrFilesRead } from "./git-pr-files.js";
+import { CopyDetectionSkipped, cachedByHead, gitPrFiles, prFilesOf, type PrFilesRead } from "./git-pr-files.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { applyRegistrationHold, g10HoldAt } from "./registration-hold.js";
 import { holdSlotsMigration, registrationFactsMigration } from "./store-migrations.js";
+import { systemGit, type Git } from "./tree-carry.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
 
 const REPO = "acme/widgets";
@@ -91,6 +92,15 @@ function apiAnswering(files: PrFile[]) {
 
 const gitRead: PrFilesRead = (target) => ((reads += 1), gitPrFiles(target, { stateDir, remote: () => origin }));
 
+/** Real git with a rename limit of 1, so it skips copy detection and warns as it would on a very large diff. */
+const limitedGit: Git = (dir, args, signal) => systemGit(dir, args[0] === "diff" ? ["-c", "diff.renameLimit=1", ...args] : args, signal);
+
+function migratedStore(): ShepherdStore {
+  const db = openDatabase(":memory:");
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), registrationFactsMigration(24)]);
+  return new ShepherdStore(db);
+}
+
 const byPath = (files: readonly PrFile[]): PrFile[] => [...files].sort((a, b) => a.path.localeCompare(b.path));
 
 /** Each case's `recorded` list is GitHub's pulls/files answer for the same change, as `listPrFiles` maps it. */
@@ -148,9 +158,7 @@ describe("the G10 class from local git", { timeout: 30_000 }, () => {
     write("packages/x/src/big.ts", lines(450));
     const large = commitAll("grow");
     git("checkout", "-q", "main");
-    const db = openDatabase(":memory:");
-    runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), registrationFactsMigration(24)]);
-    const store = new ShepherdStore(db);
+    const store = migratedStore();
     const fake = fakeGitHub({ repo: REPO });
     const port = githubPort(fake.wire);
     const read = cachedByHead(gitRead);
@@ -165,6 +173,44 @@ describe("the G10 class from local git", { timeout: 30_000 }, () => {
     expect(second).toBe("g10-review: 452 changed lines");
     expect(reads).toBe(2);
     expect(fake.calls).toEqual([]);
+  });
+});
+
+describe("a fresh-name copy of a policy file", { timeout: 30_000 }, () => {
+  const COPY = "products/factory/src/shepherd/merge-rules.ts";
+  const copyThenWire = (): void => {
+    write(COPY, lines(30, 5));
+    write("packages/x/src/a.ts", lines(10, 3));
+  };
+
+  it("holds a copy wired in through a non-policy edit g10-adversary", async () => {
+    const head = feature(copyThenWire);
+    openPr(1, head);
+    const store = migratedStore();
+    const fake = fakeGitHub({ repo: REPO });
+    store.register({ repo: REPO, pr: 1, runId: "run-1", task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY, kind: "feature", headSha: head, base: "main" });
+
+    const files = await gitPrFiles({ repo: REPO, pr: 1, base: "main", head }, { stateDir, remote: () => origin });
+    const reason = await applyRegistrationHold(githubPort(fake.wire), store, "run-1", { local: gitRead });
+
+    expect(files).toContainEqual({ path: COPY, previousPath: POLICY_FILE, status: "copied", additions: 30, deletions: 0 });
+    expect(reason).toBe("g10-adversary: policy touch");
+    expect(store.byRun("run-1")?.holdReason).toBe("g10-adversary: policy touch");
+    expect(fake.calls).toEqual([]);
+  });
+
+  it("fails closed when git skips copy detection", async () => {
+    const head = feature(copyThenWire);
+    const { api, port, pr } = apiAnswering([{ path: COPY, status: "added", additions: 30, deletions: 0 }]);
+    openPr(pr, head);
+    const limited: PrFilesRead = (target) => gitPrFiles(target, { stateDir, remote: () => origin, git: limitedGit });
+
+    const read = prFilesOf(port, { repo: REPO, pr, head, base: "main" }, limited);
+    await expect(read).rejects.toBeInstanceOf(CopyDetectionSkipped);
+    const reason = await g10HoldAt(port, { repo: REPO, pr, kind: "feature", head, base: "main" }, limited);
+
+    expect(reason).toBe("g10-adversary: changed files unread at registration (CopyDetectionSkipped)");
+    expect(api.calls).toEqual([]);
   });
 });
 

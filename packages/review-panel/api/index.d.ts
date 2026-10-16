@@ -530,8 +530,9 @@ interface AggregateInput {
     /** File text at the head; advisory findings whose citations it cannot confirm are dropped. */
     source: LineSource;
     /**
-     * fix-proof's verdict word or its `fix-proof/v1` line, when one ran. `vacuous`, `no-tests`, `error`, a line naming
-     * another head, or anything unreadable makes the tests member blocking.
+     * fix-proof's verdict word or its `fix-proof/v1` line, when one ran. `vacuous`, `no-tests`, `error`, `unproven`, a
+     * line naming another head, or anything unreadable makes the tests member blocking. A bare word never satisfies G10;
+     * only a line pinned to the head can.
      */
     fixProof?: string;
     /** The opus profiles, as `planPanel`'s policy lists them; satisfiesG10 needs the correctness member at one. */
