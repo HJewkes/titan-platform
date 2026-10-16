@@ -1,4 +1,5 @@
-import { ParseError, scanSubstitutions, tokenize } from "./lexer.js";
+import { ParseError, tokenize } from "./lexer.js";
+import { scanSubstitutions } from "./nested-reading.js";
 import type { RedirectToken, Token } from "./lexer.js";
 import { NestingLimitError } from "./nesting.js";
 import { NestingReadingError, ValueWalkError } from "./unsure-readings.js";
