@@ -1,6 +1,6 @@
 import { caseNamed } from "./case-script.js";
 import { inlineScript, SHELLS } from "./inline-script.js";
-import { shellOperands } from "./shell-options.js";
+import { shellOperands, shellStdin } from "./shell-options.js";
 import { cutReading } from "./piped-nul.js";
 import type { RedirectToken, Token, WordToken } from "./tokens.js";
 import { MAX_UNSURE_WORDS, SPLICED_WEIGHT, unsureReadings } from "./unsure-readings.js";
@@ -74,7 +74,7 @@ export function scriptsOf(tokens: readonly Token[], srcLength: number): Scripts 
   const runs = all.map((stage, i) => ({ stage, cmds: commandsRun(stage.words, budget), before: all.slice(0, i) }));
   return {
     texts: runs.flatMap(({ stage, cmds, before }) => cmds.flatMap((cmd) => commandScripts(cmd, stage, before, budget))),
-    runTime: runs.some(({ cmds }) => cmds.some(runsRunTimeScript)),
+    runTime: runs.some(({ stage, cmds }) => cmds.some((cmd) => runsRunTimeScript(cmd, stage.redirects))),
     startsShell: runs.some(({ cmds }) => cmds.some(isShell)),
   };
 }
@@ -121,13 +121,16 @@ function commandScripts(cmd: Unwrapped, { redirects, piped }: Stage, before: Sta
 }
 
 /**
- * A shell whose `-c` string is only known at run time, or that sources a startup file: one its options select, or
- * one a prefix assignment names. Either runs text this model never reads, in the shell that runs the script.
+ * A shell whose `-c` string is only known at run time, that runs a descriptor the line cannot show, or that sources a
+ * startup file: one its options select, or one a prefix assignment names. Each runs text this model never reads, in
+ * the shell that runs the script.
  */
-function runsRunTimeScript(cmd: Unwrapped): boolean {
+function runsRunTimeScript(cmd: Unwrapped, redirects: RedirectToken[]): boolean {
   if (!isShell(cmd)) return false;
   if (cmd.assigned.some(([name]) => STARTUP_VAR_RE.test(`${name}=`))) return true;
-  const { hasC, positional } = shellOperands(cmd.args, cmd.name);
+  const operands = shellOperands(cmd.args, cmd.name);
+  if (shellStdin(operands, redirects, false).unknowable) return true;
+  const { hasC, positional } = operands;
   const options = positional ? cmd.args.slice(0, cmd.args.indexOf(positional)) : cmd.args;
   if (options.some((a) => STARTUP_OPTION_RE.test(a.value))) return true;
   return hasC && positional !== null && (positional.dynamic || positional.computed);

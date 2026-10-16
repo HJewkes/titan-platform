@@ -156,7 +156,10 @@ describe.skipIf(!zsh)("the guard denies an emulate line exactly where real zsh r
     expect(CLUSTER_ROWS.map(([form], i) => [form, ran.has(i) ? "deny" : "pass"])).toEqual(CLUSTER_ROWS.map(([form, , expected]) => [form, expected]));
   });
 
-  /** Which letters are options, and whether `b` ends them, follow the calling shell's SH_OPTION_LETTERS. */
+  /**
+   * Which letters are options, and whether `b` ends them, follow the calling shell's SH_OPTION_LETTERS.
+   * Its 1525 lines through two zsh runs and the guard took 4.1 to 5.7 s on CI, so 18 s is about 3x that (TP-3262).
+   */
   it("agrees with zsh under either option-letter set on every generated cluster, over-reading only an unknown option", async () => {
     const lines = sweepLines();
     const own = zshRuns(lines);
@@ -170,5 +173,5 @@ describe.skipIf(!zsh)("the guard denies an emulate line exactly where real zsh r
     }
     expect(ran.size).toBeGreaterThan(100);
     expect(disagreements).toEqual([]);
-  });
+  }, 18_000);
 });
