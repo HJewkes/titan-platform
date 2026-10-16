@@ -7,13 +7,17 @@ import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { prSnapshot } from "../workflows/pr-snapshot.js";
+import { RESYNC_READ_TIMEOUT_MS } from "./bounded.js";
 import { CLOSED_ELSEWHERE, LANDED_ELSEWHERE, endRunsGoneElsewhere } from "./gone-elsewhere.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdStoreRef } from "./store.js";
 
 const hosts: FactoryHost[] = [];
-afterEach(() => hosts.splice(0).forEach((host) => host.close()));
+afterEach(() => {
+  vi.useRealTimers();
+  hosts.splice(0).forEach((host) => host.close());
+});
 
 const H1 = fakeSha("gone-head");
 
@@ -173,6 +177,23 @@ describe("endRunsGoneElsewhere", () => {
 
     expect(unreadable).toEqual([runs[0]]);
     expect(ended.map((run) => run.runId)).toEqual([runs[1]]);
+    expect(host.runtime.status(runs[0]!)?.status).toBe("paused");
+  });
+
+  it("a PR read that never answers calls onUnreadable with the timeout and the other runs still end", async () => {
+    const { host, fake, runs, services } = await gatedRuns();
+    [1, 2].forEach((pr) => Object.assign(fake.pr(pr), { merged: true, state: "closed" }));
+    const hanging = { ...services, port: { ...services.port, getPr: (repo: string, pr: number) => (pr === 1 ? new Promise<never>(() => undefined) : services.port.getPr(repo, pr)) } };
+    const unreadable: [string, string][] = [];
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let settled = false;
+
+    const sweeping = endRunsGoneElsewhere(host, hanging, { onUnreadable: (runId, cause) => unreadable.push([runId, cause]) }).finally(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(RESYNC_READ_TIMEOUT_MS);
+
+    expect(settled).toBe(true);
+    expect((await sweeping).map((run) => run.runId)).toEqual([runs[1]]);
+    expect(unreadable).toEqual([[runs[0], expect.stringMatching(/timed out/)]]);
     expect(host.runtime.status(runs[0]!)?.status).toBe("paused");
   });
 

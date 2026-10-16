@@ -142,6 +142,21 @@ describe("titan-factory serve", () => {
   });
 });
 
+describe("the serve verb's exit", () => {
+  it("ends the process through exitAfterServe once serve has closed", async () => {
+    const dbPath = dbFile();
+    const stop = new AbortController();
+    const exitAfterServe = vi.fn();
+    const serving = cli(["--db", dbPath, "serve", "--port", "0"], { ...landDeps("land-rules"), stop: stop.signal, exitAfterServe });
+    await vi.waitFor(async () => (await readPidFile(daemonPaths(dirname(dbPath))))!.meta.port);
+
+    stop.abort();
+    await serving;
+
+    expect(exitAfterServe).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("gates in the resume report", () => {
   const record = { id: "run-1/approve-merge", prompt: "Merge PR #1 in octo/demo at head abc?", schema: undefined, status: "pending", createdAt: "2026-10-06T00:00:00.000Z" };
   const report = (gate: object): Parameters<typeof formatResume>[0] => ({ resumed: [], held: [], gates: [{ runId: "run-1", stepId: "approve-merge", gate: gate as never }] });

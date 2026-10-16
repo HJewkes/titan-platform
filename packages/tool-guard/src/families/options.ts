@@ -32,6 +32,17 @@ export function readOptions(args: WordToken[], values: ReadonlySet<string>, reso
   return out;
 }
 
+/**
+ * Whether `readOptions` would take the word after `word` as `word`'s value, so a caller that scans words for a
+ * marker (curl's `--next`) can skip that value the same way.
+ */
+export function takesNextWord(word: string, values: ReadonlySet<string>, resolve: LongResolver = (flag) => flag): boolean {
+  if (word === "--" || !word.startsWith("-") || word.length < 2) return false;
+  if (word.startsWith("--")) return !word.includes("=") && values.has(resolve(word));
+  for (let j = 1; j < word.length; j++) if (values.has(`-${word[j]}`)) return j === word.length - 1;
+  return false;
+}
+
 interface LongSpec {
   values: ReadonlySet<string>;
   resolve: LongResolver;

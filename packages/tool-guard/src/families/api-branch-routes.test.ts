@@ -243,8 +243,23 @@ describe("a filled repo slot passes only an allowlisted POST", () => {
     ["base=feat/x head=feat/y title=t", ["feat/x"]],
     ["base=main head=feat/x title=t", ["main"]],
     ['base="$B" head=feat/x', [null]],
+    ["base[]=main head=feat/x title=t", ["main"]],
+    ["base[x]=main head=feat/x", ["main"]],
+    ["base[]=feat/x base[]=main head=y", ["feat/x", "main"]],
+    ["base[a=b]=main head=feat/x", [null]],
   ])("names a pull request create's base, which a cut fill can merge into: %s", (src, branches) => {
     expect(apiBranchRouteWrite("repos/{owner}/{repo}/pulls", "POST", fields(src))).toEqual({ route: "merge-upstream", branches });
+  });
+
+  it.each([
+    ["POST", "repos/:owner/:repo/pulls"],
+    [null, "repos/{owner}/{repo}/pulls"],
+  ])("reads a %s pull request create with no base as an unknown base: %s", (method, url) => {
+    expect(apiBranchRouteWrite(url, method, fields("head=feat/x title=t"))).toEqual({ route: "merge-upstream", branches: [null] });
+  });
+
+  it("names no base for an allowlisted tail that takes none", () => {
+    expect(apiBranchRouteWrite("repos/{owner}/{repo}/issues", "POST", fields("title=x"))).toBeNull();
   });
 
   it.each([

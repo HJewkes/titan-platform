@@ -184,7 +184,7 @@ function holdWait({ holdReason, holdReviewer, ownerHold }: Registration, headSha
 
 const BaseCheckData = z.object({ result: z.object({ allowed: z.literal(false), reason: z.string() }) });
 
-/** While an approved head waits for its PR to be retargeted, the refused base is the next action. */
+/** While a head waits for its PR to be retargeted, the refused base is the next action. */
 function baseWait(run: WorkflowRun, steps: readonly StepResult[]): string | undefined {
   if (run.currentStep === null || !stepIdMatches("base-wait", run.currentStep)) return undefined;
   const check = BaseCheckData.safeParse(steps.filter((result) => stepIdMatches("base-check", result.stepId)).at(-1)?.data);
