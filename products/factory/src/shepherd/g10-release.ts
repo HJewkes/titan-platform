@@ -148,7 +148,7 @@ async function releaseOnTwoMerges(deps: ShepherdDeps, mode: TwoMergeMode | undef
   const files = await pinnedPaths(deps.port, { ...target, head: prHead }, prHead);
   const store = deps.store.get();
   const run = heldRun(store, input.runId);
-  const judged = mode !== undefined && satisfiesTwoMerge(run, input, prHead, input.checks, files.unread === undefined ? files.paths : undefined);
+  const judged = satisfiesTwoMerge(run, input, prHead, input.checks, files.unread === undefined ? files.paths : undefined);
   const released = judged && mode === "on" && run.holdReason !== null && store.releaseIfHeld(input.runId, run.holdReason, { actor: SHEPHERD_ACTOR, headSha: prHead });
   const refs = { rule: TWO_MERGE_RULE, correctness: input.correctness, adversary: input.adversary };
   return { released, head: prHead, mode: mode ?? "off", ...(released && refs), ...(judged && mode === "shadow" && { wouldRelease: true, ...refs }) };
