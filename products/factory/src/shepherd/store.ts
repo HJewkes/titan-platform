@@ -223,6 +223,9 @@ export class ShepherdStore implements HoldLookup {
     return this.changed(runId, this.db.transaction(() => !isAdversaryHold(readSlots(this.db, runId).top?.reason) && (this.placeHold(runId, { reason, reviewer: null }, by), true))());
   }
 
+  /** The hold of another class kept under a gating `g10-adversary` hold, or null when there is none. */
+  readonly parkedHold = (runId: string): SlotHold | null => readSlots(this.db, runId).parked;
+
   /** Records a probe's proof that a head is a clean merge-up; a repeat changes nothing. */
   vouch(runId: string, proof: Vouch): void {
     recordVouch(this.db, runId, proof, this.stamp());

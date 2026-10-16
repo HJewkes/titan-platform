@@ -58,6 +58,8 @@ interface Scene {
   /** `shepherd.gateReset.twoMergeRelease`, as `workflows.ts` wires it: a g10-adversary hold's member and the release mode. */
   twoMerge?: TwoMergeMode;
   files?: string[];
+  /** A head whose review ends with the PR conflicting, so the round leaves through the conflict route. */
+  conflictsAfter?: string;
 }
 
 /** A security PR held as `g10-review`, reviewed for real by a reviewer spawned with the profile `roles` gives its class. */
@@ -65,14 +67,19 @@ function heldSecurityRun(roles: ReviewerRoles, policy: EffectivePolicy = AUTO_PO
   return heldRun(roles, { policy, hold });
 }
 
-function heldRun(roles: ReviewerRoles, { policy = AUTO_POLICY, hold = G10_HOLD, silentAt, twoMerge, files = ["src/a.ts"] }: Scene): World {
+function heldRun(roles: ReviewerRoles, { policy = AUTO_POLICY, hold = G10_HOLD, silentAt, twoMerge, files = ["src/a.ts"], conflictsAfter }: Scene): World {
   const fake = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const wake: ShepherdPhases["wake"] = async () => ({ kind: "unhandled", reason: "no fixer in this test" });
   const ref = shepherdStoreRef();
   const adversary = twoMerge && { holdMember: { profile: DEFAULT_ADVERSARY_PROFILE }, twoMergeRelease: twoMerge };
   const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), review: { ...mergingReviewers(), roles, ...adversary } });
-  const review: ShepherdPhases["review"] = async (ctx, request) => (request.headSha === silentAt ? { kind: "none", cause: "no-verdict", reason: "no_block" } : reviewPhase(ctx, request));
+  const reviewed: ShepherdPhases["review"] = async (ctx, request) => (request.headSha === silentAt ? { kind: "none", cause: "no-verdict", reason: "no_block" } : reviewPhase(ctx, request));
+  const review: ShepherdPhases["review"] = async (ctx, request) => {
+    const verdict = await reviewed(ctx, request);
+    if (request.headSha === conflictsAfter) fake.pr(1).mergeableState = "dirty";
+    return verdict;
+  };
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review, wake })], routes, gatePollMs: 5 });
   hosts.push(host);
   fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge") });
@@ -145,6 +152,15 @@ describe("a g10-adversary hold under gateReset.twoMergeRelease (decision 422(1))
     expect(stepIds(w)).toContain(`sh-await-verdict:${H1}:adversary`);
     expect(releaseResult(w)).toMatchObject({ released: true, rule: TWO_MERGE_RULE, correctness: { profile: "bd-reviewer" }, adversary: { profile: DEFAULT_ADVERSARY_PROFILE } });
     expect(w.store.eventsOf(w.runId).at(-1)).toMatchObject({ kind: "release", actor: "shepherd", headSha: H1 });
+  });
+
+  it("releases on both MERGEs before a conflict read after the review leaves the round (TP-3198 cause E)", async () => {
+    const w = heldRun(opus, { hold: ADVERSARY_HOLD, twoMerge: "on", conflictsAfter: H1 });
+
+    await vi.waitFor(() => expect(w.store.byRun(w.runId)?.held).toBe(false), { timeout: 5_000 });
+
+    expect(releaseResult(w)).toMatchObject({ released: true, rule: TWO_MERGE_RULE, correctness: { profile: "bd-reviewer" }, adversary: { profile: DEFAULT_ADVERSARY_PROFILE } });
+    expect(w.fake.pr(1).merged).toBe(false);
   });
 
   it.each([

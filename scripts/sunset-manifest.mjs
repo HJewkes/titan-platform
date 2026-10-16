@@ -53,6 +53,19 @@ function hasDefault(manifest, repo, file) {
   return (manifest.defaults ?? []).some((rule) => rule.repo === repo && file.startsWith(`${rule.path}/`));
 }
 
+/** Files only a default covers, as `defaulted: <repo>:<file> (<default path>)` lines: informational, so they stay visible while their entries are owed. */
+export function defaultedNotices(manifest, listings) {
+  const mapped = new Set(manifest.entries.map((entry) => `${entry.repo}:${entry.path}`));
+  const lines = [];
+  for (const { repo, path } of manifest.roots) {
+    for (const file of listings[`${repo}:${path}`] ?? []) {
+      const rule = (manifest.defaults ?? []).find((candidate) => candidate.repo === repo && file.startsWith(`${candidate.path}/`));
+      if (rule && !mapped.has(`${repo}:${file}`)) lines.push(`defaulted: ${repo}:${file} (${rule.path})`);
+    }
+  }
+  return lines;
+}
+
 function orphanProblems(manifest) {
   return manifest.entries
     .filter((entry) => !manifest.roots.some((root) => root.repo === entry.repo && entry.path.startsWith(`${root.path}/`)))
@@ -134,6 +147,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     if (empty) problems.push({ kind: "empty", text: empty });
     const warnOnly = (problem) => opts.agentChatDrift === "warn" && problem.kind === "drift" && problem.text.startsWith("agent-chat:");
     for (const problem of problems) console.error(warnOnly(problem) ? `::warning::${problem.text}` : problem.text);
+    const defaulted = defaultedNotices(manifest, listings);
+    for (const line of defaulted) console.error(`::notice::${line}`);
+    if (defaulted.length > 0) console.error(`::notice::defaulted: ${defaulted.length} files covered only by a directory default; TP-3180 stays open while any is listed`);
     if (!opts.agentChat) console.error("agent-chat roots checked for shape only (no --agent-chat)");
     process.exitCode = problems.some((problem) => !warnOnly(problem)) ? 1 : 0;
   } catch (error) {

@@ -2,12 +2,13 @@ import type { RepoSlug } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
-import type { StepDeclaration } from "../definition.js";
+import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step, type CiSnapshot } from "../workflows/land.js";
 import { SHEPHERD_ACTOR } from "./events.js";
 import type { PanelMerge, ShepherdDeps, Verdict } from "./phases.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { OWNER_PACKET_FILES } from "./registration-hold.js";
+import { narrowToRegistration } from "./registration-policy.js";
 import type { ShepherdStore } from "./store.js";
 
 export const G10_RELEASE_STEP = "sh-g10-release";
@@ -275,4 +276,15 @@ export async function releaseG10Hold(run: G10WorkflowRun, holdReason: string | n
   const input = { runId: run.ctx.runId, ...run.target, head: ci.headSha, ...ask.refs, checks: { head: ci.headSha, green: greenAt(ci, ask.refs.mergeUp) } };
   const done = await step(run.ctx, `${G10_RELEASE_STEP}:${ci.headSha}:${attempt}`, input, G10ReleaseResult);
   if (done.released || done.wouldRelease) used.set(run.ctx, (used.get(run.ctx) ?? new Set()).add(ask.key));
+}
+
+/**
+ * A conflict read after the review leaves the round before `onCiRead` judges the hold, so a MERGE that stands at a
+ * head green at its CI read would never release it (TP-3198, cause E). A record from before this goes on without the
+ * policy read, or ends paused on the gate, and replays as it ran.
+ */
+export async function releaseBeforeLeaving(run: G10WorkflowRun & Parameters<typeof narrowToRegistration>[0]): Promise<void> {
+  const next = run.ctx.historyNext();
+  const recordedWithout = next === undefined ? run.ctx.resumedGate() !== undefined : !stepIdMatches("sh-policy", next);
+  if (!recordedWithout) await releaseG10Hold(run, await narrowToRegistration(run));
 }

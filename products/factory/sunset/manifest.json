@@ -15,6 +15,28 @@
    "path": "scripts/seat"
   }
  ],
+ "defaults": [
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd",
+   "fate": "kept",
+   "reason": "default: a file added after the manifest; its entry is owed (TP-3180), listed by the check's defaulted notice"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/burndown",
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "reason": "default: the burndown tick and its ledger are deleted at M8 (v9.1 sec. 3.4, 5.1); an entry is still owed"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "scripts/seat",
+   "fate": "kept",
+   "reason": "default: seat scripts retire per scripts/seat/README.md's retirement list (CC-746), not a D-task; an entry is still owed"
+  }
+ ],
  "entries": [
   {
    "repo": "titan-platform",
@@ -859,6 +881,12 @@
    "path": "products/factory/src/shepherd/head-read.ts",
    "fate": "kept",
    "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/held-repair-g10.test.ts",
+   "fate": "kept",
+   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
   },
   {
    "repo": "titan-platform",

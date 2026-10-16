@@ -103,6 +103,14 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { flakyChecks: { web: flakyChecks["acme/web"] } } })))).toThrow(/flakyChecks/);
   });
 
+  it("reads the held-repair gate reset flag, and rejects a value other than off or on and an unknown key", () => {
+    const load = (gateReset: object) => loadConfig(configPath(xdg({ shepherd: { gateReset } })));
+
+    expect(load({ heldRepair: "on" }).shepherd?.gateReset).toEqual({ heldRepair: "on" });
+    expect(() => load({ heldRepair: "yes" })).toThrow(/heldRepair/);
+    expect(() => load({ heldRepairs: "on" })).toThrow(/heldRepairs/);
+  });
+
   it("reads each repo's checkout and advisory flag, and rejects an unknown key and a repo that is not owner/name", () => {
     const repos = { "acme/widgets": { path: "/src/widgets", advisory: true } };
     const load = (block: object) => loadConfig(configPath(xdg({ shepherd: { repos: block } })));
