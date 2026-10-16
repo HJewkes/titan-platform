@@ -37,6 +37,7 @@
     "@titan-design/agent": "workspace:^",
     "@titan-design/authority": "workspace:^",
     "@titan-design/evidence": "workspace:^",
+    "@titan-design/fix-proof": "workspace:^",
     "@titan-design/health": "workspace:^",
     "@titan-design/hitl": "workspace:^",
     "@titan-design/review-panel": "workspace:^",

@@ -1,4 +1,4 @@
-import type { ReviewTarget, ReviewerAgent } from "./review.js";
+import type { ReviewTarget, ReviewerAgent } from "@titan-design/review-panel";
 import type { Registration } from "./store.js";
 
 /** Who Shepherd registered as opening a PR; it ties a seat reviewer to that PR when the reviewer's transcript shows nothing. */

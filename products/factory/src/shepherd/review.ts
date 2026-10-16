@@ -3,7 +3,6 @@ import { OVERLAY_SHAPES, type AcceptedVerdict as PanelAcceptedVerdict, type Awai
 import type { OwnerOverride } from "./override-stats.js";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute } from "@titan-design/workflow";
-import { join } from "node:path";
 import { z } from "zod";
 import { codeRoute, step } from "../workflows/land.js";
 import type { StepClock } from "../workflows/deadline.js";
@@ -15,7 +14,7 @@ import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./account-limit.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { awaitExternalVerdict, isExternalVerdictInput, seatVetoed } from "./external-review.js";
 import { ownerIn } from "./seat-tie.js";
-import { removeReviewCheckout, reviewCheckoutRoot } from "./review-checkout.js";
+import { checkoutRootOf, dropCheckout, holdContextOf, thenDropCheckout } from "./review-member.js";
 import { Dispatched, Intended, ReviewCauseSchema } from "./review-schemas.js";
 import { MERGE_EVIDENCE_STEPS } from "./merge-evidence-gate.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
@@ -34,7 +33,7 @@ import { FIX_PROOF_STEPS, fixProofRoute, fixProofStanding, fixProofVerdict, read
 import type { MachineStopWatch } from "./machine-stop.js";
 import { REVIEW_STEP } from "./review-steps.js";
 import { REVIEW_STOP_STEPS, reviewStopRoute } from "./review-stop.js";
-import { withoutPlan, type PanelMode } from "./review-panel-plan.js";
+import { withoutPlan, type HoldMember, type PanelMode } from "./review-panel-plan.js";
 import { PANEL_STEPS, panelOn, panelReview, panelVerdictRoute, plannedPanel, type MemberBase, type PanelOnPlan } from "./review-panel-step.js";
 import { LATE_VERDICT_STEP, SEAT_RECHECK_STEP, asksOwnerBrief, mergeVerdict, recheckSeat, takeVerdict, type ProofStanding } from "./take-verdict.js";
 import { NO_REVIEWER_STEPS, noReviewerRoutes } from "./no-reviewer-hold.js";
@@ -185,6 +184,10 @@ export interface ReviewWiring {
   panel?: PanelMode;
   /** The panel a head is planned with; absent means `panelPolicyFor(roles)`. */
   panelPolicy?: PanelPolicy;
+  /** A g10-adversary hold's own adversary member; absent plans none (`shepherd.gateReset.twoMergeRelease` off). */
+  holdMember?: HoldMember;
+  /** The adversary member's account (`review.adversaryConfigDir`); absent means the intent's. */
+  adversaryDispatch?: ReviewerDispatch;
 }
 
 type Wired = ReviewWiring & { dispatch: ReviewerDispatch };
@@ -228,31 +231,12 @@ const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (dep
   return billed.choice.mode === "external" ? intent : { ...intent, ...(await plannedPanel(deps, wired, { ...input, reviewer: intent.reviewer, mode: intent.mode }, roster)) };
 };
 
-type MemberShape = (typeof OVERLAY_SHAPES)[number];
-
-/** A panel member other than correctness checks out under its shape's dir, since each reviewer removes its own run dir when it is done. */
-const checkoutRootOf = (deps: ShepherdDeps, shape?: MemberShape): string => {
-  const root = deps.reviewCheckouts?.root ?? reviewCheckoutRoot();
-  return shape === undefined ? root : join(root, shape);
-};
-
-/** Removes the run's checkout dir; the reviewer is told to, but a reviewer that failed or timed out never does, and a verdict must not depend on it. */
-async function dropCheckout(deps: ShepherdDeps, target: ReviewTarget, shape?: MemberShape): Promise<void> {
-  await removeReviewCheckout(checkoutRootOf(deps, shape), target, deps.reviewCheckouts?.remove);
-}
+/** An adversary member runs under `review.adversaryConfigDir` when one is set; every other reviewer under the intent's account. */
+const memberDispatch = (wired: Wired, shape: string | undefined): ReviewerDispatch | undefined => (shape === "adversary" ? wired.adversaryDispatch : undefined);
 
 /**
- * Removes the checkout once the reviewer is finished with it: when `work` returns and `finished` says so. A throw (an abort at
- * shutdown, say) leaves it, because the reviewer outlives the step and a replay waits on it; the sweep is the backstop.
- */
-async function thenDropCheckout<T>(deps: ShepherdDeps, target: ReviewTarget, work: () => Promise<T>, finished: (result: T) => boolean, shape?: MemberShape): Promise<T> {
-  const result = await work();
-  if (finished(result)) await dropCheckout(deps, target, shape);
-  return result;
-}
-
-/**
- * The body of the sh-review step; `repeat` means a crash interrupted an earlier run. The brief is built from the target alone, so no registration text can reach it.
+ * The body of the sh-review step; `repeat` means a crash interrupted an earlier run. The brief is built from the target alone, so no registration text can
+ * reach it, except an adversary's hold reason, which goes in fenced as data.
  * A reviewer an earlier run asked for keeps that run's session-start clock; one asked for again gets a fresh one.
  */
 const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, wired, { intent, runId, fixFirsts, ownerBrief, fixProof, fixProofUnverified, shape, profile, ...target }, signal, repeat, clock) => {
@@ -263,8 +247,9 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
   const asked = roster.some(intent.mode === "resume" ? (agent) => repeat && resumedSince(intent)(agent) : holds(intent));
   const waits: string[] = [];
   const facts = { ...(await spawnFacts(deps, runId, intent, target, roles)), ...(profile !== undefined && { profile }) };
-  const asking = asked ? undefined : await reviewBrief({ ...target, checkoutRoot: checkoutRootOf(deps, shape), fixFirsts, ownerBrief, fixProof, fixProofUnverified, testRule: deps.suiteRules?.reviewer, ...(shape !== undefined && { shape }) }, codewatch, questions);
-  const outcome = asking && (await startReviewer(dispatchFor(wired.accounts, wired.dispatch, intent.account), intent, target, facts, asking.brief, timing, signal, waits).catch((error: unknown) => notStarted(error, waits)));
+  const holdContext = shape === "adversary" ? holdContextOf(deps, runId) : undefined;
+  const asking = asked ? undefined : await reviewBrief({ ...target, checkoutRoot: checkoutRootOf(deps, shape), fixFirsts, ownerBrief, fixProof, fixProofUnverified, testRule: deps.suiteRules?.reviewer, ...(shape !== undefined && { shape }), ...(holdContext && { holdContext }) }, codewatch, questions);
+  const outcome = asking && (await startReviewer(memberDispatch(wired, shape) ?? dispatchFor(wired.accounts, wired.dispatch, intent.account), intent, target, facts, asking.brief, timing, signal, waits).catch((error: unknown) => notStarted(error, waits)));
   if (typeof outcome === "object") {
     await dropCheckout(deps, target, shape);
     return outcome;
@@ -279,10 +264,11 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
   return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...(intent.mode === "spawn" && spawnedAs !== undefined && { profile: spawnedAs }), ...busyWaits(waits), ...(asking?.codewatch && { codewatch: asking.codewatch }) };
 };
 
-/** The body of the sh-correct-verdict step, with the same session-start and busy budgets as sh-review. */
-const correctReviewer: BrokerStepBody<CorrectVerdictInput, CorrectedResult> = (deps, { dispatch, sessionStartTimeoutMs, busyWaitMs }, input, signal, repeat) => {
+/** The body of the sh-correct-verdict step, with the same session-start and busy budgets as sh-review; an adversary is resumed under its own account. */
+const correctReviewer: BrokerStepBody<CorrectVerdictInput, CorrectedResult> = (deps, wired, input, signal, repeat) => {
+  const { dispatch, sessionStartTimeoutMs, busyWaitMs } = wired;
   const timing = { ...brokerTiming(deps), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
-  return correctVerdict(dispatch, input, timing, signal, repeat);
+  return correctVerdict(memberDispatch(wired, input.shape) ?? dispatch, input, timing, signal, repeat);
 };
 
 /** `codeRoute` for a body that must know it ran before: a first run is attempt 0 with no restarts, and only the recovery of an interrupted step raises either. */

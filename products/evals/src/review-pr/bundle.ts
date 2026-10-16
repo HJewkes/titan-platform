@@ -41,13 +41,13 @@ function extractTar(tar: Buffer, dir: string): Promise<void> {
 }
 
 /** `git archive` writes the tree alone, so no `.git` lands in the bundle and `git log --all` cannot reach a later fix. */
-async function archiveInto(port: BundleGit, sha: string, dir: string): Promise<void> {
+export async function archiveInto(port: BundleGit, sha: string, dir: string): Promise<void> {
   mkdirSync(dir);
   await extractTar(await port.git(["archive", "--format=tar", sha]), dir);
 }
 
 /** Only full shas the clone already holds: a ref name could move, and a missing commit is never fetched. */
-async function verifyCommit(port: BundleGit, sha: string): Promise<void> {
+export async function verifyCommit(port: BundleGit, sha: string): Promise<void> {
   if (!SHA.test(sha)) throw new Error(`bundle commits must be 40-hex shas, got ${JSON.stringify(sha)}`);
   await port.git(["cat-file", "-e", `${sha}^{commit}`]);
 }

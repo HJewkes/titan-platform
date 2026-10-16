@@ -9,7 +9,8 @@ import { G10_REHOLD_STEP } from "./g10-rehold.js";
 import type { ShepherdPhases } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
-import { reviewPhase, type ReviewerAgent, type ReviewerDispatch, type ReviewerReader } from "./review.js";
+import type { ReviewerAgent, ReviewerDispatch, ReviewerReader } from "@titan-design/review-panel";
+import { reviewPhase } from "./review.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
 import type { Git, GitResult } from "./tree-carry.js";
 

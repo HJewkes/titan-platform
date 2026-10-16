@@ -5,12 +5,14 @@ export type ClassRoles = Record<ReviewClass, string>;
 
 type ExtraShape = Exclude<ReviewShape, "correctness">;
 
-/** A shape the panel adds beside correctness: on a class in `classes` with any of `touches`. */
+/** A shape the panel adds beside correctness: on a class in `classes` with any of `touches`, or with none when `always`. */
 export interface ShapeRule {
   shape: ExtraShape;
   classes: readonly ReviewClass[];
   touches: readonly PrTouch[];
   blocking: boolean;
+  /** The host requires the shape whatever the files touch, as a hold that asks for an adversary does. */
+  always?: boolean;
 }
 
 /** Whether opus may be spawned now; the caller asks its spawn gate. */
@@ -76,7 +78,7 @@ interface Seat {
 function seats(cls: PrClass, policy: PanelPolicy): Seat[] {
   const correctness: Seat = { shape: "correctness", profile: policy.roles[cls.class], blocking: true };
   const extras = (policy.panel ?? [])
-    .filter((rule) => rule.classes.includes(cls.class) && rule.touches.some((t) => cls.touches.includes(t)))
+    .filter((rule) => rule.classes.includes(cls.class) && (rule.always === true || rule.touches.some((t) => cls.touches.includes(t))))
     .map((rule) => ({ shape: rule.shape, blocking: rule.blocking, profile: (policy.shapeRoles?.[rule.shape] ?? DEFAULT_SHAPE_ROLES[rule.shape])[cls.class] }));
   return [correctness, ...extras].slice(0, MAX_MEMBERS);
 }

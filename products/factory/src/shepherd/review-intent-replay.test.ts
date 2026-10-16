@@ -12,7 +12,8 @@ import { readFixProofAt } from "./fix-proof.js";
 import type { ShepherdPhases } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import { reviewPhase, type ReviewerDispatch } from "./review.js";
+import { reviewPhase } from "./review.js";
+import type { ReviewerDispatch } from "@titan-design/review-panel";
 import { shepherdStoreRef } from "./store.js";
 
 const hosts: FactoryHost[] = [];

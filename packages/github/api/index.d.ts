@@ -358,6 +358,8 @@ interface GitHubWire {
     updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<void>;
     /** Retargets the PR onto `base`; the request carries no field but `base`. */
     setPrBase(repo: RepoSlug, number: number, base: string): Promise<void>;
+    /** Sets the PR's state to closed; the branch is left alone. */
+    closePr(repo: RepoSlug, number: number): Promise<void>;
     /** `message` becomes the squash commit's `commit_title` and `commit_message`; absent, GitHub writes its default. */
     merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod, message?: MergeMessage): Promise<{
         sha: string;
@@ -443,6 +445,8 @@ interface GitHubPort {
     updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult>;
     /** Retargets an open PR onto `base`, so a stacked child can follow its landed parent; a PR already on `base` skips as `unchanged`. */
     setPrBase(repo: RepoSlug, number: number, base: string): Promise<WriteResult>;
+    /** Closes an open PR without merging it and leaves its branch; a PR already closed or merged skips as `closed` or `merged`. */
+    closePr(repo: RepoSlug, number: number): Promise<WriteResult>;
     /** Pushes a commit with the head's own tree onto `branch`, so CI runs again; skips as `head-moved` when the branch is not at `expectedHeadSha`. */
     pushEmptyCommit(repo: RepoSlug, branch: string, expectedHeadSha: string, message: string): Promise<WriteResult<{
         sha: string;

@@ -7,7 +7,8 @@ import { accountLimitStoreRef } from "./account-store.js";
 import type { ReviewAccounts } from "./account-limit.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
-import { reviewPhase, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage } from "./review.js";
+import { reviewPhase } from "./review.js";
+import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage } from "@titan-design/review-panel";
 import { ReviewerAskTimedOut } from "./review-wait.js";
 import { shepherdStoreRef } from "./store.js";
 

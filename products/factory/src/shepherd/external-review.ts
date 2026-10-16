@@ -8,14 +8,14 @@ import { redactCredentials } from "../redact.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { holdClassOf } from "./g10-release.js";
 import { ReviewerAskTimedOut, ReviewerBrokerBusy, ReviewerBrokerDown, clearReviewWait, noteReviewWait } from "./review-wait.js";
-import type { AwaitVerdictInput, AwaitVerdictResult, ReviewTarget, ReviewWiring, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
+import type { AwaitVerdictResult, ReviewWiring } from "./review.js";
 import type { OwnerOverride } from "./override-stats.js";
 import type { Registration } from "./store.js";
 import { rosterTie, type SeatRow, type SeatTarget } from "./seat-tie.js";
 import { DamagedTranscriptError, ownRecordsNameOtherPr, reviewsThisPr, type NameRead } from "./seat-evidence.js";
 
 export { DamagedTranscriptError } from "./seat-evidence.js";
-import { fixFirstFindings, namesTarget } from "@titan-design/review-panel";
+import { fixFirstFindings, namesTarget, type AwaitVerdictInput, type ReviewerAgent, type ReviewerMessage, type ReviewerReader, type ReviewTarget } from "@titan-design/review-panel";
 
 /** The reviewer a hold waits on, from `hold --reviewer` alone; a name in the hold's reason text is never read as one. */
 export function externalReviewer(registration: Registration | undefined): string | undefined {
