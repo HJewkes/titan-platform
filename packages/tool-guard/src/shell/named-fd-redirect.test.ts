@@ -86,6 +86,7 @@ const DENIED = [
   `{fd}< /dev/null ${PUSH}`,
   `exec {fd}< /dev/null ${PUSH}`,
   "bash {a[$i]}< ./x.sh /dev/fd/10",
+  `bash -c 'eval "bash /dev/fd/10" {fd}< ./x.sh' 10<&-`,
 ];
 
 describe("a shell runs a descriptor a {name} redirect may have opened (TP-3279)", () => {
@@ -137,6 +138,7 @@ const PREMISES: Array<[string, string]> = [
   [`{fd}< /dev/null ${PUSH}`, "bash"],
   [`exec {fd}< /dev/null ${PUSH}`, "zsh -f"],
   ["i=0; bash {a[$i]}< ./x.sh /dev/fd/10", "bash"],
+  [`bash -c 'eval "bash /dev/fd/10" {fd}< ./x.sh' 10<&-`, "bash"],
 ];
 
 describe.skipIf(!["bash", "zsh", "dash"].every(has))("bash, zsh and dash run what the denied lines hold (TP-3279)", () => {
