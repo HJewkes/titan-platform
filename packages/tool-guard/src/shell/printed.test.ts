@@ -130,3 +130,71 @@ describe("readings under each splicing shell", () => {
     expect(readings("cat", ["-"])).toEqual([]);
   });
 });
+
+describe("escapes per shell", () => {
+  const PUSH = "git push origin HEAD:main";
+  const text = (name: string, args: string[], shell?: "bash" | "zsh") => printedText(name, words(args), shell);
+
+  it("prints bash echo's \\c as written, so the push after it is printed", () => {
+    expect(text("echo", [`'echo \\c; ${PUSH}'`], "bash")).toBe(`echo \\c; ${PUSH}`);
+    expect(text("echo", [`'echo \\c; ${PUSH}'`])).toBe("echo ");
+    expect(text("echo", [`'echo \\c; ${PUSH}'`], "zsh")).toBe("echo ");
+  });
+
+  it("decodes bash echo escapes only when -e is the last of -e and -E", () => {
+    expect(text("echo", ["-e", "'a\\tb'"], "bash")).toBe("a\tb");
+    expect(text("echo", ["-eE", "'a\\tb'"], "bash")).toBe("a\\tb");
+  });
+
+  it("lets zsh echo's -e beat a later -E", () => {
+    expect(text("echo", ["-neE", "'git\\x20push origin HEAD:main'"], "zsh")).toBe(PUSH);
+    expect(text("echo", ["-neE", "'git\\x20push origin HEAD:main'"], "bash")).toBe("git\\x20push origin HEAD:main");
+    expect(text("echo", ["-neE", "'git\\x20push origin HEAD:main'"])).toBe("git\\x20push origin HEAD:main");
+  });
+
+  it("keeps zsh echo literal under -E alone", () => {
+    expect(text("echo", ["-E", "'a\\tb'"], "zsh")).toBe("a\\tb");
+  });
+
+  it("prints a printf format's \\c as written without a shell and in bash", () => {
+    expect(text("printf", [`'echo \\c; ${PUSH}'`])).toBe(`echo \\c; ${PUSH}`);
+    expect(text("printf", [`'echo \\c; ${PUSH}'`], "bash")).toBe(`echo \\c; ${PUSH}`);
+  });
+
+  it("ends all zsh printf output at a format \\c, reuse included", () => {
+    expect(text("printf", [`'echo \\c; ${PUSH}'`], "zsh")).toBe("echo ");
+    expect(text("printf", ["'%s\\c x'", "a", "b"], "zsh")).toBe("a");
+    expect(text("printf", ["'%s\\c x'", "a", "b"], "bash")).toBe("a\\c xb\\c x");
+  });
+
+  it("keeps octal in a printf format and the %b \\c stop", () => {
+    expect(text("printf", ["'a\\101b'"])).toBe("aAb");
+    expect(text("printf", ["'%b'", "'p\\c q'"])).toBe("p");
+  });
+
+  it.each([
+    ["octal", "'\\045.0s\\n%s\\n'"],
+    ["hex", "'\\x25.0s\\n%s\\n'"],
+  ])("prints an %s-escaped %% as written, so it eats no argument", (_how, format) => {
+    for (const shell of [undefined, "bash", "zsh"] as const) {
+      expect(text("printf", [format, `'${PUSH}'`], shell)).toBe(`%.0s\n${PUSH}\n`);
+    }
+  });
+
+  it("reads a \\ before % as a lone backslash and the % as a directive", () => {
+    expect(text("printf", ["'\\%s|'", "ab"])).toBe("\\ab|");
+    expect(text("printf", ["'a\\\\%s|'", "ab"])).toBe("a\\ab|");
+  });
+
+  it("reads a format after -- even when it starts with -", () => {
+    expect(text("printf", ["--", "'-x%s'", "ab"])).toBe("-xab");
+    expect(text("printf", ["'-x%s'", "ab"])).toBeNull();
+  });
+
+  it("gives TP-2381 b's piped readings a text holding the push", () => {
+    const readings = printedReadings("echo", words([`'echo \\c; ${PUSH}'`]), ["bash", "zsh"]);
+
+    expect(readings).toHaveLength(2);
+    expect(readings[1]).toContain("git push");
+  });
+});

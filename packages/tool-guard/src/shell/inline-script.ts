@@ -20,15 +20,15 @@ export interface Inline {
  * The script a shell or `eval` runs: a `-c` string, else a heredoc, here-string or literal pipe on stdin. Eval and `-c`
  * text is read with and without what its substitutions print, when that is literal on the line.
  */
-export function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], stdin: string | null, budget: UnsureBudget): Inline | null {
+export function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], piped: string[], budget: UnsureBudget): Inline | null {
   if (cmd.script !== undefined) return { texts: [cmd.script], wrap: "sh-c" };
   if (cmd.name === "eval") return { texts: splicedReadings(cmd.args, budget), wrap: "eval" };
   if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
   const { hasC, positional } = shellOperands(cmd.args);
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
-  const text = hasC ? (positional ? splicedReadings([positional], budget) : stdin) : positional ? null : stdinScript(redirects);
+  const text = hasC ? (positional ? splicedReadings([positional], budget) : piped.length > 0 ? piped : null) : positional ? null : stdinScript(redirects);
   if (text !== null) return { texts: hasC ? [text].flat() : [text].flat().flatMap((t) => pipedShellTexts(cmd.name, t)), wrap: hasC ? "sh-c" : "heredoc-shell" };
-  return hasC || positional || stdin === null ? null : { texts: pipedShellTexts(cmd.name, stdin), wrap: "piped-shell" };
+  return hasC || positional || piped.length === 0 ? null : { texts: piped.flatMap((t) => pipedShellTexts(cmd.name, t)), wrap: "piped-shell" };
 }
 
 /**
