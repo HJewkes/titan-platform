@@ -168,7 +168,49 @@ describe("restartDivergedRuns", () => {
   });
 });
 
+describe("restartDivergedRuns reclassification", () => {
+  it("holds a restarted run over the size limit g10-review, as a live register would", async () => {
+    const { next, oldRunIds } = await parkedRuns();
+    next.fake.prFiles.set(1, [{ path: "src/big.ts", status: "modified", additions: 450, deletions: 0 }]);
+
+    const sweep = await restartDivergedRuns(ctxOf(next));
+
+    const restarted = next.routes.shepherd!.store.get().byRun(sweep.restarted[0]!.newRunId);
+    expect(sweep.restarted[0]!.runId).toBe(oldRunIds[0]);
+    expect(restarted?.holdReason).toBe("g10-review: 450 changed lines");
+  });
+
+  it("acts on no run once the server is closing", async () => {
+    const { next, oldRunIds } = await parkedRuns();
+
+    const sweep = await restartDivergedRuns(ctxOf(next), () => true);
+
+    expect(sweep).toEqual({ restarted: [], ended: [], errors: [] });
+    expect(next.host.runtime.status(oldRunIds[0]!)?.status).toBe("recovery_required");
+  });
+});
+
 describe("serve's adoption sweep", () => {
+  it("still adopts when the diverged sweep throws outside its per-run guard", async () => {
+    const dbPath = join(mkdtempSync(join(tmpdir(), "tp3186-")), "factory.db");
+    const [runId] = await recorded(dbPath, [1]);
+    const next = deploy(dbPath, build(false));
+    next.host.close();
+    const ref = next.routes.shepherd!.store;
+    const bound = ref.get.bind(ref);
+    vi.spyOn(ref, "get").mockImplementation(() => Object.assign(Object.create(bound()), { all: () => { throw new Error("store unreadable"); } }));
+    const info: unknown[] = [];
+    const warn: unknown[] = [];
+    const logger = { ...silentLogger, info: (_fields: unknown, msg?: unknown) => void info.push(msg), warn: (_fields: unknown, msg?: unknown) => void warn.push(msg) };
+
+    const server = await startFactoryServer({ dbPath, workflows: [build(false)], routes: next.routes, port: 0, logger, gatePollMs: 5, github: { status: () => "ok", refresh: async () => undefined } });
+    closers.push(() => server.close());
+
+    expect(warn).toContain("the replay-diverged sweep failed; adoption goes on without it");
+    expect(info).toContain("adopted runs");
+    expect(runId).toBeDefined();
+  });
+
   it("restarts a run parked under an earlier build on the first tick", async () => {
     const { next, dbPath, oldRunIds } = await parkedRuns();
     next.host.close();

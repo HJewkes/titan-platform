@@ -12,6 +12,9 @@ const RESTARTABLE_STOPS: ReadonlySet<string> = new Set(["not-mergeable", "confli
 
 const REPLAY_DIVERGED = "replay-diverged";
 
+/** The reason the diverged sweep cancels a run with when its pull request is closed; a register after the PR reopens revives it. */
+export const DIVERGED_PR_CLOSED = "replay diverged; PR closed";
+
 interface Restart {
   /** Why the replaced run stopped; absent when it failed. */
   previousStop?: string;
@@ -20,6 +23,11 @@ interface Restart {
 /** A run the runtime's strict replay parked because its definition changed under it; any other park needs a human. */
 export function isReplayDiverged(run: WorkflowRun): boolean {
   return run.status === "recovery_required" && run.error?.startsWith("replay diverged:") === true;
+}
+
+/** A diverged run, or one the sweep cancelled because its PR had closed: either restarts at the last head it read. */
+export function isDivergedEnd(run: WorkflowRun): boolean {
+  return isReplayDiverged(run) || (run.status === "cancelled" && run.error === DIVERGED_PR_CLOSED);
 }
 
 /** A branch-only registration has no number to read; its run waits for the PR anyway, so it restarts. */
@@ -40,7 +48,7 @@ async function restartableStop(services: ShepherdServices, known: Registration, 
 export async function restartFor(host: FactoryHost, services: ShepherdServices, known: Registration): Promise<Restart | undefined> {
   const run = host.runtime.status(known.runId);
   if (run?.status === "failed") return {};
-  if (run && isReplayDiverged(run)) return openPrRestart(services, known, { previousStop: REPLAY_DIVERGED });
+  if (run && isDivergedEnd(run)) return openPrRestart(services, known, { previousStop: REPLAY_DIVERGED });
   return run?.status === "completed" ? restartableStop(services, known, run) : undefined;
 }
 
