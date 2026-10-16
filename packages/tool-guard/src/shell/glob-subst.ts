@@ -8,7 +8,8 @@ import type { Unwrapped } from "./unwrap.js";
  */
 export function mayEnableGlobSubst(cmd: Unwrapped): boolean {
   if (cmd.assigned.some(([name]) => name === "options") || cmd.args.some(namesOptions)) return true;
-  if (cmd.name === null) return cmd.args.length > 0 && dynamicCommand(cmd.args);
+  if (cmd.name === null) return cmd.args.length > 0 && dynamicCommand(cmd.args.slice(1));
+  if (cmd.path !== null && PATTERN_RE.test(cmd.path)) return dynamicCommand(cmd.args);
   if (writesUnknownTarget(cmd.name, cmd.args)) return true;
   const check = Object.hasOwn(ENABLERS, cmd.name) ? ENABLERS[cmd.name] : undefined;
   return check?.(cmd.args) ?? false;
@@ -162,18 +163,21 @@ function zshEnables(args: WordToken[]): boolean {
   return scan.dynamic || scan.names.some(namesGlobSubst) || scan.modes.some((mode) => mode !== "zsh");
 }
 
-/** Modes `emulate` turns GLOB_SUBST on for; zsh reads `bash` as sh. */
-const EMULATIONS = new Set(["sh", "ksh", "csh", "bash"]);
+/**
+ * Modes `emulate` turns GLOB_SUBST on for: zsh reads only the first letter after an optional `r`, so `rksh`, `bourne`
+ * and `ksh93` count, while `foo` and `rzsh` run as zsh (zsh 5.9).
+ */
+const EMULATION_RE = /^r?[cksb]/;
 
 /**
- * A command word only known at run time may be `setopt`, `emulate` or any writer, so it is never proven harmless:
- * `setopt -m`, an emulation mode, a GLOB_SUBST name or a word only known at run time may each enable it.
+ * A command word only known at run time, or one brace expansion or a glob may rewrite (`s{etopt,}`), may be `setopt`,
+ * `emulate` or any writer, so it is never proven harmless: `setopt -m`, an emulation mode, a GLOB_SUBST name or a word
+ * only known at run time among the words after it may each enable it.
  */
-function dynamicCommand(args: WordToken[]): boolean {
-  const [, ...rest] = args;
+function dynamicCommand(rest: WordToken[]): boolean {
   if (rest.some((w) => unknownName(w, w.value))) return true;
   const scan = scanOptions(rest, "o", false);
-  return scan.flags.includes("m") || scan.operands.some((v) => EMULATIONS.has(v)) || [...scan.names, ...scan.operands].some(namesGlobSubst);
+  return scan.flags.includes("m") || EMULATION_RE.test(scan.operands[0] ?? "") || [...scan.names, ...scan.operands].some(namesGlobSubst);
 }
 
 interface WriterSpec {

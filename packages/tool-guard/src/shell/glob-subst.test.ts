@@ -145,6 +145,18 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     ["$c sh"],
     ["$c -R ksh"],
     ["$c -m '*subst'"],
+    ["s{etopt,} globsubst"],
+    ["set{opt,opt} globsubst"],
+    ["{emulate,emulate} sh"],
+    ["/bin/zs[h] -o globsubst -c x"],
+    ["builtin s{etopt,} globsubst"],
+    ["b{uiltin,} setopt globsubst"],
+    ["~g/setopt globsubst"],
+    ["$c rksh"],
+    ["$c rsh"],
+    ["$c bourne"],
+    ["$c ksh93"],
+    ["{emulate,emulate} -R cfoo"],
   ])("reads the run-time or expanded operand of %s as a possible enabler", (src) => {
     expect(enables(src)).toBe(true);
   });
@@ -214,6 +226,10 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     ["$c foo bar"],
     ["$c -o pipefail"],
     ['$c x="$y"'],
+    ["{echo,echo} hi there"],
+    ["$c foo"],
+    ["$c rzsh"],
+    ["~/bin/tool hi"],
   ])("leaves %s alone", (src) => {
     expect(enables(src)).toBe(false);
   });
