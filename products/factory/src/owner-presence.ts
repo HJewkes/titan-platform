@@ -19,6 +19,9 @@ const PROOF = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{
 
 const BASE64URL = /^[A-Za-z0-9_-]+$/
 
+/** The helper's `pubkey --id`: the first 16 hex of sha256 over the SPKI DER, the form keyIdOf computes server-side. */
+const KEY_ID = /^[0-9a-f]{16}$/
+
 export const S_IFMT = 0o170000
 export const S_IFREG = 0o100000
 export const S_IFLNK = 0o120000
@@ -145,6 +148,22 @@ export async function confirmOwner(reason: string, options: ConfirmOptions = {})
   try {
     const proof = (await (options.run ?? defaultRunner)(helper, [escapeReason(reason)])).trim()
     return PROOF.test(proof) ? proof : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The id of the owner's Secure Enclave key, read from the same checked helper with `pubkey --id`
+ * (no dialog). Returns undefined on a missing key, a non-zero exit, the same helper path refusals
+ * or output that is not 16 lowercase hex, so a caller can refuse before asking for presence.
+ */
+export async function ownerKeyId(options: ConfirmOptions = {}): Promise<string | undefined> {
+  const helper = checkedHelper(options)
+  if (helper === undefined) return undefined
+  try {
+    const id = (await (options.run ?? defaultRunner)(helper, ["pubkey", "--id"])).trim()
+    return KEY_ID.test(id) ? id : undefined
   } catch {
     return undefined
   }

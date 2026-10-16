@@ -46,7 +46,7 @@ function cautionLines(result: FixProofResult): string[] {
 /** The tests member's fix-proof section; a result that does not parse or names another head is ignored, never trusted. */
 export function fixProofLines(head: string, line: string | undefined): string[] {
   if (line === undefined) return [`No fix-proof/v1 result was given for this head. ${JUDGE_YOURSELF}`];
-  const parsed = parseResultLine(line);
+  const parsed = parseResultLine(line.trim());
   if (!parsed.ok) return [`The fix-proof/v1 result given could not be read, so ignore it. ${JUDGE_YOURSELF}`];
   const { result } = parsed;
   if (result.head !== head) return [`The fix-proof/v1 result given is for another head, so ignore it. ${JUDGE_YOURSELF}`];

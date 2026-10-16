@@ -136,6 +136,8 @@ interface ExtractOptions {
      */
     stopPastCap?: boolean;
     aliases?: AliasTable;
+    /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
+    onScript?: (text: string) => void;
 }
 /**
  * Every simple command the shell would run, including ones nested in substitutions, `bash -c`

@@ -1,5 +1,6 @@
 import { KIT } from "@titan-design/session-graph";
 import type { Db } from "@titan-design/store-sqlite";
+import { FIRST_COPY } from "./cost-report-queries.js";
 
 const IN_SESSIONS = "session_id IN (SELECT value FROM json_each(@ids))";
 
@@ -93,33 +94,44 @@ function nullableNum(row: Row | undefined, key: string): number | null {
   return typeof value === "number" ? value : null;
 }
 
-// A sidechain's context is its subagent's window, not the session's.
-const MAIN_THREAD = `${IN_SESSIONS} AND is_sidechain = 0`;
-
-/** The largest main-thread context across the sessions, or null when they have no requests. */
-export function readPeakContext(db: Db, sessionIds: readonly string[]): number | null {
-  const rows = db.prepare(`SELECT MAX(context_tokens) AS peak FROM request_cost WHERE ${MAIN_THREAD}`).all({ ids: JSON.stringify(sessionIds) });
-  return nullableNum(asRows(rows)[0], "peak");
+/** Main-thread context facts of one session; a sidechain's context is its subagent's window, not the session's. */
+export interface SessionContextFacts {
+  /** Largest main-thread context, or null when the session has no main-thread request. */
+  peak: number | null;
+  /** The session's earliest deliverable signal, with the context of its first main-thread request at or after it. */
+  firstDeliverable: { ts: string; offset: number; context: number | null } | null;
 }
 
 /** The first deliverable is the first DONE report or `gh pr create` (TP-2150 §7). */
 const FIRST_DELIVERABLE_SIGNALS = "('status_report', 'pr_create')";
 
+const FIRST_DELIVERABLE_SQL = `WITH ranked AS (
+    SELECT session_id, ts, byte_offset, ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY ts, byte_offset) AS rn
+    FROM session_signal WHERE ${IN_SESSIONS} AND signal IN ${FIRST_DELIVERABLE_SIGNALS})
+  SELECT f.session_id AS sessionId, f.ts AS ts, f.byte_offset AS offset,
+    (SELECT r.context_tokens FROM request r WHERE r.session_id = f.session_id AND r.is_sidechain = 0
+       AND r.ts >= f.ts AND ${FIRST_COPY} ORDER BY r.ts LIMIT 1) AS context
+  FROM ranked f WHERE rn = 1`;
+
 /**
- * Context of the first main-thread request at or after the earliest deliverable signal across the
- * sessions, in that signal's session; null when there is no such signal or request.
+ * Reads `request` through `FIRST_COPY`, not the `request_cost` view: the view's windows cannot take
+ * the session filter, so each read ranked every request in the graph (TP-2568).
  */
-export function readContextAtFirstDeliverable(db: Db, sessionIds: readonly string[]): number | null {
-  const rows = db
+export function readSessionContextFacts(db: Db, sessionIds: readonly string[]): Map<string, SessionContextFacts> {
+  const ids = JSON.stringify([...new Set(sessionIds)]);
+  const facts = new Map<string, SessionContextFacts>();
+  const factsOf = (sessionId: string) => facts.get(sessionId) ?? facts.set(sessionId, { peak: null, firstDeliverable: null }).get(sessionId)!;
+  const peaks = db
     .prepare(
-      `WITH first AS (
-         SELECT session_id, ts FROM session_signal WHERE ${IN_SESSIONS} AND signal IN ${FIRST_DELIVERABLE_SIGNALS}
-         ORDER BY ts, byte_offset LIMIT 1)
-       SELECT r.context_tokens AS context FROM request_cost r JOIN first f ON r.session_id = f.session_id
-       WHERE r.is_sidechain = 0 AND r.ts >= f.ts ORDER BY r.ts LIMIT 1`,
+      `SELECT r.session_id AS sessionId, MAX(r.context_tokens) AS peak FROM request r
+       WHERE r.${IN_SESSIONS} AND r.is_sidechain = 0 AND ${FIRST_COPY} GROUP BY r.session_id`,
     )
-    .all({ ids: JSON.stringify(sessionIds) });
-  return nullableNum(asRows(rows)[0], "context");
+    .all({ ids });
+  for (const row of asRows(peaks)) factsOf(text(row, "sessionId")).peak = nullableNum(row, "peak");
+  for (const row of asRows(db.prepare(FIRST_DELIVERABLE_SQL).all({ ids }))) {
+    factsOf(text(row, "sessionId")).firstDeliverable = { ts: text(row, "ts"), offset: num(row, "offset"), context: nullableNum(row, "context") };
+  }
+  return facts;
 }
 
 interface SessionPr {

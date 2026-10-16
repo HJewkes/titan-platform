@@ -7,6 +7,7 @@
  * `recommended` keeps only `true`.
  * @license Apache-2.0
  */
+import { isAnchorForm, verifyAnchorText, type AnchorPins, type RevisionSource } from "@titan-design/evidence";
 import { GateBriefInvalid, type GateQuestion, type GateQuestionOption } from "./types.js";
 
 const MAX_SUMMARY = 280;
@@ -29,16 +30,24 @@ export interface GateBriefSnapshot {
   questions: GateQuestion[] | undefined;
 }
 
+/** The pinned commits and their file text, against which an anchor-form evidenceRef is checked. */
+interface BriefAnchorCheck {
+  pins: AnchorPins;
+  source: RevisionSource;
+}
+
 /**
  * Checks the brief fields and returns a copy holding only the declared ones, so a caller
  * cannot change the stored questions after `create`. `required` makes `summary` and `evidenceRef` mandatory; without it they are still checked when present.
+ * With `anchors`, an evidenceRef written as an anchor (`head/<path>#L10-L20`) must hold at its pinned commit; free text stays legal.
  */
-export function snapshotBrief(gateId: string, raw: unknown, required: boolean): Readonly<GateBriefSnapshot> {
+export function snapshotBrief(gateId: string, raw: unknown, required: boolean, anchors?: BriefAnchorCheck): Readonly<GateBriefSnapshot> {
   const { summary, evidenceRef, questions } = (raw ?? {}) as Record<string, unknown>;
   const issues = [
     ...lineIssues("summary", summary, MAX_SUMMARY, required),
     ...lineIssues("evidenceRef", evidenceRef, MAX_EVIDENCE_REF, required),
   ];
+  if (anchors) issues.push(...anchorIssues(evidenceRef, anchors));
   const questionIssue = questions === undefined ? undefined : questionsIssue(questions);
   if (questionIssue) issues.push(questionIssue);
   if (issues.length > 0) throw new GateBriefInvalid(gateId, issues);
@@ -56,6 +65,12 @@ function lineIssues(field: string, value: unknown, max: number, required: boolea
   if (value.length > max) return [`${field} is over ${max} characters`];
   if (CONTROL_CHAR.test(value)) return [`${field} must be one line with no control characters`];
   return [];
+}
+
+function anchorIssues(evidenceRef: unknown, { pins, source }: BriefAnchorCheck): string[] {
+  if (typeof evidenceRef !== "string" || !isAnchorForm(evidenceRef)) return [];
+  const check = verifyAnchorText(evidenceRef, pins, source);
+  return check.ok ? [] : [`evidenceRef ${check.detail}`];
 }
 
 function questionsIssue(value: unknown): string | undefined {
