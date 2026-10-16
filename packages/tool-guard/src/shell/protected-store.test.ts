@@ -160,6 +160,8 @@ describe("the hooked-parameter reader on the writers added with the name set", (
     "comparguments -O PS4",
     "compadd -o -A PS4 a",
     "exec {PS4}>|f",
+    "exec {PS4[0]}>|f",
+    "exec {PS4} >|f",
   ])("reads %s as a PS4 write", (line) => {
     expect(hookedWrite(line)).toBe("PS4");
   });

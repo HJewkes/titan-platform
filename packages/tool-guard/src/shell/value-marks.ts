@@ -64,8 +64,13 @@ export function noteTyped(marks: ValueMarks, text: string): void {
   marks.bracket ||= bracket >= 0;
 }
 
-/** A heredoc body or here-string is text a `read` or `mapfile` may store; an unquoted body expands its own `$(( ))`. */
+/**
+ * A heredoc body or here-string is text a `read` or `mapfile` may store; an unquoted body expands its own `$(( ))`.
+ * `{b[i]}>f` stores the new descriptor in the element, so bash evaluates its subscript.
+ */
 export function noteRedirect(marks: ValueMarks, redirect: RedirectToken): void {
+  if (redirect.named !== undefined) noteTyped(marks, redirect.named);
+  marks.arithmetic ||= redirect.named?.includes("[") === true;
   noteTyped(marks, redirect.body ?? redirect.target?.value ?? "");
   const literal = redirect.target?.quoted === true || redirect.target?.spliced === true;
   if (redirect.body !== null && !literal) marks.arithmetic ||= /\$\(\(|\$\[/.test(redirect.body);

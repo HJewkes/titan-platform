@@ -8,7 +8,6 @@ const FD_PATH_RE = /\/(?:dev\/(stdin|stdout|stderr)|(?:dev|proc\/(?:self|thread-
 /** Ops that can put text on a descriptor; `>&` is a dup like `<&`, since dup2 has no direction (`0>&3` reads fd 3). */
 const STDIN_OPS = new Set(["<", "<>", "<<", "<<-", "<<<", "<&", ">&"]);
 /** bash's and zsh's `{name}<f` opens the first free descriptor from 10 up, a number the line does not show. */
-const NAMED_REDIRECT_FD_RE = /^\{[A-Za-z_]\w*\}$/;
 const FIRST_NAMED_FD = 10;
 
 /** One source on the descriptor a shell runs: heredoc, here-string or `< <(...)` text, a file `<` or `<>` opens, or the pipe. */
@@ -155,6 +154,8 @@ function setsShLetters(name: string, on: boolean): boolean | null {
  * The one answer to what a shell runs from stdin or another descriptor, for every consumer. A script operand only
  * known at run time may name stdin, so its stdin runs too. zsh's MULTIOS joins every source opened on a descriptor,
  * the pipe included, so all of them are read; under bash or dash, where the last one wins, that only over-reads.
+ * A `{name}` redirect makes the whole shell unknowable: dash, and bash a space apart, keep `{name}` as a word, which
+ * may be the script, the `-c` string, or what shifts either.
  */
 export function shellStdin(
   { hasC, positional, readsStdin }: ShellOperands,
@@ -166,7 +167,7 @@ export function shellStdin(
   const fd = file === null ? null : pathFd(file.value);
   const runs = readsStdin || fd !== null || (file !== null && (file.dynamic || file.computed));
   const feeds = feedsOf(redirects, piped, inherited)(fd ?? 0, redirects.length);
-  return { runs, fd: fd ?? 0, scriptFile: fd === null ? file : null, sources: sourcesOf(feeds), unknowable: runs && feeds.unknown };
+  return { runs, fd: fd ?? 0, scriptFile: fd === null ? file : null, sources: sourcesOf(feeds), unknowable: (runs && feeds.unknown) || redirects.some((r) => r.named !== undefined) };
 }
 
 /**
@@ -226,7 +227,7 @@ function sourcesOf({ redirects, pipe, texts }: Feeds): StdinSource[] {
  * What feeds descriptor `fd` from the first `end` redirects, read left to right as the shells open them: stdin starts
  * on the pipe, and a descriptor no redirect opens holds what it inherited. A dup or a target naming a descriptor
  * (`<&3`, `< /dev/fd/3`, `< /dev/stdin`) feeds what that descriptor held just before it, so `< /dev/stdin` keeps the pipe.
- * A `{name}` redirect may have opened any descriptor from 10 up.
+ * A `{name}` redirect feeds the descriptor dash opens, and may have opened any from 10 up, as bash and zsh do.
  */
 function feedsOf(redirects: RedirectToken[], piped: boolean, inherited: Descriptors): (fd: number, end: number) => Feeds {
   const memo = new Map<string, Feeds>();
@@ -237,9 +238,8 @@ function feedsOf(redirects: RedirectToken[], piped: boolean, inherited: Descript
     const out: Feeds = { redirects: new Set(), pipe: fd === 0 && piped, texts: [], unknown: false };
     let opened = out.pipe;
     redirects.slice(0, end).forEach((r, i) => {
-      const into = redirectFd(r);
-      if (into === null) out.unknown ||= fd >= FIRST_NAMED_FD;
-      if (into !== fd || !STDIN_OPS.has(r.op)) return;
+      if (r.named !== undefined) out.unknown ||= fd >= FIRST_NAMED_FD;
+      if (Number(r.fd ?? (r.op.startsWith(">") ? "1" : "0")) !== fd || !STDIN_OPS.has(r.op)) return;
       opened = true;
       join(out, redirectFeeds(r, (named) => feeds(named, i)));
     });
@@ -248,12 +248,6 @@ function feedsOf(redirects: RedirectToken[], piped: boolean, inherited: Descript
     return out;
   };
   return feeds;
-}
-
-/** The descriptor a redirect opens, or null for a `{name}` one, whose number the shell picks. */
-function redirectFd(r: RedirectToken): number | null {
-  if (r.fd !== null && NAMED_REDIRECT_FD_RE.test(r.fd)) return null;
-  return Number(r.fd ?? (r.op.startsWith(">") ? "1" : "0"));
 }
 
 /** What one redirect feeds: its text or file, or, through `before`, what the descriptor it dups or names held. */

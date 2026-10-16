@@ -1,7 +1,7 @@
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, spent } from "./arith-trials.js";
 import { balancedEnd, type DollarOpener, dollarOpener, QUOTED_LITERAL_OPENERS, refuseValueRun } from "./balanced.js";
 import { dropJoins, joinedDollar, nextAfter, pastJoins, readAhead } from "./joins.js";
-import { inOpenCase, newRegexScan, noteParen, refuseRedirect } from "./compound.js";
+import { inConditional, inOpenCase, newRegexScan, noteParen, refuseRedirect } from "./compound.js";
 import { nested } from "./nesting.js";
 import { ParseError, refusingAs } from "./parse-error.js";
 import { arithmeticExpansionEnd, lineReading, nestedReaders, scanBacktick } from "./nested-reading.js";
@@ -293,8 +293,8 @@ function skipComment(s: LexState): void {
 function readRedirect(s: LexState): void {
   const w = s.word;
   let fd: string | null = null;
-  // bash's and zsh's `{name}<f` opens a descriptor from 10 up and stores its number in `name`; dash reads a word.
-  if (w && !w.quoted && !w.dynamic && (/^\d+$/.test(w.value) || (!w.spliced && /^\{[A-Za-z_]\w*\}$/.test(w.value)))) {
+  const named = takeNamedFdWord(s);
+  if (named === null && w &&!w.quoted && !w.dynamic && /^\d+$/.test(w.value)) {
     fd = w.value;
     s.word = null;
   } else endWord(s);
@@ -309,7 +309,32 @@ function readRedirect(s: LexState): void {
   }
   refuseRedirect(s, op);
   const heredoc = op === "<<" || op === "<<-";
-  const token: RedirectToken = { type: "redirect", op, fd, target: null, body: heredoc ? "" : null, subs: [] };
+  const token: RedirectToken = { type: "redirect", op, fd, target: null, body: heredoc ? "" : null, subs: [], ...(named ? { named: named.value } : {}) };
   s.tokens.push(token);
   s.redirect = { token, stripTabs: op === "<<-" };
+}
+
+/** bash's `{name}` or `{name[i]}`, and zsh's `{name}`, before a redirect: the shell stores the fd it opens there. */
+export const NAMED_FD_RE = /^\{([A-Za-z_]\w*)(\[.*\])?\}$/;
+
+/**
+ * The `{name}` word bash and zsh read as a named descriptor: glued to the operator, or for zsh a space before it, plain.
+ * Dash, and bash a space apart, keep it a word; the redirect's `named` lets the stdin model refuse what that changes.
+ */
+function takeNamedFdWord(s: LexState): WordToken | null {
+  if (s.redirect || s.i < s.arithEnd) return null;
+  const last = s.tokens.at(-1);
+  const glued = s.word !== null;
+  const w = s.word ?? (last?.type === "word" ? last : null);
+  const match = w && !w.quoted && !w.spliced ? NAMED_FD_RE.exec(w.value) : null;
+  if (!w || !match || (!glued && match[2] !== undefined)) return null;
+  // Popped before the scan, so a `[[ {a} < b ]]` comparison word is scanned once, after it goes back.
+  if (!glued) s.tokens.pop();
+  if (inConditional(s)) {
+    if (!glued) s.tokens.push(w);
+    return null;
+  }
+  if (w.dynamic || w.subs.length > 0) throw new ParseError("a {name[…]} descriptor with an expansion is read only at run time");
+  s.word = null;
+  return w;
 }

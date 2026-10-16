@@ -65,8 +65,9 @@ interface SubsToken {
 interface RedirectToken {
     type: "redirect";
     op: string;
-    /** The digits before the operator, or a `{name}` whose number the shell picks; null when there are none. */
     fd: string | null;
+    /** A `{name}` before the operator, which bash and zsh read as a descriptor from 10 up and dash as a word. */
+    named?: string;
     target: WordToken | null;
     body: string | null;
     /** Command substitutions in an unquoted heredoc body, which the shell runs before the command. */
