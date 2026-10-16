@@ -20,6 +20,17 @@ The lists come from `git ls-files`, and fixtures and test data are listed too.
 - `fate: "survives"`: the file survives as a step body of `task`; `reason` says why.
 - `fate: "kept"`: `reason` says why. A reason starting `unclear:` is a question for the owner; no D-id was guessed.
 
+## Directory defaults
+
+An optional top-level `defaults` array carries rung defaults: `{ repo, path, fate, task?, milestone?, reason? }` with the
+same fate rules as an entry, where `path` is a directory under a root. A file under that directory with no entry of its own is
+not reported as unmapped, so a branch cut before a file's entry existed does not lose a validate round to the TP-3180 rule.
+Files under a directory with no default still fail as unmapped. Existing entries keep their meaning; a default only covers
+files no entry maps. The manifest carries no defaults yet; tp-operator adds them as content under TP-3180 b.
+
+Chosen over exempting PRs whose merge-base predates the manifest (option B) because it needs no git history in the check
+(CI checkouts can be shallow), keeps the rule for every branch, and fits the schema as one optional array.
+
 Test files take the fate of the file they test.
 
 ## Compensators

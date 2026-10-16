@@ -48,6 +48,27 @@ export function exitedMilestones(milestones) {
   return new Set(milestones.milestones.filter((m) => m.exited).map((m) => m.id));
 }
 
+/** Whether a directory-level default (`manifest.defaults`) covers a file no entry maps, so a new file inherits its rung. */
+function hasDefault(manifest, repo, file) {
+  return (manifest.defaults ?? []).some((rule) => rule.repo === repo && file.startsWith(`${rule.path}/`));
+}
+
+function orphanProblems(manifest) {
+  return manifest.entries
+    .filter((entry) => !manifest.roots.some((root) => root.repo === entry.repo && entry.path.startsWith(`${root.path}/`)))
+    .map((entry) => `${entry.repo}:${entry.path}: under no root`);
+}
+
+function defaultProblems(manifest) {
+  const problems = [];
+  for (const rule of manifest.defaults ?? []) {
+    const problem = entryProblem(rule);
+    if (problem) problems.push(`default ${problem}`);
+    if (!manifest.roots.some((root) => root.repo === rule.repo && (rule.path === root.path || rule.path.startsWith(`${root.path}/`)))) problems.push(`${rule.repo}:${rule.path}: default under no root`);
+  }
+  return problems;
+}
+
 /**
  * Problems between the manifest and the listings: `listings` maps "<repo>:<root path>" to the files git lists there,
  * or leaves a repo's roots out when its checkout is not available.
@@ -75,16 +96,14 @@ export function classifyManifest(manifest, listings, exited = new Set()) {
       const rung = milestoneOf(entry.task);
       if (entry.fate === "delete" && entry.repo === repo && listed.includes(entry.path) && exited.has(rung)) add("overdue", `${repo}:${entry.path}: still exists but ${entry.task} was due at the exit of ${rung}`);
     }
-    for (const file of listed) if (!seen.has(`${repo}:${file}`)) add("drift", `${repo}:${file}: unmapped`);
+    for (const file of listed) if (!seen.has(`${repo}:${file}`) && !hasDefault(manifest, repo, file)) add("drift", `${repo}:${file}: unmapped`);
     const present = new Set(listed.map((file) => `${repo}:${file}`));
     for (const entry of manifest.entries) {
       const key = `${entry.repo}:${entry.path}`;
       if (entry.repo === repo && entry.path.startsWith(`${path}/`) && !present.has(key)) add("drift", `${key}: mapped but not in git`);
     }
   }
-  for (const entry of manifest.entries) {
-    if (!manifest.roots.some((root) => root.repo === entry.repo && entry.path.startsWith(`${root.path}/`))) add("shape", `${entry.repo}:${entry.path}: under no root`);
-  }
+  for (const text of [...defaultProblems(manifest), ...orphanProblems(manifest)]) add("shape", text);
   return problems;
 }
 
