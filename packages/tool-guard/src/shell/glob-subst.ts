@@ -1,28 +1,30 @@
 import type { WordToken } from "./lexer.js";
-import { argv0Values } from "./argv0.js";
 import type { Unwrapped } from "./unwrap.js";
 
 /**
  * Whether a command names zsh's GLOB_SUBST, under which a later unquoted `$x` holding `*(e:CODE:)` runs CODE as a glob
  * qualifier. Both polarities and every spelling zsh accepts count, as does any option-name word only known at run
- * time, so the reading fails closed: `unsetopt noglobsubst` names it and `setopt $o` may. A command word that is
- * dynamic or may expand is read as each of the commands that take option names, and refuses when any of its arguments
- * is unknowable. Stores into `options` and shell text run elsewhere are other readers' work.
+ * time, so the reading fails closed: `unsetopt noglobsubst` names it and `setopt $o` may.
+ *
+ * A command word that is dynamic or may expand reads true whatever follows it: it may become a program and its
+ * arguments too, as `''{setopt,globsubst}`, `$(echo setopt globsubst)` and an array `$a` do. So may an argv0 that
+ * is dynamic or may expand, which can shift the program `exec -a` runs. Stores into `options` and shell text run
+ * elsewhere are other readers' work.
  */
 export function namesGlobSubstOption(cmd: Unwrapped): boolean {
-  const unknownProgram = cmd.name === null || (cmd.path !== null && mayExpand(cmd.path));
-  const runsZsh = unknownProgram || cmd.script !== undefined || cmd.name === "zsh" || cmd.name === "rzsh";
+  if (cmd.name === null || cmd.path === null || mayExpand(cmd.path)) return true;
+  if (cmd.argv0?.some((name) => name === null || mayExpand(name))) return true;
+  const runsZsh = cmd.script !== undefined || cmd.name === "zsh" || cmd.name === "rzsh";
   if (runsZsh && cmd.argv0?.some(argv0Emulates)) return true;
-  if (cmd.name === null) return dynamicCommand(cmd.args.slice(1));
-  if (unknownProgram) return dynamicCommand(cmd.args);
   const check = Object.hasOwn(ENABLERS, cmd.name) ? ENABLERS[cmd.name] : undefined;
   return check?.(cmd.args) ?? false;
 }
 
 /** Characters brace expansion or filename generation reads, extendedglob's `^`, `#` and `~` included;
  * a leading `~` is tilde expansion instead, safe only bare or as `~/`, since `~name` and `~1` read a named dir or
- * the dirstack. A split quote may leave any of them unquoted. */
-const PATTERN_RE = /[{*?[^#]|.~|^~(?!\/|$)/s;
+ * the dirstack. A `$` the lexer left literal is zsh's `$=x`, `$~x` or `$^x`. A split quote may leave any of them
+ * unquoted. */
+const PATTERN_RE = /[{*?[^#$]|.~|^~(?!\/|$)/s;
 
 const ENABLERS: Record<string, (args: WordToken[]) => boolean> = {
   setopt: setoptEnables,
@@ -40,7 +42,7 @@ function mayExpand(path: string): boolean {
 
 /** zsh started as `sh`, `-ksh` or `/bin/rksh` emulates that shell, read like an `emulate` mode, so GLOB_SUBST is on. */
 function argv0Emulates(name: string | null): boolean {
-  return name === null || EMULATION_RE.test(name.replace(/^.*\//s, "").replace(/^-/, ""));
+  return name !== null && EMULATION_RE.test(name.replace(/^.*\//s, "").replace(/^-/, ""));
 }
 
 /** zsh ignores case, `_` and `-` in an option name, and each leading `no` flips it. */
@@ -164,13 +166,3 @@ function zshEnables(args: WordToken[]): boolean {
  * and `ksh93` count, while `foo` and `rzsh` run as zsh (zsh 5.9).
  */
 const EMULATION_RE = /^r?[cksb]/;
-
-/**
- * A command word only known at run time, or one brace expansion or a glob may rewrite (`s{etopt,}`), may stand for any
- * ENABLERS entry, or for `exec` or `env` with an argv0 option, so the words after it are held to all of their checks at once, a superset of what a literal `zsh`,
- * `setopt`, `set` or `emulate` gets; the caller has already read its argv0.
- */
-function dynamicCommand(rest: WordToken[]): boolean {
-  const emulating = ["exec", "env"].some((wrapper) => argv0Values(wrapper, rest).some(argv0Emulates));
-  return emulating || rest.some(unknowable) || Object.values(ENABLERS).some((check) => check(rest));
-}
