@@ -1,0 +1,3850 @@
+{
+ "_source": {
+  "task": "TP-3034 S3",
+  "data": "synthetic: wav2vec2 lv-60 decodes of Kokoro renders of constructed names (fresh-pairs.json); no audio",
+  "note": "Raw decodes, space-separated tokens, uncleaned. kokoroPhonemes are the phones misaki gave the renderer for the whole text.",
+  "generator": "field-by-field copy of the render kit's recognition log, described in src/fixtures/README.md"
+ },
+ "trials": [
+  {
+   "pair": "fp01",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "vˈAlən."
+   ],
+   "decode": "v eː l ə n"
+  },
+  {
+   "pair": "fp01",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz vˈAlən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z v eɪ l ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp01",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "vˈAlən."
+   ],
+   "decode": "v eɪ l ə n"
+  },
+  {
+   "pair": "fp01",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz vˈAlən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z v eɪ l ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp01",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "vˈIlən."
+   ],
+   "decode": "v aɪ l ə n"
+  },
+  {
+   "pair": "fp01",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz vˈIlən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z v aɪ l ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp01",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "vˈIlən."
+   ],
+   "decode": "v aɪ l ɪ n"
+  },
+  {
+   "pair": "fp01",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz vˈIlən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z v aɪ l ə n t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp02",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "pəlˈAn."
+   ],
+   "decode": "p ə l eɪ n"
+  },
+  {
+   "pair": "fp02",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz pəlˈAn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z p ə l eɪ n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp02",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "pəlˈAn."
+   ],
+   "decode": "p ɔ l eɪ n"
+  },
+  {
+   "pair": "fp02",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz pəlˈAn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z p ə l eɪ n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp02",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "pəlˈIn."
+   ],
+   "decode": "p ə l aɪ n"
+  },
+  {
+   "pair": "fp02",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz pəlˈIn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z p ə l aɪ n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp02",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "pəlˈIn."
+   ],
+   "decode": "p ə l aɪ n"
+  },
+  {
+   "pair": "fp02",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz pəlˈIn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z p ə l aɪ n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp03",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "zˈAdən."
+   ],
+   "decode": "z eː d ə n"
+  },
+  {
+   "pair": "fp03",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz zˈAdən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z z eɪ d ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp03",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "zˈAdən."
+   ],
+   "decode": "z eɪ d ə n"
+  },
+  {
+   "pair": "fp03",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz zˈAdən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z z eɪ d ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp03",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "zˈIdən."
+   ],
+   "decode": "z aɪ d ə n"
+  },
+  {
+   "pair": "fp03",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz zˈIdən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z z aɪ d ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp03",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "zˈIdən."
+   ],
+   "decode": "z aɪ d ɪ n"
+  },
+  {
+   "pair": "fp03",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz zˈIdən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z z aɪ d ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp04",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "bɹˈAvɪk."
+   ],
+   "decode": "b ɹ eɪ v ɪ k"
+  },
+  {
+   "pair": "fp04",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz bɹˈAvɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z b ɹ eɪ v ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp04",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "bɹˈAvɪk."
+   ],
+   "decode": "b ɹ eɪ v ɪ k"
+  },
+  {
+   "pair": "fp04",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz bɹˈAvɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z b ɹ eɪ v ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp04",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "bɹˈIvɪk."
+   ],
+   "decode": "b ɹ aɪ v ɪ k"
+  },
+  {
+   "pair": "fp04",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz bɹˈIvɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z b ɹ aɪ v ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp04",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "bɹˈIvɪk."
+   ],
+   "decode": "b ɹ aɪ v ɪ k"
+  },
+  {
+   "pair": "fp04",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz bɹˈIvɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z b ɹ aɪ v ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp05",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "mˈAtɹəl."
+   ],
+   "decode": "m eɪ t ɹ ə l"
+  },
+  {
+   "pair": "fp05",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz mˈAtɹəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z m eɪ t ɹ əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp05",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "mˈAtɹəl."
+   ],
+   "decode": "m eɪ t ɹ əl"
+  },
+  {
+   "pair": "fp05",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz mˈAtɹəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z m eɪ tʃ ɹ əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp05",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "mˈItɹəl."
+   ],
+   "decode": "m aɪ t ɹ ə l"
+  },
+  {
+   "pair": "fp05",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz mˈItɹəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z m aɪ t ɹ əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp05",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "mˈItɹəl."
+   ],
+   "decode": "m aɪ t ɹ oʊ"
+  },
+  {
+   "pair": "fp05",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz mˈItɹəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z m aɪ t ɹ əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp06",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "kˈAbɹɪs."
+   ],
+   "decode": "k eɪ b ɹ ɪ s"
+  },
+  {
+   "pair": "fp06",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz kˈAbɹɪs, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z k eɪ b ɹ ə s ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp06",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "kˈAbɹɪs."
+   ],
+   "decode": "k eɪ b ɹ ɪ s"
+  },
+  {
+   "pair": "fp06",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz kˈAbɹɪs, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z k eɪ b ɹ ə s ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp06",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "kˈIbɹɪs."
+   ],
+   "decode": "k aɪ b ɹ ɪ s"
+  },
+  {
+   "pair": "fp06",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz kˈIbɹɪs, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z k aɪ b ɹ ə s ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp06",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "kˈIbɹɪs."
+   ],
+   "decode": "k aɪ b ɹ ɪ s"
+  },
+  {
+   "pair": "fp06",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz kˈIbɹɪs, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z k aɪ b ɹ ə s ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp07",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "lˈAsəm."
+   ],
+   "decode": "l eː s a m"
+  },
+  {
+   "pair": "fp07",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz lˈAsəm, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z l eɪ s ə m ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp07",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "lˈAsəm."
+   ],
+   "decode": "l eɪ s ʌ m"
+  },
+  {
+   "pair": "fp07",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz lˈAsəm, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z l eɪ s ə m ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp07",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "lˈIsəm."
+   ],
+   "decode": "l aɪ s ə m"
+  },
+  {
+   "pair": "fp07",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz lˈIsəm, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z l aɪ s ə m ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp07",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "lˈIsəm."
+   ],
+   "decode": "l aɪ s ə m"
+  },
+  {
+   "pair": "fp07",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz lˈIsəm, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z l aɪ s ə m ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp08",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "fˈAmɪʃ."
+   ],
+   "decode": "v eː m ɛ ʃ"
+  },
+  {
+   "pair": "fp08",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz fˈAmɪʃ, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z f eɪ m ɪ ʃ ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp08",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "fˈAmɪʃ."
+   ],
+   "decode": "v eɪ m ɛ ʃ ʊ"
+  },
+  {
+   "pair": "fp08",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz fˈAmɪʃ, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z f eɪ m ə ʃ ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp08",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "fˈImɪʃ."
+   ],
+   "decode": "v aɪ m ɛ ʃ"
+  },
+  {
+   "pair": "fp08",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz fˈImɪʃ, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z f aɪ m ɪ ʃ ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp08",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "fˈImɪʃ."
+   ],
+   "decode": "v aɪ m e ʃ ɨ"
+  },
+  {
+   "pair": "fp08",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz fˈImɪʃ, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z f aɪ m ɪ ʃ ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp09",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ɡɹˈAlən."
+   ],
+   "decode": "ɡ ɹ eɪ l ə n"
+  },
+  {
+   "pair": "fp09",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ɡɹˈAlən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z ɡ ɹ eɪ l ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp09",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ɡɹˈAlən."
+   ],
+   "decode": "ɡ ɹ eɪ l ə n"
+  },
+  {
+   "pair": "fp09",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ɡɹˈAlən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z ɡ ɹ eɪ l ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp09",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ɡɹˈIlən."
+   ],
+   "decode": "ɡ ɹ aɪ l ə n"
+  },
+  {
+   "pair": "fp09",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ɡɹˈIlən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z ɡ ɹ aɪ l ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp09",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ɡɹˈIlən."
+   ],
+   "decode": "ɡ ɹ aɪ l ə m"
+  },
+  {
+   "pair": "fp09",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ɡɹˈIlən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z ɡ ɹ aɪ l ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp10",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "hˈAvət."
+   ],
+   "decode": "h eː v ɛ t"
+  },
+  {
+   "pair": "fp10",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz hˈAvət, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z h eɪ v ɪ t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp10",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "hˈAvət."
+   ],
+   "decode": "h eɪ v ɪ d"
+  },
+  {
+   "pair": "fp10",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz hˈAvət, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z h eɪ v ᵻ d ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp10",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "hˈIvət."
+   ],
+   "decode": "h aɪ v ɪ t"
+  },
+  {
+   "pair": "fp10",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz hˈIvət, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z h aɪ v ɪ t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp10",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "hˈIvət."
+   ],
+   "decode": "h aɪ v ɪ d"
+  },
+  {
+   "pair": "fp10",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz hˈIvət, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z h aɪ v ɪ t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp11",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "dˈOvɹɪn."
+   ],
+   "decode": "dʒ oː v ɹ ɪ n"
+  },
+  {
+   "pair": "fp11",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz dˈOvɹɪn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z d oʊ v ɹ ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp11",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "dˈOvɹɪn."
+   ],
+   "decode": "d oː v ɹ ɪ n"
+  },
+  {
+   "pair": "fp11",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz dˈOvɹɪn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z d oʊ v ɹ ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp11",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "dˈWvɹɪn."
+   ],
+   "decode": "d aʊ v ɹ ɪ n"
+  },
+  {
+   "pair": "fp11",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz dˈWvɹɪn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z d aʊ v ɹ ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp11",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "dˈWvɹɪn."
+   ],
+   "decode": "d aʊ v ɹ ɪ n"
+  },
+  {
+   "pair": "fp11",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz dˈWvɹɪn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z d aʊ v ɹ ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp12",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "mˈOlvəst."
+   ],
+   "decode": "m oː l v ɪ s t"
+  },
+  {
+   "pair": "fp12",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz mˈOlvəst, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z m oʊ l v ɪ s t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp12",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "mˈOlvəst."
+   ],
+   "decode": "m aʊ l v ɪ s t"
+  },
+  {
+   "pair": "fp12",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz mˈOlvəst, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z m oʊ l v ɪ s t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp12",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "mˈWlvəst."
+   ],
+   "decode": "m aʊ l v ɪ s t"
+  },
+  {
+   "pair": "fp12",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz mˈWlvəst, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z m aʊ l v ɪ s t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp12",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "mˈWlvəst."
+   ],
+   "decode": "m aʊ l v ɪ s t"
+  },
+  {
+   "pair": "fp12",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz mˈWlvəst, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z m aʊ v ɪ s t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp13",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "bɹˈOskət."
+   ],
+   "decode": "b ɹ oʊ s ɡ ɛ t"
+  },
+  {
+   "pair": "fp13",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz bɹˈOskət, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z b ɹ oʊ s k ɪ t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp13",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "bɹˈOskət."
+   ],
+   "decode": "b ɹ oʊ s k ɪ n"
+  },
+  {
+   "pair": "fp13",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz bɹˈOskət, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z b ɹ oʊ s k ɪ t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp13",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "bɹˈWskət."
+   ],
+   "decode": "b ɹ aʊ s ɡ ɛ t"
+  },
+  {
+   "pair": "fp13",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz bɹˈWskət, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z b ɹ aʊ s k ɪ t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp13",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "bɹˈWskət."
+   ],
+   "decode": "b ɹ aʊ s k ɪ n"
+  },
+  {
+   "pair": "fp13",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz bɹˈWskət, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z b ɹ aʊ s k ɪ t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp14",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "tˈOvən."
+   ],
+   "decode": "t oː v ə n"
+  },
+  {
+   "pair": "fp14",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz tˈOvən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z t oʊ v ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp14",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "tˈOvən."
+   ],
+   "decode": "t oː v ɪ n"
+  },
+  {
+   "pair": "fp14",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz tˈOvən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z t oʊ v ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp14",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "tˈWvən."
+   ],
+   "decode": "t ɑː l v ɪ n"
+  },
+  {
+   "pair": "fp14",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz tˈWvən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z t aʊ l v ɪ n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp14",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "tˈWvən."
+   ],
+   "decode": "t aʊ v ɪ n"
+  },
+  {
+   "pair": "fp14",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz tˈWvən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z t aʊ v ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp15",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ɡɹˈOmbi."
+   ],
+   "decode": "ɡ ɹ aʊ n b i"
+  },
+  {
+   "pair": "fp15",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ɡɹˈOmbi, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z ɡ ɹ oʊ m b i ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp15",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ɡɹˈOmbi."
+   ],
+   "decode": "ɡ ɹ ɔ m b i"
+  },
+  {
+   "pair": "fp15",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ɡɹˈOmbi, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z ɡ ɹ oʊ m b i ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp15",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ɡɹˈWmbi."
+   ],
+   "decode": "ɡ ɹ aʊ n b i"
+  },
+  {
+   "pair": "fp15",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ɡɹˈWmbi, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z ɡ ɹ aʊ n b i ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp15",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ɡɹˈWmbi."
+   ],
+   "decode": "ɡ ɹ aʊ n b i"
+  },
+  {
+   "pair": "fp15",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ɡɹˈWmbi, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z ɡ ɹ aʊ n b i ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp16",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "zˈOnɪk."
+   ],
+   "decode": "z ɔ n ɛ k"
+  },
+  {
+   "pair": "fp16",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz zˈOnɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z z oʊ n ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp16",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "zˈOnɪk."
+   ],
+   "decode": "z ɔ n ɛ k"
+  },
+  {
+   "pair": "fp16",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz zˈOnɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z z oʊ n ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp16",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "zˈWnɪk."
+   ],
+   "decode": "z aʊ n ɪ k"
+  },
+  {
+   "pair": "fp16",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz zˈWnɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z z aʊ n ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp16",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "zˈWnɪk."
+   ],
+   "decode": "z aʊ n ɪ k"
+  },
+  {
+   "pair": "fp16",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz zˈWnɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z z aʊ n ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp17",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "hˈYlən."
+   ],
+   "decode": "h ɔɨ l ə n"
+  },
+  {
+   "pair": "fp17",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz hˈYlən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z h oɪ l ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp17",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "hˈYlən."
+   ],
+   "decode": "h ɔɨ l ɪ m"
+  },
+  {
+   "pair": "fp17",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz hˈYlən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z h oɪ l ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp17",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "hˈIlən."
+   ],
+   "decode": "h aɪ l ə n"
+  },
+  {
+   "pair": "fp17",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz hˈIlən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z h aɪ l ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp17",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "hˈIlən."
+   ],
+   "decode": "h aɪ l ə m"
+  },
+  {
+   "pair": "fp17",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz hˈIlən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z h aɪ l ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp18",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "dˈYməs."
+   ],
+   "decode": "d o m ɛ s"
+  },
+  {
+   "pair": "fp18",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz dˈYməs, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z d oːɹ m ə s ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp18",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "dˈYməs."
+   ],
+   "decode": "d o m ɪ s"
+  },
+  {
+   "pair": "fp18",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz dˈYməs, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z d oːɹ m ə s ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp18",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "dˈIməs."
+   ],
+   "decode": "d aɪ m ɛ s"
+  },
+  {
+   "pair": "fp18",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz dˈIməs, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z d aɪ m ə s ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp18",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "dˈIməs."
+   ],
+   "decode": "d aɪ m ɪ s"
+  },
+  {
+   "pair": "fp18",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz dˈIməs, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z d aɪ m ə s ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp19",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "kɹˈYvət."
+   ],
+   "decode": "k ɹ ɔɨ v ɪ t"
+  },
+  {
+   "pair": "fp19",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz kɹˈYvət, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z k ɹ aɪ v ɪ t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp19",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "kɹˈYvət."
+   ],
+   "decode": "k ɹ aɪ v ɪ t"
+  },
+  {
+   "pair": "fp19",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz kɹˈYvət, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z k ɹ oːɹ v ɪ t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp19",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "kɹˈIvət."
+   ],
+   "decode": "k ɹ aɪ v ɪ t"
+  },
+  {
+   "pair": "fp19",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz kɹˈIvət, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z k ɹ aɪ v ɪ t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp19",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "kɹˈIvət."
+   ],
+   "decode": "k ɹ aɪ v ɪ t"
+  },
+  {
+   "pair": "fp19",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz kɹˈIvət, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z k ɹ aɪ v ə t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp20",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "mˈYdɛk."
+   ],
+   "decode": "m ɔɨ d a k"
+  },
+  {
+   "pair": "fp20",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz mˈYdɛk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z m oɪ d ɛ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp20",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "mˈYdɛk."
+   ],
+   "decode": "m oɪ d ɛ k"
+  },
+  {
+   "pair": "fp20",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz mˈYdɛk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z m oɪ d ɛ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp20",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "mˈIdɛk."
+   ],
+   "decode": "m aɪ d a k"
+  },
+  {
+   "pair": "fp20",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz mˈIdɛk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z m aɪ d ɛ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp20",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "mˈIdɛk."
+   ],
+   "decode": "m aɪ d ɛ k"
+  },
+  {
+   "pair": "fp20",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz mˈIdɛk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z m aɪ d ɛ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp21",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ʤˈɛsəm."
+   ],
+   "decode": "dʒ a s m"
+  },
+  {
+   "pair": "fp21",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ʤˈɛsəm, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z dʒ æ s ə m ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp21",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ʤˈɛsəm."
+   ],
+   "decode": "dʒ a s o m"
+  },
+  {
+   "pair": "fp21",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ʤˈɛsəm, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z dʒ æ s ə m ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp21",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "jˈɛsəm."
+   ],
+   "decode": "j a s a m"
+  },
+  {
+   "pair": "fp21",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz jˈɛsəm, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z j æ s ə m ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp21",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "jˈɛsəm."
+   ],
+   "decode": "j a s o m"
+  },
+  {
+   "pair": "fp21",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz jˈɛsəm, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z j æ s ə m ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp22",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ʧˈɛlvɪn."
+   ],
+   "decode": "tʃ ɛ l v ɪ n"
+  },
+  {
+   "pair": "fp22",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ʧˈɛlvɪn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z tʃ ɛ l v ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp22",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ʧˈɛlvɪn."
+   ],
+   "decode": "tʃ e v ɪ m"
+  },
+  {
+   "pair": "fp22",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ʧˈɛlvɪn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z tʃ ɛ l v ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp22",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ʃˈɛlvɪn."
+   ],
+   "decode": "ʃ ɛ l v ɪ n"
+  },
+  {
+   "pair": "fp22",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ʃˈɛlvɪn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z ʃ ɛ l v ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp22",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ʃˈɛlvɪn."
+   ],
+   "decode": "ʃ ɛ l v ɪ m"
+  },
+  {
+   "pair": "fp22",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ʃˈɛlvɪn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z ʃ ɛ l v ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp23",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ʧˈɑbɹɪn."
+   ],
+   "decode": "tʃ ɑː b ɹ ɪ n"
+  },
+  {
+   "pair": "fp23",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ʧˈɑbɹɪn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z tʃ ɑː b ɹ ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp23",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ʧˈɑbɹɪn."
+   ],
+   "decode": "tʃ aː b ɹ ɪ n"
+  },
+  {
+   "pair": "fp23",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ʧˈɑbɹɪn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z tʃ ɑːɹ b ɹ ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp23",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "tˈɑbɹɪn."
+   ],
+   "decode": "t ɑː b ɹ ɪ n"
+  },
+  {
+   "pair": "fp23",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz tˈɑbɹɪn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z t ɑː b ɹ ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp23",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "tˈɑbɹɪn."
+   ],
+   "decode": "t aː b ɹ ɪ n"
+  },
+  {
+   "pair": "fp23",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz tˈɑbɹɪn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z t ɑːɹ b ɹ ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp24",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ʤˈændɹɪs."
+   ],
+   "decode": "dʒ æ n d ɹ ɪ s"
+  },
+  {
+   "pair": "fp24",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ʤˈændɹɪs, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z dʒ æ n d ɹ ə s ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp24",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ʤˈændɹɪs."
+   ],
+   "decode": "dʒ æ n d ɹ ɪ s"
+  },
+  {
+   "pair": "fp24",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ʤˈændɹɪs, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z dʒ æ n d ɹ ə s ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp24",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "dˈændɹɪs."
+   ],
+   "decode": "d æ n d ɹ ə s"
+  },
+  {
+   "pair": "fp24",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz dˈændɹɪs, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z d eɪ n d ɹ ə s ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp24",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "dˈændɹɪs."
+   ],
+   "decode": "d eɪ n d ɹ ə s"
+  },
+  {
+   "pair": "fp24",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz dˈændɹɪs, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z d eɪ n dʒ ɹ ə s ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp25",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "tˈAmən."
+   ],
+   "decode": "t eː m ɛ n"
+  },
+  {
+   "pair": "fp25",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz tˈAmən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z t eɪ m ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp25",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "tˈAmən."
+   ],
+   "decode": "t eɪ m ə n"
+  },
+  {
+   "pair": "fp25",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz tˈAmən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z t eɪ m ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp25",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "tˈɛmən."
+   ],
+   "decode": "t a m ɛ n"
+  },
+  {
+   "pair": "fp25",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz tˈɛmən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z t ɛ m ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp25",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "tˈɛmən."
+   ],
+   "decode": "t ɛ m ə n"
+  },
+  {
+   "pair": "fp25",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz tˈɛmən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z t ɛ m ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp26",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "sˈIdɹəl."
+   ],
+   "decode": "s aɪ d ɹ ɔ l"
+  },
+  {
+   "pair": "fp26",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz sˈIdɹəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z s aɪ d ɹ əl l ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp26",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "sˈIdɹəl."
+   ],
+   "decode": "s aɪ d ɹ oʊ"
+  },
+  {
+   "pair": "fp26",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz sˈIdɹəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z s aɪ dʒ ɹ əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp26",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "sˈɪdɹəl."
+   ],
+   "decode": "s ɪ d ɹ ɔ l"
+  },
+  {
+   "pair": "fp26",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz sˈɪdɹəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z s ɪ d ɹ əl l ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp26",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "sˈɪdɹəl."
+   ],
+   "decode": "s e d ɹ o"
+  },
+  {
+   "pair": "fp26",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz sˈɪdɹəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z s ɪ dʒ ɹ əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp27",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "lˈOmvɪk."
+   ],
+   "decode": "l ɔ m v ɛ k"
+  },
+  {
+   "pair": "fp27",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz lˈOmvɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z l oʊ m v ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp27",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "lˈOmvɪk."
+   ],
+   "decode": "l ɔ m v ɪ k"
+  },
+  {
+   "pair": "fp27",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz lˈOmvɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z l oʊ m v ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp27",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "lˈɔmvɪk."
+   ],
+   "decode": "l a m v ɪ k"
+  },
+  {
+   "pair": "fp27",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz lˈɔmvɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z l ɑː m v ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp27",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "lˈɔmvɪk."
+   ],
+   "decode": "l ɑː m v ɪ k"
+  },
+  {
+   "pair": "fp27",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz lˈɔmvɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z l ɑː m v ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp28",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "bˈYtən."
+   ],
+   "decode": "b ɔɨ t ə n"
+  },
+  {
+   "pair": "fp28",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz bˈYtən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z b oːɹ ɾ ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp28",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "bˈYtən."
+   ],
+   "decode": "b ɔɨ t ɪ n"
+  },
+  {
+   "pair": "fp28",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz bˈYtən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z b oɪ ɾ ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp28",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "bˈɔtən."
+   ],
+   "decode": "b ɑː t ɪ n"
+  },
+  {
+   "pair": "fp28",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz bˈɔtən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z b ɑː ɾ ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp28",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "bˈɔtən."
+   ],
+   "decode": "b ɑː t ɪ n"
+  },
+  {
+   "pair": "fp28",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz bˈɔtən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z b ɔː d ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp29",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "pˈɛmɹɪk."
+   ],
+   "decode": "p ɛ m ɹ ɪ k"
+  },
+  {
+   "pair": "fp29",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz pˈɛmɹɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z p ɛ m ɹ ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp29",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "pˈɛmɹɪk."
+   ],
+   "decode": "p ɛ m ɹ ɛ k ə"
+  },
+  {
+   "pair": "fp29",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz pˈɛmɹɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z p ɛ m ɹ ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp29",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "pˈæmɹɪk."
+   ],
+   "decode": "p ɛ m ɹ ɪ k t"
+  },
+  {
+   "pair": "fp29",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz pˈæmɹɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z p æ m ɹ ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp29",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "pˈæmɹɪk."
+   ],
+   "decode": "p æ m ɹ ɪ k"
+  },
+  {
+   "pair": "fp29",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz pˈæmɹɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z p æ m ɹ ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp30",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "dˈɛlvɪʃ."
+   ],
+   "decode": "d ɛ l v ɪ ʃ"
+  },
+  {
+   "pair": "fp30",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz dˈɛlvɪʃ, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z d ɛ l v ɪ ʃ ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp30",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "dˈɛlvɪʃ."
+   ],
+   "decode": "d ɛ l v ɪ ʃ"
+  },
+  {
+   "pair": "fp30",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz dˈɛlvɪʃ, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z d ɛ l v ɪ ʃ ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp30",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "dˈælvɪʃ."
+   ],
+   "decode": "d aʊ l v ɪ ʃ"
+  },
+  {
+   "pair": "fp30",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz dˈælvɪʃ, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z d aʊ l v ɪ ʃ ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp30",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "dˈælvɪʃ."
+   ],
+   "decode": "d aʊ v ɪ ʃ"
+  },
+  {
+   "pair": "fp30",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz dˈælvɪʃ, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z d aʊ v ɪ ʃ ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp31",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "vˈɪnsəl."
+   ],
+   "decode": "v ɪ n s ɔ l"
+  },
+  {
+   "pair": "fp31",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz vˈɪnsəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z v ɪ n s əl l ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp31",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "vˈɪnsəl."
+   ],
+   "decode": "v e n s o"
+  },
+  {
+   "pair": "fp31",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz vˈɪnsəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z v ɪ n s əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp31",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "vˈinsəl."
+   ],
+   "decode": "v iː n s ɔ l"
+  },
+  {
+   "pair": "fp31",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz vˈinsəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z v iː n s əl l ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp31",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "vˈinsəl."
+   ],
+   "decode": "v iː n ts ɔ"
+  },
+  {
+   "pair": "fp31",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz vˈinsəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z v iː n s əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp32",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "sˈɪbɹən."
+   ],
+   "decode": "s ɪ b ɹ ə n"
+  },
+  {
+   "pair": "fp32",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz sˈɪbɹən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z s ɪ b ɹ ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp32",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "sˈɪbɹən."
+   ],
+   "decode": "s ɪ b ɹ ɪ n"
+  },
+  {
+   "pair": "fp32",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz sˈɪbɹən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z s ɪ b ɹ ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp32",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "sˈibɹən."
+   ],
+   "decode": "s iː b ɹ ə n"
+  },
+  {
+   "pair": "fp32",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz sˈibɹən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z s iː b ɹ ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp32",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "sˈibɹən."
+   ],
+   "decode": "s iː b ɹ ɪ n"
+  },
+  {
+   "pair": "fp32",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz sˈibɹən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z s iː b ɹ ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp33",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "hˈʊdɹɪn."
+   ],
+   "decode": "h ʊ d ɹ ɪ n"
+  },
+  {
+   "pair": "fp33",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz hˈʊdɹɪn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z h ʊ d ɹ ɪ n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp33",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "hˈʊdɹɪn."
+   ],
+   "decode": "h o dʒ ɹ ɪ m"
+  },
+  {
+   "pair": "fp33",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz hˈʊdɹɪn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z h ʊ d ɹ ɪ n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp33",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "hˈudɹɪn."
+   ],
+   "decode": "h uː d ɹ ɛ n"
+  },
+  {
+   "pair": "fp33",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz hˈudɹɪn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z h uː d ɹ ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp33",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "hˈudɹɪn."
+   ],
+   "decode": "h uː dʒ ɹ ɪ n"
+  },
+  {
+   "pair": "fp33",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz hˈudɹɪn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z h uː dʒ ɹ ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp34",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ɡˈʌndɹəl."
+   ],
+   "decode": "iː ɡ a n d ɔ l"
+  },
+  {
+   "pair": "fp34",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ɡˈʌndɹəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z ɡ ʌ n d ɹ əl l ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp34",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ɡˈʌndɹəl."
+   ],
+   "decode": "ɡ ʌ n d ɹ ɔ"
+  },
+  {
+   "pair": "fp34",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ɡˈʌndɹəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z ɡ ʌ n d ɹ əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp34",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ɡˈɑndɹəl."
+   ],
+   "decode": "ɡ ɑː n d ɹ ə l"
+  },
+  {
+   "pair": "fp34",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ɡˈɑndɹəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z ɡ ɑː n d ɹ əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp34",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ɡˈɑndɹəl."
+   ],
+   "decode": "ɡ ɑː n d ɹ oː"
+  },
+  {
+   "pair": "fp34",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ɡˈɑndɹəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z ɡ ɑː n d ɹ əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp35",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "mˈʌbsən."
+   ],
+   "decode": "m a b s ə n"
+  },
+  {
+   "pair": "fp35",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz mˈʌbsən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z m ʌ b s ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp35",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "mˈʌbsən."
+   ],
+   "decode": "m a b s e n"
+  },
+  {
+   "pair": "fp35",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz mˈʌbsən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z m ɑː b s ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp35",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "mˈɑbsən."
+   ],
+   "decode": "m ɑː b s ɪ n"
+  },
+  {
+   "pair": "fp35",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz mˈɑbsən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z m ɑː b s ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp35",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "mˈɑbsən."
+   ],
+   "decode": "m a b s ɪ n"
+  },
+  {
+   "pair": "fp35",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz mˈɑbsən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z m ɑːɹ b s ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp36",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "fˈɛsdəl."
+   ],
+   "decode": "v ɛ s t əl l"
+  },
+  {
+   "pair": "fp36",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz fˈɛsdəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z f ɛ s t əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp36",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "fˈɛsdəl."
+   ],
+   "decode": "v ɛ s d o"
+  },
+  {
+   "pair": "fp36",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz fˈɛsdəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z f ɛ s t əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp36",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "fˈɪsdəl."
+   ],
+   "decode": "f ɪ s t əl l"
+  },
+  {
+   "pair": "fp36",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz fˈɪsdəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z f ɪ s t əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp36",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "fˈɪsdəl."
+   ],
+   "decode": "v ɪ s d o"
+  },
+  {
+   "pair": "fp36",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz fˈɪsdəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z f ɪ s t əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp37",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "θˈælbən."
+   ],
+   "decode": "s ɑː l b ɪ n"
+  },
+  {
+   "pair": "fp37",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz θˈælbən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z θ aʊ l b ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp37",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "θˈælbən."
+   ],
+   "decode": "s aʊ l b ə n"
+  },
+  {
+   "pair": "fp37",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz θˈælbən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z θ aʊ l b ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp37",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "tˈælbən."
+   ],
+   "decode": "t æ l b ə n"
+  },
+  {
+   "pair": "fp37",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz tˈælbən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z t aʊ l b ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp37",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "tˈælbən."
+   ],
+   "decode": "t aʊ l b ɪ n"
+  },
+  {
+   "pair": "fp37",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz tˈælbən, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z t aʊ l b ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp38",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "lˈʌðəm."
+   ],
+   "decode": "l a ð ɛ m"
+  },
+  {
+   "pair": "fp38",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz lˈʌðəm, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z l ʌ ð ɚ m ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp38",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "lˈʌðəm."
+   ],
+   "decode": "l a ð e m"
+  },
+  {
+   "pair": "fp38",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz lˈʌðəm, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z l ʌ ð ə m ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp38",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "lˈʌdəm."
+   ],
+   "decode": "l a d ɛ m"
+  },
+  {
+   "pair": "fp38",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz lˈʌdəm, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z l ʌ d ə m ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp38",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "lˈʌdəm."
+   ],
+   "decode": "l a d ʌ m"
+  },
+  {
+   "pair": "fp38",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz lˈʌdəm, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z l ʌ d ə m ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp39",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "sˈɛlvɪk."
+   ],
+   "decode": "s ɛ l v ɪ k"
+  },
+  {
+   "pair": "fp39",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz sˈɛlvɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z s ɛ l v ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp39",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "sˈɛlvɪk."
+   ],
+   "decode": "s ɛ l v ɪ k ɐ"
+  },
+  {
+   "pair": "fp39",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz sˈɛlvɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z s ɛ l v ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp39",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "zˈɛlvɪk."
+   ],
+   "decode": "z ɛ l v ɪ k"
+  },
+  {
+   "pair": "fp39",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz zˈɛlvɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z z ɛ l v ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp39",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "zˈɛlvɪk."
+   ],
+   "decode": "z ɛ l v ɪ k"
+  },
+  {
+   "pair": "fp39",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz zˈɛlvɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z z ɛ l v ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp40",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "vˈɑsəl."
+   ],
+   "decode": "v a s ə l"
+  },
+  {
+   "pair": "fp40",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz vˈɑsəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z v ɑː s əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp40",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "vˈɑsəl."
+   ],
+   "decode": "v a s o"
+  },
+  {
+   "pair": "fp40",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz vˈɑsəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z v ɑː s əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp40",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "bˈɑsəl."
+   ],
+   "decode": "b a s ə l"
+  },
+  {
+   "pair": "fp40",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz bˈɑsəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z b ɑː s əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp40",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "bˈɑsəl."
+   ],
+   "decode": "b a s o"
+  },
+  {
+   "pair": "fp40",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz bˈɑsəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z b ɑː s əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp41",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "kˈɛsɪn."
+   ],
+   "decode": "k a s ɪ n"
+  },
+  {
+   "pair": "fp41",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz kˈɛsɪn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z k æ s ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp41",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "kˈɛsɪn."
+   ],
+   "decode": "k æ s ɪ n"
+  },
+  {
+   "pair": "fp41",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz kˈɛsɪn, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z k æ s ə n ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp41",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "kˈɛsɪŋ."
+   ],
+   "decode": "k a s ɪ ŋ"
+  },
+  {
+   "pair": "fp41",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz kˈɛsɪŋ, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z k æ s ɪ ŋ ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp41",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "kˈɛsɪŋ."
+   ],
+   "decode": "k æ s ɪ ŋ"
+  },
+  {
+   "pair": "fp41",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz kˈɛsɪŋ, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z k æ s ɪ ŋ ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp42",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "lˈʌmbət."
+   ],
+   "decode": "l a m b ɛ t"
+  },
+  {
+   "pair": "fp42",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz lˈʌmbət, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z l ʌ m b ɪ t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp42",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "lˈʌmbət."
+   ],
+   "decode": "l a m b ɪ t"
+  },
+  {
+   "pair": "fp42",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz lˈʌmbət, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z l ʌ m b ɚ t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp42",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ɹˈʌmbət."
+   ],
+   "decode": "ɹ a m b ɛ t"
+  },
+  {
+   "pair": "fp42",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ɹˈʌmbət, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z ɹ ʌ m b ɪ t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp42",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ɹˈʌmbət."
+   ],
+   "decode": "ɹ a m b ɪ t"
+  },
+  {
+   "pair": "fp42",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ɹˈʌmbət, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z ɹ ʌ m b ə t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp43",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "pˈɛntɹəl."
+   ],
+   "decode": "p ɛ n t ɹ əl l"
+  },
+  {
+   "pair": "fp43",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz pˈɛntɹəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z p ɛ n t ɹ əl l ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp43",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "pˈɛntɹəl."
+   ],
+   "decode": "p ɛ n t ɹ əl"
+  },
+  {
+   "pair": "fp43",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz pˈɛntɹəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z p ɛ n t ɹ əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp43",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "bˈɛntɹəl."
+   ],
+   "decode": "b ɛ n t ɹ əl l"
+  },
+  {
+   "pair": "fp43",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz bˈɛntɹəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z b ɛ n t ɹ əl l ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp43",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "bˈɛntɹəl."
+   ],
+   "decode": "b ɛ n t ɹ ɔ"
+  },
+  {
+   "pair": "fp43",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz bˈɛntɹəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z b ɛ n t ɹ əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp44",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "kˈɛlvæʃ."
+   ],
+   "decode": "k ɛ l v a ʃ"
+  },
+  {
+   "pair": "fp44",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz kˈɛlvæʃ, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z k ɛ l v æ ʃ ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp44",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "kˈɛlvæʃ."
+   ],
+   "decode": "k e l v a ʃ"
+  },
+  {
+   "pair": "fp44",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz kˈɛlvæʃ, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z k ɛ l v æ ʃ ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp44",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ɡˈɛlvæʃ."
+   ],
+   "decode": "ɡ ɛ l v a ʃ"
+  },
+  {
+   "pair": "fp44",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ɡˈɛlvæʃ, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z ɡ ɛ l v æ ʃ ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp44",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "ɡˈɛlvæʃ."
+   ],
+   "decode": "ɡ e l v a ʃ"
+  },
+  {
+   "pair": "fp44",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz ɡˈɛlvæʃ, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z ɡ ɛ l v æ ʃ ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp45",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "bɹˈɛnɪk."
+   ],
+   "decode": "b ɹ ɛ n ɪ k t"
+  },
+  {
+   "pair": "fp45",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz bɹˈɛnɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z b ɹ æ n ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp45",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "bɹˈɛnɪk."
+   ],
+   "decode": "b ɹ ɛ n ɪ k"
+  },
+  {
+   "pair": "fp45",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz bɹˈɛnɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z b ɹ ɛ n ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp45",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "bˈɛnɪk."
+   ],
+   "decode": "b ɛ n ɛ k"
+  },
+  {
+   "pair": "fp45",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz bˈɛnɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z b ɛ n ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp45",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "bˈɛnɪk."
+   ],
+   "decode": "b ɛ n ɪ k"
+  },
+  {
+   "pair": "fp45",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz bˈɛnɪk, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z b ɛ n ɪ k ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp46",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "stˈævəl."
+   ],
+   "decode": "s t aː v ə"
+  },
+  {
+   "pair": "fp46",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz stˈævəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z d æ v əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp46",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "stˈævəl."
+   ],
+   "decode": "s t a v o"
+  },
+  {
+   "pair": "fp46",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz stˈævəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z s t æ v əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp46",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "sˈævəl."
+   ],
+   "decode": "s ɛ v ə l"
+  },
+  {
+   "pair": "fp46",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz sˈævəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z s æ v əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp46",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "sˈævəl."
+   ],
+   "decode": "s a v o"
+  },
+  {
+   "pair": "fp46",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz sˈævəl, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z s æ v əl ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp47",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "dˈælvɛst."
+   ],
+   "decode": "d aʊ l v ɛ s t"
+  },
+  {
+   "pair": "fp47",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz dˈælvɛst, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z d æ l v ɛ s t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp47",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "dˈælvɛst."
+   ],
+   "decode": "d aʊ v e s t"
+  },
+  {
+   "pair": "fp47",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz dˈælvɛst, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z d aʊ v ɛ s t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp47",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "dˈælvɛs."
+   ],
+   "decode": "d a l v ɛ s"
+  },
+  {
+   "pair": "fp47",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz dˈælvɛs, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z d æ l v ɪ s ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp47",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "dˈælvɛs."
+   ],
+   "decode": "d aʊ v e s"
+  },
+  {
+   "pair": "fp47",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz dˈælvɛs, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z d aʊ v ɪ s ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp48",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "pˈævɛlt."
+   ],
+   "decode": "p a v ɛ l t"
+  },
+  {
+   "pair": "fp48",
+   "reading": "A",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz pˈævɛlt, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z p æ v ə l t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp48",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "pˈævɛlt."
+   ],
+   "decode": "p ɛ v ɔ l t"
+  },
+  {
+   "pair": "fp48",
+   "reading": "A",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz pˈævɛlt, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z p æ v ə l t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp48",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "pˈævɛt."
+   ],
+   "decode": "p a v ɛ t"
+  },
+  {
+   "pair": "fp48",
+   "reading": "B",
+   "voice": "af_heart",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz pˈævɛt, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z p æ v ɛ t ɪ z ɪ t n ɑː t"
+  },
+  {
+   "pair": "fp48",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "isolated",
+   "kokoroPhonemes": [
+    "pˈævɛt."
+   ],
+   "decode": "p a v ɛ d ə"
+  },
+  {
+   "pair": "fp48",
+   "reading": "B",
+   "voice": "am_michael",
+   "context": "carrier",
+   "kokoroPhonemes": [
+    "ðə nˈAm ɪz pˈævɛt, ɪz ɪt nˌɑt?"
+   ],
+   "decode": "ð ə n eɪ m ɪ z p æ v ɪ t ɪ z ɪ t n ɑː t"
+  }
+ ]
+}

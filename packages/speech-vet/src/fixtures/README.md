@@ -1104,3 +1104,5 @@ for (const word of words) {
 }
 console.log("checked", words.length, "words; total hit files", total);
 ```
+
+`fresh-pairs.recognized.json` (TP-3034 S3): the 384 scored decodes from wav2vec2 lv-60 (fp32, pinned revision) of Kokoro renders of the fresh set, copied field by field from the render kit's recognition log (pair, reading, voice, context, kokoro phonemes, raw decode; no audio, no paths); `fresh-pairs.bar.test.ts` scores them by the pre-registered rules.
