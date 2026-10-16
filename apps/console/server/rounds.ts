@@ -1,6 +1,7 @@
 /**
  * The review rounds the owner answers in the console: one `<round-id>/round.json` per directory
- * under the rounds dir, validated with review-schema's `RoundSchema`. This module only reads.
+ * under the rounds dir, validated with review-schema's `RoundSchema`. This module only reads;
+ * `rounds-submit.ts` is the one writer, of `feedback.json`.
  *
  * Another process writes the dir, so every read is defended: a round id is a plain name (no
  * dot, no slash), a round directory or file that is a symlink is refused, `round.json` and
@@ -25,8 +26,8 @@ export const MAX_ROUND_BYTES = 1024 * 1024;
 /** The list stops here, so a dir full of junk cannot make one read unbounded. */
 const MAX_ROUNDS = 500;
 export const ROUND_ID = /^[A-Za-z0-9_-]{1,64}$/;
-const ROUND_FILE = "round.json";
-const FEEDBACK_FILE = "feedback.json";
+export const ROUND_FILE = "round.json";
+export const FEEDBACK_FILE = "feedback.json";
 const MAX_REASON_ISSUES = 5;
 export const OPEN_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 

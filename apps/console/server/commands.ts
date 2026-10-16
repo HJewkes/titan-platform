@@ -8,6 +8,7 @@ import { inboxCommands, type InboxSource } from "./inbox.js";
 import { readCommand } from "./owner-guard.js";
 import { roundFramesCommands } from "./round-frames.js";
 import { roundsCommands, type RoundsSource } from "./rounds.js";
+import { roundsSubmitCommands } from "./rounds-submit.js";
 import { sessionsCommands, type SessionsSource } from "./sessions.js";
 import { shepherdCommands, type ShepherdSource } from "./shepherd.js";
 import { tasksCommands } from "./tasks.js";
@@ -60,6 +61,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...inboxCommands(inbox),
     ...roundsCommands(rounds),
     ...roundFramesCommands(rounds),
+    ...roundsSubmitCommands(rounds),
     ...approvalsCommands({ factory, rounds, inbox }),
     ...shepherdCommands(shepherd),
     "work.portfolio": readCommand({
