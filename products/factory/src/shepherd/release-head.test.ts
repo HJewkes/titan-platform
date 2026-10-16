@@ -18,6 +18,7 @@ const MERGED_UP = fakeSha("merged-up");
 const MAIN = fakeSha("main-tip");
 const TREE = fakeSha("merge-tree");
 const ADVERSARY = "g10-adversary: trust rule (security); TP-1";
+const REVIEW = "g10-review: 400 changed lines";
 const STALL = "stalled: no progress; TP-2";
 
 const CLEAN_MERGE_UP: CarryResult = { equal: true, base: MAIN, firstParent: REVIEWED, headTree: TREE, mergeTree: TREE };
@@ -110,6 +111,39 @@ describe("a g10-adversary release at the reviewed head after Shepherd's own merg
     const after = await r.release("g10-adversary");
 
     expect(after.held).toBe(false);
+  });
+});
+
+describe("a g10-review release at the reviewed head after land's own update-branch merged main in", () => {
+  it.each([
+    ["no class named", undefined],
+    ["--class g10-review", "g10-review"],
+  ])("is accepted when the PR's head is that clean merge, with %s", async (_case, holdClass) => {
+    const r = rig(CLEAN_MERGE_UP, { reason: REVIEW });
+
+    const after = await r.release(holdClass);
+
+    expect(after.held).toBe(false);
+    expect(r.carry).toHaveBeenCalledWith({ repo: REPO, baseRef: "main", fromHead: REVIEWED, head: MERGED_UP });
+    expect(r.store.vouchedLine("run-1", REVIEWED, "main")).toEqual(new Set([REVIEWED, MERGED_UP]));
+  });
+
+  it("is refused for a clean merge of main that no update-branch step of the run made, without probing it", async () => {
+    const r = rig(CLEAN_MERGE_UP, { reason: REVIEW, ownUpdates: [fakeSha("other-update")] });
+
+    await expect(r.release("g10-review")).rejects.toThrow(`not ${REVIEWED}`);
+
+    expect(r.carry).not.toHaveBeenCalled();
+    expect(r.store.byRun("run-1")?.held).toBe(true);
+  });
+
+  it("is refused when the merge's tree is not the clean merge-tree of the reviewed head and its base parent", async () => {
+    const r = rig({ ...CLEAN_MERGE_UP, headTree: fakeSha("hand-resolved") }, { reason: REVIEW });
+
+    await expect(r.release("g10-review")).rejects.toMatchObject({ code: 65 });
+
+    expect(r.store.byRun("run-1")?.held).toBe(true);
+    expect(r.store.vouchedLine("run-1", REVIEWED, "main")).toEqual(new Set([REVIEWED]));
   });
 });
 
