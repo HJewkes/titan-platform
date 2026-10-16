@@ -410,8 +410,8 @@ Key exports:
 - `log`: `formatDecisionLine`, `formatErrorLine`, `logPath`
 - `hook`: `handle`
 - `context`: `nodeContext`
-- `shell`: `ParseError`, `tokenize`
-- +48 more in the [reference page](/reference/tool-guard)
+- `approval-store`: `approvalsDir`, `nodeApprovalStore`
+- +58 more in the [reference page](/reference/tool-guard)
 
 ## Tier 1 — engines
 
