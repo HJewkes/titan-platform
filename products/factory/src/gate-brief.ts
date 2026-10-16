@@ -111,13 +111,15 @@ function sendBackShapes(headSha: string): Record<string, unknown>[] {
     z.strictObject({ decision: z.literal(SEND_BACK), headSha: z.literal(headSha), note: z.string() }),
   ];
   return shapes.map((shape) => {
-    const { $schema: _, ...json } = z.toJSONSchema(shape);
+    const json: Record<string, unknown> = z.toJSONSchema(shape);
+    delete json.$schema;
     return json;
   });
 }
 
 const sendBackNeedsNote = (answer: { decision: string; note?: unknown }, ctx: z.RefinementCtx): void => {
-  if (answer.decision === SEND_BACK && (typeof answer.note !== "string" || answer.note.trim() === "")) ctx.addIssue({ code: "custom", path: ["note"], message: "a send-back carries the owner's note" });
+  const noted = typeof answer.note === "string" && answer.note.trim() !== "";
+  if (answer.decision === SEND_BACK && !noted) ctx.addIssue({ code: "custom", path: ["note"], message: "a send-back carries the owner's note" });
 };
 
 /**
