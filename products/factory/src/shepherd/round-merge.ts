@@ -6,7 +6,7 @@ import { authorityGate, seatPolicyHead } from "./head-moved.js";
 import { gateHead } from "./stale-gates.js";
 
 /** A submit older than this resolves nothing; the owner's click and the dialog it leads to are seconds apart. */
-const ROUND_SUBMIT_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+export const ROUND_SUBMIT_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
 /** How long a Ship stands as the owner's merge approval before the gate it answers opens (TP-1842 Q2 default, item 88). */
 const SHIP_APPROVAL_MAX_AGE_MS = 24 * 60 * 60 * 1000;

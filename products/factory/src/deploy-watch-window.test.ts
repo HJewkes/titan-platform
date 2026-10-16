@@ -183,6 +183,13 @@ describe("watchServe run errors after a restart", () => {
     expect(await watch([answer(["old"]), answer(["old", "idle", ...PARKED_IDS])], counted).why).toContain("1 more run(s)");
   });
 
+  it("does not count a newly parked run whose PR is closed or merged, and still counts one on an open PR (TP-3220)", async () => {
+    const closedPr = (parked: readonly string[], prClosed: readonly string[]) => ({ ...answer(parked), recoveryPrClosed: [...prClosed] });
+
+    expect(await watch([answer([]), closedPr(["merged-pr", "closed-pr"], ["merged-pr", "closed-pr"])], drained([])).why).toBeUndefined();
+    expect(await watch([answer([]), closedPr(["merged-pr", "open-pr"], ["merged-pr"])], drained([])).why).toContain("1 more run(s) failed or need recovery");
+  });
+
   it("judges against the confirmed answer when the drain read no answer before the restart", async () => {
     expect(await watch([answer(["p1"]), answer(["p1", "p2"])], null).why).toContain("1 more run(s)");
   });

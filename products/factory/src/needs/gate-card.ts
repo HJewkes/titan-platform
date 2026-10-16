@@ -88,6 +88,9 @@ export function cardFields(gate: GateRecord): CardFields {
   };
 }
 
+/** The option the weekly meter counts as approve for a step; a step with no card row answers with `approve: true`. */
+export const proceedOf = (step: string): string => GATE_CARDS[step]?.proceed ?? "approve";
+
 /** The consequence the step's card names for an option; undefined leaves `card:consequence` to say it is missing. */
 export function consequenceOf(gate: GateRecord, optionId: string): string | undefined {
   return GATE_CARDS[gateStepOf(gate.id)]?.consequence[optionId];
