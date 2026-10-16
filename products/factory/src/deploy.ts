@@ -183,7 +183,6 @@ async function runningBuild(ports: DeployPorts, port: number): Promise<string | 
   return buildShaOf(answerOf(await ports.healthWithin(port, SHA_PROBE_TIMEOUT_MS)));
 }
 
-
 /** A slow or missing answer under load is not a wrong sha, so poll; undefined means no answer with a sha in the whole poll. */
 async function answeredHealth(ports: DeployPorts, port: number): Promise<Record<string, unknown> | undefined> {
   for (let poll = 0; poll < SHA_POLLS; poll++) {

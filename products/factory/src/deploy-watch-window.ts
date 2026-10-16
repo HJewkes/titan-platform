@@ -6,7 +6,7 @@ export interface WatchWindow {
   intervalMs: number;
   /** Probes in a row with no answer before serve counts as down; one slow answer under load is not. */
   missLimit: number;
-  /** How long reads may stay unavailable before the deploy is held; absent keeps `UNAVAILABLE_CAP_MS`. */
+  /** How long reads may be unavailable, in total across the watch, before the deploy is held; absent keeps `UNAVAILABLE_CAP_MS`. */
   unavailableCapMs?: number;
 }
 
@@ -167,7 +167,7 @@ function heldAtCap(unavailableMs: number, capMs: number, during: string): WatchH
  * A miss still open when the window ends keeps the watch probing until an answer or the miss limit, so a serve that dies or hangs late is not deployed.
  * Run errors are judged at the end only: a run re-adopted after the restart may read recovery_required for a tick or two.
  * An unavailable read is neither: it keeps the window open, and when reads return the window restarts on fresh probes.
- * Reads unavailable for the whole cap end the watch as held, never as a rollback.
+ * Unavailable time adds up across the whole watch and is never reset by a restart, so reads that flicker still end it: as held, never as a rollback.
  */
 export async function watchServe(ports: WatchPorts, baseline: WatchBaseline, target: string, window: WatchWindow): Promise<string | WatchHeld | undefined> {
   const interval = Math.max(1, window.intervalMs);
@@ -176,18 +176,21 @@ export async function watchServe(ports: WatchPorts, baseline: WatchBaseline, tar
   const during = `during the ${Math.round(window.windowMs / 1000)} s watch`;
   let readings: Reading[] = [];
   let misses = 0;
-  let unavailableSince: number | undefined;
-  while (ports.now() < intent.windowEnd || misses > 0 || unavailableSince !== undefined) {
+  let unavailableMs = 0;
+  let streak = false;
+  while (ports.now() < intent.windowEnd || misses > 0 || streak) {
+    const tickStart = ports.now();
     await ports.sleep(interval);
     const reading = await read(ports, baseline.confirmed);
     if (reading === UNAVAILABLE) {
-      unavailableSince ??= ports.now();
-      const held = heldAtCap(ports.now() - unavailableSince, window.unavailableCapMs ?? UNAVAILABLE_CAP_MS, during);
+      unavailableMs += ports.now() - tickStart;
+      streak = true;
+      const held = heldAtCap(unavailableMs, window.unavailableCapMs ?? UNAVAILABLE_CAP_MS, during);
       if (held !== undefined) return held;
       continue;
     }
-    if (unavailableSince !== undefined) {
-      [unavailableSince, readings, misses] = [undefined, [], 0];
+    if (streak) {
+      [streak, readings, misses] = [false, [], 0];
       openWindow(ports, intent, window);
     }
     readings.push(reading);

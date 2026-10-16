@@ -247,6 +247,14 @@ describe("watchServe when reads are unavailable (A17: a rate-limited probe never
     expect(why).toEqual({ held: expect.stringContaining("unavailable") });
   });
 
+  it("holds reads that flicker between unavailable and answered once the unavailable time adds up to the cap", async () => {
+    const machine = reading(["unavailable", "unavailable", "answer", "answer", "unavailable", "unavailable", "answer", "answer"]);
+
+    const why = await watchServe(machine.ports, settled, TARGET, { ...WINDOW, unavailableCapMs: 30_000 });
+
+    expect(why).toEqual({ held: expect.stringContaining("unavailable") });
+  });
+
   it("still rolls back on a real error: misses in a row", async () => {
     const machine = reading(["answer", "error"]);
 
