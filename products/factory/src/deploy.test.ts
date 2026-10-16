@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { EXIT, runCli } from "./cli.js";
 import { releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
-import { deployBuildLogPath } from "./deploy-output.js";
+import { deployBuildLogPath, deployWindowPath } from "./deploy-output.js";
 import { deployRecordPath, deployService, parseDeployRecord, type DeployOptions, type DeployPorts } from "./deploy.js";
 import type { DeployIncident } from "./deploy-incident.js";
 import { clearDeployPause, deployHoldPath, deployPausePath, readDeployHolds, readDeployPause } from "./deploy-pause.js";
@@ -57,6 +57,10 @@ interface MachineInit {
   misreports?: string;
   /** After a kickstart onto a build other than the starting one, this many probes answer before `runs.failed` goes up by one. */
   failsRunAfter?: number;
+  /** Runs the serve running before the restart reports busy on every /health. */
+  busy?: { runId: string; step: string; phase: string }[];
+  /** After a kickstart onto a new build, `healthWithin` probes `from` to `to` (1-based, inclusive) list these runs as recovery_required. */
+  parks?: { ids: string[]; from: number; to: number };
   /** pnpm-lock.yaml per commit; others get the base lockfile. */
   lockfiles?: Record<string, string>;
   /** The deploy checkout does not exist yet, so deploy must clone it. */
@@ -107,6 +111,12 @@ function fakeGit(state: { head: string }, init: MachineInit): (args: readonly st
     },
   };
   return (args) => verbs[args[0]!]?.(args) ?? failed(1, `unexpected git ${args.join(" ")}`);
+}
+
+function parkedAnswer(answer: Record<string, unknown>, parks: NonNullable<MachineInit["parks"]>, probe: number): Record<string, unknown> {
+  const ids = probe >= parks.from && probe <= parks.to ? parks.ids : [];
+  const runs = typeof answer.runs === "object" && answer.runs !== null ? answer.runs : {};
+  return { ...answer, runs: { ...runs, recovery_required: ids.length }, recoveryRequired: ids };
 }
 
 /** A launchd whose kickstart loads whatever build sits in products/factory/dist at that moment. */
@@ -180,7 +190,7 @@ function fakeMachine(init: MachineInit = {}) {
     claude: async () => undefined,
     isDirectory: () => false,
     which: (binary) => `/opt/tools/bin/${binary}`,
-    health: async () => (job.serving === null ? null : { ok: true, pid: job.pid, github: "ok", build: { sha: job.serving, behindMain: 0 }, busy: [], runs: { failed: 2 } }),
+    health: async () => (job.serving === null ? null : { ok: true, pid: job.pid, github: "ok", build: { sha: job.serving, behindMain: 0 }, busy: job.restarted ? [] : (init.busy ?? []), runs: { failed: 2 } }),
     healthWithin: async (port) => {
       probes += 1;
       if (silent > 0) {
@@ -191,7 +201,8 @@ function fakeMachine(init: MachineInit = {}) {
       probesSinceStart += 1;
       if (!answer || !replaced()) return answer;
       if (init.misreports) return { ...answer, build: { sha: init.misreports } };
-      return init.failsRunAfter !== undefined && probesSinceStart > init.failsRunAfter ? { ...answer, runs: { failed: 3 } } : answer;
+      const failing = init.failsRunAfter !== undefined && probesSinceStart > init.failsRunAfter ? { ...answer, runs: { failed: 3 } } : answer;
+      return init.parks ? parkedAnswer(failing, init.parks, probesSinceStart) : failing;
     },
     incident: async (incident) => void incidents.push(incident),
     mkdir: () => undefined,
@@ -694,6 +705,71 @@ describe("service deploy rollback pause", () => {
     expect(machine.record()).toMatchObject({ outcome: "rolled-back", target: TIP, why: expect.stringContaining("1 more run(s) failed or need recovery during the 120 s watch") });
     expect(machine.pause()).toMatchObject({ paused: true, pause: { rollback: "verified" } });
     expect(machine.incidents.map((incident) => incident.kind)).toEqual(["rolled-back"]);
+  });
+
+  describe("after a drain that timed out on runs parked behind a stalled train head", () => {
+    const parked = ["p1", "p2", "p3", "p4", "p5", "p6"];
+    const busy = parked.map((runId) => ({ runId, step: "merge:0", phase: "merging" }));
+
+    it("restarts and keeps the new build when those runs read recovery_required for a few ticks and then recover cleanly", async () => {
+      const machine = fakeMachine({ busy, parks: { ids: parked, from: 2, to: 4 } });
+
+      const { code, out } = await deploy(machine);
+
+      expect(out).toContain("the drain timed out; restarting with 6 busy run(s)");
+      expect(code).toBe(0);
+      expect(machine.serving()).toBe(TIP);
+      expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+      expect(machine.pause()).toEqual({ paused: false });
+    });
+
+    it("keeps the new build when the runs busy at the restart still need recovery at the window's end", async () => {
+      const machine = fakeMachine({ busy, parks: { ids: parked, from: 2, to: Infinity } });
+
+      const { code } = await deploy(machine);
+
+      expect(code).toBe(0);
+      expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+    });
+
+    it("rolls back when a run that was idle at the restart needs recovery at the window's end", async () => {
+      const machine = fakeMachine({ busy, parks: { ids: [...parked, "idle"], from: 2, to: Infinity } });
+
+      const { code } = await deploy(machine);
+
+      expect(code).toBe(1);
+      expect(machine.serving()).toBe(BASE);
+      expect(machine.record()).toMatchObject({ outcome: "rolled-back", why: expect.stringContaining("1 more run(s) failed or need recovery during the 120 s watch") });
+    });
+
+    it("rolls back when a run fails inside the window", async () => {
+      const machine = fakeMachine({ busy, failsRunAfter: 3 });
+
+      const { code } = await deploy(machine);
+
+      expect(code).toBe(1);
+      expect(machine.record()).toMatchObject({ outcome: "rolled-back", why: expect.stringContaining("1 more run(s) failed or need recovery during the 120 s watch") });
+    });
+  });
+
+  it("records the watch window's sha and end as the window opens", async () => {
+    const machine = fakeMachine();
+
+    await deploy(machine);
+
+    const intent: unknown = JSON.parse(machine.files.get(deployWindowPath(STATE)) ?? "null");
+    const closed = (windowEnd: number): boolean => windowEnd >= 120_000 && windowEnd <= machine.elapsed();
+    expect(intent).toEqual({ sha: TIP, windowEnd: expect.toSatisfy(closed) });
+  });
+
+  it("deploys when the watch window cannot be recorded", async () => {
+    const machine = fakeMachine({ writeFails: deployWindowPath(STATE) });
+
+    const { code, err } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(err).toContain("warning: the watch window could not be recorded");
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
   });
 
   it("rolls back and pauses when serve stops answering inside the watch window", async () => {
