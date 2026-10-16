@@ -136,6 +136,8 @@ interface ExtractOptions {
      */
     stopPastCap?: boolean;
     aliases?: AliasTable;
+    /** Throws `GlobSubstError` for a command that may turn on zsh GLOB_SUBST, which the hook alone refuses (the walk is also a reader of lines it must not refuse). */
+    refuseGlobSubst?: boolean;
     /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
     onScript?: (text: string) => void;
 }

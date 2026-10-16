@@ -109,7 +109,6 @@ describe("a shell's options are read as the shell reads them (TP-3221)", () => {
   });
 
   it.each([
-    "zsh --emulate sh -c 'echo hi'",
     "bash -eo pipefail -c 'echo hi'",
     "zsh -O -c 'echo hi'",
     "bash -s foo <<< 'echo hi'",
@@ -125,6 +124,12 @@ describe("a shell's options are read as the shell reads them (TP-3221)", () => {
     "dash /dev/stdin < ./ok.sh",
   ])("allows %s", async (line) => {
     expect(await verdict(line)).toBe("pass");
+  });
+});
+
+describe("zsh started in an emulation mode is refused (FP2 of TP-2938)", () => {
+  it("denies zsh --emulate sh -c 'echo hi'", async () => {
+    expect(await verdict("zsh --emulate sh -c 'echo hi'")).toBe("deny");
   });
 });
 

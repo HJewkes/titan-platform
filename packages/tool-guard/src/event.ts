@@ -18,6 +18,7 @@ export type HookEvent =
 
 export type ReadEvent = Extract<HookEvent, { kind: "read" }>;
 export type WriteEvent = Extract<HookEvent, { kind: "write" }>;
+export type BashEvent = Extract<HookEvent, { kind: "bash" }>;
 
 /** An event whose shape broke Claude Code's contract; the hook fails open on it and logs `shape`. */
 export interface MalformedEvent {

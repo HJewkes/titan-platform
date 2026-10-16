@@ -24,7 +24,8 @@ export function namesGlobSubstOption(cmd: Unwrapped): boolean {
 
 function namesFromDynamicWord(words: WordToken[]): boolean {
   const [word, ...rest] = words;
-  if (word === undefined || commandWordShape(word).kind !== "one") return true;
+  if (word === undefined) return false;
+  if (commandWordShape(word).kind !== "one") return true;
   return rest.some((w) => literalValue(w) === null) || Object.keys(ENABLERS).some((name) => namesAs(name, rest));
 }
 
