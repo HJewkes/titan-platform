@@ -27,6 +27,7 @@ export async function readRegularFile(path: string, limit: number): Promise<Buff
   try {
     const info = await handle.stat();
     if (!info.isFile()) throw new FileRefused("is not a regular file");
+    if (info.nlink > 1) throw new FileRefused(`has ${info.nlink} links; a hardlinked file is refused`);
     if (info.size > limit) throw new FileRefused(`is larger than maxOutputBytes (${limit})`);
     const buffer = Buffer.alloc(info.size + 1);
     let total = 0;
