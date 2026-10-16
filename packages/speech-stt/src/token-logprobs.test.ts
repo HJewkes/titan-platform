@@ -1,6 +1,12 @@
 import { deflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { createLogprobCapture, windowSegment, windowWords, type CapturedWindow } from "./token-logprobs.js";
+import {
+  attachProbabilities,
+  createLogprobCapture,
+  windowSegment,
+  windowWords,
+  type CapturedWindow,
+} from "./token-logprobs.js";
 
 // A toy vocabulary: ids 0-6 are text, 7 is EOT and 8 a special token past it. Ids 20 and 21 split one UTF-8
 // character ("é", C3 A9) across two tokens, as byte-level BPE does; 30 is a repeated syllable.
@@ -163,5 +169,20 @@ describe("windowSegment", () => {
     const window: CapturedWindow = { promptLength: 2, tokens: Array.from({ length: 24 }, () => tok(30, 0.5)) };
 
     expect(windowSegment(window, decode, { start: 0, end: 5 }).compressionRatio).toBeGreaterThanOrEqual(2.4);
+  });
+});
+
+describe("attachProbabilities", () => {
+  const window: CapturedWindow = { promptLength: 2, tokens: [tok(0, 0.5), tok(1, 0.75), tok(2, 0.25), tok(4, 1), tok(5, 0.5), tok(EOT, 1)] };
+  const word = (text: string, start: number) => ({ text, start, end: start + 0.5 });
+
+  it("matches words ignoring case and punctuation, and leaves an unmatched word without a probability", () => {
+    const words = [word("The", 0), word("Zorptrix,", 0.5), word("hummed.", 1), word("softly", 1.5)];
+
+    const out = attachProbabilities(words, [window], decode);
+
+    expect(out.map((w) => w.probability)).toEqual([0.5, 0.5, 0.75, undefined]);
+    expect(out[3]).not.toHaveProperty("probability");
+    expect(words[0]).not.toHaveProperty("probability");
   });
 });
