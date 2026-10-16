@@ -202,6 +202,10 @@ export const FactoryConfigSchema = z.object({
        * `heldRepair: on` lets a g10 hold gate only the merge, so its run repairs as usual.
        */
       gateReset: z.strictObject({ twoMergeRelease: z.enum(["off", "shadow", "on"]).optional(), heldRepair: z.enum(["off", "on"]).optional() }).optional(),
+      /** Off when absent. `shadow` records where a visual approve-merge gate would spawn its review packager; `on` spawns it. */
+      visualPacket: z.enum(["off", "shadow", "on"]).optional(),
+      /** The profile that packager spawns under; absent means `review-packager`. */
+      visualPacketProfile: profileName.optional(),
     })
     .refine((s) => !s.hardStopRepos || s.charterPath, { message: "hardStopRepos needs a charterPath", path: ["charterPath"] })
     .refine((s) => !s.review || s.agentChatBin, { message: "review needs an agentChatBin", path: ["agentChatBin"] })
