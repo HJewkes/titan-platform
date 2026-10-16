@@ -116,6 +116,25 @@ describe("workflow definition version pinning", () => {
     expect(await second.wait(runId)).toMatchObject({ status: "cancelled", error: "operator stop" });
   });
 
+  it.each([
+    ["a live runtime", false],
+    ["a quiesced runtime", true],
+  ])("abandons a parked run with a step in flight on %s: cancelled at once, and no hydrate replays it", async (_case, quiesced) => {
+    const db = makeDb();
+    const runId = await inFlightRun(db);
+    const second = runtime(db, [], cancelledOnReconcile);
+    second.register("wf", oneDispatch, { version: "2" });
+    await second.hydrate();
+    if (quiesced) second.quiesce();
+
+    second.cancel(runId, "replay diverged; PR closed", { abandon: true });
+
+    expect(second.status(runId)).toMatchObject({ status: "cancelled", error: "replay diverged; PR closed", activeSteps: {} });
+    const successor = runtime(db, [], cancelledOnReconcile);
+    successor.register("wf", oneDispatch, { version: "2" });
+    expect(await successor.hydrate()).toEqual([]);
+  });
+
   it("finishes a run that was already cancelling before the definition changed", async () => {
     const db = makeDb();
     const runId = await inFlightRun(db);

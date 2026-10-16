@@ -93,6 +93,7 @@ const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = {
   "sh-held-wait": `${READ}: waits for a hold to release`,
   "sh-head-origin": `${RECORD}: who pushed the head`,
   "sh-review-refused": `${RECORD}: a standing MERGE re-read instead of a fresh review`,
+  "sh-visual-packet": `${WRITE}: spawns the review packager for a visual gate`,
   "audit-load": `${READ}: the audit's input and prior report`,
   "audit-inventory-data": `${READ}: the data store inventory`,
   "audit-inventory-code": `${RECORD}: an agent's code inventory`,
