@@ -38,7 +38,11 @@ describe("runtime reaching the providers", () => {
       seen.push(options);
       return Promise.resolve(Object.assign(() => Promise.resolve({ text: "", chunks: [] }), { dispose: () => Promise.resolve() }));
     };
-    const stt = whisperStt({ ...runtimeOptions(runtime(), "stt"), loadPipeline: () => Promise.resolve(factory) });
+    const stt = whisperStt({
+      ...runtimeOptions(runtime(), "stt"),
+      tokenLogprobs: false,
+      loadPipeline: () => Promise.resolve(factory),
+    });
 
     await stt.transcribe(silence(0.1, 16_000));
 
