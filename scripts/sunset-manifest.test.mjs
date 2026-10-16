@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { MANIFEST_PATH, MILESTONES_PATH, checkManifest, exitedMilestones, listRoots, milestoneOf } from "./sunset-manifest.mjs";
+import { MANIFEST_PATH, MILESTONES_PATH, checkManifest, classifyManifest, exitedMilestones, listRoots, milestoneOf } from "./sunset-manifest.mjs";
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "sunset-manifest.mjs");
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -64,6 +64,47 @@ describe("sunset manifest check", () => {
 
     expect({ status: red.status, stderr: red.stderr }).toEqual({ status: 1, stderr: "agent-chat:old/b.ts: unmapped\n" });
     expect(run(box).status).toBe(0);
+  });
+});
+
+describe("sunset check --agent-chat-drift", () => {
+  const withMode = (box, mode, extra = []) => spawnSync(process.execPath, [SCRIPT, "check", "--agent-chat", box.dir, "--manifest", box.manifest, "--agent-chat-drift", mode, ...extra], { encoding: "utf8" });
+  const exitM3 = (box) => {
+    const milestones = join(box.dir, "milestones.json");
+    writeFileSync(milestones, JSON.stringify({ milestones: [{ id: "M3", exited: "2026-01-01" }] }));
+    return ["--milestones", milestones];
+  };
+
+  it("tags each problem as overdue, drift or shape", () => {
+    const entries = [del("old/a.ts"), del("old/a.ts"), del("old/gone.ts")];
+
+    expect(classifyManifest(manifestOf(...entries), listing("old/a.ts", "old/new.ts"), new Set(["M3"])).map((p) => p.kind)).toEqual(["shape", "overdue", "overdue", "drift", "drift"]);
+  });
+
+  it("warns on an unmapped agent-chat file and exits 0 under warn, 1 under fail", () => {
+    const box = sandbox(["a.ts", "b.ts"], ["a.ts"]);
+    const warn = withMode(box, "warn");
+
+    expect({ status: warn.status, stderr: warn.stderr }).toEqual({ status: 0, stderr: "::warning::agent-chat:old/b.ts: unmapped\n" });
+    expect(withMode(box, "fail").status).toBe(1);
+    expect(run(box).status).toBe(1);
+  });
+
+  it("still fails an overdue agent-chat delete under warn, and passes once the file is gone", () => {
+    const box = sandbox(["a.ts"], ["a.ts"]);
+    const red = withMode(box, "warn", exitM3(box));
+    rmSync(join(box.dir, "old", "a.ts"));
+    execFileSync("git", ["-C", box.dir, "rm", "-q", "--cached", "old/a.ts"]);
+    writeFileSync(box.manifest, JSON.stringify({ roots: [{ repo: "agent-chat", path: "old" }], entries: [] }));
+
+    expect({ status: red.status, stderr: red.stderr }).toEqual({ status: 1, stderr: "agent-chat:old/a.ts: still exists but D-M3-19 was due at the exit of M3\n" });
+    expect(withMode(box, "warn", exitM3(box)).status).toBe(0);
+  });
+
+  it("rejects a mode other than fail or warn", () => {
+    const box = sandbox(["a.ts"], ["a.ts"]);
+
+    expect(withMode(box, "ignore").status).toBe(1);
   });
 });
 
