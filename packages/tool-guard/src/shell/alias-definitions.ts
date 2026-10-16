@@ -1,6 +1,7 @@
 import type { WordToken } from "./lexer.js";
 import type { Unwrapped } from "./unwrap.js";
 import { ReadingLimitError } from "./unsure-readings.js";
+import { BRACE_RE, mayBraceExpand, mayGenerate } from "./word-generation.js";
 
 /** zsh's alias tables as parameters, and bash's: a store into any of them defines an alias without the `alias` builtin. */
 const ALIAS_PARAMS = new Set(["aliases", "galiases", "saliases", "dis_aliases", "dis_galiases", "dis_saliases", "BASH_ALIASES"]);
@@ -17,14 +18,6 @@ const BOUND_PARAM_RE = new RegExp(String.raw`^${PARAM}(?:\[|$)`);
 const SPEC_PARAM_RE = new RegExp(String.raw`=${PARAM}$`);
 /** A quoted expansion that may still yield several words: any `@` (`"${@:2}"`, `"${a[@]}"`), zsh flags or `=` splitting. */
 const SEVERAL_RE = /@|\$\{[~^]*[=(]/;
-/** A brace expansion, `{a,b}` or `{1..3}`, which makes one typed word several. */
-const BRACE_RE = /\{[^{}]*(?:,|\.\.)[^{}]*\}/;
-/**
- * A zsh generation operator, which may turn the word into file names or a directory: a glob character, extendedglob's
- * `^`, `#` and `x~y`, a tilde (`~+`, `~1`, `~user`), or a leading `=` naming a command's path. A `(` qualifier never
- * reaches here: the lexer refuses it.
- */
-const GLOB_RE = /[*?[^#~]|^=/;
 /**
  * A glob in a command word, which may match several file names: a bracket only with its closing one, so `[` and `[[`
  * stay themselves, and a tilde only past the first character, where it is extendedglob's exclusion.
@@ -200,21 +193,6 @@ function varies(w: WordToken): boolean {
 /** A word that may yield several words: any unquoted expansion, a quoted one that splits, a glob or a brace expansion. */
 function yieldsSeveral(w: WordToken): boolean {
   return w.unquotedExpansion === true || (w.dynamic && SEVERAL_RE.test(w.value)) || mayGenerate(w);
-}
-
-/** A glob, a tilde, an `=` path or braces the shell may expand into other words. */
-function mayGenerate(w: WordToken): boolean {
-  return mayBraceExpand(w) || (mayBeUnquoted(w) && GLOB_RE.test(w.value));
-}
-
-/** Braces the shell may expand, one alternative of which may spell an alias parameter the whole word does not. */
-function mayBraceExpand(w: WordToken): boolean {
-  return mayBeUnquoted(w) && BRACE_RE.test(w.value);
-}
-
-/** The word is not wholly quoted, so the lexer cannot say which of its characters were. */
-function mayBeUnquoted(w: WordToken): boolean {
-  return !w.quoted || w.spliced;
 }
 
 /** A builtin's words as the shell reads them once expanded. */

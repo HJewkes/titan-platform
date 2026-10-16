@@ -7,7 +7,8 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { shepherdEventMigration } from "./events.js";
 import type { SeatHeld, ShepherdDeps, Verdict } from "./phases.js";
 import type { Presence } from "./presence.js";
-import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "./review.js";
+import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
+import { REVIEW_STEPS, reviewPhase, reviewRoutes } from "./review.js";
 import { holdSlotsMigration } from "./store-migrations.js";
 import { holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
 

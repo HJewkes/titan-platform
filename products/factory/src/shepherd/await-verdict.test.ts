@@ -1,8 +1,7 @@
-import { USAGE_LIMIT_REASON } from "@titan-design/review-panel";
+import { USAGE_LIMIT_REASON, type AwaitVerdictInput, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
 import { awaitLateVerdict, awaitVerdict, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
-import type { AwaitVerdictInput, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { Presence } from "./presence.js";
 
 const MINUTE = 60_000;

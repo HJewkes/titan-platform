@@ -1,5 +1,5 @@
 import { parseVerdictBlock } from "@titan-design/session-read";
-import type { ReviewTarget, ReviewerMessage } from "./review.js";
+import type { ReviewTarget, ReviewerMessage } from "@titan-design/review-panel";
 import type { SeatRow } from "./seat-tie.js";
 
 /** A stopped reviewer's transcript that ends in a partial record; `readable` and `brief` are what its complete records said. */
