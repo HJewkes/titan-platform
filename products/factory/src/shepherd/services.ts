@@ -7,6 +7,7 @@ import type { ReviewSlots } from "./review-slots.js";
 import type { ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
 import type { SnapshotServices } from "./snapshot-reads.js";
+import type { VisualDeliveryWatch } from "./visual-delivery-sweep.js";
 
 export const SHEPHERD_WORKFLOW = "shepherd-pr";
 
@@ -28,4 +29,6 @@ export interface ShepherdServices extends SnapshotServices {
   gateway?: GhGateway;
   /** The spawn gate's last reviewer reading, reported in `/health`; absent on a host with no gate. */
   reviewSlots?: () => ReviewSlots | undefined;
+  /** `shepherd.visualDelivery` on or in shadow; absent means serve starts no delivery sweep. */
+  visualDelivery?: VisualDeliveryWatch;
 }
