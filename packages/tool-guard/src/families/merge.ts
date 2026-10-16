@@ -6,7 +6,8 @@ import type { WordToken } from "../shell/lexer.js";
 import { classified } from "../spellings.js";
 import type { SpellingId } from "../spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
-import { httpRequest } from "./egress.js";
+import { httpRequest, isWrite } from "./http-request.js";
+import { mayReachGitHubApi } from "./github-endpoint.js";
 import { hasFlag, lastValue, readOptions, set, valuesOf } from "./options.js";
 
 const PROTECTED_RE = /^(?:main|master|release\/.+)$/;
@@ -67,16 +68,19 @@ function apiMerge(cmd: SimpleCommand): ClassifiedAction[] {
 }
 
 function endpointMerge(url: string, method: string, pullSpelling: SpellingId, mergesSpelling: SpellingId): ClassifiedAction[] {
-  if (method === "GET" || method === "HEAD") return [];
+  if (!isWrite(method)) return [];
   const pull = PULL_MERGE_RE.exec(url);
   if (pull) return [classified(pullSpelling, /^\d+$/.test(pull[1] ?? "") ? { pr: pull[1] as string } : {})];
   return MERGES_RE.test(url) ? [classified(mergesSpelling, {})] : [];
 }
 
-function curlMerge(cmd: SimpleCommand): ClassifiedAction[] {
-  const request = httpRequest(cmd);
+/** A literal endpoint names its PR, so it wins over a run-time URL that only may reach a merge endpoint. */
+function curlMerge(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
+  const request = httpRequest(cmd, ctx);
   if (!request) return [];
-  return request.urls.flatMap((u) => endpointMerge(u.value, request.method, "bash.merge.curl-api", "bash.merge.curl-api")).slice(0, 1);
+  const literal = request.urls.flatMap((u) => endpointMerge(u.value, request.method, "bash.merge.curl-api", "bash.merge.curl-api"));
+  const runTime = isWrite(request.method) && request.urls.some(mayReachGitHubApi) ? [classified("bash.merge.curl-api", {})] : [];
+  return [...literal, ...runTime].slice(0, 1);
 }
 
 /** Branch checked out where git runs; an unknown directory reads as `unknown`, which counts as protected. */
@@ -195,7 +199,7 @@ function git(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
 function bash(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
   if (cmd.name === "gh") return [...prMerge(cmd), ...apiMerge(cmd)];
   if (cmd.name === "git") return git(cmd, inChain(cmd, ctx));
-  return curlMerge(cmd);
+  return curlMerge(cmd, ctx);
 }
 
 const NEW_BRANCH_OPTS = ["-b", "-B", "-c", "-C", "--orphan", "--create", "--force-create"];

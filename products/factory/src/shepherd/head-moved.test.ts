@@ -13,11 +13,15 @@ import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { ReviewRequest, ShepherdPhases, Verdict } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { RESYNC_READ_TIMEOUT_MS } from "./bounded.js";
 import { seatPolicyHead, supersedeMovedGates } from "./head-moved.js";
 import { shepherdStoreRef } from "./store.js";
 
 const hosts: FactoryHost[] = [];
-afterEach(() => hosts.splice(0).forEach((host) => host.close()));
+afterEach(() => {
+  vi.useRealTimers();
+  hosts.splice(0).forEach((host) => host.close());
+});
 
 /** Synthetic stand-ins for the three heads of the replayed run: sent back, gated, then moved past the gate. */
 const SENT_BACK = fakeSha("replay-sent-back");
@@ -316,19 +320,42 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
   });
 
-  it("a gate the owner resolves while its head read is in flight is not cancelled", async () => {
+  it.each([
+    ["is not cancelled", {}],
+    ["is not reported in a dry run", { dryRun: true }],
+  ])("a gate the owner resolves while its head read is in flight %s", async (_case, options) => {
     const { host, fake, services, runId } = await gatedAtSecondHead();
     fake.pushHead(1, MOVED);
     let release!: () => void;
     const released = new Promise<void>((resolve) => (release = resolve));
     const slow = { ...services, port: { ...services.port, getPr: async (repo: string, pr: number) => (await released, services.port.getPr(repo, pr)) } };
 
-    const sweeping = supersedeMovedGates(host, slow);
+    const sweeping = supersedeMovedGates(host, slow, options);
     host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: GATED }, OWNER);
     release();
 
     expect(await sweeping).toEqual([]);
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).not.toBe("cancelled");
+  });
+
+  it("a gate whose head read never answers stays pending while a moved gate is superseded", async () => {
+    const { host, fake, services, runId } = await gatedAtSecondHead();
+    fake.addPr({ headSha: GATED });
+    const moved = host.runtime.start("shepherd-pr", { repo: REPO, pr: "2", policy: JSON.stringify(OWNER_GATE_POLICY) });
+    services.store.get().register({ repo: REPO, pr: 2, runId: moved, task: "demo/2", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    await gateOpened(host, gateId(moved, "approve-merge"));
+    fake.pushHead(1, MOVED);
+    fake.pushHead(2, MOVED);
+    const hanging = { ...services, port: { ...services.port, getPr: (repo: string, pr: number) => (pr === 1 ? new Promise<never>(() => undefined) : services.port.getPr(repo, pr)) } };
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let settled = false;
+
+    const sweeping = supersedeMovedGates(host, hanging).finally(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(RESYNC_READ_TIMEOUT_MS);
+
+    expect(settled).toBe(true);
+    expect(await sweeping).toEqual([{ runId: moved, gateId: gateId(moved, "approve-merge"), from: GATED, to: MOVED, condition: "head-moved" }]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
   });
 
   it("leaves a gate alone when GitHub cannot be read", async () => {

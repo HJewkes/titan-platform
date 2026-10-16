@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { WorkflowNotOwnedError, type WorkflowRun } from "@titan-design/workflow";
 import type { FactoryHost } from "../host.js";
-import { RESYNC_CONCURRENCY, mapBounded } from "./bounded.js";
+import { RESYNC_CONCURRENCY, RESYNC_READ_TIMEOUT_MS, ReadTimedOut, mapBounded } from "./bounded.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import { failureOf } from "./error-class.js";
 import { openOrRead } from "./snapshot-reads.js";
@@ -131,11 +131,11 @@ export async function endRunsGoneElsewhere(host: FactoryHost, services: Shepherd
   const ended: EndedRun[] = [];
   const scope = options.scope ?? "gated";
   const runIds = candidateRuns(host, scope).map((run) => run.id).filter((runId) => !options.only || options.only.has(runId));
-  const reasons = await mapBounded(runIds, RESYNC_CONCURRENCY, (runId) => goneReason(services, runId));
+  const reasons = await mapBounded(runIds, RESYNC_CONCURRENCY, (runId) => goneReason(services, runId), { timeoutMs: RESYNC_READ_TIMEOUT_MS });
   for (const [index, runId] of runIds.entries()) {
     const read = reasons[index]!;
     if (read.status === "rejected") {
-      if (!(read.reason instanceof UnreadablePr)) throw read.reason;
+      if (!(read.reason instanceof UnreadablePr || read.reason instanceof ReadTimedOut)) throw read.reason;
       options.onUnreadable?.(runId, read.reason.message);
       continue;
     }

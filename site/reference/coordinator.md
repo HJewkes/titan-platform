@@ -109,6 +109,16 @@ const result = checkCoordinatorConfig({
 // { ok: false, errors: [{ code: "reference", path: "seats.web-coord.pool", ... }] }
 ```
 
+```ts
+import { parseAuthored, renderAuthored } from "@titan-design/coordinator";
+
+const result = parseAuthored(seatState.authored);
+if (result.ok) {
+  const text = renderAuthored(result.block, new Date());
+  // "Continuations:\n- on pr owner/repo#12: merge once green\n\nNext/why:\n..."
+}
+```
+
 ## What it deliberately does not do
 
 It reads no files, parses no YAML and runs nothing. It has no notion of jobs or placement.
@@ -179,6 +189,16 @@ as ids into the top-level `repos` map. Like the seat and charter schemas the doc
 loose: unknown keys pass through on read. `limits` is the exception: agent-dispatch's
 `limitsSchema` is strict, so an unknown limits key fails. `policy.defaults` may be partial or
 empty.
+
+`parseAuthored` never throws. The 1,500-character cap is on the stored JSON text, checked
+before `JSON.parse` (`too-long`); `authoredBlockSchema` applies the same cap to an object
+handed in directly, measured as compact JSON without its empty sections. `""` (the cleared
+block) and `{}` both read as an empty block. Unlike seat front matter the block is strict: an
+unknown key, a continuation `on` other than `agent`, `pr`, `msg` or `time`, an `expires` that
+is not a `YYYY-MM-DD` date, or a `next_why` over 5 lines is refused at its key path. Expiry is
+checked at render, not at parse: `renderAuthored` keeps a standing rule through its `expires`
+day and drops it once `now`'s UTC day is later. Empty sections are omitted, so an empty block
+renders as `""`.
 
 ## Where it came from
 

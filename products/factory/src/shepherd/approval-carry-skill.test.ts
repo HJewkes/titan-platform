@@ -14,7 +14,7 @@ const LATER = fakeSha("later");
 const SKILL = ".claude/skills/x/SKILL.md";
 const EMPTY: RemergeResult = { carries: true, rule: "remerge-empty", headTree: "t", remergeTree: "t", paths: [], generatedPaths: [] };
 const RESOLVED: RemergeResult = { carries: false, paths: ["src/a.ts"], generatedPaths: [], reason: "the merge changed 1 path(s) outside the declared generated files" };
-const smallFix = (paths: string[]): FixCarryResult => ({ carries: true, rule: "small-fix", base: "b", headTree: "h", mergeTree: "m", changedLines: 4, paths });
+const mergeUp = (paths: string[]): FixCarryResult => ({ carries: true, rule: "merge-up", base: "b", headTree: "h", mergeTree: "h", changedLines: 0, paths });
 
 const landPrompt = (head: string, table = "authority", row = "MRG-AU"): string =>
   `Merge PR #1 in ${REPO} at head ${head}? CI is green. Policy ${table}/${row}: the authority policy did not allow an automated merge`;
@@ -59,8 +59,8 @@ describe("an owner merge approval meeting a repo skill change", () => {
     expect(r.gates).toEqual([APPROVED, LATER]);
   });
 
-  it("asks the owner again when the small fix it would follow changes a repo skill", async () => {
-    const r = rig({ fix: smallFix(["src/a.ts", SKILL]) });
+  it("asks the owner again when the merge-up it would follow touches a repo skill", async () => {
+    const r = rig({ fix: mergeUp(["src/a.ts", SKILL]) });
 
     await r.ask("approve-merge", landPrompt(APPROVED));
     await r.ask("approve-merge:1", landPrompt(LATER));
@@ -107,7 +107,7 @@ describe("an owner merge approval meeting a repo skill change", () => {
   });
 
   it("still follows a skill-free small fix without asking the owner", async () => {
-    const r = rig({ fix: smallFix(["src/a.ts", "docs/skills/x.md"]) });
+    const r = rig({ fix: mergeUp(["src/a.ts", "docs/skills/x.md"]) });
 
     await r.ask("approve-merge", landPrompt(APPROVED));
     const answer = await r.ask("approve-merge:1", landPrompt(LATER));

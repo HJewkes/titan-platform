@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Runs only the tests a change reaches: vitest --changed against a base. CI's full `pnpm test` stays the authority,
-// because the import graph misses tests that read files at runtime.
+// Runs only the tests a change reaches: vitest --changed against a base, for a quick local loop. CI does not use it:
+// the import graph misses tests that read files at runtime and stops at the dist other packages import. CI scopes pull
+// requests by the package graph (test-scope.mjs), and main's full run is the authority.
 // Usage: node scripts/test-affected.mjs [base]   (base: TEST_AFFECTED_BASE, then argv, then origin/main)
 import { execFileSync, spawnSync } from "node:child_process";
 import { globSync } from "node:fs";
@@ -11,8 +12,9 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_BASE = "origin/main";
 
 // Vitest matches these against absolute paths; a hit runs every file in the selected projects. Setting the option
-// replaces vitest's defaults, so the first two restate them.
-export const FORCE_RERUN_TRIGGERS = [
+// replaces vitest's defaults, so the first two restate them. picomatch's ** skips dot segments, so a bare **/ prefix
+// misses a checkout under .worktrees/ or ~/.cache; anchoring at the literal root matches through them.
+const RERUN_PATTERNS = [
   "**/package.json/**",
   "**/{vitest,vite}.config.*/**",
   "**/package.json",
@@ -21,6 +23,12 @@ export const FORCE_RERUN_TRIGGERS = [
   "**/tsconfig*.json",
   "**/scripts/fixtures/**",
 ];
+
+const escapeGlob = (path) => path.replace(/[\\*?[\]{}()!+@]/g, "\\$&");
+
+export function forceRerunTriggers(root = ROOT) {
+  return RERUN_PATTERNS.map((pattern) => `${escapeGlob(root)}/${pattern}`);
+}
 
 // The git-heavy files the TP-1685 kalloc sweep ranked highest; test:affected runs them only when their package changed.
 export const REPO_TIER_INCLUDE = [
