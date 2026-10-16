@@ -1,7 +1,7 @@
 import { newTrials, sameSpend } from "./arith-trials.js";
 import { type NestedReaders, refuseValueRun } from "./balanced.js";
 import { joinedDollar, nextAfter } from "./joins.js";
-import { nestedReaders, type Reading } from "./lexer.js";
+import { nestedReaders, type Reading } from "./nested-reading.js";
 import { refusingAs } from "./parse-error.js";
 import type { Token } from "./tokens.js";
 
