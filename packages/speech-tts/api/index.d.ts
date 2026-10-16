@@ -196,7 +196,7 @@ interface CommandRequest {
     alphabet?: PhonemeAlphabet;
     speed?: number;
     language?: string;
-    /** In `json` mode, a fresh directory for this call. A `wav` in the answer is a path relative to it. */
+    /** In `json` mode, a fresh directory for this call. A `wav` in the answer is a bare filename in it. */
     outDir?: string;
     /** In `json` mode, a suggested file inside `outDir`. */
     out?: string;

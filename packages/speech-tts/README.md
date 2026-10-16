@@ -270,8 +270,9 @@ The answer depends on `output`:
 - **`stdout-wav`**: stdout is RIFF/WAVE bytes, PCM16 or float32, at any sample rate (the
   header is read). A streamed WAV with unpatched sizes is accepted.
 - **`json`** (the default): stdout is one JSON object with the audio as `"wav": "<path>"` or
-  as `"audioBase64"`. A `wav` path is **relative to `outDir`**, such as `"out.wav"`. An absolute
-  path, a `..` escape, or a symlink that resolves outside `outDir` fails. The answer may add
+  as `"audioBase64"`. A `wav` must be a **bare filename in `outDir`**, such as `"out.wav"`. A
+  path with a separator is refused, so is an absolute path, and so is a symlink that resolves
+  outside `outDir`. The answer may add
   `"durationS"`, `"words": [{ "word", "start", "end" }]` in seconds, and `"phonemes": ["..."]`.
 
 Exit 0 means success. Exit 69 (EX_UNAVAILABLE), 127 or 255 (ssh could not connect) means
@@ -320,7 +321,9 @@ These defaults assume the profile is trusted, but the engine and the network are
   its `outDir`, after symlinks are resolved. The read uses one descriptor: it is opened without
   following a final symlink, its type and size come from fstat on that descriptor, and the
   read is bounded by that size. A file swapped for a link after the checks, a FIFO, or a file
-  that grows mid-read is refused.
+  that grows mid-read is refused, and so is a hard-linked file (more than one link). If
+  removing the scratch directory fails, the failure is logged as a `SpeechTtsWarning` and does
+  not replace the result or the error.
 - **Secrets stay out of errors.** stderr and HTTP error bodies are redacted first, then
   trimmed to about 2 KB. The redaction covers `${env:...}` values, `secrets` and header values.
 - **Misconfiguration fails closed.** A secret that resolves to nothing or a malformed entry

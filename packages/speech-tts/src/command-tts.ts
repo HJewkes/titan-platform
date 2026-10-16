@@ -7,7 +7,7 @@ import { FileRefused, readRegularFile } from "./bounded-read.js";
 import { assertSupported } from "./capabilities.js";
 import { withDeadline } from "./deadline.js";
 import { TtsFailedError, TtsUnavailableError } from "./errors.js";
-import { isRecord } from "./guards.js";
+import { errorMessage, isRecord } from "./guards.js";
 import { DEFAULT_MAX_OUTPUT_BYTES, errorText } from "./output-limits.js";
 import { decodeEngineWav, toSynthesis } from "./synthesis.js";
 import type {
@@ -50,7 +50,7 @@ export interface CommandRequest {
   alphabet?: PhonemeAlphabet;
   speed?: number;
   language?: string;
-  /** In `json` mode, a fresh directory for this call. A `wav` in the answer is a path relative to it. */
+  /** In `json` mode, a fresh directory for this call. A `wav` in the answer is a bare filename in it. */
   outDir?: string;
   /** In `json` mode, a suggested file inside `outDir`. */
   out?: string;
@@ -163,6 +163,7 @@ async function readConfinedWav(opts: CommandTtsOptions, dir: string, wav: string
     throw new TtsFailedError(opts.id, `wav "${wav}" ${why}`);
   };
   if (isAbsolute(wav)) fail("must be a path relative to outDir, not absolute");
+  if (/[\\/]/.test(wav) || wav === "..") fail("must be a bare filename in outDir, with no directory part");
   if (escapes(dir, resolve(dir, wav))) fail("escapes outDir");
   const realDir = await realpath(dir);
   const realFile = await realpath(resolve(dir, wav)).catch(() => fail("does not exist in outDir"));
@@ -190,7 +191,17 @@ async function parseJsonOutput(opts: CommandTtsOptions, stdout: Buffer, dir: str
   return toSynthesis(opts.id, opts.capabilities, decodeEngineWav(opts.id, bytes), doc);
 }
 
+/** Cleanup runs in a `finally`; a failure here must not replace the synthesis result or its real error. */
+async function removeScratch(id: string, dir: string): Promise<void> {
+  try {
+    await rm(dir, { recursive: true, force: true });
+  } catch (cause) {
+    process.emitWarning(`${id}: could not remove scratch directory ${dir}: ${errorMessage(cause)}`, "SpeechTtsWarning");
+  }
+}
+
 async function synthesizeOnce(opts: CommandTtsOptions, request: CommandRequest, signal: AbortSignal): Promise<Synthesis> {
+  signal.throwIfAborted();
   const result = await run(opts, request, signal);
   checkExit(opts, result);
   if (!request.outDir) return toSynthesis(opts.id, opts.capabilities, decodeEngineWav(opts.id, result.stdout));
@@ -209,7 +220,7 @@ export function commandTts(opts: CommandTtsOptions): TtsProvider {
         synthesizeOnce(opts, request, signal),
       );
     } finally {
-      if (dir) await rm(dir, { recursive: true, force: true });
+      if (dir) await removeScratch(opts.id, dir);
     }
   };
   return { id: opts.id, capabilities: opts.capabilities, synthesize };

@@ -5,7 +5,7 @@
 //   --rate <Hz>        sample rate written in the WAV header (default 24000)
 //   --pid-file <path>  write this process's pid there before reading stdin
 //   --echo <path>      write the request JSON there
-import { symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const flags = Object.fromEntries(
@@ -60,7 +60,12 @@ function writeNamedWav(request, audio, extras) {
     "json-absolute": request.out,
     "json-escape": "../outside.wav",
     "json-symlink": "link.wav",
+    "json-subdir": "sub/out.wav",
   };
+  if (mode === "json-subdir") {
+    mkdirSync(join(request.outDir, "sub"));
+    writeFileSync(join(request.outDir, "sub", "out.wav"), audio);
+  }
   if (mode === "json-escape") writeFileSync(join(request.outDir, "..", "outside.wav"), audio);
   if (mode === "json-symlink") symlinkSync(flags.target, join(request.outDir, "link.wav"));
   process.stdout.write(JSON.stringify({ wav: names[mode], ...extras }));
