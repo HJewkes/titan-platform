@@ -1,8 +1,8 @@
 import { caseScripts } from "./case-script.js";
 import type { RedirectToken, WordToken } from "./lexer.js";
 import { pipedShellTexts } from "./piped-nul.js";
-import { shellOperands, shellStdin } from "./shell-options.js";
-import type { StdinSource } from "./shell-options.js";
+import { shellOperands, shellStdin, TOP_DESCRIPTORS } from "./shell-options.js";
+import type { Descriptors, StdinSource } from "./shell-options.js";
 import { SPLICING_SHELLS, splicedWords } from "./sub-output.js";
 import { chargeSpliced } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
@@ -15,21 +15,30 @@ export const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
 export interface Inline {
   texts: string[];
   wrap: Wrapping;
+  /** The descriptor a shell read the texts from, whose rest its commands do not inherit; unset for `-c` and `eval`. */
+  fd?: number;
 }
 
 /**
  * The script a shell or `eval` runs: a `-c` string, else a heredoc, here-string or literal pipe on stdin. Eval and `-c`
  * text is read with and without what its substitutions print, when that is literal on the line.
  */
-export function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], piped: string[], budget: UnsureBudget): Inline | null {
+export function inlineScript(
+  cmd: Unwrapped,
+  redirects: RedirectToken[],
+  piped: string[],
+  budget: UnsureBudget,
+  inherited: Descriptors = TOP_DESCRIPTORS,
+): Inline | null {
   if (cmd.script !== undefined) return { texts: [cmd.script], wrap: "sh-c" };
   if (cmd.name === "eval") return { texts: splicedReadings(cmd.args, budget), wrap: "eval" };
   if (cmd.name === "emulate") return emulateScript(cmd.args, budget);
   if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
   const operands = shellOperands(cmd.args, cmd.name);
   const { hasC, positional } = operands;
-  const { runs, sources } = shellStdin(operands, redirects, piped.length > 0);
-  const stdin = runs ? stdinReading(cmd.name, sources, piped) : null;
+  const { runs, fd, sources } = shellStdin(operands, redirects, piped.length > 0, inherited);
+  const read = runs ? stdinReading(cmd.name, sources, piped) : null;
+  const stdin = read === null ? null : { ...read, fd };
   if (!hasC) return stdin;
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
   const texts = positional ? splicedReadings([positional], budget) : piped;

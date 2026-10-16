@@ -98,17 +98,15 @@ through a symlinked parent, is refused just before the append.
 
 - Stdin named through the working directory or a symlink (`cd /dev && bash stdin`) is not
   read as stdin. TP-3240 tracks it.
-- A shell that a `-c` string, `eval` or `find -exec` starts does not inherit its runner's stdin
-  or descriptors, so `bash -c bash < $F`, `echo … | bash -c 'bash /dev/stdin'` and
-  `eval 'bash /dev/stdin' < ./x.sh` are not read. TP-3250 tracks it.
 - bash's and zsh's named-descriptor redirect `{name}<` is read as an operand, so
   `bash {fd}< ./x.sh /dev/fd/10` is not read. TP-3279 tracks it.
 
 ## Gotchas
 
-- A shell that runs stdin, or a descriptor its script operand names, is refused when its own
-  redirects do not show that text: `bash < $F`, `bash /dev/stdin <&3`, `bash /dev/fd/3` with no
-  `3<`. A shell started inside a `-c` string or `eval` is not covered; see Known gaps.
+- A shell that runs stdin, or a descriptor its script operand names, is refused when the line
+  does not show that text: `bash < $F`, `bash /dev/stdin <&3`, `bash /dev/fd/3` with no `3<`.
+  A shell that a `-c` string, `eval`, `emulate -c` or `find -exec` starts inherits its runner's
+  stdin and descriptors, so `bash -c bash < $F` is refused too.
   Run the script by a literal path, or redirect a literal file (`bash /dev/stdin < ./x.sh`).
 - A gate verdict denies. The hook cannot check a resolved gate yet, so `MRG-CO` and `REL-CO`
   deny with a reason naming the gate.
