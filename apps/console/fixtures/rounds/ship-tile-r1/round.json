@@ -1,0 +1,65 @@
+{
+  "schema": "titan-review/round@2",
+  "unit": "ship-tile",
+  "round": 1,
+  "storybookUrl": "http://localhost:6006",
+  "widths": [1280],
+  "recommendations": "after-answer",
+  "variants": [
+    { "key": "tile-light", "image": "images/tile-light.png", "label": "Tile, light" },
+    { "key": "tile-dark", "image": "images/tile-dark.png", "label": "Tile, dark" },
+    { "key": "badge-new", "image": "images/badge-new.png", "label": "Badge (new)" },
+    { "key": "panel-wide", "image": "images/panel-wide.png", "label": "Panel, wider" }
+  ],
+  "sections": [
+    {
+      "id": "changed",
+      "title": "Changed tiles",
+      "kind": "STATES",
+      "deciding": "Whether the regenerated tile baselines ship.",
+      "changed": "The tile stripe moved up six pixels, a badge is new and the panel is wider.",
+      "context": "Every other baseline is unchanged.",
+      "variantKeys": ["tile-light", "tile-dark", "badge-new", "panel-wide"]
+    },
+    {
+      "id": "side",
+      "title": "Side question",
+      "deciding": "Whether the badge colour is a follow-up.",
+      "changed": "The badge is new in this change.",
+      "context": "Colour tokens are out of scope.",
+      "parts": [{ "id": "badge-colour", "label": "Badge colour", "proposed": "magenta" }],
+      "questionIds": ["badge-follow-up"]
+    },
+    {
+      "id": "ship",
+      "title": "Ship",
+      "deciding": "Whether example/tiles#1 merges at its head.",
+      "changed": "Four regenerated baselines.",
+      "context": "The CI run is synthetic.",
+      "parts": [{ "id": "baselines", "label": "Regenerated baselines", "proposed": "four tile baselines" }],
+      "questionIds": ["ship-tiles"]
+    }
+  ],
+  "questions": [
+    {
+      "id": "badge-follow-up",
+      "kind": "pick-one",
+      "prompt": "File the badge colour as a follow-up?",
+      "options": ["Yes", "No"],
+      "page": "example/tiles#1",
+      "signsOff": "badge-colour",
+      "recommendation": { "answer": "Yes", "rationale": "The magenta badge reads louder than the stripe it labels.", "confidence": 0.6, "by": "fixture-agent" }
+    },
+    {
+      "id": "ship-tiles",
+      "kind": "pick-one",
+      "prompt": "Ship example/tiles#1 at 89abcdef0123?",
+      "options": ["Ship", "Don't ship"],
+      "required": true,
+      "page": "example/tiles#1",
+      "signsOff": "baselines",
+      "merge": { "repo": "example/tiles", "pr": 1, "headSha": "89abcdef0123456789abcdef0123456789abcdef", "ship": ["Ship"] },
+      "recommendation": { "answer": "Ship", "rationale": "The stripe moved as the change intends and nothing else shifted.", "confidence": 0.8, "by": "fixture-agent" }
+    }
+  ]
+}
