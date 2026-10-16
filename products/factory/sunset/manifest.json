@@ -1416,9 +1416,9 @@
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/owner-hold-reviewer.test.ts",
    "fate": "delete",
-   "task": "D-M7-06",
-   "milestone": "M7",
-   "filing": "TP-3165"
+   "task": "D-M5-03",
+   "milestone": "M5",
+   "filing": "TP-3153"
   },
   {
    "repo": "titan-platform",
@@ -1432,9 +1432,9 @@
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/owner-hold.test.ts",
    "fate": "delete",
-   "task": "D-M7-06",
-   "milestone": "M7",
-   "filing": "TP-3165"
+   "task": "D-M5-03",
+   "milestone": "M5",
+   "filing": "TP-3153"
   },
   {
    "repo": "titan-platform",
