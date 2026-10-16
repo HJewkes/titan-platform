@@ -9,8 +9,6 @@ import type { Unwrapped } from "./unwrap.js";
 
 export const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
 const SHELL_VALUE_OPTS = new Set(["-o", "+o", "-O", "+O", "--rcfile", "--init-file"]);
-const EMULATE_C = /^[-+][A-Za-z]*c[A-Za-z]*$/;
-const EMULATE_FLAG = /^(?:-|--|[-+][A-Za-z]+)$/;
 
 /** Shell text a command runs, and how it reaches the commands in it. */
 export interface Inline {
@@ -35,15 +33,84 @@ export function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], piped: 
 }
 
 /**
- * `emulate MODE [flags] -c TEXT` runs TEXT as eval does. zsh takes the first word past the flags, which `+c`, `-xc`,
- * `-co NAME` and a lone `-` all reach, and a dynamic word may be `-c`. So every word from the first `c` flag or dynamic
- * word on that is not itself a flag is read as the text: zsh refuses a line with more than one, so the others are inert.
+ * `emulate [-LR] MODE [options] -c TEXT` runs TEXT as eval does. The words are read as zsh's own two lexers read
+ * them, so any cluster zsh takes `c` from (`-c2`, `-2c`, `+xc`, `-c-`) reaches the text. A dynamic word may expand
+ * to any options, so from one on every word is read as the text.
  */
 function emulateScript(args: WordToken[], budget: UnsureBudget): Inline | null {
-  const at = args.findIndex((w) => w.dynamic || EMULATE_C.test(w.value));
-  if (at < 0) return null;
-  const words = args.slice(at).filter((w) => w.dynamic || !EMULATE_FLAG.test(w.value));
+  const words = emulateTextWords(args);
+  if (words.length === 0) return null;
   return { texts: [...new Set(words.flatMap((w) => splicedReadings([w], budget)))], wrap: "eval" };
+}
+
+/**
+ * The builtin lexer reads `-lLR` clusters before MODE: a lone `-` or `--` ends them, and a word whose second
+ * character is a digit is MODE itself. zsh refuses `-c` with `-L` or `-l`, and any other letter there.
+ */
+function emulateTextWords(args: WordToken[]): WordToken[] {
+  let i = 0;
+  let flags = "";
+  for (; i < args.length; i++) {
+    const w = args[i] as WordToken;
+    if (w.dynamic) return args.slice(i);
+    if (!w.value.startsWith("-") || /^-\d/.test(w.value)) break;
+    const body = w.value.startsWith("--") ? w.value.slice(2) : w.value.slice(1);
+    if (body === "") return optionTextWords(args, i + 2, flags);
+    if (!/^[lLR]+$/.test(body)) return [];
+    flags += body;
+  }
+  return optionTextWords(args, i + 1, flags);
+}
+
+function optionTextWords(args: WordToken[], start: number, flags: string): WordToken[] {
+  const mode = args[start - 1];
+  if (mode === undefined) return [];
+  if (mode.dynamic) return args.slice(start - 1);
+  return /[lL]/.test(flags) ? [] : parsedText(args, start, false);
+}
+
+/**
+ * zsh's `parseopts`, as `emulate` calls it after MODE. Any letter is taken as a valid option, since which letters
+ * are depends on the calling shell's options. `b` ends the options only under zsh's own letters, so both are read.
+ */
+function parsedText(args: WordToken[], start: number, hasC: boolean): WordToken[] {
+  for (let j = start; j < args.length; j++) {
+    const w = args[j] as WordToken;
+    if (w.dynamic) return args.slice(j);
+    if (!/^[-+]/.test(w.value)) return hasC ? [w] : [];
+    const read = readCluster(w.value);
+    if (read === null) return [];
+    hasC ||= read.c;
+    if (read.end === "options") return hasC ? args.slice(j + 1, j + 2) : [];
+    if (read.end === "name") {
+      const name = args[++j];
+      if (name === undefined) return [];
+      if (name.dynamic) return args.slice(j);
+    }
+    if (read.b) return [...new Set([...(hasC ? args.slice(j + 1, j + 2) : []), ...parsedText(args, j + 1, hasC)])];
+  }
+  return [];
+}
+
+interface Cluster {
+  c: boolean;
+  b: boolean;
+  end: "word" | "name" | "options";
+}
+
+/** One option word, or null where zsh refuses it: a `-` ends the options only as the word's last character. */
+function readCluster(word: string): Cluster | null {
+  const read: Cluster = { c: false, b: false, end: "word" };
+  if (word.length === 1) return { ...read, end: "options" };
+  for (let k = 1; k < word.length; k++) {
+    const ch = word[k] as string;
+    if (ch === "-") return k === word.length - 1 ? { ...read, end: "options" } : null;
+    if (ch === "o") return { ...read, end: k === word.length - 1 ? "name" : "word" };
+    if (/\s/.test(ch)) return /^\s*$/.test(word.slice(k)) ? read : null;
+    read.c ||= ch === "c";
+    read.b ||= ch === "b";
+  }
+  return read;
 }
 
 /**
