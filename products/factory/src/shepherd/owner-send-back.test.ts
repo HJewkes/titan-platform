@@ -6,6 +6,9 @@ import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
+import { partialFake } from "@titan-design/test-kit";
+import type { WorkflowContext } from "@titan-design/workflow";
+import { sendBackOffer } from "./owner-send-back.js";
 import type { ShepherdPhases, WakeOutcome, WakeRequest } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
@@ -81,5 +84,29 @@ describe("an owner send-back at approve-merge", () => {
 
     expect(offered(w, gate)).toEqual(["merge", "abandon"]);
     expect(Object.values(w.host.runtime.status(w.runId)!.stepResults).find((result) => result.stepId.startsWith("sh-send-back-offer"))?.data).toMatchObject({ result: { offered: false } });
+  });
+});
+
+describe("the send-back offer step", () => {
+  const ctxWith = (next: string | undefined) => {
+    const dispatched: string[] = [];
+    const result = (stepId: string) => ({ stepId, iteration: 0, agentId: null, signal: null, completedAt: "", data: { result: { offered: true } } });
+    const dispatch = async (stepId: string) => (dispatched.push(stepId), result(stepId));
+    return { ctx: partialFake<WorkflowContext>({ historyNext: () => next, dispatch: dispatch as WorkflowContext["dispatch"] }), dispatched };
+  };
+
+  it("replays a record from before the step as no offer, dispatching nothing", async () => {
+    const { ctx, dispatched } = ctxWith("approve-merge");
+
+    expect(await sendBackOffer()(ctx)).toBe(false);
+    expect(dispatched).toEqual([]);
+  });
+
+  it("reads the flag once per gate, each under its own step id", async () => {
+    const { ctx, dispatched } = ctxWith(undefined);
+    const offer = sendBackOffer();
+
+    expect([await offer(ctx), await offer(ctx)]).toEqual([true, true]);
+    expect(dispatched).toEqual(["sh-send-back-offer:0", "sh-send-back-offer:1"]);
   });
 });
