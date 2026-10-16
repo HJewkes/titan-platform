@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import type * as FsPromises from "node:fs/promises";
 import type * as ChildProcess from "node:child_process";
 import { tmpdir } from "node:os";
@@ -40,14 +40,21 @@ const CAPS: TtsCapabilities = {
 const provider = (mode: string, output: "json" | "stdout-wav") =>
   commandTts({ id: "stub", argv: [process.execPath, STUB, "--mode", mode], capabilities: CAPS, output });
 
+const originalTmpdir = process.env.TMPDIR;
+let scratchRoot = "";
+
 beforeEach(() => {
   vi.mocked(spawn).mockClear();
   hooks.rmFails = false;
-  process.env.TMPDIR = mkdtempSync(join(tmpdir(), "speech-tts-faults-"));
+  scratchRoot = mkdtempSync(join(tmpdir(), "speech-tts-faults-"));
+  process.env.TMPDIR = scratchRoot;
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  if (originalTmpdir === undefined) delete process.env.TMPDIR;
+  else process.env.TMPDIR = originalTmpdir;
+  rmSync(scratchRoot, { recursive: true, force: true });
 });
 
 describe("commandTts faults", () => {
