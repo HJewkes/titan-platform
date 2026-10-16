@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { contentTerms, guardRewrite, type GuardRule } from "./rewrite-guard.js";
+import { contentTerms, guardRewrite, type GuardOptions, type GuardRejection, type GuardRule } from "./rewrite-guard.js";
 
-const rules = (source: string, candidate: string, span: string, opts = {}): GuardRule[] =>
-  guardRewrite(source, candidate, span, opts).map((rejection) => rejection.rule);
+const rules = (source: string, candidate: string, span: string, opts: GuardOptions = {}): GuardRule[] =>
+  guardRewrite(source, candidate, span, opts).map((rejection: GuardRejection) => rejection.rule);
 
 describe("guardRewrite numbers", () => {
   // Catches: the number check skipped, so a candidate that drops a count is accepted.

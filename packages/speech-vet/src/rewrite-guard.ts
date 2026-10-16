@@ -20,7 +20,7 @@ export interface GuardOptions {
   minLengthSlack?: number;
 }
 
-export const DEFAULT_GUARD_OPTIONS = {
+const DEFAULT_GUARD_OPTIONS = {
   maxDroppedTerms: 1,
   lengthTolerance: 0.25,
   minLengthSlack: 3,
