@@ -38,7 +38,7 @@ interface WatchPorts {
 }
 
 /** How serve stood just before the restart and just after it. */
-export interface WatchBaseline {
+interface WatchBaseline {
   /** The answer that confirmed the sha; the pid is held to it. */
   confirmed: Health;
   /** The drain's last answer before the restart, or null when serve was silent then; run errors are judged against it. */
@@ -106,7 +106,10 @@ type Reading = { kind: "answer"; health: Health; slow: boolean; latencyMs: numbe
 /** A live pid earns a null a second, longer probe before the tick gives up; a dead pid cannot answer, so it gets none. */
 async function read(ports: WatchPorts, baseline: Health): Promise<Reading> {
   const started = ports.now();
-  const answered = (health: Health | null, slow: boolean): Reading => (health === null ? { kind: "miss", slow, latencyMs: ports.now() - started } : { kind: "answer", health, slow, latencyMs: ports.now() - started });
+  const answered = (health: Health | null, slow: boolean): Reading => {
+    const latencyMs = ports.now() - started;
+    return health === null ? { kind: "miss", slow, latencyMs } : { kind: "answer", health, slow, latencyMs };
+  };
   const quick = await ports.probe(FAST_PROBE_TIMEOUT_MS);
   if (quick !== null) return answered(quick, false);
   const pid = baseline.pid;

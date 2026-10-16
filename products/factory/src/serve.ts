@@ -12,7 +12,8 @@ import { DEPLOY_WATCH_MS, type DeployWatch } from "./deploy-watch.js";
 import { gateNotifyWatch, type GateNotifyOptions, type GateNotifyWatch } from "./gate-notify-sweep.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
-import { behindTrain, busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
+import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
+import { heldRun } from "./serve-holds.js";
 import { timestampConsole } from "./serve-log.js";
 import { startUnlessLive, type HealthProbe } from "./serve-beside-live.js";
 import { startLoopDelayWatch } from "./serve-loop-delay.js";
@@ -265,22 +266,6 @@ export function factoryHealth(host: FactoryHost, routeFor: RoutedRunner["routeFo
   const held = isHeld ? heldSkipped(running, routeFor, isHeld) : [];
   const recoveryRequired = host.runtime.list(["recovery_required"]).map((run) => run.id);
   return { runs, recoveryRequired, pendingGates: host.pendingGates().length, busy: busyRuns(running, routeFor, isHeld), heldSkipped: held };
-}
-
-/**
- * A run held and not yet satisfied cannot merge until release, nor can one waiting behind another run on its repo's train; a satisfied one may merge at any moment,
- * and an unreadable store throws, which counts it busy.
- */
-function heldRun(services: ShepherdServices | undefined): HoldPredicate | undefined {
-  if (!services) return undefined;
-  const waitsForTrain = behindTrain((run) => {
-    const registration = services.store.get().byRun(run.id);
-    return registration && services.train?.get().holder(registration.repo)?.runId;
-  });
-  return (run) => {
-    const registration = services.store.get().byRun(run.id);
-    return (registration !== undefined && registration.held && registration.holdSatisfied === null) || waitsForTrain(run);
-  };
 }
 
 function startSeatDigest(host: FactoryHost, services: ShepherdServices | undefined, ports: SeatDigestPorts | undefined, stateDir: string, log: Logger): Sweep | undefined {
