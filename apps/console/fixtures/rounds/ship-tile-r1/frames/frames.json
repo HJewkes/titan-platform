@@ -1,0 +1,25 @@
+{
+  "schema": "titan-review/frames@1",
+  "unit": "ship-tile",
+  "round": 1,
+  "storybookUrl": "http://localhost:6006",
+  "frames": [
+    {
+      "key": "tile-light", "variant": "tile-light", "theme": "light", "viewport": { "width": 64, "height": 48 },
+      "file": "images/tile-light.png", "sha256": "c433e8a25aa52d9ba9aa449cc5957480c3393dbf14d654b96c3ac050670850be",
+      "base": { "file": "base/tile-light.png", "sha256": "d8d0622ce72e7bb1f0558560c069bd8d8926e047191f3346edc0045a1341292a" },
+      "diff": { "file": "diff/tile-light.png", "sha256": "9e2349bb0e5b6487c6c285687b78ece0b780c5ac34685519efc7845029595cb5" }
+    },
+    {
+      "key": "tile-dark", "variant": "tile-dark", "theme": "dark", "viewport": { "width": 64, "height": 48 },
+      "file": "images/tile-dark.png", "sha256": "fd8cff747d2cbaf94bab9a1533138c092757ca3185d7242fe93725892a3d2b54",
+      "base": { "file": "base/tile-dark.png", "sha256": "efb0b2eb369668d99867f3860361104e974e40439603de5e544f2d4d39d6c2cd" },
+      "diff": { "file": "diff/tile-dark.png", "sha256": "9e2349bb0e5b6487c6c285687b78ece0b780c5ac34685519efc7845029595cb5" }
+    },
+    {
+      "key": "panel-wide", "variant": "panel-wide", "theme": "light", "viewport": { "width": 96, "height": 40 },
+      "file": "images/panel-wide.png", "sha256": "5aeb0710f66a3aa93a018b8d3cdb3a2dce90edf2d67982dcd8deb2ace56ab0e2",
+      "base": { "file": "base/panel-wide.png", "sha256": "6be18945610e2d21aa182664241115a9a614f4ee82383ddb1de1dc2dc15afcf9" }
+    }
+  ]
+}
