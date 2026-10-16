@@ -8,8 +8,7 @@ import { z } from "zod";
 const ANSWER_PATH = "/gates/answer-ship";
 const READ_TIMEOUT_MS = 10_000;
 
-export const ANSWER_CHOICES = ["merge", "send-back"] as const;
-export type AnswerChoice = (typeof ANSWER_CHOICES)[number];
+export type AnswerChoice = "merge" | "send-back";
 
 /** What the route takes; every field is read from the round's files, none from the browser. */
 export interface GateAnswerRequest {
@@ -23,16 +22,13 @@ export interface GateAnswerRequest {
 }
 
 /** What `answer.json` records: the route's result, normalised. A factory that is down is not an outcome. */
-export const answerOutcome = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("resolved"), gateId: z.string(), choice: z.enum(ANSWER_CHOICES) }),
-  z.object({ status: z.literal("already"), gateId: z.string() }),
-  z.object({ status: z.literal("moved"), currentHead: z.string().nullable(), waitsOn: z.string().optional() }),
-  z.object({ status: z.literal("gone"), reason: z.string() }),
-  z.object({ status: z.literal("refused"), reason: z.string(), detail: z.string().optional() }),
-  z.object({ status: z.literal("off") }),
-]);
-
-export type AnswerOutcome = z.infer<typeof answerOutcome>;
+export type AnswerOutcome =
+  | { status: "resolved"; gateId: string; choice: AnswerChoice }
+  | { status: "already"; gateId: string }
+  | { status: "moved"; currentHead: string | null; waitsOn?: string }
+  | { status: "gone"; reason: string }
+  | { status: "refused"; reason: string; detail?: string }
+  | { status: "off" };
 export type Unreachable = { status: "unreachable"; detail: string };
 
 export interface GateAnswerClient {

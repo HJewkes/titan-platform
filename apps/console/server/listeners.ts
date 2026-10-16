@@ -18,7 +18,7 @@ import { FeedbackDocument, Round2Manifest, type Round2Question } from "./round2-
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, ROUND_ID, readCapped } from "./rounds.js";
 import type { ShepherdSource } from "./shepherd.js";
 
-export const ANSWER_FILE = "answer.json";
+const ANSWER_FILE = "answer.json";
 const PACKET_FILE = "packet.json";
 const ANSWER_SCHEMA_ID = "titan-console/gate-answer@1";
 const APPROVE_MERGE = /(^|\/)approve-merge(:\d+)?$/;
@@ -35,7 +35,7 @@ interface AnswerRecord {
 type Merge = NonNullable<Round2Question["merge"]>;
 
 /** What `rounds.submit` returned; only a fresh `submitted` can start an answer. */
-export interface SubmitOutcome {
+interface SubmitOutcome {
   status: "submitted" | "already-submitted";
 }
 
