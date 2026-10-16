@@ -1,3 +1,5 @@
+import type { GitBehind } from "./deploy-behind.js";
+
 const REFUSALS_TO_ALARM = 2;
 const BEHIND_MERGES_TO_ALARM = 3;
 const BEHIND_MINUTES_TO_ALARM = 60;
@@ -33,10 +35,12 @@ interface DeployHealthInput {
 /** The deploy block of `/health` and `shepherd status`. */
 export interface DeployHealth {
   runningSha: string;
-  /** Deploys asked for at least `DEPLOY_GRACE_MS` ago and not yet landed; merges that never asked (red or unshepherded) are not counted. */
+  /** Deploys asked for at least `DEPLOY_GRACE_MS` ago and not yet landed, or origin/main's commits past the running build once `status` has read git (`originLag`); the larger wins. */
   behind: number;
-  /** Minutes since the oldest ask that has not landed; 0 when none is waiting. */
+  /** Minutes since the oldest ask (or origin/main commit, once git is read) that has not landed; 0 when none is waiting. */
   behindMinutes: number;
+  /** Set by `shepherd status` from git: commits on origin/main older than the grace that the running build lacks, asked for or not. */
+  originLag?: { merges: number; minutes: number; asked: number };
   consecutiveRefusals: number;
   lastRefusal: { at: string | null; reason: string } | null;
   alarm: boolean;
@@ -171,8 +175,34 @@ function alarmCauses(health: Omit<DeployHealth, "alarm" | "causes">): string[] {
 }
 
 /**
+ * Folds git's reading of origin/main into the block as a lag of its own: commits main holds that the running build
+ * lacks, whether or not anyone asked for a deploy. Commits younger than `DEPLOY_GRACE_MS` are not counted, as with
+ * asks, since a burst of merges has not had its chance. A reading git could not give alarms rather than reads as 0.
+ */
+export function withGitBehind(health: DeployHealth, git: GitBehind, now: number): DeployHealth {
+  if ("unknown" in git) {
+    const cause = `serve's lag behind origin/main is unknown: ${git.unknown}`;
+    return { ...health, alarm: true, causes: [...health.causes, cause], unverified: health.unverified ?? cause };
+  }
+  const aged = git.commitTimes.filter((at) => now - at >= DEPLOY_GRACE_MS);
+  const merges = aged.length;
+  const minutes = merges === 0 ? 0 : Math.max(0, Math.floor((now - Math.min(...aged)) / 60_000));
+  const causes = [...health.causes, ...gitCauses(merges, minutes, health.runningSha)];
+  const originLag = { merges, minutes, asked: health.behind };
+  return { ...health, behind: Math.max(health.behind, merges), behindMinutes: Math.max(health.behindMinutes, minutes), originLag, alarm: causes.length > 0, causes };
+}
+
+function gitCauses(merges: number, minutes: number, runningSha: string): string[] {
+  const causes: string[] = [];
+  if (merges > BEHIND_MERGES_TO_ALARM) causes.push(`origin/main holds ${merges} commits that serve (${runningSha}) does not run`);
+  if (minutes > BEHIND_MINUTES_TO_ALARM) causes.push(`origin/main has held a commit serve does not run for ${minutes} min`);
+  return causes;
+}
+
+/**
  * Judges the deployer only on what it was asked to land: two refusals in a row, more than 3 asks past their grace,
- * or an ask over 60 minutes old with nothing landed since. A merge that never asked is no deploy failure.
+ * or an ask over 60 minutes old with nothing landed since. A merge that never asked is no deploy failure here;
+ * `withGitBehind` reports those as origin lag.
  */
 export function deployHealth(input: DeployHealthInput): DeployHealth {
   const askedAt = askPositions(input.entries);
@@ -195,7 +225,9 @@ export const alarmMessage = (health: DeployHealth): string =>
 export function deploySummary(health: DeployHealth): string {
   const state = health.alarm ? `ALARM: ${health.causes.join("; ")}` : "ok";
   const unverified = health.unverified === undefined ? "" : `; ${health.unverified}`;
-  return `deploy: running ${health.runningSha}, ${health.behind} asked deploy(s) not landed, ${health.consecutiveRefusals} refusal(s) in a row; ${state}${unverified}\n`;
+  const lag = !health.originLag?.merges ? "" : `, origin/main ${health.originLag.merges} commit(s) ahead (${health.originLag.minutes} min)`;
+  const asked = health.originLag?.asked ?? health.behind;
+  return `deploy: running ${health.runningSha}, ${asked} asked deploy(s) not landed${lag}, ${health.consecutiveRefusals} refusal(s) in a row; ${state}${unverified}\n`;
 }
 
 /** The deploy block from a `/health` answer; null when serve answered none or keeps none. */

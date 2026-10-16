@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseResultLine, type FixProofResult } from "./result-line.js";
 
-const VITEST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../node_modules/vitest/vitest.mjs");
+export const VITEST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../node_modules/vitest/vitest.mjs");
 const BUGGY = "export const add = (a: number, b: number) => a - b;\n";
 export const FIXED = "export const add = (a: number, b: number) => a + b;\n";
 export const REAL_TEST = 'import { add } from "./math";\ntest("adds", () => expect(add(1, 2)).toBe(3));\n';

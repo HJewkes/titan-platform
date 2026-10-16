@@ -1,5 +1,18 @@
+import { RevisionSource } from '@titan-design/evidence';
 import { O as OwnerItem, a as OwnerAnswer, A as Audience, h as OwnerItemDeposit } from './deposit.js';
 import 'zod';
+
+/** One anchor that held at its pinned commit, with its first and last lines quoted back. */
+interface QuotedAnchor {
+    anchor: string;
+    first: string;
+    last: string;
+}
+/** Thrown before anything is written, naming each anchor that does not hold at its pinned commit. */
+declare class DepositAnchorError extends Error {
+    readonly refusals: readonly string[];
+    constructor(refusals: readonly string[]);
+}
 
 /** The cap on one deposit file, so a runaway context cannot fill the spool or the console. */
 declare const MAX_DEPOSIT_BYTES: number;
@@ -7,6 +20,14 @@ type WriteResult = {
     file: string;
     created: boolean;
 };
+/** `anchors` quotes back each anchor checked against `source`; absent when none were checked. */
+type DepositWriteResult = WriteResult & {
+    anchors?: QuotedAnchor[];
+};
+interface WriteDepositOptions {
+    /** File text at a pinned commit. With it, a deposit whose anchor does not hold is refused unwritten. */
+    source?: RevisionSource;
+}
 type SpoolReject = {
     file: string;
     reason: string;
@@ -35,9 +56,11 @@ declare function answerFileNames(id: string): string[];
 /**
  * Validates a deposit and files it once. A repeat of the same asker and depositId, under its
  * current or its legacy name, leaves the first file in place and returns `created: false`.
- * Throws on a refused or oversized deposit, and on a name held by a different deposit.
+ * Throws on a refused or oversized deposit, and on a name held by a different deposit. With a
+ * `source`, an anchor past EOF or on a path that is not a file at its pinned commit throws
+ * DepositAnchorError before anything is written.
  */
-declare function writeDeposit(dir: string, deposit: OwnerItemDeposit): Promise<WriteResult>;
+declare function writeDeposit(dir: string, deposit: OwnerItemDeposit, options?: WriteDepositOptions): Promise<DepositWriteResult>;
 /**
  * Reads every deposit in the spool as an open OwnerItem, opened at the file's mtime. A bad
  * file lands in `rejects` and never stops the rest; a missing spool reads as empty. With
@@ -51,7 +74,7 @@ declare function writeAnswer(dir: string, id: string, answer: OwnerAnswer): Prom
 /** Returns the answer to item `id`, or undefined if none is filed. Throws on a malformed answer. */
 declare function readAnswer(dir: string, id: string): Promise<OwnerAnswer | undefined>;
 
-export { MAX_DEPOSIT_BYTES, type SpoolContents, SpoolNameCollisionError, type SpoolReject, type WriteResult, answerFileName, answerFileNames, depositFileName, depositFileNames, readAnswer, readSpool, writeAnswer, writeDeposit };
+export { DepositAnchorError, type DepositWriteResult, MAX_DEPOSIT_BYTES, type QuotedAnchor, type SpoolContents, SpoolNameCollisionError, type SpoolReject, type WriteDepositOptions, type WriteResult, answerFileName, answerFileNames, depositFileName, depositFileNames, readAnswer, readSpool, writeAnswer, writeDeposit };
 
 // ./dist/deposit.d.ts
 import { z } from 'zod';
@@ -148,6 +171,7 @@ declare const ownerItemSchema: z.ZodObject<{
         label: z.ZodString;
         description: z.ZodOptional<z.ZodString>;
         consequence: z.ZodOptional<z.ZodString>;
+        anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
     }, z.core.$strip>>>;
     recommended: z.ZodOptional<z.ZodObject<{
         optionId: z.ZodString;
@@ -159,6 +183,12 @@ declare const ownerItemSchema: z.ZodObject<{
     }, z.core.$strip>>;
     command: z.ZodOptional<z.ZodString>;
     evidenceRef: z.ZodOptional<z.ZodString>;
+    anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    pins: z.ZodOptional<z.ZodObject<{
+        repo: z.ZodString;
+        head: z.ZodString;
+        base: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>>;
     keys: z.ZodArray<z.ZodString>;
     asker: z.ZodOptional<z.ZodString>;
     seat: z.ZodOptional<z.ZodString>;
@@ -266,6 +296,7 @@ declare const ownerItemDepositSchema: z.ZodObject<{
         label: z.ZodString;
         description: z.ZodOptional<z.ZodString>;
         consequence: z.ZodOptional<z.ZodString>;
+        anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
     }, z.core.$strict>>>;
     recommended: z.ZodOptional<z.ZodObject<{
         optionId: z.ZodString;
@@ -276,6 +307,12 @@ declare const ownerItemDepositSchema: z.ZodObject<{
     }, z.core.$strict>>;
     command: z.ZodOptional<z.ZodString>;
     evidenceRef: z.ZodOptional<z.ZodString>;
+    anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    pins: z.ZodOptional<z.ZodObject<{
+        repo: z.ZodString;
+        head: z.ZodString;
+        base: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>>;
     keys: z.ZodDefault<z.ZodArray<z.ZodString>>;
     seat: z.ZodOptional<z.ZodString>;
     initiative: z.ZodOptional<z.ZodString>;

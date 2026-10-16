@@ -1,0 +1,6467 @@
+{
+ "_source": {
+  "audiobookSha": "b13d8acbedfc280b805422dfde84f1e36d0b3bac",
+  "model": "facebook/wav2vec2-lv-60-espeak-cv-ft",
+  "espeakVersion": "1.52.0",
+  "voice": "en-us",
+  "rawDecode": "PhonemeRecognizer._recognize_raw(load_slice(wav)), never recognize_wav",
+  "verdicts": "AB chunk_word_verdicts, detect_hallucinations, detect_tail_artifact, unchanged",
+  "beats": "redesign-explainer-v4 audio, owner-authored Kokoro beats"
+ },
+ "cases": [
+  {
+   "id": "r1-7-promise",
+   "origin": "rf-beat",
+   "text": "The redesign keeps, removes and adds parts, and leaves eleven calls to you.",
+   "raw": "ð ə ɹ iː d ᵻ z aɪ n k iː p s ɹ ᵻ m uː v z æ n æ d z p ɑːɹ t s æ n d l iː v z ə l ɛ v ə n k ɑː l z t ə j uː",
+   "targets": [
+    "The",
+    "redesign",
+    "keeps",
+    "removes",
+    "and",
+    "adds",
+    "parts",
+    "leaves",
+    "eleven",
+    "calls",
+    "you"
+   ],
+   "unusual": [],
+   "espeak": {
+    "The redesign keeps, removes and adds parts, and leaves eleven calls to you.": "ðə ɹˌiːdɪzˈa‍ɪn kˈiːps\nɹᵻmˈuːvz ænd ˈædz pˈɑː‍ɹts\nænd lˈiːvz ᵻlˈɛvən kˈɔːlz tə juː\n",
+    "The": "ðˈə\n",
+    "redesign": "ɹˌiːdɪzˈa‍ɪn\n",
+    "keeps": "kˈiːps\n",
+    "removes": "ɹᵻmˈuːvz\n",
+    "and": "ˈænd\n",
+    "adds": "ˈædz\n",
+    "parts": "pˈɑː‍ɹts\n",
+    "leaves": "lˈiːvz\n",
+    "eleven": "ᵻlˈɛvən\n",
+    "calls": "kˈɔːlz\n",
+    "you": "jˈuː\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "The",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "redesign",
+      "expected_phones": "ɹidɪzaɪn",
+      "actual_phones": "ɹidᵻzaɪn",
+      "distance": 0.125,
+      "source": "whisper"
+     },
+     {
+      "word": "keeps",
+      "expected_phones": "kips",
+      "actual_phones": "kips",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "removes",
+      "expected_phones": "ɹᵻmuvz",
+      "actual_phones": "ɹᵻmuvz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænæ",
+      "distance": 0.333,
+      "source": "whisper"
+     },
+     {
+      "word": "adds",
+      "expected_phones": "ædz",
+      "actual_phones": "ædz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "parts",
+      "expected_phones": "pɑɹts",
+      "actual_phones": "pɑɹts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "leaves",
+      "expected_phones": "livz",
+      "actual_phones": "livz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "eleven",
+      "expected_phones": "ᵻlɛvən",
+      "actual_phones": "əlɛvən",
+      "distance": 0.167,
+      "source": "whisper"
+     },
+     {
+      "word": "calls",
+      "expected_phones": "kɔlz",
+      "actual_phones": "kɑlz",
+      "distance": 0.25,
+      "source": "whisper"
+     },
+     {
+      "word": "you",
+      "expected_phones": "ju",
+      "actual_phones": "ju",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r3-1-nouns",
+   "origin": "rf-beat",
+   "text": "Seven nouns carry the new model. Item, fact and step; wait and claim; event, pool and service.",
+   "raw": "s ɛ v ə n n aʊ n z k æ ɹ i ð ə n uː m ɑː d əl aɪ ɾ ə m f æ k t æ n d s t ɛ p w eɪ t æ n d k l eɪ m ɐ v ɛ n t p uː l æ n d s ɜː v ɪ s",
+   "targets": [
+    "Seven",
+    "nouns",
+    "carry",
+    "the",
+    "new",
+    "model",
+    "Item",
+    "fact",
+    "and",
+    "step",
+    "wait",
+    "claim",
+    "event",
+    "pool",
+    "service"
+   ],
+   "unusual": [
+    "Seven",
+    "Item"
+   ],
+   "espeak": {
+    "Seven nouns carry the new model. Item, fact and step; wait and claim; event, pool and service.": "sˈɛvən nˈa‍ʊnz kˈæɹi ðə nˈuː mˈɑːdə‍l\nˈa‍ɪɾəm\nfˈækt ænd stˈɛp\nwˈe‍ɪt ænd klˈe‍ɪm\nᵻvˈɛnt\npˈuːl ænd sˈɜːvɪs\n",
+    "Seven": "sˈɛvən\n",
+    "nouns": "nˈa‍ʊnz\n",
+    "carry": "kˈæɹi\n",
+    "the": "ðˈə\n",
+    "new": "nˈuː\n",
+    "model": "mˈɑːdə‍l\n",
+    "Item": "ˈa‍ɪɾəm\n",
+    "fact": "fˈækt\n",
+    "and": "ˈænd\n",
+    "step": "stˈɛp\n",
+    "wait": "wˈe‍ɪt\n",
+    "claim": "klˈe‍ɪm\n",
+    "event": "ᵻvˈɛnt\n",
+    "pool": "pˈuːl\n",
+    "service": "sˈɜːvɪs\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Seven",
+      "expected_phones": "sɛvən",
+      "actual_phones": "sɛvən",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "nouns",
+      "expected_phones": "naʊnz",
+      "actual_phones": "naʊnz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "carry",
+      "expected_phones": "kæɹi",
+      "actual_phones": "kæɹi",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "new",
+      "expected_phones": "nu",
+      "actual_phones": "nu",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "model",
+      "expected_phones": "mɑdəl",
+      "actual_phones": "mɑdəl",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "Item",
+      "expected_phones": "aɪtəm",
+      "actual_phones": "aɪtəm",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "fact",
+      "expected_phones": "fækt",
+      "actual_phones": "fæk",
+      "distance": 0.143,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "step",
+      "expected_phones": "stɛp",
+      "actual_phones": "stɛp",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "wait",
+      "expected_phones": "weɪt",
+      "actual_phones": "weɪt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "claim",
+      "expected_phones": "kleɪm",
+      "actual_phones": "kleɪm",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "event",
+      "expected_phones": "ᵻvɛnt",
+      "actual_phones": "əvɛnt",
+      "distance": 0.2,
+      "source": "whisper"
+     },
+     {
+      "word": "pool",
+      "expected_phones": "pul",
+      "actual_phones": "pul",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "service",
+      "expected_phones": "sɜvɪs",
+      "actual_phones": "sɜvɪs",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r3-2-sentence",
+   "origin": "rf-beat",
+   "text": "One sentence explains it. A recipe is a script, a step is memoized at its head, a wait or claim is a return, and an event re-enters the script.",
+   "raw": "w ʌ n s ɛ n t ə n s ɛ k s p l eɪ n z ɪ t ɐ ɹ ɛ s ɪ p i ɪ z ɐ s k ɹ ɪ p t ɐ s t ɛ p ɪ z m ɛ m oɪ z d æ ɾ ɪ t s h ɛ d ɐ w eɪ t ɔːɹ k l eɪ m ɪ z ɐ ɹ ᵻ t ɜː n æ n d ɐ n ɪ v ɛ n t ɹ iː ɛ n t ɚ z ð ə s k ɹ ɪ p t",
+   "targets": [
+    "One",
+    "sentence",
+    "explains",
+    "recipe",
+    "script",
+    "step",
+    "memoized",
+    "its",
+    "head",
+    "wait",
+    "claim",
+    "return",
+    "and",
+    "event",
+    "enters",
+    "the"
+   ],
+   "unusual": [],
+   "espeak": {
+    "One sentence explains it. A recipe is a script, a step is memoized at its head, a wait or claim is a return, and an event re-enters the script.": "wˈʌn sˈɛntəns ɛksplˈe‍ɪnz ɪt\nɐ ɹˈɛsᵻpˌiː ɪz ɐ skɹˈɪpt\nɐ stˈɛp ɪz mˈɛmɔ‍ɪzd æɾ ɪts hˈɛd\nɐ wˈe‍ɪt ɔː‍ɹ klˈe‍ɪm ɪz ɐ ɹᵻtˈɜːn\nænd ɐn ᵻvˈɛnt ɹˌiːˈɛntɚz ðə skɹˈɪpt\n",
+    "One": "wˈʌn\n",
+    "sentence": "sˈɛntəns\n",
+    "explains": "ɛksplˈe‍ɪnz\n",
+    "recipe": "ɹˈɛsᵻpˌiː\n",
+    "script": "skɹˈɪpt\n",
+    "step": "stˈɛp\n",
+    "memoized": "mˈɛmɔ‍ɪzd\n",
+    "its": "ˈɪts\n",
+    "head": "hˈɛd\n",
+    "wait": "wˈe‍ɪt\n",
+    "claim": "klˈe‍ɪm\n",
+    "return": "ɹᵻtˈɜːn\n",
+    "and": "ˈænd\n",
+    "event": "ᵻvˈɛnt\n",
+    "enters": "ˈɛntɚz\n",
+    "the": "ðˈə\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "One",
+      "expected_phones": "wʌn",
+      "actual_phones": "wʌn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "sentence",
+      "expected_phones": "sɛntəns",
+      "actual_phones": "sɛntəns",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "explains",
+      "expected_phones": "ɛkspleɪnz",
+      "actual_phones": "ɛkspleɪnz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "recipe",
+      "expected_phones": "ɹɛsᵻpi",
+      "actual_phones": "ɹɛsɪpi",
+      "distance": 0.167,
+      "source": "whisper"
+     },
+     {
+      "word": "script",
+      "expected_phones": "skɹɪpt",
+      "actual_phones": "skɹɪpt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "step",
+      "expected_phones": "stɛp",
+      "actual_phones": "stɛp",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "memoized",
+      "expected_phones": "mɛmɔɪzd",
+      "actual_phones": "mɛmoɪzd",
+      "distance": 0.143,
+      "source": "whisper"
+     },
+     {
+      "word": "its",
+      "expected_phones": "ɪts",
+      "actual_phones": "ɪts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "head",
+      "expected_phones": "hɛd",
+      "actual_phones": "hɛd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "wait",
+      "expected_phones": "weɪt",
+      "actual_phones": "weɪt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "claim",
+      "expected_phones": "kleɪm",
+      "actual_phones": "kleɪm",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "return",
+      "expected_phones": "ɹᵻtɜn",
+      "actual_phones": "ɹᵻtɜn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "event",
+      "expected_phones": "ᵻvɛnt",
+      "actual_phones": "ɪvɛnt",
+      "distance": 0.2,
+      "source": "whisper"
+     },
+     {
+      "word": "enters",
+      "expected_phones": "ɛntɚz",
+      "actual_phones": "ɛntɚz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r3-4-runner",
+   "origin": "rf-beat",
+   "text": "One runner and its marker table replace the tick and Shepherd. It re-runs a recipe on every event; its only clock, the reconciler, polls GitHub.",
+   "raw": "w ʌ n ɹ ʌ n ɚ æ n d ɪ t s m ɑːɹ k ɚ t eɪ b əl ɹ ᵻ p l eɪ s ð ə t ɪ k æ n d ʃ ɛ p ɚ d ɪ t ɹ iː ɹ ʌ n z ɐ ɹ ɛ s ɪ p i ɔ n ɛ v ɹ i ɪ v ɛ n t ɪ t s oʊ n l i k l ɑː k ð ə ɹ ɛ k ə n s aɪ l ɚ p oʊ l z ɡ ɪ ɾ h ʌ b",
+   "targets": [
+    "One",
+    "runner",
+    "and",
+    "its",
+    "marker",
+    "table",
+    "replace",
+    "the",
+    "tick",
+    "Shepherd",
+    "runs",
+    "recipe",
+    "every",
+    "event",
+    "only",
+    "clock",
+    "reconciler",
+    "polls",
+    "GitHub"
+   ],
+   "unusual": [
+    "Shepherd",
+    "GitHub"
+   ],
+   "espeak": {
+    "One runner and its marker table replace the tick and Shepherd. It re-runs a recipe on every event; its only clock, the reconciler, polls GitHub.": "wˈʌn ɹˈʌnɚ ænd ɪts mˈɑː‍ɹkɚ tˈe‍ɪbə‍l ɹᵻplˈe‍ɪs ðə tˈɪk ænd ʃˈɛpɚd\nɪt ɹˌiːɹˈʌnz ɐ ɹˈɛsᵻpˌiː ˌɔn ˈɛvɹi ᵻvˈɛnt\nɪts ˈo‍ʊnli klˈɑːk\nðə ɹˈɛkənsˌa‍ɪlɚ\npˈo‍ʊlz ɡˈɪt hˈʌb\n",
+    "One": "wˈʌn\n",
+    "runner": "ɹˈʌnɚ\n",
+    "and": "ˈænd\n",
+    "its": "ˈɪts\n",
+    "marker": "mˈɑː‍ɹkɚ\n",
+    "table": "tˈe‍ɪbə‍l\n",
+    "replace": "ɹᵻplˈe‍ɪs\n",
+    "the": "ðˈə\n",
+    "tick": "tˈɪk\n",
+    "Shepherd": "ʃˈɛpɚd\n",
+    "runs": "ɹˈʌnz\n",
+    "recipe": "ɹˈɛsᵻpˌiː\n",
+    "every": "ˈɛvɹi\n",
+    "event": "ᵻvˈɛnt\n",
+    "only": "ˈo‍ʊnli\n",
+    "clock": "klˈɑːk\n",
+    "reconciler": "ɹˈɛkənsˌa‍ɪlɚ\n",
+    "polls": "pˈo‍ʊlz\n",
+    "GitHub": "ɡˈɪt hˈʌb\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "One",
+      "expected_phones": "wʌn",
+      "actual_phones": "wʌn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "runner",
+      "expected_phones": "ɹʌnɚ",
+      "actual_phones": "ɹʌnɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "its",
+      "expected_phones": "ɪts",
+      "actual_phones": "ɪts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "marker",
+      "expected_phones": "mɑɹkɚ",
+      "actual_phones": "mɑɹkɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "table",
+      "expected_phones": "teɪbəl",
+      "actual_phones": "teɪbəl",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "replace",
+      "expected_phones": "ɹᵻpleɪs",
+      "actual_phones": "ɹᵻpleɪs",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "tick",
+      "expected_phones": "tɪk",
+      "actual_phones": "tɪk",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "Shepherd",
+      "expected_phones": "ʃɛpɚd",
+      "actual_phones": "ʃɛpɚd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "runs",
+      "expected_phones": "ɹʌnz",
+      "actual_phones": "ɹʌnz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "recipe",
+      "expected_phones": "ɹɛsᵻpi",
+      "actual_phones": "ɹɛsɪpi",
+      "distance": 0.167,
+      "source": "whisper"
+     },
+     {
+      "word": "every",
+      "expected_phones": "ɛvɹi",
+      "actual_phones": "ɛvɹi",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "event",
+      "expected_phones": "ᵻvɛnt",
+      "actual_phones": "ɪvɛnt",
+      "distance": 0.2,
+      "source": "whisper"
+     },
+     {
+      "word": "only",
+      "expected_phones": "oʊnli",
+      "actual_phones": "oʊnli",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "clock",
+      "expected_phones": "klɑk",
+      "actual_phones": "klɑk",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "reconciler",
+      "expected_phones": "ɹɛkənsaɪlɚ",
+      "actual_phones": "ɹɛkənsaɪlɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "polls",
+      "expected_phones": "poʊlz",
+      "actual_phones": "poʊlz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "GitHub",
+      "expected_phones": "ɡɪthʌb",
+      "actual_phones": "ɡɪthʌb",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r3-7-simple",
+   "origin": "rf-beat",
+   "text": "Pool policy details, risk table rows and stacking are left out; each is data, so the shape holds.",
+   "raw": "p uː l p ɑː l ə s i d iː t eɪ l z ɹ ɪ s k t eɪ b əl ɹ oʊ z æ n d s t æ k ɪ ŋ ɑːɹ l ɛ f t aʊ t iː tʃ ɪ z d eɪ ɾ ɐ s oʊ ð ə ʃ eɪ p h oʊ l d z",
+   "targets": [
+    "Pool",
+    "policy",
+    "details",
+    "risk",
+    "table",
+    "rows",
+    "and",
+    "stacking",
+    "are",
+    "left",
+    "out",
+    "each",
+    "data",
+    "the",
+    "shape",
+    "holds"
+   ],
+   "unusual": [
+    "Pool"
+   ],
+   "espeak": {
+    "Pool policy details, risk table rows and stacking are left out; each is data, so the shape holds.": "pˈuːl pˈɑːlɪsi diːtˈe‍ɪlz\nɹˈɪsk tˈe‍ɪbə‍l ɹˈo‍ʊz ænd stˈækɪŋ ɑː‍ɹ lˈɛft ˈa‍ʊt\nˈiːt‍ʃ ɪz dˈe‍ɪɾə\nsˌo‍ʊ ðə ʃˈe‍ɪp hˈo‍ʊldz\n",
+    "Pool": "pˈuːl\n",
+    "policy": "pˈɑːlɪsi\n",
+    "details": "diːtˈe‍ɪlz\n",
+    "risk": "ɹˈɪsk\n",
+    "table": "tˈe‍ɪbə‍l\n",
+    "rows": "ɹˈo‍ʊz\n",
+    "and": "ˈænd\n",
+    "stacking": "stˈækɪŋ\n",
+    "are": "ˈɑː‍ɹ\n",
+    "left": "lˈɛft\n",
+    "out": "ˈa‍ʊt\n",
+    "each": "ˈiːt‍ʃ\n",
+    "data": "dˈe‍ɪɾə\n",
+    "the": "ðˈə\n",
+    "shape": "ʃˈe‍ɪp\n",
+    "holds": "hˈo‍ʊldz\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Pool",
+      "expected_phones": "pul",
+      "actual_phones": "pul",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "policy",
+      "expected_phones": "pɑlɪsi",
+      "actual_phones": "pɑləsi",
+      "distance": 0.167,
+      "source": "whisper"
+     },
+     {
+      "word": "details",
+      "expected_phones": "diteɪlz",
+      "actual_phones": "diteɪlz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "risk",
+      "expected_phones": "ɹɪsk",
+      "actual_phones": "ɹɪsk",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "table",
+      "expected_phones": "teɪbəl",
+      "actual_phones": "teɪbəl",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "rows",
+      "expected_phones": "ɹoʊz",
+      "actual_phones": "ɹoʊz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "stacking",
+      "expected_phones": "stækɪŋ",
+      "actual_phones": "stækɪŋ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "are",
+      "expected_phones": "ɑɹ",
+      "actual_phones": "ɑɹ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "left",
+      "expected_phones": "lɛft",
+      "actual_phones": "lɛft",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "out",
+      "expected_phones": "aʊt",
+      "actual_phones": "aʊt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "each",
+      "expected_phones": "itʃ",
+      "actual_phones": "itʃ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "data",
+      "expected_phones": "deɪtə",
+      "actual_phones": "deɪtə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "shape",
+      "expected_phones": "ʃeɪp",
+      "actual_phones": "ʃeɪp",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "holds",
+      "expected_phones": "hoʊldz",
+      "actual_phones": "hoʊldz",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r3b-1-run",
+   "origin": "rf-beat",
+   "text": "A recipe is a plain script; here are five of its steps. Each step runs, writes a marker for its fact, and returns. A landed run averages fifty-one and a half steps.",
+   "raw": "ɐ ɹ ɛ s ɪ p i ɪ z ɐ p l eɪ n s k ɹ ɪ p t h iː ɹ ɑːɹ f aɪ v ʌ v ɪ t s t ɛ p s iː tʃ s t ɛ p ɹ ʌ n z ɹ aɪ t s ɐ m ɑːɹ k ɚ f ɔːɹ ɹ ɪ t s f æ k t æ n d ɹ ᵻ t ɜː n z ɐ l æ n d ᵻ d ɹ ʌ n æ v ɹ ɪ dʒ ᵻ z f ɪ f t i w ʌ n ə n d ɐ h æ f s t ɛ p s",
+   "targets": [
+    "recipe",
+    "plain",
+    "script",
+    "here",
+    "are",
+    "five",
+    "its",
+    "steps",
+    "Each",
+    "step",
+    "runs",
+    "writes",
+    "marker",
+    "for",
+    "fact",
+    "and",
+    "returns",
+    "landed",
+    "run",
+    "averages",
+    "fifty",
+    "one",
+    "half"
+   ],
+   "unusual": [
+    "Each"
+   ],
+   "espeak": {
+    "A recipe is a plain script; here are five of its steps. Each step runs, writes a marker for its fact, and returns. A landed run averages fifty-one and a half steps.": "ɐ ɹˈɛsᵻpˌiː ɪz ɐ plˈe‍ɪn skɹˈɪpt\nhˈɪɹ ɑː‍ɹ fˈa‍ɪv ʌv ɪts stˈɛps\nˈiːt‍ʃ stˈɛp ɹˈʌnz\nɹˈa‍ɪts ɐ mˈɑː‍ɹkɚ fɔːɹ ɪts fˈækt\nænd ɹᵻtˈɜːnz\nɐ lˈændᵻd ɹˈʌn ˈævɹɪd‍ʒᵻz fˈɪftiwˈʌn ænd ɐ hˈæf stˈɛps\n",
+    "recipe": "ɹˈɛsᵻpˌiː\n",
+    "plain": "plˈe‍ɪn\n",
+    "script": "skɹˈɪpt\n",
+    "here": "hˈɪ‍ɹ\n",
+    "are": "ˈɑː‍ɹ\n",
+    "five": "fˈa‍ɪv\n",
+    "its": "ˈɪts\n",
+    "steps": "stˈɛps\n",
+    "Each": "ˈiːt‍ʃ\n",
+    "step": "stˈɛp\n",
+    "runs": "ɹˈʌnz\n",
+    "writes": "ɹˈa‍ɪts\n",
+    "marker": "mˈɑː‍ɹkɚ\n",
+    "for": "fˈɔː‍ɹ\n",
+    "fact": "fˈækt\n",
+    "and": "ˈænd\n",
+    "returns": "ɹᵻtˈɜːnz\n",
+    "landed": "lˈændᵻd\n",
+    "run": "ɹˈʌn\n",
+    "averages": "ˈævɹɪd‍ʒᵻz\n",
+    "fifty": "fˈɪfti\n",
+    "one": "wˈʌn\n",
+    "half": "hˈæf\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "recipe",
+      "expected_phones": "ɹɛsᵻpi",
+      "actual_phones": "ɹɛsɪpi",
+      "distance": 0.167,
+      "source": "whisper"
+     },
+     {
+      "word": "plain",
+      "expected_phones": "pleɪn",
+      "actual_phones": "pleɪn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "script",
+      "expected_phones": "skɹɪpt",
+      "actual_phones": "skɹɪpt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "here",
+      "expected_phones": "hɪɹ",
+      "actual_phones": "hiɹ",
+      "distance": 0.333,
+      "source": "whisper"
+     },
+     {
+      "word": "are",
+      "expected_phones": "ɑɹ",
+      "actual_phones": "ɑɹ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "five",
+      "expected_phones": "faɪv",
+      "actual_phones": "faɪv",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "its",
+      "expected_phones": "ɪts",
+      "actual_phones": "ɪts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "steps",
+      "expected_phones": "stɛps",
+      "actual_phones": "stɛps",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "Each",
+      "expected_phones": "itʃ",
+      "actual_phones": "itʃ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "step",
+      "expected_phones": "stɛp",
+      "actual_phones": "stɛp",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "runs",
+      "expected_phones": "ɹʌnz",
+      "actual_phones": "ɹʌnz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "writes",
+      "expected_phones": "ɹaɪts",
+      "actual_phones": "ɹaɪts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "marker",
+      "expected_phones": "mɑɹkɚ",
+      "actual_phones": "mɑɹkɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "for",
+      "expected_phones": "fɔɹ",
+      "actual_phones": "fɔɹɹ",
+      "distance": 0.143,
+      "source": "whisper"
+     },
+     {
+      "word": "fact",
+      "expected_phones": "fækt",
+      "actual_phones": "fækt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "returns",
+      "expected_phones": "ɹᵻtɜnz",
+      "actual_phones": "ɹᵻtɜnz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "landed",
+      "expected_phones": "lændᵻd",
+      "actual_phones": "lændᵻ",
+      "distance": 0.091,
+      "source": "whisper"
+     },
+     {
+      "word": "run",
+      "expected_phones": "ɹʌn",
+      "actual_phones": "ɹʌn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "averages",
+      "expected_phones": "ævɹɪdʒᵻz",
+      "actual_phones": "ævɹɪdʒᵻz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "fifty",
+      "expected_phones": "fɪfti",
+      "actual_phones": "fɪfti",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "one",
+      "expected_phones": "wʌn",
+      "actual_phones": "wʌn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "half",
+      "expected_phones": "hæf",
+      "actual_phones": "hæf",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r3b-2-crash",
+   "origin": "rf-beat",
+   "text": "Halfway through the fifth step, the process crashes. No program counter is stored, and nothing was mid-sleep.",
+   "raw": "h æ f w eɪ θ ɹ uː ð ə f ɪ f s t ɛ p ð ə p ɹ ɑː s ɛ s k ɹ æ ʃ ᵻ z n oʊ p ɹ oʊ ɡ ɹ æ m k aʊ n t ɚ ɹ ɪ z s t oʊ d æ n d n ʌ θ ɪ ŋ w ʌ z m ɪ d s l iː p",
+   "targets": [
+    "Halfway",
+    "through",
+    "the",
+    "fifth",
+    "step",
+    "process",
+    "crashes",
+    "program",
+    "counter",
+    "stored",
+    "and",
+    "nothing",
+    "was",
+    "mid",
+    "sleep"
+   ],
+   "unusual": [
+    "Halfway"
+   ],
+   "espeak": {
+    "Halfway through the fifth step, the process crashes. No program counter is stored, and nothing was mid-sleep.": "hˈæfwe‍ɪ θɹuː ðə fˈɪfθ stˈɛp\nðə pɹˈɑːsɛs kɹˈæʃᵻz\nnˈo‍ʊ pɹˈo‍ʊɡɹæm kˈa‍ʊntɚɹ ɪz stˈɔː‍ɹd\nænd nˈʌθɪŋ wʌz mˈɪdslˈiːp\n",
+    "Halfway": "hˈæfwe‍ɪ\n",
+    "through": "θɹˈuː\n",
+    "the": "ðˈə\n",
+    "fifth": "fˈɪfθ\n",
+    "step": "stˈɛp\n",
+    "process": "pɹˈɑːsɛs\n",
+    "crashes": "kɹˈæʃᵻz\n",
+    "program": "pɹˈo‍ʊɡɹæm\n",
+    "counter": "kˈa‍ʊntɚ\n",
+    "stored": "stˈɔː‍ɹd\n",
+    "and": "ˈænd\n",
+    "nothing": "nˈʌθɪŋ\n",
+    "was": "wˈʌz\n",
+    "mid": "mˈɪd\n",
+    "sleep": "slˈiːp\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Halfway",
+      "expected_phones": "hæfweɪ",
+      "actual_phones": "hæfweɪ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "through",
+      "expected_phones": "θɹu",
+      "actual_phones": "θɹu",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "fifth",
+      "expected_phones": "fɪfθ",
+      "actual_phones": "fɪfs",
+      "distance": 0.25,
+      "source": "whisper"
+     },
+     {
+      "word": "step",
+      "expected_phones": "stɛp",
+      "actual_phones": "stɛp",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "process",
+      "expected_phones": "pɹɑsɛs",
+      "actual_phones": "pɹɑsɛs",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "crashes",
+      "expected_phones": "kɹæʃᵻz",
+      "actual_phones": "kɹæʃᵻz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "program",
+      "expected_phones": "pɹoʊɡɹæm",
+      "actual_phones": "pɹoʊɡɹæm",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "counter",
+      "expected_phones": "kaʊntɚ",
+      "actual_phones": "kaʊntɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "stored",
+      "expected_phones": "stɔɹd",
+      "actual_phones": "stoʊd",
+      "distance": 0.4,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "nothing",
+      "expected_phones": "nʌθɪŋ",
+      "actual_phones": "nʌθɪŋ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "was",
+      "expected_phones": "wʌz",
+      "actual_phones": "wʌz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "mid",
+      "expected_phones": "mɪd",
+      "actual_phones": "mɪd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "sleep",
+      "expected_phones": "slip",
+      "actual_phones": "slip",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r3b-3-replay",
+   "origin": "rf-beat",
+   "text": "Recovery re-runs the script from the top. Four markers match, so it fast-forwards and runs the fifth step.",
+   "raw": "ɹ ɪ k ʌ v ɚ ɹ i ɹ iː ɹ ʌ n z ð ə s k ɹ ɪ p t f ɹ ʌ m ð ə t ɑː p f oːɹ m ɑːɹ k ɚ z m æ tʃ s oʊ ɪ t f æ s t f ɔːɹ w ɚ d z æ n d ɹ ʌ n z ð ə f ɪ f θ s t ɛ p",
+   "targets": [
+    "Recovery",
+    "runs",
+    "the",
+    "script",
+    "from",
+    "top",
+    "Four",
+    "markers",
+    "match",
+    "fast",
+    "forwards",
+    "and",
+    "fifth",
+    "step"
+   ],
+   "unusual": [
+    "Recovery",
+    "Four"
+   ],
+   "espeak": {
+    "Recovery re-runs the script from the top. Four markers match, so it fast-forwards and runs the fifth step.": "ɹᵻkˈʌvɚɹi ɹˌiːɹˈʌnz ðə skɹˈɪpt fɹʌmðə tˈɑːp\nfˈɔː‍ɹ mˈɑː‍ɹkɚz mˈæt‍ʃ\nsˌo‍ʊ ɪt fˈæstfˈɔː‍ɹwɚdz ænd ɹˈʌnz ðə fˈɪfθ stˈɛp\n",
+    "Recovery": "ɹᵻkˈʌvɚɹi\n",
+    "runs": "ɹˈʌnz\n",
+    "the": "ðˈə\n",
+    "script": "skɹˈɪpt\n",
+    "from": "fɹˈʌm\n",
+    "top": "tˈɑːp\n",
+    "Four": "fˈɔː‍ɹ\n",
+    "markers": "mˈɑː‍ɹkɚz\n",
+    "match": "mˈæt‍ʃ\n",
+    "fast": "fˈæst\n",
+    "forwards": "fˈɔː‍ɹwɚdz\n",
+    "and": "ˈænd\n",
+    "fifth": "fˈɪfθ\n",
+    "step": "stˈɛp\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Recovery",
+      "expected_phones": "ɹᵻkʌvɚɹi",
+      "actual_phones": "ɹɪkʌvɚɹi",
+      "distance": 0.125,
+      "source": "whisper"
+     },
+     {
+      "word": "runs",
+      "expected_phones": "ɹʌnz",
+      "actual_phones": "ɹʌnz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "script",
+      "expected_phones": "skɹɪpt",
+      "actual_phones": "skɹɪpt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "from",
+      "expected_phones": "fɹʌm",
+      "actual_phones": "fɹʌm",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "top",
+      "expected_phones": "tɑp",
+      "actual_phones": "tɑp",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "Four",
+      "expected_phones": "fɔɹ",
+      "actual_phones": "foɹ",
+      "distance": 0.333,
+      "source": "whisper"
+     },
+     {
+      "word": "markers",
+      "expected_phones": "mɑɹkɚz",
+      "actual_phones": "mɑɹkɚz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "match",
+      "expected_phones": "mætʃ",
+      "actual_phones": "mætʃ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "fast",
+      "expected_phones": "fæst",
+      "actual_phones": "fæst",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "forwards",
+      "expected_phones": "fɔɹwɚdz",
+      "actual_phones": "fɔɹwɚdz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "fifth",
+      "expected_phones": "fɪfθ",
+      "actual_phones": "fɪfθ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "step",
+      "expected_phones": "stɛp",
+      "actual_phones": "stɛp",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r3b-4-today",
+   "origin": "rf-beat",
+   "text": "Today's engine keys each result by step name and call count. When a deploy re-keyed one step, its old results went unread, and five parked runs failed to replay.",
+   "raw": "t ə d eɪ z ɛ n dʒ ə n k iː z iː tʃ ɹ ɪ z ʌ l t b aɪ s t ɛ p n eɪ m æ n d k ɑː l k aʊ n t w ɛ n ɐ d ɪ p l oɪ ɹ iː k iː d w ʌ n s t ɛ p ɪ t s oʊ l d ɹ ɪ z ʌ l t s w ɛ n ʌ n ɹ ɛ d æ n d f aɪ v p ɑːɹ k t ɹ ʌ n z f eɪ l d t ə ɹ iː p l eɪ",
+   "targets": [
+    "Today's",
+    "engine",
+    "keys",
+    "each",
+    "result",
+    "step",
+    "name",
+    "and",
+    "call",
+    "count",
+    "When",
+    "deploy",
+    "keyed",
+    "one",
+    "its",
+    "old",
+    "results",
+    "went",
+    "unread",
+    "five",
+    "parked",
+    "runs",
+    "failed",
+    "replay"
+   ],
+   "unusual": [
+    "Today's",
+    "When"
+   ],
+   "espeak": {
+    "Today's engine keys each result by step name and call count. When a deploy re-keyed one step, its old results went unread, and five parked runs failed to replay.": "tədˈe‍ɪz ˈɛnd‍ʒɪn kˈiːz ˈiːt‍ʃ ɹɪzˈʌlt ba‍ɪ stˈɛp nˈe‍ɪm ænd kˈɔːl kˈa‍ʊnt\nwˌɛn ɐ dᵻplˈɔ‍ɪ ɹˌiːkˈiːd wˈʌn stˈɛp\nɪts ˈo‍ʊld ɹɪzˈʌlts wɛnt ʌnɹˈɛd\nænd fˈa‍ɪv pˈɑː‍ɹkt ɹˈʌnz fˈe‍ɪld tə ɹˈiːple‍ɪ\n",
+    "Today's": "tədˈe‍ɪz\n",
+    "engine": "ˈɛnd‍ʒɪn\n",
+    "keys": "kˈiːz\n",
+    "each": "ˈiːt‍ʃ\n",
+    "result": "ɹɪzˈʌlt\n",
+    "step": "stˈɛp\n",
+    "name": "nˈe‍ɪm\n",
+    "and": "ˈænd\n",
+    "call": "kˈɔːl\n",
+    "count": "kˈa‍ʊnt\n",
+    "When": "wˈɛn\n",
+    "deploy": "dᵻplˈɔ‍ɪ\n",
+    "keyed": "kˈiːd\n",
+    "one": "wˈʌn\n",
+    "its": "ˈɪts\n",
+    "old": "ˈo‍ʊld\n",
+    "results": "ɹɪzˈʌlts\n",
+    "went": "wˈɛnt\n",
+    "unread": "ʌnɹˈɛd\n",
+    "five": "fˈa‍ɪv\n",
+    "parked": "pˈɑː‍ɹkt\n",
+    "runs": "ɹˈʌnz\n",
+    "failed": "fˈe‍ɪld\n",
+    "replay": "ɹˈiːple‍ɪ\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Today's",
+      "expected_phones": "tədeɪz",
+      "actual_phones": "tədeɪz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "engine",
+      "expected_phones": "ɛndʒɪn",
+      "actual_phones": "ɛndʒən",
+      "distance": 0.167,
+      "source": "whisper"
+     },
+     {
+      "word": "keys",
+      "expected_phones": "kiz",
+      "actual_phones": "kiz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "each",
+      "expected_phones": "itʃ",
+      "actual_phones": "itʃ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "result",
+      "expected_phones": "ɹɪzʌlt",
+      "actual_phones": "ɹɪzʌlt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "step",
+      "expected_phones": "stɛp",
+      "actual_phones": "stɛp",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "name",
+      "expected_phones": "neɪm",
+      "actual_phones": "neɪm",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "call",
+      "expected_phones": "kɔl",
+      "actual_phones": "kɑl",
+      "distance": 0.333,
+      "source": "whisper"
+     },
+     {
+      "word": "count",
+      "expected_phones": "kaʊnt",
+      "actual_phones": "kaʊnt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "When",
+      "expected_phones": "wɛn",
+      "actual_phones": "wɛn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "deploy",
+      "expected_phones": "dᵻplɔɪ",
+      "actual_phones": "dɪploɪ",
+      "distance": 0.333,
+      "source": "whisper"
+     },
+     {
+      "word": "keyed",
+      "expected_phones": "kid",
+      "actual_phones": "kid",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "one",
+      "expected_phones": "wʌn",
+      "actual_phones": "wʌn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "its",
+      "expected_phones": "ɪts",
+      "actual_phones": "ɪts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "old",
+      "expected_phones": "oʊld",
+      "actual_phones": "oʊld",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "results",
+      "expected_phones": "ɹɪzʌlts",
+      "actual_phones": "ɹɪzʌlts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "went",
+      "expected_phones": "wɛnt",
+      "actual_phones": "wɛnʌ",
+      "distance": 0.25,
+      "source": "whisper"
+     },
+     {
+      "word": "unread",
+      "expected_phones": "ʌnɹɛd",
+      "actual_phones": "ʌnɹɛd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "five",
+      "expected_phones": "faɪv",
+      "actual_phones": "faɪv",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "parked",
+      "expected_phones": "pɑɹkt",
+      "actual_phones": "pɑɹkt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "runs",
+      "expected_phones": "ɹʌnz",
+      "actual_phones": "ɹʌnz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "failed",
+      "expected_phones": "feɪld",
+      "actual_phones": "feɪld",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "replay",
+      "expected_phones": "ɹipleɪ",
+      "actual_phones": "ɹipleɪ",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r3b-5-insert",
+   "origin": "rf-beat",
+   "text": "Keyed by fact, an inserted step has no marker, so it runs, and the old markers still match.",
+   "raw": "k iː d b aɪ f æ k t ɐ n ɪ n s ɜː ɾ ᵻ d s t ɛ p h æ z n oʊ m ɑːɹ k ɚ s oʊ ɪ t ɹ ʌ n z æ n d ð ɪ oʊ l d m ɑːɹ k ɚ z s t ɪ l m æ tʃ",
+   "targets": [
+    "Keyed",
+    "fact",
+    "inserted",
+    "step",
+    "has",
+    "marker",
+    "runs",
+    "and",
+    "the",
+    "old",
+    "markers",
+    "still",
+    "match"
+   ],
+   "unusual": [
+    "Keyed"
+   ],
+   "espeak": {
+    "Keyed by fact, an inserted step has no marker, so it runs, and the old markers still match.": "kˈiːd ba‍ɪ fˈækt\nɐn ɪnsˈɜːɾᵻd stˈɛp hɐz nˈo‍ʊ mˈɑː‍ɹkɚ\nsˌo‍ʊ ɪt ɹˈʌnz\nænd ðɪ ˈo‍ʊld mˈɑː‍ɹkɚz stˈɪl mˈæt‍ʃ\n",
+    "Keyed": "kˈiːd\n",
+    "fact": "fˈækt\n",
+    "inserted": "ɪnsˈɜːɾᵻd\n",
+    "step": "stˈɛp\n",
+    "has": "hˈæz\n",
+    "marker": "mˈɑː‍ɹkɚ\n",
+    "runs": "ɹˈʌnz\n",
+    "and": "ˈænd\n",
+    "the": "ðˈə\n",
+    "old": "ˈo‍ʊld\n",
+    "markers": "mˈɑː‍ɹkɚz\n",
+    "still": "stˈɪl\n",
+    "match": "mˈæt‍ʃ\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Keyed",
+      "expected_phones": "kid",
+      "actual_phones": "kid",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "fact",
+      "expected_phones": "fækt",
+      "actual_phones": "fækt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "inserted",
+      "expected_phones": "ɪnsɜtᵻd",
+      "actual_phones": "ɪnsɜtᵻd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "step",
+      "expected_phones": "stɛp",
+      "actual_phones": "stɛp",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "has",
+      "expected_phones": "hæz",
+      "actual_phones": "hæz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "marker",
+      "expected_phones": "mɑɹkɚ",
+      "actual_phones": "mɑɹkɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "runs",
+      "expected_phones": "ɹʌnz",
+      "actual_phones": "ɹʌnz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "tə",
+      "distance": 0.5,
+      "source": "whisper"
+     },
+     {
+      "word": "old",
+      "expected_phones": "oʊld",
+      "actual_phones": "oʊld",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "markers",
+      "expected_phones": "mɑɹkɚz",
+      "actual_phones": "mɑɹkɚz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "still",
+      "expected_phones": "stɪl",
+      "actual_phones": "stɪl",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "match",
+      "expected_phones": "mætʃ",
+      "actual_phones": "mætʃ",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r3b-6-upstream",
+   "origin": "rf-beat",
+   "text": "Change an upstream step, and the markers that read it go stale. The next entry re-runs only those.",
+   "raw": "tʃ eɪ n dʒ ɐ n ʌ p s t ɹ iː m s t ɛ p æ n d ð ə m ɑːɹ k ɚ z ð æ t ɹ ɛ d ɪ t ɡ oʊ s t eɪ l ð ə n ɛ k s t ɛ n t ɹ i ɹ iː ɹ ʌ n z oʊ n l i ð oʊ z",
+   "targets": [
+    "Change",
+    "upstream",
+    "step",
+    "and",
+    "the",
+    "markers",
+    "that",
+    "read",
+    "stale",
+    "next",
+    "entry",
+    "runs",
+    "only",
+    "those"
+   ],
+   "unusual": [
+    "Change"
+   ],
+   "espeak": {
+    "Change an upstream step, and the markers that read it go stale. The next entry re-runs only those.": "t‍ʃˈe‍ɪnd‍ʒ ɐn ʌpstɹˈiːm stˈɛp\nænd ðə mˈɑː‍ɹkɚz ðæt ɹˈiːd ɪt ɡˌo‍ʊ stˈe‍ɪl\nðə nˈɛkst ˈɛntɹi ɹˌiːɹˈʌnz ˈo‍ʊnli ðˈo‍ʊz\n",
+    "Change": "t‍ʃˈe‍ɪnd‍ʒ\n",
+    "upstream": "ʌpstɹˈiːm\n",
+    "step": "stˈɛp\n",
+    "and": "ˈænd\n",
+    "the": "ðˈə\n",
+    "markers": "mˈɑː‍ɹkɚz\n",
+    "that": "ðˈæt\n",
+    "read": "ɹˈiːd\n",
+    "stale": "stˈe‍ɪl\n",
+    "next": "nˈɛkst\n",
+    "entry": "ˈɛntɹi\n",
+    "runs": "ɹˈʌnz\n",
+    "only": "ˈo‍ʊnli\n",
+    "those": "ðˈo‍ʊz\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Change",
+      "expected_phones": "tʃeɪndʒ",
+      "actual_phones": "tʃeɪndʒ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "upstream",
+      "expected_phones": "ʌpstɹim",
+      "actual_phones": "ʌpstɹim",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "step",
+      "expected_phones": "stɛp",
+      "actual_phones": "stɛp",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "markers",
+      "expected_phones": "mɑɹkɚz",
+      "actual_phones": "mɑɹkɚz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "that",
+      "expected_phones": "ðæt",
+      "actual_phones": "ðæt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "read",
+      "expected_phones": "ɹid",
+      "actual_phones": "ɹɛd",
+      "distance": 0.333,
+      "source": "whisper"
+     },
+     {
+      "word": "stale",
+      "expected_phones": "steɪl",
+      "actual_phones": "steɪl",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "next",
+      "expected_phones": "nɛkst",
+      "actual_phones": "nɛkst",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "entry",
+      "expected_phones": "ɛntɹi",
+      "actual_phones": "ɛntɹi",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "runs",
+      "expected_phones": "ɹʌnz",
+      "actual_phones": "ɹʌnz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "only",
+      "expected_phones": "oʊnli",
+      "actual_phones": "oʊnli",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "those",
+      "expected_phones": "ðoʊz",
+      "actual_phones": "ðoʊz",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r3b-7-claim",
+   "origin": "rf-beat",
+   "text": "A claim is a marker too. If the plan changes after the grant, the grant goes stale and releases its token before anything re-runs.",
+   "raw": "ɐ k l eɪ m ɪ z ɐ m ɑːɹ k ɚ t uː ɪ f ð ə p l æ n tʃ eɪ n dʒ ᵻ z æ f t ɚ ð ə ɡ ɹ æ n t ð ə ɡ ɹ æ n t ɡ oʊ z s t eɪ l æ n ɹ ᵻ l iː s ᵻ z ɪ t s t oʊ k ə n b ᵻ f oːɹ ɹ ɛ n i θ ɪ ŋ ɹ iː ɹ ʌ n z",
+   "targets": [
+    "claim",
+    "marker",
+    "too",
+    "the",
+    "plan",
+    "changes",
+    "after",
+    "grant",
+    "goes",
+    "stale",
+    "and",
+    "releases",
+    "its",
+    "token",
+    "before",
+    "anything",
+    "runs"
+   ],
+   "unusual": [],
+   "espeak": {
+    "A claim is a marker too. If the plan changes after the grant, the grant goes stale and releases its token before anything re-runs.": "ɐ klˈe‍ɪm ɪz ɐ mˈɑː‍ɹkɚ tˈuː\nɪf ðə plˈæn t‍ʃˈe‍ɪnd‍ʒᵻz ˈæftɚ ðə ɡɹˈænt\nðə ɡɹˈænt ɡo‍ʊz stˈe‍ɪl ænd ɹᵻlˈiːsᵻz ɪts tˈo‍ʊkən bᵻfˌɔːɹ ˈɛnɪθˌɪŋ ɹˌiːɹˈʌnz\n",
+    "claim": "klˈe‍ɪm\n",
+    "marker": "mˈɑː‍ɹkɚ\n",
+    "too": "tˈuː\n",
+    "the": "ðˈə\n",
+    "plan": "plˈæn\n",
+    "changes": "t‍ʃˈe‍ɪnd‍ʒᵻz\n",
+    "after": "ˈæftɚ\n",
+    "grant": "ɡɹˈænt\n",
+    "goes": "ɡˈo‍ʊz\n",
+    "stale": "stˈe‍ɪl\n",
+    "and": "ˈænd\n",
+    "releases": "ɹᵻlˈiːsᵻz\n",
+    "its": "ˈɪts\n",
+    "token": "tˈo‍ʊkən\n",
+    "before": "bᵻfˈɔː‍ɹ\n",
+    "anything": "ˈɛnɪθˌɪŋ\n",
+    "runs": "ɹˈʌnz\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "claim",
+      "expected_phones": "kleɪm",
+      "actual_phones": "kleɪm",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "marker",
+      "expected_phones": "mɑɹkɚ",
+      "actual_phones": "mɑɹkɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "too",
+      "expected_phones": "tu",
+      "actual_phones": "tu",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "plan",
+      "expected_phones": "plæn",
+      "actual_phones": "plæn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "changes",
+      "expected_phones": "tʃeɪndʒᵻz",
+      "actual_phones": "tʃeɪndʒᵻz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "after",
+      "expected_phones": "æftɚ",
+      "actual_phones": "æftɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "grant",
+      "expected_phones": "ɡɹænt",
+      "actual_phones": "ɡɹænt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "goes",
+      "expected_phones": "ɡoʊz",
+      "actual_phones": "ɡoʊz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "stale",
+      "expected_phones": "steɪl",
+      "actual_phones": "steɪl",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænɹ",
+      "distance": 0.333,
+      "source": "whisper"
+     },
+     {
+      "word": "releases",
+      "expected_phones": "ɹᵻlisᵻz",
+      "actual_phones": "ɹᵻlisᵻz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "its",
+      "expected_phones": "ɪts",
+      "actual_phones": "ɪts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "token",
+      "expected_phones": "toʊkən",
+      "actual_phones": "toʊkən",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "before",
+      "expected_phones": "bᵻfɔɹ",
+      "actual_phones": "bᵻfoɹɹ",
+      "distance": 0.273,
+      "source": "whisper"
+     },
+     {
+      "word": "anything",
+      "expected_phones": "ɛnɪθɪŋ",
+      "actual_phones": "ɛniθɪŋ",
+      "distance": 0.167,
+      "source": "whisper"
+     },
+     {
+      "word": "runs",
+      "expected_phones": "ɹʌnz",
+      "actual_phones": "ɹʌnz",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r4-2-start",
+   "origin": "rf-beat",
+   "text": "The recipe claims an implementer and returns. The pool picks which claim to grant, not the item, and the broker spawns the agent.",
+   "raw": "ð ə ɹ ɛ s ɪ p i k l eɪ m z ɐ n ɪ m p l ɪ m ɛ n t ɚ æ n d ɹ ᵻ t ɜː n z ð ə p uː l p ɪ k s w ɪ tʃ k l eɪ m t ə ɡ ɹ æ n t n ɑː t ð ɪ aɪ ɾ ə m æ n ð ə b ɹ oʊ k ɚ s p ɑː n z ð ɪ eɪ dʒ ə n t",
+   "targets": [
+    "The",
+    "recipe",
+    "claims",
+    "implementer",
+    "and",
+    "returns",
+    "pool",
+    "picks",
+    "which",
+    "claim",
+    "grant",
+    "not",
+    "item",
+    "broker",
+    "spawns",
+    "agent"
+   ],
+   "unusual": [],
+   "espeak": {
+    "The recipe claims an implementer and returns. The pool picks which claim to grant, not the item, and the broker spawns the agent.": "ðə ɹˈɛsᵻpˌiː klˈe‍ɪmz ɐn ˈɪmplɪməntɚ ænd ɹᵻtˈɜːnz\nðə pˈuːl pˈɪks wˌɪt‍ʃ klˈe‍ɪm tə ɡɹˈænt\nnˌɑːt ðɪ ˈa‍ɪɾəm\nænd ðə bɹˈo‍ʊkɚ spˈɔːnz ðɪ ˈe‍ɪd‍ʒənt\n",
+    "The": "ðˈə\n",
+    "recipe": "ɹˈɛsᵻpˌiː\n",
+    "claims": "klˈe‍ɪmz\n",
+    "implementer": "ˈɪmplɪməntɚ\n",
+    "and": "ˈænd\n",
+    "returns": "ɹᵻtˈɜːnz\n",
+    "pool": "pˈuːl\n",
+    "picks": "pˈɪks\n",
+    "which": "wˈɪt‍ʃ\n",
+    "claim": "klˈe‍ɪm\n",
+    "grant": "ɡɹˈænt\n",
+    "not": "nˈɑːt\n",
+    "item": "ˈa‍ɪɾəm\n",
+    "broker": "bɹˈo‍ʊkɚ\n",
+    "spawns": "spˈɔːnz\n",
+    "agent": "ˈe‍ɪd‍ʒənt\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "The",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "recipe",
+      "expected_phones": "ɹɛsᵻpi",
+      "actual_phones": "ɹɛsɪpi",
+      "distance": 0.167,
+      "source": "whisper"
+     },
+     {
+      "word": "claims",
+      "expected_phones": "kleɪmz",
+      "actual_phones": "kleɪmz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "implementer",
+      "expected_phones": "ɪmplɪməntɚ",
+      "actual_phones": "ɪmplɪmɛnt",
+      "distance": 0.158,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "returns",
+      "expected_phones": "ɹᵻtɜnz",
+      "actual_phones": "ɹᵻtɜnz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "pool",
+      "expected_phones": "pul",
+      "actual_phones": "pu",
+      "distance": 0.2,
+      "source": "whisper"
+     },
+     {
+      "word": "picks",
+      "expected_phones": "pɪks",
+      "actual_phones": "pɪks",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "which",
+      "expected_phones": "wɪtʃ",
+      "actual_phones": "wɪtʃ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "claim",
+      "expected_phones": "kleɪm",
+      "actual_phones": "kleɪm",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "grant",
+      "expected_phones": "ɡɹænt",
+      "actual_phones": "əɡɹænt",
+      "distance": 0.091,
+      "source": "whisper"
+     },
+     {
+      "word": "not",
+      "expected_phones": "nɑt",
+      "actual_phones": "nɑt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "item",
+      "expected_phones": "aɪtəm",
+      "actual_phones": "aɪtəm",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "broker",
+      "expected_phones": "bɹoʊkɚ",
+      "actual_phones": "bɹoʊkɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "spawns",
+      "expected_phones": "spɔnz",
+      "actual_phones": "spɑnz",
+      "distance": 0.2,
+      "source": "whisper"
+     },
+     {
+      "word": "agent",
+      "expected_phones": "eɪdʒənt",
+      "actual_phones": "eɪdʒənt",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r4-3-open",
+   "origin": "rf-beat",
+   "text": "Its push opens a pull request. The runner records the head, and the facts it still needs appear as chips. Path globs can raise its class.",
+   "raw": "ɪ t s p ʊ ʃ oʊ p ə n z ɐ p ʊ l ɹ ᵻ k w ɛ s t ð ə ɹ ʌ n ɚ ɹ ᵻ k oːɹ d z ð ə h ɛ d æ n ð ə f æ k t s ɪ t s t ɪ l n iː d z ɐ p iː ɹ æ z tʃ ɪ p s p æ θ ɡ l ɑː b z k æ n ɹ eɪ z ɪ t s k l æ s",
+   "targets": [
+    "Its",
+    "push",
+    "opens",
+    "pull",
+    "request",
+    "The",
+    "runner",
+    "records",
+    "head",
+    "and",
+    "facts",
+    "still",
+    "needs",
+    "appear",
+    "chips",
+    "Path",
+    "globs",
+    "can",
+    "raise",
+    "class"
+   ],
+   "unusual": [
+    "Path"
+   ],
+   "espeak": {
+    "Its push opens a pull request. The runner records the head, and the facts it still needs appear as chips. Path globs can raise its class.": "ɪts pˈʊʃ ˈo‍ʊpənz ɐ pˈʊl ɹᵻkwˈɛst\nðə ɹˈʌnɚ ɹˈɛkɚdz ðə hˈɛd\nænd ðə fˈækts ɪt stˈɪl nˈiːdz ɐpˈɪɹ æz t‍ʃˈɪps\npˈæθ ɡlˈɑːbz kæn ɹˈe‍ɪz ɪts klˈæs\n",
+    "Its": "ˈɪts\n",
+    "push": "pˈʊʃ\n",
+    "opens": "ˈo‍ʊpənz\n",
+    "pull": "pˈʊl\n",
+    "request": "ɹᵻkwˈɛst\n",
+    "The": "ðˈə\n",
+    "runner": "ɹˈʌnɚ\n",
+    "records": "ɹˈɛkɚdz\n",
+    "head": "hˈɛd\n",
+    "and": "ˈænd\n",
+    "facts": "fˈækts\n",
+    "still": "stˈɪl\n",
+    "needs": "nˈiːdz\n",
+    "appear": "ɐpˈɪ‍ɹ\n",
+    "chips": "t‍ʃˈɪps\n",
+    "Path": "pˈæθ\n",
+    "globs": "ɡlˈɑːbz\n",
+    "can": "kˈæn\n",
+    "raise": "ɹˈe‍ɪz\n",
+    "class": "klˈæs\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Its",
+      "expected_phones": "ɪts",
+      "actual_phones": "ɪts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "push",
+      "expected_phones": "pʊʃ",
+      "actual_phones": "pʊʃ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "opens",
+      "expected_phones": "oʊpənz",
+      "actual_phones": "oʊpənz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "pull",
+      "expected_phones": "pʊl",
+      "actual_phones": "pʊl",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "request",
+      "expected_phones": "ɹᵻkwɛst",
+      "actual_phones": "ɹᵻkwɛst",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "The",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "runner",
+      "expected_phones": "ɹʌnɚ",
+      "actual_phones": "ɹʌnɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "records",
+      "expected_phones": "ɹɛkɚdz",
+      "actual_phones": "ɹᵻkoɹdz",
+      "distance": 0.385,
+      "source": "whisper"
+     },
+     {
+      "word": "head",
+      "expected_phones": "hɛd",
+      "actual_phones": "hɛd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænð",
+      "distance": 0.333,
+      "source": "whisper"
+     },
+     {
+      "word": "facts",
+      "expected_phones": "fækts",
+      "actual_phones": "fækts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "still",
+      "expected_phones": "stɪl",
+      "actual_phones": "stɪl",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "needs",
+      "expected_phones": "nidz",
+      "actual_phones": "nidz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "appear",
+      "expected_phones": "əpɪɹ",
+      "actual_phones": "əpiɹ",
+      "distance": 0.25,
+      "source": "whisper"
+     },
+     {
+      "word": "chips",
+      "expected_phones": "tʃɪps",
+      "actual_phones": "tʃɪps",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "Path",
+      "expected_phones": "pæθ",
+      "actual_phones": "pæθ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "globs",
+      "expected_phones": "ɡlɑbz",
+      "actual_phones": "ɡlɑbz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "can",
+      "expected_phones": "kæn",
+      "actual_phones": "kæn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "raise",
+      "expected_phones": "ɹeɪz",
+      "actual_phones": "ɹeɪz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "class",
+      "expected_phones": "klæs",
+      "actual_phones": "klæs",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r4-4-prove",
+   "origin": "rf-beat",
+   "text": "CI goes green and the proof reproduces. The verdict is a claim on the reviewer pool, and a short-lived reviewer returns merge.",
+   "raw": "s iː aɪ ɡ oʊ z ɡ ɹ iː n æ n d ð ə p ɹ uː f ɹ iː p ɹ ə d uː s ᵻ z ð ə v ɜː d ɪ k t ɪ z ɐ k l eɪ m ɔ n ð ə ɹ ᵻ v j uː ɚ p uː l æ n d ɐ ʃ oːɹ t l ɪ v d ɹ ᵻ v j uː ɚ ɹ ᵻ t ɜː n z m ɜː dʒ",
+   "targets": [
+    "goes",
+    "green",
+    "and",
+    "the",
+    "proof",
+    "reproduces",
+    "verdict",
+    "claim",
+    "reviewer",
+    "pool",
+    "short",
+    "lived",
+    "returns",
+    "merge"
+   ],
+   "unusual": [],
+   "espeak": {
+    "CI goes green and the proof reproduces. The verdict is a claim on the reviewer pool, and a short-lived reviewer returns merge.": "sˌiːˈa‍ɪ ɡo‍ʊz ɡɹˈiːn ænd ðə pɹˈuːf ɹᵻpɹədˈuːsᵻz\nðə vˈɜːdɪkt ɪz ɐ klˈe‍ɪm ɔnðə ɹᵻvjˈuːɚ pˈuːl\nænd ɐ ʃˈɔː‍ɹtlˈɪvd ɹᵻvjˈuːɚ ɹᵻtˈɜːnz mˈɜːd‍ʒ\n",
+    "goes": "ɡˈo‍ʊz\n",
+    "green": "ɡɹˈiːn\n",
+    "and": "ˈænd\n",
+    "the": "ðˈə\n",
+    "proof": "pɹˈuːf\n",
+    "reproduces": "ɹᵻpɹədˈuːsᵻz\n",
+    "verdict": "vˈɜːdɪkt\n",
+    "claim": "klˈe‍ɪm\n",
+    "reviewer": "ɹᵻvjˈuːɚ\n",
+    "pool": "pˈuːl\n",
+    "short": "ʃˈɔː‍ɹt\n",
+    "lived": "lˈɪvd\n",
+    "returns": "ɹᵻtˈɜːnz\n",
+    "merge": "mˈɜːd‍ʒ\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "goes",
+      "expected_phones": "ɡoʊz",
+      "actual_phones": "ɡoʊz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "green",
+      "expected_phones": "ɡɹin",
+      "actual_phones": "ɡɹin",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "dðə",
+      "distance": 0.2,
+      "source": "whisper"
+     },
+     {
+      "word": "proof",
+      "expected_phones": "pɹuf",
+      "actual_phones": "pɹuf",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "reproduces",
+      "expected_phones": "ɹᵻpɹədusᵻz",
+      "actual_phones": "ɹipɹədusᵻz",
+      "distance": 0.1,
+      "source": "whisper"
+     },
+     {
+      "word": "verdict",
+      "expected_phones": "vɜdɪkt",
+      "actual_phones": "vɜdɪkt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "claim",
+      "expected_phones": "kleɪm",
+      "actual_phones": "kleɪm",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "reviewer",
+      "expected_phones": "ɹᵻvjuɚ",
+      "actual_phones": "ɹᵻvjuɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "pool",
+      "expected_phones": "pul",
+      "actual_phones": "pul",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "short",
+      "expected_phones": "ʃɔɹt",
+      "actual_phones": "ʃoɹt",
+      "distance": 0.25,
+      "source": "whisper"
+     },
+     {
+      "word": "lived",
+      "expected_phones": "lɪvd",
+      "actual_phones": "lɪvd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "returns",
+      "expected_phones": "ɹᵻtɜnz",
+      "actual_phones": "ɹᵻtɜnz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "merge",
+      "expected_phones": "mɜdʒ",
+      "actual_phones": "mɜdʒ",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r4-6-fix",
+   "origin": "rf-beat",
+   "text": "A red fact wakes the implementer at once. Its push moves the head and resets every head-pinned chip.",
+   "raw": "ɐ ɹ ɛ d f æ k t w eɪ k s ð ɪ ɪ m p l ɪ m ɛ n t ɚ ɹ æ t w ʌ n s ɪ t s p ʊ ʃ m uː v z ð ə h ɛ d æ n d ɹ iː s ɛ t s ɛ v ɹ i h ɛ d p ɪ n d tʃ ɪ p",
+   "targets": [
+    "red",
+    "fact",
+    "wakes",
+    "the",
+    "implementer",
+    "once",
+    "Its",
+    "push",
+    "moves",
+    "head",
+    "and",
+    "resets",
+    "every",
+    "pinned",
+    "chip"
+   ],
+   "unusual": [],
+   "espeak": {
+    "A red fact wakes the implementer at once. Its push moves the head and resets every head-pinned chip.": "ɐ ɹˈɛd fˈækt wˈe‍ɪks ðɪ ˈɪmplɪməntɚɹ ɐtwˈʌns\nɪts pˈʊʃ mˈuːvz ðə hˈɛd ænd ɹᵻsˈɛts ˈɛvɹi hˈɛdpˈɪnd t‍ʃˈɪp\n",
+    "red": "ɹˈɛd\n",
+    "fact": "fˈækt\n",
+    "wakes": "wˈe‍ɪks\n",
+    "the": "ðˈə\n",
+    "implementer": "ˈɪmplɪməntɚ\n",
+    "once": "wˈʌns\n",
+    "Its": "ˈɪts\n",
+    "push": "pˈʊʃ\n",
+    "moves": "mˈuːvz\n",
+    "head": "hˈɛd\n",
+    "and": "ˈænd\n",
+    "resets": "ɹᵻsˈɛts\n",
+    "every": "ˈɛvɹi\n",
+    "pinned": "pˈɪnd\n",
+    "chip": "t‍ʃˈɪp\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "red",
+      "expected_phones": "ɹɛd",
+      "actual_phones": "ɹɛd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "fact",
+      "expected_phones": "fækt",
+      "actual_phones": "fækt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "wakes",
+      "expected_phones": "weɪks",
+      "actual_phones": "weɪks",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "implementer",
+      "expected_phones": "ɪmplɪməntɚ",
+      "actual_phones": "ɪmplɪmɛntɚ",
+      "distance": 0.1,
+      "source": "whisper"
+     },
+     {
+      "word": "once",
+      "expected_phones": "wʌns",
+      "actual_phones": "wʌns",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "Its",
+      "expected_phones": "ɪts",
+      "actual_phones": "ɪts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "push",
+      "expected_phones": "pʊʃ",
+      "actual_phones": "pʊʃ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "moves",
+      "expected_phones": "muvz",
+      "actual_phones": "muvz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "head",
+      "expected_phones": "hɛd",
+      "actual_phones": "hɛd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "resets",
+      "expected_phones": "ɹᵻsɛts",
+      "actual_phones": "ɹisɛts",
+      "distance": 0.167,
+      "source": "whisper"
+     },
+     {
+      "word": "every",
+      "expected_phones": "ɛvɹi",
+      "actual_phones": "ɛvɹi",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "pinned",
+      "expected_phones": "pɪnd",
+      "actual_phones": "pɪnd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "chip",
+      "expected_phones": "tʃɪp",
+      "actual_phones": "tʃɪp",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r4-9-queue",
+   "origin": "rf-beat",
+   "text": "With every chip green, the merge queue tests main plus ready heads as one candidate. It writes an intent marker, lands main at that tree, then writes the result.",
+   "raw": "w ɪ ð ɛ v ɹ i tʃ ɪ p ɡ ɹ iː n ð ə m ɜː dʒ k uː t ɛ s t s m eɪ n p l ʌ s ɹ ɛ d i h ɛ d z æ z w ʌ n k æ n d ᵻ d eɪ t ɪ t ɹ aɪ t s ɐ n ɪ n t ɛ n t m ɑːɹ k ɚ l æ n d z m eɪ n æ ð æ t t ɹ iː ð ɛ n ɹ aɪ t s ð ə ɹ ɪ z ʌ l t",
+   "targets": [
+    "With",
+    "every",
+    "chip",
+    "green",
+    "the",
+    "merge",
+    "queue",
+    "tests",
+    "main",
+    "plus",
+    "ready",
+    "heads",
+    "one",
+    "candidate",
+    "writes",
+    "intent",
+    "marker",
+    "lands",
+    "that",
+    "tree",
+    "then",
+    "result"
+   ],
+   "unusual": [
+    "With"
+   ],
+   "espeak": {
+    "With every chip green, the merge queue tests main plus ready heads as one candidate. It writes an intent marker, lands main at that tree, then writes the result.": "wɪð ˈɛvɹi t‍ʃˈɪp ɡɹˈiːn\nðə mˈɜːd‍ʒ kjˈuː tˈɛsts mˈe‍ɪn plˈʌs ɹˈɛdi hˈɛdz æz wˈʌn kˈændᵻdˌe‍ɪt\nɪt ɹˈa‍ɪts ɐn ɪntˈɛnt mˈɑː‍ɹkɚ\nlˈændz mˈe‍ɪn æt ðæt tɹˈiː\nðˈɛn ɹˈa‍ɪts ðə ɹɪzˈʌlt\n",
+    "With": "wˈɪð\n",
+    "every": "ˈɛvɹi\n",
+    "chip": "t‍ʃˈɪp\n",
+    "green": "ɡɹˈiːn\n",
+    "the": "ðˈə\n",
+    "merge": "mˈɜːd‍ʒ\n",
+    "queue": "kjˈuː\n",
+    "tests": "tˈɛsts\n",
+    "main": "mˈe‍ɪn\n",
+    "plus": "plˈʌs\n",
+    "ready": "ɹˈɛdi\n",
+    "heads": "hˈɛdz\n",
+    "one": "wˈʌn\n",
+    "candidate": "kˈændᵻdˌe‍ɪt\n",
+    "writes": "ɹˈa‍ɪts\n",
+    "intent": "ɪntˈɛnt\n",
+    "marker": "mˈɑː‍ɹkɚ\n",
+    "lands": "lˈændz\n",
+    "that": "ðˈæt\n",
+    "tree": "tɹˈiː\n",
+    "then": "ðˈɛn\n",
+    "result": "ɹɪzˈʌlt\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "With",
+      "expected_phones": "wɪð",
+      "actual_phones": "wɪð",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "every",
+      "expected_phones": "ɛvɹi",
+      "actual_phones": "ɛvɹi",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "chip",
+      "expected_phones": "tʃɪp",
+      "actual_phones": "tʃɪp",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "green",
+      "expected_phones": "ɡɹin",
+      "actual_phones": "ɡɹin",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "nðə",
+      "distance": 0.2,
+      "source": "whisper"
+     },
+     {
+      "word": "merge",
+      "expected_phones": "mɜdʒ",
+      "actual_phones": "mɜdʒ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "queue",
+      "expected_phones": "kju",
+      "actual_phones": "ku",
+      "distance": 0.2,
+      "source": "whisper"
+     },
+     {
+      "word": "tests",
+      "expected_phones": "tɛsts",
+      "actual_phones": "tɛsts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "main",
+      "expected_phones": "meɪn",
+      "actual_phones": "meɪn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "plus",
+      "expected_phones": "plʌs",
+      "actual_phones": "plʌs",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "ready",
+      "expected_phones": "ɹɛdi",
+      "actual_phones": "ɹɛdi",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "heads",
+      "expected_phones": "hɛdz",
+      "actual_phones": "hɛdz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "one",
+      "expected_phones": "wʌn",
+      "actual_phones": "wʌn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "candidate",
+      "expected_phones": "kændᵻdeɪt",
+      "actual_phones": "kændᵻdeɪt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "writes",
+      "expected_phones": "ɹaɪts",
+      "actual_phones": "ɹaɪts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "intent",
+      "expected_phones": "ɪntɛnt",
+      "actual_phones": "ɪntɛnt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "marker",
+      "expected_phones": "mɑɹkɚ",
+      "actual_phones": "mɑɹkɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "lands",
+      "expected_phones": "lændz",
+      "actual_phones": "lændz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "that",
+      "expected_phones": "ðæt",
+      "actual_phones": "ðæt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "tree",
+      "expected_phones": "tɹi",
+      "actual_phones": "tɹi",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "then",
+      "expected_phones": "ðɛn",
+      "actual_phones": "ðɛn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "result",
+      "expected_phones": "ɹɪzʌlt",
+      "actual_phones": "ɹɪzʌlt",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r6-4-steps",
+   "origin": "rf-beat",
+   "text": "Shepherd's steps become registered steps, burndown becomes a recipe, and agent-chat becomes a runtime.",
+   "raw": "ʃ ɛ p ɚ d s t ɛ p s b ɪ k ʌ m ɹ ɛ dʒ ɪ s t ɚ d s t ɛ p s b ɜː n d aʊ m b ɪ k ʌ m z ɐ ɹ ɛ s ɪ p i æ n eɪ dʒ ə n t tʃ æ t b ɪ k ʌ m z ɐ ɹ ʌ n t aɪ m",
+   "targets": [
+    "Shepherd's",
+    "steps",
+    "become",
+    "registered",
+    "burndown",
+    "becomes",
+    "recipe",
+    "and",
+    "agent",
+    "chat",
+    "runtime"
+   ],
+   "unusual": [
+    "Shepherd's"
+   ],
+   "espeak": {
+    "Shepherd's steps become registered steps, burndown becomes a recipe, and agent-chat becomes a runtime.": "ʃˈɛpɚdz stˈɛps bɪkˌʌm ɹˈɛd‍ʒɪstɚd stˈɛps\nbˈɜːnda‍ʊn bɪkˌʌmz ɐ ɹˈɛsᵻpˌiː\nænd ˈe‍ɪd‍ʒəntt‍ʃˈæt bɪkˌʌmz ɐ ɹˈʌnta‍ɪm\n",
+    "Shepherd's": "ʃˈɛpɚdz\n",
+    "steps": "stˈɛps\n",
+    "become": "bɪkˈʌm\n",
+    "registered": "ɹˈɛd‍ʒɪstɚd\n",
+    "burndown": "bˈɜːnda‍ʊn\n",
+    "becomes": "bɪkˈʌmz\n",
+    "recipe": "ɹˈɛsᵻpˌiː\n",
+    "and": "ˈænd\n",
+    "agent": "ˈe‍ɪd‍ʒənt\n",
+    "chat": "t‍ʃˈæt\n",
+    "runtime": "ɹˈʌnta‍ɪm\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Shepherd's",
+      "expected_phones": "ʃɛpɚdz",
+      "actual_phones": "ʃɛpɚds",
+      "distance": 0.167,
+      "source": "whisper"
+     },
+     {
+      "word": "steps",
+      "expected_phones": "stɛps",
+      "actual_phones": "stɛps",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "become",
+      "expected_phones": "bɪkʌm",
+      "actual_phones": "bɪkʌm",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "registered",
+      "expected_phones": "ɹɛdʒɪstɚd",
+      "actual_phones": "ɹɛdʒɪstɚd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "burndown",
+      "expected_phones": "bɜndaʊn",
+      "actual_phones": "bɜndaʊm",
+      "distance": 0.143,
+      "source": "whisper"
+     },
+     {
+      "word": "becomes",
+      "expected_phones": "bɪkʌmz",
+      "actual_phones": "bɪkʌmz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "recipe",
+      "expected_phones": "ɹɛsᵻpi",
+      "actual_phones": "ɹɛsɪpi",
+      "distance": 0.167,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "æne",
+      "distance": 0.333,
+      "source": "whisper"
+     },
+     {
+      "word": "agent",
+      "expected_phones": "eɪdʒənt",
+      "actual_phones": "eɪdʒənt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "chat",
+      "expected_phones": "tʃæt",
+      "actual_phones": "tʃæt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "runtime",
+      "expected_phones": "ɹʌntaɪm",
+      "actual_phones": "ɹʌntaɪm",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r7-4-notices",
+   "origin": "rf-beat",
+   "text": "Notices go: almost no park refusal was acted on. The file lock goes after F12, and no coordinator stays in the loop.",
+   "raw": "n oʊ ɾ ɪ s ɪ z ɡ oʊ ɔː l m oʊ s t n oʊ p ɑːɹ k ɹ ᵻ f j uː z əl w ʌ z æ k t ᵻ d ɔ n ð ə f aɪ l l ɑː k ɡ oʊ z æ f t ɚ ɛ f t w ɛ l v æ n d n oʊ k oʊ ɔːɹ d ɪ n eɪ ɾ ɚ s t eɪ z ɪ n ð ə l uː p",
+   "targets": [
+    "Notices",
+    "almost",
+    "park",
+    "refusal",
+    "was",
+    "acted",
+    "The",
+    "file",
+    "lock",
+    "goes",
+    "after",
+    "F12",
+    "and",
+    "coordinator",
+    "stays",
+    "loop"
+   ],
+   "unusual": [
+    "Notices"
+   ],
+   "espeak": {
+    "Notices go: almost no park refusal was acted on. The file lock goes after F12, and no coordinator stays in the loop.": "nˈo‍ʊɾɪsᵻz ɡˈo‍ʊ\nˈɔːlmo‍ʊst nˈo‍ʊ pˈɑː‍ɹk ɹᵻfjˈuːzə‍l wʌz ˈæktᵻd ˈɔn\nðə fˈa‍ɪl lˈɑːk ɡo‍ʊz ˈæftɚɹ ˈɛf twˈɛlv\nænd nˈo‍ʊ ko‍ʊˈɔː‍ɹdᵻnˌe‍ɪɾɚ stˈe‍ɪz ɪnðə lˈuːp\n",
+    "Notices": "nˈo‍ʊɾɪsᵻz\n",
+    "almost": "ˈɔːlmo‍ʊst\n",
+    "park": "pˈɑː‍ɹk\n",
+    "refusal": "ɹᵻfjˈuːzə‍l\n",
+    "was": "wˈʌz\n",
+    "acted": "ˈæktᵻd\n",
+    "The": "ðˈə\n",
+    "file": "fˈa‍ɪl\n",
+    "lock": "lˈɑːk\n",
+    "goes": "ɡˈo‍ʊz\n",
+    "after": "ˈæftɚ\n",
+    "F12": "ˈɛf twˈɛlv\n",
+    "and": "ˈænd\n",
+    "coordinator": "ko‍ʊˈɔː‍ɹdᵻnˌe‍ɪɾɚ\n",
+    "stays": "stˈe‍ɪz\n",
+    "loop": "lˈuːp\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Notices",
+      "expected_phones": "noʊtɪsᵻz",
+      "actual_phones": "noʊtɪsɪz",
+      "distance": 0.125,
+      "source": "whisper"
+     },
+     {
+      "word": "almost",
+      "expected_phones": "ɔlmoʊst",
+      "actual_phones": "ɔlmoʊst",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "park",
+      "expected_phones": "pɑɹk",
+      "actual_phones": "pɑɹk",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "refusal",
+      "expected_phones": "ɹᵻfjuzəl",
+      "actual_phones": "ɹᵻfjuzəl",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "was",
+      "expected_phones": "wʌz",
+      "actual_phones": "wʌz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "acted",
+      "expected_phones": "æktᵻd",
+      "actual_phones": "æktᵻd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "The",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "file",
+      "expected_phones": "faɪl",
+      "actual_phones": "faɪl",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "lock",
+      "expected_phones": "lɑk",
+      "actual_phones": "lɑk",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "goes",
+      "expected_phones": "ɡoʊz",
+      "actual_phones": "ɡoʊz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "after",
+      "expected_phones": "æftɚ",
+      "actual_phones": "æftɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "F12",
+      "expected_phones": "ɛftwɛlv",
+      "actual_phones": "ɛftwɛlv",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "coordinator",
+      "expected_phones": "koʊɔɹdᵻneɪtɚ",
+      "actual_phones": "koʊɔɹdɪneɪtɚ",
+      "distance": 0.083,
+      "source": "whisper"
+     },
+     {
+      "word": "stays",
+      "expected_phones": "steɪz",
+      "actual_phones": "steɪz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "loop",
+      "expected_phones": "lup",
+      "actual_phones": "lup",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r7-4b-score",
+   "origin": "rf-beat",
+   "text": "The weighted score goes. Two pool rules replace it: finish before start, then tier and readiness age.",
+   "raw": "ð ə w eɪ ɾ ᵻ d s k oːɹ ɡ oʊ z t uː p uː l ɹ uː l z ɹ ᵻ p l eɪ s ɪ t f ɪ n ɪ ʃ b ᵻ f oːɹ s t ɑːɹ t ð ɛ n t iː ɹ æ n d ɹ ɛ d i n ə s eɪ dʒ",
+   "targets": [
+    "The",
+    "weighted",
+    "score",
+    "goes",
+    "Two",
+    "pool",
+    "rules",
+    "replace",
+    "finish",
+    "before",
+    "start",
+    "then",
+    "tier",
+    "and",
+    "readiness",
+    "age"
+   ],
+   "unusual": [],
+   "espeak": {
+    "The weighted score goes. Two pool rules replace it: finish before start, then tier and readiness age.": "ðə wˈe‍ɪɾᵻd skˈɔː‍ɹ ɡˈo‍ʊz\ntˈuː pˈuːl ɹˈuːlz ɹᵻplˈe‍ɪs ɪt\nfˈɪnɪʃ bᵻfˌɔː‍ɹ stˈɑː‍ɹt\nðˈɛn tˈɪ‍ɹ ænd ɹˈɛdinəs ˈe‍ɪd‍ʒ\n",
+    "The": "ðˈə\n",
+    "weighted": "wˈe‍ɪɾᵻd\n",
+    "score": "skˈɔː‍ɹ\n",
+    "goes": "ɡˈo‍ʊz\n",
+    "Two": "tˈuː\n",
+    "pool": "pˈuːl\n",
+    "rules": "ɹˈuːlz\n",
+    "replace": "ɹᵻplˈe‍ɪs\n",
+    "finish": "fˈɪnɪʃ\n",
+    "before": "bᵻfˈɔː‍ɹ\n",
+    "start": "stˈɑː‍ɹt\n",
+    "then": "ðˈɛn\n",
+    "tier": "tˈɪ‍ɹ\n",
+    "and": "ˈænd\n",
+    "readiness": "ɹˈɛdinəs\n",
+    "age": "ˈe‍ɪd‍ʒ\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "The",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "weighted",
+      "expected_phones": "weɪtᵻd",
+      "actual_phones": "weɪtᵻd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "score",
+      "expected_phones": "skɔɹ",
+      "actual_phones": "skoɹ",
+      "distance": 0.25,
+      "source": "whisper"
+     },
+     {
+      "word": "goes",
+      "expected_phones": "ɡoʊz",
+      "actual_phones": "ɡoʊz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "Two",
+      "expected_phones": "tu",
+      "actual_phones": "tu",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "pool",
+      "expected_phones": "pul",
+      "actual_phones": "pul",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "rules",
+      "expected_phones": "ɹulz",
+      "actual_phones": "ɹulz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "replace",
+      "expected_phones": "ɹᵻpleɪs",
+      "actual_phones": "ɹᵻpleɪs",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "finish",
+      "expected_phones": "fɪnɪʃ",
+      "actual_phones": "fɪnɪʃ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "before",
+      "expected_phones": "bᵻfɔɹ",
+      "actual_phones": "bᵻfoɹ",
+      "distance": 0.2,
+      "source": "whisper"
+     },
+     {
+      "word": "start",
+      "expected_phones": "stɑɹt",
+      "actual_phones": "stɑɹt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "then",
+      "expected_phones": "ðɛn",
+      "actual_phones": "ðɛn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "tier",
+      "expected_phones": "tɪɹ",
+      "actual_phones": "tiɹ",
+      "distance": 0.333,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "readiness",
+      "expected_phones": "ɹɛdinəs",
+      "actual_phones": "ɹɛdinəs",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "age",
+      "expected_phones": "eɪdʒ",
+      "actual_phones": "eɪdʒ",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r7-4c-replay",
+   "origin": "rf-beat",
+   "text": "Replay keyed by step name and call count goes. Markers are keyed by fact instead; a run-wide counter key is what parked five runs.",
+   "raw": "ɹ iː p l eɪ k iː d b aɪ s t ɛ p n eɪ m æ n d k ɑː l k aʊ n t ɡ oʊ z m ɑːɹ k ɚ z ɑːɹ k iː d b aɪ f æ k t ɪ n s t ɛ d ɐ ɹ ʌ n w aɪ d k aʊ n t ɚ k iː ɪ z w ʌ t p ɑːɹ k t f aɪ v ɹ ʌ n z",
+   "targets": [
+    "Replay",
+    "keyed",
+    "step",
+    "name",
+    "and",
+    "call",
+    "count",
+    "goes",
+    "Markers",
+    "are",
+    "fact",
+    "instead",
+    "run",
+    "wide",
+    "counter",
+    "key",
+    "what",
+    "parked",
+    "five",
+    "runs"
+   ],
+   "unusual": [
+    "Replay",
+    "Markers"
+   ],
+   "espeak": {
+    "Replay keyed by step name and call count goes. Markers are keyed by fact instead; a run-wide counter key is what parked five runs.": "ɹˈiːple‍ɪ kˈiːd ba‍ɪ stˈɛp nˈe‍ɪm ænd kˈɔːl kˈa‍ʊnt ɡˈo‍ʊz\nmˈɑː‍ɹkɚz ɑː‍ɹ kˈiːd ba‍ɪ fˈækt ɪnstˈɛd\nɐ ɹˈʌnwˈa‍ɪd kˈa‍ʊntɚ kˈiː ɪz wʌt pˈɑː‍ɹkt fˈa‍ɪv ɹˈʌnz\n",
+    "Replay": "ɹˈiːple‍ɪ\n",
+    "keyed": "kˈiːd\n",
+    "step": "stˈɛp\n",
+    "name": "nˈe‍ɪm\n",
+    "and": "ˈænd\n",
+    "call": "kˈɔːl\n",
+    "count": "kˈa‍ʊnt\n",
+    "goes": "ɡˈo‍ʊz\n",
+    "Markers": "mˈɑː‍ɹkɚz\n",
+    "are": "ˈɑː‍ɹ\n",
+    "fact": "fˈækt\n",
+    "instead": "ɪnstˈɛd\n",
+    "run": "ɹˈʌn\n",
+    "wide": "wˈa‍ɪd\n",
+    "counter": "kˈa‍ʊntɚ\n",
+    "key": "kˈiː\n",
+    "what": "wˈʌt\n",
+    "parked": "pˈɑː‍ɹkt\n",
+    "five": "fˈa‍ɪv\n",
+    "runs": "ɹˈʌnz\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Replay",
+      "expected_phones": "ɹipleɪ",
+      "actual_phones": "ɹipleɪ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "keyed",
+      "expected_phones": "kid",
+      "actual_phones": "kid",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "step",
+      "expected_phones": "stɛp",
+      "actual_phones": "stɛp",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "name",
+      "expected_phones": "neɪm",
+      "actual_phones": "neɪm",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "call",
+      "expected_phones": "kɔl",
+      "actual_phones": "kɑl",
+      "distance": 0.333,
+      "source": "whisper"
+     },
+     {
+      "word": "count",
+      "expected_phones": "kaʊnt",
+      "actual_phones": "kaʊnt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "goes",
+      "expected_phones": "ɡoʊz",
+      "actual_phones": "ɡoʊz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "Markers",
+      "expected_phones": "mɑɹkɚz",
+      "actual_phones": "mɑɹkɚz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "are",
+      "expected_phones": "ɑɹ",
+      "actual_phones": "ɑɹ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "fact",
+      "expected_phones": "fækt",
+      "actual_phones": "fækt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "instead",
+      "expected_phones": "ɪnstɛd",
+      "actual_phones": "ɪnstɛd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "run",
+      "expected_phones": "ɹʌn",
+      "actual_phones": "ɹʌn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "wide",
+      "expected_phones": "waɪd",
+      "actual_phones": "waɪd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "counter",
+      "expected_phones": "kaʊntɚ",
+      "actual_phones": "kaʊntɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "key",
+      "expected_phones": "ki",
+      "actual_phones": "ki",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "what",
+      "expected_phones": "wʌt",
+      "actual_phones": "wʌt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "parked",
+      "expected_phones": "pɑɹkt",
+      "actual_phones": "pɑɹkt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "five",
+      "expected_phones": "faɪv",
+      "actual_phones": "faɪv",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "runs",
+      "expected_phones": "ɹʌnz",
+      "actual_phones": "ɹʌnz",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r7-6-risk23",
+   "origin": "rf-beat",
+   "text": "Second, big gains wait on follow-ups; F7 must price the seat's hand catches. Third, two orchestrators remain until rung eight.",
+   "raw": "s ɛ k ə n d b ɪ ɡ ɡ eɪ n z w eɪ ɾ ɔ n f ɑː l oʊ ʌ p s ɛ f s ɛ v ə n m ʌ s t p ɹ aɪ s ð ə s iː t s h æ n d k æ tʃ ᵻ z θ ɜː d t uː ɔːɹ k ɪ s t ɹ eɪ ɾ ɚ z ɹ ᵻ m eɪ n ə n t ɪ l ɹ ʌ ŋ eɪ t",
+   "targets": [
+    "Second",
+    "big",
+    "gains",
+    "wait",
+    "follow",
+    "ups",
+    "must",
+    "price",
+    "the",
+    "seat's",
+    "hand",
+    "catches",
+    "Third",
+    "two",
+    "orchestrators",
+    "remain",
+    "until",
+    "rung",
+    "eight"
+   ],
+   "unusual": [
+    "Second",
+    "Third"
+   ],
+   "espeak": {
+    "Second, big gains wait on follow-ups; F7 must price the seat's hand catches. Third, two orchestrators remain until rung eight.": "sˈɛkənd\nbˈɪɡ ɡˈe‍ɪnz wˈe‍ɪt ˌɔn fˈɑːlo‍ʊˈʌps\nˈɛf sˈɛvən mˈʌst pɹˈa‍ɪs ðə sˈiːts hˈænd kˈæt‍ʃᵻz\nθˈɜːd\ntˈuː ˈɔː‍ɹkᵻstɹˌe‍ɪɾɚz ɹᵻmˈe‍ɪn ʌntˈɪl ɹˈʌŋ ˈe‍ɪt\n",
+    "Second": "sˈɛkənd\n",
+    "big": "bˈɪɡ\n",
+    "gains": "ɡˈe‍ɪnz\n",
+    "wait": "wˈe‍ɪt\n",
+    "follow": "fˈɑːlo‍ʊ\n",
+    "ups": "ˈʌps\n",
+    "must": "mˈʌst\n",
+    "price": "pɹˈa‍ɪs\n",
+    "the": "ðˈə\n",
+    "seat's": "sˈiːts\n",
+    "hand": "hˈænd\n",
+    "catches": "kˈæt‍ʃᵻz\n",
+    "Third": "θˈɜːd\n",
+    "two": "tˈuː\n",
+    "orchestrators": "ˈɔː‍ɹkᵻstɹˌe‍ɪɾɚz\n",
+    "remain": "ɹᵻmˈe‍ɪn\n",
+    "until": "ʌntˈɪl\n",
+    "rung": "ɹˈʌŋ\n",
+    "eight": "ˈe‍ɪt\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Second",
+      "expected_phones": "sɛkənd",
+      "actual_phones": "sɛkənd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "big",
+      "expected_phones": "bɪɡ",
+      "actual_phones": "bɪɡ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "gains",
+      "expected_phones": "ɡeɪnz",
+      "actual_phones": "ɡeɪnz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "wait",
+      "expected_phones": "weɪt",
+      "actual_phones": "weɪt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "follow",
+      "expected_phones": "fɑloʊ",
+      "actual_phones": "fɑloʊ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "ups",
+      "expected_phones": "ʌps",
+      "actual_phones": "ʌps",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "must",
+      "expected_phones": "mʌst",
+      "actual_phones": "mʌst",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "price",
+      "expected_phones": "pɹaɪs",
+      "actual_phones": "pɹaɪs",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "seat's",
+      "expected_phones": "sits",
+      "actual_phones": "sits",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "hand",
+      "expected_phones": "hænd",
+      "actual_phones": "hænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "catches",
+      "expected_phones": "kætʃᵻz",
+      "actual_phones": "kætʃᵻz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "Third",
+      "expected_phones": "θɜd",
+      "actual_phones": "θɜd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "two",
+      "expected_phones": "tu",
+      "actual_phones": "tu",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "orchestrators",
+      "expected_phones": "ɔɹkᵻstɹeɪtɚz",
+      "actual_phones": "ɔɹkɪstɹeɪtɚz",
+      "distance": 0.083,
+      "source": "whisper"
+     },
+     {
+      "word": "remain",
+      "expected_phones": "ɹᵻmeɪn",
+      "actual_phones": "ɹᵻmeɪn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "until",
+      "expected_phones": "ʌntɪl",
+      "actual_phones": "əntɪl",
+      "distance": 0.2,
+      "source": "whisper"
+     },
+     {
+      "word": "rung",
+      "expected_phones": "ɹʌŋ",
+      "actual_phones": "ɹʌŋ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "eight",
+      "expected_phones": "eɪt",
+      "actual_phones": "eɪt",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r8-1-core",
+   "origin": "rf-beat",
+   "text": "Eighteen additions build it, in twelve groups. First the core: the marker table, the step registry and the runner, then waits and events.",
+   "raw": "eɪ t iː n ɐ d ɪ ʃ ə n z b ɪ l d ɪ t ɪ n t w ɛ l v ɡ ɹ uː p s f ɜː s t ð ə k oːɹ ð ə m ɑːɹ k ɚ t eɪ b əl ð ə s t ɛ p ɹ ɛ dʒ ɪ s t ɹ i æ n ð ə ɹ ʌ n ɚ ð ɛ n w eɪ t s æ n d ɪ v ɛ n t s",
+   "targets": [
+    "Eighteen",
+    "additions",
+    "build",
+    "twelve",
+    "groups",
+    "First",
+    "the",
+    "core",
+    "marker",
+    "table",
+    "step",
+    "registry",
+    "and",
+    "runner",
+    "then",
+    "waits",
+    "events"
+   ],
+   "unusual": [
+    "Eighteen",
+    "First"
+   ],
+   "espeak": {
+    "Eighteen additions build it, in twelve groups. First the core: the marker table, the step registry and the runner, then waits and events.": "ˈe‍ɪtiːn ɐdˈɪʃənz bˈɪld ɪt\nɪn twˈɛlv ɡɹˈuːps\nfˈɜːst ðə kˈɔː‍ɹ\nðə mˈɑː‍ɹkɚ tˈe‍ɪbə‍l\nðə stˈɛp ɹˈɛd‍ʒɪstɹi ænd ðə ɹˈʌnɚ\nðˈɛn wˈe‍ɪts ænd ᵻvˈɛnts\n",
+    "Eighteen": "ˈe‍ɪtiːn\n",
+    "additions": "ɐdˈɪʃənz\n",
+    "build": "bˈɪld\n",
+    "twelve": "twˈɛlv\n",
+    "groups": "ɡɹˈuːps\n",
+    "First": "fˈɜːst\n",
+    "the": "ðˈə\n",
+    "core": "kˈɔː‍ɹ\n",
+    "marker": "mˈɑː‍ɹkɚ\n",
+    "table": "tˈe‍ɪbə‍l\n",
+    "step": "stˈɛp\n",
+    "registry": "ɹˈɛd‍ʒɪstɹi\n",
+    "and": "ˈænd\n",
+    "runner": "ɹˈʌnɚ\n",
+    "then": "ðˈɛn\n",
+    "waits": "wˈe‍ɪts\n",
+    "events": "ᵻvˈɛnts\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Eighteen",
+      "expected_phones": "eɪtin",
+      "actual_phones": "eɪtin",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "additions",
+      "expected_phones": "ədɪʃənz",
+      "actual_phones": "ədɪʃənz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "build",
+      "expected_phones": "bɪld",
+      "actual_phones": "bɪld",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "twelve",
+      "expected_phones": "twɛlv",
+      "actual_phones": "twɛlv",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "groups",
+      "expected_phones": "ɡɹups",
+      "actual_phones": "ɡɹups",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "First",
+      "expected_phones": "fɜst",
+      "actual_phones": "fɜst",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "core",
+      "expected_phones": "kɔɹ",
+      "actual_phones": "koɹ",
+      "distance": 0.333,
+      "source": "whisper"
+     },
+     {
+      "word": "marker",
+      "expected_phones": "mɑɹkɚ",
+      "actual_phones": "mɑɹkɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "table",
+      "expected_phones": "teɪbəl",
+      "actual_phones": "teɪbəl",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "step",
+      "expected_phones": "stɛp",
+      "actual_phones": "stɛp",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "registry",
+      "expected_phones": "ɹɛdʒɪstɹi",
+      "actual_phones": "ɹɛdʒɪstɹi",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænð",
+      "distance": 0.333,
+      "source": "whisper"
+     },
+     {
+      "word": "runner",
+      "expected_phones": "ɹʌnɚ",
+      "actual_phones": "ɹʌnɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "then",
+      "expected_phones": "ðɛn",
+      "actual_phones": "ðɛn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "waits",
+      "expected_phones": "weɪts",
+      "actual_phones": "weɪts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "events",
+      "expected_phones": "ᵻvɛnts",
+      "actual_phones": "ɪvɛnts",
+      "distance": 0.167,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r8-2-claims",
+   "origin": "rf-beat",
+   "text": "Claims and pools gate every spawn. An outbox guards each land and deploy, against the bug behind two deploy rollbacks. A reconciler reads GitHub.",
+   "raw": "k l eɪ m z æ n d p uː l z ɡ eɪ t ɛ v ɹ i s p ɑː n ɐ n aʊ t b ɑː k s ɡ ɑːɹ d z iː tʃ l æ n d æ n d ᵻ p l oʊ ɐ ɡ ɛ n s t ð ə b ʌ ɡ b ɪ h aɪ n d t uː d ɪ p l oɪ ɹ oʊ l b æ k s ɐ ɹ ɛ k ə n s aɪ l ɚ ɹ iː d z ɡ ɪ ɾ h ʌ b",
+   "targets": [
+    "Claims",
+    "and",
+    "pools",
+    "gate",
+    "every",
+    "spawn",
+    "outbox",
+    "guards",
+    "each",
+    "land",
+    "deploy",
+    "against",
+    "the",
+    "bug",
+    "behind",
+    "two",
+    "rollbacks",
+    "reconciler",
+    "reads",
+    "GitHub"
+   ],
+   "unusual": [
+    "Claims",
+    "GitHub"
+   ],
+   "espeak": {
+    "Claims and pools gate every spawn. An outbox guards each land and deploy, against the bug behind two deploy rollbacks. A reconciler reads GitHub.": "klˈe‍ɪmz ænd pˈuːlz ɡˈe‍ɪt ˈɛvɹi spˈɔːn\nɐn a‍ʊtbˈɑːks ɡˈɑː‍ɹdz ˈiːt‍ʃ lˈænd ænd dᵻplˈɔ‍ɪ\nɐɡˈɛnst ðə bˈʌɡ bᵻhˌa‍ɪnd tˈuː dᵻplˈɔ‍ɪ ɹˈo‍ʊlbæks\nɐ ɹˈɛkənsˌa‍ɪlɚ ɹˈiːdz ɡˈɪt hˈʌb\n",
+    "Claims": "klˈe‍ɪmz\n",
+    "and": "ˈænd\n",
+    "pools": "pˈuːlz\n",
+    "gate": "ɡˈe‍ɪt\n",
+    "every": "ˈɛvɹi\n",
+    "spawn": "spˈɔːn\n",
+    "outbox": "a‍ʊtbˈɑːks\n",
+    "guards": "ɡˈɑː‍ɹdz\n",
+    "each": "ˈiːt‍ʃ\n",
+    "land": "lˈænd\n",
+    "deploy": "dᵻplˈɔ‍ɪ\n",
+    "against": "ɐɡˈɛnst\n",
+    "the": "ðˈə\n",
+    "bug": "bˈʌɡ\n",
+    "behind": "bᵻhˈa‍ɪnd\n",
+    "two": "tˈuː\n",
+    "rollbacks": "ɹˈo‍ʊlbæks\n",
+    "reconciler": "ɹˈɛkənsˌa‍ɪlɚ\n",
+    "reads": "ɹˈiːdz\n",
+    "GitHub": "ɡˈɪt hˈʌb\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Claims",
+      "expected_phones": "kleɪmz",
+      "actual_phones": "kleɪmz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "pools",
+      "expected_phones": "pulz",
+      "actual_phones": "pulz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "gate",
+      "expected_phones": "ɡeɪt",
+      "actual_phones": "zɡeɪt",
+      "distance": 0.111,
+      "source": "whisper"
+     },
+     {
+      "word": "every",
+      "expected_phones": "ɛvɹi",
+      "actual_phones": "ɛvɹi",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "spawn",
+      "expected_phones": "spɔn",
+      "actual_phones": "spɑn",
+      "distance": 0.25,
+      "source": "whisper"
+     },
+     {
+      "word": "outbox",
+      "expected_phones": "aʊtbɑks",
+      "actual_phones": "aʊtbɑks",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "guards",
+      "expected_phones": "ɡɑɹdz",
+      "actual_phones": "ɡɑɹdz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "each",
+      "expected_phones": "itʃ",
+      "actual_phones": "itʃ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "land",
+      "expected_phones": "lænd",
+      "actual_phones": "lænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "deploy",
+      "expected_phones": "dᵻplɔɪ",
+      "actual_phones": "ᵻploʊ",
+      "distance": 0.455,
+      "source": "xtts"
+     },
+     {
+      "word": "against",
+      "expected_phones": "əɡɛnst",
+      "actual_phones": "əɡɛnst",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "bug",
+      "expected_phones": "bʌɡ",
+      "actual_phones": "bʌɡ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "behind",
+      "expected_phones": "bᵻhaɪnd",
+      "actual_phones": "bɪhaɪnd",
+      "distance": 0.143,
+      "source": "whisper"
+     },
+     {
+      "word": "two",
+      "expected_phones": "tu",
+      "actual_phones": "tu",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "rollbacks",
+      "expected_phones": "ɹoʊlbæks",
+      "actual_phones": "ɹoʊlbæks",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "reconciler",
+      "expected_phones": "ɹɛkənsaɪlɚ",
+      "actual_phones": "ɹɛkənsaɪlɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "reads",
+      "expected_phones": "ɹidz",
+      "actual_phones": "ɹidz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "GitHub",
+      "expected_phones": "ɡɪthʌb",
+      "actual_phones": "ɡɪthʌb",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r8-3-review",
+   "origin": "rf-beat",
+   "text": "Plans gain a contract and the risk table. A review pool and the merge queue prove and land the work. Packets, a triager and alarms handle the rest.",
+   "raw": "p l æ n z ɡ eɪ n ɐ k ɑː n t ɹ æ k t æ n d ð ə ɹ ɪ s k t eɪ b əl ɐ ɹ ᵻ v j uː p uː l æ n d ð ə m ɜː dʒ k j uː p ɹ uː v æ n d l æ n d ð ə w ɜː k p æ k ɪ t s ɐ t ɹ iː ɑː ʒ ɚ ɹ æ n d ɐ l ɑːɹ m z h æ n d əl ð ə ɹ ɛ s t",
+   "targets": [
+    "Plans",
+    "gain",
+    "contract",
+    "and",
+    "the",
+    "risk",
+    "table",
+    "review",
+    "pool",
+    "merge",
+    "queue",
+    "prove",
+    "land",
+    "work",
+    "Packets",
+    "triager",
+    "alarms",
+    "handle",
+    "rest"
+   ],
+   "unusual": [
+    "Plans",
+    "Packets"
+   ],
+   "espeak": {
+    "Plans gain a contract and the risk table. A review pool and the merge queue prove and land the work. Packets, a triager and alarms handle the rest.": "plˈænz ɡˈe‍ɪn ɐ kˈɑːntɹækt ænd ðə ɹˈɪsk tˈe‍ɪbə‍l\nɐ ɹᵻvjˈuː pˈuːl ænd ðə mˈɜːd‍ʒ kjˈuː pɹˈuːv ænd lˈænd ðə wˈɜːk\npˈækɪts\nɐ tɹˈiːɑːʒɚ ænd ɐlˈɑː‍ɹmz hˈændə‍l ðə ɹˈɛst\n",
+    "Plans": "plˈænz\n",
+    "gain": "ɡˈe‍ɪn\n",
+    "contract": "kˈɑːntɹækt\n",
+    "and": "ˈænd\n",
+    "the": "ðˈə\n",
+    "risk": "ɹˈɪsk\n",
+    "table": "tˈe‍ɪbə‍l\n",
+    "review": "ɹᵻvjˈuː\n",
+    "pool": "pˈuːl\n",
+    "merge": "mˈɜːd‍ʒ\n",
+    "queue": "kjˈuː\n",
+    "prove": "pɹˈuːv\n",
+    "land": "lˈænd\n",
+    "work": "wˈɜːk\n",
+    "Packets": "pˈækɪts\n",
+    "triager": "tɹˈiːɑːʒɚ\n",
+    "alarms": "ɐlˈɑː‍ɹmz\n",
+    "handle": "hˈændə‍l\n",
+    "rest": "ɹˈɛst\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Plans",
+      "expected_phones": "plænz",
+      "actual_phones": "plænz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "gain",
+      "expected_phones": "ɡeɪn",
+      "actual_phones": "ɡeɪn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "contract",
+      "expected_phones": "kɑntɹækt",
+      "actual_phones": "kɑntɹækt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "risk",
+      "expected_phones": "ɹɪsk",
+      "actual_phones": "ɹɪsk",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "table",
+      "expected_phones": "teɪbəl",
+      "actual_phones": "teɪbəl",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "review",
+      "expected_phones": "ɹᵻvju",
+      "actual_phones": "ɹᵻvju",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "pool",
+      "expected_phones": "pul",
+      "actual_phones": "pul",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "merge",
+      "expected_phones": "mɜdʒ",
+      "actual_phones": "mɜdʒ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "queue",
+      "expected_phones": "kju",
+      "actual_phones": "kj",
+      "distance": 0.2,
+      "source": "whisper"
+     },
+     {
+      "word": "prove",
+      "expected_phones": "pɹuv",
+      "actual_phones": "pɹuv",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "land",
+      "expected_phones": "lænd",
+      "actual_phones": "lænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "work",
+      "expected_phones": "wɜk",
+      "actual_phones": "wɜk",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "Packets",
+      "expected_phones": "pækɪts",
+      "actual_phones": "pækɪts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "triager",
+      "expected_phones": "tɹiɑʒɚ",
+      "actual_phones": "tɹiɑʒɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "alarms",
+      "expected_phones": "əlɑɹmz",
+      "actual_phones": "əlɑɹmz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "handle",
+      "expected_phones": "hændəl",
+      "actual_phones": "hændəl",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "rest",
+      "expected_phones": "ɹɛst",
+      "actual_phones": "ɹɛst",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r8-4-tools",
+   "origin": "rf-beat",
+   "text": "Last come why, the restart pacer, evals and invariant tests, and your expedite entry.",
+   "raw": "l æ s t k ʌ m w aɪ ð ə ɹ iː s t ɑːɹ t p eɪ s ɚ ɪ v aʊ l z æ n d ɪ n v ɛ ɹ i ə n t t ɛ s t s æ n d j ɔːɹ ɹ ɛ k s p ə d aɪ ɾ ɛ n t ɹ i",
+   "targets": [
+    "Last",
+    "come",
+    "why",
+    "the",
+    "restart",
+    "pacer",
+    "evals",
+    "and",
+    "invariant",
+    "tests",
+    "your",
+    "expedite",
+    "entry"
+   ],
+   "unusual": [
+    "Last"
+   ],
+   "espeak": {
+    "Last come why, the restart pacer, evals and invariant tests, and your expedite entry.": "lˈæst kˈʌm wˈa‍ɪ\nðə ɹᵻstˈɑː‍ɹt pˈe‍ɪsɚ\nɪvˈælz ænd ɪnvˈɛɹi‍ənt tˈɛsts\nænd jʊɹ ˈɛkspədˌa‍ɪt ˈɛntɹi\n",
+    "Last": "lˈæst\n",
+    "come": "kˈʌm\n",
+    "why": "wˈa‍ɪ\n",
+    "the": "ðˈə\n",
+    "restart": "ɹᵻstˈɑː‍ɹt\n",
+    "pacer": "pˈe‍ɪsɚ\n",
+    "evals": "ɪvˈælz\n",
+    "and": "ˈænd\n",
+    "invariant": "ɪnvˈɛɹi‍ənt\n",
+    "tests": "tˈɛsts\n",
+    "your": "jˈʊ‍ɹ\n",
+    "expedite": "ˈɛkspədˌa‍ɪt\n",
+    "entry": "ˈɛntɹi\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Last",
+      "expected_phones": "læst",
+      "actual_phones": "læst",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "come",
+      "expected_phones": "kʌm",
+      "actual_phones": "kʌm",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "why",
+      "expected_phones": "waɪ",
+      "actual_phones": "waɪ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "restart",
+      "expected_phones": "ɹᵻstɑɹt",
+      "actual_phones": "ɹistɑɹt",
+      "distance": 0.143,
+      "source": "whisper"
+     },
+     {
+      "word": "pacer",
+      "expected_phones": "peɪsɚ",
+      "actual_phones": "peɪsɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "evals",
+      "expected_phones": "ɪvælz",
+      "actual_phones": "ɪvaʊlz",
+      "distance": 0.273,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "invariant",
+      "expected_phones": "ɪnvɛɹiənt",
+      "actual_phones": "ɪnvɛɹiən",
+      "distance": 0.059,
+      "source": "whisper"
+     },
+     {
+      "word": "tests",
+      "expected_phones": "tɛsts",
+      "actual_phones": "tɛsts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "your",
+      "expected_phones": "jʊɹ",
+      "actual_phones": "jɔɹɹ",
+      "distance": 0.429,
+      "source": "whisper"
+     },
+     {
+      "word": "expedite",
+      "expected_phones": "ɛkspədaɪt",
+      "actual_phones": "ɛkspədaɪt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "entry",
+      "expected_phones": "ɛntɹi",
+      "actual_phones": "ɛntɹi",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r10-1-calls",
+   "origin": "rf-beat",
+   "text": "Eleven calls are yours, none technical, each with a default.",
+   "raw": "ɪ l ɛ v ə n k ɑː l z ɑːɹ j oʊ z n ʌ n t ɛ k n ɪ k əl iː tʃ w ɪ ð ɐ d ᵻ f ɑː l t",
+   "targets": [
+    "Eleven",
+    "calls",
+    "are",
+    "yours",
+    "none",
+    "technical",
+    "each",
+    "with",
+    "default"
+   ],
+   "unusual": [
+    "Eleven"
+   ],
+   "espeak": {
+    "Eleven calls are yours, none technical, each with a default.": "ᵻlˈɛvən kˈɔːlz ɑː‍ɹ jˈɔː‍ɹz\nnˈʌn tˈɛknɪkə‍l\nˈiːt‍ʃ wɪð ɐ dᵻfˈɔlt\n",
+    "Eleven": "ᵻlˈɛvən\n",
+    "calls": "kˈɔːlz\n",
+    "are": "ˈɑː‍ɹ\n",
+    "yours": "jˈɔː‍ɹz\n",
+    "none": "nˈʌn\n",
+    "technical": "tˈɛknɪkə‍l\n",
+    "each": "ˈiːt‍ʃ\n",
+    "with": "wˈɪð\n",
+    "default": "dᵻfˈɔlt\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Eleven",
+      "expected_phones": "ᵻlɛvən",
+      "actual_phones": "ɪlɛvən",
+      "distance": 0.167,
+      "source": "whisper"
+     },
+     {
+      "word": "calls",
+      "expected_phones": "kɔlz",
+      "actual_phones": "kɑlz",
+      "distance": 0.25,
+      "source": "whisper"
+     },
+     {
+      "word": "are",
+      "expected_phones": "ɑɹ",
+      "actual_phones": "ɑɹ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "yours",
+      "expected_phones": "jɔɹz",
+      "actual_phones": "joʊz",
+      "distance": 0.5,
+      "source": "whisper"
+     },
+     {
+      "word": "none",
+      "expected_phones": "nʌn",
+      "actual_phones": "nʌn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "technical",
+      "expected_phones": "tɛknɪkəl",
+      "actual_phones": "tɛknɪkəl",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "each",
+      "expected_phones": "itʃ",
+      "actual_phones": "itʃ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "with",
+      "expected_phones": "wɪð",
+      "actual_phones": "ʃwɪð",
+      "distance": 0.143,
+      "source": "whisper"
+     },
+     {
+      "word": "default",
+      "expected_phones": "dᵻfɔlt",
+      "actual_phones": "dᵻfɑlt",
+      "distance": 0.167,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r10-6-q7-q9",
+   "origin": "rf-beat",
+   "text": "Seven: a blind sitting on real packets. Eight: a daily line, not alarms. Nine: a shadow run before a reversible cutover. The defaults: schedule, daily line, accept.",
+   "raw": "s ɛ v ə n ɐ b l aɪ n d s ɪ ɾ ɪ ŋ ɔ n ɹ iː l p æ k ɪ t s eɪ t ɐ d eɪ l i l aɪ n n ɑː ɾ ɐ l ɑːɹ m z n aɪ n ɐ ʃ æ d oʊ ɹ ʌ n b ə f oːɹ ɹ ɐ ɹ ᵻ v ɜː s ə b əl k ʌ ɾ oʊ v ɚ ð ə d ᵻ f ɑː l t s s k ɛ dʒ uː w əl d eɪ l i l aɪ n ɛ k s ɛ p t",
+   "targets": [
+    "Seven",
+    "blind",
+    "sitting",
+    "real",
+    "packets",
+    "Eight",
+    "daily",
+    "line",
+    "not",
+    "alarms",
+    "Nine",
+    "shadow",
+    "run",
+    "before",
+    "reversible",
+    "cutover",
+    "The",
+    "defaults",
+    "schedule",
+    "accept"
+   ],
+   "unusual": [
+    "Seven",
+    "Eight",
+    "Nine"
+   ],
+   "espeak": {
+    "Seven: a blind sitting on real packets. Eight: a daily line, not alarms. Nine: a shadow run before a reversible cutover. The defaults: schedule, daily line, accept.": "sˈɛvən\nɐ blˈa‍ɪnd sˈɪɾɪŋ ˌɔn ɹˈiːəl pˈækɪts\nˈe‍ɪt\nɐ dˈe‍ɪli lˈa‍ɪn\nnˌɑːt ɐlˈɑː‍ɹmz\nnˈa‍ɪn\nɐ ʃˈædo‍ʊ ɹˈʌn bᵻfˌɔːɹ ɐ ɹᵻvˈɜːsᵻbə‍l kjˈuːɾo‍ʊvɚ\nðə dᵻfˈɔlts\nskˈɛd‍ʒuːl\ndˈe‍ɪli lˈa‍ɪn\nɐksˈɛpt\n",
+    "Seven": "sˈɛvən\n",
+    "blind": "blˈa‍ɪnd\n",
+    "sitting": "sˈɪɾɪŋ\n",
+    "real": "ɹˈiːəl\n",
+    "packets": "pˈækɪts\n",
+    "Eight": "ˈe‍ɪt\n",
+    "daily": "dˈe‍ɪli\n",
+    "line": "lˈa‍ɪn\n",
+    "not": "nˈɑːt\n",
+    "alarms": "ɐlˈɑː‍ɹmz\n",
+    "Nine": "nˈa‍ɪn\n",
+    "shadow": "ʃˈædo‍ʊ\n",
+    "run": "ɹˈʌn\n",
+    "before": "bᵻfˈɔː‍ɹ\n",
+    "reversible": "ɹᵻvˈɜːsᵻbə‍l\n",
+    "cutover": "kjˈuːɾo‍ʊvɚ\n",
+    "The": "ðˈə\n",
+    "defaults": "dᵻfˈɔlts\n",
+    "schedule": "skˈɛd‍ʒuːl\n",
+    "accept": "ɐksˈɛpt\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Seven",
+      "expected_phones": "sɛvən",
+      "actual_phones": "sɛvən",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "blind",
+      "expected_phones": "blaɪnd",
+      "actual_phones": "blaɪnd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "sitting",
+      "expected_phones": "sɪtɪŋ",
+      "actual_phones": "sɪtɪŋ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "real",
+      "expected_phones": "ɹiəl",
+      "actual_phones": "ɹil",
+      "distance": 0.143,
+      "source": "whisper"
+     },
+     {
+      "word": "packets",
+      "expected_phones": "pækɪts",
+      "actual_phones": "pækɪts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "Eight",
+      "expected_phones": "eɪt",
+      "actual_phones": "eɪt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "daily",
+      "expected_phones": "deɪli",
+      "actual_phones": "deɪli",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "line",
+      "expected_phones": "laɪn",
+      "actual_phones": "laɪn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "not",
+      "expected_phones": "nɑt",
+      "actual_phones": "nɑt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "alarms",
+      "expected_phones": "əlɑɹmz",
+      "actual_phones": "təlɑɹmz",
+      "distance": 0.077,
+      "source": "whisper"
+     },
+     {
+      "word": "Nine",
+      "expected_phones": "naɪn",
+      "actual_phones": "naɪn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "shadow",
+      "expected_phones": "ʃædoʊ",
+      "actual_phones": "ʃædoʊ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "run",
+      "expected_phones": "ɹʌn",
+      "actual_phones": "ɹʌn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "before",
+      "expected_phones": "bᵻfɔɹ",
+      "actual_phones": "bəfoɹɹ",
+      "distance": 0.455,
+      "source": "xtts"
+     },
+     {
+      "word": "reversible",
+      "expected_phones": "ɹᵻvɜsᵻbəl",
+      "actual_phones": "ɹᵻvɜsəbəl",
+      "distance": 0.111,
+      "source": "whisper"
+     },
+     {
+      "word": "cutover",
+      "expected_phones": "kjutoʊvɚ",
+      "actual_phones": "kʌtoʊvɚ",
+      "distance": 0.2,
+      "source": "whisper"
+     },
+     {
+      "word": "The",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "defaults",
+      "expected_phones": "dᵻfɔlts",
+      "actual_phones": "dᵻfɑlts",
+      "distance": 0.143,
+      "source": "whisper"
+     },
+     {
+      "word": "schedule",
+      "expected_phones": "skɛdʒul",
+      "actual_phones": "skɛdʒuwəl",
+      "distance": 0.125,
+      "source": "whisper"
+     },
+     {
+      "word": "accept",
+      "expected_phones": "əksɛpt",
+      "actual_phones": "ɛksɛpt",
+      "distance": 0.167,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r10-6b-q10-q11",
+   "origin": "rf-beat",
+   "text": "Ten: two pool rules replace the weighted score, tried in shadow first. Eleven: four researchers study the pattern first. Both defaults are yes.",
+   "raw": "t ɛ n t uː p uː l ɹ uː l z ɹ ᵻ p l eɪ s ð ə w eɪ ɾ ᵻ d s k oːɹ t ɹ aɪ d ɪ n ʃ æ d oʊ f ɜː s t ᵻ l ɛ v ə n f oːɹ ɹ iː s ɜː tʃ ɚ z s t ʌ d i ð ə p æ ɾ ɚ n f ɜː s t b oʊ θ d ɪ f ɑː l t s ɑːɹ j ɛ s",
+   "targets": [
+    "Ten",
+    "two",
+    "pool",
+    "rules",
+    "replace",
+    "the",
+    "weighted",
+    "score",
+    "tried",
+    "shadow",
+    "first",
+    "Eleven",
+    "four",
+    "researchers",
+    "study",
+    "pattern",
+    "Both",
+    "defaults",
+    "are",
+    "yes"
+   ],
+   "unusual": [
+    "Eleven",
+    "Both"
+   ],
+   "espeak": {
+    "Ten: two pool rules replace the weighted score, tried in shadow first. Eleven: four researchers study the pattern first. Both defaults are yes.": "tˈɛn\ntˈuː pˈuːl ɹˈuːlz ɹᵻplˈe‍ɪs ðə wˈe‍ɪɾᵻd skˈɔː‍ɹ\ntɹˈa‍ɪd ɪn ʃˈædo‍ʊ fˈɜːst\nᵻlˈɛvən\nfˈɔː‍ɹ ɹᵻsˈɜːt‍ʃɚz stˈʌdi ðə pˈætɚn fˈɜːst\nbˈo‍ʊθ dᵻfˈɔlts ɑː‍ɹ jˈɛs\n",
+    "Ten": "tˈɛn\n",
+    "two": "tˈuː\n",
+    "pool": "pˈuːl\n",
+    "rules": "ɹˈuːlz\n",
+    "replace": "ɹᵻplˈe‍ɪs\n",
+    "the": "ðˈə\n",
+    "weighted": "wˈe‍ɪɾᵻd\n",
+    "score": "skˈɔː‍ɹ\n",
+    "tried": "tɹˈa‍ɪd\n",
+    "shadow": "ʃˈædo‍ʊ\n",
+    "first": "fˈɜːst\n",
+    "Eleven": "ᵻlˈɛvən\n",
+    "four": "fˈɔː‍ɹ\n",
+    "researchers": "ɹᵻsˈɜːt‍ʃɚz\n",
+    "study": "stˈʌdi\n",
+    "pattern": "pˈætɚn\n",
+    "Both": "bˈo‍ʊθ\n",
+    "defaults": "dᵻfˈɔlts\n",
+    "are": "ˈɑː‍ɹ\n",
+    "yes": "jˈɛs\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Ten",
+      "expected_phones": "tɛn",
+      "actual_phones": "tɛn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "two",
+      "expected_phones": "tu",
+      "actual_phones": "tu",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "pool",
+      "expected_phones": "pul",
+      "actual_phones": "pul",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "rules",
+      "expected_phones": "ɹulz",
+      "actual_phones": "ɹulz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "replace",
+      "expected_phones": "ɹᵻpleɪs",
+      "actual_phones": "ɹᵻpleɪs",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "weighted",
+      "expected_phones": "weɪtᵻd",
+      "actual_phones": "weɪtᵻd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "score",
+      "expected_phones": "skɔɹ",
+      "actual_phones": "skoɹ",
+      "distance": 0.25,
+      "source": "whisper"
+     },
+     {
+      "word": "tried",
+      "expected_phones": "tɹaɪd",
+      "actual_phones": "tɹaɪd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "shadow",
+      "expected_phones": "ʃædoʊ",
+      "actual_phones": "ʃædoʊ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "first",
+      "expected_phones": "fɜst",
+      "actual_phones": "fɜst",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "Eleven",
+      "expected_phones": "ᵻlɛvən",
+      "actual_phones": "ᵻlɛvən",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "four",
+      "expected_phones": "fɔɹ",
+      "actual_phones": "foɹ",
+      "distance": 0.333,
+      "source": "whisper"
+     },
+     {
+      "word": "researchers",
+      "expected_phones": "ɹᵻsɜtʃɚz",
+      "actual_phones": "ɹisɜtʃɚz",
+      "distance": 0.125,
+      "source": "whisper"
+     },
+     {
+      "word": "study",
+      "expected_phones": "stʌdi",
+      "actual_phones": "stʌdi",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "pattern",
+      "expected_phones": "pætɚn",
+      "actual_phones": "pætɚn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "Both",
+      "expected_phones": "boʊθ",
+      "actual_phones": "boʊθ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "defaults",
+      "expected_phones": "dᵻfɔlts",
+      "actual_phones": "dɪfɑlts",
+      "distance": 0.286,
+      "source": "whisper"
+     },
+     {
+      "word": "are",
+      "expected_phones": "ɑɹ",
+      "actual_phones": "ɑɹ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "yes",
+      "expected_phones": "jɛs",
+      "actual_phones": "jɛs",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r10-7b-research",
+   "origin": "rf-beat",
+   "text": "Research comes first: durable engines, build-system memoization, waits and claims, and an audit of our own engine, one researcher each.",
+   "raw": "ɹ iː s ɜː tʃ k ʌ m z f ɜː s t d ɚ ɹ ə b əl l ɛ n dʒ ə n z b ɪ l d s ɪ s t ə m ə m aɪ z eɪ ʃ ə n w eɪ t s æ n d k l eɪ m z æ n d ɐ n ɑː d ᵻ ɾ ʌ v ɑːɹ ɹ oʊ n ɛ n dʒ ə n w ʌ n ɹ iː s ɜː tʃ ɚ ɹ iː tʃ",
+   "targets": [
+    "Research",
+    "comes",
+    "first",
+    "durable",
+    "engines",
+    "build",
+    "system",
+    "memoization",
+    "waits",
+    "and",
+    "claims",
+    "audit",
+    "our",
+    "own",
+    "engine",
+    "one",
+    "researcher",
+    "each"
+   ],
+   "unusual": [
+    "Research"
+   ],
+   "espeak": {
+    "Research comes first: durable engines, build-system memoization, waits and claims, and an audit of our own engine, one researcher each.": "ɹᵻsˈɜːt‍ʃ kˈʌmz fˈɜːst\ndˈʊ‍ɹɹəbə‍l ˈɛnd‍ʒɪnz\nbˈɪldsˈɪstəm mˌɛmɔ‍ɪzˈe‍ɪʃən\nwˈe‍ɪts ænd klˈe‍ɪmz\nænd ɐn ˈɔːdɪt ʌv ˌa‍ʊɚɹ ˈo‍ʊn ˈɛnd‍ʒɪn\nwˈʌn ɹᵻsˈɜːt‍ʃɚɹ ˈiːt‍ʃ\n",
+    "Research": "ɹᵻsˈɜːt‍ʃ\n",
+    "comes": "kˈʌmz\n",
+    "first": "fˈɜːst\n",
+    "durable": "dˈʊ‍ɹɹəbə‍l\n",
+    "engines": "ˈɛnd‍ʒɪnz\n",
+    "build": "bˈɪld\n",
+    "system": "sˈɪstəm\n",
+    "memoization": "mˌɛmɔ‍ɪzˈe‍ɪʃən\n",
+    "waits": "wˈe‍ɪts\n",
+    "and": "ˈænd\n",
+    "claims": "klˈe‍ɪmz\n",
+    "audit": "ˈɔːdɪt\n",
+    "our": "ˈa‍ʊɚ\n",
+    "own": "ˈo‍ʊn\n",
+    "engine": "ˈɛnd‍ʒɪn\n",
+    "one": "wˈʌn\n",
+    "researcher": "ɹᵻsˈɜːt‍ʃɚ\n",
+    "each": "ˈiːt‍ʃ\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Research",
+      "expected_phones": "ɹᵻsɜtʃ",
+      "actual_phones": "ɹisɜtʃ",
+      "distance": 0.167,
+      "source": "whisper"
+     },
+     {
+      "word": "comes",
+      "expected_phones": "kʌmz",
+      "actual_phones": "kʌmz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "first",
+      "expected_phones": "fɜst",
+      "actual_phones": "fɜst",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "durable",
+      "expected_phones": "dʊɹɹəbəl",
+      "actual_phones": "dɚɹəbəl",
+      "distance": 0.2,
+      "source": "whisper"
+     },
+     {
+      "word": "engines",
+      "expected_phones": "ɛndʒɪnz",
+      "actual_phones": "ɛndʒənz",
+      "distance": 0.143,
+      "source": "whisper"
+     },
+     {
+      "word": "build",
+      "expected_phones": "bɪld",
+      "actual_phones": "bɪld",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "system",
+      "expected_phones": "sɪstəm",
+      "actual_phones": "sɪstəm",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "memoization",
+      "expected_phones": "mɛmɔɪzeɪʃən",
+      "actual_phones": "maɪzeɪʃən",
+      "distance": 0.2,
+      "source": "whisper"
+     },
+     {
+      "word": "waits",
+      "expected_phones": "weɪts",
+      "actual_phones": "weɪts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "claims",
+      "expected_phones": "kleɪmz",
+      "actual_phones": "dkleɪmz",
+      "distance": 0.077,
+      "source": "whisper"
+     },
+     {
+      "word": "audit",
+      "expected_phones": "ɔdɪt",
+      "actual_phones": "ɑdᵻt",
+      "distance": 0.5,
+      "source": "whisper"
+     },
+     {
+      "word": "our",
+      "expected_phones": "ɑɹ",
+      "actual_phones": "ɑɹ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "own",
+      "expected_phones": "oʊn",
+      "actual_phones": "oʊn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "engine",
+      "expected_phones": "ɛndʒɪn",
+      "actual_phones": "ɛndʒən",
+      "distance": 0.167,
+      "source": "whisper"
+     },
+     {
+      "word": "one",
+      "expected_phones": "wʌn",
+      "actual_phones": "wʌn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "researcher",
+      "expected_phones": "ɹᵻsɜtʃɚ",
+      "actual_phones": "ɹisɜtʃɚ",
+      "distance": 0.143,
+      "source": "whisper"
+     },
+     {
+      "word": "each",
+      "expected_phones": "itʃ",
+      "actual_phones": "itʃ",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r1-7-promise+babble0",
+   "origin": "perturbed",
+   "tags": [
+    "hallucination"
+   ],
+   "text": "The redesign keeps, removes and adds parts, and leaves eleven calls to you.",
+   "raw": "ð ə ɹ iː d ᵻ z aɪ n k iː p s ɹ ᵻ m uː v z æ n æ d z w ʌ n ʃ ɹ i p ɑːɹ t s æ n d l iː v z ə l ɛ v ə n k ɑː l z t ə j uː",
+   "targets": [
+    "The",
+    "redesign",
+    "keeps",
+    "removes",
+    "and",
+    "adds",
+    "parts",
+    "leaves",
+    "eleven",
+    "calls",
+    "you"
+   ],
+   "unusual": [],
+   "espeak": {
+    "The redesign keeps, removes and adds parts, and leaves eleven calls to you.": "ðə ɹˌiːdɪzˈa‍ɪn kˈiːps\nɹᵻmˈuːvz ænd ˈædz pˈɑː‍ɹts\nænd lˈiːvz ᵻlˈɛvən kˈɔːlz tə juː\n",
+    "The": "ðˈə\n",
+    "redesign": "ɹˌiːdɪzˈa‍ɪn\n",
+    "keeps": "kˈiːps\n",
+    "removes": "ɹᵻmˈuːvz\n",
+    "and": "ˈænd\n",
+    "adds": "ˈædz\n",
+    "parts": "pˈɑː‍ɹts\n",
+    "leaves": "lˈiːvz\n",
+    "eleven": "ᵻlˈɛvən\n",
+    "calls": "kˈɔːlz\n",
+    "you": "jˈuː\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "The",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "redesign",
+      "expected_phones": "ɹidɪzaɪn",
+      "actual_phones": "ɹidᵻzaɪn",
+      "distance": 0.125,
+      "source": "whisper"
+     },
+     {
+      "word": "keeps",
+      "expected_phones": "kips",
+      "actual_phones": "kips",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "removes",
+      "expected_phones": "ɹᵻmuvz",
+      "actual_phones": "ɹᵻmuvz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænæ",
+      "distance": 0.333,
+      "source": "whisper"
+     },
+     {
+      "word": "adds",
+      "expected_phones": "ædz",
+      "actual_phones": "ædz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "parts",
+      "expected_phones": "pɑɹts",
+      "actual_phones": "pɑɹts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "leaves",
+      "expected_phones": "livz",
+      "actual_phones": "livz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "eleven",
+      "expected_phones": "ᵻlɛvən",
+      "actual_phones": "əlɛvən",
+      "distance": 0.167,
+      "source": "whisper"
+     },
+     {
+      "word": "calls",
+      "expected_phones": "kɔlz",
+      "actual_phones": "kɑlz",
+      "distance": 0.25,
+      "source": "whisper"
+     },
+     {
+      "word": "you",
+      "expected_phones": "ju",
+      "actual_phones": "ju",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [
+     {
+      "phones": "wʌnʃɹi",
+      "length": 6,
+      "position": 0.44,
+      "severity": 0.56
+     }
+    ],
+    "tail": null
+   }
+  },
+  {
+   "id": "r3-1-nouns+babble1",
+   "origin": "perturbed",
+   "tags": [
+    "hallucination"
+   ],
+   "text": "Seven nouns carry the new model. Item, fact and step; wait and claim; event, pool and service.",
+   "raw": "s ɛ v ə n n aʊ n z k æ ɹ i ð ə n uː m ɑː d əl aɪ ɾ ə m f æ k t æ n w ʌ n ʃ ɹ i d s t ɛ p w eɪ t æ n d k l eɪ m ɐ v ɛ n t p uː l æ n d s ɜː v ɪ s",
+   "targets": [
+    "Seven",
+    "nouns",
+    "carry",
+    "the",
+    "new",
+    "model",
+    "Item",
+    "fact",
+    "and",
+    "step",
+    "wait",
+    "claim",
+    "event",
+    "pool",
+    "service"
+   ],
+   "unusual": [
+    "Seven",
+    "Item"
+   ],
+   "espeak": {
+    "Seven nouns carry the new model. Item, fact and step; wait and claim; event, pool and service.": "sˈɛvən nˈa‍ʊnz kˈæɹi ðə nˈuː mˈɑːdə‍l\nˈa‍ɪɾəm\nfˈækt ænd stˈɛp\nwˈe‍ɪt ænd klˈe‍ɪm\nᵻvˈɛnt\npˈuːl ænd sˈɜːvɪs\n",
+    "Seven": "sˈɛvən\n",
+    "nouns": "nˈa‍ʊnz\n",
+    "carry": "kˈæɹi\n",
+    "the": "ðˈə\n",
+    "new": "nˈuː\n",
+    "model": "mˈɑːdə‍l\n",
+    "Item": "ˈa‍ɪɾəm\n",
+    "fact": "fˈækt\n",
+    "and": "ˈænd\n",
+    "step": "stˈɛp\n",
+    "wait": "wˈe‍ɪt\n",
+    "claim": "klˈe‍ɪm\n",
+    "event": "ᵻvˈɛnt\n",
+    "pool": "pˈuːl\n",
+    "service": "sˈɜːvɪs\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Seven",
+      "expected_phones": "sɛvən",
+      "actual_phones": "sɛvən",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "nouns",
+      "expected_phones": "naʊnz",
+      "actual_phones": "naʊnz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "carry",
+      "expected_phones": "kæɹi",
+      "actual_phones": "kæɹi",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "new",
+      "expected_phones": "nu",
+      "actual_phones": "nu",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "model",
+      "expected_phones": "mɑdəl",
+      "actual_phones": "mɑdəl",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "Item",
+      "expected_phones": "aɪtəm",
+      "actual_phones": "aɪtəm",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "fact",
+      "expected_phones": "fækt",
+      "actual_phones": "fækt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænwʌnʃɹid",
+      "distance": 0.5,
+      "source": "whisper"
+     },
+     {
+      "word": "step",
+      "expected_phones": "stɛp",
+      "actual_phones": "stɛp",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "wait",
+      "expected_phones": "weɪt",
+      "actual_phones": "weɪt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "claim",
+      "expected_phones": "kleɪm",
+      "actual_phones": "kleɪm",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "event",
+      "expected_phones": "ᵻvɛnt",
+      "actual_phones": "əvɛnt",
+      "distance": 0.2,
+      "source": "whisper"
+     },
+     {
+      "word": "pool",
+      "expected_phones": "pul",
+      "actual_phones": "pul",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "service",
+      "expected_phones": "sɜvɪs",
+      "actual_phones": "sɜvɪs",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [
+     {
+      "phones": "wʌnʃɹi",
+      "length": 6,
+      "position": 0.47,
+      "severity": 0.56
+     }
+    ],
+    "tail": null
+   }
+  },
+  {
+   "id": "r3-2-sentence+babble2",
+   "origin": "perturbed",
+   "tags": [
+    "hallucination"
+   ],
+   "text": "One sentence explains it. A recipe is a script, a step is memoized at its head, a wait or claim is a return, and an event re-enters the script.",
+   "raw": "w ʌ n s ɛ n t ə n s ɛ k s p l eɪ n z ɪ t ɐ ɹ ɛ s ɪ p i ɪ z ɐ s k ɹ ɪ p t ɐ s t ɛ p ɪ z m ɛ m oɪ z d w ʌ n ʃ ɹ i æ ɾ ɪ t s h ɛ d ɐ w eɪ t ɔːɹ k l eɪ m ɪ z ɐ ɹ ᵻ t ɜː n æ n d ɐ n ɪ v ɛ n t ɹ iː ɛ n t ɚ z ð ə s k ɹ ɪ p t",
+   "targets": [
+    "One",
+    "sentence",
+    "explains",
+    "recipe",
+    "script",
+    "step",
+    "memoized",
+    "its",
+    "head",
+    "wait",
+    "claim",
+    "return",
+    "and",
+    "event",
+    "enters",
+    "the"
+   ],
+   "unusual": [],
+   "espeak": {
+    "One sentence explains it. A recipe is a script, a step is memoized at its head, a wait or claim is a return, and an event re-enters the script.": "wˈʌn sˈɛntəns ɛksplˈe‍ɪnz ɪt\nɐ ɹˈɛsᵻpˌiː ɪz ɐ skɹˈɪpt\nɐ stˈɛp ɪz mˈɛmɔ‍ɪzd æɾ ɪts hˈɛd\nɐ wˈe‍ɪt ɔː‍ɹ klˈe‍ɪm ɪz ɐ ɹᵻtˈɜːn\nænd ɐn ᵻvˈɛnt ɹˌiːˈɛntɚz ðə skɹˈɪpt\n",
+    "One": "wˈʌn\n",
+    "sentence": "sˈɛntəns\n",
+    "explains": "ɛksplˈe‍ɪnz\n",
+    "recipe": "ɹˈɛsᵻpˌiː\n",
+    "script": "skɹˈɪpt\n",
+    "step": "stˈɛp\n",
+    "memoized": "mˈɛmɔ‍ɪzd\n",
+    "its": "ˈɪts\n",
+    "head": "hˈɛd\n",
+    "wait": "wˈe‍ɪt\n",
+    "claim": "klˈe‍ɪm\n",
+    "return": "ɹᵻtˈɜːn\n",
+    "and": "ˈænd\n",
+    "event": "ᵻvˈɛnt\n",
+    "enters": "ˈɛntɚz\n",
+    "the": "ðˈə\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "One",
+      "expected_phones": "wʌn",
+      "actual_phones": "wʌn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "sentence",
+      "expected_phones": "sɛntəns",
+      "actual_phones": "sɛntəns",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "explains",
+      "expected_phones": "ɛkspleɪnz",
+      "actual_phones": "ɛkspleɪnz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "recipe",
+      "expected_phones": "ɹɛsᵻpi",
+      "actual_phones": "ɹɛsɪpi",
+      "distance": 0.167,
+      "source": "whisper"
+     },
+     {
+      "word": "script",
+      "expected_phones": "skɹɪpt",
+      "actual_phones": "skɹɪpt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "step",
+      "expected_phones": "stɛp",
+      "actual_phones": "stɛp",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "memoized",
+      "expected_phones": "mɛmɔɪzd",
+      "actual_phones": "mɛmoɪzd",
+      "distance": 0.143,
+      "source": "whisper"
+     },
+     {
+      "word": "its",
+      "expected_phones": "ɪts",
+      "actual_phones": "ɪts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "head",
+      "expected_phones": "hɛd",
+      "actual_phones": "hɛd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "wait",
+      "expected_phones": "weɪt",
+      "actual_phones": "weɪt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "claim",
+      "expected_phones": "kleɪm",
+      "actual_phones": "kleɪm",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "return",
+      "expected_phones": "ɹᵻtɜn",
+      "actual_phones": "ɹᵻtɜn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "event",
+      "expected_phones": "ᵻvɛnt",
+      "actual_phones": "ɪvɛnt",
+      "distance": 0.2,
+      "source": "whisper"
+     },
+     {
+      "word": "enters",
+      "expected_phones": "ɛntɚz",
+      "actual_phones": "ɛntɚz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [
+     {
+      "phones": "wʌnʃɹi",
+      "length": 6,
+      "position": 0.46,
+      "severity": 0.56
+     }
+    ],
+    "tail": null
+   }
+  },
+  {
+   "id": "r3-4-runner+tail0",
+   "origin": "perturbed",
+   "tags": [
+    "tail"
+   ],
+   "text": "One runner and its marker table replace the tick and Shepherd. It re-runs a recipe on every event; its only clock, the reconciler, polls GitHub.",
+   "raw": "w ʌ n ɹ ʌ n ɚ æ n d ɪ t s m ɑːɹ k ɚ t eɪ b əl ɹ ᵻ p l eɪ s ð ə t ɪ k æ n d ʃ ɛ p ɚ d ɪ t ɹ iː ɹ ʌ n z ɐ ɹ ɛ s ɪ p i ɔ n ɛ v ɹ i ɪ v ɛ n t ɪ t s oʊ n l i k l ɑː k ð ə ɹ ɛ k ə n s aɪ l ɚ p oʊ l z ɡ ɪ ɾ h ʌ b tʃ ə",
+   "targets": [
+    "One",
+    "runner",
+    "and",
+    "its",
+    "marker",
+    "table",
+    "replace",
+    "the",
+    "tick",
+    "Shepherd",
+    "runs",
+    "recipe",
+    "every",
+    "event",
+    "only",
+    "clock",
+    "reconciler",
+    "polls",
+    "GitHub"
+   ],
+   "unusual": [
+    "Shepherd",
+    "GitHub"
+   ],
+   "espeak": {
+    "One runner and its marker table replace the tick and Shepherd. It re-runs a recipe on every event; its only clock, the reconciler, polls GitHub.": "wˈʌn ɹˈʌnɚ ænd ɪts mˈɑː‍ɹkɚ tˈe‍ɪbə‍l ɹᵻplˈe‍ɪs ðə tˈɪk ænd ʃˈɛpɚd\nɪt ɹˌiːɹˈʌnz ɐ ɹˈɛsᵻpˌiː ˌɔn ˈɛvɹi ᵻvˈɛnt\nɪts ˈo‍ʊnli klˈɑːk\nðə ɹˈɛkənsˌa‍ɪlɚ\npˈo‍ʊlz ɡˈɪt hˈʌb\n",
+    "One": "wˈʌn\n",
+    "runner": "ɹˈʌnɚ\n",
+    "and": "ˈænd\n",
+    "its": "ˈɪts\n",
+    "marker": "mˈɑː‍ɹkɚ\n",
+    "table": "tˈe‍ɪbə‍l\n",
+    "replace": "ɹᵻplˈe‍ɪs\n",
+    "the": "ðˈə\n",
+    "tick": "tˈɪk\n",
+    "Shepherd": "ʃˈɛpɚd\n",
+    "runs": "ɹˈʌnz\n",
+    "recipe": "ɹˈɛsᵻpˌiː\n",
+    "every": "ˈɛvɹi\n",
+    "event": "ᵻvˈɛnt\n",
+    "only": "ˈo‍ʊnli\n",
+    "clock": "klˈɑːk\n",
+    "reconciler": "ɹˈɛkənsˌa‍ɪlɚ\n",
+    "polls": "pˈo‍ʊlz\n",
+    "GitHub": "ɡˈɪt hˈʌb\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "One",
+      "expected_phones": "wʌn",
+      "actual_phones": "wʌn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "runner",
+      "expected_phones": "ɹʌnɚ",
+      "actual_phones": "ɹʌnɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "its",
+      "expected_phones": "ɪts",
+      "actual_phones": "ɪts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "marker",
+      "expected_phones": "mɑɹkɚ",
+      "actual_phones": "mɑɹkɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "table",
+      "expected_phones": "teɪbəl",
+      "actual_phones": "teɪbəl",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "replace",
+      "expected_phones": "ɹᵻpleɪs",
+      "actual_phones": "ɹᵻpleɪs",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "tick",
+      "expected_phones": "tɪk",
+      "actual_phones": "tɪk",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "Shepherd",
+      "expected_phones": "ʃɛpɚd",
+      "actual_phones": "ʃɛpɚd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "runs",
+      "expected_phones": "ɹʌnz",
+      "actual_phones": "ɹʌnz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "recipe",
+      "expected_phones": "ɹɛsᵻpi",
+      "actual_phones": "ɹɛsɪpi",
+      "distance": 0.167,
+      "source": "whisper"
+     },
+     {
+      "word": "every",
+      "expected_phones": "ɛvɹi",
+      "actual_phones": "ɛvɹi",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "event",
+      "expected_phones": "ᵻvɛnt",
+      "actual_phones": "ɪvɛnt",
+      "distance": 0.2,
+      "source": "whisper"
+     },
+     {
+      "word": "only",
+      "expected_phones": "oʊnli",
+      "actual_phones": "oʊnli",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "clock",
+      "expected_phones": "klɑk",
+      "actual_phones": "klɑk",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "reconciler",
+      "expected_phones": "ɹɛkənsaɪlɚ",
+      "actual_phones": "ɹɛkənsaɪlɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "polls",
+      "expected_phones": "poʊlz",
+      "actual_phones": "poʊlz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "GitHub",
+      "expected_phones": "ɡɪthʌb",
+      "actual_phones": "ɡɪthʌb",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": {
+     "phones": "tʃə",
+     "length": 3,
+     "displaced": "",
+     "severity": 0.7
+    }
+   }
+  },
+  {
+   "id": "r3-7-simple+tail1",
+   "origin": "perturbed",
+   "tags": [
+    "tail"
+   ],
+   "text": "Pool policy details, risk table rows and stacking are left out; each is data, so the shape holds.",
+   "raw": "p uː l p ɑː l ə s i d iː t eɪ l z ɹ ɪ s k t eɪ b əl ɹ oʊ z æ n d s t æ k ɪ ŋ ɑːɹ l ɛ f t aʊ t iː tʃ ɪ z d eɪ ɾ ɐ s oʊ ð ə ʃ eɪ p h oʊ l d z t",
+   "targets": [
+    "Pool",
+    "policy",
+    "details",
+    "risk",
+    "table",
+    "rows",
+    "and",
+    "stacking",
+    "are",
+    "left",
+    "out",
+    "each",
+    "data",
+    "the",
+    "shape",
+    "holds"
+   ],
+   "unusual": [
+    "Pool"
+   ],
+   "espeak": {
+    "Pool policy details, risk table rows and stacking are left out; each is data, so the shape holds.": "pˈuːl pˈɑːlɪsi diːtˈe‍ɪlz\nɹˈɪsk tˈe‍ɪbə‍l ɹˈo‍ʊz ænd stˈækɪŋ ɑː‍ɹ lˈɛft ˈa‍ʊt\nˈiːt‍ʃ ɪz dˈe‍ɪɾə\nsˌo‍ʊ ðə ʃˈe‍ɪp hˈo‍ʊldz\n",
+    "Pool": "pˈuːl\n",
+    "policy": "pˈɑːlɪsi\n",
+    "details": "diːtˈe‍ɪlz\n",
+    "risk": "ɹˈɪsk\n",
+    "table": "tˈe‍ɪbə‍l\n",
+    "rows": "ɹˈo‍ʊz\n",
+    "and": "ˈænd\n",
+    "stacking": "stˈækɪŋ\n",
+    "are": "ˈɑː‍ɹ\n",
+    "left": "lˈɛft\n",
+    "out": "ˈa‍ʊt\n",
+    "each": "ˈiːt‍ʃ\n",
+    "data": "dˈe‍ɪɾə\n",
+    "the": "ðˈə\n",
+    "shape": "ʃˈe‍ɪp\n",
+    "holds": "hˈo‍ʊldz\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Pool",
+      "expected_phones": "pul",
+      "actual_phones": "pul",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "policy",
+      "expected_phones": "pɑlɪsi",
+      "actual_phones": "pɑləsi",
+      "distance": 0.167,
+      "source": "whisper"
+     },
+     {
+      "word": "details",
+      "expected_phones": "diteɪlz",
+      "actual_phones": "diteɪlz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "risk",
+      "expected_phones": "ɹɪsk",
+      "actual_phones": "ɹɪsk",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "table",
+      "expected_phones": "teɪbəl",
+      "actual_phones": "teɪbəl",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "rows",
+      "expected_phones": "ɹoʊz",
+      "actual_phones": "ɹoʊz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "stacking",
+      "expected_phones": "stækɪŋ",
+      "actual_phones": "stækɪŋ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "are",
+      "expected_phones": "ɑɹ",
+      "actual_phones": "ɑɹ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "left",
+      "expected_phones": "lɛft",
+      "actual_phones": "lɛft",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "out",
+      "expected_phones": "aʊt",
+      "actual_phones": "aʊt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "each",
+      "expected_phones": "itʃ",
+      "actual_phones": "itʃ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "data",
+      "expected_phones": "deɪtə",
+      "actual_phones": "deɪtə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "the",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "shape",
+      "expected_phones": "ʃeɪp",
+      "actual_phones": "ʃeɪp",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "holds",
+      "expected_phones": "hoʊldz",
+      "actual_phones": "hoʊldz",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": {
+     "phones": "t",
+     "length": 1,
+     "displaced": "",
+     "severity": 0.5
+    }
+   }
+  },
+  {
+   "id": "r3b-1-run+tail2",
+   "origin": "perturbed",
+   "tags": [
+    "tail"
+   ],
+   "text": "A recipe is a plain script; here are five of its steps. Each step runs, writes a marker for its fact, and returns. A landed run averages fifty-one and a half steps.",
+   "raw": "ɐ ɹ ɛ s ɪ p i ɪ z ɐ p l eɪ n s k ɹ ɪ p t h iː ɹ ɑːɹ f aɪ v ʌ v ɪ t s t ɛ p s iː tʃ s t ɛ p ɹ ʌ n z ɹ aɪ t s ɐ m ɑːɹ k ɚ f ɔːɹ ɹ ɪ t s f æ k t æ n d ɹ ᵻ t ɜː n z ɐ l æ n d ᵻ d ɹ ʌ n æ v ɹ ɪ dʒ ᵻ z f ɪ f t i w ʌ n ə n d ɐ h æ f s t ɛ p s k u",
+   "targets": [
+    "recipe",
+    "plain",
+    "script",
+    "here",
+    "are",
+    "five",
+    "its",
+    "steps",
+    "Each",
+    "step",
+    "runs",
+    "writes",
+    "marker",
+    "for",
+    "fact",
+    "and",
+    "returns",
+    "landed",
+    "run",
+    "averages",
+    "fifty",
+    "one",
+    "half"
+   ],
+   "unusual": [
+    "Each"
+   ],
+   "espeak": {
+    "A recipe is a plain script; here are five of its steps. Each step runs, writes a marker for its fact, and returns. A landed run averages fifty-one and a half steps.": "ɐ ɹˈɛsᵻpˌiː ɪz ɐ plˈe‍ɪn skɹˈɪpt\nhˈɪɹ ɑː‍ɹ fˈa‍ɪv ʌv ɪts stˈɛps\nˈiːt‍ʃ stˈɛp ɹˈʌnz\nɹˈa‍ɪts ɐ mˈɑː‍ɹkɚ fɔːɹ ɪts fˈækt\nænd ɹᵻtˈɜːnz\nɐ lˈændᵻd ɹˈʌn ˈævɹɪd‍ʒᵻz fˈɪftiwˈʌn ænd ɐ hˈæf stˈɛps\n",
+    "recipe": "ɹˈɛsᵻpˌiː\n",
+    "plain": "plˈe‍ɪn\n",
+    "script": "skɹˈɪpt\n",
+    "here": "hˈɪ‍ɹ\n",
+    "are": "ˈɑː‍ɹ\n",
+    "five": "fˈa‍ɪv\n",
+    "its": "ˈɪts\n",
+    "steps": "stˈɛps\n",
+    "Each": "ˈiːt‍ʃ\n",
+    "step": "stˈɛp\n",
+    "runs": "ɹˈʌnz\n",
+    "writes": "ɹˈa‍ɪts\n",
+    "marker": "mˈɑː‍ɹkɚ\n",
+    "for": "fˈɔː‍ɹ\n",
+    "fact": "fˈækt\n",
+    "and": "ˈænd\n",
+    "returns": "ɹᵻtˈɜːnz\n",
+    "landed": "lˈændᵻd\n",
+    "run": "ɹˈʌn\n",
+    "averages": "ˈævɹɪd‍ʒᵻz\n",
+    "fifty": "fˈɪfti\n",
+    "one": "wˈʌn\n",
+    "half": "hˈæf\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "recipe",
+      "expected_phones": "ɹɛsᵻpi",
+      "actual_phones": "ɹɛsɪpi",
+      "distance": 0.167,
+      "source": "whisper"
+     },
+     {
+      "word": "plain",
+      "expected_phones": "pleɪn",
+      "actual_phones": "pleɪn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "script",
+      "expected_phones": "skɹɪpt",
+      "actual_phones": "skɹɪpt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "here",
+      "expected_phones": "hɪɹ",
+      "actual_phones": "hiɹ",
+      "distance": 0.333,
+      "source": "whisper"
+     },
+     {
+      "word": "are",
+      "expected_phones": "ɑɹ",
+      "actual_phones": "ɑɹ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "five",
+      "expected_phones": "faɪv",
+      "actual_phones": "faɪv",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "its",
+      "expected_phones": "ɪts",
+      "actual_phones": "ɪts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "steps",
+      "expected_phones": "stɛps",
+      "actual_phones": "stɛps",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "Each",
+      "expected_phones": "itʃ",
+      "actual_phones": "itʃ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "step",
+      "expected_phones": "stɛp",
+      "actual_phones": "stɛp",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "runs",
+      "expected_phones": "ɹʌnz",
+      "actual_phones": "ɹʌnz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "writes",
+      "expected_phones": "ɹaɪts",
+      "actual_phones": "ɹaɪts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "marker",
+      "expected_phones": "mɑɹkɚ",
+      "actual_phones": "mɑɹkɚ",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "for",
+      "expected_phones": "fɔɹ",
+      "actual_phones": "fɔɹɹ",
+      "distance": 0.143,
+      "source": "whisper"
+     },
+     {
+      "word": "fact",
+      "expected_phones": "fækt",
+      "actual_phones": "fækt",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ænd",
+      "actual_phones": "ænd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "returns",
+      "expected_phones": "ɹᵻtɜnz",
+      "actual_phones": "ɹᵻtɜnz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "landed",
+      "expected_phones": "lændᵻd",
+      "actual_phones": "lændᵻ",
+      "distance": 0.091,
+      "source": "whisper"
+     },
+     {
+      "word": "run",
+      "expected_phones": "ɹʌn",
+      "actual_phones": "ɹʌn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "averages",
+      "expected_phones": "ævɹɪdʒᵻz",
+      "actual_phones": "ævɹɪdʒᵻz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "fifty",
+      "expected_phones": "fɪfti",
+      "actual_phones": "fɪfti",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "one",
+      "expected_phones": "wʌn",
+      "actual_phones": "wʌn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "half",
+      "expected_phones": "hæf",
+      "actual_phones": "hæf",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": {
+     "phones": "ku",
+     "length": 2,
+     "displaced": "",
+     "severity": 0.6
+    }
+   }
+  },
+  {
+   "id": "r1-7-promise+garbled",
+   "origin": "perturbed",
+   "tags": [
+    "xtts"
+   ],
+   "text": "The redesign keeps, removes and adds parts, and leaves eleven calls to you.",
+   "raw": "ðəzzzzxqkipsɹᵻmuvzændædzpɑɹtsændlivzᵻlɛvənkɔlztəju",
+   "targets": [
+    "redesign",
+    "keeps",
+    "removes",
+    "parts",
+    "leaves",
+    "eleven"
+   ],
+   "unusual": [],
+   "espeak": {
+    "The redesign keeps, removes and adds parts, and leaves eleven calls to you.": "ðə ɹˌiːdɪzˈa‍ɪn kˈiːps\nɹᵻmˈuːvz ænd ˈædz pˈɑː‍ɹts\nænd lˈiːvz ᵻlˈɛvən kˈɔːlz tə juː\n",
+    "redesign": "ɹˌiːdɪzˈa‍ɪn\n",
+    "keeps": "kˈiːps\n",
+    "removes": "ɹᵻmˈuːvz\n",
+    "parts": "pˈɑː‍ɹts\n",
+    "leaves": "lˈiːvz\n",
+    "eleven": "ᵻlˈɛvən\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "redesign",
+      "expected_phones": "ɹidɪzaɪn",
+      "actual_phones": "zzzzx",
+      "distance": 0.846,
+      "source": "xtts"
+     },
+     {
+      "word": "keeps",
+      "expected_phones": "kips",
+      "actual_phones": "kips",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "removes",
+      "expected_phones": "ɹᵻmuvz",
+      "actual_phones": "ɹᵻmuvz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "parts",
+      "expected_phones": "pɑɹts",
+      "actual_phones": "pɑɹts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "leaves",
+      "expected_phones": "livz",
+      "actual_phones": "livz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "eleven",
+      "expected_phones": "ᵻlɛvən",
+      "actual_phones": "ᵻlɛvən",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r1-7-promise+weak-form",
+   "origin": "perturbed",
+   "tags": [
+    "weakForm"
+   ],
+   "text": "The redesign keeps, removes and adds parts, and leaves eleven calls to you.",
+   "raw": "ðəɹidɪzaɪnkipsɹᵻmuvzəndædzpɑɹtsændlivzᵻlɛvənkɔlztəju",
+   "targets": [
+    "The",
+    "redesign",
+    "keeps",
+    "removes",
+    "and",
+    "adds",
+    "parts",
+    "leaves",
+    "eleven",
+    "calls",
+    "you"
+   ],
+   "unusual": [],
+   "espeak": {
+    "The redesign keeps, removes and adds parts, and leaves eleven calls to you.": "ðə ɹˌiːdɪzˈa‍ɪn kˈiːps\nɹᵻmˈuːvz ænd ˈædz pˈɑː‍ɹts\nænd lˈiːvz ᵻlˈɛvən kˈɔːlz tə juː\n",
+    "The": "ðˈə\n",
+    "redesign": "ɹˌiːdɪzˈa‍ɪn\n",
+    "keeps": "kˈiːps\n",
+    "removes": "ɹᵻmˈuːvz\n",
+    "and": "ˈænd\n",
+    "adds": "ˈædz\n",
+    "parts": "pˈɑː‍ɹts\n",
+    "leaves": "lˈiːvz\n",
+    "eleven": "ᵻlˈɛvən\n",
+    "calls": "kˈɔːlz\n",
+    "you": "jˈuː\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "The",
+      "expected_phones": "ðə",
+      "actual_phones": "ðə",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "redesign",
+      "expected_phones": "ɹidɪzaɪn",
+      "actual_phones": "ɹidɪzaɪn",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "keeps",
+      "expected_phones": "kips",
+      "actual_phones": "kips",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "removes",
+      "expected_phones": "ɹᵻmuvz",
+      "actual_phones": "ɹᵻmuvz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "and",
+      "expected_phones": "ənd",
+      "actual_phones": "ənd",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "adds",
+      "expected_phones": "ædz",
+      "actual_phones": "ædz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "parts",
+      "expected_phones": "pɑɹts",
+      "actual_phones": "pɑɹts",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "leaves",
+      "expected_phones": "livz",
+      "actual_phones": "livz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "eleven",
+      "expected_phones": "ᵻlɛvən",
+      "actual_phones": "ᵻlɛvən",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "calls",
+      "expected_phones": "kɔlz",
+      "actual_phones": "kɔlz",
+      "distance": 0.0,
+      "source": "whisper"
+     },
+     {
+      "word": "you",
+      "expected_phones": "ju",
+      "actual_phones": "ju",
+      "distance": 0.0,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  },
+  {
+   "id": "r3-1-nouns+unusual",
+   "origin": "perturbed",
+   "tags": [
+    "unusualOverride"
+   ],
+   "text": "Seven nouns carry the new model. Item, fact and step; wait and claim; event, pool and service.",
+   "raw": "sɛzzznaʊnzkæɹiðənumɑdəlaɪtəmfæktændstɛpweɪtændkleɪmᵻvɛntpulændsɜvɪs",
+   "targets": [
+    "Seven"
+   ],
+   "unusual": [
+    "Seven"
+   ],
+   "espeak": {
+    "Seven nouns carry the new model. Item, fact and step; wait and claim; event, pool and service.": "sˈɛvən nˈa‍ʊnz kˈæɹi ðə nˈuː mˈɑːdə‍l\nˈa‍ɪɾəm\nfˈækt ænd stˈɛp\nwˈe‍ɪt ænd klˈe‍ɪm\nᵻvˈɛnt\npˈuːl ænd sˈɜːvɪs\n",
+    "Seven": "sˈɛvən\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Seven",
+      "expected_phones": "sɛvən",
+      "actual_phones": "sɛzzz",
+      "distance": 0.6,
+      "source": "whisper"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   },
+   "plain": [
+    {
+     "word": "Seven",
+     "expected_phones": "sɛvən",
+     "actual_phones": "sɛzzz",
+     "distance": 0.6,
+     "source": "xtts"
+    }
+   ]
+  },
+  {
+   "id": "analogue-duplicate-prefix",
+   "origin": "constructed",
+   "tags": [
+    "inconclusive"
+   ],
+   "text": "If I benched Jo Jofar, Rovers would be short of options. Two games, if we were being honest.",
+   "raw": "ɪfaɪbɛntʃtdʒoʊɹoʊvɚzwʊdbiʃɔɹtʌvɑpʃənztuɡeɪmzɪfwiwɜbiɪŋɑnɪst",
+   "targets": [
+    "Jofar"
+   ],
+   "unusual": [],
+   "espeak": {
+    "If I benched Jo Jofar, Rovers would be short of options. Two games, if we were being honest.": "ɪf a‍ɪ bˈɛnt‍ʃt d‍ʒˈo‍ʊ d‍ʒˈɑːfɑː‍ɹ\nɹˈo‍ʊvɚz wʊd biː ʃˈɔː‍ɹt ʌv ˈɑːpʃənz\ntˈuː ɡˈe‍ɪmz\nɪf wiː wɜː bˌiːɪŋ ˈɑːnɪst\n",
+    "Jofar": "d‍ʒˈɑːfɑː‍ɹ\n"
+   },
+   "expected": {
+    "words": [
+     {
+      "word": "Jofar",
+      "expected_phones": "dʒɑfɑɹ",
+      "actual_phones": "ɹ",
+      "distance": 0.714,
+      "source": "inconclusive"
+     }
+    ],
+    "halluc": [],
+    "tail": null
+   }
+  }
+ ]
+}

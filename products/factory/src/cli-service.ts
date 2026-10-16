@@ -8,7 +8,7 @@ import type { CliIo, Verbs } from "./cli.js";
 import { configPath, factoryStateDir, loadConfig, type FactoryConfig } from "./config.js";
 import { deployCheckoutPath, deployedBinPath } from "./deploy-checkout.js";
 import { deployService, type DeployPorts } from "./deploy.js";
-import { clearDeployPause, describePause, readDeployPause } from "./deploy-pause.js";
+import { clearDeployPause, describeHolds, describeManualHold, readDeployHolds, runningDeployer, writeManualHold } from "./deploy-pause.js";
 import { originOf, systemDeployPorts } from "./deploy-ports.js";
 import { configuredDeployIncident } from "./deploy-watch-ports.js";
 import { DEFAULT_DRAIN_TIMEOUT_MS } from "./restart-drain.js";
@@ -156,23 +156,52 @@ function registerServiceDeploy(service: Command, verbs: Verbs): void {
   });
 }
 
-/** The pause a rolled-back restart leaves; only a person clears it, since a newer sha must not. */
+/** The pause a rolled-back restart leaves, or a hold set by hand; only a person clears either, since a newer sha must not. */
 function registerServicePause(service: Command, verbs: Verbs): void {
   const { io, setExit } = verbs;
   service
     .command("pause")
-    .description("show whether a failed deploy has paused every deploy; --clear lifts the pause once the cause is fixed")
-    .option("--clear", "remove the pause, so the next deploy runs; refused while a deployer holds the deploy lock")
-    .action((opts: { clear?: boolean }) => {
-      const { ports } = deployPortsFor(verbs);
-      const stateDir = factoryStateDir(io.env);
-      const state = readDeployPause(ports, stateDir);
-      if (!opts.clear) return void io.stdout(`${describePause(state)}\n`);
-      const held = clearDeployPause(ports, stateDir);
-      if (held !== undefined) {
-        io.stderr(`error: ${held}\n`);
+    .description("show whether a failed deploy or a manual hold is holding every deploy; --set holds them by hand; --clear lifts every hold once the cause is fixed")
+    .option("--set <reason>", "hold every deploy by hand with this reason; replaces an earlier manual hold, and applies from the next deploy when one is running")
+    .option("--clear", "remove every hold, so the next deploy runs; refused while a deployer holds the deploy lock")
+    .action((opts: { set?: string; clear?: boolean }) => {
+      if (opts.set !== undefined && (opts.clear || opts.set.trim() === "")) {
+        io.stderr(opts.clear ? "error: --set and --clear cannot be combined\n" : "error: --set needs a non-blank reason\n");
         return setExit(1);
       }
-      io.stdout(state.paused ? "cleared the deploy pause\n" : "deploys are not paused\n");
+      const { ports } = deployPortsFor(verbs);
+      const stateDir = factoryStateDir(io.env);
+      if (opts.set !== undefined) return setExit(setHold(ports, io, stateDir, opts.set.trim()));
+      if (opts.clear) return setExit(clearHolds(ports, io, stateDir));
+      io.stdout(`${describeHolds(readDeployHolds(ports, stateDir)).join("\n")}\n`);
     });
+}
+
+/** Lock-free, so the owner can hold the next deploy while one runs. */
+function setHold(ports: DeployPorts, io: CliIo, stateDir: string, reason: string): number {
+  const before = readDeployHolds(ports, stateDir).manual;
+  ports.mkdir(stateDir);
+  const failed = writeManualHold(ports, stateDir, { heldAt: new Date(ports.now()).toISOString(), reason });
+  if (failed !== undefined) {
+    io.stderr(`error: could not write the manual hold: ${failed}\n`);
+    return 1;
+  }
+  if (before.set) io.stdout(`replaced the manual hold: ${before.hold?.reason ?? "unparseable"}\n`);
+  const running = runningDeployer(ports, stateDir);
+  if (running !== undefined) io.stdout(`a deploy is running now (pid ${running}); the hold applies from the next deploy\n`);
+  io.stdout(`${describeHolds(readDeployHolds(ports, stateDir)).join("\n")}\n`);
+  return 0;
+}
+
+function clearHolds(ports: DeployPorts, io: CliIo, stateDir: string): number {
+  const state = readDeployHolds(ports, stateDir);
+  const held = clearDeployPause(ports, stateDir);
+  if (held !== undefined) {
+    io.stderr(`error: ${held}\n`);
+    return 1;
+  }
+  if (!state.held) io.stdout("deploys are not paused\n");
+  if (state.failure.paused) io.stdout("cleared the deploy pause\n");
+  if (state.manual.set) io.stdout(`cleared the manual hold (${describeManualHold(state.manual)})\n`);
+  return 0;
 }

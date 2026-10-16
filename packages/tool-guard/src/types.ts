@@ -23,6 +23,8 @@ export interface ClassifyContext {
    * sees. A field rather than identity, so a step that copies the state keeps it.
    */
   chainTrust?: { chain: Chain; fallback: ClassifyContext };
+  /** Set by the classifier when the line may choose or write the config file wget or curl reads. */
+  httpConfigUnseen?: true;
 }
 
 export type GuardedAction = "merge" | "release" | "secret-read" | "authority-config" | "private-egress";

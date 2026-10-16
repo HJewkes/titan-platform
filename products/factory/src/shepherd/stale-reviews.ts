@@ -1,5 +1,5 @@
 import type { FactoryHost } from "../host.js";
-import { RESYNC_CONCURRENCY, mapBounded, settledValue } from "./bounded.js";
+import { RESYNC_CONCURRENCY, RESYNC_READ_TIMEOUT_MS, mapBounded, readValue } from "./bounded.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import { openHead } from "./head-moved.js";
 import { REVIEW_INTENT_STEP, REVIEW_STEP } from "./review.js";
@@ -35,10 +35,10 @@ const supersededOutput = (from: string, to: string): string =>
 export async function supersedeStaleReviews(host: FactoryHost, services: ShepherdServices, { dryRun = false } = {}): Promise<SupersededReview[]> {
   const superseded: SupersededReview[] = [];
   const reviews = activeReviews(host);
-  const heads = await mapBounded(reviews, RESYNC_CONCURRENCY, ({ runId }) => openHead(services, runId));
+  const heads = await mapBounded(reviews, RESYNC_CONCURRENCY, ({ runId }) => openHead(services, runId), { timeoutMs: RESYNC_READ_TIMEOUT_MS });
   for (const [index, { runId, stepId, head }] of reviews.entries()) {
-    const current = settledValue(heads[index]!);
-    if (!current || current === head) continue;
+    const current = readValue(heads[index]!);
+    if (!current || current === head || !host.runtime.status(runId)?.activeSteps[stepId]) continue;
     if (dryRun || host.runtime.completeStep(runId, stepId, supersededOutput(head, current))) superseded.push({ runId, stepId, from: head, to: current });
   }
   return superseded;
