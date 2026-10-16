@@ -1,5 +1,5 @@
 import type { GateRecord } from "@titan-design/hitl";
-import { stepOf } from "../coordinator-evidence.js";
+import { landGate, stepOf } from "../coordinator-evidence.js";
 import { groupBy, median, round } from "./owner-friction.js";
 
 const HOUR_MS = 3_600_000;
@@ -74,4 +74,49 @@ export function gateStats(gates: readonly GateRecord[], now: number, sinceMinute
   return [...groupBy(recent, (gate) => `${policyRow(gate)}\n${resolverBucket(gate)}`)]
     .map(([, items]) => row(items, now))
     .sort((a, b) => a.policyRow.localeCompare(b.policyRow) || a.resolver.localeCompare(b.resolver));
+}
+
+const VISUAL_RULE = "shepherd-merge-guard/visual-path";
+
+export interface VisualGateStats {
+  /** Approve-merge gates the visual rule opened in the window. */
+  count: number;
+  /** Still pending; they have no latency yet, so they stay out of the median and p90. */
+  open: number;
+  resolved: number;
+  /** Open-to-resolve hours over the resolved gates; null when none resolved. */
+  medianHours: number | null;
+  p90Hours: number | null;
+  /** Visual gates opened per PR beyond its first. */
+  reAsks: number;
+  prsWithReAsk: number;
+}
+
+function percentile(sorted: readonly number[], p: number): number {
+  return sorted[Math.max(0, Math.ceil(p * sorted.length) - 1)]!;
+}
+
+function visualGatesOf(gates: readonly GateRecord[], now: number, sinceMinutes: number): { key: string; gate: GateRecord }[] {
+  const start = now - sinceMinutes * 60_000;
+  return gates.flatMap((gate) => {
+    const land = landGate(gate);
+    return land?.rule === VISUAL_RULE && Date.parse(gate.createdAt) >= start ? [{ key: `${land.repo}#${land.pr}`, gate }] : [];
+  });
+}
+
+/** Visual-rule approve-merge gates opened in the window: open-to-resolve latency and the asks beyond each PR's first. */
+export function visualGateStats(gates: readonly GateRecord[], now: number, sinceMinutes: number): VisualGateStats {
+  const visual = visualGatesOf(gates, now, sinceMinutes);
+  const resolved = visual.filter(({ gate }) => gate.status === "resolved" && gate.resolvedAt !== undefined);
+  const hours = resolved.map(({ gate }) => (Date.parse(gate.resolvedAt!) - Date.parse(gate.createdAt)) / HOUR_MS).sort((a, b) => a - b);
+  const perPr = [...groupBy(visual, ({ key }) => key).values()].map((items) => items.length);
+  return {
+    count: visual.length,
+    open: visual.filter(({ gate }) => gate.status === "pending").length,
+    resolved: resolved.length,
+    medianHours: hours.length === 0 ? null : round(median(hours)),
+    p90Hours: hours.length === 0 ? null : round(percentile(hours, 0.9)),
+    reAsks: perPr.reduce((sum, n) => sum + n - 1, 0),
+    prsWithReAsk: perPr.filter((n) => n > 1).length,
+  };
 }

@@ -59,6 +59,28 @@ describe("classifyPr", () => {
     expect(result).toEqual({ class: "standard", touches: ["visual"] });
   });
 
+  it("does not class tp#1704's server-only console files as visual", () => {
+    const result = classifyPr(
+      facts([
+        "apps/console/server/rounds-submit.ts",
+        "apps/console/server/round2-adapter.ts",
+        "apps/console/server/rounds-submit.test.ts",
+        "apps/console/server/rounds.ts",
+        "apps/console/server/commands.ts",
+        "apps/console/README.md",
+        ".changeset/x.md",
+      ]),
+    );
+    expect(result.touches).not.toContain("visual");
+  });
+
+  it.each(["apps/console/src/pages/RoundDetailPage.tsx", "apps/console/src/styles.css", "apps/console/index.html", "apps/console/public/logo.svg", "apps/console/tailwind.config.cjs", "apps/codewatch/postcss.config.cjs", "apps/console/vite.config.ts", "packages/react-app/src/a.ts"])(
+    "classes %s as visual",
+    (path) => {
+      expect(pathTouches([{ path }])).toContain("visual");
+    },
+  );
+
   it("flags a source change with no test change as untested", () => {
     expect(classifyPr(facts(["packages/x/src/a.ts"])).touches).toEqual(["untested"]);
     expect(classifyPr(facts(["packages/x/src/a.ts", "packages/x/src/a.test.ts"])).touches).toEqual([]);

@@ -44,7 +44,7 @@ export function locatorReference(locator: SourceTextLocator): LocatorReference {
   };
 }
 
-const OUTCOME_WORD = { allow: "merged", gate: "gated", deny: "refused" } as const;
+const OUTCOME_WORD = { allow: "cleared to merge", gate: "gated", deny: "refused" } as const;
 
 /** What each guard row says in words; an authority row has no entry and is shown by its id. */
 const GUARD_RULE_WORDS: Record<string, string> = {
@@ -95,8 +95,17 @@ function shortSha(sha: string): string {
   return sha.slice(0, 7);
 }
 
-/** Readable summary first, then the full record, unchanged, collapsed; the marker stays on the first line. */
-export function evidenceComment(record: EvidenceRecord): string {
+/** Names no actor: a merge someone else made is still a true "Merged" line. */
+function mergedLine(merged: { mergeSha: string | null } | undefined): string[] {
+  if (!merged) return [];
+  return [merged.mergeSha === null ? "**Merged** (GitHub named no merge commit)." : `**Merged** at \`${shortSha(merged.mergeSha)}\`.`];
+}
+
+/**
+ * Readable summary first, then the full record, unchanged, collapsed; the marker stays on the first line.
+ * Only a caller that saw the merge land passes `merged`, so a head that never merged never reads as merged.
+ */
+export function evidenceComment(record: EvidenceRecord, merged?: { mergeSha: string | null }): string {
   const { decision } = record;
   const gated = gatedPaths(decision);
   const reason = gated ? ruleInWords(decision.rule) : decision.reason;
@@ -108,6 +117,7 @@ export function evidenceComment(record: EvidenceRecord): string {
     evidenceMarker(record.head),
     "",
     `**Shepherd ${OUTCOME_WORD[decision.outcome]}** at \`${shortSha(record.head)}\`: ${reason}`,
+    ...mergedLine(merged),
     ...carried,
     "",
     ...checksTable(record),
