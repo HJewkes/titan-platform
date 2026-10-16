@@ -123,6 +123,12 @@ jobs:
       # CAPABILITIES.md and site/guides/capabilities.md are committed; a stale copy fails here.
       - run: pnpm capabilities:check
       - run: pnpm metrics:check
+      # Drift in agent-chat's roots only warns here: agent-chat moves independently, so it must not redden this required check.
+      - name: Check the sunset manifest against agent-chat main
+        run: |
+          git clone --depth 1 https://github.com/HJewkes/agent-chat "$RUNNER_TEMP/agent-chat"
+          echo "agent-chat main: $(git -C "$RUNNER_TEMP/agent-chat" rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          node scripts/sunset-manifest.mjs check --agent-chat "$RUNNER_TEMP/agent-chat" --agent-chat-drift warn
       # Unfiltered, unlike pages.yml's PR trigger: a package added without
       # site/reference/<name>.md has to redden the required check, not the deploy.
       - run: pnpm docs:build
