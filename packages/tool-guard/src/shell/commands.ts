@@ -23,7 +23,7 @@ import { MAX_UNSURE_WORDS, NestingReadingError, ReadingLimitError, SPLICED_WEIGH
 import type { UnsureBudget } from "./unsure-readings.js";
 
 const MAX_DEPTH = 8;
-const RUNNERS = new Set([...SHELLS, "eval", "find"]);
+const RUNNERS = new Set([...SHELLS, "eval", "emulate", "find"]);
 
 /**
  * How a command was reached: a `( )` subshell or a substitution, a shell's `-c` string or a wrapper's
