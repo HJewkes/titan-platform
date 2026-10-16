@@ -44,5 +44,5 @@ export function ownerSendBackWake(headSha: string, payload: unknown): { reason: 
   const sent = OwnerSendBackPayload.safeParse(payload);
   if (!sent.success) return undefined;
   const reason = `The owner sent head ${headSha} back at the approve-merge gate instead of merging it. Their note follows: address it, and say in your final message what you changed.`;
-  return { reason, payload: dataFence("owner's note", sent.data.text) };
+  return { reason, payload: dataFence("owner note", sent.data.text) };
 }
