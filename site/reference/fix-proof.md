@@ -194,8 +194,8 @@ Every ambiguous, missing or malformed input classifies away from `reproduced`.
 - **A failure on both sides is not proof.** A test that fails at head is `fails-on-head`
   whatever base did.
 - **Result lines are strict.** `parseResultLine` refuses a line over 4 KB, another version,
-  an unknown field, duplicate or reordered keys, and a `reproduced` verdict with no
-  reproducing test.
+  an unknown field, duplicate or reordered keys, a `reproduced` verdict with no
+  reproducing test, and a `killed` mutants verdict over a mutant that was not killed.
 
 ## Test-only diffs and mutation specs
 
@@ -217,6 +217,40 @@ base-vs-head by construction. For such a PR the gate asks for mutations instead 
   Its `file` must exist there (`baseText` null means it does not) and must not be a test, a
   carried file, a spec, a changeset or a harness path. Its `find` must occur exactly once,
   counting overlapping matches.
+
+**The mutation check.** For a diff of test material alone that adds or changes a spec, the
+judge adds `mutants: { verdict, results: [{ spec, name, outcome, failed? }], error? }` to the
+`fix-proof/v1` line. Any other diff gets no `mutants` field.
+
+- **Reading the specs.** The judge reads each spec at head with git and runs `checkMutation`
+  on it against the merge base. It pairs the spec with the one test file beside it
+  (`testFileOfSpec`). A spec that does not parse, fails the check or has no single test beside
+  it makes the field `{ verdict: "error" }`. The base-vs-head verdict is left alone.
+- **The mutants report.** The mutants side writes one report with `encodeMutantsReport`: a
+  baseline run of the merge base with the head's tests overlaid, then one run per mutation. A
+  run is keyed by spec path and mutation name. The judge decodes it with
+  `decodeMutantsReport`. A run named twice makes the report unreadable, and runs no spec
+  declares are ignored. A skipped marker (`encodeMutantsSkipped`) or an error marker gives
+  verdict `error`.
+- **Outcomes.** `classifyMutants` gives each mutation one outcome, and the verdict is `killed`
+  only when every outcome is.
+  - `killed`: the mutant built, and the tests that fail under it are exactly its `kills`.
+    Every one of those failures is an assertion failure.
+  - `overkill`: every `kills` test failed, and so did another test.
+  - `survived`: some `kills` test still passed.
+  - `unbuilt`: the rebuild failed under the mutation.
+  - `load-error`: the test file failed to load, or some test failed with a load or new-API
+    message, such as `Cannot find module`.
+  - `baseline`: a `kills` test did not pass exactly once in the baseline.
+  - `error`: the mutation's run is missing, or some test failed with anything but an
+    `AssertionError` (from an `expect` matcher or `node:assert`). A thrown TypeError, a
+    timeout or a crash is not a kill. Neither is a failure from `.rejects` or `.resolves`,
+    because vitest reports those as a plain `Error`.
+- **Fitting the 4 KB line.** `failed` lists the failing tests only for `overkill` and
+  `survived`. To fit the line, the judge drops `killed` results before the others and keeps
+  the verdict.
+- **Old parsers.** A parser from before this field refuses the line as an unknown field. A
+  Shepherd that has not been redeployed therefore reads the proof as an error.
 
 Carried files count as test material on path alone. A fix placed in a carried file that
 production code imports would pass as test-only.

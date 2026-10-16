@@ -50,7 +50,8 @@ const NEW_API_FAILURES = [
   /Failed to load url/,
 ];
 
-function isNewApiFailure(message: string): boolean {
+/** A failure that says the code under test is missing or reshaped, not that it computed the wrong answer. */
+export function isNewApiFailure(message: string): boolean {
   return NEW_API_FAILURES.some((pattern) => pattern.test(message));
 }
 
