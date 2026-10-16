@@ -1,4 +1,5 @@
 import { Worker } from "node:worker_threads";
+import { z } from "zod";
 import { unfinishedResult } from "./hook.js";
 import type { HookResult } from "./hook.js";
 
@@ -26,14 +27,16 @@ export interface WithinPort {
   start(input: string): Running;
 }
 
-/** What the worker thread reads from `workerData`. */
-export interface WorkerInput {
-  input: string;
-  env: Record<string, string | undefined>;
-  home: string;
-  /** Reads names case-insensitively whatever the platform; the bin leaves it to the platform. */
-  foldCase?: boolean;
-}
+/** What the worker thread reads from `workerData`; `foldCase` forces case-insensitive reads, which the bin leaves to the platform. */
+export const WORKER_INPUT = z.object({
+  input: z.string(),
+  env: z.record(z.string(), z.string().optional()),
+  home: z.string(),
+  foldCase: z.boolean().optional(),
+});
+export type WorkerInput = z.infer<typeof WORKER_INPUT>;
+
+const ANSWER = z.object({ stdout: z.string(), log: z.array(z.string()) });
 
 /** The time left of the hook's deadline, given node's clock (`performance.now()`), never below zero. */
 export function remainingMs(sinceStartMs: number): number {
@@ -67,11 +70,7 @@ export async function answerWithin(input: string, port: WithinPort): Promise<Hoo
 
 /** An answer with the wrong shape is no answer: a broken worker must not pass a call. */
 function checked(answer: unknown): HookResult {
-  const result = answer as Partial<HookResult> | null;
-  const log: unknown = result?.log;
-  const ok = typeof result?.stdout === "string" && Array.isArray(log) && log.every((line) => typeof line === "string");
-  if (!ok) throw new TypeError("malformed worker answer");
-  return result as HookResult;
+  return ANSWER.parse(answer);
 }
 
 /** Starts the check of `input` in the worker at `url`, the built `hook-worker.js` beside this module by default. */

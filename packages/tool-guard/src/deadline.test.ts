@@ -21,8 +21,9 @@ function port(start: WithinPort["start"], deadlineMs = 2000): WithinPort {
   return { env: {}, now: () => NOW, deadlineMs, start };
 }
 
-function reasonOf(result: HookResult): string {
-  return (JSON.parse(result.stdout) as { hookSpecificOutput: { permissionDecisionReason: string } }).hookSpecificOutput.permissionDecisionReason;
+function reasonOf(result: HookResult): string | undefined {
+  expect(result.stdout).toContain('"permissionDecision":"deny"');
+  return /"permissionDecisionReason":"([^"]*)"/.exec(result.stdout)?.[1];
 }
 
 describe("answerWithin a check that runs past its deadline", () => {

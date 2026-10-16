@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
-import type * as Deadline from "./deadline.js";
+import { answerWithin, startWorker } from "./deadline.js";
 
 // The built bundle orders its modules differently from the source vitest loads, so a load-order crash shows only here.
 // CI builds before it tests; locally run `pnpm build` first.
@@ -43,8 +43,7 @@ describe("the built tool-guard", () => {
 describe("the built tool-guard on a line whose check outruns its deadline (TP-3224)", () => {
   const fill = (unit: string, bytes: number) => unit.repeat(Math.ceil(bytes / unit.length)).slice(0, bytes);
 
-  it("denies within the deadline plus a margin, telling the agent to split the command", async () => {
-    const deadline = (await import(pathToFileURL(join(dist, "deadline.js")).href)) as typeof Deadline;
+  it("denies within the deadline plus a margin through the built worker, telling the agent to split the command", async () => {
     const repo = join(home, "app");
     mkdirSync(join(repo, ".git"), { recursive: true });
     writeFileSync(join(repo, ".git/HEAD"), "ref: refs/heads/feat/x\n");
@@ -54,11 +53,11 @@ describe("the built tool-guard on a line whose check outruns its deadline (TP-32
     const deadlineMs = 200;
     const start = performance.now();
 
-    const result = await deadline.answerWithin(input, {
+    const result = await answerWithin(input, {
       env: {},
       now: () => new Date(),
       deadlineMs,
-      start: (text) => deadline.startWorker({ input: text, env: {}, home, foldCase: true }),
+      start: (text) => startWorker({ input: text, env: {}, home, foldCase: true }, pathToFileURL(join(dist, "hook-worker.js"))),
     });
 
     expect(performance.now() - start).toBeLessThan(deadlineMs + 1500);
