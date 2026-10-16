@@ -89,12 +89,19 @@ function silentExit(awaited: AwaitedOutput): Malformed | null {
   return { refusal: "no_block", writtenAt: awaited.goneAt };
 }
 
+interface CorrectionSteps {
+  ownerBrief: boolean;
+  replyStep: string;
+  /** A panel member's own correction step; absent means the correctness reviewer's `sh-correct-verdict:<head>`. */
+  correctStep?: string;
+}
+
 /**
  * A malformed final message, or a reviewer that exited silent, gets one correction turn in the reviewer's own session, read by
  * `replyStep` from the message written after it. Only the first await's result reaches here, never the reply's, so a reviewer is
  * corrected at most once per head.
  */
-export async function correctOnce(ctx: WorkflowContext, awaiting: AwaitVerdictInput, awaited: AwaitedOutput, options: { ownerBrief: boolean; replyStep: string; correctStep?: string }): Promise<AwaitedOutput> {
+export async function correctOnce(ctx: WorkflowContext, awaiting: AwaitVerdictInput, awaited: AwaitedOutput, options: CorrectionSteps): Promise<AwaitedOutput> {
   const malformed = readMalformed(awaited) ?? silentExit(awaited);
   if (!malformed) return awaited;
   const asked = await step(ctx, options.correctStep ?? `${CORRECT_VERDICT_STEP}:${awaiting.head}`, { ...awaiting, malformed, ...(options.ownerBrief && { ownerBrief: true }) }, Corrected);

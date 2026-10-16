@@ -145,7 +145,8 @@ function memberResultOf(awaited: AwaitedResult): MemberResult["result"] {
 async function awaitMember(ctx: WorkflowContext, target: ReviewTarget, shape: OverlayShape, awaiting: AwaitVerdictInput & { shape: OverlayShape }): Promise<AwaitedResult> {
   const awaited = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}:${shape}`, awaiting, Awaited);
   if (shape !== "adversary") return awaited;
-  return correctOnce(ctx, awaiting, awaited, { ownerBrief: false, replyStep: `${AWAIT_VERDICT_STEP}:${target.head}:${shape}:corrected`, correctStep: `${CORRECT_VERDICT_STEP}:${target.head}:${shape}` });
+  const replyStep = `${AWAIT_VERDICT_STEP}:${target.head}:${shape}:corrected`;
+  return correctOnce(ctx, awaiting, awaited, { ownerBrief: false, replyStep, correctStep: `${CORRECT_VERDICT_STEP}:${target.head}:${shape}` });
 }
 
 /** One `sh-await-verdict:<head>:<shape>` per started member; a member that never started gave no verdict. */

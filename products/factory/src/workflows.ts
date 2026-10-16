@@ -223,7 +223,9 @@ function configuredReview(shepherd: FactoryConfig["shepherd"], seats: () => Seat
 }
 
 /** Decision 422(1)'s second reviewer: a g10-adversary hold gets its own adversary member unless `twoMergeRelease` is off or absent. */
-function holdAdversary(shepherd: FactoryConfig["shepherd"], under: (configDir: string | undefined) => AgentChatReviewerDispatch): Pick<NonNullable<FactoryRouteDeps["review"]>, "holdMember" | "adversaryDispatch"> {
+type HoldAdversary = Pick<NonNullable<FactoryRouteDeps["review"]>, "holdMember" | "adversaryDispatch">;
+
+function holdAdversary(shepherd: FactoryConfig["shepherd"], under: (configDir: string | undefined) => AgentChatReviewerDispatch): HoldAdversary {
   const mode = shepherd?.gateReset?.twoMergeRelease ?? "off";
   const review = shepherd?.review;
   if (mode === "off" || !review) return {};
