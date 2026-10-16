@@ -4,7 +4,9 @@ import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step, type CiSnapshot } from "../workflows/land.js";
+import { SHEPHERD_ACTOR } from "./events.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
+import type { ShepherdStore } from "./store.js";
 
 export const G10_RELEASE_STEP = "sh-g10-release";
 export const G10_RELEASE_STEPS: readonly StepDeclaration[] = [{ id: G10_RELEASE_STEP, kind: "dispatch" }];
@@ -32,6 +34,8 @@ interface G10Run {
   holdReason: string | null;
   /** A hold that names a reviewer waits for that reviewer's MERGE, so Shepherd's own never releases it. */
   holdReviewer?: string | null;
+  /** Who placed the gating hold, read from its newest hold event; only Shepherd's own hold is a review nobody assigned. */
+  placedBy?: string | null;
 }
 
 interface G10Checks {
@@ -47,17 +51,33 @@ type MergeUp = z.infer<typeof MergeUpSchema>;
 const standsAt = (verdict: G10Verdict, mergeUp: MergeUp | undefined): string => (mergeUp?.fromHead === verdict.head ? mergeUp.head : verdict.head);
 
 /**
- * True when the run is held as `g10-review` with no named reviewer and an opus reviewer's MERGE stands at the PR's head as read now, with
- * the required checks green at that same head. The head is the caller's fresh read, never the run's recorded one.
+ * A `g10-review` hold a seat or the owner placed, or one whose placing is not on record, is a review someone assigned (TP-3083):
+ * only that reviewer's release lifts it, so an unread history fails closed.
+ */
+const ownerAssigned = (run: G10Run): boolean => run.placedBy !== SHEPHERD_ACTOR;
+
+/**
+ * True when the run is held as `g10-review` by Shepherd itself with no named reviewer and an opus reviewer's MERGE stands at the PR's head as
+ * read now, with the required checks green at that same head. The head is the caller's fresh read, never the run's recorded one.
  */
 export function satisfiesG10(run: G10Run, verdict: G10Verdict | undefined, prHead: string, checks: G10Checks, reviewProfile: string | undefined, mergeUp?: MergeUp): boolean {
-  if (!run.held || holdClassOf(run.holdReason) !== G10_REVIEW_CLASS || run.holdReviewer) return false;
+  if (!run.held || holdClassOf(run.holdReason) !== G10_REVIEW_CLASS || run.holdReviewer || ownerAssigned(run)) return false;
   if (!isOpusProfile(reviewProfile)) return false;
   return verdict?.value === "MERGE" && standsAt(verdict, mergeUp) === prHead && checks.green && checks.head === prHead;
 }
 
 const G10ReleaseInput = z.looseObject({ runId: z.string(), repo: z.string(), pr: z.number(), head: z.string(), verdict: G10VerdictSchema, reviewerProfile: z.string(), checks: z.looseObject({ head: z.string(), green: z.boolean() }), mergeUp: MergeUpSchema.optional() });
 const G10ReleaseResult = z.looseObject({ released: z.boolean(), head: z.string(), verdict: G10VerdictSchema.optional() });
+
+/** The actor of the newest hold event under exactly `reason`; null when there is none or the history cannot be read. */
+function placerOf(store: ShepherdStore, runId: string, reason: string | null): string | null {
+  if (reason === null) return null;
+  try {
+    return store.eventsOf(runId).filter((event) => event.kind === "hold" && event.reason === reason).at(-1)?.actor ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /** The hold is read after the PR head, and released only if it is still held under the reason that was judged, so a re-hold in between stands. */
 export function g10ReleaseRoutes(deps: ShepherdDeps) {
@@ -67,7 +87,8 @@ export function g10ReleaseRoutes(deps: ShepherdDeps) {
       const prHead = (await deps.port.getPr(input.repo as RepoSlug, input.pr)).headSha;
       const store = deps.store.get();
       const registration = store.byRun(input.runId);
-      const run = { held: registration?.held ?? false, holdReason: registration?.holdReason ?? null, holdReviewer: registration?.holdReviewer ?? null };
+      const holdReason = registration?.holdReason ?? null;
+      const run = { held: registration?.held ?? false, holdReason, holdReviewer: registration?.holdReviewer ?? null, placedBy: placerOf(store, input.runId, holdReason) };
       const judged = satisfiesG10(run, input.verdict, prHead, input.checks, input.reviewerProfile, input.mergeUp);
       const released = judged && run.holdReason !== null && store.releaseIfHeld(input.runId, run.holdReason);
       return { released, head: prHead, ...(released && { verdict: input.verdict }) };
