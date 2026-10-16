@@ -52,8 +52,7 @@ describe("kokoroFactory with a speech runtime", () => {
       seen.push(options);
       return Promise.resolve(fakeEngine());
     };
-    const config = profile(entry).providers.local ?? {};
-    await kokoroFactory({ g2p: letterG2p(), loadEngine, ...(rt ? { runtime: rt } : {}) })("local", config).synthesize(misaki([{ text: "a", phonemes: "a" }]), "af_heart");
+    await kokoroFactory({ g2p: letterG2p(), loadEngine, ...(rt ? { runtime: rt } : {}) })("local", { kind: "kokoro", ...entry }).synthesize(misaki([{ text: "a", phonemes: "a" }]), "af_heart");
     return seen;
   };
 
