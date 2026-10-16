@@ -664,10 +664,7 @@ declare class WorkflowRuntime {
     wait(runId: string): Promise<WorkflowRun>;
     /** Resolves the waiting gate as `resolvedBy`; a store that refuses the resolver throws and the run stays paused. */
     signal(runId: string, stepId: string, payload: Record<string, unknown>, resolvedBy: GateResolver): void;
-    /**
-     * `abandon` ends a run no runtime drives without replaying it to settle its in-flight steps, for a run whose replay cannot
-     * reach them on this build; those steps are dropped unsettled.
-     */
+    /** `abandon` finishes a run no runtime drives at once, dropping its in-flight steps unsettled: for a replay that cannot reach them. */
     cancel(runId: string, reason: string, options?: {
         abandon?: boolean;
     }): void;

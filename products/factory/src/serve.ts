@@ -257,18 +257,15 @@ function buildHealth(options: FactoryServerOptions): BuildHealth {
   return { sha, status: probe.status, refresh: probe.refresh };
 }
 
-/**
- * Without `routeFor`, `busy` cannot see park-routed steps and lists only review and merging steps. Finished runs are counted, not listed, so a probe never parses
- * every one (TP-2419); recovery_required runs are listed by id, so a deploy's watch can tell a run its restart interrupted from one that broke after it,
- * and `recoveryPrClosed` names those whose PR is closed or merged, which no build can break (TP-3220).
- */
+/** Without `routeFor`, `busy` cannot see park-routed steps. Finished runs are counted, not listed, so a probe never parses every one (TP-2419); recovery_required
+ * runs are listed by id, so a deploy's watch can tell a run its restart interrupted, or one on a closed PR, from one that broke after it. */
 export function factoryHealth(host: FactoryHost, routeFor: RoutedRunner["routeFor"] = () => undefined, isHeld?: HoldPredicate, prClosed: ReadonlySet<string> = new Set()): Record<string, unknown> {
   const runs = Object.fromEntries(host.countRuns(STATUSES));
   const running = host.runtime.list(["running"]);
   const held = isHeld ? heldSkipped(running, routeFor, isHeld) : [];
   const recoveryRequired = host.runtime.list(["recovery_required"]).map((run) => run.id);
-  const recoveryPrClosed = recoveryRequired.filter((id) => prClosed.has(id));
-  return { runs, recoveryRequired, recoveryPrClosed, pendingGates: host.pendingGates().length, busy: busyRuns(running, routeFor, isHeld), heldSkipped: held };
+  const busy = busyRuns(running, routeFor, isHeld);
+  return { runs, recoveryRequired, recoveryPrClosed: recoveryRequired.filter((id) => prClosed.has(id)), pendingGates: host.pendingGates().length, busy, heldSkipped: held };
 }
 
 function startSeatDigest(host: FactoryHost, services: ShepherdServices | undefined, ports: SeatDigestPorts | undefined, stateDir: string, log: Logger): Sweep | undefined {
