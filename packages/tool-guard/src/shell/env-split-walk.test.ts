@@ -62,6 +62,10 @@ const PUSH_ROUTES = [
   ["a --split-string after two assignments", `env FOO=1 BAR=2 --split-string='${PUSH}'`],
   ["an option in a -S string after an assignment", `env FOO=1 -S '-u X ${PUSH}'`],
   ["an assignment the shell does not name, which env still takes", `env a.b=1 ${PUSH}`],
+  ["a zsh =git command word, which is no assignment", "env =git push origin HEAD:main"],
+  ["a zsh =git command word after an assignment", "env A=1 =git push origin HEAD:main"],
+  ["a zsh =git command word under sudo", "sudo env =git push origin HEAD:main"],
+  ["a zsh =git command word under xargs", "echo x | xargs env =git push origin HEAD:main"],
 ] as const;
 
 describe("env -S is split by env's rules and read as env's argv (TP-3210)", () => {

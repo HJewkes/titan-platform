@@ -43,7 +43,8 @@ interface Walk {
 /**
  * env's options, `-S` strings, assignments and keywords from `start` on, read once in order. uutils env still reads a
  * `-S` after its `NAME=VALUE` words, so its options resume after them, and a word with a `=` the shell does not name
- * (`a.b=1`) is still env's assignment. A `-S` string's words are read in place of the option, never spliced into the
+ * (`a.b=1`) is still env's assignment. A word that starts with `=` is not: zsh expands `=git` to git's path before env
+ * sees it, so it is the command. A `-S` string's words are read in place of the option, never spliced into the
  * line, so the walk stays linear in the line. Null when a `-S` string's words cannot be known.
  */
 export function walkEnv(words: WordToken[], start: number, assigned: Assignment[], syntax: EnvWalkSyntax): EnvWalk | null {
@@ -56,7 +57,7 @@ export function walkEnv(words: WordToken[], start: number, assigned: Assignment[
     else if (!w.dynamic && w.value.startsWith("-")) {
       options = readOptions(walk);
       continue;
-    } else if (w.dynamic || !w.value.includes("=")) break;
+    } else if (w.dynamic || w.value.indexOf("=") < 1) break;
     walk.read.push(w);
     take(walk.stack);
   }
