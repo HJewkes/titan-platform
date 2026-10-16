@@ -23,12 +23,23 @@ export interface Inline {
 export function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], piped: string[], budget: UnsureBudget): Inline | null {
   if (cmd.script !== undefined) return { texts: [cmd.script], wrap: "sh-c" };
   if (cmd.name === "eval") return { texts: splicedReadings(cmd.args, budget), wrap: "eval" };
+  if (cmd.name === "emulate") return emulateText(cmd.args, budget);
   if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
   const { hasC, positional } = shellOperands(cmd.args);
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
   const text = hasC ? (positional ? splicedReadings([positional], budget) : piped.length > 0 ? piped : null) : positional ? null : stdinScript(redirects);
   if (text !== null) return { texts: hasC ? [text].flat() : [text].flat().flatMap((t) => pipedShellTexts(cmd.name, t)), wrap: hasC ? "sh-c" : "heredoc-shell" };
   return hasC || positional || piped.length === 0 ? null : { texts: piped.flatMap((t) => pipedShellTexts(cmd.name, t)), wrap: "piped-shell" };
+}
+
+/** zsh's `emulate [-lLR] [{+|-}o opt]... [mode] -c TEXT` evals TEXT, so it is walked as `eval` is. */
+function emulateText(args: WordToken[], budget: UnsureBudget): Inline | null {
+  for (let i = 0; i < args.length; i++) {
+    const v = (args[i] as WordToken).value;
+    if (v === "-o" || v === "+o") i++;
+    else if (/^-[A-Za-z]*c[A-Za-z]*$/.test(v)) return args[i + 1] ? { texts: splicedReadings([args[i + 1] as WordToken], budget), wrap: "eval" } : null;
+  }
+  return null;
 }
 
 /**
