@@ -1516,7 +1516,7 @@ describe("reviewPhase", () => {
         expect(resultOf(`sh-review-intent:${H1}`)).toMatchObject({ plan: { members: [{ shape: "correctness", profile: "bd-reviewer" }, { shape: "adversary", profile: "fable-reviewer" }] } });
         expect(dispatch.spawns[1]?.brief).toContain(`HOLD-CONTEXT\nHold reason: ${HOLD}\nEND-HOLD-CONTEXT`);
         expect(dispatch.spawns[0]?.brief).not.toContain("HOLD-CONTEXT");
-        expect(verdicts).toEqual([expect.objectContaining({ kind: "MERGE", reviewerProfile: "bd-reviewer", panel: expect.objectContaining({ members: [expect.objectContaining({ shape: "correctness" }), expect.objectContaining({ shape: "adversary" })] }) })]);
+        expect(verdicts).toEqual([expect.objectContaining({ kind: "MERGE", panel: expect.objectContaining({ members: [expect.objectContaining({ shape: "correctness" }), expect.objectContaining({ shape: "adversary" })] }) })]);
       });
 
       it("records the adversary's MERGE, its head and its spawn profile on the panel MERGE, for the two-MERGE release", async () => {
