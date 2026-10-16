@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_WATCH_WINDOW, FAST_PROBE_TIMEOUT_MS, SLOW_PROBE_TIMEOUT_MS, watchServe, type WatchIntent, type WatchWindow } from "./deploy-watch-window.js";
+import { DEFAULT_WATCH_WINDOW, FAST_PROBE_TIMEOUT_MS, SLOW_PROBE_TIMEOUT_MS, UNAVAILABLE, watchServe, type WatchIntent, type WatchWindow } from "./deploy-watch-window.js";
 
 const TARGET = "a".repeat(40);
 const PID = 4242;
@@ -194,5 +194,77 @@ describe("watchServe run errors after a restart", () => {
 
     expect(machine.recorded).toEqual([{ sha: TARGET, windowEnd: DEFAULT_WATCH_WINDOW.windowMs }]);
     expect(machine.ticks()).toBe(DEFAULT_WATCH_WINDOW.windowMs / DEFAULT_WATCH_WINDOW.intervalMs);
+  });
+});
+
+/** Each tick consumes one step and the last repeats; "unavailable" is a rate-limited or header-less 403/422/429 read, "error" a real failure. */
+function reading(steps: ("answer" | "unavailable" | "error" | "wrong-sha")[]) {
+  let clock = 0;
+  let tick = 0;
+  const recorded: WatchIntent[] = [];
+  const ports = {
+    sleep: async (ms: number) => void (clock += ms),
+    now: () => clock,
+    alive: (pid: number) => pid === PID,
+    probe: async (timeoutMs: number) => {
+      const step = steps[Math.min(tick, steps.length - 1)];
+      if (timeoutMs === FAST_PROBE_TIMEOUT_MS) tick += 1;
+      if (step === "unavailable") return UNAVAILABLE;
+      if (step === "wrong-sha") return { ...baseline, build: { sha: "b".repeat(40) } };
+      return step === "error" ? null : baseline;
+    },
+    record: (intent: WatchIntent) => void recorded.push({ ...intent }),
+  };
+  return { ports, recorded, ticks: () => tick, now: () => clock };
+}
+
+describe("watchServe when reads are unavailable (A17: a rate-limited probe never rolls back)", () => {
+  const CAPPED: WatchWindow = { ...WINDOW, unavailableCapMs: 50_000 };
+
+  it("does not roll back on unavailable reads, and restarts the window on fresh probes once reads return", async () => {
+    const steps = ["answer", "unavailable", "unavailable", "unavailable", "answer"] as const;
+    const machine = reading([...steps]);
+
+    const why = await watchServe(machine.ports, settled, TARGET, CAPPED);
+
+    expect(why).toBeUndefined();
+    expect(machine.recorded).toHaveLength(2);
+    expect(machine.recorded.map((intent) => intent.windowEnd)).toEqual([WINDOW.windowMs, 50_000 + WINDOW.windowMs]);
+    expect(machine.now()).toBe(50_000 + WINDOW.windowMs);
+  });
+
+  it("does not count unavailable reads toward the miss limit", async () => {
+    const machine = reading(["unavailable", "unavailable", "unavailable", "unavailable", "answer"]);
+
+    expect(await watchServe(machine.ports, settled, TARGET, CAPPED)).toBeUndefined();
+  });
+
+  it("holds with an alarm at the cap, and does not roll back", async () => {
+    const machine = reading(["answer", "unavailable"]);
+
+    const why = await watchServe(machine.ports, settled, TARGET, CAPPED);
+
+    expect(why).toEqual({ held: expect.stringContaining("unavailable") });
+  });
+
+  it("still rolls back on a real error: misses in a row", async () => {
+    const machine = reading(["answer", "error"]);
+
+    expect(await watchServe(machine.ports, settled, TARGET, CAPPED)).toContain("serve stopped answering /health (3 probes in a row)");
+  });
+
+  it("still rolls back on a wrong sha that follows unavailable reads", async () => {
+    const machine = reading(["unavailable", "unavailable", "wrong-sha"]);
+
+    expect(await watchServe(machine.ports, settled, TARGET, CAPPED)).toContain("not " + TARGET);
+  });
+
+  it("keeps TP-2846's per-tick liveness probe and its { sha, windowEnd } intent", async () => {
+    const machine = reading(["answer"]);
+
+    await watchServe(machine.ports, settled, TARGET, WINDOW);
+
+    expect(machine.ticks()).toBe(WINDOW.windowMs / WINDOW.intervalMs);
+    expect(machine.recorded).toEqual([{ sha: TARGET, windowEnd: WINDOW.windowMs }]);
   });
 });

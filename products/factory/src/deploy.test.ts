@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { EXIT, runCli } from "./cli.js";
 import { releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
 import { deployBuildLogPath, deployWindowPath } from "./deploy-output.js";
+import { UNAVAILABLE } from "./deploy-watch-window.js";
 import { deployRecordPath, deployService, parseDeployRecord, type DeployOptions, type DeployPorts } from "./deploy.js";
 import type { DeployIncident } from "./deploy-incident.js";
 import { clearDeployPause, deployHoldPath, deployPausePath, readDeployHolds, readDeployPause } from "./deploy-pause.js";
@@ -797,6 +798,36 @@ describe("service deploy rollback pause", () => {
     expect(machine.serving()).toBe(BASE);
     expect(machine.record()).toMatchObject({ outcome: "rolled-back", why: expect.stringContaining("serve stopped answering /health (3 probes in a row)") });
     expect(machine.pause()).toMatchObject({ paused: true, pause: { rollback: "verified" } });
+  });
+
+  it("deploys when the watch reads are unavailable for a while and then return", async () => {
+    const machine = fakeMachine();
+    const health = machine.ports.healthWithin;
+    let answered = 0;
+    machine.ports.healthWithin = async (port, timeoutMs) => (machine.serving() === TIP && ++answered >= 3 && answered <= 8 ? UNAVAILABLE : health(port, timeoutMs));
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.serving()).toBe(TIP);
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+    expect(machine.pause()).toEqual({ paused: false });
+  });
+
+  it("holds with an alarm, and does not roll back, when reads stay unavailable past the cap", async () => {
+    const machine = fakeMachine();
+    const health = machine.ports.healthWithin;
+    let answered = 0;
+    machine.ports.healthWithin = async (port, timeoutMs) => (machine.serving() === TIP && ++answered >= 3 ? UNAVAILABLE : health(port, timeoutMs));
+
+    const { code, err } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(machine.serving()).toBe(TIP);
+    expect(err).toContain("ALERT");
+    expect(machine.record()).toMatchObject({ outcome: "held", target: TIP });
+    expect(machine.pause()).toEqual({ paused: false });
+    expect(machine.files.has(deployHoldPath(STATE))).toBe(true);
   });
 
   it("deploys when a miss near the window's end is followed by an answer", async () => {

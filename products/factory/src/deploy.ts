@@ -5,14 +5,14 @@ import { closureDirs, FACTORY_PACKAGE, nativeBuildChanges, readWorkspace, touche
 import type { DeployIncident } from "./deploy-incident.js";
 import { deployLockPath, releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
 import { describeHolds, readDeployHolds, writeDeployPause, type DeployPause } from "./deploy-pause.js";
-import { buildLog, detail, writeBuildLog, writeWindowRecord } from "./deploy-output.js";
-import { buildShaOf, DEFAULT_WATCH_WINDOW, watchServe, type WatchIntent, type WatchWindow } from "./deploy-watch-window.js";
+import { buildLog, detail, writeBuildLog, writeUnreadableHold, writeWindowRecord } from "./deploy-output.js";
+import { buildShaOf, DEFAULT_WATCH_WINDOW, answerOf, watchServe, type Probe, type WatchHeld, type WatchIntent, type WatchWindow } from "./deploy-watch-window.js";
 import { restartService, type CommandResult, type RestartDrain, type ServiceIo, type ServicePorts } from "./service-control.js";
 
 /** Every effect the deployer has beyond the service verbs'; tests pass fakes, so none of them reaches git, pnpm or launchd. */
 export interface DeployPorts extends ServicePorts, LockPorts {
   /** `/health` with a longer timeout than `health`'s, for reads that must not mistake a slow answer for none. */
-  healthWithin: (port: number, timeoutMs: number) => Promise<Record<string, unknown> | null>;
+  healthWithin: (port: number, timeoutMs: number) => Promise<Probe>;
   /** `git clone --branch main <remote> <dest>`, run from the parent of `dest`; only called when the checkout is absent. */
   clone: (remote: string, dest: string) => Promise<CommandResult>;
   /** Runs in the service checkout. */
@@ -43,7 +43,7 @@ export interface DeployOptions {
 }
 
 /** A refusal is printed, never recorded, so it cannot overwrite a rolled-back hold. */
-export type DeployOutcome = "deployed" | "skipped" | "rolled-back";
+export type DeployOutcome = "deployed" | "skipped" | "rolled-back" | "held";
 
 /** What `/health` shows as `lastDeploy`. */
 export interface DeployRecord {
@@ -180,13 +180,14 @@ async function isAncestor(ports: DeployPorts, ancestor: string, of: string): Pro
 }
 
 async function runningBuild(ports: DeployPorts, port: number): Promise<string | undefined> {
-  return buildShaOf(await ports.healthWithin(port, SHA_PROBE_TIMEOUT_MS));
+  return buildShaOf(answerOf(await ports.healthWithin(port, SHA_PROBE_TIMEOUT_MS)));
 }
+
 
 /** A slow or missing answer under load is not a wrong sha, so poll; undefined means no answer with a sha in the whole poll. */
 async function answeredHealth(ports: DeployPorts, port: number): Promise<Record<string, unknown> | undefined> {
   for (let poll = 0; poll < SHA_POLLS; poll++) {
-    const health = await ports.healthWithin(port, SHA_PROBE_TIMEOUT_MS);
+    const health = answerOf(await ports.healthWithin(port, SHA_PROBE_TIMEOUT_MS));
     if (buildShaOf(health) !== undefined) return health ?? undefined;
     await ports.sleep(SHA_POLL_MS);
   }
@@ -260,6 +261,7 @@ async function execute(deploy: Deploy, go: Go): Promise<number> {
   const built = await installAndBuild(deploy, go.target);
   if (built !== undefined) return rollBackBuild(deploy, go, backup, built);
   const why = await restartAndConfirm(deploy, go.target);
+  if (typeof why === "object") return finish(deploy, go, "held", why.held, writeUnreadableHold(deploy.ports, deploy.options.stateDir, go.target, why.held));
   return why === undefined ? finish(deploy, go, "deployed") : rollBackRestart(deploy, go, backup, why);
 }
 
@@ -278,7 +280,8 @@ async function fastForward(ports: DeployPorts, target: string): Promise<string |
   return head === target ? undefined : `the checkout is at ${head} after the fast-forward, not ${target}`;
 }
 
-function finish(deploy: Deploy, go: Go, outcome: DeployOutcome, why?: string): number {
+function finish(deploy: Deploy, go: Go, outcome: DeployOutcome, why?: string, alarm?: string): number {
+  if (alarm !== undefined) deploy.io.stderr(alarm);
   const fields = { outcome, target: go.target, from: go.running ?? UNKNOWN, ...(why === undefined ? {} : { why }), touched: go.touched };
   const ok = outcome === "deployed" || outcome === "skipped";
   return stop(deploy, { kind: "stop", code: ok ? 0 : FAILURE, message: `${outcome} ${go.target}${why === undefined ? "" : `: ${why}`}`, record: record(deploy, fields) });
@@ -319,7 +322,7 @@ async function installAndBuild(deploy: Deploy, target: string): Promise<string |
  * restartService confirms launchd's pid and github ok; the sha check proves the new build is the one answering, and the watch that it stays up without new step errors.
  * The drain's last answer goes to the watch, so runs the restart interrupted are told from runs that broke after it.
  */
-async function restartAndConfirm({ ports, io, options }: Deploy, target: string): Promise<string | undefined> {
+async function restartAndConfirm({ ports, io, options }: Deploy, target: string): Promise<string | WatchHeld | undefined> {
   let atRestart: Record<string, unknown> | null = null;
   if ((await restartService(ports, io, options.port, options.logDir, options.drain, (drained) => (atRestart = drained))) !== 0) return "the restarted service did not come up healthy";
   const health = await answeredHealth(ports, options.port);
