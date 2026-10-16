@@ -124,6 +124,8 @@ export interface Unwrapped {
    * Such a word may expand to nothing, an option or a wrapper, so `timeout $O 5 git push` may run git.
    */
   unsure?: WordToken[];
+  /** Names `exec -a`, `env -a`/`--argv0` or an `ARGV0=` prefix run the command under; null where one is only known at run time. */
+  argv0?: Array<string | null>;
 }
 
 /** Program name a command word runs: a path's basename, a scoped package whole, any `@version` dropped. */
@@ -138,6 +140,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
   const loose: WordToken[] = [];
   let xargs: Unwrapped["xargs"];
   let negated = false;
+  const argv0: Array<string | null> = [];
   let i = 0;
   while (i < words.length) {
     const w = words[i] as WordToken;
@@ -160,6 +163,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       if (script !== null) return { name: commandName(w.value), path: w.value, args: words.slice(i + 1), assigned, script };
       i = skipWrapper(words, start, spec);
       if (i < 0) return null;
+      argv0.push(...argv0Values(commandName(w.value), words.slice(start, i)));
       loose.push(...words.slice(i - (spec.positionals ?? 0), i).filter((p) => p.dynamic));
       if (commandName(w.value) === "xargs") xargs = { ...xargsOptions(words.slice(start, i), xargs), words: words.slice(i) };
     } else break;
@@ -167,7 +171,50 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
   const cmd = command(words, i, assigned);
   if (cmd.name === null && cmd.args[0]) loose.push(cmd.args[0]);
   const unsure = loose.length > 0 ? words.filter((w) => !loose.includes(w)) : null;
-  return { ...cmd, ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}), ...(unsure ? { unsure } : {}) };
+  argv0.push(...assigned.filter(([name]) => name === "ARGV0").map(([, value]) => value));
+  const named = argv0.length > 0 ? { argv0 } : {};
+  return { ...cmd, ...named, ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}), ...(unsure ? { unsure } : {}) };
+}
+
+/** Short options of `env` and `exec` that take a value, the rest of the cluster or the next word. */
+const ARGV0_VALUED: Record<string, string> = { exec: "a", env: "uCSPa" };
+
+/**
+ * The values of `exec -a NAME` and `env -a NAME`/`--argv0[=]NAME`, in cluster or attached form. A letter inside another
+ * option's value (`env -uabc`) is not an option, so each cluster is read letter by letter and stops at its first valued one.
+ */
+function argv0Values(wrapper: string, options: WordToken[]): Array<string | null> {
+  const valued = Object.hasOwn(ARGV0_VALUED, wrapper) ? ARGV0_VALUED[wrapper] : undefined;
+  if (valued === undefined) return [];
+  const out: Array<string | null> = [];
+  for (let k = 0; k < options.length; k++) {
+    const o = options[k] as WordToken;
+    if (o.value === "--") break;
+    if (o.value === "--argv0" && wrapper === "env") {
+      const next = options[++k];
+      if (next) out.push(next.dynamic ? null : next.value);
+    } else if (o.value.startsWith("--argv0=") && wrapper === "env") {
+      out.push(o.dynamic ? null : o.value.slice("--argv0=".length));
+    } else if (/^-[^-]/.test(o.value)) {
+      const read = readArgv0Cluster(o, options[k + 1], valued);
+      if (read.value !== undefined) out.push(read.value);
+      k += read.consumedNext ? 1 : 0;
+    }
+  }
+  return out;
+}
+
+/** One short-option cluster: the `-a` value if the cluster has one, and whether a valued letter took the next word. */
+function readArgv0Cluster(o: WordToken, next: WordToken | undefined, valued: string): { value?: string | null; consumedNext: boolean } {
+  for (let j = 1; j < o.value.length; j++) {
+    const letter = o.value.charAt(j);
+    if (!valued.includes(letter)) continue;
+    const attached = o.value.slice(j + 1);
+    const word = attached ? o : next;
+    const value = word ? (word.dynamic ? null : attached || word.value) : undefined;
+    return { value: letter === "a" ? value : undefined, consumedNext: !attached };
+  }
+  return { consumedNext: false };
 }
 
 function command(words: WordToken[], i: number, assigned: Unwrapped["assigned"]): Unwrapped {
