@@ -1,11 +1,22 @@
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { RewritePins, UnpinnedRewriteError, applyPins, pinKey, splitSentences } from "./rewrite-pins.js";
+import {
+  RewritePins,
+  RewritePinsSchema,
+  UnpinnedRewriteError,
+  applyPins,
+  pinKey,
+  splitSentences,
+  type RewritePinsFile,
+  type RewritePinsOptions,
+  type SentencePiece,
+} from "./rewrite-pins.js";
 
 const FIXED = new Date("2026-01-02T03:04:05.000Z");
-const pinsAt = () => new RewritePins(undefined, { now: () => FIXED });
+const options: RewritePinsOptions = { now: () => FIXED };
+const pinsAt = () => new RewritePins(undefined, options);
 
 describe("pinKey", () => {
   it("is a sha256 hex digest that ignores whitespace layout", () => {
@@ -87,6 +98,8 @@ describe("RewritePins files", () => {
     await pins.save(path);
     const loaded = await RewritePins.load(path);
 
+    const file: RewritePinsFile = RewritePinsSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+    expect(file).toEqual(pins.toJson());
     expect(loaded.toJson()).toEqual(pins.toJson());
     expect(readdirSync(join(dir, "nested"))).toEqual(["rewrites.json"]);
   });
@@ -116,7 +129,7 @@ describe("splitSentences", () => {
   it("keeps every separator so the pieces join back to the input", () => {
     const line = "  the show is live.  it runs?\nyes! done";
 
-    const pieces = splitSentences(line);
+    const pieces: SentencePiece[] = splitSentences(line);
 
     expect(pieces.map((p) => p.text + p.gap).join("")).toBe(line);
     expect(pieces.map((p) => p.text.trim())).toEqual(["the show is live.", "it runs?", "yes!", "done"]);
