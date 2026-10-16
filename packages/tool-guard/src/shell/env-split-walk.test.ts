@@ -18,14 +18,14 @@ const context: ClassifyContext = {
   readScript: () => null,
 };
 
-async function hookStdout(command: string): Promise<string> {
-  const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
+async function hookStdout(command: string, ctx: ClassifyContext = context): Promise<string> {
+  const port: HookPort = { context: ctx, now: () => new Date(0), loadDecide: async () => decide };
   const event = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: REPO, tool_input: { command } });
   return (await handle(event, { PATH: "/usr/bin" }, port)).stdout;
 }
 
-async function verdict(command: string): Promise<"deny" | "pass"> {
-  return (await hookStdout(command)).includes('"permissionDecision":"deny"') ? "deny" : "pass";
+async function verdict(command: string, ctx: ClassifyContext = context): Promise<"deny" | "pass"> {
+  return (await hookStdout(command, ctx)).includes('"permissionDecision":"deny"') ? "deny" : "pass";
 }
 
 /**
@@ -54,11 +54,23 @@ const PUSH_ROUTES = [
   ["a positional $1 command word", "env -S '$1 push --no-verify origin HEAD:main'"],
   ["a $( command word", "env -S '$(echo git) push --no-verify origin HEAD:main'"],
   ["a bare $NAME argv0", `env -S '-a $D zsh -c "git push --no-verify origin HEAD:main"'`],
+  ["an exported option letter env expands at the head", `export O=-u; env -S '\${O} x ${PUSH}'`],
+  ["a prefix-assigned option env expands at the head", `O=-u env -S '\${O} x ${PUSH}'`],
+  ["an option env expands after a static one", `export O=-u; env -S '-i \${O} x ${PUSH}'`],
 ] as const;
 
 describe("env -S is split by env's rules and read as env's argv (TP-3210)", () => {
   it.each(PUSH_ROUTES)("denies a push behind %s", async (_form, line) => {
     expect(await verdict(line)).toBe("deny");
+  });
+
+  it.each([
+    ["a backslash escape", `env -S '${PUSH} \\c'`],
+    ["a dynamic -S string", `s='-u X ${PUSH}'; env -S "$s"`],
+    ["an exported option env expands at the head", `export O=-u; env -S '\${O} x ${PUSH}'`],
+  ])("denies a script file that pushes behind %s", async (_form, line) => {
+    const readScript = (p: string) => (p === `${REPO}/p.sh` ? line : null);
+    expect(await verdict("bash ./p.sh", { ...context, readScript })).toBe("deny");
   });
 
   it.each([

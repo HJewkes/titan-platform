@@ -3,9 +3,9 @@ import { splitCluster, takesNextWord } from "./cluster.js";
 import { envSplitString } from "./env-argv.js";
 import type { EnvSyntax } from "./env-argv.js";
 import type { WordToken } from "./lexer.js";
-import { ParseError } from "./parse-error.js";
 import { basename } from "./path.js";
 import { canonicalShell } from "./shell-names.js";
+import { EnvSplitError } from "./unsure-readings.js";
 import { parseAssignment } from "./vars.js";
 import type { Assignment } from "./vars.js";
 import { SHORT_VALUES, SUDO_LONG_VALUES, spellLongOptions } from "./wrapper-long.js";
@@ -171,9 +171,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       words = spelled;
       const start = wrapperSpec(w.value) ? i + 1 : runnerEnd(words, i);
       const spec = wrapperSpec(w.value) ?? PACKAGE_OPTS;
-      const split = commandName(w.value) === "env" ? envSplitString(words, start, ENV_SYNTAX) : undefined;
-      // As a `-c` string with an unclosed quote is, so the hook refuses the line when it names a guarded action.
-      if (split === null) throw new ParseError("env -S string whose words cannot be known");
+      const split = envSplitOrThrow(w.value, words, start);
       if (split !== undefined) {
         words = split;
         continue;
@@ -197,6 +195,14 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
   argv0.push(...assignedArgv0(assigned));
   const named = argv0.length > 0 ? { argv0 } : {};
   return { ...cmd, ...named, ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}), ...(unsure ? { unsure } : {}) };
+}
+
+/** env's argv with its `-S` string split, or undefined for no `-S` or another wrapper; throws where env's words cannot be known. */
+function envSplitOrThrow(wrapper: string, words: WordToken[], start: number): WordToken[] | undefined {
+  if (commandName(wrapper) !== "env") return undefined;
+  const split = envSplitString(words, start, ENV_SYNTAX);
+  if (split === null) throw new EnvSplitError();
+  return split;
 }
 
 function command(words: WordToken[], i: number, assigned: Unwrapped["assigned"]): Unwrapped {

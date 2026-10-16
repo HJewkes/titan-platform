@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { envSplitWords } from "./env-split.js";
 import { tokenize } from "./lexer.js";
 import type { WordToken } from "./lexer.js";
-import { ParseError } from "./parse-error.js";
+import { EnvSplitError } from "./unsure-readings.js";
 import { unwrap } from "./unwrap.js";
 
 function argv0(src: string): Array<string | null> | undefined {
@@ -39,7 +39,7 @@ describe("argv0 of a wrapped command", () => {
   });
 
   it.each([["env -S '-a \"sh zsh'"], ["env -S '-a s\\h zsh'"], ["env -S '-a $D zsh -c x'"]])("refuses the env -S string of %s", (src) => {
-    expect(() => argv0(src)).toThrow(ParseError);
+    expect(() => argv0(src)).toThrow(EnvSplitError);
   });
 
   it.each([

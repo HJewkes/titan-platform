@@ -14,7 +14,8 @@ const ENV_PARAM_RE = /\$\{[A-Za-z_][A-Za-z0-9_]*\}/g;
 /**
  * env's argv with its `-S` string split into words by env's rules, so env's own options at its head (`-u X`, `-a sh`,
  * `-i`) are read as options, not as a command. Undefined when no `-S` comes before the command; null when env's
- * words cannot be known: a dynamic `-S` word, a missing one, an unclosed quote or a backslash.
+ * words cannot be known: a dynamic `-S` word, a missing one, an unclosed quote, a backslash, or a `${NAME}` among env's
+ * options or as its command, which the walk never expands since it rebuilds these words after expanding the line's.
  */
 export function envSplitString(words: WordToken[], i: number, syntax: EnvSyntax): WordToken[] | null | undefined {
   for (let option = words[i]; option?.value.startsWith("-"); option = words[i]) {
@@ -28,10 +29,24 @@ export function envSplitString(words: WordToken[], i: number, syntax: EnvSyntax)
     if (text === undefined || option.dynamic || text.dynamic) return null;
     const split = envSplitWords(at === "next" ? text.value : at.attached);
     if (split === null) return null;
-    const argv = envTokens([...clusterBefore(option.value, at), ...split]);
+    const head = [...clusterBefore(option.value, at), ...split];
+    if (dynamicHead(head, syntax)) return null;
+    const argv = envTokens(head);
     return [...words.slice(0, i), ...argv, ...words.slice(i + (at === "next" ? 2 : 1))];
   }
   return undefined;
+}
+
+/** Whether a `${NAME}` sits among env's leading options or in the command word after them, where its value decides what runs. */
+function dynamicHead(words: EnvWord[], syntax: EnvSyntax): boolean {
+  for (let j = 0; j < words.length; j++) {
+    const word = words[j] as EnvWord;
+    if (word.dynamic) return true;
+    if (!word.value.startsWith("-")) return false;
+    if (word.value === "--") return words[j + 1]?.dynamic ?? false;
+    if (syntax.takesValue(word.value)) j++;
+  }
+  return false;
 }
 
 /** The short options a cluster holds before its `S` (`-i` of `-iS`), as a word of their own. */
