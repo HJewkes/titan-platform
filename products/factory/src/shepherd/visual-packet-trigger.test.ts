@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
@@ -43,6 +44,10 @@ function packagerAgents(refuse?: string) {
   return { spawns, agents };
 }
 
+function rosterRow(name: string): AgentRow {
+  return { name, agentId: "agent-1", state: "live", presence: "live", status: "running", profile: "review-packager", surface: "headless", cwd: "/tmp", sessionId: "", generation: 1 };
+}
+
 function ports(mode: VisualPacketMode, agents: VisualPacketPorts["agents"], stateDir = scratch()): VisualPacketPorts {
   return { mode, profile: "review-packager", stateDir, ...(agents && { agents }) };
 }
@@ -79,10 +84,12 @@ async function gatedAtH1(visual: VisualPacketPorts | undefined, policy: Effectiv
   return { fake, store, host, runId };
 }
 
+const RecordedPacket = z.object({ result: z.record(z.string(), z.unknown()) });
+
 const packetSteps = (host: FactoryHost, runId: string) =>
   Object.entries(host.runtime.status(runId)!.stepResults)
     .filter(([key]) => key.startsWith("sh-visual-packet:"))
-    .map(([, result]) => (result.data as { result: Record<string, unknown> }).result);
+    .map(([, result]) => RecordedPacket.parse(result.data).result);
 
 describe("a visual approve-merge gate under shepherd.visualPacket on", () => {
   it("spawns the packager once, with the run, gate, head, tree, visual CI run and packet dir in its brief", async () => {
@@ -208,7 +215,7 @@ describe("the packet step's route", () => {
     const { spawns, agents } = packagerAgents();
     const visual = ports("on", agents);
     const first = await visualPacket(githubPort(fakeGitHub().wire), visual, input);
-    const onRoster: NonNullable<VisualPacketPorts["agents"]> = { ...agents, roster: async () => [{ name: first.agent! } as AgentRow] };
+    const onRoster: NonNullable<VisualPacketPorts["agents"]> = { ...agents, roster: async () => [rosterRow(first.agent!)] };
 
     const again = await visualPacket(githubPort(fakeGitHub().wire), { ...visual, agents: onRoster }, input);
 
