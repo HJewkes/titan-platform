@@ -1,9 +1,10 @@
-import { existsSync, mkdirSync, mkdtempSync, renameSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { forgetSeedCommits, keepDb, keptDbPath, seedDbPath } from "./dag-check-self.mjs";
+import { forgetSeedCommits, keepDb, keptDbPath, seedDbPath, workDirFor } from "./dag-check-self.mjs";
+import { DEFAULT_LOCK_DIR } from "./dag-check-lock.mjs";
 import { graphFromDb } from "./dead-code-check.mjs";
 
 const ENTRY = new URL("../packages/code-graph/dist/index.js", import.meta.url);
@@ -83,6 +84,16 @@ describe("seeding the graph from a CI cache", () => {
   });
 });
 
+describe("the work dir", () => {
+  it("is one dir per lock slot beside the lock, and slot 0 keeps the single lock's dir", () => {
+    const dirs = [0, 1, 2, 3, 4, 5].map(workDirFor);
+
+    expect(dirs[0]).toBe(path.join(path.dirname(DEFAULT_LOCK_DIR), "dag-check-work"));
+    expect(new Set(dirs).size).toBe(6);
+    expect(dirs.every((dir) => path.dirname(dir) === path.dirname(DEFAULT_LOCK_DIR))).toBe(true);
+  });
+});
+
 describe("keeping the graph for dead:check", () => {
   it("reads --db as an absolute path and refuses a missing value", () => {
     expect(keptDbPath(["--report", "r.json", "--db", "/tmp/g.db"])).toBe("/tmp/g.db");
@@ -98,6 +109,7 @@ describe("keeping the graph for dead:check", () => {
     rmSync(path.dirname(workDb), { recursive: true, force: true });
     const { nodes } = await graphFromDb(dbPath);
     expect(nodes.map((n) => n.id)).toEqual(["src/a.ts"]);
+    expect(readdirSync(path.dirname(dbPath))).toEqual(["graph.db"]);
   });
 
   it("keeps nothing from a failed index, not even an earlier run's graph", async () => {

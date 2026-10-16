@@ -6,24 +6,32 @@
 // --seed-db <path> starts from a graph a CI cache restored: the indexer re-parses only changed files and drops deleted ones (TP-1854).
 // Without one, a local run seeds from the machine-wide graph the last finished run left (DAG_CHECK_NO_SEED=1 opts out).
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { collectReport, writeReport } from "./codewatch-report.mjs";
 import { MACHINE_SEED, refreshSeed, runWithColdRetry, seedArgs, usesMachineSeed } from "./dag-check-seed.mjs";
-import { BUSY_EXIT_CODE, DEFAULT_LOCK_DIR, LockTimeoutError, acquire, lockWaitMs, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
+import { BUSY_EXIT_CODE, DEFAULT_LOCK_DIR, LockTimeoutError, acquire, lockSlots, lockWaitMs, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
 
 const SCRIPT = fileURLToPath(import.meta.url);
 const ROOT = path.resolve(path.dirname(SCRIPT), "..");
 const CONFIG = path.join(ROOT, ".codewatch/check.json");
 const ENTRY = path.join(ROOT, "packages/code-graph/dist/index.js");
-// The indexer's live heap peaks near 460 MB; uncapped, V8 lets garbage grow the process to about 3 GB.
-const HEAP_CAP_MB = 1024;
+// Live heap peaks near 460 MB cold and 930 MB seeded (the reuse basis sits beside the new index); uncapped,
+// V8 lets garbage grow the process to about 4 GB. At 1024 MB every seeded run aborted and fell back to a 10-minute cold index.
+const HEAP_CAP_MB = 2048;
 const WORKER_FLAG = "--locked-worker";
-// Fixed beside the lock, so the next holder clears whatever a killed run left behind.
-const WORK_DIR = path.join(path.dirname(DEFAULT_LOCK_DIR), "dag-check-work");
-const BASELINE_DIR = path.join(WORK_DIR, "baseline");
-const WORK_DB = path.join(WORK_DIR, "graph.db");
+const WORK_DIR_FLAG = "--work-dir";
+
+/** Fixed per lock slot beside the lock, so the slot's next holder clears whatever a killed run left behind. */
+export function workDirFor(slot) {
+  const name = slot === 0 ? "dag-check-work" : `dag-check-work-${slot}`;
+  return path.join(path.dirname(DEFAULT_LOCK_DIR), name);
+}
+
+function workPaths(dir) {
+  return { dir, baseline: path.join(dir, "baseline"), db: path.join(dir, "graph.db") };
+}
 
 async function indexTree(graph, store, dir, ref) {
   // apps/ is absent from baselines taken before the first app landed.
@@ -36,13 +44,13 @@ function git(...args) {
   execFileSync("git", args, { cwd: ROOT, stdio: ["ignore", "ignore", "inherit"] });
 }
 
-async function indexBaseline(graph, store, baseRef) {
+async function indexBaseline(graph, store, baseRef, baselineDir) {
   git("worktree", "prune");
-  git("worktree", "add", "--detach", BASELINE_DIR, baseRef);
+  git("worktree", "add", "--detach", baselineDir, baseRef);
   try {
-    await indexTree(graph, store, BASELINE_DIR, "baseline");
+    await indexTree(graph, store, baselineDir, "baseline");
   } finally {
-    git("worktree", "remove", "--force", BASELINE_DIR);
+    git("worktree", "remove", "--force", baselineDir);
   }
 }
 
@@ -94,26 +102,32 @@ export function forgetSeedCommits(store) {
 }
 
 // A cache written by another schema or truncated mid-save must cost a cold index, never a failed check.
-function openWorkStore(graph) {
+function openWorkStore(graph, workDb) {
   try {
-    const store = graph.openCodeGraph(WORK_DB);
+    const store = graph.openCodeGraph(workDb);
     store.listSnapshots({ limit: 1 });
     if (seedDbPath(process.argv.slice(2))) forgetSeedCommits(store);
     return store;
   } catch (err) {
     console.error(`seed graph unusable, indexing cold: ${err instanceof Error ? err.message : String(err)}`);
-    removeDb(WORK_DB);
-    return graph.openCodeGraph(WORK_DB);
+    removeDb(workDb);
+    return graph.openCodeGraph(workDb);
   }
+}
+
+function workerPaths(argv) {
+  const at = argv.indexOf(WORK_DIR_FLAG);
+  return workPaths(at >= 0 ? argv[at + 1] : workDirFor(0));
 }
 
 async function check() {
   const graph = await import(ENTRY);
   const baseRef = process.env.BASE_REF;
-  const store = openWorkStore(graph);
+  const work = workerPaths(process.argv);
+  const store = openWorkStore(graph, work.db);
   try {
     await indexTree(graph, store, ROOT, "head");
-    if (baseRef) await indexBaseline(graph, store, baseRef);
+    if (baseRef) await indexBaseline(graph, store, baseRef, work.baseline);
     const rules = await graph.loadCheckRules(CONFIG, { onWarn: (m) => console.warn(`${CONFIG}: ${m}`) });
     const run = graph.checkSnapshot(store, { snapshot: "head", baseline: baseRef ? "baseline" : undefined, rules });
     const json = { ...run, baselineSnapshot: run.baselineSnapshot ?? null, configPath: CONFIG };
@@ -128,16 +142,16 @@ async function check() {
   }
 }
 
-function clearWorkDir() {
-  if (existsSync(BASELINE_DIR)) {
+function clearWorkDir(work) {
+  if (existsSync(work.baseline)) {
     try {
       // The second --force removes a worktree that a killed `git worktree add` left locked.
-      git("worktree", "remove", "--force", "--force", BASELINE_DIR);
+      git("worktree", "remove", "--force", "--force", work.baseline);
     } catch {
       // A half-made or foreign baseline is not removable by git; deleting the directory and pruning is enough.
     }
   }
-  rmSync(WORK_DIR, { recursive: true, force: true, maxRetries: 5 });
+  rmSync(work.dir, { recursive: true, force: true, maxRetries: 5 });
   git("worktree", "prune");
 }
 
@@ -159,47 +173,55 @@ function removeDb(dbPath) {
   for (const suffix of ["", "-wal", "-shm"]) rmSync(`${dbPath}${suffix}`, { force: true });
 }
 
-/** Copies a closed graph out of the work dir, which the next holder clears; a failed index keeps nothing, never a stale graph. */
+/**
+ * Copies a closed graph out of the work dir, which the next holder clears; a failed index keeps nothing, never a stale graph.
+ * The copy lands by rename, so a reader holding another lock slot sees no graph or a whole one.
+ */
 export function keepDb({ workDb, dbPath, code }) {
   removeDb(dbPath);
   if (code !== 0 && code !== 1) return;
   mkdirSync(path.dirname(dbPath), { recursive: true });
-  copyFileSync(workDb, dbPath);
+  const tmp = `${dbPath}.tmp-${process.pid}`;
+  try {
+    copyFileSync(workDb, tmp);
+    renameSync(tmp, dbPath);
+  } finally {
+    rmSync(tmp, { force: true });
+  }
 }
 
 // A seed that cannot be written costs the next run a cold index, never this run's result.
-function refreshMachineSeed(code) {
+function refreshMachineSeed(workDb, code) {
   try {
-    if (refreshSeed({ workDb: WORK_DB, seedPath: MACHINE_SEED, code })) console.error(`refreshed the machine seed ${MACHINE_SEED}`);
+    if (refreshSeed({ workDb, seedPath: MACHINE_SEED, code })) console.error(`refreshed the machine seed ${MACHINE_SEED}`);
   } catch (err) {
     console.error(`machine seed not refreshed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
-async function indexUnderLock(cleanups, dbPath) {
-  clearWorkDir();
-  mkdirSync(WORK_DIR, { recursive: true });
-  // Read under the lock: only a holder refreshes the machine seed.
+function resetWorkDir(work) {
+  clearWorkDir(work);
+  mkdirSync(work.dir, { recursive: true });
+}
+
+async function indexUnderLock(cleanups, dbPath, work) {
+  resetWorkDir(work);
   const argv = seedArgs(process.argv.slice(2), process.env, existsSync);
   const seed = seedDbPath(argv);
   if (seed && existsSync(seed)) {
-    copyFileSync(seed, WORK_DB);
+    copyFileSync(seed, work.db);
     console.error(`seeded the graph from ${seed}`);
   }
   const log = (m) => console.error(m);
   const runWorker = async (workerArgv) => {
     const outcome = {};
-    const args = [WORKER_FLAG, ...workerArgv];
+    const args = [WORKER_FLAG, WORK_DIR_FLAG, work.dir, ...workerArgv];
     const code = await runCappedWorker({ script: SCRIPT, args, name: "dag-check indexer", heapCapMb: HEAP_CAP_MB, cleanups, log, outcome });
     return { code, heapAbort: outcome.heapAbort };
   };
-  const clearWork = () => {
-    clearWorkDir();
-    mkdirSync(WORK_DIR, { recursive: true });
-  };
-  const code = await runWithColdRetry({ argv, runWorker, clearWork, log });
-  if (dbPath) keepDb({ workDb: WORK_DB, dbPath, code });
-  if (usesMachineSeed(process.argv.slice(2), process.env)) refreshMachineSeed(code);
+  const code = await runWithColdRetry({ argv, runWorker, clearWork: () => resetWorkDir(work), log });
+  if (dbPath) keepDb({ workDb: work.db, dbPath, code });
+  if (usesMachineSeed(process.argv.slice(2), process.env)) refreshMachineSeed(work.db, code);
   return code;
 }
 
@@ -213,15 +235,16 @@ async function supervise() {
   cleanupOnSignal(cleanups);
   let hold;
   try {
-    hold = await acquire({ check: "dag:check", timeoutMs: lockWaitMs(), log: (m) => console.error(m) });
+    hold = await acquire({ slots: lockSlots(), check: "dag:check", timeoutMs: lockWaitMs(), log: (m) => console.error(m) });
   } catch (err) {
     if (!(err instanceof LockTimeoutError)) throw err;
     console.error(err.message);
     return BUSY_EXIT_CODE;
   }
-  cleanups.push(() => release(DEFAULT_LOCK_DIR, hold), clearWorkDir);
+  const work = workPaths(workDirFor(hold.slot));
+  cleanups.push(() => release(DEFAULT_LOCK_DIR, hold), () => clearWorkDir(work));
   try {
-    hold.exit = await indexUnderLock(cleanups, dbPath);
+    hold.exit = await indexUnderLock(cleanups, dbPath, work);
     return hold.exit;
   } finally {
     runCleanups(cleanups);
