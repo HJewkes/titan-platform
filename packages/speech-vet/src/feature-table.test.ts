@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { FEATURE_COUNT, FEATURE_NAMES, featureVector, parseFeatureCsv } from "./feature-table.js";
 
 vi.mock("node:fs", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:fs")>();
+  const actual = await importOriginal<typeof fs>();
   return { ...actual, readFileSync: vi.fn(actual.readFileSync) };
 });
 

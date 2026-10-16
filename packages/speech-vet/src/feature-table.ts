@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 
 /** Feature value as panphon writes it: `+` is 1, `-` is -1, `0` (not applicable) is 0. */
-export type FeatureValue = -1 | 0 | 1;
-export type FeatureVector = readonly FeatureValue[];
+type FeatureValue = -1 | 0 | 1;
+type FeatureVector = readonly FeatureValue[];
 
 const TABLE_URL = new URL("../data/panphon/ipa_all.csv", import.meta.url);
 
