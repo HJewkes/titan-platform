@@ -67,6 +67,29 @@ describe("sunset manifest check", () => {
   });
 });
 
+describe("sunset check directory defaults", () => {
+  const rule = { repo: "titan-platform", path: "old", fate: "kept", reason: "new files here default to kept" };
+
+  it("lets a new file under a dir with a default pass without an entry", () => {
+    expect(checkManifest({ ...manifestOf(del("old/a.ts")), defaults: [rule] }, listing("old/a.ts", "old/new.ts"))).toEqual([]);
+  });
+
+  it("still fails a new file under a dir that has no default", () => {
+    const sub = { ...rule, path: "old/sub" };
+
+    expect(checkManifest({ ...manifestOf(del("old/a.ts")), defaults: [sub] }, listing("old/a.ts", "old/new.ts", "old/sub/x.ts"))).toEqual(["titan-platform:old/new.ts: unmapped"]);
+  });
+
+  it("refuses a default without a reason or outside every root", () => {
+    const bad = [{ ...rule, reason: undefined }, { ...rule, path: "elsewhere" }];
+
+    expect(checkManifest({ ...manifestOf(del("old/a.ts")), defaults: bad }, listing("old/a.ts"))).toEqual([
+      "default old: kept needs a reason",
+      "titan-platform:elsewhere: default under no root",
+    ]);
+  });
+});
+
 describe("sunset check --agent-chat-drift", () => {
   const withMode = (box, mode, extra = []) => spawnSync(process.execPath, [SCRIPT, "check", "--agent-chat", box.dir, "--manifest", box.manifest, "--agent-chat-drift", mode, ...extra], { encoding: "utf8" });
   const exitM3 = (box) => {
