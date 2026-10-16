@@ -1,6 +1,7 @@
 import { Chain, SimpleCommand } from './shell/index.js';
 export { AliasTable, ExtractOptions, GitInvocation, OpToken, ParseError, ReadingLimitError, RedirectToken, SplitArgs, SubsToken, Token, VarRef, WordToken, Wrapping, extractCommands, parseGit, resolvePath, splitArgs, tokenize } from './shell/index.js';
 import { ActorClass, PolicyTable } from '@titan-design/authority';
+import { z } from 'zod';
 
 interface EventMeta {
     toolName: string;
@@ -322,4 +323,67 @@ declare const SETTINGS_ENTRY: {
     }];
 };
 
-export { AGENT_CANDIDATES, type ActorObservation, Chain, type ClassifiedAction, type ClassifyContext, type DecideFn, type DecisionLine, type ErrorClass, type ErrorLine, type Family, type FamilyName, GUARDED_PATHS, type GuardDecision, type GuardedAction, type GuardedList, type GuardedPath, type HookEvent, type HookPort, type HookResult, type MalformedEvent, type Matched, PREFERENCES, type PreferenceContext, type PreferenceHit, type PreferenceId, type ReadEvent, type ReadFs, SETTINGS_ENTRY, SPELLINGS, SimpleCommand, type SpellingId, type WriteEvent, checkPreferences, classify, decide, formatDecisionLine, formatErrorLine, handle, logPath, nodeContext, observeActor, parseHookEvent };
+/** A pending request lives this long; the owner approves inside it or the agent asks again. */
+declare const REQUEST_TTL_S = 600;
+/** The most requests pending at once; the oldest is evicted, so a looping agent cannot fill the disk. */
+declare const MAX_PENDING = 50;
+/** A spent nonce outlives its request by far; after this its ledger entry is pruned. */
+declare const SPENT_TTL_S = 86400;
+/** What the hook knows about the denied action when it asks the owner. */
+interface RequestFields {
+    digest: string;
+    session: string | null;
+    aud: string;
+    tool: string;
+    action: string;
+    rule: string | null;
+    cwd: string;
+    toolInput: unknown;
+}
+declare const RequestSchema: z.ZodObject<{
+    v: z.ZodLiteral<1>;
+    id: z.ZodString;
+    nonce: z.ZodString;
+    digest: z.ZodString;
+    session: z.ZodNullable<z.ZodString>;
+    aud: z.ZodString;
+    tool: z.ZodString;
+    action: z.ZodString;
+    rule: z.ZodNullable<z.ZodString>;
+    cwd: z.ZodString;
+    toolInput: z.ZodUnknown;
+    issuedAt: z.ZodNumber;
+    expiresAt: z.ZodNumber;
+}, z.core.$strip>;
+type ApprovalRequest = z.infer<typeof RequestSchema>;
+/** A pending request and the owner's approval for it, still unverified, if one was written. */
+interface Pending {
+    request: ApprovalRequest;
+    approval: string | null;
+}
+/**
+ * Pending requests, approval files and the spent-nonce ledger. `now` is unix seconds. The store trusts nothing it
+ * reads: an approval is opaque text the caller must verify, and a request file that fails its schema is ignored.
+ */
+interface ApprovalStore {
+    issue(fields: RequestFields, now: number): ApprovalRequest;
+    get(id: string, now: number): ApprovalRequest | null;
+    list(now: number): ApprovalRequest[];
+    /** The live requests for this exact action, each with its approval text if the owner has written one. */
+    find(digest: string, now: number): Pending[];
+    /** Writes the approval for a pending request once; a second write for the same id throws EEXIST. */
+    accept(id: string, approval: string, now: number): void;
+    /** Claims the nonce in the ledger, then removes the approval and request. False when it was already spent. */
+    spend(id: string, nonce: string, now: number): boolean;
+    isSpent(nonce: string): boolean;
+    prune(now: number): void;
+}
+/**
+ * The store directory comes from the passwd entry, never `$HOME` or `$XDG_STATE_HOME`: an agent can set those for a
+ * child it starts, and the hook must read the same store the owner's `approve` writes.
+ */
+declare function approvalsDir(passwdHome: string): string;
+declare function passwdHome(): string;
+declare function nodeApprovalStore(home: string): ApprovalStore;
+
+export { AGENT_CANDIDATES, type ActorObservation, type ApprovalRequest, type ApprovalStore, Chain, type ClassifiedAction, type ClassifyContext, type DecideFn, type DecisionLine, type ErrorClass, type ErrorLine, type Family, type FamilyName, GUARDED_PATHS, type GuardDecision, type GuardedAction, type GuardedList, type GuardedPath, type HookEvent, type HookPort, type HookResult, MAX_PENDING, type MalformedEvent, type Matched, PREFERENCES, type Pending, type PreferenceContext, type PreferenceHit, type PreferenceId, REQUEST_TTL_S, type ReadEvent, type ReadFs, type RequestFields, SETTINGS_ENTRY, SPELLINGS, SPENT_TTL_S, SimpleCommand, type SpellingId, type WriteEvent, approvalsDir, checkPreferences, classify, decide, formatDecisionLine, formatErrorLine, handle, logPath, nodeApprovalStore, nodeContext, observeActor, parseHookEvent, passwdHome };

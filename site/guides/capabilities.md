@@ -410,8 +410,8 @@ Key exports:
 - `log`: `formatDecisionLine`, `formatErrorLine`, `logPath`
 - `hook`: `handle`
 - `context`: `nodeContext`
-- `shell`: `ParseError`, `tokenize`
-- +48 more in the [reference page](/reference/tool-guard)
+- `approval-store`: `approvalsDir`, `nodeApprovalStore`
+- +58 more in the [reference page](/reference/tool-guard)
 
 ## Tier 1 — engines
 
@@ -743,7 +743,7 @@ Key exports:
 - `git-tree-source`: `gitTreeSource`
 - `@titan-design/code-parser`: `getLanguageFromPath`, `getSupportedLanguages`, `parseFile`, `shouldIncludeFile`
 - `extractors/dispatch`: `LanguageExtractor`
-- +427 more in the [reference page](/reference/code-graph)
+- +428 more in the [reference page](/reference/code-graph)
 
 <a id="cap-code-read"></a>
 

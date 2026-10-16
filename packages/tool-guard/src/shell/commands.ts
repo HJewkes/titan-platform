@@ -2,8 +2,7 @@ import { ParseError, SplitParseError, tokenize } from "./lexer.js";
 import { NestingLimitError } from "./nesting.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
-import { printedText } from "./printed.js";
-import { catOperands, stdinScript } from "./sub-output.js";
+import { nextShellStdin, nextStdin, xargsStdin } from "./piped-stdin.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
@@ -99,6 +98,8 @@ interface Walk {
   depth: number;
   /** Literal text piped into the command being emitted, as `echo 'git push' | bash` does. */
   stdin: string | null;
+  /** bash's and zsh's texts of a print piped straight in, where they differ from `stdin` (`printf 'echo \c; …' | bash`). */
+  shellStdin: string[];
   /** The operator before the command being emitted. */
   prev: string | null;
   chain: Chain;
@@ -132,6 +133,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
     home: options.home ?? null,
     depth: 0,
     stdin: null,
+    shellStdin: [],
     prev: null,
     chain: { start: null },
     negated: false,
@@ -176,7 +178,9 @@ function walk(tokens: Token[], w: Walk): void {
     if (token.type === "op") {
       noteValues(token, words, w);
       const cmd = emit(words, redirects, w, token.value);
-      w.stdin = groupStdin(w, token.value, words, redirects, cmd, nextStdin(token.value, cmd, words.length + redirects.length === 0, w.stdin));
+      const empty = words.length + redirects.length === 0;
+      w.shellStdin = nextShellStdin(token.value, cmd, empty, w.shellStdin);
+      w.stdin = groupStdin(w, token.value, words, redirects, cmd, nextStdin(token.value, cmd, empty, w.stdin));
       words = [];
       redirects = [];
       w.prev = token.value;
@@ -223,20 +227,6 @@ function walkSure(walkText: () => void): void {
   }
 }
 
-/** Text piped into the next command: printed by this one, passed on by `tee` or `cat`, or kept across a bare `(`. */
-function nextStdin(op: string, cmd: Unwrapped | null, empty: boolean, stdin: string | null): string | null {
-  if (op === "(" && empty) return stdin;
-  if (!cmd || (op !== "|" && op !== "|&")) return null;
-  return printedText(cmd.name, cmd.args) ?? (passesThrough(cmd) ? stdin : null);
-}
-
-function passesThrough(cmd: Unwrapped): boolean {
-  if (cmd.name === "tee") return true;
-  if (cmd.name !== "cat") return false;
-  const operands = catOperands(cmd.args.map((a) => a.value));
-  return operands.length === 0 || operands.includes("-");
-}
-
 function nestedLists(token: Token): Token[][] {
   if (token.type === "redirect") return [...(token.target?.subs ?? []), ...token.subs];
   return token.type === "op" ? [] : token.subs;
@@ -244,7 +234,7 @@ function nestedLists(token: Token): Token[][] {
 
 function child(w: Walk, wrapping: Wrapping[]): Walk {
   const scope = { dir: w.scope.dir, vars: childVars(w.scope.vars), wrapping };
-  return observed({ ...w, scope, stack: [], depth: w.depth + 1, stdin: null, prev: null, chain: { start: null }, negated: false, walked: null });
+  return observed({ ...w, scope, stack: [], depth: w.depth + 1, stdin: null, shellStdin: [], prev: null, chain: { start: null }, negated: false, walked: null });
 }
 
 function scope(op: string, w: Walk): void {
@@ -325,7 +315,8 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   w.negated ||= cmd.negated === true;
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
   w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links });
-  const script = inlineScript(cmd, redirects, stdin, w.unsure);
+  const piped = stdin === null ? [] : [stdin, ...(stdin === w.stdin ? w.shellStdin : [])];
+  const script = inlineScript(cmd, redirects, piped, w.unsure);
   if (script !== null) walkScript(script, w, wrapping);
   if (cmd.name !== "find") return;
   for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(folded(words, w)))) run(exec, [], child(w, [...wrapping, "find-exec"]), null);
@@ -345,12 +336,6 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[]): void {
 
 function folded(words: WordToken[], w: Walk): WordToken[] {
   return w.foldCase ? foldCommandWords(words) : words;
-}
-
-/** A stdin redirect replaces the pipe; a file or descriptor it names has unknown text. */
-function xargsStdin(redirects: RedirectToken[], piped: string | null): string | null {
-  const feeds = redirects.some((r) => (r.fd === null || r.fd === "0") && ["<", "<<", "<<-", "<<<", "<&"].includes(r.op));
-  return feeds ? stdinScript(redirects) : piped;
 }
 
 function literalEnv(cmd: Unwrapped): Record<string, string> {

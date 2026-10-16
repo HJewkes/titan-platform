@@ -86,7 +86,45 @@ declare function authorLinesByPath(entries: readonly ChurnEntry[], known: Readon
 /** Summarize one author tally; null when it holds no churn. */
 declare function summarizeOwnership(byAuthor: ReadonlyMap<string, number>, threshold?: number): OwnershipForFile | null;
 
-export { ChurnEntry, ChurnWindow, type ComputeOwnershipOptions, type FirstSeenOptions, HistoryLoad, type OwnershipForFile, type PathChurn, type ResolvedCommit, type TreeBlob, aggregateChurn, aggregateChurnWindows, authorLinesByPath, computeOwnership, listTreeBlobs, loadFileFirstSeen, loadFirstSeenResult, readBlobs, resolveCommit, revisionLineSource, summarizeOwnership };
+/** Task ids such as `TP-2474` or `CC-44`, read from commit subjects. */
+declare const DEFAULT_TASK_ID_PATTERN: RegExp;
+/** A commit's edit to one file, with its hunks' new-side lines already carried forward to HEAD. */
+interface FileEdit {
+    commit: string;
+    epoch: number;
+    taskIds: readonly string[];
+    /** Repo-relative path at HEAD (after later renames), rebased onto the caller's root. */
+    filePath: string;
+    /** Inclusive 1-based line ranges in HEAD coordinates. */
+    ranges: readonly [number, number][];
+}
+interface LoadFileEditsOptions {
+    repoRoot: string;
+    windowDays: number;
+    rev?: string;
+    untilEpoch?: number;
+    taskIdPattern?: RegExp;
+}
+/** Every in-window commit's per-file edits, newest first, with line ranges expressed against HEAD. */
+declare function loadFileEditsResult(options: LoadFileEditsOptions): HistoryLoad<FileEdit[]>;
+/** A symbol's HEAD line span, for attributing edits. */
+interface SymbolSpan {
+    id: string;
+    startLine: number;
+    endLine: number;
+}
+/** Distinct task ids and commits that edited one symbol. */
+interface SymbolAccretion {
+    taskIds: Set<string>;
+    commits: Set<string>;
+}
+/**
+ * Credit each edit to the innermost symbols its ranges overlap, so a method edit counts for the
+ * method and not again for its class. Keyed by symbol id; symbols nobody edited are absent.
+ */
+declare function accreteSymbols(edits: readonly FileEdit[], spansByFile: ReadonlyMap<string, readonly SymbolSpan[]>): Map<string, SymbolAccretion>;
+
+export { ChurnEntry, ChurnWindow, type ComputeOwnershipOptions, DEFAULT_TASK_ID_PATTERN, type FileEdit, type FirstSeenOptions, HistoryLoad, type OwnershipForFile, type PathChurn, type ResolvedCommit, type SymbolAccretion, type SymbolSpan, type TreeBlob, accreteSymbols, aggregateChurn, aggregateChurnWindows, authorLinesByPath, computeOwnership, listTreeBlobs, loadFileEditsResult, loadFileFirstSeen, loadFirstSeenResult, readBlobs, resolveCommit, revisionLineSource, summarizeOwnership };
 
 // ./dist/change-coupling.d.ts
 /**
