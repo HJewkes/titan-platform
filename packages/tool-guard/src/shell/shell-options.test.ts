@@ -7,6 +7,7 @@ import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
 import type { ClassifyContext } from "../types.js";
+import { zshOptionWord } from "./shell-options.js";
 
 const REPO = "/home/you/projects/app";
 const PUSH = "git push origin HEAD:main";
@@ -54,6 +55,42 @@ const PUSH_ROUTES = [
   ["/dev/stdin after -", `bash - /dev/stdin <<< ${TEXT}`],
   ["a script file after a bash cluster ending in o", "bash -eo pipefail ./x.sh"],
   ["a script file after zsh's --emulate", "zsh --emulate sh ./x.sh"],
+  ["a script file after zsh's digit option 0", "zsh -0 ./x.sh"],
+  ["a script file after zsh's digit option 1", "zsh -1 ./x.sh"],
+  ["a script file after zsh's trailing -", "zsh -x- ./x.sh"],
+  ["a script file after zsh's lone +", "zsh + ./x.sh"],
+  ["a script file zsh's +s takes back from -s", "zsh -s +s ./x.sh"],
+  ["a script file dash's +s takes back from -s", "dash -s +s ./x.sh"],
+  ["bash's +c", `bash +c ${TEXT}`],
+  ["zsh's +c", `zsh +c ${TEXT}`],
+  ["dash's +c", `dash +c ${TEXT}`],
+  ["sh's +c", `sh +c ${TEXT}`],
+  ["bash's +ic", `bash +ic ${TEXT}`],
+  ["bash's +co taking a name", `bash +co errexit ${TEXT}`],
+  ["bash's +c before --", `bash +c -- ${TEXT}`],
+  ["dash's +c after a lone +", `dash + -c ${TEXT}`],
+  ["zsh's +0c", `zsh +0c ${TEXT}`],
+  ["zsh's +c0", `zsh +c0 ${TEXT}`],
+  ["zsh's +c after --emulate", `zsh --emulate sh +c ${TEXT}`],
+  ["zsh's -c0", `zsh -c0 ${TEXT}`],
+  ["zsh's -0c", `zsh -0c ${TEXT}`],
+  ["zsh's -c1", `zsh -c1 ${TEXT}`],
+  ["zsh's -c9", `zsh -c9 ${TEXT}`],
+  ["zsh's -c- ending the options", `zsh -c- ${TEXT}`],
+  ["a versioned zsh's -c0", `zsh5 -c0 ${TEXT}`],
+  ["a restricted zsh's -c0", `rzsh -c0 ${TEXT}`],
+  ["zsh's -b once SH_OPTION_LETTERS keeps it a letter", `zsh -o shoptionletters -b -c ${TEXT}`],
+  ["a pipe into zsh -0", `echo ${TEXT} | zsh -0`],
+  ["bash's +s, which still reads stdin", `bash +s foo <<< ${TEXT}`],
+  ["dash's stdin after its -c string under -s", `dash -sc true <<< ${TEXT}`],
+  ["sh's stdin after its -c string under -s", `sh -s -c true <<< ${TEXT}`],
+  ["a pipe into dash after its -c string under -s", `echo ${TEXT} | dash -cs true`],
+  ["//dev/stdin as the script file", `bash //dev/stdin <<< ${TEXT}`],
+  ["/dev//stdin as the script file", `bash /dev//stdin <<< ${TEXT}`],
+  ["/dev/./stdin as the script file", `bash /dev/./stdin <<< ${TEXT}`],
+  ["/dev/../dev/stdin as the script file", `bash /dev/../dev/stdin <<< ${TEXT}`],
+  ["/proc/thread-self/fd/0 as the script file", `bash /proc/thread-self/fd/0 <<< ${TEXT}`],
+  ["a pipe into //dev/stdin as the script file", `echo ${TEXT} | bash //dev/stdin`],
 ] as const;
 
 describe("a shell's options are read as the shell reads them (TP-3221)", () => {
@@ -67,19 +104,44 @@ describe("a shell's options are read as the shell reads them (TP-3221)", () => {
     "zsh -O -c 'echo hi'",
     "bash -s foo <<< 'echo hi'",
     `bash -- foo <<< ${TEXT}`,
+    "bash +c 'echo hi'",
+    "zsh -c0 'echo hi'",
+    "dash -sc 'echo hi' <<< 'echo hi'",
   ])("allows %s", async (line) => {
     expect(await verdict(line)).toBe("pass");
   });
 });
 
-const has = (shell: string): boolean => spawnSync(shell, ["-c", "true"]).status === 0;
-const SHELLS_HERE = new Set(["bash", "zsh", "zsh5", "dash", "sh"].filter(has));
+const KNOWN_SHELLS = new Set(["bash", "zsh", "zsh5", "rzsh", "dash", "sh"]);
+describe("zsh's option lexer, which its startup and emulate share (TP-3221)", () => {
+  it.each([
+    ["-c0", false, { letters: "c0", optionName: null, takesNext: false, endsOptions: false }],
+    ["+0c", false, { letters: "0c", optionName: null, takesNext: false, endsOptions: false }],
+    ["-co", false, { letters: "c", optionName: null, takesNext: true, endsOptions: false }],
+    ["-xoerrexit", false, { letters: "x", optionName: "errexit", takesNext: false, endsOptions: false }],
+    ["-c-", false, { letters: "c-", optionName: null, takesNext: false, endsOptions: true }],
+    ["+", false, { letters: "", optionName: null, takesNext: false, endsOptions: true }],
+    ["--", false, { letters: "-", optionName: null, takesNext: false, endsOptions: true }],
+    ["-bc", false, { letters: "bc", optionName: null, takesNext: false, endsOptions: true }],
+    ["-bc", true, { letters: "bc", optionName: null, takesNext: false, endsOptions: false }],
+  ] as const)("reads %s (SH_OPTION_LETTERS %s)", (word, shLetters, read) => {
+    expect(zshOptionWord(word, shLetters)).toEqual(read);
+  });
 
-/** Runs `line` under bash in a scratch dir, with zsh reading no startup files, and reports whether it created `mk`. */
+  it.each(["A", "--emulate", "+-errexit"])("reads %s as no short-option word", (word) => {
+    expect(zshOptionWord(word, false)).toBeNull();
+  });
+});
+
+const has = (shell: string): boolean => spawnSync(shell, ["-c", "true"]).status === 0;
+const SHELLS_HERE = new Set([...KNOWN_SHELLS].filter(has));
+
+/** Runs `line` under bash in a scratch dir holding `x.sh`, with zsh reading no startup files, and reports whether it created `mk`. */
 function runs(line: string): boolean {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "shell-options-"));
   try {
     fs.writeFileSync(path.join(dir, "s.sh"), `${line}\n`);
+    fs.writeFileSync(path.join(dir, "x.sh"), "touch mk\n");
     spawnSync("bash", ["s.sh"], { cwd: dir, env: { ...process.env, ZDOTDIR: dir }, stdio: ["ignore", "ignore", "ignore"] });
     return fs.existsSync(path.join(dir, "mk"));
   } finally {
@@ -89,10 +151,10 @@ function runs(line: string): boolean {
 
 describe.skipIf(!SHELLS_HERE.has("bash"))("each shell runs the text behind its options (TP-3221)", () => {
   it.each(
-    PUSH_ROUTES.filter(([, line]) => !line.includes("x.sh") && !line.includes("--emulate=") && !line.startsWith("="))
+    PUSH_ROUTES.filter(([, line]) => !line.includes("--emulate=") && !line.startsWith("="))
       .map(([form, line]) => [form, line.replaceAll(TEXT, "'touch mk'").replace("/usr/bin/zsh", "zsh")] as const),
   )("runs the text behind %s", (_form, line) => {
-    const shell = line.split(" ")[0] ?? "";
+    const shell = line.split(" ").find((w) => KNOWN_SHELLS.has(w)) ?? "";
     if (!SHELLS_HERE.has(shell)) return;
     expect(runs(line)).toBe(true);
   });
