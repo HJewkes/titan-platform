@@ -70,7 +70,7 @@ interface TtsRequirements {
     sampleRate?: number;
 }
 
-type TtsErrorCode = "unavailable" | "unsupported" | "timeout" | "failed" | "misconfigured" | "unknown-kind";
+type TtsErrorCode = "unavailable" | "unsupported" | "timeout" | "failed" | "misconfigured" | "unknown-kind" | "unknown-words";
 /** A provider that selection passed over, and why. */
 interface SkippedProvider {
     id: string;
@@ -117,6 +117,20 @@ declare class TtsFailedError extends TtsError {
     constructor(providerId: string, message: string, options?: {
         cause?: unknown;
     });
+}
+/**
+ * Refused before the engine ran: the text has words with no phonemes, which would be silent at zero width.
+ * `words` lists each one with `index`, its 0-based position among the input tokens (or the G2P's tokens for text).
+ */
+declare class TtsUnknownWordsError extends TtsError {
+    readonly words: readonly {
+        word: string;
+        index: number;
+    }[];
+    constructor(providerId: string, words: readonly {
+        word: string;
+        index: number;
+    }[]);
 }
 
 /** `en` matches `en-US` in either direction; `en-GB` does not match `en-US`. */
@@ -182,7 +196,7 @@ interface CommandRequest {
     alphabet?: PhonemeAlphabet;
     speed?: number;
     language?: string;
-    /** In `json` mode, a fresh directory for this call. A `wav` in the answer is a path relative to it. */
+    /** In `json` mode, a fresh directory for this call. A `wav` in the answer is a bare filename in it. */
     outDir?: string;
     /** In `json` mode, a suggested file inside `outDir`. */
     out?: string;
@@ -446,7 +460,13 @@ interface KokoroProviderOptions {
     timeoutMs?: number;
     /** Hears about words Kokoro will not speak; they keep a zero-width timing. Defaults to a process warning. */
     onWarning?: (message: string) => void;
+    /**
+     * A word with no phonemes: `"warn"` (default) times it at zero width and calls `onWarning`; `"fail"` throws
+     * `TtsUnknownWordsError` listing every such word before the engine loads.
+     */
+    unknownWords?: UnknownWordsPolicy;
 }
+type UnknownWordsPolicy = "warn" | "fail";
 /**
  * Kokoro-82M in process, at fp32, with word timings from the model's own durations, matching Python's
  * `KPipeline.join_timestamps`. Text goes through the injected G2P; misaki token input is spoken verbatim.
@@ -477,4 +497,4 @@ interface ResolveSpeechRuntimeOptions {
 /** Loads the profile, finds the host's onnxruntime-node and runs `detectSpeechRuntime` on the real platform. */
 declare function resolveSpeechRuntime(opts?: ResolveSpeechRuntimeOptions): Promise<SpeechRuntime>;
 
-export { type Audio, type CalibrateOptions, type CalibrateTry, type Calibration, type CommandOutput, type CommandRequest, type CommandTtsOptions, DEFAULT_MAX_OUTPUT_BYTES, FAKE_TTS_CAPABILITIES, type FakeTtsCall, type FakeTtsOptions, type FakeTtsProvider, type HttpResponseMapping, type HttpTtsOptions, INHERITED_ENV, KOKORO_CAPABILITIES, type KokoroEngine, type KokoroEngineOptions, type KokoroG2p, type KokoroProviderOptions, PREFER_ENV, PROFILE_ENV, type PhonemeAlphabet, type ResolveSpeechRuntimeOptions, type ResolvedTtsConfig, SPEECH_CACHE_ENV, SPEECH_DEVICE_ENV, type SelectTtsOptions, type SkippedProvider, type SpeakingOptions, type SpeechComponent, type SpeechDevice, type SpeechEnv, type SpeechRuntime, SpeechRuntimeError, type SpeechRuntimeInput, type Synthesis, type SynthesizeOptions, type TokenTime, type TtsCapabilities, TtsConfigError, TtsError, type TtsErrorCode, TtsFailedError, type TtsInput, type TtsProfile, type TtsProvider, type TtsProviderConfig, type TtsProviderFactory, type TtsRegistry, type TtsRequirements, type TtsSelection, TtsTimeoutError, type TtsToken, TtsUnavailableError, TtsUnsupportedError, type TtsVoice, type WordTiming, assertSupported, calibrateSpeed, commandTts, createTtsRegistry, decodeWav, defaultTtsRegistry, detectSpeechRuntime, encodeWav, fakeTts, fillTemplate, httpTts, kokoroFactory, kokoroProvider, languageMatches, loadTtsProfile, missingCapabilities, parseCapabilities, parseTtsProfile, providerEnvName, requirementsOf, resolveSpeechRuntime, resolveTtsConfig, runtimeOptions, selectTts, speakingSeconds, speechDeviceEnvName };
+export { type Audio, type CalibrateOptions, type CalibrateTry, type Calibration, type CommandOutput, type CommandRequest, type CommandTtsOptions, DEFAULT_MAX_OUTPUT_BYTES, FAKE_TTS_CAPABILITIES, type FakeTtsCall, type FakeTtsOptions, type FakeTtsProvider, type HttpResponseMapping, type HttpTtsOptions, INHERITED_ENV, KOKORO_CAPABILITIES, type KokoroEngine, type KokoroEngineOptions, type KokoroG2p, type KokoroProviderOptions, PREFER_ENV, PROFILE_ENV, type PhonemeAlphabet, type ResolveSpeechRuntimeOptions, type ResolvedTtsConfig, SPEECH_CACHE_ENV, SPEECH_DEVICE_ENV, type SelectTtsOptions, type SkippedProvider, type SpeakingOptions, type SpeechComponent, type SpeechDevice, type SpeechEnv, type SpeechRuntime, SpeechRuntimeError, type SpeechRuntimeInput, type Synthesis, type SynthesizeOptions, type TokenTime, type TtsCapabilities, TtsConfigError, TtsError, type TtsErrorCode, TtsFailedError, type TtsInput, type TtsProfile, type TtsProvider, type TtsProviderConfig, type TtsProviderFactory, type TtsRegistry, type TtsRequirements, type TtsSelection, TtsTimeoutError, type TtsToken, TtsUnavailableError, TtsUnknownWordsError, TtsUnsupportedError, type TtsVoice, type WordTiming, assertSupported, calibrateSpeed, commandTts, createTtsRegistry, decodeWav, defaultTtsRegistry, detectSpeechRuntime, encodeWav, fakeTts, fillTemplate, httpTts, kokoroFactory, kokoroProvider, languageMatches, loadTtsProfile, missingCapabilities, parseCapabilities, parseTtsProfile, providerEnvName, requirementsOf, resolveSpeechRuntime, resolveTtsConfig, runtimeOptions, selectTts, speakingSeconds, speechDeviceEnvName };

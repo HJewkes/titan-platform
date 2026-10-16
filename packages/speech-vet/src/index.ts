@@ -124,3 +124,22 @@ export { metaphone, phoneticDistance } from "./metaphone.js";
 export { applyLexicon } from "./apply-lexicon.js";
 export { vet, type VetDeps, type VetPolicy, type VetReport, type VetResult, type VetTake } from "./vet.js";
 export { type Fault, type FaultKind } from "./vet-decide.js";
+export {
+  rewriteLine,
+  symbolRules,
+  SYMBOL_WORDS,
+  type CandidateSource,
+  type RewriteDeps,
+  type RewritePolicy,
+  type RewriteResult,
+} from "./rewrite.js";
+export { contentTerms, guardRewrite, type GuardOptions, type GuardRejection, type GuardRule } from "./rewrite-guard.js";
+export {
+  applyPins,
+  pinKey,
+  RewritePins,
+  RewritePinsSchema,
+  UnpinnedRewriteError,
+  type RewritePinsFile,
+  type RewritePinsOptions,
+} from "./rewrite-pins.js";

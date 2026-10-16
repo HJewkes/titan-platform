@@ -852,6 +852,25 @@ describe("wakePhase", () => {
     expect(agents.asked.map(({ verb }) => verb)).toEqual(["resume"]);
   });
 
+  it("reads the implementer as live and logs when the roster cannot be read while waiting for its head", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    fake.addPr({ headSha: H1 });
+    const agents = fakeAgents([row("impl-a")]);
+    const resume = agents.resume;
+    agents.resume = async (...args) => (await resume(...args), void (agents.rows[0]!.presence = "live"));
+    const roster = agents.roster;
+    let reads = 0;
+    agents.roster = async () => (reads >= 6 ? Promise.reject(new Error("broker down")) : roster());
+    fake.onGetPr = (pr) => void (agents.asked.length > 0 && (++reads === 6 && (agents.rows[0]!.presence = "exited"), reads === 12 && (pr.headSha = H2)));
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const { outcome } = await runPhase(agents, fake, async () => ({ lastEventAt: T0 + 1, fill: 1 }));
+
+    expect(outcome).toMatchObject({ kind: "woken" });
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("roster could not be read"));
+    log.mockRestore();
+  });
+
   /** A transcript written after every ask, so each wake counts as a turn at once. */
   const writtenAfterEveryAsk = async (): Promise<Warmth> => ({ lastEventAt: T0 + 24 * 60 * MINUTE, fill: 1 });
 

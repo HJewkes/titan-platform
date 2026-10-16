@@ -273,10 +273,10 @@ pending gate whose run already ended is cancelled as orphaned, and a gate whose 
 request moved head is superseded. That covers a seat-policy, merge-guard, MRG-AU or
 `shepherd-route` (`failed-rounds`, `fix-first-runaway`, `no-progress` or `conflict`)
 `approve-merge` gate, an `sh-sent-back` gate, a `ci-failed` gate and a `stuck-behind` gate. A
-superseded failed-rounds gate starts the new head's review rounds from zero, so the run does not
-ask the owner again before the new head has failed its own rounds. A superseded fix-first-runaway,
-no-progress or conflict gate is only cancelled, never answered: the run reviews the new head and
-asks the owner again there, with the gate naming the carried reason and the new review. The one
+superseded `shepherd-route` gate is only cancelled, never answered: the run reviews the new head and
+asks the owner again there, with the gate naming the carried reason and the new review (TP-3083). A
+superseded failed-rounds gate also starts the new head's review rounds from zero, and a fresh
+`MERGE` at the new head does not clear it. For a fix-first-runaway, no-progress or conflict gate the one
 exception (owner decision 303) is a head where the dispatched reviewer wrote a fresh `MERGE` at
 exactly that head and an `auto` policy allows it under MRG-AU-RV: the run merges with no gate and
 records the rule `shepherd-route/<escalation>/cleared-by-merge` naming both heads. A `MERGE`
@@ -819,11 +819,12 @@ run ab0f9228-…: released
 ```
 
 A reason has the shape `<class>: <detail>; <task id>`. Its class is the text before the
-first colon, matched exactly, and must be one of the seven break-glass classes:
-`serve-down`, `stalled`, `no-reviewer`, `run-failed`, `visual-gate2`, `g10-review` or
-`g10-adversary`. The first four are factory defects, so their reason must also cite the
+first colon, matched exactly, and must be one of the break-glass classes:
+`serve-down`, `stalled`, `no-reviewer`, `run-failed`, `visual-gate2`, `g10-review`,
+`g10-adversary` or `owner-review`. The first four are factory defects, so their reason must also cite the
 task for the defect, an ID like `TP-123` or `CC-45`. Only the ID's syntax is checked, not
-whether the task is open. The three gate classes need no task ID. A seat path or an interim
+whether the task is open. The gate classes need no task ID. An `owner-review:` hold records
+that the owner assigned the pull request's review to a person, and only a release lifts it. A seat path or an interim
 procedure is not a hold reason. Any other reason is refused with exit 65 before anything is
 read or written: nothing is held, so the pull request stays unheld and Shepherd may still
 merge it. The refusal message lists the classes and the task-ID rule
@@ -856,6 +857,9 @@ push, or a rerun by hand that turns the head green.
 A hold whose reason starts `g10-review:` and names no `--reviewer` releases itself in the
 `sh-g10-release` step when an opus reviewer Shepherd spawned says `MERGE` and the required
 checks are green at that head. A hold that names a reviewer waits for that reviewer's `MERGE`.
+A review the owner assigned to a person is recorded as an `owner-review:` hold, or as a hold that
+names that person with `--reviewer`; neither releases itself. A `g10-review` hold with no hold
+event on record, or whose history cannot be read, may be one of them, so it stays held too.
 When Shepherd's own update-branch then moves the head by a clean merge-up of main, that
 `MERGE` stands at the new head: the step releases the hold there once its checks are green,
 with no fresh review and no seat release. A head reached by any other move, or carried by the

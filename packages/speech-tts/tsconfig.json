@@ -2,7 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src"
+    "rewriteRelativeImportExtensions": true,
+    "paths": { "@titan-design/speech-tts": ["./src/index.ts"] }
   },
-  "include": ["src"]
+  "include": ["src", "scripts"]
 }

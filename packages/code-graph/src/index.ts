@@ -93,6 +93,7 @@ export { importMarker, isMinifyLanguage, minifySource, originalLine } from "./an
 export type { HistoryMetricsOptions, LoadedHistory, TestCoverageOwnershipOptions } from "./history-metrics.js";
 export {
   computeTestCoverageOwnership,
+  DEFAULT_ACCRETION_WINDOWS,
   DEFAULT_CHURN_WINDOWS,
   loadHistoryMetrics,
   resolveChurnWindows,

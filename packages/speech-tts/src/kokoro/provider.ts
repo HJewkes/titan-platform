@@ -1,7 +1,7 @@
 import { assertSupported } from "../capabilities.js";
 import type { TtsProviderConfig } from "../config.js";
 import { withDeadline } from "../deadline.js";
-import { TtsError, TtsFailedError, TtsUnavailableError } from "../errors.js";
+import { TtsError, TtsFailedError, TtsUnavailableError, TtsUnknownWordsError } from "../errors.js";
 import type { TtsProviderFactory } from "../factories.js";
 import { errorMessage, isStringArray } from "../guards.js";
 import type { SpeechRuntime } from "../runtime.js";
@@ -47,7 +47,15 @@ export interface KokoroProviderOptions {
   timeoutMs?: number;
   /** Hears about words Kokoro will not speak; they keep a zero-width timing. Defaults to a process warning. */
   onWarning?: (message: string) => void;
+  /**
+   * A word with no phonemes: `"warn"` (default) times it at zero width and calls `onWarning`; `"fail"` throws
+   * `TtsUnknownWordsError` listing every such word before the engine loads.
+   */
+  unknownWords?: UnknownWordsPolicy;
 }
+
+type UnknownWordsPolicy = "warn" | "fail";
+const UNKNOWN_WORDS_POLICIES: readonly UnknownWordsPolicy[] = ["warn", "fail"];
 
 interface KokoroToken {
   readonly index: number;
@@ -69,6 +77,12 @@ function phonemesOf(token: TtsToken, g2p: KokoroG2p): string {
 function kokoroTokens(input: TtsInput, g2p: KokoroG2p): KokoroToken[] {
   const tokens = "tokens" in input ? input.tokens.map((t) => ({ ...t, phonemes: phonemesOf(t, g2p) })) : g2p.tokens(input.text);
   return tokens.map((t, index) => ({ index, text: t.text, phonemes: t.phonemes, whitespace: t.whitespace ?? "" }));
+}
+
+// Checked here rather than in the G2P: token input brings its own phonemes, so only the provider sees them all.
+function assertKnownWords(id: string, tokens: readonly KokoroToken[]): void {
+  const unknown = tokens.filter((t) => IS_WORD.test(t.text) && !t.phonemes).map((t) => ({ word: t.text, index: t.index }));
+  if (unknown.length > 0) throw new TtsUnknownWordsError(id, unknown);
 }
 
 /** Loads the engine on first use. A failed load is forgotten, so the next call retries instead of replaying it. */
@@ -173,6 +187,7 @@ export function kokoroProvider(opts: KokoroProviderOptions): TtsProvider {
   const synthesize = async (input: TtsInput, voice: string, options: SynthesizeOptions = {}): Promise<Synthesis> => {
     assertSupported(id, capabilities, input, voice, options);
     const tokens = kokoroTokens(input, opts.g2p);
+    if (opts.unknownWords === "fail") assertKnownWords(id, tokens);
     const chunks = chunkTokens(tokens);
     const spoken = await withDeadline(id, options.timeoutMs ?? opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, options.signal, async (signal) => {
       if (chunks.length === 0) return [];
@@ -206,7 +221,13 @@ function parseVoices(id: string, raw: unknown): readonly string[] | undefined {
   return unknown.length === 0 ? raw : fail(id, `voices ${unknown.join(", ")} are not Kokoro US voices (${KOKORO_US_VOICES.join(", ")})`);
 }
 
-/** Profile fields: `voices`, `device` (default cpu), `cacheDir`, `dtype` (fp32 only) and `timeoutMs`. */
+function parseUnknownWords(id: string, raw: unknown): { unknownWords?: UnknownWordsPolicy } {
+  if (raw === undefined) return {};
+  const policy = UNKNOWN_WORDS_POLICIES.find((p) => p === raw);
+  return policy ? { unknownWords: policy } : fail(id, `unknownWords must be "warn" or "fail"`);
+}
+
+/** Profile fields: `voices`, `device` (default cpu), `cacheDir`, `dtype` (fp32 only), `timeoutMs` and `unknownWords`. */
 function parseKokoroConfig(id: string, config: TtsProviderConfig): Omit<KokoroProviderOptions, "g2p" | "loadEngine" | "onWarning"> {
   if (config.dtype !== undefined && config.dtype !== "fp32") {
     return fail(id, `dtype must be "fp32"; other precisions change Kokoro's durations and so its word timings (E7)`);
@@ -216,7 +237,8 @@ function parseKokoroConfig(id: string, config: TtsProviderConfig): Omit<KokoroPr
   const voices = parseVoices(id, config.voices);
   const device = optionalString(id, config, "device");
   const cacheDir = optionalString(id, config, "cacheDir");
-  return { id, ...(voices ? { voices } : {}), ...(device ? { device } : {}), ...(cacheDir ? { cacheDir } : {}), ...(timeoutMs ? { timeoutMs } : {}) };
+  const optional = { ...(voices ? { voices } : {}), ...(device ? { device } : {}), ...(cacheDir ? { cacheDir } : {}), ...(timeoutMs ? { timeoutMs } : {}) };
+  return { id, ...optional, ...parseUnknownWords(id, config.unknownWords) };
 }
 
 /** Register as `registry.register("kokoro", kokoroFactory({ g2p }))`; profile entries of kind `kokoro` then build it. */

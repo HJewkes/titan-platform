@@ -53,6 +53,7 @@ Errors are typed, and `code` is the field to branch on:
 | `TtsUnsupportedError` | `unsupported` | The call or the selection needs a capability that is not declared. `missing` lists each gap. |
 | `TtsTimeoutError` | `timeout` | No audio before the deadline. A command's process group is killed. |
 | `TtsFailedError` | `failed` | The engine answered with an error or with output that breaks the contract, including a refused redirect or output past `maxOutputBytes`. |
+| `TtsUnknownWordsError` | `unknown-words` | A Kokoro provider with `unknownWords: "fail"` was given words with no phonemes. `words` lists each one with its token `index`. The engine never ran. |
 | `TtsConfigError` | `misconfigured` | Selection reached a provider whose config is wrong, and the profile does not set `tts.fallback`. `skipped` lists every provider passed over. |
 | `TtsConfigError` | `unknown-kind` | Selection reached a provider whose `kind` has no registered factory. The message names the kind and the registered kinds. `tts.fallback` does not apply. |
 
@@ -269,8 +270,9 @@ The answer depends on `output`:
 - **`stdout-wav`**: stdout is RIFF/WAVE bytes, PCM16 or float32, at any sample rate (the
   header is read). A streamed WAV with unpatched sizes is accepted.
 - **`json`** (the default): stdout is one JSON object with the audio as `"wav": "<path>"` or
-  as `"audioBase64"`. A `wav` path is **relative to `outDir`**, such as `"out.wav"`. An absolute
-  path, a `..` escape, or a symlink that resolves outside `outDir` fails. The answer may add
+  as `"audioBase64"`. A `wav` must be a **bare filename in `outDir`**, such as `"out.wav"`. A
+  path with a separator is refused, so is an absolute path, and so is a symlink that resolves
+  outside `outDir`. The answer may add
   `"durationS"`, `"words": [{ "word", "start", "end" }]` in seconds, and `"phonemes": ["..."]`.
 
 Exit 0 means success. Exit 69 (EX_UNAVAILABLE), 127 or 255 (ssh could not connect) means
@@ -319,7 +321,9 @@ These defaults assume the profile is trusted, but the engine and the network are
   its `outDir`, after symlinks are resolved. The read uses one descriptor: it is opened without
   following a final symlink, its type and size come from fstat on that descriptor, and the
   read is bounded by that size. A file swapped for a link after the checks, a FIFO, or a file
-  that grows mid-read is refused.
+  that grows mid-read is refused, and so is a hard-linked file (more than one link). If
+  removing the scratch directory fails, the failure is logged as a `SpeechTtsWarning` and does
+  not replace the result or the error.
 - **Secrets stay out of errors.** stderr and HTTP error bodies are redacted first, then
   trimmed to about 2 KB. The redaction covers `${env:...}` values, `secrets` and header values.
 - **Misconfiguration fails closed.** A secret that resolves to nothing or a malformed entry
@@ -385,7 +389,12 @@ const { audio, words } = await tts.synthesize({ text: "Hello there." }, "af_hear
   chunks before them.
 - **Unknown words.** A word Kokoro cannot phonemize is not spoken. It still gets a
   `WordTiming` of zero width at the end of the last spoken word, and a `KokoroWarning` is
-  emitted (or `onWarning` is called) naming it.
+  emitted (or `onWarning` is called) naming it. Kokoro also skips an extra id after such a
+  word, as Python does, so the words after it are timed late. Where that matters, such as
+  narration for video, set `unknownWords: "fail"` (option or profile field; the default is
+  `"warn"`): the call then rejects with `TtsUnknownWordsError`, listing every word with no
+  phonemes and its token index, before the model loads. Give those words phonemes, or
+  respell them, and call again.
 - **Failures.** If the model's output breaks the contract, the call rejects with
   `TtsFailedError`. That covers phonemes the tokenizer drops and frames that do not add up to
   the audio length.
@@ -408,6 +417,32 @@ It asserts exact rounded durations, word boundaries within 1 ms of Python, and f
 600 equal to the waveform length. It logs load time, inference time and the real-time factor.
 
 `speakingSeconds` and `calibrateSpeed` help tune `speed` to a target words-per-minute.
+
+## Speech smoke (`smoke:speech`)
+
+An unpublished script in `scripts/` that runs Kokoro, Whisper `base.en` and wav2vec2 on one
+constructed sentence and prints a JSON report per machine. It imports the built package, so
+build first:
+
+```sh
+pnpm build
+pnpm --filter @titan-design/speech-tts smoke:speech --suite all --device cpu --out report.json
+```
+
+- `--suite` takes `all` (the default when bare) or a list of `tts,stt,phones`; without it only
+  `tts` runs. Kokoro writes a WAV (`--wav`, else a temp file); `stt` and `phones` read that file
+  back. Without `tts` in the suite, `--wav` must name an existing file.
+- `--device` and `--profile` go through `resolveSpeechRuntime`: `--device` beats every
+  `TITAN_SPEECH_DEVICE*` variable, and the profile's `runtime` section and `TITAN_SPEECH_CACHE`
+  apply as they do in the packages. An unknown or unavailable device exits 2 before any model
+  loads.
+- Each stage reports load seconds (cold call minus warm call), the warm call's wall seconds,
+  audio seconds, the real-time factor and max RSS. Here RTF is audio seconds / wall seconds,
+  so above 1 is faster than real time; the Kokoro smoke test above logs the inverse.
+- The report is checked against the zod schema in `scripts/smoke-report.ts` before it is
+  written. Exit codes: 0 all stages passed, 1 a stage failed, 2 bad usage or device, 3 crash.
+
+The first run downloads about 1.9 GB of weights into the cache.
 
 ## Testing without an engine
 

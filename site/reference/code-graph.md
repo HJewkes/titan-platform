@@ -774,6 +774,20 @@ plus `churnWindowDays` (the primary, default 30); `churnWindows` replaces the de
 turns all of it off. Outside git, or without a git binary, the index simply has no history
 metrics.
 
+Each index also writes function-level accretion on symbol nodes: `symbol_task_ids_{w}`, the
+distinct task ids (`\b[A-Z][A-Z0-9]*-\d+\b` in commit subjects, or `taskIdPattern`) whose
+commits edited the function, and `symbol_edit_commits_{w}`, for each of `accretionWindows`
+(default `DEFAULT_ACCRETION_WINDOWS`, `[7]`; `[]` turns it off). One
+`git log -p -U0 -M -C` over the widest window supplies the hunks. Each hunk's lines are carried
+forward through every later commit's hunks on the same file, following renames, so an edit
+made before lines were inserted above the function still lands on it at HEAD. An edit credits
+the innermost symbol it overlaps, so a method edit does not count again for its class. A
+threshold such as "3+ ids in 7 days" is a finding policy, not part of the metric. The patch
+log has a 256 MiB buffer; overflow lands in `warnings` like the churn log's.
+The carry assumes linear history: `--no-merges` reads commits in date order, so on a repo that
+merges side branches an edit can be carried through mainline hunks that are not its ancestors
+and land on the wrong lines. Squash- or rebase-merged repos are exact.
+
 When git is present but its log overflowed or failed, the index has no (or partial) history
 metrics and `IndexResult.warnings` says why. The field is absent when history loaded, and
 outside git. `buildIndexerMetrics` still returns only the metrics; `assembleIndexerMetrics`

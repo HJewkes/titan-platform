@@ -220,7 +220,14 @@ describe("commandTts hardening", () => {
     rmSync(join(dirname(String(readJson(echo).outDir)), "outside.wav"), { force: true });
 
     expect(error).toBeInstanceOf(TtsFailedError);
-    expect(String(error)).toContain('wav "../outside.wav" escapes outDir');
+    expect(String(error)).toContain('wav "../outside.wav" must be a bare filename');
+  });
+
+  // Mutation caught: a nested path is accepted, so a directory swapped in for the subdirectory can reach outside outDir.
+  it("refuses a wav path that has a directory part, even inside outDir", async () => {
+    const tts = provider(stub("--mode", "json-subdir"), { output: "json" });
+
+    await expect(tts.synthesize({ text: "hi" }, "narrator")).rejects.toThrow('wav "sub/out.wav" must be a bare filename');
   });
 
   // Mutation caught: the path is checked before symlinks are resolved, so a link inside outDir reads any file.

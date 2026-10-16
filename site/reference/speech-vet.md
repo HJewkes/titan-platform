@@ -122,11 +122,30 @@ const result = await vet("The show is [live](=verb) tonight.", { tts, voice: "af
 // "retakes-exhausted" ({ faults }) and "stopped" ({ findings }, with zero synth calls).
 ```
 
+A `needs-rewrite` result on a text voice goes to the rewriter. The rule tier is asked first, then
+an injected LLM `CandidateSource`; every candidate passes `guardRewrite` before it is vetted:
+
+```ts
+import { RewritePins, rewriteLine, symbolRules } from "@titan-design/speech-vet";
+
+const pins = await RewritePins.load("rewrites.json");
+const result = await rewriteLine(
+  "then Quellan syncs src/flomber_util.ts.",
+  { span: "syncs", reason: "reading" },
+  { vet: { tts, voice: "af_heart", stt }, pins, sources: [symbolRules(), llmSource] },
+);
+// { status: "rewritten", line: "then Quellan syncs src slash flomber underscore util dot ts.",
+//   source: "rules:symbols", ... }; the next run returns { status: "pinned" } with no source asked.
+await pins.save("rewrites.json");
+```
+
 ## What it deliberately does not do
 
 `vet()` does not normalize: the caller passes normalized text (owner decision D-T11-1, working
 default). It has no override search: a persistent word fault returns `needs-override` with
-evidence (D-T11-2). It does not rewrite text, and it computes no word timings, so a caller
+evidence (D-T11-2). `vet()` itself does not rewrite; `rewriteLine` does, and only through
+pins (a reviewed rewrite is never rewritten again). The package makes no model call: an LLM
+rewriter is an injected `CandidateSource`. `vet()` computes no word timings, so a caller
 that wants them calls speech-stt's `alignWords` on the kept take's audio. When the audio
 contradicts the G2P reading of an undeclared heteronym it only warns (D-T11-3, behind the
 internal constant `ESCALATE_UNDECLARED_HETERONYMS`). When every take keeps a stochastic fault

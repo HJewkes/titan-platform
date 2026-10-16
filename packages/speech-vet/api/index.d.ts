@@ -46,7 +46,10 @@ interface ReadingFinding {
 }
 /** The name of the first reading of `word` whose pattern matches the phonemes, or `unknown`. */
 declare function readingOf(word: string, phonemes: string | null, table?: HeteronymTable): string;
-/** One finding per heteronym occurrence among the G2P tokens of `g2pText(spoken)`: its reading, its declaration, and its status. */
+/**
+ * One finding per heteronym occurrence among the G2P tokens of `g2pText(spoken)`: its reading, its declaration, and its status.
+ * A `[w](=reading)` declaration that no token matches is a `fail` finding with `phonemes: null`, never dropped.
+ */
 declare function checkReadings(spoken: string, tokens: readonly PhonemeToken[], table?: HeteronymTable): ReadingFinding[];
 /** Token text and the phonemes G2P chose for it, as the voice received them. */
 declare function tokenDump(tokens: readonly PhonemeToken[]): PhonemeToken[];
@@ -89,7 +92,8 @@ type Lexicon = z.infer<typeof LexiconSchema>;
 type LexiconEntry = z.infer<typeof LexiconEntrySchema>;
 /**
  * Parses a `lexicon.v1` document. Also upgrades the two shapes that predate it: a flat `{ term: respelling }` map,
- * whose `_comment` key is dropped, and an unversioned `{ entries }` list. Throws a `ZodError` on anything else.
+ * whose `_comment` key is dropped, and an unversioned `{ entries }` list. Throws a `ZodError` on anything else, and an
+ * `Error` naming both terms when two terms differ only in case, since terms match case-insensitively and one would be lost.
  */
 declare function loadLexicon(json: unknown): Lexicon;
 /** The `{ term: respelling }` map of the entries that carry a respelling. */
@@ -658,4 +662,121 @@ type VetResult = (Decision & {
 /** Runs the vet cycle over `spoken`, a normalized line with optional `[w](=reading)` and `[w](/phonemes/)` markup. */
 declare function vet(spoken: string, deps: VetDeps, policy?: VetPolicy): Promise<VetResult>;
 
-export { type BestTailTakeOptions, DEFAULT_NORMALIZE_STEPS, DEFAULT_PHONE_VOICE, DEFAULT_RETRIES, type Defect, type DefectCause, type DefectKind, type DefectOptions, ESPEAK_TIMEOUT_MS, type EspeakCliOptions, type EspeakRunner, type Fault, type FaultKind, HALLUCINATION_MIN_PHONES, type Hallucination, type HallucinationOptions, type HeardReading, type HeardReadingOptions, type HeardStatus, type HeteronymTable, HeteronymTableSchema, type InitialismOptions, KEEP_TAKE_MARGIN, type Lexicon, type LexiconEntry, LexiconEntrySchema, LexiconSchema, MIN_PHONES_FOR_VERDICT, MIN_SPAN_RATIO_FOR_VERDICT, MIN_TARGET_WORD_LENGTH, type MisakiToIpa, NUMBER_STEPS, type NormalizeStep, type PhoneG2p, type PhoneG2pOptions, type PhoneRecognizer, type PhoneSource, type PhonemeToken, RATE_UNITS, type RawTake, type ReadingFinding, type ReadingStatus, type Respeller, SHORT_WORD_MAX_PHONES, SHOUTED_TWO_LETTER_WORDS, SPELLED_INITIALISMS, type SynthesizeVerifiedOptions, TAIL_STRAY_MIN_PHONES, type TailArtifact, type TailArtifactOptions, type TailCandidate, type TailFix, type TakeScore, VOWELLESS_INTERJECTIONS, type VerifiedTake, type VetDeps, type VetPolicy, type VetReport, type VetResult, type VetTake, WEAK_FORMS, WORSE_MARGIN, type WordDistance, type WordDistanceOptions, type WordToken, type WordVerdict, type WordVerdictOptions, XTTS_FAULT_THRESHOLD, XTTS_FAULT_THRESHOLD_SHORT, XTTS_FAULT_THRESHOLD_UNUSUAL, admissiblePhones, ageStep, applyLexicon, bestTailTake, cardinalStep, checkHeardReadings, checkReadings, chunkWordVerdicts, cleanIpa, confirmDefects, currencyStep, decimalStep, defectOptionsFor, detectDefects, detectHallucinations, detectTailArtifact, englishHeteronyms, espeakCliG2p, espeakVersion, expandReading, expectedPhones, g2pSentence, g2pText, generateCandidates, initialismStep, isInitialism, isUnusualWord, keepTake, loadLexicon, metaphone, misakiIpaG2p, normalize, numberToOrdinal, numberToWords, ordinalStep, phoneMatchDistance, phonemeDistance, phoneticDistance, plainText, rateStep, readingIpa, readingOf, recognizePhones, regressions, respeller, respellingsOf, spellDigits, spellInitialisms, synthesizeVerified, timeStep, tokenDump, tokenizeWords, vet, whitespaceStep, wordDistances };
+interface GuardOptions {
+    /** Run on both sides before numbers, terms and length are compared. */
+    steps?: readonly NormalizeStep[];
+    /** Terms (a lexicon's, say) that must survive whenever the source contains them. */
+    protectedTerms?: readonly string[];
+    maxDroppedTerms?: number;
+    /** Allowed change in word count, as a fraction of the source's words. */
+    lengthTolerance?: number;
+    /** The least change in word count always allowed, so a short sentence can still be rephrased. */
+    minLengthSlack?: number;
+}
+type GuardRule = "empty" | "number" | "entity" | "markup" | "terms" | "length";
+interface GuardRejection {
+    rule: GuardRule;
+    detail: string;
+}
+/** Every reason `candidate` may not replace `source`; empty when it may. `span` is the flagged word, whose own markup may go. */
+declare function guardRewrite(source: string, candidate: string, span: string, opts?: GuardOptions): GuardRejection[];
+/** Lower-cased, stemmed content words, so "the reader" and "reads it" share a term. */
+declare function contentTerms(text: string): Set<string>;
+
+/** The `rewrites.json` file: accepted rewrites keyed by {@link pinKey} of the sentence they replace. */
+declare const RewritePinsSchema: z.ZodObject<{
+    version: z.ZodLiteral<1>;
+    pins: z.ZodRecord<z.ZodString, z.ZodObject<{
+        source: z.ZodString;
+        rewrite: z.ZodString;
+        rewriter: z.ZodString;
+        createdAt: z.ZodString;
+    }, z.core.$strip>>;
+}, z.core.$strip>;
+type RewritePinsFile = z.infer<typeof RewritePinsSchema>;
+interface RewritePinsOptions {
+    now?: () => Date;
+}
+/**
+ * Key of a pin. It covers the sentence only, so swapping the rewriter keeps reviewed pins; the rewriter id
+ * is stored in the entry instead (D-T13-4, pending the owner's answer).
+ */
+declare function pinKey(sentence: string): string;
+declare class RewritePins {
+    private readonly pins;
+    private readonly now;
+    constructor(file?: RewritePinsFile, options?: RewritePinsOptions);
+    static fromJson(json: unknown, options?: RewritePinsOptions): RewritePins;
+    /** A missing file is an empty store; a malformed or wrong-version file throws rather than losing pins. */
+    static load(path: string, options?: RewritePinsOptions): Promise<RewritePins>;
+    toJson(): RewritePinsFile;
+    /** Writes beside the target and renames, so a crash never leaves a half-written pin file. */
+    save(path: string): Promise<void>;
+    get(sentence: string): string | undefined;
+    put(sentence: string, rewrite: string, rewriterId: string): void;
+    isPinnedRewrite(text: string): boolean;
+    /** Removes pins whose source sentence is not in `inUse`; returns how many went. */
+    prune(inUse: Set<string>): number;
+}
+declare class UnpinnedRewriteError extends Error {
+    readonly sentences: string[];
+    constructor(sentences: string[]);
+}
+/** Substitutes every pinned sentence; throws if a sentence holding a flagged span has no pin and is not a pinned rewrite. */
+declare function applyPins(line: string, pins: RewritePins, flaggedSpans?: readonly string[]): string;
+
+interface CandidateSource {
+    id: string;
+    /** Up to `k` replacements for `sentence`; `reason` says why it needs one (a vet `needs-rewrite` reason). */
+    candidates(sentence: string, reason: string, k: number): Promise<string[]>;
+}
+declare const SYMBOL_WORDS: readonly (readonly [string, string])[];
+/** The rule tier: spells each table key inside a word-bearing token, outside markup. Offers nothing when nothing changes. */
+declare function symbolRules(table?: readonly (readonly [string, string])[]): CandidateSource;
+interface RewriteDeps {
+    vet: VetDeps;
+    pins: RewritePins;
+    /** Asked in order, so put the rule tier before an LLM. */
+    sources: readonly CandidateSource[];
+}
+interface RewritePolicy {
+    vet?: VetPolicy;
+    /** Candidates asked of each source; default 3. */
+    k?: number;
+    /** Protected terms come from `deps.vet.lexicon`. */
+    guard?: Omit<GuardOptions, "protectedTerms">;
+}
+interface Tried {
+    source: string;
+    candidate: string;
+    rejections: GuardRejection[];
+    vetStatus?: string;
+}
+type RewriteResult = {
+    status: "pinned";
+    line: string;
+} | {
+    status: "refused";
+    reason: "pinned-span";
+    line: string;
+} | {
+    status: "rewritten";
+    line: string;
+    sentence: string;
+    rewrite: string;
+    source: string;
+    result: VetResult;
+} | {
+    status: "no-candidate";
+    tried: Tried[];
+};
+/**
+ * Rewrites the sentence holding `need.span`. A pin resolves it with no source asked; a sentence that is itself a
+ * pinned rewrite is refused. The caller saves `deps.pins` after a `rewritten` result.
+ */
+declare function rewriteLine(line: string, need: {
+    span: string;
+    reason: string;
+}, deps: RewriteDeps, policy?: RewritePolicy): Promise<RewriteResult>;
+
+export { type BestTailTakeOptions, type CandidateSource, DEFAULT_NORMALIZE_STEPS, DEFAULT_PHONE_VOICE, DEFAULT_RETRIES, type Defect, type DefectCause, type DefectKind, type DefectOptions, ESPEAK_TIMEOUT_MS, type EspeakCliOptions, type EspeakRunner, type Fault, type FaultKind, type GuardOptions, type GuardRejection, type GuardRule, HALLUCINATION_MIN_PHONES, type Hallucination, type HallucinationOptions, type HeardReading, type HeardReadingOptions, type HeardStatus, type HeteronymTable, HeteronymTableSchema, type InitialismOptions, KEEP_TAKE_MARGIN, type Lexicon, type LexiconEntry, LexiconEntrySchema, LexiconSchema, MIN_PHONES_FOR_VERDICT, MIN_SPAN_RATIO_FOR_VERDICT, MIN_TARGET_WORD_LENGTH, type MisakiToIpa, NUMBER_STEPS, type NormalizeStep, type PhoneG2p, type PhoneG2pOptions, type PhoneRecognizer, type PhoneSource, type PhonemeToken, RATE_UNITS, type RawTake, type ReadingFinding, type ReadingStatus, type Respeller, type RewriteDeps, RewritePins, type RewritePinsFile, type RewritePinsOptions, RewritePinsSchema, type RewritePolicy, type RewriteResult, SHORT_WORD_MAX_PHONES, SHOUTED_TWO_LETTER_WORDS, SPELLED_INITIALISMS, SYMBOL_WORDS, type SynthesizeVerifiedOptions, TAIL_STRAY_MIN_PHONES, type TailArtifact, type TailArtifactOptions, type TailCandidate, type TailFix, type TakeScore, UnpinnedRewriteError, VOWELLESS_INTERJECTIONS, type VerifiedTake, type VetDeps, type VetPolicy, type VetReport, type VetResult, type VetTake, WEAK_FORMS, WORSE_MARGIN, type WordDistance, type WordDistanceOptions, type WordToken, type WordVerdict, type WordVerdictOptions, XTTS_FAULT_THRESHOLD, XTTS_FAULT_THRESHOLD_SHORT, XTTS_FAULT_THRESHOLD_UNUSUAL, admissiblePhones, ageStep, applyLexicon, applyPins, bestTailTake, cardinalStep, checkHeardReadings, checkReadings, chunkWordVerdicts, cleanIpa, confirmDefects, contentTerms, currencyStep, decimalStep, defectOptionsFor, detectDefects, detectHallucinations, detectTailArtifact, englishHeteronyms, espeakCliG2p, espeakVersion, expandReading, expectedPhones, g2pSentence, g2pText, generateCandidates, guardRewrite, initialismStep, isInitialism, isUnusualWord, keepTake, loadLexicon, metaphone, misakiIpaG2p, normalize, numberToOrdinal, numberToWords, ordinalStep, phoneMatchDistance, phonemeDistance, phoneticDistance, pinKey, plainText, rateStep, readingIpa, readingOf, recognizePhones, regressions, respeller, respellingsOf, rewriteLine, spellDigits, spellInitialisms, symbolRules, synthesizeVerified, timeStep, tokenDump, tokenizeWords, vet, whitespaceStep, wordDistances };

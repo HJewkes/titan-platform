@@ -20,3 +20,5 @@ export type { DecideFn, HookPort, HookResult } from "./hook.js";
 export { nodeContext } from "./context.js";
 export type { ReadFs } from "./context.js";
 export { SETTINGS_ENTRY } from "./cli.js";
+export { MAX_PENDING, REQUEST_TTL_S, SPENT_TTL_S, approvalsDir, nodeApprovalStore, passwdHome } from "./approval-store.js";
+export type { ApprovalRequest, ApprovalStore, Pending, RequestFields } from "./approval-store.js";

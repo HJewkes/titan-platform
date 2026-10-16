@@ -54,6 +54,7 @@ export default defineConfig({
           pool: "threads",
           include: [
             "packages/*/src/**/*.test.{ts,tsx}",
+            "packages/*/scripts/**/*.test.ts",
             "products/*/src/**/*.test.{ts,tsx}",
             "apps/*/src/**/*.test.{ts,tsx}",
             "apps/*/scripts/**/*.test.ts",

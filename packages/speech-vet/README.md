@@ -139,7 +139,7 @@ not a redesign:
 - **D-T11-1, no normalizing.** `vet()` does not normalize. The caller passes normalized text,
   because a product's own steps run first and `normalize` could rewrite inside override markup.
 - **D-T11-2, no override search.** There is no respelling search. A persistent word fault
-  returns `needs-override` with evidence, and the caller or a rewriter decides what to try.
+  returns `needs-override` with evidence, and the caller or a [rewriter](#rewriter) decides what to try.
 - **D-T11-3, undeclared heteronyms warn.** When the audio contradicts the G2P reading of a
   heteronym the line did not declare, the take reports a warning, not a fault. Promoting it to
   a fault is gated behind the internal constant `ESCALATE_UNDECLARED_HETERONYMS` (`false`, not
@@ -155,6 +155,53 @@ comparator ranks only hallucination, tail and word faults and would otherwise ke
 carries an omission, a low-confidence segment or a reading fault. A take that repeats the
 previous one's phones and transcript ends the loop as `futile`: a deterministic voice gives the
 same audio again.
+
+## Rewriter
+
+`rewriteLine(line, need, deps, policy?)` acts on a `needs-rewrite` result: it replaces the one
+sentence holding `need.span` and leaves every other sentence byte-identical. It never changes
+`vet()`; each surviving candidate re-enters `vet()` and is kept only when that returns
+`accepted`. Calling it at all is the product's permission to rewrite prose.
+
+1. **Pin.** A sentence with a pin in `deps.pins` resolves to the pinned text: `pinned`, with no
+   candidate asked and no audio made.
+2. **Pinned span.** A sentence that is itself a pinned rewrite is never rewritten again:
+   `refused`, reason `pinned-span`.
+3. **Candidates.** Each `CandidateSource` in `deps.sources` is asked in order, rule tier
+   first, for up to `k` (3) candidates.
+4. **Guard.** `guardRewrite` drops a candidate that changes a number, drops a named entity or
+   a `deps.vet.lexicon` term, drops or alters the line's other markup, drops more than one
+   stemmed content term, or strays outside ±25 % of the word count (at least 3 words of
+   slack). A dropped candidate costs no take.
+5. **Re-vet.** The first guarded candidate whose line vets `accepted` is pinned and returned
+   as `rewritten`. With none, the result is `no-candidate`, listing each candidate tried with
+   its guard rejections or vet status.
+
+The caller saves the pins after a `rewritten` result: `RewritePins.load(path)` and
+`pins.save(path)` read and write `rewrites.json` (a missing file is an empty store; a bad
+file throws). `applyPins(line, pins, flaggedSpans)` substitutes every pinned sentence before
+synthesis and throws `UnpinnedRewriteError` when a flagged sentence has no pin, so an
+unreviewed line never reaches the voice.
+
+The package makes no model call. An LLM arrives as an injected `CandidateSource`.
+`symbolRules(table?)` is the rule tier: it spells `SYMBOL_WORDS` (`/` slash, `_` underscore,
+`.` dot, `@` at, `&` and, `%` percent, `#` number, `+` plus, `=` equals) inside word-bearing
+tokens, outside markup. A `.` is spelled only between two letters, so a sentence's final
+period and a decimal stay. Its candidates pass the same guard.
+
+Working defaults for open owner decisions:
+
+- **D-T13-1, pins are accepted rewrites.** "Pinned spans are never rewritten" is read as the
+  two rules above. Author-marked "keep" spans would be a separate guard rule.
+- **D-T13-3, length slack.** ±25 % of words, but always at least 3 words of change.
+- **D-T13-4, pin key.** The key is a hash of the source sentence only, so changing the
+  rewriter keeps reviewed pins. The rewriter id is stored in the entry.
+
+Limits: named entities are a heuristic (capitalized words not opening a sentence, all-caps
+tokens, tokens mixing letters and digits). **A name that opens a sentence is not detected as
+an entity**, and an all-lowercase coined term is protected only when the lexicon lists it. The
+content-term rule still catches one such name dropped alongside another term. A path with more
+than three symbols in a short sentence is refused for length.
 
 ## Conformance fixtures
 

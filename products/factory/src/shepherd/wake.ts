@@ -303,8 +303,11 @@ function exitedOn(deps: ShepherdDeps, wiring: WakeWiring): ((name: string, signa
   const agents = agentsFor(deps, wiring);
   if (agents === undefined) return undefined;
   return async (name) => {
-    const row = latestRow(name, await agents.roster().catch(() => []));
-    return row !== undefined && row.presence === "exited";
+    const rows = await agents.roster().catch((error: unknown): undefined => {
+      console.error(`shepherd: ${name} is read as live, the roster could not be read: ${error instanceof Error ? error.message : String(error)}`);
+      return undefined;
+    });
+    return rows !== undefined && latestRow(name, rows)?.presence === "exited";
   };
 }
 
