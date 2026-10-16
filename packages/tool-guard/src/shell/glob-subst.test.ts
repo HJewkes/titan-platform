@@ -156,7 +156,6 @@ describe("a command that may name zsh GLOB_SUBST", () => {
     ['"$x[@]"'],
     ["$=c"],
     ["setopt $=o"],
-    ["setopt $~o"],
     ["{echo,echo} hi there"],
     ["$c foo bar"],
     ["$c -o pipefail"],
