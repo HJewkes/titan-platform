@@ -1,9 +1,8 @@
 import type { AgentIdentity } from "@titan-design/authority";
-import { OVERLAY_SHAPES, type AcceptedVerdict as PanelAcceptedVerdict, type AdversaryHoldContext, type AwaitVerdictInput, type PanelPolicy, type ReviewTarget, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
+import { OVERLAY_SHAPES, type AcceptedVerdict as PanelAcceptedVerdict, type AwaitVerdictInput, type PanelPolicy, type ReviewTarget, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
 import type { OwnerOverride } from "./override-stats.js";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute } from "@titan-design/workflow";
-import { join } from "node:path";
 import { z } from "zod";
 import { codeRoute, step } from "../workflows/land.js";
 import type { StepClock } from "../workflows/deadline.js";
@@ -15,7 +14,7 @@ import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./account-limit.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { awaitExternalVerdict, isExternalVerdictInput, seatVetoed } from "./external-review.js";
 import { ownerIn } from "./seat-tie.js";
-import { removeReviewCheckout, reviewCheckoutRoot } from "./review-checkout.js";
+import { checkoutRootOf, dropCheckout, holdContextOf, thenDropCheckout } from "./review-member.js";
 import { Dispatched, Intended, ReviewCauseSchema } from "./review-schemas.js";
 import { MERGE_EVIDENCE_STEPS } from "./merge-evidence-gate.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
@@ -232,42 +231,8 @@ const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (dep
   return billed.choice.mode === "external" ? intent : { ...intent, ...(await plannedPanel(deps, wired, { ...input, reviewer: intent.reviewer, mode: intent.mode }, roster)) };
 };
 
-type MemberShape = (typeof OVERLAY_SHAPES)[number];
-
 /** An adversary member runs under `review.adversaryConfigDir` when one is set; every other reviewer under the intent's account. */
 const memberDispatch = (wired: Wired, shape: string | undefined): ReviewerDispatch | undefined => (shape === "adversary" ? wired.adversaryDispatch : undefined);
-
-/** The hold reason an adversary aims its probes at; an unreadable store gives the brief none. */
-function holdContextOf(deps: ShepherdDeps, runId: string | undefined): AdversaryHoldContext | undefined {
-  if (runId === undefined) return undefined;
-  try {
-    const holdReason = deps.store.get().byRun(runId)?.holdReason;
-    return holdReason ? { holdReason } : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** A panel member other than correctness checks out under its shape's dir, since each reviewer removes its own run dir when it is done. */
-const checkoutRootOf = (deps: ShepherdDeps, shape?: MemberShape): string => {
-  const root = deps.reviewCheckouts?.root ?? reviewCheckoutRoot();
-  return shape === undefined ? root : join(root, shape);
-};
-
-/** Removes the run's checkout dir; the reviewer is told to, but a reviewer that failed or timed out never does, and a verdict must not depend on it. */
-async function dropCheckout(deps: ShepherdDeps, target: ReviewTarget, shape?: MemberShape): Promise<void> {
-  await removeReviewCheckout(checkoutRootOf(deps, shape), target, deps.reviewCheckouts?.remove);
-}
-
-/**
- * Removes the checkout once the reviewer is finished with it: when `work` returns and `finished` says so. A throw (an abort at
- * shutdown, say) leaves it, because the reviewer outlives the step and a replay waits on it; the sweep is the backstop.
- */
-async function thenDropCheckout<T>(deps: ShepherdDeps, target: ReviewTarget, work: () => Promise<T>, finished: (result: T) => boolean, shape?: MemberShape): Promise<T> {
-  const result = await work();
-  if (finished(result)) await dropCheckout(deps, target, shape);
-  return result;
-}
 
 /**
  * The body of the sh-review step; `repeat` means a crash interrupted an earlier run. The brief is built from the target alone, so no registration text can
