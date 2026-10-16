@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { classify } from "../classify.js";
+import type { ClassifyContext } from "../types.js";
 import { extractCommands } from "./commands.js";
 
 const names = (src: string) => extractCommands(src).map((c) => c.name);
@@ -30,6 +32,20 @@ describe("a span that reads as a command stays a nested subshell", () => {
     expect(pushes(src)).toBeGreaterThan(0);
   });
 
+  it.each([
+    "((a=1;git push))",
+    "((git;push))",
+    "((git=1 push))",
+    "((${x} push))",
+    "(($x push))",
+    "((x && git push))",
+    "((x\ngit push))",
+    "((git -- push))",
+    "((/usr/bin/git push))",
+  ])("%j still reports a command", (src) => {
+    expect(extractCommands(src).length).toBeGreaterThan(0);
+  });
+
   it("keeps for ((;;)) as it was", () => {
     expect(names("for ((;;)); do git push; done")).toContain("git");
   });
@@ -58,5 +74,15 @@ describe("a probe that bash reads as arithmetic or as a refused line hides nothi
       seen = "refused";
     }
     expect(seen === "refused" || !seen.includes("git")).toBe(true);
+  });
+});
+
+describe("an arithmetic-looking span that main denies is still denied", () => {
+  const REPO = "/home/you/projects/app";
+  const context: ClassifyContext = { home: "/home/you", readLink: () => null, readHead: (dir) => (dir === REPO ? "feat/x" : null), readScript: () => null };
+
+  it("denies a protected push behind ((a=1;git push origin HEAD:main))", () => {
+    const event = { kind: "bash" as const, command: "((a=1;git push origin HEAD:main))", cwd: REPO, toolName: "Bash", sessionId: null, toolUseId: null };
+    expect(classify(event, context).map((a) => a.spelling)).toContain("bash.merge.git-push-protected");
   });
 });
