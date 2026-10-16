@@ -1,3 +1,4 @@
+import { argv0Values, assignedArgv0, splitStringArgv0 } from "./argv0.js";
 import { splitCluster, takesNextWord } from "./cluster.js";
 import type { WordToken } from "./lexer.js";
 import { basename } from "./path.js";
@@ -177,68 +178,6 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
   argv0.push(...assignedArgv0(assigned));
   const named = argv0.length > 0 ? { argv0 } : {};
   return { ...cmd, ...named, ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}), ...(unsure ? { unsure } : {}) };
-}
-
-/** What the argv0 reader needs of a word; the text inside `env -S` has no tokens, only values. */
-type OptionWord = Pick<WordToken, "value" | "dynamic">;
-
-/** `--argv0` or any prefix of it, which a dynamic command word may leave unspelled. */
-const LONG_ARGV0_RE = /^--a(?:r(?:g(?:v(?:0)?)?)?)?$/;
-const LONG_ARGV0_EQ_RE = /^--a(?:r(?:g(?:v(?:0)?)?)?)?=/;
-
-/** Short options of `env` and `exec` that take a value, the rest of the cluster or the next word. */
-const ARGV0_VALUED: Record<string, string> = { exec: "a", env: `S${SHORT_VALUES.env.map((v) => v.slice(1)).join("")}` };
-
-function assignedArgv0(assigned: Assignment[]): Array<string | null> {
-  return assigned.filter(([name]) => name === "ARGV0").map(([, value]) => value);
-}
-
-/**
- * The values of `exec -a NAME` and `env -a NAME`/`--argv0[=]NAME`, in cluster or attached form. A letter inside another
- * option's value (`env -uabc`) is not an option, so each cluster is read letter by letter and stops at its first valued one.
- */
-export function argv0Values(wrapper: string, options: OptionWord[]): Array<string | null> {
-  const valued = Object.hasOwn(ARGV0_VALUED, wrapper) ? ARGV0_VALUED[wrapper] : undefined;
-  if (valued === undefined) return [];
-  const out: Array<string | null> = [];
-  for (let k = 0; k < options.length; k++) {
-    const o = options[k];
-    if (!o || o.value === "--") break;
-    if (wrapper === "env" && LONG_ARGV0_RE.test(o.value)) {
-      const next = options[++k];
-      if (next) out.push(next.dynamic ? null : next.value);
-    } else if (wrapper === "env" && LONG_ARGV0_EQ_RE.test(o.value)) {
-      out.push(o.dynamic ? null : o.value.slice(o.value.indexOf("=") + 1));
-    } else if (/^-[^-]/.test(o.value)) {
-      const read = readArgv0Cluster(o, options[k + 1], valued);
-      if (read.value !== undefined) out.push(read.value);
-      k += read.consumedNext ? 1 : 0;
-    }
-  }
-  return out;
-}
-
-/**
- * `env -S` splits its string into words before it runs them, and its leading option words are env's own, so
- * `env -S '-a sh zsh -c x'` runs zsh under argv0 `sh`. The string is split on blanks, and every word is read as a possible option, so it over-reads past the command.
- */
-function splitStringArgv0(wrapper: string, script: string): Array<string | null> {
-  if (wrapper !== "env") return [];
-  const words = (script.split("\n")[0] ?? "").split(/\s+/).filter((value) => value !== "");
-  return argv0Values(wrapper, words.map((value) => ({ value, dynamic: false })));
-}
-
-/** One short-option cluster: the `-a` value if the cluster has one, and whether a valued letter took the next word. */
-function readArgv0Cluster(o: OptionWord, next: OptionWord | undefined, valued: string): { value?: string | null; consumedNext: boolean } {
-  for (let j = 1; j < o.value.length; j++) {
-    const letter = o.value.charAt(j);
-    if (!valued.includes(letter)) continue;
-    const attached = o.value.slice(j + 1);
-    const word = attached ? o : next;
-    const value = word ? (word.dynamic ? null : attached || word.value) : undefined;
-    return { value: letter === "a" ? value : undefined, consumedNext: !attached };
-  }
-  return { consumedNext: false };
 }
 
 function command(words: WordToken[], i: number, assigned: Unwrapped["assigned"]): Unwrapped {
