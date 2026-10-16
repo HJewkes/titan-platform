@@ -181,6 +181,11 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     ["exec -a sh /bin/zs[h] -c x"],
     ["env -a ksh {zsh,zsh} -c x"],
     ['$c x="$y"'],
+    [": ${(P)${n}::=on}"],
+    ["echo ${(P)${n}=on}"],
+    [': "${(P)${n}:=on}"'],
+    ["[[ -n ${(P)${${n}}::=on} ]]"],
+    ["git log ${(j:):P)n::=on}"],
   ])("reads the run-time or expanded operand of %s as a possible enabler", (src) => {
     expect(enables(src)).toBe(true);
   });
@@ -263,6 +268,9 @@ describe("a command that may turn on zsh GLOB_SUBST", () => {
     ["env --argv0 foo zsh -c x"],
     ["emulate foo"],
     ["ARGV0=sh git status"],
+    [": ${(P)${n}}"],
+    [": ${(j:,:)a}"],
+    ['echo "${x}=on"'],
   ])("leaves %s alone", (src) => {
     expect(enables(src)).toBe(false);
   });

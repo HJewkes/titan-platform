@@ -34,8 +34,12 @@ const NAMED_TARGET_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[|\+?=)/;
 const PATTERN_RE = /[{*?[^#]|.~|^~(?!\/|$)/s;
 /** `${options[globsubst]::=on}` assigns through an expansion; `refs` hold only plain names, so the text is read too. */
 const OPTIONS_EXPANSION_RE = /\$\{[^}]*\boptions\b/;
-/** `${(P)n::=on}` assigns the parameter `$n` names, which may be `options[globsubst]`; `=` and `:=` assign too. */
-const INDIRECT_ASSIGN_RE = /\$\{\([^)]*P[^)]*\)[^}]*=/;
+/**
+ * `${(P)n::=on}` assigns the parameter `$n` names, which may be `options[globsubst]`; `=` and `:=` assign too. Nested
+ * braces (`${(P)${n}::=on}`) and delimited flag arguments may sit anywhere between, so any `P` after a `${(` flag
+ * opener with any `=` after it counts. The text is matched because the lexer keeps no parsed flags; it fails closed.
+ */
+const INDIRECT_ASSIGN_RE = /\$\{\([^]*?P[^]*=/;
 
 const ENABLERS: Record<string, (args: WordToken[]) => boolean> = {
   setopt: setoptEnables,
