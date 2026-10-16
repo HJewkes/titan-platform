@@ -245,6 +245,34 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   deposit still cannot answer or resolve anything, so this costs inbox noise, not owner
   authority.
 
+## Importing a review round
+
+A review-harness round dir, or a CI visual packet built into one, lands in the rounds dir from a
+shell:
+
+```sh
+titan-console rounds import <round-dir>          # id, frames: N, feedback: copied|kept|none, URLs
+titan-console rounds import <round-dir> --json   # one line: {id, created, frames, feedback, url, lanUrl}
+```
+
+It writes to `TITAN_CONSOLE_ROUNDS_DIR` as `<unit>-r<round>/` and prints
+`http://127.0.0.1:$TITAN_CONSOLE_PORT/#/rounds/<id>`, plus the LAN URL when `TITAN_CONSOLE_HOST`
+is set. Run it with the same `TITAN_CONSOLE_*` settings as the service, or the round lands in a dir
+the service does not read. A refusal prints its reason to stderr and no URL, exits non-zero, and
+writes nothing. The verb is local only: no `/rpc` command imports a round.
+
+- **Validated as the console reads it.** `round.json` and `feedback.json` must pass the parsers
+  `rounds.list` and the owner queue use. `frames/frames.json` must carry the sha256 of that
+  `round.json` and its unit and round. Only the files it lists (`file`, `base`, `diff`, `after`)
+  are copied, each sha256-checked through the `rounds.frame` reader.
+- **CI packets.** A `packet.json` or `prose.json` that frames.json names is copied beside
+  `round.json` after a sha256 and JSON check. The packet's repo, PR and head must equal every
+  merge-bound Ship question in the round, because the factory's Ship answer route reads it there.
+- **No symlinks.** A symlink at the source dir, `frames/`, or any file it reads is refused.
+- **Idempotent.** A new round is staged in a dot-named dir and renamed into place. A re-import of
+  the same `round.json` and `frames.json` adds only missing files. A changed `round.json` is
+  refused with "build round n+1", and an existing `feedback.json` is never replaced.
+
 ## The approvals flow
 
 `approvals.flow` (`server/approvals.ts`) is a read. It merges three legs through
