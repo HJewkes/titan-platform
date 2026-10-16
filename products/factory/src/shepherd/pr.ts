@@ -28,7 +28,7 @@ import { reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { standingVerdict } from "./review-request.js";
 import { reviewKeepingSeatHold } from "./seat-recheck.js";
 import { reviewRefusedRoute, standingMerge } from "./merge-standing.js";
-import { LeaveLand } from "./leave-land.js";
+import { LeaveLand, untilLeft } from "./leave-land.js";
 import { observePr, observeRoute } from "./observe.js";
 import { recordedRoute } from "./recorded-route.js";
 import { newCauseTrail, noteCarryStep, takeCause, tapped, type CarryProbe, type CauseTrail } from "./review-cause.js";
@@ -127,23 +127,13 @@ function shepherdOptions(run: ShepherdRun, verdictFor: (headSha: string) => Verd
 }
 
 /** Undefined means a review send-back ended this round from inside `land` and the next round lands. */
-async function landRound(ctx: WorkflowContext, run: ShepherdRun, options: LandOptions): Promise<LandOutcome | undefined> {
-  try {
-    return await land(ctx, { ...run.target, method: run.policy.mergeMethod, taskIds: taskIdOf(run.task), round: run.state.round, updateBound: run.updateBound, settleHold: run.settleHold }, options);
-  } catch (error) {
-    if (error instanceof LeaveLand) return error.outcome;
-    throw error;
-  }
+function landRound(ctx: WorkflowContext, run: ShepherdRun, options: LandOptions): Promise<LandOutcome | undefined> {
+  return untilLeft(() => land(ctx, { ...run.target, method: run.policy.mergeMethod, taskIds: taskIdOf(run.task), round: run.state.round, updateBound: run.updateBound, settleHold: run.settleHold }, options));
 }
 
 /** Undefined means land the next round; anything else ends the run. */
-async function afterLand(run: ShepherdRun, outcome: LandOutcome): Promise<LandOutcome | undefined> {
-  try {
-    return await routeLanded(run, outcome);
-  } catch (error) {
-    if (error instanceof LeaveLand) return error.outcome;
-    throw error;
-  }
+function afterLand(run: ShepherdRun, outcome: LandOutcome): Promise<LandOutcome | undefined> {
+  return untilLeft(() => routeLanded(run, outcome));
 }
 
 async function routeLanded(run: ShepherdRun, outcome: LandOutcome): Promise<LandOutcome | undefined> {

@@ -6,3 +6,13 @@ export class LeaveLand extends Error {
     super(outcome ? `left land: ${outcome.kind}` : "left land for the next round");
   }
 }
+
+/** Runs `body`, reading a `LeaveLand` it throws as that leave's outcome. */
+export async function untilLeft(body: () => Promise<LandOutcome | undefined>): Promise<LandOutcome | undefined> {
+  try {
+    return await body();
+  } catch (error) {
+    if (error instanceof LeaveLand) return error.outcome;
+    throw error;
+  }
+}
