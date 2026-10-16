@@ -202,6 +202,11 @@ export const FactoryConfigSchema = z.object({
        * `heldRepair: on` lets a g10 hold gate only the merge, so its run repairs as usual.
        */
       gateReset: z.strictObject({ twoMergeRelease: z.enum(["off", "shadow", "on"]).optional(), heldRepair: z.enum(["off", "on"]).optional() }).optional(),
+      /**
+       * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer
+       * read out of `roundsDir`. No token: any same-user caller can post, as for gateNotify. Absent means the route 404s.
+       */
+      consoleAnswers: z.strictObject({ roundsDir: absolutePath }).optional(),
     })
     .refine((s) => !s.hardStopRepos || s.charterPath, { message: "hardStopRepos needs a charterPath", path: ["charterPath"] })
     .refine((s) => !s.review || s.agentChatBin, { message: "review needs an agentChatBin", path: ["agentChatBin"] })
