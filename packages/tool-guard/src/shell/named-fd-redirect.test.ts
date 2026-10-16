@@ -16,7 +16,8 @@ const context: ClassifyContext = {
   home: "/home/you",
   readLink: () => null,
   readHead: (dir) => (dir === REPO ? "main" : null),
-  readScript: (file) => ([`${REPO}/x.sh`, `${REPO}/{fd}`].includes(file) ? `${PUSH}\n` : file === `${REPO}/ok.sh` ? "echo hi\n" : null),
+  // `{fd}` is harmless here, so a line is refused for the redirect, not for what dash would run.
+  readScript: (file) => (file === `${REPO}/x.sh` ? `${PUSH}\n` : [`${REPO}/ok.sh`, `${REPO}/{fd}`].includes(file) ? "echo hi\n" : null),
 };
 
 async function verdict(command: string): Promise<"deny" | "pass"> {
