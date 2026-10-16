@@ -783,6 +783,9 @@ importers:
       '@titan-design/speech-stt':
         specifier: workspace:^
         version: link:../speech-stt
+      '@titan-design/speech-tts':
+        specifier: workspace:^
+        version: link:../speech-tts
     devDependencies:
       zod:
         specifier: ^4.4.3
@@ -2290,8 +2293,8 @@ packages:
       '@noble/hashes':
         optional: true
 
-  '@expo/html-elements@57.0.0':
-    resolution: {integrity: sha512-KseR8RMRo2nKdEoWhXdvMJoCTM4y50cH/+oSev+/T5z77RPEGhqqwLEWg4Jvix2LkB13msGt2FE3bf7g3xozuA==}
+  '@expo/html-elements@58.0.3':
+    resolution: {integrity: sha512-cwH+Nwa5Fyb3U9fRVrwhqr2GClyQIqnxV2sfpBfLd3lqaaOrwALJspuyPjJeylmhviceAwnM8sTt403b2st6Xw==}
     peerDependencies:
       react: '*'
       react-native: '*'
@@ -8309,7 +8312,7 @@ snapshots:
 
   '@exodus/bytes@1.15.1': {}
 
-  '@expo/html-elements@57.0.0(react-native-web@0.21.2(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-native@0.87.1(@babel/core@7.29.7)(@react-native/metro-config@0.87.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)':
+  '@expo/html-elements@58.0.3(react-native-web@0.21.2(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-native@0.87.1(@babel/core@7.29.7)(@react-native/metro-config@0.87.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)':
     dependencies:
       react: 19.3.0
       react-native: 0.87.1(@babel/core@7.29.7)(@react-native/metro-config@0.87.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0)
@@ -8655,7 +8658,7 @@ snapshots:
 
   '@gluestack-ui/themed@1.1.73(2k6mbo6bzuez4dsojj7pd56zmy)':
     dependencies:
-      '@expo/html-elements': 57.0.0(react-native-web@0.21.2(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-native@0.87.1(@babel/core@7.29.7)(@react-native/metro-config@0.87.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
+      '@expo/html-elements': 58.0.3(react-native-web@0.21.2(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-native@0.87.1(@babel/core@7.29.7)(@react-native/metro-config@0.87.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
       '@gluestack-style/animation-resolver': 1.0.4(@gluestack-style/react@1.0.57)
       '@gluestack-style/legend-motion-animation-driver': 1.0.3(nx4muvgruavzdp4imfch556ti4)
       '@gluestack-style/react': 1.0.57

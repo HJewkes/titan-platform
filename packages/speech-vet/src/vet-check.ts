@@ -52,7 +52,7 @@ export interface CheckContext {
   escalateUndeclared?: boolean;
 }
 
-interface TakeCheck {
+export interface TakeCheck {
   transcript: Transcript;
   textDiff: WordDiff;
   /** Confirmed when `confirmStt` is set; substitutions and omissions carry their word verdicts. */
