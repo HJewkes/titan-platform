@@ -46,7 +46,10 @@ interface ReadingFinding {
 }
 /** The name of the first reading of `word` whose pattern matches the phonemes, or `unknown`. */
 declare function readingOf(word: string, phonemes: string | null, table?: HeteronymTable): string;
-/** One finding per heteronym occurrence among the G2P tokens of `g2pText(spoken)`: its reading, its declaration, and its status. */
+/**
+ * One finding per heteronym occurrence among the G2P tokens of `g2pText(spoken)`: its reading, its declaration, and its status.
+ * A `[w](=reading)` declaration that no token matches is a `fail` finding with `phonemes: null`, never dropped.
+ */
 declare function checkReadings(spoken: string, tokens: readonly PhonemeToken[], table?: HeteronymTable): ReadingFinding[];
 /** Token text and the phonemes G2P chose for it, as the voice received them. */
 declare function tokenDump(tokens: readonly PhonemeToken[]): PhonemeToken[];
@@ -89,7 +92,8 @@ type Lexicon = z.infer<typeof LexiconSchema>;
 type LexiconEntry = z.infer<typeof LexiconEntrySchema>;
 /**
  * Parses a `lexicon.v1` document. Also upgrades the two shapes that predate it: a flat `{ term: respelling }` map,
- * whose `_comment` key is dropped, and an unversioned `{ entries }` list. Throws a `ZodError` on anything else.
+ * whose `_comment` key is dropped, and an unversioned `{ entries }` list. Throws a `ZodError` on anything else, and an
+ * `Error` naming both terms when two terms differ only in case, since terms match case-insensitively and one would be lost.
  */
 declare function loadLexicon(json: unknown): Lexicon;
 /** The `{ term: respelling }` map of the entries that carry a respelling. */
