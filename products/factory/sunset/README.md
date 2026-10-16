@@ -26,7 +26,11 @@ An optional top-level `defaults` array carries rung defaults: `{ repo, path, fat
 same fate rules as an entry, where `path` is a directory under a root. A file under that directory with no entry of its own is
 not reported as unmapped, so a branch cut before a file's entry existed does not lose a validate round to the TP-3180 rule.
 Files under a directory with no default still fail as unmapped. Existing entries keep their meaning; a default only covers
-files no entry maps. The manifest carries no defaults yet; tp-operator adds them as content under TP-3180 b.
+files no entry maps. The manifest carries one default per root (Shepherd and `scripts/seat` `kept`, burndown `delete` D-M8-08 at M8).
+
+The check prints a non-failing `defaulted: <repo>:<file> (<default path>)` line (a CI `::notice::`) for each file only a
+default covers, plus a count; the exit code is unchanged. TP-3180 stays open while the notice lists any file: a default
+keeps CI green, it does not settle the file's fate. Adding an entry for the file removes it from the notice.
 
 Chosen over exempting PRs whose merge-base predates the manifest (option B) because it needs no git history in the check
 (CI checkouts can be shallow), keeps the rule for every branch, and fits the schema as one optional array.

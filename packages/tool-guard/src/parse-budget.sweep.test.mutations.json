@@ -1,0 +1,37 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "gh no longer reaches the gist egress check",
+      "file": "packages/tool-guard/src/families/egress.ts",
+      "find": "  if (cmd.name === \"gh\") return gist(cmd);",
+      "replace": "  if (cmd.name === \"gh\") return [];",
+      "kills": [
+        "every guarded family's sentinel egress denies on its own",
+        "the parse budget at depth 8, padded to the size cap egress inside cmd-subst denies under budget",
+        "the parse budget at depth 8, padded to the size cap egress inside sh-c denies under budget",
+        "the parse budget at depth 8, padded to the size cap egress inside group denies under budget",
+        "the parse budget at depth 8, padded to the size cap egress inside if-compound denies under budget",
+        "the parse budget at depth 8, padded to the size cap egress inside xargs-sh-c denies under budget",
+        "the parse budget at depth 8, padded to the size cap egress inside procsub denies under budget",
+        "the parse budget at depth 8, padded to the size cap egress inside arith-subscript denies under budget"
+      ]
+    },
+    {
+      "name": "npm publish no longer classifies as a release",
+      "file": "packages/tool-guard/src/families/release.ts",
+      "find": "  if (sub !== undefined && PUBLISH.has(sub)) return \"bash.release.npm-publish\";",
+      "replace": "  if (sub !== undefined && PUBLISH.has(sub)) return null;",
+      "kills": [
+        "every guarded family's sentinel release denies on its own",
+        "the parse budget at depth 8, padded to the size cap release inside cmd-subst denies under budget",
+        "the parse budget at depth 8, padded to the size cap release inside sh-c denies under budget",
+        "the parse budget at depth 8, padded to the size cap release inside group denies under budget",
+        "the parse budget at depth 8, padded to the size cap release inside if-compound denies under budget",
+        "the parse budget at depth 8, padded to the size cap release inside xargs-sh-c denies under budget",
+        "the parse budget at depth 8, padded to the size cap release inside procsub denies under budget",
+        "the parse budget at depth 8, padded to the size cap release inside arith-subscript denies under budget"
+      ]
+    }
+  ]
+}

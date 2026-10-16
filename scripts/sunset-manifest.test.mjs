@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { MANIFEST_PATH, MILESTONES_PATH, checkManifest, classifyManifest, exitedMilestones, listRoots, milestoneOf } from "./sunset-manifest.mjs";
+import { MANIFEST_PATH, MILESTONES_PATH, checkManifest, classifyManifest, defaultedNotices, exitedMilestones, listRoots, milestoneOf } from "./sunset-manifest.mjs";
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "sunset-manifest.mjs");
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -87,6 +87,27 @@ describe("sunset check directory defaults", () => {
       "default old: kept needs a reason",
       "titan-platform:elsewhere: default under no root",
     ]);
+  });
+});
+
+describe("sunset check defaulted notice", () => {
+  const rule = { repo: "titan-platform", path: "old", fate: "kept", reason: "default: entry owed" };
+  const withDefault = (...entries) => ({ ...manifestOf(...entries), defaults: [rule] });
+
+  it("lists a file only a default covers and drops it once an entry maps it", () => {
+    expect(defaultedNotices(withDefault(del("old/a.ts")), listing("old/a.ts", "old/new.ts"))).toEqual(["defaulted: titan-platform:old/new.ts (old)"]);
+    expect(defaultedNotices(withDefault(del("old/a.ts"), del("old/new.ts")), listing("old/a.ts", "old/new.ts"))).toEqual([]);
+  });
+
+  it("passes the command with a notice and the same exit code for a defaulted file", () => {
+    const box = sandbox(["a.ts", "new.ts"], ["a.ts"]);
+    writeFileSync(box.manifest, JSON.stringify({ roots: [{ repo: "agent-chat", path: "old" }], entries: [{ ...del("old/a.ts"), repo: "agent-chat" }], defaults: [{ ...rule, repo: "agent-chat" }] }));
+
+    const result = run(box);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain("::notice::defaulted: agent-chat:old/new.ts (old)");
+    expect(result.stderr).toContain("::notice::defaulted: 1 files");
   });
 });
 
@@ -198,5 +219,15 @@ describe("the checked-in manifest", () => {
     expect(firm.filter((id) => !ids.includes(id))).toEqual([]);
     expect(manifest.compensators.filter((c) => !c.deletedBy && !c.reason)).toEqual([]);
     expect(manifest.compensators.filter((c) => c.class === "temporary").map((c) => c.deletedBy)).toEqual(["D-M3-19", "D-M3-19", "D-M3-19", "D-M3-19", "D-M3-19", "D-M8-09"]);
+  });
+
+  it("carries the three root defaults, with burndown on its D-M8-08 rung", () => {
+    const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
+
+    expect(manifest.defaults.map(({ repo, path, fate, task }) => [repo, path, fate, task])).toEqual([
+      ["titan-platform", "products/factory/src/shepherd", "kept", undefined],
+      ["agent-chat", "src/agents/burndown", "delete", "D-M8-08"],
+      ["agent-chat", "scripts/seat", "kept", undefined],
+    ]);
   });
 });

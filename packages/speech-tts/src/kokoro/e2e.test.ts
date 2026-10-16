@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { misakiEnglish, ttsTokens } from "@titan-design/speech-g2p";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import type { TtsToken, WordTiming } from "../types.js";
 import type { KokoroEngine } from "./engine.js";
 import { indexedPack } from "./fake-engine.test-helpers.js";
@@ -20,6 +20,8 @@ interface Golden {
   readonly pred_dur: number[];
   readonly tokens: GoldenToken[];
 }
+
+type G2p = ReturnType<typeof misakiEnglish>;
 
 const HOP = 600;
 const ONE_MS = 0.001;
@@ -52,9 +54,9 @@ function goldenFallback(golden: Golden): (token: { text: string }) => string | n
   return (token) => byText.get(token.text) ?? null;
 }
 
-function provider(golden: Golden) {
+function provider(golden: Golden, g2p: G2p) {
   return kokoroProvider({
-    g2p: misakiEnglish({ fallback: goldenFallback(golden) }),
+    g2p,
     loadEngine: () => Promise.resolve(replayEngine(golden.pred_dur)),
     onWarning: () => undefined,
   });
@@ -77,15 +79,25 @@ function expectWithinOneMs(actual: readonly WordTiming[], expected: readonly Wor
   });
 }
 
-describe("kokoroProvider with the real misaki G2P on r4-8", () => {
+// Each misakiEnglish() reloads the dictionary (~0.6 s measured); CI load once stretched three tests past vitest's 5 s default.
+const E2E_TIMEOUT_MS = 20_000;
+
+describe("kokoroProvider with the real misaki G2P on r4-8", { timeout: E2E_TIMEOUT_MS }, () => {
   const golden = loadGolden();
   const spoken = golden.tokens.map((t) => t.text + t.whitespace).join("");
+  let plainG2p: G2p;
+  let fallbackG2p: G2p;
+
+  beforeAll(() => {
+    plainG2p = misakiEnglish();
+    fallbackG2p = misakiEnglish({ fallback: goldenFallback(golden) });
+  }, E2E_TIMEOUT_MS);
 
   // Python misaki falls back to espeak for these; speech-g2p has no fallback yet (owner decision open), so they read null.
   const DICTIONARY_MISSES = ["ruleset"];
 
   it("matches the Python golden on every token except the named dictionary misses", () => {
-    const tokens = misakiEnglish().tokens(spoken);
+    const tokens = plainG2p.tokens(spoken);
 
     const misses = tokens.filter((t) => t.phonemes === null).map((t) => t.text);
     expect(misses).toEqual(DICTIONARY_MISSES);
@@ -96,16 +108,15 @@ describe("kokoroProvider with the real misaki G2P on r4-8", () => {
 
   // Mutation caught: dropping the ttsTokens path, or a golden duration shifted by one frame, moves a word.
   it("times every word within 1 ms of Python from text", async () => {
-    const synthesis = await provider(golden).synthesize({ text: spoken }, golden.voice, { speed: golden.speed });
+    const synthesis = await provider(golden, fallbackG2p).synthesize({ text: spoken }, golden.voice, { speed: golden.speed });
 
     expectWithinOneMs(synthesis.words ?? [], goldenWords(golden));
   });
 
   it("gives the same words from ttsTokens() as token input", async () => {
-    const g2p = misakiEnglish({ fallback: goldenFallback(golden) });
-    const tokens: TtsToken[] = ttsTokens(g2p.tokens(spoken));
+    const tokens: TtsToken[] = ttsTokens(fallbackG2p.tokens(spoken));
 
-    const synthesis = await provider(golden).synthesize({ tokens, alphabet: "misaki" }, golden.voice, { speed: golden.speed });
+    const synthesis = await provider(golden, fallbackG2p).synthesize({ tokens, alphabet: "misaki" }, golden.voice, { speed: golden.speed });
 
     expectWithinOneMs(synthesis.words ?? [], goldenWords(golden));
   });

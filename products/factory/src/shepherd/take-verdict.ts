@@ -4,7 +4,6 @@ import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { step } from "../workflows/land.js";
 import { accountHeld } from "./account-hold.js";
-import { DEFAULT_ACCOUNT } from "./account-limit.js";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
 import { correctOnce } from "./correct-verdict.js";
 import { evidenceOrGate } from "./merge-evidence-gate.js";
@@ -102,13 +101,17 @@ export async function takeAwaited(ctx: WorkflowContext, target: ReviewTarget, aw
   return heldLate ? { held: await heldLate } : { awaited };
 }
 
-/** An external reviewer is both the dispatched reviewer and the resolver, because Shepherd started nobody else. */
-export async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account = DEFAULT_ACCOUNT, standing: ProofStanding = {}): Promise<Verdict> {
+/**
+ * An external reviewer is both the dispatched reviewer and the resolver, because Shepherd started nobody else. The caller
+ * passes the round's fix-proof standing: an empty one reads as verified and drops `proofUnverified` from the MERGE.
+ */
+export async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account: string, standing: ProofStanding): Promise<Verdict> {
   const taken = await takeAwaited(ctx, target, awaiting, dispatchedReviewer, account);
   return "held" in taken ? taken.held : verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing);
 }
 
-export async function verdictOf(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, awaited: AwaitedResult, standing: ProofStanding = {}): Promise<Verdict> {
+/** The caller passes the round's fix-proof standing: an empty one reads as verified and drops `proofUnverified` from the MERGE. */
+export async function verdictOf(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, awaited: AwaitedResult, standing: ProofStanding): Promise<Verdict> {
   const seatHeld = dispatchedReviewer && seatHeldOf(awaited, dispatchedReviewer);
   if (seatHeld) return { kind: "none", cause: "external-hold", ...(typeof awaited.reason === "string" && { reason: awaited.reason }), seatHeld };
   if (awaited.kind !== "verdict") return dispatchedReviewer && !("external" in awaiting) ? dispatchedNone(ctx, target.head, awaiting.startedAt ?? awaiting.dispatchedAt, awaited.reason) : { kind: "none", cause: "external-hold", ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
