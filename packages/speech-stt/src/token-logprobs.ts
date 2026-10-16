@@ -47,12 +47,11 @@ function scoreToken(row: ArrayLike<number>, id: number, eotId: number): TokenSco
 }
 
 /**
- * A logits processor that records each greedy step's chosen token. The step's choice is only known at the next call,
- * as the last input id, so the row is held by reference and scored then: processors that run after this one edit it
- * in place, and the score must see their edits. A call whose input did not grow starts a new window; the last step of
- * a window resolves by argmax, which is the greedy choice.
+ * Records one decode step at a time. A step's choice is only known at the next step, as the last input id, so the row
+ * is held by reference and scored then. A step whose input did not grow starts a new window; the last step of a
+ * window resolves by argmax, which is the greedy choice.
  */
-export function createLogprobCapture(eotId: number) {
+function createWindowRecorder(eotId: number) {
   const done: CapturedWindow[] = [];
   let current: CapturedWindow | null = null;
   let pending: ArrayLike<number> | null = null;
@@ -67,23 +66,33 @@ export function createLogprobCapture(eotId: number) {
     if (current) done.push(current);
     current = null;
   };
-
-  const processor = <L extends LogitsBatch>(inputIds: readonly (readonly (number | bigint)[])[], logits: L): L => {
-    const ids = inputIds[0] ?? [];
+  const record = (ids: readonly (number | bigint)[], row: ArrayLike<number> | null) => {
     if (current && ids.length > lastLength) resolve(Number(ids[ids.length - 1]));
     else {
       closeWindow();
       current = { promptLength: ids.length, tokens: [] };
     }
-    pending = logits[0]?.data ?? null;
+    pending = row;
     lastLength = ids.length;
-    return logits;
   };
-  const windows = (): CapturedWindow[] => {
+  const finish = (): CapturedWindow[] => {
     closeWindow();
     return [...done];
   };
-  return { processor, windows };
+  return { record, finish };
+}
+
+/**
+ * A transformers.js logits processor that records each greedy step's chosen-token log-probs. It keeps the row by
+ * reference because processors that run after it edit the logits in place, and the score must see their edits.
+ */
+export function createLogprobCapture(eotId: number) {
+  const recorder = createWindowRecorder(eotId);
+  const processor = <L extends LogitsBatch>(inputIds: readonly (readonly (number | bigint)[])[], logits: L): L => {
+    recorder.record(inputIds[0] ?? [], logits[0]?.data ?? null);
+    return logits;
+  };
+  return { processor, windows: recorder.finish };
 }
 
 /** faster-whisper's `split_tokens_on_unicode`: tokens that decode to a lone U+FFFD join the next until they decode cleanly. */
