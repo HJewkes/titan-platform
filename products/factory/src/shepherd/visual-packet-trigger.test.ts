@@ -256,9 +256,9 @@ describe("the replay guard around the packet step", () => {
       },
     });
     const assisted = vi.fn<WorkflowContext["assisted"]>(async () => partialFake<Awaited<ReturnType<WorkflowContext["assisted"]>>>({ data: {} }));
-    const run = { ctx, target: { repo: REPO, pr: 1 } as never, ownerGateReason: () => undefined };
+    const run = { ctx, target: { repo: REPO, pr: 1 }, ownerGateReason: () => undefined };
 
-    await packetTriggering(run, assisted)("approve-merge", gatePrompt, {} as never);
+    await packetTriggering(run, assisted)("approve-merge", gatePrompt);
 
     return { dispatched, assisted };
   }
