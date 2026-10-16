@@ -39,12 +39,11 @@ export function envSplitString(words: WordToken[], i: number, syntax: EnvSyntax)
 
 /** Whether a `${NAME}` sits among env's leading options or in the command word after them, where its value decides what runs. */
 function dynamicHead(words: EnvWord[], syntax: EnvSyntax): boolean {
-  for (let j = 0; j < words.length; j++) {
-    const word = words[j] as EnvWord;
+  for (let j = 0, word = words[0]; word !== undefined; word = words[j]) {
     if (word.dynamic) return true;
     if (!word.value.startsWith("-")) return false;
     if (word.value === "--") return words[j + 1]?.dynamic ?? false;
-    if (syntax.takesValue(word.value)) j++;
+    j += syntax.takesValue(word.value) ? 2 : 1;
   }
   return false;
 }
