@@ -1,15 +1,17 @@
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, sameSpend, spent } from "./arith-trials.js";
-import { backtickEnd, balancedEnd, type DollarOpener, dollarOpener, type NestedReaders, QUOTED_LITERAL_OPENERS } from "./balanced.js";
+import { backtickEnd, balancedEnd, type DollarOpener, dollarOpener, type NestedReaders, QUOTED_LITERAL_OPENERS, refuseValueRun } from "./balanced.js";
 import { dropJoins, joinedDollar, nextAfter, pastJoins, readAhead } from "./joins.js";
 import { newRegexScan, noteParen, refuseRedirect } from "./compound.js";
 import { nested } from "./nesting.js";
 import { ParseError, refusingAs, SplitParseError } from "./parse-error.js";
 import { readLineEnd } from "./procsub-heredoc.js";
+import { quotedSpanSubstitutions } from "./substitutions.js";
 import { assignmentSubscriptEnd, looseSubscriptEnd, isNameSoFar, wordStartSubscriptEnd } from "./subscript.js";
 import type { LexState, RedirectToken, Token, WordToken } from "./tokens.js";
 import { appendChar, endWord, ensureWord, markComputed, markCut, markQuoted, pushRef, readAnsiC, readEscape, readSingle, variableName } from "./word-build.js";
 
 export { ParseError, SplitParseError } from "./parse-error.js";
+export { scanSubstitutions } from "./substitutions.js";
 export type { LexState, OpToken, RedirectToken, SubsToken, Token, VarRef, WordToken } from "./tokens.js";
 
 const OPERATORS = ["&&", "||", ";;", "|&", "|", ";", "&", "(", ")", "\n"];
@@ -198,6 +200,7 @@ const DOLLAR_READERS: Record<DollarOpener, (s: LexState, w: WordToken) => void> 
 function readDollar(s: LexState): void {
   const w = ensureWord(s);
   s.i = joinedDollar(s.src, s.i);
+  refuseValueRun(s.src, s.i);
   const opener = dollarOpener(s.src, s.i);
   if (opener) return DOLLAR_READERS[opener](s, w);
   readVariable(s, w);
@@ -231,7 +234,7 @@ function pushSubstitution(s: LexState, w: WordToken, start: number): void {
 }
 
 /** Where substitutions are lexed: `line` is null in a heredoc body or a quoted span, which has no line to leave a heredoc open on. */
-interface Reading {
+export interface Reading {
   src: string;
   trials: ArithTrials;
   line: LexState | null;
@@ -304,7 +307,7 @@ function arithmeticTrial(at: Reading, dollar: number, trial: Token[][]): number 
   }
 }
 
-function nestedReaders(at: Reading, found: Token[][]): NestedReaders {
+export function nestedReaders(at: Reading, found: Token[][]): NestedReaders {
   const read: NestedReaders = {
     substitution: (start) => {
       const inner = lexNested(at.src, start, at.trials, at.line);
@@ -321,31 +324,6 @@ function nestedReaders(at: Reading, found: Token[][]): NestedReaders {
       }),
   };
   return read;
-}
-
-/**
- * Bash runs a substitution in a single-quoted span only when its `${ }` sits in double quotes, and
- * otherwise reads the text as literal, so one left unclosed there cannot be a pass: it is refused.
- */
-function quotedSpanSubstitutions(at: Reading, from: number, to: number): Token[][] {
-  return refusingAs("quoted-substitution", () => scanSubstitutions(at.src.slice(from, to), 0, to - from, sameSpend(at.trials)));
-}
-
-/** Token lists of every substitution in `src` between `from` and `to`, such as a heredoc body's. */
-export function scanSubstitutions(src: string, from: number, to: number, trials = newTrials(src)): Token[][] {
-  const found: Token[][] = [];
-  const read = nestedReaders({ src, trials, line: null }, found);
-  for (let j = from; j < to; j++) {
-    const c = src[j];
-    if (c === "\\") j++;
-    else if (c === "$" && src[joinedDollar(src, j) + 1] === "(") j = dollarParen(src, joinedDollar(src, j), read);
-    else if (c === "`") j = read.backtick(j);
-  }
-  return found;
-}
-
-function dollarParen(src: string, dollar: number, read: NestedReaders): number {
-  return src[nextAfter(src, dollar + 1)] === "(" ? read.dollarParens(dollar) : read.substitution(dollar + 2);
 }
 
 function scanBacktick(src: string, start: number, found: Token[][], trials: ArithTrials): number {

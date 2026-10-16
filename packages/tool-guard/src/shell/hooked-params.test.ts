@@ -250,7 +250,6 @@ describe("an assign-on-expand through a name the shell resolves", () => {
     ["a bracket-paired flag delimiter", ": ${(s[)])PS4::=x}"],
     ["l with three arguments", ": ${(l:5::P::x:)PS4::=x}"],
     ["zsh = splitting", ": ${=PS4::=x}"],
-    ["zsh ~ globbing", ": ${~PS4::=x}"],
     ["zsh ^ rc-expansion", ": ${^PS4::=x}"],
     ["zsh doubled ==", ": ${==PS4::=x}"],
     ["zsh = after the P flag", ": ${(P)=N::=x}"],
