@@ -17,7 +17,7 @@ const context: ClassifyContext = {
   home: "/home/you",
   readLink: () => null,
   readHead: (dir) => (dir === REPO ? "main" : null),
-  readScript: (file) => (file === `${REPO}/x.sh` ? `${PUSH}\n` : file === `${REPO}/ok.sh` ? "echo hi\n" : null),
+  readScript: (file) => (file === `${REPO}/x.sh` ? `${PUSH}\n` : [`${REPO}/ok.sh`, `${REPO}/sub/x.sh`].includes(file) ? "echo hi\n" : null),
 };
 
 async function verdict(command: string): Promise<"deny" | "pass"> {
@@ -162,8 +162,10 @@ function runs(line: string, runner = "bash", script = "touch mk"): boolean {
     fs.writeFileSync(path.join(dir, "s.sh"), `${line}\n`);
     fs.writeFileSync(path.join(dir, "x.sh"), `${script}\n`);
     fs.writeFileSync(path.join(dir, "ok.sh"), "true\n");
+    fs.mkdirSync(path.join(dir, "sub"));
+    fs.writeFileSync(path.join(dir, "sub", "x.sh"), "true\n");
     fs.mkdirSync(path.join(dir, "bin"));
-    fs.writeFileSync(path.join(dir, "bin", "git"), "#!/bin/sh\ntouch mk\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(dir, "bin", "git"), `#!/bin/sh\ntouch '${path.join(dir, "mk")}'\n`, { mode: 0o755 });
     const [program = "bash", ...flags] = runner.split(" ");
     const env = { ...process.env, ZDOTDIR: dir, PATH: `${path.join(dir, "bin")}:${process.env.PATH ?? ""}` };
     spawnSync(program, [...flags, "s.sh"], { cwd: dir, env, stdio: ["ignore", "ignore", "ignore"], timeout: 10_000 });
@@ -335,6 +337,12 @@ const RUNNER_ROWS: Row[] = [
   ["a pipe into bash -c 'bash /dev/stdin'", (text) => `echo '${text}' | bash -c 'bash /dev/stdin'`, BZ],
   ["find -exec bash /dev/stdin with a < file", (_text, file) => `find . -exec bash /dev/stdin \\; < ${file}`, BZ],
   ["eval 'bash /dev/stdin' with a < file", (_text, file) => `eval 'bash /dev/stdin' < ${file}`, BZ],
+  ["a < file opened before a -c string's cd", (_text, file) => `bash -c 'cd sub; bash' < ${file}`, BZ],
+  ["a < file opened before eval's cd", (_text, file) => `eval 'cd sub; bash /dev/stdin' < ${file}`, BZ],
+  ["stdin under a shell reading a 3<<< script", (_text, file) => `bash /dev/fd/3 3<<< 'bash' < ${file}`, BZ],
+  ["stdin under eval's shell reading a 3<<< script", (_text, file) => `eval 'bash /dev/fd/3' 3<<< 'bash' < ${file}`, BZ],
+  ["stdin under a -c string's shell reading a 3<<< script", (_text, file) => `bash -c 'bash /dev/fd/3 3<<< bash' < ${file}`, BZ],
+  ...["cat", "cat -", "tee"].map((pass): Row => [`a pipe ${pass} hands on in a -c string`, (text) => `echo '${text}' | bash -c '${pass} | bash'`, BZ]),
 ];
 
 describe("a shell a runner starts inherits its stdin and descriptors (TP-3250)", () => {
@@ -348,6 +356,10 @@ describe("a shell a runner starts inherits its stdin and descriptors (TP-3250)",
 
   it.each(["eval 'cat' <<< 'hi'", `eval 'cat' <<< '${PUSH}'`, "echo 'echo hi' | eval 'zsh -s'"])("allows %s", async (line) => {
     expect(await verdict(line)).toBe("pass");
+  });
+
+  it.each(["cd $D && eval bash < ./ok.sh", "cd $D && bash -c bash < ./ok.sh"])("denies %s, whose stdin file the line cannot place", async (line) => {
+    expect(await verdict(line)).toBe("deny");
   });
 });
 

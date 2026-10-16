@@ -13,7 +13,7 @@ import { cutReading } from "./piped-nul.js";
 import { inlineScript, SHELLS } from "./inline-script.js";
 import type { Inline } from "./inline-script.js";
 import { addRedirect, groupStdin } from "./group-stdin.js";
-import { descriptorsAfter, pipedInto, TOP_DESCRIPTORS } from "./shell-options.js";
+import { descriptorsAfter, emptied, stdinText, TOP_DESCRIPTORS } from "./shell-options.js";
 import type { Descriptors } from "./shell-options.js";
 import { xargsCommands } from "./xargs-runs.js";
 import { runReadings } from "./xargs-readings.js";
@@ -241,7 +241,7 @@ function nestedLists(token: Token): Token[][] {
 
 function child(w: Walk, wrapping: Wrapping[], descriptors = w.descriptors): Walk {
   const scope = { dir: w.scope.dir, vars: childVars(w.scope.vars), wrapping };
-  const fresh = { stack: [], depth: w.depth + 1, stdin: null, shellStdin: [], descriptors, prev: null, chain: { start: null }, negated: false, walked: null };
+  const fresh = { stack: [], depth: w.depth + 1, stdin: stdinText(descriptors), shellStdin: [], descriptors, prev: null, chain: { start: null }, negated: false, walked: null };
   return observed({ ...w, scope, ...fresh });
 }
 
@@ -322,11 +322,11 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   const { name, path, args } = cmd;
   w.negated ||= cmd.negated === true;
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
-  const inherited = w.prev === "|" || w.prev === "|&" ? pipedInto(w.descriptors) : w.descriptors;
+  const inherited = w.prev === "|" || w.prev === "|&" ? emptied(w.descriptors, 0) : w.descriptors;
   const set = inherited === TOP_DESCRIPTORS ? {} : { inherited };
   w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set });
   const piped = stdin === null ? [] : [stdin, ...(stdin === w.stdin ? w.shellStdin : [])];
-  const held = descriptorsAfter(redirects, piped, inherited);
+  const held = descriptorsAfter(redirects, piped, inherited, (target) => resolvePath(w.scope.dir, target, w.home));
   const script = inlineScript(cmd, redirects, piped, w.unsure, inherited);
   if (script !== null) walkScript(script, w, wrapping, held);
   if (cmd.name !== "find") return;
@@ -335,8 +335,8 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
 
 /** Two readings of one command often run the same script (`flock $F sh -c '...'`); walking it again per nesting level would double the cost. */
 function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descriptors): void {
-  // A shell reading its script from stdin leaves the rest of that stream to it, which is the text walked here.
-  const descriptors = script.wrap === "heredoc-shell" || script.wrap === "piped-shell" ? pipedInto(held) : held;
+  // A shell reading its script from a descriptor leaves the rest of that stream to it, which is the text walked here.
+  const descriptors = script.fd === undefined ? held : emptied(held, script.fd);
   for (const text of script.texts) {
     if (w.walked?.has(text)) continue;
     w.walked?.add(text);

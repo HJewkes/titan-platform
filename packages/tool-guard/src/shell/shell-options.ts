@@ -14,6 +14,8 @@ export type StdinSource = { kind: "text"; text: string } | { kind: "file"; targe
 interface ShellStdin {
   /** Whether the shell runs a descriptor: stdin as `readsStdin` says, or one a script operand names or may name. */
   runs: boolean;
+  /** The descriptor it runs, or reads `sources` from: the one its script operand names, else stdin. */
+  fd: number;
   /** The script file the shell runs that is not a descriptor; null with `-c`, under `-s`, or when the operand names one. */
   scriptFile: WordToken | null;
   /** Every source on that descriptor, or on stdin when it runs none, which a `-c` string may still read. */
@@ -161,24 +163,50 @@ export function shellStdin(
   const fd = file === null ? null : pathFd(file.value);
   const runs = readsStdin || fd !== null || (file !== null && (file.dynamic || file.computed));
   const feeds = feedsOf(redirects, piped, inherited)(fd ?? 0, redirects.length);
-  return { runs, scriptFile: fd === null ? file : null, sources: sourcesOf(feeds), unknowable: runs && feeds.unknown };
+  return { runs, fd: fd ?? 0, scriptFile: fd === null ? file : null, sources: sourcesOf(feeds), unknowable: runs && feeds.unknown };
 }
 
 /**
  * What each descriptor holds once a command's redirects are open, for the commands it runs (a `-c` string's, `eval`'s,
- * `find -exec`'s) to inherit, so `bash -c bash < $F` runs what `bash < $F` does. Piped text becomes text there.
+ * `find -exec`'s) to inherit, so `bash -c bash < $F` runs what `bash < $F` does. Piped text becomes text there. A file
+ * is opened where the command runs, so `resolve` fixes its path there before a `cd` in the commands moves them; a
+ * file whose path that cannot fix is unknowable.
  */
-export function descriptorsAfter(redirects: RedirectToken[], piped: string[], inherited: Descriptors): Descriptors {
+export function descriptorsAfter(
+  redirects: RedirectToken[],
+  piped: string[],
+  inherited: Descriptors,
+  resolve: (target: WordToken) => string | null,
+): Descriptors {
   const feeds = feedsOf(redirects, piped.length > 0, inherited);
   return (fd) => {
-    const held = feeds(fd, redirects.length);
+    const held = resolvedFiles(feeds(fd, redirects.length), resolve);
     return held.pipe ? { ...held, pipe: false, texts: [...held.texts, ...piped] } : held;
   };
 }
 
-/** A pipe replaces stdin: a command after `|` inherits every descriptor but that one. */
-export function pipedInto(inherited: Descriptors): Descriptors {
-  return inherited === TOP_DESCRIPTORS ? inherited : (fd) => (fd === 0 ? TOP_DESCRIPTORS(0) : inherited(fd));
+function resolvedFiles(feeds: Feeds, resolve: (target: WordToken) => string | null): Feeds {
+  const out: Feeds = { ...feeds, redirects: new Set() };
+  for (const r of feeds.redirects) {
+    const isFile = r.body === null && r.op !== "<<<" && r.target !== null;
+    const path = isFile && r.target ? resolve(r.target) : null;
+    if (!isFile) out.redirects.add(r);
+    else if (path === null) out.unknown = true;
+    else if (r.target) out.redirects.add({ ...r, target: { ...r.target, value: path } });
+  }
+  return out;
+}
+
+/** A descriptor a command no longer shares: stdin after `|`, or the one a shell reads its script from. */
+export function emptied(inherited: Descriptors, gone: number): Descriptors {
+  if (inherited === TOP_DESCRIPTORS && gone === 0) return inherited;
+  return (fd) => (fd === gone ? { redirects: new Set(), pipe: false, texts: [], unknown: false } : inherited(fd));
+}
+
+/** The text a descriptor view holds on stdin, which a `cat` or `tee` in the commands passes on; null when none. */
+export function stdinText(descriptors: Descriptors): string | null {
+  const texts = sourcesOf(descriptors(0)).flatMap((s) => (s.kind === "text" ? [s.text] : []));
+  return texts.length === 0 ? null : texts.join("\n");
 }
 
 function sourcesOf({ redirects, pipe, texts }: Feeds): StdinSource[] {

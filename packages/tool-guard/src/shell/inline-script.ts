@@ -15,6 +15,8 @@ export const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
 export interface Inline {
   texts: string[];
   wrap: Wrapping;
+  /** The descriptor a shell read the texts from, whose rest its commands do not inherit; unset for `-c` and `eval`. */
+  fd?: number;
 }
 
 /**
@@ -34,8 +36,9 @@ export function inlineScript(
   if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
   const operands = shellOperands(cmd.args, cmd.name);
   const { hasC, positional } = operands;
-  const { runs, sources } = shellStdin(operands, redirects, piped.length > 0, inherited);
-  const stdin = runs ? stdinReading(cmd.name, sources, piped) : null;
+  const { runs, fd, sources } = shellStdin(operands, redirects, piped.length > 0, inherited);
+  const read = runs ? stdinReading(cmd.name, sources, piped) : null;
+  const stdin = read === null ? null : { ...read, fd };
   if (!hasC) return stdin;
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
   const texts = positional ? splicedReadings([positional], budget) : piped;
