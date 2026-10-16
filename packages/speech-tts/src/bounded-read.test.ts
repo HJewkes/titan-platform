@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { linkSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -31,6 +31,15 @@ describe("readRegularFile", () => {
     execFileSync("mkfifo", [path]);
 
     await expect(readRegularFile(path, 64)).rejects.toThrow("is not a regular file");
+  });
+
+  // Mutation caught: the nlink check is dropped, so a hardlink to a file outside outDir is read as audio.
+  it("refuses a file with more than one hard link", async () => {
+    const dir = scratch();
+    writeFileSync(join(dir, "secret.txt"), "not audio");
+    linkSync(join(dir, "secret.txt"), join(dir, "out.wav"));
+
+    await expect(readRegularFile(join(dir, "out.wav"), 64)).rejects.toThrow("has 2 links; a hardlinked file is refused");
   });
 
   // Mutation caught: the oversize check is dropped, so the whole file is read.
