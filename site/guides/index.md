@@ -14,6 +14,8 @@
 
 - **[Where code goes](/guides/where-code-goes)** — mechanism in packages, pixels in
   titan-design, policy in products; how a product's own npm scope shrinks as its engine is
+- **[Where logic goes](/guides/where-logic-goes)** — the four homes for pipeline logic: rule
+  file, recipe, step and service, and when old-path code is a valid home.
   ported; and what a port pull request must prove.
 
 - **[Package families](/guides/package-families)** — the packages grouped by the job they
