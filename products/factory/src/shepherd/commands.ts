@@ -16,7 +16,8 @@ import { cachedByHead, localPrFiles } from "./git-pr-files.js";
 import { applyRegistrationHold } from "./registration-hold.js";
 import { hostPrsSources, shepherdPrs, type PrRow } from "./prs.js";
 import { PrArg, RegisterArgs, RepoArg, coded, headBranch, policyFor, refuseKindMove, sliceAfter } from "./register-args.js";
-import { restartFor } from "./restart.js";
+import { endSuperseded, isReplayDiverged, restartFor } from "./restart.js";
+import { lastReadHead } from "./last-read-head.js";
 import { sizeFlagFor, type SliceFlag } from "./size-flag.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
 import { reviewCommand } from "./review-request.js";
@@ -84,11 +85,14 @@ function startRun(ctx: FactoryContext, args: RegisterArgs, branch: string | unde
 }
 
 /** A dead run's registration moves to a new run, which starts at the pull request's current head; any other run comes back unchanged. */
-async function reuseOrRestart(ctx: FactoryContext, store: ShepherdStore, known: Registration, args: RegisterArgs, policy: EffectivePolicy): Promise<Registered> {
+async function restartRegistered(ctx: FactoryContext, store: ShepherdStore, known: Registration, args: RegisterArgs, policy: EffectivePolicy): Promise<Registered> {
   const restart = await restartFor(ctx.host, servicesOf(ctx), known);
   if (!restart) return refresh(store, known, args, policy);
   refuseKindMove(known, args);
   const previousRunId = known.runId;
+  const previousRun = ctx.host.runtime.status(previousRunId)!;
+  const diverged = isReplayDiverged(previousRun);
+  const seeded = diverged ? { ...args, head: args.head ?? lastReadHead(previousRun) } : args;
   let runId: string;
   try {
     runId = startRun(ctx, args, known.branch ?? undefined, policy, (started) => store.repoint(previousRunId, started));
@@ -100,7 +104,8 @@ async function reuseOrRestart(ctx: FactoryContext, store: ShepherdStore, known: 
     }
     return refresh(store, winner, args, policy);
   }
-  return { ...refresh(store, store.byRun(runId)!, args, policy), created: true, previousRunId, ...restart };
+  if (diverged) endSuperseded(ctx.host, previousRunId, runId);
+  return { ...refresh(store, store.byRun(runId)!, seeded, policy), created: true, previousRunId, ...restart };
 }
 
 /**
@@ -120,7 +125,7 @@ async function startRegistered(ctx: FactoryContext, store: ShepherdStore, args: 
       releaseFinishedBranch(ctx, store, args.repo, args.pr, branch);
       throw error;
     }
-    return reuseOrRestart(ctx, store, winner, args, policy);
+    return restartRegistered(ctx, store, winner, args, policy);
   }
 }
 
@@ -128,12 +133,12 @@ async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Regist
   const services = servicesOf(ctx);
   const policy = policyFor(services.seats, args);
   const known = findRegistration(ctx, services.store.get(), args.repo, args.pr, args.branch);
-  if (known) return reuseOrRestart(ctx, services.store.get(), known, args, policy);
+  if (known) return restartRegistered(ctx, services.store.get(), known, args, policy);
   releaseFinishedBranch(ctx, services.store.get(), args.repo, args.pr, args.branch);
   const branch = await headBranch(services.port, args);
   const store = services.store.get();
   const existing = findRegistration(ctx, store, args.repo, args.pr, branch);
-  if (existing) return reuseOrRestart(ctx, store, existing, args, policy);
+  if (existing) return restartRegistered(ctx, store, existing, args, policy);
   releaseFinishedBranch(ctx, store, args.repo, args.pr, branch);
   return startRegistered(ctx, store, args, branch, policy);
 }

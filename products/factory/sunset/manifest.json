@@ -1596,6 +1596,12 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/restart-diverged.test.ts",
+   "fate": "kept",
+   "reason": "unclear: holds RESTART_WRITE_STEPS (deleted D-M3-19) among other restart logic; which of the file survives?"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/restart-replay.test.ts",
    "fate": "kept",
    "reason": "unclear: holds RESTART_WRITE_STEPS (deleted D-M3-19) among other restart logic; which of the file survives?"

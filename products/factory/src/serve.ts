@@ -13,6 +13,7 @@ import { gateNotifyWatch, type GateNotifyOptions, type GateNotifyWatch } from ".
 import { githubHealth, type GithubHealth } from "./github-health.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
+import { heldRun } from "./serve-holds.js";
 import { timestampConsole } from "./serve-log.js";
 import { startUnlessLive, type HealthProbe } from "./serve-beside-live.js";
 import { startLoopDelayWatch } from "./serve-loop-delay.js";
@@ -255,20 +256,16 @@ function buildHealth(options: FactoryServerOptions): BuildHealth {
   return { sha, status: probe.status, refresh: probe.refresh };
 }
 
-/** Without `routeFor`, `busy` cannot see park-routed steps and lists only review and merging steps. Runs are counted, not listed, so a probe never parses every finished run (TP-2419). */
+/**
+ * Without `routeFor`, `busy` cannot see park-routed steps and lists only review and merging steps. Finished runs are counted, not listed, so a probe never parses
+ * every one (TP-2419); recovery_required runs are listed by id, so a deploy's watch can tell a run its restart interrupted from one that broke after it.
+ */
 export function factoryHealth(host: FactoryHost, routeFor: RoutedRunner["routeFor"] = () => undefined, isHeld?: HoldPredicate): Record<string, unknown> {
   const runs = Object.fromEntries(host.countRuns(STATUSES));
   const running = host.runtime.list(["running"]);
   const held = isHeld ? heldSkipped(running, routeFor, isHeld) : [];
-  return { runs, pendingGates: host.pendingGates().length, busy: busyRuns(running, routeFor, isHeld), heldSkipped: held };
-}
-
-/** A run held and not yet satisfied cannot merge until release; a satisfied one may merge at any moment, and an unreadable store throws, which counts it busy. */
-function heldRun(services: ShepherdServices | undefined): HoldPredicate | undefined {
-  return services && ((run) => {
-    const registration = services.store.get().byRun(run.id);
-    return registration !== undefined && registration.held && registration.holdSatisfied === null;
-  });
+  const recoveryRequired = host.runtime.list(["recovery_required"]).map((run) => run.id);
+  return { runs, recoveryRequired, pendingGates: host.pendingGates().length, busy: busyRuns(running, routeFor, isHeld), heldSkipped: held };
 }
 
 function startSeatDigest(host: FactoryHost, services: ShepherdServices | undefined, ports: SeatDigestPorts | undefined, stateDir: string, log: Logger): Sweep | undefined {
