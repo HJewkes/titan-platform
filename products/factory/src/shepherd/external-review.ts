@@ -300,8 +300,11 @@ const SpawnedProfile = z.looseObject({ reviewerAgentId: z.string(), reviewerProf
 async function authorProfile(raw: unknown, author: AgentIdentity, roster: () => Promise<readonly ReviewerAgent[]>): Promise<string | undefined> {
   const spawned = SpawnedProfile.safeParse(raw);
   if (spawned.success && spawned.data.reviewerAgentId === author.agentId) return spawned.data.reviewerProfile;
-  const rows = await roster().catch((): readonly ReviewerAgent[] => []);
-  return rows.find((row) => row.agentId === author.agentId && row.sessionId === author.sessionId)?.profile;
+  const rows = await roster().catch((error: unknown): undefined => {
+    console.error(`shepherd: author ${author.agentId}'s profile is unknown, the roster could not be read: ${failureText(error)}`);
+    return undefined;
+  });
+  return rows?.find((row) => row.agentId === author.agentId && row.sessionId === author.sessionId)?.profile;
 }
 
 /** Every acceptor's verdict passes here, so the recorded step names the profile of the reviewer whose message it took. */

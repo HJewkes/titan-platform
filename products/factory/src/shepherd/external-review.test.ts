@@ -3,9 +3,10 @@ import type { SourceTextLocator } from "@titan-design/session-read";
 import { appendFileSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { partialFake } from "@titan-design/test-kit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { seatTranscript, type SeatRow } from "../test-support/seat-transcript.js";
-import type { AwaitVerdictResult, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
+import type { AwaitVerdictResult, ReviewWiring, ReviewerDispatch, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
 import { FINDINGS_SEPARATOR } from "@titan-design/review-panel";
 import { BrokerUnavailableError, DispatchError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
 import { ReviewerAskTimedOut, ReviewerBrokerBusy, ReviewerBrokerDown, reviewWait } from "./review-wait.js";
@@ -887,5 +888,21 @@ describe("seat check roster reads", () => {
 
     expect(calls).toBe(1);
     expect(check).toMatchObject({ verdict: "FIX_FIRST" });
+  });
+});
+
+describe("the author's profile when the roster fails after the seat check", () => {
+  it("logs the unknown profile and records the verdict without one", async () => {
+    let reads = 0;
+    const roster = async () => (++reads === 1 ? [] : Promise.reject(new Error("broker down")));
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const step = seatVetoed(partialFake<ReviewWiring>({ dispatch: partialFake<ReviewerDispatch>({ roster }), reader: readerOf([]) }), async () => shepherdMerge);
+
+    const result = await step({ ...target, reviewerAgentId: SHEPHERD_RV.agentId, reviewerSessionId: SHEPHERD_RV.sessionId }, new AbortController().signal);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+    expect(result).not.toHaveProperty("reviewerProfile");
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("profile is unknown"));
+    log.mockRestore();
   });
 });
