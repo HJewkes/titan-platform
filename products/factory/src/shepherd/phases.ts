@@ -14,6 +14,7 @@ import type { SuiteRules } from "./suite-host.js";
 import type { PrFilesRead } from "./git-pr-files.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { PushWatch } from "./push-signal.js";
+import type { VisualPacketPorts } from "./visual-packet-trigger.js";
 
 /** Which PR, which head, and which land round a phase acts for. */
 export interface PhaseTarget {
@@ -136,4 +137,6 @@ export interface ShepherdDeps {
   stackRestack?: (repo: RepoSlug) => boolean;
   /** `on` repairs a run held only under a g10 class while the hold keeps gating its merge; absent means `off`. */
   heldRepair?: "off" | "on";
+  /** `shepherd.visualPacket`: whether a visual approve-merge gate spawns its review packager; absent means `off`. */
+  visualPacket?: VisualPacketPorts;
 }

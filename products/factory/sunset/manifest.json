@@ -41,38 +41,47 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/account-exhausted.test.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/account-hold.test.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/account-hold.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/account-limit.test.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/account-limit.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/account-store.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
@@ -173,14 +182,18 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/await-verdict.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/await-verdict.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
@@ -261,8 +274,10 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/ci-policy-gate.test.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
@@ -330,14 +345,18 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/correct-verdict.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/correct-verdict.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
@@ -420,8 +439,10 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/evidence-comment.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M7-06",
+   "milestone": "M7",
+   "filing": "TP-3165"
   },
   {
    "repo": "titan-platform",
@@ -442,14 +463,18 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/external-review.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/external-review.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
@@ -573,8 +598,9 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/fixtures/5e47c0de-0000-4000-8000-000000000001.jsonl",
-   "fate": "kept",
-   "reason": "unclear: test fixture read only by reviewer-reader.test.ts, which is a Q1 (review) row; fate joins Q1"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
@@ -680,8 +706,10 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/g10-reclass-events.ts",
-   "fate": "kept",
-   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+   "fate": "delete",
+   "task": "D-M5-03",
+   "milestone": "M5",
+   "filing": "TP-3153"
   },
   {
    "repo": "titan-platform",
@@ -710,26 +738,34 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/g10-release-workflow.test.ts",
-   "fate": "kept",
-   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+   "fate": "delete",
+   "task": "D-M5-03",
+   "milestone": "M5",
+   "filing": "TP-3153"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/g10-release.test.ts",
-   "fate": "kept",
-   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+   "fate": "delete",
+   "task": "D-M5-03",
+   "milestone": "M5",
+   "filing": "TP-3153"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/g10-release.ts",
-   "fate": "kept",
-   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+   "fate": "delete",
+   "task": "D-M5-03",
+   "milestone": "M5",
+   "filing": "TP-3153"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/g10-unreviewed-stall.ts",
-   "fate": "kept",
-   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+   "fate": "delete",
+   "task": "D-M5-03",
+   "milestone": "M5",
+   "filing": "TP-3153"
   },
   {
    "repo": "titan-platform",
@@ -836,32 +872,42 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/gone-elsewhere-gates.test.ts",
-   "fate": "kept",
-   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/gone-elsewhere.test.ts",
-   "fate": "kept",
-   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/gone-elsewhere.ts",
-   "fate": "kept",
-   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/grant-withheld.test.ts",
-   "fate": "kept",
-   "reason": "unclear: land-loop or approve-merge code; v9.1 deletes the land loop at D-M3-19 and approve-merge at D-M3-22/M7, but neither list names this file"
+   "fate": "delete",
+   "task": "D-M7-06",
+   "milestone": "M7",
+   "filing": "TP-3165"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/grant-withheld.ts",
-   "fate": "kept",
-   "reason": "unclear: land-loop or approve-merge code; v9.1 deletes the land loop at D-M3-19 and approve-merge at D-M3-22/M7, but neither list names this file"
+   "fate": "delete",
+   "task": "D-M7-06",
+   "milestone": "M7",
+   "filing": "TP-3165"
   },
   {
    "repo": "titan-platform",
@@ -890,8 +936,10 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/head-moved-sweep.ts",
-   "fate": "kept",
-   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
@@ -926,20 +974,26 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/held-repair-g10.test.ts",
-   "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/held-repair.test.ts",
-   "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/held-repair.ts",
-   "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
   },
   {
    "repo": "titan-platform",
@@ -960,20 +1014,26 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/hold-reason.test.ts",
-   "fate": "kept",
-   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+   "fate": "delete",
+   "task": "D-M5-03",
+   "milestone": "M5",
+   "filing": "TP-3153"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/hold-reason.ts",
-   "fate": "kept",
-   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+   "fate": "delete",
+   "task": "D-M5-03",
+   "milestone": "M5",
+   "filing": "TP-3153"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/hold-satisfaction.ts",
-   "fate": "kept",
-   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+   "fate": "delete",
+   "task": "D-M5-03",
+   "milestone": "M5",
+   "filing": "TP-3153"
   },
   {
    "repo": "titan-platform",
@@ -994,14 +1054,18 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/hold.test.ts",
-   "fate": "kept",
-   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+   "fate": "delete",
+   "task": "D-M5-03",
+   "milestone": "M5",
+   "filing": "TP-3153"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/hold.ts",
-   "fate": "kept",
-   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+   "fate": "delete",
+   "task": "D-M5-03",
+   "milestone": "M5",
+   "filing": "TP-3153"
   },
   {
    "repo": "titan-platform",
@@ -1028,8 +1092,9 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/lineage.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
@@ -1110,20 +1175,26 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/merge-evidence-gate.ts",
-   "fate": "kept",
-   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/merge-facts.test.ts",
-   "fate": "kept",
-   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/merge-facts.ts",
-   "fate": "kept",
-   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
@@ -1136,20 +1207,26 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/merge-standing.test.ts",
-   "fate": "kept",
-   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/merge-standing.ts",
-   "fate": "kept",
-   "reason": "unclear: replaced by the risk table (D-M3-05) per v9.1 sec. 3, but no deletion task lists this file; which task deletes it?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/merge-state-unsettled.test.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
@@ -1178,14 +1255,18 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/merge-verdict-round.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/no-progress.test.ts",
-   "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
@@ -1226,8 +1307,10 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/not-reviewed.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
@@ -1256,14 +1339,18 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/override-gate.test.ts",
-   "fate": "kept",
-   "reason": "unclear: land-loop or approve-merge code; v9.1 deletes the land loop at D-M3-19 and approve-merge at D-M3-22/M7, but neither list names this file"
+   "fate": "delete",
+   "task": "D-M7-06",
+   "milestone": "M7",
+   "filing": "TP-3165"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/override-gate.ts",
-   "fate": "kept",
-   "reason": "unclear: land-loop or approve-merge code; v9.1 deletes the land loop at D-M3-19 and approve-merge at D-M3-22/M7, but neither list names this file"
+   "fate": "delete",
+   "task": "D-M7-06",
+   "milestone": "M7",
+   "filing": "TP-3165"
   },
   {
    "repo": "titan-platform",
@@ -1296,8 +1383,10 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/own-review.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
@@ -1326,32 +1415,48 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/owner-hold-reviewer.test.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "delete",
+   "task": "D-M5-03",
+   "milestone": "M5",
+   "filing": "TP-3153"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/owner-hold-rows.ts",
-   "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "fate": "delete",
+   "task": "D-M7-06",
+   "milestone": "M7",
+   "filing": "TP-3165"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/owner-hold.test.ts",
+   "fate": "delete",
+   "task": "D-M5-03",
+   "milestone": "M5",
+   "filing": "TP-3153"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/owner-hold-timeline.test.ts",
    "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/owner-release.test.ts",
-   "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "fate": "delete",
+   "task": "D-M7-06",
+   "milestone": "M7",
+   "filing": "TP-3165"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/owner-release.ts",
-   "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "fate": "delete",
+   "task": "D-M7-06",
+   "milestone": "M7",
+   "filing": "TP-3165"
   },
   {
    "repo": "titan-platform",
@@ -1369,7 +1474,7 @@
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/package-sweeps.ts",
    "fate": "kept",
-   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+   "reason": "drift, not an event, starts a toolchain fanout, so no event replaces it (v8 l.1011); TP-3218, plan Q4"
   },
   {
    "repo": "titan-platform",
@@ -1520,13 +1625,13 @@
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/publish-review.test.ts",
    "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "reason": "stays until D-M3-04's status-context list decides whether `shepherd/review` stays (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/publish-review.ts",
    "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "reason": "stays until D-M3-04's status-context list decides whether `shepherd/review` stays (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
@@ -1695,14 +1800,16 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/rerun-green.test.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "survives",
+   "task": "D-M4-01",
+   "reason": "a fix still needs a successor pick and a brief (TP-3218, plan Q5)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/rerun-in-progress.test.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "survives",
+   "task": "D-M4-01",
+   "reason": "a fix still needs a successor pick and a brief (TP-3218, plan Q5)"
   },
   {
    "repo": "titan-platform",
@@ -1733,14 +1840,18 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/resync.test.ts",
-   "fate": "kept",
-   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/resync.ts",
-   "fate": "kept",
-   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
@@ -1757,134 +1868,158 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-cause.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-cause.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-check.test.ts",
    "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "reason": "stays until D-M3-04's status-context list decides whether `shepherd/review` stays (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-check.ts",
    "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "reason": "stays until D-M3-04's status-context list decides whether `shepherd/review` stays (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-checkout-disk.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-checkout-disk.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-checkout-sweep.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-checkout-sweep.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-checkout.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-checkout.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-intent-refused.scene.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-intent-replay.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-member.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-panel-plan.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-panel-plan.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-panel-step.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-panel-step.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-request.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-request.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-schemas.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-schemas.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-slots.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
@@ -1919,80 +2054,101 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-steps.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-stop.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-wait.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-wait.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/reviewer-choice.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/reviewer-dispatch.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/reviewer-dispatch.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/reviewer-reader.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/reviewer-reader.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/reviewer-roles.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/reviewer-roles.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
@@ -2051,56 +2207,70 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/seat-checkout.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/seat-digest.test.ts",
-   "fate": "kept",
-   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/seat-digest.ts",
-   "fate": "kept",
-   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/seat-evidence.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/seat-fix-first.test.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/seat-recheck.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/seat-recheck.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/seat-tie.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/seat-tie.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
@@ -2161,8 +2331,10 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/skill-path-gate.test.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
@@ -2203,20 +2375,25 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/snapshot-reads.ts",
-   "fate": "kept",
-   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/snapshot-sweeps.test.ts",
-   "fate": "kept",
-   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/spawn-facts.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "survives",
+   "task": "D-M2-07",
+   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
   },
   {
    "repo": "titan-platform",
@@ -2339,8 +2516,10 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/stale-reviews.ts",
-   "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
@@ -2429,8 +2608,9 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/structural-pass.test.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "survives",
+   "task": "D-M4-01",
+   "reason": "a fix still needs a successor pick and a brief (TP-3218, plan Q5)"
   },
   {
    "repo": "titan-platform",
@@ -2453,14 +2633,18 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/take-verdict.test.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/take-verdict.ts",
-   "fate": "kept",
-   "reason": "unclear: review, seat or spawn code; sh-review / sh-await-verdict are replaced by the reviewer-pool runner (D-M2-07), but no deletion task names this file"
+   "fate": "delete",
+   "task": "D-M2-09",
+   "milestone": "M2",
+   "filing": "TP-3121"
   },
   {
    "repo": "titan-platform",
@@ -2508,13 +2692,13 @@
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/toolchain-sweep.test.ts",
    "fate": "kept",
-   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+   "reason": "drift, not an event, starts a toolchain fanout, so no event replaces it (v8 l.1011); TP-3218, plan Q4"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/toolchain-sweep.ts",
    "fate": "kept",
-   "reason": "unclear: timer, sweep or poll; D-M2-09 deletes \"the 9 startSweep timers\" and says the task names the files, but none names this one"
+   "reason": "drift, not an event, starts a toolchain fanout, so no event replaces it (v8 l.1011); TP-3218, plan Q4"
   },
   {
    "repo": "titan-platform",
@@ -2615,14 +2799,18 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/turn-check.test.ts",
-   "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/turn-check.ts",
-   "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
   },
   {
    "repo": "titan-platform",
@@ -2651,8 +2839,10 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/visual-baseline.test.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
@@ -2662,9 +2852,25 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/visual-packet-trigger.test.ts",
+   "fate": "delete",
+   "task": "D-M7-01",
+   "milestone": "M7"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/visual-packet-trigger.ts",
+   "fate": "delete",
+   "task": "D-M7-01",
+   "milestone": "M7"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/visual-render.test.ts",
-   "fate": "kept",
-   "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
   },
   {
    "repo": "titan-platform",
@@ -2685,50 +2891,59 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/wake-brief.test.ts",
-   "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "fate": "survives",
+   "task": "D-M4-01",
+   "reason": "a fix still needs a successor pick and a brief (TP-3218, plan Q5)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/wake-brief.ts",
-   "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "fate": "survives",
+   "task": "D-M4-01",
+   "reason": "a fix still needs a successor pick and a brief (TP-3218, plan Q5)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/wake-roster.ts",
-   "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "fate": "survives",
+   "task": "D-M4-01",
+   "reason": "a fix still needs a successor pick and a brief (TP-3218, plan Q5)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/wake-wait.ts",
-   "fate": "kept",
-   "reason": "unclear: gate, hold or wait code; the docs name classes (phase timeouts D-M8-08, defect gates D-M7-06, release for agents D-M5-03) but not this file"
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/wake.test.ts",
-   "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "fate": "survives",
+   "task": "D-M4-01",
+   "reason": "a fix still needs a successor pick and a brief (TP-3218, plan Q5)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/wake.ts",
-   "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "fate": "survives",
+   "task": "D-M4-01",
+   "reason": "a fix still needs a successor pick and a brief (TP-3218, plan Q5)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/warmth.test.ts",
-   "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "fate": "survives",
+   "task": "D-M4-01",
+   "reason": "a fix still needs a successor pick and a brief (TP-3218, plan Q5)"
   },
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/warmth.ts",
-   "fate": "kept",
-   "reason": "unclear: wake, park or notice code; D-M4-02 deletes held, exit and unhandled-wake and park-refusal notices and seat hand-resumes, but names no file here beyond exit-notice.ts"
+   "fate": "survives",
+   "task": "D-M4-01",
+   "reason": "a fix still needs a successor pick and a brief (TP-3218, plan Q5)"
   },
   {
    "repo": "titan-platform",
@@ -3114,8 +3329,10 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/backoff.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
@@ -3153,14 +3370,18 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/checkpoint.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/claim-hold.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
@@ -3201,8 +3422,10 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/custody.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
@@ -3306,14 +3529,17 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/exited-adopt.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/finding.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "reason": "the dispatch recipe's lease and stall bodies (TP-3219, plan Q6)"
   },
   {
    "repo": "agent-chat",
@@ -3333,8 +3559,10 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/hold-reason.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M5-03",
+   "milestone": "M5",
+   "filing": "TP-3153"
   },
   {
    "repo": "agent-chat",
@@ -3348,8 +3576,10 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/in-flight.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
@@ -3363,20 +3593,25 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/landed-sweep.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/leak-check.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/lease.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "reason": "the dispatch recipe's lease and stall bodies (TP-3219, plan Q6)"
   },
   {
    "repo": "agent-chat",
@@ -3413,8 +3648,10 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/ms-role.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
@@ -3437,8 +3674,10 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/off-ledger-adopt.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
@@ -3530,8 +3769,9 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/plan-order.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "reason": "class-of-service order, an input of the recipe's two rules (TP-3219, plan Q7)"
   },
   {
    "repo": "agent-chat",
@@ -3553,8 +3793,9 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/policy.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "reason": "charter and seat frontmatter reads, an input of the recipe's two rules (TP-3219, plan Q7)"
   },
   {
    "repo": "agent-chat",
@@ -3587,8 +3828,10 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/pr-state.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
@@ -3602,8 +3845,9 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/progress.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "reason": "the dispatch recipe's lease and stall bodies (TP-3219, plan Q6)"
   },
   {
    "repo": "agent-chat",
@@ -3626,8 +3870,10 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/reconcile.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
@@ -3641,8 +3887,9 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/relint-queued.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M6-02",
+   "reason": "plan-contract seeding and its lint (TP-3219, plan Q6)"
   },
   {
    "repo": "agent-chat",
@@ -3683,14 +3930,17 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/score-render.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M6-05",
+   "milestone": "M6",
+   "filing": "TP-3159"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/score-source.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "reason": "the task reader, an input of the recipe's two rules (TP-3219, plan Q7)"
   },
   {
    "repo": "agent-chat",
@@ -3703,8 +3953,10 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/seat-compare.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M6-05",
+   "milestone": "M6",
+   "filing": "TP-3159"
   },
   {
    "repo": "agent-chat",
@@ -3763,8 +4015,9 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/seed-slices.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M6-02",
+   "reason": "plan-contract seeding and its lint (TP-3219, plan Q6)"
   },
   {
    "repo": "agent-chat",
@@ -3835,8 +4088,9 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/slices-complete.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M6-02",
+   "reason": "plan-contract seeding and its lint (TP-3219, plan Q6)"
   },
   {
    "repo": "agent-chat",
@@ -3868,26 +4122,32 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/stack.ts",
-   "fate": "kept",
-   "reason": "unclear: stacking; D-M6-05 deletes only the lock-driven parts; which parts of this file are lock-driven?"
+   "fate": "delete",
+   "task": "D-M6-05",
+   "milestone": "M6",
+   "filing": "TP-3159"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/stale-claim.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/stall-code.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "reason": "the dispatch recipe's lease and stall bodies (TP-3219, plan Q6)"
   },
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/stall.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "survives",
+   "task": "D-M8-03",
+   "reason": "the dispatch recipe's lease and stall bodies (TP-3219, plan Q6)"
   },
   {
    "repo": "agent-chat",
@@ -3954,8 +4214,10 @@
   {
    "repo": "agent-chat",
    "path": "src/agents/burndown/tree-hold.ts",
-   "fate": "kept",
-   "reason": "unclear: tick logic the M8 dispatch recipe (D-M8-03) replaces by event; D-M8-08 lists burndown.json, tick timer, role caps, ready floor, briefers, heartbeat and re-registration only. Does this file survive as a step body or go?"
+   "fate": "delete",
+   "task": "D-M8-08",
+   "milestone": "M8",
+   "filing": "CC-1390"
   },
   {
    "repo": "agent-chat",

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeSha } from "@titan-design/github";
 import { silentLogger } from "@titan-design/daemon";
-import type { StepRoute } from "@titan-design/workflow";
+import { WorkflowRuntime, type StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineWorkflow, type WorkflowDefinition } from "../definition.js";
@@ -119,7 +119,7 @@ describe("restartDivergedRuns", () => {
 
     const again = await restartDivergedRuns(ctxOf(next));
 
-    expect(again).toEqual({ restarted: [], ended: [], errors: [] });
+    expect(again).toEqual({ restarted: [], ended: [], closed: [], errors: [] });
   });
 
   it("cancels a diverged run whose pull request closed and starts no new run", async () => {
@@ -131,6 +131,32 @@ describe("restartDivergedRuns", () => {
     expect(sweep.ended).toEqual([{ runId: oldRunIds[0], reason: "replay diverged; PR closed" }]);
     await next.host.adopt();
     expect((await next.host.runtime.wait(oldRunIds[0]!)).status).toBe("cancelled");
+  });
+
+  it("ends a diverged run with a step in flight, PR closed, as cancelled in one sweep, and no adopt replays it", async () => {
+    const { next, oldRunIds } = await parkedRuns([1], "closed");
+    const runId = oldRunIds[0]!;
+    expect(Object.keys(next.host.runtime.status(runId)!.activeSteps)).not.toEqual([]);
+
+    const sweep = await restartDivergedRuns(ctxOf(next));
+    const adopted = await next.host.adopt();
+
+    expect(sweep.ended).toEqual([{ runId, reason: "replay diverged; PR closed" }]);
+    expect(next.host.runtime.status(runId)).toMatchObject({ status: "cancelled", error: "replay diverged; PR closed", activeSteps: {} });
+    expect(adopted).not.toContain(runId);
+    expect(await restartDivergedRuns(ctxOf(next))).toEqual({ restarted: [], ended: [], closed: [], errors: [] });
+  });
+
+  it("ends the superseded run of an open PR with a step in flight as cancelled in the same sweep", async () => {
+    const { next, oldRunIds } = await parkedRuns();
+    const runId = oldRunIds[0]!;
+    expect(Object.keys(next.host.runtime.status(runId)!.activeSteps)).not.toEqual([]);
+
+    const sweep = await restartDivergedRuns(ctxOf(next));
+
+    expect(sweep.restarted.map((restart) => restart.runId)).toEqual([runId]);
+    expect(next.host.runtime.status(runId)).toMatchObject({ status: "cancelled", activeSteps: {} });
+    expect(await next.host.adopt()).not.toContain(runId);
   });
 
   it("reports a run whose pull request cannot be read and still restarts the others", async () => {
@@ -153,7 +179,7 @@ describe("restartDivergedRuns", () => {
 
     const sweep = await restartDivergedRuns(ctxOf(next));
 
-    expect(sweep).toEqual({ restarted: [], ended: [], errors: [] });
+    expect(sweep).toEqual({ restarted: [], ended: [], closed: [], errors: [] });
   });
 
   it("leaves a diverged branch-only registration alone", async () => {
@@ -163,7 +189,7 @@ describe("restartDivergedRuns", () => {
 
     const sweep = await restartDivergedRuns(ctxOf(next));
 
-    expect(sweep).toEqual({ restarted: [], ended: [], errors: [] });
+    expect(sweep).toEqual({ restarted: [], ended: [], closed: [], errors: [] });
     expect(next.host.runtime.status(oldRunIds[0]!)?.status).toBe("recovery_required");
   });
 });
@@ -214,7 +240,7 @@ describe("restartDivergedRuns reclassification", () => {
 
     const sweep = await restartDivergedRuns(ctxOf(next), () => true);
 
-    expect(sweep).toEqual({ restarted: [], ended: [], errors: [] });
+    expect(sweep).toEqual({ restarted: [], ended: [], closed: [], errors: [] });
     expect(next.host.runtime.status(oldRunIds[0]!)?.status).toBe("recovery_required");
   });
 });
@@ -251,5 +277,20 @@ describe("serve's adoption sweep", () => {
 
     expect(info).toContain("restarted a replay-diverged run");
     expect(next.routes.shepherd!.store.get().all().map((known) => known.runId)).not.toContain(oldRunIds[0]);
+  });
+  it("names a closed-PR diverged run its sweep could not cancel in /health, for the deploy watch (TP-3220)", async () => {
+    const { next, dbPath, oldRunIds } = await parkedRuns([1], "closed");
+    next.host.close();
+    const failingCancel = vi.spyOn(WorkflowRuntime.prototype, "cancel").mockImplementation(() => {
+      throw new Error("store unreadable");
+    });
+
+    const server = await startFactoryServer({ dbPath, workflows: [build(true)], routes: next.routes, port: 0, logger: silentLogger, gatePollMs: 5, github: { status: () => "ok", refresh: async () => undefined } });
+    closers.push(() => server.close());
+    const health = z.object({ recoveryRequired: z.array(z.string()), recoveryPrClosed: z.array(z.string()) }).parse(await (await fetch(`http://127.0.0.1:${server.port}/health`)).json());
+    failingCancel.mockRestore();
+
+    expect(health.recoveryRequired).toEqual(oldRunIds);
+    expect(health.recoveryPrClosed).toEqual(oldRunIds);
   });
 });

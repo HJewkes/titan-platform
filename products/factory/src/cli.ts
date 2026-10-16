@@ -19,6 +19,7 @@ import type { WorkflowDefinition } from "./definition.js";
 import { registerDigest } from "./digest/cli.js";
 import { registerQueueCounts } from "./needs/counts.js";
 import { registerNeeds } from "./needs/command.js";
+import { registerOwnerGates } from "./owner-gates/command.js";
 import { FROZEN_HOST_WRITE_VERBS, FrozenHostError, refuseFrozenHost } from "./remote-factory.js";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHostOptions } from "./host.js";
 import type { StepRoute } from "@titan-design/workflow";
@@ -123,7 +124,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
     }
   };
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
-  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerToolchain, registerScorecard]) register(program, verbs);
+  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerToolchain, registerScorecard, registerOwnerGates]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 

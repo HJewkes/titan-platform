@@ -83,6 +83,12 @@ function recoveryIds(health: Health): readonly string[] | undefined {
   return Array.isArray(ids) && ids.every((id) => typeof id === "string") ? ids : undefined;
 }
 
+/** The recovery_required ids `/health` says have a closed or merged PR. */
+function prClosedIds(health: Health): ReadonlySet<string> {
+  const ids = health.recoveryPrClosed;
+  return new Set(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : []);
+}
+
 /** The ids the drain still saw busy when it let the restart go. */
 function interruptedBy(atRestart: Health | null): ReadonlySet<string> {
   const busy: unknown[] = Array.isArray(atRestart?.busy) ? atRestart.busy : [];
@@ -91,12 +97,14 @@ function interruptedBy(atRestart: Health | null): ReadonlySet<string> {
 
 /**
  * Runs parked as recovery_required since `before`, leaving out runs the restart interrupted mid-step: parking them is what a restart does.
+ * A run whose PR is closed or merged is left out too: it has no open PR the build could break (TP-3220).
  * A `before` that counts without listing ids stands for its count of parked runs.
  */
 function newlyParked(before: Health, end: Health, interrupted: ReadonlySet<string>): number {
   const now = recoveryIds(end);
   if (now === undefined) return count(end, RECOVERY) - count(before, RECOVERY);
-  const fresh = now.filter((id) => !interrupted.has(id));
+  const closed = prClosedIds(end);
+  const fresh = now.filter((id) => !interrupted.has(id) && !closed.has(id));
   const was = recoveryIds(before);
   return was === undefined ? fresh.length - count(before, RECOVERY) : fresh.filter((id) => !was.includes(id)).length;
 }
