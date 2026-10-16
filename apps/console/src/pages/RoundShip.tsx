@@ -66,6 +66,7 @@ function Montages({ round }: { round: ValidRound }): ReactNode {
     const frame = byKey.get(variant.key);
     return [{ key: variant.key, label: variant.label, theme: frame?.theme, views: frame?.views ?? ["head"] }];
   });
+  if (frames.length === 0) return null;
   return (
     <Section>
       <SectionHeader title={`Changed images (${frames.length})`} subtitle="Before, after and diff for each image. Tap an image to enlarge it." />
