@@ -140,8 +140,8 @@ stays out of the repo.
   while its free inodes are under `shepherd.review.minFreeInodesPct` (15) percent or twice the
   last checkout's inodes, whichever is more. Each such deferral keeps the review's place in the
   queue.
-- `shepherd.repos` maps an `owner/name` repo to `path`, its main checkout, and `advisory`.
-  Both keys are optional, and an unknown one fails the load. Keys match in any case. The
+- `shepherd.repos` maps an `owner/name` repo to `path`, its main checkout, `advisory` and
+  `stackRestack`. All three keys are optional, and an unknown one fails the load. Keys match in any case. The
   reviewer starts in `path` when no seat binds the repo, so Shepherd can review with no
   `seatsDir` at all. A seat's own path for the repo wins. The map is re-read on every
   spawn, as the seat book is.
@@ -158,6 +158,12 @@ stays out of the repo.
   that starts while the file is missing has no flag to keep, and treats every repo as not
   advisory until the file reads cleanly. If two keys differ only in case, the repo is advisory when
   either sets the flag.
+- `stackRestack: true` opts the repo in to the stack restack (TP-2528). After Shepherd's own
+  squash merge of a PR, each open `agent-chat/*` PR based on its head branch gets a merge-onto
+  commit by a plain fast-forward push, and only then is retargeted to the default branch. It is
+  off when absent, when the file is missing or invalid, and in an advisory repo. While it is off,
+  `sh-stack-children` records `skipped` and nothing is pushed. A failed read of the open PRs
+  also records `skipped`, so main CI and cleanup still run.
 - The rest of `shepherd` is covered in the [Shepherd guide](/guides/shepherd#seat-policy).
 
 A malformed file fails every command that opens the database, with

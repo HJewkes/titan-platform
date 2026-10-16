@@ -91,7 +91,7 @@ export interface LandOptions {
 
 export type LandOutcome =
   /** `mergeSha` is null when GitHub reports the PR merged but names no merge commit; `landed` is absent for a merge made elsewhere. */
-  | { kind: "merged"; headSha: string; mergeSha: string | null; landed?: LandedPr }
+  | { kind: "merged"; headSha: string; mergeSha: string | null; landed?: LandedPr; /** Set only when this run's own merge write landed, never for a PR GitHub reports merged elsewhere. */ own?: true }
   | { kind: "ci-failed"; headSha: string; failing: FailingCheck[] }
   | { kind: "stopped"; reason: "closed" | "not-mergeable" | "conflict" | "abandoned" | "stuck-behind" | "merge-denied" | "update-branch-unmoved"; headSha: string; detail: string };
 
@@ -131,7 +131,11 @@ export async function land(ctx: WorkflowContext, input: LandInput, options: Land
   const round = input.round ?? 0;
   if (!Number.isInteger(round) || round < 0) throw new Error(`land: round must be a non-negative integer, got ${round}`);
   const rules = await step(ctx, roundId("land-rules", round), { repo: input.repo, pr: input.pr }, LandRulesResult);
-  const state: LandState = { round, rules, rulesReads: 0, baseChecks: 0, baseWaits: 0, settles: 0, cycle: 0, updates: 0, retries: 0, bound: input.updateBound ?? newUpdateBound(), hold: input.settleHold ?? {}, merges: 0, decisions: 0, trusted: new Set(), trustedBy: "human", trustedOn: rules.base, refreshed: new Set() };
+  const state: LandState = {
+    round, rules, rulesReads: 0, baseChecks: 0, baseWaits: 0, settles: 0, cycle: 0, updates: 0, retries: 0,
+    bound: input.updateBound ?? newUpdateBound(), hold: input.settleHold ?? {}, merges: 0, decisions: 0,
+    trusted: new Set(), trustedBy: "human", trustedOn: rules.base, refreshed: new Set(),
+  };
   for (;;) {
     if (state.cycle - state.settles >= MAX_CI_CYCLES) throw new Error(`land: PR #${input.pr} did not settle within ${MAX_CI_CYCLES} ci-wait cycles`);
     const ci = await step(ctx, roundId("ci-wait", round, state.cycle++), { repo: input.repo, pr: input.pr, contexts: state.rules.contexts, strict: state.rules.strict }, CiSnapshotResult);
@@ -230,9 +234,25 @@ async function onSettled(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot,
   if (!state.trusted.has(ci.headSha)) return approve(ctx, input, ci, state, options);
   const check = await allowedBase(ctx, input, ci, state, options);
   if (check === undefined) return undefined;
-  const merge = await step(ctx, roundId("merge", state.round, state.merges++), { repo: input.repo, pr: input.pr, sha: ci.headSha, method: input.method ?? "squash", taskIds: input.taskIds ?? [], base: check.base }, MergeResultResult);
+  const mergeInput = {
+    repo: input.repo,
+    pr: input.pr,
+    sha: ci.headSha,
+    method: input.method ?? "squash",
+    taskIds: input.taskIds ?? [],
+    base: check.base,
+  };
+  const merge = await step(ctx, roundId("merge", state.round, state.merges++), mergeInput, MergeResultResult);
   // The port answers "" for a PR merged elsewhere with no merge commit named.
-  if (merge.done || merge.skipped === "merged") return { kind: "merged", headSha: ci.headSha, mergeSha: merge.mergeSha || null, ...landedOf(check, ci.headSha) };
+  if (merge.done || merge.skipped === "merged") {
+    return {
+      kind: "merged",
+      headSha: ci.headSha,
+      mergeSha: merge.mergeSha || null,
+      ...landedOf(check, ci.headSha),
+      ...(merge.done && { own: true as const }),
+    };
+  }
   if (merge.skipped === "closed") return stopped("closed", ci.headSha, "the pull request was closed before the merge");
   return undefined;
 }
@@ -299,7 +319,13 @@ async function approve(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, s
   const decided = await decideMerge(ctx, input, ci, state, options);
   if (decided.outcome === "deny") return stopped("merge-denied", ci.headSha, decided.reason);
   if (decided.outcome === "allow") return void trust(state, ci.headSha, "policy", base);
-  const settleStep = (wait: Omit<SettleInput, "repo" | "baseRef">) => step(ctx, roundId("merge-settle", state.round, state.settles++), { repo: input.repo, baseRef: state.rules.base, ...wait }, SettleResult);
+  const settleStep = (wait: Omit<SettleInput, "repo" | "baseRef">) =>
+    step(
+      ctx,
+      roundId("merge-settle", state.round, state.settles++),
+      { repo: input.repo, baseRef: state.rules.base, ...wait },
+      SettleResult,
+    );
   const decision = await settleOrGate(state.hold, decided, options.unsettled, ci.headSha, settleStep);
   if (!decision) return undefined;
   const ask = options.askApproval ?? approveMergeGate(decision.rule, options);

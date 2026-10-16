@@ -2148,6 +2148,18 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stack-land.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/stack-land.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/stack-restack.ts",
    "fate": "kept",
    "reason": "unclear: stacking; D-M6-05 deletes only the lock-driven parts; which parts of this file are lock-driven?"

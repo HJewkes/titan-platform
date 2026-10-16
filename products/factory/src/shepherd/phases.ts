@@ -120,4 +120,6 @@ export interface ShepherdDeps {
   advisory?: (repo: string) => boolean;
   /** Reads a head's changed files from Shepherd's git cache; absent means the serve process's cached reader. */
   prFiles?: PrFilesRead;
+  /** Repos whose stacked children Shepherd restacks after its own merge; absent means none. */
+  stackRestack?: (repo: RepoSlug) => boolean;
 }
