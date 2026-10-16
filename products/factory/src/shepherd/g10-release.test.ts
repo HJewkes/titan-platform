@@ -7,7 +7,7 @@ import { adversaryRehold } from "./adversary-anchor.js";
 import { shepherdEventMigration } from "./events.js";
 import { G10_RELEASE_STEP, TWO_MERGE_RULE, g10ReleaseRoutes, holdClassOf, isOpusProfile, releaseG10Hold, satisfiesG10, satisfiesTwoMerge, withReviewerProfile, type G10Verdict, type TwoMergeMode } from "./g10-release.js";
 import type { CiSnapshot } from "../workflows/land.js";
-import type { Verdict } from "./phases.js";
+import type { PanelMember, Verdict } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
 
@@ -169,12 +169,18 @@ describe("which reviewer's verdict releases", () => {
   });
 });
 
-function workflowRun(reviewerProfile: string | undefined, released = true) {
-  const dispatch = vi.fn(async () => ({ data: { result: { released, head: HEAD } } }));
-  const evidence = { record: { head: HEAD, verdictLocator: mergeAt(HEAD).locator, reviewer: { agentId: "a-1", sessionId: "s-1" } } };
-  const merge = { kind: "MERGE" as const, headSha: HEAD, evidence, ...(reviewerProfile && { reviewerProfile }) };
+/** A run whose CI read green at `ciHead` and whose release step answers `result`; only the fields releaseG10Hold reads are filled. */
+function stubRun(reviews: [string, Verdict][], ciHead: string, result: object) {
+  const dispatch = vi.fn(async (_id: string, _kind: string, _input: { vars: Record<string, string> }) => ({ data: { result } }));
   const ctx = { runId: "run-1", iteration: () => 0, dispatch } as never;
-  return { dispatch, run: { ctx, target: { repo: REPO, pr: 1 }, reviews: new Map([[HEAD, merge]]), lastCi: { headSha: HEAD, verdict: "green" } as never } };
+  const asked = (): unknown => JSON.parse(Object.values(dispatch.mock.calls[0]![2].vars)[0]!);
+  return { dispatch, asked, run: { ctx, target: { repo: REPO, pr: 1 }, reviews: new Map(reviews), lastCi: { headSha: ciHead, verdict: "green" } as never } };
+}
+
+function workflowRun(reviewerProfile: string | undefined, released = true) {
+  const evidence = { record: { head: HEAD, verdictLocator: mergeAt(HEAD).locator, reviewer: { agentId: "a-1", sessionId: "s-1" } } };
+  const merge: Verdict = { kind: "MERGE", headSha: HEAD, evidence, ...(reviewerProfile && { reviewerProfile }) };
+  return stubRun([[HEAD, merge]], HEAD, { released, head: HEAD });
 }
 
 describe("releaseG10Hold", () => {
@@ -443,21 +449,19 @@ describe("the g10-adversary/two-merge release (decision 422(1))", () => {
 
   describe("releaseG10Hold under a g10-adversary hold", () => {
     const LOCATOR = (sessionId: string) => ({ source: { conversation: { nativeId: sessionId } } });
-    const adversaryMember = (head: string, extra: object = {}) => ({ shape: "adversary" as const, agentId: "agent-s-adversary", sessionId: "s-adversary", locator: LOCATOR("s-adversary"), verdict: "MERGE" as const, head, profile: "fable-reviewer", ...extra });
-    const panelMergeAt = (head: string, member: object): Verdict => ({
+    const adversaryMember = (head: string, extra: Partial<PanelMember> = {}, profile: string | null = "fable-reviewer"): PanelMember => ({
+      ...{ shape: "adversary", agentId: "agent-s-adversary", sessionId: "s-adversary", locator: LOCATOR("s-adversary"), verdict: "MERGE", head },
+      ...(profile !== null && { profile }),
+      ...extra,
+    });
+    const panelMergeAt = (head: string, member: PanelMember): Verdict => ({
       kind: "MERGE",
       headSha: head,
       evidence: { record: { head, verdictLocator: LOCATOR("s-correctness"), reviewer: { agentId: "agent-s-correctness", sessionId: "s-correctness" } } },
       reviewerProfile: "bd-reviewer",
-      panel: { satisfiesG10: true, degraded: [], members: [member as never] },
+      panel: { satisfiesG10: true, degraded: [], members: [member] },
     });
-
-    function adversaryRun(reviews: [string, Verdict][], ciHead: string, result: object = { released: true, head: ciHead }) {
-      const dispatch = vi.fn(async (_id: string, _kind: string, _input: { vars: Record<string, string> }) => ({ data: { result } }));
-      const ctx = { runId: "run-1", iteration: () => 0, dispatch } as never;
-      const asked = (): unknown => JSON.parse(Object.values(dispatch.mock.calls[0]![2].vars)[0]!);
-      return { dispatch, asked, run: { ctx, target: { repo: REPO, pr: 1 }, reviews: new Map(reviews), lastCi: { headSha: ciHead, verdict: "green" } as never } };
-    }
+    const adversaryRun = (reviews: [string, Verdict][], ciHead: string, result: object = { released: true, head: ciHead }) => stubRun(reviews, ciHead, result);
 
     it("asks with the correctness and adversary refs, their profiles and the rule", async () => {
       const { asked, run } = adversaryRun([[HEAD, panelMergeAt(HEAD, adversaryMember(HEAD))]], HEAD);
@@ -485,7 +489,7 @@ describe("the g10-adversary/two-merge release (decision 422(1))", () => {
     it.each([
       ["the adversary said FIX_FIRST", adversaryMember(HEAD, { verdict: "FIX_FIRST" })],
       ["the adversary wrote at another head", adversaryMember(HEAD, { head: MOVED })],
-      ["the adversary's spawn profile was not recorded", adversaryMember(HEAD, { profile: undefined })],
+      ["the adversary's spawn profile was not recorded", adversaryMember(HEAD, {}, null)],
       ["only a non-adversary member gave a verdict", adversaryMember(HEAD, { shape: "perf" })],
     ])("asks for nothing when %s", async (_case, member) => {
       const { dispatch, run } = adversaryRun([[HEAD, panelMergeAt(HEAD, member)]], HEAD);

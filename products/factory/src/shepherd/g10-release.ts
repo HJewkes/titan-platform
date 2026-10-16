@@ -146,7 +146,7 @@ async function releaseOnReview(deps: ShepherdDeps, raw: unknown) {
  */
 async function releaseOnTwoMerges(deps: ShepherdDeps, mode: TwoMergeMode | undefined, raw: unknown) {
   const input = TwoMergeInput.parse(raw);
-  const target = { repo: input.repo as RepoSlug, pr: input.pr };
+  const target = { repo: input.repo, pr: input.pr };
   const prHead = (await deps.port.getPr(target.repo, target.pr)).headSha;
   const files = await pinnedPaths(deps.port, { ...target, head: prHead }, prHead);
   const store = deps.store.get();
