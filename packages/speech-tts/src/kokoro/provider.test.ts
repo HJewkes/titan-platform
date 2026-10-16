@@ -200,7 +200,7 @@ describe("kokoroProvider unknown words", () => {
 
     const { words } = await provider.synthesize(SENTENCE, "af_heart");
 
-    expect(words.filter((w) => UNKNOWN.includes(w.word)).every((w) => w.start === w.end)).toBe(true);
+    expect(words?.filter((w) => UNKNOWN.includes(w.word)).map((w) => w.end - w.start)).toEqual([0, 0]);
     expect(onWarning).toHaveBeenCalledWith(expect.stringContaining("Zyxquor, Vrebnik"));
   });
 
