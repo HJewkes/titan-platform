@@ -12,6 +12,8 @@ interface DivergedSweep {
   restarted: Array<{ runId: string; newRunId: string }>;
   /** Runs cancelled because their pull request is no longer open. */
   ended: Array<{ runId: string; reason: string }>;
+  /** Runs whose pull request the sweep read as no longer open, whether or not their cancel went through. */
+  closed: string[];
   /** A run the sweep could not read or restart; it stays parked for the next sweep. */
   errors: Array<{ runId: string; cause: string }>;
 }
@@ -46,7 +48,7 @@ async function classifyOrHold(ctx: FactoryContext, restarted: Registered, head: 
  * Runs are walked through their registrations, so a run this sweep already replaced is never seen again.
  */
 export async function restartDivergedRuns(ctx: FactoryContext, closing: () => boolean = () => false): Promise<DivergedSweep> {
-  const sweep: DivergedSweep = { restarted: [], ended: [], errors: [] };
+  const sweep: DivergedSweep = { restarted: [], ended: [], closed: [], errors: [] };
   const services = ctx.shepherd;
   if (!services) return sweep;
   const store = services.store.get();
@@ -57,8 +59,9 @@ export async function restartDivergedRuns(ctx: FactoryContext, closing: () => bo
     try {
       const pr = await services.port.getPr(known.repo, known.pr);
       if (pr.state !== "open") {
+        sweep.closed.push(known.runId);
         const reason = DIVERGED_PR_CLOSED;
-        ctx.host.runtime.cancel(known.runId, reason);
+        ctx.host.runtime.cancel(known.runId, reason, { abandon: true });
         sweep.ended.push({ runId: known.runId, reason });
         continue;
       }
@@ -73,10 +76,16 @@ export async function restartDivergedRuns(ctx: FactoryContext, closing: () => bo
   return sweep;
 }
 
+const closedAtLastSweep = new WeakMap<ShepherdServices, ReadonlySet<string>>();
+
+/** The parked runs serve's last sweep read a closed or merged PR for; a deploy's watch does not count them against the build (TP-3220). */
+export const divergedPrClosed = (services: ShepherdServices | undefined): ReadonlySet<string> => (services && closedAtLastSweep.get(services)) ?? new Set();
+
 /** Runs at the head of each adoption, so a deploy that changed the call sequence strands none of the runs it parked; a failure here never keeps the adopt step from running. */
 export async function restartDivergedLogged(host: FactoryHost, services: ShepherdServices, log: Logger, closing: () => boolean = () => false): Promise<void> {
   try {
-    const { restarted, ended, errors } = await restartDivergedRuns({ host, shepherd: services, warnings: [], format: "json" }, closing);
+    const { restarted, ended, closed, errors } = await restartDivergedRuns({ host, shepherd: services, warnings: [], format: "json" }, closing);
+    closedAtLastSweep.set(services, new Set(closed));
     for (const run of restarted) log.info({ ...run }, "restarted a replay-diverged run");
     for (const run of ended) log.info({ ...run }, "ended a replay-diverged run whose PR is no longer open");
     for (const run of errors) log.warn({ ...run }, "left a replay-diverged run parked: it could not be restarted");
