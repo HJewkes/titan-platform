@@ -11,7 +11,9 @@ import {
 } from "./park.js";
 import { liveRetry, type LiveRetryDeps } from "./park-retry.js";
 import { createRosterReader, type RosterReader } from "./roster.js";
-import type { ShepherdStoreRef } from "./store.js";
+import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import { ShepherdStore, lineageMigration, parkSettledMigration, shepherdMigration, sliceMigration, type ShepherdStoreRef } from "./store.js";
 
 interface Registered {
   implementer?: string;
@@ -19,6 +21,7 @@ interface Registered {
   seat?: string;
   successors?: string[];
   reviewer?: string;
+  settled?: (runId: string, headSha: string, agent: string) => boolean;
 }
 
 const storeWith = ({
@@ -27,6 +30,7 @@ const storeWith = ({
   seat = "demo-seat",
   successors = [],
   reviewer,
+  settled = () => false,
 }: Registered = {}) =>
   ({
     get: () => ({
@@ -42,6 +46,8 @@ const storeWith = ({
             }
           : undefined,
       authorsOf: () => successors.map((name) => ({ name, role: "successor" })),
+      parkSettled: settled,
+      settlePark: () => undefined,
     }),
   } as unknown as ShepherdStoreRef);
 const input = { runId: "run-1", headSha: "a".repeat(40) };
@@ -340,9 +346,26 @@ describe("rearmRecorded", () => {
       retry: "at-exit",
     };
 
-    rearmRecorded("run-1", recorded);
+    rearmRecorded("run-1", input.headSha, recorded);
 
     expect(armed).toEqual(["impl-a"]);
+  });
+
+  const settledAt = (head: string): ShepherdStoreRef =>
+    storeWith({ implementer: "impl-a", settled: (runId, headSha, agent) => runId === "run-1" && headSha === head && agent === "impl-a" });
+  const replayArmed = (store: ShepherdStoreRef, head: string): string[] => {
+    const armed: string[] = [];
+    parkRoutes({ store, now: () => 0, agentChatBin: "agent-chat" }, refusing({}), { arm: (agent) => void armed.push(agent) });
+    rearmRecorded("run-1", head, { kind: "not-parked", agent: "impl-a", reason: LIVE("impl-a"), brokerDown: false, retry: "at-exit" });
+    return armed;
+  };
+
+  it("arms nothing when the refusal's retry already settled at this head", () => {
+    expect(replayArmed(settledAt(input.headSha), input.headSha)).toEqual([]);
+  });
+
+  it("re-arms a later head's refusal even though an earlier head's retry settled", () => {
+    expect(replayArmed(settledAt(input.headSha), "b".repeat(40))).toEqual(["impl-a"]);
   });
 });
 
@@ -398,6 +421,38 @@ describe("parkStep reviewer trees", () => {
       "parked",
       "parked",
     ]);
+  });
+
+  it("parks no reviewer and logs when the roster read fails, then parks them on the next tick", async () => {
+    const asked: string[] = [];
+    let down = true;
+    const roster = createRosterReader(async () => (down ? Promise.reject(new Error("broker down")) : ROUNDS));
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await parkStep(storeWith({ implementer: "impl-a" }), { park: refusing({}, asked), roster, notice: undefined }, input);
+    expect(asked).toEqual(["impl-a"]);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("roster could not be read"));
+
+    down = false;
+    await parkStep(storeWith({ implementer: "impl-a" }), { park: refusing({}, asked), roster, notice: undefined }, input);
+    expect(asked).toEqual(["impl-a", "rv-o-r-7", "rv-o-r-7-2", "impl-a"]);
+    log.mockRestore();
+  });
+
+  it("parks the exited panel members of this pull request's reviewers, and of its standing reviewer, at the round end", async () => {
+    const asked: string[] = [];
+    const members = [
+      row("rv-o-r-7-adversary", "exited"),
+      row("rv-o-r-7-2-perf", "exited"),
+      row("rv-o-r-7-tests-2", "exited"),
+      row("rv-o-r-7-2-tests", "live", "running"),
+      row("rv-o-r-70-adversary", "exited"),
+      row("rv-o-r-7-review", "exited"),
+    ];
+
+    await parkStep(storeWith({ implementer: "impl-a" }), wiringFor(members, refusing({}, asked)), input);
+
+    expect(asked).toEqual(["rv-o-r-7-adversary", "rv-o-r-7-2-perf", "rv-o-r-7-tests-2", "impl-a"]);
   });
 
   it("tells the seat when a reviewer's tree is dirty and asks again at the next round end", async () => {
@@ -515,13 +570,81 @@ describe("an implementer retired while its park waited for its exit", () => {
     );
     const recorded = { kind: "not-parked", agent: "impl-a", reason: LIVE("impl-a"), brokerDown: false, retry: "at-exit" };
 
-    rearmRecorded("run-1", recorded);
+    rearmRecorded("run-1", input.headSha, recorded);
     await vi.advanceTimersByTimeAsync(61_000);
-    rearmRecorded("run-1", recorded);
+    rearmRecorded("run-1", input.headSha, recorded);
     await vi.advanceTimersByTimeAsync(61_000);
 
     expect(asked).toEqual(["impl-a", "impl-a"]);
     expect(notice.sent).toEqual([]);
+  });
+});
+
+describe("a settled park refusal across serve restarts", () => {
+  afterEach(() => vi.useRealTimers());
+
+  const DIRTY = (name: string) => `uncommitted or untracked changes in /trees/${name}`;
+  const recorded = { kind: "not-parked", agent: "impl-a", reason: LIVE("impl-a"), brokerDown: false, retry: "at-exit" };
+
+  function world(send: ExitNoticePorts["send"]) {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), parkSettledMigration(21)]);
+    const shepherd = new ShepherdStore(db);
+    shepherd.register({ repo: "o/r", pr: 7, runId: "run-1", task: "demo/1", implementer: "impl-a", policy: { ...OWNER_GATE_POLICY, seat: "demo-seat" } });
+    let live = true;
+    const park: ParkPort = (name) => {
+      throw new DispatchError(`agent-chat refused agent park: Not parked: ${live ? LIVE(name) : DIRTY(name)}`);
+    };
+    const deps = {
+      store: { get: () => shepherd, bind: () => () => undefined } satisfies ShepherdStoreRef,
+      now: () => Date.now(),
+      agentChatBin: "agent-chat",
+      roster: createRosterReader(async () => []),
+      exitNotice: { ...noticePorts(), send },
+    };
+    const restart = async () => {
+      parkRoutes(deps, park);
+      rearmRecorded("run-1", input.headSha, recorded);
+      await vi.advanceTimersByTimeAsync(61_000);
+    };
+    const firstRun = async () => {
+      const [route] = parkRoutes(deps, park);
+      const step = { runId: "run-1", workflowName: "w", stepId: `sh-park:${input.headSha}`, iteration: 0, prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 1, requestKey: "k" };
+      await route!.runner.run(step);
+      live = false;
+      await vi.advanceTimersByTimeAsync(61_000);
+    };
+    return { shepherd, firstRun, restart };
+  }
+
+  it("tells the seat about a dirty tree once, not again at each restart's replay", async () => {
+    vi.useFakeTimers();
+    const sent: [string, string][] = [];
+    const w = world(async (seat, text) => void sent.push([seat, text]));
+
+    await w.firstRun();
+    await w.restart();
+    await w.restart();
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]![1]).toMatch(/not parked: .*uncommitted/);
+  });
+
+  it("stores the settle before the notice, so a notice that failed is not retried after a restart", async () => {
+    vi.useFakeTimers();
+    const sent: string[] = [];
+    let failing = true;
+    const w = world(async (_seat, text) => {
+      if (failing) throw new Error("broker down");
+      sent.push(text);
+    });
+
+    await w.firstRun();
+    failing = false;
+    await w.restart();
+
+    expect(sent).toEqual([]);
+    expect(w.shepherd.parkSettled("run-1", input.headSha, "impl-a")).toBe(true);
   });
 });
 

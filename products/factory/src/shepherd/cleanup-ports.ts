@@ -1,5 +1,5 @@
 import { listAgents, retire } from "@titan-design/agent-dispatch";
-import { createRpcClient, liveSource } from "@titan-design/rpc-client";
+import { createRpcClient, liveSource, type RpcClient } from "@titan-design/rpc-client";
 import type { CleanupAgents, CleanupTasks, TaskState } from "./cleanup.js";
 import type { FixTaskFields, FixTasks } from "./main-red.js";
 import { toPresence } from "./presence.js";
@@ -23,12 +23,14 @@ export function agentChatCleanupAgents(
   return {
     roster: async () => (await roster.rows()).map(({ name, presence, status }) => ({ name, presence: toPresence(presence), status })),
     invalidate: () => roster.invalidate(),
-    retire: (name) => mutating(roster, async () => void calls.retire(agentChatBin, name, timeoutMs)),
+    retire: (name) => mutating(roster, async () => void (await calls.retire(agentChatBin, name, timeoutMs))),
   };
 }
 
 type ActiveWorkCommands = {
-  "task.list": { args: { slug: string; status: "all"; tag?: string }; result: { tasks: { id: string; status: string; notes?: string }[] } };
+  "task.list": { args: { slug: string; status: "all"; tag?: string }; result: { tasks: { id: string; status: string; notes?: string; tags?: string[] }[] } };
+  "source.list": { args: { slug: string }; result: { sources: { filename: string }[] } };
+  "source.read": { args: { slug: string; path: string }; result: { content: string } };
   "task.add": { args: { slug: string } & FixTaskFields; result: { id: string } };
   "task.edit": { args: { slug: string; id: string; field: "notes"; value: string }; result: unknown };
   "task.done": { args: { slug: string; id: string }; result: unknown };
@@ -49,6 +51,11 @@ export function activeWorkTasks(options: { origin: string; fetch?: typeof fetch 
       const found = tasks.find((task) => task.id === id);
       return found === undefined ? "missing" : found.status === "done" ? "done" : "open";
     },
+    slicing: async (slug, id) => {
+      const { tasks } = await client.call("task.list", { slug, status: "all" });
+      const task = tasks.find((candidate) => candidate.id === id);
+      return { tags: task?.tags ?? [], notes: task?.notes ?? "", plan: await planText(client, slug, id) };
+    },
     done: async (slug, id) => void (await client.call("task.done", { slug, id })),
     appendNote: async (slug, id, line) => {
       const { tasks } = await client.call("task.list", { slug, status: "all" });
@@ -57,6 +64,14 @@ export function activeWorkTasks(options: { origin: string; fetch?: typeof fetch 
       await client.call("task.edit", { slug, id, field: "notes", value: notes === "" ? line : `${notes}\n${line}` });
     },
   };
+}
+
+/** Listed before it is read, so a plan that does not exist is told apart from a read that failed, which throws. */
+async function planText(client: RpcClient<ActiveWorkCommands>, slug: string, id: string): Promise<string | undefined> {
+  const filename = `${id}-plan.md`;
+  const { sources } = await client.call("source.list", { slug });
+  if (!sources.some((source) => source.filename === filename)) return undefined;
+  return (await client.call("source.read", { slug, path: `sources/${filename}` })).content;
 }
 
 /** Fix tasks over the same loopback rpc; the notes travel in the request body, never in argv. */

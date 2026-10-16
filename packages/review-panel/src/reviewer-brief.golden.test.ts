@@ -6,16 +6,22 @@ import { correctionPrompt, reviewerBrief, type MalformedRefusal } from "./review
 const golden: Record<string, string> = JSON.parse(readFileSync(new URL("./__fixtures__/briefs.golden.json", import.meta.url), "utf8"));
 const target = { repo: "octo/demo", pr: 7, head: "0123456789abcdef0123456789abcdef01234567", checkoutRoot: "/data/titan-factory/checkouts/reviews" };
 const questions = ["Is   the retry\nbounded?", "Does the cache key include the head?"];
-const refusals: MalformedRefusal[] = ["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target"];
+const earlierFindings = [
+  { head: "a".repeat(40), defectClass: "Unquoted shell words", text: "1. `rm $dir` splits on spaces.\nVerdict: FIX_FIRST" },
+  { head: "b".repeat(40), text: "1. The retry never stops." },
+];
+const refusals: MalformedRefusal[] = ["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target", "ci_policy_malformed"];
 
 const reviews: [string, string][] = [
   ["standard review", reviewerBrief(target)],
+  ["standard review from run dir", reviewerBrief({ ...target, sourceCheckout: "/srv/checkouts/demo" })],
   ["standard review with questions", reviewerBrief({ ...target, questions })],
   ["g10 review", reviewerBrief({ ...target, ownerBrief: true })],
   ["g10 review with questions", reviewerBrief({ ...target, ownerBrief: true, questions })],
   ["re-review after one FIX_FIRST", reviewerBrief({ ...target, fixFirsts: 1 })],
   ["re-review after three FIX_FIRSTs", reviewerBrief({ ...target, fixFirsts: 3 })],
   ["g10 re-review", reviewerBrief({ ...target, fixFirsts: 2, ownerBrief: true, questions })],
+  ["re-review with earlier findings", reviewerBrief({ ...target, fixFirsts: 2, earlierFindings })],
 ];
 const corrections: [string, string][] = refusals.flatMap((refusal) => [
   [`correction ${refusal}`, correctionPrompt({ ...target, refusal })] as [string, string],

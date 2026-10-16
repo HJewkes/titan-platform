@@ -7,11 +7,12 @@ import { appliedVersions, openDatabase, runMigrations } from "@titan-design/stor
 import { workflowMigration, workflowOwnershipMigration } from "@titan-design/workflow";
 import { z } from "zod";
 import { EXIT, runCli, type CliDeps } from "./cli.js";
-import { defineWorkflow } from "./definition.js";
+import { defineWorkflow, dispatchStepIds } from "./definition.js";
 import { openFactoryHost } from "./host.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { OWNER } from "./test-support/resolver.js";
 import { SHEPHERD_MIGRATIONS } from "./workflows.js";
+import { LAND_STEPS } from "./workflows/land.js";
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -212,7 +213,7 @@ describe("gate resolver migration", () => {
     db.close();
     expect(column).toBeDefined();
     expect(triggers.length).toBeGreaterThan(0);
-    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]);
   });
 });
 
@@ -264,5 +265,55 @@ describe("route coverage", () => {
     const create = () => openFactoryHost({ dbPath: ":memory:", workflows: [approval], routes: [] });
 
     expect(create).toThrow(/no route for ship/);
+  });
+});
+
+/** Blocks on `orphan`, restarts the host, and replays down the branch that skips it, as tp#628 did after a deploy. */
+async function replaySkippingRecovered(orphan: string) {
+  const dbPath = dbFile();
+  let replaying = false;
+  const shepherd = defineWorkflow({
+    name: "shepherd-pr",
+    steps: [...LAND_STEPS, { id: "sh-landed", kind: "dispatch" }],
+    run: async (ctx) => {
+      if (!replaying) await ctx.dispatch(orphan, "wait");
+      await ctx.dispatch("merge:r4:0", "merge");
+      await ctx.dispatch("sh-landed", "landed");
+    },
+  });
+  const blockOn = (stuck: string): StepRoute[] => dispatchStepIds(shepherd).map((match) => ({
+    match,
+    onRestart: "repeat",
+    runner: { run: (input) => (input.stepId === stuck ? new Promise(() => undefined) : Promise.resolve({ ok: true, output: `${input.stepId} done` })) },
+  }));
+  const first = openFactoryHost({ dbPath, workflows: [shepherd], routes: blockOn(orphan) });
+  const runId = first.runtime.start("shepherd-pr");
+  await vi.waitFor(() => expect(first.runtime.status(runId)?.activeSteps[orphan]).toBeDefined());
+  first.close();
+
+  replaying = true;
+  const second = openFactoryHost({ dbPath, workflows: [shepherd], routes: blockOn("none") });
+  try {
+    await second.adopt();
+    return await second.runtime.wait(runId);
+  } finally {
+    second.close();
+  }
+}
+
+describe("a recovered step the replay never reaches", () => {
+  it("a landed run whose replay skipped a recovered ci-wait finishes", async () => {
+    const run = await replaySkippingRecovered("ci-wait:r3:17");
+
+    expect(run.status).toBe("completed");
+    expect(run.activeSteps).toEqual({});
+    expect(run.stepResults["sh-landed:0"]).toBeDefined();
+  });
+
+  it("a run whose replay skipped a recovered merge still parks for a human", async () => {
+    const run = await replaySkippingRecovered("merge:r3:0");
+
+    expect(run.status).toBe("recovery_required");
+    expect(run.error).toBe("replay never reached recovered step merge:r3:0");
   });
 });

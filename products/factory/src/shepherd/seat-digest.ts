@@ -6,7 +6,7 @@ import { stepIdMatches } from "../definition.js";
 import type { FactoryHost } from "../host.js";
 import { resolveCommand } from "../registry.js";
 import { FINISHED_PHASES } from "./step-phase.js";
-import type { ShepherdServices } from "./commands.js";
+import type { ShepherdServices } from "./services.js";
 import type { WatchRow } from "./view.js";
 import { rowsWithRuns, runFinished } from "./watch-rows.js";
 

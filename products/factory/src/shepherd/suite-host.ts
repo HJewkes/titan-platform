@@ -1,6 +1,7 @@
 import { accessSync, constants } from "node:fs";
 import { hostname } from "node:os";
 import { delimiter, join } from "node:path";
+import { CI_REVIEWER_TEST_RULE } from "@titan-design/review-panel";
 
 /** The test rule each brief carries, chosen by the host serve runs on, since its reviewers and fixers run there too. */
 export interface SuiteRules {
@@ -27,22 +28,19 @@ export function localBasementSuite(env: NodeJS.ProcessEnv = process.env, host: s
 }
 
 const BASEMENT_SUITE_TAIL =
-  "run the full suite, typecheck, lint, dead:check and dag:check with `basement-suite <repo> <branch> --agent <your name> --run <script>`, called directly and never through ssh; `<repo>` is the repository name without its owner and `<branch>` the PR's head branch. Exit 75 means busy: retry every 5 minutes.";
+  "run the full suite, typecheck, lint and dag:check (which also runs dead:check on the same graph, so never run dead:check separately) with `basement-suite <repo> <branch> --agent <your name> --run <script>`, called directly and never through ssh; `<repo>` is the repository name without its owner and `<branch>` the PR's head branch. Exit 75 means busy: retry every 5 minutes.";
+
+/** `test:affected` follows the import graph from the change set, so a fixer gets the tests its edit can break without a full suite. */
+const AFFECTED_TESTS = "`pnpm test:affected` where the repo has that script, else the files your fix touches";
 
 /** A full suite on the Mac starves every other agent on it; basement-suite runs it on a box with slots for it. */
-const macRule = (touched: string): string =>
-  `Run only targeted tests on the Mac (${touched}, with \`pnpm exec vitest run <paths>\`); run typecheck, lint, build checks and the full suite with \`ssh basement basement-suite\`. Never run a full \`pnpm test\` on the Mac.`;
+const MAC_FIXER_RULE = `Run only the tests your fix affects on the Mac (${AFFECTED_TESTS}, with \`pnpm exec vitest run <paths>\`); run typecheck, lint, build checks and the full suite with \`ssh basement basement-suite\`. Never run a full \`pnpm test\` on the Mac.`;
 
-const basementRule = (touched: string): string => `Run only targeted tests in your checkout (${touched}, with \`timeout 300 pnpm exec vitest run <paths>\`); ${BASEMENT_SUITE_TAIL}`;
+const BASEMENT_FIXER_RULE = `Run only the tests your fix affects in your checkout (${AFFECTED_TESTS}, with \`timeout 300 pnpm exec vitest run <paths>\`); ${BASEMENT_SUITE_TAIL}`;
 
-/** One install in a review checkout is about 100k inodes, and parallel reviews filled a disk; basement-suite tests in its own throwaway tree. */
-const BASEMENT_REVIEWER_RULE =
-  "Never install dependencies in your checkout; it is for reading. Run targeted tests (the files the PR touches) with `basement-suite <repo> <branch> --agent <your name> -- <paths>`, and check that its `head=` line is the head you review; " +
-  BASEMENT_SUITE_TAIL;
-
+/** Reviewers test nowhere, on either host: they read the CI check-runs at the head they review. */
 export function suiteRules(onBasement: boolean): SuiteRules {
-  if (onBasement) return { fixer: basementRule("the files your fix touches"), reviewer: BASEMENT_REVIEWER_RULE };
-  return { fixer: macRule("the files your fix touches"), reviewer: macRule("the files the PR touches") };
+  return { fixer: onBasement ? BASEMENT_FIXER_RULE : MAC_FIXER_RULE, reviewer: CI_REVIEWER_TEST_RULE };
 }
 
 /** What a brief built with no host wired says: the form for agents off basement. */

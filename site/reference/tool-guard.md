@@ -88,6 +88,8 @@ through a symlinked parent, is refused just before the append.
   only write is its log append, and the log path check above keeps that out of settings files.
 - It does not follow commands built at run time (`$(...)`, `eval "$x"`), and reads a script run
   by path one level deep.
+- An HTTP client that sends a write method to a URL whose host, or whose `api.github.com` path, is known only at run time reads as a merge.
+- A curl, wget or httpie config file is checked only within one command line: an rc file planted by an earlier Bash call (`echo method=PUT > ~/.wgetrc`, then `wget <merge URL>` in the next call) is not seen (TP-2861 tracks the path-layer guard). A download that names its file from the URL (`curl -O`/`-J`, a bare `wget "$U"`) is not read as an rc write either. An archive extract (tar, bsdtar or cpio extract, unzip, pax -r, 7z x/e, ar x, jar x) counts as an rc write in any directory, because its member paths may be absolute. Other unpackers and interpreters are not read.
 - It does not classify `titan-factory` verbs.
 
 ## Gotchas
@@ -100,6 +102,9 @@ through a symlinked parent, is refused just before the append.
   `TITAN_TOOL_GUARD_BYPASS` is ignored: the hook runs as the agent's OS user, so nothing it
   can check is beyond the agent's reach. Take a guarded action from a terminal outside Claude
   Code.
+- zsh's precommand modifiers `noglob`, `nocorrect` and `-` are read as wrappers, like
+  `command` and `exec`, so `noglob git push origin HEAD:main` denies. The reading is generous:
+  `command noglob git push` denies although zsh would fail to run it.
 - Claude Code treats a hook that times out or exits non-zero as a non-blocking error and runs
   the call, so the bin exits 0 on every path.
 

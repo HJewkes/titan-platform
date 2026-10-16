@@ -1,6 +1,7 @@
 import { splitCluster, takesNextWord } from "./cluster.js";
 import type { WordToken } from "./lexer.js";
 import { basename } from "./path.js";
+import { canonicalShell } from "./shell-names.js";
 import { parseAssignment } from "./vars.js";
 import type { Assignment } from "./vars.js";
 import { SHORT_VALUES, SUDO_LONG_VALUES, spellLongOptions } from "./wrapper-long.js";
@@ -39,6 +40,10 @@ const WRAPPERS: Record<string, WrapperSpec> = {
   env: { values: [...SHORT_VALUES.env, "--unset", "--chdir", "--argv0"], script: ["-S", "--split-string"], attached: true, digits: true },
   command: { stop: ["-v", "-V"] },
   builtin: {},
+  // zsh precommand modifiers, which run the next word as the command; Claude Code runs Bash under zsh.
+  noglob: {},
+  nocorrect: {},
+  "-": {},
   exec: { values: ["-a"] },
   nohup: {},
   time: { values: [...SHORT_VALUES.time, "--format", "--output"] },
@@ -122,10 +127,14 @@ export interface Unwrapped {
   unsure?: WordToken[];
 }
 
-/** Program name a command word runs: a path's basename, a scoped package whole, any `@version` dropped. */
+/**
+ * Program name a command word runs: a path's basename, a scoped package whole, any `@version` dropped. zsh's EQUALS
+ * finds `=NAME` on PATH, and a restricted or versioned shell runs its base shell's grammar, so both read as that name.
+ */
 export function commandName(value: string): string {
-  if (value.startsWith("@")) return value.replace(/(?<=\/[^@]*)@.*$/, "");
-  return basename(value).replace(/@.*$/, "");
+  const word = value.length > 1 && value.startsWith("=") ? value.slice(1) : value;
+  if (word.startsWith("@")) return word.replace(/(?<=\/[^@]*)@.*$/, "");
+  return canonicalShell(basename(word).replace(/@.*$/, ""));
 }
 
 /** Strips keywords, assignments and wrappers. Returns null for a wrapper that does not run its command. */

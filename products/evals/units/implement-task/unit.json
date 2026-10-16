@@ -1,0 +1,39 @@
+{
+  "schema": "titan.unit/v1",
+  "id": "implement-task",
+  "version": "1.0.0",
+  "title": "Implement a task from its brief",
+  "description": "Implement one task brief in a workspace seeded from the accepted merge's first-parent tree as a single commit, with no later history. The result is graded by the hidden tests the accepted pull request added or changed, overlaid on the returned head and run with vitest; the hidden tests, gh and the code host are denied to the trial.",
+  "input": {
+    "type": "object",
+    "required": ["repo", "pr", "base", "brief"],
+    "properties": {
+      "repo": { "type": "string" },
+      "pr": { "type": "integer", "minimum": 1 },
+      "base": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+      "brief": { "type": "string", "minLength": 1 }
+    }
+  },
+  "output": {
+    "type": "object",
+    "required": ["head"],
+    "properties": {
+      "head": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+      "branch": { "type": "string" }
+    }
+  },
+  "objective": {
+    "constraints": [{ "metric": "contract-failures", "max": 0 }],
+    "noCriticalFailures": true,
+    "primary": { "name": "hidden-test-pass-rate", "direction": "maximize" }
+  },
+  "acceptance": {
+    "levels": [
+      { "level": 1, "minCases": 24 },
+      { "level": 2, "successLowerBound": 0.5 },
+      { "level": 3, "successLowerBound": 0.7 },
+      { "level": 4, "holdDays": 14 }
+    ]
+  },
+  "visibility": "public"
+}

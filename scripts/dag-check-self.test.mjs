@@ -114,7 +114,18 @@ describe("the dag CI job", () => {
   const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 
   it("hands dag:check's graph to dead:check instead of indexing twice", () => {
-    expect(ci).toContain('pnpm dag:check --report "$RUNNER_TEMP/codewatch-report.json" --db "$RUNNER_TEMP/graph.db"');
+    expect(ci).toContain('pnpm dag:check:graph --report "$RUNNER_TEMP/codewatch-report.json" --db "$RUNNER_TEMP/graph.db"');
     expect(ci).toContain('pnpm dead:check --db "$RUNNER_TEMP/graph.db"');
+  });
+
+  it("runs lint:types as a step after a full build, with no lint-types job of its own", () => {
+    expect(ci).toContain("run: pnpm lint:types");
+    expect(ci).not.toMatch(/^ {2}lint-types:/m);
+  });
+
+  it("is what the local dag:check gate runs, so a green dag:check means a green job", () => {
+    const { scripts } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+    expect(scripts["dag:check"]).toContain("graph-gate.mjs");
+    expect(scripts["dag:check:graph"]).toContain("dag-check-self.mjs");
   });
 });

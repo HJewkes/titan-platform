@@ -1,94 +1,6 @@
-import { SourceTextLocator, VerdictBlockRefusal, NormalizedSessionObservation } from '@titan-design/session-read';
+import { SourceTextLocator, VerdictBlockRefusal, CiPolicy, NormalizedSessionObservation } from '@titan-design/session-read';
 import { z } from 'zod';
 import { LineSource } from '@titan-design/evidence';
-
-/** The pull request head a reviewer is asked about. */
-interface ReviewTarget {
-    /** `owner/repo`. */
-    repo: string;
-    pr: number;
-    /** 40 lowercase hex characters. */
-    head: string;
-}
-/**
- * Whether a session holds an agent's name. `agent ls --json` reports `live`, `detached` and `exited`; `exiting` is the
- * short stretch while a session closes, `deregistered` is the broker's word for a name with no row at all, and `unknown`
- * is any other value the roster reports.
- */
-type Presence = "live" | "detached" | "exiting" | "exited" | "deregistered" | "unknown";
-/** The signals a dispatch reads to pick a reviewer's profile. */
-interface ReviewerFacts {
-    /** The run's registered kind. */
-    kind?: string;
-    /** The kind could not be read, so the PR takes the stricter class. */
-    unread?: boolean;
-    /** Additions plus deletions, generated files left out (`changedLineCount`); absent means unknown. */
-    changedLines?: number;
-    /** The size could not be read, so the PR takes the stricter class. */
-    sizeUnread?: boolean;
-    /** The PR changes a lockfile or package.json, so it takes the stricter class whatever its size. */
-    dependencyTouch?: boolean;
-    /** When the run's review intent was recorded, epoch ms; a spawn gate admits deferred reviews oldest intent first. */
-    intentAt?: number;
-}
-/** One roster row, as the dispatch port reports it. */
-interface ReviewerAgent {
-    name: string;
-    agentId: string;
-    /** Empty until the agent's session has started. */
-    sessionId: string;
-    presence: Presence;
-    spawnedBy: string | null;
-    /** The agent this one took over from, null for none; absent means the port holds no lineage, and such an agent is never resumed. */
-    predecessor?: string | null;
-    /** Context tokens the session holds; absent means unknown, and an unknown fill is never resumed. */
-    fillTokens?: number;
-    /** Epoch milliseconds of the latest write to the session's transcript, which a resume appends to; absent means unknown. */
-    lastWrittenAt?: number;
-    /** The profile the agent was spawned with; absent means the port does not say. */
-    profile?: string;
-}
-/** How a caller starts a reviewer; a throw from `spawn` or `resume` that the caller does not classify as a broker outage is a refusal. */
-interface ReviewerDispatch {
-    roster(): Promise<readonly ReviewerAgent[]>;
-    /** `target` names the repo whose checkout the reviewer starts in; `facts` pick the reviewer's profile. */
-    spawn(name: string, brief: string, target: ReviewTarget, facts?: ReviewerFacts): Promise<void>;
-    resume(name: string, brief: string): Promise<void>;
-}
-/** The dispatched reviewer whose verdict a caller waits for. */
-interface AwaitVerdictInput extends ReviewTarget {
-    reviewerAgentId: string;
-    reviewerSessionId: string;
-    /** Epoch milliseconds. */
-    dispatchedAt: number;
-    /** Epoch milliseconds when the reviewer's session was up; the wait counts from it. Absent on a run recorded before it existed. */
-    startedAt?: number;
-}
-/** One assistant message, attributed by the reader to the agent and session it came from. */
-interface ReviewerMessage {
-    agentId: string;
-    sessionId: string;
-    /** Epoch milliseconds. */
-    writtenAt: number;
-    text: string;
-    locator: SourceTextLocator;
-    /** Investigative tool calls the session made before this message; absent means the reader could not count, and no floor applies. */
-    investigativeCalls?: number;
-    /**
-     * Set only for a record the client wrote in the model's place (Claude Code's `<synthetic>` model), from the record's own
-     * fields and never from its text: the API error it names, and the quota reset in epoch milliseconds. Absent means a model wrote it.
-     */
-    synthetic?: {
-        apiError: string | null;
-        resetsAt: number | null;
-    };
-}
-/** The assistant messages of the dispatched reviewer's session, oldest first; the last one is the final message. */
-interface ReviewerReader {
-    read(input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]>;
-    /** A seat reviewer's sent messages from every complete record, finished turn or not; rejects on a damaged transcript. Absent means `read`. */
-    readSeat?(input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]>;
-}
 
 interface ChangedFile {
     path: string;
@@ -162,6 +74,100 @@ interface PanelVerdict {
     satisfiesG10: boolean;
 }
 
+/** The pull request head a reviewer is asked about. */
+interface ReviewTarget {
+    /** `owner/repo`. */
+    repo: string;
+    pr: number;
+    /** 40 lowercase hex characters. */
+    head: string;
+}
+/**
+ * Whether a session holds an agent's name. `agent ls --json` reports `live`, `detached` and `exited`; `exiting` is the
+ * short stretch while a session closes, `deregistered` is the broker's word for a name with no row at all, and `unknown`
+ * is any other value the roster reports.
+ */
+type Presence = "live" | "detached" | "exiting" | "exited" | "deregistered" | "unknown";
+/** The signals a dispatch reads to pick a reviewer's profile. */
+interface ReviewerFacts {
+    /** The run's registered kind. */
+    kind?: string;
+    /** The kind could not be read, so the PR takes the stricter class. */
+    unread?: boolean;
+    /** Additions plus deletions, generated files left out (`changedLineCount`); absent means unknown. */
+    changedLines?: number;
+    /** The size could not be read, so the PR takes the stricter class. */
+    sizeUnread?: boolean;
+    /** The PR changes a lockfile or package.json, so it takes the stricter class whatever its size. */
+    dependencyTouch?: boolean;
+    /** The run holds or held a G10 hold, so it takes the stricter class whatever its size or kind. */
+    g10Hold?: boolean;
+    /** When the run's review intent was recorded, epoch ms; a spawn gate admits deferred reviews oldest intent first. */
+    intentAt?: number;
+    /** The profile a panel member was planned at; when set it wins over the class the other facts pick. */
+    profile?: string;
+}
+/** One roster row, as the dispatch port reports it. */
+interface ReviewerAgent {
+    name: string;
+    agentId: string;
+    /** Empty until the agent's session has started. */
+    sessionId: string;
+    presence: Presence;
+    spawnedBy: string | null;
+    /** The agent this one took over from, null for none; absent means the port holds no lineage, and such an agent is never resumed. */
+    predecessor?: string | null;
+    /** Context tokens the session holds; absent means unknown, and an unknown fill is never resumed. */
+    fillTokens?: number;
+    /** Epoch milliseconds of the latest write to the session's transcript, which a resume appends to; absent means unknown. */
+    lastWrittenAt?: number;
+    /** The profile the agent was spawned with; absent means the port does not say. */
+    profile?: string;
+}
+/** How a caller starts a reviewer; a throw from `spawn` or `resume` that the caller does not classify as a broker outage is a refusal. */
+interface ReviewerDispatch {
+    roster(): Promise<readonly ReviewerAgent[]>;
+    /** `target` names the repo whose checkout the reviewer starts in; `facts` pick the reviewer's profile. */
+    spawn(name: string, brief: string, target: ReviewTarget, facts?: ReviewerFacts): Promise<void>;
+    resume(name: string, brief: string): Promise<void>;
+}
+/** The dispatched reviewer whose verdict a caller waits for. */
+interface AwaitVerdictInput extends ReviewTarget {
+    reviewerAgentId: string;
+    reviewerSessionId: string;
+    /** Epoch milliseconds. */
+    dispatchedAt: number;
+    /** Epoch milliseconds when the reviewer's session was up; the wait counts from it. Absent on a run recorded before it existed. */
+    startedAt?: number;
+    /** The panel member awaited; absent means correctness. An adversary verdict must carry a `Probes:` line. */
+    shape?: ReviewShape;
+}
+/** One assistant message, attributed by the reader to the agent and session it came from. */
+interface ReviewerMessage {
+    agentId: string;
+    sessionId: string;
+    /** Epoch milliseconds. */
+    writtenAt: number;
+    text: string;
+    locator: SourceTextLocator;
+    /** Investigative tool calls the session made before this message; absent means the reader could not count, and no floor applies. */
+    investigativeCalls?: number;
+    /**
+     * Set only for a record the client wrote in the model's place (Claude Code's `<synthetic>` model), from the record's own
+     * fields and never from its text: the API error it names, and the quota reset in epoch milliseconds. Absent means a model wrote it.
+     */
+    synthetic?: {
+        apiError: string | null;
+        resetsAt: number | null;
+    };
+}
+/** The assistant messages of the dispatched reviewer's session, oldest first; the last one is the final message. */
+interface ReviewerReader {
+    read(input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]>;
+    /** A seat reviewer's sent messages from every complete record, finished turn or not; rejects on a damaged transcript. Absent means `read`. */
+    readSeat?(input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]>;
+}
+
 /** The per-deployment tables: path globs per touch, and where a PR counts as large. */
 interface ClassRules {
     authority: readonly string[];
@@ -203,24 +209,28 @@ interface SliceInput {
     changedFiles: readonly ChangedFile[];
 }
 /**
- * Flags a slice over the cap when it is kind `security` or touches a security or authority path outside the generated
- * set. Advisory only, so an unreadable count flags nothing.
+ * Flags a slice over the cap when it is kind `security` or touches, or renames out of, a security or authority path
+ * outside the generated set. Advisory only, so an unreadable count flags nothing.
  */
 declare function securitySliceFlag(input: SliceInput, rules?: ClassRules): SliceFlag | undefined;
 /** True when any changed file, or the path it was renamed from, is a dependency manifest or lockfile. */
 declare function touchesDependency(files: readonly Pick<ChangedFile, "path" | "previousPath">[], rules?: Pick<ClassRules, "dependency">): boolean;
+/** Touches the changed paths, or the paths they were renamed from, alone produce, with no kind or caller flag; a test file never counts as authority, policy or security. */
+declare function pathTouches(files: readonly Pick<ChangedFile, "path" | "previousPath">[], rules?: ClassRules): PrTouch[];
 /** Class and touch flags from signals alone; no model reads the diff. An unread kind takes the strict class. */
 declare function classifyPr(facts: PrFacts, rules?: ClassRules): PrClass;
 
 /** One agent-chat profile per class; the profile carries the member's model and effort. */
 type ClassRoles = Record<ReviewClass, string>;
 type ExtraShape = Exclude<ReviewShape, "correctness">;
-/** A shape the panel adds beside correctness: on a class in `classes` with any of `touches`. */
+/** A shape the panel adds beside correctness: on a class in `classes` with any of `touches`, or with none when `always`. */
 interface ShapeRule {
     shape: ExtraShape;
     classes: readonly ReviewClass[];
     touches: readonly PrTouch[];
     blocking: boolean;
+    /** The host requires the shape whatever the files touch, as a hold that asks for an adversary does. */
+    always?: boolean;
 }
 /** Whether opus may be spawned now; the caller asks its spawn gate. */
 interface Headroom {
@@ -259,16 +269,23 @@ declare const DEFAULT_PANEL_POLICY: PanelPolicy;
 /** The panel for one head: at most 3 members and 1 opus member. Spend is estimated, never capped. Pure. */
 declare function planPanel(cls: PrClass, policy: PanelPolicy, headroom: Headroom): PanelPlan;
 
+/** Why Shepherd could not verify this head's fix-proof; a head can force each of these, so none may pass on its own. */
+type FixProofUnverified = "error" | "untrusted" | "unread";
+
 type RepoSlug = string;
 /** The most of a reviewer's OWNER-BRIEF block that is read; a longer block is malformed rather than cut. */
 declare const MAX_OWNER_BRIEF_CHARS = 2000;
 declare const OWNER_BRIEF_START = "OWNER-BRIEF";
 declare const OWNER_BRIEF_END = "END-OWNER-BRIEF";
-/** Why a reviewer's final message was no verdict: the parser refused its block, or the block named another repo, PR or head. */
-type MalformedRefusal = VerdictBlockRefusal | "wrong_target";
+/** Why a reviewer's final message was no verdict: the parser refused its block, the block named another repo, PR or head, or a MERGE's CI-policy line was off-format. */
+type MalformedRefusal = VerdictBlockRefusal | "wrong_target" | "ci_policy_malformed" | "probes_missing";
 /** The name a reviewer extracts into: `review-<pr>-<first 12 hex of the head sha>`. */
 declare function reviewCheckoutName(pr: number, head: string): string;
 declare const MAX_REVIEWER_QUESTIONS = 8;
+/** Shepherd's merge guard reads this line (TP-2407): a `.github/` change without it fails closed, and `weakened` reaches the owner. */
+declare const CI_POLICY_RULE: string;
+/** CI's required checks already ran the full suite at this head; a reviewer rerunning them costs a host's memory and slots for no new signal. */
+declare const CI_REVIEWER_TEST_RULE: string;
 /** Everything a reviewer brief may carry; it has no field for task or implementer text, so none can reach the prompt. */
 interface ReviewerBriefInput {
     repo: RepoSlug;
@@ -282,19 +299,47 @@ interface ReviewerBriefInput {
     fixFirsts?: number;
     /** True when this run's verdict will reach the owner; the brief then also asks for an OWNER-BRIEF block. */
     ownerBrief?: boolean;
-    /** The reviewer test rule for the host serve runs on; absent means the form for agents off basement. */
+    /** The reviewer test rule for the host serve runs on; absent means `CI_REVIEWER_TEST_RULE`. */
     testRule?: string;
     /** Names of the checks already green at this head; the brief asks the reviewer not to rerun them. */
     greenChecks?: readonly string[];
     /** The raw `fix-proof/v1` result line; it is parsed and checked against the head, and only counts and the verdict reach the prompt. */
     fixProof?: string;
+    /** Set by Shepherd when this head's fix-proof could not be verified; the brief then says the proof is blocking. */
+    fixProofUnverified?: FixProofUnverified;
+    /** The run's earlier FIX_FIRST findings, oldest first; reviewer text, so it is rendered as data with every verdict-block line removed. */
+    earlierFindings?: readonly EarlierFinding[];
+    /** Picks the owner recorded for this PR; only grammar-valid ones reach the prompt, so body text cannot. */
+    ownerPicks?: readonly OwnerPick[];
+    /** The absolute checkout git runs against with `-C`; set when the reviewer starts in its run dir rather than in the checkout. */
+    sourceCheckout?: string;
+}
+/** One recorded owner answer: the question it settles and the choice the owner made. */
+interface OwnerPick {
+    id: string;
+    choice: string;
+}
+/** One earlier FIX_FIRST of this run: the head it was given at, the class its reviewer named, and its findings. */
+interface EarlierFinding {
+    head: string;
+    defectClass?: string;
+    text: string;
 }
 /** The line the fixer's structural brief finds the reviewer's defect-class section by. */
 declare const DEFECT_CLASS_HEADING = "Defect class:";
+declare const MAX_OWNER_PICKS = 4;
+/** Only picks a short plain grammar accepts are kept, since a caller may have read them from a PR body. */
+declare function validOwnerPicks(picks: readonly OwnerPick[]): OwnerPick[];
+declare const EARLIER_FINDINGS_START = "EARLIER-FINDINGS";
+declare const EARLIER_FINDINGS_END = "END-EARLIER-FINDINGS";
+/** The line a re-review's fixed/not-fixed checklist over the earlier findings starts with. */
+declare const EARLIER_FINDINGS_HEADING = "Earlier findings:";
+/** Lets a reviewer defer a nit to a task instead of a FIX_FIRST round; the template's placeholders never parse as an item. */
+declare const FOLLOW_UPS_RULE: string;
 /** The closing block is a template with a placeholder verdict, so the brief itself never parses as a verdict. */
 declare function reviewerBrief(input: ReviewerBriefInput): string;
-/** The most a correction prompt may hold, owner block included. */
-declare const MAX_CORRECTION_PROMPT_CHARS = 1500;
+/** The most a correction prompt may hold, owner block included; raised from 1500 for the CI-policy exactness sentence, then from 1600 for the adversary's Probes sentence. */
+declare const MAX_CORRECTION_PROMPT_CHARS = 1700;
 /** One fixed sentence per refusal; a closed map, so no reviewer text can reach the prompt. */
 declare const REFUSAL_SENTENCES: Record<MalformedRefusal, string>;
 interface CorrectionPromptInput {
@@ -307,6 +352,41 @@ interface CorrectionPromptInput {
 }
 /** Built only from code-chosen strings, since it travels in argv; the verdict line is a placeholder, so it never parses as a verdict. */
 declare function correctionPrompt(input: CorrectionPromptInput): string;
+
+declare const FOLLOW_UPS_HEADING = "Follow-ups:";
+declare const MAX_FOLLOW_UPS = 5;
+declare const MAX_FOLLOW_UP_TITLE_CHARS = 120;
+declare const MAX_FOLLOW_UP_DONE_WHEN_CHARS = 400;
+/** No `critical`: anything that serious belongs in a FIX_FIRST, not in work deferred past the merge. */
+declare const FOLLOW_UP_SEVERITIES: readonly ["low", "medium", "high"];
+/** One task a reviewer proposes for later; it never decides the verdict. */
+declare const FollowUpSchema: z.ZodObject<{
+    title: z.ZodString;
+    doneWhen: z.ZodString;
+    severity: z.ZodEnum<{
+        low: "low";
+        medium: "medium";
+        high: "high";
+    }>;
+}, z.core.$strict>;
+type FollowUp = z.infer<typeof FollowUpSchema>;
+declare const FOLLOW_UPS_WARNINGS: readonly ["multiple_blocks", "bad_item", "bad_severity", "too_many", "too_long", "placeholder"];
+/** Why a Follow-ups block was dropped whole; a closed set, so no reviewer text travels with it. */
+type FollowUpsWarning = (typeof FOLLOW_UPS_WARNINGS)[number];
+interface ParsedFollowUps {
+    items: FollowUp[];
+    warning?: FollowUpsWarning;
+}
+/**
+ * The one `Follow-ups:` block anywhere in a reviewer's visible text, before or after the verdict lines. Any fault drops the
+ * whole block with one named warning rather than filing part of it, and nothing here can change the verdict.
+ */
+declare function parseFollowUps(text: string): ParsedFollowUps;
+/** The fields an accepted verdict carries: both absent when the reviewer proposed nothing and wrote nothing malformed. */
+declare function followUpsFields(text: string): {
+    followUps?: FollowUp[];
+    followUpsWarning?: FollowUpsWarning;
+};
 
 /** What the owner is asked about a gated PR, as the reviewer who read the diff wrote it. */
 declare const OwnerBriefSchema: z.ZodObject<{
@@ -347,12 +427,17 @@ interface AcceptedVerdict {
     };
     /** The reviewer's OWNER-BRIEF block, or null when it wrote none or it did not parse; never read by the verdict. */
     ownerBrief?: OwnerBrief | null;
+    /** Tasks the reviewer proposed for later, on MERGE and FIX_FIRST alike; never read by the verdict. */
+    followUps?: FollowUp[];
+    /** Why the reviewer's Follow-ups block was dropped whole; the verdict still counts. */
+    followUpsWarning?: FollowUpsWarning;
     /** The profile the accepted message's author was spawned with; absent when neither the dispatch nor the roster says. */
     reviewerProfile?: string;
 }
-/** Only a FIX_FIRST keeps the reviewer's words, because the implementer has to read them. */
+/** Only a FIX_FIRST keeps the reviewer's words, because the implementer has to read them; only a MERGE carries the CI-policy line, and only an unchanged or weakened one. */
 type AwaitVerdictResult = (AcceptedVerdict & {
     verdict: "MERGE";
+    ciPolicy?: CiPolicy;
 }) | (AcceptedVerdict & {
     verdict: "FIX_FIRST";
     text: string;
@@ -378,6 +463,8 @@ declare const isUsageLimit: (result: {
  * A final message that passes those checks but whose block is refused, or names another repo, PR or head, is `none` with a
  * `malformed` record; silence, a foreign or earlier message, `WAIT` and the client's own usage-limit notice (which no correction can answer) carry none. A MERGE or FIX_FIRST from a session that
  * made no investigative call is `none` with the depth-floor reason; a message the reader did not count is judged as before.
+ * A MERGE whose CI-policy line reads malformed is refused for one correction; a weakened reading wins over malformed in the
+ * parser, so a weakening is never corrected away. An adversary verdict with no `Probes:` line is refused for one correction too.
  */
 declare function acceptVerdict(input: AwaitVerdictInput, messages: readonly ReviewerMessage[]): AwaitVerdictResult;
 
@@ -408,6 +495,10 @@ declare function boundedFindings(text: string, max?: number): string;
  * messages their agent, session and dispatch guards let through; `fallback` is the verdict message, used when none says more.
  */
 declare function fixFirstFindings(target: ReviewTarget, messages: readonly ReviewerMessage[], fallback: string, heading?: string): string;
+/** The line a reviewer adds for each blocking item that contradicts a recorded owner pick. */
+declare const OWNER_PICK_CONTRADICTED = "Owner pick contradicted:";
+/** The recorded pick ids a reviewer's text names on contradiction lines, each once; an id not recorded is ignored. */
+declare function contradictedPicks(text: string, ids: readonly string[]): string[];
 
 /** A verdict block names its target when repo (GitHub ignores case), PR number and head sha all match. */
 declare function namesTarget(block: {
@@ -443,8 +534,9 @@ interface AggregateInput {
     /** File text at the head; advisory findings whose citations it cannot confirm are dropped. */
     source: LineSource;
     /**
-     * fix-proof's verdict word or its `fix-proof/v1` line, when one ran. `vacuous`, `no-tests`, a line naming another head,
-     * or anything unreadable makes the tests member blocking.
+     * fix-proof's verdict word or its `fix-proof/v1` line, when one ran. `vacuous`, `no-tests`, `error`, `unproven`, a
+     * line naming another head, or anything unreadable makes the tests member blocking. A bare word never satisfies G10;
+     * only a line pinned to the head can.
      */
     fixProof?: string;
     /** The opus profiles, as `planPanel`'s policy lists them; satisfiesG10 needs the correctness member at one. */
@@ -452,6 +544,18 @@ interface AggregateInput {
 }
 /** The panel verdict for one head from its members' results. Every path it cannot classify ends short of MERGE. Pure. */
 declare function aggregate(plan: PanelPlan, results: readonly MemberResult[], input: AggregateInput): PanelVerdict;
+
+/** The line an adversary verdict must carry above its block; a verdict without it is malformed. */
+declare const PROBES_HEADING = "Probes:";
+/** Why a hold asked for an adversary, as the host knows it; every field is text other agents wrote, so it is rendered as data. */
+interface AdversaryHoldContext {
+    holdReason?: string;
+    matchedFiles?: readonly string[];
+    doneWhen?: string;
+    lastReport?: string;
+}
+/** A line starting `Probes:` above the verdict block. */
+declare function hasProbesLine(text: string): boolean;
 
 /** The shapes that carry an overlay; correctness is the base brief itself. */
 type OverlayShape = Exclude<ReviewShape, "correctness">;
@@ -469,8 +573,49 @@ declare const SHAPE_BRIEFS: Readonly<Record<OverlayShape, ShapeBrief>>;
 interface ShapeBriefInput extends ReviewerBriefInput {
     /** A `fix-proof/v1 <json>` line for this head; only the tests brief reads it. */
     fixProof?: string;
+    /** Why the PR is held for an adversary; only the adversary brief reads it. */
+    holdContext?: AdversaryHoldContext;
 }
 /** The overlay comes first so the base brief's verdict template stays the end of the prompt. */
 declare function shapeBrief(shape: OverlayShape, input: ShapeBriefInput): string;
 
-export { type AcceptedVerdict, type AggregateInput, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, type ChangedFile, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, type Headroom, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_REVIEWER_QUESTIONS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SECURITY_SLICE_LINES, SHAPE_BRIEFS, type ShapeBrief, type ShapeBriefInput, type ShapeRule, type SliceFlag, type SliceInput, USAGE_LIMIT_REASON, acceptVerdict, aggregate, boundedFindings, changedLineCount, classifyPr, correctionPrompt, findingsText, fixFirstFindings, isInvestigativeCall, isUsageLimit, namesPr, namesTarget, parseOwnerBrief, planPanel, readMalformed, reviewCheckoutName, reviewerBrief, securitySliceFlag, shapeBrief, touchesDependency };
+interface ReviewRequest {
+    facts: PrFacts;
+    /** Everything the briefs carry except the target, which `facts` names. */
+    brief: Omit<ShapeBriefInput, "repo" | "pr" | "head">;
+    /** File text at the head, for the aggregate's citation check. */
+    source: LineSource;
+    /** Absent means `DEFAULT_PANEL_POLICY`. */
+    policy?: PanelPolicy;
+    /** Absent means `DEFAULT_CLASS_RULES`. */
+    rules?: ClassRules;
+}
+interface ReviewClock {
+    now(): number;
+    sleep(ms: number): Promise<void>;
+}
+interface ReviewPorts {
+    dispatch: ReviewerDispatch;
+    reader: ReviewerReader;
+    clock: ReviewClock;
+    /** Asked once, before planning. */
+    headroom(): Promise<Headroom>;
+}
+interface ReviewOptions {
+    pollMs?: number;
+    /** How long a member's session may take to start, from its spawn. */
+    startDeadlineMs?: number;
+    /** How long a started member may take to write its verdict. */
+    verdictDeadlineMs?: number;
+}
+/** Why a member has no verdict when the dispatch refused it at its profile and at any sonnet fallback. */
+declare const SPAWN_REFUSED_REASON = "the dispatch refused to spawn the reviewer";
+/** A pure function of the input, so a repeat call finds the same roster row; attempt 2 is the fresh retry of a silent member. */
+declare function memberName(target: ReviewTarget, shape: ReviewShape, attempt?: 1 | 2): string;
+/**
+ * Classifies, plans, runs every member in parallel and aggregates. Each member is spawned under `memberName`, so a repeat
+ * call with the same input reuses the roster rows and spawns nothing.
+ */
+declare function reviewPullRequest(request: ReviewRequest, ports: ReviewPorts, opts?: ReviewOptions): Promise<PanelVerdict>;
+
+export { type AcceptedVerdict, type AdversaryHoldContext, type AggregateInput, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, CI_POLICY_RULE, CI_REVIEWER_TEST_RULE, type ChangedFile, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, EARLIER_FINDINGS_END, EARLIER_FINDINGS_HEADING, EARLIER_FINDINGS_START, type EarlierFinding, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, FOLLOW_UPS_HEADING, FOLLOW_UPS_RULE, FOLLOW_UPS_WARNINGS, FOLLOW_UP_SEVERITIES, type FixProofUnverified, type FollowUp, FollowUpSchema, type FollowUpsWarning, type Headroom, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_FOLLOW_UPS, MAX_FOLLOW_UP_DONE_WHEN_CHARS, MAX_FOLLOW_UP_TITLE_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_OWNER_PICKS, MAX_REVIEWER_QUESTIONS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, OWNER_PICK_CONTRADICTED, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type OwnerPick, PROBES_HEADING, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type ParsedFollowUps, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewClock, type ReviewOptions, type ReviewPorts, type ReviewRequest, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SECURITY_SLICE_LINES, SHAPE_BRIEFS, SPAWN_REFUSED_REASON, type ShapeBrief, type ShapeBriefInput, type ShapeRule, type SliceFlag, type SliceInput, USAGE_LIMIT_REASON, acceptVerdict, aggregate, boundedFindings, changedLineCount, classifyPr, contradictedPicks, correctionPrompt, findingsText, fixFirstFindings, followUpsFields, hasProbesLine, isInvestigativeCall, isUsageLimit, memberName, namesPr, namesTarget, parseFollowUps, parseOwnerBrief, pathTouches, planPanel, readMalformed, reviewCheckoutName, reviewPullRequest, reviewerBrief, securitySliceFlag, shapeBrief, touchesDependency, validOwnerPicks };

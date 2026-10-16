@@ -1,10 +1,12 @@
 import type { HookEvent } from "./event.js";
 import { config } from "./families/config.js";
 import { egress } from "./families/egress.js";
+import { choosesHttpConfig } from "./families/http-config.js";
 import { merge } from "./families/merge.js";
 import { release } from "./families/release.js";
 import { secret } from "./families/secret.js";
 import { hasDynamicName, namedReadings, wrappedReading } from "./dynamic-readings.js";
+import { afterWrites, scriptReadings } from "./line-writes.js";
 import { INTERPRETERS } from "./mentions.js";
 import { scriptTarget, SOURCERS } from "./scripts.js";
 import type { ScriptTarget } from "./scripts.js";
@@ -42,8 +44,15 @@ interface ScriptMemo {
 }
 
 function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
-  const asWritten = classifyLine(extractCommands(src, extractOptions(cwd, ctx, scripts, false)), ctx, scripts);
-  return ctx.foldCase ? unique([...asWritten, ...foldedActions(src, cwd, ctx, scripts)]) : asWritten;
+  const commands = extractCommands(src, extractOptions(cwd, ctx, scripts, false));
+  const line = withHttpConfig(src, commands, ctx);
+  const asWritten = classifyLine(commands, line, scripts);
+  return ctx.foldCase ? unique([...asWritten, ...foldedActions(src, cwd, line, scripts)]) : asWritten;
+}
+
+/** Marks the line when it may choose or write an HTTP client's config file, read from these commands. */
+function withHttpConfig(src: string, commands: SimpleCommand[], ctx: ClassifyContext): ClassifyContext {
+  return choosesHttpConfig(src, commands, ctx.home, ctx.foldCase === true) ? { ...ctx, httpConfigUnseen: true } : ctx;
 }
 
 /** A script's text (`scripts` null) stops at the dynamic-word cap and reads on as main does; the line refuses past it. */
@@ -59,7 +68,8 @@ function extractOptions(cwd: string | null, ctx: ClassifyContext, scripts: Scrip
  */
 function foldedActions(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
   try {
-    return classifyLine(extractCommands(src, extractOptions(cwd, ctx, scripts, true)), ctx, scripts);
+    const folded = extractCommands(src, extractOptions(cwd, ctx, scripts, true));
+    return classifyLine(folded, withHttpConfig(src, folded, ctx), scripts);
   } catch (error) {
     if (error instanceof ReadingLimitError) throw error;
     return [];
@@ -76,7 +86,7 @@ function classifyLine(commands: SimpleCommand[], ctx: ClassifyContext, scripts: 
     }
     out.push(...classifySimple(cmd, line));
     if (scripts) out.push(...scriptActions(cmd, line, scripts));
-    line = afterDynamic(cmd, afterAll(cmd, line));
+    line = afterDynamic(cmd, afterAll(cmd, afterWrites(cmd, line)));
   }
   return unique(out);
 }
@@ -143,11 +153,11 @@ function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: Script
  * interpreter's script it runs as written is not, as main reads that one unbudgeted.
  */
 function scriptVerdicts(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext, budget: ScriptMemo): ClassifiedAction[] {
-  const text = readScript(ctx, target.path);
-  if (text === null) return [];
   const added = cmd.added === true;
-  if (added || target.kind === "shell") charge(budget, { script: target.path.slice(target.path.lastIndexOf("/") + 1), bytes: Buffer.byteLength(text), added });
-  return scriptText(cmd, target, text, ctx);
+  return scriptReadings(ctx, target.path).flatMap((text) => {
+    if (added || target.kind === "shell") charge(budget, { script: target.path.slice(target.path.lastIndexOf("/") + 1), bytes: Buffer.byteLength(text), added });
+    return scriptText(cmd, target, text, ctx);
+  });
 }
 
 function charge(budget: ScriptMemo, script: Omit<ScriptOverrun, "total">): void {
@@ -189,14 +199,6 @@ function scriptText(cmd: SimpleCommand, target: ScriptTarget, text: string, ctx:
   const name = target.kind === "interpreter" ? cmd.name : null;
   const path = name === null ? null : cmd.path;
   return classifySimple({ name, path, args: [word], env: {}, redirects: [], dir: cmd.dir, wrapping: [], next: null, prev: null, negated: false, chain: { start: null } }, ctx);
-}
-
-function readScript(ctx: ClassifyContext, path: string): string | null {
-  try {
-    return ctx.readScript(path);
-  } catch {
-    return null;
-  }
 }
 
 function unique(actions: ClassifiedAction[]): ClassifiedAction[] {

@@ -4,7 +4,7 @@
  * session id. Ported from relay's `daemon/src/session.ts`.
  *
  * The message text is never interpolated into a shell or a flag: this returns
- * an argv array, `execSafe` runs it with `shell: false`, and the words stay one
+ * an argv array, `execSafeAsync` runs it with `shell: false`, and the words stay one
  * opaque argument. Unlike a spawn brief, the message IS in argv and so is
  * visible via `ps`; see dispatch.ts's M8 note for that cost.
  *
@@ -16,7 +16,7 @@
  * too, until agent-chat takes it on stdin.
  */
 
-import { refusal, runAgentChat } from "./agents.js";
+import { refusal, runAgentChatAsync } from "./agents.js";
 import { DispatchError, PEER_NAME_PATTERN } from "./dispatch.js";
 
 export class ResumeError extends Error {}
@@ -48,13 +48,13 @@ export function buildResumeAgentArgs(name: string, message: string): string[] {
   return ["agent", "resume", name, "--message", message];
 }
 
-/** Resume an ended agent on its own conversation, with `message` as its next turn. */
-export function resumeAgent(
+/** Resume an ended agent on its own conversation, with `message` as its next turn; rejects with `DispatchError` on a refusal. */
+export async function resumeAgent(
   agentChatBinPath: string,
   name: string,
   message: string,
   timeoutMs: number,
-): ResumeAgentResult {
+): Promise<ResumeAgentResult> {
   if (!PEER_NAME_PATTERN.test(name)) {
     throw new DispatchError(`invalid peer name: '${name}'`);
   }
@@ -62,7 +62,7 @@ export function resumeAgent(
     throw new DispatchError("resuming needs a non-empty message");
   }
   const args = buildResumeAgentArgs(name, message);
-  const result = runAgentChat(agentChatBinPath, args, timeoutMs);
+  const result = await runAgentChatAsync(agentChatBinPath, args, timeoutMs);
   if (result.status !== 0) throw refusal("agent resume", result);
   const lines = result.stdout.split("\n").map((line) => line.trim());
   return { name, lines: lines.filter((line) => line !== "") };

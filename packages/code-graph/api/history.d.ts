@@ -1,5 +1,6 @@
 import { H as HistoryLoad, C as ChurnEntry, a as ChurnWindow } from '../change-coupling.js';
 export { b as ChangeCouplingResult, c as CoEditPair, d as ComputeChangeCouplingOptions, e as CouplingPartner, G as GitHistoryError, f as GitLargeFailure, L as LoadChurnOptions, g as computeChangeCoupling, h as couplingFor, i as entriesWithin, l as loadChurnEntries, j as loadChurnResult, p as parseChurnLog, r as resolveRenamedPath } from '../change-coupling.js';
+import { LineSource } from '@titan-design/evidence';
 
 /** A regular file or symlink in a commit's tree: its repo-relative path and blob id. */
 interface TreeBlob {
@@ -19,6 +20,13 @@ declare function resolveCommit(repoRoot: string, rev: string): ResolvedCommit;
 declare function listTreeBlobs(repoRoot: string, commit: string): TreeBlob[];
 /** UTF-8 content of each blob in `oids`, read with a single `git cat-file --batch`. */
 declare function readBlobs(repoRoot: string, oids: readonly string[]): Map<string, string>;
+
+/**
+ * A LineSource over the blobs of commit `rev`, never the working tree. `rev` must be a full 40-hex
+ * commit id, so a moving ref cannot change what an anchor was checked against. A path that is not a
+ * blob at `rev` (missing, a directory, a submodule) reads as unreadable.
+ */
+declare function revisionLineSource(repoRoot: string, rev: string): LineSource;
 
 interface FirstSeenOptions {
     /** Directory paths are made relative to; paths outside it are dropped. */
@@ -78,7 +86,45 @@ declare function authorLinesByPath(entries: readonly ChurnEntry[], known: Readon
 /** Summarize one author tally; null when it holds no churn. */
 declare function summarizeOwnership(byAuthor: ReadonlyMap<string, number>, threshold?: number): OwnershipForFile | null;
 
-export { ChurnEntry, ChurnWindow, type ComputeOwnershipOptions, type FirstSeenOptions, HistoryLoad, type OwnershipForFile, type PathChurn, type ResolvedCommit, type TreeBlob, aggregateChurn, aggregateChurnWindows, authorLinesByPath, computeOwnership, listTreeBlobs, loadFileFirstSeen, loadFirstSeenResult, readBlobs, resolveCommit, summarizeOwnership };
+/** Task ids such as `TP-2474` or `CC-44`, read from commit subjects. */
+declare const DEFAULT_TASK_ID_PATTERN: RegExp;
+/** A commit's edit to one file, with its hunks' new-side lines already carried forward to HEAD. */
+interface FileEdit {
+    commit: string;
+    epoch: number;
+    taskIds: readonly string[];
+    /** Repo-relative path at HEAD (after later renames), rebased onto the caller's root. */
+    filePath: string;
+    /** Inclusive 1-based line ranges in HEAD coordinates. */
+    ranges: readonly [number, number][];
+}
+interface LoadFileEditsOptions {
+    repoRoot: string;
+    windowDays: number;
+    rev?: string;
+    untilEpoch?: number;
+    taskIdPattern?: RegExp;
+}
+/** Every in-window commit's per-file edits, newest first, with line ranges expressed against HEAD. */
+declare function loadFileEditsResult(options: LoadFileEditsOptions): HistoryLoad<FileEdit[]>;
+/** A symbol's HEAD line span, for attributing edits. */
+interface SymbolSpan {
+    id: string;
+    startLine: number;
+    endLine: number;
+}
+/** Distinct task ids and commits that edited one symbol. */
+interface SymbolAccretion {
+    taskIds: Set<string>;
+    commits: Set<string>;
+}
+/**
+ * Credit each edit to the innermost symbols its ranges overlap, so a method edit counts for the
+ * method and not again for its class. Keyed by symbol id; symbols nobody edited are absent.
+ */
+declare function accreteSymbols(edits: readonly FileEdit[], spansByFile: ReadonlyMap<string, readonly SymbolSpan[]>): Map<string, SymbolAccretion>;
+
+export { ChurnEntry, ChurnWindow, type ComputeOwnershipOptions, DEFAULT_TASK_ID_PATTERN, type FileEdit, type FirstSeenOptions, HistoryLoad, type OwnershipForFile, type PathChurn, type ResolvedCommit, type SymbolAccretion, type SymbolSpan, type TreeBlob, accreteSymbols, aggregateChurn, aggregateChurnWindows, authorLinesByPath, computeOwnership, listTreeBlobs, loadFileEditsResult, loadFileFirstSeen, loadFirstSeenResult, readBlobs, resolveCommit, revisionLineSource, summarizeOwnership };
 
 // ./dist/change-coupling.d.ts
 /**

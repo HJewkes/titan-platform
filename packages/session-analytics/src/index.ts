@@ -139,8 +139,13 @@ export type { Assignment, CostPerOutcomeOptions, CostPerOutcomeReport, OutcomeBu
 export { DEFAULT_DONE_OUTCOMES, DEFAULT_MERGED_OUTCOMES, assignmentSchema, costPerOutcome, costPerOutcomeSchema, renderCostPerOutcomeText } from "./cost-per-outcome.js";
 export type { SuccessorReworkOptions, SuccessorReworkReport } from "./successor-rework.js";
 export { DEFAULT_BOOT_REQUESTS, successorReworkReport, successorReworkSchema } from "./successor-rework.js";
+export type { ComparisonSpec, RowDelta, WindowComparison } from "./compare-windows.js";
+export { REVIEW_FILL_COMPARISON, SUCCESSOR_REWORK_COMPARISON, compareWindows } from "./compare-windows.js";
+export { renderReviewFillText, renderSuccessorReworkText, renderWindowComparisonText } from "./render-guardrails.js";
 export type { ActualsTask, CappedHours, TaskActuals, TaskActualsFlag, TaskActualsOptions, TaskPr } from "./task-actuals.js";
 export { DEFAULT_ACTIVE_CAP_MINUTES, taskActuals } from "./task-actuals.js";
+export type { PrDiff, PrFeatures } from "./task-actuals-pr.js";
+export { listMergedPrRefs, parsePrRef, prFeaturesFor } from "./task-actuals-pr.js";
 export type { SeatContextOptions, SeatContextRow, SeatSessions } from "./seat-context.js";
 export { seatContext, seatContextSchema } from "./seat-context.js";
 export type { InheritMode } from "./coord-duty/assign.js";

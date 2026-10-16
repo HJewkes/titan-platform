@@ -93,6 +93,7 @@ export { importMarker, isMinifyLanguage, minifySource, originalLine } from "./an
 export type { HistoryMetricsOptions, LoadedHistory, TestCoverageOwnershipOptions } from "./history-metrics.js";
 export {
   computeTestCoverageOwnership,
+  DEFAULT_ACCRETION_WINDOWS,
   DEFAULT_CHURN_WINDOWS,
   loadHistoryMetrics,
   resolveChurnWindows,
@@ -102,6 +103,8 @@ export type { PageRankOptions, PageRankResult, PageRankRow } from "./analysis/pa
 export { computePageRank, getEdgeWeight } from "./analysis/pagerank.js";
 export type { RelevanceOptions } from "./analysis/relevance.js";
 export { computeRelevance } from "./analysis/relevance.js";
+export type { CallPathOptions, LevelEdge, ProjectedHop } from "./analysis/call-path.js";
+export { findCallPath, projectCallPath, snapshotCallPath } from "./analysis/call-path.js";
 export {
   DEFAULT_MAX_LINE_CHARS,
   ELISION_MARKER,
@@ -176,22 +179,16 @@ export type {
 } from "./analysis/graph-report-types.js";
 export type { ReportContext, ReportContextInput } from "./analysis/graph-report-sections.js";
 export {
-  buildReportContext,
-  busFactorOf,
-  hotspotScoreOf,
-  keepNode,
-  lookupMetric,
-  topBusFactorRisks,
-  topCentralFiles,
-  topHotspots,
-  topTestCoverageRisks,
+  buildReportContext, busFactorOf, hotspotScoreOf, keepNode, lookupMetric,
+  topBusFactorRisks, topCentralFiles, topHotspots, topTestCoverageRisks,
 } from "./analysis/graph-report-sections.js";
 export { publicApiFiles, topUnusedExports } from "./analysis/unused-exports.js";
+export * from "./analysis/complexity-distribution.js";
+export * from "./analysis/dependency-graph-metrics.js";
 export { topDeadModules } from "./analysis/dead-modules.js";
 export { topGrowthRisks } from "./analysis/growth-risks.js";
 export { topUntestedRisks } from "./analysis/untested-risks.js";
-export type { ComputeDriftInput } from "./analysis/graph-report-drift.js";
-export { computeReportDrift } from "./analysis/graph-report-drift.js";
+export { computeReportDrift, type ComputeDriftInput } from "./analysis/graph-report-drift.js";
 export type { HealthComponent, HealthComponentKey, HealthInput, HealthWeights, PenaltyWeight } from "./analysis/dashboard-health.js";
 export { DEFAULT_HEALTH_WEIGHTS, computeHealth } from "./analysis/dashboard-health.js";
 export type {
@@ -257,6 +254,7 @@ export type {
   CheckRule,
   CheckRulesFile,
   CheckViolation,
+  CycleKind,
   ForbidImportRule,
   LayeredDepsRule,
   MetricMaxRule,

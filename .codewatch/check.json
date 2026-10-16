@@ -22,7 +22,8 @@
           "packages/eslint-plugin",
           "packages/app-paths",
           "packages/anthropic-account",
-          "packages/test-kit"
+          "packages/test-kit",
+          "packages/owner-proof"
         ],
         "1": [
           "packages/retrieval",
@@ -38,7 +39,11 @@
           "packages/agent-dispatch",
           "packages/agent-surface",
           "packages/worktree",
-          "packages/health"
+          "packages/health",
+          "packages/frame-capture",
+          "packages/speech-tts",
+          "packages/speech-stt",
+          "packages/speech-g2p"
         ],
         "2": [
           "packages/session-read",
@@ -57,7 +62,10 @@
           "packages/owner-queue",
           "packages/review-panel",
           "packages/pm",
-          "packages/throughput"
+          "packages/throughput",
+          "packages/graph-layout",
+          "packages/dispatch-ledger",
+          "packages/speech-vet"
         ],
         "ui": [
           "packages/react-app"
@@ -69,7 +77,8 @@
           "products/factory",
           "products/evals",
           "apps/console",
-          "products/titan"
+          "products/titan",
+          "products/explainer"
         ]
       },
       "layers": [
@@ -90,7 +99,8 @@
           "packages/eslint-plugin",
           "packages/app-paths",
           "packages/anthropic-account",
-          "packages/test-kit"
+          "packages/test-kit",
+          "packages/owner-proof"
         ],
         [
           "packages/retrieval",
@@ -106,7 +116,11 @@
           "packages/agent-dispatch",
           "packages/agent-surface",
           "packages/worktree",
-          "packages/health"
+          "packages/health",
+          "packages/frame-capture",
+          "packages/speech-tts",
+          "packages/speech-stt",
+          "packages/speech-g2p"
         ],
         [
           "packages/session-read",
@@ -125,7 +139,10 @@
           "packages/owner-queue",
           "packages/review-panel",
           "packages/pm",
-          "packages/throughput"
+          "packages/throughput",
+          "packages/graph-layout",
+          "packages/dispatch-ledger",
+          "packages/speech-vet"
         ],
         [
           "packages/react-app"
@@ -137,7 +154,8 @@
           "products/factory",
           "products/evals",
           "apps/console",
-          "products/titan"
+          "products/titan",
+          "products/explainer"
         ]
       ]
     },
@@ -184,6 +202,13 @@
       "to": "products/titan/**"
     },
     {
+      "id": "product-isolation:products/session-miner->products/explainer",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/session-miner/**",
+      "to": "products/explainer/**"
+    },
+    {
       "id": "product-isolation:products/retrieval-eval->products/session-miner",
       "type": "forbid-import",
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
@@ -224,6 +249,13 @@
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/retrieval-eval/**",
       "to": "products/titan/**"
+    },
+    {
+      "id": "product-isolation:products/retrieval-eval->products/explainer",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/retrieval-eval/**",
+      "to": "products/explainer/**"
     },
     {
       "id": "product-isolation:apps/codewatch->products/session-miner",
@@ -268,6 +300,13 @@
       "to": "products/titan/**"
     },
     {
+      "id": "product-isolation:apps/codewatch->products/explainer",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/codewatch/**",
+      "to": "products/explainer/**"
+    },
+    {
       "id": "product-isolation:products/factory->products/session-miner",
       "type": "forbid-import",
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
@@ -308,6 +347,13 @@
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/factory/**",
       "to": "products/titan/**"
+    },
+    {
+      "id": "product-isolation:products/factory->products/explainer",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/factory/**",
+      "to": "products/explainer/**"
     },
     {
       "id": "product-isolation:products/evals->products/session-miner",
@@ -352,6 +398,13 @@
       "to": "products/titan/**"
     },
     {
+      "id": "product-isolation:products/evals->products/explainer",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/evals/**",
+      "to": "products/explainer/**"
+    },
+    {
       "id": "product-isolation:apps/console->products/session-miner",
       "type": "forbid-import",
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
@@ -394,6 +447,13 @@
       "to": "products/titan/**"
     },
     {
+      "id": "product-isolation:apps/console->products/explainer",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/console/**",
+      "to": "products/explainer/**"
+    },
+    {
       "id": "product-isolation:products/titan->products/session-miner",
       "type": "forbid-import",
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
@@ -434,6 +494,62 @@
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/titan/**",
       "to": "apps/console/**"
+    },
+    {
+      "id": "product-isolation:products/titan->products/explainer",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/titan/**",
+      "to": "products/explainer/**"
+    },
+    {
+      "id": "product-isolation:products/explainer->products/session-miner",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/explainer/**",
+      "to": "products/session-miner/**"
+    },
+    {
+      "id": "product-isolation:products/explainer->products/retrieval-eval",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/explainer/**",
+      "to": "products/retrieval-eval/**"
+    },
+    {
+      "id": "product-isolation:products/explainer->apps/codewatch",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/explainer/**",
+      "to": "apps/codewatch/**"
+    },
+    {
+      "id": "product-isolation:products/explainer->products/factory",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/explainer/**",
+      "to": "products/factory/**"
+    },
+    {
+      "id": "product-isolation:products/explainer->products/evals",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/explainer/**",
+      "to": "products/evals/**"
+    },
+    {
+      "id": "product-isolation:products/explainer->apps/console",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/explainer/**",
+      "to": "apps/console/**"
+    },
+    {
+      "id": "product-isolation:products/explainer->products/titan",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/explainer/**",
+      "to": "products/titan/**"
     },
     {
       "id": "code-graph-history-seam",
@@ -493,9 +609,44 @@
     {
       "id": "no-titan-design-library-imports",
       "type": "forbid-import",
-      "$comment": "Libraries never import across the repo line: titan-design may use titan-platform packages, not the reverse. Only products and apps may import @titan-design/react-ui.",
+      "$comment": "No library in titan-platform imports one from titan-design or the reverse; only products cross that line (site/guides/where-code-goes.md). Only products and apps may import @titan-design/react-ui.",
       "from": "packages/**",
       "to": "npm:@titan-design/react-ui"
+    },
+    {
+      "id": "no-titan-design-library-imports:beats",
+      "type": "forbid-import",
+      "$comment": "No library in titan-platform imports one from titan-design or the reverse; only products cross that line (site/guides/where-code-goes.md). Only products and apps may import @titan-design/beats.",
+      "from": "packages/**",
+      "to": "npm:@titan-design/beats"
+    },
+    {
+      "id": "video-mechanism-no-react:frame-capture",
+      "type": "forbid-import",
+      "$comment": "The video mechanism packages (frame-capture, render-qa, graph-layout, speech-*) run without React: pixels live in titan-design, and these hold engines with no pixels. One rule per package because codewatch globs have no braces; a glob that matches nothing, as render-qa does until it exists, is accepted.",
+      "from": "packages/frame-capture/src/**",
+      "to": "npm:react*"
+    },
+    {
+      "id": "video-mechanism-no-react:render-qa",
+      "type": "forbid-import",
+      "$comment": "The video mechanism packages (frame-capture, render-qa, graph-layout, speech-*) run without React: pixels live in titan-design, and these hold engines with no pixels. One rule per package because codewatch globs have no braces; a glob that matches nothing, as render-qa does until it exists, is accepted.",
+      "from": "packages/render-qa/src/**",
+      "to": "npm:react*"
+    },
+    {
+      "id": "video-mechanism-no-react:graph-layout",
+      "type": "forbid-import",
+      "$comment": "The video mechanism packages (frame-capture, render-qa, graph-layout, speech-*) run without React: pixels live in titan-design, and these hold engines with no pixels. One rule per package because codewatch globs have no braces; a glob that matches nothing, as render-qa does until it exists, is accepted.",
+      "from": "packages/graph-layout/src/**",
+      "to": "npm:react*"
+    },
+    {
+      "id": "video-mechanism-no-react:speech-*",
+      "type": "forbid-import",
+      "$comment": "The video mechanism packages (frame-capture, render-qa, graph-layout, speech-*) run without React: pixels live in titan-design, and these hold engines with no pixels. One rule per package because codewatch globs have no braces; a glob that matches nothing, as render-qa does until it exists, is accepted.",
+      "from": "packages/speech-*/src/**",
+      "to": "npm:react*"
     },
     {
       "id": "codewatch-browser-no-node",

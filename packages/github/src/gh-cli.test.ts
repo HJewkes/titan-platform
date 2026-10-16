@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { GhError, type GhExec, type GhResult } from "./exec.js";
 import { ghCliWire } from "./gh-cli.js";
-import { fakeSha } from "./fake.js";
+import { fakeGitHub, fakeSha } from "./fake.js";
 import { githubPort } from "./port.js";
 
 const H1 = fakeSha("head1");
@@ -52,6 +52,51 @@ describe("gh api adapter", () => {
     const update = gh.calls.find((call) => call.args.includes("repos/octo/demo/pulls/7/update-branch"));
     expect(result).toEqual({ done: true });
     expect(update?.args).toEqual(["api", "-i", "-X", "PUT", "repos/octo/demo/pulls/7/update-branch", "-f", `expected_head_sha=${H1}`]);
+  });
+
+  it("setPrBase sends one PATCH of pulls/{pr} whose body carries base and nothing else", async () => {
+    const stacked = JSON.stringify({ ...JSON.parse(openPr), base: { ref: "stack/parent" } });
+    const gh = scriptedGh({ "compare/": JSON.stringify({ behind_by: 0 }), "pulls/7": stacked });
+
+    const result = await githubPort(ghCliWire(gh.exec)).setPrBase(REPO, 7, "main");
+
+    const writes = gh.calls.filter((call) => call.args[3] !== "GET");
+    expect(result).toEqual({ done: true });
+    expect(writes.map((call) => call.args)).toEqual([["api", "-i", "-X", "PATCH", "repos/octo/demo/pulls/7", "--input", "-"]]);
+    expect(JSON.parse(writes[0]!.input!)).toEqual({ base: "main" });
+  });
+
+  it("setPrBase sends no PATCH for a PR already on the base, and refuses a bad base before any call", async () => {
+    const gh = scriptedGh({ "compare/": JSON.stringify({ behind_by: 0 }), "pulls/7": openPr });
+    const port = githubPort(ghCliWire(gh.exec));
+
+    const result = await port.setPrBase(REPO, 7, "main");
+    const before = gh.calls.length;
+    await expect(port.setPrBase(REPO, 7, "main?x=1")).rejects.toThrow(/base/);
+
+    expect(result).toEqual({ done: false, skipped: "unchanged" });
+    expect(gh.calls.some((call) => call.args.includes("PATCH"))).toBe(false);
+    expect(gh.calls.length).toBe(before);
+  });
+
+  it("setPrBase answers the same over the fake and over gh for a stacked, a retargeted and a merged PR", async () => {
+    const cases = [
+      { name: "stacked", state: "open", merged: false, baseRef: "stack/parent" },
+      { name: "retargeted", state: "open", merged: false, baseRef: "main" },
+      { name: "merged", state: "closed", merged: true, baseRef: "stack/parent" },
+    ] as const;
+    for (const { state, merged, baseRef } of cases) {
+      const fake = fakeGitHub();
+      const pr = fake.addPr({ headSha: H1, state, merged, baseRef });
+      const wire = JSON.stringify({ ...JSON.parse(openPr), number: pr.number, state, merged, base: { ref: baseRef } });
+      const gh = scriptedGh({ "compare/": JSON.stringify({ behind_by: 0 }), [`pulls/${pr.number}`]: wire });
+
+      const overFake = await githubPort(fake.wire).setPrBase(REPO, pr.number, "main");
+      const overGh = await githubPort(ghCliWire(gh.exec)).setPrBase(REPO, pr.number, "main");
+
+      expect(overGh).toEqual(overFake);
+      expect(gh.calls.filter((call) => call.args.includes("PATCH")).length).toBe(fake.baseChanges.length);
+    }
   });
 
   it("sends the squash message as commit_title and commit_message when one is given", async () => {
@@ -107,14 +152,14 @@ describe("gh api adapter", () => {
     expect(gh.calls.flatMap((call) => call.args).some((arg) => /token|authorization/i.test(arg))).toBe(false);
   });
 
-  it("reads a commit's parents, tree and committer date, and leaves the date out when GitHub omits it", async () => {
-    const dated = scriptedGh({ [`git/commits/${H1}`]: JSON.stringify({ sha: H1, parents: [{ sha: "p1" }], tree: { sha: "t1" }, committer: { date: "2026-02-03T04:05:06Z" } }) });
+  it("reads a commit's parents, tree, committer date and message, and leaves the date out when GitHub omits it", async () => {
+    const dated = scriptedGh({ [`git/commits/${H1}`]: JSON.stringify({ sha: H1, parents: [{ sha: "p1" }], tree: { sha: "t1" }, committer: { date: "2026-02-03T04:05:06Z" }, message: "Add x\n\n[skip ci]" }) });
     const undated = scriptedGh({ [`git/commits/${H1}`]: JSON.stringify({ sha: H1, parents: [] }) });
 
     const withDate = await ghCliWire(dated.exec).getCommit(REPO, H1);
     const withoutDate = await ghCliWire(undated.exec).getCommit(REPO, H1);
 
-    expect(withDate).toEqual({ sha: H1, parents: ["p1"], tree: "t1", committedAt: "2026-02-03T04:05:06Z" });
+    expect(withDate).toEqual({ sha: H1, parents: ["p1"], tree: "t1", committedAt: "2026-02-03T04:05:06Z", message: "Add x\n\n[skip ci]" });
     expect(withoutDate).toEqual({ sha: H1, parents: [] });
   });
 
@@ -307,6 +352,7 @@ const pull = { number: 7, changed_files: 0, state: "open", merged: false, merge_
 /** Answers by the REST path in argv, the element after `-X <method>`. */
 const ROUTES: [RegExp, unknown][] = [
   [/pulls\/7\/merge$/, { sha: "m1" }],
+  [/\/merges$/, { sha: H2 }],
   [/pulls\/7\/update-branch$/, {}],
   [/pulls\/7$/, pull],
   [/pulls$/, [pull]],
@@ -329,6 +375,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/actions\/runs\/\d+$/, { status: "completed" }],
   [/rerun-failed-jobs$/, undefined],
   [/actions\/jobs\/\d+\/logs$/, "line 1\nline 2\nline 3\n"],
+  [/actions\/jobs\/\d+$/, { id: 42, steps: [{ name: "Set up job", conclusion: "success", number: 1 }, { name: "Run pnpm test", conclusion: "failure", number: 2 }] }],
   [/^repos\/octo\/demo$/, { default_branch: "main" }],
   [/^graphql$/, { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] }, timelineItems: { pageInfo: { hasNextPage: false }, nodes: [] } } } } }],
 ];
@@ -375,9 +422,13 @@ describe("gh api adapter, REST only", () => {
       resolveCommit: () => port.resolveCommit(REPO, H1.slice(0, 7)),
       commitStatuses: () => port.commitStatuses(REPO, H1),
       jobLogTail: () => port.jobLogTail(REPO, 42, 2),
+      jobSteps: () => port.jobSteps(REPO, 42),
       updateBranch: () => port.updateBranch(REPO, 7, H1),
+      setPrBase: () => port.setPrBase(REPO, 7, "release"),
+      closePr: () => port.closePr(REPO, 7),
       pushEmptyCommit: () => port.pushEmptyCommit(REPO, "topic", H1, "m"),
       merge: () => port.merge(REPO, 7, H1, "squash"),
+      mergeIntoBranch: () => port.mergeIntoBranch(REPO, { branch: "topic", head: H1 }),
       rerunFailed: () => port.rerunFailed(REPO, 55),
       listPrFiles: () => port.listPrFiles(REPO, 7),
       listPrCommits: () => port.listPrCommits(REPO, 7),
@@ -416,7 +467,28 @@ describe("gh api adapter, REST only", () => {
     expect(log).toBe("line 2\nline 3");
     expect(gh.argv).toContainEqual(["api", "-i", "-X", "GET", "repos/octo/demo/pulls", "-f", "state=open", "-f", "per_page=100"]);
     expect(gh.argv).toContainEqual(["api", "-i", "-X", "DELETE", "repos/octo/demo/git/refs/heads/topic"]);
-    expect(gh.argv).toContainEqual(["api", "-i", "-X", "GET", "repos/octo/demo/actions/jobs/42/logs"]);
+    expect(gh.argv).toContainEqual(["api", "-i", "-X", "GET", "repos/octo/demo/actions/jobs/42/logs", "--allow-escape-sequences"]);
+  });
+
+  it("reads an Actions job's steps in run order, each as its name and conclusion only", async () => {
+    const gh = routedGh();
+
+    const steps = await githubPort(ghCliWire(gh.exec)).jobSteps(REPO, 42);
+
+    expect(steps).toEqual([{ name: "Set up job", conclusion: "success" }, { name: "Run pnpm test", conclusion: "failure" }]);
+    expect(gh.argv).toContainEqual(["api", "-i", "-X", "GET", "repos/octo/demo/actions/jobs/42"]);
+  });
+
+  it("reads a job log whose colour codes make gh refuse it unless escape sequences are allowed, and returns it without them", async () => {
+    const headers = ["HTTP/2.0 200 OK", "Content-Type: text/plain", "Content-Length: 40"].join("\r\n");
+    const exec: GhExec = async (args) =>
+      args.includes("--allow-escape-sequences")
+        ? { code: 0, stdout: `${headers}\r\n\r\n2026-10-11T12:00:00.0000000Z \u001b[36;1mpnpm test\u001b[0m\n2026-10-11T12:00:01.0000000Z done\n`, stderr: "" }
+        : { code: 1, stdout: `${headers}\r\n\r\n`, stderr: "the response contains terminal escape sequences; pass --allow-escape-sequences to output it anyway\n" };
+
+    const log = await githubPort(ghCliWire(exec)).jobLogTail(REPO, 42, 5);
+
+    expect(log).toBe("2026-10-11T12:00:00.0000000Z pnpm test\n2026-10-11T12:00:01.0000000Z done");
   });
 
   it("filters open PRs by head prefix", async () => {
@@ -518,6 +590,14 @@ describe("gh api adapter, conditional GETs", () => {
     expect(second).toEqual({ notModified: true });
     expect(gh.calls[0]?.args).not.toContain("-H");
     expect(gh.calls[1]?.args.slice(-2)).toEqual(["-H", 'If-None-Match: W/"o1"']);
+  });
+
+  it("carries each listed PR's title, and its empty body as an empty string", async () => {
+    const gh = scriptedGhSequence([included(200, { ETag: 'W/"o1"' }, [{ ...pull, title: "Add the widget", body: null }])]);
+
+    const read = await ghCliWire(gh.exec).revalidateOpenPrs(REPO, null);
+
+    expect(read).toMatchObject({ notModified: false, prs: [{ number: 7, title: "Add the widget", body: "" }] });
   });
 
   it("answers a list longer than one page with every page and no ETag", async () => {

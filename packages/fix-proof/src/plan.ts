@@ -1,4 +1,4 @@
-import { CONFIG_PATH, parseFixProofConfig, type FixProofConfig } from "./config.js";
+import { CHANGESET_GLOB, CONFIG_PATH, isHarnessPath, MUTATION_SPEC_GLOB, parseFixProofConfig, type FixProofConfig } from "./config.js";
 import { compileGlobs } from "./glob.js";
 import { normalizeRelative } from "./paths.js";
 
@@ -20,6 +20,13 @@ export interface FixProofPlan {
   deletedTests: string[];
   /** Old paths of partially renamed tests, removed from the overlay. */
   overlayRemovals: string[];
+  /** Added or changed mutation specs, read at head by the mutants check. */
+  mutations: string[];
+  /**
+   * Every changed or deleted path, both sides of a rename, that is a harness path or is not a test, a carried file, a
+   * mutation spec or a changeset. Empty means the diff is test-only.
+   */
+  source: string[];
   config: FixProofConfig;
   configEdited: boolean;
 }
@@ -65,6 +72,8 @@ function parseNameStatus(text: string): DiffEntry[] {
 interface Sorter {
   isTest: (path: string) => boolean;
   isCarry: (path: string) => boolean;
+  isSpec: (path: string) => boolean;
+  isChangeset: (path: string) => boolean;
   add: (bucket: keyof Buckets, path: string) => void;
 }
 
@@ -73,18 +82,36 @@ interface Buckets {
   carried: Set<string>;
   deletedTests: Set<string>;
   overlayRemovals: Set<string>;
+  mutations: Set<string>;
+  source: Set<string>;
+}
+
+function addSupport(sorter: Sorter, path: string): void {
+  if (sorter.isSpec(path)) sorter.add("mutations", path);
+  else if (sorter.isCarry(path)) sorter.add("carried", path);
 }
 
 function addChanged(sorter: Sorter, path: string): void {
   if (sorter.isTest(path)) sorter.add("tests", path);
-  else if (sorter.isCarry(path)) sorter.add("carried", path);
+  else addSupport(sorter, path);
+}
+
+function isTestOnlyPath(sorter: Sorter, path: string): boolean {
+  if (isHarnessPath(path)) return false;
+  return sorter.isTest(path) || sorter.isCarry(path) || sorter.isSpec(path) || sorter.isChangeset(path);
+}
+
+// A copy leaves its old path untouched, so only a rename's old path counts as changed.
+function addSource(sorter: Sorter, entry: DiffEntry): void {
+  const paths = entry.status === "R" && entry.oldPath !== null ? [entry.oldPath, entry.path] : [entry.path];
+  paths.filter((path) => !isTestOnlyPath(sorter, path)).forEach((path) => sorter.add("source", path));
 }
 
 function sortRename(sorter: Sorter, entry: DiffEntry & { oldPath: string }): void {
   const oldIsTest = sorter.isTest(entry.oldPath);
   if (!sorter.isTest(entry.path)) {
     if (oldIsTest) sorter.add("deletedTests", entry.oldPath);
-    if (sorter.isCarry(entry.path)) sorter.add("carried", entry.path);
+    addSupport(sorter, entry.path);
     return;
   }
   if (entry.score === 100) return;
@@ -93,6 +120,7 @@ function sortRename(sorter: Sorter, entry: DiffEntry & { oldPath: string }): voi
 }
 
 function sortEntry(sorter: Sorter, entry: DiffEntry): void {
+  addSource(sorter, entry);
   if (entry.status === "D") {
     if (sorter.isTest(entry.path)) sorter.add("deletedTests", entry.path);
   } else if (entry.status === "R" && entry.oldPath !== null) {
@@ -103,10 +131,19 @@ function sortEntry(sorter: Sorter, entry: DiffEntry): void {
 }
 
 function buildPlan(entries: DiffEntry[], config: FixProofConfig, configEdited: boolean): FixProofPlan {
-  const buckets: Buckets = { tests: new Set(), carried: new Set(), deletedTests: new Set(), overlayRemovals: new Set() };
+  const buckets: Buckets = {
+    tests: new Set(),
+    carried: new Set(),
+    deletedTests: new Set(),
+    overlayRemovals: new Set(),
+    mutations: new Set(),
+    source: new Set(),
+  };
   const sorter: Sorter = {
     isTest: compileGlobs(config.tests),
     isCarry: compileGlobs(config.carry),
+    isSpec: compileGlobs([MUTATION_SPEC_GLOB]),
+    isChangeset: compileGlobs([CHANGESET_GLOB]),
     add: (bucket, path) => buckets[bucket].add(path),
   };
   entries.forEach((entry) => sortEntry(sorter, entry));
@@ -116,6 +153,8 @@ function buildPlan(entries: DiffEntry[], config: FixProofConfig, configEdited: b
     carried: sorted(buckets.carried),
     deletedTests: sorted(buckets.deletedTests),
     overlayRemovals: sorted(buckets.overlayRemovals),
+    mutations: sorted(buckets.mutations),
+    source: sorted(buckets.source),
     config,
     configEdited,
   };
@@ -125,7 +164,18 @@ function touchesConfig(entries: DiffEntry[]): boolean {
   return entries.some((entry) => entry.path === CONFIG_PATH || entry.oldPath === CONFIG_PATH);
 }
 
-/** Splits a merge-base-to-head diff into tests to run, carried support files and deleted tests, using globs from the base config only. */
+// vitest would read a path that starts with a dash as a flag, so such a test makes the plan an error instead.
+function rejectDashedTests(plan: FixProofPlan): PlanResult {
+  const unsafe = plan.tests.find((test) => test.startsWith("-"));
+  return unsafe === undefined ? { ok: true, plan } : { ok: false, error: `unsafe test path: ${unsafe}` };
+}
+
+/** True when the diff touches only tests, carried files, mutation specs and changesets, none of them harness paths. */
+export function testOnlyOf(plan: Pick<FixProofPlan, "source">): boolean {
+  return plan.source.length === 0;
+}
+
+/** Splits a merge-base-to-head diff into tests to run, carried support files, deleted tests, mutation specs and source, using globs from the base config only. */
 export function planFixProof(input: PlanInput): PlanResult {
   const parsed = parseFixProofConfig(input.baseConfig);
   if (!parsed.ok) return parsed;
@@ -136,5 +186,5 @@ export function planFixProof(input: PlanInput): PlanResult {
     return { ok: false, error: (error as Error).message };
   }
   const headDiffers = input.headConfig !== undefined && (input.headConfig ?? null) !== (input.baseConfig ?? null);
-  return { ok: true, plan: buildPlan(entries, parsed.config, headDiffers || touchesConfig(entries)) };
+  return rejectDashedTests(buildPlan(entries, parsed.config, headDiffers || touchesConfig(entries)));
 }

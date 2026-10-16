@@ -1,4 +1,5 @@
 import type { SourceTextLocator } from "@titan-design/session-read";
+import type { ReviewShape } from "./types.js";
 
 /** The pull request head a reviewer is asked about. */
 export interface ReviewTarget {
@@ -28,8 +29,12 @@ export interface ReviewerFacts {
   sizeUnread?: boolean;
   /** The PR changes a lockfile or package.json, so it takes the stricter class whatever its size. */
   dependencyTouch?: boolean;
+  /** The run holds or held a G10 hold, so it takes the stricter class whatever its size or kind. */
+  g10Hold?: boolean;
   /** When the run's review intent was recorded, epoch ms; a spawn gate admits deferred reviews oldest intent first. */
   intentAt?: number;
+  /** The profile a panel member was planned at; when set it wins over the class the other facts pick. */
+  profile?: string;
 }
 
 /** One roster row, as the dispatch port reports it. */
@@ -66,6 +71,8 @@ export interface AwaitVerdictInput extends ReviewTarget {
   dispatchedAt: number;
   /** Epoch milliseconds when the reviewer's session was up; the wait counts from it. Absent on a run recorded before it existed. */
   startedAt?: number;
+  /** The panel member awaited; absent means correctness. An adversary verdict must carry a `Probes:` line. */
+  shape?: ReviewShape;
 }
 
 /** One assistant message, attributed by the reader to the agent and session it came from. */

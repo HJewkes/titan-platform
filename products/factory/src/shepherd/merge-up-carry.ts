@@ -1,4 +1,4 @@
-import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
+import type { StepRoute, WorkflowContext, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import { codeRoute, step } from "../workflows/land.js";
 import type { Verdict } from "./phases.js";
@@ -60,6 +60,13 @@ export async function recordMergeUp(ctx: WorkflowContext, carry: ProbedCarry, re
   if (!isCleanMergeUp(carry.result, carry.fromHead, reviews) || recordedElsewhere(ctx, stepId)) return false;
   await step(ctx, stepId, { fromHead: carry.fromHead, head: carry.head, base: carry.result.base, rule: MERGE_UP_RULE }, MergeUpRecord);
   return true;
+}
+
+/** The reviewed head a recorded clean merge-up carried a MERGE from to this head, read from the run log; none without the step. */
+export function mergeUpFromAt(run: WorkflowRun, head: string): string | undefined {
+  const result = Object.values(run.stepResults).find((stepResult) => stepResult.stepId === `${MERGE_UP_STEP}:${head}`);
+  const record = MergeUpRecord.safeParse(result?.data?.result);
+  return record.success && record.data.head === head ? record.data.fromHead : undefined;
 }
 
 export const mergeUpRoute = (now: () => number): StepRoute => codeRoute(MERGE_UP_STEP, now, async (input: object) => input);

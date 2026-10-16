@@ -1,5 +1,12 @@
+import { fileURLToPath } from "node:url";
 import { setFlagsFromString } from "node:v8";
 import { defineConfig } from "vitest/config";
+import { strayDependency } from "./scripts/own-node-modules.mjs";
+import { forceRerunTriggers, REPO_TIER_INCLUDE } from "./scripts/test-affected.mjs";
+
+// Refuse rather than run a parent checkout's vitest, which can be a major version behind this lockfile.
+const strayVitest = strayDependency(fileURLToPath(new URL(".", import.meta.url)), "vitest");
+if (strayVitest) throw new Error(strayVitest);
 
 // These stub HOME (os.homedir() ignores that in a worker thread), call process.chdir (unsupported in one) or set TZ
 // (a worker thread keeps the host zone).
@@ -26,6 +33,8 @@ export default defineConfig({
   // Apps render @titan-design/react-ui, which is written against React Native primitives; no package imports react-native.
   resolve: { alias: { "react-native": "react-native-web" } },
   test: {
+    // The speech loaders refuse an uncached model before any network call, so no test can download weights.
+    env: { TITAN_SPEECH_OFFLINE: "1" },
     // Inlined so the alias above applies; left external, Node would load react-native's Flow source.
     server: { deps: { inline: [/@titan-design\/react-ui/] } },
     globalSetup: ["scripts/vitest-tmpdir.mjs"],
@@ -35,6 +44,7 @@ export default defineConfig({
       exclude: ["**/*.test.{ts,tsx}", "**/index.ts"],
     },
     maxWorkers: 4,
+    forceRerunTriggers: forceRerunTriggers(),
     projects: [
       {
         extends: true,
@@ -44,6 +54,7 @@ export default defineConfig({
           pool: "threads",
           include: [
             "packages/*/src/**/*.test.{ts,tsx}",
+            "packages/*/scripts/**/*.test.ts",
             "products/*/src/**/*.test.{ts,tsx}",
             "apps/*/src/**/*.test.{ts,tsx}",
             "apps/*/scripts/**/*.test.ts",
@@ -51,7 +62,15 @@ export default defineConfig({
             "scripts/**/*.test.mjs",
             ...heapProbe,
           ],
-          exclude: ["**/node_modules/**", ...needsProcess],
+          exclude: ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "repo",
+          pool: "threads",
+          include: REPO_TIER_INCLUDE,
         },
       },
       {

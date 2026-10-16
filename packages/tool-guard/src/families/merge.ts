@@ -1,12 +1,13 @@
-import type { Chain, SimpleCommand } from "../shell/commands.js";
+import type { SimpleCommand } from "../shell/commands.js";
 import { isCaseUnsure } from "../shell/case-attrs.js";
-import { parseGit } from "../shell/git.js";
+import { parseGit, splits } from "../shell/git.js";
 import type { GitInvocation } from "../shell/git.js";
 import type { WordToken } from "../shell/lexer.js";
 import { classified } from "../spellings.js";
 import type { SpellingId } from "../spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
-import { httpRequest } from "./egress.js";
+import { httpRequest, isWrite } from "./http-request.js";
+import { mayReachGitHubApi } from "./github-endpoint.js";
 import { hasFlag, lastValue, readOptions, set, valuesOf } from "./options.js";
 
 const PROTECTED_RE = /^(?:main|master|release\/.+)$/;
@@ -67,16 +68,19 @@ function apiMerge(cmd: SimpleCommand): ClassifiedAction[] {
 }
 
 function endpointMerge(url: string, method: string, pullSpelling: SpellingId, mergesSpelling: SpellingId): ClassifiedAction[] {
-  if (method === "GET" || method === "HEAD") return [];
+  if (!isWrite(method)) return [];
   const pull = PULL_MERGE_RE.exec(url);
   if (pull) return [classified(pullSpelling, /^\d+$/.test(pull[1] ?? "") ? { pr: pull[1] as string } : {})];
   return MERGES_RE.test(url) ? [classified(mergesSpelling, {})] : [];
 }
 
-function curlMerge(cmd: SimpleCommand): ClassifiedAction[] {
-  const request = httpRequest(cmd);
+/** A literal endpoint names its PR, so it wins over a run-time URL that only may reach a merge endpoint. */
+function curlMerge(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
+  const request = httpRequest(cmd, ctx);
   if (!request) return [];
-  return request.urls.flatMap((u) => endpointMerge(u.value, request.method, "bash.merge.curl-api", "bash.merge.curl-api")).slice(0, 1);
+  const literal = request.urls.flatMap((u) => endpointMerge(u.value, request.method, "bash.merge.curl-api", "bash.merge.curl-api"));
+  const runTime = isWrite(request.method) && request.urls.some(mayReachGitHubApi) ? [classified("bash.merge.curl-api", {})] : [];
+  return [...literal, ...runTime].slice(0, 1);
 }
 
 /** Branch checked out where git runs; an unknown directory reads as `unknown`, which counts as protected. */
@@ -106,11 +110,14 @@ function gitMerge(git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] 
   return [classified("bash.merge.git-merge-protected", { branch: head })];
 }
 
-/** The branch a push refspec updates; `HEAD` and a bare name push to the branch of that name. */
+/**
+ * The branch a push refspec updates; `HEAD` and a bare name push to the branch of that name.
+ * Git expands a short `heads/<x>` destination to `refs/heads/<x>`, so either prefix is stripped once.
+ */
 function pushDestination(spec: string, head: string | null): string | null {
   const plain = spec.replace(/^\+/, "");
   const colon = plain.lastIndexOf(":");
-  const dest = (colon >= 0 ? plain.slice(colon + 1) : plain).replace(/^refs\/heads\//, "");
+  const dest = (colon >= 0 ? plain.slice(colon + 1) : plain).replace(/^(?:refs\/)?heads\//, "");
   if (dest === "HEAD" || dest === "@") return colon >= 0 ? null : head;
   return dest === "" ? null : dest;
 }
@@ -122,17 +129,53 @@ function pushDestination(spec: string, head: string | null): string | null {
 function literalSpec(word: WordToken): string | null {
   if (!word.dynamic && !isCaseUnsure(word)) return word.value;
   const typed = word.typed ?? word.value;
-  const tail = typed.slice(typed.lastIndexOf(":") + 1);
-  if (typed.includes(":") && !/[$`]/.test(tail)) return `:${tail}`;
+  const colon = refspecColon(typed);
+  const tail = typed.slice(colon + 1);
+  if (colon >= 0 && PLAIN_REF_RE.test(tail) && !cutAfterColon(word)) return `:${tail}`;
   return isCaseUnsure(word) ? `:${UNKNOWN}` : null;
 }
 
+const PLAIN_REF_RE = /^[\w./@+-]+$/;
+
+/** `value` leaves out a `$(...)` or backquote's text, so `"HEAD:$(cmd)"` reads `HEAD:` though the output is the destination. */
+const cutAfterColon = (word: WordToken) => (word.cuts ?? []).some((cut) => cut.at > refspecColon(word.value));
+
+/** The last colon outside any `${...}`, `$(...)` or backquote, where `${B:-main}` and `${B:0:4}` hide colons of their own. */
+function refspecColon(text: string): number {
+  let depth = 0;
+  let backquoted = false;
+  let found = -1;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    const opens = c === "$" && (text[i + 1] === "{" || text[i + 1] === "(");
+    if (opens) i++;
+    if (c === "`") backquoted = !backquoted;
+    else if (opens || (depth > 0 && (c === "{" || c === "("))) depth++;
+    else if (depth > 0 && (c === "}" || c === ")")) depth--;
+    else if (c === ":" && depth === 0 && !backquoted) found = i;
+  }
+  return found;
+}
+
+/**
+ * A refspec known only at run time, or an unquoted dynamic word that may split into one, may name any branch,
+ * so it reads as a push to an unknown destination.
+ */
+function hasUnknownDestination(git: GitInvocation, refspecs: WordToken[]): boolean {
+  return git.subArgs.some((w) => splits(w) || expandsToMany(w)) || refspecs.some((s) => literalSpec(s) === null);
+}
+
+/** `"$@"` and `"${arr[@]}"`, with or without an operator such as `:0` or `#x`, give one word per element even when quoted, so any of them may be a refspec. */
+const expandsToMany = (word: WordToken) => word.dynamic && /\$@|\$\{@|\[@\]/.test(word.typed ?? word.value);
+
 function gitPush(git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] {
   const options = readOptions(git.subArgs, GIT_PUSH_VALUES);
-  const specs = options.positionals.slice(1).flatMap((s) => literalSpec(s) ?? []);
+  const refspecs = options.positionals.slice(1);
+  const specs = refspecs.flatMap((s) => literalSpec(s) ?? []);
   if (hasFlag(options, "--all", "--branches", "--mirror") || specs.some((s) => s.includes("*"))) {
     return [classified("bash.merge.git-push-all", {})];
   }
+  if (hasUnknownDestination(git, refspecs)) return pushSpecs([...specs, UNKNOWN], git, ctx);
   if (options.positionals.length > 1) return pushSpecs(specs, git, ctx);
   if (hasFlag(options, "--tags", "--delete", "-d")) return [];
   const head = headOf(git, ctx);
@@ -156,7 +199,7 @@ function git(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
 function bash(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
   if (cmd.name === "gh") return [...prMerge(cmd), ...apiMerge(cmd)];
   if (cmd.name === "git") return git(cmd, inChain(cmd, ctx));
-  return curlMerge(cmd);
+  return curlMerge(cmd, ctx);
 }
 
 const NEW_BRANCH_OPTS = ["-b", "-B", "-c", "-C", "--orphan", "--create", "--force-create"];
@@ -178,12 +221,9 @@ function switchDir(cmd: SimpleCommand, ctx: ClassifyContext): { dir: string | nu
 
 type Switch = { dir: string | null; created: WordToken | null };
 
-/** Contexts that trust a created branch inside one `&&` chain, with the context every command outside it sees. */
-const chainTrust = new WeakMap<ClassifyContext, { chain: Chain; fallback: ClassifyContext }>();
-
 /** The context `cmd` sees: a created branch trusted for its `&&` chain is dropped once the chain ends. */
 function inChain(cmd: SimpleCommand, ctx: ClassifyContext): ClassifyContext {
-  const held = chainTrust.get(ctx);
+  const held = ctx.chainTrust;
   return held && held.chain !== cmd.chain ? held.fallback : ctx;
 }
 
@@ -217,12 +257,10 @@ function after(cmd: SimpleCommand, line: ClassifyContext): ClassifyContext | und
   const ctx = inChain(cmd, line);
   const sw = switchDir(cmd, ctx);
   if (!sw) return ctx === line ? undefined : ctx;
-  const base = chainTrust.get(ctx)?.fallback ?? ctx;
+  const base = ctx.chainTrust?.fallback ?? ctx;
   const fallback = switched(sw, switchedHead(sw, false, base), base);
   if (!guardsChain(cmd)) return fallback;
-  const trusted = switched(sw, switchedHead(sw, true, ctx), ctx);
-  chainTrust.set(trusted, { chain: cmd.chain, fallback });
-  return trusted;
+  return { ...switched(sw, switchedHead(sw, true, ctx), ctx), chainTrust: { chain: cmd.chain, fallback } };
 }
 
 /** Merging into a protected branch, by PR, API or git: the MRG rows of the authority table. */

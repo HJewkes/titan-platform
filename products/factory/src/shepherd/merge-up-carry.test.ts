@@ -10,10 +10,12 @@ import { callCommand } from "../test-support/shepherd.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { G10_RELEASE_STEP } from "./g10-release.js";
+import { resyncShepherd } from "./resync.js";
 import type { ShepherdPhases } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
-import { reviewPhase, type ReviewerAgent, type ReviewerDispatch, type ReviewerReader } from "./review.js";
+import type { ReviewerAgent, ReviewerDispatch, ReviewerReader } from "@titan-design/review-panel";
+import { reviewPhase } from "./review.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
 import type { Git, GitResult } from "./tree-carry.js";
 
@@ -29,6 +31,7 @@ const MERGED_TREE = fakeSha("merge-tree");
 /** The run-log step and rule name a clean merge-up carry records. */
 const MERGE_UP_STEP = "sh-merge-up";
 const MERGE_UP_RULE = "clean-merge-up";
+const SEAT_REVIEWER = "seat-x-review";
 
 /**
  * How H2 came to be: a clean merge of main, a merge whose conflict someone resolved, a merge on top of an extra commit, or
@@ -55,13 +58,14 @@ function scriptedGit(shape: Shape): Git {
 
 const row = (name: string, presence: ReviewerAgent["presence"] = "exited"): ReviewerAgent => ({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence, spawnedBy: "coord", predecessor: null });
 
-/** Every reviewer Shepherd spawns says MERGE at the head it reads; `spawned` counts them. */
-function mergingReviewers(): { dispatch: ReviewerDispatch; reader: ReviewerReader; spawned: string[] } {
-  const agents: ReviewerAgent[] = [{ ...row("coord", "live"), spawnedBy: null }, row("impl-a")];
+/** Every reviewer Shepherd spawns says MERGE at the head it reads; `spawned` counts them. A `seat` reviewer says FIX_FIRST at any head but H1 once set. */
+function mergingReviewers(seat?: { fixFirst: boolean }): { dispatch: ReviewerDispatch; reader: ReviewerReader; spawned: string[] } {
+  const agents: ReviewerAgent[] = [{ ...row("coord", "live"), spawnedBy: null }, row("impl-a"), ...(seat ? [row(SEAT_REVIEWER)] : [])];
   const spawned: string[] = [];
   const dispatch: ReviewerDispatch = { roster: async () => [...agents], spawn: async (name) => void (spawned.push(name), agents.push(row(name))), resume: async () => undefined };
-  const said = (who: ReviewerAgent, head: string) => ({ agentId: who.agentId, sessionId: who.sessionId, writtenAt: 1, text: `Verdict: MERGE\nPR: ${REPO}#1\nHead: ${head}\n`, locator: { source: { conversation: { nativeId: who.sessionId } } } as unknown as SourceTextLocator });
-  const reader: ReviewerReader = { read: async (input) => agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, input.head)) };
+  const said = (who: ReviewerAgent, head: string, verdict: string) => ({ agentId: who.agentId, sessionId: who.sessionId, writtenAt: 1, text: `Verdict: ${verdict}\nPR: ${REPO}#1\nHead: ${head}\n`, locator: { source: { conversation: { nativeId: who.sessionId } } } as unknown as SourceTextLocator });
+  const answer = (who: ReviewerAgent, head: string) => (who.name !== SEAT_REVIEWER ? [said(who, head, "MERGE")] : seat?.fixFirst && head !== H1 ? [said(who, head, "FIX_FIRST")] : []);
+  const reader: ReviewerReader = { read: async (input) => agents.filter((who) => who.agentId === input.reviewerAgentId).flatMap((who) => answer(who, input.head)) };
   return { dispatch, reader, spawned };
 }
 
@@ -78,19 +82,25 @@ interface Scenario {
   shape?: Shape;
   hold?: string;
   redAtH2?: boolean;
+  /** A seat reviewer in the roster that says FIX_FIRST at H2 while `fixFirst` is set, and nothing otherwise. */
+  seat?: { fixFirst: boolean };
+  /** GitHub's test merge exists at H2 only while `value` is set. */
+  treeClean?: { value: boolean };
 }
 
 /** H1 is behind main and reviewed by a spawned opus reviewer; Shepherd's update-branch makes H2, H1 plus a merge of main. */
-function heldBehindRun({ shape = "clean", hold = G10_REVIEW, redAtH2 = false }: Scenario): World {
+function heldBehindRun({ shape = "clean", hold = G10_REVIEW, redAtH2 = false, seat, treeClean }: Scenario): World {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge"), mergeableState: "behind", behind: true });
   fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
   fake.onGetPr = (pr) => {
     const red = redAtH2 && pr.headSha !== H1;
-    fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, red ? "failure" : "success"), successRun("dag-check", 2)]);
+    // A rerun replaces the failed run with a new one, so Shepherd's held rerun of a red H2 settles and H2 stays red.
+    fake.setRuns(pr.headSha, [successRun("validate", 1 + 10 * fake.effects.rerunFailedJobs, undefined, red ? "failure" : "success"), successRun("dag-check", 2)]);
     if (pr.headSha !== H1) pr.mergeableState = "clean";
+    if (pr.headSha !== H1 && treeClean) pr.mergeSha = treeClean.value ? fakeSha("test-merge") : null;
   };
-  const reviewers = mergingReviewers();
+  const reviewers = mergingReviewers(seat);
   const carry = { stateDir: mkdtempSync(join(tmpdir(), "merge-up-")), git: scriptedGit(shape) };
   const wake: ShepherdPhases["wake"] = async () => ({ kind: "unhandled", reason: "no fixer in this test" });
   const ref = shepherdStoreRef();
@@ -109,6 +119,7 @@ const results = (w: World) => Object.values(w.host.runtime.status(w.runId)!.step
 const stepIds = (w: World): string[] => results(w).map((result) => result.stepId);
 const resultOf = (w: World, stepId: string): unknown => results(w).find((result) => result.stepId === stepId)?.data?.["result"];
 const h2 = (w: World): string => w.fake.pr(1).headSha;
+const seatChecks = (w: World): unknown[] => results(w).flatMap((result) => (result.stepId === `sh-carry-seat:${h2(w)}` ? [result.data?.["result"]] : []));
 /** The run reached the merge decision at H2, a gate, or a held run's wait for its seat, and went no further. */
 const settledAtH2 = (w: World): boolean => h2(w) !== H1 && (/^(merge|sh-held-wait)(:|$)/.test(w.host.runtime.status(w.runId)?.currentStep ?? "") || w.host.pendingGates().length > 0);
 
@@ -163,6 +174,26 @@ describe("a seat's ask at a head a MERGE was carried to", () => {
   });
 });
 
+describe("a review-again resync at a head a MERGE was carried to", () => {
+  it("checks the carry again, so a seat FIX_FIRST posted at H2 after the carry stops the merge", async () => {
+    const seat = { fixFirst: false };
+    const treeClean = { value: false };
+    const w = heldBehindRun({ seat, treeClean });
+    await vi.waitFor(() => expect(w.host.pendingGates().some((gate) => gate.runId === w.runId && gate.gate.prompt.includes("Policy authority/MRG-AU"))).toBe(true), { timeout: 5_000 });
+    expect(stepIds(w)).toContain(`${MERGE_UP_STEP}:${h2(w)}`);
+
+    seat.fixFirst = true;
+    treeClean.value = true;
+    const report = await resyncShepherd(w.host, w.routes.shepherd!);
+    await vi.waitFor(() => expect(seatChecks(w)).toEqual([{ clear: true }, expect.objectContaining({ clear: false })]), { timeout: 5_000 });
+    await sleep(200, new AbortController().signal);
+
+    expect(report.superseded).toMatchObject([{ runId: w.runId, condition: "merge-tree-only" }]);
+    expect(stepIds(w)).not.toContain(`sh-review-refused:${h2(w)}`);
+    expect(w.fake.pr(1).merged).toBe(false);
+  });
+});
+
 describe("a head move that is not a clean merge-up", () => {
   it.each(["conflict-resolved", "extra-commit", "code-commits"] as const)("spends a fresh review at H2 after a %s merge", async (shape) => {
     const w = heldBehindRun({ shape });
@@ -180,6 +211,7 @@ describe("a head move that is not a clean merge-up", () => {
     await vi.waitFor(() => expect(settledAtH2(w)).toBe(true), { timeout: 5_000 });
 
     expect(stepIds(w).filter((id) => id.startsWith(MERGE_UP_STEP) || id.startsWith(`${G10_RELEASE_STEP}:${h2(w)}`))).toEqual([]);
+    expect(w.fake.effects.rerunFailedJobs).toBe(1);
     expect(w.store.byRun(w.runId)).toMatchObject({ held: true, holdReason: G10_REVIEW });
     expect(w.fake.pr(1).merged).toBe(false);
   });

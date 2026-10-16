@@ -1,5 +1,5 @@
 import { OwnerBriefSchema } from "@titan-design/review-panel";
-import type { SourceTextLocator } from "@titan-design/session-read";
+import { CI_POLICY_KEYS, type SourceTextLocator } from "@titan-design/session-read";
 import { z } from "zod";
 
 /** Why a review was dispatched at a head; a run recorded before causes existed reads as `unknown`. */
@@ -16,7 +16,19 @@ const Identity = z.object({ agentId: z.string().min(1), sessionId: z.string().mi
  * A verdict locator is the reader's own output and is only handed back to it, so it is checked to be an object and no more:
  * the reader owns its shape, and a stricter copy here would drift from it.
  */
-const LocatorSchema = z.custom<SourceTextLocator>((value) => typeof value === "object" && value !== null && !Array.isArray(value), "a locator object");
+export const LocatorSchema = z.custom<SourceTextLocator>((value) => typeof value === "object" && value !== null && !Array.isArray(value), "a locator object");
+
+const CI_POLICY_MALFORMED = { kind: "malformed" } as const;
+
+/** The reviewer's CI-policy line as parsed; a stored value of any other shape reads as malformed, which the merge guard gates on. */
+export const CiPolicySchema = z
+  .discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("unchanged") }),
+    z.strictObject({ kind: z.literal("weakened"), keys: z.array(z.enum(CI_POLICY_KEYS)).min(1) }),
+    z.strictObject({ kind: z.literal("malformed") }),
+  ])
+  .optional()
+  .catch(() => CI_POLICY_MALFORMED);
 
 const CheckRunFact = z.looseObject({ name: z.string(), appId: z.number(), headSha: z.string(), conclusion: z.string().nullable() });
 const CarryFact = z.looseObject({ fromHead: z.string(), head: z.string(), headTree: z.string(), mergeTree: z.string() });
@@ -56,6 +68,7 @@ const EvidenceRecordSchema = z.looseObject({
   reviewer: Identity,
   decision: GateDecisionSchema,
   carry: CarryFact.optional(),
+  ciPolicy: CiPolicySchema,
 });
 
 /** The evidence step's output: the facts observed at one head and the record of what they decided. */
@@ -66,11 +79,19 @@ export const MergeEvidenceSchema = z.looseObject({
   requiredChecksUnknown: z.string().optional(),
   unreadFacts: z.array(z.string()).optional(),
   changedFilesUnread: z.string().optional(),
+  ciPolicy: CiPolicySchema,
 });
 
 const PanelMemberRead = z.looseObject({ shape: z.string(), profile: z.string(), blocking: z.boolean() });
 /** Recorded only under `review.panel` shadow or on; an intent recorded before the flag, or under `off`, has none. */
-const IntentPlanRead = { class: z.enum(["g10", "standard"]).optional(), touches: z.array(z.string()).optional(), plan: z.looseObject({ members: z.array(PanelMemberRead) }).optional() };
+/** `panel: "on"` and `panelReviewers` (each member's name but correctness's, by shape) are recorded only under `on`. */
+const IntentPlanRead = {
+  class: z.enum(["g10", "standard"]).optional(),
+  touches: z.array(z.string()).optional(),
+  plan: z.looseObject({ members: z.array(PanelMemberRead) }).optional(),
+  panel: z.literal("on").optional(),
+  panelReviewers: z.record(z.string(), z.string().min(1)).optional(),
+};
 const Intended = z.discriminatedUnion("kind", [z.looseObject({ kind: z.literal("intent"), mode: z.string(), reviewer: z.string(), ...IntentPlanRead }), z.looseObject({ kind: z.literal("none") })]);
 const Dispatched = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("dispatched"), at: z.number(), startedAt: z.number().optional(), profile: z.string().optional(), ...Identity.shape }),
@@ -78,7 +99,7 @@ const Dispatched = z.discriminatedUnion("kind", [
 ]);
 /** A verdict carries its owner brief, or null when the reviewer wrote none; a brief never changes the verdict. */
 const Awaited = z.discriminatedUnion("kind", [
-  z.looseObject({ kind: z.literal("verdict"), verdict: z.enum(["MERGE", "FIX_FIRST"]), head: z.string(), locator: LocatorSchema, reviewer: Identity, text: z.string().optional(), ownerBrief: OwnerBriefSchema.nullable().optional() }),
+  z.looseObject({ kind: z.literal("verdict"), verdict: z.enum(["MERGE", "FIX_FIRST"]), head: z.string(), locator: LocatorSchema, reviewer: Identity, text: z.string().optional(), ownerBrief: OwnerBriefSchema.nullable().optional(), ciPolicy: CiPolicySchema }),
   z.looseObject({ kind: z.literal("none") }),
 ]);
 /** What sh-review-stop read: no machine stop during the round, or the stop and whether it lifted before the wait's ceiling. */

@@ -9,6 +9,7 @@ import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "../host.j
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
+import type { ExitNoticePorts } from "./exit-notice.js";
 import { MERGE_EVIDENCE_STEP } from "./merge-facts.js";
 import { OBSERVE_STEP } from "./observe.js";
 import type { ReviewRequest, ShepherdPhases } from "./phases.js";
@@ -46,6 +47,8 @@ interface World {
   /** Evidence collections per head, the first one included. */
   collections: Map<string, number>;
   mergeTreeProbes: string[];
+  /** Seat notices sent, as seat and text. */
+  notices: { seat: string; text: string }[];
 }
 
 /**
@@ -53,11 +56,13 @@ interface World {
  * `unknown` when it recomputes the test merge after the base moves, which is what the evidence read keeps hitting.
  * The observe step reads whatever `observeState` says.
  */
-function world(evidenceState: EvidenceState, observeState: ObserveState = () => "clean"): World {
+function world(evidenceState: EvidenceState, observeState: ObserveState = () => "clean", seat?: string): World {
   const fake = fakeGitHub();
   const clock = { now: 0 };
   const collections = new Map<string, number>();
   const mergeTreeProbes: string[] = [];
+  const notices: { seat: string; text: string }[] = [];
+  const exitNotice: ExitNoticePorts | undefined = seat === undefined ? undefined : { seatFor: () => seat, lastReport: async () => undefined, send: async (to, text) => void notices.push({ seat: to, text }) };
   let collecting: string | undefined;
   let observations = 0;
   let observing = false;
@@ -76,6 +81,7 @@ function world(evidenceState: EvidenceState, observeState: ObserveState = () => 
     park: async () => ({ lines: [] }),
     registry: async () => "trusted" as const,
     mergeTree: async (input) => (mergeTreeProbes.push(input.headSha), "clean"),
+    ...(exitNotice && { exitNotice }),
   });
   const during = (route: StepRoute, enter: (stepId: string) => void, leave: () => void): StepRoute => ({
     ...route,
@@ -104,7 +110,7 @@ function world(evidenceState: EvidenceState, observeState: ObserveState = () => 
   );
   fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge") });
   fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
-  return { fake, routes, store, clock, collections, mergeTreeProbes };
+  return { fake, routes, store, clock, collections, mergeTreeProbes, notices };
 }
 
 function open(w: World, dbPath = ":memory:"): FactoryHost {
@@ -130,32 +136,33 @@ function settleRecords(host: FactoryHost, runId: string): { headSha: string; sin
 }
 
 describe("a MERGE whose evidence reads mergeable_state unknown on every read", () => {
-  it("re-polls instead of gating, and merges with no gate once GitHub settles after ten unknown collections", async () => {
-    const w = world((_head, collection) => (collection <= 10 ? "unknown" : "clean"));
+  it("re-polls instead of gating, and merges with no gate once GitHub settles after six unknown collections, inside the bound", async () => {
+    const w = world((_head, collection) => (collection <= 6 ? "unknown" : "clean"));
     const host = open(w);
     const runId = start(host, w);
 
     await merged(w);
 
     expect(w.fake.pr(1)).toMatchObject({ merged: true, headSha: H1 });
-    expect(w.collections.get(H1)).toBe(11);
+    expect(w.collections.get(H1)).toBe(7);
     expect(host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
     expect(w.mergeTreeProbes).toEqual([]);
   });
 
-  it("gates once the bound expires, naming the elapsed time and the local merge-tree result", async () => {
+  it("gates once the bound expires when no seat notice is wired, naming the elapsed time, the local merge-tree result and the unsent notice", async () => {
     const w = world(() => "unknown");
     const host = open(w);
     const runId = start(host, w);
 
-    await gateOpened(host, gateId(runId, "approve-merge"));
+    await gateOpened(host, gateId(runId, "approve-merge"), 10_000);
 
     const prompt = host.gates.get(gateId(runId, "approve-merge"))!.prompt;
     expect(prompt).toContain("shepherd-merge-guard/merge-state-unsettled");
-    expect(prompt).toMatch(/unsettled for (3\d) min/);
+    expect(prompt).toMatch(/unsettled for (2\d) min/);
     expect(prompt).toContain("local merge-tree: clean");
+    expect(prompt).toContain("no seat notice is wired");
     expect(w.mergeTreeProbes).toEqual([H1]);
-    expect(w.clock.now).toBeGreaterThanOrEqual(30 * MINUTE);
+    expect(w.clock.now).toBeGreaterThanOrEqual(20 * MINUTE);
     const settles = settleRecords(host, runId);
     expect(settles.at(-1)).toMatchObject({ headSha: H1, spent: true });
     expect(new Set(settles.map((settle) => settle.since)).size).toBe(1);
@@ -171,7 +178,7 @@ describe("a MERGE whose evidence reads mergeable_state unknown on every read", (
     await vi.waitFor(() => expect(pendingApproval()).toBeDefined(), { timeout: 10_000 });
     const { gate } = pendingApproval()!;
 
-    expect(gate.prompt).toMatch(/unsettled for 3\d min/);
+    expect(gate.prompt).toMatch(/unsettled for 2\d min/);
     const settles = settleRecords(host, runId);
     expect(new Set(settles.map((settle) => settle.since)).size).toBe(1);
     expect(settles.at(-1)).toMatchObject({ headSha: H1, spent: true });
@@ -184,16 +191,16 @@ describe("a MERGE whose evidence reads mergeable_state unknown on every read", (
     const host = open(w);
     const runId = start(host, w);
 
-    await gateOpened(host, gateId(runId, "approve-merge"));
+    await gateOpened(host, gateId(runId, "approve-merge"), 10_000);
 
     expect(settleRecords(host, runId)).toEqual([]);
     expect(w.collections.get(H1)).toBe(1);
   });
 
   it("restarts the wait at a head pushed during it, so the new head gets its own bound", async () => {
-    const w = world((head, _collection, now) => (head === H1 || now < 45 * MINUTE ? "unknown" : "clean"));
+    const w = world((head, _collection, now) => (head === H1 || now < 30 * MINUTE ? "unknown" : "clean"));
     const read = w.fake.onGetPr!;
-    w.fake.onGetPr = (pr, reads) => (pr.headSha === H1 && w.clock.now >= 20 * MINUTE && w.fake.pushHead(1, H2), read(pr, reads));
+    w.fake.onGetPr = (pr, reads) => (pr.headSha === H1 && w.clock.now >= 15 * MINUTE && w.fake.pushHead(1, H2), read(pr, reads));
     const host = open(w);
     const runId = start(host, w);
 
@@ -222,6 +229,64 @@ describe("a MERGE whose evidence reads mergeable_state unknown on every read", (
     await gateOpened(second, gateId(runId, "approve-merge"), 10_000);
 
     expect(new Set(settleRecords(second, runId).map((settle) => settle.since))).toEqual(new Set([since]));
-    expect(second.gates.get(gateId(runId, "approve-merge"))!.prompt).toMatch(/unsettled for 3\d min/);
+    expect(second.gates.get(gateId(runId, "approve-merge"))!.prompt).toMatch(/unsettled for 2\d min/);
+  });
+});
+
+describe("a MERGE whose mergeability stays unsettled past the bound, with a seat to tell", () => {
+  it("merges with no gate when GitHub settles after three unknown reads", async () => {
+    const w = world((_head, collection) => (collection <= 1 ? "unknown" : "clean"), undefined, "trusted-seat");
+    const host = open(w);
+    const runId = start(host, w);
+
+    await merged(w);
+
+    expect(host.pendingGates().filter((pending) => pending.runId === runId)).toEqual([]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
+    expect(w.notices).toEqual([]);
+  });
+
+  it("tells the seat once, opens no approve-merge, and keeps re-reading at the head", async () => {
+    const w = world(() => "unknown", undefined, "trusted-seat");
+    const host = open(w);
+    const runId = start(host, w);
+
+    await vi.waitFor(() => expect(w.clock.now).toBeGreaterThanOrEqual(45 * MINUTE), { timeout: 10_000 });
+
+    expect(w.notices).toHaveLength(1);
+    expect(w.notices[0]!.seat).toBe("trusted-seat");
+    expect(w.notices[0]!.text).toContain(`at head ${H1}`);
+    expect(w.notices[0]!.text).toMatch(/unsettled for 2\d min/);
+    expect(w.notices[0]!.text).toContain("Nothing waits on the owner");
+    expect(host.pendingGates().filter((pending) => pending.runId === runId)).toEqual([]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
+    expect(w.mergeTreeProbes).toEqual([H1]);
+    expect(new Set(settleRecords(host, runId).map((settle) => settle.since)).size).toBe(1);
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
+  it("merges with no gate once GitHub settles after the seat was told", async () => {
+    const w = world((_head, _collection, now) => (now < 40 * MINUTE ? "unknown" : "clean"), undefined, "trusted-seat");
+    const host = open(w);
+    const runId = start(host, w);
+
+    await merged(w);
+
+    expect(w.notices).toHaveLength(1);
+    expect(host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
+  });
+
+  it("ends the wait at a head pushed after the notice, and that head gets its own bound and notice", async () => {
+    const w = world(() => "unknown", undefined, "trusted-seat");
+    const read = w.fake.onGetPr!;
+    w.fake.onGetPr = (pr, reads) => (pr.headSha === H1 && w.clock.now >= 30 * MINUTE && w.fake.pushHead(1, H2), read(pr, reads));
+    const host = open(w);
+    const runId = start(host, w);
+
+    await vi.waitFor(() => expect(w.notices).toHaveLength(2), { timeout: 10_000 });
+
+    expect(w.notices.map((notice) => notice.text.includes(`at head ${H2}`))).toEqual([false, true]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
+    expect(w.mergeTreeProbes).toEqual([H1, H2]);
   });
 });

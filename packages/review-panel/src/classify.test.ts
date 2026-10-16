@@ -1,6 +1,6 @@
 import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
-import { changedLineCount, classifyPr, DEFAULT_CLASS_RULES, SECURITY_SLICE_LINES, securitySliceFlag } from "./classify.js";
+import { changedLineCount, classifyPr, DEFAULT_CLASS_RULES, pathTouches, SECURITY_SLICE_LINES, securitySliceFlag } from "./classify.js";
 import type { ChangedFile, PrFacts } from "./types.js";
 
 const file = (path: string, additions = 5, deletions = 1): ChangedFile => ({ path, additions, deletions });
@@ -16,7 +16,7 @@ describe("classifyPr", () => {
     }
   });
 
-  it("classifies tp#755's changed files as authority and policy", () => {
+  it("classifies tp#755's changed files as authority, its policy match being only a test file", () => {
     const result = classifyPr(
       facts([
         "packages/authority/src/conditions.ts",
@@ -27,7 +27,7 @@ describe("classifyPr", () => {
         "site/reference/authority.md",
       ]),
     );
-    expect(result).toEqual({ class: "g10", touches: ["authority", "policy"] });
+    expect(result).toEqual({ class: "g10", touches: ["authority"] });
   });
 
   it("classifies tp#747's required-checks policy files as authority and policy", () => {
@@ -68,6 +68,50 @@ describe("classifyPr", () => {
     expect(classifyPr(facts(["db/migrations/001.sql"])).touches).toEqual(["migration"]);
     expect(classifyPr(facts(["packages/code-graph/src/indexer.ts", "packages/code-graph/src/indexer.test.ts"])).touches).toEqual(["perf"]);
     expect(classifyPr(facts(["packages/egress-scan/README.md"])).touches).toEqual(["security"]);
+  });
+
+  it("gives a test-only policy file no policy touch", () => {
+    const result = classifyPr(facts(["packages/x/src/gate-policy.test.ts"], { kind: "correctness" }));
+    expect(result).toEqual({ class: "standard", touches: [] });
+  });
+
+  it("gives test-only authority and tool-guard files no authority or security touch, but keeps perf", () => {
+    const result = classifyPr(facts(["packages/authority/src/x.test.ts", "packages/tool-guard/src/lexer.test.ts"]));
+    expect(result).toEqual({ class: "standard", touches: ["perf"] });
+  });
+
+  it("still counts a policy source file changed beside its test", () => {
+    expect(classifyPr(facts(["packages/x/src/x-policy.ts", "packages/x/src/x-policy.test.ts"])).touches).toEqual(["policy"]);
+  });
+
+  it("reads touches from paths alone in pathTouches, ignoring the kind", () => {
+    expect(pathTouches([{ path: "docs/a.md" }])).toEqual([]);
+    expect(pathTouches([{ path: "packages/tool-guard/src/a.ts" }])).toEqual(["security", "perf"]);
+    expect(classifyPr(facts(["docs/a.md"], { kind: "security" }))).toEqual({ class: "g10", touches: ["security"] });
+  });
+
+  it("matches a rename's old path too, so renaming guard source away keeps the security touch", () => {
+    const outOfGuard = { path: "src/x.ts", previousPath: "packages/tool-guard/src/x.ts" };
+    expect(pathTouches([outOfGuard])).toEqual(["security", "perf"]);
+    const result = classifyPr(facts([], { kind: "correctness", changedFiles: [{ ...file(outOfGuard.path), ...outOfGuard }] }));
+    expect(result.class).toBe("g10");
+    expect(result.touches).toContain("security");
+  });
+
+  it("still touches security for a rename into a guard path", () => {
+    expect(pathTouches([{ path: "packages/tool-guard/src/x.ts", previousPath: "src/x.ts" }])).toEqual(["security", "perf"]);
+  });
+
+  it("gives a guard-to-guard rename each touch once", () => {
+    expect(pathTouches([{ path: "packages/tool-guard/src/b.ts", previousPath: "packages/tool-guard/src/a.ts" }])).toEqual(["security", "perf"]);
+  });
+
+  it("gives a rename between non-guard paths no touch", () => {
+    expect(pathTouches([{ path: "docs/b.md", previousPath: "docs/a.md" }])).toEqual([]);
+  });
+
+  it("exempts a test file renamed out of a guard path from the security touch", () => {
+    expect(pathTouches([{ path: "src/x.test.ts", previousPath: "packages/tool-guard/src/x.test.ts" }])).toEqual(["perf"]);
   });
 
   it("forces security from the kind", () => {
@@ -157,6 +201,20 @@ describe("securitySliceFlag", () => {
 
   it("does not treat a generated file under an authority glob as a guard path", () => {
     expect(securitySliceFlag({ changedFiles: [file(".codewatch/check.json", 500, 0)] })).toBeUndefined();
+  });
+
+  it("flags a rename out of the guard area and names the old path", () => {
+    const changedFiles = [{ ...file("src/x.ts", 300, 160), previousPath: guard }];
+    expect(securitySliceFlag({ changedFiles })).toEqual({ lines: 460, cap: 400, guardPaths: [guard] });
+  });
+
+  it("leaves an oversize rename between two non-guard paths unflagged", () => {
+    expect(securitySliceFlag({ changedFiles: [{ ...file("src/b.ts", 300, 160), previousPath: "src/a.ts" }] })).toBeUndefined();
+  });
+
+  it("names a rename into the guard area once, by its new path", () => {
+    const changedFiles = [{ ...file(guard, 300, 160), previousPath: "src/x.ts" }];
+    expect(securitySliceFlag({ changedFiles })?.guardPaths).toEqual([guard]);
   });
 
   it("flags nothing when a count is unreadable", () => {

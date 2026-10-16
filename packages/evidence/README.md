@@ -37,6 +37,22 @@ A quote with no such fragment is `quote-empty`.
 read from disk, git or a snapshot by implementing the interface. `splitLines` drops the
 trailing newline's empty entry the same way.
 
+## Anchors pinned to a commit
+
+`parseAnchor(text, pins)` reads a code anchor against pinned commits `{ repo, head, base? }`:
+`head/<path>#L10-L20` and `base/<path>#L7` become a `LineRange` plus the pinned `rev`, and
+`diff/<path>#L84-R90` gives two endpoints, `L` at base and `R` at head. It refuses a
+reversed range, an absolute path, a `..` segment, a backslash, a blank path, and a side
+with no 40-hex pin (`base/` and `diff/` need `base`). It only parses; whether the lines
+exist is `verifyCitation` over a `LineSource` at the anchor's `rev`, such as
+`revisionLineSource` from `@titan-design/code-graph/history`. `isFullSha` is the pin test.
+
+`verifyAnchorText(text, pins, source)` does both: it parses, then checks each anchored line
+with `verifyRange` (the location half of `verifyCitation`, no quote) over `source(rev)`.
+A `diff/` anchor spanning both sides checks each endpoint at its own commit. A refusal reads
+`head/a.ts#L10-L20: past EOF (15 lines)`; success quotes the first and last lines back.
+`isAnchorForm` tells anchor-form text from a free string.
+
 ## Grouping overlapping findings
 
 ```ts

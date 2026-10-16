@@ -1,5 +1,6 @@
+import type { AgentIdentity } from "@titan-design/authority";
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
-import type { OwnerBrief } from "@titan-design/review-panel";
+import type { OwnerBrief, ReviewShape } from "@titan-design/review-panel";
 import type { WorkflowContext } from "@titan-design/workflow";
 import type { CleanupPorts } from "./cleanup.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
@@ -10,7 +11,9 @@ import type { SpawnGate } from "./spawn-gate.js";
 import type { AccountLimitStoreRef } from "./account-store.js";
 import type { ShepherdStoreRef } from "./store.js";
 import type { SuiteRules } from "./suite-host.js";
+import type { PrFilesRead } from "./git-pr-files.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
+import type { PushWatch } from "./push-signal.js";
 
 /** Which PR, which head, and which land round a phase acts for. */
 export interface PhaseTarget {
@@ -44,6 +47,8 @@ export interface ReviewRequest extends PhaseTarget {
   fresh?: boolean;
   /** Why this head is reviewed; the intent step records it. */
   cause?: ReviewCause;
+  /** Shepherd's own MERGE at this head that a seat held last round; only the seat check runs again. */
+  seatHeld?: SeatHeld;
 }
 
 /**
@@ -52,11 +57,40 @@ export interface ReviewRequest extends PhaseTarget {
  */
 export type NoVerdictCause = "no-verdict" | "timeout" | "external-hold" | "not-started" | "account-exhausted" | "throttled";
 
+/** What a panel MERGE records beside the correctness member's verdict: each member that gave one, and whether the panel met G10. */
+export interface PanelMerge {
+  satisfiesG10: boolean;
+  degraded: readonly ReviewShape[];
+  members: readonly PanelMember[];
+}
+
+/** One member's verdict; `verdict`, `head` and `profile` are absent on a MERGE recorded before the two-MERGE release read them. */
+export interface PanelMember {
+  shape: ReviewShape;
+  agentId: string;
+  sessionId: string;
+  locator: unknown;
+  verdict?: "MERGE" | "FIX_FIRST";
+  head?: string;
+  /** The profile Shepherd spawned the member at. */
+  profile?: string;
+}
+
+/** Shepherd's own MERGE at `head` that a seat reviewer's WAIT, or a seat read that can clear, still held when the seat wait ran out. */
+export interface SeatHeld {
+  head: string;
+  locator: unknown;
+  reviewer: AgentIdentity;
+  dispatchedReviewer: AgentIdentity;
+  /** The verdict step's MERGE as recorded, which the next round's seat recheck holds or lets stand. */
+  merge: Readonly<Record<string, unknown>>;
+}
+
 export type Verdict =
-  | { kind: "MERGE"; headSha: string; evidence: unknown; /** The profile Shepherd spawned the reviewer with; absent for an external, resumed or carried verdict. */ reviewerProfile?: string; /** The reviewed head this MERGE was carried from across a clean merge-up of the base. */ mergeUpFrom?: string; /** The reviewer's OWNER-BRIEF block, shown on an approve-merge gate at this head. */ ownerBrief?: OwnerBrief }
+  | { kind: "MERGE"; /** Set only when `review.panel` is `on` and the head's intent recorded a plan. */ panel?: PanelMerge; headSha: string; evidence: unknown; /** The profile Shepherd spawned the reviewer with; absent for an external, resumed or carried verdict. */ reviewerProfile?: string; /** The reviewed head this MERGE was carried from across a clean merge-up of the base. */ mergeUpFrom?: string; /** The reviewer's OWNER-BRIEF block, shown on an approve-merge gate at this head. */ ownerBrief?: OwnerBrief }
   | { kind: "FIX_FIRST"; headSha: string; text: string; closer?: "yes" | "no" }
   | { kind: "NO_REPRO"; headSha: string; result: unknown }
-  | { kind: "none"; cause?: NoVerdictCause; reason?: string };
+  | { kind: "none"; cause?: NoVerdictCause; reason?: string; seatHeld?: SeatHeld };
 
 /** The route table decides what a `none` verdict or an `unhandled` wake leads to. */
 export interface ShepherdPhases {
@@ -82,6 +116,8 @@ export interface ShepherdDeps {
   cleanup?: CleanupPorts;
   /** The per-repo PR snapshot `sh-observe` reads; absent means it reads the port. */
   snapshot?: PrSnapshot;
+  /** The seat clones' push reflogs a head wait watches; absent means it reads the PR once per backstop. */
+  pushes?: PushWatch;
   /** The App-token port `sh-publish-review` posts `shepherd/review` through; absent means it records `published: false`. */
   reviewCheck?: GitHubPort;
   /** Which reviewer accounts are out of usage; absent reads as a store that cannot be read, so a usage limit fails closed. */
@@ -94,4 +130,10 @@ export interface ShepherdDeps {
   reviewCheckouts?: { root?: string; remove?: RemoveDir };
   /** True for a repo where Shepherd never writes to a branch: no successor is spawned and no head ref deleted. */
   advisory?: (repo: string) => boolean;
+  /** Reads a head's changed files from Shepherd's git cache; absent means the serve process's cached reader. */
+  prFiles?: PrFilesRead;
+  /** Repos whose stacked children Shepherd restacks after its own merge; absent means none. */
+  stackRestack?: (repo: RepoSlug) => boolean;
+  /** `on` repairs a run held only under a g10 class while the hold keeps gating its merge; absent means `off`. */
+  heldRepair?: "off" | "on";
 }

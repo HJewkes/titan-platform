@@ -10,7 +10,9 @@ import { evidenceSources } from "./coordinator-evidence-read.js";
 import { reviewGates, type ReviewGate } from "./gate-review-read.js";
 import { NEEDS_COMMANDS, type NeedsSources } from "./needs/rpc.js";
 import { logSlowRegister } from "./slow-register.js";
-import { SHEPHERD_COMMANDS, type ShepherdServices } from "./shepherd/commands.js";
+import { SHEPHERD_COMMANDS } from "./shepherd/commands.js";
+import { GH_GATEWAY_COMMANDS } from "./shepherd/gh-gateway.js";
+import type { ShepherdServices } from "./shepherd/services.js";
 
 /** The workflow `factory.land` starts. */
 export const LAND_WORKFLOW = "land-pr";
@@ -177,6 +179,6 @@ export function factoryContext(host: FactoryHost, routes: FactoryRoutes, aud?: s
 /** Resolving a gate is deliberately absent: over the network only serve's signed-proof route resolves, never a command. */
 export function createFactoryRegistry(log?: Logger): CommandRegistry<FactoryContext> {
   const registry = createRegistry<FactoryContext>();
-  for (const cmd of [land, status, gates, gatesReview, ...SHEPHERD_COMMANDS, ...NEEDS_COMMANDS]) registry.register(log ? logSlowRegister(cmd, log) : cmd);
+  for (const cmd of [land, status, gates, gatesReview, ...SHEPHERD_COMMANDS, ...GH_GATEWAY_COMMANDS, ...NEEDS_COMMANDS]) registry.register(log ? logSlowRegister(cmd, log) : cmd);
   return registry;
 }

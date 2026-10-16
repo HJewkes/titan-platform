@@ -8,6 +8,11 @@ export class ReviewerBrokerDown extends Error {
   override readonly name = "ReviewerBrokerDown";
 }
 
+/** The port throws this when an agent-chat call outlasted its timeout; the call may still have landed, so it is never asked again blind. */
+export class ReviewerAskTimedOut extends Error {
+  override readonly name = "ReviewerAskTimedOut";
+}
+
 export interface PollTiming {
   now: () => number;
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
@@ -25,6 +30,39 @@ export async function whileBrokerDown<T>(timing: PollTiming, signal: AbortSignal
     }
     await timing.sleep(timing.pollMs, signal);
   }
+}
+
+/**
+ * The roster read stayed timed out for the whole session-start window, so no reviewer could be chosen and none was started.
+ * The message is built from the class and the budget alone, since it becomes a stored step reason.
+ */
+class ReviewerRosterUnread extends Error {
+  override readonly name = "ReviewerRosterUnread";
+
+  constructor(budgetMs: number) {
+    super(`ReviewerAskTimedOut (roster unread after ${minutes(budgetMs)})`);
+  }
+}
+
+/** A read has no side effect, so a timed-out roster read is asked again every poll until the budget passes. */
+export async function whileRosterSlow<T>(timing: PollTiming, signal: AbortSignal, budgetMs: number, read: () => Promise<T>): Promise<T> {
+  const startedAt = timing.now();
+  for (;;) {
+    signal.throwIfAborted();
+    try {
+      return await read();
+    } catch (error) {
+      if (!(error instanceof ReviewerAskTimedOut)) throw error;
+      if (timing.now() - startedAt >= budgetMs) throw new ReviewerRosterUnread(budgetMs);
+    }
+    await timing.sleep(timing.pollMs, signal);
+  }
+}
+
+/** An unread roster started nobody, so the step says so rather than reading as a refusal; any other throw stays one. */
+export function rosterUnread(error: unknown): NotStarted {
+  if (!(error instanceof ReviewerRosterUnread)) throw error;
+  return { kind: "none", reason: `the reviewer dispatch was refused: ${error.message}`, notStarted: true };
 }
 
 /** The port throws this when the broker refused a start for a reason that clears with time, such as its machine guard; nobody was started. */
@@ -66,6 +104,12 @@ export const busyWaits = (waits: string[]): BusyWaits => (waits.length > 0 ? { b
 export function notStarted(error: unknown, waits: string[]): NotStarted {
   if (!(error instanceof ReviewerStillBusy)) throw error;
   return { kind: "none", reason: `the reviewer dispatch was refused: ${error.message}`, notStarted: true, ...busyWaits(waits) };
+}
+
+/** A timed-out ask whose reviewer never showed up started nobody; the reason is built from the class and the wait alone, since it becomes a stored step reason. */
+export function timedOutUnseen(waitedMs: number, waits: string[]): NotStarted {
+  const reason = `the reviewer dispatch was refused: ReviewerAskTimedOut (no reviewer seen after ${minutes(waitedMs)})`;
+  return { kind: "none", reason, notStarted: true, ...busyWaits(waits) };
 }
 
 /** The first wait after a busy refusal; each later wait doubles, up to the longest. */

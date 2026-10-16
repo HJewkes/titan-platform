@@ -1,16 +1,25 @@
 import { z } from "zod";
 import { holdClassOf } from "./g10-release.js";
+import { OWNER_HOLD_CLASS } from "./owner-hold-rows.js";
+
+/** The owner assigned the PR's review to a person: no Shepherd MERGE releases it, only that person's release (TP-3083). */
+const OWNER_REVIEW_CLASS = "owner-review";
 
 /**
  * The closed list of break-glass hold classes in charter section 8; add a class here when the charter adds it, or seats
  * holding under it are refused. The check runs at the `shepherd.hold` command only, so Shepherd's own holds never pass through it;
  * the G10 holds Shepherd places at registration (`registration-hold.ts`) still use the g10 classes, so its release reads them.
  */
-export const HOLD_CLASSES = ["serve-down", "stalled", "no-reviewer", "run-failed", "visual-gate2", "g10-review", "g10-adversary"] as const;
+export const HOLD_CLASSES = ["serve-down", "stalled", "no-reviewer", "run-failed", "visual-gate2", "g10-review", "g10-adversary", "owner-asked", OWNER_REVIEW_CLASS] as const;
 type HoldClass = (typeof HOLD_CLASSES)[number];
 
+export { OWNER_HOLD_CLASS } from "./owner-hold-rows.js";
+
+/** Every class `shepherd release` may name; an owner-asked hold is not one, so naming it is an argument error. */
+export const ReleasableClassSchema = z.enum(HOLD_CLASSES).exclude([OWNER_HOLD_CLASS]);
+
 /** Gate classes, not factory defects: they cite no task. Every other class names the open task for its defect. */
-export const TASKLESS_CLASSES: ReadonlySet<HoldClass> = new Set(["visual-gate2", "g10-review", "g10-adversary"]);
+export const TASKLESS_CLASSES: ReadonlySet<HoldClass> = new Set(["visual-gate2", "g10-review", "g10-adversary", OWNER_HOLD_CLASS, OWNER_REVIEW_CLASS]);
 
 /** Syntax only: whether the task is open is not checked here. */
 const TASK_ID = /\b[A-Z]{2,5}-\d+\b/;

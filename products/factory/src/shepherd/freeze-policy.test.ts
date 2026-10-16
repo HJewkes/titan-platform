@@ -5,10 +5,10 @@ import type { RoutedStepInput } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
 import { factoryRoutesFor } from "../workflows.js";
 import { shepherdEventMigration } from "./events.js";
-import { FREEZE_RECHECK_MS, freezeCancelOnlyMigration, freezeMigration, freezeStoreRef, type FreezeStore } from "./freeze.js";
+import { FREEZE_RECHECK_MS, freezeCancelOnlyMigration, freezeFixPrMigration, freezeMigration, freezeStoreRef, type FreezeStore } from "./freeze.js";
 import { MERGE_EVIDENCE_STEP, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { EffectivePolicy } from "./policy.js";
-import type { ReviewerReader } from "./review.js";
+import type { ReviewerReader } from "@titan-design/review-panel";
 import { holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type ShepherdStore } from "./store.js";
 
 const REPO = "octo/demo";
@@ -35,7 +35,7 @@ interface Scene {
 function scene(): Scene {
   const db = openDatabase(":memory:");
   dbs.push(db);
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), shepherdEventMigration(16)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), shepherdEventMigration(16), freezeFixPrMigration(23)]);
   const store = shepherdStoreRef();
   const freeze = freezeStoreRef();
   store.bind(db);

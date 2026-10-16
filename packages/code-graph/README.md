@@ -105,7 +105,7 @@ match wins, in this order:
 2. A configured glob from `.codewatch/roles.json` (below).
 3. `test`, then `story` (`*.stories.{js,jsx,ts,tsx}` with an optional `c`/`m`, and `*.mdx`),
    so a story under `fixtures/` is still a story.
-4. `fixture` (a `fixtures/` path or a `*.fixture.*` file), `script`, `entry` (a `#!` shebang), `barrel`, `types`, `config`, else `source`.
+4. `fixture` (a `fixtures/` path or a `*.fixture.*` or `*.fixtures.*` file), `script`, `entry` (a `#!` shebang), `barrel`, `types`, `config`, else `source`.
 
 `UNIMPORTED_ROLES` lists the roles nothing imports by design (`test`, `fixture`, `story`, `lab`,
 `config`, `script`, `entry`). Dead-module reachability seeds from them plus `barrel`.
@@ -275,6 +275,9 @@ cycle of one. `import type` and `export type … from` edges are left out unless
 `includeTypeOnly: true`. An all-inline `{ type T }` import still counts, because under
 `verbatimModuleSyntax` it compiles to an import that loads the module. `exclude` and
 `excludeRoles` take files out of the graph.
+Each cycle carries `cycleKind`: `value` when its value imports alone still close a cycle among
+its members, otherwise `type-only`. A type-only cycle also names its `hub`, the member with the
+most type-only imports in from the other members, and its evidence says so.
 The baseline key is the rule id plus every member, so it does not depend on edge order. Against
 a baseline, a cycle whose members all sit inside one known cycle is a carryover, so a shrunk or
 split cycle passes, while a cycle that gains a file or merges two known cycles is new.
@@ -425,6 +428,11 @@ Python, and are written on every function or file, zeros included:
   (per 100 non-blank lines), and `swallowed_except` (handlers whose body is empty, `pass`,
   `...`, `continue`, a bare or `None`/`null`/`undefined` return, or one call to a logger,
   `print`, `warn` or `console`).
+- Per file, line density (TP-2474): `long_line_share_160` (share of non-blank lines over 160
+  characters), `chars_per_sloc` (characters per non-blank line, surrounding whitespace
+  excluded) and `bool_ops_per_line` (syntax-tree `&&`, `||`, `??` and ternaries, or Python
+  `and`, `or` and conditional expressions, per non-blank line; strings and comments never
+  count).
 
 Call-graph metrics (TP-323) come from `calls` edges, one per caller and callee symbol, each
 carrying the literal arguments of every call site in `attrs.sites`. TypeScript resolves a
@@ -594,6 +602,9 @@ are leads, not verdicts, and both drop files that `keepNode` rejects:
 - `topUnusedExports(symbolNodes, publicApi, ctx, limit)` lists exported symbols whose
   `utilization` is 0 or absent, ranked internal first, then by `symbol_cognitive`
   descending, each row carrying the export's own `loc` (`symbol_loc`, 0 when unmeasured).
+  A namespace import `import * as X` credits each export its member accesses name (`X.a`,
+  the type `X.T`, `X["a"]`). Using `X` whole (an argument, a spread, `typeof X`) credits
+  every export of an in-repo target.
   `publicApiFiles(nodes, edges)` builds `publicApi`: the files a `barrel`-role
   node re-exports one hop away, whose exports may still have npm consumers.
 - `topDeadModules(nodes, edges, ctx, limit, { view })` lists files that a forward walk over
@@ -606,6 +617,48 @@ are leads, not verdicts, and both drop files that `keepNode` rejects:
 
 These differ from `pnpm dead:check`, which reads edges rather than `utilization` and follows
 re-exports transitively from package-manifest entries.
+
+### SCBench complexity rollup
+
+TP-2474 h ports the complexity half of SlopCodeBench's code-quality metrics to TypeScript.
+`qualitySection(nodes, ctx, packages, edges)` returns the report's optional `quality` section:
+`complexity.total` over every kept file and `complexity.packages`, one row per `PackageRoot`
+(`""` for files under none). `complexityDistribution(callables, packages)` and
+`summarizeComplexity(callables)` are the same arithmetic over plain `CallableComplexity` rows.
+
+Each named function with a `symbol_cyclomatic` metric is one callable; its SLOC is
+`symbol_loc` minus `symbol_comment_lines`. Mass is CC·√SLOC. `erosion` (SCBench's
+`mass.high_cc_pct`) is the share of mass in callables with CC above 10, and `cogErosion` is
+the same over `symbol_cognitive`. The row also carries `ccMax`, `ccMean`, `ccStd` (population),
+`ccHighCount` (CC > 10), `ccExtremeCount` (CC > 30), `highCcMean` and `ccGini`
+(SCBench's `cc_concentration`). Nested closures and helpers with no symbol node of their own
+are not counted, so erosion can read lower than a tool that measures every function, such as
+scb-check. Splitting a function lowers erosion without improving the design, so read it beside
+`symbol_pass_through` and `symbol_single_caller_helper`.
+
+### SCBench dependency-graph metrics
+
+TP-2474 i ports SlopCodeBench's dependency-graph measures. `quality.dependencies` holds one
+`PackageDependencyRow` per package; `dependencyGraphMetrics(nodes, edges, packages)` builds the
+rows from any node set, and `callGraphMetrics` and `importCyclicMass` are the same arithmetic
+over plain `WeightedLink` lists. Only edges with both ends in one package count, and there is no
+whole-tree row because propagation cost is O(n·(n + e)).
+
+`calls` holds the call graph over the callables the complexity rollup measured, each edge
+weighted by its call-site count:
+
+- `cyclicDependencyMass` (`cyclic_dependency_mass`): the share of call weight on edges inside a
+  strongly connected component of two or more callables. A function calling only itself is not
+  a cycle.
+- `propagationCost` (`propagation_cost`): ordered pairs (a, b), a ≠ b, with b reachable from a,
+  over n(n − 1).
+- `dependencyEntropy` (`dependency_entropy`): the mean over callables of the Shannon entropy of
+  out-edge weights, normalized by log(out-degree), and 0 at out-degree 1 or less.
+
+`imports` splits the cyclic mass of the package's file imports (edge `weight`, default 1).
+`value` is the weight of value imports inside cycles that value imports close on their own, and
+`typeOnly` is the rest of the cyclic weight, the part only a type-only import closes. Both share
+the denominator of all import weight, so they sum to the cyclic mass of the whole import graph.
 
 ### Growth and untested risks
 
@@ -732,6 +785,20 @@ git fail is not "outside git": `loadChurnEntries` and `loadFileFirstSeen` throw 
 and `loadHistoryMetrics` returns it as `LoadedHistory.warnings`. `loadChurnResult` and
 `loadFirstSeenResult` return `{ ok: false, reason: "not-git" | "overflow" | "git-error", detail }`.
 
+Each index also writes function-level accretion on symbol nodes: `symbol_task_ids_{w}`, the
+distinct task ids (`\b[A-Z][A-Z0-9]*-\d+\b` in commit subjects, or `taskIdPattern`) whose
+commits edited the function, and `symbol_edit_commits_{w}`, for each of `accretionWindows`
+(default `DEFAULT_ACCRETION_WINDOWS`, `[7]`; `[]` turns it off). One
+`git log -p -U0 -M -C` over the widest window supplies the hunks. Each hunk's lines are carried
+forward through every later commit's hunks on the same file, following renames, so an edit
+made before lines were inserted above the function still lands on it at HEAD. An edit credits
+the innermost symbol it overlaps, so a method edit does not count again for its class. A
+threshold such as "3+ ids in 7 days" is a finding policy, not part of the metric. The patch
+log has a 256 MiB buffer; overflow lands in `warnings` like the churn log's.
+The carry assumes linear history: `--no-merges` reads commits in date order, so on a repo that
+merges side branches an edit can be carried through mainline hunks that are not its ancestors
+and land on the wrong lines. Squash- or rebase-merged repos are exact.
+
 The adapter is exported from the package root, not from `./history`, because it speaks
 `GraphMetric` and the seam below does not. A product that indexes on its own terms calls
 `loadHistoryMetrics(nodes, idRoot, options)` for both the metric rows and the primary-window
@@ -739,6 +806,12 @@ churn entries they were built from (`LoadedHistory`, whose `warnings` say why hi
 `DEFAULT_CHURN_WINDOWS` (`[30, 90, 180]`), `resolveChurnWindows`, `windowSuffix` (`30d`,
 `lifetime`) and `computeRecencyWindows` alongside it. Node ids are the history engine's
 repo-relative paths, so both must be rooted at the same `idRoot`.
+
+`revisionLineSource(repoRoot, rev)` is an evidence `LineSource` over the blobs of commit
+`rev`, never the working tree, so `verifyCitation` over it reports `past-eof` for a range
+that only an uncommitted edit reaches. `rev` must be a full 40-hex commit id; a ref name
+throws. Each path is one `git --no-replace-objects cat-file --batch` read, cached. A path
+that is not a blob at `rev` reads as unreadable.
 
 Change coupling is not stored. It is computed on demand from `loadChurnEntries`, as
 codewatch's `graph coupled` command did.

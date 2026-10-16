@@ -6,9 +6,10 @@ import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineWorkflow } from "./definition.js";
-import { deployPausePath } from "./deploy-pause.js";
+import { ghDeployNow } from "./deploy-pacer-sweep.js";
+import { deployHoldPath, deployPausePath } from "./deploy-pause.js";
 import { startFactoryServer, type FactoryServer, type FactoryServerOptions } from "./serve.js";
-import { DEPLOY_MAX_WAIT_MS, DEPLOY_QUIET_MS, nodeWantedStore, noteWanted, writeWanted, type DeployPacerOptions, type WantedStore } from "./shepherd/deploy-pacer.js";
+import { DEPLOY_MAX_WAIT_MS, DEPLOY_NOW_LABEL, DEPLOY_QUIET_MS, nodeWantedStore, noteWanted, writeWanted, type DeployPacerOptions, type WantedStore } from "./shepherd/deploy-pacer.js";
 import { landScenario } from "./test-support/land.js";
 
 const T0 = Date.parse("2026-01-01T00:00:00.000Z");
@@ -116,6 +117,17 @@ describe("serve's deploy pacer sweep", () => {
     expect(world.spawned).toEqual([]);
   });
 
+  it("never spawns while a manual deploy hold is on disk, even past the cap", async () => {
+    const world = pacerWorld();
+    writeFileSync(deployHoldPath(world.stateDir), JSON.stringify({ heldAt: new Date(T0).toISOString(), reason: "owner hold" }));
+    world.clock.now = T0 + DEPLOY_MAX_WAIT_MS + MIN;
+    await serve(world);
+
+    await world.ticks(3);
+
+    expect(world.spawned).toEqual([]);
+  });
+
   it("clears a wanted sha the running build descends from instead of spawning a deployer, and /health shows none pending", async () => {
     const world = pacerWorld();
     world.clock.now = T0 + DEPLOY_MAX_WAIT_MS + MIN;
@@ -126,9 +138,67 @@ describe("serve's deploy pacer sweep", () => {
     expect(world.spawned).toEqual([]);
   });
 
+  it(`spawns a ${DEPLOY_NOW_LABEL} sha inside the quiet window`, async () => {
+    const world = pacerWorld();
+    world.clock.now = T0 + MIN;
+
+    await serve({ ...world, pacer: { ...world.pacer, express: async (sha) => sha === WANTED } });
+
+    await vi.waitFor(() => expect(world.spawned).toEqual([WANTED]));
+  });
+
+  it(`holds a ${DEPLOY_NOW_LABEL} sha while a run is busy`, async () => {
+    const world = pacerWorld();
+    world.clock.now = T0 + MIN;
+    const label = { on: false };
+    const chore = busyChore();
+    const server = await serve({ ...world, pacer: { ...world.pacer, express: async () => label.on } }, { workflows: chore.workflows, routes: chore.routes });
+    server.host.runtime.start("chore");
+    await chore.reached;
+
+    label.on = true;
+    await world.ticks(3);
+
+    expect(world.spawned).toEqual([]);
+  });
+
   it("without a deploy pacer, /health has no deployPending", async () => {
     const server = await serve(undefined);
 
     expect(await health(server)).not.toHaveProperty("deployPending");
+  });
+});
+
+describe(`the ${DEPLOY_NOW_LABEL} probe`, () => {
+  const answer = (code: number, stdout: string) => async () => ({ code, stdout, stderr: "" });
+
+  it("asks GitHub for the labels of the PRs merged as the sha", async () => {
+    const calls: string[][] = [];
+    const probe = ghDeployNow("o/r", async (file, args) => (calls.push([file, ...args]), { code: 0, stdout: `["bug","${DEPLOY_NOW_LABEL}"]\n`, stderr: "" }));
+
+    const found = await probe("abc");
+
+    expect(found).toBe(true);
+    expect(calls).toEqual([["gh", "api", "repos/o/r/commits/abc/pulls", "--jq", "[.[].labels[].name]"]]);
+  });
+
+  it.each([
+    ["no such label", answer(0, '["bug"]')],
+    ["a gh failure", answer(1, "")],
+    ["gh missing", async () => undefined],
+    ["unparseable output", answer(0, "not json")],
+  ])("reads %s as unlabelled", async (_, run) => {
+    expect(await ghDeployNow("o/r", run)("abc")).toBe(false);
+  });
+
+  it("remembers a label once found, and asks again after a miss", async () => {
+    const replies = ['["bug"]', `["${DEPLOY_NOW_LABEL}"]`];
+    let calls = 0;
+    const probe = ghDeployNow("o/r", async () => ({ code: 0, stdout: replies[Math.min(calls++, 1)]!, stderr: "" }));
+
+    const answers = [await probe("abc"), await probe("abc"), await probe("abc")];
+
+    expect(answers).toEqual([false, true, true]);
+    expect(calls).toBe(2);
   });
 });

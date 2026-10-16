@@ -1,7 +1,13 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
+import { openDatabase } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened, spaceUpdates } from "../test-support/land.js";
+import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
@@ -48,17 +54,22 @@ interface HeldWorld {
   runId: string;
 }
 
-function heldWorld(fake: FakeGitHub, ports: ExitNoticePorts, shepherd: ShepherdPhases, policy: EffectivePolicy = SEATED): HeldWorld {
+function factoryHost(fake: FakeGitHub, ports: ExitNoticePorts, shepherd: ShepherdPhases, store: ShepherdStoreRef, dbPath = ":memory:"): FactoryHost {
   let clock = 0;
   spaceUpdates(fake, (ms) => void (clock += ms));
-  const store = shepherdStoreRef();
   const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)), exitNotice: ports, park: async () => ({ lines: [] }) });
-  const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(shepherd)], routes, gatePollMs: 5 });
+  const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(shepherd)], routes, gatePollMs: 5 });
   hosts.push(host);
+  return host;
+}
+
+function heldWorld(fake: FakeGitHub, ports: ExitNoticePorts, shepherd: ShepherdPhases, policy: EffectivePolicy = SEATED, dbPath?: string, hold = HOLD): HeldWorld {
+  const store = shepherdStoreRef();
+  const host = factoryHost(fake, ports, shepherd, store, dbPath);
   fake.addPr({ headSha: H1 });
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
   store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy });
-  store.get().hold(runId, HOLD);
+  store.get().hold(runId, hold);
   return { host, store, runId };
 }
 
@@ -81,6 +92,7 @@ describe("a held run whose head needs a fix wakes no agent and tells the seat on
     await waitingOnHold(world);
 
     expect(wakes).toEqual([]);
+    expect(fake.effects.rerunFailedJobs).toBe(1);
     expect(sent).toHaveLength(1);
     expect(sent[0]!.seat).toBe("demo-seat");
     expect(sent[0]!.text).toContain(HOLD);
@@ -192,5 +204,235 @@ describe("a head pushed while the run is held runs CI and review at it, with the
     await vi.waitFor(() => expect(heldWaitResult(world)).toBeDefined());
 
     expect(heldWaitResult(world)).toEqual({ moved: true });
+  });
+});
+
+/** H1 is red on validate until `rerun()` turns it green at the same head, as a rerun of the failed job does. */
+function redThenGreenAtH1(fake: FakeGitHub): { rerun: () => void } {
+  let rerunGreen = false;
+  fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, pr.headSha === H1 && !rerunGreen ? "failure" : "success"), successRun("dag-check", 2)]);
+  return { rerun: () => void (rerunGreen = true) };
+}
+
+const heldWaitResults = ({ host, runId }: HeldWorld): unknown[] =>
+  Object.values(host.runtime.status(runId)!.stepResults)
+    .filter((result) => /^sh-held-wait/.test(result.stepId))
+    .map((result) => result.data?.["result"]);
+
+const ticksPast = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+describe("a held ci-red wait also ends when the held head turns green, with the hold kept (TP-2523)", () => {
+  it("a rerun turning H1 green: review at H1 and the merge gate at H1, no release, no wake, unmerged", async () => {
+    const fake = fakeGitHub();
+    const ci = redThenGreenAtH1(fake);
+    const wakes: WakeRequest[] = [];
+    const reviewed: string[] = [];
+    const shepherd = phases(fake, wakes);
+    const world = heldWorld(fake, seatPorts().ports, { ...shepherd, review: async (ctx, request) => (reviewed.push(request.headSha), shepherd.review(ctx, request)) });
+    await waitingOnHold(world);
+    const release = vi.spyOn(world.store.get(), "release");
+
+    ci.rerun();
+    await vi.waitFor(() => expect(reviewed).toContain(H1), { timeout: 5_000 });
+    await gateOpened(world.host, gateId(world.runId, "approve-merge"));
+
+    expect(heldWaitResult(world)).toEqual({ moved: false, green: true });
+    expect(world.host.gates.get(gateId(world.runId, "approve-merge"))?.prompt).toContain(`at head ${H1}`);
+    expect(wakes).toEqual([]);
+    expect(release).not.toHaveBeenCalled();
+    expect(world.store.get().byRun(world.runId)).toMatchObject({ held: true, holdReason: HOLD });
+    expect(fake.pr(1).merged).toBe(false);
+  });
+
+  it("a held FIX_FIRST wait at a green head does not end on green", async () => {
+    const fake = fakeGitHub();
+    green(fake);
+    const reviewed: string[] = [];
+    const shepherd = phases(fake, [], () => ({ kind: "FIX_FIRST", headSha: H1, text: "missing test" }));
+    const world = heldWorld(fake, seatPorts().ports, { ...shepherd, review: async (ctx, request) => (reviewed.push(request.headSha), shepherd.review(ctx, request)) });
+    await waitingOnHold(world);
+
+    await ticksPast(300);
+
+    expect(world.host.runtime.status(world.runId)?.currentStep).toMatch(/^sh-held-wait/);
+    expect(reviewed).toEqual([H1]);
+    expect(heldWaitResults(world)).toEqual([]);
+  });
+
+  it("a held head that stays red keeps waiting", async () => {
+    const fake = fakeGitHub();
+    redAtH1(fake);
+    const world = heldWorld(fake, seatPorts().ports, phases(fake, []));
+    await waitingOnHold(world);
+
+    await ticksPast(300);
+
+    expect(world.host.runtime.status(world.runId)?.currentStep).toMatch(/^sh-held-wait/);
+    expect(heldWaitResults(world)).toEqual([]);
+  });
+});
+
+const G10_HOLD = "g10-adversary: packages/tool-guard touch";
+const RERUN_SPENT = "one rerun of the failed jobs at this head is spent";
+
+/** H1 is red on validate until Shepherd's own rerun of its failed jobs, then green at the same head. */
+const healsOnRerun = (fake: FakeGitHub) => (fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, pr.headSha === H1 && fake.effects.rerunFailedJobs === 0 ? "failure" : "success"), successRun("dag-check", 2)]));
+
+describe("a held ci-red head has its failed jobs rerun once before the seat wait (TP-2836)", () => {
+  it("a g10-adversary hold red at H1: one rerun, then review and the merge gate at H1, no wake, no release, unmerged", async () => {
+    const fake = fakeGitHub();
+    healsOnRerun(fake);
+    const wakes: WakeRequest[] = [];
+    const reviewed: string[] = [];
+    const shepherd = phases(fake, wakes);
+    const { sent, ports } = seatPorts();
+    const world = heldWorld(fake, ports, { ...shepherd, review: async (ctx, request) => (reviewed.push(request.headSha), shepherd.review(ctx, request)) }, SEATED, undefined, G10_HOLD);
+    const { host, store, runId } = world;
+    const release = vi.spyOn(store.get(), "release");
+
+    await vi.waitFor(() => expect(reviewed).toContain(H1), { timeout: 5_000 });
+    await gateOpened(host, gateId(runId, "approve-merge"));
+
+    expect(fake.effects.rerunFailedJobs).toBe(1);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`at head ${H1}`);
+    expect(wakes).toEqual([]);
+    expect(sent).toEqual([]);
+    expect(release).not.toHaveBeenCalled();
+    expect(store.get().byRun(runId)).toMatchObject({ held: true, holdReason: G10_HOLD });
+    expect(heldWaitResults(world)).toEqual([]);
+    expect(fake.pr(1).merged).toBe(false);
+  });
+
+  it("a held head still red after its rerun waits, and the seat hears once that the rerun is spent", async () => {
+    const fake = fakeGitHub();
+    redAtH1(fake);
+    const wakes: WakeRequest[] = [];
+    const { sent, ports } = seatPorts();
+    const world = heldWorld(fake, ports, phases(fake, wakes));
+    await waitingOnHold(world);
+
+    await ticksPast(300);
+
+    expect(world.host.runtime.status(world.runId)?.currentStep).toMatch(/^sh-held-wait/);
+    expect(fake.effects.rerunFailedJobs).toBe(1);
+    expect(wakes).toEqual([]);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.text).toContain(HOLD);
+    expect(sent[0]!.text).toContain(`head ${H1}`);
+    expect(sent[0]!.text).toContain("validate");
+    expect(sent[0]!.text).toContain(RERUN_SPENT);
+  });
+
+  it("a held FIX_FIRST wake reruns nothing and its notice names no rerun", async () => {
+    const fake = fakeGitHub();
+    green(fake);
+    const { sent, ports } = seatPorts();
+    const world = heldWorld(fake, ports, phases(fake, [], () => ({ kind: "FIX_FIRST", headSha: H1, text: "missing test" })));
+    await waitingOnHold(world);
+
+    expect(fake.effects.rerunFailedJobs).toBe(0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.text).not.toContain("rerun");
+  });
+});
+
+const StoredStepResults = z.record(z.string(), z.object({ stepId: z.string() }).loose());
+
+/** Rewrites a stored run's step results; `edit` sees and returns them in recording order. Returns the rewritten keys. */
+function rewriteRecord(dbPath: string, runId: string, edit: (entries: Array<[string, { stepId: string }]>) => Array<[string, { stepId: string }]>): string[] {
+  const db = openDatabase(dbPath);
+  const row = z.object({ step_results: z.string() }).parse(db.prepare("SELECT step_results FROM workflow_run WHERE id = ?").get(runId));
+  const entries = edit(Object.entries(StoredStepResults.parse(JSON.parse(row.step_results))));
+  db.prepare("UPDATE workflow_run SET step_results = ? WHERE id = ?").run(JSON.stringify(Object.fromEntries(entries)), runId);
+  db.close();
+  return entries.map(([key]) => key);
+}
+
+/** The 10-10 restart burst: a replay that predates the replay guard ran the bare check live and recorded `{held:false}`. */
+function backfilledMemo(key: string): [string, { stepId: string }] {
+  return [key, { stepId: "sh-held-check", iteration: Number(key.split(":")[1]), agentId: null, signal: null, operation: "dispatch", completedAt: "2026-10-10T05:29:00.000Z", data: { result: { held: false } } } as { stepId: string }];
+}
+
+/** The record as the run-wide counter wrote it: every held check under the bare id, numbered in recording order. */
+function bareHeldChecks(entries: Array<[string, { stepId: string }]>): Array<[string, { stepId: string }]> {
+  let calls = 0;
+  return entries.map(([key, result]) => (result.stepId.startsWith("sh-held-check:") ? [`sh-held-check:${calls}`, { ...result, stepId: "sh-held-check", iteration: calls++ }] : [key, result]));
+}
+
+/** The record as a held run wrote it before TP-2836: the first held check went straight to the seat notice. */
+function withoutHeldRerun(entries: Array<[string, { stepId: string }]>): Array<[string, { stepId: string }]> {
+  const rerun = entries.findIndex(([key]) => key.startsWith("rerun:"));
+  const notice = entries.findIndex(([key]) => key.startsWith("sh-seat-notice:"));
+  return [...entries.slice(0, rerun), ...entries.slice(notice)];
+}
+
+const recordedKeys = (host: FactoryHost, runId: string): string[] => Object.keys(host.runtime.status(runId)!.stepResults);
+const tempDb = (): string => join(mkdtempSync(join(tmpdir(), "tp2452-")), "factory.db");
+
+describe("the held check is keyed by round and head, so a back-filled memo never answers a live wake (TP-2452)", () => {
+  it("a held run whose record carries back-filled {held:false} memos parks under strict replay and wakes no fixer (TP-2574)", async () => {
+    const dbPath = tempDb();
+    const fake = fakeGitHub();
+    fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, "failure"), successRun("dag-check", 2)]);
+    const wakes: WakeRequest[] = [];
+    const first = heldWorld(fake, seatPorts().ports, phases(fake, wakes), SEATED, dbPath);
+    await waitingOnHold(first);
+    first.host.close();
+    rewriteRecord(dbPath, first.runId, (entries) => [...entries, ...["sh-held-check:1", "sh-held-check:2", "sh-held-check:3"].map(backfilledMemo)]);
+
+    const second = factoryHost(fake, seatPorts().ports, phases(fake, wakes), first.store, dbPath);
+    await second.adopt();
+    const run = await second.runtime.wait(first.runId);
+
+    expect(run.status).toBe("recovery_required");
+    expect(run.error).toMatch(/replay diverged: .* next sh-held-check:1$/);
+    expect(wakes).toEqual([]);
+  });
+
+  it("a held record from before the held rerun replays to its wait and reruns nothing (TP-2836)", async () => {
+    const dbPath = tempDb();
+    const fake = fakeGitHub();
+    redAtH1(fake);
+    const wakes: WakeRequest[] = [];
+    const first = heldWorld(fake, seatPorts().ports, phases(fake, wakes), SEATED, dbPath);
+    await waitingOnHold(first);
+    first.host.close();
+    const legacyKeys = rewriteRecord(dbPath, first.runId, withoutHeldRerun);
+    const reruns = fake.effects.rerunFailedJobs;
+
+    const second = factoryHost(fake, seatPorts().ports, phases(fake, wakes), first.store, dbPath);
+    await second.adopt();
+    await waitingOnHold({ ...first, host: second });
+    await ticksPast(300);
+
+    expect(legacyKeys.filter((key) => key.startsWith("rerun:"))).toEqual([]);
+    expect(second.runtime.status(first.runId)?.currentStep).toMatch(/^sh-held-wait:r0:/);
+    expect(recordedKeys(second, first.runId).filter((key) => key.startsWith("rerun:"))).toEqual([]);
+    expect(fake.effects.rerunFailedJobs).toBe(reruns);
+    expect(wakes).toEqual([]);
+  });
+
+  it("a record that went on with the bare check replays its route and records no keyed check", async () => {
+    const dbPath = tempDb();
+    const fake = fakeGitHub();
+    redAtH1(fake);
+    const wakes: WakeRequest[] = [];
+    const store = shepherdStoreRef();
+    const first = factoryHost(fake, seatPorts().ports, phases(fake, wakes), store, dbPath);
+    fake.addPr({ headSha: H1 });
+    const runId = first.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
+    store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: SEATED });
+    await gateOpened(first, gateId(runId, "approve-merge"));
+    first.close();
+    const legacyKeys = rewriteRecord(dbPath, runId, bareHeldChecks);
+
+    const second = factoryHost(fake, seatPorts().ports, phases(fake, wakes), store, dbPath);
+    await second.adopt();
+    second.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H2 }, OWNER);
+    await vi.waitFor(() => expect(fake.pr(1).merged).toBe(true), { timeout: 5_000 });
+
+    expect(legacyKeys).toContain("sh-held-check:0");
+    expect(recordedKeys(second, runId).slice(0, legacyKeys.length)).toEqual(legacyKeys);
+    expect(recordedKeys(second, runId).filter((key) => key.startsWith("sh-held-check:r"))).toEqual([]);
   });
 });

@@ -15,6 +15,8 @@ import { dirname, isAbsolute } from "node:path";
 export class ExecError extends Error {}
 /** The child ran past its budget, so whatever it was doing may have happened. */
 export class ExecTimeoutError extends ExecError {}
+/** The caller's AbortSignal ended the child, or fired before it started. */
+export class ExecAbortedError extends ExecError {}
 
 /**
  * Meant to be called once, wherever a caller owns config loading (config.ts
@@ -158,7 +160,10 @@ export function execSafe(
 /**
  * `execSafe` without blocking the event loop: same timeout, no-shell and
  * error mapping, for callers (a long-lived server) that cannot afford to
- * stall while a slow child answers. `input` follows `execSafe`'s rule.
+ * stall while a slow child answers. `input` and `cwd` follow `execSafe`'s
+ * opt-in rule; `cwd` is last so existing `input` callers keep their order.
+ * Aborting `signal` kills the child and rejects with `ExecAbortedError`; a
+ * signal already aborted starts no child.
  */
 export function execSafeAsync(
   bin: string,
@@ -166,23 +171,51 @@ export function execSafeAsync(
   env: Record<string, string>,
   timeoutMs: number,
   input?: string,
+  cwd?: string,
+  signal?: AbortSignal,
 ): Promise<SafeExecResult> {
+  if (signal?.aborted === true) return Promise.reject(new ExecAbortedError(`${bin} was not started: aborted`));
   return new Promise((resolve, reject) => {
-    const child = execFile(
-      bin,
-      args,
-      { env, timeout: timeoutMs, encoding: "utf8", shell: false, maxBuffer: 64 * 1024 * 1024 },
-      (err, stdout, stderr) => {
-        if (err === null) return resolve({ stdout, stderr, status: 0 });
-        const e = err as NodeJS.ErrnoException & { killed?: boolean; signal?: string | null };
-        if (e.killed === true || e.signal === "SIGTERM" || e.code === "ETIMEDOUT") {
-          return reject(new ExecTimeoutError(`${bin} timed out after ${timeoutMs}ms`));
-        }
-        if (typeof e.code === "number") return resolve({ stdout, stderr, status: e.code });
-        reject(new ExecError(`${bin} could not be started: ${e.message}`));
-      },
-    );
+    const child = execFile(bin, args, asyncExecOptions(env, timeoutMs, cwd, signal), (err, stdout, stderr) => {
+      try {
+        resolve(settleAsync(bin, timeoutMs, err, stdout, stderr));
+      } catch (error) {
+        reject(error);
+      }
+    });
+    // A child may exit without reading its stdin; its exit status reports that, so EPIPE here is not a crash.
+    child.stdin?.on("error", () => undefined);
     // execFileSync closes the child's stdin; a child that reads it would otherwise wait forever.
     child.stdin?.end(input);
   });
+}
+
+function asyncExecOptions(env: Record<string, string>, timeoutMs: number, cwd?: string, signal?: AbortSignal) {
+  return {
+    env,
+    timeout: timeoutMs,
+    encoding: "utf8" as const,
+    shell: false,
+    maxBuffer: 64 * 1024 * 1024,
+    ...(cwd === undefined ? {} : { cwd }),
+    ...(signal === undefined ? {} : { signal }),
+  };
+}
+
+/** `execSafe`'s mapping for an `execFile` callback: a non-zero exit is a result, a timeout or failed start throws. */
+function settleAsync(
+  bin: string,
+  timeoutMs: number,
+  err: Error | null,
+  stdout: string,
+  stderr: string,
+): SafeExecResult {
+  if (err === null) return { stdout, stderr, status: 0 };
+  const e = err as NodeJS.ErrnoException & { killed?: boolean; signal?: string | null };
+  if (e.name === "AbortError") throw new ExecAbortedError(`${bin} was aborted`);
+  if (e.killed === true || e.signal === "SIGTERM" || e.code === "ETIMEDOUT") {
+    throw new ExecTimeoutError(`${bin} timed out after ${timeoutMs}ms`);
+  }
+  if (typeof e.code === "number") return { stdout, stderr, status: e.code };
+  throw new ExecError(`${bin} could not be started: ${e.message}`);
 }

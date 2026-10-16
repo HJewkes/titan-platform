@@ -15,7 +15,7 @@ import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep, step } from "../workflows/land.js";
 import { MergeResultResult } from "../workflows/land-steps.js";
-import { SHEPHERD_WORKFLOW } from "./commands.js";
+import { SHEPHERD_WORKFLOW } from "./services.js";
 import { CLOSED_ELSEWHERE, DELETED_ELSEWHERE, LANDED_ELSEWHERE, endRunsGoneElsewhere, mergedByShepherd } from "./gone-elsewhere.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { authorityGate } from "./head-moved.js";
@@ -26,6 +26,8 @@ import { ORPHANED, resyncShepherd, supersedeTransientGates, transientOnlyConditi
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
 import { shepherdStoreRef } from "./store.js";
+import { supersedeStaleReviews } from "./stale-reviews.js";
+import { RESYNC_READ_TIMEOUT_MS } from "./bounded.js";
 import { TEST_BRIEF } from "../test-support/brief.js";
 
 const T0 = Date.parse("2026-01-01T00:00:00.000Z");
@@ -37,6 +39,7 @@ const AWAIT_VERDICT = "sh-await-verdict";
 const dirs: string[] = [];
 const cleanups: (() => Promise<void> | void)[] = [];
 afterEach(async () => {
+  vi.useRealTimers();
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
 });
@@ -591,11 +594,23 @@ const PUSHED = fakeSha("stale-gate-pushed");
 const RV = { agentId: "agent-rv-7", sessionId: "session-rv-7" };
 const AUTO: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", seat: "trusted-seat" };
 
-/** MRG-AU-RV facts at `head` that hold in full unless `unmet` turns one off. */
-function evidenceAt(head: string, unmet: object): object {
+/** The rest of an evidence step's record, so the evidence reads as whole and a standing MERGE keeps it. */
+const wholeRecord = (head: string): object => ({
+  runId: "run",
+  head,
+  baseRef: "main",
+  testMergeSha: null,
+  checkRuns: [{ name: "validate", id: 1, appId: 1, conclusion: "success" }],
+  verdictLocator: {},
+  reviewer: RV,
+  decision: { outcome: "gate", rule: { table: "authority", rowId: "MRG-AU-RV", version: 1 }, reason: "test" },
+});
+
+/** MRG-AU-RV facts at `head` that hold in full unless `unmet` turns one off; `whole` adds the record a real evidence step writes. */
+function evidenceAt(head: string, unmet: object, whole = false): object {
   const checkRuns = [{ name: "validate", appId: 1, headSha: head, conclusion: "success" }];
   const merge = { head, resolver: RV, dispatchedReviewer: RV, verdict: { value: "MERGE", head }, requiredContexts: ["validate"], allowedApps: [1], checkRuns };
-  return { head, merge: { ...merge, mergeTreeClean: true, repoFrozen: false, changedPaths: ["src/a.ts"], seatGrants: ["merge-on-green-approve"], kind: "correctness", ...unmet }, record: { repo: REPO, pr: 1 } };
+  return { head, merge: { ...merge, mergeTreeClean: true, repoFrozen: false, changedPaths: ["src/a.ts"], seatGrants: ["merge-on-green-approve"], kind: "correctness", ...unmet }, record: { repo: REPO, pr: 1, ...(whole && wholeRecord(head)) } };
 }
 
 async function servedHost(routes: FactoryRoutes, workflows: WorkflowDefinition[], goneSweepMs?: number, headMovedSweepMs?: number): Promise<FactoryHost> {
@@ -632,16 +647,18 @@ interface AuthorityOptions {
   headMovedSweepMs?: number;
   /** getPr rejects while `value` is set. */
   unreadable?: { value: boolean };
+  /** Each review's evidence is whole, as a real evidence step writes it. */
+  whole?: boolean;
 }
 
 /** A merge:auto run gated by authority/MRG-AU at REVIEWED: its first `unmetReviews` reviews read `unmet`, every later review reads clean facts. */
-async function authorityGated(unmet: object, { serve = false, unmetReviews = 1, wokenAgent = false, goneSweepMs, headMovedSweepMs, unreadable }: AuthorityOptions = {}): Promise<AuthorityRun> {
+async function authorityGated(unmet: object, { serve = false, unmetReviews = 1, wokenAgent = false, goneSweepMs, headMovedSweepMs, unreadable, whole = false }: AuthorityOptions = {}): Promise<AuthorityRun> {
   const fake = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const reviewed: string[] = [];
   const phases: ShepherdPhases = {
     wake: async () => (wokenAgent ? { kind: "woken", agent: "impl-a" } : { kind: "unhandled", reason: "test" }),
-    review: async (_ctx, request) => ({ kind: "MERGE", headSha: request.headSha, evidence: evidenceAt(request.headSha, reviewed.push(request.headSha) <= unmetReviews ? unmet : {}) }),
+    review: async (_ctx, request) => ({ kind: "MERGE", headSha: request.headSha, evidence: evidenceAt(request.headSha, reviewed.push(request.headSha) <= unmetReviews ? unmet : {}, whole) }),
   };
   const store = shepherdStoreRef();
   const port = githubPort(fake.wire);
@@ -775,6 +792,22 @@ describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () =
     expect(host.gates.get(gateId(runId, "approve-merge"))?.reason).toBe(`superseded: review again: repo-not-frozen was the only unmet condition at head ${REVIEWED}`);
     await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: REVIEWED }));
     expect(reviewed).toEqual([REVIEWED, REVIEWED]);
+  });
+
+  it("keeps the standing MERGE after a review-again cancel, reads its evidence again instead of a reviewer, and merges the same head", async () => {
+    const { host, fake, services, runId, reviewed } = await authorityGated({ repoFrozen: true }, { whole: true });
+    Object.assign(fake.pr(1), { mergeSha: fakeSha("test-merge") });
+    fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toMatchObject([{ runId, condition: "transient-only" }]);
+    await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: REVIEWED }));
+    expect(reviewed).toEqual([REVIEWED]);
+    const results = Object.values(host.runtime.status(runId)!.stepResults);
+    expect(results.find((result) => result.stepId === `sh-review-refused:${REVIEWED}`)?.data?.["result"]).toEqual({ reason: "merge-standing", cause: { cause: "owner-request" } });
+    expect(results.filter((result) => result.stepId === `sh-merge-evidence:${REVIEWED}`)).toHaveLength(1);
+    expect(results.some((result) => result.stepId.startsWith("sh-review-intent"))).toBe(false);
   });
 
   it("cancels a gate whose only unmet conditions were merge-tree-clean and a freeze that has thawed", async () => {
@@ -1027,9 +1060,44 @@ describe("resyncShepherd on an active review step", () => {
     expect(report.supersededReviews).toEqual([]);
     expect(activeIn(host, moved)).toEqual([`sh-review:${HEAD}`]);
   });
+
+  it.each([
+    ["live", false],
+    ["dry run", true],
+  ])("a review step that finishes while its head read is in flight is not superseded (%s)", async (_case, dryRun) => {
+    const { w, moved } = await twoReviews();
+    const routes = w.freshRoutes();
+    const host = restarted(w, routes);
+    const services = routes.shepherd!;
+    const getPr: typeof services.port.getPr = async (repo, pr) => {
+      if (pr === 1) host.runtime.completeStep(moved, `sh-review:${HEAD}`, JSON.stringify({ result: { kind: "none", reason: "answered by another host" } }));
+      return services.port.getPr(repo, pr);
+    };
+
+    expect(await supersedeStaleReviews(host, { ...services, port: { ...services.port, getPr } }, { dryRun })).toEqual([]);
+    expect(activeIn(host, moved)).toEqual([]);
+  });
 });
 
 describe("resyncShepherd over many runs", () => {
+  it("a PR read that never answers holds its run and the other runs in the phase still end", async () => {
+    const w = world();
+    const runs = [await gatedRun(w, 1), await gatedRun(w, 2)];
+    [1, 2].forEach((pr) => merge(w.fake, pr));
+    const services = w.routes.shepherd!;
+    const hanging = { ...services, port: { ...services.port, getPr: (repo: string, pr: number) => (pr === 1 ? new Promise<never>(() => undefined) : services.port.getPr(repo, pr)) } };
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let settled = false;
+
+    const resyncing = resyncShepherd(w.seed, hanging).finally(() => (settled = true));
+    for (let phase = 0; phase < 4; phase++) await vi.advanceTimersByTimeAsync(RESYNC_READ_TIMEOUT_MS);
+
+    expect(settled).toBe(true);
+    const report = await resyncing;
+    expect(report.held).toEqual([runs[0]]);
+    expect(report.ended).toEqual([{ runId: runs[1], reason: `${LANDED_ELSEWHERE}${REPO}#2 was merged outside Shepherd` }]);
+  });
+
   /** Holds every PR read until the test releases them, counting how many wait at once. */
   function heldReads(services: NonNullable<FactoryRoutes["shepherd"]>): { services: NonNullable<FactoryRoutes["shepherd"]>; peak: () => number; release: () => void } {
     let release!: () => void;

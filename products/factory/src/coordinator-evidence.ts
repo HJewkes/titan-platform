@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { isPassingConclusion } from "@titan-design/github";
 import { checkAgainstJsonSchema, type GateEvidencePolicy, type GateRecord } from "@titan-design/hitl";
 import { z } from "zod";
 import { escalationReason } from "./shepherd/route-table.js";
@@ -78,7 +79,6 @@ export const MERGE_GATE = "approve-merge";
 export const MAIN_GATES = { "main-red": "acknowledged", "main-frozen": "unfreeze" } as const;
 /** Gates about one PR whose `abandon` a coordinator may give once that PR is merged or closed. */
 export const PR_GATES: ReadonlySet<string> = new Set([MERGE_GATE, "stuck-behind", "sh-sent-back", "ci-failed"]);
-const PASSING: ReadonlySet<string> = new Set(["success", "neutral", "skipped"]);
 
 /** The step id of a gate id: the text after the last `/`, without a repeat suffix `:<n>`. */
 export function stepOf(gateId: string): string {
@@ -152,7 +152,7 @@ function runEligible(run: RunFacts, land: LandGate): boolean {
 
 const POLICY_DENIAL = escalationReason("policy-denial", "");
 const CONDITION_LIST = "[a-z-]+(?:, [a-z-]+)*";
-const MRG_AU_REASON = new RegExp(`^MRG-AU gates merge by automation; MRG-AU-RV unmet: (${CONDITION_LIST})(?:; MRG-AU-RC unmet: ${CONDITION_LIST})?(?:; MRG-AU-RM unmet: ${CONDITION_LIST})?$`);
+const MRG_AU_REASON = new RegExp(`^MRG-AU gates merge by automation; MRG-AU-RV unmet: (${CONDITION_LIST})(?:; MRG-AU-RC unmet: ${CONDITION_LIST})?(?:; MRG-AU-RM unmet: ${CONDITION_LIST})?(?:; MRG-AU-RS unmet: ${CONDITION_LIST})?$`);
 /** Owner decision 2026-10-07: a reviewer MERGE at the head, green required checks and MERGEABLE, each re-read at resolve time. */
 const MECHANICAL_CONDITIONS: ReadonlySet<string> = new Set(["verdict-merge-at-head", "required-contexts-green", "no-non-green-run", "merge-tree-clean"]);
 
@@ -206,7 +206,7 @@ function mainGreenAdmits(gate: GateRecord, payload: unknown, evidence: Of<"main-
   const main = mainGate(gate);
   if (!main || !isDeepStrictEqual(payload, { decision: MAIN_GATES[stepOf(gate.id) as keyof typeof MAIN_GATES], mergeSha: main.mergeSha })) return false;
   if (evidence.repo !== main.repo || evidence.pr !== main.pr || evidence.mergeSha !== main.mergeSha || evidence.mergeBaseSha !== main.mergeSha) return false;
-  return evidence.runs.length > 0 && evidence.runs.every((run) => run.headSha === evidence.greenSha && PASSING.has(run.conclusion));
+  return evidence.runs.length > 0 && evidence.runs.every((run) => run.headSha === evidence.greenSha && isPassingConclusion(run.conclusion));
 }
 
 /** The abandon a gate's schema accepts: one that pins `headSha` gets that head, as its owner answer would. */

@@ -6,7 +6,7 @@ import { redactForEvidence } from "../redact.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
-import { freshReviewerBase } from "./cleanup.js";
+import { isOwnReviewer } from "./cleanup.js";
 import { liveRetry, rosterPresence, unrefWait, type LiveRetry, type ParkAttempt } from "./park-retry.js";
 import type { ShepherdDeps } from "./phases.js";
 import { agentChatRoster, type RosterReader } from "./roster.js";
@@ -124,9 +124,13 @@ const asAttempt = (outcome: ParkOutcome): ParkAttempt => {
   return outcome.retry ? { done: false } : { done: true, parked: false, detail: outcome.reason };
 };
 
-/** Waits out a live agent in the background, and tells the seat only if the tree still stands at the end. */
-function armRetry(store: ShepherdStoreRef, wiring: ParkWiring, runId: string, agent: string): void {
+/**
+ * Waits out a live agent in the background, and tells the seat only if the tree still stands at the end. The settle is
+ * stored before the notice, so a crash between them loses the notice rather than sending it again after a restart.
+ */
+function armRetry(store: ShepherdStoreRef, wiring: ParkWiring, runId: string, headSha: string, agent: string): void {
   void wiring.retry?.arm(agent, async (settled) => {
+    store.get().settlePark(runId, headSha, agent, settled);
     if (!settled.parked) await tellParkRefusal(wiring.notice, store.get().byRun(runId), agent, settled.detail);
   });
 }
@@ -134,12 +138,13 @@ function armRetry(store: ShepherdStoreRef, wiring: ParkWiring, runId: string, ag
 /** What a round's end did to the tree of a reviewer that is no longer running. */
 type ReviewerPark = ParkOutcome;
 
-/** Shepherd's own reviewers of this PR that have exited; a running one is a running round, and the standing reviewer is never Shepherd's to park. */
+/** Shepherd's own reviewers of this PR and their panel members that have exited; a running one is a running round, and the standing reviewer is never Shepherd's to park. */
 async function exitedReviewers(roster: RosterReader, registration: Registration): Promise<string[]> {
   const read = await roster.read();
-  if (read.kind === "unknown" || registration.pr === null) return [];
-  const own = new RegExp(`^${freshReviewerBase(registration.repo, registration.pr)}(-\\d+)?$`);
-  const exited = read.rows.filter((row) => own.test(row.name) && row.presence === "exited" && row.status !== "retired" && row.name !== registration.policy.reviewer);
+  if (read.kind === "unknown") throw read.error;
+  if (registration.pr === null) return [];
+  const own = isOwnReviewer(registration.repo, registration.pr);
+  const exited = read.rows.filter((row) => own(row.name) && row.presence === "exited" && row.status !== "retired" && row.name !== registration.policy.reviewer);
   return [...new Set(exited.map((row) => row.name))];
 }
 
@@ -152,7 +157,11 @@ function settleRetired(outcome: ParkOutcome): ParkOutcome {
 async function parkReviewers(store: ShepherdStoreRef, wiring: ParkWiring, runId: string, gone: readonly string[]): Promise<ReviewerPark[]> {
   const registration = store.get().byRun(runId);
   if (wiring.roster === undefined || registration === undefined) return [];
-  const names = (await exitedReviewers(wiring.roster, registration).catch(() => [])).filter((name) => !gone.includes(name));
+  const exited = await exitedReviewers(wiring.roster, registration).catch((error: unknown): undefined => {
+    console.error(`shepherd: ${registration.repo}#${registration.pr}: the roster could not be read, so no reviewer is parked this tick: ${error instanceof Error ? error.message : String(error)}`);
+    return undefined;
+  });
+  const names = (exited ?? []).filter((name) => !gone.includes(name));
   const outcomes: ReviewerPark[] = [];
   for (const name of names) outcomes.push(settleRetired(await attemptPark(wiring.park, name)));
   for (const outcome of outcomes) {
@@ -168,12 +177,12 @@ export async function parkStep(store: ShepherdStoreRef, wiring: ParkWiring, inpu
   const reviewers = await parkReviewers(store, wiring, input.runId, input.gone ?? []);
   const outcome = await parkImplementer(store, wiring.park, input);
   if (outcome.kind !== "not-parked") return { ...outcome, reviewers };
-  if (outcome.retry) return (armRetry(store, wiring, input.runId, outcome.agent), { ...outcome, reviewers });
+  if (outcome.retry) return (armRetry(store, wiring, input.runId, input.headSha, outcome.agent), { ...outcome, reviewers });
   return { ...outcome, reviewers, notice: await tellParkRefusal(wiring.notice, store.get().byRun(input.runId), outcome.agent, outcome.reason) };
 }
 
 /** The serve process's one retry, so a restart's replay re-arms what the step before it armed. */
-let rearm: ((runId: string, agent: string) => void) | undefined;
+let rearm: ((runId: string, headSha: string, agent: string) => void) | undefined;
 
 /** Only what parking reads, so a test wires it without a GitHub port. */
 type ParkDeps = Pick<ShepherdDeps, "store" | "now" | "agentChatBin" | "roster" | "exitNotice">;
@@ -185,7 +194,9 @@ function rosterRetry(deps: ParkDeps, park: ParkPort): LiveRetry {
 
 export const parkRoutes = (deps: ParkDeps, park: ParkPort = (name) => parkAgent(deps.agentChatBin, name), retry: LiveRetry = rosterRetry(deps, park)): readonly StepRoute[] => {
   const wiring: ParkWiring = { park, roster: deps.roster ?? agentChatRoster(deps.agentChatBin), notice: deps.exitNotice, retry };
-  rearm = (runId, agent) => armRetry(deps.store, wiring, runId, agent);
+  rearm = (runId, headSha, agent) => {
+    if (!deps.store.get().parkSettled(runId, headSha, agent)) armRetry(deps.store, wiring, runId, headSha, agent);
+  };
   return [codeRoute(PARK_STEP, deps.now, async (input: ParkInput) => parkStep(deps.store, wiring, input))];
 };
 
@@ -193,10 +204,13 @@ const GoneReviewer = z.looseObject({ kind: z.literal("parked"), agent: z.string(
 const ParkOutcomeResult = z.looseObject({ kind: z.enum(["parked", "not-parked", "skipped"]), reviewers: z.array(z.unknown()).optional() });
 const LiveRefusal = z.looseObject({ kind: z.literal("not-parked"), agent: z.string(), retry: z.literal("at-exit") });
 
-/** A first run's refusal is already armed and ignored here; a replayed one is armed again, since the restart lost its wait. */
-export function rearmRecorded(runId: string, recorded: unknown): void {
+/**
+ * A first run's refusal is already armed and ignored here; a replayed one is armed again, since the restart lost its
+ * wait, unless its retry already settled at this head.
+ */
+export function rearmRecorded(runId: string, headSha: string, recorded: unknown): void {
   const live = LiveRefusal.safeParse(recorded);
-  if (live.success) rearm?.(runId, live.data.agent);
+  if (live.success) rearm?.(runId, headSha, live.data.agent);
 }
 
 /**
@@ -220,5 +234,5 @@ export async function parkOnce(key: object, runStep: (gone: string[] | undefined
 /** Once per green head, before its review: a fix round's resume re-creates the tree, so the next green head parks it again. */
 export async function parkAtGreen(ctx: WorkflowContext, headSha: string): Promise<void> {
   const run = (gone: string[] | undefined) => step(ctx, `${PARK_STEP}:${headSha}`, { runId: ctx.runId, headSha, ...(gone && { gone }) }, ParkOutcomeResult);
-  rearmRecorded(ctx.runId, await parkOnce(ctx, run));
+  rearmRecorded(ctx.runId, headSha, await parkOnce(ctx, run));
 }

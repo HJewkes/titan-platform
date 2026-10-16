@@ -39,6 +39,19 @@ describe("the shepherd text view of a hold", () => {
     expect(formatShepherd("shepherd.status", [live])).toBe(`acme/widgets#1 merging ${HEAD.slice(0, 7)} merging (review 12m, 45m total)\n`);
   });
 
+  it("names the last await's none once, after the hold (TP-2625)", () => {
+    const waited = { ...row({ reason: "g10-review: big" }), lastNone: { kind: "seat-wait" as const, text: "seat WAIT from rv-seat-x" } };
+
+    expect(formatShepherd("shepherd.status", [waited])).toBe(`acme/widgets#1 merging ${HEAD.slice(0, 7)} merging [held: g10-review: big; last await: seat WAIT from rv-seat-x]\n`);
+  });
+
+  it("names the last await only once when the stall line already carries it", () => {
+    const reason = "g10-review hold at aaaaaaa has no reviewer MERGE (last await: seat WAIT from rv-seat-x); 61 min waiting, over the 60 min limit";
+    const stalled = { ...row(null), stalled: { reason }, lastNone: { kind: "seat-wait" as const, text: "seat WAIT from rv-seat-x" } };
+
+    expect(formatShepherd("shepherd.list", [stalled]).match(/last await:/g)).toHaveLength(1);
+  });
+
   it("shows an unsatisfied hold by its reason alone", () => {
     expect(formatShepherd("shepherd.status", [row({ reason: "owner review" })])).toBe(`acme/widgets#1 merging ${HEAD.slice(0, 7)} merging [held: owner review]\n`);
   });
@@ -55,6 +68,11 @@ describe("the shepherd text view of each verb", () => {
   it.each([
     ["a new run", registered({}), "run run-1 shepherd-pr acme/widgets#1 (feat/x): started; policy owner\n"],
     ["a new run Shepherd held", registered({ g10Hold: "g10-review: 450 changed lines" }), "run run-1 shepherd-pr acme/widgets#1 (feat/x): started; policy owner; held g10-review: 450 changed lines\n"],
+    [
+      "an oversize security slice",
+      registered({ sizeFlag: { lines: 420, cap: 400, guardPaths: [] } }),
+      "run run-1 shepherd-pr acme/widgets#1 (feat/x): started; policy owner\nwarning: security or guard-area PR is 420 non-generated lines, over the 400-line slice cap; split the parser or list change from its wiring\n",
+    ],
     ["a repeat registration", registered({ created: false }), "run run-1 shepherd-pr acme/widgets#1 (feat/x): already registered, metadata updated; policy owner\n"],
     ["a restart after a failed run", registered({ previousRunId: "run-0" }), "run run-1 shepherd-pr acme/widgets#1 (feat/x): restarted after failed run run-0; policy owner\n"],
     ["a restart after a stopped run", registered({ previousRunId: "run-0", previousStop: "not-mergeable" }), "run run-1 shepherd-pr acme/widgets#1 (feat/x): restarted after run run-0 stopped not-mergeable; policy owner\n"],

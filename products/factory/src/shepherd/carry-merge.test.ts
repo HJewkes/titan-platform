@@ -3,7 +3,8 @@ import type { WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { reviewCheck } from "./review-check.js";
 import { CARRY_SEAT_HEAD_CAP, carriedSource, carriedVerdict, carrySeatRoute, pushedAwaySince } from "./carry-merge.js";
-import type { ReviewerAgent, ReviewerMessage, ReviewWiring } from "./review.js";
+import type { ReviewerAgent, ReviewerMessage } from "@titan-design/review-panel";
+import type { ReviewWiring } from "./review.js";
 import type { RoutedStepInput } from "@titan-design/workflow";
 import type { Verdict } from "./phases.js";
 import type { RemergeResult } from "./remerge-carry.js";
@@ -67,6 +68,22 @@ describe("carrying a MERGE to a tree-equal head", () => {
     expect(evidence).toMatchObject({ head: NEW_HEAD, verdict: { value: "MERGE", head: REVIEWED }, resolver: AGENT, dispatchedReviewer: AGENT });
     expect(evidence.carry).toEqual({ fromHead: REVIEWED, head: NEW_HEAD, result: EQUAL, rule: "tree-equal" });
     expect(r.asked.find((step) => step.stepId.startsWith("sh-carry:"))!.input).toEqual({ repo: REPO, baseRef: "main", fromHead: REVIEWED, head: NEW_HEAD });
+  });
+
+  it("hands the reviewed MERGE's CI-policy line to the evidence step, so a carried .github/ change keeps it", async () => {
+    const r = rig({ kind: "correctness", baseRef: "main" }, EQUAL);
+
+    await carried(r, reviews([REVIEWED, mergeAt(REVIEWED, REVIEWED, { ciPolicy: { kind: "unchanged" } })]));
+
+    expect(r.asked.find((step) => step.stepId.startsWith("sh-merge-evidence"))!.input.ciPolicy).toEqual({ kind: "unchanged" });
+  });
+
+  it("carries a recorded line of an unknown shape as malformed, so the carried head still gates", async () => {
+    const r = rig({ kind: "correctness", baseRef: "main" }, EQUAL);
+
+    await carried(r, reviews([REVIEWED, mergeAt(REVIEWED, REVIEWED, { ciPolicy: { kind: "weakened", keys: [] } })]));
+
+    expect(r.asked.find((step) => step.stepId.startsWith("sh-merge-evidence"))!.input.ciPolicy).toEqual({ kind: "malformed" });
   });
 
   it("publishes shepherd/review as success at the carried-to head, before the evidence step", async () => {

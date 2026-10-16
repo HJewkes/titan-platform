@@ -80,11 +80,23 @@ const CONFIG: GuardedList = {
     { id: "home:.agent-chat/profiles", pattern: "~/.agent-chat/profiles/**", samples: ["~/.agent-chat/profiles/work.json"] },
     { id: "any:.git/hooks", pattern: "**/.git/hooks/**", samples: [".git/hooks/pre-push"] },
     { id: "home:egress-terms", pattern: "~/.config/titan-egress/private-terms" },
+    { id: "home:.config/gh/config.yml", pattern: "~/.config/gh/config.yml" },
     {
       id: "home:tool-guard-state",
       pattern: "~/.local/state/titan-tool-guard/**",
       samples: ["~/.local/state/titan-tool-guard/guard.log"],
     },
+    // An http client's rc file sets a later request's method and URL, out of sight of that call (TP-2850).
+    { id: "any:.curlrc", pattern: "**/.curlrc", samples: ["~/.curlrc"] },
+    { id: "any:curlrc", pattern: "**/curlrc", samples: ["~/.config/curlrc"] },
+    { id: "any:_curlrc", pattern: "**/_curlrc", samples: ["~/_curlrc"] },
+    { id: "any:.wgetrc", pattern: "**/.wgetrc", samples: ["~/.wgetrc"] },
+    { id: "any:wgetrc", pattern: "**/wgetrc", samples: ["/etc/wgetrc", "~/.config/wget/wgetrc"] },
+    { id: "any:.wget2rc", pattern: "**/.wget2rc", samples: ["~/.wget2rc"] },
+    { id: "any:wget2rc", pattern: "**/wget2rc", samples: ["~/.config/wget/wget2rc"] },
+    { id: "any:httpie/config.json", pattern: "**/httpie/config.json", samples: ["~/.config/httpie/config.json"] },
+    { id: "any:.httpie/config.json", pattern: "**/.httpie/config.json", samples: ["~/.httpie/config.json"] },
+    { id: "any:xh/config.json", pattern: "**/xh/config.json", samples: ["~/.config/xh/config.json"] },
   ],
   basenames: [],
 };

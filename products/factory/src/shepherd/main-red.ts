@@ -74,11 +74,14 @@ export const FreezeResult = z.looseObject({
   fixTask: z.string().nullable(),
   fixer: z.string().nullable(),
   episode: z.number().nullable(),
+  /** Optional, so a step result recorded before the field existed still parses on replay. */
+  fixPr: z.number().nullable().optional(),
 });
 
 /** `thawed` means the episode ended while the step ran, so there is nothing left to gate on. */
 export const FixTaskResult = z.looseObject({ task: z.string().nullable(), thawed: z.boolean(), detail: z.string() });
-export const FixerResult = z.looseObject({ fixer: z.string().nullable(), thawed: z.boolean(), detail: z.string() });
+/** `fixPr` is the seat's PR marked as the episode's fix, which stands in for Shepherd's own fixer. */
+export const FixerResult = z.looseObject({ fixer: z.string().nullable(), fixPr: z.number().nullable().optional(), thawed: z.boolean(), detail: z.string() });
 /** `frozen` is whether the repo is still frozen after the step. */
 export const UnfreezeResult = z.looseObject({ unfrozen: z.boolean(), frozen: z.boolean(), episode: z.number().nullable(), detail: z.string() });
 
@@ -103,13 +106,14 @@ export interface FixerInput {
   episode: number | null;
 }
 
-/** `again` when the live freeze already has a fixer, so this red came from the fixer's own merge or through it, and the owner decides. */
+/** `again` when the live freeze already has a fixer or a marked fix PR, so this red came from that fix's merge or through it, and the owner decides. */
 export function freezeStep(wiring: MainRedWiring | undefined, input: Pick<RedInput, "repo" | "mergeSha">, cancelOnly = false): z.infer<typeof FreezeResult> {
-  if (!wiring) return { state: "unwired", fixTask: null, fixer: null, episode: null };
+  if (!wiring) return { state: "unwired", fixTask: null, fixer: null, episode: null, fixPr: null };
   const freezes = wiring.freezes();
-  const again = (freezes.get(input.repo)?.fixer ?? null) !== null;
+  const before = freezes.get(input.repo);
+  const again = (before?.fixer ?? null) !== null || (before?.fixPr ?? null) !== null;
   const frozen = freezes.freeze(input.repo, input.mergeSha, cancelOnly);
-  return { state: again ? "again" : "new", fixTask: frozen.fixTask, fixer: frozen.fixer, episode: frozen.episode, redCount: frozen.redCount };
+  return { state: again ? "again" : "new", fixTask: frozen.fixTask, fixer: frozen.fixer, episode: frozen.episode, fixPr: frozen.fixPr, redCount: frozen.redCount };
 }
 
 type Patient<T> = { value: T } | { error: string };
@@ -193,13 +197,14 @@ const THAWED = "the episode thawed while the step ran";
 
 const noFixer = (detail: string, thawed = false): z.infer<typeof FixerResult> => ({ fixer: null, thawed, detail });
 
-/** One fixer per episode: the freeze row's fixer is reused, and a name already on the roster is never spawned twice. */
+/** One fixer per episode: the freeze row's fixer is reused, a name already on the roster is never spawned twice, and a marked fix PR means none is spawned. */
 export async function spawnFixer(deps: ShepherdDeps, wiring: MainRedWiring | undefined, input: FixerInput, signal: AbortSignal): Promise<z.infer<typeof FixerResult>> {
   if (!input.fixer) return noFixer("notify only: the policy grants no fixer");
   if (deps.advisory?.(input.repo)) return noFixer(`notify only: ${input.repo} is advisory, so Shepherd starts no fixer to push to it`);
   const live = wiring?.freezes().live(input.repo, input.episode);
   if (!wiring || !live) return noFixer(THAWED, true);
   if (live.fixer !== null) return { fixer: live.fixer, thawed: false, detail: "this episode already has its fixer" };
+  if (live.fixPr !== null) return { fixer: null, fixPr: live.fixPr, thawed: false, detail: `seat fix PR #${live.fixPr} is marked for this episode` };
   const fixers = wiring.fixers;
   if (!fixers) return noFixer("no agent-chat is configured to spawn a fixer");
   const checkout = resolveCheckout(input.repo, (wiring.checkoutFor ?? seatCheckout())(input.repo), wiring.home);

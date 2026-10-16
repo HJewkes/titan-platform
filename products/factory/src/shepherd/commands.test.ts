@@ -1,7 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fakeSha } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
 import { openDatabase } from "@titan-design/store-sqlite";
 import type { StepResult } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -30,6 +30,7 @@ function world(options: FixtureOptions & { dbPath?: string } = {}): World {
 }
 
 const pr1 = { repo: REPO, pr: 1, task: "demo/T-1", implementer: "impl-a" };
+const H2 = fakeSha("head2");
 
 async function registered(w: World, args: object): Promise<Registered> {
   const envelope = await w.call<Registered>("shepherd.register", args);
@@ -142,6 +143,44 @@ describe("shepherd.register", () => {
   });
 });
 
+describe("shepherd.register from facts", () => {
+  const facts = { ...pr1, branch: BRANCH, head: H1, base: "main", kind: "feature" };
+
+  it("reads nothing from GitHub when the head, base and branch are passed, and stores the head and base", async () => {
+    const reads: string[] = [];
+    const github = fakeGitHub();
+    github.addPr({ headSha: H1, headRef: BRANCH });
+    const refused = async (): Promise<never> => Promise.reject(new Error("register read GitHub"));
+    const port = { ...githubPort(github.wire), getPr: refused, listPrFiles: refused };
+    const w = world({ frozen: true, port, prFiles: async ({ head }) => (reads.push(head), [{ path: "packages/x/src/a.ts", status: "modified", additions: 3, deletions: 1 }]) });
+
+    const { registration, g10Hold } = await registered(w, facts);
+
+    expect(reads).toEqual([H1]);
+    expect(g10Hold).toBeUndefined();
+    expect(registration).toMatchObject({ headSha: H1, base: "main", branch: BRANCH });
+  });
+
+  it("holds a large diff read from git, and a repeat at a new head stores that head", async () => {
+    const lines = new Map([[H1, 10], [H2, 500]]);
+    const w = world({ frozen: true, prFiles: async ({ head }) => [{ path: "packages/x/src/a.ts", status: "modified", additions: lines.get(head) ?? 0, deletions: 0 }] });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+
+    const first = await registered(w, facts);
+    const second = await registered(w, { ...facts, head: H2 });
+
+    expect(first.g10Hold).toBeUndefined();
+    expect(second).toMatchObject({ g10Hold: "g10-review: 500 changed lines", registration: { headSha: H2, base: "main" } });
+  });
+
+  it("refuses a head that is not a full sha", async () => {
+    const w = world({ frozen: true });
+
+    expect(await w.call("shepherd.register", { ...facts, head: "abc123" })).toMatchObject({ ok: false });
+    expect(shepherdRuns(w.host)).toEqual([]);
+  });
+});
+
 describe("shepherd.register races", () => {
   it("a crash between starting the run and writing its registration leaves neither", async () => {
     const w = world({ frozen: true });
@@ -232,7 +271,7 @@ describe("shepherd.register G10 hold", () => {
     expect(w.routes.shepherd!.store.get().eventsOf(result.runId)).toEqual([expect.objectContaining({ kind: "hold", actor: "shepherd" })]);
   });
 
-  it("a repeat registration of a run a seat held keeps that hold and writes no event", async () => {
+  it("a repeat registration whose diff grew past 400 lines stacks a G10 hold over the seat's hold", async () => {
     const w = world({ frozen: true });
     w.fake.addPr({ headSha: H1, headRef: BRANCH });
     const { runId } = await registered(w, pr1);
@@ -242,9 +281,47 @@ describe("shepherd.register G10 hold", () => {
 
     const repeat = await registered(w, pr1);
 
-    expect(repeat).toMatchObject({ created: false, registration: { holdReason: "visual-gate2: screenshots pending" } });
+    expect(repeat).toMatchObject({ created: false, g10Hold: "g10-adversary: 450 changed lines, over a visual-gate2 hold" });
+    expect(store.release(runId).holdReason).toBe("visual-gate2: screenshots pending");
+  });
+
+  it("a repeat registration whose diff grew into an authority path escalates a released g10-review hold to g10-adversary", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    w.fake.prFiles.set(1, large);
+    const { runId } = await registered(w, pr1);
+    const store = w.routes.shepherd!.store.get();
+    store.releaseIfHeld(runId, "g10-review: 450 changed lines");
+    w.fake.prFiles.set(1, [...large, { path: "packages/authority/src/x.ts", status: "modified", additions: 5, deletions: 0 }]);
+
+    const repeat = await registered(w, pr1);
+
+    expect(repeat).toMatchObject({ created: false, g10Hold: "g10-adversary: authority touch", registration: { held: true } });
+  });
+
+  it("a repeat registration of an unchanged diff leaves a released G10 hold released", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    w.fake.prFiles.set(1, large);
+    const { runId } = await registered(w, pr1);
+    const store = w.routes.shepherd!.store.get();
+    store.releaseIfHeld(runId, "g10-review: 450 changed lines");
+
+    const repeat = await registered(w, pr1);
+
+    expect(repeat).toMatchObject({ created: false, registration: { held: false } });
     expect(repeat.g10Hold).toBeUndefined();
-    expect(store.eventsOf(runId)).toHaveLength(1);
+  });
+
+  it("a repeat registration whose changed files cannot be read is held g10-adversary", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    await registered(w, pr1);
+    w.fake.prChangedFiles.set(1, 5000);
+
+    const repeat = await registered(w, pr1);
+
+    expect(repeat).toMatchObject({ created: false, g10Hold: "g10-adversary: changed files unread at registration (FileListTruncatedError)" });
   });
 });
 

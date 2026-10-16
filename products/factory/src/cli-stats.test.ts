@@ -26,7 +26,7 @@ describe("shepherd stats verb", () => {
     const code = await runCli(["--db", db, "shepherd", "stats", "--json"], io);
 
     expect(code).toBe(0);
-    expect(JSON.parse(out.join(""))).toEqual({ merges: [], ownerFriction: [], stageTimes: [], redAfterMerge: [], ownerOverrides: [], reviewCauses: [] });
+    expect(JSON.parse(out.join(""))).toEqual({ merges: [], ownerFriction: [], stageTimes: [], redAfterMerge: [], ownerOverrides: [], trainShadow: [], reviewCauses: [] });
   });
 
   it("prints one record per run with --per-run --json, its kind read from the registration", async () => {
@@ -57,6 +57,8 @@ describe("shepherd stats verb", () => {
       ...result("sh-await-verdict:h1", "2026-10-07T09:00:00.000Z", { kind: "verdict", verdict: "MERGE" }),
       ...result("ci-wait:0", "2026-10-07T09:01:00.000Z", { verdict: "behind", headSha: "h1", baseMoved: true }),
       ...result("update-branch:0", "2026-10-07T09:02:00.000Z", { headSha: "h2", own: true }),
+      ...result("sh-base-wait:1", "2026-10-07T09:10:00.000Z", { baseMoved: true, headSha: "h2" }),
+      ...result("update-branch:sh-freeze-hold:1", "2026-10-07T09:11:00.000Z", { headSha: "h3", own: true }),
       ...result("approve-merge:0", "2026-10-07T10:20:00.000Z", { approved: true }),
       ...result("merge:0", "2026-10-07T10:30:00.000Z", { done: true }),
     };
@@ -68,8 +70,8 @@ describe("shepherd stats verb", () => {
     await runCli(["--db", db, "shepherd", "stats", "--json"], json.io);
     await runCli(["--db", db, "shepherd", "stats"], text.io);
 
-    expect(JSON.parse(json.out.join("")).merges[0]).toMatchObject({ mergeUps: { landTime: 1, strictChase: 0, freezeHold: 0, retry: 0 }, strictRounds: 1, slowOwnerGated: 1, foreignMergeUps: 0 });
-    expect(text.out.join("")).toContain("slow owner-gated 1  outside Shepherd 0  merge-ups land/strict/freeze/retry 1/0/0/0  strict rounds 1  foreign merge-ups 0\n");
+    expect(JSON.parse(json.out.join("")).merges[0]).toMatchObject({ mergeUps: { landTime: 1, strictChase: 0, freezeHold: 0, baseRed: 1, retry: 0 }, strictRounds: 1, slowOwnerGated: 1, foreignMergeUps: 0 });
+    expect(text.out.join("")).toContain("slow owner-gated 1  outside Shepherd 0  merge-ups land/strict/freeze/base/retry 1/0/0/1/0  strict rounds 1  foreign merge-ups 0\n");
   });
 
   it("refuses --per-run without --json", async () => {
@@ -135,6 +137,7 @@ describe("shepherd stats verb", () => {
       ["unanswered", {}, 1],
     ]);
     expect(rows[0]).toMatchObject({ policyRow: "authority/MRG-AU", count: 1, medianHours: 2, maxHours: 2 });
+    expect(JSON.parse(out.join("")).visual).toEqual({ count: 0, open: 0, resolved: 0, medianHours: null, p90Hours: null, reAsks: 0, prsWithReAsk: 0 });
   });
 
   it.each([
@@ -180,7 +183,7 @@ describe("shepherd stats verb", () => {
 
     expect(code).toBe(0);
     const report = JSON.parse(out.join(""));
-    expect(Object.keys(report)).toEqual(["merges", "ownerFriction", "stageTimes", "redAfterMerge", "ownerOverrides", "failures", "reviewCauses"]);
+    expect(Object.keys(report)).toEqual(["merges", "ownerFriction", "stageTimes", "redAfterMerge", "ownerOverrides", "trainShadow", "failures", "reviewCauses"]);
     expect(report.failures).toEqual([
       { repo: "acme/widgets", week: "2026-W41", failures: 2, byClass: { "ci-timeout": 1, "gh-api-5xx": 0, "land-rules": 1, "update-branch": 0, other: 0 } },
     ]);

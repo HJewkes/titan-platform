@@ -2,7 +2,7 @@ import type { GitHubPort, LoggedCommit } from "@titan-design/github";
 import type { WorkflowRun } from "@titan-design/workflow";
 import type { FactoryHost } from "../host.js";
 import { sliceClock } from "../loop-slice.js";
-import type { ShepherdServices } from "./commands.js";
+import type { ShepherdServices } from "./services.js";
 import { failureOf } from "./error-class.js";
 import { payloadOf, stepName } from "./stats.js";
 

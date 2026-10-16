@@ -254,13 +254,20 @@ describe("shepherdGatePolicy under merge:auto", () => {
     expect(decision).toMatchObject({ outcome: "gate", rule: { rowId: "head-mismatch" } });
   });
 
-  it("allows a .github/ workflow change when authority allows (TP-1886)", () => {
+  it("allows a .github/ workflow change the reviewer calls CI-policy unchanged when authority allows (TP-1886, TP-2407)", () => {
     vi.mocked(evaluate).mockReturnValue({ verdict: "allow", ruleId: "MRG-AU-RV" });
 
-    const decision = shepherdGatePolicy(effective("acme/gizmos"), reviewed(evidenceAt(HEAD, [".github/workflows/release.yml"]))).decide("merge", { headSha: HEAD });
+    const decision = shepherdGatePolicy(effective("acme/gizmos"), reviewed({ ...evidenceAt(HEAD, [".github/workflows/release.yml"]), ciPolicy: { kind: "unchanged" } })).decide("merge", { headSha: HEAD });
 
     expect(decision).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" } });
     expect(evaluate).toHaveBeenCalled();
+  });
+
+  it("gates github-path on stored evidence with no CI-policy line and a .github/ path, before asking authority", () => {
+    const decision = shepherdGatePolicy(effective("acme/gizmos"), reviewed(evidenceAt(HEAD, [".github/workflows/release.yml"]))).decide("merge", { headSha: HEAD });
+
+    expect(decision).toMatchObject({ outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "github-path" } });
+    expect(evaluate).not.toHaveBeenCalled();
   });
 
   it("never asks authority under owner-gate or never, so the table cannot lift the seat ceiling", () => {
@@ -271,10 +278,11 @@ describe("shepherdGatePolicy under merge:auto", () => {
     expect(evaluate).not.toHaveBeenCalled();
   });
 
-  it("gates a head the policy would allow when an escalation was carried to it, naming the carried gate and the review", () => {
+  it("gates a head the policy would allow on a merged-up MERGE when an escalation was carried to it, naming the carried gate and the review", () => {
     vi.mocked(evaluate).mockReturnValue({ verdict: "allow", ruleId: "MRG-AU-RV" });
     const carried = { escalation: "fix-first-runaway", detail: "the last at old", carriedFrom: "d".repeat(40) } as const;
-    const options = shepherdLandOptions(() => effective("acme/gizmos"), reviewed(evidenceAt(HEAD)), () => carried);
+    const mergedUp = (): Verdict => ({ kind: "MERGE", headSha: HEAD, evidence: evidenceAt(HEAD), mergeUpFrom: "c".repeat(40) });
+    const options = shepherdLandOptions(() => effective("acme/gizmos"), mergedUp, () => carried);
 
     const decision = options.policy.decide("merge", { headSha: HEAD });
 

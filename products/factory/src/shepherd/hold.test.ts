@@ -5,14 +5,14 @@ import path from "node:path";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { StepRoute } from "@titan-design/workflow";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { seatTranscript, type SeatTranscript } from "../test-support/seat-transcript.js";
 import { holdSlotsMigration } from "./store-migrations.js";
 import { shepherdEventMigration } from "./events.js";
 import type { CarryResult } from "./tree-carry.js";
 import { MergeHeldError, heldCheck, holdSatisfier, holdingPort, openHeadRead, waitWhileHeld } from "./hold.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import type { ReviewerAgent, ReviewerMessage } from "./review.js";
+import type { ReviewerAgent, ReviewerMessage } from "@titan-design/review-panel";
 import { transcriptReviewerReader } from "./reviewer-reader.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
 
@@ -603,5 +603,19 @@ describe("a hold whose named reviewer is read from its real transcript", () => {
     expect(sentBack).not.toBe(merged);
     expect(reasons).toEqual(Array(10).fill(undefined));
     expect(r.store.byRun("run-1")?.holdSatisfied?.head).toBe(H1);
+  });
+
+  it("keeps a recorded satisfaction and logs when the roster read throws", async () => {
+    const r = rig();
+    say(r, verdictAt(H1));
+    await heldCheck(r.port, () => r.store, undefined, satisfier(r))(REPO, r.pr, H1);
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const unreadable = holdSatisfier({ store: () => r.store, roster: async () => Promise.reject(new Error("broker down")), reader: { read: async () => r.messages } });
+
+    await unreadable(REPO, r.pr, H1, "main");
+
+    expect(r.store.byRun("run-1")?.holdSatisfied?.head).toBe(H1);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("roster could not be read"));
+    log.mockRestore();
   });
 });

@@ -4,15 +4,15 @@ import { DIRTY_SUFFIX } from "./build-info.js";
 import { closureDirs, FACTORY_PACKAGE, nativeBuildChanges, readWorkspace, touchedPaths, versionOnlyManifestChange } from "./deploy-closure.js";
 import type { DeployIncident } from "./deploy-incident.js";
 import { deployLockPath, releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
-import { describePause, readDeployPause, writeDeployPause, type DeployPause } from "./deploy-pause.js";
-import { buildShaOf, DEFAULT_WATCH_WINDOW, watchServe, type WatchWindow } from "./deploy-watch-window.js";
-import { redactCredentials } from "./redact.js";
+import { describeHolds, readDeployHolds, writeDeployPause, type DeployPause } from "./deploy-pause.js";
+import { buildLog, detail, writeBuildLog, writeUnreadableHold, writeWindowRecord } from "./deploy-output.js";
+import { buildShaOf, DEFAULT_WATCH_WINDOW, answerOf, watchServe, type Probe, type WatchHeld, type WatchIntent, type WatchWindow } from "./deploy-watch-window.js";
 import { restartService, type CommandResult, type RestartDrain, type ServiceIo, type ServicePorts } from "./service-control.js";
 
 /** Every effect the deployer has beyond the service verbs'; tests pass fakes, so none of them reaches git, pnpm or launchd. */
 export interface DeployPorts extends ServicePorts, LockPorts {
   /** `/health` with a longer timeout than `health`'s, for reads that must not mistake a slow answer for none. */
-  healthWithin: (port: number, timeoutMs: number) => Promise<Record<string, unknown> | null>;
+  healthWithin: (port: number, timeoutMs: number) => Promise<Probe>;
   /** `git clone --branch main <remote> <dest>`, run from the parent of `dest`; only called when the checkout is absent. */
   clone: (remote: string, dest: string) => Promise<CommandResult>;
   /** Runs in the service checkout. */
@@ -43,7 +43,7 @@ export interface DeployOptions {
 }
 
 /** A refusal is printed, never recorded, so it cannot overwrite a rolled-back hold. */
-export type DeployOutcome = "deployed" | "skipped" | "rolled-back";
+export type DeployOutcome = "deployed" | "skipped" | "rolled-back" | "held";
 
 /** What `/health` shows as `lastDeploy`. */
 export interface DeployRecord {
@@ -78,8 +78,6 @@ type Plan = { kind: "go"; go: Go } | Stop;
 const UNKNOWN = "unknown";
 const MAIN = "main";
 const ORIGIN_MAIN = "origin/main";
-const OUTPUT_TAIL_LINES = 20;
-const OUTPUT_TAIL_CHARS = 2_000;
 const FAILURE = 1;
 const SHA_POLLS = 10;
 const SHA_POLL_MS = 1_000;
@@ -88,14 +86,6 @@ const LOCKFILE = "pnpm-lock.yaml";
 
 export const deployRecordPath = (stateDir: string): string => join(stateDir, "deploy.json");
 const backupRoot = (stateDir: string): string => join(stateDir, "deploy-backup");
-/** Redacted before the cut, so a cut can never leave a token without the prefix that marks it. */
-function tail(name: string, text: string): string[] {
-  const kept = redactCredentials(text.trim()).split("\n").slice(-OUTPUT_TAIL_LINES).join("\n");
-  return kept === "" ? [] : [`${name}:\n${kept.length <= OUTPUT_TAIL_CHARS ? kept : `…${kept.slice(-OUTPUT_TAIL_CHARS)}`}`];
-}
-
-/** Both streams, since pnpm prints a failing script's output on stdout and leaves stderr empty. */
-const detail = (result: CommandResult): string => [`exit ${result.code}`, ...tail("stderr", result.stderr), ...tail("stdout", result.stdout)].join("\n");
 
 export function parseDeployRecord(text: string | undefined): DeployRecord | undefined {
   if (text === undefined) return undefined;
@@ -137,8 +127,8 @@ function record(deploy: Deploy, fields: Omit<DeployRecord, "at">): DeployRecord 
 
 /** Read under the lock and before any sha is resolved, so no target, however new, gets past a pause. */
 function pauseHold({ ports, options }: Deploy): Stop | undefined {
-  const state = readDeployPause(ports, options.stateDir);
-  return state.paused ? { kind: "stop", code: FAILURE, message: `deploy held: ${describePause(state)}; clear with titan-factory service pause --clear` } : undefined;
+  const state = readDeployHolds(ports, options.stateDir);
+  return state.held ? { kind: "stop", code: FAILURE, message: `deploy held: ${describeHolds(state).join("; ")}; clear with titan-factory service pause --clear` } : undefined;
 }
 
 function refuse(why: string): Stop {
@@ -190,13 +180,13 @@ async function isAncestor(ports: DeployPorts, ancestor: string, of: string): Pro
 }
 
 async function runningBuild(ports: DeployPorts, port: number): Promise<string | undefined> {
-  return buildShaOf(await ports.healthWithin(port, SHA_PROBE_TIMEOUT_MS));
+  return buildShaOf(answerOf(await ports.healthWithin(port, SHA_PROBE_TIMEOUT_MS)));
 }
 
 /** A slow or missing answer under load is not a wrong sha, so poll; undefined means no answer with a sha in the whole poll. */
 async function answeredHealth(ports: DeployPorts, port: number): Promise<Record<string, unknown> | undefined> {
   for (let poll = 0; poll < SHA_POLLS; poll++) {
-    const health = await ports.healthWithin(port, SHA_PROBE_TIMEOUT_MS);
+    const health = answerOf(await ports.healthWithin(port, SHA_PROBE_TIMEOUT_MS));
     if (buildShaOf(health) !== undefined) return health ?? undefined;
     await ports.sleep(SHA_POLL_MS);
   }
@@ -267,15 +257,16 @@ async function execute(deploy: Deploy, go: Go): Promise<number> {
   if (go.touched.length === 0) return finish(deploy, go, "skipped", "no changed path reaches the factory build");
   deploy.io.stdout(`deploying ${go.target} over build ${go.running ?? UNKNOWN}; ${go.touched.length} changed path(s) reach the factory build\n`);
   const backup = snapshot(deploy, go);
-  const built = await installAndBuild(deploy.ports);
+  const built = await installAndBuild(deploy, go.target);
   if (built !== undefined) return rollBackBuild(deploy, go, backup, built);
   const why = await restartAndConfirm(deploy, go.target);
+  if (typeof why === "object") return finish(deploy, go, "held", why.held, writeUnreadableHold(deploy.ports, deploy.options.stateDir, go.target, why.held));
   return why === undefined ? finish(deploy, go, "deployed") : rollBackRestart(deploy, go, backup, why);
 }
 
 /** No service runs from this checkout yet, so there is no backup to restore and no restart to confirm: build, then `service install` points the service at it. */
 async function prepare(deploy: Deploy, go: Go): Promise<number> {
-  const built = await installAndBuild(deploy.ports);
+  const built = await installAndBuild(deploy, go.target);
   if (built !== undefined) return stop(deploy, refuse(built));
   deploy.io.stdout(`prepared ${go.target} in ${deploy.options.checkout}; run titan-factory service install to point the service at it\n`);
   return 0;
@@ -288,7 +279,8 @@ async function fastForward(ports: DeployPorts, target: string): Promise<string |
   return head === target ? undefined : `the checkout is at ${head} after the fast-forward, not ${target}`;
 }
 
-function finish(deploy: Deploy, go: Go, outcome: DeployOutcome, why?: string): number {
+function finish(deploy: Deploy, go: Go, outcome: DeployOutcome, why?: string, alarm?: string): number {
+  if (alarm !== undefined) deploy.io.stderr(alarm);
   const fields = { outcome, target: go.target, from: go.running ?? UNKNOWN, ...(why === undefined ? {} : { why }), touched: go.touched };
   const ok = outcome === "deployed" || outcome === "skipped";
   return stop(deploy, { kind: "stop", code: ok ? 0 : FAILURE, message: `${outcome} ${go.target}${why === undefined ? "" : `: ${why}`}`, record: record(deploy, fields) });
@@ -315,23 +307,33 @@ function restore({ ports, options }: Deploy, go: Go, backup: string): void {
   }
 }
 
-async function installAndBuild(ports: DeployPorts): Promise<string | undefined> {
+async function installAndBuild(deploy: Deploy, target: string): Promise<string | undefined> {
   for (const args of [["install", "--frozen-lockfile"], ["--filter", `${FACTORY_PACKAGE}...`, "build"]]) {
-    const result = await ports.pnpm(args);
-    if (result.code !== 0) return `pnpm ${args.join(" ")} failed: ${detail(result)}`;
+    const result = await deploy.ports.pnpm(args);
+    if (result.code === 0) continue;
+    const command = `pnpm ${args.join(" ")}`;
+    return `${command} failed: ${detail(result)}\n${writeBuildLog(deploy.ports, deploy.options.stateDir, buildLog(command, target, new Date(deploy.ports.now()).toISOString(), result))}`;
   }
   return undefined;
 }
 
-/** restartService confirms launchd's pid and github ok; the sha check proves the new build is the one answering, and the watch that it stays up without new step errors. */
-async function restartAndConfirm({ ports, io, options }: Deploy, target: string): Promise<string | undefined> {
-  if ((await restartService(ports, io, options.port, options.logDir, options.drain)) !== 0) return "the restarted service did not come up healthy";
+/**
+ * restartService confirms launchd's pid and github ok; the sha check proves the new build is the one answering, and the watch that it stays up without new step errors.
+ * The drain's last answer goes to the watch, so runs the restart interrupted are told from runs that broke after it.
+ */
+async function restartAndConfirm({ ports, io, options }: Deploy, target: string): Promise<string | WatchHeld | undefined> {
+  let atRestart: Record<string, unknown> | null = null;
+  if ((await restartService(ports, io, options.port, options.logDir, options.drain, (drained) => (atRestart = drained))) !== 0) return "the restarted service did not come up healthy";
   const health = await answeredHealth(ports, options.port);
   const sha = buildShaOf(health);
   if (health === undefined || sha === undefined) return `/health answered no build sha in ${SHA_POLLS} tries`;
   if (sha !== target) return `/health reports build ${sha}, not ${target}`;
-  const probe = () => ports.healthWithin(options.port, SHA_PROBE_TIMEOUT_MS);
-  return watchServe({ probe, sleep: ports.sleep }, health, target, { ...DEFAULT_WATCH_WINDOW, ...options.watch });
+  const probe = (timeoutMs: number) => ports.healthWithin(options.port, timeoutMs);
+  const record = (intent: WatchIntent): void => {
+    const warning = writeWindowRecord(ports, options.stateDir, intent);
+    if (warning !== undefined) io.stderr(warning);
+  };
+  return watchServe({ probe, sleep: ports.sleep, now: ports.now, alive: ports.isAlive, record }, { confirmed: health, atRestart }, target, { ...DEFAULT_WATCH_WINDOW, ...options.watch });
 }
 
 /** A failed build may have half-cleaned dist while the old process still runs, so restore before anything respawns it. */

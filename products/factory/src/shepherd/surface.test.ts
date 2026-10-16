@@ -1,3 +1,4 @@
+import type { GitBehindProbe } from "../deploy-behind.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -10,6 +11,8 @@ import { startFactoryServer, type FactoryServer } from "../serve.js";
 import { deployWatch, type DeployWatch } from "../deploy-watch.js";
 import { H1, REPO } from "../test-support/land.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
+import type { ReviewerReading } from "./review-slots.js";
+import { spawnGate } from "./spawn-gate.js";
 import { BRANCH, shepherdFixture, type ShepherdFixture } from "../test-support/shepherd.js";
 
 const SHEPHERD_TOOLS = ["register", "status", "list", "timeline", "hold", "release", "merge"].map((verb) => `shepherd__${verb}`);
@@ -64,11 +67,14 @@ async function deadPort(): Promise<number> {
   return port;
 }
 
-async function cli(argv: string[], fixture: ShepherdFixture): Promise<{ code: number; out: string; err: string }> {
+/** Stands in for the deploy checkout's git, so no test reads the host's. */
+const noLag: GitBehindProbe = async () => ({ commitTimes: [] });
+
+async function cli(argv: string[], fixture: ShepherdFixture, deployBehind: GitBehindProbe = noLag): Promise<{ code: number; out: string; err: string }> {
   let out = "";
   let err = "";
   const io = { stdout: (t: string) => void (out += t), stderr: (t: string) => void (err += t), env: {} };
-  const code = await runCli(argv, io, { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger });
+  const code = await runCli(argv, io, { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger, deployBehind });
   return { code, out, err };
 }
 
@@ -132,16 +138,78 @@ describe("the deploy block on shepherd status", () => {
     const withDeploy = await cli(["shepherd", "status", "--json", "--deploy", "--port", port], fixture);
     const bare = await cli(["shepherd", "status", "--json", "--port", port], fixture);
 
-    expect(JSON.parse(withDeploy.out)).toMatchObject({ rows: [], deploy: { alarm: true, behind: 1, behindMinutes: 120, runningSha: SHA, consecutiveRefusals: 0, lastRefusal: null } });
+    expect(JSON.parse(withDeploy.out)).toMatchObject({ rows: [], reviewSlots: null, deploy: { alarm: true, behind: 1, behindMinutes: 120, runningSha: SHA, consecutiveRefusals: 0, lastRefusal: null } });
     expect(JSON.parse(bare.out)).toEqual([]);
   });
 
-  it("ends the human view with the deploy line", async () => {
+  it("reports origin/main's lag from git as behind N, and alarms, when no deploy was asked", async () => {
+    const fixture = shepherdFixture({ frozen: true });
+    const watch = deployWatch({ readLog: () => "", runningSha: () => SHA, indexLock: async () => ({ state: "absent", path: "" }), now: Date.now });
+    const server = await serve(fixture, watch);
+    await watch.tick();
+    const tenBehind: GitBehindProbe = async () => ({ commitTimes: Array.from({ length: 10 }, (_, i) => Date.now() - (30 + i * 10) * 60_000) });
+
+    const status = await cli(["shepherd", "status", "--json", "--deploy", "--port", String(server.port)], fixture, tenBehind);
+
+    expect(JSON.parse(status.out)).toMatchObject({ deploy: { behind: 10, behindMinutes: 120, alarm: true, originLag: { merges: 10, asked: 0 } } });
+  });
+
+  it("alarms rather than reading behind 0 when git cannot be read", async () => {
+    const fixture = shepherdFixture({ frozen: true });
+    const watch = deployWatch({ readLog: () => "", runningSha: () => SHA, indexLock: async () => ({ state: "absent", path: "" }), now: Date.now });
+    const server = await serve(fixture, watch);
+    await watch.tick();
+
+    const status = await cli(["shepherd", "status", "--json", "--deploy", "--port", String(server.port)], fixture, async () => ({ unknown: "git is not on PATH" }));
+
+    expect(JSON.parse(status.out)).toMatchObject({ deploy: { alarm: true, unverified: expect.stringContaining("unknown") } });
+  });
+
+  it("ends the human view with the deploy line, then the reviewer slots", async () => {
     const { fixture, port } = await served();
 
     const status = await cli(["shepherd", "status", "--port", port], fixture);
 
-    expect(status.out.split("\n").filter(Boolean).at(-1)).toMatch(new RegExp(`^deploy: running ${SHA}, 1 asked deploy\\(s\\) not landed, .*ALARM`));
+    expect(status.out.split("\n").filter(Boolean).at(-1)).toBe("reviewers unread (no roster reading from titan-factory serve)");
+    expect(status.out.split("\n").filter(Boolean).at(-2)).toMatch(new RegExp(`^deploy: running ${SHA}, 1 asked deploy\\(s\\) not landed, .*ALARM`));
+  });
+});
+
+describe("the reviewer slots on shepherd status", () => {
+  const READ_AT = Date.parse("2026-10-13T12:00:00Z");
+
+  async function servedAfter(reading: ReviewerReading): Promise<{ fixture: ShepherdFixture; port: string }> {
+    const gate = spawnGate({ now: () => READ_AT, log: () => undefined });
+    gate.noteReviewers(reading);
+    const fixture = shepherdFixture({ frozen: true, spawnGate: gate });
+    const server = await serve(fixture);
+    return { fixture, port: String(server.port) };
+  }
+
+  it("rides along under --json --deploy as the gate's last reading of the running reviewers", async () => {
+    const { fixture, port } = await servedAfter({ running: ["rv-demo-1", "rv-demo-2"] });
+
+    const status = await cli(["shepherd", "status", "--json", "--deploy", "--port", port], fixture);
+
+    expect(JSON.parse(status.out)).toEqual({ rows: [], deploy: null, reviewSlots: { running: ["rv-demo-1", "rv-demo-2"], cap: 3, readAt: "2026-10-13T12:00:00.000Z" } });
+  });
+
+  it("ends the human view with reviewers R/cap", async () => {
+    const { fixture, port } = await servedAfter({ running: ["rv-demo-1", "rv-demo-2"] });
+
+    const status = await cli(["shepherd", "status", "--port", port], fixture);
+
+    expect(status.out.split("\n").filter(Boolean).at(-1)).toBe("reviewers 2/3 (read 2026-10-13T12:00:00.000Z)");
+  });
+
+  it("reports a roster timeout as unread with its error, with no running list, never as 0", async () => {
+    const { fixture, port } = await servedAfter({ rosterError: "agent ls timed out after 10000 ms" });
+
+    const json = await cli(["shepherd", "status", "--json", "--deploy", "--port", port], fixture);
+    const text = await cli(["shepherd", "status", "--port", port], fixture);
+
+    expect(JSON.parse(json.out).reviewSlots).toStrictEqual({ cap: 3, readAt: "2026-10-13T12:00:00.000Z", rosterError: "agent ls timed out after 10000 ms" });
+    expect(text.out.split("\n").filter(Boolean).at(-1)).toBe("reviewers unread (agent ls timed out after 10000 ms, at 2026-10-13T12:00:00.000Z)");
   });
 });
 

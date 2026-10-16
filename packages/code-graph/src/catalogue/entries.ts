@@ -178,6 +178,19 @@ const SOURCE: readonly MetricDescriptor[] = [
     description: "Handlers whose body is empty, pass, ..., continue, a bare or empty return, or a single logging call. Exempts Python's `except ImportError`/`ModuleNotFoundError` (alone or paired), the standard optional-dependency idiom.",
   },
   {
+    name: "long_line_share_160", unit: "ratio", appliesTo: FILE, rollup: "none", direction: "higher-worse",
+    absent: "zero", source: "line-density", description: "Share of the file's non-blank lines longer than 160 characters.",
+  },
+  {
+    name: "chars_per_sloc", unit: "ratio", appliesTo: FILE, rollup: "none", direction: "higher-worse",
+    absent: "zero", source: "line-density", description: "Characters per non-blank line, leading and trailing whitespace excluded.",
+  },
+  {
+    name: "bool_ops_per_line", unit: "ratio", appliesTo: FILE, rollup: "none", direction: "higher-worse",
+    absent: "zero", source: "line-density",
+    description: "Syntax-tree `&&`, `||`, `??` and ternaries (Python `and`, `or` and conditional expressions) per non-blank line; strings and comments never count.",
+  },
+  {
     name: "class_count", unit: "count", appliesTo: FILE, rollup: "sum", direction: "neutral",
     absent: "zero", source: "lcom", description: "Classes declared in the file; written only when there is one.",
   },
@@ -249,6 +262,16 @@ const HISTORY: readonly MetricDescriptor[] = [
     name: "top_author_share_{w}", unit: "ratio", appliesTo: FILE, rollup: "none", direction: "higher-worse",
     absent: "exclude", source: "history", windowed: true,
     description: "Share of the file's churn in the {w} window written by its top author.",
+  },
+  {
+    name: "symbol_task_ids_{w}", unit: "count", appliesTo: SYMBOL, rollup: "none", direction: "higher-worse",
+    absent: "zero", source: "history", windowed: true,
+    description: "Distinct task ids (such as TP-123, read from commit subjects) whose commits edited the function in the {w} window. Edits map to HEAD line spans after carrying each hunk through later commits; a method edit credits the method, not its class. Several ids in a short window is function-level accretion. Not additive.",
+  },
+  {
+    name: "symbol_edit_commits_{w}", unit: "count", appliesTo: SYMBOL, rollup: "none", direction: "neutral",
+    absent: "zero", source: "history", windowed: true,
+    description: "Commits that edited the function in the {w} window, with or without a task id. Not additive.",
   },
 ];
 

@@ -12,8 +12,20 @@ const VERDICT_READING: Record<Verdict, string> = {
   unproven: "The added tests fail on the base only because the API they call is new there. Judge whether a test of the behavior itself was possible.",
   vacuous: "No added test fails on the base, so none proves the change. That is blocking unless you show why no test can fail there.",
   "no-tests": "The change adds or edits no test. That is blocking unless you show why no test can fail on the base.",
-  error: "fix-proof could not finish. Judge base failure yourself, as if no result were given.",
+  error: "fix-proof could not finish, so nothing proves the change. That is blocking unless you name an added test and show it fails on the base.",
 };
+
+/** Why Shepherd could not verify this head's fix-proof; a head can force each of these, so none may pass on its own. */
+export type FixProofUnverified = "error" | "untrusted" | "unread";
+
+/** A closed map, so the caller's reason picks a sentence and never reaches the prompt itself. */
+const UNVERIFIED_READING: Record<FixProofUnverified, string> = {
+  error: "Shepherd marks this head's fix-proof unverified: the run ended in an error, which a head can cause on purpose.",
+  untrusted: "Shepherd marks this head's fix-proof unverified: its run did not come from a trusted, successful fix-proof job, so its result is not evidence.",
+  unread: "Shepherd marks this head's fix-proof unverified: it could not read a fix-proof result for this head although one was due.",
+};
+
+const UNVERIFIED_RULE = "Say FIX_FIRST unless you name an added test and show it fails on the base; a MERGE here merges on green with the unverified standing recorded.";
 
 const JUDGE_YOURSELF = "Read each added test against the base code and say which would fail there.";
 
@@ -34,9 +46,15 @@ function cautionLines(result: FixProofResult): string[] {
 /** The tests member's fix-proof section; a result that does not parse or names another head is ignored, never trusted. */
 export function fixProofLines(head: string, line: string | undefined): string[] {
   if (line === undefined) return [`No fix-proof/v1 result was given for this head. ${JUDGE_YOURSELF}`];
-  const parsed = parseResultLine(line);
+  const parsed = parseResultLine(line.trim());
   if (!parsed.ok) return [`The fix-proof/v1 result given could not be read, so ignore it. ${JUDGE_YOURSELF}`];
   const { result } = parsed;
   if (result.head !== head) return [`The fix-proof/v1 result given is for another head, so ignore it. ${JUDGE_YOURSELF}`];
   return [`fix-proof/v1 verdict for this head: ${result.verdict}. ${VERDICT_READING[result.verdict]}`, countLine(result), ...cautionLines(result)];
+}
+
+/** The unverified section; an unknown reason, as from stored JSON, yields nothing rather than echoing it. */
+export function unverifiedLines(why: FixProofUnverified | undefined): string[] {
+  const reading = why === undefined || !Object.hasOwn(UNVERIFIED_READING, why) ? undefined : UNVERIFIED_READING[why];
+  return reading === undefined ? [] : [reading, UNVERIFIED_RULE];
 }

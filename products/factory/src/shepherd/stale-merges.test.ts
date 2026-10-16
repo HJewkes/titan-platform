@@ -10,13 +10,15 @@ import { REPO, gateId, spaceUpdates } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
-import { SHEPHERD_WORKFLOW } from "./commands.js";
+import { AFTER_HOLD } from "./hold.js";
+import { SHEPHERD_WORKFLOW } from "./services.js";
 import { supersedeMovedGates } from "./head-moved.js";
 import type { ShepherdPhases } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { resyncShepherd } from "./resync.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
+import { supersedeStaleMerges } from "./stale-merges.js";
 import { watchRow } from "./view.js";
 
 const H1 = fakeSha("held-merge-h1");
@@ -167,6 +169,20 @@ describe("shepherd resync on a held merge step of a run no runtime holds", () =>
     expect(report.supersededMerges).toEqual([{ runId, stepId: "merge:0", from: H1, to: H2 }]);
     expect(activeIn(shepherd, runId)).toEqual(["merge:0"]);
     expect(headOf(shepherd, runId)).toBe(H1);
+  });
+
+  it.each([
+    ["live", false],
+    ["dry run", true],
+  ])("a merge step that finishes while its head read is in flight is not superseded (%s)", async (_case, dryRun) => {
+    const { fake, dbPath, runId } = await seededHeld();
+    fake.pushHead(1, H2);
+    const shepherd = restarted(fake, dbPath);
+    const { services, host } = shepherd;
+    const finishing = { ...services, port: { ...services.port, getPr: async (repo: string, pr: number) => (host.runtime.completeStep(runId, "merge:0", JSON.stringify({ result: AFTER_HOLD })), services.port.getPr(repo, pr)) } };
+
+    expect(await supersedeStaleMerges(host, finishing, { dryRun })).toEqual([]);
+    expect(activeIn(shepherd, runId)).toEqual([]);
   });
 
   it("leaves the merge step alone while the head it waits at is still the pull request's head", async () => {

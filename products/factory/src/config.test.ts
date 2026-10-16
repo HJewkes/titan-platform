@@ -103,6 +103,14 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { flakyChecks: { web: flakyChecks["acme/web"] } } })))).toThrow(/flakyChecks/);
   });
 
+  it("reads the held-repair gate reset flag, and rejects a value other than off or on and an unknown key", () => {
+    const load = (gateReset: object) => loadConfig(configPath(xdg({ shepherd: { gateReset } })));
+
+    expect(load({ heldRepair: "on" }).shepherd?.gateReset).toEqual({ heldRepair: "on" });
+    expect(() => load({ heldRepair: "yes" })).toThrow(/heldRepair/);
+    expect(() => load({ heldRepairs: "on" })).toThrow(/heldRepairs/);
+  });
+
   it("reads each repo's checkout and advisory flag, and rejects an unknown key and a repo that is not owner/name", () => {
     const repos = { "acme/widgets": { path: "/src/widgets", advisory: true } };
     const load = (block: object) => loadConfig(configPath(xdg({ shepherd: { repos: block } })));
@@ -150,6 +158,20 @@ describe("loadConfig", () => {
     ["a NUL in the cwd", { argv: ["chore"], cwd: "/work\0x" }, /postMerge\.cwd: must not contain a NUL/],
   ])("rejects a post-merge command with %s", (_label, postMerge, key) => {
     expect(() => loadConfig(configPath(xdg({ postMerge })))).toThrow(key);
+  });
+
+  it("reads the gate notifier with the owner-remote class and the titan-factory label by default", () => {
+    const env = xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", gateNotify: {} } });
+
+    expect(loadConfig(configPath(env)).shepherd?.gateNotify).toEqual({ label: "titan-factory", resolverClass: "owner-remote" });
+  });
+
+  it("rejects a gate notifier with no agent-chat binary to ask through", () => {
+    expect(() => loadConfig(configPath(xdg({ shepherd: { gateNotify: {} } })))).toThrow(/gateNotify needs an agentChatBin/);
+  });
+
+  it("rejects a gate notifier label agent-chat would refuse", () => {
+    expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", gateNotify: { label: "Titan Factory" } } })))).toThrow(/gateNotify\.label/);
   });
 
   it("reads the agent-chat binary and the reviewer it dispatches", () => {

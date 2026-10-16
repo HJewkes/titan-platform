@@ -1,8 +1,10 @@
+import { BrokerUnavailableError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
 import type { StepResult, StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { onCiFailed, rerunsFirst, type LandPrState } from "../workflows/land-pr.js";
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
+import type { UnsettledMerge } from "../workflows/land-settle.js";
 import { failureOf } from "./error-class.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
 import { awaitNewHead, sentBackGate, type GateRun } from "./gates.js";
@@ -16,8 +18,11 @@ import { awaitNewHead, sentBackGate, type GateRun } from "./gates.js";
  */
 const SEAT_GATES = ["ci-failed", "sh-sent-back", "stuck-behind"] as const;
 type SeatGate = (typeof SEAT_GATES)[number];
-/** Seat work that is no gate's: a held run's fix round, which waits on the seat instead of waking a fixer. */
-const SEAT_NOTICES = [...SEAT_GATES, "held"] as const;
+/**
+ * Seat work that is no gate's: a held run's fix round, a red head that only repeats its base's red, which waits on the
+ * seat instead of waking a fixer, or a mergeability GitHub left unsettled past the wait's bound.
+ */
+const SEAT_NOTICES = [...SEAT_GATES, "held", "base-red", "merge-unsettled"] as const;
 type SeatNotice = (typeof SEAT_NOTICES)[number];
 
 const SEAT_NOTICE_STEP = "sh-seat-notice";
@@ -29,6 +34,8 @@ const NEXT: Record<SeatNotice, string> = {
   "sh-sent-back": `${WAITS} Next: start a fix round (resume the implementer, or start a successor on the PR's branch), push a fix yourself, or close the PR to end the run.`,
   "stuck-behind": "Shepherd runs update-branch again now, with no owner gate. If the PR keeps falling behind, land it in a quieter window or close it to end the run.",
   held: "Nothing pushes while the run is held. Push a fix to the PR and Shepherd runs CI and review at the new head while the hold stays; no release is needed. Release the hold to let Shepherd resume the fix round at this head itself, or close the PR to end the run.",
+  "merge-unsettled": "Nothing waits on the owner: Shepherd reads mergeability again at this head every few minutes and merges once GitHub settles it. A new head starts the wait over. Push to the PR, or close it to end the run.",
+  "base-red": "Shepherd woke no fixer and spent no repair: the PR only repeats its base's red. The run waits for the base or the PR's head to move, then reads CI again. Fix the base, push a fix to the PR, or close the PR to end the run.",
 };
 
 const SeatNoticeInput = z.object({ repo: z.string().min(1), pr: z.number().int().positive(), headSha: z.string().min(1), gate: z.enum(SEAT_NOTICES), why: z.string(), seat: z.string().min(1).optional() });
@@ -48,22 +55,46 @@ function addressee(ports: ExitNoticePorts, input: SeatNoticeInput): string | und
   return input.gate === "held" ? ports.hubSeat?.() : ports.seatFor(input.repo);
 }
 
-/** Never throws: no ports, no seat, or a failed send records `sent: false`, and the run takes the owner gate. */
-async function sendSeatNotice(ports: ExitNoticePorts | undefined, input: SeatNoticeInput): Promise<SeatNoticeResult> {
+type Sleep = (ms: number, signal: AbortSignal) => Promise<void>;
+
+/**
+ * The waits before each resend of a notice the broker timed out or could not take: a dropped held notice left a seat
+ * never told (tp#1513). A timed-out send may still have arrived, so the seat can hear one twice.
+ */
+const SEAT_NOTICE_RETRY_MS = [5_000, 30_000, 120_000] as const;
+
+const transient = (error: unknown): boolean => error instanceof DispatchTimeoutError || error instanceof BrokerUnavailableError;
+
+async function sendWithRetry(send: () => Promise<void>, sleep: Sleep, signal: AbortSignal): Promise<void> {
+  for (const waitMs of SEAT_NOTICE_RETRY_MS) {
+    try {
+      return await send();
+    } catch (error) {
+      if (!transient(error)) throw error;
+    }
+    await sleep(waitMs, signal);
+  }
+  await send();
+}
+
+/** Throws only on abort: no ports, no seat, or a send failed past its retries records `sent: false`, and the run takes the owner gate. */
+async function sendSeatNotice(ports: ExitNoticePorts | undefined, input: SeatNoticeInput, sleep: Sleep, signal: AbortSignal): Promise<SeatNoticeResult> {
   if (ports === undefined) return { sent: false, detail: "no seat notice is wired" };
   let seat: string | undefined;
   try {
     seat = addressee(ports, input);
     if (seat === undefined) return { sent: false, detail: input.gate === "held" ? "the run names no seat and no hub seat is set" : `no single seat owns ${input.repo}` };
-    await ports.send(seat, seatNoticeText(input));
+    const to = seat;
+    await sendWithRetry(() => ports.send(to, seatNoticeText(input)), sleep, signal);
     return { sent: true, seat, gate: input.gate, headSha: input.headSha, detail: `told ${seat}` };
   } catch (error) {
+    signal.throwIfAborted();
     return { sent: false, ...(seat && { seat }), detail: `the seat notice failed: ${failureOf(error)}` };
   }
 }
 
-export const seatNoticeRoute = (now: () => number, ports: ExitNoticePorts | undefined): StepRoute =>
-  codeRoute(SEAT_NOTICE_STEP, now, async (raw: unknown) => sendSeatNotice(ports, SeatNoticeInput.parse(raw)));
+export const seatNoticeRoute = (now: () => number, ports: ExitNoticePorts | undefined, sleep: Sleep): StepRoute =>
+  codeRoute(SEAT_NOTICE_STEP, now, async (raw: unknown, signal) => sendSeatNotice(ports, SeatNoticeInput.parse(raw), sleep, signal));
 
 /** What a seat notice came to; undefined means none was tried. */
 type Told = { sent: boolean; detail: string } | undefined;
@@ -102,12 +133,17 @@ export async function noticeGate(run: GateRun, gate: SeatGate, headSha: string, 
  * One recorded message per run and `key` to the seat a held run names, or the hub seat; seat work that is no gate's,
  * so a run recorded before the step has nothing to keep. A replay of the run's notice steps rebuilds the set.
  */
-export async function noticeHeldSeat(run: GateRun, key: string, notice: { headSha: string; why: string; seat?: string }): Promise<Told> {
+export async function noticeHeldSeat(run: GateRun, key: string, notice: { headSha: string; why: string; seat?: string; gate?: "held" | "base-red" | "merge-unsettled" }): Promise<Told> {
   const told = noticed.get(run.ctx) ?? noticed.set(run.ctx, new Set()).get(run.ctx)!;
   if (told.has(key)) return undefined;
-  const result = await step(run.ctx, SEAT_NOTICE_STEP, { ...run.target, ...notice, gate: "held" }, SeatNoticeResult);
+  const result = await step(run.ctx, SEAT_NOTICE_STEP, { ...run.target, gate: "held", ...notice }, SeatNoticeResult);
   if (result.sent) told.add(key);
   return result;
+}
+
+/** The repo's seat hears once per head that GitHub left mergeability unsettled past the wait's bound; land keeps re-reading. */
+export function unsettledMergeNotice(run: GateRun): NonNullable<UnsettledMerge["notice"]> {
+  return (headSha, why) => noticeHeldSeat(run, JSON.stringify(["merge-unsettled", headSha]), { headSha, why, gate: "merge-unsettled" });
 }
 
 const STUCK_BEHIND_QUESTION = / Retry or abandon\?$/;

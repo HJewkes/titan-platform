@@ -1,4 +1,7 @@
+import { dollarOpener } from "./balanced.js";
+import { joinedDollar, joinedWithIndex, readAhead } from "./joins.js";
 import type { Token, WordToken } from "./lexer.js";
+import { opensUnsureSpan, selfContainedEnd } from "./span-scan.js";
 
 const ASSIGNMENT_WORD_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[.*\])?\+?=/s;
 /** `(` is left out: inside a case pattern it opens no command, and a subshell then splits as on main. */
@@ -9,9 +12,11 @@ const COMMAND_STARTS = new Set(["{", "then", "do", "else", "elif", "if", "while"
  * Case statements, `[[ ]]`, `(( ))`, `$(( ))`, here-docs and extglob patterns such as `@(a|b)` hold operators and
  * newlines that start no command, so no token position can say where an assignment stands. Any of them before the
  * `[`, quoted or not, refuses the join. Bash lexes left to right, so one after it cannot move the `[` and leaves
- * the join alone.
+ * the join alone. The split reading stays for such a `[`, and `looseSubscriptEnd` keeps its body from hiding text.
  */
-const UNPLACEABLE_RE = /\b(?:case|esac)\b|\[\[|\]\]|\(\(|\)\)|<<|[?*+@!]\(/;
+const UNPLACEABLE_RE = /\b(?:case|esac)\b|\[\[|\]\]|\(\(|\)\)|<<|[?*+@!]\(/g;
+const IDENTIFIER_START = /[A-Za-z_]/;
+const IDENTIFIER_PART = /[A-Za-z0-9_]/;
 
 const UNSURE = -2;
 
@@ -21,11 +26,92 @@ const UNSURE = -2;
  * Returns the index of that `]` for the `[` at `open`, or -1 when the word lexes as usual.
  */
 export function assignmentSubscriptEnd(src: string, open: number, tokens: Token[]): number {
-  if (UNPLACEABLE_RE.test(src.slice(0, open)) || !atAssignmentPosition(tokens)) return -1;
-  const close = matchingBracket(src, open);
-  const after = close === -1 ? "" : src.slice(close + 1, close + 3);
+  const scan = scanOf(src);
+  if (open >= scan.unplaceableFrom || !atAssignmentPosition(tokens)) return -1;
+  const close = matchingBracket(src, open, scan);
+  const after = close === -1 ? "" : readAhead(src, close + 1, 2).text;
   return after.startsWith("=") || after === "+=" ? close : -1;
 }
+
+/**
+ * Index of the `]` matching the `[` of a bare `NAME[` whose join `assignmentSubscriptEnd` did not take, or -1 when
+ * it took it. Bash joins on position alone, and positions it joins at keep turning up that the token model misses
+ * (a redirect prefix, `coproc`, `time -p`, a subshell, a function body), so every such `[` is treated as one bash may
+ * join. Bash skips `$( )`, `${ }` and backquotes whole while the scan here cannot, so when the scan never closes or
+ * crossed such an unsure span, bash may close later: the span then runs to the end of the source.
+ */
+export function looseSubscriptEnd(src: string, open: number, tokens: Token[]): number {
+  if (assignmentSubscriptEnd(src, open, tokens) !== -1) return -1;
+  return wordStartSubscriptEnd(src, open);
+}
+
+/**
+ * The end of the span bash may read as one word from a `[` that starts a word, as it does for `[ … ]=x` inside
+ * `NAME=( … )`: its matching `]`, or the end of the source when the scan never closes or crossed an unsure span.
+ */
+export function wordStartSubscriptEnd(src: string, open: number): number {
+  const scan = scanOf(src);
+  const close = matchingBracket(src, open, scan);
+  return close === -1 || scan.unsurePairs.has(open) ? src.length : close;
+}
+
+/**
+ * What one source's subscript checks share, so each `[` costs constant time however long the source: the first
+ * index from which `UNPLACEABLE_RE` has matched the source before it, and the brackets and spans found so far.
+ */
+interface SourceScan {
+  unplaceableFrom: number;
+  brackets: Map<number, number>;
+  /** Each `[` whose pairing crossed a `$( )`, `${ }` or backquote span the scan read one character at a time. */
+  unsurePairs: Set<number>;
+  /** What `selfContainedEnd` found for each `${`, `$(` or backquote opener it has read, so each is read once. */
+  selfContained: Map<number, number>;
+  spans: SpanEnds;
+}
+
+/** Bounded, since nested readers lex slices of one command. */
+const SCANS = new Map<string, SourceScan>();
+const MAX_SOURCES = 64;
+
+function scanOf(src: string): SourceScan {
+  const known = SCANS.get(src);
+  if (known) return known;
+  const scan = {
+    unplaceableFrom: unplaceableFrom(src),
+    brackets: new Map<number, number>(),
+    unsurePairs: new Set<number>(),
+    selfContained: new Map<number, number>(),
+    spans: new Map<number, number>(),
+  };
+  if (SCANS.size >= MAX_SOURCES) SCANS.clear();
+  SCANS.set(src, scan);
+  return scan;
+}
+
+/**
+ * The least `open` whose source before it, joins dropped, matches `UNPLACEABLE_RE`. A `[` follows every prefix
+ * tested, so a match in the prefix is a match in the whole source that ends by `open`, and the reverse.
+ */
+function unplaceableFrom(src: string): number {
+  const { text, rawAt } = joinedWithIndex(src);
+  let from = Number.POSITIVE_INFINITY;
+  UNPLACEABLE_RE.lastIndex = 0;
+  for (let m = UNPLACEABLE_RE.exec(text); m; m = UNPLACEABLE_RE.exec(text)) {
+    from = Math.min(from, (rawAt[m.index + m[0].length - 1] ?? src.length) + 1);
+    UNPLACEABLE_RE.lastIndex = m.index + 1;
+  }
+  return from;
+}
+
+/** How far the assignment-position check has read one token list, so each token is tested once. */
+interface Placement {
+  seen: number;
+  ok: boolean;
+  reserved: boolean;
+  pipelineStart: boolean;
+}
+
+const PLACEMENTS = new WeakMap<Token[], Placement>();
 
 /**
  * True only where bash takes an assignment: after a control operator or at the start, past reserved words that
@@ -33,15 +119,39 @@ export function assignmentSubscriptEnd(src: string, open: number, tokens: Token[
  * (`A=1 then` is an argument) or anything else means the word splits as usual.
  */
 function atAssignmentPosition(tokens: Token[]): boolean {
-  let start = tokens.length;
-  while (start > 0 && tokens[start - 1]?.type !== "op") start--;
-  const before = tokens[start - 1];
-  if (before?.type === "op" && !CONTROL_OPERATORS.has(before.value)) return false;
-  const run = tokens.slice(start);
-  const pipelineStart = before?.type !== "op" || !PIPES.has(before.value);
-  let k = 0;
-  while (k < run.length && isWord(run[k], (t) => isReserved(t.value, k === 0 && pipelineStart))) k++;
-  return run.slice(k).every((t) => isWord(t, (w) => ASSIGNMENT_WORD_RE.test(w.value)));
+  const p = PLACEMENTS.get(tokens) ?? { seen: 0, ok: true, reserved: true, pipelineStart: true };
+  PLACEMENTS.set(tokens, p);
+  for (; p.seen < tokens.length; p.seen++) place(p, tokens[p.seen]);
+  return p.ok;
+}
+
+function place(p: Placement, t: Token | undefined): void {
+  if (t?.type === "op") {
+    p.ok = CONTROL_OPERATORS.has(t.value);
+    p.reserved = true;
+    p.pipelineStart = !PIPES.has(t.value);
+    return;
+  }
+  if (!p.ok) return;
+  if (p.reserved && isWord(t, (w) => isReserved(w.value, p.pipelineStart))) {
+    p.pipelineStart = false;
+    return;
+  }
+  p.reserved = false;
+  p.ok = isWord(t, (w) => ASSIGNMENT_WORD_RE.test(w.value));
+}
+
+/** How far a word's value has been checked as a name, so a long name before many brackets is read once. */
+const NAMES = new WeakMap<WordToken, { checked: number; ok: boolean }>();
+
+/** Whether the word read so far is a bare name; a word's value only grows, so the check resumes where it stopped. */
+export function isNameSoFar(w: WordToken): boolean {
+  const n = NAMES.get(w) ?? { checked: 0, ok: true };
+  NAMES.set(w, n);
+  for (; n.ok && n.checked < w.value.length; n.checked++) {
+    n.ok = (n.checked === 0 ? IDENTIFIER_START : IDENTIFIER_PART).test(w.value.charAt(n.checked));
+  }
+  return n.ok && w.value.length > 0;
 }
 
 /** `time` is reserved only as the first word of a pipeline; elsewhere, even after `!` or `time`, it is a command name. */
@@ -59,18 +169,35 @@ function isWord(t: Token | undefined, test: (w: WordToken) => boolean): boolean 
  */
 type SpanEnds = Map<number, number>;
 
-/** Index of the `]` matching the `[` at `open`, skipping quoted text; -1 when it never closes. */
-function matchingBracket(src: string, open: number): number {
-  const spans: SpanEnds = new Map();
-  let depth = 0;
+/**
+ * Index of the `]` matching the `[` at `open`, skipping quoted text; -1 when it never closes. The scan from any
+ * position is the same whichever `[` it began at, so it records every pair it closes on the way, and a source of
+ * unclosed brackets is scanned once rather than once per bracket.
+ */
+function matchingBracket(src: string, open: number, scan: SourceScan): number {
+  const known = scan.brackets.get(open);
+  if (known !== undefined) return known;
+  const pending: number[] = [];
+  let lastUnsure = -1;
   for (let j = open; j < src.length; j++) {
-    const end = skipQuoted(src, j, spans);
-    if (end === -1) return -1;
+    let end = skipQuoted(src, j, scan.spans);
+    if (end === -1) break;
+    if (end === j && opensUnsureSpan(src, j)) {
+      end = selfContainedEnd(src, j, scan.selfContained);
+      if (end === -1) {
+        lastUnsure = j;
+        end = j;
+      }
+    }
     const c = end === j ? src[j] : "";
-    if (c === "[") depth++;
-    if (c === "]" && --depth === 0) return j;
+    if (c === "[") pending.push(j);
+    const paired = c === "]" ? pending.pop() : undefined;
+    if (paired !== undefined) scan.brackets.set(paired, j);
+    if (paired !== undefined && lastUnsure > paired) scan.unsurePairs.add(paired);
+    if (paired === open) return j;
     j = end;
   }
+  for (const unclosed of pending) scan.brackets.set(unclosed, -1);
   return -1;
 }
 
@@ -80,9 +207,17 @@ function skipQuoted(src: string, j: number, spans: SpanEnds): number {
   if (c === "\\") return j + 1;
   if (c === "'") return src.indexOf("'", j + 1);
   if (c === '"') return closingQuote(src, j + 1, '"');
-  if (c === "$" && src[j + 1] === "'") return closingQuote(src, j + 2, "'");
   if (c === "`") return skippedSpan(j, closingBacktick(src, j));
-  if (c === "$" && (src[j + 1] === "(" || src[j + 1] === "{")) return skippedSpan(j, substitutionEnd(src, j, spans));
+  if (c === "$") return skipDollar(src, j, spans);
+  return j;
+}
+
+/** Skips the `$'…'`, `$( )` or `${ }` the shared table finds after the `$` at `j`; a `$[` is left to the bracket count, which nests it. */
+function skipDollar(src: string, j: number, spans: SpanEnds): number {
+  const dollar = joinedDollar(src, j);
+  const opener = dollarOpener(src, dollar);
+  if (opener === "ansi-c") return closingQuote(src, dollar + 2, "'");
+  if (opener === "paren" || opener === "braced") return skippedSpan(j, substitutionEnd(src, dollar, spans));
   return j;
 }
 

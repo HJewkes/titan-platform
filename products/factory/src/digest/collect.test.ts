@@ -33,6 +33,14 @@ describe("collectDigest", () => {
     expect(model.stuck).toEqual([{ ref: "acme/widgets#8", reason: "held: waiting on a design call", since: "2026-03-10T15:00:00Z" }]);
   });
 
+  it("names the last await's none on a held run's stuck line (TP-2625)", async () => {
+    const rows = [watchRow({ pr: 8, held: { reason: "g10-review: big" }, lastNone: { kind: "deadline", text: "no verdict before the wait ran out" }, phaseSince: "2026-03-10T15:00:00Z" })];
+
+    const model = await collectDigest({ sources: fakeSources({ rows: async () => rows }), now: NOW, windowMinutes: 360, slot: SLOT });
+
+    expect(model.stuck).toEqual([{ ref: "acme/widgets#8", reason: "held: g10-review: big; last await: no verdict before the wait ran out", since: "2026-03-10T15:00:00Z" }]);
+  });
+
   it("leaves out a run that finished before the window", async () => {
     const rows = [watchRow({ pr: 3, phase: "done", phaseSince: "2026-03-09T10:00:00Z" }), watchRow({ pr: 4, phase: "failed", stalled: { reason: "boom" }, phaseSince: "2026-03-09T10:00:00Z" })];
 
@@ -64,6 +72,29 @@ describe("collectDigest", () => {
     expect(model.needsYou).toEqual([{ text: "seat-a: approve acme/widgets#9?", source: "agent-chat", keys: ["pr:widgets#9"] }]);
     expect(model.merged).toEqual([{ ref: "acme/widgets#12", title: "Add a knob" }]);
     expect(model.spend).toEqual([{ pool: "pool-a", sevenDay: 41, fiveHour: 9, stale: false }]);
+    expect(model.gaps).toEqual([]);
+  });
+
+  it("reads the decider's answers with an overrule only on the one awaiting audit, and the reversal rate", async () => {
+    const entry = { questionId: "q-1", asker: "seat-a", question: "Rebase?", answer: "rebase", by: "decider", at: 0, class: "tech_design", basis: "precedent", precedent: "p", state: "awaiting audit", reversible: "force-push", confidence: 0.7, principleIds: ["p1"] };
+    const json = { ledger: { available: true, decided: [entry, { ...entry, questionId: "q-2", state: "overruled" }], reversals: [{ class: "tech_design", decided: 2, overruled: 1 }] } };
+    const exec: Exec = async () => ({ code: 0, stdout: JSON.stringify(json), stderr: "" });
+
+    const model = await collectDigest({ sources: fakeSources({ agentChat: (m) => readAgentChat(exec, "agent-chat", m) }), now: NOW, windowMinutes: 60, slot: SLOT });
+
+    expect(model.decided).toEqual([
+      { questionId: "q-1", question: "Rebase?", answer: "rebase", class: "tech_design", state: "awaiting audit", reversible: "force-push", confidence: 0.7, principleIds: ["p1"], overrule: 'agent-chat answer q-1 "..."' },
+      { questionId: "q-2", question: "Rebase?", answer: "rebase", class: "tech_design", state: "overruled", reversible: "force-push", confidence: 0.7, principleIds: ["p1"] },
+    ]);
+    expect(model.reversals).toEqual([{ class: "tech_design", decided: 2, overruled: 1 }]);
+  });
+
+  it("parses an older agent-chat with no decided list and adds no section or gap", async () => {
+    const exec: Exec = async () => ({ code: 0, stdout: JSON.stringify({ ledger: { available: true, escalations: [], reports: [] } }), stderr: "" });
+
+    const model = await collectDigest({ sources: fakeSources({ agentChat: (m) => readAgentChat(exec, "agent-chat", m) }), now: NOW, windowMinutes: 60, slot: SLOT });
+
+    expect(model.decided).toBeUndefined();
     expect(model.gaps).toEqual([]);
   });
 

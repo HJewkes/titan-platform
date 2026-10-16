@@ -4,6 +4,10 @@ import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import type { EvidenceRecord } from "./merge-facts.js";
 
 export const VISUAL_REASON_PREFIX = "the owner decides visual changes: ";
+export const SKILL_REASON_PREFIX = "the owner reviews repo skill changes: ";
+export const GITHUB_PATH_REASON_PREFIX = "a .github/ change needs the reviewer's CI-policy line: ";
+export const CI_POLICY_WEAKENED_PREFIX = "CI-policy weakened: ";
+export const CI_POLICY_MALFORMED_REASON = "the reviewer's CI-policy line is malformed or repeated, so it may hide a weakening";
 
 /** One marker per head, so a replay or a second run at the same head finds the comment instead of posting again. */
 export function evidenceMarker(head: string): string {
@@ -40,7 +44,7 @@ export function locatorReference(locator: SourceTextLocator): LocatorReference {
   };
 }
 
-const OUTCOME_WORD = { allow: "merged", gate: "gated", deny: "refused" } as const;
+const OUTCOME_WORD = { allow: "cleared to merge", gate: "gated", deny: "refused" } as const;
 
 /** What each guard row says in words; an authority row has no entry and is shown by its id. */
 const GUARD_RULE_WORDS: Record<string, string> = {
@@ -48,8 +52,12 @@ const GUARD_RULE_WORDS: Record<string, string> = {
   "head-mismatch": "the facts were collected at another head",
   "files-unread": "the changed files could not be read",
   "visual-path": "the pull request changes visual paths",
+  "skill-path": "the pull request changes repo skills",
   "required-checks-unknown": "the base branch's required checks could not be read",
   "merge-state-unsettled": "GitHub had not computed mergeability",
+  "github-path": "a .github/ change has no CI-policy line from the reviewer",
+  "ci-policy-weakened": "the reviewer says the change weakens CI policy",
+  "ci-policy-malformed": "the reviewer's CI-policy line could not be read",
 };
 
 const LONG_PATH_LIST = 5;
@@ -58,10 +66,13 @@ function ruleInWords(rule: PolicyRule): string {
   return (rule.table === "shepherd-merge-guard" ? GUARD_RULE_WORDS[rule.rowId] : undefined) ?? `${rule.table}/${rule.rowId}`;
 }
 
-/** The paths the visual-path gate named, read back from its own reason, with the count it left out. */
+const PATH_GATE_PREFIXES: Record<string, string> = { "visual-path": VISUAL_REASON_PREFIX, "skill-path": SKILL_REASON_PREFIX, "github-path": GITHUB_PATH_REASON_PREFIX };
+
+/** The paths a path gate named, read back from its own reason, with the count it left out. */
 function gatedPaths(decision: GateDecision): { paths: string[]; omitted: number } | undefined {
-  if (decision.rule.rowId !== "visual-path" || !decision.reason.startsWith(VISUAL_REASON_PREFIX)) return undefined;
-  const list = decision.reason.slice(VISUAL_REASON_PREFIX.length);
+  const prefix = decision.rule.table === "shepherd-merge-guard" ? PATH_GATE_PREFIXES[decision.rule.rowId] : undefined;
+  if (prefix === undefined || !decision.reason.startsWith(prefix)) return undefined;
+  const list = decision.reason.slice(prefix.length);
   const more = /^(.*) and (\d+) more$/.exec(list);
   return { paths: (more?.[1] ?? list).split(", "), omitted: more ? Number(more[2]) : 0 };
 }
@@ -84,22 +95,34 @@ function shortSha(sha: string): string {
   return sha.slice(0, 7);
 }
 
-/** Readable summary first, then the full record, unchanged, collapsed; the marker stays on the first line. */
-export function evidenceComment(record: EvidenceRecord): string {
+/** Names no actor: a merge someone else made is still a true "Merged" line. */
+function mergedLine(merged: { mergeSha: string | null } | undefined): string[] {
+  if (!merged) return [];
+  return [merged.mergeSha === null ? "**Merged** (GitHub named no merge commit)." : `**Merged** at \`${shortSha(merged.mergeSha)}\`.`];
+}
+
+/**
+ * Readable summary first, then the full record, unchanged, collapsed; the marker stays on the first line.
+ * Only a caller that saw the merge land passes `merged`, so a head that never merged never reads as merged.
+ */
+export function evidenceComment(record: EvidenceRecord, merged?: { mergeSha: string | null }): string {
   const { decision } = record;
   const gated = gatedPaths(decision);
-  const reason = gated ? GUARD_RULE_WORDS["visual-path"]! : decision.reason;
+  const reason = gated ? ruleInWords(decision.rule) : decision.reason;
   const carried = record.carry ? [``, `Carried the MERGE reviewed at \`${record.carry.fromHead}\` by ${record.carry.rule ?? "tree-equal"} (merge-tree \`${record.carry.mergeTree}\`) to a head whose tree is \`${record.carry.headTree}\`.`] : [];
   const rule = decision.outcome === "allow" ? [] : ["", `Rule: ${ruleInWords(decision.rule)} (${decision.rule.table}/${decision.rule.rowId}).`];
+  const proof = record.proofUnverified === undefined ? [] : ["", `Fix-proof unverified at this head: ${record.proofUnverified}.`];
   const posted = { ...record, verdictLocator: locatorReference(record.verdictLocator) };
   return [
     evidenceMarker(record.head),
     "",
     `**Shepherd ${OUTCOME_WORD[decision.outcome]}** at \`${shortSha(record.head)}\`: ${reason}`,
+    ...mergedLine(merged),
     ...carried,
     "",
     ...checksTable(record),
     ...rule,
+    ...proof,
     ...pathsSection(decision),
     "",
     "<details><summary>Machine evidence</summary>",

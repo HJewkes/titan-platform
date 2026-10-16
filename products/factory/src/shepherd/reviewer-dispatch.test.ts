@@ -1,11 +1,26 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type * as childProcess from "node:child_process";
 import { DispatchError } from "@titan-design/agent-dispatch";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewTarget } from "./review.js";
-import { ReviewerMachineHold } from "./review-wait.js";
+import type { ReviewTarget } from "@titan-design/review-panel";
+import { ReviewerBrokerBusy, ReviewerBrokerDown } from "./review.js";
+import { ReviewerAskTimedOut, ReviewerMachineHold } from "./review-wait.js";
 import { agentChatReviewerDispatch, expandHome, runningReviewStarts, type ReviewerRosterRow, type AgentChatReviewerDispatchOptions } from "./reviewer-dispatch.js";
+import { createRosterReader } from "./roster.js";
+import { spawnGate } from "./spawn-gate.js";
+
+type ExecFileDone = (error: Error | null, stdout: string, stderr: string) => void;
+type ExecFileOverride = (bin: string, args: string[], options: { timeout: number }, done: ExecFileDone) => unknown;
+const execFileHook = vi.hoisted(() => ({ override: undefined as ExecFileOverride | undefined }));
+
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof childProcess>();
+  const execFile = (bin: string, args: string[], options: { timeout: number }, done: ExecFileDone): unknown =>
+    execFileHook.override ? execFileHook.override(bin, args, options, done) : Reflect.apply(actual.execFile, undefined, [bin, args, options, done]);
+  return { ...actual, execFile };
+});
 
 const PROFILE = "rv-readonly";
 const BRIEF = "Review octo/demo#7. BRIEF-SENTINEL-4f2a";
@@ -24,6 +39,7 @@ beforeEach(() => {
   checkout = join(home, "projects", "demo");
   mkdirSync(checkout, { recursive: true });
   vi.stubEnv("HOME", home);
+  vi.stubEnv("AGENT_CHAT_HOME", join(home, ".agent-chat"));
   installHeadlessProfiles(home, [PROFILE, "bd-reviewer", "reviewer", "rv-other"]);
 });
 
@@ -91,13 +107,13 @@ describe("agentChatReviewerDispatch roster", () => {
     return dispatchOver(`cat "${dir}/roster.json"\n`).roster();
   };
 
-  it("reads `agent ls --json` and keeps the identity, presence, spawner, profile and transcript of each row, and nothing else", async () => {
+  it("reads `agent ls --json` and keeps the identity, presence, spawner, profile, working directory and transcript of each row, and nothing else", async () => {
     const full = { ...row, model: null, transcriptPath: "/srv/transcripts/session-1.jsonl", transcriptExists: true, spawnedBy: "coord", account: null, generation: 2, teleportFrom: "earlier" };
 
     const roster = await rosterOf([full]);
 
     expect(roster).toStrictEqual([
-      { name: "rv-demo-7", agentId: "agent-1", sessionId: "session-1", presence: "exited", spawnedBy: "coord", transcriptPath: "/srv/transcripts/session-1.jsonl", transcriptExists: true, profile: PROFILE },
+      { name: "rv-demo-7", agentId: "agent-1", sessionId: "session-1", presence: "exited", spawnedBy: "coord", transcriptPath: "/srv/transcripts/session-1.jsonl", transcriptExists: true, profile: PROFILE, cwd: "/srv/demo" },
     ]);
     expect(recordedArgv()).toEqual(["agent", "ls", "--json"]);
   });
@@ -115,11 +131,17 @@ describe("agentChatReviewerDispatch roster", () => {
   it("reports no spawner and no transcript for a row that carries neither", async () => {
     const roster = await rosterOf([row, { ...row, name: "rv-demo-8", spawnedBy: 7, transcriptPath: 7, transcriptExists: "yes" }]);
 
-    const bare = { agentId: "agent-1", sessionId: "session-1", presence: "exited", spawnedBy: null, transcriptPath: null, transcriptExists: false, profile: PROFILE };
+    const bare = { agentId: "agent-1", sessionId: "session-1", presence: "exited", spawnedBy: null, transcriptPath: null, transcriptExists: false, profile: PROFILE, cwd: "/srv/demo" };
     expect(roster).toStrictEqual([
       { name: "rv-demo-7", ...bare },
       { name: "rv-demo-8", ...bare },
     ]);
+  });
+
+  it("reports no working directory for a row whose cwd is empty", async () => {
+    const [found] = await rosterOf([{ ...row, cwd: "" }]);
+
+    expect(found).not.toHaveProperty("cwd");
   });
 
   it("reports no profile for a row whose profile is empty", async () => {
@@ -141,10 +163,19 @@ describe("agentChatReviewerDispatch roster", () => {
     expectRefusal(error, "the log is locked");
   });
 
-  it("gives up on a roster read that outlasts its timeout, without calling it a broker outage", async () => {
+  it("reports a roster read that outlasts its timeout as a timed-out ask, not a broker outage", async () => {
     const error = await failure(dispatchOver("exec sleep 5\n", { rosterTimeoutMs: 200 }).roster());
 
+    expect(error).toBeInstanceOf(ReviewerAskTimedOut);
     expectRefusal(error, "timed out");
+  });
+
+  it("reports the broker's own reply timeout on a roster read as a timed-out ask", async () => {
+    const error = await failure(
+      dispatchOver('echo "broker did not answer agents_result" >&2\nexit 1\n').roster(),
+    );
+
+    expect(error).toBeInstanceOf(ReviewerAskTimedOut);
   });
 });
 
@@ -168,6 +199,12 @@ describe("agentChatReviewerDispatch spawn", () => {
     await dispatch.spawn("rv-demo-7", BRIEF, target, { kind: "security" });
     expect(recordedArgv()[3]).toBe("bd-reviewer");
     await dispatch.spawn("rv-demo-8", BRIEF, target, { kind: "correctness" });
+    expect(recordedArgv()[3]).toBe("reviewer");
+  });
+
+  it("spawns a panel member at its planned profile whatever class the PR is", async () => {
+    await dispatchOver(undefined, { roles: { g10: "bd-reviewer", standard: "reviewer" } }).spawn("rv-demo-7-adversary", BRIEF, target, { kind: "security", profile: "reviewer" });
+
     expect(recordedArgv()[3]).toBe("reviewer");
   });
 
@@ -304,9 +341,10 @@ describe("agentChatReviewerDispatch spawn", () => {
     expectRefusal(error, "no machine guard");
   });
 
-  it("keeps a spawn that timed out a refusal, because the reviewer may be running", async () => {
+  it("reports a spawn that timed out as a timed-out ask, not a broker outage, because the reviewer may be running", async () => {
     const error = await failure(dispatchOver("exec sleep 5\n", { spawnTimeoutMs: 200 }).spawn("rv-demo-7", BRIEF, target));
 
+    expect(error).toBeInstanceOf(ReviewerAskTimedOut);
     expectRefusal(error, "timed out");
   });
 
@@ -314,6 +352,42 @@ describe("agentChatReviewerDispatch spawn", () => {
     const dispatch = agentChatReviewerDispatch({ agentChatBin: join(dir, "absent"), roles: { g10: PROFILE, standard: PROFILE }, cwdFor: () => checkout });
 
     expectRefusal(await failure(dispatch.spawn("rv-demo-7", BRIEF, target)), "not found");
+  });
+
+  describe("with the default spawn timeout", () => {
+    /** A broker that answers after `ms`; execFile kills a child still running at its `timeout` option, as here. */
+    const brokerAnsweringAfter = (ms: number): void => {
+      execFileHook.override = (_bin, _args, { timeout }, done) => {
+        const killed = ms > timeout;
+        setTimeout(() => done(killed ? Object.assign(new Error("killed"), { killed: true, signal: "SIGTERM" }) : null, "", ""), Math.min(ms, timeout));
+        return { stdin: { on: () => undefined, end: () => undefined } };
+      };
+    };
+
+    afterEach(() => {
+      vi.useRealTimers();
+      execFileHook.override = undefined;
+    });
+
+    it("lets a broker that answers after 45 s finish the spawn", async () => {
+      vi.useFakeTimers();
+      brokerAnsweringAfter(45_000);
+
+      const spawned = dispatchOver().spawn("rv-demo-7", BRIEF, target);
+      await vi.advanceTimersByTimeAsync(45_000);
+
+      await expect(spawned).resolves.toBeUndefined();
+    });
+
+    it("maps a broker that hangs past 90 s to a timed-out ask", async () => {
+      vi.useFakeTimers();
+      brokerAnsweringAfter(10 * 60_000);
+
+      const outcome = failure(dispatchOver().spawn("rv-demo-7", BRIEF, target));
+      await vi.advanceTimersByTimeAsync(90_000);
+
+      expect(await outcome).toBeInstanceOf(ReviewerAskTimedOut);
+    });
   });
 });
 
@@ -340,10 +414,36 @@ describe("agentChatReviewerDispatch resume", () => {
     expectRefusal(error, "rv-standing is live");
   });
 
-  it("keeps a resume that timed out a refusal", async () => {
+  it("reports a resume that timed out as a timed-out ask, not a broker outage", async () => {
     const error = await failure(dispatchOver("exec sleep 5\n", { spawnTimeoutMs: 200 }).resume("rv-standing", BRIEF));
 
+    expect(error).toBeInstanceOf(ReviewerAskTimedOut);
     expectRefusal(error, "timed out");
+  });
+});
+
+describe("agentChatReviewerDispatch reviewer-slot reading", () => {
+  const live = (name: string) => ({ name, agentId: name, state: "running", presence: "live", status: "working", profile: PROFILE, surface: "headless", cwd: "/srv/demo", sessionId: `s-${name}`, generation: 1 });
+  const gateAt = (at: number) => spawnGate({ read: () => ({ load5: 0 }), now: () => at, log: () => undefined });
+
+  it("keeps the names of the live rv- rows a spawn read, beside the concurrent cap", async () => {
+    const gate = gateAt(Date.parse("2026-10-13T12:00:00Z"));
+    const rows = [live("rv-demo-1"), live("rv-demo-2"), live("coord"), { ...live("rv-demo-3"), presence: "exited" }];
+    const dispatch = dispatchOver(undefined, { gate, roster: createRosterReader(async () => rows) });
+
+    await dispatch.spawn("rv-demo-7", BRIEF, target);
+
+    expect(gate.reviewSlots()).toEqual({ running: ["rv-demo-1", "rv-demo-2"], cap: 3, readAt: "2026-10-13T12:00:00.000Z" });
+  });
+
+  it("keeps a roster timeout as rosterError with no running list, so it never reads as 0", async () => {
+    const gate = gateAt(Date.parse("2026-10-13T12:00:00Z"));
+    gate.noteReviewers({ running: ["rv-demo-1"] });
+    const dispatch = dispatchOver(undefined, { gate, roster: createRosterReader(async () => Promise.reject(new Error("agent ls timed out after 10000 ms"))) });
+
+    await failure(dispatch.spawn("rv-demo-7", BRIEF, target));
+
+    expect(gate.reviewSlots()).toStrictEqual({ cap: 3, readAt: "2026-10-13T12:00:00.000Z", rosterError: "agent ls timed out after 10000 ms" });
   });
 });
 

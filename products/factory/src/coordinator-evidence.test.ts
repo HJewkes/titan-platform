@@ -66,7 +66,7 @@ describe("coordinatorEvidencePolicy over an approve-merge gate", () => {
     expect(admits(mergeGate(), MERGE, mergeEvidence(overrides as never))).toBe(false);
   });
 
-  it.each(["shepherd-merge-guard/visual-path", "shepherd-seat/synthetic", "shepherd-route/repair-budget", "shepherd-merge-guard/github-path", "shepherd-release/owner-gate"])("refuses a %s gate even with matching evidence", (rule) => {
+  it.each(["shepherd-merge-guard/visual-path", "shepherd-seat/synthetic", "shepherd-route/repair-budget", "shepherd-merge-guard/github-path", "shepherd-merge-guard/ci-policy-weakened", "shepherd-release/owner-gate"])("refuses a %s gate even with matching evidence", (rule) => {
     expect(admits(mergeGate(rule), MERGE, mergeEvidence({ run: { ...RUN, rule } }))).toBe(false);
   });
 
@@ -104,6 +104,12 @@ describe("coordinatorEvidencePolicy over main-red and PR gates", () => {
     expect(admits({ ...mainRed, schema: undefined }, ack, green)).toBe(false);
   });
 
+  it("reads main green on success, skipped and neutral runs, and red on cancelled, stale, failure or an unknown conclusion", () => {
+    const admitsConclusion = (conclusion: string) => admits(mainRed, ack, { ...green, runs: [{ ...green.runs[0], conclusion }] });
+    expect(["success", "skipped", "neutral"].map(admitsConclusion)).toEqual([true, true, true]);
+    expect(["cancelled", "stale", "failure", "bogus"].map(admitsConclusion)).toEqual([false, false, false, false]);
+  });
+
   it("admits an abandon of a merged PR's red-CI gate only with the head its schema pins, never one still open", () => {
     const failing = [{ name: "validate", url: "https://example.test/job/1" }] as never;
     const { schema, brief } = ciFailedDecision({ repo: "o/r", pr: 1, headSha: HEAD, failing });
@@ -124,6 +130,7 @@ describe("coordinatorEvidencePolicy over main-red and PR gates", () => {
 
 describe("mechanicalAuthorityReason", () => {
   it("reads a gate on a reviewer verdict, required checks or the merge tree alone as mechanical", () => {
+    expect(MECHANICAL).toContain("; MRG-AU-RS unmet: ");
     expect(mechanicalAuthorityReason(MECHANICAL)).toBe(true);
     expect(mechanicalAuthorityReason(authorityGateReason(HEAD, { verdict: { value: "FIX_FIRST", head: HEAD }, mergeTreeClean: false }))).toBe(true);
   });

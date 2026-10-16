@@ -10,9 +10,9 @@ function refusalOf(reason: string): string {
 }
 
 describe("checkHoldReason", () => {
-  it("names the seven charter classes, three of them taskless", () => {
-    expect(HOLD_CLASSES).toEqual(["serve-down", "stalled", "no-reviewer", "run-failed", "visual-gate2", "g10-review", "g10-adversary"]);
-    expect([...TASKLESS_CLASSES]).toEqual(["visual-gate2", "g10-review", "g10-adversary"]);
+  it("names the nine hold classes, five of them taskless", () => {
+    expect(HOLD_CLASSES).toEqual(["serve-down", "stalled", "no-reviewer", "run-failed", "visual-gate2", "g10-review", "g10-adversary", "owner-asked", "owner-review"]);
+    expect([...TASKLESS_CLASSES]).toEqual(["visual-gate2", "g10-review", "g10-adversary", "owner-asked", "owner-review"]);
   });
 
   it.each(HOLD_CLASSES)("accepts a %s hold that cites a task", (holdClass) => {

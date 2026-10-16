@@ -1,4 +1,33 @@
-import type { Migration } from "@titan-design/store-sqlite";
+import type { Db, Migration } from "@titan-design/store-sqlite";
+import { z } from "zod";
+
+const TABLE_DDL = `
+  CREATE TABLE shepherd_registration (
+    repo        TEXT NOT NULL,
+    pr          INTEGER,
+    branch      TEXT,
+    run_id      TEXT NOT NULL UNIQUE,
+    task        TEXT NOT NULL,
+    implementer TEXT NOT NULL,
+    reviewer    TEXT,
+    policy      TEXT NOT NULL,
+    kind        TEXT NOT NULL,
+    held        INTEGER NOT NULL DEFAULT 0,
+    hold_reason TEXT,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    CHECK (pr IS NOT NULL OR branch IS NOT NULL)
+  );
+  CREATE UNIQUE INDEX shepherd_registration_pr ON shepherd_registration (repo, pr) WHERE pr IS NOT NULL;
+  CREATE UNIQUE INDEX shepherd_registration_branch ON shepherd_registration (repo, branch);`;
+
+export function shepherdMigration(version = 4): Migration {
+  return { version, name: "factory:shepherd_registration", up: (db) => db.exec(TABLE_DDL) };
+}
+
+export function sliceMigration(version = 8): Migration {
+  return { version, name: "factory:shepherd_registration_slice", up: (db) => db.exec("ALTER TABLE shepherd_registration ADD COLUMN slice TEXT") };
+}
 
 const TP734_DDL = `
   ALTER TABLE shepherd_registration ADD COLUMN hold_reviewer TEXT;
@@ -45,6 +74,44 @@ const TP2239_DDL = `
 /** A hold kept under a run's `g10-adversary` hold, and the heads proven clean merge-ups of a head the seat released it at, per base branch. */
 export function holdSlotsMigration(version = 19): Migration {
   return { version, name: "factory:shepherd_hold_slots_vouch", up: (db) => db.exec(TP2239_DDL) };
+}
+
+const TP2383_DDL = `
+  CREATE TABLE shepherd_park_settled (
+    run_id   TEXT NOT NULL,
+    head_sha TEXT NOT NULL,
+    agent    TEXT NOT NULL,
+    parked   INTEGER NOT NULL,
+    detail   TEXT NOT NULL,
+    at       TEXT NOT NULL,
+    PRIMARY KEY (run_id, head_sha, agent)
+  );`;
+
+/** A park refusal whose exit retry settled, per run, head and agent, so a replay after a restart does not arm it again. */
+export function parkSettledMigration(version = 21): Migration {
+  return { version, name: "factory:shepherd_park_settled", up: (db) => db.exec(TP2383_DDL) };
+}
+
+const OWNER_HOLD_COLUMNS = ["owner_hold_reason", "owner_hold_at", "owner_hold_asked_at"];
+
+/** Adds only the columns a database lacks, so a store that already has them opens unchanged. */
+function addOwnerHoldColumns(db: Db): void {
+  const present = new Set(z.array(z.looseObject({ name: z.string() })).parse(db.prepare("PRAGMA table_info(shepherd_registration)").all()).map((column) => column.name));
+  for (const column of OWNER_HOLD_COLUMNS.filter((name) => !present.has(name))) db.exec(`ALTER TABLE shepherd_registration ADD COLUMN ${column} TEXT`);
+}
+
+/** An owner-asked hold's own slot: its reason, when it was placed, and when the owner was last asked about it. */
+export function ownerHoldMigration(version = 22): Migration {
+  return { version, name: "factory:shepherd_registration_owner_hold", up: addOwnerHoldColumns };
+}
+
+const TP2556_DDL = `
+  ALTER TABLE shepherd_registration ADD COLUMN head_sha TEXT;
+  ALTER TABLE shepherd_registration ADD COLUMN base TEXT;`;
+
+/** The head and base branch a registration named, so Shepherd diffs the PR in its git cache instead of asking GitHub. */
+export function registrationFactsMigration(version = 24): Migration {
+  return { version, name: "factory:shepherd_registration_head_base", up: (db) => db.exec(TP2556_DDL) };
 }
 
 const LINEAGE_DDL = `

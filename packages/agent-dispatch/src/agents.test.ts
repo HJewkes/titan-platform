@@ -61,6 +61,30 @@ const row = (over: Record<string, unknown> = {}) => ({
 });
 
 describe("listAgents", () => {
+  it("maps the broker's own reply timeout on stderr to a timeout", async () => {
+    const bin = fakeAgentChat(`echo "broker did not answer agents_result" >&2\nexit 1\n`);
+    const error = await listAgents(bin, 10_000).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DispatchTimeoutError);
+    expect(error).toMatchObject({ message: expect.stringContaining("agents_result") });
+  });
+
+  it("keeps the reply-timeout text on stdout a plain refusal", async () => {
+    const bin = fakeAgentChat(`echo "broker did not answer agents_result"\nexit 1\n`);
+    const error = await listAgents(bin, 10_000).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DispatchError);
+    expect(error).not.toBeInstanceOf(DispatchTimeoutError);
+  });
+
+  it.each([
+    "the broker did not answer park; it may predate CC-282",
+    "broker did not answer agents_result within 30s",
+  ])("keeps an unanchored copy (%s) a plain refusal", async (line) => {
+    const bin = fakeAgentChat(`echo "${line}" >&2\nexit 1\n`);
+    const error = await listAgents(bin, 10_000).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DispatchError);
+    expect(error).not.toBeInstanceOf(DispatchTimeoutError);
+  });
+
   it("asks for the JSON roster and returns every row agent-chat printed", async () => {
     const rows = [row(), row({ name: "item-7", status: "running", presence: "live" })];
     const bin = printing(rows);
@@ -135,37 +159,54 @@ describe("listAgents", () => {
 });
 
 describe("retire", () => {
-  it("retires by name and returns the broker's caveats verbatim", () => {
+  it("retires by name and returns the broker's caveats verbatim", async () => {
     const bin = fakeAgentChat(
       `echo "Retired item-42."\necho "the process had already exited"\n`,
     );
 
-    const result = retire(bin, "item-42", 10_000);
+    const result = await retire(bin, "item-42", 10_000);
 
     expect(result).toEqual({ name: "item-42", caveats: ["the process had already exited"] });
     expect(recordedArgv()).toEqual(["agent", "retire", "item-42"]);
   });
 
-  it("passes --force only when asked", () => {
+  it("passes --force only when asked", async () => {
     const bin = fakeAgentChat(`echo "Retired item-42."\n`);
-    retire(bin, "item-42", 10_000, { force: true });
+    await retire(bin, "item-42", 10_000, { force: true });
     expect(recordedArgv()).toEqual(["agent", "retire", "item-42", "--force"]);
   });
 
-  it("reports the broker's refusal verbatim", () => {
+  it("leaves the caller's event loop free while the broker works", async () => {
+    const bin = fakeAgentChat(`sleep 1\necho "Retired item-42."\n`);
+    let ticks = 0;
+    const timer = setInterval(() => ticks++, 50);
+
+    await retire(bin, "item-42", 10_000).finally(() => clearInterval(timer));
+
+    expect(ticks).toBeGreaterThan(5);
+  });
+
+  it("marks a hung CLI as a timeout, apart from a CLI that refused", async () => {
+    await expect(retire(fakeAgentChat("sleep 3\n"), "item-42", 200)).rejects.toThrow(DispatchTimeoutError);
+    const refused = await retire(fakeAgentChat("exit 1\n"), "item-42", 10_000).catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(DispatchError);
+    expect(refused).not.toBeInstanceOf(DispatchTimeoutError);
+  });
+
+  it("rejects with the broker's refusal verbatim", async () => {
     const bin = fakeAgentChat(
       `echo "Not retired: the worktree holds uncommitted work; pass --force"\nexit 1\n`,
     );
-    expect(() => retire(bin, "item-42", 10_000)).toThrow(/holds uncommitted work/);
+    await expect(retire(bin, "item-42", 10_000)).rejects.toThrow(/holds uncommitted work/);
   });
 
-  it("refuses a name that could read as a flag before running anything", () => {
+  it("refuses a name that could read as a flag before running anything", async () => {
     const bin = fakeAgentChat("exit 0\n");
-    expect(() => retire(bin, "--force", 10_000)).toThrow(DispatchError);
+    await expect(retire(bin, "--force", 10_000)).rejects.toThrow(DispatchError);
     expect(() => readFileSync(join(dir, "argv"))).toThrow();
   });
 
-  it("refuses a binary path that is not absolute", () => {
-    expect(() => retire("agent-chat", "item-42", 10_000)).toThrow(DispatchError);
+  it("refuses a binary path that is not absolute", async () => {
+    await expect(retire("agent-chat", "item-42", 10_000)).rejects.toThrow(DispatchError);
   });
 });

@@ -5,9 +5,17 @@ on:
     branches: [main]
   pull_request:
 
+# A pull request's newer head cancels its older run. Main pushes share one group without cancel-in-progress: the running
+# main CI finishes and saves the caches, and a newer push replaces only a run still queued behind it. The newer run
+# contains the replaced push, and Release acts only on the tip, so nothing goes untested or unreleased; Shepherd reads
+# a merge whose queued run was replaced on the newer push.
 concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || 'main-push' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# onnxruntime-node would otherwise fetch CUDA binaries on install; no job uses them.
+env:
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
 
 jobs:
   validate:
@@ -75,7 +83,41 @@ jobs:
           path: node_modules/.vite/vitest
           key: vitest-results-${{ runner.os }}-${{ github.sha }}
           restore-keys: vitest-results-${{ runner.os }}-
-      - run: pnpm test
+      # redirect-corpus.test.ts runs every redirect form under real bash and zsh; it fails on CI without both.
+      - name: Install zsh for the redirect corpus
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends zsh
+      # frame-capture's tests drive a real headless Chromium, at the revision its pinned playwright-core expects.
+      # The browser is cached per playwright-core version; --with-deps still installs the system libraries each run.
+      - name: Read the playwright-core version
+        id: playwright
+        run: |
+          version=$(pnpm --filter @titan-design/frame-capture exec node -p "require('playwright-core/package.json').version")
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "could not read the playwright-core version (got '$version')" >&2; exit 1 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Restore the Chromium cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - name: Install Chromium for frame-capture
+        run: pnpm --filter @titan-design/frame-capture exec playwright-core install --with-deps --only-shell chromium
+      - name: Save the Chromium cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      # A pull request runs the packages its diff reaches through the workspace graph; main runs everything.
+      - name: Run the tests in scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: pnpm test:scope --run
       - name: Save vitest results
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v4
@@ -85,6 +127,12 @@ jobs:
       # CAPABILITIES.md and site/guides/capabilities.md are committed; a stale copy fails here.
       - run: pnpm capabilities:check
       - run: pnpm metrics:check
+      # Drift in agent-chat's roots only warns here: agent-chat moves independently, so it must not redden this required check.
+      - name: Check the sunset manifest against agent-chat main
+        run: |
+          git clone --depth 1 https://github.com/HJewkes/agent-chat "$RUNNER_TEMP/agent-chat"
+          echo "agent-chat main: $(git -C "$RUNNER_TEMP/agent-chat" rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          node scripts/sunset-manifest.mjs check --agent-chat "$RUNNER_TEMP/agent-chat" --agent-chat-drift warn
       # Unfiltered, unlike pages.yml's PR trigger: a package added without
       # site/reference/<name>.md has to redden the required check, not the deploy.
       - run: pnpm docs:build
@@ -92,29 +140,13 @@ jobs:
       - name: Require a changeset for package changes
         if: github.event_name == 'pull_request' && github.head_ref != 'changeset-release/main'
         run: pnpm changeset status --since=origin/${{ github.base_ref }}
-
-  # Type-aware rules (eslint.typed.config.js) need a TypeScript program per tsconfig, so they run beside the syntax lint, not in it.
-  lint-types:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      # Packages read each other's types from dist, so the build comes first; main's turbo cache makes it a replay.
-      - name: Restore turbo cache
-        uses: actions/cache/restore@v4
-        with:
-          path: .turbo/cache
-          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
-          restore-keys: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
-      - run: pnpm build
+      # The strict branch rule re-runs this on every update to the base, so the comparison is against main at merge time.
+      - name: Require a fresh INDEX_VERSION when a PR bumps it
+        if: github.event_name == 'pull_request'
         env:
-          TURBO_TELEMETRY_DISABLED: 1
-      - run: pnpm lint:types
+          BASE_REF: origin/${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: pnpm index-version:check
 
   dag-check:
     runs-on: ubuntu-latest
@@ -128,16 +160,34 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @titan-design/code-graph... run build
+      # A full build, not just the indexer's, because lint:types below reads every package's types from dist. Main's
+      # turbo cache makes it a replay; only validate saves that cache.
+      - name: Restore turbo cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+      - name: Build
+        id: build
+        run: pnpm build
+        env:
+          TURBO_TELEMETRY_DISABLED: 1
       # The indexer re-parses only files that changed since the cached graph (a cold head index is ~250 s).
       # The key covers the indexer's own code, so a schema or extractor change misses; the ISO week in the
       # key and the restore-key bounds a stale chain to a week, so each week's first main run indexes cold.
       # Source only: after the build, node_modules and dist sit under the same package directories.
+      # A pull request may also seed from any graph at the same INDEX_VERSION, so a lockfile-only merge no longer
+      # sends every PR cold until main saves; the indexer refuses a basis from another version. Main stays exact.
       - name: Compute the cache key
         id: key
         env:
           SOURCE_HASH: ${{ hashFiles('packages/code-graph/src/**', 'packages/code-graph/package.json', 'packages/code-parser/src/**', 'packages/code-parser/package.json', 'packages/embed/src/**', 'packages/retrieval/src/**', 'packages/store-sqlite/src/**', 'scripts/dag-check-self.mjs', 'pnpm-lock.yaml') }}
-        run: echo "prefix=dag-graph-$SOURCE_HASH-$(date -u +%G-%V)-" >> "$GITHUB_OUTPUT"
+        run: |
+          iv=$(sed -n 's/^export const INDEX_VERSION = "\([0-9.]*\)";$/\1/p' packages/code-graph/src/indexer.ts)
+          test -n "$iv"
+          echo "version=dag-graph-iv$iv-" >> "$GITHUB_OUTPUT"
+          echo "prefix=dag-graph-iv$iv-$SOURCE_HASH-$(date -u +%G-%V)-" >> "$GITHUB_OUTPUT"
       - name: Restore the dag-check graph
         id: graph-cache
         uses: actions/cache/restore@v4
@@ -146,10 +196,11 @@ jobs:
           key: ${{ steps.key.outputs.prefix }}${{ github.sha }}
           restore-keys: |
             ${{ steps.key.outputs.prefix }}
+            ${{ github.event_name == 'pull_request' && steps.key.outputs.version || '' }}
       - name: Check the package DAG
         env:
           BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
-        run: pnpm dag:check --report "$RUNNER_TEMP/codewatch-report.json" --db "$RUNNER_TEMP/graph.db" --seed-db "$RUNNER_TEMP/graph.db"
+        run: pnpm dag:check:graph --report "$RUNNER_TEMP/codewatch-report.json" --db "$RUNNER_TEMP/graph.db" --seed-db "$RUNNER_TEMP/graph.db"
       # Only main saves, so a pull request never writes a graph built from an unmerged tree.
       - name: Save the dag-check graph
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.graph-cache.outputs.cache-hit != 'true'
@@ -164,6 +215,7 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           node scripts/codewatch-summary.mjs "$RUNNER_TEMP/codewatch-report.json" >> "$GITHUB_STEP_SUMMARY"
+          node scripts/codewatch-summary.mjs --annotate "$RUNNER_TEMP/codewatch-report.json"
           if [ -n "$PR_HEAD_SHA" ]; then echo "" >> "$GITHUB_STEP_SUMMARY"; echo "Head is the merge of PR head \`${PR_HEAD_SHA:0:12}\` into the base." >> "$GITHUB_STEP_SUMMARY"; fi
       - name: Upload the codewatch report
         if: always()
@@ -180,6 +232,12 @@ jobs:
         env:
           BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
         run: pnpm dead:check --db "$RUNNER_TEMP/graph.db"
+      # Type-aware rules (eslint.typed.config.js) need a TypeScript program per tsconfig, so they run beside the syntax
+      # lint, not in it. A step here rather than its own job saves a second checkout, install and build; it runs after a
+      # red DAG step too, so one push reports both.
+      - name: Lint with type-aware rules
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: pnpm lint:types
 
   # A required check must always report, so the job always runs and a pull request touching none of its inputs is a no-op.
   hub-compose:
@@ -206,6 +264,42 @@ jobs:
       - name: Report a no-op
         if: steps.changes.outputs.run != 'true'
         run: echo "No hub input changed; compose checks skipped." >> "$GITHUB_STEP_SUMMARY"
+      # The base image is cached under its pinned digest so a hit makes no registry request: ECR Public's anonymous quota 429s too.
+      - name: Read the pinned base image
+        id: base
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          image=$(sed -n 's/^ARG NODE_IMAGE=//p' core.Dockerfile)
+          if [[ "$image" != *@sha256:* ]]; then echo "::error::core.Dockerfile NODE_IMAGE is not pinned by digest"; exit 1; fi
+          digest=${image##*@}
+          name=${image%@*}
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "pull=${name%:*}@$digest" >> "$GITHUB_OUTPUT"
+      - name: Restore base image
+        id: restore
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/node-base.tar
+          key: hub-node-base-${{ steps.base.outputs.digest }}
+      - name: Load or pull base image
+        if: steps.changes.outputs.run == 'true'
+        env:
+          CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+          PULL: ${{ steps.base.outputs.pull }}
+          DIGEST: ${{ steps.base.outputs.digest }}
+        run: |
+          tar="$RUNNER_TEMP/node-base.tar"
+          if [ "$CACHE_HIT" = true ]; then
+            docker load -i "$tar"
+            echo "Loaded base from cache key hub-node-base-$DIGEST" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          source="$PULL"
+          docker pull "$source" || { source="mirror.gcr.io/library/node@$DIGEST"; docker pull "$source"; }
+          docker tag "$source" titan-hub-node-base:ci
+          docker save titan-hub-node-base:ci -o "$tar"
+          echo "Pulled base from $source" | tee -a "$GITHUB_STEP_SUMMARY"
       # setup.sh writes the sample .env and data/run that the compose file interpolates and mounts.
       - if: steps.changes.outputs.run == 'true'
         run: printf 'SERVER_NAME=tp301.local\nPUBLIC_BASE_URL=https://tp301.local\n' > .env && ./scripts/setup.sh
@@ -214,4 +308,10 @@ jobs:
       - if: steps.changes.outputs.run == 'true'
         run: docker compose --profile remote --profile core config --quiet
       - if: steps.changes.outputs.run == 'true'
-        run: docker compose --profile core build core
+        run: docker compose --profile core build --build-arg NODE_IMAGE=titan-hub-node-base:ci core
+      - name: Save base image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changes.outputs.run == 'true' && steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/node-base.tar
+          key: hub-node-base-${{ steps.base.outputs.digest }}

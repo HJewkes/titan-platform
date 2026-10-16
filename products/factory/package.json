@@ -36,6 +36,7 @@
     "@titan-design/agent-dispatch": "workspace:^",
     "@titan-design/app-paths": "workspace:^",
     "@titan-design/authority": "workspace:^",
+    "@titan-design/coordinator": "workspace:^",
     "@titan-design/daemon": "workspace:^",
     "@titan-design/fix-proof": "workspace:^",
     "@titan-design/github": "workspace:^",
@@ -44,6 +45,7 @@
     "@titan-design/owner-queue": "workspace:^",
     "@titan-design/registry": "workspace:^",
     "@titan-design/review-panel": "workspace:^",
+    "@titan-design/review-schema": "^0.1.0",
     "@titan-design/rpc-client": "workspace:^",
     "@titan-design/session-analytics": "workspace:^",
     "@titan-design/session-read": "workspace:^",
@@ -53,6 +55,10 @@
     "commander": "^14.0.3",
     "yaml": "^2.9.1",
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@titan-design/decider": "workspace:^",
+    "@titan-design/test-kit": "workspace:*"
   },
   "private": true,
   "bin": {

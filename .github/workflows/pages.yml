@@ -12,9 +12,15 @@ on:
 permissions:
   contents: read
 
+# One group per ref, so a newer push replaces a build still queued behind the running one: only the newest tree is worth
+# deploying. The running build is never cancelled, so the site always gets a deployment.
 concurrency:
-  group: pages-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: pages-build-${{ github.ref }}
+  cancel-in-progress: false
+
+# onnxruntime-node would otherwise fetch CUDA binaries on install; no job uses them.
+env:
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
 
 jobs:
   build:

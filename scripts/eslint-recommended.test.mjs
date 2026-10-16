@@ -41,3 +41,22 @@ describe("the root lint config with the titan recommended rules", () => {
     expect(result.stderr).toContain("There are suppressions left that do not occur anymore");
   });
 });
+
+describe("the root lint config with the 200-character line cap", () => {
+  it("fails a 210-character packed condition in package source", () => {
+    const result = lintFixture("--format", "json", "packages/x/src/packed-condition.ts");
+
+    expect(result.status).toBe(1);
+    const [{ messages }] = JSON.parse(result.stdout);
+    expect(messages).toEqual([
+      expect.objectContaining({ ruleId: "titan/max-line-length", line: 2, message: expect.stringContaining("is 210 characters; the limit is 200") }),
+    ]);
+  });
+
+  it("passes a 250-character table row in a test file", () => {
+    const result = lintFixture("packages/x/src/packed-table.test.ts");
+
+    expect(result.stdout + result.stderr).toBe("");
+    expect(result.status).toBe(0);
+  });
+});

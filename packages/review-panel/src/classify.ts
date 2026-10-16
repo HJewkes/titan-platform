@@ -49,6 +49,8 @@ export const DEFAULT_CLASS_RULES: ClassRules = {
 };
 
 const PATH_TOUCHES = ["authority", "policy", "migration", "visual", "security", "perf"] as const;
+/** The G10 audit (2026-10-13, decision 287): test files matched the policy globs and held PRs with no finding. */
+const TEST_EXEMPT: readonly PrTouch[] = ["authority", "policy", "security"];
 
 function hasLineCounts(file: ChangedFile): boolean {
   return Number.isFinite(file.additions) && Number.isFinite(file.deletions);
@@ -88,14 +90,16 @@ export interface SliceInput {
 }
 
 /**
- * Flags a slice over the cap when it is kind `security` or touches a security or authority path outside the generated
- * set. Advisory only, so an unreadable count flags nothing.
+ * Flags a slice over the cap when it is kind `security` or touches, or renames out of, a security or authority path
+ * outside the generated set. Advisory only, so an unreadable count flags nothing.
  */
 export function securitySliceFlag(input: SliceInput, rules: ClassRules = DEFAULT_CLASS_RULES): SliceFlag | undefined {
   const lines = changedLineCount(input.changedFiles, rules);
   if (lines === undefined || lines <= SECURITY_SLICE_LINES) return undefined;
   const guards = [...rules.security, ...rules.authority];
-  const guardPaths = input.changedFiles.filter((f) => !isGenerated(f, rules.generated) && matchesAny(f.path, guards)).map((f) => f.path);
+  const guardPaths = input.changedFiles
+    .filter((f) => !isGenerated(f, rules.generated))
+    .flatMap((f) => [f.path, f.previousPath].find((p) => p !== undefined && matchesAny(p, guards)) ?? []);
   if (input.kind !== "security" && guardPaths.length === 0) return undefined;
   return { lines, cap: SECURITY_SLICE_LINES, guardPaths };
 }
@@ -115,10 +119,16 @@ function isUntested(paths: readonly string[], rules: ClassRules): boolean {
   return !tests && paths.some((p) => matchesAny(p, rules.source));
 }
 
+/** Touches the changed paths, or the paths they were renamed from, alone produce, with no kind or caller flag; a test file never counts as authority, policy or security. */
+export function pathTouches(files: readonly Pick<ChangedFile, "path" | "previousPath">[], rules: ClassRules = DEFAULT_CLASS_RULES): PrTouch[] {
+  const paths = files.flatMap((f) => (f.previousPath === undefined ? [f.path] : [f.path, f.previousPath]));
+  const nonTest = paths.filter((p) => !matchesAny(p, rules.test));
+  return PATH_TOUCHES.filter((touch) => (TEST_EXEMPT.includes(touch) ? nonTest : paths).some((p) => matchesAny(p, rules[touch])));
+}
+
 function collectTouches(facts: PrFacts, rules: ClassRules): Set<PrTouch> {
   const paths = facts.changedFiles.map((f) => f.path);
-  const touches = new Set<PrTouch>();
-  for (const touch of PATH_TOUCHES) if (paths.some((p) => matchesAny(p, rules[touch]))) touches.add(touch);
+  const touches = new Set<PrTouch>(pathTouches(facts.changedFiles, rules));
   if (facts.authorityTouch) touches.add("authority");
   if (facts.policyTouch) touches.add("policy");
   if (facts.kind === "security") touches.add("security");

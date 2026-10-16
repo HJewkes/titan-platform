@@ -9,7 +9,7 @@ import { bindAll } from "../workflows.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { shepherdEventMigration } from "./events.js";
 import { activeWorkFixTasks } from "./cleanup-ports.js";
-import { FreezeStore, freezeCancelOnlyMigration, freezeGuard, freezeMigration, freezeStoreRef } from "./freeze.js";
+import { FreezeStore, freezeCancelOnlyMigration, freezeFixPrMigration, freezeGuard, freezeMigration, freezeStoreRef } from "./freeze.js";
 import { SpawnDeferred } from "./spawn-gate.js";
 import { fileFixTask, fixerName, freezeStep, mainRedKey, spawnFixer, unfreezeStep, type FixTaskFields, type FixerAgents, type FixTasks, type EpisodeInput, type MainRedWiring } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
@@ -47,7 +47,7 @@ function memoryFixers(spawned: Rig["spawned"]): FixerAgents {
 
 function rig(): Rig {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), freezeCancelOnlyMigration(12), shepherdEventMigration(16)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), freezeCancelOnlyMigration(12), shepherdEventMigration(16), freezeFixPrMigration(23)]);
   const store = shepherdStoreRef();
   store.bind(db);
   store.get().register({ repo: REPO, pr: 1, runId: RUN, task: "demo/TP-1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
@@ -266,6 +266,33 @@ describe("sh-spawn-fixer", () => {
     expect(r.spawned).toHaveLength(1);
   });
 
+  it("spawns no fixer and reads no roster while a seat's fix PR is marked for the episode", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    r.freezes.markFixPr(REPO, 1, 1, "coord-a");
+    let rosterReads = 0;
+    const counted: FixerAgents = { ...r.wiring.fixers!, roster: async () => (rosterReads++, []) };
+
+    const result = await spawnFixer(r.deps, { ...r.wiring, fixers: counted }, fixer, signal);
+
+    expect(result).toEqual({ fixer: null, fixPr: 1, thawed: false, detail: "seat fix PR #1 is marked for this episode" });
+    expect(rosterReads).toBe(0);
+    expect(r.spawned).toEqual([]);
+    expect(r.freezes.get(REPO)?.fixer).toBeNull();
+  });
+
+  it("spawns a fixer on a later episode, because a fix PR marked on an earlier one does not carry over", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    r.freezes.markFixPr(REPO, 1, 1, "coord-a");
+    thawAndRefreeze(r);
+
+    const result = await spawnFixer(r.deps, r.wiring, { ...fixer, episode: 2 }, signal);
+
+    expect(result).toMatchObject({ fixer: fixerName(REPO, RED), detail: "spawned" });
+    expect(r.spawned).toHaveLength(1);
+  });
+
   it("spawns nothing when the policy grants no fixer", async () => {
     const r = rig();
     r.freezes.freeze(REPO, RED);
@@ -287,6 +314,16 @@ describe("sh-freeze", () => {
     const second = freezeStep(r.wiring, { repo: REPO, mergeSha: LATER });
 
     expect([first.state, replay.state, second.state]).toEqual(["new", "new", "again"]);
+  });
+
+  it("classes a red while the episode has a marked fix PR and no fixer as again, naming the PR", () => {
+    const r = rig();
+    freezeStep(r.wiring, red);
+    r.freezes.markFixPr(REPO, 1, 1, "coord-a");
+
+    const second = freezeStep(r.wiring, { repo: REPO, mergeSha: LATER });
+
+    expect(second).toMatchObject({ state: "again", fixer: null, fixPr: 1, episode: 1 });
   });
 
   it("records on the freeze whether the red came only from cancelled runs", () => {

@@ -3,9 +3,11 @@ import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdEventMigration } from "./events.js";
-import { holdSlotsMigration } from "./store-migrations.js";
+import type { PrFilesRead } from "./git-pr-files.js";
+import { holdSlotsMigration, registrationFactsMigration } from "./store-migrations.js";
+import { spawnFacts } from "./spawn-facts.js";
 import { holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
-import { classRulesFor, intentPlan, panelFacts, panelPolicyFor, withoutPlan, type PanelFacts } from "./review-panel-plan.js";
+import { DEFAULT_ADVERSARY_PROFILE, classRulesFor, intentPlan, panelFacts, panelPolicyFor, withoutPlan, type PanelFacts } from "./review-panel-plan.js";
 
 const HEAD = "c".repeat(40);
 const target = { repo: "octo/demo", pr: 7, head: HEAD };
@@ -32,6 +34,56 @@ const facts = (kind: string | undefined, files: PrFile[], sizeUnread = false): P
   sizeUnread,
 });
 const shapes = (planned: ReturnType<typeof intentPlan>) => planned.plan.members.map((member) => `${member.shape}:${member.profile}`);
+
+/** A store whose run names `base`, a GitHub whose list must not be read, and a git reader answering per head. */
+function gitDeps(base: string | undefined, byHead: Record<string, PrFile[]>) {
+  const store = shepherdStoreRef();
+  const db = openDatabase(":memory:");
+  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), registrationFactsMigration(24)]);
+  store.bind(db);
+  store.get().register({ repo: target.repo, pr: target.pr, runId: "run-1", task: "titan-platform/TP-1", implementer: "impl-a", policy: OWNER_GATE_POLICY, kind: "correctness", ...(base !== undefined && { base }) });
+  const fake = fakeGitHub();
+  fake.prFiles.set(target.pr, [source("from-github.ts", 1)]);
+  const reads: string[] = [];
+  const prFiles: PrFilesRead = async ({ head, base: readBase }) => (reads.push(`${readBase}@${head}`), byHead[head] ?? []);
+  return { deps: { store, port: githubPort(fake.wire), prFiles }, fake, reads };
+}
+
+describe("the PR's files from local git", () => {
+  const OTHER = "d".repeat(40);
+  const byHead = { [HEAD]: [source("src/small.ts", 5)], [OTHER]: [source("src/big.ts", 500)] };
+
+  it("reads the panel's files from git at the review's head and the registered base, and none from GitHub", async () => {
+    const { deps, fake, reads } = gitDeps("main", byHead);
+
+    const read = await panelFacts(deps, target, "run-1");
+
+    expect(read.facts.changedFiles.map((file) => file.path)).toEqual(["src/small.ts"]);
+    expect(reads).toEqual([`main@${HEAD}`]);
+    expect(fake.calls).toEqual([]);
+  });
+
+  it("sizes a spawn from git at the review's head, so a new head of the same PR is sized again", async () => {
+    const { deps, fake } = gitDeps("main", byHead);
+    const spawn = { mode: "spawn", at: 1 };
+
+    const first = await spawnFacts(deps, "run-1", spawn, target, undefined);
+    const second = await spawnFacts(deps, "run-1", spawn, { ...target, head: OTHER }, undefined);
+
+    expect(first).toMatchObject({ changedLines: 5 });
+    expect(second).toMatchObject({ changedLines: 500 });
+    expect(fake.calls).toEqual([]);
+  });
+
+  it("reads GitHub when the registration names no base", async () => {
+    const { deps, reads } = gitDeps(undefined, byHead);
+
+    const read = await panelFacts(deps, target, "run-1");
+
+    expect(read.facts.changedFiles.map((file) => file.path)).toEqual(["from-github.ts"]);
+    expect(reads).toEqual([]);
+  });
+});
 
 describe("panelFacts", () => {
   it("reads the registered kind and the PR's changed files", async () => {
@@ -95,6 +147,37 @@ describe("intentPlan", () => {
     const planned = intentPlan(facts("correctness", [source("src/a.ts", 60), source("src/a.test.ts", 0)]), panelPolicyFor(roles), undefined, classRulesFor(roles));
 
     expect(planned).toMatchObject({ class: "g10", touches: ["large"] });
+  });
+
+  describe("a g10-adversary hold's member", () => {
+    const holdMember = { profile: DEFAULT_ADVERSARY_PROFILE };
+    const plain = facts("correctness", [source("src/a.ts", 20), source("src/a.test.ts", 10)]);
+    const large = facts("correctness", [source("src/a.ts", 1)], true);
+
+    it("plans exactly one adversary beside correctness at fable-reviewer when the files touch nothing that asks for one", () => {
+      const planned = intentPlan(plain, panelPolicyFor(), undefined, undefined, { holdMember, fullPanel: false });
+
+      expect(shapes(planned)).toEqual(["correctness:reviewer", "adversary:fable-reviewer"]);
+      expect(planned.plan.members[1]).toMatchObject({ blocking: true, degraded: false });
+    });
+
+    it("plans none without the hold's member, as with the flag off", () => {
+      expect(shapes(intentPlan(plain, panelPolicyFor()))).toEqual(["correctness:reviewer"]);
+    });
+
+    it("keeps only correctness and the adversary when the panel is not on, so a held head starts no other member", () => {
+      const planned = intentPlan(large, panelPolicyFor(), undefined, undefined, { holdMember, fullPanel: false });
+
+      expect(shapes(planned)).toEqual(["correctness:bd-reviewer", "adversary:fable-reviewer"]);
+    });
+
+    it("puts the hold's adversary first among the panel's shapes under on, at the hold's profile rather than the table's", () => {
+      const security = facts("security", [source("src/auth.ts", 20)], true);
+
+      const planned = intentPlan(security, panelPolicyFor(), undefined, undefined, { holdMember });
+
+      expect(shapes(planned)).toEqual(["correctness:bd-reviewer", "adversary:fable-reviewer", "tests:reviewer"]);
+    });
   });
 });
 

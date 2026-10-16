@@ -51,7 +51,7 @@ declare const charterDefaultsSchema: z.ZodObject<{
         planner: z.ZodNumber;
     }, z.core.$loose>;
     teleport_k: z.ZodNumber;
-    worktrees_per_repo_per_seat: z.ZodNumber;
+    worktrees_per_repo_per_seat: z.ZodOptional<z.ZodNumber>;
     worktrees_left_free_per_repo: z.ZodNumber;
     stale_pr_days: z.ZodOptional<z.ZodNumber>;
     heartbeat_cron: z.ZodOptional<z.ZodString>;
@@ -109,7 +109,7 @@ declare const charterPolicySchema: z.ZodObject<{
             planner: z.ZodNumber;
         }, z.core.$loose>;
         teleport_k: z.ZodNumber;
-        worktrees_per_repo_per_seat: z.ZodNumber;
+        worktrees_per_repo_per_seat: z.ZodOptional<z.ZodNumber>;
         worktrees_left_free_per_repo: z.ZodNumber;
         stale_pr_days: z.ZodOptional<z.ZodNumber>;
         heartbeat_cron: z.ZodOptional<z.ZodString>;
@@ -265,7 +265,7 @@ declare const seatConfigSchema: z.ZodObject<{
             planner: z.ZodNumber;
         }, z.core.$loose>>;
         teleport_k: z.ZodOptional<z.ZodNumber>;
-        worktrees_per_repo_per_seat: z.ZodOptional<z.ZodNumber>;
+        worktrees_per_repo_per_seat: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
         worktrees_left_free_per_repo: z.ZodOptional<z.ZodNumber>;
         stale_pr_days: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
         heartbeat_cron: z.ZodOptional<z.ZodOptional<z.ZodString>>;
@@ -330,6 +330,77 @@ declare const seatEventSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
 }, z.core.$strip>], "kind">;
 declare const SEAT_EVENT_KINDS: readonly string[];
 type SeatEvent = z.infer<typeof seatEventSchema>;
+
+declare const AUTHORED_MAX_CHARS = 1500;
+declare const authoredContinuationSchema: z.ZodObject<{
+    on: z.ZodEnum<{
+        agent: "agent";
+        pr: "pr";
+        msg: "msg";
+        time: "time";
+    }>;
+    ref: z.ZodString;
+    do: z.ZodString;
+}, z.core.$strict>;
+declare const standingRuleSchema: z.ZodObject<{
+    text: z.ZodString;
+    source: z.ZodString;
+    expires: z.ZodISODate;
+}, z.core.$strict>;
+declare const openQuestionSchema: z.ZodObject<{
+    to: z.ZodString;
+    msg_id: z.ZodString;
+    text: z.ZodString;
+}, z.core.$strict>;
+declare const authoredBlockSchema: z.ZodObject<{
+    continuations: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        on: z.ZodEnum<{
+            agent: "agent";
+            pr: "pr";
+            msg: "msg";
+            time: "time";
+        }>;
+        ref: z.ZodString;
+        do: z.ZodString;
+    }, z.core.$strict>>>;
+    standing_rules: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        text: z.ZodString;
+        source: z.ZodString;
+        expires: z.ZodISODate;
+    }, z.core.$strict>>>;
+    open_questions: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        to: z.ZodString;
+        msg_id: z.ZodString;
+        text: z.ZodString;
+    }, z.core.$strict>>>;
+    next_why: z.ZodDefault<z.ZodString>;
+}, z.core.$strict>;
+type AuthoredContinuation = z.infer<typeof authoredContinuationSchema>;
+type StandingRule = z.infer<typeof standingRuleSchema>;
+type OpenQuestion = z.infer<typeof openQuestionSchema>;
+type AuthoredBlock = z.infer<typeof authoredBlockSchema>;
+type AuthoredError = {
+    code: "too-long" | "invalid-json" | "missing" | "invalid";
+    path: string;
+    message: string;
+};
+type AuthoredResult = {
+    ok: true;
+    block: AuthoredBlock;
+} | {
+    ok: false;
+    errors: AuthoredError[];
+};
+/**
+ * Validates the seat's authored block from its stored JSON text; never throws.
+ * `""` is the cleared block and reads as empty.
+ */
+declare function parseAuthored(text: string): AuthoredResult;
+/**
+ * Renders the block as plain-text sections, leaving out empty ones. A standing rule is in
+ * force through its `expires` day and is dropped once `now`'s UTC day is past it.
+ */
+declare function renderAuthored(block: AuthoredBlock, now: Date): string;
 
 declare const seatHoldSchema: z.ZodObject<{
     target: z.ZodString;
@@ -445,7 +516,7 @@ declare const coordinatorSeatSchema: z.ZodObject<{
             planner: z.ZodNumber;
         }, z.core.$loose>>;
         teleport_k: z.ZodOptional<z.ZodNumber>;
-        worktrees_per_repo_per_seat: z.ZodOptional<z.ZodNumber>;
+        worktrees_per_repo_per_seat: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
         worktrees_left_free_per_repo: z.ZodOptional<z.ZodNumber>;
         stale_pr_days: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
         heartbeat_cron: z.ZodOptional<z.ZodOptional<z.ZodString>>;
@@ -541,7 +612,7 @@ declare const coordinatorPolicySchema: z.ZodObject<{
             planner: z.ZodNumber;
         }, z.core.$loose>>;
         teleport_k: z.ZodOptional<z.ZodNumber>;
-        worktrees_per_repo_per_seat: z.ZodOptional<z.ZodNumber>;
+        worktrees_per_repo_per_seat: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
         worktrees_left_free_per_repo: z.ZodOptional<z.ZodNumber>;
         stale_pr_days: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
         heartbeat_cron: z.ZodOptional<z.ZodOptional<z.ZodString>>;
@@ -624,7 +695,7 @@ declare const coordinatorConfigSchema: z.ZodObject<{
                 planner: z.ZodNumber;
             }, z.core.$loose>>;
             teleport_k: z.ZodOptional<z.ZodNumber>;
-            worktrees_per_repo_per_seat: z.ZodOptional<z.ZodNumber>;
+            worktrees_per_repo_per_seat: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
             worktrees_left_free_per_repo: z.ZodOptional<z.ZodNumber>;
             stale_pr_days: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
             heartbeat_cron: z.ZodOptional<z.ZodOptional<z.ZodString>>;
@@ -793,7 +864,7 @@ declare const coordinatorConfigSchema: z.ZodObject<{
                 planner: z.ZodNumber;
             }, z.core.$loose>>;
             teleport_k: z.ZodOptional<z.ZodNumber>;
-            worktrees_per_repo_per_seat: z.ZodOptional<z.ZodNumber>;
+            worktrees_per_repo_per_seat: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
             worktrees_left_free_per_repo: z.ZodOptional<z.ZodNumber>;
             stale_pr_days: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
             heartbeat_cron: z.ZodOptional<z.ZodOptional<z.ZodString>>;
@@ -868,4 +939,4 @@ type PrefixScopes = Readonly<Record<string, string>>;
  */
 declare function projectSeatGeneration(state: SeatState, activity: SeatGenerationActivity, scopes: PrefixScopes): SessionFacts[];
 
-export { type CharterDefaults, type CharterPolicy, type CharterPolicyError, type CharterPolicyResult, type CoordinatorConfig, type CoordinatorConfigError, type CoordinatorConfigResult, type CoordinatorOwner, type CoordinatorPolicy, type CoordinatorSeat, HARD_STOPS, HARD_STOP_CLASSES, type HardStop, type HardStopClass, type PrefixScopes, type ResolvedSeatPolicy, SEAT_EVENT_KINDS, type SeatConcurrency, type SeatConfig, type SeatEvent, type SeatFoldError, type SeatFoldOptions, type SeatGenerationActivity, type SeatRepo, type SeatSpend, type SeatState, type SessionFacts, charterDefaultsSchema, charterPolicyErrorSchema, charterPolicySchema, checkCoordinatorConfig, coordinatorConfigErrorSchema, coordinatorConfigSchema, coordinatorOwnerSchema, coordinatorPolicySchema, coordinatorSeatSchema, emptySeatState, foldSeatEvents, hardStopClassSchema, hardStopsIn, importAutonomyTree, parseCharterPolicy, projectSeatGeneration, renderSeatBook, resolveSeatPolicy, scratchPathOf, seatBackgroundSchema, seatClaimSchema, seatConcurrencySchema, seatConfigSchema, seatEventSchema, seatFoldErrorSchema, seatHoldSchema, seatRepoSchema, seatSpendSchema, seatStateSchema, sessionFactsPrSchema, sessionFactsSchema };
+export { AUTHORED_MAX_CHARS, type AuthoredBlock, type AuthoredContinuation, type AuthoredError, type AuthoredResult, type CharterDefaults, type CharterPolicy, type CharterPolicyError, type CharterPolicyResult, type CoordinatorConfig, type CoordinatorConfigError, type CoordinatorConfigResult, type CoordinatorOwner, type CoordinatorPolicy, type CoordinatorSeat, HARD_STOPS, HARD_STOP_CLASSES, type HardStop, type HardStopClass, type OpenQuestion, type PrefixScopes, type ResolvedSeatPolicy, SEAT_EVENT_KINDS, type SeatConcurrency, type SeatConfig, type SeatEvent, type SeatFoldError, type SeatFoldOptions, type SeatGenerationActivity, type SeatRepo, type SeatSpend, type SeatState, type SessionFacts, type StandingRule, authoredBlockSchema, authoredContinuationSchema, charterDefaultsSchema, charterPolicyErrorSchema, charterPolicySchema, checkCoordinatorConfig, coordinatorConfigErrorSchema, coordinatorConfigSchema, coordinatorOwnerSchema, coordinatorPolicySchema, coordinatorSeatSchema, emptySeatState, foldSeatEvents, hardStopClassSchema, hardStopsIn, importAutonomyTree, openQuestionSchema, parseAuthored, parseCharterPolicy, projectSeatGeneration, renderAuthored, renderSeatBook, resolveSeatPolicy, scratchPathOf, seatBackgroundSchema, seatClaimSchema, seatConcurrencySchema, seatConfigSchema, seatEventSchema, seatFoldErrorSchema, seatHoldSchema, seatRepoSchema, seatSpendSchema, seatStateSchema, sessionFactsPrSchema, sessionFactsSchema, standingRuleSchema };

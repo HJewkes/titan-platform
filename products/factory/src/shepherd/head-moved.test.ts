@@ -13,11 +13,15 @@ import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { ReviewRequest, ShepherdPhases, Verdict } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { RESYNC_READ_TIMEOUT_MS } from "./bounded.js";
 import { seatPolicyHead, supersedeMovedGates } from "./head-moved.js";
 import { shepherdStoreRef } from "./store.js";
 
 const hosts: FactoryHost[] = [];
-afterEach(() => hosts.splice(0).forEach((host) => host.close()));
+afterEach(() => {
+  vi.useRealTimers();
+  hosts.splice(0).forEach((host) => host.close());
+});
 
 /** Synthetic stand-ins for the three heads of the replayed run: sent back, gated, then moved past the gate. */
 const SENT_BACK = fakeSha("replay-sent-back");
@@ -103,8 +107,8 @@ async function conflictAtGated(): Promise<{ host: FactoryHost; fake: FakeGitHub;
   return { ...(await gatedRun(fake, phases, { headSha: SENT_BACK, mergeableState: "dirty" })), fake, reviewed, review };
 }
 
-/** Six FIX_FIRST reviews, each followed by a fixer push, escalate to the owner at the sixth head; `moved` answers the review at MOVED. */
-async function runawayAtSixthHead(moved: "FIX_FIRST" | "MERGE"): Promise<{ host: FactoryHost; fake: FakeGitHub; services: Services; runId: string; reviewed: string[]; gated: string }> {
+/** Three FIX_FIRST reviews, the first two followed by a fixer push, escalate to the owner at the third head; `moved` answers the review at MOVED. */
+async function runawayAtThirdHead(moved: "FIX_FIRST" | "MERGE"): Promise<{ host: FactoryHost; fake: FakeGitHub; services: Services; runId: string; reviewed: string[]; gated: string }> {
   const fake = fakeGitHub();
   const reviewed: string[] = [];
   let pushes = 0;
@@ -316,19 +320,42 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
   });
 
-  it("a gate the owner resolves while its head read is in flight is not cancelled", async () => {
+  it.each([
+    ["is not cancelled", {}],
+    ["is not reported in a dry run", { dryRun: true }],
+  ])("a gate the owner resolves while its head read is in flight %s", async (_case, options) => {
     const { host, fake, services, runId } = await gatedAtSecondHead();
     fake.pushHead(1, MOVED);
     let release!: () => void;
     const released = new Promise<void>((resolve) => (release = resolve));
     const slow = { ...services, port: { ...services.port, getPr: async (repo: string, pr: number) => (await released, services.port.getPr(repo, pr)) } };
 
-    const sweeping = supersedeMovedGates(host, slow);
+    const sweeping = supersedeMovedGates(host, slow, options);
     host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: GATED }, OWNER);
     release();
 
     expect(await sweeping).toEqual([]);
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).not.toBe("cancelled");
+  });
+
+  it("a gate whose head read never answers stays pending while a moved gate is superseded", async () => {
+    const { host, fake, services, runId } = await gatedAtSecondHead();
+    fake.addPr({ headSha: GATED });
+    const moved = host.runtime.start("shepherd-pr", { repo: REPO, pr: "2", policy: JSON.stringify(OWNER_GATE_POLICY) });
+    services.store.get().register({ repo: REPO, pr: 2, runId: moved, task: "demo/2", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    await gateOpened(host, gateId(moved, "approve-merge"));
+    fake.pushHead(1, MOVED);
+    fake.pushHead(2, MOVED);
+    const hanging = { ...services, port: { ...services.port, getPr: (repo: string, pr: number) => (pr === 1 ? new Promise<never>(() => undefined) : services.port.getPr(repo, pr)) } };
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let settled = false;
+
+    const sweeping = supersedeMovedGates(host, hanging).finally(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(RESYNC_READ_TIMEOUT_MS);
+
+    expect(settled).toBe(true);
+    expect(await sweeping).toEqual([{ runId: moved, gateId: gateId(moved, "approve-merge"), from: GATED, to: MOVED, condition: "head-moved" }]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
   });
 
   it("leaves a gate alone when GitHub cannot be read", async () => {
@@ -404,7 +431,7 @@ describe("a pending shepherd-route failed-rounds approve-merge gate", () => {
 
 describe("a pending shepherd-route fix-first-runaway approve-merge gate", () => {
   it("is superseded when the head moves, and the new head is reviewed", async () => {
-    const { host, fake, services, runId, reviewed, gated } = await runawayAtSixthHead("FIX_FIRST");
+    const { host, fake, services, runId, reviewed, gated } = await runawayAtThirdHead("FIX_FIRST");
     expect(host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("Policy shepherd-route/fix-first-runaway");
     fake.pushHead(1, MOVED);
 
@@ -416,7 +443,7 @@ describe("a pending shepherd-route fix-first-runaway approve-merge gate", () => 
   });
 
   it("is asked again, pinned to the new head, when the new head's review is FIX_FIRST", async () => {
-    const { host, fake, services, runId } = await runawayAtSixthHead("FIX_FIRST");
+    const { host, fake, services, runId } = await runawayAtThirdHead("FIX_FIRST");
     fake.pushHead(1, MOVED);
 
     await supersedeMovedGates(host, services);
@@ -426,7 +453,7 @@ describe("a pending shepherd-route fix-first-runaway approve-merge gate", () => 
   });
 
   it("is asked again at the new head, quoting its MERGE review, and does not merge it", async () => {
-    const { host, fake, services, runId } = await runawayAtSixthHead("MERGE");
+    const { host, fake, services, runId } = await runawayAtThirdHead("MERGE");
     fake.pushHead(1, MOVED);
 
     await supersedeMovedGates(host, services);
@@ -440,7 +467,7 @@ describe("a pending shepherd-route fix-first-runaway approve-merge gate", () => 
   });
 
   it("is kept while the head it asks about is still the pull request's head", async () => {
-    const { host, services, runId } = await runawayAtSixthHead("FIX_FIRST");
+    const { host, services, runId } = await runawayAtThirdHead("FIX_FIRST");
 
     expect(await supersedeMovedGates(host, services)).toEqual([]);
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
@@ -452,6 +479,8 @@ function snapshotAt(services: Services, fake: FakeGitHub, rowHead: string): { se
   const reads: number[] = [];
   const snapshot: PrSnapshot = {
     openPrs: async () => [{ ...fake.pr(1), headSha: rowHead }],
+    openList: async () => ({ prs: [{ ...fake.pr(1), headSha: rowHead }], at: 0 }),
+    cachedRuns: () => undefined,
     getPr: async () => Promise.reject(new Error("the sweep reads PRs through the port")),
     checkRuns: async () => [],
     invalidate: () => undefined,
@@ -462,7 +491,7 @@ function snapshotAt(services: Services, fake: FakeGitHub, rowHead: string): { se
 
 describe("a pending approve-merge gate read through the PR snapshot", () => {
   it("a snapshot row still at the gated head costs no PR read and supersedes nothing", async () => {
-    const { host, fake, services, runId, gated } = await runawayAtSixthHead("MERGE");
+    const { host, fake, services, runId, gated } = await runawayAtThirdHead("MERGE");
     const read = snapshotAt(services, fake, gated);
 
     expect(await supersedeMovedGates(host, read.services)).toEqual([]);
@@ -471,7 +500,7 @@ describe("a pending approve-merge gate read through the PR snapshot", () => {
   });
 
   it("a snapshot row behind the gate's head is confirmed through the port and the live gate stays", async () => {
-    const { host, fake, services, runId } = await runawayAtSixthHead("MERGE");
+    const { host, fake, services, runId } = await runawayAtThirdHead("MERGE");
     const read = snapshotAt(services, fake, SENT_BACK);
 
     expect(await supersedeMovedGates(host, read.services)).toEqual([]);
@@ -480,7 +509,7 @@ describe("a pending approve-merge gate read through the PR snapshot", () => {
   });
 
   it("a snapshot row at a new head supersedes once the port agrees", async () => {
-    const { host, fake, services, runId, gated } = await runawayAtSixthHead("MERGE");
+    const { host, fake, services, runId, gated } = await runawayAtThirdHead("MERGE");
     fake.pushHead(1, MOVED);
     const read = snapshotAt(services, fake, MOVED);
 

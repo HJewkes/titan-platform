@@ -13,19 +13,33 @@ name: Release
 # by hand from the owner's own terminal (see CLAUDE.md). Setup: site/guides/autonomous-loop-setup.md.
 #
 # Release runs after a green CI run for a push to main, so it doesn't repeat CI's
-# build, typecheck, lint and test. Every main push's CI run completes and starts a
-# Release run. A run for a sha that is no longer the main tip skips its job, and a queued
-# run a newer one replaces never starts; pending changesets stay pending either way, so
-# the next Release for the tip releases them.
+# build, typecheck, lint and test. Every main push's CI run that is not replaced
+# while queued completes and starts a Release run. A run for a sha that is no longer
+# the main tip skips its job, and a queued run a newer one replaces never starts;
+# pending changesets stay pending either way, so the next Release for the tip
+# releases them.
+#
+# Each refresh of the Version Packages PR pushes a head that runs full CI, so a burst
+# of merges refreshes it at most once per 30 minutes. The hourly schedule picks up a
+# refresh the debounce skipped once merges stop. Publishing is never debounced: with
+# no pending changeset on a green tip the action publishes, from either trigger. Both
+# share the concurrency group below, so a scheduled run that replaces a queued publish
+# run publishes in its place.
 on:
   workflow_run:
     workflows: [CI]
     types: [completed]
     branches: [main]
+  schedule:
+    - cron: "23 * * * *"
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
+
+# onnxruntime-node would otherwise fetch CUDA binaries on install; no job uses them.
+env:
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
 
 jobs:
   release:
@@ -33,13 +47,16 @@ jobs:
     # the main tip when the event fired. Requiring that it is the sha CI validated
     # keeps the commit and the tags on code that passed. If a newer push landed first,
     # its own CI run triggers the next Release.
+    # The gate step holds a scheduled run to the same bar: a green push CI run at the tip.
     if: >-
+      github.event_name == 'schedule' || (
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
-      github.event.workflow_run.head_sha == github.sha
+      github.event.workflow_run.head_sha == github.sha)
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: write
       pull-requests: write
       id-token: write
@@ -55,19 +72,34 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      # The full-history checkout carries origin/changeset-release/main, the Version Packages PR's branch. The runner's own
+      # node runs the gate, which needs no dependency, so a skipped run installs nothing.
+      - name: Decide whether to version or publish now
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          TIP: ${{ github.sha }}
+        run: node scripts/release-gate.mjs
+      - if: steps.gate.outputs.run == 'true'
+        uses: pnpm/action-setup@v4
+      - if: steps.gate.outputs.run == 'true'
+        uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
           cache: pnpm
           registry-url: https://registry.npmjs.org
       # Trusted publishing needs npm >= 11.5.1. Pinned to 11.x whatever npm .node-version bundles:
       # changesets passes pnpm's --git-checks to npm publish, which npm 12 rejects outright.
-      - run: npm install -g npm@11 && npm --version
+      - if: steps.gate.outputs.run == 'true'
+        run: npm install -g npm@11 && npm --version
       # No build here: `pnpm release` builds before `changeset publish`, and
       # `pnpm version-packages` reads package sources, not dist.
-      - run: pnpm install --frozen-lockfile
-      - name: Version packages or publish
+      - if: steps.gate.outputs.run == 'true'
+        run: pnpm install --frozen-lockfile
+      - if: steps.gate.outputs.run == 'true'
+        name: Version packages or publish
         uses: changesets/action@v1
         with:
           version: pnpm version-packages

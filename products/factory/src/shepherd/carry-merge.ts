@@ -7,9 +7,11 @@ import { codeRoute, step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
 import { failureOf } from "./error-class.js";
 import { seatFixFirst } from "./external-review.js";
+import { registeredOwners } from "./seat-tie.js";
 import { registeredKind } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { mergeVerdict, type ReviewWiring } from "./review.js";
+import { CiPolicySchema } from "./review-schemas.js";
 import { FIX_CARRY_STEP, fixCarryRoute } from "./fix-carry.js";
 import { OWN_MERGE_UP_STEP, ownMergeUpRoute } from "./own-merge-up.js";
 import { MERGE_UP_STEP, mergeUpRoute, recordMergeUp, treeCarries } from "./merge-up-carry.js";
@@ -18,7 +20,7 @@ import { carryStep, type CarryInput, type CarryResult } from "./tree-carry.js";
 
 const CARRY_SCOPE_STEP = "sh-carry-scope";
 const CARRY_SEAT_STEP = "sh-carry-seat";
-/** Records an approve-merge answer that followed a head to its remerge-clean update or small fix, so the ledger shows why no gate opened. */
+/** Records an approve-merge answer that followed a head to its remerge-clean update or tree-equal merge-up, so the ledger shows why no gate opened. */
 export const APPROVAL_CARRY_STEP = "sh-approval-carry";
 export const CARRY_SCOPE_STEPS: readonly StepDeclaration[] = [
   { id: CARRY_SCOPE_STEP, kind: "dispatch" },
@@ -35,7 +37,8 @@ export const CARRYING_KINDS: ReadonlySet<string> = new Set(["correctness", "feat
 
 /**
  * Kinds whose owner approve-merge answer may follow Shepherd's own disjoint clean merge-up and nothing else (G10): the
- * remerge and small-fix rules stay closed to them, and a reviewed MERGE never carries (`CARRYING_KINDS`).
+ * remerge and fix-probe rules stay closed to them, and a reviewed MERGE never carries (`CARRYING_KINDS`). It never follows
+ * across a merge-up whose main side touches a carry-fenced path (TP-2495).
  * Why: the 2026-10-11 owner decision (TP-2252) lets an owner's approval carry across Shepherd's own merge-up for security PRs.
  */
 const OWN_MERGE_UP_KINDS: ReadonlySet<string> = new Set(["security"]);
@@ -155,16 +158,18 @@ async function seatHeads(port: ShepherdDeps["port"], input: SeatInput): Promise<
 /**
  * Reads every seat reviewer at each head a carry would vouch for, so a FIX_FIRST at any of them refuses it, as the fresh review
  * at that head would have. An unreadable roster, transcript, commit list or force-push list refuses too. With no dispatch wired there is no
- * roster to read.
+ * roster to read. The store, when given, names the registered owners that tie a seat reviewer whose transcript shows nothing.
  */
-export function carrySeatRoute(deps: Pick<ShepherdDeps, "now" | "port">, wiring: ReviewWiring | undefined): StepRoute {
+export function carrySeatRoute(deps: Pick<ShepherdDeps, "now" | "port"> & Partial<Pick<ShepherdDeps, "store">>, wiring: ReviewWiring | undefined): StepRoute {
   return codeRoute(CARRY_SEAT_STEP, deps.now, async (input: SeatInput) => {
     const dispatch = wiring?.dispatch;
     if (!dispatch) return { clear: true };
     const walked = await seatHeads(deps.port, input);
     if ("reason" in walked) return { clear: false, reason: walked.reason };
     for (const head of walked.heads) {
-      const check = await seatFixFirst(() => dispatch.roster(), wiring.reader, { repo: input.repo, pr: input.pr, head });
+      const target = { repo: input.repo, pr: input.pr, head };
+      const owners = deps.store && registeredOwners(deps.store, target);
+      const check = await seatFixFirst(() => dispatch.roster(), wiring.reader, { ...target, ...owners });
       if (check.kind !== "clear") return { clear: false, reason: check.kind === "none" ? check.reason : `a seat reviewer said FIX_FIRST at ${head}` };
     }
     return { clear: true };
@@ -180,7 +185,9 @@ const Evidence = z.looseObject({
     dispatchedReviewer: z.looseObject({ agentId: z.string().min(1), sessionId: z.string().min(1) }),
     seatGrants: z.array(z.string()),
   }),
-  record: z.looseObject({ verdictLocator: z.looseObject({}) }),
+  record: z.looseObject({ verdictLocator: z.looseObject({}), proofUnverified: z.string().optional() }),
+  ciPolicy: CiPolicySchema,
+  grantWithheld: z.object({ policy: z.string().nullable(), proof: z.string().nullable() }).optional(),
 });
 type SourceEvidence = z.infer<typeof Evidence>;
 
@@ -246,6 +253,9 @@ export async function carriedVerdict(ctx: WorkflowContext, target: CarryTarget, 
     dispatchedReviewer: merge.dispatchedReviewer,
     seatGrants: merge.seatGrants,
     carry,
+    ...(source.ciPolicy && { ciPolicy: source.ciPolicy }),
+    ...(source.grantWithheld && { grantWithheld: source.grantWithheld }),
+    ...(source.record.proofUnverified !== undefined && { proofUnverified: source.record.proofUnverified }),
   });
   return mergeUp && verdict.kind === "MERGE" ? { ...verdict, mergeUpFrom: fromHead } : verdict;
 }

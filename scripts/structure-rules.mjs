@@ -1,7 +1,7 @@
 // Structure checks for the rules in CLAUDE.md that no linter enforces (TP-897 plan S5).
 // Each check takes a repo root and returns one remediation message per violation.
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { basename, dirname, join, relative } from "node:path";
+import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
+import { basename, dirname, extname, join, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { findTiersRule, layersFromTiers, productIsolationRules } from "./new-package.mjs";
 
@@ -203,4 +203,87 @@ export function checkRootLintCoversWorkspaces(root) {
       (dir) =>
         `The root \`lint\` script does not reach \`${dir}\`. Add \`${dir}/src\` to it in \`package.json\`; workspaces have no \`lint\` script of their own.`,
     );
+}
+
+const WORKSPACE_IMPORT = /(?:\bfrom\s+|\bimport\s*\(\s*|\brequire\s*\(\s*|^import\s+)["'](@titan-design\/[a-z0-9-]+)/gm;
+const SOURCE_FILE = /\.[cm]?[jt]sx?$/;
+const SKIPPED_DIRS = new Set(["node_modules", "dist", "coverage"]);
+
+function sourceFiles(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return SKIPPED_DIRS.has(entry.name) ? [] : sourceFiles(path);
+    return entry.isFile() && SOURCE_FILE.test(entry.name) ? [path] : [];
+  });
+}
+
+function undeclaredImports(root, dir, members) {
+  const pkg = readJson(join(root, dir, "package.json"));
+  const declared = new Set(DEPENDENCY_FIELDS.flatMap((field) => Object.keys(pkg[field] ?? {})));
+  return sourceFiles(join(root, dir)).flatMap((file) =>
+    [...readFileSync(file, "utf8").matchAll(WORKSPACE_IMPORT)]
+      .map((match) => match[1])
+      .filter((name) => members.has(name) && name !== pkg.name && !declared.has(name))
+      .map((name) => `\`${relative(root, file)}\` imports \`${name}\`, which \`${pkg.name}\` does not declare. Add it as \`workspace:^\` (a devDependency for test-only use), so the package graph knows the edge.`),
+  );
+}
+
+/** R58: a workspace member declares every workspace package it imports; test scoping follows only declared edges. */
+export function checkWorkspaceImportsDeclared(root) {
+  const dirs = workspaceGlobs(root).flatMap((glob) => resolveWorkspaceGlob(root, glob));
+  const members = new Set(dirs.map((dir) => readJson(join(root, dir, "package.json")).name));
+  return [...new Set(dirs.flatMap((dir) => undeclaredImports(root, dir, members)))];
+}
+
+const PYTHON_GROUPS = ["packages", "products", "apps"];
+const BOUNDARY_BEFORE = "(?:^|[\\s;&|(=\"'/])";
+const BOUNDARY_AFTER = "(?=$|[\\s;&|)\"'])";
+// Any python entry point (python, python3, python3.12, a path ending /python*) or a Python package runner, anywhere in the command.
+const PYTHON_INVOCATION = new RegExp(`${BOUNDARY_BEFORE}(?:python[\\d.]*|uvx?|pip[\\d.]*|pipx|pdm|hatch|pipenv|poetry)${BOUNDARY_AFTER}`);
+const PYTHON_EXTENSIONS = new Set([".py", ".pyw", ".pyi"]);
+const PYTHON_SHEBANG = /^#!.*\bpython[\d.]*\b/;
+const PYTHON_MANIFEST = /^(?:pyproject\.toml|requirements.*\.txt)$/;
+// style-analyzer and style-checker ship Python source as sample input for analysing Python code; it is data, never run as a tool.
+const PYTHON_SAMPLE_DIRS = new Set(["packages/style-analyzer/fixtures", "packages/style-checker/fixtures"]);
+
+function startsWithPythonShebang(path) {
+  const fd = openSync(path, "r");
+  try {
+    const buffer = Buffer.alloc(128);
+    const length = readSync(fd, buffer, 0, buffer.length, 0);
+    return PYTHON_SHEBANG.test(buffer.toString("utf8", 0, length).split("\n")[0]);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function isPythonFile(path, name) {
+  if (PYTHON_EXTENSIONS.has(extname(name)) || PYTHON_MANIFEST.test(name)) return true;
+  return extname(name) === "" && startsWithPythonShebang(path);
+}
+
+function pythonFiles(root, dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      const skipped = SKIPPED_DIRS.has(entry.name) || PYTHON_SAMPLE_DIRS.has(relative(root, path).split(sep).join("/"));
+      return skipped ? [] : pythonFiles(root, path);
+    }
+    return entry.isFile() && isPythonFile(path, entry.name) ? [path] : [];
+  });
+}
+
+function pythonScripts(root, dir) {
+  const manifest = readJson(join(dir, "package.json"));
+  return Object.entries(manifest.scripts ?? {})
+    .filter(([, command]) => PYTHON_INVOCATION.test(command))
+    .map(([name]) => `\`${relative(root, dir)}\` script \`${name}\` runs python, pip, uv or another Python runner. Write the tool in TypeScript; a Python engine is reached only as an external command from a product (decision 373).`);
+}
+
+/** R59: no Python file, manifest or script under packages/*, products/* and apps/* (decision 373). */
+export function checkNoPython(root) {
+  const files = PYTHON_GROUPS.flatMap((group) => subdirs(join(root, group))).flatMap((dir) => pythonFiles(root, dir));
+  const fileViolations = files.map((file) => `\`${relative(root, file)}\` is Python. Write it in TypeScript; titan-platform releases no Python tools (decision 373).`);
+  const scriptViolations = workspaceDirs(root, PYTHON_GROUPS).flatMap((dir) => pythonScripts(root, dir));
+  return [...fileViolations, ...scriptViolations];
 }

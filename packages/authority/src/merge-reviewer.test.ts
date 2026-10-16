@@ -7,8 +7,9 @@ import { DEFAULT_TABLE } from "./table.js";
 import type { ActorClass, ConditionKind } from "./vocabulary.js";
 import { MERGE_CONDITION_KINDS } from "./vocabulary.js";
 
-// MRG-AU-RV never checks the carry or kind conditions, which belong to MRG-AU-RC and MRG-AU-RM.
-const CONDITION_KINDS = MERGE_CONDITION_KINDS.filter((condition) => !["verdict-merge-carried-tree-equal", "verdict-merge-carried-remerge-clean", "pr-kind-not-security"].includes(condition));
+// MRG-AU-RV never checks the carry or kind conditions, which belong to MRG-AU-RC, MRG-AU-RM and MRG-AU-RS.
+const CARRY_CONDITIONS = ["verdict-merge-carried-tree-equal", "verdict-merge-carried-remerge-clean", "verdict-merge-carried-merge-up-disjoint", "pr-kind-not-security"];
+const CONDITION_KINDS = MERGE_CONDITION_KINDS.filter((condition) => !CARRY_CONDITIONS.includes(condition));
 const HEAD = "a".repeat(40);
 const OLD_HEAD = "b".repeat(40);
 const ACTIONS_APP = 15368;

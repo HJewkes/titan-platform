@@ -2,11 +2,12 @@ import type { NeedsList } from "../needs/merged.js";
 import type { OwnerItem } from "@titan-design/owner-queue";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
 import { waitingGates } from "../shepherd/waiting.js";
+import { lastAwaitClause } from "../shepherd/none-reason.js";
 import type { WatchRow } from "../shepherd/view.js";
 import { flowStats, implementerHours, mergedInWindow, taskToMerge, type FlowPorts } from "./flow.js";
 import { keysIn, prKey, refOfUrl, runKey } from "./keys.js";
 import { subjectOf } from "../needs/overlap.js";
-import type { AgentChatDigest, Ask, DigestModel, DigestSlot, FlowStats, Merged, ProofFixture, SeatLine, Stuck } from "./model.js";
+import type { AgentChatDigest, Ask, DecidedLine, DigestModel, DigestSlot, FlowStats, Merged, ProofFixture, SeatLine, Stuck } from "./model.js";
 
 export interface GateFact {
   runId: string;
@@ -85,7 +86,6 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
   const needs = sources.needs ? await guarded(gaps, "owner queue", undefined, () => sources.needs!()) : undefined;
   gaps.push(...(needs?.gaps ?? []));
   const measured = await measuredSections(sources, gaps, rows, since, now);
-  const waiting = waitingGates(rows, now).owner.slice(0, WAITING_SHOWN);
   return {
     slot,
     generatedAt: now.toISOString(),
@@ -95,11 +95,17 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
     stuck: [...shepherdStuck(rows, since), ...(chat ? chatStuck(chat) : [])],
     seats,
     spend: (chat?.spend ?? []).map((a) => ({ pool: a.account, sevenDay: a.now?.sevenDay, fiveHour: a.now?.fiveHour, stale: a.stale })),
-    ...(waiting.length > 0 && { waiting }),
+    ...(chat && decidedSection(chat)),
+    ...waitingSection(rows, now),
     ...proofSection(allRows, proofRuns, allGates, needs?.items ?? []),
     ...measured,
     gaps: [...gaps, ...(chat?.gaps ?? []).map((gap) => `agent-chat: ${gap}`)],
   };
+}
+
+function waitingSection(rows: readonly WatchRow[], now: Date): Pick<DigestModel, "waiting"> {
+  const waiting = waitingGates(rows, now).owner.slice(0, WAITING_SHOWN);
+  return waiting.length > 0 ? { waiting } : {};
 }
 
 /** Owner friction and flow, the sections that are left out when their port is missing or fails. */
@@ -185,17 +191,43 @@ function chatAsks(chat: AgentChatDigest): Ask[] {
   return [...escalations, ...named("ready to merge:", chat.readyToMerge), ...named("needs a grant:", chat.needsGrant)];
 }
 
+/** Item 101: a two-way decision takes effect at once, so it is a notice with its overrule, not an ask. */
+function decidedSection(chat: AgentChatDigest): Pick<DigestModel, "decided" | "reversals"> {
+  if (chat.ledger.decided.length === 0) return {};
+  return { decided: chat.ledger.decided.map(decidedLine), reversals: chat.ledger.reversals };
+}
+
+function decidedLine({ questionId, question, answer, class: cls, state, reversible, confidence, principleIds }: AgentChatDigest["ledger"]["decided"][number]): DecidedLine {
+  return {
+    questionId,
+    question,
+    answer,
+    class: cls,
+    state,
+    ...(reversible !== undefined && { reversible }),
+    ...(confidence !== undefined && { confidence }),
+    ...(principleIds !== undefined && principleIds.length > 0 && { principleIds }),
+    ...(state === "awaiting audit" && { overrule: `agent-chat answer ${questionId} "..."` }),
+  };
+}
+
 const endedSince = (row: WatchRow, since: Date): boolean => row.phase === "done" && Date.parse(row.phaseSince) >= since.getTime();
 
 function shepherdMerged(rows: readonly WatchRow[], since: Date): Merged[] {
   return rows.filter((row) => endedSince(row, since) && row.outcome?.kind === "merged").map((row) => ({ ref: refOf(row), title: row.task, at: row.phaseSince }));
 }
 
+function stuckReason(row: WatchRow): string {
+  const reason = row.held ? `held: ${row.held.reason}` : `${row.phase}: ${row.stalled!.reason}`;
+  const lastAwait = lastAwaitClause(row);
+  return lastAwait === undefined ? reason : `${reason}; ${lastAwait}`;
+}
+
 /** Held or stalled live runs, plus runs that failed or stopped unmerged inside the window; older endings are history, not news. */
 function shepherdStuck(rows: readonly WatchRow[], since: Date): Stuck[] {
   const live = rows
     .filter((row) => (row.held || row.stalled) && (!FINISHED.has(row.phase) || (row.phase === "failed" && Date.parse(row.phaseSince) >= since.getTime())))
-    .map((row) => ({ ref: refOf(row), reason: row.held ? `held: ${row.held.reason}` : `${row.phase}: ${row.stalled!.reason}`, since: row.phaseSince }));
+    .map((row) => ({ ref: refOf(row), reason: stuckReason(row), since: row.phaseSince }));
   const unmerged = rows
     .filter((row) => endedSince(row, since) && row.outcome?.kind !== "merged")
     .map((row) => ({ ref: refOf(row), reason: `stopped: ${row.outcome?.reason ?? "ended without a recorded outcome"}`, since: row.phaseSince }));

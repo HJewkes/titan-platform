@@ -1,6 +1,7 @@
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
 import { acceptVerdict, isUsageLimit, USAGE_LIMIT_REASON } from "./accept-verdict.js";
+import { DEPTH_FLOOR_REASON } from "./depth-floor.js";
 import { FINDINGS_SEPARATOR } from "./fix-first-findings.js";
 import type { AwaitVerdictInput, ReviewerMessage } from "./ports.js";
 import { MALFORMED_REFUSALS, readMalformed } from "./verdict-schemas.js";
@@ -72,9 +73,32 @@ describe("acceptVerdict malformed record", () => {
   });
 
   it("covers every refusal the schema lists", () => {
-    const exercised = new Set(["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target"]);
+    const exercised = new Set(["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target", "ci_policy_malformed", "probes_missing"]);
 
     expect(new Set(Object.keys(MALFORMED_REFUSALS))).toEqual(exercised);
+  });
+
+  describe("an adversary member's Probes line", () => {
+    const adversary: AwaitVerdictInput = { ...input, shape: "adversary" };
+    const merge = `Verdict: MERGE\n${goodPr}\n${goodHead}\n`;
+
+    it("refuses an adversary MERGE with no Probes line above the block, for one correction", () => {
+      expect(acceptVerdict(adversary, [said(`Looked at it.\n\n${merge}`)])).toEqual({ kind: "none", malformed: { refusal: "probes_missing", writtenAt: WRITTEN_AT } });
+    });
+
+    it("refuses a Probes line that names no probe, or one written below the block", () => {
+      expect(readMalformed(acceptVerdict(adversary, [said(`Probes:\n${merge}`)]))?.refusal).toBe("probes_missing");
+      expect(readMalformed(acceptVerdict(adversary, [said(`${merge}Probes: empty token -> refused\n`)]))?.refusal).toBe("probes_missing");
+    });
+
+    it("accepts an adversary MERGE that lists its probes", () => {
+      expect(acceptVerdict(adversary, [said(`Probes: empty token -> refused; expired token -> refused\n\n${merge}`)])).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+    });
+
+    it("accepts a correctness MERGE with no Probes line, so the rule binds the adversary alone", () => {
+      expect(acceptVerdict({ ...input, shape: "correctness" }, [said(merge)])).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+      expect(acceptVerdict(input, [said(merge)])).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+    });
   });
 
   it("records nothing for silence", () => {
@@ -142,5 +166,88 @@ describe("acceptVerdict FIX_FIRST findings", () => {
     const result = acceptVerdict(input, [early, said(fixFirst(HEAD), DISPATCHED_AT + 2)]);
 
     expect(findingsOf(result)).toBe(fixFirst(HEAD));
+  });
+});
+
+describe("acceptVerdict follow-ups", () => {
+  const said = (text: string): ReviewerMessage => ({ ...verdictMessage(DISPATCHED_AT + 1), text });
+  const block = (verdict: string) => `Verdict: ${verdict}\nPR: octo/demo#7\nHead: ${HEAD}`;
+  const followUps = "Follow-ups:\n- Name the retry bound | The bound is a named constant | low";
+
+  it("keeps a MERGE a MERGE and carries its proposed tasks", () => {
+    const result = acceptVerdict(input, [said(`Fine.\n\n${followUps}\n\n${block("MERGE")}`)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE", followUps: [{ title: "Name the retry bound", doneWhen: "The bound is a named constant", severity: "low" }] });
+    expect(result).not.toHaveProperty("followUpsWarning");
+  });
+
+  it("carries a FIX_FIRST's proposed tasks too", () => {
+    const result = acceptVerdict(input, [said(`1. Broken.\n\n${followUps}\n\n${block("FIX_FIRST")}`)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST", followUps: [{ title: "Name the retry bound" }] });
+  });
+
+  it("still counts the verdict when the block is malformed, with the warning and no tasks", () => {
+    const result = acceptVerdict(input, [said(`Fine.\n\nFollow-ups:\n- Name the retry bound | critical\n\n${block("MERGE")}`)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE", followUpsWarning: "bad_item" });
+    expect(result).not.toHaveProperty("followUps");
+  });
+
+  it("carries neither field when the reviewer wrote no block", () => {
+    const result = acceptVerdict(input, [verdictMessage(DISPATCHED_AT + 1)]);
+
+    expect(result).not.toHaveProperty("followUps");
+    expect(result).not.toHaveProperty("followUpsWarning");
+  });
+});
+
+describe("acceptVerdict CI-policy line", () => {
+  const said = (text: string): ReviewerMessage => ({ ...verdictMessage(DISPATCHED_AT + 1), text });
+  const ciPolicyOf = (result: ReturnType<typeof acceptVerdict>) => (result.kind === "verdict" && result.verdict === "MERGE" ? result.ciPolicy : "not a MERGE");
+
+  it("carries a MERGE's weakened line", () => {
+    const result = acceptVerdict(input, [said(`Fine.\n\nVerdict: MERGE\nPR: octo/demo#7\nHead: ${HEAD}\nCI-policy: weakened ruleset`)]);
+
+    expect(ciPolicyOf(result)).toEqual({ kind: "weakened", keys: ["ruleset"] });
+  });
+
+  const RV_1340_LINE = "CI-policy: no .github/ files changed and no required check was dropped, renamed or skipped.";
+  const merge = (ciPolicy: string) => `Fine.\n\nVerdict: MERGE\nPR: octo/demo#7\nHead: ${HEAD}\n${ciPolicy}`;
+
+  it("refuses a MERGE whose CI-policy line is prose, so the reviewer gets a correction", () => {
+    const result = acceptVerdict(input, [said(merge(RV_1340_LINE))]);
+
+    expect(result).toEqual({ kind: "none", malformed: { refusal: "ci_policy_malformed", writtenAt: DISPATCHED_AT + 1 } });
+    expect(readMalformed(result)?.refusal).toBe("ci_policy_malformed");
+  });
+
+  it("keeps a weakening that a malformed line sits beside, so no weakening is corrected away", () => {
+    const result = acceptVerdict(input, [said(merge("CI-policy: unchanged\n**CI-policy:** weakened secrets"))]);
+
+    expect(ciPolicyOf(result)).toEqual({ kind: "weakened", keys: ["secrets"] });
+  });
+
+  it("carries a MERGE's exact unchanged line", () => {
+    expect(ciPolicyOf(acceptVerdict(input, [said(merge("CI-policy: unchanged"))]))).toEqual({ kind: "unchanged" });
+  });
+
+  it("reads a prose CI-policy line from a session with no investigative call as below the depth floor", () => {
+    const result = acceptVerdict(input, [{ ...said(merge(RV_1340_LINE)), investigativeCalls: 0 }]);
+
+    expect(result).toEqual({ kind: "none", reason: DEPTH_FLOOR_REASON });
+  });
+
+  it("carries no ciPolicy on a MERGE without the line", () => {
+    const result = acceptVerdict(input, [verdictMessage(DISPATCHED_AT + 1)]);
+
+    expect(result).not.toHaveProperty("ciPolicy");
+  });
+
+  it("carries none on a FIX_FIRST", () => {
+    const result = acceptVerdict(input, [said(`1. Broken.\n\nVerdict: FIX_FIRST\nPR: octo/demo#7\nHead: ${HEAD}\nCI-policy: unchanged`)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST" });
+    expect(result).not.toHaveProperty("ciPolicy");
   });
 });

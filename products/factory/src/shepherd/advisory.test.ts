@@ -62,6 +62,7 @@ function recordingPort(fake: FakeGitHub, writes: string[]): GitHubPort {
     ...port,
     merge: async (...args) => (writes.push("merge"), port.merge(...args)),
     updateBranch: async (...args) => (writes.push("updateBranch"), port.updateBranch(...args)),
+    closePr: async (...args) => (writes.push("closePr"), port.closePr(...args)),
     pushEmptyCommit: async (...args) => (writes.push("pushEmptyCommit"), port.pushEmptyCommit(...args)),
     deleteRef: async (...args) => (writes.push("deleteRef"), port.deleteRef(...args)),
     checkRuns: async (slug, sha) => (sha === MERGE_SHA && fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), port.checkRuns(slug, sha)),
@@ -302,12 +303,13 @@ describe("advisoryGuard", () => {
 });
 
 describe("advisoryPort", () => {
-  it("refuses merge, updateBranch, pushEmptyCommit and deleteRef for an advisory repo, before GitHub sees them", async () => {
+  it("refuses merge, updateBranch, closePr, pushEmptyCommit and deleteRef for an advisory repo, before GitHub sees them", async () => {
     const writes: string[] = [];
     const port = advisoryPort(recordingPort(fakeGitHub(), writes), (repo) => repo === REPO);
 
     await expect(port.merge(REPO, 1, H1, "squash")).rejects.toThrow(AdvisoryRefused);
     await expect(port.updateBranch(REPO, 1, H1)).rejects.toThrow(AdvisoryRefused);
+    await expect(port.closePr(REPO, 1)).rejects.toThrow(AdvisoryRefused);
     await expect(port.pushEmptyCommit(REPO, "topic", H1, "retrigger")).rejects.toThrow(AdvisoryRefused);
     await expect(port.deleteRef(REPO, { branch: "topic", repo: REPO })).rejects.toThrow(AdvisoryRefused);
     expect(writes).toEqual([]);
@@ -317,8 +319,8 @@ describe("advisoryPort", () => {
     const writes: string[] = [];
     const port = advisoryPort(recordingPort(fakeGitHub(), writes), () => false);
 
-    await Promise.allSettled([port.merge(REPO, 1, H1, "squash"), port.updateBranch(REPO, 1, H1), port.pushEmptyCommit(REPO, "topic", H1, "retrigger"), port.deleteRef(REPO, { branch: "topic", repo: REPO })]);
+    await Promise.allSettled([port.merge(REPO, 1, H1, "squash"), port.updateBranch(REPO, 1, H1), port.closePr(REPO, 1), port.pushEmptyCommit(REPO, "topic", H1, "retrigger"), port.deleteRef(REPO, { branch: "topic", repo: REPO })]);
 
-    expect(writes).toEqual(["merge", "updateBranch", "pushEmptyCommit", "deleteRef"]);
+    expect(writes).toEqual(["merge", "updateBranch", "closePr", "pushEmptyCommit", "deleteRef"]);
   });
 });

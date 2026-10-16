@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
+import { ASK_LABEL_PATTERN } from "@titan-design/agent-dispatch";
 import { z } from "zod";
 import { isRepoKey } from "./shepherd/seats.js";
 
@@ -44,6 +45,10 @@ export const ReviewConfigSchema = z.strictObject({
   maxConcurrent: z.number().int().positive().optional(),
   /** `shadow` records the review panel's plan on each intent and spawns nothing more; `on` reviews with the panel. Absent means `off`. */
   panel: z.enum(["off", "shadow", "on"]).optional(),
+  /** The profile of the adversary member a g10-adversary hold gets under `shepherd.gateReset.twoMergeRelease`; absent means `fable-reviewer`. */
+  adversaryProfile: profileName.optional(),
+  /** The Claude config directory that adversary member runs under, for account diversity; absent means `configDir`. */
+  adversaryConfigDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
 });
 
 export type ReviewConfig = z.infer<typeof ReviewConfigSchema>;
@@ -54,6 +59,8 @@ export const ShepherdRepoConfigSchema = z.strictObject({
   path: z.string().min(1).optional(),
   /** Shepherd reviews, watches CI and notifies, but never merges, updates the branch or pushes. */
   advisory: z.boolean().optional(),
+  /** Opt-in: after Shepherd's own merge, restack the repo's stacked agent-chat children by a fast-forward push. Absent means off. */
+  stackRestack: z.boolean().optional(),
 });
 
 export type ShepherdRepoConfig = z.infer<typeof ShepherdRepoConfigSchema>;
@@ -142,6 +149,18 @@ export const ReviewCheckConfigSchema = z.strictObject({
 
 export type ReviewCheckConfig = z.infer<typeof ReviewCheckConfigSchema>;
 
+/**
+ * Posts pending decision gates to agent-chat's human queue and resolves them from the answer (CC-169 g). An answer
+ * resolves as `owner-remote` (Q1): any unregistered caller on the broker's 0600 socket can answer, so only gates whose
+ * rule admits a remote owner are asked; absent means serve asks nothing.
+ */
+export const GateNotifyConfigSchema = z.strictObject({
+  label: z.string().regex(ASK_LABEL_PATTERN, "must be an agent-chat ask label").default("titan-factory"),
+  resolverClass: z.enum(["owner-remote", "owner-terminal"]).default("owner-remote"),
+});
+
+export type GateNotifyConfig = z.infer<typeof GateNotifyConfigSchema>;
+
 function isRemoteFactoryUrl(value: string): boolean {
   if (!URL.canParse(value)) return false;
   const url = new URL(value);
@@ -176,11 +195,19 @@ export const FactoryConfigSchema = z.object({
       /** The agent-chat seat told when the deploy alarm goes up and while it stands; absent is warned about at serve start and fails `service check`. */
       hubSeat: z.string().min(1).optional(),
       deployAlarm: DeployAlarmConfigSchema.optional(),
+      gateNotify: GateNotifyConfigSchema.optional(),
+      /**
+       * Decisions 422 and 423's stopgaps, each off when absent. `twoMergeRelease` other than `off` gives a g10-adversary hold Shepherd's
+       * own adversary member; `shadow` records where that member's MERGE and the correctness MERGE would release the hold, `on` releases it.
+       * `heldRepair: on` lets a g10 hold gate only the merge, so its run repairs as usual.
+       */
+      gateReset: z.strictObject({ twoMergeRelease: z.enum(["off", "shadow", "on"]).optional(), heldRepair: z.enum(["off", "on"]).optional() }).optional(),
     })
     .refine((s) => !s.hardStopRepos || s.charterPath, { message: "hardStopRepos needs a charterPath", path: ["charterPath"] })
     .refine((s) => !s.review || s.agentChatBin, { message: "review needs an agentChatBin", path: ["agentChatBin"] })
     .refine((s) => !s.fixer || s.agentChatBin, { message: "fixer needs an agentChatBin", path: ["agentChatBin"] })
     .refine((s) => !s.hubSeat || s.agentChatBin, { message: "hubSeat needs an agentChatBin", path: ["agentChatBin"] })
+    .refine((s) => !s.gateNotify || s.agentChatBin, { message: "gateNotify needs an agentChatBin", path: ["agentChatBin"] })
     .optional(),
 });
 
