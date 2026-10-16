@@ -932,11 +932,6 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/pr.ts": {
-    "titan/max-line-length": {
-      "count": 7
-    }
-  },
   "products/factory/src/shepherd/prs.ts": {
     "titan/max-line-length": {
       "count": 1
@@ -1170,11 +1165,6 @@
   "products/factory/src/workflows/land-settle.ts": {
     "titan/max-line-length": {
       "count": 2
-    }
-  },
-  "products/factory/src/workflows/land.ts": {
-    "titan/max-line-length": {
-      "count": 3
     }
   },
   "products/factory/src/workflows/pr-snapshot.test.ts": {
