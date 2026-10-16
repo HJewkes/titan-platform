@@ -341,6 +341,18 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/diverged-sweep.test.ts",
+   "fate": "kept",
+   "reason": "unclear: holds RESTART_WRITE_STEPS (deleted D-M3-19) among other restart logic; which of the file survives?"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/diverged-sweep.ts",
+   "fate": "kept",
+   "reason": "unclear: holds RESTART_WRITE_STEPS (deleted D-M3-19) among other restart logic; which of the file survives?"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/error-class.test.ts",
    "fate": "kept",
    "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"

@@ -11,6 +11,7 @@ import { readLastDeploy } from "./deploy-ports.js";
 import { DEPLOY_WATCH_MS, type DeployWatch } from "./deploy-watch.js";
 import { gateNotifyWatch, type GateNotifyOptions, type GateNotifyWatch } from "./gate-notify-sweep.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
+import { restartDivergedLogged } from "./shepherd/diverged-sweep.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
 import { heldRun } from "./serve-holds.js";
@@ -281,6 +282,7 @@ function startSeatDigest(host: FactoryHost, services: ShepherdServices | undefin
 
 /** Runs resync could not end are rechecked against their PR just before they are claimed, then dropped once claimed or settled. A recheck still running when close starts claims nothing, because the runtime has already let its runs go. */
 async function adopt(host: FactoryHost, services: ShepherdServices | undefined, held: Set<string>, log: Logger, closing: () => boolean): Promise<void> {
+  if (services) await restartDivergedLogged(host, services, log);
   const exclude = services ? await recheckBeforeAdopt(host, services, held, log) : new Set<string>();
   if (closing()) return;
   const ids = await host.adopt({ exclude });
