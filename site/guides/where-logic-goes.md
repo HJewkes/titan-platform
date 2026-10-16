@@ -50,7 +50,7 @@ pool runner, reconciler, pacer and console are the others.
 ## Old-path code
 
 The D-M0-06 sunset manifest lists the paths the redesign replaces:
-`products/factory/src/shepherd/**`, the burndown code and `scripts/seat/**`. Code on
+`products/factory/src/shepherd/**`, the burndown code and `scripts/seat/**` (the seat tooling, which may live outside this repo). Code on
 those paths is a valid home for new logic only as a carve-out tagged
 `superseded-at:<M>` (the milestone that replaces it) or `survives:<area>` (the area
 that keeps it). An untagged addition there is a review finding: put the logic in one
