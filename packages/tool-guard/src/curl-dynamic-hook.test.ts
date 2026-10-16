@@ -168,15 +168,22 @@ describe("handle: an HTTP write to a run-time URL", () => {
     '7za -y e a.7z; wget https://api.github.com/repos/o/r/pulls/1/merge',
     'ar x a.a; wget https://api.github.com/repos/o/r/pulls/1/merge',
     'jar xf a.jar; wget https://api.github.com/repos/o/r/pulls/1/merge',
+  ])("denies %s as a merge", async (command) => {
+    const { columns } = await logColumns(command);
+
+    expect(columns).toEqual(["deny", "MRG-WK", "merge", "bash.merge.curl-api", "coordinator+worker+headless"]);
+  });
+
+  it.each([
     'set -a; V=WGETRC; : ${!V:=x}; wget https://api.github.com/repos/o/r/pulls/1/merge',
     'set -a; V=WGETRC; : ${!V=x}; wget https://api.github.com/repos/o/r/pulls/1/merge',
     'V=WGETRC; : ${(P)V::=x}; wget https://api.github.com/repos/o/r/pulls/1/merge',
     'V=WGETRC; : ${(P)V:=x}; wget https://api.github.com/repos/o/r/pulls/1/merge',
     ': ${(P)${V}:=x}; wget https://api.github.com/repos/o/r/pulls/1/merge',
-  ])("denies %s as a merge", async (command) => {
+  ])("denies %s at the lexer, which refuses the assigning expansion before the write is classified", async (command) => {
     const { columns } = await logColumns(command);
 
-    expect(columns).toEqual(["deny", "MRG-WK", "merge", "bash.merge.curl-api", "coordinator+worker+headless"]);
+    expect(columns?.[0]).toBe("deny");
   });
 
   it("keeps a literal non-GitHub upload under egress", async () => {
