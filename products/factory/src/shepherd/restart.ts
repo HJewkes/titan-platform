@@ -10,13 +10,11 @@ import { runOutcome } from "./run-end.js";
  */
 const RESTARTABLE_STOPS: ReadonlySet<string> = new Set(["not-mergeable", "conflict", "abandoned"]);
 
-export const REPLAY_DIVERGED = "replay-diverged";
+const REPLAY_DIVERGED = "replay-diverged";
 
 interface Restart {
   /** Why the replaced run stopped; absent when it failed. */
   previousStop?: string;
-  /** The replaced run is parked, not dead: the caller seeds the last read head and cancels it after the repoint. */
-  diverged?: boolean;
 }
 
 /** A run the runtime's strict replay parked because its definition changed under it; any other park needs a human. */
@@ -42,7 +40,7 @@ async function restartableStop(services: ShepherdServices, known: Registration, 
 export async function restartFor(host: FactoryHost, services: ShepherdServices, known: Registration): Promise<Restart | undefined> {
   const run = host.runtime.status(known.runId);
   if (run?.status === "failed") return {};
-  if (run && isReplayDiverged(run)) return openPrRestart(services, known, { previousStop: REPLAY_DIVERGED, diverged: true });
+  if (run && isReplayDiverged(run)) return openPrRestart(services, known, { previousStop: REPLAY_DIVERGED });
   return run?.status === "completed" ? restartableStop(services, known, run) : undefined;
 }
 
