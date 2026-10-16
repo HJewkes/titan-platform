@@ -1,0 +1,214 @@
+# @titan-design/speech-vet
+
+Pronunciation vetting for narration: override markup, heteronym reading checks, the
+`lexicon.v1` schema with respelling, initialism spelling, phone-level verdicts on what a
+voice actually said, and word-level defects from a transcript. Pure TypeScript; it loads no
+model, and transcripts and G2P are injected. `vet()` runs the whole vet cycle over injected
+providers.
+
+Tier 2 of the titan-platform DAG. May import only packages in the same tier or
+below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
+
+## API
+
+- `plainText(spoken)` and `g2pText(spoken)`: the caption text with all markup removed, and
+  the text a misaki G2P is given, with overrides kept and declarations reduced to the word.
+- `checkReadings(spoken, tokens, table?)`: one `ReadingFinding` per heteronym occurrence in
+  the G2P tokens of `g2pText(spoken)`, with status `ok`, `fail`, `forced` or `warn`.
+- `englishHeteronyms`: the 19-word table from `src/heteronyms/en.json`, in misaki notation.
+- `LexiconSchema`, `loadLexicon(json)`, `respellingsOf(lexicon)`: `lexicon.v1`, which also
+  upgrades a flat `{ term: respelling }` map and an unversioned `{ entries }` list.
+- `respeller(map)` and `generateCandidates(word, limit?)`: whole-word respelling and
+  heuristic respelling candidates.
+- `spellInitialisms(text, { spelled? })` and `isInitialism(token)`: dotted letters for
+  all-caps initialisms, with a caller-supplied list for a domain's vowel-bearing ones.
+- `normalize(text, steps?)`: runs `NormalizeStep`s in order. `DEFAULT_NORMALIZE_STEPS` is
+  rates (`/week` to ` per week`), initialisms, clock times, then `NUMBER_STEPS` (ages,
+  ordinals, currency with k/m/bn magnitudes, decimals, cardinals of 100 or more), then
+  whitespace. Filter the list by `step.name` or splice in a product's own steps; `rateStep(units)`
+  and `initialismStep(opts)` take a domain's extra units and initialisms.
+- `numberToWords(n)`, `numberToOrdinal(n)`, `spellDigits(digits)`: the number words the steps use.
+
+## Phone check
+
+A port of the audiobook backend's `validation/phonemes.py`, at verdict parity with it. Expected
+phones come from a `PhoneG2p`, `(text, voice) => string`, that returns espeak-ng's raw
+`--ipa=3` output; `voice` defaults to `en-us`. Actual phones come from a phone recognizer such
+as speech-stt's `wav2vec2Recognizer`.
+
+- `chunkWordVerdicts(text, actualPhones, { g2p, targets, unusual?, voice? })`: per target
+  word, `xtts` (the audio mispronounces it), `whisper` (the audio is fine) or `inconclusive`
+  (the alignment degenerated), with the distance and both phone strings.
+- `detectHallucinations(text, actualPhones, { g2p })`: runs of audio phones with no source text.
+- `detectTailArtifact(text, actualPhones, { g2p })`: phones after the last expected phone, or `null`.
+- `recognizePhones(recognizer, audio)`: the recognizer's raw decode, cleaned.
+- `espeakCliG2p({ voice?, bin?, run?, onError? })`: a `PhoneG2p` that runs
+  `espeak-ng -q --ipa=3 -v <voice> <text>` with a 10 second timeout. On failure it returns `""`
+  and calls `onError`, as the audiobook backend does. `espeakVersion()` reports the installed
+  version. Install espeak-ng yourself (apt or brew): it is a GPL binary, called as a process,
+  not bundled.
+- `misakiIpaG2p(g2p)`: a `PhoneG2p` over speech-g2p's `misakiEnglish()`, with no espeak-ng binary.
+  One IPA word per token, stress stripped, unreadable tokens dropped; US English only. The
+  verdict thresholds were tuned on espeak, so verdicts can differ from the espeak path.
+- `cleanIpa`, `phonemeDistance`, `phoneMatchDistance`, `admissiblePhones`, `g2pSentence`,
+  `WEAK_FORMS` and the thresholds the verdicts use.
+
+## Reading check
+
+After synthesis, `checkHeardReadings(spoken, tokens, recognizedPhones, { toIpa, table? })`
+says which reading of each declared `[word](=reading)` heteronym the audio carries. It aligns
+the recognizer's phones to the IPA of the tokens the voice was given, then scores each
+reading's pattern against the word's aligned span: `ok`, `fail` (another reading was heard), or
+`inconclusive` (the span is too short, or two readings fit it equally).
+
+It is espeak-free: expected phones are `toIpa` of the misaki tokens, and speech-g2p's
+`misakiToIpa` fits. It compares readings only and gives no whole-chunk verdict.
+`readingIpa(word, toIpa)` lists each reading's IPA; `expandReading` expands a pattern's
+`[...]` classes.
+
+## Take selection
+
+Pure logic over takes you synthesize yourself; no model or file is touched.
+
+- `synthesizeVerified(text, { synthesize, recognizer?, g2p, retries?, minRun?, discard? })`:
+  re-rolls takes until one has no hallucinated run, else keeps the least severe. Every other
+  take goes to `discard`.
+- `keepTake(shipped, take, margin?)`: whether a take replaces the shipped one. A take that
+  damages a word never does; a shorter stray wins; otherwise the distance must fall by more
+  than `margin` (0.06), so a tie keeps the shipped take.
+- `regressions(shipped, take)`: words a take leaves mispronounced and worse than shipped.
+- `bestTailTake({ text, shippedPhones, before, candidates, g2p })`: tries every candidate and
+  returns the best, with `kept` decided by `keepTake`.
+
+## Defect check
+
+A port of the audiobook pipeline's `validation/defects.py`, at output parity, with severity
+equal bit for bit.
+
+- `detectDefects(expected, transcript, options?)`: aligns a chunk's source text against a
+  speech-stt `Transcript` and returns `Defect`s, most severe first. Each one is a
+  `substitution`, an `omission` or a `low_confidence` segment, with the heard text, an audio
+  window, a context snippet and causes (`number`, `stylized_elongation`, `unusual_word`,
+  `chunk_boundary`, `muddy_audio`). A digit read as words ("312" as "three hundred twelve"),
+  a letter read as its name and a confident homophone are not defects.
+- `confirmDefects(base, expected, confirmTranscript, options?)`: keeps only the base defects
+  that a second, stronger STT pass agrees on. It takes its own options, because the
+  confirming STT can differ from the base one.
+- `defectOptionsFor(stt)`: the options for a provider's transcripts, read from its
+  `capabilities.tokenLogprobs`.
+- `isUnusualWord(word)`, `tokenizeWords(text)`, `phoneticDistance(a, b)` and `metaphone(word)`
+  (jellyfish 1.2.1 parity) are the pieces the check uses.
+
+Signal A, the recogniser's own confidence, is off unless `options.confidence` is true. It has
+two parts: word `probability`, which boosts severity, and segment `avgLogprob` and
+`compressionRatio`, which raise `low_confidence` defects. With the flag off, both are ignored
+even when the transcript carries them. **Always pass `defectOptionsFor(stt)`.** A caller
+holding transcripts with token log-probs that leaves the options out silently loses signal A.
+A `vet()` that composes this check must call it. `whisperStt` declares `tokenLogprobs: true` unless built
+with `tokenLogprobs: false`, so on the transformers.js path signal A is on by default.
+
+## Vetting cycle
+
+`vet(spoken, deps, policy?)` runs the vet cycle over injected providers and loads no model:
+precheck the line's declared readings, synthesize, transcribe, check the take, retake while
+a fault remains, keep the best take, and say what the kept take asks of the caller.
+`applyLexicon(spoken, lexicon, "misaki" | "text")` is the lexicon step it uses: phoneme
+override markup for a misaki voice, respelling for a text voice.
+
+- `deps`: `tts`, `voice`, `stt`; `g2p` (required when the voice takes misaki phonemes);
+  `recognizer` with `phoneG2p` (no default, because whether misaki may drive verdicts is the
+  caller's call); `confirmStt`, `lexicon`, `toIpa`.
+- `policy`: `maxRetakes` (5, so at most six takes), `margin` (`KEEP_TAKE_MARGIN`),
+  `undeclaredHeteronym` (`"warn"` or `"fail"`), `table`, `synthesize`.
+- The result is `accepted`, `needs-override` (a word or reading the voice keeps getting wrong,
+  with the evidence), `needs-rewrite` (a reading a text voice cannot be made to say),
+  `retakes-exhausted` (only stochastic faults remain) or `stopped` (the precheck failed, with
+  zero synth calls). Each carries a JSON-safe `report`; the first four also carry the kept take.
+
+| Fault | Source | Class | If it persists |
+| --- | --- | --- | --- |
+| hallucination, tail | `detectHallucinations`, `detectTailArtifact` | stochastic, retake | `retakes-exhausted` |
+| omission, low confidence | `detectDefects` through `defectOptionsFor(stt)` | stochastic, retake | `retakes-exhausted` |
+| substitution the phones call `xtts`, or with no recognizer | defects plus `chunkWordVerdicts` | word, retake | `needs-override` |
+| declared reading heard wrong | `checkHeardReadings` | reading, retake | `needs-override` (misaki voice) or `needs-rewrite` (text voice) |
+| substitution the phones call `whisper` or `inconclusive` | `chunkWordVerdicts` | not a fault | reported as dismissed |
+
+Working defaults for four open owner decisions. A different answer is a docs and code edit,
+not a redesign:
+
+- **D-T11-1, no normalizing.** `vet()` does not normalize. The caller passes normalized text,
+  because a product's own steps run first and `normalize` could rewrite inside override markup.
+- **D-T11-2, no override search.** There is no respelling search. A persistent word fault
+  returns `needs-override` with evidence, and the caller or a [rewriter](#rewriter) decides what to try.
+- **D-T11-3, undeclared heteronyms warn.** When the audio contradicts the G2P reading of a
+  heteronym the line did not declare, the take reports a warning, not a fault. Promoting it to
+  a fault is gated behind the internal constant `ESCALATE_UNDECLARED_HETERONYMS` (`false`, not
+  exported), so it stays off until the owner decides.
+- **D-T11-4, `retakes-exhausted`.** When every take still has a stochastic fault, the result is
+  a fifth status carrying the kept take and its faults, so it cannot be mistaken for
+  `accepted`, and a caller that wants to ship the least bad take still can.
+
+Take choice: every take is checked in full, and a take replaces the best one only through the
+comparator (lower hallucination severity first, then `keepTake`, so a take that breaks a word
+never wins and a tie keeps the earlier take). **A fault-free take always wins**, because the
+comparator ranks only hallucination, tail and word faults and would otherwise keep a take that
+carries an omission, a low-confidence segment or a reading fault. A take that repeats the
+previous one's phones and transcript ends the loop as `futile`: a deterministic voice gives the
+same audio again.
+
+## Rewriter
+
+`rewriteLine(line, need, deps, policy?)` acts on a `needs-rewrite` result: it replaces the one
+sentence holding `need.span` and leaves every other sentence byte-identical. It never changes
+`vet()`; each surviving candidate re-enters `vet()` and is kept only when that returns
+`accepted`. Calling it at all is the product's permission to rewrite prose.
+
+1. **Pin.** A sentence with a pin in `deps.pins` resolves to the pinned text: `pinned`, with no
+   candidate asked and no audio made.
+2. **Pinned span.** A sentence that is itself a pinned rewrite is never rewritten again:
+   `refused`, reason `pinned-span`.
+3. **Candidates.** Each `CandidateSource` in `deps.sources` is asked in order, rule tier
+   first, for up to `k` (3) candidates.
+4. **Guard.** `guardRewrite` drops a candidate that changes a number, drops a named entity or
+   a `deps.vet.lexicon` term, drops or alters the line's other markup, drops more than one
+   stemmed content term, or strays outside ±25 % of the word count (at least 3 words of
+   slack). A dropped candidate costs no take.
+5. **Re-vet.** The first guarded candidate whose line vets `accepted` is pinned and returned
+   as `rewritten`. With none, the result is `no-candidate`, listing each candidate tried with
+   its guard rejections or vet status.
+
+The caller saves the pins after a `rewritten` result: `RewritePins.load(path)` and
+`pins.save(path)` read and write `rewrites.json` (a missing file is an empty store; a bad
+file throws). `applyPins(line, pins, flaggedSpans)` substitutes every pinned sentence before
+synthesis and throws `UnpinnedRewriteError` when a flagged sentence has no pin, so an
+unreviewed line never reaches the voice.
+
+The package makes no model call. An LLM arrives as an injected `CandidateSource`.
+`symbolRules(table?)` is the rule tier: it spells `SYMBOL_WORDS` (`/` slash, `_` underscore,
+`.` dot, `@` at, `&` and, `%` percent, `#` number, `+` plus, `=` equals) inside word-bearing
+tokens, outside markup. A `.` is spelled only between two letters, so a sentence's final
+period and a decimal stay. Its candidates pass the same guard.
+
+Working defaults for open owner decisions:
+
+- **D-T13-1, pins are accepted rewrites.** "Pinned spans are never rewritten" is read as the
+  two rules above. Author-marked "keep" spans would be a separate guard rule.
+- **D-T13-3, length slack.** ±25 % of words, but always at least 3 words of change.
+- **D-T13-4, pin key.** The key is a hash of the source sentence only, so changing the
+  rewriter keeps reviewed pins. The rewriter id is stored in the entry.
+
+Limits: named entities are a heuristic (capitalized words not opening a sentence, all-caps
+tokens, tokens mixing letters and digits). **A name that opens a sentence is not detected as
+an entity**, and an all-lowercase coined term is protected only when the lexicon lists it. The
+content-term rule still catches one such name dropped alongside another term. A path with more
+than three symbols in a short sentence is refused for length.
+
+## Conformance fixtures
+
+`conformance/normalize.json` ships in the package. Each case names the steps run, the input,
+the expected output, and the audiobook `TextNormalizer` method that must agree, so a Python
+port can pin a release and check itself against the same cases.
+
+`conformance/take-selection.json` holds constructed `keepTake` and `betterTake` cases at the
+shared margin of 0.06, with edge cases at 0.055, so a port can check its margin against the
+same file.

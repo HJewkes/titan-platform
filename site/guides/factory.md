@@ -589,6 +589,15 @@ paused`, whatever its sha, and a pause file that does not parse still pauses. `t
 service pause` shows the pause. `titan-factory service pause --clear` removes it under the
 deploy lock, so it is refused while a deployer runs.
 
+A person can hold deploys by hand with `titan-factory service pause --set <reason>`. It writes
+`deploy-hold.json` beside the pause file, a separate file so a rollback cannot overwrite the
+reason and the reason cannot overwrite a rollback's. The hold is honoured exactly like the
+pause: under the deploy lock every `service deploy` is refused, and the deploy pacer spawns no
+deployer. `--set` does not take the lock, so it can be set while a deploy runs; it then says the
+hold applies from the next deploy. A second `--set` replaces the reason. When both a pause and a
+manual hold stand, `service pause` and the `deploy held:` refusal show both reasons.
+`--clear` lifts both and prints one line for each hold it lifted.
+
 `deployed`, `skipped` and `rolled-back` go to `deploy.json`, which `/health` shows as
 `lastDeploy`. A refusal is printed on stderr and never written, so it cannot clear a hold.
 The deployer never runs `git reset`: a rollback reverts `dist` and leaves the checkout at the

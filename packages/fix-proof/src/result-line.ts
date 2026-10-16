@@ -1,4 +1,5 @@
 import { TEST_CLASSES, VERDICTS, type Classification, type TestClass, type TestOutcome, type Verdict } from "./classify.js";
+import { MUTANT_OUTCOMES, MUTANT_VERDICTS, type MutantResult, type MutantsResult } from "./mutant-classify.js";
 import type { FixProofPlan } from "./plan.js";
 
 export const RESULT_PREFIX = "fix-proof/v1 ";
@@ -18,6 +19,8 @@ export interface FixProofResult {
   /** True when format dropped entries to fit the 4 KB line. */
   truncated: boolean;
   error?: string;
+  /** The mutation check, present only for a diff of test material alone that adds or changes a mutation spec. */
+  mutants?: MutantsResult;
 }
 
 export type ParsedResultLine = { ok: true; result: FixProofResult } | { ok: false; error: string };
@@ -55,6 +58,19 @@ function canonical(result: FixProofResult): FixProofResult {
     truncated: result.truncated,
   };
   if (result.error !== undefined) out.error = result.error;
+  if (result.mutants !== undefined) out.mutants = canonicalMutants(result.mutants);
+  return out;
+}
+
+function canonicalMutant(result: MutantResult): MutantResult {
+  const out: MutantResult = { spec: result.spec, name: result.name, outcome: result.outcome };
+  if (result.failed !== undefined) out.failed = [...result.failed];
+  return out;
+}
+
+function canonicalMutants(mutants: MutantsResult): MutantsResult {
+  const out: MutantsResult = { verdict: mutants.verdict, results: mutants.results.map(canonicalMutant) };
+  if (mutants.error !== undefined) out.error = mutants.error;
   return out;
 }
 
@@ -77,12 +93,31 @@ function dropTest(tests: TestOutcome[]): void {
   tests.pop();
 }
 
-function shrink(result: FixProofResult): boolean {
-  if (result.tests.length > 0) dropTest(result.tests);
-  else if (result.deletedTests.length > 0) result.deletedTests.pop();
+// Results that are not killed are what a not-killed verdict rests on, so killed results are dropped first.
+function dropMutant(results: MutantResult[]): void {
+  const killed = results.map((result) => result.outcome).lastIndexOf("killed");
+  results.splice(killed === -1 ? results.length - 1 : killed, 1);
+}
+
+function shrinkMutants(mutants: MutantsResult | undefined): boolean {
+  if (mutants === undefined) return false;
+  if (mutants.results.length > 0) dropMutant(mutants.results);
+  else if (mutants.error !== undefined && mutants.error.length > MAX_ERROR_CHARS) mutants.error = mutants.error.slice(0, MAX_ERROR_CHARS);
+  else return false;
+  return true;
+}
+
+function shrinkLists(result: FixProofResult): boolean {
+  if (result.deletedTests.length > 0) result.deletedTests.pop();
   else if (result.notCollected.length > 0) result.notCollected.pop();
   else if (result.error !== undefined && result.error.length > MAX_ERROR_CHARS) result.error = result.error.slice(0, MAX_ERROR_CHARS);
   else return false;
+  return true;
+}
+
+function shrink(result: FixProofResult): boolean {
+  if (result.tests.length > 0) dropTest(result.tests);
+  else if (!shrinkMutants(result.mutants) && !shrinkLists(result)) return false;
   result.truncated = true;
   return true;
 }
@@ -151,6 +186,30 @@ function validateTest(value: unknown): string | null {
   return (TEST_CLASSES as readonly unknown[]).includes(value.class) ? null : "tests[].class is unknown";
 }
 
+function validateMutant(value: unknown): string | null {
+  if (!isRecord(value)) return "mutants.results entries must be objects";
+  const keys = checkKeys(value, ["spec", "name", "outcome"], ["failed"], "mutants.results[].");
+  if (keys !== null) return keys;
+  if (typeof value.spec !== "string" || typeof value.name !== "string") return "mutants.results[].spec and name must be strings";
+  if (!(MUTANT_OUTCOMES as readonly unknown[]).includes(value.outcome)) return "mutants.results[].outcome is unknown";
+  return value.failed === undefined || isStringList(value.failed) ? null : "mutants.results[].failed must be a string array";
+}
+
+function validateMutants(value: unknown, truncated: unknown): string | null {
+  if (value === undefined) return null;
+  if (!isRecord(value)) return "mutants must be an object";
+  const keys = checkKeys(value, ["verdict", "results"], ["error"], "mutants.");
+  if (keys !== null) return keys;
+  if (!(MUTANT_VERDICTS as readonly unknown[]).includes(value.verdict)) return "mutants.verdict is unknown";
+  if (value.error !== undefined && typeof value.error !== "string") return "mutants.error must be a string";
+  if (!Array.isArray(value.results)) return "mutants.results must be an array";
+  const problem = value.results.map(validateMutant).find((error) => error !== null);
+  if (problem !== undefined) return problem;
+  if (value.verdict !== "killed") return null;
+  if (!value.results.every((result) => isRecord(result) && result.outcome === "killed")) return "mutants verdict killed with a mutant not killed";
+  return value.results.length === 0 && truncated !== true ? "mutants verdict killed with no mutant" : null;
+}
+
 const RESULT_KEYS = ["head", "mergeBase", "verdict", "counts", "notCollected", "deletedTests", "configEdited", "tests", "truncated"];
 
 function validateScalars(value: UnknownRecord): string | null {
@@ -165,7 +224,8 @@ function validateScalars(value: UnknownRecord): string | null {
 
 function validate(value: unknown): string | null {
   if (!isRecord(value)) return "result must be an object";
-  const problem = checkKeys(value, RESULT_KEYS, ["error"], "") ?? validateScalars(value) ?? validateCounts(value.counts);
+  const problem =
+    checkKeys(value, RESULT_KEYS, ["error", "mutants"], "") ?? validateScalars(value) ?? validateCounts(value.counts) ?? validateMutants(value.mutants, value.truncated);
   if (problem !== null) return problem;
   if (value.verdict === "reproduced" && (value.counts as UnknownRecord).reproduces === 0) return "verdict reproduced with no reproducing test";
   if (!Array.isArray(value.tests)) return "tests must be an array";

@@ -1,0 +1,2408 @@
+{
+ "_source": "rf + het from E4 corpus; authored in-repo",
+ "units": [
+  {
+   "id": "rf:c1-1-hook",
+   "source": "rf",
+   "text": "At ten this morning, the factory had twenty-eight implementer slots. It was using one. A hundred and ninety tasks were marked ready, and the tick dispatched none."
+  },
+  {
+   "id": "rf:c1-2-stake",
+   "source": "rf",
+   "text": "Nothing had crashed, and the machine had room to spare. Yet ninety-seven pull requests sat inside Shepherd, and sixty-nine of them were on hold."
+  },
+  {
+   "id": "rf:c1-3-cost",
+   "source": "rf",
+   "text": "A held pull request also locks the files it touches. One conflicting pull request with no CI run once held back thirteen slices by itself."
+  },
+  {
+   "id": "rf:c1-4-promise",
+   "source": "rf",
+   "text": "By the end, you can name the gate holding any stuck task, and whether software, an agent or you must open it."
+  },
+  {
+   "id": "rf:c2-1-model",
+   "source": "rf",
+   "text": "The factory has five stations. A backlog of tasks. A tick that picks work and dispatches it. A broker that spawns the agents."
+  },
+  {
+   "id": "rf:c2-2-model-b",
+   "source": "rf",
+   "text": "Then implementers, which write each change in their own checkout. And Shepherd, which waits for CI, gets a review, and merges to main."
+  },
+  {
+   "id": "rf:c2-3-thesis",
+   "source": "rf",
+   "text": "It works by turning a ranked task into a claim, and the claim into an agent with its own worktree. The agent's pull request becomes a Shepherd run that ends in a merge."
+  },
+  {
+   "id": "rf:c2-4-actors",
+   "source": "rf",
+   "text": "Three kinds of actor share the work. Software, in blue, runs on timers and never tires. Agents, in amber, are model sessions that read and write. The human, in red, is you."
+  },
+  {
+   "id": "rf:c2-5-fence",
+   "source": "rf",
+   "text": "Until early October, one coordinator agent did most of this by hand. It ran the scorer, spawned the agents, read the diffs and merged."
+  },
+  {
+   "id": "rf:c2-6-fence-b",
+   "source": "rf",
+   "text": "Now software owns the spine. Since October fifth every pull request goes through Shepherd, and since the seventh the tick does scored dispatch. The coordinator keeps the exceptions."
+  },
+  {
+   "id": "rf:c2-7-example",
+   "source": "rf",
+   "text": "Follow one task through it. Task twenty-six sixty asks Shepherd to merge clean pull requests without stopping for the owner."
+  },
+  {
+   "id": "rf:c3-1-score",
+   "source": "rf",
+   "text": "One formula ranks the open tasks. Hundreds are open and slots are limited, so every ten minutes or sooner the tick scores each one."
+  },
+  {
+   "id": "rf:c3-2-weights",
+   "source": "rf",
+   "text": "Severity carries forty percent of the base, priority thirty, what the task unblocks twenty, and its age ten. Kind, readiness and size then multiply it."
+  },
+  {
+   "id": "rf:c3-3-scope",
+   "source": "rf",
+   "text": "Most rows never get that far. This seat's scope is two initiatives, a few tags and the accepted plan, so about a thousand rows fall outside it each tick."
+  },
+  {
+   "id": "rf:c3-4-brief",
+   "source": "rf",
+   "text": "A task in scope also needs a brief. A briefer agent writes one, and the tick approves it when its plan passes a lint. This task got its ready tag this morning."
+  },
+  {
+   "id": "rf:c3-5-planner",
+   "source": "rf",
+   "text": "It is estimated at seventeen points, far too big for one agent. Anything of three or more goes to a planner first, which splits it into slices."
+  },
+  {
+   "id": "rf:c3-6-slices",
+   "source": "rf",
+   "text": "Its plan has eleven slices, each naming the files it will own. Each slice becomes a queued claim, and from then on the slices, not the task, are what dispatch."
+  },
+  {
+   "id": "rf:c4-1-order",
+   "source": "rf",
+   "text": "A queued slice still faces a line of checks, in a fixed order. The first refusal wins and is logged with its reason, and the slice tries again next tick."
+  },
+  {
+   "id": "rf:c4-2-collision",
+   "source": "rf",
+   "text": "Collision comes first. Two agents editing one file leave a conflict for someone to untangle. So the tick refuses a slice whose files overlap an open pull request."
+  },
+  {
+   "id": "rf:c4-3-example",
+   "source": "rf",
+   "text": "Slice a owned the file that decides the merge grant. Another open pull request touched it too. That one conflicted with main and never ran CI, so the tick refused slice a on every pass."
+  },
+  {
+   "id": "rf:c4-4-failclosed",
+   "source": "rf",
+   "text": "If the tick cannot read a pull request's files, it refuses too. A missed collision costs a whole agent run, while a refusal costs ten minutes."
+  },
+  {
+   "id": "rf:c4-5-caps",
+   "source": "rf",
+   "text": "Next come the caps. This seat may run twenty-eight implementers and twelve planners, and two of those implementer slots are kept back for the coordinator's own fix rounds."
+  },
+  {
+   "id": "rf:c4-6-worktrees",
+   "source": "rf",
+   "text": "Each implementer works in its own git worktree, so no two agents share a checkout. The seat may hold twelve per repository, and the broker refuses past thirty-two."
+  },
+  {
+   "id": "rf:c4-7-budget",
+   "source": "rf",
+   "text": "Then the budget. Agents bill shared accounts, and an empty account stalls every seat. The tick counts each spawn as ten points of five-hour use before it starts, so near the ceiling, only one spawn per tick gets through."
+  },
+  {
+   "id": "rf:c4-8-broker",
+   "source": "rf",
+   "text": "Only then does the tick ask the broker. The broker runs its own gates: a free agent slot, fewer than forty headless agents, and at least fifteen percent of memory free."
+  },
+  {
+   "id": "rf:c4-9-spawn",
+   "source": "rf",
+   "text": "Slice a passed. The broker cut a fresh worktree from main and started an Opus implementer, named for the task and slice, on the seat's account."
+  },
+  {
+   "id": "rf:c5-1-contract",
+   "source": "rf",
+   "text": "The implementer's brief carries a fixed contract. Sync with main first. Run only the named tests. Push, open the pull request, register it with Shepherd, report, and exit."
+  },
+  {
+   "id": "rf:c5-2-noci",
+   "source": "rf",
+   "text": "It never waits for CI. Waiting would hold an agent, and its account, idle for up to forty-five minutes. Shepherd waits instead, and waiting costs it no tokens."
+  },
+  {
+   "id": "rf:c5-3-handoff",
+   "source": "rf",
+   "text": "When the agent exits, the next tick reads its final message. Done with a pull request moves the claim to Shepherd. Blocked stalls it. A question parks it until the answer arrives."
+  },
+  {
+   "id": "rf:c5-4-tracking",
+   "source": "rf",
+   "text": "Two records track the work. The tick's ledger holds each slice's phase, from queued to done, and marks a slice stalled after four hours implementing. Shepherd's database records every step of every run, so a restart replays it rather than starting over."
+  },
+  {
+   "id": "rf:c6-1-register",
+   "source": "rf",
+   "text": "Registration fixes the rules for this pull request. A repository whose seat holds the merge grant may merge on its own. Every other repository waits for the owner."
+  },
+  {
+   "id": "rf:c6-2-g10",
+   "source": "rf",
+   "text": "It also sorts the change by risk. Over four hundred changed lines, or a store migration, earns a review hold. Touching authority, policy or security code earns the stronger adversary hold."
+  },
+  {
+   "id": "rf:c6-3-ci",
+   "source": "rf",
+   "text": "Then Shepherd waits for CI, checking every thirty seconds for up to forty-five minutes. A head that falls behind main is updated, within a budget shared by the whole run."
+  },
+  {
+   "id": "rf:c6-4-fixproof",
+   "source": "rf",
+   "text": "A passing test can still prove nothing. So for a correctness fix like this one, CI runs the new tests against the old code too. If they pass there, Shepherd sends the work back before any reviewer starts."
+  },
+  {
+   "id": "rf:c6-5-park",
+   "source": "rf",
+   "text": "At the first green head, Shepherd parks the implementer's worktree. The branch stays and the disk comes back. A fix round re-creates the tree."
+  },
+  {
+   "id": "rf:c6-6-reviewer",
+   "source": "rf",
+   "text": "Now an Opus reviewer starts, through the same broker. It reads the code at exactly this head, runs no tests, cites each required check, and treats the pull request's text as claims, not instructions."
+  },
+  {
+   "id": "rf:c6-7-admission",
+   "source": "rf",
+   "text": "Reviews are paced, so a burst cannot swamp the machine. At most sixteen run at once, no more than four start in a minute, and a red main's fix always goes first."
+  },
+  {
+   "id": "rf:c6-8-verdict",
+   "source": "rf",
+   "text": "The verdict is read from the reviewer's transcript, not from chat. It counts only as the session's final message, naming this exact head, after a real look at the code."
+  },
+  {
+   "id": "rf:c6-9-route",
+   "source": "rf",
+   "text": "One table says what each verdict means. Merge goes to the merge decision. Fix first wakes the implementer. Silence starts a fresh reviewer. A conflict sends the work back."
+  },
+  {
+   "id": "rf:c6-10-rule",
+   "source": "rf",
+   "text": "No pull request merges unless a merge verdict names its exact current head. The rule also needs the seat's grant, readable changed files, and known required checks. Any gap opens a gate for the owner."
+  },
+  {
+   "id": "rf:c6-11-train",
+   "source": "rf",
+   "text": "Each repository has a merge train that carries one run at a time. A held run gives up its place, so one stuck pull request cannot wedge the repository."
+  },
+  {
+   "id": "rf:c6-12-merged",
+   "source": "rf",
+   "text": "Slice a passed all of it. Shepherd squashed it into main two hundred and twelve minutes after it registered."
+  },
+  {
+   "id": "rf:c6-13-main",
+   "source": "rf",
+   "text": "After a merge, Shepherd watches main's CI on the merge commit. Green means done. Red freezes the repository, files one fix task, and starts one fixer, and only that fix may merge."
+  },
+  {
+   "id": "rf:c6-14-cleanup",
+   "source": "rf",
+   "text": "Cleanup follows. The implementer and reviewer are retired, the branch is deleted, and the task gets a note. The next tick marks the claim done."
+  },
+  {
+   "id": "rf:c6-15-deploy",
+   "source": "rf",
+   "text": "A merge into this repository also asks for a deploy. The pacer waits for fifteen quiet minutes, or ninety at most, then builds and restarts. Slice a went live just before ten, and Shepherd runs it now."
+  },
+  {
+   "id": "rf:c7-0-pivot",
+   "source": "rf",
+   "text": "That is the path when nothing goes wrong. Now, where does the time actually go?"
+  },
+  {
+   "id": "rf:c7-1-locks",
+   "source": "rf",
+   "text": "Start with the locks. A pull request locks its files from the moment it opens until it merges or closes. Any slice that needs those files waits with it. This morning that refused sixty slices in one tick."
+  },
+  {
+   "id": "rf:c7-2-holds",
+   "source": "rf",
+   "text": "Then the holds. Sixty-nine of the ninety-seven open runs were held. Forty-four carried the adversary class, and sixteen of those had already passed Shepherd's own review."
+  },
+  {
+   "id": "rf:c7-3-adversary",
+   "source": "rf",
+   "text": "One reviewer can miss a hole in the code that guards merging. So the adversary hold needs a second, independent reviewer. Shepherd never lifts it. Only the coordinator agent spawns that reviewer and releases the hold."
+  },
+  {
+   "id": "rf:c7-4-example",
+   "source": "rf",
+   "text": "Three slices of twenty-six sixty wait there now. Slices c and e hold Shepherd's merge verdict and need only the coordinator. Slice b, which touches authority code, is held the same way."
+  },
+  {
+   "id": "rf:c7-5-loop",
+   "source": "rf",
+   "text": "So why do slots sit empty while work is ready? The two queues feed each other. A held pull request keeps its files locked, so the tick finds fewer slices it may start."
+  },
+  {
+   "id": "rf:c7-6-floor",
+   "source": "rf",
+   "text": "The tick counts about a hundred and ninety tasks as ready, but only nine survive its checks. Below fifty-six, it sends briefers to write more, and a new brief that needs a locked file waits like the rest."
+  },
+  {
+   "id": "rf:c7-7-wakes",
+   "source": "rf",
+   "text": "When CI fails or a reviewer says fix first, Shepherd wakes the same implementer, or a successor if it cannot. The budgets are firm: three fix-first verdicts, or ten repairs in one run, and the decision is yours."
+  },
+  {
+   "id": "rf:c7-8-owner",
+   "source": "rf",
+   "text": "Some questions only you can answer. This morning ten approve-merge gates, six unanswered send-backs and one failed CI waited on you. A coordinator may resolve only a short list, like retrying a branch update."
+  },
+  {
+   "id": "rf:c7-9-machine",
+   "source": "rf",
+   "text": "Then the machine. The broker refuses spawns at forty headless agents or under fifteen percent free memory. Shepherd checks load for its own reviewers. The tick checks no load at all."
+  },
+  {
+   "id": "rf:c7-10-stalls",
+   "source": "rf",
+   "text": "And when a claim stalls, the retry ladder is switched off, so the stall goes to the owner. Thirty-six stalled claims wait for someone to release them by hand."
+  },
+  {
+   "id": "rf:c8-1-who",
+   "source": "rf",
+   "text": "So who opens each gate? Software ranks, checks, spawns, merges and deploys. Agents plan, write, review and lift the adversary holds. You answer the merge questions the rules leave open."
+  },
+  {
+   "id": "rf:c8-2-drift",
+   "source": "rf",
+   "text": "The written rules lag the running ones. The charter still says six burndown agents and twelve worktrees per repository. The live config says twenty-eight and thirty-two."
+  },
+  {
+   "id": "rf:c8-3-scope",
+   "source": "rf",
+   "text": "This walk leaves out the other seats, release pull requests, stacked slices and the decider. Each adds a side branch; the main path stays the same."
+  },
+  {
+   "id": "rf:c9-1-close",
+   "source": "rf",
+   "text": "Twenty-eight slots, one in use. The line was not short of hands. It was waiting on locked files, and on one agent's second opinion."
+  },
+  {
+   "id": "rf:c9-2-outro",
+   "source": "rf",
+   "text": "Find the hold, and you find the wait."
+  },
+  {
+   "id": "rf:r1-1-hook",
+   "source": "rf",
+   "text": "Four stores hold one task's state today, joined by two orchestrators that poll each other."
+  },
+  {
+   "id": "rf:r1-2-stake",
+   "source": "rf",
+   "text": "The tick counted a hundred and forty-three claims when about sixty were real. A finished report can wait up to thirteen minutes to be seen."
+  },
+  {
+   "id": "rf:r1-3-stores",
+   "source": "rf",
+   "text": "The backlog holds the task file. The burndown tick keeps a ledger, and the broker keeps a roster of agents."
+  },
+  {
+   "id": "rf:r1-4-shepherd",
+   "source": "rf",
+   "text": "An implementer opens a pull request for Shepherd, which keeps a fourth store and merges to main."
+  },
+  {
+   "id": "rf:r1-5-seams",
+   "source": "rf",
+   "text": "Around them: a reviewer, a coordinator seat, and you. Shepherd's asks for reviewers time out in batches, and the tick re-registers pull requests as a backstop."
+  },
+  {
+   "id": "rf:r1-6-seat",
+   "source": "rf",
+   "text": "One thousand six hundred and twenty-six messages went to the seat. In two weeks, three hundred and thirteen held fix rounds waited on a hand resume."
+  },
+  {
+   "id": "rf:r1-7-promise",
+   "source": "rf",
+   "text": "The redesign keeps, removes and adds parts, and leaves eleven calls to you."
+  },
+  {
+   "id": "rf:r2-1-jobs",
+   "source": "rf",
+   "text": "Seven jobs come first: choose, make and prove. Then land, keep going, ask the owner, and stay legible."
+  },
+  {
+   "id": "rf:r2-2-inv",
+   "source": "rf",
+   "text": "CI passes on the merged tree; a verdict counts only at its exact head; authority and security get stronger review. Caps hold, no agent widens its permissions, stalls heal unaided, and state survives restarts."
+  },
+  {
+   "id": "rf:r2-3-limits",
+   "source": "rf",
+   "text": "No webhooks reach this box, CI has twenty runners, agents crash, you want to be asked rarely."
+  },
+  {
+   "id": "rf:r2-4-measure",
+   "source": "rf",
+   "text": "Twenty mechanisms exist only to patch others. The design aims for under five, with one clock and one store."
+  },
+  {
+   "id": "rf:r3-1-nouns",
+   "source": "rf",
+   "text": "Seven nouns carry the new model. Item, fact and step; wait and claim; event, pool and service."
+  },
+  {
+   "id": "rf:r3-2-sentence",
+   "source": "rf",
+   "text": "One sentence explains it. A recipe is a script, a step is memoized at its head, a wait or claim is a return, and an event re-enters the script."
+  },
+  {
+   "id": "rf:r3-3-plans",
+   "source": "rf",
+   "text": "On the new map, backlog and broker keep their places. Plans carry a contract for every slice."
+  },
+  {
+   "id": "rf:r3-4-runner",
+   "source": "rf",
+   "text": "One runner and its marker table replace the tick and Shepherd. It re-runs a recipe on every event; its only clock, the reconciler, polls GitHub."
+  },
+  {
+   "id": "rf:r3-5-runtime",
+   "source": "rf",
+   "text": "The broker becomes a runtime that spawns short-lived agents. Agents push to GitHub, and a merge queue lands the work."
+  },
+  {
+   "id": "rf:r3-6-owner",
+   "source": "rf",
+   "text": "Main stays put, and so do you, reading packets in a console. Alarms go to ops, not you."
+  },
+  {
+   "id": "rf:r3-7-simple",
+   "source": "rf",
+   "text": "Pool policy details, risk table rows and stacking are left out; each is data, so the shape holds."
+  },
+  {
+   "id": "rf:r3b-1-run",
+   "source": "rf",
+   "text": "A recipe is a plain script; here are five of its steps. Each step runs, writes a marker for its fact, and returns. A landed run averages fifty-one and a half steps."
+  },
+  {
+   "id": "rf:r3b-2-crash",
+   "source": "rf",
+   "text": "Halfway through the fifth step, the process crashes. No program counter is stored, and nothing was mid-sleep."
+  },
+  {
+   "id": "rf:r3b-3-replay",
+   "source": "rf",
+   "text": "Recovery re-runs the script from the top. Four markers match, so it fast-forwards and runs the fifth step."
+  },
+  {
+   "id": "rf:r3b-4-today",
+   "source": "rf",
+   "text": "Today's engine keys each result by step name and call count. When a deploy re-keyed one step, its old results went unread, and five parked runs failed to replay."
+  },
+  {
+   "id": "rf:r3b-5-insert",
+   "source": "rf",
+   "text": "Keyed by fact, an inserted step has no marker, so it runs, and the old markers still match."
+  },
+  {
+   "id": "rf:r3b-6-upstream",
+   "source": "rf",
+   "text": "Change an upstream step, and the markers that read it go stale. The next entry re-runs only those."
+  },
+  {
+   "id": "rf:r3b-7-claim",
+   "source": "rf",
+   "text": "A claim is a marker too. If the plan changes after the grant, the grant goes stale and releases its token before anything re-runs."
+  },
+  {
+   "id": "rf:r4-0-pivot",
+   "source": "rf",
+   "text": "So how does one task reach main?"
+  },
+  {
+   "id": "rf:r4-1-plan",
+   "source": "rf",
+   "text": "A planner splits it into slices with contracts: risk class, requirements, the change in one sentence, exclusive paths. You approve them in one plan sitting."
+  },
+  {
+   "id": "rf:r4-2-start",
+   "source": "rf",
+   "text": "The recipe claims an implementer and returns. The pool picks which claim to grant, not the item, and the broker spawns the agent."
+  },
+  {
+   "id": "rf:r4-3-open",
+   "source": "rf",
+   "text": "Its push opens a pull request. The runner records the head, and the facts it still needs appear as chips. Path globs can raise its class."
+  },
+  {
+   "id": "rf:r4-4-prove",
+   "source": "rf",
+   "text": "CI goes green and the proof reproduces. The verdict is a claim on the reviewer pool, and a short-lived reviewer returns merge."
+  },
+  {
+   "id": "rf:r4-5-raise",
+   "source": "rf",
+   "text": "That reviewer saw a security touch and raised the class, adding an adversary review on another profile or account. Nobody can lower a class."
+  },
+  {
+   "id": "rf:r4-6-fix",
+   "source": "rf",
+   "text": "A red fact wakes the implementer at once. Its push moves the head and resets every head-pinned chip."
+  },
+  {
+   "id": "rf:r4-7-owner",
+   "source": "rf",
+   "text": "You are asked only if the class says so, at a settled head. An agent writes the packet, which cancels if the head moves before delivery."
+  },
+  {
+   "id": "rf:r4-8-rules",
+   "source": "rf",
+   "text": "Once it reaches you, fixes wait for your answer. A rule file asks live only for a looser or mixed change, the authority table, or a ruleset."
+  },
+  {
+   "id": "rf:r4-9-queue",
+   "source": "rf",
+   "text": "With every chip green, the merge queue tests main plus ready heads as one candidate. It writes an intent marker, lands main at that tree, then writes the result."
+  },
+  {
+   "id": "rf:r4-10-main",
+   "source": "rf",
+   "text": "The head never moves. Main's CI confirms, and a red main gets one fixer from the tip. The last slice to land closes the task."
+  },
+  {
+   "id": "rf:r4-11-stall",
+   "source": "rf",
+   "text": "A stalled item's lease expires. After three re-drives, a triager picks one fixed verdict: restart, file a defect and park, or escalate to ops."
+  },
+  {
+   "id": "rf:r5-1-holds",
+   "source": "rf",
+   "text": "Side by side: hold slots, each class with its own release, become one requirement set per head."
+  },
+  {
+   "id": "rf:r5-2-mergeup",
+   "source": "rf",
+   "text": "Merge-ups move the reviewed head on thirty to thirty-five percent of heads, about a quarter of runner minutes. The queue's candidate leaves heads alone."
+  },
+  {
+   "id": "rf:r5-4-tick",
+   "source": "rf",
+   "text": "A six-hundred-second tick becomes events, with the poller as a backstop."
+  },
+  {
+   "id": "rf:r5-5-release",
+   "source": "rf",
+   "text": "Seat release becomes software in steps: deny-only guard changes on conformance, other adversary classes only after the F7 eval."
+  },
+  {
+   "id": "rf:r5-6-pull",
+   "source": "rf",
+   "text": "Ask-and-wait reviews become a pull queue, red-main fixes first."
+  },
+  {
+   "id": "rf:r5-7-gates",
+   "source": "rf",
+   "text": "Of seven hundred seventeen owner gates in seven days, four hundred eighty-two were cancelled, three hundred and two because the head moved. Now one class asks, at a settled head."
+  },
+  {
+   "id": "rf:r6-1-seat",
+   "source": "rf",
+   "text": "Seat work goes to the scheduler and the triager, and a seat becomes a partition you switch. Titan-coord becomes the ops alarm sink."
+  },
+  {
+   "id": "rf:r6-2-class",
+   "source": "rf",
+   "text": "The planner's contract sets the class floor, and the implementer can only raise it."
+  },
+  {
+   "id": "rf:r6-3-owner",
+   "source": "rf",
+   "text": "You move to the plan sitting, and to the console for expedites and looser or mixed packets."
+  },
+  {
+   "id": "rf:r6-4-steps",
+   "source": "rf",
+   "text": "Shepherd's steps become registered steps, burndown becomes a recipe, and agent-chat becomes a runtime."
+  },
+  {
+   "id": "rf:r7-1-carry",
+   "source": "rf",
+   "text": "Seven carry modules and the three forty-one stopgap go at rung three, safe because the queue never moves a head."
+  },
+  {
+   "id": "rf:r7-2-holds",
+   "source": "rf",
+   "text": "Hold slots give way to per-head requirements. The no-reviewer hold and defect gates give way to leases, re-drives and the triager."
+  },
+  {
+   "id": "rf:r7-3-caps",
+   "source": "rf",
+   "text": "Role caps give way to pools and three hard stops: the five-hour ceiling, the seven-day reserve line, and the per-run cap."
+  },
+  {
+   "id": "rf:r7-4-notices",
+   "source": "rf",
+   "text": "Notices go: almost no park refusal was acted on. The file lock goes after F12, and no coordinator stays in the loop."
+  },
+  {
+   "id": "rf:r7-4b-score",
+   "source": "rf",
+   "text": "The weighted score goes. Two pool rules replace it: finish before start, then tier and readiness age."
+  },
+  {
+   "id": "rf:r7-4c-replay",
+   "source": "rf",
+   "text": "Replay keyed by step name and call count goes. Markers are keyed by fact instead; a run-wide counter key is what parked five runs."
+  },
+  {
+   "id": "rf:r7-5-risk1",
+   "source": "rf",
+   "text": "The adversary converged with no blocking objection, but kept three risks. First, an agent labels rule-file changes no checker covers, so a disguised loosening could skip your live ask. The adversary must still approve."
+  },
+  {
+   "id": "rf:r7-6-risk23",
+   "source": "rf",
+   "text": "Second, big gains wait on follow-ups; F7 must price the seat's hand catches. Third, two orchestrators remain until rung eight."
+  },
+  {
+   "id": "rf:r8-1-core",
+   "source": "rf",
+   "text": "Eighteen additions build it, in twelve groups. First the core: the marker table, the step registry and the runner, then waits and events."
+  },
+  {
+   "id": "rf:r8-2-claims",
+   "source": "rf",
+   "text": "Claims and pools gate every spawn. An outbox guards each land and deploy, against the bug behind two deploy rollbacks. A reconciler reads GitHub."
+  },
+  {
+   "id": "rf:r8-3-review",
+   "source": "rf",
+   "text": "Plans gain a contract and the risk table. A review pool and the merge queue prove and land the work. Packets, a triager and alarms handle the rest."
+  },
+  {
+   "id": "rf:r8-4-tools",
+   "source": "rf",
+   "text": "Last come why, the restart pacer, evals and invariant tests, and your expedite entry."
+  },
+  {
+   "id": "rf:r9-1-ladder",
+   "source": "rf",
+   "text": "It ships as eleven rungs, each behind a flag or in shadow, naming what it deletes."
+  },
+  {
+   "id": "rf:r9-2-first",
+   "source": "rf",
+   "text": "Rung zero fixes data honesty, one shadows requirements and ships why, two adds the review queue, and three the merge queue."
+  },
+  {
+   "id": "rf:r9-3-middle",
+   "source": "rf",
+   "text": "Four wakes fixers, five shadows the adversary, six requires contracts, seven folds owner gates into one class."
+  },
+  {
+   "id": "rf:r9-4-late",
+   "source": "rf",
+   "text": "Eight moves dispatch into the factory after a forty-eight-hour shadow, reversibly, in parallel: about fifty-five agent-hours. Nine adds the restart pacer; ten shrinks the charter."
+  },
+  {
+   "id": "rf:r10-1-calls",
+   "source": "rf",
+   "text": "Eleven calls are yours, none technical, each with a default."
+  },
+  {
+   "id": "rf:r10-2-q1",
+   "source": "rf",
+   "text": "First, landing per repo. Option a: the token bypasses the ruleset and main fast-forwards to the tested candidate. Option b: API merges, a tree-hash check, the up-to-date rule off."
+  },
+  {
+   "id": "rf:r10-3-q1-default",
+   "source": "rf",
+   "text": "Under a, CI holds by construction; under b, for each batch's final tree only. Unanswered, b applies where that rule is off; other repos wait."
+  },
+  {
+   "id": "rf:r10-4-q2-q4",
+   "source": "rf",
+   "text": "Two to four: confirm the stopgap, adopt the rule-file review rule, and keep fixes waiting on a delivered packet. Each default is yes."
+  },
+  {
+   "id": "rf:r10-5-q5-q6",
+   "source": "rf",
+   "text": "Five: which seat partitions run, by default titan-coord's alone. Six: a console expedite, by default added at rung eight."
+  },
+  {
+   "id": "rf:r10-6-q7-q9",
+   "source": "rf",
+   "text": "Seven: a blind sitting on real packets. Eight: a daily line, not alarms. Nine: a shadow run before a reversible cutover. The defaults: schedule, daily line, accept."
+  },
+  {
+   "id": "rf:r10-6b-q10-q11",
+   "source": "rf",
+   "text": "Ten: two pool rules replace the weighted score, tried in shadow first. Eleven: four researchers study the pattern first. Both defaults are yes."
+  },
+  {
+   "id": "rf:r10-7-followups",
+   "source": "rf",
+   "text": "Eight follow-ups settle the technical forks, from F1's queue age to F13's landing test."
+  },
+  {
+   "id": "rf:r10-7b-research",
+   "source": "rf",
+   "text": "Research comes first: durable engines, build-system memoization, waits and claims, and an audit of our own engine, one researcher each."
+  },
+  {
+   "id": "rf:r10-8-measures",
+   "source": "rf",
+   "text": "Measures: how fast why answers, how many asks are superseded, how many reviews end with no verdict. Latency has no target until F1."
+  },
+  {
+   "id": "rf:r10-9-close",
+   "source": "rf",
+   "text": "In this design, a recipe is a script, each step leaves a marker, and recovery is a re-run from the top. Every wait names its reason. The open calls are yours."
+  },
+  {
+   "id": "rf:r10-10-outro",
+   "source": "rf",
+   "text": "Find the wake, and you find the wait."
+  },
+  {
+   "id": "rf:a1-1-why",
+   "source": "rf",
+   "text": "Before anyone builds version five, two adversaries tried to break it, apart: one with the web, one who knew versions one to four. Is it ready, and what should we build or buy?"
+  },
+  {
+   "id": "rf:a1-2-pin",
+   "source": "rf",
+   "text": "Each step leaves a marker that stays valid until its pin moves: the code tree, the diff, or an event it depends on."
+  },
+  {
+   "id": "rf:a1-3-verdict",
+   "source": "rf",
+   "text": "Eight blockers from one, six from the other. Both say not converged, not ready yet, and both call every blocker a specification fix, not an architectural one."
+  },
+  {
+   "id": "rf:a2-1-orphan",
+   "source": "rf",
+   "text": "The orphan trap alarms on a valid marker the entry never reached. After a clean merge-up, the entry returns at the CI wait, short of the owner's approval, and the trap fires. Five hundred and twenty of nine hundred and ninety-nine runs merged up."
+  },
+  {
+   "id": "rf:a2-1f-orphan-fix",
+   "source": "rf",
+   "text": "The integrator proposes one reviewer's fix: alarm only on a marker the entry passed and skipped, never one past where it stopped to wait."
+  },
+  {
+   "id": "rf:a2-2-patchid",
+   "source": "rf",
+   "text": "Git's patch-id, a hash of the diff, ignores whitespace. A fixer re-indents a permissions block: CI goes stale with the tree, but the patch-id holds, so the adversary's verdict still counts."
+  },
+  {
+   "id": "rf:a2-2f-patchid-fix",
+   "source": "rf",
+   "text": "The integrator proposes to pin its own hash of the verbatim diff, whitespace kept."
+  },
+  {
+   "id": "rf:a2-3-revert",
+   "source": "rf",
+   "text": "A revert moves the parent's pin, but the child checks only a digest of the parent's result, which has not changed. So its claim is still granted against a parent gone from main."
+  },
+  {
+   "id": "rf:a2-3f-revert-fix",
+   "source": "rf",
+   "text": "The integrator proposes: compare pins, not digests, and spot a revert by its metadata."
+  },
+  {
+   "id": "rf:a2-4-path",
+   "source": "rf",
+   "text": "A contract-path claim keeps a shared file to one item. It releases at park, when CI first goes green, before review, so a second item can take the file mid-fix."
+  },
+  {
+   "id": "rf:a2-4f-path-fix",
+   "source": "rf",
+   "text": "The integrator proposes to release the path only when the item lands or is abandoned."
+  },
+  {
+   "id": "rf:a3-1-merge",
+   "source": "rf",
+   "text": "First, from one reviewer: GitHub's merge call checks only the pull request's head, so if main moves first, an untested tree lands. The integrator proposes GitHub's queue where available, else a fast-forward to the tested commit."
+  },
+  {
+   "id": "rf:a3-2-dedupe",
+   "source": "rf",
+   "text": "Second, after a clean rebase, a check run on the old commit is deduped, leaving the new head without its required check. The integrator proposes keying commit effects by the tree."
+  },
+  {
+   "id": "rf:a3-3-milestones",
+   "source": "rf",
+   "text": "Third, from the other reviewer: milestone one's shadow gate compares events that only arrive at milestone two. The integrator proposes moving the event log into milestone one."
+  },
+  {
+   "id": "rf:a3-4-observed",
+   "source": "rf",
+   "text": "Fourth, a rules change sends no event, so a newly required check is never read; under a bypass token, a candidate lands without it. The integrator proposes an event source per pin, or a time limit."
+  },
+  {
+   "id": "rf:a4-1-fact",
+   "source": "rf",
+   "text": "Every workflow engine memoizes per run, by position or step id; none invalidates by fact and pin, and Shepherd already replays from the top. So both keep the core built: no Temporal, DBOS, Restate or Inngest."
+  },
+  {
+   "id": "rf:a4-2-queue",
+   "source": "rf",
+   "text": "Five edges are worth buying. First, the merge queue: GitHub's own if the repos move to an organization, else Mergify or Trunk, else our own with fast-forward."
+  },
+  {
+   "id": "rf:a4-3-ingress",
+   "source": "rf",
+   "text": "Second, webhooks through a free tunnel, leaving the reconciler as a backstop. Third, Litestream to copy the one store."
+  },
+  {
+   "id": "rf:a4-4-hashes",
+   "source": "rf",
+   "text": "Fourth, the hashes behind the pins: git gives the verbatim diff and tree hashes, and small libraries do the rest. Fifth, a lint that keeps recipes deterministic, and an eval grader."
+  },
+  {
+   "id": "rf:a4-5-built",
+   "source": "rf",
+   "text": "Two parts stay built. Claims and pools: Kubernetes schedulers run only on Kubernetes. The event bus: a second store would split the marker's transactions."
+  },
+  {
+   "id": "rf:a5-1-design",
+   "source": "rf",
+   "text": "Two design calls are yours. Twelve: should every version bump re-run open work, safe but costly? Thirteen: should a verdict carry to an identical diff, whitespace counted, never for a visual approval?"
+  },
+  {
+   "id": "rf:a5-2-accounts",
+   "source": "rf",
+   "text": "Three more stay yours: where the repos live, for GitHub's queue; a webhook tunnel; and a backup target. Each touches an outside account."
+  },
+  {
+   "id": "rf:a5-3-next",
+   "source": "rf",
+   "text": "Version six is being written to answer both reviews, and another adversary round follows. Until you decide, each fix is a proposal."
+  },
+  {
+   "id": "rf:a3-1-merge~2",
+   "source": "rf",
+   "text": "First, from one reviewer: GitHub's merge call checks only the pull request's head, so if main moves first, an untested tree lands. The owner's call: keep the API merge, check main's tree after, and treat a mismatch as main red."
+  },
+  {
+   "id": "rf:a4-1-fact~2",
+   "source": "rf",
+   "text": "Every workflow engine [memoizes](/mˈɛmoʊˌaɪzᵻz/) per run, by position or step id; none invalidates by fact and pin, and Shepherd already replays from the top. So both keep the core built: no Temporal, DBOS, Restate or [Inngest](/ˈɪnʤɛst/)."
+  },
+  {
+   "id": "rf:r1-7-promise~2",
+   "source": "rf",
+   "text": "The redesign keeps, removes and adds parts, and leaves nine calls to you."
+  },
+  {
+   "id": "rf:r3-1-nouns~2",
+   "source": "rf",
+   "text": "Six nouns carry the new model: item, phase, event, requirement, pool and lease."
+  },
+  {
+   "id": "rf:r3-2-sentence~2",
+   "source": "rf",
+   "text": "One line explains it: item, pool, handler, event. A waiting item records the event that will wake it."
+  },
+  {
+   "id": "rf:r3-4-ledger",
+   "source": "rf",
+   "text": "One ledger replaces the tick and Shepherd. Its scheduler runs on every event; its only clock, the reconciler, is a GitHub poller."
+  },
+  {
+   "id": "rf:r3-7-simple~2",
+   "source": "rf",
+   "text": "Risk table rows, the score formula and stacking are left out; each is data, so the shape holds."
+  },
+  {
+   "id": "rf:r4-2-start~2",
+   "source": "rf",
+   "text": "The scheduler ranks slices, and a refusal names its wake. When the pool admits, the broker spawns an implementer."
+  },
+  {
+   "id": "rf:r4-3-open~2",
+   "source": "rf",
+   "text": "Its push opens a pull request and registers the item, with unmet requirements. Path globs can raise its class."
+  },
+  {
+   "id": "rf:r4-4-prove~2",
+   "source": "rf",
+   "text": "CI goes green, the fix-proof judge marks the proof reproduced, and a reviewer from the pull queue returns merge."
+  },
+  {
+   "id": "rf:r4-6-fix~2",
+   "source": "rf",
+   "text": "A red requirement wakes the implementer at once. Its new head resets every head-pinned requirement."
+  },
+  {
+   "id": "rf:r4-9-queue~2",
+   "source": "rf",
+   "text": "With every chip green, the merge queue tests main plus ready heads as one candidate, and lands main at exactly that tree."
+  },
+  {
+   "id": "rf:r6-4-steps~2",
+   "source": "rf",
+   "text": "Shepherd's steps become satisfiers, dispatch moves into the factory, and agent-chat becomes a runtime."
+  },
+  {
+   "id": "rf:r7-4-notices~2",
+   "source": "rf",
+   "text": "Notices go: under one percent of park refusals were acted on. The file lock goes after F12, and no coordinator stays in the loop."
+  },
+  {
+   "id": "rf:r7-6-risk23~2",
+   "source": "rf",
+   "text": "Second, big gains wait on follow-ups; F7 must price the seat's six to ten hand catches. Third, two orchestrators remain until rung eight."
+  },
+  {
+   "id": "rf:r8-1-record",
+   "source": "rf",
+   "text": "Eighteen additions build it. The ledger gets the record, event log, reconciler, evaluator and risk table."
+  },
+  {
+   "id": "rf:r8-2-flow",
+   "source": "rf",
+   "text": "Plans get a contract schema. Pools, leases and two queues govern the work, and an adversary reviewer joins the agents."
+  },
+  {
+   "id": "rf:r8-3-owner",
+   "source": "rf",
+   "text": "Packets and alarms, why and the restart pacer, tests and your expedite entry complete it."
+  },
+  {
+   "id": "rf:r10-1-calls~2",
+   "source": "rf",
+   "text": "Nine calls are yours, none technical, each with a default."
+  },
+  {
+   "id": "rf:r10-6-q7-q9~2",
+   "source": "rf",
+   "text": "Seven: a blind sitting of about forty-five minutes on thirty packets. Eight: a daily line, not alarms. Nine: a forty-eight-hour shadow before a reversible cutover. The defaults: schedule, daily line, accept."
+  },
+  {
+   "id": "rf:r10-8-measures~2",
+   "source": "rf",
+   "text": "Measures: why in under five seconds, superseded asks from sixty-nine percent to under ten, no-verdict from sixteen to under five. Latency waits for F1."
+  },
+  {
+   "id": "rf:r10-9-close~2",
+   "source": "rf",
+   "text": "In this design, four stores become one ledger and five clocks one poller. Every wait names its wake. The open calls are yours."
+  },
+  {
+   "id": "het:0",
+   "source": "het",
+   "word": "live",
+   "reading": "verb",
+   "text": "We live in a small house by the river."
+  },
+  {
+   "id": "het:1",
+   "source": "het",
+   "word": "live",
+   "reading": "adj",
+   "text": "The band played a live show last night."
+  },
+  {
+   "id": "het:2",
+   "source": "het",
+   "word": "live",
+   "reading": "verb",
+   "text": "Most agents live only as long as their task."
+  },
+  {
+   "id": "het:3",
+   "source": "het",
+   "word": "live",
+   "reading": "adj",
+   "text": "The live preview updates as you type."
+  },
+  {
+   "id": "het:4",
+   "source": "het",
+   "word": "read",
+   "reading": "present",
+   "text": "I read the logs every morning before standup."
+  },
+  {
+   "id": "het:5",
+   "source": "het",
+   "word": "read",
+   "reading": "past",
+   "text": "Yesterday she read the whole report twice."
+  },
+  {
+   "id": "het:6",
+   "source": "het",
+   "word": "read",
+   "reading": "present",
+   "text": "Please read the plan before you start."
+  },
+  {
+   "id": "het:7",
+   "source": "het",
+   "word": "read",
+   "reading": "past",
+   "text": "He had read the brief, so he knew the bar."
+  },
+  {
+   "id": "het:8",
+   "source": "het",
+   "word": "lead",
+   "reading": "guide",
+   "text": "She will lead the review this week."
+  },
+  {
+   "id": "het:9",
+   "source": "het",
+   "word": "lead",
+   "reading": "metal",
+   "text": "The old pipes were made of lead."
+  },
+  {
+   "id": "het:10",
+   "source": "het",
+   "word": "lead",
+   "reading": "guide",
+   "text": "Leads from the sales team lead to new work."
+  },
+  {
+   "id": "het:11",
+   "source": "het",
+   "word": "lead",
+   "reading": "metal",
+   "text": "A lead weight held the line down."
+  },
+  {
+   "id": "het:12",
+   "source": "het",
+   "word": "close",
+   "reading": "shut",
+   "text": "Please close the door when you leave."
+  },
+  {
+   "id": "het:13",
+   "source": "het",
+   "word": "close",
+   "reading": "near",
+   "text": "The station is close to the office."
+  },
+  {
+   "id": "het:14",
+   "source": "het",
+   "word": "close",
+   "reading": "shut",
+   "text": "The coordinator will close the issue after merge."
+  },
+  {
+   "id": "het:15",
+   "source": "het",
+   "word": "close",
+   "reading": "near",
+   "text": "We came close to missing the deadline."
+  },
+  {
+   "id": "het:16",
+   "source": "het",
+   "word": "wind",
+   "reading": "air",
+   "text": "The wind was cold off the sea."
+  },
+  {
+   "id": "het:17",
+   "source": "het",
+   "word": "wind",
+   "reading": "turn",
+   "text": "You have to wind the clock every day."
+  },
+  {
+   "id": "het:18",
+   "source": "het",
+   "word": "wind",
+   "reading": "air",
+   "text": "A strong wind knocked the sign over."
+  },
+  {
+   "id": "het:19",
+   "source": "het",
+   "word": "wind",
+   "reading": "turn",
+   "text": "Wind the cable around the spool."
+  },
+  {
+   "id": "het:20",
+   "source": "het",
+   "word": "tear",
+   "reading": "cry",
+   "text": "A single tear ran down her cheek."
+  },
+  {
+   "id": "het:21",
+   "source": "het",
+   "word": "tear",
+   "reading": "rip",
+   "text": "Do not tear the page out of the book."
+  },
+  {
+   "id": "het:22",
+   "source": "het",
+   "word": "tear",
+   "reading": "cry",
+   "text": "He wiped a tear from his eye."
+  },
+  {
+   "id": "het:23",
+   "source": "het",
+   "word": "tear",
+   "reading": "rip",
+   "text": "They tear down the old worktree after the merge."
+  },
+  {
+   "id": "het:24",
+   "source": "het",
+   "word": "wound",
+   "reading": "injury",
+   "text": "The wound healed in two weeks."
+  },
+  {
+   "id": "het:25",
+   "source": "het",
+   "word": "wound",
+   "reading": "coiled",
+   "text": "She wound the string around her finger."
+  },
+  {
+   "id": "het:26",
+   "source": "het",
+   "word": "wound",
+   "reading": "injury",
+   "text": "The soldier dressed the wound himself."
+  },
+  {
+   "id": "het:27",
+   "source": "het",
+   "word": "wound",
+   "reading": "coiled",
+   "text": "He wound up the toy and let it go."
+  },
+  {
+   "id": "het:28",
+   "source": "het",
+   "word": "minute",
+   "reading": "time",
+   "text": "Wait a minute while the build finishes."
+  },
+  {
+   "id": "het:29",
+   "source": "het",
+   "word": "minute",
+   "reading": "tiny",
+   "text": "The change was minute but it broke the test."
+  },
+  {
+   "id": "het:30",
+   "source": "het",
+   "word": "minute",
+   "reading": "time",
+   "text": "Each run takes about a minute."
+  },
+  {
+   "id": "het:31",
+   "source": "het",
+   "word": "minute",
+   "reading": "tiny",
+   "text": "Only a minute amount of data was lost."
+  },
+  {
+   "id": "het:32",
+   "source": "het",
+   "word": "record",
+   "reading": "noun",
+   "text": "The decision record lives in the ledger."
+  },
+  {
+   "id": "het:33",
+   "source": "het",
+   "word": "record",
+   "reading": "verb",
+   "text": "We record every run in a JSON file."
+  },
+  {
+   "id": "het:34",
+   "source": "het",
+   "word": "record",
+   "reading": "noun",
+   "text": "She set a new record for the mile."
+  },
+  {
+   "id": "het:35",
+   "source": "het",
+   "word": "record",
+   "reading": "verb",
+   "text": "Please record the meeting for the owner."
+  },
+  {
+   "id": "het:36",
+   "source": "het",
+   "word": "present",
+   "reading": "noun",
+   "text": "He wrapped the present in red paper."
+  },
+  {
+   "id": "het:37",
+   "source": "het",
+   "word": "present",
+   "reading": "verb",
+   "text": "We will present the results on Friday."
+  },
+  {
+   "id": "het:38",
+   "source": "het",
+   "word": "present",
+   "reading": "noun",
+   "text": "At present the queue is empty."
+  },
+  {
+   "id": "het:39",
+   "source": "het",
+   "word": "present",
+   "reading": "verb",
+   "text": "The agents present their findings to the coordinator."
+  },
+  {
+   "id": "het:40",
+   "source": "het",
+   "word": "object",
+   "reading": "noun",
+   "text": "Every object in the scene has a frame."
+  },
+  {
+   "id": "het:41",
+   "source": "het",
+   "word": "object",
+   "reading": "verb",
+   "text": "I object to that change."
+  },
+  {
+   "id": "het:42",
+   "source": "het",
+   "word": "object",
+   "reading": "noun",
+   "text": "The function returns an object with two keys."
+  },
+  {
+   "id": "het:43",
+   "source": "het",
+   "word": "object",
+   "reading": "verb",
+   "text": "Reviewers may object if the diff is too large."
+  },
+  {
+   "id": "het:44",
+   "source": "het",
+   "word": "content",
+   "reading": "noun",
+   "text": "The content of the file was empty."
+  },
+  {
+   "id": "het:45",
+   "source": "het",
+   "word": "content",
+   "reading": "adj",
+   "text": "She was content with the result."
+  },
+  {
+   "id": "het:46",
+   "source": "het",
+   "word": "content",
+   "reading": "noun",
+   "text": "We review the content before publishing."
+  },
+  {
+   "id": "het:47",
+   "source": "het",
+   "word": "content",
+   "reading": "adj",
+   "text": "He seemed content to wait."
+  },
+  {
+   "id": "het:48",
+   "source": "het",
+   "word": "project",
+   "reading": "noun",
+   "text": "The project shipped on time."
+  },
+  {
+   "id": "het:49",
+   "source": "het",
+   "word": "project",
+   "reading": "verb",
+   "text": "We project the cost will double."
+  },
+  {
+   "id": "het:50",
+   "source": "het",
+   "word": "project",
+   "reading": "noun",
+   "text": "Each project has its own repository."
+  },
+  {
+   "id": "het:51",
+   "source": "het",
+   "word": "project",
+   "reading": "verb",
+   "text": "The lamp can project an image on the wall."
+  },
+  {
+   "id": "het:52",
+   "source": "het",
+   "word": "produce",
+   "reading": "noun",
+   "text": "The market sells fresh produce."
+  },
+  {
+   "id": "het:53",
+   "source": "het",
+   "word": "produce",
+   "reading": "verb",
+   "text": "The factory will produce a pull request."
+  },
+  {
+   "id": "het:54",
+   "source": "het",
+   "word": "produce",
+   "reading": "noun",
+   "text": "Buy the produce from the farm stand."
+  },
+  {
+   "id": "het:55",
+   "source": "het",
+   "word": "produce",
+   "reading": "verb",
+   "text": "These steps produce the same output every time."
+  },
+  {
+   "id": "het:56",
+   "source": "het",
+   "word": "use",
+   "reading": "noun",
+   "text": "There is no use in waiting."
+  },
+  {
+   "id": "het:57",
+   "source": "het",
+   "word": "use",
+   "reading": "verb",
+   "text": "We use the cache to skip the download."
+  },
+  {
+   "id": "het:58",
+   "source": "het",
+   "word": "use",
+   "reading": "noun",
+   "text": "The tool sees heavy use on weekends."
+  },
+  {
+   "id": "het:59",
+   "source": "het",
+   "word": "use",
+   "reading": "verb",
+   "text": "You can use either model."
+  },
+  {
+   "id": "het:60",
+   "source": "het",
+   "word": "desert",
+   "reading": "noun",
+   "text": "The desert was hot and dry."
+  },
+  {
+   "id": "het:61",
+   "source": "het",
+   "word": "desert",
+   "reading": "verb",
+   "text": "Do not desert your post."
+  },
+  {
+   "id": "het:62",
+   "source": "het",
+   "word": "desert",
+   "reading": "noun",
+   "text": "They crossed the desert in three days."
+  },
+  {
+   "id": "het:63",
+   "source": "het",
+   "word": "desert",
+   "reading": "verb",
+   "text": "Soldiers who desert are punished."
+  },
+  {
+   "id": "het:64",
+   "source": "het",
+   "word": "refuse",
+   "reading": "verb",
+   "text": "I refuse to merge an untested change."
+  },
+  {
+   "id": "het:65",
+   "source": "het",
+   "word": "refuse",
+   "reading": "noun",
+   "text": "The refuse was collected on Monday."
+  },
+  {
+   "id": "het:66",
+   "source": "het",
+   "word": "refuse",
+   "reading": "verb",
+   "text": "They refuse every request without a test."
+  },
+  {
+   "id": "het:67",
+   "source": "het",
+   "word": "refuse",
+   "reading": "noun",
+   "text": "Bags of refuse piled up in the alley."
+  },
+  {
+   "id": "het:68",
+   "source": "het",
+   "word": "row",
+   "reading": "line",
+   "text": "The seats in the front row were taken."
+  },
+  {
+   "id": "het:69",
+   "source": "het",
+   "word": "row",
+   "reading": "quarrel",
+   "text": "They had a terrible row about money."
+  },
+  {
+   "id": "het:70",
+   "source": "het",
+   "word": "row",
+   "reading": "line",
+   "text": "Each row of the table is one task."
+  },
+  {
+   "id": "het:71",
+   "source": "het",
+   "word": "row",
+   "reading": "quarrel",
+   "text": "The neighbours had a row over the fence."
+  },
+  {
+   "id": "het:72",
+   "source": "het",
+   "word": "bow",
+   "reading": "ribbon",
+   "text": "She tied a bow on the gift."
+  },
+  {
+   "id": "het:73",
+   "source": "het",
+   "word": "bow",
+   "reading": "bend",
+   "text": "The actors bow at the end of the play."
+  },
+  {
+   "id": "het:74",
+   "source": "het",
+   "word": "bow",
+   "reading": "ribbon",
+   "text": "He drew the bow across the strings."
+  },
+  {
+   "id": "het:75",
+   "source": "het",
+   "word": "bow",
+   "reading": "bend",
+   "text": "Take a bow, you earned it."
+  },
+  {
+   "id": "auth:contraction-1",
+   "source": "authored",
+   "category": "contraction",
+   "text": "I don't know why it can't finish."
+  },
+  {
+   "id": "auth:contraction-2",
+   "source": "authored",
+   "category": "contraction",
+   "text": "They won't merge it until the checks pass."
+  },
+  {
+   "id": "auth:contraction-3",
+   "source": "authored",
+   "category": "contraction",
+   "text": "You cannot read a pull request's files from here."
+  },
+  {
+   "id": "auth:contraction-4",
+   "source": "authored",
+   "category": "contraction",
+   "text": "Y'all should check the logs before standup."
+  },
+  {
+   "id": "auth:contraction-5",
+   "source": "authored",
+   "category": "contraction",
+   "text": "She said she'd review it, but he'd already shipped."
+  },
+  {
+   "id": "auth:contraction-6",
+   "source": "authored",
+   "category": "contraction",
+   "text": "We're sure they're ready and you've seen it."
+  },
+  {
+   "id": "auth:contraction-7",
+   "source": "authored",
+   "category": "contraction",
+   "text": "It's a cache, and it's been warm since noon."
+  },
+  {
+   "id": "auth:contraction-8",
+   "source": "authored",
+   "category": "contraction",
+   "text": "The cache's size is fixed, but the server's limit is not."
+  },
+  {
+   "id": "auth:contraction-9",
+   "source": "authored",
+   "category": "contraction",
+   "text": "Who's on call, and whose pager is it?"
+  },
+  {
+   "id": "auth:contraction-10",
+   "source": "authored",
+   "category": "contraction",
+   "text": "That's what he's doing, and what she's done."
+  },
+  {
+   "id": "auth:contraction-11",
+   "source": "authored",
+   "category": "contraction",
+   "text": "Let's ship it; we shouldn't wait, shouldn't we?"
+  },
+  {
+   "id": "auth:contraction-12",
+   "source": "authored",
+   "category": "contraction",
+   "text": "I'm sure they'll agree, and we'll see."
+  },
+  {
+   "id": "auth:contraction-13",
+   "source": "authored",
+   "category": "contraction",
+   "text": "He didn't really read it."
+  },
+  {
+   "id": "auth:contraction-14",
+   "source": "authored",
+   "category": "contraction",
+   "text": "She didn't actually read the diff."
+  },
+  {
+   "id": "auth:contraction-15",
+   "source": "authored",
+   "category": "contraction",
+   "text": "We can't just read the config and move on."
+  },
+  {
+   "id": "auth:contraction-16",
+   "source": "authored",
+   "category": "contraction",
+   "text": "Nobody has never read it, and you mustn't."
+  },
+  {
+   "id": "auth:contraction-17",
+   "source": "authored",
+   "category": "contraction",
+   "text": "Ain't nothing wrong with o'clock or ma'am."
+  },
+  {
+   "id": "auth:contraction-18",
+   "source": "authored",
+   "category": "contraction",
+   "text": "The agents' queues were full, and the users' tokens expired."
+  },
+  {
+   "id": "auth:contraction-19",
+   "source": "authored",
+   "category": "contraction",
+   "text": "Rock 'n' roll, fish 'n' chips, and 'tis the season."
+  },
+  {
+   "id": "auth:contraction-20",
+   "source": "authored",
+   "category": "contraction",
+   "text": "It wasn't me, and it isn't them, so what isn't working?"
+  },
+  {
+   "id": "auth:hyphen-1",
+   "source": "authored",
+   "category": "hyphen",
+   "text": "This well-known co-op has a built-in cache."
+  },
+  {
+   "id": "auth:hyphen-2",
+   "source": "authored",
+   "category": "hyphen",
+   "text": "The 5-10 range is a state-of-the-art default."
+  },
+  {
+   "id": "auth:hyphen-3",
+   "source": "authored",
+   "category": "hyphen",
+   "text": "Wait -- no, that was wrong."
+  },
+  {
+   "id": "auth:hyphen-4",
+   "source": "authored",
+   "category": "hyphen",
+   "text": "Wait — no, that was wrong."
+  },
+  {
+   "id": "auth:hyphen-5",
+   "source": "authored",
+   "category": "hyphen",
+   "text": "The re-run, the re-read and the rework all passed."
+  },
+  {
+   "id": "auth:hyphen-6",
+   "source": "authored",
+   "category": "hyphen",
+   "text": "A three-year-old, a twenty-one-gun salute and a one-off."
+  },
+  {
+   "id": "auth:hyphen-7",
+   "source": "authored",
+   "category": "hyphen",
+   "text": "Pre-merge and post-merge checks are well-defined."
+  },
+  {
+   "id": "auth:hyphen-8",
+   "source": "authored",
+   "category": "hyphen",
+   "text": "Use a long-lived, read-only, opt-in flag."
+  },
+  {
+   "id": "auth:hyphen-9",
+   "source": "authored",
+   "category": "hyphen",
+   "text": "From 9–5, and 1990–2000, in en–dash form."
+  },
+  {
+   "id": "auth:hyphen-10",
+   "source": "authored",
+   "category": "hyphen",
+   "text": "A user-agent and a cross-platform e-mail client."
+  },
+  {
+   "id": "auth:hyphen-11",
+   "source": "authored",
+   "category": "hyphen",
+   "text": "The x-ray, the T-shirt and the U-turn."
+  },
+  {
+   "id": "auth:hyphen-12",
+   "source": "authored",
+   "category": "hyphen",
+   "text": "Mother-in-law and jack-of-all-trades."
+  },
+  {
+   "id": "auth:hyphen-13",
+   "source": "authored",
+   "category": "hyphen",
+   "text": "Anti-aliasing is non-trivial but not un-doable."
+  },
+  {
+   "id": "auth:money-1",
+   "source": "authored",
+   "category": "money",
+   "text": "It costs $5 today."
+  },
+  {
+   "id": "auth:money-2",
+   "source": "authored",
+   "category": "money",
+   "text": "It costs $5.99 with tax."
+  },
+  {
+   "id": "auth:money-3",
+   "source": "authored",
+   "category": "money",
+   "text": "The fee is £3, or about €4."
+  },
+  {
+   "id": "auth:money-4",
+   "source": "authored",
+   "category": "money",
+   "text": "A coin is worth 3¢, and a dime 10¢."
+  },
+  {
+   "id": "auth:money-5",
+   "source": "authored",
+   "category": "money",
+   "text": "That's $1,250,000 over 3 years."
+  },
+  {
+   "id": "auth:money-6",
+   "source": "authored",
+   "category": "money",
+   "text": "Pay $1 now and $0.50 later."
+  },
+  {
+   "id": "auth:money-7",
+   "source": "authored",
+   "category": "money",
+   "text": "Prices rose from $19.99 to $24.50, a rise of 22.6%."
+  },
+  {
+   "id": "auth:money-8",
+   "source": "authored",
+   "category": "money",
+   "text": "A ¥500 coin and a ₹20 note."
+  },
+  {
+   "id": "auth:money-9",
+   "source": "authored",
+   "category": "money",
+   "text": "He paid $100 for 100 cards, at $1 each."
+  },
+  {
+   "id": "auth:abbreviation-1",
+   "source": "authored",
+   "category": "abbreviation",
+   "text": "St. Mary met Mr. Jones near Main St."
+  },
+  {
+   "id": "auth:abbreviation-2",
+   "source": "authored",
+   "category": "abbreviation",
+   "text": "Dr. Smith and Mrs. Lee, e.g. the senior staff, came."
+  },
+  {
+   "id": "auth:abbreviation-3",
+   "source": "authored",
+   "category": "abbreviation",
+   "text": "Use tools, i.e. the linter, etc."
+  },
+  {
+   "id": "auth:abbreviation-4",
+   "source": "authored",
+   "category": "abbreviation",
+   "text": "The U.S. team and the U.K. team met at 9 a.m."
+  },
+  {
+   "id": "auth:abbreviation-5",
+   "source": "authored",
+   "category": "abbreviation",
+   "text": "Class ends at 5 p.m. sharp, a.m. sessions excepted."
+  },
+  {
+   "id": "auth:abbreviation-6",
+   "source": "authored",
+   "category": "abbreviation",
+   "text": "The CEO of NASA and the CPU of the GPU."
+  },
+  {
+   "id": "auth:abbreviation-7",
+   "source": "authored",
+   "category": "abbreviation",
+   "text": "Ask the FBI, the IRS or NATO, not the API."
+  },
+  {
+   "id": "auth:abbreviation-8",
+   "source": "authored",
+   "category": "abbreviation",
+   "text": "Prof. Ng and Jr. Lopez lived on Elm Ave. in Apt. 4."
+  },
+  {
+   "id": "auth:abbreviation-9",
+   "source": "authored",
+   "category": "abbreviation",
+   "text": "We use JSON, YAML, HTML and SQL."
+  },
+  {
+   "id": "auth:abbreviation-10",
+   "source": "authored",
+   "category": "abbreviation",
+   "text": "Vs. the rest, versus vs, he won."
+  },
+  {
+   "id": "auth:abbreviation-11",
+   "source": "authored",
+   "category": "abbreviation",
+   "text": "Mt. Everest and Ft. Worth share a Co. name."
+  },
+  {
+   "id": "auth:number-1",
+   "source": "authored",
+   "category": "number",
+   "text": "There are 1,000 users and 1,000,000 events."
+  },
+  {
+   "id": "auth:number-2",
+   "source": "authored",
+   "category": "number",
+   "text": "In 1984 the plan changed."
+  },
+  {
+   "id": "auth:number-3",
+   "source": "authored",
+   "category": "number",
+   "text": "In 2000 and 2024 we shipped twice."
+  },
+  {
+   "id": "auth:number-4",
+   "source": "authored",
+   "category": "number",
+   "text": "He finished 3rd, she finished 21st, I finished 42nd."
+  },
+  {
+   "id": "auth:number-5",
+   "source": "authored",
+   "category": "number",
+   "text": "A ratio of 0.5 and a delta of -4."
+  },
+  {
+   "id": "auth:number-6",
+   "source": "authored",
+   "category": "number",
+   "text": "Call 555-0100 or room 007."
+  },
+  {
+   "id": "auth:number-7",
+   "source": "authored",
+   "category": "number",
+   "text": "Chapter 7 starts on page 147."
+  },
+  {
+   "id": "auth:number-8",
+   "source": "authored",
+   "category": "number",
+   "text": "Only 2 of the 12 tests failed, about 17 percent."
+  },
+  {
+   "id": "auth:number-9",
+   "source": "authored",
+   "category": "number",
+   "text": "The 1990s and the 80s were loud."
+  },
+  {
+   "id": "auth:number-10",
+   "source": "authored",
+   "category": "number",
+   "text": "Version 2.0 of the 3.14 library has 100 percent coverage."
+  },
+  {
+   "id": "auth:number-11",
+   "source": "authored",
+   "category": "number",
+   "text": "I have 2 go to 2 places, 2 do it."
+  },
+  {
+   "id": "auth:number-12",
+   "source": "authored",
+   "category": "number",
+   "text": "A 10x gain, a 4K screen and a 3D model."
+  },
+  {
+   "id": "auth:number-13",
+   "source": "authored",
+   "category": "number",
+   "text": "It took 1.5 hours, or 90 minutes, or 5400 seconds."
+  },
+  {
+   "id": "auth:number-14",
+   "source": "authored",
+   "category": "number",
+   "text": "The year 1066, the year 1900, and the year 2100."
+  },
+  {
+   "id": "auth:number-15",
+   "source": "authored",
+   "category": "number",
+   "text": "Temperatures hit -10 degrees and 105 degrees."
+  },
+  {
+   "id": "auth:number-16",
+   "source": "authored",
+   "category": "number",
+   "text": "The 21st century began in 2001."
+  },
+  {
+   "id": "auth:number-17",
+   "source": "authored",
+   "category": "number",
+   "text": "Pi is 3.14159 and e is 2.71828."
+  },
+  {
+   "id": "auth:number-18",
+   "source": "authored",
+   "category": "number",
+   "text": "Take 1/2 of 3/4 and 50% of 200."
+  },
+  {
+   "id": "auth:number-19",
+   "source": "authored",
+   "category": "number",
+   "text": "Set it to 8080, 443 or 22."
+  },
+  {
+   "id": "auth:phrase-1",
+   "source": "authored",
+   "category": "phrase",
+   "text": "We used to ship weekly."
+  },
+  {
+   "id": "auth:phrase-2",
+   "source": "authored",
+   "category": "phrase",
+   "text": "He used the tool; she is used to it."
+  },
+  {
+   "id": "auth:phrase-3",
+   "source": "authored",
+   "category": "phrase",
+   "text": "A lot of people read a lot of docs."
+  },
+  {
+   "id": "auth:phrase-4",
+   "source": "authored",
+   "category": "phrase",
+   "text": "A hundred users and a thousand events and an hour."
+  },
+  {
+   "id": "auth:phrase-5",
+   "source": "authored",
+   "category": "phrase",
+   "text": "In front of the door, in the box, and give in."
+  },
+  {
+   "id": "auth:phrase-6",
+   "source": "authored",
+   "category": "phrase",
+   "text": "The people in front of us were in a hurry."
+  },
+  {
+   "id": "auth:phrase-7",
+   "source": "authored",
+   "category": "phrase",
+   "text": "I said that that was a fact that I knew."
+  },
+  {
+   "id": "auth:phrase-8",
+   "source": "authored",
+   "category": "phrase",
+   "text": "That is a fact, and that dog is that big."
+  },
+  {
+   "id": "auth:phrase-9",
+   "source": "authored",
+   "category": "phrase",
+   "text": "We cannot read the file, but we can read the log."
+  },
+  {
+   "id": "auth:phrase-10",
+   "source": "authored",
+   "category": "phrase",
+   "text": "They will not read the brief, and never read it."
+  },
+  {
+   "id": "auth:phrase-11",
+   "source": "authored",
+   "category": "phrase",
+   "text": "Did you read it? I do read it, and I did read it."
+  },
+  {
+   "id": "auth:phrase-12",
+   "source": "authored",
+   "category": "phrase",
+   "text": "Should he lead, or lead the lead pipe to the lead?"
+  },
+  {
+   "id": "auth:phrase-13",
+   "source": "authored",
+   "category": "phrase",
+   "text": "The wind will wind down, and the wound wound tight."
+  },
+  {
+   "id": "auth:phrase-14",
+   "source": "authored",
+   "category": "phrase",
+   "text": "Close the door, it is close to the close of day."
+  },
+  {
+   "id": "auth:phrase-15",
+   "source": "authored",
+   "category": "phrase",
+   "text": "We live here, and it is a live show."
+  },
+  {
+   "id": "auth:phrase-16",
+   "source": "authored",
+   "category": "phrase",
+   "text": "Present the present to the present audience."
+  },
+  {
+   "id": "auth:phrase-17",
+   "source": "authored",
+   "category": "phrase",
+   "text": "I object to that object, and the content is content."
+  },
+  {
+   "id": "auth:phrase-18",
+   "source": "authored",
+   "category": "phrase",
+   "text": "The record is a record; please record it."
+  },
+  {
+   "id": "auth:phrase-19",
+   "source": "authored",
+   "category": "phrase",
+   "text": "The to-do list has to do with what to do."
+  },
+  {
+   "id": "auth:phrase-20",
+   "source": "authored",
+   "category": "phrase",
+   "text": "An apple, an hour, a unit, an MBA and a UFO."
+  },
+  {
+   "id": "auth:phrase-21",
+   "source": "authored",
+   "category": "phrase",
+   "text": "The end of the day, the evening and the other one."
+  },
+  {
+   "id": "auth:phrase-22",
+   "source": "authored",
+   "category": "phrase",
+   "text": "Used to be, used up, and used cars are used."
+  },
+  {
+   "id": "auth:phrase-23",
+   "source": "authored",
+   "category": "phrase",
+   "text": "He had to go to the store to buy bread."
+  },
+  {
+   "id": "auth:phrase-24",
+   "source": "authored",
+   "category": "phrase",
+   "text": "Too many cooks, two cooks, to cook."
+  },
+  {
+   "id": "auth:phrase-25",
+   "source": "authored",
+   "category": "phrase",
+   "text": "She sells sea shells by the sea shore."
+  },
+  {
+   "id": "auth:markup-1",
+   "source": "authored",
+   "category": "markup",
+   "text": "Each cache [memoizes](/mˈɛmoʊˌaɪzᵻz/) one call; we live here."
+  },
+  {
+   "id": "auth:markup-2",
+   "source": "authored",
+   "category": "markup",
+   "text": "Say [Kokoro](/kəkˈɔɹO/) and then [tomato](/təmˈATO/) twice."
+  },
+  {
+   "id": "auth:markup-3",
+   "source": "authored",
+   "category": "markup",
+   "text": "The [nginx](/ˈɛndʒɪnˈɛks/) proxy sits in front."
+  },
+  {
+   "id": "auth:markup-4",
+   "source": "authored",
+   "category": "markup",
+   "text": "Read [this](/ðˈɪs/) before [that](/ðˈæt/)."
+  },
+  {
+   "id": "auth:markup-5",
+   "source": "authored",
+   "category": "markup",
+   "text": "A [word](#flag#) with a flag and a [number](+1) with stress."
+  },
+  {
+   "id": "auth:markup-6",
+   "source": "authored",
+   "category": "markup",
+   "text": "Make it [stronger](+2) or [weaker](-1) or [softer](-0.5)."
+  },
+  {
+   "id": "auth:markup-7",
+   "source": "authored",
+   "category": "markup",
+   "text": "Turn [1984](#year#) into words and [3](#ord#) too."
+  },
+  {
+   "id": "auth:markup-8",
+   "source": "authored",
+   "category": "markup",
+   "text": "The [cache](/kˈæʃ/) and the [cache layer](/kˈæʃ lˈAɚ/) differ."
+  },
+  {
+   "id": "auth:markup-9",
+   "source": "authored",
+   "category": "markup",
+   "text": "Plain text with a [link](https://example.com/page) inside."
+  },
+  {
+   "id": "auth:markup-10",
+   "source": "authored",
+   "category": "markup",
+   "text": "Two overrides [one](/wˈʌn/) [two](/tˈu/) in a row."
+  },
+  {
+   "id": "auth:markup-11",
+   "source": "authored",
+   "category": "markup",
+   "text": "[Leading](/lˈidɪŋ/) override at the start."
+  },
+  {
+   "id": "auth:markup-12",
+   "source": "authored",
+   "category": "markup",
+   "text": "Trailing override at the [end](/ˈɛnd/)"
+  },
+  {
+   "id": "auth:quote-1",
+   "source": "authored",
+   "category": "quote",
+   "text": "He said, \"Read it now,\" and she said, 'No.'"
+  },
+  {
+   "id": "auth:quote-2",
+   "source": "authored",
+   "category": "quote",
+   "text": "\"Hello,\" she said. \"Hello,\" he said."
+  },
+  {
+   "id": "auth:quote-3",
+   "source": "authored",
+   "category": "quote",
+   "text": "It's “smart quotes” and ‘single quotes’ here."
+  },
+  {
+   "id": "auth:quote-4",
+   "source": "authored",
+   "category": "quote",
+   "text": "Call it \"the cache\" (or \"the store\"), then go."
+  },
+  {
+   "id": "auth:quote-5",
+   "source": "authored",
+   "category": "quote",
+   "text": "She whispered 'we won't' and left."
+  },
+  {
+   "id": "auth:quote-6",
+   "source": "authored",
+   "category": "quote",
+   "text": "The 'quick' brown fox, the \"lazy\" dog."
+  },
+  {
+   "id": "auth:bracket-1",
+   "source": "authored",
+   "category": "bracket",
+   "text": "Add [optional] arguments (like this) and {braces}."
+  },
+  {
+   "id": "auth:bracket-2",
+   "source": "authored",
+   "category": "bracket",
+   "text": "Use f(x) = x + 1, then g(y) = y * 2."
+  },
+  {
+   "id": "auth:bracket-3",
+   "source": "authored",
+   "category": "bracket",
+   "text": "A list: one, two, three; and a pair: (a, b)."
+  },
+  {
+   "id": "auth:bracket-4",
+   "source": "authored",
+   "category": "bracket",
+   "text": "Items [1] and [2] are footnotes (see below)."
+  },
+  {
+   "id": "auth:bracket-5",
+   "source": "authored",
+   "category": "bracket",
+   "text": "Is it ready? Yes! Really?! Well... maybe."
+  },
+  {
+   "id": "auth:bracket-6",
+   "source": "authored",
+   "category": "bracket",
+   "text": "First: a note; second - a dash; third, a comma."
+  },
+  {
+   "id": "auth:symbol-1",
+   "source": "authored",
+   "category": "symbol",
+   "text": "Mix A & B, C + D, E = F, G @ H, 50% off."
+  },
+  {
+   "id": "auth:symbol-2",
+   "source": "authored",
+   "category": "symbol",
+   "text": "Open #1 and tag #urgent for the team."
+  },
+  {
+   "id": "auth:symbol-3",
+   "source": "authored",
+   "category": "symbol",
+   "text": "Path /usr/local/bin and file_name.txt and a_b-c."
+  },
+  {
+   "id": "auth:symbol-4",
+   "source": "authored",
+   "category": "symbol",
+   "text": "Email me at name at example dot com, or visit example.com."
+  },
+  {
+   "id": "auth:symbol-5",
+   "source": "authored",
+   "category": "symbol",
+   "text": "See https://example.com/a/b?c=d for details."
+  },
+  {
+   "id": "auth:symbol-6",
+   "source": "authored",
+   "category": "symbol",
+   "text": "Run npm install, then git push origin main."
+  },
+  {
+   "id": "auth:symbol-7",
+   "source": "authored",
+   "category": "symbol",
+   "text": "The rate is 5 per cent; the score is 3:2; the time is 10:30."
+  },
+  {
+   "id": "auth:symbol-8",
+   "source": "authored",
+   "category": "symbol",
+   "text": "Use camelCase, snake_case, kebab-case and PascalCase names."
+  },
+  {
+   "id": "auth:case-1",
+   "source": "authored",
+   "category": "case",
+   "text": "HELLO WORLD, said the SHOUTING man."
+  },
+  {
+   "id": "auth:case-2",
+   "source": "authored",
+   "category": "case",
+   "text": "iPhone, eBay, McDonald's and the DevOps team."
+  },
+  {
+   "id": "auth:case-3",
+   "source": "authored",
+   "category": "case",
+   "text": "NASA, UNESCO, GIF and LASER are acronyms."
+  },
+  {
+   "id": "auth:case-4",
+   "source": "authored",
+   "category": "case",
+   "text": "The Quick Brown Fox Jumps Over The Lazy Dog."
+  },
+  {
+   "id": "auth:case-5",
+   "source": "authored",
+   "category": "case",
+   "text": "TO or not TO, that is the question."
+  },
+  {
+   "id": "auth:case-6",
+   "source": "authored",
+   "category": "case",
+   "text": "Unknown words like blorptastic, zxqvbn and Kubernetes appear."
+  },
+  {
+   "id": "auth:case-7",
+   "source": "authored",
+   "category": "case",
+   "text": "Brand names like Shepherd, Titan and Kokoro are rare."
+  },
+  {
+   "id": "auth:case-8",
+   "source": "authored",
+   "category": "case",
+   "text": "OAuth, GitHub, TypeScript and WebSocket are mixed case."
+  },
+  {
+   "id": "auth:plain-1",
+   "source": "authored",
+   "category": "plain",
+   "text": "The quick brown fox jumps over the lazy dog."
+  },
+  {
+   "id": "auth:plain-2",
+   "source": "authored",
+   "category": "plain",
+   "text": "She sells seashells, and he reads the manual."
+  },
+  {
+   "id": "auth:plain-3",
+   "source": "authored",
+   "category": "plain",
+   "text": "Nothing had crashed, and the machine had room to spare."
+  },
+  {
+   "id": "auth:plain-4",
+   "source": "authored",
+   "category": "plain",
+   "text": "Yesterday he read the report; today he will read the diff."
+  },
+  {
+   "id": "auth:plain-5",
+   "source": "authored",
+   "category": "plain",
+   "text": "The wound was healed, and the bass played on."
+  },
+  {
+   "id": "auth:plain-6",
+   "source": "authored",
+   "category": "plain",
+   "text": "They tear paper and shed a tear."
+  },
+  {
+   "id": "auth:plain-7",
+   "source": "authored",
+   "category": "plain",
+   "text": "Excuse me, I refuse to excuse the refuse."
+  },
+  {
+   "id": "auth:plain-8",
+   "source": "authored",
+   "category": "plain",
+   "text": "We were laid off, so we lay low."
+  },
+  {
+   "id": "auth:plain-9",
+   "source": "authored",
+   "category": "plain",
+   "text": "The dove dove into the water."
+  },
+  {
+   "id": "auth:plain-10",
+   "source": "authored",
+   "category": "plain",
+   "text": "He will console her at the console."
+  },
+  {
+   "id": "auth:plain-11",
+   "source": "authored",
+   "category": "plain",
+   "text": "Do not forget the umbrella, the knife or the island."
+  },
+  {
+   "id": "auth:plain-12",
+   "source": "authored",
+   "category": "plain",
+   "text": "Running, jumped, tried, tries, boxes, cities, baked, hoped."
+  },
+  {
+   "id": "auth:plain-13",
+   "source": "authored",
+   "category": "plain",
+   "text": "Stopped, planned, hugged, dropped, beaten, forgotten."
+  },
+  {
+   "id": "auth:plain-14",
+   "source": "authored",
+   "category": "plain",
+   "text": "Ones, twos, threes and fours; thirties and forties."
+  },
+  {
+   "id": "auth:plain-15",
+   "source": "authored",
+   "category": "plain",
+   "text": "Supercalifragilistic and antidisestablishmentarianism."
+  },
+  {
+   "id": "auth:plain-16",
+   "source": "authored",
+   "category": "plain",
+   "text": "Okay. Yes. No. Maybe so."
+  },
+  {
+   "id": "auth:plain-17",
+   "source": "authored",
+   "category": "plain",
+   "text": "A"
+  },
+  {
+   "id": "auth:plain-18",
+   "source": "authored",
+   "category": "plain",
+   "text": "Hi."
+  },
+  {
+   "id": "auth:plain-19",
+   "source": "authored",
+   "category": "plain",
+   "text": "  Leading spaces and a trailing space. "
+  },
+  {
+   "id": "auth:plain-20",
+   "source": "authored",
+   "category": "plain",
+   "text": "Double  spaces  between   words."
+  },
+  {
+   "id": "auth:plain-21",
+   "source": "authored",
+   "category": "plain",
+   "text": "One line.\nAnother line after a break."
+  },
+  {
+   "id": "auth:plain-22",
+   "source": "authored",
+   "category": "plain",
+   "text": "Tabs\tand\ttabs."
+  },
+  {
+   "id": "auth:plain-23",
+   "source": "authored",
+   "category": "plain",
+   "text": "Résumé, café, naïve, façade and Zürich."
+  },
+  {
+   "id": "auth:plain-24",
+   "source": "authored",
+   "category": "plain",
+   "text": "Emoji-free but accented: señor, über, coöperate."
+  }
+ ]
+}

@@ -56,6 +56,18 @@ export interface RedirectToken {
 
 export type Token = WordToken | OpToken | SubsToken | RedirectToken;
 
+/**
+ * One open `case`: reading its subject word, its `in`, the start of a pattern list (where `esac` closes), a pattern
+ * word after a leading `(` or a `|`, the rest of a pattern list, or a body, at the paren depth its `case` sat at. `amp` marks a `;` or `;;` that an `&` may complete, and
+ * `blocks` counts the braces, `if`s and loops open in the body.
+ */
+export interface CaseFrame {
+  phase: "subject" | "in" | "patterns" | "alternative" | "pattern" | "body" | "stuck";
+  depth: number;
+  amp: boolean;
+  blocks: number;
+}
+
 /** Tokens scanned so far, their paren depth, and the depths a `[[` and a `=~` in it sat at, or -1. */
 export interface RegexScan {
   scanned: number;
@@ -71,8 +83,8 @@ export interface RegexScan {
   nameNext: boolean;
   /** The last word named a function or coproc, so a `(` after it opens a header or a subshell body. */
   named: boolean;
-  /** Open `case`s, inside which a `(` may open a pattern after `in`, `)` or an operator. */
-  caseDepth: number;
+  /** Open `case`s, innermost last. */
+  cases: CaseFrame[];
   /** Open `if`s and loops, without which bash rejects `then`, `elif`, `else` and `do`. */
   blockDepth: number;
   /** Paren depth of an open function header `(`, or -1. */
@@ -104,6 +116,8 @@ export interface LexState {
   wholeEnd: number;
   /** Paren depth a `NAME=(` or `NAME+=(` opened at, or -1; bash rejects any redirect before that paren closes. */
   compoundDepth: number;
+  /** A word spelled `case` or `esac` has been read; until then no case is open and the scan can wait. */
+  caseWords: boolean;
   /** Where the scan for a `[[ … =~ … ]]` operand, which `NAME=(` only groups in, has reached. */
   regex: RegexScan;
   trials: ArithTrials;

@@ -32,6 +32,14 @@ describe("reading git's diff output", () => {
     ]);
   });
 
+  it("names a copy's source and new path, and counts it under the new path", () => {
+    const nameStatus = ["C075", "policy/g10-release.ts", "src/rules.ts", ""].join("\0");
+    const numstat = ["4\t2\t", "policy/g10-release.ts", "src/rules.ts", ""].join("\0");
+
+    expect(parseNameStatus(nameStatus)).toEqual([{ status: "copied", path: "src/rules.ts", previousPath: "policy/g10-release.ts" }]);
+    expect(parseNumstat(numstat)).toEqual(new Map([["src/rules.ts", { additions: 4, deletions: 2 }]]));
+  });
+
   it("counts a rename under its new path and a binary file as zero lines", () => {
     const raw = ["3\t1\t", "old/a.ts", "new/a.ts", "-\t-\timage.png", "0\t20\tgone.ts", ""].join("\0");
 

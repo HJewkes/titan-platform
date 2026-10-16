@@ -26,6 +26,10 @@ on:
 permissions:
   contents: read
 
+# onnxruntime-node would otherwise fetch CUDA binaries on install; no job uses them.
+env:
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+
 jobs:
   metrics:
     runs-on: ubuntu-latest

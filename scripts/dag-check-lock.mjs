@@ -1,8 +1,10 @@
 // A machine-wide exclusive lock for dag-check: a directory holding the owner pid, taken by an atomic rename.
 // Every writer of a dag-check graph.db holds it, so a reader that takes it never sees a half-written snapshot.
+// Waiters queue by arrival; a waiter that gives up parks its arrival stamp by worktree, so its retry keeps its place.
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -18,6 +20,11 @@ const DEFAULT_WAIT_MS = 8 * 60 * 1000;
 const LOG_KEEP_LINES = 200;
 const ESTIMATE_LINES = 20;
 const ESTIMATE_MIN_LINES = 3;
+// Many waiters append concurrently, so the busy log is trimmed only once it doubles its kept size.
+const BUSY_KEEP_LINES = 500;
+const DEFAULT_PARK_TTL_MS = 30 * 60 * 1000;
+// Long enough for a gate to start its dead:check after its dag:check releases, short enough not to stall the queue.
+export const HANDOFF_GRACE_MS = 15 * 1000;
 
 const SIGNAL_EXIT = { SIGINT: 130, SIGTERM: 143 };
 
@@ -127,8 +134,11 @@ function appendHold(lockDir, hold) {
  */
 export function release(lockDir, hold) {
   if (readHolder(lockDir) !== process.pid) return;
+  const { park, ...record } = hold ?? {};
   try {
-    if (hold) appendHold(lockDir, { check: null, exit: null, ...hold });
+    // Parked before the lock goes, so no waiter behind it can take the lock in between.
+    if (park?.handoff && (record.exit === 0 || record.exit === 1)) parkTicket(lockDir, park);
+    if (hold) appendHold(lockDir, { check: null, exit: null, ...record });
   } finally {
     rmSync(lockDir, { recursive: true, force: true });
   }
@@ -170,15 +180,71 @@ export function lockWaitMs(env = process.env) {
   return Number.isFinite(wait) && wait >= 0 ? wait : DEFAULT_WAIT_MS;
 }
 
+export function busyLogPath(lockDir) {
+  return `${lockDir}.busy.log`;
+}
+
+/** The parseable busy records, oldest first: one per waiter that gave up with exit 75. */
+export function readBusy(lockDir) {
+  let text;
+  try {
+    text = readFileSync(busyLogPath(lockDir), "utf8");
+  } catch {
+    return [];
+  }
+  return text.split("\n").flatMap((line) => {
+    try {
+      const busy = JSON.parse(line);
+      return Number.isFinite(busy?.at) ? [busy] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+function appendBusy(lockDir, busy) {
+  const file = busyLogPath(lockDir);
+  appendFileSync(file, `${JSON.stringify({ at: Date.now(), ...busy })}\n`);
+  const kept = readBusy(lockDir);
+  if (kept.length <= 2 * BUSY_KEEP_LINES) return;
+  const tmp = `${file}.tmp-${process.pid}`;
+  writeFileSync(tmp, `${kept.slice(-BUSY_KEEP_LINES).map((b) => JSON.stringify(b)).join("\n")}\n`);
+  renameSync(tmp, file);
+}
+
+export function parkTtlMs(env = process.env) {
+  const ttl = Number(env.DAG_CHECK_PARK_TTL_MS ?? DEFAULT_PARK_TTL_MS);
+  return Number.isFinite(ttl) && ttl >= 0 ? ttl : DEFAULT_PARK_TTL_MS;
+}
+
+/** A worktree's key: the hash of its real path, so two spellings of one checkout share a parked place. */
+export function ownerKey(cwd) {
+  let real;
+  try {
+    real = realpathSync(cwd);
+  } catch {
+    real = path.resolve(cwd);
+  }
+  return createHash("sha256").update(real).digest("hex").slice(0, 12);
+}
+
 function queueDirFor(lockDir) {
   return `${lockDir}.queue`;
 }
 
+function parkedDirFor(lockDir) {
+  return `${lockDir}.parked`;
+}
+
+function padStamp(stamp) {
+  return String(stamp).padStart(15, "0");
+}
+
 /** Join the queue: a file named for arrival time and pid, so a sort by name is arrival order. */
-function takeTicket(lockDir) {
+function takeTicket(lockDir, stamp = Date.now()) {
   const queueDir = queueDirFor(lockDir);
   mkdirSync(queueDir, { recursive: true });
-  const name = `${String(Date.now()).padStart(15, "0")}-${String(process.pid).padStart(10, "0")}-${Math.random().toString(36).slice(2, 8)}`;
+  const name = `${padStamp(stamp)}-${String(process.pid).padStart(10, "0")}-${Math.random().toString(36).slice(2, 8)}`;
   writeFileSync(path.join(queueDir, name), "");
   return name;
 }
@@ -187,15 +253,68 @@ function ticketPid(name) {
   return Number.parseInt(name.split("-")[1], 10);
 }
 
+function ticketStamp(name) {
+  return Number.parseInt(name.split("-")[0], 10);
+}
+
+/** Keep a worktree's arrival stamp after it leaves the queue; the file's mtime starts the TTL and the handoff grace. */
+function parkTicket(lockDir, { key, stamp, handoff = false }) {
+  const parkedDir = parkedDirFor(lockDir);
+  mkdirSync(parkedDir, { recursive: true });
+  const tmp = path.join(parkedDir, `.tmp-${process.pid}-${key}`);
+  writeFileSync(tmp, JSON.stringify({ stamp, handoff }));
+  renameSync(tmp, path.join(parkedDir, key));
+}
+
+/** The parked tickets younger than the TTL, with their age; expired and unreadable ones are deleted. */
+function freshParked(lockDir, now = Date.now()) {
+  const parkedDir = parkedDirFor(lockDir);
+  let names;
+  try {
+    names = readdirSync(parkedDir).filter((name) => !name.startsWith("."));
+  } catch {
+    return [];
+  }
+  const ttl = parkTtlMs();
+  return names.flatMap((key) => {
+    const file = path.join(parkedDir, key);
+    try {
+      const age = now - statSync(file).mtimeMs;
+      const { stamp, handoff } = JSON.parse(readFileSync(file, "utf8"));
+      if (age <= ttl && Number.isFinite(stamp)) return [{ key, stamp, handoff: handoff === true, age }];
+    } catch {
+      // A file removed by a concurrent reclaim, or cut short, holds no place.
+    }
+    rmSync(file, { force: true });
+    return [];
+  });
+}
+
+/** This worktree's parked arrival stamp, consumed, or null when it has none within the TTL. */
+function reclaimParked(lockDir, key) {
+  const mine = freshParked(lockDir).find((parked) => parked.key === key);
+  if (!mine) return null;
+  rmSync(path.join(parkedDirFor(lockDir), key), { force: true });
+  return mine.stamp;
+}
+
+/** A gate's handoff within its grace holds the place of the dead:check it is about to start; a plain park never blocks. */
+function handoffPlaces(lockDir) {
+  return freshParked(lockDir)
+    .filter((parked) => parked.handoff && parked.age <= HANDOFF_GRACE_MS)
+    // "--" sorts before any pid, so a handoff wins a tie with a ticket taken in the same millisecond.
+    .map((parked) => `${padStamp(parked.stamp)}--handoff-${parked.key}`);
+}
+
 /** The live tickets in arrival order; tickets whose process is gone are deleted. */
 function liveTickets(lockDir) {
   const queueDir = queueDirFor(lockDir);
-  const live = [];
-  for (const name of readdirSync(queueDir).sort()) {
+  const live = handoffPlaces(lockDir);
+  for (const name of readdirSync(queueDir)) {
     if (isAlive(ticketPid(name))) live.push(name);
     else rmSync(path.join(queueDir, name), { force: true });
   }
-  return live;
+  return live.sort();
 }
 
 function dropTicket(lockDir, name) {
@@ -205,35 +324,65 @@ function dropTicket(lockDir, name) {
 /**
  * Wait for the lock in arrival order and return the hold record for release. Logs the holder and queue position on the
  * first wait and every logEveryMs after. Throws LockTimeoutError once timeoutMs has passed, or at once on joining when
- * the hold log says the live holder and the queue ahead cannot clear within timeoutMs.
+ * the hold log says the live holder and the queue ahead cannot clear within timeoutMs. A waiter that gives up parks its
+ * arrival stamp under owner's key and logs a busy line; the next acquire from that owner within the TTL rejoins at that
+ * stamp. With handoff, release parks the stamp for HANDOFF_GRACE_MS so the owner's next check goes next.
  */
-export async function acquire({ lockDir = DEFAULT_LOCK_DIR, check = null, timeoutMs, pollMs = 2000, logEveryMs = 30000, log }) {
-  const start = Date.now();
-  const ticket = takeTicket(lockDir);
-  let lastLog = -Infinity;
-  let aheadAtJoin = null;
+export async function acquire({
+  lockDir = DEFAULT_LOCK_DIR,
+  check = null,
+  timeoutMs,
+  pollMs = 2000,
+  logEveryMs = 30000,
+  log,
+  owner = process.cwd(),
+  handoff = process.env.DAG_CHECK_HANDOFF === "1",
+}) {
+  const key = ownerKey(owner);
+  const ticket = takeTicket(lockDir, reclaimParked(lockDir, key) ?? Date.now());
+  const park = { key, stamp: ticketStamp(ticket), handoff };
+  const wait = { ahead: null };
   try {
-    for (;;) {
-      const ahead = liveTickets(lockDir).indexOf(ticket);
-      if (aheadAtJoin === null) {
-        aheadAtJoin = ahead;
-        const tooDeep = queueTooDeep(lockDir, ahead, timeoutMs);
-        if (tooDeep) throw new LockTimeoutError(tooDeep);
-      }
-      const holder = ahead === 0 ? tryAcquire(lockDir) : (readHolder(lockDir) ?? "unknown");
-      if (ahead === 0 && holder === null) return { check, joinedAt: start, acquiredAt: Date.now(), aheadAtJoin };
-      const waited = Date.now() - start;
-      if (waited >= timeoutMs) {
-        throw new LockTimeoutError(`dag-check lock busy (held by ${holder}, ${ahead} ahead of you); retry later`);
-      }
-      if (waited - lastLog >= logEveryMs) {
-        log(`waiting for dag-check lock held by ${holder}, ${ahead} ahead of you`);
-        lastLog = waited;
-      }
-      await delay(pollMs);
+    const hold = await waitForTurn(lockDir, ticket, wait, { check, timeoutMs, pollMs, logEveryMs, log });
+    return handoff ? { ...hold, park } : hold;
+  } catch (err) {
+    if (err instanceof LockTimeoutError) {
+      parkTicket(lockDir, { ...park, handoff: false });
+      appendBusy(lockDir, { owner: key, check, ahead: wait.ahead, reason: err.reason });
     }
+    throw err;
   } finally {
     dropTicket(lockDir, ticket);
+  }
+}
+
+function busyError(message, reason) {
+  return Object.assign(new LockTimeoutError(message), { reason });
+}
+
+async function waitForTurn(lockDir, ticket, wait, { check, timeoutMs, pollMs, logEveryMs, log }) {
+  const start = Date.now();
+  let lastLog = -Infinity;
+  let aheadAtJoin = null;
+  for (;;) {
+    const ahead = liveTickets(lockDir).indexOf(ticket);
+    wait.ahead = ahead;
+    if (aheadAtJoin === null) {
+      aheadAtJoin = ahead;
+      const tooDeep = queueTooDeep(lockDir, ahead, timeoutMs);
+      if (tooDeep) throw busyError(tooDeep, "too-deep");
+    }
+    const holder = ahead === 0 ? tryAcquire(lockDir) : (readHolder(lockDir) ?? "unknown");
+    if (ahead === 0 && holder === null) return { check, joinedAt: start, acquiredAt: Date.now(), aheadAtJoin };
+    const waited = Date.now() - start;
+    if (waited >= timeoutMs) {
+      throw busyError(`dag-check lock busy (held by ${holder}, ${ahead} ahead of you); retry later`, "timeout");
+    }
+    if (waited - lastLog >= logEveryMs) {
+      log(`waiting for dag-check lock held by ${holder}, ${ahead} ahead of you`);
+      lastLog = waited;
+    }
+    await delay(pollMs);
   }
 }
 
@@ -279,10 +428,11 @@ function killGroup(pid) {
 }
 
 /** Run a script under a heap cap in its own process group, so one kill also stops the git it is waiting on. */
-export async function runCappedWorker({ script, args, name, heapCapMb, cleanups, log }) {
+export async function runCappedWorker({ script, args, name, heapCapMb, cleanups, log, outcome = {} }) {
   const argv = [`--max-old-space-size=${heapCapMb}`, script, ...args];
   const child = spawn(process.execPath, argv, { stdio: "inherit", detached: true });
   cleanups.push(() => killGroup(child.pid));
   const [code, signal] = await once(child, "exit");
+  outcome.heapAbort = signal === "SIGABRT" || code === 134;
   return workerExitCode({ code, signal, name, heapCapMb, log });
 }

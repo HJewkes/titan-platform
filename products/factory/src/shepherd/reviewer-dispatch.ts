@@ -12,7 +12,7 @@ import { ReviewerAskTimedOut, ReviewerMachineHold, ReviewerSpawnQueued } from ".
 import { SpawnDeferred, type ReviewAsk, type SpawnGate } from "./spawn-gate.js";
 
 export const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
-export const DEFAULT_SPAWN_TIMEOUT_MS = 30_000;
+export const DEFAULT_SPAWN_TIMEOUT_MS = 90_000;
 
 /** A roster row plus its transcript fields; `predecessor` and `fillTokens` stay absent, so no such agent is resumed, and `lastWrittenAt` comes from the transcript file. */
 export interface ReviewerRosterRow extends ReviewerAgent {

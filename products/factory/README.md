@@ -234,6 +234,9 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
     profile that is not an opus one keeps the hold.
   - `g10-adversary` never releases itself. Seats use it for authority, merge-policy and security PRs, which also
     need a seat's fail-open reviewer until Shepherd has one (TP-1931); release it with `shepherd release <pr> --head <sha>`.
+    Registration holds it only for a sensitive path: a `kind=security` PR with no such path takes `g10-review`
+    (`g10-review: security kind, no sensitive path`), and test files are not sensitive paths. The security paths include
+    agent-chat's `src/leak-guard/**`, `src/agents/*self-grant*`, `src/cli/verbs/permission-hook.ts` and `src/broker/host-directory.ts`.
 
   Any other class waits for `shepherd release <pr> --head <sha>`. While a `g10-adversary` hold sits over a
   hold of another class, `release` must name the hold it lifts with `--class <class>`.
@@ -830,6 +833,12 @@ no-reviewer`), the head moves, the PR closes, or an hour passes. The head is the
 A refusal that still stands finds its own hold and waits again with no second alert. So a repo
 with no usable reviewer never reaches approve-merge unreviewed. The restart drain does not wait on
 `sh-no-reviewer-wait`.
+
+The same holds for `sh-review-intent`, which reads the roster before choosing a reviewer. A roster
+read that times out (`ReviewerAskTimedOut`) is read again every poll for the session-start window,
+then the step answers `notStarted` and the review is retried with no round counted. Any other
+refusal at the intent holds the run as `no-reviewer` and alerts the seat once. An exhausted account
+keeps its own `sh-account-hold`. None of these three counts as a failed review round (TP-2966).
 
 The config file is read when the routes are first built, so restart `serve` after a change to
 these keys. The seat book is read again on every spawn.

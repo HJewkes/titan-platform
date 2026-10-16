@@ -1,0 +1,78 @@
+{
+ "_source": "misaki 0.9.4 via kokoro 0.9.4 KPipeline(lang_code='a', model=False).g2p(g2pText(spoken))[1], recorded 2026-10-14",
+ "chunks": {"Each cache [memoizes](/mˈɛmoʊˌaɪzᵻz/) one call; we live here.": ["ˈiʧ kˈæʃ mˈɛmoʊˌaɪzᵻz wˈʌn kˈɔl; wi lˈɪv hˈɪɹ."]},
+ "tokens": {
+  "Each cache [memoizes](/mˈɛmoʊˌaɪzᵻz/) one call; we live here.": [
+   {"text": "Each", "tag": "DT", "phonemes": "ˈiʧ", "whitespace": " "},
+   {"text": "cache", "tag": "NN", "phonemes": "kˈæʃ", "whitespace": " "},
+   {"text": "memoizes", "tag": "VBZ", "phonemes": "mˈɛmoʊˌaɪzᵻz", "whitespace": " "},
+   {"text": "one", "tag": "CD", "phonemes": "wˈʌn", "whitespace": " "},
+   {"text": "call", "tag": "NN", "phonemes": "kˈɔl", "whitespace": ""},
+   {"text": ";", "tag": ":", "phonemes": ";", "whitespace": " "},
+   {"text": "we", "tag": "PRP", "phonemes": "wi", "whitespace": " "},
+   {"text": "live", "tag": "VBP", "phonemes": "lˈɪv", "whitespace": " "},
+   {"text": "here", "tag": "RB", "phonemes": "hˈɪɹ", "whitespace": ""},
+   {"text": ".", "tag": ".", "phonemes": ".", "whitespace": ""}
+  ],
+  "We live here, and the show is live tonight.": [
+   {"text": "We", "tag": "PRP", "phonemes": "wˌi", "whitespace": " "},
+   {"text": "live", "tag": "VBP", "phonemes": "lˈɪv", "whitespace": " "},
+   {"text": "here", "tag": "RB", "phonemes": "hˈɪɹ", "whitespace": ""},
+   {"text": ",", "tag": ",", "phonemes": ",", "whitespace": " "},
+   {"text": "and", "tag": "CC", "phonemes": "ænd", "whitespace": " "},
+   {"text": "the", "tag": "DT", "phonemes": "ðə", "whitespace": " "},
+   {"text": "show", "tag": "NN", "phonemes": "ʃˈO", "whitespace": " "},
+   {"text": "is", "tag": "VBZ", "phonemes": "ɪz", "whitespace": " "},
+   {"text": "live", "tag": "JJ", "phonemes": "lˈIv", "whitespace": " "},
+   {"text": "tonight", "tag": "NN", "phonemes": "tənˈIt", "whitespace": ""},
+   {"text": ".", "tag": ".", "phonemes": ".", "whitespace": ""}
+  ],
+  "We [live](=verb) here, and the show is [live](=adj) tonight.": [
+   {"text": "We", "tag": "PRP", "phonemes": "wˌi", "whitespace": " "},
+   {"text": "live", "tag": "VBP", "phonemes": "lˈɪv", "whitespace": " "},
+   {"text": "here", "tag": "RB", "phonemes": "hˈɪɹ", "whitespace": ""},
+   {"text": ",", "tag": ",", "phonemes": ",", "whitespace": " "},
+   {"text": "and", "tag": "CC", "phonemes": "ænd", "whitespace": " "},
+   {"text": "the", "tag": "DT", "phonemes": "ðə", "whitespace": " "},
+   {"text": "show", "tag": "NN", "phonemes": "ʃˈO", "whitespace": " "},
+   {"text": "is", "tag": "VBZ", "phonemes": "ɪz", "whitespace": " "},
+   {"text": "live", "tag": "JJ", "phonemes": "lˈIv", "whitespace": " "},
+   {"text": "tonight", "tag": "NN", "phonemes": "tənˈIt", "whitespace": ""},
+   {"text": ".", "tag": ".", "phonemes": ".", "whitespace": ""}
+  ],
+  "The show is [live](=verb) tonight.": [
+   {"text": "The", "tag": "DT", "phonemes": "ðə", "whitespace": " "},
+   {"text": "show", "tag": "NN", "phonemes": "ʃˈO", "whitespace": " "},
+   {"text": "is", "tag": "VBZ", "phonemes": "ɪz", "whitespace": " "},
+   {"text": "live", "tag": "JJ", "phonemes": "lˈIv", "whitespace": " "},
+   {"text": "tonight", "tag": "NN", "phonemes": "tənˈIt", "whitespace": ""},
+   {"text": ".", "tag": ".", "phonemes": ".", "whitespace": ""}
+  ],
+  "We live here; the show is [live](=adj) tonight.": [
+   {"text": "We", "tag": "PRP", "phonemes": "wˌi", "whitespace": " "},
+   {"text": "live", "tag": "VBP", "phonemes": "lˈɪv", "whitespace": " "},
+   {"text": "here", "tag": "RB", "phonemes": "hˈɪɹ", "whitespace": ""},
+   {"text": ";", "tag": ":", "phonemes": ";", "whitespace": " "},
+   {"text": "the", "tag": "DT", "phonemes": "ðə", "whitespace": " "},
+   {"text": "show", "tag": "NN", "phonemes": "ʃˈO", "whitespace": " "},
+   {"text": "is", "tag": "VBZ", "phonemes": "ɪz", "whitespace": " "},
+   {"text": "live", "tag": "JJ", "phonemes": "lˈIv", "whitespace": " "},
+   {"text": "tonight", "tag": "NN", "phonemes": "tənˈIt", "whitespace": ""},
+   {"text": ".", "tag": ".", "phonemes": ".", "whitespace": ""}
+  ],
+  "No cache [memoizes](/mˈɛmoʊˌaɪzᵻz/) like [Zindlex](/zˈɪndlɛks/).": [
+   {"text": "No", "tag": "DT", "phonemes": "nˈO", "whitespace": " "},
+   {"text": "cache", "tag": "NN", "phonemes": "kˈæʃ", "whitespace": " "},
+   {"text": "memoizes", "tag": "VBZ", "phonemes": "mˈɛmoʊˌaɪzᵻz", "whitespace": " "},
+   {"text": "like", "tag": "IN", "phonemes": "lˈIk", "whitespace": " "},
+   {"text": "Zindlex", "tag": "NNP", "phonemes": "zˈɪndlɛks", "whitespace": ""},
+   {"text": ".", "tag": ".", "phonemes": ".", "whitespace": ""}
+  ],
+  "We [live](/lˈIv/) here.": [
+   {"text": "We", "tag": "PRP", "phonemes": "wˌi", "whitespace": " "},
+   {"text": "live", "tag": "VBP", "phonemes": "lˈIv", "whitespace": " "},
+   {"text": "here", "tag": "RB", "phonemes": "hˈɪɹ", "whitespace": ""},
+   {"text": ".", "tag": ".", "phonemes": ".", "whitespace": ""}
+  ]
+ }
+}

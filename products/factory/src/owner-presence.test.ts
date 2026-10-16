@@ -3,7 +3,8 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { confirmOwner, defaultHelperPath, helperSearchOrder, ROOT_HELPER_PATH, signStatement, type HelperRunner, type StatPort } from "./owner-presence.js";
+import { confirmOwner, defaultHelperPath, helperSearchOrder, ownerKeyId, ROOT_HELPER_PATH, signStatement, type HelperRunner, type StatPort } from "./owner-presence.js";
+import { keyIdOf } from "./presence-proof.js";
 
 const helperPath = "/synthetic/owner-presence";
 const PROOF = "0b6f2c1e-6f1d-4c3a-9e1b-2d4c6a8e0f13";
@@ -249,6 +250,63 @@ describe("signStatement", () => {
       writeFileSync(helper, "#!/bin/sh\nexit 64\n", { mode: 0o755 });
       const stat: StatPort = (path) => ({ uid: OWNER, mode: path === helper ? FILE : DIR });
       expect(await signStatement(new Uint8Array(1 << 20), "r", { stat, getuid: () => OWNER, helperPaths: [helper] })).toBeUndefined();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("ownerKeyId", () => {
+  const KEY_ID = "3f9a0c1d2e4b5a67";
+  const options = (run: HelperRunner) => ({ run, stat: fakeStat(), getuid: () => OWNER, helperPaths: [helperPath] });
+
+  it("returns the key id the helper prints for pubkey --id, without a statement on stdin", async () => {
+    const calls: { args: string[]; input?: Uint8Array }[] = [];
+    const run: HelperRunner = async (_file, args, input) => (calls.push({ args: [...args], input }), `${KEY_ID}\n`);
+    expect(await ownerKeyId(options(run))).toBe(KEY_ID);
+    expect(calls).toEqual([{ args: ["pubkey", "--id"], input: undefined }]);
+  });
+
+  it("matches the id the server derives from the same public key", async () => {
+    const { publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+    const run: HelperRunner = async () => `${keyIdOf(publicKey)}\n`;
+    expect(await ownerKeyId(options(run))).toBe(keyIdOf(publicKey));
+  });
+
+  it.each([
+    ["a PEM", "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE\n-----END PUBLIC KEY-----"],
+    ["15 hex", KEY_ID.slice(1)],
+    ["17 hex", `${KEY_ID}0`],
+    ["uppercase hex", KEY_ID.toUpperCase()],
+    ["an id and more", `${KEY_ID} ok`],
+    ["nothing", ""],
+  ])("returns undefined when the helper prints %s", async (_name, printed) => {
+    expect(await ownerKeyId(options(async () => `${printed}\n`))).toBeUndefined();
+  });
+
+  it("returns undefined when the helper exits non-zero, as with no key generated", async () => {
+    const run: HelperRunner = async () => {
+      throw Object.assign(new Error("Command failed"), { code: 1 });
+    };
+    expect(await ownerKeyId(options(run))).toBeUndefined();
+  });
+
+  it("refuses a helper on a group-writable path without running it", async () => {
+    const runs: string[] = [];
+    const reports: string[] = [];
+    const run: HelperRunner = async (file) => (runs.push(file), KEY_ID);
+    const stat = fakeStat({ "/synthetic": { uid: OWNER, mode: 0o040775 } });
+    const id = await ownerKeyId({ run, stat, getuid: () => OWNER, helperPaths: [helperPath], report: (line) => reports.push(line) });
+    expect([id, runs, reports]).toEqual([undefined, [], ["owner presence refused: /synthetic is group or other writable\n"]]);
+  });
+
+  it("reads the id from a real helper's stdout", async () => {
+    const root = mkdtempSync(join(tmpdir(), "owner-presence-id-"));
+    try {
+      const helper = join(root, "helper");
+      writeFileSync(helper, `#!/bin/sh\n[ "$1 $2" = "pubkey --id" ] || exit 64\necho ${KEY_ID}\n`, { mode: 0o755 });
+      const stat: StatPort = (path) => ({ uid: OWNER, mode: path === helper ? FILE : DIR });
+      expect(await ownerKeyId({ stat, getuid: () => OWNER, helperPaths: [helper] })).toBe(KEY_ID);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

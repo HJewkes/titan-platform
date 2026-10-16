@@ -39,6 +39,7 @@ const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = {
   "sh-await-new-head": `${READ}: waits for the implementer's new head`,
   "sh-wake-fix-first": `${RECORD}: counts FIX_FIRST rounds`,
   "sh-repair": `${RECORD}: counts fixer wakes against the repair budget`,
+  "sh-wake-fix-proof": `${RECORD}: counts fix-proof wakes against the bounce cap`,
   "sh-flake-check": `${READ}: whether failures fall outside the diff`,
   "sh-exit-notice": `${WRITE}: sends the exit notice`,
   "sh-park": `${WRITE}: parks the implementer's worktree`,
