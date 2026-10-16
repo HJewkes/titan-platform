@@ -149,6 +149,7 @@ function syntheticConfig(): ConsoleConfig {
     lanTls: null,
     lanTokenPath: "/nonexistent/lan.token",
     ownerWrites: false,
+    gateAnswers: false,
     inboxDir: "/nonexistent/inbox",
     roundsDir: "/nonexistent/rounds",
   };
@@ -354,6 +355,7 @@ describe.skipIf(process.platform !== "linux")("owner-write over the console's li
       lanTls: { certFile: pair.certFile, keyFile: pair.keyFile },
       lanTokenPath: path.join(dir, "state", "lan.token"),
       ownerWrites: true,
+      gateAnswers: false,
       inboxDir: path.join(dir, "state", "inbox", "deposits"),
       roundsDir: path.join(dir, "state", "rounds"),
     };

@@ -58,3 +58,13 @@ describe("scriptsOf covers every script the walk runs", () => {
     for (const text of walkTexts) expect(matcherTexts.some((m) => m.includes(text))).toBe(true);
   });
 });
+
+describe("a shell running a descriptor the line cannot show (TP-3241)", () => {
+  it.each(["bash < $F", "bash /dev/stdin <&3", "sh /dev/fd/3"])("reads %s as a run-time script", (line) => {
+    expect(scriptsOf(tokenize(line), line.length).runTime).toBe(true);
+  });
+
+  it.each(["bash < ./x.sh", "bash -c 'echo hi' < $F", "bash /dev/fd/3 3< ./x.sh"])("reads %s as no run-time script", (line) => {
+    expect(scriptsOf(tokenize(line), line.length).runTime).toBe(false);
+  });
+});

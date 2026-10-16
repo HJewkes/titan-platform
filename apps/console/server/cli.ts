@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // The titan-console bin: serves the built app beside /rpc until SIGINT or SIGTERM, on loopback and,
 // when TITAN_CONSOLE_HOST is set, on that LAN address behind auth. Two verbs manage LAN sign-in,
-// and `inbox file` lets an agent file an owner item.
+// `inbox file` lets an agent file an owner item, and `rounds import` lands a review round.
 import { existsSync } from "node:fs";
 import { resolveConfig, type ConsoleConfig } from "./config.js";
+import { importRoundCli, roundsImportArgs } from "./cli-rounds.js";
 import { closeOnSignal, createLoginLink, lanOrigin, rotateLanToken, startConsoleDaemon } from "./daemon.js";
 import { fileDeposit } from "./inbox.js";
 import { PAGE_FILE } from "./paths.js";
@@ -13,7 +14,10 @@ const USAGE = `usage: titan-console                    serve the console
        titan-console token rotate       end every LAN session and void every login link
        titan-console inbox file [<json>|-]
                                         file an owner item on loopback and print its id;
-                                        with - or no argument, the JSON comes from stdin`;
+                                        with - or no argument, the JSON comes from stdin
+       titan-console rounds import <round-dir> [--json]
+                                        copy a review-harness round dir into the rounds dir and
+                                        print its id, frame count, feedback outcome and console URL`;
 
 async function serve(config: ConsoleConfig): Promise<void> {
   if (!existsSync(PAGE_FILE)) console.warn(`${PAGE_FILE} is missing; run \`pnpm --filter titan-console build\` (the daemon serves a "not built" page until then)`);
@@ -53,10 +57,12 @@ async function fileInbox(config: ConsoleConfig, input: string | undefined): Prom
 
 const argv = process.argv.slice(2);
 const args = argv.join(" ");
+const roundsImport = roundsImportArgs(argv);
 if (args === "") await serve(resolveConfig());
 else if (args === "login-link") loginLink(resolveConfig());
 else if (args === "token rotate") rotate(resolveConfig());
 else if (argv[0] === "inbox" && argv[1] === "file" && argv.length <= 3) await fileInbox(resolveConfig(), argv[2]);
+else if (roundsImport !== null) await importRoundCli(resolveConfig(), roundsImport);
 else if (args === "--help" || args === "help") console.log(USAGE);
 else {
   console.error(USAGE);
