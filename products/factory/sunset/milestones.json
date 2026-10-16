@@ -1,0 +1,45 @@
+{
+ "schema": 1,
+ "milestones": [
+  {
+   "id": "M0",
+   "exited": false
+  },
+  {
+   "id": "M1a",
+   "exited": false
+  },
+  {
+   "id": "M1b",
+   "exited": false
+  },
+  {
+   "id": "M2",
+   "exited": false
+  },
+  {
+   "id": "M3",
+   "exited": false
+  },
+  {
+   "id": "M4",
+   "exited": false
+  },
+  {
+   "id": "M5",
+   "exited": false
+  },
+  {
+   "id": "M6",
+   "exited": false
+  },
+  {
+   "id": "M7",
+   "exited": false
+  },
+  {
+   "id": "M8",
+   "exited": false
+  }
+ ]
+}
