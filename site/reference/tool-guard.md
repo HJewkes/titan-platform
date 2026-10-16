@@ -103,10 +103,10 @@ through a symlinked parent, is refused just before the append.
 
 - A shell that runs stdin, or a descriptor its script operand names, is refused when the line
   does not show that text: `bash < $F`, `bash /dev/stdin <&3`, `bash /dev/fd/3` with no `3<`,
-  or `bash {fd}< ./x.sh /dev/fd/10`, whose descriptor number from 10 up the shell picks. A shell
-  command carrying a `{name}` redirect is refused outright: bash and zsh read `{fd}<`,
-  `{a[0]}<` and zsh's `{fd} <` as a descriptor, while dash, and bash a space apart, keep
-  `{fd}` as the script.
+  or `bash {fd}< ./x.sh /dev/fd/10`, whose descriptor number from 10 up the shell picks.
+- A `{name}` before a redirect is read both ways and refused if either reading is: bash and zsh
+  read `{fd}<`, `{a[0]}<` and zsh's `{fd} <` as the descriptor, while dash, and bash a space
+  apart, keep `{fd}` as a word (`env -C {x} </dev/null git push` runs the push in bash).
   A shell that a `-c` string, `eval`, `emulate -c` or `find -exec` starts inherits its runner's
   stdin and descriptors, so `bash -c bash < $F` is refused too.
   Run the script by a literal path, or redirect a literal file (`bash /dev/stdin < ./x.sh`).

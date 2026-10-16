@@ -254,7 +254,23 @@ function scope(op: string, w: Walk): void {
   if (op === ")") w.scope = w.stack.pop() ?? w.scope;
 }
 
+/**
+ * bash and zsh read a `{name}` word before a redirect as the descriptor it stores; dash, and bash a space apart, as a
+ * word. Each reading is walked in full, the word's on a copy of the scope, and either one's refusal refuses the line.
+ */
 function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Unwrapped | null {
+  if (!rawWords.some((word) => word.namedFd)) return emitReading(rawWords, rawRedirects, w, next);
+  const asWord = rawRedirects.map((r): RedirectToken => ({ ...r, named: undefined }));
+  besideReading(w, (copy) => emitReading(rawWords.map(withoutNamedFd), asWord, copy, next));
+  const asFd = rawRedirects.map((r): RedirectToken => (r.named === undefined ? r : { ...r, fd: r.named }));
+  return emitReading(rawWords.filter((word) => !word.namedFd), asFd, w, next);
+}
+
+function withoutNamedFd({ namedFd: _named, ...word }: WordToken): WordToken {
+  return word;
+}
+
+function emitReading(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Unwrapped | null {
   const expand = (word: WordToken) => expandWord(word, (name) => lookup(w.scope.vars, w.home, name));
   const redirects = rawRedirects.map((r) => (r.target ? { ...r, target: expand(r.target) } : r));
   const words = folded(rawWords.map(expand), w);
@@ -305,13 +321,18 @@ function runAdded(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: str
 function addedReading(w: Walk, read: (copy: Walk) => void): void {
   const start = w.out.length;
   try {
-    read(observed({ ...w, scope: { ...w.scope, vars: new Map(w.scope.vars) } }));
+    besideReading(w, read);
   } catch (error) {
     // Main's runs of the same command still decide; this reading is dropped, unless the line is past checking.
     if (error instanceof ReadingLimitError) throw error;
   } finally {
     for (let i = start; i < w.out.length; i++) w.out[i] = { ...(w.out[i] as SimpleCommand), added: true };
   }
+}
+
+/** Walks a reading on a copy of the scope, so a `cd` or an assignment in it moves nothing; its commands decide as main's do. */
+function besideReading(w: Walk, read: (copy: Walk) => void): void {
+  read(observed({ ...w, scope: { ...w.scope, vars: new Map(w.scope.vars) } }));
 }
 
 function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {

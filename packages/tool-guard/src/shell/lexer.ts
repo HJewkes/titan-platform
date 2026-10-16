@@ -293,8 +293,7 @@ function skipComment(s: LexState): void {
 function readRedirect(s: LexState): void {
   const w = s.word;
   let fd: string | null = null;
-  const named = takeNamedFdWord(s);
-  if (named === null && w &&!w.quoted && !w.dynamic && /^\d+$/.test(w.value)) {
+  if (w && !w.quoted && !w.dynamic && /^\d+$/.test(w.value)) {
     fd = w.value;
     s.word = null;
   } else endWord(s);
@@ -308,6 +307,7 @@ function readRedirect(s: LexState): void {
     return;
   }
   refuseRedirect(s, op);
+  const named = fd === null ? namedFdWord(s, w) : null;
   const heredoc = op === "<<" || op === "<<-";
   const token: RedirectToken = { type: "redirect", op, fd, target: null, body: heredoc ? "" : null, subs: [], ...(named ? { named: named.value } : {}) };
   s.tokens.push(token);
@@ -319,22 +319,13 @@ export const NAMED_FD_RE = /^\{([A-Za-z_]\w*)(\[.*\])?\}$/;
 
 /**
  * The `{name}` word bash and zsh read as a named descriptor: glued to the operator, or for zsh a space before it, plain.
- * Dash, and bash a space apart, keep it a word; the redirect's `named` lets the stdin model refuse what that changes.
+ * Dash, and bash a space apart, keep it a word, so it stays in the tokens marked `namedFd` for the walk to read both ways.
  */
-function takeNamedFdWord(s: LexState): WordToken | null {
-  if (s.redirect || s.i < s.arithEnd) return null;
+function namedFdWord(s: LexState, glued: WordToken | null): WordToken | null {
   const last = s.tokens.at(-1);
-  const glued = s.word !== null;
-  const w = s.word ?? (last?.type === "word" ? last : null);
-  const match = w && !w.quoted && !w.spliced ? NAMED_FD_RE.exec(w.value) : null;
-  if (!w || !match || (!glued && match[2] !== undefined)) return null;
-  // Popped before the scan, so a `[[ {a} < b ]]` comparison word is scanned once, after it goes back.
-  if (!glued) s.tokens.pop();
-  if (inConditional(s)) {
-    if (!glued) s.tokens.push(w);
-    return null;
-  }
-  if (w.dynamic || w.subs.length > 0) throw new ParseError("a {name[…]} descriptor with an expansion is read only at run time");
-  s.word = null;
-  return w;
+  if (s.i < s.arithEnd || last?.type !== "word" || (glued !== null && glued !== last)) return null;
+  const match = !last.quoted && !last.spliced ? NAMED_FD_RE.exec(last.value) : null;
+  if (!match || (glued === null && match[2] !== undefined) || inConditional(s)) return null;
+  last.namedFd = true;
+  return last;
 }

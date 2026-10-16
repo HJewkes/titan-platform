@@ -7,6 +7,7 @@ import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
 import type { ClassifyContext } from "../types.js";
+import { extractCommands } from "./commands.js";
 import { tokenize } from "./lexer.js";
 
 const REPO = "/home/you/projects/app";
@@ -16,8 +17,8 @@ const context: ClassifyContext = {
   home: "/home/you",
   readLink: () => null,
   readHead: (dir) => (dir === REPO ? "main" : null),
-  // `{fd}` is harmless here, so a line is refused for the redirect, not for what dash would run.
-  readScript: (file) => (file === `${REPO}/x.sh` ? `${PUSH}\n` : [`${REPO}/ok.sh`, `${REPO}/{fd}`].includes(file) ? "echo hi\n" : null),
+  // `{fd}` is harmless, so a line using it is refused for the redirect; `{run}` holds the push dash's reading runs.
+  readScript: (file) => ([`${REPO}/x.sh`, `${REPO}/{run}`].includes(file) ? `${PUSH}\n` : [`${REPO}/ok.sh`, `${REPO}/{fd}`].includes(file) ? "echo hi\n" : null),
 };
 
 async function verdict(command: string): Promise<"deny" | "pass"> {
@@ -27,24 +28,24 @@ async function verdict(command: string): Promise<"deny" | "pass"> {
   return stdout.includes('"permissionDecision":"deny"') ? "deny" : "pass";
 }
 
-/** Each word as its text, and each redirect as `fd op target`, its fd the `{name}` it may store into. */
+/** Each word as its text, a `{name}` the shells may read as a descriptor in parentheses, and each redirect as `fd op target`. */
 const reading = (line: string): string[] =>
   tokenize(line).flatMap((t) => {
-    if (t.type === "word") return [t.value];
-    if (t.type === "redirect") return [`${t.named ?? t.fd ?? ""}${t.op} ${t.target?.value ?? ""}`];
+    if (t.type === "word") return [t.namedFd ? `(${t.value})` : t.value];
+    if (t.type === "redirect") return [`${t.fd ?? ""}${t.op} ${t.target?.value ?? ""}`];
     return t.type === "op" ? [t.value] : [];
   });
 
-describe("the lexer reads a {name} before a redirect as the fd it may store (TP-3279)", () => {
+describe("the lexer marks a {name} before a redirect, which the shells read two ways (TP-3279)", () => {
   it.each([
-    ["bash {fd}< ./x.sh /dev/fd/10", ["bash", "{fd}< ./x.sh", "/dev/fd/10"]],
-    ["bash {fd}<> ./x.sh /dev/fd/10", ["bash", "{fd}<> ./x.sh", "/dev/fd/10"]],
-    ["bash {fd}<&3 /dev/fd/10", ["bash", "{fd}<& 3", "/dev/fd/10"]],
-    ["exec {fd}>&-", ["exec", "{fd}>& -"]],
-    ["exec {_f2}>f", ["exec", "{_f2}> f"]],
-    ["bash {a[0]}< ./x.sh /dev/fd/10", ["bash", "{a[0]}< ./x.sh", "/dev/fd/10"]],
-    ["{fd}< /dev/null git push", ["{fd}< /dev/null", "git", "push"]],
-    ["echo {fd} < ./x.sh", ["echo", "{fd}< ./x.sh"]],
+    ["bash {fd}< ./x.sh /dev/fd/10", ["bash", "({fd})", "< ./x.sh", "/dev/fd/10"]],
+    ["bash {fd}<> ./x.sh /dev/fd/10", ["bash", "({fd})", "<> ./x.sh", "/dev/fd/10"]],
+    ["bash {fd}<&3 /dev/fd/10", ["bash", "({fd})", "<& 3", "/dev/fd/10"]],
+    ["exec {fd}>&-", ["exec", "({fd})", ">& -"]],
+    ["exec {_f2}>f", ["exec", "({_f2})", "> f"]],
+    ["bash {a[0]}< ./x.sh /dev/fd/10", ["bash", "({a[0]})", "< ./x.sh", "/dev/fd/10"]],
+    ["bash {a[$i]}< ./x.sh /dev/fd/10", ["bash", "({a[$i]})", "< ./x.sh", "/dev/fd/10"]],
+    ["echo {fd} < ./x.sh", ["echo", "({fd})", "< ./x.sh"]],
   ])("%s", (line, expected) => {
     expect(reading(line)).toEqual(expected);
   });
@@ -54,22 +55,33 @@ describe("the lexer reads a {name} before a redirect as the fd it may store (TP-
     ["{ bash; } < ./x.sh", ["{", "bash", ";", "}", "< ./x.sh"]],
     ["echo {a[0]} < ./x.sh", ["echo", "{a[0]}", "< ./x.sh"]],
     ["cat < {fd}< ./x.sh", ["cat", "< {fd}", "< ./x.sh"]],
+    ["echo {fd} 2< ./x.sh", ["echo", "{fd}", "2< ./x.sh"]],
+    ["cat {fd}<(echo hi)", ["cat", "{fd}"]],
     ["[[ {a} < {b} ]]", ["[[", "{a}", "< {b}", "]]"]],
     ["echo {f-d}< ./x.sh", ["echo", "{f-d}", "< ./x.sh"]],
     ["echo {1x}< ./x.sh", ["echo", "{1x}", "< ./x.sh"]],
     ["echo {}< ./x.sh", ["echo", "{}", "< ./x.sh"]],
     ["echo \\{fd}< ./x.sh", ["echo", "{fd}", "< ./x.sh"]],
     ["echo '{fd}'< ./x.sh", ["echo", "{fd}", "< ./x.sh"]],
-  ])("keeps %s a word, which no shell reads as a named fd", (line, expected) => {
+  ])("keeps %s a plain word, which no shell reads as a named fd", (line, expected) => {
     expect(reading(line)).toEqual(expected);
-  });
-
-  it("refuses a {name[…]} whose subscript expands, read only at run time", () => {
-    expect(() => tokenize("bash {a[$i]}< ./x.sh /dev/fd/10")).toThrow(/run time/);
   });
 });
 
-/** Each runs x.sh, or a file named `{fd}`, in bash, zsh or dash: the shell that runs it is in `PREMISES`. */
+describe("the walk emits a command with a {name} redirect under both readings (TP-3279)", () => {
+  const show = (line: string): string[] =>
+    extractCommands(line, { cwd: REPO, home: "/home/you" }).map((c) => [c.name, ...c.args.map((a) => a.value), ...c.redirects.map((r) => `${r.fd ?? ""}${r.op}`)].join(" "));
+
+  it.each([
+    ["echo {fd}< ./x.sh", ["echo {fd} <", "echo {fd}<"]],
+    ["{fd}< /dev/null git push", ["{fd} git push <", "git push {fd}<"]],
+    ["env -C {x} </dev/null git push", ["git push <", "push {x}<"]],
+  ])("%s keeps the word as dash does, then reads it as the fd", (line, expected) => {
+    expect(show(line)).toEqual(expected);
+  });
+});
+
+/** Each runs x.sh, or the file `{run}`, in bash, zsh or dash: the shell that runs it is in `PREMISES`. */
 const DENIED = [
   "bash {fd}< ./x.sh /dev/fd/10",
   "bash {fd}<> ./x.sh /dev/fd/10",
@@ -80,13 +92,16 @@ const DENIED = [
   "bash {fd}>> ./x.sh /dev/fd/10",
   "bash -c 'bash {fd}< ./x.sh /dev/fd/10' 10<&-",
   "bash {a[0]}< ./x.sh /dev/fd/10",
+  "bash {a[$i]}< ./x.sh /dev/fd/10",
   "bash {fd} < ./x.sh /dev/fd/11",
-  "sh {fd}< /dev/null",
-  "sh -c 'sh {fd}< /dev/null'",
+  "sh {run}< /dev/null",
+  "sh -c 'sh {run}< /dev/null'",
   `{fd}< /dev/null ${PUSH}`,
   `exec {fd}< /dev/null ${PUSH}`,
-  "bash {a[$i]}< ./x.sh /dev/fd/10",
   `bash -c 'eval "bash /dev/fd/10" {fd}< ./x.sh' 10<&-`,
+  `env -C {x} </dev/null ${PUSH}`,
+  `git -C {x} </dev/null push origin HEAD:main`,
+  `sh -c 'env -C {x}</dev/null ${PUSH}'`,
 ];
 
 describe("a shell runs a descriptor a {name} redirect may have opened (TP-3279)", () => {
@@ -95,6 +110,7 @@ describe("a shell runs a descriptor a {name} redirect may have opened (TP-3279)"
   });
 
   it.each([
+    "bash {fd}< ./x.sh ./ok.sh",
     "cat {fd}< ./x.sh",
     "cat {fd} < ./x.sh",
     "exec {fd}< ./x.sh",
@@ -108,12 +124,13 @@ describe("a shell runs a descriptor a {name} redirect may have opened (TP-3279)"
 
 const has = (shell: string): boolean => spawnSync(shell, ["-c", "true"]).status === 0;
 
-/** Runs `line` under `runner` in a scratch dir whose x.sh and `{fd}` call a fake `git`, and reports whether it ran. */
+/** Runs `line` under `runner` in a scratch dir whose x.sh and `{run}` call a fake `git`, and reports whether it ran. */
 function runsGit(line: string, runner: string): boolean {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "named-fd-"));
   try {
-    for (const script of ["x.sh", "{fd}"]) fs.writeFileSync(path.join(dir, script), `${PUSH}\n`);
-    fs.writeFileSync(path.join(dir, "ok.sh"), "true\n");
+    for (const script of ["x.sh", "{run}"]) fs.writeFileSync(path.join(dir, script), `${PUSH}\n`);
+    for (const script of ["ok.sh", "{fd}"]) fs.writeFileSync(path.join(dir, script), "true\n");
+    fs.symlinkSync(".", path.join(dir, "{x}"));
     fs.mkdirSync(path.join(dir, "bin"));
     fs.writeFileSync(path.join(dir, "bin", "git"), `#!/bin/sh\ntouch '${path.join(dir, "mk")}'\n`, { mode: 0o755 });
     const [program = "bash", ...flags] = runner.split(" ");
@@ -125,20 +142,22 @@ function runsGit(line: string, runner: string): boolean {
   }
 }
 
-/** Each denied line, with its setup, under a parent shell that runs the push. zsh keeps fd 10 for itself and opens 11. */
+/**
+ * Each denied line, with its setup, under a parent shell that runs the push. zsh keeps fd 10 for itself and opens 11.
+ * `sh -c` rows depend on which shell `sh` is, so dash runs their inner text directly.
+ */
 const PREMISES: Array<[string, string]> = [
   ...DENIED.slice(0, 4).map((line): [string, string] => [line, "bash"]),
-  ["bash {fd}< ./x.sh /dev/fd/11", "zsh -f"],
-  ["zsh -f {fd}< ./x.sh /dev/fd/11", "zsh -f"],
-  ...DENIED.slice(5, 8).map((line): [string, string] => [line, "bash"]),
+  ...["bash {fd}< ./x.sh /dev/fd/11", "zsh -f {fd}< ./x.sh /dev/fd/11"].map((line): [string, string] => [line, "zsh -f"]),
+  ...DENIED.slice(5, 9).map((line): [string, string] => [line, "bash"]),
   ["bash -c 'bash {fd}< ./x.sh /dev/fd/10' 10<&-", "zsh -f"],
-  ["bash {a[0]}< ./x.sh /dev/fd/10", "bash"],
+  ["i=0; bash {a[$i]}< ./x.sh /dev/fd/10", "bash"],
   ["bash {fd} < ./x.sh /dev/fd/11", "zsh -f"],
-  ["sh {fd}< /dev/null", "dash"],
+  ["sh {run}< /dev/null", "dash"],
   [`{fd}< /dev/null ${PUSH}`, "bash"],
   [`exec {fd}< /dev/null ${PUSH}`, "zsh -f"],
-  ["i=0; bash {a[$i]}< ./x.sh /dev/fd/10", "bash"],
-  [`bash -c 'eval "bash /dev/fd/10" {fd}< ./x.sh' 10<&-`, "bash"],
+  ...DENIED.slice(15, 18).map((line): [string, string] => [line, "bash"]),
+  [`env -C {x}</dev/null ${PUSH}`, "dash"],
 ];
 
 describe.skipIf(!["bash", "zsh", "dash"].every(has))("bash, zsh and dash run what the denied lines hold (TP-3279)", () => {
@@ -146,7 +165,7 @@ describe.skipIf(!["bash", "zsh", "dash"].every(has))("bash, zsh and dash run wha
     expect(runsGit(line, runner)).toBe(true);
   });
 
-  it.each(["echo {a,b}<./x.sh", "bash /dev/fd/10 \\{fd}< ./x.sh", "cat {fd} < ./x.sh"])("%s runs no push under any of them", (line) => {
+  it.each(["bash {fd}< ./x.sh ./ok.sh", "echo {a,b}<./x.sh", "bash /dev/fd/10 \\{fd}< ./x.sh", "cat {fd} < ./x.sh"])("%s runs no push under any of them", (line) => {
     expect(["bash", "zsh -f", "dash"].map((runner) => runsGit(line, runner))).toEqual([false, false, false]);
   });
 });

@@ -314,14 +314,14 @@ function namerefHooked({ name, args }: Unwrapped, names: ReadonlySet<string>): s
 }
 
 /**
- * `exec {PS4}>f` and `exec {PS4[0]}>f` store a descriptor number into PS4. The lexer reads that `{PS4}` as the
- * redirect's `named`; with any redirection on the command an unquoted literal `{name}` word elsewhere also counts as a
- * possible store, which only over-reads. A quoted, escaped or computed `{...}` is text to the shell and stores nothing.
+ * `exec {PS4}>f` and `exec {PS4[0]}>f` store a descriptor number into PS4. The walk reads that `{PS4}` as the
+ * redirect's fd and, as dash does, as a word; with any redirection on the command an unquoted literal `{name}` word
+ * counts as a possible store, which only over-reads. A quoted, escaped or computed `{...}` is text and stores nothing.
  */
 function fdVariableHooked(words: WordToken[], redirects: RedirectToken[], names: ReadonlySet<string>): string | null {
   if (redirects.length === 0) return null;
   const literal = words.filter((w) => !w.quoted && !w.dynamic && !w.spliced).map((w) => w.value);
-  for (const value of [...redirects.flatMap((r) => r.named ?? []), ...literal]) {
+  for (const value of [...redirects.flatMap((r) => r.fd ?? []), ...literal]) {
     const named = NAMED_FD_RE.exec(value)?.[1];
     if (named !== undefined && names.has(named)) return named;
   }

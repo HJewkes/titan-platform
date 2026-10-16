@@ -30,6 +30,8 @@ export interface WordToken {
   typed?: string;
   /** Set on a word variable tracking adds itself, never by the lexer; only such a word can assign a hidden slot. */
   hidden?: true;
+  /** A `{name}` before a redirect, which bash and zsh read as the redirect's descriptor and dash as a word. */
+  namedFd?: true;
 }
 
 export interface OpToken {
@@ -50,7 +52,7 @@ export interface RedirectToken {
   type: "redirect";
   op: string;
   fd: string | null;
-  /** A `{name}` before the operator, which bash and zsh read as a descriptor from 10 up and dash as a word. */
+  /** The `{name}` word before the operator; in the reading that takes it as the descriptor, `fd` holds it too. */
   named?: string;
   target: WordToken | null;
   body: string | null;
