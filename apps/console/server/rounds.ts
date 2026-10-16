@@ -1,6 +1,7 @@
 /**
  * The review rounds the owner answers in the console: one `<round-id>/round.json` per directory
- * under the rounds dir, validated with review-schema's `RoundSchema`. This module only reads.
+ * under the rounds dir, validated with review-schema's `RoundSchema`. This module only reads;
+ * `rounds-submit.ts` is the one writer, of `feedback.json`.
  *
  * Another process writes the dir, so every read is defended: a round id is a plain name (no
  * dot, no slash), a round directory or file that is a symlink is refused, `round.json` and
@@ -25,10 +26,10 @@ export const MAX_ROUND_BYTES = 1024 * 1024;
 /** The list stops here, so a dir full of junk cannot make one read unbounded. */
 const MAX_ROUNDS = 500;
 const ROUND_ID = /^[A-Za-z0-9_-]{1,64}$/;
-const ROUND_FILE = "round.json";
-const FEEDBACK_FILE = "feedback.json";
+export const ROUND_FILE = "round.json";
+export const FEEDBACK_FILE = "feedback.json";
 const MAX_REASON_ISSUES = 5;
-const OPEN_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
+export const OPEN_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 
 const roundStatus = z.enum(["open", "sent"]);
 type RoundStatus = z.infer<typeof roundStatus>;
@@ -97,7 +98,7 @@ function parseManifest(text: string): Parsed {
 }
 
 /** Reads at most one byte past the cap, so a file that grew after its fstat is still refused. */
-async function readCapped(handle: FileHandle): Promise<string | null> {
+export async function readCappedBytes(handle: FileHandle): Promise<Buffer | null> {
   const buffer = Buffer.alloc(MAX_ROUND_BYTES + 1);
   let filled = 0;
   for (;;) {
@@ -106,7 +107,11 @@ async function readCapped(handle: FileHandle): Promise<string | null> {
     filled += bytesRead;
     if (filled > MAX_ROUND_BYTES) return null;
   }
-  return buffer.toString("utf8", 0, filled);
+  return buffer.subarray(0, filled);
+}
+
+async function readCapped(handle: FileHandle): Promise<string | null> {
+  return (await readCappedBytes(handle))?.toString("utf8") ?? null;
 }
 
 function unreadableReason(error: unknown): string {
@@ -149,7 +154,7 @@ async function loadRound(dir: string, id: string): Promise<LoadedRound> {
 }
 
 /** False for a bad id, a missing entry, or anything that is not a real directory, a symlink included. */
-async function roundDirExists(dir: string, id: string): Promise<boolean> {
+export async function roundDirExists(dir: string, id: string): Promise<boolean> {
   if (!ROUND_ID.test(id)) return false;
   const stats = await lstat(path.join(dir, id)).catch(() => null);
   return stats?.isDirectory() ?? false;
