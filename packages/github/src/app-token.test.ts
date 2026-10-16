@@ -536,13 +536,27 @@ describe("token shape scrub", () => {
       expect(redact("see eyJsonwebtoken.config.js and eyJsonwebtoken.e30.ts", [])).toBe("see eyJsonwebtoken.config.js and eyJsonwebtoken.e30.ts");
     });
 
-    it("scans a megabyte of whitespace after a keyword in linear time", () => {
-      for (const keyword of ["bearer", "token", "bearer token"]) {
-        const text = `${keyword}${" ".repeat(1 << 20)}`;
-        const started = performance.now();
+    it("scans whitespace after a keyword in linear time", () => {
+      // Linear growth costs SCALE x the small case, quadratic SCALE^2 x; the bound sits between with headroom for load.
+      const SCALE = 8;
+      const MAX_RATIO = 24;
+      const smallBytes = 1 << 17;
+      const bestMs = (text: string) => {
+        const times: number[] = [];
+        for (let run = 0; run < 3; run++) {
+          const started = performance.now();
+          redact(text, []);
+          times.push(performance.now() - started);
+        }
+        return Math.min(...times);
+      };
 
-        expect(redact(text, [])).toBe(text);
-        expect(performance.now() - started).toBeLessThan(100);
+      for (const keyword of ["bearer", "token", "bearer token"]) {
+        const small = `${keyword}${" ".repeat(smallBytes)}`;
+        const large = `${keyword}${" ".repeat(smallBytes * SCALE)}`;
+
+        expect(redact(large, [])).toBe(large);
+        expect(bestMs(large)).toBeLessThan(Math.max(bestMs(small), 5) * MAX_RATIO);
       }
     });
 
