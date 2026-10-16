@@ -1,6 +1,11 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
+import { openDatabase } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
@@ -15,7 +20,7 @@ import type { Presence } from "./presence.js";
 import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
 import { reviewPhase } from "./review.js";
 import type { ReviewerRoles } from "./reviewer-roles.js";
-import { shepherdStoreRef, type ShepherdStore } from "./store.js";
+import { shepherdStoreRef, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -46,6 +51,7 @@ interface World {
   host: FactoryHost;
   fake: FakeGitHub;
   store: ShepherdStore;
+  ref: ShepherdStoreRef;
   runId: string;
   services: NonNullable<ReturnType<typeof factoryRoutesFor>["shepherd"]>;
 }
@@ -60,6 +66,7 @@ interface Scene {
   files?: string[];
   /** A head whose review ends with the PR conflicting, so the round leaves through the conflict route. */
   conflictsAfter?: string;
+  dbPath?: string;
 }
 
 /** A security PR held as `g10-review`, reviewed for real by a reviewer spawned with the profile `roles` gives its class. */
@@ -67,11 +74,9 @@ function heldSecurityRun(roles: ReviewerRoles, policy: EffectivePolicy = AUTO_PO
   return heldRun(roles, { policy, hold });
 }
 
-function heldRun(roles: ReviewerRoles, { policy = AUTO_POLICY, hold = G10_HOLD, silentAt, twoMerge, files = ["src/a.ts"], conflictsAfter }: Scene): World {
-  const fake = fakeGitHub();
-  fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
+/** One deploy's host over `fake` and `ref`; a second one on the same `dbPath` adopts what the first left in flight. */
+function sceneHost(fake: FakeGitHub, ref: ShepherdStoreRef, roles: ReviewerRoles, { silentAt, twoMerge, conflictsAfter, dbPath = ":memory:" }: Scene) {
   const wake: ShepherdPhases["wake"] = async () => ({ kind: "unhandled", reason: "no fixer in this test" });
-  const ref = shepherdStoreRef();
   const adversary = twoMerge && { holdMember: { profile: DEFAULT_ADVERSARY_PROFILE }, twoMergeRelease: twoMerge };
   const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), review: { ...mergingReviewers(), roles, ...adversary } });
   const reviewed: ShepherdPhases["review"] = async (ctx, request) => (request.headSha === silentAt ? { kind: "none", cause: "no-verdict", reason: "no_block" } : reviewPhase(ctx, request));
@@ -80,15 +85,24 @@ function heldRun(roles: ReviewerRoles, { policy = AUTO_POLICY, hold = G10_HOLD, 
     if (request.headSha === conflictsAfter) fake.pr(1).mergeableState = "dirty";
     return verdict;
   };
-  const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review, wake })], routes, gatePollMs: 5 });
+  const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow({ review, wake })], routes, gatePollMs: 5 });
   hosts.push(host);
+  return { host, routes };
+}
+
+function heldRun(roles: ReviewerRoles, scene: Scene): World {
+  const { policy = AUTO_POLICY, hold = G10_HOLD, files = ["src/a.ts"] } = scene;
+  const fake = fakeGitHub();
+  fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
+  const ref = shepherdStoreRef();
+  const { host, routes } = sceneHost(fake, ref, roles, scene);
   fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge") });
   fake.prFiles.set(1, files.map((path) => ({ path, status: "modified" })));
   const store = ref.get();
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(policy) });
   store.register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy, kind: "security" });
   store.hold(runId, hold, undefined, { actor: "seat" });
-  return { host, fake, store, runId, services: routes.shepherd! };
+  return { host, fake, store, ref, runId, services: routes.shepherd! };
 }
 
 const stepIds = (w: World): string[] => Object.values(w.host.runtime.status(w.runId)!.stepResults).map((result) => result.stepId);
@@ -210,5 +224,77 @@ describe("a review the owner assigned to a person (TP-3083)", () => {
     expect(w.store.byRun(w.runId)).toMatchObject({ held: true, holdReason: hold });
     expect(w.store.eventsOf(w.runId).filter((event) => event.kind === "release")).toEqual([]);
     expect(w.fake.pr(1).merged).toBe(false);
+  });
+});
+
+const StoredStepResults = z.record(z.string(), z.object({ stepId: z.string() }).loose());
+
+/** Rewrites a stored run's step results in recording order; returns the rewritten keys. */
+function rewriteRecord(dbPath: string, runId: string, edit: (keys: string[]) => string[]): string[] {
+  const db = openDatabase(dbPath);
+  const row = z.object({ step_results: z.string() }).parse(db.prepare("SELECT step_results FROM workflow_run WHERE id = ?").get(runId));
+  const results = StoredStepResults.parse(JSON.parse(row.step_results));
+  const keys = edit(Object.keys(results));
+  db.prepare("UPDATE workflow_run SET step_results = ? WHERE id = ?").run(JSON.stringify(Object.fromEntries(keys.map((key) => [key, results[key]]))), runId);
+  db.close();
+  return keys;
+}
+
+const recordedKeys = (host: FactoryHost, runId: string): string[] => Object.keys(host.runtime.status(runId)!.stepResults);
+const isReleaseKey = (key: string): boolean => key.startsWith(`${G10_RELEASE_STEP}:`);
+
+describe("a g10-adversary run recorded with an adversary member MERGE and adopted by the next build", () => {
+  const ADVERSARY_HOLD = "g10-adversary: authority touch";
+
+  /** A run under shadow that reached merge:0 held, its host closed as a deploy closes it. */
+  async function inFlightAtMerge(): Promise<World & { dbPath: string }> {
+    const dbPath = join(mkdtempSync(join(tmpdir(), "tp-g10-replay-")), "factory.db");
+    const w = heldRun(OPUS, { hold: ADVERSARY_HOLD, twoMerge: "shadow", dbPath });
+    await vi.waitFor(() => expect(w.host.runtime.status(w.runId)?.currentStep).toBe("merge:0"), { timeout: 5_000 });
+    w.host.close();
+    return { ...w, dbPath };
+  }
+
+  /** Adopts the run on a new host and waits until it parks or its replay reaches the frontier, where the live merge step reads the PR. */
+  async function adoptedBy(w: World & { dbPath: string }): Promise<FactoryHost> {
+    const { host } = sceneHost(w.fake, w.ref, OPUS, { twoMerge: "shadow", dbPath: w.dbPath });
+    const callsBefore = w.fake.calls.length;
+    await host.adopt();
+    await vi.waitFor(() => expect(host.runtime.status(w.runId)?.status === "recovery_required" || w.fake.calls.length > callsBefore).toBe(true), { timeout: 5_000 });
+    return host;
+  }
+
+  it("replays a record from before the two-MERGE ask as it ran: no live release step, no divergence", async () => {
+    const w = await inFlightAtMerge();
+    const legacy = rewriteRecord(w.dbPath, w.runId, (keys) => keys.filter((key) => !isReleaseKey(key)));
+    const policyAt = legacy.indexOf("sh-policy:0:0");
+    expect(legacy).toContain(`sh-await-verdict:${H1}:adversary:0`);
+    expect(legacy.slice(policyAt, policyAt + 2)).toEqual(["sh-policy:0:0", "base-check:0:0"]);
+
+    const second = await adoptedBy(w);
+
+    expect(second.runtime.status(w.runId)?.error).toBeNull();
+    expect(second.runtime.status(w.runId)?.status).toBe("running");
+    expect(recordedKeys(second, w.runId)).toEqual(legacy);
+  });
+
+  it("replays a record that asked the release step, reading the recorded answer", async () => {
+    const w = await inFlightAtMerge();
+    const recorded = rewriteRecord(w.dbPath, w.runId, (keys) => keys);
+    expect(recorded).toContain(`${G10_RELEASE_STEP}:${H1}:0:0`);
+
+    const second = await adoptedBy(w);
+
+    expect(second.runtime.status(w.runId)?.status).toBe("running");
+    expect(recordedKeys(second, w.runId)).toEqual(recorded);
+  });
+
+  it("asks the release step live at the frontier of a fresh run", async () => {
+    const w = heldRun(OPUS, { hold: ADVERSARY_HOLD, twoMerge: "shadow" });
+
+    await vi.waitFor(() => expect(w.host.runtime.status(w.runId)?.currentStep).toBe("merge:0"), { timeout: 5_000 });
+
+    const keys = recordedKeys(w.host, w.runId);
+    expect(keys.indexOf(`${G10_RELEASE_STEP}:${H1}:0:0`)).toBe(keys.indexOf("sh-policy:0:0") + 1);
   });
 });

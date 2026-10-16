@@ -1,6 +1,7 @@
 import { caseScripts } from "./case-script.js";
 import type { RedirectToken, WordToken } from "./lexer.js";
 import { pipedShellTexts } from "./piped-nul.js";
+import { shellOperands } from "./shell-options.js";
 import { SPLICING_SHELLS, splicedWords, stdinScript } from "./sub-output.js";
 import { chargeSpliced } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
@@ -8,7 +9,7 @@ import type { Wrapping } from "./commands.js";
 import type { Unwrapped } from "./unwrap.js";
 
 export const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
-const SHELL_VALUE_OPTS = new Set(["-o", "+o", "-O", "+O", "--rcfile", "--init-file"]);
+const STDIN_PATH_RE = /\/(?:dev\/stdin|dev\/fd\/0|proc\/(?:self|thread-self|\d+)\/fd\/0)$/;
 
 /** Shell text a command runs, and how it reaches the commands in it. */
 export interface Inline {
@@ -24,11 +25,34 @@ export function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], piped: 
   if (cmd.script !== undefined) return { texts: [cmd.script], wrap: "sh-c" };
   if (cmd.name === "eval") return { texts: splicedReadings(cmd.args, budget), wrap: "eval" };
   if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
-  const { hasC, positional } = shellOperands(cmd.args);
+  const { hasC, positional, readsStdin } = shellOperands(cmd.args, cmd.name);
+  // `bash /dev/stdin <<< TEXT` runs its stdin as a script file.
+  const stdin = readsStdin || (!hasC && positional !== null && isStdinPath(positional.value)) ? stdinReading(cmd.name, redirects, piped) : null;
+  if (!hasC) return stdin;
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
-  const text = hasC ? (positional ? splicedReadings([positional], budget) : piped.length > 0 ? piped : null) : positional ? null : stdinScript(redirects);
-  if (text !== null) return { texts: hasC ? [text].flat() : [text].flat().flatMap((t) => pipedShellTexts(cmd.name, t)), wrap: hasC ? "sh-c" : "heredoc-shell" };
-  return hasC || positional || piped.length === 0 ? null : { texts: piped.flatMap((t) => pipedShellTexts(cmd.name, t)), wrap: "piped-shell" };
+  const texts = positional ? splicedReadings([positional], budget) : piped;
+  const all = [...texts, ...(stdin?.texts ?? [])];
+  return all.length > 0 ? { texts: all, wrap: "sh-c" } : null;
+}
+
+/** A heredoc or here-string replaces the pipe as the shell's stdin. */
+function stdinReading(shell: string | null, redirects: RedirectToken[], piped: string[]): Inline | null {
+  const text = stdinScript(redirects);
+  if (text !== null) return { texts: pipedShellTexts(shell, text), wrap: "heredoc-shell" };
+  return piped.length === 0 ? null : { texts: piped.flatMap((t) => pipedShellTexts(shell, t)), wrap: "piped-shell" };
+}
+
+/**
+ * Whether a script path names stdin however it is spelled (`//dev/stdin`, `/dev/./stdin`, `/dev/../dev/stdin`). The
+ * path is matched on its tail: enough `..` reach `/` from any directory, so a relative path may name it too.
+ */
+function isStdinPath(path: string): boolean {
+  const parts: string[] = [];
+  for (const part of path.split("/")) {
+    if (part === "..") parts.pop();
+    else if (part !== "" && part !== ".") parts.push(part);
+  }
+  return STDIN_PATH_RE.test(`/${parts.join("/")}`);
 }
 
 /**
@@ -43,19 +67,4 @@ function splicedReadings(words: WordToken[], budget: UnsureBudget): string[] {
   const added = [...new Set(spliced)].filter((text) => !plain.includes(text));
   chargeSpliced(budget, added);
   return [...new Set([...plain, ...added])];
-}
-
-/** Whether a shell's options include `-c`, and its first operand: the `-c` string, or else a script file. */
-export function shellOperands(args: WordToken[]): { hasC: boolean; positional: WordToken | null } {
-  let hasC = false;
-  for (let i = 0; i < args.length; i++) {
-    const v = (args[i] as WordToken).value;
-    if (v === "-") break;
-    if (v === "--") return { hasC, positional: args[i + 1] ?? null };
-    if (SHELL_VALUE_OPTS.has(v)) i++;
-    else if (v.startsWith("--")) continue;
-    else if (/^[-+][A-Za-z]+$/.test(v)) hasC ||= v.startsWith("-") && v.includes("c");
-    else return { hasC, positional: args[i] as WordToken };
-  }
-  return { hasC, positional: null };
 }

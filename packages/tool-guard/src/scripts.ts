@@ -2,6 +2,7 @@ import { INTERPRETERS, SHELLS } from "./mentions.js";
 import type { SimpleCommand } from "./shell/commands.js";
 import type { WordToken } from "./shell/lexer.js";
 import { resolvePath, resolveValue } from "./shell/path.js";
+import { shellOperands } from "./shell/shell-options.js";
 
 /** A script a command runs by path: shell scripts are classified in full, others get the mention rule. */
 export interface ScriptTarget {
@@ -10,7 +11,6 @@ export interface ScriptTarget {
 }
 
 export const SOURCERS: ReadonlySet<string> = new Set(["source", "."]);
-const SHELL_VALUE_OPTS = new Set(["-o", "+o", "-O", "+O", "--rcfile", "--init-file"]);
 const INLINE_FLAG_RE = /^-[A-Za-z]*[ceEpm]$|^--(eval|print)(=|$)/;
 
 export function scriptTarget(cmd: SimpleCommand, home: string): ScriptTarget | null {
@@ -30,7 +30,8 @@ function typedTarget(cmd: SimpleCommand, typed: string, home: string): ScriptTar
 
 /** `bash x.sh`, or `bash < x.sh`. `bash -c` text and heredocs are already walked by `extractCommands`. */
 function shellTarget(cmd: SimpleCommand, home: string): ScriptTarget | null {
-  const operand = firstOperand(cmd.args, /^-[A-Za-z]*c[A-Za-z]*$/, SHELL_VALUE_OPTS);
+  const { hasC, positional } = shellOperands(cmd.args, cmd.name);
+  const operand = hasC ? null : positional;
   if (operand !== null) return target(cmd, operand, home, "shell");
   const stdin = cmd.redirects.find((r) => r.op === "<");
   return stdin ? target(cmd, stdin.target ?? undefined, home, "shell") : null;
