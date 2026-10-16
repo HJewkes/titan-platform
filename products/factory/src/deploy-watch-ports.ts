@@ -48,7 +48,7 @@ const expandHome = (value: string, home: string): string => (value === "~" ? hom
  * The deposit spool the titan console reads: `TITAN_CONSOLE_INBOX_DIR`, else `inbox/deposits` under
  * `TITAN_CONSOLE_STATE` (default `~/.local/state/titan-console`), the resolution agent-chat's burndown tick uses.
  */
-function ownerInboxDir(env: NodeJS.ProcessEnv, home: string = homedir()): string {
+export function ownerInboxDir(env: NodeJS.ProcessEnv, home: string = homedir()): string {
   if (env.TITAN_CONSOLE_INBOX_DIR) return expandHome(env.TITAN_CONSOLE_INBOX_DIR, home);
   return join(expandHome(env.TITAN_CONSOLE_STATE ?? "~/.local/state/titan-console", home), "inbox", "deposits");
 }

@@ -55,7 +55,7 @@ export function pendingGateId(host: FactoryHost, runId: string, stepId: string):
 }
 
 /** The gate a repeat of this resolve already answered: none for the step is pending, and its latest gate holds this payload. */
-function repeatedResolution(host: FactoryHost, runId: string, stepId: string, payload: Record<string, unknown>): string | undefined {
+export function repeatedResolution(host: FactoryHost, runId: string, stepId: string, payload: Record<string, unknown>): string | undefined {
   const base = `${runId}/${stepId}`;
   if (host.pendingGates().some(({ gate }) => stepIdMatches(base, gate.id))) return undefined;
   let latest = host.gates.get(base);
