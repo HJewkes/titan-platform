@@ -1,3 +1,4 @@
+import { assignsProtectedAt } from "./assign-on-expand.js";
 import { joinedDollar, nextAfter } from "./joins.js";
 import { type Nesting, nested } from "./nesting.js";
 import { ParseError, SplitParseError } from "./parse-error.js";
@@ -90,9 +91,13 @@ const DOLLAR_ENDS: Record<DollarOpener, (src: string, j: number, read: NestedRea
   locale: (_src, j) => j,
 };
 
-/** zsh runs the value of `${~x}`, `${(e)x}` and `$~x` as a glob qualifier or as code, so the line is refused where it is read. */
+/**
+ * zsh runs the value of `${~x}`, `${(e)x}` and `$~x` as a glob qualifier or as code, and `${n::=v}` stores into whatever
+ * parameter `n` names, so the line is refused where it is read when either is possible.
+ */
 export function refuseValueRun(src: string, dollar: number): void {
   if (zshRunsValue(src, dollar)) throw new ParseError("zsh runs this expansion's value as code");
+  if (assignsProtectedAt(src, dollar)) throw new ParseError("an expansion assigns a parameter the guard protects");
 }
 
 function dollarEnd(src: string, j: number, read: NestedReaders): number {
