@@ -2662,6 +2662,20 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/visual-packet-trigger.test.ts",
+   "fate": "delete",
+   "task": "D-M7-01",
+   "milestone": "M7"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/visual-packet-trigger.ts",
+   "fate": "delete",
+   "task": "D-M7-01",
+   "milestone": "M7"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/visual-render.test.ts",
    "fate": "kept",
    "reason": "unclear: not named by v9.1 sec. 3 or any D-task; what is its fate?"

@@ -47,6 +47,7 @@ import { headOriginRoute, recordHeadOrigin } from "./head-origin.js";
 import { taskIdOf } from "../workflows/land-merge-message.js";
 import { SHEPHERD_STEPS } from "./shepherd-steps.js";
 import { withEarlier, type FixFirstTrail } from "./fix-first-trail.js";
+import { packetTriggering, visualPacketRoutes } from "./visual-packet-trigger.js";
 
 export { SHEPHERD_STEPS };
 
@@ -189,6 +190,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     clearSuperseded(run, rereview, gated, stepId), rereview && run.trail.ownerAsked.add(rereview), new LeaveLand()
   );
   const conflictCheck = (headSha: string) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha });
+  const packetRun = { ctx, target: run.target, ownerGateReason: () => run.policy.ownerGateReason };
   return {
     runId: ctx.runId,
     workflowName: ctx.workflowName,
@@ -200,7 +202,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
     assisted: routingStuckBehind(run, () => run.lastCi?.headSha, recordingOverrides(followingApprovals(ctx, conflictCheckedGates(
-      supersedingGates(ctx, supersede, () => (run.carried = undefined)), conflictCheck, leaveOnConflict), { target: run.target, reviewedMerge }),
+      packetTriggering(packetRun, supersedingGates(ctx, supersede, () => (run.carried = undefined))), conflictCheck, leaveOnConflict), { target: run.target, reviewedMerge }),
       reviewedMerge, (override) => recordOverride(ctx, run.target, override))),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
     dispatch: async (stepId, template, options) => {
@@ -361,6 +363,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...g10ReleaseRoutes(deps, wiring.review?.twoMergeRelease),
     ...g10ReholdRoutes(deps, wiring.review?.carry),
     ...heldRepairRoutes(deps),
+    ...visualPacketRoutes(deps),
     headOriginRoute(deps),
     reviewRefusedRoute(deps.now),
   ];
