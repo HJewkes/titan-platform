@@ -237,6 +237,7 @@ describe.skipIf(process.platform !== "linux")("rounds.frame over the LAN listene
       gateAnswers: false,
       inboxDir: path.join(root, "state", "inbox", "deposits"),
       roundsDir: dir,
+      decisionsFile: null,
     };
     await mkdir(config.stateDir, { recursive: true });
     await writeFile(config.sessionGraphPath, "synthetic");

@@ -71,6 +71,7 @@ beforeEach(async () => {
     gateAnswers: false,
     inboxDir: path.join(dir, "state", "inbox", "deposits"),
     roundsDir: path.join(dir, "state", "rounds"),
+    decisionsFile: null,
   };
   await writeFile(config.sessionGraphPath, "synthetic");
 });
