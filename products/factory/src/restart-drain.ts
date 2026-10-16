@@ -1,6 +1,7 @@
 import type { StepRoute, WorkflowRun } from "@titan-design/workflow";
 import { stepIdMatches } from "./definition.js";
 import { stepPhase } from "./shepherd/step-phase.js";
+import { SHEPHERD_WORKFLOW } from "./shepherd/services.js";
 
 /** `park` names a step whose route parks the run on restart; it outranks the step's Shepherd phase. */
 export type BusyPhase = "review" | "merging" | "park";
@@ -28,7 +29,8 @@ export interface DrainOptions {
   wait: boolean;
 }
 
-export type DrainOutcome = { proceed: true } | { proceed: false; why: string };
+/** `atRestart` is the last `/health` answer the drain read before letting the restart go, or null when serve was silent. */
+export type DrainOutcome = { proceed: true; atRestart: Record<string, unknown> | null } | { proceed: false; why: string };
 
 export const DEFAULT_DRAIN_TIMEOUT_MS = 45 * 60_000;
 const DRAIN_POLL_MS = 5_000;
@@ -36,8 +38,12 @@ const REPORT_EVERY_MS = 60_000;
 /** Consecutive unanswered `/health` polls for this long mean serve is down, not slow. */
 export const NO_ANSWER_PROCEED_MS = 2 * 60_000;
 const DRAIN_PHASES: ReadonlySet<string> = new Set(["review", "merging"]);
-/** Waits that only poll a store a restart reads again, so a restart costs them nothing; an exhausted account or an unbound checkout can hold one for days. */
-const IDLE_WAITS: readonly string[] = ["sh-account-wait", "sh-no-reviewer-wait"];
+/**
+ * Waits that only poll a store a restart reads again, so a restart costs them nothing; an exhausted account or an unbound checkout can hold one for days,
+ * and a seat reviewer runs outside serve, so its verdict waits for the repeated read.
+ */
+const IDLE_WAITS: readonly string[] = ["sh-account-wait", "sh-no-reviewer-wait", "sh-await-verdict", "sh-late-verdict", "sh-seat-recheck"];
+const MERGE_STEP = "merge";
 
 type RouteFor = (stepId: string) => Pick<StepRoute, "onRestart"> | undefined;
 
@@ -53,6 +59,18 @@ function classify(run: WorkflowRun, routeFor: RouteFor): BusyRun | undefined {
   if (IDLE_WAITS.some((id) => stepIdMatches(id, step))) return undefined;
   const phase = stepPhase(step);
   return DRAIN_PHASES.has(phase) ? { runId: run.id, step, phase: phase as BusyPhase } : undefined;
+}
+
+/**
+ * True for a shepherd-pr run at `merge` while another run holds its repo's train: it only polls for its turn, so a restart costs it nothing.
+ * A free train, or its own, means it may merge at any moment. `holderOf` names the run holding the train of the run's repo.
+ */
+export function behindTrain(holderOf: (run: WorkflowRun) => string | undefined): HoldPredicate {
+  return (run) => {
+    if (run.workflowName !== SHEPHERD_WORKFLOW || run.currentStep === null || !stepIdMatches(MERGE_STEP, run.currentStep)) return false;
+    const holder = holderOf(run);
+    return holder !== undefined && holder !== run.id;
+  };
 }
 
 function heldNow(isHeld: HoldPredicate, run: WorkflowRun): boolean {
@@ -103,7 +121,7 @@ export async function drainForRestart(ports: DrainPorts, report: (text: string) 
     const health = await ports.health(options.port);
     if (health === null && options.wait) {
       silentSince ??= ports.now();
-      if (silentLongEnough(ports, silentSince, deadline, report)) return { proceed: true };
+      if (silentLongEnough(ports, silentSince, deadline, report)) return { proceed: true, atRestart: null };
       reporter("serve did not answer /health; still draining");
     } else {
       silentSince = null;
@@ -141,17 +159,18 @@ function answered(health: Record<string, unknown> | null, pastDeadline: boolean,
   const held = readHeldSkipped(health);
   if (busy.length === 0) {
     if (held.length > 0) report(`restarting without waiting for ${held.length} held run(s):\n${describeBusy([], held)}`);
-    return { proceed: true };
+    return { proceed: true, atRestart: health };
   }
-  return !options.wait || pastDeadline ? atDeadline(busy, options, report) : undefined;
+  return !options.wait || pastDeadline ? atDeadline(health, options, report) : undefined;
 }
 
-function atDeadline(busy: readonly BusyRun[], options: DrainOptions, report: (text: string) => void): DrainOutcome {
+function atDeadline(health: Record<string, unknown> | null, options: DrainOptions, report: (text: string) => void): DrainOutcome {
+  const busy = readBusy(health);
   const parked = busy.filter((run) => run.phase === "park");
   const stopped = options.wait ? "the drain timed out" : "--no-drain skipped the wait";
   if (parked.length > 0 && !options.force) {
     return { proceed: false, why: `${stopped} with a park-routed step busy; a restart now leaves its run recovery_required. Wait, or rerun with --force:\n${describeBusy(parked)}` };
   }
   report(`${stopped}; restarting with ${busy.length} busy run(s):\n${describeBusy(busy)}`);
-  return { proceed: true };
+  return { proceed: true, atRestart: health };
 }

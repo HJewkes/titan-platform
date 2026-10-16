@@ -28,7 +28,7 @@ Before adding code:
 | [`embed`](#cap-embed) | 0 | You need embedding vectors and a model download must not be a hard requirement. Pair it with retrieval, which takes the same `Embedder`. |
 | [`eslint-plugin`](#cap-eslint-plugin) | 0 | You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function), the opt-in `max-line-length` (no code line over 200 characters), `no-commented-code` (no code in comments), `no-chained-type-assertions` (no `as unknown as T`), `no-internal-module-mock` (tests mock only external dependencies) and `todo-needs-issue` (every TODO names a task id). To run ESLint against a style profile and normalize its output, use `style-checker` instead. |
 | [`evidence`](#cap-evidence) | 0 | A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. Its `./stats` subpath puts honest intervals and paired tests on eval pass rates at 20 to 50 cases. |
-| [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority. |
+| [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. For a tests-only diff it also tells test material from source (`testOnlyOf`) and parses `*.mutations.json` specs, and `classifyMutants` decides whether every declared mutation was killed, which the judge adds to the line as `mutants`. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority. |
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
@@ -39,6 +39,7 @@ Before adding code:
 | [`agent-lifecycle`](#cap-agent-lifecycle) | 1 | You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one. |
 | [`agent-surface`](#cap-agent-surface) | 1 | A host must present a long-lived agent somewhere: detached and headless, or in an iTerm2 pane, tab or window it can later close and confirm closed. The host injects its launcher argv; `titan-agent-launch <plan.json>` is the launcher that execs a written plan with no shell, stamps its own pid, and keeps a stderr tail. For a bounded `claude -p` run that returns a result, use `runAgent` from `@titan-design/agent` with `harness: "claude-print"` instead. |
 | [`daemon`](#cap-daemon) | 1 | You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. It also carries a token-file, login-link and session-cookie auth gate for a listener beyond loopback. |
+| [`frame-capture`](#cap-frame-capture) | 1 | You need deterministic PNG frames, or an MP4, of a web page that animates on a timeline: the page publishes `window.__titanMotion` (`seek(t)`, `ready()`, `duration`) and `captureFrames` drives it under a virtual clock (`VIRTUAL_TIME_SCRIPT`) across parallel Playwright browsers, failing on any page error or unloaded font face; `startEncoder` and `mixAudio` wrap ffmpeg. It does not know what a beat or a timeline is: the motion runtime that publishes the protocol is titan-design's react-ui `/motion`, and composing a video is a product's job. |
 | [`github`](#cap-github) | 1 | Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. A long-running service uses `octokitWire()` on `sharedOctokit()`: the same port, with one throttled, GET-only-retry budget per process. Use `fakeGitHub()` in tests instead of stubbing `gh`. `formatSquashMessage` (and the `titan-squash-message` bin) builds a deterministic, trailer- and email-free squash commit message from a PR and its commits. `ciVerdict` and `ciWait` (and `titan-gh ci-wait`) judge or wait on a sha's CI over the base branch's required contexts. A shell or agent reading one PR uses `titan-gh pr-status` and `titan-gh pr-context` instead of `gh pr view --json` piped to `jq`. |
 | [`health`](#cap-health) | 1 | You emit or read a health route's payload and want one open contract: `healthReportSchema` for health/v1 (pass, warn or fail with named checks, after draft-inadarei-api-health-check) and `parseHealthReport` to read any payload, legacy `ok`-only ones included, without ever reading better than its worst check. `healthSampleSchema` is the strict row for storing one probe result; `openHealthStore` and `appendSamples` keep every one in an append-only SQLite table (one transaction per tick), and `uptime` reports up, down, unknown and missing slots separately. `probeHttp` takes one such sample of a health route, with a timeout and a pid/port identity check, and never throws for a target that is down. To serve the health route itself, use daemon. The `./metrics` subpath adds `validateEntry(entry, "write" \| "read")` and the zod schemas for `titan.metrics/v1` registry entries and `titan.measurement-audit/v1` audit reports (write refuses unknown keys, read keeps them); use it to author or load a system's metric registry. |
 | [`hitl`](#cap-hitl) | 1 | A step must pause for a human decision and resume, possibly in another process, after a restart. A gate can carry an owner-facing brief (one-line summary, evidence pointer, bounded button questions), required per store with `requireBrief`. |
@@ -47,13 +48,16 @@ Before adding code:
 | [`registry`](#cap-registry) | 1 | You define a command once and want it served as a CLI, an MCP tool and an HTTP route. Adopt it the moment a second surface is plausible. |
 | [`retrieval`](#cap-retrieval) | 1 | You need search over a store-sqlite corpus that fuses FTS, vectors and graph hops and keeps answering when one retriever is down. `fuseByRRF` and `gatherFailOpen` work over your own retrievers too. |
 | [`rpc-client`](#cap-rpc-client) | 1 | Browser or Node code calls a registry-backed daemon, live over HTTP and SSE or from a static snapshot export, with typed commands. |
+| [`speech-g2p`](#cap-speech-g2p) | 1 | You turn English text into misaki 0.9.4 phoneme tokens without Python, for Kokoro or for vetting pronunciations: `misakiEnglish()` gives per-token phonemes, the joined string and a cache `version`, honours `[word](/phonemes/)` overrides, and `ttsTokens` hands them to speech-tts. `misakiToIpa` converts the result to IPA. Words outside misaki's lexicon come back unread (`phonemes: null`) unless you pass a `fallback`. Synthesis is `speech-tts`, and checking readings against declarations is `speech-vet`. |
+| [`speech-stt`](#cap-speech-stt) | 1 | You compare a script with what a recogniser heard, or port Python that calls `difflib`: a CPython-parity `SequenceMatcher` and `roundHalfEven` (Python's `round`), `align` to time script words from a transcript, `diff` and `normalize` to score a take, the `Word` and `Transcript` schemas, and a pure TS `resample` (24 kHz to 16 kHz without ffmpeg). `whisperStt` transcribes audio to word-timed `Transcript`s through transformers.js Whisper (optional peer), cached by audio hash, and declares `capabilities.tokenLogprobs: true` (word probabilities and per-window segment confidence from token log-probs; opt out with `tokenLogprobs: false`). `wav2vec2Recognizer` gives espeak-style IPA phones per 20 ms frame (fp32 by default, at parity with the PyTorch model; q8 opt-in changes verdicts) and exposes the CTC logits for forced alignment. `alignWords` force-aligns a script to those logits for word starts within a frame or two, with a per-voice-family offset. Synthesis is `speech-tts`. |
+| [`speech-tts`](#cap-speech-tts) | 1 | You need speech audio and the engine must differ per deployment: an in-process model, a GPU box behind a command or ssh, or a hosted HTTP API. Callers state the capabilities they need (voice, word timestamps, phoneme input, speed), and a profile plus `TITAN_SPEECH_*` env picks the provider. It ships an in-process Kokoro provider (fp32, misaki phonemes, word timings from the model's own durations; `unknownWords: "fail"` rejects text with unphonemized words via `TtsUnknownWordsError` instead of timing them at zero width) and helpers to tune speed to a words-per-minute target. `detectSpeechRuntime` picks each speech model's device (CPU by default, CUDA reported but opt-in) and cache directory from the platform, `TITAN_SPEECH_*` env and the profile, for speech-tts and speech-stt alike. Recognition and alignment are not here; they belong to speech-stt. |
 | [`worktree`](#cap-worktree) | 1 | You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. Inputs are plain records and the budget is a parameter, so the caller keeps its own roster and journal. Launching the agent process is agent-surface; deciding which isolation strategy applies is agent-dispatch. |
 | [`code-graph`](#cap-code-graph) | 2 | A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python. |
 | [`code-read`](#cap-code-read) | 2 | A product serves code-graph snapshots to a UI, an agent or a workflow through a versioned read API, registered on a registry and hosted by daemon. |
-| [`coordinator`](#cap-coordinator) | 2 | You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package. Fold a seat's event log (spawn, retire, teleport, claim, release, hold, unhold, background, authored) into `SeatState` with `foldSeatEvents`: it never throws, counts unknown kinds and refuses background commands in temp or scratchpad space. Validate the charter front matter (`autonomy-charter/v1`: seats, hub, hard stops, scorer defaults; pools and funds pass through untyped) with `parseCharterPolicy`: it never throws and returns the typed policy or errors that name the missing or invalid key path. Validate a whole `titan-coordinator/v1` document (owner, repos, seats, limits, policy) with `checkCoordinatorConfig`: it reuses the seat, charter and agent-dispatch limits schemas, never throws, and names the key path of each cross-reference error (unknown pool, repo or hard stop, duplicate prefix, seat `config_dir`, not exactly one attended seat). Project one seat generation to a `SessionFacts` record per initiative with `projectSeatGeneration`: merged PRs, closed tasks and filed tasks, mapped by task-id prefix; it is given the activity and drops work no scope claims. |
+| [`coordinator`](#cap-coordinator) | 2 | You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package. Fold a seat's event log (spawn, retire, teleport, claim, release, hold, unhold, background, authored) into `SeatState` with `foldSeatEvents`: it never throws, counts unknown kinds and refuses background commands in temp or scratchpad space. Validate the charter front matter (`autonomy-charter/v1`: seats, hub, hard stops, scorer defaults; pools and funds pass through untyped) with `parseCharterPolicy`: it never throws and returns the typed policy or errors that name the missing or invalid key path. Validate a whole `titan-coordinator/v1` document (owner, repos, seats, limits, policy) with `checkCoordinatorConfig`: it reuses the seat, charter and agent-dispatch limits schemas, never throws, and names the key path of each cross-reference error (unknown pool, repo or hard stop, duplicate prefix, seat `config_dir`, not exactly one attended seat). Project one seat generation to a `SessionFacts` record per initiative with `projectSeatGeneration`: merged PRs, closed tasks and filed tasks, mapped by task-id prefix; it is given the activity and drops work no scope claims. Validate and render the seat's authored handoff block (continuations, standing rules with expiry, open questions, next/why; at most 1,500 characters) with `parseAuthored` and `renderAuthored`. |
 | [`decider`](#cap-decider) | 2 | You record owner answers to agent questions and need one ledger row shape (v2, still reading active-work's v1 precedent rows), the accept/amend/other/redirect outcome of an answer, the human-only and personal-data exclusion check before a row is written, or an append-only ledger store with watermarked sources (Claude Code `AskUserQuestion` answers and active-work decision notes included). It also maps owner answers to helpful or harmful feedback on principles stored as `memory` bullets, renders one principle doc per domain, and holds the fixed always-ask list. |
 | [`dispatch-ledger`](#cap-dispatch-ledger) | 2 | You need to validate, type or move the burndown claim ledger (`burndown.json`): `LedgerSchema` and `ClaimSchema` with their closed vocabularies (`PHASES`, `STALL_CODES`, `STALE_CLASSES`, `EXCEPTION_CLASSES`, `CONTRACT_OPS`), the claim-phase transition table (`PHASE_EDGES`, `illegalEdges`, `IllegalPhaseEdgeError`), and `parseLedgerJson`/`exportLedgerJson`/`writeLedgerExport`, which round-trip the file byte-equal; the pure ledger operations (`readySlices`, `heldClaims`, `laneClaims`, `isStalled`, `addClaim`, `applyActions` over a `LedgerAction`, `firstCode`, `parkUpdate`); and a `LedgerStore` (`SqliteLedgerStore` on `store-sqlite` tables from `dispatchLedgerDdl`, or `memoryLedgerStore`) whose writes check a revision and the phase edges. It holds no lock and runs no tick. For seat config and charter policy use `coordinator`; for agent execution state with fenced ownership use `agent-lifecycle`. |
-| [`graph-layout`](#cap-graph-layout) | 2 | A product draws a code-graph snapshot as boxes and routed edges: collapse files to packages, directories or one focused package, then lay the result out with ELK layered (flat or nested), with the same coordinates for any input order. For the graph itself use code-graph; for rolled-up values per tree depth use code-read's `hierarchy.get`. |
+| [`graph-layout`](#cap-graph-layout) | 2 | A product draws a code-graph snapshot as boxes and routed edges: collapse files to packages, directories or one focused package, then lay the result out with ELK layered (flat or nested), with the same coordinates for any input order. For an animated architecture diagram, `emitRepoMap` writes the whole nested map (package, directory and file boxes, routed edges at every level, a sha) as `repo-map/v1` data. For the graph itself use code-graph; for rolled-up values per tree depth use code-read's `hierarchy.get`. |
 | [`memory`](#cap-memory) | 2 | An agent must carry lessons between sessions in a rule playbook whose confidence decays with evidence and stays small without manual curation. It also parses, dedupes and groups Claude Code auto-memory fact files, proposing where each group should live. |
 | [`owner-queue`](#cap-owner-queue) | 2 | You gather the things only the owner can answer from several stores of record (chat questions, hitl gates, task notes, review rounds) into one list and need one `OwnerItem` shape, a `QueueSource` port for adapters, a merge that joins duplicates only on an exact shared key including a PR's head sha, a deterministic rank, and pure stale rules that label an item gone elsewhere from source facts (PR merged, head moved, task done, asker retired), and `buildOwnerRounds`, which turns open Decide items into titan-review round@2 manifests with `Principle:` batching and shadow-mode picks revealed only after the answer, plus `fromRoundQuestions`/`answeredFromFeedback` to read a round's questions and feedback back as OwnerItems, and `ask:`/`component:`/`token:`/`topic:` relation keys that relate items without merging them, and `consolidate`, which turns the open queue into the approvals Flow (per-PR and topic groups, influence order, holds, and a per-PR `shipBlockedBy` from open change requests), and an optional `audience` (owner or operator) with the `forAudience` reader filter, and owner card fields (`class`, `irreversible`, `shown`, `default`, `onSilence`, option `consequence`) checked by `cardLint`/`ownerCardSchema`. The root export holds no I/O; the one exception is the `/spool` subpath, the 0600 file spool where agents file deposits and the console keeps the owner's answers. Other adapters live in the product, the gate itself is hitl, routing is decider, and mirroring to Matrix is queue-mirror. |
 | [`pm`](#cap-pm) | 2 | You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`, or gate a repo review on every recommendation and P1 or P2 topic having a task, dup, fold, drop or pending-owner row with `summaryRecommendations`, `prioritizedTopics`, `parseDispositions` and `checkDispositions`. Pure code; it reads no files, so parse the task, registry and deliverable YAML in the host and hand the objects over. For a seat's front matter use `coordinator` instead. |
@@ -62,6 +66,7 @@ Before adding code:
 | [`session-analytics`](#cap-session-analytics) | 2 | You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Also for agent-chat operations: it reads agent-chat's events.db through a connection the caller opened, parses broker.log lines, transcript denials and seat journals the caller reads, and reports blocked merges, dark agents and review fill. Also for a coordinator duty meter over seat transcript lines the caller reads. Session parsing is session-read; storage is session-graph. |
 | [`session-graph`](#cap-session-graph) | 2 | You query a growing corpus of Claude Code and Codex sessions repeatedly and want it folded into an incrementally maintained SQLite graph. |
 | [`session-read`](#cap-session-read) | 2 | You parse Claude Code or Codex transcripts into typed events with locators and do not want session-graph's storage. |
+| [`speech-vet`](#cap-speech-vet) | 2 | You hold narration text and must say how its hard words are read before any audio exists: `[word](/phonemes/)` overrides and `[word](=reading)` declarations, a heteronym check of G2P tokens against those declarations, a `lexicon.v1` file of rewrites, respellings and phonemes, dotted-letter initialisms, and `normalize()`, composable steps that spell out numbers, decimals, currency, ordinals, clock times and per-unit rates. Once audio exists, `chunkWordVerdicts`, `detectHallucinations` and `detectTailArtifact` judge a recognizer's phones against espeak-style expected phones (a port of the audiobook phone check, at verdict parity). `espeakCliG2p` supplies those expected phones by running the espeak-ng binary you install (GPL, called as a process, not bundled); `misakiIpaG2p` supplies them from speech-g2p with no binary. `checkHeardReadings` checks each declared heteronym reading against the recognized phones, espeak-free, through an injected misaki-to-IPA map. `synthesizeVerified` re-rolls babbled takes, and `keepTake`, `regressions` and `bestTailTake` choose between a shipped take and a regenerated one without shipping a worse take. `detectDefects` and `confirmDefects` find mangled, dropped and muddy words by aligning source text against a speech-stt transcript (a port of the audiobook defect check, at output parity); pass `defectOptionsFor(stt)` so the recogniser's confidence is used only when its provider has token log-probs. `vet()` composes all of it into the full cycle over injected providers (precheck, synthesize, transcribe, check, retake, keep the best take) and returns `accepted`, `needs-override`, `needs-rewrite`, `retakes-exhausted` or `stopped`; it does not normalize or search for overrides. `rewriteLine` answers `needs-rewrite` on a text voice: it replaces only the flagged sentence, resolves a pinned sentence from `RewritePins` (a hash-keyed `rewrites.json`) without asking any source, never rewrites a pinned rewrite, runs every candidate from the `symbolRules` rule tier or an injected LLM `CandidateSource` through `guardRewrite` (numbers, names, markup, content terms, length), and pins only one that re-vets `accepted`. It loads no model; tokens, phones and transcripts come from the caller. Synthesis belongs to speech-tts. |
 | [`style-analyzer`](#cap-style-analyzer) | 2 | You measure how a codebase is actually written and build a style profile from real code. |
 | [`style-checker`](#cap-style-checker) | 2 | You run ESLint, ruff and the Python audit tools against a profile and want every finding in one normalized diagnostic shape. |
 | [`style-profile`](#cap-style-profile) | 2 | You hold a code-style profile and need the ESLint, ruff, EditorConfig or agent-rule output that enforces it. |
@@ -70,7 +75,7 @@ Before adding code:
 | [`react-app`](#cap-react-app) | ui | A React front end is served by a daemon or shipped as an offline report and needs hooks over rpc-client and a Vite preset. Components come from react-ui. |
 | [`react-ui`](#cap-react-ui) | ui | You are building a screen and need a component, a token or a theme. It is the design system; library packages here must not import it, so only apps and products take it. |
 | [`evals`](#cap-evals) | product | You need a stable content hash for a unit of work, a workflow variant, an eval case, a suite or a scorecard key, or strict and loose zod parsing of those specs. Also builds the labelled review outcome corpus (one row per reviewed head) from the factory database, read-only, and git history. For retrieval quality use retrieval-eval instead. |
-| [`explainer`](#cap-explainer) | product | You are building a step of the explainer video pipeline and need its file contracts or its pure helpers: `StoryboardSchema` validates `beats.json` (video type, chapters, beats with stops in seconds), `DigestSchema` validates `digest.json`, `LexiconSchema` and `lexiconEntriesFor` cover pronunciations, `buildPacket` builds one beat builder's packet (throws on a code beat with no excerpt and on a packet over its byte cap), and `attributeFindings` maps gate findings to the beat each names by beat number. Only `explainer eval l1`, `l2` and `smoke` call a model, through the judge a config file names; only the eval store, the CLI and the owner kit touch the filesystem. Motion primitives and beat components live in `@titan-design/react-ui`, not here; citation checks live in `evidence`. `lintMapBeats` and `compileMapTimeline` check and time the repo-map track (`visual.map_state`, optional per beat). `cameraStation` fits a 16:9 camera box around focus ids, clear of the 83 % caption keep-out. `ScriptSchema` parses a two-track `script/v1` script, `deriveEvalView` derives the view evals read from it, and `migrateTourV0` lifts a spike tour to v1. `scriptSha` names a script by its canonical-JSON sha, and `explainer eval l0` runs the L0 checks and appends `structure.tsv` and `runs.jsonl` rows that carry `rules_sha`. For an owner's blind read, `prepareOwnerSession` writes two-track storyboards under a sealed key and `recordOwnerSession` appends `owner.tsv` rows before it opens the key. `loadRuleRegistry` reads the shipped Q-rule registry (`doctrine/rules.yaml`), and `unimplementedL0Rules` reports rules that claim a check no registered L0 check emits. `explainer eval l1` and `l2` run the L1 judge and L2 viewer through a configured claude-print or codex judge, void any score without a verbatim quote, plant canaries in every call, and key rows by an `eval_version` over rubric, judge and fixtures. |
+| [`explainer`](#cap-explainer) | product | You are building a step of the explainer video pipeline and need its file contracts or its pure helpers: `StoryboardSchema` validates `beats.json` (video type, chapters, beats with stops in seconds), `DigestSchema` validates `digest.json`, `LexiconSchema` and `lexiconEntriesFor` cover pronunciations, `buildPacket` builds one beat builder's packet (throws on a code beat with no excerpt and on a packet over its byte cap), and `attributeFindings` maps gate findings to the beat each names by beat number. Only `explainer eval l1`, `l2`, `cold` and `smoke` call a model, through the judge a config file names; only the eval store, the CLI, the owner kit, `loadDoctrine` and `gatherReview` touch the filesystem. Motion primitives and beat components live in `@titan-design/react-ui`, not here; citation checks live in `evidence`. `lintMapBeats`, `lintMapCues` and `compileMapTimeline` check and time the repo-map track (`visual.map_state`, optional per beat), and `toDiagramMapTimeline` turns it into titan-design's `MapTimeline` keyframes. `cameraStation` fits a 16:9 camera box around focus ids, clear of the 83 % caption keep-out. `ScriptSchema` parses a two-track `script/v1` script, `deriveEvalView` derives the view evals read from it, and `migrateTourV0` lifts a spike tour to v1. `scriptSha` names a script by its canonical-JSON sha, and `explainer eval l0` runs the L0 checks and appends `structure.tsv` and `runs.jsonl` rows that carry `rules_sha`. For an owner's blind read, `prepareOwnerSession` writes two-track storyboards under a sealed key and `recordOwnerSession` appends `owner.tsv` rows before it opens the key. `loadRuleRegistry` reads the shipped Q-rule registry (`doctrine/rules.yaml`), and `unimplementedL0Rules` reports rules that claim a check no registered L0 check emits. `loadDoctrine` reads the craft doctrine registry (`doctrine/craft/*.yaml` with its vocabulary and evidence ledger), and `checkDoctrine` reports missing evidence ids, grades the cited rows do not state, live code-checked rules left in a prompt enforcement, unresolved `qrule` refs and scope errors. `explainer eval l1` and `l2` run the L1 judge and L2 viewer through a configured claude-print or codex judge, void any score without a verbatim quote, plant canaries in every call, and key rows by an `eval_version` over rubric, judge and fixtures. For pace evals, `fromScriptV1` and `fromSpikeScript` project a script to `PaceBeat`s (the items each beat puts on screen, their role from `CUE_KIND_ROLES`, and which are new), `readSpikeScript` reads a Python-emitted spike script.json loosely and lists the fields it ignores, and `readTiming` reads heard durations from a words.json. `runCold` streams that track to a cold viewer one chapter per call, carrying only its three-line summary, and reports undefined items per chapter minute from generated questions scored against verbatim quotes; `explainer eval cold` runs it three times by default and appends its rows and run records under an `eval_version` that includes the judge. `paceCheck` (in `L0_CHECKS`) and `paceRows` lint that item track: Q-E7 at most 4 new items a beat (error), and as warnings Q-E8 seconds a new item, Q-E9 15 s to digest between dense beats and Q-E10 new items a chapter minute (`chapterPace`). `explainer eval pace` runs only those lints on a spike or script/v1 file, with heard durations from `--timing`, appends their rows and prints items a minute per chapter. To calibrate checks against labels, `LabelsSchema` parses a `labels/v1` labelled set (the v4 one is `fixtures/spike/redesign-explainer-v4/labels.json`) and `calibrate` scores structure rows against it: precision and recall per check, with borderline labels counting as neither, and recall on the owner-named beats over error-severity rows; `explainer eval calibrate` prints that report. For a repo explainer, `gatherReview` reads a finished repo review (pinned clone, final label, `unread=0`) into a `review-bundle/v1` and schema-checked `ExplainerFact`s, tour kinds included, and refuses with coded diagnostics (`GATHER_CODES`) rather than throwing. |
 | [`factory`](#cap-factory) | product | You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. The engine is `workflow`; this product holds the policy, the step router and the pilots. It requests agent dispatch through agent-chat, via `@titan-design/agent-dispatch`, for three kinds of agent: the Shepherd reviewer, the main-red fixer and the successor implementer. It also starts one process that is not an agent, the detached deployer. Relay and agent-chat keep every other dispatch. - **Reviewer.** Spawned when a registered pull request needs an independent review of its current head, and resumed for a later head. It runs under the agent-chat profile set by `review.profile` in the factory config (the profile is its tool grant) and under `review.configDir` when set, else agent-chat's default account. It starts in the repo's configured checkout, reads the head at that exact commit, changes nothing, and ends its final message with `Verdict: MERGE\|FIX_FIRST`, `PR:` and `Head:` lines. After a FIX_FIRST on a repeat round it also names the defect class. - **Fixer.** Spawned once per red-main episode, when main CI goes red after a merge and Shepherd freezes merges into the repo. Shepherd files a high-severity fix task in active-work first, and the fixer is named for the episode so a retry never starts a second one. It runs headless under the `bd-implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It branches from main, opens a PR, registers it with Shepherd against the fix task, and ends with a `Head: <full sha>` line. Only that PR may merge while the freeze holds. With no agent-chat configured, nothing is spawned and the owner gets the red main. - **Successor.** Spawned when Shepherd must wake an implementer (CI red, FIX_FIRST review, conflict, or a failed fix-proof check) and no agent of that lineage is live or resumable. A live implementer is messaged and an exited one is resumed; neither is a new dispatch. The successor runs headless under the `bd-implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It continues on the PR's head branch, does not open a new PR, registers as the PR's implementer, and ends with a `Head: <full sha>` line. - **Deployer.** Not an agent and not an agent-chat dispatch. After a merge into the factory's own repo, Shepherd starts `service deploy` for the merge sha as a detached process that outlives the service, and skips it if the service already runs that sha. It reports only through its log file in the state directory. Merges into any other repo start no deployer. - **Audit steps.** Not an agent-chat dispatch. Each agent step of `measurement-audit` (`titan-factory audit <area>`) is one `claude -p` turn through `@titan-design/agent`. The turn runs with no tools, on the CLI login, under the model the step's manifest names. It gets the inventory as data and answers with JSON that the step's schema checks. |
 | [`retrieval-eval`](#cap-retrieval-eval) | product | You change retrieval behaviour and need recall measured before and after, against the `active-work-search` row, today's shipped ranker. `date-order-notes` is only the pre-CC-101 floor. |
 | [`session-miner`](#cap-session-miner) | product | You want a working end-to-end example of the DAG, or to index and search your own Claude Code transcripts from a checkout. |
@@ -186,11 +191,11 @@ Tier 0, `@titan-design/authority@0.4.0`. The authority decision table as data: w
 
 Key exports:
 
-- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `CONDITION_KINDS`, `DELEGATE_RESOLVER_CLASSES`, `EVIDENCE_KINDS`, `MERGE_CONDITION_KINDS`, `QUESTION_CONDITION_KINDS`, `RESOLVER_CLASSES`
-- `conditions`: `unmetConditions`
+- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `CONDITION_KINDS`, `DELEGATE_RESOLVER_CLASSES`, `EVIDENCE_KINDS`, `MERGE_CONDITION_KINDS`, `QUESTION_CONDITION_KINDS`
+- `conditions`: `isCarryFencedPath`, `unmetConditions`
 - `schema`: `policyTableSchema`
 - `evaluate`: `evaluate`, `canResolve`
-- +21 more in the [reference page](/reference/authority)
+- +22 more in the [reference page](/reference/authority)
 
 <a id="cap-chat-protocol"></a>
 
@@ -304,11 +309,11 @@ Tier 0, `@titan-design/evidence@0.2.1`. Citation verification, overlap grouping,
 Key exports:
 
 - `line-source`: `lineSourceFromTexts`, `splitLines`
-- `citation`: `quoteFragments`, `quoteInRange`, `verifyCitation`
-- `anchor`: `isFullSha`, `parseAnchor`
+- `citation`: `quoteFragments`, `quoteInRange`, `verifyCitation`, `verifyRange`
+- `anchor`: `isAnchorForm`, `isFullSha`, `parseAnchor`
+- `anchor-check`: `verifyAnchorText`
 - `overlap`: `groupByOverlap`, `rangesOverlap`
-- `controls`: `pickControls`, `placeControls`, `scoreControls`
-- +21 more in the [reference page](/reference/evidence)
+- +27 more in the [reference page](/reference/evidence)
 
 <a id="cap-fix-proof"></a>
 
@@ -316,19 +321,17 @@ Key exports:
 
 Tier 0, `@titan-design/fix-proof@0.4.0`. Proves a fix PR's new tests fail on the merge base and pass at head: diff plan, vitest report classification, fix-proof/v1 result line
 
-**Use this when:** You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority.
+**Use this when:** You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. For a tests-only diff it also tells test material from source (`testOnlyOf`) and parses `*.mutations.json` specs, and `classifyMutants` decides whether every declared mutation was killed, which the judge adds to the line as `mutants`. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority.
 
 Key exports:
 
-- `config`: `parseFixProofConfig`
+- `config`: `isHarnessPath`, `parseFixProofConfig`
 - `glob`: `compileGlobs`, `expandBraces`
-- `plan`: `planFixProof`
-- `classify`: `classifyReports`
-- `result-line`: `formatResultLine`, `parseResultLine`, `toResult`
-- `cli`: `runCli`
-- `exec`: `spawnExec`
-- `run`: `errorLine`, `run`
-- +45 more in the [reference page](/reference/fix-proof)
+- `plan`: `planFixProof`, `testOnlyOf`
+- `mutation`: `checkMutation`, `parseMutationSpec`
+- `mutant-classify`: `classifyMutants`, `testFileOfSpec`
+- `classify`: `classifyReports`, `isNewApiFailure`
+- +78 more in the [reference page](/reference/fix-proof)
 
 <a id="cap-locator"></a>
 
@@ -443,9 +446,10 @@ Tier 1, `@titan-design/agent-dispatch@0.7.0`. Start and resume agent-chat agents
 Key exports:
 
 - `dispatch`: `BrokerUnavailableError`, `DispatchError`, `DispatchTimeoutError`, `agentChatEnv`, `buildSpawnArgs`, `dispatchToAgentChat`
+- `call-timing`: `observeAgentChatCalls`
 - `profile-guard`: `assertInstalledHeadless`, `installedProfilesDir`
-- `exec`: `ExecError`, `ExecTimeoutError`, `execSafe`, `execSafeAsync`
-- +32 more in the [reference page](/reference/agent-dispatch)
+- `exec`: `ExecError`, `ExecTimeoutError`, `execSafe`
+- +34 more in the [reference page](/reference/agent-dispatch)
 
 <a id="cap-agent-lifecycle"></a>
 
@@ -497,6 +501,23 @@ Key exports:
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `getProcessStartTime`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`
 - +70 more in the [reference page](/reference/daemon)
 
+<a id="cap-frame-capture"></a>
+
+### [`frame-capture`](/reference/frame-capture)
+
+Tier 1, `@titan-design/frame-capture@0.0.0`. Deterministic frame capture of any page that speaks the __titanMotion protocol
+
+**Use this when:** You need deterministic PNG frames, or an MP4, of a web page that animates on a timeline: the page publishes `window.__titanMotion` (`seek(t)`, `ready()`, `duration`) and `captureFrames` drives it under a virtual clock (`VIRTUAL_TIME_SCRIPT`) across parallel Playwright browsers, failing on any page error or unloaded font face; `startEncoder` and `mixAudio` wrap ffmpeg. It does not know what a beat or a timeline is: the motion runtime that publishes the protocol is titan-design's react-ui `/motion`, and composing a video is a product's job.
+
+Key exports:
+
+- `protocol`: `TITAN_MOTION_GLOBAL`, `TitanMotionApi`
+- `virtual-time`: `VIRTUAL_TIME_SCRIPT`, `VirtualTimeApi`
+- `capture`: `captureFrame`, `launch`, `openCapturePage`, `settleFonts`, `CapturePage`
+- `frames`: `captureFrames`
+- `encode`: `mixAudio`, `startEncoder`
+- +7 more in the [reference page](/reference/frame-capture)
+
 <a id="cap-github"></a>
 
 ### [`github`](/reference/github)
@@ -513,7 +534,7 @@ Key exports:
 - `checks`: `isPassing`, `isPassingConclusion`, `isSucceeded`, `latestPerName`
 - `ci-verdict`: `ciVerdict`, `loadRequiredContexts`
 - `ci-wait`: `ciWait`
-- +102 more in the [reference page](/reference/github)
+- +103 more in the [reference page](/reference/github)
 
 <a id="cap-health"></a>
 
@@ -634,6 +655,54 @@ Key exports:
 - `client/sse-parser`: `createSseParser`
 - +12 more in the [reference page](/reference/rpc-client)
 
+<a id="cap-speech-g2p"></a>
+
+### [`speech-g2p`](/reference/speech-g2p)
+
+Tier 1, `@titan-design/speech-g2p@0.0.0`. English text to misaki phoneme tokens in pure TypeScript: lexicon G2P, spaCy-compatible tokenizer, compromise POS tagger
+
+**Use this when:** You turn English text into misaki 0.9.4 phoneme tokens without Python, for Kokoro or for vetting pronunciations: `misakiEnglish()` gives per-token phonemes, the joined string and a cache `version`, honours `[word](/phonemes/)` overrides, and `ttsTokens` hands them to speech-tts. `misakiToIpa` converts the result to IPA. Words outside misaki's lexicon come back unread (`phonemes: null`) unless you pass a `fallback`. Synthesis is `speech-tts`, and checking readings against declarations is `speech-vet`.
+
+Key exports:
+
+- `types`: `G2pToken`, `PosTagger`, `RawToken`, `Tokenizer`
+- `misaki-english`: `misakiEnglish`, `ttsTokens`, `G2p`, `MisakiEnglishOptions`, `TtsReadyToken`
+- `misaki-to-ipa`: `misakiToIpa`, `MisakiToIpaOptions`
+
+<a id="cap-speech-stt"></a>
+
+### [`speech-stt`](/reference/speech-stt)
+
+Tier 1, `@titan-design/speech-stt@0.0.0`. Speech-recognition helpers: a transformers.js Whisper recogniser with an audio-hash cache, a wav2vec2 phone recogniser with CTC logits, a CPython-parity SequenceMatcher, script alignment, transcript diff, Word and Transcript schemas, and a resampler
+
+**Use this when:** You compare a script with what a recogniser heard, or port Python that calls `difflib`: a CPython-parity `SequenceMatcher` and `roundHalfEven` (Python's `round`), `align` to time script words from a transcript, `diff` and `normalize` to score a take, the `Word` and `Transcript` schemas, and a pure TS `resample` (24 kHz to 16 kHz without ffmpeg). `whisperStt` transcribes audio to word-timed `Transcript`s through transformers.js Whisper (optional peer), cached by audio hash, and declares `capabilities.tokenLogprobs: true` (word probabilities and per-window segment confidence from token log-probs; opt out with `tokenLogprobs: false`). `wav2vec2Recognizer` gives espeak-style IPA phones per 20 ms frame (fp32 by default, at parity with the PyTorch model; q8 opt-in changes verdicts) and exposes the CTC logits for forced alignment. `alignWords` force-aligns a script to those logits for word starts within a frame or two, with a per-voice-family offset. Synthesis is `speech-tts`.
+
+Key exports:
+
+- `align`: `align`
+- `diff`: `diff`, `normalize`
+- `resample`: `resample`
+- `round`: `roundHalfEven`
+- `schemas`: `SegmentSchema`, `TranscriptSchema`, `WordSchema`
+- `sequence-matcher`: `SequenceMatcher`
+- `ctc`: `argmaxFrames`, `ctcGreedyDecode`, `normalizeInput`
+- +43 more in the [reference page](/reference/speech-stt)
+
+<a id="cap-speech-tts"></a>
+
+### [`speech-tts`](/reference/speech-tts)
+
+Tier 1, `@titan-design/speech-tts@0.0.0`. Swappable text-to-speech provider contract, registry and command/HTTP adapters
+
+**Use this when:** You need speech audio and the engine must differ per deployment: an in-process model, a GPU box behind a command or ssh, or a hosted HTTP API. Callers state the capabilities they need (voice, word timestamps, phoneme input, speed), and a profile plus `TITAN_SPEECH_*` env picks the provider. It ships an in-process Kokoro provider (fp32, misaki phonemes, word timings from the model's own durations; `unknownWords: "fail"` rejects text with unphonemized words via `TtsUnknownWordsError` instead of timing them at zero width) and helpers to tune speed to a words-per-minute target. `detectSpeechRuntime` picks each speech model's device (CPU by default, CUDA reported but opt-in) and cache directory from the platform, `TITAN_SPEECH_*` env and the profile, for speech-tts and speech-stt alike. Recognition and alignment are not here; they belong to speech-stt.
+
+Key exports:
+
+- `errors`: `TtsConfigError`, `TtsError`, `TtsFailedError`, `TtsTimeoutError`, `TtsUnavailableError`, `TtsUnknownWordsError`, `TtsUnsupportedError`
+- `capabilities`: `assertSupported`, `languageMatches`, `missingCapabilities`, `requirementsOf`
+- `wav`: `decodeWav`
+- +73 more in the [reference page](/reference/speech-tts)
+
 <a id="cap-worktree"></a>
 
 ### [`worktree`](/reference/worktree)
@@ -674,7 +743,7 @@ Key exports:
 - `git-tree-source`: `gitTreeSource`
 - `@titan-design/code-parser`: `getLanguageFromPath`, `getSupportedLanguages`, `parseFile`, `shouldIncludeFile`
 - `extractors/dispatch`: `LanguageExtractor`
-- +421 more in the [reference page](/reference/code-graph)
+- +427 more in the [reference page](/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
@@ -700,7 +769,7 @@ Key exports:
 
 Tier 2, `@titan-design/coordinator@0.4.2`. Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).
 
-**Use this when:** You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package. Fold a seat's event log (spawn, retire, teleport, claim, release, hold, unhold, background, authored) into `SeatState` with `foldSeatEvents`: it never throws, counts unknown kinds and refuses background commands in temp or scratchpad space. Validate the charter front matter (`autonomy-charter/v1`: seats, hub, hard stops, scorer defaults; pools and funds pass through untyped) with `parseCharterPolicy`: it never throws and returns the typed policy or errors that name the missing or invalid key path. Validate a whole `titan-coordinator/v1` document (owner, repos, seats, limits, policy) with `checkCoordinatorConfig`: it reuses the seat, charter and agent-dispatch limits schemas, never throws, and names the key path of each cross-reference error (unknown pool, repo or hard stop, duplicate prefix, seat `config_dir`, not exactly one attended seat). Project one seat generation to a `SessionFacts` record per initiative with `projectSeatGeneration`: merged PRs, closed tasks and filed tasks, mapped by task-id prefix; it is given the activity and drops work no scope claims.
+**Use this when:** You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package. Fold a seat's event log (spawn, retire, teleport, claim, release, hold, unhold, background, authored) into `SeatState` with `foldSeatEvents`: it never throws, counts unknown kinds and refuses background commands in temp or scratchpad space. Validate the charter front matter (`autonomy-charter/v1`: seats, hub, hard stops, scorer defaults; pools and funds pass through untyped) with `parseCharterPolicy`: it never throws and returns the typed policy or errors that name the missing or invalid key path. Validate a whole `titan-coordinator/v1` document (owner, repos, seats, limits, policy) with `checkCoordinatorConfig`: it reuses the seat, charter and agent-dispatch limits schemas, never throws, and names the key path of each cross-reference error (unknown pool, repo or hard stop, duplicate prefix, seat `config_dir`, not exactly one attended seat). Project one seat generation to a `SessionFacts` record per initiative with `projectSeatGeneration`: merged PRs, closed tasks and filed tasks, mapped by task-id prefix; it is given the activity and drops work no scope claims. Validate and render the seat's authored handoff block (continuations, standing rules with expiry, open questions, next/why; at most 1,500 characters) with `parseAuthored` and `renderAuthored`.
 
 Key exports:
 
@@ -709,7 +778,7 @@ Key exports:
 - `resolve-policy`: `resolveSeatPolicy`
 - `seat-config`: `seatConcurrencySchema`, `seatConfigSchema`, `seatRepoSchema`, `seatSpendSchema`
 - `seat-events`: `seatEventSchema`
-- +46 more in the [reference page](/reference/coordinator)
+- +59 more in the [reference page](/reference/coordinator)
 
 <a id="cap-decider"></a>
 
@@ -742,7 +811,7 @@ Key exports:
 - `vocab`: `AcceptedOverlapSchema`, `ContractSchema`
 - `claim-phase`: `IllegalPhaseEdgeError`, `illegalEdgeError`, `illegalEdges`
 - `ops`: `addClaim`, `claimKey`, `heldClaims`, `isStalled`, `laneClaims`
-- +57 more in the [reference page](/reference/dispatch-ledger)
+- +66 more in the [reference page](/reference/dispatch-ledger)
 
 <a id="cap-graph-layout"></a>
 
@@ -750,7 +819,7 @@ Key exports:
 
 Tier 2, `@titan-design/graph-layout@0.0.0`. Level collapses and deterministic ELK layered layouts (flat and compound) over a code-graph snapshot
 
-**Use this when:** A product draws a code-graph snapshot as boxes and routed edges: collapse files to packages, directories or one focused package, then lay the result out with ELK layered (flat or nested), with the same coordinates for any input order. For the graph itself use code-graph; for rolled-up values per tree depth use code-read's `hierarchy.get`.
+**Use this when:** A product draws a code-graph snapshot as boxes and routed edges: collapse files to packages, directories or one focused package, then lay the result out with ELK layered (flat or nested), with the same coordinates for any input order. For an animated architecture diagram, `emitRepoMap` writes the whole nested map (package, directory and file boxes, routed edges at every level, a sha) as `repo-map/v1` data. For the graph itself use code-graph; for rolled-up values per tree depth use code-read's `hierarchy.get`.
 
 Key exports:
 
@@ -758,13 +827,13 @@ Key exports:
 - `collapse-directories`: `collapseToDirectories`
 - `focus-package`: `focusPackage`, `packagesInSnapshot`
 - `layout`: `computeLayout`
-- `compound-layout`: `computeCompoundLayout`
+- `compound-layout`: `computeCompoundLayout`, `computeCompoundLayoutStrict`
+- `repo-map`: `emitRepoMap`
 - `route`: `routeOf`
 - `route-path`: `routeToPathD`
 - `label-boxes`: `labelBoxSizing`
-- `package-of`: `packageOf`
-- `layout-options`: `COMPOUND_LAYOUT_OPTIONS`, `ELK_LAYOUT_OPTIONS`
-- +12 more in the [reference page](/reference/graph-layout)
+- `place-pills`: `placePills`
+- +37 more in the [reference page](/reference/graph-layout)
 
 <a id="cap-memory"></a>
 
@@ -909,6 +978,22 @@ Key exports:
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `parseFileRef`, `prRef`
 - +211 more in the [reference page](/reference/session-read)
+
+<a id="cap-speech-vet"></a>
+
+### [`speech-vet`](/reference/speech-vet)
+
+Tier 2, `@titan-design/speech-vet@0.0.0`. Speech text vetting: pronunciation override markup, heteronym reading checks, lexicon.v1, initialism spelling, number normalization and phone-level pronunciation verdicts
+
+**Use this when:** You hold narration text and must say how its hard words are read before any audio exists: `[word](/phonemes/)` overrides and `[word](=reading)` declarations, a heteronym check of G2P tokens against those declarations, a `lexicon.v1` file of rewrites, respellings and phonemes, dotted-letter initialisms, and `normalize()`, composable steps that spell out numbers, decimals, currency, ordinals, clock times and per-unit rates. Once audio exists, `chunkWordVerdicts`, `detectHallucinations` and `detectTailArtifact` judge a recognizer's phones against espeak-style expected phones (a port of the audiobook phone check, at verdict parity). `espeakCliG2p` supplies those expected phones by running the espeak-ng binary you install (GPL, called as a process, not bundled); `misakiIpaG2p` supplies them from speech-g2p with no binary. `checkHeardReadings` checks each declared heteronym reading against the recognized phones, espeak-free, through an injected misaki-to-IPA map. `synthesizeVerified` re-rolls babbled takes, and `keepTake`, `regressions` and `bestTailTake` choose between a shipped take and a regenerated one without shipping a worse take. `detectDefects` and `confirmDefects` find mangled, dropped and muddy words by aligning source text against a speech-stt transcript (a port of the audiobook defect check, at output parity); pass `defectOptionsFor(stt)` so the recogniser's confidence is used only when its provider has token log-probs. `vet()` composes all of it into the full cycle over injected providers (precheck, synthesize, transcribe, check, retake, keep the best take) and returns `accepted`, `needs-override`, `needs-rewrite`, `retakes-exhausted` or `stopped`; it does not normalize or search for overrides. `rewriteLine` answers `needs-rewrite` on a text voice: it replaces only the flagged sentence, resolves a pinned sentence from `RewritePins` (a hash-keyed `rewrites.json`) without asking any source, never rewrites a pinned rewrite, runs every candidate from the `symbolRules` rule tier or an injected LLM `CandidateSource` through `guardRewrite` (numbers, names, markup, content terms, length), and pins only one that re-vets `accepted`. It loads no model; tokens, phones and transcripts come from the caller. Synthesis belongs to speech-tts.
+
+Key exports:
+
+- `markup`: `g2pText`, `plainText`
+- `heteronyms`: `checkReadings`, `englishHeteronyms`, `HeteronymTableSchema`, `readingOf`, `tokenDump`
+- `lexicon`: `LexiconEntrySchema`, `LexiconSchema`, `loadLexicon`, `respellingsOf`
+- `respell`: `generateCandidates`
+- +132 more in the [reference page](/reference/speech-vet)
 
 <a id="cap-style-analyzer"></a>
 
@@ -1056,7 +1141,7 @@ Key exports:
 
 Tier product, private, `products/explainer`. Explainer video pipeline: beats.json and digest.json schemas, packet builder, finding attribution
 
-**Use this when:** You are building a step of the explainer video pipeline and need its file contracts or its pure helpers: `StoryboardSchema` validates `beats.json` (video type, chapters, beats with stops in seconds), `DigestSchema` validates `digest.json`, `LexiconSchema` and `lexiconEntriesFor` cover pronunciations, `buildPacket` builds one beat builder's packet (throws on a code beat with no excerpt and on a packet over its byte cap), and `attributeFindings` maps gate findings to the beat each names by beat number. Only `explainer eval l1`, `l2` and `smoke` call a model, through the judge a config file names; only the eval store, the CLI and the owner kit touch the filesystem. Motion primitives and beat components live in `@titan-design/react-ui`, not here; citation checks live in `evidence`. `lintMapBeats` and `compileMapTimeline` check and time the repo-map track (`visual.map_state`, optional per beat). `cameraStation` fits a 16:9 camera box around focus ids, clear of the 83 % caption keep-out. `ScriptSchema` parses a two-track `script/v1` script, `deriveEvalView` derives the view evals read from it, and `migrateTourV0` lifts a spike tour to v1. `scriptSha` names a script by its canonical-JSON sha, and `explainer eval l0` runs the L0 checks and appends `structure.tsv` and `runs.jsonl` rows that carry `rules_sha`. For an owner's blind read, `prepareOwnerSession` writes two-track storyboards under a sealed key and `recordOwnerSession` appends `owner.tsv` rows before it opens the key. `loadRuleRegistry` reads the shipped Q-rule registry (`doctrine/rules.yaml`), and `unimplementedL0Rules` reports rules that claim a check no registered L0 check emits. `explainer eval l1` and `l2` run the L1 judge and L2 viewer through a configured claude-print or codex judge, void any score without a verbatim quote, plant canaries in every call, and key rows by an `eval_version` over rubric, judge and fixtures.
+**Use this when:** You are building a step of the explainer video pipeline and need its file contracts or its pure helpers: `StoryboardSchema` validates `beats.json` (video type, chapters, beats with stops in seconds), `DigestSchema` validates `digest.json`, `LexiconSchema` and `lexiconEntriesFor` cover pronunciations, `buildPacket` builds one beat builder's packet (throws on a code beat with no excerpt and on a packet over its byte cap), and `attributeFindings` maps gate findings to the beat each names by beat number. Only `explainer eval l1`, `l2`, `cold` and `smoke` call a model, through the judge a config file names; only the eval store, the CLI, the owner kit, `loadDoctrine` and `gatherReview` touch the filesystem. Motion primitives and beat components live in `@titan-design/react-ui`, not here; citation checks live in `evidence`. `lintMapBeats`, `lintMapCues` and `compileMapTimeline` check and time the repo-map track (`visual.map_state`, optional per beat), and `toDiagramMapTimeline` turns it into titan-design's `MapTimeline` keyframes. `cameraStation` fits a 16:9 camera box around focus ids, clear of the 83 % caption keep-out. `ScriptSchema` parses a two-track `script/v1` script, `deriveEvalView` derives the view evals read from it, and `migrateTourV0` lifts a spike tour to v1. `scriptSha` names a script by its canonical-JSON sha, and `explainer eval l0` runs the L0 checks and appends `structure.tsv` and `runs.jsonl` rows that carry `rules_sha`. For an owner's blind read, `prepareOwnerSession` writes two-track storyboards under a sealed key and `recordOwnerSession` appends `owner.tsv` rows before it opens the key. `loadRuleRegistry` reads the shipped Q-rule registry (`doctrine/rules.yaml`), and `unimplementedL0Rules` reports rules that claim a check no registered L0 check emits. `loadDoctrine` reads the craft doctrine registry (`doctrine/craft/*.yaml` with its vocabulary and evidence ledger), and `checkDoctrine` reports missing evidence ids, grades the cited rows do not state, live code-checked rules left in a prompt enforcement, unresolved `qrule` refs and scope errors. `explainer eval l1` and `l2` run the L1 judge and L2 viewer through a configured claude-print or codex judge, void any score without a verbatim quote, plant canaries in every call, and key rows by an `eval_version` over rubric, judge and fixtures. For pace evals, `fromScriptV1` and `fromSpikeScript` project a script to `PaceBeat`s (the items each beat puts on screen, their role from `CUE_KIND_ROLES`, and which are new), `readSpikeScript` reads a Python-emitted spike script.json loosely and lists the fields it ignores, and `readTiming` reads heard durations from a words.json. `runCold` streams that track to a cold viewer one chapter per call, carrying only its three-line summary, and reports undefined items per chapter minute from generated questions scored against verbatim quotes; `explainer eval cold` runs it three times by default and appends its rows and run records under an `eval_version` that includes the judge. `paceCheck` (in `L0_CHECKS`) and `paceRows` lint that item track: Q-E7 at most 4 new items a beat (error), and as warnings Q-E8 seconds a new item, Q-E9 15 s to digest between dense beats and Q-E10 new items a chapter minute (`chapterPace`). `explainer eval pace` runs only those lints on a spike or script/v1 file, with heard durations from `--timing`, appends their rows and prints items a minute per chapter. To calibrate checks against labels, `LabelsSchema` parses a `labels/v1` labelled set (the v4 one is `fixtures/spike/redesign-explainer-v4/labels.json`) and `calibrate` scores structure rows against it: precision and recall per check, with borderline labels counting as neither, and recall on the owner-named beats over error-severity rows; `explainer eval calibrate` prints that report. For a repo explainer, `gatherReview` reads a finished repo review (pinned clone, final label, `unread=0`) into a `review-bundle/v1` and schema-checked `ExplainerFact`s, tour kinds included, and refuses with coded diagnostics (`GATHER_CODES`) rather than throwing.
 
 Key exports:
 
@@ -1067,7 +1152,7 @@ Key exports:
 - `attribute`: `attributeFindings`
 - `map-state`: `MapBeatSchema`, `MapLayoutSchema`, `MapStateSchema`, `VisualSchema`
 - `cues`: `cueResolverFromWords`
-- +172 more in `products/explainer/src/index.ts`
+- +289 more in `products/explainer/src/index.ts`
 
 <a id="cap-factory"></a>
 

@@ -1,0 +1,329 @@
+{
+  "_comment": "End-to-end disagreements on the CI golden, reviewed. One entry per (unit, token) with its cause: tagger (compromise tags the word differently and the reading changes), stress-only (same segments, stress moved), heteronym (a heteronym-table form, outside the parity bar and guarded by the explainer C3 lint), tokenizer (none: the tokenizer port is at 100 %). parity.golden.test.ts fails on an unlisted disagreement and on a listed token that now agrees.",
+  "entries": [
+    {
+      "unit": "rf:c2-1-model",
+      "token": "that",
+      "cause": "stress-only",
+      "note": "relative \"that\": spaCy WDT reads it unstressed; compromise calls it a Pronoun, the v2 closed-class rule makes it DT, and misaki stresses DT that"
+    },
+    {
+      "unit": "rf:c2-4-actors",
+      "token": "that",
+      "cause": "stress-only",
+      "note": "relative \"that\": spaCy WDT reads it unstressed; compromise calls it a Pronoun, the v2 closed-class rule makes it DT, and misaki stresses DT that"
+    },
+    {
+      "unit": "rf:c2-5-fence",
+      "token": "read",
+      "cause": "heteronym",
+      "note": "heteronym form, kept out of the bar; E4 RF flip: \"read the diffs\" is past in context (spaCy VBD), compromise gives VB; the C3 lint guards it"
+    },
+    {
+      "unit": "rf:c4-1-order",
+      "token": "in",
+      "cause": "stress-only",
+      "note": "particle check: spaCy IN reads in unstressed; compromise calls it a Particle, so RP, and misaki stresses it"
+    },
+    {
+      "unit": "rf:c4-3-example",
+      "token": "that",
+      "cause": "stress-only",
+      "note": "relative \"that\": spaCy WDT reads it unstressed; compromise calls it a Pronoun, the v2 closed-class rule makes it DT, and misaki stresses DT that"
+    },
+    {
+      "unit": "rf:c4-6-worktrees",
+      "token": "in",
+      "cause": "stress-only",
+      "note": "particle check: spaCy IN reads in unstressed; compromise calls it a Particle, so RP, and misaki stresses it"
+    },
+    {
+      "unit": "rf:c4-7-budget",
+      "token": "use",
+      "cause": "heteronym",
+      "note": "heteronym form, kept out of the bar; E4 RF flip: a noun to spaCy (NN), a verb to compromise (VBP); the C3 lint guards it"
+    },
+    {
+      "unit": "rf:c6-11-train",
+      "token": "that",
+      "cause": "stress-only",
+      "note": "relative \"that\": spaCy WDT reads it unstressed; compromise calls it a Pronoun, the v2 closed-class rule makes it DT, and misaki stresses DT that"
+    },
+    {
+      "unit": "rf:c6-15-deploy",
+      "token": "restarts",
+      "cause": "stress-only",
+      "note": "noun to spaCy (NNS), verb to compromise (VBZ); misaki moves the primary stress for the verb"
+    },
+    {
+      "unit": "rf:c7-3-adversary",
+      "token": "that",
+      "cause": "stress-only",
+      "note": "complementizer \"that\": spaCy IN reads it unstressed; compromise Pronoun becomes DT, stressed"
+    },
+    {
+      "unit": "rf:r3b-6-upstream",
+      "token": "that",
+      "cause": "stress-only",
+      "note": "relative \"that\": spaCy WDT reads it unstressed; compromise calls it a Pronoun, the v2 closed-class rule makes it DT, and misaki stresses DT that"
+    },
+    {
+      "unit": "rf:r4-11-stall",
+      "token": "restart",
+      "cause": "stress-only",
+      "note": "noun to spaCy (NN), verb to compromise (VBP); misaki moves the primary stress for the verb"
+    },
+    {
+      "unit": "rf:r7-2-holds",
+      "token": "defect",
+      "cause": "tagger",
+      "note": "verb to spaCy (VB), noun to compromise (NN): a noun/verb stress pair misaki reads with different vowels; not in the heteronym table"
+    },
+    {
+      "unit": "rf:r10-6b-q10-q11",
+      "token": "in",
+      "cause": "stress-only",
+      "note": "particle check: spaCy IN reads in unstressed; compromise calls it a Particle, so RP, and misaki stresses it"
+    },
+    {
+      "unit": "rf:a2-3f-revert-fix",
+      "token": "digests",
+      "cause": "stress-only",
+      "note": "noun to spaCy (NNS), verb to compromise (VBZ); misaki moves the primary stress for the verb"
+    },
+    {
+      "unit": "rf:a3-3-milestones",
+      "token": "that",
+      "cause": "stress-only",
+      "note": "relative \"that\": spaCy WDT reads it unstressed; compromise calls it a Pronoun, the v2 closed-class rule makes it DT, and misaki stresses DT that"
+    },
+    {
+      "unit": "rf:a4-4-hashes",
+      "token": "that",
+      "cause": "stress-only",
+      "note": "relative \"that\": spaCy WDT reads it unstressed; compromise calls it a Pronoun, the v2 closed-class rule makes it DT, and misaki stresses DT that"
+    },
+    {
+      "unit": "rf:r3-2-sentence~2",
+      "token": "that",
+      "cause": "stress-only",
+      "note": "relative \"that\": spaCy WDT reads it unstressed; compromise calls it a Pronoun, the v2 closed-class rule makes it DT, and misaki stresses DT that"
+    },
+    {
+      "unit": "het:38",
+      "token": "present",
+      "cause": "heteronym",
+      "note": "heteronym form, kept out of the bar; adjective to spaCy (JJ), verb to compromise (VBP)"
+    },
+    {
+      "unit": "het:58",
+      "token": "use",
+      "cause": "heteronym",
+      "note": "heteronym form, kept out of the bar; noun to spaCy (NN), verb to compromise (VBP)"
+    },
+    {
+      "unit": "het:63",
+      "token": "desert",
+      "cause": "heteronym",
+      "note": "heteronym form, kept out of the bar; noun to spaCy (NN), verb to compromise (VBP)"
+    },
+    {
+      "unit": "het:67",
+      "token": "refuse",
+      "cause": "heteronym",
+      "note": "heteronym form, kept out of the bar; verb to spaCy (VBP), noun to compromise (NN)"
+    },
+    {
+      "unit": "het:73",
+      "token": "bow",
+      "cause": "heteronym",
+      "note": "heteronym form, kept out of the bar; verb to spaCy (VBP), noun to compromise (NN)"
+    },
+    {
+      "unit": "auth:contraction-19",
+      "token": "'n'",
+      "cause": "tagger",
+      "note": "spaCy tags the quotes around n as CC, so misaki merges them into one word; ours tags them as quotes and they stay apart"
+    },
+    {
+      "unit": "auth:contraction-19",
+      "token": "'n",
+      "cause": "tagger",
+      "note": "spaCy tags the opening quote CC and the closing one a quote, so misaki merges only the first; ours keeps both apart"
+    },
+    {
+      "unit": "auth:hyphen-3",
+      "token": "that",
+      "cause": "stress-only",
+      "note": "relative \"that\": spaCy WDT reads it unstressed; compromise calls it a Pronoun, the v2 closed-class rule makes it DT, and misaki stresses DT that"
+    },
+    {
+      "unit": "auth:hyphen-4",
+      "token": "that",
+      "cause": "stress-only",
+      "note": "relative \"that\": spaCy WDT reads it unstressed; compromise calls it a Pronoun, the v2 closed-class rule makes it DT, and misaki stresses DT that"
+    },
+    {
+      "unit": "auth:hyphen-5",
+      "token": "re-read",
+      "cause": "tagger",
+      "note": "past participle in context: spaCy JJ keeps read past, compromise NN gives the base reading; re-read is not in the heteronym table (R12), offer it to speech-vet"
+    },
+    {
+      "unit": "auth:abbreviation-3",
+      "token": "Use",
+      "cause": "heteronym",
+      "note": "heteronym form, kept out of the bar; a proper noun to spaCy (NNP), a verb to compromise (VBP)"
+    },
+    {
+      "unit": "auth:abbreviation-8",
+      "token": "Apt.",
+      "cause": "tagger",
+      "note": "spaCy tags the period after Apt as NNP, so misaki merges it into the word; ours tags it as sentence punctuation"
+    },
+    {
+      "unit": "auth:abbreviation-10",
+      "token": "Vs",
+      "cause": "tagger",
+      "note": "spaCy tags Vs NNP and misaki reads the letters v-s; compromise gives IN, which misaki reads as versus"
+    },
+    {
+      "unit": "auth:abbreviation-10",
+      "token": "vs",
+      "cause": "tagger",
+      "note": "spaCy tags vs UH and misaki reads the letters v-s; compromise gives IN, which misaki reads as versus"
+    },
+    {
+      "unit": "auth:abbreviation-11",
+      "token": "Ft.",
+      "cause": "tagger",
+      "note": "spaCy tags the period after Ft as NNP, so misaki merges it into the word; ours tags it as sentence punctuation"
+    },
+    {
+      "unit": "auth:number-15",
+      "token": "-10",
+      "cause": "tagger",
+      "note": "spaCy tags -10 as punctuation (:), so misaki reads nothing; compromise says CD and ours reads minus ten"
+    },
+    {
+      "unit": "auth:phrase-2",
+      "token": "used",
+      "cause": "tagger",
+      "note": "\"is used to it\": spaCy VBN reads jˈuzd; the v2 used+to rule gives VBD, which reads jˈust"
+    },
+    {
+      "unit": "auth:phrase-7",
+      "token": "that",
+      "cause": "stress-only",
+      "note": "complementizer \"that\": spaCy reads it unstressed; compromise Pronoun becomes DT, stressed"
+    },
+    {
+      "unit": "auth:phrase-8",
+      "token": "that",
+      "cause": "stress-only",
+      "note": "demonstrative \"that\": spaCy DT reads it stressed; compromise gives RB, unstressed"
+    },
+    {
+      "unit": "auth:phrase-10",
+      "token": "read",
+      "cause": "heteronym",
+      "note": "heteronym form, kept out of the bar; \"and never read it\": spaCy VB, but the look-back passes never and stops at and, so VBP reads past"
+    },
+    {
+      "unit": "auth:phrase-11",
+      "token": "read",
+      "cause": "heteronym",
+      "note": "heteronym form, kept out of the bar; \"Did you read it?\": the look-back does not step over the subject, so VBP reads past"
+    },
+    {
+      "unit": "auth:phrase-14",
+      "token": "close",
+      "cause": "heteronym",
+      "note": "heteronym form, kept out of the bar; a noun to spaCy (NN), an adjective to compromise (JJ)"
+    },
+    {
+      "unit": "auth:phrase-22",
+      "token": "Used",
+      "cause": "tagger",
+      "note": "\"Used to be\": spaCy VBN reads jˈuzd; the v2 used+to rule gives VBD, which reads jˈust"
+    },
+    {
+      "unit": "auth:markup-3",
+      "token": "in",
+      "cause": "stress-only",
+      "note": "particle check: spaCy IN reads in unstressed; compromise calls it a Particle, so RP, and misaki stresses it"
+    },
+    {
+      "unit": "auth:markup-4",
+      "token": "Read",
+      "cause": "heteronym",
+      "note": "heteronym form, kept out of the bar; a sentence-initial imperative: spaCy VB, compromise VBP reads past"
+    },
+    {
+      "unit": "auth:markup-9",
+      "token": "inside",
+      "cause": "stress-only",
+      "note": "adverb to spaCy (RB), adjective to compromise (JJ); misaki stresses each differently"
+    },
+    {
+      "unit": "auth:markup-10",
+      "token": "overrides",
+      "cause": "stress-only",
+      "note": "verb to spaCy (VBZ), noun to compromise (NNS); misaki moves the primary stress for the noun"
+    },
+    {
+      "unit": "auth:bracket-1",
+      "token": "[optional]",
+      "cause": "tagger",
+      "note": "spaCy tags the square brackets XX, not as brackets, so misaki merges them into the word; ours tags them -LRB-/-RRB-"
+    },
+    {
+      "unit": "auth:bracket-2",
+      "token": "Use",
+      "cause": "heteronym",
+      "note": "heteronym form, kept out of the bar; a proper noun to spaCy (NNP), a verb to compromise (VB)"
+    },
+    {
+      "unit": "auth:bracket-4",
+      "token": "[1",
+      "cause": "tagger",
+      "note": "spaCy tags the opening square bracket XX, so misaki merges it into the number; ours tags it -LRB-"
+    },
+    {
+      "unit": "auth:bracket-4",
+      "token": "[2",
+      "cause": "tagger",
+      "note": "spaCy tags the opening square bracket XX, so misaki merges it into the number; ours tags it -LRB-"
+    },
+    {
+      "unit": "auth:symbol-1",
+      "token": "A",
+      "cause": "tagger",
+      "note": "\"Mix A & B\": spaCy NNP reads the letter; compromise and the v2 a→DT rule read the article"
+    },
+    {
+      "unit": "auth:symbol-2",
+      "token": "#urgent",
+      "cause": "tagger",
+      "note": "spaCy tags # before a word NNS, so misaki merges it and reads hash; ours tags it # and keeps it apart"
+    },
+    {
+      "unit": "auth:symbol-3",
+      "token": "usr/local/bin",
+      "cause": "tagger",
+      "note": "spaCy tags /usr as . and the slashes SYM, so misaki merges the path into one word; compromise tags differ, so the merge differs"
+    },
+    {
+      "unit": "auth:symbol-4",
+      "token": "example.com",
+      "cause": "tagger",
+      "note": "spaCy tags a domain ADD, which misaki reads with dot; compromise says NN"
+    },
+    {
+      "unit": "auth:plain-9",
+      "token": "dove",
+      "cause": "tagger",
+      "note": "a bird to spaCy (NN), the verb to compromise (VBN); not in the heteronym table (R12), offer it to speech-vet"
+    }
+  ]
+}

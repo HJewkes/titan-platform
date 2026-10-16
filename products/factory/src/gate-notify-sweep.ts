@@ -39,17 +39,17 @@ export function configuredGateNotify(env: NodeJS.ProcessEnv): GateNotifyOptions 
   if (!agentChatBin || !gateNotify) return undefined;
   return {
     ...gateNotify,
-    askHuman: (req) => askHuman(agentChatBin, req, AGENT_CALL_TIMEOUT_MS),
-    readAnswers: (label, since) => readAnswers(agentChatBin, label, since, AGENT_CALL_TIMEOUT_MS),
-    dismissAsk: (msgId) => dismissAsk(agentChatBin, msgId, AGENT_CALL_TIMEOUT_MS),
+    askHuman: (req, signal) => askHuman(agentChatBin, req, AGENT_CALL_TIMEOUT_MS, signal),
+    readAnswers: (label, since, signal) => readAnswers(agentChatBin, label, since, AGENT_CALL_TIMEOUT_MS, signal),
+    dismissAsk: (msgId, signal) => dismissAsk(agentChatBin, msgId, AGENT_CALL_TIMEOUT_MS, signal),
   };
 }
 
 export function gateNotifyWatch(host: FactoryHost, options: GateNotifyOptions, log: Logger): GateNotifyWatch {
   let answersError: string | undefined;
-  const readAnswersNoted: GateNotifyOptions["readAnswers"] = async (label, since) => {
+  const readAnswersNoted: GateNotifyOptions["readAnswers"] = async (label, since, signal) => {
     try {
-      const page = await options.readAnswers(label, since);
+      const page = await options.readAnswers(label, since, signal);
       answersError = undefined;
       return page;
     } catch (error) {
@@ -69,7 +69,7 @@ export function gateNotifyWatch(host: FactoryHost, options: GateNotifyOptions, l
   return {
     status: () => ({ ...notifyStatus(host, options), ...(answersError !== undefined && { answersError }) }),
     start: () => {
-      const sweep = startSweep(() => notifyTick(ports), options.everyMs ?? GATE_NOTIFY_MS, "gate notify", log);
+      const sweep = startSweep((signal) => notifyTick({ ...ports, signal }), options.everyMs ?? GATE_NOTIFY_MS, "gate notify", log);
       void sweep.tick();
       return sweep;
     },

@@ -89,6 +89,8 @@ interface ClassifyContext {
         chain: Chain;
         fallback: ClassifyContext;
     };
+    /** Set by the classifier when the line may choose or write the config file wget or curl reads. */
+    httpConfigUnseen?: true;
 }
 type GuardedAction = "merge" | "release" | "secret-read" | "authority-config" | "private-egress";
 /** What an event would do, with no actor attached. */
