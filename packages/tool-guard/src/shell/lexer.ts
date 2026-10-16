@@ -293,7 +293,8 @@ function skipComment(s: LexState): void {
 function readRedirect(s: LexState): void {
   const w = s.word;
   let fd: string | null = null;
-  if (w && !w.quoted && !w.dynamic && /^\d+$/.test(w.value)) {
+  // bash's and zsh's `{name}<f` opens a descriptor from 10 up and stores its number in `name`; dash reads a word.
+  if (w && !w.quoted && !w.dynamic && (/^\d+$/.test(w.value) || (!w.spliced && /^\{[A-Za-z_]\w*\}$/.test(w.value)))) {
     fd = w.value;
     s.word = null;
   } else endWord(s);

@@ -98,13 +98,14 @@ through a symlinked parent, is refused just before the append.
 
 - Stdin named through the working directory or a symlink (`cd /dev && bash stdin`) is not
   read as stdin. TP-3240 tracks it.
-- bash's and zsh's named-descriptor redirect `{name}<` is read as an operand, so
-  `bash {fd}< ./x.sh /dev/fd/10` is not read. TP-3279 tracks it.
+- zsh also reads a `{name}` a space before a redirect as a named descriptor
+  (`bash {fd} < ./x.sh /dev/fd/11`); the guard reads that `{name}` as an operand, as bash does.
 
 ## Gotchas
 
 - A shell that runs stdin, or a descriptor its script operand names, is refused when the line
-  does not show that text: `bash < $F`, `bash /dev/stdin <&3`, `bash /dev/fd/3` with no `3<`.
+  does not show that text: `bash < $F`, `bash /dev/stdin <&3`, `bash /dev/fd/3` with no `3<`,
+  or `bash {fd}< ./x.sh /dev/fd/10`, whose descriptor number from 10 up the shell picks.
   A shell that a `-c` string, `eval`, `emulate -c` or `find -exec` starts inherits its runner's
   stdin and descriptors, so `bash -c bash < $F` is refused too.
   Run the script by a literal path, or redirect a literal file (`bash /dev/stdin < ./x.sh`).

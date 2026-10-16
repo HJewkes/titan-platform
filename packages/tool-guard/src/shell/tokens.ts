@@ -49,6 +49,7 @@ export interface SubsToken {
 export interface RedirectToken {
   type: "redirect";
   op: string;
+  /** The digits before the operator, or a `{name}` whose number the shell picks; null when there are none. */
   fd: string | null;
   target: WordToken | null;
   body: string | null;
