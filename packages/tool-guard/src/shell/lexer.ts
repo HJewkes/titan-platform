@@ -28,7 +28,7 @@ export function tokenize(src: string, trials = newTrials(src)): Token[] {
 }
 
 function newState(src: string, i: number, nested: boolean, trials: ArithTrials): LexState {
-  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], leftOpen: false, redirect: null, subscriptEnd: -1, looseSubscriptEnd: -1, arithOutsideLoose: true, arithEnd: -1, wholeEnd: -1, compoundDepth: -1, caseWords: false, regex: newRegexScan(), trials };
+  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], leftOpen: false, redirect: null, subscriptEnd: -1, looseSubscriptEnd: -1, arithOutsideLoose: true, arithEnd: -1, arithOpen: -1, wholeEnd: -1, compoundDepth: -1, caseWords: false, regex: newRegexScan(), trials };
 }
 
 function lex(s: LexState): void {
@@ -99,6 +99,7 @@ function markSubscript(s: LexState): void {
 function startArithmetic(s: LexState, body: number): void {
   s.arithOutsideLoose = s.i >= s.looseSubscriptEnd;
   markDoubleParen(s, body);
+  s.arithOpen = s.arithEnd === -1 ? -1 : s.i;
 }
 
 /**
@@ -163,11 +164,12 @@ function readBlank(s: LexState): void {
 /** A newline bash read inside a `((` span, arithmetic or reparsed as subshells, is not a line end and starts no heredoc body. */
 function readOperator(s: LexState, op: string, end: number): void {
   const inWholeSpan = s.i < s.wholeEnd;
+  const start = s.i;
   const glued = op === "(" && s.word ? s.word.value.slice(-1) : null;
   endWord(s);
   noteParen(s, op, glued);
   s.i = end;
-  s.tokens.push({ type: "op", value: op });
+  s.tokens.push(op === "(" && start === s.arithOpen ? { type: "op", value: op, arith: true } : { type: "op", value: op });
   if (op === "\n" && !inWholeSpan) readLineEnd(s);
 }
 

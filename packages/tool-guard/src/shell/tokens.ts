@@ -35,6 +35,8 @@ export interface WordToken {
 export interface OpToken {
   type: "op";
   value: string;
+  /** Set on the first `(` of a `((` the lexer reads as an arithmetic command; absent on nested subshells. */
+  arith?: true;
 }
 
 /** Process substitutions, `<(...)` and `>(...)`. */
@@ -112,6 +114,8 @@ export interface LexState {
   arithOutsideLoose: boolean;
   /** Index of the `))` closing an arithmetic command; before it `<<` is a shift and `#` no comment. */
   arithEnd: number;
+  /** Index of the first `(` of the arithmetic command `arithEnd` closes, or -1; the operator token there carries `arith`. */
+  arithOpen: number;
   /** Index of the `)` matching a `((`'s second `(`, arithmetic or not; bash reads up to it whole, so no newline before it ends a line. */
   wholeEnd: number;
   /** Paren depth a `NAME=(` or `NAME+=(` opened at, or -1; bash rejects any redirect before that paren closes. */
