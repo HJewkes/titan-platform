@@ -326,7 +326,7 @@ describe.skipIf(process.platform !== "linux")("the console in LAN mode (127.0.0.
     await startLan();
 
     const [options] = startDaemonSpy.mock.calls[0]!;
-    expect(options.remote).toEqual({ host: LAN, tokenFile: config.lanTokenPath, allowedHosts: [NAME], tls: { certFile: pair.certFile, keyFile: pair.keyFile } });
+    expect(options.remote).toEqual({ host: LAN, tokenFile: config.lanTokenPath, allowedHosts: [NAME], tls: { certFile: pair.certFile, keyFile: pair.keyFile }, signInHint: expect.stringContaining("titan-console login-link") });
     expect(options).not.toHaveProperty("host");
     expect(options).not.toHaveProperty("allowUnauthenticatedNonLoopback");
   });

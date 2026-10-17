@@ -512,7 +512,7 @@ Key exports:
 - `guards`: `createRequestGuard`
 - `file-watch`: `watchTree`
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `getProcessStartTime`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`
-- +70 more in the [reference page](/reference/daemon)
+- +71 more in the [reference page](/reference/daemon)
 
 <a id="cap-frame-capture"></a>
 
