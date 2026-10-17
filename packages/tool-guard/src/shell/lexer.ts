@@ -8,6 +8,7 @@ import { arithmeticExpansionEnd, lineReading, nestedReaders, scanBacktick } from
 import { readLineEnd } from "./procsub-heredoc.js";
 import { assignmentSubscriptEnd, looseSubscriptEnd, isNameSoFar, wordStartSubscriptEnd } from "./subscript.js";
 import type { LexState, RedirectToken, Token, WordToken } from "./tokens.js";
+import { ansiQuotedSubstitutions } from "./arith-ansi.js";
 import { appendChar, endWord, ensureWord, markComputed, markCut, markQuoted, pushRef, readAnsiC, readEscape, readSingle, variableName } from "./word-build.js";
 
 export { ParseError, SplitParseError } from "./parse-error.js";
@@ -179,6 +180,12 @@ function readSingleOrArith(s: LexState): void {
   else readSingle(s);
 }
 
+/** `$'` in an arithmetic body is no ANSI-C string: the shells read the `'` literally and run a `$(` after it. */
+function readArithDollarQuote(s: LexState): void {
+  s.i++;
+  readQuoted(s, "'");
+}
+
 function readDouble(s: LexState): void {
   readQuoted(s, '"');
 }
@@ -211,7 +218,7 @@ const DOLLAR_READERS: Record<DollarOpener, (s: LexState, w: WordToken) => void> 
   braced: (s, w) => refusingAs("unclosed-expansion", () => readBraced(s, w)),
   bracket: (s, w) => refusingAs("unclosed-expansion", () => readBracketArithmetic(s, w)),
   paren: (s, w) => (s.src[nextAfter(s.src, s.i + 1)] === "(" ? refusingAs("unclosed-expansion", () => readArithmetic(s, w)) : pushSubstitution(s, w, s.i + 2)),
-  "ansi-c": readAnsiC,
+  "ansi-c": (s, w) => (s.i < s.arithEnd ? readArithDollarQuote(s) : readAnsiC(s, w)),
   locale: readLocale,
 };
 
@@ -283,6 +290,7 @@ function dollarText(s: LexState, end: number): string {
 function readBracketArithmetic(s: LexState, w: WordToken): void {
   const found: Token[][] = [];
   const end = balancedEnd(s.src, s.i + 1, nestedReaders(lineReading(s), found));
+  found.push(...ansiQuotedSubstitutions(lineReading(s), s.i + 1, end));
   markComputed(w).value += dollarText(s, end);
   w.subs.push(...found);
   s.i = end + 1;
