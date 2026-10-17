@@ -75,13 +75,29 @@ export function namesScript(cmd: { path: string | null; name: string | null }): 
   return cmd.path?.includes("/") === true || cmd.name?.endsWith(".sh") === true;
 }
 
+/** What the command's own lookups see: the line's `PATH`, then a prefix assignment. */
+function effective(vars: Vars, assigned: readonly Assignment[]): Held {
+  let entries: Held = held(vars);
+  for (const assignment of assigned) if (isPathName(assignment)) entries = applied(assignment, entries);
+  return entries;
+}
+
+/** A walk for the commands a shell or `find -exec` runs under this command, which inherit a prefix `PATH` through the environment. */
+export function withPrefixPath<T extends { scope: { vars: Vars } }>(w: T, cmd: { assigned: readonly Assignment[] }): T {
+  if (!cmd.assigned.some(isPathName)) return w;
+  const vars = new Map(w.scope.vars);
+  const entries = effective(vars, cmd.assigned);
+  if (entries === undefined) vars.delete(SEARCH_KEY);
+  else vars.set(SEARCH_KEY, entries === null ? null : entries.join(":"));
+  return { ...w, scope: { ...w.scope, vars } };
+}
+
 /**
  * The `PATH` a command's bare name is looked up on: what the line stored before it, then a prefix assignment (`PATH=.:$PATH s`,
  * `env PATH=. s`), which holds for that command alone. Absent when the line never set `PATH`.
  */
 export function searchPathOf(vars: Vars, cmd: { assigned: readonly Assignment[]; wrappers?: string[] }): { searchPath?: SearchPath } {
-  let entries: Held = held(vars);
-  for (const assignment of cmd.assigned) if (isPathName(assignment)) entries = applied(assignment, entries);
+  const entries = effective(vars, cmd.assigned);
   if (entries === undefined) return {};
   const list = (entries ?? [UNKNOWN_ENTRY]).map((entry) => entry.replace(CWD_RE, "."));
   const unknown = list.some((entry) => entry === UNKNOWN_ENTRY || (DYNAMIC_RE.test(entry) && !ABSOLUTE_RE.test(entry)) || (entry.startsWith("~") && !ABSOLUTE_RE.test(entry)));

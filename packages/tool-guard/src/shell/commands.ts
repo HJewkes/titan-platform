@@ -22,7 +22,7 @@ import { runReadings } from "./xargs-readings.js";
 import type { Vars } from "./vars.js";
 import { newMarks, noteRedirect, recordValue, settle } from "./value-marks.js";
 import { noteCommand, noteWord } from "./stored-words.js";
-import { assignStandalone, namesScript, searchPathOf, trackCommand, type SearchPath } from "./search-path.js";
+import { assignStandalone, namesScript, searchPathOf, trackCommand, withPrefixPath, type SearchPath } from "./search-path.js";
 import type { ValueMarks } from "./value-marks.js";
 import { MAX_UNSURE_WORDS, NestingReadingError, ReadingLimitError, SPLICED_WEIGHT, SplitReadingError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
@@ -346,9 +346,10 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   const piped = stdin === null ? [] : [stdin, ...(stdin === w.stdin ? w.shellStdin : [])];
   const held = descriptorsAfter(redirects, piped, inherited, (target) => resolvePath(w.scope.dir, target, w.home));
   const script = inlineScript(cmd, redirects, piped, w.unsure, inherited);
-  if (script !== null) walkScript(script, w, wrapping, held);
+  const inner = withPrefixPath(w, cmd);
+  if (script !== null) walkScript(script, inner, wrapping, held);
   if (cmd.name !== "find") return;
-  for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(folded(words, w)))) run(exec, [], child(w, [...wrapping, "find-exec"], held), null);
+  for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(folded(words, w)))) run(exec, [], child(inner, [...wrapping, "find-exec"], held), null);
 }
 
 /** Two readings of one command often run the same script (`flock $F sh -c '...'`); walking it again per nesting level would double the cost. */

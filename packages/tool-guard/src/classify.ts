@@ -166,14 +166,19 @@ function refuseUnreadablePath(cmd: SimpleCommand): void {
   if ((path.unknown && (looksUp || hasDynamicName(cmd))) || (path.dirs.length > 0 && hasDynamicName(cmd))) throw new UnreadableScriptError(null);
 }
 
-/** Programs that only read: one of them before a PATH-found name cannot have made that file. */
-const READERS = new Set(["cat", "ls", "head", "tail", "wc", "grep", "egrep", "fgrep", "rg", "sort", "uniq", "diff", "cmp", "stat", "file", "which", "readlink", "basename", "dirname", "date", "sleep", "tr", "cut"]);
+/** Bare commands that create no file in the working directory: readers, and builtins that only move shell state. */
+const READERS = new Set([
+  ...["cat", "ls", "head", "tail", "wc", "grep", "egrep", "fgrep", "rg", "diff", "cmp", "stat", "file", "which", "readlink", "basename", "dirname", "date", "sleep", "tr", "cut"],
+  ...[":", "[", "[[", "alias", "cd", "declare", "echo", "export", "false", "let", "local", "popd", "printf", "pushd", "pwd", "read", "readonly", "set", "shift", "test", "true", "type", "typeset", "unalias", "unset"],
+]);
 const READ_ONLY_GIT = new Set(["status", "diff", "log", "show", "rev-parse", "ls-files", "describe", "branch"]);
 
+/** An explicit allowlist: a name with a `/`, `source`, `.` and any program not listed may write the file a later PATH lookup finds. */
 function onlyReads(cmd: SimpleCommand): boolean {
-  if (cmd.name === null) return false;
-  if (cmd.name === "git") return READ_ONLY_GIT.has(cmd.args.find((a) => !a.value.startsWith("-"))?.value ?? "");
-  return !isPathSearched(cmd.name, cmd.path) || READERS.has(cmd.name);
+  if (cmd.name === null || cmd.path === null || cmd.path.includes("/")) return false;
+  if (cmd.name !== "git") return READERS.has(cmd.name);
+  const sub = cmd.args.find((a) => !a.value.startsWith("-"))?.value ?? "";
+  return READ_ONLY_GIT.has(sub) && !cmd.args.some((a) => a.value.startsWith("--output") || a.dynamic);
 }
 
 /**

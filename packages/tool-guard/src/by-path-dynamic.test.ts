@@ -113,6 +113,37 @@ describe("a bare name found through a changed PATH", () => {
     expect(await decision(command)).toBeNull();
   });
 
+  it.each([
+    "PATH=.:$PATH bash -c s",
+    "env PATH=. sh -c s",
+    "PATH=. bash <<< s",
+    "PATH=. find . -maxdepth 0 -exec s ;",
+    "PATH=.:$PATH bash -c 'sh -c s'",
+  ])("reads ./s for a shell run under a prefix PATH: %s", async (command) => {
+    file("s", `#!/bin/bash\n${PUSH}\n`);
+    expect(await decision(command)).toBe("deny");
+  });
+
+  it.each([
+    "/bin/cp s n; PATH=.:$PATH n",
+    "./mk; PATH=.:$PATH n",
+    ". ./mk.sh; PATH=.:$PATH n",
+    "source ./mk.sh; PATH=.:$PATH n",
+    `printf '${PUSH}\\n' | sort -o n; PATH=.:$PATH n`,
+    "uniq a n; PATH=.:$PATH n",
+    "git diff --output=n; PATH=.:$PATH n",
+  ])("refuses a file an earlier unlisted program may have made: %s", async (command) => {
+    file("mk", "#!/bin/bash\necho ok\n");
+    file("mk.sh", "echo ok\n");
+    rmSync(join(home, "n"), { force: true });
+    expect(await decision(command)).toBe("deny");
+  });
+
+  it("passes a script run by path after PATH gains a directory under HOME", async () => {
+    file("build.sh", "#!/bin/bash\necho ok\n");
+    expect(await decision('export PATH="$HOME/bin:$PATH"; ./build.sh')).toBeNull();
+  });
+
   it("passes a non-pushing ./s under a changed PATH", async () => {
     file("s", "#!/bin/bash\necho ok\n");
     expect(await decision("PATH=.:$PATH s")).toBeNull();
