@@ -319,9 +319,14 @@ function tempRepo(files: Record<string, string>): string {
   return dir;
 }
 
+/** CI sets GITHUB_ACTIONS, which switches the report to annotations; these tests read the plain log form. */
+function plainEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, GITHUB_ACTIONS: "" };
+}
+
 function runIn(cwd: string, args: string[]): { code: number; out: string } {
   const bin = join(here, "..", "..", "dist", "merge-lint-bin.js");
-  const result = spawnSync(process.execPath, [bin, ...args], { cwd, encoding: "utf-8" });
+  const result = spawnSync(process.execPath, [bin, ...args], { cwd, encoding: "utf-8", env: plainEnv() });
   return { code: result.status ?? -1, out: result.stdout };
 }
 

@@ -9,7 +9,7 @@ const bin = join(root, "packages/tool-guard/dist/merge-lint-bin.js");
 
 // Needs `pnpm build`, like every test that imports a sibling package's dist.
 describe.skipIf(!existsSync(bin))("merge-lint on this repo's own tree", () => {
-  const result = spawnSync(process.execPath, [bin], { cwd: root, encoding: "utf-8" });
+  const result = spawnSync(process.execPath, [bin], { cwd: root, encoding: "utf-8", env: { ...process.env, GITHUB_ACTIONS: "" } });
   const lines = result.stdout.split("\n").filter(Boolean);
 
   it("reports no merge call outside the allowlist", () => {
