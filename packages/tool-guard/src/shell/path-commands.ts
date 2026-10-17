@@ -64,7 +64,7 @@ function wordRebinds(t: WordToken, tokens: Token[], i: number, start: boolean): 
   if (PATH_ASSIGNMENT_RE.test(t.value)) return true;
   if (t.value === "function" && namesWc(tokens[i + 1])) return true;
   if (!start || ASSIGNMENT_RE.test(t.value)) return false;
-  return t.dynamic || BINDERS.has(t.value) || declaresNameref(t.value, tokens.slice(i + 1));
+  return t.dynamic || BINDERS.has(t.value) || declaresNameref(t.value, tokens, i + 1);
 }
 
 const namesWc = (t: Token | undefined) => t?.type === "word" && (t.value === FUNCTION_NAME || t.dynamic || t.quoted || t.spliced);
@@ -73,9 +73,15 @@ const namesWc = (t: Token | undefined) => t?.type === "word" && (t.value === FUN
  * A nameref may make `PATH` writable under another name (`declare -n r=PATH; r=/tmp/x`), so a declarer that may carry
  * `-n` voids the mark: a literal cluster holding `n`, or a word that may expand to an option.
  */
-function declaresNameref(name: string, rest: Token[]): boolean {
+function declaresNameref(name: string, tokens: Token[], from: number): boolean {
   if (!NAMEREF_DECLARERS.has(name)) return false;
-  const end = rest.findIndex((t) => t.type === "op");
-  const args = (end < 0 ? rest : rest.slice(0, end)).filter((t): t is WordToken => t.type === "word");
-  return args.some((a) => /^[-+][A-Za-z0-9]*n/.test(a.value) || (a.dynamic && (/^[$`]/.test(a.value) || (a.cuts ?? []).some((c) => c.at === 0))));
+  for (let j = from; j < tokens.length; j++) {
+    const t = tokens[j];
+    if (t === undefined || t.type === "op") return false;
+    if (t.type === "word" && mayBeNamerefOption(t)) return true;
+  }
+  return false;
 }
+
+const mayBeNamerefOption = (a: WordToken) =>
+  /^[-+][A-Za-z0-9]*n/.test(a.value) || (a.dynamic && (/^[$`]/.test(a.value) || (a.cuts ?? []).some((c) => c.at === 0)));
