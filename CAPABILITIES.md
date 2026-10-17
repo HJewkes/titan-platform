@@ -30,6 +30,7 @@ Before adding code:
 | [`evidence`](#cap-evidence) | 0 | A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. Its `./stats` subpath puts honest intervals and paired tests on eval pass rates at 20 to 50 cases. |
 | [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. For a tests-only diff it also tells test material from source (`testOnlyOf`) and parses `*.mutations.json` specs, and `classifyMutants` decides whether every declared mutation was killed, which the judge adds to the line as `mutants`. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority. |
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
+| [`openai-account`](#cap-openai-account) | 0 | You need token-free Codex account state from an explicit CODEX_HOME: parse `codex login status`, validate rollout token_count rate_limits evidence and refuse admission when its observation freshness cannot be verified. Native rollouts return unknown/freshness-unverified; quota age and numerical admission policy require a caller-established known observation. The pure root exports `loginStateFromStatus`, `usageFromRolloutEvents`, `quotaAdmission`, `accountLabel` and `redactSecrets`; `./node` exposes the bounded login probe and read-only rollout scan. It never reads auth.json or provisions an account. For Claude account state use anthropic-account; for execution and transcript decoding use agent and session-read. Use `knownObservation` to explicitly attest a quota observation time source before admission; plain or serialized known readings do not carry that process-local provenance. The factory does not authenticate a backend or account. |
 | [`owner-proof`](#cap-owner-proof) | 0 | You must accept an action only when the owner signed a statement for it with an ECDSA P-256 key (such as the Secure Enclave key behind Touch ID). `verifySigned` checks the DER signature over the exact received bytes against a `keyRing` of installed public keys before it parses anything, then the zod schema, the issue and expiry window, the audience and your statement kind's own checks; `canonical` gives sorted-key JSON for digests. It keeps no state, so nonce replay is yours to record. To decide which actions need the owner at all, use authority. |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
@@ -351,6 +352,22 @@ Key exports:
 - `read-locator`: `readLocatorBytes`, `readLocatorText`
 - +11 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/locator)
 
+<a id="cap-openai-account"></a>
+
+### [`openai-account`](https://hjewkes.github.io/titan-platform/reference/openai-account)
+
+Tier 0, `@titan-design/openai-account@0.0.0`. Read-only Codex account state: login status, rollout quota readings, freshness and admission
+
+**Use this when:** You need token-free Codex account state from an explicit CODEX_HOME: parse `codex login status`, validate rollout token_count rate_limits evidence and refuse admission when its observation freshness cannot be verified. Native rollouts return unknown/freshness-unverified; quota age and numerical admission policy require a caller-established known observation. The pure root exports `loginStateFromStatus`, `usageFromRolloutEvents`, `quotaAdmission`, `accountLabel` and `redactSecrets`; `./node` exposes the bounded login probe and read-only rollout scan. It never reads auth.json or provisions an account. For Claude account state use anthropic-account; for execution and transcript decoding use agent and session-read. Use `knownObservation` to explicitly attest a quota observation time source before admission; plain or serialized known readings do not carry that process-local provenance. The factory does not authenticate a backend or account.
+
+Key exports:
+
+- `profile`: `accountLabel`, `assertAccountLabel`, `AccountProfile`
+- `login`: `loginStateFromStatus`, `LoginState`, `LoginStatusOutput`
+- `redact`: `redactSecrets`
+- `usage`: `usageFromRolloutEvents`, `quotaAdmission`, `knownObservation`, `MAX_READING_AGE_SECONDS`, `UsageReading`
+- +5 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/openai-account)
+
 <a id="cap-owner-proof"></a>
 
 ### [`owner-proof`](https://hjewkes.github.io/titan-platform/reference/owner-proof)
@@ -424,7 +441,7 @@ Key exports:
 - `hook`: `handle`
 - `context`: `nodeContext`
 - `approval-store`: `approvalsDir`, `nodeApprovalStore`
-- +59 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/tool-guard)
+- +60 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/tool-guard)
 
 ## Tier 1 — engines
 
@@ -547,7 +564,7 @@ Key exports:
 - `checks`: `isPassing`, `isPassingConclusion`, `isSucceeded`, `latestPerName`
 - `ci-verdict`: `ciVerdict`, `loadRequiredContexts`
 - `ci-wait`: `ciWait`
-- +103 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
+- +109 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-health"></a>
 
@@ -934,7 +951,7 @@ Key exports:
 - `plan`: `planPanel`
 - `reviewer-brief`: `correctionPrompt`, `reviewCheckoutName`, `reviewerBrief`, `validOwnerPicks`
 - `accept-verdict`: `acceptVerdict`, `isUsageLimit`
-- +108 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-panel)
+- +112 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-panel)
 
 <a id="cap-session-analytics"></a>
 

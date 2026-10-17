@@ -33,6 +33,7 @@ graph TD
     evidence["evidence"]
     fixProof["fix-proof"]
     locator["locator"]
+    openaiAccount["openai-account"]
     ownerProof["owner-proof"]
     rpcProtocol["rpc-protocol"]
     storeSqlite["store-sqlite"]
@@ -124,6 +125,7 @@ graph TD
   memory --> embed
   memory --> retrieval
   memory --> storeSqlite
+  openaiAccount --> anthropicAccount
   ownerQueue --> evidence
   queueMirror --> hitl
   queueMirror --> matrixBus

@@ -56,6 +56,20 @@ describe("event log migration", () => {
     expect(headSeq(log)).toBe(1);
   });
 
+  it("aborts a REPLACE that clashes on seq, delivery id or occurrence key, and keeps the row", () => {
+    const log = db();
+    appendEvent(log, ci({ deliveryId: "webhook:d1" }));
+    const columns = "(seq, source, kind, subject, keys, delivery_id, occurrence_key, observed_at, payload)";
+    const replace = (verb: string, seq: number | null, delivery: string | null, key: string) => () =>
+      log.prepare(`${verb} INTO factory_event ${columns} VALUES (?, 'store', 'k', 's', '{}', ?, ?, ?, '{}')`).run(seq, delivery, key, OBSERVED);
+
+    expect(replace("REPLACE", 1, null, "fresh")).toThrow(/append-only/);
+    expect(replace("INSERT OR REPLACE", null, "webhook:d1", "fresh")).toThrow(/append-only/);
+    expect(replace("REPLACE", null, null, ci().occurrenceKey)).toThrow(/append-only/);
+    expect(readEvents(log, { repo: "o/r", sinceSeq: 0 })).toMatchObject([{ seq: 1, deliveryId: "webhook:d1", kind: "CIConcluded" }]);
+    expect(headSeq(log)).toBe(1);
+  });
+
   it("admits only the five sources", () => {
     const insert = db().prepare("INSERT INTO factory_event (source, kind, subject, keys, occurrence_key, observed_at, payload) VALUES (?, 'k', 's', '{}', 'o', ?, '{}')");
 
@@ -65,7 +79,7 @@ describe("event log migration", () => {
 
   it("applies after a gap below it, and the version below still applies later", () => {
     const opened = openDatabase(":memory:");
-    const merge = { version: 29, name: "factory:merge_op", up: () => undefined };
+    const merge = { version: 29, name: "earlier-29", up: () => undefined };
 
     runMigrations(opened, [{ version: 28, name: "earlier", up: () => undefined }, eventLogMigration()]);
     const later = runMigrations(opened, [{ version: 28, name: "earlier", up: () => undefined }, merge, eventLogMigration()]);

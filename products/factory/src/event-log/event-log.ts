@@ -18,9 +18,17 @@ const EVENT_LOG_DDL = `
   CREATE INDEX factory_event_subject ON factory_event (subject, seq);
   CREATE INDEX factory_event_repo ON factory_event (repo, seq);
   CREATE TRIGGER factory_event_no_update BEFORE UPDATE ON factory_event BEGIN SELECT RAISE(ABORT, 'append-only'); END;
-  CREATE TRIGGER factory_event_no_delete BEFORE DELETE ON factory_event BEGIN SELECT RAISE(ABORT, 'append-only'); END;`;
+  CREATE TRIGGER factory_event_no_delete BEFORE DELETE ON factory_event BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+  CREATE TRIGGER factory_event_no_replace BEFORE INSERT ON factory_event
+    FOR EACH ROW WHEN EXISTS (
+      SELECT 1 FROM factory_event WHERE seq = NEW.seq OR delivery_id = NEW.delivery_id OR occurrence_key = NEW.occurrence_key
+    )
+  BEGIN SELECT RAISE(ABORT, 'append-only'); END;`;
 
-/** The v9.1 event log (TP-3095 S1); 30 follows the host's 28 and TP-3388's merge_op at 29. */
+/**
+ * The v9.1 event log (TP-3095 S1); 30 follows the host's merge log at 29. REPLACE deletes the clashing row without
+ * firing the delete trigger when recursive_triggers is off, so an insert that clashes on any unique column aborts first.
+ */
 export function eventLogMigration(version = 30): Migration {
   return { version, name: "factory:event_log", up: (db) => db.exec(EVENT_LOG_DDL) };
 }
