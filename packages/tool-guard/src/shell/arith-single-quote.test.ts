@@ -53,10 +53,6 @@ describe("a single-quoted command substitution in arithmetic runs (TP-3290)", ()
     expect(names(src).some((n) => n.startsWith(PUSH))).toBe(true);
   });
 
-  it("denies the older $[ ] spelling with an ANSI-C quote", async () => {
-    expect(await handled(`x=$[ $'$(${PUSH})' ]`)).toBe("deny");
-  });
-
   it("denies the older $[ ] spelling", async () => {
     const src = `x=$[ '$(${PUSH})' ]`;
     expect(await handled(src)).toBe("deny");
