@@ -78,7 +78,7 @@ function absent(p: string, rfs: ReadFs): boolean {
     rfs.realpath(p);
     return false;
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "ENOENT";
+    return error instanceof Error && "code" in error && error.code === "ENOENT";
   }
 }
 
