@@ -7,6 +7,12 @@ const DEFAULT_POLL_MS = 30_000;
 /** How long one wake's asks may only be waited out, from its first ask, before the wake fails and its seat is told. */
 export const WAKE_ASK_MS = 5 * 60_000;
 
+/**
+ * How long a wake waits out the spawn gate alone. A deferral means the machine is busy, which passes, so it waits longer
+ * than an ask that may never land: a 5-minute bound gave up on a resume while memory ran low and left the run with no fixer (TP-3238).
+ */
+export const WAKE_DEFER_MS = 30 * 60_000;
+
 /** Waited out: nothing was asked of the broker, or what was asked is checked on the next roster read. */
 const brokerDown = (error: unknown): boolean => error instanceof BrokerUnavailableError || error instanceof DispatchTimeoutError;
 
@@ -15,6 +21,14 @@ export type Wait = "timeout" | "deferred" | "broker-down";
 
 /** Fixed words, never the error's text, since the reason reaches the seat and a PR comment. */
 const WAIT_WORDS: Record<Wait, string> = { timeout: "agent-chat timed out", deferred: "the spawn gate deferred it", "broker-down": "the broker was unavailable" };
+
+/** The deadlines of one wake's asks; each defaults to its constant. */
+export interface WaitDeadlines {
+  askDeadlineMs?: number;
+  deferDeadlineMs?: number;
+}
+
+export const deadlineFor = (deadlines: WaitDeadlines, wait: Wait): number => (wait === "deferred" ? (deadlines.deferDeadlineMs ?? WAKE_DEFER_MS) : (deadlines.askDeadlineMs ?? WAKE_ASK_MS));
 
 export function waitOf(error: unknown): Wait | undefined {
   if (error instanceof SpawnDeferred) return "deferred";
