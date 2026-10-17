@@ -1,4 +1,5 @@
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
+import { shellReading } from "./named-fd.js";
 import { printedText } from "./printed.js";
 import type { Shell } from "./printed.js";
 import { unwrap } from "./unwrap.js";
@@ -28,12 +29,16 @@ function spliced(word: WordToken, cuts: NonNullable<WordToken["cuts"]>, shell: S
   return value + word.value.slice(last);
 }
 
-/** The text `shell` prints; a whole line runs under one shell, so each shell's outputs make one reading together. */
+/**
+ * The text `shell` prints, with a `{name}` before a redirect read as that shell reads it; a whole line runs under one
+ * shell, so each shell's outputs make one reading together.
+ */
 function subOutput(tokens: Token[], shell: Shell): string | null {
   const body = soleCommand(tokens);
   if (!body) return null;
-  const cmd = unwrap(body.words);
-  return cmd ? commandOutput(cmd.name, cmd.args, body.redirects, shell) : null;
+  const { words, redirects } = shellReading(body.words, body.redirects, shell);
+  const cmd = unwrap(words);
+  return cmd ? commandOutput(cmd.name, cmd.args, redirects, shell) : null;
 }
 
 /**
