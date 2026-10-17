@@ -80,8 +80,10 @@ function isTimeZone(zone: string): boolean {
 }
 
 /** An ntfy topic URL that each written slot is pushed to; the optional token file holds a bearer token, never the token itself. */
+const httpUrl = z.string().refine((value) => URL.canParse(value) && /^https?:$/.test(new URL(value).protocol), "must be an http or https URL");
+
 export const DigestPushConfigSchema = z.strictObject({
-  url: z.string().refine((value) => URL.canParse(value) && /^https?:$/.test(new URL(value).protocol), "must be an http or https URL"),
+  url: httpUrl,
   tokenFile: absolutePath.optional(),
 });
 
@@ -216,16 +218,21 @@ export const FactoryConfigSchema = z.object({
       /**
        * Off when absent. `shadow` builds and lints each finished packet's round and records `shadow`; `on` also imports it with
        * `console`, the titan-console argv prefix (node and its cli.js), as no PATH lookup is made. `roundsDir` is passed as
-       * `TITAN_CONSOLE_ROUNDS_DIR`; absent, the console's own default applies.
+       * `TITAN_CONSOLE_ROUNDS_DIR`; absent, the console's own default applies. In `on`, an imported round is pushed to `push`
+       * (else `digest.push`) with a click link on `origins[url]` (`url` defaults to `lan`; absent `origins`, the import's own LAN URL).
        */
       visualDelivery: z
         .strictObject({
           mode: z.enum(["off", "shadow", "on"]),
           console: z.array(absolutePath).min(1),
           roundsDir: absolutePath.optional(),
+          push: DigestPushConfigSchema.optional(),
+          origins: z.strictObject({ lan: httpUrl, tailnet: httpUrl.optional() }).optional(),
+          url: z.enum(["lan", "tailnet"]).optional(),
           everyMs: z.number().int().positive().optional(),
           readyTimeoutMs: z.number().int().positive().optional(),
         })
+        .refine((d) => d.url !== "tailnet" || d.origins?.tailnet !== undefined, { message: "url tailnet needs origins.tailnet", path: ["origins", "tailnet"] })
         .optional(),
     })
     .refine((s) => (s.visualDelivery?.mode ?? "off") === "off" || s.agentChatBin, { message: "visualDelivery needs an agentChatBin", path: ["agentChatBin"] })
