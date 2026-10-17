@@ -1,6 +1,8 @@
+import { DEFAULT_TABLE, type DelegateResolverClass } from "@titan-design/authority";
 import type { RepoSlug } from "@titan-design/github";
+import type { GateRule } from "@titan-design/hitl";
 import type { OwnerBrief } from "@titan-design/review-panel";
-import type { WorkflowContext } from "@titan-design/workflow";
+import { AUTHORITY_TABLE_NAME, type WorkflowContext } from "@titan-design/workflow";
 import { SEND_BACK, approveMergeDecision, ownerBriefLines, skillChangeNote } from "../gate-brief.js";
 import type { PolicyRule } from "../gate-policy.js";
 import type { FailingCheck } from "./land-ci.js";
@@ -50,12 +52,36 @@ export function approveMergeAsk(rule: PolicyRule, facts: ApproveMergeFacts, { re
   return { prompt: [asked, ...skillLines, ...briefLines].join("\n"), schema, brief };
 }
 
+/** TP-1904's mechanical merges and pr-gone abandons; `deviceGateAuthorize` admits the coordinator only on that evidence. */
+const RULE_DELEGATES: Readonly<Record<string, DelegateResolverClass[]>> = { "MRG-AU": ["coordinator"] };
+
+/** A Version Packages merge is a release, which table.json lets only the owner at the terminal answer (REL-OR denies the remote). */
+const RELEASE_ROW = "REL-CO";
+
+/**
+ * The stored rule that pins who may answer an approve-merge gate to its table.json row's resolvers at open time. Only
+ * the authority table and release gates have a row; factory-local tables open rule-less, under the default class check.
+ */
+export function tableGateRule(rule: PolicyRule): GateRule | undefined {
+  if (rule.table === "authority") return stampedRow(rule.rowId);
+  if (rule.table === "shepherd-release") return stampedRow(RELEASE_ROW);
+  return undefined;
+}
+
+function stampedRow(ruleId: string): GateRule | undefined {
+  const row = DEFAULT_TABLE.rules.find((candidate) => candidate.id === ruleId);
+  if (row?.verdict !== "gate" || row.resolvers === undefined) return undefined;
+  const delegates = RULE_DELEGATES[ruleId];
+  return { table: AUTHORITY_TABLE_NAME, version: DEFAULT_TABLE.version, ruleId, resolvers: [...row.resolvers], ...(delegates && { delegates: [...delegates] }) };
+}
+
 /** The default question: the owner's approve-merge gate, whose payload must name the head shown. */
 export function approveMergeGate(rule: PolicyRule, facts: ApproveMergeFacts = {}): AskApproval {
   return async (ctx, question) => {
     const sendBack = (await facts.sendBackOffered?.(ctx)) ?? false;
     const { prompt, schema, brief } = approveMergeAsk(rule, facts, question, sendBack);
-    const answer = schema.safeParse((await ctx.assisted("approve-merge", prompt, { schema, brief })).data);
+    const stamp = tableGateRule(rule);
+    const answer = schema.safeParse((await ctx.assisted("approve-merge", prompt, { schema, brief, ...(stamp && { rule: stamp }) })).data);
     if (!answer.success) throw new Error(`approve-merge answer does not approve head ${question.headSha}: ${answer.error.message}`);
     const { decision, note } = answer.data as { decision: typeof answer.data.decision; note?: unknown };
     return decision === SEND_BACK ? { sendBack: String(note) } : decision;
