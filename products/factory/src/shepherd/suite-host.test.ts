@@ -64,7 +64,8 @@ describe("suiteRules", () => {
     const { reviewer } = suiteRules(onBasement);
 
     expect(reviewer).toContain("Run no tests, builds, typecheck or lint, and install nothing");
-    expect(reviewer).toContain("`gh api repos/<repo>/commits/<head>/check-runs");
+    expect(reviewer).toContain("`gh pr view <pr> --repo <repo> --json headRefOid,statusCheckRollup`");
+    expect(reviewer).not.toContain("gh api");
     expect(reviewer).toContain("Cite each check-run in your review by name and conclusion.");
     expect(reviewer).toContain("A required check that is missing at this head, still running, or red (failure, cancelled or timed_out) is blocking");
     expect(reviewer).not.toMatch(/basement-suite|vitest|ssh basement/);

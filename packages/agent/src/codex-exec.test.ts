@@ -56,7 +56,7 @@ async function* gatedLines(lines: readonly string[], completed: Promise<unknown>
 
 function events(text = "done") {
   return [
-    JSON.stringify({ type: "thread.started", thread_id: "thread-1" }),
+    JSON.stringify({ type: "thread.started", thread_id: "019c0000-0000-7000-8000-000000000001" }),
     JSON.stringify({ type: "turn.started" }),
     JSON.stringify({ type: "item.completed", item: { id: "item-1", type: "agent_message", text } }),
     JSON.stringify({
@@ -102,7 +102,7 @@ describe("Codex exec command and policy", () => {
       request({
         target: {
           kind: "resume",
-          conversation: { harness: "codex", namespace: "workstation-a", nativeId: "thread-1" },
+          conversation: { harness: "codex", namespace: "workstation-a", nativeId: "019c0000-0000-7000-8000-000000000001" },
         },
       }),
       "/tmp/schema.json",
@@ -111,7 +111,7 @@ describe("Codex exec command and policy", () => {
     expect(fresh).toContain('approval_policy="never"');
     expect(fresh).not.toContain("--ephemeral");
     expect(resume.slice(0, 2)).toEqual(["exec", "resume"]);
-    expect(resume).toContain("thread-1");
+    expect(resume).toContain("019c0000-0000-7000-8000-000000000001");
     expect(resume).toContain("/tmp/schema.json");
     expect(resume).not.toContain("--last");
   });
@@ -189,7 +189,7 @@ describe("Codex exec results", () => {
     expect(result).toMatchObject({
       ok: true,
       execution: { executionId: "execution-1" },
-      conversation: { harness: "codex", namespace: "workstation-a", nativeId: "thread-1" },
+      conversation: { harness: "codex", namespace: "workstation-a", nativeId: "019c0000-0000-7000-8000-000000000001" },
       output: { kind: "text", text: "final answer" },
       transcript: { format: "codex-rollout-jsonl", namespace: "workstation-a" },
     });
@@ -253,7 +253,7 @@ describe("Codex exec results", () => {
     expect(result.usage[0]).toMatchObject({
       kind: "snapshot",
       scope: "turn",
-      scopeId: "turn:codex:workstation-a:thread-1:turn-7",
+      scopeId: "turn:codex:workstation-a:019c0000-0000-7000-8000-000000000001:turn-7",
     });
   });
 
@@ -264,12 +264,12 @@ describe("Codex exec results", () => {
       request({
         target: {
           kind: "resume",
-          conversation: { harness: "codex", namespace: "workstation-a", nativeId: "thread-1" },
+          conversation: { harness: "codex", namespace: "workstation-a", nativeId: "019c0000-0000-7000-8000-000000000001" },
         },
       }),
     );
-    expect(result).toMatchObject({ ok: true, conversation: { nativeId: "thread-1" } });
-    expect(runner.start.mock.calls[0]?.[0].args).toContain("thread-1");
+    expect(result).toMatchObject({ ok: true, conversation: { nativeId: "019c0000-0000-7000-8000-000000000001" } });
+    expect(runner.start.mock.calls[0]?.[0].args).toContain("019c0000-0000-7000-8000-000000000001");
   });
 
   it("writes a native schema, parses JSON, validates locally, and disposes the schema file", async () => {

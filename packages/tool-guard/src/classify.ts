@@ -15,6 +15,7 @@ import type { ExtractOptions, SimpleCommand } from "./shell/commands.js";
 import { ParseError } from "./shell/lexer.js";
 import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, ReadingLimitError, ScriptBudgetError, UnreadableScriptError } from "./shell/unsure-readings.js";
 import type { ScriptOverrun } from "./shell/unsure-readings.js";
+import { refuseFdScripts } from "./fd-scripts.js";
 import { classified } from "./spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "./types.js";
 
@@ -82,6 +83,7 @@ function foldedActions(src: string, cwd: string | null, ctx: ClassifyContext, sc
 }
 
 function classifyLine(commands: SimpleCommand[], ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
+  refuseFdScripts(commands);
   const out: ClassifiedAction[] = [];
   let line = ctx;
   for (const cmd of commands) {
