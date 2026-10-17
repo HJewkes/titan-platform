@@ -1,9 +1,10 @@
 import { INTERPRETERS, SHELLS } from "./mentions.js";
 import type { SimpleCommand } from "./shell/commands.js";
 import type { WordToken } from "./shell/lexer.js";
+import { parseShebang } from "./shebang.js";
 import { resolvePath, resolveValue } from "./shell/path.js";
 import { shellOperands, shellStdin } from "./shell/shell-options.js";
-import { UnknownStdinError } from "./shell/unsure-readings.js";
+import { UnknownStdinError, UnreadableScriptError } from "./shell/unsure-readings.js";
 
 /** A script a command runs by path: shell scripts are classified in full, others get the mention rule. */
 export interface ScriptTarget {
@@ -11,6 +12,22 @@ export interface ScriptTarget {
   kind: "shell" | "interpreter";
   /** A `-c` shell's stdin file, which only a command in the string may run (`bash -c 'cat | bash' < x.sh`), so it is read as far as it reads. */
   relayed?: true;
+  /** Run as `./x.sh`, so the kernel reads its `#!` line and the interpreter's options and operands decide what runs. */
+  byPath?: true;
+}
+
+/** A script run by path whose `#!` line carries options or operands the guard does not follow; the hook denies it unchecked. */
+export class OpaqueShebangError extends UnreadableScriptError {
+  constructor() {
+    super(null);
+    this.message = "a script run by path whose #! line the guard cannot follow";
+    this.name = "OpaqueShebangError";
+  }
+}
+
+/** Refuses a by-path script whose first line is opaque: its interpreter may run something other than the body. */
+export function refuseOpaqueShebang(target: ScriptTarget, text: string): void {
+  if (target.byPath && parseShebang(text).kind === "opaque") throw new OpaqueShebangError();
 }
 
 export const SOURCERS: ReadonlySet<string> = new Set(["source", "."]);
@@ -33,7 +50,7 @@ function scriptTarget(cmd: SimpleCommand, name: string, home: string): ScriptTar
 /** `./x.sh`, `~/bin/x.sh`, `/tmp/x.sh` or a bare `x.sh`, resolved as typed from the command's directory. */
 function typedTarget(cmd: SimpleCommand, typed: string, home: string): ScriptTarget | null {
   const path = resolveValue(cmd.dir, typed, home);
-  return path === null ? null : { path, kind: "shell" };
+  return path === null ? null : { path, kind: "shell", byPath: true };
 }
 
 /**

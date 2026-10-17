@@ -8,7 +8,7 @@ import { secret } from "./families/secret.js";
 import { hasDynamicName, namedReadings, wrappedReading } from "./dynamic-readings.js";
 import { afterWrites, scriptReadings } from "./line-writes.js";
 import { INTERPRETERS } from "./mentions.js";
-import { scriptTargets, SOURCERS } from "./scripts.js";
+import { refuseOpaqueShebang, scriptTargets, SOURCERS } from "./scripts.js";
 import type { ScriptTarget } from "./scripts.js";
 import { extractCommands } from "./shell/commands.js";
 import type { ExtractOptions, SimpleCommand } from "./shell/commands.js";
@@ -155,6 +155,7 @@ function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: Script
 function scriptVerdicts(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext, budget: ScriptMemo): ClassifiedAction[] {
   const added = cmd.added === true;
   return targetReadings(ctx, target).flatMap((text) => {
+    refuseOpaqueShebang(target, text);
     if (added || target.kind === "shell") charge(budget, { script: target.path.slice(target.path.lastIndexOf("/") + 1), bytes: Buffer.byteLength(text), added });
     return scriptText(cmd, target, text, ctx);
   });
@@ -184,7 +185,7 @@ function charge(budget: ScriptMemo, script: Omit<ScriptOverrun, "total">): void 
  */
 function scriptKey(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext): string {
   const program = target.kind === "interpreter" ? cmd.path : null;
-  return JSON.stringify([ctx.foldCase === true, cmd.dir, target.path, program, target.relayed === true]);
+  return JSON.stringify([ctx.foldCase === true, cmd.dir, target.path, program, target.relayed === true, target.byPath === true]);
 }
 
 function memoized(scripts: ScriptMemo, ctx: ClassifyContext, key: string, compute: () => ClassifiedAction[]): ClassifiedAction[] {
