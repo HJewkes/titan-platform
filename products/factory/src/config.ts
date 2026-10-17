@@ -211,6 +211,8 @@ export const FactoryConfigSchema = z.object({
       visualPacket: z.enum(["off", "shadow", "on"]).optional(),
       /** The profile that packager spawns under; absent means `review-packager`. */
       visualPacketProfile: profileName.optional(),
+      /** The `titan-review` binary that packager's brief names; absent means `$HOME/.local/bin/titan-review`. */
+      titanReviewBin: absolutePath.optional(),
     })
     .refine((s) => !s.hardStopRepos || s.charterPath, { message: "hardStopRepos needs a charterPath", path: ["charterPath"] })
     .refine((s) => !s.review || s.agentChatBin, { message: "review needs an agentChatBin", path: ["agentChatBin"] })
