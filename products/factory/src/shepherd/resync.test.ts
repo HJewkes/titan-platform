@@ -1376,6 +1376,7 @@ describe("resyncShepherd on an approve-merge gate whose PR base moved", () => {
     const report = await resyncShepherd(host, { ...services, port });
 
     expect(report.superseded).toEqual([]);
+    expect(report.supersedeError).toBeUndefined();
     expect(host.gates.get(gate)?.status).toBe("pending");
   });
 

@@ -10,6 +10,9 @@ export { fetchDefaultTip, resolveBranchBase, type BranchBase } from "./branch-ba
 export { MissingAssignedWorktreeRecordError, OriginUnreachableError, WorktreeBudgetExhaustedError, WorktreeInUseError } from "./errors.js";
 export {
   DEFAULT_STRIPPED_ENV_PREFIXES,
+  SAFE_GIT_PROTOCOLS,
+  pinGitProtocols,
+  withPinnedGitProtocols,
   findGitRoot,
   gitChildEnv,
   observedPresence,

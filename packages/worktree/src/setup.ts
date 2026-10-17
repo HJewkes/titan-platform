@@ -2,7 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { lstatSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { gitChildEnv } from "./git.js";
+import { gitChildEnv, pinGitProtocols } from "./git.js";
 import { signalGroup } from "./process-group.js";
 
 const execFileAsync = promisify(execFile);
@@ -114,7 +114,12 @@ export function setupEnv(
     out[`npm_config_${key}`] = value;
     out[`NPM_CONFIG_${key.toUpperCase()}`] = value;
   }
-  return { ...out, ...PINNED_COREPACK, ...PINNED_ENV };
+  return {
+    ...out,
+    ...PINNED_COREPACK,
+    ...PINNED_ENV,
+    GIT_ALLOW_PROTOCOL: pinGitProtocols(env.GIT_ALLOW_PROTOCOL),
+  };
 }
 
 const isCommand = (value: unknown): value is string[] =>
@@ -173,7 +178,10 @@ const declarationAt = (gitRoot: string, sha: string): Promise<string | null> =>
   gitOutput(["cat-file", "blob", `${sha}:${SETUP_FILE}`], gitRoot);
 
 /** The tree's entry for `file`: absent, a regular file, or anything else, which is never read. */
-function kindInTree(worktree: string, file: string): "absent" | "regular" | "other" {
+function kindInTree(
+  worktree: string,
+  file: string
+): "absent" | "regular" | "other" {
   try {
     return lstatSync(path.join(worktree, file)).isFile() ? "regular" : "other";
   } catch {
@@ -207,7 +215,9 @@ async function differsFromBase(
 }
 
 /** The first file the env pins cannot outrank whose tree copy differs from base, or null. */
-async function changedBaseOnlyFile(target: SetupTarget): Promise<string | null> {
+async function changedBaseOnlyFile(
+  target: SetupTarget
+): Promise<string | null> {
   const changed = await Promise.all(
     BASE_ONLY_FILES.map((file) => differsFromBase(target, file))
   );
@@ -314,7 +324,8 @@ export async function setupWorktree(
     );
   const step = parseSetupStep(declared);
   if (step === null) return { outcome: "none", warnings: [] };
-  if (typeof step === "string") return skipped(`worktree setup skipped: ${step}`);
+  if (typeof step === "string")
+    return skipped(`worktree setup skipped: ${step}`);
   const changed = await changedBaseOnlyFile(target);
   if (changed !== null)
     return skipped(
@@ -327,7 +338,8 @@ export async function setupWorktree(
       output: String(err),
     })
   );
-  if (result.exitCode === 0 && !result.timedOut) return { outcome: "ran", warnings: [] };
+  if (result.exitCode === 0 && !result.timedOut)
+    return { outcome: "ran", warnings: [] };
   return {
     outcome: "failed",
     warnings: [
