@@ -302,6 +302,21 @@ describe("sh-cleanup after its own merge", () => {
     expect(getPrs(fake)).toBe(0);
   });
 
+  it("records the class and a scrubbed, bounded message when a retarget fails", async () => {
+    const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO });
+    const child = fake.addPr({ headRef: "feat/y", headSha: fakeSha("y"), baseRef: "feat/x" }).number;
+    const port: GitHubPort = { ...githubPort(fake.wire), setPrBase: async () => Promise.reject(new Error(`${LEAKY_MESSAGE} ${"x".repeat(400)}`)) };
+    const w = world({ fake, port, merged: MERGED });
+
+    const result = await w.run();
+
+    const error = result.retargeted?.[0]?.error ?? "";
+    expect(result.retargeted).toMatchObject([{ pr: child, ok: false }]);
+    expect(error).toMatch(/^Error: GET /);
+    expect(error.length).toBeLessThanOrEqual(200);
+    expectNoLeak(error);
+  });
+
   it("retargets no PR when the merged head is the default branch", async () => {
     const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "main", headRepo: REPO });
     const other = fake.addPr({ headRef: "feat/y", headSha: fakeSha("y"), baseRef: "main" }).number;

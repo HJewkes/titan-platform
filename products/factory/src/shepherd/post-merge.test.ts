@@ -527,7 +527,7 @@ describe("shepherd-pr after land", () => {
 
     await w.host.runtime.wait(runId);
 
-    expect(cleanupOf(w, runId).result).toMatchObject({ ref: "children-open", retargeted: [{ pr: child, ok: false, error: "Error" }], caveats: expect.arrayContaining([`head ref of #1 kept: open #${child} still based on it`]) });
+    expect(cleanupOf(w, runId).result).toMatchObject({ ref: "children-open", retargeted: [{ pr: child, ok: false, error: expect.stringMatching(/^Error: validation failed$/) }], caveats: expect.arrayContaining([`head ref of #1 kept: open #${child} still based on it`]) });
     expect(w.fake.refs.has(branch)).toBe(true);
     expect(w.fake.pr(child)).toMatchObject({ state: "open", baseRef: branch });
     expect(w.host.runtime.status(runId)?.status).toBe("completed");
