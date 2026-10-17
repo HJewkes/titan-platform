@@ -30,12 +30,15 @@ an account plus the two usage windows. For example, synthetic policy fixtures us
 `source: "synthetic-independent-observation"` and their own clock, rather than a
 rollout event timestamp. The factory validates the shape and copies the counters.
 
-The factory adds a private, non-enumerable process-local brand binding `written_at`
-to the attested `observedAt`. Plain known literals, JSON round trips, shallow copies
-and attempts to refresh `written_at` by mutation refuse admission. Serialization
-keeps the existing reading shape, but does not preserve admission provenance: a
-reader must reacquire evidence or explicitly attest its source again. The source
-label is a caller assertion, not authenticated backend/account identity, a sandbox
+The factory records object identity in a module-private WeakSet and returns a
+cloned, deeply frozen reading: both quota windows and their containers are immutable,
+while caller-owned input stays mutable. A nominal TypeScript brand is type-only;
+no reflected symbol or copied property can transfer runtime provenance. Plain
+known literals, JSON round trips and shallow copies refuse admission. Mutation
+cannot refresh the original observation time or lower a captured usage counter.
+Serialization keeps the existing reading shape but does not preserve admission
+provenance: a reader must reacquire evidence or explicitly attest its source again.
+The source label is a caller assertion, not authenticated backend/account identity, a sandbox
 boundary or proof that the supplied clock is truthful. A deliberate caller can
 still explicitly attest a bad source; the factory prevents silent construction,
 not dishonest callers. Backend producers must establish their own binding/fetch
