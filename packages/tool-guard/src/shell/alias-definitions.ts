@@ -53,9 +53,9 @@ const STORE_BUILTINS = new Map<string, StoreSpec>([
   ["typeset", DECLARE], ["declare", DECLARE], ["local", DECLARE], ["export", DECLARE], ["readonly", DECLARE],
   ["integer", DECLARE], ["float", DECLARE],
   ["set", { names: "A", values: "o" }],
-  // Only -d takes a separate word in both shells; zsh reads -t/-u/-k values attached and -p/-n as flags, so a word
-  // bash would take as their value is a name to zsh.
-  ["read", { names: "Aa", values: "d", operands: "all" }],
+  // -d and -u take a separate word in both shells (`read -u "$fd" l`); zsh reads -t/-k values attached and -p/-n as
+  // flags, so a word bash would take as their value is a name to zsh.
+  ["read", { names: "Aa", values: "du", operands: "all" }],
   ["getln", { operands: "all" }],
   ["sysread", { names: "c", values: "iost", operands: "all" }],
   ["vared", { values: "prMmif", operands: "last" }],
