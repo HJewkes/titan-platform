@@ -185,10 +185,7 @@ function walk(tokens: Token[], w: Walk): void {
   for (const token of noteSureCommands(normalizeDeclarations(tokens))) {
     if (token.type === "op") {
       noteValues(token, words, w);
-      const cmd = emit(words, redirects, w, token.value);
-      const empty = words.length + redirects.length === 0;
-      w.shellStdin = nextShellStdin(token.value, cmd, empty, w.shellStdin);
-      w.stdin = groupStdin(w, token.value, words, redirects, cmd, nextStdin(token.value, cmd, empty, w.stdin));
+      handOn(w, token.value, words, redirects, emit(words, redirects, w, token.value));
       words = [];
       redirects = [];
       w.prev = token.value;
@@ -255,13 +252,46 @@ function scope(op: string, w: Walk): void {
   if (op === ")") w.scope = w.stack.pop() ?? w.scope;
 }
 
-/** Both readings of a `{name}` redirect are walked in full, the word's on a copy of the scope; either can refuse the line. */
-function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Unwrapped | null {
+/**
+ * Both readings of a `{name}` redirect are walked in full, the word's on a copy of the scope; either can refuse the line.
+ * The fd's reading comes first, then the word's; a directory or variable they leave different is unknown after it.
+ */
+function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Emitted {
   const readings = namedFdReadings(rawWords, rawRedirects);
-  if (!readings) return emitReading(rawWords, rawRedirects, w, next);
+  if (!readings) return [emitReading(rawWords, rawRedirects, w, next)];
   const [kept, asFd] = readings;
-  besideReading(w, (copy) => emitReading(kept.words, kept.redirects, copy, next));
-  return emitReading(asFd.words, asFd.redirects, w, next);
+  const copy = besideWalk(w);
+  const word = emitReading(kept.words, kept.redirects, copy, next);
+  const cmd = emitReading(asFd.words, asFd.redirects, w, next);
+  unknownWhereDiffer(w.scope, copy.scope);
+  return [cmd, word];
+}
+
+/** A command's readings: one, or the fd's and the word's of a `{name}` redirect. */
+type Emitted = [Unwrapped | null] | [Unwrapped | null, Unwrapped | null];
+
+function unknownWhereDiffer(scope: Scope, beside: Scope): void {
+  if (beside.dir !== scope.dir) scope.dir = null;
+  for (const key of new Set([...scope.vars.keys(), ...beside.vars.keys()])) {
+    if (scope.vars.has(key) !== beside.vars.has(key) || scope.vars.get(key) !== beside.vars.get(key)) scope.vars.set(key, null);
+  }
+}
+
+/**
+ * Hands the next command the text this one pipes on. Both readings' printed texts feed a shell, as either may print it;
+ * a group keeps the word's, as main read it.
+ */
+function handOn(w: Walk, op: string, words: WordToken[], redirects: RedirectToken[], [cmd, word]: Emitted): void {
+  const empty = words.length + redirects.length === 0;
+  if (word === undefined) {
+    w.shellStdin = nextShellStdin(op, cmd, empty, w.shellStdin);
+    w.stdin = groupStdin(w, op, words, redirects, cmd, nextStdin(op, cmd, empty, w.stdin));
+    return;
+  }
+  const printed = [cmd, word].flatMap((reading) => [nextStdin(op, reading, empty, w.stdin), ...nextShellStdin(op, reading, empty, w.shellStdin)]);
+  const texts = [...new Set(printed.filter((text) => text !== null))];
+  w.shellStdin = texts.slice(1);
+  w.stdin = groupStdin(w, op, words, redirects, word, texts[0] ?? null);
 }
 
 function emitReading(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Unwrapped | null {
@@ -315,7 +345,7 @@ function runAdded(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: str
 function addedReading(w: Walk, read: (copy: Walk) => void): void {
   const start = w.out.length;
   try {
-    besideReading(w, read);
+    read(besideWalk(w));
   } catch (error) {
     // Main's runs of the same command still decide; this reading is dropped, unless the line is past checking.
     if (error instanceof ReadingLimitError) throw error;
@@ -324,9 +354,9 @@ function addedReading(w: Walk, read: (copy: Walk) => void): void {
   }
 }
 
-/** Walks a reading on a copy of the scope, so a `cd` or an assignment in it moves nothing; its commands decide as main's do. */
-function besideReading(w: Walk, read: (copy: Walk) => void): void {
-  read(observed({ ...w, scope: { ...w.scope, vars: new Map(w.scope.vars) } }));
+/** A walk on a copy of the scope, so a `cd` or an assignment in a reading on it moves nothing; its commands decide as main's do. */
+function besideWalk(w: Walk): Walk {
+  return observed({ ...w, scope: { ...w.scope, vars: new Map(w.scope.vars) } });
 }
 
 function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {

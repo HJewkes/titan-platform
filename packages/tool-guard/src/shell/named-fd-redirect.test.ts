@@ -16,7 +16,8 @@ const PUSH = "git push origin HEAD:main";
 const context: ClassifyContext = {
   home: "/home/you",
   readLink: () => null,
-  readHead: (dir) => (dir === REPO ? "main" : null),
+  // `{x}` links to the repo in the premises, so a `cd` into it pushes main.
+  readHead: (dir) => (dir === REPO || dir === `${REPO}/{x}` ? "main" : null),
   // `{fd}` is harmless, so a line using it is refused for the redirect; `{run}` holds the push dash's reading runs.
   readScript: (file) => ([`${REPO}/x.sh`, `${REPO}/{run}`].includes(file) ? `${PUSH}\n` : [`${REPO}/ok.sh`, `${REPO}/{fd}`].includes(file) ? "echo hi\n" : null),
 };
@@ -104,8 +105,17 @@ const DENIED = [
   `sh -c 'env -C {x}</dev/null ${PUSH}'`,
 ];
 
+/** The word's reading prints the push, or moves into the repo, that the fd's reading would hand on without. */
+const HANDED_ON = [
+  `echo env -C {x} </dev/null ${PUSH} | sh`,
+  `printf '%s ' env -C {x} </dev/null ${PUSH} | sh`,
+  `printf '%.0s%s\\n' {x} </dev/null '${PUSH}' | bash`,
+  `{ echo env -C {x} </dev/null ${PUSH}; } | sh`,
+  "cd {x} </dev/null; git push",
+];
+
 describe("a shell runs a descriptor a {name} redirect may have opened (TP-3279)", () => {
-  it.each(DENIED)("denies %s", async (line) => {
+  it.each([...DENIED, ...HANDED_ON])("denies %s", async (line) => {
     expect(await verdict(line)).toBe("deny");
   });
 
@@ -117,6 +127,12 @@ describe("a shell runs a descriptor a {name} redirect may have opened (TP-3279)"
     "cat /dev/fd/10 {fd}< ./x.sh",
     "echo {a,b}<./ok.sh",
     "{ bash; } < ./ok.sh",
+    "echo {x} </dev/null | cat",
+    "printf '%s\\n' {a} </dev/null | grep a",
+    "echo hi | sh",
+    "exec {fd}</dev/null",
+    "cat {fd}< ./notes.txt",
+    "cd {x} </dev/null; ls",
   ])("allows %s, which runs no shell on that descriptor", async (line) => {
     expect(await verdict(line)).toBe("pass");
   });
@@ -158,6 +174,7 @@ const PREMISES: Array<[string, string]> = [
   [`exec {fd}< /dev/null ${PUSH}`, "zsh -f"],
   ...DENIED.slice(15, 18).map((line): [string, string] => [line, "bash"]),
   [`env -C {x}</dev/null ${PUSH}`, "dash"],
+  ...HANDED_ON.flatMap((line): Array<[string, string]> => [[line, "bash"], [line, "dash"]]),
 ];
 
 describe.skipIf(!["bash", "zsh", "dash"].every(has))("bash, zsh and dash run what the denied lines hold (TP-3279)", () => {
