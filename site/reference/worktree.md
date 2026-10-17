@@ -93,3 +93,17 @@ The dispatcher retains its separate agent/shim/process environment wiring.
 Extracted from agent-chat's `isolation/worktree.ts`, `worktree-setup.ts`, `git.ts` and the git
 halves of `park.ts` and `sweep.ts`. The strategy interface, the park blockers that read the
 roster, and runtime-state bookkeeping stay with the dispatcher.
+
+## Optional DEFAULT proof when parking
+
+The two-argument `parkWorktree(target, recheck)` behavior is unchanged. A caller may opt in
+with a third argument `{ allowDefaultBranchAncestor: true, fetchTimeoutMs: 1000 }`.
+When the branch has no origin tracking ref, this path requires a successful fresh fetch
+of origin's default branch and proves that the actual current HEAD is its ancestor.
+A failed fetch or a nonpositive or nonfinite budget retains the tree and branch with
+the existing missing-branch refusal. It never uses local HEAD as a fallback proof.
+
+This opt-in path checks files, branch and HEAD again after the fetch and after the
+synchronous lifecycle recheck, then uses nonforced removal. It retains the local branch.
+These checks do not make removal atomic against external writers. Provider or lifecycle
+policy remains with the caller.

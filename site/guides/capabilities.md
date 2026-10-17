@@ -748,7 +748,7 @@ Key exports:
 - `errors`: `OriginUnreachableError`, `WorktreeBudgetExhaustedError`, `WorktreeInUseError`
 - `git`: `pinGitProtocols`, `withPinnedGitProtocols`, `findGitRoot`, `gitChildEnv`, `observedPresence`, `runGit`
 - `layout`: `pruneStaleWorktrees`
-- +48 more in the [reference page](/reference/worktree)
+- +49 more in the [reference page](/reference/worktree)
 
 ## Tier 2 — domain
 

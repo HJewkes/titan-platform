@@ -29,7 +29,7 @@ export {
   RECLAIM_GRACE_MS,
   type WorktreeOptions,
 } from "./options.js";
-export { parkWorktree } from "./park.js";
+export { parkWorktree, type ParkOptions } from "./park.js";
 export { reattachWorktree, recreateWorktree, type WorktreeAllocation, type WorktreeRecord } from "./reattach.js";
 export { describeRefusal, inspectForRelease, type ReleaseCheck, type WorktreeReleaseSafety } from "./release-safety.js";
 export {
