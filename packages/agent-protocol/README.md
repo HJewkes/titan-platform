@@ -1,7 +1,7 @@
 # @titan-design/agent-protocol
 
 Dependency-free identity and usage contracts shared by agent execution and session
-readers (TP-44). The `./trace` and `./worker-facts` subpaths add zod schemas and need `zod` as an optional peer. This package neither launches a harness nor reads its logs.
+readers (TP-44). The `./trace`, `./worker-facts` and `./wire` subpaths add zod schemas and need `zod` as an optional peer. This package neither launches a harness nor reads its logs.
 
 `ConversationIdentity` names a native thread by harness, corpus namespace and native
 ID. `conversationRef()` escapes each component into a `conversation:` reference;
@@ -137,3 +137,21 @@ the last Status or Verdict (`report`: message id, kind, text of at most 2,000 ch
 PR (`{ repo: "owner/name", number }`), `tokens` and `costUsd`. A no-report exit is valid and
 carries the exit facts only. The producer truncates the report; the schema rejects one over the
 cap. It is a subpath, like `./trace`, so the root entry stays free of zod.
+
+## Legacy agent-chat dispatch wire
+
+`@titan-design/agent-protocol/wire` carries the existing agent-chat dispatch contract (TP-643, D6), extracted from source revision `45de964842cb55cb1d1f7fc97802e7e3963def1d`. It requires the optional `zod` 4 peer. The dependency-free root does not import this subpath. These compatibility DTOs keep their legacy Claude/account vocabulary; harness-neutral execution contracts remain separate.
+
+| Projection | Public schemas |
+|---|---|
+| Socket requests | `SpawnRequestSchema`, `ResumeRequestSchema`, `RetireRequestSchema`, `AgentListRequestSchema`, `SurfaceRequestSchema` |
+| Socket results | `SpawnResultSchema` (also resume/retire), `AgentListResultSchema`, `SurfaceResultSchema` |
+| MCP arguments | `AgentSpawnArgsSchema`, `AgentResumeArgsSchema`, `AgentListArgsSchema`, `AgentSurfaceArgsSchema`, `AgentProfilesArgsSchema` |
+| Legacy profile/placement | `AgentProfileSchema`, `RemoteProfileSchema`, `RemoteLaunchSchema` |
+| Durable identity/event DTOs | `AgentIdentitySchema`, `AgentEventRowSchema`, `LoggedEventRowSchema` |
+
+The socket spellings remain `resumeSession` and `includeRetired`; MCP uses `resume_session` and `include_retired`. `agent_profiles` reads local profiles and returns formatted text; there is no profiles socket frame. `AgentToolTextResultSchema` describes the commands’ existing text result. The CLI retire request is distinct from MCP surface/resume inputs.
+
+Socket and stored DTO parsers validate known fields and preserve unknown fields at every object boundary for compatible additive evolution. MCP argument schemas retain the original validation and unknown-field stripping. No parser chooses an account, grants permission, binds a caller, proves provenance, validates a filesystem path, or launches a process. Broker/host checks remain required after structural parsing. In particular, parsing `RemoteProfile` does not remove unknown environment-bearing fields: the existing host must still construct and validate a safe launch plan. Durable identity surface/isolation strings remain open for older event rows. The broker’s durable `AgentIdentity` is different from chat-protocol’s folded console `AgentRosterEntry`; this port does not duplicate that fold.
+
+Captured spawn, retire and surface fixtures retain their original request field names and were scanned with required private terms before copying. Additional result fixtures are synthetic. This package change does not release the package or complete the product consume-and-delete cutover; TP-643 stays open through published consumption.
