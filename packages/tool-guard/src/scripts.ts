@@ -6,6 +6,7 @@ import { mayBeWritten } from "./line-writes.js";
 import { isNativeProgram, parseShebang } from "./shebang.js";
 import type { ClassifyContext } from "./types.js";
 import { resolvePath, resolveValue } from "./shell/path.js";
+import { hasProcsubOperand, procsubTargets } from "./shell/procsub-operand.js";
 import { shellOperands, shellStdin } from "./shell/shell-options.js";
 import { UnknownStdinError, UnreadableScriptError } from "./shell/unsure-readings.js";
 
@@ -69,6 +70,7 @@ const INLINE_FLAG_RE = /^-[A-Za-z]*[ceEpm]$|^--(eval|print)(=|$)/;
 /** The scripts a command runs by path; a shell runs every file on the descriptor it reads, as zsh's MULTIOS joins them. */
 export function scriptTargets(cmd: SimpleCommand, home: string): ScriptTarget[] {
   const name = cmd.name;
+  if (hasProcsubOperand(cmd)) return procsubTargets(cmd, home);
   if (name !== null && SHELLS.has(name)) return shellTargets(cmd, home);
   const one = name === null ? null : scriptTarget(cmd, name, home);
   return one === null ? [] : [one];
