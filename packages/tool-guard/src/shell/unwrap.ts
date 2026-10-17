@@ -84,6 +84,7 @@ const ENV_WALK: EnvWalkSyntax = {
   takesValue: (word) => takesNextWord(word, ENV),
   spell: (word) => spellOption("env", word),
   keyword: (word) => KEYWORDS.has(word.value) && !word.quoted,
+  runsEnv: (word) => commandName(word.value) === "env",
 };
 
 /** Package managers that run a command only through a subcommand: `pnpm exec x`, `yarn dlx x`, `npm exec x`. */
@@ -173,7 +174,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
     } else if (!w.dynamic && commandName(w.value) === "env") {
       const walked = walkEnv(words, i + 1, assigned, ENV_WALK);
       if (walked === null) throw new EnvSplitError();
-      if (walked.ambiguousAt !== undefined) return { ...command(walked.words, i, assigned), script: ambiguousReadings(walked.words, i, walked.ambiguousAt) };
+      if (walked.ambiguousAt !== undefined) return { ...command(walked.words, walked.envAt, assigned), script: ambiguousReadings(walked.words, walked.envAt, walked.ambiguousAt) };
       ({ words, end: i } = walked);
       argv0.push(...walked.argv0);
       negated ||= walked.negated;
