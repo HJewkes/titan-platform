@@ -73,11 +73,13 @@ function transferWrites(cmd: SimpleCommand, presence: (path: string) => Presence
   if (cmd.name === "install" && (parsed.flags.has("d") || parsed.flags.has("directory"))) return [];
   const { operands, targetDir } = parsed;
   if (targetDir === null && operands.length < 2) return cmd.name === "ln" && operands.length === 1 ? lnHere(cmd, operands[0]) : [];
-  const last = operands[operands.length - 1] as WordToken;
+  const last = operands.at(-1);
+  const destWord = targetDir ?? last;
+  if (destWord === undefined) return [];
   const sources = targetDir === null ? operands.slice(0, -1) : operands;
-  const dest = at(targetDir ?? last);
+  const dest = at(destWord);
   if (dest === null) return [ANYWHERE];
-  const asDir = targetDir !== null || sources.length > 1 || last.value.endsWith("/");
+  const asDir = targetDir !== null || sources.length > 1 || destWord.value.endsWith("/");
   const noDir = parsed.flags.has("T") || parsed.flags.has("no-target-directory");
   const slots = {
     asFile: !asDir,
@@ -115,7 +117,8 @@ function parseArgs(args: WordToken[], valueShort: string, valueLong: ReadonlySet
   const parsed: Parsed = { operands: [], targetDir: null, flags: new Set() };
   let ended = false;
   for (let i = 0; i < args.length; i++) {
-    const word = args[i] as WordToken;
+    const word = args[i];
+    if (word === undefined) break;
     if (word.dynamic && (word.unquotedExpansion || word.value.startsWith("-"))) return null;
     if (ended || word.dynamic || !word.value.startsWith("-") || word.value === "-") parsed.operands.push(word);
     else if (word.value === "--") ended = true;
@@ -141,8 +144,7 @@ function longOption(word: WordToken, next: WordToken | undefined, parsed: Parsed
 
 function shortCluster(word: WordToken, next: WordToken | undefined, parsed: Parsed, valueShort: string): number | null {
   const letters = word.value.slice(1);
-  for (let k = 0; k < letters.length; k++) {
-    const letter = letters[k] as string;
+  for (const [k, letter] of [...letters].entries()) {
     if (!valueShort.includes(letter)) {
       parsed.flags.add(letter);
       continue;
