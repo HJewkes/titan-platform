@@ -10,7 +10,7 @@ import { foldCommandWords } from "./case-literal.js";
 import { aliasCommands, type AliasTable } from "./alias-words.js";
 import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
-import { CommandRebindingError, rebindsCommand } from "./command-rebinding.js";
+import { CommandRebindingError, rebindsCommand, storesRebindingByMath } from "./command-rebinding.js";
 import { cutReading } from "./piped-nul.js";
 import { inlineScript, SHELLS } from "./inline-script.js";
 import type { Inline } from "./inline-script.js";
@@ -269,6 +269,7 @@ function emitReading(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Wa
   const runs = caseNamed(words);
   const cut = cutReading(words);
   const aliased = aliasCommands(words, w.aliases);
+  if (storesRebindingByMath(words, redirects, w.scope.vars)) throw new CommandRebindingError();
   w.walked = new Set();
   for (const cmd of [...runs, ...(cut ? caseNamed(cut) : []), ...aliased.runs]) run(cmd, redirects, w, next);
   for (const { tokens, aliases } of aliased.scripts) walk(tokens, Object.assign(child(w, [...w.scope.wrapping, "eval"]), { aliases }));
@@ -287,7 +288,7 @@ function decider(guarded: ReadonlySet<string> | undefined): (cmd: Unwrapped) => 
 }
 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
-  if (rebindsCommand(raw)) throw new CommandRebindingError();
+  if (rebindsCommand(raw, w.scope.vars)) throw new CommandRebindingError();
   if (raw.name === null && raw.args.length === 0 && !raw.xargs?.words.length) {
     for (const assignment of raw.assigned) assign(w.scope.vars, assignment);
     if (redirects.length === 0) return;

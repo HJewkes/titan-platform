@@ -2,6 +2,7 @@ import type { OpToken, Token, WordToken } from "./lexer.js";
 import { caseChecked, clearCased, isCased, isCaseUnsure, isCaseUnsureLookup, markCase, markCased, markWord } from "./case-attrs.js";
 import type { CaseUnsure } from "./case-attrs.js";
 import { printedText } from "./printed.js";
+import { numericKey, numericValue } from "./numeric-names.js";
 import { commandWrites, compoundWrites, IDENTIFIER_RE, noteCompounds, TARGET_RE } from "./writers.js";
 
 /**
@@ -18,7 +19,7 @@ export type Vars = Map<string, string | null>;
  * A `hidden` write is the walk's own save or restore of a function local, which no readonly check stops.
  * `cased` marks a value copied from one a case attribute may have changed.
  */
-export type Assignment = [name: string, value: string | null, kind?: "append" | "element" | "hidden", cased?: true];
+export type Assignment = [name: string, value: string | null, kind?: "append" | "element" | "hidden", cased?: true, numeric?: true];
 
 /** The subscript ends at the last `]` before `=`, so a nested subscript never hides that the word assigns. */
 export const ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[.*\])?\+?=/s;
@@ -190,7 +191,9 @@ function runsDeclarer(words: WordToken[]): boolean {
 /** `NAME=value` or `NAME+=value` split into its name and value, the value null when it is only known at run time. */
 export function parseAssignment(w: WordToken): Assignment | null {
   const parsed = splitAssignment(w);
-  return parsed && isCaseUnsure(w) ? [parsed[0], parsed[1], parsed[2], true] : parsed;
+  if (parsed === null) return null;
+  const numeric = parsed[1] === null && parsed[2] === undefined && numericValue(w);
+  return isCaseUnsure(w) || numeric ? [parsed[0], parsed[1], parsed[2], isCaseUnsure(w) || undefined, numeric || undefined] : parsed;
 }
 
 function splitAssignment(w: WordToken): Assignment | null {
@@ -207,7 +210,7 @@ function splitAssignment(w: WordToken): Assignment | null {
 }
 
 /** Records an assignment; an append is literal only when both the earlier value and the appended part are. */
-export function assign(vars: Vars, [name, value, kind, cased]: Assignment): void {
+export function assign(vars: Vars, [name, value, kind, cased, numeric]: Assignment): void {
   const priorCased = isCased(vars, name);
   if (kind === "hidden") restore(vars, name, value);
   else if (kind !== "append") write(vars, name, value, kind !== "element");
@@ -216,6 +219,7 @@ export function assign(vars: Vars, [name, value, kind, cased]: Assignment): void
     write(vars, name, prior !== null && value !== null ? prior + value : null);
   }
   markCased(vars, name, cased || (kind === "append" && priorCased));
+  if (numeric && value === null && vars.get(name) === null) vars.set(numericKey(name), "");
 }
 
 /** Hears each value a scope's variables take, null when the walk cannot know it. */
@@ -234,6 +238,15 @@ export function childVars(vars: Vars): Vars {
   return copy;
 }
 
+/**
+ * Drops the marks that describe NAME's current value (numeric, cased). Every primitive that changes a value calls it,
+ * so a mark never outlives the value it was set for; attribute keys (`readonly@`, `case@`) belong to the name and stay.
+ */
+function dropValueMarks(vars: Vars, name: string): void {
+  clearCased(vars, name);
+  vars.delete(numericKey(name));
+}
+
 const readonlyKey = (name: string) => `readonly@${name}`;
 
 /**
@@ -244,14 +257,14 @@ const readonlyKey = (name: string) => `readonly@${name}`;
 function write(vars: Vars, name: string, value: string | null, heard = true): void {
   const flag = vars.get(readonlyKey(name));
   if (flag === "") return;
-  clearCased(vars, name);
+  dropValueMarks(vars, name);
   vars.set(name, flag === null || vars.has(ANY_READONLY) ? null : value);
   if (heard) observers.get(vars)?.(value);
 }
 
 /** A function's return restores a local's outer value, which may or may not have been readonly. */
 function restore(vars: Vars, name: string, value: string | null): void {
-  clearCased(vars, name);
+  dropValueMarks(vars, name);
   vars.set(name, value);
   if (vars.has(readonlyKey(name))) vars.set(readonlyKey(name), null);
 }
@@ -265,18 +278,21 @@ export function trackVars({ name, args, assigned }: TrackedCommand, vars: Vars):
   for (const [target, , kind] of assigned) if (kind === "element") write(vars, target, null, false);
   if (DECLARERS.has(name)) return trackDeclaration(name, args, vars);
   if (name === "printf") printfVar(args, vars);
-  writeEach(vars, commandWrites(name, args, vars), name !== "let" && name !== "unset");
+  writeEach(vars, commandWrites(name, args, vars), name !== "let" && name !== "unset", (target) => name === "let" || (name === "getopts" && target === "OPTIND"));
 }
 
 /** `(( ))` writes in the current shell, though the walk reads its parentheses as a subshell. */
 export function trackCompound(op: Token, vars: Vars): void {
-  writeEach(vars, compoundWrites(op, (w) => expandWord(w, (name) => lookup(vars, null, name)), vars), false);
+  writeEach(vars, compoundWrites(op, (w) => expandWord(w, (name) => lookup(vars, null, name)), vars), false, () => true);
 }
 
 /** A null list means the command may write any variable. */
-function writeEach(vars: Vars, writes: Assignment[] | null, heard: boolean): void {
+function writeEach(vars: Vars, writes: Assignment[] | null, heard: boolean, numeric: (target: string) => boolean = () => false): void {
   if (!writes) return forgetAll(vars, heard);
-  for (const [target, value] of writes) write(vars, target, value, heard);
+  for (const [target, value] of writes) {
+    write(vars, target, value, heard);
+    if (value === null && vars.get(target) === null && numeric(target)) vars.set(numericKey(target), "");
+  }
 }
 
 /**
@@ -311,6 +327,7 @@ function unreadableDeclareWord(name: string, arg: WordToken): boolean {
  * never assigned, so they are nulled too: an untracked IFS would otherwise read as the default and split.
  */
 function forgetAll(vars: Vars, heard = true): void {
+  for (const key of [...vars.keys()]) if (key.startsWith(numericKey(""))) vars.delete(key);
   for (const key of vars.keys()) vars.set(key, null);
   vars.set("HOME", null);
   vars.set("IFS", null);

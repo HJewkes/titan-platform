@@ -108,7 +108,21 @@ describe("a subscript bash may join but the guard splits", () => {
   });
 
   it.each([
+    ["arithmetic then a plain subscript", "((i++)); a[1]=x; echo ok"],
+    ["an element-indexed subscript and a comment", "((1)); a[${#b[0]}]=x # c"],
+  ])("passes %s", async (_scenario, command) => {
+    expect(await decisionOf(command)).toBeNull();
+  });
+
+  it.each([
     ["arithmetic then a plain subscript", "((i++)); a[$i]=x; echo ok"],
+    ["an element-indexed subscript and a comment", "((1)); a[${b[0]}]=x # c"],
+    ["arithmetic nested in an element-indexed subscript", "((1)); a[${b[$(( i+1 ))]}]=x # c"],
+  ])("refuses %s, since a run-time subscript is math", async (_scenario, command) => {
+    expect(await decisionOf(command)).toBe("deny");
+  });
+
+  it.each([
     ["a test then a subscript", "[[ -n $x ]] && a[0]=y"],
     ["a real comment after a command", "((1)); echo hi # git push origin HEAD:main"],
     ["a test command then a comment", '[ -n "$x" ] # c'],
@@ -128,7 +142,6 @@ describe("a subscript bash may join but the guard splits", () => {
     ["a case clause appending", "case $x in a) arr[${#arr[@]}]=x ;; esac # c"],
     ["a heredoc then an append", "cat <<EOF\nhi\nEOF\narr[${#arr[@]}]=x # c"],
     ["an append then a heredoc on a later line", "((1)); a[${#a[@]}]=x\ncat <<EOF\nbody\nEOF"],
-    ["an element-indexed subscript and a comment", "((1)); a[${b[0]}]=x # c"],
     ["an appending += and a comment", "((1)); a[${#a[@]}]+=x # c"],
     ["a backquoted subscript and a comment", "((1)); a[`echo 1`]=x # c"],
     ["arithmetic then a substituted subscript and a comment", "((i++)); a[$(f)]=x # git push origin HEAD:main"],
@@ -140,7 +153,6 @@ describe("a subscript bash may join but the guard splits", () => {
     ["a test then an arithmetic subscript", "[[ 1 ]]; m[$(( i + 1 ))]=$x # c"],
     ["a test on a substitution holding a bracket glob", "[ -z $(grep -c [0-9] f) ] # c"],
     ["a double-bracket test on a substitution holding a glob", "[[ $(ls [a-z]*) ]] # c"],
-    ["arithmetic nested in an element-indexed subscript", "((1)); a[${b[$(( i+1 ))]}]=x # c"],
   ])("passes %s", async (_scenario, command) => {
     expect(await decisionOf(command)).toBeNull();
   });
