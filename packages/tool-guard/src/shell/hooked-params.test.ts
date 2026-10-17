@@ -7,6 +7,10 @@ import { ParseError } from "./parse-error.js";
 import { expectLinearTime } from "./test-linearity.js";
 import { unwrap } from "./unwrap.js";
 
+// Each check times best-of-15 runs at 20k words, about 0.7 s alone; four loaded CI workers stretch that past the 5 s
+// default (TP-3487). The ratio assertion, not the clock, is what fails on a quadratic walk.
+const LINEARITY_TIMEOUT_MS = 30_000;
+
 const hooked = (line: string) => {
   const tokens = tokenize(line);
   const words = tokens.filter((t): t is WordToken => t.type === "word");
@@ -217,7 +221,7 @@ describe("an option word the walk reads both ways", () => {
 
     expect(prepare(20_000)()).toBe("module_path");
     expectLinearTime((n) => { const run = prepare(n); return () => void run(); }, 20_000);
-  });
+  }, LINEARITY_TIMEOUT_MS);
 
   it.each([
     ["read, whose -p ends options in zsh", "read", "-p a "],
@@ -231,7 +235,7 @@ describe("an option word the walk reads both ways", () => {
 
     expect(prepare(20_000)()).toBe("module_path");
     expectLinearTime((n) => { const run = prepare(n); return () => void run(); }, 20_000);
-  });
+  }, LINEARITY_TIMEOUT_MS);
 
   it("fails closed on an option word too long to walk", () => {
     expect(hooked(`stat -${"t".repeat(300)} f`)).toBe(`-${"t".repeat(300)}`);
