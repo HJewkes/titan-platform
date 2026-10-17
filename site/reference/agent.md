@@ -177,6 +177,10 @@ refuse missing/unverified MCP, tool-policy or rollout evidence; the default help
 probe cannot establish those semantics. This is runtime admission, not permission
 enforcement. `runAgent` retains its existing Claude behavior.
 
+Resumes inspect their own flags and the sandbox values listed by `exec --help`:
+the adapter sets sandbox_mode through `--config` on either subcommand. Both help
+probes share the setup deadline; requirements follow the built arguments.
+
 See the [contract decision](/guides/multi-harness-contracts) for the staged migration.
 
 ## Durable dispatch

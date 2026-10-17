@@ -203,10 +203,9 @@ async function runSupervised<T>(
         signal: request.signal, timeoutMs: remaining(), resume: request.target.kind === "resume",
       }), request.signal, remaining(),
     );
-    const required: CodexRuntimeCapability[] = ["json_events", "config_overrides", "user_config_isolation", "strict_config", "model_selection",
+    const args = buildCodexExecArgs(request, request.native?.outputSchema ? "preflight-schema" : undefined);
+    const required: CodexRuntimeCapability[] = [...capabilitiesForArgs(args),
       ...(config.requiredRuntimeCapabilities ?? [])];
-    if (request.target.kind === "fresh") required.push("working_directory");
-    if (request.native?.outputSchema) required.push("output_schema");
     const capabilityFailure = checkCodexCapabilities(inspection, request.native?.sandbox ?? "read-only", required);
     if (capabilityFailure) return failed(capabilityFailure);
 
@@ -254,6 +253,16 @@ async function runSupervised<T>(
   } finally {
     await schemaFile?.dispose();
   }
+}
+
+function capabilitiesForArgs(args: readonly string[]): CodexRuntimeCapability[] {
+  const flags: readonly (readonly [string, CodexRuntimeCapability])[] = [
+    ["--json", "json_events"], ["--config", "config_overrides"],
+    ["--ignore-user-config", "user_config_isolation"], ["--strict-config", "strict_config"],
+    ["--model", "model_selection"], ["--cd", "working_directory"], ["--output-schema", "output_schema"],
+  ];
+  const options = args.slice(0, args.indexOf("--"));
+  return flags.filter(([flag]) => options.includes(flag)).map(([, capability]) => capability);
 }
 
 export function buildCodexExecArgs<T>(request: CodexRunRequest<T>, schemaPath?: string): string[] {

@@ -215,8 +215,11 @@ noninteractive `never` approval policy, and leaves persistence enabled so
 `@titan-design/session-read` can discover the rollout by thread ID and namespace.
 
 The adapter requires Codex **>=0.162.1**, including newer versions without an allow-list.
-Before every launch it checks `--version` and probes `exec --help` (or `exec resume
---help`) for the exact command inputs and requested sandbox. Missing or unrecognized
+Before every launch it checks `--version` and probes `exec --help`. Resumes also
+probe `exec resume --help`: required flags come from the invoked subcommand,
+while sandbox values come from `exec --help`, because both commands set
+`sandbox_mode` through `--config`. Required capabilities follow the arguments
+the adapter builds. Both help probes share the setup deadline. Missing or unrecognized
 capabilities fail before starting a model; help is surface evidence, not sandbox or
 policy enforcement proof. `MIN_CODEX_EXEC_VERSION` names the floor; deprecated
 `SUPPORTED_CODEX_EXEC_VERSION` remains an alias for compatibility, not an exact pin.

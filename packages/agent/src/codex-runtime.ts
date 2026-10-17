@@ -63,8 +63,19 @@ export async function inspectCodexCapabilities(
   env: Record<string, string>,
   options: CodexCapabilityInspectionOptions,
 ): Promise<CodexRuntimeInspection> {
-  const args = options.resume ? ["exec", "resume", "--help"] : ["exec", "--help"];
-  const help = await new Promise<string>((resolve, reject) => {
+  const deadline = performance.now() + options.timeoutMs;
+  const execHelp = await inspectHelp(executablePath, env, options, ["exec", "--help"]);
+  if (!options.resume) return codexCapabilitiesFromHelp(execHelp);
+  const remaining = deadline - performance.now();
+  if (remaining <= 0) throw Object.assign(new Error("Codex capability inspection exceeded its deadline"), { code: "ETIMEDOUT" });
+  const resumeHelp = await inspectHelp(executablePath, env, { ...options, timeoutMs: remaining }, ["exec", "resume", "--help"]);
+  return codexCapabilitiesFromHelp(resumeHelp, execHelp);
+}
+
+function inspectHelp(
+  executablePath: string, env: Record<string, string>, options: CodexVersionInspectionOptions, args: string[],
+): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
     execFile(executablePath, args, {
       env, encoding: "utf8", signal: options.signal, maxBuffer: 256 * 1024,
       timeout: Math.max(1, Math.ceil(options.timeoutMs)), killSignal: "SIGKILL",
@@ -73,14 +84,14 @@ export async function inspectCodexCapabilities(
       else resolve(stdout);
     });
   });
-  return codexCapabilitiesFromHelp(help);
 }
 
-export function codexCapabilitiesFromHelp(help: string): CodexRuntimeInspection {
+export function codexCapabilitiesFromHelp(help: string, sandboxHelp = help): CodexRuntimeInspection {
   const flag = (name: string) => optionBlock(help, name) !== undefined;
   // An exec help page cannot establish MCP configuration, hook coverage or a rollout codec.
   // Those requirements need their own trusted probe, never a version-number inference.
-  const sandbox = optionBlock(help, "sandbox") ?? "";
+  // Resume sets sandbox_mode through its own --config, but the values are listed on exec.
+  const sandbox = optionBlock(sandboxHelp, "sandbox") ?? "";
   const values = /\[possible values: ([^\]]+)\]/.exec(sandbox)?.[1]?.split(",").map(value => value.trim()) ?? [];
   return {
     capabilities: {
