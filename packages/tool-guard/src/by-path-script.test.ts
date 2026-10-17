@@ -46,10 +46,10 @@ async function decision(command: string): Promise<string | null> {
   return stdout === "" ? null : /"permissionDecision":"(\w+)"/.exec(stdout)?.[1] ?? "unknown";
 }
 
-async function denyReason(command: string): Promise<string> {
+/** The hook's answer as written; a deny reason's backticks and `#!` survive its JSON encoding unescaped. */
+async function denyAnswer(command: string): Promise<string> {
   const event = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: home, tool_input: { command } });
-  const { stdout } = await handle(event, {}, port);
-  return (JSON.parse(stdout) as { hookSpecificOutput: { permissionDecisionReason: string } }).hookSpecificOutput.permissionDecisionReason;
+  return (await handle(event, {}, port)).stdout;
 }
 
 describe("a file run by path whose name does not end in .sh", () => {
@@ -75,7 +75,7 @@ describe("a file run by path whose name does not end in .sh", () => {
   });
 
   it("names the #! line, not an unreadable file, as the reason it denies a node script run by path", async () => {
-    const reason = await denyReason(file("tool.mjs", `#!/usr/bin/env node\nconsole.log("ok");\n`));
+    const reason = await denyAnswer(file("tool.mjs", `#!/usr/bin/env node\nconsole.log("ok");\n`));
     expect(reason).toContain("`#!` line");
     expect(reason).toContain("`node ./x`");
     expect(reason).not.toContain("FIFO");
@@ -89,7 +89,7 @@ describe("a file run by path whose name does not end in .sh", () => {
   });
 
   it("still gives the unreadable-file reason for a file the guard cannot read", async () => {
-    expect(await denyReason(file("locked2", `#!/usr/bin/env node\n`, 0o000))).toContain("FIFO");
+    expect(await denyAnswer(file("locked2", `#!/usr/bin/env node\n`, 0o000))).toContain("FIFO");
   });
 
   it("denies a file that only begins with an ELF magic and is larger than the read cap", async () => {
