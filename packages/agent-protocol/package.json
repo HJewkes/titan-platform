@@ -17,6 +17,10 @@
     "./worker-facts": {
       "types": "./dist/worker-facts.d.ts",
       "import": "./dist/worker-facts.js"
+    },
+    "./harness": {
+      "types": "./dist/harness/index.d.ts",
+      "import": "./dist/harness/index.js"
     }
   },
   "files": [

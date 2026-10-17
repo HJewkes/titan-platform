@@ -1,6 +1,9 @@
 import { PermissionMode, AgentDefinition, McpServerConfig, HookEvent, HookCallbackMatcher, SettingSource, SDKMessage, ModelUsage, query, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 import { ZodType, ZodError } from 'zod';
-import { ConversationIdentity, ExecutionIdentity, UsageMeasurement, ExecutionRecord, ExecutionTerminal, AgentIdentity, ExecutionReconcileOutcome } from '@titan-design/agent-protocol';
+import * as Protocol from '@titan-design/agent-protocol/harness';
+import { HarnessRunFailure, HarnessRunOutput, TranscriptSourceHint } from '@titan-design/agent-protocol/harness';
+export { CapabilityAssessment, EXECUTION_CAPABILITIES, ExecutionCapability, ExecutionLimit, HarnessRunFailure, HarnessRunOutput, LimitCapability, LimitEnforcement, LimitScope, LimitUnit, OptionalLimitUnit, RunTarget, TranscriptSourceHint } from '@titan-design/agent-protocol/harness';
+import { UsageMeasurement, ExecutionRecord, ExecutionIdentity, ConversationIdentity, ExecutionTerminal, AgentIdentity, ExecutionReconcileOutcome } from '@titan-design/agent-protocol';
 import { ExecutionLedger } from '@titan-design/agent-lifecycle';
 
 type Harness = "claude-code" | "codex";
@@ -12,59 +15,11 @@ declare const CODEX_SANDBOXES: readonly ["read-only", "workspace-write", "danger
 declare const CODEX_APPROVAL_POLICIES: readonly ["untrusted", "on-failure", "on-request", "never"];
 type CodexSandbox = (typeof CODEX_SANDBOXES)[number];
 type CodexApprovalPolicy = (typeof CODEX_APPROVAL_POLICIES)[number];
-declare const EXECUTION_CAPABILITIES: readonly ["fresh_run", "resume", "fork", "structured_output", "interactive_approvals", "external_cancellation", "semantic_interrupt", "active_turn_steering", "idle_turn_submission", "persisted_transcript", "process_reattachment", "token_reporting"];
-type ExecutionCapability = (typeof EXECUTION_CAPABILITIES)[number];
-type CapabilityAssessment = {
-    status: "supported";
-    evidence: string;
-} | {
-    status: "unsupported" | "unverified";
-    reason: string;
-};
-type LimitUnit = "milliseconds" | "usd" | "model_requests" | "agent_iterations" | "tokens";
-type OptionalLimitUnit = Exclude<LimitUnit, "milliseconds">;
-type LimitScope = "execution" | "conversation";
-type LimitEnforcement = "hard" | "advisory";
-interface ExecutionLimit {
-    unit: OptionalLimitUnit;
-    value: number;
-    scope: LimitScope;
-    enforcement: LimitEnforcement;
-}
-interface LimitCapability {
-    unit: LimitUnit;
-    scope: LimitScope;
-    enforcement: LimitEnforcement;
-    assessment: CapabilityAssessment;
-}
-/** A factual report supplied by an adapter implementation, not a promise made by the core. */
-interface HarnessCapabilityDescriptor<H extends string = Harness> {
-    harness: H;
-    adapter: {
-        name: string;
-        version: string;
-    };
-    capabilities: Record<ExecutionCapability, CapabilityAssessment>;
-    limits: readonly LimitCapability[];
-}
-type RunTarget = {
-    kind: "fresh";
-    namespace: string;
-} | {
-    kind: "resume";
-    conversation: ConversationIdentity;
-};
-interface BoundedRunBase {
-    prompt: string;
-    cwd: string;
-    target: RunTarget;
-    /** Required hard deadline for this execution. Must be positive and finite. */
-    wallTimeMs: number;
-    limits?: readonly ExecutionLimit[];
-    requires?: readonly ExecutionCapability[];
-    signal?: AbortSignal;
-    onProgress?: (progress: HarnessRunProgress) => void;
-}
+
+type BoundedRunBase = Protocol.BoundedRunBase<Harness>;
+type HarnessRunProgress = Protocol.HarnessRunProgress<Harness>;
+type HarnessCapabilityDescriptor<H extends string = Harness> = Protocol.HarnessCapabilityDescriptor<H>;
+type HarnessRunResult<T = string, H extends Harness = Harness> = Protocol.HarnessRunResult<T, H>;
 /** Anthropic SDK configuration remains confined to the Claude Code branch. */
 interface ClaudeCodeNativeOptions<T> {
     model?: string;
@@ -101,108 +56,6 @@ interface CodexRunRequest<T = string> extends BoundedRunBase {
 }
 type HarnessRunRequest<T = string> = ClaudeCodeRunRequest<T> | CodexRunRequest<T>;
 type HarnessRunRequestFor<H extends Harness, T = string> = H extends "claude-code" ? ClaudeCodeRunRequest<T> : CodexRunRequest<T>;
-type HarnessRunProgress = {
-    harness: Harness;
-    atMs: number;
-} & ({
-    kind: "execution_started";
-    execution: ExecutionIdentity;
-} | {
-    kind: "conversation_identified";
-    executionId: string;
-    conversation: ConversationIdentity;
-} | {
-    kind: "assistant_output";
-    executionId: string;
-    text: string;
-} | {
-    kind: "usage";
-    executionId: string;
-    measurement: UsageMeasurement;
-} | {
-    kind: "execution_finished";
-    executionId: string;
-    outcome: "succeeded" | "failed" | "cancelled";
-});
-type HarnessRunOutput<T> = {
-    kind: "text";
-    text: string;
-} | {
-    kind: "structured";
-    value: T;
-};
-interface TranscriptSourceHint {
-    format: string;
-    namespace: string;
-    path?: string;
-}
-type HarnessRunFailure = {
-    kind: "invalid_request";
-    reason: string;
-} | {
-    kind: "harness_mismatch";
-    reason: string;
-} | {
-    kind: "unsupported_requirement";
-    reason: string;
-    requirement: {
-        kind: "capability";
-        capability: ExecutionCapability;
-    } | {
-        kind: "limit";
-        limit: LimitCapability;
-    };
-    status: "unsupported" | "unverified";
-} | {
-    kind: "rate_limited";
-    reason: string;
-    retryAtMs?: number;
-    native?: unknown;
-} | {
-    kind: "limit_exceeded";
-    reason: string;
-    unit: LimitUnit;
-    native?: unknown;
-} | {
-    kind: "output_invalid";
-    reason: string;
-    native?: unknown;
-} | {
-    kind: "auth_misconfigured";
-    reason: string;
-    native?: unknown;
-} | {
-    kind: "aborted";
-    reason: string;
-} | {
-    kind: "wall_time_exceeded";
-    reason: string;
-    wallTimeMs: number;
-} | {
-    kind: "cancelled_unknown";
-    reason: string;
-    native?: unknown;
-} | {
-    kind: "runtime_error";
-    reason: string;
-    native?: unknown;
-};
-type HarnessRunResult<T = string, H extends Harness = Harness> = {
-    ok: true;
-    harness: H;
-    execution: ExecutionIdentity;
-    conversation: ConversationIdentity;
-    output: HarnessRunOutput<T>;
-    usage: readonly UsageMeasurement[];
-    transcript?: TranscriptSourceHint;
-} | {
-    ok: false;
-    harness: H;
-    execution?: ExecutionIdentity;
-    conversation?: ConversationIdentity;
-    failure: HarnessRunFailure;
-    usage: readonly UsageMeasurement[];
-};
 interface HarnessAdapter<H extends Harness> {
     descriptor: HarnessCapabilityDescriptor<H>;
     run<T>(request: HarnessRunRequestFor<H, T>): Promise<HarnessRunResult<T, H>>;
@@ -602,4 +455,4 @@ interface ClaudeCodeAdapterOptions {
 declare function createClaudeCodeAdapter(options: ClaudeCodeAdapterOptions): HarnessAdapter<"claude-code">;
 declare function claudeCodeCapabilities(): HarnessCapabilityDescriptor<"claude-code">;
 
-export { ANTI_NESTING_VARS, type AgentFailure, type AgentFailureKind, type AgentInit, type AgentRunConfig, type AgentRunDeps, type AgentRunHarness, type AgentRunResult, type AgentUsage, type AuthEnvCheckOptions, AuthMisconfiguredError, type BoundedRunBase, CLAUDE_CODE_PASSTHROUGH_VARS, CLAUDE_PRINT_KILL_GRACE_MS, CLAUDE_PRINT_UNSUPPORTED_OPTIONS, CODEX_APPROVAL_POLICIES, CODEX_RUNTIME_CAPABILITIES, CODEX_SANDBOXES, type CapabilityAssessment, type ClassifyOptions, type ClaudeCodeAdapterOptions, type ClaudeCodeNativeOptions, type ClaudeCodeRunRequest, type CodexApprovalPolicy, type CodexAvailability, type CodexAvailabilityDeps, type CodexAvailabilityOptions, type CodexCapabilityInspectionOptions, type CodexExecAdapterOptions, type CodexExecDeps, type CodexNativeOptions, type CodexOutputSchema, type CodexPriceRow, type CodexProcessExit, type CodexProcessInput, type CodexRunRequest, type CodexRuntimeCapability, type CodexRuntimeInspection, type CodexSandbox, type CodexSchemaFile, type CodexVersionInspectionOptions, DEFAULT_CODEX_EXECUTABLE, DEFAULT_CODEX_KILL_GRACE_MS, DEFAULT_INACTIVITY_MS, DEFAULT_MAX_RETRIES, type DurableCancelResult, type DurableDispatchAck, type DurableDispatchInput, type DurableHarnessDispatcher, type DurableHarnessDispatcherDeps, type DurableHarnessDispatcherOptions, type DurableHarnessRecord, type DurableHarnessSuccess, type DurableLiveHandle, type DurableReconcileOutcome, type DurableSettlement, EXECUTION_CAPABILITIES, type ExecutionCapability, type ExecutionLimit, FORBIDDEN_API_KEY_SOURCES, type Harness, type HarnessAdapter, type HarnessCapabilityDescriptor, type HarnessRunFailure, type HarnessRunOutput, type HarnessRunProgress, type HarnessRunRequest, type HarnessRunRequestFor, type HarnessRunResult, type LimitCapability, type LimitEnforcement, type LimitScope, type LimitUnit, MIN_CODEX_EXEC_VERSION, type OptionalLimitUnit, type PrepareEnvOptions, type RunTarget, STRIPPED_AUTH_VARS, STRIPPED_CODEX_AUTH_VARS, STRIPPED_PROXY_VARS, SUPPORTED_CODEX_EXEC_VERSION, type SupervisedCodexProcess, type TranscriptSourceHint, assertApiKeySourceAllowed, assertAuthEnvOk, buildClaudePrintArgs, buildCodexExecArgs, checkCodexAvailable, classifyResult, claudeCodeCapabilities, claudePrintCapabilities, codexExecCapabilities, createClaudeCodeAdapter, createCodexExecAdapter, createDurableHarnessDispatcher, dispatchHarnessRun, inspectCodexCapabilities, preflightHarnessRun, prepareCodexEnv, prepareEnv, priceCodexUsage, resolveClaudeBin, runAgent, sumModelCost, usageFromResult };
+export { ANTI_NESTING_VARS, type AgentFailure, type AgentFailureKind, type AgentInit, type AgentRunConfig, type AgentRunDeps, type AgentRunHarness, type AgentRunResult, type AgentUsage, type AuthEnvCheckOptions, AuthMisconfiguredError, type BoundedRunBase, CLAUDE_CODE_PASSTHROUGH_VARS, CLAUDE_PRINT_KILL_GRACE_MS, CLAUDE_PRINT_UNSUPPORTED_OPTIONS, CODEX_APPROVAL_POLICIES, CODEX_RUNTIME_CAPABILITIES, CODEX_SANDBOXES, type ClassifyOptions, type ClaudeCodeAdapterOptions, type ClaudeCodeNativeOptions, type ClaudeCodeRunRequest, type CodexApprovalPolicy, type CodexAvailability, type CodexAvailabilityDeps, type CodexAvailabilityOptions, type CodexCapabilityInspectionOptions, type CodexExecAdapterOptions, type CodexExecDeps, type CodexNativeOptions, type CodexOutputSchema, type CodexPriceRow, type CodexProcessExit, type CodexProcessInput, type CodexRunRequest, type CodexRuntimeCapability, type CodexRuntimeInspection, type CodexSandbox, type CodexSchemaFile, type CodexVersionInspectionOptions, DEFAULT_CODEX_EXECUTABLE, DEFAULT_CODEX_KILL_GRACE_MS, DEFAULT_INACTIVITY_MS, DEFAULT_MAX_RETRIES, type DurableCancelResult, type DurableDispatchAck, type DurableDispatchInput, type DurableHarnessDispatcher, type DurableHarnessDispatcherDeps, type DurableHarnessDispatcherOptions, type DurableHarnessRecord, type DurableHarnessSuccess, type DurableLiveHandle, type DurableReconcileOutcome, type DurableSettlement, FORBIDDEN_API_KEY_SOURCES, type Harness, type HarnessAdapter, type HarnessCapabilityDescriptor, type HarnessRunProgress, type HarnessRunRequest, type HarnessRunRequestFor, type HarnessRunResult, MIN_CODEX_EXEC_VERSION, type PrepareEnvOptions, STRIPPED_AUTH_VARS, STRIPPED_CODEX_AUTH_VARS, STRIPPED_PROXY_VARS, SUPPORTED_CODEX_EXEC_VERSION, type SupervisedCodexProcess, assertApiKeySourceAllowed, assertAuthEnvOk, buildClaudePrintArgs, buildCodexExecArgs, checkCodexAvailable, classifyResult, claudeCodeCapabilities, claudePrintCapabilities, codexExecCapabilities, createClaudeCodeAdapter, createCodexExecAdapter, createDurableHarnessDispatcher, dispatchHarnessRun, inspectCodexCapabilities, preflightHarnessRun, prepareCodexEnv, prepareEnv, priceCodexUsage, resolveClaudeBin, runAgent, sumModelCost, usageFromResult };

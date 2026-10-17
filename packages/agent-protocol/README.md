@@ -137,3 +137,16 @@ the last Status or Verdict (`report`: message id, kind, text of at most 2,000 ch
 PR (`{ repo: "owner/name", number }`), `tokens` and `costUsd`. A no-report exit is valid and
 carries the exit facts only. The producer truncates the report; the schema rejects one over the
 cap. It is a subpath, like `./trace`, so the root entry stays free of zod.
+
+## Harness execution contracts
+
+Import @titan-design/agent-protocol/harness for SDK-free execution targets,
+capability and limit assessments, bounded-run progress, results and failures.
+Harness IDs are open strings; BoundedRunBase<H> carries the same harness type
+through its progress callback. Conversation identity retains its harness,
+namespace and native ID. Unsupported and unverified assessments remain explicit.
+
+Native request options and execution stay in agent. Its existing exports keep
+the legacy Claude/Codex defaults through compatibility aliases. This is the
+execution-contract checkpoint of TP-3426 (TP-3372 S01); account, transcript,
+pricing, policy and bus ports remain unfinished. TP-643 wire schemas are separate.
