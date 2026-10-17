@@ -81,7 +81,7 @@ function expansionHead(
 }
 
 /** What the guard finds at a `$`: a write to refuse, a body it could not read to its end, which is refused too, or neither. */
-export type ExpandVerdict = "writes" | "unread" | false;
+type ExpandVerdict = "writes" | "unread" | false;
 
 const unreadIf = (cut: boolean): ExpandVerdict => (cut ? "unread" : false);
 
