@@ -2,35 +2,39 @@ import type { Token, WordToken } from "./lexer.js";
 import { compoundEnd } from "./writers.js";
 
 const COMMAND_OPENERS = new Set(["if", "then", "elif", "else", "do", "while", "until", "!", "time"]);
-const ARITH_OPERATOR_RE = /^[-+*/%<>=!&|^~?:,]+$/;
-const NAME_LIKE_RE = /^[A-Za-z_/.][\w./=-]*$/;
+const OPERATOR_RE = /^[-+*/%<>=!&|^~?:,]+$/;
+const OPERAND_RE = /^[\w.#@$[\]{}+\-*/%<>=!&|^~?:,]+$/;
 
 /**
  * The index of the `)` that ends the arithmetic command a marked `(` at `at` opens in command position, or -1 when
- * the token opens none. A span whose words look like a command, `git push`, is kept as a nested subshell: bash
- * reads `((git push))` as arithmetic and never runs it, but this fails closed.
+ * the token opens none. Bash reads `((git push))` as arithmetic and never runs it, but only a span arithmetic can
+ * hold is taken as one; any other stays a nested subshell, so it fails closed.
  */
 export function arithmeticSpanEnd(list: Token[], at: number, words: WordToken[]): number {
   const token = list[at];
   if (token?.type !== "op" || token.arith !== true || !words.every((w) => COMMAND_OPENERS.has(w.value))) return -1;
   const end = compoundEnd(list, at + 2);
-  return end < 0 || readsAsCommand(list.slice(at + 2, end - 1)) ? -1 : end;
+  return end < 0 || !onlyArithmetic(list.slice(at + 2, end - 1)) ? -1 : end;
 }
 
-const SEPARATORS = new Set([";", "\n"]);
-
-/** A word this test cannot read as an operator or a subscript opener: a literal name or path, or any non-literal word. */
-function nameLike(word: WordToken): boolean {
-  return word.dynamic || word.quoted || word.spliced || NAME_LIKE_RE.test(word.value);
+/**
+ * Whether a span holds only what arithmetic can: words that are operands or operators, and parentheses. No redirect,
+ * separator or `--`, and no two neighbouring words without an operator or a subscript bracket between them.
+ */
+function onlyArithmetic(span: Token[]): boolean {
+  const words = span.flatMap((t) => (t.type === "word" ? [t] : []));
+  const parens = span.every((t) => t.type === "word" || (t.type === "op" && (t.value === "(" || t.value === ")")));
+  const count = (c: string) => words.reduce((n, w) => n + w.value.split(c).length - 1, 0);
+  return parens && words.every(operandOrOperator) && count("[") === count("]") && span.every((t, i) => joined(t, span[i + 1]));
 }
 
-/** A command separator, or a name-like word followed, past an `--`, by a word that is no operator, reads as a command. */
-function readsAsCommand(span: Token[]): boolean {
-  return span.some((t, i) => {
-    if (t.type === "op") return SEPARATORS.has(t.value);
-    if (t.type !== "word" || !nameLike(t)) return false;
-    const next = span[i + 1];
-    const after = next?.type === "word" && next.value === "--" ? span[i + 2] : next;
-    return after?.type === "word" && !ARITH_OPERATOR_RE.test(after.value);
-  });
+function operandOrOperator(word: WordToken): boolean {
+  if (word.value === "--" || word.quoted || word.spliced) return false;
+  return word.dynamic || OPERATOR_RE.test(word.value) || OPERAND_RE.test(word.value);
+}
+
+/** Two words side by side read as a command unless an operator or a subscript bracket sits between them. */
+function joined(a: Token, b: Token | undefined): boolean {
+  if (a.type !== "word" || b?.type !== "word") return true;
+  return OPERATOR_RE.test(a.value) || OPERATOR_RE.test(b.value) || a.value.endsWith("[") || b.value.startsWith("]");
 }

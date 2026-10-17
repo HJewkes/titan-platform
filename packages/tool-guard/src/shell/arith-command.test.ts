@@ -4,6 +4,7 @@ import type { ClassifyContext } from "../types.js";
 import { extractCommands } from "./commands.js";
 
 const names = (src: string) => extractCommands(src).map((c) => c.name);
+const reported = (src: string) => extractCommands(src).map((c) => [c.name ?? "", ...c.args.map((a) => a.value)].join(" "));
 const pushes = (src: string) => extractCommands(src).filter((c) => c.name === "git" && c.args.some((a) => a.value === "push")).length;
 
 describe("an arithmetic command runs no command named by its words", () => {
@@ -33,17 +34,22 @@ describe("a span that reads as a command stays a nested subshell", () => {
   });
 
   it.each([
-    "((a=1;git push))",
-    "((git;push))",
-    "((git=1 push))",
-    "((${x} push))",
-    "(($x push))",
-    "((x && git push))",
-    "((x\ngit push))",
-    "((git -- push))",
-    "((/usr/bin/git push))",
-  ])("%j still reports a command", (src) => {
-    expect(extractCommands(src).length).toBeGreaterThan(0);
+    ["((a=1;git push))", ["git push"]],
+    ["((git;push))", ["git", "push"]],
+    ["((git=1 push))", ["push"]],
+    ["((${x} push))", [" ${x} push", "push"]],
+    ["(($x push))", [" $x push", "push"]],
+    ["((x && git push))", ["x", "git push"]],
+    ["((x\ngit push))", ["x", "git push"]],
+    ["((git -- push))", ["git -- push"]],
+    ["((git -- -- push))", ["git -- -- push"]],
+    ["((/usr/bin/git push))", ["git push"]],
+    ["((npm >f publish))", ["npm publish"]],
+    ["((pnpm 2>&1 publish))", ["pnpm publish"]],
+    ["((git >f push))", ["git push"]],
+    ["((curl >f https://x))", ["curl https://x"]],
+  ])("%j still reports the commands main reports", (src, expected) => {
+    expect(reported(src)).toEqual(expected);
   });
 
   it("keeps for ((;;)) as it was", () => {
