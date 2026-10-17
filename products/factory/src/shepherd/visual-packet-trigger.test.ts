@@ -212,6 +212,13 @@ describe("which approve-merge gates are visual", () => {
   ])("%s", (_case, text, reason, head) => {
     expect(isVisualGate("approve-merge", text, reason)).toBe(head);
   });
+
+  it("the owner's ask to accept a red head's regenerated baselines, and no other gate with its prompt", () => {
+    const accept = `Accept the regenerated baselines of PR #1 in ${REPO} at head ${H1}? CI is red only on visual.`;
+
+    expect([isVisualGate("sh-visual-accept", accept, undefined), isVisualGate("sh-visual-accept:1", accept, undefined)]).toEqual([H1, H1]);
+    expect([isVisualGate("approve-merge", accept, undefined), isVisualGate("sh-visual-accept", prompt("shepherd-merge-guard/visual-path"), undefined)]).toEqual([undefined, undefined]);
+  });
 });
 
 describe("the packet step's route", () => {
