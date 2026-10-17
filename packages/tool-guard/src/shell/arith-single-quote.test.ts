@@ -42,6 +42,15 @@ const HIDDEN: [string, string][] = [
   ["an ANSI-C $'' $( ) in a for ((;;))", `for ((;$'$(${PUSH})';)); do :; done`],
   ["an ANSI-C $'' $( ) in $(( ))", `$(( $'$(${PUSH})' ))`],
   ["a locale $\"\" $( ) in (( ))", `(( $"$(${PUSH})" ))`],
+  ["a '$' then an ANSI-C $( ) in $(( ))", `$(( '$'$'$(${PUSH})' ))`],
+  ["a '$' + an ANSI-C $( ) in $(( ))", `$(( '$' + $'$(${PUSH})' ))`],
+  ["a \"$'\" + an ANSI-C $( ) in $(( ))", `$(( "$'" + $'$(${PUSH})' ))`],
+  ["a subscript holding '$' + an ANSI-C $( ) in $(( ))", `$(( a['$'] + $'$(${PUSH})' ))`],
+  ["an ANSI-C $( ) in a ${:-} inside (( ))", `(( \${x:-$'$(${PUSH})'} ))`],
+  ["an ANSI-C $( ) in a quoted ${:-} inside (( ))", `(( "\${x:-$'$(${PUSH})'}" ))`],
+  ["an ANSI-C $( ) in a quoted ${:-} outside arithmetic", `echo "\${x:-$'$(${PUSH})'}"`],
+  ["an ANSI-C $( ) after an escaped quote", `(( $'\\'$(${PUSH})' ))`],
+  ["an ANSI-C $( ) after a hex quote", `(( $'\\x27$(${PUSH})' ))`],
 ];
 
 describe("a single-quoted command substitution in arithmetic runs (TP-3290)", () => {
@@ -51,6 +60,13 @@ describe("a single-quoted command substitution in arithmetic runs (TP-3290)", ()
 
   it.each(HIDDEN)("extracts git push from %s", (_, src) => {
     expect(names(src).some((n) => n.startsWith(PUSH))).toBe(true);
+  });
+
+  it.each([
+    ["an ANSI-C $( ) in $[ ]", `x=$[ $'$(${PUSH})' ]`],
+    ["an ANSI-C backtick in $[ ]", `x=$[ $'\`${PUSH}\`' ]`],
+  ])("denies %s", async (_, src) => {
+    expect(await handled(src)).toBe("deny");
   });
 
   it("denies the older $[ ] spelling", async () => {
