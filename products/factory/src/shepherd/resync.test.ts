@@ -821,8 +821,10 @@ describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () =
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
   });
 
-  const satisfiedAt = (store: ShepherdStore, runId: string, head: string): boolean =>
-    store.hold(runId, "g10-adversary: merge policy; TP-1", "rev-x") && store.satisfyHold(runId, "rev-x", head, { agentId: "agent-rev-x", sessionId: "session-rev-x", locator: {} });
+  const satisfiedAt = (store: ShepherdStore, runId: string, head: string): boolean => {
+    store.hold(runId, "g10-adversary: merge policy; TP-1", "rev-x");
+    return store.satisfyHold(runId, "rev-x", head, { agentId: "agent-rev-x", sessionId: "session-rev-x", locator: {} });
+  };
 
   it("a thaw while serving supersedes the gate of a run whose hold was satisfied at the gate's head, and the run merges it", async () => {
     const { host, fake, services, runId } = await authorityGated({ repoFrozen: true }, { serve: true });
