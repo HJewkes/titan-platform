@@ -210,7 +210,7 @@ export async function restackChild(deps: StackLandDeps, input: RestackInput): Pr
 }
 
 /** A child still based on the parent's branch, moved onto the parent's base so the branch's delete cannot close it. */
-export interface RetargetInput {
+interface RetargetInput {
   repo: RepoSlug;
   pr: number;
   from: string;
@@ -225,7 +225,7 @@ type RetargetResult = z.infer<typeof RetargetResult>;
  * the API, and GitHub closes every open PR still based on it. A failure is recorded, never thrown, and cleanup's own
  * re-list then keeps the branch.
  */
-export async function retargetChild(deps: Pick<StackLandDeps, "port" | "advisory">, input: RetargetInput): Promise<RetargetResult> {
+async function retargetChild(deps: Pick<StackLandDeps, "port" | "advisory">, input: RetargetInput): Promise<RetargetResult> {
   const { repo, pr, from, to } = input;
   if (deps.advisory?.(repo)) return { pr, outcome: "skipped", detail: `${repo} is advisory` };
   try {

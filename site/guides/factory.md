@@ -162,8 +162,12 @@ stays out of the repo.
   squash merge of a PR, each open `agent-chat/*` PR based on its head branch gets a merge-onto
   commit by a plain fast-forward push, and only then is retargeted to the default branch. It is
   off when absent, when the file is missing or invalid, and in an advisory repo. While it is off,
-  `sh-stack-children` records `skipped` and nothing is pushed. A failed read of the open PRs
-  also records `skipped`, so main CI and cleanup still run.
+  `sh-stack-children` still lists the children with `skipped` and nothing is pushed. Either way,
+  `sh-retarget` moves each child still based on the parent's branch onto the parent's base. Cleanup
+  deletes that branch through the API, and GitHub closes every open PR still based on it (TP-3277).
+  Cleanup lists the open PRs again just before the delete, and keeps the branch with a caveat
+  while any of them is still based on it. A failed read of the open PRs also records `skipped`,
+  so main CI and cleanup still run.
 - The rest of `shepherd` is covered in the [Shepherd guide](/guides/shepherd#seat-policy).
 
 A malformed file fails every command that opens the database, with
