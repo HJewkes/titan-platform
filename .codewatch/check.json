@@ -23,7 +23,8 @@
           "packages/app-paths",
           "packages/anthropic-account",
           "packages/test-kit",
-          "packages/owner-proof"
+          "packages/owner-proof",
+          "packages/openai-account"
         ],
         "1": [
           "packages/retrieval",
@@ -100,7 +101,8 @@
           "packages/app-paths",
           "packages/anthropic-account",
           "packages/test-kit",
-          "packages/owner-proof"
+          "packages/owner-proof",
+          "packages/openai-account"
         ],
         [
           "packages/retrieval",
