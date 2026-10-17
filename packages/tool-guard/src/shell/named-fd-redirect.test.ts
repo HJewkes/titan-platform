@@ -112,6 +112,11 @@ const HANDED_ON = [
   `printf '%.0s%s\\n' {x} </dev/null '${PUSH}' | bash`,
   `{ echo env -C {x} </dev/null ${PUSH}; } | sh`,
   "cd {x} </dev/null; git push",
+  `printf '%.0s%s\\n' {x} </dev/null 'push origin HEAD:main' | xargs git`,
+  `printf '%.0s%s\\n' {x} </dev/null '${PUSH}' | xargs -I{} sh -c {}`,
+  `echo env -C {x} </dev/null ${PUSH} | cat | sh`,
+  `echo env -C {x} </dev/null ${PUSH} | cat - | bash`,
+  `echo env -C {x} </dev/null ${PUSH} | tee /dev/null | sh`,
 ];
 
 describe("a shell runs a descriptor a {name} redirect may have opened (TP-3279)", () => {
@@ -133,6 +138,9 @@ describe("a shell runs a descriptor a {name} redirect may have opened (TP-3279)"
     "exec {fd}</dev/null",
     "cat {fd}< ./notes.txt",
     "cd {x} </dev/null; ls",
+    "echo {x} </dev/null | xargs echo",
+    "printf '%s\\n' {a} {b} | cat | sort",
+    "echo hi | cat | sh",
   ])("allows %s, which runs no shell on that descriptor", async (line) => {
     expect(await verdict(line)).toBe("pass");
   });

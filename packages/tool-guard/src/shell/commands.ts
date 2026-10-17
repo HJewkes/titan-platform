@@ -2,7 +2,7 @@ import { ParseError, SplitParseError, tokenize } from "./lexer.js";
 import { NestingLimitError } from "./nesting.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
-import { xargsStdin } from "./piped-stdin.js";
+import { xargsStdins } from "./piped-stdin.js";
 import { emitReadings, handOn, type Emitted } from "./reading-hand-on.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed } from "./case-script.js";
@@ -289,10 +289,11 @@ function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string |
     w.scope.dir = changeDir(w.scope.dir, raw.args.find((a) => a.value === "-" || !a.value.startsWith("-")), w.home);
     return;
   }
-  const stdin = raw.xargs ? xargsStdin(redirects, w.stdin) : w.stdin;
-  const runs = runReadings(stdin, (name) => name !== null && SHELLS.has(name));
-  for (const cmd of xargsCommands(raw, stdin, runs.main)) runOnce(cmd, redirects, w, next, stdin);
-  if (raw.xargs) for (const cmd of xargsCommands(raw, stdin, runs.added)) runAdded(cmd, redirects, w, next, stdin);
+  for (const stdin of raw.xargs ? xargsStdins(redirects, w.stdin, w.shellStdin) : [w.stdin]) {
+    const runs = runReadings(stdin, (name) => name !== null && SHELLS.has(name));
+    for (const cmd of xargsCommands(raw, stdin, runs.main)) runOnce(cmd, redirects, w, next, stdin);
+    if (raw.xargs) for (const cmd of xargsCommands(raw, stdin, runs.added)) runAdded(cmd, redirects, w, next, stdin);
+  }
 }
 
 /**
