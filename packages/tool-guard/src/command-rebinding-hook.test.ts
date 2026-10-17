@@ -120,6 +120,23 @@ describe("a line that rebinds a command name", () => {
     ["mapfile of a run-time name after --", `mapfile -- "$n"; ${PUSH}`],
     ["zstyle -s into a run-time name", `zstyle -s :a k "$n"; ${PUSH}`],
     ["an export of a run-time word", `export $(cmd); ${PUSH}`],
+    ["zpty -r into a run-time name", `zpty -r z "$n"; ${PUSH}`],
+    ["zpty -r into a run-time name after --", `zpty -r -- z "$n"; ${PUSH}`],
+    ["zpty -r into an unquoted run-time name", `zpty -r z $n; ${PUSH}`],
+    ["zgetattr into a run-time name", `zgetattr f a "$n"; ${PUSH}`],
+    ["zgetattr into a run-time name after --", `zgetattr -- f a "$n"; ${PUSH}`],
+    ["zgetattr -h into a run-time name", `zgetattr -h f a "$n"; ${PUSH}`],
+    ["zlistattr into a run-time name", `zlistattr f "$n"; ${PUSH}`],
+    ["zlistattr into a run-time name after --", `zlistattr -- f "$n"; ${PUSH}`],
+    ["zcurses input into a run-time name", `zcurses input w "$n"; ${PUSH}`],
+    ["zcurses input into a run-time name after --", `zcurses -- input w "$n"; ${PUSH}`],
+    ["zcurses position into a run-time name", `zcurses position w "$n"; ${PUSH}`],
+    ["integer of a run-time name", `integer "$x"; ${PUSH}`],
+    ["float of a run-time name", `float "$x"; ${PUSH}`],
+    ["zsh stat -H into a run-time name", `zmodload zsh/stat; stat -H "$n" /usr/bin/git; name push origin HEAD:main`],
+    ["zsh stat -H into commands", "zmodload zsh/stat; stat -H commands /usr/bin/git; name push origin HEAD:main"],
+    ["zsystem flock -f into a run-time name", `zsystem flock -f "$n" f; ${PUSH}`],
+    ["ztie into a run-time name", `ztie -d db/gdbm -f f "$n"; ${PUSH}`],
   ])("refuses %s", async (_name, command) => {
     const got = await answer(command);
     expect(got.decision).toBe("deny");

@@ -1,10 +1,11 @@
 import { splitCluster } from "./cluster.js";
-import { writesProtectedParam } from "./hooked-params.js";
+import { HOOKED_WRITERS, writesProtectedParam } from "./hooked-params.js";
 import { nameSlots } from "./name-slots.js";
 import type { WordToken } from "./lexer.js";
 import { expandsInStoreOptions, STORE_OPTION_BUILTINS } from "./store-option-zone.js";
 import { ReadingLimitError } from "./unsure-readings.js";
 import type { Unwrapped } from "./unwrap.js";
+import { WRITER_SPECS } from "./writer-specs.js";
 
 /** Parameters whose stores bind a command name, or a `~name`, to something the guard never reads as that name. */
 const REBINDING = ["commands", "BASH_CMDS", "functions", "dis_functions", "nameddirs"];
@@ -18,14 +19,12 @@ const NAMES_REBINDING_RE = new RegExp(`^(?:${REBINDING.join("|")})(?:\\[|\\+?=|$
 /** Declarers print instead of storing under `-p` and `-f`: `declare -p BASH_CMDS`. */
 const VARIABLE_TAKERS = new Set(["export", "declare", "typeset", "local", "readonly", "private", "integer", "float", "read", "mapfile", "readarray"]);
 const PRINTS_VARIABLES = new Set(["export", "declare", "typeset", "local", "readonly", "private", "integer", "float"]);
-/** Builtins whose stored-into name comes from an option value or a fixed word, so a computed one may be anything. */
-const NAME_BY_OPTION = new Set(["printf", "print", "set", "wait", "compgen", "zparseopts", "zformat", "strftime", "zstat", "zselect", "pcre_match", "getopts"]);
+/** Builtins whose stored-into name comes from an option value or a fixed word, so a computed operand names nothing. */
+const NAME_BY_OPTION = new Set([...Object.keys(WRITER_SPECS).filter((name) => WRITER_SPECS[name]?.operands !== "names"), "getopts"]);
+/** zsh `shift NAME` only drops elements from the array it names, and dropping a binding falls back to PATH. */
+const DROPS_ONLY = new Set(["shift"]);
 /** The words that store into a named parameter; any other command writes none, whatever its words expand to. */
-const STORE_BUILTINS = new Set(
-  `for select export declare typeset local readonly private integer float read mapfile readarray printf print set wait compgen vared
-  zstyle zparseopts zformat strftime zstat zselect getln sysread zregexparse pcre_match zpty zsystem syserror sysopen
-  syswrite zmodload zgetattr zlistattr ztie zcurses shift compadd getopts functions`.split(/\s+/),
-);
+const STORE_BUILTINS = new Set([...HOOKED_WRITERS, "functions"]);
 
 /** A line that rebinds a command name (`hash y=/usr/bin/git`, `commands[y]=…`); the hook denies it unchecked. */
 export class CommandRebindingError extends ReadingLimitError {
@@ -91,6 +90,7 @@ function storesRebinding(cmd: Unwrapped, name: string): boolean {
  * name may be either, so it counts: `declare "$x"`.
  */
 function dynamicSlot(name: string, args: WordToken[]): boolean {
+  if (DROPS_ONLY.has(name)) return false;
   if (namedByDynamicWord(name, args)) return true;
   const byOption = NAME_BY_OPTION.has(name);
   const slots = nameSlots(name, args);

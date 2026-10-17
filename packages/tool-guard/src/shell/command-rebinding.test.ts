@@ -134,6 +134,13 @@ describe("a command that rebinds a command name", () => {
     ["mapfile of a dynamic name after --", 'mapfile -- "$n"'],
     ["zstyle -s into a dynamic name", 'zstyle -s :a k "$n"'],
     ["zsh read -n before a word that may be -A NAME", 'read -n -u "$x"'],
+    ["zpty -r into a dynamic name", 'zpty -r z "$n"'],
+    ["zpty -r into a dynamic name after --", 'zpty -r -- z "$n"'],
+    ["zgetattr into a dynamic name", 'zgetattr f a "$n"'],
+    ["zlistattr into a dynamic name", 'zlistattr f "$n"'],
+    ["zcurses input into a dynamic name", 'zcurses input w "$n"'],
+    ["zsh stat -A into a dynamic name", 'stat -A "$n" f'],
+    ["zsh stat -H into commands", "stat -H commands f"],
   ])("is caught: %s", (_how, src) => {
     expect(rebinds(src)).toBe(true);
   });
@@ -168,6 +175,10 @@ describe("a command that rebinds a command name", () => {
     ["declare -f printing a function", 'declare -f "$fn"'],
     ["a literal read prompt before a name", "read -r -p go line"],
     ["a literal zsh read -n before a name", "read -n 1 line"],
+    ["a stat of a run-time file", 'stat "$f"'],
+    ["a syswrite of run-time data", 'syswrite -- "$data"'],
+    ["a zmodload of a run-time module", 'zmodload -- "$m"'],
+    ["zpty of a literal name", "zpty -r z line"],
     ["zparseopts into an ordinary name", "zparseopts -A opts -D y: v=verbose"],
     ["functions listing", "functions -x 2 f"],
     ["functions -c after --, which names functions", "functions -- -c f y"],
