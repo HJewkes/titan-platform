@@ -218,13 +218,23 @@ export function assign(vars: Vars, [name, value, kind, cased]: Assignment): void
   markCased(vars, name, cased || (kind === "append" && priorCased));
 }
 
+/** The variables `env` and the shell search for a program by: bash's `PATH` and zsh's `path` array tied to it. */
+const PATH_NAMES = new Set(["PATH", "path"]);
+const pathObservers = new WeakMap<Vars, () => void>();
+
 /** Hears each value a scope's variables take, null when the walk cannot know it. */
 type StoreObserver = (value: string | null) => void;
 const observers = new WeakMap<Vars, StoreObserver>();
 
 /** Every write to `vars` goes through `write`, so the observer hears each value the scope stores. */
-export function observeStores(vars: Vars, observer: StoreObserver): void {
+export function observeStores(vars: Vars, observer: StoreObserver, onPath?: () => void): void {
   observers.set(vars, observer);
+  if (onPath) pathObservers.set(vars, onPath);
+}
+
+/** Whether a name is one the shell finds programs through. */
+export function isPathName(name: string): boolean {
+  return PATH_NAMES.has(name);
 }
 
 /** A copy for a new shell: `eval` keeps every readonly variable and a child shell drops them, so each only may be. */
@@ -244,6 +254,7 @@ const readonlyKey = (name: string) => `readonly@${name}`;
 function write(vars: Vars, name: string, value: string | null, heard = true): void {
   const flag = vars.get(readonlyKey(name));
   if (flag === "") return;
+  if (PATH_NAMES.has(name)) pathObservers.get(vars)?.();
   clearCased(vars, name);
   vars.set(name, flag === null || vars.has(ANY_READONLY) ? null : value);
   if (heard) observers.get(vars)?.(value);
@@ -314,6 +325,8 @@ function forgetAll(vars: Vars, heard = true): void {
   for (const key of vars.keys()) vars.set(key, null);
   vars.set("HOME", null);
   vars.set("IFS", null);
+  for (const name of PATH_NAMES) vars.set(name, null);
+  pathObservers.get(vars)?.();
   if (heard) observers.get(vars)?.(null);
 }
 

@@ -31,10 +31,12 @@ export interface ValueMarks {
   /** One walk per substitution in each known value with code behind a bracket. */
   walks: Array<() => void>;
   lists: number;
+  /** Something the line has run so far wrote `PATH` or zsh's `path`, or may have, as a store the walk cannot read does. */
+  pathChanged: boolean;
 }
 
 export function newMarks(): ValueMarks {
-  return { arithmetic: false, opaque: false, typed: false, bracket: false, unwalkable: false, walks: [], lists: 0 };
+  return { arithmetic: false, opaque: false, typed: false, bracket: false, unwalkable: false, walks: [], lists: 0, pathChanged: false };
 }
 
 /**

@@ -8,10 +8,11 @@ import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
 import { aliasCommands, type AliasTable } from "./alias-words.js";
-import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackVars } from "./vars.js";
+import { assign, childVars, expandWord, lookup, isPathName, noteSureCommands, observeStores, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { CommandRebindingError, rebindsCommand } from "./command-rebinding.js";
 import { cutReading } from "./piped-nul.js";
+import { changeDir, lineBudget, literalEnv } from "./walk-support.js";
 import { inlineScript, SHELLS } from "./inline-script.js";
 import type { Inline } from "./inline-script.js";
 import { addRedirect } from "./group-stdin.js";
@@ -23,11 +24,10 @@ import type { Vars } from "./vars.js";
 import { newMarks, noteRedirect, recordValue, settle } from "./value-marks.js";
 import { noteCommand, noteWord } from "./stored-words.js";
 import type { ValueMarks } from "./value-marks.js";
-import { MAX_UNSURE_WORDS, NestingReadingError, ReadingLimitError, SPLICED_WEIGHT, SplitReadingError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
+import { NestingReadingError, ReadingLimitError, SplitReadingError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
 
 const MAX_DEPTH = 8;
-const RUNNERS = new Set([...SHELLS, "eval", "emulate", "find"]);
 
 /**
  * How a command was reached: a `( )` subshell or a substitution, a shell's `-c` string or a wrapper's
@@ -62,6 +62,8 @@ export interface SimpleCommand {
   /** Whether `!` negates the status of the pipeline the command is in. */
   negated: boolean;
   chain: Chain;
+  /** Set when `PATH` or zsh's `path` had been written, or may have, by the time the command runs, or the command's own prefix writes it. */
+  pathChanged?: true;
   /** Set on a command only an added xargs reading runs; it may add actions but never fails the line or moves its state. */
   added?: true;
   /** What its descriptors held before its own redirects, when a command that runs it set them up (`bash -c bash < f`). */
@@ -86,6 +88,8 @@ export interface ExtractOptions {
    */
   stopPastCap?: boolean;
   aliases?: AliasTable;
+  /** Called once the walk ends if it wrote `PATH` or zsh's `path` in a shell that outlives it, or may have. */
+  onPathWrite?: () => void;
   /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
   onScript?: (text: string) => void;
 }
@@ -114,6 +118,8 @@ interface Walk {
   /** Whether `!` negates the pipeline the command being emitted belongs to. */
   negated: boolean;
   foldCase: boolean;
+  /** The command that started this walk had `PATH` or `path` in its own prefix, which every command in the walk runs under. */
+  pathPrefix: boolean;
   /** Script texts the readings of the command being emitted have walked, so a later reading walks each text once; null outside one. */
   walked: Set<string> | null;
   aliases: AliasTable | null;
@@ -147,6 +153,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
     chain: { start: null },
     negated: false,
     foldCase,
+    pathPrefix: false,
     walked: null,
     aliases: options.aliases ?? null,
     unsure,
@@ -155,17 +162,8 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   };
   walk(tokenizeLine(src), observed(w));
   settle(w.marks);
+  if (w.marks.pathChanged) options.onPathWrite?.();
   return out;
-}
-
-/** The line's budget of `unsure` reading words and spliced text, shared by every walk of it. */
-function lineBudget(src: string, options: ExtractOptions): UnsureBudget {
-  return {
-    left: MAX_UNSURE_WORDS,
-    splicedLeft: SPLICED_WEIGHT * src.length,
-    decides: decider(options.guarded),
-    stopPastCap: options.stopPastCap === true,
-  };
 }
 
 /** A line bash 5 and bash 3.2 read differently is refused outright, whatever it names; a plain ParseError is not. */
@@ -193,7 +191,7 @@ function walkFrom(list: Token[], start: number, w: Walk): void {
     if (token.type === "op") {
       noteValues(token, words, w);
       const { readings, disputed } = emit(words, redirects, w, token.value);
-      const walks = [w, ...disputed.map((scope) => forkWalk(w, scope, (fork, vars) => observeStores(vars, (value) => hear(fork, value))))];
+      const walks = [w, ...disputed.map((scope) => forkWalk(w, scope, observeWalk))];
       for (const each of walks) endCommand(each, token, words, redirects, readings, (op) => scope(op, each));
       forks.push(...walks.slice(1).map((fork) => () => walkFrom(list, start + at + 1, fork)));
       words = [];
@@ -225,8 +223,12 @@ function hear(w: Walk, value: string | null): void {
 
 /** A walk whose variables report every value they store. */
 function observed(w: Walk): Walk {
-  observeStores(w.scope.vars, (value) => hear(w, value));
+  observeWalk(w, w.scope.vars);
   return w;
+}
+
+function observeWalk(w: Walk, vars: Vars): void {
+  observeStores(vars, (value) => hear(w, value), () => void (w.marks.pathChanged = true));
 }
 
 /** A substitution the lexer rejects while it is walked leaves the line unchecked, which the hook refuses. */
@@ -247,6 +249,12 @@ function child(w: Walk, wrapping: Wrapping[], descriptors = w.descriptors): Walk
   const scope = { dir: w.scope.dir, vars: childVars(w.scope.vars), wrapping };
   const fresh = { stack: [], depth: w.depth + 1, stdin: stdinText(descriptors), shellStdin: [], descriptors, prev: null, chain: { start: null }, negated: false, walked: null };
   return observed({ ...w, scope, ...fresh });
+}
+
+/** A walk of what a wrapper runs: the wrapper's own `PATH=` prefix is the environment of everything in it. */
+function underPrefix(inner: Walk, ownPath: boolean): Walk {
+  inner.pathPrefix ||= ownPath;
+  return inner;
 }
 
 function scope(op: string, w: Walk): void {
@@ -279,11 +287,6 @@ function emitReading(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Wa
 
 function walkAdded(runs: Unwrapped[], redirects: RedirectToken[], w: Walk, next: string | null): void {
   addedReading(w, (copy) => runs.forEach((reading) => run(reading, redirects, copy, next)));
-}
-
-/** A dynamic or guarded command word, or one that runs more commands: shell text, a `.sh` script, `xargs` or `find -exec`. */
-function decider(guarded: ReadonlySet<string> | undefined): (cmd: Unwrapped) => boolean {
-  return (cmd) => cmd.name === null || cmd.xargs !== undefined || cmd.script !== undefined || RUNNERS.has(cmd.name) || cmd.name.endsWith(".sh") || (guarded?.has(cmd.name) ?? true);
 }
 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
@@ -339,17 +342,19 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
   const inherited = w.prev === "|" || w.prev === "|&" ? emptied(w.descriptors, 0) : w.descriptors;
   const set = inherited === TOP_DESCRIPTORS ? {} : { inherited };
-  w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set });
+  const ownPath = cmd.assigned.some(([name, , kind]) => kind !== "hidden" && isPathName(name));
+  const pathSet = w.marks.pathChanged || w.pathPrefix || ownPath ? { pathChanged: true as const } : {};
+  w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set, ...pathSet });
   const piped = stdin === null ? [] : [stdin, ...(stdin === w.stdin ? w.shellStdin : [])];
   const held = descriptorsAfter(redirects, piped, inherited, (target) => resolvePath(w.scope.dir, target, w.home));
   const script = inlineScript(cmd, redirects, piped, w.unsure, inherited);
-  if (script !== null) walkScript(script, w, wrapping, held);
+  if (script !== null) walkScript(script, w, wrapping, held, ownPath);
   if (cmd.name !== "find") return;
-  for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(folded(words, w)))) run(exec, [], child(w, [...wrapping, "find-exec"], held), null);
+  for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(folded(words, w)))) run(exec, [], underPrefix(child(w, [...wrapping, "find-exec"], held), ownPath), null);
 }
 
 /** Two readings of one command often run the same script (`flock $F sh -c '...'`); walking it again per nesting level would double the cost. */
-function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descriptors): void {
+function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descriptors, ownPath: boolean): void {
   // A shell reading its script from a descriptor leaves the rest of that stream to it, which is the text walked here.
   const descriptors = script.fd === undefined ? held : emptied(held, script.fd);
   for (const text of script.texts) {
@@ -358,21 +363,10 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descrip
     w.onScript?.(text);
     // A shell's arguments and input become its positional parameters and what its `read` stores.
     if (script.wrap !== "eval") w.marks.opaque = true;
-    walk(tokenizeLine(text), child(w, [...wrapping, script.wrap], descriptors));
+    walk(tokenizeLine(text), underPrefix(child(w, [...wrapping, script.wrap], descriptors), ownPath));
   }
 }
 
 function folded(words: WordToken[], w: Walk): WordToken[] {
   return w.foldCase ? foldCommandWords(words) : words;
-}
-
-function literalEnv(cmd: Unwrapped): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const [name, value, kind] of cmd.assigned) if (value !== null && !kind) env[name] = value;
-  return env;
-}
-
-function changeDir(dir: string | null, word: WordToken | undefined, home: string | null): string | null {
-  if (!word) return home;
-  return word.value === "-" ? null : resolvePath(dir, word, home);
 }

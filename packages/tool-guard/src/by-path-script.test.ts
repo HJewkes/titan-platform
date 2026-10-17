@@ -190,3 +190,79 @@ describe("an ELF program-header table the Linux loader bounds", () => {
     expect(await decision(file("count", elf({ phnum, body: `${PUSH}\n`, padding: 70000 })))).toBe("deny");
   });
 });
+
+describe("a #!/usr/bin/env shell script on a line that changes PATH", () => {
+  const ENV_BASH = "#!/usr/bin/env bash\necho ok\n";
+
+  it.each([
+    ["a PATH= prefix", "PATH=.:$PATH ./envp"],
+    ["a PATH= prefix with a dynamic value", "PATH=$(pwd) ./envp"],
+    ["an earlier assignment", "PATH=.:$PATH; ./envp"],
+    ["export PATH=", "export PATH=.:$PATH; ./envp"],
+    ["a PATH+= append", "PATH+=:. ./envp"],
+    ["zsh's path=( )", "path=(. $path); ./envp"],
+    ["a PATH= prefix behind env", "env PATH=. ./envp"],
+    ["a quoted name in export", "export PA''TH=.:$PATH; ./envp"],
+    ["a quoted name behind env", "env PA''TH=. ./envp"],
+    ["a quoted assignment behind env", 'env "PATH"=. ./envp'],
+    ["eval of a quoted name", "eval PA''TH=.; ./envp"],
+    ["read", "read PATH <<< .; ./envp"],
+    ["printf -v", "printf -v PATH %s .; ./envp"],
+    ["a nameref", "declare -n r=PATH; r=.; ./envp"],
+    ["a for loop", "for PATH in .; do ./envp; done"],
+    ["a zsh path element", "path[1]=.; ./envp"],
+    ["a write after a function that runs the script", "f(){ ./envp; }; PATH=.:$PATH; f"],
+    ["a write after the script in a loop", "for i in 1 2; do ./envp; PATH=.:$PATH; done"],
+    ["a write after the script", "./envp; PATH=.:$PATH"],
+    ["a dynamic store", "declare $X=.; ./envp"],
+    ["declare -g", "declare -g PATH=.; ./envp"],
+    ["a nameref to PATH", "declare -n p=PATH; p=.; ./envp"],
+    ["printf -v through a name variable", 'p=PATH; printf -v "$p" .; ./envp'],
+    ["eval of an export", 'eval "export PATH=."; ./envp'],
+    ["a sourced process substitution", "source <(echo PATH=.); ./envp"],
+    ["a PATH= prefix on sh -c", "PATH=.:$PATH /bin/sh -c ./envp"],
+    ["a PATH= prefix on bash -c", "PATH=.:$PATH /bin/bash -c ./envp"],
+    ["a PATH= prefix on find -exec ;", "PATH=.:$PATH find . -name envp -exec ./envp \\;"],
+    ["a PATH= prefix on find -exec +", "PATH=.:$PATH find . -name envp -exec ./envp {} +"],
+    ["a PATH= prefix on flock -c", "PATH=.:$PATH flock /tmp/l -c ./envp"],
+    ["a PATH= prefix on watch", "PATH=. watch ./envp"],
+    ["a PATH= prefix on parallel", "PATH=. parallel ./envp ::: a"],
+    ["a subshell group", "{ PATH=.; }; ./envp"],
+  ])("denies the script after %s", async (_, line) => {
+    file("envp", ENV_BASH);
+    expect(await decision(line)).toBe("deny");
+  });
+
+  it.each(["#!/usr/bin/env sh\necho ok\n", "#!/usr/bin/env zsh\necho ok\n"])("denies %j after a PATH change", async (text) => {
+    file("envp", text);
+    expect(await decision("PATH=.:$PATH ./envp")).toBe("deny");
+  });
+
+  it("reads the script as before when PATH is unchanged", async () => {
+    file("envp", ENV_BASH);
+    expect(await decision("./envp")).toBeNull();
+    file("envp2", `#!/usr/bin/env bash\n${PUSH}\n`);
+    expect(await decision("./envp2")).toBe("deny");
+  });
+
+  it("denies the script after a sourced file writes PATH", async () => {
+    file("envp", ENV_BASH);
+    file("src.sh", "PATH=.:$PATH\n");
+    expect(await decision(". ./src.sh; ./envp")).toBe("deny");
+  });
+
+  it.each(["echo PATH=1 && ./envp", "./envp; echo PATH=x", "grep PATH= f; ./envp", "PATH=$PATH:~/bin ls; ./envp", 'export PATH="$HOME/bin:$PATH"', 'export PATH="$HOME/bin:$PATH"; git status', 'export PATH="$HOME/bin:$PATH"; npm test'])("reads the script as before for %s", async (line) => {
+    file("envp", ENV_BASH);
+    expect(await decision(line)).toBeNull();
+  });
+
+  it("does not take a variable that only ends in PATH for PATH", async () => {
+    file("envp", ENV_BASH);
+    expect(await decision("MYPATH=x ./envp")).toBeNull();
+  });
+
+  it("leaves a script with an absolute #! alone", async () => {
+    file("absp", "#!/bin/bash\necho ok\n");
+    expect(await decision("PATH=.:$PATH ./absp")).toBeNull();
+  });
+});
