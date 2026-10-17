@@ -1,6 +1,6 @@
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { shellReading } from "./named-fd.js";
-import { printedText } from "./printed.js";
+import { printedOutput } from "./printed.js";
 import type { Shell } from "./printed.js";
 import { unwrap } from "./unwrap.js";
 
@@ -49,17 +49,7 @@ export function commandOutput(name: string | null, args: WordToken[], redirects:
   if (name === "cat") return readsOnlyStdin(args) ? literalStdin(redirects) : null;
   // Bash's echo prints `\0043` as written where zsh's decodes it, and escapes are modelled for neither shell alone.
   if (args.some((a) => a.value.includes("\\"))) return null;
-  const text = printedText(name, args, shell);
-  return text !== null && name === "echo" && !echoOmitsNewline(args) ? `${text}\n` : text;
-}
-
-/** `echo`'s leading option words, as `printedText` reads them; one holding `n` drops the newline. */
-function echoOmitsNewline(args: WordToken[]): boolean {
-  for (const { value } of args) {
-    if (!/^-[neE]+$/.test(value)) return false;
-    if (value.includes("n")) return true;
-  }
-  return false;
+  return printedOutput(name, args, shell);
 }
 
 function readsOnlyStdin(args: WordToken[]): boolean {
