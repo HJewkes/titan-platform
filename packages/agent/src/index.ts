@@ -65,6 +65,8 @@ export {
 } from "./codex-exec.js";
 export type { CodexPriceRow } from "./codex-prices.js";
 export { priceCodexUsage } from "./codex-prices.js";
+export { MIN_CODEX_EXEC_VERSION, CODEX_RUNTIME_CAPABILITIES, inspectCodexCapabilities } from "./codex-runtime.js";
+export type { CodexRuntimeCapability, CodexRuntimeInspection, CodexCapabilityInspectionOptions } from "./codex-runtime.js";
 export { DEFAULT_CODEX_KILL_GRACE_MS } from "./codex-exec-session.js";
 export type {
   AgentFailure,

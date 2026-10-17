@@ -23,9 +23,15 @@ import type {
   LimitCapability,
 } from "./harness-contracts.js";
 import { preflightHarnessRun } from "./preflight.js";
+import {
+  CODEX_RUNTIME_CAPABILITIES, MIN_CODEX_EXEC_VERSION, checkCodexCapabilities,
+  checkCodexVersion, inspectCodexCapabilities,
+  type CodexRuntimeCapability, type CodexRuntimeInspection, type CodexCapabilityInspectionOptions,
+} from "./codex-runtime.js";
 
-export const DEFAULT_CODEX_EXECUTABLE = "/Applications/ChatGPT.app/Contents/Resources/codex";
-export const SUPPORTED_CODEX_EXEC_VERSION = "0.154.0-alpha.6.1";
+export const DEFAULT_CODEX_EXECUTABLE = "codex";
+/** @deprecated This is the minimum floor, not an exact version pin. */
+export const SUPPORTED_CODEX_EXEC_VERSION = MIN_CODEX_EXEC_VERSION;
 export const STRIPPED_CODEX_AUTH_VARS = ["CODEX_API_KEY", "OPENAI_API_KEY", "OPENAI_ACCESS_TOKEN"] as const;
 
 export interface CodexExecAdapterOptions {
@@ -35,9 +41,16 @@ export interface CodexExecAdapterOptions {
   killGraceMs?: number;
   /** Dated rates used to estimate turn cost; without a row for the model, cost stays null. */
   prices?: readonly CodexPriceRow[];
+  /** Extra runtime requirements, e.g. MCP/policy/rollout evidence for a managed peer. */
+  requiredRuntimeCapabilities?: readonly CodexRuntimeCapability[];
 }
 
 export interface CodexExecDeps {
+  inspectCapabilities?: (
+    executablePath: string,
+    env: Record<string, string>,
+    options: CodexCapabilityInspectionOptions,
+  ) => Promise<CodexRuntimeInspection>;
   inspectVersion?: (
     executablePath: string,
     env: Record<string, string>,
@@ -66,7 +79,8 @@ export function createCodexExecAdapter(
       const invalid = validateAdapterRequest(request);
       if (invalid) return failed(invalid);
       try {
-        const config = { executablePath, env, killGraceMs: options.killGraceMs, prices: options.prices };
+        const config = { executablePath, env, killGraceMs: options.killGraceMs, prices: options.prices,
+          requiredRuntimeCapabilities: options.requiredRuntimeCapabilities };
         return await runSupervised(request, config, deps);
       } catch (error) {
         return failed({ kind: "runtime_error", reason: messageOf(error), native: error });
@@ -101,7 +115,7 @@ export function codexExecCapabilities(): HarnessCapabilityDescriptor<"codex"> {
   const limits = limitCapabilities(supported, unsupported);
   return {
     harness: "codex",
-    adapter: { name: "codex-exec-json", version: SUPPORTED_CODEX_EXEC_VERSION },
+    adapter: { name: "codex-exec-json", version: `>=${MIN_CODEX_EXEC_VERSION}` },
     capabilities,
     limits,
   };
@@ -133,6 +147,10 @@ function limitCapabilities(
 }
 
 function validateOptions(options: CodexExecAdapterOptions): void {
+  if (options.requiredRuntimeCapabilities !== undefined &&
+      (!Array.isArray(options.requiredRuntimeCapabilities) || options.requiredRuntimeCapabilities.some(value => !CODEX_RUNTIME_CAPABILITIES.includes(value)))) {
+    throw new TypeError("requiredRuntimeCapabilities must contain recognized runtime capabilities");
+  }
   if (options.auth !== "cached-cli") throw new TypeError("Codex exec adapter supports only cached-cli authentication");
   if (options.executablePath !== undefined) {
     if (options.executablePath.trim().length === 0) throw new TypeError("executablePath must be a nonempty string");
@@ -154,26 +172,6 @@ function validateAdapterRequest<T>(request: CodexRunRequest<T>): HarnessRunFailu
   return undefined;
 }
 
-async function checkVersion(
-  inspect: () => Promise<string>,
-  expected: string,
-): Promise<HarnessRunFailure | undefined> {
-  try {
-    const actual = parseVersion(await inspect());
-    if (actual === expected) return undefined;
-    return { kind: "runtime_error", reason: `unsupported Codex CLI version ${actual}; expected ${expected}` };
-  } catch (error) {
-    const reason = `could not verify Codex CLI version: ${messageOf(error)}`;
-    return { kind: "runtime_error", reason, native: error };
-  }
-}
-
-function parseVersion(output: string): string {
-  const match = /^codex-cli\s+(\S+)/m.exec(output.trim());
-  if (!match?.[1]) throw new Error(`unrecognized version output: ${output.trim()}`);
-  return match[1];
-}
-
 async function runSupervised<T>(
   request: CodexRunRequest<T>,
   config: {
@@ -181,6 +179,7 @@ async function runSupervised<T>(
     env: Record<string, string>;
     killGraceMs?: number;
     prices?: readonly CodexPriceRow[];
+    requiredRuntimeCapabilities?: readonly CodexRuntimeCapability[];
   },
   deps: CodexExecDeps,
 ): Promise<HarnessRunResult<T, "codex">> {
@@ -197,8 +196,19 @@ async function runSupervised<T>(
       request.signal,
       remaining(),
     );
-    const versionFailure = await checkVersion(async () => versionOutput, SUPPORTED_CODEX_EXEC_VERSION);
+    const versionFailure = checkCodexVersion(versionOutput);
     if (versionFailure) return failed(versionFailure);
+    const inspection = await setupStep(
+      (deps.inspectCapabilities ?? inspectCodexCapabilities)(config.executablePath, config.env, {
+        signal: request.signal, timeoutMs: remaining(), resume: request.target.kind === "resume",
+      }), request.signal, remaining(),
+    );
+    const required: CodexRuntimeCapability[] = ["json_events", "config_overrides", "user_config_isolation", "strict_config", "model_selection",
+      ...(config.requiredRuntimeCapabilities ?? [])];
+    if (request.target.kind === "fresh") required.push("working_directory");
+    if (request.native?.outputSchema) required.push("output_schema");
+    const capabilityFailure = checkCodexCapabilities(inspection, request.native?.sandbox ?? "read-only", required);
+    if (capabilityFailure) return failed(capabilityFailure);
 
     if (request.native?.outputSchema) {
       schemaFile = await setupStep(

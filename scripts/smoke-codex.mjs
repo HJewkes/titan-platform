@@ -13,6 +13,7 @@ import { createMinerContext, createMinerRegistry, resolveConfig } from "../produ
 if (!process.argv.includes("--run")) throw new Error("Opt in with --run and TITAN_SMOKE_MODEL; this launches a real Codex agent.");
 const model = process.env.TITAN_SMOKE_MODEL;
 if (!model) throw new Error("TITAN_SMOKE_MODEL must explicitly select the smoke model");
+const binaryVersion = execFileSync(DEFAULT_CODEX_EXECUTABLE, ["--version"], {env:prepareCodexEnv(process.env),encoding:"utf8",timeout:5000,stdio:["ignore","pipe","pipe"]}).trim();
 const codexHome = process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex");
 let observedAuth = "unknown";
 try {
@@ -63,7 +64,7 @@ try {
   assert.ok(drain.clustered>0,"expected missing-file tool output must read back and cluster");
   assert.equal((await indexCodexSource(graph,source)).status,"unchanged");
   assert.deepEqual(normalizedUsage(graph,indexed.conversationRef),usage);
-  receipt = {ok:true,binaryVersion:SUPPORTED_CODEX_EXEC_VERSION,model,authMode:"cached-cli (provider key env stripped)",observedAuth,
+  receipt = {ok:true,binaryVersion,minimumBinaryVersion:SUPPORTED_CODEX_EXEC_VERSION,model,authMode:"cached-cli (provider key env stripped)",observedAuth,
     conversation:result.conversation,rollout:source.path,observations:indexed.observations,tools,usage,
     errorReadback:drain.clustered,wallTimeMs:90_000,limitations:["local deadline is not a billing cap","no live reattachment or steering"],scratchCleaned:true};
 } finally {ctx?.close();await rm(scratch,{recursive:true,force:true});}
