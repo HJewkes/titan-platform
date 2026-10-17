@@ -1,9 +1,9 @@
 import { ParseError, SplitParseError, tokenize } from "./lexer.js";
 import { NestingLimitError } from "./nesting.js";
-import { namedFdReadings } from "./named-fd.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
-import { nextShellStdin, nextStdin, xargsStdin } from "./piped-stdin.js";
+import { xargsStdin } from "./piped-stdin.js";
+import { emitReadings, handOn, type Emitted } from "./reading-hand-on.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
@@ -13,7 +13,7 @@ import { normalizeDeclarations } from "./declarations.js";
 import { cutReading } from "./piped-nul.js";
 import { inlineScript, SHELLS } from "./inline-script.js";
 import type { Inline } from "./inline-script.js";
-import { addRedirect, groupStdin } from "./group-stdin.js";
+import { addRedirect } from "./group-stdin.js";
 import { descriptorsAfter, emptied, stdinText, TOP_DESCRIPTORS } from "./shell-options.js";
 import type { Descriptors } from "./shell-options.js";
 import { xargsCommands } from "./xargs-runs.js";
@@ -252,46 +252,8 @@ function scope(op: string, w: Walk): void {
   if (op === ")") w.scope = w.stack.pop() ?? w.scope;
 }
 
-/**
- * Both readings of a `{name}` redirect are walked in full, the word's on a copy of the scope; either can refuse the line.
- * The fd's reading comes first, then the word's; a directory or variable they leave different is unknown after it.
- */
 function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Emitted {
-  const readings = namedFdReadings(rawWords, rawRedirects);
-  if (!readings) return [emitReading(rawWords, rawRedirects, w, next)];
-  const [kept, asFd] = readings;
-  const copy = besideWalk(w);
-  const word = emitReading(kept.words, kept.redirects, copy, next);
-  const cmd = emitReading(asFd.words, asFd.redirects, w, next);
-  unknownWhereDiffer(w.scope, copy.scope);
-  return [cmd, word];
-}
-
-/** A command's readings: one, or the fd's and the word's of a `{name}` redirect. */
-type Emitted = [Unwrapped | null] | [Unwrapped | null, Unwrapped | null];
-
-function unknownWhereDiffer(scope: Scope, beside: Scope): void {
-  if (beside.dir !== scope.dir) scope.dir = null;
-  for (const key of new Set([...scope.vars.keys(), ...beside.vars.keys()])) {
-    if (scope.vars.has(key) !== beside.vars.has(key) || scope.vars.get(key) !== beside.vars.get(key)) scope.vars.set(key, null);
-  }
-}
-
-/**
- * Hands the next command the text this one pipes on. Both readings' printed texts feed a shell, as either may print it;
- * a group keeps the word's, as main read it.
- */
-function handOn(w: Walk, op: string, words: WordToken[], redirects: RedirectToken[], [cmd, word]: Emitted): void {
-  const empty = words.length + redirects.length === 0;
-  if (word === undefined) {
-    w.shellStdin = nextShellStdin(op, cmd, empty, w.shellStdin);
-    w.stdin = groupStdin(w, op, words, redirects, cmd, nextStdin(op, cmd, empty, w.stdin));
-    return;
-  }
-  const printed = [cmd, word].flatMap((reading) => [nextStdin(op, reading, empty, w.stdin), ...nextShellStdin(op, reading, empty, w.shellStdin)]);
-  const texts = [...new Set(printed.filter((text) => text !== null))];
-  w.shellStdin = texts.slice(1);
-  w.stdin = groupStdin(w, op, words, redirects, word, texts[0] ?? null);
+  return emitReadings(rawWords, rawRedirects, w, besideWalk, (words, redirects, on) => emitReading(words, redirects, on, next));
 }
 
 function emitReading(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Unwrapped | null {
