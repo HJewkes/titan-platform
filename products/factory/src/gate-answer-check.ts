@@ -2,12 +2,14 @@ import { createHash } from "node:crypto";
 import type { GitHubPort } from "@titan-design/github";
 import type { GateRecord } from "@titan-design/hitl";
 import { z } from "zod";
-import { MERGE_GATE, landGate, type LandGate } from "./coordinator-evidence.js";
+import { acceptSetNote, approvedSetOf, type AfterDigest, type ApprovedSet } from "./approved-set.js";
+import { MERGE_GATE, landGate, pinnedHead, stepOf, type LandGate } from "./coordinator-evidence.js";
 import { stepIdMatches } from "./definition.js";
 import { gateStaleness } from "./gate-batch.js";
 import { pendingGateId, repeatedResolution } from "./gate-resolve.js";
 import type { FactoryHost } from "./host.js";
 import { ROUND_SUBMIT_MAX_AGE_MS, RoundFeedbackSchema, shipAtHead } from "./shepherd/round-merge.js";
+import { VISUAL_ACCEPT_GATE } from "./shepherd/visual-accept.js";
 
 /** A console Ship answer as the request names it; `choice` is checked against the owner's feedback, never trusted. */
 export interface AnswerRequest {
@@ -17,7 +19,15 @@ export interface AnswerRequest {
   tree: string;
   packetSha: string;
   roundId: string;
-  choice: "merge" | "send-back" | "merge-pick-later";
+  choice: "merge" | "send-back" | "merge-pick-later" | "accept-set";
+}
+
+/** The factory's own packet dir for the accept gate's head, read by the caller; a string says why it could not be. */
+export interface AcceptFiles {
+  packet: Uint8Array;
+  after: ReadonlyMap<string, AfterDigest>;
+  /** The delivery record, absent when there is none. */
+  delivery: Uint8Array | undefined;
 }
 
 interface AnswerInputs {
@@ -26,12 +36,17 @@ interface AnswerInputs {
   request: AnswerRequest;
   /** The exact bytes of the round's files, read by the caller. */
   files: { round: Uint8Array; packet: Uint8Array; feedback: Uint8Array };
+  /** Read only for an `sh-visual-accept` gate. */
+  accept?: AcceptFiles | string;
   now: Date;
 }
 
-type RefusalCode = "unknown-gate" | "not-land-gate" | "github-unreadable" | "tree-mismatch" | "packet" | "feedback" | "choice";
+type RefusalCode = "unknown-gate" | "not-land-gate" | "github-unreadable" | "tree-mismatch" | "packet" | "packet-unbound" | "set-too-large" | "feedback" | "choice";
 
-export type AnswerPayload = { decision: "merge"; headSha: string } | { decision: "send-back"; headSha: string; note: string };
+export type AnswerPayload =
+  | { decision: "merge"; headSha: string }
+  | { decision: "send-back"; headSha: string; note: string }
+  | { decision: "accept-set"; headSha: string; approvedSet: ApprovedSet; note: string };
 
 type AnswerCheck =
   | { kind: "resolve"; gateId: string; choice: AnswerRequest["choice"]; payload: AnswerPayload }
@@ -42,11 +57,19 @@ type AnswerCheck =
 
 type Answered = "merge" | "send-back";
 
+/** The answerable gate's step, and the PR and head its prompt and schema pin. */
+type GateHead = Pick<LandGate, "repo" | "pr" | "head"> & { step: string };
+
 interface Asked {
   gate: GateRecord;
-  land: LandGate;
+  land: GateHead;
   payload: Record<string, unknown>;
 }
+
+/** Ship on approve-merge merges; on the accept gate it accepts the set. Send back is the same answer on both. */
+const SHIP_CHOICES: Record<string, readonly AnswerRequest["choice"][]> = { [MERGE_GATE]: ["merge", "merge-pick-later"], [VISUAL_ACCEPT_GATE]: ["accept-set"] };
+const ACCEPT_PROMPT = /^Accept the regenerated baselines of PR #(\d+) in (\S+) at head ([0-9a-f]{40})\? CI is red only on .+\.$/;
+const DeliveryBinding = z.looseObject({ packetId: z.string() });
 
 const PACKET_SCHEMA = "titan-review/ci-packet@1";
 
@@ -73,28 +96,60 @@ const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes)
 export async function checkAnswer(inputs: AnswerInputs): Promise<AnswerCheck> {
   const { host, request } = inputs;
   const gate = host.gates.get(request.gateId);
-  if (!gate || !stepIdMatches(`${request.runId}/${MERGE_GATE}`, gate.id)) return refused("unknown-gate", `run ${request.runId} has no approve-merge gate ${request.gateId}`);
-  const land = landGate(gate);
+  if (!gate || !Object.keys(SHIP_CHOICES).some((step) => stepIdMatches(`${request.runId}/${step}`, gate.id))) return refused("unknown-gate", `run ${request.runId} has no approve-merge gate ${request.gateId}`);
+  const land = gateHead(gate);
   if (!land) return refused("not-land-gate", `gate ${gate.id} does not pin a PR head`);
   const payload = answerPayload(inputs, land);
-  const item = { gate: gate.id, runId: request.runId, stepId: MERGE_GATE, repo: land.repo, pr: land.pr, headSha: request.headSha, payload };
-  const stale = await gateStaleness(host, item, undefined);
+  if ("kind" in payload) return payload;
+  const item = { gate: gate.id, runId: request.runId, stepId: land.step, repo: land.repo, pr: land.pr, headSha: request.headSha, payload };
+  const stale = (await gateStaleness(host, item, undefined)) ?? (land.head === request.headSha ? undefined : { detail: `the gate asks about head ${land.head}` });
   if (stale) return storeOutcome(host, request.runId, { gate, land, payload }, stale.detail);
-  const binding = (await githubOutcome(inputs, land)) ?? packetRefusal(inputs, land) ?? choiceRefusal(inputs, land) ?? noteRefusal(payload);
+  const binding = (await githubOutcome(inputs, land)) ?? packetRefusal(inputs, land) ?? deliveryRefusal(inputs, payload) ?? choiceRefusal(inputs, land) ?? noteRefusal(payload);
   return binding ?? { kind: "resolve", gateId: gate.id, choice: request.choice, payload };
 }
+
+/** A land approve-merge gate, or a red head's accept gate whose prompt and schema pin the same head. */
+function gateHead(gate: GateRecord): GateHead | undefined {
+  const step = stepOf(gate.id);
+  const land = step === MERGE_GATE ? landGate(gate) : undefined;
+  if (land) return { ...land, step };
+  const match = step === VISUAL_ACCEPT_GATE ? ACCEPT_PROMPT.exec(gate.prompt) : null;
+  return match && pinnedHead(gate.schema) === match[3] ? { step, repo: match[2]!, pr: Number(match[1]), head: match[3]! } : undefined;
+}
+
 
 /**
  * What the owner's feedback answers, worked out before the store is read so a replay of a send-back reads as `already`.
  * The note comes from feedback.json alone, never from the request: the general note, then the Ship question's comment.
  */
-function answerPayload(inputs: AnswerInputs, land: LandGate): AnswerPayload {
+function answerPayload(inputs: AnswerInputs, land: GateHead): AnswerPayload | AnswerCheck {
   const { headSha } = inputs.request;
-  if (feedbackChoice(inputs, land) !== "send-back") return { decision: "merge", headSha };
-  return { decision: "send-back", headSha, note: [...ownerNote(inputs, land)].slice(0, MAX_NOTE_CHARS).join("") };
+  const answered = feedbackChoice(inputs, land);
+  if (answered === "send-back") return { decision: "send-back", headSha, note: capped(ownerNote(inputs, land)) };
+  return land.step === VISUAL_ACCEPT_GATE && answered === "merge" ? acceptPayload(inputs, land) : { decision: "merge", headSha };
 }
 
-function ownerNote({ files }: AnswerInputs, land: LandGate): string {
+const capped = (note: string): string => [...note].slice(0, MAX_NOTE_CHARS).join("");
+
+/** The set comes from the factory's own packet for the gate's head, so the owner accepts exactly the bytes they were shown. */
+function acceptPayload(inputs: AnswerInputs, land: GateHead): AnswerPayload | AnswerCheck {
+  const { accept, request } = inputs;
+  if (typeof accept !== "object") return refused("packet", accept ?? "the factory's packet for this head was not read");
+  const built = approvedSetOf({ packet: accept.packet, packetSha: request.packetSha, fromHead: request.headSha, after: accept.after });
+  if ("reason" in built) return refused(built.reason, built.detail);
+  const note = [acceptSetNote(built, request.runId), ownerNote(inputs, land)].filter((text) => text !== "").join("\n\n");
+  return { decision: "accept-set", headSha: request.headSha, approvedSet: built.set, note: capped(note) };
+}
+
+/** The set's packet must be the one the delivery sweep linted and sent to the console for this head. */
+function deliveryRefusal({ accept }: AnswerInputs, payload: AnswerPayload): AnswerCheck | undefined {
+  if (payload.decision !== "accept-set") return undefined;
+  const record = typeof accept === "object" && accept.delivery ? parseJson(DeliveryBinding, accept.delivery) : undefined;
+  if (record?.packetId === payload.approvedSet.packetId) return undefined;
+  return refused("packet-unbound", record ? `the delivery record binds packet ${record.packetId}, not ${payload.approvedSet.packetId}` : "no delivery record names this head's packet");
+}
+
+function ownerNote({ files }: AnswerInputs, land: GateHead): string {
   const words = parseJson(FeedbackWords, files.feedback);
   const bound = new Set(boundQuestions(files.round, land).map((question) => question.id));
   const comments = words?.answers.filter((answer) => bound.has(answer.questionId)).map((answer) => answer.comment) ?? [];
@@ -108,20 +163,20 @@ function noteRefusal(payload: AnswerPayload): AnswerCheck | undefined {
 
 /** The gate store says the answer is late: the run waits on a newer gate, the gate pins another head, or it is settled. */
 function storeOutcome(host: FactoryHost, runId: string, { gate, land, payload }: Asked, detail: string): AnswerCheck {
-  const waiting = pendingGateId(host, runId, MERGE_GATE);
+  const waiting = pendingGateId(host, runId, land.step);
   if (waiting !== undefined && waiting !== gate.id) return { kind: "moved", currentHead: headOf(host, waiting), waitsOn: waiting };
   if (gate.status === "pending") return { kind: "moved", currentHead: land.head };
-  if (repeatedResolution(host, runId, MERGE_GATE, payload) === gate.id) return { kind: "already", gateId: gate.id };
+  if (repeatedResolution(host, runId, land.step, payload) === gate.id) return { kind: "already", gateId: gate.id };
   return { kind: "gone", reason: detail };
 }
 
 function headOf(host: FactoryHost, gateId: string): string | undefined {
   const gate = host.gates.get(gateId);
-  return gate ? landGate(gate)?.head : undefined;
+  return gate ? gateHead(gate)?.head : undefined;
 }
 
 /** GitHub's own head and its tree, read fresh: the gate prompt is Shepherd's earlier read and may be behind. */
-async function githubOutcome({ port, request }: AnswerInputs, land: LandGate): Promise<AnswerCheck | undefined> {
+async function githubOutcome({ port, request }: AnswerInputs, land: GateHead): Promise<AnswerCheck | undefined> {
   const ref = `${land.repo}#${land.pr}`;
   try {
     const pull = await port.getPr(land.repo, land.pr);
@@ -135,7 +190,7 @@ async function githubOutcome({ port, request }: AnswerInputs, land: LandGate): P
 }
 
 /** The packet must be the exact bytes the request hashed, and bind the same PR, head and tree. */
-function packetRefusal({ files, request }: AnswerInputs, land: LandGate): AnswerCheck | undefined {
+function packetRefusal({ files, request }: AnswerInputs, land: GateHead): AnswerCheck | undefined {
   if (sha256(files.packet) !== request.packetSha) return refused("packet", "packet.json does not hash to the request's packetSha");
   const packet = parseJson(PacketBinding, files.packet);
   if (!packet) return refused("packet", `packet.json does not read as a ${PACKET_SCHEMA} packet`);
@@ -145,14 +200,15 @@ function packetRefusal({ files, request }: AnswerInputs, land: LandGate): Answer
 }
 
 /** The choice is what the owner's feedback answered; the request's choice only has to agree with it. */
-function choiceRefusal(inputs: AnswerInputs, land: LandGate): AnswerCheck | undefined {
+function choiceRefusal(inputs: AnswerInputs, land: GateHead): AnswerCheck | undefined {
   const answered = feedbackChoice(inputs, land);
   if (typeof answered !== "string") return answered;
   const { choice } = inputs.request;
-  return answered === (choice === "send-back" ? "send-back" : "merge") ? undefined : refused("choice", `the owner's feedback answers ${answered}, the request says ${choice}`);
+  const agrees = choice === "send-back" ? answered === "send-back" : answered === "merge" && SHIP_CHOICES[land.step]!.includes(choice);
+  return agrees ? undefined : refused("choice", `the owner's feedback answers ${answered} on ${land.step}, the request says ${choice}`);
 }
 
-function feedbackChoice({ files, request, now }: AnswerInputs, land: LandGate): Answered | AnswerCheck {
+function feedbackChoice({ files, request, now }: AnswerInputs, land: GateHead): Answered | AnswerCheck {
   const feedback = parseJson(RoundFeedbackSchema, files.feedback);
   if (!feedback) return refused("feedback", "feedback.json does not read as round feedback");
   const ship = shipAtHead(files.round, feedback, { repo: land.repo, pr: land.pr, headSha: request.headSha }, now, ROUND_SUBMIT_MAX_AGE_MS);
@@ -160,7 +216,7 @@ function feedbackChoice({ files, request, now }: AnswerInputs, land: LandGate): 
   return sendBackRequested(files.round, feedback.answers, land) ? "send-back" : refused("feedback", ship.reason);
 }
 
-const boundQuestions = (roundBytes: Uint8Array, land: LandGate) =>
+const boundQuestions = (roundBytes: Uint8Array, land: GateHead) =>
   parseJson(RoundBindings, roundBytes)?.questions.filter((q) => q.merge?.repo === land.repo && q.merge.pr === land.pr) ?? [];
 
 /**
@@ -168,7 +224,7 @@ const boundQuestions = (roundBytes: Uint8Array, land: LandGate) =>
  * question's one non-ship option. `revisionRequested` still reads, for older feedback and the harness. Two or more non-ship
  * options leave the pick ambiguous, so it is not read as a send-back.
  */
-function sendBackRequested(roundBytes: Uint8Array, answers: z.infer<typeof RoundFeedbackSchema>["answers"], land: LandGate): boolean {
+function sendBackRequested(roundBytes: Uint8Array, answers: z.infer<typeof RoundFeedbackSchema>["answers"], land: GateHead): boolean {
   return boundQuestions(roundBytes, land).some((q) => {
     const others = (q.options ?? []).filter((option) => !q.merge?.ship.includes(option));
     return answers.some((a) => a.questionId === q.id && (a.revisionRequested === true || (others.length === 1 && a.pick === others[0])));

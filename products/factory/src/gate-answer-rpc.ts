@@ -1,21 +1,28 @@
 import { appendFileSync, constants } from "node:fs";
 import { lstat, open } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { Logger, StartDaemonOptions } from "@titan-design/daemon";
 import type { GitHubPort } from "@titan-design/github";
 import { GateAlreadySettled, GateExpired, GateNotFound, GatePayloadInvalid, GateResolverRefused, type GateResolver } from "@titan-design/hitl";
 import { EXIT, errorEnvelope } from "@titan-design/registry";
 import { z } from "zod";
+import { MAX_SET_FILES, afterDigest, keptImages, setPacketOf, type AfterDigest } from "./approved-set.js";
 import { configPath, loadConfig } from "./config.js";
-import { MERGE_GATE } from "./coordinator-evidence.js";
-import { checkAnswer, type AnswerPayload, type AnswerRequest } from "./gate-answer-check.js";
+import { stepOf } from "./coordinator-evidence.js";
+import { stepIdMatches } from "./definition.js";
+import { checkAnswer, type AcceptFiles, type AnswerPayload, type AnswerRequest } from "./gate-answer-check.js";
 import { repeatedResolution } from "./gate-resolve.js";
 import type { FactoryHost } from "./host.js";
 import { readCapped, TOO_LARGE } from "./resolve-proof.js";
+import type { VisualSetCarry } from "./shepherd/phases.js";
+import { VISUAL_ACCEPT_GATE, configuredVisualSetCarry } from "./shepherd/visual-accept.js";
+import { deliveryFileFor } from "./shepherd/visual-delivery.js";
+import { packetDirFor } from "./shepherd/visual-packet-trigger.js";
 
 export const ANSWER_SHIP_PATH = "/gates/answer-ship";
 export const MAX_ANSWER_BODY_BYTES = 64 * 1024;
 const MAX_ROUND_FILE_BYTES = 1024 * 1024;
+const MAX_AFTER_IMAGE_BYTES = 16 * 1024 * 1024;
 /** The console's own round id rule, so the id can never name a path outside the rounds dir. */
 const ROUND_ID = /^[A-Za-z0-9_-]{1,64}$/;
 /** O_NONBLOCK so a planted FIFO cannot hang the open; O_NOFOLLOW so a symlinked file is refused, not followed. */
@@ -35,7 +42,7 @@ const AnswerBody = z.strictObject({
   tree: hex(40),
   packetSha: hex(64),
   roundId: z.string().regex(ROUND_ID),
-  choice: z.enum(["merge", "send-back", "merge-pick-later"]),
+  choice: z.enum(["merge", "send-back", "merge-pick-later", "accept-set"]),
 });
 
 type Outcome =
@@ -55,6 +62,8 @@ interface GateAnswerDeps {
   stateDir: string;
   now: () => number;
   log: Logger;
+  /** `shepherd.visualSetCarry`, read per answer; absent reads the config file. */
+  visualSetCarry?: () => VisualSetCarry;
 }
 
 export interface ConsoleAnswersOptions {
@@ -97,9 +106,11 @@ async function answerShip(raw: Request, deps: GateAnswerDeps): Promise<Answer> {
 }
 
 async function answered(request: AnswerRequest, port: NonNullable<GateAnswerDeps["port"]>, deps: GateAnswerDeps): Promise<Outcome> {
+  if (request.choice === "accept-set" && (deps.visualSetCarry ?? configuredVisualSetCarry)() === "off") return { outcome: "refused", reason: "off", detail: "shepherd.visualSetCarry is off" };
   const files = await readRound(deps.roundsDir, request.roundId);
   if (typeof files === "string") return { outcome: "refused", reason: "round-unreadable", detail: files };
-  const check = await checkAnswer({ host: deps.host, port, request, files, now: new Date(deps.now()) });
+  const accept = isAcceptGate(deps.host, request) ? await readAccept(deps.stateDir, request) : undefined;
+  const check = await checkAnswer({ host: deps.host, port, request, files, ...(accept !== undefined && { accept }), now: new Date(deps.now()) });
   switch (check.kind) {
     case "resolve":
       return resolveOnce(request, check.payload, deps);
@@ -130,7 +141,7 @@ function resolveOnce(request: AnswerRequest, payload: AnswerPayload, deps: GateA
 }
 
 function settled(request: AnswerRequest, payload: Record<string, unknown>, host: FactoryHost, reason: string): Outcome {
-  if (repeatedResolution(host, request.runId, MERGE_GATE, payload) === request.gateId) return { outcome: "already", gateId: request.gateId };
+  if (repeatedResolution(host, request.runId, stepOf(request.gateId), payload) === request.gateId) return { outcome: "already", gateId: request.gateId };
   return { outcome: "gone", reason };
 }
 
@@ -162,15 +173,36 @@ async function readRound(roundsDir: string, roundId: string): Promise<RoundFiles
   }
 }
 
-async function readNoFollow(dir: string, name: string): Promise<Uint8Array> {
+/** Only a gate the store holds names the run, so the run id that builds the packet path was never the request's own text. */
+const isAcceptGate = (host: FactoryHost, request: AnswerRequest): boolean =>
+  host.gates.get(request.gateId) !== undefined && stepIdMatches(`${request.runId}/${VISUAL_ACCEPT_GATE}`, request.gateId);
+
+/** The factory's own packet for the head, its kept after images as digests, and the delivery record; never the console's copies. */
+async function readAccept(stateDir: string, { runId, headSha }: AnswerRequest): Promise<AcceptFiles | string> {
+  const dir = packetDirFor(stateDir, runId, headSha);
+  const record = deliveryFileFor(stateDir, runId, headSha);
+  try {
+    const packet = await readNoFollow(dir, "packet.json");
+    const kept = keptImages(setPacketOf(packet) ?? { images: [] });
+    const after = new Map<string, AfterDigest>();
+    for (const { key } of kept.length > MAX_SET_FILES ? [] : kept) after.set(key, afterDigest(await readNoFollow(join(dir, "after"), `${key}.png`, MAX_AFTER_IMAGE_BYTES)));
+    const delivery = await readNoFollow(dirname(record), basename(record)).catch(() => undefined);
+    return { packet, after, delivery };
+  } catch (error) {
+    if (error instanceof RoundUnreadable) return `the factory's packet for ${headSha}: ${error.message}`;
+    throw error;
+  }
+}
+
+async function readNoFollow(dir: string, name: string, maxBytes = MAX_ROUND_FILE_BYTES): Promise<Uint8Array> {
   const handle = await open(join(dir, name), OPEN_FLAGS).catch((error: unknown) => {
     throw new RoundUnreadable(`${name} could not be opened (${codeOf(error)})`);
   });
   try {
     if (!(await handle.stat()).isFile()) throw new RoundUnreadable(`${name} is not a regular file`);
-    const buffer = Buffer.alloc(MAX_ROUND_FILE_BYTES + 1);
+    const buffer = Buffer.alloc(maxBytes + 1);
     const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-    if (bytesRead > MAX_ROUND_FILE_BYTES) throw new RoundUnreadable(`${name} is over ${MAX_ROUND_FILE_BYTES} bytes`);
+    if (bytesRead > maxBytes) throw new RoundUnreadable(`${name} is over ${maxBytes} bytes`);
     return buffer.subarray(0, bytesRead);
   } finally {
     await handle.close();
