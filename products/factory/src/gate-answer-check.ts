@@ -53,7 +53,8 @@ const PACKET_SCHEMA = "titan-review/ci-packet@1";
 /** Only the fields the binding checks; the packet's other fields pass through unread. */
 const PacketBinding = z.object({ schema: z.literal(PACKET_SCHEMA), repo: z.string(), pr: z.number().int(), headSha: z.string(), headTree: z.string() });
 
-const RoundBindings = z.object({ questions: z.array(z.object({ id: z.string(), merge: z.object({ repo: z.string(), pr: z.number().int() }).optional() })) });
+const BoundMerge = z.object({ repo: z.string(), pr: z.number().int(), ship: z.array(z.string()) });
+const RoundBindings = z.object({ questions: z.array(z.object({ id: z.string(), options: z.array(z.string()).optional(), merge: BoundMerge.optional() })) });
 
 /** The owner's words in feedback.json: the round's general note and each answer's comment. */
 const FeedbackWords = z.object({ general: z.string().optional(), answers: z.array(z.object({ questionId: z.string(), comment: z.string().optional() })) });
@@ -156,14 +157,22 @@ function feedbackChoice({ files, request, now }: AnswerInputs, land: LandGate): 
   if (!feedback) return refused("feedback", "feedback.json does not read as round feedback");
   const ship = shipAtHead(files.round, feedback, { repo: land.repo, pr: land.pr, headSha: request.headSha }, now, ROUND_SUBMIT_MAX_AGE_MS);
   if (ship.shipped) return "merge";
-  return revisionRequested(files.round, feedback.answers, land) ? "send-back" : refused("feedback", ship.reason);
+  return sendBackRequested(files.round, feedback.answers, land) ? "send-back" : refused("feedback", ship.reason);
 }
 
 const boundQuestions = (roundBytes: Uint8Array, land: LandGate) =>
   parseJson(RoundBindings, roundBytes)?.questions.filter((q) => q.merge?.repo === land.repo && q.merge.pr === land.pr) ?? [];
 
-function revisionRequested(roundBytes: Uint8Array, answers: z.infer<typeof RoundFeedbackSchema>["answers"], land: LandGate): boolean {
-  return boundQuestions(roundBytes, land).some((q) => answers.some((a) => a.questionId === q.id && a.revisionRequested === true));
+/**
+ * The console never writes `revisionRequested` (rounds.submit refuses it beside a pick), so its Send back is the pick of the
+ * question's one non-ship option. `revisionRequested` still reads, for older feedback and the harness. Two or more non-ship
+ * options leave the pick ambiguous, so it is not read as a send-back.
+ */
+function sendBackRequested(roundBytes: Uint8Array, answers: z.infer<typeof RoundFeedbackSchema>["answers"], land: LandGate): boolean {
+  return boundQuestions(roundBytes, land).some((q) => {
+    const others = (q.options ?? []).filter((option) => !q.merge?.ship.includes(option));
+    return answers.some((a) => a.questionId === q.id && (a.revisionRequested === true || (others.length === 1 && a.pick === others[0])));
+  });
 }
 
 function parseJson<T>(schema: z.ZodType<T>, bytes: Uint8Array): T | undefined {
