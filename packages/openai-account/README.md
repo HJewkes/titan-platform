@@ -31,7 +31,7 @@ resets. Exact weekly used=86 and age=900 are allowed. Native rollouts never esta
 reader below establishes a conservative local request-start observation lower bound.
 
 The pure root reuses `@titan-design/anthropic-account` secret redaction and adds
-OpenAI key prefixes. No CLI surface, statusline, provisioning, explicit login writes,
+OpenAI key prefixes. No provisioning, explicit login writes,
 permission enforcement or agent launch is included. Quota is a local observation,
 not a reservation. Rollout reading is not a live server check. See the [reference](../../site/reference/openai-account.md).
 
@@ -76,8 +76,7 @@ teardown. An AbortSignal cancels both version probing and the owned app-server.
 
 Tests inject version, connection or child streams and wall/monotonic clocks;
 no real Codex/home/auth/session/backend is invoked. Production native runtime
-compatibility remains unverified until separately authorized. No existing
-rollout reader, statusline or automatic admission consumer is switched over.
+compatibility remains unverified until separately authorized. No existing rollout reader or automatic admission consumer is switched over.
 
 Both native child operations run in one newly created empty temporary working
 directory, never the caller project or account home. The owned directory is

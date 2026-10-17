@@ -20,6 +20,6 @@ export function selectionOf(context: CliContext, options: SelectionOptions): Sel
     label = options.account ?? accountLabel(codeHome ?? ".codex");
     assertAccountLabel(label);
   } catch { return { label: "default", profile: null }; }
-  const valid = codeHome !== undefined && isAbsolute(codeHome) && !/[\x00-\x1f\x7f]/.test(codeHome);
+  const valid = codeHome !== undefined && isAbsolute(codeHome) && [...codeHome].every(char => char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127);
   return { label, profile: valid ? { label, codeHome } : null };
 }
