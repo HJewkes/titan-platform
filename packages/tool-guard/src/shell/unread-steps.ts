@@ -18,7 +18,7 @@ function nestedLists(t: Token): Token[][] {
 }
 
 /** Whether a simple command's words leave the shell's state, or what a later word means, to something the guard cannot read. */
-function commandUnread(words: WordToken[]): boolean {
+function leadingUnread(words: WordToken[]): boolean {
   for (const [i, w] of words.entries()) {
     if (ASSIGNMENT_RE.test(w.value)) continue;
     if (unknown(w)) return true;
@@ -27,6 +27,23 @@ function commandUnread(words: WordToken[]): boolean {
     return !NEEDS_DYNAMIC_OPERAND.has(w.value) || words.slice(i + 1).some(unknown);
   }
   return false;
+}
+
+/** Words that read a file by name, so they matter only where a command can start; as an argument (`ls .`) they are plain. */
+const READS_FILE = new Set([".", "source"]);
+
+/** Whether the word at `i` is a reading-changing command anywhere in the group, not only its first word: a keyword or brace body (`function f { eval ...; }`, `do trap ...`) starts a command mid-group. */
+function changesReadingAt(words: WordToken[], i: number, w: WordToken): boolean {
+  if (!CHANGES_READING.has(w.value)) return false;
+  const before = words[i - 1];
+  const startsCommand = before === undefined || ASSIGNMENT_RE.test(before.value) || MODIFIERS.has(before.value);
+  if (READS_FILE.has(w.value) && !startsCommand) return false;
+  return !NEEDS_DYNAMIC_OPERAND.has(w.value) || words.slice(i + 1).some(unknown);
+}
+
+/** A group of words is unread when its leading command is, or any word in it is a reading-changing command: failing closed beats listing the keywords that open a body. */
+function commandUnread(words: WordToken[]): boolean {
+  return leadingUnread(words) || words.some((w, i) => changesReadingAt(words, i, w));
 }
 
 /**

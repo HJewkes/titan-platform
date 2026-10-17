@@ -117,6 +117,28 @@ describe("a step that runs text in this shell later may alias [[ for a later lin
     expect(spellings(command)).toContain("bash.merge.git-push-protected");
   });
 
+  const NEXT = `\n[[ a || ${PUSH} ]]`;
+  const ALIAS = `a=ali; b=as; $a$b "[["=false`;
+  it.each([
+    `function f { eval '${ALIAS}'; }; f${NEXT}`,
+    `function f { trap '${ALIAS}' DEBUG; }; f${NEXT}`,
+    `coproc NAME { eval '${ALIAS}'; }${NEXT}`,
+    `select x in a; do eval '${ALIAS}'; done${NEXT}`,
+    `f() { trap '${ALIAS}' DEBUG; }; f${NEXT}`,
+    `{ eval '${ALIAS}'; }${NEXT}`,
+    `( eval '${ALIAS}' )${NEXT}`,
+    `e''val '${ALIAS}'${NEXT}`,
+    `builtin eval '${ALIAS}'${NEXT}`,
+    `case x in x) eval '${ALIAS}';; esac${NEXT}`,
+    `if true; then mapfile -C '${ALIAS}' -c 1 < /dev/null; fi${NEXT}`,
+  ])("reports the push when a body holds a same-shell runner: %j", (command) => {
+    expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  });
+
+  it("still joins after a command that merely names a file reader as an argument (guard row)", () => {
+    expect(spellings(`ls .${NEXT}`)).toEqual([]);
+  });
+
   it("still joins a line with no eval, trap or callback (guard row)", () => {
     expect(spellings(`echo hi\n[[ a || ${PUSH} ]]`)).toEqual([]);
   });
