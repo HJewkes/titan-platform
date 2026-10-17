@@ -57,11 +57,11 @@ export {
   MAX_FIX_FIRST_TEXT_CHARS,
   OWNER_PICK_CONTRADICTED,
   boundedFindings,
-  ciUnreadOnly,
   contradictedPicks,
   findingsText,
   fixFirstFindings,
 } from "./fix-first-findings.js";
+export { ciUnreadOnly } from "./ci-unread.js";
 export { MALFORMED_REFUSALS, MalformedSchema, OwnerBriefSchema, parseOwnerBrief, readMalformed } from "./verdict-schemas.js";
 export type { Malformed, OwnerBrief } from "./verdict-schemas.js";
 export {

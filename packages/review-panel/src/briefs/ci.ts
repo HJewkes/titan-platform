@@ -9,7 +9,7 @@ export const CI_REVIEWER_TEST_RULE =
   "Read CI with `gh pr view <pr> --repo <repo> --json headRefOid,statusCheckRollup`, and list the required checks with `gh pr checks <pr> --repo <repo> --required`. " +
   "Those report the PR's current head: if `headRefOid` is not exactly this head, CI at this head is unread. " +
   `${CITE_CHECKS} ` +
-  `If you cannot read CI at exactly this head, do not judge CI: list the line \`${CI_UNREAD_LINE}\` exactly as one of your blocking items, never a CI finding of your own. Shepherd reviews this head again when that line is the only blocking item.`;
+  `If you cannot read CI at exactly this head, do not judge CI: list the line \`${CI_UNREAD_LINE}\` exactly as one of your blocking items, never a CI finding of your own. If it is your only blocking item, write nothing above the verdict lines but that line and a one-line \`Defect class: CI unread\`, and Shepherd reviews this head again.`;
 
 /** One check-run Shepherd read at the reviewed head; `status` and `conclusion` are GitHub's words, and `missing` is a required check with no run at the head. */
 export interface CiCheckRow {
