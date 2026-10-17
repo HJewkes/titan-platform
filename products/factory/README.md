@@ -842,6 +842,23 @@ or `failed` (`packet-incomplete`, `no-clone`, `round`, `lint`, `lint-error`, `im
 a result runs nothing again. `/health`'s `visualDelivery` block shows `waiting` gates and `failed` ones. Absent or
 `off`, no sweep starts.
 
+In `on`, an `imported` round is carried to `delivered {roundId, url, at}` and one ntfy line goes out: title
+`Visual review: <repo>#<pr>`, body `<n> images at <head8>`, `Click` `<origin>/#/rounds/<id>`. The record is written
+before the push, so a crash replays to no second push, and a failed push leaves a `pushWarning` in the record and is
+never retried. The topic is `visualDelivery.push`, else the top-level `digest.push` (bearer token from its `tokenFile`);
+with neither, the round is `delivered` with `pushWarning: "no push config"`. `origins: {lan, tailnet?}` and
+`url: "lan"|"tailnet"` (default `lan`; `tailnet` needs `origins.tailnet`) choose the click origin; without `origins`
+the click is the LAN URL the import printed. A failed packet, round, lint or import, and `shadow`, push nothing: the
+coordinator reads those from `/health`.
+
+Each tick also looks at every `delivered` record whose gate no longer waits. A gate the console's own Ship answer
+resolved (channel `console:ship`) is recorded `answered`: no withdraw, no push. Otherwise the sweep runs
+`<console…> rounds withdraw <id> --reason <r> --json` with `r` = `closed` (PR closed), `new-head:<sha>` (the live head
+moved) or `answered-elsewhere`, and records `withdrawn {reason, outcome}` (`withdrawn`, `already-withdrawn`,
+`kept-answered`). It pushes one `Visual review withdrawn: <repo>#<pr>` line (`new head <sha8>` or `PR closed`) only
+for `closed` and `new-head` when the outcome is `withdrawn`. A withdraw that fails records `failed` (`withdraw`) with
+the stderr line and pushes nothing. ntfy cannot retract a message, so the withdrawn line is a second message.
+
 ### A reviewer account out of usage
 
 Only Claude Code's own usage-limit record counts: a final message whose transcript record has the
