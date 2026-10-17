@@ -31,6 +31,7 @@ import { RESYNC_READ_TIMEOUT_MS } from "./bounded.js";
 import { TEST_BRIEF } from "../test-support/brief.js";
 import type { ReviewerAgent, ReviewerDispatch, ReviewerReader } from "@titan-design/review-panel";
 import type { SourceTextLocator } from "@titan-design/session-read";
+import { partialFake } from "@titan-design/test-kit";
 
 const T0 = Date.parse("2026-01-01T00:00:00.000Z");
 const SEED_LEASE_MS = 3_000;
@@ -662,6 +663,7 @@ interface HoldReviewer {
 
 const rosterRow = (name: string, spawnedBy: string | null): ReviewerAgent => ({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence: "exited", spawnedBy, predecessor: null });
 const REV_X = rosterRow("rev-x", "coord");
+const REV_X_LOCATOR = partialFake<SourceTextLocator>({ selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] } });
 /** The implementer and the reviewer share only their spawner, so the roster proves the reviewer independent. */
 const HOLD_ROSTER: readonly ReviewerAgent[] = [rosterRow("coord", null), rosterRow("impl-a", "coord"), REV_X];
 
@@ -672,7 +674,7 @@ function holdReviewerWiring(reviewer: HoldReviewer): { dispatch: ReviewerDispatc
       const { says } = reviewer;
       if (says === "unreadable") throw new Error("the transcript could not be read");
       const text = says === "nothing" ? "Still reading." : `Read it all.\n\nVerdict: ${says.verdict}\nPR: ${REPO}#1\nHead: ${says.head}\n`;
-      return [{ agentId: REV_X.agentId, sessionId: REV_X.sessionId, writtenAt: 1, text, locator: { source: { conversation: { nativeId: REV_X.sessionId } } } as unknown as SourceTextLocator }];
+      return [{ agentId: REV_X.agentId, sessionId: REV_X.sessionId, writtenAt: 1, text, locator: REV_X_LOCATOR }];
     },
   };
   return { dispatch, reader };
