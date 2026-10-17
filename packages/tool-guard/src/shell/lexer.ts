@@ -8,7 +8,6 @@ import { arithmeticExpansionEnd, lineReading, nestedReaders, scanBacktick } from
 import { readLineEnd } from "./procsub-heredoc.js";
 import { assignmentSubscriptEnd, looseSubscriptEnd, isNameSoFar, wordStartSubscriptEnd } from "./subscript.js";
 import type { LexState, RedirectToken, Token, WordToken } from "./tokens.js";
-import { ansiQuotedSubstitutions } from "./arith-ansi.js";
 import { appendChar, endWord, ensureWord, markComputed, markCut, markQuoted, pushRef, readAnsiC, readEscape, readSingle, variableName } from "./word-build.js";
 
 export { ParseError, SplitParseError } from "./parse-error.js";
@@ -290,7 +289,6 @@ function dollarText(s: LexState, end: number): string {
 function readBracketArithmetic(s: LexState, w: WordToken): void {
   const found: Token[][] = [];
   const end = balancedEnd(s.src, s.i + 1, nestedReaders(lineReading(s), found));
-  found.push(...ansiQuotedSubstitutions(lineReading(s), s.i + 1, end));
   markComputed(w).value += dollarText(s, end);
   w.subs.push(...found);
   s.i = end + 1;
