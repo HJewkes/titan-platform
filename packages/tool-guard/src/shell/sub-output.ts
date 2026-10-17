@@ -19,16 +19,18 @@ export function splicedWords(words: WordToken[], shell: Shell): WordToken[] {
 }
 
 function spliced(word: WordToken, cuts: NonNullable<WordToken["cuts"]>, shell: Shell): string {
-  return splice(word, cuts, shell, () => "") ?? "";
+  return splice(word, cuts, shell, false) ?? "";
 }
 
-function splice(word: WordToken, cuts: NonNullable<WordToken["cuts"]>, shell: Shell, unknown: () => string | null): string | null {
+/** `strict` leaves the word unknown (null) when any substitution in it prints text that is not wholly known. */
+function splice(word: WordToken, cuts: NonNullable<WordToken["cuts"]>, shell: Shell, strict: boolean): string | null {
   let value = "";
   let last = 0;
   for (const { at, sub } of cuts) {
     const tokens = word.subs[sub];
-    const output = (tokens ? subOutput(tokens, shell) : null) ?? unknown();
-    if (output === null) return null;
+    const printed = tokens ? walkSub(tokens, shell) : null;
+    if (strict && !printed?.complete) return null;
+    const output = printed?.text ?? "";
     value += word.value.slice(last, at) + output.replace(/\n+$/, "");
     last = at;
   }
@@ -52,7 +54,7 @@ export function knownSplice(args: WordToken[], shell: Shell): WordToken[] | null
 /** A word of substitutions alone, spliced; an unquoted one is split on blanks as the shell splits it (globs are not modelled). */
 function splitSplice(arg: WordToken, shell: Shell): WordToken[] | null {
   if (!arg.cuts || arg.refs.length > 0) return null;
-  const value = splice(arg, arg.cuts, shell, () => null);
+  const value = splice(arg, arg.cuts, shell, true);
   if (value === null) return null;
   const literal = { ...arg, dynamic: false, cuts: undefined, subs: [] };
   if (!arg.unquotedExpansion) return [{ ...literal, value }];
@@ -65,8 +67,8 @@ function splitSplice(arg: WordToken, shell: Shell): WordToken[] | null {
  * shell, so each shell's outputs make one reading together. A list, group, subshell or pipeline prints what its
  * commands print in order, where a pipeline's later stages pass text through only for `cat` and `tee` (TP-3333).
  */
-function subOutput(tokens: Token[], shell: Shell): string | null {
-  const walk: SubWalk = { frames: [{ kind: "(", pieces: [] }], current: undefined, piped: null };
+function walkSub(tokens: Token[], shell: Shell): { text: string | null; complete: boolean } {
+  const walk: SubWalk = { frames: [{ kind: "(", pieces: [] }], current: undefined, piped: null, unknown: false };
   let words: WordToken[] = [];
   let redirects: RedirectToken[] = [];
   let expands = false;
@@ -82,8 +84,8 @@ function subOutput(tokens: Token[], shell: Shell): string | null {
     expands = false;
   }
   while (walk.frames.length > 1) closeFrame(walk, walk.frames.at(-1)?.kind ?? "(");
-  const text = walk.frames[0]?.pieces.join("") ?? "";
-  return walk.frames[0]?.pieces.length ? text : null;
+  const pieces = walk.frames[0]?.pieces ?? [];
+  return { text: pieces.length > 0 ? pieces.join("") : null, complete: !walk.unknown };
 }
 
 /** An open `{ }` group or `( )` subshell with the texts of the commands finished in it. */
@@ -98,6 +100,8 @@ interface SubWalk {
   current: string | null | undefined;
   /** What the stage before the current one prints into it. */
   piped: string | null;
+  /** A stage ran whose output is not known, so the text walked is only part of what the body prints. */
+  unknown: boolean;
 }
 
 /** Runs one command's words: opens the groups it starts, closes one it ends, or prints what it prints. */
@@ -146,6 +150,7 @@ function endStage(walk: SubWalk, op: string): void {
 }
 
 function commit(walk: SubWalk): void {
+  if (walk.current === null) walk.unknown = true;
   if (typeof walk.current === "string") walk.frames.at(-1)?.pieces.push(walk.current);
   walk.current = undefined;
   walk.piped = null;
