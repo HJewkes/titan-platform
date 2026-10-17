@@ -137,7 +137,6 @@ describe("handle: an HTTP write to a run-time URL", () => {
     'printf "method=PUT" > x; set -a; : ${WGETRC::=x}; wget https://api.github.com/repos/o/r/pulls/1/merge',
     'mkdir c; set -a; : ${CURL_HOME:="$PWD/c"}; curl -s https://api.github.com/repos/o/r/pulls/1/merge',
     'set -a; : ${XDG_CONFIG_HOME:=/tmp/c}; curl -s https://api.github.com/repos/o/r/pulls/1/merge',
-    'set -a; : ${HOME:=/tmp/h}; wget https://api.github.com/repos/o/r/pulls/1/merge',
     'set -a; : ${HTTPIE_CONFIG_DIR:=/tmp/h}; http https://api.github.com/repos/o/r/pulls/1/merge',
     'X=${WGETRC:-${WGETRC:=x}}; wget https://api.github.com/repos/o/r/pulls/1/merge',
     'curl -so a.tar https://example.com/a; cd ~; tar xf projects/app/a.tar; wget https://api.github.com/repos/o/r/pulls/1/merge',
@@ -180,6 +179,7 @@ describe("handle: an HTTP write to a run-time URL", () => {
     'V=WGETRC; : ${(P)V::=x}; wget https://api.github.com/repos/o/r/pulls/1/merge',
     'V=WGETRC; : ${(P)V:=x}; wget https://api.github.com/repos/o/r/pulls/1/merge',
     ': ${(P)${V}:=x}; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'set -a; : ${HOME:=/tmp/h}; wget https://api.github.com/repos/o/r/pulls/1/merge',
   ])("denies %s at the lexer, which refuses the assigning expansion before the write is classified", async (command) => {
     const { columns } = await logColumns(command);
 

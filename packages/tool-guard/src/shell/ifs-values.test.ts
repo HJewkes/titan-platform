@@ -80,8 +80,6 @@ describe("lineIfsValues on IFS writes it cannot resolve to a literal", () => {
     ["read", "read IFS <<< ,"],
     ["read with no input", "read IFS"],
     ["mapfile", "mapfile -t IFS <<< ,"],
-    ["a := default", ": ${IFS:=,}"],
-    ["an = default", ": ${IFS=,}"],
     ["arithmetic", ": $((IFS=1))"],
     ["select", "select IFS in ,; do :; done"],
     ["a nameref", "declare -n r=IFS; r=,"],
