@@ -1,5 +1,5 @@
 /** What running a file by path hands the kernel: no `#!` line, a shell the guard knows to read the body as, or a line it cannot follow. */
-export type Shebang = { kind: "none" } | { kind: "shell"; shell: string; flags: string } | { kind: "opaque" };
+type Shebang = { kind: "none" } | { kind: "shell"; shell: string; flags: string } | { kind: "opaque" };
 
 const SHELL_LINE_RE = /^#!(?:\/usr)?\/bin\/(bash|sh|zsh)(?: -([euxvf]+))?$/;
 const ENV_LINE_RE = /^#!\/usr\/bin\/env (bash|sh|zsh)$/;
