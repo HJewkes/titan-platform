@@ -18,6 +18,7 @@ export type { LexState, OpToken, RedirectToken, SubsToken, Token, VarRef, WordTo
 
 const OPERATORS = ["&&", "||", ";;", "|&", "|", ";", "&", "(", ")", "\n"];
 const REDIRECT_RE = /&>>?|<<<|<<-?|<>|>>|>&|<&|>\||>|</y;
+const FUNSUB_RE = /\$\{[\s|]/;
 const BRACED_NAME_RE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
 /** Characters that keep their meaning inside a subscript: quotes, escapes and expansions. */
 const SUBSCRIPT_ACTIVE = "\\'\"`$";
@@ -179,9 +180,16 @@ function readOperator(s: LexState, op: string, end: number): void {
 function readSingleOrArith(s: LexState): void {
   const end = arithmeticQuoteEnd(s);
   if (end === -1) return readSingle(s);
+  refuseFunsub(s);
   readQuoted(s, "'");
   // bash finds the span's end with the quote taken whole, so a substitution reaching past it reads two ways.
   if (s.i > end) throw new ParseError("a substitution in arithmetic runs past the end bash finds for it");
+}
+
+/** bash 5.3 runs `${ cmd;}` and `${|cmd;}` in a double-quoted reading, and the braced reader does not walk their body. */
+function refuseFunsub(s: LexState): void {
+  const close = s.src.indexOf("'", s.i + 1);
+  if (close !== -1 && FUNSUB_RE.test(s.src.slice(s.i, close))) throw new ParseError("a ${ } command substitution in single-quoted arithmetic runs");
 }
 
 /**

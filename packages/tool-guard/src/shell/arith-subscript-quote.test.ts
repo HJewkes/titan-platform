@@ -64,6 +64,15 @@ const DENIED: [string, string][] = [
   ["a double-quoted escaped $( ) in an -eq operand", `[[ 1 -eq "a[\\$(${PUSH})]" ]]`],
   ["an escaped $( ) in an -eq operand", `[[ 1 -eq a[\\$\\(${PUSH.replaceAll(" ", "\\ ")}\\)] ]]`],
   ["a mixed real and quoted $( ) in a subscript", `a['$(${PUSH})'$(true)]=1`],
+  ["a $(( reread as $( ( in an -eq operand", `[[ 1 -eq 'a[$((${PUSH}) )]' ]]`],
+  ["a $(( with a pipe in an -eq operand", `[[ 1 -eq 'a[$((${PUSH})|cat)]' ]]`],
+  ["a $(( with a list in an -eq operand", `[[ 1 -eq 'a[$((${PUSH});true)]' ]]`],
+  ["a funsub in an -eq operand", `[[ 1 -eq 'a[\${ ${PUSH};}]' ]]`],
+  ["a tab funsub in an -eq operand", `[[ 1 -eq 'a[\${\t${PUSH};}]' ]]`],
+  ["a newline funsub in an -eq operand", `[[ 1 -eq 'a[\${\n${PUSH};}]' ]]`],
+  ["a valuesub in a subscript", `a['\${|${PUSH};}']=1`],
+  ["a funsub in a subscript", `a['\${ ${PUSH};}']=1`],
+  ["a funsub in a compound assignment element", `a=( ['\${ ${PUSH};}']=1 )`],
   ["a single-quoted $( ) in declare", `declare a['$(${PUSH})']=1`],
 ];
 

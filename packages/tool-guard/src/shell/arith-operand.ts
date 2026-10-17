@@ -2,8 +2,8 @@ import { ParseError } from "./parse-error.js";
 import type { LexState, WordToken } from "./tokens.js";
 
 const ARITH_TEST_OPERATORS = new Set(["-eq", "-ne", "-lt", "-le", "-gt", "-ge"]);
-/** What `appendLiteral` looks for: a `$(` that is not `$((`, or a backtick. */
-export const CODE_TEXT_RE = /\$\((?!\()|`/;
+/** What `appendLiteral` looks for: any `$(`, `$((` included since bash 5.3 rereads it as `$( (`, any `${`, which may open a funsub (`${ c;}`, `${|c;}`), or a backtick. */
+export const CODE_TEXT_RE = /\$[({]|`/;
 const SUBSCRIPTED_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*\[.*\]\+?=/s;
 
 const REASON = "a command substitution written as text in an arithmetic subscript or [[ -eq ]] operand runs when bash evaluates it";

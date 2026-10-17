@@ -25,7 +25,7 @@ export function appendChar(s: LexState, c: string): void {
  */
 export function appendLiteral(w: WordToken, text: string): void {
   // Reading the value back would flatten the string being built on every character, so only the new text is tested.
-  const joinsDollar = text.startsWith("(") && w.value.endsWith("$");
+  const joinsDollar = (text.startsWith("(") || text.startsWith("{")) && w.value.endsWith("$");
   w.value += text;
   if (joinsDollar || CODE_TEXT_RE.test(text)) w.codeText = true;
 }
