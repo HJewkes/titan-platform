@@ -393,6 +393,31 @@ interface CodexCapabilityInspectionOptions extends CodexVersionInspectionOptions
 declare function inspectCodexCapabilities(executablePath: string, env: Record<string, string>, options: CodexCapabilityInspectionOptions): Promise<CodexRuntimeInspection>;
 
 declare const DEFAULT_CODEX_EXECUTABLE = "codex";
+interface CodexAvailabilityOptions {
+    executablePath?: string;
+    env?: Record<string, string | undefined>;
+    timeoutMs?: number;
+    signal?: AbortSignal;
+    resume?: boolean;
+    sandbox?: string;
+    requiredCapabilities?: readonly CodexRuntimeCapability[];
+}
+interface CodexAvailabilityDeps {
+    inspectVersion?: (path: string, env: Record<string, string>, options: CodexVersionInspectionOptions) => Promise<string>;
+    inspectCapabilities?: (path: string, env: Record<string, string>, options: CodexCapabilityInspectionOptions) => Promise<CodexRuntimeInspection>;
+}
+type CodexAvailability = {
+    ok: true;
+    executablePath: string;
+    versionOutput: string;
+    inspection: CodexRuntimeInspection;
+} | {
+    ok: false;
+    failure: HarnessRunFailure;
+};
+/** Model-free runtime admission only; cached login and policy enforcement are separate. */
+declare function checkCodexAvailable(options?: CodexAvailabilityOptions, deps?: CodexAvailabilityDeps): Promise<CodexAvailability>;
+
 /** @deprecated This is the minimum floor, not an exact version pin. */
 declare const SUPPORTED_CODEX_EXEC_VERSION = "0.162.1";
 declare const STRIPPED_CODEX_AUTH_VARS: readonly ["CODEX_API_KEY", "OPENAI_API_KEY", "OPENAI_ACCESS_TOKEN"];
@@ -577,4 +602,4 @@ interface ClaudeCodeAdapterOptions {
 declare function createClaudeCodeAdapter(options: ClaudeCodeAdapterOptions): HarnessAdapter<"claude-code">;
 declare function claudeCodeCapabilities(): HarnessCapabilityDescriptor<"claude-code">;
 
-export { ANTI_NESTING_VARS, type AgentFailure, type AgentFailureKind, type AgentInit, type AgentRunConfig, type AgentRunDeps, type AgentRunHarness, type AgentRunResult, type AgentUsage, type AuthEnvCheckOptions, AuthMisconfiguredError, type BoundedRunBase, CLAUDE_CODE_PASSTHROUGH_VARS, CLAUDE_PRINT_KILL_GRACE_MS, CLAUDE_PRINT_UNSUPPORTED_OPTIONS, CODEX_APPROVAL_POLICIES, CODEX_RUNTIME_CAPABILITIES, CODEX_SANDBOXES, type CapabilityAssessment, type ClassifyOptions, type ClaudeCodeAdapterOptions, type ClaudeCodeNativeOptions, type ClaudeCodeRunRequest, type CodexApprovalPolicy, type CodexCapabilityInspectionOptions, type CodexExecAdapterOptions, type CodexExecDeps, type CodexNativeOptions, type CodexOutputSchema, type CodexPriceRow, type CodexProcessExit, type CodexProcessInput, type CodexRunRequest, type CodexRuntimeCapability, type CodexRuntimeInspection, type CodexSandbox, type CodexSchemaFile, type CodexVersionInspectionOptions, DEFAULT_CODEX_EXECUTABLE, DEFAULT_CODEX_KILL_GRACE_MS, DEFAULT_INACTIVITY_MS, DEFAULT_MAX_RETRIES, type DurableCancelResult, type DurableDispatchAck, type DurableDispatchInput, type DurableHarnessDispatcher, type DurableHarnessDispatcherDeps, type DurableHarnessDispatcherOptions, type DurableHarnessRecord, type DurableHarnessSuccess, type DurableLiveHandle, type DurableReconcileOutcome, type DurableSettlement, EXECUTION_CAPABILITIES, type ExecutionCapability, type ExecutionLimit, FORBIDDEN_API_KEY_SOURCES, type Harness, type HarnessAdapter, type HarnessCapabilityDescriptor, type HarnessRunFailure, type HarnessRunOutput, type HarnessRunProgress, type HarnessRunRequest, type HarnessRunRequestFor, type HarnessRunResult, type LimitCapability, type LimitEnforcement, type LimitScope, type LimitUnit, MIN_CODEX_EXEC_VERSION, type OptionalLimitUnit, type PrepareEnvOptions, type RunTarget, STRIPPED_AUTH_VARS, STRIPPED_CODEX_AUTH_VARS, STRIPPED_PROXY_VARS, SUPPORTED_CODEX_EXEC_VERSION, type SupervisedCodexProcess, type TranscriptSourceHint, assertApiKeySourceAllowed, assertAuthEnvOk, buildClaudePrintArgs, buildCodexExecArgs, classifyResult, claudeCodeCapabilities, claudePrintCapabilities, codexExecCapabilities, createClaudeCodeAdapter, createCodexExecAdapter, createDurableHarnessDispatcher, dispatchHarnessRun, inspectCodexCapabilities, preflightHarnessRun, prepareCodexEnv, prepareEnv, priceCodexUsage, resolveClaudeBin, runAgent, sumModelCost, usageFromResult };
+export { ANTI_NESTING_VARS, type AgentFailure, type AgentFailureKind, type AgentInit, type AgentRunConfig, type AgentRunDeps, type AgentRunHarness, type AgentRunResult, type AgentUsage, type AuthEnvCheckOptions, AuthMisconfiguredError, type BoundedRunBase, CLAUDE_CODE_PASSTHROUGH_VARS, CLAUDE_PRINT_KILL_GRACE_MS, CLAUDE_PRINT_UNSUPPORTED_OPTIONS, CODEX_APPROVAL_POLICIES, CODEX_RUNTIME_CAPABILITIES, CODEX_SANDBOXES, type CapabilityAssessment, type ClassifyOptions, type ClaudeCodeAdapterOptions, type ClaudeCodeNativeOptions, type ClaudeCodeRunRequest, type CodexApprovalPolicy, type CodexAvailability, type CodexAvailabilityDeps, type CodexAvailabilityOptions, type CodexCapabilityInspectionOptions, type CodexExecAdapterOptions, type CodexExecDeps, type CodexNativeOptions, type CodexOutputSchema, type CodexPriceRow, type CodexProcessExit, type CodexProcessInput, type CodexRunRequest, type CodexRuntimeCapability, type CodexRuntimeInspection, type CodexSandbox, type CodexSchemaFile, type CodexVersionInspectionOptions, DEFAULT_CODEX_EXECUTABLE, DEFAULT_CODEX_KILL_GRACE_MS, DEFAULT_INACTIVITY_MS, DEFAULT_MAX_RETRIES, type DurableCancelResult, type DurableDispatchAck, type DurableDispatchInput, type DurableHarnessDispatcher, type DurableHarnessDispatcherDeps, type DurableHarnessDispatcherOptions, type DurableHarnessRecord, type DurableHarnessSuccess, type DurableLiveHandle, type DurableReconcileOutcome, type DurableSettlement, EXECUTION_CAPABILITIES, type ExecutionCapability, type ExecutionLimit, FORBIDDEN_API_KEY_SOURCES, type Harness, type HarnessAdapter, type HarnessCapabilityDescriptor, type HarnessRunFailure, type HarnessRunOutput, type HarnessRunProgress, type HarnessRunRequest, type HarnessRunRequestFor, type HarnessRunResult, type LimitCapability, type LimitEnforcement, type LimitScope, type LimitUnit, MIN_CODEX_EXEC_VERSION, type OptionalLimitUnit, type PrepareEnvOptions, type RunTarget, STRIPPED_AUTH_VARS, STRIPPED_CODEX_AUTH_VARS, STRIPPED_PROXY_VARS, SUPPORTED_CODEX_EXEC_VERSION, type SupervisedCodexProcess, type TranscriptSourceHint, assertApiKeySourceAllowed, assertAuthEnvOk, buildClaudePrintArgs, buildCodexExecArgs, checkCodexAvailable, classifyResult, claudeCodeCapabilities, claudePrintCapabilities, codexExecCapabilities, createClaudeCodeAdapter, createCodexExecAdapter, createDurableHarnessDispatcher, dispatchHarnessRun, inspectCodexCapabilities, preflightHarnessRun, prepareCodexEnv, prepareEnv, priceCodexUsage, resolveClaudeBin, runAgent, sumModelCost, usageFromResult };

@@ -40,6 +40,15 @@ function runner(version = "0.162.1", inspection = report(), requiredRuntimeCapab
 }
 
 describe("Codex runtime admission", () => {
+  it("keeps version-probe rejection context through adapter admission", async () => {
+    const start = vi.fn();
+    const adapter = createCodexExecAdapter({ auth: "cached-cli" }, {
+      inspectVersion: async () => { throw new Error("fixture version probe rejected"); }, start,
+    });
+    expect(await adapter.run(request())).toMatchObject({ ok: false,
+      failure: { reason: "could not verify Codex CLI version: fixture version probe rejected" } });
+    expect(start).not.toHaveBeenCalled();
+  });
   it("uses the installed CLI on PATH rather than a desktop application path", () => {
     expect(DEFAULT_CODEX_EXECUTABLE).toBe("codex");
   });

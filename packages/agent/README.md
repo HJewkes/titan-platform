@@ -224,6 +224,15 @@ capabilities fail before starting a model; help is surface evidence, not sandbox
 policy enforcement proof. `MIN_CODEX_EXEC_VERSION` names the floor; deprecated
 `SUPPORTED_CODEX_EXEC_VERSION` remains an alias for compatibility, not an exact pin.
 
+Use exported `checkCodexAvailable({ executablePath?, env?, timeoutMs?, signal?,
+resume?, sandbox?, requiredCapabilities? })` for model-free runtime availability.
+It uses the same path rule and version/capability probes as the adapter: the
+default `codex` is resolved through PATH by the version probe; explicit overrides
+must be absolute. Success returns executablePath, versionOutput and inspection;
+failure returns a categorized failure, including version-probe error context.
+It starts no model and does not certify login or permission parity. The default
+probe budget is five seconds, shared across version and command-help probes.
+
 Managed callers must declare extra requirements using `requiredRuntimeCapabilities`,
 including `mcp_config`, `tool_policy` and `rollout_rate_limits` for a bus-connected
 profile. The default help probe cannot establish those semantics, so such requirements

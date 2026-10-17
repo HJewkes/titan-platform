@@ -177,6 +177,13 @@ refuse missing/unverified MCP, tool-policy or rollout evidence; the default help
 probe cannot establish those semantics. This is runtime admission, not permission
 enforcement. `runAgent` retains its existing Claude behavior.
 
+`checkCodexAvailable(options?, deps?)` is the shared model-free runtime check for
+consumers. Default discovery uses PATH, explicit executable overrides must be
+absolute, and version plus required capabilities share a bounded deadline. It
+returns `{ ok: true, executablePath, versionOutput, inspection }` or a categorized
+failure. Supply additional requirements such as output_schema for a judge.
+Availability does not establish login state or permission enforcement.
+
 Resumes inspect their own flags and the sandbox values listed by `exec --help`:
 the adapter sets sandbox_mode through `--config` on either subcommand. Both help
 probes share the setup deadline; requirements follow the built arguments.

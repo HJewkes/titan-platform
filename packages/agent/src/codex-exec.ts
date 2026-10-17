@@ -5,7 +5,6 @@ import { runCodexExecSession } from "./codex-exec-session.js";
 import { validateCodexPrices, type CodexPriceRow } from "./codex-prices.js";
 import {
   createCodexSchemaFile,
-  inspectCodexVersion,
   startCodexProcess,
   type CodexProcessInput,
   type CodexSchemaFile,
@@ -24,12 +23,12 @@ import type {
 } from "./harness-contracts.js";
 import { preflightHarnessRun } from "./preflight.js";
 import {
-  CODEX_RUNTIME_CAPABILITIES, MIN_CODEX_EXEC_VERSION, checkCodexCapabilities,
-  checkCodexVersion, inspectCodexCapabilities,
+  CODEX_RUNTIME_CAPABILITIES, MIN_CODEX_EXEC_VERSION,
   type CodexRuntimeCapability, type CodexRuntimeInspection, type CodexCapabilityInspectionOptions,
 } from "./codex-runtime.js";
 
-export const DEFAULT_CODEX_EXECUTABLE = "codex";
+import { checkCodexAvailable, resolveCodexExecutable, DEFAULT_CODEX_EXECUTABLE } from "./codex-available.js";
+export { DEFAULT_CODEX_EXECUTABLE } from "./codex-available.js";
 /** @deprecated This is the minimum floor, not an exact version pin. */
 export const SUPPORTED_CODEX_EXEC_VERSION = MIN_CODEX_EXEC_VERSION;
 export const STRIPPED_CODEX_AUTH_VARS = ["CODEX_API_KEY", "OPENAI_API_KEY", "OPENAI_ACCESS_TOKEN"] as const;
@@ -68,7 +67,7 @@ export function createCodexExecAdapter(
   deps: CodexExecDeps = {},
 ): HarnessAdapter<"codex"> {
   validateOptions(options);
-  const executablePath = options.executablePath ?? DEFAULT_CODEX_EXECUTABLE;
+  const executablePath = resolveCodexExecutable(options.executablePath);
   const env = prepareCodexEnv(options.env ?? process.env);
   const descriptor = codexExecCapabilities();
   return {
@@ -152,10 +151,7 @@ function validateOptions(options: CodexExecAdapterOptions): void {
     throw new TypeError("requiredRuntimeCapabilities must contain recognized runtime capabilities");
   }
   if (options.auth !== "cached-cli") throw new TypeError("Codex exec adapter supports only cached-cli authentication");
-  if (options.executablePath !== undefined) {
-    if (options.executablePath.trim().length === 0) throw new TypeError("executablePath must be a nonempty string");
-    if (!isAbsolute(options.executablePath)) throw new TypeError("executablePath must be absolute");
-  }
+  resolveCodexExecutable(options.executablePath);
   if (options.killGraceMs !== undefined && (!Number.isFinite(options.killGraceMs) || options.killGraceMs < 0)) {
     throw new TypeError("killGraceMs must be a finite nonnegative number");
   }
@@ -188,26 +184,15 @@ async function runSupervised<T>(
   const remaining = () => Math.max(0, request.wallTimeMs - (deadlineNow() - startedAt));
   let schemaFile: CodexSchemaFile | undefined;
   try {
-    const versionOutput = await setupStep(
-      (deps.inspectVersion ?? inspectCodexVersion)(config.executablePath, config.env, {
-        signal: request.signal,
-        timeoutMs: remaining(),
-      }),
-      request.signal,
-      remaining(),
-    );
-    const versionFailure = checkCodexVersion(versionOutput);
-    if (versionFailure) return failed(versionFailure);
-    const inspection = await setupStep(
-      (deps.inspectCapabilities ?? inspectCodexCapabilities)(config.executablePath, config.env, {
-        signal: request.signal, timeoutMs: remaining(), resume: request.target.kind === "resume",
-      }), request.signal, remaining(),
-    );
     const args = buildCodexExecArgs(request, request.native?.outputSchema ? "preflight-schema" : undefined);
     const required: CodexRuntimeCapability[] = [...capabilitiesForArgs(args),
       ...(config.requiredRuntimeCapabilities ?? [])];
-    const capabilityFailure = checkCodexCapabilities(inspection, request.native?.sandbox ?? "read-only", required);
-    if (capabilityFailure) return failed(capabilityFailure);
+    const available = await setupStep(checkCodexAvailable({
+      ...(config.executablePath === DEFAULT_CODEX_EXECUTABLE ? {} : { executablePath: config.executablePath }),
+      env: config.env, timeoutMs: remaining(), signal: request.signal, resume: request.target.kind === "resume",
+      sandbox: request.native?.sandbox ?? "read-only", requiredCapabilities: required,
+    }, deps), request.signal, remaining());
+    if (!available.ok) return failed(available.failure);
 
     if (request.native?.outputSchema) {
       schemaFile = await setupStep(
