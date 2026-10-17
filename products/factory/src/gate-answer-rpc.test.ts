@@ -302,7 +302,7 @@ describe("POST /gates/answer-ship", () => {
 
   describe("on a red head's sh-visual-accept gate", () => {
     /** Opens the accept gate, and puts the factory's packet and delivery record for H under the server's state dir. */
-    async function acceptGate(w: World, mode: "off" | "on"): Promise<Record<string, unknown>> {
+    async function acceptGate(w: World, mode: "off" | "on"): Promise<{ body: Record<string, unknown>; gateId: string }> {
       mkdirSync(join(w.dir, "config", "titan-factory"), { recursive: true });
       writeFileSync(join(w.dir, "config", "titan-factory", "config.json"), JSON.stringify({ shepherd: { visualSetCarry: mode } }));
       vi.stubEnv("XDG_CONFIG_HOME", join(w.dir, "config"));
@@ -313,31 +313,31 @@ describe("POST /gates/answer-ship", () => {
       writeFactoryPacket(w.dir, runId, packet, H);
       writeRound(w);
       writeFileSync(join(w.roundsDir, ROUND_ID, "packet.json"), packet);
-      return answer(w, hash(Buffer.from(packet).toString("utf8")), { runId, gateId, choice: "accept-set" });
+      return { body: answer(w, hash(Buffer.from(packet).toString("utf8")), { runId, gateId, choice: "accept-set" }), gateId };
     }
 
     it("resolves accept-set with the set read from the factory's own packet dir, and reads a replay as already", async () => {
       const w = await world();
-      const body = await acceptGate(w, "on");
+      const { body, gateId } = await acceptGate(w, "on");
 
       const res = await post(w.server, body);
       const replay = await post(w.server, body);
 
-      expect([res.status, await res.json()]).toEqual([200, { outcome: "resolved", gateId: body.gateId, choice: "accept-set" }]);
-      expect([replay.status, await replay.json()]).toEqual([200, { outcome: "already", gateId: body.gateId }]);
-      const gate = w.server.host.gates.get(body.gateId as string);
+      expect([res.status, await res.json()]).toEqual([200, { outcome: "resolved", gateId, choice: "accept-set" }]);
+      expect([replay.status, await replay.json()]).toEqual([200, { outcome: "already", gateId }]);
+      const gate = w.server.host.gates.get(gateId);
       expect(gate?.payload).toMatchObject({ decision: "accept-set", headSha: H, approvedSet: { fromHead: H, packetId: "p-accept", sidePaths: [] } });
       expect(gate?.resolvedBy).toMatchObject({ class: "owner-remote", channel: "console:ship" });
     });
 
     it("refuses accept-set with 422 off while shepherd.visualSetCarry is off, leaving the gate pending", async () => {
       const w = await world();
-      const body = await acceptGate(w, "off");
+      const { body, gateId } = await acceptGate(w, "off");
 
       const res = await post(w.server, body);
 
       expect([res.status, await res.json()]).toMatchObject([422, { outcome: "refused", reason: "off" }]);
-      expect(w.server.host.gates.get(body.gateId as string)?.status).toBe("pending");
+      expect(w.server.host.gates.get(gateId)?.status).toBe("pending");
     });
   });
 

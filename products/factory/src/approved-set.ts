@@ -8,11 +8,25 @@ const hex = (length: number) => z.string().regex(new RegExp(`^[0-9a-f]{${length}
 const SetFile = z.strictObject({ path: z.string(), key: z.string(), sha256: hex(64), blob: hex(40) });
 
 /** The regenerated baselines the owner accepted at a red head: a later head must commit exactly these blobs and nothing else. */
-export const ApprovedSetSchema = z.strictObject({ packetSha: hex(64), packetId: z.string(), ciRunId: z.string(), fromHead: hex(40), files: z.array(SetFile).max(MAX_SET_FILES), removed: z.array(z.string()), sidePaths: z.array(z.string()).max(0) });
+export const ApprovedSetSchema = z.strictObject({
+  packetSha: hex(64),
+  packetId: z.string(),
+  ciRunId: z.string(),
+  fromHead: hex(40),
+  files: z.array(SetFile).max(MAX_SET_FILES),
+  removed: z.array(z.string()),
+  sidePaths: z.array(z.string()).max(0),
+});
 export type ApprovedSet = z.infer<typeof ApprovedSetSchema>;
 
 /** Only the fields the set is built from; the key rule is td's, so a key can never name a path outside `after/`. */
-const SetImage = z.looseObject({ key: z.string().regex(/^[A-Za-z0-9_-]{1,32}$/), layer: z.string(), path: z.string(), change: z.enum(["changed", "new", "removed"]), after: z.looseObject({ sha256: hex(64) }).optional() });
+const SetImage = z.looseObject({
+  key: z.string().regex(/^[A-Za-z0-9_-]{1,32}$/),
+  layer: z.string(),
+  path: z.string(),
+  change: z.enum(["changed", "new", "removed"]),
+  after: z.looseObject({ sha256: hex(64) }).optional(),
+});
 const SetPacket = z.looseObject({ packetId: z.string(), headSha: hex(40), ci: z.looseObject({ runId: z.string() }), images: z.array(SetImage) });
 export type SetPacket = z.infer<typeof SetPacket>;
 

@@ -96,7 +96,8 @@ const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes)
 export async function checkAnswer(inputs: AnswerInputs): Promise<AnswerCheck> {
   const { host, request } = inputs;
   const gate = host.gates.get(request.gateId);
-  if (!gate || !Object.keys(SHIP_CHOICES).some((step) => stepIdMatches(`${request.runId}/${step}`, gate.id))) return refused("unknown-gate", `run ${request.runId} has no approve-merge gate ${request.gateId}`);
+  const answerable = gate && Object.keys(SHIP_CHOICES).some((step) => stepIdMatches(`${request.runId}/${step}`, gate.id));
+  if (!gate || !answerable) return refused("unknown-gate", `run ${request.runId} has no approve-merge gate ${request.gateId}`);
   const land = gateHead(gate);
   if (!land) return refused("not-land-gate", `gate ${gate.id} does not pin a PR head`);
   const payload = answerPayload(inputs, land);

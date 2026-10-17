@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { MAX_SET_FILES, acceptSetNote, approvedSetOf, gitBlobId, type BuiltSet } from "./approved-set.js";
+import { MAX_SET_FILES, acceptSetNote, approvedSetOf, gitBlobId } from "./approved-set.js";
 import { AFTER_BYTES, acceptPacket, afterDigests } from "./test-support/accept-set.js";
 
 const H = "a".repeat(40);
@@ -31,14 +31,16 @@ describe("approvedSetOf", () => {
   });
 
   it(`refuses set-too-large past ${MAX_SET_FILES} kept images`, () => {
-    const packet = JSON.parse(Buffer.from(acceptPacket(where)).toString("utf8")) as { images: object[] };
-    packet.images = Array.from({ length: MAX_SET_FILES + 1 }, (_, n) => ({ key: `k${n}`, layer: "story", path: `p/${n}.png`, change: "new", after: { sha256: "0".repeat(64) } }));
+    const images = Array.from({ length: MAX_SET_FILES + 1 }, (_, n) => ({ key: `k${n}`, layer: "story", path: `p/${n}.png`, change: "new", after: { sha256: "0".repeat(64) } }));
 
-    expect(build(Buffer.from(JSON.stringify(packet)))).toMatchObject({ reason: "set-too-large" });
+    expect(build(Buffer.from(JSON.stringify({ packetId: "p-big", headSha: H, ci: { runId: "1" }, images })))).toMatchObject({ reason: "set-too-large" });
   });
 
   it("writes a fixer note naming the run, the layers, each file with its blob and each deletion", () => {
-    const note = acceptSetNote(build() as BuiltSet, "run-1");
+    const built = build();
+    if ("reason" in built) throw new Error(built.detail);
+
+    const note = acceptSetNote(built, "run-1");
 
     expect(note).toContain("Shepherd run run-1: commit exactly the component and story baselines CI run 9001 regenerated");
     expect(note).toContain(`- write a/one.png (blob ${gitBlobId(AFTER_BYTES.k1!)})`);
