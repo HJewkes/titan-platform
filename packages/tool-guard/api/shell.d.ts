@@ -3,20 +3,6 @@ interface Nesting {
     depth: number;
 }
 
-/**
- * Shared by every lexer state reading one source: each `((` position, and the `$` of each `$((`,
- * is tried once. The spend and the nesting are shared further, with heredoc bodies and backticks
- * lexed from that source, so all trials of one command read at most a few times its length and
- * crafted nesting can neither stall the guard nor overflow its stack.
- */
-interface ArithTrials {
-    ends: Map<number, number>;
-    spend: {
-        left: number;
-    };
-    nesting: Nesting;
-}
-
 /** A `$NAME` or `${NAME}` reference; `start` and `end` index into the word's `value`. */
 interface VarRef {
     name: string;
@@ -76,6 +62,22 @@ interface RedirectToken {
     subs: Token[][];
 }
 type Token = WordToken | OpToken | SubsToken | RedirectToken;
+
+/**
+ * Shared by every lexer state reading one source: each `((` position, and the `$` of each `$((`,
+ * is tried once. The spend and the nesting are shared further, with heredoc bodies and backticks
+ * lexed from that source, so all trials of one command read at most a few times its length and
+ * crafted nesting can neither stall the guard nor overflow its stack.
+ */
+interface ArithTrials {
+    ends: Map<number, number>;
+    /** The tokens of the `$( ( … ) )` reading of the `$((` at each position, lexed once so nested ones stay linear. */
+    subshells: Map<number, Token[][]>;
+    spend: {
+        left: number;
+    };
+    nesting: Nesting;
+}
 
 declare class ParseError extends Error {
     name: string;

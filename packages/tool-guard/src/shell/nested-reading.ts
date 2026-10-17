@@ -25,11 +25,26 @@ export function lineReading(s: LexState): Reading {
  */
 export function arithmeticExpansionEnd(at: Reading, dollar: number, found: Token[][]): number {
   const known = at.trials.ends.get(dollar);
-  if (known !== undefined) return known === -1 ? -1 : balancedEnd(at.src, dollar + 1, nestedReaders(at, found));
+  if (known !== undefined) return known === -1 ? -1 : withSubshellReading(at, dollar, balancedEnd(at.src, dollar + 1, nestedReaders(at, found)), found);
   const trial: Token[][] = [];
   const end = arithmeticTrial(at, dollar, trial);
   at.trials.ends.set(dollar, end);
   if (end !== -1) found.push(...trial);
+  return end === -1 ? -1 : withSubshellReading(at, dollar, end, found);
+}
+
+/**
+ * zsh reads an arithmetic body that holds a quote as `$( ( … ) )` when the quote holds a paren, running what bash
+ * calls arithmetic, so the commands of that reading are walked too; a body that cannot be lexed that way is refused.
+ */
+function withSubshellReading(at: Reading, dollar: number, end: number, found: Token[][]): number {
+  if (!/['"\\]/.test(at.src.slice(dollar + 3, end - 1))) return end;
+  let tokens = at.trials.subshells.get(dollar);
+  if (tokens === undefined) {
+    tokens = [lexNested(at.src, dollar + 2, at.trials, at.line).tokens];
+    at.trials.subshells.set(dollar, tokens);
+  }
+  found.push(...tokens);
   return end;
 }
 
