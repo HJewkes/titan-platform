@@ -40,6 +40,9 @@ export function fixFirstFindings(target: ReviewTarget, messages: readonly Review
   return heading + boundedFindings(texts.length === 0 ? fallback : texts.join(FINDINGS_SEPARATOR), MAX_FIX_FIRST_TEXT_CHARS - heading.length);
 }
 
+/** The line a reviewer lists, as its own blocking item, when it could not read CI at this head; Shepherd re-reviews a FIX_FIRST holding only it. */
+export const CI_UNREAD_LINE = "Blocking: CI unread";
+
 /** The line a reviewer adds for each blocking item that contradicts a recorded owner pick. */
 export const OWNER_PICK_CONTRADICTED = "Owner pick contradicted:";
 

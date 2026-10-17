@@ -23,6 +23,11 @@ interface ShellStdin {
   scriptFile: WordToken | null;
   /** Every source on that descriptor, or on stdin when it runs none, which a `-c` string may still read. */
   sources: StdinSource[];
+  /**
+   * Whether a script operand the line spells as a plain path may still be stdin: a cwd it does not show, or a symlink
+   * or move earlier on the line, can make any name the shell's own stdin, so the text on stdin is read as a script too.
+   */
+  mayBeStdin: boolean;
   /** Whether the shell runs a descriptor whose text the line cannot show: a dup, an inherited fd, or a run-time file. */
   unknowable: boolean;
 }
@@ -166,7 +171,8 @@ export function shellStdin(
   const fd = file === null ? null : pathFd(file.value);
   const runs = readsStdin || fd !== null || (file !== null && (file.dynamic || file.computed));
   const feeds = feedsOf(redirects, piped, inherited)(fd ?? 0, redirects.length);
-  return { runs, fd: fd ?? 0, scriptFile: fd === null ? file : null, sources: sourcesOf(feeds), unknowable: runs && feeds.unknown };
+  const mayBeStdin = file !== null && fd === null;
+  return { runs, fd: fd ?? 0, scriptFile: fd === null ? file : null, sources: sourcesOf(feeds), mayBeStdin, unknowable: runs && feeds.unknown };
 }
 
 /**

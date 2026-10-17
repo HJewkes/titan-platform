@@ -46,7 +46,7 @@ function request(overrides: Partial<CodexRunRequest<string>> = {}): CodexRunRequ
 }
 
 function fakeAdapter(adapterDescriptor = descriptor(), thrown?: unknown) {
-  const conversation = { harness: "codex", namespace: "local", nativeId: "thread-1" };
+  const conversation = { harness: "codex", namespace: "local", nativeId: "019c0000-0000-7000-8000-000000000001" };
   const run = vi.fn();
   const adapter: HarnessAdapter<"codex"> = {
     descriptor: adapterDescriptor,
@@ -145,7 +145,7 @@ describe("dispatchHarnessRun preflight", () => {
 
   it.each([
     { kind: "fresh" as const, namespace: " " },
-    { kind: "resume" as const, conversation: { harness: "codex", namespace: "", nativeId: "thread-1" } },
+    { kind: "resume" as const, conversation: { harness: "codex", namespace: "", nativeId: "019c0000-0000-7000-8000-000000000001" } },
     { kind: "resume" as const, conversation: { harness: "codex", namespace: "local", nativeId: " " } },
   ])("rejects unusable $kind identity components before launch", async (target) => {
     const fake = fakeAdapter();
@@ -171,7 +171,7 @@ describe("dispatchHarnessRun preflight", () => {
   ] as const)("rejects an %s capability before launch", async (status, assessment) => {
     const fake = fakeAdapter(descriptor({ resume: assessment }));
     const resume = request({
-      target: { kind: "resume", conversation: { harness: "codex", namespace: "local", nativeId: "thread-1" } },
+      target: { kind: "resume", conversation: { harness: "codex", namespace: "local", nativeId: "019c0000-0000-7000-8000-000000000001" } },
     });
     const result = await dispatchHarnessRun(resume, fake.adapter);
     expect(result).toMatchObject({ ok: false, failure: { kind: "unsupported_requirement", status } });
@@ -183,7 +183,7 @@ describe("dispatchHarnessRun preflight", () => {
     delete (adapterDescriptor.capabilities as Partial<Record<ExecutionCapability, CapabilityAssessment>>).resume;
     const fake = fakeAdapter(adapterDescriptor);
     const result = await dispatchHarnessRun(
-      request({ target: { kind: "resume", conversation: { harness: "codex", namespace: "local", nativeId: "thread-1" } } }),
+      request({ target: { kind: "resume", conversation: { harness: "codex", namespace: "local", nativeId: "019c0000-0000-7000-8000-000000000001" } } }),
       fake.adapter,
     );
     expect(result).toMatchObject({ ok: false, failure: { kind: "unsupported_requirement", status: "unverified" } });
