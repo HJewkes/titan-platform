@@ -98,9 +98,9 @@ through a symlinked parent, is refused just before the append.
   a function body or a script it sources, because zsh expands an alias in text it parses later in the same process
   and the guard would read `y push` as an unknown program (TP-2705). Querying one (`alias`, `alias g`, `alias -L`,
   `alias -m 'g*'`) and `unalias` pass. A command word the shell may expand into `alias` is read as `alias`: a brace
-  expansion (`{alias,y=echo}`), a glob a file named `alias` or a wrapper such as `builtin` would match (`ali*`), a
+  expansion (`{alias,y=echo}`), a glob a file named like `alias`, a wrapper such as `builtin`, or a store builtin such as `typeset` or `source` would match, in any letter case (`ali*`, `t?peset`), a
   leading `=` or a tilde without a `/`. A word with a `/` is a path and never `alias`, and a glob no such name matches
-  (`TP-*`, `*dropped*`) is only a name; a lone `case` pattern word is matched, never run. A word that varies where
+  (`TP-*`, `*dropped*`) is only a name, unless it holds a `]` opening a bracket class, `#`, `\`, `^`, `~`, `<n-m>` or a group; a lone `case` pattern word is matched, never run, but only between `in` and `esac` (zsh's brace form `case x { … }` is read as commands). A word that varies where
   `alias` reads its operands, or where a store builtin reads an option or a name, is read as one that may define:
   `alias *`, `typeset ali*`, `printf *`, `print $x`; a numeric parameter (`$?`, `$#`) and a format that opens with
   text (`printf "b$n=%s "`) are not. Only the plain `NAME=VALUE` form of a declaration is spared, as neither shell

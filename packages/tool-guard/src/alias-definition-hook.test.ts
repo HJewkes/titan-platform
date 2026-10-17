@@ -63,6 +63,19 @@ describe("a line that defines a shell alias", () => {
     ["an alias in a case body", `case x in a) alias y=git;; esac; ${PUSH}`],
     ["a glob command word that may match alias", `ali* y=echo; ${PUSH}`],
     ["a brace-expanded command word", `{alias,y=echo}; ${PUSH}`],
+    ["a bracket class led by ] before alias", `touch alias; a[]l]ias y=git; ${PUSH}`],
+    ["a bracket class led by ] first", `touch alias; []a]lias y=git; ${PUSH}`],
+    ["a bracket class led by ] later", `touch alias; ali[]a]s y=git; ${PUSH}`],
+    ["a glob that may match typeset", `touch typeset; t?peset 'aliases[y]=git'; ${PUSH}`],
+    ["a glob that may match printf", `touch printf; pr?ntf -v 'aliases[y]' git; ${PUSH}`],
+    ["a glob that may match set", `touch set; s?t -A aliases y git; ${PUSH}`],
+    ["a glob that may match read", `touch read; r?ad -A aliases; ${PUSH}`],
+    ["a glob that may match enable", `touch enable; enab?e -a; ${PUSH}`],
+    ["a glob that may match declare", `touch declare; decl?re 'aliases[y]=git'; ${PUSH}`],
+    ["a glob that may match source", `touch source; so?rce ./a.sh; ${PUSH}`],
+    ["a glob that may match alias under nocaseglob", `touch alias; ALI* y=git; ${PUSH}`],
+    ["an extendedglob repetition after an escaped space", `setopt extendedglob; touch alias; alias\\ # y=git; ${PUSH}`],
+    ["a zsh brace case that runs the assignment", `case x { a) echo in; aliases[y]=git;; }; ${PUSH}`],
   ])("refuses %s with the alias reason", async (_name, command) => {
     const got = await answer(command);
     expect(got.decision).toBe("deny");

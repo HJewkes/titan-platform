@@ -5,6 +5,7 @@ import { decide } from "../decide.js";
 import type { HookPort } from "../hook.js";
 import { handle } from "../hook.js";
 import { extractCommands } from "./commands.js";
+import { AliasDefinitionError } from "./alias-definitions.js";
 import { ParseError, tokenize } from "./lexer.js";
 
 const HOME = "/home/you";
@@ -151,7 +152,7 @@ function refusesOrShowsHidden(command: string): boolean {
   try {
     return extractCommands(command).some((c) => c.name === "echo" && c.args[0]?.value === "HIDDEN");
   } catch (error) {
-    return error instanceof ParseError;
+    return error instanceof ParseError || error instanceof AliasDefinitionError;
   }
 }
 

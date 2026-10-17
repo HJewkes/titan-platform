@@ -138,7 +138,7 @@ export function definesAlias(cmd: Unwrapped): boolean {
  * yields one word, which may be `alias`, so it reads as a dynamic one.
  */
 function expandedDefinition(path: string, args: WordToken[]): boolean {
-  const verdict = expandedWordMayBeAlias(path);
+  const verdict = expandedWordMayBeAlias(path, STORE_BUILTINS.keys());
   return verdict ?? (/^[=~]/.test(path) && dynamicDefinition(args));
 }
 

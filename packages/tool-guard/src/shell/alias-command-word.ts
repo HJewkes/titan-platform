@@ -1,4 +1,5 @@
 import { BRACE_RE } from "./word-generation.js";
+import { WRITER_SPECS } from "./writer-specs.js";
 
 /**
  * A glob in a command word, which may match several file names: a bracket only with its closing one, so `[` and `[[`
@@ -14,17 +15,22 @@ export const TEST_OPERATOR_RE = /^(?:==?|!=|=~)$/;
  * brace expansion or a glob that cannot yield one, true for one that may; null for a word with neither (a leading `~`
  * or `=` is the caller's).
  */
-export function expandedWordMayBeAlias(path: string): boolean | null {
+export function expandedWordMayBeAlias(path: string, storeBuiltins: Iterable<string> = []): boolean | null {
   if (hasPathSlash(path) || TEST_OPERATOR_RE.test(path)) return false;
   if (BRACE_RE.test(path)) return bracesMayBeAlias(path);
-  if (SEVERAL_NAMES_RE.test(path) || hasBracketGlob(path)) return globMayBeAlias(path);
+  if (SEVERAL_NAMES_RE.test(path) || hasBracketGlob(path)) return globMayBeAlias(path, storeBuiltins);
   return null;
 }
 
 /** Glob syntax the matcher below does not model: negation, exclusion, repetition, number ranges, classes, groups. */
-const UNMODELLED_GLOB_RE = /\^|.~|[^\s#]#|<\d*-\d*>|\[:|[*?+@!]\(|\(#|\(.*\|/s;
-/** Command words that are `alias` or run their operands as a command. */
-const ALIAS_REACHERS = ["alias", "builtin", "command", "noglob", "nocorrect", "exec", "time", "eval", "env", "nice", "nohup", "sudo"];
+const UNMODELLED_GLOB_RE = /\^|.~|#|<\d*-\d*>|\[:|[*?+@!]\(|\(#|\(.*\||\\|\[[!^]?\]/s;
+/** Characters that give a space in a glob a meaning beyond itself: `alias\ #` is `alias` under extendedglob. */
+const SPACE_NEUTRAL_RE = /[\^~<[#(|\\]/;
+/** Command words that are `alias`, run their operands as a command, or store into an alias parameter or table. */
+const ALIAS_REACHERS = [
+  "alias", "builtin", "command", "noglob", "nocorrect", "exec", "time", "eval", "env", "nice", "nohup", "sudo",
+  "enable", "source", ".", ...Object.keys(WRITER_SPECS),
+];
 
 /** A `/` outside braces and brackets: whatever the word expands to is a path, never the `alias` builtin. */
 function hasPathSlash(path: string): boolean {
@@ -88,18 +94,18 @@ function alternatives(body: string): string[] {
 }
 
 /**
- * Whether a glob command word may be `alias`, or a wrapper that runs it: it expands to the names of existing files, so
- * only one that matches such a name can. An extendedglob operator, a `<` range or a character class is not modelled and counts as matching.
+ * Whether a glob command word may be `alias`, a wrapper that runs it, or a builtin that stores into an alias table: it
+ * expands to the names of existing files, so only one that matches such a name can. Syntax not modelled counts as
+ * matching, and the match ignores case because nocaseglob lets `ALI*` match a file named `alias`.
  */
-function globMayBeAlias(pattern: string): boolean {
-  if (/\s/.test(pattern) && !/[\^~<[]/.test(pattern)) return false;
+function globMayBeAlias(pattern: string, storeBuiltins: Iterable<string>): boolean {
+  if (/\s/.test(pattern) && !SPACE_NEUTRAL_RE.test(pattern)) return false;
   if (UNMODELLED_GLOB_RE.test(pattern)) return true;
   const source = pattern.replace(/[.+${}()|\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".").replace(/\[!/g, "[^");
   try {
-    const matcher = new RegExp(`^${source}$`, "s");
-    return ALIAS_REACHERS.some((name) => matcher.test(name));
+    const matcher = new RegExp(`^${source}$`, "si");
+    return [...ALIAS_REACHERS, ...storeBuiltins].some((name) => matcher.test(name));
   } catch {
     return true;
   }
 }
-

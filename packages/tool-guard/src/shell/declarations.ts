@@ -97,6 +97,7 @@ function word(tokens: Token[], i: number, p: Pass): number {
     return i + 1;
   }
   if (p.awaitIn && w.value === "in" && !w.quoted) [p.awaitIn, p.pattern] = [false, true];
+  else if (p.awaitIn && w.value === "{" && !w.quoted) p.awaitIn = false;
   else if (w.value === "esac" && !w.quoted && (p.start || (p.pattern && !patternWord))) endCase(p);
   else if (p.start && !ASSIGNMENT_RE.test(w.value)) commandWord(tokens, i, p);
   const pushed = p.local && APPEND_RE.test(w.value) ? withoutPlus(w) : w;
