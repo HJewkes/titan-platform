@@ -140,17 +140,23 @@ export async function inspectForRelease(
     const proof = await readMergedTipProof(gitRoot, branch);
     if (proof !== null) {
       checked.push(proof.check);
-      // The external proof awaited above may have outlived the first file check.
-      // Recheck every file-loss guard without forgetting an earlier refusal.
-      const afterProof = proof.merged && existsSync(worktreePath) ? await unsavedWork(worktreePath) : undefined;
-      if (afterProof !== undefined) checked.push(dirtyCheck(afterProof));
-      return { dirty: dirty || afterProof !== undefined, unmerged: !proof.merged, landed: proof.merged, ahead, checked };
+      return withPostProofFileSafety({ dirty, unmerged: !proof.merged, landed: proof.merged, ahead, checked }, worktreePath);
     }
   } else if (target === null) {
     const state = await ghPrState(gitRoot, branch);
     if (state !== null) checked.push({ name: "gh", ok: true, detail: `gh reports the PR as ${state}` });
   }
   return { dirty, unmerged: target === null, landed: target !== null, ahead, checked };
+}
+
+/** The external proof may outlive the first file check; retain earlier refusals too. */
+async function withPostProofFileSafety(
+  safety: WorktreeReleaseSafety,
+  worktreePath: string
+): Promise<WorktreeReleaseSafety> {
+  const afterProof = safety.landed && existsSync(worktreePath) ? await unsavedWork(worktreePath) : undefined;
+  if (afterProof !== undefined) safety.checked.push(dirtyCheck(afterProof));
+  return { ...safety, dirty: safety.dirty || afterProof !== undefined };
 }
 
 /** The failed checks, as one line a coordinator can act on. */
