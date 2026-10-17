@@ -5,7 +5,7 @@ import { choosesHttpConfig } from "./families/http-config.js";
 import { merge } from "./families/merge.js";
 import { release } from "./families/release.js";
 import { secret } from "./families/secret.js";
-import { hasDynamicName, namedReadings, wrappedReading } from "./dynamic-readings.js";
+import { hasDynamicName, namedReadings, namesDynamicPath, wrappedReading } from "./dynamic-readings.js";
 import { afterWrites, scriptReadings } from "./line-writes.js";
 import { INTERPRETERS } from "./mentions.js";
 import { hasOpaqueShebang, refuseOpaqueShebang, runsNatively, scriptTargets, SOURCERS } from "./scripts.js";
@@ -104,6 +104,7 @@ function addedActions(cmd: SimpleCommand, line: ClassifyContext, scripts: Script
 }
 
 function classifySimple(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
+  if (namesDynamicPath(cmd)) throw new UnreadableScriptError(null);
   const direct = FAMILIES.flatMap((f) => (f.bash && handles(f, cmd) ? f.bash(cmd, ctx) : []));
   return hasDynamicName(cmd) ? [...direct, ...dynamicActions(cmd, ctx)] : direct;
 }

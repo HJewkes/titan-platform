@@ -90,6 +90,15 @@ export class UnreadableScriptError extends ReadingLimitError {
   }
 }
 
+/** A script run by path whose `#!` line carries options or operands the guard does not follow; the hook denies it unchecked. */
+export class OpaqueShebangError extends UnreadableScriptError {
+  constructor() {
+    super(null);
+    this.message = "a script run by path whose #! line the guard cannot follow";
+    this.name = "OpaqueShebangError";
+  }
+}
+
 /** A line bash 5 and bash 3.2 read differently; the hook denies it unchecked. */
 export class SplitReadingError extends ReadingLimitError {
   constructor(readonly split: Split) {

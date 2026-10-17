@@ -1,4 +1,4 @@
-import { closeSync, constants, openSync, readSync, statSync } from "node:fs";
+import { closeSync, constants, existsSync, openSync, readSync, statSync } from "node:fs";
 import { INTERPRETERS, SHELLS } from "./mentions.js";
 import type { SimpleCommand } from "./shell/commands.js";
 import type { WordToken } from "./shell/lexer.js";
@@ -7,7 +7,7 @@ import { isNativeProgram, parseShebang } from "./shebang.js";
 import type { ClassifyContext } from "./types.js";
 import { resolvePath, resolveValue } from "./shell/path.js";
 import { shellOperands, shellStdin } from "./shell/shell-options.js";
-import { UnknownStdinError, UnreadableScriptError } from "./shell/unsure-readings.js";
+import { OpaqueShebangError, UnknownStdinError } from "./shell/unsure-readings.js";
 
 /** A script a command runs by path: shell scripts are classified in full, others get the mention rule. */
 export interface ScriptTarget {
@@ -17,15 +17,6 @@ export interface ScriptTarget {
   relayed?: true;
   /** Run as `./x.sh`, so the kernel reads its `#!` line and the interpreter's options and operands decide what runs. */
   byPath?: true;
-}
-
-/** A script run by path whose `#!` line carries options or operands the guard does not follow; the hook denies it unchecked. */
-class OpaqueShebangError extends UnreadableScriptError {
-  constructor() {
-    super(null);
-    this.message = "a script run by path whose #! line the guard cannot follow";
-    this.name = "OpaqueShebangError";
-  }
 }
 
 /** Whether a script's first line is one the guard cannot follow, whoever runs it. */
@@ -71,7 +62,15 @@ export function scriptTargets(cmd: SimpleCommand, home: string): ScriptTarget[] 
   const name = cmd.name;
   if (name !== null && SHELLS.has(name)) return shellTargets(cmd, home);
   const one = name === null ? null : scriptTarget(cmd, name, home);
-  return one === null ? [] : [one];
+  return one === null ? foundOnPath(cmd, home) : [one];
+}
+
+/** A bare name under a `PATH` the line changed runs the first file of that name in a relative directory it lists, so each one there is read. */
+function foundOnPath(cmd: SimpleCommand, home: string): ScriptTarget[] {
+  const bare = cmd.path;
+  if (bare === null || bare.includes("/") || cmd.searchDirs === undefined) return [];
+  const targets = cmd.searchDirs.flatMap((dir) => typedTarget(cmd, `${dir === "" ? "." : dir}/${bare}`, home) ?? []);
+  return targets.filter((t) => existsSync(t.path));
 }
 
 function scriptTarget(cmd: SimpleCommand, name: string, home: string): ScriptTarget | null {

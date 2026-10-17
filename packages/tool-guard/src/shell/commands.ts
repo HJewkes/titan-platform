@@ -22,6 +22,7 @@ import { runReadings } from "./xargs-readings.js";
 import type { Vars } from "./vars.js";
 import { newMarks, noteRedirect, recordValue, settle } from "./value-marks.js";
 import { noteCommand, noteWord } from "./stored-words.js";
+import { namesScript, notePath, searchDirsOf } from "./search-path.js";
 import type { ValueMarks } from "./value-marks.js";
 import { MAX_UNSURE_WORDS, NestingReadingError, ReadingLimitError, SPLICED_WEIGHT, SplitReadingError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
@@ -66,6 +67,8 @@ export interface SimpleCommand {
   added?: true;
   /** What its descriptors held before its own redirects, when a command that runs it set them up (`bash -c bash < f`). */
   inherited?: Descriptors;
+  /** Relative directories a `PATH` the line changed searches, where a bare command name may find a script. */
+  searchDirs?: string[];
 }
 
 export interface ExtractOptions {
@@ -266,6 +269,7 @@ function emitReading(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Wa
   const expand = (word: WordToken) => expandWord(word, (name) => lookup(w.scope.vars, w.home, name));
   const redirects = rawRedirects.map((r) => (r.target ? { ...r, target: expand(r.target) } : r));
   const words = folded(rawWords.map(expand), w);
+  notePath(words, w.scope.vars);
   const runs = caseNamed(words);
   const cut = cutReading(words);
   const aliased = aliasCommands(words, w.aliases);
@@ -283,7 +287,7 @@ function walkAdded(runs: Unwrapped[], redirects: RedirectToken[], w: Walk, next:
 
 /** A dynamic or guarded command word, or one that runs more commands: shell text, a `.sh` script, `xargs` or `find -exec`. */
 function decider(guarded: ReadonlySet<string> | undefined): (cmd: Unwrapped) => boolean {
-  return (cmd) => cmd.name === null || cmd.xargs !== undefined || cmd.script !== undefined || RUNNERS.has(cmd.name) || cmd.name.endsWith(".sh") || (guarded?.has(cmd.name) ?? true);
+  return (cmd) => cmd.name === null || cmd.xargs !== undefined || cmd.script !== undefined || RUNNERS.has(cmd.name) || namesScript(cmd) || (guarded?.has(cmd.name) ?? true);
 }
 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
@@ -339,7 +343,7 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
   const inherited = w.prev === "|" || w.prev === "|&" ? emptied(w.descriptors, 0) : w.descriptors;
   const set = inherited === TOP_DESCRIPTORS ? {} : { inherited };
-  w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set });
+  w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set, ...searchDirsOf(w.scope.vars) });
   const piped = stdin === null ? [] : [stdin, ...(stdin === w.stdin ? w.shellStdin : [])];
   const held = descriptorsAfter(redirects, piped, inherited, (target) => resolvePath(w.scope.dir, target, w.home));
   const script = inlineScript(cmd, redirects, piped, w.unsure, inherited);
