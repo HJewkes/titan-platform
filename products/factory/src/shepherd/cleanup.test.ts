@@ -301,6 +301,17 @@ describe("sh-cleanup after its own merge", () => {
     expect(deleted).toEqual([{ branch: "feat/x", repo: "fork/demo" }]);
     expect(getPrs(fake)).toBe(0);
   });
+
+  it("retargets no PR when the merged head is the default branch", async () => {
+    const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "main", headRepo: REPO });
+    const other = fake.addPr({ headRef: "feat/y", headSha: fakeSha("y"), baseRef: "main" }).number;
+    const w = world({ fake, merged: { ...MERGED, baseRef: "release", headRef: "main" } });
+
+    const result = await w.run();
+
+    expect(result).toMatchObject({ ref: "default-branch", retargeted: [] });
+    expect(fake.pr(other).baseRef).toBe("main");
+  });
 });
 
 describe("sh-cleanup task", () => {
