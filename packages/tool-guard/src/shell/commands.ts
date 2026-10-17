@@ -1,5 +1,6 @@
-import { ParseError, SplitParseError, tokenize } from "./lexer.js";
-import { NestingLimitError } from "./nesting.js";
+import { ParseError } from "./lexer.js";
+import { mentionsAlias } from "./alias-mention.js";
+import { tokenizeLine } from "./line-tokens.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { xargsStdins } from "./piped-stdin.js";
@@ -25,7 +26,7 @@ import type { Vars } from "./vars.js";
 import { newMarks, noteRedirect, recordValue, settle } from "./value-marks.js";
 import { noteCommand, noteWord } from "./stored-words.js";
 import type { ValueMarks } from "./value-marks.js";
-import { NestingReadingError, ReadingLimitError, SplitReadingError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
+import { ReadingLimitError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
 
 const MAX_DEPTH = 8;
@@ -91,6 +92,8 @@ export interface ExtractOptions {
   aliases?: AliasTable;
   /** Called once the walk ends if it wrote `PATH` or zsh's `path` in a shell that outlives it, or may have. */
   onPathWrite?: (unsafe: boolean, dirs: string[]) => void;
+  /** Read `&&` and `||` in a bare-start `[[` as test words: only for text the caller knows bash, zsh or ksh reads. */
+  joinsConditional?: boolean;
   /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
   onScript?: (text: string) => void;
 }
@@ -161,21 +164,11 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
     marks: newMarks(),
     onScript: options.onScript ?? null,
   };
-  walk(tokenizeLine(src), observed(w));
+  // Only the Bash tool's own line has a known reader, so only it may join a `[[`'s operators.
+  walk(tokenizeLine(src, options.joinsConditional === true && !mentionsAlias(src)), observed(w));
   settle(w.marks);
   if (w.marks.pathChanged || w.marks.pathDirs.length > 0) options.onPathWrite?.(w.marks.pathChanged, w.marks.pathDirs);
   return out;
-}
-
-/** A line bash 5 and bash 3.2 read differently is refused outright, whatever it names; a plain ParseError is not. */
-function tokenizeLine(src: string): Token[] {
-  try {
-    return tokenize(src);
-  } catch (error) {
-    if (error instanceof SplitParseError) throw new SplitReadingError(error.split);
-    if (error instanceof NestingLimitError) throw new NestingReadingError();
-    throw error;
-  }
 }
 
 function walk(tokens: Token[], w: Walk): void {
@@ -366,7 +359,8 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descrip
     w.onScript?.(text);
     // A shell's arguments and input become its positional parameters and what its `read` stores.
     if (script.wrap !== "eval") w.marks.opaque = true;
-    walk(tokenizeLine(text), underPrefix(child(w, [...wrapping, script.wrap], descriptors), ownPath));
+    // Which shell reads nested text is not known (a function, a PATH entry or a hash can rebind the runner's name), so it never joins.
+    walk(tokenizeLine(text, false), underPrefix(child(w, [...wrapping, script.wrap], descriptors), ownPath));
   }
 }
 

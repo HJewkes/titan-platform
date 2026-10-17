@@ -15,6 +15,8 @@ interface ArithTrials {
         left: number;
     };
     nesting: Nesting;
+    /** Whether a `[[` at a bare command start joins its `&&` and `||`, which only a text read as bash, zsh or ksh may do. */
+    joinsConditional: boolean;
 }
 
 /** A `$NAME` or `${NAME}` reference; `start` and `end` index into the word's `value`. */
@@ -158,6 +160,8 @@ interface ExtractOptions {
     aliases?: AliasTable;
     /** Called once the walk ends if it wrote `PATH` or zsh's `path` in a shell that outlives it, or may have. */
     onPathWrite?: (unsafe: boolean, dirs: string[]) => void;
+    /** Read `&&` and `||` in a bare-start `[[` as test words: only for text the caller knows bash, zsh or ksh reads. */
+    joinsConditional?: boolean;
     /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
     onScript?: (text: string) => void;
 }

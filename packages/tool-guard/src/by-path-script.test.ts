@@ -220,6 +220,13 @@ describe("a #!/usr/bin/env shell script on a line that changes PATH", () => {
     ["a sourced write after a function that runs the script", "f(){ ./envp; }; . ./src.sh; f"],
     ["a sourced write after the script in a loop", "for i in 1 2; do ./envp; . ./src.sh; done"],
     ["an unreadable source after a function that runs the script", "f(){ ./envp; }; source <(echo PATH=.); f"],
+    ["a tilde under a relative HOME", "HOME=.; PATH=~/:$PATH ./envp"],
+    ["a bare tilde under a HOME set on the same command", "HOME=. PATH=~:$PATH ./envp"],
+    ["a tilde under an exported relative HOME", "export HOME=x; PATH=~/b:$PATH ./envp"],
+    ["the kernel's name for the working directory", "printf x >bash; PATH=/proc/self/cwd:$PATH ./envp"],
+    ["a numbered process's working directory", "PATH=/proc/1234/cwd:$PATH ./envp"],
+    ["a descriptor directory", "PATH=/dev/fd/3:$PATH ./envp"],
+    ["a doubled slash before the kernel's name", "PATH=/proc//self/./cwd:$PATH ./envp"],
     ["a dynamic store", "declare $X=.; ./envp"],
     ["declare -g", "declare -g PATH=.; ./envp"],
     ["a nameref to PATH", "declare -n p=PATH; p=.; ./envp"],
@@ -264,8 +271,10 @@ describe("a #!/usr/bin/env shell script on a line that changes PATH", () => {
     "PATH+=:/opt/tools ./envp",
     "PATH=$HOME/bin:$PATH:/usr/local/bin; ./envp",
     "PATH=~/bin:$PATH ./envp",
+    "export PATH=\"$HOME/bin:$PATH\"; ./build.sh",
   ])("reads the script as before when the line puts only absolute directories on PATH: %s", async (line) => {
     file("envp", ENV_BASH);
+    file("build.sh", ENV_BASH);
     expect(await decision(line)).toBeNull();
   });
 
