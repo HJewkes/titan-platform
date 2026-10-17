@@ -35,3 +35,7 @@ A failed allocator release may additionally return `refusalCode: "unsaved-change
 `fetchDefaultTip(gitRoot, timeoutMs)` fetches origin's current default branch and returns `{ sha, ref }`, or the existing failure-reason string. It never substitutes the local HEAD. It honors origin/HEAD when known; otherwise it tries main then master within one shared timeout budget. Fetch updates only the remote-tracking ref, leaving the main checkout's HEAD and files unchanged.
 
 This exposes the existing helper unchanged for callers such as park checks that must refuse when origin cannot establish containment. `resolveBranchBase` retains its separate local-HEAD fallback and warning for allocation. A successful fetch is only a commit observation; the caller must still perform its ancestry, ownership and file-loss checks. Setup, park and sweep policies are unchanged.
+
+## Setup browser cache protection
+
+Setup pins `PLAYWRIGHT_SKIP_BROWSER_GC=1`, including when the caller supplies `0` or leaves it unset. This preserves the product's standard Playwright browser-cache GC opt-out for setup running outside a permission profile; it does not change setup trust or command execution policy.

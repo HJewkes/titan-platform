@@ -87,6 +87,11 @@ const PINNED_COREPACK: Readonly<Record<string, string>> = {
   COREPACK_ENABLE_UNSAFE_CUSTOM_URLS: "0",
 };
 
+/** Setup runs outside a permission profile; do not garbage-collect shared browser caches. */
+const PINNED_ENV: Readonly<Record<string, string>> = {
+  PLAYWRIGHT_SKIP_BROWSER_GC: "1",
+};
+
 /** pnpm 10 ranks this file's ignorePnpmfile and ignoreScripts above every env pin. */
 export const PNPM_WORKSPACE_FILE = "pnpm-workspace.yaml";
 /** npm exec exports this file's keys as npm_config_* over the env pins, and its registry picks what npx runs. */
@@ -109,7 +114,7 @@ export function setupEnv(
     out[`npm_config_${key}`] = value;
     out[`NPM_CONFIG_${key.toUpperCase()}`] = value;
   }
-  return { ...out, ...PINNED_COREPACK };
+  return { ...out, ...PINNED_COREPACK, ...PINNED_ENV };
 }
 
 const isCommand = (value: unknown): value is string[] =>
