@@ -1,4 +1,5 @@
 import type { Nesting } from "./nesting.js";
+import type { Token } from "./tokens.js";
 
 const BUDGET_FLOOR = 4096;
 const BUDGET_PER_CHAR = 16;
@@ -11,17 +12,32 @@ const BUDGET_PER_CHAR = 16;
  */
 export interface ArithTrials {
   ends: Map<number, number>;
+  /** The tokens of the arithmetic reading of the `$((` at each position, kept so a repeat visit reads nothing again. */
+  arithmetic: Map<number, Token[][]>;
+  /** The tokens of the `$( ( … ) )` reading of the `$((` at each position, lexed once so nested ones stay linear. */
+  subshells: Map<number, Token[][]>;
+  /** How many spans read two ways nest at each position that does. */
+  depths: Map<number, number>;
+  /** The deepest such nesting met so far under the span being read. */
+  deepest: number;
+  /** While a `$( ( … ) )` reading is lexed, how many spans that read two ways enclose the position being read. */
+  level: number;
   spend: { left: number };
   nesting: Nesting;
 }
 
+function emptyTrials(): Omit<ArithTrials, "spend" | "nesting"> {
+  return { ends: new Map(), arithmetic: new Map(), subshells: new Map(), depths: new Map(), deepest: 0, level: 0 };
+}
+
 export function newTrials(src: string): ArithTrials {
-  return { ends: new Map(), spend: { left: Math.max(BUDGET_FLOOR, BUDGET_PER_CHAR * src.length) }, nesting: { depth: 0 } };
+  const spend = { left: Math.max(BUDGET_FLOOR, BUDGET_PER_CHAR * src.length) };
+  return { ...emptyTrials(), spend, nesting: { depth: 0 } };
 }
 
 /** Trials for text cut out of the source, such as a heredoc body: positions differ, the spend and nesting do not. */
 export function sameSpend(trials: ArithTrials): ArithTrials {
-  return { ends: new Map(), spend: trials.spend, nesting: trials.nesting };
+  return { ...emptyTrials(), spend: trials.spend, nesting: trials.nesting };
 }
 
 /** The end `find` reports for the `((` at `at`, run at most once per position. */

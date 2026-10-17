@@ -24,13 +24,98 @@ export function lineReading(s: LexState): Reading {
  * Each decision is kept per position, so a subshell reading that lexes the text again stays polynomial.
  */
 export function arithmeticExpansionEnd(at: Reading, dollar: number, found: Token[][]): number {
+  const outer = at.trials.deepest;
+  at.trials.deepest = 0;
+  try {
+    return expansionEnd(at, dollar, found);
+  } finally {
+    at.trials.deepest = Math.max(outer, at.trials.deepest);
+  }
+}
+
+function expansionEnd(at: Reading, dollar: number, found: Token[][]): number {
   const known = at.trials.ends.get(dollar);
-  if (known !== undefined) return known === -1 ? -1 : balancedEnd(at.src, dollar + 1, nestedReaders(at, found));
+  if (known === -1) return -1;
+  if (known !== undefined) return withSubshellReading(at, dollar, known, found, arithmeticTokens(at, dollar));
   const trial: Token[][] = [];
   const end = arithmeticTrial(at, dollar, trial);
   at.trials.ends.set(dollar, end);
-  if (end !== -1) found.push(...trial);
+  if (end === -1) return -1;
+  at.trials.arithmetic.set(dollar, trial);
+  return withSubshellReading(at, dollar, end, found, trial);
+}
+
+function arithmeticTokens(at: Reading, dollar: number): Token[][] {
+  const kept = at.trials.arithmetic.get(dollar);
+  if (kept !== undefined) return kept;
+  const rescanned: Token[][] = [];
+  balancedEnd(at.src, dollar + 1, nestedReaders(at, rescanned));
+  at.trials.arithmetic.set(dollar, rescanned);
+  return rescanned;
+}
+
+const PLAIN_MATH = /^[\w \t\r\n+\-*/%<>=!&|^~?:,.$()[\]]*$/;
+const PLAIN_PARAMETER = /\$\{#?[A-Za-z_]\w*\}/g;
+const NESTED_EXPANSION = /\$[([]/;
+
+/**
+ * Whether the body is plain math: nothing in it hides a paren from the arithmetic reading, so the shells read it
+ * the same way. That takes only characters that hide nothing, a `${name}` or `${#name}`, no `$(`, `$[` or backquote
+ * (so no span nested in it), brackets that balance and parens that never close more than they opened. zsh reads an
+ * unbalanced `[` or `]` as a command, so those are not plain. Every other body is read both ways or refused.
+ */
+function isPlainMath(body: string): boolean {
+  const text = body.replace(PLAIN_PARAMETER, "x");
+  if (!PLAIN_MATH.test(text) || NESTED_EXPANSION.test(text)) return false;
+  let parens = 0;
+  let brackets = 0;
+  for (const c of text) {
+    if (c === "(") parens++;
+    else if (c === ")") parens--;
+    else if (c === "[") brackets++;
+    else if (c === "]") brackets--;
+    if (parens < 0 || brackets < 0) return false;
+  }
+  return parens === 0 && brackets === 0;
+}
+
+/**
+ * zsh reads any `$(( ))` body that is not plain math as `$( ( … ) )`, and bash does for some, running what the
+ * arithmetic reading calls arithmetic. Those commands are walked too; a body that cannot be lexed that way is refused.
+ * Both readings of a span nested in another are costly to walk, so nesting past `MAX_BOTH_READINGS` is refused.
+ */
+function withSubshellReading(at: Reading, dollar: number, end: number, found: Token[][], primary: Token[][]): number {
+  found.push(...primary);
+  if (isPlainMath(at.src.slice(dollar + 3, end - 1))) return end;
+  const depth = bothReadingsDepth(at.trials, dollar);
+  if (depth > MAX_BOTH_READINGS) throw new ParseError("arithmetic read two ways nests too deep");
+  let tokens = at.trials.subshells.get(dollar);
+  if (tokens === undefined) {
+    tokens = [lexSubshellReading(at, dollar, depth)];
+    at.trials.subshells.set(dollar, tokens);
+  }
+  found.push(...tokens);
   return end;
+}
+
+const MAX_BOTH_READINGS = 4;
+
+/** How many spans read two ways nest at `dollar`, itself included, counting those enclosing it in whichever reading met it first. */
+function bothReadingsDepth(trials: ArithTrials, dollar: number): number {
+  const depth = trials.depths.get(dollar) ?? Math.max(trials.deepest, trials.level) + 1;
+  trials.depths.set(dollar, depth);
+  trials.deepest = Math.max(trials.deepest, depth);
+  return depth;
+}
+
+function lexSubshellReading(at: Reading, dollar: number, depth: number): Token[] {
+  const outer = at.trials.level;
+  at.trials.level = depth;
+  try {
+    return lexNested(at.src, dollar + 2, at.trials, at.line).tokens;
+  } finally {
+    at.trials.level = outer;
+  }
 }
 
 function arithmeticTrial(at: Reading, dollar: number, trial: Token[][]): number {
