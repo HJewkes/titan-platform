@@ -58,6 +58,28 @@ export function setPacketOf(bytes: Uint8Array): SetPacket | undefined {
 /** The images whose after bytes the set carries, which are the only `after/<key>.png` files the caller reads. */
 export const keptImages = (packet: Pick<SetPacket, "images">) => packet.images.filter((image) => image.change !== "removed");
 
+/** td's `CI_SOURCES` prefixes, mirrored: a set path outside its layer's baselines is never one CI regenerated. */
+const LAYER_PREFIX = new Map([
+  ["component", "packages/ui/specimen/baseline/"],
+  ["story", "packages/ui/tests/visual/reference/stories.spec.ts-snapshots/"],
+]);
+/** No space, newline or control character, so a path cannot add a line to the fixer's note. */
+const SAFE_PATH = /^[A-Za-z0-9._/-]+\.png$/;
+
+/** Each path is a plain relative PNG under its layer's baselines, and no path or key repeats, so the set names only baselines. */
+function pathProblem(images: SetPacket["images"]): string | undefined {
+  const paths = new Set<string>();
+  const keys = new Set<string>();
+  for (const { key, layer, path } of images) {
+    if (!SAFE_PATH.test(path) || path.split("/").some((part) => part === "" || part === "." || part === "..")) return `image ${key} has an unsafe path`;
+    if (!path.startsWith(LAYER_PREFIX.get(layer) ?? "\0")) return `image ${key}'s path is not under the ${layer} baselines`;
+    if (paths.has(path) || keys.has(key)) return `image ${key} repeats a path or key`;
+    paths.add(path);
+    keys.add(key);
+  }
+  return undefined;
+}
+
 /** `packet` is packet.json's bytes from the factory's own packet dir, never the console's copy. */
 type SetInputs = { packet: Uint8Array; packetSha: string; fromHead: string; after: ReadonlyMap<string, AfterDigest> };
 
@@ -70,6 +92,8 @@ export function approvedSetOf({ packet: bytes, packetSha, fromHead, after }: Set
   if (sha256(bytes) !== packetSha) return { reason: "packet", detail: "the factory's packet.json does not hash to the request's packetSha" };
   const packet = setPacketOf(bytes);
   if (!packet || packet.headSha !== fromHead) return { reason: "packet", detail: `the factory has no packet for head ${fromHead}` };
+  const problem = pathProblem(packet.images);
+  if (problem) return { reason: "packet", detail: problem };
   const kept = keptImages(packet);
   if (kept.length > MAX_SET_FILES) return { reason: "set-too-large", detail: `${kept.length} images, over ${MAX_SET_FILES}` };
   const files: ApprovedSet["files"] = [];
@@ -86,8 +110,13 @@ export function approvedSetOf({ packet: bytes, packetSha, fromHead, after }: Set
 
 const byPath = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
-/** The fixer's instruction, fixed so the owner's words can add to it but never change which files are committed. */
-export function acceptSetNote({ set, layers }: BuiltSet, runId: string): string {
+/**
+ * The fixer's instruction, fixed so the owner's words can add to it but never change which files are committed. A set whose
+ * instruction does not fit in `maxChars` is refused, since a cut note would silently drop files from the list.
+ */
+export function acceptSetNote({ set, layers }: BuiltSet, runId: string, maxChars: number): string | SetRefusal {
   const head = `Shepherd run ${runId}: commit exactly the ${layers.join(" and ") || "visual"} baselines CI run ${set.ciRunId} regenerated at ${set.fromHead}, byte for byte from its artifact, and change nothing else.`;
-  return [head, ...set.files.map((file) => `- write ${file.path} (blob ${file.blob})`), ...set.removed.map((path) => `- delete ${path}`)].join("\n");
+  const note = [head, ...set.files.map((file) => `- write ${file.path} (blob ${file.blob})`), ...set.removed.map((path) => `- delete ${path}`)].join("\n");
+  const length = [...note].length;
+  return length <= maxChars ? note : { reason: "set-too-large", detail: `the fixer's note for this set is ${length} characters, over ${maxChars}` };
 }

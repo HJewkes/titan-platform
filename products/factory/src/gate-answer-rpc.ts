@@ -106,7 +106,7 @@ async function answered(request: AnswerRequest, port: NonNullable<GateAnswerDeps
   if (request.choice === "accept-set" && configuredVisualSetCarry() === "off") return { outcome: "refused", reason: "off", detail: "shepherd.visualSetCarry is off" };
   const files = await readRound(deps.roundsDir, request.roundId);
   if (typeof files === "string") return { outcome: "refused", reason: "round-unreadable", detail: files };
-  const accept = isAcceptGate(deps.host, request) ? await readAccept(deps.stateDir, request) : undefined;
+  const accept = request.choice === "accept-set" && isAcceptGate(deps.host, request) ? await readAccept(deps.stateDir, request) : undefined;
   const check = await checkAnswer({ host: deps.host, port, request, files, ...(accept !== undefined && { accept }), now: new Date(deps.now()) });
   switch (check.kind) {
     case "resolve":

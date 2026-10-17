@@ -63,13 +63,17 @@ type GateHead = Pick<LandGate, "repo" | "pr" | "head"> & { step: string };
 interface Asked {
   gate: GateRecord;
   land: GateHead;
-  payload: Record<string, unknown>;
+  /** Absent when the accept-set could not be built from the factory's packet, as after a cleanup. */
+  payload: Record<string, unknown> | undefined;
 }
 
 /** Ship on approve-merge merges; on the accept gate it accepts the set. Send back is the same answer on both. */
 const SHIP_CHOICES: Record<string, readonly AnswerRequest["choice"][]> = { [MERGE_GATE]: ["merge", "merge-pick-later"], [VISUAL_ACCEPT_GATE]: ["accept-set"] };
 const ACCEPT_PROMPT = /^Accept the regenerated baselines of PR #(\d+) in (\S+) at head ([0-9a-f]{40})\? CI is red only on .+\.$/;
-const DeliveryBinding = z.looseObject({ packetId: z.string() });
+/** Only a round the sweep delivered binds a set; a shadow or withdrawn record never reached the owner as this round. */
+const DeliveryBinding = z.looseObject({ state: z.literal("delivered"), packetId: z.string(), roundId: z.string() });
+/** What a replay can still match when the set cannot be rebuilt: the accept-set given at this head for this packet. */
+const AcceptedAnswer = z.looseObject({ decision: z.literal("accept-set"), headSha: z.string(), approvedSet: z.looseObject({ packetSha: z.string() }) });
 
 const PACKET_SCHEMA = "titan-review/ci-packet@1";
 
@@ -97,14 +101,17 @@ export async function checkAnswer(inputs: AnswerInputs): Promise<AnswerCheck> {
   const { host, request } = inputs;
   const gate = host.gates.get(request.gateId);
   const answerable = gate && Object.keys(SHIP_CHOICES).some((step) => stepIdMatches(`${request.runId}/${step}`, gate.id));
-  if (!gate || !answerable) return refused("unknown-gate", `run ${request.runId} has no approve-merge gate ${request.gateId}`);
+  if (!gate || !answerable) return refused("unknown-gate", `run ${request.runId} has no ${Object.keys(SHIP_CHOICES).join(" or ")} gate ${request.gateId}`);
   const land = gateHead(gate);
   if (!land) return refused("not-land-gate", `gate ${gate.id} does not pin a PR head`);
-  const payload = answerPayload(inputs, land);
-  if ("kind" in payload) return payload;
-  const item = { gate: gate.id, runId: request.runId, stepId: land.step, repo: land.repo, pr: land.pr, headSha: request.headSha, payload };
+  const early = land.step === VISUAL_ACCEPT_GATE ? choiceRefusal(inputs, land) : undefined;
+  if (early) return early;
+  const answer = answerPayload(inputs, land);
+  const payload = "kind" in answer ? undefined : answer;
+  const item = { gate: gate.id, runId: request.runId, stepId: land.step, repo: land.repo, pr: land.pr, headSha: request.headSha, payload: payload ?? {} };
   const stale = (await gateStaleness(host, item, undefined)) ?? (land.head === request.headSha ? undefined : { detail: `the gate asks about head ${land.head}` });
-  if (stale) return storeOutcome(host, request.runId, { gate, land, payload }, stale.detail);
+  if (stale) return storeOutcome(host, request, { gate, land, payload }, stale.detail);
+  if ("kind" in answer) return answer;
   const binding = (await githubOutcome(inputs, land)) ?? packetRefusal(inputs, land) ?? deliveryRefusal(inputs, payload) ?? choiceRefusal(inputs, land) ?? noteRefusal(payload);
   return binding ?? { kind: "resolve", gateId: gate.id, choice: request.choice, payload };
 }
@@ -137,16 +144,19 @@ function acceptPayload(inputs: AnswerInputs, land: GateHead): AnswerPayload | An
   if (typeof accept !== "object") return refused("packet", accept ?? "the factory's packet for this head was not read");
   const built = approvedSetOf({ packet: accept.packet, packetSha: request.packetSha, fromHead: request.headSha, after: accept.after });
   if ("reason" in built) return refused(built.reason, built.detail);
-  const note = [acceptSetNote(built, request.runId), ownerNote(inputs, land)].filter((text) => text !== "").join("\n\n");
+  const instruction = acceptSetNote(built, request.runId, MAX_NOTE_CHARS);
+  if (typeof instruction !== "string") return refused(instruction.reason, instruction.detail);
+  const note = [instruction, ownerNote(inputs, land)].filter((text) => text !== "").join("\n\n");
   return { decision: "accept-set", headSha: request.headSha, approvedSet: built.set, note: capped(note) };
 }
 
 /** The set's packet must be the one the delivery sweep linted and sent to the console for this head. */
-function deliveryRefusal({ accept }: AnswerInputs, payload: AnswerPayload): AnswerCheck | undefined {
+function deliveryRefusal({ accept, request }: AnswerInputs, payload: AnswerPayload): AnswerCheck | undefined {
   if (payload.decision !== "accept-set") return undefined;
   const record = typeof accept === "object" && accept.delivery ? parseJson(DeliveryBinding, accept.delivery) : undefined;
-  if (record?.packetId === payload.approvedSet.packetId) return undefined;
-  return refused("packet-unbound", record ? `the delivery record binds packet ${record.packetId}, not ${payload.approvedSet.packetId}` : "no delivery record names this head's packet");
+  if (record?.packetId === payload.approvedSet.packetId && record.roundId === request.roundId) return undefined;
+  const bound = record ? `round ${record.roundId} with packet ${record.packetId}` : "no delivered round";
+  return refused("packet-unbound", `the delivery record names ${bound}, not round ${request.roundId} with packet ${payload.approvedSet.packetId}`);
 }
 
 function ownerNote({ files }: AnswerInputs, land: GateHead): string {
@@ -162,12 +172,17 @@ function noteRefusal(payload: AnswerPayload): AnswerCheck | undefined {
 }
 
 /** The gate store says the answer is late: the run waits on a newer gate, the gate pins another head, or it is settled. */
-function storeOutcome(host: FactoryHost, runId: string, { gate, land, payload }: Asked, detail: string): AnswerCheck {
-  const waiting = pendingGateId(host, runId, land.step);
+function storeOutcome(host: FactoryHost, request: AnswerRequest, { gate, land, payload }: Asked, detail: string): AnswerCheck {
+  const waiting = pendingGateId(host, request.runId, land.step);
   if (waiting !== undefined && waiting !== gate.id) return { kind: "moved", currentHead: headOf(host, waiting), waitsOn: waiting };
   if (gate.status === "pending") return { kind: "moved", currentHead: land.head };
-  if (repeatedResolution(host, runId, land.step, payload) === gate.id) return { kind: "already", gateId: gate.id };
-  return { kind: "gone", reason: detail };
+  const repeated = payload ? repeatedResolution(host, request.runId, land.step, payload) === gate.id : acceptedAt(gate, request);
+  return repeated ? { kind: "already", gateId: gate.id } : { kind: "gone", reason: detail };
+}
+
+function acceptedAt(gate: GateRecord, { headSha, packetSha }: AnswerRequest): boolean {
+  const answer = gate.status === "resolved" ? AcceptedAnswer.safeParse(gate.payload).data : undefined;
+  return answer?.headSha === headSha && answer.approvedSet.packetSha === packetSha;
 }
 
 function headOf(host: FactoryHost, gateId: string): string | undefined {
