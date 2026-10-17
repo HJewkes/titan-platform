@@ -3,7 +3,19 @@ import { HOOKED } from "./hooked-names.js";
 /** Parameters whose stores bind a command name, or a `~name`, to something the guard never reads as that name; `command-rebinding.ts` lists the same. */
 const REBINDING_NAMES = ["commands", "BASH_CMDS", "functions", "dis_functions", "nameddirs"];
 /** Tables whose elements define a command word: an alias set through an expansion rewrites a later command. */
-const ALIAS_TABLES = ["aliases", "galiases", "saliases", "BASH_ALIASES"];
+const ALIAS_TABLES = ["aliases", "galiases", "saliases", "BASH_ALIASES", "dis_aliases", "dis_galiases", "dis_saliases"];
+
+/** Parameters a shell, or a child shell or program, reads as code or as a search path: an assignment through an expansion runs attacker text later. */
+export const EXEC_HOOKS: readonly string[] = [
+  "PS0", "PS1", "PS2", "PS3", "PROMPT", "prompt", "PROMPT2", "PROMPT3", "RPS1", "RPS2", "RPROMPT", "RPROMPT2", "SPROMPT", "PROMPT_COMMAND",
+  "precmd_functions", "preexec_functions", "chpwd_functions", "periodic_functions", "zshaddhistory_functions", "zshexit_functions", "zsh_directory_name_functions",
+  "BASH_ENV", "ENV", "ZDOTDIR", "HOME", "SHELLOPTS", "BASHOPTS",
+  "FPATH", "fpath", "BASH_LOADABLES_PATH",
+  "PATH", "path", "NULLCMD", "READNULLCMD", "EXECIGNORE",
+  "IFS",
+  "LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT", "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH",
+  "mapfile",
+];
 
 /** Parameters an assignment must not reach through an expansion: `options` holds every zsh option, among them GLOB_SUBST. */
-export const PROTECTED: ReadonlySet<string> = new Set([...HOOKED, ...REBINDING_NAMES, ...ALIAS_TABLES, "options"]);
+export const PROTECTED: ReadonlySet<string> = new Set([...HOOKED, ...REBINDING_NAMES, ...ALIAS_TABLES, ...EXEC_HOOKS, "options"]);
