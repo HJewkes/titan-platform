@@ -1,5 +1,7 @@
 import type { WordToken } from "./lexer.js";
 import { mayGenerate } from "./word-generation.js";
+import { afterSkippedDashes, WRITER_SPECS } from "./writer-specs.js";
+import type { WriterSpec } from "./writer-specs.js";
 
 /** How a builtin whose options name, or decide, the parameter it stores into reads its option words. */
 interface StoreOptionBuiltin {
@@ -12,44 +14,34 @@ interface StoreOptionBuiltin {
   values: string;
   /** Letters that take the next word as their value in one shell and are a flag in the other: bash `read -p`, zsh `read -p`. */
   either?: string;
-  /** zsh skips one leading `--` and still reads options after it: `zparseopts -- -A commands y:`. */
-  skipsLeadingDashes?: true;
-  /** Where the manuals document the store. */
-  source: string;
 }
 
+/** `getopts` names its store by position, so it is not in WRITER_SPECS, but a run-time first word may still be an option. */
+const GETOPTS: StoreOptionBuiltin = { stores: "", values: "" };
+
 /**
- * Every builtin with a store option, from zshbuiltins(1), zshmodules(1), zshzle(1) and bash(1) as of zsh 5.9 and
- * bash 5.3. Left out on purpose: the declarers (`typeset`, `declare`, `export`, `local`, `readonly`, `private`,
- * `integer`, `float`), whose operands are names in every position, so an option adds no store; `zle -M`, which prints;
- * and builtins that store only through operands (`zcurses`, `zgetattr`, `zlistattr`, `zregexparse`, `ztie`, `shift`).
+ * The store-option zone: every WRITER_SPECS builtin with a name-valued option or a store flag, with no exemptions, so
+ * the zone cannot drift from the table. zsh `stat` is in it although bash runs the external tool: one `zmodload
+ * zsh/stat` makes `stat $o commands s` with `o=-LH` store into commands. It also skips one leading `--`, so a run-time
+ * file is written `stat ./"$f"`.
  */
-export const STORE_OPTION_BUILTINS: ReadonlyMap<string, StoreOptionBuiltin> = new Map(Object.entries({
-  print: { stores: "v", values: "vufCxX", source: "zshbuiltins(1) SHELL BUILTIN COMMANDS: print -v name" },
-  printf: { stores: "v", values: "v", source: "zshbuiltins(1) printf -v name; bash(1) SHELL BUILTIN COMMANDS: printf -v var" },
-  set: { stores: "A", values: "Ao", source: "zshbuiltins(1) set {+|-}A name" },
-  read: { stores: "aA", values: "adiNu", either: "npt", source: "zshbuiltins(1) read -A, -k [num], -t [num]; bash(1) read -a aname" },
-  getln: { stores: "A", values: "", source: "zshbuiltins(1) getln -A" },
-  getopts: { stores: "", values: "", skipsLeadingDashes: true, source: "zshbuiltins(1) and bash(1) getopts optstring name" },
-  zmodload: { stores: "P", values: "P", source: "zshbuiltins(1) zmodload -F -P param" },
-  vared: { stores: "aA", values: "prMmift", source: "zshzle(1) ZLE BUILTINS: vared -a, -A" },
-  zparseopts: { stores: "aAv", values: "aAv", skipsLeadingDashes: true, source: "zshmodules(1) The zsh/zutil Module: zparseopts -a array, -A assoc" },
-  zformat: { stores: "faF", values: "faF", skipsLeadingDashes: true, source: "zshmodules(1) The zsh/zutil Module: zformat -f param, -F param, -a array" },
-  zstyle: { stores: "absg", values: "", skipsLeadingDashes: true, source: "zshmodules(1) The zsh/zutil Module: zstyle -a, -b, -s, -g name" },
-  strftime: { stores: "s", values: "s", source: "zshmodules(1) The zsh/datetime Module: strftime -s scalar" },
-  zstat: { stores: "AH", values: "AHfF", source: "zshmodules(1) The zsh/stat Module: zstat -A array, -H hash" },
-  zselect: { stores: "aA", values: "aAt", source: "zshmodules(1) The zsh/zselect Module: zselect -a array, -A assoc" },
-  pcre_match: { stores: "va", values: "van", source: "zshmodules(1) The zsh/pcre Module: pcre_match -v var, -a arr" },
-  sysread: { stores: "c", values: "ciost", source: "zshmodules(1) The zsh/system Module: sysread -c countvar" },
-  syswrite: { stores: "c", values: "co", source: "zshmodules(1) The zsh/system Module: syswrite -c countvar" },
-  sysopen: { stores: "u", values: "umo", source: "zshmodules(1) The zsh/system Module: sysopen -u fd" },
-  syserror: { stores: "e", values: "ep", source: "zshmodules(1) The zsh/system Module: syserror -e errvar" },
-  zpty: { stores: "r", values: "", source: "zshmodules(1) The zsh/zpty Module: zpty -r name param" },
-  compgen: { stores: "V", values: "VAGWFCXPSo", source: "bash(1) SHELL BUILTIN COMMANDS: compgen -V varname" },
-  mapfile: { stores: "", values: "dnOsuCc", source: "bash(1) SHELL BUILTIN COMMANDS: mapfile [array]" },
-  readarray: { stores: "", values: "dnOsuCc", source: "bash(1) SHELL BUILTIN COMMANDS: readarray [array]" },
-  wait: { stores: "p", values: "p", source: "bash(1) SHELL BUILTIN COMMANDS: wait -p varname" },
-}));
+export const STORE_OPTION_BUILTINS: ReadonlyMap<string, StoreOptionBuiltin> = new Map([
+  ...Object.entries(WRITER_SPECS).flatMap(([name, spec]) => {
+    const zone = zoneOf(spec);
+    return zone ? [[name, zone] as const] : [];
+  }),
+  ["getopts", GETOPTS],
+]);
+
+function zoneOf(spec: WriterSpec): StoreOptionBuiltin | undefined {
+  if (spec.names === undefined && spec.stores === undefined) return undefined;
+  const names = spec.names ?? "";
+  return {
+    stores: names + (spec.stores ?? ""),
+    values: names + (spec.values ?? ""),
+    ...(spec.either === undefined ? {} : { either: spec.either }),
+  };
+}
 
 /** A first character no expansion produced, so every word the word yields starts with it and none is an option. */
 const LITERAL_LEAD_RE = /^[A-Za-z0-9_./]/;
@@ -65,7 +57,7 @@ const NUMERIC_SPECIAL_RE = /^\$[!$#?]$/;
 export function expandsInStoreOptions(name: string, args: WordToken[]): boolean {
   const spec = STORE_OPTION_BUILTINS.get(name);
   if (!spec) return false;
-  const words = spec.skipsLeadingDashes && args[0]?.value === "--" && !expands(args[0]) ? args.slice(1) : args;
+  const words = afterSkippedDashes(name, args);
   let at: Position = { option: true, value: false };
   for (const word of words) {
     if (expands(word) && ((at.value && splits(word)) || (at.option && mayStartOption(word)))) return true;

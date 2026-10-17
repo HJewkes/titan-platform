@@ -137,6 +137,18 @@ describe("a line that rebinds a command name", () => {
     ["zsh stat -H into commands", "zmodload zsh/stat; stat -H commands /usr/bin/git; name push origin HEAD:main"],
     ["zsystem flock -f into a run-time name", `zsystem flock -f "$n" f; ${PUSH}`],
     ["ztie into a run-time name", `ztie -d db/gdbm -f f "$n"; ${PUSH}`],
+    ...["", "zmodload zsh/stat; "].flatMap((load) => [
+      [`${load}stat behind a run-time option word`, `${load}stat $o commands s; link push origin HEAD:main`],
+      [`${load}stat behind a quoted run-time option word`, `${load}stat "$o" commands s; link push origin HEAD:main`],
+      [`${load}stat -L behind a run-time option word`, `${load}stat -L $o commands s; link push origin HEAD:main`],
+      [`${load}builtin stat behind a run-time option word`, `${load}builtin stat $o commands s; link push origin HEAD:main`],
+      [`${load}stat with a clustered -LH`, `${load}stat -LH commands s; link push origin HEAD:main`],
+      [`${load}stat with a run-time word in a -L cluster`, `${load}stat "-L$o" commands s; link push origin HEAD:main`],
+      [`${load}stat behind --, which zsh skips once`, `${load}stat -- "$o" commands s; link push origin HEAD:main`],
+      [`${load}stat -H commands behind --`, `${load}stat -- -LH commands s; link push origin HEAD:main`],
+      [`${load}zstat -H commands behind --`, `${load}zstat -- -LH commands s; link push origin HEAD:main`],
+    ]),
+    ["compadd behind a run-time option word", `compadd $o commands x; ${PUSH}`],
   ])("refuses %s", async (_name, command) => {
     const got = await answer(command);
     expect(got.decision).toBe("deny");
@@ -167,6 +179,9 @@ describe("a line that rebinds a command name", () => {
     ["a declare option the shell rejects", "declare -Q Y=status; git status"],
     ["a gh word that expands to an option", 'gh pr edit 12 "--$X"'],
     ["a gh option word that varies", "gh --$F x pr merge"],
+    ["stat of a run-time file after a doubled --", 'stat -- -- "$f"'],
+    ["stat of a run-time file behind ./", 'stat ./"$f"'],
+    ["an export of PATH with a run-time value", 'export PATH="$HOME/bin"'],
   ])("keeps today's verdict for %s", async (_name, command) => {
     const got = await answer(command);
     expect(got.reason).not.toMatch(REBIND_REASON);

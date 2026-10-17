@@ -1,5 +1,5 @@
 import type { WordToken } from "./tokens.js";
-import { DECLARE, NAMEREF_DECLARERS, WRITER_SPECS, writerSpec } from "./writer-specs.js";
+import { afterSkippedDashes, DECLARE, NAMEREF_DECLARERS, WRITER_SPECS, writerSpec } from "./writer-specs.js";
 import type { WriterSpec } from "./writer-specs.js";
 
 /** Every builtin the table reads. */
@@ -15,7 +15,8 @@ export { NAMEREF_DECLARERS };
  * caller fails closed on. A command the table does not know writes no name. Attached option values and
  * zparseopts arrays come back as words sliced to the name, with their refs and cuts moved along.
  */
-export function nameSlots(name: string, args: WordToken[]): WordToken[] | string {
+export function nameSlots(name: string, words: WordToken[]): WordToken[] | string {
+  const args = afterSkippedDashes(name, words);
   if (name === "for" || name === "select") return forNames(args);
   if (name === "getopts") return args.slice(1, 2);
   const spec = writerSpec(name);

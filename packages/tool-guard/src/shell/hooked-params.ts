@@ -6,7 +6,7 @@ import { assignOnExpand } from "./assign-on-expand.js";
 import { HOOKED } from "./hooked-names.js";
 import { mayBeUnquoted, mayGenerate } from "./word-generation.js";
 import { TARGET_RE } from "./writers.js";
-import { DECLARE, NAMEREF_DECLARERS, REMOVERS, WRITER_SPECS, writerSpec } from "./writer-specs.js";
+import { afterSkippedDashes, DECLARE, NAMEREF_DECLARERS, REMOVERS, WRITER_SPECS, writerSpec } from "./writer-specs.js";
 import type { WriterSpec } from "./writer-specs.js";
 
 
@@ -73,8 +73,9 @@ function slotsHooked(slots: WordToken[] | string, names: ReadonlySet<string>): s
 }
 
 /** The words a command reads as names it writes, or the text of an option word that fails closed. */
-function nameSlots({ name, args }: Unwrapped): WordToken[] | string {
+function nameSlots({ name, args: words }: Unwrapped): WordToken[] | string {
   if (name === null) return [];
+  const args = afterSkippedDashes(name, words);
   if (name === "for" || name === "select") return forNames(args);
   if (name === "getopts") return args.slice(1, 2);
   const spec = REMOVERS.has(name) ? undefined : writerSpec(name);

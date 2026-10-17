@@ -73,7 +73,7 @@ function hashBinds(args: WordToken[]): boolean {
  */
 function storesRebinding(cmd: Unwrapped, name: string): boolean {
   if (name === "functions" && functionsCopies(cmd.args)) return true;
-  const own = skipLeadingDashes(name, cmd.args);
+  const own = cmd.args;
   if (PRINTS_VARIABLES.has(name)) {
     const operands = declarerOperands(own);
     if (operands.some((a) => NAMES_REBINDING_RE.test(a.value) && a.value.includes("="))) return true;
@@ -155,11 +155,6 @@ function variableWords(name: string, args: WordToken[]): WordToken[] {
   if (!VARIABLE_TAKERS.has(name)) return args;
   const keep = PRINTS_VARIABLES.has(name) ? /^-[A-Za-z0-9]*n/ : /^-[A-Za-z0-9]*[aA]/;
   return args.filter((a) => !/^[-+]/.test(a.value) || keep.test(a.value));
-}
-
-/** zsh skips one leading `--` before these builtins' options: `zparseopts -- -A commands y:`. */
-function skipLeadingDashes(name: string, args: WordToken[]): WordToken[] {
-  return STORE_OPTION_BUILTINS.get(name)?.skipsLeadingDashes && args[0]?.value === "--" ? args.slice(1) : args;
 }
 
 /** A dynamic word may expand to an option unless literal text that no option starts with comes first: `PATH=$HOME`. */
