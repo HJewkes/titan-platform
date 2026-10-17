@@ -6,7 +6,6 @@ import { nested } from "./nesting.js";
 import { ParseError, refusingAs, SplitParseError } from "./parse-error.js";
 import { quotedSpanSubstitutions } from "./substitutions.js";
 import type { LexState, Token } from "./tokens.js";
-import { ansiQuotedSubstitutions } from "./arith-ansi.js";
 
 /** Where substitutions are lexed: `line` is null in a heredoc body or a quoted span, which has no line to leave a heredoc open on. */
 export interface Reading {
@@ -37,7 +36,6 @@ export function arithmeticExpansionEnd(at: Reading, dollar: number, found: Token
 function arithmeticTrial(at: Reading, dollar: number, trial: Token[][]): number {
   try {
     const inner = balancedEnd(at.src, nextAfter(at.src, dollar + 1), nestedReaders(at, trial));
-    trial.push(...ansiQuotedSubstitutions(at, dollar + 1, inner));
     const close = nextAfter(at.src, inner);
     return at.src[close] === ")" ? close : -1;
   } catch (error) {
