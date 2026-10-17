@@ -187,3 +187,37 @@ and [project .codex layers](https://github.com/openai/codex/blob/092d3acd6bec3e3
 A generic project-root-marker override is not equivalent to disabling project
 config: managed discovery layers take precedence. No unsupported native
 ignore-project flag is assumed, and no account-home configuration is disabled.
+
+## Statusline command
+
+```sh
+openai-account status --statusline [--code-home <absolute-dir>] [--account <label>]
+```
+
+Uses `--code-home` or explicit `CODEX_HOME`; never falls back to ~/.codex.
+The label defaults to `accountLabel(codeHome)` and can be set with `--account`.
+Only one selected account is read. No login probe, Codex binary, network or
+credential read is needed. The command emits one line:
+
+```text
+codex|basement|20|75|12|
+```
+
+Five-hour and weekly columns are percentages **used**, rounded down, followed by
+whole observation age in seconds and a trailing pipe. Zero is printed only for
+an observed zero. Valid fresh readings exceeding admission thresholds still
+show their percentages; the display does not admit a new run.
+
+Missing, stale (age >900 before rounding), inconsistent, future, reset-expired or
+unreadable evidence prints `codex|basement|unknown|unknown||`. No readable account
+home gives `codex|default|unknown|unknown||` unless a safe account label was
+explicitly supplied or derived. Invalid labels are never echoed; the line uses
+`default` with unknown figures. A selected account cannot display another
+account's labelled reading. Reader errors are dropped, with no transcript text
+or errors on stderr. A valid statusline invocation always exits 0; syntax errors
+exit 64 with fixed usage text. `--help` exits 0.
+
+No renderer installation or dotfiles changes. For the Mac, which runs no Codex,
+the external integration can fetch basement's output into a cache at most once
+per 60 seconds. It must preserve reading age, expire stale cached evidence and
+never make cached numbers appear fresh. That transport is outside this package.

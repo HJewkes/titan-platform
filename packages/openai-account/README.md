@@ -93,3 +93,31 @@ This is a preflight observation, not an OS read boundary: another process can
 change ancestors after the check. No filesystem-race isolation is claimed.
 Injected workspace/process/clock seams are for trusted tests or supervised
 transports; callers must preserve these contracts when overriding them.
+
+## Statusline command
+
+```sh
+openai-account status --statusline --code-home /tmp/example-codex-home --account basement
+```
+
+`--code-home` overrides an explicit `CODEX_HOME`; there is no default-home scan.
+`--account` overrides the label derived from the home's last path segment.
+The command reads only the slice B rollout reader, with no login probe, Codex
+launch, network request or write. It emits exactly one extra-account line:
+
+```text
+codex|basement|20|75|12|
+```
+
+Percentages are whole percentages **used**, rounded down like the Claude statusline;
+age is whole seconds since the rollout observation. Fresh exhausted readings
+still display their numbers: this is a display, not launch admission. Missing,
+stale, inconsistent, future, expired or unreadable evidence emits
+`codex|basement|unknown|unknown||`. Valid statusline invocations exit 0 with no
+stderr. Invalid syntax exits 64 with fixed usage text. Unsafe account labels are
+not echoed; they yield an unknown reading under the safe label `default`.
+
+The command does not edit or install a renderer. A Mac without Codex can consume
+a cached fetch of basement's output; the outer integration refreshes no faster
+than once per 60 seconds and must retain observation age rather than treating
+cached numbers as new evidence. That transport and dotfiles wiring are separate.
