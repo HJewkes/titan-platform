@@ -68,9 +68,9 @@ function hashBinds(args: WordToken[]): boolean {
 
 /**
  * Whether a store builtin declares a nameref to a rebinding parameter, copies a function under a new name, or stores
- * into a rebinding parameter. It reads a word that expands at run time only where it is the name being stored into
- * (`printf -v "$n"`, `wait -p "$n"`, `set -A "$n"`); one where options are still read is `expandsInStoreOptions`'s.
- * A declarer's run-time operand (`export $(cmd)`, `declare "$F"`) is not read, and the guard allows it today.
+ * into a rebinding parameter. A word that expands at run time in a name slot may be any name, so it counts, after
+ * `--` too: `read -- "$n"`, `declare "$x"`, `zstyle -s :a k "$n"`. One where options are still read is
+ * `expandsInStoreOptions`'s.
  */
 function storesRebinding(cmd: Unwrapped, name: string): boolean {
   if (name === "functions" && functionsCopies(cmd.args)) return true;
@@ -82,18 +82,28 @@ function storesRebinding(cmd: Unwrapped, name: string): boolean {
   }
   const args = variableWords(name, own.filter((a) => NAMES_REBINDING_RE.test(a.value) || (!a.dynamic && !isGlob(a, name))));
   if (writesProtectedParam({ ...cmd, args }, args, [], REBINDING_SET) !== null) return true;
-  return NAME_BY_OPTION.has(name) && dynamicSlot(name, own);
+  return dynamicSlot(name, printsFunction(name, own) ? own.slice(0, -1) : own);
 }
 
 /**
- * Whether the stored-into name is computed at run time (`wait -p "$n" $!`), or sits in an option word the reader
- * cannot split.
+ * Whether the stored-into name is computed at run time (`wait -p "$n" $!`, `read -- "$n"`, `declare "$x"=v`), or
+ * sits in an option word the reader cannot split. A run-time word where a declarer or reader may read an option or a
+ * name may be either, so it counts: `declare "$x"`.
  */
 function dynamicSlot(name: string, args: WordToken[]): boolean {
   if (namedByDynamicWord(name, args)) return true;
+  const byOption = NAME_BY_OPTION.has(name);
   const slots = nameSlots(name, args);
-  if (typeof slots !== "string") return slots.some((slot) => slot.dynamic);
-  return /^[-+]/.test(slots) && /[$`]/.test(slots);
+  if (typeof slots !== "string") return slots.some((slot) => (byOption ? slot.dynamic : dynamicName(slot)));
+  if (/^[-+]/.test(slots) && /[$`]/.test(slots)) return true;
+  return !byOption && args.some((a) => a.dynamic && a.value === slots);
+}
+
+/** Whether an operand's name, the text before any `=`, expands: `"$x"`, `"$V=d"`, `${n}=x`, but not `PATH="$HOME"`. */
+function dynamicName(slot: WordToken): boolean {
+  const eq = slot.value.indexOf("=");
+  const end = eq < 0 ? slot.value.length : eq;
+  return slot.dynamic && (/[$`]/.test(slot.value.slice(0, end)) || (slot.cuts ?? []).some((cut) => cut.at <= end));
 }
 
 /** A literal option word ending in a store letter, followed by the run-time word that is its name. */
@@ -123,6 +133,13 @@ function declarerOperands(args: WordToken[]): WordToken[] {
 function printsOnly(args: WordToken[], operands: WordToken[]): boolean {
   if (args.some((a) => a.dynamic)) return false;
   return args.slice(0, args.length - operands.length).some((a) => /^-[A-Za-z0-9]*[pf]/.test(a.value));
+}
+
+/** A lone quoted run-time word after a literal `-f` names a function to print, not a name to store: `declare -f "$fn"`. */
+function printsFunction(name: string, args: WordToken[]): boolean {
+  const last = args.at(-1);
+  if (!PRINTS_VARIABLES.has(name) || last?.dynamic !== true || last.unquotedExpansion === true) return false;
+  return args.slice(0, -1).some((a) => !a.dynamic && /^-[A-Za-z0-9]*f/.test(a.value));
 }
 
 /** An unquoted glob or brace in a declarer's operand is not a name: `readonly {}` under `xargs -I{}`. */

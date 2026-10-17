@@ -6,10 +6,12 @@ interface StoreOptionBuiltin {
   /** The option letters that store into a parameter, or make an operand one; empty when only an operand names it. */
   stores: string;
   /**
-   * Letters that take the next word as their value in bash or zsh, when nothing is attached. The union of both shells
-   * and of optional values, so a word the guard reads as a value is never an option word to the shell.
+   * Letters that take the next word as their value, when nothing is attached, in every shell that knows them; a shell
+   * that rejects the letter stores nothing.
    */
   values: string;
+  /** Letters that take the next word as their value in one shell and are a flag in the other: bash `read -p`, zsh `read -p`. */
+  either?: string;
   /** zsh skips one leading `--` and still reads options after it: `zparseopts -- -A commands y:`. */
   skipsLeadingDashes?: true;
   /** Where the manuals document the store. */
@@ -26,7 +28,7 @@ export const STORE_OPTION_BUILTINS: ReadonlyMap<string, StoreOptionBuiltin> = ne
   print: { stores: "v", values: "vufCxX", source: "zshbuiltins(1) SHELL BUILTIN COMMANDS: print -v name" },
   printf: { stores: "v", values: "v", source: "zshbuiltins(1) printf -v name; bash(1) SHELL BUILTIN COMMANDS: printf -v var" },
   set: { stores: "A", values: "Ao", source: "zshbuiltins(1) set {+|-}A name" },
-  read: { stores: "aA", values: "adiknNptu", source: "zshbuiltins(1) read -A; bash(1) read -a aname" },
+  read: { stores: "aA", values: "adiNu", either: "npt", source: "zshbuiltins(1) read -A, -k [num], -t [num]; bash(1) read -a aname" },
   getln: { stores: "A", values: "", source: "zshbuiltins(1) getln -A" },
   getopts: { stores: "", values: "", skipsLeadingDashes: true, source: "zshbuiltins(1) and bash(1) getopts optstring name" },
   zmodload: { stores: "P", values: "P", source: "zshbuiltins(1) zmodload -F -P param" },
@@ -64,22 +66,47 @@ export function expandsInStoreOptions(name: string, args: WordToken[]): boolean 
   const spec = STORE_OPTION_BUILTINS.get(name);
   if (!spec) return false;
   const words = spec.skipsLeadingDashes && args[0]?.value === "--" && !expands(args[0]) ? args.slice(1) : args;
-  let valueNext = false;
+  let at: Position = { option: true, value: false };
   for (const word of words) {
-    if (expands(word)) {
-      if (valueNext ? splits(word) : mayStartOption(word)) return true;
-      if (!valueNext) return false;
-      valueNext = false;
-      continue;
-    }
-    if (valueNext) {
-      valueNext = false;
-      continue;
-    }
-    if (word.value === "--" || !/^[-+]./s.test(word.value)) return false;
-    valueNext = takesNextWord(word.value, spec.values);
+    if (expands(word) && ((at.value && splits(word)) || (at.option && mayStartOption(word)))) return true;
+    at = nextPosition(word, at, spec);
+    if (!at.option && !at.value) return false;
   }
   return false;
+}
+
+/** Where a word sits in some shell's reading: where options are still read, or as the value of the option before it. */
+interface Position {
+  option: boolean;
+  value: boolean;
+}
+
+/**
+ * Where the next word sits. A value is followed by options; a word that cannot be an option ends that reading. A
+ * run-time word in an option slot that passed `mayStartOption` is not an option, so it ends that reading too.
+ */
+function nextPosition(word: WordToken, at: Position, spec: StoreOptionBuiltin): Position {
+  const option = at.option && !expands(word) && word.value !== "--" && /^[-+]./s.test(word.value);
+  const after = option ? clusterEnd(word.value, spec) : { option: false, value: false };
+  return { option: at.value || after.option, value: after.value };
+}
+
+/**
+ * Where a cluster leaves the next word. A value letter takes the rest of the cluster, or the next word when it is
+ * last: `-ru` then `3`. An either letter does that in one shell and is a flag in the other, so both readings go on.
+ */
+function clusterEnd(cluster: string, spec: StoreOptionBuiltin): Position {
+  const letters = [...cluster.slice(1)];
+  const end: Position = { option: false, value: false };
+  for (const [i, letter] of letters.entries()) {
+    const last = i === letters.length - 1;
+    if (spec.values.includes(letter)) return last ? { ...end, value: true } : { ...end, option: true };
+    if (spec.either?.includes(letter)) {
+      if (last) return { option: true, value: true };
+      end.option = true;
+    }
+  }
+  return { ...end, option: true };
 }
 
 function expands(word: WordToken): boolean {
@@ -95,11 +122,4 @@ function mayStartOption(word: WordToken): boolean {
   if (NUMERIC_SPECIAL_RE.test(word.value)) return false;
   const expandedLead = word.refs.some((r) => r.start === 0) || (word.cuts ?? []).some((c) => c.at === 0);
   return expandedLead || !LITERAL_LEAD_RE.test(word.value);
-}
-
-/** Whether the cluster ends in a letter that takes a value, so the next word is that value: `-ru` then `3`. */
-function takesNextWord(cluster: string, values: string): boolean {
-  const letters = cluster.slice(1);
-  const at = [...letters].findIndex((c) => values.includes(c));
-  return at === letters.length - 1;
 }
