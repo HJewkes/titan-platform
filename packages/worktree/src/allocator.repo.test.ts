@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { WorktreeAddRunner } from "./add.js";
 import { createWorktreeAllocator, type WorktreeReleaseOutcome, type WorktreeRequest } from "./allocator.js";
 import { WorktreeBudgetExhaustedError, WorktreeInUseError } from "./errors.js";
-import { findGitRoot } from "./git.js";
+import { findGitRoot, pinGitProtocols } from "./git.js";
 import { RECLAIM_GRACE_MS } from "./options.js";
 import type { WorktreeAllocation } from "./reattach.js";
 import { seedRepo } from "./git-fixture.js";
@@ -243,11 +243,6 @@ describe("worktree re-allocation after a crash", () => {
 });
 
 /** Hangs every fetch, then exits within 0.2s of the fetching git being killed so no child outlives the test. */
-const HANG_UNTIL_GIT_DIES = `#!/bin/sh
-git_pid=$(ps -o ppid= -p $PPID)
-while kill -0 $git_pid 2>/dev/null; do sleep 0.2; done
-`;
-
 describe("worktree branch base", () => {
   const tmp = (prefix: string): string => {
     const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
@@ -351,17 +346,54 @@ describe("worktree branch base", () => {
 
   it("spends one timeout across every default-branch candidate, not one each", async () => {
     const local = makeRepo();
-    const hang = path.join(tmp("iso-hang-"), "hang.sh");
-    fs.writeFileSync(hang, HANG_UNTIL_GIT_DIES, { mode: 0o755 });
-    git(["config", "protocol.ext.allow", "always"], local);
-    git(["remote", "add", "origin", `ext::${hang}`], local);
-    const strategy = createWorktreeAllocator({ fetchTimeoutMs: 1_000 });
+    const bin = tmp("iso-fetch-bin-");
+    const trace = path.join(bin, "fetch.jsonl");
+    const stopped = path.join(bin, "stopped");
+    const pidFile = path.join(bin, "pid");
+    const realGit = execFileSync("which", ["git"], { encoding: "utf8", env: fixtureEnv() }).trim();
+    const script = [
+      `#!${process.execPath}`,
+      'const fs = require("node:fs");',
+      'const { spawnSync } = require("node:child_process");',
+      'const args = process.argv.slice(2);',
+      'if (args[0] === "fetch") {',
+      `  fs.appendFileSync(${JSON.stringify(trace)}, JSON.stringify({ args, pin: process.env.GIT_ALLOW_PROTOCOL }) + "\\n");`,
+      `  fs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));`,
+      `  process.on("SIGTERM", () => { fs.writeFileSync(${JSON.stringify(stopped)}, "SIGTERM"); process.exit(0); });`,
+      '  setInterval(() => {}, 1000);',
+      '} else {',
+      `  const result = spawnSync(${JSON.stringify(realGit)}, args, { stdio: "inherit", env: process.env });`,
+      '  process.exit(result.status ?? 1);',
+      '}',
+    ].join("\n");
+    fs.writeFileSync(path.join(bin, "git"), script, { mode: 0o755 });
+    git(["remote", "add", "origin", path.join(bin, "owned-origin")], local);
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${bin}${path.delimiter}${originalPath ?? ""}`;
+    try {
+      const strategy = createWorktreeAllocator({ fetchTimeoutMs: 1_000 });
+      const started = Date.now();
+      const alloc = await strategy.allocate(ctxFor(local));
 
-    const started = Date.now();
-    const alloc = await strategy.allocate(ctxFor(local));
-
-    expect(Date.now() - started).toBeLessThan(1_950);
-    expect(alloc.warnings?.[0]).toContain("failed or timed out");
+      expect(Date.now() - started).toBeLessThan(1_950);
+      expect(alloc.warnings?.[0]).toContain("failed or timed out");
+      const entries = fs.readFileSync(trace, "utf8").trim().split("\n");
+      expect(entries).toHaveLength(1);
+      const entry: unknown = JSON.parse(entries[0] ?? "null");
+      expect(entry).toEqual({
+        args: ["fetch", "--quiet", "--no-tags", "origin", "+refs/heads/main:refs/remotes/origin/main"],
+        pin: pinGitProtocols(process.env.GIT_ALLOW_PROTOCOL),
+      });
+      expect(fs.readFileSync(stopped, "utf8")).toBe("SIGTERM");
+      const ownedPid = Number(fs.readFileSync(pidFile, "utf8"));
+      await vi.waitFor(() => expect(() => process.kill(ownedPid, 0)).toThrow());
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
+      if (fs.existsSync(pidFile) && !fs.existsSync(stopped)) {
+        try { process.kill(Number(fs.readFileSync(pidFile, "utf8")), "SIGTERM"); } catch { /* Already exited. */ }
+      }
+    }
   });
 
   it("warns that there is no origin when the repository has none", async () => {

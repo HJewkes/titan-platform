@@ -58,3 +58,28 @@ The root entry also exports the existing guarded filenames `NPMRC_FILE` (`.npmrc
 `includeSetupTarget: true` includes `allocation.setupTarget` only when the operation selected a setup base. Omitted or false preserves the previous return shape; an existing assigned tree has no target. Recreation carries its actual selected target. The flag alone does not suppress automatic setup.
 
 The value reuses `SetupTarget` and describes this operation's selection; it is not authentication or a transferable permission. A diagnostic local-HEAD fallback remains `fetched: false`. Do not reconstruct or reassociate a target from persisted references or a requested checkout branch. The setup source, warnings, execution order and timeouts are unchanged.
+
+## Optional DEFAULT proof when parking
+
+The two-argument `parkWorktree(target, recheck)` behavior is unchanged. A caller may opt in
+with a third argument `{ allowDefaultBranchAncestor: true, fetchTimeoutMs: 1000 }`.
+When the branch has no origin tracking ref, this path requires a successful fresh fetch
+of origin's default branch and proves that the actual current HEAD is its ancestor.
+A failed fetch or a nonpositive or nonfinite budget retains the tree and branch with
+the existing missing-branch refusal. It never uses local HEAD as a fallback proof.
+
+This opt-in path checks files, branch and HEAD again after the fetch and after the
+synchronous lifecycle recheck, then uses nonforced removal. It retains the local branch.
+These checks do not make removal atomic against external writers. Provider or lifecycle
+policy remains with the caller.
+
+## Sweep safety detail presentation
+
+`SweepOptions.formatSafetyDetail` may synchronously format an already classified
+`holds-work` entry. It receives a frozen copy containing only the observed `dirty`
+and `unmerged` booleans. Both can be true; formatting does not change safety status
+or cause another Git observation. Held, in-grace and reclaimable entries bypass it.
+Without the option, entry objects and diagnostics are unchanged.
+
+A throwing presenter rejects the report; a nonstring return throws `TypeError`.
+The sweep does not reclaim trees. Caller presentation is not release authority.

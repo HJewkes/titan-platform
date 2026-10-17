@@ -747,7 +747,7 @@ Key exports:
 - `branch-base`: `fetchDefaultTip`, `resolveBranchBase`
 - `errors`: `MissingAssignedWorktreeRecordError`, `OriginUnreachableError`, `WorktreeBudgetExhaustedError`, `WorktreeInUseError`
 - `git`: `pinGitProtocols`, `withPinnedGitProtocols`, `findGitRoot`, `gitChildEnv`, `observedPresence`
-- +56 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/worktree)
+- +57 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/worktree)
 
 ## Tier 2 — domain
 

@@ -262,12 +262,15 @@ declare function observedPresence(cwd: string, git?: GitRunner): Promise<GitPres
  */
 declare function pruneStaleWorktrees(gitRoot: string): Promise<void>;
 
-/**
- * Refuse a tree that would lose anything; otherwise remove it without --force and keep the branch.
- * `recheck` runs after the git checks and right before the removal, so a spawn or resume that
- * started meanwhile is caught. Returns the parked head.
- */
-declare function parkWorktree(target: WorktreeRecord, recheck?: () => string | undefined): Promise<{
+/** Parking keeps the local branch; an opt-in fresh default proof can establish its commits are already backed. */
+interface ParkOptions {
+    /** Permit a missing origin/branch only when a fresh DEFAULT fetch contains the actual HEAD. */
+    allowDefaultBranchAncestor?: boolean;
+    /** Positive finite fetch budget; invalid values refuse without fetching. Defaults to 15 seconds. */
+    fetchTimeoutMs?: WorktreeOptions["fetchTimeoutMs"];
+}
+/** Refuse file loss, recheck lifecycle immediately before nonforced removal, and always keep the local branch. */
+declare function parkWorktree(target: WorktreeRecord, recheck?: () => string | undefined, options?: ParkOptions): Promise<{
     ok: true;
     head: string;
 } | {
@@ -374,6 +377,8 @@ interface SweepOptions {
     branchPrefix?: string;
     list?: GitLister;
     now?: () => number;
+    /** Synchronous presentation of an already classified holds-work observation; cannot change its status. */
+    formatSafetyDetail?: (safety: Readonly<Pick<WorktreeReleaseSafety, "dirty" | "unmerged">>) => string;
 }
 /** Every unlocked worktree in `gitRoot` whose branch carries `branchPrefix`, from git itself. */
 declare function agentWorktreesIn(gitRoot: string, list?: GitLister, branchPrefix?: string): Promise<{
@@ -398,4 +403,4 @@ declare function reclaimWorktree(entry: SweptWorktree, options?: {
     reason?: string;
 }>;
 
-export { BRANCH_PREFIX, type BranchBase, DEFAULT_BASE_PATH, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_SETUP_TIMEOUT_MS, DEFAULT_STRIPPED_ENV_PREFIXES, DEFAULT_WORKTREE_BUDGET, type FoundWorktree, type GitLister, type GitPresence, type GitRunner, type HeldWorktree, MissingAssignedWorktreeRecordError, NPMRC_FILE, OriginUnreachableError, PNPM_WORKSPACE_FILE, RECLAIM_GRACE_MS, type ReleaseCheck, type ReleaseProof, SAFE_GIT_PROTOCOLS, SETUP_FILE, SETUP_LOG, type SetupOutcome, type SetupReport, type SetupResult, type SetupRunner, type SetupStep, type SetupTarget, type SweepOptions, type SweepOwner, type SweepStatus, type SweptWorktree, WORKTREE_ADD_TIMEOUT_MS, type WorktreeAddRunner, type WorktreeAllocation, type WorktreeAllocator, WorktreeBudgetExhaustedError, type WorktreeCheck, WorktreeInUseError, type WorktreeOptions, type WorktreeRecord, type WorktreeReleaseOutcome, type WorktreeReleaseSafety, type WorktreeRequest, agentWorktreesIn, createWorktreeAllocator, describeRefusal, fetchDefaultTip, findGitRoot, gitChildEnv, inspectForRelease, isLive, observedPresence, parkWorktree, parseSetupStep, pinGitProtocols, pruneStaleWorktrees, reattachWorktree, reclaimWorktree, recreateWorktree, resolveBranchBase, runGit, runSetupCommand, runWorktreeSetup, setupEnv, setupWorktree, sweepWorktrees, withPinnedGitProtocols };
+export { BRANCH_PREFIX, type BranchBase, DEFAULT_BASE_PATH, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_SETUP_TIMEOUT_MS, DEFAULT_STRIPPED_ENV_PREFIXES, DEFAULT_WORKTREE_BUDGET, type FoundWorktree, type GitLister, type GitPresence, type GitRunner, type HeldWorktree, MissingAssignedWorktreeRecordError, NPMRC_FILE, OriginUnreachableError, PNPM_WORKSPACE_FILE, type ParkOptions, RECLAIM_GRACE_MS, type ReleaseCheck, type ReleaseProof, SAFE_GIT_PROTOCOLS, SETUP_FILE, SETUP_LOG, type SetupOutcome, type SetupReport, type SetupResult, type SetupRunner, type SetupStep, type SetupTarget, type SweepOptions, type SweepOwner, type SweepStatus, type SweptWorktree, WORKTREE_ADD_TIMEOUT_MS, type WorktreeAddRunner, type WorktreeAllocation, type WorktreeAllocator, WorktreeBudgetExhaustedError, type WorktreeCheck, WorktreeInUseError, type WorktreeOptions, type WorktreeRecord, type WorktreeReleaseOutcome, type WorktreeReleaseSafety, type WorktreeRequest, agentWorktreesIn, createWorktreeAllocator, describeRefusal, fetchDefaultTip, findGitRoot, gitChildEnv, inspectForRelease, isLive, observedPresence, parkWorktree, parseSetupStep, pinGitProtocols, pruneStaleWorktrees, reattachWorktree, reclaimWorktree, recreateWorktree, resolveBranchBase, runGit, runSetupCommand, runWorktreeSetup, setupEnv, setupWorktree, sweepWorktrees, withPinnedGitProtocols };

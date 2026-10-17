@@ -117,3 +117,28 @@ A failed allocator release may additionally return `refusalCode: "unsaved-change
 `fetchDefaultTip(gitRoot, timeoutMs)` fetches origin's current default branch and returns `{ sha, ref }`, or the existing failure-reason string. It never substitutes the local HEAD. It honors origin/HEAD when known; otherwise it tries main then master within one shared timeout budget. Fetch updates only the remote-tracking ref, leaving the main checkout's HEAD and files unchanged.
 
 This exposes the existing helper unchanged for callers such as park checks that must refuse when origin cannot establish containment. `resolveBranchBase` retains its separate local-HEAD fallback and warning for allocation. A successful fetch is only a commit observation; the caller must still perform its ancestry, ownership and file-loss checks. Setup, park and sweep policies are unchanged.
+
+## Optional DEFAULT proof when parking
+
+The two-argument `parkWorktree(target, recheck)` behavior is unchanged. A caller may opt in
+with a third argument `{ allowDefaultBranchAncestor: true, fetchTimeoutMs: 1000 }`.
+When the branch has no origin tracking ref, this path requires a successful fresh fetch
+of origin's default branch and proves that the actual current HEAD is its ancestor.
+A failed fetch or a nonpositive or nonfinite budget retains the tree and branch with
+the existing missing-branch refusal. It never uses local HEAD as a fallback proof.
+
+This opt-in path checks files, branch and HEAD again after the fetch and after the
+synchronous lifecycle recheck, then uses nonforced removal. It retains the local branch.
+These checks do not make removal atomic against external writers. Provider or lifecycle
+policy remains with the caller.
+
+## Sweep safety detail presentation
+
+`SweepOptions.formatSafetyDetail` may synchronously format an already classified
+`holds-work` entry. It receives a frozen copy containing only the observed `dirty`
+and `unmerged` booleans. Both can be true; formatting does not change safety status
+or cause another Git observation. Held, in-grace and reclaimable entries bypass it.
+Without the option, entry objects and diagnostics are unchanged.
+
+A throwing presenter rejects the report; a nonstring return throws `TypeError`.
+The sweep does not reclaim trees. Caller presentation is not release authority.
