@@ -731,7 +731,7 @@ Key exports:
 - `errors`: `MissingAssignedWorktreeRecordError`, `OriginUnreachableError`, `WorktreeBudgetExhaustedError`, `WorktreeInUseError`
 - `git`: `findGitRoot`, `gitChildEnv`, `observedPresence`, `runGit`
 - `layout`: `pruneStaleWorktrees`
-- +48 more in the [reference page](/reference/worktree)
+- +53 more in the [reference page](/reference/worktree)
 
 ## Tier 2 — domain
 
