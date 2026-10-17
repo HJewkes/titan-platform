@@ -101,9 +101,25 @@ function shellTargets(cmd: SimpleCommand, home: string): ScriptTarget[] {
   const { runs, scriptFile, sources, unknowable } = shellStdin(shellOperands(cmd.args, cmd.name), cmd.redirects, false, cmd.inherited);
   if (unknowable) throw new UnknownStdinError();
   const script = scriptFile === null ? null : target(cmd, scriptFile, home, "shell");
-  if (script !== null) return [script];
   const files = sources.flatMap((s) => (s.kind === "file" ? [target(cmd, s.target, home, "shell")].filter((t): t is ScriptTarget => t !== null) : []));
+  if (script !== null) return operandMayBeFed(script.path) ? [script, ...files.map((t) => ({ ...t, relayed: true as const }))] : [script];
   return runs ? files : files.map((t) => ({ ...t, relayed: true }));
+}
+
+/**
+ * Whether a literal script operand is on disk as something other than a regular file (`/dev/stdin`, `fd/0`, a link to
+ * one, a FIFO or a device), so it may be the shell's own stdin and its feed is a script too. A regular file is read as
+ * the script and its feed is data, which a feed too large to charge to the line's budget (`bash import.sh < big.csv`)
+ * must not refuse. An absent operand is left to the verdict it already has, and a stat that fails for another reason
+ * refuses, as the guard cannot tell what the path is.
+ */
+function operandMayBeFed(path: string): boolean {
+  try {
+    return !statSync(path).isFile();
+  } catch (error) {
+    const code = error instanceof Error && "code" in error ? error.code : null;
+    return code !== "ENOENT" && code !== "ENOTDIR";
+  }
 }
 
 /** The first non-option word, null when an option in `inline` means the program text is inline. */
