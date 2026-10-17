@@ -213,6 +213,17 @@ describe("the start-up sweep", () => {
     expect([posts, await exists(answerFile())]).toEqual([[], false]);
   });
 
+  it("logs that an answered round whose round.json no longer parses was not relayed, and writes no answer.json", async () => {
+    await submit(createRoundListeners(deps({ enabled: false })));
+    await writeFile(path.join(dir, ROUND, "round.json"), "{ not json");
+    const warnings: string[] = [];
+
+    await createRoundListeners(deps({ logger: { warn: (_fields, message) => warnings.push(message) } })).sweep();
+
+    expect(warnings).toEqual([expect.stringMatching(/^orbit-retry-r1: round\.json invalid; answer not relayed \(.+\)$/)]);
+    expect([listCalls, posts, await exists(answerFile())]).toEqual([0, [], false]);
+  });
+
   it("leaves a round that already has an answer.json alone", async () => {
     const listeners = createRoundListeners(deps());
     await submit(listeners);
