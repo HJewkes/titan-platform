@@ -157,7 +157,7 @@ interface ExtractOptions {
     stopPastCap?: boolean;
     aliases?: AliasTable;
     /** Called once the walk ends if it wrote `PATH` or zsh's `path` in a shell that outlives it, or may have. */
-    onPathWrite?: () => void;
+    onPathWrite?: (unsafe: boolean, dirs: string[]) => void;
     /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
     onScript?: (text: string) => void;
 }

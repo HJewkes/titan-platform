@@ -214,6 +214,12 @@ describe("a #!/usr/bin/env shell script on a line that changes PATH", () => {
     ["a write after a function that runs the script", "f(){ ./envp; }; PATH=.:$PATH; f"],
     ["a write after the script in a loop", "for i in 1 2; do ./envp; PATH=.:$PATH; done"],
     ["a write after the script", "./envp; PATH=.:$PATH"],
+    ["an empty leading entry", "PATH=:$PATH; ./envp"],
+    ["an empty trailing entry", "PATH=$PATH:; ./envp"],
+    ["a relative entry", "PATH=bin:$PATH ./envp"],
+    ["a sourced write after a function that runs the script", "f(){ ./envp; }; . ./src.sh; f"],
+    ["a sourced write after the script in a loop", "for i in 1 2; do ./envp; . ./src.sh; done"],
+    ["an unreadable source after a function that runs the script", "f(){ ./envp; }; source <(echo PATH=.); f"],
     ["a dynamic store", "declare $X=.; ./envp"],
     ["declare -g", "declare -g PATH=.; ./envp"],
     ["a nameref to PATH", "declare -n p=PATH; p=.; ./envp"],
@@ -230,6 +236,7 @@ describe("a #!/usr/bin/env shell script on a line that changes PATH", () => {
     ["a subshell group", "{ PATH=.; }; ./envp"],
   ])("denies the script after %s", async (_, line) => {
     file("envp", ENV_BASH);
+    file("src.sh", "PATH=.:$PATH\n");
     expect(await decision(line)).toBe("deny");
   });
 
@@ -243,6 +250,23 @@ describe("a #!/usr/bin/env shell script on a line that changes PATH", () => {
     expect(await decision("./envp")).toBeNull();
     file("envp2", `#!/usr/bin/env bash\n${PUSH}\n`);
     expect(await decision("./envp2")).toBe("deny");
+  });
+
+  it("denies the script after a shell is written into a directory the line puts on PATH", async () => {
+    file("envp", ENV_BASH);
+    const dir = join(home, "pd");
+    expect(await decision(`echo x > ${dir}/bash; PATH=${dir}:$PATH ./envp`)).toBe("deny");
+  });
+
+  it.each([
+    'export PATH="$HOME/bin:$PATH"; ./envp',
+    "PATH=/usr/local/bin:$PATH ./envp",
+    "PATH+=:/opt/tools ./envp",
+    "PATH=$HOME/bin:$PATH:/usr/local/bin; ./envp",
+    "PATH=~/bin:$PATH ./envp",
+  ])("reads the script as before when the line puts only absolute directories on PATH: %s", async (line) => {
+    file("envp", ENV_BASH);
+    expect(await decision(line)).toBeNull();
   });
 
   it("denies the script after a sourced file writes PATH", async () => {

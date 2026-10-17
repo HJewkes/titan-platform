@@ -8,9 +8,10 @@ import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
 import { aliasCommands, type AliasTable } from "./alias-words.js";
-import { assign, childVars, expandWord, lookup, isPathName, noteSureCommands, observeStores, trackVars } from "./vars.js";
+import { assign, childVars, expandWord, isPathName, lookup, noteSureCommands, observeStores, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { CommandRebindingError, rebindsCommand } from "./command-rebinding.js";
+import { prefixPath } from "./path-entries.js";
 import { cutReading } from "./piped-nul.js";
 import { changeDir, lineBudget, literalEnv } from "./walk-support.js";
 import { inlineScript, SHELLS } from "./inline-script.js";
@@ -89,7 +90,7 @@ export interface ExtractOptions {
   stopPastCap?: boolean;
   aliases?: AliasTable;
   /** Called once the walk ends if it wrote `PATH` or zsh's `path` in a shell that outlives it, or may have. */
-  onPathWrite?: () => void;
+  onPathWrite?: (unsafe: boolean, dirs: string[]) => void;
   /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
   onScript?: (text: string) => void;
 }
@@ -162,7 +163,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   };
   walk(tokenizeLine(src), observed(w));
   settle(w.marks);
-  if (w.marks.pathChanged) options.onPathWrite?.();
+  if (w.marks.pathChanged || w.marks.pathDirs.length > 0) options.onPathWrite?.(w.marks.pathChanged, w.marks.pathDirs);
   return out;
 }
 
@@ -228,7 +229,7 @@ function observed(w: Walk): Walk {
 }
 
 function observeWalk(w: Walk, vars: Vars): void {
-  observeStores(vars, (value) => hear(w, value), () => void (w.marks.pathChanged = true));
+  observeStores(vars, (value) => hear(w, value), (dirs) => (dirs === null ? (w.marks.pathChanged = true) : w.marks.pathDirs.push(...dirs)));
 }
 
 /** A substitution the lexer rejects while it is walked leaves the line unchecked, which the hook refuses. */
@@ -342,7 +343,9 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
   const inherited = w.prev === "|" || w.prev === "|&" ? emptied(w.descriptors, 0) : w.descriptors;
   const set = inherited === TOP_DESCRIPTORS ? {} : { inherited };
-  const ownPath = cmd.assigned.some(([name, , kind]) => kind !== "hidden" && isPathName(name));
+  const own = prefixPath(cmd.assigned, isPathName, w.scope.vars);
+  const ownPath = own.unsafe;
+  w.marks.pathDirs.push(...own.dirs);
   const pathSet = w.marks.pathChanged || w.pathPrefix || ownPath ? { pathChanged: true as const } : {};
   w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set, ...pathSet });
   const piped = stdin === null ? [] : [stdin, ...(stdin === w.stdin ? w.shellStdin : [])];

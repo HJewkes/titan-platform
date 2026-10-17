@@ -38,11 +38,6 @@ export function isSwappableShebang(text: string): boolean {
   return resolvesShellViaPath(text);
 }
 
-/** Refuses a by-path script whose `env`-found shell the line's PATH change may have swapped. */
-export function refuseSwappableShebang(target: ScriptTarget, pathChanged: boolean, viaEnv: ReadonlySet<string>): void {
-  if (target.byPath && pathChanged && viaEnv.has(target.path)) throw new OpaqueShebangError();
-}
-
 /** Refuses a by-path script found to have an opaque first line, as the interpreter it names may run something other than the body. */
 export function refuseOpaqueShebang(target: ScriptTarget, opaque: ReadonlySet<string>): void {
   if (target.byPath && opaque.has(target.path)) throw new OpaqueShebangError();

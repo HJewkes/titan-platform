@@ -8,8 +8,10 @@ import { secret } from "./families/secret.js";
 import { hasDynamicName, namedReadings, wrappedReading } from "./dynamic-readings.js";
 import { afterWrites, scriptReadings } from "./line-writes.js";
 import { INTERPRETERS } from "./mentions.js";
-import { hasOpaqueShebang, isSwappableShebang, refuseOpaqueShebang, OpaqueShebangError, refuseSwappableShebang, runsNatively, scriptTargets, SOURCERS } from "./scripts.js";
+import { hasOpaqueShebang, isSwappableShebang, refuseOpaqueShebang, runsNatively, scriptTargets, SOURCERS } from "./scripts.js";
 import type { ScriptTarget } from "./scripts.js";
+import { addPathWrite, newPathState, refuseSwappedShells } from "./path-swap.js";
+import type { PathState } from "./path-swap.js";
 import { resolveValue } from "./shell/path.js";
 import { extractCommands } from "./shell/commands.js";
 import type { ExtractOptions, SimpleCommand } from "./shell/commands.js";
@@ -44,23 +46,19 @@ interface ScriptMemo {
   bytesLeft: number;
   /** Paths whose first line is a `#!` the guard cannot follow; kept beside the memo because `bash x.sh` and `./x.sh` share a verdict but only the second runs that line. */
   opaque: Set<string>;
-  /** Paths whose first line has `env` find the shell, so a PATH the line changed decides which shell runs. */
-  viaEnv: Set<string>;
-  /** Whether a script the line sourced wrote PATH, in the line's own shell. */
-  pathChanged: boolean;
-  /** Paths of scripts whose text writes PATH, or may. */
-  writesPath: Set<string>;
+  /** What the line does to PATH, whole, so a script is judged by a write that runs before it wherever the text puts it. */
+  path: PathState;
 }
 
 function newMemo(): ScriptMemo {
-  return { verdicts: new Map(), bytesLeft: MAX_SCRIPT_BYTES, opaque: new Set(), viaEnv: new Set(), pathChanged: false, writesPath: new Set() };
+  return { verdicts: new Map(), bytesLeft: MAX_SCRIPT_BYTES, opaque: new Set(), path: newPathState() };
 }
 
-function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null, onPathWrite?: () => void): ClassifiedAction[] {
+function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null, onPathWrite?: (unsafe: boolean, dirs: string[]) => void): ClassifiedAction[] {
   // Emission order is not run order (a function or loop body is walked where it is written), so a PATH write anywhere on the line counts for every script on it.
-  const wrote = (): void => {
-    onPathWrite?.();
-    if (scripts) scripts.pathChanged = true;
+  const wrote = (unsafe: boolean, dirs: string[]): void => {
+    onPathWrite?.(unsafe, dirs);
+    if (scripts) addPathWrite(scripts.path, unsafe, dirs);
   };
   const commands = extractCommands(src, { ...extractOptions(cwd, ctx, scripts, false), onPathWrite: wrote });
   const line = withHttpConfig(src, commands, ctx);
@@ -106,6 +104,7 @@ function classifyLine(commands: SimpleCommand[], ctx: ClassifyContext, scripts: 
     if (scripts) out.push(...scriptActions(cmd, line, scripts));
     line = afterDynamic(cmd, afterAll(cmd, afterWrites(cmd, line)));
   }
+  if (scripts) refuseSwappedShells(scripts.path, line);
   return unique(out);
 }
 
@@ -160,23 +159,27 @@ function handles(family: Family, cmd: SimpleCommand): boolean {
 /** One level deep: a shell script is classified as a command string, any other script's text gets the mention rule. */
 function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: ScriptMemo): ClassifiedAction[] {
   const targets = scriptTargets(cmd, ctx.home);
-  if (cmd.name !== null && SOURCERS.has(cmd.name) && targets.length === 0) scripts.pathChanged = true;
-  refuseLaunchedBySwappedPath(cmd, ctx, scripts);
+  const sources = cmd.name !== null && SOURCERS.has(cmd.name);
+  if (sources && targets.length === 0) scripts.path.unsafe = true;
+  noteLaunchedByPath(cmd, ctx, scripts.path);
   return targets.filter((target) => !runsNatively(target, ctx)).flatMap((target) => {
     const actions = memoized(scripts, ctx, scriptKey(cmd, target, ctx), () => scriptVerdicts(cmd, target, ctx, scripts));
     refuseOpaqueShebang(target, scripts.opaque);
-    if (cmd.name !== null && SOURCERS.has(cmd.name) && scripts.writesPath.has(target.path)) scripts.pathChanged = true;
-    refuseSwappableShebang(target, cmd.pathChanged === true || scripts.pathChanged, scripts.viaEnv);
+    const written = sources ? scripts.path.sourced.get(target.path) : undefined;
+    if (written) addPathWrite(scripts.path, written.unsafe, written.dirs);
+    if (target.byPath) scripts.path.runs.push({ path: target.path, own: cmd.pathChanged === true });
     return actions.map((a) => (a.action === "secret-read" ? classified("bash.secret.script-by-path", a.subject) : a));
   });
 }
 
-/** `parallel` runs the by-path programs it is given, which the walk does not unwrap, so under a changed PATH an `env`-found shell in one is refused. */
-function refuseLaunchedBySwappedPath(cmd: SimpleCommand, ctx: ClassifyContext, scripts: ScriptMemo): void {
-  if (cmd.name !== "parallel" || !(cmd.pathChanged || scripts.pathChanged)) return;
+/** `parallel` runs the by-path programs it is given, which the walk does not unwrap, so each is judged as a by-path run. */
+function noteLaunchedByPath(cmd: SimpleCommand, ctx: ClassifyContext, state: PathState): void {
+  if (cmd.name !== "parallel") return;
   for (const word of cmd.args) {
     const path = word.dynamic || !word.value.includes("/") ? null : resolveValue(cmd.dir, word.value, ctx.home);
-    if (path !== null && launchesViaEnv(ctx, path)) throw new OpaqueShebangError();
+    if (path === null || !launchesViaEnv(ctx, path)) continue;
+    state.viaEnv.add(path);
+    state.runs.push({ path, own: cmd.pathChanged === true });
   }
 }
 
@@ -197,7 +200,7 @@ function scriptVerdicts(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyC
   const added = cmd.added === true;
   return targetReadings(ctx, target).flatMap((text) => {
     if (hasOpaqueShebang(text)) budget.opaque.add(target.path);
-    if (isSwappableShebang(text)) budget.viaEnv.add(target.path);
+    if (isSwappableShebang(text)) budget.path.viaEnv.add(target.path);
     if (added || target.kind === "shell") charge(budget, { script: target.path.slice(target.path.lastIndexOf("/") + 1), bytes: Buffer.byteLength(text), added });
     return scriptText(cmd, target, text, ctx, budget);
   });
@@ -243,7 +246,7 @@ function memoized(scripts: ScriptMemo, ctx: ClassifyContext, key: string, comput
 function scriptText(cmd: SimpleCommand, target: ScriptTarget, text: string, ctx: ClassifyContext, budget: ScriptMemo): ClassifiedAction[] {
   if (target.kind === "shell") {
     try {
-      return classifyCommand(text, cmd.dir, ctx, null, () => budget.writesPath.add(target.path));
+      return classifyCommand(text, cmd.dir, ctx, null, (unsafe, dirs) => budget.path.sourced.set(target.path, { unsafe, dirs }));
     } catch (error) {
       if (!(error instanceof ParseError)) throw error;
     }

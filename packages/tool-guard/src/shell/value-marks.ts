@@ -33,10 +33,12 @@ export interface ValueMarks {
   lists: number;
   /** Something the line has run so far wrote `PATH` or zsh's `path`, or may have, as a store the walk cannot read does. */
   pathChanged: boolean;
+  /** The absolute directories the line puts on `PATH`; a script there changes nothing unless the line writes into it. */
+  pathDirs: string[];
 }
 
 export function newMarks(): ValueMarks {
-  return { arithmetic: false, opaque: false, typed: false, bracket: false, unwalkable: false, walks: [], lists: 0, pathChanged: false };
+  return { arithmetic: false, opaque: false, typed: false, bracket: false, unwalkable: false, walks: [], lists: 0, pathChanged: false, pathDirs: [] };
 }
 
 /**
