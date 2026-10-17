@@ -53,7 +53,8 @@ const PACKET_SCHEMA = "titan-review/ci-packet@1";
 /** Only the fields the binding checks; the packet's other fields pass through unread. */
 const PacketBinding = z.object({ schema: z.literal(PACKET_SCHEMA), repo: z.string(), pr: z.number().int(), headSha: z.string(), headTree: z.string() });
 
-const RoundBindings = z.object({ questions: z.array(z.object({ id: z.string(), options: z.array(z.string()).optional(), merge: z.object({ repo: z.string(), pr: z.number().int(), ship: z.array(z.string()) }).optional() })) });
+const BoundMerge = z.object({ repo: z.string(), pr: z.number().int(), ship: z.array(z.string()) });
+const RoundBindings = z.object({ questions: z.array(z.object({ id: z.string(), options: z.array(z.string()).optional(), merge: BoundMerge.optional() })) });
 
 /** The owner's words in feedback.json: the round's general note and each answer's comment. */
 const FeedbackWords = z.object({ general: z.string().optional(), answers: z.array(z.object({ questionId: z.string(), comment: z.string().optional() })) });
