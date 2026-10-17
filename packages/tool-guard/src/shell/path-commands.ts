@@ -1,4 +1,5 @@
 import type { Token, WordToken } from "./lexer.js";
+import { NAMEREF_DECLARERS } from "./name-slots.js";
 
 /** Words of a line on which nothing rebinds a command name, so `wc` there is the program found on PATH. */
 const pathWords = new WeakSet<WordToken>();
@@ -50,7 +51,7 @@ function rebindsAny(tokens: Token[], words: WordToken[]): boolean {
     for (const sub of t.subs) found = rebindsAny(sub, words) || found;
     if (PATH_ASSIGNMENT_RE.test(t.value)) found = true;
     if (start && ASSIGNMENT_RE.test(t.value)) continue;
-    if (start) found ||= t.dynamic || BINDERS.has(t.value);
+    if (start) found ||= t.dynamic || BINDERS.has(t.value) || declaresNameref(t.value, tokens.slice(i + 1));
     if (t.value === "function") found ||= namesWc(tokens[i + 1]);
     start = start && WRAPPERS.has(t.value);
   }
@@ -58,3 +59,14 @@ function rebindsAny(tokens: Token[], words: WordToken[]): boolean {
 }
 
 const namesWc = (t: Token | undefined) => t?.type === "word" && (t.value === FUNCTION_NAME || t.dynamic || t.quoted || t.spliced);
+
+/**
+ * A nameref may make `PATH` writable under another name (`declare -n r=PATH; r=/tmp/x`), so a declarer that may carry
+ * `-n` voids the mark: a literal cluster holding `n`, or a word that may expand to an option.
+ */
+function declaresNameref(name: string, rest: Token[]): boolean {
+  if (!NAMEREF_DECLARERS.has(name)) return false;
+  const end = rest.findIndex((t) => t.type === "op");
+  const args = (end < 0 ? rest : rest.slice(0, end)).filter((t): t is WordToken => t.type === "word");
+  return args.some((a) => /^[-+][A-Za-z0-9]*n/.test(a.value) || (a.dynamic && (/^[$`]/.test(a.value) || (a.cuts ?? []).some((c) => c.at === 0))));
+}
