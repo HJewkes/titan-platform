@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { GITHUB_ACTIONS_APP_ID, headCheckFindings, latestPerName, type CheckFinding, type CheckRun, type GitHubPort, type PullRequest } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isPassingConclusion, latestPerName, type CheckFinding, type CheckRun, type GitHubPort, type PullRequest } from "@titan-design/github";
 import type { CiSnapshotResult } from "./land-steps.js";
 import { openRepoFindings, openRunsSettled, type OpenSeen } from "./land-open-checks.js";
 import { portReads, type PrReads } from "./pr-snapshot.js";
@@ -89,7 +89,7 @@ async function judgedInput(input: CiInput, baseRef: string, options: CiReadOptio
 
 /** The runs a verdict is judged on. The snapshot settles a head on this same set: once every finding left is a failure, nothing is still running. */
 function findingsAt(input: Pick<CiInput, "contexts">, headSha: string, allRuns: readonly CheckRun[]): CheckFinding[] {
-  const runs = withoutSupersededCancels(allRuns);
+  const runs = withoutSupersededCancels(withoutCancelledWorkflowRuns(allRuns));
   if (input.contexts.length === 0) return openRepoFindings(headSha, runs);
   return headCheckFindings({ headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
 }
@@ -101,6 +101,20 @@ function findingsAt(input: Pick<CiInput, "contexts">, headSha: string, allRuns: 
 function withoutSupersededCancels(runs: readonly CheckRun[]): CheckRun[] {
   const supersededBy = (run: CheckRun) => runs.some((other) => other !== run && other.name === run.name && other.headSha === run.headSha && other.appId === run.appId && latestPerName([run, other])[0] === other);
   return runs.filter((run) => run.conclusion !== "cancelled" || !supersededBy(run));
+}
+
+/**
+ * Concurrency can cancel one of two Actions runs at a head, and an aggregate job of the cancelled run then fails on its
+ * cancelled needs (td#894). Such a run is no verdict while another run at that head, sharing a job name, has neither
+ * failed nor been cancelled: the live or passed run is. A failure in the other run keeps both, so a real red stays red.
+ */
+function withoutCancelledWorkflowRuns(runs: readonly CheckRun[]): CheckRun[] {
+  const jobs = new Map<number, CheckRun[]>();
+  for (const run of runs) if (run.workflowRunId !== null) jobs.set(run.workflowRunId, [...(jobs.get(run.workflowRunId) ?? []), run]);
+  const standing = (own: readonly CheckRun[]) => own.every((job) => job.status !== "completed" || isPassingConclusion(job.conclusion));
+  const sibling = (id: number, own: readonly CheckRun[]) => [...jobs].some(([other, theirs]) => other !== id && standing(theirs) && theirs.some((job) => own.some((mine) => mine.name === job.name)));
+  const cancelled = new Set([...jobs].filter(([id, own]) => own.some((job) => job.conclusion === "cancelled") && sibling(id, own)).map(([id]) => id));
+  return runs.filter((run) => run.workflowRunId === null || !cancelled.has(run.workflowRunId));
 }
 
 /** True when every required check at `headSha` has passed, as ci-wait judges them when the base names required contexts; mergeability is not read. */

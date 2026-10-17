@@ -113,5 +113,5 @@ async function noticeOrGate(run: ExitRun, kind: WakeRequest["kind"], headSha: st
     return notice && { sent: notice.sent, detail: `${notice.cause}: ${notice.detail}` };
   };
   const prompt = (unsent: string) => `The ${kind} wake of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} ended: ${exit.reason}${unsent}. Await a new head or abandon?`;
-  return seatOrGate(tell, async () => leave(await awaitNewHead(run, headSha)), async (unsent) => leave(await sentBackGate(run, headSha, prompt(unsent), abandoned)));
+  return seatOrGate(tell, async () => leave(await awaitNewHead(run, headSha, kind === "ci-red")), async (unsent) => leave(await sentBackGate(run, headSha, prompt(unsent), abandoned)));
 }
