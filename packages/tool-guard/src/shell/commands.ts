@@ -18,6 +18,7 @@ import { cutReading } from "./piped-nul.js";
 import { inlineScript, SHELLS } from "./inline-script.js";
 import type { Inline } from "./inline-script.js";
 import { addRedirect } from "./group-stdin.js";
+import { procsubScript, withProcsub, withoutProcsub } from "./procsub-operand.js";
 import { descriptorsAfter, emptied, stdinText, TOP_DESCRIPTORS } from "./shell-options.js";
 import type { Descriptors } from "./shell-options.js";
 import { xargsCommands } from "./xargs-runs.js";
@@ -191,6 +192,7 @@ function walkFrom(list: Token[], start: number, w: Walk): void {
       continue;
     }
     if (token.type === "word") words.push(noteWord(token, w.marks));
+    words = withProcsub(words, list[at - 1], token);
     redirects = gather(redirects, token, w);
     for (const sub of nestedLists(token)) walk(sub, child(w, [...w.scope.wrapping, "subshell"]));
   }
@@ -343,7 +345,7 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   // A prefix assignment stores its value only for the command, which the variables do not hold; an element is heard where typed.
   if (cmd.name !== null || cmd.args.length > 0) for (const [, value, kind] of cmd.assigned) if (kind !== "hidden" && kind !== "element") hear(w, value);
   const wrapping: Wrapping[] = cmd.xargs ? [...w.scope.wrapping, "xargs"] : w.scope.wrapping;
-  const { name, path, args } = cmd;
+  const { name, path, args } = withoutProcsub(cmd);
   w.negated ||= cmd.negated === true;
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
   const inherited = w.prev === "|" || w.prev === "|&" ? emptied(w.descriptors, 0) : w.descriptors;
@@ -351,7 +353,7 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set });
   const piped = stdin === null ? [] : [stdin, ...(stdin === w.stdin ? w.shellStdin : [])];
   const held = descriptorsAfter(redirects, piped, inherited, (target) => resolvePath(w.scope.dir, target, w.home));
-  const script = inlineScript(cmd, redirects, piped, w.unsure, inherited);
+  const script = procsubScript(cmd) ?? inlineScript(cmd, redirects, piped, w.unsure, inherited);
   if (script !== null) walkScript(script, w, wrapping, held);
   if (cmd.name !== "find") return;
   for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(folded(words, w)))) run(exec, [], child(w, [...wrapping, "find-exec"], held), null);

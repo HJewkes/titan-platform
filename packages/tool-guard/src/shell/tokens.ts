@@ -34,6 +34,8 @@ export interface WordToken {
   hidden?: true;
   /** A `{name}` before a redirect: zsh reads it as the redirect's descriptor and dash as a word; bash only when glued. */
   namedFd?: "glued" | "spaced";
+  /** Set only on the operand standing for a `<( )` at a command's operand position: the substitution's token lists. */
+  procsub?: Token[][];
 }
 
 export interface OpToken {
