@@ -794,6 +794,48 @@ describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () =
     expect(reviewed).toEqual([REVIEWED, REVIEWED]);
   });
 
+  it.each([
+    ["a held run", "g10-adversary: merge policy; TP-1"],
+    ["an owner-asked hold", "owner-asked: discuss first"],
+  ])("leaves a gate a freeze caused on %s with the owner once the repo has thawed", async (_name, reason) => {
+    const { host, fake, services, runId, reviewed } = await authorityGated({ repoFrozen: true });
+    services.store.get().hold(runId, reason);
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toEqual([]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+    expect(fake.pr(1)?.merged).toBeFalsy();
+    expect(reviewed).toEqual([REVIEWED]);
+  });
+
+  it("a thaw while serving leaves a held run's gate with the owner", async () => {
+    const { host, services, runId } = await authorityGated({ repoFrozen: true }, { serve: true });
+    const freezes = services.freeze!.get();
+    freezes.freeze(REPO, fakeSha("red-main"));
+    services.store.get().hold(runId, "g10-adversary: merge policy; TP-1");
+
+    freezes.unfreeze(REPO, fakeSha("green-main"));
+    await sleep(50, new AbortController().signal);
+
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+
+  it("re-gates a held run at its new head after a thaw, and the hold stays", async () => {
+    const { host, fake, services, runId } = await authorityGated({ repoFrozen: true }, { unmetReviews: 2 });
+    services.store.get().hold(runId, "g10-adversary: merge policy; TP-1");
+    await resyncShepherd(host, services);
+    fake.pushHead(1, PUSHED);
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: REVIEWED, to: PUSHED, condition: "head-moved" }]);
+    await gateOpened(host, gateId(runId, "approve-merge:1"));
+    expect((await resyncShepherd(host, services)).superseded).toEqual([]);
+    expect(services.store.get().byRun(runId)).toMatchObject({ held: true, holdReason: "g10-adversary: merge policy; TP-1" });
+    expect(fake.pr(1)?.merged).toBeFalsy();
+  });
+
   it("keeps the standing MERGE after a review-again cancel, reads its evidence again instead of a reviewer, and merges the same head", async () => {
     const { host, fake, services, runId, reviewed } = await authorityGated({ repoFrozen: true }, { whole: true });
     Object.assign(fake.pr(1), { mergeSha: fakeSha("test-merge") });

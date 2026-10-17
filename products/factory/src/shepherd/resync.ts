@@ -118,14 +118,17 @@ async function stillFrozen(services: ShepherdServices, repo: RepoSlug, pr: numbe
   }
 }
 
-/** A pending MRG-AU approve-merge gate that failed only on transient conditions, on a PR the store no longer holds frozen. */
+/**
+ * A pending MRG-AU approve-merge gate that failed only on transient conditions, on a PR the store no longer holds frozen.
+ * A held run's gate, an owner-asked hold's included, was left pending on purpose, so a thaw leaves it with the owner.
+ */
 async function transientGate(host: FactoryHost, services: ShepherdServices, pending: PendingGate, { dryRun = false, repo: only }: TransientSweep): Promise<{ head: string; conditions: string[] } | undefined> {
   const run = approveMergeRun(host, pending);
   const gate = run && authorityGate(run, pending.gate.prompt);
   const conditions = gate ? transientOnlyConditions(gate.reason) : [];
   const registration = services.store.get().byRun(pending.runId);
   const repo = registration?.repo;
-  if (!gate || conditions.length === 0 || !repo) return undefined;
+  if (!gate || conditions.length === 0 || !repo || registration.held) return undefined;
   if (only !== undefined && repo.toLowerCase() !== only.toLowerCase()) return undefined;
   if (await stillFrozen(services, repo, registration.pr, dryRun)) return undefined;
   return { head: gate.head, conditions };
