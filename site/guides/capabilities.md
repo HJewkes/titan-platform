@@ -445,8 +445,8 @@ Key exports:
 - `preflight`: `dispatchHarnessRun`, `preflightHarnessRun`
 - `codex-exec`: `buildCodexExecArgs`, `codexExecCapabilities`, `createCodexExecAdapter`, `prepareCodexEnv`
 - `codex-prices`: `priceCodexUsage`
-- `failures`: `classifyResult`
-- +83 more in the [reference page](/reference/agent)
+- `codex-runtime`: `inspectCodexCapabilities`
+- +89 more in the [reference page](/reference/agent)
 
 <a id="cap-agent-dispatch"></a>
 

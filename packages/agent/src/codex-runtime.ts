@@ -46,11 +46,11 @@ export function checkCodexCapabilities(
   sandbox: string,
   required: readonly CodexRuntimeCapability[],
 ): HarnessRunFailure | undefined {
-  if (!inspection || !Array.isArray(inspection.sandboxes) || !inspection.sandboxes.includes(sandbox)) {
+  if (!Array.isArray(inspection.sandboxes) || !inspection.sandboxes.includes(sandbox)) {
     return failure(`Codex runtime preflight cannot verify sandbox ${sandbox}`);
   }
   for (const capability of required) {
-    if (inspection.capabilities?.[capability] !== true) {
+    if (inspection.capabilities[capability] !== true) {
       return failure(`Codex runtime preflight cannot verify required capability ${capability}`);
     }
   }
