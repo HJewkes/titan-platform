@@ -43,7 +43,7 @@ describe("a quoted paren in $(( ))", () => {
     expect(await handled(command.replaceAll("\\n", "\n"))).toBe("deny");
   });
 
-  it.each([["plain arithmetic", "echo $(( 1 + 2 ))"], ["a subscript", "echo $(( a[1] ))"], ["double-quoted arithmetic", `echo "$(( x ))"`], ["arithmetic across a newline", "echo $(( 1 +\\n 2 ))"], ["a variable", "echo $(( $a + 1 ))"]])(
+  it.each([["plain arithmetic", "echo $(( 1 + 2 ))"], ["a subscript", "echo $(( a[1] ))"], ["double-quoted arithmetic", `echo "$(( x ))"`], ["arithmetic across a newline", "echo $(( 1 +\\n 2 ))"], ["a variable", "echo $(( $a + 1 ))"], ["a braced name", "echo $(( ${a} + 1 ))"], ["a braced length", "echo $(( ${#a} + 1 ))"], ["a braced length in an assignment", "x=$(( ${#s} * 2 ))"]])(
     "passes %s",
     async (_name, command) => {
       expect(await handled(command.replaceAll("\\n", "\n"))).toBe("pass");

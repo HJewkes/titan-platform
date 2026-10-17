@@ -55,18 +55,21 @@ function arithmeticTokens(at: Reading, dollar: number): Token[][] {
 }
 
 const PLAIN_MATH = /^[\w \t\r\n+\-*/%<>=!&|^~?:,.$()[\]]*$/;
+const PLAIN_PARAMETER = /\$\{#?[A-Za-z_]\w*\}/g;
+const NESTED_EXPANSION = /\$[([]/;
 
 /**
- * Whether no shell can read a paren in `body` differently from balancedEnd. Quotes, backquotes, backslashes, comments,
- * braces, `;` and the like can hide a paren, and zsh also reads a body with an unbalanced `[` or `]` as a command, so a
- * body is plain only when it is made of characters that hide nothing, its brackets balance and its parens never close
- * more than they opened.
+ * Whether the body is plain math: nothing in it hides a paren from the arithmetic reading, so the shells read it
+ * the same way. That takes only characters that hide nothing, a `${name}` or `${#name}`, no `$(`, `$[` or backquote
+ * (so no span nested in it), brackets that balance and parens that never close more than they opened. zsh reads an
+ * unbalanced `[` or `]` as a command, so those are not plain. Every other body is read both ways or refused.
  */
 function isPlainMath(body: string): boolean {
-  if (!PLAIN_MATH.test(body)) return false;
+  const text = body.replace(PLAIN_PARAMETER, "x");
+  if (!PLAIN_MATH.test(text) || NESTED_EXPANSION.test(text)) return false;
   let parens = 0;
   let brackets = 0;
-  for (const c of body) {
+  for (const c of text) {
     if (c === "(") parens++;
     else if (c === ")") parens--;
     else if (c === "[") brackets++;
@@ -83,12 +86,12 @@ function isPlainMath(body: string): boolean {
  */
 function withSubshellReading(at: Reading, dollar: number, end: number, found: Token[][], primary: Token[][]): number {
   found.push(...primary);
-  if (dollar < at.trials.coveredUntil || isPlainMath(at.src.slice(dollar + 3, end - 1))) return end;
+  if (isPlainMath(at.src.slice(dollar + 3, end - 1))) return end;
   const depth = bothReadingsDepth(at.trials, dollar);
   if (depth > MAX_BOTH_READINGS) throw new ParseError("arithmetic read two ways nests too deep");
   let tokens = at.trials.subshells.get(dollar);
   if (tokens === undefined) {
-    tokens = [lexSubshellReading(at, dollar, end)];
+    tokens = [lexSubshellReading(at, dollar, depth)];
     at.trials.subshells.set(dollar, tokens);
   }
   found.push(...tokens);
@@ -97,21 +100,21 @@ function withSubshellReading(at: Reading, dollar: number, end: number, found: To
 
 const MAX_BOTH_READINGS = 4;
 
-/** How many spans read two ways nest at `dollar`, itself included; the inner ones were met first, in the primary reading. */
+/** How many spans read two ways nest at `dollar`, itself included, counting those enclosing it in whichever reading met it first. */
 function bothReadingsDepth(trials: ArithTrials, dollar: number): number {
-  const depth = trials.depths.get(dollar) ?? trials.deepest + 1;
+  const depth = trials.depths.get(dollar) ?? Math.max(trials.deepest, trials.level) + 1;
   trials.depths.set(dollar, depth);
   trials.deepest = Math.max(trials.deepest, depth);
   return depth;
 }
 
-function lexSubshellReading(at: Reading, dollar: number, end: number): Token[] {
-  const outer = at.trials.coveredUntil;
-  at.trials.coveredUntil = end;
+function lexSubshellReading(at: Reading, dollar: number, depth: number): Token[] {
+  const outer = at.trials.level;
+  at.trials.level = depth;
   try {
     return lexNested(at.src, dollar + 2, at.trials, at.line).tokens;
   } finally {
-    at.trials.coveredUntil = outer;
+    at.trials.level = outer;
   }
 }
 

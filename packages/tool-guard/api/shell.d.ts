@@ -79,8 +79,8 @@ interface ArithTrials {
     depths: Map<number, number>;
     /** The deepest such nesting met so far under the span being read. */
     deepest: number;
-    /** Set while a `$( ( … ) )` reading is lexed, whose nested `$((` add no reading of their own: the arithmetic reading of the outer span already holds them. */
-    inSubshellReading: boolean;
+    /** While a `$( ( … ) )` reading is lexed, how many spans that read two ways enclose the position being read. */
+    level: number;
     spend: {
         left: number;
     };

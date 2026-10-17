@@ -20,17 +20,14 @@ export interface ArithTrials {
   depths: Map<number, number>;
   /** The deepest such nesting met so far under the span being read. */
   deepest: number;
-  /**
-   * While a `$( ( … ) )` reading is lexed, the index its span's arithmetic reading ends at: a `$((` before it was met
-   * by that arithmetic reading and gets no reading of its own again. One past it only this reading reaches, so it does.
-   */
-  coveredUntil: number;
+  /** While a `$( ( … ) )` reading is lexed, how many spans that read two ways enclose the position being read. */
+  level: number;
   spend: { left: number };
   nesting: Nesting;
 }
 
 function emptyTrials(): Omit<ArithTrials, "spend" | "nesting"> {
-  return { ends: new Map(), arithmetic: new Map(), subshells: new Map(), depths: new Map(), deepest: 0, coveredUntil: 0 };
+  return { ends: new Map(), arithmetic: new Map(), subshells: new Map(), depths: new Map(), deepest: 0, level: 0 };
 }
 
 export function newTrials(src: string): ArithTrials {
