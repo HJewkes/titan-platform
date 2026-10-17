@@ -37,6 +37,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-review-request": "review",
   "sh-review-refused": "review",
   "sh-review-stop": "review",
+  "sh-ci-unread": "review",
   "sh-late-verdict": "review",
   "sh-correct-verdict": "review",
   "sh-seat-recheck": "review",

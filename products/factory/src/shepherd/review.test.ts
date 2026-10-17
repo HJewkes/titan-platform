@@ -1,3 +1,5 @@
+import { CI_UNREAD_LINE } from "@titan-design/review-panel";
+import { CI_UNREAD_REASON } from "./ci-unread.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -1398,6 +1400,17 @@ describe("reviewPhase", () => {
     expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
     expect(resultOf(`sh-review-intent:${H1}`)).toEqual(intent);
     expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent, runId: expect.any(String) });
+  });
+
+  it("takes a dispatched reviewer's CI-unread-only FIX_FIRST as no verdict and records sh-ci-unread", async () => {
+    const dispatch = fakeDispatch();
+    const unread = (head: string) => `- ${CI_UNREAD_LINE}\n\nDefect class: CI unread at the head.\n\n${verdictAt(head, "FIX_FIRST")}`;
+    const read = (input: AwaitVerdictInput, held: FakeDispatch, now: number) => held.agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, unread(input.head), now + 1));
+
+    const { verdicts, stepIds } = await review({ dispatch, policy: AUTO, read });
+
+    expect(verdicts).toMatchObject([{ kind: "none", cause: "no-verdict", reason: CI_UNREAD_REASON }]);
+    expect(stepIds).toContain(`sh-ci-unread:${H1}`);
   });
 
   describe("review.panel", () => {
