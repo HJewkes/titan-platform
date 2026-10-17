@@ -112,7 +112,7 @@ reservation. Additional model-specific pools are not admitted by this API.
 
 ## Scope and redaction
 
-No CLI surface, statusline, credential provisioning, auth copying, explicit
+No credential provisioning, auth copying, explicit
 login writes, permission adapter, model turns or account-wide reservation. Native
 backend quota reads can refresh native managed credentials implicitly. `redactSecrets` reuses Titan's redactor and adds OpenAI key prefixes;
 Error copies contain only scrubbed message/name/stack and no cause. Structural
@@ -121,7 +121,7 @@ allow-listing keeps transcript and status output out of account state altogether
 ## Where it came from
 
 New package for TP-3363, following `anthropic-account`'s pure root / node subpath
-layout. CLI and statusline output are a separate follow-up slice.
+layout. The explicit statusline opt-in below uses the authoritative reader.
 
 ## Opt-in native backend quota
 
@@ -164,8 +164,7 @@ nor supplies tokens itself.
 
 Synthetic version/channel/child-stream fixtures verify protocol, quota and timing
 rules; no live Codex, home, credentials, real sessions or backend was used.
-Production runtime compatibility is UNVERIFIED, and no statusline/admission
-consumer is changed to use this route automatically.
+Production runtime compatibility is UNVERIFIED, and no admission consumer is changed to use this route automatically.
 
 Primary source: pinned [Codex 0.162.1 account processor](https://github.com/openai/codex/blob/092d3acd6bec3e3a14bdc7e7a2810ab628ab759d/codex-rs/app-server/src/request_processors/account_processor.rs#L1190-L1296),
 [backend GET implementation](https://github.com/openai/codex/blob/092d3acd6bec3e3a14bdc7e7a2810ab628ab759d/codex-rs/backend-client/src/client/rate_limit_resets.rs#L23-L79)
@@ -191,3 +190,11 @@ and [project .codex layers](https://github.com/openai/codex/blob/092d3acd6bec3e3
 A generic project-root-marker override is not equivalent to disabling project
 config: managed discovery layers take precedence. No unsupported native
 ignore-project flag is assumed, and no account-home configuration is disabled.
+
+## Statusline command
+
+`openai-account status --statusline --code-home /explicit/codex-home --account basement --expected-account-id <caller-binding>` opts into the authoritative native backend reader above. Native startup and managed credential refresh can occur. `--code-home` overrides explicit CODEX_HOME; no default home is scanned. The optional display label is never an identity binding. The expected account ID must come from the caller account authority, never a guessed home/label/email; missing or invalid binding emits unknown without launching native. It is not printed in output or errors.
+
+Output remains exactly `codex|basement|20|75|12|`: used percentages and age are floored for display, with freshness checked before rounding. Fresh exhaustion still displays numbers; this is not admission. Unverified rollout freshness, stale (>900s), future, expired, mismatched, missing and failed evidence emits `codex|basement|unknown|unknown||`. Errors are fixed/quiet. Syntax errors exit64; valid display commands exit0. Tests use synthetic native seams; no real native/account execution or deployment is established by them.
+
+Mac transport and renderer are separate product integration. Cache integrations must refresh no faster than60s and preserve a conservative age including transfer/local elapsed time; the integer display age is a lower bound and must not reset freshness.

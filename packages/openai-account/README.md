@@ -95,8 +95,7 @@ teardown. An AbortSignal cancels both version probing and the owned app-server.
 
 Tests inject version, connection or child streams and wall/monotonic clocks;
 no real Codex/home/auth/session/backend is invoked. Production native runtime
-compatibility remains unverified until separately authorized. No existing
-rollout reader, statusline or automatic admission consumer is switched over.
+compatibility remains unverified until separately authorized. No existing rollout reader or automatic admission consumer is switched over.
 
 Both native child operations run in one newly created empty temporary working
 directory, never the caller project or account home. The owned directory is
@@ -112,3 +111,11 @@ This is a preflight observation, not an OS read boundary: another process can
 change ancestors after the check. No filesystem-race isolation is claimed.
 Injected workspace/process/clock seams are for trusted tests or supervised
 transports; callers must preserve these contracts when overriding them.
+
+## Statusline command
+
+`openai-account status --statusline --code-home /explicit/codex-home --account basement --expected-account-id <caller-binding>` opts into the authoritative native backend reader above. Native startup and managed credential refresh can occur. `--code-home` overrides explicit CODEX_HOME; no default home is scanned. The optional display label is never an identity binding. The expected account ID must come from the caller account authority, never a guessed home/label/email; missing or invalid binding emits unknown without launching native. It is not printed in output or errors.
+
+Output remains exactly `codex|basement|20|75|12|`: used percentages and age are floored for display, with freshness checked before rounding. Fresh exhaustion still displays numbers; this is not admission. Unverified rollout freshness, stale (>900s), future, expired, mismatched, missing and failed evidence emits `codex|basement|unknown|unknown||`. Errors are fixed/quiet. Syntax errors exit64; valid display commands exit0. Tests use synthetic native seams; no real native/account execution or deployment is established by them.
+
+Mac transport and renderer are separate product integration. Cache integrations must refresh no faster than60s and preserve a conservative age including transfer/local elapsed time; the integer display age is a lower bound and must not reset freshness.
