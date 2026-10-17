@@ -72,12 +72,44 @@ describe("a bare name found through a changed PATH", () => {
     "PATH=.:$PATH $(echo s)",
     "export PATH=$(echo .):$PATH; s",
     "PATH[0]=.; s",
+    "for PATH in .; do s; done",
+    "mapfile PATH <<< .; s",
+    "typeset path=(. $path); s",
+    "declare -x PATH=$(echo .):$PATH; s",
   ])("denies a PATH the walk cannot read, then a searched command: %s", async (command) => {
     file("s", `#!/bin/bash\n${PUSH}\n`);
     expect(await decision(command)).toBe("deny");
   });
 
   it.each(["PATH=$PATH:~/bin ls", 'export PATH="$HOME/bin:$PATH"; ls', "PATH=/usr/bin:/bin ls", "export PATH=$(pwd)/bin:$PATH; export X=1"])("passes %s, which runs no script", async (command) => {
+    expect(await decision(command)).toBeNull();
+  });
+
+  it.each(["export PATH=.:$PATH; echo PATH=/usr/bin; s", "PATH=.:$PATH s PATH=/usr/bin", "PATH=~+:$PATH s", "PATH=~-/bin:$PATH s"])("keeps a relative PATH a later word or a tilde form does not reset: %s", async (command) => {
+    file("s", `#!/bin/bash\n${PUSH}\n`);
+    expect(await decision(command)).toBe("deny");
+  });
+
+  it.each([
+    ["bash -c true", "bash"],
+    ["python3 x.py", "python3"],
+    ["nohup true", "nohup"],
+    ["env true", "env"],
+    ["timeout 5 true", "timeout"],
+    ["print hi", "print"],
+  ])("reads the file a changed PATH finds for the name in %s", async (command, name) => {
+    file(name, `#!/bin/bash\n${PUSH}\n`);
+    expect(await decision(`PATH=.:$PATH ${command}`)).toBe("deny");
+    rmSync(join(home, name), { force: true });
+  });
+
+  it.each(["tar xf a.tar; PATH=.:$PATH n", "git checkout other; PATH=.:$PATH n", "make; PATH=.:$PATH n"])("refuses a file an earlier command may have made: %s", async (command) => {
+    rmSync(join(home, "n"), { force: true });
+    expect(await decision(command)).toBe("deny");
+  });
+
+  it.each(["cat a; PATH=.:$PATH n", "git status; PATH=.:$PATH n", "echo hi; PATH=.:$PATH n"])("passes an absent file after only readers: %s", async (command) => {
+    rmSync(join(home, "n"), { force: true });
     expect(await decision(command)).toBeNull();
   });
 
@@ -92,6 +124,21 @@ describe("a bare name found through a changed PATH", () => {
 
   it("passes a bare name when PATH is only extended with an absolute directory", async () => {
     expect(await decision("export PATH=/usr/local/bin:$PATH; ls")).toBeNull();
+  });
+});
+
+describe("a line that only mentions path or PATH", () => {
+  it.each([
+    "cargo build --manifest-path=Cargo.toml",
+    'gh api "repos/o/r/contents?path=a"',
+    "grep -v path file.ts",
+    "cat x | grep -v PATH",
+    'git commit -m "read the config path"',
+    'grep -rn "read.*path" src',
+    "echo PATH=/usr/bin; ls",
+    "ls PATH=. path=.",
+  ])("passes %s", async (command) => {
+    expect(await decision(command)).toBeNull();
   });
 });
 

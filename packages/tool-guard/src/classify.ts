@@ -5,7 +5,7 @@ import { choosesHttpConfig } from "./families/http-config.js";
 import { merge } from "./families/merge.js";
 import { release } from "./families/release.js";
 import { secret } from "./families/secret.js";
-import { changesPath, isPathSearched, storesPathBlind } from "./path-changes.js";
+import { isPathSearched } from "./path-changes.js";
 import { hasDynamicName, namedReadings, namesDynamicPath, wrappedReading } from "./dynamic-readings.js";
 import { afterWrites, scriptReadings } from "./line-writes.js";
 import { INTERPRETERS } from "./mentions.js";
@@ -14,7 +14,6 @@ import type { ScriptTarget } from "./scripts.js";
 import { extractCommands } from "./shell/commands.js";
 import type { ExtractOptions, SimpleCommand } from "./shell/commands.js";
 import { ParseError } from "./shell/lexer.js";
-import type { WordToken } from "./shell/lexer.js";
 import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, ReadingLimitError, ScriptBudgetError, UnreadableScriptError } from "./shell/unsure-readings.js";
 import type { ScriptOverrun } from "./shell/unsure-readings.js";
 import { classified } from "./spellings.js";
@@ -31,14 +30,14 @@ const GUARDED = new Set([...FAMILIES.flatMap((f) => [...(f.names ?? []), ...(f.v
  * dynamic wrapper readings or script text than it checks; the hook owns that failure policy.
  */
 export function classify(event: HookEvent, ctx: ClassifyContext): ClassifiedAction[] {
-  if (event.kind === "bash") return classifyCommand(event.command, event.cwd, ctx, lineMemo(event.command));
+  if (event.kind === "bash") return classifyCommand(event.command, event.cwd, ctx, lineMemo());
   if (event.kind === "read") return unique(FAMILIES.flatMap((f) => f.read?.(event, ctx) ?? []));
   if (event.kind === "write") return unique(FAMILIES.flatMap((f) => f.write?.(event, ctx) ?? []));
   return [];
 }
 
-function lineMemo(src: string): ScriptMemo {
-  return { verdicts: new Map(), bytesLeft: MAX_SCRIPT_BYTES, opaque: new Set(), pathChanged: changesPath(src), pathBlind: storesPathBlind(src) };
+function lineMemo(): ScriptMemo {
+  return { verdicts: new Map(), bytesLeft: MAX_SCRIPT_BYTES, opaque: new Set() };
 }
 
 /** The scripts one line runs; null inside a script, which follows no script of its own. */
@@ -49,10 +48,6 @@ interface ScriptMemo {
   bytesLeft: number;
   /** Paths whose first line is a `#!` the guard cannot follow; kept beside the memo because `bash x.sh` and `./x.sh` share a verdict but only the second runs that line. */
   opaque: Set<string>;
-  /** Whether the line may change PATH; when not, no bare name is looked up anywhere but where it is today. */
-  pathChanged: boolean;
-  /** Whether the line stores into PATH in a way only its text shows, so no command after it has a PATH the walk can read. */
-  pathBlind: boolean;
 }
 
 function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
@@ -155,8 +150,8 @@ function handles(family: Family, cmd: SimpleCommand): boolean {
 
 /** One level deep: a shell script is classified as a command string, any other script's text gets the mention rule. */
 function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: ScriptMemo, earlier: () => SimpleCommand[]): ClassifiedAction[] {
-  refuseUnreadablePath(cmd, scripts);
-  return scriptTargets(cmd, ctx.home).filter((target) => mayExist(cmd, target, ctx, earlier) && !runsNatively(target, ctx)).flatMap((target) => {
+  refuseUnreadablePath(cmd);
+  return scriptTargets(cmd, ctx.home).filter((target) => mayExist(target, ctx, earlier) && !runsNatively(target, ctx)).flatMap((target) => {
     const actions = memoized(scripts, ctx, scriptKey(cmd, target, ctx), () => scriptVerdicts(cmd, target, ctx, scripts));
     refuseOpaqueShebang(target, scripts.opaque);
     return actions.map((a) => (a.action === "secret-read" ? classified("bash.secret.script-by-path", a.subject) : a));
@@ -164,17 +159,28 @@ function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: Script
 }
 
 /** A command looked up on a PATH whose entries the walk cannot read may be any file in a directory it does not know. */
-function refuseUnreadablePath(cmd: SimpleCommand, scripts: ScriptMemo): void {
-  if (!scripts.pathChanged || !(isPathSearched(cmd.name, cmd.path) || hasDynamicName(cmd))) return;
-  if (scripts.pathBlind || cmd.searchPath?.unknown) throw new UnreadableScriptError(null);
-  if (hasDynamicName(cmd) && cmd.searchPath !== undefined && cmd.searchPath.dirs.length > 0) throw new UnreadableScriptError(null);
+function refuseUnreadablePath(cmd: SimpleCommand): void {
+  const path = cmd.searchPath;
+  if (path === undefined) return;
+  const looksUp = [cmd.path, ...(path.wrappers ?? [])].some((n) => n !== null && isPathSearched(n.replace(/^.*\//, ""), n));
+  if ((path.unknown && (looksUp || hasDynamicName(cmd))) || (path.dirs.length > 0 && hasDynamicName(cmd))) throw new UnreadableScriptError(null);
+}
+
+/** Programs that only read: one of them before a PATH-found name cannot have made that file. */
+const READERS = new Set(["cat", "ls", "head", "tail", "wc", "grep", "egrep", "fgrep", "rg", "sort", "uniq", "diff", "cmp", "stat", "file", "which", "readlink", "basename", "dirname", "date", "sleep", "tr", "cut"]);
+const READ_ONLY_GIT = new Set(["status", "diff", "log", "show", "rev-parse", "ls-files", "describe", "branch"]);
+
+function onlyReads(cmd: SimpleCommand): boolean {
+  if (cmd.name === null) return false;
+  if (cmd.name === "git") return READ_ONLY_GIT.has(cmd.args.find((a) => !a.value.startsWith("-"))?.value ?? "");
+  return !isPathSearched(cmd.name, cmd.path) || READERS.has(cmd.name);
 }
 
 /**
- * Whether a file a PATH lookup found may be there to run: on the disk, or written by the line. A file only another
- * command on the line may have made (`cp s n; PATH=.:$PATH n`) fails closed when that command names it or a word it cannot read.
+ * Whether a file a PATH lookup found may be there to run: on the disk, or written by the line. A file another command on
+ * the line may have made (`cp s n; PATH=.:$PATH n`, `tar xf a.tar; PATH=.:$PATH n`) fails closed unless every earlier command only reads.
  */
-function mayExist(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext, earlier: () => SimpleCommand[]): boolean {
+function mayExist(target: ScriptTarget, ctx: ClassifyContext, earlier: () => SimpleCommand[]): boolean {
   if (target.searched !== true) return true;
   try {
     if (scriptReadings(ctx, target.path).length > 0) return true;
@@ -182,9 +188,7 @@ function mayExist(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext
     if (!(error instanceof UnreadableScriptError)) throw error;
     if (!error.absent) return true;
   }
-  const name = cmd.path ?? "";
-  const mentions = (a: WordToken) => a.dynamic || a.value === name || a.value.endsWith(`/${name}`) || a.value.endsWith(`=${name}`);
-  if (earlier().some((c) => c.args.some(mentions))) throw new UnreadableScriptError(null);
+  if (!earlier().every(onlyReads)) throw new UnreadableScriptError(null);
   return false;
 }
 

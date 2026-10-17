@@ -1,41 +1,73 @@
-import type { WordToken } from "./tokens.js";
-import type { Vars } from "./vars.js";
+import { SEARCH_KEY, sourceOf, UNKNOWN_ENTRY } from "./assignment-source.js";
+import type { AssignmentSource } from "./assignment-source.js";
+import { assign, DECLARERS, trackVars } from "./vars.js";
+import type { Assignment, TrackedCommand, Vars } from "./vars.js";
 
-/** Hidden key in a scope's variables: the entries of a `PATH` the line set, joined by `:`. No identifier can spell it. */
-const KEY = "searchpath@";
-/** An entry whose directory only run time knows. */
-const UNKNOWN = "$?";
-const PATH_WORD_RE = /^PATH(\+?)=(.*)$/s;
 const SYSTEM_RE = /^\$\{?PATH\}?$/;
 const CWD_RE = /^(?:\$\{?PWD\}?|\$\(pwd\)|`pwd`)(?=\/|$)/;
-const ABSOLUTE_RE = /^(?:\/|~|\$\{?HOME\}?(?:\/|$))/;
+/** `~`, `~/x` and `~user/x` are a home directory; `~+`, `~-` and `~N` name the working directory or a stack entry. */
+const ABSOLUTE_RE = /^(?:\/|~(?:[A-Za-z_][\w.-]*)?(?:\/|$)|\$\{?HOME\}?(?:\/|$))/;
 const DYNAMIC_RE = /[$`]/;
+const DECLARED_RE = /^PATH(\+?)=(.*)$/s;
 
-/** What a changed `PATH` may search: the relative directories it lists, and whether some entry is only known at run time. */
+/** What a changed `PATH` may search: the relative directories it lists, whether some entry is only known at run time, and the wrappers that look their command up on it. */
 export interface SearchPath {
   dirs: string[];
   unknown: boolean;
+  wrappers?: string[];
 }
 
-/**
- * Records a `PATH` the line sets (`PATH=.:$PATH s`, `export PATH=./bin:$PATH`, `env PATH=. s`). The unchanged `$PATH` stands for
- * the system's, whose entries the guard does not read, so only what the line adds is kept.
- */
-export function notePath(words: readonly WordToken[], vars: Vars): void {
-  for (const word of words) {
-    const set = PATH_WORD_RE.exec(word.value);
-    if (set === null) continue;
-    const listed = (set[2] ?? "").split(":").flatMap((entry) => (SYSTEM_RE.test(entry) ? prior(vars) : [entry]));
-    const entries = word.subs.length > 0 ? [...listed, UNKNOWN] : listed;
-    const kept = set[1] === "+" ? [...prior(vars), ...entries] : entries;
-    if (kept.length === 0) vars.delete(KEY);
-    else vars.set(KEY, kept.join(":"));
+/** `undefined`: the line never set `PATH`; null: a store the walk cannot read; else the entries it set. */
+type Held = string[] | null | undefined;
+
+function held(vars: Vars): Held {
+  const value = vars.get(SEARCH_KEY);
+  return typeof value === "string" ? value.split(":") : value;
+}
+
+/** The entries `PATH=text` leaves, given what it replaces or extends; the unchanged `$PATH` stands for the system's, which the guard does not read. */
+function entriesOf(source: AssignmentSource, append: boolean, prior: Held): string[] {
+  const listed = source.text.split(":");
+  const reads = append || listed.some((entry) => SYSTEM_RE.test(entry));
+  const before = prior ?? [];
+  const entries = listed.flatMap((entry) => (SYSTEM_RE.test(entry) ? before : [entry]));
+  const unread = (prior === null && reads) || source.subs ? [UNKNOWN_ENTRY] : [];
+  return append ? [...before, ...entries, ...unread] : [...entries, ...unread];
+}
+
+/** An assignment to `PATH` whose value text the walk holds; any other store to `PATH` or `path` leaves its entries unknown. */
+function applied(assignment: Assignment, prior: Held): string[] {
+  const source = sourceOf(assignment);
+  const plain = assignment[2] === undefined || assignment[2] === "append";
+  if (assignment[0] !== "PATH" || source === undefined || !plain) return [UNKNOWN_ENTRY];
+  return entriesOf(source, assignment[2] === "append", prior);
+}
+
+function keep(vars: Vars, entries: string[]): void {
+  if (entries.length > 0) vars.set(SEARCH_KEY, entries.join(":"));
+  else vars.delete(SEARCH_KEY);
+}
+
+const isPathName = (assignment: Assignment) => assignment[0] === "PATH" || assignment[0] === "path";
+
+/** A standalone `PATH=.:$PATH`: the walk stores its dynamic value as unknown, so the entries come from its text. */
+export function assignStandalone(assigned: readonly Assignment[], vars: Vars): void {
+  for (const assignment of assigned) {
+    const before = held(vars);
+    assign(vars, assignment);
+    if (isPathName(assignment)) keep(vars, applied(assignment, before));
   }
 }
 
-function prior(vars: Vars): string[] {
-  const held = vars.get(KEY);
-  return held === undefined || held === null ? [] : held.split(":");
+/** Tracks a command's variable writes, then records `export PATH=./bin:$PATH` and the other declarations, whose operands are words, not assignments. */
+export function trackCommand(cmd: TrackedCommand, vars: Vars): void {
+  const before = held(vars);
+  trackVars(cmd, vars);
+  if (cmd.name === null || !DECLARERS.has(cmd.name)) return;
+  for (const word of cmd.args) {
+    const set = DECLARED_RE.exec(word.value);
+    if (set !== null) keep(vars, entriesOf({ text: set[2] ?? "", subs: word.subs.length > 0 }, set[1] === "+", before));
+  }
 }
 
 /** Whether a command word names a file the kernel or a shell reads as a script: any word with a `/`, or `x.sh`. */
@@ -43,11 +75,16 @@ export function namesScript(cmd: { path: string | null; name: string | null }): 
   return cmd.path?.includes("/") === true || cmd.name?.endsWith(".sh") === true;
 }
 
-/** A command's `searchPath` field, or nothing when the line never set `PATH`. */
-export function searchPathOf(vars: Vars): { searchPath?: SearchPath } {
-  const held = vars.get(KEY);
-  if (held === undefined || held === null) return {};
-  const entries = held.split(":").map((entry) => entry.replace(CWD_RE, "."));
-  const unknown = entries.some((entry) => entry === UNKNOWN || (DYNAMIC_RE.test(entry) && !ABSOLUTE_RE.test(entry)));
-  return { searchPath: { dirs: entries.filter((entry) => !ABSOLUTE_RE.test(entry) && !DYNAMIC_RE.test(entry)), unknown } };
+/**
+ * The `PATH` a command's bare name is looked up on: what the line stored before it, then a prefix assignment (`PATH=.:$PATH s`,
+ * `env PATH=. s`), which holds for that command alone. Absent when the line never set `PATH`.
+ */
+export function searchPathOf(vars: Vars, cmd: { assigned: readonly Assignment[]; wrappers?: string[] }): { searchPath?: SearchPath } {
+  let entries: Held = held(vars);
+  for (const assignment of cmd.assigned) if (isPathName(assignment)) entries = applied(assignment, entries);
+  if (entries === undefined) return {};
+  const list = (entries ?? [UNKNOWN_ENTRY]).map((entry) => entry.replace(CWD_RE, "."));
+  const unknown = list.some((entry) => entry === UNKNOWN_ENTRY || (DYNAMIC_RE.test(entry) && !ABSOLUTE_RE.test(entry)) || (entry.startsWith("~") && !ABSOLUTE_RE.test(entry)));
+  const dirs = list.filter((entry) => !ABSOLUTE_RE.test(entry) && !DYNAMIC_RE.test(entry) && !entry.startsWith("~"));
+  return { searchPath: { dirs, unknown, ...(cmd.wrappers ? { wrappers: cmd.wrappers } : {}) } };
 }
