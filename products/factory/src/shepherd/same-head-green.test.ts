@@ -118,8 +118,10 @@ describe("a red at one head whose CI turns green at that same head", () => {
 
     state.previewGreen = true;
     const from = clock.now;
-    await vi.waitFor(() => expect(clock.now - from).toBeGreaterThan(3 * CHECKS_RECHECK_MS));
+    const ended = () => result(host, runId, "await-new-head:0");
+    await vi.waitFor(() => expect(ended() !== undefined || clock.now - from > 3 * CHECKS_RECHECK_MS).toBe(true));
 
+    expect(ended()).toBeUndefined();
     expect(host.runtime.status(runId)?.currentStep).toMatch(/^await-new-head/);
     expect(host.pendingGates().filter((gate) => gate.runId === runId)).toEqual([]);
   });
