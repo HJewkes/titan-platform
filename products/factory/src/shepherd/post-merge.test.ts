@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
-import type { CleanupPorts } from "./cleanup.js";
+import { z } from "zod";
+import { CleanupResult, type CleanupPorts } from "./cleanup.js";
 import { freezeStoreRef } from "./freeze.js";
 import { MainCiReads } from "./main-watch.js";
 import type { MainRedWiring } from "./main-red.js";
@@ -495,7 +496,7 @@ describe("shepherd-pr after land", () => {
     return w.fake.pr(1).headRef;
   }
 
-  const cleanupOf = (w: ReturnType<typeof shepherdWorld>, runId: string) => resultOf(w, runId, "sh-cleanup") as { result: { ref: string; caveats: string[] } } | undefined;
+  const cleanupOf = (w: ReturnType<typeof shepherdWorld>, runId: string) => z.object({ result: CleanupResult }).parse(resultOf(w, runId, "sh-cleanup"));
 
   it("retargets an open child onto the parent's base before cleanup deletes the parent's branch, with the restack off", async () => {
     const writes: string[] = [];
@@ -508,7 +509,7 @@ describe("shepherd-pr after land", () => {
 
     expect(w.fake.pr(child)).toMatchObject({ state: "open", baseRef: w.fake.pr(1).baseRef });
     expect(writes).toEqual([`setPrBase #${child}`, `deleteRef ${branch}`]);
-    expect(cleanupOf(w, runId)?.result.ref).toBe("deleted");
+    expect(cleanupOf(w, runId).result.ref).toBe("deleted");
     expect(w.fake.refs.has(branch)).toBe(false);
   });
 
@@ -523,7 +524,7 @@ describe("shepherd-pr after land", () => {
     await w.host.runtime.wait(runId);
 
     expect(resultOf(w, runId, `sh-retarget:${child}`)).toMatchObject({ result: { outcome: "failed" } });
-    expect(cleanupOf(w, runId)?.result).toMatchObject({ ref: "children-open", caveats: expect.arrayContaining([`head ref of #1 kept: open #${child} still based on it`]) });
+    expect(cleanupOf(w, runId).result).toMatchObject({ ref: "children-open", caveats: expect.arrayContaining([`head ref of #1 kept: open #${child} still based on it`]) });
     expect(w.fake.refs.has(branch)).toBe(true);
     expect(w.fake.pr(child)).toMatchObject({ state: "open", baseRef: branch });
     expect(w.host.runtime.status(runId)?.status).toBe("completed");
@@ -547,7 +548,7 @@ describe("shepherd-pr after land", () => {
     await w.host.runtime.wait(runId);
 
     expect(child).toBeGreaterThan(0);
-    expect(cleanupOf(w, runId)?.result.ref).toBe("children-open");
+    expect(cleanupOf(w, runId).result.ref).toBe("children-open");
     expect(w.fake.pr(child)).toMatchObject({ state: "open", baseRef: branch });
   });
 
