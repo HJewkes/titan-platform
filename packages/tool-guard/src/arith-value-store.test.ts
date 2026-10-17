@@ -139,6 +139,8 @@ describe("a (( )) outside the line itself keeps the nested-subshell reading (TP-
   const scripts: Record<string, string> = {
     "push.sh": PUSH,
     "deploy.sh": PUSH,
+    "outer.sh": "./inner.sh",
+    "inner.sh": "((./push.sh))",
   };
   const withScripts: HookPort = { ...port, context: { ...port.context, readScript: (p: string) => scripts[p.slice(home.length + 1)] ?? null } };
   const verdict = async (command: string) => ((await handle(input(command), {}, withScripts)).stdout === "" ? "pass" : "deny");
@@ -152,6 +154,11 @@ describe("a (( )) outside the line itself keeps the nested-subshell reading (TP-
     "echo '((./push.sh))' | bash",
     "bash <<<'((./push.sh))'",
     "((./deploy.sh)\\\n)",
+    "(\\\n(./push.sh))",
+    "((x));(\\\n(./push.sh))",
+    "if (\\\n(./push.sh)); then :; fi",
+    "./inner.sh",
+    "./outer.sh",
   ])("denies %j", async (command) => {
     expect(await verdict(command)).toBe("deny");
   });
@@ -159,4 +166,11 @@ describe("a (( )) outside the line itself keeps the nested-subshell reading (TP-
   it("passes a bash arithmetic assignment on the line", async () => {
     expect(await verdict("((a[0]=1))")).toBe("pass");
   });
+
+  it.each(["(( i++ ))", "for ((i=0;i<3;i++)); do echo $i; done", "if (( $# > 0 )); then :; fi", "((a[1<<2]))", "(cd x && make)"])(
+    "passes %j",
+    async (command) => {
+      expect(await verdict(command)).toBe("pass");
+    },
+  );
 });

@@ -21,6 +21,12 @@ describe("a nested shell's text keeps the nested-subshell reading even on the ba
   });
 });
 
+describe("a (( split by a backslash-newline keeps the nested-subshell reading, as zsh runs it", () => {
+  it.each(["(\\\n(./push.sh))", "((x));(\\\n(./push.sh))", "if (\\\n(./push.sh)); then :; fi"])("%j", (src) => {
+    expect(names(src)).toContain("push.sh");
+  });
+});
+
 describe("an arithmetic command runs no command named by its words", () => {
   it.each(["((a[1<<2]))", "(( a[ 1 << 2 ] ))", "(( arr[1] ))", "((1))", "if ((x)); then :; fi"])("%s", (src) => {
     const found = names(src).filter((n) => n !== ":");
