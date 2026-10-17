@@ -16,10 +16,10 @@ const PUSH = "git push origin HEAD:main";
 const context: ClassifyContext = {
   home: "/home/you",
   readLink: () => null,
-  // `{x}` links to the repo in the premises, so a `cd` into it pushes main.
+  // `{x}` is a directory in the repo in the premises, so a `cd` into it pushes main.
   readHead: (dir) => (dir === REPO || dir === `${REPO}/{x}` ? "main" : null),
   // `{fd}` is harmless, so a line using it is refused for the redirect; `{run}` holds the push dash's reading runs.
-  readScript: (file) => ([`${REPO}/x.sh`, `${REPO}/{run}`].includes(file) ? `${PUSH}\n` : [`${REPO}/ok.sh`, `${REPO}/{fd}`].includes(file) ? "echo hi\n" : null),
+  readScript: (file) => ([`${REPO}/x.sh`, `${REPO}/{x}/x.sh`, `${REPO}/{run}`].includes(file) ? `${PUSH}\n` : [`${REPO}/ok.sh`, `${REPO}/{fd}`].includes(file) ? "echo hi\n" : null),
 };
 
 async function verdict(command: string): Promise<"deny" | "pass"> {
@@ -126,9 +126,38 @@ const MIXED = [
   "env --chdir {x} </dev/null {fd}< ./x.sh sh /dev/fd/10",
 ];
 
+/** One reading stores the script, or moves to where `../x.sh` is x.sh, that the others do not; the rest of the line runs in each. */
+const DISPUTED = [
+  `printf -v V '%.0s%s' {x} </dev/null ./x.sh; bash "$V"`,
+  `printf -v V '%.0s%s' {x} </dev/null ./x.sh; sh "$V"`,
+  `printf -v V '%.0s%s' {x} </dev/null ./x.sh; source "$V"`,
+  `printf -v V '%.0s%s' {x} </dev/null {fd}</dev/null ./x.sh; bash "$V"`,
+  "cd {x} </dev/null; bash ../x.sh",
+  "cd {x} </dev/null; sh ../x.sh",
+  "cd {x} </dev/null; source ../x.sh",
+  "cd {x} </dev/null; bash ./x.sh",
+  "cd {x} </dev/null && bash ./x.sh",
+  "pushd {x} </dev/null; bash ./x.sh",
+  "cd {x} </dev/null; sh x.sh",
+  "cd {x} </dev/null; source ./x.sh",
+  "cd {x} </dev/null; bash -s < ./x.sh",
+  "cd {x} </dev/null; cd ..; bash ./x.sh",
+  "A=x.sh; A=f {x} </dev/null; bash $A",
+  "A=x.sh; A=f {fd}< /dev/null; bash $A",
+  "A=x.sh; A= {fd}< /dev/null; bash $A",
+];
+
+/** Readings that agree on a variable leave it known, so the script it names is still read. */
+const AGREED = [`B=./x.sh; true {a}</dev/null {b} </dev/null; bash "$B"`];
+
 describe("a shell runs a descriptor a {name} redirect may have opened (TP-3279)", () => {
-  it.each([...DENIED, ...HANDED_ON, ...MIXED])("denies %s", async (line) => {
+  it.each([...DENIED, ...HANDED_ON, ...MIXED, ...DISPUTED, ...AGREED])("denies %s", async (line) => {
     expect(await verdict(line)).toBe("deny");
+  });
+
+  it("refuses a line whose disputed readings would walk its rest more than the cap allows", async () => {
+    expect(await verdict(`${"cd {x} </dev/null; ".repeat(4)}ls`)).toBe("deny");
+    expect(await verdict(`${"cd {x} </dev/null; ".repeat(3)}ls`)).toBe("pass");
   });
 
   it.each([
@@ -152,6 +181,11 @@ describe("a shell runs a descriptor a {name} redirect may have opened (TP-3279)"
     "cat {fd}<./ok.sh /dev/fd/10 | wc -l; git diff",
     "exec {fd}</dev/null; git status",
     "cd {x} </dev/null; git log -1",
+    "cd ./{x} && true {a}</dev/null {b} </dev/null && git status",
+    `B=./ok.sh; true {a}</dev/null {b} </dev/null; bash "$B"`,
+    "cd {x} </dev/null; git status",
+    "printf -v V '%s' ok; bash ./ok.sh",
+    "A=HEAD:main {fd}< /dev/null; git status",
   ])("allows %s, which runs no shell on that descriptor", async (line) => {
     expect(await verdict(line)).toBe("pass");
   });
@@ -165,7 +199,8 @@ function runsGit(line: string, runner: string): boolean {
   try {
     for (const script of ["x.sh", "{run}"]) fs.writeFileSync(path.join(dir, script), `${PUSH}\n`);
     for (const script of ["ok.sh", "{fd}"]) fs.writeFileSync(path.join(dir, script), "true\n");
-    fs.symlinkSync(".", path.join(dir, "{x}"));
+    fs.mkdirSync(path.join(dir, "{x}"));
+    fs.writeFileSync(path.join(dir, "{x}", "x.sh"), `${PUSH}\n`);
     fs.mkdirSync(path.join(dir, "bin"));
     fs.writeFileSync(path.join(dir, "bin", "git"), `#!/bin/sh\ntouch '${path.join(dir, "mk")}'\n`, { mode: 0o755 });
     const [program = "bash", ...flags] = runner.split(" ");
@@ -195,6 +230,9 @@ const PREMISES: Array<[string, string]> = [
   [`env -C {x}</dev/null ${PUSH}`, "dash"],
   ...HANDED_ON.flatMap((line): Array<[string, string]> => [[line, "bash"], [line, "dash"]]),
   ...MIXED.map((line): [string, string] => [line, "bash"]),
+  ...DISPUTED.slice(0, 15).map((line): [string, string] => [line, "bash"]),
+  ...["cd {x} </dev/null; bash ../x.sh", "cd {x} </dev/null; bash ./x.sh", ...DISPUTED.slice(14)].map((line): [string, string] => [line, "dash"]),
+  ...AGREED.map((line): [string, string] => [line, "bash"]),
 ];
 
 describe.skipIf(!["bash", "zsh", "dash"].every(has))("bash, zsh and dash run what the denied lines hold (TP-3279)", () => {

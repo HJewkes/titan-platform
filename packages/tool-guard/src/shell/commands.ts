@@ -3,12 +3,12 @@ import { NestingLimitError } from "./nesting.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { xargsStdins } from "./piped-stdin.js";
-import { emitReadings, handOn, type Emitted } from "./reading-hand-on.js";
+import { emitReadings, endCommand, type Emission } from "./reading-hand-on.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
 import { aliasCommands, type AliasTable } from "./alias-words.js";
-import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackCompound, trackVars } from "./vars.js";
+import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { cutReading } from "./piped-nul.js";
 import { inlineScript, SHELLS } from "./inline-script.js";
@@ -180,19 +180,23 @@ function tokenizeLine(src: string): Token[] {
 
 function walk(tokens: Token[], w: Walk): void {
   if (w.depth > MAX_DEPTH) throw new ParseError("nesting too deep");
+  walkFrom(noteSureCommands(normalizeDeclarations(tokens)), 0, w);
+}
+
+/** A command whose `{name}` readings leave different scopes has the rest of its list walked again in each, after this walk. */
+function walkFrom(list: Token[], start: number, w: Walk): void {
+  const forks: Array<() => void> = [];
   let words: WordToken[] = [];
   let redirects: RedirectToken[] = [];
-  for (const token of noteSureCommands(normalizeDeclarations(tokens))) {
+  for (const [at, token] of list.slice(start).entries()) {
     if (token.type === "op") {
       noteValues(token, words, w);
-      handOn(w, token.value, words, redirects, emit(words, redirects, w, token.value));
+      const { readings, disputed } = emit(words, redirects, w, token.value);
+      const walks = [w, ...disputed.map((scope) => forkWalk(w, scope))];
+      for (const each of walks) endCommand(each, token, words, redirects, readings, (op) => scope(op, each));
+      forks.push(...walks.slice(1).map((fork) => () => walkFrom(list, start + at + 1, fork)));
       words = [];
       redirects = [];
-      w.prev = token.value;
-      if (token.value !== "|" && token.value !== "|&") w.negated = false;
-      if (token.value !== "&&") w.chain = { start: token.value };
-      trackCompound(token, w.scope.vars);
-      scope(token.value, w);
       continue;
     }
     if (token.type === "word") words.push(noteWord(token, w.marks));
@@ -202,6 +206,14 @@ function walk(tokens: Token[], w: Walk): void {
   }
   noteValues(null, words, w);
   emit(words, redirects, w, null);
+  for (const fork of forks) fork();
+}
+
+/** The walk carried on in a reading's own scope, with its own copy of the scopes a `)` returns to. */
+function forkWalk(w: Walk, scope: Scope): Walk {
+  const fork: Walk = { ...w, scope, stack: w.stack.map((outer) => ({ ...outer, vars: new Map(outer.vars) })) };
+  for (const outer of fork.stack) observeStores(outer.vars, (value) => hear(fork, value));
+  return observed(fork);
 }
 
 /** Notes what a command evaluates and stores, before it runs. */
@@ -252,7 +264,7 @@ function scope(op: string, w: Walk): void {
   if (op === ")") w.scope = w.stack.pop() ?? w.scope;
 }
 
-function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Emitted {
+function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Emission<Scope> {
   return emitReadings(rawWords, rawRedirects, w, besideWalk, (words, redirects, on) => emitReading(words, redirects, on, next));
 }
 

@@ -1,54 +1,81 @@
 import { groupStdin } from "./group-stdin.js";
-import type { RedirectToken, WordToken } from "./lexer.js";
+import type { OpToken, RedirectToken, WordToken } from "./lexer.js";
 import { namedFdReadings } from "./named-fd.js";
 import { nextShellStdin, nextStdin } from "./piped-stdin.js";
 import type { Unwrapped } from "./unwrap.js";
-import type { Vars } from "./vars.js";
+import { ReadingLimitError } from "./unsure-readings.js";
+import { trackCompound, type Vars } from "./vars.js";
 
 /** A command's readings: one, or each shell's of its `{name}` redirects, zsh's first and dash's second. */
-export type Emitted = [Unwrapped | null, ...Array<Unwrapped | null>];
+type Emitted = [Unwrapped | null, ...Array<Unwrapped | null>];
 
 interface Scope {
   dir: string | null;
   vars: Vars;
 }
 
-/** The parts of a walk a command's readings hand on to the next command. */
+/** The parts of a walk a command's readings hand on to the next command; `marks` is shared by every walk of one line. */
 interface HandedOn {
   scope: Scope;
   stdin: string | null;
   shellStdin: string[];
+  marks: object;
+}
+
+/** What links a command to the next on its list. */
+interface Linked extends HandedOn {
+  prev: string | null;
+  negated: boolean;
+  chain: { readonly start: string | null };
 }
 
 type EmitReading<W> = (words: WordToken[], redirects: RedirectToken[], w: W) => Unwrapped | null;
 
+/** A command's readings, and the scope each reading leaves that differs from zsh's and from every one before it. */
+export interface Emission<S> {
+  readings: Emitted;
+  disputed: S[];
+}
+
 /**
  * Every shell's reading of a `{name}` redirect is walked in full, each but zsh's on a copy of the scope; any can refuse
- * the line. A directory or variable they leave different is unknown after it.
+ * the line. zsh's leaves its scope on the walk; a scope another leaves different is the walk's to carry on.
  */
-export function emitReadings<W extends HandedOn>(rawWords: WordToken[], rawRedirects: RedirectToken[], w: W, beside: (w: W) => W, emitReading: EmitReading<W>): Emitted {
+export function emitReadings<W extends HandedOn>(rawWords: WordToken[], rawRedirects: RedirectToken[], w: W, beside: (w: W) => W, emitReading: EmitReading<W>): Emission<W["scope"]> {
   const readings = namedFdReadings(rawWords, rawRedirects);
-  if (!readings) return [emitReading(rawWords, rawRedirects, w)];
+  if (!readings) return { readings: [emitReading(rawWords, rawRedirects, w)], disputed: [] };
   const [asFd, ...others] = readings;
   const besides = others.map((reading) => ({ reading, copy: beside(w) }));
   const emitted = besides.map(({ reading, copy }) => emitReading(reading.words, reading.redirects, copy));
   const cmd = emitReading(asFd.words, asFd.redirects, w);
-  for (const { copy } of besides) unknownWhereDiffer(w.scope, copy.scope);
-  return [cmd, ...emitted];
+  const disputed: Array<W["scope"]> = [];
+  for (const { copy } of besides) if ([w.scope, ...disputed].every((scope) => differs(scope, copy.scope))) disputed.push(copy.scope);
+  chargeForks(w.marks, disputed.length);
+  return { readings: [cmd, ...emitted], disputed };
 }
 
-function unknownWhereDiffer(scope: Scope, beside: Scope): void {
-  if (beside.dir !== scope.dir) scope.dir = null;
-  for (const key of new Set([...scope.vars.keys(), ...beside.vars.keys()])) {
-    if (scope.vars.has(key) !== beside.vars.has(key) || scope.vars.get(key) !== beside.vars.get(key)) scope.vars.set(key, null);
-  }
+function differs(scope: Scope, beside: Scope): boolean {
+  if (beside.dir !== scope.dir) return true;
+  const keys = new Set([...scope.vars.keys(), ...beside.vars.keys()]);
+  return [...keys].some((key) => scope.vars.has(key) !== beside.vars.has(key) || scope.vars.get(key) !== beside.vars.get(key));
+}
+
+/** Walks of the rest of a list that one line's disputed readings may add; each walks all that follows again. */
+const MAX_FORKS = 8;
+const forksUsed = new WeakMap<object, number>();
+
+/** Counts `count` more such walks against the line keyed by `line`; past the cap the line is refused unchecked. */
+function chargeForks(line: object, count: number): void {
+  const used = (forksUsed.get(line) ?? 0) + count;
+  if (used > MAX_FORKS) throw new ReadingLimitError();
+  forksUsed.set(line, used);
 }
 
 /**
  * Hands the next command the text this one pipes on. Every reading's printed text feeds a shell, as any may print it;
  * a group keeps dash's, as main read it.
  */
-export function handOn(w: HandedOn, op: string, words: WordToken[], redirects: RedirectToken[], [cmd, word, ...rest]: Emitted): void {
+function handOn(w: HandedOn, op: string, words: WordToken[], redirects: RedirectToken[], [cmd, word, ...rest]: Emitted): void {
   const empty = words.length + redirects.length === 0;
   if (word === undefined) {
     w.shellStdin = nextShellStdin(op, cmd, empty, w.shellStdin);
@@ -59,4 +86,14 @@ export function handOn(w: HandedOn, op: string, words: WordToken[], redirects: R
   const texts = [...new Set(printed.filter((text) => text !== null))];
   w.shellStdin = texts.slice(1);
   w.stdin = groupStdin(w, op, words, redirects, word, texts[0] ?? null);
+}
+
+/** Ends a command at `op`: hands on what it pipes, links the next command to it, and enters or leaves a subshell. */
+export function endCommand(w: Linked, token: OpToken, words: WordToken[], redirects: RedirectToken[], readings: Emitted, enter: (op: string) => void): void {
+  handOn(w, token.value, words, redirects, readings);
+  w.prev = token.value;
+  if (token.value !== "|" && token.value !== "|&") w.negated = false;
+  if (token.value !== "&&") w.chain = { start: token.value };
+  trackCompound(token, w.scope.vars);
+  enter(token.value);
 }
