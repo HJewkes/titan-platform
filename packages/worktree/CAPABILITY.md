@@ -7,3 +7,5 @@ You give each headless agent its own git worktree and branch under a per-reposit
 An explicit releaseProof opt-in recognizes the exact merged PR tip or its commit membership while retaining git-only defaults and every file-loss/nonforced-removal guard.
 
 Failed releases expose an optional ordinary-changes code, and missing assigned allocation records have a typed error, so products can retain their wording without parsing diagnostics or changing safety.
+
+Use fetchDefaultTip when a caller must refuse an unavailable origin instead of falling back to local HEAD; its existing fetch shares one timeout budget across default-branch candidates.

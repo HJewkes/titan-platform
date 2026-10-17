@@ -29,3 +29,9 @@ A failed allocator release may additionally return `refusalCode: "unsaved-change
 `MissingAssignedWorktreeRecordError` is exported with `worktreePath`. Allocation throws it under the existing missing-assigned-tree/missing-or-mismatched-record condition, with the same generic message as before. A product can catch this specific class to present its own wording; it must rethrow unrelated errors. No additional adoption or removal authority is granted.
 
 `inspectForRelease` keeps its original object shape and diagnostics. The shared internal inspection records the existing file probes rather than running a second inspection for presentation. These additive fields/types do not certify agent-chat's remaining setup, park, sweep or dependency migration acceptance.
+
+## Strict default-branch fetch
+
+`fetchDefaultTip(gitRoot, timeoutMs)` fetches origin's current default branch and returns `{ sha, ref }`, or the existing failure-reason string. It never substitutes the local HEAD. It honors origin/HEAD when known; otherwise it tries main then master within one shared timeout budget. Fetch updates only the remote-tracking ref, leaving the main checkout's HEAD and files unchanged.
+
+This exposes the existing helper unchanged for callers such as park checks that must refuse when origin cannot establish containment. `resolveBranchBase` retains its separate local-HEAD fallback and warning for allocation. A successful fetch is only a commit observation; the caller must still perform its ancestry, ownership and file-loss checks. Setup, park and sweep policies are unchanged.
