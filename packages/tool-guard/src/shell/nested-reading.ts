@@ -1,5 +1,5 @@
 import { type ArithTrials, sameSpend } from "./arith-trials.js";
-import { backtickEnd, balancedEnd, type NestedReaders } from "./balanced.js";
+import { backtickEnd, balancedEnd, type NestedReaders, refusingMisreadMath } from "./balanced.js";
 import { nextAfter } from "./joins.js";
 import { lexNested, tokenize } from "./lexer.js";
 import { nested } from "./nesting.js";
@@ -25,12 +25,13 @@ export function lineReading(s: LexState): Reading {
  */
 export function arithmeticExpansionEnd(at: Reading, dollar: number, found: Token[][]): number {
   const known = at.trials.ends.get(dollar);
-  if (known !== undefined) return known === -1 ? -1 : balancedEnd(at.src, dollar + 1, nestedReaders(at, found));
+  if (known !== undefined) return known === -1 ? -1 : refusingMisreadMath(at.src, dollar, balancedEnd(at.src, dollar + 1, nestedReaders(at, found)));
   const trial: Token[][] = [];
   const end = arithmeticTrial(at, dollar, trial);
   at.trials.ends.set(dollar, end);
-  if (end !== -1) found.push(...trial);
-  return end;
+  if (end === -1) return -1;
+  found.push(...trial);
+  return refusingMisreadMath(at.src, dollar, end);
 }
 
 function arithmeticTrial(at: Reading, dollar: number, trial: Token[][]): number {

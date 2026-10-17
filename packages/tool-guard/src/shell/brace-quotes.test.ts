@@ -9,6 +9,7 @@ import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
 import type { ClassifyContext } from "../types.js";
 import { tokenize } from "./lexer.js";
+import { ParseError } from "./parse-error.js";
 
 const REPO = "/home/you/projects/app";
 const PUSH = "git push origin HEAD:main";
@@ -225,9 +226,9 @@ describe("an expansion the reader cannot close where bash runs the next command"
 });
 
 describe("subshell-shaped $(( nested deep", () => {
-  it("lexes without running out of its reading budget", () => {
+  it("is refused, not run out of its reading budget, once the body outgrows the read window (TP-3294)", () => {
     let nested = ": a";
     for (let i = 0; i < 100; i++) nested = `echo $((${nested}) )`;
-    expect(tokenize(`${nested}\n${PUSH}`).length).toBeGreaterThan(0);
+    expect(() => tokenize(`${nested}\n${PUSH}`)).toThrow(ParseError);
   });
 });

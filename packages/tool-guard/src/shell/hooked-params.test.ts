@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { nodeContext } from "../context.js";
+import { decide } from "../decide.js";
+import { handle } from "../hook.js";
+import type { HookPort } from "../hook.js";
 import { arithmeticHooked } from "./arith-hooked.js";
 import { writesHookedParam } from "./hooked-params.js";
 import { tokenize } from "./lexer.js";
@@ -330,14 +334,7 @@ describe("arithmetic that mentions a hooked parameter", () => {
   it.each([
     ["let", "let PS4=1", "PS4"],
     ["let of module_path, quoted", 'let "MODULE_PATH=7"', "MODULE_PATH"],
-    ["$(( ))", ": $(( module_path = 3 ))", "module_path"],
-    ["zsh $[ ]", ": $[ PS4 = 2 ]", "PS4"],
-    ["a subscript inside ${ }", ": ${a[MODULE_PATH=4]}", "MODULE_PATH"],
-    ["a bash subscript inside ${ }", ": ${a[PS4=5]}", "PS4"],
-    ["a length of an element", ": ${#a[PS4=1]}", "PS4"],
     ["a zsh subscript after $name", ": $x[MODULE_PATH=1]", "MODULE_PATH"],
-    ["a bash substring offset", ": ${x:PS4=0}", "PS4"],
-    ["a substring length", ": ${x:0:PS4=1}", "PS4"],
     ["an assignment word's subscript", "a[PS4=7]=x", "PS4"],
     ["a prefix assignment's subscript", "a[PS4=7]=x true", "PS4"],
     ["read into a quoted subscripted name", "read 'a[PS4=6]'", "PS4"],
@@ -368,8 +365,6 @@ describe("arithmetic that mentions a hooked parameter", () => {
     ["a [[ -v test of a subscripted name", "[[ -v a[PS4=7] ]]", "PS4"],
     ["a test -v of a subscripted name", "test -v 'a[PS4=7]'", "PS4"],
     ["a [ -v test of a subscripted name", "[ -v 'a[PS4=7]' ]", "PS4"],
-    ["a bash substring of $@", ": ${@:PS4=7}", "PS4"],
-    ["a bash substring of $1", ": ${1:PS4=7}", "PS4"],
     ["an array element's key", "b=([PS4=7]=x)", "PS4"],
     ["an appended array element's key", "b+=([PS4=7]=x)", "PS4"],
     ["a for list word", "for x in 'PS4=7'", "PS4"],
@@ -522,10 +517,6 @@ describe("every math write operator, spacing and side around a computed name", (
     ["a brace list after ++", "f ++PS{4,}"],
     ["an unquoted glob before ++", "f P?4++"],
     ["an unquoted heredoc body", "cat <<EOF\n${x}=1\nEOF"],
-    ["a subscript in a # pattern", ': "${x#${a[${y}=1]}}"'],
-    ["$(( )) in a # pattern", ': "${x#$(( ${y}=1 ))}"'],
-    ["$[ ] in a % pattern", ': "${x%$[${y}=1]}"'],
-    ["$(( )) in a / pattern", ': "${x/$(( ${y}=1 ))/z}"'],
     ["a bare { before the expansion in a pattern", 'f "${x#{},${y}=7,0}"'],
     ["& in a replacement before =", 'f "${y/*/&=7}"'],
     ["& in a replacement before a spaced =", 'f "${y/*/& = 7}"'],
@@ -572,5 +563,35 @@ describe("every math write operator, spacing and side around a computed name", (
       const word: WordToken = { type: "word", value: unit.repeat(n), dynamic: true, quoted: true, spliced: false, computed: true, refs: [], subs: [] };
       return () => void writesHookedParam({ name: "f", path: "f", args: [word], assigned: [] }, [word]);
     }, top);
+  });
+});
+
+/** The lexer refuses these before a command walk can see them (TP-3294); the walk's own reading of them is covered by the arithmetic spans above. */
+const refusalPort: HookPort = {
+  context: nodeContext("/home/you", { realpath: (p) => p, readHead: () => "feat", isFile: () => false }),
+  now: () => new Date("2026-01-02T03:04:05.000Z"),
+  loadDecide: async () => decide,
+};
+
+describe("math at a $ that writes a hooked parameter", () => {
+  it.each([
+    ["$(( ))", ": $(( module_path = 3 ))"],
+    ["zsh $[ ]", ": $[ PS4 = 2 ]"],
+    ["a subscript inside ${ }", ": ${a[MODULE_PATH=4]}"],
+    ["a bash subscript inside ${ }", ": ${a[PS4=5]}"],
+    ["a length of an element", ": ${#a[PS4=1]}"],
+    ["a bash substring offset", ": ${x:PS4=0}"],
+    ["a substring length", ": ${x:0:PS4=1}"],
+    ["a bash substring of $@", ": ${@:PS4=7}"],
+    ["a bash substring of $1", ": ${1:PS4=7}"],
+    ["a computed name in a subscript in a # pattern", ': "${x#${a[${y}=1]}}"'],
+    ["a computed name in $(( )) in a # pattern", ': "${x#$(( ${y}=1 ))}"'],
+    ["a computed name in $[ ] in a % pattern", ': "${x%$[${y}=1]}"'],
+    ["a computed name in $(( )) in a / pattern", ': "${x/$(( ${y}=1 ))/z}"'],
+  ])("is a ParseError and a denial for %s", async (_how, line) => {
+    expect(() => tokenize(line)).toThrow(ParseError);
+    const event = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: "/home/you/app", tool_input: { command: line } });
+    const { stdout } = await handle(event, {}, refusalPort);
+    expect(stdout).not.toBe("");
   });
 });
