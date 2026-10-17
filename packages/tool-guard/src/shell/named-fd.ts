@@ -1,7 +1,7 @@
 import type { RedirectToken, WordToken } from "./tokens.js";
 
 /** One way to read a command's words and redirects. */
-export interface Reading {
+interface Reading {
   words: WordToken[];
   redirects: RedirectToken[];
 }
