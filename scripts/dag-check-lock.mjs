@@ -16,9 +16,11 @@ export const DEFAULT_LOCK_DIR = path.join(homedir(), ".cache", "titan-platform",
 // basement-suite reads 75 as "busy, retry later".
 export const BUSY_EXIT_CODE = 75;
 const DEFAULT_WAIT_MS = 8 * 60 * 1000;
-// Holders rewrite the log by rename, so two releasing at once may drop a line but never tear one; the tail bounds both its size and a stale median.
+// Holders append under a directory lock and trim the log once it doubles its kept size; the tail bounds both its size and a stale median.
 // Holds logged with exit null (killed by a signal, or the check threw) are not representative and skip the median.
 const LOG_KEEP_LINES = 200;
+const LOG_LOCK_WAIT_MS = 2000;
+const LOG_LOCK_STALE_MS = 5000;
 const ESTIMATE_LINES = 20;
 const ESTIMATE_MIN_LINES = 3;
 // Many waiters append concurrently, so the busy log is trimmed only once it doubles its kept size.
@@ -155,17 +157,51 @@ export function readHolds(lockDir) {
   return holds;
 }
 
-function appendHold(lockDir, hold) {
+/** Run fn holding a short-lived directory lock on the hold log; after a bounded wait it runs anyway, so a stuck lock never blocks a release. */
+function withLogLock(file, fn) {
+  const lock = `${file}.lock`;
+  const deadline = Date.now() + LOG_LOCK_WAIT_MS;
+  let held = false;
+  while (!held && Date.now() < deadline) {
+    try {
+      mkdirSync(lock);
+      held = true;
+    } catch (err) {
+      if (err.code !== "EEXIST") throw err;
+      if (lockAgeMs(lock) > LOG_LOCK_STALE_MS) rmSync(lock, { recursive: true, force: true });
+      else Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    if (held) rmSync(lock, { recursive: true, force: true });
+  }
+}
+
+function lockAgeMs(lock) {
+  try {
+    return Date.now() - statSync(lock).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+export function appendHold(lockDir, hold) {
   const file = holdLogPath(lockDir);
   const line = JSON.stringify({ ...hold, pid: process.pid, releasedAt: Date.now() });
-  const kept = readHolds(lockDir).slice(-(LOG_KEEP_LINES - 1)).map((h) => JSON.stringify(h));
-  const tmp = `${file}.tmp-${process.pid}`;
-  try {
-    writeFileSync(tmp, `${[...kept, line].join("\n")}\n`);
-    renameSync(tmp, file);
-  } finally {
-    rmSync(tmp, { force: true });
-  }
+  withLogLock(file, () => {
+    appendFileSync(file, `${line}\n`);
+    const kept = readHolds(lockDir);
+    if (kept.length <= 2 * LOG_KEEP_LINES) return;
+    const tmp = `${file}.tmp-${process.pid}`;
+    try {
+      writeFileSync(tmp, `${kept.slice(-LOG_KEEP_LINES).map((h) => JSON.stringify(h)).join("\n")}\n`);
+      renameSync(tmp, file);
+    } finally {
+      rmSync(tmp, { force: true });
+    }
+  });
 }
 
 /**
