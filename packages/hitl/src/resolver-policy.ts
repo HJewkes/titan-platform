@@ -11,6 +11,7 @@ import {
   GateEvidenceInvalid,
   GateResolverRefused,
   GateRuleInvalid,
+  type GateAdmittedBy,
   type GateAnswerAllowance,
   type GateAuthorization,
   type GateEvidence,
@@ -54,15 +55,24 @@ export interface Admission {
  * evidence policy admits on the evidence given, and a delegate class the gate's rule names. Anything else gets the
  * default refusal unchanged.
  */
-export function resolverRefusal(gate: GateRecord, resolver: GateResolver, payload: unknown, admission: Admission): string | undefined {
+export function resolverRefusal(gate: GateRecord, resolver: GateResolver, payload: unknown, admission: Admission): ResolverVerdict {
   const refusal = defaultResolverRefusal(resolver);
-  if (refusal === undefined) return undefined;
-  const admitted =
-    matchesAllowance(admission.allowances, gate.id, resolver, payload) ||
-    evidenceAdmits(gate, resolver, payload, admission) ||
-    delegateAdmits(gate.rule, resolver, admission.hasAuthorize);
-  if (!admitted) return refusal;
-  return resolver.id.trim() === "" ? `actor class ${resolver.class} must name itself to resolve this gate` : undefined;
+  if (refusal === undefined) return { admittedBy: "owner-class" };
+  const admittedBy = widenedBy(gate, resolver, payload, admission);
+  if (admittedBy === undefined) return { refusal };
+  if (resolver.id.trim() === "") return { refusal: `actor class ${resolver.class} must name itself to resolve this gate` };
+  return { admittedBy };
+}
+
+/** Either the refusal text or the way the store admitted the resolver; `authorize` sees the latter. */
+export type ResolverVerdict = { refusal: string } | { admittedBy: GateAdmittedBy };
+
+/** The first widening that applies, in the order the store checks them: allowance, evidence policy, delegate. */
+function widenedBy(gate: GateRecord, resolver: GateResolver, payload: unknown, admission: Admission): GateAdmittedBy | undefined {
+  if (matchesAllowance(admission.allowances, gate.id, resolver, payload)) return "allowance";
+  if (evidenceAdmits(gate, resolver, payload, admission)) return "evidence";
+  if (delegateAdmits(gate.rule, resolver, admission.hasAuthorize)) return "delegate";
+  return undefined;
 }
 
 /**

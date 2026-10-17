@@ -104,6 +104,19 @@ describe("importRound copies a round@2 dir into the rounds dir", () => {
     expect(read.sha256).toBe(sha256Of(await readFile(path.join(source, "frames", "diff", "card-light.png"))));
   });
 
+  it("copies a frame's after file and serves it through rounds.frame", async () => {
+    const afterRel = "frames/after/card-light.png";
+    const afterBytes = await readFile(path.join(source, "frames", "card-dark.png"));
+    await mkdir(path.join(source, "frames", "after"));
+    await writeFile(path.join(source, afterRel), afterBytes);
+    await editFrames((_frames, light) => (light.after = { file: afterRel, sha256: sha256Of(afterBytes) }));
+
+    await runImport();
+
+    expect(await readFile(path.join(roundsDir, ID, afterRel))).toEqual(afterBytes);
+    expect((await getFrame({ dir: roundsDir }, ID, "card-light", "after")).sha256).toBe(sha256Of(afterBytes));
+  });
+
   it("imports a round with no frames index and no feedback", async () => {
     await rm(path.join(source, "frames"), { recursive: true });
     await rm(path.join(source, "feedback.json"));

@@ -123,7 +123,8 @@ function Choices({ question, answer, onChoose }: { question: Question; answer: Q
 
 const answerText = (answer: string | number | readonly string[]): string => (Array.isArray(answer) ? answer.join(", ") : String(answer));
 
-function QuestionFacts({ question }: { question: Question }): ReactNode {
+/** A question's sign-off, merge binding and any recommendation the server sent. */
+export function QuestionFacts({ question }: { question: Question }): ReactNode {
   const recommendation = question.kind === "text" ? undefined : question.recommendation;
   const merge = question.kind === "pick-one" ? question.merge : undefined;
   const signsOff = question.kind === "pick-one" ? question.signsOff : undefined;

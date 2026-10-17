@@ -7,11 +7,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { silentLogger, type DaemonHandle } from "@titan-design/daemon";
-import { EXIT } from "@titan-design/registry";
+import { EXIT, invokeCommand } from "@titan-design/registry";
 import type { ConsoleConfig } from "./config.js";
 import { createLoginLink, startConsoleDaemon } from "./daemon.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
-import { MAX_FRAME_BYTES, frameIndex, getFrame } from "./round-frames.js";
+import { MAX_FRAME_BYTES, frameIndex, getFrame, roundFramesCommands } from "./round-frames.js";
 import { closedPort, send, sessionCookie, writeSelfSignedCert, type Reply, type SelfSignedPair } from "./test-support.js";
 
 // The LAN seam daemon.test.ts uses: 127.0.0.2 alone is let past the daemon's refusal of 127/8 as a remote host.
@@ -52,7 +52,7 @@ afterEach(async () => {
 });
 
 const sha256Of = (bytes: Buffer): string => createHash("sha256").update(bytes).digest("hex");
-const frame = (key: string, view: "head" | "base" | "diff" = "head", id = SHIP) => getFrame({ dir }, id, key, view);
+const frame = (key: string, view: "head" | "base" | "after" | "diff" = "head", id = SHIP) => getFrame({ dir }, id, key, view);
 
 async function expectRefused(read: Promise<unknown>, message: RegExp): Promise<void> {
   await expect(read).rejects.toMatchObject({ code: EXIT.NOINPUT, message: expect.stringMatching(message) });
@@ -100,6 +100,44 @@ describe("rounds.frame reads a listed frame", () => {
     expect(entries.get("panel-wide")?.files).toEqual({ head: "images/panel-wide.png", base: "base/panel-wide.png" });
     expect(entries.get("badge-new")).toEqual({ files: { head: "images/badge-new.png" } });
     expect(story.entries.size).toBe(0);
+  });
+});
+
+describe("a CI packet's frames", () => {
+  it("reads the after image a record names apart from its montage head", async () => {
+    const montage = await readFile(path.join(round, "images", "tile-light.png"));
+    const after = await readFile(path.join(round, "base", "tile-dark.png"));
+    await writeFramesIndex([{ key: "tile-light", file: "images/tile-light.png", sha256: sha256Of(montage), after: { file: "base/tile-dark.png", sha256: sha256Of(after) } }]);
+
+    expect((await frame("tile-light", "after")).base64).toBe(after.toString("base64"));
+    await expectRefused(frame("tile-dark", "after"), /lists no after view of "tile-dark"/);
+  });
+
+  it("refuses an after image whose bytes differ from the sha256 the index names", async () => {
+    const montage = await readFile(path.join(round, "images", "tile-light.png"));
+    await writeFramesIndex([{ key: "tile-light", file: "images/tile-light.png", sha256: sha256Of(montage), after: { file: "base/tile-dark.png", sha256: "0".repeat(64) } }]);
+
+    await expectRefused(frame("tile-light", "after"), /does not match the frames index sha256/);
+  });
+});
+
+describe("rounds.frames", () => {
+  const ctx = { warnings: [], format: "json" as const, surface: "http" as const, auth: { credential: "session" as const, issuedAt: 1, peerLocal: true }, ownerWrites: false };
+
+  it("lists each frame's theme and the views it has files for", async () => {
+    const { envelope } = await invokeCommand(roundFramesCommands({ dir })["rounds.frames"], { id: SHIP }, ctx);
+
+    expect(envelope).toEqual({
+      ok: true,
+      data: {
+        frames: [
+          { key: "tile-light", theme: "light", views: ["head", "base", "diff"] },
+          { key: "tile-dark", theme: "dark", views: ["head", "base", "diff"] },
+          { key: "panel-wide", theme: "light", views: ["head", "base"] },
+          { key: "badge-new", views: ["head"] },
+        ],
+      },
+    });
   });
 });
 

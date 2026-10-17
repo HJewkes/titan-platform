@@ -1,4 +1,6 @@
+import type { Logger } from "@titan-design/daemon";
 import type { GitHubPort } from "@titan-design/github";
+import type { GateRecord } from "@titan-design/hitl";
 import type { FreezeStoreRef } from "./freeze.js";
 import type { GhGateway } from "./gh-gateway-port.js";
 import type { PrFilesRead } from "./git-pr-files.js";
@@ -28,4 +30,25 @@ export interface ShepherdServices extends SnapshotServices {
   gateway?: GhGateway;
   /** The spawn gate's last reviewer reading, reported in `/health`; absent on a host with no gate. */
   reviewSlots?: () => ReviewSlots | undefined;
+  /** `shepherd.visualDelivery` on or in shadow; absent means serve starts no delivery sweep. */
+  visualDelivery?: VisualDeliveryWatch;
+}
+
+/** Serve's pending gates, and one gate read afresh, for a sweep that must not import the host. */
+export interface GateReads {
+  pendingGates(): readonly { runId: string; stepId: string; gate: GateRecord }[];
+  gate(id: string): GateRecord | undefined;
+}
+
+/** What health shows, as gateNotify shows `stuck`: a pending visual gate whose delivery failed waits on the coordinator's hand flow. */
+interface VisualDeliveryStatus {
+  waiting: number;
+  failed: { gateId: string; reason: string }[];
+}
+
+/** `src/shepherd/visual-delivery-sweep.ts`'s watch, described by shape here so this file stays a leaf. */
+export interface VisualDeliveryWatch {
+  everyMs: number;
+  tick(gates: GateReads, services: ShepherdServices, log: Logger, signal: AbortSignal): Promise<void>;
+  status(): VisualDeliveryStatus;
 }

@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import type * as FsPromises from "node:fs/promises";
 import { cp, mkdir, mkdtemp, open, readFile, rm, symlink, utimes, writeFile } from "node:fs/promises";
@@ -172,6 +173,14 @@ describe("rounds.get", () => {
 
     expect(detail).toMatchObject({ valid: false, reason: `questions: ${BLIND_AB_REFUSED}` });
     expect(JSON.stringify(detail)).not.toContain("engine-");
+  });
+
+  it("marks a round with a merge-bound question as a Ship round, not a design round, with its round.json sha256", async () => {
+    const bytes = await readFile(path.join(dir, "ship-tile-r1", "round.json"));
+
+    expect(validDetail(await getRound({ dir }, "ship-tile-r1"))).toMatchObject({ ship: true, design: false, manifestSha256: createHash("sha256").update(bytes).digest("hex") });
+    expect(validDetail(await getRound({ dir }, "lantern-cards-r1"))).toMatchObject({ ship: false, design: true });
+    expect(summaryOf((await listRounds({ dir })).rounds, "ship-tile-r1")).toMatchObject({ design: false, ship: true });
   });
 
   it("answers an invalid round with its reason rather than failing", async () => {

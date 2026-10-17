@@ -1,14 +1,19 @@
 import { argv0Values, assignedArgv0, splitStringArgv0 } from "./argv0.js";
 import { splitCluster, takesNextWord } from "./cluster.js";
+import { walkEnv } from "./env-walk.js";
+import type { EnvWalkSyntax } from "./env-walk.js";
 import type { WordToken } from "./lexer.js";
 import { basename } from "./path.js";
 import { canonicalShell } from "./shell-names.js";
+import { EnvSplitError } from "./unsure-readings.js";
 import { parseAssignment } from "./vars.js";
 import type { Assignment } from "./vars.js";
-import { SHORT_VALUES, SUDO_LONG_VALUES, spellLongOptions } from "./wrapper-long.js";
+import { SHORT_VALUES, SUDO_LONG_VALUES, spellLongOptions, spellOption } from "./wrapper-long.js";
 import { xargsBatch, xargsDelimiters } from "./xargs-options.js";
 import type { XargsSyntax } from "./xargs-options.js";
 import { replaceStrings } from "./xargs-replace.js";
+
+export { findExecs } from "./find-exec.js";
 
 interface WrapperSpec {
   /** Options that take a separate value. */
@@ -37,8 +42,10 @@ const KEYWORDS = new Set(["if", "then", "else", "elif", "fi", "do", "done", "whi
 const COMPOUND_STARTS = new Set(["{", "if", "while", "until", "for", "case", "select", "[[", "(("]);
 const PACKAGE_OPTS: WrapperSpec = { values: ["-p", "--package"], script: ["-c", "--call", "--shell-mode"] };
 
+const ENV: WrapperSpec = { values: [...SHORT_VALUES.env, "--unset", "--chdir", "--argv0"], script: ["-S", "--split-string"], attached: true, digits: true };
+
 const WRAPPERS: Record<string, WrapperSpec> = {
-  env: { values: [...SHORT_VALUES.env, "--unset", "--chdir", "--argv0"], script: ["-S", "--split-string"], attached: true, digits: true },
+  env: ENV,
   command: { stop: ["-v", "-V"] },
   builtin: {},
   // zsh precommand modifiers, which run the next word as the command; Claude Code runs Bash under zsh.
@@ -72,7 +79,12 @@ const WRAPPERS: Record<string, WrapperSpec> = {
     joined: true, direct: ["-x", "--exec"] },
 };
 
-const FIND_EXEC = new Set(["-exec", "-execdir", "-ok", "-okdir"]);
+const ENV_WALK: EnvWalkSyntax = {
+  scriptAt: (word) => scriptOption(word, ENV),
+  takesValue: (word) => takesNextWord(word, ENV),
+  spell: (word) => spellOption("env", word),
+  keyword: (word) => KEYWORDS.has(word.value) && !word.quoted,
+};
 
 /** Package managers that run a command only through a subcommand: `pnpm exec x`, `yarn dlx x`, `npm exec x`. */
 const RUNNERS: Record<string, { subs: string[]; values: string[]; shellMode?: boolean }> = {
@@ -158,6 +170,13 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
     else if (assignment) {
       assigned.push(assignment);
       i++;
+    } else if (!w.dynamic && commandName(w.value) === "env") {
+      const walked = walkEnv(words, i + 1, assigned, ENV_WALK);
+      if (walked === null) throw new EnvSplitError();
+      if (walked.ambiguousAt !== undefined) return { ...command(walked.words, i, assigned), script: ambiguousReadings(walked.words, i, walked.ambiguousAt) };
+      ({ words, end: i } = walked);
+      argv0.push(...walked.argv0);
+      negated ||= walked.negated;
     } else if (!w.dynamic && (wrapperSpec(w.value) || runnerEnd(words, i) > i)) {
       const spelled = spellXargs(words, i, assigned);
       if (!Array.isArray(spelled)) return spelled;
@@ -321,25 +340,4 @@ function runnerEnd(words: WordToken[], i: number): number {
   const subWord = words[sub];
   if (!subWord || subWord.dynamic || !spec.subs.includes(subWord.value)) return i;
   return sub + 1;
-}
-
-/** The command words of each `find -exec`, `-execdir`, `-ok` and `-okdir`, without their terminator. */
-export function findExecs(args: WordToken[]): WordToken[][] {
-  const out: WordToken[][] = [];
-  for (let i = 0; i < args.length; i++) {
-    if (!FIND_EXEC.has((args[i] as WordToken).value)) continue;
-    const end = execEnd(args, i + 1);
-    out.push(args.slice(i + 1, end));
-    i = end;
-  }
-  return out;
-}
-
-/** Index of the `;` that ends an exec, or of a `+` right after `{}`; the end of `args` when neither comes. */
-function execEnd(args: WordToken[], i: number): number {
-  for (let j = i; j < args.length; j++) {
-    const v = (args[j] as WordToken).value;
-    if (v === ";" || (v === "+" && j > i && args[j - 1]?.value === "{}")) return j;
-  }
-  return args.length;
 }

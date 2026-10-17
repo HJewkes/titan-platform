@@ -21,6 +21,7 @@ async function recorded(): Promise<Snapshot> {
     calls: {
       [snapshotKey("rounds.list", {})]: successEnvelope(await listRounds(source)),
       ...Object.fromEntries(rounds),
+      [snapshotKey("rounds.frames", { id: "orbit-retry-r1" })]: successEnvelope({ frames: [] }),
       [snapshotKey("rounds.get", { id: "nowhere" })]: errorEnvelope('No round named "nowhere"', 66),
     },
   };
@@ -130,10 +131,12 @@ describe("a question round", () => {
     expect(isChecked(choice("ramp-default", "1 Staged climb"))).toBe(false);
   });
 
-  it("shows the recommendation in a round that shows them, with the PR a ship question binds", async () => {
+  it("shows a ship question with no images as the Ship view, its recommendation shown and no image section", async () => {
     await renderConsole("#/rounds/orbit-retry-r1");
     expect(await screen.findByText("Recommended: Ship (90%, fixture-agent)")).toBeTruthy();
     expect(screen.getByText("Ships example/orbit-relay#12 at 0123456")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Ship" })).toBeTruthy();
+    expect(screen.queryByText(/^Changed images/)).toBeNull();
   });
 });
 

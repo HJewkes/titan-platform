@@ -48,7 +48,7 @@ interface SourceRound {
   id: string;
   round: number;
   roundBytes: Buffer;
-  /** `frames/frames.json` as read, copied verbatim so `rounds.frame` finds the base and diff views. */
+  /** `frames/frames.json` as read, copied verbatim so `rounds.frame` finds the base, after and diff views. */
   index: Buffer | null;
   /** sha256 by the file's normalised path relative to the round dir. */
   frames: Map<string, string>;
@@ -188,7 +188,7 @@ async function readFeedbackFor(dir: string, binding: Binding): Promise<Buffer | 
 async function readSource(dir: string): Promise<SourceRound> {
   await assertSourceDirs(dir);
   const roundBytes = (await readTopFile(dir, ROUND_FILE)) ?? refuse(`the source has no ${ROUND_FILE}`, EXIT.NOINPUT);
-  const parsed = parseManifest(roundBytes.toString("utf8"));
+  const parsed = parseManifest(roundBytes);
   if (!parsed.ok) return refuse(`${ROUND_FILE}: ${parsed.reason}`);
   const { unit, round, questions } = parsed.manifest;
   const id = `${unit}-r${round}`;

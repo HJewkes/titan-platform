@@ -5,10 +5,11 @@ import type { RoundDetail } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { RoundQuestion, chooseIn, choicesOf, useChoiceKeys, type QuestionAnswer } from "./RoundQuestion.js";
+import { ShipRound } from "./RoundShip.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
 
-/** One round: its sections, and each question answerable by pointer or keys 1-9. Picks stay in the page. */
+/** One round: a merge gate's Ship view, or its sections with each question answerable by pointer or keys 1-9 (picks stay in the page). */
 export function RoundDetailPage({ id }: { id: string }): ReactNode {
   const detail = useQuery("rounds.get", { id });
   if (detail.status === "loading") return <Spinner size="sm" label="Loading round" />;
@@ -18,9 +19,14 @@ export function RoundDetailPage({ id }: { id: string }): ReactNode {
   return (
     <Framed id={id}>
       <RoundHeading round={round} />
-      {round.design ? <DesignNotice storybookUrl={round.storybookUrl} /> : <QuestionRound round={round} />}
+      <RoundBody round={round} />
     </Framed>
   );
+}
+
+function RoundBody({ round }: { round: ValidRound }): ReactNode {
+  if (round.ship) return <ShipRound round={round} />;
+  return round.design ? <DesignNotice storybookUrl={round.storybookUrl} /> : <QuestionRound round={round} />;
 }
 
 function Framed({ id, children }: { id: string; children: ReactNode }): ReactNode {
