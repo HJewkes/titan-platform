@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { createCodexExecAdapter, DEFAULT_CODEX_EXECUTABLE, runAgent, type AgentRunResult, type HarnessAdapter, type HarnessRunResult } from "@titan-design/agent";
+import { createCodexExecAdapter, checkCodexAvailable, runAgent, type AgentRunResult, type HarnessAdapter, type HarnessRunResult } from "@titan-design/agent";
 import { foldUsage } from "@titan-design/agent-protocol";
 import { toJSONSchema, z, type ZodType } from "zod";
 
@@ -124,11 +124,12 @@ export function createJudgeHarness(config: JudgeConfig, deps: JudgeHarnessDeps =
 
 /**
  * Why a codex judge cannot run on this host, or null. Codex keeps its ChatGPT login in
- * `$CODEX_HOME/auth.json`; without it, or without the binary, every call fails.
+ * `$CODEX_HOME/auth.json`; the existing login-file presence hint remains separate
+ * from the shared version/capability probe. This is async and starts no model.
  */
-export function codexUnavailable(config: Pick<JudgeConfig, "executable_path">, env: NodeJS.ProcessEnv = process.env): string | null {
-  const binary = config.executable_path ?? DEFAULT_CODEX_EXECUTABLE;
-  if (!existsSync(binary)) return `codex is not installed at ${binary}; install it or set executable_path in the judge config, then rerun`;
+export async function codexUnavailable(config: Pick<JudgeConfig, "executable_path">, env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
+  const available = await checkCodexAvailable({ executablePath: config.executable_path, env, requiredCapabilities: ["output_schema"] });
+  if (!available.ok) return available.failure.reason;
   const auth = join(env.CODEX_HOME ?? join(homedir(), ".codex"), "auth.json");
   return existsSync(auth) ? null : `codex is not logged in on this host (no ${auth}); run \`codex login\` with the judge's account, then rerun`;
 }

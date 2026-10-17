@@ -56,7 +56,7 @@ async function* gatedLines(lines: readonly string[], completed: Promise<unknown>
 
 function events(text = "done") {
   return [
-    JSON.stringify({ type: "thread.started", thread_id: "thread-1" }),
+    JSON.stringify({ type: "thread.started", thread_id: "019c0000-0000-7000-8000-000000000001" }),
     JSON.stringify({ type: "turn.started" }),
     JSON.stringify({ type: "item.completed", item: { id: "item-1", type: "agent_message", text } }),
     JSON.stringify({
@@ -75,6 +75,10 @@ function harness(
   const start = vi.fn((_input: CodexProcessInput) => processHandle);
   const deps: CodexExecDeps = {
     inspectVersion,
+    inspectCapabilities: async () => ({
+      capabilities: { json_events: true, config_overrides: true, user_config_isolation: true, strict_config: true, output_schema: true, model_selection: true, working_directory: true },
+      sandboxes: ["read-only", "workspace-write"],
+    }),
     start,
     executionId: () => "execution-1",
     now: () => 100,
@@ -98,7 +102,7 @@ describe("Codex exec command and policy", () => {
       request({
         target: {
           kind: "resume",
-          conversation: { harness: "codex", namespace: "workstation-a", nativeId: "thread-1" },
+          conversation: { harness: "codex", namespace: "workstation-a", nativeId: "019c0000-0000-7000-8000-000000000001" },
         },
       }),
       "/tmp/schema.json",
@@ -107,7 +111,7 @@ describe("Codex exec command and policy", () => {
     expect(fresh).toContain('approval_policy="never"');
     expect(fresh).not.toContain("--ephemeral");
     expect(resume.slice(0, 2)).toEqual(["exec", "resume"]);
-    expect(resume).toContain("thread-1");
+    expect(resume).toContain("019c0000-0000-7000-8000-000000000001");
     expect(resume).toContain("/tmp/schema.json");
     expect(resume).not.toContain("--last");
   });
@@ -185,7 +189,7 @@ describe("Codex exec results", () => {
     expect(result).toMatchObject({
       ok: true,
       execution: { executionId: "execution-1" },
-      conversation: { harness: "codex", namespace: "workstation-a", nativeId: "thread-1" },
+      conversation: { harness: "codex", namespace: "workstation-a", nativeId: "019c0000-0000-7000-8000-000000000001" },
       output: { kind: "text", text: "final answer" },
       transcript: { format: "codex-rollout-jsonl", namespace: "workstation-a" },
     });
@@ -249,7 +253,7 @@ describe("Codex exec results", () => {
     expect(result.usage[0]).toMatchObject({
       kind: "snapshot",
       scope: "turn",
-      scopeId: "turn:codex:workstation-a:thread-1:turn-7",
+      scopeId: "turn:codex:workstation-a:019c0000-0000-7000-8000-000000000001:turn-7",
     });
   });
 
@@ -260,12 +264,12 @@ describe("Codex exec results", () => {
       request({
         target: {
           kind: "resume",
-          conversation: { harness: "codex", namespace: "workstation-a", nativeId: "thread-1" },
+          conversation: { harness: "codex", namespace: "workstation-a", nativeId: "019c0000-0000-7000-8000-000000000001" },
         },
       }),
     );
-    expect(result).toMatchObject({ ok: true, conversation: { nativeId: "thread-1" } });
-    expect(runner.start.mock.calls[0]?.[0].args).toContain("thread-1");
+    expect(result).toMatchObject({ ok: true, conversation: { nativeId: "019c0000-0000-7000-8000-000000000001" } });
+    expect(runner.start.mock.calls[0]?.[0].args).toContain("019c0000-0000-7000-8000-000000000001");
   });
 
   it("writes a native schema, parses JSON, validates locally, and disposes the schema file", async () => {
@@ -327,24 +331,28 @@ describe("Codex exec results", () => {
     expect(result).toMatchObject({ ok: false, failure: { kind: "output_invalid" } });
   });
 
-  it("rejects a version mismatch before starting the run process", async () => {
+  it("rejects a version below the floor before starting the run process", async () => {
     const fake = fakeProcess({ stdout: events() });
-    const runner = harness(fake.processHandle, { inspectVersion: async () => "codex-cli 0.999.0" });
+    const runner = harness(fake.processHandle, { inspectVersion: async () => "codex-cli 0.161.9" });
     const result = await runner.adapter.run(request());
     expect(result).toMatchObject({ ok: false, failure: { kind: "runtime_error", reason: /unsupported Codex CLI version/ } });
     expect(runner.start).not.toHaveBeenCalled();
   });
 
-  it("rechecks the pinned executable version before every launch", async () => {
+  it("rechecks the executable version floor before every launch", async () => {
     const first = fakeProcess({ stdout: events() });
     const inspectVersion = vi
       .fn<() => Promise<string>>()
       .mockResolvedValueOnce(`codex-cli ${SUPPORTED_CODEX_EXEC_VERSION}`)
-      .mockResolvedValueOnce("codex-cli 0.999.0");
+      .mockResolvedValueOnce("codex-cli 0.161.9");
     const start = vi.fn((_input: CodexProcessInput) => first.processHandle);
     const adapter = createCodexExecAdapter(
       { auth: "cached-cli", env: { PATH: "/bin" } },
-      { inspectVersion, start, executionId: () => "execution-1", now: () => 100 },
+      { inspectVersion, start, executionId: () => "execution-1", now: () => 100,
+        inspectCapabilities: async () => ({
+          capabilities: { json_events: true, config_overrides: true, user_config_isolation: true, strict_config: true, model_selection: true, working_directory: true },
+          sandboxes: ["read-only"],
+        }) },
     );
     expect(await adapter.run(request())).toMatchObject({ ok: true });
     expect(await adapter.run(request())).toMatchObject({ ok: false, failure: { reason: /unsupported Codex CLI version/ } });
