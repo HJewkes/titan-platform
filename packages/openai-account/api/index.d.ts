@@ -31,32 +31,50 @@ interface UsageWindow {
 }
 interface UsageReading {
     account: string;
-    /** Quota observation time established by the caller, in epoch seconds; never an emission or read time. */
+    /** Quota observation time, in epoch seconds; never an emission or read time. */
     written_at: number;
     rate_limits: {
         five_hour: UsageWindow;
         seven_day: UsageWindow;
     };
 }
+declare const KNOWN_OBSERVATION: unique symbol;
+interface ObservationTime {
+    readonly source: string;
+    readonly observedAt: number;
+}
+type KnownUsageReading = UsageReading & {
+    readonly [KNOWN_OBSERVATION]: ObservationTime;
+};
+interface KnownObservationInput {
+    /** Explicit caller attestation of the time source; not authentication or backend proof. */
+    readonly source: string;
+    readonly observedAt: number;
+    readonly reading: Omit<UsageReading, "written_at">;
+}
+type UnknownReason = "missing" | "inconsistent" | "unreadable" | "freshness-unverified";
+type UnknownUsage = {
+    status: "unknown";
+    reason: UnknownReason;
+};
 type UsageResult = {
     status: "known";
-    reading: UsageReading;
-} | {
-    status: "unknown";
-    reason: "missing" | "inconsistent" | "unreadable" | "freshness-unverified";
-};
+    reading: KnownUsageReading;
+} | UnknownUsage;
 type QuotaAdmission = {
     allowed: true;
     ageSeconds: number;
 } | {
     allowed: false;
-    reason: "missing" | "inconsistent" | "unreadable" | "freshness-unverified" | "stale" | "weekly-reserve" | "five-hour-ceiling";
+    reason: UnknownReason | "stale" | "weekly-reserve" | "five-hour-ceiling";
     ageSeconds?: number;
 };
 declare const MAX_READING_AGE_SECONDS = 900;
-/** Validate newest rollout quota evidence; native emission times cannot establish freshness. */
+/** Explicit provenance opt-in. Serialized/raw readings must never silently reacquire this brand. */
+declare function knownObservation(input: KnownObservationInput): UsageResult;
+/** Validate newest rollout evidence; native emission times cannot establish freshness. */
 declare function usageFromRolloutEvents(events: Iterable<unknown>, account: string): UsageResult;
-/** Q5: reserve 14 weekly points, 5h ceiling 100, and at most 15-minute-old evidence. */
+/** Q5 policy; only explicit, locally branded observations can enter the known path. */
 declare function quotaAdmission(result: UsageResult, now: number): QuotaAdmission;
 
-export { type AccountProfile, type LoginState, type LoginStatusOutput, MAX_READING_AGE_SECONDS, type QuotaAdmission, type UsageReading, type UsageResult, type UsageWindow, accountLabel, assertAccountLabel, loginStateFromStatus, quotaAdmission, usageFromRolloutEvents };
+export { type AccountProfile, type KnownObservationInput, type KnownUsageReading, type LoginState, type LoginStatusOutput, MAX_READING_AGE_SECONDS, type QuotaAdmission, type UsageReading, type UsageResult, type UsageWindow, accountLabel, assertAccountLabel, knownObservation, loginStateFromStatus, quotaAdmission, usageFromRolloutEvents };
