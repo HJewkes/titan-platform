@@ -48,13 +48,14 @@ async function verdict(command: string): Promise<string | null> {
   return stdout.includes('"permissionDecision":"deny"') ? "deny" : stdout;
 }
 
-const WRITE_EVIL = `printf '${PUSH}\\n' > evil.sh`;
+const WRITE_EVIL = `echo ${PUSH} > evil.sh`;
 
 const denyRows: [string, string][] = [
   ["tee then bash", `echo ${PUSH} | tee real.sh; bash real.sh`],
   ["tee -a then bash", `echo ${PUSH} | tee -a real.sh; bash real.sh`],
   ["tee then a by-path run", `echo ${PUSH} | tee real.sh; ./real.sh`],
   ["cp of a file the line wrote", `${WRITE_EVIL}; cp evil.sh real.sh; bash real.sh`],
+  ["cp of a file printf wrote, whose text the model does not follow", `printf '${PUSH}\\n' > evil.sh; cp evil.sh real.sh; bash real.sh`],
   ["cp of a file the disk holds", `cp disk-evil.sh real.sh; bash real.sh`],
   ["mv then sh", `${WRITE_EVIL}; mv evil.sh real.sh && sh real.sh`],
   ["install", `${WRITE_EVIL}; install -m 755 evil.sh real.sh; bash real.sh`],
