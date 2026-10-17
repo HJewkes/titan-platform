@@ -7,3 +7,5 @@ export type { PolicyTable, Rule } from "./schema.js";
 export { evaluate, canResolve } from "./evaluate.js";
 export type { AuthorityRequest, Decision } from "./evaluate.js";
 export { DEFAULT_TABLE } from "./table.js";
+export { ENFORCEMENT, enforcementSchema } from "./enforcement.js";
+export type { Enforcement } from "./enforcement.js";
