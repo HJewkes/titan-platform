@@ -38,10 +38,10 @@ export interface VisualAcceptRun extends GateRun {
 
 type RedHead = Extract<LandOutcome, { kind: "ci-failed" }>;
 
-/** `wake` goes to the fixer through the review wake; `left` ends the ci-failed route with that outcome. */
 /** Runs just before the gate opens, as the visual packet trigger does before a visual land gate. */
 type BeforeAsk = (stepId: string, prompt: string) => Promise<void>;
 
+/** `wake` goes to the fixer through the review wake; `left` ends the ci-failed route with that outcome. */
 type VisualAccept = { kind: "not-offered" } | { kind: "wake"; payload: OwnerSendBackPayload } | { kind: "left"; outcome: LandOutcome | undefined };
 
 /** `shepherd.visualSetCarry` as the config file reads now; a config that does not parse offers nothing. */
