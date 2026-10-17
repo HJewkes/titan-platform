@@ -11,7 +11,11 @@ interface Ctx extends BaseContext {
 
 const ctx = (): Ctx => ({ warnings: [], format: "json", root: "/tmp" });
 
-const echo = defineCommand<{ n: number }, { doubled: number; root: string }, Ctx>({
+const echo = defineCommand<
+  { n: number },
+  { doubled: number; root: string },
+  Ctx
+>({
   name: "echo",
   description: "double a number",
   args: z.object({ n: z.number() }),
@@ -45,16 +49,71 @@ describe("invokeCommand", () => {
 
   it("surfaces warnings the command pushed onto the context", async () => {
     const { envelope } = await invokeCommand(echo, { n: -1 }, ctx());
-    expect(envelope).toEqual({ ok: true, data: { doubled: -2, root: "/tmp" }, warnings: ["negative input"] });
+    expect(envelope).toEqual({
+      ok: true,
+      data: { doubled: -2, root: "/tmp" },
+      warnings: ["negative input"],
+    });
   });
 
   it("rejects invalid args with DATAERR by default and USAGE when asked", async () => {
     const server = await invokeCommand(echo, { n: "four" }, ctx());
     expect(server.envelope).toMatchObject({ ok: false, code: EXIT.DATAERR });
-    expect((server.envelope as { error: string }).error).toMatch(/^Invalid arguments: n: /);
+    expect((server.envelope as { error: string }).error).toMatch(
+      /^Invalid arguments: n: /
+    );
 
-    const cli = await invokeCommand(echo, {}, ctx(), { invalidArgsCode: EXIT.USAGE });
+    const cli = await invokeCommand(echo, {}, ctx(), {
+      invalidArgsCode: EXIT.USAGE,
+    });
     expect(cli.exitCode).toBe(EXIT.USAGE);
+  });
+
+  it("lets a product format invalid arguments without running the command", async () => {
+    let runs = 0;
+    const command = defineCommand({
+      ...echo,
+      async run(args: { n: number }, c: Ctx) {
+        runs += 1;
+        return echo.run(args, c);
+      },
+    });
+    const result = await invokeCommand(command, { n: "wrong" }, ctx(), {
+      invalidArgsCode: EXIT.USAGE,
+      formatInvalidArgs: (issues) => `Expected ${issues[0]?.path.join(".")}`,
+    });
+    expect(result).toEqual({
+      envelope: { ok: false, error: "Expected n", code: EXIT.USAGE },
+      exitCode: EXIT.USAGE,
+    });
+    expect(runs).toBe(0);
+    const valid = await invokeCommand(command, { n: 2 }, ctx(), {
+      formatInvalidArgs: () => {
+        throw new Error("valid inputs must skip this formatter");
+      },
+    });
+    expect(valid.exitCode).toBe(EXIT.OK);
+    expect(runs).toBe(1);
+  });
+
+  it("envelopes an invalid-argument formatter failure through the error formatter", async () => {
+    const result = await invokeCommand(echo, { n: "wrong" }, ctx(), {
+      formatInvalidArgs: () => {
+        throw new Error("formatter failed");
+      },
+      formatError: () => ({
+        message: "safe formatter failure",
+        code: EXIT.SOFTWARE,
+      }),
+    });
+    expect(result).toEqual({
+      envelope: {
+        ok: false,
+        error: "safe formatter failure",
+        code: EXIT.SOFTWARE,
+      },
+      exitCode: EXIT.SOFTWARE,
+    });
   });
 
   it("treats null or undefined raw args as an empty object", async () => {
@@ -64,7 +123,11 @@ describe("invokeCommand", () => {
 
   it("maps thrown errors through their code without throwing", async () => {
     const { envelope, exitCode } = await invokeCommand(failing, {}, ctx());
-    expect(envelope).toEqual({ ok: false, error: "no such thing", code: EXIT.NOINPUT });
+    expect(envelope).toEqual({
+      ok: false,
+      error: "no such thing",
+      code: EXIT.NOINPUT,
+    });
     expect(exitCode).toBe(EXIT.NOINPUT);
   });
 
@@ -72,7 +135,11 @@ describe("invokeCommand", () => {
     const { envelope } = await invokeCommand(failing, {}, ctx(), {
       formatError: () => ({ message: "redacted", code: EXIT.SOFTWARE }),
     });
-    expect(envelope).toEqual({ ok: false, error: "redacted", code: EXIT.SOFTWARE });
+    expect(envelope).toEqual({
+      ok: false,
+      error: "redacted",
+      code: EXIT.SOFTWARE,
+    });
   });
 });
 
@@ -83,7 +150,11 @@ describe("inProcessCaller", () => {
 
   it("returns a USAGE envelope for an unknown name instead of throwing", async () => {
     const envelope = await inProcessCaller(registry, ctx)("nope", {});
-    expect(envelope).toEqual({ ok: false, error: "Unknown command: nope", code: EXIT.USAGE });
+    expect(envelope).toEqual({
+      ok: false,
+      error: "Unknown command: nope",
+      code: EXIT.USAGE,
+    });
   });
 
   it("builds a fresh context per call so warnings do not leak between calls", async () => {
@@ -95,7 +166,9 @@ describe("inProcessCaller", () => {
   });
 
   it("forwards invoke options to the command", async () => {
-    const envelope = await inProcessCaller(registry, ctx, { invalidArgsCode: EXIT.USAGE })("echo", { n: "x" });
+    const envelope = await inProcessCaller(registry, ctx, {
+      invalidArgsCode: EXIT.USAGE,
+    })("echo", { n: "x" });
     expect(envelope).toMatchObject({ ok: false, code: EXIT.USAGE });
   });
 });

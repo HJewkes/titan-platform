@@ -115,3 +115,15 @@ stripped because some MCP clients reject them at the root.
 `unwrapSchema`, `schemaKind`, `fieldSchema`, and `isOptionalField` use zod 4's public
 `instanceof` classes and `def`, not the `_zod` internals the original dispatcher reached
 into. A `.default()` field counts as optional input.
+
+## Consumer-specific schema and validation text
+
+The optional third argument to `commandToTool` accepts zod's `io` and `override`.
+Pass `{ io: "input" }` to describe accepted input, including nested object unknown-key
+handling. An `override` callback controls a consumer's schema representation.
+Omitting `io` preserves the existing output-mode schema.
+
+`InvokeOptions.formatInvalidArgs(issues)` supplies product validation wording without
+an added prefix; invalid arguments never run the command. `invalidArgsCode` still
+controls the envelope code. Omitting the formatter preserves the existing
+`Invalid arguments: ...` message. A formatter exception passes through `formatError`.

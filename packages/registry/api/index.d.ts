@@ -1,4 +1,4 @@
-import { ZodType } from 'zod';
+import { ZodType, core } from 'zod';
 import { JsonEnvelope } from '@titan-design/rpc-protocol';
 export { EXIT, JsonEnvelope, errorEnvelope, successEnvelope } from '@titan-design/rpc-protocol';
 
@@ -112,6 +112,8 @@ declare function commandPath(name: string): string[];
 interface InvokeOptions {
     /** Envelope code for args that fail schema validation. CLIs use EXIT.USAGE, servers EXIT.DATAERR. */
     invalidArgsCode?: number;
+    /** Product-specific validation wording; receives the issues without an added prefix. */
+    formatInvalidArgs?: (issues: readonly core.$ZodIssue[]) => string;
     /** Map a thrown value to a message and code. Defaults to reading a numeric `code` property. */
     formatError?: (err: unknown) => ErrorDescription;
 }
@@ -142,7 +144,9 @@ interface ToolNaming {
 declare function commandNameToToolName(commandName: string, naming: ToolNaming): string;
 /** Inverse of commandNameToToolName; null when the tool does not carry this prefix. */
 declare function toolNameToCommandName(toolName: string, naming: ToolNaming): string | null;
+/** Optional zod projection controls; omitted io preserves the existing output schema. */
+type ToolSchemaOptions = Pick<core.ToJSONSchemaParams, "io" | "override">;
 /** Build an MCP tool descriptor from a command's zod args via zod 4's native JSON Schema export. */
-declare function commandToTool(cmd: AnyCommand<never>, naming: ToolNaming): McpToolDescriptor;
+declare function commandToTool(cmd: AnyCommand<never>, naming: ToolNaming, options?: ToolSchemaOptions): McpToolDescriptor;
 
-export { type AnyCommand, type BaseContext, type CliMeta, type CliOption, type Command, type CommandMapOf, type CommandRegistry, type ErrorDescription, type InProcessCall, type Invocation, type InvokeOptions, type McpToolDescriptor, type SchemaKind, type ToolNaming, arrayElementKind, camelizeFlagKey, coerceCliValue, collectCliArgs, collectOptionParser, commandNameToToolName, commandPath, commandToTool, createRegistry, defineCommand, describeError, fieldSchema, flagToKey, inProcessCaller, invokeCommand, isOptionalField, optionFlagSpec, positionalSpec, readCommanderOption, schemaKind, toolNameToCommandName, unwrapSchema };
+export { type AnyCommand, type BaseContext, type CliMeta, type CliOption, type Command, type CommandMapOf, type CommandRegistry, type ErrorDescription, type InProcessCall, type Invocation, type InvokeOptions, type McpToolDescriptor, type SchemaKind, type ToolNaming, type ToolSchemaOptions, arrayElementKind, camelizeFlagKey, coerceCliValue, collectCliArgs, collectOptionParser, commandNameToToolName, commandPath, commandToTool, createRegistry, defineCommand, describeError, fieldSchema, flagToKey, inProcessCaller, invokeCommand, isOptionalField, optionFlagSpec, positionalSpec, readCommanderOption, schemaKind, toolNameToCommandName, unwrapSchema };

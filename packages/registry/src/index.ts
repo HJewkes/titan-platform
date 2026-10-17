@@ -19,5 +19,5 @@ export {
 } from "./cli-options.js";
 export type { InProcessCall, Invocation, InvokeOptions } from "./invoke.js";
 export { inProcessCaller, invokeCommand } from "./invoke.js";
-export type { McpToolDescriptor, ToolNaming } from "./mcp.js";
+export type { McpToolDescriptor, ToolNaming, ToolSchemaOptions } from "./mcp.js";
 export { commandNameToToolName, commandToTool, toolNameToCommandName } from "./mcp.js";

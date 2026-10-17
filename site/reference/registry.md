@@ -74,7 +74,9 @@ toolNameToCommandName("miner__task__done", { prefix: "miner__" }); // 'task.done
 
 `invokeCommand` validates, runs, and **always returns an envelope. It never throws.** Thrown
 errors map to a code through their numeric `code` property by default; pass `formatError` to
-use your own error hierarchy.
+use your own error hierarchy. `formatInvalidArgs(issues)` customizes validation wording
+without a prefix while retaining `invalidArgsCode`; omitted formatters keep the existing
+message. If a validation formatter throws, `formatError` handles it.
 
 ## The projections
 
@@ -88,7 +90,9 @@ the array's element kind.
 
 **MCP.** `commandToTool` builds the descriptor; `inputSchema` comes from zod 4's native
 `toJSONSchema` with `$schema` and `definitions` stripped, because some MCP clients reject
-them at the root. Tool names are `${prefix}${command.replaceAll(".", "__")}`.
+them at the root. Its optional third argument accepts zod's `io` and `override`: use
+`{ io: "input" }` for accepted-input schemas, and `override` for a consumer's schema
+representation. Omitted `io` preserves the existing output-mode default. Tool names are `${prefix}${command.replaceAll(".", "__")}`.
 
 **HTTP.** [`daemon`](/reference/daemon) mounts `POST /rpc/:name` over the same
 `invokeCommand`, so the envelope and exit codes are identical on every surface.

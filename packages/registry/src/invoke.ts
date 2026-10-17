@@ -1,11 +1,20 @@
-import type { ZodError } from "zod";
-import { EXIT, describeError, errorEnvelope, successEnvelope, type ErrorDescription, type JsonEnvelope } from "./envelope.js";
+import type { ZodError, core } from "zod";
+import {
+  EXIT,
+  describeError,
+  errorEnvelope,
+  successEnvelope,
+  type ErrorDescription,
+  type JsonEnvelope,
+} from "./envelope.js";
 import type { CommandRegistry } from "./registry.js";
 import type { AnyCommand, BaseContext } from "./types.js";
 
 export interface InvokeOptions {
   /** Envelope code for args that fail schema validation. CLIs use EXIT.USAGE, servers EXIT.DATAERR. */
   invalidArgsCode?: number;
+  /** Product-specific validation wording; receives the issues without an added prefix. */
+  formatInvalidArgs?: (issues: readonly core.$ZodIssue[]) => string;
   /** Map a thrown value to a message and code. Defaults to reading a numeric `code` property. */
   formatError?: (err: unknown) => ErrorDescription;
 }
@@ -20,27 +29,43 @@ export async function invokeCommand<Ctx extends BaseContext>(
   cmd: AnyCommand<Ctx>,
   rawArgs: unknown,
   ctx: Ctx,
-  options: InvokeOptions = {},
+  options: InvokeOptions = {}
 ): Promise<Invocation> {
   const formatError = options.formatError ?? describeError;
   const invalidArgsCode = options.invalidArgsCode ?? EXIT.DATAERR;
 
   const parsed = cmd.args.safeParse(rawArgs ?? {});
   if (!parsed.success) {
-    const message = `Invalid arguments: ${formatZodError(parsed.error)}`;
-    return { envelope: errorEnvelope(message, invalidArgsCode), exitCode: invalidArgsCode };
+    try {
+      const message = options.formatInvalidArgs
+        ? options.formatInvalidArgs(parsed.error.issues)
+        : `Invalid arguments: ${formatZodError(parsed.error)}`;
+      return {
+        envelope: errorEnvelope(message, invalidArgsCode),
+        exitCode: invalidArgsCode,
+      };
+    } catch (err) {
+      const { message, code } = formatError(err);
+      return { envelope: errorEnvelope(message, code), exitCode: code };
+    }
   }
 
   try {
     const result: unknown = await cmd.run(parsed.data, ctx);
-    return { envelope: successEnvelope(result, ctx.warnings), exitCode: EXIT.OK };
+    return {
+      envelope: successEnvelope(result, ctx.warnings),
+      exitCode: EXIT.OK,
+    };
   } catch (err) {
     const { message, code } = formatError(err);
     return { envelope: errorEnvelope(message, code), exitCode: code };
   }
 }
 
-export type InProcessCall = (name: string, args: unknown) => Promise<JsonEnvelope<unknown>>;
+export type InProcessCall = (
+  name: string,
+  args: unknown
+) => Promise<JsonEnvelope<unknown>>;
 
 /**
  * Call registry commands by name in process. An unknown name yields a USAGE envelope, never a throw.
@@ -49,7 +74,7 @@ export type InProcessCall = (name: string, args: unknown) => Promise<JsonEnvelop
 export function inProcessCaller<Ctx extends BaseContext>(
   registry: CommandRegistry<Ctx>,
   context: () => Ctx,
-  options?: InvokeOptions,
+  options?: InvokeOptions
 ): InProcessCall {
   return async (name, args) => {
     const cmd = registry.get(name);
@@ -59,5 +84,7 @@ export function inProcessCaller<Ctx extends BaseContext>(
 }
 
 function formatZodError(error: ZodError): string {
-  return error.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`).join("; ");
+  return error.issues
+    .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+    .join("; ");
 }
