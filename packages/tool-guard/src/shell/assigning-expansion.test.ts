@@ -51,6 +51,7 @@ const REFUSED = [
   ["an assignment inside a double-quoted default", ': "${y:-${options[globsubst]::=on}}"'],
   ["a hooked name", ": ${module_path::=x}"],
   ["a rebinding name", ": ${nameddirs[x]::=/y}"],
+  ["HOME, which selects a child shell's startup files", ": ${HOME:=/tmp}"],
   ["a positional indirect name", "set -- PS4; : ${!1:=x}"],
   ["a multi-digit positional indirect name", ": ${!10:=x}"],
   ["a zsh positional indirect name", ": ${(P)1::=x}"],
@@ -78,7 +79,7 @@ const REFUSED_IN_RUN_TEXT = [
 
 const PASSED = [
   ["an unprotected name", ": ${WGETRC:=x}"],
-  ["an unprotected default assigned", ": ${HOME:=/tmp}"],
+  ["an unprotected default assigned", ": ${TMPDIR:=/tmp}"],
   ["a default that reads", "echo ${x:-$y}"],
   ["a single-quoted expansion", "git commit -m '${PS4:=x}'"],
   ["a quoted heredoc body", ": <<'EOF'\n${PS4:=x}\nEOF"],
