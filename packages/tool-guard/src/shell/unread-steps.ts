@@ -4,9 +4,9 @@ const ASSIGNMENT_RE = /^[A-Za-z_]\w*(?:\[.*\])?\+?=/s;
 /** Words that run the next word as a command, so a dynamic word after them may still name the command. */
 const MODIFIERS = new Set(["!", "{", "(", "if", "then", "elif", "else", "do", "while", "until", "time", "command", "builtin", "exec", "nocorrect", "noglob", "coproc", "env", "nice", "nohup", "xargs"]);
 /** Commands that change what a later word means: an alias, an option, a variable named by its operand, a file's content. */
-const CHANGES_READING = new Set(["alias", "unalias", ".", "source", "shopt", "setopt", "unsetopt", "set", "emulate", "enable", "disable", "read", "declare", "typeset", "local", "readonly", "export", "printf", "eval"]);
-/** Of those, the ones that matter only with an operand the guard cannot read; the rest, `enable` and `disable` among them, always do. */
-const NEEDS_DYNAMIC_OPERAND = new Set(["shopt", "setopt", "unsetopt", "set", "emulate", "read", "declare", "typeset", "local", "readonly", "export", "printf", "eval"]);
+const CHANGES_READING = new Set(["alias", "unalias", ".", "source", "shopt", "setopt", "unsetopt", "set", "emulate", "enable", "disable", "read", "declare", "typeset", "local", "readonly", "export", "printf", "eval", "trap", "mapfile", "readarray"]);
+/** Of those, the ones that matter only with an operand the guard cannot read; the rest always do: `enable` and `disable`, and the ones that run text or a callback in this shell later (`eval`, `trap`, `mapfile -C`), whose static string may define an alias for a later line. */
+const NEEDS_DYNAMIC_OPERAND = new Set(["shopt", "setopt", "unsetopt", "set", "emulate", "read", "declare", "typeset", "local", "readonly", "export", "printf"]);
 
 function unknown(w: WordToken): boolean {
   return w.dynamic || w.computed || w.spliced || w.refs.length > 0 || w.subs.length > 0;

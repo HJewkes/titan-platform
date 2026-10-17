@@ -107,6 +107,21 @@ describe("a [[ is joined only on the Bash tool's own line", () => {
   });
 });
 
+describe("a step that runs text in this shell later may alias [[ for a later line", () => {
+  it.each([
+    `eval 'a=ali; b=as; $a$b "[["=false'\n[[ a || ${PUSH} ]]`,
+    `trap 'a=ali; b=as; $a$b "[["=false' DEBUG\n[[ a || ${PUSH} ]]`,
+    `mapfile -C 'a=ali; b=as; $a$b "[["=false' -c 1 < /dev/null\n[[ a || ${PUSH} ]]`,
+    `readarray -C 'a=ali; b=as; $a$b "[["=false' -c 1 < /dev/null\n[[ a || ${PUSH} ]]`,
+  ])("reports the push in %j", (command) => {
+    expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  });
+
+  it("still joins a line with no eval, trap or callback (guard row)", () => {
+    expect(spellings(`echo hi\n[[ a || ${PUSH} ]]`)).toEqual([]);
+  });
+});
+
 describe("the runner's name decides nothing, since nested text never joins", () => {
   it.each([
     `bash() { dash; }; bash <<< '[[ a || ${MERGE} ]]'`,
