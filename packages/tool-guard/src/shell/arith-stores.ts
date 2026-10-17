@@ -1,5 +1,6 @@
 import type { RedirectToken } from "./lexer.js";
 import { NAMED_FD_RE } from "./lexer.js";
+import { shellSetsName } from "./ifs-arith.js";
 import { ARITHMETIC_OPENER_RE } from "./math-places.js";
 import type { MathPlace } from "./math-places.js";
 import { isNumeric } from "./numeric-names.js";
@@ -14,10 +15,14 @@ const MATH_NAME_RE = /(?<![A-Za-z0-9_$])[A-Za-z_]\w*/g;
 /** The value the line gave a name: a string when known, null when the line set it to something it cannot read, undefined when the line never set it. */
 type Resolve = (name: string) => string | null | undefined;
 
-/** Resolves names through the walk's variables, which hold null for a value only known at run time; a name arithmetic wrote holds a number, so it reads as never set. */
+/**
+ * Resolves names through the walk's variables, which hold null for a value only known at run time. A name the line wrote
+ * as a number reads as never set. A name the shell sets itself (`_`, `REPLY`, `MATCH`, `BASH_REMATCH`) holds text the line
+ * never wrote, so unless the line wrote a number there it reads as unknown: `read <<< 'commands[y]=0'; (( REPLY ))`.
+ */
 export const scopeNames = (vars: ReadonlyMap<string, string | null>): Resolve => (name) => {
-  if (!vars.has(name) || isNumeric(vars, name)) return undefined;
-  return vars.get(name) ?? null;
+  if (vars.has(name)) return isNumeric(vars, name) ? undefined : (vars.get(name) ?? null);
+  return shellSetsName(name) ? null : undefined;
 };
 
 /** Past this length a math text is not read: the reader scans each subscript, so a long run of openers would cost quadratic time. */

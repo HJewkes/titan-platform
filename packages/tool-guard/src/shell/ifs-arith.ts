@@ -53,10 +53,15 @@ const SHELL_SET_NAMES = new Set(
     "argv cdpath dirstack epochtime errnos fignore fpath funcfiletrace funcsourcetrace funcstack functrace histchars",
     "historywords jobdirs jobstates jobtexts langinfo mailpath manpath mapfile match mbegin mend module_path path",
     "pipestatus prompt psvar reply signals status sysparams userdirs usergroups watch zsh_eval_context",
+    "_ REPLY OPTARG MAPFILE BASH_REMATCH MATCH BASH_COMMAND PWD OLDPWD",
   ]
     .join(" ")
     .split(" "),
 );
+/** Shell-set names that only ever hold numbers, so reading one as math is harmless (`status` is also a common word). */
+const NUMBER_ONLY_NAMES = new Set(["status", "pipestatus", "epochtime", "errnos", "mbegin", "mend"]);
+/** Whether bash or zsh sets the name on its own, to text a line never wrote: `_`, `REPLY`, `MATCH`, `BASH_REMATCH`, zsh `match`. */
+export const shellSetsName = (name: string): boolean => SHELL_SET_NAMES.has(name) && !NUMBER_ONLY_NAMES.has(name);
 /** A name only the line can have set, so a numeric write is its only value. */
 const LINE_OWNED_RE = /^[a-z][a-z0-9_]*$/;
 
