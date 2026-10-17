@@ -821,6 +821,35 @@ describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () =
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
   });
 
+  const satisfiedAt = (store: ShepherdStore, runId: string, head: string): boolean =>
+    store.hold(runId, "g10-adversary: merge policy; TP-1", "rev-x") && store.satisfyHold(runId, "rev-x", head, { agentId: "agent-rev-x", sessionId: "session-rev-x", locator: {} });
+
+  it("a thaw while serving supersedes the gate of a run whose hold was satisfied at the gate's head, and the run merges it", async () => {
+    const { host, fake, services, runId } = await authorityGated({ repoFrozen: true }, { serve: true });
+    const freezes = services.freeze!.get();
+    freezes.freeze(REPO, fakeSha("red-main"));
+    expect(satisfiedAt(services.store.get(), runId, REVIEWED)).toBe(true);
+
+    freezes.unfreeze(REPO, fakeSha("green-main"));
+
+    await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: REVIEWED }));
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.reason).toBe(`superseded: review again: repo-not-frozen was the only unmet condition at head ${REVIEWED}`);
+  });
+
+  it("a thaw while serving leaves the gate of a run with an owner hold, even with its other hold satisfied at the gate's head", async () => {
+    const { host, fake, services, runId } = await authorityGated({ repoFrozen: true }, { serve: true });
+    const freezes = services.freeze!.get();
+    freezes.freeze(REPO, fakeSha("red-main"));
+    expect(satisfiedAt(services.store.get(), runId, REVIEWED)).toBe(true);
+    services.store.get().hold(runId, "owner-asked: discuss first");
+
+    freezes.unfreeze(REPO, fakeSha("green-main"));
+    await sleep(50, new AbortController().signal);
+
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+    expect(fake.pr(1).merged).toBeFalsy();
+  });
+
   const ADVERSARY = "g10-adversary: merge policy; TP-1";
   const STALLED = "stalled: waiting on a fix; TP-1";
   it.each<[string, string, (store: ShepherdStore, runId: string) => unknown]>([

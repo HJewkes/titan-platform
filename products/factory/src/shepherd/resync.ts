@@ -1,6 +1,7 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { FactoryHost, PendingGate } from "../host.js";
 import type { ShepherdServices } from "./services.js";
+import type { Registration } from "./store.js";
 import { failureOf } from "./error-class.js";
 import { frozenFor, recheckedFrozen } from "./freeze.js";
 import { LIVE, endRunsGoneElsewhere, type EndedRun } from "./gone-elsewhere.js";
@@ -118,6 +119,10 @@ async function stillFrozen(services: ShepherdServices, repo: RepoSlug, pr: numbe
   }
 }
 
+/** Read as `heldReason` reads a merge at `head`: an owner hold always holds, and a hold satisfied at `head` lets that merge through. */
+const holdsMergeAt = (registration: Registration | undefined, head: string): boolean =>
+  registration === undefined || registration.ownerHold !== null || (registration.held && registration.holdSatisfied?.head !== head);
+
 /**
  * A pending MRG-AU approve-merge gate that failed only on transient conditions, on a PR the store no longer holds frozen.
  * A held run's gate, an owner-asked hold's included, was left pending on purpose, so a thaw leaves it with the owner.
@@ -128,7 +133,7 @@ async function transientGate(host: FactoryHost, services: ShepherdServices, pend
   const conditions = gate ? transientOnlyConditions(gate.reason) : [];
   const registration = services.store.get().byRun(pending.runId);
   const repo = registration?.repo;
-  if (!gate || conditions.length === 0 || !repo || registration.held) return undefined;
+  if (!gate || conditions.length === 0 || !repo || holdsMergeAt(registration, gate.head)) return undefined;
   if (only !== undefined && repo.toLowerCase() !== only.toLowerCase()) return undefined;
   if (await stillFrozen(services, repo, registration.pr, dryRun)) return undefined;
   return { head: gate.head, conditions };
@@ -150,7 +155,7 @@ export async function supersedeTransientGates(host: FactoryHost, services: Sheph
     if (!gate) continue;
     if ((await openHead(services, pending.runId, () => onUnreadable?.(pending.runId))) !== gate.head || host.gates.get(pending.gate.id)?.status !== "pending") continue;
     // The reads above yield, so a hold placed meanwhile is read again here, right before the cancel.
-    if (services.store.get().byRun(pending.runId)?.held !== false) continue;
+    if (holdsMergeAt(services.store.get().byRun(pending.runId), gate.head)) continue;
     if (!dryRun && !cancelUnlessSettled(host.gates, pending.gate.id, `${REREVIEW}${onlyUnmet(gate.conditions)} at head ${gate.head}`)) continue;
     const condition = gate.conditions.join() === "merge-tree-clean" ? "merge-tree-only" : "transient-only";
     superseded.push({ runId: pending.runId, gateId: pending.gate.id, from: gate.head, to: gate.head, condition });
