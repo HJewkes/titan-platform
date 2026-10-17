@@ -11,7 +11,7 @@ import { HoldReasonSchema, OWNER_HOLD_CLASS, ReleasableClassSchema, type HoldRes
 import { isOwnerHold } from "./owner-hold-rows.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { ownUpdatedHeads } from "./merge-up-release.js";
-import { ReleaseHeadArg, releaseAtHead } from "./release-head.js";
+import { ReleaseHeadArg, releaseAtHead, updateBranchRunning } from "./release-head.js";
 import { cachedByHead, localPrFiles } from "./git-pr-files.js";
 import { applyRegistrationHold } from "./registration-hold.js";
 import { hostPrsSources, shepherdPrs, type PrRow } from "./prs.js";
@@ -301,7 +301,8 @@ const releaseCommand = defineCommand<z.infer<typeof ReleaseArgs>, HoldResult, Fa
     const services = servicesOf(ctx);
     const registration = await locate(services, repo, pr);
     const { runId } = registration;
-    const reads = { ownUpdates: () => ownUpdatedHeads(runOf(ctx.host, registration)), carry: (input: CarryInput) => carry(input) };
+    const run = () => runOf(ctx.host, registration);
+    const reads = { ownUpdates: () => ownUpdatedHeads(run()), updating: () => updateBranchRunning(run()), carry: (input: CarryInput) => carry(input) };
     const after = await releaseAtHead(services.store.get(), services.port, { runId, repo, pr, head, actor, ...(holdClass && { holdClass }) }, reads);
     return { runId, held: after.held ? { reason: after.holdReason ?? "held", ...(after.holdReviewer !== null && { reviewer: after.holdReviewer }) } : null };
   },
