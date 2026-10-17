@@ -269,3 +269,65 @@ describe.skipIf(!["bash", "zsh", "dash"].every(has))("bash, zsh and dash run wha
     expect(["bash", "zsh -f", "dash"].map((runner) => runsGit(line, runner))).toEqual([false, false, false]);
   });
 });
+
+/** bash and zsh read the glued `{fd}<` as the fd, so the group, subshell or substitution prints the push itself. */
+const PRINTED_GLUED = [
+  `{ echo {fd}</dev/null ${PUSH}; } | bash`,
+  `( echo {fd}</dev/null ${PUSH} ) | sh`,
+  `bash -c "$(echo {fd}</dev/null ${PUSH})"`,
+  `eval "$(echo {fd}</dev/null ${PUSH})"`,
+  `bash < <(echo {fd}</dev/null ${PUSH})`,
+  `sh < <(echo {fd}</dev/null ${PUSH})`,
+  `sh -c "\`echo {fd}</dev/null ${PUSH}\`"`,
+  `{ echo {fd}</dev/null ${PUSH}; } | cat | sh`,
+  `{ echo {fd}</dev/null ${PUSH}; } | xargs -I{} sh -c {}`,
+];
+
+/** Only zsh reads the spaced `{x} <` as the fd, so only zsh prints the push. */
+const PRINTED_SPACED = [
+  `{ echo {x} </dev/null ${PUSH}; } | sh`,
+  `( echo {x} </dev/null ${PUSH} ) | sh`,
+  `eval "$(echo {x} </dev/null ${PUSH})"`,
+  `bash -c "$(echo {fd}</dev/null {x} </dev/null ${PUSH})"`,
+];
+
+describe("the text a group or substitution prints takes each shell's reading of a {name} redirect (TP-3308)", () => {
+  it.each([...PRINTED_GLUED, ...PRINTED_SPACED])("denies %s", async (line) => {
+    expect(await verdict(line)).toBe("deny");
+  });
+
+  it.each([
+    "{ echo {x} </dev/null; } | cat",
+    'echo "$(echo {a})"',
+    "{ echo hi; } | sh",
+    "( echo {x} </dev/null; ls ) | cat",
+    'echo "$(cat {fd}< ./ok.sh)"',
+    "cd {x} </dev/null; git status",
+    'echo "$(echo {x} </dev/null)"',
+    "{ echo {fd}</dev/null hello; } | cat",
+    "( printf '%s\\n' {fd}</dev/null a b ) | sort",
+    "cat < <(echo {fd}</dev/null hello)",
+    'bash -c "$(echo {fd}</dev/null echo hi)"',
+    "{ echo {fd}</dev/null ls; } | sh",
+    'eval "$(echo {x} </dev/null ls -la)"',
+    "{ echo {a,b}; } | cat",
+    "diff <(echo {a}) <(echo {b})",
+    "{ find . -name '*.ts' -exec grep -l foo {} +; } | head",
+    "echo \"$(git log -1 --format='{%h %s}')\"",
+    "{ jq '{a:1}' ./ok.json; } | cat",
+  ])("allows %s", async (line) => {
+    expect(await verdict(line)).toBe("pass");
+  });
+});
+
+describe.skipIf(!["bash", "dash"].every(has))("bash prints the push a glued {fd}< hides, where dash keeps the word (TP-3308)", () => {
+  it.each(PRINTED_GLUED)("%s", (line) => {
+    expect(["bash", "dash"].map((runner) => runsGit(line, runner))).toEqual([true, false]);
+  });
+});
+
+describe.skipIf(!["bash", "zsh", "dash"].every(has))("zsh alone prints the push a spaced {x} < hides (TP-3308)", () => {
+  it.each(PRINTED_SPACED)("%s", (line) => {
+    expect(["zsh -f", "bash", "dash"].map((runner) => runsGit(line, runner))).toEqual([true, false, false]);
+  });
+});
