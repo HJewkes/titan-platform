@@ -189,7 +189,7 @@ describe("rounds.submit", () => {
 
   it("refuses a round.json the lister calls invalid, such as one with an unknown top-level key, and writes nothing", async () => {
     const round = path.join(dir, ROUND, "round.json");
-    const bytes = Buffer.from(JSON.stringify({ ...(JSON.parse(await readFile(round, "utf8")) as object), approvedBy: "agent" }));
+    const bytes = Buffer.from((await readFile(round, "utf8")).replace(/^\{/, '{"approvedBy": "agent", '));
     await writeFile(round, bytes);
 
     const { envelope, exitCode } = await submit(shipArgs({ manifestSha256: sha256(bytes) }));
