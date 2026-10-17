@@ -13,3 +13,5 @@ Accepted false positives, all refused because the run-time word may hold a store
 Not covered here: numeric `[[ -eq ]]` operands, `declare -i` values and quoted name arguments to name-taking builtins (`unset 'a[$e]'`).
 
 A numeric mark now lives only as long as the value it was set for: every write primitive, including a function's closing-brace restore of a local and an unreadable declaration, drops it through one helper, so `n=$(cat f); f() { local n=$(wc -l < g); }; f; (( n ))` is refused.
+
+A count from `n=$(wc -l < f)` earns the numeric mark only when `wc` is surely the program on PATH: a line that defines a function named `wc` (or a run-time name), sets an alias, runs `hash`, `eval`, `source`, `.`, `enable`, a run-time command word, or changes `PATH` leaves `n` unknown, so `wc() { cat f; }; n=$(wc -l < g); (( n ))` is refused.

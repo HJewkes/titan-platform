@@ -1,4 +1,5 @@
 import type { Token, WordToken } from "./lexer.js";
+import { onPathLine } from "./path-commands.js";
 
 /** Hidden key marking a name whose unknown value is a number: arithmetic wrote it, or it holds a count, a length or a status. */
 export const numericKey = (name: string) => `numeric@${name}`;
@@ -17,7 +18,7 @@ export function numericValue(w: WordToken): boolean {
   const text = w.value.slice(w.value.indexOf("=") + 1);
   if (NUMERIC_VALUE_RE.test(text)) return true;
   const [only] = w.subs;
-  return text === "" && w.subs.length === 1 && only !== undefined && countsInput(only);
+  return onPathLine(w) && text === "" && w.subs.length === 1 && only !== undefined && countsInput(only);
 }
 
 function countsInput(tokens: Token[]): boolean {

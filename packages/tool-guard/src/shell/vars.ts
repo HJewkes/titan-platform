@@ -3,6 +3,7 @@ import { caseChecked, clearCased, isCased, isCaseUnsure, isCaseUnsureLookup, mar
 import type { CaseUnsure } from "./case-attrs.js";
 import { printedText } from "./printed.js";
 import { numericKey, numericValue } from "./numeric-names.js";
+import { carryPathLine, notePathLine } from "./path-commands.js";
 import { commandWrites, compoundWrites, IDENTIFIER_RE, noteCompounds, TARGET_RE } from "./writers.js";
 
 /**
@@ -69,6 +70,7 @@ export function expandWord(w: WordToken, resolve: (name: string) => string | nul
   const expanded = literals.includes(null) ? w : { ...w, value: value + w.value.slice(last), dynamic: false, refs: [], typed: w.typed ?? w.value };
   const result = unsure ? markWord(expanded) : expanded;
   if (sureWords.has(w)) sureWords.add(result);
+  carryPathLine(w, result);
   return result;
 }
 
@@ -112,7 +114,7 @@ export function noteSureCommands(tokens: Token[]): Token[] {
     else if (token.type === "op") i = structureOp(tokens, i, s);
   }
   endCommand(s, null);
-  return noteCompounds(tokens);
+  return noteCompounds(notePathLine(tokens));
 }
 
 function structureWord(tokens: Token[], i: number, s: Structure): number {
