@@ -87,7 +87,12 @@ const DOLLAR_ENDS: Record<DollarOpener, (src: string, j: number, read: NestedRea
   braced: (src, j, read) => balancedEnd(src, j + 1, read),
   bracket: (src, j, read) => balancedEnd(src, j + 1, read),
   paren: (src, j, read) => sameIn32(src, j + 1, src[nextAfter(src, j + 1)] === "(" ? read.dollarParens(j) : read.substitution(j + 2), read),
-  "ansi-c": (src, j) => ansiCEnd(src, j + 1),
+  // Inside an expansion the shells read `$'` as a quote that expands like a double quote, so a `$(` in it runs.
+  "ansi-c": (src, j, read) => {
+    const end = ansiCEnd(src, j + 1);
+    read.quotedSpan(j + 2, end);
+    return end;
+  },
   locale: (_src, j) => j,
 };
 

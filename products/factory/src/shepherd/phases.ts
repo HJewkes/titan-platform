@@ -93,10 +93,15 @@ export type Verdict =
   | { kind: "NO_REPRO"; headSha: string; result: unknown }
   | { kind: "none"; cause?: NoVerdictCause; reason?: string; seatHeld?: SeatHeld };
 
+/** `shepherd.visualSetCarry`: whether a red head failing only its seat's baseline check asks the owner to accept CI's set. */
+export type VisualSetCarry = "off" | "shadow" | "on";
+
 /** The route table decides what a `none` verdict or an `unhandled` wake leads to. */
 export interface ShepherdPhases {
   wake(ctx: WorkflowContext, request: WakeRequest): Promise<WakeOutcome>;
   review(ctx: WorkflowContext, request: ReviewRequest): Promise<Verdict>;
+  /** Read only where the run is live, never on replay; absent means `off`. */
+  visualSetCarry?: () => VisualSetCarry;
 }
 
 /** What a phase's routes may need; a phase takes only what it reads. */
@@ -141,4 +146,6 @@ export interface ShepherdDeps {
   visualPacket?: VisualPacketPorts;
   /** `shepherd.consoleAnswers` is configured, so each approve-merge gate offers the owner `send-back`; absent means none does. */
   consoleAnswers?: boolean;
+  /** The name of the repo seat's `visualBaselines.check`; absent, or undefined for a repo, means no red head is offered for acceptance. */
+  visualBaselineCheck?: (repo: string) => string | undefined;
 }

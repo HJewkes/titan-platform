@@ -2409,11 +2409,6 @@
       "count": 4
     }
   },
-  "packages/tool-guard/src/shell/group-stdin.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "packages/tool-guard/src/shell/lexer.test.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1

@@ -113,7 +113,7 @@ export function landGate(gate: Pick<GateRecord, "id" | "prompt" | "schema">): La
   return { repo: match[2]!, pr: Number(match[1]), head: match[3]!, rule: `${match[4]}/${match[5]}`, reason: match[6]! };
 }
 
-function pinnedHead(schema: GateRecord["schema"]): string | undefined {
+export function pinnedHead(schema: GateRecord["schema"]): string | undefined {
   const head = (schema?.properties as Record<string, { const?: unknown }> | undefined)?.headSha?.const;
   return typeof head === "string" ? head : undefined;
 }

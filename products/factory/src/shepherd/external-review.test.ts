@@ -390,6 +390,83 @@ describe("seatFixFirst", () => {
     });
   });
 
+  describe("a seat reviewer tied to this PR with no transcript yet", () => {
+    const owner = { implementer: "tc-tp-9-a", branch: "agent-chat/tc-tp-9-a" };
+    const task = { ...target, owner, others: [{ implementer: "tc-tp-5-b", branch: "agent-chat/tc-tp-5-b", label: `${REPO}#5` }] };
+    const nothing: ReviewerReader = { read: async () => [] };
+    const pending = (name: string, more: Record<string, unknown> = {}) => ({ ...agent(name), presence: "live" as const, transcriptExists: false, ...more });
+    const timed = () => {
+      let clock = 0;
+      return { timing: { now: () => clock, sleep: async (ms: number) => void (clock += ms), pollMs: SEAT_POLL_MS, timeoutMs: SEAT_BOUND_MS }, signal: new AbortController().signal };
+    };
+
+    it("blocks with a retry, naming the reviewer and its presence, when the canonical name has no transcript", async () => {
+      const check = await seatFixFirst(rosterOf(pending("tc-tp-9-a-review")), nothing, task, vi.fn());
+
+      expect(check).toEqual({ kind: "none", reason: "seat check: tc-tp-9-a-review is this PR's reviewer and has no transcript yet (live)", retry: true });
+    });
+
+    it("blocks when only the worktree ties the reviewer to this PR", async () => {
+      const row = pending("x-review", { cwd: "/srv/work/demo/.worktrees/tc-tp-9-a" });
+
+      expect(await seatFixFirst(rosterOf(row), nothing, task, vi.fn())).toMatchObject({ kind: "none", retry: true, reason: expect.stringContaining("no transcript yet") });
+    });
+
+    it("blocks, and still visits the name, when its only row has no session yet", async () => {
+      const row = { ...pending("tc-tp-9-a-review"), sessionId: "" };
+
+      expect(await seatFixFirst(rosterOf(row), nothing, task, vi.fn())).toMatchObject({ kind: "none", retry: true });
+    });
+
+    it("blocks through the real transcript reader, which reads nothing from a row without a file", async () => {
+      const row = { ...pending("tc-tp-9-a-review"), transcriptPath: null };
+      const reader = transcriptReviewerReader({ roster: async () => [row], namespace: "host-a" });
+
+      expect(await seatFixFirst(rosterOf(row), reader, task, vi.fn())).toMatchObject({ kind: "none", retry: true, reason: expect.stringContaining("no transcript yet") });
+    });
+
+    it("lets Shepherd's MERGE stand once the reviewer's transcript appears and says MERGE", async () => {
+      let rosterReads = 0;
+      const roster = async () => ((rosterReads += 1), [rosterReads <= 2 ? pending(SEAT.name) : { ...agent(SEAT.name), transcriptExists: true }]);
+      const reader: ReviewerReader = { read: async () => [said(SEAT, verdictAt("MERGE"), 6)] };
+
+      const result = await unlessSeatFixFirst(roster, reader, { ...target, owner: { implementer: "seat-c-9", branch: null } }, shepherdMerge, vi.fn(), Date.now, timed());
+
+      expect(result).toBe(shepherdMerge);
+      expect(rosterReads).toBe(3);
+    });
+
+    it("holds Shepherd's MERGE as seatHeld when no transcript appears within the seat wait", async () => {
+      const result = await unlessSeatFixFirst(rosterOf(pending("tc-tp-9-a-review")), nothing, task, shepherdMerge, vi.fn(), Date.now, timed());
+
+      expect(result).toEqual({ kind: "none", reason: expect.stringContaining("no transcript yet"), seatHeld: shepherdMerge });
+    });
+
+    it.each([
+      ["another PR's reviewer", pending("tc-tp-5-b-review"), task],
+      ["a reviewer no registration owns", pending("zz-review"), task],
+      ["a PR with no registration", pending("tc-tp-9-a-review"), target],
+      ["a port that does not report transcriptExists", { ...agent("tc-tp-9-a-review"), presence: "live" as const }, task],
+    ])("clears for %s", async (_label, row, at) => {
+      expect(await seatFixFirst(rosterOf(row), nothing, at, vi.fn())).toEqual({ kind: "clear" });
+    });
+
+    it("clears when only an older session of the name lacks its transcript", async () => {
+      const newest = { ...agent("tc-tp-9-a-review", "session-new"), transcriptExists: true };
+      const older = { ...pending("tc-tp-9-a-review"), sessionId: "session-old" };
+
+      expect(await seatFixFirst(rosterOf(newest, older), nothing, task, vi.fn())).toEqual({ kind: "clear" });
+    });
+
+    it("prefers another seat's FIX_FIRST over the pending reviewer", async () => {
+      const reader: ReviewerReader = { read: async (input) => (input.reviewerAgentId === SEAT.agentId ? [said(SEAT, verdictAt("FIX_FIRST"), 5)] : []) };
+
+      const check = await seatFixFirst(rosterOf(pending("tc-tp-9-a-review"), SEAT), reader, task, vi.fn());
+
+      expect(check).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST", reviewer: { agentId: SEAT.agentId } });
+    });
+  });
+
   it("prefers another seat reviewer's FIX_FIRST over a transcript that cannot be read", async () => {
     const broken = agent("seat-d-1-review");
     const reader: ReviewerReader = { read: async (input) => (input.reviewerAgentId === broken.agentId ? Promise.reject(new Error("bad json")) : [said(SEAT, verdictAt("FIX_FIRST"), 5)]) };

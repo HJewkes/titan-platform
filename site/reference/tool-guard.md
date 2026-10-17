@@ -92,6 +92,8 @@ through a symlinked parent, is refused just before the append.
   by path one level deep.
 - An HTTP client that sends a write method to a URL whose host, or whose `api.github.com` path, is known only at run time reads as a merge.
 - A curl, wget or httpie config file is checked only within one command line: an rc file planted by an earlier Bash call (`echo method=PUT > ~/.wgetrc`, then `wget <merge URL>` in the next call) is not seen (TP-2861 tracks the path-layer guard). A download that names its file from the URL (`curl -O`/`-J`, a bare `wget "$U"`) is not read as an rc write either. An archive extract (tar, bsdtar or cpio extract, unzip, pax -r, 7z x/e, ar x, jar x) counts as an rc write in any directory, because its member paths may be absolute. Other unpackers and interpreters are not read.
+- A line that rebinds a command name is refused whole, with its own reason: zsh `hash y=/usr/bin/git`, bash `hash -p`, and a store into `commands`, `BASH_CMDS`, `functions`, `dis_functions` or `nameddirs` (`commands[y]=…`, `commands+=(…)`, `set -A commands …`, `zstyle -e … 'commands[y]=…'`), because the guard classifies by command name and would read `y push` as an unknown program (TP-2706). Listing, looking up or resetting the hash table (`hash`, `hash git`, `hash -r`) passes. A store builtin whose stored-into name is only known at run time (`export $(cmd)`, `declare "$F"`, `read -- "$n"`, `zpty -r z "$n"`, `zgetattr f a "$n"`) is refused too, since that name may be `commands[y]`; `name-slots.ts` and `hooked-params.ts` read these builtins from one table, `WRITER_SPECS`. Not seen: a command word only known at run time that is `hash` then (`"$(printf ha%s sh)" y=/x`), fully dynamic `eval` text, `autoload` from an `fpath` file and `zmodload` tricks, and a rebinding written into `~/.zshrc` for a later session.
+- A builtin with a store option (`print`, `printf`, `set`, `read`, `compgen`, `mapfile`, `wait`, `zparseopts`, `strftime`, `zstat`, zsh `stat`, `compadd`: every `WRITER_SPECS` builtin with a name option or a store flag, with no exemptions) that meets a run-time word where it still reads options (`print $x`, `set "$x"`, `print *`) is refused the same way, quoted or not, because that word may be `-v commands[y]`. Write `--` before the run-time words to pass: `print -- $x`, `wait -- $pid`. zsh's `zparseopts`, `zformat`, `zstyle`, `zstat` and `stat` skip one leading `--` and read options after it, so `stat -- "$f"` is refused too; write `stat ./"$f"`, since `stat $o commands s` with `o=-LH` stores into `commands` once zsh/stat is loaded. A run-time word in a name slot (`read -- "$n"`, `declare "$x"`, zsh `read -n "$n"`, `zstyle -s :a k "$n"`) may be any name, so it is refused after `--` too; write the name itself (TP-3320).
 - It does not classify `titan-factory` verbs.
 
 ## Known gaps
@@ -111,6 +113,16 @@ through a symlinked parent, is refused just before the append.
   When the readings leave a different directory or variable (`cd {x} </dev/null`), the rest
   of the command list is checked once per reading; a line that would need more than 8 such
   walks is refused.
+  The same readings decide what a command prints into another: a `{ }` group or `( )`
+  subshell piped on carries every text any reading prints, so
+  `{ echo {fd}</dev/null git push origin HEAD:main; } | bash` is refused. Each command's text
+  keeps the newline echo ends it with, joined within one shell's reading of echo at a time,
+  so `{ echo hi; echo git push origin HEAD:main; } | bash` is refused. bash reads a `{name}`
+  redirect after `}` or `)` as the group's own, so
+  `{ echo git push origin HEAD:main; } {fd}</dev/null | bash` is refused too. `$(...)` output
+  is read as the shell splicing it reads it (bash: glued only; zsh: glued and spaced), so
+  `eval "$(echo {x} </dev/null git push origin HEAD:main)"` is refused for zsh. The text of a
+  `< <(...)` whose readings print different text is left unknown, so a shell reading it is refused.
   A shell that a `-c` string, `eval`, `emulate -c` or `find -exec` starts inherits its runner's
   stdin and descriptors, so `bash -c bash < $F` is refused too.
   Run the script by a literal path, or redirect a literal file (`bash /dev/stdin < ./x.sh`).

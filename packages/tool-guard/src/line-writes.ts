@@ -60,6 +60,27 @@ export function scriptReadings(ctx: ClassifyContext, path: string): string[] {
   return readings;
 }
 
+/**
+ * Whether an earlier write on the line may have changed what `path` holds: it wrote that path with text other than what
+ * the disk holds, or wrote something the guard cannot place. A write to any other path, `>/dev/null` or `2>log`, does not.
+ */
+export function mayBeWritten(ctx: ClassifyContext, path: string): boolean {
+  if (ctx.scriptReadings === undefined) return false;
+  let readings: string[] | null;
+  try {
+    readings = ctx.scriptReadings(path);
+  } catch {
+    return false;
+  }
+  if (readings === null) return true;
+  try {
+    const onDisk = trackedReadings({ ...ctx, scriptReadings: undefined }, path);
+    return onDisk === null || onDisk.length !== readings.length || onDisk.some((text, i) => text !== readings[i]);
+  } catch {
+    return true;
+  }
+}
+
 /** The readings of `path`, null once the line wrote it untracked or left more than `MAX_WRITTEN_READINGS`. */
 function trackedReadings(ctx: ClassifyContext, path: string): string[] | null {
   if (ctx.scriptReadings) return ctx.scriptReadings(path);

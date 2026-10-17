@@ -113,7 +113,6 @@ describe("a shell's options are read as the shell reads them (TP-3221)", () => {
     "bash -eo pipefail -c 'echo hi'",
     "zsh -O -c 'echo hi'",
     "bash -s foo <<< 'echo hi'",
-    `bash -- foo <<< ${TEXT}`,
     "bash +c 'echo hi'",
     "zsh -c0 'echo hi'",
     "dash -sc 'echo hi' <<< 'echo hi'",

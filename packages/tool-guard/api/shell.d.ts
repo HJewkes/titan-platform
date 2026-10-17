@@ -15,6 +15,8 @@ interface ArithTrials {
         left: number;
     };
     nesting: Nesting;
+    /** Whether a `[[` at a bare command start joins its `&&` and `||`, which only a text read as bash, zsh or ksh may do. */
+    joinsConditional: boolean;
 }
 
 /** A `$NAME` or `${NAME}` reference; `start` and `end` index into the word's `value`. */
@@ -154,6 +156,8 @@ interface ExtractOptions {
      */
     stopPastCap?: boolean;
     aliases?: AliasTable;
+    /** Read `&&` and `||` in a bare-start `[[` as test words: only for text the caller knows bash, zsh or ksh reads. */
+    joinsConditional?: boolean;
     /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
     onScript?: (text: string) => void;
 }
@@ -166,6 +170,11 @@ declare function extractCommands(src: string, options?: ExtractOptions): SimpleC
 
 /** A line whose dynamic wrapper words leave more readings that may decide than the budget walks; the hook denies it unchecked. */
 declare class ReadingLimitError extends Error {
+    constructor();
+}
+
+/** A line that rebinds a command name (`hash y=/usr/bin/git`, `commands[y]=…`); the hook denies it unchecked. */
+declare class CommandRebindingError extends ReadingLimitError {
     constructor();
 }
 
@@ -194,4 +203,4 @@ declare function splitArgs(args: WordToken[], valueOpts?: Set<string>): SplitArg
 /** Absolute path a word names from `dir`, or null when the word is dynamic or the base is unknown. */
 declare function resolvePath(dir: string | null, word: WordToken | null | undefined, home: string | null): string | null;
 
-export { type AliasTable, type Chain, type ExtractOptions, type GitInvocation, type OpToken, ParseError, ReadingLimitError, type RedirectToken, type SimpleCommand, type SplitArgs, type SubsToken, type Token, type VarRef, type WordToken, type Wrapping, extractCommands, parseGit, resolvePath, splitArgs, tokenize };
+export { type AliasTable, type Chain, CommandRebindingError, type ExtractOptions, type GitInvocation, type OpToken, ParseError, ReadingLimitError, type RedirectToken, type SimpleCommand, type SplitArgs, type SubsToken, type Token, type VarRef, type WordToken, type Wrapping, extractCommands, parseGit, resolvePath, splitArgs, tokenize };

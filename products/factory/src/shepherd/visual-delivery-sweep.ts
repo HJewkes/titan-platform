@@ -5,6 +5,7 @@ import type { NtfyDeps } from "../ntfy.js";
 import { startSweep, type Sweep } from "../sweep.js";
 import { landGateHead } from "./approval-carry.js";
 import type { RosterReader } from "./roster.js";
+import { visualAcceptHead } from "./visual-accept.js";
 import type { GateReads, ShepherdServices, VisualDeliveryWatch } from "./services.js";
 import { DEFAULT_READY_TIMEOUT_MS, deliverGate, systemDeliveryExec, withdrawDelivered, type DeliveryExec, type DeliveryOutcome, type DeliveryWorld, type PrNow, type VisualDeliveryPorts } from "./visual-delivery.js";
 import { defaultTitanReviewBin } from "./visual-packet-trigger.js";
@@ -55,12 +56,12 @@ export function visualDeliveryWatch(ports: VisualDeliveryPorts, everyMs: number)
   };
 }
 
-/** One gate at a time, so two execs never write into one packet dir; the sweep itself never runs two ticks at once. */
+/** A land gate, or the owner's ask to accept a red head's regenerated baselines, delivers the packet of the head it pins. One gate at a time, so two execs never write into one packet dir; the sweep itself never runs two ticks at once. */
 async function deliverPending(ports: VisualDeliveryPorts, gates: GateReads, services: ShepherdServices, signal: AbortSignal): Promise<DeliveryOutcome[]> {
   const world = worldOf(gates, services);
   const outcomes: DeliveryOutcome[] = [];
   for (const { runId, stepId, gate } of gates.pendingGates()) {
-    const headSha = landGateHead(stepId, gate.prompt);
+    const headSha = landGateHead(stepId, gate.prompt) ?? visualAcceptHead(stepId, gate.prompt);
     if (headSha === undefined || signal.aborted) continue;
     const outcome = await deliverGate(ports, world, { runId, gateId: gate.id, headSha, openedAt: Date.parse(gate.createdAt) }, signal);
     if (outcome) outcomes.push(outcome);
