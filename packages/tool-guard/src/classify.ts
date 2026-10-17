@@ -8,7 +8,7 @@ import { secret } from "./families/secret.js";
 import { hasDynamicName, namedReadings, wrappedReading } from "./dynamic-readings.js";
 import { afterWrites, scriptReadings } from "./line-writes.js";
 import { INTERPRETERS } from "./mentions.js";
-import { scriptTargets, SOURCERS } from "./scripts.js";
+import { hasOpaqueShebang, refuseOpaqueShebang, scriptTargets, SOURCERS } from "./scripts.js";
 import type { ScriptTarget } from "./scripts.js";
 import { extractCommands } from "./shell/commands.js";
 import type { ExtractOptions, SimpleCommand } from "./shell/commands.js";
@@ -29,7 +29,7 @@ const GUARDED = new Set([...FAMILIES.flatMap((f) => [...(f.names ?? []), ...(f.v
  * dynamic wrapper readings or script text than it checks; the hook owns that failure policy.
  */
 export function classify(event: HookEvent, ctx: ClassifyContext): ClassifiedAction[] {
-  if (event.kind === "bash") return classifyCommand(event.command, event.cwd, ctx, { verdicts: new Map(), bytesLeft: MAX_SCRIPT_BYTES });
+  if (event.kind === "bash") return classifyCommand(event.command, event.cwd, ctx, { verdicts: new Map(), bytesLeft: MAX_SCRIPT_BYTES, opaque: new Set() });
   if (event.kind === "read") return unique(FAMILIES.flatMap((f) => f.read?.(event, ctx) ?? []));
   if (event.kind === "write") return unique(FAMILIES.flatMap((f) => f.write?.(event, ctx) ?? []));
   return [];
@@ -41,6 +41,8 @@ interface ScriptMemo {
   verdicts: Map<ClassifyContext, Map<string, ClassifiedAction[]>>;
   /** What is left of `MAX_SCRIPT_BYTES`; a script the memo already holds costs nothing. */
   bytesLeft: number;
+  /** Paths whose first line is a `#!` the guard cannot follow; kept beside the memo because `bash x.sh` and `./x.sh` share a verdict but only the second runs that line. */
+  opaque: Set<string>;
 }
 
 function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
@@ -143,6 +145,7 @@ function handles(family: Family, cmd: SimpleCommand): boolean {
 function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: ScriptMemo): ClassifiedAction[] {
   return scriptTargets(cmd, ctx.home).flatMap((target) => {
     const actions = memoized(scripts, ctx, scriptKey(cmd, target, ctx), () => scriptVerdicts(cmd, target, ctx, scripts));
+    refuseOpaqueShebang(target, scripts.opaque);
     return actions.map((a) => (a.action === "secret-read" ? classified("bash.secret.script-by-path", a.subject) : a));
   });
 }
@@ -155,6 +158,7 @@ function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: Script
 function scriptVerdicts(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext, budget: ScriptMemo): ClassifiedAction[] {
   const added = cmd.added === true;
   return targetReadings(ctx, target).flatMap((text) => {
+    if (hasOpaqueShebang(text)) budget.opaque.add(target.path);
     if (added || target.kind === "shell") charge(budget, { script: target.path.slice(target.path.lastIndexOf("/") + 1), bytes: Buffer.byteLength(text), added });
     return scriptText(cmd, target, text, ctx);
   });

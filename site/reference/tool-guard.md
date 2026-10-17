@@ -113,7 +113,11 @@ through a symlinked parent, is refused just before the append.
   walks is refused.
   The same readings decide what a command prints into another: a `{ }` group or `( )`
   subshell piped on carries every text any reading prints, so
-  `{ echo {fd}</dev/null git push origin HEAD:main; } | bash` is refused, and `$(...)` output
+  `{ echo {fd}</dev/null git push origin HEAD:main; } | bash` is refused. Each command's text
+  keeps the newline echo ends it with, joined within one shell's reading of echo at a time,
+  so `{ echo hi; echo git push origin HEAD:main; } | bash` is refused. bash reads a `{name}`
+  redirect after `}` or `)` as the group's own, so
+  `{ echo git push origin HEAD:main; } {fd}</dev/null | bash` is refused too. `$(...)` output
   is read as the shell splicing it reads it (bash: glued only; zsh: glued and spaced), so
   `eval "$(echo {x} </dev/null git push origin HEAD:main)"` is refused for zsh. The text of a
   `< <(...)` whose readings print different text is left unknown, so a shell reading it is refused.

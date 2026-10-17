@@ -82,3 +82,21 @@ describe("visual delivery health", () => {
     expect(watch.status()).toEqual({ waiting: 1, failed: [{ gateId: "run-fail/approve-merge", reason: "packet-incomplete" }] });
   });
 });
+
+describe("the delivery sweep at an owner's ask to accept regenerated baselines", () => {
+  it("delivers the packet of the red head the accept gate pins, as at a visual land gate", async () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "visual-delivery-accept-"));
+    const head = fakeSha("accept-red");
+    mkdirSync(packetDirFor(stateDir, "run-accept", head), { recursive: true });
+    const text = `Accept the regenerated baselines of PR #7 in octo/demo at head ${head}? CI is red only on visual.`;
+    const gate = partialFake<GateRecord>({ id: "run-accept/sh-visual-accept", prompt: text, status: "pending", createdAt: new Date().toISOString() });
+    const reads: GateReads = { pendingGates: () => [{ runId: "run-accept", stepId: "sh-visual-accept", gate }], gate: () => gate };
+    const services = partialFake<ShepherdServices>({ store: partialFake<ShepherdServices["store"]>({ get: () => partialFake<ReturnType<ShepherdServices["store"]["get"]>>({ byRun: () => undefined }) }) });
+    const exec = async () => ({ status: 0, stdout: "", stderr: "" });
+    const watch = visualDeliveryWatch({ mode: "shadow", stateDir, titanReviewBin: BIN, console: CONSOLE, roster, cwdFor: () => stateDir, exec, now: Date.now, readyTimeoutMs: 60_000 }, 30_000);
+
+    await watch.tick(reads, services, consoleLogger, new AbortController().signal);
+
+    expect(watch.status()).toEqual({ waiting: 1, failed: [] });
+  });
+});
