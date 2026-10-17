@@ -1,5 +1,5 @@
 import { U as UsageResult } from './usage.js';
-export { A as AccountProfile, L as LoginState, a as LoginStatusOutput, M as MAX_READING_AGE_SECONDS, Q as QuotaAdmission, b as UsageReading, c as UsageWindow, d as accountLabel, e as assertAccountLabel, l as loginStateFromStatus, q as quotaAdmission, u as usageFromRolloutEvents } from './usage.js';
+export { A as AccountProfile, K as KnownObservationInput, a as KnownUsageReading, L as LoginState, b as LoginStatusOutput, M as MAX_READING_AGE_SECONDS, Q as QuotaAdmission, c as UsageReading, d as UsageWindow, e as accountLabel, f as assertAccountLabel, k as knownObservation, l as loginStateFromStatus, q as quotaAdmission, u as usageFromRolloutEvents } from './usage.js';
 
 /** Reuse Titan redaction, adding OpenAI key prefixes; no cause or extra fields survive. */
 declare function redactSecrets(value: string): string;
@@ -48,32 +48,50 @@ interface UsageWindow {
 }
 interface UsageReading {
     account: string;
-    /** Quota observation lower bound in epoch seconds; a verified backend request start is valid, a rollout emission or file read is not. */
+    /** Quota observation time, in epoch seconds; never an emission or read time. */
     written_at: number;
     rate_limits: {
         five_hour: UsageWindow;
         seven_day: UsageWindow;
     };
 }
+declare const KNOWN_OBSERVATION: unique symbol;
+interface ObservationTime {
+    readonly source: string;
+    readonly observedAt: number;
+}
+type KnownUsageReading = UsageReading & {
+    readonly [KNOWN_OBSERVATION]: ObservationTime;
+};
+interface KnownObservationInput {
+    /** Explicit caller attestation of the time source; not authentication or backend proof. */
+    readonly source: string;
+    readonly observedAt: number;
+    readonly reading: Omit<UsageReading, "written_at">;
+}
+type UnknownReason = "missing" | "inconsistent" | "unreadable" | "freshness-unverified";
+type UnknownUsage = {
+    status: "unknown";
+    reason: UnknownReason;
+};
 type UsageResult = {
     status: "known";
-    reading: UsageReading;
-} | {
-    status: "unknown";
-    reason: "missing" | "inconsistent" | "unreadable" | "freshness-unverified";
-};
+    reading: KnownUsageReading;
+} | UnknownUsage;
 type QuotaAdmission = {
     allowed: true;
     ageSeconds: number;
 } | {
     allowed: false;
-    reason: "missing" | "inconsistent" | "unreadable" | "freshness-unverified" | "stale" | "weekly-reserve" | "five-hour-ceiling";
+    reason: UnknownReason | "stale" | "weekly-reserve" | "five-hour-ceiling";
     ageSeconds?: number;
 };
 declare const MAX_READING_AGE_SECONDS = 900;
-/** Validate newest rollout quota evidence; native emission times cannot establish freshness. */
+/** Explicit provenance opt-in. Serialized/raw readings must never silently reacquire this brand. */
+declare function knownObservation(input: KnownObservationInput): UsageResult;
+/** Validate newest rollout evidence; native emission times cannot establish freshness. */
 declare function usageFromRolloutEvents(events: Iterable<unknown>, account: string): UsageResult;
-/** Q5: reserve 14 weekly points, 5h ceiling 100, and at most 15-minute-old evidence. */
+/** Q5 policy; only explicit, locally branded observations can enter the known path. */
 declare function quotaAdmission(result: UsageResult, now: number): QuotaAdmission;
 
-export { type AccountProfile as A, type LoginState as L, MAX_READING_AGE_SECONDS as M, type QuotaAdmission as Q, type UsageResult as U, type LoginStatusOutput as a, type UsageReading as b, type UsageWindow as c, accountLabel as d, assertAccountLabel as e, loginStateFromStatus as l, quotaAdmission as q, usageFromRolloutEvents as u };
+export { type AccountProfile as A, type KnownObservationInput as K, type LoginState as L, MAX_READING_AGE_SECONDS as M, type QuotaAdmission as Q, type UsageResult as U, type KnownUsageReading as a, type LoginStatusOutput as b, type UsageReading as c, type UsageWindow as d, accountLabel as e, assertAccountLabel as f, knownObservation as k, loginStateFromStatus as l, quotaAdmission as q, usageFromRolloutEvents as u };
