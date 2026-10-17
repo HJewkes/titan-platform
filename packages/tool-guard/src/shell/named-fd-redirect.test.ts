@@ -331,3 +331,30 @@ describe.skipIf(!["bash", "zsh", "dash"].every(has))("zsh alone prints the push 
     expect(["zsh -f", "bash", "dash"].map((runner) => runsGit(line, runner))).toEqual([true, false, false]);
   });
 });
+
+/**
+ * A branch created before a disputed `{name}` command is still trusted for the `&&` chain the shell keeps across it,
+ * in every fork; a fork's own chain still does not take on a branch another reading's commands created (rv-1740-7).
+ */
+describe("a disputed {name} command keeps the && chain's created-branch trust (TP-3319)", () => {
+  it.each([
+    "git checkout -b feat && A=1 {fd}< /dev/null && git merge feat",
+    "git switch -c feat && A=1 {fd}< /dev/null && git merge feat",
+    "git checkout -b feat && A=1 {fd}< /dev/null && B=1 {fd}< /dev/null && git merge feat",
+    "A=1 {fd}< /dev/null && git checkout -b feat && git merge feat",
+  ])("passes %s", async (line) => {
+    expect(await verdict(line)).toBe("pass");
+  });
+
+  it.each([
+    "git checkout -b feat && A=1 {fd}< /dev/null; git merge feat",
+    "git checkout -b feat && A=1 {fd}< /dev/null || git merge feat",
+    "git checkout -b feat; A=1 {fd}< /dev/null && git merge feat",
+    "git checkout -b feat || A=1 {fd}< /dev/null && git merge feat",
+    "git checkout -b feat && A=1 {fd}< /dev/null && B=1 {fd}< /dev/null; git merge feat",
+    "git checkout -b feat && cd {x} </dev/null && git merge feat",
+    "git checkout -b feat && A=1 {fd}< /dev/null && cd {x} </dev/null && git merge feat",
+  ])("denies %s", async (line) => {
+    expect(await verdict(line)).toBe("deny");
+  });
+});
