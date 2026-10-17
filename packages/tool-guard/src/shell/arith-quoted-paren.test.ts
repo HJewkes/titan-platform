@@ -35,6 +35,7 @@ describe("a quoted paren in $(( ))", () => {
     ["a backquote in an assignment", "x=$(( git push origin HEAD:main `case a in a) ;; esac` ))"],
     ["a backquote inside double quotes", 'echo "$(( git push origin HEAD:main `case a in a) ;; esac` ))"'],
     ["a locale string holding a paren", 'echo $(( git push origin HEAD:main $"(" ))'],
+    ["a span only the command reading reaches, past a comment", `echo $(( true; ] #))'\necho $(( git push origin HEAD:main "(" )) #' "\n)) #"`],
     ["a heredoc body", "cat <<EOF\n$(( git push origin HEAD:main `case a in a) ;; esac` ))\nEOF"],
     ["a comment holding a paren", "echo $(( git push origin HEAD:main #)\n ))"],
     ["a lone close paren across a newline", "echo $(( git push origin HEAD:main )\n( ))"],

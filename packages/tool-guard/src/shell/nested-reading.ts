@@ -83,12 +83,12 @@ function isPlainMath(body: string): boolean {
  */
 function withSubshellReading(at: Reading, dollar: number, end: number, found: Token[][], primary: Token[][]): number {
   found.push(...primary);
-  if (at.trials.inSubshellReading || isPlainMath(at.src.slice(dollar + 3, end - 1))) return end;
+  if (dollar < at.trials.coveredUntil || isPlainMath(at.src.slice(dollar + 3, end - 1))) return end;
   const depth = bothReadingsDepth(at.trials, dollar);
   if (depth > MAX_BOTH_READINGS) throw new ParseError("arithmetic read two ways nests too deep");
   let tokens = at.trials.subshells.get(dollar);
   if (tokens === undefined) {
-    tokens = [lexSubshellReading(at, dollar)];
+    tokens = [lexSubshellReading(at, dollar, end)];
     at.trials.subshells.set(dollar, tokens);
   }
   found.push(...tokens);
@@ -105,12 +105,13 @@ function bothReadingsDepth(trials: ArithTrials, dollar: number): number {
   return depth;
 }
 
-function lexSubshellReading(at: Reading, dollar: number): Token[] {
-  at.trials.inSubshellReading = true;
+function lexSubshellReading(at: Reading, dollar: number, end: number): Token[] {
+  const outer = at.trials.coveredUntil;
+  at.trials.coveredUntil = end;
   try {
     return lexNested(at.src, dollar + 2, at.trials, at.line).tokens;
   } finally {
-    at.trials.inSubshellReading = false;
+    at.trials.coveredUntil = outer;
   }
 }
 
