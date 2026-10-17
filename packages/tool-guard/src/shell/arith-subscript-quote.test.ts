@@ -34,7 +34,6 @@ const HIDDEN: [string, string][] = [
   ["a single-quoted backtick in a subscript", `a['\`${PUSH}\`']=1`],
   ["a single-quoted backtick in a spaced subscript", `x[ '\`${PUSH}\`' ]=1`],
   ["a single-quoted $( ) in a += subscript", `a['$(${PUSH})']+=1`],
-  ["a single-quoted $( ) in declare", `declare a['$(${PUSH})']=1`],
   ["a single-quoted $( ) in a subscript after a command", `true; a['$(${PUSH})']=1`],
   ["a single-quoted $( ) in an element of a compound assignment", `a=( ['$(${PUSH})']=1 )`],
   ["a single-quoted $( ) in an element after another", `a=( [0]=x ['$(${PUSH})']=1 )`],
@@ -57,6 +56,10 @@ describe("a single-quoted command substitution in a subscript or [[ -eq ]] runs 
   it.each(HIDDEN)("extracts git push from %s", (_, src) => {
     expect(names(src).some((n) => n.startsWith(PUSH))).toBe(true);
   });
+});
+
+it("denies a single-quoted $( ) in a declare subscript", async () => {
+  expect(await handled(`declare a['$(${PUSH})']=1`)).toBe("deny");
 });
 
 describe("single quotes elsewhere keep their reading (TP-3353)", () => {
