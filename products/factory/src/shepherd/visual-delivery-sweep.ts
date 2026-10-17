@@ -1,11 +1,12 @@
 import type { Logger } from "@titan-design/daemon";
-import { factoryStateDir, type FactoryConfig } from "../config.js";
+import { factoryStateDir, type DigestPushConfig, type FactoryConfig } from "../config.js";
 import type { FactoryHost } from "../host.js";
+import type { NtfyDeps } from "../ntfy.js";
 import { startSweep, type Sweep } from "../sweep.js";
 import { landGateHead } from "./approval-carry.js";
 import type { RosterReader } from "./roster.js";
 import type { GateReads, ShepherdServices, VisualDeliveryWatch } from "./services.js";
-import { DEFAULT_READY_TIMEOUT_MS, deliverGate, systemDeliveryExec, type DeliveryExec, type DeliveryOutcome, type DeliveryWorld, type PrNow, type VisualDeliveryPorts } from "./visual-delivery.js";
+import { DEFAULT_READY_TIMEOUT_MS, deliverGate, systemDeliveryExec, withdrawDelivered, type DeliveryExec, type DeliveryOutcome, type DeliveryWorld, type PrNow, type VisualDeliveryPorts } from "./visual-delivery.js";
 import { defaultTitanReviewBin } from "./visual-packet-trigger.js";
 
 const VISUAL_DELIVERY_MS = 30_000;
@@ -14,18 +15,28 @@ type Shepherd = FactoryConfig["shepherd"];
 type CwdFor = (repo: string) => string | undefined;
 
 /** `shepherd.visualDelivery`; absent or `off` wires nothing, and with no agent-chat roster no packager's exit can be seen. */
-export function configuredVisualDelivery(shepherd: Shepherd, env: NodeJS.ProcessEnv, roster: RosterReader | undefined, cwdFor: CwdFor): VisualDeliveryWatch | undefined {
-  const ports = deliveryPortsOf(shepherd, env, roster, cwdFor);
+export function configuredVisualDelivery(shepherd: Shepherd, env: NodeJS.ProcessEnv, roster: RosterReader | undefined, cwdFor: CwdFor, digestPush?: DigestPushConfig): VisualDeliveryWatch | undefined {
+  const ports = deliveryPortsOf(shepherd, env, roster, cwdFor, { digestPush });
   return ports && visualDeliveryWatch(ports, shepherd?.visualDelivery?.everyMs ?? VISUAL_DELIVERY_MS);
 }
 
-export function deliveryPortsOf(shepherd: Shepherd, env: NodeJS.ProcessEnv, roster: RosterReader | undefined, cwdFor: CwdFor, exec?: DeliveryExec): VisualDeliveryPorts | undefined {
+interface PortExtras {
+  exec?: DeliveryExec;
+  /** The top-level `digest.push`, which a delivery without its own `visualDelivery.push` falls back to. */
+  digestPush?: DigestPushConfig | undefined;
+  ntfy?: NtfyDeps;
+}
+
+export function deliveryPortsOf(shepherd: Shepherd, env: NodeJS.ProcessEnv, roster: RosterReader | undefined, cwdFor: CwdFor, extras: PortExtras = {}): VisualDeliveryPorts | undefined {
   const config = shepherd?.visualDelivery;
   if (!config || config.mode === "off" || !roster) return undefined;
   const titanReviewBin = shepherd.titanReviewBin ?? defaultTitanReviewBin();
   const readyTimeoutMs = config.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
-  const run = exec ?? systemDeliveryExec(config.roundsDir);
-  return { mode: config.mode, stateDir: factoryStateDir(env), titanReviewBin, console: config.console, roster, cwdFor, exec: run, now: Date.now, readyTimeoutMs };
+  const run = extras.exec ?? systemDeliveryExec(config.roundsDir);
+  const push = config.push ?? extras.digestPush;
+  const links = { ...(config.origins && { origins: config.origins }), ...(config.url && { urlKind: config.url }) };
+  const base = { mode: config.mode, stateDir: factoryStateDir(env), titanReviewBin, console: config.console, roster, cwdFor, exec: run, now: Date.now, readyTimeoutMs };
+  return { ...base, ...links, ...(push && { push }), ...(extras.ntfy && { ntfy: extras.ntfy }) };
 }
 
 export function visualDeliveryWatch(ports: VisualDeliveryPorts, everyMs: number): VisualDeliveryWatch {
@@ -33,8 +44,9 @@ export function visualDeliveryWatch(ports: VisualDeliveryPorts, everyMs: number)
   return {
     everyMs,
     tick: async (gates, services, log, signal) => {
-      last = await deliverPending(ports, gates, services, signal);
-      for (const outcome of last.filter((each) => each.state === "refused")) log.warn({ ...outcome }, "refused a visual delivery state file");
+      const delivered = await deliverPending(ports, gates, services, signal);
+      last = [...delivered, ...(await withdrawDelivered(ports, worldOf(gates, services), signal))];
+      for (const outcome of last.filter((each) => each.state === "refused" || each.state === "failed")) log.warn({ ...outcome }, "a visual delivery did not complete");
     },
     status: () => ({
       waiting: last.filter((outcome) => outcome.state === "waiting").length,
@@ -63,9 +75,10 @@ function worldOf(gates: GateReads, services: ShepherdServices): DeliveryWorld {
       const registration = services.store.get().byRun(runId);
       if (!registration || registration.pr === null) return "gone";
       const pr = await services.port.getPr(registration.repo, registration.pr).catch(() => undefined);
-      return pr ? { repo: registration.repo, headSha: pr.headSha, open: pr.state === "open" } : "unreadable";
+      return pr ? { repo: registration.repo, pr: registration.pr, headSha: pr.headSha, open: pr.state === "open" } : "unreadable";
     },
     pending: (gateId) => gates.gate(gateId)?.status === "pending",
+    resolvedVia: (gateId) => gates.gate(gateId)?.resolvedBy?.channel,
   };
 }
 

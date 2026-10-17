@@ -304,6 +304,79 @@ describe("sh-spawn-fixer", () => {
   });
 });
 
+describe("a red after a thaw that fails like an earlier red", () => {
+  const TIMEOUT = "FAIL  src/emulate.test.ts > emulates the script\nError: Test timed out in 5000ms.";
+  const TOKEN = "\u001b[31mFAIL\u001b[39m  src/app-token.test.ts > mints a token";
+
+  /** A rig whose roster reports each spawned fixer as `presence`. */
+  function rosterRig(presence: string): Rig {
+    const r = rig();
+    const fixers: FixerAgents = { ...r.wiring.fixers!, roster: async () => r.spawned.map(({ name }) => ({ name, presence })) };
+    return { ...r, wiring: { ...r.wiring, fixers } };
+  }
+
+  function failAt(r: Rig, sha: string, job: number, check: string, log: string): string {
+    r.fake.setRuns(sha, [successRun(check, job, undefined, "failure")]);
+    r.fake.jobLogs.set(job, log);
+    return sha;
+  }
+
+  /** What onMainRed does for a new episode: freeze, file the fix task, spawn the fixer; then the episode thaws. */
+  async function episodeAt(r: Rig, sha: string): Promise<{ task: string | null; fixer: string | null; detail: string }> {
+    const { episode } = r.freezes.freeze(REPO, sha);
+    const filed = await fileFixTask(r.deps, r.wiring, { ...red, mergeSha: sha, episode }, signal);
+    const spawned = await spawnFixer(r.deps, r.wiring, { repo: REPO, mergeSha: sha, task: filed.task!, fixer: true, episode }, signal);
+    expect(r.freezes.get(REPO)).toMatchObject({ fixTask: filed.task, fixer: spawned.fixer });
+    r.freezes.release(REPO, episode);
+    return { task: filed.task, fixer: spawned.fixer, detail: filed.detail };
+  }
+
+  it("keeps the first fixer and its task when consecutive reds fail the same check with the same test", async () => {
+    const r = rosterRig("live");
+    const first = await episodeAt(r, failAt(r, fakeSha("red-a"), 11, "validate", TIMEOUT));
+
+    const second = await episodeAt(r, failAt(r, fakeSha("red-b"), 12, "validate", `noise\n${TIMEOUT}`));
+
+    expect(r.spawned.map((s) => s.name)).toEqual([fixerName(REPO, fakeSha("red-a"))]);
+    expect(r.added).toHaveLength(1);
+    expect(second).toMatchObject({ task: first.task, fixer: first.fixer, detail: expect.stringContaining("linked to") });
+  });
+
+  it("links a later red to an exited fixer's open fix PR, registered on that fixer's task", async () => {
+    const r = rosterRig("exited");
+    const first = await episodeAt(r, failAt(r, fakeSha("red-a"), 11, "validate", TIMEOUT));
+    const pr = r.fake.addPr({ headSha: fakeSha("fix-head") }).number;
+    r.deps.store.get().register({ repo: REPO, pr, runId: "run-fix", task: first.task!, implementer: first.fixer!, policy: OWNER_GATE_POLICY });
+
+    const second = await episodeAt(r, failAt(r, fakeSha("red-b"), 12, "validate", TIMEOUT));
+
+    expect(r.spawned).toHaveLength(1);
+    expect(second).toMatchObject({ task: first.task, fixer: first.fixer, detail: expect.stringContaining(`open PR #${pr}`) });
+  });
+
+  it("gives a red with a different failing test its own fixer, and links a later red to the fixer whose test it fails", async () => {
+    const r = rosterRig("live");
+    await episodeAt(r, failAt(r, fakeSha("red-a"), 11, "validate", TIMEOUT));
+    await episodeAt(r, failAt(r, fakeSha("red-b"), 12, "validate", TOKEN));
+
+    const third = await episodeAt(r, failAt(r, fakeSha("red-c"), 13, "validate", TIMEOUT));
+
+    expect(r.spawned.map((s) => s.name)).toEqual([fixerName(REPO, fakeSha("red-a")), fixerName(REPO, fakeSha("red-b"))]);
+    expect(third.fixer).toBe(fixerName(REPO, fakeSha("red-a")));
+  });
+
+  it("gives a red with the same test under a different failing check its own fixer", async () => {
+    const r = rosterRig("live");
+    await episodeAt(r, failAt(r, fakeSha("red-a"), 11, "validate", TIMEOUT));
+    await episodeAt(r, failAt(r, fakeSha("red-b"), 12, "compat", TIMEOUT));
+
+    const third = await episodeAt(r, failAt(r, fakeSha("red-c"), 13, "compat", TIMEOUT));
+
+    expect(r.spawned.map((s) => s.name)).toEqual([fixerName(REPO, fakeSha("red-a")), fixerName(REPO, fakeSha("red-b"))]);
+    expect(third.fixer).toBe(fixerName(REPO, fakeSha("red-b")));
+  });
+});
+
 describe("sh-freeze", () => {
   it("classes a red while the episode has a fixer as again, and a replay of a new episode's freeze as new", () => {
     const r = rig();
