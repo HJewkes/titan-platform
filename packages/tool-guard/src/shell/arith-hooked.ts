@@ -16,6 +16,11 @@ const SUBSCRIPTED_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*\[.*\]\+?=/s;
 const SUBSTRING_AT_RE = /\$\{[!#]?(?:[A-Za-z_][A-Za-z0-9_]*|[@*]|\d+):(?![-=+?#])/y;
 const NAME_CHAR_RE = /[A-Za-z0-9_]/;
 
+/** Whether the builtin reads every argument as math: `let 'x=1'`, `shift "$n"`, `return 'PS4=1'`. */
+export function evaluatesArgsAsMath(name: string): boolean {
+  return name === "let" || MATH_ARG_BUILTINS.has(name);
+}
+
 /**
  * The hooked parameter an arithmetic expression mentions. bash and zsh assign inside one (`MODULE_PATH = 1`,
  * `PS4++`), and a mere read is rare enough there to refuse with it. The walk passes each `(( ))` span here.
@@ -53,7 +58,7 @@ export function arithmeticHookedIn(cmd: Unwrapped, words: WordToken[], slots: Wo
 /** Texts the command evaluates whole as arithmetic. */
 function wholeExpressions({ name, args }: Unwrapped): string[] {
   const values = args.map((a) => a.value);
-  if (name === "let" || (name !== null && MATH_ARG_BUILTINS.has(name))) return values;
+  if (name !== null && evaluatesArgsAsMath(name)) return values;
   if (name === "[[" && values.some((v) => NUMERIC_TEST_RE.test(v))) return values;
   const integer = name === "integer" || name === "float" || (name !== null && INTEGER_DECLARERS.has(name) && values.some((v) => INTEGER_OPTION_RE.test(v)));
   return integer ? values.flatMap((v) => (v.includes("=") ? [v.slice(v.indexOf("=") + 1)] : [])) : [];

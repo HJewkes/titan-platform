@@ -137,7 +137,7 @@ describe("ordinary ${…} usage", () => {
     `echo "\${x/'a'/"}"}"`,
     'echo "${files[@]}"',
     'echo "${x:-$(date)}"',
-    "echo $(( ${x:-1} + 2 ))",
+    "echo $(( ${#x} + 2 ))",
     'echo "${HOME}/${name:-app}.log"',
     "echo ${x-<(echo ${y})}",
     "echo $(( (1+2) )) ${x-$(( (1+2)*2 ))}",

@@ -10,7 +10,8 @@ import { foldCommandWords } from "./case-literal.js";
 import { aliasCommands, type AliasTable } from "./alias-words.js";
 import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
-import { CommandRebindingError, rebindsCommand } from "./command-rebinding.js";
+import { arithmeticParens } from "./arith-parens.js";
+import { CommandRebindingError, rebindsCommand, storesRebindingByMath } from "./command-rebinding.js";
 import { cutReading } from "./piped-nul.js";
 import { inlineScript, SHELLS } from "./inline-script.js";
 import type { Inline } from "./inline-script.js";
@@ -189,10 +190,12 @@ function walkFrom(list: Token[], start: number, w: Walk): void {
   const forks: Array<() => void> = [];
   let words: WordToken[] = [];
   let redirects: RedirectToken[] = [];
+  let parens = arithmeticParens(list.slice(0, start));
   for (const [at, token] of list.slice(start).entries()) {
     if (token.type === "op") {
       noteValues(token, words, w);
-      const { readings, disputed } = emit(words, redirects, w, token.value);
+      const { readings, disputed } = emit(words, redirects, w, token.value, parens > 0);
+      parens = arithmeticParens([token], parens);
       const walks = [w, ...disputed.map((scope) => forkWalk(w, scope, (fork, vars) => observeStores(vars, (value) => hear(fork, value))))];
       for (const each of walks) endCommand(each, token, words, redirects, readings, (op) => scope(op, each));
       forks.push(...walks.slice(1).map((fork) => () => walkFrom(list, start + at + 1, fork)));
@@ -206,7 +209,7 @@ function walkFrom(list: Token[], start: number, w: Walk): void {
     for (const sub of nestedLists(token)) walk(sub, child(w, [...w.scope.wrapping, "subshell"]));
   }
   noteValues(null, words, w);
-  emit(words, redirects, w, null);
+  emit(words, redirects, w, null, parens > 0);
   for (const fork of forks) fork();
 }
 
@@ -258,17 +261,18 @@ function scope(op: string, w: Walk): void {
   if (op === ")") w.scope = w.stack.pop() ?? w.scope;
 }
 
-function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Emission<Scope> {
-  return emitReadings(rawWords, rawRedirects, w, besideWalk, (words, redirects, on) => emitReading(words, redirects, on, next));
+function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null, arithmetic: boolean): Emission<Scope> {
+  return emitReadings(rawWords, rawRedirects, w, besideWalk, (words, redirects, on) => emitReading(words, redirects, on, next, arithmetic));
 }
 
-function emitReading(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Unwrapped | null {
+function emitReading(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null, arithmetic: boolean): Unwrapped | null {
   const expand = (word: WordToken) => expandWord(word, (name) => lookup(w.scope.vars, w.home, name));
   const redirects = rawRedirects.map((r) => (r.target ? { ...r, target: expand(r.target) } : r));
   const words = folded(rawWords.map(expand), w);
   const runs = caseNamed(words);
   const cut = cutReading(words);
   const aliased = aliasCommands(words, w.aliases);
+  if (storesRebindingByMath(words, redirects, arithmetic)) throw new CommandRebindingError();
   w.walked = new Set();
   for (const cmd of [...runs, ...(cut ? caseNamed(cut) : []), ...aliased.runs]) run(cmd, redirects, w, next);
   for (const { tokens, aliases } of aliased.scripts) walk(tokens, Object.assign(child(w, [...w.scope.wrapping, "eval"]), { aliases }));

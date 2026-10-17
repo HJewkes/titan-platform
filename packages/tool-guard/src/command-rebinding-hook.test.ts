@@ -149,6 +149,24 @@ describe("a line that rebinds a command name", () => {
       [`${load}zstat -H commands behind --`, `${load}zstat -- -LH commands s; link push origin HEAD:main`],
     ]),
     ["compadd behind a run-time option word", `compadd $o commands x; ${PUSH}`],
+    ["let with a literal store into commands", `let 'commands[y]=0'; ${PUSH}`],
+    ["let with a literal store into BASH_CMDS", `let 'BASH_CMDS[y]=0'; ${PUSH}`],
+    ["let of a run-time word", `e='commands[y]=0'; let "$e"; ${PUSH}`],
+    ["let of an unknown run-time word", `let "$e"; ${PUSH}`],
+    ["(( )) of an unknown run-time word", `(( $e )); ${PUSH}`],
+    ["(( )) mixing a run-time word into a sum", `(( i + $e )); ${PUSH}`],
+    ["shift by an unknown run-time word", `shift "$e"; ${PUSH}`],
+    ["shift by arithmetic of a run-time word", `shift $(( $e )); ${PUSH}`],
+    ["a zsh subscript read from a run-time word", `e='commands[y]=0'; echo \${a[$e]}; ${PUSH}`],
+    ["a zsh subscript read from an unknown run-time word", `echo \${a[$e]}; ${PUSH}`],
+    ["a bash fd-variable redirect into BASH_CMDS", `{BASH_CMDS[y]}>f; ${PUSH}`],
+    ["a bash fd-variable redirect into BASH_CMDS on exec", `exec {BASH_CMDS[y]}>f; ${PUSH}`],
+    ["an fd-variable redirect into commands", `exec {commands[y]}>f; ${PUSH}`],
+    ["an fd-variable redirect into an element a run-time word indexes", `exec {a[$e]}>f; ${PUSH}`],
+    ["an element assignment a run-time word indexes", `a[$e]=1; ${PUSH}`],
+    ["a substitution inside $(( ))", `echo $(( $(git status) )); ${PUSH}`],
+    ["a run-time word in a legacy $[ ]", `echo $[ $e ]; ${PUSH}`],
+    ["return of a run-time word", `f() { return "$e"; }; f; ${PUSH}`],
   ])("refuses %s", async (_name, command) => {
     const got = await answer(command);
     expect(got.decision).toBe("deny");
@@ -182,6 +200,15 @@ describe("a line that rebinds a command name", () => {
     ["stat of a run-time file after a doubled --", 'stat -- -- "$f"'],
     ["stat of a run-time file behind ./", 'stat ./"$f"'],
     ["an export of PATH with a run-time value", 'export PATH="$HOME/bin"'],
+    ["a literal increment in (( ))", "(( i++ )) && git status"],
+    ["let with literal arithmetic", "let n=n+1; git status"],
+    ["(( )) over argument and status counts", "(( $# > 0 && $? == 0 )) && git status"],
+    ["an fd-variable redirect into an ordinary name", "exec {fd}>log; git status"],
+    ["an fd-variable redirect on a bare redirect", "{fd}>log; git status"],
+    ["a subscript with a literal index", "echo ${a[1]}; git status"],
+    ["the length of an element", "echo ${#a[0]} ${#a[@]}; git status"],
+    ["a quoted word that only looks like a subscript", "gh api x -f 'a[$K]=b'"],
+    ["shift by arithmetic over literals", "shift $((OPTIND-1)); git status"],
   ])("keeps today's verdict for %s", async (_name, command) => {
     const got = await answer(command);
     expect(got.reason).not.toMatch(REBIND_REASON);

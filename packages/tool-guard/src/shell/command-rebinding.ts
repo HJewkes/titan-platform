@@ -1,15 +1,17 @@
+import { evaluatesArgsAsMath } from "./arith-hooked.js";
+import { embeddedMathStores, fdVariableStores, operandsStore, storeReader } from "./arith-stores.js";
 import { splitCluster } from "./cluster.js";
 import { HOOKED_WRITERS, writesProtectedParam } from "./hooked-params.js";
 import { nameSlots } from "./name-slots.js";
-import type { WordToken } from "./lexer.js";
+import type { RedirectToken, WordToken } from "./lexer.js";
+import { REBINDING, REBINDING_SET } from "./rebinding-names.js";
 import { expandsInStoreOptions, STORE_OPTION_BUILTINS } from "./store-option-zone.js";
 import { ReadingLimitError } from "./unsure-readings.js";
 import type { Unwrapped } from "./unwrap.js";
 import { WRITER_SPECS } from "./writer-specs.js";
 
-/** Parameters whose stores bind a command name, or a `~name`, to something the guard never reads as that name. */
-const REBINDING = ["commands", "BASH_CMDS", "functions", "dis_functions", "nameddirs"];
-const REBINDING_SET = new Set(REBINDING);
+const REBINDING_STORE = storeReader(REBINDING_SET);
+
 /** An expansion that assigns: `${commands[y]::=/x}`, `${functions[y]:=x}`, bash `${BASH_CMDS[y]=/x}`; a read has no `=`. */
 const ASSIGNING_EXPANSION_RE = new RegExp(`\\$\\{[^}]*?\\b(?:${REBINDING.join("|")})(?:\\[[^\\]]*\\])?:{0,2}=`);
 /** An expansion that assigns whatever parameter another one names: bash `${!n=/x}`, zsh `${(P)n::=/x}`. */
@@ -44,10 +46,21 @@ export class CommandRebindingError extends ReadingLimitError {
 export function rebindsCommand(cmd: Unwrapped): boolean {
   if (cmd.name === "hash" && hashBinds(cmd.args)) return true;
   if (cmd.assigned.some(([name]) => REBINDING_SET.has(name))) return true;
+  if (cmd.name !== null && evaluatesArgsAsMath(cmd.name) && operandsStore(cmd.args, REBINDING_STORE)) return true;
   if (cmd.name !== null && expandsInStoreOptions(cmd.name, cmd.args)) return true;
   if (cmd.name !== null && STORE_BUILTINS.has(cmd.name) && storesRebinding(cmd, cmd.name)) return true;
   const texts = [...cmd.args.filter((a) => a.dynamic).map((a) => a.value), ...cmd.assigned.map(([, value]) => value ?? "")];
   return texts.some((text) => ASSIGNING_EXPANSION_RE.test(text) || INDIRECT_ASSIGNING_RE.test(text));
+}
+
+/**
+ * Whether a command's words store into a rebinding parameter through math, which the shell evaluates apart from any
+ * builtin that names the parameter: the words of an `(( ))` body, a `$(( ))` or subscript in a run-time word, and a
+ * descriptor variable (`{BASH_CMDS[y]}>f`). A run-time word in those places may expand to `commands[y]=0`.
+ */
+export function storesRebindingByMath(words: WordToken[], redirects: RedirectToken[], inArithmetic: boolean): boolean {
+  if (inArithmetic && operandsStore(words, REBINDING_STORE)) return true;
+  return embeddedMathStores(words, REBINDING_STORE) || fdVariableStores(redirects, REBINDING_SET, REBINDING_STORE);
 }
 
 /** An operand holding `=`, an option cluster holding bash's `p`, or a word that may expand to either. */

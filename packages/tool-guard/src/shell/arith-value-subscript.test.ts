@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { classify } from "../classify.js";
+import { CommandRebindingError } from "./command-rebinding.js";
 import { extractCommands } from "./commands.js";
 import { ValueWalkError } from "./unsure-readings.js";
 import type { ClassifyContext } from "../types.js";
@@ -21,6 +22,14 @@ const VALUE = `X='a[$(${PUSH})]'`;
 
 describe("a command substitution in the subscript of an arithmetic value (TP-1624)", () => {
   it.each([
+    ["a (( )) that reads $X", `${VALUE}; (( $X ))`],
+    ["an expansion that reads $X", `${VALUE}; echo $(( $X ))`],
+    ["an expansion that reads the braced name", `${VALUE}; echo $(( \${X} + 1 ))`],
+  ])("refuses %s, since a run-time word in math may store into a rebinding parameter", (_, command) => {
+    expect(() => spellings(command)).toThrow(CommandRebindingError);
+  });
+
+  it.each([
     ["a (( )) that reads the value", `${VALUE}; (( X ))`],
     ["a let that reads the value", `${VALUE}; let X`],
     ["an expansion that reads the value", `${VALUE}; echo $(( X ))`],
@@ -39,9 +48,6 @@ describe("a command substitution in the subscript of an arithmetic value (TP-162
   });
 
   it.each([
-    ["a (( )) that reads $X", `${VALUE}; (( $X ))`],
-    ["an expansion that reads $X", `${VALUE}; echo $(( $X ))`],
-    ["an expansion that reads the braced name", `${VALUE}; echo $(( \${X} + 1 ))`],
     ["a legacy $[ ] that reads the name", `${VALUE}; echo $[ X ]`],
     ["an array-subscript write", `${VALUE}; a[X]=1`],
     ["an array element read", `${VALUE}; echo \${a[X]}`],
