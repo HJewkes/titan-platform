@@ -17,6 +17,13 @@ export const VISUAL_ACCEPT_STEPS: readonly StepDeclaration[] = [
   { id: VISUAL_ACCEPT_GATE, kind: "assisted" },
 ];
 
+const ACCEPT_PROMPT = /^Accept the regenerated baselines of PR #\d+ in \S+ at head ([0-9a-f]{40})\? CI is red only on /;
+
+/** The head an `sh-visual-accept` gate pins; any other gate is none. */
+export function visualAcceptHead(stepId: string, prompt: string): string | undefined {
+  return stepIdMatches(VISUAL_ACCEPT_GATE, stepId) ? ACCEPT_PROMPT.exec(prompt)?.[1] : undefined;
+}
+
 const Mode = z.enum(["off", "shadow", "on"]);
 const OfferInput = z.looseObject({ repo: z.string(), failing: z.array(z.string()), mode: Mode.optional() });
 const OfferResult = z.looseObject({ offered: z.boolean(), mode: Mode, check: z.string().nullable() });
@@ -32,6 +39,9 @@ export interface VisualAcceptRun extends GateRun {
 type RedHead = Extract<LandOutcome, { kind: "ci-failed" }>;
 
 /** `wake` goes to the fixer through the review wake; `left` ends the ci-failed route with that outcome. */
+/** Runs just before the gate opens, as the visual packet trigger does before a visual land gate. */
+type BeforeAsk = (stepId: string, prompt: string) => Promise<void>;
+
 type VisualAccept = { kind: "not-offered" } | { kind: "wake"; payload: OwnerSendBackPayload } | { kind: "left"; outcome: LandOutcome | undefined };
 
 /** `shepherd.visualSetCarry` as the config file reads now; a config that does not parse offers nothing. */
@@ -61,12 +71,13 @@ async function offer(run: VisualAcceptRun, red: RedHead, liveMode: () => VisualS
 }
 
 /** Asks the owner at a head red only on the seat's baseline check whether CI's regenerated set is the one to commit. */
-export async function askVisualAccept(run: VisualAcceptRun, red: RedHead, liveMode: () => VisualSetCarry = () => "off"): Promise<VisualAccept> {
+export async function askVisualAccept(run: VisualAcceptRun, red: RedHead, liveMode: () => VisualSetCarry = () => "off", beforeAsk?: BeforeAsk): Promise<VisualAccept> {
   const offered = await offer(run, red, liveMode);
   if (!offered?.offered || offered.check === null) return { kind: "not-offered" };
   const { repo, pr } = run.target;
   const { schema, brief } = visualAcceptDecision({ repo, pr, headSha: red.headSha, check: offered.check });
   const prompt = `Accept the regenerated baselines of PR #${pr} in ${repo} at head ${red.headSha}? CI is red only on ${offered.check}.`;
+  await beforeAsk?.(VISUAL_ACCEPT_GATE, prompt);
   const answered = await askAtHead(run.ctx, VISUAL_ACCEPT_GATE, prompt, { schema, brief });
   if (!answered) return { kind: "left", outcome: undefined };
   const answer = schema.parse(answered.data);
@@ -77,13 +88,14 @@ export async function askVisualAccept(run: VisualAcceptRun, red: RedHead, liveMo
 
 export const NOT_OFFERED = "not-offered";
 type WakeFixer = (payload: OwnerSendBackPayload) => Promise<boolean>;
+type AcceptRouted = LandOutcome | undefined | typeof NOT_OFFERED;
 
 /**
  * The ci-failed route's owner ask: an answer ends it, the owner's words through `wake` and, with no taker, the seat's
  * fix round; `NOT_OFFERED` goes on to the ci-red wake as today.
  */
-export async function visualAcceptRoute(run: VisualAcceptRun, red: RedHead, liveMode: (() => VisualSetCarry) | undefined, wake: WakeFixer): Promise<LandOutcome | undefined | typeof NOT_OFFERED> {
-  const accept = await askVisualAccept(run, red, liveMode);
+export async function visualAcceptRoute(run: VisualAcceptRun, red: RedHead, liveMode: (() => VisualSetCarry) | undefined, wake: WakeFixer, beforeAsk?: BeforeAsk): Promise<AcceptRouted> {
+  const accept = await askVisualAccept(run, red, liveMode, beforeAsk);
   if (accept.kind !== "wake") return accept.kind === "left" ? accept.outcome : NOT_OFFERED;
   return (await wake(accept.payload)) ? undefined : unhandledSendBack(run, OWNER_SEND_BACK_KIND, red.headSha, accept.payload.text);
 }
