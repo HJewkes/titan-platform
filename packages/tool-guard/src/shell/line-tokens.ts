@@ -1,0 +1,20 @@
+import { newTrials } from "./arith-trials.js";
+import { SplitParseError, tokenize } from "./lexer.js";
+import type { Token } from "./lexer.js";
+import { NestingLimitError } from "./nesting.js";
+import { NestingReadingError, SplitReadingError } from "./unsure-readings.js";
+import { hasUnreadSteps } from "./unread-steps.js";
+
+/** A line bash 5 and bash 3.2 read differently is refused outright, whatever it names; a plain ParseError is not. */
+export function tokenizeLine(src: string, joinsConditional: boolean): Token[] {
+  try {
+    const tokens = tokenize(src, newTrials(src, joinsConditional));
+    // The joined reading is only trusted when every step in the text can be read: an unread step may have renamed `[[`.
+    if (!joinsConditional || !hasUnreadSteps(tokens)) return tokens;
+    return tokenize(src, newTrials(src));
+  } catch (error) {
+    if (error instanceof SplitParseError) throw new SplitReadingError(error.split);
+    if (error instanceof NestingLimitError) throw new NestingReadingError();
+    throw error;
+  }
+}
