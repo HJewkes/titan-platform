@@ -1,5 +1,6 @@
 import { ParseError } from "./lexer.js";
-import { tokenizeLine } from "./tokenize-line.js";
+import { mentionsAlias } from "./alias-mention.js";
+import { tokenizeLine } from "./line-tokens.js";
 import { changeDir, folded, literalEnv, nestedLists, walkSure } from "./command-env.js";
 import { lineBudget } from "./line-budget.js";
 import type { OpToken, RedirectToken, Token, WordToken } from "./lexer.js";
@@ -87,6 +88,8 @@ export interface ExtractOptions {
    */
   stopPastCap?: boolean;
   aliases?: AliasTable;
+  /** Read `&&` and `||` in a bare-start `[[` as test words: only for text the caller knows bash, zsh or ksh reads. */
+  joinsConditional?: boolean;
   /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
   onScript?: (text: string) => void;
   /** The text is the Bash tool's own line, run by bash or zsh, where `((x))` may be arithmetic; off, it reads as nested subshells that run `x`. */
@@ -159,7 +162,8 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
     onScript: options.onScript ?? null,
     arithmetic: options.arithmetic === true && !splitsClose(src),
   };
-  walk(tokenizeLine(src), observed(w));
+  // Only the Bash tool's own line has a known reader, so only it may join a `[[`'s operators.
+  walk(tokenizeLine(src, options.joinsConditional === true && !mentionsAlias(src)), observed(w));
   settle(w.marks);
   return out;
 }
@@ -368,7 +372,7 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descrip
     w.onScript?.(text);
     // A shell's arguments and input become its positional parameters and what its `read` stores.
     if (script.wrap !== "eval") w.marks.opaque = true;
-    // A nested shell's text keeps the nested-subshell reading: the shell that runs it may be dash.
-    walk(tokenizeLine(text), { ...child(w, [...wrapping, script.wrap], descriptors), arithmetic: false });
+    // A nested shell's text keeps the nested-subshell reading and never joins a `[[`: which shell reads it is not known (it may be dash, or the runner's name may be rebound).
+    walk(tokenizeLine(text, false), { ...child(w, [...wrapping, script.wrap], descriptors), arithmetic: false });
   }
 }
