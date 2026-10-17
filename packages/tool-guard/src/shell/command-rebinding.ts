@@ -75,10 +75,34 @@ function hashBinds(args: WordToken[]): boolean {
 function storesRebinding(cmd: Unwrapped, name: string): boolean {
   if (name === "functions" && functionsCopies(cmd.args)) return true;
   const own = skipLeadingDashes(name, cmd.args);
-  if (PRINTS_VARIABLES.has(name) && !own.some((a) => a.dynamic) && own.some((a) => /^-[A-Za-z0-9]*[pf]/.test(a.value))) return false;
-  const args = variableWords(name, own.filter((a) => !a.dynamic ? !isGlob(a, name) : NAMES_REBINDING_RE.test(a.value)));
+  if (PRINTS_VARIABLES.has(name)) {
+    const operands = declarerOperands(own);
+    if (operands.some((a) => NAMES_REBINDING_RE.test(a.value) && a.value.includes("="))) return true;
+    if (printsOnly(own, operands)) return false;
+  }
+  const args = variableWords(name, own.filter((a) => NAMES_REBINDING_RE.test(a.value) || (!a.dynamic && !isGlob(a, name))));
   if (writesProtectedParam({ ...cmd, args }, args, [], REBINDING_SET) !== null) return true;
   return NAME_BY_OPTION.has(name) && dynamicSlot(name, own);
+}
+
+/**
+ * A declarer's words from its first operand on. Its options run only until then, so a later `-p` is an operand the
+ * shell rejects after storing the ones before it: `declare BASH_CMDS[q]=/x -p`. A number after an option word is zsh's
+ * value for it: `typeset -L 5 x`.
+ */
+function declarerOperands(args: WordToken[]): WordToken[] {
+  for (const [i, word] of args.entries()) {
+    if (word.value === "--" && !word.dynamic) return args.slice(i + 1);
+    const optionValue = /^\d+$/.test(word.value) && /^[-+]/.test(args[i - 1]?.value ?? "");
+    if (word.dynamic || (!/^[-+]./.test(word.value) && !optionValue)) return args.slice(i);
+  }
+  return [];
+}
+
+/** Whether a literal leading `-p` or `-f` makes the declarer print, not store: `declare -p BASH_CMDS`. */
+function printsOnly(args: WordToken[], operands: WordToken[]): boolean {
+  if (args.some((a) => a.dynamic)) return false;
+  return args.slice(0, args.length - operands.length).some((a) => /^-[A-Za-z0-9]*[pf]/.test(a.value));
 }
 
 /** An unquoted glob or brace in a declarer's operand is not a name: `readonly {}` under `xargs -I{}`. */
