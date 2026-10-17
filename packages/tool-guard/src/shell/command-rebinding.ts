@@ -13,7 +13,14 @@ const ASSIGNING_EXPANSION_RE = new RegExp(`\\$\\{[^}]*?\\b(?:${REBINDING.join("|
 const INDIRECT_ASSIGNING_RE = /\$\{(?:!|\([^)]*P[^)]*\))[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?:{0,2}=/;
 /** Builtins that skip one leading `--` and still read options after it: `zparseopts -- -A commands y:`. */
 const SKIPS_LEADING_DASHES = new Set(["zparseopts", "zstyle", "zformat", "getopts"]);
-const NAMEREF_DECLARERS = new Set(["typeset", "declare", "local"]);
+const NAMEREF_DECLARERS = new Set(["typeset", "declare", "local", "export", "readonly", "private", "integer", "float"]);
+const VARIABLE_TAKERS = new Set([...NAMEREF_DECLARERS, "read", "mapfile", "readarray"]);
+/** The builtins that store into a named parameter; any other command writes none, whatever its words expand to. */
+const STORE_BUILTINS = new Set(
+  `export declare typeset local readonly private integer float read mapfile readarray printf print set wait compgen vared
+  zstyle zparseopts zformat strftime zstat zselect getln sysread zregexparse pcre_match zpty zsystem syserror sysopen
+  syswrite zmodload zgetattr zlistattr ztie zcurses shift compadd getopts functions`.split(/\s+/),
+);
 
 /** A line that rebinds a command name (`hash y=/usr/bin/git`, `commands[y]=…`); the hook denies it unchecked. */
 export class CommandRebindingError extends ReadingLimitError {
@@ -33,8 +40,8 @@ export class CommandRebindingError extends ReadingLimitError {
 export function rebindsCommand(cmd: Unwrapped): boolean {
   if (cmd.name === "hash" && hashBinds(cmd.args)) return true;
   if (cmd.assigned.some(([name]) => REBINDING_SET.has(name))) return true;
-  if (cmd.name !== null && storesRebinding(cmd, cmd.name)) return true;
-  const texts = [...cmd.args.map((a) => a.value), ...cmd.assigned.map(([, value]) => value ?? "")];
+  if (cmd.name !== null && STORE_BUILTINS.has(cmd.name) && storesRebinding(cmd, cmd.name)) return true;
+  const texts = [...cmd.args.filter((a) => a.dynamic).map((a) => a.value), ...cmd.assigned.map(([, value]) => value ?? "")];
   return texts.some((text) => ASSIGNING_EXPANSION_RE.test(text) || INDIRECT_ASSIGNING_RE.test(text));
 }
 
@@ -53,26 +60,40 @@ function hashBinds(args: WordToken[]): boolean {
   return false;
 }
 
-/** Whether a command declares a nameref, copies a function under a new name, or stores into a rebinding parameter. */
+/**
+ * Whether a store builtin declares a nameref to a rebinding parameter, copies a function under a new name, or stores
+ * into a rebinding parameter. The builtins that take a variable as an everyday operand (`export $(cmd)`,
+ * `declare "$F"`, `read "$V"`) are read by their literal words only: counting a run-time word there would refuse every
+ * such line, and the guard allows them today. Every other store builtin fails closed on a word it cannot read.
+ */
 function storesRebinding(cmd: Unwrapped, name: string): boolean {
-  const declarer = NAMEREF_DECLARERS.has(name);
-  if (declarer && cmd.args.some((a) => /^-[^-]*n/s.test(a.value) || /^[-+].*[^-+A-Za-z0-9]/s.test(a.value))) return true;
-  if (name === "functions" && functionsCopies(cmd.args)) return true;
-  const args = readableArgs(name, cmd.args, declarer);
-  return writesProtectedParam({ ...cmd, args }, args, [], REBINDING_SET) !== null;
+  const literal = VARIABLE_TAKERS.has(name);
+  const args = literal ? cmd.args.filter(isPlain) : cmd.args;
+  if (name === "functions" && functionsCopies(args)) return true;
+  const words = literal ? variableWords(name, args) : readableArgs(name, args);
+  return writesProtectedParam({ ...cmd, args: words }, words, [], REBINDING_SET) !== null;
+}
+
+/** A word the shell reads as written: a run-time expansion, or an unquoted glob or brace, may become other words. */
+function isPlain(word: WordToken): boolean {
+  return !word.dynamic && (word.quoted || !/[{}*?]/.test(word.value));
+}
+
+/** A declarer's operands and its `-n` words, which make each operand a reference; a reader's non-option words. */
+function variableWords(name: string, args: WordToken[]): WordToken[] {
+  const nameref = NAMEREF_DECLARERS.has(name);
+  return args.filter((a) => !/^[-+]/.test(a.value) || (nameref && /^-[A-Za-z0-9]*n/.test(a.value)) || (!nameref && /^-[A-Za-z0-9]*[aA]/.test(a.value)));
 }
 
 /**
  * The words the store reader gets: zsh skips one leading `--` before these builtins' options, and a lone quoted word
- * that follows `-f` (a function to print) or is all `printf` has (a format, which needs a word after it to be `-vNAME`)
- * stores nowhere.
+ * that is all `printf` has (a format, which needs a word after it to be `-vNAME`) stores nowhere.
  */
-function readableArgs(name: string, args: WordToken[], declarer: boolean): WordToken[] {
+function readableArgs(name: string, args: WordToken[]): WordToken[] {
   if (SKIPS_LEADING_DASHES.has(name) && args[0]?.value === "--") return args.slice(1);
   const last = args.at(-1);
   const quotedLast = last?.dynamic === true && last.unquotedExpansion !== true;
-  const printsFunction = declarer && args.slice(0, -1).some((a) => /^-[^-]*f/s.test(a.value));
-  return quotedLast && (printsFunction || (name === "printf" && args.length === 1)) ? args.slice(0, -1) : args;
+  return quotedLast && name === "printf" && args.length === 1 ? args.slice(0, -1) : args;
 }
 
 /** A dynamic word may expand to an option unless literal text that no option starts with comes first: `PATH=$HOME`. */

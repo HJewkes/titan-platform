@@ -9,6 +9,7 @@ import type { ErrorClass } from "./log.js";
 import { GUARDED_PATHS } from "./paths.js";
 import { ParseError } from "./shell/lexer.js";
 import { MAX_NESTING } from "./shell/nesting.js";
+import { CommandRebindingError } from "./shell/command-rebinding.js";
 import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, NestingReadingError, ReadingLimitError, ScriptBudgetError, SplicedReadingError, SplitReadingError, UnknownStdinError, UntrackedWriteError, ValueWalkError } from "./shell/unsure-readings.js";
 import type { ScriptOverrun } from "./shell/unsure-readings.js";
 import type { Split } from "./shell/parse-error.js";
@@ -67,6 +68,8 @@ const SPLICED_REASON =
   "authority-guard does not check this Bash command: its `eval` and `-c` texts, read again with what their substitutions print, add more text than it checks, as nested `eval \"$(…);…\"` doubles them at every level; flatten the nesting, or write the steps to a script file and run that.";
 const UNTRACKED_REASON =
   "authority-guard does not check this Bash command: it writes a file the guard cannot follow (output it cannot reproduce, a target only known at run time, another fd, `>!`, `<>`), then runs a script, which may be that file; run the script in its own command, where the guard reads the file as it is.";
+const REBIND_REASON =
+  "authority-guard does not follow a command name the line rebinds (`hash y=/usr/bin/git; y push`, `commands[y]=…`, `functions[y]=…`, bash `hash -p`), so it refuses any command that does; run the program by its own name instead.";
 const STDIN_REASON =
   "authority-guard does not check this Bash command: a shell runs its stdin or another descriptor as its script, and the line does not show that text (`bash < $F`, `bash /dev/stdin <&3`, `bash /dev/fd/3`); run the script by a literal path, so the guard reads the file.";
 const TABLE_REASON = "authority-guard could not load the authority table, so it refuses every guarded action. Report this to the owner.";
@@ -155,6 +158,7 @@ function limitReason(error: ReadingLimitError): string {
   if (error instanceof SplicedReadingError) return SPLICED_REASON;
   if (error instanceof UntrackedWriteError) return UNTRACKED_REASON;
   if (error instanceof UnknownStdinError) return STDIN_REASON;
+  if (error instanceof CommandRebindingError) return REBIND_REASON;
   return error instanceof SplitReadingError ? SPLIT_REASONS[error.split] : READINGS_REASON;
 }
 

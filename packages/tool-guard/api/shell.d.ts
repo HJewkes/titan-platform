@@ -165,6 +165,11 @@ declare class ReadingLimitError extends Error {
     constructor();
 }
 
+/** A line that rebinds a command name (`hash y=/usr/bin/git`, `commands[y]=…`); the hook denies it unchecked. */
+declare class CommandRebindingError extends ReadingLimitError {
+    constructor();
+}
+
 interface GitInvocation {
     /** Directory git operates in after `-C`, null when unknown. */
     dir: string | null;
@@ -190,4 +195,4 @@ declare function splitArgs(args: WordToken[], valueOpts?: Set<string>): SplitArg
 /** Absolute path a word names from `dir`, or null when the word is dynamic or the base is unknown. */
 declare function resolvePath(dir: string | null, word: WordToken | null | undefined, home: string | null): string | null;
 
-export { type AliasTable, type Chain, type ExtractOptions, type GitInvocation, type OpToken, ParseError, ReadingLimitError, type RedirectToken, type SimpleCommand, type SplitArgs, type SubsToken, type Token, type VarRef, type WordToken, type Wrapping, extractCommands, parseGit, resolvePath, splitArgs, tokenize };
+export { type AliasTable, type Chain, CommandRebindingError, type ExtractOptions, type GitInvocation, type OpToken, ParseError, ReadingLimitError, type RedirectToken, type SimpleCommand, type SplitArgs, type SubsToken, type Token, type VarRef, type WordToken, type Wrapping, extractCommands, parseGit, resolvePath, splitArgs, tokenize };
