@@ -934,7 +934,7 @@ Key exports:
 - `plan`: `planPanel`
 - `reviewer-brief`: `correctionPrompt`, `reviewCheckoutName`, `reviewerBrief`, `validOwnerPicks`
 - `accept-verdict`: `acceptVerdict`, `isUsageLimit`
-- +108 more in the [reference page](/reference/review-panel)
+- +112 more in the [reference page](/reference/review-panel)
 
 <a id="cap-session-analytics"></a>
 
