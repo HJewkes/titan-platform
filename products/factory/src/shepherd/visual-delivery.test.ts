@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import { fakeSha } from "@titan-design/github";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import type { RosterRead } from "./roster.js";
 import { deliverGate, deliveryFileFor, type DeliveryGate, type DeliveryWorld, type VisualDeliveryPorts } from "./visual-delivery.js";
 import { packagerName, packetDirFor } from "./visual-packet-trigger.js";
@@ -39,7 +40,7 @@ function scenario(options: { prose?: boolean; roster?: RosterRead; replies?: Par
     },
   };
   const file = deliveryFileFor(stateDir, RUN, H);
-  return { ports, calls, dir, file, record: () => JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown> };
+  return { ports, calls, dir, file, record: () => z.record(z.string(), z.unknown()).parse(JSON.parse(readFileSync(file, "utf8"))) };
 }
 
 const verbs = (calls: string[][]) => calls.map((argv) => argv.find((arg) => ["round", "lint", "import"].includes(arg)));

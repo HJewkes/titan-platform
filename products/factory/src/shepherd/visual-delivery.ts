@@ -14,7 +14,7 @@ const MAX_JSON_BYTES = 1024 * 1024;
 /** O_NONBLOCK so a planted FIFO cannot hang the open; O_NOFOLLOW so a symlinked file is refused, not followed. */
 const OPEN_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 /** S5 carries `imported` on to `delivered`; until then an imported round is as far as the sweep goes. */
-const FINAL = new Set(["shadow", "imported", "cancelled", "failed"]);
+const FINAL: ReadonlySet<string> = new Set<DeliveryRecord["state"]>(["shadow", "imported", "cancelled", "failed"]);
 const IMPORT_CONFLICT = /is already imported with a different/;
 
 export type DeliveryExec = (argv: readonly string[], signal: AbortSignal) => Promise<SafeExecResult>;
@@ -73,7 +73,7 @@ export async function deliverGate(ports: VisualDeliveryPorts, world: DeliveryWor
   const file = deliveryFileFor(ports.stateDir, gate.runId, gate.headSha);
   const recorded = await readJson(file, Recorded).catch((error: unknown) => messageOf(error));
   if (typeof recorded === "string") return { gateId: gate.gateId, state: "refused", reason: recorded };
-  if (recorded && FINAL.has(recorded.state)) return { gateId: gate.gateId, ...(recorded as Pick<DeliveryOutcome, "state" | "reason">) };
+  if (recorded && isFinal(recorded.state)) return { gateId: gate.gateId, state: recorded.state, ...(recorded.reason !== undefined && { reason: recorded.reason }) };
   const step = await pipeline(ports, world, gate, packetDir, signal);
   if ("waiting" in step) return { gateId: gate.gateId, state: "waiting" };
   const record = "record" in step ? step.record : step.value;
@@ -153,6 +153,7 @@ export function systemDeliveryExec(roundsDir: string | undefined): DeliveryExec 
   return ([bin, ...args], signal) => execSafeAsync(bin!, args, withRounds, EXEC_TIMEOUT_MS, undefined, undefined, signal);
 }
 
+const isFinal = (state: string): state is DeliveryRecord["state"] => FINAL.has(state);
 const failed = (reason: string, detail: string): { record: DeliveryRecord } => ({ record: { state: "failed", reason, detail } });
 const firstLine = (text: string): string => text.trim().split("\n")[0]?.slice(0, 300) ?? "";
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
