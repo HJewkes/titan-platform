@@ -4,15 +4,22 @@ import { statuslineLine } from "./statusline.js";
 
 const now = 1_800_000_000;
 function reading(five = 12.9, weekly = 76.2, at = now - 12.75): UsageResult {
-  return usageFromRolloutEvents([{ type: "event_msg", timestamp: new Date(at * 1000).toISOString(), payload: {
-    type: "token_count", rate_limits: {
-      primary: { used_percent: five, window_minutes: 300, resets_at: now + 2000 },
-      secondary: { used_percent: weekly, window_minutes: 10080, resets_at: now + 3000 },
-    },
-  } }], "reporter");
+  return { status: "known", reading: { account: "reporter", written_at: at, rate_limits: {
+    five_hour: { used_percentage: five, resets_at: now + 2000 },
+    seven_day: { used_percentage: weekly, resets_at: now + 3000 },
+  } } };
 }
 
 describe("Codex statusline rendering", () => {
+  it("never promotes native cached rollout emission into fresh quota", () => {
+    const result = usageFromRolloutEvents([{ type: "event_msg", timestamp: new Date(now * 1000).toISOString(), payload: {
+      type: "token_count", rate_limits: { primary: { used_percent: 12, window_minutes: 300, resets_at: now + 2000 },
+        secondary: { used_percent: 76, window_minutes: 10080, resets_at: now + 3000 } },
+    } }], "reporter");
+    expect(result).toEqual({ status: "unknown", reason: "freshness-unverified" });
+    expect(statuslineLine("reporter", result, now)).toBe("codex|reporter|unknown|unknown||");
+  });
+
   it("prints the existing extra-account format with integer used percentages and age", () => {
     expect(statuslineLine("reporter", reading(), now)).toBe("codex|reporter|12|76|12|");
   });
@@ -26,7 +33,7 @@ describe("Codex statusline rendering", () => {
     expect(statuslineLine("reporter", reading(20, 30, now - 900), now)).toBe("codex|reporter|20|30|900|");
     expect(statuslineLine("reporter", reading(20, 30, now - 900.1), now)).toBe("codex|reporter|unknown|unknown||");
   });
-  it.each(["missing", "inconsistent", "unreadable"] as const)("renders %s without guessed numbers", reason => {
+  it.each(["missing", "inconsistent", "unreadable", "freshness-unverified"] as const)("renders %s without guessed numbers", reason => {
     expect(statuslineLine("reporter", { status: "unknown", reason }, now)).toBe("codex|reporter|unknown|unknown||");
   });
   it("refuses future observations, invalid clocks and expired resets", () => {

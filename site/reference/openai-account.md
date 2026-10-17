@@ -190,34 +190,8 @@ ignore-project flag is assumed, and no account-home configuration is disabled.
 
 ## Statusline command
 
-```sh
-openai-account status --statusline [--code-home <absolute-dir>] [--account <label>]
-```
+`openai-account status --statusline --code-home /explicit/codex-home --account basement --expected-account-id <caller-binding>` opts into the authoritative native backend reader above. Native startup and managed credential refresh can occur. `--code-home` overrides explicit CODEX_HOME; no default home is scanned. The optional display label is never an identity binding. The expected account ID must come from the caller account authority, never a guessed home/label/email; missing or invalid binding emits unknown without launching native. It is not printed in output or errors.
 
-Uses `--code-home` or explicit `CODEX_HOME`; never falls back to ~/.codex.
-The label defaults to `accountLabel(codeHome)` and can be set with `--account`.
-Only one selected account is read. No login probe, Codex binary, network or
-credential read is needed. The command emits one line:
+Output remains exactly `codex|basement|20|75|12|`: used percentages and age are floored for display, with freshness checked before rounding. Fresh exhaustion still displays numbers; this is not admission. Unverified rollout freshness, stale (>900s), future, expired, mismatched, missing and failed evidence emits `codex|basement|unknown|unknown||`. Errors are fixed/quiet. Syntax errors exit64; valid display commands exit0. Tests use synthetic native seams; no real native/account execution or deployment is established by them.
 
-```text
-codex|basement|20|75|12|
-```
-
-Five-hour and weekly columns are percentages **used**, rounded down, followed by
-whole observation age in seconds and a trailing pipe. Zero is printed only for
-an observed zero. Valid fresh readings exceeding admission thresholds still
-show their percentages; the display does not admit a new run.
-
-Missing, stale (age >900 before rounding), inconsistent, future, reset-expired or
-unreadable evidence prints `codex|basement|unknown|unknown||`. No readable account
-home gives `codex|default|unknown|unknown||` unless a safe account label was
-explicitly supplied or derived. Invalid labels are never echoed; the line uses
-`default` with unknown figures. A selected account cannot display another
-account's labelled reading. Reader errors are dropped, with no transcript text
-or errors on stderr. A valid statusline invocation always exits 0; syntax errors
-exit 64 with fixed usage text. `--help` exits 0.
-
-No renderer installation or dotfiles changes. For the Mac, which runs no Codex,
-the external integration can fetch basement's output into a cache at most once
-per 60 seconds. It must preserve reading age, expire stale cached evidence and
-never make cached numbers appear fresh. That transport is outside this package.
+Mac transport and renderer are separate product integration. Cache integrations must refresh no faster than60s and preserve a conservative age including transfer/local elapsed time; the integer display age is a lower bound and must not reset freshness.

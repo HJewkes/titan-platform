@@ -2,5 +2,7 @@
 "@titan-design/openai-account": minor
 ---
 
-Add a read-only statusline command that emits Codex quota percentages and
-observation age, with unknown values for stale, missing or invalid evidence.
+Add an explicit native-backed statusline command with caller-established account
+binding, conservative freshness and the existing Codex record ABI. Missing binding
+returns unknown without launching native. Native-managed credential refresh can
+occur only when the authoritative reader is explicitly selected.

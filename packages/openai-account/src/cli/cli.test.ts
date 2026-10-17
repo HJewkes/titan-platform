@@ -1,80 +1,83 @@
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { runCli, type CliContext } from "./cli.js";
+import type { UsageResult } from "../usage.js";
 
 const now = 1_800_000_000;
-const roots: string[] = [];
-afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
-function context(env: CliContext["env"] = {}) {
+function context(env: CliContext["env"] = { CODEX_HOME: "/fixture/reporter" }) {
   const out: string[] = [], err: string[] = [];
-  return { env, now: () => now * 1000, out: (line: string) => { out.push(line); }, err: (line: string) => { err.push(line); }, output: out, errors: err };
+  const result: UsageResult = { status: "known", reading: { account: "reporter", written_at: now - 5,
+    rate_limits: { five_hour: { used_percentage: 10, resets_at: now + 1000 }, seven_day: { used_percentage: 30, resets_at: now + 2000 } } } };
+  const readNativeUsage = vi.fn(async (): Promise<UsageResult> => result);
+  return { env, now: () => now * 1000, out: (line: string) => { out.push(line); }, err: (line: string) => { err.push(line); }, readNativeUsage, output: out, errors: err };
 }
-async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), "codex-statusline-")); roots.push(root);
-  const home = join(root, "reporter");
-  await mkdir(join(home, "sessions"), { recursive: true });
-  await writeFile(join(home, "auth.json"), "private-auth-never-read");
-  await writeFile(join(home, "sessions", "rollout-test.jsonl"), JSON.stringify({ type: "event_msg", timestamp: new Date((now - 5) * 1000).toISOString(), payload: {
-    type: "token_count", rate_limits: { primary: { used_percent: 10, window_minutes: 300, resets_at: now + 1000 },
-      secondary: { used_percent: 30, window_minutes: 10080, resets_at: now + 2000 } },
-  } }));
-  return home;
-}
+const bound = ["status", "--statusline", "--expected-account-id", "fixture-account"];
 
-describe("openai-account statusline command", () => {
-  it("reads the explicit environment home through the slice B reader", async () => {
-    const ctx = context({ CODEX_HOME: await fixture() });
-    expect(await runCli(["status", "--statusline"], ctx)).toBe(0);
+describe("openai-account authoritative statusline command", () => {
+  it("passes the explicit home and caller identity to the authoritative native reader", async () => {
+    const ctx = context({ CODEX_HOME: "/fixture/reporter", PATH: "/fixture/bin" });
+    expect(await runCli(bound, ctx)).toBe(0);
+    expect(ctx.readNativeUsage).toHaveBeenCalledWith({ codeHome: "/fixture/reporter", label: "reporter" },
+      { expectedAccountId: "fixture-account", env: ctx.env });
     expect(ctx.output).toEqual(["codex|reporter|10|30|5|"]);
     expect(ctx.errors).toEqual([]);
+    expect(ctx.output.join("")).not.toContain("fixture-account");
   });
-  it("supports explicit home and account overrides without scanning a default account", async () => {
+  it("supports home and display-label overrides without changing the identity binding", async () => {
     const ctx = context({ CODEX_HOME: "/wrong" });
-    expect(await runCli(["status", "--statusline", "--code-home", await fixture(), "--account", "basement"], ctx)).toBe(0);
-    expect(ctx.output).toEqual(["codex|basement|10|30|5|"]);
+    ctx.readNativeUsage.mockResolvedValue({ status: "unknown", reason: "missing" });
+    expect(await runCli([...bound, "--code-home", "/fixture/selected", "--account", "basement"], ctx)).toBe(0);
+    expect(ctx.readNativeUsage).toHaveBeenCalledWith({ codeHome: "/fixture/selected", label: "basement" },
+      { expectedAccountId: "fixture-account", env: ctx.env });
+    expect(ctx.output).toEqual(["codex|basement|unknown|unknown||"]);
   });
-  it("prints one unknown line with no stderr or I/O when CODEX_HOME is absent", async () => {
-    let calls = 0;
-    const ctx = { ...context(), readUsage: async () => { calls++; throw new Error("must not be called"); } };
-    expect(await runCli(["status", "--statusline"], ctx)).toBe(0);
-    expect(ctx.output).toEqual(["codex|default|unknown|unknown||"]);
-    expect(ctx.errors).toEqual([]);
-    expect(calls).toBe(0);
-  });
-  it("drops reader exceptions and emits only a fixed unknown line", async () => {
-    const ctx = { ...context({ CODEX_HOME: "/tmp/reporter" }), readUsage: async () => { throw new Error("sk-proj-privateToken"); } };
-    expect(await runCli(["status", "--statusline"], ctx)).toBe(0);
+  it.each([undefined, "", "bad|id", "line\nbreak", " ", "x".repeat(257)])("refuses missing or invalid binding before native launch: %s", async id => {
+    const ctx = context();
+    const { runStatusline } = await import("./statusline.js");
+    await runStatusline({ expectedAccountId: id }, ctx);
+    expect(ctx.readNativeUsage).not.toHaveBeenCalled();
     expect(ctx.output).toEqual(["codex|reporter|unknown|unknown||"]);
-    expect(ctx.errors).toEqual([]);
   });
-  it.each(["relative", "/tmp/bad|label", "/tmp/sk-proj-privateToken"])("keeps invalid selections quiet: %s", home => {
-    const ctx = context({ CODEX_HOME: home });
-    return runCli(["status", "--statusline"], ctx).then(code => {
-      expect(code).toBe(0);
-      expect(ctx.output[0]).toMatch(/^codex\|[A-Za-z0-9_.-]+\|unknown\|unknown\|\|$/);
-      expect(ctx.output.join("")).not.toMatch(/privateToken|bad\|label/);
-      expect(ctx.errors).toEqual([]);
-    });
-  });
-  it("makes stale fixtures unknown without invoking a login probe", async () => {
-    const ctx = context({ CODEX_HOME: await fixture() }); ctx.now = () => (now + 901) * 1000;
-    expect(await runCli(["status", "--statusline"], ctx)).toBe(0);
+  it("does not infer binding from environment, home or display label", async () => {
+    const ctx = context({ CODEX_HOME: "/fixture/reporter", CODEX_ACCOUNT_ID: "fixture-account" });
+    expect(await runCli(["status", "--statusline", "--account", "reporter"], ctx)).toBe(0);
+    expect(ctx.readNativeUsage).not.toHaveBeenCalled();
     expect(ctx.output).toEqual(["codex|reporter|unknown|unknown||"]);
+  });
+  it("does not launch without an explicit absolute home", async () => {
+    for (const env of [{}, { CODEX_HOME: "relative" }]) {
+      const ctx = context(env); await runCli(bound, ctx);
+      expect(ctx.readNativeUsage).not.toHaveBeenCalled();
+      expect(ctx.output[0]).toContain("|unknown|unknown||");
+    }
+  });
+  it.each(["/fixture/line\nbreak", "/fixture/tab\tpath", "/fixture/nul\0path"])("rejects control characters in explicit homes before launch", async home => {
+    const ctx = context();
+    await runCli([...bound, "--code-home", home, "--account", "reporter"], ctx);
+    expect(ctx.readNativeUsage).not.toHaveBeenCalled();
+    expect(ctx.output).toEqual(["codex|reporter|unknown|unknown||"]);
+  });
+  it("drops exceptions and identity mismatches without disclosing reader output", async () => {
+    const ctx = context(); ctx.readNativeUsage.mockRejectedValue(new Error("sk-proj-privateToken"));
+    expect(await runCli(bound, ctx)).toBe(0);
+    expect(ctx.output).toEqual(["codex|reporter|unknown|unknown||"]); expect(ctx.errors).toEqual([]);
+  });
+  it.each(["freshness-unverified", "inconsistent", "unreadable"] as const)("keeps %s unknown", async reason => {
+    const ctx = context(); ctx.readNativeUsage.mockResolvedValue({ status: "unknown", reason });
+    await runCli(bound, ctx); expect(ctx.output).toEqual(["codex|reporter|unknown|unknown||"]);
+  });
+  it("checks age at display time including native request duration", async () => {
+    const ctx = context(); ctx.now = () => (now + 901) * 1000;
+    await runCli(bound, ctx); expect(ctx.output).toEqual(["codex|reporter|unknown|unknown||"]);
   });
   it.each([[], ["poll"], ["status"], ["status", "--statusline", "--statusline"],
-    ["status", "--statusline", "--account"], ["status", "--statusline", "--secret=sk-proj-private"]].map(args => ({ args })))("rejects invalid syntax without echoing arguments: $args", async ({ args }) => {
-    const ctx = context();
-    expect(await runCli(args, ctx)).toBe(64);
-    expect(ctx.output).toEqual([]);
-    expect(ctx.errors.join("")).toContain("usage:");
-    expect(ctx.errors.join("")).not.toContain("sk-proj-private");
+    ["status", "--statusline", "--expected-account-id"], ["status", "--statusline", "--secret=private"]].map(args => ({ args })))("rejects syntax without echoing arguments: $args", async ({ args }) => {
+    const ctx = context(); expect(await runCli(args, ctx)).toBe(64);
+    expect(ctx.output).toEqual([]); expect(ctx.errors.join("")).toContain("usage:");
+    expect(ctx.errors.join("")).not.toContain("--secret=private"); expect(ctx.readNativeUsage).not.toHaveBeenCalled();
   });
-  it("documents its read-only command with --help", async () => {
-    const ctx = context();
-    expect(await runCli(["--help"], ctx)).toBe(0);
-    expect(ctx.output.join("")).toContain("status --statusline");
-    expect(ctx.errors).toEqual([]);
+  it("documents explicit native opt-in and effects", async () => {
+    const ctx = context(); expect(await runCli(["--help"], ctx)).toBe(0);
+    expect(ctx.output.join("")).toContain("--expected-account-id");
+    expect(ctx.output.join("")).toContain("credential refresh"); expect(ctx.readNativeUsage).not.toHaveBeenCalled();
   });
 });

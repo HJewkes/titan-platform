@@ -1,6 +1,6 @@
 import { isAbsolute } from "node:path";
 import { accountLabel, assertAccountLabel, type AccountProfile } from "../profile.js";
-import type { readUsage } from "../node/usage.js";
+import type { readNativeUsage } from "../node/native.js";
 
 export interface CliContext {
   env: Readonly<Record<string, string | undefined>>;
@@ -8,9 +8,9 @@ export interface CliContext {
   now: () => number;
   out: (line: string) => void;
   err: (line: string) => void;
-  readUsage?: typeof readUsage;
+  readNativeUsage?: typeof readNativeUsage;
 }
-export interface SelectionOptions { codeHome?: string; account?: string }
+export interface SelectionOptions { codeHome?: string; account?: string; expectedAccountId?: string }
 export interface Selection { label: string; profile: AccountProfile | null }
 
 export function selectionOf(context: CliContext, options: SelectionOptions): Selection {
@@ -20,6 +20,6 @@ export function selectionOf(context: CliContext, options: SelectionOptions): Sel
     label = options.account ?? accountLabel(codeHome ?? ".codex");
     assertAccountLabel(label);
   } catch { return { label: "default", profile: null }; }
-  const valid = codeHome !== undefined && isAbsolute(codeHome) && !codeHome.includes("\0");
+  const valid = codeHome !== undefined && isAbsolute(codeHome) && !/[\x00-\x1f\x7f]/.test(codeHome);
   return { label, profile: valid ? { label, codeHome } : null };
 }

@@ -96,28 +96,8 @@ transports; callers must preserve these contracts when overriding them.
 
 ## Statusline command
 
-```sh
-openai-account status --statusline --code-home /tmp/example-codex-home --account basement
-```
+`openai-account status --statusline --code-home /explicit/codex-home --account basement --expected-account-id <caller-binding>` opts into the authoritative native backend reader above. Native startup and managed credential refresh can occur. `--code-home` overrides explicit CODEX_HOME; no default home is scanned. The optional display label is never an identity binding. The expected account ID must come from the caller account authority, never a guessed home/label/email; missing or invalid binding emits unknown without launching native. It is not printed in output or errors.
 
-`--code-home` overrides an explicit `CODEX_HOME`; there is no default-home scan.
-`--account` overrides the label derived from the home's last path segment.
-The command reads only the slice B rollout reader, with no login probe, Codex
-launch, network request or write. It emits exactly one extra-account line:
+Output remains exactly `codex|basement|20|75|12|`: used percentages and age are floored for display, with freshness checked before rounding. Fresh exhaustion still displays numbers; this is not admission. Unverified rollout freshness, stale (>900s), future, expired, mismatched, missing and failed evidence emits `codex|basement|unknown|unknown||`. Errors are fixed/quiet. Syntax errors exit64; valid display commands exit0. Tests use synthetic native seams; no real native/account execution or deployment is established by them.
 
-```text
-codex|basement|20|75|12|
-```
-
-Percentages are whole percentages **used**, rounded down like the Claude statusline;
-age is whole seconds since the rollout observation. Fresh exhausted readings
-still display their numbers: this is a display, not launch admission. Missing,
-stale, inconsistent, future, expired or unreadable evidence emits
-`codex|basement|unknown|unknown||`. Valid statusline invocations exit 0 with no
-stderr. Invalid syntax exits 64 with fixed usage text. Unsafe account labels are
-not echoed; they yield an unknown reading under the safe label `default`.
-
-The command does not edit or install a renderer. A Mac without Codex can consume
-a cached fetch of basement's output; the outer integration refreshes no faster
-than once per 60 seconds and must retain observation age rather than treating
-cached numbers as new evidence. That transport and dotfiles wiring are separate.
+Mac transport and renderer are separate product integration. Cache integrations must refresh no faster than60s and preserve a conservative age including transfer/local elapsed time; the integer display age is a lower bound and must not reset freshness.

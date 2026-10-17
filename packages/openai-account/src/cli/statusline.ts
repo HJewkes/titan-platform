@@ -1,6 +1,6 @@
 import { assertAccountLabel } from "../profile.js";
 import { quotaAdmission, type UsageResult } from "../usage.js";
-import { readUsage } from "../node/usage.js";
+import { readNativeUsage } from "../node/native.js";
 import { selectionOf, type CliContext, type SelectionOptions } from "./context.js";
 
 const unknownLine = (label: string): string => `codex|${label}|unknown|unknown||`;
@@ -22,9 +22,10 @@ export function statuslineLine(label: string, result: UsageResult, now: number):
 export async function runStatusline(options: SelectionOptions, context: CliContext): Promise<number> {
   const { label, profile } = selectionOf(context, options);
   let line = unknownLine(label);
-  if (profile) {
+  const binding = options.expectedAccountId;
+  if (profile && binding !== undefined && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$/.test(binding)) {
     try {
-      const result = await (context.readUsage ?? readUsage)(profile);
+      const result = await (context.readNativeUsage ?? readNativeUsage)(profile, { expectedAccountId: binding, env: { ...context.env } });
       line = statuslineLine(label, result, context.now() / 1000);
     } catch { /* A statusline must not print transcript data or reader errors. */ }
   }
