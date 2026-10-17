@@ -798,6 +798,17 @@ than the one the head was approved or allowed on, the run drops that trust, re-r
 evidence (changed files and visual paths) against the new base, and decides again. An owner
 gate asks again, and an approval never follows to a later head on another base.
 
+A stacked pull request waits at `base-wait` with no gate: the `base-check` runs before the
+merge decision too, so no `approve-merge` gate opens and no merge policy is decided while the
+base is refused. Once GitHub retargets it to the default branch, the run decides on that base,
+and a reviewer's MERGE with green required contexts merges under MRG-AU-RV. A decision whose
+merge evidence was read on a base other than the one just checked gates instead of allowing.
+The head-moved sweep also cancels, as superseded (condition `base-changed`), any pending
+`approve-merge` gate whose prompt names a base other than the pull request's live base, or
+names a base other than the default branch on a run without the feature-base grant. The run
+then asks again against the live base, which for a refused base means waiting with no gate.
+A failed PR or default-branch read leaves the gate.
+
 A seat whose `grants_extra` includes `merge-into-feature-base` lets its runs merge into the
 pull request's own base, whatever it is. No `--policy` key sets it, so an implementer that
 registers cannot widen its seat this way. It changes only where the merge lands: the merge
