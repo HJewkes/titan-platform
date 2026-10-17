@@ -9,7 +9,10 @@ import type { HookPort } from "./hook.js";
 const HOME = "/home/you";
 const REPO = "/home/you/projects/app";
 const ts = new Date("2026-01-02T03:04:05.000Z");
-const SCRIPTS: Record<string, string> = { "/home/you/projects/app/r.sh": "hash y=/usr/bin/git\n" };
+const SCRIPTS: Record<string, string> = { "/home/you/projects/app/r.sh": "hash y=/usr/bin/git\n",
+  "/home/you/projects/app/opts.sh": "while getopts ab o; do :; done\nshift $((OPTIND-1))\n",
+  "/home/you/projects/app/bg.sh": "sleep 1 &\nwait $!\n",
+};
 const REBIND_REASON = /does not follow a command name the line rebinds/;
 
 /** Nothing exists on this filesystem unless listed in SCRIPTS. */
@@ -59,6 +62,12 @@ describe("a line that rebinds a command name", () => {
     ["a hash in a sourced script", `source ./r.sh; ${PUSH}`],
     ["a hash in a function body", `f() { hash y=/usr/bin/git; }; f; ${PUSH}`],
     ["a hash in a substitution", `echo $(hash y=/usr/bin/git); ${PUSH}`],
+    ["an associative declare with a keyed list", `declare -A BASH_CMDS=([y]=/usr/bin/git); ${PUSH}`],
+    ["a local associative declare with a keyed list", `f() { local -A BASH_CMDS=([y]=/usr/bin/git); ${PUSH}; }; f`],
+    ["a declare with a keyed list", `declare BASH_CMDS=([y]=/usr/bin/git); ${PUSH}`],
+    ["a zsh typeset with a keyed list", `typeset -A commands=([y]=/usr/bin/git); ${PUSH}`],
+    ["a keyed append in a list", `declare -A BASH_CMDS=([y]+=/usr/bin/git); ${PUSH}`],
+    ["a declare with a plain list", `declare -A commands=(y /usr/bin/git); ${PUSH}`],
     ["a store through zstyle -e", `zstyle -e :z k 'commands[y]=/usr/bin/git'; ${PUSH}`],
   ])("refuses %s", async (_name, command) => {
     const got = await answer(command);
@@ -72,6 +81,18 @@ describe("a line that rebinds a command name", () => {
     ["a hash reset", "hash -r && git status"],
     ["a lookup in arithmetic", "(( $+commands[git] )) && git status"],
     ["a search for the parameter's name", "rg 'commands\\[' src"],
+    ["wait on a pid", "wait $!"],
+    ["wait on a stored pid", "sleep 1 & pid=$!; wait $pid"],
+    ["shift by arithmetic", "shift $((OPTIND-1))"],
+    ["print a word", "print $x"],
+    ["print a parameter read", "print -l $commands[git]"],
+    ["printf with a run-time format", 'printf "$fmt" a'],
+    ["declare -p of a rebinding parameter", "declare -p BASH_CMDS"],
+    ["typeset -p of a rebinding parameter", "typeset -p commands"],
+    ["a getopts script shift", "while getopts ab o; do :; done; shift $((OPTIND-1))"],
+    ["a sourced getopts script", "source ./opts.sh"],
+    ["a sourced script that waits on a pid", "source ./bg.sh"],
+    ["a run script that waits on a pid", "bash ./bg.sh"],
     ["an export of a run-time word", "export $(cmd); git status"],
     ["a declare option the shell rejects", "declare -Q Y=status; git status"],
     ["a gh word that expands to an option", 'gh pr edit 12 "--$X"'],
