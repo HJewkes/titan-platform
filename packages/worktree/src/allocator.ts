@@ -189,10 +189,11 @@ async function allocate(req: WorktreeRequest, opts: WorktreeOptions): Promise<Wo
     force: req.forceReset === true,
     run: boundedAdd(opts.runWorktreeAdd, opts.addTimeoutMs ?? WORKTREE_ADD_TIMEOUT_MS),
   });
+  const target = setupTarget(gitRoot, worktreePath, base);
   const warnings = [
     ...copyClaudeDir(gitRoot, worktreePath),
     ...(base.warning === undefined ? [] : [base.warning]),
-    ...(await runWorktreeSetup(setupTarget(gitRoot, worktreePath, base), opts.runSetup)),
+    ...(await runWorktreeSetup(target, opts.runSetup)),
   ];
   const carried = reused ? " It already carries commits from an earlier run under this name." : "";
   return {
@@ -207,6 +208,7 @@ async function allocate(req: WorktreeRequest, opts: WorktreeOptions): Promise<Wo
       ...(reused ? { reused: "true" } : {}),
     },
     ...(warnings.length === 0 ? {} : { warnings }),
+    ...(opts.includeSetupTarget === true ? { setupTarget: target } : {}),
   };
 }
 

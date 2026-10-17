@@ -47,3 +47,9 @@ Setup pins `PLAYWRIGHT_SKIP_BROWSER_GC=1`, including when the caller supplies `0
 `SetupTarget.baseSha` and `fetched` are caller assertions, not origin authentication. Callers must derive the target from the approved fetched default branch; a requested checkout branch does not acquire setup authority. The allocator's default-branch selection and all existing guards are unchanged. Product dependency guidance and metadata remain the caller's responsibility.
 
 The root entry also exports the existing guarded filenames `NPMRC_FILE` (`.npmrc`) and `PNPM_WORKSPACE_FILE` (`pnpm-workspace.yaml`) for callers sharing setup diagnostics and fixtures. Their values and guard behavior are unchanged.
+
+## Opt-in setup target data
+
+`includeSetupTarget: true` includes `allocation.setupTarget` only when the operation selected a setup base. Omitted or false preserves the previous return shape; an existing assigned tree has no target. Recreation carries its actual selected target. The flag alone does not suppress automatic setup.
+
+The value reuses `SetupTarget` and describes this operation's selection; it is not authentication or a transferable permission. A diagnostic local-HEAD fallback remains `fetched: false`. Do not reconstruct or reassociate a target from persisted references or a requested checkout branch. The setup source, warnings, execution order and timeouts are unchanged.

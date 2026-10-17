@@ -90,6 +90,8 @@ interface WorktreeOptions {
     addTimeoutMs?: number;
     /** Runs each `git worktree add`; tests inject one to observe how adds interleave. */
     runWorktreeAdd?: WorktreeAddRunner;
+    /** Include the actual setup target selected for this operation; metadata alone does not suppress setup. */
+    includeSetupTarget?: boolean;
     /** Runs the repository's declared setup step; tests inject one so no real install runs. */
     runSetup?: SetupRunner;
 }
@@ -125,6 +127,8 @@ interface WorktreeAllocation {
     ref: Record<string, string>;
     /** Advisory lines for the requester. */
     warnings?: string[];
+    /** Opt-in data selected by this operation, not an origin-authentication claim. Absent when no setup base was selected. */
+    setupTarget?: SetupTarget;
 }
 /**
  * Put a removed worktree back at its recorded path, under the allocator's budget.

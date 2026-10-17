@@ -25,6 +25,8 @@ export interface WorktreeAllocation {
   ref: Record<string, string>;
   /** Advisory lines for the requester. */
   warnings?: string[];
+  /** Opt-in data selected by this operation, not an origin-authentication claim. Absent when no setup base was selected. */
+  setupTarget?: SetupTarget;
 }
 
 /** How a re-attached worktree got its branch back. */
@@ -145,16 +147,18 @@ export async function reattachWorktree(
     base.sha,
     boundedAdd(opts.runWorktreeAdd, opts.addTimeoutMs ?? WORKTREE_ADD_TIMEOUT_MS)
   );
+  const target = setupTarget(gitRoot, worktree, base);
   const warnings = [
     ...copyClaudeDir(gitRoot, worktree),
     ...reattachWarnings(record, source, base),
-    ...(await runWorktreeSetup(setupTarget(gitRoot, worktree, base), opts.runSetup)),
+    ...(await runWorktreeSetup(target, opts.runSetup)),
   ];
   return {
     cwd: worktree,
     note: `Your worktree at ${worktree} had been removed and was re-created on branch ${branch}. Commit your work there; nothing outside it is yours to change.`,
     ref: { branch, worktree, gitRoot, base: base.sha, base_ref: base.ref, reattached: source },
     ...(warnings.length === 0 ? {} : { warnings }),
+    ...(opts.includeSetupTarget === true ? { setupTarget: target } : {}),
   };
 }
 

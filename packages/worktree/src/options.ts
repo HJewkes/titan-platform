@@ -36,6 +36,8 @@ export interface WorktreeOptions {
   addTimeoutMs?: number;
   /** Runs each `git worktree add`; tests inject one to observe how adds interleave. */
   runWorktreeAdd?: WorktreeAddRunner;
+  /** Include the actual setup target selected for this operation; metadata alone does not suppress setup. */
+  includeSetupTarget?: boolean;
   /** Runs the repository's declared setup step; tests inject one so no real install runs. */
   runSetup?: SetupRunner;
 }
