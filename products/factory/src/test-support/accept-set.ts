@@ -13,17 +13,12 @@ export const ACCEPT_PACKET_ID = "p-accept";
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
-type Where = { repo: string; pr: number; headSha: string; headTree: string };
-
-function image(key: string, layer: string, path: string, change: "changed" | "new" | "removed") {
-  const after = change === "removed" ? {} : { after: { sha256: sha256(AFTER_BYTES[key]!) } };
-  return { key, layer, path, change, source: "artifact", before: { sha256: sha256(Buffer.from(`synthetic before ${key}`)) }, ...after };
-}
+const image = (key: string, layer: string, path: string, change: string) => ({ key, layer, path, change, ...(AFTER_BYTES[key] && { after: { sha256: sha256(AFTER_BYTES[key]) } }) });
 
 /** A regenerated packet whose images are out of path order, so the set's sort shows. */
-export function acceptPacket(where: Where): Uint8Array {
+export function acceptPacket(where: { repo: string; pr: number; headSha: string; headTree: string }): Uint8Array {
   const images = [image("k2", "story", "b/two.png", "new"), image("k1", "component", "a/one.png", "changed"), image("k3", "component", "c/gone.png", "removed")];
-  return Buffer.from(JSON.stringify({ schema: "titan-review/ci-packet@1", packetId: ACCEPT_PACKET_ID, ...where, mainSha: "e".repeat(40), ci: { runId: "9001" }, images, warnings: [] }));
+  return Buffer.from(JSON.stringify({ schema: "titan-review/ci-packet@1", packetId: ACCEPT_PACKET_ID, ...where, ci: { runId: "9001" }, images }));
 }
 
 export const afterDigests = (): Map<string, AfterDigest> => new Map(Object.entries(AFTER_BYTES).map(([key, bytes]) => [key, afterDigest(bytes)]));

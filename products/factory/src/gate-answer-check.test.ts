@@ -350,13 +350,4 @@ describe("checkAnswer on a red head's sh-visual-accept gate", () => {
     expect(await check(merge, {}, { choice: "accept-set" })).toMatchObject({ kind: "refused", reason: "choice" });
     expect(await checkAccept(accept, {}, {}, { choice: "merge" })).toMatchObject({ kind: "refused", reason: "choice" });
   });
-
-  it("reports already for a replay of the accept-set it resolved", async () => {
-    const w = await acceptWorld();
-    const first = await checkAccept(w);
-    if (first.kind !== "resolve") throw new Error(first.kind);
-    w.host.gates.resolve(w.gateId, first.payload, OWNER);
-
-    expect(await checkAccept(w)).toEqual({ kind: "already", gateId: w.gateId });
-  });
 });

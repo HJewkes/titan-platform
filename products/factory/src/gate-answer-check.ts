@@ -117,7 +117,6 @@ function gateHead(gate: GateRecord): GateHead | undefined {
   return match && pinnedHead(gate.schema) === match[3] ? { step, repo: match[2]!, pr: Number(match[1]), head: match[3]! } : undefined;
 }
 
-
 /**
  * What the owner's feedback answers, worked out before the store is read so a replay of a send-back reads as `already`.
  * The note comes from feedback.json alone, never from the request: the general note, then the Ship question's comment.

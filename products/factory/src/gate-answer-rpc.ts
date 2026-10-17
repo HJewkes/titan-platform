@@ -14,7 +14,6 @@ import { checkAnswer, type AcceptFiles, type AnswerPayload, type AnswerRequest }
 import { repeatedResolution } from "./gate-resolve.js";
 import type { FactoryHost } from "./host.js";
 import { readCapped, TOO_LARGE } from "./resolve-proof.js";
-import type { VisualSetCarry } from "./shepherd/phases.js";
 import { VISUAL_ACCEPT_GATE, configuredVisualSetCarry } from "./shepherd/visual-accept.js";
 import { deliveryFileFor } from "./shepherd/visual-delivery.js";
 import { packetDirFor } from "./shepherd/visual-packet-trigger.js";
@@ -62,8 +61,6 @@ interface GateAnswerDeps {
   stateDir: string;
   now: () => number;
   log: Logger;
-  /** `shepherd.visualSetCarry`, read per answer; absent reads the config file. */
-  visualSetCarry?: () => VisualSetCarry;
 }
 
 export interface ConsoleAnswersOptions {
@@ -106,7 +103,7 @@ async function answerShip(raw: Request, deps: GateAnswerDeps): Promise<Answer> {
 }
 
 async function answered(request: AnswerRequest, port: NonNullable<GateAnswerDeps["port"]>, deps: GateAnswerDeps): Promise<Outcome> {
-  if (request.choice === "accept-set" && (deps.visualSetCarry ?? configuredVisualSetCarry)() === "off") return { outcome: "refused", reason: "off", detail: "shepherd.visualSetCarry is off" };
+  if (request.choice === "accept-set" && configuredVisualSetCarry() === "off") return { outcome: "refused", reason: "off", detail: "shepherd.visualSetCarry is off" };
   const files = await readRound(deps.roundsDir, request.roundId);
   if (typeof files === "string") return { outcome: "refused", reason: "round-unreadable", detail: files };
   const accept = isAcceptGate(deps.host, request) ? await readAccept(deps.stateDir, request) : undefined;
