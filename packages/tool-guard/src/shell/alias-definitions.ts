@@ -192,9 +192,9 @@ function zcursesStores(args: WordToken[]): boolean {
  * alias parameter.
  */
 function readsStore(name: string, args: WordToken[], spec: StoreSpec): boolean {
-  const { options, targets, operands, mayBeOption, ended } = readOptions(args, spec);
+  const { options, targets, valued, operands, mayBeOption, ended } = readOptions(args, spec);
   if (targets.some((w) => varies(w) || yieldsSeveral(w)) || dynamicTargetOperand(spec, options, operands)) return true;
-  const optionPlace = ended ? options : [...options, ...operands.slice(0, 1)];
+  const optionPlace = [...valued, ...(ended ? options : [...options, ...operands.slice(0, 1)])];
   const supplies = optionPlace.some(yieldsSeveral) || (mayBeOption && operands.length > 1);
   if (supplies && (spec.names ?? spec.stores) !== undefined) return true;
   return NAMEREF_DECLARERS.has(name) && options.some((w) => /^-.*n/s.test(w.value)) && operands.some(bindsAliasParam);
@@ -219,6 +219,8 @@ interface OptionWords {
   options: WordToken[];
   /** The values `names` options take. */
   targets: WordToken[];
+  /** The values the other value-taking options consume: a value that splits may supply an option, as an option word may. */
+  valued: WordToken[];
   operands: WordToken[];
   /** The first operand varies, so it may still expand to any option, a name-taking one with its name attached included. */
   mayBeOption: boolean;
@@ -234,6 +236,7 @@ interface OptionWords {
 function readOptions(args: WordToken[], spec: StoreSpec = {}): OptionWords {
   const options: WordToken[] = [];
   const targets: WordToken[] = [];
+  const valued: WordToken[] = [];
   let i = 0;
   for (let w = args[0]; w && isOptionWord(w); w = args[++i]) {
     options.push(w);
@@ -242,10 +245,11 @@ function readOptions(args: WordToken[], spec: StoreSpec = {}): OptionWords {
     if (!taken) continue;
     const value = taken.attached ? w : args[++i];
     if (value && spec.names?.includes(taken.letter)) targets.push(value);
+    else if (value) valued.push(value);
   }
   const first = args[i];
   const ends = first !== undefined && !varies(first) && (first.value === "--" || first.value === "-");
-  return { options, targets, operands: args.slice(ends ? i + 1 : i), mayBeOption: first !== undefined && varies(first) && mayStartOption(first), ended: ends };
+  return { options, targets, valued, operands: args.slice(ends ? i + 1 : i), mayBeOption: first !== undefined && varies(first) && mayStartOption(first), ended: ends };
 }
 
 /** A varying word may supply an option unless literal text that no option starts with comes first: `"b$n=%s "`. */
