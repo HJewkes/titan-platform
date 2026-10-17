@@ -1,4 +1,4 @@
-import { groupStdin } from "./group-stdin.js";
+import { copyGroupState, groupStdin } from "./group-stdin.js";
 import type { OpToken, RedirectToken, WordToken } from "./lexer.js";
 import { namedFdReadings } from "./named-fd.js";
 import { nextShellStdin, nextStdin } from "./piped-stdin.js";
@@ -58,6 +58,17 @@ function differs(scope: Scope, beside: Scope): boolean {
   if (beside.dir !== scope.dir) return true;
   const keys = new Set([...scope.vars.keys(), ...beside.vars.keys()]);
   return [...keys].some((key) => scope.vars.has(key) !== beside.vars.has(key) || scope.vars.get(key) !== beside.vars.get(key));
+}
+
+/**
+ * The walk carried on in a reading's own scope, with its own `&&` chain and copy of the scopes a `)` returns to;
+ * `observe` hears what each of those scopes' variables store.
+ */
+export function forkWalk<W extends Linked & { stack: Array<W["scope"]> }>(w: W, scope: W["scope"], observe: (fork: W, vars: Vars) => void): W {
+  const fork: W = { ...w, scope, chain: { start: w.chain.start }, stack: w.stack.map((outer) => ({ ...outer, vars: new Map(outer.vars) })) };
+  for (const vars of [scope.vars, ...fork.stack.map((outer) => outer.vars)]) observe(fork, vars);
+  copyGroupState(w, fork);
+  return fork;
 }
 
 /** Walks of the rest of a list that one line's disputed readings may add; each walks all that follows again. */

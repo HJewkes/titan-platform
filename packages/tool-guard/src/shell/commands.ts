@@ -3,7 +3,7 @@ import { NestingLimitError } from "./nesting.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { xargsStdins } from "./piped-stdin.js";
-import { emitReadings, endCommand, type Emission } from "./reading-hand-on.js";
+import { emitReadings, endCommand, forkWalk, type Emission } from "./reading-hand-on.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
@@ -192,7 +192,7 @@ function walkFrom(list: Token[], start: number, w: Walk): void {
     if (token.type === "op") {
       noteValues(token, words, w);
       const { readings, disputed } = emit(words, redirects, w, token.value);
-      const walks = [w, ...disputed.map((scope) => forkWalk(w, scope))];
+      const walks = [w, ...disputed.map((scope) => forkWalk(w, scope, (fork, vars) => observeStores(vars, (value) => hear(fork, value))))];
       for (const each of walks) endCommand(each, token, words, redirects, readings, (op) => scope(op, each));
       forks.push(...walks.slice(1).map((fork) => () => walkFrom(list, start + at + 1, fork)));
       words = [];
@@ -207,13 +207,6 @@ function walkFrom(list: Token[], start: number, w: Walk): void {
   noteValues(null, words, w);
   emit(words, redirects, w, null);
   for (const fork of forks) fork();
-}
-
-/** The walk carried on in a reading's own scope, with its own copy of the scopes a `)` returns to. */
-function forkWalk(w: Walk, scope: Scope): Walk {
-  const fork: Walk = { ...w, scope, stack: w.stack.map((outer) => ({ ...outer, vars: new Map(outer.vars) })) };
-  for (const outer of fork.stack) observeStores(outer.vars, (value) => hear(fork, value));
-  return observed(fork);
 }
 
 /** Notes what a command evaluates and stores, before it runs. */

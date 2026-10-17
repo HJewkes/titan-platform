@@ -17,9 +17,9 @@ const context: ClassifyContext = {
   home: "/home/you",
   readLink: () => null,
   // `{x}` is a directory in the repo in the premises, so a `cd` into it pushes main.
-  readHead: (dir) => (dir === REPO || dir === `${REPO}/{x}` ? "main" : null),
+  readHead: (dir) => ([REPO, `${REPO}/{x}`, "/home/you/repo"].includes(dir) ? "main" : dir === `${REPO}/{x}/repo` ? "work" : null),
   // `{fd}` is harmless, so a line using it is refused for the redirect; `{run}` holds the push dash's reading runs.
-  readScript: (file) => ([`${REPO}/x.sh`, `${REPO}/{x}/x.sh`, `${REPO}/{run}`].includes(file) ? `${PUSH}\n` : [`${REPO}/ok.sh`, `${REPO}/{fd}`].includes(file) ? "echo hi\n" : null),
+  readScript: (file) => ([`${REPO}/x.sh`, `${REPO}/{x}/x.sh`, `${REPO}/{run}`, "/home/you/s.sh"].includes(file) ? `${PUSH}\n` : [`${REPO}/ok.sh`, `${REPO}/{fd}`].includes(file) ? "echo hi\n" : null),
 };
 
 async function verdict(command: string): Promise<"deny" | "pass"> {
@@ -147,11 +147,31 @@ const DISPUTED = [
   "A=x.sh; A= {fd}< /dev/null; bash $A",
 ];
 
+/**
+ * Each reading forks with its own `&&` chain, so a branch created in one reading is not trusted by a later command the
+ * other reading runs. In bash, `repo` is `{x}/repo`, a worktree of ~/repo; zsh's `cd {x} </dev/null` reaches ~ instead.
+ * The first line is the regression: zsh creates feat in ~/repo and the merge there is fine, but the bash fork creates
+ * feat in {x}/repo, so its merge into ~/repo must not be trusted. The `;` form shows a dropped chain stays strict too.
+ */
+const READING_STATES = [
+  "cd {x} </dev/null && git -C repo checkout -b feat && git -C ~/repo merge feat",
+  "cd {x} </dev/null; git -C repo checkout -b feat && git -C ~/repo merge feat",
+];
+
+/**
+ * A `{name}` reading forks the rest of a `{ }` group or `( )` subshell opened before it; the fork must still pipe the
+ * group's text on. Here only the bash fork, where `{x}` is a word and the `A=f` prefix does not persist, prints `bash x.sh`.
+ */
+const FORK_GROUP = [
+  `A=x.sh; { true; A=f {x} </dev/null; echo "bash $A"; } | sh`,
+  `A=x.sh; ( true; A=f {x} </dev/null; echo "bash $A" ) | sh`,
+];
+
 /** Readings that agree on a variable leave it known, so the script it names is still read. */
 const AGREED = [`B=./x.sh; true {a}</dev/null {b} </dev/null; bash "$B"`];
 
 describe("a shell runs a descriptor a {name} redirect may have opened (TP-3279)", () => {
-  it.each([...DENIED, ...HANDED_ON, ...MIXED, ...DISPUTED, ...AGREED])("denies %s", async (line) => {
+  it.each([...DENIED, ...HANDED_ON, ...MIXED, ...DISPUTED, ...AGREED, ...READING_STATES, ...FORK_GROUP])("denies %s", async (line) => {
     expect(await verdict(line)).toBe("deny");
   });
 
@@ -186,6 +206,10 @@ describe("a shell runs a descriptor a {name} redirect may have opened (TP-3279)"
     "cd {x} </dev/null; git status",
     "printf -v V '%s' ok; bash ./ok.sh",
     "A=HEAD:main {fd}< /dev/null; git status",
+    "true {a}</dev/null {b} </dev/null && git -C ~/repo checkout -b feat && git -C ~/repo merge feat",
+    "cd ~ && git -C repo checkout -b feat && git -C ~/repo merge feat",
+    `A=x.sh; { true; A=f {x} </dev/null; echo "git status"; } | sh`,
+    "echo x | { cat; }",
   ])("allows %s, which runs no shell on that descriptor", async (line) => {
     expect(await verdict(line)).toBe("pass");
   });
@@ -233,6 +257,7 @@ const PREMISES: Array<[string, string]> = [
   ...DISPUTED.slice(0, 15).map((line): [string, string] => [line, "bash"]),
   ...["cd {x} </dev/null; bash ../x.sh", "cd {x} </dev/null; bash ./x.sh", ...DISPUTED.slice(14)].map((line): [string, string] => [line, "dash"]),
   ...AGREED.map((line): [string, string] => [line, "bash"]),
+  ...FORK_GROUP.flatMap((line): Array<[string, string]> => [[line, "bash"], [line, "dash"]]),
 ];
 
 describe.skipIf(!["bash", "zsh", "dash"].every(has))("bash, zsh and dash run what the denied lines hold (TP-3279)", () => {
