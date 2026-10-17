@@ -80,6 +80,10 @@ export interface RegexScan {
   depth: number;
   commandStart: boolean;
   conditionalAt: number;
+  /** Depth of a `[[` that opened at a bare command start, whose `&&` and `||` are words; -1 for none or any other `[[`. */
+  joinsAt: number;
+  /** No word or redirect has come since a line start or a control operator, so a `[[` here is at a bare command start. */
+  bareStart: boolean;
   regexAt: number;
   /** The last word stood in command position, so a `(` after it may open a function header `name ( )`. */
   wordAtStart: boolean;

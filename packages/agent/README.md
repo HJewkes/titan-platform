@@ -205,16 +205,44 @@ identity, and transcript source hints contain no harness-native event types.
 
 ## Supervised Codex exec adapter
 
-`createCodexExecAdapter({ auth: "cached-cli" })` runs the pinned ChatGPT desktop
-Codex binary through `codex exec --json`. The caller must select a model and an
+`createCodexExecAdapter({ auth: "cached-cli" })` runs the installed `codex` on PATH
+through `codex exec --json`; `executablePath` can select an explicit absolute path.
+The caller must select a model and an
 absolute working directory. Fresh runs persist a native thread; resumes always use
 the supplied native thread ID and never `--last`. The adapter ignores user config,
 strips API-key credentials from the child environment, accepts only the
 noninteractive `never` approval policy, and leaves persistence enabled so
 `@titan-design/session-read` can discover the rollout by thread ID and namespace.
 
-The adapter checks `codex --version` before every launch. The mandatory wall deadline
-covers that check, temporary output-schema setup, and the run itself. Timeout or
+The adapter requires Codex **>=0.162.1**, including newer versions without an allow-list.
+Before every launch it checks `--version` and probes `exec --help`. Resumes also
+probe `exec resume --help`: required flags come from the invoked subcommand,
+while sandbox values come from `exec --help`, because both commands set
+`sandbox_mode` through `--config`. Required capabilities follow the arguments
+the adapter builds. Both help probes share the setup deadline. Missing or unrecognized
+capabilities fail before starting a model; help is surface evidence, not sandbox or
+policy enforcement proof. `MIN_CODEX_EXEC_VERSION` names the floor; deprecated
+`SUPPORTED_CODEX_EXEC_VERSION` remains an alias for compatibility, not an exact pin.
+
+Use exported `checkCodexAvailable({ executablePath?, env?, timeoutMs?, signal?,
+resume?, sandbox?, requiredCapabilities? })` for model-free runtime availability.
+It uses the same path rule and version/capability probes as the adapter: the
+default `codex` is resolved through PATH by the version probe; explicit overrides
+must be absolute. Success returns executablePath, versionOutput and inspection;
+failure returns a categorized failure, including version-probe error context.
+It starts no model and does not certify login or permission parity. The default
+probe budget is five seconds, shared across version and command-help probes.
+
+Managed callers must declare extra requirements using `requiredRuntimeCapabilities`,
+including `mcp_config`, `tool_policy` and `rollout_rate_limits` for a bus-connected
+profile. The default help probe cannot establish those semantics, so such requirements
+are refused unless a trusted `inspectCapabilities` dependency supplies independent
+evidence. Only explicit true satisfies a requirement. This runtime seam does not
+implement an MCP configuration or permission-policy adapter, or enable a profile.
+Never claim a CLI help flag or an account API schema proves rollout compatibility.
+
+The mandatory wall deadline covers version/capability probes, temporary output-schema
+setup, and the run itself. Timeout or
 caller abort terminates the owned process group, then sends `SIGKILL` after the
 configured grace period. JSONL output becomes normalized progress, conversation
 identity, final text or locally validated structured output, and token usage with

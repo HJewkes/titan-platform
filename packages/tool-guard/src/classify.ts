@@ -59,9 +59,13 @@ function withHttpConfig(src: string, commands: SimpleCommand[], ctx: ClassifyCon
   return choosesHttpConfig(src, commands, ctx.home, ctx.foldCase === true) ? { ...ctx, httpConfigUnseen: true } : ctx;
 }
 
-/** A script's text (`scripts` null) stops at the dynamic-word cap and reads on as main does; the line refuses past it. */
+/**
+ * A script's text (`scripts` null) stops at the dynamic-word cap and reads on as main does; the line refuses past it.
+ * Only the line, which the Bash tool's own bash or zsh runs, joins a `[[`'s operators.
+ */
 function extractOptions(cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null, foldCase: boolean): ExtractOptions {
-  return { cwd, home: ctx.home, foldCase, guarded: GUARDED, stopPastCap: scripts === null || scripts.depth > 0 };
+  const inScript = scripts === null || scripts.depth > 0;
+  return { cwd, home: ctx.home, foldCase, guarded: GUARDED, stopPastCap: inScript, joinsConditional: !inScript };
 }
 
 /**
