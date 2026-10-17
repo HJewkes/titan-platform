@@ -68,13 +68,13 @@ describe("Codex account node readers", () => {
   it("refuses a relative home rather than using the default account", async () => {
     await expect(readLoginState({ codeHome: "relative", label: "test" })).rejects.toThrow(/absolute/);
   });
-  it("reads fixture rollouts across active and archived trees, using event time", async () => {
+  it("reads fixture rollouts without promoting emission time to quota freshness", async () => {
     const profile = await home();
     await rollout(profile.codeHome, "old", quota(now - 10));
     const newest = await rollout(profile.codeHome, "new", `${JSON.stringify({ type: "response_item", payload: "private" })}\n${quota(now, 87)}\n`, true);
     const before = await readFile(newest, "utf8");
     const result = await readUsage(profile);
-    expect(result).toMatchObject({ status: "known", reading: { account: "reporter", written_at: now, rate_limits: { seven_day: { used_percentage: 87 } } } });
+    expect(result).toEqual({ status: "unknown", reason: "freshness-unverified" });
     expect(JSON.stringify(result)).not.toContain("private");
     expect(await readFile(newest, "utf8")).toBe(before);
   });

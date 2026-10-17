@@ -61,15 +61,26 @@ windows: `used_percent` in [0,100], `window_minutes` 300 and 10080, plus future
 epoch-second `resets_at`. Window order may be reversed. An explicit limit_id
 must be `codex`; optional credits and other payload content are not returned.
 
-The result is either `{ status: "known", reading }` or
-`{ status: "unknown", reason }`. The reading contains only `account`,
-`written_at` and `rate_limits.five_hour` / `seven_day` windows with
-`used_percentage` and `resets_at`. All timestamps use **epoch seconds**, including
-fractional observation seconds from native ISO timestamps.
+The result is `{ status: "unknown", reason }` for native rollout evidence.
+Codex can emit cached rate_limits on local token updates without fetching quota.
+Even a single event, a changed value, or an identical re-emission cannot prove a
+server observation time. Valid evidence therefore returns
+`reason: "freshness-unverified"`, with no numbers, `written_at` or known age.
+Displays must show unknown; admission refuses. No value-equality heuristic,
+file mtime, read time or invented payload timestamp establishes freshness.
 
-Select the latest quota observation by event time across files. A newer bad
-observation invalidates older evidence; conflicting equal timestamps, missing
-timestamps and unexpected shapes refuse. Unknown fields never enter the reading.
+Validation still selects the latest evidence by event time across files. A newer
+bad event invalidates older evidence; conflicting equal timestamps, missing
+timestamps and unexpected shapes return inconsistent. No quota events returns
+missing. Unknown fields never enter returned state.
+
+The public `UsageResult` also supports a caller-supplied `{ status: "known",
+reading }` for sources that independently establish quota observation time. That
+reading contains `account`, `written_at` and `rate_limits.five_hour` / `seven_day`
+windows with `used_percentage` and `resets_at`. All timestamps use epoch seconds.
+The caller must establish the provenance; no native rollout reader in this
+package currently produces known readings. Additional fields in raw rollouts
+are not treated as a trusted timestamp seam.
 
 `readUsage(profile, options?)` scans only `rollout-*.jsonl` in `sessions` and
 `archived_sessions` beneath the selected home. No auth files, default-home scan
@@ -85,12 +96,13 @@ text or underlying errors.
 
 `quotaAdmission(result, now)` refuses automatic runs when weekly usage is **>86**
 (less than 14 points remain), five-hour usage is **>=100**, the reading is missing
-or inconsistent, or its age is **>900 seconds**. Exactly 86 weekly used and 900
+or inconsistent, freshness is unverified, or its age is **>900 seconds**. Exactly 86 weekly used and 900
 seconds old are admitted if the other checks pass. Future observations and
 already expired resets are inconsistent. No missing quota becomes zero. This
 check does not include login state; supervisors check both.
 
-Age is `now - written_at`; reading a file never refreshes that timestamp. The
+For caller-established observations, age is `now - written_at`. Native event
+emission time cannot supply it, and reading a file never refreshes it. The
 local cache is an observation, not a live quota endpoint or account-wide spend
 reservation. Additional model-specific pools are not admitted by this API.
 

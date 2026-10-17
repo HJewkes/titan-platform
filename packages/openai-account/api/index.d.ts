@@ -38,7 +38,7 @@ interface UsageWindow {
 }
 interface UsageReading {
     account: string;
-    /** Observation time from the rollout, in epoch seconds; never file mtime or read time. */
+    /** Quota observation time established by the caller, in epoch seconds; never an emission or read time. */
     written_at: number;
     rate_limits: {
         five_hour: UsageWindow;
@@ -50,18 +50,18 @@ type UsageResult = {
     reading: UsageReading;
 } | {
     status: "unknown";
-    reason: "missing" | "inconsistent" | "unreadable";
+    reason: "missing" | "inconsistent" | "unreadable" | "freshness-unverified";
 };
 type QuotaAdmission = {
     allowed: true;
     ageSeconds: number;
 } | {
     allowed: false;
-    reason: "missing" | "inconsistent" | "unreadable" | "stale" | "weekly-reserve" | "five-hour-ceiling";
+    reason: "missing" | "inconsistent" | "unreadable" | "freshness-unverified" | "stale" | "weekly-reserve" | "five-hour-ceiling";
     ageSeconds?: number;
 };
 declare const MAX_READING_AGE_SECONDS = 900;
-/** Select the newest quota observation across rollouts; conflicting ties fail closed. */
+/** Validate newest rollout quota evidence; native emission times cannot establish freshness. */
 declare function usageFromRolloutEvents(events: Iterable<unknown>, account: string): UsageResult;
 /** Q5: reserve 14 weekly points, 5h ceiling 100, and at most 15-minute-old evidence. */
 declare function quotaAdmission(result: UsageResult, now: number): QuotaAdmission;

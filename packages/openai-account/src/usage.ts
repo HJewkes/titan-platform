@@ -3,16 +3,16 @@ import { assertAccountLabel } from "./profile.js";
 export interface UsageWindow { used_percentage: number; resets_at: number }
 export interface UsageReading {
   account: string;
-  /** Observation time from the rollout, in epoch seconds; never file mtime or read time. */
+  /** Quota observation time established by the caller, in epoch seconds; never an emission or read time. */
   written_at: number;
   rate_limits: { five_hour: UsageWindow; seven_day: UsageWindow };
 }
 export type UsageResult =
   | { status: "known"; reading: UsageReading }
-  | { status: "unknown"; reason: "missing" | "inconsistent" | "unreadable" };
+  | { status: "unknown"; reason: "missing" | "inconsistent" | "unreadable" | "freshness-unverified" };
 export type QuotaAdmission =
   | { allowed: true; ageSeconds: number }
-  | { allowed: false; reason: "missing" | "inconsistent" | "unreadable" | "stale" | "weekly-reserve" | "five-hour-ceiling"; ageSeconds?: number };
+  | { allowed: false; reason: "missing" | "inconsistent" | "unreadable" | "freshness-unverified" | "stale" | "weekly-reserve" | "five-hour-ceiling"; ageSeconds?: number };
 export const MAX_READING_AGE_SECONDS = 900;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -39,14 +39,14 @@ function reading(limits: unknown, account: string, at: number): UsageResult {
   if (!five || !week) return unknown("inconsistent");
   return { status: "known", reading: { account, written_at: at, rate_limits: { five_hour: five, seven_day: week } } };
 }
-function unknown(reason: "missing" | "inconsistent"): UsageResult { return { status: "unknown", reason }; }
+function unknown(reason: "missing" | "inconsistent" | "freshness-unverified"): UsageResult { return { status: "unknown", reason }; }
 
 function validWindow(window: UsageWindow, now: number): boolean {
   return Number.isFinite(window.used_percentage) && window.used_percentage >= 0 && window.used_percentage <= 100 &&
     epoch(window.resets_at) && window.resets_at > now;
 }
 
-/** Select the newest quota observation across rollouts; conflicting ties fail closed. */
+/** Validate newest rollout quota evidence; native emission times cannot establish freshness. */
 export function usageFromRolloutEvents(events: Iterable<unknown>, account: string): UsageResult {
   assertAccountLabel(account);
   let newest = -Infinity;
@@ -62,7 +62,8 @@ export function usageFromRolloutEvents(events: Iterable<unknown>, account: strin
       if (at > newest) { newest = at; result = candidate; }
       else if (at === newest && JSON.stringify(candidate) !== JSON.stringify(result)) result = unknown("inconsistent");
     }
-    return result;
+    // Codex can re-emit cached quota on a local token update, without a server fetch.
+    return result.status === "known" ? unknown("freshness-unverified") : result;
   } catch { return unknown("inconsistent"); }
 }
 
