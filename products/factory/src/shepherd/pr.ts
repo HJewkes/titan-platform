@@ -1,11 +1,11 @@
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { defineWorkflow, stepIdMatches, type WorkflowDefinition } from "../definition.js";
 import type { LandPrState } from "../workflows/land-pr.js";
-import { CiSnapshotResult, UpdateResultResult } from "../workflows/land-steps.js";
+import { CiSnapshotResult } from "../workflows/land-steps.js";
 import type { SettleHold } from "../workflows/land-settle.js";
 import { codeRoute, land, newUpdateBound, type CiSnapshot, type LandOptions, type LandOutcome, type UpdateBound } from "../workflows/land.js";
 import { awaitPrRoute, awaitPrStep } from "./await-pr.js";
-import { behindAt, inheritEscalation, reviewable } from "./behind.js";
+import { behindAt, onUpdated, reviewable } from "./behind.js";
 import { followingApprovals } from "./approval-carry.js";
 import { classifyingFailures } from "./failure-class.js";
 import { carriedVerdict, carryRoutes } from "./carry-merge.js";
@@ -47,12 +47,13 @@ import { headOriginRoute, recordHeadOrigin } from "./head-origin.js";
 import { taskIdOf } from "../workflows/land-merge-message.js";
 import { SHEPHERD_STEPS } from "./shepherd-steps.js";
 import { withEarlier, type FixFirstTrail } from "./fix-first-trail.js";
-import { packetTriggering, visualPacketRoutes } from "./visual-packet-trigger.js";
+import { packetBeforeGate, packetTriggering, visualPacketRoutes, type PacketRun } from "./visual-packet-trigger.js";
 import { OWNER_SEND_BACK_KIND, isSentBack, ownerSendBack, sendBackOffer, sendBackOfferRoute } from "./owner-send-back.js";
+import { NOT_OFFERED, configuredVisualSetCarry, visualAcceptOfferRoute, visualAcceptRoute, type VisualAcceptRun } from "./visual-accept.js";
 
 export { SHEPHERD_STEPS };
 
-interface ShepherdRun extends WakeRun, FixFirstTrail {
+interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun {
   ctx: WorkflowContext;
   phases: ShepherdPhases;
   target: PrTarget;
@@ -105,7 +106,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
     ...{ policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release, task: params.task },
     ...{ failedRounds: 0, throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set() },
     ...{ seatHeld: new Map(), seatHeldRounds: new Map(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map() },
-    ...{ wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [] },
+    ...{ wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [], visualAcceptOffers: 0 },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const checked = checkedBaseTap();
@@ -143,6 +144,9 @@ async function routeLanded(run: ShepherdRun, outcome: LandOutcome): Promise<Land
   if (outcome.kind === "ci-failed") {
     const held = await heldByFrozenMain(run, outcome, run.freezeChecks++);
     if (held !== false) return held === true ? undefined : held;
+    const wake = (payload: unknown) => woken(run, "review", outcome.headSha, payload);
+    const accepted = await visualAcceptRoute(run, outcome, run.phases.visualSetCarry, wake, (stepId, prompt) => packetBeforeGate(packetRunOf(run), stepId, prompt));
+    if (accepted !== NOT_OFFERED) return accepted;
     if (await woken(run, "ci-red", outcome.headSha, { failing: outcome.failing })) return undefined;
     return ciFailedRoute(run, outcome);
   }
@@ -176,6 +180,8 @@ function leaveOnConflict(headSha: string): LeaveLand {
   return new LeaveLand({ kind: "stopped", reason: "conflict", headSha, detail: `the pull request at ${headSha} conflicts with its base` });
 }
 
+const packetRunOf = (run: ShepherdRun): PacketRun => ({ ctx: run.ctx, target: run.target, ownerGateReason: () => run.policy.ownerGateReason });
+
 /** Runs the review at every green head `land` reads, before `land` asks the policy or the owner about that head. */
 function reviewingContext(run: ShepherdRun): WorkflowContext {
   const { ctx } = run;
@@ -184,7 +190,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     clearSuperseded(run, rereview, gated, stepId), rereview && run.trail.ownerAsked.add(rereview), new LeaveLand()
   );
   const conflictCheck = (headSha: string) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha });
-  const packetRun = { ctx, target: run.target, ownerGateReason: () => run.policy.ownerGateReason };
+  const packetRun = packetRunOf(run);
   return {
     runId: ctx.runId,
     workflowName: ctx.workflowName,
@@ -206,12 +212,6 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
       return done;
     },
   };
-}
-
-function onUpdated(run: ShepherdRun, result: unknown): void {
-  inheritEscalation(run.escalations, run.lastCi, result);
-  const update = UpdateResultResult.safeParse(result);
-  if (update.success && update.data.own) run.trail.updated.add(update.data.headSha);
 }
 
 /** A reviewable head is reviewed once, then routed by the table; only the `merge` route reaches `land`'s merge decision. */
@@ -359,12 +359,13 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...heldRepairRoutes(deps),
     ...visualPacketRoutes(deps),
     sendBackOfferRoute(deps),
+    visualAcceptOfferRoute(deps),
     headOriginRoute(deps),
     reviewRefusedRoute(deps.now),
   ];
 }
 
-export const DEFAULT_PHASES: ShepherdPhases = { wake: wakePhase, review: reviewPhase };
+export const DEFAULT_PHASES: ShepherdPhases = { wake: wakePhase, review: reviewPhase, visualSetCarry: () => configuredVisualSetCarry() };
 
 /** The registered workflow; params `repo`, `pr` or `branch`, and `policy` as an `EffectivePolicy` JSON string. */
 export function shepherdPrWorkflow(phases: ShepherdPhases = DEFAULT_PHASES): WorkflowDefinition {

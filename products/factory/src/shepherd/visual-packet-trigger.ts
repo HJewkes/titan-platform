@@ -11,6 +11,7 @@ import { landGateHead } from "./approval-carry.js";
 import type { PrTarget } from "./gates.js";
 import type { OwnerGateReason } from "./policy.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
+import { visualAcceptHead } from "./visual-accept.js";
 
 const VISUAL_PACKET_STEP = "sh-visual-packet";
 export const VISUAL_PACKET_STEPS: readonly StepDeclaration[] = [{ id: VISUAL_PACKET_STEP, kind: "dispatch" }];
@@ -52,14 +53,19 @@ export interface PacketInput {
 
 const VISUAL_RULE = /\? CI is green\. Policy shepherd-merge-guard\/visual-path:/;
 
-/** A land approve-merge gate under the visual-path guard, or any land gate of a run its seat registered for Gate 2 visual sign-off. */
+/**
+ * A land approve-merge gate under the visual-path guard, any land gate of a run its seat registered for Gate 2 visual
+ * sign-off, or the owner's ask to accept the baselines CI regenerated at a red head.
+ */
 export function isVisualGate(stepId: string, prompt: string, ownerGateReason: OwnerGateReason | undefined): string | undefined {
+  const accept = visualAcceptHead(stepId, prompt);
+  if (accept !== undefined) return accept;
   const head = landGateHead(stepId, prompt);
   return head !== undefined && (VISUAL_RULE.test(prompt) || ownerGateReason === "gate-2-visual") ? head : undefined;
 }
 
 /** What the trigger reads from the run: its target and the policy as narrowed so far. */
-interface PacketRun {
+export interface PacketRun {
   ctx: WorkflowContext;
   target: PrTarget;
   ownerGateReason: () => OwnerGateReason | undefined;
@@ -68,10 +74,15 @@ interface PacketRun {
 /** Wraps `assisted` so a visual approve-merge gate records its packet step first; the gate opens whatever the step recorded. */
 export function packetTriggering(run: PacketRun, assisted: WorkflowContext["assisted"]): WorkflowContext["assisted"] {
   return async (stepId, prompt, options) => {
-    const headSha = isVisualGate(stepId, prompt, run.ownerGateReason());
-    if (headSha !== undefined) await triggerPacket(run, stepId, headSha);
+    await packetBeforeGate(run, stepId, prompt);
     return assisted(stepId, prompt, options);
   };
+}
+
+/** Records a visual gate's packet step; any other gate records nothing. */
+export async function packetBeforeGate(run: PacketRun, stepId: string, prompt: string): Promise<void> {
+  const headSha = isVisualGate(stepId, prompt, run.ownerGateReason());
+  if (headSha !== undefined) await triggerPacket(run, stepId, headSha);
 }
 
 /**

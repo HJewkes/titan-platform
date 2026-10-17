@@ -83,20 +83,25 @@ function chargeForks(line: object, count: number): void {
 }
 
 /**
- * Hands the next command the text this one pipes on. Every reading's printed text feeds a shell, as any may print it;
- * a group keeps dash's, as main read it.
+ * Hands the next command the text this one pipes on. Every reading's printed text feeds a shell, as any may print it,
+ * and so does every text a group closed here may print under the readings of the commands in it.
  */
-function handOn(w: HandedOn, op: string, words: WordToken[], redirects: RedirectToken[], [cmd, word, ...rest]: Emitted): void {
+function handOn(w: HandedOn, op: string, words: WordToken[], redirects: RedirectToken[], readings: Emitted): void {
   const empty = words.length + redirects.length === 0;
-  if (word === undefined) {
+  const closed = groupStdin(w, op, words, redirects, readings);
+  const [cmd, word] = readings;
+  if (closed) {
+    w.stdin = closed[0] ?? null;
+    w.shellStdin = closed.slice(1);
+  } else if (word === undefined) {
     w.shellStdin = nextShellStdin(op, cmd, empty, w.shellStdin);
-    w.stdin = groupStdin(w, op, words, redirects, cmd, nextStdin(op, cmd, empty, w.stdin));
-    return;
+    w.stdin = nextStdin(op, cmd, empty, w.stdin);
+  } else {
+    const printed = readings.flatMap((reading) => [nextStdin(op, reading, empty, w.stdin), ...nextShellStdin(op, reading, empty, w.shellStdin)]);
+    const texts = [...new Set(printed.filter((text) => text !== null))];
+    w.shellStdin = texts.slice(1);
+    w.stdin = texts[0] ?? null;
   }
-  const printed = [cmd, word, ...rest].flatMap((reading) => [nextStdin(op, reading, empty, w.stdin), ...nextShellStdin(op, reading, empty, w.shellStdin)]);
-  const texts = [...new Set(printed.filter((text) => text !== null))];
-  w.shellStdin = texts.slice(1);
-  w.stdin = groupStdin(w, op, words, redirects, word, texts[0] ?? null);
 }
 
 /** Ends a command at `op`: hands on what it pipes, links the next command to it, and enters or leaves a subshell. */

@@ -1,9 +1,9 @@
 import { useEffect, type ReactNode } from "react";
-import { Alert, Card, CardContent, Checkbox, CheckboxGroup, HStack, Pill, Radio, RadioGroup, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, Card, CardContent, Checkbox, CheckboxGroup, HStack, Input, Pill, Radio, RadioGroup, Typography, VStack } from "@titan-design/react-ui";
 import type { Question } from "../../server/round-schema.js";
 
-/** A pick is held in the page only; nothing here sends it anywhere. */
-export type QuestionAnswer = { pick: string } | { picks: string[] } | { value: number };
+/** An answer as the page holds it; a page that submits turns it into a `rounds.submit` answer. */
+export type QuestionAnswer = { pick: string } | { picks: string[] } | { value: number } | { text: string };
 
 /** Keys 1-9 reach the first nine choices; a longer list is answered by pointer. */
 const MAX_KEYED_CHOICES = 9;
@@ -60,10 +60,12 @@ interface RoundQuestionProps {
   /** The active question is the one digit keys answer; pressing the card or one of its options activates it. */
   active: boolean;
   onActivate: () => void;
+  /** Present only where the page submits text answers; without it a text question shows a placeholder. */
+  onText?: (text: string) => void;
 }
 
 /** One round@2 question with its options and any recommendation the server sent; reusable outside #/rounds. */
-export function RoundQuestion({ question, position, answer, onChoose, active, onActivate }: RoundQuestionProps): ReactNode {
+export function RoundQuestion({ question, position, answer, onChoose, active, onActivate, onText }: RoundQuestionProps): ReactNode {
   // A pressed option does not reach the card's own press handler, so choosing activates the question too.
   const choose = (choice: string): void => {
     onActivate();
@@ -74,7 +76,7 @@ export function RoundQuestion({ question, position, answer, onChoose, active, on
       <CardContent>
         <VStack gap={3}>
           <QuestionHeading question={question} position={position} active={active} />
-          <Choices question={question} answer={answer} onChoose={choose} />
+          <Choices question={question} answer={answer} onChoose={choose} onText={onText} />
           <QuestionFacts question={question} />
         </VStack>
       </CardContent>
@@ -96,9 +98,13 @@ function QuestionHeading({ question, position, active }: { question: Question; p
 /** A keyed choice carries its digit, so the label says which key picks it. */
 const choiceLabel = (index: number, choice: string): string => (index < MAX_KEYED_CHOICES ? `${index + 1}  ${choice}` : choice);
 
-function Choices({ question, answer, onChoose }: { question: Question; answer: QuestionAnswer | undefined; onChoose: (choice: string) => void }): ReactNode {
+function Choices({ question, answer, onChoose, onText }: { question: Question; answer: QuestionAnswer | undefined; onChoose: (choice: string) => void; onText?: (text: string) => void }): ReactNode {
   const choices = choicesOf(question);
-  if (question.kind === "text") return <Typography variant="caption" color="secondary">Text answer</Typography>;
+  if (question.kind === "text" && onText === undefined) return <Typography variant="caption" color="secondary">Text answer</Typography>;
+  if (question.kind === "text") {
+    const text = answer && "text" in answer ? answer.text : "";
+    return <Input multiline numberOfLines={3} label="Your answer" accessibilityLabel={`Answer to ${question.prompt}`} value={text} onChangeText={onText} />;
+  }
   if (question.kind === "pick-many") {
     const picks = answer && "picks" in answer ? answer.picks : [];
     return (
