@@ -24,20 +24,22 @@ export interface ArithTrials {
   level: number;
   spend: { left: number };
   nesting: Nesting;
+  /** Whether a `[[` at a bare command start joins its `&&` and `||`, which only a text read as bash, zsh or ksh may do. */
+  joinsConditional: boolean;
 }
 
-function emptyTrials(): Omit<ArithTrials, "spend" | "nesting"> {
+function emptyTrials(): Omit<ArithTrials, "spend" | "nesting" | "joinsConditional"> {
   return { ends: new Map(), arithmetic: new Map(), subshells: new Map(), depths: new Map(), deepest: 0, level: 0 };
 }
 
-export function newTrials(src: string): ArithTrials {
+export function newTrials(src: string, joinsConditional = false): ArithTrials {
   const spend = { left: Math.max(BUDGET_FLOOR, BUDGET_PER_CHAR * src.length) };
-  return { ...emptyTrials(), spend, nesting: { depth: 0 } };
+  return { ...emptyTrials(), spend, nesting: { depth: 0 }, joinsConditional };
 }
 
 /** Trials for text cut out of the source, such as a heredoc body: positions differ, the spend and nesting do not. */
 export function sameSpend(trials: ArithTrials): ArithTrials {
-  return { ...emptyTrials(), spend: trials.spend, nesting: trials.nesting };
+  return { ...emptyTrials(), spend: trials.spend, nesting: trials.nesting, joinsConditional: trials.joinsConditional };
 }
 
 /** The end `find` reports for the `((` at `at`, run at most once per position. */

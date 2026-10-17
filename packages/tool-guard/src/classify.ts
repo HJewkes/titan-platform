@@ -8,7 +8,7 @@ import { secret } from "./families/secret.js";
 import { hasDynamicName, namedReadings, wrappedReading } from "./dynamic-readings.js";
 import { afterWrites, scriptReadings } from "./line-writes.js";
 import { INTERPRETERS } from "./mentions.js";
-import { hasOpaqueShebang, refuseOpaqueShebang, scriptTargets, SOURCERS } from "./scripts.js";
+import { hasOpaqueShebang, refuseOpaqueShebang, runsNatively, scriptTargets, SOURCERS } from "./scripts.js";
 import type { ScriptTarget } from "./scripts.js";
 import { extractCommands } from "./shell/commands.js";
 import type { ExtractOptions, SimpleCommand } from "./shell/commands.js";
@@ -57,9 +57,12 @@ function withHttpConfig(src: string, commands: SimpleCommand[], ctx: ClassifyCon
   return choosesHttpConfig(src, commands, ctx.home, ctx.foldCase === true) ? { ...ctx, httpConfigUnseen: true } : ctx;
 }
 
-/** A script's text (`scripts` null) stops at the dynamic-word cap and reads on as main does; the line refuses past it. */
+/**
+ * A script's text (`scripts` null) stops at the dynamic-word cap and reads on as main does; the line refuses past it.
+ * Only the line, which the Bash tool's own bash or zsh runs, joins a `[[`'s operators.
+ */
 function extractOptions(cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null, foldCase: boolean): ExtractOptions {
-  return { cwd, home: ctx.home, foldCase, guarded: GUARDED, stopPastCap: scripts === null };
+  return { cwd, home: ctx.home, foldCase, guarded: GUARDED, stopPastCap: scripts === null, joinsConditional: scripts !== null };
 }
 
 /**
@@ -143,7 +146,7 @@ function handles(family: Family, cmd: SimpleCommand): boolean {
 
 /** One level deep: a shell script is classified as a command string, any other script's text gets the mention rule. */
 function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: ScriptMemo): ClassifiedAction[] {
-  return scriptTargets(cmd, ctx.home).flatMap((target) => {
+  return scriptTargets(cmd, ctx.home).filter((target) => !runsNatively(target, ctx)).flatMap((target) => {
     const actions = memoized(scripts, ctx, scriptKey(cmd, target, ctx), () => scriptVerdicts(cmd, target, ctx, scripts));
     refuseOpaqueShebang(target, scripts.opaque);
     return actions.map((a) => (a.action === "secret-read" ? classified("bash.secret.script-by-path", a.subject) : a));

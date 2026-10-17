@@ -179,7 +179,7 @@ const SmokeSchema = z.strictObject({ ok: z.boolean() });
 /** One tiny call through the configured judge; a codex judge this host cannot run is skipped, not failed. */
 async function smoke(path: string, deps: EvalCliDeps): Promise<number> {
   const judge = readJudge(path);
-  const missing = judge.provider === "codex" ? (deps.codexUnavailable ?? codexUnavailable)(judge) : null;
+  const missing = judge.provider === "codex" ? await (deps.codexUnavailable ?? codexUnavailable)(judge) : null;
   if (missing) {
     console.log(JSON.stringify({ judge: judgeLabel(judge), skipped: missing }));
     return EXIT.OK;
