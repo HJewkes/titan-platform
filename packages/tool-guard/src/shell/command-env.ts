@@ -29,6 +29,11 @@ export function walkSure(walkText: () => void): void {
   }
 }
 
+/** The state a walk starts a command list with: no operator before it, no pipe into it, no pending scope. */
+export function freshWalk<D>(stdin: string | null, descriptors: D) {
+  return { stack: [], stdin, shellStdin: [], descriptors, prev: null, chain: { start: null }, negated: false, walked: null };
+}
+
 export function nestedLists(token: Token): Token[][] {
   if (token.type === "redirect") return [...(token.target?.subs ?? []), ...token.subs];
   return token.type === "op" ? [] : token.subs;

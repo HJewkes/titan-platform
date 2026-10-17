@@ -1,7 +1,7 @@
 import { ParseError } from "./lexer.js";
 import { mentionsAlias } from "./alias-mention.js";
 import { tokenizeLine } from "./line-tokens.js";
-import { changeDir, folded, literalEnv, nestedLists, walkSure } from "./command-env.js";
+import { changeDir, folded, freshWalk, literalEnv, nestedLists, walkSure } from "./command-env.js";
 import { lineBudget } from "./line-budget.js";
 import type { OpToken, RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
@@ -145,18 +145,11 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   const unsure = lineBudget(src, options);
   const w: Walk = {
     scope,
-    stack: [],
+    ...freshWalk(null, TOP_DESCRIPTORS),
     out,
     home: options.home ?? null,
     depth: 0,
-    stdin: null,
-    shellStdin: [],
-    descriptors: TOP_DESCRIPTORS,
-    prev: null,
-    chain: { start: null },
-    negated: false,
     foldCase,
-    walked: null,
     aliases: options.aliases ?? null,
     unsure,
     marks: newMarks(),
@@ -265,8 +258,7 @@ function observed(w: Walk): Walk {
 
 function child(w: Walk, wrapping: Wrapping[], descriptors = w.descriptors): Walk {
   const scope = { dir: w.scope.dir, vars: childVars(w.scope.vars), wrapping };
-  const fresh = { stack: [], depth: w.depth + 1, stdin: stdinText(descriptors), shellStdin: [], descriptors, prev: null, chain: { start: null }, negated: false, walked: null };
-  return observed({ ...w, scope, ...fresh });
+  return observed({ ...w, scope, ...freshWalk(stdinText(descriptors), descriptors), depth: w.depth + 1 });
 }
 
 function scope(op: string, w: Walk): void {
