@@ -4,10 +4,10 @@
  * which refuses the feedback@1 fields `rounds.submit` writes. A merge-bound question approves a
  * head, so a Ship stays out of the decisions file; any other question with options is a decide.
  */
-import { z } from "zod";
 import { ROUND_ANSWERER, roundItemId } from "@titan-design/owner-queue";
 import type { DecisionAnswer, DecisionItem } from "./decision-log.js";
-import type { Round2Manifest, Round2Question, SubmittedAnswer } from "./round2-adapter.js";
+import type { Manifest, Question } from "./round-schema.js";
+import type { SubmittedAnswer } from "./round2-adapter.js";
 
 interface RoundDecision {
   questionId: string;
@@ -17,7 +17,7 @@ interface RoundDecision {
 
 export interface SubmittedRound {
   roundId: string;
-  manifest: Round2Manifest;
+  manifest: Manifest;
   answers: readonly SubmittedAnswer[];
   /** When round.json was last written; round@2 carries no time of its own. */
   openedAt: string;
@@ -27,29 +27,29 @@ export interface SubmittedRound {
 const MIN_OPTIONS = 2;
 const MAX_OPTIONS = 8;
 
-function optionsOf(question: Round2Question): DecisionItem["options"] {
-  const labels = question.options ?? [];
+const labelsOf = (question: Question): readonly string[] => ("options" in question ? question.options : []);
+
+function optionsOf(question: Question): DecisionItem["options"] {
+  const labels = labelsOf(question);
   if (labels.length < MIN_OPTIONS || labels.length > MAX_OPTIONS) return undefined;
   return labels.map((label) => ({ id: label, label }));
 }
 
-const recommendationShape = z.looseObject({ answer: z.string(), by: z.string().default("unknown") });
-
-function recommendedOf(question: Round2Question): DecisionItem["recommended"] {
-  const recommendation = recommendationShape.safeParse(question.recommendation);
-  if (!recommendation.success || !(question.options ?? []).includes(recommendation.data.answer)) return undefined;
-  return { optionId: recommendation.data.answer, by: recommendation.data.by };
+function recommendedOf(question: Question): DecisionItem["recommended"] {
+  if (question.kind === "text" || question.recommendation === undefined) return undefined;
+  const { answer, by } = question.recommendation;
+  return typeof answer === "string" && labelsOf(question).includes(answer) ? { optionId: answer, by } : undefined;
 }
 
-function itemOf(question: Round2Question, { roundId, openedAt }: SubmittedRound): DecisionItem {
+function itemOf(question: Question, { roundId, openedAt }: SubmittedRound): DecisionItem {
   const options = optionsOf(question);
   const recommended = recommendedOf(question);
   return {
     id: roundItemId(roundId, question.id),
     sources: [{ system: "round", ref: `${roundId}#${question.id}` }],
-    kind: question.merge !== undefined ? "approve" : options === undefined ? "review" : "decide",
+    kind: question.kind === "pick-one" && question.merge !== undefined ? "approve" : options === undefined ? "review" : "decide",
     door: "two-way",
-    summary: (question.prompt ?? question.id).replace(/\s+/g, " ").trim(),
+    summary: question.prompt.replace(/\s+/g, " ").trim(),
     ...(options === undefined ? {} : { options }),
     ...(recommended === undefined ? {} : { recommended }),
     keys: [],

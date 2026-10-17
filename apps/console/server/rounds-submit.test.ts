@@ -176,6 +176,29 @@ describe("rounds.submit", () => {
     expect(await exists(feedbackOf("lantern-cards-r1"))).toBe(false);
   });
 
+  it("answers a TD-920 CI-packet round, which only review-schema 0.3 accepts, with Ship at its bound head", async () => {
+    const id = "td920-packet-r1";
+    const head = "a1".repeat(20);
+    await cp(path.join(FIXTURE_ROUNDS.dir, id), path.join(dir, id), { recursive: true });
+    const roundSha = sha256(await readFile(path.join(dir, id, "round.json")));
+
+    const { envelope } = await submit({ id, manifestSha256: roundSha, headSha: head, answers: [{ questionId: "ship", pick: "Ship" }] });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: head } });
+  });
+
+  it("refuses a round.json the lister calls invalid, such as one with an unknown top-level key, and writes nothing", async () => {
+    const round = path.join(dir, ROUND, "round.json");
+    const bytes = Buffer.from((await readFile(round, "utf8")).replace(/^\{/, '{"approvedBy": "agent", '));
+    await writeFile(round, bytes);
+
+    const { envelope, exitCode } = await submit(shipArgs({ manifestSha256: sha256(bytes) }));
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringContaining("round.json is not a valid round: ") });
+    expect(await exists(feedbackOf())).toBe(false);
+  });
+
   it("refuses feedback over the size cap", async () => {
     const { envelope, exitCode } = await submit(shipArgs({ general: "x".repeat(MAX_FEEDBACK_BYTES) }));
 
