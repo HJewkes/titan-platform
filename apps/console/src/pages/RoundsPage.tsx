@@ -86,7 +86,7 @@ function RoundRow({ round }: { round: RoundSummary }): ReactNode {
             {round.id}
           </Link>
           <Pill variant="subtle" size="xs">
-            {!round.valid ? "invalid" : round.design ? "design" : "questions"}
+            {!round.valid ? "invalid" : round.ship ? "ship" : round.design ? "design" : "questions"}
           </Pill>
         </HStack>
       </TableCell>
