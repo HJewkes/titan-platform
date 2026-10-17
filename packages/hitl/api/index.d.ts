@@ -1,6 +1,6 @@
 import { ZodType } from 'zod';
-import { G as GateRecord, a as GateQuestion, b as GateStore, c as GateResolver, d as GateEvidence, B as BaseGateStore, e as GateAuthorize, f as GateAnswerAllowance, g as GateEvidencePolicy, J as JsonSchema } from './base-store.js';
-export { h as GateAborted, i as GateAlreadyExists, j as GateAlreadySettled, k as GateAuthorization, l as GateAuthorizeInvalid, m as GateBrief, n as GateBriefInvalid, o as GateCancelled, p as GateError, q as GateEvidenceInvalid, r as GateExpired, s as GateExpiryInvalid, t as GateInput, u as GateNotFound, v as GatePayloadInvalid, w as GateQuestionOption, x as GateResolverRefused, y as GateRule, z as GateRuleInvalid, A as GateStatus, C as GateStoreSchemaOutdated } from './base-store.js';
+import { G as GateRecord, a as GateQuestion, b as GateRule, c as GateStore, d as GateResolver, e as GateEvidence, B as BaseGateStore, f as GateAuthorize, g as GateAnswerAllowance, h as GateEvidencePolicy, J as JsonSchema } from './base-store.js';
+export { i as GateAborted, j as GateAdmission, k as GateAdmittedBy, l as GateAlreadyExists, m as GateAlreadySettled, n as GateAuthorization, o as GateAuthorizeInvalid, p as GateBrief, q as GateBriefInvalid, r as GateCancelled, s as GateError, t as GateEvidenceInvalid, u as GateExpired, v as GateExpiryInvalid, w as GateInput, x as GateNotFound, y as GatePayloadInvalid, z as GateQuestionOption, A as GateResolverRefused, C as GateRuleInvalid, D as GateStatus, E as GateStoreSchemaOutdated } from './base-store.js';
 import { AnchorPins, RevisionSource } from '@titan-design/evidence';
 import '@titan-design/authority';
 
@@ -15,6 +15,8 @@ interface OpenGateOptions<T> {
     summary?: string;
     evidenceRef?: string;
     questions?: GateQuestion[];
+    /** Binds the gate to the authority rule that opened it; see `GateRule`. */
+    rule?: GateRule;
 }
 interface WaitOptions<T> {
     pollMs?: number;
@@ -122,7 +124,7 @@ declare function snapshotBrief(gateId: string, raw: unknown, required: boolean, 
  */
 declare function checkAgainstJsonSchema(schema: JsonSchema, value: unknown, path?: string): string[];
 
-export { BaseGateStore, DEFAULT_POLL_MS, GateAnswerAllowance, GateAuthorize, type GateBriefSnapshot, GateEvidence, GateEvidencePolicy, type GateHandle, GateQuestion, GateRecord, GateResolver, GateStore, JsonSchema, MemoryGateStore, type MemoryGateStoreOptions, type OpenGateOptions, type WaitOptions, cancelGate, checkAgainstJsonSchema, defaultResolverRefusal, matchesAllowance, openGate, resolveGate, ruleResolverRefusal, snapshotBrief, snapshotResolver, waitForGate };
+export { BaseGateStore, DEFAULT_POLL_MS, GateAnswerAllowance, GateAuthorize, type GateBriefSnapshot, GateEvidence, GateEvidencePolicy, type GateHandle, GateQuestion, GateRecord, GateResolver, GateRule, GateStore, JsonSchema, MemoryGateStore, type MemoryGateStoreOptions, type OpenGateOptions, type WaitOptions, cancelGate, checkAgainstJsonSchema, defaultResolverRefusal, matchesAllowance, openGate, resolveGate, ruleResolverRefusal, snapshotBrief, snapshotResolver, waitForGate };
 
 // ./dist/base-store.d.ts
 import { ResolverClass, DelegateResolverClass, ActorClass } from '@titan-design/authority';
@@ -207,11 +209,18 @@ type GateAuthorization = {
     allowed: false;
     reason: string;
 };
+/** Which check let a resolver past the default refusal: an owner class, else the first widening that applied. */
+type GateAdmittedBy = "owner-class" | "allowance" | "evidence" | "delegate";
+/** What the store knows about how it admitted the resolver, handed to `authorize` as a third argument. */
+interface GateAdmission {
+    admittedBy: GateAdmittedBy;
+}
 /**
  * Runs after the default resolver-class check, so it can refuse a resolver but
- * never admit one the default refused. Must return synchronously.
+ * never admit one the default refused. Must return synchronously. The optional
+ * `admission` only informs a refusal; a two-argument authorizer is unaffected.
  */
-type GateAuthorize = (gate: Readonly<GateRecord>, resolver: Readonly<GateResolver>) => GateAuthorization;
+type GateAuthorize = (gate: Readonly<GateRecord>, resolver: Readonly<GateResolver>, admission?: Readonly<GateAdmission>) => GateAuthorization;
 /**
  * One answer a non-owner class may give, declared by the product when it builds the store.
  * It admits exactly: `resolverClass`, a gate whose step is `stepId` (a bare id or `<id>:<n>` after
@@ -355,4 +364,4 @@ declare abstract class BaseGateStore implements GateStore {
     protected nowIso(): string;
 }
 
-export { type GateStatus as A, BaseGateStore as B, GateStoreSchemaOutdated as C, type GateRecord as G, type JsonSchema as J, type GateQuestion as a, type GateStore as b, type GateResolver as c, type GateEvidence as d, type GateAuthorize as e, type GateAnswerAllowance as f, type GateEvidencePolicy as g, GateAborted as h, GateAlreadyExists as i, GateAlreadySettled as j, type GateAuthorization as k, GateAuthorizeInvalid as l, type GateBrief as m, GateBriefInvalid as n, GateCancelled as o, GateError as p, GateEvidenceInvalid as q, GateExpired as r, GateExpiryInvalid as s, type GateInput as t, GateNotFound as u, GatePayloadInvalid as v, type GateQuestionOption as w, GateResolverRefused as x, type GateRule as y, GateRuleInvalid as z };
+export { GateResolverRefused as A, BaseGateStore as B, GateRuleInvalid as C, type GateStatus as D, GateStoreSchemaOutdated as E, type GateRecord as G, type JsonSchema as J, type GateQuestion as a, type GateRule as b, type GateStore as c, type GateResolver as d, type GateEvidence as e, type GateAuthorize as f, type GateAnswerAllowance as g, type GateEvidencePolicy as h, GateAborted as i, type GateAdmission as j, type GateAdmittedBy as k, GateAlreadyExists as l, GateAlreadySettled as m, type GateAuthorization as n, GateAuthorizeInvalid as o, type GateBrief as p, GateBriefInvalid as q, GateCancelled as r, GateError as s, GateEvidenceInvalid as t, GateExpired as u, GateExpiryInvalid as v, type GateInput as w, GateNotFound as x, GatePayloadInvalid as y, type GateQuestionOption as z };

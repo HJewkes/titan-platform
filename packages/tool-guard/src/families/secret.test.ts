@@ -135,7 +135,7 @@ describe("how the command or its path was reached, one id per wrapping", () => {
     ["bash.secret.quoting", "cat $'\\x7e/.npmrc'"],
     ["bash.secret.sh-c", "sh -c 'cat ~/.npmrc'"],
     ["bash.secret.sh-c", 'eval "cat ~/.npmrc"'],
-    ["bash.secret.sh-c", "env -S 'cat ~/.npmrc'"],
+    ["bash.secret.sh-c", "flock /tmp/l -c 'cat ~/.npmrc'"],
     ["bash.secret.xargs", "echo ~/.npmrc | xargs cat"],
     ["bash.secret.xargs", "printf '%s\\n' ~/.npmrc | xargs -I{} cp {} /tmp/x"],
     ["bash.secret.xargs", "echo 'cat ~/.npmrc' | xargs -tI{} sh -c '{}'"],

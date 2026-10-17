@@ -211,7 +211,24 @@ export const FactoryConfigSchema = z.object({
       visualPacket: z.enum(["off", "shadow", "on"]).optional(),
       /** The profile that packager spawns under; absent means `review-packager`. */
       visualPacketProfile: profileName.optional(),
+      /** The `titan-review` binary that packager's brief names; absent means `$HOME/.local/bin/titan-review`. */
+      titanReviewBin: absolutePath.optional(),
+      /**
+       * Off when absent. `shadow` builds and lints each finished packet's round and records `shadow`; `on` also imports it with
+       * `console`, the titan-console argv prefix (node and its cli.js), as no PATH lookup is made. `roundsDir` is passed as
+       * `TITAN_CONSOLE_ROUNDS_DIR`; absent, the console's own default applies.
+       */
+      visualDelivery: z
+        .strictObject({
+          mode: z.enum(["off", "shadow", "on"]),
+          console: z.array(absolutePath).min(1),
+          roundsDir: absolutePath.optional(),
+          everyMs: z.number().int().positive().optional(),
+          readyTimeoutMs: z.number().int().positive().optional(),
+        })
+        .optional(),
     })
+    .refine((s) => (s.visualDelivery?.mode ?? "off") === "off" || s.agentChatBin, { message: "visualDelivery needs an agentChatBin", path: ["agentChatBin"] })
     .refine((s) => !s.hardStopRepos || s.charterPath, { message: "hardStopRepos needs a charterPath", path: ["charterPath"] })
     .refine((s) => !s.review || s.agentChatBin, { message: "review needs an agentChatBin", path: ["agentChatBin"] })
     .refine((s) => !s.fixer || s.agentChatBin, { message: "fixer needs an agentChatBin", path: ["agentChatBin"] })

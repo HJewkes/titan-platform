@@ -15,12 +15,11 @@ import path from "node:path";
 import { z } from "zod";
 import { type AnswerChoice, type AnswerOutcome, type GateAnswerClient, type GateAnswerRequest } from "./gate-answer.js";
 import { FeedbackDocument, Round2Manifest, type Round2Question } from "./round2-adapter.js";
+import { ANSWER_FILE, ANSWER_SCHEMA_ID } from "./round-answer.js";
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, ROUND_ID, readCapped } from "./rounds.js";
 import type { ShepherdSource } from "./shepherd.js";
 
-const ANSWER_FILE = "answer.json";
 const PACKET_FILE = "packet.json";
-const ANSWER_SCHEMA_ID = "titan-console/gate-answer@1";
 const APPROVE_MERGE = /(^|\/)approve-merge(:\d+)?$/;
 
 const packetHead = z.looseObject({ headTree: z.string().regex(/^[0-9a-f]{40}$/) });

@@ -826,6 +826,22 @@ waits for a new head and never merges the sent-back one; with no agent to wake i
 There is no token, as with `gateNotify`: any process of the same OS user can post. The route is no
 registry command and no MCP tool, and the choice comes from the owner's `feedback.json`, not the request.
 
+### Delivering visual packets to the console: `shepherd.visualDelivery`
+
+With `"visualDelivery": {"mode": "shadow"|"on", "console": ["<node>", "<checkout>/apps/console/dist/cli.js"]}`
+(and `agentChatBin`) set, serve runs a sweep every 30 seconds (`src/shepherd/visual-delivery-sweep.ts`, `everyMs`
+overrides) over each pending approve-merge gate that has a packet dir. A packet is ready once `prose.json` exists
+and its packager is off a roster that was read; one not ready `readyTimeoutMs` (45 minutes) after the gate opened
+fails `packet-incomplete`. The sweep then checks GitHub's live PR head and the gate, runs
+`<titanReviewBin> packet round` and `packet lint --require prose,round --clone <seat checkout> --json`, checks again,
+and in `on` runs `<console…> rounds import <packet dir> --json`. Every binary is named in full; nothing is looked up
+on PATH. `roundsDir`, when set, reaches the console as `TITAN_CONSOLE_ROUNDS_DIR`; absent, the console's default
+applies. Each head's result is written to `<state>/packets/<run>/<head>.delivery.json` (0600, tmp and rename; a
+symlink is refused): `shadow`, `imported` (with the round id and URLs), `cancelled` (`new-head:<sha>`, `gate-gone`)
+or `failed` (`packet-incomplete`, `no-clone`, `round`, `lint`, `lint-error`, `import`, `import-conflict`). A head with
+a result runs nothing again. `/health`'s `visualDelivery` block shows `waiting` gates and `failed` ones. Absent or
+`off`, no sweep starts.
+
 ### A reviewer account out of usage
 
 Only Claude Code's own usage-limit record counts: a final message whose transcript record has the
