@@ -1,5 +1,3 @@
-import { CI_UNREAD_LINE } from "@titan-design/review-panel";
-import { CI_UNREAD_REASON } from "./ci-unread.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,6 +17,7 @@ import { codeRoute } from "../workflows/land.js";
 import type { MergeEvidence } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { reviewCauseStats, type ReviewCause } from "./review-cause.js";
+import { CI_UNREAD_REASON } from "./ci-unread.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import {
   FIX_FIRST_TRUNCATED,
@@ -40,7 +39,7 @@ import {
   type ReviewWiring,
 } from "./review.js";
 import { DEFAULT_HOLD_WAIT_MS, ReviewerAskTimedOut, ReviewerMachineHold, reviewWait } from "./review-wait.js";
-import { DEPTH_FLOOR_REASON, type AwaitVerdictInput, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader, type ReviewTarget } from "@titan-design/review-panel";
+import { CI_UNREAD_LINE, DEPTH_FLOOR_REASON, type AwaitVerdictInput, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader, type ReviewTarget } from "@titan-design/review-panel";
 import { MAX_REVIEWER_QUESTIONS, SHAPE_BRIEFS, reviewerBrief } from "@titan-design/review-panel";
 import { routeFor } from "./route-table.js";
 import type { ReviewerFacts, ReviewerRoles } from "./reviewer-roles.js";
@@ -1404,7 +1403,7 @@ describe("reviewPhase", () => {
 
   it("takes a dispatched reviewer's CI-unread-only FIX_FIRST as no verdict and records sh-ci-unread", async () => {
     const dispatch = fakeDispatch();
-    const unread = (head: string) => `- ${CI_UNREAD_LINE}\n\nDefect class: CI unread at the head.\n\n${verdictAt(head, "FIX_FIRST")}`;
+    const unread = (head: string) => `- ${CI_UNREAD_LINE}\n\nDefect class: CI unread at the head.\n\nVerdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${head}\n`;
     const read = (input: AwaitVerdictInput, held: FakeDispatch, now: number) => held.agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, unread(input.head), now + 1));
 
     const { verdicts, stepIds } = await review({ dispatch, policy: AUTO, read });

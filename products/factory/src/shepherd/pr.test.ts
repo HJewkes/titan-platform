@@ -1,9 +1,9 @@
-import { CI_UNREAD_LINE } from "@titan-design/review-panel";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BrokerUnavailableError, DispatchError } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
+import { CI_UNREAD_LINE } from "@titan-design/review-panel";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase } from "@titan-design/store-sqlite";
 import type { RoutedStepInput } from "@titan-design/workflow";
