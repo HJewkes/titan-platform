@@ -1,5 +1,11 @@
 # @titan-design/eslint-plugin
 
+## 0.3.0
+
+### Minor Changes
+
+- 51b584a: Add the opt-in `max-line-length` rule (TP-2475 a): a code line longer than `max` characters (default 200, `DEFAULT_MAX_LINE_LENGTH`) is reported, unless it is a comment, part of an import or re-export, or at least half string, template or regex literal. It is not in `recommended`.
+
 ## 0.2.0
 
 ### Minor Changes

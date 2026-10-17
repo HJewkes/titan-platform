@@ -1,5 +1,57 @@
 # @titan-design/review-panel
 
+## 0.6.0
+
+### Minor Changes
+
+- 7b9baf5: `reviewerBrief` takes an optional `sourceCheckout`. When it is set, the brief fetches and archives the head with `git -C "<sourceCheckout>"`, names the run dir as the reviewer's starting directory, forbids probes against the checkout, and removes only the head, base and probe dirs rather than the run dir itself. A `sourceCheckout` that is not an absolute path, or that holds a quote, `$`, backtick, backslash or control character, is refused with an error. Briefs without it render unchanged.
+- f171698: Test files no longer count toward the authority, policy or security touches, and `pathTouches` exports the path-only touches with no kind-forced security.
+- 9abae48: Reviewers run no tests: the default reviewer test rule, now exported as `CI_REVIEWER_TEST_RULE`, has them cite the CI check-runs (name and conclusion) at the reviewed head and treat a missing, running or red required check as blocking. Shepherd uses it on every host, and its fixer rules name `pnpm test:affected` (TP-1727 slice 3). The review-pr eval's offline trial brief swaps in its own no-CI test rule.
+- cf7c870: Add `reviewPullRequest(request, ports, opts?)`, the one entry point over the panel's ports: it classifies, plans, spawns members in parallel under `memberName`, corrects a malformed reply once, retries a silent member once under a fresh name, and returns `aggregate`'s verdict. A repeat call with the same input reuses the roster rows. Also exports `memberName`, `SPAWN_REFUSED_REASON` and the `ReviewRequest`, `ReviewPorts`, `ReviewClock` and `ReviewOptions` types.
+- b0a3f7b: `shepherd.review.panel: on` now reviews a head with its planned panel. The correctness member keeps `sh-review:<head>` and `sh-await-verdict:<head>`; every other member runs `sh-review:<head>:<shape>` and `sh-await-verdict:<head>:<shape>` at its planned profile with its shape's brief, and `sh-review-panel:<head>` records the aggregate. A panel MERGE carries `panel: {satisfiesG10, degraded, members}`, and a panel FIX_FIRST carries each member's findings and the panel's defect class. A run whose intent recorded no plan continues as a single reviewer. `ReviewerFacts` gains `profile`, which a reviewer dispatch spawns at in place of the class's profile.
+- ed7042a: The reviewer brief takes `ownerPicks` and lists each grammar-valid pick as declared, asking the reviewer to add `Owner pick contradicted: <id>` instead of blocking on it. `contradictedPicks` reads those lines back for the recorded ids.
+- ca49f58: `reviewerBrief` asks every FIX_FIRST, a first review included, for a `Defect class:` section. A new `earlierFindings` input hands a re-review the run's earlier FIX_FIRST findings with their classes, fenced between `EARLIER-FINDINGS` markers with every verdict-block line removed; the brief then asks for an `Earlier findings:` checklist of `- fixed:` / `- not fixed:` lines (or `Earlier findings: none found`) and for a recurring class's line to be copied exactly. Exports `EarlierFinding`, `EARLIER_FINDINGS_START`, `EARLIER_FINDINGS_END` and `EARLIER_FINDINGS_HEADING`.
+- 2ea3f8a: Add `securitySliceFlag` and `SECURITY_SLICE_LINES` (400) to flag oversize security or guard-area slices (TP-2395 a). The `generated` set now also leaves out changesets, `packages/*/api/*.d.ts` reports and `.codewatch/dead-exports.json`, so `changedLineCount` and the `large` touch no longer count that churn; a PR sized only by it may now class `standard`. `pnpm-lock.yaml` and snapshots stay counted, since a hand edit there changes what runs.
+
+  Add a `dependency` touch, STRICT like `security`, so a PR that changes `pnpm-lock.yaml`, `pnpm-workspace.yaml` or any `package.json` classes `g10` at any size. `touchesDependency(files, rules?)` is exported, and `ReviewerFacts.dependencyTouch` lets a caller that sizes reviewers itself apply the same rule. `ClassRules.dependency` is a new required field (a minor bump under 0.x): a caller that builds its own `ClassRules` must add it.
+
+- adfec4b: `reviewerBrief` and `correctionPrompt` ask every MERGE for the `CI-policy:` line (`CI_POLICY_RULE`), and `acceptVerdict` carries it on a MERGE as `ciPolicy`.
+- 4ba57bf: TP-2422: Shepherd's G10 registration hold now covers a branch registration when `sh-await-pr` finds its PR, and a repeat registration whose diff grew past 400 lines or into a stronger class. A weaker G10 hold, placed during the file read or inherited, no longer blocks escalation to `g10-adversary`. `release-head.ts` and Shepherd's `commands.ts`, `operator-hold.ts`, `seats.ts`, `release.ts` and `reviewer-choice.ts` count as policy paths, and a rename is classed by its old path as well as its new one. A hold history that cannot be read holds `g10-adversary`. `ReviewerFacts` gains `g10Hold`, so a run that holds or held a G10 hold gets the g10 reviewer.
+- 7dbe2bb: An `error` fix-proof verdict is blocking: the tests brief says so and `aggregate` makes the tests member block on it. `reviewerBrief` takes `fixProofUnverified` (`error`, `untrusted` or `unread`) and adds a closed-map section telling the reviewer the proof is blocking unless an added test is shown failing on the base (TP-2434 a).
+- ba8f25e: Reviewers may propose non-blocking follow-up tasks in a `Follow-ups:` section (`- <title> | <done_when> | low|medium|high`, at most five). `parseFollowUps` reads it and drops a malformed block whole with a named warning; `acceptVerdict` carries `followUps` and `followUpsWarning` on MERGE and FIX_FIRST without changing the verdict, and `reviewerBrief` teaches the section through `FOLLOW_UPS_RULE` (TP-2498 b).
+- 4dc300d: `acceptVerdict` refuses a MERGE whose CI-policy line reads malformed with the new `ci_policy_malformed` refusal, so the reviewer gets one correction turn instead of the merge guard gating the PR. The brief and correction prompt state that the line holds nothing else, and `MAX_CORRECTION_PROMPT_CHARS` rises from 1500 to 1600 to fit that sentence. A binary older than this release reads a stored `ci_policy_malformed` record as no record and sends the PR to a fresh reviewer.
+- 5f5dce9: review-panel: the adversary brief asks for a `Probes:` line above the verdict, and `acceptVerdict` refuses an adversary verdict without one as `probes_missing` (one correction, whose prompt restates the form; the correction cap rises to 1700 characters). `AwaitVerdictInput.shape` names the member awaited. `ShapeBriefInput.holdContext` puts a hold's reason, matched files, done-when and last report into the adversary brief, fenced as data. `ShapeRule.always` plans a shape whatever the files touch.
+
+  factory: with `shepherd.gateReset.twoMergeRelease` set to `shadow` or `on`, a run held `g10-adversary:` gets Shepherd's own adversary member beside correctness, whatever `review.panel` says, at `review.adversaryProfile` (default `fable-reviewer`) and under `review.adversaryConfigDir` when set. Its brief carries the hold reason, and a verdict with no `Probes:` line gets one correction turn. Nothing releases on it yet. Absent or `off` changes nothing.
+
+### Patch Changes
+
+- 089ac2c: Class a PR as visual under `apps/` only for files that can change rendered output (components, styles, html, svg, images, `src` and `public` trees), so a server-only console PR no longer opens a visual gate.
+- 30c7ab5: `reviewerBrief` confines a reviewer's probes to a scratch repo under its run dir whose origin is a local bare repo, never the real checkout it starts in or a real remote.
+- eae2dc4: `aggregate` makes the tests seat blocking on an `unproven` fix-proof, and a bare unpinned `reproduced` word no longer satisfies G10 (TP-2356 a).
+- 2503c0c: The tests and reviewer briefs trim a fix-proof/v1 line before parsing it, as aggregate does, so a padded line reads the same in the brief and in the verdict.
+- 29e51f1: `securitySliceFlag` also matches a rename's `previousPath`, so a slice that moves guard code out of the guard area is flagged (TP-2575 a).
+- ac8bf42: Shepherd no longer withholds the merge-on-green grant for an unverified fix-proof (owner decision 303, reversing TP-2434). A fix-proof read that errors is read once more at the same head first. The unverified standing and its read reason are recorded on the merge evidence (`proofUnverified`) and in the evidence PR comment, and an unverified proof no longer asks the reviewer for an owner brief. The reviewer's unverified-proof brief no longer says a MERGE goes to the owner.
+- 7a47bb3: pathTouches and classifyPr also match a rename's previousPath, so renaming a guard file away keeps its security touch.
+- Updated dependencies [59131da]
+- Updated dependencies [62adbb2]
+- Updated dependencies [adfec4b]
+- Updated dependencies [c2d805b]
+- Updated dependencies [336aaf2]
+- Updated dependencies [7499737]
+- Updated dependencies [069c3b2]
+- Updated dependencies [ba8f25e]
+- Updated dependencies [15b5395]
+- Updated dependencies [462e693]
+- Updated dependencies [7d93a92]
+- Updated dependencies [edcb589]
+- Updated dependencies [5cd4f1b]
+- Updated dependencies [abadd64]
+- Updated dependencies [b6072b5]
+  - @titan-design/fix-proof@0.5.0
+  - @titan-design/session-read@0.15.0
+  - @titan-design/evidence@0.3.0
+
 ## 0.5.4
 
 ### Patch Changes

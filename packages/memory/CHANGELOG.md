@@ -1,5 +1,11 @@
 # @titan-design/memory
 
+## 0.3.0
+
+### Minor Changes
+
+- 6881274: `groupFacts` now uses average linkage over smoothed TF-IDF cosine with a 25-fact cap, instead of single-link Jaccard, and exports its defaults as `DEFAULT_GROUP_THRESHOLD` (0.03) and `MAX_GROUP_SIZE` (25). `GroupOptions` gains `maxGroupSize`.
+
 ## 0.2.0
 
 ### Minor Changes
