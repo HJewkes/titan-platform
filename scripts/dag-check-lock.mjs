@@ -16,7 +16,7 @@ export const DEFAULT_LOCK_DIR = path.join(homedir(), ".cache", "titan-platform",
 // basement-suite reads 75 as "busy, retry later".
 export const BUSY_EXIT_CODE = 75;
 const DEFAULT_WAIT_MS = 8 * 60 * 1000;
-// Holders append under a directory lock and trim the log once it doubles its kept size; the tail bounds both its size and a stale median.
+// Holders append under a directory lock and trim the log to its kept tail, so no line is lost to a racing rewrite; the tail bounds both its size and a stale median.
 // Holds logged with exit null (killed by a signal, or the check threw) are not representative and skip the median.
 const LOG_KEEP_LINES = 200;
 const LOG_LOCK_WAIT_MS = 2000;
@@ -193,7 +193,7 @@ export function appendHold(lockDir, hold) {
   withLogLock(file, () => {
     appendFileSync(file, `${line}\n`);
     const kept = readHolds(lockDir);
-    if (kept.length <= 2 * LOG_KEEP_LINES) return;
+    if (kept.length <= LOG_KEEP_LINES) return;
     const tmp = `${file}.tmp-${process.pid}`;
     try {
       writeFileSync(tmp, `${kept.slice(-LOG_KEEP_LINES).map((h) => JSON.stringify(h)).join("\n")}\n`);

@@ -634,16 +634,15 @@ describe("hold log", () => {
     }
   }, 30000);
 
-  it("trims the log to its kept tail once it doubles, keeping the newest holds", () => {
+  it("trims the log to its kept tail on append, keeping the newest holds", () => {
     const lockDir = lockPath();
     mkdirSync(join(lockDir, ".."), { recursive: true });
 
-    for (let i = 1; i <= 450; i++) appendHold(lockDir, { check: "c", exit: 0, slot: 0, acquiredAt: i });
+    for (let i = 1; i <= 250; i++) appendHold(lockDir, { check: "c", exit: 0, slot: 0, acquiredAt: i });
 
     const holds = readHolds(lockDir);
-    expect(holds.length).toBeLessThanOrEqual(400);
-    expect(holds.length).toBeGreaterThanOrEqual(200);
-    expect(holds.at(-1).acquiredAt).toBe(450);
+    expect(holds).toHaveLength(200);
+    expect(holds.at(-1).acquiredAt).toBe(250);
   });
 
   it("appends anyway when a stuck lock never frees", () => {
