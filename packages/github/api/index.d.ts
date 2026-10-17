@@ -520,6 +520,108 @@ declare class WriteRetriesExhaustedError extends Error {
     constructor(step: string, attempts: number, last: unknown);
 }
 
+/** What GitHub charged for one query, read from the query itself. */
+interface RateLimit {
+    cost: number;
+    remaining: number;
+    resetAt: string;
+}
+interface GhReview {
+    databaseId: number;
+    state: string;
+    submittedAt: string | null;
+}
+/** GitHub's formula: the requests needed to fill every connection at its page size, over 100, rounded, at least 1. */
+declare function graphqlPoints(requests: number): number;
+/** The requests one snapshot page asks for, per included range; the nested connections count once per parent node. */
+declare function snapshotRequests(ranges: {
+    open: boolean;
+    done: boolean;
+    history: boolean;
+}): number;
+
+/** Page caps per range: past one, the read throws rather than answer a range cut short. */
+declare const BACKSTOP_CAPS: {
+    readonly open: 20;
+    readonly done: 10;
+    readonly main: 20;
+    readonly contexts: 10;
+    readonly reviews: 10;
+};
+type BackstopRange = keyof typeof BACKSTOP_CAPS;
+/** Re-reads `done` this far behind its cursor, so a PR closed as the last tick read is not missed. */
+declare const DONE_OVERLAP_MS: number;
+/** Named so a caller that reports only an error's class still says the range was cut short. */
+declare class BackstopTruncated extends Error {
+    readonly range: BackstopRange;
+    readonly cap: number;
+    constructor(range: BackstopRange, cap: number);
+}
+interface BackstopRequest {
+    repo: string;
+    branch: string;
+    /** The oldest main commit time to read (GitTimestamp). */
+    since: string;
+    /** The newest main commit already observed; history stops before it. Null reads back to `since`. */
+    mainCursor: string | null;
+    /** The closed-PR cursor: `done` pages until `updatedAt` is older than this, less `DONE_OVERLAP_MS`. */
+    doneSince: string;
+}
+type RollupContext = {
+    kind: "check";
+    databaseId: number;
+    name: string;
+    status: string;
+    conclusion: string | null;
+    completedAt: string | null;
+} | {
+    kind: "status";
+    context: string;
+    state: string;
+    createdAt: string;
+};
+type BackstopReview = GhReview;
+interface BackstopCommit {
+    oid: string;
+    contexts: RollupContext[];
+}
+interface BackstopOpenPr {
+    number: number;
+    headRefOid: string;
+    baseRefName: string;
+    updatedAt: string;
+    /** The PR's last commit and its rollup; null on a PR GitHub answers with no commits. */
+    head: BackstopCommit | null;
+    /** Oldest first. */
+    reviews: BackstopReview[];
+}
+interface BackstopDonePr {
+    number: number;
+    merged: boolean;
+    mergedBy: string | null;
+    mergeCommit: string | null;
+    closedAt: string | null;
+    updatedAt: string;
+}
+interface BackstopSnapshot {
+    open: BackstopOpenPr[];
+    done: BackstopDonePr[];
+    /** `tip` is the branch head at the first page; `commits` are newest first, back to the cursor or `since`. */
+    main: {
+        tip: string;
+        commits: BackstopCommit[];
+    };
+    /** `cost` sums every query the read sent; `remaining` and `resetAt` are the last query's. */
+    rateLimit: RateLimit & {
+        queries: number;
+    };
+}
+/**
+ * One repo's backstop snapshot: open PRs with their head rollup and reviews, PRs closed since the cursor, and main's
+ * history since its cursor. Every range is read whole; GraphQL has no conditional requests, so the caller gates it.
+ */
+declare function readBackstopSnapshot(api: Rest, request: BackstopRequest): Promise<BackstopSnapshot>;
+
 declare function isPassingConclusion(conclusion: string | null): boolean;
 declare function isPassing(run: CheckRun): boolean;
 declare function isSucceeded(run: CheckRun): boolean;
@@ -962,4 +1064,4 @@ interface SquashMessage {
 /** Pure: the same input always yields byte-identical output, and re-formatting its own output changes nothing. */
 declare function formatSquashMessage(input: SquashInput): SquashMessage;
 
-export { type Ancestry, type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CheckConclusion, type CheckFinding, type CheckRun, type CheckRunPr, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type Cooldown, type CreateCheckRunRequest, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, type Fields, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GatewayBudget, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, type GitExec, type GitHubClient, GitHubConflictError, GitHubInputError, type GitHubPort, type GitHubPortOptions, GitHubRequestError, type GitHubWire, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type JobStep, type LoggedCommit, LsRemoteError, type LsRemoteOptions, MAX_BASE_MERGES, type MergeBlockReason, type MergeBlocker, type MergeIntoBranchRequest, type MergeIntoBranchResult, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type OctokitClientOptions, type OctokitWireOptions, type OpenPrList, type OpenPrRequest, PR_COMMITS_CAP, PR_FILES_CAP, type PrFile, type PullRequest, type PutFileRequest, RATE_FLOOR, type RateBudget, type RateBudgetOptions, type RateLane, type RateWindow, type RepoFile, type RepoSlug, type RequiredChecks, type Rest, type ReviewComment, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, appInstallationTokenOverHttp, approvedHeadWalk, backoffMs, ciVerdict, ciWait, execGh, execGit, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, githubPort, headCheckFindings, isPassing, isPassingConclusion, isRepo, isSucceeded, latestPerName, loadRequiredContexts, lsRemotePullHead, mergeReadiness, octokitClient, octokitRest, octokitWire, rateBudget, sharedOctokit, sharedRateBudget, signAppJwt, successRun };
+export { type Ancestry, type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, BACKSTOP_CAPS, type BackstopCommit, type BackstopDonePr, type BackstopOpenPr, type BackstopRange, type BackstopRequest, type BackstopReview, type BackstopSnapshot, BackstopTruncated, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CheckConclusion, type CheckFinding, type CheckRun, type CheckRunPr, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type Cooldown, type CreateCheckRunRequest, DONE_OVERLAP_MS, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, type Fields, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GatewayBudget, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, type GitExec, type GitHubClient, GitHubConflictError, GitHubInputError, type GitHubPort, type GitHubPortOptions, GitHubRequestError, type GitHubWire, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type JobStep, type LoggedCommit, LsRemoteError, type LsRemoteOptions, MAX_BASE_MERGES, type MergeBlockReason, type MergeBlocker, type MergeIntoBranchRequest, type MergeIntoBranchResult, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type OctokitClientOptions, type OctokitWireOptions, type OpenPrList, type OpenPrRequest, PR_COMMITS_CAP, PR_FILES_CAP, type PrFile, type PullRequest, type PutFileRequest, RATE_FLOOR, type RateBudget, type RateBudgetOptions, type RateLane, type RateLimit, type RateWindow, type RepoFile, type RepoSlug, type RequiredChecks, type Rest, type ReviewComment, type RollupContext, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, appInstallationTokenOverHttp, approvedHeadWalk, backoffMs, ciVerdict, ciWait, execGh, execGit, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, githubPort, graphqlPoints, headCheckFindings, isPassing, isPassingConclusion, isRepo, isSucceeded, latestPerName, loadRequiredContexts, lsRemotePullHead, mergeReadiness, octokitClient, octokitRest, octokitWire, rateBudget, readBackstopSnapshot, sharedOctokit, sharedRateBudget, signAppJwt, snapshotRequests, successRun };

@@ -561,10 +561,9 @@ Key exports:
 - `port`: `FileListTruncatedError`, `GitHubConflictError`, `githubPort`
 - `write-read-back`: `WriteRetriesExhaustedError`
 - `force-pushes`: `ForcePushesTruncated`
-- `checks`: `isPassing`, `isPassingConclusion`, `isSucceeded`, `latestPerName`
-- `ci-verdict`: `ciVerdict`, `loadRequiredContexts`
-- `ci-wait`: `ciWait`
-- +109 more in the [reference page](/reference/github)
+- `backstop-read`: `BackstopTruncated`, `graphqlPoints`, `readBackstopSnapshot`, `snapshotRequests`
+- `checks`: `isPassing`, `isPassingConclusion`, `isSucceeded`
+- +124 more in the [reference page](/reference/github)
 
 <a id="cap-health"></a>
 
