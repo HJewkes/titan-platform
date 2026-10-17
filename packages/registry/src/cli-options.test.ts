@@ -236,3 +236,37 @@ describe("CLI consumer metadata", () => {
     expect(optionDefault(wrap, "labels")).toEqual(["untriaged"]);
   });
 });
+
+describe("exact true literal switches", () => {
+  const cmd = defineCommand({
+    name: "fixture", description: "fixture",
+    args: z.object({
+      required: z.literal(true),
+      optional: z.literal(true).optional(),
+      nestedOptional: z.literal(true).optional().optional(),
+      nullable: z.literal(true).nullable(),
+      nullish: z.literal(true).nullish(),
+      defaulted: z.literal(true).default(true),
+      mode: z.literal("safe"),
+      disabled: z.literal(false),
+      mixed: z.literal([true, "safe"]),
+      nullableValues: z.literal([true, null]),
+    }),
+    result: z.void(), async run() {},
+  });
+
+  it.each([
+    ["required", "--required"], ["optional", "--optional"], ["nestedOptional", "--nestedOptional"],
+    ["nullable", "--nullable <value>"], ["nullish", "--nullish <value>"],
+    ["defaulted", "--defaulted <value>"], ["mode", "--mode <value>"],
+    ["disabled", "--disabled <value>"], ["mixed", "--mixed <value>"],
+    ["nullableValues", "--nullableValues <value>"],
+  ])("renders %s without broadening literal classification", (key, expected) => {
+    expect(optionFlagSpec(cmd, key, { long: "--" + key, description: "" })).toBe(expected);
+  });
+
+  it("keeps short true switches bare even with a value label", () => {
+    expect(optionFlagSpec(cmd, "required", { long: "--required", short: "-r", valueName: "unused", description: "" })).toBe("-r, --required");
+    expect(optionFlagSpec(cmd, "mode", { long: "--mode", short: "-m", valueName: "choice", description: "" })).toBe("-m, --mode <choice>");
+  });
+});

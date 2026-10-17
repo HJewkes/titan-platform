@@ -131,7 +131,9 @@ controls the envelope code. Omitting the formatter preserves the existing
 ## CLI labels, variadic positionals and defaults
 
 `CliOption.valueName` controls a value flag's placeholder (`<path>`, `<n>`);
-omitting it keeps `<value>`, and booleans always stay bare. Array-typed positional
+omitting it keeps `<value>`. Booleans and exact `z.literal(true)` fields (including
+optional wrappers) stay bare. String, false, mixed, nullable and default-wrapped
+literals retain value-taking placeholders. Array-typed positional
 arguments render `<text...>` or `[brief...]` when optional; their values are
 coerced element by element. Repeatable option flags still do not use variadic
 syntax, so they cannot swallow trailing positionals.

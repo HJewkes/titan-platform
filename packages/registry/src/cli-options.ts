@@ -1,5 +1,6 @@
+import { ZodLiteral, ZodOptional, type ZodType } from "zod";
 import type { AnyCommand, CliMeta, CliOption } from "./types.js";
-import { arrayElementKind, fieldSchema, isOptionalField, schemaDefault, schemaKind, type SchemaKind } from "./zod-introspect.js";
+import { arrayElementKind, fieldSchema, isOptionalField, schemaDefault, schemaKind, unwrapSchema, type SchemaKind } from "./zod-introspect.js";
 
 /** `--ship-target` becomes `ship_target`, the snake_case key convention for args schemas. */
 export function flagToKey(long: string): string {
@@ -94,11 +95,22 @@ export function collectCliArgs(
   return raw;
 }
 
-/** commander option spec: boolean fields are bare flags, everything else takes `<value>`. */
+/** Only an exact true literal, optionally wrapped, can be supplied by presence alone. */
+function isTrueSwitch(schema: ZodType | undefined): boolean {
+  if (!schema) return false;
+  let optionalBase: object = schema;
+  while (optionalBase instanceof ZodOptional) optionalBase = optionalBase.unwrap();
+  const unwrapped = unwrapSchema(schema);
+  return optionalBase === unwrapped && unwrapped instanceof ZodLiteral
+    && unwrapped.def.values.length === 1 && unwrapped.def.values[0] === true;
+}
+
+/** Boolean fields and exact true switches are bare; other fields take a value. */
 export function optionFlagSpec(cmd: AnyCommand<never>, key: string, opt: CliOption): string {
   const short = opt.short ? `${opt.short}, ` : "";
-  const kind = schemaKind(fieldSchema(cmd.args, key));
-  return kind === "boolean" ? `${short}${opt.long}` : `${short}${opt.long} <${opt.valueName ?? "value"}>`;
+  const schema = fieldSchema(cmd.args, key);
+  const kind = schemaKind(schema);
+  return kind === "boolean" || isTrueSwitch(schema) ? `${short}${opt.long}` : `${short}${opt.long} <${opt.valueName ?? "value"}>`;
 }
 
 /** commander argument display: `[name]` when the schema allows omission, else `<name>`. */

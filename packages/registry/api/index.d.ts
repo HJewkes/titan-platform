@@ -104,7 +104,7 @@ declare function coerceCliValue(value: unknown, kind: SchemaKind | undefined, el
 declare function collectOptionParser(cmd: AnyCommand<never>, key: string): ((value: string, previous: string[] | undefined) => string[]) | undefined;
 /** Assemble the raw args record from commander positionals and parsed opts, coerced per schema. */
 declare function collectCliArgs(cmd: AnyCommand<never>, positionals: unknown[], opts: Record<string, unknown>): Record<string, unknown>;
-/** commander option spec: boolean fields are bare flags, everything else takes `<value>`. */
+/** Boolean fields and exact true switches are bare; other fields take a value. */
 declare function optionFlagSpec(cmd: AnyCommand<never>, key: string, opt: CliOption): string;
 /** commander argument display: `[name]` when the schema allows omission, else `<name>`. */
 declare function positionalSpec(cmd: AnyCommand<never>, name: string): string;
