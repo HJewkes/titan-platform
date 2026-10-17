@@ -49,6 +49,13 @@ describe("a [[ is joined only where the text is read as bash, zsh or ksh", () =>
     `eval '[[ a || ${PUSH} ]]'`,
     `bash -c 'eval "[[ a || ${PUSH} ]]"'`,
     `echo $(. ./f); [[ a || ${PUSH} ]]`,
+    `disable -r '[['\n[[ a || ${PUSH} ]]`,
+    `disable -r "[["; setopt no_bad_pattern; eval "[[ a || ${PUSH} ]]"`,
+    `zsh -c 'disable -r "[["; setopt no_bad_pattern; eval "[[ a || ${PUSH} ]]"'`,
+    `zsh -f <<'EOF'\ndisable -r '[['\nunsetopt badpattern nomatch\n[[ a || ${PUSH} ]]\nEOF`,
+    `printf '%s\\n' "disable -r '[['" "unsetopt badpattern nomatch" "[[ a || ${PUSH} ]]" | zsh -f`,
+    `echo "disable -r '[['; [[ a || ${PUSH} ]]" | zsh -f`,
+    `enable -n '[['; [[ a || ${PUSH} ]]`,
   ])("reports the push when a step before the [[ cannot be read: %j", (command) => {
     expect(spellings(command)).toContain("bash.merge.git-push-protected");
   });
