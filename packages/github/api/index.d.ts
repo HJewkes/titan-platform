@@ -962,4 +962,43 @@ interface SquashMessage {
 /** Pure: the same input always yields byte-identical output, and re-formatting its own output changes nothing. */
 declare function formatSquashMessage(input: SquashInput): SquashMessage;
 
-export { type Ancestry, type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CheckConclusion, type CheckFinding, type CheckRun, type CheckRunPr, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type Cooldown, type CreateCheckRunRequest, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, type Fields, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GatewayBudget, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, type GitExec, type GitHubClient, GitHubConflictError, GitHubInputError, type GitHubPort, type GitHubPortOptions, GitHubRequestError, type GitHubWire, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type JobStep, type LoggedCommit, LsRemoteError, type LsRemoteOptions, MAX_BASE_MERGES, type MergeBlockReason, type MergeBlocker, type MergeIntoBranchRequest, type MergeIntoBranchResult, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type OctokitClientOptions, type OctokitWireOptions, type OpenPrList, type OpenPrRequest, PR_COMMITS_CAP, PR_FILES_CAP, type PrFile, type PullRequest, type PutFileRequest, RATE_FLOOR, type RateBudget, type RateBudgetOptions, type RateLane, type RateWindow, type RepoFile, type RepoSlug, type RequiredChecks, type Rest, type ReviewComment, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, appInstallationTokenOverHttp, approvedHeadWalk, backoffMs, ciVerdict, ciWait, execGh, execGit, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, githubPort, headCheckFindings, isPassing, isPassingConclusion, isRepo, isSucceeded, latestPerName, loadRequiredContexts, lsRemotePullHead, mergeReadiness, octokitClient, octokitRest, octokitWire, rateBudget, sharedOctokit, sharedRateBudget, signAppJwt, successRun };
+type CallClass = "core-read" | "graphql" | "mutation";
+type ResetSource = "retry-after" | "x-ratelimit-reset" | "backoff";
+interface GitHubFailureInput {
+    /** Absent for a network failure. */
+    status?: number;
+    /** Header names lower-cased. */
+    headers: Readonly<Record<string, string | undefined>>;
+    /** Redacted message; Octokit puts GitHub's `message` in it. */
+    message: string;
+    method: string;
+    networkError?: boolean;
+    /** True for `POST /graphql`, whose queries are reads against their own bucket. */
+    graphql?: boolean;
+    /** Consecutive unavailable answers already seen for this (identity, call class). */
+    streak: number;
+    /** Epoch milliseconds. */
+    now: number;
+}
+type GitHubFailure = {
+    kind: "ok";
+} | {
+    kind: "unavailable";
+    resetAt: number;
+    source: ResetSource;
+    bucket: string;
+    callClass: CallClass;
+    reason?: string;
+} | {
+    kind: "unknown";
+} | {
+    kind: "auth";
+} | {
+    kind: "error";
+};
+/** One list so a new GitHub phrasing is a one-line change. */
+declare const RATE_LIMIT_PHRASES: readonly RegExp[];
+declare function nextResetAt(now: number, streak: number): number;
+declare function classifyGitHubFailure(input: GitHubFailureInput): GitHubFailure;
+
+export { type Ancestry, type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CallClass, type CheckConclusion, type CheckFinding, type CheckRun, type CheckRunPr, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type Cooldown, type CreateCheckRunRequest, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, type Fields, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GatewayBudget, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, type GitExec, type GitHubClient, GitHubConflictError, type GitHubFailure, type GitHubFailureInput, GitHubInputError, type GitHubPort, type GitHubPortOptions, GitHubRequestError, type GitHubWire, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type JobStep, type LoggedCommit, LsRemoteError, type LsRemoteOptions, MAX_BASE_MERGES, type MergeBlockReason, type MergeBlocker, type MergeIntoBranchRequest, type MergeIntoBranchResult, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type OctokitClientOptions, type OctokitWireOptions, type OpenPrList, type OpenPrRequest, PR_COMMITS_CAP, PR_FILES_CAP, type PrFile, type PullRequest, type PutFileRequest, RATE_FLOOR, RATE_LIMIT_PHRASES, type RateBudget, type RateBudgetOptions, type RateLane, type RateWindow, type RepoFile, type RepoSlug, type RequiredChecks, type ResetSource, type Rest, type ReviewComment, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, appInstallationTokenOverHttp, approvedHeadWalk, backoffMs, ciVerdict, ciWait, classifyGitHubFailure, execGh, execGit, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, githubPort, headCheckFindings, isPassing, isPassingConclusion, isRepo, isSucceeded, latestPerName, loadRequiredContexts, lsRemotePullHead, mergeReadiness, nextResetAt, octokitClient, octokitRest, octokitWire, rateBudget, sharedOctokit, sharedRateBudget, signAppJwt, successRun };
