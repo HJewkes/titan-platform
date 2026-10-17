@@ -115,3 +115,5 @@ export type HarnessRunResult<T = string, H extends string = string> =
       failure: HarnessRunFailure;
       usage: readonly UsageMeasurement[];
     };
+
+export type * from "./source.js";

@@ -150,3 +150,9 @@ Native request options and execution stay in agent. Its existing exports keep
 the legacy Claude/Codex defaults through compatibility aliases. This is the
 execution-contract checkpoint of TP-3426 (TP-3372 S01); account, transcript,
 pricing, policy and bus ports remain unfinished. TP-643 wire schemas are separate.
+
+The same subpath now exports the existing transcript source, semantic observation,
+locator, decoder and continuation DTOs. These declarations moved from session-read;
+its old import paths remain compatible. Parsing, discovery, text reads and identity
+helpers still run in session-read. Shared source DTOs do not register a new decoder
+or imply that a native format is supported.

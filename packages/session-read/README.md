@@ -291,3 +291,11 @@ the last assistant message, each capped at `RECOVERY_MESSAGE_CHARS`. Lists stop 
 `RECOVERY_LIST_CAP` and report `dropped`; `messageWindowTruncated` says older messages were
 outside the window. Argument text never reaches the result, so tokens and URL queries stay out
 of a session record.
+
+## Shared source contracts
+
+The existing normalized source, observation, locator, decoder and continuation
+types are canonical in @titan-design/agent-protocol/harness. Session-read retains
+compatibility type exports at its existing paths. Its parsing, discovery, reads,
+scoped item references and legacy session references retain their existing behavior.
+This DTO extraction is a partial TP-3426 checkpoint; it adds no decoder or runtime.
