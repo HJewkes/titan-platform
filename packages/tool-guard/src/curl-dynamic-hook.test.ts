@@ -113,7 +113,7 @@ describe("handle: an HTTP write to a run-time URL", () => {
     'export "$V=d"; wget https://api.github.com/repos/o/r/pulls/1/merge',
     'declare "$V"=d; wget https://api.github.com/repos/o/r/pulls/1/merge',
     "read WGETRC; export WGETRC; wget https://api.github.com/repos/o/r/pulls/1/merge",
-    'read "$V" <<< d; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'read -- "$V" <<< d; wget https://api.github.com/repos/o/r/pulls/1/merge',
     "(( HOME = 1 )); wget https://api.github.com/repos/o/r/pulls/1/merge",
     "HTTPIE_CONFIG_DIR=d http https://api.github.com/repos/o/r/pulls/1/merge",
     "export HTTPIE_CONFIG_DIR=d; http https://api.github.com/repos/o/r/pulls/1/merge",

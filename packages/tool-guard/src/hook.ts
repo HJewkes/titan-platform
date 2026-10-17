@@ -69,7 +69,7 @@ const SPLICED_REASON =
 const UNTRACKED_REASON =
   "authority-guard does not check this Bash command: it writes a file the guard cannot follow (output it cannot reproduce, a target only known at run time, another fd, `>!`, `<>`), then runs a script, which may be that file; run the script in its own command, where the guard reads the file as it is.";
 const REBIND_REASON =
-  "authority-guard does not follow a command name the line rebinds (`hash y=/usr/bin/git; y push`, `commands[y]=…`, `functions[y]=…`, bash `hash -p`), so it refuses any command that does; run the program by its own name instead.";
+  "authority-guard does not follow a command name the line rebinds (`hash y=/usr/bin/git; y push`, `commands[y]=…`, `functions[y]=…`, bash `hash -p`), so it refuses any command that does; run the program by its own name instead. A run-time word where `print`, `printf`, `set`, `read`, `wait` or another store builtin still reads options (`print $x`) may be `-v commands[y]`, so it counts too; write `--` before it: `print -- $x`.";
 const ENV_SPLIT_REASON =
   "authority-guard does not check this `env -S` string: its words are only known at run time (a variable, an escape, an unclosed quote, or a `${NAME}` among env's options or as its command), so it refuses it; pass the command to env as separate words.";
 const STDIN_REASON =

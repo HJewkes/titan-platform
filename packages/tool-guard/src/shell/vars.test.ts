@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { classify } from "../classify.js";
 import type { ClassifyContext } from "../types.js";
+import { CommandRebindingError } from "./command-rebinding.js";
 import { extractCommands } from "./commands.js";
 
 const REPO = "/home/you/projects/app";
@@ -138,7 +139,6 @@ describe("variables built up before the command they name", () => {
   it.each([
     ["a read into a subscripted target", "Y=status; read 'Y[0]' <<< push; git $Y"],
     ["a printf -v into a subscripted target", "Y=status; printf -v 'Y[0]' push; git $Y"],
-    ["a printf -v into an attached subscripted target", "Y=status; printf -v'Y[0]' push; git $Y"],
     ["an element 1 assignment (TP-1491)", "Y=status; Y[1]=push; git $Y"],
     ["an element assignment at a run-time index (TP-1491)", "Y=status; Y[i]=push; git $Y"],
     ["an append to element 0 (TP-1491)", "Y=pu; Y[0]+=sh; git $Y"],
@@ -165,6 +165,10 @@ describe("variables built up before the command they name", () => {
     ["readarray (TP-1491)", "Y=status; readarray Y < list; git $Y"],
   ])("leaves the variable unknown after %s", (_, command) => {
     expect(gitArgs(command)).toEqual([["$Y"]]);
+  });
+
+  it("refuses a printf -v into an attached target whose bracket may be a glob, as the option it may make is unknown", () => {
+    expect(() => gitArgs("Y=status; printf -v'Y[0]' push; git $Y")).toThrow(CommandRebindingError);
   });
 
   it("leaves MAPFILE unknown after a mapfile with no name (TP-1491)", () => {

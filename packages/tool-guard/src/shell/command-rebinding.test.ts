@@ -148,16 +148,9 @@ describe("a command that rebinds a command name", () => {
     ["a hash lookup after --", "hash -- -p"],
     ["set -o and its value", "set -o pipefail"],
     ["declare -f printing a function", 'declare -f "$fn"'],
-    ["printf printing only a dynamic word", 'printf "$msg"'],
     ["zparseopts into an ordinary name", "zparseopts -A opts -D y: v=verbose"],
     ["functions listing", "functions -x 2 f"],
     ["functions -c after --, which names functions", "functions -- -c f y"],
-    ["a run-time value word", 'printf "$fmt" "$x"'],
-    ["a run-time value word", 'print "$f" x'],
-    ["a run-time value word", 'printf "$f" x'],
-    ["a run-time value word", 'print "$f"'],
-    ["a run-time value word", 'print -r "$f"'],
-    ["a run-time value word", 'builtin print "$f"'],
     ["wait on a pid", "wait $!"],
     ["printf of an unquoted word after --", "printf -- $x"],
     ["printf of an array after a literal format", "printf '%s\\n' \"${a[@]}\""],
@@ -165,13 +158,11 @@ describe("a command that rebinds a command name", () => {
     ["set of an array after --", 'set -- "${a[@]}"'],
     ["a for loop over a rebinding name's value", "for f in commands BASH_CMDS; do :; done"],
     ["shift by arithmetic", "shift $((OPTIND-1))"],
-    ["print a parameter read", "print -l $commands[git]"],
     ["declare -p of a rebinding parameter", "declare -p BASH_CMDS"],
     ["typeset -p of a rebinding parameter", "typeset -p commands"],
     ["declare -p of an element", "declare -p BASH_CMDS[y]"],
     ["declare -p of an assignment, which assigns nothing", "declare -p X=5"],
     ["a dynamic declarer name, which the guard allows today", "export $(cmd)"],
-    ["a dynamic read word", 'read "$n"'],
     ["a dynamic typeset word", 'typeset "$n"=/x'],
     ["a dynamic declare -A word", 'declare -A "$n"'],
     ["a name spliced from a substitution", "export BASH$(echo _CMDS)[y]=/x"],
@@ -192,6 +183,73 @@ describe("a command that rebinds a command name", () => {
 
     expect(error).toBeInstanceOf(ReadingLimitError);
     expect(error.message).toBe("a command that rebinds a command name");
+  });
+});
+
+describe("a run-time word where a store builtin still reads options", () => {
+  it.each([
+    ["print of a list holding -v and a commands element", "a=(-v 'commands[y]' /usr/bin/git); print $a; y push origin HEAD:main"],
+    ["set of a list holding -A commands", "a=(-A commands y /usr/bin/git); set $a"],
+    ["print of a braced list", "print ${a}"],
+    ["print -r of a list", "print -r $a"],
+    ["zparseopts of a list", "zparseopts $a"],
+    ["strftime of a list", "strftime $a"],
+    ["zstat of a list", "zstat $a"],
+    ["compgen of a word bash splits into -V", "compgen $x"],
+    ["printf of a word bash splits into -v", "printf $x"],
+    ["read of a word that may split into -a", "read $x"],
+    ["mapfile of a word", "mapfile $x"],
+    ["wait of a word that may split into -p", "wait $x"],
+    ["getopts of a list holding its name", "getopts $a"],
+    ["zstyle of a word", "zstyle $x :a k v"],
+    ["getln of a word", "getln $x"],
+    ["zparseopts of a list after its leading --", "zparseopts -- $a"],
+    ["a quoted word that may carry -v and its name", 'print "$f" /usr/bin/git'],
+    ["a quoted word that may carry -A and its name", 'set "$x" y /usr/bin/git'],
+    ["a quoted printf word that may be -vBASH_CMDS[y]", 'printf "$f" /usr/bin/git'],
+    ["a quoted compgen word that may be -VBASH_CMDS", 'compgen "$f" -W y'],
+    ["a quoted read word that may be -aNAME", 'read "$n"'],
+    ["a quoted list", 'print "${a[@]}"'],
+    ["a word an option starts", "print -$x"],
+    ["an unquoted value that may split into options", "print -u $fd x"],
+    ["a word after a flag cluster", "print -rn $x"],
+    ["a word after an option value", "read -r -d : $x"],
+    ["a command substitution", "print $(cmd)"],
+    ["an arithmetic expansion, which may be negative", "print $((n))"],
+    ["a glob that may match a file named like an option", "print *"],
+    ["a tilde, whose HOME may be an option", "print ~"],
+    ["a brace expansion that yields an option", "print {-v,x}"],
+    ["zsh's split flag", "print $=x"],
+    ["behind builtin", "builtin print $x"],
+    ["a quoted printf format that may be -vNAME", 'printf "$msg"'],
+    ["a quoted printf format before a value", 'printf "$fmt" "$x"'],
+    ["a quoted print word before a value", 'print "$f" x'],
+    ["a quoted printf word before a value", 'printf "$f" x'],
+    ["a lone quoted print word", 'print "$f"'],
+    ["a quoted print word after -r", 'print -r "$f"'],
+    ["a quoted print word behind builtin", 'builtin print "$f"'],
+    ["an unquoted parameter read", "print -l $commands[git]"],
+  ])("is caught: %s", (_how, src) => {
+    expect(rebinds(src)).toBe(true);
+  });
+
+  it.each([
+    ["print -- of a word", "print -- $x"],
+    ["print - of a word, which zsh ends options at", "print - $x"],
+    ["printf -- of a word", "printf -- $x"],
+    ["a plain print", "print hello"],
+    ["a word after a literal operand", "print hello $x"],
+    ["a word after a printf format", "printf '%s\\n' $x"],
+    ["a word an operand letter starts", "print x$y"],
+    ["a glob a literal letter starts", "print x*"],
+    ["a quoted option value", 'print -u "$fd" x'],
+    ["a quoted value after a cluster ending in a value letter", 'read -rd "$d" line'],
+    ["wait on a pid", "wait $!"],
+    ["set -- of a list", 'set -- "${a[@]}"'],
+    ["an echo, which stores nothing", "echo $x"],
+    ["a quoted literal dollar", "print '$x'"],
+  ])("is left alone: %s", (_how, src) => {
+    expect(rebinds(src)).toBe(false);
   });
 });
 
