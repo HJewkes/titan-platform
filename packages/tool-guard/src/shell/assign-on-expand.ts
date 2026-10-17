@@ -1,4 +1,4 @@
-import { HOOKED } from "./hooked-names.js";
+import { HOOKED, assignedInMath } from "./hooked-names.js";
 import { dropJoins, nextAfter } from "./joins.js";
 import { PROTECTED } from "./protected-params.js";
 
@@ -87,11 +87,68 @@ function expansionHead(
  */
 export function assignsProtectedAt(src: string, dollar: number): boolean {
   const open = nextAfter(src, dollar);
+  const truncated = src.length > open + MAX_BODY;
   const body = dropJoins(src.slice(open, open + MAX_BODY));
-  if (body.startsWith("{")) return assignedAt(body, 1, PROTECTED) !== null;
+  if (body.startsWith("{")) return assignedAt(body, 1, PROTECTED) !== null || braceMathWrites(body, truncated);
+  if (body.startsWith("[")) return mathWrites(body, 1, "]", truncated);
+  if (body.startsWith("((")) return mathWrites(body, 2, "))", truncated);
   if (!BRACE_SPLICE_START_RE.test(body)) return false;
   // a window that ends before a decision cannot show that no assigning group follows
-  return BRACE_SPLICE_RE.test(body) || src.length > open + MAX_BODY;
+  return BRACE_SPLICE_RE.test(body) || truncated;
+}
+
+/** Whether the math in `text` from `from` up to its `close` writes a protected name; a body the window cuts off fails closed at any depth. */
+function mathWrites(text: string, from: number, close: string, truncated: boolean): boolean {
+  const end = closeOf(text, from, close);
+  if (end === SUBSHELL_SHAPED) return false;
+  if (end === CUT_OFF) return truncated;
+  return assignedInMath(text.slice(from, end), PROTECTED) !== null;
+}
+
+const CUT_OFF = -1;
+const SUBSHELL_SHAPED = -3;
+const GROUP_CHAR_RE = /[()[\]{}]/g;
+const OPENERS = "([{";
+
+/** The index of `close` outside nested `(`, `[` and `{`, or one of the negative markers above when it never comes. */
+function closeOf(text: string, from: number, close: string): number {
+  let depth = 0;
+  GROUP_CHAR_RE.lastIndex = from;
+  for (let at = GROUP_CHAR_RE.exec(text); at !== null; at = GROUP_CHAR_RE.exec(text)) {
+    const i = at.index;
+    if (depth === 0 && text.startsWith(close, i)) return i;
+    if (OPENERS.includes(text[i] ?? "")) depth++;
+    else if (--depth < 0) return SUBSHELL_SHAPED;
+  }
+  return CUT_OFF;
+}
+
+/**
+ * The math a `${…}` evaluates while it expands: the subscript `${a[…]}` and the bash substring offset and length
+ * `${x:…}`. A `:` followed by `-=+?#` is a default, an assignment or a removal and holds text, not math.
+ */
+function braceMathWrites(body: string, truncated: boolean): boolean {
+  let i = bracedNameEnd(body);
+  if (i < 0) return false;
+  if (body[i] === "[") {
+    const end = closeOf(body, i + 1, "]");
+    if (end === CUT_OFF) return truncated;
+    if (end === SUBSHELL_SHAPED) return false;
+    if (assignedInMath(body.slice(i + 1, end), PROTECTED) !== null) return true;
+    i = end + 1;
+  }
+  if (body[i] !== ":" || /^:(?:[-=+?#]|:=)/.test(body.slice(i))) return false;
+  return mathWrites(body, i + 1, "}", truncated);
+}
+
+/** Where the name of the `${` expansion ends, after any flags and prefixes; -1 when the text holds none the guard can read. */
+function bracedNameEnd(body: string): number {
+  const head = expansionHead(body, 1, PROTECTED);
+  if (head !== null && head !== "cut" && "end" in head) return head.end;
+  const at = skipZshPrefixes(body, 1);
+  SPECIAL_NAME_AT_RE.lastIndex = at;
+  const special = SPECIAL_NAME_AT_RE.exec(body)?.[0];
+  return special === undefined ? -1 : at + special.length;
 }
 
 /** An indirect name that is no identifier, `${!1}` or zsh `${(P)@}`, still names a parameter at run time; any other text there is unreadable. */

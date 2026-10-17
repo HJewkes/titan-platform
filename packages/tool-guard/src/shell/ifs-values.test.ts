@@ -80,7 +80,6 @@ describe("lineIfsValues on IFS writes it cannot resolve to a literal", () => {
     ["read", "read IFS <<< ,"],
     ["read with no input", "read IFS"],
     ["mapfile", "mapfile -t IFS <<< ,"],
-    ["arithmetic", ": $((IFS=1))"],
     ["select", "select IFS in ,; do :; done"],
     ["a nameref", "declare -n r=IFS; r=,"],
     ["a declarer whose name comes from a variable", "x=IFS; declare \"$x=,\""],
@@ -102,6 +101,12 @@ describe("lineIfsValues on IFS writes it cannot resolve to a literal", () => {
     ["eval of dynamic text that may name IFS", "eval \"IFS=$V\""],
   ])("gives null for %s", (_how, line) => {
     expect(values(line)).toBeNull();
+  });
+});
+
+describe("lineIfsValues on math at a $ that writes IFS", () => {
+  it("is refused by the lexer (TP-3294)", () => {
+    expect(() => values(": $((IFS=1))")).toThrow(ParseError);
   });
 });
 
