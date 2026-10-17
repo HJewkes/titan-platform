@@ -139,8 +139,9 @@ const onlyUnmet = (conditions: string[]): string =>
 
 /**
  * Cancels each pending MRG-AU approve-merge gate still at the PR head whose only unmet conditions were transient, unless
- * its repo is frozen now for that PR, so the run asks the policy again at the same head. A freeze's own fix PR is not
- * frozen for itself, so its gate is superseded while the freeze it fixes still stands.
+ * its repo is frozen now for that PR or its run is held, so the run asks the policy again at the same head. A freeze's own
+ * fix PR is not frozen for itself, so its gate is superseded while the freeze it fixes still stands. Serve sweeps a repo
+ * again when a hold on one of its runs is released.
  */
 export async function supersedeTransientGates(host: FactoryHost, services: ShepherdServices, { dryRun = false, repo, onUnreadable }: TransientSweep = {}): Promise<SupersededGate[]> {
   const superseded: SupersededGate[] = [];
@@ -148,6 +149,8 @@ export async function supersedeTransientGates(host: FactoryHost, services: Sheph
     const gate = await transientGate(host, services, pending, { dryRun, repo });
     if (!gate) continue;
     if ((await openHead(services, pending.runId, () => onUnreadable?.(pending.runId))) !== gate.head || host.gates.get(pending.gate.id)?.status !== "pending") continue;
+    // The reads above yield, so a hold placed meanwhile is read again here, right before the cancel.
+    if (services.store.get().byRun(pending.runId)?.held !== false) continue;
     if (!dryRun && !cancelUnlessSettled(host.gates, pending.gate.id, `${REREVIEW}${onlyUnmet(gate.conditions)} at head ${gate.head}`)) continue;
     const condition = gate.conditions.join() === "merge-tree-clean" ? "merge-tree-only" : "transient-only";
     superseded.push({ runId: pending.runId, gateId: pending.gate.id, from: gate.head, to: gate.head, condition });

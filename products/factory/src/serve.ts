@@ -323,22 +323,27 @@ async function sweepThawed(host: FactoryHost, services: ShepherdServices, log: L
 }
 
 interface ThawWatch {
-  /** Repos thawed since the sweep last read them. */
+  /** Repos thawed, or with a run's hold released, since the sweep last read them. */
   thawed: Set<string>;
-  /** Runs `start` on each later thaw, outside the thaw's own call, so a gate the freeze caused is not left waiting out the sweep interval. */
+  /** Runs `start` on each later thaw or release, outside its own call, so a gate the freeze caused is not left waiting out the sweep interval. */
   onThaw(start: () => void): void;
   stop(): void;
 }
 
-/** Watches from before resync and the first adoption, so a thaw any run causes then is still swept. */
+/**
+ * Watches from before resync and the first adoption, so a thaw any run causes then is still swept. A thaw leaves a held
+ * run's gate with the owner, so a release in this process queues the run's repo as a thaw does.
+ */
 function watchThaws(services: ShepherdServices | undefined): ThawWatch {
   const thawed = new Set<string>();
   let start = (): void => undefined;
-  const stop = services?.freeze?.onThaw((repo) => {
+  const queue = (repo: string): void => {
     thawed.add(repo);
     queueMicrotask(() => start());
-  });
-  return { thawed, onThaw: (next) => void (start = next), stop: () => stop?.() };
+  };
+  const stopThaws = services?.freeze?.onThaw(queue);
+  const stopReleases = services?.store.onChange?.((registration, change) => void (change === "released" && queue(registration.repo)));
+  return { thawed, onThaw: (next) => void (start = next), stop: () => (stopThaws?.(), stopReleases?.()) };
 }
 
 /** Runs before the first adoption, so no run whose PR left Shepherd is driven again; a failure is logged and startup goes on. */
