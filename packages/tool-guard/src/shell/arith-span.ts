@@ -19,14 +19,18 @@ export function arithmeticSpanEnd(list: Token[], at: number, words: WordToken[])
 
 /**
  * Whether a span holds only what arithmetic can: words that are operands or operators, and parentheses. No redirect,
- * separator or `--`, and no two neighbouring words without an operator or a subscript bracket between them.
+ * separator, empty `()` or `--`, and no two neighbouring words without an operator or a subscript bracket between them.
  */
 function onlyArithmetic(span: Token[]): boolean {
   const words = span.flatMap((t) => (t.type === "word" ? [t] : []));
   const parens = span.every((t) => t.type === "word" || (t.type === "op" && (t.value === "(" || t.value === ")")));
   const count = (c: string) => words.reduce((n, w) => n + w.value.split(c).length - 1, 0);
-  return parens && words.every(operandOrOperator) && count("[") === count("]") && span.every((t, i) => joined(t, span[i + 1]));
+  const header = span.some((t, i) => isParen(t, "(") && isParen(span[i + 1], ")"));
+  return parens && !header && words.every(operandOrOperator) && count("[") === count("]") && span.every((t, i) => joined(t, span[i + 1]));
 }
+
+/** An empty `()` reads as a function header, which the value marks treat as opaque. */
+const isParen = (t: Token | undefined, value: string) => t?.type === "op" && t.value === value;
 
 function operandOrOperator(word: WordToken): boolean {
   if (word.value === "--" || word.quoted || word.spliced) return false;
