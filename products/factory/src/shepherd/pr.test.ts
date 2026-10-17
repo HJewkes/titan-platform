@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BrokerUnavailableError, DispatchError } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
+import { CI_UNREAD_LINE } from "@titan-design/review-panel";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase } from "@titan-design/store-sqlite";
 import type { RoutedStepInput } from "@titan-design/workflow";
@@ -20,6 +21,7 @@ import { MergeHeldError, holdingPort } from "./hold.js";
 import type { ParkPort } from "./park.js";
 import type { Git } from "./tree-carry.js";
 import type { ReviewRequest, ShepherdPhases, Verdict, WakeOutcome, WakeRequest } from "./phases.js";
+import { CI_UNREAD_REASON, ciUnreadAsNone } from "./ci-unread.js";
 import { supersedeMovedGates } from "./head-moved.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { MAX_REPAIRS, MAX_THROTTLED_ROUNDS } from "./route-table.js";
@@ -513,6 +515,46 @@ describe("the route table in a run", () => {
     ]);
     expect(w.fake.effects.merge).toBe(1);
     expect(w.host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
+  });
+
+  /** A FIX_FIRST whose only item is the CI-unread line, taken through the same reclassification the review phase applies. */
+  const ciUnread = (ctx: Parameters<ShepherdPhases["review"]>[0], request: ReviewRequest) =>
+    ciUnreadAsNone(ctx, request.headSha, { kind: "FIX_FIRST", headSha: request.headSha, text: `- ${CI_UNREAD_LINE}\n\nDefect class: CI unread.\n\nVerdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${request.headSha}` });
+
+  it("a CI-unread-only FIX_FIRST at a green head reviews the same head again and wakes no fixer", async () => {
+    const asked: ReviewRequest[] = [];
+    const wakes: WakeRequest[] = [];
+    const w = autoWorld(
+      async (ctx, request) => (asked.push(request), asked.length === 1 ? ciUnread(ctx, request) : merges(ctx, request)),
+      async (_ctx, request) => (wakes.push(request), UNHANDLED),
+    );
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await w.host.runtime.wait(runId);
+
+    expect(asked.map((request) => [request.headSha, request.fresh ?? false])).toEqual([
+      [H1, false],
+      [H1, true],
+    ]);
+    expect(wakes).toEqual([]);
+    expect(w.fake.effects.merge).toBe(1);
+  });
+
+  it("three CI-unread-only FIX_FIRSTs at one head open the failed-rounds gate, never a wake", async () => {
+    const asked: ReviewRequest[] = [];
+    const wakes: WakeRequest[] = [];
+    const w = autoWorld(
+      async (ctx, request) => (asked.push(request), ciUnread(ctx, request)),
+      async (_ctx, request) => (wakes.push(request), UNHANDLED),
+    );
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    expect(asked).toHaveLength(3);
+    expect(wakes).toEqual([]);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`Policy shepherd-route/failed-rounds: 3 review rounds failed at this task: the last at ${H1} ended with ${CI_UNREAD_REASON}`);
+    expect(w.fake.effects.merge).toBe(0);
   });
 
   it("opens approve-merge naming the failed rounds after three reviews give no verdict", async () => {
