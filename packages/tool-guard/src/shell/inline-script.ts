@@ -22,7 +22,7 @@ export interface Inline {
 }
 
 /** bash and zsh have `(( ))`; dash and any `sh` that may be dash read it as nested subshells, as does an unnamed shell. */
-function hasArithmeticCommand(cmd: Unwrapped): boolean {
+export function hasArithmeticCommand(cmd: { name: string | null; args: readonly { value: string }[] }): boolean {
   return (cmd.name === "bash" || cmd.name === "zsh") && !cmd.args.some((a) => a.value === "--posix" || a.value === "posix");
 }
 

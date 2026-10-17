@@ -131,6 +131,8 @@ interface SimpleCommand {
     added?: true;
     /** What its descriptors held before its own redirects, when a command that runs it set them up (`bash -c bash < f`). */
     inherited?: Descriptors;
+    /** Set when the shell running it is known to have a `(( ))` arithmetic command, so a script it sources reads `((` so too. */
+    arithmetic?: true;
 }
 interface ExtractOptions {
     cwd?: string | null;
@@ -152,6 +154,8 @@ interface ExtractOptions {
     aliases?: AliasTable;
     /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
     onScript?: (text: string) => void;
+    /** The text runs in bash or zsh, where `((x))` may be arithmetic; off, it reads as dash's nested subshells that run `x`. */
+    arithmetic?: boolean;
 }
 /**
  * Every simple command the shell would run, including ones nested in substitutions, `bash -c`

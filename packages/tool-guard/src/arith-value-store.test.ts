@@ -169,3 +169,43 @@ describe("a (( )) the running shell reads as commands is not arithmetic (TP-3284
     expect(await handled("(( a[0]=1 ))")).toBe("pass");
   });
 });
+
+describe("a script's (( )) is arithmetic only where bash or zsh is known to run it (TP-3284)", () => {
+  const PIPED = `echo '${PUSH}' | ((sh))`;
+  const SET = "(( a[0]=1 ))";
+  const scripts: Record<string, string> = {
+    "r9.sh": PIPED,
+    "r10.sh": `#!/bin/sh\n${PIPED}`,
+    "r11.sh": PIPED,
+    "env-bash.sh": `#!/usr/bin/env bash\n${PIPED}`,
+    "set.sh": SET,
+    "env-bash-set.sh": `#!/usr/bin/env bash\n${SET}`,
+  };
+  const withScripts: HookPort = { ...port, context: { ...port.context, readScript: (p: string) => scripts[p.slice(home.length + 1)] ?? null } };
+  const verdict = async (command: string) => ((await handle(input(command), {}, withScripts)).stdout === "" ? "pass" : "deny");
+
+  it.each([
+    ["run by sh", "sh r9.sh"],
+    ["run by dash", "dash r9.sh"],
+    ["fed to sh on stdin", "sh < r9.sh"],
+    ["sourced inside sh -c", `sh -c ". ./r9.sh"`],
+    ["run by path with a #!/bin/sh line", "./r10.sh"],
+    ["run by path with no #! line", "./r11.sh"],
+  ])("denies a piped ((sh)) in a script %s", async (_, command) => {
+    expect(await verdict(command)).toBe("deny");
+  });
+
+  it.each([
+    ["run by bash", "bash r9.sh"],
+    ["run by zsh", "zsh r9.sh"],
+    ["run by path with a #!/usr/bin/env bash line", "./env-bash.sh"],
+    ["sourced from the bash line", "source ./r9.sh"],
+    ["sourced inside bash -c", `bash -c ". ./r9.sh"`],
+  ])("reads a script's (( )) as arithmetic %s", async (_, command) => {
+    expect(await verdict(command)).toBe("pass");
+  });
+
+  it.each(["bash set.sh", "zsh set.sh", "./env-bash-set.sh", "source ./set.sh", ". ./set.sh"])("still passes a bash arithmetic assignment in %s", async (command) => {
+    expect(await verdict(command)).toBe("pass");
+  });
+});

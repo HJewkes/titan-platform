@@ -65,6 +65,8 @@ export interface SimpleCommand {
   added?: true;
   /** What its descriptors held before its own redirects, when a command that runs it set them up (`bash -c bash < f`). */
   inherited?: Descriptors;
+  /** Set when the shell running it is known to have a `(( ))` arithmetic command, so a script it sources reads `((` so too. */
+  arithmetic?: true;
 }
 
 export interface ExtractOptions {
@@ -87,6 +89,8 @@ export interface ExtractOptions {
   aliases?: AliasTable;
   /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
   onScript?: (text: string) => void;
+  /** The text runs in bash or zsh, where `((x))` may be arithmetic; off, it reads as dash's nested subshells that run `x`. */
+  arithmetic?: boolean;
 }
 
 interface Scope {
@@ -121,6 +125,8 @@ interface Walk {
   /** What the line stores and whether it evaluates arithmetic, shared by every walk of it. */
   marks: ValueMarks;
   onScript: ((text: string) => void) | null;
+  /** Whether the shell running this walk's commands is known to have a `(( ))` arithmetic command. */
+  shell: boolean;
   /** Whether this text's `((` may read as arithmetic: its shell has the command (dash has not) and the text splits no closing `))`. */
   arithmetic: boolean;
 }
@@ -153,7 +159,8 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
     unsure,
     marks: newMarks(),
     onScript: options.onScript ?? null,
-    arithmetic: !splitsClose(src),
+    shell: options.arithmetic === true,
+    arithmetic: options.arithmetic === true && !splitsClose(src),
   };
   walk(tokenizeLine(src), observed(w));
   settle(w.marks);
@@ -340,7 +347,7 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   w.negated ||= cmd.negated === true;
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
   const inherited = w.prev === "|" || w.prev === "|&" ? emptied(w.descriptors, 0) : w.descriptors;
-  const set = inherited === TOP_DESCRIPTORS ? {} : { inherited };
+  const set = { ...(inherited === TOP_DESCRIPTORS ? {} : { inherited }), ...(w.shell ? { arithmetic: true as const } : {}) };
   w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set });
   const piped = stdin === null ? [] : [stdin, ...(stdin === w.stdin ? w.shellStdin : [])];
   const held = descriptorsAfter(redirects, piped, inherited, (target) => resolvePath(w.scope.dir, target, w.home));
@@ -361,6 +368,7 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descrip
     // A shell's arguments and input become its positional parameters and what its `read` stores.
     if (script.wrap !== "eval") w.marks.opaque = true;
     const into = child(w, [...wrapping, script.wrap], descriptors);
+    into.shell = script.arithmetic ?? w.shell;
     // An eval inside a text that split its close keeps that reading, which only errs toward the subshell.
     into.arithmetic = (script.arithmetic ?? w.arithmetic) && !splitsClose(text);
     walk(tokenizeLine(text), into);

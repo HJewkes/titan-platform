@@ -2,6 +2,7 @@ import { INTERPRETERS, SHELLS } from "./mentions.js";
 import type { SimpleCommand } from "./shell/commands.js";
 import type { WordToken } from "./shell/lexer.js";
 import { resolvePath, resolveValue } from "./shell/path.js";
+import { hasArithmeticCommand } from "./shell/inline-script.js";
 import { shellOperands, shellStdin } from "./shell/shell-options.js";
 import { UnknownStdinError } from "./shell/unsure-readings.js";
 
@@ -9,6 +10,11 @@ import { UnknownStdinError } from "./shell/unsure-readings.js";
 export interface ScriptTarget {
   path: string;
   kind: "shell" | "interpreter";
+  /**
+   * What says whether the shell running it has `(( ))`: the runner named on the line (`bash x.sh` true, `sh x.sh`
+   * false), the shell that sources it, or the script's own `#!` line when it is run by path.
+   */
+  shell: boolean | "inherit" | "shebang";
 }
 
 export const SOURCERS: ReadonlySet<string> = new Set(["source", "."]);
@@ -23,15 +29,15 @@ export function scriptTargets(cmd: SimpleCommand, home: string): ScriptTarget[] 
 }
 
 function scriptTarget(cmd: SimpleCommand, name: string, home: string): ScriptTarget | null {
-  if (SOURCERS.has(name)) return target(cmd, cmd.args[0], home, "shell");
-  if (INTERPRETERS.has(name)) return target(cmd, firstOperand(cmd.args, INLINE_FLAG_RE, new Set()), home, "interpreter");
+  if (SOURCERS.has(name)) return target(cmd, cmd.args[0], home, "shell", "inherit");
+  if (INTERPRETERS.has(name)) return target(cmd, firstOperand(cmd.args, INLINE_FLAG_RE, new Set()), home, "interpreter", false);
   return cmd.path?.endsWith(".sh") ? typedTarget(cmd, cmd.path, home) : null;
 }
 
 /** `./x.sh`, `~/bin/x.sh`, `/tmp/x.sh` or a bare `x.sh`, resolved as typed from the command's directory. */
 function typedTarget(cmd: SimpleCommand, typed: string, home: string): ScriptTarget | null {
   const path = resolveValue(cmd.dir, typed, home);
-  return path === null ? null : { path, kind: "shell" };
+  return path === null ? null : { path, kind: "shell", shell: "shebang" };
 }
 
 /**
@@ -42,9 +48,10 @@ function typedTarget(cmd: SimpleCommand, typed: string, home: string): ScriptTar
 function shellTargets(cmd: SimpleCommand, home: string): ScriptTarget[] {
   const { scriptFile, sources, unknowable } = shellStdin(shellOperands(cmd.args, cmd.name), cmd.redirects, false, cmd.inherited);
   if (unknowable) throw new UnknownStdinError();
-  const script = scriptFile === null ? null : target(cmd, scriptFile, home, "shell");
+  const shell = hasArithmeticCommand(cmd);
+  const script = scriptFile === null ? null : target(cmd, scriptFile, home, "shell", shell);
   if (script !== null) return [script];
-  return sources.flatMap((s) => (s.kind === "file" ? [target(cmd, s.target, home, "shell")].filter((t): t is ScriptTarget => t !== null) : []));
+  return sources.flatMap((s) => (s.kind === "file" ? [target(cmd, s.target, home, "shell", shell)].filter((t): t is ScriptTarget => t !== null) : []));
 }
 
 /** The first non-option word, null when an option in `inline` means the program text is inline. */
@@ -59,7 +66,26 @@ function firstOperand(args: WordToken[], inline: RegExp, valueOpts: Set<string>)
   return null;
 }
 
-function target(cmd: SimpleCommand, word: WordToken | null | undefined, home: string, kind: ScriptTarget["kind"]): ScriptTarget | null {
+function target(cmd: SimpleCommand, word: WordToken | null | undefined, home: string, kind: ScriptTarget["kind"], shell: ScriptTarget["shell"]): ScriptTarget | null {
   const path = resolvePath(cmd.dir, word, home);
-  return path === null ? null : { path, kind };
+  return path === null ? null : { path, kind, shell };
+}
+
+/**
+ * Whether a script run by path, or sourced, gets a shell with `(( ))`. Only a `#!` naming bash or zsh, directly or
+ * through `env`, and without `--posix` says so; no `#!` leaves the choice to whatever runs it, which may be dash.
+ */
+export function scriptArithmetic(cmd: SimpleCommand, target: ScriptTarget, text: string): boolean {
+  if (target.shell === "inherit") return cmd.arithmetic === true;
+  return target.shell === "shebang" ? shebangArithmetic(text) : target.shell;
+}
+
+function shebangArithmetic(text: string): boolean {
+  const line = /^#!([^\n]*)/.exec(text)?.[1];
+  if (line === undefined) return false;
+  const words = line.trim().split(/[ \t]+/);
+  const base = (word: string | undefined) => word?.slice(word.lastIndexOf("/") + 1) ?? null;
+  const program = base(words[0]) === "env" ? words.slice(1).find((w) => !w.startsWith("-") && !w.includes("=")) : words[0];
+  const name = base(program);
+  return (name === "bash" || name === "zsh") && hasArithmeticCommand({ name, args: words.map((value) => ({ value })) });
 }

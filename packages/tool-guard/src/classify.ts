@@ -8,7 +8,7 @@ import { secret } from "./families/secret.js";
 import { hasDynamicName, namedReadings, wrappedReading } from "./dynamic-readings.js";
 import { afterWrites, scriptReadings } from "./line-writes.js";
 import { INTERPRETERS } from "./mentions.js";
-import { scriptTargets, SOURCERS } from "./scripts.js";
+import { scriptArithmetic, scriptTargets, SOURCERS } from "./scripts.js";
 import type { ScriptTarget } from "./scripts.js";
 import { extractCommands } from "./shell/commands.js";
 import type { ExtractOptions, SimpleCommand } from "./shell/commands.js";
@@ -29,7 +29,8 @@ const GUARDED = new Set([...FAMILIES.flatMap((f) => [...(f.names ?? []), ...(f.v
  * dynamic wrapper readings or script text than it checks; the hook owns that failure policy.
  */
 export function classify(event: HookEvent, ctx: ClassifyContext): ClassifiedAction[] {
-  if (event.kind === "bash") return classifyCommand(event.command, event.cwd, ctx, { verdicts: new Map(), bytesLeft: MAX_SCRIPT_BYTES });
+  // The Bash tool's own line runs in bash or zsh, so its `((` may be arithmetic.
+  if (event.kind === "bash") return classifyCommand(event.command, { cwd: event.cwd, arithmetic: true }, ctx, newMemo());
   if (event.kind === "read") return unique(FAMILIES.flatMap((f) => f.read?.(event, ctx) ?? []));
   if (event.kind === "write") return unique(FAMILIES.flatMap((f) => f.write?.(event, ctx) ?? []));
   return [];
@@ -37,17 +38,31 @@ export function classify(event: HookEvent, ctx: ClassifyContext): ClassifiedActi
 
 /** The scripts one line runs; null inside a script, which follows no script of its own. */
 interface ScriptMemo {
-  /** Verdicts by the line state they were read in, then by `scriptKey`. */
+  /** Verdicts by the line state they were read in, then by `scriptKey` and the shell reading. */
   verdicts: Map<ClassifyContext, Map<string, ClassifiedAction[]>>;
+  /** A script's texts by the line state, then by path, so a script two shells read is read once. */
+  texts: Map<ClassifyContext, Map<string, string[]>>;
+  /** The `scriptKey`s each line state has charged, so a second shell's reading of a text costs nothing. */
+  charged: Map<ClassifyContext, Set<string>>;
   /** What is left of `MAX_SCRIPT_BYTES`; a script the memo already holds costs nothing. */
   bytesLeft: number;
 }
 
-function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
-  const commands = extractCommands(src, extractOptions(cwd, ctx, scripts, false));
+function newMemo(): ScriptMemo {
+  return { verdicts: new Map(), texts: new Map(), charged: new Map(), bytesLeft: MAX_SCRIPT_BYTES };
+}
+
+/** Where a text runs: its directory, and whether its shell is known to have a `(( ))` arithmetic command (bash, zsh). */
+interface TextShell {
+  cwd: string | null;
+  arithmetic: boolean;
+}
+
+function classifyCommand(src: string, at: TextShell, ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
+  const commands = extractCommands(src, extractOptions(at, ctx, scripts, false));
   const line = withHttpConfig(src, commands, ctx);
   const asWritten = classifyLine(commands, line, scripts);
-  return ctx.foldCase ? unique([...asWritten, ...foldedActions(src, cwd, line, scripts)]) : asWritten;
+  return ctx.foldCase ? unique([...asWritten, ...foldedActions(src, at, line, scripts)]) : asWritten;
 }
 
 /** Marks the line when it may choose or write an HTTP client's config file, read from these commands. */
@@ -56,8 +71,8 @@ function withHttpConfig(src: string, commands: SimpleCommand[], ctx: ClassifyCon
 }
 
 /** A script's text (`scripts` null) stops at the dynamic-word cap and reads on as main does; the line refuses past it. */
-function extractOptions(cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null, foldCase: boolean): ExtractOptions {
-  return { cwd, home: ctx.home, foldCase, guarded: GUARDED, stopPastCap: scripts === null };
+function extractOptions(at: TextShell, ctx: ClassifyContext, scripts: ScriptMemo | null, foldCase: boolean): ExtractOptions {
+  return { ...at, home: ctx.home, foldCase, guarded: GUARDED, stopPastCap: scripts === null };
 }
 
 /**
@@ -66,9 +81,9 @@ function extractOptions(cwd: string | null, ctx: ClassifyContext, scripts: Scrip
  * reading, as on a case-sensitive filesystem, still decides alone what an error in the folded one drops,
  * except the reading limit, which a folded command word can reach first.
  */
-function foldedActions(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
+function foldedActions(src: string, at: TextShell, ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
   try {
-    const folded = extractCommands(src, extractOptions(cwd, ctx, scripts, true));
+    const folded = extractCommands(src, extractOptions(at, ctx, scripts, true));
     return classifyLine(folded, withHttpConfig(src, folded, ctx), scripts);
   } catch (error) {
     if (error instanceof ReadingLimitError) throw error;
@@ -142,7 +157,11 @@ function handles(family: Family, cmd: SimpleCommand): boolean {
 /** One level deep: a shell script is classified as a command string, any other script's text gets the mention rule. */
 function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: ScriptMemo): ClassifiedAction[] {
   return scriptTargets(cmd, ctx.home).flatMap((target) => {
-    const actions = memoized(scripts, ctx, scriptKey(cmd, target, ctx), () => scriptVerdicts(cmd, target, ctx, scripts));
+    const actions = memoized(scripts.texts, ctx, target.path, () => scriptReadings(ctx, target.path)).flatMap((text, i) => {
+      const read = { key: scriptKey(cmd, target, ctx, i), text };
+      const shell = target.kind === "shell" && scriptArithmetic(cmd, target, text);
+      return memoized(scripts.verdicts, ctx, `${read.key}\u0000${shell}`, () => scriptVerdicts(cmd, target, read, ctx, scripts));
+    });
     return actions.map((a) => (a.action === "secret-read" ? classified("bash.secret.script-by-path", a.subject) : a));
   });
 }
@@ -150,14 +169,18 @@ function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: Script
 /**
  * Text an added reading reads is charged to the line's budget at `ADDED_SCRIPT_WEIGHT` a byte, since main never reads it,
  * an interpreter's as much as a shell script's. A shell script the line runs as written is charged a byte a byte; an
- * interpreter's script it runs as written is not, as main reads that one unbudgeted.
+ * interpreter's script it runs as written is not, as main reads that one unbudgeted. A text is charged once per line
+ * state, though bash and dash read it apart.
  */
-function scriptVerdicts(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext, budget: ScriptMemo): ClassifiedAction[] {
+function scriptVerdicts(cmd: SimpleCommand, target: ScriptTarget, read: { key: string; text: string }, ctx: ClassifyContext, budget: ScriptMemo): ClassifiedAction[] {
   const added = cmd.added === true;
-  return scriptReadings(ctx, target.path).flatMap((text) => {
-    if (added || target.kind === "shell") charge(budget, { script: target.path.slice(target.path.lastIndexOf("/") + 1), bytes: Buffer.byteLength(text), added });
-    return scriptText(cmd, target, text, ctx);
-  });
+  const charged = budget.charged.get(ctx) ?? new Set<string>();
+  budget.charged.set(ctx, charged);
+  if ((added || target.kind === "shell") && !charged.has(read.key)) {
+    charge(budget, { script: target.path.slice(target.path.lastIndexOf("/") + 1), bytes: Buffer.byteLength(read.text), added });
+    charged.add(read.key);
+  }
+  return scriptText(cmd, target, read.text, ctx);
 }
 
 function charge(budget: ScriptMemo, script: Omit<ScriptOverrun, "total">): void {
@@ -169,28 +192,28 @@ function charge(budget: ScriptMemo, script: Omit<ScriptOverrun, "total">): void 
 /**
  * Readings of one command often run the same script (`timeout $P . a.sh` also runs `a.sh` under timeout), and the
  * case-folded reading runs it again; classifying a 64 KiB script each time passes the hook's timeout. A script's
- * verdicts depend only on its text, its directory, the line state and, for an interpreter's, the program that runs it;
- * a state change makes a new context object.
+ * verdicts depend only on its text, its directory, the line state, the shell reading its `((` and, for an
+ * interpreter's, the program that runs it; a state change makes a new context object.
  */
-function scriptKey(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext): string {
+function scriptKey(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext, text: number): string {
   const program = target.kind === "interpreter" ? cmd.path : null;
-  return JSON.stringify([ctx.foldCase === true, cmd.dir, target.path, program]);
+  return JSON.stringify([ctx.foldCase === true, cmd.dir, target.path, program, text]);
 }
 
-function memoized(scripts: ScriptMemo, ctx: ClassifyContext, key: string, compute: () => ClassifiedAction[]): ClassifiedAction[] {
-  const byKey = scripts.verdicts.get(ctx) ?? new Map<string, ClassifiedAction[]>();
-  scripts.verdicts.set(ctx, byKey);
+function memoized<T>(memo: Map<ClassifyContext, Map<string, T>>, ctx: ClassifyContext, key: string, compute: () => T): T {
+  const byKey = memo.get(ctx) ?? new Map<string, T>();
+  memo.set(ctx, byKey);
   const hit = byKey.get(key);
-  if (hit) return hit;
-  const actions = compute();
-  byKey.set(key, actions);
-  return actions;
+  if (hit !== undefined) return hit;
+  const value = compute();
+  byKey.set(key, value);
+  return value;
 }
 
 function scriptText(cmd: SimpleCommand, target: ScriptTarget, text: string, ctx: ClassifyContext): ClassifiedAction[] {
   if (target.kind === "shell") {
     try {
-      return classifyCommand(text, cmd.dir, ctx, null);
+      return classifyCommand(text, { cwd: cmd.dir, arithmetic: scriptArithmetic(cmd, target, text) }, ctx, null);
     } catch (error) {
       if (!(error instanceof ParseError)) throw error;
     }

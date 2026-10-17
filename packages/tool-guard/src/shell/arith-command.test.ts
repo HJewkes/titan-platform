@@ -3,9 +3,17 @@ import { classify } from "../classify.js";
 import type { ClassifyContext } from "../types.js";
 import { extractCommands } from "./commands.js";
 
-const names = (src: string) => extractCommands(src).map((c) => c.name);
-const reported = (src: string) => extractCommands(src).map((c) => [c.name ?? "", ...c.args.map((a) => a.value)].join(" "));
-const pushes = (src: string) => extractCommands(src).filter((c) => c.name === "git" && c.args.some((a) => a.value === "push")).length;
+// The Bash tool's own line runs in bash or zsh; a caller that does not say so gets the nested-subshell reading.
+const bash = (src: string) => extractCommands(src, { arithmetic: true });
+const names = (src: string) => bash(src).map((c) => c.name);
+const reported = (src: string) => bash(src).map((c) => [c.name ?? "", ...c.args.map((a) => a.value)].join(" "));
+const pushes = (src: string) => bash(src).filter((c) => c.name === "git" && c.args.some((a) => a.value === "push")).length;
+
+describe("a caller that does not name the shell", () => {
+  it("reads (( )) as nested subshells and lists the commands inside", () => {
+    expect(extractCommands("((./push.sh))").map((c) => c.name)).toEqual(["push.sh"]);
+  });
+});
 
 describe("an arithmetic command runs no command named by its words", () => {
   it.each(["((a[1<<2]))", "(( a[ 1 << 2 ] ))", "(( arr[1] ))", "((1))", "if ((x)); then :; fi"])("%s", (src) => {
