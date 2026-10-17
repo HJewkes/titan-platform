@@ -19,7 +19,7 @@ const EVALUATING_OPTION_RE = /^-[a-zA-Z]*[in]/;
 export function wordsEvaluateArithmetic(words: WordToken[]): boolean {
   const values = words.map((w) => w.value);
   if (values.some((v) => SUBSCRIPT_WRITE_RE.test(v) || EXPANSION_RE.test(v))) return true;
-  if (words.some((w) => !w.quoted && FD_VARIABLE_RE.test(w.value))) return true;
+  if (words.some((w) => (!w.quoted || w.codeAt) && FD_VARIABLE_RE.test(w.value))) return true;
   if (words.some((w) => (arrayElements.get(w) ?? []).some((e) => e.value.startsWith("[")))) return true;
   const at = values.findIndex((v) => DECLARER_RE.test(v));
   return at >= 0 && values.slice(at + 1).some((v) => EVALUATING_OPTION_RE.test(v));
@@ -43,11 +43,16 @@ const PRECOMMAND_MODIFIERS = new Set(["noglob", "nocorrect", "-"]);
  * shell.
  */
 export function nameOperandEvaluates(command: WordToken[]): boolean {
-  const leads = (v: string) => PASS_THROUGH.has(v) || PRECOMMAND_MODIFIERS.has(v) || v === "-p" || v === "--";
-  const start = command.findIndex((w) => !leads(w.value));
-  const [head, ...args] = start < 0 ? [] : command.slice(start);
+  const [head, ...args] = afterLeads(command);
   if (head === undefined || !NAME_TAKERS.has(head.value)) return false;
   return nameOperands(head.value, args).some((w) => w.dynamic || SUBSCRIPTED_NAME_RE.test(w.value));
+}
+
+/** The command from the word that names the builtin on, past the `builtin`, `command` and `time` leads, their `-p` and `--`, and zsh's modifiers. */
+export function afterLeads<T extends { value: string }>(command: T[]): T[] {
+  const leads = (v: string) => PASS_THROUGH.has(v) || PRECOMMAND_MODIFIERS.has(v) || v === "-p" || v === "--";
+  const start = command.findIndex((w) => !leads(w.value));
+  return start < 0 ? [] : command.slice(start);
 }
 
 function nameOperands(name: string, args: WordToken[]): WordToken[] {

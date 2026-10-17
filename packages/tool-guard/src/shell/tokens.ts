@@ -19,8 +19,8 @@ export interface WordToken {
   /** Quotes or escapes split the word, or `$'...'` decoded it: `~/".x"`, `.n''x`, `.n\x`. */
   spliced: boolean;
   computed: boolean;
-  /** A `$(` or backtick stands in the value as text the word spelled out, which bash evaluates wherever it reads the value as arithmetic. */
-  codeText?: true;
+  /** Where in `value` the word spelled out a `$(`, `${` or backtick itself; bash evaluates that text wherever it reads the value as arithmetic. */
+  codeAt?: number[];
   /** A `$` or backtick expansion sits outside double quotes, so it word-splits even when other parts are quoted. */
   unquotedExpansion?: true;
   refs: VarRef[];

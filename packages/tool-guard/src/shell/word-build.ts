@@ -1,5 +1,5 @@
 import { decodeAnsiC } from "./ansi-c.js";
-import { CODE_TEXT_RE, refuseCodeInArithmeticValue } from "./arith-operand.js";
+import { CODE_TEXT_RE } from "./arith-operand.js";
 import { ansiCEnd } from "./balanced.js";
 import { pastJoins } from "./joins.js";
 import { ParseError } from "./parse-error.js";
@@ -25,9 +25,11 @@ export function appendChar(s: LexState, c: string): void {
  */
 export function appendLiteral(w: WordToken, text: string): void {
   // Reading the value back would flatten the string being built on every character, so only the new text is tested.
+  const base = w.value.length;
   const joinsDollar = (text.startsWith("(") || text.startsWith("{")) && w.value.endsWith("$");
   w.value += text;
-  if (joinsDollar || CODE_TEXT_RE.test(text)) w.codeText = true;
+  if (joinsDollar) (w.codeAt ??= []).push(base - 1);
+  for (const m of text.matchAll(CODE_TEXT_RE)) (w.codeAt ??= []).push(base + m.index);
 }
 
 export function endWord(s: LexState): void {
@@ -37,7 +39,6 @@ export function endWord(s: LexState): void {
   const pending = s.redirect;
   s.redirect = null;
   if (!pending) {
-    refuseCodeInArithmeticValue(s, w);
     if (w.value === "case" || w.value === "esac") s.caseWords = true;
     s.tokens.push(w);
     return;

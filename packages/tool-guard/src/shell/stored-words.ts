@@ -1,11 +1,11 @@
 import type { Token, WordToken } from "./lexer.js";
-import { CODE_TEXT_REASON } from "./arith-operand.js";
+import { CODE_TEXT_REASON, refuseCodeInOperands, refuseCodeInSubscripts } from "./arith-operand.js";
 import { arrayElements } from "./declarations.js";
 import { ParseError } from "./parse-error.js";
 import { noteTyped } from "./value-marks.js";
 import type { ValueMarks } from "./value-marks.js";
 import { parseAssignment } from "./vars.js";
-import { evaluatesArithmetic } from "./writers.js";
+import { evaluatesArithmetic, evaluatesEveryArgument, isTestCommand } from "./writers.js";
 
 /** A command's words, the operator that ends it, and the operator before it. */
 interface CommandWords {
@@ -15,6 +15,7 @@ interface CommandWords {
 }
 
 const DECLARERS = new Set(["export", "declare", "typeset", "local", "readonly"]);
+const SUBSCRIPT_SHAPED_RE = /^[A-Za-z_]\w*\[.*\]\+?=/s;
 const ELEMENT_WRITE_RE = /^[A-Za-z_]\w*\[.*\](\+?)=/s;
 const DEFAULT_ASSIGN_RE = /\$\{[A-Za-z_]\w*:?=/;
 
@@ -28,12 +29,23 @@ export function noteCommand(marks: ValueMarks, { op, words: all, prev }: Command
   const head = words.findIndex((word) => parseAssignment(word) === null);
   const evaluates = evaluatesArithmetic(op, words, head);
   marks.arithmetic ||= evaluates;
-  if (evaluates && words.some((word) => word.codeText && word.value.includes("["))) throw new ParseError(CODE_TEXT_REASON);
+  if (evaluates && words.some((word) => evaluatedSubscript(word, evaluatesEveryArgument(words, head)))) throw new ParseError(CODE_TEXT_REASON);
   const header = (op?.type === "op" && op.value === ")" && all.length === 0 && prev === "(") || words[head]?.value === "function";
   if (header || setsPositional(head < 0 ? [] : words.slice(head)) || words.some((word) => DEFAULT_ASSIGN_RE.test(word.value))) marks.opaque = true;
   for (const element of words.flatMap((word) => arrayElements.get(word) ?? [])) hear(element.dynamic ? null : noteWord(element, marks).value);
   const assigning = head < 0 || DECLARERS.has(words[head]?.value ?? "") ? words : words.slice(0, head);
   for (const word of assigning) hearElementWrite(word, hear);
+  refuseCodeInSubscripts(assigning, words.flatMap((word) => arrayElements.get(word) ?? []));
+  refuseCodeInOperands(words, isTestCommand(words, head));
+}
+
+/**
+ * A word that wrote `[` and code text. One shaped like a subscript write is judged by its subscript alone
+ * (`refuseCodeInSubscripts`) unless the command evaluates every argument: after the `]=` it is a value, and as an
+ * argument to `echo` or `git commit` it is text.
+ */
+function evaluatedSubscript(word: WordToken, everyArgument: boolean): boolean {
+  return word.codeAt !== undefined && word.value.includes("[") && (everyArgument || !SUBSCRIPT_SHAPED_RE.test(word.value));
 }
 
 /**

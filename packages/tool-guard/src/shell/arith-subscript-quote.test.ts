@@ -87,6 +87,17 @@ const DENIED: [string, string][] = [
   ["a double-quoted escaped $( ) in a compound element", `a=( ["\\$(${PUSH})"]=1 )`],
   ["an escaped $( ) in a compound element", `a=( [\\$\\(${PUSH.replaceAll(" ", "\\ ")}\\)]=1 )`],
   ["an escaped backtick in a compound element", `a=( ["\\\`${PUSH}\\\`"]=1 )`],
+  ["command let with a subscript", `command let 'a[$(${PUSH})]'`],
+  ["builtin let with a subscript", `builtin let 'a[$(${PUSH})]'`],
+  ["builtin unset -v", `builtin unset -v 'a[$(${PUSH})]'`],
+  ["command test -v", `command test -v 'a[$(${PUSH})]'`],
+  ["builtin [ -v", `builtin [ -v 'a[$(${PUSH})]' ]`],
+  ["a -v test after && in [[ ]]", `[[ x && -v 'a[$(${PUSH})]' ]]`],
+  ["a parenthesised -v test in [[ ]]", `[[ ( -v 'a[$(${PUSH})]' ) ]]`],
+  ["a negated -v test after && in [[ ]]", `[[ x && ! -v 'a[$(${PUSH})]' ]]`],
+  ["a descriptor variable subscript on exec", `exec {a['$(${PUSH})']}>/dev/null`],
+  ["a descriptor variable subscript on :", `: {a['$(${PUSH})']}>/dev/null`],
+  ["a numeric comparison after &&", `[[ x == y && 1 -eq 'a[$(${PUSH})]' ]]`],
   ["a single-quoted $( ) in declare", `declare a['$(${PUSH})']=1`],
 ];
 
@@ -109,6 +120,13 @@ describe("code text in an arithmetic value is denied wherever it stands (TP-3353
 describe("single quotes elsewhere keep their reading (TP-3353)", () => {
   it.each([
     ["a literal key in a subscript", "a['k']=1"],
+    ["a subscript-shaped argument", `echo 'a[$(${PUSH})]=1'`],
+    ["a subscript-shaped commit message", `git commit -m 'a[$(${PUSH})]=1 fix'`],
+    ["a ${ } in a value after the subscript", "paths[0]='${HOME}/bin'"],
+    ["a ${ } in a compound element value", "a=( [0]='${HOME}/bin' )"],
+    ["a ${ } in a declare value", "declare p[0]='${HOME}/bin'"],
+    ["a ${ } in a string test after -eq", "[[ 1 -eq 1 && x == '${x}' ]]"],
+    ["a ${ } in a string test before -eq", "[[ x == '${x}' && 1 -eq 1 ]]"],
     ["a quoted word in a compound assignment", `a=( 'k' '$(${PUSH})' )`],
     ["a quoted substitution in a test command", `[ x = '$(${PUSH})' ]`],
     ["a quoted substitution as a let argument", `let '$(${PUSH})'`],
