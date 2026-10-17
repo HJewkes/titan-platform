@@ -38,6 +38,7 @@ import { PANEL_STEPS, panelOn, panelReview, panelVerdictRoute, plannedPanel, typ
 import { LATE_VERDICT_STEP, SEAT_RECHECK_STEP, asksOwnerBrief, mergeVerdict, recheckSeat, takeVerdict, type ProofStanding } from "./take-verdict.js";
 import { NO_REVIEWER_STEPS, noReviewerRoutes } from "./no-reviewer-hold.js";
 import { notReviewed } from "./not-reviewed.js";
+import { ciChecksAt } from "./green-checks.js";
 import { heldMerge, recordsRecheck } from "./seat-recheck.js";
 
 export const REVIEW_INTENT_STEP = "sh-review-intent";
@@ -250,7 +251,8 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
   const waits: string[] = [];
   const facts = { ...(await spawnFacts(deps, runId, intent, target, roles)), ...(profile !== undefined && { profile }) };
   const holdContext = shape === "adversary" ? holdContextOf(deps, runId) : undefined;
-  const asking = asked ? undefined : await reviewBrief({ ...target, checkoutRoot: checkoutRootOf(deps, shape), fixFirsts, ownerBrief, fixProof, fixProofUnverified, testRule: deps.suiteRules?.reviewer, ...(shape !== undefined && { shape }), ...(holdContext && { holdContext }) }, codewatch, questions);
+  const ciChecks = asked ? undefined : await ciChecksAt(deps.port, target.repo, target.pr, target.head);
+  const asking = asked ? undefined : await reviewBrief({ ...target, checkoutRoot: checkoutRootOf(deps, shape), fixFirsts, ownerBrief, fixProof, fixProofUnverified, testRule: deps.suiteRules?.reviewer, ...(ciChecks && { ciChecks }), ...(shape !== undefined && { shape }), ...(holdContext && { holdContext }) }, codewatch, questions);
   const outcome = asking && (await startReviewer(memberDispatch(wired, shape) ?? dispatchFor(wired.accounts, wired.dispatch, intent.account), intent, target, facts, asking.brief, timing, signal, waits).catch((error: unknown) => notStarted(error, waits)));
   if (typeof outcome === "object") {
     await dropCheckout(deps, target, shape);
