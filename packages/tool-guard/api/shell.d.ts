@@ -152,6 +152,12 @@ interface ExtractOptions {
      */
     stopPastCap?: boolean;
     aliases?: AliasTable;
+    /**
+     * Read `&&` and `||` in a `[[` at a bare command start as its test words, as bash, zsh and ksh do. Off by default:
+     * only text a known one of them reads may join, which the caller knows of its own line and the walk of the texts
+     * in it. A script file's runner is not known, since `sh x.sh`, `sh < x.sh` and a `#!/bin/sh` line run it as sh.
+     */
+    joinsConditional?: boolean;
     /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
     onScript?: (text: string) => void;
 }

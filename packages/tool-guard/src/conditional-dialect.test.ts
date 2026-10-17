@@ -103,6 +103,8 @@ describe("a [[ is joined only where the text is read as bash, zsh or ksh", () =>
     `bash -c 'BASH_ENV=./e bash -c "[[ a || ${PUSH} ]]"'`,
     `HOME=./d zsh -f <<'EOF'\n[[ a || ${PUSH} ]]\nEOF`,
     `echo '[[ a || ${PUSH} ]]' | zsh -i`,
+    `o=-l; bash $o -c '[[ a || ${PUSH} ]]'`,
+    `o=--login; bash "$o" -c '[[ a || ${PUSH} ]]'`,
   ])("reports the push when the line may choose a startup file: %j", (command) => {
     expect(spellings(command)).toContain("bash.merge.git-push-protected");
   });
