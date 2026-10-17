@@ -169,6 +169,7 @@ export const AwaitHeadResult = z.looseObject({
   state: z.enum(["open", "closed"]),
   exited: z.boolean().optional(),
   green: z.boolean().optional(),
+  why: z.string().optional(),
   baseRed: z.boolean().optional(),
 });
 
@@ -186,7 +187,8 @@ export function awaitNewHeadRoute(deps: AwaitHeadDeps, match = "await-new-head")
   return codeRoute(match, deps.now ?? Date.now, async (target: AwaitHeadTarget, signal) => {
     const { pr, exited, green, baseRed } = await awaitHeadOrExit(deps.port, target, signal, deps);
     deps.snapshot?.invalidate(target.repo);
-    const ended = { ...(exited && { exited }), ...(green && { green }), ...(baseRed && { baseRed }) };
+    const why = green && { why: `every required check passed at ${target.headSha} with no new head, on a rerun or a run that outlived a cancelled one` };
+    const ended = { ...(exited && { exited }), ...(green && { green }), ...why, ...(baseRed && { baseRed }) };
     return { headSha: pr.headSha, state: pr.state, merged: pr.merged, ...ended };
   });
 }

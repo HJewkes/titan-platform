@@ -92,11 +92,12 @@ interface RoundOptions {
   packet?: Record<string, unknown>;
   general?: string;
   comment?: string;
+  questionOptions?: string[];
 }
 
 function roundFiles(pr: number, options: RoundOptions = {}) {
   const merge = { repo: REPO, pr, headSha: options.boundHead ?? H, ship: ["Ship it"] };
-  const round = bytes({ unit: "example-unit", round: 1, questions: [{ id: "q-ship", kind: "pick-one", options: ["Ship it", "Revise"], merge }] });
+  const round = bytes({ unit: "example-unit", round: 1, questions: [{ id: "q-ship", kind: "pick-one", options: options.questionOptions ?? ["Ship it", "Revise"], merge }] });
   const answer = { questionId: "q-ship", pick: options.pick ?? "Ship it", ...(options.revisionRequested ? { revisionRequested: true } : {}), ...(options.comment !== undefined && { comment: options.comment }) };
   const submittedAt = new Date(NOW.getTime() - (options.ageMs ?? 10 * MINUTE)).toISOString();
   const feedback = bytes({ unit: "example-unit", round: 1, manifestSha256: options.manifestSha256 ?? hash(round), submittedAt, answers: [answer, { questionId: "q-other", comment: "not about the merge" }], ...(options.general !== undefined && { general: options.general }) });
@@ -222,6 +223,28 @@ describe("checkAnswer", () => {
     const outcome = await check(w, { pick: "Revise", revisionRequested: true });
 
     expect(outcome).toMatchObject({ kind: "refused", reason: "choice" });
+  });
+
+  it("reads the console's Send back, a pick of the one non-ship option with no revisionRequested, as a send-back with the comment as the note", async () => {
+    const w = await world();
+
+    const outcome = await check(w, { pick: "Revise", comment: "fix the gap" }, { choice: "send-back" });
+
+    expect(outcome).toEqual({ kind: "resolve", gateId: w.gateId, choice: "send-back", payload: { decision: "send-back", headSha: H, note: "fix the gap" } });
+  });
+
+  it("refuses a send-back pick that is not one of the question's options", async () => {
+    const w = await world();
+
+    expect(await check(w, { pick: "Something else", comment: "fix the gap" }, { choice: "send-back" })).toMatchObject({ kind: "refused", reason: "feedback" });
+  });
+
+  it("refuses a non-ship pick on a question with two non-ship options", async () => {
+    const w = await world();
+
+    const outcome = await check(w, { pick: "Revise", comment: "fix the gap", questionOptions: ["Ship it", "Revise", "Park"] }, { choice: "send-back" });
+
+    expect(outcome).toMatchObject({ kind: "refused", reason: "feedback" });
   });
 
   it("refuses choice when the request says send-back but the owner's feedback shipped", async () => {

@@ -2,9 +2,9 @@ import { useState, type ReactNode } from "react";
 import {
   Alert, Badge, Button, ButtonText, Card, CardContent, HStack, Input, Pill, Section, SectionContent, SectionHeader, Spinner, Typography, VStack,
 } from "@titan-design/react-ui";
-import type { Question } from "@titan-design/review-schema";
 import type { ConsoleCommands } from "../../server/commands.js";
 import type { RoundDetail } from "../../server/rounds.js";
+import type { Question } from "../../server/round-schema.js";
 import { useQuery } from "../data/rpc.js";
 import { useSubmit, type SubmitState } from "../data/submit.js";
 import { FrameImage, type FrameView } from "./RoundFrame.js";
@@ -41,7 +41,7 @@ export function ShipRound({ round }: { round: ValidRound }): ReactNode {
 }
 
 function ShipHeading({ round, question }: { round: ValidRound; question: MergeQuestion }): ReactNode {
-  const section = round.manifest.sections?.find((candidate) => candidate.questionIds.includes(question.id));
+  const section = round.manifest.sections.find((candidate) => candidate.questionIds.includes(question.id));
   return (
     <Card variant="subtle">
       <CardContent>

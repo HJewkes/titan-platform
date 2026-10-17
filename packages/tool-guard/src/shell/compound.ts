@@ -102,6 +102,12 @@ export function refuseRedirect(s: LexState, op: string): void {
   if (s.regex.bodyPending) throw new ParseError("bash rejects a redirect between a function header and its body");
 }
 
+/** Whether the tokens so far end inside a `[[ ]]`, where `<` and `>` compare strings. */
+export function inConditional(s: LexState): boolean {
+  regexDepth(s);
+  return s.regex.conditionalAt !== -1;
+}
+
 /** Whether the tokens so far leave a `case` without its `esac`. */
 export function inOpenCase(s: LexState): boolean {
   regexDepth(s);

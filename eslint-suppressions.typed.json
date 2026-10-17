@@ -125,6 +125,11 @@
       "count": 1
     }
   },
+  "apps/console/server/review-schema-0.3/schema.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
   "apps/console/server/sessions.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 2

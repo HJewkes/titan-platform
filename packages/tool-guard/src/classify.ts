@@ -13,7 +13,7 @@ import type { ScriptTarget } from "./scripts.js";
 import { extractCommands } from "./shell/commands.js";
 import type { ExtractOptions, SimpleCommand } from "./shell/commands.js";
 import { ParseError } from "./shell/lexer.js";
-import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, ReadingLimitError, ScriptBudgetError } from "./shell/unsure-readings.js";
+import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, ReadingLimitError, ScriptBudgetError, UnreadableScriptError } from "./shell/unsure-readings.js";
 import type { ScriptOverrun } from "./shell/unsure-readings.js";
 import { classified } from "./spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "./types.js";
@@ -40,7 +40,7 @@ export function classify(event: HookEvent, ctx: ClassifyContext): ClassifiedActi
 interface ScriptMemo {
   /** Verdicts by the line state they were read in, then by `scriptKey` and the shell reading. */
   verdicts: Map<ClassifyContext, Map<string, ClassifiedAction[]>>;
-  /** A script's texts by the line state, then by path, so a script two shells read is read once. */
+  /** A script's texts by the line state, then by path and relay, so a script two shells read is read once. */
   texts: Map<ClassifyContext, Map<string, string[]>>;
   /** The `scriptKey`s each line state has charged, so a second shell's reading of a text costs nothing. */
   charged: Map<ClassifyContext, Set<string>>;
@@ -157,7 +157,7 @@ function handles(family: Family, cmd: SimpleCommand): boolean {
 /** One level deep: a shell script is classified as a command string, any other script's text gets the mention rule. */
 function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: ScriptMemo): ClassifiedAction[] {
   return scriptTargets(cmd, ctx.home).flatMap((target) => {
-    const actions = memoized(scripts.texts, ctx, target.path, () => scriptReadings(ctx, target.path)).flatMap((text, i) => {
+    const actions = memoized(scripts.texts, ctx, `${target.path}\u0000${target.relayed === true}`, () => targetReadings(ctx, target)).flatMap((text, i) => {
       const read = { key: scriptKey(cmd, target, ctx, i), text };
       const shell = target.kind === "shell" && scriptArithmetic(cmd, target, text);
       return memoized(scripts.verdicts, ctx, `${read.key}\u0000${shell}`, () => scriptVerdicts(cmd, target, read, ctx, scripts));
@@ -183,6 +183,16 @@ function scriptVerdicts(cmd: SimpleCommand, target: ScriptTarget, read: { key: s
   return scriptText(cmd, target, read.text, ctx);
 }
 
+/** A shell runs every byte of its script, so one the guard cannot read in full refuses the line; an interpreter's, or a `-c` shell's stdin, is read as far as it reads. */
+function targetReadings(ctx: ClassifyContext, target: ScriptTarget): string[] {
+  try {
+    return scriptReadings(ctx, target.path);
+  } catch (error) {
+    if ((target.kind === "shell" && !target.relayed) || !(error instanceof UnreadableScriptError)) throw error;
+    return error.head === null ? [] : [error.head];
+  }
+}
+
 function charge(budget: ScriptMemo, script: Omit<ScriptOverrun, "total">): void {
   const cost = script.bytes * (script.added ? ADDED_SCRIPT_WEIGHT : 1);
   if (cost > budget.bytesLeft) throw new ScriptBudgetError({ ...script, total: MAX_SCRIPT_BYTES - budget.bytesLeft + cost });
@@ -197,7 +207,7 @@ function charge(budget: ScriptMemo, script: Omit<ScriptOverrun, "total">): void 
  */
 function scriptKey(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext, text: number): string {
   const program = target.kind === "interpreter" ? cmd.path : null;
-  return JSON.stringify([ctx.foldCase === true, cmd.dir, target.path, program, text]);
+  return JSON.stringify([ctx.foldCase === true, cmd.dir, target.path, program, target.relayed === true, text]);
 }
 
 function memoized<T>(memo: Map<ClassifyContext, Map<string, T>>, ctx: ClassifyContext, key: string, compute: () => T): T {

@@ -15,6 +15,8 @@ export interface ScriptTarget {
    * false), the shell that sources it, or the script's own `#!` line when it is run by path.
    */
   shell: boolean | "inherit" | "shebang";
+  /** A `-c` shell's stdin file, which only a command in the string may run (`bash -c 'cat | bash' < x.sh`), so it is read as far as it reads. */
+  relayed?: true;
 }
 
 export const SOURCERS: ReadonlySet<string> = new Set(["source", "."]);
@@ -42,16 +44,19 @@ function typedTarget(cmd: SimpleCommand, typed: string, home: string): ScriptTar
 
 /**
  * `bash x.sh`, or each file on the descriptor it runs: `bash < x.sh`, `bash /dev/stdin < x.sh`, `bash /dev/fd/3 3< x.sh`.
- * A `-c` string may read stdin too. `bash -c` text and heredocs are already walked by `extractCommands`. A descriptor
- * whose text the line cannot show is refused.
+ * Under `-c` stdin is no script of the shell's own, but a command in the string may run it (`bash -c 'cat | bash' < x.sh`),
+ * and that command may be dash.
+ * `bash -c` text and heredocs are already walked by `extractCommands`. A descriptor whose text the line cannot show is
+ * refused.
  */
 function shellTargets(cmd: SimpleCommand, home: string): ScriptTarget[] {
-  const { scriptFile, sources, unknowable } = shellStdin(shellOperands(cmd.args, cmd.name), cmd.redirects, false, cmd.inherited);
+  const { runs, scriptFile, sources, unknowable } = shellStdin(shellOperands(cmd.args, cmd.name), cmd.redirects, false, cmd.inherited);
   if (unknowable) throw new UnknownStdinError();
   const shell = hasArithmeticCommand(cmd);
   const script = scriptFile === null ? null : target(cmd, scriptFile, home, "shell", shell);
   if (script !== null) return [script];
-  return sources.flatMap((s) => (s.kind === "file" ? [target(cmd, s.target, home, "shell", shell)].filter((t): t is ScriptTarget => t !== null) : []));
+  const files = sources.flatMap((s) => (s.kind === "file" ? [target(cmd, s.target, home, "shell", shell)].filter((t): t is ScriptTarget => t !== null) : []));
+  return runs ? files : files.map((t) => ({ ...t, relayed: true, shell: false }));
 }
 
 /** The first non-option word, null when an option in `inline` means the program text is inline. */

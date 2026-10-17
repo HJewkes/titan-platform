@@ -6,11 +6,13 @@ import { cp, mkdir, mkdtemp, open, readFile, rm, symlink, utimes, writeFile } fr
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { silentLogger, type DaemonHandle } from "@titan-design/daemon";
 import { EXIT } from "@titan-design/registry";
 import { resolveConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
+import { BLIND_AB_REFUSED } from "./round-schema.js";
 import { MAX_ROUND_BYTES, getRound, listRounds, readQueueRounds, roundsCommands, type QueueRound, type RoundDetail, type RoundSummary } from "./rounds.js";
 import { closedPort, send } from "./test-support.js";
 
@@ -61,7 +63,7 @@ let root: string;
 let dir: string;
 
 /** Oldest first, so the newest-first order is known without reading the fixture copy times. */
-const AGE_ORDER = ["legacy-r1", "unreadable-r1", "kiln-schedule-r1", "lantern-cards-r1", "orbit-retry-r1", "ship-tile-r1", "kiln-schedule-r2"];
+const AGE_ORDER = ["legacy-r1", "unreadable-r1", "kiln-schedule-r1", "lantern-cards-r1", "orbit-retry-r1", "ship-tile-r1", "td920-packet-r1", "kiln-schedule-r2"];
 
 beforeEach(async () => {
   root = await mkdtemp(path.join(tmpdir(), "console-rounds-"));
@@ -75,6 +77,8 @@ afterEach(async () => {
   await releaseFifos();
   await rm(root, { recursive: true, force: true });
 });
+
+const packetRound = z.looseObject({ questions: z.array(z.unknown()), sections: z.array(z.looseObject({ id: z.string() })) });
 
 const summaryOf = (rounds: readonly RoundSummary[], id: string): RoundSummary | undefined => rounds.find((round) => round.id === id);
 
@@ -98,6 +102,10 @@ describe("rounds.list", () => {
 
     expect(summaryOf(rounds, "kiln-schedule-r2")).toMatchObject({ valid: true, unit: "kiln-schedule", round: 2, questions: 4, design: false, recommendations: "after-answer" });
     expect(summaryOf(rounds, "lantern-cards-r1")).toMatchObject({ valid: true, design: true });
+  });
+
+  it("lists a CI packet round that only review-schema 0.3 reads as valid", async () => {
+    expect(summaryOf((await listRounds({ dir })).rounds, "td920-packet-r1")).toMatchObject({ valid: true, questions: 2, design: false, ship: true });
   });
 
   it("lists a round@1 manifest as invalid with the schema's own reason", async () => {
@@ -143,6 +151,28 @@ describe("rounds.get", () => {
 
   it("flags a design round and passes its loopback Storybook address", async () => {
     expect(validDetail(await getRound({ dir }, "lantern-cards-r1"))).toMatchObject({ design: true, storybookUrl: "http://127.0.0.1:6006" });
+  });
+
+  it("passes the 0.3 fields of a CI packet round through to the page", async () => {
+    const { manifest } = validDetail(await getRound({ dir }, "td920-packet-r1"));
+
+    expect(manifest.variants[0]).toMatchObject({ baseImage: "before/img-001.png", change: "changed" });
+    expect(manifest.questions[1]).toMatchObject({ id: "ship", decision: "ship", topics: ["ask:acme/widgets#42/ship", "topic:ship"] });
+    expect(manifest.prGroups).toHaveLength(1);
+  });
+
+  it("refuses a blind-ab round and sends none of its engines", async () => {
+    const round = packetRound.parse(JSON.parse(await readFile(path.join(dir, "td920-packet-r1", "round.json"), "utf8")));
+    const takes = [{ engine: "engine-alpha", src: "audio/a.wav" }, { engine: "engine-beta", src: "audio/b.wav" }];
+    round.questions.push({ id: "listen", kind: "blind-ab", prompt: "Which take reads better?", pairs: [{ id: "line-1", transcript: "Welcome back.", takes }] });
+    round.sections = round.sections.map((section) => (section.id === "side" ? { ...section, questionIds: ["bundle", "listen"] } : section));
+    await mkdir(path.join(dir, "blind-r1"));
+    await writeFile(path.join(dir, "blind-r1", "round.json"), JSON.stringify(round));
+
+    const detail = await getRound({ dir }, "blind-r1");
+
+    expect(detail).toMatchObject({ valid: false, reason: `questions: ${BLIND_AB_REFUSED}` });
+    expect(JSON.stringify(detail)).not.toContain("engine-");
   });
 
   it("marks a round with a merge-bound question as a Ship round, not a design round, with its round.json sha256", async () => {
@@ -209,7 +239,7 @@ describe("readQueueRounds", () => {
   it("reads every valid round with its feedback and reports each invalid one as a gap", async () => {
     const { rounds, gaps } = await readQueueRounds({ dir });
 
-    expect(rounds.map((round) => round.id)).toEqual(["kiln-schedule-r1", "kiln-schedule-r2", "lantern-cards-r1", "orbit-retry-r1", "ship-tile-r1"]);
+    expect(rounds.map((round) => round.id)).toEqual(["kiln-schedule-r1", "kiln-schedule-r2", "lantern-cards-r1", "orbit-retry-r1", "ship-tile-r1", "td920-packet-r1"]);
     expect(queueRound(rounds, "kiln-schedule-r1")?.feedback).toMatchObject({ unit: "kiln-schedule", round: 1 });
     expect(queueRound(rounds, "kiln-schedule-r2")).toMatchObject({ feedback: null, manifest: { unit: "kiln-schedule", round: 2 } });
     expect(gaps).toHaveLength(2);
@@ -258,7 +288,7 @@ describe("readQueueRounds", () => {
 
     const { rounds } = await readQueueRounds({ dir });
 
-    expect(rounds.map((round) => round.id)).toEqual(["kiln-schedule-r1", "kiln-schedule-r2", "lantern-cards-r1", "orbit-retry-r1", "ship-tile-r1"]);
+    expect(rounds.map((round) => round.id)).toEqual(["kiln-schedule-r1", "kiln-schedule-r2", "lantern-cards-r1", "orbit-retry-r1", "ship-tile-r1", "td920-packet-r1"]);
   });
 
   it("reads a round with a FIFO for feedback.json as unsent instead of hanging", async () => {

@@ -1,17 +1,21 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ActorClass } from "@titan-design/authority";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
+import { GateResolverRefused } from "@titan-design/hitl";
+import { openDatabase } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { EvidenceSources } from "./coordinator-evidence-read.js";
 import { defineWorkflow } from "./definition.js";
-import { acknowledgeBrief, approveMergeDecision, ciFailedDecision, frozenDecision, sentBackDecision } from "./gate-brief.js";
+import { acknowledgeBrief, approveMergeDecision, ciFailedDecision, frozenDecision, sentBackDecision, stuckBehindDecision } from "./gate-brief.js";
 import { resolveGate, type OwnerPresence } from "./gate-resolve.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./shepherd/policy.js";
 import { authorityGateReason, pendingCheck } from "./test-support/authority-reason.js";
 import { codeRoute, step } from "./workflows/land.js";
+import { tableGateRule } from "./workflows/land-approval.js";
 
 const REPO = "o/r";
 const HEAD = fakeSha("head");
@@ -30,6 +34,10 @@ interface Scenario {
   reason?: string;
   verdict?: string;
   policy?: EffectivePolicy;
+  /** Stamp the approve-merge gate with its table row's rule, as land does. */
+  stamped?: boolean;
+  /** Open a stuck-behind gate once the approve-merge gate is answered. */
+  thenStuck?: boolean;
 }
 
 const Verdict = z.looseObject({ kind: z.string(), verdict: z.string(), head: z.string(), reviewer: z.looseObject({ agentId: z.string() }) });
@@ -46,6 +54,7 @@ const shepherdPr = defineWorkflow({
     { id: "ci-failed", kind: "assisted" },
     { id: "main-red", kind: "assisted" },
     { id: "main-frozen", kind: "assisted" },
+    { id: "stuck-behind", kind: "assisted" },
   ],
   run: async (ctx) => {
     const scenario = JSON.parse(ctx.param("scenario")!) as Scenario;
@@ -57,11 +66,13 @@ const shepherdPr = defineWorkflow({
     if (scenario.gate === "ci-failed") return void (await ctx.assisted("ci-failed", "CI failed.", ciFailedDecision({ repo: REPO, pr: 1, headSha: HEAD, failing: [{ name: "validate", url: "https://example.test/job/1" }] as never })));
     if (scenario.gate === "sent-back") return void (await ctx.assisted("sh-sent-back", "Sent back.", sentBackDecision({ repo: REPO, pr: 1, headSha: HEAD, situation: "the reviewer sent it back" })));
     await step(ctx, `sh-await-verdict:${HEAD}`, { kind: "verdict", verdict: scenario.verdict ?? "MERGE", head: HEAD, reviewer: { agentId: "rv-synthetic" } }, Verdict);
-    const [table, rowId] = (scenario.rule ?? "authority/MRG-AU").split("/");
+    const [table = "", rowId = ""] = (scenario.rule ?? "authority/MRG-AU").split("/");
     const reason = scenario.reason ?? MECHANICAL;
     await step(ctx, "merge-policy:0", { outcome: "gate", headSha: HEAD, rule: { table, rowId, version: 1 }, reason }, Decision);
     const prompt = `Merge PR #1 in ${REPO} at head ${HEAD}? CI is green. Policy ${table}/${rowId}: ${reason}`;
-    await ctx.assisted("approve-merge", prompt, approveMergeDecision({ repo: REPO, pr: 1, headSha: HEAD, reason, reviewedMerge: true }));
+    const rule = scenario.stamped ? tableGateRule({ table, rowId, version: 1 }) : undefined;
+    await ctx.assisted("approve-merge", prompt, { ...approveMergeDecision({ repo: REPO, pr: 1, headSha: HEAD, reason, reviewedMerge: true }), ...(rule && { rule }) });
+    if (scenario.thenStuck) await ctx.assisted("stuck-behind", `PR #1 in ${REPO} is behind. Retry or abandon?`, stuckBehindDecision({ repo: REPO, pr: 1, headSha: HEAD, why: "behind its base" }));
   },
 });
 
@@ -77,6 +88,7 @@ afterEach(() => {
 
 interface World {
   host: FactoryHost;
+  dbPath: string;
   runId: string;
   gh: FakeGitHub;
   sources: EvidenceSources;
@@ -86,7 +98,8 @@ interface World {
 async function paused(scenario: Scenario): Promise<World> {
   const dir = mkdtempSync(join(tmpdir(), "factory-gate-evidence-"));
   dirs.push(dir);
-  const host = openFactoryHost({ dbPath: join(dir, "factory.sqlite3"), workflows: [shepherdPr], routes, gatePollMs: 10 });
+  const dbPath = join(dir, "factory.sqlite3");
+  const host = openFactoryHost({ dbPath, workflows: [shepherdPr], routes, gatePollMs: 10 });
   hosts.push(host);
   const policy = scenario.policy ?? AUTO;
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(policy), scenario: JSON.stringify(scenario) });
@@ -99,7 +112,7 @@ async function paused(scenario: Scenario): Promise<World> {
     frozen: () => registration.frozen,
     now: () => NOW,
   };
-  return { host, runId, gh, sources, registration };
+  return { host, dbPath, runId, gh, sources, registration };
 }
 
 /** PR #1 open at HEAD, mergeable, both required checks green; main's tip is green and contains MERGE_SHA. */
@@ -120,9 +133,9 @@ function presenceStub(): { presence: OwnerPresence; reasons: string[] } {
   return { reasons, presence: async (reason) => (reasons.push(reason), undefined) };
 }
 
-const STEPS: Record<Scenario["gate"], string> = { merge: "approve-merge", "sent-back": "sh-sent-back", "ci-failed": "ci-failed", "main-red": "main-red", "main-frozen": "main-frozen" };
+const STEPS: Record<Scenario["gate"] | "stuck-behind", string> = { merge: "approve-merge", "sent-back": "sh-sent-back", "ci-failed": "ci-failed", "main-red": "main-red", "main-frozen": "main-frozen", "stuck-behind": "stuck-behind" };
 
-async function resolveAs(world: World, gate: Scenario["gate"], payload: object) {
+async function resolveAs(world: World, gate: Scenario["gate"] | "stuck-behind", payload: object) {
   const { presence, reasons } = presenceStub();
   let out = "";
   let err = "";
@@ -423,5 +436,87 @@ describe("coordinator acknowledgement of a red main a green main commit contains
     world.gh.setRuns(TIP, [successRun("validate", 21, undefined, "failure")]);
 
     expectFellBack(await resolveAs(world, "main-red", { decision: "acknowledged", mergeSha: MERGE_SHA }));
+  });
+});
+
+describe("an approve-merge gate stamped with the MRG-AU row", () => {
+  const STAMPED = { gate: "merge", stamped: true } as const;
+
+  it("stores the row's resolvers and the coordinator delegate", async () => {
+    const world = await paused(STAMPED);
+
+    expect(world.host.gates.get(`${world.runId}/approve-merge`)?.rule).toEqual({ table: "F5", version: "1.0.0", ruleId: "MRG-AU", resolvers: ["owner-terminal", "owner-remote"], delegates: ["coordinator"] });
+  });
+
+  it("resolves a mechanical coordinator merge on fresh evidence", async () => {
+    const world = await paused(STAMPED);
+
+    const result = await resolveAs(world, "merge", MERGE);
+
+    expect(result.reasons).toEqual([]);
+    expect(result.gate).toMatchObject({ status: "resolved", resolvedBy: { class: "coordinator" }, resolvedEvidence: { kind: "approve-merge" } });
+  });
+
+  it("resolves a coordinator abandon once the PR is gone", async () => {
+    const world = await paused(STAMPED);
+    mergedPr(world.gh);
+
+    const result = await resolveAs(world, "merge", { decision: "abandon", headSha: HEAD });
+
+    expect(result.gate).toMatchObject({ status: "resolved", resolvedEvidence: { kind: "pr-gone", state: "merged" } });
+  });
+
+  it("refuses a coordinator with no evidence, since the rule naming it is not enough", async () => {
+    const world = await paused(STAMPED);
+    world.gh.setRuns(HEAD, [successRun("validate", 11), { ...successRun("dag-check", 12), conclusion: "failure" }]);
+
+    const result = await resolveAs(world, "merge", MERGE);
+
+    expect(result.reasons).toHaveLength(1);
+    expect(result.code).toBe(1);
+    expect(result.err).toContain("only on evidence or an allowance");
+    expect(result.gate?.status).toBe("pending");
+  });
+
+  it.each<ActorClass>(["worker", "headless", "automation", "decider"])("refuses %s", async (actorClass) => {
+    const world = await paused(STAMPED);
+    const gateId = `${world.runId}/approve-merge`;
+
+    expect(() => world.host.gates.resolve(gateId, MERGE, { class: actorClass, id: "a-synthetic", channel: "factory-cli" })).toThrow(GateResolverRefused);
+
+    expect(world.host.gates.get(gateId)?.status).toBe("pending");
+  });
+
+  it("aborts a raw SQL resolve that records a worker", async () => {
+    const world = await paused(STAMPED);
+    const gateId = `${world.runId}/approve-merge`;
+    const db = openDatabase(world.dbPath);
+    const resolve = db.prepare("UPDATE hitl_gate SET status = 'resolved', payload = ?, resolved_by = ? WHERE id = ?");
+
+    try {
+      expect(() => resolve.run(JSON.stringify(MERGE), JSON.stringify({ class: "worker", id: "a-synthetic", channel: "sql" }), gateId)).toThrow(/resolver outside the gate rule/);
+    } finally {
+      db.close();
+    }
+    expect(world.host.gates.get(gateId)?.status).toBe("pending");
+  });
+
+  it("leaves a release gate rule-less, so a coordinator abandon of it once the PR is gone resolves", async () => {
+    const world = await paused({ gate: "merge", rule: "shepherd-release/owner-gate", stamped: true });
+    mergedPr(world.gh);
+
+    const result = await resolveAs(world, "merge", { decision: "abandon", headSha: HEAD });
+
+    expect(result.gate).toMatchObject({ status: "resolved", rule: undefined, resolvedEvidence: { kind: "pr-gone", state: "merged" } });
+  });
+
+  it("still lets the coordinator retry the stuck-behind gate that follows it", async () => {
+    const world = await paused({ ...STAMPED, thenStuck: true });
+    await resolveAs(world, "merge", MERGE);
+    await vi.waitFor(() => expect(world.host.gates.get(`${world.runId}/stuck-behind`)?.status).toBe("pending"));
+
+    const result = await resolveAs(world, "stuck-behind", { decision: "retry" });
+
+    expect(result.gate).toMatchObject({ status: "resolved", payload: { decision: "retry" }, resolvedBy: { class: "coordinator" } });
   });
 });

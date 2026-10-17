@@ -2,6 +2,8 @@ import type { MergeMethod } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { GateDecision, GatePolicy, PolicyRule } from "../gate-policy.js";
+import { stepIdMatches } from "../definition.js";
+import { BaseCheckResult } from "../workflows/land-base.js";
 import type { LandOptions } from "../workflows/land.js";
 import { decideAutoMerge, isUnsettledGate, MERGE_BY_REVIEWER_RULE, type MergeEvidence } from "./merge-facts.js";
 import { shownPaths } from "./visual-gate.js";
@@ -165,6 +167,7 @@ export function shepherdLandOptions(
   effective: () => EffectivePolicy,
   verdictFor: (headSha: string) => Verdict | undefined = () => undefined,
   escalationAt: (headSha: string) => Escalated | undefined = () => undefined,
+  decidedBase: () => string | undefined = () => undefined,
 ): LandOptions {
   const reread = new WeakMap<Verdict, unknown>();
   const current = (headSha: string): Verdict | undefined => {
@@ -177,7 +180,7 @@ export function shepherdLandOptions(
     if (verdict && evidence) reread.set(verdict, await refreshMergeEvidence(ctx, evidence, effective().visualPaths));
   };
   const decide = (action: string, target?: { headSha?: string }): GateDecision => {
-    const decision = shepherdGatePolicy(effective(), current).decide(action, target);
+    const decision = onDecidedBase(shepherdGatePolicy(effective(), current).decide(action, target), target?.headSha, decidedBase(), current);
     if (decision.outcome === "deny") return decision;
     const escalated = target?.headSha === undefined ? undefined : escalationAt(target.headSha);
     if (escalated !== undefined && target?.headSha !== undefined && clearedByFreshMerge(escalated, decision, target.headSha, current)) return clearedDecision(escalated, decision, target.headSha);
@@ -188,6 +191,17 @@ export function shepherdLandOptions(
   };
   const allowEvidence = (merge: { headSha: string }) => ({ ...mergeEvidenceAt(merge.headSha, current)?.record });
   return { policy: { decide }, allowEvidence, unsettled: { transient: isUnsettledGate, refresh }, featureBase: () => effective().featureBase === true, evidenceBase: (headSha) => mergeEvidenceAt(headSha, current)?.record.baseRef, skillPathsAt: (headSha) => skillPathsAt(headSha, current) };
+}
+
+/**
+ * An allow judged on evidence read on another base than the one being decided gates: a retarget and back during the
+ * re-read could otherwise merge on the other base's review rules and merge tree. Evidence with no base, or a decision
+ * with no checked base, is left as it is.
+ */
+function onDecidedBase(decision: GateDecision, headSha: string | undefined, base: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): GateDecision {
+  const evidenceBase = headSha === undefined ? undefined : mergeEvidenceAt(headSha, verdictFor)?.record.baseRef;
+  if (decision.outcome !== "allow" || base === undefined || evidenceBase === undefined || evidenceBase === base) return decision;
+  return { outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "no-facts", version: 1 }, reason: `the merge facts at ${headSha} were read on base ${evidenceBase}, not on ${base}, the base being decided` };
 }
 
 function escalatedReason(escalated: Escalated, headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {
@@ -216,6 +230,23 @@ function clearedByFreshMerge(escalated: Escalated, decision: GateDecision, headS
 function clearedDecision(escalated: Escalated, decision: GateDecision, headSha: string): GateDecision {
   const reason = `${decision.reason}; the ${escalated.escalation} escalation carried from head ${escalated.carriedFrom} is cleared by the dispatched reviewer's MERGE at head ${headSha}`;
   return { outcome: "allow", rule: routeRule(`${escalated.escalation}/cleared-by-merge`), reason };
+}
+
+/**
+ * The base land's last `base-check` read. A live decision always follows its own check of the base, so this is the base
+ * it judges; a replayed decision is the recorded one, whatever this holds.
+ */
+export function checkedBaseTap(): { base: () => string | undefined; tapping: (ctx: WorkflowContext) => WorkflowContext } {
+  let checked: string | undefined;
+  const tapping = (ctx: WorkflowContext): WorkflowContext => ({
+    ...ctx,
+    dispatch: async (stepId, template, options) => {
+      const done = await ctx.dispatch(stepId, template, options);
+      if (stepIdMatches("base-check", stepId)) checked = BaseCheckResult.safeParse(done.data?.result).data?.base;
+      return done;
+    },
+  });
+  return { base: () => checked, tapping };
 }
 
 /** The evidence a MERGE review carries; a malformed one reads as none, so the merge gates. */
