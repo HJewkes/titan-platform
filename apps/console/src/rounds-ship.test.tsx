@@ -234,3 +234,74 @@ describe("answering a Ship round", () => {
     expect(screen.queryByRole("button", { name: "Ship" })).toBeNull();
   });
 });
+
+describe("answering a Ship round with side questions", () => {
+  const submits = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
+
+  /** The td850 shape: three side questions, then the Ship decision last. */
+  async function td850(requiredScale = false): Promise<Partial<RoundDetail>> {
+    const detail = await getRound(source, SHIP);
+    if (!detail.valid) throw new Error("the Ship fixture is not a valid round");
+    const ship = detail.manifest.questions.find((question) => question.id === "ship-tiles");
+    if (ship === undefined) throw new Error("the Ship fixture has no ship-tiles question");
+    const side = [
+      { id: "side-colour", kind: "pick-one", prompt: "File the badge colour as a follow-up?", options: ["Yes", "No"] },
+      { id: "side-columns", kind: "pick-many", prompt: "Which tiles need a second look?", options: ["Light", "Dark", "Wide"] },
+      { id: "side-clarity", kind: "scale", prompt: "How clear is the stripe?", min: 1, max: 5, ...(requiredScale ? { required: true } : {}) },
+      { id: "side-note", kind: "text", prompt: "Anything else?" },
+    ] as const;
+    return { manifest: { ...detail.manifest, questions: [...side.slice(0, 3), side[3], ship] } as typeof detail.manifest };
+  }
+
+  it("sends every side answer with the Ship pick in one rounds.submit, in the round's question order", async () => {
+    const rendered = await renderShip({ answers: true, detail: await td850() });
+
+    fireEvent.click(screen.getByRole("radio", { name: "1 Yes" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "1 Light" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "3 Wide" }));
+    fireEvent.click(screen.getByRole("radio", { name: "4 4" }));
+    fireEvent.change(screen.getByLabelText("Answer to Anything else?"), { target: { value: "Looks fine." } });
+    fireEvent.click(button("Ship"));
+
+    await waitFor(() => expect(submits(rendered)).toHaveLength(1));
+    expect(submits(rendered)[0]).toMatchObject({
+      headSha: HEAD,
+      answers: [
+        { questionId: "side-colour", pick: "Yes" },
+        { questionId: "side-columns", picks: ["Light", "Wide"] },
+        { questionId: "side-clarity", value: 4 },
+        { questionId: "side-note", text: "Looks fine." },
+        { questionId: "ship-tiles", pick: "Ship" },
+      ],
+    });
+  });
+
+  it("sends the side answers with Send back too, and leaves unanswered optional questions out", async () => {
+    const rendered = await renderShip({ answers: true, detail: await td850() });
+
+    fireEvent.click(screen.getByRole("radio", { name: "2 No" }));
+    fireEvent.click(button("Send back"));
+
+    await waitFor(() => expect(submits(rendered)).toHaveLength(1));
+    expect(submits(rendered)[0]).toMatchObject({ answers: [{ questionId: "side-colour", pick: "No" }, { questionId: "ship-tiles", pick: "Don't ship" }] });
+  });
+
+  it("blocks both answers with an inline message while a required side question is empty", async () => {
+    const rendered = await renderShip({ answers: true, detail: await td850(true) });
+
+    expect(screen.getByText("Answer the required question first: How clear is the stripe?")).toBeTruthy();
+    fireEvent.click(button("Ship"));
+    expect(submits(rendered)).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("radio", { name: "2 2" }));
+    expect(screen.queryByText(/Answer the required question first/)).toBeNull();
+    fireEvent.click(button("Ship"));
+    await waitFor(() => expect(submits(rendered)).toHaveLength(1));
+  });
+
+  it("no longer calls the side questions read-only", async () => {
+    await renderShip({ answers: true, detail: await td850() });
+
+    expect(screen.queryByText(/not sent/)).toBeNull();
+  });
+});
