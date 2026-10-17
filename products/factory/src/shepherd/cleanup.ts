@@ -103,7 +103,7 @@ interface Waiter {
 export async function runCleanup(deps: CleanupDeps, input: CleanupInput, signal: AbortSignal): Promise<Cleanup> {
   const caveats: string[] = [];
   const waiter = (): Waiter => ({ clock: deadline({ now: deps.now, sleep: deps.sleep, timeoutMs: SH_CLEANUP_GIVE_UP_MS }), pollMs: deps.pollMs ?? SH_CLEANUP_POLL_MS, signal, now: deps.now, caveats });
-  const ref = (await retrying(`head ref of #${input.pr}`, () => deleteHead(deps, input), waiter())) ?? "unread";
+  const ref = (await retrying(`head ref of #${input.pr}`, () => deleteHead(deps, input, caveats), waiter())) ?? "unread";
   await retrying(`hold on #${input.pr}`, () => releaseLanded(deps, input), waiter());
   const registration = deps.store.get().byRun(input.runId);
   if (registration === undefined || deps.cleanup === undefined) {
@@ -115,11 +115,21 @@ export async function runCleanup(deps: CleanupDeps, input: CleanupInput, signal:
   return { ref, task, retired, caveats };
 }
 
-/** The ref lives in the head repo, so a fork's same-named branch in the base repo is never touched; the port skips forks and the default branch. */
-async function deleteHead({ port, advisory }: CleanupDeps, input: CleanupInput): Promise<string> {
+/**
+ * The ref lives in the head repo, so a fork's same-named branch in the base repo is never touched; the port skips forks
+ * and the default branch. An API delete closes every open PR based on the branch, so a fresh list of them, read just
+ * before the delete, keeps the branch while any remains.
+ */
+async function deleteHead({ port, advisory }: CleanupDeps, input: CleanupInput, caveats: string[]): Promise<string> {
   if (advisory?.(input.repo)) return "advisory";
   const pr = await prAfterMerge(port, input);
   if (!pr.merged) return "not-merged";
+  const sameRepo = pr.headRepo?.toLowerCase() === input.repo.toLowerCase();
+  const based = sameRepo ? (await port.listOpenPrs(input.repo)).filter((open) => open.baseRef === pr.headRef).map((open) => `#${open.number}`) : [];
+  if (based.length > 0) {
+    caveats.push(`head ref of #${input.pr} kept: open ${based.join(", ")} still based on it`);
+    return "children-open";
+  }
   const result = await port.deleteRef(input.repo, { branch: pr.headRef, repo: pr.headRepo });
   return result.done ? "deleted" : result.skipped;
 }

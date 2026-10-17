@@ -469,19 +469,90 @@ describe("shepherd-pr after land", () => {
     expect(ids.indexOf("sh-stack-children:1")).toBeLessThan(ids.indexOf("sh-main-ci"));
   });
 
-  it("records a skipped child list and restacks nothing while the repo has not opted in", async () => {
+  it("lists the children but restacks none while the repo has not opted in", async () => {
     const w = shepherdWorld(() => [successRun("validate", 5)]);
-    stackedChild(w);
+    const child = stackedChild(w);
     const runId = await runToMerge(w);
 
     await w.host.runtime.wait(runId);
 
-    expect(resultOf(w, runId, "sh-stack-children:1")).toMatchObject({ result: { children: [], skipped: `stack restack is off for ${REPO}` } });
+    expect(resultOf(w, runId, "sh-stack-children:1")).toMatchObject({ result: { children: [{ pr: child }], skipped: `stack restack is off for ${REPO}` } });
     expect(stepIds(w, runId).filter((id) => id.startsWith("sh-restack"))).toEqual([]);
   });
 
+  /** Records every base change and ref delete in call order, so a test can show the retarget lands first. */
+  function writeLog(writes: string[]): (port: GitHubPort) => GitHubPort {
+    return (port) => ({
+      ...port,
+      setPrBase: async (...args: Parameters<GitHubPort["setPrBase"]>) => (writes.push(`setPrBase #${args[1]}`), port.setPrBase(...args)),
+      deleteRef: async (...args: Parameters<GitHubPort["deleteRef"]>) => (writes.push(`deleteRef ${args[1].branch}`), port.deleteRef(...args)),
+    });
+  }
+
+  function landedBranch(w: ReturnType<typeof shepherdWorld>): string {
+    w.fake.pr(1).headRepo = REPO;
+    w.fake.refs.set(w.fake.pr(1).headRef, H1);
+    return w.fake.pr(1).headRef;
+  }
+
+  const cleanupOf = (w: ReturnType<typeof shepherdWorld>, runId: string) => resultOf(w, runId, "sh-cleanup") as { result: { ref: string; caveats: string[] } } | undefined;
+
+  it("retargets an open child onto the parent's base before cleanup deletes the parent's branch, with the restack off", async () => {
+    const writes: string[] = [];
+    const w = shepherdWorld(() => [successRun("validate", 5)], undefined, undefined, { wrap: writeLog(writes) });
+    const branch = landedBranch(w);
+    const child = stackedChild(w);
+    const runId = await runToMerge(w);
+
+    await w.host.runtime.wait(runId);
+
+    expect(w.fake.pr(child)).toMatchObject({ state: "open", baseRef: w.fake.pr(1).baseRef });
+    expect(writes).toEqual([`setPrBase #${child}`, `deleteRef ${branch}`]);
+    expect(cleanupOf(w, runId)?.result.ref).toBe("deleted");
+    expect(w.fake.refs.has(branch)).toBe(false);
+  });
+
+  it("keeps the parent's branch and records why when the child's retarget fails", async () => {
+    const w = shepherdWorld(() => [successRun("validate", 5)], undefined, undefined, {
+      wrap: (port) => ({ ...port, setPrBase: async () => Promise.reject(new Error("validation failed")) }),
+    });
+    const branch = landedBranch(w);
+    const child = stackedChild(w);
+    const runId = await runToMerge(w);
+
+    await w.host.runtime.wait(runId);
+
+    expect(resultOf(w, runId, `sh-retarget:${child}`)).toMatchObject({ result: { outcome: "failed" } });
+    expect(cleanupOf(w, runId)?.result).toMatchObject({ ref: "children-open", caveats: expect.arrayContaining([`head ref of #1 kept: open #${child} still based on it`]) });
+    expect(w.fake.refs.has(branch)).toBe(true);
+    expect(w.fake.pr(child)).toMatchObject({ state: "open", baseRef: branch });
+    expect(w.host.runtime.status(runId)?.status).toBe("completed");
+  });
+
+  it("keeps the parent's branch when a child is opened on it after the restack listed none", async () => {
+    let child = 0;
+    const w = shepherdWorld(() => [successRun("validate", 5)], undefined, undefined, {
+      wrap: (port) => ({
+        ...port,
+        listOpenPrs: async (repo: string) => {
+          const open = await port.listOpenPrs(repo);
+          if (w.fake.pr(1).merged && child === 0) child = w.fake.addPr({ headSha: fakeSha("late"), headRef: "topic-late", baseRef: branch }).number;
+          return open;
+        },
+      }),
+    });
+    const branch = landedBranch(w);
+    const runId = await runToMerge(w);
+
+    await w.host.runtime.wait(runId);
+
+    expect(child).toBeGreaterThan(0);
+    expect(cleanupOf(w, runId)?.result.ref).toBe("children-open");
+    expect(w.fake.pr(child)).toMatchObject({ state: "open", baseRef: branch });
+  });
+
   for (const turn of ["off", "advisory"] as const) {
-    it(`skips a listed child without a retarget once the repo turns ${turn} before its restack step`, async () => {
+    it(`skips the restack of a listed child once the repo turns ${turn} before its restack step`, async () => {
       let held = false;
       const retargets: number[] = [];
       const w = shepherdWorld(() => [successRun("validate", 5)], undefined, undefined, {
@@ -501,7 +572,7 @@ describe("shepherd-pr after land", () => {
       const reason = turn === "off" ? `stack restack is off for ${REPO}` : `${REPO} is advisory`;
       expect(resultOf(w, runId, "sh-stack-children:1")).toMatchObject({ result: { children: [{ pr: child }] } });
       expect(resultOf(w, runId, `sh-restack:${child}:${fakeSha("child")}`)).toMatchObject({ result: { outcome: "skipped", reason: `parent #1 landed; restack skipped: ${reason}`, woken: false } });
-      expect(retargets).toEqual([]);
+      expect(retargets).toEqual(turn === "off" ? [child] : []);
       expect(w.host.runtime.status(runId)?.status).toBe("completed");
     });
   }
