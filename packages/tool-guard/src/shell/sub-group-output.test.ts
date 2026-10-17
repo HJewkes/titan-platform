@@ -180,6 +180,33 @@ describe("a substitution whose output goes elsewhere or is split or globbed is n
   });
 });
 
+/** Every spelling of a redirect that may send a stage's stdout elsewhere, in the three places a stage can stand (TP-3333). */
+const STDOUT_REDIRECTS = [
+  ">/dev/null", ">>/dev/null", ">|/dev/null", ">&2", "1>&2", ">& 2", ">&-", "1>&-", "&>/dev/null", "&>>/dev/null", "1<>/dev/null", ">/dev/stderr",
+  "1>/dev/null", "1>>/dev/null", "{fd}>&2", "{fd} >&2", "{x}>/dev/null", "{fd}>>/dev/null", "{fd}>|/dev/null", "{fd} >/dev/null", "{fd}&>/dev/null",
+];
+/** These leave stdout on the substitution, so its text stays known; a redirect after a subshell's `)` is left unknown, as on main. */
+const OTHER_FD_REDIRECTS = ["2>/dev/null", "2>&1", "3>/dev/null", "2>&1 3>/dev/null"];
+const PLACEMENTS: Array<(redirect: string) => string> = [
+  (r) => `echo "$(echo status ${r}; echo push origin HEAD:main)" | xargs git`,
+  (r) => `echo "$({ echo status; } ${r}; echo push origin HEAD:main)" | xargs git`,
+  (r) => `echo "$(echo status | cat ${r}; echo push origin HEAD:main)" | xargs git`,
+  (r) => `echo "$( ( echo status ) ${r}; echo push origin HEAD:main)" | xargs git`,
+  (r) => `echo "$(${r} echo status; echo push origin HEAD:main)" | xargs git`,
+];
+
+describe("every spelling of a stdout redirect makes its stage unknown (TP-3333)", () => {
+  const swept = STDOUT_REDIRECTS.flatMap((redirect) => PLACEMENTS.map((place) => place(redirect)));
+
+  it.each(swept)("denies %s", async (line) => {
+    expect(await verdict(line)).toBe("deny");
+  });
+
+  it.each(OTHER_FD_REDIRECTS.flatMap((redirect) => PLACEMENTS.filter((_, i) => i !== 3).map((place) => place(redirect))))("allows %s", async (line) => {
+    expect(await verdict(line)).toBe("pass");
+  });
+});
+
 describe("a substitution that prints part unknown text is not read as all of it (TP-3333)", () => {
   it.each(PARTLY_UNKNOWN)("denies %s", async (line) => {
     expect(await verdict(line)).toBe("deny");
