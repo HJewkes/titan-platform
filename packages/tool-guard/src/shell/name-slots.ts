@@ -1,77 +1,25 @@
 import type { WordToken } from "./tokens.js";
-
-/**
- * How a name-writing builtin reads its words, as the union of bash and zsh. Each string lists option letters; a
- * letter in none of them is unknown, and the command then fails closed.
- */
-interface WriterSpec {
-  /** Options whose value, attached or next, is a name the command writes. */
-  names?: string;
-  /** Options whose value, attached or next, is not a name. */
-  values?: string;
-  /** Options that take a value in one shell and are a flag in the other, so the next word may be a name. */
-  either?: string;
-  /** zsh options with an optional attached number, such as `typeset -L10`. */
-  numeric?: string;
-  flags?: string;
-  /** Whether every other letter or digit is a flag, as for `set`. */
-  anyFlag?: boolean;
-  /** Whether a `+` cluster is an option word too. */
-  plus?: boolean;
-  /** Whether a `--name` word is an option of another command of the same name, which writes no name. */
-  longOptions?: boolean;
-  /** Which operands are names: all of them, none, or each zparseopts spec's array after `=`. */
-  operands: "names" | "none" | "specs";
-}
-
-const DECLARE: WriterSpec = { flags: "aAfFgGhHiIklLmnprRtTuUxzEZ", numeric: "EFLRZip", plus: true, operands: "names" };
-
-const ZSTAT: WriterSpec = { names: "AH", values: "fF", flags: "gnNolLtTrs", operands: "none" };
-
-const SPECS: Record<string, WriterSpec> = {
-  export: DECLARE, declare: DECLARE, typeset: DECLARE, local: DECLARE, readonly: DECLARE, private: DECLARE,
-  unset: { flags: "fvn", operands: "names" },
-  read: { names: "a", values: "diNu", either: "npt", numeric: "k", flags: "ersqzcAlE", operands: "names" },
-  mapfile: { values: "dnOsuCc", flags: "t", operands: "names" },
-  readarray: { values: "dnOsuCc", flags: "t", operands: "names" },
-  printf: { names: "v", operands: "none" },
-  print: { names: "v", values: "CfuxX", flags: "abcDilmnNoOpPrRsSz", operands: "none" },
-  set: { names: "A", values: "o", anyFlag: true, plus: true, operands: "none" },
-  wait: { names: "p", flags: "nf", operands: "none" },
-  compgen: { names: "V", values: "AGWFCXPSo", flags: "abcdefgjksuv", operands: "none" },
-  vared: { values: "prMmift", flags: "Aacghe", operands: "names" },
-  zstyle: { flags: "sabtTmgedL", operands: "names" },
-  zparseopts: { names: "aAv", flags: "DEFKM", operands: "specs" },
-  zformat: { names: "faF", operands: "none" },
-  strftime: { names: "s", flags: "rqn", operands: "none" },
-  zstat: ZSTAT,
-  /** zsh/stat's builtin shares its name with GNU and BSD stat, whose `-c` and `-t` take a format. */
-  stat: { ...ZSTAT, values: "fFct", flags: "gnNolLTrsqx", longOptions: true },
-  zselect: { names: "aA", values: "t", flags: "rwe", operands: "none" },
-  getln: { flags: "AclneE", operands: "names" },
-  sysread: { names: "c", values: "iost", operands: "names" },
-  zregexparse: { flags: "c", operands: "names" },
-  pcre_match: { names: "va", values: "n", flags: "b", operands: "none" },
-};
+import { afterSkippedDashes, DECLARE, NAMEREF_DECLARERS, WRITER_SPECS, writerSpec } from "./writer-specs.js";
+import type { WriterSpec } from "./writer-specs.js";
 
 /** Every builtin the table reads. */
-export const WRITERS = new Set([...Object.keys(SPECS), "for", "select", "getopts"]);
+export const WRITERS: ReadonlySet<string> = new Set([...Object.keys(WRITER_SPECS), "for", "select", "getopts"]);
 
 /** Builtins that read DECLARE's options, whose `-i` makes later writes to the name arithmetic. */
-export const DECLARERS = new Set(Object.keys(SPECS).filter((name) => SPECS[name] === DECLARE));
+export const DECLARERS: ReadonlySet<string> = new Set(Object.keys(WRITER_SPECS).filter((name) => WRITER_SPECS[name] === DECLARE));
 
-/** Declarers whose `-n` makes each operand a nameref, so its target names the variable later writes reach. */
-export const NAMEREF_DECLARERS = new Set(["declare", "typeset", "local", "private"]);
+export { NAMEREF_DECLARERS };
 
 /**
  * The words a command reads as names it writes, or the text of an option word the table cannot read, which the
  * caller fails closed on. A command the table does not know writes no name. Attached option values and
  * zparseopts arrays come back as words sliced to the name, with their refs and cuts moved along.
  */
-export function nameSlots(name: string, args: WordToken[]): WordToken[] | string {
+export function nameSlots(name: string, words: WordToken[]): WordToken[] | string {
+  const args = afterSkippedDashes(name, words);
   if (name === "for" || name === "select") return forNames(args);
   if (name === "getopts") return args.slice(1, 2);
-  const spec = Object.hasOwn(SPECS, name) ? SPECS[name] : undefined;
+  const spec = writerSpec(name);
   return spec ? specSlots(spec, args) : [];
 }
 
@@ -127,7 +75,10 @@ function readOption(word: WordToken, next: WordToken | undefined, spec: WriterSp
 const has = (letters: string | undefined, letter: string) => letters?.includes(letter) === true;
 
 function operandSlots(spec: WriterSpec, operands: WordToken[]): WordToken[] {
-  if (spec.operands === "names") return operands;
+  if (spec.operands === "names") {
+    const skip = spec.skip ?? 0;
+    return [...operands.slice(0, skip).filter((w) => w.dynamic), ...operands.slice(skip)];
+  }
   if (spec.operands === "none") return [];
   return operands.flatMap((w) => (w.value.includes("=") ? [sliceWord(w, w.value.indexOf("=") + 1)] : []));
 }

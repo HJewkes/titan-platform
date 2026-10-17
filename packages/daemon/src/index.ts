@@ -28,6 +28,7 @@ export { attachHandlers, createMcpServer, invokeTool, listTools, runMcpStdio } f
 export { NonLoopbackBindError, RemoteBindError, isLoopbackHost } from "./bind-guard.js";
 export type { DaemonAuth, DaemonAuthOptions, LoginCodeLedger, RequestAuth, TokenFileProblem } from "./auth.js";
 export {
+  DEFAULT_SIGN_IN_HINT,
   LOGIN_CODE_TTL_MS,
   LOGIN_PATH,
   LOGOUT_PATH,

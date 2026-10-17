@@ -1,19 +1,29 @@
 import { caseNamed } from "./case-script.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { namedFdReadings } from "./named-fd.js";
-import { printedText } from "./printed.js";
+import { printedOutput, type Shell } from "./printed.js";
+import { SPLICING_SHELLS } from "./sub-output.js";
 import { ReadingLimitError } from "./unsure-readings.js";
 import type { Unwrapped } from "./unwrap.js";
 
 /** Every text one command, or a run of them, may print under its readings; null when any is unknown. */
 type Texts = string[] | null;
 
+/**
+ * The shells whose echo and printf print the same arguments differently. A whole line runs under one, so a group's
+ * pieces are joined within each shell and never one shell's piece with another's.
+ */
+const SHELLS: ReadonlyArray<Shell | undefined> = [undefined, ...SPLICING_SHELLS];
+
+/** One piece's texts under each of `SHELLS`, in order. */
+type ShellTexts = Texts[];
+
 /** An open `{ }` group or `( )` subshell, with the texts each command in it prints. */
 interface Frame {
   kind: "{" | "(";
   /** False for the `()` of a function definition, which prints nothing itself. */
   live: boolean;
-  pieces: Texts[];
+  pieces: ShellTexts[];
 }
 
 interface GroupState {
@@ -46,27 +56,41 @@ export function groupStdin(walk: object, op: string, words: WordToken[], redirec
   const braces = words.findIndex((word) => !isBare(word, "{"));
   const rest = braces === -1 ? [] : words.slice(braces);
   for (let i = 0; i < words.length - rest.length; i++) state.frames.push({ kind: "{", live: true, pieces: [] });
-  let closed = rest.length === 0 ? state.closed : undefined;
+  // bash reads a `{name}` after `}` or `)` as the group's own redirect; zsh and dash refuse the line.
+  const plain = rest.filter((word) => word.namedFd === undefined);
+  let closed = plain.length === 0 ? state.closed : undefined;
   state.closed = undefined;
-  if (rest.length === 1 && isBare(rest[0] as WordToken, "}")) closed = close(state, "{");
+  const [first] = rest;
+  if (first && plain.length === 1 && plain[0] === first && isBare(first, "}")) closed = anyShell(close(state, "{"));
   else if (!PIPES.has(op)) record(state, printedPiece(readings));
   if (op === "(") state.frames.push({ kind: "(", live: rest.length === 0, pieces: [] });
-  if (op === ")") state.closed = close(state, "(");
+  if (op === ")") state.closed = anyShell(close(state, "("));
   if (!PIPES.has(op) || !closed || writesStdout(redirects)) return undefined;
   return closed;
 }
 
 /**
- * Each distinct text the command's readings print, "" for a reading that runs no command; null when any reading's text
- * is unknown, undefined when no reading runs one.
+ * Each distinct text the command's readings print under each shell, "" for a reading that runs no command; null for a
+ * shell under which any reading's text is unknown, undefined when no reading runs one.
  */
-function printedPiece(readings: ReadonlyArray<Unwrapped | null>): Texts | undefined {
+function printedPiece(readings: ReadonlyArray<Unwrapped | null>): ShellTexts | undefined {
   const runs = readings.filter((cmd): cmd is Unwrapped => cmd !== null && (cmd.name !== null || cmd.args.length > 0));
   if (runs.length === 0) return undefined;
-  const texts = runs.map((cmd) => printedText(cmd.name, cmd.args)).filter((text) => text !== null);
-  if (texts.length < runs.length) return null;
-  if (runs.length < readings.length) texts.push("");
-  return [...new Set(texts)];
+  return SHELLS.map((shell) => {
+    const texts = runs.map((cmd) => printedOutput(cmd.name, cmd.args, shell)).filter((text) => text !== null);
+    if (texts.length < runs.length) return null;
+    if (runs.length < readings.length) texts.push("");
+    return [...new Set(texts)];
+  });
+}
+
+/** Every text a group may print under any shell; null when one shell's is unknown. */
+function anyShell(texts: ShellTexts | undefined): Texts | undefined {
+  if (texts === undefined) return undefined;
+  if (texts.some((each) => each === null)) return null;
+  const all = [...new Set(texts.flatMap((each) => each ?? []))];
+  if (all.length > MAX_TEXTS) throw new ReadingLimitError();
+  return all;
 }
 
 /**
@@ -78,7 +102,7 @@ export function addRedirect(redirects: RedirectToken[], token: Token): RedirectT
   const last = redirects.at(-1);
   if (token.type !== "subs" || !last || last.op !== "<" || last.target !== null || last.body !== null) return redirects;
   if (last.fd !== null && last.fd !== "0") return redirects;
-  const texts = listText(token.subs[0] ?? []);
+  const texts = anyShell(listText(token.subs[0] ?? []));
   // A body is one text, so output that differs by `{name}` reading is left unknown, which a shell reading it refuses.
   const body = texts?.length === 1 ? texts[0] : undefined;
   return body === undefined ? redirects : [...redirects.slice(0, -1), { ...last, body }];
@@ -88,25 +112,30 @@ function isBare(word: WordToken, value: string): boolean {
   return word.value === value && !word.quoted && !word.dynamic;
 }
 
-function close(state: GroupState, kind: Frame["kind"]): Texts | undefined {
+function close(state: GroupState, kind: Frame["kind"]): ShellTexts | undefined {
   const frame = state.frames.at(-1);
   if (frame?.kind !== kind) return undefined;
   state.frames.pop();
   if (!frame.live) return undefined;
-  const text = joined(frame.pieces);
-  record(state, text);
-  return text;
+  const texts = joined(frame.pieces);
+  record(state, texts);
+  return texts;
 }
 
-function record(state: GroupState, texts: Texts | undefined): void {
+function record(state: GroupState, texts: ShellTexts | undefined): void {
   if (texts !== undefined) state.frames.at(-1)?.pieces.push(texts);
 }
 
+/** The pieces joined within each shell, as a group or subshell prints them under it. */
+function joined(pieces: ShellTexts[]): ShellTexts {
+  return SHELLS.map((_, i) => joinedIn(pieces.map((piece) => piece[i] ?? null)));
+}
+
 /**
- * Every combination of the commands' texts in order when all are known, else the last known one's, as a group or
- * subshell prints it.
+ * Every combination of the commands' texts in order when all are known, else the last known one's. Each text ends as
+ * the command prints it, so echo's newline keeps the next command's text off its line.
  */
-function joined(pieces: Texts[]): Texts {
+function joinedIn(pieces: Texts[]): Texts {
   const known = pieces.filter((piece) => piece !== null);
   if (known.length === 0 || known.length < pieces.length) return known.at(-1) ?? null;
   let texts = [""];
@@ -118,8 +147,8 @@ function joined(pieces: Texts[]): Texts {
 }
 
 /** The texts a process substitution's commands print; a command piped on to another is left out. */
-function listText(tokens: Token[]): Texts {
-  const pieces: Texts[] = [];
+function listText(tokens: Token[]): ShellTexts {
+  const pieces: ShellTexts[] = [];
   let words: WordToken[] = [];
   let redirects: RedirectToken[] = [];
   for (const token of [...tokens, null]) {
@@ -135,6 +164,8 @@ function listText(tokens: Token[]): Texts {
   return joined(pieces);
 }
 
+/** A `{name}` redirect after a group opens a descriptor from 10 up, never stdout. */
 function writesStdout(redirects: RedirectToken[]): boolean {
-  return redirects.some((r) => r.op.startsWith("&>") || (STDOUT_OPS.has(r.op) && (r.fd === null || r.fd === "1")));
+  const own = redirects.filter((r) => r.named === undefined);
+  return own.some((r) => r.op.startsWith("&>") || (STDOUT_OPS.has(r.op) && (r.fd === null || r.fd === "1")));
 }

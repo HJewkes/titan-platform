@@ -23,6 +23,11 @@ describe("nameSlots", () => {
     ["zparseopts a=opts", ["opts"]],
     ["for x y in 1 2", ["x", "y"]],
     ["getopts ab opt", ["opt"]],
+    ["getopts -- ab opt", ["opt"]],
+    ["zformat -- -f out x", ["out"]],
+    ["zstat -- -A arr f", ["arr"]],
+    ["zformat -- -- -f out x", []],
+    ["printf -- -v out", []],
     ["git push origin x", []],
   ])("reads the name slots of %s", (src, slots) => {
     expect(slotsOf(src)).toEqual(slots);
