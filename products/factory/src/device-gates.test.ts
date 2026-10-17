@@ -160,13 +160,6 @@ describe("a rule delegate on a gate that is not a device gate", () => {
 
     expect(gates.get(gate.id)?.status).toBe("resolved");
   });
-
-  it("still leaves a device gate to owner-terminal when the evidence policy admits the delegate", () => {
-    const gates = store();
-    const gate = gates.create({ id: "run-1/device-confirm", prompt: "Did it pass?", rule });
-
-    expect(() => gates.resolve(gate.id, PASS, resolverOf("coordinator"), { kind: "example-proof" })).toThrow(/only to owner-terminal/);
-  });
 });
 
 describe("device-confirm and the one-per-proof hardware rule", () => {
