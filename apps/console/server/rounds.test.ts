@@ -175,6 +175,19 @@ describe("rounds.get", () => {
     expect(JSON.stringify(detail)).not.toContain("engine-");
   });
 
+  it("refuses feedback carrying a blind-ab answer and sends none of its engines", async () => {
+    const file = path.join(dir, "kiln-schedule-r1", "feedback.json");
+    const feedback = z.looseObject({ answers: z.array(z.looseObject({})) }).parse(JSON.parse(await readFile(file, "utf8")));
+    feedback.answers.push({ questionId: "listen", pairs: [{ pair: "line-1", choice: "A", engine: "engine-alpha" }] });
+    await writeFile(file, JSON.stringify(feedback));
+
+    const [{ rounds, gaps }, detail] = await Promise.all([readQueueRounds({ dir }), getRound({ dir }, "kiln-schedule-r1")]);
+
+    expect(rounds.find((round) => round.id === "kiln-schedule-r1")?.feedback).toBeNull();
+    expect(gaps).toContain(`kiln-schedule-r1: feedback.json: answers: ${BLIND_AB_REFUSED}`);
+    expect(JSON.stringify(detail)).not.toContain("engine");
+  });
+
   it("marks a round with a merge-bound question as a Ship round, not a design round, with its round.json sha256", async () => {
     const bytes = await readFile(path.join(dir, "ship-tile-r1", "round.json"));
 
