@@ -61,6 +61,8 @@ import { tickPacing, type TickPacing } from "./tick-pacing.js";
 import { portReads, prSnapshot } from "./workflows/pr-snapshot.js";
 import { pushSignal } from "./shepherd/push-signal.js";
 import { localBasementSuite, suiteRules, type SuiteRules } from "./shepherd/suite-host.js";
+import type { VisualDeliveryWatch } from "./shepherd/services.js";
+import { configuredVisualDelivery } from "./shepherd/visual-delivery-sweep.js";
 import { DEFAULT_PACKAGER_PROFILE, type VisualPacketPorts } from "./shepherd/visual-packet-trigger.js";
 
 /** Every workflow the CLI hosts. Pilots register here as their slices land (doc-change in S3). */
@@ -124,6 +126,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   heldRepair?: "off" | "on";
   /** `shepherd.visualPacket` and the ports its spawn uses; absent means `off`. */
   visualPacket?: VisualPacketPorts;
+  /** `shepherd.visualDelivery`'s sweep, carried to serve on the services; absent means none runs. */
+  visualDelivery?: VisualDeliveryWatch;
   /** True when `shepherd.consoleAnswers` is configured: approve-merge gates then offer `send-back`. */
   consoleAnswers?: boolean;
 }
@@ -163,7 +167,7 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? recheckedFrozen(deps.port, () => freeze.get(), holds, deps.now) };
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, versions: deps.versions, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train, accountLimits, shadow.shadow) };
-  const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze, snapshot: deps.snapshot, pacing: deps.pacing, now: shepherdDeps.now, prFiles: deps.prFiles, gateway: deps.gateway, ...(deps.spawnGate && { reviewSlots: deps.spawnGate.reviewSlots }) };
+  const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze, snapshot: deps.snapshot, pacing: deps.pacing, now: shepherdDeps.now, prFiles: deps.prFiles, gateway: deps.gateway, ...(deps.spawnGate && { reviewSlots: deps.spawnGate.reviewSlots }), ...(deps.visualDelivery && { visualDelivery: deps.visualDelivery }) };
   return Object.assign([...retryingGhServerErrors([...land, ...shepherd], { sleep: pause }), trainLeaveRoute(train, shepherdDeps.now), redeployRoute(shepherdDeps.now, deps.redeploy), ...auditRoutes(deps.audit ?? systemAuditPorts(ownCheckout()))], { database, shepherd: services });
 }
 
@@ -298,8 +302,9 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const snapshot = prSnapshot(port, { now: overrides.now, tickMs: pacing.tickMs });
   const gateway = ghGateway({ client, snapshot, onCall: logGhCall });
   const pushes = pushSignal((repo) => boundCheckout(seats(), repo, repos()));
+  const cwdFor = (repo: string) => boundCheckout(seats(), repo, repos());
   const chores = systemChorePorts({ dir: join(factoryStateDir(env), "chores"), wrapper: [process.execPath, ownChoreMain()] });
-  return factoryRoutesFor({ port, snapshot, pushes, pacing, gateway, store, freeze, postMerge, chores, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), advisory: stickyAdvisory(configuredAdvisory(env), advisoryFile(factoryStateDir(env))), stackRestack: configuredStackRestack(() => readConfig(configPath(env))?.shepherd?.repos), heldRepair: shepherd?.gateReset?.heldRepair, visualPacket: configuredVisualPacket(shepherd, env, roster, gate, (repo) => boundCheckout(seats(), repo, repos())), consoleAnswers: shepherd?.consoleAnswers !== undefined, ...overrides, seats });
+  return factoryRoutesFor({ port, snapshot, pushes, pacing, gateway, store, freeze, postMerge, chores, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), advisory: stickyAdvisory(configuredAdvisory(env), advisoryFile(factoryStateDir(env))), stackRestack: configuredStackRestack(() => readConfig(configPath(env))?.shepherd?.repos), heldRepair: shepherd?.gateReset?.heldRepair, visualPacket: configuredVisualPacket(shepherd, env, roster, gate, cwdFor), visualDelivery: configuredVisualDelivery(shepherd, env, roster, cwdFor), consoleAnswers: shepherd?.consoleAnswers !== undefined, ...overrides, seats });
 }
 
 /** The packager spawns through the shared roster and spawn gate, under agent-chat's default account; `off` wires nothing. */
@@ -314,7 +319,8 @@ function configuredVisualPacket(
   if (mode === "off") return undefined;
   const agentChatBin = shepherd?.agentChatBin;
   const agents = agentChatBin && { agents: agentChatAgents(agentChatBin, { roster, gate }) };
-  return { mode, profile: shepherd?.visualPacketProfile ?? DEFAULT_PACKAGER_PROFILE, stateDir: factoryStateDir(env), cwdFor, ...agents };
+  const bin = shepherd?.titanReviewBin && { titanReviewBin: shepherd.titanReviewBin };
+  return { mode, profile: shepherd?.visualPacketProfile ?? DEFAULT_PACKAGER_PROFILE, stateDir: factoryStateDir(env), cwdFor, ...agents, ...bin };
 }
 
 function logGhCall(line: GhCallLine): void {

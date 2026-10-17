@@ -7,8 +7,10 @@
  * dot, no slash), a round directory or file that is a symlink is refused, `round.json` and
  * `feedback.json` are read through `O_NOFOLLOW` and `O_NONBLOCK` (a planted FIFO cannot hang the
  * open) up to a size cap, and only `rounds.frame` opens a path a manifest names, through
- * `round-frames.ts`. A round is `sent` once a `feedback.json` sits beside it.
+ * `round-frames.ts`. A round is `sent` once a `feedback.json` sits beside it, and `withdrawn` when
+ * `round-withdraw.ts` put a `withdrawn.json` there instead; an answer outranks a withdrawal.
  */
+import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, open, readdir, type FileHandle } from "node:fs/promises";
 import path from "node:path";
@@ -17,6 +19,7 @@ import { FeedbackSchema, RoundSchema, isLoopbackUrl, type Feedback, type Manifes
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import { readCommand } from "./owner-guard.js";
+import { gateAnswer, readAnswer, type GateAnswer } from "./round-answer.js";
 
 export interface RoundsSource {
   dir: string;
@@ -28,13 +31,17 @@ const MAX_ROUNDS = 500;
 export const ROUND_ID = /^[A-Za-z0-9_-]{1,64}$/;
 export const ROUND_FILE = "round.json";
 export const FEEDBACK_FILE = "feedback.json";
+export const WITHDRAWN_FILE = "withdrawn.json";
+export const WITHDRAWN_SCHEMA_ID = "titan-console/withdrawn@1";
+const MAX_WITHDRAWN_BYTES = 4096;
 const MAX_REASON_ISSUES = 5;
 export const OPEN_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 
-const roundStatus = z.enum(["open", "sent"]);
+const roundStatus = z.enum(["open", "sent", "withdrawn"]);
 type RoundStatus = z.infer<typeof roundStatus>;
 
 const roundHead = { id: z.string(), status: roundStatus, updatedAt: z.string().nullable() };
+
 const invalidRound = z.object({ ...roundHead, valid: z.literal(false), reason: z.string() });
 
 const roundSummary = z.discriminatedUnion("valid", [
@@ -45,6 +52,7 @@ const roundSummary = z.discriminatedUnion("valid", [
     round: z.number(),
     questions: z.number(),
     design: z.boolean(),
+    ship: z.boolean(),
     recommendations: z.enum(["after-answer", "shown"]),
   }),
   invalidRound,
@@ -54,13 +62,18 @@ const roundDetail = z.discriminatedUnion("valid", [
   z.object({
     ...roundHead,
     valid: z.literal(true),
-    /** A round with frames is a design round; the console renders questions only, so it points to the harness. */
+    /** A round with frames and no merge-bound question is a design round, answered in the harness. */
     design: z.boolean(),
+    /** A round with a merge-bound pick-one: the console shows its frames and answers it with Ship or Send back. */
+    ship: z.boolean(),
+    /** The sha256 of the round.json shown, which `rounds.submit` binds an answer to. */
+    manifestSha256: z.string(),
     /** True while an after-answer round is unsent: every question's recommendation is stripped. */
     recommendationsWithheld: z.boolean(),
     /** Null unless the manifest's Storybook host is loopback. */
     storybookUrl: z.string().nullable(),
     manifest: z.custom<Manifest>(),
+    answer: gateAnswer.optional(),
   }),
   invalidRound,
 ]);
@@ -68,7 +81,7 @@ const roundDetail = z.discriminatedUnion("valid", [
 export type RoundSummary = z.infer<typeof roundSummary>;
 export type RoundDetail = z.infer<typeof roundDetail>;
 
-type Parsed = { ok: true; manifest: Manifest } | { ok: false; reason: string };
+type Parsed = { ok: true; manifest: Manifest; sha256: string } | { ok: false; reason: string };
 
 interface LoadedRound {
   id: string;
@@ -86,15 +99,16 @@ function schemaReason(error: z.ZodError): string {
   return more > 0 ? `${issues.join("; ")}; and ${more} more` : issues.join("; ");
 }
 
-export function parseManifest(text: string): Parsed {
+export function parseManifest(bytes: Buffer): Parsed {
   let json: unknown;
   try {
-    json = JSON.parse(text);
+    json = JSON.parse(bytes.toString("utf8"));
   } catch {
     return { ok: false, reason: `${ROUND_FILE} is not JSON` };
   }
   const result = RoundSchema.safeParse(json);
-  return result.success ? { ok: true, manifest: result.data } : { ok: false, reason: schemaReason(result.error) };
+  if (!result.success) return { ok: false, reason: schemaReason(result.error) };
+  return { ok: true, manifest: result.data, sha256: createHash("sha256").update(bytes).digest("hex") };
 }
 
 /** Reads at most one byte past the cap, so a file that grew after its fstat is still refused. */
@@ -131,16 +145,18 @@ export async function readManifest(roundDir: string): Promise<{ parsed: Parsed; 
     const tooBig = { ok: false as const, reason: `${ROUND_FILE} is over ${MAX_ROUND_BYTES} bytes` };
     if (stats.size > MAX_ROUND_BYTES) return { parsed: tooBig, updatedAt };
     const bytes = await readCapped(handle, MAX_ROUND_BYTES);
-    return { parsed: bytes === null ? tooBig : parseManifest(bytes.toString("utf8")), updatedAt };
+    return { parsed: bytes === null ? tooBig : parseManifest(bytes), updatedAt };
   } finally {
     await handle.close();
   }
 }
 
-/** Only a regular `feedback.json` marks a round sent; a symlink there proves nothing. */
-async function statusOf(roundDir: string): Promise<RoundStatus> {
-  const stats = await lstat(path.join(roundDir, FEEDBACK_FILE)).catch(() => null);
-  return stats?.isFile() ? "sent" : "open";
+const isRegularFile = async (file: string): Promise<boolean> => (await lstat(file).catch(() => null))?.isFile() ?? false;
+
+/** Only a regular file marks a round sent or withdrawn; a symlink there proves nothing. */
+export async function statusOf(roundDir: string): Promise<RoundStatus> {
+  if (await isRegularFile(path.join(roundDir, FEEDBACK_FILE))) return "sent";
+  return (await isRegularFile(path.join(roundDir, WITHDRAWN_FILE))) ? "withdrawn" : "open";
 }
 
 async function loadRound(dir: string, id: string): Promise<LoadedRound> {
@@ -156,12 +172,15 @@ export async function roundDirExists(dir: string, id: string): Promise<boolean> 
   return stats?.isDirectory() ?? false;
 }
 
+const isShip = (manifest: Manifest): boolean => manifest.questions.some((question) => question.kind === "pick-one" && question.merge !== undefined);
+const isDesign = (manifest: Manifest): boolean => manifest.variants.length > 0 && !isShip(manifest);
+
 function summaryOf({ id, status, updatedAt, parsed }: LoadedRound): RoundSummary {
   if (!parsed.ok) return { id, status, updatedAt, valid: false, reason: parsed.reason };
   const { manifest } = parsed;
   return {
     id, status, updatedAt, valid: true, unit: manifest.unit, round: manifest.round,
-    questions: manifest.questions.length, design: manifest.variants.length > 0, recommendations: manifest.recommendations,
+    questions: manifest.questions.length, design: isDesign(manifest), ship: isShip(manifest), recommendations: manifest.recommendations,
   };
 }
 
@@ -172,13 +191,14 @@ function withoutRecommendation(question: Question): Question {
   return stripped;
 }
 
-function detailOf({ id, status, updatedAt, parsed }: LoadedRound): RoundDetail {
+function detailOf({ id, status, updatedAt, parsed }: LoadedRound, answer: GateAnswer | undefined): RoundDetail {
   if (!parsed.ok) return { id, status, updatedAt, valid: false, reason: parsed.reason };
-  const withheld = parsed.manifest.recommendations === "after-answer" && status === "open";
+  const withheld = parsed.manifest.recommendations === "after-answer" && status !== "sent";
   const manifest = withheld ? { ...parsed.manifest, questions: parsed.manifest.questions.map(withoutRecommendation) } : parsed.manifest;
   return {
-    id, status, updatedAt, valid: true, design: manifest.variants.length > 0, recommendationsWithheld: withheld,
-    storybookUrl: isLoopbackUrl(manifest.storybookUrl) ? manifest.storybookUrl : null, manifest,
+    id, status, updatedAt, valid: true, design: isDesign(manifest), ship: isShip(manifest), manifestSha256: parsed.sha256,
+    recommendationsWithheld: withheld, storybookUrl: isLoopbackUrl(manifest.storybookUrl) ? manifest.storybookUrl : null, manifest,
+    ...(answer !== undefined && { answer }),
   };
 }
 
@@ -200,15 +220,23 @@ export async function listRounds({ dir }: RoundsSource): Promise<{ rounds: Round
 
 export async function getRound({ dir }: RoundsSource, id: string): Promise<RoundDetail> {
   if (!(await roundDirExists(dir, id))) throw failure(`No round named "${id}"`, EXIT.NOINPUT);
-  return detailOf(await loadRound(dir, id));
+  const [round, answer] = await Promise.all([loadRound(dir, id), readAnswer(path.join(dir, id))]);
+  return detailOf(round, answer);
 }
 
-/** A valid round as the owner queue reads it: `feedback` is the validated feedback.json, or null while unsent. */
+const WithdrawalSchema = z.object({ schema: z.literal(WITHDRAWN_SCHEMA_ID), reason: z.string().min(1).max(200), at: z.string() });
+export type Withdrawal = { reason: string; at: string | null };
+
+/**
+ * A valid round as the owner queue reads it: `feedback` is the validated feedback.json, or null while unsent;
+ * `withdrawn` is non-null when a regular withdrawn.json sits beside it.
+ */
 export interface QueueRound {
   id: string;
   updatedAt: string;
   manifest: Manifest;
   feedback: Feedback | null;
+  withdrawn: Withdrawal | null;
 }
 
 type FeedbackRead = { ok: true; feedback: Feedback | null } | { ok: false; reason: string };
@@ -224,37 +252,59 @@ export function parseFeedback(text: string): FeedbackRead {
   return result.success ? { ok: true, feedback: result.data } : { ok: false, reason: `${FEEDBACK_FILE}: ${schemaReason(result.error)}` };
 }
 
-/** A missing or symlinked feedback.json leaves the round unsent, as `statusOf` already does. */
-async function readFeedback(roundDir: string): Promise<FeedbackRead> {
+type FileRead = { state: "absent" | "unreadable" | "too-big" } | { state: "read"; text: string };
+
+/** A missing or symlinked file, or one that is not regular, is absent, as `statusOf` already treats it. */
+async function readRoundFile(roundDir: string, name: string, cap: number): Promise<FileRead> {
   let handle: FileHandle;
   try {
-    handle = await open(path.join(roundDir, FEEDBACK_FILE), OPEN_FLAGS);
+    handle = await open(path.join(roundDir, name), OPEN_FLAGS);
   } catch (error) {
     const code = errnoOf(error);
-    if (code === "ENOENT" || code === "ELOOP") return { ok: true, feedback: null };
-    return { ok: false, reason: `${FEEDBACK_FILE} could not be read` };
+    return { state: code === "ENOENT" || code === "ELOOP" ? "absent" : "unreadable" };
   }
-  let text: string | null;
   try {
     const stats = await handle.stat();
-    if (!stats.isFile()) return { ok: true, feedback: null };
-    text = stats.size > MAX_ROUND_BYTES ? null : ((await readCapped(handle, MAX_ROUND_BYTES))?.toString("utf8") ?? null);
+    if (!stats.isFile()) return { state: "absent" };
+    const bytes = stats.size > cap ? null : await readCapped(handle, cap);
+    return bytes === null ? { state: "too-big" } : { state: "read", text: bytes.toString("utf8") };
   } catch {
-    return { ok: false, reason: `${FEEDBACK_FILE} could not be read` };
+    return { state: "unreadable" };
   } finally {
     await handle.close();
   }
-  if (text === null) return { ok: false, reason: `${FEEDBACK_FILE} is over ${MAX_ROUND_BYTES} bytes` };
-  return parseFeedback(text);
+}
+
+async function readFeedback(roundDir: string): Promise<FeedbackRead> {
+  const read = await readRoundFile(roundDir, FEEDBACK_FILE, MAX_ROUND_BYTES);
+  if (read.state === "read") return parseFeedback(read.text);
+  if (read.state === "absent") return { ok: true, feedback: null };
+  return { ok: false, reason: read.state === "too-big" ? `${FEEDBACK_FILE} is over ${MAX_ROUND_BYTES} bytes` : `${FEEDBACK_FILE} could not be read` };
+}
+
+const jsonOrUndefined = (text: string): unknown => {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+};
+
+/** Any regular withdrawn.json withdraws the round, as `statusOf` counts it; one that does not parse gives no reason. */
+async function readWithdrawal(roundDir: string): Promise<Withdrawal | null> {
+  const read = await readRoundFile(roundDir, WITHDRAWN_FILE, MAX_WITHDRAWN_BYTES);
+  if (read.state === "absent") return null;
+  const parsed = read.state === "read" ? WithdrawalSchema.safeParse(jsonOrUndefined(read.text)) : null;
+  return parsed?.success ? { reason: parsed.data.reason, at: parsed.data.at } : { reason: "unreadable", at: null };
 }
 
 /** A feedback.json that cannot be read is a gap, and the round stays open so its questions are still asked. */
 async function queueRound(dir: string, id: string): Promise<{ round?: QueueRound; gap?: string }> {
   const roundDir = path.join(dir, id);
-  const [{ parsed, updatedAt }, read] = await Promise.all([readManifest(roundDir), readFeedback(roundDir)]);
+  const [{ parsed, updatedAt }, read, withdrawn] = await Promise.all([readManifest(roundDir), readFeedback(roundDir), readWithdrawal(roundDir)]);
   if (!parsed.ok) return { gap: `${id}: ${parsed.reason}` };
   if (updatedAt === null) return { gap: `${id}: ${ROUND_FILE} has no modified time` };
-  const round = { id, updatedAt, manifest: parsed.manifest, feedback: read.ok ? read.feedback : null };
+  const round = { id, updatedAt, manifest: parsed.manifest, feedback: read.ok ? read.feedback : null, withdrawn };
   return read.ok ? { round } : { round, gap: `${id}: ${read.reason}` };
 }
 
@@ -280,7 +330,7 @@ export function roundsCommands(source: RoundsSource) {
   return {
     "rounds.list": readCommand({
       name: "rounds.list",
-      description: "Every review round in the rounds dir, newest first: open or sent, and the schema's reason for any invalid one",
+      description: "Every review round in the rounds dir, newest first: open, sent or withdrawn, and the schema's reason for any invalid one",
       args: z.object({}),
       result: z.object({ rounds: z.array(roundSummary), truncated: z.boolean(), dir: z.string() }),
       run: () => listRounds(source),

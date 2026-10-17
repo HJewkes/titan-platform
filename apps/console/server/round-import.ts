@@ -11,7 +11,8 @@
  * copied beside round.json, sha256-checked, and the packet must bind the PR and head the round's Ship
  * questions merge, because the factory's Ship answer route trusts it there. A new round is built in a dot-named
  * staging dir, which `ROUND_ID` hides from `listRounds`, and renamed into place. A re-import of the
- * same round.json and frames.json adds missing frames and a missing feedback.json; it never replaces a file.
+ * same round.json and frames.json adds missing frames and a missing feedback.json; it never replaces a file, and it refuses
+ * (before writing) a destination frame whose sha256 differs from the index or whose path crosses a symlink.
  */
 import { createHash } from "node:crypto";
 import { lstat, mkdir, mkdtemp, open, rename, rm, type FileHandle } from "node:fs/promises";
@@ -47,7 +48,7 @@ interface SourceRound {
   id: string;
   round: number;
   roundBytes: Buffer;
-  /** `frames/frames.json` as read, copied verbatim so `rounds.frame` finds the base and diff views. */
+  /** `frames/frames.json` as read, copied verbatim so `rounds.frame` finds the base, after and diff views. */
   index: Buffer | null;
   /** sha256 by the file's normalised path relative to the round dir. */
   frames: Map<string, string>;
@@ -187,7 +188,7 @@ async function readFeedbackFor(dir: string, binding: Binding): Promise<Buffer | 
 async function readSource(dir: string): Promise<SourceRound> {
   await assertSourceDirs(dir);
   const roundBytes = (await readTopFile(dir, ROUND_FILE)) ?? refuse(`the source has no ${ROUND_FILE}`, EXIT.NOINPUT);
-  const parsed = parseManifest(roundBytes.toString("utf8"));
+  const parsed = parseManifest(roundBytes);
   if (!parsed.ok) return refuse(`${ROUND_FILE}: ${parsed.reason}`);
   const { unit, round, questions } = parsed.manifest;
   const id = `${unit}-r${round}`;
@@ -216,14 +217,32 @@ async function writeNew(file: string, bytes: Buffer): Promise<boolean> {
   return true;
 }
 
-/** Each directory between the round dir and the file is created 0700 or must already be a real directory. */
-async function ensureParents(root: string, rel: string): Promise<void> {
+/** Each directory between the round dir and the file is created 0700 (unless `create` is false) or must already be a real directory. */
+async function ensureParents(root: string, rel: string, create = true): Promise<void> {
   let at = root;
   for (const part of path.dirname(rel).split(path.sep).filter((segment) => segment !== ".")) {
     at = path.join(at, part);
     const stats = await lstatOrNull(at);
-    if (stats === null) await mkdir(at, { mode: 0o700 });
-    else if (!stats.isDirectory()) refuse(`a directory on the path of ${rel} is a symlink or not a directory`);
+    if (stats === null) {
+      if (!create) return;
+      await mkdir(at, { mode: 0o700 });
+    } else if (!stats.isDirectory()) refuse(`a directory on the path of ${rel} is a symlink or not a directory`);
+  }
+}
+
+/**
+ * Everything `writeFrames` could refuse in an existing round, checked before its first write: every parent it would
+ * write into is a real directory, and a frame already there is the one the index names, never kept on trust.
+ */
+async function checkDestFrames(source: SourceRound, dest: string): Promise<void> {
+  const written = source.index === null ? [] : [FRAMES_INDEX_PATH];
+  for (const rel of [...source.frames.keys(), ...written]) await ensureParents(dest, rel, false);
+  for (const [rel, expected] of source.frames) {
+    if (!(await lstatOrNull(path.join(dest, rel)))) continue;
+    await readFrameBytes(dest, rel, expected).catch((error: unknown) => {
+      if (isFailure(error)) refuse(`round ${source.id} holds ${rel}, which is not the frame frames.json names; it is not overwritten`);
+      throw error;
+    });
   }
 }
 
@@ -274,6 +293,7 @@ async function reconcile(source: SourceRound, dest: string): Promise<ImportResul
   }
   const index = await readTopFile(path.join(dest, FRAMES_DIR), FRAMES_INDEX);
   if (index !== null && !(source.index?.equals(index) ?? false)) refuse(`round ${source.id} is already imported with a different ${FRAMES_INDEX}`);
+  await checkDestFrames(source, dest);
   await writeFrames(source, dest);
   return { id: source.id, created: false, frames: source.frames.size, feedback: await keepOrCopyFeedback(source, dest) };
 }

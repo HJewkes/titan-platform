@@ -84,21 +84,30 @@ function fullOption(v: string, options: string[]): string | null {
   return matches.length === 1 ? `--${matches[0]}${eq < 0 ? "" : v.slice(eq)}` : v;
 }
 
-/** The words with each long option of `wrapper` from `start` on spelled out, or the index of an ambiguous one. */
+/** `word` as `wrapper` reads it, a long option spelled out; null when it abbreviates several. */
+export function spellOption(wrapper: string, word: WordToken): string | null {
+  const options = Object.hasOwn(LONG_OPTIONS, wrapper) ? LONG_OPTIONS[wrapper] : undefined;
+  return options && word.value.startsWith("--") && !word.dynamic ? fullOption(word.value, options) : word.value;
+}
+
+/**
+ * The words with each long option of `wrapper` from `start` on spelled out, or the index of an ambiguous one. The
+ * words are copied only when a spelling changes one, so a wrapper that spells nothing costs no copy of the line.
+ */
 export function spellLongOptions(
   wrapper: string,
   words: WordToken[],
   start: number,
   takesValue: (v: string) => boolean,
 ): WordToken[] | number {
-  const options = Object.hasOwn(LONG_OPTIONS, wrapper) ? LONG_OPTIONS[wrapper] : undefined;
-  if (!options) return words;
-  const out = [...words];
-  for (let j = start; j < out.length && (out[j] as WordToken).value.startsWith("-") && (out[j] as WordToken).value !== "--"; j++) {
-    const word = out[j] as WordToken;
-    const full = word.value.startsWith("--") && !word.dynamic ? fullOption(word.value, options) : word.value;
+  let out = words;
+  for (let j = start, word = words[j]; word !== undefined && word.value.startsWith("-") && word.value !== "--"; word = words[++j]) {
+    const full = spellOption(wrapper, word);
     if (full === null) return j;
-    out[j] = { ...word, value: full };
+    if (full !== word.value) {
+      out = out === words ? [...words] : out;
+      out[j] = { ...word, value: full };
+    }
     if (takesValue(full)) j++;
   }
   return out;

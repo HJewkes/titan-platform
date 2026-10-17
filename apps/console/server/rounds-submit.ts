@@ -8,7 +8,8 @@
  * question carried. The round id resolves only to a real directory in the rounds dir, as
  * `rounds.get` does. The file is created with `wx` (O_CREAT|O_EXCL, which also refuses a symlink
  * planted at the name) and mode 0600, so a second submit finds it and is told so; nothing is
- * ever overwritten. A same-user process could still swap the round directory between the check
+ * ever overwritten. A withdrawn round is refused before anything is written, so neither the decision
+ * log nor a listener hears of it. A same-user process could still swap the round directory between the check
  * and the write; the OS account is the trust boundary, as in `owner-guard.ts`.
  */
 import { createHash } from "node:crypto";
@@ -28,7 +29,7 @@ import {
   SubmittedAnswer,
   type Round2Question,
 } from "./round2-adapter.js";
-import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, readCapped, roundDirExists, type RoundsSource } from "./rounds.js";
+import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, readCapped, roundDirExists, statusOf, type RoundsSource } from "./rounds.js";
 
 export const MAX_FEEDBACK_BYTES = 64 * 1024;
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -187,10 +188,12 @@ async function writeOnce(file: string, bytes: Buffer): Promise<string | null> {
 async function submitRound({ dir }: RoundsSource, args: SubmitArgs, now = new Date()): Promise<Submission> {
   if (!(await roundDirExists(dir, args.id))) throw failure(`No round named "${args.id}"`, EXIT.NOINPUT);
   const roundDir = path.join(dir, args.id);
+  if ((await statusOf(roundDir)) === "withdrawn") refuse("refused: withdrawn; this round was superseded and takes no answer");
   const { bytes: manifestBytes, modifiedAt } = await readManifest(roundDir);
   if (sha256(manifestBytes) !== args.manifestSha256) refuse(`${ROUND_FILE} has changed since it was shown; reload the round`);
   const manifest = parseManifest(manifestBytes);
-  if (manifest.variants.length > 0) refuse("a design round is answered in the review harness");
+  // A Ship round's variants are the PR's changed images, which the console's Ship view shows.
+  if (manifest.variants.length > 0 && !manifest.questions.some((question) => question.merge)) refuse("a design round is answered in the review harness");
   checkAnswers(manifest, args.answers);
   const headSha = shippedHead(manifest, args);
   const bytes = feedbackBytes(manifest, args, now);

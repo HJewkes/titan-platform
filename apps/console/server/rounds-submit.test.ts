@@ -9,6 +9,7 @@ import { ANSWERS_FILE, createDecisionLog, type DecisionLog, type DecisionLogResu
 import type { RoundListeners } from "./listeners.js";
 import type { ConsoleContext } from "./owner-guard.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
+import { withdrawRound } from "./round-withdraw.js";
 import { FeedbackDocument } from "./round2-adapter.js";
 import { MAX_FEEDBACK_BYTES, roundsSubmitCommands } from "./rounds-submit.js";
 
@@ -162,6 +163,19 @@ describe("rounds.submit", () => {
     expect(await exists(feedbackOf())).toBe(false);
   });
 
+  it("answers a Ship round, whose variants are the PR's images, but refuses a design round", async () => {
+    for (const id of ["ship-tile-r1", "lantern-cards-r1"]) await cp(path.join(FIXTURE_ROUNDS.dir, id), path.join(dir, id), { recursive: true });
+    const shaOf = async (id: string) => sha256(await readFile(path.join(dir, id, "round.json")));
+    const shipTiles = { questionId: "ship-tiles", pick: "Ship" };
+
+    const ship = await submit({ id: "ship-tile-r1", manifestSha256: await shaOf("ship-tile-r1"), headSha: "89abcdef0123456789abcdef0123456789abcdef", answers: [shipTiles] });
+    const design = await submit({ id: "lantern-cards-r1", manifestSha256: await shaOf("lantern-cards-r1"), answers: [] });
+
+    expect(ship.envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: "89abcdef0123456789abcdef0123456789abcdef" } });
+    expect(design.envelope).toMatchObject({ ok: false, error: "a design round is answered in the review harness" });
+    expect(await exists(feedbackOf("lantern-cards-r1"))).toBe(false);
+  });
+
   it("refuses feedback over the size cap", async () => {
     const { envelope, exitCode } = await submit(shipArgs({ general: "x".repeat(MAX_FEEDBACK_BYTES) }));
 
@@ -237,5 +251,20 @@ describe("rounds.submit", () => {
     expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", log: [{ ledger: "failed", reason: "ledger write failed" }] } });
     expect(await exists(feedbackOf())).toBe(true);
     expect(calls).toHaveLength(1);
+  });
+
+  it("refuses a withdrawn round before writing, so neither the decision log nor a listener runs", async () => {
+    await withdrawRound(dir, ROUND, "closed");
+    const { log, calls } = spyLog();
+    const heard: string[] = [];
+    const listeners: RoundListeners = { afterRoundSubmit: async (id) => void heard.push(id), sweep: async () => undefined };
+
+    const { envelope, exitCode } = await submit(shipArgs(), ownerContext(), log, listeners);
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/^refused: withdrawn/) });
+    expect(await exists(feedbackOf())).toBe(false);
+    expect(calls).toEqual([]);
+    expect(heard).toEqual([]);
   });
 });

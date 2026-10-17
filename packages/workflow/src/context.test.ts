@@ -1,4 +1,4 @@
-import type { GateBrief, GateStore } from "@titan-design/hitl";
+import type { GateBrief, GateRule, GateStore } from "@titan-design/hitl";
 import { SqliteGateStore, gateBriefMigration, gateMigration, gateResolverMigration, gateRuleMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
@@ -90,6 +90,51 @@ describe("ctx.assisted brief", () => {
 
     expect(second.gates.get(`${runId}/approve`)).toMatchObject({ ...BRIEF, status: "pending" });
     expect(events.filter((e) => e.type === "gate_opened")).toEqual([]);
+    second.rt.shutdown();
+  });
+});
+
+const RULE: GateRule = { table: "FIXTURE", version: "1.0.0", ruleId: "FIX-01", resolvers: ["owner-terminal"] };
+const OTHER_RULE: GateRule = { table: "FIXTURE", version: "1.0.0", ruleId: "FIX-02", resolvers: ["owner-remote"] };
+
+function ruled(rule: GateRule | undefined): WorkflowFn {
+  return async (ctx) => void (await ctx.assisted("approve", "Approve the draft?", rule ? { brief: BRIEF, rule } : { brief: BRIEF }));
+}
+
+describe("ctx.assisted rule", () => {
+  it("a rule-bearing assisted gate stores the rule", async () => {
+    const { rt, gates } = runtime(makeDb());
+
+    const runId = await pausedRun(rt, ruled(RULE));
+
+    expect(gates.get(`${runId}/approve`)?.rule).toEqual(RULE);
+    rt.shutdown();
+  });
+
+  it("an assisted gate without a rule stores none", async () => {
+    const { rt, gates } = runtime(makeDb());
+
+    const runId = await pausedRun(rt, ruled(undefined));
+
+    expect(gates.get(`${runId}/approve`)?.rule).toBeUndefined();
+    rt.shutdown();
+  });
+
+  it.each([
+    ["keeps the existing row's rule", RULE, OTHER_RULE, RULE],
+    ["keeps the absence of a rule", undefined, OTHER_RULE, undefined],
+  ])("a resumed paused run %s", async (_label, firstRule, resumedRule, expected) => {
+    const db = makeDb();
+    const first = runtime(db);
+    const runId = await pausedRun(first.rt, ruled(firstRule));
+    first.rt.shutdown();
+    const second = runtime(db);
+    second.rt.register("gated", ruled(resumedRule));
+
+    expect(await second.rt.hydrate()).toEqual([runId]);
+    await vi.waitFor(() => expect(second.rt.status(runId)?.status).toBe("paused"));
+
+    expect(second.gates.get(`${runId}/approve`)?.rule).toEqual(expected);
     second.rt.shutdown();
   });
 });
