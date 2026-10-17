@@ -119,3 +119,9 @@ export type HarnessRunResult<T = string, H extends string = string> =
 export type * from "./source.js";
 
 export type { HarnessSourceCapabilities, HarnessSourceLookup, HarnessSourcePort, HarnessSourceQuery } from "./source-port.js";
+
+export { HARNESS_CONTRACT_VERSION } from "./execution-port.js";
+export type {
+  HarnessAccountRef, HarnessModelIntent, HarnessExecutionBinding, HarnessOutputIntent,
+  HarnessExecutionRequest, HarnessExecutionPort, HarnessDispatchReceipt,
+} from "./execution-port.js";

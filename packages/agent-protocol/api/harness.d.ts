@@ -287,6 +287,66 @@ interface HarnessSourcePort {
     readText(locator: SourceTextLocator, options?: ReadSessionSourceTextOptions): Promise<string | null>;
 }
 
+/** Interface compatibility, independent of an adapter binary's own version. */
+declare const HARNESS_CONTRACT_VERSION: 1;
+/** Opaque references; producers keep native homes and credentials outside this contract. */
+interface HarnessAccountRef<H extends string = string> {
+    readonly harness: H;
+    readonly host: string;
+    readonly accountId: string;
+    readonly billingPoolId: string;
+}
+/** Intent resolved inside the selected adapter; consumers do not infer a provider from it. */
+interface HarnessModelIntent {
+    readonly model?: string;
+    readonly reasoningEffort?: string;
+}
+/** Persist the selected binding for resume; changing fallback creates a new execution. */
+interface HarnessExecutionBinding<H extends string = string> {
+    readonly profileRef: string;
+    readonly account: HarnessAccountRef<H>;
+    readonly model?: HarnessModelIntent;
+    readonly policyRevision: string;
+}
+type HarnessOutputIntent<T = string> = {
+    readonly kind: "text";
+} | {
+    readonly kind: "structured";
+    readonly jsonSchema: Readonly<Record<string, unknown>>;
+    /** Adapter validates output again after any native schema constraint. */
+    readonly parse: (value: unknown) => T;
+};
+/** Metadata and output intent only; native SDK options remain private to adapter modules. */
+interface HarnessExecutionRequest<H extends string = string, T = string> extends BoundedRunBase<H> {
+    readonly harness: H;
+    readonly binding: HarnessExecutionBinding<H>;
+    readonly output?: HarnessOutputIntent<T>;
+}
+/** In-process port; a conforming implementation still needs independently qualified runtime evidence. */
+interface HarnessExecutionPort<H extends string = string> {
+    readonly contractVersion: typeof HARNESS_CONTRACT_VERSION;
+    readonly descriptor: HarnessCapabilityDescriptor<H>;
+    run<T = string>(request: HarnessExecutionRequest<H, T>): Promise<HarnessRunResult<T, H>>;
+}
+/** A transport acknowledgment is not a terminal result or an authenticated authority grant. */
+type HarnessDispatchReceipt<H extends string = string> = {
+    readonly state: "accepted";
+    readonly harness: H;
+    readonly execution: ExecutionIdentity;
+    readonly binding: HarnessExecutionBinding<H>;
+} | {
+    readonly state: "running";
+    readonly harness: H;
+    readonly execution: ExecutionIdentity;
+    readonly binding: HarnessExecutionBinding<H>;
+    readonly observedAtMs: number;
+    readonly conversation?: ConversationIdentity;
+} | {
+    readonly state: "refused";
+    readonly harness: H;
+    readonly failure: HarnessRunFailure;
+};
+
 declare const EXECUTION_CAPABILITIES: readonly ["fresh_run", "resume", "fork", "structured_output", "interactive_approvals", "external_cancellation", "semantic_interrupt", "active_turn_steering", "idle_turn_submission", "persisted_transcript", "process_reattachment", "token_reporting"];
 type ExecutionCapability = (typeof EXECUTION_CAPABILITIES)[number];
 type CapabilityAssessment = {
@@ -443,4 +503,4 @@ type HarnessRunResult<T = string, H extends string = string> = {
     usage: readonly UsageMeasurement[];
 };
 
-export { type BoundedRunBase, type CacheWriteSplit, type CapabilityAssessment, type ConversationItemKind, type DecodeRequest, type DecodeResult, type DecodeResume, type DecoderCheckpoint, EXECUTION_CAPABILITIES, type EmitNormalizedObservation, type ExecutionCapability, type ExecutionLimit, type HarnessCapabilityDescriptor, type HarnessRunFailure, type HarnessRunOutput, type HarnessRunProgress, type HarnessRunResult, type HarnessSourceCapabilities, type HarnessSourceLookup, type HarnessSourcePort, type HarnessSourceQuery, type LimitCapability, type LimitEnforcement, type LimitScope, type LimitUnit, type LocatedSourceLine, type NormalizedCompactionObservation, type NormalizedLineageObservation, type NormalizedMessageObservation, type NormalizedMetadataObservation, type NormalizedNativeExtension, type NormalizedNativeTurnObservation, type NormalizedObservationBase, type NormalizedObservationKind, type NormalizedObservationOf, type NormalizedSessionObservation, type NormalizedTextPart, type NormalizedToolCallObservation, type NormalizedToolResultObservation, type NormalizedUnknownObservation, type NormalizedUsageObservation, type ObservationIdentity, type OptionalLimitUnit, type ReadSessionObservationOptions, type ReadSessionSourceTextOptions, type ResumeBoundary, type RunTarget, type ScopedConversationItemId, type SessionFormatDecoder, type SessionObservationReadResult, type SessionSourceDescriptor, type SessionSourceProvenance, type SourceEvidence, type SourceLineEvidence, type SourceSubrecordEvidence, type SourceTextLocator, type TranscriptSourceHint };
+export { type BoundedRunBase, type CacheWriteSplit, type CapabilityAssessment, type ConversationItemKind, type DecodeRequest, type DecodeResult, type DecodeResume, type DecoderCheckpoint, EXECUTION_CAPABILITIES, type EmitNormalizedObservation, type ExecutionCapability, type ExecutionLimit, HARNESS_CONTRACT_VERSION, type HarnessAccountRef, type HarnessCapabilityDescriptor, type HarnessDispatchReceipt, type HarnessExecutionBinding, type HarnessExecutionPort, type HarnessExecutionRequest, type HarnessModelIntent, type HarnessOutputIntent, type HarnessRunFailure, type HarnessRunOutput, type HarnessRunProgress, type HarnessRunResult, type HarnessSourceCapabilities, type HarnessSourceLookup, type HarnessSourcePort, type HarnessSourceQuery, type LimitCapability, type LimitEnforcement, type LimitScope, type LimitUnit, type LocatedSourceLine, type NormalizedCompactionObservation, type NormalizedLineageObservation, type NormalizedMessageObservation, type NormalizedMetadataObservation, type NormalizedNativeExtension, type NormalizedNativeTurnObservation, type NormalizedObservationBase, type NormalizedObservationKind, type NormalizedObservationOf, type NormalizedSessionObservation, type NormalizedTextPart, type NormalizedToolCallObservation, type NormalizedToolResultObservation, type NormalizedUnknownObservation, type NormalizedUsageObservation, type ObservationIdentity, type OptionalLimitUnit, type ReadSessionObservationOptions, type ReadSessionSourceTextOptions, type ResumeBoundary, type RunTarget, type ScopedConversationItemId, type SessionFormatDecoder, type SessionObservationReadResult, type SessionSourceDescriptor, type SessionSourceProvenance, type SourceEvidence, type SourceLineEvidence, type SourceSubrecordEvidence, type SourceTextLocator, type TranscriptSourceHint };

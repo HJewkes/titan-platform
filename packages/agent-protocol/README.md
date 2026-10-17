@@ -175,3 +175,29 @@ completion or the last assistant message proves session completion.
 
 This is another partial TP-3426 S01 checkpoint. It changes no existing source
 discovery, default account, billing, native execution, policy or bus behavior.
+
+### Execution service port
+
+`HarnessExecutionPort<H>` accepts a bounded `HarnessExecutionRequest<H, T>` and
+returns the existing run result. Its harness parameter is open: a third adapter
+can implement the port without extending a core vendor union. `HARNESS_CONTRACT_VERSION`
+is the interface version, independent of any native executable version.
+
+`HarnessExecutionBinding` carries the selected profile, host/account/billing-pool
+references, model intent and policy revision. Producers persist that binding for
+resume; fallback selects a new execution. These are structural TypeScript metadata
+and intent, without runtime validation, authenticated identity or permission grants.
+Keep native homes, credentials and SDK options inside the adapter. For structured
+output, the adapter validates the returned unknown value with the supplied parser;
+its JSON schema is an optional native constraint, not proof of valid output.
+
+`HarnessDispatchReceipt` distinguishes accepted, running and refused dispatches.
+Accepted or running receipts cannot stand in for completed results. Neither receipt
+nor an adapter capability assessment establishes broker delivery, cancellation,
+process reattachment or other native runtime evidence.
+
+The fixture adapter only demonstrates observable in-process work, scoped resume and
+output parsing. No native runtime is qualified by this port. Account/quota, pricing,
+policy and bus service ports remain unfinished; policy and bus capabilities stay
+unavailable pending their enforcement and identity gates. Existing provider SDK
+compatibility types and execution functions are unchanged by these declarations.
