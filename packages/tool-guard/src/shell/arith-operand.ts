@@ -2,8 +2,8 @@ import { ParseError } from "./parse-error.js";
 import type { LexState, WordToken } from "./tokens.js";
 
 const ARITH_TEST_OPERATORS = new Set(["-eq", "-ne", "-lt", "-le", "-gt", "-ge"]);
-/** A substitution's own output is left out of a word's value, so a `$(` or backtick still in it was written as text, and bash evaluates arithmetic text as code. */
-const CODE_TEXT_RE = /\$\((?!\()|`/;
+/** What `appendLiteral` looks for: a `$(` that is not `$((`, or a backtick. */
+export const CODE_TEXT_RE = /\$\((?!\()|`/;
 const SUBSCRIPTED_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*\[.*\]\+?=/s;
 
 const REASON = "a command substitution written as text in an arithmetic subscript or [[ -eq ]] operand runs when bash evaluates it";
@@ -23,7 +23,7 @@ const TESTS = new WeakMap<LexState, TestScan>();
  * bash evaluates, so this checks the value rather than the spelling or the position.
  */
 export function refuseCodeInArithmeticValue(s: LexState, w: WordToken): void {
-  const codeText = CODE_TEXT_RE.test(w.value);
+  const codeText = w.codeText === true;
   if (codeText && SUBSCRIPTED_ASSIGNMENT_RE.test(w.value)) throw new ParseError(REASON);
   const scan = TESTS.get(s) ?? { open: false, operator: false, codeText: false };
   TESTS.set(s, scan);

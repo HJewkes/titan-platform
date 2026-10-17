@@ -10,7 +10,7 @@ import { assignmentSubscriptEnd, looseSubscriptEnd, isNameSoFar, wordStartSubscr
 import type { LexState, RedirectToken, Token, WordToken } from "./tokens.js";
 import { readAnsiInArith } from "./arith-ansi.js";
 import { inArraySubscript } from "./arith-subscript.js";
-import { appendChar, endWord, ensureWord, markComputed, markCut, markQuoted, pushRef, readAnsiC, readEscape, readSingle, variableName } from "./word-build.js";
+import { appendChar, appendLiteral, endWord, ensureWord, markComputed, markCut, markQuoted, pushRef, readAnsiC, readEscape, readSingle, variableName } from "./word-build.js";
 
 export { ParseError, SplitParseError } from "./parse-error.js";
 export { scanSubstitutions } from "./substitutions.js";
@@ -209,7 +209,7 @@ function readQuoted(s: LexState, close: string): void {
     const c = s.src[s.i] as string;
     const next = s.src[s.i + 1];
     if (c === "\\" && next !== undefined && '$`"\\\n'.includes(next)) {
-      if (next !== "\n") w.value += next;
+      if (next !== "\n") appendLiteral(w, next);
       s.i += 2;
     } else if (c === "$" && !QUOTED_LITERAL_OPENERS.includes(s.src[joinedDollar(s.src, s.i) + 1] ?? "")) readDollar(s);
     else if (c === "`") readBacktick(s);
