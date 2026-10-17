@@ -37,6 +37,8 @@ interface WordToken {
     computed: boolean;
     /** A `$` or backtick expansion sits outside double quotes, so it word-splits even when other parts are quoted. */
     unquotedExpansion?: true;
+    /** The word is a `case` pattern, matched against the subject and never run. */
+    casePattern?: true;
     refs: VarRef[];
     /** Token lists of command substitutions, which run even when quoted. */
     subs: Token[][];
@@ -169,6 +171,14 @@ declare class ReadingLimitError extends Error {
     constructor();
 }
 
+/**
+ * A line that defines a shell alias; the hook denies it unchecked. Eval text, `$( )` and sourced files that zsh parses
+ * later in the same process expand the alias, and the guard does not model the alias table.
+ */
+declare class AliasDefinitionError extends ReadingLimitError {
+    constructor();
+}
+
 /** A line that rebinds a command name (`hash y=/usr/bin/git`, `commands[y]=…`); the hook denies it unchecked. */
 declare class CommandRebindingError extends ReadingLimitError {
     constructor();
@@ -199,4 +209,4 @@ declare function splitArgs(args: WordToken[], valueOpts?: Set<string>): SplitArg
 /** Absolute path a word names from `dir`, or null when the word is dynamic or the base is unknown. */
 declare function resolvePath(dir: string | null, word: WordToken | null | undefined, home: string | null): string | null;
 
-export { type AliasTable, type Chain, CommandRebindingError, type ExtractOptions, type GitInvocation, type OpToken, ParseError, ReadingLimitError, type RedirectToken, type SimpleCommand, type SplitArgs, type SubsToken, type Token, type VarRef, type WordToken, type Wrapping, extractCommands, parseGit, resolvePath, splitArgs, tokenize };
+export { AliasDefinitionError, type AliasTable, type Chain, CommandRebindingError, type ExtractOptions, type GitInvocation, type OpToken, ParseError, ReadingLimitError, type RedirectToken, type SimpleCommand, type SplitArgs, type SubsToken, type Token, type VarRef, type WordToken, type Wrapping, extractCommands, parseGit, resolvePath, splitArgs, tokenize };

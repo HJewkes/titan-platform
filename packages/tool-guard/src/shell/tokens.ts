@@ -21,6 +21,8 @@ export interface WordToken {
   computed: boolean;
   /** A `$` or backtick expansion sits outside double quotes, so it word-splits even when other parts are quoted. */
   unquotedExpansion?: true;
+  /** The word is a `case` pattern, matched against the subject and never run. */
+  casePattern?: true;
   refs: VarRef[];
   /** Token lists of command substitutions, which run even when quoted. */
   subs: Token[][];

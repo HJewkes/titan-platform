@@ -1,7 +1,9 @@
+import { mayBeOption } from "./command-rebinding.js";
 import type { WordToken } from "./lexer.js";
 import type { Unwrapped } from "./unwrap.js";
 import { ReadingLimitError } from "./unsure-readings.js";
-import { BRACE_RE, mayBraceExpand, mayGenerate } from "./word-generation.js";
+import { expandedWordMayBeAlias, TEST_OPERATOR_RE } from "./alias-command-word.js";
+import { mayBraceExpand, mayGenerate } from "./word-generation.js";
 
 /** zsh's alias tables as parameters, and bash's: a store into any of them defines an alias without the `alias` builtin. */
 const ALIAS_PARAMS = new Set(["aliases", "galiases", "saliases", "dis_aliases", "dis_galiases", "dis_saliases", "BASH_ALIASES"]);
@@ -18,11 +20,10 @@ const BOUND_PARAM_RE = new RegExp(String.raw`^${PARAM}(?:\[|$)`);
 const SPEC_PARAM_RE = new RegExp(String.raw`=${PARAM}$`);
 /** A quoted expansion that may still yield several words: any `@` (`"${@:2}"`, `"${a[@]}"`), zsh flags or `=` splitting. */
 const SEVERAL_RE = /@|\$\{[~^]*[=(]/;
-/**
- * A glob in a command word, which may match several file names: a bracket only with its closing one, so `[` and `[[`
- * stay themselves, and a tilde only past the first character, where it is extendedglob's exclusion.
- */
-const SEVERAL_NAMES_RE = /[*?#^]|\[[^\]]*\]|.~/s;
+/** A word that may become file names, any of which may hold `=`; a comparison operator of `[[ ]]` names none. */
+function mayNameFiles(w: WordToken): boolean {
+  return !TEST_OPERATOR_RE.test(w.value) && mayGenerate(w);
+}
 /** An alias parameter anywhere in a word, as one alternative of a brace expansion may name it. */
 const BRACED_PARAM_RE = new RegExp(String.raw`(?<![A-Za-z0-9_])${PARAM}(?![A-Za-z0-9_])`);
 /**
@@ -100,7 +101,9 @@ const SUBCOMMAND_STORES = new Map<string, (args: WordToken[]) => boolean>([
 ]);
 /** Options `alias` itself takes, so a dynamic command word that may be `alias` is read past them. */
 const ALIAS_OPTION_RE = /^[-+][gsrLm]+$/;
-const DEFINITION_RE = /^[^=/\s]+=/;
+/** A word that is one of the shell's numeric parameters: `$?`, `${#}`. It yields digits, so it is no option and no name. */
+const COUNTER_RE = /^\$\{?[?#$!]\}?$/;
+const DEFINITION_RE = /^(?!\$=|!=$)[^=/\s]+=/;
 
 /**
  * A line that defines a shell alias; the hook denies it unchecked. Eval text, `$( )` and sourced files that zsh parses
@@ -114,7 +117,10 @@ export class AliasDefinitionError extends ReadingLimitError {
   }
 }
 
-/** Whether the command defines or may define an alias that text the shell parses later in the same process would expand. */
+/**
+ * Whether the command defines or may define an alias that text the shell parses later in the same process would expand.
+ * A run-time command word is not read as `alias`: `env $(…) A=1 pnpm` and `"$tool" file --opt=1` share its shape.
+ */
 export function definesAlias(cmd: Unwrapped): boolean {
   return (
     (cmd.name === "alias" && readOptions(cmd.args).operands.some((w) => varies(w) || w.value.includes("=")))
@@ -122,7 +128,6 @@ export function definesAlias(cmd: Unwrapped): boolean {
     || cmd.assigned.some(([name]) => ALIAS_PARAMS.has(name))
     || cmd.args.some(expandsAliasParam)
     || (cmd.name !== null && storesAliasParam(cmd.name, cmd.args))
-    || (cmd.name === null && dynamicDefinition(cmd.args.slice(1)))
     || (cmd.path !== null && expandedDefinition(cmd.path, cmd.args))
   );
 }
@@ -133,8 +138,8 @@ export function definesAlias(cmd: Unwrapped): boolean {
  * yields one word, which may be `alias`, so it reads as a dynamic one.
  */
 function expandedDefinition(path: string, args: WordToken[]): boolean {
-  if (BRACE_RE.test(path) || SEVERAL_NAMES_RE.test(path)) return true;
-  return /^[=~]/.test(path) && dynamicDefinition(args);
+  const verdict = expandedWordMayBeAlias(path);
+  return verdict ?? (/^[=~]/.test(path) && dynamicDefinition(args));
 }
 
 /**
@@ -187,11 +192,12 @@ function readsStore(name: string, args: WordToken[], spec: StoreSpec): boolean {
  * word filename generation may turn into any file names.
  */
 function varies(w: WordToken): boolean {
-  return w.dynamic || w.unquotedExpansion === true || mayGenerate(w);
+  return !COUNTER_RE.test(w.value) && (w.dynamic || w.unquotedExpansion === true || mayGenerate(w));
 }
 
 /** A word that may yield several words: any unquoted expansion, a quoted one that splits, a glob or a brace expansion. */
 function yieldsSeveral(w: WordToken): boolean {
+  if (COUNTER_RE.test(w.value)) return false;
   return w.unquotedExpansion === true || (w.dynamic && SEVERAL_RE.test(w.value)) || mayGenerate(w);
 }
 
@@ -226,7 +232,12 @@ function readOptions(args: WordToken[], spec: StoreSpec = {}): OptionWords {
   }
   const first = args[i];
   const ends = first !== undefined && !varies(first) && (first.value === "--" || first.value === "-");
-  return { options, targets, operands: args.slice(ends ? i + 1 : i), mayBeOption: first !== undefined && varies(first), ended: ends };
+  return { options, targets, operands: args.slice(ends ? i + 1 : i), mayBeOption: first !== undefined && varies(first) && mayStartOption(first), ended: ends };
+}
+
+/** A varying word may supply an option unless literal text that no option starts with comes first: `"b$n=%s "`. */
+function mayStartOption(w: WordToken): boolean {
+  return !w.dynamic || mayGenerate(w) || mayBeOption(w) || /^[$`]/.test(w.value);
 }
 
 /** The first letter of an option word that takes a value, and whether that value is attached to the word. */
@@ -256,7 +267,7 @@ function interleavedStores(args: WordToken[], spec: StoreSpec): boolean {
 /** A word led by `-` or `+`, other than `--`; one that varies only when a letter follows its dashes statically. */
 function isOptionWord(w: WordToken): boolean {
   if (w.value === "--" || !/^[-+]./s.test(w.value)) return false;
-  return !varies(w) || /^(?:--?|\+)[A-Za-z]/.test(w.value);
+  return !varies(w) || /^(?:--?|\+)[A-Za-z*?[]/.test(w.value);
 }
 
 function dynamicTargetOperand(spec: StoreSpec, options: WordToken[], operands: WordToken[]): boolean {
@@ -308,5 +319,5 @@ function expandsAliasParam(w: WordToken): boolean {
 function dynamicDefinition(args: WordToken[]): boolean {
   const { options, operands } = readOptions(args);
   if (!options.every((w) => varies(w) || ALIAS_OPTION_RE.test(w.value))) return false;
-  return operands.some((w) => mayGenerate(w) || DEFINITION_RE.test(w.value));
+  return operands.some((w) => mayNameFiles(w) || (!w.value.startsWith("-") && DEFINITION_RE.test(w.value)));
 }

@@ -49,12 +49,22 @@ guarded file stays readable by that user. The OS account is the real boundary.
   names, and the reason asks for shorter commands or a script file.
 - A line that rebinds a command name is refused whole, with its own reason: zsh `hash y=/usr/bin/git`, bash `hash -p`, and a store into `commands`, `BASH_CMDS`, `functions`, `dis_functions` or `nameddirs` (`commands[y]=…`, `commands+=(…)`, `set -A commands …`, `zstyle -e … 'commands[y]=…'`), because the guard classifies by command name and would read `y push` as an unknown program (TP-2706). Listing, looking up or resetting the hash table (`hash`, `hash git`, `hash -r`) passes. A store builtin whose stored-into name is only known at run time (`export $(cmd)`, `declare "$F"`, `read -- "$n"`, `zpty -r z "$n"`, `zgetattr f a "$n"`) is refused too, since that name may be `commands[y]`; `name-slots.ts` and `hooked-params.ts` read these builtins from one table, `WRITER_SPECS`. Not seen: a command word only known at run time that is `hash` then (`"$(printf ha%s sh)" y=/x`), fully dynamic `eval` text, `autoload` from an `fpath` file and `zmodload` tricks, and a rebinding written into `~/.zshrc` for a later session.
 - A builtin with a store option (`print`, `printf`, `set`, `read`, `compgen`, `mapfile`, `wait`, `zparseopts`, `strftime`, `zstat`, zsh `stat`, `compadd`: every `WRITER_SPECS` builtin with a name option or a store flag, with no exemptions) that meets a run-time word where it still reads options (`print $x`, `set "$x"`, `print *`) is refused the same way, quoted or not, because that word may be `-v commands[y]`. Write `--` before the run-time words to pass: `print -- $x`, `wait -- $pid`. zsh's `zparseopts`, `zformat`, `zstyle`, `zstat` and `stat` skip one leading `--` and read options after it, so `stat -- "$f"` is refused too; write `stat ./"$f"`, since `stat $o commands s` with `o=-LH` stores into `commands` once zsh/stat is loaded. A run-time word in a name slot (`read -- "$n"`, `declare "$x"`, zsh `read -n "$n"`, `zstyle -s :a k "$n"`) may be any name, so it is refused after `--` too; write the name itself (TP-3320).
-- `definesAlias` reads any word that is not wholly quoted and holds `*`, `?`, `[`, `^`, `#`,
-  `~`, a leading `=` or a brace expansion as varying, since zsh may turn it into file names, a
-  directory or a command's path. A `(` glob qualifier is already refused by the lexer. So
-  `alias *`, `typeset ali*` and `printf *` are refused in any directory, and so are harmless
-  forms such as `printf *.txt` or `"$CMD" *`. Only the plain `NAME=VALUE` form of a
-  declaration is spared, as neither shell globs it: `typeset a[1]=2` passes (TP-2705).
+- A line that defines a shell alias is refused whole, with its own reason: `alias y=git`, `alias -g`, `enable -a`,
+  a store into zsh's `aliases`, `galiases` or `saliases` (or bash's `BASH_ALIASES`) by assignment, `typeset -A`,
+  `set -A`, `read -A`, `printf -v` or `${aliases[y]::=git}`, in the line, in `eval` and `-c` text, in a substitution,
+  a function body or a script it sources, because zsh expands an alias in text it parses later in the same process
+  and the guard would read `y push` as an unknown program (TP-2705). Querying one (`alias`, `alias g`, `alias -L`,
+  `alias -m 'g*'`) and `unalias` pass. A command word the shell may expand into `alias` is read as `alias`: a brace
+  expansion (`{alias,y=echo}`), a glob a file named `alias` or a wrapper such as `builtin` would match (`ali*`), a
+  leading `=` or a tilde without a `/`. A word with a `/` is a path and never `alias`, and a glob no such name matches
+  (`TP-*`, `*dropped*`) is only a name; a lone `case` pattern word is matched, never run. A word that varies where
+  `alias` reads its operands, or where a store builtin reads an option or a name, is read as one that may define:
+  `alias *`, `typeset ali*`, `printf *`, `print $x`; a numeric parameter (`$?`, `$#`) and a format that opens with
+  text (`printf "b$n=%s "`) are not. Only the plain `NAME=VALUE` form of a declaration is spared, as neither shell
+  globs it: `typeset a[1]=2` passes. Not seen: a command word only known at run time that is `alias` then
+  (`"$(printf al%s ias)" y=git`, `env`, `xargs` and `sudo` cannot run it, so a rule on `NAME=VALUE` operands refused
+  `env $(…) A=1 pnpm`), fully dynamic `eval` text, an alias written into `~/.zshrc` for a later session, and
+  `hash NAME=path` (see the rebinding bullet).
 - The mention rule is broad: any argument naming a secret path counts as a read, so
   `echo ~/.npmrc` and a `gh pr create --body` that names `~/.npmrc` deny too.
 

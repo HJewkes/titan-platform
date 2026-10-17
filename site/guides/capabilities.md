@@ -424,7 +424,7 @@ Key exports:
 - `hook`: `handle`
 - `context`: `nodeContext`
 - `approval-store`: `approvalsDir`, `nodeApprovalStore`
-- +59 more in the [reference page](/reference/tool-guard)
+- +60 more in the [reference page](/reference/tool-guard)
 
 ## Tier 1 — engines
 
