@@ -138,7 +138,7 @@ describe("the visual accept offer on replay", () => {
       asked.push(stepId);
       return { stepId, iteration: 0, agentId: null, signal: null, completedAt: "", data: { decision: "accept-set", headSha: H1, approvedSet: SET, note: NOTE } };
     };
-    const ctx = partialFake<WorkflowContext>({ historyNext: () => next, resumedGate: () => resumed, dispatch, assisted, expireGates: () => [] });
+    const ctx = partialFake<WorkflowContext>({ historyNext: () => next, resumedGate: () => resumed, recoveredInFlight: () => [], dispatch, assisted, expireGates: () => [] });
     const run: VisualAcceptRun = { ctx, target: { repo: REPO, pr: 1 }, state: { waits: 0 }, visualAcceptOffers: 0 };
     return { run, dispatched, asked };
   };

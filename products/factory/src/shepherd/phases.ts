@@ -93,10 +93,10 @@ export type Verdict =
   | { kind: "NO_REPRO"; headSha: string; result: unknown }
   | { kind: "none"; cause?: NoVerdictCause; reason?: string; seatHeld?: SeatHeld };
 
-/** The route table decides what a `none` verdict or an `unhandled` wake leads to. */
 /** `shepherd.visualSetCarry`: whether a red head failing only its seat's baseline check asks the owner to accept CI's set. */
 export type VisualSetCarry = "off" | "shadow" | "on";
 
+/** The route table decides what a `none` verdict or an `unhandled` wake leads to. */
 export interface ShepherdPhases {
   wake(ctx: WorkflowContext, request: WakeRequest): Promise<WakeOutcome>;
   review(ctx: WorkflowContext, request: ReviewRequest): Promise<Verdict>;
