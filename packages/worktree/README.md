@@ -91,3 +91,15 @@ A throwing presenter rejects the report; a nonstring return throws `TypeError`.
 The sweep does not reclaim trees. Caller presentation is not release authority.
 
 Worktree adds disable checkout hooks for that invocation only (`-c core.hooksPath=/dev/null`), preserving dispatcher CC410. Later git commands retain repository hooks. Timeout/late cleanup uses the original add target despite that prefix. Fetch/reference-transaction hooks are outside this unchanged preservation slice.
+
+## Reclaim safety after a sweep
+
+Ordinary `reclaimWorktree(entry)` checks files and unbacked commits again before
+removing a reclaimable tree. It reuses allocator release with Git-only proof and
+the repository HEAD as the conservative comparison when no allocation base is
+available. It does not infer a new exit timestamp or restart the grace window.
+Ignored files that cannot be regenerated and failed status or ignored-file reads
+refuse removal. Only a literal caller `force: true` bypasses these checks.
+
+These observations do not make removal atomic against concurrent writers. The
+caller still owns assignment records, lifecycle decisions and runtime cleanup.
