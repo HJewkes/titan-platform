@@ -49,6 +49,7 @@ const STEP_CLASS: Record<string, DClass> = {
   "stuck-behind": "D15",
   "ci-failed": "D16",
   "sh-sent-back": "D16",
+  "sh-visual-accept": "D16",
 };
 
 /** The seat policy's prompt names its owner-gate reason in parentheses; a gate with none is the plain owner gate, D1. */
