@@ -59,7 +59,7 @@ function withHttpConfig(src: string, commands: SimpleCommand[], ctx: ClassifyCon
 
 /** A script's text (`scripts` null) stops at the dynamic-word cap and reads on as main does; the line refuses past it. */
 function extractOptions(cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null, foldCase: boolean): ExtractOptions {
-  return { cwd, home: ctx.home, foldCase, guarded: GUARDED, stopPastCap: scripts === null };
+  return { cwd, home: ctx.home, foldCase, guarded: GUARDED, stopPastCap: scripts === null, arithmetic: scripts !== null };
 }
 
 /**
