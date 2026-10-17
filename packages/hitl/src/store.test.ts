@@ -17,7 +17,10 @@ import {
   GatePayloadInvalid,
   GateResolverRefused,
   GateRuleInvalid,
+  type GateAdmittedBy,
+  type GateAnswerAllowance,
   type GateAuthorize,
+  type GateEvidencePolicy,
   type GateQuestion,
   type GateResolver,
   type GateRule,
@@ -550,3 +553,64 @@ function catchError(action: () => unknown): unknown {
   }
   throw new Error("expected the action to throw");
 }
+
+describe.each([
+  ["MemoryGateStore", (options: object) => ({ store: new MemoryGateStore(options), dispose: () => {} })],
+  [
+    "SqliteGateStore",
+    (options: object) => {
+      const dir = mkdtempSync(path.join(tmpdir(), "hitl-admit-"));
+      const db = openDatabase(path.join(dir, "gates.sqlite3"));
+      return {
+        store: new SqliteGateStore(db, options),
+        dispose: () => {
+          db.close();
+          rmSync(dir, { recursive: true, force: true });
+        },
+      };
+    },
+  ],
+])("%s admission handed to authorize", (_name, build) => {
+  const COORDINATOR: GateResolver = { class: "coordinator", id: "tc-fixture", channel: "test-cli" };
+  const DELEGATING: GateRule = { ...TERMINAL_ONLY, delegates: ["coordinator"] };
+  const ALLOWANCE: GateAnswerAllowance = { resolverClass: "coordinator", stepId: "stuck", payload: { decision: "retry" } };
+  const goneOnly: GateEvidencePolicy = (gate, _resolver, _payload, evidence) => evidence.gateId === gate.id;
+  const disposers: Array<() => void> = [];
+  afterEach(() => disposers.splice(0).forEach((dispose) => dispose()));
+
+  /** Resolves gate `id` and returns what the store's authorize saw as its third argument, or the two-argument call's length. */
+  function admittedBy(options: { gateId?: string; rule?: GateRule; payload?: unknown; evidence?: { gateId: string } }, resolver: GateResolver, extra: object = {}) {
+    const seen: unknown[] = [];
+    const authorize: GateAuthorize = (_gate, _resolver, admission) => {
+      seen.push(admission);
+      return { allowed: true };
+    };
+    const { store, dispose } = build({ authorize, ...extra });
+    disposers.push(dispose);
+    const id = options.gateId ?? "run-1/step";
+    store.create(options.rule ? { id, prompt: "go?", rule: options.rule } : { id, prompt: "go?" });
+    store.resolve(id, options.payload ?? "ok", resolver, options.evidence);
+    return seen;
+  }
+
+  it.each<[string, GateAdmittedBy, () => unknown[]]>([
+    ["an owner", "owner-class", () => admittedBy({}, OWNER)],
+    ["an allowance", "allowance", () => admittedBy({ gateId: "run-1/stuck", payload: { decision: "retry" } }, COORDINATOR, { allowances: [ALLOWANCE] })],
+    ["an evidence-admitted delegate", "evidence", () => admittedBy({ rule: DELEGATING, evidence: { gateId: "run-1/step" } }, COORDINATOR, { evidencePolicy: goneOnly })],
+    ["a bare delegate", "delegate", () => admittedBy({ rule: DELEGATING }, COORDINATOR)],
+  ])("%s reads %s", (_label, expected, run) => {
+    expect(run()).toEqual([{ admittedBy: expected }]);
+  });
+
+  it("an owner with a blank id still resolves, as it did before admission was reported", () => {
+    expect(admittedBy({}, { ...OWNER, id: " " })).toEqual([{ admittedBy: "owner-class" }]);
+  });
+
+  it("a two-argument authorize still decides as before", () => {
+    const { store, dispose } = build({ authorize: (_gate: unknown, resolver: GateResolver): { allowed: boolean } => ({ allowed: resolver.class === "owner-terminal" }) });
+    disposers.push(dispose);
+    store.create({ id: "g1", prompt: "go?" });
+    expect(() => store.resolve("g1", "ok", REMOTE)).toThrow(GateResolverRefused);
+    expect(store.resolve("g1", "ok", OWNER).status).toBe("resolved");
+  });
+});
