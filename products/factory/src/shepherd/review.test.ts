@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DispatchError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
-import { fakeGitHub, fakeSha, githubPort, successRun, type PrFile } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, successRun, type GitHubPort, type PrFile } from "@titan-design/github";
 import { parseVerdictBlock, type SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -523,6 +523,8 @@ describe("sh-review", () => {
     files?: PrFile[];
     /** PR 7's own changed-file count; above the length of `files` the list reads as truncated. */
     changedFiles?: number;
+    /** The deps' port as given; wins over `files`. */
+    port?: GitHubPort;
     /** Collects the checkout dirs the steps remove; the steps never touch the real filesystem. */
     removals?: string[];
     /** Acts on the bound store after the registration is written, before any step runs. */
@@ -540,7 +542,7 @@ describe("sh-review", () => {
     };
     const store = boundStore(options.registered ?? registration);
     options.prepare?.(store.get());
-    const deps = { now: () => clock.now, sleep, pollMs: 10, store, reviewCheckouts: { root: "/data/reviews", remove: async (path: string) => void options.removals?.push(path) }, ...(options.files && { port: portListing(options.files, options.changedFiles) }) } as unknown as ShepherdDeps;
+    const deps = { now: () => clock.now, sleep, pollMs: 10, store, reviewCheckouts: { root: "/data/reviews", remove: async (path: string) => void options.removals?.push(path) }, ...(options.files && { port: portListing(options.files, options.changedFiles) }), ...(options.port && { port: options.port }) } as unknown as ShepherdDeps;
     const wiring: ReviewWiring = { reader: { read: async () => [] }, sessionStartTimeoutMs: 100, ...(dispatch && { dispatch }), ...options.wiring };
     const routes = reviewRoutes(deps, wiring);
     const target = { repo: options.repo ?? "octo/demo", pr: 7, head: HEAD };
@@ -899,6 +901,33 @@ describe("sh-review", () => {
     expect(brief).toContain(`Head: ${HEAD}`);
     expect(brief).not.toContain(TASK_TEXT);
     expect(brief).not.toContain("impl-a");
+  });
+
+  it("sh-review spawns a reviewer whose brief carries the head's check-runs", async () => {
+    const fake = fakeGitHub();
+    fake.addPr({ number: 7, headSha: HEAD });
+    fake.rules = { contexts: ["validate"], strict: false };
+    fake.setRuns(HEAD, [successRun("validate", 1)]);
+    const dispatch = fakeDispatch();
+
+    await shReview(dispatch, { port: githubPort(fake.wire) });
+    const { brief } = dispatch.spawns[0]!;
+
+    expect(brief).toContain("- validate: status completed, conclusion success, required");
+    expect(brief).not.toContain("gh api");
+    expect(brief).not.toContain("gh pr view");
+  });
+
+  it("sh-review whose CI read fails briefs the reviewer to read statusCheckRollup itself", async () => {
+    const fake = fakeGitHub();
+    fake.addPr({ number: 7, headSha: HEAD });
+    fake.readFaults.listCheckRuns = [new Error("rate limited")];
+    const dispatch = fakeDispatch();
+
+    await shReview(dispatch, { port: githubPort(fake.wire) });
+
+    expect(dispatch.spawns[0]!.brief).toContain("--json headRefOid,statusCheckRollup");
+    expect(dispatch.spawns[0]!.brief).not.toContain("Shepherd read these check-runs");
   });
 
   it("adds the wired questions to the brief", async () => {
