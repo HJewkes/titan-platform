@@ -1320,3 +1320,73 @@ describe("resyncShepherd over many runs", () => {
     expect(report.phaseMs).toEqual({ ended: 1_000, reverts: 1_000, superseded: 1_000, supersededReviews: 1_000, supersededMerges: 1_000 });
   });
 });
+
+describe("resyncShepherd on an approve-merge gate whose PR base moved", () => {
+  const PARENT = "agent-chat/parent";
+  const FEATURE_BASE: EffectivePolicy = { ...OWNER_GATE_POLICY, featureBase: true };
+
+  async function gatedInto(base: string, policy: EffectivePolicy = FEATURE_BASE) {
+    const fake = fakeGitHub();
+    fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
+    const store = shepherdStoreRef();
+    const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(PHASES)], routes, gatePollMs: 5 });
+    cleanups.push(() => host.close());
+    fake.addPr({ headSha: HEAD, baseRef: base });
+    const runId = host.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: "1", policy: JSON.stringify(policy) });
+    store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy });
+    await gateOpened(host, gateId(runId, "approve-merge"));
+    return { host, fake, services: routes.shepherd!, runId, gate: gateId(runId, "approve-merge") };
+  }
+
+  it("supersedes the gate once the PR is retargeted to main, and lists it in the report", async () => {
+    const { host, fake, services, runId, gate } = await gatedInto(PARENT);
+    fake.pr(1).baseRef = "main";
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toEqual([{ runId, gateId: gate, from: PARENT, to: "main", condition: "base-changed" }]);
+    expect(host.gates.get(gate)?.status).toBe("cancelled");
+  });
+
+  it("supersedes a gate into a non-default base the run has no featureBase grant for, though the base did not move", async () => {
+    const { host, services, runId, gate } = await gatedInto(PARENT);
+    services.store.get().update(runId, { task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toEqual([{ runId, gateId: gate, from: PARENT, to: PARENT, condition: "base-changed" }]);
+  });
+
+  it("on a dry run reports the supersede and cancels nothing", async () => {
+    const { host, fake, services, gate } = await gatedInto(PARENT);
+    fake.pr(1).baseRef = "main";
+
+    const report = await resyncShepherd(host, services, { dryRun: true });
+
+    expect(report.superseded.map((superseded) => superseded.gateId)).toEqual([gate]);
+    expect(host.gates.get(gate)?.status).toBe("pending");
+  });
+
+  it("keeps the gate when the PR cannot be read", async () => {
+    const { host, services, runId, gate } = await gatedInto(PARENT);
+    services.store.get().update(runId, { task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    const port = { ...services.port, getPr: async () => Promise.reject(new Error("synthetic read failure")) };
+
+    const report = await resyncShepherd(host, { ...services, port });
+
+    expect(report.superseded).toEqual([]);
+    expect(host.gates.get(gate)?.status).toBe("pending");
+  });
+
+  it("leaves the gate of a run with an owner hold with the owner, though the base moved", async () => {
+    const { host, fake, services, runId, gate } = await gatedInto(PARENT);
+    services.store.get().hold(runId, "owner-asked: discuss first");
+    fake.pr(1).baseRef = "main";
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toEqual([]);
+    expect(host.gates.get(gate)?.status).toBe("pending");
+  });
+});

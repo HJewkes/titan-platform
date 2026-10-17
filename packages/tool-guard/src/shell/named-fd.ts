@@ -21,6 +21,13 @@ export function namedFdReadings(words: WordToken[], redirects: RedirectToken[]):
   return readings;
 }
 
+/** `shell`'s one reading of a command's `{name}` words: zsh reads every one as the fd, bash only a glued one. */
+export function shellReading(words: WordToken[], redirects: RedirectToken[], shell: "bash" | "zsh"): Reading {
+  const kinds = words.flatMap((word) => (word.namedFd ? [word.namedFd] : []));
+  if (kinds.length === 0) return { words, redirects };
+  return readingAs(words, redirects, kinds, (kind) => shell === "zsh" || kind === "glued");
+}
+
 /** The marked words and the named redirects pair up in order, as each word stands just before its redirect. */
 function readingAs(words: WordToken[], redirects: RedirectToken[], kinds: Kind[], asFd: (kind: Kind) => boolean): Reading {
   let next = 0;
