@@ -9,6 +9,7 @@ import { readLineEnd } from "./procsub-heredoc.js";
 import { assignmentSubscriptEnd, looseSubscriptEnd, isNameSoFar, wordStartSubscriptEnd } from "./subscript.js";
 import type { LexState, RedirectToken, Token, WordToken } from "./tokens.js";
 import { readAnsiInArith } from "./arith-ansi.js";
+import { inArithmeticTest, inArraySubscript } from "./arith-operand.js";
 import { appendChar, endWord, ensureWord, markComputed, markCut, markQuoted, pushRef, readAnsiC, readEscape, readSingle, variableName } from "./word-build.js";
 
 export { ParseError, SplitParseError } from "./parse-error.js";
@@ -176,10 +177,24 @@ function readOperator(s: LexState, op: string, end: number): void {
 
 /** bash and zsh expand an arithmetic body as if double-quoted, so its single quotes are literal and `$(cmd)` still runs. */
 function readSingleOrArith(s: LexState): void {
-  if (s.i >= s.arithEnd || s.arithEnd === Number.POSITIVE_INFINITY) return readSingle(s);
+  const end = arithmeticQuoteEnd(s);
+  if (end === -1) return readSingle(s);
   readQuoted(s, "'");
   // bash finds the span's end with the quote taken whole, so a substitution reaching past it reads two ways.
-  if (s.i > s.arithEnd) throw new ParseError("a substitution in arithmetic runs past the end bash finds for it");
+  if (s.i > end) throw new ParseError("a substitution in arithmetic runs past the end bash finds for it");
+}
+
+/**
+ * Where the arithmetic span holding the quote at `s.i` ends, or -1 outside one. An arithmetic command, an assignment's
+ * subscript and the operands of `[[ -eq ]]` all expand as if double-quoted. A subscript of an associative array does
+ * not, but the lexer cannot tell which array a name is, so it reads every subscript that way.
+ */
+function arithmeticQuoteEnd(s: LexState): number {
+  if (s.arithEnd === Number.POSITIVE_INFINITY) return -1;
+  if (s.i < s.arithEnd) return s.arithEnd;
+  if (s.i < s.subscriptEnd) return s.subscriptEnd;
+  if (s.i < s.looseSubscriptEnd && inArraySubscript(s)) return s.looseSubscriptEnd;
+  return inArithmeticTest(s) ? s.src.length : -1;
 }
 
 function readDouble(s: LexState): void {
