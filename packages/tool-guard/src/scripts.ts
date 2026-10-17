@@ -3,7 +3,7 @@ import { INTERPRETERS, SHELLS } from "./mentions.js";
 import type { SimpleCommand } from "./shell/commands.js";
 import type { WordToken } from "./shell/lexer.js";
 import { mayBeWritten } from "./line-writes.js";
-import { isNativeProgram, parseShebang } from "./shebang.js";
+import { isNativeProgram, parseShebang, resolvesShellViaPath } from "./shebang.js";
 import type { ClassifyContext } from "./types.js";
 import { resolvePath, resolveValue } from "./shell/path.js";
 import { shellOperands, shellStdin } from "./shell/shell-options.js";
@@ -31,6 +31,19 @@ export class OpaqueShebangError extends UnreadableScriptError {
 /** Whether a script's first line is one the guard cannot follow, whoever runs it. */
 export function hasOpaqueShebang(text: string): boolean {
   return parseShebang(text).kind === "opaque";
+}
+
+/** An assignment to `PATH`, or to zsh's `path` array, anywhere in the text: a prefix, `export`, an append, a dynamic value. */
+const PATH_ASSIGN_RE = /(?:^|[^\w])(?:PATH|path)\+?=/;
+
+/** Whether a line may change the PATH `env` searches, so a `#!/usr/bin/env bash` runs whatever it finds first instead of bash. */
+export function changesPath(src: string): boolean {
+  return PATH_ASSIGN_RE.test(src);
+}
+
+/** Whether a script's `env` lookup of its shell is subject to a PATH the line changed. */
+export function isSwappableShebang(text: string): boolean {
+  return resolvesShellViaPath(text);
 }
 
 /** Refuses a by-path script found to have an opaque first line, as the interpreter it names may run something other than the body. */

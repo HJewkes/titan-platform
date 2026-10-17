@@ -190,3 +190,42 @@ describe("an ELF program-header table the Linux loader bounds", () => {
     expect(await decision(file("count", elf({ phnum, body: `${PUSH}\n`, padding: 70000 })))).toBe("deny");
   });
 });
+
+describe("a #!/usr/bin/env shell script on a line that changes PATH", () => {
+  const ENV_BASH = "#!/usr/bin/env bash\necho ok\n";
+
+  it.each([
+    ["a PATH= prefix", "PATH=.:$PATH ./envp"],
+    ["a PATH= prefix with a dynamic value", "PATH=$(pwd) ./envp"],
+    ["an earlier assignment", "PATH=.:$PATH; ./envp"],
+    ["export PATH=", "export PATH=.:$PATH; ./envp"],
+    ["a PATH+= append", "PATH+=:. ./envp"],
+    ["zsh's path=( )", "path=(. $path); ./envp"],
+    ["a PATH= prefix behind env", "env PATH=. ./envp"],
+  ])("denies the script after %s", async (_, line) => {
+    file("envp", ENV_BASH);
+    expect(await decision(line)).toBe("deny");
+  });
+
+  it.each(["#!/usr/bin/env sh\necho ok\n", "#!/usr/bin/env zsh\necho ok\n"])("denies %j after a PATH change", async (text) => {
+    file("envp", text);
+    expect(await decision("PATH=.:$PATH ./envp")).toBe("deny");
+  });
+
+  it("reads the script as before when PATH is unchanged", async () => {
+    file("envp", ENV_BASH);
+    expect(await decision("./envp")).toBeNull();
+    file("envp2", `#!/usr/bin/env bash\n${PUSH}\n`);
+    expect(await decision("./envp2")).toBe("deny");
+  });
+
+  it("does not take a variable that only ends in PATH for PATH", async () => {
+    file("envp", ENV_BASH);
+    expect(await decision("MYPATH=x ./envp")).toBeNull();
+  });
+
+  it("leaves a script with an absolute #! alone", async () => {
+    file("absp", "#!/bin/bash\necho ok\n");
+    expect(await decision("PATH=.:$PATH ./absp")).toBeNull();
+  });
+});
