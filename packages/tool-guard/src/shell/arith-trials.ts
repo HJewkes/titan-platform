@@ -13,15 +13,17 @@ export interface ArithTrials {
   ends: Map<number, number>;
   spend: { left: number };
   nesting: Nesting;
+  /** Whether a `[[` at a bare command start joins its `&&` and `||`, which only a text read as bash, zsh or ksh may do. */
+  joinsConditional: boolean;
 }
 
-export function newTrials(src: string): ArithTrials {
-  return { ends: new Map(), spend: { left: Math.max(BUDGET_FLOOR, BUDGET_PER_CHAR * src.length) }, nesting: { depth: 0 } };
+export function newTrials(src: string, joinsConditional = false): ArithTrials {
+  return { ends: new Map(), spend: { left: Math.max(BUDGET_FLOOR, BUDGET_PER_CHAR * src.length) }, nesting: { depth: 0 }, joinsConditional };
 }
 
 /** Trials for text cut out of the source, such as a heredoc body: positions differ, the spend and nesting do not. */
 export function sameSpend(trials: ArithTrials): ArithTrials {
-  return { ends: new Map(), spend: trials.spend, nesting: trials.nesting };
+  return { ends: new Map(), spend: trials.spend, nesting: trials.nesting, joinsConditional: trials.joinsConditional };
 }
 
 /** The end `find` reports for the `((` at `at`, run at most once per position. */
