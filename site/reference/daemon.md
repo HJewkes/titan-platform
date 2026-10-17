@@ -205,11 +205,13 @@ const handle = await startDaemon({
     host: "100.64.0.20",                          // the tailscale address, say
     tokenFile,
     allowedHosts: ["lan-box.example.ts.net"],
+    signInHint: "Ask the operator for a fresh link: run `acme login-link` on the host.", // optional
     tls: { certFile: "lan-box.example.ts.net.crt", keyFile: "lan-box.example.ts.net.key" },
   },
 });
 ```
 
+- **The sign-in hint.** `remote.signInHint` (also `createDaemonAuth({ signInHint })`) is the sentence the signed-out and invalid-link pages use to say how to get a link; it defaults to "Ask the operator for a fresh sign-in link." and is HTML-escaped. The pages add the link and session lifetimes themselves.
 - **TLS only.** `remote.tls` is required, and a `remote` without it throws `RemoteBindError`
   before anything binds: there is no way to serve plain HTTP beyond loopback. The remote server
   is `node:https` alone, so a plain-HTTP request fails the handshake and gets no HTTP reply

@@ -31,6 +31,7 @@ export const SESSION_COOKIE = "titan_session";
 export const LOGIN_PATH = "/auth/login";
 export const LOGOUT_PATH = "/auth/logout";
 export const LOGIN_CODE_TTL_MS = 10 * 60 * 1000;
+export const DEFAULT_SIGN_IN_HINT = "Ask the operator for a fresh sign-in link.";
 export const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 const HKDF_SALT = "titan-design/daemon auth v1";
@@ -126,17 +127,27 @@ export interface DaemonAuthOptions {
   tokenFile: string;
   /** Codes minted before this are refused. Defaults to now. */
   startedAt?: number;
+  /**
+   * Tells a signed-out browser how to get a sign-in link, shown on the sign-in pages. A product
+   * names its own command here. Defaults to {@link DEFAULT_SIGN_IN_HINT}.
+   */
+  signInHint?: string;
 }
 
 export interface DaemonAuth {
   /** The current secret, re-read when the file's inode, size, times, mode or owner change. */
   secret(): string;
   readonly ledger: LoginCodeLedger;
+  readonly signInHint: string;
 }
 
 /** Throws {@link TokenFileError} now, so a daemon with an untrustworthy file never starts. */
 export function createDaemonAuth(options: DaemonAuthOptions): DaemonAuth {
-  return { ledger: createLoginCodeLedger(options.startedAt), secret: trackTokenFile(options.tokenFile) };
+  return {
+    ledger: createLoginCodeLedger(options.startedAt),
+    secret: trackTokenFile(options.tokenFile),
+    signInHint: options.signInHint ?? DEFAULT_SIGN_IN_HINT,
+  };
 }
 
 /** How the request authenticated; `issuedAt` is the session's, null for a bearer. */
@@ -179,7 +190,7 @@ export function authGate(auth: DaemonAuth): MiddlewareHandler {
     const secret = currentSecret(auth);
     if (secret === null) return unavailable(c);
     const facts = authenticate(c, secret, Date.now());
-    if (!facts) return unauthorized(c);
+    if (!facts) return unauthorized(c, auth);
     requestAuth.set(c.req.raw, { ...facts, peerLocal: isPeerLocal(c) });
     await next();
   };
@@ -218,11 +229,11 @@ function unavailable(c: Context): Response {
   return c.json(errorEnvelope("Authentication is unavailable", EXIT.CONFIG), 503);
 }
 
-function unauthorized(c: Context): Response {
+function unauthorized(c: Context, auth: DaemonAuth): Response {
   c.header("WWW-Authenticate", 'Bearer realm="daemon"');
   c.header("Cache-Control", "no-store");
   if (c.req.method === "GET" && (c.req.header("accept") ?? "").includes("text/html")) {
-    return c.html(UNAUTHORIZED_PAGE, 401);
+    return c.html(unauthorizedPageHtml(auth.signInHint), 401);
   }
   return c.json(errorEnvelope("Authentication required", EXIT.USAGE), 401);
 }
@@ -234,7 +245,7 @@ const COOKIE_OPTIONS = { httpOnly: true, secure: true, sameSite: "Strict", path:
 /** `GET` and `HEAD` render the page, `POST` spends the code, anything else is 405. */
 function answerLogin(c: Context, auth: DaemonAuth): Response | Promise<Response> {
   const method = c.req.method;
-  if (method === "GET" || method === "HEAD") return loginPage(c);
+  if (method === "GET" || method === "HEAD") return loginPage(c, auth);
   if (method === "POST") return login(c, auth);
   c.header("Allow", LOGIN_METHODS);
   return c.json(errorEnvelope(`Method ${method} is not allowed on ${LOGIN_PATH}`, EXIT.USAGE), 405);
@@ -273,7 +284,7 @@ async function readLoginCode(c: Context): Promise<string | null> {
 }
 
 /** Inert: it never reads the code server-side, never reflects it, and leaks no Referer. */
-function loginPage(c: Context): Response {
+function loginPage(c: Context, auth: DaemonAuth): Response {
   const nonce = randomBytes(16).toString("base64");
   c.header("Cache-Control", "no-store");
   c.header("Referrer-Policy", "no-referrer");
@@ -282,10 +293,10 @@ function loginPage(c: Context): Response {
     "Content-Security-Policy",
     `default-src 'none'; script-src 'nonce-${nonce}'; connect-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
   );
-  return c.html(loginPageHtml(nonce));
+  return c.html(loginPageHtml(nonce, auth.signInHint));
 }
 
-function loginPageHtml(nonce: string): string {
+function loginPageHtml(nonce: string, signInHint: string): string {
   return `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Sign in</title></head>
 <body style="font-family: system-ui, sans-serif; margin: 3rem auto; max-width: 28rem; padding: 0 1rem">
@@ -299,15 +310,32 @@ document.getElementById("go").addEventListener("click", async () => {
   const code = new URLSearchParams(location.search).get("code") || "";
   const res = await fetch(${JSON.stringify(LOGIN_PATH)}, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ code }) });
   if (res.ok) location.replace("/");
-  else status.textContent = "This link is invalid, expired, or already used. Ask for a fresh one.";
+  else status.textContent = ${scriptString(`This link is invalid, expired, or already used. ${signInHint} ${LINK_FACTS}`)};
 });
 </script>
 </body></html>`;
 }
 
-const UNAUTHORIZED_PAGE = `<!doctype html>
+const LINK_FACTS = `A link works once, lasts ${LOGIN_CODE_TTL_MS / 60_000} minutes, and stops working if the service restarts before it is used.`;
+const SESSION_FACTS = `Once signed in, the session lasts ${SESSION_MAX_AGE_MS / 86_400_000} days. A home-screen web app keeps its own cookies, so open the link in that same app, or sign in inside it.`;
+
+/** A string literal safe inside an inline script: `<` is escaped so no text can close the tag. */
+function scriptString(text: string): string {
+  return JSON.stringify(text).replace(/</g, "\\u003c");
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function unauthorizedPageHtml(signInHint: string): string {
+  return `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Not signed in</title></head>
 <body style="font-family: system-ui, sans-serif; margin: 3rem auto; max-width: 28rem; padding: 0 1rem">
 <h1>Not signed in</h1>
-<p>Open a fresh login link, then <a href="">reload this page</a>.</p>
+<p>${escapeHtml(signInHint)}</p>
+<p>${escapeHtml(LINK_FACTS)}</p>
+<p>${escapeHtml(SESSION_FACTS)}</p>
+<p>With a fresh link open, <a href="">reload this page</a>.</p>
 </body></html>`;
+}

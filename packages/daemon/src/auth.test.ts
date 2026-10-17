@@ -12,6 +12,7 @@ import {
   authGate,
   consumeLoginCode,
   createDaemonAuth,
+  DEFAULT_SIGN_IN_HINT,
   createLoginCodeLedger,
   ensureTokenFile,
   mintLoginCode,
@@ -303,6 +304,31 @@ describe("authGate", () => {
     expect(res.status).toBe(401);
     expect(res.headers.get("content-type")).toMatch(/text\/html/);
     expect(await res.text()).toContain('<a href="">');
+  });
+
+  it("tells a signed-out browser how to get a link, with the product's own hint when given", async () => {
+    const generic = await setup().app.request("/", { headers: { accept: "text/html" } });
+    const genericPage = await generic.text();
+    expect(genericPage).toContain(DEFAULT_SIGN_IN_HINT);
+    expect(genericPage).toContain("A link works once, lasts 10 minutes, and stops working if the service restarts before it is used.");
+    expect(genericPage).toContain("the session lasts 30 days");
+    expect(genericPage).toContain("A home-screen web app keeps its own cookies");
+
+    ensureTokenFile(tokenFile);
+    const branded = buildGatedApp(createDaemonAuth({ tokenFile, signInHint: "Run `acme login-link` <b>." }));
+    const page = await (await branded.request("/", { headers: { accept: "text/html" } })).text();
+    expect(page).toContain("Run `acme login-link` &lt;b&gt;.");
+    expect(page).not.toContain(DEFAULT_SIGN_IN_HINT);
+  });
+
+  it("repeats the how-to on the invalid-link message, escaped for the script", async () => {
+    ensureTokenFile(tokenFile);
+    const app = buildGatedApp(createDaemonAuth({ tokenFile, signInHint: "Run acme login-link </script>." }));
+
+    const html = await (await app.request("/auth/login")).text();
+
+    expect(html).toContain("This link is invalid, expired, or already used. Run acme login-link \\u003c/script>. A link works once");
+    expect(html).not.toContain("</script>.");
   });
 
   it("passes the bearer secret, with the scheme in any case", async () => {
