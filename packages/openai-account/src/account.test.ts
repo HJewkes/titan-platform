@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { accountLabel, loginStateFromStatus, quotaAdmission, redactSecrets, usageFromRolloutEvents, type UsageResult } from "./index.js";
+import { accountLabel, loginStateFromStatus, quotaAdmission, knownObservation, redactSecrets, usageFromRolloutEvents, type UsageResult } from "./index.js";
+
+import { validateRolloutWindows } from "./usage.js";
 
 const now = 1_800_000_000;
 function event(used = 70, at = now) {
@@ -14,9 +16,9 @@ function event(used = 70, at = now) {
 
 // Supplied observations test policy independently of the untrusted rollout envelope.
 function observed(used = 70, at = now): UsageResult {
-  return { status: "known", reading: { account: "reporter", written_at: at,
+  return knownObservation({ source: "synthetic-independent-observation", observedAt: at, reading: { account: "reporter",
     rate_limits: { five_hour: { used_percentage: 20, resets_at: now + 1000 },
-      seven_day: { used_percentage: used, resets_at: now + 2000 } } } };
+      seven_day: { used_percentage: used, resets_at: now + 2000 } } } });
 }
 
 describe("read-only Codex account core", () => {
@@ -80,10 +82,12 @@ describe("read-only Codex account core", () => {
   it("validates a supplied known reading rather than trusting its type annotation", () => {
     const valid = observed();
     if (valid.status !== "known") throw new Error("fixture did not parse");
-    const malformed: UsageResult = { status: "known", reading: { ...valid.reading, written_at: NaN } };
-    expect(quotaAdmission(malformed, now)).toMatchObject({ allowed: false, reason: "inconsistent" });
-    valid.reading.rate_limits.five_hour.used_percentage = NaN;
+    valid.reading.written_at = NaN;
     expect(quotaAdmission(valid, now)).toMatchObject({ allowed: false, reason: "inconsistent" });
+    const invalidCounter = observed();
+    if (invalidCounter.status !== "known") throw new Error("fixture did not parse");
+    invalidCounter.reading.rate_limits.five_hour.used_percentage = NaN;
+    expect(quotaAdmission(invalidCounter, now)).toMatchObject({ allowed: false, reason: "inconsistent" });
   });
   it("refuses future and reset-expired supplied observations", () => {
     expect(quotaAdmission(observed(20, now + 1), now)).toEqual({ allowed: false, reason: "inconsistent" });
@@ -99,6 +103,10 @@ describe("read-only Codex account core", () => {
     const original = event();
     const { primary, secondary } = original.payload.rate_limits;
     const swapped = { ...original, payload: { type: "token_count", rate_limits: { primary: secondary, secondary: primary } } };
+    expect(validateRolloutWindows(swapped.payload.rate_limits, now)).toEqual({
+      five_hour: { used_percentage: primary.used_percent, resets_at: primary.resets_at },
+      seven_day: { used_percentage: secondary.used_percent, resets_at: secondary.resets_at },
+    });
     expect(usageFromRolloutEvents([swapped], "default")).toEqual({ status: "unknown", reason: "freshness-unverified" });
   });
   it("refuses unknown pools, duration changes and millisecond reset values", () => {
