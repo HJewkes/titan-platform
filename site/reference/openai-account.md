@@ -14,7 +14,7 @@ bounded status probe and read-only rollout scan.
 
 ## When to reach for it
 
-Use this package for account admission and usage displays. Use `agent` to execute
+Use this package for account admission and usage displays with explicit evidence handling. Use `agent` to execute
 a turn, `session-read` to decode transcripts and `anthropic-account` for Claude
 accounts. Nothing here depends on the new Codex runtime adapter exports.
 
@@ -78,8 +78,8 @@ The public `UsageResult` also supports a caller-supplied `{ status: "known",
 reading }` for sources that independently establish quota observation time. That
 reading contains `account`, `written_at` and `rate_limits.five_hour` / `seven_day`
 windows with `used_percentage` and `resets_at`. All timestamps use epoch seconds.
-The caller must establish the provenance; no native rollout reader in this
-package currently produces known readings. Additional fields in raw rollouts
+The caller must establish the provenance; native rollout readers never produce known readings. The separate opt-in
+backend reader below establishes a local request-start lower bound. Additional fields in raw rollouts
 are not treated as a trusted timestamp seam.
 
 `readUsage(profile, options?)` scans only `rollout-*.jsonl` in `sessions` and
@@ -108,9 +108,9 @@ reservation. Additional model-specific pools are not admitted by this API.
 
 ## Scope and redaction
 
-No CLI, statusline, credential provisioning, auth copying, login writes, token
-refresh, permission adapter, runtime launch or account-wide reservation in this
-slice. `redactSecrets` reuses Titan's redactor and adds OpenAI key prefixes;
+No CLI surface, statusline, credential provisioning, auth copying, explicit
+login writes, permission adapter, model turns or account-wide reservation. Native
+backend quota reads can refresh native managed credentials implicitly. `redactSecrets` reuses Titan's redactor and adds OpenAI key prefixes;
 Error copies contain only scrubbed message/name/stack and no cause. Structural
 allow-listing keeps transcript and status output out of account state altogether.
 
@@ -118,3 +118,58 @@ allow-listing keeps transcript and status output out of account state altogether
 
 New package for TP-3363, following `anthropic-account`'s pure root / node subpath
 layout. CLI and statusline output are a separate follow-up slice.
+
+## Opt-in native backend quota
+
+```ts
+import { readNativeUsage } from "@titan-design/openai-account/node";
+// expectedAccountId comes from the supervisor account authority, not label/email.
+const evidence = await readNativeUsage(profile, { expectedAccountId });
+```
+
+This is a separate explicit route; `readUsage` keeps its rollout-only behavior.
+The reader resolves PATH Codex once to an absolute realpath, used for both version
+and app-server. It probes >=0.162.1 with no maximum version pin, then requires
+the native initialize and account-read protocol capabilities. Its private stdio
+request sequence is initialize, initialized, account/read(refreshToken:false),
+account/rateLimits/read(supportsLunaReserve:false,excludeResetCreditDetails:true),
+account/read(refreshToken:false). It never requests login, token injection,
+configuration writes, reset-credit consumption, a thread or a model turn.
+Expected backend account binding is required before any child is started.
+Native initialize must report the explicit selected home. A process environment allowlist
+removes API keys, provider/account overrides and loader/shell injection variables. ChatGPT checks surround quota retrieval. A matching accountId,
+ordinaryUsageAllowed:true and no account change across the read are mandatory.
+Absent backend identity/readiness or unsupported method/shape refuses; a label,
+email or older success cannot authorize a new read. Only the codex map bucket is
+used, and its numeric windows must agree with the legacy codex snapshot.
+
+`written_at` is local quota-request **start**, so network/validation delay counts
+against the same 900-second Q5 ceiling. Backward/drifting wall clocks, excessive
+duration and resets expiring in flight refuse. This is a conservative local
+observation lower bound: official native source proves a new backend GET but
+provides no server-internal snapshot generation time. Do not claim one. Native
+sparse notifications and raw rollout timestamps never refresh it.
+
+The default overall deadline is ten seconds (1–60000 ms), with cancellation and
+bounded child output (stdout64 KiB, stderr16 KiB, line32 KiB, messages32). Fixed
+unknown results replace raw protocol/errors; account IDs/email do not enter the
+public reading. Native startup workspace discovery and managed credential
+refresh can occur, including persistence of native-owned tokens. Deployment
+policy must allow these effects; this library neither reads/copies credentials
+nor supplies tokens itself.
+
+Synthetic version/channel/child-stream fixtures verify protocol, quota and timing
+rules; no live Codex, home, credentials, real sessions or backend was used.
+Production runtime compatibility is UNVERIFIED, and no statusline/admission
+consumer is changed to use this route automatically.
+
+Primary source: pinned [Codex 0.162.1 account processor](https://github.com/openai/codex/blob/092d3acd6bec3e3a14bdc7e7a2810ab628ab759d/codex-rs/app-server/src/request_processors/account_processor.rs#L1190-L1296),
+[backend GET implementation](https://github.com/openai/codex/blob/092d3acd6bec3e3a14bdc7e7a2810ab628ab759d/codex-rs/backend-client/src/client/rate_limit_resets.rs#L23-L79)
+and [native credential refresh](https://github.com/openai/codex/blob/092d3acd6bec3e3a14bdc7e7a2810ab628ab759d/codex-rs/login/src/auth/manager.rs#L2387-L2412).
+
+Both native child operations run in one newly created empty temporary working
+directory, never the caller project or account home. The owned directory is
+removed on success, refusal, cancellation and startup failure (late creation is
+cleaned after cancellation). CODEX_HOME remains the explicit selected account.
+This prevents project-config inheritance; native global account configuration
+and credential-refresh behavior remain native-owned, as described above.

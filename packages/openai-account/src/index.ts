@@ -3,3 +3,4 @@ export { loginStateFromStatus, type LoginState, type LoginStatusOutput } from ".
 export { redactSecrets } from "./redact.js";
 export { usageFromRolloutEvents, quotaAdmission, MAX_READING_AGE_SECONDS,
   type UsageReading, type UsageResult, type UsageWindow, type QuotaAdmission } from "./usage.js";
+export { usageFromNativeResponse, type NativeQuotaObservation } from "./native-usage.js";

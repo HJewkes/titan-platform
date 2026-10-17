@@ -3,7 +3,7 @@ import { assertAccountLabel } from "./profile.js";
 export interface UsageWindow { used_percentage: number; resets_at: number }
 export interface UsageReading {
   account: string;
-  /** Quota observation time established by the caller, in epoch seconds; never an emission or read time. */
+  /** Quota observation lower bound in epoch seconds; a verified backend request start is valid, a rollout emission or file read is not. */
   written_at: number;
   rate_limits: { five_hour: UsageWindow; seven_day: UsageWindow };
 }

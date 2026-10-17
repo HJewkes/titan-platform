@@ -7,12 +7,12 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
 
 TP-3363 read-side slice. The root exports pure login-status parsing, account
 labels, secret redaction, rollout quota selection and quota admission. `./node`
-exports `readLoginState` and `readUsage`, both requiring an explicit absolute
+exports `readLoginState`, `readUsage` and opt-in `readNativeUsage`, all requiring an explicit absolute
 `codeHome` and a safe account label. No account default or credential fallback.
 
 `readLoginState` runs only `codex login status`, with a bounded timeout and API
 credentials removed from its environment. ChatGPT login is recognized; an API-key
-login, unknown output or failed probe refuses. Neither entry reads auth.json.
+login, unknown output or failed probe refuses. Neither legacy entry reads auth.json directly.
 
 `readUsage` reads rollout JSONL under `sessions` and `archived_sessions` in the
 selected home. It validates the latest token_count rate_limits evidence by event
@@ -27,10 +27,61 @@ file contents, paths or underlying exceptions.
 refuses. For a caller-supplied known reading, the caller must independently
 establish `written_at` as the quota observation time. Policy refuses weekly usage
 >86, five-hour usage >=100, an age >900 seconds, future timestamps and expired
-resets. Exact weekly used=86 and age=900 are allowed. This package currently has
-no reader capable of establishing that known freshness from native rollouts.
+resets. Exact weekly used=86 and age=900 are allowed. Native rollouts never establish known freshness. The separate opt-in backend
+reader below establishes a conservative local request-start observation lower bound.
 
 The pure root reuses `@titan-design/anthropic-account` secret redaction and adds
-OpenAI key prefixes. No CLI, statusline, provisioning, login writes, token refresh,
+OpenAI key prefixes. No CLI surface, statusline, provisioning, explicit login writes,
 permission enforcement or agent launch is included. Quota is a local observation,
-not a reservation or a live server check. See the [reference](../../site/reference/openai-account.md).
+not a reservation. Rollout reading is not a live server check. See the [reference](../../site/reference/openai-account.md).
+
+## Opt-in backend quota read
+
+`readNativeUsage(profile, { expectedAccountId })` from `./node` is separate from
+`readUsage`: it requests fresh quota through native app-server private stdio.
+It probes `codex --version` (minimum 0.162.1, newer versions require matching
+initialize/account method schemas), then sends only initialize, initialized,
+account/read (refreshToken:false), account/rateLimits/read, account/read.
+The quota request opts out of Reserve and skips reset-credit details.
+No login, token injection, config, thread, turn or model operation is requested.
+The executable is resolved once to an absolute realpath for both version and app-server.
+Only an allowlisted process environment is inherited (no API keys, provider/account
+overrides or loader/shell injection variables); the home is explicit and checked in
+initialize. Missing expected account binding refuses before spawning anything.
+
+Only matching response `accountId`, `ordinaryUsageAllowed:true`, ChatGPT account
+checks and an unchanged account generation can yield known quota. Labels/email
+are not backend identity. The caller obtains expectedAccountId from its account
+authority; this library does not parse auth.json to discover it. The codex bucket
+must contain valid 300/10080 minute windows and agree with the legacy snapshot.
+Missing/unsupported method/schema/identity, native errors, output overflow,
+account changes, cancellation and timeout return fixed unknown results, without
+raw stdout, stderr, paths, account IDs or error bodies.
+
+The observation `written_at` is captured immediately before the native quota
+request, so response and final account-check time count toward age. Wall and
+monotonic clocks must agree (within one second); stale/expired responses refuse.
+Source inspection proves a fresh native backend GET per read, not the backend
+internal snapshot generation time. The server supplies no observation timestamp.
+Sparse notifications, rollout emissions and prior successful responses never
+refresh this clock. This is no quota reservation and other devices can spend it.
+
+Native **may refresh and persist its own managed credentials** and perform
+workspace discovery during startup, even with refreshToken:false on account/read.
+Do not use this route where deployment policy forbids those native effects.
+The package never directly reads/copies credentials or provisions accounts.
+Default overall deadline is ten seconds (1–60000 ms allowed), stdout 64 KiB,
+stderr 16 KiB, message 32 KiB and 32 messages. Process output is discarded at
+teardown. An AbortSignal cancels both version probing and the owned app-server.
+
+Tests inject version, connection or child streams and wall/monotonic clocks;
+no real Codex/home/auth/session/backend is invoked. Production native runtime
+compatibility remains unverified until separately authorized. No existing
+rollout reader, statusline or automatic admission consumer is switched over.
+
+Both native child operations run in one newly created empty temporary working
+directory, never the caller project or account home. The owned directory is
+removed on success, refusal, cancellation and startup failure (late creation is
+cleaned after cancellation). CODEX_HOME remains the explicit selected account.
+This prevents project-config inheritance; native global account configuration
+and credential-refresh behavior remain native-owned, as described above.

@@ -1,10 +1,20 @@
-export { A as AccountProfile, L as LoginState, a as LoginStatusOutput, M as MAX_READING_AGE_SECONDS, Q as QuotaAdmission, U as UsageReading, b as UsageResult, c as UsageWindow, d as accountLabel, e as assertAccountLabel, l as loginStateFromStatus, q as quotaAdmission, u as usageFromRolloutEvents } from './usage.js';
+import { U as UsageResult } from './usage.js';
+export { A as AccountProfile, L as LoginState, a as LoginStatusOutput, M as MAX_READING_AGE_SECONDS, Q as QuotaAdmission, b as UsageReading, c as UsageWindow, d as accountLabel, e as assertAccountLabel, l as loginStateFromStatus, q as quotaAdmission, u as usageFromRolloutEvents } from './usage.js';
 
 /** Reuse Titan redaction, adding OpenAI key prefixes; no cause or extra fields survive. */
 declare function redactSecrets(value: string): string;
 declare function redactSecrets(value: Error): Error;
 
-export { redactSecrets };
+interface NativeQuotaObservation {
+    account: string;
+    expectedAccountId: string;
+    /** Local backend-request start, not a server-supplied snapshot generation time. */
+    startedAt: number;
+}
+/** Only for a successful matching native backend request; raw rollouts cannot establish this provenance. */
+declare function usageFromNativeResponse(input: unknown, observation: NativeQuotaObservation): UsageResult;
+
+export { type NativeQuotaObservation, UsageResult, redactSecrets, usageFromNativeResponse };
 
 // ./dist/usage.d.ts
 interface AccountProfile {
@@ -38,7 +48,7 @@ interface UsageWindow {
 }
 interface UsageReading {
     account: string;
-    /** Quota observation time established by the caller, in epoch seconds; never an emission or read time. */
+    /** Quota observation lower bound in epoch seconds; a verified backend request start is valid, a rollout emission or file read is not. */
     written_at: number;
     rate_limits: {
         five_hour: UsageWindow;
@@ -66,4 +76,4 @@ declare function usageFromRolloutEvents(events: Iterable<unknown>, account: stri
 /** Q5: reserve 14 weekly points, 5h ceiling 100, and at most 15-minute-old evidence. */
 declare function quotaAdmission(result: UsageResult, now: number): QuotaAdmission;
 
-export { type AccountProfile as A, type LoginState as L, MAX_READING_AGE_SECONDS as M, type QuotaAdmission as Q, type UsageReading as U, type LoginStatusOutput as a, type UsageResult as b, type UsageWindow as c, accountLabel as d, assertAccountLabel as e, loginStateFromStatus as l, quotaAdmission as q, usageFromRolloutEvents as u };
+export { type AccountProfile as A, type LoginState as L, MAX_READING_AGE_SECONDS as M, type QuotaAdmission as Q, type UsageResult as U, type LoginStatusOutput as a, type UsageReading as b, type UsageWindow as c, accountLabel as d, assertAccountLabel as e, loginStateFromStatus as l, quotaAdmission as q, usageFromRolloutEvents as u };
