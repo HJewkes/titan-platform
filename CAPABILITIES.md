@@ -564,7 +564,7 @@ Key exports:
 - `checks`: `isPassing`, `isPassingConclusion`, `isSucceeded`, `latestPerName`
 - `ci-verdict`: `ciVerdict`, `loadRequiredContexts`
 - `ci-wait`: `ciWait`
-- +103 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
+- +109 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-health"></a>
 
