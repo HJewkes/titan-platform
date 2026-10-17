@@ -33,8 +33,8 @@ function splicedReadings(cmd: Unwrapped): string[] {
     return args && printedText(cmd.name, args, shell);
   });
   // The line runs under one shell, so a text only some of them know may be a shell the line does not run under.
-  if (texts.some((text) => typeof text !== "string")) return [];
-  return [...new Set(texts as string[])];
+  const known = texts.filter((text) => typeof text === "string");
+  return known.length < texts.length ? [] : [...new Set(known)];
 }
 
 function passesThrough(cmd: Unwrapped): boolean {
