@@ -32,6 +32,8 @@ export { reattachWorktree, recreateWorktree, type WorktreeAllocation, type Workt
 export { describeRefusal, inspectForRelease, type ReleaseCheck, type WorktreeReleaseSafety } from "./release-safety.js";
 export {
   DEFAULT_SETUP_TIMEOUT_MS,
+  NPMRC_FILE,
+  PNPM_WORKSPACE_FILE,
   parseSetupStep,
   runSetupCommand,
   runWorktreeSetup,

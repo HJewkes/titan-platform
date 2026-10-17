@@ -45,3 +45,5 @@ Setup pins `PLAYWRIGHT_SKIP_BROWSER_GC=1`, including when the caller supplies `0
 `setupWorktree(target, run?)` returns `{ outcome, warnings }`: `ran` after successful execution, `none` for no declared step, `skipped` for an existing trust/validation guard, or `failed` after an unsuccessful step. `runWorktreeSetup` remains the warnings-only wrapper and invokes setup once. Output remains in the existing setup log rather than the report.
 
 `SetupTarget.baseSha` and `fetched` are caller assertions, not origin authentication. Callers must derive the target from the approved fetched default branch; a requested checkout branch does not acquire setup authority. The allocator's default-branch selection and all existing guards are unchanged. Product dependency guidance and metadata remain the caller's responsibility.
+
+The root entry also exports the existing guarded filenames `NPMRC_FILE` (`.npmrc`) and `PNPM_WORKSPACE_FILE` (`pnpm-workspace.yaml`) for callers sharing setup diagnostics and fixtures. Their values and guard behavior are unchanged.
