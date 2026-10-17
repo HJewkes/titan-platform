@@ -344,7 +344,7 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set });
   const piped = stdin === null ? [] : [stdin, ...(stdin === w.stdin ? w.shellStdin : [])];
   const held = descriptorsAfter(redirects, piped, inherited, (target) => resolvePath(w.scope.dir, target, w.home));
-  const script = procsubScript(cmd) ?? inlineScript(cmd, redirects, piped, w.unsure, inherited);
+  const script = procsubScript(cmd, (plain) => inlineScript(plain, redirects, piped, w.unsure, inherited)) ?? inlineScript(cmd, redirects, piped, w.unsure, inherited);
   if (script !== null) walkScript(script, w, wrapping, held);
   if (cmd.name !== "find") return;
   for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(folded(words, w)))) run(exec, [], child(w, [...wrapping, "find-exec"], held), null);
