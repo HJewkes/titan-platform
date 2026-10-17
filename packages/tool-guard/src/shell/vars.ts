@@ -235,6 +235,9 @@ export function childVars(vars: Vars): Vars {
 }
 
 const readonlyKey = (name: string) => `readonly@${name}`;
+/** Hidden key marking a name whose unknown value is a number, because arithmetic (or getopts, for OPTIND) wrote it. */
+const numericKey = (name: string) => `numeric@${name}`;
+export const isNumeric = (vars: ReadonlyMap<string, string | null>, name: string) => vars.has(numericKey(name));
 
 /**
  * Bash rejects a write to a readonly variable, so it keeps its value; one that may be readonly becomes unknown.
@@ -245,6 +248,7 @@ function write(vars: Vars, name: string, value: string | null, heard = true): vo
   const flag = vars.get(readonlyKey(name));
   if (flag === "") return;
   clearCased(vars, name);
+  vars.delete(numericKey(name));
   vars.set(name, flag === null || vars.has(ANY_READONLY) ? null : value);
   if (heard) observers.get(vars)?.(value);
 }
@@ -265,18 +269,21 @@ export function trackVars({ name, args, assigned }: TrackedCommand, vars: Vars):
   for (const [target, , kind] of assigned) if (kind === "element") write(vars, target, null, false);
   if (DECLARERS.has(name)) return trackDeclaration(name, args, vars);
   if (name === "printf") printfVar(args, vars);
-  writeEach(vars, commandWrites(name, args, vars), name !== "let" && name !== "unset");
+  writeEach(vars, commandWrites(name, args, vars), name !== "let" && name !== "unset", (target) => name === "let" || (name === "getopts" && target === "OPTIND"));
 }
 
 /** `(( ))` writes in the current shell, though the walk reads its parentheses as a subshell. */
 export function trackCompound(op: Token, vars: Vars): void {
-  writeEach(vars, compoundWrites(op, (w) => expandWord(w, (name) => lookup(vars, null, name)), vars), false);
+  writeEach(vars, compoundWrites(op, (w) => expandWord(w, (name) => lookup(vars, null, name)), vars), false, () => true);
 }
 
 /** A null list means the command may write any variable. */
-function writeEach(vars: Vars, writes: Assignment[] | null, heard: boolean): void {
+function writeEach(vars: Vars, writes: Assignment[] | null, heard: boolean, numeric: (target: string) => boolean = () => false): void {
   if (!writes) return forgetAll(vars, heard);
-  for (const [target, value] of writes) write(vars, target, value, heard);
+  for (const [target, value] of writes) {
+    write(vars, target, value, heard);
+    if (value === null && numeric(target)) vars.set(numericKey(target), "");
+  }
 }
 
 /**

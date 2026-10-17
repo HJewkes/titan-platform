@@ -41,6 +41,9 @@ function writtenNames(expression: string): string[] {
 /** The tokens inside each `(( ))`, keyed by its first `(`. */
 const compounds = new WeakMap<Token, Token[]>();
 
+/** The tokens inside the `(( ))` an operator opens, or undefined when it opens none. */
+export const compoundBody = (op: Token): Token[] | undefined => compounds.get(op);
+
 /**
  * Notes each `(( ))`, which the lexer reads as two parentheses. `( (a) )` reads the same, so a write found
  * there leaves the value unknown rather than exact. Returns the tokens unchanged.

@@ -22,7 +22,6 @@ const VALUE = `X='a[$(${PUSH})]'`;
 
 describe("a command substitution in the subscript of an arithmetic value (TP-1624)", () => {
   it.each([
-    ["a (( )) that reads $X", `${VALUE}; (( $X ))`],
     ["an expansion that reads $X", `${VALUE}; echo $(( $X ))`],
     ["an expansion that reads the braced name", `${VALUE}; echo $(( \${X} + 1 ))`],
   ])("refuses %s, since a run-time word in math may store into a rebinding parameter", (_, command) => {
@@ -30,6 +29,7 @@ describe("a command substitution in the subscript of an arithmetic value (TP-162
   });
 
   it.each([
+    ["a (( )) that reads $X", `${VALUE}; (( $X ))`],
     ["a (( )) that reads the value", `${VALUE}; (( X ))`],
     ["a let that reads the value", `${VALUE}; let X`],
     ["an expansion that reads the value", `${VALUE}; echo $(( X ))`],
@@ -69,12 +69,15 @@ describe("a command substitution in the subscript of an arithmetic value (TP-162
     expect(spellings(`X='$(${PUSH})'; echo X`)).not.toContain("bash.merge.git-push-protected");
   });
 
+  it("refuses a (( )) over a name read from input, since math reads the value as math", () => {
+    expect(() => spellings("read X; (( X ))")).toThrow(CommandRebindingError);
+  });
+
   it("keeps the verdict of the direct form", () => {
     expect(spellings(`(( a[$(${PUSH})] ))`)).toContain("bash.merge.git-push-protected");
   });
 
   it.each([
-    ["an unknown value", "read X; (( X ))"],
     ["a self-reference", "X='X'; (( X ))"],
     ["a cycle", "X='Y'; Y='X'; (( X ))"],
   ])("ends on %s without a hang", (_, command) => {
@@ -89,10 +92,13 @@ describe("a value arithmetic reads that cannot be walked to its end (TP-1624)", 
     ["a push on the first line of a script that then fails to lex", `X='a[$(bash -c "${push}\necho \\"")]'; (( X ))`],
     ["the same value read by let", `X='a[$(bash -c "echo \\""; ${push})]'; let X`],
     ["the same value read by a numeric [[ ]]", `X='a[$(bash -c "echo \\""; ${push})]'; [[ X -eq 1 ]]`],
-    ["a push in a later value once the substitution budget is spent", `X='a[${"$(:)".repeat(1500)}]'; (( X )); Y='a[$(${push})]'; (( Y ))`],
     ["an unlexable value read a second time", `X='a[$(bash -c "echo \\"")]'; [[ -n $X ]]; (( X ))`],
   ])("refuses %s", (_, line) => {
     expect(() => extractCommands(line)).toThrow(ValueWalkError);
+  });
+
+  it("refuses a value too long to read as math, before the substitution budget is spent", () => {
+    expect(() => extractCommands(`X='a[${"$(:)".repeat(1500)}]'; (( X )); Y='a[$(${push})]'; (( Y ))`)).toThrow(CommandRebindingError);
   });
 
   it("follows no chain of plain names, which holds no code to run", () => {

@@ -4,6 +4,7 @@ import { namedFdReadings } from "./named-fd.js";
 import { nextShellStdin, nextStdin } from "./piped-stdin.js";
 import type { Unwrapped } from "./unwrap.js";
 import { ReadingLimitError } from "./unsure-readings.js";
+import { CommandRebindingError, compoundStoresRebinding } from "./command-rebinding.js";
 import { trackCompound, type Vars } from "./vars.js";
 
 /** A command's readings: one, or each shell's of its `{name}` redirects, zsh's first and dash's second. */
@@ -110,6 +111,7 @@ export function endCommand(w: Linked, token: OpToken, words: WordToken[], redire
   w.prev = token.value;
   if (token.value !== "|" && token.value !== "|&") w.negated = false;
   if (token.value !== "&&") w.chain = { start: token.value };
+  if (compoundStoresRebinding(token, w.scope.vars)) throw new CommandRebindingError();
   trackCompound(token, w.scope.vars);
   enter(token.value);
 }
