@@ -74,6 +74,23 @@ describe("ciUnreadOnly", () => {
     expect(ciUnreadOnly(`${findings}\n\n${block("FIX_FIRST")}`)).toBe(true);
   });
 
+  it("the CI-unread line in two joined messages is still one item", () => {
+    const message = `- ${CI_UNREAD_LINE}\n\n${block("FIX_FIRST")}`;
+
+    expect(ciUnreadOnly(`${message}${FINDINGS_SEPARATOR}${message}`)).toBe(true);
+  });
+
+  it("a real item in a later joined message, below the first message's defect class, does not", () => {
+    const first = `- ${CI_UNREAD_LINE}\n\n${defectClass}\n\n${block("FIX_FIRST")}`;
+    const second = `- The retry never stops.\n\n${block("FIX_FIRST")}`;
+
+    expect(ciUnreadOnly(`${first}${FINDINGS_SEPARATOR}${second}`)).toBe(false);
+  });
+
+  it("findings cut to the cap do not, since the cut may have dropped a real item", () => {
+    expect(ciUnreadOnly(`${FIX_FIRST_TRUNCATED}- ${CI_UNREAD_LINE}\n\n${block("FIX_FIRST")}`)).toBe(false);
+  });
+
   it("the CI-unread line beside a real item does not", () => {
     expect(ciUnreadOnly(`1. ${CI_UNREAD_LINE}\n2. The retry never stops.\n\n${defectClass}\n\n${block("FIX_FIRST")}`)).toBe(false);
   });

@@ -510,7 +510,8 @@ declare function fixFirstFindings(target: ReviewTarget, messages: readonly Revie
 declare const CI_UNREAD_LINE = "Blocking: CI unread";
 /**
  * True when a FIX_FIRST's only blocking item is the CI-unread line: the exact line, bare or as a list item, and no other list
- * item before the defect-class section. Anything else a reviewer listed may be a real finding, so it keeps the FIX_FIRST.
+ * item before the defect-class section. Findings joined from several messages may repeat it, so a repeat is the same item.
+ * Anything else a reviewer listed may be a real finding, so it keeps the FIX_FIRST, as does a cut that may have dropped one.
  */
 declare function ciUnreadOnly(text: string): boolean;
 /** The line a reviewer adds for each blocking item that contradicts a recorded owner pick. */
