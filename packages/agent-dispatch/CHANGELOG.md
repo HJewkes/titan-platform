@@ -1,5 +1,20 @@
 # @titan-design/agent-dispatch
 
+## 0.8.0
+
+### Minor Changes
+
+- 3189a46: Add `observeAgentChatCalls`, which reports `{ verb, ms, outcome }` for every agent-chat call, spawn included. The verb carries no peer name or briefing.
+- 06506bc: `execSafeAsync`, `runAgentChatAsync`, `askHuman`, `readAnswers` and `dismissAsk` take an optional `AbortSignal`. Aborting it kills the child and rejects with the new `ExecAbortedError`. A signal that has already aborted starts no child.
+- 8f81511: `parkAgent` is now async and returns `Promise<ParkResult>`: it runs `agent-chat agent park` through `runAgentChatAsync`, so the caller's event loop stays free while the broker works. Callers must `await` it; a refusal or an unreachable broker now rejects rather than throws.
+- 7330b11: `retire`, `messageAgent`, `resumeAgent` and `dispatchToAgentChat` are async and return Promises, so a long-lived caller's event loop stays free while the agent-chat child answers; refusals now reject instead of throw. `execSafeAsync` takes an optional trailing `cwd`. The unexported `runAgentChat` is gone.
+
+### Patch Changes
+
+- 556b5e2: The installed-profile guard follows `AGENT_CHAT_HOME` (else `$HOME/.agent-chat/profiles`), refuses a profile name outside `^[a-z0-9][a-z0-9._-]*$` before building a path, and `agentChatEnv()` forwards a non-empty `AGENT_CHAT_HOME` so the CLI reaches the broker whose profiles were checked.
+- 0acca69: A CLI exit whose stderr is the line `broker did not answer <frame>_result` now rejects with `DispatchTimeoutError` instead of a plain `DispatchError`, since the frame may have landed.
+- ff27157: README: record that relay's daemon consumes the package and has deleted its copy (TP-460 c).
+
 ## 0.7.0
 
 ### Minor Changes

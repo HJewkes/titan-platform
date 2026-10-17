@@ -1,5 +1,18 @@
 # @titan-design/daemon
 
+## 0.7.0
+
+### Minor Changes
+
+- 448bcea: Add the `@titan-design/daemon/service` subpath: systemd value escaping (`noSpecifiers`, `quoteIfNeeded`, `execArg`), `userUnitDir`, the Homebrew-stable `stableNodePath`, `SYSTEM_PATH` and `servicePath(which, nodePath, binaries)`, so factory and titan stop carrying their own copies (TP-2473 a).
+- 8f37474: Serve on an inherited listening socket: `StartDaemonOptions.listenFd` and `systemdListenFd()` (systemd `LISTEN_FDS`/`LISTEN_PID`). With no fd passed the daemon binds its port as before (TP-2346).
+
+### Patch Changes
+
+- 3fafd2e: The signed-out pages now say how to get a sign-in link: who to ask, that a link works once for ten minutes and dies on restart, that a session lasts 30 days, and that a home-screen app keeps its own cookies. `createDaemonAuth` and `remote` take an optional `signInHint` so a product names its own command; the console passes `titan-console login-link`.
+- Updated dependencies [54b6d69]
+  - @titan-design/registry@0.5.0
+
 ## 0.6.0
 
 ### Minor Changes

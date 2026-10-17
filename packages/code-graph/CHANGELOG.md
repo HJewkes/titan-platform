@@ -1,5 +1,25 @@
 # @titan-design/code-graph
 
+## 0.18.0
+
+### Minor Changes
+
+- c33b063: Classify `*.fixtures.*` files (for example `minify.fixtures.ts`) with the `fixture` role, as `*.fixture.*` files already were (TP-2474). `INDEX_VERSION` is now 0.28.0, so the first index after upgrading reparses every file.
+- a8be5f4: Credit exports used through `import * as X`: member accesses emit `references` edges to the named exports, and a whole-object use credits every export of an in-repo target (TP-2474 c). `INDEX_VERSION` moves to 0.30.0, so existing snapshots are not reused.
+- 7a3800a: Add the SCBench complexity rollup (TP-2474 h). `qualitySection` builds an optional `quality` section for `GraphReportResult`: erosion, cognitive erosion, the CC distribution (max, mean, std, high and extreme counts, high-CC mean) and its Gini coefficient, for the whole tree and per package. `complexityDistribution` and `summarizeComplexity` expose the same arithmetic over plain rows. Report-time only; stored output is unchanged.
+- 5716d14: Add the SCBench dependency-graph metrics (TP-2474 i). The report's `quality` section gains `dependencies`, one row per package: cyclic dependency mass, propagation cost and dependency entropy over `calls` between measured callables (weighted by call sites), and the cyclic mass of file imports split into `value` and `typeOnly`. `qualitySection` now takes the edges as a fourth argument. `dependencyGraphMetrics`, `callGraphMetrics` and `importCyclicMass` expose the arithmetic. Report-time only; stored output is unchanged.
+- d084831: Add per-file line-density metrics (TP-2474 k), written on every TypeScript and Python file, zeros included: `long_line_share_160` (share of non-blank lines longer than 160 characters), `chars_per_sloc` (characters per non-blank line, surrounding whitespace excluded) and `bool_ops_per_line` (`&&`, `||`, `??` and ternaries, or Python `and`, `or` and conditional expressions, per non-blank line). Operators are counted from the syntax tree, so text inside strings and comments never counts. `INDEX_VERSION` is now 0.28.0, so the first index after upgrading reparses every file.
+- 03a8d23: Add function-level accretion: symbols carry `symbol_task_ids_{w}` and `symbol_edit_commits_{w}` (default window 7 days) from `git log -p -U0 -M -C` hunks carried forward to HEAD symbol spans, with the task-id pattern an option. Bumps `INDEX_VERSION` to 0.31.0 (TP-2474 l).
+- 5cd4f1b: Add `revisionLineSource` on `./history`: an evidence `LineSource` over the blobs of a 40-hex commit, never the working tree (TP-2766).
+- adaf424: Add a call-path query (`findCallPath`, `snapshotCallPath`): the shortest directed path between two nodes, id-smallest among equal lengths. `projectCallPath` folds a path to a coarser level through a caller-supplied box mapping, and each hop names the level edge it rides (TP-2973).
+
+### Patch Changes
+
+- b5d304f: `no-import-cycles` violations carry `cycleKind` (`value` or `type-only`), and a type-only cycle names its `hub` (TP-2474 e). The violation key is unchanged.
+- Updated dependencies [5cd4f1b]
+- Updated dependencies [abadd64]
+  - @titan-design/evidence@0.3.0
+
 ## 0.17.1
 
 ### Patch Changes

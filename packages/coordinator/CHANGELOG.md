@@ -1,5 +1,23 @@
 # @titan-design/coordinator
 
+## 0.5.0
+
+### Minor Changes
+
+- 9ebb9ba: Add `authoredBlockSchema`, `parseAuthored` and `renderAuthored` for the seat's authored handoff block (TP-2896 a): parse never throws and caps the JSON text at 1,500 chars; render drops standing rules past their `expires` UTC day and omits empty sections.
+
+### Patch Changes
+
+- 741313f: Make charter `worktrees_per_repo_per_seat` optional
+- Updated dependencies [3189a46]
+- Updated dependencies [556b5e2]
+- Updated dependencies [06506bc]
+- Updated dependencies [8f81511]
+- Updated dependencies [7330b11]
+- Updated dependencies [0acca69]
+- Updated dependencies [ff27157]
+  - @titan-design/agent-dispatch@0.8.0
+
 ## 0.4.2
 
 ### Patch Changes
