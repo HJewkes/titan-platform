@@ -838,6 +838,34 @@ describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () =
     expect(host.gates.get(gateId(runId, "approve-merge"))?.reason).toBe(`superseded: review again: repo-not-frozen was the only unmet condition at head ${REVIEWED}`);
   });
 
+  it("a hold satisfied at the gate's head after a thaw kept the gate sweeps the repo again while serving, and the run merges it", async () => {
+    const { host, fake, services, runId } = await authorityGated({ repoFrozen: true }, { serve: true });
+    const freezes = services.freeze!.get();
+    freezes.freeze(REPO, fakeSha("red-main"));
+    services.store.get().hold(runId, "g10-adversary: merge policy; TP-1", "rev-x");
+    freezes.unfreeze(REPO, fakeSha("green-main"));
+    await sleep(50, new AbortController().signal);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+
+    expect(services.store.get().satisfyHold(runId, "rev-x", REVIEWED, { agentId: "agent-rev-x", sessionId: "session-rev-x", locator: {} })).toBe(true);
+
+    await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: REVIEWED }));
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.reason).toBe(`superseded: review again: repo-not-frozen was the only unmet condition at head ${REVIEWED}`);
+  });
+
+  it("a thaw while serving leaves the gate of a run whose hold was satisfied at an older head", async () => {
+    const { host, fake, services, runId } = await authorityGated({ repoFrozen: true }, { serve: true });
+    const freezes = services.freeze!.get();
+    freezes.freeze(REPO, fakeSha("red-main"));
+    expect(satisfiedAt(services.store.get(), runId, fakeSha("older-head"))).toBe(true);
+
+    freezes.unfreeze(REPO, fakeSha("green-main"));
+    await sleep(50, new AbortController().signal);
+
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+    expect(fake.pr(1).merged).toBeFalsy();
+  });
+
   it("a thaw while serving leaves the gate of a run with an owner hold, even with its other hold satisfied at the gate's head", async () => {
     const { host, fake, services, runId } = await authorityGated({ repoFrozen: true }, { serve: true });
     const freezes = services.freeze!.get();

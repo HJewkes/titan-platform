@@ -330,14 +330,14 @@ interface ThawWatch {
   stop(): void;
 }
 
-/** Watches from before resync and the first adoption, so a thaw then is still swept; a thaw keeps a held run's gate, so a release here queues its repo too. */
+/** Watches from before resync and the first adoption, so a thaw then is still swept; a thaw keeps a held run's gate, so a release or satisfaction here queues its repo too. */
 function watchThaws(services: ShepherdServices | undefined): ThawWatch {
   const thawed = new Set<string>();
   let start = (): void => undefined;
   const queue = (repo: string): void => void (thawed.add(repo), queueMicrotask(() => start()));
   const stopThaws = services?.freeze?.onThaw(queue);
   const store: ShepherdServices["store"] | undefined = services?.store;
-  const stopReleases = store?.onChange?.((registration, change) => void (change === "released" && queue(registration.repo)));
+  const stopReleases = store?.onChange?.((registration, change) => void (change === "hold-eased" && queue(registration.repo)));
   return { thawed, onThaw: (next) => void (start = next), stop: () => (stopThaws?.(), stopReleases?.()) };
 }
 

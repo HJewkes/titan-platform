@@ -83,8 +83,8 @@ const REFS_HEADS = "refs/heads/";
 /** A branch spelled `refs/heads/<b>` and one spelled `<b>` are the same branch; strip one leading prefix. */
 const branchName = (branch: string): string => (branch.startsWith(REFS_HEADS) ? branch.slice(REFS_HEADS.length) : branch);
 
-/** Hears a registration after a write to it commits, `released` when it lifted a hold; it must not throw, since the write has already landed. */
-type RegistrationListener = (registration: Registration, change?: "released") => void;
+/** Hears a registration after a write to it commits, `hold-eased` when a lift, satisfaction or reclass may let a merge through a hold; it must not throw, since the write has already landed. */
+type RegistrationListener = (registration: Registration, change?: "hold-eased") => void;
 
 /** Shepherd registrations in the factory database; the table comes from `shepherdMigration`. */
 export class ShepherdStore implements HoldLookup {
@@ -190,12 +190,12 @@ export class ShepherdStore implements HoldLookup {
 
   /** Compare-and-swap in one transaction: `reclassHold` swaps the gating hold, only while it is `from`, for `next` of the hold left gating. */
   reclassIfHeld(runId: string, from: string, next: Reclass["next"], by: EventContext = {}): string | null | false {
-    return this.changed(runId, this.db.transaction(() => reclassHold(this.db, runId, { from, next }, this.stamp(), by))());
+    return this.changed(runId, this.db.transaction(() => reclassHold(this.db, runId, { from, next }, this.stamp(), by))(), "hold-eased");
   }
 
   /** Compare-and-swap: lifts the owner-asked hold only while one is set, recording its reason, or `reason` when given; false, writing nothing, when none is. */
   releaseOwnerHold(runId: string, by: EventContext = {}, reason?: string): boolean {
-    return this.changed(runId, this.db.transaction(() => liftOwnerHold(this.db, runId, this.stamp(), by, reason))(), "released");
+    return this.changed(runId, this.db.transaction(() => liftOwnerHold(this.db, runId, this.stamp(), by, reason))(), "hold-eased");
   }
 
   /** Records that the owner was asked about the run's owner-asked hold again; false when it has none. */
@@ -253,7 +253,7 @@ export class ShepherdStore implements HoldLookup {
     const changed = this.db
       .prepare("UPDATE shepherd_registration SET hold_satisfied_head = ?, hold_satisfied_by = ?, updated_at = ? WHERE run_id = ? AND held = 1 AND hold_reviewer = ?")
       .run(head, satisfiedBy, this.stamp(), runId, reviewer).changes;
-    return this.changed(runId, changed === 1);
+    return this.changed(runId, changed === 1, "hold-eased");
   }
 
   /** Withdraws the satisfaction, as when the reviewer's newest verdict is FIX_FIRST; at whatever head it was read, so no later carry can restore it. */
@@ -327,11 +327,11 @@ export class ShepherdStore implements HoldLookup {
       const next = pick(readSlots(this.db, runId));
       if (next) this.writeSlots(runId, next.slots, { kind: "release", reason: next.reason }, by);
       return next !== undefined;
-    })(), "released");
+    })(), "hold-eased");
   }
 
   /** Called once the write has committed; `false` means it wrote nothing. */
-  private changed<T>(runId: string, result: T, change?: "released"): T {
+  private changed<T>(runId: string, result: T, change?: "hold-eased"): T {
     const registration = result === false ? undefined : this.byRun(runId);
     if (registration) this.onChange(registration, change);
     return result;
