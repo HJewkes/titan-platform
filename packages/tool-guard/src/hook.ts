@@ -7,7 +7,7 @@ import type { HookEvent, MalformedEvent } from "./event.js";
 import { formatDecisionLine, formatErrorLine } from "./log.js";
 import type { ErrorClass } from "./log.js";
 import { GUARDED_PATHS } from "./paths.js";
-import { OpaqueShebangError } from "./scripts.js";
+import { OpaqueShebangError, ScriptDepthError } from "./scripts.js";
 import { ParseError } from "./shell/lexer.js";
 import { MAX_NESTING } from "./shell/nesting.js";
 import { CommandRebindingError } from "./shell/command-rebinding.js";
@@ -79,6 +79,8 @@ const UNREADABLE_SCRIPT_REASON =
   "authority-guard does not check this Bash command: a shell runs a file the guard cannot read in full (a FIFO, a directory, a missing or unreadable file, or one past 64 KiB); run a regular, readable script of at most 64 KiB by a literal path.";
 const OPAQUE_SHEBANG_REASON =
   "authority-guard does not check a file run by path whose `#!` line names anything but a plain shell (`#!/bin/bash`, `#!/usr/bin/env bash`, sh or zsh, with at most one `-[euxvf]` word), as that interpreter or its options may run something other than the body; run it through its interpreter by name (`node ./x`, `python3 ./x`, `bash ./x`), where the guard reads the body.";
+const SCRIPT_DEPTH_REASON =
+  "authority-guard reads a script, and the scripts it runs by path, but not those one level further down, so it refuses a script nested that deep; run the innermost script in its own command.";
 const TABLE_REASON = "authority-guard could not load the authority table, so it refuses every guarded action. Report this to the owner.";
 const UNFINISHED_REASONS: Record<Unfinished, string> = {
   timeout: "authority-guard could not finish checking this call in time, so it was not run. Split the command into smaller Bash calls.",
@@ -167,6 +169,7 @@ function limitReason(error: ReadingLimitError): string {
   if (error instanceof EnvSplitError) return ENV_SPLIT_REASON;
   if (error instanceof UnknownStdinError) return STDIN_REASON;
   if (error instanceof CommandRebindingError) return REBIND_REASON;
+  if (error instanceof ScriptDepthError) return SCRIPT_DEPTH_REASON;
   if (error instanceof OpaqueShebangError) return OPAQUE_SHEBANG_REASON;
   if (error instanceof UnreadableScriptError) return UNREADABLE_SCRIPT_REASON;
   return error instanceof SplitReadingError ? SPLIT_REASONS[error.split] : READINGS_REASON;
