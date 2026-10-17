@@ -147,7 +147,7 @@ function joinedIn(pieces: Texts[]): Texts {
 }
 
 /** The texts a process substitution's commands print; a command piped on to another is left out. */
-function listText(tokens: Token[]): ShellTexts {
+export function listText(tokens: Token[]): ShellTexts {
   const pieces: ShellTexts[] = [];
   let words: WordToken[] = [];
   let redirects: RedirectToken[] = [];
