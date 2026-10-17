@@ -38,6 +38,30 @@ async function verdict(command: string): Promise<{ decision: string | null; spel
 /** Bodies that run what the shell's own stdin or trailing operands hold, so main's reading of those must survive the substitution. */
 const STDIN_BODIES = ["cat | sh", "cat | bash", "cat - | sh", "cat /dev/stdin | sh", "cat <&0 | sh", "tee /dev/null | sh", "head -c 999 | sh", 'eval "$(cat)"', "read l; $l"];
 const STDIN_LINES = [...STDIN_BODIES.map((body) => `bash <(echo '${body}') < ./evil.sh`), "bash <(echo 'cat | sh') 0< ./evil.sh", "bash <(< ./x.sh)", "zsh <(< ./x.sh)"];
+const RELAY_LINES = [
+  `bash <(echo 'bash "$@"') -c '${PUSH}'`,
+  `sh <(echo 'sh "$@"') -c '${PUSH}'`,
+  `zsh <(echo 'zsh "$@"') -c '${PUSH}'`,
+  `bash <(echo 'sh "$@"') -c '${PUSH}'`,
+  `bash <(echo 'bash "$@"') -ec '${PUSH}'`,
+  `bash <(echo 'bash "$@"') -e -c '${PUSH}'`,
+  `bash <(echo 'bash "$@"') -O extglob -c '${PUSH}'`,
+  `bash <(echo 'bash "$1" "$2"') -c '${PUSH}'`,
+  `bash <(echo 'bash "$@"') -c '${PUSH}' x`,
+];
+const NULLCMD_LINES = [
+  "bash <(< ./x.sh; echo)",
+  "zsh <(< ./x.sh; echo)",
+  "bash <(< ./x.sh | cat)",
+  "bash <(echo; < ./x.sh)",
+  "bash <(< ./x.sh && true)",
+  "zsh <(true; < ./x.sh)",
+  "bash <(< ./x.sh; cat ./ok.sh)",
+  "bash <({ < ./x.sh; })",
+  "bash <((< ./x.sh))",
+  "zsh <(<./x.sh;echo)",
+  "bash <(0< ./x.sh; echo)",
+];
 const OPERAND_LINES = [
   "bash <(echo 'bash $1') ./evil.sh",
   "bash <(echo 'bash \"$@\"') ./evil.sh",
@@ -49,7 +73,7 @@ const OPERAND_LINES = [
 ];
 
 describe("a shell or source running a process substitution as its script", () => {
-  it.each([...STDIN_LINES, "bash <(echo 'cat | sh') < \"$F\"", ...OPERAND_LINES])("denies a shell's own stdin or operands: %s", async (command) => {
+  it.each([...STDIN_LINES, "bash <(echo 'cat | sh') < \"$F\"", ...OPERAND_LINES, ...RELAY_LINES, ...NULLCMD_LINES])("denies a shell's own stdin or operands: %s", async (command) => {
     const { decision } = await verdict(command);
 
     expect(decision).toBe("deny");
@@ -65,6 +89,10 @@ describe("a shell or source running a process substitution as its script", () =>
     'exec {fd}< <(ls); read -r -u "$fd" l; echo "$l"',
     "bash <(echo a) <(echo PUSH)",
     "diff <(sort a) <(sort b)",
+    "bash <(echo 'echo hi') -s x",
+    "bash <(echo 'echo hi') -x",
+    "bash <(echo 'echo hi') -O extglob",
+    "bash <(< ./ok.sh)",
     "source <(kubectl completion zsh)",
   ])("allows a redirect that takes the substitution: %s", async (command) => {
     const { decision } = await verdict(command);
@@ -231,7 +259,7 @@ describe.each(["bash", "zsh"])("under real %s", (shell) => {
 });
 
 describe("the shell's own stdin and operands under a real shell", () => {
-  it.each([...STDIN_LINES, ...OPERAND_LINES])("%s pushes", (line) => {
+  it.each([...STDIN_LINES, ...OPERAND_LINES, ...RELAY_LINES, ...NULLCMD_LINES])("%s pushes", (line) => {
     const pushing = ["bash", "zsh"].filter((shell) => haveShell(shell) && pushes(shell, line));
 
     expect(pushing.length).toBeGreaterThan(0);

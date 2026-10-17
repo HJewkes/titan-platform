@@ -59,17 +59,18 @@ export function hasProcsubOperand(cmd: Pick<Unwrapped, "name" | "args">): boolea
 }
 
 /**
- * The text a body prints when it is echo or printf, read as the shell's script. A body the guard does not model
- * (another program's output) gets the verdict the same body piped into the shell gets.
+ * The text a body prints when it is echo or printf, read as the shell's script, and with it whatever main read from the
+ * command without the substitution (`-c STR` after it is a positional the body may relay as `"$@"`). A body the guard
+ * does not model (another program's output) adds no text, as the same body piped into the shell adds none.
  */
-export function procsubScript(cmd: Pick<Unwrapped, "name" | "args">): Inline | null {
+export function procsubScript<T extends Pick<Unwrapped, "name" | "args">>(cmd: T, rest: (plain: T) => Inline | null): Inline | null {
   const body = scriptOperand(cmd);
   if (body === null) return null;
   const per = listText(body);
-  if (per.some((texts) => texts === null)) return null;
-  const all = [...new Set(per.flatMap((texts) => texts ?? []))];
+  const all = per.some((texts) => texts === null) ? [] : [...new Set(per.flatMap((texts) => texts ?? []))];
   if (all.length > MAX_TEXTS) throw new ReadingLimitError();
-  return { texts: all.flatMap((text) => pipedShellTexts(cmd.name, text)), wrap: "heredoc-shell" };
+  const texts = [...all.flatMap((text) => pipedShellTexts(cmd.name, text)), ...(rest(withoutProcsubOperands(cmd))?.texts ?? [])];
+  return texts.length === 0 ? null : { texts, wrap: "heredoc-shell" };
 }
 
 /**
@@ -79,18 +80,34 @@ export function procsubScript(cmd: Pick<Unwrapped, "name" | "args">): Inline | n
  */
 export function procsubTargets(cmd: SimpleCommand, home: string): ScriptTarget[] {
   const body = scriptOperand(cmd) ?? [];
-  const file = procsubFile(body) ?? redirectedFile(body);
-  if (file === null) return [];
-  const path = resolvePath(cmd.dir, file, home);
-  if (path === null) throw new UnreadableScriptError(null);
-  return [{ path, kind: "shell" }];
+  const cat = procsubFile(body);
+  return (cat === null ? redirectedFiles(body) : [cat]).map((file) => {
+    const path = resolvePath(cmd.dir, file, home);
+    if (path === null) throw new UnreadableScriptError(null);
+    return { path, kind: "shell" };
+  });
 }
 
-/** A body of redirects alone prints nothing in bash and, for one `< FILE`, the file in zsh; any other is refused as unreadable. */
-function redirectedFile(body: Token[]): WordToken | null {
-  if (body.length === 0 || !body.every((token) => token.type === "redirect")) return null;
-  const [only] = body;
-  const target = body.length === 1 && only?.type === "redirect" && only.op === "<" && (only.fd === null || only.fd === "0") ? only.target : null;
+const GROUP_WORDS = new Set(["{", "}", "!"]);
+
+/** The file of each nameless `< FILE` command in the body, wherever it sits: zsh's NULLCMD prints it into the script. */
+function redirectedFiles(body: Token[]): WordToken[] {
+  const commands: Token[][] = [[]];
+  for (const token of body) {
+    if (token.type === "op") commands.push([]);
+    else commands.at(-1)?.push(token);
+  }
+  return commands.flatMap((tokens) => {
+    const named = tokens.some((token) => token.type === "word" && !(GROUP_WORDS.has(token.value) && !token.quoted));
+    const redirects = tokens.filter((token) => token.type === "redirect");
+    return named || redirects.length === 0 ? [] : [redirectedFile(redirects)];
+  });
+}
+
+/** One `< FILE`; any other nameless redirect is refused as unreadable. */
+function redirectedFile(redirects: Token[]): WordToken {
+  const [only] = redirects;
+  const target = redirects.length === 1 && only?.type === "redirect" && only.op === "<" && (only.fd === null || only.fd === "0") ? only.target : null;
   if (target === null || target.dynamic || target.computed || target.subs.length > 0) throw new UnreadableScriptError(null);
   return target;
 }
