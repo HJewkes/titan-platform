@@ -1,7 +1,9 @@
+import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import { INTERPRETERS, SHELLS } from "./mentions.js";
 import type { SimpleCommand } from "./shell/commands.js";
 import type { WordToken } from "./shell/lexer.js";
-import { parseShebang } from "./shebang.js";
+import { isNativeProgram, parseShebang } from "./shebang.js";
+import type { ClassifyContext } from "./types.js";
 import { resolvePath, resolveValue } from "./shell/path.js";
 import { shellOperands, shellStdin } from "./shell/shell-options.js";
 import { UnknownStdinError, UnreadableScriptError } from "./shell/unsure-readings.js";
@@ -35,6 +37,29 @@ export function refuseOpaqueShebang(target: ScriptTarget, opaque: ReadonlySet<st
   if (target.byPath && opaque.has(target.path)) throw new OpaqueShebangError();
 }
 
+/**
+ * Whether a by-path target is a native program, which holds no script for the guard to read. Only when the line has
+ * written no file: a write may have replaced what the disk holds, and the disk is all this looks at.
+ */
+export function runsNatively(target: ScriptTarget, ctx: ClassifyContext): boolean {
+  if (target.byPath !== true || ctx.scriptReadings !== undefined) return false;
+  try {
+    const fd = openSync(target.path, "r");
+    try {
+      const readAt = (position: number, length: number): Buffer => {
+        const buf = Buffer.alloc(length);
+        return buf.subarray(0, readSync(fd, buf, 0, length, position));
+      };
+      const stat = fstatSync(fd);
+      return stat.isFile() && isNativeProgram(readAt, stat.size);
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
+}
+
 export const SOURCERS: ReadonlySet<string> = new Set(["source", "."]);
 const INLINE_FLAG_RE = /^-[A-Za-z]*[ceEpm]$|^--(eval|print)(=|$)/;
 
@@ -49,10 +74,15 @@ export function scriptTargets(cmd: SimpleCommand, home: string): ScriptTarget[] 
 function scriptTarget(cmd: SimpleCommand, name: string, home: string): ScriptTarget | null {
   if (SOURCERS.has(name)) return target(cmd, cmd.args[0], home, "shell");
   if (INTERPRETERS.has(name)) return target(cmd, firstOperand(cmd.args, INLINE_FLAG_RE, new Set()), home, "interpreter");
-  return cmd.path?.endsWith(".sh") ? typedTarget(cmd, cmd.path, home) : null;
+  return runsByPath(cmd.path) ? typedTarget(cmd, cmd.path, home) : null;
 }
 
-/** `./x.sh`, `~/bin/x.sh`, `/tmp/x.sh` or a bare `x.sh`, resolved as typed from the command's directory. */
+/** The kernel reads any file named with a `/`, whatever its suffix, and its `#!` line picks the interpreter; a bare name is read only as `x.sh`. */
+function runsByPath(typed: string | null): typed is string {
+  return typed !== null && (typed.includes("/") || typed.endsWith(".sh"));
+}
+
+/** `./x`, `~/bin/x.zsh`, `/tmp/x` or a bare `x.sh`, resolved as typed from the command's directory. */
 function typedTarget(cmd: SimpleCommand, typed: string, home: string): ScriptTarget | null {
   const path = resolveValue(cmd.dir, typed, home);
   return path === null ? null : { path, kind: "shell", byPath: true };
