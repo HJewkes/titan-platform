@@ -7,7 +7,8 @@ import { release } from "./families/release.js";
 import { secret } from "./families/secret.js";
 import { isPathSearched } from "./path-changes.js";
 import { hasDynamicName, namedReadings, namesDynamicPath, wrappedReading } from "./dynamic-readings.js";
-import { afterWrites, scriptReadings } from "./line-writes.js";
+import { statSync } from "node:fs";
+import { afterWrites, mayBeWritten, scriptReadings } from "./line-writes.js";
 import { INTERPRETERS } from "./mentions.js";
 import { hasOpaqueShebang, refuseOpaqueShebang, runsNatively, scriptTargets, SOURCERS } from "./scripts.js";
 import type { ScriptTarget } from "./scripts.js";
@@ -184,12 +185,24 @@ function onlyReads(cmd: SimpleCommand): boolean {
   return READ_ONLY_GIT.has(sub) && !cmd.args.some((a) => a.value.startsWith("--output") || a.dynamic);
 }
 
+/** A PATH lookup skips a directory and a file with no execute bit, unless the line wrote the file or runs `chmod` before it. */
+function lookupSkips(target: ScriptTarget, ctx: ClassifyContext, earlier: () => SimpleCommand[]): boolean {
+  if (mayBeWritten(ctx, target.path)) return false;
+  try {
+    const stat = statSync(target.path);
+    return !stat.isFile() || ((stat.mode & 0o111) === 0 && !earlier().some((c) => c.name === "chmod"));
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Whether a file a PATH lookup found may be there to run: on the disk, or written by the line. A file another command on
  * the line may have made (`cp s n; PATH=.:$PATH n`, `tar xf a.tar; PATH=.:$PATH n`) fails closed unless every earlier command only reads.
  */
 function mayExist(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext, earlier: () => SimpleCommand[]): boolean {
   if (target.searched !== true) return true;
+  if (cmd.searchPath?.soft === true && lookupSkips(target, ctx, earlier)) return false;
   try {
     if (scriptReadings(ctx, target.path).length > 0) return true;
   } catch (error) {

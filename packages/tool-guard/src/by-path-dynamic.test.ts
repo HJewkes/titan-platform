@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -13,9 +13,9 @@ afterAll(() => rmSync(home, { recursive: true, force: true }));
 
 const port: HookPort = { context: nodeContext(home), now: () => new Date("2026-01-02T03:04:05.000Z"), loadDecide: async () => decide };
 
-function file(name: string, text: string): void {
-  writeFileSync(join(home, name), text, { mode: 0o755 });
-  chmodSync(join(home, name), 0o755);
+function file(name: string, text: string, mode = 0o755): void {
+  writeFileSync(join(home, name), text, { mode });
+  chmodSync(join(home, name), mode);
 }
 
 async function reply(command: string): Promise<string> {
@@ -194,6 +194,25 @@ describe("an eval of text only known at run time", () => {
     file("s", `#!/bin/bash\n${PUSH}\n`);
     file("envf", "PATH=.\n");
     expect(await decision(command)).toBe("deny");
+  });
+
+  it("reads a non-executable ./s the line makes executable first", async () => {
+    file("s", `#!/bin/bash\n${PUSH}\n`, 0o644);
+    file("envf", "PATH=.\n");
+    expect(await decision('chmod +x s; eval "$(cat envf)"; s')).toBe("deny");
+    file("s", `#!/bin/bash\n${PUSH}\n`);
+  });
+
+  it.each([
+    ["eval \"$(pyenv init -)\"; python -V", "python"],
+    ['eval "$(docker-machine env)"; docker ps', "docker"],
+    ['eval "$(direnv export bash)"; make', "make"],
+    ['eval "$(fnm env)"; node -v', "node"],
+    ['eval "$(brew shellenv)"; brew list', "brew"],
+    ['eval "$(conda shell.bash hook)"; conda activate x; python run.py', "conda"],
+  ])("passes %s with a directory named %s in the working directory", async (command, name) => {
+    mkdirSync(join(home, name), { recursive: true });
+    expect(await decision(command)).toBeNull();
   });
 
   it.each([
