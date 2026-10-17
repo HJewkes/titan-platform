@@ -12,16 +12,19 @@ import { REDIRECT_OPS } from "./line-writes.js";
 import { ParseError, tokenize } from "./shell/lexer.js";
 
 const HOME = "/home/you";
-const noFs: ReadFs = {
+/** `f` and `g` start empty, as in each shell's directory: the guard refuses a script it cannot read, a missing one too. */
+const EMPTY = new Set([`${HOME}/app/f`, `${HOME}/app/g`]);
+const emptyFs: ReadFs = {
   realpath: () => {
     throw new Error("ENOENT");
   },
-  readHead: () => {
+  readHead: (p) => {
+    if (EMPTY.has(p)) return "";
     throw new Error("ENOENT");
   },
-  isFile: () => false,
+  isFile: (p) => EMPTY.has(p),
 };
-const port: HookPort = { context: nodeContext(HOME, noFs), now: () => new Date("2026-01-02T03:04:05.000Z"), loadDecide: async () => decide };
+const port: HookPort = { context: nodeContext(HOME, emptyFs), now: () => new Date("2026-01-02T03:04:05.000Z"), loadDecide: async () => decide };
 
 const PUSH = "git push origin HEAD:main";
 
@@ -80,6 +83,7 @@ function runAll(shell: string, path: string, args: string[]): void {
   rows.forEach((_, i) => {
     mkdirSync(join(work, shell, `d${i}`), { recursive: true });
     writeFileSync(join(work, shell, `d${i}`, "other"), `${PUSH}\n`);
+    for (const file of FILES) writeFileSync(join(work, shell, `d${i}`, file), "");
   });
   writeFileSync(join(work, `${shell}.sh`), `${driver}\n`);
   const run = spawnSync(path, [...args, join(work, `${shell}.sh`)], { cwd: work, env: { PATH: process.env.PATH ?? "" }, timeout: 120_000 });

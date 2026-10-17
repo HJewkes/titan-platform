@@ -5,21 +5,23 @@ import type { WordToken } from "./lexer.js";
 import { parseAssignment } from "./vars.js";
 import type { Assignment } from "./vars.js";
 
-/** How env's leading words read: its options, how they are spelled, and which words are the shell's keywords. */
+/** How env's leading words read: its options, how they are spelled, which words are the shell's keywords and which run env again. */
 export interface EnvWalkSyntax extends EnvSyntax {
   spell: (word: WordToken) => string | null;
   keyword: (word: WordToken) => boolean;
+  runsEnv: (word: WordToken) => boolean;
 }
 
 /**
  * The line's words once env's leading words are read: the same array unless a `-S` string changed them, `end` the
- * first word past them, and `ambiguousAt` an option that abbreviates several. A spelled-out option changes no word,
- * since its value is read here and any later reading of the line spells it again, and a copy per env would make a
- * line of envs quadratic.
+ * first word past them, `envAt` the env whose options were read last, and `ambiguousAt` an option that abbreviates
+ * several. A spelled-out option changes no word, since its value is read here and any later reading of the line spells
+ * it again, and a copy per env would make a line of envs quadratic.
  */
 interface EnvWalk {
   words: WordToken[];
   end: number;
+  envAt: number;
   argv0: Array<string | null>;
   negated: boolean;
   ambiguousAt?: number;
@@ -37,6 +39,7 @@ interface Walk {
   argv0: Array<string | null>;
   changed: boolean;
   negated: boolean;
+  envAt: number;
   syntax: EnvWalkSyntax;
 }
 
@@ -45,16 +48,23 @@ interface Walk {
  * `-S` after its `NAME=VALUE` words, so its options resume after them, and a word with a `=` the shell does not name
  * (`a.b=1`) is still env's assignment. A word that starts with `=` is not: zsh expands `=git` to git's path before env
  * sees it, so it is the command. A `-S` string's words are read in place of the option, never spliced into the
- * line, so the walk stays linear in the line. Null when a `-S` string's words cannot be known.
+ * line, so the walk stays linear in the line. An env the words run is read in the same walk, since rebuilding the line
+ * once per env would make `env -S env -S …` quadratic. Null when a `-S` string's words cannot be known.
  */
 export function walkEnv(words: WordToken[], start: number, assigned: Assignment[], syntax: EnvWalkSyntax): EnvWalk | null {
-  const walk: Walk = { stack: [{ words, at: start }], read: [], argv0: [], changed: false, negated: false, syntax };
+  const walk: Walk = { stack: [{ words, at: start }], read: [], argv0: [], changed: false, negated: false, envAt: start - 1, syntax };
   let options = readOptions(walk);
   for (let w = peek(walk.stack); options === "read" && w !== undefined; w = peek(walk.stack)) {
     const assignment = parseAssignment(w);
     if (syntax.keyword(w)) walk.negated ||= w.value === "!";
     else if (assignment) assigned.push(assignment);
-    else if (!w.dynamic && w.value.startsWith("-")) {
+    else if (!w.dynamic && syntax.runsEnv(w)) {
+      walk.envAt = start + walk.read.length;
+      walk.read.push(w);
+      take(walk.stack);
+      options = readOptions(walk);
+      continue;
+    } else if (!w.dynamic && w.value.startsWith("-")) {
       options = readOptions(walk);
       continue;
     } else if (w.dynamic || w.value.indexOf("=") < 1) break;
@@ -62,7 +72,7 @@ export function walkEnv(words: WordToken[], start: number, assigned: Assignment[
     take(walk.stack);
   }
   if (options === null) return null;
-  return { ...lineWords(walk, words, start), argv0: walk.argv0, negated: walk.negated, ...(options === "ambiguous" ? { ambiguousAt: start + walk.read.length } : {}) };
+  return { ...lineWords(walk, words, start), envAt: walk.envAt, argv0: walk.argv0, negated: walk.negated, ...(options === "ambiguous" ? { ambiguousAt: start + walk.read.length } : {}) };
 }
 
 /** One run of env's options, as a pass of env's own option parser reads it, up to its first other word or a `--`. */

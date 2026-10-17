@@ -23,8 +23,8 @@ export interface SupersededGate {
   gateId: string;
   from: string;
   to: string;
-  /** Why the gate no longer stands: its head moved, or its MRG-AU gate failed only on a merge-tree read, or only on transient conditions a thaw among them. */
-  condition: "head-moved" | "merge-tree-only" | "transient-only";
+  /** Why the gate no longer stands: its head moved, its base moved or is refused, or its MRG-AU gate failed only on a merge-tree read, or only on transient conditions a thaw among them. */
+  condition: "head-moved" | "base-changed" | "merge-tree-only" | "transient-only";
 }
 
 /** The open PR's head now; undefined while it cannot be read, which also calls `onUnreadable`, and for a merged or closed PR, which the gone sweep ends. */

@@ -9,7 +9,7 @@ import type { ErrorClass } from "./log.js";
 import { GUARDED_PATHS } from "./paths.js";
 import { ParseError } from "./shell/lexer.js";
 import { MAX_NESTING } from "./shell/nesting.js";
-import { ADDED_SCRIPT_WEIGHT, EnvSplitError, MAX_SCRIPT_BYTES, NestingReadingError, ReadingLimitError, ScriptBudgetError, SplicedReadingError, SplitReadingError, UnknownStdinError, UntrackedWriteError, ValueWalkError } from "./shell/unsure-readings.js";
+import { ADDED_SCRIPT_WEIGHT, EnvSplitError, MAX_SCRIPT_BYTES, NestingReadingError, ReadingLimitError, ScriptBudgetError, SplicedReadingError, SplitReadingError, UnknownStdinError, UnreadableScriptError, UntrackedWriteError, ValueWalkError } from "./shell/unsure-readings.js";
 import type { ScriptOverrun } from "./shell/unsure-readings.js";
 import type { Split } from "./shell/parse-error.js";
 import type { ClassifiedAction, ClassifyContext } from "./types.js";
@@ -71,6 +71,8 @@ const ENV_SPLIT_REASON =
   "authority-guard does not check this `env -S` string: its words are only known at run time (a variable, an escape, an unclosed quote, or a `${NAME}` among env's options or as its command), so it refuses it; pass the command to env as separate words.";
 const STDIN_REASON =
   "authority-guard does not check this Bash command: a shell runs its stdin or another descriptor as its script, and the line does not show that text (`bash < $F`, `bash /dev/stdin <&3`, `bash /dev/fd/3`); run the script by a literal path, so the guard reads the file.";
+const UNREADABLE_SCRIPT_REASON =
+  "authority-guard does not check this Bash command: a shell runs a file the guard cannot read in full (a FIFO, a directory, a missing or unreadable file, or one past 64 KiB); run a regular, readable script of at most 64 KiB by a literal path.";
 const TABLE_REASON = "authority-guard could not load the authority table, so it refuses every guarded action. Report this to the owner.";
 const UNFINISHED_REASONS: Record<Unfinished, string> = {
   timeout: "authority-guard could not finish checking this call in time, so it was not run. Split the command into smaller Bash calls.",
@@ -158,6 +160,7 @@ function limitReason(error: ReadingLimitError): string {
   if (error instanceof UntrackedWriteError) return UNTRACKED_REASON;
   if (error instanceof EnvSplitError) return ENV_SPLIT_REASON;
   if (error instanceof UnknownStdinError) return STDIN_REASON;
+  if (error instanceof UnreadableScriptError) return UNREADABLE_SCRIPT_REASON;
   return error instanceof SplitReadingError ? SPLIT_REASONS[error.split] : READINGS_REASON;
 }
 

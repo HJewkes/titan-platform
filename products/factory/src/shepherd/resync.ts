@@ -1,6 +1,7 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { FactoryHost, PendingGate } from "../host.js";
 import type { ShepherdServices } from "./services.js";
+import type { Registration } from "./store.js";
 import { failureOf } from "./error-class.js";
 import { frozenFor, recheckedFrozen } from "./freeze.js";
 import { LIVE, endRunsGoneElsewhere, type EndedRun } from "./gone-elsewhere.js";
@@ -118,14 +119,23 @@ async function stillFrozen(services: ShepherdServices, repo: RepoSlug, pr: numbe
   }
 }
 
-/** A pending MRG-AU approve-merge gate that failed only on transient conditions, on a PR the store no longer holds frozen. */
+/**
+ * Only an owner hold keeps its gate. Any other hold is read, and satisfied, only on the merge path, which a run parked at
+ * a gate never reaches, so its gate is superseded and the merge step waits on the hold instead.
+ */
+const keptForOwner = (registration: Registration | undefined): boolean => registration === undefined || registration.ownerHold !== null;
+
+/**
+ * A pending MRG-AU approve-merge gate that failed only on transient conditions, on a PR the store no longer holds frozen.
+ * An owner-asked hold's gate was left pending on purpose, so a thaw leaves it with the owner.
+ */
 async function transientGate(host: FactoryHost, services: ShepherdServices, pending: PendingGate, { dryRun = false, repo: only }: TransientSweep): Promise<{ head: string; conditions: string[] } | undefined> {
   const run = approveMergeRun(host, pending);
   const gate = run && authorityGate(run, pending.gate.prompt);
   const conditions = gate ? transientOnlyConditions(gate.reason) : [];
   const registration = services.store.get().byRun(pending.runId);
   const repo = registration?.repo;
-  if (!gate || conditions.length === 0 || !repo) return undefined;
+  if (!gate || conditions.length === 0 || !repo || keptForOwner(registration)) return undefined;
   if (only !== undefined && repo.toLowerCase() !== only.toLowerCase()) return undefined;
   if (await stillFrozen(services, repo, registration.pr, dryRun)) return undefined;
   return { head: gate.head, conditions };
@@ -136,8 +146,9 @@ const onlyUnmet = (conditions: string[]): string =>
 
 /**
  * Cancels each pending MRG-AU approve-merge gate still at the PR head whose only unmet conditions were transient, unless
- * its repo is frozen now for that PR, so the run asks the policy again at the same head. A freeze's own fix PR is not
- * frozen for itself, so its gate is superseded while the freeze it fixes still stands.
+ * its repo is frozen now for that PR or its run has an owner hold, so the run asks the policy again at the same head. A
+ * freeze's own fix PR is not frozen for itself, so its gate is superseded while the freeze it fixes still stands. Serve
+ * sweeps a repo again when a hold on one of its runs eases.
  */
 export async function supersedeTransientGates(host: FactoryHost, services: ShepherdServices, { dryRun = false, repo, onUnreadable }: TransientSweep = {}): Promise<SupersededGate[]> {
   const superseded: SupersededGate[] = [];
@@ -145,6 +156,8 @@ export async function supersedeTransientGates(host: FactoryHost, services: Sheph
     const gate = await transientGate(host, services, pending, { dryRun, repo });
     if (!gate) continue;
     if ((await openHead(services, pending.runId, () => onUnreadable?.(pending.runId))) !== gate.head || host.gates.get(pending.gate.id)?.status !== "pending") continue;
+    // The reads above yield, so an owner hold placed meanwhile is read again here, right before the cancel.
+    if (keptForOwner(services.store.get().byRun(pending.runId))) continue;
     if (!dryRun && !cancelUnlessSettled(host.gates, pending.gate.id, `${REREVIEW}${onlyUnmet(gate.conditions)} at head ${gate.head}`)) continue;
     const condition = gate.conditions.join() === "merge-tree-clean" ? "merge-tree-only" : "transient-only";
     superseded.push({ runId: pending.runId, gateId: pending.gate.id, from: gate.head, to: gate.head, condition });

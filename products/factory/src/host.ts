@@ -6,7 +6,7 @@ import { coordinatorEvidencePolicy, stepOf } from "./coordinator-evidence.js";
 import { deviceGateAuthorize } from "./device-gates.js";
 import { GateAskStore, gateAskMigration } from "./gate-ask-store.js";
 import { GateBatchStore, gateBatchMigration } from "./gate-batch-store.js";
-import { SqliteGateStore, gateBriefMigration, gateEvidenceMigration, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
+import { SqliteGateStore, gateBriefMigration, gateDelegateMigration, gateEvidenceMigration, gateMigration, gateResolverMigration, gateRuleMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db, type Migration } from "@titan-design/store-sqlite";
 import {
   routedRunner,
@@ -86,12 +86,12 @@ export interface FactoryHost {
 
 const SETTLED: ReadonlySet<WorkflowRun["status"]> = new Set(["completed", "failed", "cancelled", "recovery_required"]);
 
-/** One SQLite file holds runs, gates and the routes' tenant; 1-3 match the codewatch triage host, 7 follows the shepherd tenant's 4-6, 13 to 15 follow the tenant's 12, the tenant's 16 follows them, and 20 follows the tenant's 19. */
+/** One SQLite file holds runs, gates and the routes' tenant; 1-3 match the codewatch triage host, 7 follows the shepherd tenant's 4-6, 13 to 15 follow the tenant's 12, the tenant's 16 follows them, 20 follows the tenant's 19, and 27 and 28 follow the tenant's 26. */
 export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
   if (options.dbPath !== ":memory:") mkdirSync(dirname(options.dbPath), { recursive: true });
   const db = openDatabase(options.dbPath);
   const tenant = options.routes.database;
-  runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(7), gateBriefMigration(13), gateEvidenceMigration(14), gateBatchMigration(15), gateAskMigration(20), ...(tenant?.extraMigrations ?? [])]);
+  runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(7), gateBriefMigration(13), gateEvidenceMigration(14), gateBatchMigration(15), gateAskMigration(20), gateRuleMigration(27), gateDelegateMigration(28), ...(tenant?.extraMigrations ?? [])]);
   const gates = new SqliteGateStore(db, { migrate: false, requireBrief: true, allowances: FACTORY_ANSWER_ALLOWANCES, evidencePolicy: coordinatorEvidencePolicy, authorize: deviceGateAuthorize });
   const runtime = createRuntime(db, gates, options);
   const unbind = tenant?.bind(db);

@@ -1,9 +1,10 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { partialFake } from "@titan-design/test-kit";
+import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import { H1, REPO, gateId } from "../test-support/land.js";
+import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { MERGE_EVIDENCE_STEP } from "./merge-facts.js";
@@ -39,8 +40,32 @@ interface World {
   mergedInto: string[];
 }
 
+/** Every merge-evidence read sees the PR on `base`, standing in for GitHub retargeting it there and back during each read. */
+function evidenceReadOn(fake: FakeGitHub, base: string): (route: StepRoute) => StepRoute {
+  let reading = false;
+  const getPr = fake.wire.getPr;
+  fake.wire.getPr = async (...args) => {
+    const pr = await getPr(...args);
+    return reading ? { ...pr, baseRef: base } : pr;
+  };
+  const during = (route: StepRoute): StepRoute => ({
+    ...route,
+    runner: {
+      run: async (input) => {
+        reading = true;
+        try {
+          return await route.runner.run(input);
+        } finally {
+          reading = false;
+        }
+      },
+    },
+  });
+  return (route) => (route.match === MERGE_EVIDENCE_STEP ? during(route) : route);
+}
+
 /** A PR on `base`, reviewed MERGE at H1, whose checks are green; the stacked parent branch protects nothing, main requires `validate`. */
-function world(base: string, policy: EffectivePolicy, afterReview: (fake: FakeGitHub) => void = () => undefined): World {
+function world(base: string, policy: EffectivePolicy, afterReview: (fake: FakeGitHub) => void = () => undefined, evidenceBase?: string): World {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H1, baseRef: base, mergeSha: fakeSha("test-merge") });
   fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
@@ -53,7 +78,8 @@ function world(base: string, policy: EffectivePolicy, afterReview: (fake: FakeGi
   fake.wire.merge = async (...args) => (mergedInto.push(fake.pr(1).baseRef), merge(...args));
   const store = shepherdStoreRef();
   let clock = 0;
-  const routes = factoryRoutesFor({
+  const wrap = evidenceBase === undefined ? (route: StepRoute) => route : evidenceReadOn(fake, evidenceBase);
+  const given = factoryRoutesFor({
     port: githubPort(fake.wire),
     store,
     now: () => clock,
@@ -62,6 +88,7 @@ function world(base: string, policy: EffectivePolicy, afterReview: (fake: FakeGi
     registry: async () => "trusted" as const,
     mergeTree: async () => "clean",
   });
+  const routes = Object.assign(given.map(wrap), { database: given.database, shepherd: given.shepherd });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phasesFor(() => afterReview(fake)))], routes, gatePollMs: 5 });
   hosts.push(host);
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(policy) });
@@ -124,6 +151,18 @@ describe("a stacked PR whose MERGE evidence was read on the parent branch", () =
     expect(pendingGate(w)).toBeUndefined();
     expect(w.fake.effects.merge).toBe(0);
     expect(w.mergedInto).toEqual([]);
+  });
+});
+
+describe("a PR on main whose merge evidence was read while it pointed at the parent branch", () => {
+  it("gates instead of allowing MRG-AU-RV on the parent's facts, and merges nothing", async () => {
+    const w = world("main", AUTO, undefined, PARENT);
+
+    await gateOpened(w.host, gateId(w.runId, "approve-merge"));
+
+    expect(w.fake.effects.merge).toBe(0);
+    expect(mergePolicies(w).at(-1)!.data).toMatchObject({ result: { outcome: "gate", headSha: H1, rule: { table: "shepherd-merge-guard", rowId: "no-facts" } } });
+    expect(w.host.gates.get(gateId(w.runId, "approve-merge"))?.prompt).toContain(`read on base ${PARENT}, not on main`);
   });
 });
 
