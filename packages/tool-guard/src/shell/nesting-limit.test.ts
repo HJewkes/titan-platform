@@ -34,13 +34,13 @@ const nest = (open: string, inner: string, close: string, depth: number) => open
 
 /** Each nests past the stack of a recursive reader; bash 5.3 runs the line after it. */
 const DEEP: Array<[string, string, string]> = [
-  ["$(( nested 1100 deep", `echo ${nest("$((", "1", "))", 1100)}`, "could not parse this Bash command"],
+  ["$(( nested 1100 deep", `echo ${nest("$((", "1", "))", 1100)}`, "close the expansion or move it into a variable"],
   ["${ nested 2700 deep", `: ${nest("${", "", "}", 2700)}`, "nested more than"],
   ["$( nested 2000 deep", `echo ${nest("$(", "echo 1", ")", 2000)}`, "nested more than"],
 ];
 
 describe("expansions nested past the reading limit", () => {
-  // A $(( body that outgrows the read window is refused first (TP-3294), before the depth limit speaks.
+  // A $(( body that outgrows the read window is refused as unread first (TP-3294), before the depth limit speaks.
   it.each(DEEP)("the hook denies a push after %s", async (_name, line, reason) => {
     const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
     const result = await handle(event(`${line}\n${PUSH}`), { PATH: "/usr/bin" }, port);

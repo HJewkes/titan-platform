@@ -4,6 +4,7 @@ import { nodeContext } from "../context.js";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
+import { mathCloseDisagrees } from "./assign-on-expand.js";
 import { assignedInMath, mentionedIn } from "./hooked-names.js";
 import { tokenize } from "./lexer.js";
 import { ParseError } from "./parse-error.js";
@@ -73,6 +74,15 @@ const REFUSED = [
   ["a join on the window's last character after a subscript", `: \${a[${"0".repeat(595)}]${JOIN}:PS4=7}`],
   ["a join on the window's last two characters after a subscript", `: \${a[${"0".repeat(594)}]${JOIN}:PS4=7}`],
   ["a name split by a join that fills the window", `: \${${"a".repeat(300)}${JOIN}${"a".repeat(400)}[PS4=7]}`],
+  ["a $' inside double quotes in a nested expansion in math", `: $(( \${y-"$'"} + PATH++ ))`],
+  ["a $' inside double quotes in a nested expansion in a subscript", `: \${a[\${y-"$'"}PS4=1]}`],
+  ["a case pattern in a substitution in math", ": $(( $(case a in a) echo 0;; esac) + PATH++ ))"],
+  ["a case pattern that ends the scan's substitution early", ": $(( $(case a in a) echo;; esac)) + 0 + PATH=0 ))"],
+  ["a )) split by the window edge", `: $(( PATH=0${" ".repeat(590)}))`],
+  ["a nested group whose )) is split by the window edge", `: $(( (PATH=0)${" ".repeat(588)}))`],
+  ["an unpaired ] in math", ": $(( PATH=0 ] 1 ))"],
+  ["a brace splice onto a $[ group", ": {$,}[PATH=0]"],
+  ["a brace splice onto a $[ group that writes PS4", "set -x; : {$,}[PS4=1]"],
 ] as const;
 
 const REFUSED_IN_RUN_TEXT = [["eval text", "eval ': $(( PS4=1 ))'"]] as const;
@@ -93,6 +103,8 @@ const PASSED = [
   ["a computed name that is only read", "echo $(( $n == 1 ))"],
   ["a computed name on the right of an assignment", "echo $(( x = $n + 1 ))"],
   ["a quoted commit message", "git commit -m '$(( PS4=1 ))'"],
+  ["a $' inside double quotes in a nested expansion that only reads", `echo $(( \${y-"$'"} + 1 ))`],
+  ["a )) just inside the window edge that only reads", `echo $(( x${" ".repeat(592)}))`],
 ] as const;
 
 describe("math that writes a protected parameter at a $ is refused by the lexer (TP-3294)", () => {
@@ -110,6 +122,24 @@ describe("math that writes a protected parameter at a $ is refused by the lexer 
 
   it.each(PASSED)("allows %s", async (_form, line) => {
     expect(await handled(`${line}; ${PUSH}`)).toBe("pass");
+  });
+});
+
+describe("the lexer refuses math whose close the guard's scan put elsewhere (TP-3294)", () => {
+  const line = ": $(( x )) $[ y ]";
+
+  it("agrees where both close the math at the same character", () => {
+    expect(mathCloseDisagrees(line, 2, line.indexOf("))") + 1)).toBe(false);
+    expect(mathCloseDisagrees(line, line.indexOf("$["), line.indexOf("]"))).toBe(false);
+  });
+
+  it("disagrees where the lexer closes the math later than the scan", () => {
+    expect(mathCloseDisagrees(line, 2, line.length - 1)).toBe(true);
+  });
+
+  it("disagrees where the scan read a subshell or found no close", () => {
+    expect(mathCloseDisagrees(": $((echo hi); echo there)", 2, 25)).toBe(true);
+    expect(mathCloseDisagrees(': $(( "x ))', 2, 10)).toBe(true);
   });
 });
 

@@ -13,8 +13,8 @@ const MAX_FLAG_GROUP = 256;
 const MATH_FLAGS = new Set(["l", "r", "I"]);
 /** What opens a name that is computed, not spelled: a nested expansion, a substitution or a quote. */
 const NESTED_NAME_RE = /[$`'"]/;
-/** Brace expansion run on `{$,}{NAME:=x}` leaves `${NAME:=x}` for bash to expand: a `$` ending an alternative, then a brace group holding an `=`. */
-const BRACE_SPLICE_RE = /^[,}][^]*\{[^]*=/;
+/** Brace expansion run on `{$,}{NAME:=x}` or `{$,}[NAME=0]` leaves `${NAME:=x}` or `$[NAME=0]` for bash to expand: a `$` ending an alternative, then a group holding an `=`. */
+const BRACE_SPLICE_RE = /^[,}][^]*[{[][^]*=/;
 const BRACE_SPLICE_START_RE = /^[,}]/;
 /** The positional and special parameters an indirect expansion may name: `${!1}`, `${(P)@}`, `${!#}`. */
 const SPECIAL_NAME_AT_RE = /[0-9]+|[-@*#?$!]/y;
@@ -80,33 +80,52 @@ function expansionHead(
   return { target, end: i + name.length };
 }
 
+/** What the guard finds at a `$`: a write to refuse, a body it could not read to its end, which is refused too, or neither. */
+export type ExpandVerdict = "writes" | "unread" | false;
+
+const unreadIf = (cut: boolean): ExpandVerdict => (cut ? "unread" : false);
+
 /**
  * Whether the `$` at `dollar` opens an expansion that assigns while it expands and whose target is not a plain
  * literal name the guard leaves alone: an indirect or nested name, or a protected one. The body is read as the shell
- * reads it, without the backslash-newlines it drops. A `$` that brace expansion may join to a later `{` counts when
- * that group assigns, since the line cannot say which name it spells.
+ * reads it, without the backslash-newlines it drops. A `$` that brace expansion may join to a later `{` or `[` counts
+ * when that group assigns, since the line cannot say which name it spells. Every read that stops before a close it
+ * pairs is "unread", whatever the window: the scan may have misread a nested unit the lexer reads.
  */
-export function assignsProtectedAt(src: string, dollar: number): boolean {
+export function assignsProtectedAt(src: string, dollar: number): ExpandVerdict {
   const open = nextAfter(src, dollar);
   const { text: body, truncated } = joinedWindow(src, open, MAX_BODY);
-  if (body.startsWith("{")) return assignedAt(body, 1, PROTECTED) !== null || braceMathWrites(body, truncated);
-  if (body.startsWith("[")) return mathWrites(body, 1, "]", truncated);
-  if (body.startsWith("((")) return mathWrites(body, 2, "))", truncated);
+  if (body.startsWith("{")) return assignedAt(body, 1, PROTECTED) !== null ? "writes" : braceMathWrites(body, truncated);
+  if (body.startsWith("[")) return mathWrites(body, 1, "]");
+  if (body.startsWith("((")) return mathWrites(body, 2, "))");
   if (!BRACE_SPLICE_START_RE.test(body)) return false;
   // a window that ends before a decision cannot show that no assigning group follows
-  return BRACE_SPLICE_RE.test(body) || truncated;
+  return BRACE_SPLICE_RE.test(body) ? "writes" : unreadIf(truncated);
 }
 
 /**
  * Whether the math in `text` from `from` up to its `close` writes a protected name, by its spelling or through a
- * name computed at run time. A body the window cuts off fails closed at any depth. Brackets that do not pair are read
- * to the end of the text; only the subshell-shaped `$((echo hi); echo there)` is left to the lexer's depth limit.
+ * name computed at run time. A `$((` whose `)` pairs before a `))` is the subshell `$((echo hi); echo there)`:
+ * its commands are lexed, and `mathCloseDisagrees` refuses it if the lexer reads math there instead.
  */
-function mathWrites(text: string, from: number, close: string, truncated: boolean): boolean {
+function mathWrites(text: string, from: number, close: string): ExpandVerdict {
   const math = closeOf(text, from, close);
-  if (math === CUT_OFF) return truncated;
-  if (math.unpaired && close === "))") return false;
-  return mathHolds(text.slice(from, math.end), math.flat);
+  if (math === CUT_OFF) return "unread";
+  if (math.unpaired) return false;
+  return mathHolds(text.slice(from, math.end), math.flat) ? "writes" : false;
+}
+
+/**
+ * Whether the lexer, reading the `$((` or `$[` at `dollar` as math that ends at `last`, puts its close somewhere
+ * other than the guard's scan did. The guard checked only the body it found, so any other reading is refused.
+ */
+export function mathCloseDisagrees(src: string, dollar: number, last: number): boolean {
+  const open = nextAfter(src, dollar);
+  const { text: body } = joinedWindow(src, open, MAX_BODY);
+  const close = body.startsWith("((") ? "))" : "]";
+  const math = closeOf(body, close.length, close);
+  if (math === CUT_OFF || math.unpaired) return true;
+  return joinedWindow(src.slice(0, last), open, MAX_BODY).text.length !== math.end + close.length - 1;
 }
 
 function mathHolds(text: string, flat: string): boolean {
@@ -117,21 +136,20 @@ function mathHolds(text: string, flat: string): boolean {
  * The math a `${…}` evaluates while it expands: the subscript `${a[…]}` and the bash substring offset and length
  * `${x:…}`. A `:` followed by `-=+?#` is a default, an assignment or a removal and holds text, not math.
  */
-function braceMathWrites(body: string, truncated: boolean): boolean {
+function braceMathWrites(body: string, truncated: boolean): ExpandVerdict {
   let i = bracedNameEnd(body);
   // a head read that stops at the window edge never saw what follows the name, so a cut window fails closed
-  if (i < 0) return truncated && skipZshPrefixes(body, 1) >= body.length;
-  if (i >= body.length) return truncated;
+  if (i < 0) return unreadIf(truncated && skipZshPrefixes(body, 1) >= body.length);
+  if (i >= body.length) return unreadIf(truncated);
   if (body[i] === "[") {
     const math = closeOf(body, i + 1, "]");
-    if (math === CUT_OFF) return truncated;
-    if (mathHolds(body.slice(i + 1, math.end), math.flat)) return true;
-    if (math.unpaired) return false;
+    if (math === CUT_OFF) return "unread";
+    if (mathHolds(body.slice(i + 1, math.end), math.flat)) return "writes";
     i = math.end + 1;
   }
-  if (i >= body.length) return truncated;
+  if (i >= body.length) return unreadIf(truncated);
   if (body[i] !== ":" || /^:(?:[-=+?#]|:=)/.test(body.slice(i))) return false;
-  return mathWrites(body, i + 1, "}", truncated);
+  return mathWrites(body, i + 1, "}");
 }
 
 /** Where the name of the `${` expansion ends, after any flags and prefixes; -1 when the text holds none the guard can read. */

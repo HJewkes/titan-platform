@@ -5,22 +5,26 @@ export const CUT_OFF = Symbol("cut off");
 
 const SCAN_RE = /[()[\]{}$`'"\\]/g;
 const NAME_AT_RE = /[A-Za-z_][A-Za-z0-9_]*|[0-9]+|[-@*#?$!]/y;
-const OPENERS = "([{";
+/** Inside double quotes `$'` and `$"` are a literal `$` and a quote, not the ANSI-C and locale openers. */
+export const QUOTED_LITERAL_OPENERS = "'\"";
 const UNIT_CLOSE = new Map([["(", ")"], ["{", "}"], ["[", "]"]]);
+const OPENER_OF = new Map([[")", "("], ["]", "["]]);
 
 interface MathSpan {
   end: number;
   flat: string;
-  /** A closing bracket with no opener: the text is not math that pairs, as in a subshell `$((echo hi); echo there)`. `end` is then the end of the text. */
+  /** A `)` with no opener before a `))`: bash reads the subshell `$((echo hi); echo there)`. `end` is then the end of the text. */
   unpaired: boolean;
 }
 
 /**
  * Where the math in `text` from `from` ends at `close`, outside nested groups, and the text with each nested expansion,
  * quote and substitution replaced by OPAQUE. Those are skipped whole: bash drops the brackets inside `${y+]}` or `'('`
- * when it expands them, so they must not count toward the close.
+ * when it expands them, so they must not count toward the close. As in the lexer, only the close's own kind of
+ * bracket nests, and none nests before a `}`. A `)` on the text's last character may be half a `))`, so it is cut off.
  */
 export function closeOf(text: string, from: number, close: string): MathSpan | typeof CUT_OFF {
+  const opener = close === "}" ? "" : OPENER_OF.get(close.charAt(0));
   let depth = 0;
   let flat = "";
   let copied = from;
@@ -36,8 +40,10 @@ export function closeOf(text: string, from: number, close: string): MathSpan | t
       flat += text.slice(copied, i) + (c === "\\" ? "" : OPAQUE);
       copied = next;
       SCAN_RE.lastIndex = next;
-    } else if (OPENERS.includes(c)) depth++;
-    else if (--depth < 0) return { end: text.length, flat: flat + text.slice(copied), unpaired: true };
+    } else if (c === opener) depth++;
+    else if (c === close.charAt(0) && --depth < 0) {
+      return i + 1 < text.length ? { end: text.length, flat: flat + text.slice(copied), unpaired: true } : CUT_OFF;
+    }
   }
   return CUT_OFF;
 }
@@ -68,13 +74,13 @@ function quoteEnd(text: string, from: number, quote: string): number {
   return -1;
 }
 
-/** The index after a double-quoted string, which holds its own expansions. */
+/** The index after a double-quoted string, which holds its own expansions; there `$'` and `$"` are a plain `$` and a quote. */
 function dquoteEnd(text: string, from: number): number {
   for (let i = from; i < text.length; i++) {
     const c = text.charAt(i);
     if (c === '"') return i + 1;
     if (c === "\\") i++;
-    else if (c === "$" || c === "`") {
+    else if ((c === "$" && !QUOTED_LITERAL_OPENERS.includes(text.charAt(i + 1))) || c === "`") {
       const next = skipUnit(text, i);
       if (next < 0) return -1;
       i = Math.max(i, next - 1);
