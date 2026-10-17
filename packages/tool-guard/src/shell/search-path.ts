@@ -3,9 +3,19 @@ import type { Vars } from "./vars.js";
 
 /** Hidden key in a scope's variables: the entries of a `PATH` the line set, joined by `:`. No identifier can spell it. */
 const KEY = "searchpath@";
+/** An entry whose directory only run time knows. */
+const UNKNOWN = "$?";
 const PATH_WORD_RE = /^PATH(\+?)=(.*)$/s;
 const SYSTEM_RE = /^\$\{?PATH\}?$/;
 const CWD_RE = /^(?:\$\{?PWD\}?|\$\(pwd\)|`pwd`)(?=\/|$)/;
+const ABSOLUTE_RE = /^(?:\/|~|\$\{?HOME\}?(?:\/|$))/;
+const DYNAMIC_RE = /[$`]/;
+
+/** What a changed `PATH` may search: the relative directories it lists, and whether some entry is only known at run time. */
+export interface SearchPath {
+  dirs: string[];
+  unknown: boolean;
+}
 
 /**
  * Records a `PATH` the line sets (`PATH=.:$PATH s`, `export PATH=./bin:$PATH`, `env PATH=. s`). The unchanged `$PATH` stands for
@@ -15,7 +25,8 @@ export function notePath(words: readonly WordToken[], vars: Vars): void {
   for (const word of words) {
     const set = PATH_WORD_RE.exec(word.value);
     if (set === null) continue;
-    const entries = (set[2] ?? "").split(":").flatMap((entry) => (SYSTEM_RE.test(entry) ? prior(vars) : [entry]));
+    const listed = (set[2] ?? "").split(":").flatMap((entry) => (SYSTEM_RE.test(entry) ? prior(vars) : [entry]));
+    const entries = word.subs.length > 0 ? [...listed, UNKNOWN] : listed;
     const kept = set[1] === "+" ? [...prior(vars), ...entries] : entries;
     if (kept.length === 0) vars.delete(KEY);
     else vars.set(KEY, kept.join(":"));
@@ -32,19 +43,11 @@ export function namesScript(cmd: { path: string | null; name: string | null }): 
   return cmd.path?.includes("/") === true || cmd.name?.endsWith(".sh") === true;
 }
 
-/** A command's `searchDirs` field, or nothing. */
-export function searchDirsOf(vars: Vars): { searchDirs?: string[] } {
-  const dirs = relativeSearchDirs(vars);
-  return dirs ? { searchDirs: dirs } : {};
-}
-
-/**
- * The directories a changed `PATH` may find a bare command name in that depend on where the command runs: an empty entry,
- * `.` or any relative one. An absolute entry names no script this line can plant, and a dynamic one is not followed.
- */
-export function relativeSearchDirs(vars: Vars): string[] | undefined {
+/** A command's `searchPath` field, or nothing when the line never set `PATH`. */
+export function searchPathOf(vars: Vars): { searchPath?: SearchPath } {
   const held = vars.get(KEY);
-  if (held === undefined || held === null) return undefined;
-  const dirs = held.split(":").map((entry) => entry.replace(CWD_RE, ".")).filter((entry) => !entry.startsWith("/") && !entry.startsWith("~") && !/[$`]/.test(entry));
-  return dirs.length === 0 ? undefined : dirs;
+  if (held === undefined || held === null) return {};
+  const entries = held.split(":").map((entry) => entry.replace(CWD_RE, "."));
+  const unknown = entries.some((entry) => entry === UNKNOWN || (DYNAMIC_RE.test(entry) && !ABSOLUTE_RE.test(entry)));
+  return { searchPath: { dirs: entries.filter((entry) => !ABSOLUTE_RE.test(entry) && !DYNAMIC_RE.test(entry)), unknown } };
 }

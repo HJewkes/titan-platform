@@ -53,6 +53,34 @@ describe("a bare name found through a changed PATH", () => {
     expect(await decision(command)).toBe("deny");
   });
 
+  it.each([
+    `printf '#!/bin/bash\\n${PUSH}\\n' > n; chmod +x n; PATH=.:$PATH n`,
+    "cp s n; PATH=.:$PATH n",
+  ])("denies a file the line itself makes: %s", async (command) => {
+    file("s", `#!/bin/bash\n${PUSH}\n`);
+    rmSync(join(home, "n"), { force: true });
+    expect(await decision(command)).toBe("deny");
+  });
+
+  it.each([
+    "path=(. $path); s",
+    "path[1]=.; s",
+    "P=.; export PATH=$P:$PATH; s",
+    "export PATH=$(pwd)/bin:$PATH; s",
+    "printf -v PATH %s .; s",
+    "read PATH <<< .; s",
+    "PATH=.:$PATH $(echo s)",
+    "export PATH=$(echo .):$PATH; s",
+    "PATH[0]=.; s",
+  ])("denies a PATH the walk cannot read, then a searched command: %s", async (command) => {
+    file("s", `#!/bin/bash\n${PUSH}\n`);
+    expect(await decision(command)).toBe("deny");
+  });
+
+  it.each(["PATH=$PATH:~/bin ls", 'export PATH="$HOME/bin:$PATH"; ls', "PATH=/usr/bin:/bin ls", "export PATH=$(pwd)/bin:$PATH; export X=1"])("passes %s, which runs no script", async (command) => {
+    expect(await decision(command)).toBeNull();
+  });
+
   it("passes a non-pushing ./s under a changed PATH", async () => {
     file("s", "#!/bin/bash\necho ok\n");
     expect(await decision("PATH=.:$PATH s")).toBeNull();

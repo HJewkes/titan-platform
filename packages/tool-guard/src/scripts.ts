@@ -1,4 +1,4 @@
-import { closeSync, constants, existsSync, openSync, readSync, statSync } from "node:fs";
+import { closeSync, constants, openSync, readSync, statSync } from "node:fs";
 import { INTERPRETERS, SHELLS } from "./mentions.js";
 import type { SimpleCommand } from "./shell/commands.js";
 import type { WordToken } from "./shell/lexer.js";
@@ -17,6 +17,8 @@ export interface ScriptTarget {
   relayed?: true;
   /** Run as `./x.sh`, so the kernel reads its `#!` line and the interpreter's options and operands decide what runs. */
   byPath?: true;
+  /** Found by looking a bare name up on a `PATH` the line changed, so the file may not exist. */
+  searched?: true;
 }
 
 /** A script run by path whose `#!` line carries options or operands the guard does not follow; the hook denies it unchecked. */
@@ -74,12 +76,11 @@ export function scriptTargets(cmd: SimpleCommand, home: string): ScriptTarget[] 
   return one === null ? foundOnPath(cmd, home) : [one];
 }
 
-/** A bare name under a `PATH` the line changed runs the first file of that name in a relative directory it lists, so each one there is read. */
+/** A bare name under a `PATH` the line changed runs the first file of that name in a relative directory it lists; the classifier keeps those a file may be in. */
 function foundOnPath(cmd: SimpleCommand, home: string): ScriptTarget[] {
   const bare = cmd.path;
-  if (bare === null || bare.includes("/") || cmd.searchDirs === undefined) return [];
-  const targets = cmd.searchDirs.flatMap((dir) => typedTarget(cmd, `${dir === "" ? "." : dir}/${bare}`, home) ?? []);
-  return targets.filter((t) => existsSync(t.path));
+  if (bare === null || bare.includes("/") || cmd.searchPath === undefined) return [];
+  return cmd.searchPath.dirs.flatMap((dir) => typedTarget(cmd, `${dir === "" ? "." : dir}/${bare}`, home) ?? []).map((t) => ({ ...t, searched: true as const }));
 }
 
 function scriptTarget(cmd: SimpleCommand, name: string, home: string): ScriptTarget | null {
