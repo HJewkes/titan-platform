@@ -77,7 +77,7 @@ describe("benign arithmetic and values stay unchecked (TP-1624)", () => {
     ["git log with a numeric-looking word", "git log --oneline -n 3 -eq"],
     ["a value with a plain subscript", "X='a[1]'; (( X ))"],
     ["a log prefix with the date", `msg="[$(date)] done"; echo "$msg"`],
-    ["a value from a command with a counter", `i=3; n=$(wc -l < /dev/null); X="x$i"; (( X ))`],
+    ["a value from a command with a counter", `i=3; n=$(wc -l < /dev/null); X="x$i"; (( n > 0 )); (( X ))`],
     ["a subscript that reads a variable", `i=1; X="a[$i]"; (( X ))`],
     ["a default with no code", "X=${Q:-5}; echo ${R:=3}"],
     ["a for loop over words", "for f in a b c; do echo $f; done"],

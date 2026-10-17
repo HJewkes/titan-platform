@@ -2,6 +2,7 @@ import type { OpToken, Token, WordToken } from "./lexer.js";
 import { caseChecked, clearCased, isCased, isCaseUnsure, isCaseUnsureLookup, markCase, markCased, markWord } from "./case-attrs.js";
 import type { CaseUnsure } from "./case-attrs.js";
 import { printedText } from "./printed.js";
+import { numericKey, numericValue } from "./numeric-names.js";
 import { commandWrites, compoundWrites, IDENTIFIER_RE, noteCompounds, TARGET_RE } from "./writers.js";
 
 /**
@@ -18,7 +19,7 @@ export type Vars = Map<string, string | null>;
  * A `hidden` write is the walk's own save or restore of a function local, which no readonly check stops.
  * `cased` marks a value copied from one a case attribute may have changed.
  */
-export type Assignment = [name: string, value: string | null, kind?: "append" | "element" | "hidden", cased?: true];
+export type Assignment = [name: string, value: string | null, kind?: "append" | "element" | "hidden", cased?: true, numeric?: true];
 
 /** The subscript ends at the last `]` before `=`, so a nested subscript never hides that the word assigns. */
 export const ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[.*\])?\+?=/s;
@@ -190,7 +191,9 @@ function runsDeclarer(words: WordToken[]): boolean {
 /** `NAME=value` or `NAME+=value` split into its name and value, the value null when it is only known at run time. */
 export function parseAssignment(w: WordToken): Assignment | null {
   const parsed = splitAssignment(w);
-  return parsed && isCaseUnsure(w) ? [parsed[0], parsed[1], parsed[2], true] : parsed;
+  if (parsed === null) return null;
+  const numeric = parsed[1] === null && parsed[2] === undefined && numericValue(w);
+  return isCaseUnsure(w) || numeric ? [parsed[0], parsed[1], parsed[2], isCaseUnsure(w) || undefined, numeric || undefined] : parsed;
 }
 
 function splitAssignment(w: WordToken): Assignment | null {
@@ -207,7 +210,7 @@ function splitAssignment(w: WordToken): Assignment | null {
 }
 
 /** Records an assignment; an append is literal only when both the earlier value and the appended part are. */
-export function assign(vars: Vars, [name, value, kind, cased]: Assignment): void {
+export function assign(vars: Vars, [name, value, kind, cased, numeric]: Assignment): void {
   const priorCased = isCased(vars, name);
   if (kind === "hidden") restore(vars, name, value);
   else if (kind !== "append") write(vars, name, value, kind !== "element");
@@ -216,6 +219,7 @@ export function assign(vars: Vars, [name, value, kind, cased]: Assignment): void
     write(vars, name, prior !== null && value !== null ? prior + value : null);
   }
   markCased(vars, name, cased || (kind === "append" && priorCased));
+  if (numeric && value === null && vars.get(name) === null) vars.set(numericKey(name), "");
 }
 
 /** Hears each value a scope's variables take, null when the walk cannot know it. */
@@ -235,9 +239,6 @@ export function childVars(vars: Vars): Vars {
 }
 
 const readonlyKey = (name: string) => `readonly@${name}`;
-/** Hidden key marking a name whose unknown value is a number, because arithmetic (or getopts, for OPTIND) wrote it. */
-const numericKey = (name: string) => `numeric@${name}`;
-export const isNumeric = (vars: ReadonlyMap<string, string | null>, name: string) => vars.has(numericKey(name));
 
 /**
  * Bash rejects a write to a readonly variable, so it keeps its value; one that may be readonly becomes unknown.
@@ -282,7 +283,7 @@ function writeEach(vars: Vars, writes: Assignment[] | null, heard: boolean, nume
   if (!writes) return forgetAll(vars, heard);
   for (const [target, value] of writes) {
     write(vars, target, value, heard);
-    if (value === null && numeric(target)) vars.set(numericKey(target), "");
+    if (value === null && vars.get(target) === null && numeric(target)) vars.set(numericKey(target), "");
   }
 }
 

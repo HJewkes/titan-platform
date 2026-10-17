@@ -1,6 +1,7 @@
 import { bindsComputedName } from "./computed-binding.js";
 import type { HandedText } from "./computed-binding.js";
 import { assignedInMath, mentionedIn } from "./hooked-names.js";
+import { mathPlaces } from "./math-places.js";
 import type { RedirectToken, WordToken } from "./lexer.js";
 import type { Unwrapped } from "./unwrap.js";
 
@@ -44,6 +45,8 @@ export function arithmeticHookedIn(cmd: Unwrapped, words: WordToken[], slots: Wo
     const hooked = assignedInMath(text);
     if (hooked !== null) return hooked;
   }
+  const placed = mathPlaces(words, redirects).find((place) => mentionedIn(place.text) !== null);
+  if (placed !== undefined) return mentionedIn(placed.text);
   const computed = handed.find(bindsComputedName);
   if (computed !== undefined) return computed.text;
   const named = [...words.filter((w) => !w.dynamic && SUBSCRIPTED_ASSIGNMENT_RE.test(w.value)), ...slots];

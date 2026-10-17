@@ -1,17 +1,13 @@
-import type { RedirectToken, WordToken } from "./lexer.js";
+import type { RedirectToken } from "./lexer.js";
 import { NAMED_FD_RE } from "./lexer.js";
-import { isNumeric } from "./vars.js";
+import { ARITHMETIC_OPENER_RE } from "./math-places.js";
+import type { MathPlace } from "./math-places.js";
+import { isNumeric } from "./numeric-names.js";
 
 /** What a shell reads as a store in math: an assignment operator (zsh adds `&&=`, `||=`, `^^=`) or an increment. */
 const STORE_OPERATOR = String.raw`(?:\*\*|<<|>>|&&|\|\||\^\^|[-+*/%&^|])?=(?!=)|\+\+|--`;
 /** Expansions that yield a number or a flag a script cannot shape: `$#`, `$?`, `$$`, `$!`, `${#x}`, zsh `$+x`. */
 const NUMERIC_EXPANSION_RE = /\$[#?$!]|\$\{#(?:[A-Za-z_]\w*(?:\[[^\]$`]*\])?)?\}|\$\+[A-Za-z_]\w*(?:\[[^\]$`]*\])?/g;
-const ARITHMETIC_OPENER_RE = /\$\(\(|\$\[/g;
-/** Where a subscript opens in an expansion: after `${name` or `$name`. */
-const EXPANSION_SUBSCRIPT_RE = /\$\{[^}\s]*?[A-Za-z0-9_@*]\[|\$[A-Za-z_]\w*\[/g;
-/** An unquoted word that begins as a name with a subscript, which the shell takes as an element assignment: `a[$i]=1`. */
-const ASSIGNED_SUBSCRIPT_RE = /^[A-Za-z_]\w*\[/;
-
 /** A bare name in math is read as the math its value holds. */
 const MATH_NAME_RE = /(?<![A-Za-z0-9_$])[A-Za-z_]\w*/g;
 
@@ -64,49 +60,12 @@ export function operandsStore(words: Array<{ value: string; dynamic: boolean }>,
   return words.some((word) => mathStores(word.value, word.dynamic, reader, resolve));
 }
 
-/**
- * Whether a dynamic word holds math that may store: the body of a `$(( ))` or `$[ ]`, or the subscript of an
- * element read or named, which the shell evaluates as math when the array is not associative.
- */
-export function embeddedMathStores(words: WordToken[], reader: RegExp, resolve: Resolve): boolean {
-  return words.filter((w) => w.dynamic).some((w) => embeddedSpans(w).some((span) => mathStores(span, true, reader, resolve)));
+/** Whether any place a shell evaluates inside words and redirects as math (`mathPlaces`) may store. */
+export function placesStore(places: MathPlace[], reader: RegExp, resolve: Resolve): boolean {
+  return places.some((place) => mathStores(place.text, place.dynamic, reader, resolve));
 }
 
-/** The outermost spans: an opener inside an earlier span is read with it, which keeps the scan linear. */
-function embeddedSpans({ value: text, quoted }: WordToken): string[] {
-  const assigned = quoted ? null : ASSIGNED_SUBSCRIPT_RE.exec(text);
-  const openers = [...text.matchAll(ARITHMETIC_OPENER_RE), ...text.matchAll(EXPANSION_SUBSCRIPT_RE), ...(assigned ? [assigned] : [])];
-  const spans: string[] = [];
-  let past = 0;
-  for (const opener of openers.sort((x, y) => x.index - y.index)) {
-    const from = opener.index + opener[0].length;
-    if (from <= past) continue;
-    const double = opener[0] === "$((";
-    past = closeAt(text, from, double ? "(" : "[", double ? ")" : "]", double ? 2 : 1);
-    spans.push(text.slice(from, past));
-  }
-  return spans;
-}
-
-/** Index where nesting returns to zero, or the text's end when it never does (an unclosed span is read to the end). */
-function closeAt(text: string, from: number, open: string, close: string, depth: number): number {
-  let left = depth;
-  for (let i = from; i < text.length; i++) {
-    if (text[i] === open) left++;
-    else if (text[i] === close && --left === 0) return i;
-  }
-  return text.length;
-}
-
-/**
- * Whether a redirect stores its descriptor number into one of `names` (`exec {BASH_CMDS[y]}>f`), or into an element
- * whose subscript, evaluated as math, may store (`{a[$e]}>f`).
- */
-export function fdVariableStores(redirects: RedirectToken[], names: ReadonlySet<string>, reader: RegExp, resolve: Resolve): boolean {
-  return redirects.some((r) => {
-    const match = NAMED_FD_RE.exec(r.named ?? r.fd ?? "");
-    if (match?.[1] === undefined) return false;
-    const subscript = match[2]?.slice(1, -1);
-    return names.has(match[1]) || (subscript !== undefined && mathStores(subscript, /[$`]/.test(subscript), reader, resolve));
-  });
+/** Whether a redirect stores its descriptor number into one of `names` (`exec {BASH_CMDS[y]}>f`); a subscript is a math place. */
+export function fdVariableStores(redirects: RedirectToken[], names: ReadonlySet<string>): boolean {
+  return redirects.some((r) => names.has(NAMED_FD_RE.exec(r.named ?? r.fd ?? "")?.[1] ?? ""));
 }

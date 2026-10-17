@@ -1,5 +1,6 @@
 import { evaluatesArgsAsMath } from "./arith-hooked.js";
-import { embeddedMathStores, fdVariableStores, operandsStore, scopeNames, storeReader } from "./arith-stores.js";
+import { fdVariableStores, operandsStore, placesStore, scopeNames, storeReader } from "./arith-stores.js";
+import { mathPlaces } from "./math-places.js";
 import { splitCluster } from "./cluster.js";
 import { HOOKED_WRITERS, writesProtectedParam } from "./hooked-params.js";
 import { nameSlots } from "./name-slots.js";
@@ -58,12 +59,12 @@ export function rebindsCommand(cmd: Unwrapped, vars: Vars = new Map()): boolean 
 
 /**
  * Whether a command's words store into a rebinding parameter through math, which the shell evaluates apart from any
- * builtin that names the parameter: a `$(( ))` or subscript in a run-time word, and a descriptor variable
- * (`{BASH_CMDS[y]}>f`). A run-time word in those places may expand to `commands[y]=0`.
+ * builtin that names the parameter: the places `mathPlaces` lists, and a descriptor variable (`{BASH_CMDS[y]}>f`).
+ * A run-time word in those places may expand to `commands[y]=0`.
  */
 export function storesRebindingByMath(words: WordToken[], redirects: RedirectToken[], vars: Vars): boolean {
   const resolve = scopeNames(vars);
-  return embeddedMathStores(words, REBINDING_STORE, resolve) || fdVariableStores(redirects, REBINDING_SET, REBINDING_STORE, resolve);
+  return placesStore(mathPlaces(words, redirects), REBINDING_STORE, resolve) || fdVariableStores(redirects, REBINDING_SET);
 }
 
 /**
