@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { envSplitWords } from "./env-split.js";
 import { tokenize } from "./lexer.js";
 import type { WordToken } from "./lexer.js";
+import { EnvSplitError } from "./unsure-readings.js";
 import { unwrap } from "./unwrap.js";
 
 function argv0(src: string): Array<string | null> | undefined {
@@ -33,10 +34,12 @@ describe("argv0 of a wrapped command", () => {
     ["env -S \"-a 'sh' zsh -c x\"", ["sh"]],
     ["env -S '-a s\"h\" zsh -c x'", ["sh"]],
     ["env -S '-a ${A} zsh -c x'", [null]],
-    ["env -S '-a \"sh zsh'", [null]],
-    ["env -S '-a s\\h zsh'", [null]],
   ])("reads %s", (src, expected) => {
     expect(argv0(src)).toEqual(expected);
+  });
+
+  it.each([["env -S '-a \"sh zsh'"], ["env -S '-a s\\h zsh'"], ["env -S '-a $D zsh -c x'"]])("refuses the env -S string of %s", (src) => {
+    expect(() => argv0(src)).toThrow(EnvSplitError);
   });
 
   it.each([
@@ -63,7 +66,7 @@ describe("envSplitWords", () => {
   });
 
   it("marks ${NAME} outside single quotes dynamic", () => {
-    expect(envSplitWords("${A} '${B}' \"${C}\" $D")).toEqual([
+    expect(envSplitWords("${A} '${B}' \"${C}\" '$D'")).toEqual([
       { value: "${A}", dynamic: true },
       { value: "${B}", dynamic: false },
       { value: "${C}", dynamic: true },
@@ -71,7 +74,7 @@ describe("envSplitWords", () => {
     ]);
   });
 
-  it.each([['a "b'], ["a 'b"], ["a\\ b"]])("refuses %j", (text) => {
+  it.each([['a "b'], ["a 'b"], ["a\\ b"], ["a $D"], ['a "$D"'], ["a $"], ["a $$"], ["a $1"], ["a $?"], ["a $(b)"]])("refuses %j", (text) => {
     expect(envSplitWords(text)).toBeNull();
   });
 });

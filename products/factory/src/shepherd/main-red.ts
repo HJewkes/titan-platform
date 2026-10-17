@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from "node:util";
 import { BrokerUnavailableError, DispatchTimeoutError, dataFence } from "@titan-design/agent-dispatch";
 import { GITHUB_ACTIONS_APP_ID, isPassing, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
@@ -36,7 +37,8 @@ export interface FixTasks {
 
 /** A broker that is down or a timeout is waited out; any other throw is a refusal. */
 export interface FixerAgents {
-  roster(): Promise<readonly { name: string }[]>;
+  /** `presence` is `live` while a session holds the name. */
+  roster(): Promise<readonly { name: string; presence?: string }[]>;
   spawn(name: string, brief: string, cwd: string): Promise<void>;
 }
 
@@ -145,8 +147,85 @@ export async function failingLogs(port: GitHubPort, repo: RepoSlug, sha: string)
   return { failing, log: sections.join("\n") };
 }
 
-async function fixTaskFields(deps: ShepherdDeps, input: RedInput, key: string, fallback: boolean): Promise<FixTaskFields> {
-  const { failing, log } = await failingLogs(deps.port, input.repo, input.mergeSha);
+type FailingRead = Awaited<ReturnType<typeof failingLogs>>;
+
+const FAILED_TEST = /(?:^|\s)FAIL\s+(\S.*?)\s*$/;
+
+/** The test files and cases a vitest or jest log tail reports as `FAIL`, sorted and unique. */
+function failedTests(log: string): string[] {
+  const tests = log.split("\n").flatMap((line) => FAILED_TEST.exec(stripVTControlCharacters(line))?.slice(1, 2) ?? []);
+  return [...new Set(tests)].sort();
+}
+
+const sameList = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((item, index) => item === b[index]);
+const checksOf = (read: FailingRead): string[] => [...new Set(read.failing.map((run) => run.name))].sort();
+
+/** Same failing checks and same named failing tests; a red whose log names no failing test matches nothing. */
+function sameFailure(a: FailingRead, b: FailingRead): boolean {
+  const tests = failedTests(a.log);
+  return tests.length > 0 && sameList(checksOf(a), checksOf(b)) && sameList(tests, failedTests(b.log));
+}
+
+/** A fixer from an earlier episode that still stands: running on the roster, or with its registered PR still open. */
+interface StandingFix {
+  fixer: string;
+  task: string;
+  redSha: string;
+  pr: number | null;
+}
+
+/** Each earlier episode's first red sha, newest first; the fixer an episode spawns is named after that sha. */
+function earlierReds(deps: ShepherdDeps, input: EpisodeInput): string[] {
+  const shas = deps.store.get().eventsOf(input.runId).flatMap((event) => (event.kind === "freeze" && event.pr === null && event.headSha !== null ? [event.headSha] : []));
+  return [...new Set(shas.reverse())].filter((sha) => sha !== input.mergeSha);
+}
+
+async function openFixPr(deps: ShepherdDeps, repo: RepoSlug, fixer: string): Promise<{ task: string; pr: number } | undefined> {
+  const registration = deps.store.get().all().filter((row) => row.repo.toLowerCase() === repo.toLowerCase() && row.implementer === fixer && row.pr !== null).at(-1);
+  if (registration === undefined || registration.pr === null) return undefined;
+  const pr = await deps.port.getPr(repo, registration.pr);
+  return pr.state === "open" ? { task: registration.task, pr: registration.pr } : undefined;
+}
+
+/** The task a live fixer without a PR was briefed with, found by its red's key in the initiatives a fix task is filed into. */
+async function briefedTask(tasks: FixTasks, initiative: string, key: string): Promise<string | undefined> {
+  for (const where of new Set([initiative, DEFAULT_FIX_INITIATIVE])) {
+    const id = await tasks.findByTag(where, key);
+    if (id !== undefined) return `${where}/${id}`;
+  }
+  return undefined;
+}
+
+async function standingAt(deps: ShepherdDeps, wiring: MainRedWiring, repo: RepoSlug, redSha: string, live: ReadonlySet<string>, initiative: string): Promise<StandingFix | undefined> {
+  const fixer = fixerName(repo, redSha);
+  const open = await openFixPr(deps, repo, fixer);
+  if (open !== undefined) return { fixer, redSha, ...open };
+  if (!live.has(fixer) || !wiring.tasks) return undefined;
+  const task = await briefedTask(wiring.tasks, initiative, mainRedKey(repo, redSha));
+  return task === undefined ? undefined : { fixer, redSha, task, pr: null };
+}
+
+/** The standing fixer of an earlier red that failed the same way as this one, so one flaky test keeps one fixer. */
+async function standingFix(deps: ShepherdDeps, wiring: MainRedWiring, input: EpisodeInput, initiative: string, now: FailingRead): Promise<StandingFix | undefined> {
+  if (!wiring.fixers || failedTests(now.log).length === 0) return undefined;
+  const live = new Set((await wiring.fixers.roster()).filter((row) => row.presence === "live").map((row) => row.name));
+  for (const redSha of earlierReds(deps, input)) {
+    const standing = await standingAt(deps, wiring, input.repo, redSha, live, initiative);
+    if (standing !== undefined && sameFailure(now, await failingLogs(deps.port, input.repo, redSha))) return standing;
+  }
+  return undefined;
+}
+
+/** Hands this episode the standing fixer and its task, so its PR passes this freeze and `sh-spawn-fixer` reuses it. */
+function linkStanding(wiring: MainRedWiring, input: EpisodeInput, episode: number, standing: StandingFix): z.infer<typeof FixTaskResult> {
+  const freezes = wiring.freezes();
+  if (!freezes.setFixTask(input.repo, episode, standing.task) || !freezes.setFixer(input.repo, episode, standing.fixer)) return noTask(THAWED, true);
+  const pr = standing.pr === null ? "" : ` and its open PR #${standing.pr}`;
+  return { task: standing.task, thawed: false, detail: `linked to ${standing.fixer}${pr}: the red at ${standing.redSha} failed the same checks and tests` };
+}
+
+function fixTaskFields(input: RedInput, read: FailingRead, key: string, fallback: boolean): FixTaskFields {
+  const { failing, log } = read;
   const short = input.mergeSha.slice(0, 7);
   const jobs = failing.map((run) => run.name).join(", ") || "no failing job read";
   const notes = [
@@ -160,7 +239,10 @@ async function fixTaskFields(deps: ShepherdDeps, input: RedInput, key: string, f
 
 const noTask = (detail: string, thawed = false): z.infer<typeof FixTaskResult> => ({ task: null, thawed, detail });
 
-/** One task per episode: the freeze row's task is reused, and an add that landed before a crash is found again by its key tag. */
+/**
+ * One task per episode: the freeze row's task is reused, and an add that landed before a crash is found again by its key
+ * tag. A standing fixer of an earlier red with the same failing checks and tests lends its task and name instead.
+ */
 export async function fileFixTask(deps: ShepherdDeps, wiring: MainRedWiring | undefined, input: EpisodeInput, signal: AbortSignal): Promise<z.infer<typeof FixTaskResult>> {
   const live = wiring?.freezes().live(input.repo, input.episode);
   if (!wiring || !live) return noTask(THAWED, true);
@@ -170,7 +252,10 @@ export async function fileFixTask(deps: ShepherdDeps, wiring: MainRedWiring | un
   const named = initiativeOf(deps.store.get().byRun(input.runId)?.task);
   const initiative = named ?? DEFAULT_FIX_INITIATIVE;
   const key = mainRedKey(input.repo, input.mergeSha);
-  const fields = await fixTaskFields(deps, input, key, named === undefined);
+  const read = await failingLogs(deps.port, input.repo, input.mergeSha);
+  const standing = await standingFix(deps, wiring, input, initiative, read).catch(() => undefined);
+  if (standing !== undefined) return linkStanding(wiring, input, live.episode, standing);
+  const fields = fixTaskFields(input, read, key, named === undefined);
   const id = await patiently(deps, signal, async () => {
     if (!wiring.freezes().live(input.repo, input.episode)) return undefined;
     return (await tasks.findByTag(initiative, key)) ?? (await tasks.add(initiative, fields));
