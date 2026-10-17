@@ -61,8 +61,8 @@ guarded file stays readable by that user. The OS account is the real boundary.
   `alias` reads its operands, or where a store builtin reads an option or a name, is read as one that may define:
   `alias *`, `typeset ali*`, `printf *`, `print $x`; a numeric parameter (`$?`, `$#`) and a format that opens with
   text (`printf "b$n=%s "`) are not. Only the plain `NAME=VALUE` form of a declaration is spared, as neither shell
-  globs it: `typeset a[1]=2` passes. A command word only known at run time with no wrapper before it is read as one that may be `alias`:
-  `"$C" y=git` and `"$(printf al%s ias)" y=git` are refused, as is `"$C" -v 'aliases[y]' git`. Not seen: a run-time word behind a wrapper (`sudo "$C" y=git`; `env $(…) A=1 pnpm` must pass, and `unwrap` does not say what a wrapper runs), a run-time word with only a glob, tilde or `=` operand, fully dynamic `eval` text, an alias written into `~/.zshrc` for a later session, and
+  globs it: `typeset a[1]=2` passes. A command word only known at run time with no external runner (`env`, `sudo`, `nohup`, `nice`, `xargs`) before it is read as one that may be `alias`, also after `builtin`, `command`, `noglob`, `nocorrect`, `-`, `time` or `coproc`, which run builtins:
+  `"$C" y=git` and `"$(printf al%s ias)" y=git` are refused, as is `"$C" -v 'aliases[y]' git`. Accepted false denies, since `alias` itself takes the same words: `"$MAKE" CC=gcc`, `"$PY" -m pip install x==1.2`, `"$DOCKER" run -e A=1`; `"$EDITOR" file` and `"$cmd" --version` pass. Not seen: a run-time word behind an external runner (`sudo "$C" y=git`, `env "$C" y=git`; `env $(…) A=1 pnpm` must pass), a run-time word with only a glob, tilde or `=` operand, fully dynamic `eval` text, an alias written into `~/.zshrc` for a later session, and
   `hash NAME=path` (see the rebinding bullet).
 - The mention rule is broad: any argument naming a secret path counts as a read, so
   `echo ~/.npmrc` and a `gh pr create --body` that names `~/.npmrc` deny too.

@@ -79,6 +79,9 @@ const WRAPPERS: Record<string, WrapperSpec> = {
     joined: true, direct: ["-x", "--exec"] },
 };
 
+/** Wrappers that run a builtin as readily as a program, so a run-time word after one may still be `alias`. */
+const BUILTIN_RUNNERS: ReadonlySet<string> = new Set(["command", "builtin", "noglob", "nocorrect", "-", "time", "coproc"]);
+
 const ENV_WALK: EnvWalkSyntax = {
   scriptAt: (word) => scriptOption(word, ENV),
   takesValue: (word) => takesNextWord(word, ENV),
@@ -114,7 +117,7 @@ export interface Unwrapped {
   assigned: Assignment[];
   /** The command word as typed, after literal expansion: `./x.sh`, `/usr/bin/git`; null when `name` is. */
   path: string | null;
-  /** The command word is only known at run time and no wrapper stood before it: what it runs is read as written, not as a wrapper's operand. */
+  /** The command word is only known at run time and no external runner stood before it: what it runs is read as written, not as a wrapper's operand. */
   runtimeHead?: true;
   /** Shell text a wrapper option runs (`npx -c`, `env -S`); `name` is then the wrapper. */
   script?: string;
@@ -188,7 +191,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       words = spelled;
       const start = wrapperSpec(w.value) ? i + 1 : runnerEnd(words, i);
       const spec = wrapperSpec(w.value) ?? PACKAGE_OPTS;
-      wrapped = true;
+      wrapped ||= !BUILTIN_RUNNERS.has(commandName(w.value));
       const script =
         runnerShellScript(words, i, start) ?? wrapperScript(words, start, spec) ?? joinedScript(words, start, spec);
       if (script !== null) {
