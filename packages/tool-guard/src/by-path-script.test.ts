@@ -1,6 +1,8 @@
-import { chmodSync, existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { nodeContext } from "./context.js";
 import { decide } from "./decide.js";
@@ -117,5 +119,30 @@ describe("a native program run by path", () => {
   it("denies a valid ELF the line has just overwritten with a push", async () => {
     file("over", elf({ padding: 100 }));
     expect(await decision(`printf '%s\\n' '${PUSH}' > ./over; ./over`)).toBe("deny");
+  });
+});
+
+describe("a FIFO run by path", () => {
+  // The built hook runs in a child: opening a FIFO blocks the thread, so only a process timeout can show it.
+  const dist = fileURLToPath(new URL("../dist/", import.meta.url));
+  spawnSync("mkfifo", [join(home, "p")]);
+  symlinkSync("p", join(home, "link-to-p"));
+
+  function hook(command: string): { returned: boolean; stdout: string } {
+    const event = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: home, tool_input: { command } });
+    const run = spawnSync(process.execPath, [join(dist, "bin.js"), "hook"], { input: event, env: { ...process.env, HOME: home }, encoding: "utf-8", timeout: 4000 });
+    return { returned: run.error === undefined, stdout: run.stdout };
+  }
+
+  it.each([["./p"], [join(home, "p")], ["env ./p"], ["./link-to-p"], [`./p; ${PUSH}`]])("returns a denial for %s", (command) => {
+    const { returned, stdout } = hook(command);
+    expect(returned).toBe(true);
+    expect(stdout).toContain('"permissionDecision":"deny"');
+  });
+});
+
+describe("an ELF program-header table the Linux loader bounds", () => {
+  it.each([[0], [1171]])("denies e_phnum %i with a push body", async (phnum) => {
+    expect(await decision(file("count", elf({ phnum, body: `${PUSH}\n`, padding: 70000 })))).toBe("deny");
   });
 });

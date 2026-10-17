@@ -27,6 +27,7 @@ const BINARY_LINE_BYTES = 80;
 const PT_LOAD = 1;
 const ET_EXEC = 2;
 const ET_DYN = 3;
+/** The Linux loader (`load_elf_phdrs`) refuses a program-header table over 64 KiB with ENOEXEC. */
 const MAX_PHDR_TABLE = 64 * 1024;
 const ELF_MACHINES: Readonly<Record<string, number>> = { ia32: 3, arm: 0x28, ppc64: 0x15, s390x: 0x16, x64: 0x3e, arm64: 0xb7, riscv64: 0xf3 };
 const MACHO_CPUS: Readonly<Record<string, number>> = { x64: 0x01000007, arm64: 0x0100000c };
@@ -61,8 +62,8 @@ function validElf(head: Buffer, readAt: ReadAt, size: number, arch: string): boo
   if ((type !== ET_EXEC && type !== ET_DYN) || u16(18) !== ELF_MACHINES[arch] || phentsize !== (wide ? 56 : 32) || phnum === 0) return false;
   const phoff = wide ? Number(le ? head.readBigUInt64LE(32) : head.readBigUInt64BE(32)) : le ? head.readUInt32LE(28) : head.readUInt32BE(28);
   const table = phnum * phentsize;
-  if (!Number.isSafeInteger(phoff) || phoff + table > size) return false;
-  const phdrs = readAt(phoff, Math.min(table, MAX_PHDR_TABLE));
+  if (table > MAX_PHDR_TABLE || !Number.isSafeInteger(phoff) || phoff + table > size) return false;
+  const phdrs = readAt(phoff, table);
   for (let at = 0; at + phentsize <= phdrs.length; at += phentsize) if ((le ? phdrs.readUInt32LE(at) : phdrs.readUInt32BE(at)) === PT_LOAD) return true;
   return false;
 }

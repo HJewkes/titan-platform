@@ -1,4 +1,4 @@
-import { closeSync, fstatSync, openSync, readSync } from "node:fs";
+import { closeSync, constants, openSync, readSync, statSync } from "node:fs";
 import { INTERPRETERS, SHELLS } from "./mentions.js";
 import type { SimpleCommand } from "./shell/commands.js";
 import type { WordToken } from "./shell/lexer.js";
@@ -44,14 +44,16 @@ export function refuseOpaqueShebang(target: ScriptTarget, opaque: ReadonlySet<st
 export function runsNatively(target: ScriptTarget, ctx: ClassifyContext): boolean {
   if (target.byPath !== true || ctx.scriptReadings !== undefined) return false;
   try {
-    const fd = openSync(target.path, "r");
+    // Stat before open: opening a FIFO blocks the hook into its timeout, which fails open.
+    const stat = statSync(target.path);
+    if (!stat.isFile()) return false;
+    const fd = openSync(target.path, constants.O_RDONLY | constants.O_NONBLOCK);
     try {
       const readAt = (position: number, length: number): Buffer => {
         const buf = Buffer.alloc(length);
         return buf.subarray(0, readSync(fd, buf, 0, length, position));
       };
-      const stat = fstatSync(fd);
-      return stat.isFile() && isNativeProgram(readAt, stat.size);
+      return isNativeProgram(readAt, stat.size);
     } finally {
       closeSync(fd);
     }
