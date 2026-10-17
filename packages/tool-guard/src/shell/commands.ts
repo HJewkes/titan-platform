@@ -178,18 +178,10 @@ function walkFrom(list: Token[], start: number, w: Walk): void {
   const forks: Array<() => void> = [];
   let words: WordToken[] = [];
   let redirects: RedirectToken[] = [];
-  let arithEnd = -1;
+  const arith = { end: -1 };
   for (const [offset, token] of list.slice(start).entries()) {
     const at = start + offset;
-    if (at <= arithEnd) {
-      inArithmetic(token, at === arithEnd, w);
-      continue;
-    }
-    const end = arithmeticEnd(list, at, words, w);
-    if (end > 0) {
-      arithEnd = end;
-      continue;
-    }
+    if (arithmeticToken(list, at, words, arith, w)) continue;
     if (token.type === "op") {
       forks.push(...endAt(list, at, token, { words, redirects }, w));
       words = [];
@@ -214,6 +206,18 @@ function endAt(list: Token[], at: number, token: OpToken, gathered: { words: Wor
   const walks = [w, ...disputed.map((scope) => forkWalk(w, scope, (fork, vars) => observeStores(vars, (value) => hear(fork, value))))];
   for (const each of walks) endCommand(each, token, words, redirects, readings, (op) => scope(op, each));
   return walks.slice(1).map((fork) => () => walkFrom(list, at + 1, fork));
+}
+
+/** Whether the token at `at` opens or lies in an arithmetic command, which `arith.end` tracks across the list. */
+function arithmeticToken(list: Token[], at: number, words: WordToken[], arith: { end: number }, w: Walk): boolean {
+  const token = list[at];
+  if (at <= arith.end && token) {
+    inArithmetic(token, at === arith.end, w);
+    return true;
+  }
+  const end = arithmeticEnd(list, at, words, w);
+  if (end > 0) arith.end = end;
+  return end > 0;
 }
 
 /**
