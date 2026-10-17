@@ -29,7 +29,7 @@ const refuse = (mode: SetCarryInput["mode"], reason: string, paths?: string[]): 
 
 const LS_TREE_ENTRY = /^(\d+) (\w+) ([0-9a-f]{40})\t(.*)$/s;
 
-/** Each set path's object at `head`, from `ls-tree -z`, so no image bytes pass through git's utf8 stdout; a non-file entry never equals a blob id. */
+/** Each set path's object at `head`, from `ls-tree -z`, so no image bytes pass through git's utf8 stdout; an entry that is not a plain 100644 file never equals a blob id. */
 async function objectsAt(git: Git, dir: string, head: string, paths: readonly string[], signal?: AbortSignal): Promise<Map<string, string>> {
   if (paths.length === 0) return new Map();
   const listed = await git(dir, ["ls-tree", "-z", head, "--", ...paths], signal);
@@ -38,7 +38,7 @@ async function objectsAt(git: Git, dir: string, head: string, paths: readonly st
     const match = LS_TREE_ENTRY.exec(entry);
     return match ? [match] : [];
   });
-  return new Map(entries.map(([, mode = "", type, id = "", path = ""]) => [path, type === "blob" && mode.startsWith("100") ? id : `${type} ${mode}`]));
+  return new Map(entries.map(([, mode = "", type, id = "", path = ""]) => [path, type === "blob" && mode === "100644" ? id : `${type} ${mode}`]));
 }
 
 async function probe(git: Git, dir: string, url: string, { fromHead, head, mode, set }: SetCarryInput, signal?: AbortSignal): Promise<SetCarryResult> {
@@ -77,7 +77,8 @@ export function setCarryRoute(now: () => number, options: Omit<CarryOptions, "si
 
 /** What the run hands the approval wrapper: the set from the recorded gate answer, how to spend it, the visual test and the live flag. */
 export interface SetCarry {
-  acceptedSet?: () => unknown;
+  /** The accepted set and the base its red head was judged on. */
+  acceptedSet?: () => { set: unknown; base: string | undefined } | undefined;
   spendSet?: () => void;
   isVisual?: (stepId: string, prompt: string) => boolean;
   /** Absent reads as off. */
@@ -106,10 +107,20 @@ function stepMode(ctx: WorkflowContext, setMode: (() => VisualSetCarry) | undefi
   return mode === "off" ? undefined : mode;
 }
 
+type SetGate = { stepId: string; prompt: string; head: string; base: string | undefined };
+
+/** The owner answered a visual land gate themself, merge or send-back, so the set never answers for them after it. */
+export function spendOnOwnerAnswer(carry: SetCarry, stepId: string, prompt: string): void {
+  if (carry.isVisual?.(stepId, prompt)) carry.spendSet?.();
+}
+
 /** At a visual land gate of a later head, the merge answer the accepted set gives it; the set is spent once checked, carried or not. */
-export async function approvedSetFollow(ctx: WorkflowContext, target: CarryTarget, carry: SetCarry, gate: { stepId: string; prompt: string; head: string }): Promise<StepResult | undefined> {
-  const set = ApprovedSetSchema.safeParse(carry.acceptedSet?.()).data;
-  if (!set || set.fromHead === gate.head || !carry.isVisual?.(gate.stepId, gate.prompt)) return undefined;
+export async function approvedSetFollow(ctx: WorkflowContext, target: CarryTarget, carry: SetCarry, gate: SetGate): Promise<StepResult | undefined> {
+  const accepted = carry.acceptedSet?.();
+  const set = ApprovedSetSchema.safeParse(accepted?.set).data;
+  // A set judged on one base never answers a gate into another, and a base the red head's read did not record matches none.
+  if (!set || accepted?.base === undefined || accepted.base !== gate.base) return undefined;
+  if (set.fromHead === gate.head || !carry.isVisual?.(gate.stepId, gate.prompt)) return undefined;
   const mode = stepMode(ctx, carry.setMode);
   if (mode === undefined) return undefined;
   const stepId = `${SET_CARRY_STEP}:${gate.head}`;

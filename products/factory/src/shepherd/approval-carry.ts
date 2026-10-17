@@ -4,7 +4,7 @@ import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 import { SEND_BACK } from "../gate-brief.js";
 import { step } from "../workflows/land.js";
-import { approvedSetFollow, type SetCarry } from "./approved-set-carry.js";
+import { approvedSetFollow, spendOnOwnerAnswer, type SetCarry } from "./approved-set-carry.js";
 import { APPROVAL_CARRY_STEP, followBases, type CarryTarget } from "./carry-merge.js";
 import { fixCarryStep } from "./fix-carry.js";
 import { ownMergeUpStep } from "./own-merge-up.js";
@@ -104,8 +104,9 @@ export function followingApprovals(ctx: WorkflowContext, assisted: WorkflowConte
     // An approval the set gave follows no head yet: S8 lets it follow only Shepherd's own merge-up.
     const from = standing && approved?.origin === "answer" && approved.head !== asked && approved.base === base ? approved.head : undefined;
     const followed = from === undefined ? undefined : await followedAnswer(ctx, carry.target, from, asked);
-    const bySet = followed || !standing || base === undefined ? undefined : await approvedSetFollow(ctx, carry.target, carry, { stepId, prompt, head: asked });
+    const bySet = followed || !standing ? undefined : await approvedSetFollow(ctx, carry.target, carry, { stepId, prompt, head: asked, base });
     const answer = followed ?? bySet ?? (await assisted(stepId, prompt, options));
+    if (!followed && !bySet) spendOnOwnerAnswer(carry, stepId, prompt);
     if (MergeAnswer.safeParse(answer.data).data?.headSha === asked) approved = { head: asked, base, origin: bySet ? "approved-set" : "answer" };
     else if (SendBackAnswer.safeParse(answer.data).success) approved = undefined;
     return answer;

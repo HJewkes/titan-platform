@@ -98,4 +98,13 @@ describe("setMatch", () => {
     expect(setMatch(set, { changed: [".github/workflows/ci.yml"], atHead })).toEqual({ carries: false, reason: "skill-or-fenced", paths: [".github/workflows/ci.yml"] });
     expect(setMatch(set, { changed: set.files.map((file) => file.path), atHead })).toEqual({ carries: true });
   });
+
+  it("reads a removed name that is a directory of a set file as present, since ls-tree lists only inside it", () => {
+    const { set } = built();
+    const [file] = set.files;
+    const removed = file!.path.slice(0, file!.path.lastIndexOf("/"));
+    const atHead = new Map(set.files.map((each) => [each.path, each.blob]));
+
+    expect(setMatch({ ...set, removed: [removed] }, { changed: set.files.map((each) => each.path), atHead })).toMatchObject({ carries: false, reason: "removed-present" });
+  });
 });

@@ -23,7 +23,7 @@ const SET: ApprovedSet = {
 };
 
 /** What the fake git holds at a head: whether `H1` is its ancestor, `diff H1..head`, and each path's blob. */
-type HeadTree = { ancestor?: boolean; changed?: string[]; tree?: Record<string, string> };
+type HeadTree = { ancestor?: boolean; changed?: string[]; tree?: Record<string, string>; mode?: string };
 const EXACT: HeadTree = { changed: [`${BASELINE}a.png`, `${BASELINE}gone.png`], tree: { [`${BASELINE}a.png`]: "a".repeat(40) } };
 
 function fakeGit(heads: Record<string, HeadTree>, calls: string[][]): Git {
@@ -33,7 +33,7 @@ function fakeGit(heads: Record<string, HeadTree>, calls: string[][]): Git {
     if (args[0] === "merge-base") return { code: at.ancestor === false ? 1 : 0, stdout: "", stderr: "" };
     if (args[0] === "diff-tree") return { code: 0, stdout: (at.changed ?? []).map((path) => `${path}\0`).join(""), stderr: "" };
     if (args[0] !== "ls-tree") return { code: 0, stdout: "", stderr: "" };
-    const listed = args.slice(4).flatMap((path) => (at.tree?.[path] ? [`100644 blob ${at.tree[path]}\t${path}\0`] : []));
+    const listed = args.slice(4).flatMap((path) => (at.tree?.[path] ? [`${at.mode ?? "100644"} blob ${at.tree[path]}\t${path}\0`] : []));
     return { code: 0, stdout: listed.join(""), stderr: "" };
   };
 }
@@ -44,20 +44,25 @@ interface RigOptions {
   /** No set was accepted at the red head. */
   noSet?: boolean;
   visual?: boolean;
-  reviewed?: boolean;
+  /** Heads whose review is a MERGE; every head by default. */
+  reviewed?: (head: string) => boolean;
+  /** The owner's decision at each gate; merge by default. */
+  decide?: (head: string) => string;
+  /** The base the red head's CI read was judged on; null when the read recorded none. */
+  base?: string | null;
   /** The run's kind lets an owner's answer follow a merge-up; true by default. */
   follows?: boolean;
   /** Recorded steps a replay returns in order, never reaching git. */
   journal?: { stepId: string; result: object }[];
 }
 
-function rig({ heads = { [H2]: EXACT }, mode = "on", noSet = false, visual = true, reviewed = true, follows = true, journal }: RigOptions = {}) {
+function rig({ heads = { [H2]: EXACT }, mode = "on", noSet = false, visual = true, reviewed = () => true, decide = () => "merge", base = "main", follows = true, journal }: RigOptions = {}) {
   const gates: string[] = [];
   const steps: string[] = [];
   const results = new Map<string, unknown>();
   const calls: string[][] = [];
   const modeReads: string[] = [];
-  let accepted: ApprovedSet | undefined = noSet ? undefined : SET;
+  let accepted: { set: ApprovedSet; base: string | undefined } | undefined = noSet ? undefined : { set: SET, base: base ?? undefined };
   const stateDir = mkdtempSync(join(tmpdir(), "set-carry-"));
   const respond = async (stepId: string, input: unknown): Promise<unknown> => {
     if (journal) return journal.find((recorded) => recorded.stepId === stepId)?.result;
@@ -77,10 +82,10 @@ function rig({ heads = { [H2]: EXACT }, mode = "on", noSet = false, visual = tru
   const owner: WorkflowContext["assisted"] = async (_stepId, prompt) => {
     const head = /at head ([0-9a-f]{40})/.exec(prompt)?.[1] ?? "";
     gates.push(head);
-    return { stepId: "approve-merge", iteration: 0, agentId: null, signal: null, completedAt: "", data: { decision: "merge", headSha: head } } satisfies StepResult;
+    return { stepId: "approve-merge", iteration: 0, agentId: null, signal: null, completedAt: "", data: { decision: decide(head), headSha: head } } satisfies StepResult;
   };
   const ask = followingApprovals(ctx, owner, {
-    ...{ target: { repo: REPO, pr: 1 }, reviewedMerge: () => reviewed, isVisual: () => visual },
+    ...{ target: { repo: REPO, pr: 1 }, reviewedMerge: reviewed, isVisual: () => visual },
     ...{ acceptedSet: () => accepted, spendSet: () => (accepted = undefined), setMode: () => (modeReads.push(mode), mode) },
   });
   return { ask, gates, steps, results, calls, modeReads };
@@ -107,6 +112,8 @@ describe("a later head that commits exactly the accepted set", () => {
     ["a removed path still present", { ...EXACT, tree: { ...EXACT.tree, [`${BASELINE}gone.png`]: "c".repeat(40) } }],
     ["a head that is no descendant of the red head", { ...EXACT, ancestor: false }],
     ["a skill path", { ...EXACT, changed: [...EXACT.changed!, ".claude/skills/x/SKILL.md"] }],
+    ["a set file whose mode flipped to 100755", { ...EXACT, mode: "100755" }],
+    ["a head whose diff names no set file, though its blobs match", { ...EXACT, changed: [] }],
   ])("asks the owner for %s", async (_name, head) => {
     const r = rig({ heads: { [H2]: head } });
 
@@ -118,9 +125,11 @@ describe("a later head that commits exactly the accepted set", () => {
 
   it.each<[string, RigOptions, string]>([
     ["a gate that is not visual", { visual: false }, gate(H2)],
-    ["a head without a reviewer MERGE", { reviewed: false }, gate(H2)],
+    ["a head without a reviewer MERGE", { reviewed: () => false }, gate(H2)],
     ["a skill-path gate", {}, gate(H2, "skill-path")],
     ["a gate that names no base", {}, gate(H2, "visual-path:packages/ui", "")],
+    ["a gate into another base than the red head was judged on", { base: "release" }, gate(H2)],
+    ["a set whose red head's read recorded no base", { base: null }, gate(H2)],
   ])("passes %s through to the owner without a set step", async (_name, options, prompt) => {
     const r = rig(options);
 
@@ -149,6 +158,16 @@ describe("a later head that commits exactly the accepted set", () => {
 
     expect(r.gates).toEqual([H2, H3]);
     expect(r.steps.filter((id) => id.startsWith("sh-approval-carry:set:"))).toEqual([`sh-approval-carry:set:${H2}`]);
+  });
+
+  it.each(["send-back", "merge"])("spends the set when the owner answers %s at a visual gate, so a later matching head asks", async (decision) => {
+    const r = rig({ heads: { [H2]: EXACT, [H3]: EXACT }, reviewed: (head) => head === H3, decide: (head) => (head === H2 ? decision : "merge"), follows: false });
+
+    await r.ask("approve-merge", gate(H2));
+    await r.ask("approve-merge:1", gate(H3));
+
+    expect(r.gates).toEqual([H2, H3]);
+    expect(r.steps.filter((id) => id.startsWith("sh-approval-carry:set:"))).toEqual([]);
   });
 
   it("lets a set-carried approval follow no merge-up head before S8", async () => {

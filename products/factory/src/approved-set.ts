@@ -112,24 +112,26 @@ export function approvedSetOf({ packet: bytes, packetSha, fromHead, after }: Set
 
 const byPath = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
-type SetMatchRefusal = "extra-path" | "missing" | "blob-mismatch" | "removed-present" | "skill-or-fenced";
+type SetMatchRefusal = "extra-path" | "unchanged" | "missing" | "blob-mismatch" | "removed-present" | "skill-or-fenced";
 type SetMatch = { carries: true } | { carries: false; reason: SetMatchRefusal; paths: string[] };
 
 /** `changed` is every path of `diff H1..H2`; `atHead` maps each set path present at H2 to its blob there. */
 type SetHead = { changed: readonly string[]; atHead: ReadonlyMap<string, string> };
 
 /**
- * Does a later head commit exactly the accepted set: every changed path in it, every file at its accepted blob, every removed
- * path gone, and no changed path a skill or carry-fenced? A path match alone is not enough, since the blob is what the owner saw.
+ * Does a later head commit exactly the accepted set: every changed path in it, every file changed and at its accepted blob,
+ * every removed path gone (a removed name that is a directory of a set file counts as present, since ls-tree lists inside it), and no changed path a skill or carry-fenced? A path match alone is not enough, since the blob is what the owner saw.
  */
 export function setMatch(set: ApprovedSet, { changed, atHead }: SetHead): SetMatch {
   const named = new Set([...set.files.map((file) => file.path), ...set.removed]);
+  const diff = new Set(changed);
   const checks: [SetMatchRefusal, string[]][] = [
     ["skill-or-fenced", changed.filter((path) => isSkillPath(path) || isCarryFencedPath(path))],
     ["extra-path", changed.filter((path) => !named.has(path))],
+    ["unchanged", set.files.filter((file) => !diff.has(file.path)).map((file) => file.path)],
     ["missing", set.files.filter((file) => !atHead.has(file.path)).map((file) => file.path)],
     ["blob-mismatch", set.files.filter((file) => atHead.has(file.path) && atHead.get(file.path) !== file.blob).map((file) => file.path)],
-    ["removed-present", set.removed.filter((path) => atHead.has(path))],
+    ["removed-present", set.removed.filter((path) => atHead.has(path) || [...named].some((other) => other.startsWith(`${path}/`)))],
   ];
   const failed = checks.find(([, paths]) => paths.length > 0);
   return failed ? { carries: false, reason: failed[0], paths: failed[1] } : { carries: true };
