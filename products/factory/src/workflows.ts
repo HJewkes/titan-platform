@@ -314,7 +314,8 @@ function configuredVisualPacket(
   if (mode === "off") return undefined;
   const agentChatBin = shepherd?.agentChatBin;
   const agents = agentChatBin && { agents: agentChatAgents(agentChatBin, { roster, gate }) };
-  return { mode, profile: shepherd?.visualPacketProfile ?? DEFAULT_PACKAGER_PROFILE, stateDir: factoryStateDir(env), cwdFor, ...agents };
+  const bin = shepherd?.titanReviewBin && { titanReviewBin: shepherd.titanReviewBin };
+  return { mode, profile: shepherd?.visualPacketProfile ?? DEFAULT_PACKAGER_PROFILE, stateDir: factoryStateDir(env), cwdFor, ...agents, ...bin };
 }
 
 function logGhCall(line: GhCallLine): void {

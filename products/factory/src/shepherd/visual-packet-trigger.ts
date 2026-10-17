@@ -1,4 +1,5 @@
 import { mkdirSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
@@ -9,6 +10,7 @@ import type { AgentChatAgents } from "./agents.js";
 import { landGateHead } from "./approval-carry.js";
 import type { PrTarget } from "./gates.js";
 import type { OwnerGateReason } from "./policy.js";
+import { resolveCheckout } from "./reviewer-dispatch.js";
 
 const VISUAL_PACKET_STEP = "sh-visual-packet";
 export const VISUAL_PACKET_STEPS: readonly StepDeclaration[] = [{ id: VISUAL_PACKET_STEP, kind: "dispatch" }];
@@ -24,8 +26,10 @@ export interface VisualPacketPorts {
   stateDir: string;
   /** Absent means no agent-chat is configured, so an `on` spawn is recorded as failed. */
   agents?: Pick<AgentChatAgents, "roster" | "spawn">;
-  /** The checkout the packager starts in; absent or undefined means the packet dir. */
+  /** The repo's seat checkout: the packager starts in it, and from-ci and the lint read git objects from it. None spawns nothing. */
   cwdFor?: (repo: string) => string | undefined;
+  /** `shepherd.titanReviewBin`; absent means `$HOME/.local/bin/titan-review`, named in full as `~/.local/bin` is not on every PATH. */
+  titanReviewBin?: string;
 }
 
 const PacketEvent = z.enum(["visual-packet-off", "visual-packet-would-spawn", "visual-packet-spawned", "visual-packet-spawn-failed"]);
@@ -109,8 +113,28 @@ async function packetFacts(port: GitHubPort, input: PacketInput): Promise<Packet
   return { ...(tree && { headTree: tree }), ...(ciRunId !== undefined && { ciRunId }) };
 }
 
-function packagerBrief(input: PacketInput, facts: PacketFacts, packetDir: string): string {
-  const run = facts.ciRunId === undefined ? "<the CI run id of the visual job at this head; Shepherd found none>" : String(facts.ciRunId);
+/** What the brief names on disk: the packet dir, the clone from-ci reads git from, and the titan-review binary. */
+interface PackagerPaths {
+  packetDir: string;
+  clone: string;
+  bin: string;
+}
+
+/**
+ * A head with no visual CI run, or a repo with no usable checkout, spawns no packager: from-ci needs both, and the prompt
+ * would only have the packager stop BLOCKED. The throw is recorded as a failed spawn.
+ */
+function packagerPaths(ports: VisualPacketPorts, input: PacketInput, facts: PacketFacts, packetDir: string): PackagerPaths & { ciRunId: number } {
+  if (facts.ciRunId === undefined) throw new Error(`no visual CI run at ${input.headSha}; a packager could only stop BLOCKED`);
+  const checkout = resolveCheckout(input.repo, ports.cwdFor?.(input.repo));
+  if ("problem" in checkout) throw new Error(checkout.problem);
+  const bin = ports.titanReviewBin ?? join(process.env.HOME || homedir(), ".local", "bin", "titan-review");
+  return { packetDir, clone: checkout.dir, bin, ciRunId: facts.ciRunId };
+}
+
+/** from-ci replaces the whole packet dir, so it runs once and first; a re-run after prose.json would delete it. */
+function packagerBrief(input: PacketInput, facts: PacketFacts, paths: PackagerPaths & { ciRunId: number }): string {
+  const { packetDir, clone, bin, ciRunId } = paths;
   return [
     `Build the visual review packet for ${input.repo}#${input.pr} at head ${input.headSha}.`,
     "",
@@ -120,21 +144,25 @@ function packagerBrief(input: PacketInput, facts: PacketFacts, packetDir: string
     `Head tree: ${facts.headTree ?? "unknown"}`,
     `Shepherd run: ${input.runId}`,
     `Gate: ${input.gateId}`,
-    `Visual CI run: ${facts.ciRunId ?? "unknown"}`,
+    `Visual CI run: ${ciRunId}`,
     `Packet dir: ${packetDir}`,
+    `Clone: ${clone}`,
+    `titan-review: ${bin}`,
     "",
-    `1. Run \`titan-review packet from-ci --repo ${input.repo} --pr ${input.pr} --head ${input.headSha} --run ${run} --out ${packetDir}\`.`,
-    "2. Then write the packet's prose fields only; leave every generated field as the command wrote it.",
-    `3. Put the packet root \`${packetDir}\` in your PR body.`,
+    "Run titan-review by the absolute path above only; it may not be on your PATH.",
+    `1. First, once: \`${bin} packet from-ci --repo ${input.repo} --pr ${input.pr} --head ${input.headSha} --run ${ciRunId} --clone ${clone} --out ${packetDir}\`. If it fails, stop BLOCKED with its stderr.`,
+    `2. Run \`${bin} packet prompt\` and follow it to write \`${packetDir}/prose.json\`.`,
+    "3. Never run from-ci again: it replaces the whole packet dir, prose.json with it. If the packet needs rebuilding, stop BLOCKED.",
+    `4. Finish with \`${bin} packet lint ${packetDir} --gate-head ${input.headSha} --require prose --clone ${clone}\`. It must exit 0: fix prose.json until it does, or stop BLOCKED with its output.`,
   ].join("\n");
 }
 
 /** An agent already on the roster under this name is this head's packager, started before a crash lost the record. */
-async function spawnPackager(ports: VisualPacketPorts, input: PacketInput, brief: string, packetDir: string, agent: string): Promise<void> {
+async function spawnPackager(ports: VisualPacketPorts, brief: string, paths: PackagerPaths, agent: string): Promise<void> {
   if (!ports.agents) throw new Error("no agent-chat is configured");
   if ((await ports.agents.roster()).some((row) => row.name === agent)) return;
-  mkdirSync(packetDir, { recursive: true });
-  await ports.agents.spawn({ name: agent, profile: ports.profile, brief, cwd: ports.cwdFor?.(input.repo) ?? packetDir });
+  mkdirSync(paths.packetDir, { recursive: true });
+  await ports.agents.spawn({ name: agent, profile: ports.profile, brief, cwd: paths.clone });
 }
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
@@ -146,8 +174,9 @@ export async function visualPacket(port: GitHubPort, ports: VisualPacketPorts | 
   const recorded = { packetDir, agent: packagerName(input.runId, input.headSha), profile: ports.profile };
   try {
     const facts = await packetFacts(port, input);
+    const paths = packagerPaths(ports, input, facts, packetDir);
     if (ports.mode === "shadow") return { event: "visual-packet-would-spawn", ...recorded, ...facts };
-    await spawnPackager(ports, input, packagerBrief(input, facts, packetDir), packetDir, recorded.agent);
+    await spawnPackager(ports, packagerBrief(input, facts, paths), paths, recorded.agent);
     return { event: "visual-packet-spawned", ...recorded, ...facts };
   } catch (error) {
     return { event: "visual-packet-spawn-failed", ...recorded, reason: messageOf(error) };
