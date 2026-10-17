@@ -103,9 +103,9 @@ describe("a red at one head whose CI turns green at that same head", () => {
     fake.pushHead(1, H2);
     await gateOpened(host, gateId(runId, "approve-merge"));
 
-    const waited = result(host, runId, "await-new-head:0") as { result: Record<string, unknown> };
-    expect(waited.result).toMatchObject({ headSha: H2 });
-    expect(waited.result.green).toBeUndefined();
+    const waited = result(host, runId, "await-new-head:0");
+    expect(waited).toMatchObject({ result: { headSha: H2 } });
+    expect(waited).not.toMatchObject({ result: { green: true } });
     expect(host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`at head ${H2}`);
   });
 
