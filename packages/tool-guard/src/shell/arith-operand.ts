@@ -28,13 +28,13 @@ function codeTextBetween(w: WordToken, from: number, to: number): boolean {
  */
 export function refuseCodeInSubscripts(assigning: WordToken[], elements: WordToken[]): void {
   for (const w of assigning) {
-    const subscript = w.codeAt && SUBSCRIPTED_ASSIGNMENT_RE.exec(w.value)?.[1];
+    const subscript = w.codeAt ? SUBSCRIPTED_ASSIGNMENT_RE.exec(w.value)?.[1] : undefined;
     const from = w.value.indexOf("[") + 1;
-    if (subscript !== undefined && subscript !== false && codeTextBetween(w, from, from + subscript.length)) refuse();
+    if (subscript !== undefined && codeTextBetween(w, from, from + subscript.length)) refuse();
   }
   for (const w of elements) {
-    const subscript = w.codeAt && ELEMENT_ASSIGNMENT_RE.exec(w.value)?.[1];
-    if (subscript !== undefined && subscript !== false && codeTextBetween(w, 1, 1 + subscript.length)) refuse();
+    const subscript = w.codeAt ? ELEMENT_ASSIGNMENT_RE.exec(w.value)?.[1] : undefined;
+    if (subscript !== undefined && codeTextBetween(w, 1, 1 + subscript.length)) refuse();
   }
 }
 
