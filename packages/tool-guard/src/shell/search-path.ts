@@ -1,4 +1,4 @@
-import { SEARCH_KEY, sourceOf, UNKNOWN_ENTRY } from "./assignment-source.js";
+import { SEARCH_KEY, SOFT_ENTRY, sourceOf, UNKNOWN_ENTRY } from "./assignment-source.js";
 import type { AssignmentSource } from "./assignment-source.js";
 import type { WordToken } from "./tokens.js";
 import { assign, DECLARERS, trackVars } from "./vars.js";
@@ -15,6 +15,8 @@ const DECLARED_RE = /^PATH(\+?)=(.*)$/s;
 export interface SearchPath {
   dirs: string[];
   unknown: boolean;
+  /** Its only relative entry is a guess at the working directory, so a file there is read but a missing one is no reason to refuse. */
+  soft?: true;
   wrappers?: string[];
 }
 
@@ -58,6 +60,12 @@ export function assignStandalone(assigned: readonly Assignment[], vars: Vars): v
     assign(vars, assignment);
     if (isPathName(assignment)) keep(vars, applied(assignment, before));
   }
+}
+
+/** An `eval` of text only known at run time may store a `PATH` that lists the working directory. */
+export function markPathSoft(vars: Vars): void {
+  const before = held(vars);
+  if (before !== null) vars.set(SEARCH_KEY, [...(before ?? []), SOFT_ENTRY].join(":"));
 }
 
 /** Carries the search path an `eval`'s text left in its walk back to the shell that ran it. */
@@ -117,8 +125,11 @@ export function withPrefixPath<T extends { scope: { vars: Vars } }>(w: T, cmd: {
 export function searchPathOf(vars: Vars, cmd: { assigned: readonly Assignment[]; wrappers?: string[] }): { searchPath?: SearchPath } {
   const entries = effective(vars, cmd.assigned);
   if (entries === undefined) return {};
-  const list = (entries ?? [UNKNOWN_ENTRY]).map((entry) => entry.replace(CWD_RE, "."));
+  const list = (entries ?? [UNKNOWN_ENTRY]).filter((entry) => entry !== SOFT_ENTRY).map((entry) => entry.replace(CWD_RE, "."));
+  const guessed = (entries ?? []).includes(SOFT_ENTRY);
   const unknown = list.some((entry) => entry === UNKNOWN_ENTRY || (DYNAMIC_RE.test(entry) && !ABSOLUTE_RE.test(entry)) || (entry.startsWith("~") && !ABSOLUTE_RE.test(entry)));
-  const dirs = list.filter((entry) => !ABSOLUTE_RE.test(entry) && !DYNAMIC_RE.test(entry) && !entry.startsWith("~"));
-  return { searchPath: { dirs, unknown, ...(cmd.wrappers ? { wrappers: cmd.wrappers } : {}) } };
+  const named = list.filter((entry) => !ABSOLUTE_RE.test(entry) && !DYNAMIC_RE.test(entry) && !entry.startsWith("~"));
+  const dirs = guessed && !named.includes(".") ? [...named, "."] : named;
+  const soft = guessed && named.length === 0 ? { soft: true as const } : {};
+  return { searchPath: { dirs, unknown, ...soft, ...(cmd.wrappers ? { wrappers: cmd.wrappers } : {}) } };
 }

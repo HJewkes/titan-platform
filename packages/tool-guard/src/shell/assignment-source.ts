@@ -6,6 +6,9 @@ export const SEARCH_KEY = "searchpath@";
 /** An entry whose directory only run time knows. */
 export const UNKNOWN_ENTRY = "$?";
 
+/** An entry a run-time `eval` may have added: probably the working directory, but only a file there is read. */
+export const SOFT_ENTRY = "@soft";
+
 /** What a `PATH` assignment's word said, which an assignment holds as null when the value is dynamic. */
 export interface AssignmentSource {
   text: string;

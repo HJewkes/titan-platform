@@ -154,7 +154,7 @@ function handles(family: Family, cmd: SimpleCommand): boolean {
 /** One level deep: a shell script is classified as a command string, any other script's text gets the mention rule. */
 function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: ScriptMemo, earlier: () => SimpleCommand[]): ClassifiedAction[] {
   refuseUnreadablePath(cmd);
-  return scriptTargets(cmd, ctx.home).filter((target) => mayExist(target, ctx, earlier) && !runsNatively(target, ctx)).flatMap((target) => {
+  return scriptTargets(cmd, ctx.home).filter((target) => mayExist(cmd, target, ctx, earlier) && !runsNatively(target, ctx)).flatMap((target) => {
     const actions = memoized(scripts, ctx, scriptKey(cmd, target, ctx), () => scriptVerdicts(cmd, target, ctx, scripts));
     refuseOpaqueShebang(target, scripts.opaque);
     return actions.map((a) => (a.action === "secret-read" ? classified("bash.secret.script-by-path", a.subject) : a));
@@ -188,7 +188,7 @@ function onlyReads(cmd: SimpleCommand): boolean {
  * Whether a file a PATH lookup found may be there to run: on the disk, or written by the line. A file another command on
  * the line may have made (`cp s n; PATH=.:$PATH n`, `tar xf a.tar; PATH=.:$PATH n`) fails closed unless every earlier command only reads.
  */
-function mayExist(target: ScriptTarget, ctx: ClassifyContext, earlier: () => SimpleCommand[]): boolean {
+function mayExist(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext, earlier: () => SimpleCommand[]): boolean {
   if (target.searched !== true) return true;
   try {
     if (scriptReadings(ctx, target.path).length > 0) return true;
@@ -196,7 +196,7 @@ function mayExist(target: ScriptTarget, ctx: ClassifyContext, earlier: () => Sim
     if (!(error instanceof UnreadableScriptError)) throw error;
     if (!error.absent) return true;
   }
-  if (!earlier().every(onlyReads)) throw new UnreadableScriptError(null);
+  if (cmd.searchPath?.soft !== true && !earlier().every(onlyReads)) throw new UnreadableScriptError(null);
   return false;
 }
 

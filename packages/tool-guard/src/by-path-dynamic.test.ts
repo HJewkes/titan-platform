@@ -181,6 +181,32 @@ describe("a line that only mentions path or PATH", () => {
   });
 });
 
+describe("an eval of text only known at run time", () => {
+  it.each([
+    'eval "$(cat envf)"; s',
+    "eval $(cat envf); s",
+    'eval "$(< envf)"; s',
+    "eval `cat envf`; s",
+    'eval "$(direnv export bash)"; s',
+    'eval "$(direnv export bash)"; bash -c s',
+    `eval "$(cat envf)"; printf '#!/bin/bash\\n${PUSH}\\n' > s; s`,
+  ])("reads ./s after %s, whose text may list the working directory", async (command) => {
+    file("s", `#!/bin/bash\n${PUSH}\n`);
+    file("envf", "PATH=.\n");
+    expect(await decision(command)).toBe("deny");
+  });
+
+  it.each([
+    'eval "$(rbenv init -)"; ls',
+    'eval "$(ssh-agent -s)"; ssh-add',
+    'eval "$(brew shellenv)"; brew list',
+    'eval "$(pyenv init -)"; python -V',
+    'eval "$(direnv export bash)"; make',
+  ])("passes the common line %s", async (command) => {
+    expect(await decision(command)).toBeNull();
+  });
+});
+
 describe("an eval or a nameref that does not touch PATH", () => {
   it.each(['eval "$(rbenv init -)"', 'eval "X=1"; ls', "declare -A map; ls", 'export PATH="$HOME/bin:$PATH"; eval "FOO=1"; ls'])("passes %s", async (command) => {
     expect(await decision(command)).toBeNull();

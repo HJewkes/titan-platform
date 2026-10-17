@@ -106,6 +106,8 @@ type Descriptors = (fd: number) => Feeds;
 interface SearchPath {
     dirs: string[];
     unknown: boolean;
+    /** Its only relative entry is a guess at the working directory, so a file there is read but a missing one is no reason to refuse. */
+    soft?: true;
     wrappers?: string[];
 }
 
