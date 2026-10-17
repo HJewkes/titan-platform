@@ -238,6 +238,15 @@ export function childVars(vars: Vars): Vars {
   return copy;
 }
 
+/**
+ * Drops the marks that describe NAME's current value (numeric, cased). Every primitive that changes a value calls it,
+ * so a mark never outlives the value it was set for; attribute keys (`readonly@`, `case@`) belong to the name and stay.
+ */
+function dropValueMarks(vars: Vars, name: string): void {
+  clearCased(vars, name);
+  vars.delete(numericKey(name));
+}
+
 const readonlyKey = (name: string) => `readonly@${name}`;
 
 /**
@@ -248,15 +257,14 @@ const readonlyKey = (name: string) => `readonly@${name}`;
 function write(vars: Vars, name: string, value: string | null, heard = true): void {
   const flag = vars.get(readonlyKey(name));
   if (flag === "") return;
-  clearCased(vars, name);
-  vars.delete(numericKey(name));
+  dropValueMarks(vars, name);
   vars.set(name, flag === null || vars.has(ANY_READONLY) ? null : value);
   if (heard) observers.get(vars)?.(value);
 }
 
 /** A function's return restores a local's outer value, which may or may not have been readonly. */
 function restore(vars: Vars, name: string, value: string | null): void {
-  clearCased(vars, name);
+  dropValueMarks(vars, name);
   vars.set(name, value);
   if (vars.has(readonlyKey(name))) vars.set(readonlyKey(name), null);
 }
@@ -319,6 +327,7 @@ function unreadableDeclareWord(name: string, arg: WordToken): boolean {
  * never assigned, so they are nulled too: an untracked IFS would otherwise read as the default and split.
  */
 function forgetAll(vars: Vars, heard = true): void {
+  for (const key of [...vars.keys()]) if (key.startsWith(numericKey(""))) vars.delete(key);
   for (const key of vars.keys()) vars.set(key, null);
   vars.set("HOME", null);
   vars.set("IFS", null);
