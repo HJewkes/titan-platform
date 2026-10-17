@@ -36,6 +36,12 @@ const HIDDEN: [string, string][] = [
   ["a single-quoted $( ) holding its own quotes", `(( '$(${PUSH} 'a')' ))`],
   ["a single-quoted $( ) after other text", `(( 1 + '$(${PUSH})' ))`],
   ["a single-quoted $( ) in a for ((;;))", `for (('$(${PUSH})'; 0; )); do :; done`],
+  ["an ANSI-C $'' $( ) in (( ))", `(( $'$(${PUSH})' ))`],
+  ["an ANSI-C $'' backtick in (( ))", `(( $'\`${PUSH}\`' ))`],
+  ["an ANSI-C $'' $( ) in an assignment inside (( ))", `((x=$'$(${PUSH})'))`],
+  ["an ANSI-C $'' $( ) in a for ((;;))", `for ((;$'$(${PUSH})';)); do :; done`],
+  ["an ANSI-C $'' $( ) in $(( ))", `$(( $'$(${PUSH})' ))`],
+  ["a locale $\"\" $( ) in (( ))", `(( $"$(${PUSH})" ))`],
 ];
 
 describe("a single-quoted command substitution in arithmetic runs (TP-3290)", () => {
@@ -45,6 +51,10 @@ describe("a single-quoted command substitution in arithmetic runs (TP-3290)", ()
 
   it.each(HIDDEN)("extracts git push from %s", (_, src) => {
     expect(names(src).some((n) => n.startsWith(PUSH))).toBe(true);
+  });
+
+  it("denies the older $[ ] spelling with an ANSI-C quote", async () => {
+    expect(await handled(`x=$[ $'$(${PUSH})' ]`)).toBe("deny");
   });
 
   it("denies the older $[ ] spelling", async () => {
@@ -67,8 +77,15 @@ describe("single quotes outside arithmetic keep their reading (TP-3290)", () => 
     [`echo x '$(${PUSH})' y`],
     [`x='$(${PUSH})'; (( 1 ))`],
     [`(( 1 )); echo '$(${PUSH})'`],
+    [`echo $'$(${PUSH})'`],
   ])("allows %s", async (src) => {
     expect(await handled(src)).toBe("pass");
     expect(names(src)).not.toContain(PUSH);
+  });
+});
+
+describe("ANSI-C quoting outside arithmetic keeps its reading (TP-3290)", () => {
+  it("decodes $'\\n' to a newline", () => {
+    expect(extractCommands("echo $'a\\nb'")[0]?.args[0]?.value).toBe("a\nb");
   });
 });
