@@ -1,7 +1,7 @@
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
 import type { ReviewerMessage } from "./ports.js";
-import { FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, contradictedPicks, fixFirstFindings } from "./fix-first-findings.js";
+import { CI_UNREAD_LINE, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, ciUnreadOnly, contradictedPicks, fixFirstFindings } from "./fix-first-findings.js";
 
 const HEAD = "a".repeat(40);
 const OLD_HEAD = "b".repeat(40);
@@ -60,5 +60,33 @@ describe("contradictedPicks", () => {
 
   it("finds nothing when no pick is recorded", () => {
     expect(contradictedPicks("Owner pick contradicted: edge-colour", [])).toEqual([]);
+  });
+});
+
+describe("ciUnreadOnly", () => {
+  const defectClass = "Defect class: CI unread at the reviewed head.";
+
+  it.each([
+    ["bare", `${CI_UNREAD_LINE}\n\n${defectClass}`],
+    ["as a list item", `I could not read CI.\n\n- ${CI_UNREAD_LINE}\n\n${defectClass}\n- gh api was denied`],
+    ["numbered, with no defect-class section", `1. ${CI_UNREAD_LINE}`],
+  ])("a FIX_FIRST of only the CI-unread line (%s) reads as CI-unread-only", (_, findings) => {
+    expect(ciUnreadOnly(`${findings}\n\n${block("FIX_FIRST")}`)).toBe(true);
+  });
+
+  it("the CI-unread line beside a real item does not", () => {
+    expect(ciUnreadOnly(`1. ${CI_UNREAD_LINE}\n2. The retry never stops.\n\n${defectClass}\n\n${block("FIX_FIRST")}`)).toBe(false);
+  });
+
+  it("the CI-unread line beside another bare Blocking line does not", () => {
+    expect(ciUnreadOnly(`${CI_UNREAD_LINE}\nBlocking: the retry never stops.\n\n${block("FIX_FIRST")}`)).toBe(false);
+  });
+
+  it.each([`${CI_UNREAD_LINE} at head`, CI_UNREAD_LINE.toLowerCase(), `- CI is unverified at this head`])("a lookalike line (%s) does not", (line) => {
+    expect(ciUnreadOnly(`${line}\n\n${defectClass}\n\n${block("FIX_FIRST")}`)).toBe(false);
+  });
+
+  it("a FIX_FIRST with no blocking item does not", () => {
+    expect(ciUnreadOnly(block("FIX_FIRST"))).toBe(false);
   });
 });

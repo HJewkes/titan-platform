@@ -32,6 +32,7 @@ export {
   EARLIER_FINDINGS_HEADING,
   EARLIER_FINDINGS_START,
   FOLLOW_UPS_RULE,
+  MAX_CI_CHECK_ROWS,
   MAX_CORRECTION_PROMPT_CHARS,
   MAX_OWNER_BRIEF_CHARS,
   MAX_OWNER_PICKS,
@@ -44,17 +45,19 @@ export {
   reviewerBrief,
   validOwnerPicks,
 } from "./reviewer-brief.js";
-export type { EarlierFinding, MalformedRefusal, OwnerPick, ReviewerBriefInput } from "./reviewer-brief.js";
+export type { CiCheckRow, EarlierFinding, MalformedRefusal, OwnerPick, ReviewerBriefInput } from "./reviewer-brief.js";
 export { USAGE_LIMIT_REASON, acceptVerdict, isUsageLimit } from "./accept-verdict.js";
 export type { AcceptedVerdict, AwaitVerdictResult } from "./accept-verdict.js";
 export { DEPTH_FLOOR_REASON, INVESTIGATIVE_CALLS, isInvestigativeCall } from "./depth-floor.js";
 export {
   BLOCK_LINE,
+  CI_UNREAD_LINE,
   FINDINGS_SEPARATOR,
   FIX_FIRST_TRUNCATED,
   MAX_FIX_FIRST_TEXT_CHARS,
   OWNER_PICK_CONTRADICTED,
   boundedFindings,
+  ciUnreadOnly,
   contradictedPicks,
   findingsText,
   fixFirstFindings,

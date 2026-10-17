@@ -40,6 +40,24 @@ export function fixFirstFindings(target: ReviewTarget, messages: readonly Review
   return heading + boundedFindings(texts.length === 0 ? fallback : texts.join(FINDINGS_SEPARATOR), MAX_FIX_FIRST_TEXT_CHARS - heading.length);
 }
 
+/** The line a reviewer lists, as its own blocking item, when it could not read CI at this head; Shepherd re-reviews a FIX_FIRST holding only it. */
+export const CI_UNREAD_LINE = "Blocking: CI unread";
+
+const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s+/;
+const BLOCKING_LINE = /^\s*blocking:/i;
+const DEFECT_CLASS_LINE = /^[\s#*]*defect class:/i;
+
+/**
+ * True when a FIX_FIRST's only blocking item is the CI-unread line: the exact line, bare or as a list item, and no other list
+ * item before the defect-class section. Anything else a reviewer listed may be a real finding, so it keeps the FIX_FIRST.
+ */
+export function ciUnreadOnly(text: string): boolean {
+  const lines = findingsText(text).split("\n");
+  const end = lines.findIndex((line) => DEFECT_CLASS_LINE.test(line));
+  const items = (end < 0 ? lines : lines.slice(0, end)).filter((line) => LIST_ITEM.test(line) || BLOCKING_LINE.test(line));
+  return items.length === 1 && items[0]?.replace(LIST_ITEM, "").trim() === CI_UNREAD_LINE;
+}
+
 /** The line a reviewer adds for each blocking item that contradicts a recorded owner pick. */
 export const OWNER_PICK_CONTRADICTED = "Owner pick contradicted:";
 
