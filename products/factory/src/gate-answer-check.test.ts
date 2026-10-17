@@ -331,7 +331,7 @@ describe("checkAnswer on a red head's sh-visual-accept gate", () => {
   it("refuses packet when the console's packet.json is not the factory's own copy", async () => {
     const w = await acceptWorld();
 
-    expect(await checkAccept(w, { packet: bytes({ forged: true }) })).toMatchObject({ kind: "refused", reason: "packet" });
+    expect(await checkAccept(w, { packet: acceptPacket({ repo: REPO, pr: w.pr, headSha: H, headTree: TREE2 }) })).toMatchObject({ kind: "refused", reason: "packet" });
   });
 
   it.each([
