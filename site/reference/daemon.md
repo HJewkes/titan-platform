@@ -211,7 +211,7 @@ const handle = await startDaemon({
 });
 ```
 
-- **The sign-in hint.** `remote.signInHint` (also `createDaemonAuth({ signInHint })`) is the sentence the signed-out and invalid-link pages use to say how to get a link; it defaults to "Ask the operator for a fresh sign-in link." and is HTML-escaped. The pages add the link and session lifetimes themselves.
+- **The sign-in hint.** `remote.signInHint` (also `createDaemonAuth({ signInHint })`) is the sentence the signed-out and invalid-link pages use to say how to get a link; it defaults to "Ask the operator for a fresh sign-in link." and is HTML-escaped on the 401 page and script-escaped on the login page. The pages add the link and session lifetimes themselves. `token rotate` voids every outstanding link and session.
 - **TLS only.** `remote.tls` is required, and a `remote` without it throws `RemoteBindError`
   before anything binds: there is no way to serve plain HTTP beyond loopback. The remote server
   is `node:https` alone, so a plain-HTTP request fails the handshake and gets no HTTP reply

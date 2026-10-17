@@ -5,6 +5,7 @@ import path from "node:path";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  DEFAULT_SIGN_IN_HINT,
   LOGIN_CODE_TTL_MS,
   SESSION_COOKIE,
   SESSION_MAX_AGE_MS,
@@ -12,7 +13,6 @@ import {
   authGate,
   consumeLoginCode,
   createDaemonAuth,
-  DEFAULT_SIGN_IN_HINT,
   createLoginCodeLedger,
   ensureTokenFile,
   mintLoginCode,
