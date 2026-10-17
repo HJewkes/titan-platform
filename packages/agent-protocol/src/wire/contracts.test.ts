@@ -10,7 +10,7 @@ import {
 } from "./index.js";
 
 const object = z.record(z.string(), z.unknown());
-const fixture = z.record(z.string(), object).parse(JSON.parse(readFileSync(new URL("./fixtures/dispatch-results.json", import.meta.url), "utf8")));
+const fixture = z.record(z.string(), object).parse(JSON.parse(readFileSync(new URL("../../fixtures/wire/dispatch-results.json", import.meta.url), "utf8")));
 const row = (name: string) => object.parse(fixture[name]);
 const contracts = [
   ["profile", AgentProfileSchema], ["remoteProfile", RemoteProfileSchema],
@@ -81,7 +81,7 @@ describe("existing MCP and socket projections", () => {
     }
   });
   for (const [file, schema] of [["calls-agent-retire.txt", RetireRequestSchema], ["calls-agent_surface.txt", SurfaceRequestSchema]] as const) {
-    const text = readFileSync(new URL(`./fixtures/${file}`, import.meta.url), "utf8");
+    const text = readFileSync(new URL(`../../fixtures/wire/${file}`, import.meta.url), "utf8");
     const frames = text.split("\n").filter(line => line.startsWith("frame: ")).map(line => JSON.parse(line.slice(7)) as unknown);
     it(`${file} contains captured socket frames`, () => expect(frames.length).toBeGreaterThan(0));
     it.each(frames)(`${file} round-trips frame %#`, frame => expect(schema.parse(frame)).toEqual(frame));

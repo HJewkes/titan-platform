@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { AgentSpawnArgsSchema, SpawnRequestSchema } from "./index.js";
 
-const golden = readFileSync(new URL("./fixtures/calls-agent_spawn.txt", import.meta.url), "utf8");
+const golden = readFileSync(new URL("../../fixtures/wire/calls-agent_spawn.txt", import.meta.url), "utf8");
 const cases = golden.split(/^=== /m).filter(Boolean).map((block) => {
   const lines = block.split("\n");
   const args = lines.find((line) => line.startsWith("args: "));
