@@ -75,6 +75,10 @@ function harness(
   const start = vi.fn((_input: CodexProcessInput) => processHandle);
   const deps: CodexExecDeps = {
     inspectVersion,
+    inspectCapabilities: async () => ({
+      capabilities: { json_events: true, config_overrides: true, user_config_isolation: true, strict_config: true, output_schema: true, model_selection: true, working_directory: true },
+      sandboxes: ["read-only", "workspace-write"],
+    }),
     start,
     executionId: () => "execution-1",
     now: () => 100,
@@ -327,24 +331,28 @@ describe("Codex exec results", () => {
     expect(result).toMatchObject({ ok: false, failure: { kind: "output_invalid" } });
   });
 
-  it("rejects a version mismatch before starting the run process", async () => {
+  it("rejects a version below the floor before starting the run process", async () => {
     const fake = fakeProcess({ stdout: events() });
-    const runner = harness(fake.processHandle, { inspectVersion: async () => "codex-cli 0.999.0" });
+    const runner = harness(fake.processHandle, { inspectVersion: async () => "codex-cli 0.161.9" });
     const result = await runner.adapter.run(request());
     expect(result).toMatchObject({ ok: false, failure: { kind: "runtime_error", reason: /unsupported Codex CLI version/ } });
     expect(runner.start).not.toHaveBeenCalled();
   });
 
-  it("rechecks the pinned executable version before every launch", async () => {
+  it("rechecks the executable version floor before every launch", async () => {
     const first = fakeProcess({ stdout: events() });
     const inspectVersion = vi
       .fn<() => Promise<string>>()
       .mockResolvedValueOnce(`codex-cli ${SUPPORTED_CODEX_EXEC_VERSION}`)
-      .mockResolvedValueOnce("codex-cli 0.999.0");
+      .mockResolvedValueOnce("codex-cli 0.161.9");
     const start = vi.fn((_input: CodexProcessInput) => first.processHandle);
     const adapter = createCodexExecAdapter(
       { auth: "cached-cli", env: { PATH: "/bin" } },
-      { inspectVersion, start, executionId: () => "execution-1", now: () => 100 },
+      { inspectVersion, start, executionId: () => "execution-1", now: () => 100,
+        inspectCapabilities: async () => ({
+          capabilities: { json_events: true, config_overrides: true, user_config_isolation: true, strict_config: true, model_selection: true, working_directory: true },
+          sandboxes: ["read-only"],
+        }) },
     );
     expect(await adapter.run(request())).toMatchObject({ ok: true });
     expect(await adapter.run(request())).toMatchObject({ ok: false, failure: { reason: /unsupported Codex CLI version/ } });
