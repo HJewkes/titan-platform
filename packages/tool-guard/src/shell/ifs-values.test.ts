@@ -476,3 +476,31 @@ describe("lineIfsValues on an indirect assigning expansion", () => {
     expect(() => values(line)).toThrow(ParseError);
   });
 });
+
+describe("lineIfsValues on a shell named by a variant or a path (TP-3183)", () => {
+  it.each([
+    ["rzsh", "zsh"],
+    ["rbash", "bash"],
+    ["rksh", "ksh"],
+    ["zsh5", "zsh"],
+    ["bash5.2", "bash"],
+    ["/bin/rzsh", "zsh"],
+  ])("reads the -c text of %s as %s does", (variant, base) => {
+    const text = "-c 'IFS=,; x'";
+    expect(values(`${variant} ${text}`)).toEqual([DEFAULT_IFS, ","]);
+    expect(values(`${variant} ${text}`)).toEqual(values(`${base} ${text}`));
+  });
+
+  it.each([
+    ["rzsh", "zsh"],
+    ["rbash", "bash"],
+    ["rksh", "ksh"],
+    ["zsh5", "zsh"],
+    ["bash5.2", "bash"],
+    ["/bin/rzsh", "zsh"],
+  ])("gives up on the stdin of %s as it does for %s", (variant, base) => {
+    const line = `${variant} <<< "$v"`;
+    expect(values(line)).toBeNull();
+    expect(values(line)).toEqual(values(`${base} <<< "$v"`));
+  });
+});

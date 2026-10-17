@@ -19,6 +19,7 @@ import { FeedbackSchema, RoundSchema, isLoopbackUrl, type Feedback, type Manifes
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import { readCommand } from "./owner-guard.js";
+import { gateAnswer, readAnswer, type GateAnswer } from "./round-answer.js";
 
 export interface RoundsSource {
   dir: string;
@@ -41,15 +42,6 @@ type RoundStatus = z.infer<typeof roundStatus>;
 
 const roundHead = { id: z.string(), status: roundStatus, updatedAt: z.string().nullable() };
 
-/** The factory's outcome for a Ship or Send back answer (titan-console/gate-answer@1); absent until the listener writes one. */
-const gateAnswer = z.object({
-  status: z.enum(["resolved", "already", "moved", "gone", "refused", "off"]),
-  at: z.string(),
-  /** Which answer a resolved outcome applied. */
-  choice: z.enum(["merge", "send-back"]).optional(),
-  currentHead: z.string().optional(),
-  reason: z.string().optional(),
-});
 const invalidRound = z.object({ ...roundHead, valid: z.literal(false), reason: z.string() });
 
 const roundSummary = z.discriminatedUnion("valid", [
@@ -199,13 +191,14 @@ function withoutRecommendation(question: Question): Question {
   return stripped;
 }
 
-function detailOf({ id, status, updatedAt, parsed }: LoadedRound): RoundDetail {
+function detailOf({ id, status, updatedAt, parsed }: LoadedRound, answer: GateAnswer | undefined): RoundDetail {
   if (!parsed.ok) return { id, status, updatedAt, valid: false, reason: parsed.reason };
   const withheld = parsed.manifest.recommendations === "after-answer" && status !== "sent";
   const manifest = withheld ? { ...parsed.manifest, questions: parsed.manifest.questions.map(withoutRecommendation) } : parsed.manifest;
   return {
     id, status, updatedAt, valid: true, design: isDesign(manifest), ship: isShip(manifest), manifestSha256: parsed.sha256,
     recommendationsWithheld: withheld, storybookUrl: isLoopbackUrl(manifest.storybookUrl) ? manifest.storybookUrl : null, manifest,
+    ...(answer !== undefined && { answer }),
   };
 }
 
@@ -227,7 +220,8 @@ export async function listRounds({ dir }: RoundsSource): Promise<{ rounds: Round
 
 export async function getRound({ dir }: RoundsSource, id: string): Promise<RoundDetail> {
   if (!(await roundDirExists(dir, id))) throw failure(`No round named "${id}"`, EXIT.NOINPUT);
-  return detailOf(await loadRound(dir, id));
+  const [round, answer] = await Promise.all([loadRound(dir, id), readAnswer(path.join(dir, id))]);
+  return detailOf(round, answer);
 }
 
 const WithdrawalSchema = z.object({ schema: z.literal(WITHDRAWN_SCHEMA_ID), reason: z.string().min(1).max(200), at: z.string() });

@@ -91,12 +91,14 @@ async function triggerPacket(run: PacketRun, gateStep: string, headSha: string):
   await step(ctx, stepId, { runId: ctx.runId, ...run.target, headSha, gateId } satisfies PacketInput, PacketResult);
 }
 
+export const defaultTitanReviewBin = (): string => join(process.env.HOME || homedir(), ".local", "bin", "titan-review");
+
 export function packetDirFor(stateDir: string, runId: string, headSha: string): string {
   return join(stateDir, "packets", runId, headSha);
 }
 
 /** Unique per run and head, and one argv word agent-chat takes as a name. */
-function packagerName(runId: string, headSha: string): string {
+export function packagerName(runId: string, headSha: string): string {
   return `packager-${headSha.slice(0, 8)}-${runId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toLowerCase()}`;
 }
 
@@ -128,7 +130,7 @@ function packagerPaths(ports: VisualPacketPorts, input: PacketInput, facts: Pack
   if (facts.ciRunId === undefined) throw new Error(`no visual CI run at ${input.headSha}; a packager could only stop BLOCKED`);
   const checkout = resolveCheckout(input.repo, ports.cwdFor?.(input.repo));
   if ("problem" in checkout) throw new Error(checkout.problem);
-  const bin = ports.titanReviewBin ?? join(process.env.HOME || homedir(), ".local", "bin", "titan-review");
+  const bin = ports.titanReviewBin ?? defaultTitanReviewBin();
   return { packetDir, clone: checkout.dir, bin, ciRunId: facts.ciRunId };
 }
 
