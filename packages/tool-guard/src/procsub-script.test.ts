@@ -21,6 +21,7 @@ afterAll(() => {
 });
 writeFileSync(join(home, "x.sh"), `${PUSH}\n`);
 writeFileSync(join(home, "ok.sh"), "echo ok\n");
+writeFileSync(join(home, "evil.sh"), `${PUSH}\n`);
 writeFileSync(join(home, "big.sh"), `${"#".repeat(CAP + 400)}\n${PUSH}\n`);
 writeFileSync(join(home, "unreadable.sh"), `${PUSH}\n`);
 chmodSync(join(home, "unreadable.sh"), 0);
@@ -34,7 +35,43 @@ async function verdict(command: string): Promise<{ decision: string | null; spel
   return { decision, spelling: log[0]?.split("\t")[4] };
 }
 
+/** Bodies that run what the shell's own stdin or trailing operands hold, so main's reading of those must survive the substitution. */
+const STDIN_BODIES = ["cat | sh", "cat | bash", "cat - | sh", "cat /dev/stdin | sh", "cat <&0 | sh", "tee /dev/null | sh", "head -c 999 | sh", 'eval "$(cat)"', "read l; $l"];
+const STDIN_LINES = [...STDIN_BODIES.map((body) => `bash <(echo '${body}') < ./evil.sh`), "bash <(echo 'cat | sh') 0< ./evil.sh", "bash <(< ./x.sh)", "zsh <(< ./x.sh)"];
+const OPERAND_LINES = [
+  "bash <(echo 'bash $1') ./evil.sh",
+  "bash <(echo 'bash \"$@\"') ./evil.sh",
+  "bash <(echo 'source \"$1\"') ./evil.sh",
+  "bash <(echo '. \"$1\"') ./evil.sh",
+  `bash <(echo 'exec "$@"') ${PUSH}`,
+  `bash <(echo '"$@"') ${PUSH}`,
+  `bash <(echo ${PUSH}) arg`,
+];
+
 describe("a shell or source running a process substitution as its script", () => {
+  it.each([...STDIN_LINES, "bash <(echo 'cat | sh') < \"$F\"", ...OPERAND_LINES])("denies a shell's own stdin or operands: %s", async (command) => {
+    const { decision } = await verdict(command);
+
+    expect(decision).toBe("deny");
+  });
+
+  it.each([
+    "while read -r l; do echo \"$l\"; done < <(ls); echo done",
+    "exec 3< <(ls); cat <&3",
+    "exec > >(tee log); echo hi",
+    "exec 2> >(tee -a err.log >&2); make",
+    "while read -r l; do echo \"$l\"; done < <(ls) | sort",
+    "exec 5< <(printf 'a\\nb\\n'); while read -r -u 5 x; do echo \"$x\"; done",
+    'exec {fd}< <(ls); read -r -u "$fd" l; echo "$l"',
+    "bash <(echo a) <(echo PUSH)",
+    "diff <(sort a) <(sort b)",
+    "source <(kubectl completion zsh)",
+  ])("allows a redirect that takes the substitution: %s", async (command) => {
+    const { decision } = await verdict(command);
+
+    expect(decision).toBeNull();
+  });
+
   it.each([
     ["bash with echo", `bash <(echo '${PUSH}')`],
     ["zsh with echo", `zsh <(echo '${PUSH}')`],
@@ -51,7 +88,6 @@ describe("a shell or source running a process substitution as its script", () =>
     ["an assignment", `FOO=1 bash <(echo ${PUSH})`],
     ["an option", `bash -x <(echo ${PUSH})`],
     ["a double dash", `bash -- <(echo ${PUSH})`],
-    ["an argument after it", `bash <(echo ${PUSH}) arg`],
     ["a -c string", `bash -c "bash <(echo ${PUSH})"`],
     ["eval", `eval "bash <(echo ${PUSH})"`],
     ["piped text", `echo "bash <(echo ${PUSH})" | bash`],
@@ -149,6 +185,7 @@ mkdirSync(bin, { recursive: true });
 writeFileSync(join(bin, "git"), '#!/bin/sh\necho "$@" >> "$FAKE_GIT_LOG"\n');
 chmodSync(join(bin, "git"), 0o755);
 writeFileSync(join(scratch, "x.sh"), `${PUSH}\n`);
+writeFileSync(join(scratch, "evil.sh"), `${PUSH}\n`);
 afterAll(() => {
   rmSync(bin, { recursive: true, force: true });
   rmSync(scratch, { recursive: true, force: true });
@@ -190,5 +227,13 @@ describe.each(["bash", "zsh"])("under real %s", (shell) => {
     "diff <(echo a) <(echo b)",
   ])("%s does not push", (line) => {
     expect(pushes(shell, line)).toBe(false);
+  });
+});
+
+describe("the shell's own stdin and operands under a real shell", () => {
+  it.each([...STDIN_LINES, ...OPERAND_LINES])("%s pushes", (line) => {
+    const pushing = ["bash", "zsh"].filter((shell) => haveShell(shell) && pushes(shell, line));
+
+    expect(pushing.length).toBeGreaterThan(0);
   });
 });

@@ -23,7 +23,8 @@ const MAX_TEXTS = 16;
  */
 export function withProcsub(words: WordToken[], before: Token | undefined, token: Token): WordToken[] {
   if (token.type !== "subs" || words.length === 0) return words;
-  if (before?.type === "redirect" && before.target === null && before.body === null) return words;
+  // The lexer leaves a `<` or `>` pending past a `<( )`, so the next word, even after `;`, may already be its target.
+  if (before?.type === "redirect" && before.body === null) return words;
   const operand: WordToken = { type: "word", value: PROCSUB_PATH, dynamic: false, quoted: false, spliced: false, computed: false, refs: [], subs: [], procsub: token.subs };
   return [...words, operand];
 }
@@ -45,6 +46,11 @@ function scriptOperand(cmd: Pick<Unwrapped, "name" | "args">): Token[] | null {
   if (!SHELLS.has(cmd.name)) return null;
   const { hasC, positional } = shellOperands(cmd.args, cmd.name);
   return hasC ? null : (positional?.procsub?.[0] ?? null);
+}
+
+/** The command as main saw it: no substitution operand, so a trailing operand is the script and `<` still feeds stdin. */
+export function withoutProcsubOperands<T extends Pick<Unwrapped, "name" | "args">>(cmd: T): T {
+  return { ...cmd, args: cmd.args.filter((word) => word.procsub === undefined) };
 }
 
 /** Whether the command runs a `<( )` as its script, which `scriptTargets` then settles. */
@@ -72,11 +78,21 @@ export function procsubScript(cmd: Pick<Unwrapped, "name" | "args">): Inline | n
  * A file the line names but cannot be resolved is refused, as the guard cannot read it.
  */
 export function procsubTargets(cmd: SimpleCommand, home: string): ScriptTarget[] {
-  const file = procsubFile(scriptOperand(cmd) ?? []);
+  const body = scriptOperand(cmd) ?? [];
+  const file = procsubFile(body) ?? redirectedFile(body);
   if (file === null) return [];
   const path = resolvePath(cmd.dir, file, home);
   if (path === null) throw new UnreadableScriptError(null);
   return [{ path, kind: "shell" }];
+}
+
+/** A body of redirects alone prints nothing in bash and, for one `< FILE`, the file in zsh; any other is refused as unreadable. */
+function redirectedFile(body: Token[]): WordToken | null {
+  if (body.length === 0 || !body.every((token) => token.type === "redirect")) return null;
+  const [only] = body;
+  const target = body.length === 1 && only?.type === "redirect" && only.op === "<" && (only.fd === null || only.fd === "0") ? only.target : null;
+  if (target === null || target.dynamic || target.computed || target.subs.length > 0) throw new UnreadableScriptError(null);
+  return target;
 }
 
 function procsubFile(body: Token[]): WordToken | null {
