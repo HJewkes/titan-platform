@@ -27,6 +27,7 @@ async function verdict(command: string): Promise<"deny" | "pass"> {
 
 /** A substitution holding a group, subshell, list or pipeline prints text a shell then runs (TP-3333). */
 const PRINTS_A_PUSH = [
+  `echo "$(echo ${PUSH})" | sh`,
   `bash -c "$({ echo ${PUSH}; })"`,
   `eval "$( { echo ${PUSH}; } )"`,
   `bash -c "$( ( echo ${PUSH} ) )"`,
@@ -36,6 +37,10 @@ const PRINTS_A_PUSH = [
 
 /** Pieces whose later text is the push, and stages that pass text through. */
 const MORE_DENIED = [
+  `printf '%s\\n' "$(echo ${PUSH})" | bash`,
+  `echo "$(printf '%s\\n' '${PUSH}')" | sh`,
+  `echo \`echo ${PUSH}\` | sh`,
+  `echo "$({ echo hi; echo ${PUSH}; })" | bash`,
   `bash -c "$(echo hi; echo ${PUSH})"`,
   `bash -c "$(echo hi && echo ${PUSH})"`,
   `bash -c "$({ echo hi; } | tee /dev/null; echo ${PUSH})"`,
@@ -51,6 +56,10 @@ describe("a command substitution holding a group, subshell or pipeline is read (
   it.each([
     'echo "$({ echo a; echo b; })"',
     'echo "$(git rev-parse HEAD)"',
+    'echo "$(git rev-parse HEAD)" | cat',
+    'echo "$(date)" | sh',
+    'echo "$(cat x.sh)" | sh',
+    'echo "$(echo hi; echo ls)" | bash',
     'eval "$(ssh-agent -s)"',
     'eval "$(direnv hook bash)"',
     'eval "$(brew shellenv)"',
@@ -96,7 +105,7 @@ describe.skipIf(!["bash", "zsh", "dash"].every(has))("real shells run the push t
     expect(runsPush(line, runner)).toBe(true);
   });
 
-  it.each(['bash -c "$(echo echo hi | cat)"', 'echo "$({ echo a; echo b; })"', 'eval "$( { echo hi; echo ls; } )"'])("%s runs no push under any of them", (line) => {
+  it.each(['bash -c "$(echo echo hi | cat)"', 'echo "$({ echo a; echo b; })"', 'echo "$(echo ls)" | sh', 'eval "$( { echo hi; echo ls; } )"'])("%s runs no push under any of them", (line) => {
     expect(RUNNERS.map((runner) => runsPush(line, runner))).toEqual([false, false, false, false]);
   });
 });

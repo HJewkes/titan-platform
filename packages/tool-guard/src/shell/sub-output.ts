@@ -19,15 +19,45 @@ export function splicedWords(words: WordToken[], shell: Shell): WordToken[] {
 }
 
 function spliced(word: WordToken, cuts: NonNullable<WordToken["cuts"]>, shell: Shell): string {
+  return splice(word, cuts, shell, () => "") ?? "";
+}
+
+function splice(word: WordToken, cuts: NonNullable<WordToken["cuts"]>, shell: Shell, unknown: () => string | null): string | null {
   let value = "";
   let last = 0;
   for (const { at, sub } of cuts) {
     const tokens = word.subs[sub];
-    const output = tokens ? (subOutput(tokens, shell) ?? "") : "";
+    const output = (tokens ? subOutput(tokens, shell) : null) ?? unknown();
+    if (output === null) return null;
     value += word.value.slice(last, at) + output.replace(/\n+$/, "");
     last = at;
   }
   return value + word.value.slice(last);
+}
+
+/**
+ * `args` with every substitution's output spliced in as static words, or null when any argument is dynamic for another
+ * reason or any substitution prints text only known at run time, so a caller reading the text keeps its unknown case.
+ */
+export function knownSplice(args: WordToken[], shell: Shell): WordToken[] | null {
+  const known: WordToken[] = [];
+  for (const arg of args) {
+    const words = arg.dynamic ? splitSplice(arg, shell) : [arg];
+    if (words === null) return null;
+    known.push(...words);
+  }
+  return known;
+}
+
+/** A word of substitutions alone, spliced; an unquoted one is split on blanks as the shell splits it (globs are not modelled). */
+function splitSplice(arg: WordToken, shell: Shell): WordToken[] | null {
+  if (!arg.cuts || arg.refs.length > 0) return null;
+  const value = splice(arg, arg.cuts, shell, () => null);
+  if (value === null) return null;
+  const literal = { ...arg, dynamic: false, cuts: undefined, subs: [] };
+  if (!arg.unquotedExpansion) return [{ ...literal, value }];
+  if (arg.cuts.length !== 1 || arg.value !== "") return null;
+  return value.split(/\s+/).filter((part) => part !== "").map((part) => ({ ...literal, value: part, unquotedExpansion: undefined }));
 }
 
 /**

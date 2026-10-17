@@ -1,13 +1,13 @@
 import type { RedirectToken } from "./lexer.js";
 import { printedReadings, printedText } from "./printed.js";
-import { catOperands, SPLICING_SHELLS, stdinScript } from "./sub-output.js";
+import { catOperands, knownSplice, SPLICING_SHELLS, stdinScript } from "./sub-output.js";
 import type { Unwrapped } from "./unwrap.js";
 
 /** Text piped into the next command: printed by this one, passed on by `tee` or `cat`, or kept across a bare `(`. */
 export function nextStdin(op: string, cmd: Unwrapped | null, empty: boolean, stdin: string | null): string | null {
   if (op === "(" && empty) return stdin;
   if (!cmd || (op !== "|" && op !== "|&")) return null;
-  return printedText(cmd.name, cmd.args) ?? (passesThrough(cmd) ? stdin : null);
+  return printedText(cmd.name, cmd.args) ?? (passesThrough(cmd) ? stdin : (splicedReadings(cmd)[0] ?? null));
 }
 
 /**
@@ -18,7 +18,22 @@ export function nextShellStdin(op: string, cmd: Unwrapped | null, empty: boolean
   if (op === "(" && empty) return shellStdin;
   if (!cmd || (op !== "|" && op !== "|&")) return [];
   if (printedText(cmd.name, cmd.args) === null && passesThrough(cmd)) return shellStdin;
-  return printedReadings(cmd.name, cmd.args, SPLICING_SHELLS).slice(1);
+  const printed = printedReadings(cmd.name, cmd.args, SPLICING_SHELLS).slice(1);
+  return printed.length > 0 ? printed : splicedReadings(cmd).slice(1);
+}
+
+/**
+ * Each splicing shell's distinct text of a print whose arguments are command substitutions of known output; the first is
+ * piped as the command's own text and the rest beside it (TP-3333).
+ */
+function splicedReadings(cmd: Unwrapped): string[] {
+  if (!cmd.args.some((arg) => arg.cuts)) return [];
+  const texts = SPLICING_SHELLS.flatMap((shell) => {
+    const args = knownSplice(cmd.args, shell);
+    const text = args && printedText(cmd.name, args, shell);
+    return typeof text === "string" ? [text] : [];
+  });
+  return [...new Set(texts)];
 }
 
 function passesThrough(cmd: Unwrapped): boolean {
