@@ -111,6 +111,39 @@ through a symlinked parent, is refused just before the append.
 - A builtin with a store option (`print`, `printf`, `set`, `read`, `compgen`, `mapfile`, `wait`, `zparseopts`, `strftime`, `zstat`, zsh `stat`, `compadd`: every `WRITER_SPECS` builtin with a name option or a store flag, with no exemptions) that meets a run-time word where it still reads options (`print $x`, `set "$x"`, `print *`) is refused the same way, quoted or not, because that word may be `-v commands[y]`. Write `--` before the run-time words to pass: `print -- $x`, `wait -- $pid`. zsh's `zparseopts`, `zformat`, `zstyle`, `zstat` and `stat` skip one leading `--` and read options after it, so `stat -- "$f"` is refused too; write `stat ./"$f"`, since `stat $o commands s` with `o=-LH` stores into `commands` once zsh/stat is loaded. A run-time word in a name slot (`read -- "$n"`, `declare "$x"`, zsh `read -n "$n"`, `zstyle -s :a k "$n"`) may be any name, so it is refused after `--` too; write the name itself (TP-3320).
 - It does not classify `titan-factory` verbs.
 
+## merge-lint
+
+`titan-merge-lint` is the source half of the merge guard. The hook above classifies a merge call when it runs; the lint
+reads tracked files, prose briefs included, and warns on a merge call committed into code or into a brief. It is
+text-level, with one regex pass over each file, and it writes nothing but stdout. `@titan-design/tool-guard/merge-lint`
+exports the pure pieces (`scan`, `parseRules`, `findHits`, `buildReport`).
+
+```sh
+titan-merge-lint                        # scan the tracked files of the working directory
+titan-merge-lint --stdin --name brief   # scan one piped brief under that label
+titan-merge-lint --rules <file>         # read the rules from another file
+```
+
+A hit is any of: `gh pr merge` (with global flags, across a soft-wrapped line; `--disable-auto` is excluded), a
+`pulls/<n>/merge` or `repos/<o>/<r>/merges` route, GraphQL `mergePullRequest`, `enablePullRequestAutoMerge` or
+`enqueuePullRequest`, and octokit `pulls.merge(`. A hit warns unless an entry in `.github/merge-lint.json` covers it. The
+file lists wrappers (a logged merge path, with its `mergePath` and `logs` flag), detectors (code that names a shape to
+recognize it) and deny lists, each with a `path` glob and an optional `text` that pins the entry to hit lines containing
+it. An entry whose path covers every file is refused, an entry that covers no hit warns as stale, and a wrapper with
+`logs: false` warns once per run.
+
+Exit codes: 0 at `level: warn` whatever was found; at `level: error`, 1 for any unallowed hit; 2 for a missing or invalid
+rule file at either level. Under GitHub Actions each warning is an annotation:
+
+```text
+::warning file=src/a.ts,line=1,title=merge-lint::gh-pr-merge: a merge call outside the allowlist in .github/merge-lint.json: gh pr merge 1
+```
+
+On the titan-platform tree, `pnpm merge:lint` runs in the `validate` job at warn level. Not seen on purpose: a command
+built at run time (string concatenation, `$GH pr merge`, aliases), a merge made in the GitHub UI, a direct push to the
+default branch (the hook's `bash.merge.git-push-*` covers it), a call into a wrapper rather than the merge API, and merge
+instructions in the excluded human docs.
+
 ## Known gaps
 
 - Stdin named through the working directory or a symlink (`cd /dev && bash stdin`) is not
