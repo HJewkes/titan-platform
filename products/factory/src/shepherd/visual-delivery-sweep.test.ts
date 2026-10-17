@@ -34,19 +34,31 @@ describe("visualDelivery config", () => {
     expect(parse({ visualDelivery: { mode: "shadow", console: CONSOLE } })).toBe(false);
   });
 
+  it("refuses url tailnet without origins.tailnet, and falls back to digest.push only when visualDelivery has none", () => {
+    const parse = (visualDelivery: object) => FactoryConfigSchema.safeParse({ shepherd: { agentChatBin: "/srv/a", visualDelivery: { mode: "on", console: CONSOLE, ...visualDelivery } } }).success;
+    expect(parse({ url: "tailnet", origins: { lan: "http://lan.example.test" } })).toBe(false);
+    expect(parse({ url: "tailnet", origins: { lan: "http://lan.example.test", tailnet: "https://tail.example.test" } })).toBe(true);
+    const own = { url: "https://ntfy.example.test/own" };
+    const digestPush = { url: "https://ntfy.example.test/digest" };
+    const config = (extra: object) => shepherdOf({ visualDelivery: { mode: "on", console: CONSOLE, ...extra } });
+    expect(deliveryPortsOf(config({}), {}, roster, () => undefined, { digestPush })?.push).toEqual(digestPush);
+    expect(deliveryPortsOf(config({ push: own }), {}, roster, () => undefined, { digestPush })?.push).toEqual(own);
+    expect(deliveryPortsOf(config({}), {}, roster, () => undefined)?.push).toBeUndefined();
+  });
+
   it("execs the configured titanReviewBin and console argv, never a bare name", async () => {
     const env = { XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "visual-delivery-cfg-")) };
     const calls: string[][] = [];
     const lint = { schema: "titan-review/packet-lint@1", ok: true, packetId: "pkt-1", problems: [] };
-    const report = { id: "demo-pr7-r1", created: true, url: "http://127.0.0.1:7500/#/rounds/demo-pr7-r1", lanUrl: null };
+    const report = { id: "demo-pr7-r1", created: true, frames: 2, url: "http://127.0.0.1:7500/#/rounds/demo-pr7-r1", lanUrl: null };
     const exec = async (argv: readonly string[]) => (calls.push([...argv]), { status: 0, stdout: JSON.stringify(argv.includes("lint") ? lint : report), stderr: "" });
-    const ports = deliveryPortsOf(shepherdOf({ titanReviewBin: BIN, visualDelivery: { mode: "on", console: CONSOLE } }), env, roster, () => env.XDG_STATE_HOME, exec)!;
+    const ports = deliveryPortsOf(shepherdOf({ titanReviewBin: BIN, visualDelivery: { mode: "on", console: CONSOLE } }), env, roster, () => env.XDG_STATE_HOME, { exec })!;
     const head = fakeSha("cfg-head");
     const dir = packetDirFor(ports.stateDir, "run-1", head);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "packet.json"), JSON.stringify({ packetId: "pkt-1" }));
     writeFileSync(join(dir, "prose.json"), "{}");
-    const world = { pr: async () => ({ repo: "octo/demo", headSha: head, open: true }), pending: () => true };
+    const world = { pr: async () => ({ repo: "octo/demo", pr: 7, headSha: head, open: true }), pending: () => true, resolvedVia: () => undefined };
     await deliverGate(ports, world, { runId: "run-1", gateId: "run-1/approve-merge", headSha: head, openedAt: 0 }, new AbortController().signal);
     expect(calls.map((argv) => argv[0])).toEqual([BIN, BIN, CONSOLE[0]]);
     expect(calls[2]!.slice(0, 2)).toEqual(CONSOLE);
