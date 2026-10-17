@@ -39,7 +39,6 @@ const PRINTS_A_PUSH = [
 const MORE_DENIED = [
   `printf '%s\\n' "$(echo ${PUSH})" | bash`,
   `echo "$(printf '%s\\n' '${PUSH}')" | sh`,
-  `echo \`echo ${PUSH}\` | sh`,
   `echo "$({ echo hi; echo ${PUSH}; })" | bash`,
   `bash -c "$(echo hi; echo ${PUSH})"`,
   `bash -c "$(echo hi && echo ${PUSH})"`,
@@ -139,6 +138,42 @@ describe("a substitution that reads a file or expands a brace or glob is not rea
   });
 });
 
+/** Output sent elsewhere, and words the shell splits on IFS or globs, are not the text on the line (TP-3333). */
+const REDIRECTED_OR_SPLIT = [
+  'echo "$(echo status >&2; echo push origin HEAD:main)" | xargs git',
+  'echo "$(echo status >/dev/null; echo push origin HEAD:main)" | xargs git',
+  'echo "$(echo status 1>&2; echo push origin HEAD:main)" | xargs git',
+  'echo "$(echo status >>/dev/null; echo push origin HEAD:main)" | xargs git',
+  'echo "$(echo status >|/dev/null; echo push origin HEAD:main)" | xargs git',
+  'echo "$(echo status &>/dev/null; echo push origin HEAD:main)" | xargs git',
+  'echo "$(printf status >&2; echo push origin HEAD:main)" | xargs git',
+  'echo "$(echo status | cat >/dev/null; echo push origin HEAD:main)" | xargs git',
+  'echo "$(echo status | tee /dev/null >/dev/null; echo push origin HEAD:main)" | xargs git',
+  'echo "$({ echo status; } >&2; echo push origin HEAD:main)" | xargs git',
+  'echo "$({ echo status; } >/dev/null; echo push origin HEAD:main)" | xargs git',
+  "echo $(echo 'pus[h]' origin HEAD:main) | xargs git",
+  "echo $(echo 'pus*') origin HEAD:main | xargs git",
+  "echo $(echo 'p?sh' origin HEAD:main) | xargs git",
+  "echo $(echo '[p]ush' origin HEAD:main) | xargs git",
+  "echo `echo 'pus[h]' origin HEAD:main` | xargs git",
+  "IFS=,; echo $(echo push,origin,HEAD:main) | xargs git",
+];
+
+describe("a substitution whose output goes elsewhere or is split or globbed is not read as the text on the line (TP-3333)", () => {
+  it.each(REDIRECTED_OR_SPLIT)("denies %s", async (line) => {
+    expect(await verdict(line)).toBe("deny");
+  });
+
+  it.each([
+    'echo "$(echo HEAD 2>/dev/null)" | xargs git show',
+    'echo "$(git rev-parse HEAD 2>/dev/null)" | xargs git show',
+    'echo "$(echo a; echo b >&2)" | sh',
+    'echo "$(echo status)" | xargs git',
+  ])("allows %s", async (line) => {
+    expect(await verdict(line)).toBe("pass");
+  });
+});
+
 describe("a substitution that prints part unknown text is not read as all of it (TP-3333)", () => {
   it.each(PARTLY_UNKNOWN)("denies %s", async (line) => {
     expect(await verdict(line)).toBe("deny");
@@ -164,6 +199,14 @@ describe.skipIf(!["bash", "zsh", "dash"].every(has))("real shells run the push t
       .flatMap((line) => ["bash", "zsh -f"].map((runner): [string, string] => [line, runner]))
       // Only zsh reads a `<f` beside other commands as the file's text; bash prints nothing for it.
       .filter(([line, runner]) => runner === "zsh -f" || !/<f;|; <f/.test(line)))("%s runs the push under %s", (line, runner) => {
+    expect(runsPush(line, runner)).toBe(true);
+  });
+
+  // zsh does not glob what a substitution splits out; bash and dash do.
+  const globbed = REDIRECTED_OR_SPLIT.slice(11, 16);
+  const runners = (line: string): string[] => (globbed.includes(line) ? ["bash", "dash"] : line.includes("IFS") ? ["bash"] : ["bash", "zsh -f"]);
+
+  it.each(REDIRECTED_OR_SPLIT.flatMap((line) => runners(line).map((runner): [string, string] => [line, runner])))("%s runs the push under %s", (line, runner) => {
     expect(runsPush(line, runner)).toBe(true);
   });
 

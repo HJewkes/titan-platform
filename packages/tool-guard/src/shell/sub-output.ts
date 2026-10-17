@@ -52,15 +52,14 @@ export function knownSplice(args: WordToken[], shell: Shell): WordToken[] | null
   return known;
 }
 
-/** A word of substitutions alone, spliced; an unquoted one is split on blanks as the shell splits it (globs are not modelled). */
+/**
+ * A word of substitutions alone, spliced. An unquoted one is split on the shell's IFS and globbed against the directory,
+ * neither of which the line can say, so its words are left unknown.
+ */
 function splitSplice(arg: WordToken, shell: Shell): WordToken[] | null {
-  if (!arg.cuts || arg.refs.length > 0) return null;
+  if (!arg.cuts || arg.refs.length > 0 || arg.unquotedExpansion) return null;
   const value = splice(arg, arg.cuts, shell, true);
-  if (value === null) return null;
-  const literal = { ...arg, dynamic: false, cuts: undefined, subs: [] };
-  if (!arg.unquotedExpansion) return [{ ...literal, value }];
-  if (arg.cuts.length !== 1 || arg.value !== "") return null;
-  return value.split(/\s+/).filter((part) => part !== "").map((part) => ({ ...literal, value: part, unquotedExpansion: undefined }));
+  return value === null ? null : [{ ...arg, dynamic: false, cuts: undefined, subs: [], value }];
 }
 
 /**
@@ -118,6 +117,18 @@ function stage(walk: SubWalk, rawWords: WordToken[], rawRedirects: RedirectToken
   else if (rest.length > 0) walk.current = expands ? null : commandStage(rest, redirects, walk.piped, shell);
   // `$(<f)` prints the file, which is only known at run time.
   else if (redirects.length > 0) walk.current = null;
+  if (writesStdout(redirects)) walk.unknown = true;
+}
+
+const STDOUT_OPS = new Set([">", ">>", ">|", ">&"]);
+
+/** A redirect that sends the stage's stdout somewhere other than the substitution; the text stays as one reading. */
+function writesStdout(redirects: RedirectToken[]): boolean {
+  return redirects.some((r) => {
+    if (r.named !== undefined) return false;
+    if (r.op.startsWith("&>")) return true;
+    return (STDOUT_OPS.has(r.op) && (r.fd === null || r.fd === "1")) || (r.op === "<>" && r.fd === "1");
+  });
 }
 
 function isBare(word: WordToken, value: string): boolean {
