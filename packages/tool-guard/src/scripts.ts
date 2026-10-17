@@ -101,9 +101,23 @@ function shellTargets(cmd: SimpleCommand, home: string): ScriptTarget[] {
   const { runs, scriptFile, sources, unknowable } = shellStdin(shellOperands(cmd.args, cmd.name), cmd.redirects, false, cmd.inherited);
   if (unknowable) throw new UnknownStdinError();
   const script = scriptFile === null ? null : target(cmd, scriptFile, home, "shell");
-  if (script !== null) return [script];
   const files = sources.flatMap((s) => (s.kind === "file" ? [target(cmd, s.target, home, "shell")].filter((t): t is ScriptTarget => t !== null) : []));
+  if (script !== null) return operandMayBeFed(script.path) ? [script, ...files.map((t) => ({ ...t, relayed: true as const }))] : [script];
   return runs ? files : files.map((t) => ({ ...t, relayed: true }));
+}
+
+/**
+ * Whether a literal script operand may name the shell's own stdin (`cd /dev && bash stdin < x.sh`), so its feed is a
+ * script too. A regular file on disk is read as the script and its feed is data, which a feed too large to charge to
+ * the line's budget (`bash import.sh < big.csv`) must not refuse. Anything else the disk shows, absent, a device, a FIFO
+ * or a link to one, or a stat that fails, may be stdin once the line has run.
+ */
+function operandMayBeFed(path: string): boolean {
+  try {
+    return !statSync(path).isFile();
+  } catch {
+    return true;
+  }
 }
 
 /** The first non-option word, null when an option in `inline` means the program text is inline. */
