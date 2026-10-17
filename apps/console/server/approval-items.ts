@@ -5,6 +5,7 @@
  */
 import { answeredFromFeedback, fromRoundQuestions, type OwnerItem, type WithdrawnItem } from "@titan-design/owner-queue";
 import { readAnswer, readSpool } from "@titan-design/owner-queue/spool";
+import { ManifestSchema, type Manifest as OwnerQueueManifest } from "@titan-design/review-schema";
 import type { QueueRound, Withdrawal } from "./rounds.js";
 
 interface QueueItems {
@@ -30,9 +31,9 @@ function withdrawnItem(item: OwnerItem, { reason }: Withdrawal): WithdrawnItem {
 }
 
 /** An unsent round's questions are asked, unless the round was withdrawn: then they are listed as withdrawn only. */
-function openItems(round: QueueRound, items: RoundItems): void {
+function openItems(round: QueueRound, manifest: OwnerQueueManifest, items: RoundItems): void {
   try {
-    const asked = fromRoundQuestions(round.manifest, round.id, { openedAt: round.updatedAt });
+    const asked = fromRoundQuestions(manifest, round.id, { openedAt: round.updatedAt });
     const { withdrawn } = round;
     if (withdrawn === null) items.open.push(...asked);
     else items.withdrawn.push(...asked.map((item) => withdrawnItem(item, withdrawn)));
@@ -41,18 +42,30 @@ function openItems(round: QueueRound, items: RoundItems): void {
   }
 }
 
+/**
+ * The console reads rounds with review-schema 0.3 and owner-queue still with 0.1, so a round only 0.3 accepts
+ * is a gap until TP-3232 installs 0.3 in both.
+ */
+function ownerQueueManifest(round: QueueRound, items: QueueItems): OwnerQueueManifest | undefined {
+  const result = ManifestSchema.safeParse(round.manifest);
+  if (!result.success) items.gaps.push(`${round.id}: needs review-schema 0.3 in owner-queue (TP-3232)`);
+  return result.data;
+}
+
 /** A sent round is closed, so its questions are answered items only; feedback that does not fit leaves it open. */
 function roundItems(round: QueueRound, items: RoundItems): void {
+  const manifest = ownerQueueManifest(round, items);
+  if (manifest === undefined) return;
   if (round.feedback === null) {
-    openItems(round, items);
+    openItems(round, manifest, items);
     return;
   }
   try {
     const context = { roundId: round.id, openedAt: round.updatedAt };
-    items.answered.push(...answeredFromFeedback(round.feedback, round.manifest, context));
+    items.answered.push(...answeredFromFeedback(round.feedback, manifest, context));
   } catch {
     items.gaps.push(`${round.id}: feedback.json does not fit its round`);
-    openItems(round, items);
+    openItems(round, manifest, items);
   }
 }
 

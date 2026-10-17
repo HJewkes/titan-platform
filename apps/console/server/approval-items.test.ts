@@ -69,6 +69,12 @@ describe("roundQueueItems", () => {
     expect(items.gaps).toEqual([]);
   });
 
+  it("reports a round only review-schema 0.3 reads as a gap, not as queue items", async () => {
+    const items = roundQueueItems([roundOf(await fixtureRounds(), "td920-packet-r1")]);
+
+    expect(items).toEqual({ open: [], answered: [], withdrawn: [], gaps: ["td920-packet-r1: needs review-schema 0.3 in owner-queue (TP-3232)"] });
+  });
+
   it("lists a withdrawn round's questions as withdrawn, with their hidden picks kept hidden", async () => {
     const rounds = await fixtureRounds((dir) => withdrawRound(dir, "kiln-schedule-r2", "closed"));
 
