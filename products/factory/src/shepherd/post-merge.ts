@@ -103,8 +103,8 @@ export async function shepherdMainCi(ctx: WorkflowContext, target: MergedTarget,
 function cleanupInput(ctx: WorkflowContext, target: MergedTarget): CleanupInput {
   const input = { repo: target.repo, pr: target.pr, runId: ctx.runId };
   if (target.landed === undefined || target.mergeSha === "") return input;
-  const { headRef, headRepo, headSha } = target.landed;
-  return { ...input, merged: { headRef, headRepo, headSha, mergeSha: target.mergeSha } };
+  const { baseRef, headRef, headRepo, headSha } = target.landed;
+  return { ...input, merged: { baseRef, headRef, headRepo, headSha, mergeSha: target.mergeSha } };
 }
 
 function fixOf(frozen: z.infer<typeof FreezeResult>): string {

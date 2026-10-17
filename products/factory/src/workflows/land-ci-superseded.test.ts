@@ -47,3 +47,31 @@ describe("ci-wait on a head whose older run was cancelled by a newer one", () =>
     expect((await read(runs)).verdict).toBe("red");
   });
 });
+
+describe("ci-wait on a head where concurrency cancelled one of two runs (td#894)", () => {
+  const job = (name: string, id: number, workflowRunId: number, conclusion: string | null): CheckRun => ({
+    ...successRun(name, id, T0, conclusion ?? "success"),
+    workflowRunId,
+    ...(conclusion === null && { status: "in_progress", conclusion: null }),
+  });
+  const cancelledRun = [job("build", 11, 2002, "cancelled"), job("check", 12, 2002, "failure")];
+
+  it("reads pending, not red, while the other run is live, though the cancelled run's aggregate check failed", async () => {
+    const ci = await read([...cancelledRun, job("build", 21, 1001, null), ...NAMES.map((name, i) => job(name, 30 + i, 1001, "success"))]);
+
+    expect(ci.verdict).toBe("pending");
+  });
+
+  it("stays red when the other run fails too", async () => {
+    const ci = await read([...cancelledRun, job("build", 21, 1001, "failure"), ...NAMES.map((name, i) => job(name, 30 + i, 1001, "success"))]);
+
+    expect(ci.verdict).toBe("red");
+    expect(ci.failing?.map((check) => check.name).sort()).toEqual(["build", "check"]);
+  });
+
+  it("stays red when no other run shares a job with the cancelled one", async () => {
+    const ci = await read([...cancelledRun, ...NAMES.map((name, i) => job(name, 30 + i, 1001, "success"))]);
+
+    expect(ci.verdict).toBe("red");
+  });
+});

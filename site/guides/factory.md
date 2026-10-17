@@ -163,7 +163,11 @@ stays out of the repo.
   commit by a plain fast-forward push, and only then is retargeted to the default branch. It is
   off when absent, when the file is missing or invalid, and in an advisory repo. While it is off,
   `sh-stack-children` records `skipped` and nothing is pushed. A failed read of the open PRs
-  also records `skipped`, so main CI and cleanup still run.
+  also records `skipped`, so main CI and cleanup still run. Whatever the switch, `sh-cleanup`
+  moves each open PR still based on the merged head branch onto that PR's base before it deletes
+  the branch, and records them as `retargeted`. GitHub closes every open PR based on a branch
+  deleted through the API (TP-3277). Cleanup lists the open PRs again just before the delete,
+  and keeps the branch with a caveat while any of them is still based on it.
 - The rest of `shepherd` is covered in the [Shepherd guide](/guides/shepherd#seat-policy).
 
 A malformed file fails every command that opens the database, with
