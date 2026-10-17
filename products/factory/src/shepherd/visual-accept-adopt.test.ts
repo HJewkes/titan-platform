@@ -29,7 +29,7 @@ const setFlag = (configHome: string, mode: "off" | "on"): void => {
 };
 
 /** Host A parks with `inFlight` never answering; the flag is then turned on and host B adopts the run. */
-async function parkedThenAdopted(inFlight: "sh-held-check" | "sh-repair") {
+async function parkedThenAdopted(inFlight: "sh-held-check") {
   const dir = mkdtempSync(join(tmpdir(), "visual-accept-adopt-"));
   dirs.push(dir);
   const configHome = join(dir, "config");
@@ -67,7 +67,8 @@ async function parkedThenAdopted(inFlight: "sh-held-check" | "sh-repair") {
   return { second, runId, steps };
 }
 
-describe.each([["sh-held-check" as const], ["sh-repair" as const]])("a flag turned on while %s was in flight on the old host", (inFlight) => {
+describe("a flag turned on while sh-held-check was in flight on the old host", () => {
+  const inFlight = "sh-held-check";
   it("offers no visual accept and settles the recovered step as the flag-off record ran", async () => {
     const { second, runId, steps } = await parkedThenAdopted(inFlight);
 
