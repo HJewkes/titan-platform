@@ -42,11 +42,13 @@ export function gitChildEnv(
   env: NodeJS.ProcessEnv = process.env,
   stripPrefixes: readonly string[] = DEFAULT_STRIPPED_ENV_PREFIXES
 ): NodeJS.ProcessEnv {
-  const out: NodeJS.ProcessEnv = { ...env, GIT_TERMINAL_PROMPT: "0", GIT_ALLOW_PROTOCOL: pinGitProtocols(env.GIT_ALLOW_PROTOCOL) };
+  const protocols = pinGitProtocols(env.GIT_ALLOW_PROTOCOL);
+  const out: NodeJS.ProcessEnv = { ...env, GIT_TERMINAL_PROMPT: "0" };
   for (const key of Object.keys(out)) {
     if (stripPrefixes.some((prefix) => key.startsWith(prefix))) delete out[key];
   }
-  return out;
+  // Prefix stripping cannot erase the mandatory pin or widen the original caller list.
+  return { ...out, GIT_ALLOW_PROTOCOL: protocols };
 }
 
 /** Throws on a non-zero exit; `stderr` and `code` ride on the error. */

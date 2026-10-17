@@ -78,6 +78,8 @@ CC-1095 policy. `pinGitProtocols(value)` intersects an explicit colon-separated 
 `file:git:http:https:ssh`; an unset value uses that list, while an empty value stays empty.
 Unknown and differently cased names are discarded. Local file remotes remain supported.
 Dispatcher identity prefix stripping and `GIT_TERMINAL_PROMPT=0` are preserved.
+The protocol pin is derived from the original caller list and restored after custom
+prefix stripping, so even a `GIT_` strip cannot erase it or widen that list.
 `withPinnedGitProtocols(env)` applies only the same transport pin without stripping fields.
 
 The existing policy is carried unchanged: when the caller leaves GIT_ALLOW_PROTOCOL unset,

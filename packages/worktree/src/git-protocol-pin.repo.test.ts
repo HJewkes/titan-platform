@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -65,4 +65,21 @@ describe("worktree setup environment", () => {
     expect(setupEnv({}).GIT_ALLOW_PROTOCOL).toBe(SAFE);
     expect(setupEnv({ GIT_ALLOW_PROTOCOL: "file:ext:ssh" }).GIT_ALLOW_PROTOCOL).toBe("file:ssh");
   });
+});
+
+
+describe("mandatory pin after caller-owned identity stripping", () => {
+  it.each([["ext", ""], ["ext:https", "https"], [undefined, SAFE], ["", ""]])(
+    "keeps the original caller restriction %j after stripping GIT_ fields",
+    (value, expected) => {
+      const { repo, marker } = extRemoteRepo();
+      const env = gitChildEnv({ PATH: process.env.PATH, AGENT_CHAT_NAME: "fixture", GIT_ALLOW_PROTOCOL: value }, ["GIT_", "AGENT_CHAT_"]);
+      const child = spawnSync("git", ["fetch", "x"], { cwd: repo, env, encoding: "utf8" });
+      expect(fs.existsSync(marker)).toBe(false);
+      expect(child.status).not.toBe(0);
+      expect(child.stderr).toContain("transport 'ext' not allowed");
+      expect(env.GIT_ALLOW_PROTOCOL).toBe(expected);
+      expect(env.AGENT_CHAT_NAME).toBeUndefined();
+    }
+  );
 });
