@@ -13,11 +13,9 @@ import { BranchName, carryCacheDir, carryStateDir, ensureCache, githubRemote, mu
 
 const STACK_CHILDREN_STEP = "sh-stack-children";
 const RESTACK_STEP = "sh-restack";
-const RETARGET_STEP = "sh-retarget";
 export const STACK_LAND_STEPS: readonly StepDeclaration[] = [
   { id: STACK_CHILDREN_STEP, kind: "dispatch" },
   { id: RESTACK_STEP, kind: "dispatch" },
-  { id: RETARGET_STEP, kind: "dispatch" },
 ];
 
 /** Only an agent-chat branch is Shepherd's to push to; any other child is left to its owner. */
@@ -71,8 +69,6 @@ export interface StackLandDeps {
   wakeChild: (wake: ChildWake) => Promise<boolean>;
   /** Why Shepherd may not restack in `repo` right now, or undefined when it may; read again on every child. */
   held: (repo: RepoSlug) => string | undefined;
-  /** An advisory repo gets no write at all, so its children are neither listed nor retargeted. */
-  advisory?: (repo: RepoSlug) => boolean;
   /** Holds Shepherd's bare git cache; absent means the bound state dir. */
   stateDir?: string;
   /** The fetch and push URL for `repo`; absent means GitHub over https. */
@@ -209,47 +205,15 @@ export async function restackChild(deps: StackLandDeps, input: RestackInput): Pr
   return { outcome: result.outcome, pr: input.child.pr, reason, woken };
 }
 
-/** A child still based on the parent's branch, moved onto the parent's base so the branch's delete cannot close it. */
-interface RetargetInput {
-  repo: RepoSlug;
-  pr: number;
-  from: string;
-  to: string;
-}
-
-const RetargetResult = z.object({ pr: z.number(), outcome: z.enum(["retargeted", "unchanged", "skipped", "failed"]), detail: z.string() });
-type RetargetResult = z.infer<typeof RetargetResult>;
-
-/**
- * Retargets whatever the restack left on the parent's branch, restack switch or not: cleanup deletes that branch through
- * the API, and GitHub closes every open PR still based on it. A failure is recorded, never thrown, and cleanup's own
- * re-list then keeps the branch.
- */
-async function retargetChild(deps: Pick<StackLandDeps, "port" | "advisory">, input: RetargetInput): Promise<RetargetResult> {
-  const { repo, pr, from, to } = input;
-  if (deps.advisory?.(repo)) return { pr, outcome: "skipped", detail: `${repo} is advisory` };
-  try {
-    const child = await deps.port.getPr(repo, pr);
-    if (child.state !== "open" || child.baseRef !== from) return { pr, outcome: "unchanged", detail: `${child.state} on ${child.baseRef}` };
-    const write = await deps.port.setPrBase(repo, pr, to);
-    return write.done ? { pr, outcome: "retargeted", detail: `${from} to ${to}` } : { pr, outcome: "unchanged", detail: `skipped (${write.skipped})` };
-  } catch (error) {
-    return { pr, outcome: "failed", detail: `the retarget to ${to} failed: ${errorClass(error)}` };
-  }
-}
-
 /**
  * Called once Shepherd's own squash of the parent returned its commit. Each child's record is keyed by the head it was
- * restacked from; a replay after the push finds its own commit there, so it neither pushes twice nor wakes anyone. A
- * held restack still lists the children, so each is retargeted before cleanup deletes the parent's branch.
+ * restacked from; a replay after the push finds its own commit there, so it neither pushes twice nor wakes anyone.
  */
-async function restackChildren(ctx: WorkflowContext, parent: LandedParent & { parentHeadRepo: string | null; parentBase: string }): Promise<void> {
-  const { children, skipped } = await step(ctx, `${STACK_CHILDREN_STEP}:${parent.parentPr}`, parent, ChildrenResult);
-  for (const child of children) {
-    if (skipped === undefined) await step(ctx, `${RESTACK_STEP}:${child.pr}:${child.headSha}`, { ...parent, child }, RestackResult);
-    const retarget: RetargetInput = { repo: parent.repo, pr: child.pr, from: parent.parentHeadRef, to: parent.parentBase };
-    await step(ctx, `${RETARGET_STEP}:${child.pr}`, retarget, RetargetResult);
-  }
+async function restackChildren(ctx: WorkflowContext, parent: LandedParent & { parentHeadRepo: string | null }): Promise<RestackResult[]> {
+  const { children } = await step(ctx, `${STACK_CHILDREN_STEP}:${parent.parentPr}`, parent, ChildrenResult);
+  const results: RestackResult[] = [];
+  for (const child of children) results.push(await step(ctx, `${RESTACK_STEP}:${child.pr}:${child.headSha}`, { ...parent, child }, RestackResult));
+  return results;
 }
 
 /** Only the run's own merge write restacks; a PR GitHub reports merged elsewhere restacks nothing, even with `landed` set. */
@@ -260,12 +224,12 @@ export async function restackLanded(
     pr: number;
     mergeSha: string;
     own?: true;
-    landed?: { baseRef: string; headRef: string; headRepo: string | null; headSha: string };
+    landed?: { headRef: string; headRepo: string | null; headSha: string };
   },
 ): Promise<void> {
   if (target.own !== true || target.landed === undefined || target.mergeSha === "") return;
-  const { baseRef, headRef, headRepo, headSha } = target.landed;
-  await restackChildren(ctx, { repo: target.repo, parentPr: target.pr, parentHeadRef: headRef, parentHeadRepo: headRepo, parentBase: baseRef, parentFinal: headSha, squash: target.mergeSha });
+  const { headRef, headRepo, headSha } = target.landed;
+  await restackChildren(ctx, { repo: target.repo, parentPr: target.pr, parentHeadRef: headRef, parentHeadRepo: headRepo, parentFinal: headSha, squash: target.mergeSha });
 }
 
 /** Messages the child's registered implementer; a child Shepherd does not track has no one to tell. */
@@ -302,26 +266,23 @@ function restackHeld(deps: ShepherdDeps): (repo: RepoSlug) => string | undefined
 }
 
 /**
- * The child list never fails post-merge: an advisory repo or a failed read answers no children with a `skipped` caveat,
- * so main CI, the unfreeze, cleanup and the release still follow the merge. The switch off still lists them, with the
- * caveat, so they are retargeted though not restacked. The caveat names only the error class, since it is a stored step
- * output that can reach a public PR.
+ * The child list never fails post-merge: the switch off, an advisory repo or a failed read all answer no children with
+ * a `skipped` caveat, so main CI, the unfreeze, cleanup and the release still follow the merge. The caveat names only
+ * the error class, since it is a stored step output that can reach a public PR.
  */
 async function listChildren(land: StackLandDeps, input: LandedParent & { parentHeadRepo: string | null }): Promise<z.infer<typeof ChildrenResult>> {
-  if (land.advisory?.(input.repo)) return { children: [], skipped: `${input.repo} is advisory` };
   const held = land.held(input.repo);
+  if (held !== undefined) return { children: [], skipped: held };
   return stackChildren(land, input).then(
-    (children) => ({ children, ...(held !== undefined && { skipped: held }) }),
+    (children) => ({ children }),
     (error: unknown) => ({ children: [], skipped: `the child list could not be read: ${errorClass(error)}` }),
   );
 }
 
 export function stackLandRoutes(deps: ShepherdDeps): StepRoute[] {
-  const advisory = (repo: RepoSlug): boolean => deps.advisory?.(repo) === true;
-  const land: StackLandDeps = { port: deps.port, wakeChild: wakeOver(deps), held: restackHeld(deps), advisory, ...(deps.snapshot && { snapshot: deps.snapshot }) };
+  const land: StackLandDeps = { port: deps.port, wakeChild: wakeOver(deps), held: restackHeld(deps), ...(deps.snapshot && { snapshot: deps.snapshot }) };
   return [
     codeRoute(STACK_CHILDREN_STEP, deps.now, (input: LandedParent & { parentHeadRepo: string | null }) => listChildren(land, input)),
     codeRoute(RESTACK_STEP, deps.now, (input: RestackInput) => restackChild(land, input)),
-    codeRoute(RETARGET_STEP, deps.now, (input: RetargetInput) => retargetChild(land, input)),
   ];
 }

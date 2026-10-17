@@ -1,10 +1,12 @@
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { GITHUB_ACTIONS_APP_ID, fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
-import { z } from "zod";
 import { CleanupResult, type CleanupPorts } from "./cleanup.js";
 import { freezeStoreRef } from "./freeze.js";
 import { MainCiReads } from "./main-watch.js";
@@ -422,11 +424,13 @@ interface WorldOptions {
   wrap?: (port: GitHubPort) => GitHubPort;
   stackRestack?: (repo: string) => boolean;
   advisory?: (repo: string) => boolean;
+  /** One deploy of several sharing a database file and a GitHub; absent means a fresh in-memory world. */
+  deploy?: { dbPath: string; fake: FakeGitHub };
 }
 
-function shepherdWorld(mergeRuns: () => ReturnType<typeof successRun>[], cleanup?: CleanupPorts, mainRed?: Omit<MainRedWiring, "freezes">, { wrap = (port) => port, stackRestack, advisory }: WorldOptions = {}) {
-  const fake = fakeGitHub();
-  fake.addPr({ headSha: H1 });
+function shepherdWorld(mergeRuns: () => ReturnType<typeof successRun>[], cleanup?: CleanupPorts, mainRed?: Omit<MainRedWiring, "freezes">, { wrap = (port) => port, stackRestack, advisory, deploy }: WorldOptions = {}) {
+  const fake = deploy?.fake ?? fakeGitHub();
+  if (deploy === undefined) fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const base = githubPort(fake.wire);
   const port = wrap({ ...base, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, withRequired(mergeRuns())), base.checkRuns(repo, sha)) });
@@ -434,7 +438,7 @@ function shepherdWorld(mergeRuns: () => ReturnType<typeof successRun>[], cleanup
   const store = shepherdStoreRef();
   const freeze = freezeStoreRef(() => clock);
   const routes = factoryRoutesFor({ port, store, freeze, now: () => clock, sleep: async (ms, signal) => (signal?.throwIfAborted(), void (clock += ms)), cleanup, mainRed, stackRestack, advisory });
-  const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow()], routes, gatePollMs: 5 });
+  const host = openFactoryHost({ dbPath: deploy?.dbPath ?? ":memory:", workflows: [shepherdPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, store, routes, freezes: () => freeze.get() };
 }
@@ -470,14 +474,14 @@ describe("shepherd-pr after land", () => {
     expect(ids.indexOf("sh-stack-children:1")).toBeLessThan(ids.indexOf("sh-main-ci"));
   });
 
-  it("lists the children but restacks none while the repo has not opted in", async () => {
+  it("records a skipped child list and restacks nothing while the repo has not opted in", async () => {
     const w = shepherdWorld(() => [successRun("validate", 5)]);
-    const child = stackedChild(w);
+    stackedChild(w);
     const runId = await runToMerge(w);
 
     await w.host.runtime.wait(runId);
 
-    expect(resultOf(w, runId, "sh-stack-children:1")).toMatchObject({ result: { children: [{ pr: child }], skipped: `stack restack is off for ${REPO}` } });
+    expect(resultOf(w, runId, "sh-stack-children:1")).toMatchObject({ result: { children: [], skipped: `stack restack is off for ${REPO}` } });
     expect(stepIds(w, runId).filter((id) => id.startsWith("sh-restack"))).toEqual([]);
   });
 
@@ -509,7 +513,7 @@ describe("shepherd-pr after land", () => {
 
     expect(w.fake.pr(child)).toMatchObject({ state: "open", baseRef: w.fake.pr(1).baseRef });
     expect(writes).toEqual([`setPrBase #${child}`, `deleteRef ${branch}`]);
-    expect(cleanupOf(w, runId).result.ref).toBe("deleted");
+    expect(cleanupOf(w, runId).result).toMatchObject({ ref: "deleted", retargeted: [{ pr: child, ok: true }] });
     expect(w.fake.refs.has(branch)).toBe(false);
   });
 
@@ -523,14 +527,13 @@ describe("shepherd-pr after land", () => {
 
     await w.host.runtime.wait(runId);
 
-    expect(resultOf(w, runId, `sh-retarget:${child}`)).toMatchObject({ result: { outcome: "failed" } });
-    expect(cleanupOf(w, runId).result).toMatchObject({ ref: "children-open", caveats: expect.arrayContaining([`head ref of #1 kept: open #${child} still based on it`]) });
+    expect(cleanupOf(w, runId).result).toMatchObject({ ref: "children-open", retargeted: [{ pr: child, ok: false, error: "Error" }], caveats: expect.arrayContaining([`head ref of #1 kept: open #${child} still based on it`]) });
     expect(w.fake.refs.has(branch)).toBe(true);
     expect(w.fake.pr(child)).toMatchObject({ state: "open", baseRef: branch });
     expect(w.host.runtime.status(runId)?.status).toBe("completed");
   });
 
-  it("keeps the parent's branch when a child is opened on it after the restack listed none", async () => {
+  it("keeps the parent's branch when a child is opened on it after cleanup's retarget pass listed none", async () => {
     let child = 0;
     const w = shepherdWorld(() => [successRun("validate", 5)], undefined, undefined, {
       wrap: (port) => ({
@@ -552,8 +555,33 @@ describe("shepherd-pr after land", () => {
     expect(w.fake.pr(child)).toMatchObject({ state: "open", baseRef: branch });
   });
 
+  it("replays a run recorded past sh-restack and sh-main-ci on the step sequence before TP-3277, retargeting its child in sh-cleanup", async () => {
+    const dbPath = join(mkdtempSync(join(tmpdir(), "tp3277-")), "factory.db");
+    const first = shepherdWorld(() => [successRun("validate", 5)], undefined, undefined, { ...stackOn, deploy: { dbPath, fake: fakeGitHub() } });
+    first.fake.addPr({ headSha: H1 });
+    const branch = landedBranch(first);
+    const child = stackedChild(first);
+    const runId = await runToMerge(first, { after: JSON.stringify(["deploy"]) });
+    await gateOpened(first.host, gateId(runId, "after-stages"));
+    const recorded = stepIds(first, runId);
+    first.host.close();
+
+    const next = shepherdWorld(() => [successRun("validate", 5)], undefined, undefined, { ...stackOn, deploy: { dbPath, fake: first.fake } });
+    await next.host.adopt();
+    await gateOpened(next.host, gateId(runId, "after-stages"));
+    next.host.runtime.signal(runId, "after-stages", { decision: "acknowledged", mergeSha: next.fake.pr(1).mergeSha }, OWNER);
+    const run = await next.host.runtime.wait(runId);
+
+    expect(recorded).toEqual(expect.arrayContaining(["sh-stack-children:1", `sh-restack:${child}:${fakeSha("child")}`, "sh-main-ci", "sh-unfreeze"]));
+    expect(run.error ?? null).toBeNull();
+    expect(run.status).toBe("completed");
+    expect(cleanupOf(next, runId).result).toMatchObject({ ref: "deleted", retargeted: [{ pr: child, ok: true }] });
+    expect(next.fake.pr(child)).toMatchObject({ state: "open", baseRef: next.fake.pr(1).baseRef });
+    expect(next.fake.refs.has(branch)).toBe(false);
+  });
+
   for (const turn of ["off", "advisory"] as const) {
-    it(`skips the restack of a listed child once the repo turns ${turn} before its restack step`, async () => {
+    it(`skips the restack of a listed child once the repo turns ${turn} before its restack step, leaving any retarget to cleanup`, async () => {
       let held = false;
       const retargets: number[] = [];
       const w = shepherdWorld(() => [successRun("validate", 5)], undefined, undefined, {

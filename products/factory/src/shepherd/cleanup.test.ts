@@ -274,7 +274,7 @@ describe("sh-cleanup hold", () => {
 });
 
 describe("sh-cleanup after its own merge", () => {
-  const MERGED: MergedPr = { headRef: "feat/x", headRepo: REPO, headSha: fakeSha("head"), mergeSha: fakeSha("merge") };
+  const MERGED: MergedPr = { baseRef: "main", headRef: "feat/x", headRepo: REPO, headSha: fakeSha("head"), mergeSha: fakeSha("merge") };
   const getPrs = (fake: FakeGitHub): number => fake.calls.filter((call) => call === "getPr").length;
 
   it("reads no PR: deletes the head, releases the hold and closes the task from the merge's own result", async () => {

@@ -78,7 +78,6 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-landed": "post-merge",
   "sh-stack-children": "post-merge",
   "sh-restack": "post-merge",
-  "sh-retarget": "post-merge",
   "sh-main-ci": "post-merge",
   "sh-release-follow": "post-merge",
   "sh-redeploy": "post-merge",

@@ -3,7 +3,7 @@ import { OVERLAY_SHAPES } from "@titan-design/review-panel";
 import { z } from "zod";
 import { hasSlicesBlock, readSlices } from "../dispatch/report.js";
 import { deadline, type Deadline } from "../workflows/deadline.js";
-import { consoleTextOf, failureOf } from "./error-class.js";
+import { consoleTextOf, errorClass, failureOf } from "./error-class.js";
 import type { Presence } from "./presence.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 
@@ -62,6 +62,7 @@ export interface CleanupDeps {
 
 /** What the run's own merge step knew of the PR it merged; with it, cleanup reads no PR. */
 export interface MergedPr {
+  baseRef: string;
   headRef: string;
   headRepo: RepoSlug | null;
   headSha: string;
@@ -76,20 +77,31 @@ export interface CleanupInput {
   merged?: MergedPr;
 }
 
-type PrAfterMerge = Pick<PullRequest, "merged" | "headRef" | "headRepo" | "headSha" | "mergeSha">;
+type PrAfterMerge = Pick<PullRequest, "merged" | "baseRef" | "headRef" | "headRepo" | "headSha" | "mergeSha">;
 
 async function prAfterMerge(port: GitHubPort, input: CleanupInput): Promise<PrAfterMerge> {
   return input.merged === undefined ? port.getPr(input.repo, input.pr) : { merged: true, ...input.merged };
 }
 
+const Retargeted = z.object({ pr: z.number(), ok: z.boolean(), error: z.string().optional() });
+type Retargeted = z.infer<typeof Retargeted>;
+
 export const CleanupResult = z.looseObject({
   ref: z.string(),
+  /** The open PRs based on the merged head branch that cleanup moved onto its base before the delete; absent in a step recorded before the field. */
+  retargeted: z.array(Retargeted).optional(),
   task: z.string(),
   retired: z.array(z.string()),
   caveats: z.array(z.string()),
 });
 
 export type Cleanup = z.infer<typeof CleanupResult>;
+
+/** What the head-ref part did, kept across its retries: a retarget is recorded once per child, the last attempt winning. */
+interface Done {
+  caveats: string[];
+  retargeted: Map<number, Retargeted>;
+}
 
 interface Waiter {
   clock: Deadline;
@@ -103,35 +115,50 @@ interface Waiter {
 export async function runCleanup(deps: CleanupDeps, input: CleanupInput, signal: AbortSignal): Promise<Cleanup> {
   const caveats: string[] = [];
   const waiter = (): Waiter => ({ clock: deadline({ now: deps.now, sleep: deps.sleep, timeoutMs: SH_CLEANUP_GIVE_UP_MS }), pollMs: deps.pollMs ?? SH_CLEANUP_POLL_MS, signal, now: deps.now, caveats });
-  const ref = (await retrying(`head ref of #${input.pr}`, () => deleteHead(deps, input, caveats), waiter())) ?? "unread";
+  const done: Done = { caveats, retargeted: new Map() };
+  const ref = (await retrying(`head ref of #${input.pr}`, () => deleteHead(deps, input, done), waiter())) ?? "unread";
+  const retargeted = [...done.retargeted.values()];
   await retrying(`hold on #${input.pr}`, () => releaseLanded(deps, input), waiter());
   const registration = deps.store.get().byRun(input.runId);
   if (registration === undefined || deps.cleanup === undefined) {
     const why = registration === undefined ? "no registration" : "no cleanup ports wired";
-    return { ref, task: why, retired: [], caveats };
+    return { ref, retargeted, task: why, retired: [], caveats };
   }
   const task = await settleTask(deps, registration, input, waiter());
   const retired = await retireAll(deps.cleanup.agents, deps.store.get(), registration, input, waiter());
-  return { ref, task, retired, caveats };
+  return { ref, retargeted, task, retired, caveats };
 }
 
 /**
  * The ref lives in the head repo, so a fork's same-named branch in the base repo is never touched; the port skips forks
- * and the default branch. An API delete closes every open PR based on the branch, so a fresh list of them, read just
- * before the delete, keeps the branch while any remains.
+ * and the default branch. An API delete closes every open PR based on the branch, and only GitHub's own delete-on-merge
+ * retargets them first, so each is retargeted onto the merged PR's base here. A fresh list, read just before the delete,
+ * keeps the branch while any PR is still based on it.
  */
-async function deleteHead({ port, advisory }: CleanupDeps, input: CleanupInput, caveats: string[]): Promise<string> {
+async function deleteHead({ port, advisory }: CleanupDeps, input: CleanupInput, done: Done): Promise<string> {
   if (advisory?.(input.repo)) return "advisory";
   const pr = await prAfterMerge(port, input);
   if (!pr.merged) return "not-merged";
-  const sameRepo = pr.headRepo?.toLowerCase() === input.repo.toLowerCase();
-  const based = sameRepo ? (await port.listOpenPrs(input.repo)).filter((open) => open.baseRef === pr.headRef).map((open) => `#${open.number}`) : [];
-  if (based.length > 0) {
-    caveats.push(`head ref of #${input.pr} kept: open ${based.join(", ")} still based on it`);
-    return "children-open";
+  if (pr.headRepo?.toLowerCase() === input.repo.toLowerCase() && pr.headRef !== (await port.defaultBranch(input.repo))) {
+    for (const child of await basedOn(port, input.repo, pr.headRef)) done.retargeted.set(child, await retarget(port, input.repo, child, pr.baseRef));
+    const based = await basedOn(port, input.repo, pr.headRef);
+    if (based.length > 0) {
+      done.caveats.push(`head ref of #${input.pr} kept: open ${based.map((child) => `#${child}`).join(", ")} still based on it`);
+      return "children-open";
+    }
   }
   const result = await port.deleteRef(input.repo, { branch: pr.headRef, repo: pr.headRepo });
   return result.done ? "deleted" : result.skipped;
+}
+
+const basedOn = async (port: GitHubPort, repo: RepoSlug, branch: string): Promise<number[]> => (await port.listOpenPrs(repo)).filter((open) => open.baseRef === branch).map((open) => open.number);
+
+/** A failed retarget is recorded, never thrown, so the re-list keeps the branch; only the error class is stored, since the output can reach a public PR. */
+async function retarget(port: GitHubPort, repo: RepoSlug, pr: number, base: string): Promise<Retargeted> {
+  return port.setPrBase(repo, pr, base).then(
+    (write) => (write.done || write.skipped === "unchanged" ? { pr, ok: true } : { pr, ok: false, error: write.skipped }),
+    (error: unknown) => ({ pr, ok: false, error: errorClass(error) }),
+  );
 }
 
 const CLEANUP_ACTOR = "shepherd:cleanup";

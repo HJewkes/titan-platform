@@ -72,7 +72,6 @@ const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = {
   "sh-main-ci": `${READ}: waits for main's CI after the merge`,
   "sh-stack-children": `${RECORD}: the stacked children listed after the parent landed`,
   "sh-restack": `${WRITE}: pushes a child's restack and retargets its base`,
-  "sh-retarget": `${WRITE}: retargets a child off the landed parent's branch`,
   "sh-redeploy": `${WRITE}: starts a service deploy`,
   "sh-unfreeze": `${WRITE}: releases the repo freeze`,
   "sh-freeze": `${WRITE}: freezes the repo on a red main`,
