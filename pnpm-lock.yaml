@@ -555,6 +555,12 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/openai-account:
+    dependencies:
+      '@titan-design/anthropic-account':
+        specifier: workspace:^
+        version: link:../anthropic-account
+
   packages/owner-proof:
     devDependencies:
       zod:
