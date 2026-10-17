@@ -7,6 +7,12 @@ const DEFAULT_POLL_MS = 30_000;
 /** How long one wake's asks may only be waited out, from its first ask, before the wake fails and its seat is told. */
 export const WAKE_ASK_MS = 5 * 60_000;
 
+/**
+ * How long a wake waits out the spawn gate alone. A deferral means the machine is busy, which passes, so it waits longer
+ * than an ask that may never land: a 5-minute bound gave up on a resume while memory ran low and left the run with no fixer (TP-3238).
+ */
+export const WAKE_DEFER_MS = 30 * 60_000;
+
 /** Waited out: nothing was asked of the broker, or what was asked is checked on the next roster read. */
 const brokerDown = (error: unknown): boolean => error instanceof BrokerUnavailableError || error instanceof DispatchTimeoutError;
 
