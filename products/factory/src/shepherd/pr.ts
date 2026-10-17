@@ -190,7 +190,6 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     clearSuperseded(run, rereview, gated, stepId), rereview && run.trail.ownerAsked.add(rereview), new LeaveLand()
   );
   const conflictCheck = (headSha: string) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha });
-  const packetRun = packetRunOf(run);
   return {
     runId: ctx.runId,
     workflowName: ctx.workflowName,
@@ -203,7 +202,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
     assisted: routingStuckBehind(run, () => run.lastCi?.headSha, recordingOverrides(followingApprovals(ctx, conflictCheckedGates(
-      packetTriggering(packetRun, supersedingGates(ctx, supersede, () => (run.carried = undefined))), conflictCheck, leaveOnConflict), { target: run.target, reviewedMerge }),
+      packetTriggering(packetRunOf(run), supersedingGates(ctx, supersede, () => (run.carried = undefined))), conflictCheck, leaveOnConflict), { target: run.target, reviewedMerge }),
       reviewedMerge, (override) => recordOverride(ctx, run.target, override))),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
     dispatch: async (stepId, template, options) => {
