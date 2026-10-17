@@ -157,6 +157,12 @@ const REDIRECTED_OR_SPLIT = [
   "echo $(echo '[p]ush' origin HEAD:main) | xargs git",
   "echo `echo 'pus[h]' origin HEAD:main` | xargs git",
   "IFS=,; echo $(echo push,origin,HEAD:main) | xargs git",
+  'echo "$(echo status {fd} >&2; echo push origin HEAD:main)" | xargs git',
+  'echo "$(echo status {fd}>&2; echo push origin HEAD:main)" | xargs git',
+  'echo "$(echo status {fd} >/dev/null; echo push origin HEAD:main)" | xargs git',
+  'echo "$(echo status | cat {fd} >/dev/null; echo push origin HEAD:main)" | xargs git',
+  'echo "$(echo status {x}>&2; echo push origin HEAD:main)" | xargs git',
+  `sh -c 'echo "$(echo status {fd}>&2; echo push origin HEAD:main)" | xargs git'`,
 ];
 
 describe("a substitution whose output goes elsewhere or is split or globbed is not read as the text on the line (TP-3333)", () => {
@@ -204,7 +210,13 @@ describe.skipIf(!["bash", "zsh", "dash"].every(has))("real shells run the push t
 
   // zsh does not glob what a substitution splits out; bash and dash do.
   const globbed = REDIRECTED_OR_SPLIT.slice(11, 16);
-  const runners = (line: string): string[] => (globbed.includes(line) ? ["bash", "dash"] : line.includes("IFS") ? ["bash"] : ["bash", "zsh -f"]);
+  const runners = (line: string): string[] => {
+    if (line.startsWith("sh -c")) return ["dash"];
+    // Only dash and sh keep a glued `{fd}` a word; bash and native zsh read it as the descriptor, and zsh a spaced one too.
+    if (/\{\w+\}>/.test(line)) return ["dash", "zsh --emulate sh -f"];
+    if (line.includes("{fd} ")) return ["bash", "dash"];
+    return globbed.includes(line) ? ["bash", "dash"] : line.includes("IFS") ? ["bash"] : ["bash", "zsh -f"];
+  };
 
   it.each(REDIRECTED_OR_SPLIT.flatMap((line) => runners(line).map((runner): [string, string] => [line, runner])))("%s runs the push under %s", (line, runner) => {
     expect(runsPush(line, runner)).toBe(true);

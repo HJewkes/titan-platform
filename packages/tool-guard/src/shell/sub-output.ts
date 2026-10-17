@@ -122,11 +122,15 @@ function stage(walk: SubWalk, rawWords: WordToken[], rawRedirects: RedirectToken
 
 const STDOUT_OPS = new Set([">", ">>", ">|", ">&"]);
 
-/** A redirect that sends the stage's stdout somewhere other than the substitution; the text stays as one reading. */
+/**
+ * A redirect that sends the stage's stdout somewhere other than the substitution; the text stays as one reading. A
+ * `{name}` before a writing redirect counts whichever shell reads it as the descriptor: dash and sh keep it a word
+ * and redirect stdout.
+ */
 function writesStdout(redirects: RedirectToken[]): boolean {
   return redirects.some((r) => {
-    if (r.named !== undefined) return false;
     if (r.op.startsWith("&>")) return true;
+    if (r.named !== undefined) return STDOUT_OPS.has(r.op);
     return (STDOUT_OPS.has(r.op) && (r.fd === null || r.fd === "1")) || (r.op === "<>" && r.fd === "1");
   });
 }

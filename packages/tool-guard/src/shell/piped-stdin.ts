@@ -23,17 +23,18 @@ export function nextShellStdin(op: string, cmd: Unwrapped | null, empty: boolean
 }
 
 /**
- * Each splicing shell's distinct text of a print whose arguments are command substitutions of known output; the first is
+ * Each splicing shell's distinct text of a print whose arguments are command substitutions of known output under every one of them; the first is
  * piped as the command's own text and the rest beside it (TP-3333).
  */
 function splicedReadings(cmd: Unwrapped): string[] {
   if (!cmd.args.some((arg) => arg.cuts)) return [];
-  const texts = SPLICING_SHELLS.flatMap((shell) => {
+  const texts = SPLICING_SHELLS.map((shell) => {
     const args = knownSplice(cmd.args, shell);
-    const text = args && printedText(cmd.name, args, shell);
-    return typeof text === "string" ? [text] : [];
+    return args && printedText(cmd.name, args, shell);
   });
-  return [...new Set(texts)];
+  // The line runs under one shell, so a text only some of them know may be a shell the line does not run under.
+  if (texts.some((text) => typeof text !== "string")) return [];
+  return [...new Set(texts as string[])];
 }
 
 function passesThrough(cmd: Unwrapped): boolean {
