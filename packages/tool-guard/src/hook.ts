@@ -10,6 +10,7 @@ import { GUARDED_PATHS } from "./paths.js";
 import { OpaqueShebangError, ScriptDepthError } from "./scripts.js";
 import { ParseError } from "./shell/lexer.js";
 import { MAX_NESTING } from "./shell/nesting.js";
+import { AliasDefinitionError } from "./shell/alias-definitions.js";
 import { CommandRebindingError } from "./shell/command-rebinding.js";
 import { ADDED_SCRIPT_WEIGHT, EnvSplitError, MAX_SCRIPT_BYTES, NestingReadingError, ReadingLimitError, ScriptBudgetError, SplicedReadingError, SplitReadingError, UnknownStdinError, UnreadableScriptError, UntrackedWriteError, ValueWalkError } from "./shell/unsure-readings.js";
 import type { ScriptOverrun } from "./shell/unsure-readings.js";
@@ -71,6 +72,8 @@ const UNTRACKED_REASON =
   "authority-guard does not check this Bash command: it writes a file the guard cannot follow (output it cannot reproduce, a target only known at run time, another fd, `>!`, `<>`), then runs a script, which may be that file; run the script in its own command, where the guard reads the file as it is.";
 const REBIND_REASON =
   "authority-guard does not follow a command name the line rebinds (`hash y=/usr/bin/git; y push`, `commands[y]=…`, `functions[y]=…`, bash `hash -p`), so it refuses any command that does; run the program by its own name instead. A run-time word counts too where `print`, `printf`, `set`, `read`, `declare`, `wait` or another store builtin reads it. In an option slot (`print $x`) it may be `-v commands[y]`; `--` before it fixes that: `print -- $x`, but zsh `stat`, `zstat` and `zparseopts` skip one `--`, so write `stat ./\"$f\"`. In a name slot (`read \"$n\"`, `declare \"$x\"`) it may be any name, and `--` does not change that; write the name itself: `read line`.";
+const ALIAS_REASON =
+  "authority-guard does not follow shell aliases a command defines (`alias y=git; eval 'y push'`), so it refuses any command that defines one or writes the `aliases` parameter; run the command by its own name instead.";
 const ENV_SPLIT_REASON =
   "authority-guard does not check this `env -S` string: its words are only known at run time (a variable, an escape, an unclosed quote, or a `${NAME}` among env's options or as its command), so it refuses it; pass the command to env as separate words.";
 const STDIN_REASON =
@@ -171,6 +174,7 @@ function limitReason(error: ReadingLimitError): string {
   if (error instanceof CommandRebindingError) return REBIND_REASON;
   if (error instanceof ScriptDepthError) return SCRIPT_DEPTH_REASON;
   if (error instanceof OpaqueShebangError) return OPAQUE_SHEBANG_REASON;
+  if (error instanceof AliasDefinitionError) return ALIAS_REASON;
   if (error instanceof UnreadableScriptError) return UNREADABLE_SCRIPT_REASON;
   return error instanceof SplitReadingError ? SPLIT_REASONS[error.split] : READINGS_REASON;
 }
