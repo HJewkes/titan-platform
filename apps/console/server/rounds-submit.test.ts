@@ -176,6 +176,33 @@ describe("rounds.submit", () => {
     expect(await exists(feedbackOf("lantern-cards-r1"))).toBe(false);
   });
 
+  it("writes the side answers a Ship round carries, with the Ship pick, to one feedback.json", async () => {
+    const id = "ship-tile-r1";
+    await cp(path.join(FIXTURE_ROUNDS.dir, id), path.join(dir, id), { recursive: true });
+    const file = path.join(dir, id, "round.json");
+    const manifest = JSON.parse(await readFile(file, "utf8"));
+    manifest.questions.unshift(
+      { id: "side-many", kind: "pick-many", prompt: "Which tiles need a second look?", options: ["Light", "Dark"] },
+      { id: "side-scale", kind: "scale", prompt: "How clear is the stripe?", min: 1, max: 5 },
+      { id: "side-text", kind: "text", prompt: "Anything else?" },
+    );
+    manifest.sections.find((section: { id: string }) => section.id === "side").questionIds.push("side-many", "side-scale", "side-text");
+    await writeFile(file, JSON.stringify(manifest));
+    const answers = [
+      { questionId: "badge-follow-up", pick: "No" },
+      { questionId: "side-many", picks: ["Light"] },
+      { questionId: "side-scale", value: 4 },
+      { questionId: "side-text", text: "Fine." },
+      { questionId: "ship-tiles", pick: "Ship" },
+    ];
+
+    const { envelope } = await submit({ id, manifestSha256: sha256(await readFile(file)), headSha: "89abcdef0123456789abcdef0123456789abcdef", answers });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    const written = FeedbackDocument.parse(JSON.parse(await readFile(feedbackOf(id), "utf8")));
+    expect(written.answers.map((answer) => answer.questionId)).toEqual(["badge-follow-up", "side-many", "side-scale", "side-text", "ship-tiles"]);
+  });
+
   it("answers a TD-920 CI-packet round, which only review-schema 0.3 accepts, with Ship at its bound head", async () => {
     const id = "td920-packet-r1";
     const head = "a1".repeat(20);
