@@ -527,7 +527,7 @@ describe("shepherd-pr after land", () => {
 
     await w.host.runtime.wait(runId);
 
-    expect(cleanupOf(w, runId).result).toMatchObject({ ref: "children-open", retargeted: [{ pr: child, ok: false, error: "Error" }], caveats: expect.arrayContaining([`head ref of #1 kept: open #${child} still based on it`]) });
+    expect(cleanupOf(w, runId).result).toMatchObject({ ref: "children-open", retargeted: [{ pr: child, ok: false, error: expect.stringMatching(/^Error: validation failed$/) }], caveats: expect.arrayContaining([`head ref of #1 kept: open #${child} still based on it`]) });
     expect(w.fake.refs.has(branch)).toBe(true);
     expect(w.fake.pr(child)).toMatchObject({ state: "open", baseRef: branch });
     expect(w.host.runtime.status(runId)?.status).toBe("completed");
@@ -578,6 +578,27 @@ describe("shepherd-pr after land", () => {
     expect(cleanupOf(next, runId).result).toMatchObject({ ref: "deleted", retargeted: [{ pr: child, ok: true }] });
     expect(next.fake.pr(child)).toMatchObject({ state: "open", baseRef: next.fake.pr(1).baseRef });
     expect(next.fake.refs.has(branch)).toBe(false);
+  });
+
+  it("probes nothing for a base when it replays a run whose cleanup is recorded", async () => {
+    const dbPath = join(mkdtempSync(join(tmpdir(), "tp3311-")), "factory.db");
+    const first = shepherdWorld(() => [successRun("validate", 5)], undefined, undefined, { deploy: { dbPath, fake: fakeGitHub() } });
+    first.fake.addPr({ headSha: H1 });
+    landedBranch(first);
+    const runId = await runToMerge(first);
+    await first.host.runtime.wait(runId);
+    first.host.close();
+    const probes: string[] = [];
+
+    const next = shepherdWorld(() => [successRun("validate", 5)], undefined, undefined, {
+      deploy: { dbPath, fake: first.fake },
+      wrap: (port) => ({ ...port, findPr: async (...args: Parameters<GitHubPort["findPr"]>) => (probes.push("findPr"), port.findPr(...args)) }),
+    });
+    await next.host.adopt();
+    await next.host.runtime.wait(runId);
+
+    expect(cleanupOf(next, runId).result).toMatchObject({ ref: "deleted" });
+    expect(probes).toEqual([]);
   });
 
   for (const turn of ["off", "advisory"] as const) {

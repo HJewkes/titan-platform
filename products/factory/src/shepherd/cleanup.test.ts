@@ -58,7 +58,7 @@ function fakeTasks(state: TaskState, slicing: TaskSlicing = NO_SLICING): Cleanup
 
 const planOf = (...names: string[]): string => `# Plan\n\n\`\`\`burndown-slices\n${JSON.stringify(names.map((n) => ({ n, title: `slice ${n}`, points: 1, doneWhen: "a test passes", owns: [`src/${n}.ts`] })))}\n\`\`\`\n`;
 
-function world(options: { fake?: FakeGitHub; port?: GitHubPort; agents?: FakeAgent[]; task?: TaskState; slicing?: TaskSlicing; registration?: RegistrationInput; advisory?: (repo: string) => boolean; merged?: MergedPr } = {}) {
+function world(options: { fake?: FakeGitHub; port?: GitHubPort; agents?: FakeAgent[]; task?: TaskState; slicing?: TaskSlicing; registration?: RegistrationInput; advisory?: (repo: string) => boolean; merged?: MergedPr; pr?: number } = {}) {
   const fake = options.fake ?? mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO });
   const clock = { now: 0 };
   const agents = fakeAgents(clock, options.agents ?? []);
@@ -66,7 +66,7 @@ function world(options: { fake?: FakeGitHub; port?: GitHubPort; agents?: FakeAge
   const { ref, store } = storeRef(options.registration);
   const cleanup: CleanupPorts = { agents, tasks };
   const deps = { port: options.port ?? githubPort(fake.wire), store: ref, now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 30_000, cleanup, ...(options.advisory && { advisory: options.advisory }) };
-  const run = () => runCleanup(deps, { repo: REPO, pr: 1, runId: RUN, ...(options.merged && { merged: options.merged }) }, new AbortController().signal);
+  const run = () => runCleanup(deps, { repo: REPO, pr: options.pr ?? 1, runId: RUN, ...(options.merged && { merged: options.merged }) }, new AbortController().signal);
   return { fake, clock, agents, tasks, store, run };
 }
 
@@ -75,6 +75,56 @@ function mergedPr(fake: FakeGitHub, head: { headRef: string; headRepo: string | 
   if (!fake.refs.has(head.headRef)) fake.refs.set(head.headRef, fakeSha("head"));
   return fake;
 }
+
+describe("sh-cleanup of a branch an earlier cleanup kept as children-open", () => {
+  const KEPT = "feat/x";
+  const CHILD: MergedPr = { baseRef: KEPT, headRef: "feat/child", headRepo: REPO, headSha: fakeSha("child"), mergeSha: fakeSha("child-merge") };
+
+  /** The parent PR #1 merged with its branch kept; child #2 merged into that branch, and `open` PRs are still based on it. */
+  function keptWorld(open: number) {
+    const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: KEPT, headRepo: REPO });
+    fake.addPr({ headRef: "feat/child", headSha: CHILD.headSha, baseRef: KEPT, state: "closed", merged: true, mergeSha: CHILD.mergeSha });
+    fake.refs.set("feat/child", CHILD.headSha);
+    for (let i = 0; i < open; i += 1) fake.addPr({ headRef: `feat/other-${i}`, headSha: fakeSha(`o${i}`), baseRef: KEPT });
+    return world({ fake, pr: 2, merged: CHILD });
+  }
+
+  it("deletes the kept branch once the last child based on it has landed", async () => {
+    const w = keptWorld(0);
+
+    const result = await w.run();
+
+    expect(result).toMatchObject({ ref: "deleted", swept: KEPT });
+    expect(w.fake.refs.has(KEPT)).toBe(false);
+  });
+
+  it("keeps the branch while another open PR is still based on it", async () => {
+    const w = keptWorld(1);
+
+    const result = await w.run();
+
+    expect(result.swept).toBeUndefined();
+    expect(w.fake.refs.has(KEPT)).toBe(true);
+  });
+
+  it("never touches a base that is the head of a PR still open", async () => {
+    const w = keptWorld(0);
+    Object.assign(w.fake.pr(1), { state: "open", merged: false, mergeSha: null });
+
+    const result = await w.run();
+
+    expect(result.swept).toBeUndefined();
+    expect(w.fake.refs.has(KEPT)).toBe(true);
+  });
+
+  it("probes nothing for a PR landing on the default branch", async () => {
+    const w = world({ merged: { ...CHILD, baseRef: "main" } });
+
+    await w.run();
+
+    expect(w.fake.calls).not.toContain("findPr");
+  });
+});
 
 describe("sh-cleanup task", () => {
   it("closes the task when the registration names no slice", async () => {
@@ -300,6 +350,21 @@ describe("sh-cleanup after its own merge", () => {
 
     expect(deleted).toEqual([{ branch: "feat/x", repo: "fork/demo" }]);
     expect(getPrs(fake)).toBe(0);
+  });
+
+  it("records the class and a scrubbed, bounded message when a retarget fails", async () => {
+    const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO });
+    const child = fake.addPr({ headRef: "feat/y", headSha: fakeSha("y"), baseRef: "feat/x" }).number;
+    const port: GitHubPort = { ...githubPort(fake.wire), setPrBase: async () => Promise.reject(new Error(`${LEAKY_MESSAGE} ${"x".repeat(400)}`)) };
+    const w = world({ fake, port, merged: MERGED });
+
+    const result = await w.run();
+
+    const error = result.retargeted?.[0]?.error ?? "";
+    expect(result.retargeted).toMatchObject([{ pr: child, ok: false }]);
+    expect(error).toMatch(/^Error: GET /);
+    expect(error.length).toBeLessThanOrEqual(200);
+    expectNoLeak(error);
   });
 
   it("retargets no PR when the merged head is the default branch", async () => {
