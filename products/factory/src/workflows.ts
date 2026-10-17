@@ -61,7 +61,8 @@ import { tickPacing, type TickPacing } from "./tick-pacing.js";
 import { portReads, prSnapshot } from "./workflows/pr-snapshot.js";
 import { pushSignal } from "./shepherd/push-signal.js";
 import { localBasementSuite, suiteRules, type SuiteRules } from "./shepherd/suite-host.js";
-import { configuredVisualDelivery, type VisualDeliveryWatch } from "./shepherd/visual-delivery-sweep.js";
+import type { VisualDeliveryWatch } from "./shepherd/services.js";
+import { configuredVisualDelivery } from "./shepherd/visual-delivery-sweep.js";
 import { DEFAULT_PACKAGER_PROFILE, type VisualPacketPorts } from "./shepherd/visual-packet-trigger.js";
 
 /** Every workflow the CLI hosts. Pilots register here as their slices land (doc-change in S3). */
