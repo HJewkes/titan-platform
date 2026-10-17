@@ -52,6 +52,16 @@ const GATE_CARDS: Readonly<Record<string, GateCard>> = {
     irreversible: ABANDON_IRREVERSIBLE,
     onSilence: WAIT,
   },
+  "sh-visual-accept": {
+    proceed: "accept-set",
+    consequence: {
+      "accept-set": "The fixer is told to commit exactly this regenerated set and nothing else.",
+      "send-back": "The fixer gets your note and pushes a new head.",
+      abandon: ABANDON,
+    },
+    irreversible: ABANDON_IRREVERSIBLE,
+    onSilence: WAIT,
+  },
   "stuck-behind": {
     proceed: "retry",
     consequence: { retry: "Shepherd updates the PR branch from its base again.", abandon: ABANDON },

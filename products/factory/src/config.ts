@@ -211,6 +211,11 @@ export const FactoryConfigSchema = z.object({
       consoleAnswers: z.strictObject({ roundsDir: absolutePath }).optional(),
       /** Off when absent. `shadow` records where a visual approve-merge gate would spawn its review packager; `on` spawns it. */
       visualPacket: z.enum(["off", "shadow", "on"]).optional(),
+      /**
+       * Off when absent. `shadow` or `on` asks the owner, at a head whose only red check is its seat's `visualBaselines.check`,
+       * whether CI's regenerated set is the one to commit, before any fixer is woken. Only `on` lets that set carry a later head.
+       */
+      visualSetCarry: z.enum(["off", "shadow", "on"]).optional(),
       /** The profile that packager spawns under; absent means `review-packager`. */
       visualPacketProfile: profileName.optional(),
       /** The `titan-review` binary that packager's brief names; absent means `$HOME/.local/bin/titan-review`. */

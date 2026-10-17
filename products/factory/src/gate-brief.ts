@@ -106,10 +106,13 @@ export const SEND_BACK = "send-back";
  * for the readers that take the gate's head from it.
  */
 function sendBackShapes(headSha: string): Record<string, unknown>[] {
-  const shapes = [
+  return answerShapes([
     z.strictObject({ decision: z.enum(["merge", "abandon"]), headSha: z.literal(headSha) }),
     z.strictObject({ decision: z.literal(SEND_BACK), headSha: z.literal(headSha), note: z.string() }),
-  ];
+  ]);
+}
+
+function answerShapes(shapes: readonly z.ZodType[]): Record<string, unknown>[] {
   return shapes.map((shape) => {
     const json: Record<string, unknown> = z.toJSONSchema(shape);
     delete json.$schema;
@@ -209,6 +212,38 @@ export function sentBackDecision(target: PrHead & { situation: string }) {
   });
   const summary = summarize(`${where(target)} needs a decision.`, target.situation, "Recommend waiting for a new head.");
   return { schema, brief: brief(summary, prEvidence(target.repo, target.pr), questions) };
+}
+
+const ACCEPT_SET = "accept-set";
+
+const visualAnswerNoted = (answer: { decision: string; note?: unknown; approvedSet?: unknown }, ctx: z.RefinementCtx): void => {
+  if (answer.decision === "abandon") return;
+  if (typeof answer.note !== "string" || answer.note.trim() === "") ctx.addIssue({ code: "custom", path: ["note"], message: "the answer carries the fixer's note" });
+  if (answer.decision === ACCEPT_SET && answer.approvedSet === undefined) ctx.addIssue({ code: "custom", path: ["approvedSet"], message: "an accept-set carries the approved set" });
+};
+
+/**
+ * Only the console's Ship route builds `approvedSet` and its note, so each shape is spelled out in `anyOf` as for
+ * approve-merge's send-back: a bare `accept-set` from gateNotify or a coordinator fails at the store.
+ */
+export function visualAcceptDecision(target: PrHead & { check: string }) {
+  const approvedSet = z.looseObject({ fromHead: z.literal(target.headSha) });
+  const { schema, questions } = decisionGate({
+    question: oneLine(`Accept the regenerated baselines at ${target.headSha}?`, MAX_QUESTION),
+    options: [
+      { id: ACCEPT_SET, label: "Accept this exact set" },
+      { id: SEND_BACK, label: "Send back to the implementer with your note" },
+      { id: "abandon", label: "Abandon the PR" },
+    ],
+    shape: { headSha: z.literal(target.headSha), note: z.string().optional(), approvedSet: approvedSet.optional() },
+  });
+  const shapes = answerShapes([
+    z.strictObject({ decision: z.literal(ACCEPT_SET), headSha: z.literal(target.headSha), approvedSet, note: z.string() }),
+    z.strictObject({ decision: z.literal(SEND_BACK), headSha: z.literal(target.headSha), note: z.string() }),
+    z.strictObject({ decision: z.literal("abandon"), headSha: z.literal(target.headSha) }),
+  ]);
+  const summary = summarize(`CI regenerated visual baselines on ${where(target)}.`, `Only ${oneLine(target.check, MAX_QUESTION)} is red.`, "Accepting has the fixer commit exactly this set.");
+  return { schema: schema.superRefine(visualAnswerNoted).meta({ anyOf: shapes }), brief: brief(summary, prEvidence(target.repo, target.pr), questions) };
 }
 
 export function frozenDecision(target: { repo: string; mergeSha: string; situation: string }) {
