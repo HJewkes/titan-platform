@@ -2,17 +2,24 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { gateMigration } from "@titan-design/hitl/sqlite";
+import { openGate } from "@titan-design/hitl";
+import { SqliteGateStore, gateBriefMigration, gateEvidenceMigration, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { workflowMigration, workflowOwnershipMigration } from "@titan-design/workflow";
 import { z } from "zod";
 import { EXIT, runCli, type CliDeps } from "./cli.js";
 import { defineWorkflow, dispatchStepIds } from "./definition.js";
+import { gateAskMigration } from "./gate-ask-store.js";
+import { gateBatchMigration } from "./gate-batch-store.js";
+import { approveMergeDecision } from "./gate-brief.js";
+import type { PolicyRule } from "./gate-policy.js";
 import { openFactoryHost } from "./host.js";
 import type { StepRoute } from "@titan-design/workflow";
+import { authorityGateReason, pendingCheck } from "./test-support/authority-reason.js";
 import { OWNER } from "./test-support/resolver.js";
 import { SHEPHERD_MIGRATIONS } from "./workflows.js";
 import { LAND_STEPS } from "./workflows/land.js";
+import { approveMergeGate } from "./workflows/land-approval.js";
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -213,7 +220,7 @@ describe("gate resolver migration", () => {
     db.close();
     expect(column).toBeDefined();
     expect(triggers.length).toBeGreaterThan(0);
-    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]);
+    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28]);
   });
 });
 
@@ -315,5 +322,83 @@ describe("a recovered step the replay never reaches", () => {
 
     expect(run.status).toBe("recovery_required");
     expect(run.error).toBe("replay never reached recovered step merge:r3:0");
+  });
+});
+
+describe("gate rule migrations on a factory database from before them", () => {
+  const HEAD = "c".repeat(40);
+  const REASON = authorityGateReason(HEAD, pendingCheck(HEAD));
+  const MRG_AU: PolicyRule = { table: "authority", rowId: "MRG-AU", version: 1 };
+  const tenantRoutes = Object.assign([...routes], { database: { extraMigrations: SHEPHERD_MIGRATIONS, bind: () => () => undefined } });
+  const land = defineWorkflow({
+    name: "land-gate",
+    steps: [{ id: "approve-merge", kind: "assisted" }],
+    run: async (ctx) => void (await approveMergeGate(MRG_AU)(ctx, { repo: "o/r", pr: 1, headSha: HEAD, round: 0, reason: REASON })),
+  });
+
+  /** A pending land approve-merge gate opened the way main opened it: no rule. */
+  function openRuleless(gates: SqliteGateStore, runId: string): string {
+    const { schema, brief } = approveMergeDecision({ repo: "o/r", pr: 1, headSha: HEAD, reason: REASON, reviewedMerge: true });
+    const prompt = `Merge PR #1 in o/r at head ${HEAD}? CI is green. Policy authority/MRG-AU: ${REASON}`;
+    return openGate(gates, { id: `${runId}/approve-merge`, prompt, schema, ...brief }).id;
+  }
+
+  function mergeEvidence(gateId: string) {
+    const runs = [{ id: 11, name: "validate", conclusion: "success", headSha: HEAD }];
+    return {
+      ...{ kind: "approve-merge", gateId, repo: "o/r", pr: 1, headSha: HEAD, readAt: "2026-10-07T18:00:00.000Z" },
+      run: { workflow: "shepherd-pr", repo: "o/r", pr: 1, rule: "authority/MRG-AU", reason: REASON, merge: "auto", visualPaths: false, held: false, frozen: false },
+      verdict: { step: `sh-await-verdict:${HEAD}`, verdict: "MERGE", head: HEAD, reviewer: "rv-synthetic" },
+      checks: { base: "main", required: ["validate"], runs },
+      pull: { state: "open", headSha: HEAD, mergeableState: "clean", mergeable: "MERGEABLE" },
+    };
+  }
+
+  /** The factory database as main's host left it: its exact migration list, and two pending rule-less merge gates. */
+  function preRuleDatabase(): { dbPath: string; gateIds: string[] } {
+    const dbPath = dbFile();
+    mkdirSync(dirname(dbPath), { recursive: true });
+    const db = openDatabase(dbPath);
+    runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(7), gateBriefMigration(13), gateEvidenceMigration(14), gateBatchMigration(15), gateAskMigration(20), ...SHEPHERD_MIGRATIONS]);
+    const gates = new SqliteGateStore(db, { migrate: false });
+    const gateIds = ["run-old-1", "run-old-2"].map((runId) => openRuleless(gates, runId));
+    db.close();
+    return { dbPath, gateIds };
+  }
+
+  it("gains the rule column and versions 27 and 28 on reopen, and its old gates resolve by owner-remote and by a coordinator on evidence", () => {
+    const { dbPath, gateIds } = preRuleDatabase();
+    const [ownerGate = "", coordinatorGate = ""] = gateIds;
+
+    const host = openFactoryHost({ dbPath, workflows: [approval], routes: tenantRoutes });
+    try {
+      host.gates.resolve(ownerGate, { decision: "merge", headSha: HEAD }, { class: "owner-remote", id: "owner", channel: "console:ship" });
+      host.gates.resolve(coordinatorGate, { decision: "merge", headSha: HEAD }, { class: "coordinator", id: "tc-synthetic", channel: "factory-cli" }, mergeEvidence(coordinatorGate));
+
+      expect(host.gates.get(ownerGate)).toMatchObject({ status: "resolved", rule: undefined, resolvedBy: { class: "owner-remote" } });
+      expect(host.gates.get(coordinatorGate)).toMatchObject({ status: "resolved", rule: undefined, resolvedBy: { class: "coordinator" } });
+    } finally {
+      host.close();
+    }
+    const db = openDatabase(dbPath);
+    const column = db.prepare("SELECT 1 FROM pragma_table_info('hitl_gate') WHERE name = 'rule'").get();
+    const versions = appliedVersions(db);
+    db.close();
+    expect(column).toBeDefined();
+    expect(versions.slice(-2)).toEqual([27, 28]);
+  });
+
+  it("stamps a merge gate land opens afterwards with the MRG-AU row and the coordinator delegate", async () => {
+    const { dbPath } = preRuleDatabase();
+    const host = openFactoryHost({ dbPath, workflows: [land], routes: tenantRoutes, gatePollMs: 10 });
+
+    try {
+      const runId = host.runtime.start("land-gate");
+      await vi.waitFor(() => expect(host.runtime.status(runId)?.status).toBe("paused"));
+
+      expect(host.gates.get(`${runId}/approve-merge`)?.rule).toEqual({ table: "F5", version: "1.0.0", ruleId: "MRG-AU", resolvers: ["owner-terminal", "owner-remote"], delegates: ["coordinator"] });
+    } finally {
+      host.close();
+    }
   });
 });
