@@ -629,7 +629,7 @@ Key exports:
 - `envelope`: `describeError`, `errorEnvelope`, `successEnvelope`
 - `zod-introspect`: `arrayElementKind`, `fieldSchema`, `isOptionalField`, `schemaKind`, `unwrapSchema`
 - `cli-options`: `camelizeFlagKey`, `coerceCliValue`
-- +28 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/registry)
+- +30 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/registry)
 
 <a id="cap-retrieval"></a>
 

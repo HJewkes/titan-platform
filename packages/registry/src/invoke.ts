@@ -32,23 +32,9 @@ export async function invokeCommand<Ctx extends BaseContext>(
   options: InvokeOptions = {}
 ): Promise<Invocation> {
   const formatError = options.formatError ?? describeError;
-  const invalidArgsCode = options.invalidArgsCode ?? EXIT.DATAERR;
 
   const parsed = cmd.args.safeParse(rawArgs ?? {});
-  if (!parsed.success) {
-    try {
-      const message = options.formatInvalidArgs
-        ? options.formatInvalidArgs(parsed.error.issues)
-        : `Invalid arguments: ${formatZodError(parsed.error)}`;
-      return {
-        envelope: errorEnvelope(message, invalidArgsCode),
-        exitCode: invalidArgsCode,
-      };
-    } catch (err) {
-      const { message, code } = formatError(err);
-      return { envelope: errorEnvelope(message, code), exitCode: code };
-    }
-  }
+  if (!parsed.success) return invalidArguments(parsed.error, options);
 
   try {
     const result: unknown = await cmd.run(parsed.data, ctx);
@@ -87,4 +73,17 @@ function formatZodError(error: ZodError): string {
   return error.issues
     .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
     .join("; ");
+}
+
+function invalidArguments(error: ZodError, options: InvokeOptions): Invocation {
+  const invalidArgsCode = options.invalidArgsCode ?? EXIT.DATAERR;
+  try {
+    const message = options.formatInvalidArgs
+      ? options.formatInvalidArgs(error.issues)
+      : `Invalid arguments: ${formatZodError(error)}`;
+    return { envelope: errorEnvelope(message, invalidArgsCode), exitCode: invalidArgsCode };
+  } catch (err) {
+    const { message, code } = (options.formatError ?? describeError)(err);
+    return { envelope: errorEnvelope(message, code), exitCode: code };
+  }
 }
