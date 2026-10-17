@@ -22,6 +22,7 @@ import type { ShepherdSource } from "./shepherd.js";
 
 const PACKET_FILE = "packet.json";
 const APPROVE_MERGE = /(^|\/)approve-merge(:\d+)?$/;
+const VISUAL_ACCEPT = /(^|\/)sh-visual-accept(:\d+)?$/;
 
 const packetHead = z.looseObject({ headTree: z.string().regex(/^[0-9a-f]{40}$/) });
 
@@ -60,7 +61,7 @@ export interface ListenerDeps {
 interface RoundAnswer {
   roundId: string;
   merge: Merge;
-  choice: AnswerChoice;
+  verdict: Verdict;
   tree: string;
   packetSha: string;
 }
@@ -108,9 +109,11 @@ async function readRound(file: string): Promise<RoundRead> {
   }
 }
 
-/** Ship merges; the one other option sends back. A question with more options than that is not one this relays. */
-function choiceOf(question: ShipQuestion, merge: Merge, pick: string): AnswerChoice | undefined {
-  if (merge.ship.includes(pick)) return "merge";
+type Verdict = "ship" | "send-back";
+
+/** Ship ships; the one other option sends back. A question with more options than that is not one this relays. */
+function verdictOf(question: ShipQuestion, merge: Merge, pick: string): Verdict | undefined {
+  if (merge.ship.includes(pick)) return "ship";
   const others = question.options.filter((option) => !merge.ship.includes(option));
   return others.length === 1 && others[0] === pick ? "send-back" : undefined;
 }
@@ -129,10 +132,10 @@ async function readRoundAnswer(deps: ListenerDeps, roundId: string): Promise<Rou
   for (const question of manifest.questions) {
     const pick = feedback.answers.find((answer) => answer.questionId === question.id)?.pick;
     if (question.kind !== "pick-one" || !question.merge || pick === undefined) continue;
-    const choice = choiceOf(question, question.merge, pick);
+    const verdict = verdictOf(question, question.merge, pick);
     const tree = packetHeadTree(packetBytes);
-    if (choice === undefined || tree === undefined) return undefined;
-    return { roundId, merge: question.merge, choice, tree, packetSha: sha256(packetBytes) };
+    if (verdict === undefined || tree === undefined) return undefined;
+    return { roundId, merge: question.merge, verdict, tree, packetSha: sha256(packetBytes) };
   }
   return undefined;
 }
@@ -161,19 +164,23 @@ async function bindGate(shepherd: ListenerDeps["shepherd"], answer: RoundAnswer)
   if (!row) return { outcome: { status: "gone", reason: `no shepherd row for ${merge.repo}#${merge.pr}` } };
   if (row.headSha !== merge.headSha) return { outcome: { status: "moved", currentHead: row.headSha } };
   const gate = row.pendingGate;
-  if (!gate || !(APPROVE_MERGE.test(gate.stepId) || APPROVE_MERGE.test(gate.gateId))) {
-    return { outcome: { status: "gone", reason: "no pending approve-merge gate" } };
+  const isGate = (pattern: RegExp): boolean => gate !== undefined && gate !== null && (pattern.test(gate.stepId) || pattern.test(gate.gateId));
+  if (!gate || !(isGate(APPROVE_MERGE) || isGate(VISUAL_ACCEPT))) {
+    return { outcome: { status: "gone", reason: "no pending approve-merge or visual accept gate" } };
   }
-  const { roundId, choice, tree, packetSha } = answer;
+  // Decided here, where the gate is known: Ship on the accept gate must never post `merge`.
+  const choice: AnswerChoice = answer.verdict === "send-back" ? "send-back" : isGate(VISUAL_ACCEPT) ? "accept-set" : "merge";
+  const { roundId, tree, packetSha } = answer;
   return { request: { runId: row.runId, gateId: gate.gateId, headSha: merge.headSha, tree, packetSha, roundId, choice } };
 }
 
 function recordOf(answer: RoundAnswer, decision: Decision, outcome: AnswerOutcome, at: Date): AnswerRecord {
-  const { runId, gateId } = decision.request ?? {};
+  // With no gate to post to, the record names the pick-level choice.
+  const { runId, gateId, choice } = decision.request ?? {};
   return {
     schema: ANSWER_SCHEMA_ID,
     at: at.toISOString(),
-    request: { ...(runId !== undefined && { runId }), ...(gateId !== undefined && { gateId }), headSha: answer.merge.headSha, choice: answer.choice },
+    request: { ...(runId !== undefined && { runId }), ...(gateId !== undefined && { gateId }), headSha: answer.merge.headSha, choice: choice ?? (answer.verdict === "ship" ? "merge" : "send-back") },
     outcome,
   };
 }
