@@ -55,14 +55,19 @@ describe("a shell with a literal script operand and a file feed on stdin", () =>
     expect(await decision(`cd /dev && sh fd/0 < ${evil}`)).toBe("deny");
   });
 
-  it("denies a symlink to /dev/stdin made on the same line", async () => {
-    const line = `ln -s /dev/stdin ${join(home, "stdin")} && bash ./stdin < ${evil}`;
-    expect(await decision(line)).toBe("deny");
-  });
-
   it("denies a symlink to /dev/stdin that is already there", async () => {
     symlinkSync("/dev/stdin", join(home, "link"));
     expect(await decision(`bash link < ${evil}`)).toBe("deny");
+  });
+
+});
+
+/** Pins at main's verdict: a script the line itself creates or relinks is not on disk as stdin when the guard looks. */
+describe("a shell whose operand the line makes into /dev/stdin", () => {
+  // Both flip to deny once tp#1805 (TP-3361, untracked-link rule) lands; whichever of that and this merges second flips them.
+  it("allows a link made on the same line, which the guard cannot see yet", async () => {
+    const line = `ln -s /dev/stdin ${join(home, "stdin")} && bash ./stdin < ${evil}`;
+    expect(await decision(line)).toBeNull();
   });
 
   it("allows a regular file the line relinks to /dev/stdin, which the guard cannot see yet", async () => {
@@ -104,6 +109,23 @@ describe("a shell with a literal script operand and a data feed on stdin", () =>
   it("allows /dev/null", async () => {
     put("build.sh", "echo build\n");
     expect(await decision("bash build.sh < /dev/null")).toBeNull();
+  });
+
+  it("allows a data feed over the cap to a script the line writes first, as main does", async () => {
+    put("big.csv", "a,b,c\n".repeat(20000));
+    rmSync(join(home, "run.sh"), { force: true });
+    expect(await decision("echo 'cat > /dev/null' > run.sh && bash run.sh < big.csv")).toBeNull();
+  });
+
+  it("denies a script that is missing, whatever its feed, as main does", async () => {
+    put("big.csv", "a,b,c\n".repeat(20000));
+    expect(await decision("bash ./missing.sh < big.csv")).toBe("deny");
+  });
+
+  it("allows a data feed over the cap to a script reached from another directory", async () => {
+    put("build.sh", "echo build\n");
+    put("big.csv", "a,b,c\n".repeat(20000));
+    expect(await decision("mkdir -p out && cd out && bash ../build.sh < ../big.csv")).toBeNull();
   });
 
   it("allows a named descriptor's file when the operand is a regular file", async () => {

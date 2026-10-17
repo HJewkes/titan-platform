@@ -181,6 +181,7 @@ describe("a shell runs a descriptor a {name} redirect may have opened (TP-3279)"
   });
 
   it.each([
+    "bash {fd}< ./x.sh ./ok.sh",
     "cat {fd}< ./x.sh",
     "cat {fd} < ./x.sh",
     "exec {fd}< ./x.sh",

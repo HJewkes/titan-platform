@@ -107,16 +107,18 @@ function shellTargets(cmd: SimpleCommand, home: string): ScriptTarget[] {
 }
 
 /**
- * Whether a literal script operand may name the shell's own stdin (`cd /dev && bash stdin < x.sh`), so its feed is a
- * script too. A regular file on disk is read as the script and its feed is data, which a feed too large to charge to
- * the line's budget (`bash import.sh < big.csv`) must not refuse. Anything else the disk shows, absent, a device, a FIFO
- * or a link to one, or a stat that fails, may be stdin once the line has run.
+ * Whether a literal script operand is on disk as something other than a regular file (`/dev/stdin`, `fd/0`, a link to
+ * one, a FIFO or a device), so it may be the shell's own stdin and its feed is a script too. A regular file is read as
+ * the script and its feed is data, which a feed too large to charge to the line's budget (`bash import.sh < big.csv`)
+ * must not refuse. An absent operand is left to the verdict it already has, and a stat that fails for another reason
+ * refuses, as the guard cannot tell what the path is.
  */
 function operandMayBeFed(path: string): boolean {
   try {
     return !statSync(path).isFile();
-  } catch {
-    return true;
+  } catch (error) {
+    const code = error instanceof Error && "code" in error ? error.code : null;
+    return code !== "ENOENT" && code !== "ENOTDIR";
   }
 }
 
