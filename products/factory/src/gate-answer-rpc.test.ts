@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CLIENT_HEADER, silentLogger } from "@titan-design/daemon";
 import { fakeGitHub, githubPort, type FakeGitHub, type GitHubPort } from "@titan-design/github";
-import { GateResolverRefused } from "@titan-design/hitl";
+import type { GateRule } from "@titan-design/hitl";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineWorkflow } from "./definition.js";
@@ -14,6 +14,7 @@ import { createFactoryRegistry } from "./registry.js";
 import { startFactoryServer, type FactoryServer } from "./serve.js";
 import { TEST_BRIEF } from "./test-support/brief.js";
 import { shepherdFixture } from "./test-support/shepherd.js";
+import { tableGateRule } from "./workflows/land-approval.js";
 
 const REPO = "example-org/example-repo";
 const NOW_MS = Date.parse("2026-10-16T12:00:00.000Z");
@@ -22,14 +23,27 @@ const H2 = "b".repeat(40);
 const TREE = "c".repeat(40);
 const ROUND_ID = "r-1";
 
+/** A rule that omits owner-remote, so the store itself refuses a console Ship. */
+const OWNER_TERMINAL_ONLY: GateRule = { table: "example-table", version: "1", ruleId: "example-row", resolvers: ["owner-terminal"] };
+
+/** `stamped` is land's own stamp for the policy row; `owner-terminal` is the synthetic rule above. */
+type GateStamp = "stamped" | "owner-terminal";
+
+function stampOf(stamp: string | undefined, table: string, rowId: string): GateRule | undefined {
+  if (stamp === "owner-terminal") return OWNER_TERMINAL_ONLY;
+  return stamp === "stamped" ? tableGateRule({ table, rowId, version: 1 }) : undefined;
+}
+
 const mergeGate = defineWorkflow({
   name: "merge-gate",
   steps: [{ id: "approve-merge", kind: "assisted" }],
   run: async (ctx) => {
     const pr = ctx.param("pr")!;
-    const prompt = `Merge PR #${pr} in ${REPO} at head ${H}? CI is green. Policy authority/MRG-AU: synthetic reason`;
+    const [table, rowId] = (ctx.param("policy") ?? "authority/MRG-AU").split("/") as [string, string];
+    const prompt = `Merge PR #${pr} in ${REPO} at head ${H}? CI is green. Policy ${table}/${rowId}: synthetic reason`;
     const { schema } = approveMergeDecision({ repo: REPO, pr: Number(pr), headSha: H, reason: "synthetic reason", reviewedMerge: false, sendBack: ctx.param("sendBack") === "1" });
-    await ctx.assisted("approve-merge", prompt, { schema, brief: TEST_BRIEF });
+    const rule = stampOf(ctx.param("stamp"), table, rowId);
+    await ctx.assisted("approve-merge", prompt, { schema, brief: TEST_BRIEF, ...(rule && { rule }) });
   },
 });
 
@@ -50,7 +64,15 @@ interface World {
   pr: number;
 }
 
-async function world({ mounted = true, port, sendBack = false }: { mounted?: boolean; port?: (base: GitHubPort) => GitHubPort; sendBack?: boolean } = {}): Promise<World> {
+interface WorldOptions {
+  mounted?: boolean;
+  port?: (base: GitHubPort) => GitHubPort;
+  sendBack?: boolean;
+  policy?: string;
+  stamp?: GateStamp;
+}
+
+async function world({ mounted = true, port, sendBack = false, policy, stamp }: WorldOptions = {}): Promise<World> {
   const dir = mkdtempSync(join(tmpdir(), "factory-answer-ship-"));
   dirs.push(dir);
   const roundsDir = join(dir, "rounds");
@@ -74,7 +96,7 @@ async function world({ mounted = true, port, sendBack = false }: { mounted?: boo
   servers.push(server);
   const { number: pr } = github.addPr({ headSha: H });
   github.commits.set(H, { sha: H, parents: [], tree: TREE });
-  const runId = server.host.runtime.start("merge-gate", { pr: String(pr), sendBack: sendBack ? "1" : "0" });
+  const runId = server.host.runtime.start("merge-gate", { pr: String(pr), sendBack: sendBack ? "1" : "0", ...(policy && { policy }), ...(stamp && { stamp }) });
   const gateId = `${runId}/approve-merge`;
   await vi.waitFor(() => expect(server.host.gates.get(gateId)?.status).toBe("pending"));
   return { server, github, dir, roundsDir, runId, gateId, pr };
@@ -175,18 +197,36 @@ describe("POST /gates/answer-ship", () => {
     expect(w.server.host.gates.get(w.gateId)?.status).toBe("pending");
   });
 
-  it("refuses with 403 when the gate store refuses the owner-remote resolver, leaving the gate pending", async () => {
-    const w = await world();
+  it("refuses with 403 when the gate's rule admits owner-terminal only, leaving the gate pending", async () => {
+    const w = await world({ stamp: "owner-terminal" });
     const packetSha = writeRound(w);
-    vi.spyOn(w.server.host.gates, "resolve").mockImplementation((id, _payload, resolver) => {
-      throw new GateResolverRefused(id, resolver.class, "the rule admits owner-terminal only");
-    });
 
     const res = await post(w.server, answer(w, packetSha));
 
     expect(res.status).toBe(403);
     expect(await res.json()).toMatchObject({ outcome: "refused", reason: "resolver" });
     expect(w.server.host.gates.get(w.gateId)?.status).toBe("pending");
+  });
+
+  it("resolves a gate stamped with the MRG-AU row, which names owner-remote", async () => {
+    const w = await world({ stamp: "stamped" });
+    const packetSha = writeRound(w);
+
+    const res = await post(w.server, answer(w, packetSha));
+
+    expect(res.status).toBe(200);
+    expect(w.server.host.gates.get(w.gateId)).toMatchObject({ status: "resolved", rule: { ruleId: "MRG-AU" }, resolvedBy: { class: "owner-remote" } });
+  });
+
+  it("refuses with 403 a release gate, which REL-CO leaves to owner-terminal", async () => {
+    const w = await world({ policy: "shepherd-release/owner-gate", stamp: "stamped" });
+    const packetSha = writeRound(w);
+
+    const res = await post(w.server, answer(w, packetSha));
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ outcome: "refused", reason: "resolver" });
+    expect(w.server.host.gates.get(w.gateId)).toMatchObject({ status: "pending", rule: { ruleId: "REL-CO", resolvers: ["owner-terminal"] } });
   });
 
   it("appends one 0600 pick-later follow-up when merge-pick-later resolves, and none for a replay", async () => {
