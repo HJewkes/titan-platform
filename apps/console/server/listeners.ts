@@ -164,8 +164,9 @@ async function bindGate(shepherd: ListenerDeps["shepherd"], answer: RoundAnswer)
   if (!row) return { outcome: { status: "gone", reason: `no shepherd row for ${merge.repo}#${merge.pr}` } };
   if (row.headSha !== merge.headSha) return { outcome: { status: "moved", currentHead: row.headSha } };
   const gate = row.pendingGate;
-  const isGate = (pattern: RegExp): boolean => gate !== undefined && gate !== null && (pattern.test(gate.stepId) || pattern.test(gate.gateId));
-  if (!gate || !(isGate(APPROVE_MERGE) || isGate(VISUAL_ACCEPT))) {
+  if (!gate) return { outcome: { status: "gone", reason: "no pending approve-merge or visual accept gate" } };
+  const isGate = (pattern: RegExp): boolean => pattern.test(gate.stepId) || pattern.test(gate.gateId);
+  if (!(isGate(APPROVE_MERGE) || isGate(VISUAL_ACCEPT))) {
     return { outcome: { status: "gone", reason: "no pending approve-merge or visual accept gate" } };
   }
   // Decided here, where the gate is known: Ship on the accept gate must never post `merge`.
