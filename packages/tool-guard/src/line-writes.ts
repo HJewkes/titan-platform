@@ -2,7 +2,7 @@ import type { SimpleCommand } from "./shell/commands.js";
 import type { RedirectToken } from "./shell/lexer.js";
 import { resolvePath } from "./shell/path.js";
 import { commandOutput, SPLICING_SHELLS } from "./shell/sub-output.js";
-import { UntrackedWriteError } from "./shell/unsure-readings.js";
+import { UnreadableScriptError, UntrackedWriteError } from "./shell/unsure-readings.js";
 import type { ClassifyContext } from "./types.js";
 
 /** Redirects that only read; they write nothing whatever their target. */
@@ -92,10 +92,20 @@ function withEffect(line: ClassifyContext, effect: Effect, text: string | null):
  * the state an `&&` chain falls back to as well, since the command ran whether or not the chain breaks later.
  */
 function withReadings(line: ClassifyContext, path: string | null, update: (prior: string[] | null) => string[] | null): ClassifyContext {
-  const readings = path === null ? null : update(trackedReadings(line, path));
+  const readings = path === null ? null : update(priorReadings(line, path));
   const next: ClassifyContext = { ...line, scriptReadings: (p) => (path === null ? null : p === path ? readings : trackedReadings(line, p)) };
   const trust = line.chainTrust;
   return trust ? { ...next, chainTrust: { ...trust, fallback: withReadings(trust.fallback, path, update) } } : next;
+}
+
+/** What `path` may hold before a write; one the guard read only in part leaves the file untracked, since a shell runs the rest. */
+function priorReadings(line: ClassifyContext, path: string): string[] | null {
+  try {
+    return trackedReadings(line, path);
+  } catch (error) {
+    if (!(error instanceof UnreadableScriptError)) throw error;
+    return error.head === null ? [] : null;
+  }
 }
 
 function withWrite(prior: string[] | null, text: string, append: boolean): string[] | null {
@@ -115,7 +125,8 @@ function written(cmd: SimpleCommand): string | null {
 function diskText(ctx: ClassifyContext, path: string): string | null {
   try {
     return ctx.readScript(path);
-  } catch {
+  } catch (error) {
+    if (error instanceof UnreadableScriptError) throw error;
     return null;
   }
 }

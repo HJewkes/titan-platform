@@ -9,7 +9,7 @@ export interface ClassifyContext {
   readLink(path: string): string | null;
   /** Current branch of the checkout at `dir`, null when detached or not a checkout. */
   readHead(dir: string): string | null;
-  /** Text of a script run by path, null when it cannot be read. */
+  /** Text of a script run by path, null for none. A node context throws `UnreadableScriptError` for one it cannot read in full. */
   readScript(path: string): string | null;
   /**
    * Set by the classifier once a line writes a script: every text the script may then hold, the disk's included, or

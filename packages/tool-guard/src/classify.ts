@@ -13,7 +13,7 @@ import type { ScriptTarget } from "./scripts.js";
 import { extractCommands } from "./shell/commands.js";
 import type { ExtractOptions, SimpleCommand } from "./shell/commands.js";
 import { ParseError } from "./shell/lexer.js";
-import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, ReadingLimitError, ScriptBudgetError } from "./shell/unsure-readings.js";
+import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, ReadingLimitError, ScriptBudgetError, UnreadableScriptError } from "./shell/unsure-readings.js";
 import type { ScriptOverrun } from "./shell/unsure-readings.js";
 import { classified } from "./spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "./types.js";
@@ -154,10 +154,20 @@ function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: Script
  */
 function scriptVerdicts(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext, budget: ScriptMemo): ClassifiedAction[] {
   const added = cmd.added === true;
-  return scriptReadings(ctx, target.path).flatMap((text) => {
+  return targetReadings(ctx, target).flatMap((text) => {
     if (added || target.kind === "shell") charge(budget, { script: target.path.slice(target.path.lastIndexOf("/") + 1), bytes: Buffer.byteLength(text), added });
     return scriptText(cmd, target, text, ctx);
   });
+}
+
+/** A shell runs every byte of its script, so one the guard cannot read in full refuses the line; an interpreter's gets the mention rule over what was read. */
+function targetReadings(ctx: ClassifyContext, target: ScriptTarget): string[] {
+  try {
+    return scriptReadings(ctx, target.path);
+  } catch (error) {
+    if (target.kind === "shell" || !(error instanceof UnreadableScriptError)) throw error;
+    return error.head === null ? [] : [error.head];
+  }
 }
 
 function charge(budget: ScriptMemo, script: Omit<ScriptOverrun, "total">): void {

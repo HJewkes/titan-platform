@@ -74,6 +74,18 @@ export class UnknownStdinError extends ReadingLimitError {
   }
 }
 
+/**
+ * A script a shell would run that the guard cannot read in full: a FIFO, a directory, a missing or unreadable file, or
+ * one longer than it reads. The hook denies it unchecked. `head` holds what was read, for a reading that needs no more.
+ */
+export class UnreadableScriptError extends ReadingLimitError {
+  constructor(readonly head: string | null) {
+    super();
+    this.message = "a script the guard cannot read in full";
+    this.name = "UnreadableScriptError";
+  }
+}
+
 /** A line bash 5 and bash 3.2 read differently; the hook denies it unchecked. */
 export class SplitReadingError extends ReadingLimitError {
   constructor(readonly split: Split) {
