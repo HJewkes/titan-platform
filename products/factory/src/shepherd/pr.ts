@@ -198,7 +198,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     param: (key) => ctx.param(key),
     iteration: (stepId) => ctx.iteration(stepId),
     historyNext: () => ctx.historyNext(),
-    resumedGate: () => ctx.resumedGate(),
+    resumedGate: () => ctx.resumedGate(), recoveredInFlight: () => ctx.recoveredInFlight(),
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
     assisted: routingStuckBehind(run, () => run.lastCi?.headSha, recordingOverrides(followingApprovals(ctx, conflictCheckedGates(
