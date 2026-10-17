@@ -48,6 +48,42 @@ if (!outcome.released) console.log(`kept: ${outcome.refusal}`);
 await recreateWorktree({ gitRoot: alloc.ref.gitRoot!, worktree: alloc.cwd, branch: alloc.ref.branch! });
 ```
 
+## Optional allocation policy and requested bases
+
+Without options, allocation still counts every tree under the worktree base against the
+same default budget. `allocationGroup(name)` partitions that count by the caller's group
+identifier. Names passed to classification and budget callbacks are sanitized directory
+names; a re-created tree uses its recorded directory name. `budget(name)` is resolved on
+every check/allocation/re-attachment; existing zero-argument callbacks continue to work.
+The caller owns group labels, role classification, numeric caps and separate pool policy.
+`budgetError(allocated, budget, name)` can return the host's existing Error type and message;
+without it the package still uses `WorktreeBudgetExhaustedError`.
+
+```ts
+const allocator = createWorktreeAllocator({
+  allocationGroup: name => name.startsWith("reader-") ? "readers" : "writers",
+  budget: name => name.startsWith("reader-") ? 8 : 3,
+});
+const alloc = await allocator.allocate({
+  agentName: "writer-next", baseCwd: process.cwd(), baseRef: "origin/parent-slice",
+});
+```
+
+`baseRef` must name a valid branch on origin. It is fetched with the configured timeout;
+a missing branch, fetch failure or invalid ref refuses before creating a tree. There is no
+fallback to default when a requested branch fails. `resolveRequestedBase` exposes the same
+strict resolver. Product-specific stack metadata remains with the caller.
+
+The requested checkout does not grant its branch authority to declare setup. Setup still
+uses origin's fetched default branch declaration, independently of `baseRef`. `skipSetup`
+explicitly leaves all setup orchestration to a caller-owned adapter, both for allocation
+and re-attachment. Such an adapter must run its setup once; the package does not infer its
+outcome. No setup-report or dependency-restoration metadata is invented by this extension.
+
+After the caller parks a tree, `release({}, alloc, { keepBranch: true })` prunes stale
+registration and keeps its branch, including unpushed work. It refuses any tree still on
+disk even with `force`. Assigned allocations remain exempt before branch-keeping checks.
+
 ## What it deliberately does not do
 
 - It does not decide policy. Which agents get a worktree, and who may release or park one, is
