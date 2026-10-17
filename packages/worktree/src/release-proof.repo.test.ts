@@ -96,6 +96,39 @@ describe("explicit merged PR tip release proof", () => {
       expect(safety.landed).toBe(true); expect(safety.dirty).toBe(true);
       expect((await f.allocator.release({}, f.allocation)).released).toBe(false); retained(f);
     });
+    it.each(["hidden", "ignored", "status-error", "ignored-error"])(`${proof} proof rechecks late %s file-loss refusal after the provider`, async danger => {
+      const f = await fixture(proof);
+      const notes = path.join(f.allocation.cwd, "late-notes.txt");
+      const marker = path.join(f.root, "provider-finished");
+      if (danger === "hidden") git(["config", "status.showUntrackedFiles", "no"], f.repo);
+      if (danger === "ignored") fs.appendFileSync(path.join(f.repo, ".git/info/exclude"), "\nlate-notes.txt\n");
+      if (danger === "status-error") shim(f, `[ -f ${quote(marker)} ] && [ "$1" = status ]`, "exit 1");
+      if (danger === "ignored-error") shim(f, `[ -f ${quote(marker)} ] && [ "$1" = ls-files ]`, "exit 1");
+      const provider = path.join(f.bin, "gh");
+      const script = fs.readFileSync(provider, "utf8");
+      const action = danger === "hidden" || danger === "ignored"
+        ? `printf 'owned late fixture\\n' > ${quote(notes)}`
+        : `printf 'finished\\n' > ${quote(marker)}`;
+      fs.writeFileSync(provider, script.replace("#!/bin/sh\n", `#!/bin/sh\n${action}\n`));
+      const outcome = await f.allocator.release({}, f.allocation);
+      expect(outcome.released).toBe(false);
+      if (!outcome.released) expect(outcome.refusal).toContain(danger === "hidden" ? "uncommitted or untracked changes" :
+        danger === "ignored" ? "ignored files" : danger === "status-error" ? "could not read git status" : "could not list ignored files");
+      retained(f);
+      if (danger === "hidden" || danger === "ignored") expect(fs.readFileSync(notes, "utf8")).toBe("owned late fixture\n");
+      expect(fs.readFileSync(f.calls, "utf8").trim().split("\n")).toHaveLength(1);
+    });
+    it(`${proof} proof preserves an earlier dirty refusal when the provider removes its cause`, async () => {
+      const f = await fixture(proof); const notes = path.join(f.allocation.cwd, "early-notes.txt");
+      fs.appendFileSync(path.join(f.repo, ".git/info/exclude"), "\nearly-notes.txt\n");
+      fs.writeFileSync(notes, "owned earlier fixture\n");
+      const provider = path.join(f.bin, "gh");
+      fs.writeFileSync(provider, fs.readFileSync(provider, "utf8").replace("#!/bin/sh\n", `#!/bin/sh\nrm ${quote(notes)}\n`));
+      const outcome = await f.allocator.release({}, f.allocation);
+      expect(outcome.released).toBe(false);
+      if (!outcome.released) expect(outcome.refusal).toContain("early-notes.txt");
+      retained(f); expect(fs.existsSync(notes)).toBe(false);
+    });
     it(`${proof} proof never retries a refused nonforced removal or deletes its branch`, async () => {
       const f = await fixture(proof); const removes = path.join(f.root, "remove-calls");
       shim(f, '[ "$1" = worktree ] && [ "$2" = remove ]', `printf '%s\\n' "$*" >> ${quote(removes)}\necho 'fixture refuses remove' >&2\nexit 1`);

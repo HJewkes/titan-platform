@@ -140,7 +140,11 @@ export async function inspectForRelease(
     const proof = await readMergedTipProof(gitRoot, branch);
     if (proof !== null) {
       checked.push(proof.check);
-      return { dirty, unmerged: !proof.merged, landed: proof.merged, ahead, checked };
+      // The external proof awaited above may have outlived the first file check.
+      // Recheck every file-loss guard without forgetting an earlier refusal.
+      const afterProof = proof.merged && existsSync(worktreePath) ? await unsavedWork(worktreePath) : undefined;
+      if (afterProof !== undefined) checked.push(dirtyCheck(afterProof));
+      return { dirty: dirty || afterProof !== undefined, unmerged: !proof.merged, landed: proof.merged, ahead, checked };
     }
   } else if (target === null) {
     const state = await ghPrState(gitRoot, branch);
