@@ -221,6 +221,19 @@ describe("a #! line reads (( )) as arithmetic only for an exact bash or zsh allo
     "e6.sh": "#!/bin/sh",
     "e7.sh": "#!/usr/bin/env -C bash dash",
     "e8.sh": "#!/usr/bin/env -a bash dash",
+    "x1.sh": `#!/usr/bin/env -S bash -c 'dash "$0"'`,
+    "x2.sh": `#!/usr/bin/env -S zsh -c 'dash "$0"'`,
+    "x3.sh": `#!${" ".repeat(300)}/bin/bash`,
+    "x4.sh": "#!\u00a0/bin/bash",
+    "x5.sh": "#!\ufeff/bin/bash",
+    "x6.sh": "#!/usr/bin/env -i bash",
+    "x7.sh": "#!/bin/bash -c x",
+    "x8.sh": `#!/bin/bash ${"a".repeat(116)}`,
+    "x9.sh": "#!/bin/bash\r",
+    "x10.sh": "\ufeff#!/bin/bash",
+    "a1.sh": "#!/bin/bash",
+    "a2.sh": "#!/usr/bin/env bash",
+    "a3.sh": "#!/bin/zsh -f",
   };
   const scripts = Object.fromEntries(Object.entries(lines).map(([name, line]) => [name, `${line}\n${PIPED}`]));
   const withScripts: HookPort = { ...port, context: { ...port.context, readScript: (p: string) => scripts[p.slice(home.length + 1)] ?? null } };
@@ -233,13 +246,25 @@ describe("a #! line reads (( )) as arithmetic only for an exact bash or zsh allo
     ["env -C bash dash", "./e7.sh"],
     ["env -a bash dash", "./e8.sh"],
     ["/bin/sh", "./e6.sh"],
+    ["env -S bash -c dash", "./x1.sh"],
+    ["env -S zsh -c dash", "./x2.sh"],
+    ["300 spaces before /bin/bash", "./x3.sh"],
+    ["an NBSP before /bin/bash", "./x4.sh"],
+    ["a BOM after the #!", "./x5.sh"],
+    ["env -i bash", "./x6.sh"],
+    ["/bin/bash -c x", "./x7.sh"],
+    ["a 128-byte line", "./x8.sh"],
+    ["a /bin/bash line ending in CR", "./x9.sh"],
+    ["a BOM before the #!", "./x10.sh"],
   ])("denies a piped ((sh)) under a #! of %s", async (_, command) => {
     expect(await verdict(command)).toBe("deny");
   });
 
   it.each([
-    ["env -i -S bash", "./e4.sh"],
     ["/bin/bash -e", "./e5.sh"],
+    ["/bin/bash", "./a1.sh"],
+    ["/usr/bin/env bash", "./a2.sh"],
+    ["/bin/zsh -f", "./a3.sh"],
   ])("reads (( )) as arithmetic under a #! of %s", async (_, command) => {
     expect(await verdict(command)).toBe("pass");
   });

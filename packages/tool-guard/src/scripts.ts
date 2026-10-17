@@ -73,17 +73,23 @@ function target(cmd: SimpleCommand, word: WordToken | null | undefined, home: st
 
 /**
  * Whether a script run by path, or sourced, gets a shell with `(( ))`. Only a `#!` naming bash or zsh, directly or
- * through `env`, and without `--posix` says so; no `#!` leaves the choice to whatever runs it, which may be dash.
+ * through a bare `env`, says so; no `#!` leaves the choice to whatever runs it, which may be dash.
  */
 export function scriptArithmetic(cmd: SimpleCommand, target: ScriptTarget, text: string): boolean {
   if (target.shell === "inherit") return cmd.arithmetic === true;
   return target.shell === "shebang" ? shebangArithmetic(text) : target.shell;
 }
 
-/** Fail closed: an exact allowlist of `#!` lines, because any other env option may take bash as its argument. */
-const ARITHMETIC_SHEBANG = /^(?:\/bin\/|\/usr\/bin\/)(?:bash|zsh)(?:[ \t].*)?$|^\/(?:usr\/)?bin\/env(?:[ \t]+-i)?(?:[ \t]+-S)?[ \t]+(?:bash|zsh)(?:[ \t].*)?$/;
+/**
+ * Fail closed, and byte-exact: the kernel and `env -S` build their own argv from the raw line, so nothing is trimmed
+ * or normalised before matching. Any `env` option, any non-ASCII byte, a `\r`, or a `-c` word reads as sh.
+ */
+const ARITHMETIC_SHEBANG = /^#!(?:\/(?:usr\/)?bin\/(?:bash|zsh)|\/(?:usr\/)?bin\/env (?:bash|zsh))(?: [\x21-\x7E]+(?: [\x21-\x7E]+)*)?$/;
+const MAX_SHEBANG_BYTES = 127;
 
 function shebangArithmetic(text: string): boolean {
-  const line = /^#!([^\n]*)/.exec(text)?.[1];
-  return line !== undefined && ARITHMETIC_SHEBANG.test(line.trim());
+  const newline = text.indexOf("\n");
+  const line = newline === -1 ? text : text.slice(0, newline);
+  if (line.length > MAX_SHEBANG_BYTES || !ARITHMETIC_SHEBANG.test(line)) return false;
+  return !line.split(" ").some((word) => word === "-c");
 }
