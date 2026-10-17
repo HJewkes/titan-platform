@@ -36,14 +36,15 @@ function typedTarget(cmd: SimpleCommand, typed: string, home: string): ScriptTar
 
 /**
  * `bash x.sh`, or each file on the descriptor it runs: `bash < x.sh`, `bash /dev/stdin < x.sh`, `bash /dev/fd/3 3< x.sh`.
- * A `-c` string may read stdin too. `bash -c` text and heredocs are already walked by `extractCommands`. A descriptor
- * whose text the line cannot show is refused.
+ * Under `-c` stdin is no script of the shell's: the string's commands inherit it (`bash -c bash < x.sh`). `bash -c` text
+ * and heredocs are already walked by `extractCommands`. A descriptor whose text the line cannot show is refused.
  */
 function shellTargets(cmd: SimpleCommand, home: string): ScriptTarget[] {
-  const { scriptFile, sources, unknowable } = shellStdin(shellOperands(cmd.args, cmd.name), cmd.redirects, false, cmd.inherited);
+  const { runs, scriptFile, sources, unknowable } = shellStdin(shellOperands(cmd.args, cmd.name), cmd.redirects, false, cmd.inherited);
   if (unknowable) throw new UnknownStdinError();
   const script = scriptFile === null ? null : target(cmd, scriptFile, home, "shell");
   if (script !== null) return [script];
+  if (!runs) return [];
   return sources.flatMap((s) => (s.kind === "file" ? [target(cmd, s.target, home, "shell")].filter((t): t is ScriptTarget => t !== null) : []));
 }
 

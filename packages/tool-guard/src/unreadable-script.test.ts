@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -16,6 +16,7 @@ const pad = (bytes: number) => `${"#".repeat(bytes - 1)}\n`;
 const home = realpathSync.native(mkdtempSync(join(tmpdir(), "tool-guard-unreadable-")));
 afterAll(() => {
   chmodSync(join(home, "unreadable"), 0o600);
+  chmodSync(join(home, "locked"), 0o700);
   rmSync(home, { recursive: true, force: true });
 });
 spawnSync("mkfifo", [join(home, "fifo")]);
@@ -28,6 +29,11 @@ writeFileSync(join(home, "big.py"), `${pad(CAP + 400)}print("hi")\n`);
 writeFileSync(join(home, "edge.sh"), `${pad(CAP + 1 - PUSH.length)}${PUSH}`);
 writeFileSync(join(home, "full-push.sh"), `${pad(CAP - PUSH.length)}${PUSH}`);
 writeFileSync(join(home, "full.sh"), `${pad(CAP - 8)}echo hi\n`);
+writeFileSync(join(home, "data.csv"), pad(CAP + 400));
+mkdirSync(join(home, "locked"));
+writeFileSync(join(home, "locked", "s.sh"), `${PUSH}\n`);
+chmodSync(join(home, "locked"), 0);
+symlinkSync("loop.sh", join(home, "loop.sh"));
 
 const port: HookPort = { context: nodeContext(home), now: () => new Date("2026-01-02T03:04:05.000Z"), loadDecide: async () => decide };
 
@@ -49,6 +55,8 @@ describe("a shell running a file the guard cannot read in full", () => {
     ["a script with the push past the cap on stdin", "bash < ./big.sh"],
     ["a script with the push past the cap that dash runs", "dash ./big.sh"],
     ["a script whose push ends one byte past the cap", "bash ./edge.sh"],
+    ["a script past the cap a -c string's shell runs from stdin", "bash -c bash < ./big.sh"],
+    ["a symlink loop", "bash ./loop.sh"],
   ])("denies %s: %s", async (_, command) => {
     const { decision, spelling, stdout } = await verdict(command);
 
@@ -61,6 +69,13 @@ describe("a shell running a file the guard cannot read in full", () => {
     expect((await verdict("bash /dev/stdin < ./unreadable")).decision).toBe("deny");
   });
 
+  it.skipIf(process.getuid?.() === 0).each([
+    ["a script under a directory with no search permission", "bash ./locked/s.sh"],
+    ["a mode 000 file a line appends to and runs", "chmod 600 ./unreadable; echo : >> ./unreadable; bash ./unreadable"],
+  ])("denies %s: %s", async (_, command) => {
+    expect((await verdict(command)).decision).toBe("deny");
+  });
+
   it("reads a script of exactly the cap in full and denies its push", async () => {
     expect((await verdict("bash ./full-push.sh")).spelling).toBe("bash.merge.git-push-protected");
   });
@@ -70,6 +85,12 @@ describe("a shell running a file the guard cannot read in full", () => {
     ["an interpreter's script past the cap", "python3 ./big.py"],
     ["a script the line writes before it runs it", "echo 'echo hi' > ./new.sh; bash ./new.sh"],
     ["a FIFO only cat reads", "cat < ./fifo > /dev/null"],
+    ["a -c string with /dev/null on stdin", "bash -c 'echo hi' < /dev/null"],
+    ["zsh's -c string with /dev/null on stdin", "zsh -c 'echo hi' < /dev/null"],
+    ["sh's -c string with /dev/null on stdin", "sh -c 'echo hi' < /dev/null"],
+    ["bash -s reading /dev/null", "bash -s < /dev/null"],
+    ["a -c string reading data past the cap", "bash -c 'wc -l' < ./data.csv"],
+    ["a -c string reading a missing file", "bash -c 'wc -l' < ./missing.csv"],
   ])("passes %s", async (_, command) => {
     expect((await verdict(command)).decision).toBeNull();
   });

@@ -58,12 +58,28 @@ export function nodeContext(home: string, rfs: ReadFs = NODE_FS): ClassifyContex
 /**
  * A script's whole text, read one byte past the cap so a longer file shows as cut. A regular file only: opening a FIFO
  * such as `/dev/stdin` would block the hook. Decoding never shrinks text, so a cut file always measures past the cap.
+ * Any failure but a missing file, a stat's `EACCES` or `ELOOP` too, reads as a file that is there and cannot be read.
  */
 function wholeScript(p: string, rfs: ReadFs): string {
-  const text = rfs.isFile(p) ? attempt(() => rfs.readHead(p, SCRIPT_CAP + 1)) : null;
-  if (text === null) throw new UnreadableScriptError(null);
+  if (p === "/dev/null") return "";
+  let text: string;
+  try {
+    if (!rfs.isFile(p)) throw new UnreadableScriptError(null, absent(p, rfs));
+    text = rfs.readHead(p, SCRIPT_CAP + 1);
+  } catch (error) {
+    throw error instanceof UnreadableScriptError ? error : new UnreadableScriptError(null);
+  }
   if (Buffer.byteLength(text) > SCRIPT_CAP) throw new UnreadableScriptError(text);
   return text;
+}
+
+function absent(p: string, rfs: ReadFs): boolean {
+  try {
+    rfs.realpath(p);
+    return false;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOENT";
+  }
 }
 
 /** A home reached through a symlink (`/var` on macOS) resolves outside it; map it back so guarded `~/` paths still match. */

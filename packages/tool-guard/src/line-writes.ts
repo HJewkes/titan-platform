@@ -98,13 +98,13 @@ function withReadings(line: ClassifyContext, path: string | null, update: (prior
   return trust ? { ...next, chainTrust: { ...trust, fallback: withReadings(trust.fallback, path, update) } } : next;
 }
 
-/** What `path` may hold before a write; one the guard read only in part leaves the file untracked, since a shell runs the rest. */
+/** What `path` may hold before a write; one that is there and the guard cannot read in full leaves the file untracked, since a shell runs the rest. */
 function priorReadings(line: ClassifyContext, path: string): string[] | null {
   try {
     return trackedReadings(line, path);
   } catch (error) {
     if (!(error instanceof UnreadableScriptError)) throw error;
-    return error.head === null ? [] : null;
+    return error.absent ? [] : null;
   }
 }
 

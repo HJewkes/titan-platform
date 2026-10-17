@@ -76,10 +76,14 @@ export class UnknownStdinError extends ReadingLimitError {
 
 /**
  * A script a shell would run that the guard cannot read in full: a FIFO, a directory, a missing or unreadable file, or
- * one longer than it reads. The hook denies it unchecked. `head` holds what was read, for a reading that needs no more.
+ * one longer than it reads. The hook denies it unchecked. `head` holds what was read, for a reading that needs no more;
+ * `absent` says no file is there, so a write creates it.
  */
 export class UnreadableScriptError extends ReadingLimitError {
-  constructor(readonly head: string | null) {
+  constructor(
+    readonly head: string | null,
+    readonly absent = false,
+  ) {
     super();
     this.message = "a script the guard cannot read in full";
     this.name = "UnreadableScriptError";
