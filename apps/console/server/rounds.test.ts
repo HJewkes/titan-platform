@@ -105,7 +105,7 @@ describe("rounds.list", () => {
   });
 
   it("lists a CI packet round that only review-schema 0.3 reads as valid", async () => {
-    expect(summaryOf((await listRounds({ dir })).rounds, "td920-packet-r1")).toMatchObject({ valid: true, questions: 2, design: true });
+    expect(summaryOf((await listRounds({ dir })).rounds, "td920-packet-r1")).toMatchObject({ valid: true, questions: 2, design: false, ship: true });
   });
 
   it("lists a round@1 manifest as invalid with the schema's own reason", async () => {
