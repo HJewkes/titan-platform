@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { usageFromRolloutEvents, type UsageResult } from "../usage.js";
+import { usageFromRolloutEvents, knownObservation, type UsageResult } from "../usage.js";
 import { statuslineLine } from "./statusline.js";
 
 const now = 1_800_000_000;
 function reading(five = 12.9, weekly = 76.2, at = now - 12.75): UsageResult {
-  return { status: "known", reading: { account: "reporter", written_at: at, rate_limits: {
-    five_hour: { used_percentage: five, resets_at: now + 2000 },
-    seven_day: { used_percentage: weekly, resets_at: now + 3000 },
-  } } };
+  return knownObservation({ source: "synthetic-statusline-independent-clock", observedAt: at,
+    reading: { account: "reporter", rate_limits: {
+      five_hour: { used_percentage: five, resets_at: now + 2000 },
+      seven_day: { used_percentage: weekly, resets_at: now + 3000 },
+    } },
+  });
 }
 
 describe("Codex statusline rendering", () => {
@@ -22,6 +24,13 @@ describe("Codex statusline rendering", () => {
 
   it("prints the existing extra-account format with integer used percentages and age", () => {
     expect(statuslineLine("reporter", reading(), now)).toBe("codex|reporter|12|76|12|");
+  });
+  it("refuses a copied reading after process-local provenance is lost", () => {
+    const result = reading();
+    expect(result.status).toBe("known");
+    if (result.status !== "known") throw new Error("synthetic observation must be known");
+    const copy = { ...result, reading: { ...result.reading } };
+    expect(statuslineLine("reporter", copy, now)).toBe("codex|reporter|unknown|unknown||");
   });
   it("shows observed exhaustion rather than confusing admission refusal with missing quota", () => {
     expect(statuslineLine("reporter", reading(100, 99), now)).toBe("codex|reporter|100|99|12|");

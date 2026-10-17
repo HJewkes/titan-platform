@@ -1,5 +1,5 @@
 import { assertAccountLabel } from "./profile.js";
-import type { UsageResult, UsageWindow } from "./usage.js";
+import { knownObservation, type UsageResult, type UsageWindow } from "./usage.js";
 
 export interface NativeQuotaObservation {
   account: string;
@@ -36,6 +36,10 @@ export function usageFromNativeResponse(input: unknown, observation: NativeQuota
     const limits = snapshot(input.rateLimitsByLimitId.codex, observation.startedAt);
     const legacy = snapshot(input.rateLimits, observation.startedAt);
     if (!limits || !legacy || JSON.stringify(limits) !== JSON.stringify(legacy)) return { status: "unknown", reason: "inconsistent" };
-    return { status: "known", reading: { account: observation.account, written_at: observation.startedAt, rate_limits: limits } };
+    return knownObservation({
+      source: "native-account/rateLimits/read:request-start-lower-bound",
+      observedAt: observation.startedAt,
+      reading: { account: observation.account, rate_limits: limits },
+    });
   } catch { return { status: "unknown", reason: "inconsistent" }; }
 }

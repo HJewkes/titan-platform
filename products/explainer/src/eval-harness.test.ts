@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { codexExecCapabilities, type AgentInit, type AgentRunConfig, type AgentRunResult, type AgentUsage, type CodexRunRequest, type HarnessAdapter, type HarnessRunFailure, type HarnessRunResult, type runAgent } from "@titan-design/agent";
@@ -84,14 +84,16 @@ describe("createJudgeHarness", () => {
 });
 
 describe("codexUnavailable", () => {
-  it("names a missing binary, then a missing login, and is null once both exist", () => {
+  it("admits a default executable on PATH and refuses an absent PATH executable", async () => {
     const home = mkdtempSync(join(tmpdir(), "codex-home-"));
     const binary = join(home, "codex");
-
-    expect(codexUnavailable({ executable_path: binary }, { CODEX_HOME: home })).toContain("codex is not installed at");
-    writeFileSync(binary, "");
-    expect(codexUnavailable({ executable_path: binary }, { CODEX_HOME: home })).toContain("codex is not logged in on this host");
-    writeFileSync(join(home, "auth.json"), "{}");
-    expect(codexUnavailable({ executable_path: binary }, { CODEX_HOME: home })).toBeNull();
+    const help = readFileSync(new URL("../../../packages/agent/src/fixtures/codex-0.162.1/exec-help.txt", import.meta.url), "utf8");
+    try {
+      writeFileSync(binary, `#!${process.execPath}\nconsole.log(process.argv.includes('--version') ? 'codex-cli 0.162.1' : ${JSON.stringify(help)});\n`, { mode: 0o700 });
+      writeFileSync(join(home, "auth.json"), "{}");
+      expect(await codexUnavailable({}, { PATH: home, CODEX_HOME: home })).toBeNull();
+      rmSync(binary);
+      expect(await codexUnavailable({}, { PATH: home, CODEX_HOME: home })).toContain("could not verify Codex CLI version");
+    } finally { rmSync(home, { recursive: true, force: true }); }
   });
 });

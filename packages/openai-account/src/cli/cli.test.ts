@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { runCli, type CliContext } from "./cli.js";
-import type { UsageResult } from "../usage.js";
+import { knownObservation, type UsageResult } from "../usage.js";
 
 const now = 1_800_000_000;
 function context(env: CliContext["env"] = { CODEX_HOME: "/fixture/reporter" }) {
   const out: string[] = [], err: string[] = [];
-  const result: UsageResult = { status: "known", reading: { account: "reporter", written_at: now - 5,
-    rate_limits: { five_hour: { used_percentage: 10, resets_at: now + 1000 }, seven_day: { used_percentage: 30, resets_at: now + 2000 } } } };
+  const result: UsageResult = knownObservation({ source: "synthetic-cli-independent-clock", observedAt: now - 5,
+    reading: { account: "reporter",
+      rate_limits: { five_hour: { used_percentage: 10, resets_at: now + 1000 }, seven_day: { used_percentage: 30, resets_at: now + 2000 } } },
+  });
   const readNativeUsage = vi.fn(async (): Promise<UsageResult> => result);
   return { env, now: () => now * 1000, out: (line: string) => { out.push(line); }, err: (line: string) => { err.push(line); }, readNativeUsage, output: out, errors: err };
 }
