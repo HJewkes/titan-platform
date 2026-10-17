@@ -71,6 +71,23 @@ await recreateWorktree({ gitRoot: alloc.ref.gitRoot!, worktree: alloc.cwd, branc
 - Tests that create real repositories are named `*.repo.test.ts` and stay out of
   `pnpm test:watch`.
 
+## Git child transport policy
+
+`gitChildEnv`, the package's internal git calls, and `setupEnv` use the existing dispatcher's
+CC-1095 policy. `pinGitProtocols(value)` intersects an explicit colon-separated list with
+`file:git:http:https:ssh`; an unset value uses that list, while an empty value stays empty.
+Unknown and differently cased names are discarded. Local file remotes remain supported.
+Dispatcher identity prefix stripping and `GIT_TERMINAL_PROMPT=0` are preserved.
+The protocol pin is derived from the original caller list and restored after custom
+prefix stripping, so even a `GIT_` strip cannot erase it or widen that list.
+`withPinnedGitProtocols(env)` applies only the same transport pin without stripping fields.
+
+The existing policy is carried unchanged: when the caller leaves GIT_ALLOW_PROTOCOL unset,
+its default safe list can outrank a per-command `protocol.allow=never` or
+`protocol.<name>.allow=never` config. That separate inherited CC-1336 limitation is not fixed
+by this extraction. Callers needing no transports can supply `GIT_ALLOW_PROTOCOL=""`.
+The dispatcher retains its separate agent/shim/process environment wiring.
+
 ## Where it came from
 
 Extracted from agent-chat's `isolation/worktree.ts`, `worktree-setup.ts`, `git.ts` and the git

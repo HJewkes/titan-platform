@@ -270,6 +270,30 @@ without `appToken` refuses `createCheckRun`. `fakeGitHub({ appId })` records the
 app id (default `FAKE_APP_ID`), so `latestCheckRuns` returns it; each posted run is also
 appended to `fake.createdCheckRuns` as `{ id, repo, request }`.
 
+### Ancestry and pull-head reads
+
+`compareAncestry(repo, base, head)` is on the wire, the port and `fakeGitHub`. It answers the
+compare API's `status` for `base...head`: `ahead` (`base` is an ancestor of `head`), `behind`,
+`identical` or `diverged`. A 404 answers `missing`: GitHub has not got one of the commits, which
+just after a push can mean it has not caught up, so treat it as "read again", not as proof. A
+status it does not know and any other failed read throw. It reads one page of one commit, since
+only `status` matters.
+
+`lsRemotePullHead(exec, remoteUrl, n, { env, timeoutMs })` runs
+`git ls-remote -- <remoteUrl> refs/pull/<n>/head` through a `GitExec` (`execGit`, or
+`fake.gitExec`) and answers the sha, or null when the remote has no such ref. It reads git's
+transport, not REST, so it is a second, independent source for a PR head. A credential goes in
+`env` (for example `GIT_CONFIG_*` entries carrying an `http.extraHeader`), never on argv:
+`remoteUrl` must be an `https:` or `file:` URL with no user or password, and is refused with
+`GitHubInputError` before git runs otherwise. `GIT_TERMINAL_PROMPT=0` is always set. A git that
+cannot run, exits non-zero or prints no object id throws `LsRemoteError`, with the `env` values
+and token-shaped strings cut from the message; a failed read is never a sha. Only an exact
+`refs/pull/<n>/head` line counts, because git matches the pattern against the tail of each ref.
+
+The fake answers both from its own history: `compareAncestry` walks `fake.commits` parents
+(ref names resolve to their tips, and PR heads count as known), and `fake.gitExec` answers each
+PR's current head. `readFaults.compareAncestry` and `readFaults.lsRemote` fail the next read.
+
 ## Where it came from
 
 Extracted unchanged from `products/factory/src/github/` (TP-458), with its tests. The factory

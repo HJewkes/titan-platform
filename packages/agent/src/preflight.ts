@@ -1,4 +1,5 @@
 import { conversationRef } from "@titan-design/agent-protocol";
+import { isCodexThreadId } from "./codex-thread-id.js";
 import type {
   BoundedRunBase,
   CapabilityAssessment,
@@ -37,12 +38,15 @@ export function preflightHarnessRun<H extends Harness, T>(
   return checkLimits(request, descriptor);
 }
 
-function invalidIdentity(request: BoundedRunBase): HarnessRunFailure | undefined {
+function invalidIdentity(request: BoundedRunBase & { harness: Harness }): HarnessRunFailure | undefined {
   if (request.target.kind === "fresh") {
     return nonempty(request.target.namespace) ? undefined : invalid("fresh target namespace must be a nonempty string");
   }
   try {
     conversationRef(request.target.conversation);
+    if (request.harness === "codex" && !isCodexThreadId(request.target.conversation.nativeId)) {
+      return invalid("Codex resume requires a canonical thread UUID");
+    }
     return undefined;
   } catch {
     return invalid("resume conversation identity components must be nonempty strings");
