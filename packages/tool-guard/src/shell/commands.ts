@@ -1,12 +1,13 @@
-import { ParseError, SplitParseError, tokenize } from "./lexer.js";
-import { NestingLimitError } from "./nesting.js";
+import { ParseError } from "./lexer.js";
+import { tokenizeLine } from "./tokenize-line.js";
+import { changeDir, folded, literalEnv, nestedLists, walkSure } from "./command-env.js";
+import { lineBudget } from "./line-budget.js";
 import type { OpToken, RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { xargsStdins } from "./piped-stdin.js";
 import { emitReadings, endCommand, forkWalk, type Emission } from "./reading-hand-on.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed } from "./case-script.js";
-import { foldCommandWords } from "./case-literal.js";
 import { aliasCommands, type AliasTable } from "./alias-words.js";
 import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
@@ -23,12 +24,11 @@ import type { Vars } from "./vars.js";
 import { newMarks, noteRedirect, recordValue, settle } from "./value-marks.js";
 import { noteCommand, noteWord } from "./stored-words.js";
 import type { ValueMarks } from "./value-marks.js";
-import { MAX_UNSURE_WORDS, NestingReadingError, ReadingLimitError, SPLICED_WEIGHT, SplitReadingError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
+import { ReadingLimitError, unsureReadings } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
 import { arithmeticSpanEnd, splitsClose } from "./arith-span.js";
 
 const MAX_DEPTH = 8;
-const RUNNERS = new Set([...SHELLS, "eval", "emulate", "find"]);
 
 /**
  * How a command was reached: a `( )` subshell or a substitution, a shell's `-c` string or a wrapper's
@@ -164,27 +164,6 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   return out;
 }
 
-/** The line's budget of `unsure` reading words and spliced text, shared by every walk of it. */
-function lineBudget(src: string, options: ExtractOptions): UnsureBudget {
-  return {
-    left: MAX_UNSURE_WORDS,
-    splicedLeft: SPLICED_WEIGHT * src.length,
-    decides: decider(options.guarded),
-    stopPastCap: options.stopPastCap === true,
-  };
-}
-
-/** A line bash 5 and bash 3.2 read differently is refused outright, whatever it names; a plain ParseError is not. */
-function tokenizeLine(src: string): Token[] {
-  try {
-    return tokenize(src);
-  } catch (error) {
-    if (error instanceof SplitParseError) throw new SplitReadingError(error.split);
-    if (error instanceof NestingLimitError) throw new NestingReadingError();
-    throw error;
-  }
-}
-
 function walk(tokens: Token[], w: Walk): void {
   if (w.depth > MAX_DEPTH) throw new ParseError("nesting too deep");
   walkFrom(noteSureCommands(normalizeDeclarations(tokens)), 0, w);
@@ -214,13 +193,17 @@ function walkFrom(list: Token[], start: number, w: Walk): void {
       continue;
     }
     if (token.type === "word") words.push(noteWord(token, w.marks));
-    if (token.type === "redirect") noteRedirect(w.marks, token);
-    redirects = addRedirect(redirects, token);
+    redirects = gather(redirects, token, w);
     for (const sub of nestedLists(token)) walk(sub, child(w, [...w.scope.wrapping, "subshell"]));
   }
   noteValues(null, words, w);
   emit(words, redirects, w, null);
   for (const fork of forks) fork();
+}
+
+function gather(redirects: RedirectToken[], token: Token, w: Walk): RedirectToken[] {
+  if (token.type === "redirect") noteRedirect(w.marks, token);
+  return addRedirect(redirects, token);
 }
 
 /** An operator ends the command gathered before it in each walk its readings leave; returns the walks of the rest of the list. */
@@ -275,20 +258,6 @@ function observed(w: Walk): Walk {
   return w;
 }
 
-/** A substitution the lexer rejects while it is walked leaves the line unchecked, which the hook refuses. */
-function walkSure(walkText: () => void): void {
-  try {
-    walkText();
-  } catch (error) {
-    throw error instanceof ParseError ? new ValueWalkError() : error;
-  }
-}
-
-function nestedLists(token: Token): Token[][] {
-  if (token.type === "redirect") return [...(token.target?.subs ?? []), ...token.subs];
-  return token.type === "op" ? [] : token.subs;
-}
-
 function child(w: Walk, wrapping: Wrapping[], descriptors = w.descriptors): Walk {
   const scope = { dir: w.scope.dir, vars: childVars(w.scope.vars), wrapping };
   const fresh = { stack: [], depth: w.depth + 1, stdin: stdinText(descriptors), shellStdin: [], descriptors, prev: null, chain: { start: null }, negated: false, walked: null };
@@ -325,11 +294,6 @@ function emitReading(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Wa
 
 function walkAdded(runs: Unwrapped[], redirects: RedirectToken[], w: Walk, next: string | null): void {
   addedReading(w, (copy) => runs.forEach((reading) => run(reading, redirects, copy, next)));
-}
-
-/** A dynamic or guarded command word, or one that runs more commands: shell text, a `.sh` script, `xargs` or `find -exec`. */
-function decider(guarded: ReadonlySet<string> | undefined): (cmd: Unwrapped) => boolean {
-  return (cmd) => cmd.name === null || cmd.xargs !== undefined || cmd.script !== undefined || RUNNERS.has(cmd.name) || cmd.name.endsWith(".sh") || (guarded?.has(cmd.name) ?? true);
 }
 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
@@ -407,19 +371,4 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descrip
     // A nested shell's text keeps the nested-subshell reading: the shell that runs it may be dash.
     walk(tokenizeLine(text), { ...child(w, [...wrapping, script.wrap], descriptors), arithmetic: false });
   }
-}
-
-function folded(words: WordToken[], w: Walk): WordToken[] {
-  return w.foldCase ? foldCommandWords(words) : words;
-}
-
-function literalEnv(cmd: Unwrapped): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const [name, value, kind] of cmd.assigned) if (value !== null && !kind) env[name] = value;
-  return env;
-}
-
-function changeDir(dir: string | null, word: WordToken | undefined, home: string | null): string | null {
-  if (!word) return home;
-  return word.value === "-" ? null : resolvePath(dir, word, home);
 }
