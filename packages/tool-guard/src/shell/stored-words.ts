@@ -1,5 +1,7 @@
 import type { Token, WordToken } from "./lexer.js";
+import { CODE_TEXT_REASON } from "./arith-operand.js";
 import { arrayElements } from "./declarations.js";
+import { ParseError } from "./parse-error.js";
 import { noteTyped } from "./value-marks.js";
 import type { ValueMarks } from "./value-marks.js";
 import { parseAssignment } from "./vars.js";
@@ -24,7 +26,9 @@ const DEFAULT_ASSIGN_RE = /\$\{[A-Za-z_]\w*:?=/;
 export function noteCommand(marks: ValueMarks, { op, words: all, prev }: CommandWords, hear: (value: string | null) => void): void {
   const words = afterKeywords(all);
   const head = words.findIndex((word) => parseAssignment(word) === null);
-  marks.arithmetic ||= evaluatesArithmetic(op, words, head);
+  const evaluates = evaluatesArithmetic(op, words, head);
+  marks.arithmetic ||= evaluates;
+  if (evaluates && words.some((word) => word.codeText && word.value.includes("["))) throw new ParseError(CODE_TEXT_REASON);
   const header = (op?.type === "op" && op.value === ")" && all.length === 0 && prev === "(") || words[head]?.value === "function";
   if (header || setsPositional(head < 0 ? [] : words.slice(head)) || words.some((word) => DEFAULT_ASSIGN_RE.test(word.value))) marks.opaque = true;
   for (const element of words.flatMap((word) => arrayElements.get(word) ?? [])) hear(element.dynamic ? null : noteWord(element, marks).value);
