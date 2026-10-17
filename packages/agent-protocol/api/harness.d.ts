@@ -254,6 +254,39 @@ interface ReadSessionSourceTextOptions {
     sources?: readonly SessionSourceDescriptor[];
 }
 
+/** Corpus/account roots are bound by the adapter; cwd is only an optional lookup hint. */
+interface HarnessSourceQuery {
+    conversation: ConversationIdentity;
+    cwd?: string;
+}
+/** not_written retains an expected location; absent or unreadable evidence is unavailable. */
+type HarnessSourceLookup = {
+    status: "found";
+    sources: readonly [SessionSourceDescriptor, ...SessionSourceDescriptor[]];
+} | {
+    status: "not_written";
+    expectedPaths: readonly [string, ...string[]];
+} | {
+    status: "unavailable";
+    reason: string;
+};
+interface HarnessSourceCapabilities {
+    discover: CapabilityAssessment;
+    locate: CapabilityAssessment;
+    observations: CapabilityAssessment;
+    text: CapabilityAssessment;
+    /** Assessment only; this port neither classifies finality nor proves a process finished. */
+    semanticFinality: CapabilityAssessment;
+}
+/** Required unsupported/unverified operations must be refused before invocation. */
+interface HarnessSourcePort {
+    readonly capabilities: HarnessSourceCapabilities;
+    discover(): Promise<readonly SessionSourceDescriptor[]>;
+    locate(query: HarnessSourceQuery): Promise<HarnessSourceLookup>;
+    readObservations(source: SessionSourceDescriptor, options?: ReadSessionObservationOptions, onDone?: (result: SessionObservationReadResult) => void): AsyncIterable<NormalizedSessionObservation>;
+    readText(locator: SourceTextLocator, options?: ReadSessionSourceTextOptions): Promise<string | null>;
+}
+
 declare const EXECUTION_CAPABILITIES: readonly ["fresh_run", "resume", "fork", "structured_output", "interactive_approvals", "external_cancellation", "semantic_interrupt", "active_turn_steering", "idle_turn_submission", "persisted_transcript", "process_reattachment", "token_reporting"];
 type ExecutionCapability = (typeof EXECUTION_CAPABILITIES)[number];
 type CapabilityAssessment = {
@@ -410,4 +443,4 @@ type HarnessRunResult<T = string, H extends string = string> = {
     usage: readonly UsageMeasurement[];
 };
 
-export { type BoundedRunBase, type CacheWriteSplit, type CapabilityAssessment, type ConversationItemKind, type DecodeRequest, type DecodeResult, type DecodeResume, type DecoderCheckpoint, EXECUTION_CAPABILITIES, type EmitNormalizedObservation, type ExecutionCapability, type ExecutionLimit, type HarnessCapabilityDescriptor, type HarnessRunFailure, type HarnessRunOutput, type HarnessRunProgress, type HarnessRunResult, type LimitCapability, type LimitEnforcement, type LimitScope, type LimitUnit, type LocatedSourceLine, type NormalizedCompactionObservation, type NormalizedLineageObservation, type NormalizedMessageObservation, type NormalizedMetadataObservation, type NormalizedNativeExtension, type NormalizedNativeTurnObservation, type NormalizedObservationBase, type NormalizedObservationKind, type NormalizedObservationOf, type NormalizedSessionObservation, type NormalizedTextPart, type NormalizedToolCallObservation, type NormalizedToolResultObservation, type NormalizedUnknownObservation, type NormalizedUsageObservation, type ObservationIdentity, type OptionalLimitUnit, type ReadSessionObservationOptions, type ReadSessionSourceTextOptions, type ResumeBoundary, type RunTarget, type ScopedConversationItemId, type SessionFormatDecoder, type SessionObservationReadResult, type SessionSourceDescriptor, type SessionSourceProvenance, type SourceEvidence, type SourceLineEvidence, type SourceSubrecordEvidence, type SourceTextLocator, type TranscriptSourceHint };
+export { type BoundedRunBase, type CacheWriteSplit, type CapabilityAssessment, type ConversationItemKind, type DecodeRequest, type DecodeResult, type DecodeResume, type DecoderCheckpoint, EXECUTION_CAPABILITIES, type EmitNormalizedObservation, type ExecutionCapability, type ExecutionLimit, type HarnessCapabilityDescriptor, type HarnessRunFailure, type HarnessRunOutput, type HarnessRunProgress, type HarnessRunResult, type HarnessSourceCapabilities, type HarnessSourceLookup, type HarnessSourcePort, type HarnessSourceQuery, type LimitCapability, type LimitEnforcement, type LimitScope, type LimitUnit, type LocatedSourceLine, type NormalizedCompactionObservation, type NormalizedLineageObservation, type NormalizedMessageObservation, type NormalizedMetadataObservation, type NormalizedNativeExtension, type NormalizedNativeTurnObservation, type NormalizedObservationBase, type NormalizedObservationKind, type NormalizedObservationOf, type NormalizedSessionObservation, type NormalizedTextPart, type NormalizedToolCallObservation, type NormalizedToolResultObservation, type NormalizedUnknownObservation, type NormalizedUsageObservation, type ObservationIdentity, type OptionalLimitUnit, type ReadSessionObservationOptions, type ReadSessionSourceTextOptions, type ResumeBoundary, type RunTarget, type ScopedConversationItemId, type SessionFormatDecoder, type SessionObservationReadResult, type SessionSourceDescriptor, type SessionSourceProvenance, type SourceEvidence, type SourceLineEvidence, type SourceSubrecordEvidence, type SourceTextLocator, type TranscriptSourceHint };

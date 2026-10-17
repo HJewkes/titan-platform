@@ -125,3 +125,17 @@ survive redaction and their values do not.
 Fixtures for a synthetic documentation run ship in the package under
 `fixtures/trace/v1/`: `doc-run.jsonl` holds all 17 records in order, and one JSON file per
 kind holds the same records split by kind.
+
+## Injected source ports
+
+The SDK-free harness subpath exports HarnessSourcePort over the existing
+transcript DTOs. It describes corpus-bound discovery, scoped conversation lookup,
+resumable observation reads and selected semantic text reads. Found and
+not-written results retain nonempty source/expected-path collections; unavailable
+is distinct, with a reason. The optional cwd is a lookup hint, never an implicit
+account selection.
+
+Capability assessments retain unsupported/unverified operations. Semantic
+finality is an assessment only: there is no classifier or runtime adapter here,
+and neither EOF nor a native turn completion proves session completion.
+Existing session-read functions, default roots and account behavior stay unchanged.

@@ -156,3 +156,22 @@ locator, decoder and continuation DTOs. These declarations moved from session-re
 its old import paths remain compatible. Parsing, discovery, text reads and identity
 helpers still run in session-read. Shared source DTOs do not register a new decoder
 or imply that a native format is supported.
+
+### Source port contracts
+
+The harness subpath also exports HarnessSourcePort, HarnessSourceCapabilities,
+HarnessSourceQuery and HarnessSourceLookup. Roots and account selection belong
+to the injected adapter; callers supply scoped conversation identity and an
+optional cwd hint. Found lookups contain one or more physical sources.
+Not-written lookups retain one or more expected paths; unavailable lookups carry
+a reason. An empty discovery result does not establish not-written evidence.
+
+Read operations keep the existing observation continuation callback and semantic
+text locator signatures. Null text stays unavailable, and unknown observations
+remain unknown. Required unsupported/unverified operations must refuse before
+invocation. Semantic finality remains unverified until decoder semantics are
+qualified: this port adds no classifier, adapter or claim that EOF, a native turn
+completion or the last assistant message proves session completion.
+
+This is another partial TP-3426 S01 checkpoint. It changes no existing source
+discovery, default account, billing, native execution, policy or bus behavior.
