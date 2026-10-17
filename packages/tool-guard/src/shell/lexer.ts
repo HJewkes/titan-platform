@@ -1,7 +1,7 @@
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, spent } from "./arith-trials.js";
 import { balancedEnd, type DollarOpener, dollarOpener, QUOTED_LITERAL_OPENERS, refuseValueRun } from "./balanced.js";
 import { dropJoins, joinedDollar, nextAfter, pastJoins, readAhead } from "./joins.js";
-import { inOpenCase, newRegexScan, noteParen, refuseRedirect } from "./compound.js";
+import { inConditional, inOpenCase, newRegexScan, noteParen, refuseRedirect } from "./compound.js";
 import { nested } from "./nesting.js";
 import { ParseError, refusingAs } from "./parse-error.js";
 import { arithmeticExpansionEnd, lineReading, nestedReaders, scanBacktick } from "./nested-reading.js";
@@ -307,8 +307,25 @@ function readRedirect(s: LexState): void {
     return;
   }
   refuseRedirect(s, op);
+  const named = fd === null ? namedFdWord(s, w) : null;
   const heredoc = op === "<<" || op === "<<-";
-  const token: RedirectToken = { type: "redirect", op, fd, target: null, body: heredoc ? "" : null, subs: [] };
+  const token: RedirectToken = { type: "redirect", op, fd, target: null, body: heredoc ? "" : null, subs: [], ...(named ? { named: named.value } : {}) };
   s.tokens.push(token);
   s.redirect = { token, stripTabs: op === "<<-" };
+}
+
+/** bash's `{name}` or `{name[i]}`, and zsh's `{name}`, before a redirect: the shell stores the fd it opens there. */
+export const NAMED_FD_RE = /^\{([A-Za-z_]\w*)(\[.*\])?\}$/;
+
+/**
+ * The `{name}` word bash and zsh read as a named descriptor: glued to the operator, or for zsh a space before it, plain.
+ * Dash, and bash a space apart, keep it a word, so it stays in the tokens marked `namedFd` for the walk to read both ways.
+ */
+function namedFdWord(s: LexState, glued: WordToken | null): WordToken | null {
+  const last = s.tokens.at(-1);
+  if (s.i < s.arithEnd || last?.type !== "word" || (glued !== null && glued !== last)) return null;
+  const match = !last.quoted && !last.spliced ? NAMED_FD_RE.exec(last.value) : null;
+  if (!match || (glued === null && match[2] !== undefined) || inConditional(s)) return null;
+  last.namedFd = glued === null ? "spaced" : "glued";
+  return last;
 }

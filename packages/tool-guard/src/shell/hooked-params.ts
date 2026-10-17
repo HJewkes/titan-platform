@@ -1,3 +1,4 @@
+import { NAMED_FD_RE } from "./lexer.js";
 import type { RedirectToken, WordToken } from "./lexer.js";
 import type { Unwrapped } from "./unwrap.js";
 import { arithmeticHookedIn } from "./arith-hooked.js";
@@ -312,18 +313,16 @@ function namerefHooked({ name, args }: Unwrapped, names: ReadonlySet<string>): s
   return null;
 }
 
-const FD_VARIABLE_RE = /^\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
-
 /**
- * `exec {PS4}>f` stores a descriptor number into PS4. The lexer keeps `{PS4}` as a word with no sign of the
- * redirection it belongs to, so any redirection on the command makes an unquoted literal `{name}` word a possible
- * store. A quoted, escaped or computed `{...}` is text to the shell and stores nothing.
+ * `exec {PS4}>f` and `exec {PS4[0]}>f` store a descriptor number into PS4. The walk reads that `{PS4}` as the
+ * redirect's fd and, as dash does, as a word; with any redirection on the command an unquoted literal `{name}` word
+ * counts as a possible store, which only over-reads. A quoted, escaped or computed `{...}` is text and stores nothing.
  */
 function fdVariableHooked(words: WordToken[], redirects: RedirectToken[], names: ReadonlySet<string>): string | null {
   if (redirects.length === 0) return null;
-  for (const word of words) {
-    if (word.quoted || word.dynamic || word.spliced) continue;
-    const named = FD_VARIABLE_RE.exec(word.value)?.[1];
+  const literal = words.filter((w) => !w.quoted && !w.dynamic && !w.spliced).map((w) => w.value);
+  for (const value of [...redirects.flatMap((r) => r.fd ?? []), ...literal]) {
+    const named = NAMED_FD_RE.exec(value)?.[1];
     if (named !== undefined && names.has(named)) return named;
   }
   return null;
