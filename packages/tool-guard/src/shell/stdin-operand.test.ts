@@ -22,7 +22,8 @@ writeFileSync(join(dir, "t.zsh"), "echo t\n");
 mkdirSync(join(dir, "pkg"));
 writeFileSync(join(dir, "pkg", "build.sh"), "echo build\n");
 mkdirSync(join(dir, "scripts"));
-writeFileSync(join(dir, "scripts", "a.sh"), "echo a\n");
+for (const name of ["a.sh", "note.sh", "changeset.sh"]) writeFileSync(join(dir, "scripts", name), "echo a\n");
+for (const name of ["post.sh", "ask.sh"]) writeFileSync(join(dir, name), "echo a\n");
 
 const port: HookPort = { context: nodeContext(dir), now: () => new Date("2026-01-02T03:04:05.000Z"), loadDecide: async () => decide };
 
@@ -133,6 +134,36 @@ describe("the hook still allows an ordinary script operand", () => {
 
   it("does not read stdin text as a script under -c", async () => {
     expect(await decision(`bash -c 'echo hi' x.sh <<< '${PUSH}'`)).toBeNull();
+  });
+});
+
+describe("stdin text that is data for a literal operand, not a script", () => {
+  it.each([
+    `bash x.sh <<< "it's fine"`,
+    "bash ./scripts/note.sh <<EOF\nDon't merge yet\nEOF",
+    "bash ./scripts/changeset.sh <<'EOF'\nFix the parser's handling of quotes\nEOF",
+    `echo "Don't merge yet" | bash ./scripts/note.sh`,
+    `printf '%s\n' "it's done" | bash post.sh`,
+    "bash ./ask.sh <<< 'yes (default)'",
+    "bash x.sh <<< 'please confirm: (y/n)'",
+    "bash x.sh <<'EOF'\n- it's two\nEOF",
+  ])("allows %j", async (line) => {
+    expect(await decision(line)).toBeNull();
+  });
+
+  const MAIN = "git push origin main";
+  it.each([
+    ["a here-string", `bash x.sh <<< $'${MAIN}\\n\\'x'`],
+    ["a heredoc", `bash x.sh <<'EOF'\n${MAIN}\n'\nEOF`],
+    ["a literal pipe", `printf '%s\\n' '${MAIN}' "'" | bash x.sh`],
+    ["a push between two commands", `bash x.sh <<'EOF'\necho hi\n${MAIN}\nit's\nEOF`],
+    ["a push split over a continuation line", `bash x.sh <<'EOF'\ngit push \\\norigin main\n'\nEOF`],
+  ])("denies a push before a stray quote in %s", async (_how, line) => {
+    expect(await decision(line)).toBe("deny");
+  });
+
+  it("keeps refusing text it cannot parse when the shell has no operand", async () => {
+    expect(await decision(`bash <<< "it's fine"`)).toBe("deny");
   });
 });
 

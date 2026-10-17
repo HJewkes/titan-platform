@@ -1,5 +1,6 @@
 import { caseScripts } from "./case-script.js";
 import type { RedirectToken, WordToken } from "./lexer.js";
+import { parsablePrefix } from "./parsable-prefix.js";
 import { pipedShellTexts } from "./piped-nul.js";
 import { shellOperands, shellStdin, TOP_DESCRIPTORS } from "./shell-options.js";
 import type { Descriptors, StdinSource } from "./shell-options.js";
@@ -37,7 +38,7 @@ export function inlineScript(
   const operands = shellOperands(cmd.args, cmd.name);
   const { hasC, positional } = operands;
   const { runs, mayBeStdin, fd, sources } = shellStdin(operands, redirects, piped.length > 0, inherited);
-  const read = runs || mayBeStdin ? stdinReading(cmd.name, sources, piped) : null;
+  const read = runs || mayBeStdin ? stdinReading(cmd.name, sources, piped, !runs) : null;
   const stdin = read === null ? null : { ...read, fd };
   if (!hasC) return stdin;
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
@@ -46,11 +47,17 @@ export function inlineScript(
   return all.length > 0 ? { texts: all, wrap: "sh-c" } : null;
 }
 
-/** Heredoc, here-string and piped text on the descriptor the shell runs; a `<` file is the script target `scripts.ts` reads. */
-function stdinReading(shell: string | null, sources: StdinSource[], piped: string[]): Inline | null {
+/**
+ * Heredoc, here-string and piped text on the descriptor the shell runs; a `<` file is the script target `scripts.ts` reads.
+ * Text read only because the operand may be stdin (`maybe`) is data when it does not parse, so only the commands before
+ * the failure are read; a shell known to run its stdin keeps refusing a text it cannot parse.
+ */
+function stdinReading(shell: string | null, sources: StdinSource[], piped: string[], maybe: boolean): Inline | null {
   const texts = sources.flatMap((s) => (s.kind === "text" ? [s.text] : s.kind === "pipe" ? piped : []));
   if (texts.length === 0) return null;
-  return { texts: texts.flatMap((t) => pipedShellTexts(shell, t)), wrap: sources.some((s) => s.kind === "text") ? "heredoc-shell" : "piped-shell" };
+  const read = maybe ? texts.map(parsablePrefix).filter((t) => t !== "") : texts;
+  if (read.length === 0) return null;
+  return { texts: read.flatMap((t) => pipedShellTexts(shell, t)), wrap: sources.some((s) => s.kind === "text") ? "heredoc-shell" : "piped-shell" };
 }
 
 /**
