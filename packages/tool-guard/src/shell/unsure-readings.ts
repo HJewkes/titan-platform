@@ -93,6 +93,18 @@ export class NestingReadingError extends ReadingLimitError {
 }
 
 /**
+ * A line running `env -S` whose words env reads but the guard cannot: a dynamic string, an escape, an unclosed quote or a
+ * `${NAME}` where env looks for its options or command. A limit and not a parse error, so a script file holding one is refused too.
+ */
+export class EnvSplitError extends ReadingLimitError {
+  constructor() {
+    super();
+    this.message = "env -S string whose words cannot be known";
+    this.name = "EnvSplitError";
+  }
+}
+
+/**
  * Characters of spliced eval and `-c` text one line may walk, per character of the line. Each nested `eval "$(echo :);…"`
  * doubles the walks, since both readings hold the next one, so an unbounded line takes 2^8 walks at the nesting limit.
  */
