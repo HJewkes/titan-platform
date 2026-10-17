@@ -68,3 +68,24 @@ describe("a by-path script run from inside a script the guard reads", () => {
     expect(await decision("./loop.sh")).toBe("deny");
   });
 });
+
+describe("a script run from inside a script by an interpreter, a sourcer or a stdin redirect", () => {
+  it.each(["bash ./np", "sh np", ". ./np", "source np", "bash < ./np", "zsh ./np"])("denies a push in np run as `%s` from a.sh", async (inner) => {
+    file("np", `#!/bin/bash\n${PUSH}\n`);
+    file("a.sh", `#!/bin/bash\n${inner}\n`);
+    for (const outer of ["./a.sh", ". ./a.sh", "bash a.sh"]) expect(await decision(outer)).toBe("deny");
+  });
+
+  it.each(["bash ./deep", "sh deep", ". ./deep", "source deep", "bash < ./deep", "zsh ./deep"])("refuses `%s` at the depth cap", async (inner) => {
+    file("deep", "#!/bin/bash\necho ok\n");
+    file("mid", `#!/bin/bash\n${inner}\n`);
+    file("top.sh", "#!/bin/bash\n./mid\n");
+    expect(await answer("./top.sh")).toContain("nested that deep");
+  });
+
+  it("passes when the scripts it runs that way are harmless", async () => {
+    file("quiet", "#!/bin/bash\necho ok\n");
+    file("c.sh", "#!/bin/bash\nbash ./quiet\n. ./quiet\n");
+    expect(await decision("./c.sh")).toBeNull();
+  });
+});

@@ -144,11 +144,11 @@ function handles(family: Family, cmd: SimpleCommand): boolean {
 }
 
 /**
- * A shell script is classified as a command string, any other script's text gets the mention rule. Inside a script only
- * the scripts it runs by path are followed, down to `MAX_SCRIPT_DEPTH`; one more refuses the line.
+ * A shell script is classified as a command string, any other script's text gets the mention rule. Inside a script every script it runs is
+ * followed, down to `MAX_SCRIPT_DEPTH`; one more refuses the line.
  */
 function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: ScriptMemo): ClassifiedAction[] {
-  const targets = scriptTargets(cmd, ctx.home).filter((target) => !runsNatively(target, ctx)).filter((target) => scripts.depth === 0 || target.byPath);
+  const targets = scriptTargets(cmd, ctx.home).filter((target) => !runsNatively(target, ctx));
   if (scripts.depth >= MAX_SCRIPT_DEPTH && targets.length > 0) throw new ScriptDepthError();
   return targets.flatMap((target) => {
     const actions = memoized(scripts, ctx, scriptKey(cmd, target, ctx, scripts.depth), () => scriptVerdicts(cmd, target, ctx, scripts));
