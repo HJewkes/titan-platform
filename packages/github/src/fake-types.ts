@@ -1,4 +1,5 @@
 import type { CreateCheckRunRequest } from "./check-run-create.js";
+import type { GitExec } from "./exec.js";
 import type { ForcePush } from "./force-pushes.js";
 import type { MergeIntoBranchResult } from "./merge-into-branch.js";
 import type { ReviewComment } from "./review-comment.js";
@@ -17,10 +18,12 @@ export interface FakeEffects {
 }
 
 /** Reads a test can make fail, for a caller that must treat a failed read as transient. */
-export type FakeFaultyRead = "getDefaultBranch" | "getBranchRules" | "getClassicRequiredChecks" | "listCheckRuns" | "listCommitStatuses" | "resolveCommit";
+export type FakeFaultyRead = "getDefaultBranch" | "getBranchRules" | "getClassicRequiredChecks" | "listCheckRuns" | "listCommitStatuses" | "resolveCommit" | "compareAncestry" | "lsRemote";
 
 export interface FakeGitHub {
   wire: GitHubWire;
+  /** A `GitExec` for `lsRemotePullHead`: `refs/pull/<n>/head` is the PR's current head, absent for a PR the fake lacks. A `lsRemote` read fault rejects the exec. */
+  gitExec: GitExec;
   effects: FakeEffects;
   /** Every wire call in order, as `method` names; lets a test prove what was never called. */
   calls: string[];
@@ -54,6 +57,7 @@ export interface FakeGitHub {
   onGetPr?: (pr: PullRequest, reads: number) => void;
   /** Every check run created, with the title, summary and external id that `CheckRun` does not carry. */
   createdCheckRuns: { id: number; repo: string; request: CreateCheckRunRequest }[];
+  /** The synthetic history `compareAncestry` walks by parents; a sha that is no commit, parent, ref tip or PR head answers `missing`. */
   commits: Map<string, Commit>;
   /** Sha to its combined status, newest per context. */
   statuses: Map<string, CommitStatus[]>;
