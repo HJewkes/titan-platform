@@ -5,8 +5,8 @@ import { nextShellStdin, nextStdin } from "./piped-stdin.js";
 import type { Unwrapped } from "./unwrap.js";
 import type { Vars } from "./vars.js";
 
-/** A command's readings: one, or the fd's and the word's of a `{name}` redirect. */
-export type Emitted = [Unwrapped | null] | [Unwrapped | null, Unwrapped | null];
+/** A command's readings: one, or each shell's of its `{name}` redirects, zsh's first and dash's second. */
+export type Emitted = [Unwrapped | null, ...Array<Unwrapped | null>];
 
 interface Scope {
   dir: string | null;
@@ -23,18 +23,18 @@ interface HandedOn {
 type EmitReading<W> = (words: WordToken[], redirects: RedirectToken[], w: W) => Unwrapped | null;
 
 /**
- * Both readings of a `{name}` redirect are walked in full, the word's on a copy of the scope; either can refuse the line.
- * The fd's reading comes first, then the word's; a directory or variable they leave different is unknown after it.
+ * Every shell's reading of a `{name}` redirect is walked in full, each but zsh's on a copy of the scope; any can refuse
+ * the line. A directory or variable they leave different is unknown after it.
  */
 export function emitReadings<W extends HandedOn>(rawWords: WordToken[], rawRedirects: RedirectToken[], w: W, beside: (w: W) => W, emitReading: EmitReading<W>): Emitted {
   const readings = namedFdReadings(rawWords, rawRedirects);
   if (!readings) return [emitReading(rawWords, rawRedirects, w)];
-  const [kept, asFd] = readings;
-  const copy = beside(w);
-  const word = emitReading(kept.words, kept.redirects, copy);
+  const [asFd, ...others] = readings;
+  const besides = others.map((reading) => ({ reading, copy: beside(w) }));
+  const emitted = besides.map(({ reading, copy }) => emitReading(reading.words, reading.redirects, copy));
   const cmd = emitReading(asFd.words, asFd.redirects, w);
-  unknownWhereDiffer(w.scope, copy.scope);
-  return [cmd, word];
+  for (const { copy } of besides) unknownWhereDiffer(w.scope, copy.scope);
+  return [cmd, ...emitted];
 }
 
 function unknownWhereDiffer(scope: Scope, beside: Scope): void {
@@ -45,17 +45,17 @@ function unknownWhereDiffer(scope: Scope, beside: Scope): void {
 }
 
 /**
- * Hands the next command the text this one pipes on. Both readings' printed texts feed a shell, as either may print it;
- * a group keeps the word's, as main read it.
+ * Hands the next command the text this one pipes on. Every reading's printed text feeds a shell, as any may print it;
+ * a group keeps dash's, as main read it.
  */
-export function handOn(w: HandedOn, op: string, words: WordToken[], redirects: RedirectToken[], [cmd, word]: Emitted): void {
+export function handOn(w: HandedOn, op: string, words: WordToken[], redirects: RedirectToken[], [cmd, word, ...rest]: Emitted): void {
   const empty = words.length + redirects.length === 0;
   if (word === undefined) {
     w.shellStdin = nextShellStdin(op, cmd, empty, w.shellStdin);
     w.stdin = groupStdin(w, op, words, redirects, cmd, nextStdin(op, cmd, empty, w.stdin));
     return;
   }
-  const printed = [cmd, word].flatMap((reading) => [nextStdin(op, reading, empty, w.stdin), ...nextShellStdin(op, reading, empty, w.shellStdin)]);
+  const printed = [cmd, word, ...rest].flatMap((reading) => [nextStdin(op, reading, empty, w.stdin), ...nextShellStdin(op, reading, empty, w.shellStdin)]);
   const texts = [...new Set(printed.filter((text) => text !== null))];
   w.shellStdin = texts.slice(1);
   w.stdin = groupStdin(w, op, words, redirects, word, texts[0] ?? null);

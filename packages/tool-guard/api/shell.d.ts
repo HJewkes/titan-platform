@@ -49,8 +49,8 @@ interface WordToken {
     typed?: string;
     /** Set on a word variable tracking adds itself, never by the lexer; only such a word can assign a hidden slot. */
     hidden?: true;
-    /** A `{name}` before a redirect, which bash and zsh read as the redirect's descriptor and dash as a word. */
-    namedFd?: true;
+    /** A `{name}` before a redirect: zsh reads it as the redirect's descriptor and dash as a word; bash only when glued. */
+    namedFd?: "glued" | "spaced";
 }
 interface OpToken {
     type: "op";

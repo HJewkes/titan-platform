@@ -326,6 +326,6 @@ function namedFdWord(s: LexState, glued: WordToken | null): WordToken | null {
   if (s.i < s.arithEnd || last?.type !== "word" || (glued !== null && glued !== last)) return null;
   const match = !last.quoted && !last.spliced ? NAMED_FD_RE.exec(last.value) : null;
   if (!match || (glued === null && match[2] !== undefined) || inConditional(s)) return null;
-  last.namedFd = true;
+  last.namedFd = glued === null ? "spaced" : "glued";
   return last;
 }

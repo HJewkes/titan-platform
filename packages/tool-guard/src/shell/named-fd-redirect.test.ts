@@ -119,8 +119,15 @@ const HANDED_ON = [
   `echo env -C {x} </dev/null ${PUSH} | tee /dev/null | sh`,
 ];
 
+/** bash reads a glued `{fd}<` as the fd and keeps a spaced `{x} <` a word, which neither zsh's reading nor dash's does. */
+const MIXED = [
+  "env -C {x} </dev/null {fd}< ./x.sh bash /dev/fd/10",
+  "{fd}< ./x.sh env -C {x} </dev/null bash /dev/fd/10",
+  "env --chdir {x} </dev/null {fd}< ./x.sh sh /dev/fd/10",
+];
+
 describe("a shell runs a descriptor a {name} redirect may have opened (TP-3279)", () => {
-  it.each([...DENIED, ...HANDED_ON])("denies %s", async (line) => {
+  it.each([...DENIED, ...HANDED_ON, ...MIXED])("denies %s", async (line) => {
     expect(await verdict(line)).toBe("deny");
   });
 
@@ -141,6 +148,10 @@ describe("a shell runs a descriptor a {name} redirect may have opened (TP-3279)"
     "echo {x} </dev/null | xargs echo",
     "printf '%s\\n' {a} {b} | cat | sort",
     "echo hi | cat | sh",
+    "env -C {x} </dev/null git status",
+    "cat {fd}<./ok.sh /dev/fd/10 | wc -l; git diff",
+    "exec {fd}</dev/null; git status",
+    "cd {x} </dev/null; git log -1",
   ])("allows %s, which runs no shell on that descriptor", async (line) => {
     expect(await verdict(line)).toBe("pass");
   });
@@ -183,6 +194,7 @@ const PREMISES: Array<[string, string]> = [
   ...DENIED.slice(15, 18).map((line): [string, string] => [line, "bash"]),
   [`env -C {x}</dev/null ${PUSH}`, "dash"],
   ...HANDED_ON.flatMap((line): Array<[string, string]> => [[line, "bash"], [line, "dash"]]),
+  ...MIXED.map((line): [string, string] => [line, "bash"]),
 ];
 
 describe.skipIf(!["bash", "zsh", "dash"].every(has))("bash, zsh and dash run what the denied lines hold (TP-3279)", () => {
