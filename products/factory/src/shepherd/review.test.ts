@@ -1403,7 +1403,7 @@ describe("reviewPhase", () => {
 
   it("takes a dispatched reviewer's CI-unread-only FIX_FIRST as no verdict and records sh-ci-unread", async () => {
     const dispatch = fakeDispatch();
-    const unread = (head: string) => `- ${CI_UNREAD_LINE}\n\nDefect class: CI unread at the head.\n\nVerdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${head}\n`;
+    const unread = (head: string) => `- ${CI_UNREAD_LINE}\n\nDefect class: CI unread.\n\nVerdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${head}\n`;
     const read = (input: AwaitVerdictInput, held: FakeDispatch, now: number) => held.agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, unread(input.head), now + 1));
 
     const { verdicts, stepIds } = await review({ dispatch, policy: AUTO, read });
