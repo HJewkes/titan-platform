@@ -120,7 +120,9 @@ function mathHolds(text: string, flat: string): boolean {
  */
 function braceMathWrites(body: string, truncated: boolean): boolean {
   let i = bracedNameEnd(body);
-  if (i < 0) return false;
+  // a head read that stops at the window edge never saw what follows the name, so a cut window fails closed
+  if (i < 0) return truncated && skipZshPrefixes(body, 1) >= body.length;
+  if (i >= body.length) return truncated;
   if (body[i] === "[") {
     const math = closeOf(body, i + 1, "]");
     if (math === CUT_OFF) return truncated;
@@ -128,6 +130,7 @@ function braceMathWrites(body: string, truncated: boolean): boolean {
     if (math.unpaired) return false;
     i = math.end + 1;
   }
+  if (i >= body.length) return truncated;
   if (body[i] !== ":" || /^:(?:[-=+?#]|:=)/.test(body.slice(i))) return false;
   return mathWrites(body, i + 1, "}", truncated);
 }

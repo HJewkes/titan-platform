@@ -60,6 +60,11 @@ const REFUSED = [
   ["an IFS name computed from a variable", "n=IFS; : $[ $n=1 ]"],
   ["an unpaired bracket in a subscript", ": ${a[(PS4=1]}"],
   ["a subscript that does not close in the window", `: \${a[${" ".repeat(600)}PS4=1]}`],
+  ["a name that fills the window before a subscript", `: \${${"a".repeat(600)}[PATH=0]}`],
+  ["a name that fills the window before an offset", `: \${${"a".repeat(600)}:PATH=0}`],
+  ["a subscript that closes at the window edge before an offset", `: \${a[${"0".repeat(596)}]:PATH=0}`],
+  ["an indirect name that fills the window", `: \${!${"a".repeat(600)}:=x}`],
+  ["zsh prefixes that fill the window", `: \${${"=".repeat(600)}a[PATH=0]}`],
 ] as const;
 
 const REFUSED_IN_RUN_TEXT = [["eval text", "eval ': $(( PS4=1 ))'"]] as const;
@@ -132,6 +137,7 @@ describe.skipIf(!bash)("bash really sets PS4 through the refused forms (TP-3294)
     ["$(( PS4=1 ))", ': $(( PS4=1 )); echo "$PS4"'],
     ["${a[PS4=7]}", ': ${a[PS4=7]}; echo "$PS4"'],
     ["${x:PS4=1}", "x=abcdef; : ${x:PS4=1}; echo \"$PS4\""],
+    ["a ${…[ ]} subscript past the window", `: \${${"a".repeat(600)}[PS4=7]}; echo "$PS4"`],
   ])("%s", (_form, script) => {
     expect(run("bash", ["--norc", "-c", script]).trim()).toMatch(/^[1-9]$/);
   });
