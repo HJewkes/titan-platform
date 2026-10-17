@@ -76,3 +76,5 @@ await recreateWorktree({ gitRoot: alloc.ref.gitRoot!, worktree: alloc.cwd, branc
 Extracted from agent-chat's `isolation/worktree.ts`, `worktree-setup.ts`, `git.ts` and the git
 halves of `park.ts` and `sweep.ts`. The strategy interface, the park blockers that read the
 roster, and runtime-state bookkeeping stay with the dispatcher.
+
+Worktree adds disable checkout hooks for that invocation only (`-c core.hooksPath=/dev/null`), preserving dispatcher CC410. Later git commands retain repository hooks. Timeout/late cleanup uses the original add target despite that prefix. Fetch/reference-transaction hooks are outside this unchanged preservation slice.

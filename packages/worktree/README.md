@@ -11,3 +11,5 @@ See [the reference page](../../site/reference/worktree.md) for the API and its g
 
 Tests that create real repositories are named `*.repo.test.ts`. `pnpm test` runs them;
 `pnpm test:watch` leaves them out.
+
+Worktree adds disable checkout hooks for that invocation only (`-c core.hooksPath=/dev/null`), preserving dispatcher CC410. Later git commands retain repository hooks. Timeout/late cleanup uses the original add target despite that prefix. Fetch/reference-transaction hooks are outside this unchanged preservation slice.
