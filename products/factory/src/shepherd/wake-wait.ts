@@ -22,6 +22,14 @@ export type Wait = "timeout" | "deferred" | "broker-down";
 /** Fixed words, never the error's text, since the reason reaches the seat and a PR comment. */
 const WAIT_WORDS: Record<Wait, string> = { timeout: "agent-chat timed out", deferred: "the spawn gate deferred it", "broker-down": "the broker was unavailable" };
 
+/** The deadlines of one wake's asks; each defaults to its constant. */
+export interface WaitDeadlines {
+  askDeadlineMs?: number;
+  deferDeadlineMs?: number;
+}
+
+export const deadlineFor = (deadlines: WaitDeadlines, wait: Wait): number => (wait === "deferred" ? (deadlines.deferDeadlineMs ?? WAKE_DEFER_MS) : (deadlines.askDeadlineMs ?? WAKE_ASK_MS));
+
 export function waitOf(error: unknown): Wait | undefined {
   if (error instanceof SpawnDeferred) return "deferred";
   if (error instanceof DispatchTimeoutError) return "timeout";

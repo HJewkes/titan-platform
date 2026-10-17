@@ -16,10 +16,11 @@ import { resolveCheckout } from "./reviewer-dispatch.js";
 import { seatCheckout } from "./seat-checkout.js";
 import type { Registration } from "./store.js";
 import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, fixFirstCount, successorBrief } from "./wake-brief.js";
-import { latestRow, lineageSeat, newestAgent, successorName } from "./wake-roster.js";
+import { exitedOn, latestRow, lineageSeat, newestAgent, successorName } from "./wake-roster.js";
 import { HOLDING_KINDS, type HeldWake } from "./held-wake.js";
+import { noticeSpawner, type SpawnerNotice } from "./wake-notice.js";
 import { TURN_START_MS, awaitTurn, transcriptTurnSince, type TurnSince } from "./turn-check.js";
-import { WAKE_ASK_MS, WAKE_DEFER_MS, expiredWait, rosterWhileBrokerDown, waitAPoll, waitOf, whileDeferred, type Wait, type Waiting } from "./wake-wait.js";
+import { deadlineFor, expiredWait, rosterWhileBrokerDown, waitAPoll, waitOf, whileDeferred, type Wait, type WaitDeadlines, type Waiting } from "./wake-wait.js";
 import { DEFAULT_WARMTH_LIMITS, isWarm, readWarmth, type Warmth, type WarmthLimits } from "./warmth.js";
 
 export const WAKE_STEP = "sh-wake-implementer";
@@ -57,7 +58,7 @@ export const implementersOver = (agents: AgentChatAgents): ImplementerAgents => 
   spawn: (name, brief, cwd) => agents.spawn({ name, profile: FACTORY_IMPLEMENTER_PROFILE, brief, cwd }),
 });
 
-export interface WakeWiring {
+export interface WakeWiring extends WaitDeadlines {
   /** Absent means agent-chat at `deps.agentChatBin`; a relative bin means none is configured, and every wake is unhandled. */
   agents?: ImplementerAgents;
   readWarmth?: (transcriptPath: string) => Promise<Warmth | undefined>;
@@ -65,10 +66,6 @@ export interface WakeWiring {
   /** Defaults to reading the woken agent's transcript tail through `readWarmth`. */
   turnSince?: TurnSince;
   turnStartMs?: number;
-  /** Defaults to `WAKE_ASK_MS`. */
-  askDeadlineMs?: number;
-  /** How long asks the spawn gate only deferred are waited out; defaults to `WAKE_DEFER_MS`. */
-  deferDeadlineMs?: number;
   /** The repo's main checkout as configured, which a successor's worktree is cut from; undefined when none is bound. Defaults to the repo's seat path. */
   checkoutFor?: (repo: string) => string | undefined;
   /** The home a `~/`, `$HOME/` or `${HOME}/` checkout path expands against; defaults to the OS home. */
@@ -93,10 +90,9 @@ type Fallback = "resume" | "message";
  * The step's record: who took the wake and how, and the second ask that started its turn, for the wake analytics. A
  * `held` wake is one whose successor agent-chat refused to start, so its seat can be told before the owner is asked.
  */
-export type WakeStepResult = { kind: "woken"; agent: string; mode: Mode; sessionId?: string; fallback?: Fallback; askedAt?: number } | { kind: "unhandled"; reason: string; held?: { agent: string }; notice?: SpawnerNotice };
-
-/** What a wake no agent took told the session that spawned its lineage, which can start the fix round by hand. */
-type SpawnerNotice = { sent: boolean; detail: string; seat?: string };
+export type WakeStepResult =
+  | { kind: "woken"; agent: string; mode: Mode; sessionId?: string; fallback?: Fallback; askedAt?: number }
+  | { kind: "unhandled"; reason: string; held?: { agent: string }; notice?: SpawnerNotice };
 
 const unhandled = (reason: string): WakeStepResult => ({ kind: "unhandled", reason });
 const held = (agent: string, error: unknown): WakeStepResult => ({ kind: "unhandled", reason: `agent-chat refused to start the successor ${agent}: ${failureOf(error)}`, held: { agent } });
@@ -200,8 +196,6 @@ async function recordSuccessor(deps: ShepherdDeps, agents: ImplementerAgents, ta
   deps.store.get().recordAuthor(task.input.runId, { agentId: row?.agentId ?? choice.agent, name: choice.agent, role: "successor", predecessor: choice.predecessor });
 }
 
-const deadlineFor = (wiring: WakeWiring, wait: Wait): number => (wait === "deferred" ? (wiring.deferDeadlineMs ?? WAKE_DEFER_MS) : (wiring.askDeadlineMs ?? WAKE_ASK_MS));
-
 /**
  * The woken agent must start a turn within `turnStartMs`. If it does not, one fallback ask goes out: a resume if it has
  * ended by then, else a direct message. No turn after that leaves the wake unhandled, so the run does not wait on nobody.
@@ -214,7 +208,8 @@ async function confirmTurn(deps: ShepherdDeps, wiring: WakeWiring, agents: Imple
   const fallback: Fallback = latestRow(asked.choice.agent, roster)?.presence === "exited" ? "resume" : "message";
   const at = deps.now();
   try {
-    await whileDeferred(deps, deadlineFor(wiring, "deferred"), signal, () => (fallback === "resume" ? agents.resume(asked.choice.agent, resumeMessage(task)) : agents.message(asked.choice.agent, resumeMessage(task))));
+    const again = () => (fallback === "resume" ? agents.resume(asked.choice.agent, resumeMessage(task)) : agents.message(asked.choice.agent, resumeMessage(task)));
+    await whileDeferred(deps, deadlineFor(wiring, "deferred"), signal, again);
   } catch (error) {
     return unhandled(`${asked.choice.agent} started no turn after the wake, and the ${fallback} fallback failed: ${failureOf(error)}`);
   }
@@ -305,19 +300,6 @@ function agentsFor(deps: ShepherdDeps, wiring: WakeWiring): ImplementerAgents | 
   return wiring.agents ?? (isAbsolute(deps.agentChatBin) ? implementersOver(agentChatAgents(deps.agentChatBin, { configDir: deps.agentChatConfigDir, roster: deps.roster, gate: deps.spawnGate })) : undefined);
 }
 
-/** A name the roster no longer shows live, or never shows, is not working; a failed read says nothing and reads as live. */
-function exitedOn(deps: ShepherdDeps, wiring: WakeWiring): ((name: string, signal: AbortSignal) => Promise<boolean>) | undefined {
-  const agents = agentsFor(deps, wiring);
-  if (agents === undefined) return undefined;
-  return async (name) => {
-    const rows = await agents.roster().catch((error: unknown): undefined => {
-      console.error(`shepherd: ${name} is read as live, the roster could not be read: ${error instanceof Error ? error.message : String(error)}`);
-      return undefined;
-    });
-    return rows !== undefined && latestRow(name, rows)?.presence === "exited";
-  };
-}
-
 /** Never throws but for an abort: a refusal or a failed read is `unhandled`, so the run falls back to the owner gate; a `held` one tells the seat first. */
 async function wakeImplementer(deps: ShepherdDeps, wiring: WakeWiring, input: WakeInput, signal: AbortSignal): Promise<WakeStepResult> {
   const agents = agentsFor(deps, wiring);
@@ -340,32 +322,10 @@ function refusedWake(error: unknown, signal: AbortSignal): WakeStepResult {
   return unhandled(`the wake was refused: ${failureOf(error)}`);
 }
 
-/**
- * A wake no agent took leaves the run waiting on a head nobody is pushing, so the lineage's spawner is told why, once,
- * inside the step: a replay reads the record and sends nothing. A held wake's seat is told by its own route.
- */
+/** A held wake's seat is told by its own route. */
 async function tellSpawner(deps: ShepherdDeps, agents: ImplementerAgents, task: WakeTask, result: WakeStepResult, signal: AbortSignal): Promise<WakeStepResult> {
-  const ports = deps.exitNotice;
-  if (result.kind !== "unhandled" || result.held !== undefined || ports === undefined) return result;
-  try {
-    const rows = await agents.roster();
-    const seat = lineageSeat(task, rows);
-    if (seat === undefined) return { ...result, notice: { sent: false, detail: "no session spawned the lineage" } };
-    await ports.send(seat,spawnerNoticeText(task, result.reason, newestAgent(task, rows)?.name));
-    return { ...result, notice: { sent: true, seat, detail: `told ${seat}` } };
-  } catch (error) {
-    signal.throwIfAborted();
-    return { ...result, notice: { sent: false, detail: `the spawner notice failed: ${failureOf(error)}` } };
-  }
-}
-
-function spawnerNoticeText(task: WakeTask, reason: string, newest: string | undefined): string {
-  const { input, pr } = task;
-  const agent = newest ?? task.implementer;
-  return [
-    `Shepherd: ${input.repo}#${input.pr} at head ${input.headSha}: no agent took the ${input.kind} wake, so nothing is fixing it: ${reason}.`,
-    `Next: resume ${agent} with the failure, start a successor on branch ${pr.headRef}, or push a fix yourself. The run waits for a new head.`,
-  ].join("\n");
+  if (result.kind !== "unhandled" || result.held !== undefined || deps.exitNotice === undefined) return result;
+  return { ...result, notice: await noticeSpawner(deps.exitNotice, () => agents.roster(), task, result.reason, signal) };
 }
 
 /** The step's record is what `wakePhase` and the view both read, so a kind that never holds records no `held`. */
@@ -376,7 +336,7 @@ function heldOnlyIfHolding(kind: WakeInput["kind"], result: WakeStepResult): Wak
 /** A malformed input fails the step; the await step reads and never writes, so each repeats safely after a crash. */
 export const wakeRoutes = (deps: ShepherdDeps, wiring: WakeWiring = {}): readonly StepRoute[] => [
   codeRoute(WAKE_STEP, deps.now, async (raw: unknown, signal) => wakeImplementer(deps, wiring, WakeInputSchema.parse(raw), signal)),
-  awaitNewHeadRoute({ ...deps, agentExited: exitedOn(deps, wiring) }, AWAIT_NEW_HEAD_STEP),
+  awaitNewHeadRoute({ ...deps, agentExited: exitedOn(agentsFor(deps, wiring)) }, AWAIT_NEW_HEAD_STEP),
   codeRoute(FIX_FIRST_STEP, deps.now, async (input: object) => input),
   codeRoute(REPAIR_STEP, deps.now, async (input: object) => input),
   codeRoute(FIX_PROOF_WAKE_STEP, deps.now, async (input: object) => input),
