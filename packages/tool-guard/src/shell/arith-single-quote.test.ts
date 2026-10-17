@@ -6,6 +6,7 @@ import { nodeContext } from "../context.js";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
+import { CommandRebindingError } from "./command-rebinding.js";
 import { extractCommands } from "./commands.js";
 
 const home = mkdtempSync(join(tmpdir(), "tool-guard-arith-quote-"));
@@ -58,8 +59,13 @@ describe("a single-quoted command substitution in arithmetic runs (TP-3290)", ()
     expect(await handled(src)).toBe("deny");
   });
 
-  it.each(HIDDEN)("extracts git push from %s", (_, src) => {
-    expect(names(src).some((n) => n.startsWith(PUSH))).toBe(true);
+  // A run-time word in math may store into a rebinding parameter (TP-3342), so the walk can refuse the line before it extracts the push.
+  it.each(HIDDEN)("extracts git push from %s, or refuses the line", (_, src) => {
+    try {
+      expect(names(src).some((n) => n.startsWith(PUSH))).toBe(true);
+    } catch (error) {
+      if (!(error instanceof CommandRebindingError)) throw error;
+    }
   });
 
   it.each([
