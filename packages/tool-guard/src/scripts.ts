@@ -1,4 +1,4 @@
-import { closeSync, constants, openSync, readSync, statSync } from "node:fs";
+import { closeSync, constants, existsSync, openSync, readSync, statSync } from "node:fs";
 import { INTERPRETERS, SHELLS } from "./mentions.js";
 import type { SimpleCommand } from "./shell/commands.js";
 import type { WordToken } from "./shell/lexer.js";
@@ -71,7 +71,15 @@ export function scriptTargets(cmd: SimpleCommand, home: string): ScriptTarget[] 
   const name = cmd.name;
   if (name !== null && SHELLS.has(name)) return shellTargets(cmd, home);
   const one = name === null ? null : scriptTarget(cmd, name, home);
-  return one === null ? [] : [one];
+  return one === null ? foundOnPath(cmd, home) : [one];
+}
+
+/** A bare name under a `PATH` the line changed runs the first file of that name in a relative directory it lists, so each one there is read. */
+function foundOnPath(cmd: SimpleCommand, home: string): ScriptTarget[] {
+  const bare = cmd.path;
+  if (bare === null || bare.includes("/") || cmd.searchDirs === undefined) return [];
+  const targets = cmd.searchDirs.flatMap((dir) => typedTarget(cmd, `${dir === "" ? "." : dir}/${bare}`, home) ?? []);
+  return targets.filter((t) => existsSync(t.path));
 }
 
 function scriptTarget(cmd: SimpleCommand, name: string, home: string): ScriptTarget | null {
