@@ -18,7 +18,7 @@ export interface Inline {
   wrap: Wrapping;
   /** The descriptor a shell read the texts from, whose rest its commands do not inherit; unset for `-c` and `eval`. */
   fd?: number;
-  /** Whether the shell reading the texts is one whose `[[` is a reserved word; `sh`, `dash` and any runner not known to be bash, zsh or ksh run it as a command. */
+  /** Whether the shell reading the texts is one whose `[[` is a reserved word; `sh`, `dash` and any runner not known to be bash, zsh or ksh run it as a command; `eval` text never joins, whatever the line before it did. */
   joinsConditional: boolean;
 }
 
@@ -34,7 +34,7 @@ export function inlineScript(
   inherited: Descriptors = TOP_DESCRIPTORS,
 ): Inline | null {
   if (cmd.script !== undefined) return { texts: [cmd.script], wrap: "sh-c", joinsConditional: false };
-  if (cmd.name === "eval") return { texts: splicedReadings(cmd.args, budget), wrap: "eval", joinsConditional: true };
+  if (cmd.name === "eval") return { texts: splicedReadings(cmd.args, budget), wrap: "eval", joinsConditional: false };
   if (cmd.name === "emulate") return emulateScript(cmd.args, budget);
   if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
   const operands = shellOperands(cmd.args, cmd.name);
@@ -65,7 +65,7 @@ function stdinReading(shell: string | null, sources: StdinSource[], piped: strin
 function emulateScript(args: WordToken[], budget: UnsureBudget): Inline | null {
   const words = emulateTextWords(args);
   if (words.length === 0) return null;
-  return { texts: [...new Set(words.flatMap((w) => splicedReadings([w], budget)))], wrap: "eval", joinsConditional: true };
+  return { texts: [...new Set(words.flatMap((w) => splicedReadings([w], budget)))], wrap: "eval", joinsConditional: false };
 }
 
 /**

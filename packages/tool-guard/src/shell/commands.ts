@@ -1,7 +1,6 @@
-import { ParseError, SplitParseError, tokenize } from "./lexer.js";
-import { newTrials } from "./arith-trials.js";
+import { ParseError } from "./lexer.js";
 import { mentionsAlias } from "./alias-mention.js";
-import { NestingLimitError } from "./nesting.js";
+import { tokenizeLine } from "./line-tokens.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { nextShellStdin, nextStdin, xargsStdin } from "./piped-stdin.js";
@@ -23,7 +22,7 @@ import type { Vars } from "./vars.js";
 import { newMarks, noteRedirect, recordValue, settle } from "./value-marks.js";
 import { noteCommand, noteWord } from "./stored-words.js";
 import type { ValueMarks } from "./value-marks.js";
-import { MAX_UNSURE_WORDS, NestingReadingError, ReadingLimitError, SPLICED_WEIGHT, SplitReadingError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
+import { MAX_UNSURE_WORDS, ReadingLimitError, SPLICED_WEIGHT, unsureReadings, ValueWalkError } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
 
 const MAX_DEPTH = 8;
@@ -156,7 +155,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
     marks: newMarks(),
     onScript: options.onScript ?? null,
   };
-  walk(tokenizeLine(src, w.joinsConditional), observed(w));
+  walk(readLine(src, w), observed(w));
   settle(w.marks);
   return out;
 }
@@ -171,15 +170,11 @@ function lineBudget(src: string, options: ExtractOptions): UnsureBudget {
   };
 }
 
-/** A line bash 5 and bash 3.2 read differently is refused outright, whatever it names; a plain ParseError is not. */
-function tokenizeLine(src: string, joinsConditional: boolean): Token[] {
-  try {
-    return tokenize(src, newTrials(src, joinsConditional));
-  } catch (error) {
-    if (error instanceof SplitParseError) throw new SplitReadingError(error.split);
-    if (error instanceof NestingLimitError) throw new NestingReadingError();
-    throw error;
-  }
+/** The line's tokens; the walk joins `[[` operators only as far as the reading that produced them did. */
+function readLine(src: string, w: Walk): Token[] {
+  const line = tokenizeLine(src, w.joinsConditional);
+  w.joinsConditional = line.joined;
+  return line.tokens;
 }
 
 function walk(tokens: Token[], w: Walk): void {
@@ -350,8 +345,9 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descrip
     if (script.wrap !== "eval") w.marks.opaque = true;
     const joins = w.joinsConditional && script.joinsConditional && !mentionsAlias(text);
     const inner = child(w, [...wrapping, script.wrap], descriptors);
-    inner.joinsConditional = joins;
-    walk(tokenizeLine(text, joins), inner);
+    const line = tokenizeLine(text, joins);
+    inner.joinsConditional = line.joined;
+    walk(line.tokens, inner);
   }
 }
 

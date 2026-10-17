@@ -30,7 +30,38 @@ describe("a [[ is joined only where the text is read as bash, zsh or ksh", () =>
     expect(spellings(command)).toContain("bash.merge.git-push-protected");
   });
 
-  it.each([`[[ a || ${PUSH} ]]`, `bash -c '[[ a || b ]]'`, `zsh -c '[[ a || b ]]'`, `eval '[[ a || b ]]'`])("still joins a bash or zsh [[ in %j", (command) => {
+  it.each([
+    `a=ali; b=as; $a$b '[['=false; eval '[[ a || ${PUSH} ]]'`,
+    `a=ali; b=as; $a$b '[['=false; [[ a || ${PUSH} ]]`,
+    `$(printf '\\x61lias') '[['=false; [[ a || ${PUSH} ]]`,
+    `x=$'\\x61lias'; $x '[['=false; [[ a || ${PUSH} ]]`,
+    `o=expand_aliases; p=; shopt -s $o$p; [[ a || ${PUSH} ]]`,
+    `shopt -s $o$p\n[[ a || ${PUSH} ]]`,
+    `setopt $o; [[ a || ${PUSH} ]]`,
+    `. ./f; [[ a || ${PUSH} ]]`,
+    `. ./f; eval '[[ a || ${PUSH} ]]'`,
+    `source ./f; bash -c '[[ a || ${PUSH} ]]'`,
+    `read "$n$m[[["; [[ a || ${PUSH} ]]`,
+    `declare "$n"; [[ a || ${PUSH} ]]`,
+    `printf -v "$n" x; [[ a || ${PUSH} ]]`,
+    `$x; [[ a || ${PUSH} ]]`,
+    `command $x; [[ a || ${PUSH} ]]`,
+    `eval '[[ a || ${PUSH} ]]'`,
+    `bash -c 'eval "[[ a || ${PUSH} ]]"'`,
+    `echo $(. ./f); [[ a || ${PUSH} ]]`,
+  ])("reports the push when a step before the [[ cannot be read: %j", (command) => {
+    expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  });
+
+  it.each([
+    `d=$(pwd); echo $d; [[ -n $d && a || ${PUSH} ]]`,
+    `echo $x && [[ a || ${PUSH} ]]`,
+    `bash -c '[[ a || ${PUSH} ]]'`,
+  ])("keeps the joined reading when every step is readable: %j", (command) => {
+    expect(spellings(command)).toEqual([]);
+  });
+
+  it.each([`[[ a || ${PUSH} ]]`, `bash -c '[[ a || b ]]'`, `zsh -c '[[ a || b ]]'`])("still joins a bash or zsh [[ in %j", (command) => {
     expect(spellings(command)).toEqual([]);
   });
 });
