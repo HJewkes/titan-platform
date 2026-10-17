@@ -7,24 +7,33 @@ import type { SourceFile } from "./scan.js";
 
 function readText(file: string): string | null {
   try {
-    const stat = fs.lstatSync(file);
-    if (!stat.isFile() || stat.size > MAX_FILE_BYTES) return null;
-    const buffer = fs.readFileSync(file);
-    return buffer.subarray(0, 8000).includes(0) ? null : buffer.toString("utf-8");
+    return readTextOrThrow(file);
   } catch {
     return null;
   }
 }
 
-function trackedFiles(): SourceFile[] {
+/** Null for a file that is deliberately not scanned (not a regular file, oversized, binary). */
+function readTextOrThrow(file: string): string | null {
+  const stat = fs.lstatSync(file);
+  if (!stat.isFile() || stat.size > MAX_FILE_BYTES) return null;
+  const buffer = fs.readFileSync(file);
+  return buffer.subarray(0, 8000).includes(0) ? null : buffer.toString("utf-8");
+}
+
+function trackedFiles(): { files: SourceFile[]; unreadable: string[] } {
   const listing = execFileSync("git", ["ls-files", "-z"], { encoding: "utf-8", maxBuffer: 256 * 1024 * 1024 });
-  return listing
-    .split("\0")
-    .filter((path) => path !== "")
-    .flatMap((path) => {
-      const text = readText(path);
-      return text === null ? [] : [{ path, text }];
-    });
+  const files: SourceFile[] = [];
+  const unreadable: string[] = [];
+  for (const path of listing.split("\0").filter((p) => p !== "")) {
+    try {
+      const text = readTextOrThrow(path);
+      if (text !== null) files.push({ path, text });
+    } catch {
+      unreadable.push(path);
+    }
+  }
+  return { files, unreadable };
 }
 
 const io: RunIo = {

@@ -1,4 +1,4 @@
-import { buildReport, RULES_PATH, summaryLine } from "./report.js";
+import { buildReport, RULES_PATH, summaryLine, unreadableLine } from "./report.js";
 import { parseRules } from "./rules.js";
 import { scan } from "./scan.js";
 import type { SourceFile } from "./scan.js";
@@ -9,8 +9,8 @@ export const MAX_FILE_BYTES = 1_000_000;
 export interface RunIo {
   env: Readonly<Record<string, string | undefined>>;
   readRules: (path: string) => string | null;
-  /** Tracked files of the working tree, binary and oversized ones already dropped. */
-  trackedFiles: () => SourceFile[];
+  /** Tracked text files of the working tree; binary and oversized ones are dropped, a file that cannot be read is listed. */
+  trackedFiles: () => { files: SourceFile[]; unreadable: string[] };
   readStdin: () => string;
   out: (line: string) => void;
   err: (line: string) => void;
@@ -45,10 +45,11 @@ export function run(argv: readonly string[], io: RunIo): number {
   const parsed = parseRules(source);
   if (!parsed.ok) return fail(io, `${args.rules}: ${parsed.error}`);
   const { rules } = parsed;
-  const files = args.stdin ? [{ path: args.name, text: io.readStdin() }] : io.trackedFiles();
+  const { files, unreadable } = args.stdin ? { files: [{ path: args.name, text: io.readStdin() }], unreadable: [] } : io.trackedFiles();
   const result = scan(files, rules, { scoped: !args.stdin });
-  const report = buildReport(result, rules, io.env.GITHUB_ACTIONS === "true");
-  for (const line of report.lines) io.out(line);
+  const actions = io.env.GITHUB_ACTIONS === "true";
+  const report = buildReport(result, rules, actions);
+  for (const line of [...report.lines, ...unreadable.map((path) => unreadableLine(path, actions))]) io.out(line);
   io.out(summaryLine(result, report, rules.level));
   return rules.level === "error" && report.unallowed > 0 ? 1 : 0;
 }

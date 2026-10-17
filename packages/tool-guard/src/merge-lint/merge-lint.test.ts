@@ -34,6 +34,18 @@ function hitsIn(text: string, rules: Rules = rulesWith()): Array<[number, string
   return scan([{ path: "src/x.ts", text }], rules).findings.map((f) => [f.line, f.shape]);
 }
 
+describe("the gh pr merge pattern stays linear", () => {
+  it("a long run of global flags with no merge scans quickly", () => {
+    const text = `gh ${"--a ".repeat(2000)}`;
+    const started = performance.now();
+
+    const hits = hitsIn(text);
+
+    expect(hits).toEqual([]);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+});
+
 describe("each merge call shape in a scanned file warns at its starting line", () => {
   it.each([
     ["gh pr merge", "run gh pr merge 42 now", "gh-pr-merge"],
@@ -41,6 +53,14 @@ describe("each merge call shape in a scanned file warns at its starting line", (
     ["gh pr merge with an equals flag", "gh --repo=o/r pr merge 7", "gh-pr-merge"],
     ["gh pr merge in other case", "GH PR MERGE 7", "gh-pr-merge"],
     ["a soft-wrapped gh pr merge", "then gh pr\nmerge 9", "gh-pr-merge"],
+    ["a REST route in upper case", "PUT REPOS/o/r/PULLS/7/MERGE", "rest-pr-merge"],
+    ["a branch merge route in upper case", "POST REPOS/o/r/MERGES", "rest-branch-merge"],
+    ["a merge chained before a disable-auto", "gh pr merge 6 --squash && gh pr merge 5 --disable-auto", "gh-pr-merge"],
+    ["a merge before a semicolon", "gh pr merge 6; echo --disable-auto", "gh-pr-merge"],
+    ["a merge before a pipe", "gh pr merge 6 | tee --disable-auto", "gh-pr-merge"],
+    ["a merge before prose naming the flag", "gh pr merge 6 and don't use --disable-auto", "gh-pr-merge"],
+    ["a one-line JSON prompt", '{"prompt": "gh pr merge 6", "note": "--disable-auto"}', "gh-pr-merge"],
+    ["a merge before a literal backslash n", "gh pr merge 6\\n--disable-auto", "gh-pr-merge"],
     ["a REST pulls merge", "gh api -X PUT repos/o/r/pulls/7/merge", "rest-pr-merge"],
     ["a route string with placeholders", "PUT /repos/{owner}/{repo}/pulls/{pull_number}/merge", "rest-pr-merge"],
     ["a template literal", "`repos/${repo}/pulls/${number}/merge`", "rest-pr-merge"],
@@ -62,6 +82,7 @@ describe("each merge call shape in a scanned file warns at its starting line", (
     ["a PR view", "gh pr view 5"],
     ["merge-upstream", "repos/o/r/merge-upstream"],
     ["update-branch", "pulls/5/update-branch"],
+    ["a disable-auto cancel after a quoted prose", "gh pr merge 5 --disable-auto"],
   ])("%s does not warn", (_name, text) => {
     expect(hitsIn(text)).toEqual([]);
   });
@@ -99,14 +120,14 @@ interface FakeIo {
   err: string[];
 }
 
-function fakeIo(options: { rules?: string | null; files?: SourceFile[]; stdin?: string; env?: Record<string, string> } = {}): FakeIo {
+function fakeIo(options: { rules?: string | null; files?: SourceFile[]; unreadable?: string[]; stdin?: string; env?: Record<string, string> } = {}): FakeIo {
   const out: string[] = [];
   const err: string[] = [];
   const rules = options.rules === undefined ? JSON.stringify(BASE_RULES) : options.rules;
   const io: RunIo = {
     env: options.env ?? {},
     readRules: () => rules,
-    trackedFiles: () => options.files ?? [],
+    trackedFiles: () => ({ files: options.files ?? [], unreadable: options.unreadable ?? [] }),
     readStdin: () => options.stdin ?? "",
     out: (line) => out.push(line),
     err: (line) => err.push(line),
@@ -149,6 +170,13 @@ describe("the exit code", () => {
     expect(fake.out).toEqual([]);
   });
 
+  it("an unreadable tracked file is reported by name", () => {
+    const fake = fakeIo({ unreadable: ["src/locked.ts"] });
+
+    expect(run([], fake.io)).toBe(0);
+    expect(fake.out[0]).toBe("merge-lint: warn src/locked.ts: tracked file could not be read, so it was not scanned");
+  });
+
   it("an unknown argument exits 2", () => {
     expect(run(["--bogus"], fakeIo().io)).toBe(2);
   });
@@ -189,7 +217,7 @@ describe("an allowlist covers only what it names", () => {
 });
 
 describe("the allowlist cannot silently widen", () => {
-  it.each(["**", "*", "**/*"])("an entry whose path glob is %s is refused (exit 2)", (path) => {
+  it.each(["**", "*", "**/*", "**/**/*", "*/**", "**/**", "**/*/**"])("an entry whose path glob is %s is refused (exit 2)", (path) => {
     const allow = [{ path, kind: "detector", reason: "test" }];
     const fake = fakeIo({ files: OFFENDER, rules: JSON.stringify({ ...BASE_RULES, allow }) });
 
@@ -277,8 +305,10 @@ const dirs: string[] = [];
 afterAll(() => dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true })));
 
 function tempRepo(files: Record<string, string>): string {
-  const dir = mkdtempSync(join(tmpdir(), "merge-lint-"));
-  dirs.push(dir);
+  // A private parent, so the untouched-parent check is not disturbed by other tests writing to the shared tmpdir.
+  const parent = mkdtempSync(join(tmpdir(), "merge-lint-"));
+  dirs.push(parent);
+  const dir = join(parent, "repo");
   const all = { ".github/merge-lint.json": JSON.stringify(BASE_RULES), ...files };
   for (const [name, text] of Object.entries(all)) {
     mkdirSync(dirname(join(dir, name)), { recursive: true });

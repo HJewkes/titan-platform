@@ -19,7 +19,7 @@
       "kind": "wrapper",
       "mergePath": "merge-into-branch",
       "logs": false,
-      "reason": "POST repos/R/merges for sh-merge-up into a PR head branch, never the default branch"
+      "reason": "the branch-merge POST for sh-merge-up into a PR head branch, never the default branch"
     },
     { "path": "packages/tool-guard/src/**", "kind": "detector", "reason": "classifies merge calls; never makes one" },
     { "path": "packages/tool-guard/scripts/**", "kind": "detector", "reason": "benchmarks the classifier on merge-shaped commands" },

@@ -52,3 +52,9 @@ export function buildReport(result: ScanResult, rules: Rules, actions: boolean):
 export function summaryLine(result: ScanResult, report: Report, level: Rules["level"]): string {
   return `merge-lint: level ${level}: ${report.unallowed} unallowed, ${result.findings.length - report.unallowed} allowed, ${result.stale.length} stale, ${result.notLogging.length} not logging`;
 }
+
+/** A tracked file the lint could not read was not scanned; saying so keeps a clean run from reading as full coverage. */
+export function unreadableLine(path: string, actions: boolean): string {
+  const message = "tracked file could not be read, so it was not scanned";
+  return actions ? annotation(path, null, message) : plain(path, null, message);
+}
