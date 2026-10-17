@@ -15,6 +15,7 @@ const home = mkdtempSync(join(tmpdir(), "tool-guard-store-"));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
 
 const PUSH = "git push origin HEAD:main";
+const BARE = `'$(${PUSH})'`;
 const PAYLOAD = `'a[$(${PUSH})]'`;
 
 const port: HookPort = {
@@ -48,6 +49,17 @@ describe("a typed payload stored without an assignment word, then read as arithm
     ["a value exported to a child shell", `export X=${PAYLOAD}; bash -c '(( X ))'`],
     ["a here-string read inside a loop", `while read X; do (( X )); done <<< ${PAYLOAD}`],
     ["a piped read in a group", `echo ${PAYLOAD} | { read X; (( X )); }`],
+  ])("denies %s", async (_, command) => {
+    expect(await handled(command)).toBe("deny");
+    expect(built(command)).toBe("deny");
+  });
+});
+
+describe("a subscript typed inside (( )), with the payload stored elsewhere (TP-3284)", () => {
+  it.each([
+    ["a function argument in a subshell body", `f() (( a[$1] )); f ${BARE}`],
+    ["set -- read by a later (( ))", `(( a[$1] )); set -- ${BARE}; (( a[$1] ))`],
+    ["a here-string read in a loop", `while read X; do (( a[X] )); done <<< ${BARE}`],
   ])("denies %s", async (_, command) => {
     expect(await handled(command)).toBe("deny");
     expect(built(command)).toBe("deny");

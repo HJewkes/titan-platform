@@ -227,6 +227,7 @@ function arithmeticEnd(list: Token[], at: number, words: WordToken[], w: Walk): 
 
 /** A token of an arithmetic command runs nothing, but a substitution in it does; its `)` leaves the shell as it was. */
 function inArithmetic(token: Token, last: boolean, w: Walk): void {
+  if (token.type === "word") noteWord(token, w.marks);
   for (const sub of nestedLists(token)) walk(sub, child(w, [...w.scope.wrapping, "subshell"]));
   if (!last) return;
   Object.assign(w, { prev: ")", negated: false, chain: { start: ")" }, stdin: null, shellStdin: [] });
