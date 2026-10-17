@@ -23,7 +23,7 @@ import { runReadings } from "./xargs-readings.js";
 import type { Vars } from "./vars.js";
 import { newMarks, noteRedirect, recordValue, settle } from "./value-marks.js";
 import { noteCommand, noteWord } from "./stored-words.js";
-import { assignStandalone, namesScript, searchPathOf, trackCommand, withPrefixPath, type SearchPath } from "./search-path.js";
+import { adoptPath, assignStandalone, namesScript, searchPathOf, trackCommand, withPrefixPath, type SearchPath } from "./search-path.js";
 import type { ValueMarks } from "./value-marks.js";
 import { MAX_UNSURE_WORDS, ReadingLimitError, SPLICED_WEIGHT, unsureReadings, ValueWalkError } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
@@ -356,7 +356,10 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descrip
     // A shell's arguments and input become its positional parameters and what its `read` stores.
     if (script.wrap !== "eval") w.marks.opaque = true;
     // Which shell reads nested text is not known (a function, a PATH entry or a hash can rebind the runner's name), so it never joins.
-    walk(tokenizeLine(text, false), child(w, [...wrapping, script.wrap], descriptors));
+    const nested = child(w, [...wrapping, script.wrap], descriptors);
+    walk(tokenizeLine(text, false), nested);
+    // `eval` runs in the current shell, so a PATH it stores is the line's.
+    if (script.wrap === "eval") adoptPath(nested.scope.vars, w.scope.vars);
   }
 }
 

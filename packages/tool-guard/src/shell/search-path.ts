@@ -59,10 +59,21 @@ export function assignStandalone(assigned: readonly Assignment[], vars: Vars): v
   }
 }
 
+/** Carries the search path an `eval`'s text left in its walk back to the shell that ran it. */
+export function adoptPath(from: Vars, to: Vars): void {
+  if (from.has(SEARCH_KEY)) to.set(SEARCH_KEY, from.get(SEARCH_KEY) ?? null);
+  else to.delete(SEARCH_KEY);
+}
+
+/** `declare -n`, `typeset -n` and `local -n` make a name an alias of another, so a later store through it may be `PATH`'s. */
+const NAMEREF_RE = /^-[A-Za-z]*n/;
+const NAMEREF_DECLARERS = new Set(["declare", "typeset", "local"]);
+
 /** Tracks a command's variable writes, then records `export PATH=./bin:$PATH` and the other declarations, whose operands are words, not assignments. */
 export function trackCommand(cmd: TrackedCommand, vars: Vars): void {
   const before = held(vars);
   trackVars(cmd, vars);
+  if (cmd.name !== null && NAMEREF_DECLARERS.has(cmd.name) && cmd.args.some((a) => NAMEREF_RE.test(a.value))) vars.set(SEARCH_KEY, null);
   if (cmd.name === null || !DECLARERS.has(cmd.name)) return;
   for (const word of cmd.args) {
     const set = DECLARED_RE.exec(word.value);

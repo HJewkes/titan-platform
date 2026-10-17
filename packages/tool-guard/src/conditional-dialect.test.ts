@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { classify } from "./classify.js";
 import { nodeContext } from "./context.js";
 import { CommandRebindingError } from "./shell/command-rebinding.js";
+import { UnreadableScriptError } from "./shell/unsure-readings.js";
 
 const HOME = "/home/you";
 // A sourced `./f` exists and is harmless, so the rows that source it reach the `[[` rather than stopping at an unreadable script.
@@ -150,8 +151,6 @@ describe("the runner's name decides nothing, since nested text never joins", () 
     `function bash { dash "$@"; }; bash -c '[[ a || ${MERGE} ]]'`,
     `./bash -c '[[ a || ${MERGE} ]]'`,
     `b/bash -c '[[ a || ${MERGE} ]]'`,
-    `PATH=./b:$PATH bash -c '[[ a || ${MERGE} ]]'`,
-    `path=(./b $path); bash -c '[[ a || ${MERGE} ]]'`,
     `env 'BASH_FUNC_bash%%=() { dash "$@"; }' bash -c 'bash -c "[[ a || ${MERGE} ]]"'`,
     `bash <<'EOF'\n[[ a || ${MERGE} ]]\nEOF`,
     `echo '[[ a || ${MERGE} ]]' | bash`,
@@ -162,6 +161,12 @@ describe("the runner's name decides nothing, since nested text never joins", () 
     `bash -c 'bash -c "[[ a || ${MERGE} ]]"'`,
   ])("reports the merge in %j", (command) => {
     expect(spellings(command)).toContain("bash.merge.gh-pr-merge");
+  });
+});
+
+describe("a runner looked up on a PATH the line changed", () => {
+  it.each([`PATH=./b:$PATH bash -c '[[ a || ${MERGE} ]]'`, `path=(./b $path); bash -c '[[ a || ${MERGE} ]]'`])("refuses %j, as the runner may be any file there", (command) => {
+    expect(() => spellings(command)).toThrow(UnreadableScriptError);
   });
 });
 

@@ -73,6 +73,14 @@ describe("a bare name found through a changed PATH", () => {
     "export PATH=$(echo .):$PATH; s",
     "PATH[0]=.; s",
     "for PATH in .; do s; done",
+    'eval "PATH=."; s',
+    'eval "export PATH=.:$PATH"; s',
+    'builtin eval "PATH=."; s',
+    'command eval "PATH=."; s',
+    "declare -n p=PATH; p=.; s",
+    "typeset -n p=PATH; p=.; s",
+    "local -n p=PATH; p=.; s",
+    "eval 'path=(. $path)'; s",
     "mapfile PATH <<< .; s",
     "typeset path=(. $path); s",
     "declare -x PATH=$(echo .):$PATH; s",
@@ -169,6 +177,12 @@ describe("a line that only mentions path or PATH", () => {
     "echo PATH=/usr/bin; ls",
     "ls PATH=. path=.",
   ])("passes %s", async (command) => {
+    expect(await decision(command)).toBeNull();
+  });
+});
+
+describe("an eval or a nameref that does not touch PATH", () => {
+  it.each(['eval "$(rbenv init -)"', 'eval "X=1"; ls', "declare -A map; ls", 'export PATH="$HOME/bin:$PATH"; eval "FOO=1"; ls'])("passes %s", async (command) => {
     expect(await decision(command)).toBeNull();
   });
 });
