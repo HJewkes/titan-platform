@@ -8,8 +8,9 @@ import { secret } from "./families/secret.js";
 import { hasDynamicName, namedReadings, wrappedReading } from "./dynamic-readings.js";
 import { afterWrites, scriptReadings } from "./line-writes.js";
 import { INTERPRETERS } from "./mentions.js";
-import { hasOpaqueShebang, isSwappableShebang, refuseOpaqueShebang, refuseSwappableShebang, runsNatively, scriptTargets, SOURCERS } from "./scripts.js";
+import { hasOpaqueShebang, isSwappableShebang, refuseOpaqueShebang, OpaqueShebangError, refuseSwappableShebang, runsNatively, scriptTargets, SOURCERS } from "./scripts.js";
 import type { ScriptTarget } from "./scripts.js";
+import { resolveValue } from "./shell/path.js";
 import { extractCommands } from "./shell/commands.js";
 import type { ExtractOptions, SimpleCommand } from "./shell/commands.js";
 import { ParseError } from "./shell/lexer.js";
@@ -153,13 +154,33 @@ function handles(family: Family, cmd: SimpleCommand): boolean {
 
 /** One level deep: a shell script is classified as a command string, any other script's text gets the mention rule. */
 function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: ScriptMemo): ClassifiedAction[] {
-  return scriptTargets(cmd, ctx.home).filter((target) => !runsNatively(target, ctx)).flatMap((target) => {
+  const targets = scriptTargets(cmd, ctx.home);
+  if (cmd.name !== null && SOURCERS.has(cmd.name) && targets.length === 0) scripts.pathChanged = true;
+  refuseLaunchedBySwappedPath(cmd, ctx, scripts);
+  return targets.filter((target) => !runsNatively(target, ctx)).flatMap((target) => {
     const actions = memoized(scripts, ctx, scriptKey(cmd, target, ctx), () => scriptVerdicts(cmd, target, ctx, scripts));
     refuseOpaqueShebang(target, scripts.opaque);
     if (cmd.name !== null && SOURCERS.has(cmd.name) && scripts.writesPath.has(target.path)) scripts.pathChanged = true;
     refuseSwappableShebang(target, cmd.pathChanged === true || scripts.pathChanged, scripts.viaEnv);
     return actions.map((a) => (a.action === "secret-read" ? classified("bash.secret.script-by-path", a.subject) : a));
   });
+}
+
+/** `parallel` runs the by-path programs it is given, which the walk does not unwrap, so under a changed PATH an `env`-found shell in one is refused. */
+function refuseLaunchedBySwappedPath(cmd: SimpleCommand, ctx: ClassifyContext, scripts: ScriptMemo): void {
+  if (cmd.name !== "parallel" || !(cmd.pathChanged || scripts.pathChanged)) return;
+  for (const word of cmd.args) {
+    const path = word.dynamic || !word.value.includes("/") ? null : resolveValue(cmd.dir, word.value, ctx.home);
+    if (path !== null && launchesViaEnv(ctx, path)) throw new OpaqueShebangError();
+  }
+}
+
+function launchesViaEnv(ctx: ClassifyContext, path: string): boolean {
+  try {
+    return scriptReadings(ctx, path).some(isSwappableShebang);
+  } catch {
+    return false;
+  }
 }
 
 /**

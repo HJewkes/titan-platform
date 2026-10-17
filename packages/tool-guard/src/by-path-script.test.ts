@@ -212,6 +212,18 @@ describe("a #!/usr/bin/env shell script on a line that changes PATH", () => {
     ["a for loop", "for PATH in .; do ./envp; done"],
     ["a zsh path element", "path[1]=.; ./envp"],
     ["a dynamic store", "declare $X=.; ./envp"],
+    ["declare -g", "declare -g PATH=.; ./envp"],
+    ["a nameref to PATH", "declare -n p=PATH; p=.; ./envp"],
+    ["printf -v through a name variable", 'p=PATH; printf -v "$p" .; ./envp'],
+    ["eval of an export", 'eval "export PATH=."; ./envp'],
+    ["a sourced process substitution", "source <(echo PATH=.); ./envp"],
+    ["a PATH= prefix on sh -c", "PATH=.:$PATH /bin/sh -c ./envp"],
+    ["a PATH= prefix on bash -c", "PATH=.:$PATH /bin/bash -c ./envp"],
+    ["a PATH= prefix on find -exec ;", "PATH=.:$PATH find . -name envp -exec ./envp \\;"],
+    ["a PATH= prefix on find -exec +", "PATH=.:$PATH find . -name envp -exec ./envp {} +"],
+    ["a PATH= prefix on flock -c", "PATH=.:$PATH flock /tmp/l -c ./envp"],
+    ["a PATH= prefix on watch", "PATH=. watch ./envp"],
+    ["a PATH= prefix on parallel", "PATH=. parallel ./envp ::: a"],
     ["a subshell group", "{ PATH=.; }; ./envp"],
   ])("denies the script after %s", async (_, line) => {
     file("envp", ENV_BASH);
@@ -236,7 +248,7 @@ describe("a #!/usr/bin/env shell script on a line that changes PATH", () => {
     expect(await decision(". ./src.sh; ./envp")).toBe("deny");
   });
 
-  it.each(["echo PATH=1 && ./envp", "./envp; echo PATH=x", "grep PATH= f; ./envp", "PATH=$PATH:~/bin ls; ./envp"])("reads the script as before for %s", async (line) => {
+  it.each(["echo PATH=1 && ./envp", "./envp; echo PATH=x", "grep PATH= f; ./envp", "PATH=$PATH:~/bin ls; ./envp", 'export PATH="$HOME/bin:$PATH"', 'export PATH="$HOME/bin:$PATH"; git status', 'export PATH="$HOME/bin:$PATH"; npm test'])("reads the script as before for %s", async (line) => {
     file("envp", ENV_BASH);
     expect(await decision(line)).toBeNull();
   });

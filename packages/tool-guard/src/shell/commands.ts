@@ -118,6 +118,8 @@ interface Walk {
   /** Whether `!` negates the pipeline the command being emitted belongs to. */
   negated: boolean;
   foldCase: boolean;
+  /** The command that started this walk had `PATH` or `path` in its own prefix, which every command in the walk runs under. */
+  pathPrefix: boolean;
   /** Script texts the readings of the command being emitted have walked, so a later reading walks each text once; null outside one. */
   walked: Set<string> | null;
   aliases: AliasTable | null;
@@ -151,6 +153,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
     chain: { start: null },
     negated: false,
     foldCase,
+    pathPrefix: false,
     walked: null,
     aliases: options.aliases ?? null,
     unsure,
@@ -258,6 +261,12 @@ function child(w: Walk, wrapping: Wrapping[], descriptors = w.descriptors): Walk
   return observed({ ...w, scope, ...fresh });
 }
 
+/** A walk of what a wrapper runs: the wrapper's own `PATH=` prefix is the environment of everything in it. */
+function underPrefix(inner: Walk, ownPath: boolean): Walk {
+  inner.pathPrefix ||= ownPath;
+  return inner;
+}
+
 function scope(op: string, w: Walk): void {
   if (op === "(") {
     w.stack.push(w.scope);
@@ -349,18 +358,18 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   const inherited = w.prev === "|" || w.prev === "|&" ? emptied(w.descriptors, 0) : w.descriptors;
   const set = inherited === TOP_DESCRIPTORS ? {} : { inherited };
   const ownPath = cmd.assigned.some(([name, , kind]) => kind !== "hidden" && isPathName(name));
-  const pathSet = w.marks.pathChanged || ownPath ? { pathChanged: true as const } : {};
+  const pathSet = w.marks.pathChanged || w.pathPrefix || ownPath ? { pathChanged: true as const } : {};
   w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set, ...pathSet });
   const piped = stdin === null ? [] : [stdin, ...(stdin === w.stdin ? w.shellStdin : [])];
   const held = descriptorsAfter(redirects, piped, inherited, (target) => resolvePath(w.scope.dir, target, w.home));
   const script = inlineScript(cmd, redirects, piped, w.unsure, inherited);
-  if (script !== null) walkScript(script, w, wrapping, held);
+  if (script !== null) walkScript(script, w, wrapping, held, ownPath);
   if (cmd.name !== "find") return;
-  for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(folded(words, w)))) run(exec, [], child(w, [...wrapping, "find-exec"], held), null);
+  for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(folded(words, w)))) run(exec, [], underPrefix(child(w, [...wrapping, "find-exec"], held), ownPath), null);
 }
 
 /** Two readings of one command often run the same script (`flock $F sh -c '...'`); walking it again per nesting level would double the cost. */
-function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descriptors): void {
+function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descriptors, ownPath: boolean): void {
   // A shell reading its script from a descriptor leaves the rest of that stream to it, which is the text walked here.
   const descriptors = script.fd === undefined ? held : emptied(held, script.fd);
   for (const text of script.texts) {
@@ -369,7 +378,7 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descrip
     w.onScript?.(text);
     // A shell's arguments and input become its positional parameters and what its `read` stores.
     if (script.wrap !== "eval") w.marks.opaque = true;
-    walk(tokenizeLine(text), child(w, [...wrapping, script.wrap], descriptors));
+    walk(tokenizeLine(text), underPrefix(child(w, [...wrapping, script.wrap], descriptors), ownPath));
   }
 }
 
