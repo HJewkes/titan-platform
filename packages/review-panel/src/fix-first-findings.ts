@@ -43,29 +43,6 @@ export function fixFirstFindings(target: ReviewTarget, messages: readonly Review
 /** The line a reviewer lists, as its own blocking item, when it could not read CI at this head; Shepherd re-reviews a FIX_FIRST holding only it. */
 export const CI_UNREAD_LINE = "Blocking: CI unread";
 
-const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s+/;
-const BLOCKING_LINE = /^\s*blocking:/i;
-const DEFECT_CLASS_LINE = /^[\s#*]*defect class:/i;
-
-/**
- * True when a FIX_FIRST's only blocking item is the CI-unread line: the exact line, bare or as a list item, and no other list
- * item before the defect-class section. Findings joined from several messages may repeat it, so a repeat is the same item.
- * Anything else a reviewer listed may be a real finding, so it keeps the FIX_FIRST, as does a cut that may have dropped one.
- */
-export function ciUnreadOnly(text: string): boolean {
-  if (text.includes(FIX_FIRST_TRUNCATED.trim())) return false;
-  const named = new Set(text.split(FINDINGS_SEPARATOR).flatMap(blockingItems));
-  return named.size === 1 && named.has(CI_UNREAD_LINE);
-}
-
-/** One message's items above its defect-class section, list markers dropped. */
-function blockingItems(message: string): string[] {
-  const lines = findingsText(message).split("\n");
-  const end = lines.findIndex((line) => DEFECT_CLASS_LINE.test(line));
-  const items = (end < 0 ? lines : lines.slice(0, end)).filter((line) => LIST_ITEM.test(line) || BLOCKING_LINE.test(line));
-  return items.map((line) => line.replace(LIST_ITEM, "").trim());
-}
-
 /** The line a reviewer adds for each blocking item that contradicts a recorded owner pick. */
 export const OWNER_PICK_CONTRADICTED = "Owner pick contradicted:";
 

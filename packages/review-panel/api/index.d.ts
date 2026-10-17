@@ -508,16 +508,17 @@ declare function boundedFindings(text: string, max?: number): string;
 declare function fixFirstFindings(target: ReviewTarget, messages: readonly ReviewerMessage[], fallback: string, heading?: string): string;
 /** The line a reviewer lists, as its own blocking item, when it could not read CI at this head; Shepherd re-reviews a FIX_FIRST holding only it. */
 declare const CI_UNREAD_LINE = "Blocking: CI unread";
-/**
- * True when a FIX_FIRST's only blocking item is the CI-unread line: the exact line, bare or as a list item, and no other list
- * item before the defect-class section. Findings joined from several messages may repeat it, so a repeat is the same item.
- * Anything else a reviewer listed may be a real finding, so it keeps the FIX_FIRST, as does a cut that may have dropped one.
- */
-declare function ciUnreadOnly(text: string): boolean;
 /** The line a reviewer adds for each blocking item that contradicts a recorded owner pick. */
 declare const OWNER_PICK_CONTRADICTED = "Owner pick contradicted:";
 /** The recorded pick ids a reviewer's text names on contradiction lines, each once; an id not recorded is ignored. */
 declare function contradictedPicks(text: string, ids: readonly string[]): string[];
+
+/**
+ * True when a FIX_FIRST's only blocking item is the CI-unread line. It is an allowlist, so any line it does not know, in any
+ * form or section, may be a real finding and keeps the FIX_FIRST, as do a `not fixed:` earlier item and a cut that may have
+ * dropped one. Each message joined into the findings is read on its own.
+ */
+declare function ciUnreadOnly(text: string): boolean;
 
 /** A verdict block names its target when repo (GitHub ignores case), PR number and head sha all match. */
 declare function namesTarget(block: {
