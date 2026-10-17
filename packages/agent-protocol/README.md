@@ -148,8 +148,7 @@ namespace and native ID. Unsupported and unverified assessments remain explicit.
 
 Native request options and execution stay in agent. Its existing exports keep
 the legacy Claude/Codex defaults through compatibility aliases. This is the
-execution-contract checkpoint of TP-3426 (TP-3372 S01); account, transcript,
-pricing, policy and bus ports remain unfinished. TP-643 wire schemas are separate.
+execution-contract checkpoint of TP-3426 (TP-3372 S01); account, pricing, policy and bus adapters and later consumer migration remain unfinished. TP-643 wire schemas are separate.
 
 The same subpath now exports the existing transcript source, semantic observation,
 locator, decoder and continuation DTOs. These declarations moved from session-read;
@@ -197,7 +196,22 @@ nor an adapter capability assessment establishes broker delivery, cancellation,
 process reattachment or other native runtime evidence.
 
 The fixture adapter only demonstrates observable in-process work, scoped resume and
-output parsing. No native runtime is qualified by this port. Account/quota, pricing,
-policy and bus service ports remain unfinished; policy and bus capabilities stay
+output parsing. No native runtime is qualified by this port. Account/quota, policy and bus service ports remain unfinished; policy and bus capabilities stay
 unavailable pending their enforcement and identity gates. Existing provider SDK
 compatibility types and execution functions are unchanged by these declarations.
+
+### Pricing service port
+
+`HarnessPricingPort<H>` quotes one existing `UsageMeasurement` at an explicit
+event time in epoch milliseconds. Its adapter supplies a reported cost, a catalog
+estimate, or an explicit unpriced reason. A catalog estimate identifies the provider,
+model, effective date, catalog version and matching/accounting policy versions.
+Reported costs have their own source evidence and do not require a matching catalog.
+An actual reported zero remains distinct from unavailable pricing.
+
+These structural contracts provide no price table, matching algorithm, calculation,
+validation or usage aggregation. The adapter owns those behaviors. The fixture uses
+a synthetic flat request charge to exercise the injected service; it does not qualify
+existing provider arithmetic. The later shared pricing extraction must preserve
+Claude cache TTL/long-prompt behavior and Codex inclusive cached/reasoning subsets,
+with unknown costs explicit and existing compatibility results preserved.
