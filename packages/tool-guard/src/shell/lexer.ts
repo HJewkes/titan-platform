@@ -50,7 +50,7 @@ const READERS: Record<string, (s: LexState) => void> = {
   " ": readBlank,
   "\t": readBlank,
   "\\": readEscape,
-  "'": readSingle,
+  "'": readSingleOrArith,
   '"': readDouble,
   "`": readBacktick,
   $: readDollar,
@@ -173,11 +173,21 @@ function readOperator(s: LexState, op: string, end: number): void {
   if (op === "\n" && !inWholeSpan) readLineEnd(s);
 }
 
+/** bash and zsh expand an arithmetic body as if double-quoted, so its single quotes are literal and `$(cmd)` still runs. */
+function readSingleOrArith(s: LexState): void {
+  if (s.i < s.arithEnd) readQuoted(s, "'");
+  else readSingle(s);
+}
+
 function readDouble(s: LexState): void {
+  readQuoted(s, '"');
+}
+
+function readQuoted(s: LexState, close: string): void {
   const w = markQuoted(ensureWord(s));
   s.i++;
-  while (s.src[s.i] !== '"') {
-    if (s.i >= s.src.length) throw new ParseError('unterminated "');
+  while (s.src[s.i] !== close) {
+    if (s.i >= s.src.length) throw new ParseError(`unterminated ${close}`);
     const c = s.src[s.i] as string;
     const next = s.src[s.i + 1];
     if (c === "\\" && next !== undefined && '$`"\\\n'.includes(next)) {
