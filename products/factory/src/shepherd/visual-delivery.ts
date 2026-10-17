@@ -54,7 +54,7 @@ const LintResult = z.strictObject({ schema: z.literal("titan-review/packet-lint@
 const ImportResult = z.looseObject({ id: z.string().min(1), created: z.boolean(), url: z.string(), lanUrl: z.string().nullable() });
 const Recorded = z.looseObject({ state: z.string(), reason: z.string().optional() });
 
-export type DeliveryRecord =
+type DeliveryRecord =
   | { state: "shadow"; packetId: string }
   | { state: "imported"; packetId: string; roundId: string; created: boolean; url: string; lanUrl: string | null }
   | { state: "cancelled"; reason: string }

@@ -41,7 +41,7 @@ export interface GateReads {
 }
 
 /** What health shows, as gateNotify shows `stuck`: a pending visual gate whose delivery failed waits on the coordinator's hand flow. */
-export interface VisualDeliveryStatus {
+interface VisualDeliveryStatus {
   waiting: number;
   failed: { gateId: string; reason: string }[];
 }
