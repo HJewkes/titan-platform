@@ -1,8 +1,8 @@
 /**
  * `rounds.frame`: one PNG a review round lists, for the console's Ship view. The client names a
  * frame key and a view, never a path. The path comes from the round itself: an image variant in
- * `round.json` (its head view), or a record in `frames/frames.json` (head, base and diff files,
- * theme and sha256).
+ * `round.json` (its head view), or a record in `frames/frames.json` (head, base, after and diff
+ * files, theme and sha256). A CI packet's head file is its montage; `after` is the changed image alone.
  *
  * Another process writes the round dir, so the read is defended the way `rounds.ts` defends
  * `round.json`, and more: the path stays inside the round dir, every directory below the round dir
@@ -27,7 +27,7 @@ const FRAME_KEY = /^[A-Za-z0-9_-]{1,128}$/;
 /** review-schema's `imagePath`: a relative .png path with no `..` segment. */
 const IMAGE_PATH = /^(?![/\\]|[A-Za-z]:)(?!(.*[/\\])?\.\.([/\\]|$)).+\.[Pp][Nn][Gg]$/;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const FRAME_VIEWS = ["head", "base", "diff"] as const;
+const FRAME_VIEWS = ["head", "base", "after", "diff"] as const;
 type FrameView = (typeof FRAME_VIEWS)[number];
 type Theme = (typeof THEME_MODES)[number];
 
@@ -35,7 +35,7 @@ const sha256Hex = z.string().regex(/^[0-9a-f]{64}$/);
 const indexedFile = z.object({ file: z.string(), sha256: sha256Hex });
 
 /**
- * frames@1 as review-harness writes it, plus the base and diff files a CI packet adds; other record fields are ignored.
+ * frames@1 as review-harness writes it, plus the base, after and diff files a CI packet adds; other record fields are ignored.
  * `unit`, `round` and `manifestSha256` bind the index to its round.json; the reader here ignores them, the importer requires them.
  * `packet` and `prose` name a CI packet's JSON beside round.json, and `after` a record's after image; only the importer reads them.
  */
@@ -53,8 +53,8 @@ export const FramesIndexSchema = z.object({
       file: z.string(),
       sha256: sha256Hex,
       base: indexedFile.optional(),
-      diff: indexedFile.optional(),
       after: indexedFile.optional(),
+      diff: indexedFile.optional(),
     }),
   ),
 });
@@ -73,6 +73,11 @@ interface FrameIndex {
 
 const frameResult = z.object({ contentType: z.literal("image/png"), bytes: z.number(), sha256: z.string(), base64: z.string() });
 type FrameRead = z.infer<typeof frameResult>;
+
+const framesResult = z.object({
+  frames: z.array(z.object({ key: z.string(), theme: z.enum(THEME_MODES).optional(), views: z.array(z.enum(FRAME_VIEWS)) })),
+});
+type FramesList = z.infer<typeof framesResult>;
 
 const refusal = (reason: string): Error => failure(`frame refused: ${reason}`, EXIT.NOINPUT);
 
@@ -150,6 +155,7 @@ async function readFramesIndex(roundDir: string): Promise<FramesIndex | null> {
 function recordFiles(record: FramesIndex["frames"][number]): Partial<Record<FrameView, string>> {
   const files: Partial<Record<FrameView, string>> = { head: record.file };
   if (record.base) files.base = record.base.file;
+  if (record.after) files.after = record.after.file;
   if (record.diff) files.diff = record.diff.file;
   return files;
 }
@@ -160,7 +166,7 @@ function indexEntries(roundDir: string, index: FramesIndex | null): FrameIndex {
   for (const record of index?.frames ?? []) {
     const files = recordFiles(record);
     entries.set(record.key, record.theme === undefined ? { files } : { files, theme: record.theme });
-    for (const listed of [record, record.base, record.diff]) if (listed) sha256.set(canonical(roundDir, listed.file), listed.sha256);
+    for (const listed of [record, record.base, record.after, record.diff]) if (listed) sha256.set(canonical(roundDir, listed.file), listed.sha256);
   }
   return { entries, sha256 };
 }
@@ -193,10 +199,21 @@ async function readFrame(roundDir: string, rel: string, expectedSha256?: string)
   return { contentType: "image/png", bytes: bytes.length, sha256, base64: bytes.toString("base64") };
 }
 
-export async function getFrame({ dir }: RoundsSource, id: string, key: string, view: FrameView): Promise<FrameRead> {
+async function roundFrameIndex(dir: string, id: string): Promise<{ roundDir: string; index: FrameIndex }> {
   if (!(await roundDirExists(dir, id))) throw failure(`No round named "${id}"`, EXIT.NOINPUT);
   const roundDir = path.resolve(dir, id);
-  const index = await frameIndex(roundDir);
+  return { roundDir, index: await frameIndex(roundDir) };
+}
+
+/** Which views each frame has, so the page asks only for files the round lists. */
+async function listFrames({ dir }: RoundsSource, id: string): Promise<FramesList> {
+  const { index } = await roundFrameIndex(dir, id);
+  const frames = [...index.entries].map(([key, { files, theme }]) => ({ key, theme, views: FRAME_VIEWS.filter((view) => files[view] !== undefined) }));
+  return { frames };
+}
+
+export async function getFrame({ dir }: RoundsSource, id: string, key: string, view: FrameView): Promise<FrameRead> {
+  const { roundDir, index } = await roundFrameIndex(dir, id);
   const file = index.entries.get(key)?.files[view];
   if (file === undefined) throw refusal(`round ${id} lists no ${view} view of "${key}"`);
   return readFrame(roundDir, file, index.sha256.get(canonical(roundDir, file)));
@@ -206,10 +223,17 @@ export function roundFramesCommands(source: RoundsSource) {
   return {
     "rounds.frame": readCommand({
       name: "rounds.frame",
-      description: "One PNG a review round lists, by frame key and view (head, base or diff), as base64 with its sha256",
+      description: "One PNG a review round lists, by frame key and view (head, base, after or diff), as base64 with its sha256",
       args: z.object({ id: z.string().regex(ROUND_ID), key: z.string().regex(FRAME_KEY), view: z.enum(FRAME_VIEWS).default("head") }),
       result: frameResult,
       run: ({ id, key, view }) => getFrame(source, id, key, view),
+    }),
+    "rounds.frames": readCommand({
+      name: "rounds.frames",
+      description: "Every frame a review round lists, with its theme and the views (head, base, after, diff) it has files for",
+      args: z.object({ id: z.string().regex(ROUND_ID) }),
+      result: framesResult,
+      run: ({ id }) => listFrames(source, id),
     }),
   };
 }

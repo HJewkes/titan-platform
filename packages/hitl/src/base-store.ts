@@ -122,12 +122,12 @@ export abstract class BaseGateStore implements GateStore {
    */
   private requireAuthorized(record: GateRecord, resolver: Readonly<GateResolver>, payload: unknown, evidence: Readonly<GateEvidence> | undefined): void {
     const hasAuthorize = this.authorize !== undefined;
-    const refusal = resolverRefusal(record, resolver, payload, { allowances: this.allowances, evidence, evidencePolicy: this.evidencePolicy, hasAuthorize });
-    if (refusal) throw new GateResolverRefused(record.id, resolver.class, refusal);
+    const verdict = resolverRefusal(record, resolver, payload, { allowances: this.allowances, evidence, evidencePolicy: this.evidencePolicy, hasAuthorize });
+    if ("refusal" in verdict) throw new GateResolverRefused(record.id, resolver.class, verdict.refusal);
     const ruleRefusal = ruleResolverRefusal(record, resolver, hasAuthorize);
     if (ruleRefusal) throw new GateResolverRefused(record.id, resolver.class, ruleRefusal);
     if (!this.authorize) return;
-    const decision = readDecision(record.id, this.authorize(Object.freeze({ ...record }), resolver));
+    const decision = readDecision(record.id, this.authorize(Object.freeze({ ...record }), resolver, Object.freeze({ admittedBy: verdict.admittedBy })));
     if (!decision.allowed) throw new GateResolverRefused(record.id, resolver.class, decision.reason);
   }
 

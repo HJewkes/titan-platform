@@ -208,7 +208,7 @@ export class RunContext implements WorkflowContext {
 
   private openGateOnce(gateId: string, prompt: string, options: AssistedOptions, stepId: string): void {
     try {
-      openGate(this.deps.gates, { ...briefFields(options.brief), id: gateId, prompt, schema: options.schema, expiresAt: options.expiresAt });
+      openGate(this.deps.gates, { ...briefFields(options.brief), id: gateId, prompt, schema: options.schema, expiresAt: options.expiresAt, rule: options.rule });
       this.emitGateOpened(stepId, gateId, prompt, options.brief?.summary);
     } catch (error) {
       if (!(error instanceof GateAlreadyExists)) throw error;
