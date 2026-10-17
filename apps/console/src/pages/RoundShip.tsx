@@ -41,7 +41,7 @@ export function ShipRound({ round }: { round: ValidRound }): ReactNode {
 }
 
 function ShipHeading({ round, question }: { round: ValidRound; question: MergeQuestion }): ReactNode {
-  const section = round.manifest.sections?.find((candidate) => candidate.questionIds.includes(question.id));
+  const section = round.manifest.sections.find((candidate) => candidate.questionIds.includes(question.id));
   return (
     <Card variant="subtle">
       <CardContent>
