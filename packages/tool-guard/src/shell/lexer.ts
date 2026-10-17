@@ -176,8 +176,10 @@ function readOperator(s: LexState, op: string, end: number): void {
 
 /** bash and zsh expand an arithmetic body as if double-quoted, so its single quotes are literal and `$(cmd)` still runs. */
 function readSingleOrArith(s: LexState): void {
-  if (s.i < s.arithEnd) readQuoted(s, "'");
-  else readSingle(s);
+  if (s.i >= s.arithEnd || s.arithEnd === Number.POSITIVE_INFINITY) return readSingle(s);
+  readQuoted(s, "'");
+  // bash finds the span's end with the quote taken whole, so a substitution reaching past it reads two ways.
+  if (s.i > s.arithEnd) throw new ParseError("a substitution in arithmetic runs past the end bash finds for it");
 }
 
 function readDouble(s: LexState): void {

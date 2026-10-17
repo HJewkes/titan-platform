@@ -101,3 +101,14 @@ describe("ANSI-C quoting outside arithmetic keeps its reading (TP-3290)", () => 
     expect(extractCommands("echo $'a\\nb'")[0]?.args[0]?.value).toBe("a\nb");
   });
 });
+
+describe("the end of (( )) is found with bash's rule, which takes a quote whole (TP-3290)", () => {
+  it.each([
+    ["on three lines", `(( '$(' ))\n${PUSH}\n: ')' ))`],
+    ["on one line", `(( '$(' )); ${PUSH}; : ')' ))`],
+    ["with an ANSI-C quote", `(( $'$(' ))\n${PUSH}\n: ')' ))`],
+    ["with an ANSI-C quote on one line", `(( $'$(' )); ${PUSH}; : ')' ))`],
+  ])("denies the push after a span holding an open $( %s", async (_, src) => {
+    expect(await handled(src)).toBe("deny");
+  });
+});
