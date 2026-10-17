@@ -60,6 +60,12 @@ describe("each merge call shape in a scanned file warns at its starting line", (
     ["a merge before a pipe", "gh pr merge 6 | tee --disable-auto", "gh-pr-merge"],
     ["a merge before prose naming the flag", "gh pr merge 6 and don't use --disable-auto", "gh-pr-merge"],
     ["a one-line JSON prompt", '{"prompt": "gh pr merge 6", "note": "--disable-auto"}', "gh-pr-merge"],
+    ["a merge before a sentence naming the flag", "Run gh pr merge 42 --squash. Never pass --disable-auto.", "gh-pr-merge"],
+    ["a merge before a comma clause", "Run gh pr merge 42 --squash, never --disable-auto", "gh-pr-merge"],
+    ["a merge before a parenthesis", "gh pr merge 42 --squash (not --disable-auto)", "gh-pr-merge"],
+    ["a merge before a comment", "gh pr merge 42 --squash # not --disable-auto", "gh-pr-merge"],
+    ["a merge before a substitution", "gh pr merge 42 --squash $(echo --disable-auto)", "gh-pr-merge"],
+    ["a merge before a longer flag name", "gh pr merge 42 --disable-automatic", "gh-pr-merge"],
     ["a merge before a literal backslash n", "gh pr merge 6\\n--disable-auto", "gh-pr-merge"],
     ["a REST pulls merge", "gh api -X PUT repos/o/r/pulls/7/merge", "rest-pr-merge"],
     ["a route string with placeholders", "PUT /repos/{owner}/{repo}/pulls/{pull_number}/merge", "rest-pr-merge"],
@@ -82,7 +88,9 @@ describe("each merge call shape in a scanned file warns at its starting line", (
     ["a PR view", "gh pr view 5"],
     ["merge-upstream", "repos/o/r/merge-upstream"],
     ["update-branch", "pulls/5/update-branch"],
-    ["a disable-auto cancel after a quoted prose", "gh pr merge 5 --disable-auto"],
+    ["a disable-auto cancel with the selector first", "gh pr merge 42 --disable-auto"],
+    ["a disable-auto cancel with the flag first", "gh pr merge --disable-auto 42"],
+    ["a disable-auto cancel after other flags", "gh pr merge 42 --squash -R o/r --disable-auto"],
   ])("%s does not warn", (_name, text) => {
     expect(hitsIn(text)).toEqual([]);
   });
