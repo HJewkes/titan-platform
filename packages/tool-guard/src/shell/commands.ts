@@ -12,6 +12,7 @@ import { assign, childVars, expandWord, lookup, isPathName, noteSureCommands, ob
 import { normalizeDeclarations } from "./declarations.js";
 import { CommandRebindingError, rebindsCommand } from "./command-rebinding.js";
 import { cutReading } from "./piped-nul.js";
+import { changeDir, lineBudget, literalEnv } from "./walk-support.js";
 import { inlineScript, SHELLS } from "./inline-script.js";
 import type { Inline } from "./inline-script.js";
 import { addRedirect } from "./group-stdin.js";
@@ -23,11 +24,10 @@ import type { Vars } from "./vars.js";
 import { newMarks, noteRedirect, recordValue, settle } from "./value-marks.js";
 import { noteCommand, noteWord } from "./stored-words.js";
 import type { ValueMarks } from "./value-marks.js";
-import { MAX_UNSURE_WORDS, NestingReadingError, ReadingLimitError, SPLICED_WEIGHT, SplitReadingError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
+import { NestingReadingError, ReadingLimitError, SplitReadingError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
 
 const MAX_DEPTH = 8;
-const RUNNERS = new Set([...SHELLS, "eval", "emulate", "find"]);
 
 /**
  * How a command was reached: a `( )` subshell or a substitution, a shell's `-c` string or a wrapper's
@@ -166,16 +166,6 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   return out;
 }
 
-/** The line's budget of `unsure` reading words and spliced text, shared by every walk of it. */
-function lineBudget(src: string, options: ExtractOptions): UnsureBudget {
-  return {
-    left: MAX_UNSURE_WORDS,
-    splicedLeft: SPLICED_WEIGHT * src.length,
-    decides: decider(options.guarded),
-    stopPastCap: options.stopPastCap === true,
-  };
-}
-
 /** A line bash 5 and bash 3.2 read differently is refused outright, whatever it names; a plain ParseError is not. */
 function tokenizeLine(src: string): Token[] {
   try {
@@ -299,11 +289,6 @@ function walkAdded(runs: Unwrapped[], redirects: RedirectToken[], w: Walk, next:
   addedReading(w, (copy) => runs.forEach((reading) => run(reading, redirects, copy, next)));
 }
 
-/** A dynamic or guarded command word, or one that runs more commands: shell text, a `.sh` script, `xargs` or `find -exec`. */
-function decider(guarded: ReadonlySet<string> | undefined): (cmd: Unwrapped) => boolean {
-  return (cmd) => cmd.name === null || cmd.xargs !== undefined || cmd.script !== undefined || RUNNERS.has(cmd.name) || cmd.name.endsWith(".sh") || (guarded?.has(cmd.name) ?? true);
-}
-
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
   if (rebindsCommand(raw)) throw new CommandRebindingError();
   if (raw.name === null && raw.args.length === 0 && !raw.xargs?.words.length) {
@@ -384,15 +369,4 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descrip
 
 function folded(words: WordToken[], w: Walk): WordToken[] {
   return w.foldCase ? foldCommandWords(words) : words;
-}
-
-function literalEnv(cmd: Unwrapped): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const [name, value, kind] of cmd.assigned) if (value !== null && !kind) env[name] = value;
-  return env;
-}
-
-function changeDir(dir: string | null, word: WordToken | undefined, home: string | null): string | null {
-  if (!word) return home;
-  return word.value === "-" ? null : resolvePath(dir, word, home);
 }
