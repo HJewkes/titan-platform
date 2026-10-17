@@ -1,4 +1,5 @@
-import { HOOKED, assignedInMath } from "./hooked-names.js";
+import { HOOKED, assignedInMath, writesComputedName } from "./hooked-names.js";
+import { CUT_OFF, closeOf } from "./math-close.js";
 import { dropJoins, nextAfter } from "./joins.js";
 import { PROTECTED } from "./protected-params.js";
 
@@ -97,30 +98,20 @@ export function assignsProtectedAt(src: string, dollar: number): boolean {
   return BRACE_SPLICE_RE.test(body) || truncated;
 }
 
-/** Whether the math in `text` from `from` up to its `close` writes a protected name; a body the window cuts off fails closed at any depth. */
+/**
+ * Whether the math in `text` from `from` up to its `close` writes a protected name, by its spelling or through a
+ * name computed at run time. A body the window cuts off fails closed at any depth. Brackets that do not pair are read
+ * to the end of the text; only the subshell-shaped `$((echo hi); echo there)` is left to the lexer's depth limit.
+ */
 function mathWrites(text: string, from: number, close: string, truncated: boolean): boolean {
-  const end = closeOf(text, from, close);
-  if (end === SUBSHELL_SHAPED) return false;
-  if (end === CUT_OFF) return truncated;
-  return assignedInMath(text.slice(from, end), PROTECTED) !== null;
+  const math = closeOf(text, from, close);
+  if (math === CUT_OFF) return truncated;
+  if (math.unpaired && close === "))") return false;
+  return mathHolds(text.slice(from, math.end), math.flat);
 }
 
-const CUT_OFF = -1;
-const SUBSHELL_SHAPED = -3;
-const GROUP_CHAR_RE = /[()[\]{}]/g;
-const OPENERS = "([{";
-
-/** The index of `close` outside nested `(`, `[` and `{`, or one of the negative markers above when it never comes. */
-function closeOf(text: string, from: number, close: string): number {
-  let depth = 0;
-  GROUP_CHAR_RE.lastIndex = from;
-  for (let at = GROUP_CHAR_RE.exec(text); at !== null; at = GROUP_CHAR_RE.exec(text)) {
-    const i = at.index;
-    if (depth === 0 && text.startsWith(close, i)) return i;
-    if (OPENERS.includes(text[i] ?? "")) depth++;
-    else if (--depth < 0) return SUBSHELL_SHAPED;
-  }
-  return CUT_OFF;
+function mathHolds(text: string, flat: string): boolean {
+  return assignedInMath(text, PROTECTED) !== null || writesComputedName(flat);
 }
 
 /**
@@ -131,11 +122,11 @@ function braceMathWrites(body: string, truncated: boolean): boolean {
   let i = bracedNameEnd(body);
   if (i < 0) return false;
   if (body[i] === "[") {
-    const end = closeOf(body, i + 1, "]");
-    if (end === CUT_OFF) return truncated;
-    if (end === SUBSHELL_SHAPED) return false;
-    if (assignedInMath(body.slice(i + 1, end), PROTECTED) !== null) return true;
-    i = end + 1;
+    const math = closeOf(body, i + 1, "]");
+    if (math === CUT_OFF) return truncated;
+    if (mathHolds(body.slice(i + 1, math.end), math.flat)) return true;
+    if (math.unpaired) return false;
+    i = math.end + 1;
   }
   if (body[i] !== ":" || /^:(?:[-=+?#]|:=)/.test(body.slice(i))) return false;
   return mathWrites(body, i + 1, "}", truncated);

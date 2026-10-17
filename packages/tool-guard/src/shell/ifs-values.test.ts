@@ -108,6 +108,13 @@ describe("lineIfsValues on math at a $ that writes IFS", () => {
   it("is refused by the lexer (TP-3294)", () => {
     expect(() => values(": $((IFS=1))")).toThrow(ParseError);
   });
+
+  it.each([
+    ["an arithmetic expansion with a dynamic name", ": $(( $n = 1 ))"],
+    ["an old-style arithmetic expansion with a dynamic name", "x=$[ $n = 1 ]"],
+  ])("is refused by the lexer for %s (TP-3294)", (_how, line) => {
+    expect(() => values(line)).toThrow(ParseError);
+  });
 });
 
 describe("lineIfsValues on code run from text it cannot read", () => {
@@ -127,8 +134,6 @@ describe("lineIfsValues on code run from text it cannot read", () => {
     ["a declared array subscript that assigns IFS", "declare a[IFS=1]=x"],
     ["an array subscript with a dynamic name", "a[$n]=x"],
     ["an arithmetic command with a dynamic name", "(( $n = 1 ))"],
-    ["an arithmetic expansion with a dynamic name", ": $(( $n = 1 ))"],
-    ["an old-style arithmetic expansion with a dynamic name", "x=$[ $n = 1 ]"],
     ["an arithmetic for with a dynamic name", "for (( i=$n; i<3; i++ )); do :; done"],
   ])("gives null for %s", (_how, line) => {
     expect(values(line)).toBeNull();

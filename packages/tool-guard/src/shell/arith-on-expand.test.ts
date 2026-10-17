@@ -48,6 +48,17 @@ const REFUSED = [
   ["a body that does not close in the window", `: $((${" ".repeat(600)}PS4=1 ))`],
   ["a nested group that does not close in the window", `: $(( (${" ".repeat(600)}PS4=1) ))`],
   ["a [ group that does not close in the window", `: $(( a[${" ".repeat(600)}PS4=1] ))`],
+  ["a bracket inside a nested expansion in a subscript", ": ${a[${y+]}PS4=1]}"],
+  ["a bracket inside a nested expansion in math", ": $(( ${y+]} PS4=1 ))"],
+  ["a paren inside a nested expansion in an offset", "x=abc; : ${x:${y+)}PS4=1}"],
+  ["a quoted bracket in math", `: $(( ']' PS4=1 ))`],
+  ["a name computed by an expansion with a default", ": $(( ${y-PS4}=1 ))"],
+  ["a name computed from a variable", "n=PS4; : $(( $n=1 ))"],
+  ["a name computed by a substitution", ": $(( $(echo PS4)=1 ))"],
+  ["a name computed in a pre-increment", "n=PS4; : $(( ++$n ))"],
+  ["a name computed in an IFS subscript", ": ${a[${y+]}IFS=1]}"],
+  ["an IFS name computed from a variable", "n=IFS; : $[ $n=1 ]"],
+  ["an unpaired bracket in a subscript", ": ${a[(PS4=1]}"],
   ["a subscript that does not close in the window", `: \${a[${" ".repeat(600)}PS4=1]}`],
 ] as const;
 
@@ -63,6 +74,11 @@ const PASSED = [
   ["an offset that reads", "echo ${x:PS4}"],
   ["a default value", "echo ${x:-PS4=1}"],
   ["a subshell in a substitution", "echo $((echo hi); echo there)"],
+  ["the length of an array in math", "echo $(( ${#a[@]} + 1 ))"],
+  ["a nested expansion in a subscript", "echo ${a[${i}]}"],
+  ["a nested expansion in a substring", "echo ${x:${n}:1}"],
+  ["a computed name that is only read", "echo $(( $n == 1 ))"],
+  ["a computed name on the right of an assignment", "echo $(( x = $n + 1 ))"],
   ["a quoted commit message", "git commit -m '$(( PS4=1 ))'"],
 ] as const;
 

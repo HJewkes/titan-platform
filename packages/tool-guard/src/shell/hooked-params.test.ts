@@ -517,10 +517,6 @@ describe("every math write operator, spacing and side around a computed name", (
     ["a brace list after ++", "f ++PS{4,}"],
     ["an unquoted glob before ++", "f P?4++"],
     ["an unquoted heredoc body", "cat <<EOF\n${x}=1\nEOF"],
-    ["a subscript in a # pattern", ': "${x#${a[${y}=1]}}"'],
-    ["$(( )) in a # pattern", ': "${x#$(( ${y}=1 ))}"'],
-    ["$[ ] in a % pattern", ': "${x%$[${y}=1]}"'],
-    ["$(( )) in a / pattern", ': "${x/$(( ${y}=1 ))/z}"'],
     ["a bare { before the expansion in a pattern", 'f "${x#{},${y}=7,0}"'],
     ["& in a replacement before =", 'f "${y/*/&=7}"'],
     ["& in a replacement before a spaced =", 'f "${y/*/& = 7}"'],
@@ -588,6 +584,10 @@ describe("math at a $ that writes a hooked parameter", () => {
     ["a substring length", ": ${x:0:PS4=1}"],
     ["a bash substring of $@", ": ${@:PS4=7}"],
     ["a bash substring of $1", ": ${1:PS4=7}"],
+    ["a computed name in a subscript in a # pattern", ': "${x#${a[${y}=1]}}"'],
+    ["a computed name in $(( )) in a # pattern", ': "${x#$(( ${y}=1 ))}"'],
+    ["a computed name in $[ ] in a % pattern", ': "${x%$[${y}=1]}"'],
+    ["a computed name in $(( )) in a / pattern", ': "${x/$(( ${y}=1 ))/z}"'],
   ])("is a ParseError and a denial for %s", async (_how, line) => {
     expect(() => tokenize(line)).toThrow(ParseError);
     const event = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: "/home/you/app", tool_input: { command: line } });

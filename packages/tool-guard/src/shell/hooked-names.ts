@@ -7,6 +7,9 @@ const WORD_RE = /[A-Za-z0-9_]+/g;
 const WRITTEN_AFTER_AT_RE = /\s*(?:\[|(?:\*\*|<<|>>|&&|\|\||\^\^|[-+*/%&^|])?=(?!=)|\+\+|--)/y;
 const WRITTEN_BEFORE_RE = /(?:\+\+|--)\s*$/;
 
+/** A name spelled partly or wholly by an expansion the scan skipped: `${y}S4`, `$n`. */
+const COMPUTED_NAME_RE = /[\w\uE000]*\uE000[\w\uE000]*/g;
+
 /** The whole-identifier words of the text at or after `from`, with a word cut by `from` left out. */
 function* wordsFrom(text: string, from: number): Generator<RegExpExecArray> {
   WORD_RE.lastIndex = from;
@@ -34,4 +37,16 @@ export function assignedInMath(text: string, names: ReadonlySet<string> = HOOKED
     if (WRITTEN_AFTER_AT_RE.test(text) || WRITTEN_BEFORE_RE.test(before)) return mention[0];
   }
   return null;
+}
+
+/**
+ * Whether math whose nested expansions are replaced by OPAQUE assigns a name only known at run time, as
+ * `$n=1`, `${y-PS4}=1` or `++$n` do: the name may be a hooked one, so it fails closed.
+ */
+export function writesComputedName(flat: string): boolean {
+  for (const run of flat.matchAll(COMPUTED_NAME_RE)) {
+    WRITTEN_AFTER_AT_RE.lastIndex = run.index + run[0].length;
+    if (WRITTEN_AFTER_AT_RE.test(flat) || WRITTEN_BEFORE_RE.test(flat.slice(Math.max(0, run.index - 16), run.index))) return true;
+  }
+  return false;
 }
