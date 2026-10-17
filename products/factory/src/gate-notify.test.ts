@@ -6,6 +6,7 @@ import { approveMergeDecision, frozenDecision } from "./gate-brief.js";
 import { askable, answerPayload, notifyTick, type GateNotifyPorts } from "./gate-notify.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
 import { OWNER } from "./test-support/resolver.js";
+import { tableGateRule } from "./workflows/land-approval.js";
 
 const HEAD = "a".repeat(40);
 const GATE = "run1/approve-merge";
@@ -48,9 +49,9 @@ function host(): FactoryHost {
   return opened;
 }
 
-function openMergeGate(target: FactoryHost, id = GATE, sendBack = false): void {
+function openMergeGate(target: FactoryHost, id = GATE, sendBack = false, rule?: GateRule): void {
   const { schema, brief } = approveMergeDecision({ repo: "HJewkes/demo", pr: 7, headSha: HEAD, reason: "Ready.", reviewedMerge: true, sendBack });
-  target.gates.create({ id, prompt: "Merge?", schema: toJSONSchema(schema), ...brief });
+  target.gates.create({ id, prompt: "Merge?", schema: toJSONSchema(schema), ...brief, ...(rule && { rule }) });
 }
 
 function ports(target: FactoryHost, queue: FakeQueue, logs: string[] = []): GateNotifyPorts {
@@ -246,6 +247,32 @@ describe("which gates are asked", () => {
   it("maps an option's label as well as its id, and nothing else", () => {
     expect(answerPayload(gate(), "merge at this head")).toEqual({ decision: "merge", headSha: HEAD });
     expect(answerPayload(gate(), "yes")).toBeUndefined();
+  });
+});
+
+describe("gate notify: gates land stamped with their table row", () => {
+  it("asks and resolves a gate stamped with the MRG-AU row, which names owner-remote", async () => {
+    const factory = host();
+    const queue = new FakeQueue();
+    openMergeGate(factory, GATE, false, tableGateRule({ table: "authority", rowId: "MRG-AU", version: 1 }));
+
+    await notifyTick(ports(factory, queue));
+    queue.answer("q1", "merge");
+    await notifyTick(ports(factory, queue));
+
+    expect(queue.asked).toHaveLength(1);
+    expect(factory.gates.get(GATE)).toMatchObject({ status: "resolved", rule: { ruleId: "MRG-AU" }, resolvedBy: { class: "owner-remote" } });
+  });
+
+  it("never asks a release gate, which REL-CO leaves to owner-terminal", async () => {
+    const factory = host();
+    const queue = new FakeQueue();
+    openMergeGate(factory, GATE, false, tableGateRule({ table: "shepherd-release", rowId: "owner-gate", version: 1 }));
+
+    await notifyTick(ports(factory, queue));
+
+    expect(queue.asked).toEqual([]);
+    expect(factory.gates.get(GATE)).toMatchObject({ status: "pending", rule: { ruleId: "REL-CO", resolvers: ["owner-terminal"] } });
   });
 });
 
