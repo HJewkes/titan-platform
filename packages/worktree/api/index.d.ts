@@ -366,8 +366,9 @@ declare function sweepWorktrees(options?: SweepOptions): Promise<SweptWorktree[]
  * Destroy one swept worktree and its branch.
  *
  * Refuses anything not `reclaimable` unless forced, so the classification is the
- * guard rather than advice. The grace window and the safety check already ran in
- * the sweep, against the report the caller read, so they are not re-derived here.
+ * lifecycle guard rather than advice. File and commit safety is observed again
+ * before ordinary removal because the tree may have changed since the sweep.
+ * No new exit timestamp is inferred from the report.
  */
 declare function reclaimWorktree(entry: SweptWorktree, options?: {
     force?: boolean;
