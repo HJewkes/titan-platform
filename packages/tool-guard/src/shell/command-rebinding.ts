@@ -1,8 +1,11 @@
 import { splitCluster } from "./cluster.js";
-import { writesProtectedParam } from "./hooked-params.js";
+import { HOOKED_WRITERS, writesProtectedParam } from "./hooked-params.js";
+import { nameSlots } from "./name-slots.js";
 import type { WordToken } from "./lexer.js";
+import { expandsInStoreOptions, STORE_OPTION_BUILTINS } from "./store-option-zone.js";
 import { ReadingLimitError } from "./unsure-readings.js";
 import type { Unwrapped } from "./unwrap.js";
+import { WRITER_SPECS } from "./writer-specs.js";
 
 /** Parameters whose stores bind a command name, or a `~name`, to something the guard never reads as that name. */
 const REBINDING = ["commands", "BASH_CMDS", "functions", "dis_functions", "nameddirs"];
@@ -11,9 +14,17 @@ const REBINDING_SET = new Set(REBINDING);
 const ASSIGNING_EXPANSION_RE = new RegExp(`\\$\\{[^}]*?\\b(?:${REBINDING.join("|")})(?:\\[[^\\]]*\\])?:{0,2}=`);
 /** An expansion that assigns whatever parameter another one names: bash `${!n=/x}`, zsh `${(P)n::=/x}`. */
 const INDIRECT_ASSIGNING_RE = /\$\{(?:!|\([^)]*P[^)]*\))[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?:{0,2}=/;
-/** Builtins that skip one leading `--` and still read options after it: `zparseopts -- -A commands y:`. */
-const SKIPS_LEADING_DASHES = new Set(["zparseopts", "zstyle", "zformat", "getopts"]);
-const NAMEREF_DECLARERS = new Set(["typeset", "declare", "local"]);
+/** A word that opens with a rebinding parameter's name, subscript or assignment: a store even when part of it expands. */
+const NAMES_REBINDING_RE = new RegExp(`^(?:${REBINDING.join("|")})(?:\\[|\\+?=|$)`);
+/** Declarers print instead of storing under `-p` and `-f`: `declare -p BASH_CMDS`. */
+const VARIABLE_TAKERS = new Set(["export", "declare", "typeset", "local", "readonly", "private", "integer", "float", "read", "mapfile", "readarray"]);
+const PRINTS_VARIABLES = new Set(["export", "declare", "typeset", "local", "readonly", "private", "integer", "float"]);
+/** Builtins whose stored-into name comes from an option value or a fixed word, so a computed operand names nothing. */
+const NAME_BY_OPTION = new Set([...Object.keys(WRITER_SPECS).filter((name) => WRITER_SPECS[name]?.operands !== "names"), "getopts"]);
+/** zsh `shift NAME` only drops elements from the array it names, and dropping a binding falls back to PATH. */
+const DROPS_ONLY = new Set(["shift"]);
+/** The words that store into a named parameter; any other command writes none, whatever its words expand to. */
+const STORE_BUILTINS = new Set([...HOOKED_WRITERS, "functions"]);
 
 /** A line that rebinds a command name (`hash y=/usr/bin/git`, `commands[y]=…`); the hook denies it unchecked. */
 export class CommandRebindingError extends ReadingLimitError {
@@ -33,8 +44,9 @@ export class CommandRebindingError extends ReadingLimitError {
 export function rebindsCommand(cmd: Unwrapped): boolean {
   if (cmd.name === "hash" && hashBinds(cmd.args)) return true;
   if (cmd.assigned.some(([name]) => REBINDING_SET.has(name))) return true;
-  if (cmd.name !== null && storesRebinding(cmd, cmd.name)) return true;
-  const texts = [...cmd.args.map((a) => a.value), ...cmd.assigned.map(([, value]) => value ?? "")];
+  if (cmd.name !== null && expandsInStoreOptions(cmd.name, cmd.args)) return true;
+  if (cmd.name !== null && STORE_BUILTINS.has(cmd.name) && storesRebinding(cmd, cmd.name)) return true;
+  const texts = [...cmd.args.filter((a) => a.dynamic).map((a) => a.value), ...cmd.assigned.map(([, value]) => value ?? "")];
   return texts.some((text) => ASSIGNING_EXPANSION_RE.test(text) || INDIRECT_ASSIGNING_RE.test(text));
 }
 
@@ -53,26 +65,96 @@ function hashBinds(args: WordToken[]): boolean {
   return false;
 }
 
-/** Whether a command declares a nameref, copies a function under a new name, or stores into a rebinding parameter. */
+/**
+ * Whether a store builtin declares a nameref to a rebinding parameter, copies a function under a new name, or stores
+ * into a rebinding parameter. A word that expands at run time in a name slot may be any name, so it counts, after
+ * `--` too: `read -- "$n"`, `declare "$x"`, `zstyle -s :a k "$n"`. One where options are still read is
+ * `expandsInStoreOptions`'s.
+ */
 function storesRebinding(cmd: Unwrapped, name: string): boolean {
-  const declarer = NAMEREF_DECLARERS.has(name);
-  if (declarer && cmd.args.some((a) => /^-[^-]*n/s.test(a.value) || /^[-+].*[^-+A-Za-z0-9]/s.test(a.value))) return true;
   if (name === "functions" && functionsCopies(cmd.args)) return true;
-  const args = readableArgs(name, cmd.args, declarer);
-  return writesProtectedParam({ ...cmd, args }, args, [], REBINDING_SET) !== null;
+  const own = cmd.args;
+  if (PRINTS_VARIABLES.has(name)) {
+    const operands = declarerOperands(own);
+    if (operands.some((a) => NAMES_REBINDING_RE.test(a.value) && a.value.includes("="))) return true;
+    if (printsOnly(own, operands)) return false;
+  }
+  const args = variableWords(name, own.filter((a) => NAMES_REBINDING_RE.test(a.value) || (!a.dynamic && !isGlob(a, name))));
+  if (writesProtectedParam({ ...cmd, args }, args, [], REBINDING_SET) !== null) return true;
+  return dynamicSlot(name, printsFunction(name, own) ? own.slice(0, -1) : own);
 }
 
 /**
- * The words the store reader gets: zsh skips one leading `--` before these builtins' options, and a lone quoted word
- * that follows `-f` (a function to print) or is all `printf` has (a format, which needs a word after it to be `-vNAME`)
- * stores nowhere.
+ * Whether the stored-into name is computed at run time (`wait -p "$n" $!`, `read -- "$n"`, `declare "$x"=v`), or
+ * sits in an option word the reader cannot split. A run-time word where a declarer or reader may read an option or a
+ * name may be either, so it counts: `declare "$x"`.
  */
-function readableArgs(name: string, args: WordToken[], declarer: boolean): WordToken[] {
-  if (SKIPS_LEADING_DASHES.has(name) && args[0]?.value === "--") return args.slice(1);
+function dynamicSlot(name: string, args: WordToken[]): boolean {
+  if (DROPS_ONLY.has(name)) return false;
+  if (namedByDynamicWord(name, args)) return true;
+  const byOption = NAME_BY_OPTION.has(name);
+  const slots = nameSlots(name, args);
+  if (typeof slots !== "string") return slots.some((slot) => (byOption ? slot.dynamic : dynamicName(slot)));
+  if (/^[-+]/.test(slots) && /[$`]/.test(slots)) return true;
+  return !byOption && args.some((a) => a.dynamic && a.value === slots);
+}
+
+/** Whether an operand's name, the text before any `=`, expands: `"$x"`, `"$V=d"`, `${n}=x`, but not `PATH="$HOME"`. */
+function dynamicName(slot: WordToken): boolean {
+  const eq = slot.value.indexOf("=");
+  const end = eq < 0 ? slot.value.length : eq;
+  return slot.dynamic && (/[$`]/.test(slot.value.slice(0, end)) || (slot.cuts ?? []).some((cut) => cut.at <= end));
+}
+
+/** A literal option word ending in a store letter, followed by the run-time word that is its name. */
+function namedByDynamicWord(name: string, args: WordToken[]): boolean {
+  const stores = STORE_OPTION_BUILTINS.get(name)?.stores ?? "";
+  return args.some((word, i) => {
+    const storeLast = !word.dynamic && /^[-+][A-Za-z0-9]+$/.test(word.value) && stores.includes(word.value.slice(-1));
+    return storeLast && args[i + 1]?.dynamic === true;
+  });
+}
+
+/**
+ * A declarer's words from its first operand on. Its options run only until then, so a later `-p` is an operand the
+ * shell rejects after storing the ones before it: `declare BASH_CMDS[q]=/x -p`. A number after an option word is zsh's
+ * value for it: `typeset -L 5 x`.
+ */
+function declarerOperands(args: WordToken[]): WordToken[] {
+  for (const [i, word] of args.entries()) {
+    if (word.value === "--" && !word.dynamic) return args.slice(i + 1);
+    const optionValue = /^\d+$/.test(word.value) && /^[-+]/.test(args[i - 1]?.value ?? "");
+    if (word.dynamic || (!/^[-+]./.test(word.value) && !optionValue)) return args.slice(i);
+  }
+  return [];
+}
+
+/** Whether a literal leading `-p` or `-f` makes the declarer print, not store: `declare -p BASH_CMDS`. */
+function printsOnly(args: WordToken[], operands: WordToken[]): boolean {
+  if (args.some((a) => a.dynamic)) return false;
+  return args.slice(0, args.length - operands.length).some((a) => /^-[A-Za-z0-9]*[pf]/.test(a.value));
+}
+
+/** A lone quoted run-time word after a literal `-f` names a function to print, not a name to store: `declare -f "$fn"`. */
+function printsFunction(name: string, args: WordToken[]): boolean {
   const last = args.at(-1);
-  const quotedLast = last?.dynamic === true && last.unquotedExpansion !== true;
-  const printsFunction = declarer && args.slice(0, -1).some((a) => /^-[^-]*f/s.test(a.value));
-  return quotedLast && (printsFunction || (name === "printf" && args.length === 1)) ? args.slice(0, -1) : args;
+  if (!PRINTS_VARIABLES.has(name) || last?.dynamic !== true || last.unquotedExpansion === true) return false;
+  return args.slice(0, -1).some((a) => !a.dynamic && /^-[A-Za-z0-9]*f/.test(a.value));
+}
+
+/** An unquoted glob or brace in a declarer's operand is not a name: `readonly {}` under `xargs -I{}`. */
+function isGlob(word: WordToken, name: string): boolean {
+  return VARIABLE_TAKERS.has(name) && !word.quoted && /[{}*?]/.test(word.value);
+}
+
+/**
+ * What a declarer or a reader keeps of its options: `-n`, which makes each operand a reference, and `read`'s array
+ * letters. Another letter stores nothing, and the shell rejects one it does not know.
+ */
+function variableWords(name: string, args: WordToken[]): WordToken[] {
+  if (!VARIABLE_TAKERS.has(name)) return args;
+  const keep = PRINTS_VARIABLES.has(name) ? /^-[A-Za-z0-9]*n/ : /^-[A-Za-z0-9]*[aA]/;
+  return args.filter((a) => !/^[-+]/.test(a.value) || keep.test(a.value));
 }
 
 /** A dynamic word may expand to an option unless literal text that no option starts with comes first: `PATH=$HOME`. */
