@@ -68,6 +68,11 @@ describe("a line that rebinds a command name", () => {
     ["a zsh typeset with a keyed list", `typeset -A commands=([y]=/usr/bin/git); ${PUSH}`],
     ["a keyed append in a list", `declare -A BASH_CMDS=([y]+=/usr/bin/git); ${PUSH}`],
     ["a declare with a plain list", `declare -A commands=(y /usr/bin/git); ${PUSH}`],
+    ["printf behind a run-time format that may be -v", `printf "$f" BASH_CMDS[y] /usr/bin/git; ${PUSH}`],
+    ["print behind a run-time word that may be -v", `print "$f" commands[y] /usr/bin/git; ${PUSH}`],
+    ["printf behind a run-time word ending in v", `printf "\${o}v" BASH_CMDS[y] /usr/bin/git; ${PUSH}`],
+    ["printf with an unquoted first operand", `printf $args; ${PUSH}`],
+    ["wait -p with a computed name", `wait -p "$n" $!; ${PUSH}`],
     ["a store through zstyle -e", `zstyle -e :z k 'commands[y]=/usr/bin/git'; ${PUSH}`],
   ])("refuses %s", async (_name, command) => {
     const got = await answer(command);

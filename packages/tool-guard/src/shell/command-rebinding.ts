@@ -96,11 +96,38 @@ function variableWords(name: string, args: WordToken[]): WordToken[] {
   return args.filter((a) => !/^[-+]/.test(a.value) || keep.test(a.value));
 }
 
-/** Whether the stored-into name is computed at run time, as a slot word or inside an option word. */
+/** The option letters whose value is the name a builtin stores into. */
+const NAME_LETTERS: Record<string, string> = {
+  printf: "v", print: "v", wait: "p", set: "A", compgen: "V", zparseopts: "aAv", zformat: "faF", strftime: "s", zstat: "AH", zselect: "aA", pcre_match: "va",
+};
+
+/**
+ * Whether the stored-into name is computed at run time, or a run-time word may be the option that names it. A word
+ * that may expand to `-v` in front of a literal rebinding name (`printf "$f" BASH_CMDS[y] /x`) stores into it, so it
+ * counts; so does an unquoted first operand of `printf`, which bash splits into `-v NAME VALUE`. `wait $pid` and
+ * `print $x` do not split into an option the shell reads, so they pass.
+ */
 function dynamicSlot(name: string, args: WordToken[]): boolean {
   const slots = nameSlots(name, args);
-  if (typeof slots === "string") return /^[-+]/.test(slots) && /[$`]/.test(slots);
-  return slots.some((slot) => slot.dynamic);
+  if (typeof slots !== "string" && slots.some((slot) => slot.dynamic)) return true;
+  if (typeof slots === "string" && /^[-+]/.test(slots) && /[$`]/.test(slots)) return true;
+  return namedByDynamicOption(name, args) || (name === "printf" && splitsIntoOptions(args));
+}
+
+/** A literal name option whose name is computed, or a word that may be an option ahead of a literal rebinding name. */
+function namedByDynamicOption(name: string, args: WordToken[]): boolean {
+  const letters = NAME_LETTERS[name] ?? "";
+  for (const [i, word] of args.entries()) {
+    if (!word.dynamic && /^[-+][A-Za-z0-9]+$/.test(word.value) && letters.includes(word.value.slice(-1)) && args[i + 1]?.dynamic === true) return true;
+    if (word.dynamic && mayBeOption(word) && args.slice(i + 1).some((a) => NAMES_REBINDING_RE.test(a.value))) return true;
+  }
+  return false;
+}
+
+/** `printf $args` splits in bash, so its first operand may be `-v NAME VALUE`. */
+function splitsIntoOptions(args: WordToken[]): boolean {
+  const first = args.find((a) => a.dynamic || !/^-/.test(a.value));
+  return first?.dynamic === true && first.unquotedExpansion === true && !first.quoted;
 }
 
 /** zsh skips one leading `--` before these builtins' options: `zparseopts -- -A commands y:`. */
