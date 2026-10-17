@@ -1,14 +1,5 @@
-export { A as AccountProfile, D as DEFAULT_LABEL, L as LoginState, O as OAuthUsageOptions, P as POLL_SESSION_ID, a as POLL_SOURCE, R as RefusedReason, U as UsageReading, b as UsageWindow, c as accountLabel, l as loginStateFromCredentials, n as needsRefresh, p as parseUsageReading, u as usageFromOAuthResponse } from './profile.js';
-import 'zod';
-
-declare const REDACTED = "[REDACTED]";
-declare function redactSecrets(value: string): string;
-declare function redactSecrets(value: Error): Error;
-
-export { REDACTED, redactSecrets };
-
-// ./dist/profile.d.ts
 import { z } from 'zod';
+export { REDACTED, redactSecrets } from '@titan-design/agent-protocol/redaction';
 
 declare const windowSchema: z.ZodObject<{
     used_percentage: z.ZodNumber;
@@ -62,4 +53,4 @@ interface AccountProfile {
 declare const DEFAULT_LABEL = "default";
 declare function accountLabel(configDir: string): string;
 
-export { type AccountProfile as A, DEFAULT_LABEL as D, type LoginState as L, type OAuthUsageOptions as O, POLL_SESSION_ID as P, type RefusedReason as R, type UsageReading as U, POLL_SOURCE as a, type UsageWindow as b, accountLabel as c, loginStateFromCredentials as l, needsRefresh as n, parseUsageReading as p, usageFromOAuthResponse as u };
+export { type AccountProfile, DEFAULT_LABEL, type LoginState, type OAuthUsageOptions, POLL_SESSION_ID, POLL_SOURCE, type RefusedReason, type UsageReading, type UsageWindow, accountLabel, loginStateFromCredentials, needsRefresh, parseUsageReading, usageFromOAuthResponse };

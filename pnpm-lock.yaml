@@ -291,6 +291,10 @@ importers:
   packages/agent-surface: {}
 
   packages/anthropic-account:
+    dependencies:
+      '@titan-design/agent-protocol':
+        specifier: workspace:^
+        version: link:../agent-protocol
     devDependencies:
       zod:
         specifier: ^4.4.3
@@ -557,9 +561,9 @@ importers:
 
   packages/openai-account:
     dependencies:
-      '@titan-design/anthropic-account':
+      '@titan-design/agent-protocol':
         specifier: workspace:^
-        version: link:../anthropic-account
+        version: link:../agent-protocol
 
   packages/owner-proof:
     devDependencies:

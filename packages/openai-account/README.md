@@ -30,7 +30,7 @@ establish `written_at` as the quota observation time. Policy refuses weekly usag
 resets. Exact weekly used=86 and age=900 are allowed. This package currently has
 no reader capable of establishing that known freshness from native rollouts.
 
-The pure root reuses `@titan-design/anthropic-account` secret redaction and adds
-OpenAI key prefixes. No CLI, statusline, provisioning, login writes, token refresh,
+The pure root reuses the import-free `@titan-design/agent-protocol/redaction`
+implementation shared with anthropic-account, including OpenAI key prefixes. No CLI, statusline, provisioning, login writes, token refresh,
 permission enforcement or agent launch is included. Quota is a local observation,
 not a reservation or a live server check. See the [reference](../../site/reference/openai-account.md).

@@ -12,7 +12,7 @@ const sources = readdirSync(srcDir)
   .map((file) => ({ file, text: readFileSync(path.join(srcDir, file), "utf8") }));
 
 const IMPORT_SPECIFIER = /(?:from|import)\s*\(?\s*["'`]([^"'`]+)["'`]/g;
-const ALLOWED_IMPORT = /^(?:\.\/[^/]+\.js|zod)$/;
+const ALLOWED_IMPORT = /^(?:\.\/[^/]+\.js|zod|@titan-design\/agent-protocol\/redaction)$/;
 const DYNAMIC_IMPORT = /\bimport\s*\(/;
 const IO_MODULE = /["'`](?:node:)?(?:fs|fs\/promises|net|http|https|http2|tls|dgram|child_process)["'`]/;
 const IO_GLOBAL = /\b(?:fetch|XMLHttpRequest|WebSocket|process|require|Buffer)\s*[.([]/;
@@ -46,19 +46,31 @@ describe("the purity detector", () => {
     expect(violations(text)).not.toEqual([]);
   });
 
+  it("allows only the exact reviewed shared redaction subpath", () => {
+    expect(violations('export { redactSecrets } from "@titan-design/agent-protocol/redaction";')).toEqual([]);
+    for (const entry of ["@titan-design/agent-protocol", "@titan-design/agent-protocol/trace", "@titan-design/agent-protocol/redaction/node"]) {
+      expect(violations(`import { value } from "${entry}";`)).not.toEqual([]);
+    }
+  });
   it("passes zod and sibling imports", () => {
     expect(violations('import { z } from "zod";\nimport { a } from "./a.js";')).toEqual([]);
   });
 });
 
 describe("root entry purity", () => {
+  it("checks the transitive shared redactor is import-free and has no I/O", () => {
+    const shared = readFileSync(path.join(srcDir, "../../agent-protocol/src/redaction.ts"), "utf8");
+    expect(violations(shared)).toEqual([]);
+    expect([...shared.matchAll(IMPORT_SPECIFIER)]).toEqual([]);
+  });
+
   it("finds the runtime sources to check", () => {
     expect(sources.map((s) => s.file)).toEqual(
       expect.arrayContaining(["index.ts", "login.ts", "profile.ts", "redact.ts", "usage.ts"]),
     );
   });
 
-  it.each(sources)("$file imports only zod and siblings and uses no I/O", ({ text }) => {
+  it.each(sources)("$file imports only reviewed pure entries and uses no I/O", ({ text }) => {
     expect(violations(text)).toEqual([]);
   });
 });

@@ -100,6 +100,7 @@ graph TD
   agent --> agentProtocol
   agentLifecycle --> agentProtocol
   agentLifecycle --> storeSqlite
+  anthropicAccount --> agentProtocol
   codeGraph --> codeParser
   codeGraph --> embed
   codeGraph --> evidence
@@ -125,7 +126,7 @@ graph TD
   memory --> embed
   memory --> retrieval
   memory --> storeSqlite
-  openaiAccount --> anthropicAccount
+  openaiAccount --> agentProtocol
   ownerQueue --> evidence
   queueMirror --> hitl
   queueMirror --> matrixBus
@@ -248,7 +249,7 @@ Same-tier edges such as `daemon --> registry`, `agent --> agent-lifecycle` and
 `session-graph --> session-read` are legal when they remain acyclic.
 
 <!-- generated:arch-leaves start -->
-`agent-protocol`, `anthropic-account`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `eslint-plugin`, `evidence`, `fix-proof`, `locator`, `owner-proof`, `rpc-protocol`, `store-sqlite`, `test-kit`, `agent-dispatch`, `agent-surface`, `frame-capture`, `github`, `matrix-bus`, `messaging`, `speech-g2p`, `speech-stt`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
+`agent-protocol`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `eslint-plugin`, `evidence`, `fix-proof`, `locator`, `owner-proof`, `rpc-protocol`, `store-sqlite`, `test-kit`, `agent-dispatch`, `agent-surface`, `frame-capture`, `github`, `matrix-bus`, `messaging`, `speech-g2p`, `speech-stt`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
 <!-- generated:arch-leaves end -->
 
 The [package families](/guides/package-families) guide groups the same packages by job.

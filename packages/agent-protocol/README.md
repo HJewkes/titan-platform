@@ -137,3 +137,24 @@ the last Status or Verdict (`report`: message id, kind, text of at most 2,000 ch
 PR (`{ repo: "owner/name", number }`), `tokens` and `costUsd`. A no-report exit is valid and
 carries the exit facts only. The producer truncates the report; the schema rejects one over the
 cap. It is a subpath, like `./trace`, so the root entry stays free of zod.
+
+## Shared account diagnostic redaction
+
+`@titan-design/agent-protocol/redaction` exports `redactSecrets` for strings and
+Errors, plus `REDACTED`. It has no runtime imports, filesystem or network access,
+and does not require zod. Both account packages retain compatibility exports and
+reuse this one implementation. Trace privacy remains a separate schema policy.
+
+The redactor covers Anthropic/OpenAI key prefixes, JWTs, Bearer/Basic headers,
+credential fields and long opaque strings. Whole JWTs are removed before key
+substring patterns, so overlapping formats do not leave JWT segments behind.
+It returns a fresh Error containing
+only redacted message/name/stack, without a cause or custom fields. Throwing
+message/name/stack getters produce a fixed redacted Error. Explicitly empty
+stacks stay empty, using the original Anthropic copying semantics; the former
+OpenAI wrapper could instead generate a new stack for that edge case. Short
+OpenAI keys now receive the same protection through the Anthropic compatibility
+export. Ordinary diagnostic words and existing overload signatures remain.
+
+Redaction is best-effort output hygiene, not a credential scanner, permission
+boundary or authenticated identity check. It does not mutate the input Error.

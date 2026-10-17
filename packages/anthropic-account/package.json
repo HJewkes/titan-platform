@@ -47,5 +47,8 @@
   },
   "devDependencies": {
     "zod": "^4.4.3"
+  },
+  "dependencies": {
+    "@titan-design/agent-protocol": "workspace:^"
   }
 }

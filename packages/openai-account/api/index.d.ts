@@ -1,12 +1,5 @@
-export { A as AccountProfile, L as LoginState, a as LoginStatusOutput, M as MAX_READING_AGE_SECONDS, Q as QuotaAdmission, U as UsageReading, b as UsageResult, c as UsageWindow, d as accountLabel, e as assertAccountLabel, l as loginStateFromStatus, q as quotaAdmission, u as usageFromRolloutEvents } from './usage.js';
+export { redactSecrets } from '@titan-design/agent-protocol/redaction';
 
-/** Reuse Titan redaction, adding OpenAI key prefixes; no cause or extra fields survive. */
-declare function redactSecrets(value: string): string;
-declare function redactSecrets(value: Error): Error;
-
-export { redactSecrets };
-
-// ./dist/usage.d.ts
 interface AccountProfile {
     label: string;
     codeHome: string;
@@ -66,4 +59,4 @@ declare function usageFromRolloutEvents(events: Iterable<unknown>, account: stri
 /** Q5: reserve 14 weekly points, 5h ceiling 100, and at most 15-minute-old evidence. */
 declare function quotaAdmission(result: UsageResult, now: number): QuotaAdmission;
 
-export { type AccountProfile as A, type LoginState as L, MAX_READING_AGE_SECONDS as M, type QuotaAdmission as Q, type UsageReading as U, type LoginStatusOutput as a, type UsageResult as b, type UsageWindow as c, accountLabel as d, assertAccountLabel as e, loginStateFromStatus as l, quotaAdmission as q, usageFromRolloutEvents as u };
+export { type AccountProfile, type LoginState, type LoginStatusOutput, MAX_READING_AGE_SECONDS, type QuotaAdmission, type UsageReading, type UsageResult, type UsageWindow, accountLabel, assertAccountLabel, loginStateFromStatus, quotaAdmission, usageFromRolloutEvents };
