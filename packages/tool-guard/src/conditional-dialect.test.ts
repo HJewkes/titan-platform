@@ -5,7 +5,11 @@ import { nodeContext } from "./context.js";
 const HOME = "/home/you";
 const ctx = nodeContext(HOME, { realpath: (p) => p, readHead: () => "feat/x", isFile: () => false });
 const PUSH = "git push origin HEAD:main";
-const spellings = (command: string) => classify({ kind: "bash", command, cwd: "/home/you/projects/app", toolName: "Bash", sessionId: "s", toolUseId: "t" }, ctx).map((a) => a.spelling);
+const event = (command: string) => ({ kind: "bash" as const, command, cwd: "/home/you/projects/app", toolName: "Bash", sessionId: "s", toolUseId: "t" });
+const spellings = (command: string) => classify(event(command), ctx).map((a) => a.spelling);
+const SCRIPT = "/home/you/projects/app/x.sh";
+const withScript = (text: string) => nodeContext(HOME, { realpath: (p) => p, readHead: (p) => (p === SCRIPT ? text : "feat/x"), isFile: (p) => p === SCRIPT });
+const scriptSpellings = (command: string, text: string) => classify(event(command), withScript(text)).map((a) => a.spelling);
 
 describe("a [[ is joined only where the text is read as bash, zsh or ksh", () => {
   it.each([
@@ -69,6 +73,45 @@ describe("a [[ is joined only where the text is read as bash, zsh or ksh", () =>
   });
 
   it.each([`[[ a || ${PUSH} ]]`, `bash -c '[[ a || b ]]'`, `zsh -c '[[ a || b ]]'`])("still joins a bash or zsh [[ in %j", (command) => {
+    expect(spellings(command)).toEqual([]);
+  });
+
+  it.each([
+    ["sh ./x.sh", `[[ a || ${PUSH} ]]`],
+    ["dash x.sh", `[[ a || ${PUSH} ]]`],
+    ["sh < x.sh", `[[ a || ${PUSH} ]]`],
+    ["./x.sh", `#!/bin/sh\n[[ a || ${PUSH} ]]`],
+    ["bash x.sh", `[[ a || ${PUSH} ]]`],
+    ["source x.sh", `[[ a || ${PUSH} ]]`],
+  ])("reports the push in a script file %j runs, whose runner the line does not fix", (command, text) => {
+    expect(scriptSpellings(command, text)).toContain("bash.merge.git-push-protected");
+  });
+
+  it.each([
+    `BASH_ENV=./e bash -c '[[ a || ${PUSH} ]]'`,
+    `export BASH_ENV=./e; bash -c '[[ a || ${PUSH} ]]'`,
+    `BASH_ENV=./e; export BASH_ENV; bash -c '[[ a || ${PUSH} ]]'`,
+    `ZDOTDIR=./d zsh -c '[[ a || ${PUSH} ]]'`,
+    `export ZDOTDIR=./d; zsh -c '[[ a || ${PUSH} ]]'`,
+    `bash --init-file ./e -c '[[ a || ${PUSH} ]]'`,
+    `bash --rcfile ./e -i -c '[[ a || ${PUSH} ]]'`,
+    `HOME=./d bash -l -c '[[ a || ${PUSH} ]]'`,
+    `HOME=./d zsh -c '[[ a || ${PUSH} ]]'`,
+    `bash -l -c '[[ a || ${PUSH} ]]'`,
+    `zsh -o login -c '[[ a || ${PUSH} ]]'`,
+    `exec -a -bash bash -c '[[ a || ${PUSH} ]]'`,
+    `bash -c 'BASH_ENV=./e bash -c "[[ a || ${PUSH} ]]"'`,
+    `HOME=./d zsh -f <<'EOF'\n[[ a || ${PUSH} ]]\nEOF`,
+    `echo '[[ a || ${PUSH} ]]' | zsh -i`,
+  ])("reports the push when the line may choose a startup file: %j", (command) => {
+    expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  });
+
+  it("joins a plain [[ on the Bash tool's own line", () => {
+    expect(spellings(`[[ -n x && a || ${PUSH} ]]`)).toEqual([]);
+  });
+
+  it.each([`bash -ec '[[ a || ${PUSH} ]]'`, `zsh -f <<'EOF'\n[[ a || ${PUSH} ]]\nEOF`])("still joins a shell with only plain options in %j", (command) => {
     expect(spellings(command)).toEqual([]);
   });
 });

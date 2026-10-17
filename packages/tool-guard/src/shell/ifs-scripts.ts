@@ -2,6 +2,7 @@ import { caseNamed } from "./case-script.js";
 import { inlineScript, SHELLS } from "./inline-script.js";
 import { shellOperands, shellStdin } from "./shell-options.js";
 import { cutReading } from "./piped-nul.js";
+import { STARTUP_OPTION_RE, STARTUP_VAR_RE } from "./startup-file.js";
 import type { RedirectToken, Token, WordToken } from "./tokens.js";
 import { MAX_UNSURE_WORDS, SPLICED_WEIGHT, unsureReadings } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
@@ -15,16 +16,6 @@ interface Stage {
 }
 
 /**
- * Variables that name a file a starting shell sources: bash's `BASH_ENV`, sh's `ENV`, zsh's `ZDOTDIR`, and `HOME`,
- * under which zsh always reads `.zshenv` and a login bash or zsh reads its profile.
- */
-const STARTUP_VAR_RE = /^(?:BASH_ENV|ENV|ZDOTDIR|HOME)(?:\[[^\]]*\])?(?:\+?=|$)/;
-/** Each startup variable's shortest spelling; `BASH_ENV` holds `ENV` in order. */
-const STARTUP_NAMES = ["ENV", "ZDOTDIR", "HOME"];
-/** Shell options that source a startup file: interactive or login clusters, and an rc or init file. */
-const STARTUP_OPTION_RE = /^(?:-[A-Za-z]*[il][A-Za-z]*|--login|--rcfile|--init-file|--interactive)$/;
-
-/**
  * The script texts a token list runs, whether one of them is only known at run time, and whether the list starts
  * a shell at all, which then sources any startup file the line selects.
  */
@@ -32,33 +23,6 @@ export interface Scripts {
   texts: string[];
   runTime: boolean;
   startsShell: boolean;
-}
-
-/**
- * Whether any word of the line, nested lists included, sets or exports a startup-file variable. A shell started
- * anywhere after it sources that file before its own script, as `source` would.
- */
-export function selectsStartupFile(tokens: readonly Token[]): boolean {
-  return tokenLists(tokens).some((list) => list.some((t) => t.type === "word" && namesStartupVar(t.value)));
-}
-
-/**
- * Brace expansion keeps a word's characters in order, so a brace word builds a startup variable's name
- * (`{BASH_,}ENV=./f`) only if it holds that name in order, unless a `..` range makes the letters.
- */
-function namesStartupVar(value: string): boolean {
-  if (STARTUP_VAR_RE.test(value)) return true;
-  if (!value.includes("{")) return false;
-  return value.includes("..") || STARTUP_NAMES.some((name) => holdsInOrder(value, name));
-}
-
-function holdsInOrder(text: string, name: string): boolean {
-  let at = -1;
-  for (const c of name) {
-    at = text.indexOf(c, at + 1);
-    if (at < 0) return false;
-  }
-  return true;
 }
 
 /**
@@ -77,16 +41,6 @@ export function scriptsOf(tokens: readonly Token[], srcLength: number): Scripts 
     runTime: runs.some(({ stage, cmds }) => cmds.some((cmd) => runsRunTimeScript(cmd, stage.redirects))),
     startsShell: runs.some(({ cmds }) => cmds.some(isShell)),
   };
-}
-
-/** The tokens and every token list nested in their command and process substitutions. */
-export function tokenLists(tokens: readonly Token[]): Token[][] {
-  const nested = tokens.flatMap((t): Token[][] => {
-    if (t.type === "word" || t.type === "subs") return t.subs;
-    if (t.type === "redirect") return [...t.subs, ...(t.target?.subs ?? [])];
-    return [];
-  });
-  return [[...tokens], ...nested.flatMap(tokenLists)];
 }
 
 function stages(tokens: readonly Token[]): Stage[] {

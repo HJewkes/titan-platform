@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { extractCommands } from "./commands.js";
 
-const names = (line: string) => extractCommands(line).map((c) => c.name);
+const names = (line: string) => extractCommands(line, { joinsConditional: true }).map((c) => c.name);
 
 describe("&& and || inside a [[ at a bare command start", () => {
   it.each([
@@ -70,5 +70,11 @@ describe("a ]] glued to an operator still closes", () => {
     "[[ a =~ b ]]&&git push",
   ])("reports git: %j", (line) => {
     expect(names(line)).toContain("git");
+  });
+});
+
+describe("joining is opt-in", () => {
+  it("splits a bare-start [[ when the caller does not ask to join", () => {
+    expect(extractCommands("[[ a || git push ]]").map((c) => c.name)).toContain("git");
   });
 });

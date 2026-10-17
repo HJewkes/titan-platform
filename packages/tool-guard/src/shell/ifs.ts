@@ -1,5 +1,6 @@
 import { INERT_BUILTINS, SHELL_BUILTINS } from "./builtins.js";
-import { type Scripts, scriptsOf, selectsStartupFile, tokenLists } from "./ifs-scripts.js";
+import { type Scripts, scriptsOf } from "./ifs-scripts.js";
+import { selectsStartupFile, tokenLists } from "./startup-file.js";
 import { arithReadsUnknownValue } from "./ifs-arith.js";
 import { mayWriteRunTimeName } from "./ifs-writes.js";
 import { tokenize } from "./lexer.js";

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { extractCommands } from "./commands.js";
-import { scriptsOf, tokenLists } from "./ifs-scripts.js";
+import { scriptsOf } from "./ifs-scripts.js";
+import { tokenLists } from "./startup-file.js";
 import { tokenize } from "./lexer.js";
 
 const W = "R=origin,HEAD:main; for i in 1 2; do git push $R; declare $a$b=,; done";
