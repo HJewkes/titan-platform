@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CommandRebindingError } from "../shell/command-rebinding.js";
 import { extractCommands } from "../shell/index.js";
 import type { SimpleCommand } from "../shell/commands.js";
 import { parseGit } from "../shell/git.js";
@@ -43,10 +44,6 @@ describe("declaresRouting", () => {
     "readonly https_proxy=x",
     "export -- https_proxy=x",
     "export GIT_PROXY_COMMAND=/tmp/p",
-    "export $N=x",
-    "export $N",
-    'export "${V}=x"',
-    "export $(echo https_proxy)=x",
     "export https_proxy=$P",
     "export https_proxy=$(cat /tmp/p)",
     "export https_proxy+=http://evil",
@@ -54,6 +51,16 @@ describe("declaresRouting", () => {
     "declare -x ALL_PROXY+=x",
   ])("reads %s as routing", (line) => {
     expect(declaresRouting(lastCommand(line))).toBe(true);
+  });
+
+  // A run-time export name may be any name, so the walk refuses it as a possible rebinding before routing is read (TP-3320).
+  it.each([
+    "export $N=x",
+    "export $N",
+    'export "${V}=x"',
+    "export $(echo https_proxy)=x",
+  ])("refuses %s before reading it as routing", (line) => {
+    expect(() => lastCommand(line)).toThrow(CommandRebindingError);
   });
 
   it.each([

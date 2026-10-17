@@ -129,6 +129,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
       roundsDir: config.roundsDir,
       shepherd,
       answer: factoryGateAnswer(config.factoryPort),
+      logger,
     }),
   };
 }

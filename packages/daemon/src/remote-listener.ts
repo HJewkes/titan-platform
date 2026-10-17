@@ -31,6 +31,8 @@ export interface RemoteListenerOptions {
   tls: RemoteTlsOptions;
   /** How often the TLS files are checked for a change. Defaults to 60000. */
   tlsReloadMs?: number;
+  /** How a signed-out browser gets a sign-in link, shown on the sign-in pages; see `DaemonAuthOptions.signInHint`. */
+  signInHint?: string;
 }
 
 export interface RemoteListener {
@@ -48,7 +50,7 @@ export function remoteListener(remote: RemoteListenerOptions | undefined, mainHo
   assertRemoteHost(remote.host);
   // Checked at runtime too: a JavaScript caller, or a cast, can leave out the typed field.
   if (!remote.tls?.certFile || !remote.tls.keyFile) throw new RemoteBindError(remote.host, "it has no TLS; pass remote.tls with certFile and keyFile");
-  const gate = createDaemonAuth({ tokenFile: remote.tokenFile });
+  const gate = createDaemonAuth({ tokenFile: remote.tokenFile, signInHint: remote.signInHint });
   return { options: remote, gate, tls: trackTlsFiles(remote.tls, remote.allowedHosts ?? []) };
 }
 

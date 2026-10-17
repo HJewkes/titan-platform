@@ -15,9 +15,19 @@ export type Shell = "bash" | "zsh";
 export function printedText(name: string | null, args: WordToken[], shell?: Shell): string | null {
   if (args.some((a) => a.dynamic)) return null;
   const values = args.map((a) => a.value);
-  if (name === "echo") return echoText(values, shell);
+  if (name === "echo") return echoOutput(values, shell).text;
   if (name === "printf") return printfText(values, shell);
   return null;
+}
+
+/**
+ * Everything `echo` or `printf` writes to stdout, with the newline echo ends on unless `-n` or a decoded `\c` drops it;
+ * null as for `printedText`.
+ */
+export function printedOutput(name: string | null, args: WordToken[], shell?: Shell): string | null {
+  if (name !== "echo" || args.some((a) => a.dynamic)) return printedText(name, args, shell);
+  const { text, newline } = echoOutput(args.map((a) => a.value), shell);
+  return newline ? `${text}\n` : text;
 }
 
 /**
@@ -36,19 +46,23 @@ export function printedReadings(name: string | null, args: WordToken[], shells: 
 }
 
 /** Without a shell, escapes are decoded unless `-E` comes last, as sh's echo with xpg_echo and dash's decode them. */
-function echoText(values: string[], shell: Shell | undefined): string {
+function echoOutput(values: string[], shell: Shell | undefined): { text: string; newline: boolean } {
   let i = 0;
   let escapes = shell !== "bash";
   let sawE = false;
+  let newline = true;
   for (; i < values.length && /^-[neE]+$/.test(values[i] as string); i++) {
     const flags = values[i] as string;
     if (/[eE]/.test(flags)) escapes = flags.lastIndexOf("e") > flags.lastIndexOf("E");
     sawE ||= flags.includes("e");
+    newline &&= !flags.includes("n");
   }
   if (shell === "zsh") escapes ||= sawE;
   if (shell === "zsh" && values[i] === "-") i++;
   const text = values.slice(i).join(" ");
-  return escapes ? decodeAnsiC(text, "echo") : text;
+  if (!escapes) return { text, newline };
+  const decoded = decodeEscapes(text, "echo");
+  return { text: decoded.text, newline: newline && !decoded.stopped };
 }
 
 /** Handles `%s`, `%b`, `%c`, `%d`, `%i` and `%%` with width and precision, reusing the format as printf does. */

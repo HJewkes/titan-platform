@@ -47,7 +47,7 @@ import { headOriginRoute, recordHeadOrigin } from "./head-origin.js";
 import { taskIdOf } from "../workflows/land-merge-message.js";
 import { SHEPHERD_STEPS } from "./shepherd-steps.js";
 import { withEarlier, type FixFirstTrail } from "./fix-first-trail.js";
-import { packetTriggering, visualPacketRoutes } from "./visual-packet-trigger.js";
+import { packetBeforeGate, packetTriggering, visualPacketRoutes, type PacketRun } from "./visual-packet-trigger.js";
 import { OWNER_SEND_BACK_KIND, isSentBack, ownerSendBack, sendBackOffer, sendBackOfferRoute } from "./owner-send-back.js";
 import { NOT_OFFERED, configuredVisualSetCarry, visualAcceptOfferRoute, visualAcceptRoute, type VisualAcceptRun } from "./visual-accept.js";
 
@@ -144,7 +144,8 @@ async function routeLanded(run: ShepherdRun, outcome: LandOutcome): Promise<Land
   if (outcome.kind === "ci-failed") {
     const held = await heldByFrozenMain(run, outcome, run.freezeChecks++);
     if (held !== false) return held === true ? undefined : held;
-    const accepted = await visualAcceptRoute(run, outcome, run.phases.visualSetCarry, (payload) => woken(run, "review", outcome.headSha, payload));
+    const wake = (payload: unknown) => woken(run, "review", outcome.headSha, payload);
+    const accepted = await visualAcceptRoute(run, outcome, run.phases.visualSetCarry, wake, (stepId, prompt) => packetBeforeGate(packetRunOf(run), stepId, prompt));
     if (accepted !== NOT_OFFERED) return accepted;
     if (await woken(run, "ci-red", outcome.headSha, { failing: outcome.failing })) return undefined;
     return ciFailedRoute(run, outcome);
@@ -179,6 +180,8 @@ function leaveOnConflict(headSha: string): LeaveLand {
   return new LeaveLand({ kind: "stopped", reason: "conflict", headSha, detail: `the pull request at ${headSha} conflicts with its base` });
 }
 
+const packetRunOf = (run: ShepherdRun): PacketRun => ({ ctx: run.ctx, target: run.target, ownerGateReason: () => run.policy.ownerGateReason });
+
 /** Runs the review at every green head `land` reads, before `land` asks the policy or the owner about that head. */
 function reviewingContext(run: ShepherdRun): WorkflowContext {
   const { ctx } = run;
@@ -187,7 +190,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     clearSuperseded(run, rereview, gated, stepId), rereview && run.trail.ownerAsked.add(rereview), new LeaveLand()
   );
   const conflictCheck = (headSha: string) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha });
-  const packetRun = { ctx, target: run.target, ownerGateReason: () => run.policy.ownerGateReason };
+  const packetRun = packetRunOf(run);
   return {
     runId: ctx.runId,
     workflowName: ctx.workflowName,
@@ -195,7 +198,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     param: (key) => ctx.param(key),
     iteration: (stepId) => ctx.iteration(stepId),
     historyNext: () => ctx.historyNext(),
-    resumedGate: () => ctx.resumedGate(),
+    resumedGate: () => ctx.resumedGate(), recoveredInFlight: () => ctx.recoveredInFlight(),
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
     assisted: routingStuckBehind(run, () => run.lastCi?.headSha, recordingOverrides(followingApprovals(ctx, conflictCheckedGates(

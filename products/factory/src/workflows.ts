@@ -207,12 +207,13 @@ function fixerReview(freeze: FreezeStoreRef, store: ShepherdStoreRef) {
 
 type ReviewConfigured = NonNullable<NonNullable<FactoryConfig["shepherd"]>["review"]>;
 
-/** Tells every seat that owns `repo` over agent-chat; a repo no seat owns has nobody to tell, which throws so the alert is tried again. */
+/** The check name the seat that owns `repo` declares for its visual baselines, if any. */
 function seatBaselineCheck(book: SeatBook, repo: string): string | undefined {
   const found = lookupSeat(book, repo);
   return found.kind === "seat" ? found.seat.visualBaselines?.check : undefined;
 }
 
+/** Tells every seat that owns `repo` over agent-chat; a repo no seat owns has nobody to tell, which throws so the alert is tried again. */
 function seatAlert(agentChatBin: string, seats: () => SeatBook, roster: RosterReader | undefined) {
   const agents = agentChatAgents(agentChatBin, { roster });
   return async (repo: string, text: string): Promise<void> => {

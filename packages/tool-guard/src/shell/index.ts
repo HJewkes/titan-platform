@@ -2,6 +2,7 @@ export { ParseError, tokenize } from "./lexer.js";
 export type { OpToken, RedirectToken, SubsToken, Token, VarRef, WordToken } from "./lexer.js";
 export { extractCommands } from "./commands.js";
 export { ReadingLimitError } from "./unsure-readings.js";
+export { CommandRebindingError } from "./command-rebinding.js";
 export type { AliasTable } from "./alias-words.js";
 export type { Chain, ExtractOptions, SimpleCommand, Wrapping } from "./commands.js";
 export { parseGit, splitArgs } from "./git.js";

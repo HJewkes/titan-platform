@@ -14,8 +14,11 @@ const FAILED_ROUNDS: Escalation = "failed-rounds";
 const CONFLICT: Escalation = "conflict";
 const ROUTE_GATE = new RegExp(`Policy ${ROUTE_TABLE}/([a-z-]+):`);
 const APPROVE_MERGE_GATE = /\/approve-merge(:\d+)?$/;
-const SENT_BACK_GATE = /\/sh-sent-back(:\d+)?$/;
-const CI_FAILED_GATE = /\/ci-failed(:\d+)?$/;
+const WAITS_FOR_NEW_HEAD = new Map([
+  ["sh-sent-back", /\/sh-sent-back(:\d+)?$/],
+  ["ci-failed", /\/ci-failed(:\d+)?$/],
+  ["sh-visual-accept", /\/sh-visual-accept(:\d+)?$/],
+]);
 const STUCK_BEHIND_GATE = /\/stuck-behind(:\d+)?$/;
 
 export interface SupersededGate {
@@ -154,9 +157,9 @@ export function approveMergeRun(host: FactoryHost, { runId, stepId, gate }: Pend
   return run;
 }
 
-/** Gates whose every answer but abandon waits for a new head, so a head that already moved answers them. */
+/** Gates whose every answer but abandon waits for a new head, so a head that already moved answers them; a fixer who pushed first is never held by one. */
 function waitsForNewHead({ stepId, gate }: PendingGate): boolean {
-  return (stepId === "sh-sent-back" && SENT_BACK_GATE.test(gate.id)) || (stepId === "ci-failed" && CI_FAILED_GATE.test(gate.id));
+  return WAITS_FOR_NEW_HEAD.get(stepId)?.test(gate.id) ?? false;
 }
 
 /** A stuck-behind prompt names only short heads; land asks it about the head it read just before. */
@@ -176,7 +179,7 @@ function supersedableHead(host: FactoryHost, pending: PendingGate): string | und
 }
 
 /**
- * Cancels each shepherd-pr seat-policy, merge-guard, authority MRG-AU, shepherd-release or route-table (failed-rounds, fix-first-runaway, no-progress, conflict) approve-merge gate, sh-sent-back, ci-failed or stuck-behind gate, whose PR moved past the
+ * Cancels each shepherd-pr seat-policy, merge-guard, authority MRG-AU, shepherd-release or route-table (failed-rounds, fix-first-runaway, no-progress, conflict) approve-merge gate, sh-sent-back, ci-failed, sh-visual-accept or stuck-behind gate, whose PR moved past the
  * head it asks about; the run then takes the new head. `dryRun` reports those gates and cancels none.
  */
 export async function supersedeMovedGates(host: FactoryHost, services: ShepherdServices, { dryRun = false } = {}): Promise<SupersededGate[]> {
