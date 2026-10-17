@@ -14,7 +14,8 @@ import { open, readdir, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { type AnswerChoice, type AnswerOutcome, type GateAnswerClient, type GateAnswerRequest } from "./gate-answer.js";
-import { FeedbackDocument, Round2Manifest, type Round2Question } from "./round2-adapter.js";
+import { RoundSchema, type Question } from "./round-schema.js";
+import { FeedbackDocument } from "./round2-adapter.js";
 import { ANSWER_FILE, ANSWER_SCHEMA_ID } from "./round-answer.js";
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, ROUND_ID, readCapped } from "./rounds.js";
 import type { ShepherdSource } from "./shepherd.js";
@@ -31,7 +32,8 @@ interface AnswerRecord {
   request: { runId?: string; gateId?: string; headSha: string; choice: AnswerChoice };
   outcome: AnswerOutcome;
 }
-type Merge = NonNullable<Round2Question["merge"]>;
+type ShipQuestion = Extract<Question, { kind: "pick-one" }>;
+type Merge = NonNullable<ShipQuestion["merge"]>;
 
 /** What `rounds.submit` returned; only a fresh `submitted` can start an answer. */
 interface SubmitOutcome {
@@ -92,9 +94,9 @@ async function readJson<T>(file: string, schema: z.ZodType<T>): Promise<T | unde
 }
 
 /** Ship merges; the one other option sends back. A question with more options than that is not one this relays. */
-function choiceOf(question: Round2Question, merge: Merge, pick: string): AnswerChoice | undefined {
+function choiceOf(question: ShipQuestion, merge: Merge, pick: string): AnswerChoice | undefined {
   if (merge.ship.includes(pick)) return "merge";
-  const others = (question.options ?? []).filter((option) => !merge.ship.includes(option));
+  const others = question.options.filter((option) => !merge.ship.includes(option));
   return others.length === 1 && others[0] === pick ? "send-back" : undefined;
 }
 
@@ -102,14 +104,14 @@ function choiceOf(question: Round2Question, merge: Merge, pick: string): AnswerC
 async function readRoundAnswer(roundsDir: string, roundId: string): Promise<RoundAnswer | undefined> {
   const dir = path.join(roundsDir, roundId);
   const [manifest, feedback, packetBytes] = await Promise.all([
-    readJson(path.join(dir, ROUND_FILE), Round2Manifest),
+    readJson(path.join(dir, ROUND_FILE), RoundSchema),
     readJson(path.join(dir, FEEDBACK_FILE), FeedbackDocument),
     readFileCapped(path.join(dir, PACKET_FILE)),
   ]);
   if (!manifest || !feedback || !packetBytes) return undefined;
   for (const question of manifest.questions) {
     const pick = feedback.answers.find((answer) => answer.questionId === question.id)?.pick;
-    if (!question.merge || pick === undefined) continue;
+    if (question.kind !== "pick-one" || !question.merge || pick === undefined) continue;
     const choice = choiceOf(question, question.merge, pick);
     const tree = packetHeadTree(packetBytes);
     if (choice === undefined || tree === undefined) return undefined;
