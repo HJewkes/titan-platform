@@ -240,5 +240,5 @@ function submittedAnswers(questions: readonly Question[], answers: Record<string
 
 const inOrder = (round: ValidRound, answers: SubmittedAnswer[]): SubmittedAnswer[] => {
   const order = round.manifest.questions.map((question) => question.id);
-  return answers.toSorted((left, right) => order.indexOf(left.questionId) - order.indexOf(right.questionId));
+  return [...answers].sort((left, right) => order.indexOf(left.questionId) - order.indexOf(right.questionId));
 };

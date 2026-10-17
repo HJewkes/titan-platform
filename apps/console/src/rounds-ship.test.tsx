@@ -5,6 +5,7 @@ import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-
 import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { FIXTURE_ROUNDS as source } from "../server/round-fixtures.js";
+import type { Question } from "../server/round-schema.js";
 import { getFrame } from "../server/round-frames.js";
 import { getRound, listRounds, type RoundDetail } from "../server/rounds.js";
 import { App } from "./App.js";
@@ -244,13 +245,13 @@ describe("answering a Ship round with side questions", () => {
     if (!detail.valid) throw new Error("the Ship fixture is not a valid round");
     const ship = detail.manifest.questions.find((question) => question.id === "ship-tiles");
     if (ship === undefined) throw new Error("the Ship fixture has no ship-tiles question");
-    const side = [
-      { id: "side-colour", kind: "pick-one", prompt: "File the badge colour as a follow-up?", options: ["Yes", "No"] },
+    const side: Question[] = [
+      { id: "side-colour", kind: "pick-one", prompt: "File the badge colour as a follow-up?", options: ["Yes", "No"], signsOff: "badge-colour" },
       { id: "side-columns", kind: "pick-many", prompt: "Which tiles need a second look?", options: ["Light", "Dark", "Wide"] },
       { id: "side-clarity", kind: "scale", prompt: "How clear is the stripe?", min: 1, max: 5, ...(requiredScale ? { required: true } : {}) },
       { id: "side-note", kind: "text", prompt: "Anything else?" },
-    ] as const;
-    return { manifest: { ...detail.manifest, questions: [...side.slice(0, 3), side[3], ship] } as typeof detail.manifest };
+    ];
+    return { manifest: { ...detail.manifest, questions: [...side, ship] } };
   }
 
   it("sends every side answer with the Ship pick in one rounds.submit, in the round's question order", async () => {
