@@ -37,6 +37,12 @@ const HIDDEN: [string, string][] = [
   ["a single-quoted $( ) in a subscript after a command", `true; a['$(${PUSH})']=1`],
   ["a single-quoted $( ) in an element of a compound assignment", `a=( ['$(${PUSH})']=1 )`],
   ["a single-quoted $( ) in an element after another", `a=( [0]=x ['$(${PUSH})']=1 )`],
+];
+
+
+// The value of a subscript or [[ -eq ]] operand is evaluated as arithmetic, so a $( or backtick left in it as text runs
+// wherever the word stands and however the text was written.
+const DENIED: [string, string][] = [
   ["a single-quoted $( ) in the right operand of -eq", `[[ 1 -eq 'a[$(${PUSH})]' ]]`],
   ["a single-quoted backtick in the right operand of -eq", `[[ 1 -eq 'a[\`${PUSH}\`]' ]]`],
   ["a single-quoted $( ) in the left operand of -eq", `[[ 'a[$(${PUSH})]' -eq 1 ]]`],
@@ -46,6 +52,19 @@ const HIDDEN: [string, string][] = [
   ["a single-quoted $( ) in -gt", `[[ 1 -gt 'a[$(${PUSH})]' ]]`],
   ["a single-quoted $( ) in -ge", `[[ 1 -ge 'a[$(${PUSH})]' ]]`],
   ["a single-quoted $( ) in -eq after another test", `[[ -n x && 1 -eq 'a[$(${PUSH})]' ]]`],
+  ["a single-quoted $( ) after an earlier [[ ]]", `[[ x ]] && a['$(${PUSH})']=1`],
+  ["a single-quoted $( ) after an earlier (( ))", `(( 1 )); a['$(${PUSH})']=1`],
+  ["a single-quoted $( ) after an earlier case", `case x in x) a['$(${PUSH})']=1;; esac`],
+  ["a single-quoted $( ) after an earlier if [[ ]]", `if [[ x ]]; then a['$(${PUSH})']=1; fi`],
+  ["a single-quoted $( ) after a here-doc", `cat <<E\nx\nE\na['$(${PUSH})']=1`],
+  ["a raw ]] inside the quoted operand", `[[ 'a[$(${PUSH}; echo "]]")]' -eq 1 ]]`],
+  ["a double-quoted escaped $( ) in a subscript", `a["\\$(${PUSH})"]=1`],
+  ["an escaped $( ) in a subscript", `a[\\$\\(${PUSH.replaceAll(" ", "\\ ")}\\)]=1`],
+  ["an escaped $( ) in a nested subscript", `a[a[\\$\\(${PUSH.replaceAll(" ", "\\ ")}\\)]]=1`],
+  ["a double-quoted escaped $( ) in an -eq operand", `[[ 1 -eq "a[\\$(${PUSH})]" ]]`],
+  ["an escaped $( ) in an -eq operand", `[[ 1 -eq a[\\$\\(${PUSH.replaceAll(" ", "\\ ")}\\)] ]]`],
+  ["a mixed real and quoted $( ) in a subscript", `a['$(${PUSH})'$(true)]=1`],
+  ["a single-quoted $( ) in declare", `declare a['$(${PUSH})']=1`],
 ];
 
 describe("a single-quoted command substitution in a subscript or [[ -eq ]] runs (TP-3353)", () => {
@@ -58,8 +77,10 @@ describe("a single-quoted command substitution in a subscript or [[ -eq ]] runs 
   });
 });
 
-it("denies a single-quoted $( ) in a declare subscript", async () => {
-  expect(await handled(`declare a['$(${PUSH})']=1`)).toBe("deny");
+describe("code text in an arithmetic value is denied wherever it stands (TP-3353)", () => {
+  it.each(DENIED)("denies %s", async (_, src) => {
+    expect(await handled(src)).toBe("deny");
+  });
 });
 
 describe("single quotes elsewhere keep their reading (TP-3353)", () => {

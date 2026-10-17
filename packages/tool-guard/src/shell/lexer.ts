@@ -9,7 +9,7 @@ import { readLineEnd } from "./procsub-heredoc.js";
 import { assignmentSubscriptEnd, looseSubscriptEnd, isNameSoFar, wordStartSubscriptEnd } from "./subscript.js";
 import type { LexState, RedirectToken, Token, WordToken } from "./tokens.js";
 import { readAnsiInArith } from "./arith-ansi.js";
-import { inArithmeticTest, inArraySubscript } from "./arith-operand.js";
+import { inArraySubscript } from "./arith-subscript.js";
 import { appendChar, endWord, ensureWord, markComputed, markCut, markQuoted, pushRef, readAnsiC, readEscape, readSingle, variableName } from "./word-build.js";
 
 export { ParseError, SplitParseError } from "./parse-error.js";
@@ -194,7 +194,7 @@ function arithmeticQuoteEnd(s: LexState): number {
   if (s.i < s.arithEnd) return s.arithEnd;
   if (s.i < s.subscriptEnd) return s.subscriptEnd;
   if (s.i < s.looseSubscriptEnd && inArraySubscript(s)) return s.looseSubscriptEnd;
-  return inArithmeticTest(s) ? s.src.length : -1;
+  return -1;
 }
 
 function readDouble(s: LexState): void {

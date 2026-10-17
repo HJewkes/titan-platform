@@ -1,4 +1,5 @@
 import { decodeAnsiC } from "./ansi-c.js";
+import { refuseCodeInArithmeticValue } from "./arith-operand.js";
 import { ansiCEnd } from "./balanced.js";
 import { pastJoins } from "./joins.js";
 import { ParseError } from "./parse-error.js";
@@ -24,6 +25,7 @@ export function endWord(s: LexState): void {
   const pending = s.redirect;
   s.redirect = null;
   if (!pending) {
+    refuseCodeInArithmeticValue(s, w);
     if (w.value === "case" || w.value === "esac") s.caseWords = true;
     s.tokens.push(w);
     return;
