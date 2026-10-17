@@ -61,9 +61,8 @@ guarded file stays readable by that user. The OS account is the real boundary.
   `alias` reads its operands, or where a store builtin reads an option or a name, is read as one that may define:
   `alias *`, `typeset ali*`, `printf *`, `print $x`; a numeric parameter (`$?`, `$#`) and a format that opens with
   text (`printf "b$n=%s "`) are not. Only the plain `NAME=VALUE` form of a declaration is spared, as neither shell
-  globs it: `typeset a[1]=2` passes. Not seen: a command word only known at run time that is `alias` then
-  (`"$(printf al%s ias)" y=git`, `env`, `xargs` and `sudo` cannot run it, so a rule on `NAME=VALUE` operands refused
-  `env $(…) A=1 pnpm`), fully dynamic `eval` text, an alias written into `~/.zshrc` for a later session, and
+  globs it: `typeset a[1]=2` passes. A command word only known at run time with no wrapper before it is read as one that may be `alias`:
+  `"$C" y=git` and `"$(printf al%s ias)" y=git` are refused, as is `"$C" -v 'aliases[y]' git`. Not seen: a run-time word behind a wrapper (`sudo "$C" y=git`; `env $(…) A=1 pnpm` must pass, and `unwrap` does not say what a wrapper runs), a run-time word with only a glob, tilde or `=` operand, fully dynamic `eval` text, an alias written into `~/.zshrc` for a later session, and
   `hash NAME=path` (see the rebinding bullet).
 - The mention rule is broad: any argument naming a secret path counts as a read, so
   `echo ~/.npmrc` and a `gh pr create --body` that names `~/.npmrc` deny too.

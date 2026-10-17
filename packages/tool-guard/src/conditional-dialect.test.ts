@@ -21,6 +21,7 @@ const refusesAlias = (command: string) => () => classify(event(command), ctx);
 describe("a [[ is joined only on the Bash tool's own line", () => {
   it.each([
     `shopt -s expand_aliases\nalias '[['=false\n[[ a || ${PUSH} ]]`,
+    `$(printf '\\x61lias') '[['=false; [[ a || ${PUSH} ]]`,
     `alias '[['=false; eval '[[ a || ${PUSH} ]]'`,
     `al""ias '[['=false; [[ a || ${PUSH} ]]`,
     `\\alias '[['=false; [[ a || ${PUSH} ]]`,
@@ -50,7 +51,6 @@ describe("a [[ is joined only on the Bash tool's own line", () => {
   });
 
   it.each([
-    `$(printf '\\x61lias') '[['=false; [[ a || ${PUSH} ]]`,
     `o=expand_aliases; p=; shopt -s $o$p; [[ a || ${PUSH} ]]`,
     `shopt -s $o$p\n[[ a || ${PUSH} ]]`,
     `setopt $o; [[ a || ${PUSH} ]]`,

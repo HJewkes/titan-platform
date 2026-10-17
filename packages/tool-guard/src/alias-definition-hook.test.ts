@@ -63,6 +63,8 @@ describe("a line that defines a shell alias", () => {
     ["an alias in a case body", `case x in a) alias y=git;; esac; ${PUSH}`],
     ["a glob command word that may match alias", `ali* y=echo; ${PUSH}`],
     ["a brace-expanded command word", `{alias,y=echo}; ${PUSH}`],
+    ["a run-time command word storing into aliases with -v", `"$C" -v 'aliases[y]' git; ${PUSH}`],
+    ["a run-time command word spelled by a substitution", `"$(printf al%s ias)" y=git; ${PUSH}`],
     ["a bracket class led by ] before alias", `touch alias; a[]l]ias y=git; ${PUSH}`],
     ["a bracket class led by ] first", `touch alias; []a]lias y=git; ${PUSH}`],
     ["a bracket class led by ] later", `touch alias; ali[]a]s y=git; ${PUSH}`],

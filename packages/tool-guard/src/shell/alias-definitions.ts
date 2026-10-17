@@ -129,7 +129,20 @@ export function definesAlias(cmd: Unwrapped): boolean {
     || cmd.args.some(expandsAliasParam)
     || (cmd.name !== null && storesAliasParam(cmd.name, cmd.args))
     || (cmd.path !== null && expandedDefinition(cmd.path, cmd.args))
+    || (cmd.runtimeHead === true && runtimeHeadDefines(cmd.args.slice(1)))
   );
+}
+
+/**
+ * A command word only known at run time, with no wrapper before it, may be `alias` (or a store builtin): an operand
+ * naming an alias parameter, or a `NAME=VALUE` past the options `alias` takes, may define one. A wrapped run-time word
+ * (`env $(…) A=1 pnpm`) is not read this way, since `unwrap` does not say what the wrapper runs.
+ */
+function runtimeHeadDefines(rest: WordToken[]): boolean {
+  if (rest.some((w) => STORED_PARAM_RE.test(w.value) || (mayBraceExpand(w) && BRACED_PARAM_RE.test(w.value)))) return true;
+  const { options, operands } = readOptions(rest);
+  if (!options.every((w) => varies(w) || ALIAS_OPTION_RE.test(w.value))) return false;
+  return operands.some((w) => !w.value.startsWith("-") && DEFINITION_RE.test(w.value));
 }
 
 /**
