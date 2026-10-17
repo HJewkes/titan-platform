@@ -10,6 +10,7 @@ import { ParseError } from "./parse-error.js";
 
 const HOME = "/home/you";
 const PUSH = "git push origin HEAD:feat";
+const JOIN = "\\\n";
 
 const port: HookPort = {
   context: nodeContext(HOME, { realpath: (p) => p, readHead: () => "feat", isFile: () => false }),
@@ -65,6 +66,13 @@ const REFUSED = [
   ["a subscript that closes at the window edge before an offset", `: \${a[${"0".repeat(596)}]:PATH=0}`],
   ["an indirect name that fills the window", `: \${!${"a".repeat(600)}:=x}`],
   ["zsh prefixes that fill the window", `: \${${"=".repeat(600)}a[PATH=0]}`],
+  ["a join on the window's last character before a subscript", `: \${${"a".repeat(598)}${JOIN}[PS4=7]}`],
+  ["a join on the window's last two characters before a subscript", `: \${${"a".repeat(597)}${JOIN}[PS4=7]}`],
+  ["a join on the window's last character before an offset", `: \${${"a".repeat(598)}${JOIN}:PS4=7}`],
+  ["a join on the window's last two characters before an offset", `: \${${"a".repeat(597)}${JOIN}:PS4=7}`],
+  ["a join on the window's last character after a subscript", `: \${a[${"0".repeat(595)}]${JOIN}:PS4=7}`],
+  ["a join on the window's last two characters after a subscript", `: \${a[${"0".repeat(594)}]${JOIN}:PS4=7}`],
+  ["a name split by a join that fills the window", `: \${${"a".repeat(300)}${JOIN}${"a".repeat(400)}[PS4=7]}`],
 ] as const;
 
 const REFUSED_IN_RUN_TEXT = [["eval text", "eval ': $(( PS4=1 ))'"]] as const;
@@ -138,6 +146,7 @@ describe.skipIf(!bash)("bash really sets PS4 through the refused forms (TP-3294)
     ["${a[PS4=7]}", ': ${a[PS4=7]}; echo "$PS4"'],
     ["${x:PS4=1}", "x=abcdef; : ${x:PS4=1}; echo \"$PS4\""],
     ["a ${…[ ]} subscript past the window", `: \${${"a".repeat(600)}[PS4=7]}; echo "$PS4"`],
+    ["a join at the window edge", `: \${${"a".repeat(598)}${JOIN}[PS4=7]}; echo "$PS4"`],
   ])("%s", (_form, script) => {
     expect(run("bash", ["--norc", "-c", script]).trim()).toMatch(/^[1-9]$/);
   });

@@ -1,6 +1,6 @@
 import { HOOKED, assignedInMath, writesComputedName } from "./hooked-names.js";
 import { CUT_OFF, closeOf } from "./math-close.js";
-import { dropJoins, nextAfter } from "./joins.js";
+import { joinedWindow, nextAfter } from "./joins.js";
 import { PROTECTED } from "./protected-params.js";
 
 const IDENTIFIER_AT_RE = /[A-Za-z_][A-Za-z0-9_]*/y;
@@ -88,8 +88,7 @@ function expansionHead(
  */
 export function assignsProtectedAt(src: string, dollar: number): boolean {
   const open = nextAfter(src, dollar);
-  const truncated = src.length > open + MAX_BODY;
-  const body = dropJoins(src.slice(open, open + MAX_BODY));
+  const { text: body, truncated } = joinedWindow(src, open, MAX_BODY);
   if (body.startsWith("{")) return assignedAt(body, 1, PROTECTED) !== null || braceMathWrites(body, truncated);
   if (body.startsWith("[")) return mathWrites(body, 1, "]", truncated);
   if (body.startsWith("((")) return mathWrites(body, 2, "))", truncated);
