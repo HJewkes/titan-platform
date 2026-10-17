@@ -8,7 +8,7 @@ import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
 import { aliasCommands, type AliasTable } from "./alias-words.js";
-import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackVars } from "./vars.js";
+import { childVars, expandWord, lookup, noteSureCommands, observeStores } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { CommandRebindingError, rebindsCommand } from "./command-rebinding.js";
 import { cutReading } from "./piped-nul.js";
@@ -22,6 +22,7 @@ import { runReadings } from "./xargs-readings.js";
 import type { Vars } from "./vars.js";
 import { newMarks, noteRedirect, recordValue, settle } from "./value-marks.js";
 import { noteCommand, noteWord } from "./stored-words.js";
+import { assignStandalone, namesScript, searchPathOf, trackCommand, type SearchPath } from "./search-path.js";
 import type { ValueMarks } from "./value-marks.js";
 import { MAX_UNSURE_WORDS, NestingReadingError, ReadingLimitError, SPLICED_WEIGHT, SplitReadingError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
@@ -66,6 +67,8 @@ export interface SimpleCommand {
   added?: true;
   /** What its descriptors held before its own redirects, when a command that runs it set them up (`bash -c bash < f`). */
   inherited?: Descriptors;
+  /** The `PATH` the line set before this command, which a bare command name is looked up on; absent when it set none. */
+  searchPath?: SearchPath;
 }
 
 export interface ExtractOptions {
@@ -283,13 +286,13 @@ function walkAdded(runs: Unwrapped[], redirects: RedirectToken[], w: Walk, next:
 
 /** A dynamic or guarded command word, or one that runs more commands: shell text, a `.sh` script, `xargs` or `find -exec`. */
 function decider(guarded: ReadonlySet<string> | undefined): (cmd: Unwrapped) => boolean {
-  return (cmd) => cmd.name === null || cmd.xargs !== undefined || cmd.script !== undefined || RUNNERS.has(cmd.name) || cmd.name.endsWith(".sh") || (guarded?.has(cmd.name) ?? true);
+  return (cmd) => cmd.name === null || cmd.xargs !== undefined || cmd.script !== undefined || RUNNERS.has(cmd.name) || namesScript(cmd) || (guarded?.has(cmd.name) ?? true);
 }
 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
   if (rebindsCommand(raw)) throw new CommandRebindingError();
   if (raw.name === null && raw.args.length === 0 && !raw.xargs?.words.length) {
-    for (const assignment of raw.assigned) assign(w.scope.vars, assignment);
+    assignStandalone(raw.assigned, w.scope.vars);
     if (redirects.length === 0) return;
   }
   if (raw.name === "cd" || raw.name === "pushd") {
@@ -330,7 +333,7 @@ function besideWalk(w: Walk): Walk {
 }
 
 function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {
-  trackVars(cmd, w.scope.vars);
+  trackCommand(cmd, w.scope.vars);
   // A prefix assignment stores its value only for the command, which the variables do not hold; an element is heard where typed.
   if (cmd.name !== null || cmd.args.length > 0) for (const [, value, kind] of cmd.assigned) if (kind !== "hidden" && kind !== "element") hear(w, value);
   const wrapping: Wrapping[] = cmd.xargs ? [...w.scope.wrapping, "xargs"] : w.scope.wrapping;
@@ -339,7 +342,7 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
   const inherited = w.prev === "|" || w.prev === "|&" ? emptied(w.descriptors, 0) : w.descriptors;
   const set = inherited === TOP_DESCRIPTORS ? {} : { inherited };
-  w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set });
+  w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set, ...searchPathOf(w.scope.vars, cmd) });
   const piped = stdin === null ? [] : [stdin, ...(stdin === w.stdin ? w.shellStdin : [])];
   const held = descriptorsAfter(redirects, piped, inherited, (target) => resolvePath(w.scope.dir, target, w.home));
   const script = inlineScript(cmd, redirects, piped, w.unsure, inherited);

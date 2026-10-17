@@ -5,7 +5,8 @@ import { choosesHttpConfig } from "./families/http-config.js";
 import { merge } from "./families/merge.js";
 import { release } from "./families/release.js";
 import { secret } from "./families/secret.js";
-import { hasDynamicName, namedReadings, wrappedReading } from "./dynamic-readings.js";
+import { isPathSearched } from "./path-changes.js";
+import { hasDynamicName, namedReadings, namesDynamicPath, wrappedReading } from "./dynamic-readings.js";
 import { afterWrites, scriptReadings } from "./line-writes.js";
 import { INTERPRETERS } from "./mentions.js";
 import { hasOpaqueShebang, refuseOpaqueShebang, runsNatively, scriptTargets, SOURCERS } from "./scripts.js";
@@ -29,10 +30,14 @@ const GUARDED = new Set([...FAMILIES.flatMap((f) => [...(f.names ?? []), ...(f.v
  * dynamic wrapper readings or script text than it checks; the hook owns that failure policy.
  */
 export function classify(event: HookEvent, ctx: ClassifyContext): ClassifiedAction[] {
-  if (event.kind === "bash") return classifyCommand(event.command, event.cwd, ctx, { verdicts: new Map(), bytesLeft: MAX_SCRIPT_BYTES, opaque: new Set() });
+  if (event.kind === "bash") return classifyCommand(event.command, event.cwd, ctx, lineMemo());
   if (event.kind === "read") return unique(FAMILIES.flatMap((f) => f.read?.(event, ctx) ?? []));
   if (event.kind === "write") return unique(FAMILIES.flatMap((f) => f.write?.(event, ctx) ?? []));
   return [];
+}
+
+function lineMemo(): ScriptMemo {
+  return { verdicts: new Map(), bytesLeft: MAX_SCRIPT_BYTES, opaque: new Set() };
 }
 
 /** The scripts one line runs; null inside a script, which follows no script of its own. */
@@ -81,22 +86,23 @@ function foldedActions(src: string, cwd: string | null, ctx: ClassifyContext, sc
 function classifyLine(commands: SimpleCommand[], ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
   const out: ClassifiedAction[] = [];
   let line = ctx;
-  for (const cmd of commands) {
+  for (const [at, cmd] of commands.entries()) {
+    const earlier = () => commands.slice(0, at);
     if (cmd.added) {
-      out.push(...addedActions(cmd, line, scripts));
+      out.push(...addedActions(cmd, line, scripts, earlier));
       continue;
     }
     out.push(...classifySimple(cmd, line));
-    if (scripts) out.push(...scriptActions(cmd, line, scripts));
+    if (scripts) out.push(...scriptActions(cmd, line, scripts, earlier));
     line = afterDynamic(cmd, afterAll(cmd, afterWrites(cmd, line)));
   }
   return unique(out);
 }
 
 /** A command only an added xargs reading runs adds its actions, but an error other than the reading limit drops it, and it never moves the line's state. */
-function addedActions(cmd: SimpleCommand, line: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
+function addedActions(cmd: SimpleCommand, line: ClassifyContext, scripts: ScriptMemo | null, earlier: () => SimpleCommand[]): ClassifiedAction[] {
   try {
-    return [...classifySimple(cmd, line), ...(scripts ? scriptActions(cmd, line, scripts) : [])];
+    return [...classifySimple(cmd, line), ...(scripts ? scriptActions(cmd, line, scripts, earlier) : [])];
   } catch (error) {
     if (error instanceof ReadingLimitError) throw error;
     return [];
@@ -104,6 +110,7 @@ function addedActions(cmd: SimpleCommand, line: ClassifyContext, scripts: Script
 }
 
 function classifySimple(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
+  if (namesDynamicPath(cmd)) throw new UnreadableScriptError(null);
   const direct = FAMILIES.flatMap((f) => (f.bash && handles(f, cmd) ? f.bash(cmd, ctx) : []));
   return hasDynamicName(cmd) ? [...direct, ...dynamicActions(cmd, ctx)] : direct;
 }
@@ -142,12 +149,47 @@ function handles(family: Family, cmd: SimpleCommand): boolean {
 }
 
 /** One level deep: a shell script is classified as a command string, any other script's text gets the mention rule. */
-function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: ScriptMemo): ClassifiedAction[] {
-  return scriptTargets(cmd, ctx.home).filter((target) => !runsNatively(target, ctx)).flatMap((target) => {
+function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: ScriptMemo, earlier: () => SimpleCommand[]): ClassifiedAction[] {
+  refuseUnreadablePath(cmd);
+  return scriptTargets(cmd, ctx.home).filter((target) => mayExist(target, ctx, earlier) && !runsNatively(target, ctx)).flatMap((target) => {
     const actions = memoized(scripts, ctx, scriptKey(cmd, target, ctx), () => scriptVerdicts(cmd, target, ctx, scripts));
     refuseOpaqueShebang(target, scripts.opaque);
     return actions.map((a) => (a.action === "secret-read" ? classified("bash.secret.script-by-path", a.subject) : a));
   });
+}
+
+/** A command looked up on a PATH whose entries the walk cannot read may be any file in a directory it does not know. */
+function refuseUnreadablePath(cmd: SimpleCommand): void {
+  const path = cmd.searchPath;
+  if (path === undefined) return;
+  const looksUp = [cmd.path, ...(path.wrappers ?? [])].some((n) => n !== null && isPathSearched(n.replace(/^.*\//, ""), n));
+  if ((path.unknown && (looksUp || hasDynamicName(cmd))) || (path.dirs.length > 0 && hasDynamicName(cmd))) throw new UnreadableScriptError(null);
+}
+
+/** Programs that only read: one of them before a PATH-found name cannot have made that file. */
+const READERS = new Set(["cat", "ls", "head", "tail", "wc", "grep", "egrep", "fgrep", "rg", "sort", "uniq", "diff", "cmp", "stat", "file", "which", "readlink", "basename", "dirname", "date", "sleep", "tr", "cut"]);
+const READ_ONLY_GIT = new Set(["status", "diff", "log", "show", "rev-parse", "ls-files", "describe", "branch"]);
+
+function onlyReads(cmd: SimpleCommand): boolean {
+  if (cmd.name === null) return false;
+  if (cmd.name === "git") return READ_ONLY_GIT.has(cmd.args.find((a) => !a.value.startsWith("-"))?.value ?? "");
+  return !isPathSearched(cmd.name, cmd.path) || READERS.has(cmd.name);
+}
+
+/**
+ * Whether a file a PATH lookup found may be there to run: on the disk, or written by the line. A file another command on
+ * the line may have made (`cp s n; PATH=.:$PATH n`, `tar xf a.tar; PATH=.:$PATH n`) fails closed unless every earlier command only reads.
+ */
+function mayExist(target: ScriptTarget, ctx: ClassifyContext, earlier: () => SimpleCommand[]): boolean {
+  if (target.searched !== true) return true;
+  try {
+    if (scriptReadings(ctx, target.path).length > 0) return true;
+  } catch (error) {
+    if (!(error instanceof UnreadableScriptError)) throw error;
+    if (!error.absent) return true;
+  }
+  if (!earlier().every(onlyReads)) throw new UnreadableScriptError(null);
+  return false;
 }
 
 /**
