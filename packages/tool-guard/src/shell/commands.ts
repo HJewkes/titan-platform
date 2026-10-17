@@ -166,9 +166,13 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   };
   // Only the Bash tool's own line has a known reader, so only it may join a `[[`'s operators.
   walk(tokenizeLine(src, options.joinsConditional === true && !mentionsAlias(src)), observed(w));
-  settle(w.marks);
-  if (w.marks.pathChanged || w.marks.pathDirs.length > 0) options.onPathWrite?.(w.marks.pathChanged, w.marks.pathDirs);
+  finishMarks(w.marks, options);
   return out;
+}
+
+function finishMarks(marks: ValueMarks, options: ExtractOptions): void {
+  settle(marks);
+  if (marks.pathChanged || marks.pathDirs.length > 0) options.onPathWrite?.(marks.pathChanged, marks.pathDirs);
 }
 
 function walk(tokens: Token[], w: Walk): void {
