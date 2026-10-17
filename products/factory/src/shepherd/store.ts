@@ -83,7 +83,7 @@ const REFS_HEADS = "refs/heads/";
 /** A branch spelled `refs/heads/<b>` and one spelled `<b>` are the same branch; strip one leading prefix. */
 const branchName = (branch: string): string => (branch.startsWith(REFS_HEADS) ? branch.slice(REFS_HEADS.length) : branch);
 
-/** Hears a registration after a write to it commits, `hold-eased` when a lift, satisfaction or reclass may let a merge through a hold; it must not throw, since the write has already landed. */
+/** Hears a registration after a write to it commits, `hold-eased` when a lift or reclass may end an owner hold that keeps a gate; it must not throw, since the write has already landed. */
 type RegistrationListener = (registration: Registration, change?: "hold-eased") => void;
 
 /** Shepherd registrations in the factory database; the table comes from `shepherdMigration`. */
@@ -253,7 +253,7 @@ export class ShepherdStore implements HoldLookup {
     const changed = this.db
       .prepare("UPDATE shepherd_registration SET hold_satisfied_head = ?, hold_satisfied_by = ?, updated_at = ? WHERE run_id = ? AND held = 1 AND hold_reviewer = ?")
       .run(head, satisfiedBy, this.stamp(), runId, reviewer).changes;
-    return this.changed(runId, changed === 1, "hold-eased");
+    return this.changed(runId, changed === 1);
   }
 
   /** Withdraws the satisfaction, as when the reviewer's newest verdict is FIX_FIRST; at whatever head it was read, so no later carry can restore it. */

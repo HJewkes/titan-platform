@@ -323,14 +323,14 @@ async function sweepThawed(host: FactoryHost, services: ShepherdServices, log: L
 }
 
 interface ThawWatch {
-  /** Repos thawed, or with a run's hold released, since the sweep last read them. */
+  /** Repos thawed, or with a run's hold eased, since the sweep last read them. */
   thawed: Set<string>;
-  /** Runs `start` on each later thaw or release, outside its own call, so a gate the freeze caused is not left waiting out the sweep interval. */
+  /** Runs `start` on each later thaw or eased hold, outside its own call, so a gate the freeze caused is not left waiting out the sweep interval. */
   onThaw(start: () => void): void;
   stop(): void;
 }
 
-/** Watches from before resync and the first adoption, so a thaw then is still swept; a thaw keeps a held run's gate, so a release or satisfaction here queues its repo too. */
+/** Watches from before resync and the first adoption, so a thaw then is still swept; a thaw keeps an owner hold's gate, so a hold easing here queues its repo too. */
 function watchThaws(services: ShepherdServices | undefined): ThawWatch {
   const thawed = new Set<string>();
   let start = (): void => undefined;
