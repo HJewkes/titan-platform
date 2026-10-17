@@ -71,8 +71,12 @@ type Token = WordToken | OpToken | SubsToken | RedirectToken;
  */
 interface ArithTrials {
     ends: Map<number, number>;
+    /** The tokens of the arithmetic reading of the `$((` at each position, kept so a repeat visit reads nothing again. */
+    arithmetic: Map<number, Token[][]>;
     /** The tokens of the `$( ( … ) )` reading of the `$((` at each position, lexed once so nested ones stay linear. */
     subshells: Map<number, Token[][]>;
+    /** Set while a `$( ( … ) )` reading is lexed, whose nested `$((` add no reading of their own: the arithmetic reading of the outer span already holds them. */
+    inSubshellReading: boolean;
     spend: {
         left: number;
     };

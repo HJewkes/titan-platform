@@ -25,27 +25,52 @@ export function lineReading(s: LexState): Reading {
  */
 export function arithmeticExpansionEnd(at: Reading, dollar: number, found: Token[][]): number {
   const known = at.trials.ends.get(dollar);
-  if (known !== undefined) return known === -1 ? -1 : withSubshellReading(at, dollar, balancedEnd(at.src, dollar + 1, nestedReaders(at, found)), found);
+  if (known === -1) return -1;
+  if (known !== undefined) return withSubshellReading(at, dollar, known, found, arithmeticTokens(at, dollar));
   const trial: Token[][] = [];
   const end = arithmeticTrial(at, dollar, trial);
   at.trials.ends.set(dollar, end);
-  if (end !== -1) found.push(...trial);
-  return end === -1 ? -1 : withSubshellReading(at, dollar, end, found);
+  if (end === -1) return -1;
+  at.trials.arithmetic.set(dollar, trial);
+  return withSubshellReading(at, dollar, end, found, trial);
+}
+
+function arithmeticTokens(at: Reading, dollar: number): Token[][] {
+  const kept = at.trials.arithmetic.get(dollar);
+  if (kept !== undefined) return kept;
+  const rescanned: Token[][] = [];
+  balancedEnd(at.src, dollar + 1, nestedReaders(at, rescanned));
+  at.trials.arithmetic.set(dollar, rescanned);
+  return rescanned;
 }
 
 /**
- * zsh reads an arithmetic body that holds a quote as `$( ( … ) )` when the quote holds a paren, running what bash
- * calls arithmetic, so the commands of that reading are walked too; a body that cannot be lexed that way is refused.
+ * A body holding a character that balancedEnd reads as opaque while the shells may not (a quote, a backquote, a
+ * backslash, a `#` that opens a comment, a newline) can be read by zsh, and sometimes bash, as `$( ( … ) )`, running
+ * what the arithmetic reading calls arithmetic. Those commands are walked too; a body that cannot be lexed that way
+ * is refused.
  */
-function withSubshellReading(at: Reading, dollar: number, end: number, found: Token[][]): number {
-  if (!/['"\\]/.test(at.src.slice(dollar + 3, end - 1))) return end;
+const HIDES_PAREN = /['"\\`#\n]/;
+
+function withSubshellReading(at: Reading, dollar: number, end: number, found: Token[][], primary: Token[][]): number {
+  found.push(...primary);
+  if (at.trials.inSubshellReading || !HIDES_PAREN.test(at.src.slice(dollar + 3, end - 1))) return end;
   let tokens = at.trials.subshells.get(dollar);
   if (tokens === undefined) {
-    tokens = [lexNested(at.src, dollar + 2, at.trials, at.line).tokens];
+    tokens = [lexSubshellReading(at, dollar)];
     at.trials.subshells.set(dollar, tokens);
   }
   found.push(...tokens);
   return end;
+}
+
+function lexSubshellReading(at: Reading, dollar: number): Token[] {
+  at.trials.inSubshellReading = true;
+  try {
+    return lexNested(at.src, dollar + 2, at.trials, at.line).tokens;
+  } finally {
+    at.trials.inSubshellReading = false;
+  }
 }
 
 function arithmeticTrial(at: Reading, dollar: number, trial: Token[][]): number {

@@ -30,20 +30,28 @@ describe("a quoted paren in $(( ))", () => {
     ["an ANSI-C close paren", "echo $(( git push origin HEAD:main $')' ))"],
     ["inside double quotes", `echo "$(( git push origin HEAD:main ')' ))"`],
     ["an assignment value", "x=$(( git push origin HEAD:main ')' ))"],
+    ["a backquote holding a case arm", "echo $(( git push origin HEAD:main `case a in a) ;; esac` ))"],
+    ["a backquote holding a quoted paren", "echo $(( git push origin HEAD:main `echo ')'` ))"],
+    ["a backquote in an assignment", "x=$(( git push origin HEAD:main `case a in a) ;; esac` ))"],
+    ["a backquote inside double quotes", 'echo "$(( git push origin HEAD:main `case a in a) ;; esac` ))"'],
+    ["a locale string holding a paren", 'echo $(( git push origin HEAD:main $"(" ))'],
+    ["a heredoc body", "cat <<EOF\n$(( git push origin HEAD:main `case a in a) ;; esac` ))\nEOF"],
+    ["a comment holding a paren", "echo $(( git push origin HEAD:main #)\n ))"],
+    ["a lone close paren across a newline", "echo $(( git push origin HEAD:main )\n( ))"],
   ])("denies %s", async (_name, command) => {
-    expect(await handled(command)).toBe("deny");
+    expect(await handled(command.replaceAll("\\n", "\n"))).toBe("deny");
   });
 
-  it.each([["plain arithmetic", "echo $(( 1 + 2 ))"], ["a subscript", "echo $(( a[1] ))"], ["double-quoted arithmetic", `echo "$(( x ))"`]])(
+  it.each([["plain arithmetic", "echo $(( 1 + 2 ))"], ["a subscript", "echo $(( a[1] ))"], ["double-quoted arithmetic", `echo "$(( x ))"`], ["arithmetic across a newline", "echo $(( 1 +\\n 2 ))"], ["a variable", "echo $(( $a + 1 ))"]])(
     "passes %s",
     async (_name, command) => {
-      expect(await handled(command)).toBe("pass");
+      expect(await handled(command.replaceAll("\\n", "\n"))).toBe("pass");
     },
   );
 
-  it("stays cheap when quoted-paren arithmetic nests deeply", async () => {
-    let body = "x";
-    for (let i = 0; i < 24; i++) body = `$(( '(' ${body} ))`;
+  it.each([[8, 1000], [24, 100]])("stays cheap when quoted-paren arithmetic nests %i deep around a body of %i terms", async (depth, terms) => {
+    let body = `x${" + 1".repeat(terms)}`;
+    for (let i = 0; i < depth; i++) body = `$(( '(' ${body} ))`;
     const started = Date.now();
     await handled(`echo ${body}`);
     expect(Date.now() - started).toBeLessThan(1000);
