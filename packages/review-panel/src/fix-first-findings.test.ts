@@ -127,6 +127,15 @@ describe("ciUnreadOnly against the reviewer's probe", () => {
     ["msg2 only real finding", m(`- ${L}\n\n${D}`) + SEP + m(`- the retry never stops`), false],
     ["zero-width space in line", m(`- Blocking:\u200b CI unread`), false],
     ["nbsp in line", m(`- Blocking:\u00a0CI unread`), false],
+    ["item-shaped finding with no Follow-ups heading", m(`- ${L}\n- Blocking: sync.ts:40 retry never terminates | bound the loop | high`), false],
+    ["item-shaped finding after a blank line, no heading", m(`${L}\n\n- a.ts:3 null deref crashes on empty input | guard it | high`), false],
+    ["not fixed: in the item shape", m(`- ${L}\n- not fixed: null deref at a.ts:3 | still crashes | high`), false],
+    ["fixed: in the item shape", m(`- ${L}\n- fixed: partially, a.ts:3 remains | x | low`), false],
+    ["item-shaped finding before the Follow-ups heading", m(`- ${L}\n- leak in auth.ts | fix | high\n\nFollow-ups:\n- x | y | low`), false],
+    ["item-shaped finding after Follow-ups: none", m(`- ${L}\n\nFollow-ups: none\n- a.ts:3 leaks token | fix | high`), false],
+    ["lone CR inside a follow-up title", m(`- ${L}\n\nFollow-ups:\n- x\rBlocking: a.ts:3 leaks | y | low`), false],
+    ["U+2028 inside a follow-up title", m(`- ${L}\n\nFollow-ups:\n- x\u2028Blocking: a.ts:3 leaks | y | low`), false],
+    ["one legitimate follow-up under its heading", m(`${L}\n\nFollow-ups:\n- rename x | x is renamed | low`), true],
   ])("%s", (_, text, want) => {
     expect(ciUnreadOnly(text)).toBe(want);
   });
