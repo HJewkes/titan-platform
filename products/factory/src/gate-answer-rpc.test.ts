@@ -11,6 +11,7 @@ import { defineWorkflow } from "./definition.js";
 import { ANSWER_SHIP_PATH, MAX_ANSWER_BODY_BYTES } from "./gate-answer-rpc.js";
 import { approveMergeDecision } from "./gate-brief.js";
 import { createFactoryRegistry } from "./registry.js";
+import { acceptPacket, visualAcceptGate, writeFactoryPacket } from "./test-support/accept-set.js";
 import { startFactoryServer, type FactoryServer } from "./serve.js";
 import { TEST_BRIEF } from "./test-support/brief.js";
 import { shepherdFixture } from "./test-support/shepherd.js";
@@ -49,6 +50,7 @@ const mergeGate = defineWorkflow({
 const dirs: string[] = [];
 const servers: FactoryServer[] = [];
 afterEach(async () => {
+  vi.unstubAllEnvs();
   for (const server of servers.splice(0)) await server.close();
   dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
 });
@@ -80,7 +82,7 @@ async function world({ mounted = true, port, sendBack = false, stamp }: WorldOpt
   const fixture = shepherdFixture({ frozen: true, port: port ? port(base) : base });
   const server = await startFactoryServer({
     dbPath: join(dir, "factory.sqlite3"),
-    workflows: [mergeGate],
+    workflows: [mergeGate, visualAcceptGate(REPO)],
     routes: fixture.routes,
     resyncOnStart: false,
     now: () => NOW_MS,
@@ -296,6 +298,47 @@ describe("POST /gates/answer-ship", () => {
     expect([moved.status, await moved.json()]).toEqual([409, { outcome: "moved", currentHead: H2 }]);
     expect([gone.status, await gone.json()]).toMatchObject([410, { outcome: "gone" }]);
     expect(w.server.host.gates.get(w.gateId)?.status).toBe("pending");
+  });
+
+  describe("on a red head's sh-visual-accept gate", () => {
+    /** Opens the accept gate, and puts the factory's packet and delivery record for H under the server's state dir. */
+    async function acceptGate(w: World, mode: "off" | "on"): Promise<{ body: Record<string, unknown>; gateId: string }> {
+      mkdirSync(join(w.dir, "config", "titan-factory"), { recursive: true });
+      writeFileSync(join(w.dir, "config", "titan-factory", "config.json"), JSON.stringify({ shepherd: { visualSetCarry: mode } }));
+      vi.stubEnv("XDG_CONFIG_HOME", join(w.dir, "config"));
+      const runId = w.server.host.runtime.start("visual-accept-gate", { pr: String(w.pr), head: H });
+      const gateId = `${runId}/sh-visual-accept`;
+      await vi.waitFor(() => expect(w.server.host.gates.get(gateId)?.status).toBe("pending"));
+      const packet = acceptPacket({ repo: REPO, pr: w.pr, headSha: H, headTree: TREE });
+      writeFactoryPacket(w.dir, runId, packet, H);
+      writeRound(w);
+      writeFileSync(join(w.roundsDir, ROUND_ID, "packet.json"), packet);
+      return { body: answer(w, hash(Buffer.from(packet).toString("utf8")), { runId, gateId, choice: "accept-set" }), gateId };
+    }
+
+    it("resolves accept-set with the set read from the factory's own packet dir, and reads a replay as already", async () => {
+      const w = await world();
+      const { body, gateId } = await acceptGate(w, "on");
+
+      const res = await post(w.server, body);
+      const replay = await post(w.server, body);
+
+      expect([res.status, await res.json()]).toEqual([200, { outcome: "resolved", gateId, choice: "accept-set" }]);
+      expect([replay.status, await replay.json()]).toEqual([200, { outcome: "already", gateId }]);
+      const gate = w.server.host.gates.get(gateId);
+      expect(gate?.payload).toMatchObject({ decision: "accept-set", headSha: H, approvedSet: { fromHead: H, packetId: "p-accept", sidePaths: [] } });
+      expect(gate?.resolvedBy).toMatchObject({ class: "owner-remote", channel: "console:ship" });
+    });
+
+    it("refuses accept-set with 422 off while shepherd.visualSetCarry is off, leaving the gate pending", async () => {
+      const w = await world();
+      const { body, gateId } = await acceptGate(w, "off");
+
+      const res = await post(w.server, body);
+
+      expect([res.status, await res.json()]).toMatchObject([422, { outcome: "refused", reason: "off" }]);
+      expect(w.server.host.gates.get(gateId)?.status).toBe("pending");
+    });
   });
 
   it("is no registry command, and so no MCP tool, so only the mounted route can answer a Ship", () => {

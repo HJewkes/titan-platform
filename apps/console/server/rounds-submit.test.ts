@@ -10,6 +10,7 @@ import type { RoundListeners } from "./listeners.js";
 import type { ConsoleContext } from "./owner-guard.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
 import { withdrawRound } from "./round-withdraw.js";
+import { BLIND_AB_REFUSED } from "./round-schema.js";
 import { FeedbackDocument } from "./round2-adapter.js";
 import { MAX_FEEDBACK_BYTES, roundsSubmitCommands } from "./rounds-submit.js";
 
@@ -224,6 +225,23 @@ describe("rounds.submit", () => {
     expect(exitCode).toBe(EXIT.DATAERR);
     expect(envelope).toMatchObject({ ok: false, error: expect.stringContaining("round.json is not a valid round: ") });
     expect(await exists(feedbackOf())).toBe(false);
+  });
+
+  it("refuses a blind-ab round, which review-schema 0.3 accepts, and writes nothing", async () => {
+    const id = "blind-r1";
+    const round = JSON.parse(await readFile(path.join(FIXTURE_ROUNDS.dir, "td920-packet-r1", "round.json"), "utf8"));
+    const takes = [{ engine: "engine-alpha", src: "audio/a.wav" }, { engine: "engine-beta", src: "audio/b.wav" }];
+    round.questions.push({ id: "listen", kind: "blind-ab", prompt: "Which take reads better?", pairs: [{ id: "line-1", transcript: "Welcome back.", takes }] });
+    round.sections = round.sections.map((section: { id: string }) => (section.id === "side" ? { ...section, questionIds: ["bundle", "listen"] } : section));
+    const bytes = Buffer.from(JSON.stringify(round));
+    await mkdir(path.join(dir, id));
+    await writeFile(path.join(dir, id, "round.json"), bytes);
+
+    const { envelope, exitCode } = await submit({ id, manifestSha256: sha256(bytes), answers: [] });
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringContaining(BLIND_AB_REFUSED) });
+    expect(await exists(feedbackOf(id))).toBe(false);
   });
 
   it("refuses feedback over the size cap", async () => {
