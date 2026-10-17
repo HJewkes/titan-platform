@@ -1,3 +1,4 @@
+import { COMMAND_PREFIXES } from "./compound.js";
 import type { Token, WordToken } from "./lexer.js";
 import { NAMEREF_DECLARERS } from "./name-slots.js";
 
@@ -14,7 +15,8 @@ export function carryPathLine(from: WordToken, to: WordToken): void {
 
 /** Commands that bind or define a name, or run text that may; any of them, or a function named `wc`, rules out PATH. */
 const BINDERS = new Set(["alias", "hash", "eval", "source", ".", "enable", "functions", "autoload", "compdef"]);
-const WRAPPERS = new Set(["builtin", "command", "time", "exec", "noglob", "nocorrect", "!", "{", "then", "do", "else", "elif"]);
+/** Wrappers that run the next command in this shell, past the keywords that already leave command position open. */
+const WRAPPERS = new Set(["builtin", "command", "exec", "noglob", "nocorrect"]);
 const ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*(\[[^\]]*\])?\+?=/;
 const PATH_ASSIGNMENT_RE = /^(PATH|path|BASH_CMDS|commands)(\[[^\]]*\])?\+?=/;
 const FUNCTION_NAME = "wc";
@@ -31,31 +33,38 @@ export function notePathLine(tokens: Token[]): Token[] {
 
 function rebindsAny(tokens: Token[], words: WordToken[]): boolean {
   let start = true;
+  let wrapped = false;
   let found = false;
   for (const [i, t] of tokens.entries()) {
-    if (t.type === "redirect") {
-      for (const sub of t.target?.subs ?? []) found = rebindsAny(sub, words) || found;
-      continue;
-    }
-    if (t.type === "subs") {
-      for (const sub of t.subs) found = rebindsAny(sub, words) || found;
-      continue;
-    }
-    if (t.type === "op") {
+    if (t.type === "redirect") found = subsRebind(t.target?.subs ?? [], words) || found;
+    else if (t.type === "subs") found = subsRebind(t.subs, words) || found;
+    else if (t.type === "op") {
       const next = tokens[i + 1];
       if (t.value === "(" && next?.type === "op" && next.value === ")") found ||= namesWc(tokens[i - 1]);
-      start = t.value !== ")";
-      continue;
+      [start, wrapped] = [t.value !== ")", false];
+    } else {
+      words.push(t);
+      found = subsRebind(t.subs, words) || wordRebinds(t, tokens, i, start) || found;
+      if (start && ASSIGNMENT_RE.test(t.value)) continue;
+      const keeps: boolean = start && (COMMAND_PREFIXES.has(t.value) || WRAPPERS.has(t.value) || (wrapped && /^-/.test(t.value)));
+      [start, wrapped] = [keeps, keeps];
     }
-    words.push(t);
-    for (const sub of t.subs) found = rebindsAny(sub, words) || found;
-    if (PATH_ASSIGNMENT_RE.test(t.value)) found = true;
-    if (start && ASSIGNMENT_RE.test(t.value)) continue;
-    if (start) found ||= t.dynamic || BINDERS.has(t.value) || declaresNameref(t.value, tokens.slice(i + 1));
-    if (t.value === "function") found ||= namesWc(tokens[i + 1]);
-    start = start && WRAPPERS.has(t.value);
   }
   return found;
+}
+
+function subsRebind(subs: Token[][], words: WordToken[]): boolean {
+  let found = false;
+  for (const sub of subs) found = rebindsAny(sub, words) || found;
+  return found;
+}
+
+/** Whether the word at TOKENS[i] rebinds a name itself: a PATH change, or a binder or nameref declarer in command position. */
+function wordRebinds(t: WordToken, tokens: Token[], i: number, start: boolean): boolean {
+  if (PATH_ASSIGNMENT_RE.test(t.value)) return true;
+  if (t.value === "function" && namesWc(tokens[i + 1])) return true;
+  if (!start || ASSIGNMENT_RE.test(t.value)) return false;
+  return t.dynamic || BINDERS.has(t.value) || declaresNameref(t.value, tokens.slice(i + 1));
 }
 
 const namesWc = (t: Token | undefined) => t?.type === "word" && (t.value === FUNCTION_NAME || t.dynamic || t.quoted || t.spliced);
