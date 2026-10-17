@@ -279,6 +279,19 @@ function describeFailure(
   return `worktree setup step \`${name}\` ${how}${where}; the worktree may be missing its dependencies`;
 }
 
+/** Whether a declared step reinstalled the tree's dependencies. */
+export type SetupOutcome = "ran" | "none" | "skipped" | "failed";
+
+export interface SetupReport {
+  outcome: SetupOutcome;
+  warnings: string[];
+}
+
+const skipped = (warning: string): SetupReport => ({
+  outcome: "skipped",
+  warnings: [warning],
+});
+
 /**
  * Run the repository's declared setup step in a fresh worktree, before the agent launches.
  *
@@ -289,24 +302,24 @@ function describeFailure(
  * Never throws: a failed step is a warning and the spawn proceeds, since whatever
  * depended on it (the egress pre-push hook) fails closed on its own.
  */
-export async function runWorktreeSetup(
+export async function setupWorktree(
   target: SetupTarget,
   run: SetupRunner = runSetupCommand
-): Promise<string[]> {
+): Promise<SetupReport> {
   const declared = await declarationAt(target.gitRoot, target.baseSha);
-  if (declared === null) return [];
+  if (declared === null) return { outcome: "none", warnings: [] };
   if (!target.fetched)
-    return [
-      `worktree setup skipped: ${SETUP_FILE} is trusted only from origin's fetched default branch`,
-    ];
+    return skipped(
+      `worktree setup skipped: ${SETUP_FILE} is trusted only from origin's fetched default branch`
+    );
   const step = parseSetupStep(declared);
-  if (step === null) return [];
-  if (typeof step === "string") return [`worktree setup skipped: ${step}`];
+  if (step === null) return { outcome: "none", warnings: [] };
+  if (typeof step === "string") return skipped(`worktree setup skipped: ${step}`);
   const changed = await changedBaseOnlyFile(target);
   if (changed !== null)
-    return [
-      `worktree setup skipped: the tree's ${changed} differs from origin's default branch`,
-    ];
+    return skipped(
+      `worktree setup skipped: the tree's ${changed} differs from origin's default branch`
+    );
   const result = await run(step.command, target.worktree, step.timeoutMs).catch(
     (err: unknown): SetupResult => ({
       exitCode: null,
@@ -314,12 +327,23 @@ export async function runWorktreeSetup(
       output: String(err),
     })
   );
-  if (result.exitCode === 0 && !result.timedOut) return [];
-  return [
-    describeFailure(
-      step,
-      result,
-      await writeSetupLog(target.worktree, result.output)
-    ),
-  ];
+  if (result.exitCode === 0 && !result.timedOut) return { outcome: "ran", warnings: [] };
+  return {
+    outcome: "failed",
+    warnings: [
+      describeFailure(
+        step,
+        result,
+        await writeSetupLog(target.worktree, result.output)
+      ),
+    ],
+  };
+}
+
+/** The warnings of {@link setupWorktree}, for callers that record no outcome. */
+export async function runWorktreeSetup(
+  target: SetupTarget,
+  run?: SetupRunner
+): Promise<string[]> {
+  return (await setupWorktree(target, run)).warnings;
 }
