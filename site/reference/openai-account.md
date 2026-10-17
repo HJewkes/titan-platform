@@ -74,13 +74,17 @@ bad event invalidates older evidence; conflicting equal timestamps, missing
 timestamps and unexpected shapes return inconsistent. No quota events returns
 missing. Unknown fields never enter returned state.
 
-The public `UsageResult` also supports a caller-supplied `{ status: "known",
-reading }` for sources that independently establish quota observation time. That
-reading contains `account`, `written_at` and `rate_limits.five_hour` / `seven_day`
-windows with `used_percentage` and `resets_at`. All timestamps use epoch seconds.
-The caller must establish the provenance; native rollout readers never produce known readings. The separate opt-in
-backend reader below establishes a local request-start lower bound. Additional fields in raw rollouts
-are not treated as a trusted timestamp seam.
+The public `knownObservation({ source, observedAt, reading })` factory creates
+known readings for callers that independently establish quota observation time.
+It validates and clones `account` plus `rate_limits.five_hour` / `seven_day`
+windows with `used_percentage` and `resets_at`; all timestamps use epoch seconds.
+The returned snapshot is deeply frozen, while caller-owned input stays mutable.
+A module-private WeakSet records snapshot identity; copying reflected symbols,
+properties or serialized state cannot transfer admission provenance. The nominal
+TypeScript brand is type-only. This is explicit caller attestation, not backend
+authentication, account binding or proof of an honest source or clock. Native rollout readers never produce known readings. The separate opt-in backend
+reader below establishes a local request-start lower bound; additional raw
+rollout fields are not a trusted timestamp seam.
 
 `readUsage(profile, options?)` scans only `rollout-*.jsonl` in `sessions` and
 `archived_sessions` beneath the selected home. No auth files, default-home scan
