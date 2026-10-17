@@ -30,7 +30,7 @@ describe("openai-account authoritative statusline command", () => {
       { expectedAccountId: "fixture-account", env: ctx.env });
     expect(ctx.output).toEqual(["codex|basement|unknown|unknown||"]);
   });
-  it.each([undefined, "", "bad|id", "line\nbreak", " ", "x".repeat(257)])("refuses missing or invalid binding before native launch: %s", async id => {
+  it.each([undefined, "", "bad|id", "line\nbreak", " ", "x".repeat(257), "fixture\n", "fixture\r", "fixture\r\n", "fixture\u2028", "fixture\u2029"])("refuses missing or invalid binding before native launch: %s", async id => {
     const ctx = context();
     const { runStatusline } = await import("./statusline.js");
     await runStatusline({ expectedAccountId: id }, ctx);
