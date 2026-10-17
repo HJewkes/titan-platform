@@ -174,7 +174,7 @@ export function ciFailedRoute(run: GateRun & { state: LandPrState }, red: RedHea
   const checks = red.failing.map((check) => `${check.name} (${check.conclusion ?? "no conclusion"})`).join(", ") || "no failing check named";
   return seatOrGate(
     () => noticeGate(run, "ci-failed", red.headSha, `CI failed (${checks}) and no fixer took the ci-red wake`),
-    () => awaitNewHead(run, red.headSha),
+    () => awaitNewHead(run, red.headSha, true),
     (unsent) => onCiFailed(run.ctx, run.target, red, run.state, unsent),
   );
 }

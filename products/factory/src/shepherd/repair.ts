@@ -38,7 +38,7 @@ export function repairGate(run: GateRun, kind: WakeRequest["kind"], headSha: str
   const reason = escalationReason("repair-budget", repairDetail(kind, headSha, payload));
   return seatOrGate(
     () => noticeGate(run, "sh-sent-back", headSha, `the PR has used its repair budget: ${reason}`),
-    () => awaitNewHead(run, headSha),
+    () => awaitNewHead(run, headSha, kind === "ci-red"),
     (unsent) => {
       const prompt = `PR #${run.target.pr} in ${run.target.repo} at head ${headSha} has used its repair budget: ${reason}${unsent}. Await a new head or abandon?`;
       return sentBackGate(run, headSha, prompt, `a human abandoned the PR after the repair budget ran out at a ${kind} wake`);
