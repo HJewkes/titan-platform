@@ -520,21 +520,23 @@ describe("concurrent worktree adds", () => {
     await vi.waitFor(() => expect(isWorktreeListed(repo, target)).toBe(false), { timeout: 5_000 });
   });
 
-  it("kills the hook a timed-out add spawned, and cleans up only after it is gone", async () => {
-    const repo = makeRepo();
-    const target = path.join(repo, ".worktrees", "w1");
-    const marker = "sleep 61";
-    const hook = path.join(repo, ".git", "hooks", "post-checkout");
-    fs.mkdirSync(path.dirname(hook), { recursive: true });
-    fs.writeFileSync(hook, `#!/bin/sh\n${marker} &\nwait\n`, { mode: 0o755 });
-    const strategy = createWorktreeAllocator({ addTimeoutMs: 1_500 });
+  it('kills the filter a timed-out add spawned, and cleans up only after it is gone', async () => {
+    const repo = makeRepo()
+    const target = path.join(repo, '.worktrees', 'w1')
+    // Unique per run, so pgrep never sees a filter from a suite running concurrently on the machine.
+    const marker = `sleep 61.${process.pid}${Date.now() % 1_000}`
+    git(['config', 'filter.hang.smudge', `sh -c '${marker} & wait'`], repo)
+    fs.writeFileSync(path.join(repo, '.gitattributes'), 'README.md filter=hang\n')
+    git(['add', '.gitattributes'], repo)
+    git(['commit', '-m', 'hang on checkout'], repo)
+    const strategy = createWorktreeAllocator({ addTimeoutMs: 1_500 })
 
-    await expect(strategy.allocate(ctxFor(repo, { agentName: "w1" }))).rejects.toThrow("timed out");
+    await expect(strategy.allocate(ctxFor(repo, { agentName: 'w1' }))).rejects.toThrow('timed out')
 
-    const survivors = spawnSync("pgrep", ["-f", marker]).stdout.toString().trim();
-    expect(survivors).toBe("");
-    expect(fs.existsSync(target)).toBe(false);
-  }, 20_000);
+    const survivors = spawnSync('pgrep', ['-f', marker]).stdout.toString().trim()
+    expect(survivors).toBe('')
+    expect(fs.existsSync(target)).toBe(false)
+  }, 20_000)
 
   it("does not make adds in different repositories wait for each other", async () => {
     const [left, right] = [makeRepo(), makeRepo()];
