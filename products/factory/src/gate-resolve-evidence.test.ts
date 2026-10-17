@@ -66,7 +66,7 @@ const shepherdPr = defineWorkflow({
     if (scenario.gate === "ci-failed") return void (await ctx.assisted("ci-failed", "CI failed.", ciFailedDecision({ repo: REPO, pr: 1, headSha: HEAD, failing: [{ name: "validate", url: "https://example.test/job/1" }] as never })));
     if (scenario.gate === "sent-back") return void (await ctx.assisted("sh-sent-back", "Sent back.", sentBackDecision({ repo: REPO, pr: 1, headSha: HEAD, situation: "the reviewer sent it back" })));
     await step(ctx, `sh-await-verdict:${HEAD}`, { kind: "verdict", verdict: scenario.verdict ?? "MERGE", head: HEAD, reviewer: { agentId: "rv-synthetic" } }, Verdict);
-    const [table, rowId] = (scenario.rule ?? "authority/MRG-AU").split("/") as [string, string];
+    const [table = "", rowId = ""] = (scenario.rule ?? "authority/MRG-AU").split("/");
     const reason = scenario.reason ?? MECHANICAL;
     await step(ctx, "merge-policy:0", { outcome: "gate", headSha: HEAD, rule: { table, rowId, version: 1 }, reason }, Decision);
     const prompt = `Merge PR #1 in ${REPO} at head ${HEAD}? CI is green. Policy ${table}/${rowId}: ${reason}`;

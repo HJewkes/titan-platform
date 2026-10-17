@@ -39,7 +39,7 @@ const mergeGate = defineWorkflow({
   steps: [{ id: "approve-merge", kind: "assisted" }],
   run: async (ctx) => {
     const pr = ctx.param("pr")!;
-    const [table, rowId] = (ctx.param("policy") ?? "authority/MRG-AU").split("/") as [string, string];
+    const [table = "", rowId = ""] = (ctx.param("policy") ?? "authority/MRG-AU").split("/");
     const prompt = `Merge PR #${pr} in ${REPO} at head ${H}? CI is green. Policy ${table}/${rowId}: synthetic reason`;
     const { schema } = approveMergeDecision({ repo: REPO, pr: Number(pr), headSha: H, reason: "synthetic reason", reviewedMerge: false, sendBack: ctx.param("sendBack") === "1" });
     const rule = stampOf(ctx.param("stamp"), table, rowId);

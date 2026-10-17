@@ -368,7 +368,7 @@ describe("gate rule migrations on a factory database from before them", () => {
 
   it("gains the rule column and versions 27 and 28 on reopen, and its old gates resolve by owner-remote and by a coordinator on evidence", () => {
     const { dbPath, gateIds } = preRuleDatabase();
-    const [ownerGate, coordinatorGate] = gateIds as [string, string];
+    const [ownerGate = "", coordinatorGate = ""] = gateIds;
 
     const host = openFactoryHost({ dbPath, workflows: [approval], routes: tenantRoutes });
     try {
