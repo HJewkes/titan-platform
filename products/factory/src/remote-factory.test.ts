@@ -33,7 +33,7 @@ const approval = defineWorkflow({
     await ctx.dispatch("ship", "ship");
   },
 });
-const deps: CliDeps = { workflows: [approval], routes, host: { gatePollMs: 10 }, presence: async () => undefined };
+const deps: CliDeps = { workflows: [approval], routes, host: { gatePollMs: 10 }, presence: async () => "0b6f2c1e-6f1d-4c3a-9e1b-2d4c6a8e0f13" };
 
 /** A home whose config file holds `config`; the database path is returned and never created by the test. */
 function home(config: object): { env: NodeJS.ProcessEnv; dbPath: string } {

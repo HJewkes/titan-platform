@@ -65,19 +65,21 @@ LaunchAgent or systemd unit for `serve` on the frozen host restarts the refused 
 run `titan-factory service uninstall` there first.
 
 `gate resolve` records who answered: the owner at a terminal (`owner-terminal`, your OS user, channel
-`factory-cli`). A shell with `AGENT_CHAT_AGENT_ID` set may be an agent or the owner's `!` command in
-an agent-chat session, so there the command asks for owner presence first: the macOS Touch ID or
-login password dialog, reading `resolve gate <gate id>: <decision> at <head sha>`. A confirmed dialog
-resolves as `owner-terminal` and stores the helper's proof id as `confirmEvent`. A cancelled dialog,
-a missing helper or output that is not a UUID resolves as `coordinator`, named by `AGENT_CHAT_NAME`,
-which hitl refuses, so the command exits 1 and the gate stays pending. The command exits 2 without a
-dialog when the gate id, `decision` or `headSha` has an unexpected shape, so no field can break or
-hide a line of the dialog. A repeat of an answered resolve exits 0 before any dialog. A shell with no
-agent marker still resolves as `owner-terminal` with no dialog. `CLAUDECODE` does not count, because
-the owner's `!` commands in Claude Code set it too. No flag or environment variable supplies a proof
-or a helper path.
+`factory-cli`). Owner decision 2026-10-06 (item 39) puts owner presence on every resolve, in any
+shell: the command asks for the macOS Touch ID or login password dialog, reading
+`resolve gate <gate id>: <decision> at <head sha>`. A confirmed dialog resolves as `owner-terminal`
+and stores the helper's proof id as `confirmEvent`. A cancelled dialog, a missing helper or output
+that is not a UUID is no proof. In a shell with `AGENT_CHAT_AGENT_ID` set, which may be an agent or
+the owner's `!` command in an agent-chat session, no proof resolves as `coordinator`, named by
+`AGENT_CHAT_NAME`, which hitl refuses. In any other shell, including one where the variable is unset
+or empty, no proof exits 1 with `owner presence not confirmed; the gate stays pending` and nothing
+is written. Either way the gate stays pending. The command exits 2 without a dialog when the gate id,
+`decision` or `headSha` has an unexpected shape, so no field can break or hide a line of the dialog.
+A repeat of an answered resolve exits 0 before any dialog. `CLAUDECODE` does not count, because the
+owner's `!` commands in Claude Code set it too. No flag or environment variable supplies a proof or a
+helper path.
 
-Some answers skip the dialog and resolve as `coordinator`. Owner decision 2026-10-05 (TP-1720) lets a
+Some answers from a shell with `AGENT_CHAT_AGENT_ID` set skip the dialog and resolve as `coordinator`. Owner decision 2026-10-05 (TP-1720) lets a
 coordinator retry a stuck-behind gate. Owner decision 2026-10-07 (TP-1904, "mechanical only") adds three
 gate classes, each only on evidence the command reads fresh through the GitHub port at resolve time:
 
@@ -95,10 +97,11 @@ head other than the gate's, or a missing verdict reads no evidence, and the comm
 dialog above. A visual-path, seat owner-gate, route-escalation or release gate, a round
 pick, and every other gate still need the owner's presence.
 
-The dialog does not yet stop an agent that only runs the CLI. Only `AGENT_CHAT_AGENT_ID` is read, so
-an agent that runs `env -u AGENT_CHAT_AGENT_ID titan-factory gate resolve ...`, or sets the variable
-to an empty string, resolves as `owner-terminal` with no dialog. That path stays open until the owner
-decides whether every `gate resolve` asks for presence, including a plain terminal.
+Unsetting `AGENT_CHAT_AGENT_ID` therefore forges nothing: it only loses the coordinator answers above.
+Two paths stay open. `dist/bin.js` is writable by your OS user (see below). A host with no helper,
+such as the Linux factory host, has no dialog, so a CLI resolve there always refuses; the owner
+resolves from the Mac instead, whose remote mode signs a proof and posts it to
+`POST /gates/resolve-proof` (see "Owner-signed proofs").
 
 `pnpm factory:install` compiles the helper into `native/build/owner-presence`, outside `dist`, so a
 `pnpm build` leaves it in place. `service deploy` only installs and builds, so it does not compile

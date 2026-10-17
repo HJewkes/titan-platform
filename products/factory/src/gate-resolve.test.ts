@@ -93,15 +93,52 @@ describe("gate resolve with owner presence", () => {
     expect(repeat.reasons).toEqual([]);
   });
 
-  it("a shell with no agent marker resolves as the owner without a dialog", async () => {
+  it("a plain terminal resolves as the owner once presence is confirmed", async () => {
     const { host, runId } = await pausedMerge();
-    const { presence, reasons } = presenceStub(undefined);
+    const { presence, reasons } = presenceStub(PROOF);
 
     const { code } = await resolve(host, runId, {}, presence);
 
     expect(code).toBe(0);
-    expect(reasons).toEqual([]);
-    expect(host.gates.get(`${runId}/approve-merge`)?.resolvedBy).toEqual({ class: "owner-terminal", id: userInfo().username, channel: "factory-cli" });
+    expect(reasons).toEqual([`resolve gate ${runId}/approve-merge: merge at ${HEAD}`]);
+    expect(host.gates.get(`${runId}/approve-merge`)?.resolvedBy).toEqual({ class: "owner-terminal", id: userInfo().username, channel: "factory-cli", confirmEvent: PROOF });
+  });
+
+  it("a plain terminal is refused when presence is declined and the gate stays pending", async () => {
+    const { host, runId } = await pausedMerge();
+    const { presence, reasons } = presenceStub(undefined);
+
+    const { code, err } = await resolve(host, runId, {}, presence);
+
+    expect(code).toBe(1);
+    expect(err).toBe("error: owner presence not confirmed; the gate stays pending\n");
+    expect(reasons).toHaveLength(1);
+    expect(host.gates.get(`${runId}/approve-merge`)).toMatchObject({ status: "pending", resolvedBy: undefined });
+  });
+
+  it.each([
+    ["unsets AGENT_CHAT_AGENT_ID", { AGENT_CHAT_NAME: "tc-synthetic" }],
+    ["sets AGENT_CHAT_AGENT_ID empty", { AGENT_CHAT_AGENT_ID: "", AGENT_CHAT_NAME: "tc-synthetic" }],
+  ])("an agent that %s is refused without a proof", async (_name, env) => {
+    const { host, runId } = await pausedMerge();
+
+    const { code, err } = await resolve(host, runId, env, presenceStub(undefined).presence);
+
+    expect(code).toBe(1);
+    expect(err).toContain("owner presence not confirmed");
+    expect(host.gates.get(`${runId}/approve-merge`)).toMatchObject({ status: "pending", resolvedBy: undefined });
+  });
+
+  it("a plain terminal repeating an answered resolve asks for no presence", async () => {
+    const { host, runId } = await pausedMerge();
+    await resolve(host, runId, {}, presenceStub(PROOF).presence);
+    await vi.waitFor(() => expect(host.runtime.status(runId)?.status).toBe("completed"));
+    const repeat = presenceStub(undefined);
+
+    const { code } = await resolve(host, runId, {}, repeat.presence);
+
+    expect(code).toBe(0);
+    expect(repeat.reasons).toEqual([]);
   });
 
   it("a proof or helper path supplied through the environment is ignored", async () => {
