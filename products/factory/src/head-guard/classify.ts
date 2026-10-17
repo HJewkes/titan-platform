@@ -1,13 +1,13 @@
 /** The head-guard classifier: pure decisions over answers the caller already fetched. It reads no network, clock or store. */
 
 /** A read the pool could not serve; it counts no try and moves nothing. */
-export interface Unavailable {
+interface Unavailable {
   kind: "unavailable";
   resetAt?: string;
 }
 
 /** How the read head relates to a base head, from the compare status. */
-export type Ancestry = "ahead" | "behind" | "identical" | "diverged" | "missing";
+type Ancestry = "ahead" | "behind" | "identical" | "diverged" | "missing";
 
 export interface StoredHead {
   head: string;
@@ -17,7 +17,7 @@ export interface StoredHead {
 }
 
 /** A head the factory itself just pushed; reads older than it are stale until `expiresAt`. */
-export interface OwnWriteFloor {
+interface OwnWriteFloor {
   sha: string;
   expiresAt: number;
   /** How the read head relates to `sha`: `ahead` is a descendant, `behind` an ancestor. */
@@ -36,9 +36,9 @@ export interface HeadReadInput {
   now: number;
 }
 
-export type ConfirmedBy = "bootstrap" | "non-ancestor" | "fast-forward" | "ls-remote";
+type ConfirmedBy = "bootstrap" | "non-ancestor" | "fast-forward" | "ls-remote";
 
-export type StaleReason =
+type StaleReason =
   | "ancestor-of-stored"
   | "earlier-confirmed-head"
   | "ls-remote-disagrees"
@@ -102,7 +102,7 @@ export function staleMain(read: string, expectedMains: readonly string[], lander
 }
 
 /** What a read answered after the factory's own write. */
-export type AfterWriteAnswer =
+type AfterWriteAnswer =
   | { kind: "http"; status: number }
   | { kind: "merged"; merged: boolean }
   | { kind: "commit"; found: boolean };
