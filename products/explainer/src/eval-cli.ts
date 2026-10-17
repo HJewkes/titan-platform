@@ -31,7 +31,7 @@ export interface EvalCliDeps {
   now?: () => Date;
   checks?: readonly L0Check[];
   harness?: (config: JudgeConfig) => JudgeHarness;
-  codexUnavailable?: (config: JudgeConfig) => string | null;
+  codexUnavailable?: (config: JudgeConfig) => string | null | Promise<string | null>;
 }
 
 const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"));
