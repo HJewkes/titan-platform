@@ -150,13 +150,13 @@ describe("a later head that commits exactly the accepted set", () => {
     expect(r.gates).toEqual([H2]);
   });
 
-  it("spends a refused set, so a later visual gate that would match asks", async () => {
-    const r = rig({ heads: { [H2]: { ...EXACT, tree: {} }, [H3]: EXACT }, follows: false });
+  it("spends a used set, so a later visual gate that would match asks", async () => {
+    const r = rig({ heads: { [H2]: EXACT, [H3]: EXACT }, follows: false });
 
     await r.ask("approve-merge", gate(H2));
     await r.ask("approve-merge:1", gate(H3));
 
-    expect(r.gates).toEqual([H2, H3]);
+    expect(r.gates).toEqual([H3]);
     expect(r.steps.filter((id) => id.startsWith("sh-approval-carry:set:"))).toEqual([`sh-approval-carry:set:${H2}`]);
   });
 
