@@ -24,6 +24,16 @@ export function lineReading(s: LexState): Reading {
  * Each decision is kept per position, so a subshell reading that lexes the text again stays polynomial.
  */
 export function arithmeticExpansionEnd(at: Reading, dollar: number, found: Token[][]): number {
+  const outer = at.trials.deepest;
+  at.trials.deepest = 0;
+  try {
+    return expansionEnd(at, dollar, found);
+  } finally {
+    at.trials.deepest = Math.max(outer, at.trials.deepest);
+  }
+}
+
+function expansionEnd(at: Reading, dollar: number, found: Token[][]): number {
   const known = at.trials.ends.get(dollar);
   if (known === -1) return -1;
   if (known !== undefined) return withSubshellReading(at, dollar, known, found, arithmeticTokens(at, dollar));
@@ -44,17 +54,38 @@ function arithmeticTokens(at: Reading, dollar: number): Token[][] {
   return rescanned;
 }
 
-/**
- * A body holding a character that balancedEnd reads as opaque while the shells may not (a quote, a backquote, a
- * backslash, a `#` that opens a comment, a newline) can be read by zsh, and sometimes bash, as `$( ( … ) )`, running
- * what the arithmetic reading calls arithmetic. Those commands are walked too; a body that cannot be lexed that way
- * is refused.
- */
-const HIDES_PAREN = /['"\\`#\n]/;
+const PLAIN_MATH = /^[\w \t\r\n+\-*/%<>=!&|^~?:,.$()[\]]*$/;
 
+/**
+ * Whether no shell can read a paren in `body` differently from balancedEnd. Quotes, backquotes, backslashes, comments,
+ * braces, `;` and the like can hide a paren, and zsh also reads a body with an unbalanced `[` or `]` as a command, so a
+ * body is plain only when it is made of characters that hide nothing, its brackets balance and its parens never close
+ * more than they opened.
+ */
+function isPlainMath(body: string): boolean {
+  if (!PLAIN_MATH.test(body)) return false;
+  let parens = 0;
+  let brackets = 0;
+  for (const c of body) {
+    if (c === "(") parens++;
+    else if (c === ")") parens--;
+    else if (c === "[") brackets++;
+    else if (c === "]") brackets--;
+    if (parens < 0 || brackets < 0) return false;
+  }
+  return parens === 0 && brackets === 0;
+}
+
+/**
+ * zsh reads any `$(( ))` body that is not plain math as `$( ( … ) )`, and bash does for some, running what the
+ * arithmetic reading calls arithmetic. Those commands are walked too; a body that cannot be lexed that way is refused.
+ * Both readings of a span nested in another are costly to walk, so nesting past `MAX_BOTH_READINGS` is refused.
+ */
 function withSubshellReading(at: Reading, dollar: number, end: number, found: Token[][], primary: Token[][]): number {
   found.push(...primary);
-  if (at.trials.inSubshellReading || !HIDES_PAREN.test(at.src.slice(dollar + 3, end - 1))) return end;
+  if (at.trials.inSubshellReading || isPlainMath(at.src.slice(dollar + 3, end - 1))) return end;
+  const depth = bothReadingsDepth(at.trials, dollar);
+  if (depth > MAX_BOTH_READINGS) throw new ParseError("arithmetic read two ways nests too deep");
   let tokens = at.trials.subshells.get(dollar);
   if (tokens === undefined) {
     tokens = [lexSubshellReading(at, dollar)];
@@ -62,6 +93,16 @@ function withSubshellReading(at: Reading, dollar: number, end: number, found: To
   }
   found.push(...tokens);
   return end;
+}
+
+const MAX_BOTH_READINGS = 4;
+
+/** How many spans read two ways nest at `dollar`, itself included; the inner ones were met first, in the primary reading. */
+function bothReadingsDepth(trials: ArithTrials, dollar: number): number {
+  const depth = trials.depths.get(dollar) ?? trials.deepest + 1;
+  trials.depths.set(dollar, depth);
+  trials.deepest = Math.max(trials.deepest, depth);
+  return depth;
 }
 
 function lexSubshellReading(at: Reading, dollar: number): Token[] {

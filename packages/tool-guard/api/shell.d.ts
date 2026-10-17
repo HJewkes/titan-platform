@@ -75,6 +75,10 @@ interface ArithTrials {
     arithmetic: Map<number, Token[][]>;
     /** The tokens of the `$( ( … ) )` reading of the `$((` at each position, lexed once so nested ones stay linear. */
     subshells: Map<number, Token[][]>;
+    /** How many spans read two ways nest at each position that does. */
+    depths: Map<number, number>;
+    /** The deepest such nesting met so far under the span being read. */
+    deepest: number;
     /** Set while a `$( ( … ) )` reading is lexed, whose nested `$((` add no reading of their own: the arithmetic reading of the outer span already holds them. */
     inSubshellReading: boolean;
     spend: {

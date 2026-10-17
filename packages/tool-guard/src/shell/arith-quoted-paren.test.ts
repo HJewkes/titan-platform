@@ -49,11 +49,50 @@ describe("a quoted paren in $(( ))", () => {
     },
   );
 
-  it.each([[8, 1000], [24, 100]])("stays cheap when quoted-paren arithmetic nests %i deep around a body of %i terms", async (depth, terms) => {
-    let body = `x${" + 1".repeat(terms)}`;
+  it.each([
+    ["at the limit", 4, "pass"],
+    ["past the limit", 5, "deny"],
+    ["far past the limit", 24, "deny"],
+  ] as const)("reads quoted-paren arithmetic nested %s (%i deep) in bounded time and %ss it", async (_name, depth, verdict) => {
+    let body = `x${" + 1".repeat(1000)}`;
     for (let i = 0; i < depth; i++) body = `$(( '(' ${body} ))`;
     const started = Date.now();
-    await handled(`echo ${body}`);
+    expect(await handled(`echo ${body}`)).toBe(verdict);
     expect(Date.now() - started).toBeLessThan(1000);
+  });
+});
+
+// A character is safe in a body when no shell can read it as hiding a paren; every other one makes zsh (and for some
+// bash) read `$(( … ))` as `$( ( … ) )`, so the command in the body must be walked.
+const SAFE = new Set("_+-*/%<>=!&|^~?:,.$");
+const PUNCTUATION = [...Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i))].filter((c) => /[^\w\s()[\]]/.test(c));
+
+describe("a punctuation character in a $(( )) body", () => {
+  it.each(PUNCTUATION.map((c) => [c]))("%s decides the reading as the safe set says", async (c) => {
+    const verdict = SAFE.has(c) ? "pass" : "deny";
+    expect(await handled(`echo $(( git push origin HEAD:main ${c} ))`)).toBe(verdict);
+    expect(await handled(`echo $(( ( git push origin HEAD:main ${c} ) ))`)).toBe(verdict);
+  });
+});
+
+// zsh also reads a body with an unbalanced bracket as a command; balanced brackets stay math.
+describe("brackets in a $(( )) body", () => {
+  it.each([
+    ["an open bracket after a semicolon", "echo $(( git push origin HEAD:main; [ ))"],
+    ["a close bracket after a semicolon", "echo $(( git push origin HEAD:main; ] ))"],
+    ["a close then an open bracket", "echo $(( git push origin HEAD:main ][ ))"],
+    ["an open bracket on a name", "echo $(( git push origin HEAD:main a[ ))"],
+    ["an unclosed subscript", "echo $(( git push origin HEAD:main a[1 ))"],
+    ["an unbalanced bracket without a separator", "echo $(( git push origin HEAD:main [ ))"],
+    ["an assignment value", "x=$(( git push origin HEAD:main; [ ))"],
+    ["double quotes", 'echo "$(( git push origin HEAD:main; [ ))"'],
+    ["a ${ } default", "echo ${x:-$(( git push origin HEAD:main; [ ))}"],
+    ["a heredoc body", "cat <<EOF\n$(( git push origin HEAD:main; [ ))\nEOF"],
+  ])("denies %s", async (_name, command) => {
+    expect(await handled(command.replaceAll("\\n", "\n"))).toBe("deny");
+  });
+
+  it.each([["balanced brackets", "echo $(( a[1] + b[2] ))"], ["a double bracket", "echo $(( [[ 1 ]] ))"]])("passes %s", async (_name, command) => {
+    expect(await handled(command)).toBe("pass");
   });
 });

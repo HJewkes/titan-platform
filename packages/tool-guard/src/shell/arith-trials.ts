@@ -16,19 +16,28 @@ export interface ArithTrials {
   arithmetic: Map<number, Token[][]>;
   /** The tokens of the `$( ( … ) )` reading of the `$((` at each position, lexed once so nested ones stay linear. */
   subshells: Map<number, Token[][]>;
+  /** How many spans read two ways nest at each position that does. */
+  depths: Map<number, number>;
+  /** The deepest such nesting met so far under the span being read. */
+  deepest: number;
   /** Set while a `$( ( … ) )` reading is lexed, whose nested `$((` add no reading of their own: the arithmetic reading of the outer span already holds them. */
   inSubshellReading: boolean;
   spend: { left: number };
   nesting: Nesting;
 }
 
+function emptyTrials(): Omit<ArithTrials, "spend" | "nesting"> {
+  return { ends: new Map(), arithmetic: new Map(), subshells: new Map(), depths: new Map(), deepest: 0, inSubshellReading: false };
+}
+
 export function newTrials(src: string): ArithTrials {
-  return { ends: new Map(), arithmetic: new Map(), subshells: new Map(), inSubshellReading: false, spend: { left: Math.max(BUDGET_FLOOR, BUDGET_PER_CHAR * src.length) }, nesting: { depth: 0 } };
+  const spend = { left: Math.max(BUDGET_FLOOR, BUDGET_PER_CHAR * src.length) };
+  return { ...emptyTrials(), spend, nesting: { depth: 0 } };
 }
 
 /** Trials for text cut out of the source, such as a heredoc body: positions differ, the spend and nesting do not. */
 export function sameSpend(trials: ArithTrials): ArithTrials {
-  return { ends: new Map(), arithmetic: new Map(), subshells: new Map(), inSubshellReading: false, spend: trials.spend, nesting: trials.nesting };
+  return { ...emptyTrials(), spend: trials.spend, nesting: trials.nesting };
 }
 
 /** The end `find` reports for the `((` at `at`, run at most once per position. */
