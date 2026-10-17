@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
+import { isCarryFencedPath } from "@titan-design/authority";
 import { z } from "zod";
+import { isSkillPath } from "./shepherd/skill-paths.js";
 
 /** More images than this is no set an owner reviewed one by one, so it is refused rather than carried. */
 export const MAX_SET_FILES = 256;
@@ -8,7 +10,7 @@ const hex = (length: number) => z.string().regex(new RegExp(`^[0-9a-f]{${length}
 const SetFile = z.strictObject({ path: z.string(), key: z.string(), sha256: hex(64), blob: hex(40) });
 
 /** The regenerated baselines the owner accepted at a red head: a later head must commit exactly these blobs and nothing else. */
-const ApprovedSetSchema = z.strictObject({
+export const ApprovedSetSchema = z.strictObject({
   packetSha: hex(64),
   packetId: z.string(),
   ciRunId: z.string(),
@@ -109,6 +111,29 @@ export function approvedSetOf({ packet: bytes, packetSha, fromHead, after }: Set
 }
 
 const byPath = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+type SetMatchRefusal = "extra-path" | "missing" | "blob-mismatch" | "removed-present" | "skill-or-fenced";
+type SetMatch = { carries: true } | { carries: false; reason: SetMatchRefusal; paths: string[] };
+
+/** `changed` is every path of `diff H1..H2`; `atHead` maps each set path present at H2 to its blob there. */
+type SetHead = { changed: readonly string[]; atHead: ReadonlyMap<string, string> };
+
+/**
+ * Does a later head commit exactly the accepted set: every changed path in it, every file at its accepted blob, every removed
+ * path gone, and no changed path a skill or carry-fenced? A path match alone is not enough, since the blob is what the owner saw.
+ */
+export function setMatch(set: ApprovedSet, { changed, atHead }: SetHead): SetMatch {
+  const named = new Set([...set.files.map((file) => file.path), ...set.removed]);
+  const checks: [SetMatchRefusal, string[]][] = [
+    ["skill-or-fenced", changed.filter((path) => isSkillPath(path) || isCarryFencedPath(path))],
+    ["extra-path", changed.filter((path) => !named.has(path))],
+    ["missing", set.files.filter((file) => !atHead.has(file.path)).map((file) => file.path)],
+    ["blob-mismatch", set.files.filter((file) => atHead.has(file.path) && atHead.get(file.path) !== file.blob).map((file) => file.path)],
+    ["removed-present", set.removed.filter((path) => atHead.has(path))],
+  ];
+  const failed = checks.find(([, paths]) => paths.length > 0);
+  return failed ? { carries: false, reason: failed[0], paths: failed[1] } : { carries: true };
+}
 
 /**
  * The fixer's instruction, fixed so the owner's words can add to it but never change which files are committed. A set whose

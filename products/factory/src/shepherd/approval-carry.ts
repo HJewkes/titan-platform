@@ -4,6 +4,7 @@ import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 import { SEND_BACK } from "../gate-brief.js";
 import { step } from "../workflows/land.js";
+import { approvedSetFollow, type SetCarry } from "./approved-set-carry.js";
 import { APPROVAL_CARRY_STEP, followBases, type CarryTarget } from "./carry-merge.js";
 import { fixCarryStep } from "./fix-carry.js";
 import { ownMergeUpStep } from "./own-merge-up.js";
@@ -19,7 +20,7 @@ const MergeAnswer = z.looseObject({ decision: z.literal("merge"), headSha: z.str
 /** The owner's later word on the PR: an earlier approval no longer follows to the fixer's next head. */
 const SendBackAnswer = z.looseObject({ decision: z.literal(SEND_BACK) });
 
-interface ApprovalCarry {
+interface ApprovalCarry extends SetCarry {
   target: CarryTarget;
   /** True when the run's verdict at this head is a MERGE; an approval follows only a head whose review stands too. */
   reviewedMerge: (headSha: string) => boolean;
@@ -90,18 +91,22 @@ async function followedAnswer(ctx: WorkflowContext, target: CarryTarget, fromHea
  * head that is the approved head plus one merge of the base whose remerge-diff is empty or touches only declared generated
  * files, or a head whose whole tree equals the approved head merged with the base (any fixer commit in between re-asks, TP-3070). A security run follows only
  * Shepherd's own clean merge-up whose base side touches none of the PR's files and no carry-fenced path (`ownMergeUp`). A skill-path gate, or a proof whose paths hold a repo skill, asks again. Any other head, a kind that
- * follows nothing, an escalation, a gate on another base or a head without a standing MERGE asks again.
+ * follows nothing, an escalation, a gate on another base or a head without a standing MERGE asks again. With no approval to
+ * follow, a visual gate at a head that commits exactly the set the owner accepted at a red head is answered by that set.
  */
 export function followingApprovals(ctx: WorkflowContext, assisted: WorkflowContext["assisted"], carry: ApprovalCarry): WorkflowContext["assisted"] {
-  let approved: { head: string; base: string | undefined } | undefined;
+  let approved: { head: string; base: string | undefined; origin: "answer" | "approved-set" } | undefined;
   return async (stepId, prompt, options) => {
     const asked = landGateHead(stepId, prompt);
     if (asked === undefined) return assisted(stepId, prompt, options);
     const base = landGateBase(prompt);
-    const from = approved && approved.head !== asked && approved.base === base && !isSkillPathGate(prompt) && carry.reviewedMerge(asked) ? approved.head : undefined;
+    const standing = !isSkillPathGate(prompt) && carry.reviewedMerge(asked);
+    // An approval the set gave follows no head yet: S8 lets it follow only Shepherd's own merge-up.
+    const from = standing && approved?.origin === "answer" && approved.head !== asked && approved.base === base ? approved.head : undefined;
     const followed = from === undefined ? undefined : await followedAnswer(ctx, carry.target, from, asked);
-    const answer = followed ?? (await assisted(stepId, prompt, options));
-    if (MergeAnswer.safeParse(answer.data).data?.headSha === asked) approved = { head: asked, base };
+    const bySet = followed || !standing || base === undefined ? undefined : await approvedSetFollow(ctx, carry.target, carry, { stepId, prompt, head: asked });
+    const answer = followed ?? bySet ?? (await assisted(stepId, prompt, options));
+    if (MergeAnswer.safeParse(answer.data).data?.headSha === asked) approved = { head: asked, base, origin: bySet ? "approved-set" : "answer" };
     else if (SendBackAnswer.safeParse(answer.data).success) approved = undefined;
     return answer;
   };

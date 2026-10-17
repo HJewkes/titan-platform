@@ -163,6 +163,20 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/approved-set-carry.test.ts",
+   "fate": "survives",
+   "task": "D-M7-01",
+   "reason": "V1-7 visual carry, adopted by D-M7-01"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/approved-set-carry.ts",
+   "fate": "survives",
+   "task": "D-M7-01",
+   "reason": "V1-7 visual carry, adopted by D-M7-01"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/author-types.ts",
    "fate": "kept",
    "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
