@@ -4,6 +4,7 @@ import { printedOutput } from "./printed.js";
 import type { Shell } from "./printed.js";
 import { unwrap } from "./unwrap.js";
 import type { Unwrapped } from "./unwrap.js";
+import { mayGenerate } from "./word-generation.js";
 
 /** Either may run the line, and their builtins print some of the same arguments differently. */
 export const SPLICING_SHELLS: readonly Shell[] = ["bash", "zsh"];
@@ -110,9 +111,13 @@ function stage(walk: SubWalk, rawWords: WordToken[], rawRedirects: RedirectToken
   const open = words.findIndex((word) => !isBare(word, "{"));
   const rest = open === -1 ? [] : words.slice(open);
   for (let i = 0; i < words.length - rest.length; i++) pushFrame(walk, "{");
+  // A brace or glob may expand into other words, so the text on the line is only one reading of what is printed.
+  if (rest.some(mayGenerate)) walk.unknown = true;
   const [first] = rest;
   if (first && rest.length === 1 && isBare(first, "}")) walk.current = closeFrame(walk, "{");
   else if (rest.length > 0) walk.current = expands ? null : commandStage(rest, redirects, walk.piped, shell);
+  // `$(<f)` prints the file, which is only known at run time.
+  else if (redirects.length > 0) walk.current = null;
 }
 
 function isBare(word: WordToken, value: string): boolean {

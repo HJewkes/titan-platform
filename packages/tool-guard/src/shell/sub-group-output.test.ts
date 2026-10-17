@@ -89,6 +89,7 @@ function runsPush(line: string, runner: string): boolean {
   try {
     fs.mkdirSync(path.join(dir, "bin"));
     fs.writeFileSync(path.join(dir, "f"), "push origin HEAD:main\n");
+    fs.writeFileSync(path.join(dir, "push"), "");
     fs.writeFileSync(path.join(dir, "bin", "git"), `#!/bin/sh\n[ "$*" = "push origin HEAD:main" ] && touch '${path.join(dir, "mk")}'\n`, { mode: 0o755 });
     const [program = "bash", ...flags] = runner.split(" ");
     const env = { ...process.env, ZDOTDIR: dir, PATH: `${path.join(dir, "bin")}:${process.env.PATH ?? ""}` };
@@ -110,6 +111,34 @@ const PARTLY_UNKNOWN = [
   `echo "$(cat f; printf '')" | xargs -I{} git {}`,
 ];
 
+/** A file read by a bare redirect, a brace or a glob prints or expands to text the line does not hold (TP-3333). */
+const READ_OR_EXPANDED = [
+  'echo "$(<f)" | xargs git',
+  'echo "$(< f)" | xargs git',
+  "echo `<f` | xargs git",
+  "echo $(<f) | xargs git",
+  `printf '%s\\n' "$(<f)" | xargs git`,
+  'echo "$(<f)" | xargs -I{} git {}',
+  `echo "$(<f; printf '')" | xargs git`,
+  `echo "$(printf ''; <f)" | xargs git`,
+  'echo "$(echo {push,} origin HEAD:main)" | xargs git',
+  'echo "$(echo {push,origin,HEAD:main})" | xargs git',
+  'echo "$(echo pus[h] origin HEAD:main)" | xargs git',
+  'echo "$(echo p?sh origin HEAD:main)" | xargs git',
+  'echo "$(echo pus* origin HEAD:main)" | xargs git',
+  'echo "$(cat <f)" | xargs git',
+];
+
+describe("a substitution that reads a file or expands a brace or glob is not read as its text (TP-3333)", () => {
+  it.each(READ_OR_EXPANDED)("denies %s", async (line) => {
+    expect(await verdict(line)).toBe("deny");
+  });
+
+  it.each(['echo "$(echo status)" | xargs git', 'echo "$(git rev-parse HEAD)" | xargs git show', "git commit -m \"$(cat <<'EOF'\nfix: thing\nEOF\n)\"", 'echo "$( { echo a; echo b; } | sort )" | sh'])("allows %s", async (line) => {
+    expect(await verdict(line)).toBe("pass");
+  });
+});
+
 describe("a substitution that prints part unknown text is not read as all of it (TP-3333)", () => {
   it.each(PARTLY_UNKNOWN)("denies %s", async (line) => {
     expect(await verdict(line)).toBe("deny");
@@ -128,6 +157,13 @@ describe.skipIf(!["bash", "zsh", "dash"].every(has))("real shells run the push t
   });
 
   it.each(PARTLY_UNKNOWN.filter((line) => !line.includes("echo status")).flatMap((line) => ["bash", "zsh -f", "dash"].map((runner): [string, string] => [line, runner])))("%s runs the push under %s", (line, runner) => {
+    expect(runsPush(line, runner)).toBe(true);
+  });
+
+  it.each(READ_OR_EXPANDED.slice(0, 13)
+      .flatMap((line) => ["bash", "zsh -f"].map((runner): [string, string] => [line, runner]))
+      // Only zsh reads a `<f` beside other commands as the file's text; bash prints nothing for it.
+      .filter(([line, runner]) => runner === "zsh -f" || !/<f;|; <f/.test(line)))("%s runs the push under %s", (line, runner) => {
     expect(runsPush(line, runner)).toBe(true);
   });
 
