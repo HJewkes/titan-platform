@@ -61,6 +61,35 @@ describe("a quoted paren in $(( ))", () => {
     expect(await handled(`echo ${body}`)).toBe(verdict);
     expect(Date.now() - started).toBeLessThan(1000);
   });
+
+  // A heredoc body, a backquote or a quoted span is lexed with trials of its own, which must not restart the count.
+  const throughHeredoc = (body: string, i: number): string => `$(( '(' $(cat <<E${i}\n${body}\nE${i}\n) ))`;
+  const throughBackquote = (body: string): string => `$(( '(' \`echo ${body.replaceAll("\\", "\\\\").replaceAll("`", "\\`")}\` ))`;
+  const throughQuotes = (body: string): string => `$(( '(' "${body.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}" ))`;
+  it.each([
+    ["a heredoc", throughHeredoc, 5],
+    ["a heredoc", throughHeredoc, 22],
+    ["a backquote", throughBackquote, 5],
+    ["a backquote", throughBackquote, 12],
+    ["double quotes", throughQuotes, 5],
+    ["double quotes", throughQuotes, 22],
+  ] as const)("refuses quoted-paren arithmetic nested through %s %i deep in bounded time", async (_name, wrap, depth) => {
+    let body = "true";
+    for (let i = 0; i < depth; i++) body = wrap(body, i);
+    const started = Date.now();
+    expect(await handled(`echo ${body}`)).toBe("deny");
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  it.each([
+    ["a heredoc", throughHeredoc],
+    ["a backquote", throughBackquote],
+    ["double quotes", throughQuotes],
+  ] as const)("reads quoted-paren arithmetic nested through %s at the limit", async (_name, wrap) => {
+    let body = "true";
+    for (let i = 0; i < 4; i++) body = wrap(body, i);
+    expect(await handled(`echo ${body}`)).toBe("pass");
+  });
 });
 
 // A character is safe in a body when no shell can read it as hiding a paren; every other one makes zsh (and for some

@@ -16,30 +16,27 @@ export interface ArithTrials {
   arithmetic: Map<number, Token[][]>;
   /** The tokens of the `$( ( … ) )` reading of the `$((` at each position, lexed once so nested ones stay linear. */
   subshells: Map<number, Token[][]>;
-  /** How many spans read two ways nest at each position that does. */
-  depths: Map<number, number>;
-  /** The deepest such nesting met so far under the span being read. */
-  deepest: number;
-  /** While a `$( ( … ) )` reading is lexed, how many spans that read two ways enclose the position being read. */
-  level: number;
+  /** How many `$((` spans are being read around the one being read, shared with heredoc bodies and backticks like the nesting. */
+  arithDepth: { depth: number };
   spend: { left: number };
   nesting: Nesting;
   /** Whether a `[[` at a bare command start joins its `&&` and `||`, which only a text read as bash, zsh or ksh may do. */
   joinsConditional: boolean;
 }
 
-function emptyTrials(): Omit<ArithTrials, "spend" | "nesting" | "joinsConditional"> {
-  return { ends: new Map(), arithmetic: new Map(), subshells: new Map(), depths: new Map(), deepest: 0, level: 0 };
+function emptyTrials(): Pick<ArithTrials, "ends" | "arithmetic" | "subshells"> {
+  return { ends: new Map(), arithmetic: new Map(), subshells: new Map() };
 }
 
 export function newTrials(src: string, joinsConditional = false): ArithTrials {
   const spend = { left: Math.max(BUDGET_FLOOR, BUDGET_PER_CHAR * src.length) };
-  return { ...emptyTrials(), spend, nesting: { depth: 0 }, joinsConditional };
+  return { ...emptyTrials(), arithDepth: { depth: 0 }, spend, nesting: { depth: 0 }, joinsConditional };
 }
 
-/** Trials for text cut out of the source, such as a heredoc body: positions differ, the spend and nesting do not. */
+/** Trials for text cut out of the source, such as a heredoc body: positions differ, the spend and both depths do not. */
 export function sameSpend(trials: ArithTrials): ArithTrials {
-  return { ...emptyTrials(), spend: trials.spend, nesting: trials.nesting, joinsConditional: trials.joinsConditional };
+  const { arithDepth, spend, nesting, joinsConditional } = trials;
+  return { ...emptyTrials(), arithDepth, spend, nesting, joinsConditional };
 }
 
 /** The end `find` reports for the `((` at `at`, run at most once per position. */

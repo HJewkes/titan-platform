@@ -75,12 +75,10 @@ interface ArithTrials {
     arithmetic: Map<number, Token[][]>;
     /** The tokens of the `$( ( … ) )` reading of the `$((` at each position, lexed once so nested ones stay linear. */
     subshells: Map<number, Token[][]>;
-    /** How many spans read two ways nest at each position that does. */
-    depths: Map<number, number>;
-    /** The deepest such nesting met so far under the span being read. */
-    deepest: number;
-    /** While a `$( ( … ) )` reading is lexed, how many spans that read two ways enclose the position being read. */
-    level: number;
+    /** How many `$((` spans are being read around the one being read, shared with heredoc bodies and backticks like the nesting. */
+    arithDepth: {
+        depth: number;
+    };
     spend: {
         left: number;
     };
