@@ -28,7 +28,13 @@ export interface WorktreeOptions {
   /** Relative to the git root. */
   basePath?: string;
   /** Per-repository cap on allocated worktrees. A function is read on every allocation. */
-  budget?: number | (() => number);
+  budget?: number | ((name: string) => number);
+  /** Partition capacity by sanitized agent/directory name; the host owns group names and policy. */
+  allocationGroup?: (name: string) => string;
+  /** Preserve the host error class and wording when its capacity is exhausted. */
+  budgetError?: (allocated: number, budget: number, name: string) => Error;
+  /** Leave setup orchestration to the caller. Default behavior still runs the trusted declaration. */
+  skipSetup?: boolean;
   branchPrefix?: string;
   /** Bound on fetching origin's default branch before cutting a new one. */
   fetchTimeoutMs?: number;
@@ -46,9 +52,9 @@ export const basePathOf = (opts: WorktreeOptions): string => opts.basePath ?? DE
 
 export const branchPrefixOf = (opts: WorktreeOptions): string => opts.branchPrefix ?? BRANCH_PREFIX;
 
-export function budgetOf(opts: WorktreeOptions): number {
+export function budgetOf(opts: WorktreeOptions, name: string): number {
   const { budget } = opts;
-  return typeof budget === "function" ? budget() : budget ?? DEFAULT_WORKTREE_BUDGET;
+  return typeof budget === "function" ? budget(name) : budget ?? DEFAULT_WORKTREE_BUDGET;
 }
 
 /** A name reaches this from a model, so it must not be able to escape basePath. */

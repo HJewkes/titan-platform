@@ -82,7 +82,13 @@ interface WorktreeOptions {
     /** Relative to the git root. */
     basePath?: string;
     /** Per-repository cap on allocated worktrees. A function is read on every allocation. */
-    budget?: number | (() => number);
+    budget?: number | ((name: string) => number);
+    /** Partition capacity by sanitized agent/directory name; the host owns group names and policy. */
+    allocationGroup?: (name: string) => string;
+    /** Preserve the host error class and wording when its capacity is exhausted. */
+    budgetError?: (allocated: number, budget: number, name: string) => Error;
+    /** Leave setup orchestration to the caller. Default behavior still runs the trusted declaration. */
+    skipSetup?: boolean;
     branchPrefix?: string;
     /** Bound on fetching origin's default branch before cutting a new one. */
     fetchTimeoutMs?: number;
@@ -110,6 +116,8 @@ declare function fetchDefaultTip(gitRoot: string, timeoutMs: number): Promise<Br
  * origin's default branch, and say so loudly when that is impossible.
  */
 declare function resolveBranchBase(gitRoot: string, timeoutMs: number): Promise<BranchBase>;
+/** Fetch a requested origin branch without silently substituting the default branch. */
+declare function resolveRequestedBase(gitRoot: string, ref: string, timeoutMs: number): Promise<BranchBase>;
 
 /** Where a worktree an allocator created sat, as its caller recorded it. */
 interface WorktreeRecord {
@@ -156,6 +164,8 @@ interface WorktreeRequest {
     exitedAt?: number;
     /** Discard a leftover branch instead of adopting it. Allocation can destroy commits as release can. */
     forceReset?: boolean;
+    /** Fetch this origin branch for the checkout, with no default-branch fallback. */
+    baseRef?: string;
 }
 interface WorktreeCheck {
     /** Reasons the allocation would fail. */
@@ -178,6 +188,7 @@ interface WorktreeAllocator {
         ref?: Record<string, string>;
     }, opts?: {
         force?: boolean;
+        keepBranch?: boolean;
     }): Promise<WorktreeReleaseOutcome>;
 }
 /** Worktree isolation for agents: one branch and one directory per agent name, under a per-repo budget. */
@@ -403,4 +414,4 @@ declare function reclaimWorktree(entry: SweptWorktree, options?: {
     reason?: string;
 }>;
 
-export { BRANCH_PREFIX, type BranchBase, DEFAULT_BASE_PATH, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_SETUP_TIMEOUT_MS, DEFAULT_STRIPPED_ENV_PREFIXES, DEFAULT_WORKTREE_BUDGET, type FoundWorktree, type GitLister, type GitPresence, type GitRunner, type HeldWorktree, MissingAssignedWorktreeRecordError, NPMRC_FILE, OriginUnreachableError, PNPM_WORKSPACE_FILE, type ParkOptions, RECLAIM_GRACE_MS, type ReleaseCheck, type ReleaseProof, SAFE_GIT_PROTOCOLS, SETUP_FILE, SETUP_LOG, type SetupOutcome, type SetupReport, type SetupResult, type SetupRunner, type SetupStep, type SetupTarget, type SweepOptions, type SweepOwner, type SweepStatus, type SweptWorktree, WORKTREE_ADD_TIMEOUT_MS, type WorktreeAddRunner, type WorktreeAllocation, type WorktreeAllocator, WorktreeBudgetExhaustedError, type WorktreeCheck, WorktreeInUseError, type WorktreeOptions, type WorktreeRecord, type WorktreeReleaseOutcome, type WorktreeReleaseSafety, type WorktreeRequest, agentWorktreesIn, createWorktreeAllocator, describeRefusal, fetchDefaultTip, findGitRoot, gitChildEnv, inspectForRelease, isLive, observedPresence, parkWorktree, parseSetupStep, pinGitProtocols, pruneStaleWorktrees, reattachWorktree, reclaimWorktree, recreateWorktree, resolveBranchBase, runGit, runSetupCommand, runWorktreeSetup, setupEnv, setupWorktree, sweepWorktrees, withPinnedGitProtocols };
+export { BRANCH_PREFIX, type BranchBase, DEFAULT_BASE_PATH, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_SETUP_TIMEOUT_MS, DEFAULT_STRIPPED_ENV_PREFIXES, DEFAULT_WORKTREE_BUDGET, type FoundWorktree, type GitLister, type GitPresence, type GitRunner, type HeldWorktree, MissingAssignedWorktreeRecordError, NPMRC_FILE, OriginUnreachableError, PNPM_WORKSPACE_FILE, type ParkOptions, RECLAIM_GRACE_MS, type ReleaseCheck, type ReleaseProof, SAFE_GIT_PROTOCOLS, SETUP_FILE, SETUP_LOG, type SetupOutcome, type SetupReport, type SetupResult, type SetupRunner, type SetupStep, type SetupTarget, type SweepOptions, type SweepOwner, type SweepStatus, type SweptWorktree, WORKTREE_ADD_TIMEOUT_MS, type WorktreeAddRunner, type WorktreeAllocation, type WorktreeAllocator, WorktreeBudgetExhaustedError, type WorktreeCheck, WorktreeInUseError, type WorktreeOptions, type WorktreeRecord, type WorktreeReleaseOutcome, type WorktreeReleaseSafety, type WorktreeRequest, agentWorktreesIn, createWorktreeAllocator, describeRefusal, fetchDefaultTip, findGitRoot, gitChildEnv, inspectForRelease, isLive, observedPresence, parkWorktree, parseSetupStep, pinGitProtocols, pruneStaleWorktrees, reattachWorktree, reclaimWorktree, recreateWorktree, resolveBranchBase, resolveRequestedBase, runGit, runSetupCommand, runWorktreeSetup, setupEnv, setupWorktree, sweepWorktrees, withPinnedGitProtocols };

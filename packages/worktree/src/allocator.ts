@@ -1,14 +1,14 @@
 import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { addWorktree, boundedAdd, WORKTREE_ADD_TIMEOUT_MS, type WorktreeAddRunner } from "./add.js";
-import { resolveBranchBase } from "./branch-base.js";
-import { MissingAssignedWorktreeRecordError, WorktreeBudgetExhaustedError, WorktreeInUseError } from "./errors.js";
+import { resolveBranchBase, resolveRequestedBase, type BranchBase } from "./branch-base.js";
+import { MissingAssignedWorktreeRecordError, WorktreeInUseError } from "./errors.js";
+import { capacityError } from "./capacity.js";
 import { findGitRoot, gitOrNull } from "./git.js";
-import { allocatedPaths, checkoutOf, copyClaudeDir, pruneStaleWorktrees, removeWorktree } from "./layout.js";
+import { checkoutOf, copyClaudeDir, pruneStaleWorktrees, removeWorktree } from "./layout.js";
 import {
   basePathOf,
   branchFor,
-  budgetOf,
   DEFAULT_FETCH_TIMEOUT_MS,
   RECLAIM_GRACE_MS,
   slug,
@@ -17,7 +17,7 @@ import {
 } from "./options.js";
 import { readoptWorktree, setupTarget, type WorktreeAllocation, type WorktreeRecord } from "./reattach.js";
 import { describeRefusal, inspectForRelease, inspectReleaseDetails } from "./release-safety.js";
-import { runWorktreeSetup } from "./setup.js";
+import { runWorktreeSetup, type SetupTarget } from "./setup.js";
 
 /** One agent's request for a worktree. A caller's richer context record satisfies it structurally. */
 export interface WorktreeRequest {
@@ -34,6 +34,8 @@ export interface WorktreeRequest {
   exitedAt?: number;
   /** Discard a leftover branch instead of adopting it. Allocation can destroy commits as release can. */
   forceReset?: boolean;
+  /** Fetch this origin branch for the checkout, with no default-branch fallback. */
+  baseRef?: string;
 }
 
 export interface WorktreeCheck {
@@ -52,7 +54,7 @@ export interface WorktreeAllocator {
   release(
     req: Pick<WorktreeRequest, "exitedAt">,
     alloc: { ref?: Record<string, string> },
-    opts?: { force?: boolean }
+    opts?: { force?: boolean; keepBranch?: boolean }
   ): Promise<WorktreeReleaseOutcome>;
 }
 
@@ -152,10 +154,8 @@ async function preflight(req: WorktreeRequest, gitRoot: string, opts: WorktreeOp
     return { refusals: refusal === undefined ? [] : [refusal], warnings: [] };
   }
   await pruneStaleWorktrees(gitRoot);
-  const allocated = await allocatedPaths(gitRoot, basePathOf(opts));
-  const budget = budgetOf(opts);
-  const refusals: Error[] =
-    allocated.length >= budget ? [new WorktreeBudgetExhaustedError(allocated.length, budget)] : [];
+  const exhausted = await capacityError(gitRoot, req.agentName, opts);
+  const refusals: Error[] = exhausted === undefined ? [] : [exhausted];
   const branch = branchFor(req.agentName, opts);
   if ((await gitOrNull(["rev-parse", "--verify", branch], gitRoot)) === null) return { refusals, warnings: [] };
   if (req.forceReset !== true) {
@@ -183,18 +183,22 @@ async function allocate(req: WorktreeRequest, opts: WorktreeOptions): Promise<Wo
 
   const branch = branchFor(req.agentName, opts);
   const worktreePath = path.resolve(gitRoot, basePathOf(opts), slug(req.agentName));
-  const base = await resolveBranchBase(gitRoot, opts.fetchTimeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS);
+  const timeout = opts.fetchTimeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS;
+  const base = req.baseRef === undefined
+    ? await resolveBranchBase(gitRoot, timeout)
+    : await resolveRequestedBase(gitRoot, req.baseRef, timeout);
   const reused = await attachWorktree(gitRoot, branch, worktreePath, {
     base: base.sha,
     force: req.forceReset === true,
     run: boundedAdd(opts.runWorktreeAdd, opts.addTimeoutMs ?? WORKTREE_ADD_TIMEOUT_MS),
   });
-  const target = setupTarget(gitRoot, worktreePath, base);
   const warnings = [
     ...copyClaudeDir(gitRoot, worktreePath),
     ...(base.warning === undefined ? [] : [base.warning]),
-    ...(await runWorktreeSetup(target, opts.runSetup)),
   ];
+  const target = await allocationSetupTarget(gitRoot, worktreePath, base, req, opts);
+  if (!opts.skipSetup && target !== undefined)
+    warnings.push(...await runWorktreeSetup(target, opts.runSetup));
   const carried = reused ? " It already carries commits from an earlier run under this name." : "";
   return {
     cwd: worktreePath,
@@ -208,14 +212,25 @@ async function allocate(req: WorktreeRequest, opts: WorktreeOptions): Promise<Wo
       ...(reused ? { reused: "true" } : {}),
     },
     ...(warnings.length === 0 ? {} : { warnings }),
-    ...(opts.includeSetupTarget === true ? { setupTarget: target } : {}),
+    ...(opts.includeSetupTarget === true && target !== undefined ? { setupTarget: target } : {}),
   };
+}
+
+/** A requested checkout does not grant its branch authority to declare host setup. */
+async function allocationSetupTarget(
+  gitRoot: string, worktree: string, base: BranchBase,
+  req: WorktreeRequest, opts: WorktreeOptions
+): Promise<SetupTarget | undefined> {
+  if (opts.skipSetup && opts.includeSetupTarget !== true) return undefined;
+  const trusted = req.baseRef === undefined ? base
+    : await resolveBranchBase(gitRoot, opts.fetchTimeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS);
+  return setupTarget(gitRoot, worktree, trusted);
 }
 
 async function release(
   req: Pick<WorktreeRequest, "exitedAt">,
   alloc: { ref?: Record<string, string> },
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; keepBranch?: boolean } = {},
   releaseProof: ReleaseProof = "git"
 ): Promise<WorktreeReleaseOutcome> {
   const ref = alloc.ref;
@@ -226,6 +241,11 @@ async function release(
   // An assigned tree belongs to whoever assigned it and may be shared, so even
   // `force` leaves it: force discards THIS agent's commits, not someone else's tree.
   if (ref.assigned === "true") return { released: true };
+  if (opts.keepBranch) {
+    if (existsSync(worktree)) return { released: false, refusal: `${worktree} is still on disk; a branch-keeping release takes only a parked tree` };
+    await pruneStaleWorktrees(gitRoot);
+    return { released: true };
+  }
 
   if (!opts.force) {
     const refusal = await refuseRelease(req.exitedAt, { gitRoot, worktree, branch, base: ref.base ?? "HEAD" }, releaseProof);
