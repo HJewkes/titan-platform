@@ -580,27 +580,6 @@ describe("shepherd-pr after land", () => {
     expect(next.fake.refs.has(branch)).toBe(false);
   });
 
-  it("probes nothing for a base when it replays a run whose cleanup is recorded", async () => {
-    const dbPath = join(mkdtempSync(join(tmpdir(), "tp3311-")), "factory.db");
-    const first = shepherdWorld(() => [successRun("validate", 5)], undefined, undefined, { deploy: { dbPath, fake: fakeGitHub() } });
-    first.fake.addPr({ headSha: H1 });
-    landedBranch(first);
-    const runId = await runToMerge(first);
-    await first.host.runtime.wait(runId);
-    first.host.close();
-    const probes: string[] = [];
-
-    const next = shepherdWorld(() => [successRun("validate", 5)], undefined, undefined, {
-      deploy: { dbPath, fake: first.fake },
-      wrap: (port) => ({ ...port, findPr: async (...args: Parameters<GitHubPort["findPr"]>) => (probes.push("findPr"), port.findPr(...args)) }),
-    });
-    await next.host.adopt();
-    await next.host.runtime.wait(runId);
-
-    expect(cleanupOf(next, runId).result).toMatchObject({ ref: "deleted" });
-    expect(probes).toEqual([]);
-  });
-
   for (const turn of ["off", "advisory"] as const) {
     it(`skips the restack of a listed child once the repo turns ${turn} before its restack step, leaving any retarget to cleanup`, async () => {
       let held = false;

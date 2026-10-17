@@ -91,8 +91,6 @@ export const CleanupResult = z.looseObject({
   ref: z.string(),
   /** The open PRs based on the merged head branch that cleanup moved onto its base before the delete; absent in a step recorded before the field. */
   retargeted: z.array(Retargeted).optional(),
-  /** The merged branch an earlier cleanup kept as children-open, deleted by this one once its last child landed; absent when none was. */
-  swept: z.string().optional(),
   task: z.string(),
   retired: z.array(z.string()),
   caveats: z.array(z.string()),
@@ -104,7 +102,6 @@ export type Cleanup = z.infer<typeof CleanupResult>;
 interface Done {
   caveats: string[];
   retargeted: Map<number, Retargeted>;
-  swept?: string;
 }
 
 interface Waiter {
@@ -120,24 +117,17 @@ export async function runCleanup(deps: CleanupDeps, input: CleanupInput, signal:
   const caveats: string[] = [];
   const waiter = (): Waiter => ({ clock: deadline({ now: deps.now, sleep: deps.sleep, timeoutMs: SH_CLEANUP_GIVE_UP_MS }), pollMs: deps.pollMs ?? SH_CLEANUP_POLL_MS, signal, now: deps.now, caveats });
   const done: Done = { caveats, retargeted: new Map() };
-  const ref = (await retrying(`head ref of #${input.pr}`, () => deleteHeads(deps, input, done), waiter())) ?? "unread";
+  const ref = (await retrying(`head ref of #${input.pr}`, () => deleteHead(deps, input, done), waiter())) ?? "unread";
   const retargeted = [...done.retargeted.values()];
-  const swept = done.swept === undefined ? {} : { swept: done.swept };
   await retrying(`hold on #${input.pr}`, () => releaseLanded(deps, input), waiter());
   const registration = deps.store.get().byRun(input.runId);
   if (registration === undefined || deps.cleanup === undefined) {
     const why = registration === undefined ? "no registration" : "no cleanup ports wired";
-    return { ref, retargeted, ...swept, task: why, retired: [], caveats };
+    return { ref, retargeted, task: why, retired: [], caveats };
   }
   const task = await settleTask(deps, registration, input, waiter());
   const retired = await retireAll(deps.cleanup.agents, deps.store.get(), registration, input, waiter());
-  return { ref, retargeted, ...swept, task, retired, caveats };
-}
-
-async function deleteHeads(deps: CleanupDeps, input: CleanupInput, done: Done): Promise<string> {
-  const ref = await deleteHead(deps, input, done);
-  await sweepKeptBase(deps, input, done);
-  return ref;
+  return { ref, retargeted, task, retired, caveats };
 }
 
 /**
@@ -160,22 +150,6 @@ async function deleteHead({ port, advisory }: CleanupDeps, input: CleanupInput, 
   }
   const result = await port.deleteRef(input.repo, { branch: pr.headRef, repo: pr.headRepo });
   return result.done ? "deleted" : result.skipped;
-}
-
-/**
- * A branch deleteHead kept as children-open is never revisited by its own run, whose cleanup is recorded. A child that
- * stayed based on it and has now landed there is the one later run that names the branch, as its base, so that run
- * deletes it, once its own PR is merged and no open PR is based on it. The merged PR is read from GitHub, so a replayed
- * step finds the branch gone and a base that is still an open PR's head is never touched.
- */
-async function sweepKeptBase({ port, advisory }: CleanupDeps, input: CleanupInput, done: Done): Promise<void> {
-  if (advisory?.(input.repo)) return;
-  const pr = await prAfterMerge(port, input);
-  if (!pr.merged || pr.baseRef === (await port.defaultBranch(input.repo))) return;
-  const parent = await port.findPr(input.repo, pr.baseRef);
-  if (parent === null || !parent.merged || parent.headRepo?.toLowerCase() !== input.repo.toLowerCase()) return;
-  if ((await basedOn(port, input.repo, pr.baseRef)).length > 0) return;
-  if ((await port.deleteRef(input.repo, { branch: pr.baseRef, repo: parent.headRepo })).done) done.swept = pr.baseRef;
 }
 
 const basedOn = async (port: GitHubPort, repo: RepoSlug, branch: string): Promise<number[]> => (await port.listOpenPrs(repo)).filter((open) => open.baseRef === branch).map((open) => open.number);
