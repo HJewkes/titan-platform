@@ -1,6 +1,6 @@
 import { ParseError, SplitParseError, tokenize } from "./lexer.js";
 import { NestingLimitError } from "./nesting.js";
-import type { RedirectToken, Token, WordToken } from "./lexer.js";
+import type { OpToken, RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { xargsStdins } from "./piped-stdin.js";
 import { emitReadings, endCommand, forkWalk, type Emission } from "./reading-hand-on.js";
@@ -8,7 +8,7 @@ import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
 import { aliasCommands, type AliasTable } from "./alias-words.js";
-import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackVars } from "./vars.js";
+import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { CommandRebindingError, rebindsCommand } from "./command-rebinding.js";
 import { cutReading } from "./piped-nul.js";
@@ -25,6 +25,7 @@ import { noteCommand, noteWord } from "./stored-words.js";
 import type { ValueMarks } from "./value-marks.js";
 import { MAX_UNSURE_WORDS, NestingReadingError, ReadingLimitError, SPLICED_WEIGHT, SplitReadingError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
+import { arithmeticSpanEnd, splitsClose } from "./arith-span.js";
 
 const MAX_DEPTH = 8;
 const RUNNERS = new Set([...SHELLS, "eval", "emulate", "find"]);
@@ -88,6 +89,8 @@ export interface ExtractOptions {
   aliases?: AliasTable;
   /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
   onScript?: (text: string) => void;
+  /** The text is the Bash tool's own line, run by bash or zsh, where `((x))` may be arithmetic; off, it reads as nested subshells that run `x`. */
+  arithmetic?: boolean;
 }
 
 interface Scope {
@@ -122,6 +125,8 @@ interface Walk {
   /** What the line stores and whether it evaluates arithmetic, shared by every walk of it. */
   marks: ValueMarks;
   onScript: ((text: string) => void) | null;
+  /** Whether this walk's `((` may read as arithmetic: only the line itself and its substitutions, never a nested shell's text. */
+  arithmetic: boolean;
 }
 
 /**
@@ -152,6 +157,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
     unsure,
     marks: newMarks(),
     onScript: options.onScript ?? null,
+    arithmetic: options.arithmetic === true && !splitsClose(src),
   };
   walk(tokenizeLine(src), observed(w));
   settle(w.marks);
@@ -189,13 +195,20 @@ function walkFrom(list: Token[], start: number, w: Walk): void {
   const forks: Array<() => void> = [];
   let words: WordToken[] = [];
   let redirects: RedirectToken[] = [];
-  for (const [at, token] of list.slice(start).entries()) {
+  let arithEnd = -1;
+  for (const [offset, token] of list.slice(start).entries()) {
+    const at = start + offset;
+    if (at <= arithEnd) {
+      inArithmetic(token, at === arithEnd, w);
+      continue;
+    }
+    const end = arithmeticEnd(list, at, words, w);
+    if (end > 0) {
+      arithEnd = end;
+      continue;
+    }
     if (token.type === "op") {
-      noteValues(token, words, w);
-      const { readings, disputed } = emit(words, redirects, w, token.value);
-      const walks = [w, ...disputed.map((scope) => forkWalk(w, scope, (fork, vars) => observeStores(vars, (value) => hear(fork, value))))];
-      for (const each of walks) endCommand(each, token, words, redirects, readings, (op) => scope(op, each));
-      forks.push(...walks.slice(1).map((fork) => () => walkFrom(list, start + at + 1, fork)));
+      forks.push(...endAt(list, at, token, { words, redirects }, w));
       words = [];
       redirects = [];
       continue;
@@ -208,6 +221,39 @@ function walkFrom(list: Token[], start: number, w: Walk): void {
   noteValues(null, words, w);
   emit(words, redirects, w, null);
   for (const fork of forks) fork();
+}
+
+/** An operator ends the command gathered before it in each walk its readings leave; returns the walks of the rest of the list. */
+function endAt(list: Token[], at: number, token: OpToken, gathered: { words: WordToken[]; redirects: RedirectToken[] }, w: Walk): Array<() => void> {
+  const { words, redirects } = gathered;
+  noteValues(token, words, w);
+  const { readings, disputed } = emit(words, redirects, w, token.value);
+  const walks = [w, ...disputed.map((scope) => forkWalk(w, scope, (fork, vars) => observeStores(vars, (value) => hear(fork, value))))];
+  for (const each of walks) endCommand(each, token, words, redirects, readings, (op) => scope(op, each));
+  return walks.slice(1).map((fork) => () => walkFrom(list, at + 1, fork));
+}
+
+/**
+ * The index of the `)` that ends the arithmetic command a marked `(` opens, or -1 when the token opens none. It
+ * still notes what the command evaluates and writes, in the current shell.
+ */
+function arithmeticEnd(list: Token[], at: number, words: WordToken[], w: Walk): number {
+  const token = list[at];
+  const end = arithmeticSpanEnd(list, at, words, w.arithmetic);
+  if (end < 0 || token?.type !== "op") return -1;
+  noteValues(token, words, w);
+  noteValues(null, list.slice(at + 2, end - 1).filter((t) => t.type === "word"), w);
+  trackCompound(token, w.scope.vars);
+  return end;
+}
+
+/** A token of an arithmetic command runs nothing, but a substitution in it does; its `)` leaves the shell as it was. */
+function inArithmetic(token: Token, last: boolean, w: Walk): void {
+  if (token.type === "word") noteWord(token, w.marks);
+  for (const sub of nestedLists(token)) walk(sub, child(w, [...w.scope.wrapping, "subshell"]));
+  if (!last) return;
+  Object.assign(w, { prev: ")", negated: false, chain: { start: ")" }, stdin: null, shellStdin: [] });
+  trackCompound(token, w.scope.vars);
 }
 
 /** Notes what a command evaluates and stores, before it runs. */
@@ -358,7 +404,8 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descrip
     w.onScript?.(text);
     // A shell's arguments and input become its positional parameters and what its `read` stores.
     if (script.wrap !== "eval") w.marks.opaque = true;
-    walk(tokenizeLine(text), child(w, [...wrapping, script.wrap], descriptors));
+    // A nested shell's text keeps the nested-subshell reading: the shell that runs it may be dash.
+    walk(tokenizeLine(text), { ...child(w, [...wrapping, script.wrap], descriptors), arithmetic: false });
   }
 }
 
