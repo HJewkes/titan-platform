@@ -96,7 +96,7 @@ function fixProofReproduced(head: string, line: string | undefined): boolean {
   return parsed?.ok === true && parsed.result.head === head && parsed.result.verdict === "reproduced";
 }
 
-const ciLines = (input: ReviewerBriefInput): string[] => (input.ciChecks === undefined ? [input.testRule ?? CI_REVIEWER_TEST_RULE] : ciTableLines(input.ciChecks));
+const ciLines = (input: ReviewerBriefInput): string[] => (input.ciChecks && ciTableLines(input.ciChecks)) || [input.testRule ?? CI_REVIEWER_TEST_RULE];
 
 /** Checks CI already ran at this head cost build slots when a reviewer reruns them; the fix-proof text is rebuilt from the parsed result, never echoed. */
 function rerunLines(input: ReviewerBriefInput): string[] {

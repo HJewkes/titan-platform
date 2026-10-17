@@ -40,3 +40,5 @@ export type { FakeEffects, FakeFaultyRead, FakeGitHub } from "./fake.js";
 export { FAKE_APP_ID, FakeHttpError, fakeGitHub, fakeSha, successRun } from "./fake.js";
 export type { SquashCommit, SquashInput, SquashMessage } from "./squash-message.js";
 export { formatSquashMessage } from "./squash-message.js";
+export type { CallClass, GitHubFailure, GitHubFailureInput, ResetSource } from "./github-failure.js";
+export { RATE_LIMIT_PHRASES, classifyGitHubFailure, nextResetAt } from "./github-failure.js";

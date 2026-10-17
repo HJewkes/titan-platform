@@ -262,6 +262,47 @@ describe("reviewerBrief CI read", () => {
     expect(reviewerBrief({ ...target, ciChecks: many }).match(/^- check-\d+:/gm)).toHaveLength(MAX_CI_CHECK_ROWS);
   });
 
+  const row = (name: string, required: boolean) => ({ name, status: "completed", conclusion: "success", required });
+
+  it("a required check whose name the table cannot carry sends the reviewer to read CI itself", () => {
+    const brief = reviewerBrief({ ...target, ciChecks: [row("check", true), row("build (22)", true)] });
+
+    expect(brief).toContain(CI_REVIEWER_TEST_RULE);
+    expect(brief).not.toContain("- check:");
+    expect(brief).not.toContain("do not read CI yourself");
+  });
+
+  it("a required name past the length cap falls back the same way", () => {
+    const brief = reviewerBrief({ ...target, ciChecks: [row("a".repeat(41), true), row("validate", true)] });
+
+    expect(brief).toContain(CI_REVIEWER_TEST_RULE);
+    expect(brief).not.toContain("- validate:");
+  });
+
+  it("a required check in the 45th row is shown, because required rows sort ahead of the cap", () => {
+    const noise = Array.from({ length: 44 }, (_, i) => row(`noise-${i}`, false));
+    const brief = reviewerBrief({ ...target, ciChecks: [...noise, row("gate", true)] });
+
+    expect(brief).toContain("- gate: status completed, conclusion success, required");
+    expect(brief.match(/^- (noise|gate)/gm)).toHaveLength(MAX_CI_CHECK_ROWS);
+    expect(brief).not.toContain(CI_REVIEWER_TEST_RULE);
+  });
+
+  it("more required rows than the cap falls back rather than cutting one", () => {
+    const required = Array.from({ length: MAX_CI_CHECK_ROWS + 1 }, (_, i) => row(`req-${i}`, true));
+
+    expect(reviewerBrief({ ...target, ciChecks: required })).toContain(CI_REVIEWER_TEST_RULE);
+  });
+
+  it("a non-required name the table cannot carry is dropped and the table stays", () => {
+    const brief = reviewerBrief({ ...target, ciChecks: [row("test (18.x)", false), row("validate", true), row("check", true)] });
+
+    expect(brief).not.toContain("test (18.x)");
+    expect(brief).toContain("- validate: status completed, conclusion success, required");
+    expect(brief).toContain("- check: status completed");
+    expect(brief).toContain("do not read CI yourself");
+  });
+
   it("with no check-runs the brief falls back to statusCheckRollup", () => {
     const brief = reviewerBrief({ ...target, testRule: CI_REVIEWER_TEST_RULE });
 

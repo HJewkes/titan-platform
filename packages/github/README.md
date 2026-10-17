@@ -179,6 +179,16 @@ mergeability: `unknown` is re-read after 1, 2 and 4 seconds and fails if it neve
 `FAIL <repo>#<N>: <reason>; ...`, and exits 0, 1, or 2 on usage. `--json` prints
 `{ repo, number, ok, reasons, head, base, required, strict, behindBy }`.
 
+`classifyGitHubFailure(input)` is a pure classifier for a failed GitHub answer: status (absent for
+a network failure), lower-cased headers, redacted message, method, a `networkError` flag, the
+prior `streak` and `now` (epoch ms; it reads no clock). It returns `ok`, `auth` (401), `error`
+(a 403 or 422 naming no rate limit, secondary limit, abuse or spam, and other 4xx), `unknown` (a
+5xx or network failure on a write) or `unavailable { resetAt, source, bucket, callClass }` (any
+429; a 403 with `retry-after`, remaining 0 or limit text; a 422 naming a limit; a 5xx or network
+failure on a read). `resetAt` is `retry-after`, else `x-ratelimit-reset`, else `now` + 60 s
+doubling per streak step to 15 min (`nextResetAt`); a header beyond 61 min is clamped and flagged
+in `reason`. `RATE_LIMIT_PHRASES` is the one list of body phrases. Nothing calls it yet.
+
 `fakeGitHub()` is an in-memory `GitHubWire` with effect counters, for tests only.
 
 Reference: [site/reference/github.md](../../site/reference/github.md).
