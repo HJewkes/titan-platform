@@ -107,3 +107,14 @@ This opt-in path checks files, branch and HEAD again after the fetch and after t
 synchronous lifecycle recheck, then uses nonforced removal. It retains the local branch.
 These checks do not make removal atomic against external writers. Provider or lifecycle
 policy remains with the caller.
+
+## Sweep safety detail presentation
+
+`SweepOptions.formatSafetyDetail` may synchronously format an already classified
+`holds-work` entry. It receives a frozen copy containing only the observed `dirty`
+and `unmerged` booleans. Both can be true; formatting does not change safety status
+or cause another Git observation. Held, in-grace and reclaimable entries bypass it.
+Without the option, entry objects and diagnostics are unchanged.
+
+A throwing presenter rejects the report; a nonstring return throws `TypeError`.
+The sweep does not reclaim trees. Caller presentation is not release authority.

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { gitChildEnv } from "./git.js";
 import { parseWorktreeList, removeWorktree } from "./layout.js";
 import { branchPrefixOf, RECLAIM_GRACE_MS } from "./options.js";
-import { inspectForRelease } from "./release-safety.js";
+import { inspectForRelease, type WorktreeReleaseSafety } from "./release-safety.js";
 
 /**
  * Find the worktrees an allocator is holding, and say which ones nobody is using.
@@ -69,6 +69,8 @@ export interface SweepOptions {
   branchPrefix?: string;
   list?: GitLister;
   now?: () => number;
+  /** Synchronous presentation of an already classified holds-work observation; cannot change its status. */
+  formatSafetyDetail?: (safety: Readonly<Pick<WorktreeReleaseSafety, "dirty" | "unmerged">>) => string;
 }
 
 const porcelain: GitLister = async (gitRoot) =>
@@ -115,7 +117,8 @@ async function classify(
   found: FoundWorktree,
   owner: SweepOwner | undefined,
   base: string,
-  now: number
+  now: number,
+  formatSafetyDetail: SweepOptions["formatSafetyDetail"]
 ): Promise<SweptWorktree> {
   const agent = owner && {
     agentId: owner.agentId,
@@ -133,6 +136,11 @@ async function classify(
   const detail = [unsaved, safety.unmerged && "commits that exist nowhere else"]
     .filter(Boolean)
     .join(" and ");
+  if (formatSafetyDetail !== undefined) {
+    const presented = formatSafetyDetail(Object.freeze({ dirty: safety.dirty, unmerged: safety.unmerged }));
+    if (typeof presented !== "string") throw new TypeError("formatSafetyDetail must return a string");
+    return { ...withAgent, status: "holds-work", detail: presented };
+  }
   return { ...withAgent, status: "holds-work", detail };
 }
 
@@ -147,7 +155,15 @@ export async function sweepWorktrees(options: SweepOptions = {}): Promise<SweptW
   for (const gitRoot of roots) {
     for (const { worktree, branch } of await agentWorktreesIn(gitRoot, options.list ?? porcelain, prefix)) {
       const found = { gitRoot, worktree, branch };
-      swept.push(await classify(found, options.ownerOf?.(found), held.get(branch)?.base ?? "HEAD", now));
+      swept.push(
+        await classify(
+          found,
+          options.ownerOf?.(found),
+          held.get(branch)?.base ?? "HEAD",
+          now,
+          options.formatSafetyDetail
+        )
+      );
     }
   }
   return swept;

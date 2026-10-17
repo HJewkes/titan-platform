@@ -350,6 +350,8 @@ interface SweepOptions {
     branchPrefix?: string;
     list?: GitLister;
     now?: () => number;
+    /** Synchronous presentation of an already classified holds-work observation; cannot change its status. */
+    formatSafetyDetail?: (safety: Readonly<Pick<WorktreeReleaseSafety, "dirty" | "unmerged">>) => string;
 }
 /** Every unlocked worktree in `gitRoot` whose branch carries `branchPrefix`, from git itself. */
 declare function agentWorktreesIn(gitRoot: string, list?: GitLister, branchPrefix?: string): Promise<{
