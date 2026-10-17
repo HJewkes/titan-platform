@@ -8,7 +8,7 @@ const hex = (length: number) => z.string().regex(new RegExp(`^[0-9a-f]{${length}
 const SetFile = z.strictObject({ path: z.string(), key: z.string(), sha256: hex(64), blob: hex(40) });
 
 /** The regenerated baselines the owner accepted at a red head: a later head must commit exactly these blobs and nothing else. */
-export const ApprovedSetSchema = z.strictObject({
+const ApprovedSetSchema = z.strictObject({
   packetSha: hex(64),
   packetId: z.string(),
   ciRunId: z.string(),
@@ -28,14 +28,14 @@ const SetImage = z.looseObject({
   after: z.looseObject({ sha256: hex(64) }).optional(),
 });
 const SetPacket = z.looseObject({ packetId: z.string(), headSha: hex(40), ci: z.looseObject({ runId: z.string() }), images: z.array(SetImage) });
-export type SetPacket = z.infer<typeof SetPacket>;
+type SetPacket = z.infer<typeof SetPacket>;
 
 /** What the caller read of one `after/<key>.png`: digests only, so no image bytes are held past the read. */
 export type AfterDigest = { sha256: string; blob: string };
 
-export type SetRefusal = { reason: "packet" | "set-too-large"; detail: string };
+type SetRefusal = { reason: "packet" | "set-too-large"; detail: string };
 /** `layers` only names what the fixer commits in the note; the set itself carries no layer. */
-export type BuiltSet = { set: ApprovedSet; layers: string[] };
+type BuiltSet = { set: ApprovedSet; layers: string[] };
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 

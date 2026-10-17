@@ -9,7 +9,7 @@ import { packetDirFor } from "../shepherd/visual-packet-trigger.js";
 
 /** Synthetic after images; `k3` is the removed one and has none. */
 export const AFTER_BYTES: Record<string, Buffer> = { k1: Buffer.from("synthetic after one"), k2: Buffer.from("synthetic after two") };
-export const ACCEPT_PACKET_ID = "p-accept";
+const ACCEPT_PACKET_ID = "p-accept";
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
