@@ -21,9 +21,14 @@ const VARIABLE_TAKERS = new Set(["export", "declare", "typeset", "local", "reado
 const PRINTS_VARIABLES = new Set(["export", "declare", "typeset", "local", "readonly", "private", "integer", "float"]);
 /** Builtins whose stored-into name comes from an option value or a fixed word, so a computed one may be anything. */
 const NAME_BY_OPTION = new Set(["printf", "print", "set", "wait", "compgen", "zparseopts", "zformat", "strftime", "zstat", "zselect", "pcre_match", "getopts"]);
-/** The builtins that store into a named parameter; any other command writes none, whatever its words expand to. */
+/**
+ * An expansion that yields a list of words even inside double quotes: `$@`, `$*`, `${a[@]}`, `$a[*]`, zsh `$=x`,
+ * `${=x}`, `${^a}`, `${~x}` and any `${(…)…}` flags.
+ */
+const LIST_EXPANSION_RE = /\$(?:[@*=]|\{(?:[@*=^~(]|!?[A-Za-z_]\w*\[[@*]\])|[A-Za-z_]\w*\[[@*]\])/;
+/** The words that store into a named parameter; any other command writes none, whatever its words expand to. */
 const STORE_BUILTINS = new Set(
-  `export declare typeset local readonly private integer float read mapfile readarray printf print set wait compgen vared
+  `for select export declare typeset local readonly private integer float read mapfile readarray printf print set wait compgen vared
   zstyle zparseopts zformat strftime zstat zselect getln sysread zregexparse pcre_match zpty zsystem syserror sysopen
   syswrite zmodload zgetattr zlistattr ztie zcurses shift compadd getopts functions`.split(/\s+/),
 );
@@ -128,14 +133,15 @@ const NAME_LETTERS: Record<string, string> = {
 /**
  * Whether the stored-into name is computed at run time, or a run-time word may be the option that names it. A word
  * that may expand to `-v` in front of a literal rebinding name (`printf "$f" BASH_CMDS[y] /x`) stores into it, so it
- * counts; so does an unquoted first operand of `printf`, which bash splits into `-v NAME VALUE`. `wait $pid` and
- * `print $x` do not split into an option the shell reads, so they pass.
+ * counts; so does a word where options are still read that expands to several (`printf "${a[@]}"`), or that bash
+ * splits under `printf` (`printf $args`). `wait $pid` and `print $x` do not split into an option the shell reads,
+ * so they pass.
  */
 function dynamicSlot(name: string, args: WordToken[]): boolean {
   const slots = nameSlots(name, args);
   if (typeof slots !== "string" && slots.some((slot) => slot.dynamic)) return true;
   if (typeof slots === "string" && /^[-+]/.test(slots) && /[$`]/.test(slots)) return true;
-  return namedByDynamicOption(name, args) || (name === "printf" && splitsIntoOptions(args));
+  return namedByDynamicOption(name, args) || splitsIntoOptions(name, args);
 }
 
 /** A literal name option whose name is computed, or a word that may be an option ahead of a literal rebinding name. */
@@ -148,10 +154,23 @@ function namedByDynamicOption(name: string, args: WordToken[]): boolean {
   return false;
 }
 
-/** `printf $args` splits in bash, so its first operand may be `-v NAME VALUE`. */
-function splitsIntoOptions(args: WordToken[]): boolean {
-  const first = args.find((a) => a.dynamic || !/^-/.test(a.value));
-  return first?.dynamic === true && first.unquotedExpansion === true && !first.quoted;
+/**
+ * Whether a word read while options may still come expands to several words, any of which may be `-v NAME`. Options
+ * run until a literal `--` or a literal operand; a literal word right after an option word may be its value, so the
+ * scan goes on past it. Under `printf` an unquoted expansion splits in bash, so it counts too.
+ */
+function splitsIntoOptions(name: string, args: WordToken[]): boolean {
+  for (const [i, word] of args.entries()) {
+    const expands = word.dynamic || word.unquotedExpansion === true;
+    if (!expands) {
+      if (word.value === "--") return false;
+      if (!/^[-+]./.test(word.value) && !/^[-+]./.test(args[i - 1]?.value ?? "")) return false;
+      continue;
+    }
+    if (LIST_EXPANSION_RE.test(word.value) || (name === "printf" && word.unquotedExpansion === true)) return true;
+    if (!mayBeOption(word)) return false;
+  }
+  return false;
 }
 
 /** zsh skips one leading `--` before these builtins' options: `zparseopts -- -A commands y:`. */

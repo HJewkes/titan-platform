@@ -89,7 +89,14 @@ describe("a line that rebinds a command name", () => {
     ["a local element before a trailing -p", `f() { local BASH_CMDS[q]=/usr/bin/git -p; q push origin HEAD:main; }; f`],
     ["an element before a trailing -p under bash -c", `bash -c 'declare BASH_CMDS[q]=/usr/bin/git -p; q push origin HEAD:main'`],
     ["an element with a brace-expanding value", `declare BASH_CMDS[y]=/usr/bin/{,git}; ${PUSH}`],
-    ["a store through zstyle -e",`zstyle -e :z k 'commands[y]=/usr/bin/git'; ${PUSH}`],
+    ["printf -v from an array", `a=(-v BASH_CMDS[y] /usr/bin/git); printf "\${a[@]}"; ${PUSH}`],
+    ["printf -v from the positional parameters", `set -- -v BASH_CMDS[y] /usr/bin/git; printf "$@"; ${PUSH}`],
+    ["zsh print -v from an array", `a=(-v commands[y] /usr/bin/git); print "\${a[@]}"; ${PUSH}`],
+    ["printf from a zsh split", `x='-v BASH_CMDS[y] /usr/bin/git'; printf $=x; ${PUSH}`],
+    ["a for loop over BASH_CMDS", "for BASH_CMDS in /usr/bin/git; do 0 push origin HEAD:main; done"],
+    ["a select loop over BASH_CMDS", "select BASH_CMDS in /usr/bin/git; do 0 push origin HEAD:main; done"],
+    ["a zsh for loop over commands", "for commands in /usr/bin/git; do 0 push origin HEAD:main; done"],
+    ["a store through zstyle -e", `zstyle -e :z k 'commands[y]=/usr/bin/git'; ${PUSH}`],
   ])("refuses %s", async (_name, command) => {
     const got = await answer(command);
     expect(got.decision).toBe("deny");
@@ -108,6 +115,9 @@ describe("a line that rebinds a command name", () => {
     ["print a word", "print $x"],
     ["print a parameter read", "print -l $commands[git]"],
     ["printf with a run-time format", 'printf "$fmt" a'],
+    ["printf of an unquoted word after --", "printf -- $x"],
+    ["printf of an array after a literal format", `printf '%s\\n' "\${a[@]}"`],
+    ["a for loop over an ordinary name", "for f in a b; do echo $f; done"],
     ["declare -p of a rebinding parameter", "declare -p BASH_CMDS"],
     ["typeset -p of a rebinding parameter", "typeset -p commands"],
     ["declare -p of an assignment, which assigns nothing", "declare -p X=5; git status"],
