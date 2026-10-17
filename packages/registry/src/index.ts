@@ -14,6 +14,7 @@ export {
   commandPath,
   flagToKey,
   optionFlagSpec,
+  optionDefault,
   positionalSpec,
   readCommanderOption,
 } from "./cli-options.js";

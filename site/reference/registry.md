@@ -88,6 +88,11 @@ kind. An array-typed field's flag repeats (`--tag a --tag b` yields `["a", "b"]`
 `collectOptionParser` gives commander's accumulator for it, and each element is coerced by
 the array's element kind.
 
+Use `CliOption.valueName` for a value flag placeholder; booleans remain bare.
+Array positionals render `<text...>` / `[brief...]` and coerce each element.
+`optionDefault(command, key)` returns an explicit field default (including zero
+or false) for Commander, without parsing args or running schema transforms.
+
 **MCP.** `commandToTool` builds the descriptor; `inputSchema` comes from zod 4's native
 `toJSONSchema` with `$schema` and `definitions` stripped, because some MCP clients reject
 them at the root. Its optional third argument accepts zod's `io` and `override`: use

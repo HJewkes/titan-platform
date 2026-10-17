@@ -12,6 +12,8 @@ interface CliOption {
     short?: string;
     description: string;
     required?: boolean;
+    /** Placeholder label for a value-taking flag; booleans remain bare. */
+    valueName?: string;
 }
 interface CliMeta {
     positional?: string[];
@@ -108,6 +110,8 @@ declare function optionFlagSpec(cmd: AnyCommand<never>, key: string, opt: CliOpt
 declare function positionalSpec(cmd: AnyCommand<never>, name: string): string;
 /** `task.add` becomes `["task", "add"]`: the commander sub-command path. */
 declare function commandPath(name: string): string[];
+/** Explicit zod default for a command field, for the product's Commander option wiring. */
+declare function optionDefault(cmd: AnyCommand<never>, key: string): unknown;
 
 interface InvokeOptions {
     /** Envelope code for args that fail schema validation. CLIs use EXIT.USAGE, servers EXIT.DATAERR. */
@@ -149,4 +153,4 @@ type ToolSchemaOptions = Pick<core.ToJSONSchemaParams, "io" | "override">;
 /** Build an MCP tool descriptor from a command's zod args via zod 4's native JSON Schema export. */
 declare function commandToTool(cmd: AnyCommand<never>, naming: ToolNaming, options?: ToolSchemaOptions): McpToolDescriptor;
 
-export { type AnyCommand, type BaseContext, type CliMeta, type CliOption, type Command, type CommandMapOf, type CommandRegistry, type ErrorDescription, type InProcessCall, type Invocation, type InvokeOptions, type McpToolDescriptor, type SchemaKind, type ToolNaming, type ToolSchemaOptions, arrayElementKind, camelizeFlagKey, coerceCliValue, collectCliArgs, collectOptionParser, commandNameToToolName, commandPath, commandToTool, createRegistry, defineCommand, describeError, fieldSchema, flagToKey, inProcessCaller, invokeCommand, isOptionalField, optionFlagSpec, positionalSpec, readCommanderOption, schemaKind, toolNameToCommandName, unwrapSchema };
+export { type AnyCommand, type BaseContext, type CliMeta, type CliOption, type Command, type CommandMapOf, type CommandRegistry, type ErrorDescription, type InProcessCall, type Invocation, type InvokeOptions, type McpToolDescriptor, type SchemaKind, type ToolNaming, type ToolSchemaOptions, arrayElementKind, camelizeFlagKey, coerceCliValue, collectCliArgs, collectOptionParser, commandNameToToolName, commandPath, commandToTool, createRegistry, defineCommand, describeError, fieldSchema, flagToKey, inProcessCaller, invokeCommand, isOptionalField, optionDefault, optionFlagSpec, positionalSpec, readCommanderOption, schemaKind, toolNameToCommandName, unwrapSchema };

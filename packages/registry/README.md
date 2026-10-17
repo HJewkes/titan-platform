@@ -127,3 +127,15 @@ Omitting `io` preserves the existing output-mode schema.
 an added prefix; invalid arguments never run the command. `invalidArgsCode` still
 controls the envelope code. Omitting the formatter preserves the existing
 `Invalid arguments: ...` message. A formatter exception passes through `formatError`.
+
+## CLI labels, variadic positionals and defaults
+
+`CliOption.valueName` controls a value flag's placeholder (`<path>`, `<n>`);
+omitting it keeps `<value>`, and booleans always stay bare. Array-typed positional
+arguments render `<text...>` or `[brief...]` when optional; their values are
+coerced element by element. Repeatable option flags still do not use variadic
+syntax, so they cannot swallow trailing positionals.
+
+`optionDefault(command, key)` reads a field's explicit zod default for the product
+to pass into Commander. Missing/non-default fields return undefined; zero and
+false remain valid defaults. It does not parse args or run schema transforms.

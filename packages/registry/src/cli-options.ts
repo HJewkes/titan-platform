@@ -1,5 +1,5 @@
 import type { AnyCommand, CliMeta, CliOption } from "./types.js";
-import { arrayElementKind, fieldSchema, isOptionalField, schemaKind, type SchemaKind } from "./zod-introspect.js";
+import { arrayElementKind, fieldSchema, isOptionalField, schemaDefault, schemaKind, type SchemaKind } from "./zod-introspect.js";
 
 /** `--ship-target` becomes `ship_target`, the snake_case key convention for args schemas. */
 export function flagToKey(long: string): string {
@@ -79,7 +79,10 @@ export function collectCliArgs(
   const raw: Record<string, unknown> = {};
   (meta.positional ?? []).forEach((name, i) => {
     const value = positionals[i];
-    if (value !== undefined) raw[name] = coerceCliValue(value, schemaKind(fieldSchema(cmd.args, name)));
+    if (value !== undefined) {
+      const schema = fieldSchema(cmd.args, name);
+      raw[name] = coerceCliValue(value, schemaKind(schema), arrayElementKind(schema));
+    }
   });
   for (const [key, opt] of Object.entries(meta.options ?? {})) {
     const value = readCommanderOption(opts, opt.long);
@@ -95,15 +98,22 @@ export function collectCliArgs(
 export function optionFlagSpec(cmd: AnyCommand<never>, key: string, opt: CliOption): string {
   const short = opt.short ? `${opt.short}, ` : "";
   const kind = schemaKind(fieldSchema(cmd.args, key));
-  return kind === "boolean" ? `${short}${opt.long}` : `${short}${opt.long} <value>`;
+  return kind === "boolean" ? `${short}${opt.long}` : `${short}${opt.long} <${opt.valueName ?? "value"}>`;
 }
 
 /** commander argument display: `[name]` when the schema allows omission, else `<name>`. */
 export function positionalSpec(cmd: AnyCommand<never>, name: string): string {
-  return isOptionalField(fieldSchema(cmd.args, name)) ? `[${name}]` : `<${name}>`;
+  const schema = fieldSchema(cmd.args, name);
+  const label = schemaKind(schema) === "array" ? `${name}...` : name;
+  return isOptionalField(schema) ? `[${label}]` : `<${label}>`;
 }
 
 /** `task.add` becomes `["task", "add"]`: the commander sub-command path. */
 export function commandPath(name: string): string[] {
   return name.split(".");
+}
+
+/** Explicit zod default for a command field, for the product's Commander option wiring. */
+export function optionDefault(cmd: AnyCommand<never>, key: string): unknown {
+  return schemaDefault(fieldSchema(cmd.args, key));
 }

@@ -11,6 +11,8 @@ export interface CliOption {
   short?: string;
   description: string;
   required?: boolean;
+  /** Placeholder label for a value-taking flag; booleans remain bare. */
+  valueName?: string;
 }
 
 export interface CliMeta {

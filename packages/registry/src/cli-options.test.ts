@@ -8,6 +8,7 @@ import {
   commandPath,
   flagToKey,
   optionFlagSpec,
+  optionDefault,
   positionalSpec,
   readCommanderOption,
 } from "./cli-options.js";
@@ -195,5 +196,43 @@ describe("commander spec strings", () => {
   it("brackets optional positionals", () => {
     expect(positionalSpec(wrap, "slug")).toBe("<slug>");
     expect(positionalSpec(wrap, "note")).toBe("[note]");
+  });
+});
+
+describe("CLI consumer metadata", () => {
+  const send = defineCommand({
+    name: "send", description: "send text",
+    args: z.object({
+      to: z.string(), text: z.array(z.string()), brief: z.array(z.string()).optional(),
+      numbers: z.array(z.number()), since: z.string().default("now"),
+      interval: z.number().default(0), enabled: z.boolean().default(false),
+      optionalDefault: z.string().default("inner").optional(),
+    }),
+    result: z.void(), cli: { positional: ["to", "text", "numbers"] }, async run() {},
+  });
+  it("preserves explicit value placeholders and leaves boolean options bare", () => {
+    expect(optionFlagSpec(wrap, "ship_target", { long: "--ship-target", description: "", valueName: "path" })).toBe("--ship-target <path>");
+    expect(optionFlagSpec(wrap, "limit", { long: "--limit", short: "-n", description: "", valueName: "n" })).toBe("-n, --limit <n>");
+    expect(optionFlagSpec(wrap, "dry_run", { long: "--dry-run", description: "", valueName: "unused" })).toBe("--dry-run");
+    expect(optionFlagSpec(wrap, "ship_target", { long: "--ship-target", description: "" })).toBe("--ship-target <value>");
+  });
+  it("renders required and optional array positionals as variadic arguments", () => {
+    expect(positionalSpec(send, "to")).toBe("<to>");
+    expect(positionalSpec(send, "text")).toBe("<text...>");
+    expect(positionalSpec(send, "brief")).toBe("[brief...]");
+  });
+  it("coerces each variadic positional element by its schema", () => {
+    expect(collectCliArgs(send, ["peer", ["hello", "world"], ["1", "2"]], {})).toEqual({
+      to: "peer", text: ["hello", "world"], numbers: [1, 2],
+    });
+  });
+  it("reads only explicit defaults, including false, zero and optional wrappers", () => {
+    expect(optionDefault(send, "since")).toBe("now");
+    expect(optionDefault(send, "interval")).toBe(0);
+    expect(optionDefault(send, "enabled")).toBe(false);
+    expect(optionDefault(send, "optionalDefault")).toBe("inner");
+    expect(optionDefault(send, "to")).toBeUndefined();
+    expect(optionDefault(send, "missing")).toBeUndefined();
+    expect(optionDefault(wrap, "labels")).toEqual(["untriaged"]);
   });
 });
