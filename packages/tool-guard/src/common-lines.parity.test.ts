@@ -33,7 +33,8 @@ const port: HookPort = {
   loadDecide: async () => decide,
 };
 
-// cwd is home/app: with cwd = home the guard denies `for f in *` as a secret read.
+// B25 (`for f in *`) is not a row: it denies as SEC-CO in every cwd. A crash in handle() also prints nothing, so a row
+// asserts the whole result (no log line), not just empty stdout.
 describe("common-line parity corpus", () => {
   it("has unique row ids", () => {
     expect(new Set(COMMON_LINES.map((row) => row.id)).size).toBe(
@@ -51,7 +52,7 @@ describe("common-line parity corpus", () => {
         cwd,
         tool_input: { command: line },
       });
-      expect((await handle(event, {}, port)).stdout).toBe("");
+      expect(await handle(event, {}, port)).toEqual({ stdout: "", log: [] });
     }
   );
 });
