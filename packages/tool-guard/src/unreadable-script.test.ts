@@ -34,7 +34,7 @@ const port: HookPort = { context: nodeContext(home), now: () => new Date("2026-0
 async function verdict(command: string): Promise<{ decision: string | null; spelling: string | undefined; stdout: string }> {
   const event = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: home, tool_input: { command } });
   const { stdout, log } = await handle(event, {}, port);
-  const decision = stdout === "" ? null : (JSON.parse(stdout) as { hookSpecificOutput: { permissionDecision: string } }).hookSpecificOutput.permissionDecision;
+  const decision = stdout === "" ? null : /"permissionDecision":"(\w+)"/.exec(stdout)?.[1] ?? "unknown";
   return { decision, spelling: log[0]?.split("\t")[4], stdout };
 }
 
