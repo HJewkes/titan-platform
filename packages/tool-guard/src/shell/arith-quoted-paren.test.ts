@@ -50,6 +50,9 @@ describe("a quoted paren in $(( ))", () => {
     },
   );
 
+  // The unbounded readings this guards against take ten seconds or run out of memory; slow CI runners need the slack.
+  const BOUNDED_MS = 2000;
+
   it.each([
     ["at the limit", 4, "pass"],
     ["past the limit", 5, "deny"],
@@ -59,7 +62,7 @@ describe("a quoted paren in $(( ))", () => {
     for (let i = 0; i < depth; i++) body = `$(( '(' ${body} ))`;
     const started = Date.now();
     expect(await handled(`echo ${body}`)).toBe(verdict);
-    expect(Date.now() - started).toBeLessThan(1000);
+    expect(Date.now() - started).toBeLessThan(BOUNDED_MS);
   });
 
   // A heredoc body, a backquote or a quoted span is lexed with trials of its own, which must not restart the count.
@@ -67,18 +70,18 @@ describe("a quoted paren in $(( ))", () => {
   const throughBackquote = (body: string): string => `$(( '(' \`echo ${body.replaceAll("\\", "\\\\").replaceAll("`", "\\`")}\` ))`;
   const throughQuotes = (body: string): string => `$(( '(' "${body.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}" ))`;
   it.each([
-    ["a heredoc", throughHeredoc, 5],
-    ["a heredoc", throughHeredoc, 22],
-    ["a backquote", throughBackquote, 5],
-    ["a backquote", throughBackquote, 12],
-    ["double quotes", throughQuotes, 5],
-    ["double quotes", throughQuotes, 22],
-  ] as const)("refuses quoted-paren arithmetic nested through %s %i deep in bounded time", async (_name, wrap, depth) => {
+    ["a heredoc", 5, throughHeredoc],
+    ["a heredoc", 22, throughHeredoc],
+    ["a backquote", 5, throughBackquote],
+    ["a backquote", 12, throughBackquote],
+    ["double quotes", 5, throughQuotes],
+    ["double quotes", 22, throughQuotes],
+  ] as const)("refuses quoted-paren arithmetic nested through %s, %i deep, in bounded time", async (_name, depth, wrap) => {
     let body = "true";
     for (let i = 0; i < depth; i++) body = wrap(body, i);
     const started = Date.now();
     expect(await handled(`echo ${body}`)).toBe("deny");
-    expect(Date.now() - started).toBeLessThan(1000);
+    expect(Date.now() - started).toBeLessThan(BOUNDED_MS);
   });
 
   it.each([

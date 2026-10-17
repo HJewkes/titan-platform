@@ -24,13 +24,13 @@ export function lineReading(s: LexState): Reading {
  * Each decision is kept per position, so a subshell reading that lexes the text again stays polynomial.
  */
 export function arithmeticExpansionEnd(at: Reading, dollar: number, found: Token[][]): number {
-  const enclosing = at.trials.arithDepth;
-  if (enclosing.depth > MAX_BOTH_READINGS) throw tooDeep();
-  enclosing.depth++;
+  const readings = at.trials.bothReadings;
+  const outer = readings.deepest;
+  readings.deepest = 0;
   try {
     return expansionEnd(at, dollar, found);
   } finally {
-    enclosing.depth--;
+    readings.deepest = Math.max(outer, readings.deepest);
   }
 }
 
@@ -83,17 +83,17 @@ function isPlainMath(body: string): boolean {
 /**
  * zsh reads any `$(( ))` body that is not plain math as `$( ( … ) )`, and bash does for some, running what the
  * arithmetic reading calls arithmetic. Those commands are walked too; a body that cannot be lexed that way is refused.
- * A body holding a span is never plain, so every `$((` around this one is read both ways, each reading its body
- * again. The count of them is shared with heredoc bodies and backticks, so nesting past `MAX_BOTH_READINGS` is
- * refused wherever it crosses into one, and the readings of one command stay a fixed multiple of its length.
+ * Both readings of a span nested in another are costly to walk, so nesting past `MAX_BOTH_READINGS` is refused, even
+ * through a heredoc body or a backquote, and with an error no arithmetic trial around it reads as a subshell.
  */
 function withSubshellReading(at: Reading, dollar: number, end: number, found: Token[][], primary: Token[][]): number {
   found.push(...primary);
   if (isPlainMath(at.src.slice(dollar + 3, end - 1))) return end;
-  if (at.trials.arithDepth.depth > MAX_BOTH_READINGS) throw tooDeep();
+  const depth = bothReadingsDepth(at.trials, dollar);
+  if (depth > MAX_BOTH_READINGS) throw new NestingLimitError("arithmetic read two ways nests too deep");
   let tokens = at.trials.subshells.get(dollar);
   if (tokens === undefined) {
-    tokens = [lexNested(at.src, dollar + 2, at.trials, at.line).tokens];
+    tokens = [lexSubshellReading(at, dollar)];
     at.trials.subshells.set(dollar, tokens);
   }
   found.push(...tokens);
@@ -102,9 +102,24 @@ function withSubshellReading(at: Reading, dollar: number, end: number, found: To
 
 const MAX_BOTH_READINGS = 4;
 
-/** Not a ParseError, so no arithmetic trial around it reads the refusal as a subshell and lexes it all again. */
-function tooDeep(): NestingLimitError {
-  return new NestingLimitError("arithmetic read two ways nests too deep");
+/** How many spans read two ways nest at `dollar`, itself included, counting those enclosing it in whichever reading met it first. */
+function bothReadingsDepth(trials: ArithTrials, dollar: number): number {
+  const readings = trials.bothReadings;
+  const depth = trials.depths.get(dollar) ?? Math.max(readings.deepest, readings.level) + 1;
+  trials.depths.set(dollar, depth);
+  readings.deepest = Math.max(readings.deepest, depth);
+  return depth;
+}
+
+function lexSubshellReading(at: Reading, dollar: number): Token[] {
+  const readings = at.trials.bothReadings;
+  const outer = readings.level;
+  readings.level = outer + 1;
+  try {
+    return lexNested(at.src, dollar + 2, at.trials, at.line).tokens;
+  } finally {
+    readings.level = outer;
+  }
 }
 
 function arithmeticTrial(at: Reading, dollar: number, trial: Token[][]): number {
