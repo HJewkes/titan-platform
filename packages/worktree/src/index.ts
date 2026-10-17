@@ -25,6 +25,7 @@ export {
   DEFAULT_WORKTREE_BUDGET,
   RECLAIM_GRACE_MS,
   type WorktreeOptions,
+  type ReleaseProof,
 } from "./options.js";
 export { parkWorktree } from "./park.js";
 export { reattachWorktree, recreateWorktree, type WorktreeAllocation, type WorktreeRecord } from "./reattach.js";
