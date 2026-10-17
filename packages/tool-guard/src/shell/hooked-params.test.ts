@@ -4,12 +4,8 @@ import { writesHookedParam } from "./hooked-params.js";
 import { tokenize } from "./lexer.js";
 import type { RedirectToken, WordToken } from "./lexer.js";
 import { ParseError } from "./parse-error.js";
-import { expectLinearTime } from "./test-linearity.js";
+import { expectLinearTime, LINEARITY_TIMEOUT_MS } from "./test-linearity.js";
 import { unwrap } from "./unwrap.js";
-
-// Each check times best-of-15 runs at 20k words, about 0.7 s alone; four loaded CI workers stretch that past the 5 s
-// default (TP-3487). The ratio assertion, not the clock, is what fails on a quadratic walk.
-const LINEARITY_TIMEOUT_MS = 30_000;
 
 const hooked = (line: string) => {
   const tokens = tokenize(line);
