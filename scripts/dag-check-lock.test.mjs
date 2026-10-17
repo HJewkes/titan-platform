@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   LockTimeoutError,
   acquire,
+  appendHold,
   busyLogPath,
   holdLogPath,
   liveHolders,
@@ -605,5 +606,52 @@ describe("the capped indexer child", () => {
     const lines = [];
     expect(workerExitCode({ code: null, signal: "SIGKILL", name: "indexer", heapCapMb: 1024, log: (m) => lines.push(m) })).toBe(2);
     expect(lines).toEqual(["indexer died with SIGKILL"]);
+  });
+});
+
+describe("hold log", () => {
+  function raceAppends(lockDir, count, round) {
+    const start = Date.now() + 400;
+    const script = `import { appendHold } from ${JSON.stringify(MODULE)};
+      while (Date.now() < ${start});
+      appendHold(${JSON.stringify(lockDir)}, { check: "c", exit: 0, slot: Number(process.argv[1]), acquiredAt: ${round} });`;
+    return Promise.all(
+      Array.from({ length: count }, async (_, i) => {
+        const child = spawn(process.execPath, ["--input-type=module", "-e", script, String(i)], { stdio: "inherit" });
+        const [code] = await once(child, "exit");
+        return code;
+      }),
+    );
+  }
+
+  it("keeps every hold when eight releasers append at once", async () => {
+    const lockDir = lockPath();
+    mkdirSync(join(lockDir, ".."), { recursive: true });
+
+    for (let round = 1; round <= 5; round++) {
+      expect(await raceAppends(lockDir, 8, round)).toEqual(Array(8).fill(0));
+      expect(readHolds(lockDir)).toHaveLength(8 * round);
+    }
+  }, 30000);
+
+  it("trims the log to its kept tail on append, keeping the newest holds", () => {
+    const lockDir = lockPath();
+    mkdirSync(join(lockDir, ".."), { recursive: true });
+
+    for (let i = 1; i <= 250; i++) appendHold(lockDir, { check: "c", exit: 0, slot: 0, acquiredAt: i });
+
+    const holds = readHolds(lockDir);
+    expect(holds).toHaveLength(200);
+    expect(holds.at(-1).acquiredAt).toBe(250);
+  });
+
+  it("appends anyway when a stuck lock never frees", () => {
+    const lockDir = lockPath();
+    mkdirSync(join(lockDir, ".."), { recursive: true });
+    mkdirSync(`${holdLogPath(lockDir)}.lock`);
+
+    appendHold(lockDir, { check: "c", exit: 0, slot: 0, acquiredAt: 1 });
+
+    expect(readHolds(lockDir)).toHaveLength(1);
   });
 });
