@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile, chmod, symlink, rm, readdir, stat } from "node:fs/promises";
+import { mkdtemp, writeFile, chmod, symlink, rm, readdir, stat, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +14,19 @@ describe("native quota executable policy", () => {
     const workspace = await createNativeQuotaWorkspace(); roots.push(workspace.cwd);
     expect(await readdir(workspace.cwd)).toEqual([]); await workspace.dispose();
     await expect(stat(workspace.cwd)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+  it("refuses a temporary workspace under a project ancestor before any native process", async () => {
+    const root = await mkdtemp(join(tmpdir(), "quota-parent-project-")); roots.push(root);
+    const checkout = join(root, "checkout"); const scratch = join(checkout, "scratch");
+    await mkdir(scratch, { recursive: true }); await mkdir(join(checkout, ".git"));
+    vi.stubEnv("TMPDIR", scratch);
+    let allocated: Awaited<ReturnType<typeof createNativeQuotaWorkspace>> | undefined;
+    try {
+      await expect(createNativeQuotaWorkspace().then(value => { allocated = value; return value; }))
+        .rejects.toThrow("native quota workspace unsafe");
+    } finally { await allocated?.dispose(); vi.unstubAllEnvs(); }
+    expect(await readdir(scratch)).toEqual([]);
+    expect(runner.exec).not.toHaveBeenCalled();
   });
   it("resolves an explicit executable symlink to a single absolute realpath without running it", async () => {
     const root = await mkdtemp(join(tmpdir(), "quota-executable-")); roots.push(root);

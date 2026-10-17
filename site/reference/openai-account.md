@@ -171,5 +171,19 @@ Both native child operations run in one newly created empty temporary working
 directory, never the caller project or account home. The owned directory is
 removed on success, refusal, cancellation and startup failure (late creation is
 cleaned after cancellation). CODEX_HOME remains the explicit selected account.
-This prevents project-config inheritance; native global account configuration
-and credential-refresh behavior remain native-owned, as described above.
+The default factory canonicalizes the created path and checks every physical
+ancestor using metadata only. Any .git or .codex entry (file, directory or link),
+or unknown/unreadable metadata, refuses and cleans the owned scratch directory.
+This also rejects TMPDIR inside a checkout or project-config tree; custom root
+markers cannot supply project layers without .codex in the pinned native loader.
+Native global account configuration and credential refresh remain native-owned.
+This is a preflight observation, not an OS read boundary: another process can
+change ancestors after the check. No filesystem-race isolation is claimed.
+Injected workspace/process/clock seams are for trusted tests or supervised
+transports; callers must preserve these contracts when overriding them.
+
+The ancestor rule follows pinned [native project discovery and layer paths](https://github.com/openai/codex/blob/092d3acd6bec3e3a14bdc7e7a2810ab628ab759d/codex-rs/config/src/loader/mod.rs#L1492-L1539)
+and [project .codex layers](https://github.com/openai/codex/blob/092d3acd6bec3e3a14bdc7e7a2810ab628ab759d/codex-rs/config/src/loader/mod.rs#L1655-L1705).
+A generic project-root-marker override is not equivalent to disabling project
+config: managed discovery layers take precedence. No unsupported native
+ignore-project flag is assumed, and no account-home configuration is disabled.

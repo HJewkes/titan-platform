@@ -1,17 +1,11 @@
 import { execFile } from "node:child_process";
 import { constants } from "node:fs";
-import { access, mkdtemp, realpath, rm, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { access, realpath, stat } from "node:fs/promises";
 import { delimiter, isAbsolute, join } from "node:path";
 import type { AccountProfile } from "../profile.js";
 import type { NativeQuotaProcessInput } from "./native-transport.js";
 
-export interface NativeQuotaWorkspace { cwd: string; dispose(): Promise<void> }
-/** A fresh empty directory prevents native startup from inheriting a caller project configuration. */
-export async function createNativeQuotaWorkspace(): Promise<NativeQuotaWorkspace> {
-  const cwd = await mkdtemp(join(tmpdir(), "openai-account-native-"));
-  return { cwd, async dispose() { await rm(cwd, { recursive: true, force: true }); } };
-}
+export { createNativeQuotaWorkspace, type NativeQuotaWorkspace } from "./native-workspace.js";
 
 const ENV_KEYS = new Set(["PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "TMP", "TEMP", "SystemRoot", "WINDIR",
   "APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "SSL_CERT_FILE", "SSL_CERT_DIR",
