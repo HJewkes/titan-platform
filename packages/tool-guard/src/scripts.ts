@@ -20,7 +20,7 @@ export interface ScriptTarget {
 }
 
 /** A script run by path whose `#!` line carries options or operands the guard does not follow; the hook denies it unchecked. */
-class OpaqueShebangError extends UnreadableScriptError {
+export class OpaqueShebangError extends UnreadableScriptError {
   constructor() {
     super(null);
     this.message = "a script run by path whose #! line the guard cannot follow";

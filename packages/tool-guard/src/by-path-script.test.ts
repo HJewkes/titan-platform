@@ -46,6 +46,12 @@ async function decision(command: string): Promise<string | null> {
   return stdout === "" ? null : /"permissionDecision":"(\w+)"/.exec(stdout)?.[1] ?? "unknown";
 }
 
+async function denyReason(command: string): Promise<string> {
+  const event = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: home, tool_input: { command } });
+  const { stdout } = await handle(event, {}, port);
+  return (JSON.parse(stdout) as { hookSpecificOutput: { permissionDecisionReason: string } }).hookSpecificOutput.permissionDecisionReason;
+}
+
 describe("a file run by path whose name does not end in .sh", () => {
   it.each(["s", "s.bash", "s.zsh", "s.txt"])("denies a push in the body of ./%s", async (name) => {
     expect(await decision(file(name, `#!/bin/bash\n${PUSH}\n`))).toBe("deny");
@@ -66,6 +72,24 @@ describe("a file run by path whose name does not end in .sh", () => {
     ["an unlisted interpreter", "#!/usr/local/bin/python3"],
   ])("denies an opaque #! line: %s", async (_, first) => {
     expect(await decision(file("o", `${first}\necho ok\n`))).toBe("deny");
+  });
+
+  it("names the #! line, not an unreadable file, as the reason it denies a node script run by path", async () => {
+    const reason = await denyReason(file("tool.mjs", `#!/usr/bin/env node\nconsole.log("ok");\n`));
+    expect(reason).toContain("`#!` line");
+    expect(reason).toContain("`node ./x`");
+    expect(reason).not.toContain("FIFO");
+  });
+
+  it("follows that advice: the same script run as node ./tool.mjs passes clean, and its body is still read", async () => {
+    file("tool.mjs", `#!/usr/bin/env node\nconsole.log("ok");\n`);
+    expect(await decision("node ./tool.mjs")).toBeNull();
+    file("writer.mjs", `#!/usr/bin/env node\nrequire("fs").writeFileSync("${home}/.claude/settings.json", "{}");\n`);
+    expect(await decision("node ./writer.mjs")).toBe("deny");
+  });
+
+  it("still gives the unreadable-file reason for a file the guard cannot read", async () => {
+    expect(await denyReason(file("locked2", `#!/usr/bin/env node\n`, 0o000))).toContain("FIFO");
   });
 
   it("denies a file that only begins with an ELF magic and is larger than the read cap", async () => {
