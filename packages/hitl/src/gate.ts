@@ -9,6 +9,7 @@ import {
   type GateQuestion,
   type GateRecord,
   type GateResolver,
+  type GateRule,
   type GateStore,
 } from "./types.js";
 
@@ -24,6 +25,8 @@ export interface OpenGateOptions<T> {
   summary?: string;
   evidenceRef?: string;
   questions?: GateQuestion[];
+  /** Binds the gate to the authority rule that opened it; see `GateRule`. */
+  rule?: GateRule;
 }
 
 export interface WaitOptions<T> {
@@ -50,6 +53,7 @@ export function openGate<T = unknown>(store: GateStore, options: OpenGateOptions
   if (options.summary !== undefined) input.summary = options.summary;
   if (options.evidenceRef !== undefined) input.evidenceRef = options.evidenceRef;
   if (options.questions !== undefined) input.questions = options.questions;
+  if (options.rule !== undefined) input.rule = options.rule;
   if (options.schema) input.schema = toJSONSchema(options.schema) as Record<string, unknown>;
 
   const record = store.create(input);

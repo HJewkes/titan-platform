@@ -1,5 +1,5 @@
 import type { AuthorityRequest } from "@titan-design/authority";
-import type { GateBrief, GateRecord, GateResolver } from "@titan-design/hitl";
+import type { GateBrief, GateRecord, GateResolver, GateRule } from "@titan-design/hitl";
 import type { ZodType } from "zod";
 
 export type WorkflowStatus = "running" | "paused" | "cancelling" | "recovery_required" | "completed" | "failed" | "cancelled";
@@ -116,6 +116,8 @@ export interface AssistedOptions {
   recordCancel?: boolean;
   /** What the owner reads instead of the prompt; a store with `requireBrief` refuses the gate without one. */
   brief?: GateBrief;
+  /** Binds the gate to an authority rule, so only that rule's resolver classes (and delegates) may answer it. */
+  rule?: GateRule;
 }
 
 /** The signal of an `assisted` result whose gate was cancelled under `recordCancel`. */

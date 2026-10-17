@@ -1,5 +1,5 @@
 import { AuthorityRequest, PolicyTable, ActorClass } from '@titan-design/authority';
-import { GateBrief, GateResolver, GateRecord, GateStore } from '@titan-design/hitl';
+import { GateBrief, GateRule, GateResolver, GateRecord, GateStore } from '@titan-design/hitl';
 import { ZodType } from 'zod';
 import { Db, Migration } from '@titan-design/store-sqlite';
 import { AgentRunConfig, AgentRunDeps, Harness, HarnessRunRequestFor, DurableHarnessDispatcher } from '@titan-design/agent';
@@ -111,6 +111,8 @@ interface AssistedOptions {
     recordCancel?: boolean;
     /** What the owner reads instead of the prompt; a store with `requireBrief` refuses the gate without one. */
     brief?: GateBrief;
+    /** Binds the gate to an authority rule, so only that rule's resolver classes (and delegates) may answer it. */
+    rule?: GateRule;
 }
 /** The signal of an `assisted` result whose gate was cancelled under `recordCancel`. */
 declare const GATE_CANCELLED_SIGNAL = "gate-cancelled";
