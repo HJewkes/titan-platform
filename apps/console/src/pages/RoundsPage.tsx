@@ -50,8 +50,22 @@ function RoundsSection({ title, subtitle, rounds, empty }: { title: string; subt
   return (
     <Section>
       <SectionHeader title={title} subtitle={subtitle} />
-      <SectionContent>{rounds.length === 0 ? <EmptyState title={empty} /> : <RoundsTable rounds={rounds} />}</SectionContent>
+      <SectionContent>{rounds.length === 0 ? <EmptyState title={empty} /> : <RoundsResponsive rounds={rounds} />}</SectionContent>
     </Section>
+  );
+}
+
+/** Four columns cannot share a phone's width, so below `md` each round stacks into a card; the table is untouched above it. */
+function RoundsResponsive({ rounds }: { rounds: readonly RoundSummary[] }): ReactNode {
+  return (
+    <>
+      <div className="hidden md:block">
+        <RoundsTable rounds={rounds} />
+      </div>
+      <div className="md:hidden">
+        <RoundsStack rounds={rounds} />
+      </div>
+    </>
   );
 }
 
@@ -81,14 +95,7 @@ function RoundRow({ round }: { round: RoundSummary }): ReactNode {
   return (
     <TableRow testID={`round-row-${round.id}`}>
       <TableCell>
-        <HStack gap={2} align="center">
-          <Link color="primary" onPress={() => open({ view: "rounds", id: round.id })}>
-            {round.id}
-          </Link>
-          <Pill variant="subtle" size="xs">
-            {!round.valid ? "invalid" : round.design ? "design" : "questions"}
-          </Pill>
-        </HStack>
+        <RoundName round={round} />
       </TableCell>
       <TableCell>
         <UnitOrReason round={round} />
@@ -100,6 +107,46 @@ function RoundRow({ round }: { round: RoundSummary }): ReactNode {
         <DateTime value={round.updatedAt} format="datetime" variant="caption" color="secondary" fallback="unknown" />
       </TableCell>
     </TableRow>
+  );
+}
+
+function RoundsStack({ rounds }: { rounds: readonly RoundSummary[] }): ReactNode {
+  return (
+    <VStack>
+      {rounds.map((round) => (
+        <RoundCard key={round.id} round={round} />
+      ))}
+    </VStack>
+  );
+}
+
+function RoundCard({ round }: { round: RoundSummary }): ReactNode {
+  return (
+    <VStack gap={1} className="border-b border-divider px-inset-md py-inset-sm" testID={`round-card-${round.id}`}>
+      <RoundName round={round} />
+      <UnitOrReason round={round} />
+      <HStack gap={3} align="center" wrap>
+        {round.valid ? (
+          <Typography variant="caption" color="secondary">
+            {round.questions === 1 ? "1 question" : `${round.questions} questions`}
+          </Typography>
+        ) : null}
+        <DateTime value={round.updatedAt} format="datetime" variant="caption" color="secondary" fallback="unknown" />
+      </HStack>
+    </VStack>
+  );
+}
+
+function RoundName({ round }: { round: RoundSummary }): ReactNode {
+  return (
+    <HStack gap={2} align="center">
+      <Link color="primary" onPress={() => open({ view: "rounds", id: round.id })}>
+        {round.id}
+      </Link>
+      <Pill variant="subtle" size="xs">
+        {!round.valid ? "invalid" : round.ship ? "ship" : round.design ? "design" : "questions"}
+      </Pill>
+    </HStack>
   );
 }
 

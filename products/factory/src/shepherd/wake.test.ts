@@ -26,7 +26,8 @@ import { FIX_PROOF_WAKE_STEP, MAX_FIX_PROOF_WAKES } from "./fix-proof-cap.js";
 import { isHeld } from "./held-wake.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
 import type { Warmth } from "./warmth.js";
-import { WAKE_ASK_MS } from "./wake-wait.js";
+import { WAKE_ASK_MS, WAKE_DEFER_MS } from "./wake-wait.js";
+import type { ExitNoticePorts } from "./exit-notice.js";
 
 const REPO = "octo/demo";
 const H1 = fakeSha("head-1");
@@ -90,6 +91,7 @@ interface Scene {
   /** Whether the woken agent's transcript shows a turn since the ask; unset, every wake starts one at once. */
   turnSince?: (agents: ReturnType<typeof fakeAgents>) => boolean;
   advisory?: (repo: string) => boolean;
+  exitNotice?: ExitNoticePorts;
 }
 
 const warmAt = (minutesAgo: number, fill = 50_000): Warmth => ({ lastEventAt: T0 - minutesAgo * MINUTE, fill });
@@ -104,7 +106,7 @@ function wakeStep(scene: Scene = {}) {
   const clock = { now: T0, sleeps: [] as number[] };
   const sleep = async (ms: number) => void (clock.sleeps.push(ms), (clock.now += ms), scene.onSleep?.(ms, fake, agents));
   const store = boundStore(scene.registered === null ? undefined : (scene.registered ?? registration));
-  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock.now, sleep, pollMs: 1_000, agentChatBin: scene.agentChatBin ?? "/opt/bin/agent-chat", ...(scene.agentChatConfigDir !== undefined && { agentChatConfigDir: scene.agentChatConfigDir }), ...(scene.advisory && { advisory: scene.advisory }) };
+  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock.now, sleep, pollMs: 1_000, agentChatBin: scene.agentChatBin ?? "/opt/bin/agent-chat", ...(scene.agentChatConfigDir !== undefined && { agentChatConfigDir: scene.agentChatConfigDir }), ...(scene.advisory && { advisory: scene.advisory }), ...(scene.exitNotice && { exitNotice: scene.exitNotice }) };
   const turnSince = async () => scene.turnSince?.(agents) ?? true;
   const wiring: WakeWiring = { turnSince, readWarmth: async (path) => scene.warmth?.[path], checkoutFor: scene.checkoutFor ?? (() => MAIN_CHECKOUT), ...(scene.home !== undefined && { home: scene.home }), ...(!scene.noAgents && { agents }) };
   const route = wakeRoutes(deps, wiring).find((candidate) => candidate.match === "sh-wake-implementer")!;
@@ -509,14 +511,29 @@ describe("sh-wake-implementer: when the broker cannot act", () => {
     expect(scene.clock.now - T0).toBeLessThan(WAKE_ASK_MS + 2_000);
   });
 
-  it("fails the wake within 5 minutes when the spawn gate defers every resume, naming the gate but not its words", async () => {
+  it("fails the wake within 30 minutes when the spawn gate defers every resume, naming the gate but not its words", async () => {
     const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) } });
     scene.agents.resume = async () => Promise.reject(new SpawnDeferred(LEAKY_MESSAGE));
 
     const { result } = await scene.run("ci-red");
 
-    expect(result).toEqual({ kind: "unhandled", reason: "impl-a's resume took no effect within 5 minutes: the spawn gate deferred it" });
+    expect(result).toEqual({ kind: "unhandled", reason: "impl-a's resume took no effect within 30 minutes: the spawn gate deferred it" });
+    expect(scene.clock.now - T0).toBeGreaterThanOrEqual(WAKE_DEFER_MS);
+    expect(scene.clock.now - T0).toBeLessThan(WAKE_DEFER_MS + 2_000);
     expectNoLeak(result);
+  });
+
+  it("resumes a finished implementer of another account with the CI failure once the spawn gate admits it after 8 minutes of low memory", async () => {
+    const scene = wakeStep({ rows: [row("impl-a", { status: "finished", account: "personal" })], warmth: { "/transcripts/impl-a.jsonl": warmAt(1) } });
+    scene.fake.setRuns(H1, [successRun("dag-check", 11, undefined, "failure")]);
+    const resume = scene.agents.resume;
+    scene.agents.resume = async (...args) => (scene.clock.now - T0 < 8 * MINUTE ? Promise.reject(new SpawnDeferred("free memory percent 17 is past the limit 20")) : resume(...args));
+
+    const { result } = await scene.run("ci-red", { failing: [{ name: "dag-check" }] });
+
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "resume", sessionId: "s-impl-a", askedAt: expect.any(Number) });
+    expect(scene.agents.asked.map((ask) => [ask.verb, ask.name])).toEqual([["resume", "impl-a"]]);
+    expect(scene.agents.asked[0]!.message).toContain(`CI failed at head ${H1}`);
   });
 
   it("stays woken when a resume that timed out shows the agent live on the next roster read", async () => {
@@ -623,6 +640,63 @@ describe("sh-wake-implementer: when the broker cannot act", () => {
     const { result } = await wakeStep({ registered: null }).run("review", fixFirst("fix it"));
 
     expect(result).toEqual({ kind: "unhandled", reason: "run run-1 has no shepherd registration" });
+  });
+});
+
+describe("sh-wake-implementer: a wake no agent took tells the lineage's spawner", () => {
+  function noticePorts() {
+    const sent: { seat: string; text: string }[] = [];
+    const ports: ExitNoticePorts = { seatFor: () => "demo-seat", lastReport: async () => undefined, send: async (seat, text) => void sent.push({ seat, text }) };
+    return { sent, ports };
+  }
+  const deferred = () => Promise.reject(new SpawnDeferred(LEAKY_MESSAGE));
+
+  it("tells the spawner of a finished implementer the gate deferred past its deadline why, and whom to resume", async () => {
+    const { sent, ports } = noticePorts();
+    const scene = wakeStep({ rows: [row("impl-a", { spawnedBy: "demo-coord" })], warmth: { "/transcripts/impl-a.jsonl": warmAt(1) }, exitNotice: ports });
+    scene.agents.resume = deferred;
+
+    const { result } = await scene.run("ci-red");
+
+    const reason = "impl-a's resume took no effect within 30 minutes: the spawn gate deferred it";
+    expect(result).toEqual({ kind: "unhandled", reason, notice: { sent: true, seat: "demo-coord", detail: "told demo-coord" } });
+    expect(sent.map((notice) => notice.seat)).toEqual(["demo-coord"]);
+    expect(sent[0]!.text).toContain(`no agent took the ci-red wake, so nothing is fixing it: ${reason}.`);
+    expect(sent[0]!.text).toContain("Next: resume impl-a with the failure, start a successor on branch feat/demo-fix");
+    expectNoLeak(sent);
+  });
+
+  it("records that no notice went out when only the human spawned the lineage", async () => {
+    const { sent, ports } = noticePorts();
+    const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) }, exitNotice: ports });
+    scene.agents.resume = deferred;
+
+    const { result } = await scene.run("ci-red");
+
+    expect(result).toMatchObject({ kind: "unhandled", notice: { sent: false, detail: "no session spawned the lineage" } });
+    expect(sent).toEqual([]);
+  });
+
+  it("records a failed notice by its error class, and the step still succeeds", async () => {
+    const ports: ExitNoticePorts = { seatFor: () => undefined, lastReport: async () => undefined, send: async () => Promise.reject(new DispatchError(LEAKY_MESSAGE)) };
+    const scene = wakeStep({ rows: [row("impl-a", { spawnedBy: "demo-coord" })], warmth: { "/transcripts/impl-a.jsonl": warmAt(1) }, exitNotice: ports });
+    scene.agents.resume = deferred;
+
+    const { outcome, result } = await scene.run("ci-red");
+
+    expect(outcome.ok).toBe(true);
+    expect(result).toMatchObject({ kind: "unhandled", notice: { sent: false, detail: "the spawner notice failed: DispatchError" } });
+  });
+
+  it("tells no spawner when an agent took the wake, or when a held send-back goes to its own route", async () => {
+    const { sent, ports } = noticePorts();
+    const woken = wakeStep({ rows: [row("impl-a", { spawnedBy: "demo-coord" })], warmth: { "/transcripts/impl-a.jsonl": warmAt(1) }, exitNotice: ports });
+    const held = wakeStep({ rows: [row("impl-a", { spawnedBy: "demo-coord" })], exitNotice: ports });
+    held.agents.fail.spawn = [new DispatchError("agent-chat refused the spawn")];
+
+    expect((await woken.run("ci-red")).result).toMatchObject({ kind: "woken" });
+    expect((await held.run("review", fixFirst("fix it"))).result).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1" } });
+    expect(sent).toEqual([]);
   });
 });
 

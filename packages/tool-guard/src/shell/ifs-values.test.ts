@@ -80,8 +80,6 @@ describe("lineIfsValues on IFS writes it cannot resolve to a literal", () => {
     ["read", "read IFS <<< ,"],
     ["read with no input", "read IFS"],
     ["mapfile", "mapfile -t IFS <<< ,"],
-    ["a := default", ": ${IFS:=,}"],
-    ["an = default", ": ${IFS=,}"],
     ["arithmetic", ": $((IFS=1))"],
     ["select", "select IFS in ,; do :; done"],
     ["a nameref", "declare -n r=IFS; r=,"],
@@ -476,5 +474,33 @@ describe("lineIfsValues on an indirect assigning expansion", () => {
     ["a default in an unquoted heredoc body", `${k}cat <<EOF\n\${!k:=,}\nEOF`],
   ])("is refused by the lexer before it is read: %s", (_how, line) => {
     expect(() => values(line)).toThrow(ParseError);
+  });
+});
+
+describe("lineIfsValues on a shell named by a variant or a path (TP-3183)", () => {
+  it.each([
+    ["rzsh", "zsh"],
+    ["rbash", "bash"],
+    ["rksh", "ksh"],
+    ["zsh5", "zsh"],
+    ["bash5.2", "bash"],
+    ["/bin/rzsh", "zsh"],
+  ])("reads the -c text of %s as %s does", (variant, base) => {
+    const text = "-c 'IFS=,; x'";
+    expect(values(`${variant} ${text}`)).toEqual([DEFAULT_IFS, ","]);
+    expect(values(`${variant} ${text}`)).toEqual(values(`${base} ${text}`));
+  });
+
+  it.each([
+    ["rzsh", "zsh"],
+    ["rbash", "bash"],
+    ["rksh", "ksh"],
+    ["zsh5", "zsh"],
+    ["bash5.2", "bash"],
+    ["/bin/rzsh", "zsh"],
+  ])("gives up on the stdin of %s as it does for %s", (variant, base) => {
+    const line = `${variant} <<< "$v"`;
+    expect(values(line)).toBeNull();
+    expect(values(line)).toEqual(values(`${base} <<< "$v"`));
   });
 });

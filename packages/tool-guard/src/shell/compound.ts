@@ -107,9 +107,15 @@ export function refuseRedirect(s: LexState, op: string): void {
 }
 
 /** Whether the character at `s.i` sits directly in a `[[` opened at a bare command start, where `&&` and `||` join tests. */
-export function inConditional(s: LexState): boolean {
+export function inJoiningConditional(s: LexState): boolean {
   regexDepth(s);
   return s.trials.joinsConditional && s.regex.joinsAt !== -1 && s.depth === s.regex.joinsAt;
+}
+
+/** Whether the tokens so far end inside a `[[ ]]`, where `<` and `>` compare strings. */
+export function inConditional(s: LexState): boolean {
+  regexDepth(s);
+  return s.regex.conditionalAt !== -1;
 }
 
 /** Whether the tokens so far leave a `case` without its `esac`. */

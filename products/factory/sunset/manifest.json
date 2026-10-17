@@ -197,6 +197,18 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/base-moved.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/base-moved.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/behind.ts",
    "fate": "delete",
    "task": "D-M3-19",
@@ -2857,6 +2869,34 @@
    "task": "D-M3-19",
    "milestone": "M3",
    "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/visual-delivery-sweep.test.ts",
+   "fate": "delete",
+   "task": "D-M7-01",
+   "milestone": "M7"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/visual-delivery-sweep.ts",
+   "fate": "delete",
+   "task": "D-M7-01",
+   "milestone": "M7"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/visual-delivery.test.ts",
+   "fate": "delete",
+   "task": "D-M7-01",
+   "milestone": "M7"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/visual-delivery.ts",
+   "fate": "delete",
+   "task": "D-M7-01",
+   "milestone": "M7"
   },
   {
    "repo": "titan-platform",

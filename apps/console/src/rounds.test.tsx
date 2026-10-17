@@ -21,6 +21,7 @@ async function recorded(): Promise<Snapshot> {
     calls: {
       [snapshotKey("rounds.list", {})]: successEnvelope(await listRounds(source)),
       ...Object.fromEntries(rounds),
+      [snapshotKey("rounds.frames", { id: "orbit-retry-r1" })]: successEnvelope({ frames: [] }),
       [snapshotKey("rounds.get", { id: "nowhere" })]: errorEnvelope('No round named "nowhere"', 66),
     },
   };
@@ -52,7 +53,7 @@ describe("the rounds list", () => {
     await renderConsole("#/rounds");
     await screen.findByText("Open rounds");
     const rows = screen.getAllByTestId(/^round-row-/).map((row) => row.getAttribute("data-testid"));
-    expect(rows).toHaveLength(7);
+    expect(rows).toHaveLength(8);
     expect(rows.at(-1)).toBe("round-row-kiln-schedule-r1");
     expect(screen.getByText("Sent rounds")).toBeTruthy();
   });
@@ -63,6 +64,27 @@ describe("the rounds list", () => {
     expect(within(legacy).getByText("invalid")).toBeTruthy();
     expect(within(legacy).getByText(/titan-review\/round@1 predates the review contract/)).toBeTruthy();
     expect(within(screen.getByTestId("round-row-unreadable-r1")).getByText("round.json is not JSON")).toBeTruthy();
+  });
+
+  it("stacks each round into a phone card that reads its id, status and question count as text", async () => {
+    await renderConsole("#/rounds");
+    const card = await screen.findByTestId("round-card-kiln-schedule-r2");
+    expect(card.closest(".md\\:hidden")).toBeTruthy();
+    expect(within(card).getByRole("link").textContent).toBe("kiln-schedule-r2");
+    expect(within(card).getByText("questions")).toBeTruthy();
+    expect(within(card).getByText("4 questions")).toBeTruthy();
+    expect(within(screen.getByTestId("round-card-lantern-cards-r1")).getByText("1 question")).toBeTruthy();
+    expect(within(screen.getByTestId("round-card-legacy-r1")).getByText("invalid")).toBeTruthy();
+    expect(screen.getAllByTestId(/^round-card-/)).toHaveLength(screen.getAllByTestId(/^round-row-/).length);
+  });
+
+  it("keeps the four-column table for wide screens", async () => {
+    await renderConsole("#/rounds");
+    const row = await screen.findByTestId("round-row-kiln-schedule-r2");
+    expect(row.closest(".hidden.md\\:block")).toBeTruthy();
+    expect(within(row).getByText("kiln-schedule · round 2")).toBeTruthy();
+    expect(within(row).getByText("4")).toBeTruthy();
+    expect(screen.getAllByText("Questions").length).toBeGreaterThan(0);
   });
 
   it("names the rounds dir and the import command when there are no rounds", async () => {
@@ -130,10 +152,12 @@ describe("a question round", () => {
     expect(isChecked(choice("ramp-default", "1 Staged climb"))).toBe(false);
   });
 
-  it("shows the recommendation in a round that shows them, with the PR a ship question binds", async () => {
+  it("shows a ship question with no images as the Ship view, its recommendation shown and no image section", async () => {
     await renderConsole("#/rounds/orbit-retry-r1");
     expect(await screen.findByText("Recommended: Ship (90%, fixture-agent)")).toBeTruthy();
     expect(screen.getByText("Ships example/orbit-relay#12 at 0123456")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Ship" })).toBeTruthy();
+    expect(screen.queryByText(/^Changed images/)).toBeNull();
   });
 });
 

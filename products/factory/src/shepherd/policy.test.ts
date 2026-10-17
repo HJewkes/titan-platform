@@ -306,6 +306,27 @@ describe("shepherdGatePolicy under merge:auto", () => {
   });
 });
 
+describe("merge evidence read on another base than the one being decided", () => {
+  const onBase = (baseRef: string): MergeEvidence => {
+    const evidence = evidenceAt(HEAD);
+    return { ...evidence, record: { ...evidence.record, baseRef } };
+  };
+
+  it("gates a head MRG-AU-RV would allow when its evidence was read on the parent branch and main is being decided", () => {
+    const options = shepherdLandOptions(() => effective("acme/gizmos"), reviewed(onBase("agent-chat/parent")), undefined, () => "main");
+
+    const decision = options.policy.decide("merge", { headSha: HEAD });
+
+    expect(decision).toMatchObject({ outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "no-facts" } });
+    expect(decision.reason).toContain("read on base agent-chat/parent, not on main");
+  });
+
+  it("allows when the evidence was read on the base being decided, or no base was checked", () => {
+    expect(shepherdLandOptions(() => effective("acme/gizmos"), reviewed(onBase("main")), undefined, () => "main").policy.decide("merge", { headSha: HEAD }).outcome).toBe("allow");
+    expect(shepherdLandOptions(() => effective("acme/gizmos"), reviewed(onBase("agent-chat/parent"))).policy.decide("merge", { headSha: HEAD }).outcome).toBe("allow");
+  });
+});
+
 describe("a seat with visual paths", () => {
   const NEXT_HEAD = "f".repeat(40);
   const decideAt = (head: string, changedPaths: string[], requested?: unknown) =>

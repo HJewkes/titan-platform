@@ -84,11 +84,20 @@ export interface GateResolver {
 
 export type GateAuthorization = { allowed: true } | { allowed: false; reason: string };
 
+/** Which check let a resolver past the default refusal: an owner class, else the first widening that applied. */
+export type GateAdmittedBy = "owner-class" | "allowance" | "evidence" | "delegate";
+
+/** What the store knows about how it admitted the resolver, handed to `authorize` as a third argument. */
+export interface GateAdmission {
+  admittedBy: GateAdmittedBy;
+}
+
 /**
  * Runs after the default resolver-class check, so it can refuse a resolver but
- * never admit one the default refused. Must return synchronously.
+ * never admit one the default refused. Must return synchronously. The optional
+ * `admission` only informs a refusal; a two-argument authorizer is unaffected.
  */
-export type GateAuthorize = (gate: Readonly<GateRecord>, resolver: Readonly<GateResolver>) => GateAuthorization;
+export type GateAuthorize = (gate: Readonly<GateRecord>, resolver: Readonly<GateResolver>, admission?: Readonly<GateAdmission>) => GateAuthorization;
 
 /**
  * One answer a non-owner class may give, declared by the product when it builds the store.

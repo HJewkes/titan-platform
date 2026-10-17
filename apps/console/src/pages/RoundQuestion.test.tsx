@@ -2,7 +2,7 @@
 import { useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { Question } from "@titan-design/review-schema";
+import type { Question } from "../../server/round-schema.js";
 import { RoundQuestion, chooseIn, choiceForKey, choicesOf, type QuestionAnswer } from "./RoundQuestion.js";
 
 afterEach(cleanup);

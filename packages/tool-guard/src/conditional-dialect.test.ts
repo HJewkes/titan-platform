@@ -3,7 +3,9 @@ import { classify } from "./classify.js";
 import { nodeContext } from "./context.js";
 
 const HOME = "/home/you";
-const ctx = nodeContext(HOME, { realpath: (p) => p, readHead: () => "feat/x", isFile: () => false });
+// A sourced `./f` exists and is harmless, so the rows that source it reach the `[[` rather than stopping at an unreadable script.
+const SOURCED = "/home/you/projects/app/f";
+const ctx = nodeContext(HOME, { realpath: (p) => p, readHead: (p) => (p === SOURCED ? ":\n" : "feat/x"), isFile: (p) => p === SOURCED });
 const PUSH = "git push origin HEAD:main";
 const event = (command: string) => ({ kind: "bash" as const, command, cwd: "/home/you/projects/app", toolName: "Bash", sessionId: "s", toolUseId: "t" });
 const spellings = (command: string) => classify(event(command), ctx).map((a) => a.spelling);

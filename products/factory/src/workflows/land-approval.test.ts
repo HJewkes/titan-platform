@@ -2,7 +2,7 @@ import { fakeSha, type FakeGitHub } from "@titan-design/github";
 import { GatePayloadInvalid, GateResolverRefused, type GateResolver } from "@titan-design/hitl";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineWorkflow } from "../definition.js";
-import { gateEverything } from "../gate-policy.js";
+import { gateEverything, type GatePolicy, type PolicyRule } from "../gate-policy.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened, landScenario } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
@@ -142,5 +142,28 @@ describe("approve-merge send-back", () => {
 
     expect(() => host.gates.resolve(gate, { decision: "send-back", headSha: H1, note: "rename the flag" }, COORDINATOR)).toThrow(GateResolverRefused);
     expect(host.gates.get(gate)?.status).toBe("pending");
+  });
+});
+
+describe("the rule land stamps on approve-merge", () => {
+  /** Opens land's own approve-merge gate under a policy that gates on `rule`, and returns the rule the store kept. */
+  async function storedRule(rule: PolicyRule) {
+    const policy: GatePolicy = { decide: () => ({ outcome: "gate", rule, reason: "synthetic reason" }) };
+    const scenario = landScenario({ policy });
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [scenario.workflow], routes: scenario.routes, gatePollMs: 5 });
+    hosts.push(host);
+    const gate = gateId(host.runtime.start("land-test"), "approve-merge");
+    await gateOpened(host, gate);
+    return host.gates.get(gate)?.rule;
+  }
+
+  it("is the table.json row for an authority gate, and none for release or factory-local gates or an authority row that does not gate", async () => {
+    const rule = (table: string, rowId: string): PolicyRule => ({ table, rowId, version: 1 });
+
+    const mrgAu = await storedRule(rule("authority", "MRG-AU"));
+    const unstamped = [rule("shepherd-release", "owner-gate"), rule("shepherd-merge-guard", "no-facts"), rule("shepherd-route", "failed-rounds"), rule("factory-default", "gate-all"), rule("shepherd-seat", "owner-gate"), rule("authority", "none")];
+
+    expect(mrgAu).toEqual({ table: "F5", version: "1.0.0", ruleId: "MRG-AU", resolvers: ["owner-terminal", "owner-remote"], delegates: ["coordinator"] });
+    for (const policyRule of unstamped) expect(await storedRule(policyRule), `${policyRule.table}/${policyRule.rowId}`).toBeUndefined();
   });
 });

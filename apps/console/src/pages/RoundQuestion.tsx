@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from "react";
 import { Alert, Card, CardContent, Checkbox, CheckboxGroup, HStack, Pill, Radio, RadioGroup, Typography, VStack } from "@titan-design/react-ui";
-import type { Question } from "@titan-design/review-schema";
+import type { Question } from "../../server/round-schema.js";
 
 /** A pick is held in the page only; nothing here sends it anywhere. */
 export type QuestionAnswer = { pick: string } | { picks: string[] } | { value: number };
@@ -123,7 +123,8 @@ function Choices({ question, answer, onChoose }: { question: Question; answer: Q
 
 const answerText = (answer: string | number | readonly string[]): string => (Array.isArray(answer) ? answer.join(", ") : String(answer));
 
-function QuestionFacts({ question }: { question: Question }): ReactNode {
+/** A question's sign-off, merge binding and any recommendation the server sent. */
+export function QuestionFacts({ question }: { question: Question }): ReactNode {
   const recommendation = question.kind === "text" ? undefined : question.recommendation;
   const merge = question.kind === "pick-one" ? question.merge : undefined;
   const signsOff = question.kind === "pick-one" ? question.signsOff : undefined;

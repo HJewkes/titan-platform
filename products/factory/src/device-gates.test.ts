@@ -137,12 +137,28 @@ describe("a coordinator answer to a device gate", () => {
     expect(store.get(gate.id)?.status).toBe("pending");
   });
 
-  it("is refused where a gate rule names the coordinator a delegate", () => {
-    const store = new MemoryGateStore({ authorize: deviceGateAuthorize });
-    const rule = { table: "example-table", version: "1", ruleId: "merge-approval", resolvers: ["owner-terminal" as const], delegates: ["coordinator" as const] };
-    const gate = store.create({ id: "run-1/approve-merge", prompt: "Merge?", rule });
+});
 
-    expect(() => store.resolve(gate.id, { decision: "merge" }, resolverOf("coordinator"))).toThrow(/admit no rule delegate/);
+describe("a rule delegate on a gate that is not a device gate", () => {
+  const rule = { table: "example-table", version: "1", ruleId: "merge-approval", resolvers: ["owner-terminal" as const], delegates: ["coordinator" as const] };
+  const store = () => new MemoryGateStore({ authorize: deviceGateAuthorize, evidencePolicy: (_gate, _resolver, _payload, evidence) => evidence.kind === "example-proof" });
+
+  it("is refused when only the rule names it", () => {
+    const gates = store();
+    const gate = gates.create({ id: "run-1/approve-merge", prompt: "Merge?", rule });
+
+    expect(() => gates.resolve(gate.id, { decision: "merge" }, resolverOf("coordinator"))).toThrow(/only on evidence or an allowance/);
+
+    expect(gates.get(gate.id)?.status).toBe("pending");
+  });
+
+  it("resolves when the evidence policy admitted it", () => {
+    const gates = store();
+    const gate = gates.create({ id: "run-1/approve-merge", prompt: "Merge?", rule });
+
+    gates.resolve(gate.id, { decision: "merge" }, resolverOf("coordinator"), { kind: "example-proof" });
+
+    expect(gates.get(gate.id)?.status).toBe("resolved");
   });
 });
 

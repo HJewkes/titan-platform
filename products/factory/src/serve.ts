@@ -32,6 +32,7 @@ import type { ShepherdServices } from "./shepherd/services.js";
 import { openFramedHost, type FramedHostOptions } from "./shepherd/frames.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 import { startHeadMovedSweep, type HeadMovedSweepOptions } from "./shepherd/head-moved-sweep.js";
+import { startVisualDeliverySweep, visualDeliveryHealth } from "./shepherd/visual-delivery-sweep.js";
 import { recheckHeld, resyncShepherd, supersedeTransientGates } from "./shepherd/resync.js";
 import { markRevertedRuns } from "./shepherd/reverts.js";
 import type { FreezeStoreRef } from "./shepherd/freeze.js";
@@ -133,10 +134,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   await sweep.tick();
   const goneSweep = services && startSweep(() => endGone(host, services, log, thaws.thawed), options.goneSweepMs ?? GONE_SWEEP_MS, "merged-elsewhere sweep", log);
   const fixerSweep = services?.freeze && options.fixerRetire && startSweep(() => sweepFixers(options.fixerRetire!, services.freeze!, log), FIXER_RETIRE_MS, "ended main-red fixer sweep", log);
-  thaws.onThaw(() => {
-    void goneSweep?.tick();
-    void fixerSweep?.tick();
-  });
+  thaws.onThaw(() => [goneSweep, fixerSweep].forEach((swept) => void swept?.tick()));
   await goneSweep?.tick();
   const headMovedSweep = services && (await startHeadMovedSweep(host, services, options, log));
   const releaseSweep = services && startSweep(() => sweepReleases(host, services, log), options.releaseSweepMs ?? RELEASE_SWEEP_MS, "version packages sweep", log);
@@ -151,7 +149,8 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const busy = () => busyRuns(host.runtime.list(["running"]), routedRunner(options.routes).routeFor, heldRun(services)).length;
   const pacerSweep = startDeployPacer(options.deployPacer, { now: options.now ?? Date.now, runningSha: build.sha, busy }, log);
   const notifySweep = notify?.start();
-  const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep, notifySweep];
+  const deliverySweep = startVisualDeliverySweep(host, services, log);
+  const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep, notifySweep, deliverySweep];
   const close = () => closeServer({ sweeps, watches: [thaws, frames, loopDelay], mainWatch, daemon, unbindCarry, host }, log, options.shutdownGraceMs ?? SHUTDOWN_SWEEP_GRACE_MS);
   return { port: daemon.port, host, hub: daemon.hub, close: () => (closing ??= close()) };
 }
@@ -239,6 +238,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
       ...(options.routes.shepherd?.reviewSlots && { reviewSlots: options.routes.shepherd.reviewSlots() }),
       ...deployPendingHealth(options.deployPacer),
       ...(notify && { gateNotify: notify.status() }),
+      ...visualDeliveryHealth(options.routes.shepherd),
       ownerKeys: proofs.keys.ok ? { count: proofs.keys.ids.length, ids: proofs.keys.ids } : { count: 0, refusal: proofs.keys.refusal },
       ...startHealth(start(), options),
     }),
@@ -323,22 +323,22 @@ async function sweepThawed(host: FactoryHost, services: ShepherdServices, log: L
 }
 
 interface ThawWatch {
-  /** Repos thawed since the sweep last read them. */
+  /** Repos thawed, or with a run's hold eased, since the sweep last read them. */
   thawed: Set<string>;
-  /** Runs `start` on each later thaw, outside the thaw's own call, so a gate the freeze caused is not left waiting out the sweep interval. */
+  /** Runs `start` on each later thaw or eased hold, outside its own call, so a gate the freeze caused is not left waiting out the sweep interval. */
   onThaw(start: () => void): void;
   stop(): void;
 }
 
-/** Watches from before resync and the first adoption, so a thaw any run causes then is still swept. */
+/** Watches from before resync and the first adoption, so a thaw then is still swept; a thaw keeps an owner hold's gate, so a hold easing here queues its repo too. */
 function watchThaws(services: ShepherdServices | undefined): ThawWatch {
   const thawed = new Set<string>();
   let start = (): void => undefined;
-  const stop = services?.freeze?.onThaw((repo) => {
-    thawed.add(repo);
-    queueMicrotask(() => start());
-  });
-  return { thawed, onThaw: (next) => void (start = next), stop: () => stop?.() };
+  const queue = (repo: string): void => void (thawed.add(repo), queueMicrotask(() => start()));
+  const stopThaws = services?.freeze?.onThaw(queue);
+  const store: ShepherdServices["store"] | undefined = services?.store;
+  const stopReleases = store?.onChange?.((registration, change) => void (change === "hold-eased" && queue(registration.repo)));
+  return { thawed, onThaw: (next) => void (start = next), stop: () => (stopThaws?.(), stopReleases?.()) };
 }
 
 /** Runs before the first adoption, so no run whose PR left Shepherd is driven again; a failure is logged and startup goes on. */

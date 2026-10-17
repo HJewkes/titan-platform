@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { UnreadableScriptError } from "./shell/unsure-readings.js";
 import type { ClassifyContext } from "./types.js";
 
 /** The read-only filesystem calls the hook makes. Nothing here, or anywhere in this package, writes a file. */
@@ -42,17 +43,44 @@ export function foldsCaseOn(platform: string): boolean {
   return platform === "darwin" || platform === "win32";
 }
 
-/** The classifier's context over a read-only filesystem. Every port returns null rather than throwing. */
+/** The classifier's context over a read-only filesystem. Every port but `readScript` returns null rather than throwing. */
 export function nodeContext(home: string, rfs: ReadFs = NODE_FS): ClassifyContext {
   const realHome = attempt(() => rfs.realpath(home));
   return {
     home,
     readLink: (p) => attempt(() => inHomeSpelling(rfs.realpath(p), home, realHome)),
     readHead: (dir) => attempt(() => branchOf(dir, rfs)),
-    // A regular file only: opening a FIFO such as `/dev/stdin` would block the hook.
-    readScript: (p) => attempt(() => (rfs.isFile(p) ? rfs.readHead(p, SCRIPT_CAP) : null)),
+    readScript: (p) => wholeScript(p, rfs),
     ...(rfs.foldsCase ? { foldCase: true } : {}),
   };
+}
+
+/**
+ * A script's whole text, read one byte past the cap so a longer file shows as cut. A regular file only: opening a FIFO
+ * such as `/dev/stdin` would block the hook. Decoding never shrinks text, so a cut file always measures past the cap.
+ * Any failure but a missing file, a stat's `EACCES` or `ELOOP` too, reads as a file that is there and cannot be read. A
+ * cut file's head is the cap's bytes, as a reading that needs no more always read it.
+ */
+function wholeScript(p: string, rfs: ReadFs): string {
+  if (p === "/dev/null") return "";
+  let text: string;
+  try {
+    if (!rfs.isFile(p)) throw new UnreadableScriptError(null, absent(p, rfs));
+    text = rfs.readHead(p, SCRIPT_CAP + 1);
+  } catch (error) {
+    throw error instanceof UnreadableScriptError ? error : new UnreadableScriptError(null);
+  }
+  if (Buffer.byteLength(text) > SCRIPT_CAP) throw new UnreadableScriptError(attempt(() => rfs.readHead(p, SCRIPT_CAP)));
+  return text;
+}
+
+function absent(p: string, rfs: ReadFs): boolean {
+  try {
+    rfs.realpath(p);
+    return false;
+  } catch (error) {
+    return error instanceof Error && "code" in error && error.code === "ENOENT";
+  }
 }
 
 /** A home reached through a symlink (`/var` on macOS) resolves outside it; map it back so guarded `~/` paths still match. */

@@ -104,12 +104,34 @@ describe("importRound copies a round@2 dir into the rounds dir", () => {
     expect(read.sha256).toBe(sha256Of(await readFile(path.join(source, "frames", "diff", "card-light.png"))));
   });
 
+  it("copies a frame's after file and serves it through rounds.frame", async () => {
+    const afterRel = "frames/after/card-light.png";
+    const afterBytes = await readFile(path.join(source, "frames", "card-dark.png"));
+    await mkdir(path.join(source, "frames", "after"));
+    await writeFile(path.join(source, afterRel), afterBytes);
+    await editFrames((_frames, light) => (light.after = { file: afterRel, sha256: sha256Of(afterBytes) }));
+
+    await runImport();
+
+    expect(await readFile(path.join(roundsDir, ID, afterRel))).toEqual(afterBytes);
+    expect((await getFrame({ dir: roundsDir }, ID, "card-light", "after")).sha256).toBe(sha256Of(afterBytes));
+  });
+
   it("imports a round with no frames index and no feedback", async () => {
     await rm(path.join(source, "frames"), { recursive: true });
     await rm(path.join(source, "feedback.json"));
 
     expect(await runImport()).toEqual({ id: ID, created: true, frames: 0, feedback: "none" });
     expect((await listRounds({ dir: roundsDir })).rounds).toEqual([expect.objectContaining({ id: ID, valid: true, status: "open" })]);
+  });
+});
+
+describe("importRound reads review-schema 0.3", () => {
+  it("imports a CI packet round that only review-schema 0.3 reads", async () => {
+    const packet = path.join(FIXTURE_ROUNDS.dir, "td920-packet-r1");
+
+    expect(await runImport(packet)).toMatchObject({ created: true, frames: 0, feedback: "none" });
+    expect((await listRounds({ dir: roundsDir })).rounds).toEqual([expect.objectContaining({ valid: true, unit: "widgets-pr42-a1a1a1a1a1a1" })]);
   });
 });
 
