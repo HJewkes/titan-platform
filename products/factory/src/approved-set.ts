@@ -79,7 +79,8 @@ export function approvedSetOf({ packet: bytes, packetSha, fromHead, after }: Set
     files.push({ path: image.path, key: image.key, sha256: read.sha256, blob: read.blob });
   }
   const removed = packet.images.filter((image) => image.change === "removed").map((image) => image.path);
-  const set = { packetSha, packetId: packet.packetId, ciRunId: packet.ci.runId, fromHead, files: files.sort((a, b) => byPath(a.path, b.path)), removed: removed.sort(byPath), sidePaths: [] };
+  files.sort((a, b) => byPath(a.path, b.path));
+  const set = ApprovedSetSchema.parse({ packetSha, packetId: packet.packetId, ciRunId: packet.ci.runId, fromHead, files, removed: removed.sort(byPath), sidePaths: [] });
   return { set, layers: [...new Set(packet.images.map((image) => image.layer))].sort() };
 }
 
