@@ -15,6 +15,8 @@ interface ArithTrials {
         left: number;
     };
     nesting: Nesting;
+    /** Whether a `[[` at a bare command start joins its `&&` and `||`, which only a text read as bash, zsh or ksh may do. */
+    joinsConditional: boolean;
 }
 
 /** A `$NAME` or `${NAME}` reference; `start` and `end` index into the word's `value`. */

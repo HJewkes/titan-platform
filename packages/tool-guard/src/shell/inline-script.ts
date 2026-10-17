@@ -10,6 +10,7 @@ import type { Wrapping } from "./commands.js";
 import type { Unwrapped } from "./unwrap.js";
 
 export const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
+const CONDITIONAL_SHELLS = new Set(["bash", "zsh", "ksh"]);
 
 /** Shell text a command runs, and how it reaches the commands in it. */
 export interface Inline {
@@ -17,6 +18,8 @@ export interface Inline {
   wrap: Wrapping;
   /** The descriptor a shell read the texts from, whose rest its commands do not inherit; unset for `-c` and `eval`. */
   fd?: number;
+  /** Whether the shell reading the texts is one whose `[[` is a reserved word; `sh`, `dash` and any runner not known to be bash, zsh or ksh run it as a command. */
+  joinsConditional: boolean;
 }
 
 /**
@@ -30,8 +33,8 @@ export function inlineScript(
   budget: UnsureBudget,
   inherited: Descriptors = TOP_DESCRIPTORS,
 ): Inline | null {
-  if (cmd.script !== undefined) return { texts: [cmd.script], wrap: "sh-c" };
-  if (cmd.name === "eval") return { texts: splicedReadings(cmd.args, budget), wrap: "eval" };
+  if (cmd.script !== undefined) return { texts: [cmd.script], wrap: "sh-c", joinsConditional: false };
+  if (cmd.name === "eval") return { texts: splicedReadings(cmd.args, budget), wrap: "eval", joinsConditional: true };
   if (cmd.name === "emulate") return emulateScript(cmd.args, budget);
   if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
   const operands = shellOperands(cmd.args, cmd.name);
@@ -43,14 +46,15 @@ export function inlineScript(
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
   const texts = positional ? splicedReadings([positional], budget) : piped;
   const all = [...texts, ...(stdin?.texts ?? [])];
-  return all.length > 0 ? { texts: all, wrap: "sh-c" } : null;
+  return all.length > 0 ? { texts: all, wrap: "sh-c", joinsConditional: CONDITIONAL_SHELLS.has(cmd.name) } : null;
 }
 
 /** Heredoc, here-string and piped text on the descriptor the shell runs; a `<` file is the script target `scripts.ts` reads. */
 function stdinReading(shell: string | null, sources: StdinSource[], piped: string[]): Inline | null {
   const texts = sources.flatMap((s) => (s.kind === "text" ? [s.text] : s.kind === "pipe" ? piped : []));
   if (texts.length === 0) return null;
-  return { texts: texts.flatMap((t) => pipedShellTexts(shell, t)), wrap: sources.some((s) => s.kind === "text") ? "heredoc-shell" : "piped-shell" };
+  const wrap = sources.some((s) => s.kind === "text") ? "heredoc-shell" : "piped-shell";
+  return { texts: texts.flatMap((t) => pipedShellTexts(shell, t)), wrap, joinsConditional: CONDITIONAL_SHELLS.has(shell ?? "") };
 }
 
 /**
@@ -61,7 +65,7 @@ function stdinReading(shell: string | null, sources: StdinSource[], piped: strin
 function emulateScript(args: WordToken[], budget: UnsureBudget): Inline | null {
   const words = emulateTextWords(args);
   if (words.length === 0) return null;
-  return { texts: [...new Set(words.flatMap((w) => splicedReadings([w], budget)))], wrap: "eval" };
+  return { texts: [...new Set(words.flatMap((w) => splicedReadings([w], budget)))], wrap: "eval", joinsConditional: true };
 }
 
 /**

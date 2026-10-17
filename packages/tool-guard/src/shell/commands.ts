@@ -1,4 +1,6 @@
 import { ParseError, SplitParseError, tokenize } from "./lexer.js";
+import { newTrials } from "./arith-trials.js";
+import { mentionsAlias } from "./alias-mention.js";
 import { NestingLimitError } from "./nesting.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
@@ -95,6 +97,8 @@ interface Scope {
 }
 
 interface Walk {
+  /** Whether a bare-start `[[` joins its `&&` and `||` in the text being walked; false once a runner of another dialect or an alias mention is in play. */
+  joinsConditional: boolean;
   scope: Scope;
   stack: Scope[];
   out: SimpleCommand[];
@@ -145,13 +149,14 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
     chain: { start: null },
     negated: false,
     foldCase,
+    joinsConditional: !mentionsAlias(src),
     walked: null,
     aliases: options.aliases ?? null,
     unsure,
     marks: newMarks(),
     onScript: options.onScript ?? null,
   };
-  walk(tokenizeLine(src), observed(w));
+  walk(tokenizeLine(src, w.joinsConditional), observed(w));
   settle(w.marks);
   return out;
 }
@@ -167,9 +172,9 @@ function lineBudget(src: string, options: ExtractOptions): UnsureBudget {
 }
 
 /** A line bash 5 and bash 3.2 read differently is refused outright, whatever it names; a plain ParseError is not. */
-function tokenizeLine(src: string): Token[] {
+function tokenizeLine(src: string, joinsConditional: boolean): Token[] {
   try {
-    return tokenize(src);
+    return tokenize(src, newTrials(src, joinsConditional));
   } catch (error) {
     if (error instanceof SplitParseError) throw new SplitReadingError(error.split);
     if (error instanceof NestingLimitError) throw new NestingReadingError();
@@ -343,7 +348,10 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descrip
     w.onScript?.(text);
     // A shell's arguments and input become its positional parameters and what its `read` stores.
     if (script.wrap !== "eval") w.marks.opaque = true;
-    walk(tokenizeLine(text), child(w, [...wrapping, script.wrap], descriptors));
+    const joins = w.joinsConditional && script.joinsConditional && !mentionsAlias(text);
+    const inner = child(w, [...wrapping, script.wrap], descriptors);
+    inner.joinsConditional = joins;
+    walk(tokenizeLine(text, joins), inner);
   }
 }
 
