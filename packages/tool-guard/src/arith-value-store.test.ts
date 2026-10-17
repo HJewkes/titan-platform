@@ -66,6 +66,14 @@ describe("a subscript typed inside (( )), with the payload stored elsewhere (TP-
   });
 });
 
+describe("a span's words still feed the value marks (TP-3284)", () => {
+  it("denies a stored payload, then a subscript assigned from an argument", async () => {
+    const command = `echo 'a[$(${PUSH})]' >/dev/null; (( a[0]=$1 )); (( a[0] ))`;
+    expect(await handled(command)).toBe("deny");
+    expect(built(command)).toBe("deny");
+  });
+});
+
 describe("a payload a name operand or a positional offset reads as arithmetic (TP-1624)", () => {
   const value = `X=${PAYLOAD}`;
   it.each([

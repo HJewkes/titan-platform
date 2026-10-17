@@ -221,6 +221,7 @@ function arithmeticEnd(list: Token[], at: number, words: WordToken[], w: Walk): 
   const end = arithmeticSpanEnd(list, at, words);
   if (end < 0 || token?.type !== "op") return -1;
   noteValues(token, words, w);
+  noteValues(null, list.slice(at + 2, end - 1).filter((t) => t.type === "word"), w);
   trackCompound(token, w.scope.vars);
   return end;
 }
