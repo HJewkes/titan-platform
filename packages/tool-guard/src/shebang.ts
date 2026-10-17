@@ -15,8 +15,8 @@ const PADDED_RE = /^[\p{Z}\p{C}\s]*#!/u;
 export function parseShebang(text: string): Shebang {
   const line = text.slice(0, text.indexOf("\n") === -1 ? undefined : text.indexOf("\n"));
   if (!line.startsWith("#!")) return PADDED_RE.test(line) ? { kind: "opaque" } : { kind: "none" };
-  const direct = SHELL_LINE_RE.exec(line);
-  if (direct) return { kind: "shell", shell: direct[1] as string, flags: direct[2] ?? "" };
-  const env = ENV_LINE_RE.exec(line);
-  return env ? { kind: "shell", shell: env[1] as string, flags: "" } : { kind: "opaque" };
+  const [, shell = "", flags = ""] = SHELL_LINE_RE.exec(line) ?? [];
+  if (shell !== "") return { kind: "shell", shell, flags };
+  const [, envShell = ""] = ENV_LINE_RE.exec(line) ?? [];
+  return envShell === "" ? { kind: "opaque" } : { kind: "shell", shell: envShell, flags: "" };
 }

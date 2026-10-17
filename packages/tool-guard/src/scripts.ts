@@ -25,9 +25,14 @@ export class OpaqueShebangError extends UnreadableScriptError {
   }
 }
 
-/** Refuses a by-path script whose first line is opaque: its interpreter may run something other than the body. */
-export function refuseOpaqueShebang(target: ScriptTarget, text: string): void {
-  if (target.byPath && parseShebang(text).kind === "opaque") throw new OpaqueShebangError();
+/** Whether a script's first line is one the guard cannot follow, whoever runs it. */
+export function hasOpaqueShebang(text: string): boolean {
+  return parseShebang(text).kind === "opaque";
+}
+
+/** Refuses a by-path script found to have an opaque first line, as the interpreter it names may run something other than the body. */
+export function refuseOpaqueShebang(target: ScriptTarget, opaque: ReadonlySet<string>): void {
+  if (target.byPath && opaque.has(target.path)) throw new OpaqueShebangError();
 }
 
 export const SOURCERS: ReadonlySet<string> = new Set(["source", "."]);
