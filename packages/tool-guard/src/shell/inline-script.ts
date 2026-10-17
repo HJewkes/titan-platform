@@ -17,6 +17,13 @@ export interface Inline {
   wrap: Wrapping;
   /** The descriptor a shell read the texts from, whose rest its commands do not inherit; unset for `-c` and `eval`. */
   fd?: number;
+  /** Whether the shell running the texts has a `(( ))` arithmetic command; unset for `eval`, which runs in the shell around it. */
+  arithmetic?: boolean;
+}
+
+/** bash and zsh have `(( ))`; dash and any `sh` that may be dash read it as nested subshells, as does an unnamed shell. */
+function hasArithmeticCommand(cmd: Unwrapped): boolean {
+  return (cmd.name === "bash" || cmd.name === "zsh") && !cmd.args.some((a) => a.value === "--posix" || a.value === "posix");
 }
 
 /**
@@ -30,7 +37,8 @@ export function inlineScript(
   budget: UnsureBudget,
   inherited: Descriptors = TOP_DESCRIPTORS,
 ): Inline | null {
-  if (cmd.script !== undefined) return { texts: [cmd.script], wrap: "sh-c" };
+  const arithmetic = hasArithmeticCommand(cmd);
+  if (cmd.script !== undefined) return { texts: [cmd.script], wrap: "sh-c", arithmetic };
   if (cmd.name === "eval") return { texts: splicedReadings(cmd.args, budget), wrap: "eval" };
   if (cmd.name === "emulate") return emulateScript(cmd.args, budget);
   if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
@@ -38,12 +46,12 @@ export function inlineScript(
   const { hasC, positional } = operands;
   const { runs, fd, sources } = shellStdin(operands, redirects, piped.length > 0, inherited);
   const read = runs ? stdinReading(cmd.name, sources, piped) : null;
-  const stdin = read === null ? null : { ...read, fd };
+  const stdin = read === null ? null : { ...read, fd, arithmetic };
   if (!hasC) return stdin;
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
   const texts = positional ? splicedReadings([positional], budget) : piped;
   const all = [...texts, ...(stdin?.texts ?? [])];
-  return all.length > 0 ? { texts: all, wrap: "sh-c" } : null;
+  return all.length > 0 ? { texts: all, wrap: "sh-c", arithmetic } : null;
 }
 
 /** Heredoc, here-string and piped text on the descriptor the shell runs; a `<` file is the script target `scripts.ts` reads. */

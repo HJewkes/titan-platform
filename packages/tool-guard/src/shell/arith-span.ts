@@ -5,14 +5,19 @@ const COMMAND_OPENERS = new Set(["if", "then", "elif", "else", "do", "while", "u
 const OPERATOR_RE = /^[-+*/%<>=!&|^~?:,]+$/;
 const OPERAND_RE = /^[\w.#@$[\]{}+\-*/%<>=!&|^~?:,]+$/;
 
+/** Whether `text` has a `)` and a `)` split by a backslash-newline, which bash does not read as one `))`. */
+export const splitsClose = (text: string) => /\)(?:\\\n)+\)/.test(text);
+
 /**
  * The index of the `)` that ends the arithmetic command a marked `(` at `at` opens in command position, or -1 when
  * the token opens none. Bash reads `((git push))` as arithmetic and never runs it, but only a span arithmetic can
- * hold is taken as one; any other stays a nested subshell, so it fails closed.
+ * hold is taken as one; any other stays a nested subshell, so it fails closed. So does every `((` where `allowed` is
+ * false: the shell running it has no arithmetic command (dash), or the text splits its closing `))` with a
+ * backslash-newline, which bash reads as a subshell that runs what is inside.
  */
-export function arithmeticSpanEnd(list: Token[], at: number, words: WordToken[]): number {
+export function arithmeticSpanEnd(list: Token[], at: number, words: WordToken[], allowed: boolean): number {
   const token = list[at];
-  if (token?.type !== "op" || token.arith !== true || !words.every((w) => COMMAND_OPENERS.has(w.value))) return -1;
+  if (!allowed || token?.type !== "op" || token.arith !== true || !words.every((w) => COMMAND_OPENERS.has(w.value))) return -1;
   const end = compoundEnd(list, at + 2);
   return end < 0 || !onlyArithmetic(list.slice(at + 2, end - 1)) ? -1 : end;
 }

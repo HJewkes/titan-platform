@@ -10,6 +10,7 @@ import { aliasCommands, type AliasTable } from "./alias-words.js";
 import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { cutReading } from "./piped-nul.js";
+import { lineBudget } from "./line-budget.js";
 import { inlineScript, SHELLS } from "./inline-script.js";
 import type { Inline } from "./inline-script.js";
 import { addRedirect, groupStdin } from "./group-stdin.js";
@@ -21,12 +22,11 @@ import type { Vars } from "./vars.js";
 import { newMarks, noteRedirect, recordValue, settle } from "./value-marks.js";
 import { noteCommand, noteWord } from "./stored-words.js";
 import type { ValueMarks } from "./value-marks.js";
-import { MAX_UNSURE_WORDS, ReadingLimitError, SPLICED_WEIGHT, unsureReadings, ValueWalkError } from "./unsure-readings.js";
+import { ReadingLimitError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
-import { arithmeticSpanEnd } from "./arith-span.js";
+import { arithmeticSpanEnd, splitsClose } from "./arith-span.js";
 
 const MAX_DEPTH = 8;
-const RUNNERS = new Set([...SHELLS, "eval", "emulate", "find"]);
 
 /**
  * How a command was reached: a `( )` subshell or a substitution, a shell's `-c` string or a wrapper's
@@ -121,6 +121,8 @@ interface Walk {
   /** What the line stores and whether it evaluates arithmetic, shared by every walk of it. */
   marks: ValueMarks;
   onScript: ((text: string) => void) | null;
+  /** Whether this text's `((` may read as arithmetic: its shell has the command (dash has not) and the text splits no closing `))`. */
+  arithmetic: boolean;
 }
 
 /**
@@ -151,20 +153,11 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
     unsure,
     marks: newMarks(),
     onScript: options.onScript ?? null,
+    arithmetic: !splitsClose(src),
   };
   walk(tokenizeLine(src), observed(w));
   settle(w.marks);
   return out;
-}
-
-/** The line's budget of `unsure` reading words and spliced text, shared by every walk of it. */
-function lineBudget(src: string, options: ExtractOptions): UnsureBudget {
-  return {
-    left: MAX_UNSURE_WORDS,
-    splicedLeft: SPLICED_WEIGHT * src.length,
-    decides: decider(options.guarded),
-    stopPastCap: options.stopPastCap === true,
-  };
 }
 
 function walk(tokens: Token[], w: Walk): void {
@@ -218,7 +211,7 @@ function endCommand(token: OpToken, words: WordToken[], redirects: RedirectToken
  */
 function arithmeticEnd(list: Token[], at: number, words: WordToken[], w: Walk): number {
   const token = list[at];
-  const end = arithmeticSpanEnd(list, at, words);
+  const end = arithmeticSpanEnd(list, at, words, w.arithmetic);
   if (end < 0 || token?.type !== "op") return -1;
   noteValues(token, words, w);
   noteValues(null, list.slice(at + 2, end - 1).filter((t) => t.type === "word"), w);
@@ -302,11 +295,6 @@ function walkAdded(runs: Unwrapped[], redirects: RedirectToken[], w: Walk, next:
   addedReading(w, (copy) => runs.forEach((reading) => run(reading, redirects, copy, next)));
 }
 
-/** A dynamic or guarded command word, or one that runs more commands: shell text, a `.sh` script, `xargs` or `find -exec`. */
-function decider(guarded: ReadonlySet<string> | undefined): (cmd: Unwrapped) => boolean {
-  return (cmd) => cmd.name === null || cmd.xargs !== undefined || cmd.script !== undefined || RUNNERS.has(cmd.name) || cmd.name.endsWith(".sh") || (guarded?.has(cmd.name) ?? true);
-}
-
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
   if (raw.name === null && raw.args.length === 0 && !raw.xargs?.words.length) {
     for (const assignment of raw.assigned) assign(w.scope.vars, assignment);
@@ -372,6 +360,9 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descrip
     w.onScript?.(text);
     // A shell's arguments and input become its positional parameters and what its `read` stores.
     if (script.wrap !== "eval") w.marks.opaque = true;
-    walk(tokenizeLine(text), child(w, [...wrapping, script.wrap], descriptors));
+    const into = child(w, [...wrapping, script.wrap], descriptors);
+    // An eval inside a text that split its close keeps that reading, which only errs toward the subshell.
+    into.arithmetic = (script.arithmetic ?? w.arithmetic) && !splitsClose(text);
+    walk(tokenizeLine(text), into);
   }
 }

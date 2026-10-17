@@ -134,3 +134,38 @@ describe("a value nothing on the line reads as arithmetic (TP-1624)", () => {
     expect(built(command)).toBe("pass");
   });
 });
+
+describe("a (( )) the running shell reads as commands is not arithmetic (TP-3284)", () => {
+  const pushScript: HookPort = {
+    ...port,
+    context: { ...port.context, readScript: (p: string) => (p === join(home, "push.sh") || p === join(home, "deploy.sh") ? PUSH : null) },
+  };
+  const handledWithScript = async (command: string) => ((await handle(input(command), {}, pushScript)).stdout === "" ? "pass" : "deny");
+
+  it.each([
+    ["a piped sh -c", `echo '${PUSH}' | sh -c '((sh))'`],
+    ["a backslash-newline between the closing parens", `echo '${PUSH}' | ((bash)\\\n)`],
+  ])("denies %s", async (_, command) => {
+    expect(await handled(command)).toBe("deny");
+    expect(built(command)).toBe("deny");
+  });
+
+  it.each([
+    ["dash -c running a script", "dash -c '((./push.sh))'"],
+    ["sh -c running a stored script name", "sh -c 'x=./push.sh; (($x))'"],
+    ["a split close running a script", "((./deploy.sh)\\\n)"],
+  ])("denies %s", async (_, command) => {
+    expect(await handledWithScript(command)).toBe("deny");
+  });
+
+  it("reports the command in a split-close if condition", async () => {
+    const command = `if ((${PUSH})\\\n); then :; fi`;
+    expect(await handled(command)).toBe("deny");
+    expect(built(command)).toBe("deny");
+  });
+
+  it("still passes a bash arithmetic assignment", async () => {
+    expect(await handled("bash -c '(( a[0]=1 ))'")).toBe("pass");
+    expect(await handled("(( a[0]=1 ))")).toBe("pass");
+  });
+});
