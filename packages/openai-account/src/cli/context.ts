@@ -11,7 +11,7 @@ export interface CliContext {
   readNativeUsage?: typeof readNativeUsage;
 }
 export interface SelectionOptions { codeHome?: string; account?: string; expectedAccountId?: string }
-export interface Selection { label: string; profile: AccountProfile | null }
+interface Selection { label: string; profile: AccountProfile | null }
 
 export function selectionOf(context: CliContext, options: SelectionOptions): Selection {
   const codeHome = options.codeHome ?? context.env.CODEX_HOME;
