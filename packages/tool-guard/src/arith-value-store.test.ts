@@ -209,3 +209,38 @@ describe("a script's (( )) is arithmetic only where bash or zsh is known to run 
     expect(await verdict(command)).toBe("pass");
   });
 });
+
+describe("a #! line reads (( )) as arithmetic only for an exact bash or zsh allowlist (TP-3284)", () => {
+  const PIPED = `echo '${PUSH}' | ((sh))`;
+  const lines = {
+    "e1.sh": "#!/usr/bin/env -S -u bash dash",
+    "e2.sh": "#!/usr/bin/env -C dir bash",
+    "e3.sh": "#!/usr/bin/env -a x bash",
+    "e4.sh": "#!/usr/bin/env -i -S bash",
+    "e5.sh": "#!/bin/bash -e",
+    "e6.sh": "#!/bin/sh",
+    "e7.sh": "#!/usr/bin/env -C bash dash",
+    "e8.sh": "#!/usr/bin/env -a bash dash",
+  };
+  const scripts = Object.fromEntries(Object.entries(lines).map(([name, line]) => [name, `${line}\n${PIPED}`]));
+  const withScripts: HookPort = { ...port, context: { ...port.context, readScript: (p: string) => scripts[p.slice(home.length + 1)] ?? null } };
+  const verdict = async (command: string) => ((await handle(input(command), {}, withScripts)).stdout === "" ? "pass" : "deny");
+
+  it.each([
+    ["env -S -u bash dash", "./e1.sh"],
+    ["env -C dir bash", "./e2.sh"],
+    ["env -a x bash", "./e3.sh"],
+    ["env -C bash dash", "./e7.sh"],
+    ["env -a bash dash", "./e8.sh"],
+    ["/bin/sh", "./e6.sh"],
+  ])("denies a piped ((sh)) under a #! of %s", async (_, command) => {
+    expect(await verdict(command)).toBe("deny");
+  });
+
+  it.each([
+    ["env -i -S bash", "./e4.sh"],
+    ["/bin/bash -e", "./e5.sh"],
+  ])("reads (( )) as arithmetic under a #! of %s", async (_, command) => {
+    expect(await verdict(command)).toBe("pass");
+  });
+});

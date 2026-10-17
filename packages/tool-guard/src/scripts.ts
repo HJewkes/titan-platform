@@ -80,12 +80,10 @@ export function scriptArithmetic(cmd: SimpleCommand, target: ScriptTarget, text:
   return target.shell === "shebang" ? shebangArithmetic(text) : target.shell;
 }
 
+/** Fail closed: an exact allowlist of `#!` lines, because any other env option may take bash as its argument. */
+const ARITHMETIC_SHEBANG = /^(?:\/bin\/|\/usr\/bin\/)(?:bash|zsh)(?:[ \t].*)?$|^\/(?:usr\/)?bin\/env(?:[ \t]+-i)?(?:[ \t]+-S)?[ \t]+(?:bash|zsh)(?:[ \t].*)?$/;
+
 function shebangArithmetic(text: string): boolean {
   const line = /^#!([^\n]*)/.exec(text)?.[1];
-  if (line === undefined) return false;
-  const words = line.trim().split(/[ \t]+/);
-  const base = (word: string | undefined) => word?.slice(word.lastIndexOf("/") + 1) ?? null;
-  const program = base(words[0]) === "env" ? words.slice(1).find((w) => !w.startsWith("-") && !w.includes("=")) : words[0];
-  const name = base(program);
-  return (name === "bash" || name === "zsh") && hasArithmeticCommand({ name, args: words.map((value) => ({ value })) });
+  return line !== undefined && ARITHMETIC_SHEBANG.test(line.trim());
 }
