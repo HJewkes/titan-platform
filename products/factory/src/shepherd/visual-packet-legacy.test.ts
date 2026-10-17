@@ -79,10 +79,11 @@ describe("a run answered on a record from before the visual packet step", () => 
 
     const second = openHost(fake, ref, phases, dbPath);
     await second.adopt();
-    await vi.waitFor(() => expect(Object.keys(second.runtime.status(runId)?.stepResults ?? {})).toContain("sh-landed:0"), { timeout: 20_000 });
+    await vi.waitFor(() => expect(second.runtime.status(runId)?.status).not.toBe("running"), { timeout: 20_000 });
 
     const after = second.runtime.status(runId)!;
     expect(after.status).not.toBe("recovery_required");
+    expect(Object.keys(after.stepResults)).toContain("sh-landed:0");
     expect(Object.keys(after.stepResults).filter((key) => key.startsWith("sh-visual-packet:"))).toEqual([]);
   }, 60_000);
 });

@@ -14,12 +14,12 @@ afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, {
 
 const request = (resume: boolean): CodexRunRequest => ({
   harness: "codex", prompt: "report", cwd: "/tmp/work", wallTimeMs: 2000,
-  target: resume ? { kind: "resume", conversation: { harness: "codex", namespace: "fixture", nativeId: "fixture-thread" } }
+  target: resume ? { kind: "resume", conversation: { harness: "codex", namespace: "fixture", nativeId: "019c0000-0000-7000-8000-000000000001" } }
     : { kind: "fresh", namespace: "fixture" },
   native: { model: "fixture-model", sandbox: "read-only", approvalPolicy: "never" },
 });
 async function* events() {
-  yield JSON.stringify({ type: "thread.started", thread_id: "fixture-thread" });
+  yield JSON.stringify({ type: "thread.started", thread_id: "019c0000-0000-7000-8000-000000000001" });
   yield JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "ok" } });
   yield JSON.stringify({ type: "turn.completed", usage: { input_tokens: 1, output_tokens: 1 } });
 }
