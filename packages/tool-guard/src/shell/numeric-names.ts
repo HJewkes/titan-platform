@@ -24,6 +24,6 @@ export function numericValue(w: WordToken): boolean {
 function countsInput(tokens: Token[]): boolean {
   const words = tokens.filter((t): t is WordToken => t.type === "word");
   const [command, ...options] = words;
-  const plain = tokens.every((t) => t.type === "word" || (t.type === "redirect" && t.op === "<" && t.target?.dynamic === false));
+  const plain = tokens.every((t) => t.type === "word" || (t.type === "redirect" && t.op === "<"));
   return plain && command?.value === "wc" && options.every((o) => !o.dynamic && /^-[a-zA-Z]+$/.test(o.value));
 }
