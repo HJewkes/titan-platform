@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   LockTimeoutError,
   acquire,
+  appendHold,
   busyLogPath,
   holdLogPath,
   liveHolders,
@@ -458,13 +459,22 @@ describe("lock slots", () => {
   const GIB = 1024 ** 3;
 
   /** A process that takes a slot under DAG_CHECK_SLOTS, holds it for holdMs, releases, and exits 0, or 75 when it gives up. */
-  function spawnCheck(lockDir, { slots, holdMs, timeoutMs }) {
+  function spawnCheck(lockDir, { slots, holdMs, timeoutMs, gateDir = null }) {
     const script = `
+      import { existsSync, writeFileSync } from "node:fs";
+      import { join } from "node:path";
       import { LockTimeoutError, acquire, lockSlots, release } from ${JSON.stringify(MODULE)};
       const dir = ${JSON.stringify(lockDir)};
       try {
         const hold = await acquire({ lockDir: dir, slots: lockSlots(), timeoutMs: ${timeoutMs}, pollMs: 10, log: () => {} });
-        await new Promise((resolve) => setTimeout(resolve, ${holdMs}));
+        const gateDir = ${JSON.stringify(gateDir)};
+        if (gateDir) {
+          // The hold lasts until the test opens the gate, so no wall-clock hold length can end it early under load.
+          writeFileSync(join(gateDir, "held-" + process.pid), String(hold.slot));
+          while (!existsSync(join(gateDir, "go"))) await new Promise((resolve) => setTimeout(resolve, 10));
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, ${holdMs}));
+        }
         hold.exit = 0;
         release(dir, hold);
       } catch (err) {
@@ -532,18 +542,26 @@ describe("lock slots", () => {
     await twoSlots;
   });
 
-  it("finishes six parallel checks within the wait bound when there are six slots, with no exit 75", async () => {
+  it("lets six checks hold six slots at once while a seventh waits, with no exit 75", async () => {
     const lockDir = lockPath();
-    const bound = 3000;
-    const started = Date.now();
+    const gateDir = join(lockDir, "..", "gate");
+    mkdirSync(gateDir, { recursive: true });
+    const generous = 120 * 1000;
 
-    const codes = await Promise.all(Array.from({ length: 6 }, () => spawnCheck(lockDir, { slots: 6, holdMs: 800, timeoutMs: bound })));
+    const exits = Array.from({ length: 6 }, () => spawnCheck(lockDir, { slots: 6, timeoutMs: generous, gateDir }));
+    const deadline = Date.now() + generous;
+    while (readdirSync(gateDir).length < 6 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(codes).toEqual([0, 0, 0, 0, 0, 0]);
-    expect(Date.now() - started).toBeLessThan(bound);
-    expect(readHolds(lockDir)).toHaveLength(6);
-    expect(new Set(readHolds(lockDir).map((h) => h.slot))).toEqual(new Set([0, 1, 2, 3, 4, 5]));
-  }, 15000);
+    expect(readdirSync(gateDir)).toHaveLength(6);
+    expect(liveHolders(lockDir, 6)).toHaveLength(6);
+    await expect(acquire({ lockDir, slots: 6, timeoutMs: 100, ...quiet })).rejects.toBeInstanceOf(LockTimeoutError);
+
+    // Read the slots from the holders' own markers: simultaneous releases may drop a hold-log line by design.
+    const slots = readdirSync(gateDir).map((name) => Number(readFileSync(join(gateDir, name), "utf8")));
+    writeFileSync(join(gateDir, "go"), "");
+    expect(await Promise.all(exits)).toEqual([0, 0, 0, 0, 0, 0]);
+    expect(new Set(slots)).toEqual(new Set([0, 1, 2, 3, 4, 5]));
+  }, 150000);
 
   it("still serializes on one slot, so the same six checks overrun the bound and some exit 75", async () => {
     const lockDir = lockPath();
@@ -588,5 +606,52 @@ describe("the capped indexer child", () => {
     const lines = [];
     expect(workerExitCode({ code: null, signal: "SIGKILL", name: "indexer", heapCapMb: 1024, log: (m) => lines.push(m) })).toBe(2);
     expect(lines).toEqual(["indexer died with SIGKILL"]);
+  });
+});
+
+describe("hold log", () => {
+  function raceAppends(lockDir, count, round) {
+    const start = Date.now() + 400;
+    const script = `import { appendHold } from ${JSON.stringify(MODULE)};
+      while (Date.now() < ${start});
+      appendHold(${JSON.stringify(lockDir)}, { check: "c", exit: 0, slot: Number(process.argv[1]), acquiredAt: ${round} });`;
+    return Promise.all(
+      Array.from({ length: count }, async (_, i) => {
+        const child = spawn(process.execPath, ["--input-type=module", "-e", script, String(i)], { stdio: "inherit" });
+        const [code] = await once(child, "exit");
+        return code;
+      }),
+    );
+  }
+
+  it("keeps every hold when eight releasers append at once", async () => {
+    const lockDir = lockPath();
+    mkdirSync(join(lockDir, ".."), { recursive: true });
+
+    for (let round = 1; round <= 5; round++) {
+      expect(await raceAppends(lockDir, 8, round)).toEqual(Array(8).fill(0));
+      expect(readHolds(lockDir)).toHaveLength(8 * round);
+    }
+  }, 30000);
+
+  it("trims the log to its kept tail on append, keeping the newest holds", () => {
+    const lockDir = lockPath();
+    mkdirSync(join(lockDir, ".."), { recursive: true });
+
+    for (let i = 1; i <= 250; i++) appendHold(lockDir, { check: "c", exit: 0, slot: 0, acquiredAt: i });
+
+    const holds = readHolds(lockDir);
+    expect(holds).toHaveLength(200);
+    expect(holds.at(-1).acquiredAt).toBe(250);
+  });
+
+  it("appends anyway when a stuck lock never frees", () => {
+    const lockDir = lockPath();
+    mkdirSync(join(lockDir, ".."), { recursive: true });
+    mkdirSync(`${holdLogPath(lockDir)}.lock`);
+
+    appendHold(lockDir, { check: "c", exit: 0, slot: 0, acquiredAt: 1 });
+
+    expect(readHolds(lockDir)).toHaveLength(1);
   });
 });

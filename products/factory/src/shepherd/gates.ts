@@ -49,9 +49,12 @@ function resolvedAt(lastCi: CiRead | undefined, headSha: string): boolean {
   return lastCi?.headSha === headSha && lastCi.mergeableState !== "dirty" && lastCi.mergeableState !== "unknown";
 }
 
-/** Waits, with no gate, for the PR to show any other head; undefined lands the next round. */
-export async function awaitNewHead(run: GateRun, headSha: string): Promise<undefined> {
-  await step(run.ctx, `await-new-head:${run.state.waits++}`, { ...run.target, headSha }, AwaitHeadResult);
+/**
+ * Waits, with no gate, for the PR to show any other head; undefined lands the next round. After a red, `untilGreen`
+ * also ends the wait once that head's required checks all pass on a rerun or a late run, so the next round reviews it.
+ */
+export async function awaitNewHead(run: GateRun, headSha: string, untilGreen = false): Promise<undefined> {
+  await step(run.ctx, `await-new-head:${run.state.waits++}`, { ...run.target, headSha, ...(untilGreen && { untilGreen }) }, AwaitHeadResult);
   return undefined;
 }
 

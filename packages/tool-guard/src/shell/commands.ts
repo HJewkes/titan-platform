@@ -2,18 +2,19 @@ import { ParseError, SplitParseError, tokenize } from "./lexer.js";
 import { NestingLimitError } from "./nesting.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
-import { nextShellStdin, nextStdin, xargsStdin } from "./piped-stdin.js";
+import { xargsStdins } from "./piped-stdin.js";
+import { emitReadings, endCommand, forkWalk, type Emission } from "./reading-hand-on.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
 import { aliasCommands, type AliasTable } from "./alias-words.js";
-import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackCompound, trackVars } from "./vars.js";
+import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { CommandRebindingError, rebindsCommand } from "./command-rebinding.js";
 import { cutReading } from "./piped-nul.js";
 import { inlineScript, SHELLS } from "./inline-script.js";
 import type { Inline } from "./inline-script.js";
-import { addRedirect, groupStdin } from "./group-stdin.js";
+import { addRedirect } from "./group-stdin.js";
 import { descriptorsAfter, emptied, stdinText, TOP_DESCRIPTORS } from "./shell-options.js";
 import type { Descriptors } from "./shell-options.js";
 import { xargsCommands } from "./xargs-runs.js";
@@ -180,22 +181,23 @@ function tokenizeLine(src: string): Token[] {
 
 function walk(tokens: Token[], w: Walk): void {
   if (w.depth > MAX_DEPTH) throw new ParseError("nesting too deep");
+  walkFrom(noteSureCommands(normalizeDeclarations(tokens)), 0, w);
+}
+
+/** A command whose `{name}` readings leave different scopes has the rest of its list walked again in each, after this walk. */
+function walkFrom(list: Token[], start: number, w: Walk): void {
+  const forks: Array<() => void> = [];
   let words: WordToken[] = [];
   let redirects: RedirectToken[] = [];
-  for (const token of noteSureCommands(normalizeDeclarations(tokens))) {
+  for (const [at, token] of list.slice(start).entries()) {
     if (token.type === "op") {
       noteValues(token, words, w);
-      const cmd = emit(words, redirects, w, token.value);
-      const empty = words.length + redirects.length === 0;
-      w.shellStdin = nextShellStdin(token.value, cmd, empty, w.shellStdin);
-      w.stdin = groupStdin(w, token.value, words, redirects, cmd, nextStdin(token.value, cmd, empty, w.stdin));
+      const { readings, disputed } = emit(words, redirects, w, token.value);
+      const walks = [w, ...disputed.map((scope) => forkWalk(w, scope, (fork, vars) => observeStores(vars, (value) => hear(fork, value))))];
+      for (const each of walks) endCommand(each, token, words, redirects, readings, (op) => scope(op, each));
+      forks.push(...walks.slice(1).map((fork) => () => walkFrom(list, start + at + 1, fork)));
       words = [];
       redirects = [];
-      w.prev = token.value;
-      if (token.value !== "|" && token.value !== "|&") w.negated = false;
-      if (token.value !== "&&") w.chain = { start: token.value };
-      trackCompound(token, w.scope.vars);
-      scope(token.value, w);
       continue;
     }
     if (token.type === "word") words.push(noteWord(token, w.marks));
@@ -205,6 +207,7 @@ function walk(tokens: Token[], w: Walk): void {
   }
   noteValues(null, words, w);
   emit(words, redirects, w, null);
+  for (const fork of forks) fork();
 }
 
 /** Notes what a command evaluates and stores, before it runs. */
@@ -255,7 +258,11 @@ function scope(op: string, w: Walk): void {
   if (op === ")") w.scope = w.stack.pop() ?? w.scope;
 }
 
-function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Unwrapped | null {
+function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Emission<Scope> {
+  return emitReadings(rawWords, rawRedirects, w, besideWalk, (words, redirects, on) => emitReading(words, redirects, on, next));
+}
+
+function emitReading(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Unwrapped | null {
   const expand = (word: WordToken) => expandWord(word, (name) => lookup(w.scope.vars, w.home, name));
   const redirects = rawRedirects.map((r) => (r.target ? { ...r, target: expand(r.target) } : r));
   const words = folded(rawWords.map(expand), w);
@@ -289,10 +296,11 @@ function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string |
     w.scope.dir = changeDir(w.scope.dir, raw.args.find((a) => a.value === "-" || !a.value.startsWith("-")), w.home);
     return;
   }
-  const stdin = raw.xargs ? xargsStdin(redirects, w.stdin) : w.stdin;
-  const runs = runReadings(stdin, (name) => name !== null && SHELLS.has(name));
-  for (const cmd of xargsCommands(raw, stdin, runs.main)) runOnce(cmd, redirects, w, next, stdin);
-  if (raw.xargs) for (const cmd of xargsCommands(raw, stdin, runs.added)) runAdded(cmd, redirects, w, next, stdin);
+  for (const stdin of raw.xargs ? xargsStdins(redirects, w.stdin, w.shellStdin) : [w.stdin]) {
+    const runs = runReadings(stdin, (name) => name !== null && SHELLS.has(name));
+    for (const cmd of xargsCommands(raw, stdin, runs.main)) runOnce(cmd, redirects, w, next, stdin);
+    if (raw.xargs) for (const cmd of xargsCommands(raw, stdin, runs.added)) runAdded(cmd, redirects, w, next, stdin);
+  }
 }
 
 /**
@@ -307,13 +315,18 @@ function runAdded(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: str
 function addedReading(w: Walk, read: (copy: Walk) => void): void {
   const start = w.out.length;
   try {
-    read(observed({ ...w, scope: { ...w.scope, vars: new Map(w.scope.vars) } }));
+    read(besideWalk(w));
   } catch (error) {
     // Main's runs of the same command still decide; this reading is dropped, unless the line is past checking.
     if (error instanceof ReadingLimitError) throw error;
   } finally {
     for (let i = start; i < w.out.length; i++) w.out[i] = { ...(w.out[i] as SimpleCommand), added: true };
   }
+}
+
+/** A walk on a copy of the scope, so a `cd` or an assignment in a reading on it moves nothing; its commands decide as main's do. */
+function besideWalk(w: Walk): Walk {
+  return observed({ ...w, scope: { ...w.scope, vars: new Map(w.scope.vars) } });
 }
 
 function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {

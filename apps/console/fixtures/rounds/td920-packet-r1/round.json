@@ -1,0 +1,99 @@
+{
+  "schema": "titan-review/round@2",
+  "unit": "widgets-pr42-a1a1a1a1a1a1",
+  "round": 1,
+  "storybookUrl": "http://127.0.0.1:6006",
+  "widths": [1280],
+  "recommendations": "after-answer",
+  "variants": [
+    { "key": "img-001", "image": "montage/img-001.png", "label": "component: img-001", "change": "changed", "baseImage": "before/img-001.png" },
+    { "key": "img-002", "image": "montage/img-002.png", "label": "component: img-002", "change": "new" },
+    { "key": "img-003", "image": "montage/img-003.png", "label": "component: img-003", "change": "removed" }
+  ],
+  "sections": [
+    {
+      "id": "changed",
+      "title": "Changed baselines (1)",
+      "deciding": "Nothing on its own: these frames are the evidence for the Ship question.",
+      "changed": "1 changed against main b2b2b2b2b2b2, from CI run 1234.",
+      "context": "Each frame shows BEFORE | AFTER | DIFF, or an aligned pair.",
+      "kind": "STATES",
+      "variantKeys": ["img-001"],
+      "contrast": { "unmeasured": [
+        { "variant": "img-001", "mode": "light", "reason": "a CI baseline montage; no DOM to measure" },
+        { "variant": "img-001", "mode": "dark", "reason": "a CI baseline montage; no DOM to measure" }
+      ] }
+    },
+    {
+      "id": "new",
+      "title": "New baselines (1)",
+      "deciding": "Nothing on its own: these frames are the evidence for the Ship question.",
+      "changed": "1 new against main b2b2b2b2b2b2, from CI run 1234.",
+      "context": "Each frame shows the new image under a NEW bar.",
+      "kind": "STATES",
+      "variantKeys": ["img-002"],
+      "contrast": { "unmeasured": [
+        { "variant": "img-002", "mode": "light", "reason": "a CI baseline montage; no DOM to measure" },
+        { "variant": "img-002", "mode": "dark", "reason": "a CI baseline montage; no DOM to measure" }
+      ] }
+    },
+    {
+      "id": "removed",
+      "title": "Removed baselines (1)",
+      "deciding": "Nothing on its own: these frames are the evidence for the Ship question.",
+      "changed": "1 removed against main b2b2b2b2b2b2, from CI run 1234.",
+      "context": "Each frame shows main's image under a REMOVED bar.",
+      "kind": "STATES",
+      "variantKeys": ["img-003"],
+      "contrast": { "unmeasured": [
+        { "variant": "img-003", "mode": "light", "reason": "a CI baseline montage; no DOM to measure" },
+        { "variant": "img-003", "mode": "dark", "reason": "a CI baseline montage; no DOM to measure" }
+      ] }
+    },
+    {
+      "id": "side",
+      "title": "Side questions",
+      "deciding": "The side questions supplied with this packet.",
+      "changed": "Supplied with --side; from-ci adds only their page.",
+      "context": "They are about the same PR head as the Ship question below.",
+      "questionIds": ["bundle"]
+    },
+    {
+      "id": "ship",
+      "title": "Ship acme/widgets#42",
+      "deciding": "Whether this PR merges at this head with these baselines.",
+      "changed": "3 baselines differ from main b2b2b2b2b2b2; 8 are unchanged.",
+      "context": "Built by titan-review packet from-ci from CI run 1234.",
+      "questionIds": ["ship"]
+    }
+  ],
+  "questions": [
+    {
+      "id": "bundle",
+      "kind": "pick-one",
+      "prompt": "ITERATION: Accept the bundle growth?",
+      "options": ["Accept", "Shrink first"],
+      "signsOff": "the 2 kB growth of the ESM entry",
+      "decision": "decide",
+      "implemented": "Accept",
+      "page": "acme/widgets#42",
+      "topics": ["ask:widgets-pr42-a1a1a1a1a1a1/bundle", "topic:iteration"],
+      "recommendation": { "answer": "Accept", "rationale": "The growth is the new icon set, loaded lazily.", "confidence": 0.6, "by": "fixture-agent" }
+    },
+    {
+      "id": "ship",
+      "kind": "pick-one",
+      "prompt": "SHIP: Ship acme/widgets#42 at a1a1a1a1a1a1?",
+      "options": ["Ship", "Don't ship"],
+      "required": true,
+      "page": "acme/widgets#42",
+      "decision": "ship",
+      "signsOff": "the 3 baseline changes of run 1234 at a1a1a1a1a1a1",
+      "topics": ["ask:acme/widgets#42/ship", "topic:ship"],
+      "merge": { "repo": "acme/widgets", "pr": 42, "headSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1", "ship": ["Ship"] }
+    }
+  ],
+  "prGroups": [
+    { "pr": "acme/widgets#42", "headSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1", "sectionIds": ["changed", "new", "removed", "side", "ship"] }
+  ]
+}

@@ -53,7 +53,7 @@ describe("the rounds list", () => {
     await renderConsole("#/rounds");
     await screen.findByText("Open rounds");
     const rows = screen.getAllByTestId(/^round-row-/).map((row) => row.getAttribute("data-testid"));
-    expect(rows).toHaveLength(7);
+    expect(rows).toHaveLength(8);
     expect(rows.at(-1)).toBe("round-row-kiln-schedule-r1");
     expect(screen.getByText("Sent rounds")).toBeTruthy();
   });
@@ -75,7 +75,7 @@ describe("the rounds list", () => {
     expect(within(card).getByText("4 questions")).toBeTruthy();
     expect(within(screen.getByTestId("round-card-lantern-cards-r1")).getByText("1 question")).toBeTruthy();
     expect(within(screen.getByTestId("round-card-legacy-r1")).getByText("invalid")).toBeTruthy();
-    expect(screen.getAllByTestId(/^round-card-/)).toHaveLength(7);
+    expect(screen.getAllByTestId(/^round-card-/)).toHaveLength(screen.getAllByTestId(/^round-row-/).length);
   });
 
   it("keeps the four-column table for wide screens", async () => {

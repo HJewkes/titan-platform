@@ -7,6 +7,7 @@ import type { ReadFs } from "./context.js";
 import { decide } from "./decide.js";
 import { handle, MAX_COMMAND_BYTES, namesGuarded } from "./hook.js";
 import type { HookPort } from "./hook.js";
+import { UnreadableScriptError } from "./shell/unsure-readings.js";
 import type { ClassifyContext } from "./types.js";
 
 const HOME = "/home/you";
@@ -392,14 +393,14 @@ describe("nodeContext over a real temp directory", () => {
     expect(ctx.readHead(path.join(home, "wt"))).toBe("feat/x");
   });
 
-  it("reads scripts that are regular files only", () => {
+  it("reads scripts that are regular files only, and refuses any other", () => {
     const home = tempHome();
     fs.writeFileSync(path.join(home, "x.sh"), "echo hi\n");
     const ctx = nodeContext(home);
 
     expect(ctx.readScript(path.join(home, "x.sh"))).toBe("echo hi\n");
-    expect(ctx.readScript(home)).toBeNull();
-    expect(ctx.readScript(path.join(home, "missing.sh"))).toBeNull();
+    expect(() => ctx.readScript(home)).toThrow(UnreadableScriptError);
+    expect(() => ctx.readScript(path.join(home, "missing.sh"))).toThrow(UnreadableScriptError);
   });
 
   it("maps a link resolved through a symlinked home back to the home spelling", () => {

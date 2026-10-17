@@ -18,6 +18,12 @@ interface GroupState {
 }
 
 const states = new WeakMap<object, GroupState>();
+
+/** Copies one walk's open `{ }` and `( )` frames to a fork of it, so the fork pipes on a group that opened before the split. */
+export function copyGroupState(from: object, to: object): void {
+  const state = states.get(from);
+  if (state) states.set(to, { closed: state.closed, frames: state.frames.map((frame) => ({ ...frame, pieces: [...frame.pieces] })) });
+}
 const PIPES = new Set(["|", "|&"]);
 const STDOUT_OPS = new Set([">", ">>", ">|", "<>", ">&"]);
 

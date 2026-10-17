@@ -12,6 +12,14 @@
       "count": 1
     }
   },
+  "apps/console/server/review-schema-0.3/schema.ts": {
+    "titan/max-function-lines": {
+      "count": 3
+    },
+    "titan/no-chained-type-assertions": {
+      "count": 1
+    }
+  },
   "apps/console/server/tasks.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1
@@ -1139,7 +1147,7 @@
   },
   "products/factory/src/shepherd/wake.ts": {
     "titan/max-line-length": {
-      "count": 4
+      "count": 3
     }
   },
   "products/factory/src/workflows.ts": {
