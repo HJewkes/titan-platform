@@ -9,6 +9,8 @@ import { UnknownStdinError } from "./shell/unsure-readings.js";
 export interface ScriptTarget {
   path: string;
   kind: "shell" | "interpreter";
+  /** A `-c` shell's stdin file, which only a command in the string may run (`bash -c 'cat | bash' < x.sh`), so it is read as far as it reads. */
+  relayed?: true;
 }
 
 export const SOURCERS: ReadonlySet<string> = new Set(["source", "."]);
@@ -36,16 +38,17 @@ function typedTarget(cmd: SimpleCommand, typed: string, home: string): ScriptTar
 
 /**
  * `bash x.sh`, or each file on the descriptor it runs: `bash < x.sh`, `bash /dev/stdin < x.sh`, `bash /dev/fd/3 3< x.sh`.
- * Under `-c` stdin is no script of the shell's: the string's commands inherit it (`bash -c bash < x.sh`). `bash -c` text
- * and heredocs are already walked by `extractCommands`. A descriptor whose text the line cannot show is refused.
+ * Under `-c` stdin is no script of the shell's own, but a command in the string may run it (`bash -c 'cat | bash' < x.sh`).
+ * `bash -c` text and heredocs are already walked by `extractCommands`. A descriptor whose text the line cannot show is
+ * refused.
  */
 function shellTargets(cmd: SimpleCommand, home: string): ScriptTarget[] {
   const { runs, scriptFile, sources, unknowable } = shellStdin(shellOperands(cmd.args, cmd.name), cmd.redirects, false, cmd.inherited);
   if (unknowable) throw new UnknownStdinError();
   const script = scriptFile === null ? null : target(cmd, scriptFile, home, "shell");
   if (script !== null) return [script];
-  if (!runs) return [];
-  return sources.flatMap((s) => (s.kind === "file" ? [target(cmd, s.target, home, "shell")].filter((t): t is ScriptTarget => t !== null) : []));
+  const files = sources.flatMap((s) => (s.kind === "file" ? [target(cmd, s.target, home, "shell")].filter((t): t is ScriptTarget => t !== null) : []));
+  return runs ? files : files.map((t) => ({ ...t, relayed: true }));
 }
 
 /** The first non-option word, null when an option in `inline` means the program text is inline. */

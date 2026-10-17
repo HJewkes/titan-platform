@@ -160,12 +160,12 @@ function scriptVerdicts(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyC
   });
 }
 
-/** A shell runs every byte of its script, so one the guard cannot read in full refuses the line; an interpreter's gets the mention rule over what was read. */
+/** A shell runs every byte of its script, so one the guard cannot read in full refuses the line; an interpreter's, or a `-c` shell's stdin, is read as far as it reads. */
 function targetReadings(ctx: ClassifyContext, target: ScriptTarget): string[] {
   try {
     return scriptReadings(ctx, target.path);
   } catch (error) {
-    if (target.kind === "shell" || !(error instanceof UnreadableScriptError)) throw error;
+    if ((target.kind === "shell" && !target.relayed) || !(error instanceof UnreadableScriptError)) throw error;
     return error.head === null ? [] : [error.head];
   }
 }
@@ -184,7 +184,7 @@ function charge(budget: ScriptMemo, script: Omit<ScriptOverrun, "total">): void 
  */
 function scriptKey(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext): string {
   const program = target.kind === "interpreter" ? cmd.path : null;
-  return JSON.stringify([ctx.foldCase === true, cmd.dir, target.path, program]);
+  return JSON.stringify([ctx.foldCase === true, cmd.dir, target.path, program, target.relayed === true]);
 }
 
 function memoized(scripts: ScriptMemo, ctx: ClassifyContext, key: string, compute: () => ClassifiedAction[]): ClassifiedAction[] {

@@ -58,7 +58,8 @@ export function nodeContext(home: string, rfs: ReadFs = NODE_FS): ClassifyContex
 /**
  * A script's whole text, read one byte past the cap so a longer file shows as cut. A regular file only: opening a FIFO
  * such as `/dev/stdin` would block the hook. Decoding never shrinks text, so a cut file always measures past the cap.
- * Any failure but a missing file, a stat's `EACCES` or `ELOOP` too, reads as a file that is there and cannot be read.
+ * Any failure but a missing file, a stat's `EACCES` or `ELOOP` too, reads as a file that is there and cannot be read. A
+ * cut file's head is the cap's bytes, as a reading that needs no more always read it.
  */
 function wholeScript(p: string, rfs: ReadFs): string {
   if (p === "/dev/null") return "";
@@ -69,7 +70,7 @@ function wholeScript(p: string, rfs: ReadFs): string {
   } catch (error) {
     throw error instanceof UnreadableScriptError ? error : new UnreadableScriptError(null);
   }
-  if (Buffer.byteLength(text) > SCRIPT_CAP) throw new UnreadableScriptError(text);
+  if (Buffer.byteLength(text) > SCRIPT_CAP) throw new UnreadableScriptError(attempt(() => rfs.readHead(p, SCRIPT_CAP)));
   return text;
 }
 

@@ -34,6 +34,9 @@ mkdirSync(join(home, "locked"));
 writeFileSync(join(home, "locked", "s.sh"), `${PUSH}\n`);
 chmodSync(join(home, "locked"), 0);
 symlinkSync("loop.sh", join(home, "loop.sh"));
+writeFileSync(join(home, "push.sh"), `${PUSH}\n`);
+writeFileSync(join(home, "ok.sh"), "echo ok\n");
+writeFileSync(join(home, "small.csv"), "a,b\n1,2\n");
 
 const port: HookPort = { context: nodeContext(home), now: () => new Date("2026-01-02T03:04:05.000Z"), loadDecide: async () => decide };
 
@@ -57,6 +60,7 @@ describe("a shell running a file the guard cannot read in full", () => {
     ["a script whose push ends one byte past the cap", "bash ./edge.sh"],
     ["a script past the cap a -c string's shell runs from stdin", "bash -c bash < ./big.sh"],
     ["a symlink loop", "bash ./loop.sh"],
+    ["a script past the cap run on stdin after a -c string read it", "bash -c 'wc -l' < ./big.sh; bash < ./big.sh"],
   ])("denies %s: %s", async (_, command) => {
     const { decision, spelling, stdout } = await verdict(command);
 
@@ -76,6 +80,14 @@ describe("a shell running a file the guard cannot read in full", () => {
     expect((await verdict(command)).decision).toBe("deny");
   });
 
+  it.each([
+    ["cat relays a -c shell's stdin into bash", "bash -c 'cat | bash' < ./push.sh"],
+    ["cat - relays a -c shell's stdin into bash", "sh -c 'cat - | bash' < ./push.sh"],
+    ["tee relays a -c shell's stdin into sh", "bash -c 'tee /dev/null | sh' < ./push.sh"],
+  ])("denies the push when %s: %s", async (_, command) => {
+    expect((await verdict(command)).spelling).toBe("bash.merge.git-push-protected");
+  });
+
   it("reads a script of exactly the cap in full and denies its push", async () => {
     expect((await verdict("bash ./full-push.sh")).spelling).toBe("bash.merge.git-push-protected");
   });
@@ -91,6 +103,8 @@ describe("a shell running a file the guard cannot read in full", () => {
     ["bash -s reading /dev/null", "bash -s < /dev/null"],
     ["a -c string reading data past the cap", "bash -c 'wc -l' < ./data.csv"],
     ["a -c string reading a missing file", "bash -c 'wc -l' < ./missing.csv"],
+    ["a -c string piping small data to wc", "bash -c 'cat | wc -l' < ./small.csv"],
+    ["a -c string relaying a harmless script into bash", "bash -c 'cat | bash' < ./ok.sh"],
   ])("passes %s", async (_, command) => {
     expect((await verdict(command)).decision).toBeNull();
   });
