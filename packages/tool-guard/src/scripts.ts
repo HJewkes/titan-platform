@@ -7,7 +7,7 @@ import { isNativeProgram, parseShebang } from "./shebang.js";
 import type { ClassifyContext } from "./types.js";
 import { resolvePath, resolveValue } from "./shell/path.js";
 import { shellOperands, shellStdin } from "./shell/shell-options.js";
-import { UnknownStdinError, UnreadableScriptError } from "./shell/unsure-readings.js";
+import { ReadingLimitError, UnknownStdinError, UnreadableScriptError } from "./shell/unsure-readings.js";
 
 /** A script a command runs by path: shell scripts are classified in full, others get the mention rule. */
 export interface ScriptTarget {
@@ -25,6 +25,18 @@ export class OpaqueShebangError extends UnreadableScriptError {
     super(null);
     this.message = "a script run by path whose #! line the guard cannot follow";
     this.name = "OpaqueShebangError";
+  }
+}
+
+/** How many scripts deep the guard reads: the line's script, and the by-path scripts that one runs. */
+export const MAX_SCRIPT_DEPTH = 2;
+
+/** A by-path script run from a script already `MAX_SCRIPT_DEPTH` deep, which the guard does not read; the hook denies it unchecked. */
+export class ScriptDepthError extends ReadingLimitError {
+  constructor() {
+    super();
+    this.message = "a script run by path from scripts nested deeper than the guard reads";
+    this.name = "ScriptDepthError";
   }
 }
 
