@@ -10,6 +10,9 @@ export { resolveBranchBase, resolveRequestedBase, type BranchBase } from "./bran
 export { OriginUnreachableError, WorktreeBudgetExhaustedError, WorktreeInUseError } from "./errors.js";
 export {
   DEFAULT_STRIPPED_ENV_PREFIXES,
+  SAFE_GIT_PROTOCOLS,
+  pinGitProtocols,
+  withPinnedGitProtocols,
   findGitRoot,
   gitChildEnv,
   observedPresence,

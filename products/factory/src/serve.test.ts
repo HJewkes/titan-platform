@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { toJSONSchema } from "zod";
 import { defineWorkflow } from "./definition.js";
 import { approveMergeDecision } from "./gate-brief.js";
+import { sourcesReader } from "./github-sources/mode.js";
 import type { GateNotifyOptions } from "./gate-notify-sweep.js";
 import { serveFactoryUntilSignal, startFactoryServer, sweepCheckouts, type FactoryServer, type FactoryServerOptions } from "./serve.js";
 import { crashAt } from "./test-support/crash.js";
@@ -25,6 +26,11 @@ function dbFile(): string {
   const dir = mkdtempSync(join(tmpdir(), "factory-serve-"));
   dirs.push(dir);
   return join(dir, "state", "factory.sqlite3");
+}
+
+async function healthOf(server: FactoryServer): Promise<unknown> {
+  const response = await fetch(`http://127.0.0.1:${server.port}/health`);
+  return response.json();
 }
 
 async function serve(dbPath: string, scenario: LandScenario, overrides: Partial<FactoryServerOptions> = {}): Promise<FactoryServer> {
@@ -143,6 +149,27 @@ describe("titan-factory serve", () => {
     const health = (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
 
     expect(health.build).toEqual({ sha: "abc123", behindMain: 4 });
+  });
+
+  it("health shows the github sources in force, and keeps them with a configError once the file turns invalid after start", async () => {
+    const xdg = dirname(dirname(dbFile()));
+    const file = join(xdg, "titan-factory", "config.json");
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify({ github: { sources: "webhook", ingress: "off", pollingIntervalMs: 90_000 } }));
+    const server = await serve(dbFile(), landScenario(), { sources: sourcesReader({ XDG_CONFIG_HOME: xdg }) });
+
+    const before = await healthOf(server);
+    writeFileSync(file, '{ "github": ');
+    const after = await healthOf(server);
+
+    expect(before).toHaveProperty("sources", { configured: "webhook", effective: "polling", reason: "kill-switch", intervalMs: 90_000 });
+    expect(after).toHaveProperty("sources", { configured: "webhook", effective: "polling", reason: "kill-switch", intervalMs: 90_000, configError: expect.stringMatching(/^invalid config /) });
+  });
+
+  it("health has no sources field when serve was given no reader", async () => {
+    const server = await serve(dbFile(), landScenario());
+
+    expect(await healthOf(server)).not.toHaveProperty("sources");
   });
 
   it("health reports an unknown build when none was baked in", async () => {

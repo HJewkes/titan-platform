@@ -1,3 +1,5 @@
+import { namedWrites } from "./command-writes.js";
+import type { NamedWrite, Presence } from "./command-writes.js";
 import type { SimpleCommand } from "./shell/commands.js";
 import type { RedirectToken } from "./shell/lexer.js";
 import { resolvePath } from "./shell/path.js";
@@ -95,10 +97,42 @@ function trackedReadings(ctx: ClassifyContext, path: string): string[] | null {
  * stdout to each. A write the model does not reproduce, its text or its target, leaves the file untracked.
  */
 export function afterWrites(cmd: SimpleCommand, line: ClassifyContext): ClassifyContext {
+  const afterRedirects = withRedirects(cmd, line);
+  const presence = (path: string): Presence => presenceOf(afterRedirects, path);
+  return namedWrites(cmd, presence, line.home).reduce(withNamed, afterRedirects);
+}
+
+function withRedirects(cmd: SimpleCommand, line: ClassifyContext): ClassifyContext {
   const effects = cmd.redirects.map((r) => redirectEffect(r, cmd.dir, line.home));
   if (effects.every((e) => e.kind === "none")) return line;
   const text = effects.some((e) => e.kind === "stdout") ? written(cmd) : null;
   return effects.reduce((ctx, effect) => withEffect(ctx, effect, text), line);
+}
+
+/** A file written by name (tee, cp, mv, install, ln, dd): a copy adds the source's readings, the rest leave the target untracked. */
+function withNamed(line: ClassifyContext, write: NamedWrite): ClassifyContext {
+  if (write.kind === "anywhere") return withReadings(line, null, () => null);
+  if (write.kind === "untracked") return withReadings(line, write.path, () => null);
+  if (write.kind === "tree") return withReadings(line, write.path, () => null, true);
+  const from = write.from;
+  return withReadings(line, write.to, (prior) => withCopy(prior, trackedReadings(line, from)));
+}
+
+function withCopy(prior: string[] | null, copied: string[] | null): string[] | null {
+  if (prior === null || copied === null) return null;
+  const readings = [...new Set([...prior, ...copied])];
+  return readings.length > MAX_WRITTEN_READINGS ? null : readings;
+}
+
+/** Whether `path` holds a file the line can read, nothing, or something it cannot (a directory, a file too long, an untracked write). */
+function presenceOf(line: ClassifyContext, path: string): Presence {
+  try {
+    const readings = trackedReadings(line, path);
+    return readings === null ? "other" : readings.length === 0 ? "absent" : "file";
+  } catch (error) {
+    if (!(error instanceof UnreadableScriptError)) throw error;
+    return error.absent ? "absent" : "other";
+  }
 }
 
 function withEffect(line: ClassifyContext, effect: Effect, text: string | null): ClassifyContext {
@@ -109,14 +143,16 @@ function withEffect(line: ClassifyContext, effect: Effect, text: string | null):
 }
 
 /**
- * `path`'s readings replaced by `update` of them, or every path's made unknown when `path` is null. The write lands in
+ * `path`'s readings replaced by `update` of them, or every path's made unknown when `path` is null; with `tree`, everything under
+ * `path` is made unknown too. The write lands in
  * the state an `&&` chain falls back to as well, since the command ran whether or not the chain breaks later.
  */
-function withReadings(line: ClassifyContext, path: string | null, update: (prior: string[] | null) => string[] | null): ClassifyContext {
+function withReadings(line: ClassifyContext, path: string | null, update: (prior: string[] | null) => string[] | null, tree = false): ClassifyContext {
   const readings = path === null ? null : update(priorReadings(line, path));
-  const next: ClassifyContext = { ...line, scriptReadings: (p) => (path === null ? null : p === path ? readings : trackedReadings(line, p)) };
+  const hits = (p: string): boolean => p === path || (tree && path !== null && p.startsWith(path === "/" ? path : `${path}/`));
+  const next: ClassifyContext = { ...line, scriptReadings: (p) => (path === null ? null : hits(p) ? (p === path ? readings : null) : trackedReadings(line, p)) };
   const trust = line.chainTrust;
-  return trust ? { ...next, chainTrust: { ...trust, fallback: withReadings(trust.fallback, path, update) } } : next;
+  return trust ? { ...next, chainTrust: { ...trust, fallback: withReadings(trust.fallback, path, update, tree) } } : next;
 }
 
 /** What `path` may hold before a write; one that is there and the guard cannot read in full leaves the file untracked, since a shell runs the rest. */

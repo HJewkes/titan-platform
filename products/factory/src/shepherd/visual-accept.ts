@@ -56,14 +56,15 @@ export function configuredVisualSetCarry(env: NodeJS.ProcessEnv = process.env): 
 /**
  * The flag is read only where the run is live and recorded with the seat's check, so a replay rebuilds the gate it
  * opened whatever the config reads now. With the flag off nothing is recorded, and a record that goes on to any other
- * step, a run resumed on a gate, or a step the old host left in flight, predates the offer and replays as it ran: an
- * offer there would end the replay short of that step.
+ * step, a run resumed on a gate, or a step other than the offer the old host left in flight, predates the offer and
+ * replays as it ran: an offer there would end the replay short of that step. An offer left in flight is this call's
+ * own step, so the offer goes ahead and claims it.
  */
 async function offer(run: VisualAcceptRun, red: RedHead, liveMode: () => VisualSetCarry): Promise<z.infer<typeof OfferResult> | undefined> {
   const { ctx } = run;
   const next = ctx.historyNext();
   if (next !== undefined && !stepIdMatches(OFFER_STEP, next)) return undefined;
-  if (next === undefined && ctx.recoveredInFlight().length > 0) return undefined;
+  if (next === undefined && ctx.recoveredInFlight().some((id) => !stepIdMatches(OFFER_STEP, id))) return undefined;
   const mode = next === undefined ? liveMode() : undefined;
   if (mode === "off" || (next === undefined && ctx.resumedGate() !== undefined)) return undefined;
   const input = { ...run.target, headSha: red.headSha, failing: red.failing.map((check) => check.name), ...(mode && { mode }) };

@@ -34,6 +34,7 @@
     "capabilities": "node scripts/gen-capabilities.mjs",
     "capabilities:check": "node scripts/gen-capabilities.mjs --check",
     "egress:scan": "node packages/egress-scan/dist/bin.js",
+    "merge:lint": "node packages/tool-guard/dist/merge-lint-bin.js",
     "docs:dev": "pnpm docs:reference && vitepress dev site",
     "docs:build": "node scripts/gen-docs-reference.mjs --check && vitepress build site",
     "docs:preview": "vitepress preview site",
