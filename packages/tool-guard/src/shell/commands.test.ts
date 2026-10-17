@@ -455,7 +455,7 @@ describe("how a command was reached", () => {
     ["a ( ) subshell", "(cat f)", ["subshell"]],
     ["a command substitution", 'echo "$(cat f)"', ["subshell"]],
     ["a sh -c string", "sh -c 'cat f'", ["sh-c"]],
-    ["a wrapper's script option", "env -S 'cat f'", ["sh-c"]],
+    ["a wrapper's script option", "flock /tmp/l -c 'cat f'", ["sh-c"]],
     ["eval", "eval 'cat f'", ["eval"]],
     ["xargs", "echo f | xargs cat", ["xargs"]],
     ["a heredoc fed to a shell", "bash <<EOF\ncat f\nEOF", ["heredoc-shell"]],

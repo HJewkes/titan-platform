@@ -1,5 +1,6 @@
 import { ParseError, tokenize } from "./lexer.js";
 import { NestingLimitError } from "./nesting.js";
+import { canonicalShell } from "./shell-names.js";
 import {
   arithmeticTextUnknown,
   arithmeticUnknown,
@@ -204,7 +205,7 @@ function scanArgs(command: WordToken, args: WordToken[], input: boolean, depth: 
   const name = command.value;
   if (name === "eval") return scanEval(args, depth, scan);
   if (SOURCERS.has(name)) return markUnknown(scan);
-  if (SHELLS.has(name.slice(name.lastIndexOf("/") + 1))) return input ? markUnknown(scan) : scanShell(args, depth, scan);
+  if (SHELLS.has(canonicalShell(name.slice(name.lastIndexOf("/") + 1)))) return input ? markUnknown(scan) : scanShell(args, depth, scan);
   if (RUNNERS.has(name) && (input || args.some((word) => word.dynamic))) return markUnknown(scan);
   noteCommandEffects(name, args, scan);
   if (DECLARERS.has(name)) return scanDeclarer(name, args, scan);
