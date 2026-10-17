@@ -514,9 +514,9 @@ declare const OWNER_PICK_CONTRADICTED = "Owner pick contradicted:";
 declare function contradictedPicks(text: string, ids: readonly string[]): string[];
 
 /**
- * True when a FIX_FIRST's only blocking item is the CI-unread line. It is an allowlist, so any line it does not know, in any
- * form or section, may be a real finding and keeps the FIX_FIRST, as do a `not fixed:` earlier item and a cut that may have
- * dropped one. Each message joined into the findings is read on its own.
+ * True only when every line of every joined message is one of the template's exact shapes and each message names the
+ * CI-unread line (TP-3050). It is structural, not a list of lookalikes: any other line, a `fixed:` earlier item included,
+ * may be a finding and keeps the FIX_FIRST, as does a cut that may have dropped one. A kept FIX_FIRST only wakes a fixer.
  */
 declare function ciUnreadOnly(text: string): boolean;
 
