@@ -83,11 +83,8 @@ const REFS_HEADS = "refs/heads/";
 /** A branch spelled `refs/heads/<b>` and one spelled `<b>` are the same branch; strip one leading prefix. */
 const branchName = (branch: string): string => (branch.startsWith(REFS_HEADS) ? branch.slice(REFS_HEADS.length) : branch);
 
-/** What a write did beyond changing the row: `released` lifted a hold, so a gate kept for that hold may stand no longer. */
-export type RegistrationChange = "released";
-
-/** Hears a registration after a write to it commits; it must not throw, since the write has already landed. */
-type RegistrationListener = (registration: Registration, change?: RegistrationChange) => void;
+/** Hears a registration after a write to it commits, `released` when it lifted a hold; it must not throw, since the write has already landed. */
+type RegistrationListener = (registration: Registration, change?: "released") => void;
 
 /** Shepherd registrations in the factory database; the table comes from `shepherdMigration`. */
 export class ShepherdStore implements HoldLookup {
@@ -334,7 +331,7 @@ export class ShepherdStore implements HoldLookup {
   }
 
   /** Called once the write has committed; `false` means it wrote nothing. */
-  private changed<T>(runId: string, result: T, change?: RegistrationChange): T {
+  private changed<T>(runId: string, result: T, change?: "released"): T {
     const registration = result === false ? undefined : this.byRun(runId);
     if (registration) this.onChange(registration, change);
     return result;

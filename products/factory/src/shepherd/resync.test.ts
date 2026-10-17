@@ -861,9 +861,9 @@ describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () =
   it("leaves the gate of a run held while the sweep reads its PR head", async () => {
     const { host, fake, services, runId } = await authorityGated({ repoFrozen: true });
     const onGetPr = fake.onGetPr;
-    fake.onGetPr = (pr) => {
+    fake.onGetPr = (pr, reads) => {
       if (!services.store.get().byRun(runId)?.held) services.store.get().hold(runId, ADVERSARY);
-      onGetPr?.(pr);
+      onGetPr?.(pr, reads);
     };
 
     expect(await supersedeTransientGates(host, services)).toEqual([]);
