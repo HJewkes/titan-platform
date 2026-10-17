@@ -8,7 +8,7 @@ import { secret } from "./families/secret.js";
 import { hasDynamicName, namedReadings, wrappedReading } from "./dynamic-readings.js";
 import { afterWrites, scriptReadings } from "./line-writes.js";
 import { INTERPRETERS } from "./mentions.js";
-import { hasOpaqueShebang, refuseOpaqueShebang, scriptTargets, SOURCERS } from "./scripts.js";
+import { hasOpaqueShebang, refuseOpaqueShebang, runsNatively, scriptTargets, SOURCERS } from "./scripts.js";
 import type { ScriptTarget } from "./scripts.js";
 import { extractCommands } from "./shell/commands.js";
 import type { ExtractOptions, SimpleCommand } from "./shell/commands.js";
@@ -146,7 +146,7 @@ function handles(family: Family, cmd: SimpleCommand): boolean {
 
 /** One level deep: a shell script is classified as a command string, any other script's text gets the mention rule. */
 function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: ScriptMemo): ClassifiedAction[] {
-  return scriptTargets(cmd, ctx.home).flatMap((target) => {
+  return scriptTargets(cmd, ctx.home).filter((target) => !runsNatively(target, ctx)).flatMap((target) => {
     const actions = memoized(scripts, ctx, scriptKey(cmd, target, ctx), () => scriptVerdicts(cmd, target, ctx, scripts));
     refuseOpaqueShebang(target, scripts.opaque);
     return actions.map((a) => (a.action === "secret-read" ? classified("bash.secret.script-by-path", a.subject) : a));

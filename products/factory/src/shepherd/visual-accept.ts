@@ -38,10 +38,10 @@ export interface VisualAcceptRun extends GateRun {
 
 type RedHead = Extract<LandOutcome, { kind: "ci-failed" }>;
 
-/** `wake` goes to the fixer through the review wake; `left` ends the ci-failed route with that outcome. */
 /** Runs just before the gate opens, as the visual packet trigger does before a visual land gate. */
 type BeforeAsk = (stepId: string, prompt: string) => Promise<void>;
 
+/** `wake` goes to the fixer through the review wake; `left` ends the ci-failed route with that outcome. */
 type VisualAccept = { kind: "not-offered" } | { kind: "wake"; payload: OwnerSendBackPayload } | { kind: "left"; outcome: LandOutcome | undefined };
 
 /** `shepherd.visualSetCarry` as the config file reads now; a config that does not parse offers nothing. */
@@ -56,12 +56,14 @@ export function configuredVisualSetCarry(env: NodeJS.ProcessEnv = process.env): 
 /**
  * The flag is read only where the run is live and recorded with the seat's check, so a replay rebuilds the gate it
  * opened whatever the config reads now. With the flag off nothing is recorded, and a record that goes on to any other
- * step, or a run resumed on a gate, predates the offer and replays as it ran.
+ * step, a run resumed on a gate, or a step the old host left in flight, predates the offer and replays as it ran: an
+ * offer there would end the replay short of that step.
  */
 async function offer(run: VisualAcceptRun, red: RedHead, liveMode: () => VisualSetCarry): Promise<z.infer<typeof OfferResult> | undefined> {
   const { ctx } = run;
   const next = ctx.historyNext();
   if (next !== undefined && !stepIdMatches(OFFER_STEP, next)) return undefined;
+  if (next === undefined && ctx.recoveredInFlight().length > 0) return undefined;
   const mode = next === undefined ? liveMode() : undefined;
   if (mode === "off" || (next === undefined && ctx.resumedGate() !== undefined)) return undefined;
   const input = { ...run.target, headSha: red.headSha, failing: red.failing.map((check) => check.name), ...(mode && { mode }) };

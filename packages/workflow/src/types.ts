@@ -169,6 +169,8 @@ export interface WorkflowContext {
    * until it is answered. Undefined for a live run, or once replay has reached that step.
    */
   resumedGate(): string | undefined;
+  /** Steps the previous host left in flight that this drive's replay has not reached yet; the record holds no result for them. */
+  recoveredInFlight(): string[];
   /** Aborts when the run is cancelled; pass it to anything long-running. */
   readonly signal: AbortSignal;
 }

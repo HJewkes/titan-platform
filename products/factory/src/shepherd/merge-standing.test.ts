@@ -28,6 +28,7 @@ function contextAt(next: string | undefined): { ctx: WorkflowContext; dispatched
     iteration: () => 0,
     historyNext: () => next,
     resumedGate: () => undefined,
+    recoveredInFlight: () => [],
     expireGates: () => [],
     dispatch: async (stepId, _template, options) => {
       dispatched.push(stepId);

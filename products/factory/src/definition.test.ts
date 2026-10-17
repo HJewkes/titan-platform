@@ -17,6 +17,7 @@ function fakeContext(): WorkflowContext {
     iteration: () => 0,
     historyNext: () => undefined,
     resumedGate: () => undefined,
+    recoveredInFlight: () => [],
     expireGates: () => [],
     dispatch: unused,
     seed: unused,

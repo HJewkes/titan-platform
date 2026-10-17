@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { AnswersPage, AskRequest, ServiceAnswer } from "@titan-design/agent-dispatch";
 import type { GateRecord, GateRule } from "@titan-design/hitl";
 import { toJSONSchema } from "zod";
-import { approveMergeDecision, frozenDecision } from "./gate-brief.js";
+import { approveMergeDecision, frozenDecision, visualAcceptDecision } from "./gate-brief.js";
 import { askable, answerPayload, notifyTick, type GateNotifyPorts } from "./gate-notify.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
 import { OWNER } from "./test-support/resolver.js";
@@ -262,6 +262,24 @@ describe("gate notify: gates land stamped with their table row", () => {
 
     expect(queue.asked).toHaveLength(1);
     expect(factory.gates.get(GATE)).toMatchObject({ status: "resolved", rule: { ruleId: "MRG-AU" }, resolvedBy: { class: "owner-remote" } });
+  });
+});
+
+describe("gate notify: a visual accept gate", () => {
+  const VISUAL_GATE = "run1/sh-visual-accept";
+
+  it("leaves a bare accept-set unmappable, since an option alone carries no approved set or note", async () => {
+    const factory = host();
+    const queue = new FakeQueue();
+    const { schema, brief } = visualAcceptDecision({ repo: "HJewkes/demo", pr: 7, headSha: HEAD, check: "visual" });
+    factory.gates.create({ id: VISUAL_GATE, prompt: "Accept?", schema: toJSONSchema(schema), ...brief });
+    await notifyTick(ports(factory, queue));
+
+    queue.answer("q1", "accept-set");
+    await notifyTick(ports(factory, queue));
+
+    expect(factory.gates.get(VISUAL_GATE)?.status).toBe("pending");
+    expect(factory.asks.get(VISUAL_GATE)).toMatchObject({ state: "unmappable" });
   });
 });
 
