@@ -131,6 +131,8 @@ interface SimpleCommand {
     /** Whether `!` negates the status of the pipeline the command is in. */
     negated: boolean;
     chain: Chain;
+    /** Set when `PATH` or zsh's `path` had been written, or may have, by the time the command runs, or the command's own prefix writes it. */
+    pathChanged?: true;
     /** Set on a command only an added xargs reading runs; it may add actions but never fails the line or moves its state. */
     added?: true;
     /** What its descriptors held before its own redirects, when a command that runs it set them up (`bash -c bash < f`). */
@@ -154,6 +156,8 @@ interface ExtractOptions {
      */
     stopPastCap?: boolean;
     aliases?: AliasTable;
+    /** Called once the walk ends if it wrote `PATH` or zsh's `path` in a shell that outlives it, or may have. */
+    onPathWrite?: () => void;
     /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
     onScript?: (text: string) => void;
 }

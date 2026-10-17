@@ -8,7 +8,7 @@ import { secret } from "./families/secret.js";
 import { hasDynamicName, namedReadings, wrappedReading } from "./dynamic-readings.js";
 import { afterWrites, scriptReadings } from "./line-writes.js";
 import { INTERPRETERS } from "./mentions.js";
-import { changesPath, hasOpaqueShebang, isSwappableShebang, refuseOpaqueShebang, runsNatively, scriptTargets, SOURCERS } from "./scripts.js";
+import { hasOpaqueShebang, isSwappableShebang, refuseOpaqueShebang, refuseSwappableShebang, runsNatively, scriptTargets, SOURCERS } from "./scripts.js";
 import type { ScriptTarget } from "./scripts.js";
 import { extractCommands } from "./shell/commands.js";
 import type { ExtractOptions, SimpleCommand } from "./shell/commands.js";
@@ -29,7 +29,7 @@ const GUARDED = new Set([...FAMILIES.flatMap((f) => [...(f.names ?? []), ...(f.v
  * dynamic wrapper readings or script text than it checks; the hook owns that failure policy.
  */
 export function classify(event: HookEvent, ctx: ClassifyContext): ClassifiedAction[] {
-  if (event.kind === "bash") return classifyCommand(event.command, event.cwd, ctx, { verdicts: new Map(), bytesLeft: MAX_SCRIPT_BYTES, opaque: new Set(), pathChanged: changesPath(event.command) });
+  if (event.kind === "bash") return classifyCommand(event.command, event.cwd, ctx, newMemo());
   if (event.kind === "read") return unique(FAMILIES.flatMap((f) => f.read?.(event, ctx) ?? []));
   if (event.kind === "write") return unique(FAMILIES.flatMap((f) => f.write?.(event, ctx) ?? []));
   return [];
@@ -43,12 +43,20 @@ interface ScriptMemo {
   bytesLeft: number;
   /** Paths whose first line is a `#!` the guard cannot follow; kept beside the memo because `bash x.sh` and `./x.sh` share a verdict but only the second runs that line. */
   opaque: Set<string>;
-  /** Whether the line assigns PATH anywhere, so an `env`-found shell in a by-path script may not be the shell it names. */
+  /** Paths whose first line has `env` find the shell, so a PATH the line changed decides which shell runs. */
+  viaEnv: Set<string>;
+  /** Whether a script the line sourced wrote PATH, in the line's own shell. */
   pathChanged: boolean;
+  /** Paths of scripts whose text writes PATH, or may. */
+  writesPath: Set<string>;
 }
 
-function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
-  const commands = extractCommands(src, extractOptions(cwd, ctx, scripts, false));
+function newMemo(): ScriptMemo {
+  return { verdicts: new Map(), bytesLeft: MAX_SCRIPT_BYTES, opaque: new Set(), viaEnv: new Set(), pathChanged: false, writesPath: new Set() };
+}
+
+function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null, onPathWrite?: () => void): ClassifiedAction[] {
+  const commands = extractCommands(src, { ...extractOptions(cwd, ctx, scripts, false), onPathWrite });
   const line = withHttpConfig(src, commands, ctx);
   const asWritten = classifyLine(commands, line, scripts);
   return ctx.foldCase ? unique([...asWritten, ...foldedActions(src, cwd, line, scripts)]) : asWritten;
@@ -148,6 +156,8 @@ function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: Script
   return scriptTargets(cmd, ctx.home).filter((target) => !runsNatively(target, ctx)).flatMap((target) => {
     const actions = memoized(scripts, ctx, scriptKey(cmd, target, ctx), () => scriptVerdicts(cmd, target, ctx, scripts));
     refuseOpaqueShebang(target, scripts.opaque);
+    if (cmd.name !== null && SOURCERS.has(cmd.name) && scripts.writesPath.has(target.path)) scripts.pathChanged = true;
+    refuseSwappableShebang(target, cmd.pathChanged === true || scripts.pathChanged, scripts.viaEnv);
     return actions.map((a) => (a.action === "secret-read" ? classified("bash.secret.script-by-path", a.subject) : a));
   });
 }
@@ -160,9 +170,10 @@ function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: Script
 function scriptVerdicts(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext, budget: ScriptMemo): ClassifiedAction[] {
   const added = cmd.added === true;
   return targetReadings(ctx, target).flatMap((text) => {
-    if (hasOpaqueShebang(text) || (budget.pathChanged && isSwappableShebang(text))) budget.opaque.add(target.path);
+    if (hasOpaqueShebang(text)) budget.opaque.add(target.path);
+    if (isSwappableShebang(text)) budget.viaEnv.add(target.path);
     if (added || target.kind === "shell") charge(budget, { script: target.path.slice(target.path.lastIndexOf("/") + 1), bytes: Buffer.byteLength(text), added });
-    return scriptText(cmd, target, text, ctx);
+    return scriptText(cmd, target, text, ctx, budget);
   });
 }
 
@@ -203,10 +214,10 @@ function memoized(scripts: ScriptMemo, ctx: ClassifyContext, key: string, comput
   return actions;
 }
 
-function scriptText(cmd: SimpleCommand, target: ScriptTarget, text: string, ctx: ClassifyContext): ClassifiedAction[] {
+function scriptText(cmd: SimpleCommand, target: ScriptTarget, text: string, ctx: ClassifyContext, budget: ScriptMemo): ClassifiedAction[] {
   if (target.kind === "shell") {
     try {
-      return classifyCommand(text, cmd.dir, ctx, null);
+      return classifyCommand(text, cmd.dir, ctx, null, () => budget.writesPath.add(target.path));
     } catch (error) {
       if (!(error instanceof ParseError)) throw error;
     }

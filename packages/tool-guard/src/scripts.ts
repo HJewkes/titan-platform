@@ -33,17 +33,14 @@ export function hasOpaqueShebang(text: string): boolean {
   return parseShebang(text).kind === "opaque";
 }
 
-/** An assignment to `PATH`, or to zsh's `path` array, anywhere in the text: a prefix, `export`, an append, a dynamic value. */
-const PATH_ASSIGN_RE = /(?:^|[^\w])(?:PATH|path)\+?=/;
-
-/** Whether a line may change the PATH `env` searches, so a `#!/usr/bin/env bash` runs whatever it finds first instead of bash. */
-export function changesPath(src: string): boolean {
-  return PATH_ASSIGN_RE.test(src);
-}
-
 /** Whether a script's `env` lookup of its shell is subject to a PATH the line changed. */
 export function isSwappableShebang(text: string): boolean {
   return resolvesShellViaPath(text);
+}
+
+/** Refuses a by-path script whose `env`-found shell the line's PATH change may have swapped. */
+export function refuseSwappableShebang(target: ScriptTarget, pathChanged: boolean, viaEnv: ReadonlySet<string>): void {
+  if (target.byPath && pathChanged && viaEnv.has(target.path)) throw new OpaqueShebangError();
 }
 
 /** Refuses a by-path script found to have an opaque first line, as the interpreter it names may run something other than the body. */

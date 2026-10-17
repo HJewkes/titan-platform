@@ -202,6 +202,17 @@ describe("a #!/usr/bin/env shell script on a line that changes PATH", () => {
     ["a PATH+= append", "PATH+=:. ./envp"],
     ["zsh's path=( )", "path=(. $path); ./envp"],
     ["a PATH= prefix behind env", "env PATH=. ./envp"],
+    ["a quoted name in export", "export PA''TH=.:$PATH; ./envp"],
+    ["a quoted name behind env", "env PA''TH=. ./envp"],
+    ["a quoted assignment behind env", 'env "PATH"=. ./envp'],
+    ["eval of a quoted name", "eval PA''TH=.; ./envp"],
+    ["read", "read PATH <<< .; ./envp"],
+    ["printf -v", "printf -v PATH %s .; ./envp"],
+    ["a nameref", "declare -n r=PATH; r=.; ./envp"],
+    ["a for loop", "for PATH in .; do ./envp; done"],
+    ["a zsh path element", "path[1]=.; ./envp"],
+    ["a dynamic store", "declare $X=.; ./envp"],
+    ["a subshell group", "{ PATH=.; }; ./envp"],
   ])("denies the script after %s", async (_, line) => {
     file("envp", ENV_BASH);
     expect(await decision(line)).toBe("deny");
@@ -217,6 +228,17 @@ describe("a #!/usr/bin/env shell script on a line that changes PATH", () => {
     expect(await decision("./envp")).toBeNull();
     file("envp2", `#!/usr/bin/env bash\n${PUSH}\n`);
     expect(await decision("./envp2")).toBe("deny");
+  });
+
+  it("denies the script after a sourced file writes PATH", async () => {
+    file("envp", ENV_BASH);
+    file("src.sh", "PATH=.:$PATH\n");
+    expect(await decision(". ./src.sh; ./envp")).toBe("deny");
+  });
+
+  it.each(["echo PATH=1 && ./envp", "./envp; echo PATH=x", "grep PATH= f; ./envp", "PATH=$PATH:~/bin ls; ./envp"])("reads the script as before for %s", async (line) => {
+    file("envp", ENV_BASH);
+    expect(await decision(line)).toBeNull();
   });
 
   it("does not take a variable that only ends in PATH for PATH", async () => {

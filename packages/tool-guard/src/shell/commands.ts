@@ -8,7 +8,7 @@ import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
 import { aliasCommands, type AliasTable } from "./alias-words.js";
-import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackVars } from "./vars.js";
+import { assign, childVars, expandWord, lookup, isPathName, noteSureCommands, observeStores, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { CommandRebindingError, rebindsCommand } from "./command-rebinding.js";
 import { cutReading } from "./piped-nul.js";
@@ -62,6 +62,8 @@ export interface SimpleCommand {
   /** Whether `!` negates the status of the pipeline the command is in. */
   negated: boolean;
   chain: Chain;
+  /** Set when `PATH` or zsh's `path` had been written, or may have, by the time the command runs, or the command's own prefix writes it. */
+  pathChanged?: true;
   /** Set on a command only an added xargs reading runs; it may add actions but never fails the line or moves its state. */
   added?: true;
   /** What its descriptors held before its own redirects, when a command that runs it set them up (`bash -c bash < f`). */
@@ -86,6 +88,8 @@ export interface ExtractOptions {
    */
   stopPastCap?: boolean;
   aliases?: AliasTable;
+  /** Called once the walk ends if it wrote `PATH` or zsh's `path` in a shell that outlives it, or may have. */
+  onPathWrite?: () => void;
   /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
   onScript?: (text: string) => void;
 }
@@ -155,6 +159,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   };
   walk(tokenizeLine(src), observed(w));
   settle(w.marks);
+  if (w.marks.pathChanged) options.onPathWrite?.();
   return out;
 }
 
@@ -193,7 +198,7 @@ function walkFrom(list: Token[], start: number, w: Walk): void {
     if (token.type === "op") {
       noteValues(token, words, w);
       const { readings, disputed } = emit(words, redirects, w, token.value);
-      const walks = [w, ...disputed.map((scope) => forkWalk(w, scope, (fork, vars) => observeStores(vars, (value) => hear(fork, value))))];
+      const walks = [w, ...disputed.map((scope) => forkWalk(w, scope, observeWalk))];
       for (const each of walks) endCommand(each, token, words, redirects, readings, (op) => scope(op, each));
       forks.push(...walks.slice(1).map((fork) => () => walkFrom(list, start + at + 1, fork)));
       words = [];
@@ -225,8 +230,12 @@ function hear(w: Walk, value: string | null): void {
 
 /** A walk whose variables report every value they store. */
 function observed(w: Walk): Walk {
-  observeStores(w.scope.vars, (value) => hear(w, value));
+  observeWalk(w, w.scope.vars);
   return w;
+}
+
+function observeWalk(w: Walk, vars: Vars): void {
+  observeStores(vars, (value) => hear(w, value), () => void (w.marks.pathChanged = true));
 }
 
 /** A substitution the lexer rejects while it is walked leaves the line unchecked, which the hook refuses. */
@@ -339,7 +348,9 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
   const inherited = w.prev === "|" || w.prev === "|&" ? emptied(w.descriptors, 0) : w.descriptors;
   const set = inherited === TOP_DESCRIPTORS ? {} : { inherited };
-  w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set });
+  const ownPath = cmd.assigned.some(([name, , kind]) => kind !== "hidden" && isPathName(name));
+  const pathSet = w.marks.pathChanged || ownPath ? { pathChanged: true as const } : {};
+  w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set, ...pathSet });
   const piped = stdin === null ? [] : [stdin, ...(stdin === w.stdin ? w.shellStdin : [])];
   const held = descriptorsAfter(redirects, piped, inherited, (target) => resolvePath(w.scope.dir, target, w.home));
   const script = inlineScript(cmd, redirects, piped, w.unsure, inherited);
