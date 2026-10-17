@@ -501,6 +501,15 @@ describe("an approve-merge gate stamped with the MRG-AU row", () => {
     expect(world.host.gates.get(gateId)?.status).toBe("pending");
   });
 
+  it("leaves a release gate rule-less, so a coordinator abandon of it once the PR is gone resolves", async () => {
+    const world = await paused({ gate: "merge", rule: "shepherd-release/owner-gate", stamped: true });
+    mergedPr(world.gh);
+
+    const result = await resolveAs(world, "merge", { decision: "abandon", headSha: HEAD });
+
+    expect(result.gate).toMatchObject({ status: "resolved", rule: undefined, resolvedEvidence: { kind: "pr-gone", state: "merged" } });
+  });
+
   it("still lets the coordinator retry the stuck-behind gate that follows it", async () => {
     const world = await paused({ ...STAMPED, thenStuck: true });
     await resolveAs(world, "merge", MERGE);

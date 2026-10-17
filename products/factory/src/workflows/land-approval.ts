@@ -55,17 +55,12 @@ export function approveMergeAsk(rule: PolicyRule, facts: ApproveMergeFacts, { re
 /** TP-1904's mechanical merges and pr-gone abandons; `deviceGateAuthorize` admits the coordinator only on that evidence. */
 const RULE_DELEGATES: Readonly<Record<string, DelegateResolverClass[]>> = { "MRG-AU": ["coordinator"] };
 
-/** A Version Packages merge is a release, which table.json lets only the owner at the terminal answer (REL-OR denies the remote). */
-const RELEASE_ROW = "REL-CO";
-
 /**
  * The stored rule that pins who may answer an approve-merge gate to its table.json row's resolvers at open time. Only
- * the authority table and release gates have a row; factory-local tables open rule-less, under the default class check.
+ * the authority table has a row; factory-local and release tables open rule-less, under the default class check.
  */
 export function tableGateRule(rule: PolicyRule): GateRule | undefined {
-  if (rule.table === "authority") return stampedRow(rule.rowId);
-  if (rule.table === "shepherd-release") return stampedRow(RELEASE_ROW);
-  return undefined;
+  return rule.table === "authority" ? stampedRow(rule.rowId) : undefined;
 }
 
 function stampedRow(ruleId: string): GateRule | undefined {

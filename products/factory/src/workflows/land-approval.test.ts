@@ -157,14 +157,13 @@ describe("the rule land stamps on approve-merge", () => {
     return host.gates.get(gate)?.rule;
   }
 
-  it("is the table.json row for authority and release gates, and none for factory-local gates or an authority row that does not gate", async () => {
+  it("is the table.json row for an authority gate, and none for release or factory-local gates or an authority row that does not gate", async () => {
     const rule = (table: string, rowId: string): PolicyRule => ({ table, rowId, version: 1 });
 
-    const stamped = { mrgAu: await storedRule(rule("authority", "MRG-AU")), release: await storedRule(rule("shepherd-release", "owner-gate")) };
-    const local = [rule("shepherd-merge-guard", "no-facts"), rule("shepherd-route", "failed-rounds"), rule("factory-default", "gate-all"), rule("shepherd-seat", "owner-gate"), rule("authority", "none")];
+    const mrgAu = await storedRule(rule("authority", "MRG-AU"));
+    const unstamped = [rule("shepherd-release", "owner-gate"), rule("shepherd-merge-guard", "no-facts"), rule("shepherd-route", "failed-rounds"), rule("factory-default", "gate-all"), rule("shepherd-seat", "owner-gate"), rule("authority", "none")];
 
-    expect(stamped.mrgAu).toEqual({ table: "F5", version: "1.0.0", ruleId: "MRG-AU", resolvers: ["owner-terminal", "owner-remote"], delegates: ["coordinator"] });
-    expect(stamped.release).toEqual({ table: "F5", version: "1.0.0", ruleId: "REL-CO", resolvers: ["owner-terminal"] });
-    for (const policyRule of local) expect(await storedRule(policyRule), `${policyRule.table}/${policyRule.rowId}`).toBeUndefined();
+    expect(mrgAu).toEqual({ table: "F5", version: "1.0.0", ruleId: "MRG-AU", resolvers: ["owner-terminal", "owner-remote"], delegates: ["coordinator"] });
+    for (const policyRule of unstamped) expect(await storedRule(policyRule), `${policyRule.table}/${policyRule.rowId}`).toBeUndefined();
   });
 });

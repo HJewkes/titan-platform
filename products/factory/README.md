@@ -98,10 +98,9 @@ pick, and every other gate still need the owner's presence.
 Land stamps its approve-merge gate with the table.json row that gated it, so the gate store, and its
 SQLite trigger, admit only that row's resolvers (migrations 27 and 28). An `authority/MRG-AU` gate
 admits owner-terminal, owner-remote and `coordinator` as a rule delegate, which `deviceGateAuthorize`
-lets answer only on the evidence above, never on the rule alone. A `shepherd-release/*` gate carries
-REL-CO's list, owner-terminal only, so gateNotify does not ask it and a console Ship gets 403. Seat,
-merge-guard, route and default gates have no row and open rule-less, as do gates opened before the
-migrations.
+lets answer only on the evidence above, never on the rule alone. Release gates open rule-less, so the
+owner may approve one from the phone (owner decision 2026-10-16). Seat, merge-guard, route and default
+gates have no row and open rule-less too, as do gates opened before the migrations.
 
 The dialog does not yet stop an agent that only runs the CLI. Only `AGENT_CHAT_AGENT_ID` is read, so
 an agent that runs `env -u AGENT_CHAT_AGENT_ID titan-factory gate resolve ...`, or sets the variable

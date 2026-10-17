@@ -263,17 +263,6 @@ describe("gate notify: gates land stamped with their table row", () => {
     expect(queue.asked).toHaveLength(1);
     expect(factory.gates.get(GATE)).toMatchObject({ status: "resolved", rule: { ruleId: "MRG-AU" }, resolvedBy: { class: "owner-remote" } });
   });
-
-  it("never asks a release gate, which REL-CO leaves to owner-terminal", async () => {
-    const factory = host();
-    const queue = new FakeQueue();
-    openMergeGate(factory, GATE, false, tableGateRule({ table: "shepherd-release", rowId: "owner-gate", version: 1 }));
-
-    await notifyTick(ports(factory, queue));
-
-    expect(queue.asked).toEqual([]);
-    expect(factory.gates.get(GATE)).toMatchObject({ status: "pending", rule: { ruleId: "REL-CO", resolvers: ["owner-terminal"] } });
-  });
 });
 
 describe("gate notify: an approve-merge gate that offers send-back", () => {
