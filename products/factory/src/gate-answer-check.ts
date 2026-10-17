@@ -112,8 +112,8 @@ export async function checkAnswer(inputs: AnswerInputs): Promise<AnswerCheck> {
   const stale = (await gateStaleness(host, item, undefined)) ?? (land.head === request.headSha ? undefined : { detail: `the gate asks about head ${land.head}` });
   if (stale) return storeOutcome(host, request, { gate, land, payload }, stale.detail);
   if ("kind" in answer) return answer;
-  const binding = (await githubOutcome(inputs, land)) ?? packetRefusal(inputs, land) ?? deliveryRefusal(inputs, payload) ?? choiceRefusal(inputs, land) ?? noteRefusal(payload);
-  return binding ?? { kind: "resolve", gateId: gate.id, choice: request.choice, payload };
+  const binding = (await githubOutcome(inputs, land)) ?? packetRefusal(inputs, land) ?? deliveryRefusal(inputs, answer) ?? choiceRefusal(inputs, land) ?? noteRefusal(answer);
+  return binding ?? { kind: "resolve", gateId: gate.id, choice: request.choice, payload: answer };
 }
 
 /** A land approve-merge gate, or a red head's accept gate whose prompt and schema pin the same head. */
