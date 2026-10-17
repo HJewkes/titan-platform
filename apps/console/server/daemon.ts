@@ -62,12 +62,14 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   return { ...handle, close };
 }
 
+const SIGN_IN_HINT = "Ask the operator for a fresh sign-in link. It is minted on the host with titan-console login-link.";
+
 /** Creates the token file on first run; an untrustworthy one throws here, before anything binds. */
 function lanListener(config: ConsoleConfig): RemoteListenerOptions | null {
   if (config.lanHost === null) return null;
   if (config.lanTls === null) throw new Error(LAN_NEEDS_TLS);
   ensureLanToken(config);
-  return { host: config.lanHost, tokenFile: config.lanTokenPath, allowedHosts: config.lanNames, tls: config.lanTls };
+  return { host: config.lanHost, tokenFile: config.lanTokenPath, allowedHosts: config.lanNames, tls: config.lanTls, signInHint: SIGN_IN_HINT };
 }
 
 /** Closes on SIGINT or SIGTERM, then runs `onClose` so a caller can stop what it started beside the daemon. */

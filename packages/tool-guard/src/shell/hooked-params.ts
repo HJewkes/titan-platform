@@ -6,83 +6,17 @@ import { assignOnExpand } from "./assign-on-expand.js";
 import { HOOKED } from "./hooked-names.js";
 import { mayBeUnquoted, mayGenerate } from "./word-generation.js";
 import { TARGET_RE } from "./writers.js";
+import { afterSkippedDashes, DECLARE, NAMEREF_DECLARERS, REMOVERS, WRITER_SPECS, writerSpec } from "./writer-specs.js";
+import type { WriterSpec } from "./writer-specs.js";
 
 
-/**
- * How a name-writing builtin reads its words, as the union of bash and zsh. Each string lists option letters; a
- * letter in none of them is unknown, and the command then counts as a hooked write.
- */
-interface WriterSpec {
-  /** Options whose value, attached or next, is a name the command writes. */
-  names?: string;
-  /** Options whose value, attached or next, is not a name. */
-  values?: string;
-  /** Options that take a value in one shell and are a flag in the other, so the next word may be a name. */
-  either?: string;
-  /** zsh options with an optional attached number, such as `typeset -L10`. */
-  numeric?: string;
-  flags?: string;
-  /** Whether every other letter or digit is a flag, as for `set`. */
-  anyFlag?: boolean;
-  /** Whether a `+` cluster is an option word too. */
-  plus?: boolean;
-  /** Whether a `--name` word is an option of another command of the same name, which writes no name. */
-  longOptions?: boolean;
-  /** Which operands are names: all of them, none, or each zparseopts spec's array after `=`. */
-  operands: "names" | "none" | "specs";
-  /** Leading operands that are not names, such as the file operand of `zlistattr`. */
-  skip?: number;
-}
-
-const DECLARE: WriterSpec = { flags: "aAfFgGhHiIklLmnprRtTuUxzEZ", numeric: "EFLRZip", plus: true, operands: "names" };
-
-const ZSTAT: WriterSpec = { names: "AH", values: "fF", flags: "gnNolLtTrs", operands: "none" };
-
-/** zsh/computil's builtins name the arrays they fill in operands whose positions depend on the mode, so each operand counts. */
-const COMPLETION_INTERNAL: WriterSpec = { anyFlag: true, operands: "names" };
-
-const SPECS: Record<string, WriterSpec> = {
-  export: DECLARE, declare: DECLARE, typeset: DECLARE, local: DECLARE, readonly: DECLARE, private: DECLARE,
-  integer: DECLARE, float: DECLARE,
-  read: { names: "a", values: "diNu", either: "npt", numeric: "k", flags: "ersqzcAlE", operands: "names" },
-  mapfile: { values: "dnOsuCc", flags: "t", operands: "names" },
-  readarray: { values: "dnOsuCc", flags: "t", operands: "names" },
-  printf: { names: "v", operands: "none" },
-  print: { names: "v", values: "CfuxX", flags: "abcDilmnNoOpPrRsSz", operands: "none" },
-  set: { names: "A", values: "o", anyFlag: true, plus: true, operands: "none" },
-  wait: { names: "p", flags: "nf", operands: "none" },
-  compgen: { names: "V", values: "AGWFCXPSo", flags: "abcdefgjksuv", operands: "none" },
-  vared: { values: "prMmift", flags: "Aacghe", operands: "names" },
-  zstyle: { flags: "sabtTmgedL", operands: "names" },
-  zparseopts: { names: "aAv", flags: "DEFKM", operands: "specs" },
-  zformat: { names: "faF", operands: "none" },
-  strftime: { names: "s", flags: "rqn", operands: "none" },
-  zstat: ZSTAT,
-  /** zsh/stat's builtin shares its name with GNU and BSD stat: `-t` and BSD `-f` take a format, GNU `-f` and BSD `-F` are flags. */
-  stat: { ...ZSTAT, values: "c", either: "fFt", flags: "gnNolLTrsqx", longOptions: true },
-  zselect: { names: "aA", values: "t", flags: "rwe", operands: "none" },
-  getln: { flags: "AclneE", operands: "names" },
-  sysread: { names: "c", values: "iost", operands: "names" },
-  zregexparse: { flags: "c", operands: "names" },
-  pcre_match: { names: "va", values: "n", flags: "b", operands: "none" },
-  zpty: { flags: "ebdtLrwnm", skip: 1, operands: "names" },
-  zsystem: { operands: "names" },
-  syserror: { names: "e", values: "p", operands: "none" },
-  sysopen: { names: "u", values: "mo", flags: "arw", operands: "none" },
-  syswrite: { names: "c", values: "o", operands: "none" },
-  zmodload: { names: "P", flags: "dLsiFabcpfIeARulm", operands: "none" },
-  zgetattr: { flags: "h", skip: 2, operands: "names" },
-  zlistattr: { flags: "h", skip: 1, operands: "names" },
-  ztie: { values: "df", flags: "rzZS", operands: "names" },
-  zcurses: { operands: "names" },
-  shift: { flags: "p", operands: "names" },
-  compadd: { names: "OAD", values: "PSpsiIWdJVXxrRMEF", either: "o", flags: "UQqaklfn12C", operands: "none" },
-  comparguments: COMPLETION_INTERNAL, compvalues: COMPLETION_INTERNAL, compdescribe: COMPLETION_INTERNAL,
-  comptags: COMPLETION_INTERNAL, compfiles: COMPLETION_INTERNAL,
-  compquote: { flags: "p", operands: "names" },
-};
-
-const NAMEREF_DECLARERS = new Set(["declare", "typeset", "local", "private"]);
+/** The builtins this reader slots: every table entry but those that only remove a name. */
+export const HOOKED_WRITERS: ReadonlySet<string> = new Set([
+  ...Object.keys(WRITER_SPECS).filter((name) => !REMOVERS.has(name)),
+  "for",
+  "select",
+  "getopts",
+]);
 
 
 const IDENTIFIER_PREFIX_RE = /^[A-Za-z_][A-Za-z0-9_]*/;
@@ -139,11 +73,12 @@ function slotsHooked(slots: WordToken[] | string, names: ReadonlySet<string>): s
 }
 
 /** The words a command reads as names it writes, or the text of an option word that fails closed. */
-function nameSlots({ name, args }: Unwrapped): WordToken[] | string {
+function nameSlots({ name, args: words }: Unwrapped): WordToken[] | string {
   if (name === null) return [];
+  const args = afterSkippedDashes(name, words);
   if (name === "for" || name === "select") return forNames(args);
   if (name === "getopts") return args.slice(1, 2);
-  const spec = Object.hasOwn(SPECS, name) ? SPECS[name] : undefined;
+  const spec = REMOVERS.has(name) ? undefined : writerSpec(name);
   return spec ? specSlots(spec, args) : [];
 }
 
@@ -302,7 +237,7 @@ function subscriptGlobsHooked(name: string, names: ReadonlySet<string>): boolean
  * literal name, and a bare `declare -n r` counts too, since a later `r=PS4` binds it.
  */
 function namerefHooked({ name, args }: Unwrapped, names: ReadonlySet<string>): string | null {
-  if (name === null || !Object.hasOwn(SPECS, name) || SPECS[name] !== DECLARE) return null;
+  if (name === null || writerSpec(name) !== DECLARE) return null;
   const nameref = NAMEREF_DECLARERS.has(name) && args.some((a) => !a.dynamic && /^-[A-Za-z0-9]*n/.test(a.value));
   for (const word of args.filter((a) => !/^[-+]/.test(a.value))) {
     const target = word.value.includes("=") ? word.value.slice(word.value.indexOf("=") + 1) : null;

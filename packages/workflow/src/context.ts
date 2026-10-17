@@ -199,6 +199,8 @@ export class RunContext implements WorkflowContext {
 
   resumedGate(): string | undefined { return this.resumedGateStep ?? undefined; }
 
+  recoveredInFlight(): string[] { return this.orphanedSteps().map((step) => step.stepId); }
+
   /** A paused run already opened this gate, so a missing row is lost history: reopening it would ask the step again. */
   private requireResumedGate(stepId: string, gateId: string): void {
     if (this.resumedGateStep !== stepId) return;

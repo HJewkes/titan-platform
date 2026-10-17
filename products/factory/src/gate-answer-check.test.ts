@@ -6,9 +6,10 @@ import { fakeGitHub, githubPort, type FakeGitHub } from "@titan-design/github";
 import { GATE_CANCELLED_SIGNAL } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "./definition.js";
-import { MAX_NOTE_CHARS, checkAnswer, type AnswerRequest } from "./gate-answer-check.js";
+import { MAX_NOTE_CHARS, checkAnswer, type AcceptFiles, type AnswerRequest } from "./gate-answer-check.js";
 import { approveMergeDecision } from "./gate-brief.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
+import { COMPONENT, acceptPacket, afterDigests, visualAcceptGate } from "./test-support/accept-set.js";
 import { TEST_BRIEF } from "./test-support/brief.js";
 
 const REPO = "example-org/example-repo";
@@ -60,7 +61,7 @@ interface World {
 async function world(): Promise<World> {
   const dir = mkdtempSync(join(tmpdir(), "factory-gate-answer-"));
   dirs.push(dir);
-  const host = openFactoryHost({ dbPath: join(dir, "factory.sqlite3"), workflows: [mergeGate], routes: [], gatePollMs: 10 });
+  const host = openFactoryHost({ dbPath: join(dir, "factory.sqlite3"), workflows: [mergeGate, visualAcceptGate(REPO)], routes: [], gatePollMs: 10 });
   hosts.push(host);
   const github = fakeGitHub({ repo: REPO });
   const { number: pr } = github.addPr({ headSha: H });
@@ -289,5 +290,91 @@ describe("checkAnswer", () => {
     const w = await world();
 
     expect(await check(w, {}, { runId: "other-run" })).toMatchObject({ kind: "refused", reason: "unknown-gate" });
+  });
+});
+
+describe("checkAnswer on a red head's sh-visual-accept gate", () => {
+  async function acceptWorld(): Promise<World> {
+    const w = await world();
+    const runId = w.host.runtime.start("visual-accept-gate", { pr: String(w.pr), head: H });
+    const gateId = `${runId}/sh-visual-accept`;
+    await vi.waitFor(() => expect(w.host.gates.get(gateId)?.status).toBe("pending"));
+    return { ...w, runId, gateId };
+  }
+
+  const factoryPacket = (pr: number) => acceptPacket({ repo: REPO, pr, headSha: H, headTree: TREE });
+
+  const DELIVERED = { state: "delivered", packetId: "p-accept", roundId: "r-1" };
+
+  /** `accept` as a string is the route's reason the factory's packet could not be read. */
+  async function checkAccept(w: World, accept: Partial<AcceptFiles> | string = {}, options: RoundOptions = {}, extra: Partial<AnswerRequest> = {}) {
+    const files = { ...roundFiles(w.pr, options), packet: factoryPacket(w.pr) };
+    const factory = typeof accept === "string" ? accept : { packet: factoryPacket(w.pr), after: afterDigests(), delivery: bytes(DELIVERED), ...accept };
+    return checkAnswer({ host: w.host, port: githubPort(w.github.wire), request: request(w, files, { choice: "accept-set", ...extra }), files, accept: factory, now: NOW });
+  }
+
+  it("resolves Ship as accept-set with the set built from the factory's packet and a note that names its files", async () => {
+    const w = await acceptWorld();
+
+    const outcome = await checkAccept(w, {}, { comment: "Looks right." });
+
+    expect(outcome).toMatchObject({ kind: "resolve", choice: "accept-set", payload: { decision: "accept-set", headSha: H, approvedSet: { fromHead: H, packetId: "p-accept", removed: [`${COMPONENT}gone.png`] } } });
+    const note = outcome.kind === "resolve" && "note" in outcome.payload ? outcome.payload.note : "";
+    expect(note).toMatch(/^Shepherd run .+: commit exactly[\s\S]*- write packages\/ui\/specimen\/baseline\/one\.png[\s\S]*\n\nLooks right\.$/);
+  });
+
+  it("reads Don't ship on the accept gate as a send-back with the owner's note", async () => {
+    const w = await acceptWorld();
+
+    const outcome = await checkAccept(w, {}, { pick: "Revise", comment: "Wrong font." }, { choice: "send-back" });
+
+    expect(outcome).toMatchObject({ kind: "resolve", payload: { decision: "send-back", headSha: H, note: "Wrong font." } });
+  });
+
+  it("refuses packet when the console's packet.json is not the factory's own copy", async () => {
+    const w = await acceptWorld();
+
+    expect(await checkAccept(w, { packet: acceptPacket({ repo: REPO, pr: w.pr, headSha: H, headTree: TREE2 }) })).toMatchObject({ kind: "refused", reason: "packet" });
+  });
+
+  it.each([
+    ["names another packet", bytes({ ...DELIVERED, packetId: "p-other" })],
+    ["names another round", bytes({ ...DELIVERED, roundId: "r-other" })],
+    ["is a shadow record", bytes({ ...DELIVERED, state: "shadow" })],
+    ["is a withdrawn record", bytes({ ...DELIVERED, state: "withdrawn" })],
+    ["is missing", undefined],
+  ])("refuses packet-unbound when the delivery record %s", async (_name, delivery) => {
+    const w = await acceptWorld();
+
+    expect(await checkAccept(w, { delivery })).toMatchObject({ kind: "refused", reason: "packet-unbound" });
+  });
+
+  it("refuses choice for accept-set on approve-merge and for merge on the accept gate", async () => {
+    const merge = await world();
+    const accept = await acceptWorld();
+
+    expect(await check(merge, {}, { choice: "accept-set" })).toMatchObject({ kind: "refused", reason: "choice" });
+    expect(await checkAccept(accept, {}, {}, { choice: "merge" })).toMatchObject({ kind: "refused", reason: "choice" });
+  });
+
+  it("refuses choice before reading the set: merge on the accept gate with no factory packet", async () => {
+    const w = await acceptWorld();
+
+    expect(await checkAccept(w, "no packet.json", {}, { choice: "merge" })).toMatchObject({ kind: "refused", reason: "choice" });
+  });
+
+  it("reports already for a replay of the accept-set it resolved after the factory's packet dir is gone", async () => {
+    const w = await acceptWorld();
+    const first = await checkAccept(w);
+    if (first.kind !== "resolve") throw new Error(first.kind);
+    w.host.gates.resolve(w.gateId, first.payload, OWNER);
+
+    expect(await checkAccept(w, "no packet.json")).toEqual({ kind: "already", gateId: w.gateId });
+  });
+
+  it("reports moved, not packet, for a request at an older head whose packet is gone", async () => {
+    const w = await acceptWorld();
+
+    expect(await checkAccept(w, "no packet.json", { boundHead: H2 }, { headSha: H2 })).toEqual({ kind: "moved", currentHead: H });
   });
 });

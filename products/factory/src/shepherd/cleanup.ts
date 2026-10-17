@@ -2,6 +2,7 @@ import type { GitHubPort, PullRequest, RepoSlug } from "@titan-design/github";
 import { OVERLAY_SHAPES } from "@titan-design/review-panel";
 import { z } from "zod";
 import { hasSlicesBlock, readSlices } from "../dispatch/report.js";
+import { redactCredentials } from "../redact.js";
 import { deadline, type Deadline } from "../workflows/deadline.js";
 import { consoleTextOf, errorClass, failureOf } from "./error-class.js";
 import type { Presence } from "./presence.js";
@@ -153,12 +154,20 @@ async function deleteHead({ port, advisory }: CleanupDeps, input: CleanupInput, 
 
 const basedOn = async (port: GitHubPort, repo: RepoSlug, branch: string): Promise<number[]> => (await port.listOpenPrs(repo)).filter((open) => open.baseRef === branch).map((open) => open.number);
 
-/** A failed retarget is recorded, never thrown, so the re-list keeps the branch; only the error class is stored, since the output can reach a public PR. */
+/** A failed retarget is recorded, never thrown, so the re-list keeps the branch; the error is stored as its class and a scrubbed, bounded message, since the output can reach a public PR. */
 async function retarget(port: GitHubPort, repo: RepoSlug, pr: number, base: string): Promise<Retargeted> {
   return port.setPrBase(repo, pr, base).then(
     (write) => (write.done || write.skipped === "unchanged" ? { pr, ok: true } : { pr, ok: false, error: write.skipped }),
-    (error: unknown) => ({ pr, ok: false, error: errorClass(error) }),
+    (error: unknown) => ({ pr, ok: false, error: scrubbedError(error) }),
   );
+}
+
+const MAX_ERROR_CHARS = 200;
+
+/** URLs go whole, since a query can carry a credential no pattern names; the class stays first so a cut message still says what threw. */
+function scrubbedError(error: unknown): string {
+  const text = redactCredentials(consoleTextOf(error).replace(/\b[a-z][a-z0-9+.-]*:\/\/\S*/gi, "[url]")).replace(/\s+/g, " ").trim();
+  return `${errorClass(error)}: ${text}`.slice(0, MAX_ERROR_CHARS);
 }
 
 const CLEANUP_ACTOR = "shepherd:cleanup";

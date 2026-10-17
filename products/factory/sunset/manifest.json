@@ -2872,6 +2872,20 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/visual-accept.test.ts",
+   "fate": "survives",
+   "task": "D-M7-01",
+   "reason": "V1-7 visual carry, adopted by D-M7-01"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/visual-accept.ts",
+   "fate": "survives",
+   "task": "D-M7-01",
+   "reason": "V1-7 visual carry, adopted by D-M7-01"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/visual-delivery-sweep.test.ts",
    "fate": "delete",
    "task": "D-M7-01",

@@ -93,7 +93,7 @@ around a path, and run its smoke check in the environment the job will really us
 | --- | --- | --- | --- |
 | Claude Agent SDK: `runAgent`, `createClaudeCodeAdapter` | `agent` | `CLAUDE_CODE_OAUTH_TOKEN` in the environment. `assertAuthEnvOk` refuses to start without it, and strips `ANTHROPIC_API_KEY` unless `allowApiKeyBilling` is set. This is `runAgent`'s default harness. | A one-turn `runAgent` call with `maxTurns: 1` and a small `maxBudgetUsd`; an `auth_misconfigured` failure means the token is missing. |
 | Headless `claude -p`: `runAgent({ harness: "claude-print" })` | `agent` | The Claude Code CLI's own keychain login. No OAuth token; `ANTHROPIC_API_KEY` is stripped unless `allowApiKeyBilling` is set. One turn only: tools, MCP, hooks and resume throw a `TypeError` before spawn. Not yet a `HarnessAdapter`, so `dispatchHarnessRun` and the durable dispatcher cannot use it. | A one-turn `runAgent({ harness: "claude-print", model: "sonnet", prompt, outputSchema, maxTurns: 1, maxBudgetUsd: 0.5 })`; a logged-out CLI returns `auth_misconfigured`. |
-| Codex exec: `createCodexExecAdapter({ auth: "cached-cli" })` | `agent` | A cached `codex login` (ChatGPT). API-key variables are stripped from the child. The binary must match `SUPPORTED_CODEX_EXEC_VERSION`. | `TITAN_SMOKE_MODEL=<model> pnpm smoke:codex --run` |
+| Codex exec: `createCodexExecAdapter({ auth: "cached-cli" })` | `agent` | A cached `codex login` (ChatGPT). API-key variables are stripped from the child. checkCodexAvailable resolves the installed CLI, requires >=0.162.1 and checks required command capabilities; availability is not a login or permission certificate. | `TITAN_SMOKE_MODEL=<model> pnpm smoke:codex --run` |
 | Workflow step runners: `agentRunner`, `durableHarnessRunner`, `idempotentRunner`, `inlineRunner` | `workflow` | `agentRunner` calls `runAgent`, so it needs `CLAUDE_CODE_OAUTH_TOKEN`, or only the CLI login when its `defaults` set `harness: "claude-print"`. `durableHarnessRunner` needs whatever its dispatcher's adapter needs. `inlineRunner` needs nothing; `idempotentRunner` wraps another runner. | Run the workflow once with `inlineRunner` to prove the steps, then swap in the model runner. |
 | Style tool runners: ESLint, ruff, and the Python audit tools | `style-checker` | No credential. ESLint runs through `npx` and needs its plugins installed. ruff, `lint-imports`, vulture, pydoclint and pyright must be on PATH; an absent Python audit tool returns a warning naming its `pip install`, never a throw. | `ruff --version` and `npx eslint --version` in the target repo. |
 | Embedding backends: `local`, `ollama`, hash fallback | `embed` | No credential. `local` needs the optional `@huggingface/transformers` peer; `ollama` needs a reachable Ollama. `fallbackToHash: true` keeps a run alive with neither. | `createEmbedder({ backend: "ollama" }, { fallbackToHash: true, onFallback: console.warn })`; a warning means the hash fallback took over. |
@@ -424,7 +424,7 @@ Key exports:
 - `hook`: `handle`
 - `context`: `nodeContext`
 - `approval-store`: `approvalsDir`, `nodeApprovalStore`
-- +58 more in the [reference page](/reference/tool-guard)
+- +59 more in the [reference page](/reference/tool-guard)
 
 ## Tier 1 — engines
 
@@ -445,8 +445,8 @@ Key exports:
 - `preflight`: `dispatchHarnessRun`, `preflightHarnessRun`
 - `codex-exec`: `buildCodexExecArgs`, `codexExecCapabilities`, `createCodexExecAdapter`, `prepareCodexEnv`
 - `codex-prices`: `priceCodexUsage`
-- `failures`: `classifyResult`
-- +83 more in the [reference page](/reference/agent)
+- `codex-runtime`: `inspectCodexCapabilities`
+- +93 more in the [reference page](/reference/agent)
 
 <a id="cap-agent-dispatch"></a>
 
@@ -512,7 +512,7 @@ Key exports:
 - `guards`: `createRequestGuard`
 - `file-watch`: `watchTree`
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `getProcessStartTime`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`
-- +70 more in the [reference page](/reference/daemon)
+- +71 more in the [reference page](/reference/daemon)
 
 <a id="cap-frame-capture"></a>
 

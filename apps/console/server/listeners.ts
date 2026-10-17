@@ -14,7 +14,8 @@ import { open, readdir, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { type AnswerChoice, type AnswerOutcome, type GateAnswerClient, type GateAnswerRequest } from "./gate-answer.js";
-import { FeedbackDocument, Round2Manifest, type Round2Question } from "./round2-adapter.js";
+import { RoundSchema, type Manifest, type Question } from "./round-schema.js";
+import { FeedbackDocument } from "./round2-adapter.js";
 import { ANSWER_FILE, ANSWER_SCHEMA_ID } from "./round-answer.js";
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, ROUND_ID, readCapped } from "./rounds.js";
 import type { ShepherdSource } from "./shepherd.js";
@@ -31,7 +32,8 @@ interface AnswerRecord {
   request: { runId?: string; gateId?: string; headSha: string; choice: AnswerChoice };
   outcome: AnswerOutcome;
 }
-type Merge = NonNullable<Round2Question["merge"]>;
+type ShipQuestion = Extract<Question, { kind: "pick-one" }>;
+type Merge = NonNullable<ShipQuestion["merge"]>;
 
 /** What `rounds.submit` returned; only a fresh `submitted` can start an answer. */
 interface SubmitOutcome {
@@ -51,6 +53,7 @@ export interface ListenerDeps {
   shepherd: Pick<ShepherdSource, "list">;
   answer: GateAnswerClient;
   now?: () => Date;
+  logger?: { warn(fields: Record<string, unknown>, message: string): void };
 }
 
 /** The owner's choice on one merge-bound question, with everything the round files bind it to. */
@@ -91,25 +94,41 @@ async function readJson<T>(file: string, schema: z.ZodType<T>): Promise<T | unde
   }
 }
 
+type RoundRead = { manifest: Manifest; invalid?: undefined } | { manifest?: undefined; invalid: string } | { manifest?: undefined; invalid?: undefined };
+
+/** A round.json that is there but fails the strict facade is `invalid`, with the first issue as its reason. */
+async function readRound(file: string): Promise<RoundRead> {
+  const bytes = await readFileCapped(file);
+  if (bytes === undefined) return {};
+  try {
+    const parsed = RoundSchema.safeParse(JSON.parse(bytes.toString("utf8")));
+    return parsed.success ? { manifest: parsed.data } : { invalid: parsed.error.issues[0]?.message ?? "invalid" };
+  } catch (error) {
+    return { invalid: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 /** Ship merges; the one other option sends back. A question with more options than that is not one this relays. */
-function choiceOf(question: Round2Question, merge: Merge, pick: string): AnswerChoice | undefined {
+function choiceOf(question: ShipQuestion, merge: Merge, pick: string): AnswerChoice | undefined {
   if (merge.ship.includes(pick)) return "merge";
-  const others = (question.options ?? []).filter((option) => !merge.ship.includes(option));
+  const others = question.options.filter((option) => !merge.ship.includes(option));
   return others.length === 1 && others[0] === pick ? "send-back" : undefined;
 }
 
 /** Undefined unless the round is merge-bound, answered, and has the packet beside it. */
-async function readRoundAnswer(roundsDir: string, roundId: string): Promise<RoundAnswer | undefined> {
-  const dir = path.join(roundsDir, roundId);
-  const [manifest, feedback, packetBytes] = await Promise.all([
-    readJson(path.join(dir, ROUND_FILE), Round2Manifest),
+async function readRoundAnswer(deps: ListenerDeps, roundId: string): Promise<RoundAnswer | undefined> {
+  const dir = path.join(deps.roundsDir, roundId);
+  const [round, feedback, packetBytes] = await Promise.all([
+    readRound(path.join(dir, ROUND_FILE)),
     readJson(path.join(dir, FEEDBACK_FILE), FeedbackDocument),
     readFileCapped(path.join(dir, PACKET_FILE)),
   ]);
+  if (round.invalid !== undefined && feedback) deps.logger?.warn({ roundId }, `${roundId}: round.json invalid; answer not relayed (${round.invalid})`);
+  const { manifest } = round;
   if (!manifest || !feedback || !packetBytes) return undefined;
   for (const question of manifest.questions) {
     const pick = feedback.answers.find((answer) => answer.questionId === question.id)?.pick;
-    if (!question.merge || pick === undefined) continue;
+    if (question.kind !== "pick-one" || !question.merge || pick === undefined) continue;
     const choice = choiceOf(question, question.merge, pick);
     const tree = packetHeadTree(packetBytes);
     if (choice === undefined || tree === undefined) return undefined;
@@ -184,7 +203,7 @@ const exists = (file: string): Promise<boolean> =>
 async function answerRound(deps: ListenerDeps, roundId: string): Promise<void> {
   const dir = path.join(deps.roundsDir, roundId);
   if (await exists(path.join(dir, ANSWER_FILE))) return;
-  const answer = await readRoundAnswer(deps.roundsDir, roundId);
+  const answer = await readRoundAnswer(deps, roundId);
   if (!answer) return;
   const decision = await bindGate(deps.shepherd, answer);
   const outcome = decision.request ? await deps.answer.post(decision.request) : decision.outcome;
