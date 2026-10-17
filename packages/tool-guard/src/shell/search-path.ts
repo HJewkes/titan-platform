@@ -1,5 +1,6 @@
 import { SEARCH_KEY, sourceOf, UNKNOWN_ENTRY } from "./assignment-source.js";
 import type { AssignmentSource } from "./assignment-source.js";
+import type { WordToken } from "./tokens.js";
 import { assign, DECLARERS, trackVars } from "./vars.js";
 import type { Assignment, TrackedCommand, Vars } from "./vars.js";
 
@@ -69,11 +70,17 @@ export function adoptPath(from: Vars, to: Vars): void {
 const NAMEREF_RE = /^-[A-Za-z]*n/;
 const NAMEREF_DECLARERS = new Set(["declare", "typeset", "local"]);
 
+/** A nameref operand whose target is `PATH`, `path`, or only known at run time. */
+function refersToPath(word: WordToken): boolean {
+  const target = word.value.slice(word.value.indexOf("=") + 1);
+  return word.dynamic || /^(?:PATH|path)(?:\[.*\])?$/.test(target);
+}
+
 /** Tracks a command's variable writes, then records `export PATH=./bin:$PATH` and the other declarations, whose operands are words, not assignments. */
 export function trackCommand(cmd: TrackedCommand, vars: Vars): void {
   const before = held(vars);
   trackVars(cmd, vars);
-  if (cmd.name !== null && NAMEREF_DECLARERS.has(cmd.name) && cmd.args.some((a) => NAMEREF_RE.test(a.value))) vars.set(SEARCH_KEY, null);
+  if (cmd.name !== null && NAMEREF_DECLARERS.has(cmd.name) && cmd.args.some((a) => NAMEREF_RE.test(a.value)) && cmd.args.some(refersToPath)) vars.set(SEARCH_KEY, null);
   if (cmd.name === null || !DECLARERS.has(cmd.name)) return;
   for (const word of cmd.args) {
     const set = DECLARED_RE.exec(word.value);
