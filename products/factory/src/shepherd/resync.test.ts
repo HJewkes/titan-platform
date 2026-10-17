@@ -805,7 +805,7 @@ describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () =
 
     expect(report.superseded).toEqual([]);
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
-    expect(fake.pr(1)?.merged).toBeFalsy();
+    expect(fake.pr(1).merged).toBeFalsy();
     expect(reviewed).toEqual([REVIEWED]);
   });
 
@@ -833,7 +833,7 @@ describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () =
     await gateOpened(host, gateId(runId, "approve-merge:1"));
     expect((await resyncShepherd(host, services)).superseded).toEqual([]);
     expect(services.store.get().byRun(runId)).toMatchObject({ held: true, holdReason: "g10-adversary: merge policy; TP-1" });
-    expect(fake.pr(1)?.merged).toBeFalsy();
+    expect(fake.pr(1).merged).toBeFalsy();
   });
 
   it("keeps the standing MERGE after a review-again cancel, reads its evidence again instead of a reviewer, and merges the same head", async () => {
