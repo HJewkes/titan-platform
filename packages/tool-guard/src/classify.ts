@@ -57,7 +57,12 @@ function newMemo(): ScriptMemo {
 }
 
 function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null, onPathWrite?: () => void): ClassifiedAction[] {
-  const commands = extractCommands(src, { ...extractOptions(cwd, ctx, scripts, false), onPathWrite });
+  // Emission order is not run order (a function or loop body is walked where it is written), so a PATH write anywhere on the line counts for every script on it.
+  const wrote = (): void => {
+    onPathWrite?.();
+    if (scripts) scripts.pathChanged = true;
+  };
+  const commands = extractCommands(src, { ...extractOptions(cwd, ctx, scripts, false), onPathWrite: wrote });
   const line = withHttpConfig(src, commands, ctx);
   const asWritten = classifyLine(commands, line, scripts);
   return ctx.foldCase ? unique([...asWritten, ...foldedActions(src, cwd, line, scripts)]) : asWritten;
