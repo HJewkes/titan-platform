@@ -94,15 +94,50 @@ Age is `now - written_at`; reading a file never refreshes that timestamp. The
 local cache is an observation, not a live quota endpoint or account-wide spend
 reservation. Additional model-specific pools are not admitted by this API.
 
+## Statusline command
+
+```sh
+openai-account status --statusline [--code-home <absolute-dir>] [--account <label>]
+```
+
+Uses `--code-home` or explicit `CODEX_HOME`; never falls back to ~/.codex.
+The label defaults to `accountLabel(codeHome)` and can be set with `--account`.
+Only one selected account is read. No login probe, Codex binary, network or
+credential read is needed. The command emits one line:
+
+```text
+codex|basement|20|75|12|
+```
+
+Five-hour and weekly columns are percentages **used**, rounded down, followed by
+whole observation age in seconds and a trailing pipe. Zero is printed only for
+an observed zero. Valid fresh readings exceeding admission thresholds still
+show their percentages; the display does not admit a new run.
+
+Missing, stale (age >900 before rounding), inconsistent, future, reset-expired or
+unreadable evidence prints `codex|basement|unknown|unknown||`. No readable account
+home gives `codex|default|unknown|unknown||` unless a safe account label was
+explicitly supplied or derived. Invalid labels are never echoed; the line uses
+`default` with unknown figures. A selected account cannot display another
+account's labelled reading. Reader errors are dropped, with no transcript text
+or errors on stderr. A valid statusline invocation always exits 0; syntax errors
+exit 64 with fixed usage text. `--help` exits 0.
+
+No renderer installation or dotfiles changes. For the Mac, which runs no Codex,
+the external integration can fetch basement's output into a cache at most once
+per 60 seconds. It must preserve reading age, expire stale cached evidence and
+never make cached numbers appear fresh. That transport is outside this package.
+
 ## Scope and redaction
 
-No CLI, statusline, credential provisioning, auth copying, login writes, token
-refresh, permission adapter, runtime launch or account-wide reservation in this
-slice. `redactSecrets` reuses Titan's redactor and adds OpenAI key prefixes;
+No credential provisioning, auth copying, login writes, token refresh,
+permission adapter, runtime launch or account-wide reservation in this package.
+`redactSecrets` reuses Titan's redactor and adds OpenAI key prefixes;
 Error copies contain only scrubbed message/name/stack and no cause. Structural
 allow-listing keeps transcript and status output out of account state altogether.
 
 ## Where it came from
 
 New package for TP-3363, following `anthropic-account`'s pure root / node subpath
-layout. CLI and statusline output are a separate follow-up slice.
+layout. The following slice adds only the statusline bin; renderers and transport
+remain product integration work.
