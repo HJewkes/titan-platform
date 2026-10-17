@@ -51,21 +51,32 @@ export function isNativeProgram(readAt: ReadAt, size: number, arch: string = pro
   return platform === "darwin" && validMachO(head, size, arch);
 }
 
+interface ElfTable {
+  offset: number;
+  entry: number;
+  count: number;
+  le: boolean;
+}
+
 function validElf(head: Buffer, readAt: ReadAt, size: number, arch: string): boolean {
-  if (head.length < 64 || (head[4] !== 1 && head[4] !== 2) || (head[5] !== 1 && head[5] !== 2) || head[6] !== 1) return false;
+  const table = elfTable(head, arch);
+  if (table === null || table.offset + table.count * table.entry > size) return false;
+  const phdrs = readAt(table.offset, table.count * table.entry);
+  for (let at = 0; at + table.entry <= phdrs.length; at += table.entry) if ((table.le ? phdrs.readUInt32LE(at) : phdrs.readUInt32BE(at)) === PT_LOAD) return true;
+  return false;
+}
+
+/** Where the program-header table is, when the ELF header is one the loader accepts for this host; null otherwise. */
+function elfTable(head: Buffer, arch: string): ElfTable | null {
+  if (head.length < 64 || (head[4] !== 1 && head[4] !== 2) || (head[5] !== 1 && head[5] !== 2) || head[6] !== 1) return null;
   const wide = head[4] === 2;
   const le = head[5] === 1;
   const u16 = (at: number): number => (le ? head.readUInt16LE(at) : head.readUInt16BE(at));
-  const type = u16(16);
-  const phentsize = u16(wide ? 54 : 42);
-  const phnum = u16(wide ? 56 : 44);
-  if ((type !== ET_EXEC && type !== ET_DYN) || u16(18) !== ELF_MACHINES[arch] || phentsize !== (wide ? 56 : 32) || phnum === 0) return false;
-  const phoff = wide ? Number(le ? head.readBigUInt64LE(32) : head.readBigUInt64BE(32)) : le ? head.readUInt32LE(28) : head.readUInt32BE(28);
-  const table = phnum * phentsize;
-  if (table > MAX_PHDR_TABLE || !Number.isSafeInteger(phoff) || phoff + table > size) return false;
-  const phdrs = readAt(phoff, table);
-  for (let at = 0; at + phentsize <= phdrs.length; at += phentsize) if ((le ? phdrs.readUInt32LE(at) : phdrs.readUInt32BE(at)) === PT_LOAD) return true;
-  return false;
+  const entry = u16(wide ? 54 : 42);
+  const count = u16(wide ? 56 : 44);
+  if ((u16(16) !== ET_EXEC && u16(16) !== ET_DYN) || u16(18) !== ELF_MACHINES[arch] || entry !== (wide ? 56 : 32) || count === 0 || count * entry > MAX_PHDR_TABLE) return null;
+  const offset = wide ? Number(le ? head.readBigUInt64LE(32) : head.readBigUInt64BE(32)) : le ? head.readUInt32LE(28) : head.readUInt32BE(28);
+  return Number.isSafeInteger(offset) ? { offset, entry, count, le } : null;
 }
 
 function validMachO(head: Buffer, size: number, arch: string): boolean {

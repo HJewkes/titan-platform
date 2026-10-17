@@ -2,6 +2,7 @@ import { closeSync, constants, openSync, readSync, statSync } from "node:fs";
 import { INTERPRETERS, SHELLS } from "./mentions.js";
 import type { SimpleCommand } from "./shell/commands.js";
 import type { WordToken } from "./shell/lexer.js";
+import { mayBeWritten } from "./line-writes.js";
 import { isNativeProgram, parseShebang } from "./shebang.js";
 import type { ClassifyContext } from "./types.js";
 import { resolvePath, resolveValue } from "./shell/path.js";
@@ -39,10 +40,10 @@ export function refuseOpaqueShebang(target: ScriptTarget, opaque: ReadonlySet<st
 
 /**
  * Whether a by-path target is a native program, which holds no script for the guard to read. Only when the line has
- * written no file: a write may have replaced what the disk holds, and the disk is all this looks at.
+ * not written that file: a write may have replaced what the disk holds, and the disk is all this looks at.
  */
 export function runsNatively(target: ScriptTarget, ctx: ClassifyContext): boolean {
-  if (target.byPath !== true || ctx.scriptReadings !== undefined) return false;
+  if (target.byPath !== true || mayBeWritten(ctx, target.path)) return false;
   try {
     // Stat before open: opening a FIFO blocks the hook into its timeout, which fails open.
     const stat = statSync(target.path);

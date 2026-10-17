@@ -116,9 +116,29 @@ describe("a native program run by path", () => {
     expect(await decision(file("odd", elf({ ...options, body: `${PUSH}\n` })))).toBe("deny");
   });
 
+  it.each(["true >/dev/null; /usr/bin/git status", "echo x 2>log; /bin/ls"])("passes %s", async (command) => {
+    if (!existsSync(command.split(" ").at(-2) === "/usr/bin/git" ? "/usr/bin/git" : "/bin/ls")) return;
+    expect(await decision(command)).toBeNull();
+  });
+
+  it("passes a valid ELF after a write to another file", async () => {
+    file("quiet", elf({ padding: CAP + 400 }));
+    expect(await decision("echo x > ./other.log; ./quiet")).toBeNull();
+  });
+
+  it("denies a valid ELF the line has just overwritten with text it cannot model", async () => {
+    file("over2", elf({ padding: 100 }));
+    expect(await decision(`printf '%s\\n' '${PUSH}' > ./over2; ./over2`)).toBe("deny");
+  });
+
+  it("denies a valid ELF after a write the line cannot place", async () => {
+    file("moved", elf({ padding: 100 }));
+    expect(await decision(`f=./moved; printf '%s\\n' '${PUSH}' > "$f"; ./moved`)).toBe("deny");
+  });
+
   it("denies a valid ELF the line has just overwritten with a push", async () => {
     file("over", elf({ padding: 100 }));
-    expect(await decision(`printf '%s\\n' '${PUSH}' > ./over; ./over`)).toBe("deny");
+    expect(await decision(`echo '${PUSH}' > ./over; ./over`)).toBe("deny");
   });
 });
 
