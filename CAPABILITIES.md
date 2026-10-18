@@ -252,7 +252,7 @@ Key exports:
 
 ### [`egress-scan`](https://hjewkes.github.io/titan-platform/reference/egress-scan)
 
-Tier 0, `@titan-design/egress-scan@0.6.4`. Scan git diff text for home paths, private-workspace paths, private terms and credential tokens, reporting location and rule id only
+Tier 0, `@titan-design/egress-scan@0.6.5`. Scan git diff text for home paths, private-workspace paths, private terms and credential tokens, reporting location and rule id only
 
 **Use this when:** Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths, terms from a private list or credential tokens (GitHub, Anthropic, AWS, Slack, PEM private keys), reporting only `file:line`, the rule id and the token kind. The library scans git patch text you supply and spawns nothing; the `titan-egress-scan` bin runs git for a pre-push hook (`install-hook`) or a CI range. To mask secrets for display, use the redactors in queue-mirror instead.
 
@@ -322,7 +322,7 @@ Key exports:
 
 ### [`fix-proof`](https://hjewkes.github.io/titan-platform/reference/fix-proof)
 
-Tier 0, `@titan-design/fix-proof@0.5.0`. Proves a fix PR's new tests fail on the merge base and pass at head: diff plan, vitest report classification, fix-proof/v1 result line
+Tier 0, `@titan-design/fix-proof@0.6.0`. Proves a fix PR's new tests fail on the merge base and pass at head: diff plan, vitest report classification, fix-proof/v1 result line
 
 **Use this when:** You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. For a tests-only diff it also tells test material from source (`testOnlyOf`) and parses `*.mutations.json` specs, and `classifyMutants` decides whether every declared mutation was killed, which the judge adds to the line as `mutants`. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports, and `exec --side mutants` runs each declared mutation against the merge base in the sandbox; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority.
 
@@ -901,7 +901,7 @@ Key exports:
 
 ### [`pm`](https://hjewkes.github.io/titan-platform/reference/pm)
 
-Tier 2, `@titan-design/pm@0.3.0`. Project-management schemas: the zod task schema and its type, as active-work stores tasks
+Tier 2, `@titan-design/pm@0.4.0`. Project-management schemas: the zod task schema and its type, as active-work stores tasks
 
 **Use this when:** You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`, or gate a repo review on every recommendation and P1 or P2 topic having a task, dup, fold, drop or pending-owner row with `summaryRecommendations`, `prioritizedTopics`, `parseDispositions` and `checkDispositions`. Pure code; it reads no files, so parse the task, registry and deliverable YAML in the host and hand the objects over. For a seat's front matter use `coordinator` instead.
 
@@ -938,7 +938,7 @@ Key exports:
 
 ### [`review-panel`](https://hjewkes.github.io/titan-platform/reference/review-panel)
 
-Tier 2, `@titan-design/review-panel@0.6.0`. Review-panel types and the reviewer ports a caller satisfies
+Tier 2, `@titan-design/review-panel@0.6.1`. Review-panel types and the reviewer ports a caller satisfies
 
 **Use this when:** You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`), `classifyPr` to class a PR from its paths and kind, `planPanel` to pick its reviewers by shape, profile and blocking flag, the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy, `acceptVerdict` to decide whether a reviewer's final message is its verdict for this PR at this head, `aggregate` to turn the members' verdicts into one fail-closed panel verdict, and `reviewPullRequest` to run the whole panel for one head over those ports. It runs nothing; to start an agent use agent-dispatch, and to parse a transcript use session-read.
 
@@ -1152,7 +1152,7 @@ Thin compositions of the tiers. A linked product is published; the rest are priv
 
 ### [`active-work`](https://hjewkes.github.io/titan-platform/reference/active-work)
 
-Tier product, `@titan-design/active-work@0.24.1`. Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions
+Tier product, `@titan-design/active-work@0.24.2`. Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions
 
 **Use this when:** You want durable per-initiative state (brief, tasks, sessions, artifacts, notes) that Claude Code sessions read and write through the `active-work` CLI, its MCP server or its loopback daemon, or `aw <slug>` to launch a session with the initiative's bootstrap prompt. Other products reach it over that process boundary. To validate a task record without the product, use `pm`; to resolve its data root, use `app-paths`.
 
