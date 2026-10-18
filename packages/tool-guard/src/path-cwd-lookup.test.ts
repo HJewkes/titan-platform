@@ -46,6 +46,12 @@ describe("a bare name a changed PATH may find in the working directory", () => {
     "PATH=$PWD:$PATH s",
     "export PATH=./:/usr/bin; s",
     "PATH=:$PATH s",
+    "PATH=./.:$PATH s",
+    "PATH=.//:$PATH s",
+    "PATH=$PWD/.:$PATH s",
+    "PATH=$PWD//:$PATH s",
+    "PATH=~+/.:$PATH s",
+    "PATH=bin/..:$PATH s",
     "env PATH=. s",
     "P=.; export PATH=$P:$PATH; s",
     'export PATH="$(pwd):$PATH"; s',
@@ -127,6 +133,13 @@ describe("a bare name a changed PATH may find in the working directory", () => {
       expect(await decision(command)).toBe("deny");
     },
   );
+
+  it("refuses an opaque #! file the line writes, with the reason ./n gets", async () => {
+    rmSync(here("n"), { force: true });
+    const stdout = await reply(`echo '#!/usr/bin/env -S bash -c "${PUSH}"' > n; chmod +x n; PATH=.:$PATH n`);
+    expect(stdout).toContain('"permissionDecision":"deny"');
+    expect(stdout).toContain("#!");
+  });
 
   it("reads a non-executable ./s the line makes executable first", async () => {
     file(here("s"), `#!/bin/bash\n${PUSH}\n`, 0o644);

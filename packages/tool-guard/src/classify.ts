@@ -172,14 +172,14 @@ function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: Script
 /**
  * The one boundary for a name a changed PATH may find in the working directory: `./name` is read only when it is there to run
  * and its own text can be followed. A missing, directory, non-executable, unreadable, cut or opaque-`#!` file is skipped,
- * never refused, as a PATH lookup may find the command elsewhere. A file the line writes with text the guard cannot
- * place still refuses, as it does when run as `./name`.
+ * never refused, as a PATH lookup may find the command elsewhere. A file the line writes is the one it runs, so one with
+ * text the guard cannot place, or with an opaque `#!`, still refuses, as it does when run as `./name`.
  */
 function cwdLookup(target: ScriptTarget, ctx: ClassifyContext, depth: number, earlier: () => SimpleCommand[]): boolean {
   if (target.searched !== true) return true;
   if (depth >= MAX_SCRIPT_DEPTH || !runnable(target, ctx, earlier)) return false;
   try {
-    return !scriptReadings(ctx, target.path).some(hasOpaqueShebang);
+    return !scriptReadings(ctx, target.path).some(hasOpaqueShebang) || mayBeWritten(ctx, target.path);
   } catch (error) {
     if (error instanceof UnreadableScriptError) return false;
     throw error;

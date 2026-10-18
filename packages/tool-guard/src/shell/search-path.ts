@@ -30,10 +30,18 @@ function keep(vars: Vars, cwd: boolean): void {
   vars.set(SEARCH_KEY, cwd ? MAY_LIST_CWD : NO_CWD);
 }
 
-/** An entry that is the working directory, or one only run time knows (`$X`, `~-`), taken as a guess at it. */
+/** A `..` segment may climb back to the working directory (`bin/..`), so a relative entry holding one is a guess at it. */
+const PARENT_RE = /(?:^|\/)\.\.(?:\/|$)/;
+
+/**
+ * An entry that is the working directory, or one only run time knows (`$X`, `~-`), taken as a guess at it. Repeated `/`
+ * and `/.` segments are dropped first, as the kernel reads `./.`, `.//` and `$PWD/.` as the directory itself.
+ */
 function mayBeCwd(entry: string): boolean {
-  if (CWD_RE.test(entry)) return true;
-  return !ABSOLUTE_RE.test(entry) && !UNDER_CWD_RE.test(entry) && RUNTIME_RE.test(entry);
+  if (ABSOLUTE_RE.test(entry)) return false;
+  const path = entry.replace(/\/{2,}/g, "/").replace(/\/\.(?=\/|$)/g, "");
+  if (CWD_RE.test(path) || PARENT_RE.test(path)) return true;
+  return !UNDER_CWD_RE.test(path) && RUNTIME_RE.test(path);
 }
 
 /** Whether `PATH=text` may list the working directory; the unchanged `$PATH` stands for the system's, which does not. */
