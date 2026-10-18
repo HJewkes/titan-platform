@@ -82,7 +82,7 @@ function formatRegistered(registered: Registered): string {
   const { runId, registration } = registered;
   const target = `${registration.repo}${registration.pr === null ? "" : `#${registration.pr}`}${registration.branch ? ` (${registration.branch})` : ""}`;
   const held = registered.g10Hold === undefined ? "" : `; held ${registered.g10Hold}`;
-  return `run ${runId} shepherd-pr ${target}: ${registerOutcome(registered)}; policy ${registration.policy.merge}${held}\n${sizeWarning(registered)}`;
+  return `run ${runId} shepherd-pr ${target}: ${registerOutcome(registered)}; policy ${registration.policy.merge}${held}\n${sizeWarning(registered)}${registered.kindHint === undefined ? "" : `${registered.kindHint}\n`}`;
 }
 
 function sizeWarning({ sizeFlag }: Registered): string {

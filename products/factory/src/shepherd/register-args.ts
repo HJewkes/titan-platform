@@ -5,6 +5,7 @@ import { RegistrationRefused, RequestedPolicyFields, resolveEffectivePolicy, typ
 import { HEAD } from "./await-verdict.js";
 import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
 import { TASK_KINDS, kindMoveRefusal, type Registration } from "./store.js";
+import type { TestOnlyDiff } from "./test-only-diff.js";
 
 export const coded = (message: string, code: number): Error => Object.assign(new Error(message), { code });
 
@@ -61,7 +62,7 @@ export function sliceAfter(existing: Registration, args: RegisterArgs): string |
 }
 
 /** Checked before a failed run is replaced, so a refused kind leaves the run and its registration untouched. */
-export function refuseKindMove(existing: Registration, args: RegisterArgs): void {
-  const refusal = args.kind === undefined ? undefined : kindMoveRefusal(existing.kind, args.kind);
+export function refuseKindMove(existing: Registration, args: RegisterArgs, diff: TestOnlyDiff | undefined): void {
+  const refusal = args.kind === undefined ? undefined : kindMoveRefusal(existing.kind, args.kind, diff);
   if (refusal) throw coded(`registration refused: run ${existing.runId}: ${refusal}`, EXIT.DATAERR);
 }
