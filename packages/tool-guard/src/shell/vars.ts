@@ -3,6 +3,8 @@ import { caseChecked, clearCased, isCased, isCaseUnsure, isCaseUnsureLookup, mar
 import type { CaseUnsure } from "./case-attrs.js";
 import { rawValue, safePathDirs } from "./path-entries.js";
 import type { RawValue } from "./path-entries.js";
+import { isPathName, notePathForgotten, notePathWrite, observePath } from "./path-writes.js";
+import type { PathObserver } from "./path-writes.js";
 import { printedText } from "./printed.js";
 import { shiftedTildes } from "./word-build.js";
 import { commandWrites, compoundWrites, IDENTIFIER_RE, noteCompounds, TARGET_RE } from "./writers.js";
@@ -214,7 +216,7 @@ function splitAssignment(w: WordToken): Assignment | null {
 /** Records an assignment; an append is literal only when both the earlier value and the appended part are. */
 export function assign(vars: Vars, [name, value, kind, cased, raw]: Assignment): void {
   const priorCased = isCased(vars, name);
-  const dirs = PATH_NAMES.has(name) && raw !== undefined && (kind === undefined || kind === "append") ? safePathDirs(raw, kind === "append", vars) : null;
+  const dirs = isPathName(name) && raw !== undefined && (kind === undefined || kind === "append") ? safePathDirs(raw, kind === "append", vars) : null;
   if (kind === "hidden") restore(vars, name, value);
   else if (kind !== "append") write(vars, name, value, kind !== "element", dirs);
   else {
@@ -224,12 +226,6 @@ export function assign(vars: Vars, [name, value, kind, cased, raw]: Assignment):
   markCased(vars, name, cased || (kind === "append" && priorCased));
 }
 
-/** The variables `env` and the shell search for a program by: bash's `PATH` and zsh's `path` array tied to it. */
-const PATH_NAMES = new Set(["PATH", "path"]);
-/** Hears a write to a path variable: the absolute directories it adds, or null when it may add any. */
-type PathObserver = (dirs: string[] | null) => void;
-const pathObservers = new WeakMap<Vars, PathObserver>();
-
 /** Hears each value a scope's variables take, null when the walk cannot know it. */
 type StoreObserver = (value: string | null) => void;
 const observers = new WeakMap<Vars, StoreObserver>();
@@ -237,12 +233,7 @@ const observers = new WeakMap<Vars, StoreObserver>();
 /** Every write to `vars` goes through `write`, so the observer hears each value the scope stores. */
 export function observeStores(vars: Vars, observer: StoreObserver, onPath?: PathObserver): void {
   observers.set(vars, observer);
-  if (onPath) pathObservers.set(vars, onPath);
-}
-
-/** Whether a name is one the shell finds programs through. */
-export function isPathName(name: string): boolean {
-  return PATH_NAMES.has(name);
+  if (onPath) observePath(vars, onPath);
 }
 
 /** A copy for a new shell: `eval` keeps every readonly variable and a child shell drops them, so each only may be. */
@@ -262,9 +253,9 @@ const readonlyKey = (name: string) => `readonly@${name}`;
 function write(vars: Vars, name: string, value: string | null, heard = true, pathDirs: string[] | null = null): void {
   const flag = vars.get(readonlyKey(name));
   if (flag === "") return;
-  if (PATH_NAMES.has(name)) pathObservers.get(vars)?.(pathDirs);
   clearCased(vars, name);
   vars.set(name, flag === null || vars.has(ANY_READONLY) ? null : value);
+  notePathWrite(vars, name, vars.get(name), pathDirs);
   if (heard) observers.get(vars)?.(value);
 }
 
@@ -333,8 +324,9 @@ function forgetAll(vars: Vars, heard = true): void {
   for (const key of vars.keys()) vars.set(key, null);
   vars.set("HOME", null);
   vars.set("IFS", null);
-  for (const name of PATH_NAMES) vars.set(name, null);
-  pathObservers.get(vars)?.(null);
+  vars.set("PATH", null);
+  vars.set("path", null);
+  notePathForgotten(vars);
   if (heard) observers.get(vars)?.(null);
 }
 

@@ -19,7 +19,7 @@ function staysOffCwd(path: string): boolean {
 }
 
 /** A `HOME` a `~` on PATH may stand for: a literal absolute directory other than the working directory. */
-function fixedHome(value: string | null | undefined): boolean {
+export function fixedHome(value: string | null | undefined): boolean {
   return value?.startsWith("/") === true && staysOffCwd(value);
 }
 
@@ -28,12 +28,15 @@ export interface RawValue {
   text: string;
   tildes: number[];
   refs: Array<{ name: string; start: number; end: number }>;
+  /** A `$( )` or backquote's output lands in the value, which leaves that output out of `text`. */
+  substituted: boolean;
 }
 
 /** The value of the assignment word `w` after its first `from` characters, the `NAME=` they hold. */
 export function rawValue(w: WordToken, from: number): RawValue {
   const refs = w.refs.filter((ref) => ref.start >= from).map((ref) => ({ ...ref, start: ref.start - from, end: ref.end - from }));
-  return { text: w.value.slice(from), tildes: tildeStarts(w).flatMap((at) => (at >= from ? [at - from] : [])), refs };
+  const substituted = (w.cuts ?? []).some((cut) => cut.at >= from);
+  return { text: w.value.slice(from), tildes: tildeStarts(w).flatMap((at) => (at >= from ? [at - from] : [])), refs, substituted };
 }
 
 /**
@@ -42,9 +45,11 @@ export function rawValue(w: WordToken, from: number): RawValue {
  * approved fails closed: `'~/b'`, `\~/b`, `~"/b"` and `'$HOME/b'` all stay literal and name a directory under the
  * working directory. An entry is approved when it is a literal absolute path, or a `~` or `$HOME` the shell expands
  * followed by `/` and a literal path, under a `HOME` that is fixed; either passes `staysOffCwd`. A `$PATH` the shell
- * expands keeps the old value. An append's leading `:` is its separator, not an empty entry.
+ * expands keeps the old value. An append's leading `:` is its separator, not an empty entry. A substitution's output
+ * may hold any entries, `:` included, so the entry it lands in, and with it the whole value, is never approved.
  */
 export function safePathDirs(raw: RawValue, append: boolean, vars: Vars, homeSet = false): string[] | null {
+  if (raw.substituted) return null;
   const homeSafe = !homeSet && (!vars.has("HOME") || fixedHome(vars.get("HOME")));
   const dirs: string[] = [];
   let start = append && raw.text.startsWith(":") ? 1 : 0;

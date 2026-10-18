@@ -10,11 +10,12 @@ import { emitReadings, endCommand, forkWalk, type Emission } from "./reading-han
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed } from "./case-script.js";
 import { aliasCommands, type AliasTable } from "./alias-words.js";
-import { assign, childVars, expandWord, isPathName, lookup, noteSureCommands, observeStores, trackCompound, trackVars } from "./vars.js";
+import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { AliasDefinitionError, definesAlias } from "./alias-definitions.js";
 import { CommandRebindingError, rebindsCommand } from "./command-rebinding.js";
 import { prefixHomeUnsafe, prefixOutlives, prefixPath } from "./path-entries.js";
+import { isPathName } from "./path-writes.js";
 import { cutReading } from "./piped-nul.js";
 import { inlineScript, SHELLS } from "./inline-script.js";
 import type { Inline } from "./inline-script.js";
@@ -106,6 +107,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
 
 function finishMarks(marks: ValueMarks, options: ExtractOptions): void {
   settle(marks);
+  if (marks.homeUnfixed && marks.pathDirs.some((dir) => dir.startsWith("~"))) marks.pathChanged = true;
   if (marks.pathChanged || marks.pathDirs.length > 0) options.onPathWrite?.(marks.pathChanged, marks.pathDirs);
 }
 
@@ -204,7 +206,8 @@ function observed(w: Walk): Walk {
 }
 
 function observeWalk(w: Walk, vars: Vars): void {
-  observeStores(vars, (value) => hear(w, value), (dirs) => (dirs === null ? (w.marks.pathChanged = true) : w.marks.pathDirs.push(...dirs)));
+  const dirs = (added: string[] | null) => (added === null ? (w.marks.pathChanged = true) : w.marks.pathDirs.push(...added));
+  observeStores(vars, (value) => hear(w, value), { dirs, homeUnfixed: () => (w.marks.homeUnfixed = true) });
 }
 
 function child(w: Walk, wrapping: Wrapping[], descriptors = w.descriptors): Walk {

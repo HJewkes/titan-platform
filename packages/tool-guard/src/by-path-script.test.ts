@@ -276,7 +276,34 @@ describe("a #!/usr/bin/env shell script on a line that changes PATH", () => {
     ["an alternate-value expansion of PATH", "PATH=${PATH:+.}; ./envp"],
     ["a tilde after an escaped colon", "PATH=/x\\:~/b:$PATH; ./envp"],
     ["a tilde after a quoted colon", 'PATH="/x:"~/b:$PATH; ./envp'],
-    ["a single-quoted $PATH", "PATH=/nope:'$PATH'; ./envp"],  ])("denies the script after %s", async (_, line) => {
+    ["a single-quoted $PATH", "PATH=/nope:'$PATH'; ./envp"],
+    ["a $( ) before a slash", "PATH=$(pwd)/b:$PATH; ./envp"],
+    ["a backquote before a slash", "PATH=`pwd`/b:$PATH; ./envp"],
+    ["a double-quoted backquote", 'PATH="`pwd`/b":$PATH; ./envp'],
+    ["a backquote after a literal directory", "PATH=/x`pwd`:$PATH; ./envp"],
+    ["a $( ) after a literal directory", "PATH=/x$(echo :.):$PATH; ./envp"],
+    ["a backquote that prints an entry after a literal directory", "PATH=/x`echo :.`:$PATH; ./envp"],
+    ["a $( ) in export", "export PATH=$(pwd)/b:$PATH; ./envp"],
+    ["a $( ) in a prefix", "PATH=$(pwd)/b:$PATH ./envp"],
+    ["a $( ) in an append", "PATH+=:$(pwd)/b; ./envp"],
+    ["a $( ) as a whole entry", "PATH=$(pwd):$PATH; ./envp"],
+    ["a tilde under a HOME symlinked to the working directory", "ln -s /proc/self/cwd L; HOME=L; PATH=~/b:$PATH; ./envp"],
+    ["a tilde under a HOME from a $( )", "HOME=$(pwd); PATH=~/b:$PATH; ./envp"],
+    ["a tilde under a HOME from a backquote", "HOME=`pwd`; PATH=~/b:$PATH; ./envp"],
+    ["a $HOME under a HOME from a $( )", "HOME=$(pwd); PATH=$HOME/b:$PATH; ./envp"],
+    ["a ${HOME} under an exported HOME from a $( )", "export HOME=$(pwd); PATH=${HOME}/b:$PATH; ./envp"],
+    ["a tilde under an absolute HOME with a $( )", "HOME=/x$(pwd); PATH=~/b:$PATH; ./envp"],
+    ["a tilde under a HOME read from input", "read HOME <<< .; PATH=~/b:$PATH; ./envp"],
+    ["a tilde under a HOME from an unknown variable", "HOME=$X; PATH=~/b:$PATH; ./envp"],
+    ["a tilde under a HOME prefix from a $( ) on the PATH command", "HOME=$(pwd) PATH=~/b:$PATH ./envp"],
+    ["a tilde in a function run after HOME is set relative", "f(){ PATH=~/b:$PATH; ./envp; }; HOME=L; f"],
+    ["a $HOME in a function run after HOME is set relative", "f(){ PATH=$HOME/b:$PATH; ./envp; }; HOME=L; f"],
+    ["a ${HOME} in a function run after HOME is exported relative", "f(){ PATH=${HOME}/b:$PATH; ./envp; }; export HOME=L; f"],
+    ["a tilde in a function run after HOME is read", "f(){ PATH=~/b:$PATH; ./envp; }; read HOME <<< L; f"],
+    ["a tilde in a function run after HOME is set from a $( )", "f(){ PATH=~/b:$PATH; ./envp; }; HOME=$(pwd); f"],
+    ["a tilde in a function run after printf -v HOME", "f(){ PATH=~/b:$PATH; ./envp; }; printf -v HOME %s L; f"],
+    ["a tilde in a function run in a loop over HOME", "f(){ PATH=~/b:$PATH; ./envp; }; for HOME in L; do f; done"],
+  ])("denies the script after %s", async (_, line) => {
     file("envp", ENV_BASH);
     file("src.sh", "PATH=.:$PATH\n");
     expect(await decision(line)).toBe("deny");
@@ -317,6 +344,13 @@ describe("a #!/usr/bin/env shell script on a line that changes PATH", () => {
     "PATH=~/dev/bin:$PATH; ./envp",
     "PATH=/x:~/b:$PATH; ./envp",
     "PATH=$PATH:~/bin; ./envp",
+    'PATH="/usr/local/bin":$PATH; ./envp',
+    "PATH=/usr/local/bin:$PATH; X=$(pwd); ./envp",
+    "HOME=/tmp/e; PATH=~/b:$PATH; ./envp",
+    "f(){ PATH=~/b:$PATH; ./envp; }; HOME=/tmp/e; f",
+    "HOME=L; PATH=/usr/local/bin:$PATH; ./envp",
+    "PATH=/usr/local/bin:$PATH; HOME=L; ./envp",
+    "f(){ PATH=/usr/local/bin:$PATH; ./envp; }; HOME=L; f",
   ])("reads the script as before when the line puts only absolute directories on PATH: %s", async (line) => {
     file("envp", ENV_BASH);
     file("build.sh", ENV_BASH);
