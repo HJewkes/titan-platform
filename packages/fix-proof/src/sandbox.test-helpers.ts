@@ -1,6 +1,6 @@
 import { spawnExec, type Exec, type ExecResult } from "./exec.js";
 
-export interface Call {
+interface Call {
   file: string;
   args: readonly string[];
 }
