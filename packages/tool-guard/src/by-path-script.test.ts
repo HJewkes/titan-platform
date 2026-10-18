@@ -263,7 +263,20 @@ describe("a #!/usr/bin/env shell script on a line that changes PATH", () => {
     ["a tilde under a descriptor directory", "exec 3<.; HOME=/dev/fd/3; PATH=~/b:$PATH; ./envp"],
     ["a .. segment climbing into /proc", "PATH=/tmp/../proc/self/cwd:$PATH; ./envp"],
     ["a .. segment climbing into /dev", "exec 3<.; PATH=/tmp/../dev/fd/3/b:$PATH; ./envp"],
-    ["a . and a .. segment before /proc with a trailing slash", "PATH=/tmp/./../proc/self/cwd/:$PATH; ./envp"],  ])("denies the script after %s", async (_, line) => {
+    ["a . and a .. segment before /proc with a trailing slash", "PATH=/tmp/./../proc/self/cwd/:$PATH; ./envp"],
+    ["a single-quoted tilde", "PATH='~/b':$PATH; ./envp"],
+    ["a double-quoted tilde", 'PATH="~/b":$PATH; ./envp'],
+    ["an escaped tilde", "PATH=\\~/b:$PATH; ./envp"],
+    ["a tilde before a quoted slash", 'PATH=~"/b":$PATH; ./envp'],
+    ["a single-quoted $HOME", "PATH='$HOME/b':$PATH; ./envp"],
+    ["an escaped $HOME", "PATH=\\$HOME/b:$PATH; ./envp"],
+    ["another user's tilde", "PATH=~user/b:$PATH; ./envp"],
+    ["a variable that only starts with HOME", "PATH=$HOME_X/b:$PATH; ./envp"],
+    ["an alternate-value expansion of HOME", "PATH=${HOME:+.}/b:$PATH; ./envp"],
+    ["an alternate-value expansion of PATH", "PATH=${PATH:+.}; ./envp"],
+    ["a tilde after an escaped colon", "PATH=/x\\:~/b:$PATH; ./envp"],
+    ["a tilde after a quoted colon", 'PATH="/x:"~/b:$PATH; ./envp'],
+    ["a single-quoted $PATH", "PATH=/nope:'$PATH'; ./envp"],  ])("denies the script after %s", async (_, line) => {
     file("envp", ENV_BASH);
     file("src.sh", "PATH=.:$PATH\n");
     expect(await decision(line)).toBe("deny");
@@ -294,6 +307,16 @@ describe("a #!/usr/bin/env shell script on a line that changes PATH", () => {
     "PATH=$HOME/bin:$PATH:/usr/local/bin; ./envp",
     "PATH=~/bin:$PATH ./envp",
     "export PATH=\"$HOME/bin:$PATH\"; ./build.sh",
+    "PATH=/usr/local/bin:$PATH; ./envp",
+    "PATH=~/.local/bin:$PATH; ./envp",
+    "PATH=/opt/homebrew/bin:$PATH; ./envp",
+    "PATH=$HOME/.cargo/bin:$PATH; ./envp",
+    "PATH=${HOME}/bin:$PATH; ./envp",
+    'PATH="$HOME"/b:$PATH; ./envp',
+    "PATH=${HOME}'/b':$PATH; ./envp",
+    "PATH=~/dev/bin:$PATH; ./envp",
+    "PATH=/x:~/b:$PATH; ./envp",
+    "PATH=$PATH:~/bin; ./envp",
   ])("reads the script as before when the line puts only absolute directories on PATH: %s", async (line) => {
     file("envp", ENV_BASH);
     file("build.sh", ENV_BASH);

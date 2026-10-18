@@ -1,8 +1,10 @@
 import type { OpToken, Token, WordToken } from "./lexer.js";
 import { caseChecked, clearCased, isCased, isCaseUnsure, isCaseUnsureLookup, markCase, markCased, markWord } from "./case-attrs.js";
 import type { CaseUnsure } from "./case-attrs.js";
-import { safePathDirs } from "./path-entries.js";
+import { rawValue, safePathDirs } from "./path-entries.js";
+import type { RawValue } from "./path-entries.js";
 import { printedText } from "./printed.js";
+import { shiftedTildes } from "./word-build.js";
 import { commandWrites, compoundWrites, IDENTIFIER_RE, noteCompounds, TARGET_RE } from "./writers.js";
 
 /**
@@ -19,7 +21,7 @@ export type Vars = Map<string, string | null>;
  * A `hidden` write is the walk's own save or restore of a function local, which no readonly check stops.
  * `cased` marks a value copied from one a case attribute may have changed.
  */
-export type Assignment = [name: string, value: string | null, kind?: "append" | "element" | "hidden", cased?: true, raw?: string];
+export type Assignment = [name: string, value: string | null, kind?: "append" | "element" | "hidden", cased?: true, raw?: RawValue];
 
 /** The subscript ends at the last `]` before `=`, so a nested subscript never hides that the word assigns. */
 export const ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[.*\])?\+?=/s;
@@ -66,7 +68,7 @@ export function expandWord(w: WordToken, resolve: (name: string) => string | nul
     value += w.value.slice(last, ref.start) + literals[i];
     last = ref.end;
   }
-  const expanded = literals.includes(null) ? w : { ...w, value: value + w.value.slice(last), dynamic: false, refs: [], typed: w.typed ?? w.value };
+  const expanded = literals.includes(null) ? w : { ...w, value: value + w.value.slice(last), dynamic: false, refs: [], typed: w.typed ?? w.value, tildes: shiftedTildes(w, literals as string[], value + w.value.slice(last)) };
   const result = unsure ? markWord(expanded) : expanded;
   if (sureWords.has(w)) sureWords.add(result);
   return result;
@@ -202,8 +204,8 @@ function splitAssignment(w: WordToken): Assignment | null {
   const parts = ASSIGNMENT_PARTS_RE.exec(w.value);
   if (!parts) return null;
   const [whole, name = "", subscript, plus] = parts;
-  const raw = w.value.slice(whole.length);
-  const value = w.dynamic ? null : raw;
+  const raw = rawValue(w, whole.length);
+  const value = w.dynamic ? null : raw.text;
   if (subscript !== undefined) return [name, subscript === "[0]" && !plus ? value : null, "element"];
   return plus ? [name, value, "append", undefined, raw] : [name, value, undefined, undefined, raw];
 }

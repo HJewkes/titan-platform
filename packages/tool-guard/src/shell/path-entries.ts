@@ -1,13 +1,13 @@
 import { SHELL_BUILTINS } from "./builtins.js";
+import type { WordToken } from "./tokens.js";
 import type { Assignment, Vars } from "./vars.js";
+import { tildeStarts } from "./word-build.js";
 
 /** POSIX's special builtins, whose prefix assignments a POSIX-mode shell such as `sh` keeps after they return. */
 const SPECIAL_BUILTINS = new Set([":", ".", "break", "continue", "eval", "exec", "exit", "export", "readonly", "return", "set", "shift", "times", "trap", "unset"]);
 
-const SELF_RE = /^\$(?:PATH|\{PATH\})$/;
-/** A literal absolute directory, or one under `~` or `$HOME`, which the walk keeps as `~`. */
-const LITERAL_DIR_RE = /^(?:\/|~(?:\/|$)|\$(?:HOME|\{HOME\})(?:\/|$))[^$`\\*?[(){}]*$/;
-const HOME_RE = /^(?:\$(?:HOME|\{HOME\})|~)/;
+/** The rest of a directory after its lead: literal path characters only, so no expansion, glob or quote is left in it. */
+const LITERAL_REST_RE = /^(?:\/[^$`\\*?[(){}]*)?$/;
 
 /**
  * Whether a literal path stays off the working directory: a `..` may climb out of a symlink to anywhere, and /proc
@@ -23,21 +23,57 @@ function fixedHome(value: string | null | undefined): boolean {
   return value?.startsWith("/") === true && staysOffCwd(value);
 }
 
+/** An assignment's value as the lexer read it: the text, and which of its `~` and `$NAME` the shell really expands. */
+export interface RawValue {
+  text: string;
+  tildes: number[];
+  refs: Array<{ name: string; start: number; end: number }>;
+}
+
+/** The value of the assignment word `w` after its first `from` characters, the `NAME=` they hold. */
+export function rawValue(w: WordToken, from: number): RawValue {
+  const refs = w.refs.filter((ref) => ref.start >= from).map((ref) => ({ ...ref, start: ref.start - from, end: ref.end - from }));
+  return { text: w.value.slice(from), tildes: tildeStarts(w).flatMap((at) => (at >= from ? [at - from] : [])), refs };
+}
+
 /**
- * The absolute directories an assignment puts on `PATH`, or null when it puts anything else there: an empty entry
- * and a relative one both name the working directory, and an entry built at run time can name any. The part of the
- * old value is kept as it is (`$PATH`), so only the entries the assignment adds are read. An append's leading `:` is
- * its separator, not an empty entry.
+ * The absolute directories an assignment puts on `PATH`, or null when it may put anything else there. The text is
+ * read after quote removal, so an entry is approved only from what the lexer saw the shell expand, and anything not
+ * approved fails closed: `'~/b'`, `\~/b`, `~"/b"` and `'$HOME/b'` all stay literal and name a directory under the
+ * working directory. An entry is approved when it is a literal absolute path, or a `~` or `$HOME` the shell expands
+ * followed by `/` and a literal path, under a `HOME` that is fixed; either passes `staysOffCwd`. A `$PATH` the shell
+ * expands keeps the old value. An append's leading `:` is its separator, not an empty entry.
  */
-export function safePathDirs(raw: string, append: boolean, vars: Vars, homeSet = false): string[] | null {
+export function safePathDirs(raw: RawValue, append: boolean, vars: Vars, homeSet = false): string[] | null {
   const homeSafe = !homeSet && (!vars.has("HOME") || fixedHome(vars.get("HOME")));
   const dirs: string[] = [];
-  for (const entry of (append && raw.startsWith(":") ? raw.slice(1) : raw).split(":")) {
-    if (SELF_RE.test(entry)) continue;
-    if (!LITERAL_DIR_RE.test(entry) || !staysOffCwd(entry) || (HOME_RE.test(entry) && !homeSafe)) return null;
-    dirs.push(entry.replace(HOME_RE, "~").replace(/(?<=.)\/$/, ""));
+  let start = append && raw.text.startsWith(":") ? 1 : 0;
+  for (const entry of raw.text.slice(start).split(":")) {
+    const lead = leadAt(raw, start);
+    start += entry.length + 1;
+    if (lead?.name === "PATH" && lead.length === entry.length) continue;
+    const dir = approvedDir(entry, lead?.name === "HOME" ? lead.length : 0, homeSafe);
+    if (dir === null) return null;
+    dirs.push(dir);
   }
   return dirs;
+}
+
+/** The plain `$NAME`, `${NAME}` or tilde (as `HOME`) the shell expands at `start`; an operator such as `${HOME:+.}` is no lead. */
+function leadAt(raw: RawValue, start: number): { name: string; length: number } | null {
+  if (raw.tildes.includes(start)) return { name: "HOME", length: 1 };
+  const ref = raw.refs.find((r) => r.start === start);
+  if (!ref) return null;
+  const text = raw.text.slice(ref.start, ref.end);
+  return text === `$${ref.name}` || text === `\${${ref.name}}` ? { name: ref.name, length: text.length } : null;
+}
+
+/** The directory an entry names, kept as `~` under a home lead `homeLead` characters long; null unless the contract above approves it. */
+function approvedDir(entry: string, homeLead: number, homeSafe: boolean): string | null {
+  const rest = entry.slice(homeLead);
+  if (homeLead > 0 ? !homeSafe : !entry.startsWith("/")) return null;
+  const dir = homeLead > 0 ? `~${rest}` : rest;
+  return LITERAL_REST_RE.test(rest) && staysOffCwd(dir) ? dir.replace(/(?<=.)\/$/, "") : null;
 }
 
 /**
