@@ -196,6 +196,11 @@ describe("console LAN config", () => {
     expect(lan({ TITAN_CONSOLE_ROUNDS_DIR: "~/rounds" }).roundsDir).toBe(path.join(HOME, "rounds"));
   });
 
+  it("reads repo reviews under the active-work root unless TITAN_CONSOLE_REVIEWS_DIR is given", () => {
+    expect(resolveConfig({ ACTIVE_ROOT: "/var/aw" }, HOME, "linux").reviewsDir).toBe("/var/aw/titan-platform/sources/research/repo-review");
+    expect(resolveConfig({ ACTIVE_ROOT: "/var/aw", TITAN_CONSOLE_REVIEWS_DIR: "~/reviews" }, HOME, "linux").reviewsDir).toBe(path.join(HOME, "reviews"));
+  });
+
   it("keeps owner writes off unless TITAN_CONSOLE_OWNER_WRITES is 1", () => {
     expect([lan({}), lan({ TITAN_CONSOLE_OWNER_WRITES: "" }), lan({ TITAN_CONSOLE_OWNER_WRITES: "0" })].map((c) => c.ownerWrites)).toEqual([false, false, false]);
     expect(lan({ TITAN_CONSOLE_OWNER_WRITES: "1" }).ownerWrites).toBe(true);
