@@ -2,6 +2,7 @@ import { arrayElements } from "./declarations.js";
 import { NAMED_FD_RE } from "./lexer.js";
 import type { RedirectToken, WordToken } from "./lexer.js";
 import { DECLARERS } from "./name-slots.js";
+import { subscriptedMatches } from "./subscripted-matches.js";
 
 /** A text the shell evaluates as math. */
 export interface MathPlace {
@@ -16,7 +17,8 @@ const ASSIGNED_SUBSCRIPT_RE = /^[A-Za-z_]\w*\[/;
 /** A literal element write, whose subscript is math even when no expansion is in it: `a[commands[y]=0]=1`. */
 const ELEMENT_WRITE_RE = /\]\+?=/;
 /** `${x:offset}` and `${x:offset:length}`: a colon after the name that opens no `:-`, `:=`, `:+`, `:?` or zsh `:#` operator. */
-const SUBSTRING_OPENER_RE = /\$\{[!#]?(?:[A-Za-z_]\w*(?:\[[^\]]*\])?|[@*]|\d+):(?![-=+?#])/g;
+const SUBSTRING_HEAD_RE = /\$\{[!#]?(?:([A-Za-z_]\w*)|[@*]|\d+)/g;
+const SUBSTRING_COLON_RE = /:(?![-=+?#])/y;
 
 /**
  * Every place a shell evaluates math inside words and redirects, apart from a command whose operands are wholly math.
@@ -64,12 +66,12 @@ function elementKey(e: WordToken): string[] {
 function spansOf(text: string, quotedFrom: number, elementOnly: boolean): string[] {
   const head = ASSIGNED_SUBSCRIPT_RE.exec(text);
   const assigned = head !== null && head[0].length <= quotedFrom ? head : null;
-  const expansions = elementOnly ? [] : [...text.matchAll(ARITHMETIC_OPENER_RE), ...text.matchAll(EXPANSION_SUBSCRIPT_RE), ...text.matchAll(SUBSTRING_OPENER_RE)];
+  const expansions = elementOnly ? [] : [...text.matchAll(ARITHMETIC_OPENER_RE), ...text.matchAll(EXPANSION_SUBSCRIPT_RE), ...subscriptedMatches(text, SUBSTRING_HEAD_RE, 1, SUBSTRING_COLON_RE)];
   const openers = [...expansions, ...(assigned ? [assigned] : [])];
   const spans: string[] = [];
   let past = 0;
   // By where each span starts: `${b:commands[y]+=0}` opens a substring at `:` before the subscript at `[`.
-  const start = (opener: RegExpExecArray) => opener.index + opener[0].length;
+  const start = (opener: Opener) => opener.index + opener[0].length;
   for (const opener of openers.sort((x, y) => start(x) - start(y))) {
     const from = start(opener);
     if (from <= past) continue;
@@ -79,6 +81,8 @@ function spansOf(text: string, quotedFrom: number, elementOnly: boolean): string
   }
   return spans;
 }
+
+type Opener = Pick<RegExpExecArray, "index" | 0>;
 
 function closers(opener: string): [string, string, number] {
   if (opener === "$((") return ["(", ")", 2];

@@ -5,6 +5,7 @@ import { DECLARERS, NAMEREF_DECLARERS, nameSlots, WRITERS } from "./name-slots.j
 import { numericOutput } from "./numeric-output.js";
 import { onPathLine } from "./path-commands.js";
 import { tokenize } from "./lexer.js";
+import { subscriptedMatches } from "./subscripted-matches.js";
 import type { Token, WordToken } from "./tokens.js";
 import { ASSIGNMENT_RE } from "./vars.js";
 import type { Vars } from "./vars.js";
@@ -40,7 +41,8 @@ const STARTUP_FILES = ["BASH_ENV", "ENV", "ZDOTDIR"];
 /** `unset` empties a name and zsh's `shift NAME` drops elements, so neither stores text math could read. */
 const VALUE_DROPPERS = new Set(["unset", "shift"]);
 /** A `${N=…}`, `${N:=…}` or zsh `${N::=…}`, which assigns N. */
-const DEFAULT_ASSIGN_RE = /\$\{[#+^=~]*([A-Za-z_]\w*)(?:\[[^\]]*\])*:{0,2}=/g;
+const DEFAULT_ASSIGN_HEAD_RE = /\$\{[#+^=~]*([A-Za-z_]\w*)/g;
+const DEFAULT_ASSIGN_TAIL_RE = /:{0,2}=/y;
 /** bash's `${!n=…}` and zsh's `${(P)n::=…}` assign whatever name n holds. */
 const INDIRECT_ASSIGN_RE = /\$\{[#+^=~]*[!(][^}]*=/;
 /** zsh assigns the positional parameters through `argv` and by number: `argv=(x)`, `1=x`. */
@@ -101,7 +103,7 @@ function recordSegment(segment: Segment, r: Reading): boolean {
   }
   const texts = expandedTexts(segment);
   for (const name of texts.flatMap(expansionBodies).flatMap(writtenNames)) record(r, name, "");
-  for (const text of texts) for (const [, name = ""] of text.matchAll(DEFAULT_ASSIGN_RE)) record(r, name, null);
+  for (const text of texts) for (const { name = "" } of subscriptedMatches(text, DEFAULT_ASSIGN_HEAD_RE, Infinity, DEFAULT_ASSIGN_TAIL_RE)) record(r, name, null);
   const words = visible(segment.words);
   const { command, args } = splitCommand(words);
   const leading = command ? words.slice(0, words.indexOf(command)) : words;
