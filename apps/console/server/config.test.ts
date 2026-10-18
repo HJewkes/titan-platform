@@ -82,6 +82,12 @@ describe("console config", () => {
     expect(() => resolveConfig({ TITAN_CONSOLE_DECISIONS_FILE: "d.md" }, HOME)).toThrow(/TITAN_CONSOLE_DECISIONS_FILE must be an absolute/);
   });
 
+  it("reads video roots as a path list, expanding ~, and refuses a relative entry", () => {
+    expect(resolveConfig({}, HOME).videoRoots).toEqual([]);
+    expect(resolveConfig({ TITAN_CONSOLE_VIDEO_ROOTS: ["~/renders", "/var/clips"].join(path.delimiter) }, HOME).videoRoots).toEqual([path.join(HOME, "renders"), "/var/clips"]);
+    expect(() => resolveConfig({ TITAN_CONSOLE_VIDEO_ROOTS: ["/var/clips", "renders"].join(path.delimiter) }, HOME)).toThrow(/TITAN_CONSOLE_VIDEO_ROOTS entries must be absolute/);
+  });
+
   it("parses seat prefixes and refuses a malformed pair", () => {
     expect(resolveConfig({}, HOME).seatPrefixes).toEqual([]);
     expect(resolveConfig({ TITAN_CONSOLE_SEATS: "alpha=al, beta=be" }, HOME).seatPrefixes).toEqual([

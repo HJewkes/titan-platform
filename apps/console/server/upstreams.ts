@@ -13,6 +13,7 @@ import { factoryGateAnswer } from "./gate-answer.js";
 import { createRoundListeners } from "./listeners.js";
 import { factoryOwnerAction } from "./owner-action.js";
 import { shepherdReader } from "./shepherd.js";
+import { videoCatalog } from "./videos.js";
 
 /** Under the state dir; the factory's `consoleAnswers.actionsDir` must name the same directory. */
 const OWNER_ACTIONS_DIR = "owner-actions";
@@ -140,6 +141,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     factory: factoryNeeds(config.factoryPort),
     hostSurfaces: config.hostSurfaces,
     hostReports: { dir: path.join(config.stateDir, "config", "host-reports") },
+    videos: videoCatalog({ roots: config.videoRoots ?? [] }),
     decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger }),
     listeners: createRoundListeners({
       enabled: config.gateAnswers,
