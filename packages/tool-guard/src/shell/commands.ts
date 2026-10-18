@@ -25,8 +25,7 @@ import { runReadings } from "./xargs-readings.js";
 import { newMarks, noteRedirect, recordValue, settle, type ValueMarks } from "./value-marks.js";
 import { noteCommand, noteWord } from "./stored-words.js";
 import { adoptPath, assignStandalone, guessesPath, guessPath, searchPathOf, trackCommand, withPrefixPath, type SearchPath } from "./search-path.js";
-import { ReadingLimitError, unsureReadings } from "./unsure-readings.js";
-import type { UnsureBudget } from "./unsure-readings.js";
+import { ReadingLimitError, unsureReadings, type UnsureBudget } from "./unsure-readings.js";
 import { arithmeticSpanEnd, splitsClose } from "./arith-span.js";
 
 const MAX_DEPTH = 8;
