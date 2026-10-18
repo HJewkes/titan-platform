@@ -20,6 +20,7 @@ import { sessionsCommands, type SessionsSource } from "./sessions.js";
 import { shepherdCommands, type ShepherdSource } from "./shepherd.js";
 import { tasksCommands } from "./tasks.js";
 import { UPSTREAM_IDS, probeUpstreams, type Upstream } from "./upstreams.js";
+import { summarizeNotes, videoNotesCommands } from "./video-notes.js";
 import { videosCommands, type VideoCatalog } from "./videos.js";
 import { initiativeResult, knowledgeCommands, portfolioResult, readInitiative, readPortfolio, type WorkOptions } from "./work.js";
 
@@ -112,7 +113,8 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...shepherdCommands(shepherd),
     ...configSurfacesCommands(hostSurfaces === undefined ? [unconfigured("host config surfaces")] : hostSurfaceReaders(hostSurfaces)),
     ...(hostReports === undefined ? {} : hostReportsCommands(hostReports)),
-    ...videosCommands(videos),
+    ...videosCommands(videos, summarizeNotes),
+    ...videoNotesCommands(videos),
     ...workCommands(activeWork, work),
   };
 }

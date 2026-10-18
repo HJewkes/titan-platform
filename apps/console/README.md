@@ -313,6 +313,43 @@ writes nothing. The verb is local only: no `/rpc` command imports a round.
   the same `round.json` and `frames.json` adds only missing files. A changed `round.json` is
   refused with "build round n+1", and an existing `feedback.json` is never replaced.
 
+## Theater
+
+The theater lists the renders under `TITAN_CONSOLE_VIDEO_ROOTS` and keeps the owner's notes on
+each one beside the video, in `<name>.notes.jsonl` (`cut.mp4` gets `cut.notes.jsonl`). The sidecar
+is the store of record: an agent re-rendering a video reads it in place, and nothing is copied into
+the state dir.
+
+- **`videos.note`** (owner-write) appends one line: `{ videoId, atS, kind: "comment", text }` or
+  `{ videoId, atS, kind: "verdict", verdict: "ship" | "needs-changes" }`. Like `rounds.submit`, it
+  runs only for the owner's session cookie on the LAN listener with `TITAN_CONSOLE_OWNER_WRITES=1`,
+  so loopback and bearer calls are refused.
+- **`videos.notes`** (read) returns `{ video, notes, verdict, gaps }` for one video id. Each note
+  carries `current`, and `verdict` is the latest verdict on the current render or null.
+- **`videos.list`** gives each video a `noteCount` (comments on the current render) and its `verdict`.
+
+Each line is a strict `titan-console/video-note@1` object:
+
+| Field | Value |
+| --- | --- |
+| `schema` | `"titan-console/video-note@1"` |
+| `id` | 16 random hex |
+| `videoId`, `video` | the catalog id and the video's file name, never a path |
+| `renderSha256` | sha256 of the video's bytes when the note was made |
+| `atS` | playback time in seconds, at or above 0, rounded to 0.001 |
+| `kind` | `"comment"` with `text` (1-2000 characters), or `"verdict"` with `verdict` |
+| `createdAt` | ISO time |
+
+The file is opened with O_APPEND and O_NOFOLLOW, mode 0600, and each note is one write of at most
+4 KB, so concurrent appends never interleave. A reader skips a line it cannot parse and reports the
+count as a gap, and refuses a file over 1 MB.
+
+**Agent pickup rule.** Read `<name>.notes.jsonl`. A note is on the current render when its
+`renderSha256` equals the video's sha256 now. The open notes are the current render's comments
+written after its latest `ship` verdict, in file order: `openNotes(notes, currentSha)` in
+`server/video-notes.ts`. A Ship on an earlier render closes nothing. Re-rendering the video makes
+every earlier note an earlier-render note: it stays in the file as history and is never open again.
+
 ## The approvals flow
 
 `approvals.flow` (`server/approvals.ts`) is a read. It merges three legs through
