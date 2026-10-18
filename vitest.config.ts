@@ -26,6 +26,9 @@ const needsProcess = [
 const workerHeapMb = 2048;
 setFlagsFromString(`--max-old-space-size=${workerHeapMb}`);
 const forksHeap = [`--max-old-space-size=${workerHeapMb}`];
+// A "Reached heap limit" line in a CI log is not proof a worker hit this cap: scripts/dag-check-lock.test.mjs aborts a
+// 32 MB child on purpose and its V8 report reaches the log (TP-3487; TP-2565 was the earlier load-timeout red). A real
+// runaway fails its own file with a worker exit, so look for that before raising the cap.
 // The heap cap probe allocates until it hits that cap, so it runs only on request.
 const heapProbe = process.env.VITEST_HEAP_PROBE ? ["scripts/heap-cap.probe.mjs"] : [];
 

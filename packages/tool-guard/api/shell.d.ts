@@ -162,6 +162,8 @@ interface ExtractOptions {
     joinsConditional?: boolean;
     /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
     onScript?: (text: string) => void;
+    /** The text is the Bash tool's own line, run by bash or zsh, where `((x))` may be arithmetic; off, it reads as nested subshells that run `x`. */
+    arithmetic?: boolean;
 }
 /**
  * Every simple command the shell would run, including ones nested in substitutions, `bash -c`
