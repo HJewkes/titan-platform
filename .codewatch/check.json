@@ -821,9 +821,19 @@
       "metric": "loc",
       "kind": "file",
       "max": 350,
-      "$comment": "Vendored verbatim from titan-design review-schema-v0.3.0 (4fcb3827); exempt by owner answer 2026-10-16 ('Yes, scoped'). TP-3232 deletes the vendored copy and this exclude.",
+      "$comment": "Vendored verbatim from titan-design review-schema-v0.3.0 (4fcb3827); exempt by owner answer 2026-10-16 ('Yes, scoped'). TP-3232 deletes the vendored copy and this exclude. The products/active-work entries: owner decision 443 (2026-10-18), adopted verbatim from HJewkes/active-work eead047; TP-3541 removes this exclude.",
       "exclude": [
-        "apps/console/server/review-schema-0.3/schema.ts"
+        "apps/console/server/review-schema-0.3/schema.ts",
+        "products/active-work/src/aw.ts",
+        "products/active-work/src/bootstrap/prompt.ts",
+        "products/active-work/src/commands/task-edit.ts",
+        "products/active-work/src/commands/wrap.ts",
+        "products/active-work/src/doctor.ts",
+        "products/active-work/src/migrations/v2-to-v3-open-loops.ts",
+        "products/active-work/src/session-index/origin-agent-chat.ts",
+        "products/active-work/src/session-index/refresh.ts",
+        "products/active-work/src/sessions/open-loops.ts",
+        "products/active-work/src/setup/steps.ts"
       ],
       "excludeRoles": [
         "test",
@@ -836,6 +846,10 @@
       "metric": "cyclomatic_max",
       "kind": "file",
       "max": 30,
+      "$comment": "The products/active-work entries: owner decision 443 (2026-10-18), adopted verbatim from HJewkes/active-work eead047; TP-3541 removes this exclude.",
+      "exclude": [
+        "products/active-work/src/bootstrap/prompt.ts"
+      ],
       "excludeRoles": [
         "test",
         "fixture"
