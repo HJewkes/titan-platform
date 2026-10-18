@@ -34,6 +34,8 @@ interface WordToken {
     value: string;
     dynamic: boolean;
     quoted: boolean;
+    /** Index in `value` where the first quoted or escaped part begins; set by the lexer, absent on a word it did not read. */
+    quotedAt?: number;
     /** Quotes or escapes split the word, or `$'...'` decoded it: `~/".x"`, `.n''x`, `.n\x`. */
     spliced: boolean;
     computed: boolean;
