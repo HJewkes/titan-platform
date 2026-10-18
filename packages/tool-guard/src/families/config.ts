@@ -77,7 +77,7 @@ function namedWrite(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction 
   if (cmd.name === "git" && setsHooksPath(cmd, ctx)) {
     return classified("bash.config.git-config-hookspath", { pattern: "git:core.hooksPath" });
   }
-  const consoleVerb = consoleOwnerVerb(cmd);
+  const consoleVerb = consoleOwnerVerb(cmd, ctx);
   if (consoleVerb) return classified("bash.config.console-owner-auth", { pattern: consoleVerb });
   if (cmd.name !== "claude") return null;
   const [group, verb] = cmd.args.map((a) => a.value);

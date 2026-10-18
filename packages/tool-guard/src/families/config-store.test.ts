@@ -10,11 +10,16 @@ const REPO = "/home/you/projects/app";
 const DOC = "~/.config/titan-coordinator/coordinator.json";
 const ts = new Date("2026-01-02T03:04:05.000Z");
 
-/** The console's installed bin, a node script, is the only file on this filesystem. */
+/** The console's installed bin, a node script, is the only file on this filesystem, beside a link to its CLI script. */
 const BIN = "/home/you/.local/bin/titan-console";
+const LINKS: Record<string, string> = {
+  [BIN]: BIN,
+  [`${REPO}/c.js`]: `${REPO}/apps/console/dist/cli.js`,
+};
 const binOnlyFs: ReadFs = {
   realpath: (p) => {
-    if (p === BIN) return p;
+    const real = LINKS[p];
+    if (real !== undefined) return real;
     throw new Error("ENOENT");
   },
   readHead: (p) => {
@@ -116,6 +121,17 @@ describe("an agent session minting or resetting the owner's console login", () =
     "tsx apps/console/server/cli.ts config import ./autonomy",
     "bash -c 'titan-console config import ./autonomy'",
     'sh -c "titan-console config import ./autonomy"',
+    'titan-console "token rotate"',
+    'titan-console "token  rotate"',
+    'node apps/console/dist/cli.js "token rotate"',
+    'titan-console "config import" ./autonomy',
+    'titan-console " login-link"',
+    "cd apps/console && tsx server/cli.ts login-link",
+    "cd apps/console && node dist/cli.js login-link",
+    "cd apps/console/dist && node cli.js token rotate",
+    "cd apps && node ./console/dist/cli.js login-link",
+    'cd "$D" && node dist/cli.js login-link',
+    "node c.js login-link",
   ])("refuses %s", async (command) => {
     expect(await bash(command)).toEqual(REFUSED);
   });
@@ -145,6 +161,10 @@ describe("what keeps passing", () => {
     "env titan-console config compare-tree",
     "node apps/console/dist/cli.js config compare-tree",
     "titan-console config",
+    'titan-console "rounds import" ./round-7',
+    "cd apps/console && node dist/cli.js rounds import ./round-7",
+    "node dist/cli.js login-link",
+    "node scripts/cli.ts token rotate",
     "node apps/console/dist/cli.js rounds import ./round-7",
     "grep -rn login-link apps/console/server",
     "echo x > ~/.local/state/titan-console/rounds/r-1/note.txt",
