@@ -95,6 +95,30 @@ describe("a quoted paren in $(( ))", () => {
   });
 });
 
+// A nested span holding only plain text, a defaulted or subscripted length, or a base number hides no paren.
+describe("plain spans and words in a $(( )) body", () => {
+  it.each([
+    ["a command substitution", "echo $(( $(date +%s) - $start ))"],
+    ["a command substitution with a redirect", "echo $(( $(wc -l < f) - $n ))"],
+    ["a backquote", "echo $(( `date +%s` - $start ))"],
+    ["nested arithmetic", "echo $(( $(( a + 1 )) * $b ))"],
+    ["arithmetic nested in a command substitution", "echo $(( $(echo $(( a + 1 ))) * $b ))"],
+    ["a defaulted name", "echo $(( ${start:-0} - $n ))"],
+    ["an array length", "echo $(( ${#files[@]} * 2 ))"],
+    ["a base number", "echo $(( 16#ff ))"],
+  ])("passes %s", async (_name, command) => {
+    expect(await handled(command)).toBe("pass");
+  });
+
+  it.each([
+    ["a command substitution holding a quoted paren", "echo $(( git push origin HEAD:main $(echo ')') ))"],
+    ["a command substitution holding a separator", "echo $(( git push origin HEAD:main $(true; true) ))"],
+    ["a backquote holding a comment", "echo $(( git push origin HEAD:main `true #` ))"],
+    ["a default holding a quoted paren", "echo $(( git push origin HEAD:main ${x:-')'} ))"],  ])("denies %s", async (_name, command) => {
+    expect(await handled(command.replaceAll("\\n", "\n"))).toBe("deny");
+  });
+});
+
 // A character is safe in a body when no shell can read it as hiding a paren; every other one makes zsh (and for some
 // bash) read `$(( … ))` as `$( ( … ) )`, so the command in the body must be walked.
 const SAFE = new Set("_+-*/%<>=!&|^~?:,.$");
