@@ -175,6 +175,16 @@ describe("listRecoverable query", () => {
     WHERE phase NOT IN (${TERMINAL_EXECUTION_PHASES.map(phase => `'${phase}'`).join(",")})
     ORDER BY prepared_at,execution_id LIMIT ?`;
 
+  function column(rows: unknown[], key: "detail" | "record"): string[] {
+    return rows.map(row => {
+      const value = typeof row === "object" && row !== null ? Reflect.get(row, key) : undefined;
+      if (typeof value !== "string") throw new TypeError(`row has no ${key}`);
+      return value;
+    });
+  }
+  const oldRecords = (db: ReturnType<typeof setup>["db"], limit: number) =>
+    column(db.prepare(notInSql("agent_execution")).all(limit), "record").map(record => JSON.parse(record));
+
   function seed(db: ReturnType<typeof setup>["db"], perPhase: number): void {
     const insert = db.prepare(`INSERT INTO agent_execution
       (execution_id,request_key,phase,revision,owner_id,owner_generation,lease_until,prepared_at,updated_at,record)
@@ -193,8 +203,7 @@ describe("listRecoverable query", () => {
     const { db } = setup();
     try {
       seed(db, 200);
-      const plan = db.prepare(`EXPLAIN QUERY PLAN ${recoverableSql("agent_execution")}`).all(10) as { detail: string }[];
-      const details = plan.map(row => row.detail).join("\n");
+      const details = column(db.prepare(`EXPLAIN QUERY PLAN ${recoverableSql("agent_execution")}`).all(10), "detail").join("\n");
       expect(details).not.toContain("SCAN agent_execution");
       expect(details).toContain("agent_execution_phase");
     } finally { db.close(); }
@@ -205,7 +214,7 @@ describe("listRecoverable query", () => {
     try {
       seed(db, 20);
       for (const limit of [undefined, 1, 5, 1000]) {
-        const expected = (db.prepare(notInSql("agent_execution")).all(limit ?? 100) as { record: string }[]).map(row => JSON.parse(row.record));
+        const expected = oldRecords(db, limit ?? 100);
         expect(ledger.listRecoverable(limit)).toEqual(expected);
       }
       expect(ledger.listRecoverable(1000)).toHaveLength(3 * phases.filter(phase => !isTerminalExecutionPhase(phase)).length);
@@ -218,7 +227,7 @@ describe("listRecoverable query", () => {
       try {
         db.prepare(`INSERT INTO agent_execution (execution_id,request_key,phase,revision,owner_id,owner_generation,lease_until,prepared_at,updated_at,record)
           VALUES ('only','only',?,1,NULL,0,NULL,?,?,?)`).run(phase, start, start, JSON.stringify({ phase }));
-        const expected = (db.prepare(notInSql("agent_execution")).all(100) as { record: string }[]).map(row => JSON.parse(row.record));
+        const expected = oldRecords(db, 100);
         expect(ledger.listRecoverable()).toEqual(expected);
         expect(ledger.listRecoverable()).toHaveLength(isTerminalExecutionPhase(phase) ? 0 : 1);
       } finally { db.close(); }
