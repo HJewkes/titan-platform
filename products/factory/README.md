@@ -781,6 +781,20 @@ seat files bind the same repo, the later seat file's path wins. A repo with no s
 one on a deny list, gets no reviewer, and `sh-review` records
 `none` with the reason.
 
+The programmatic `transcriptReviewerReader` also accepts an explicit
+`sourceFor(row): SessionSourceDescriptor` mapping. Without it the legacy Claude path
+reader remains in use. An explicit descriptor must match the roster transcript path,
+native session, namespace and harness consistency; mismatches reject without fallback.
+Its complete copied identity binds cached reads separately from mutable public locators.
+These checks establish consistency, not authentication.
+
+This option is not a new `shepherd.review` configuration key. The production descriptor
+mapping still belongs to the workflows/reviewer-dispatch roster adapter and the
+exit-notice adapter under the S03/S16 work. Adding this reader capability does not
+activate Codex production dispatch or complete that integration. Investigative-call
+policy, sent-message semantics, verdict grammar, PR/head matching and owner/security
+gates remain unchanged.
+
 With no `review` key nothing is built: no `agent-chat` process is started, `sh-review`
 answers `none`, and the owner gate decides every merge.
 

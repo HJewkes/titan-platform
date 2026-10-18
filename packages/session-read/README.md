@@ -292,6 +292,29 @@ the last assistant message, each capped at `RECOVERY_MESSAGE_CHARS`. Lists stop 
 outside the window. Argument text never reaches the result, so tokens and URL queries stay out
 of a session record.
 
+
+### Assistant-text finality and source order
+
+`assistantTextFinality()` projects whether the observed conversation ends with current
+assistant text. Feed observations to `add` and read `hasFinalText()`. A later tool,
+user message or conversational unknown invalidates a stale text ending; native Claude
+content positions preserve the existing thinking-before/after-text distinction.
+This is semantic finality only. It does not establish execution completion, reviewer
+approval, identity authentication, or permission to act. The consumer must still verify
+whole-source framing and apply its own review and lifecycle rules.
+
+`inSessionSourceOrder(source, observations)` is an opt-in async iterable over an
+already selected source. It buffers Codex observations and stably orders physical
+record byte offsets before consumer counters and projections run: a delayed fallback
+message must not inherit investigative credit from a physically later tool. Claude
+observations keep their existing streaming decoder order, including same-record native
+content semantics. `readSessionObservations` itself is unchanged. Buffering uses memory
+proportional to the source; this companion is not a bounded live-tail reader.
+
+Neither helper discovers transcripts, launches a harness, interprets verdict grammar,
+or changes tool grants. Product-specific sent-verdict handling, PR/head matching,
+security gates and production source mapping remain with the consumer.
+
 ## Shared source contracts
 
 The existing normalized source, observation, locator, decoder and continuation

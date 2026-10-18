@@ -96,3 +96,5 @@ export { INJECTED_MARKERS, MARKER_SCAN_CHARS, findInjectedMarker, hasMarker, par
 export { MIN_ATTACHMENT_CHARS, sourceForCause } from "./audit-context.js";
 export { bashSignals, toolUseSignals, type AuditSignal } from "./audit-signal.js";
 export { ORIENTATION_HEADER, assignedTaskIds, orientationEnd, type Assignment, type AssignmentInput, type AssignmentSource } from "./spawn-assignment.js";
+export { assistantTextFinality } from "./assistant-text-finality.js";
+export { inSessionSourceOrder } from "./session-source-order.js";
