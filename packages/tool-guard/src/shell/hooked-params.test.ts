@@ -4,7 +4,7 @@ import { writesHookedParam } from "./hooked-params.js";
 import { tokenize } from "./lexer.js";
 import type { RedirectToken, WordToken } from "./lexer.js";
 import { ParseError } from "./parse-error.js";
-import { expectLinearTime } from "./test-linearity.js";
+import { expectLinearTime, LINEARITY_TIMEOUT_MS } from "./test-linearity.js";
 import { unwrap } from "./unwrap.js";
 
 const hooked = (line: string) => {
@@ -217,7 +217,7 @@ describe("an option word the walk reads both ways", () => {
 
     expect(prepare(20_000)()).toBe("module_path");
     expectLinearTime((n) => { const run = prepare(n); return () => void run(); }, 20_000);
-  });
+  }, LINEARITY_TIMEOUT_MS);
 
   it.each([
     ["read, whose -p ends options in zsh", "read", "-p a "],
@@ -231,7 +231,7 @@ describe("an option word the walk reads both ways", () => {
 
     expect(prepare(20_000)()).toBe("module_path");
     expectLinearTime((n) => { const run = prepare(n); return () => void run(); }, 20_000);
-  });
+  }, LINEARITY_TIMEOUT_MS);
 
   it("fails closed on an option word too long to walk", () => {
     expect(hooked(`stat -${"t".repeat(300)} f`)).toBe(`-${"t".repeat(300)}`);
