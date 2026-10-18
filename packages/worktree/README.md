@@ -172,3 +172,11 @@ database inspection in the product; the package has no SQLite or provider policy
 The descriptor is copied without freezing its caller. Without ignoredFiles,
 existing result keys, static types and Git probe order are unchanged. This option
 alone adds no branch metadata and changes no release/reclaim/force behavior.
+
+### Optional local backing candidates
+
+With allowOriginHeadAncestor: true, localBackingCandidates can provide additional local commit candidates only after ordinary origin backing fails. The reader receives a frozen copy of the actual { branch, head, worktree } snapshot and runs at most once. It returns { oid, ref } entries: complete SHA-1 or SHA-256 commit IDs and opaque caller correlation strings. The first locally usable commit containing the captured HEAD supplies backingRef on success. Ordinary backing success never calls the reader or adds backingRef.
+
+The package validates the entire candidate list, rejects malformed entries and annotated tag IDs, and observes files, branch and HEAD again after asynchronous work and the caller recheck. Callback failures give no proof; all removal remains nonforced and retains the actual branch. Caller arrays and entries are copied rather than frozen in place.
+
+Candidates are caller-supplied backing assertions, not authenticated provider evidence. Provider status, fetches and correlation metadata belong to the product adapter. The option requires the origin-head flag to be strictly true; omitted options preserve the existing behavior and result shapes. This optional package callback does not wire any product provider reader.

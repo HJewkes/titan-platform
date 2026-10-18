@@ -213,3 +213,9 @@ subset cannot waive dirty status, failed reads, origin/HEAD proof, lifecycle or
 nonforced Git removal failures. No-policy probes/results/types remain unchanged,
 and ignoredFiles alone returns the existing success shape. This adds no provider,
 assignment, force, release or atomic-removal guarantee.
+
+## Lazy local backing candidates
+
+ParkOptions.localBackingCandidates requires allowOriginHeadAncestor: true. Only if ordinary backing fails does the reader receive the frozen actual branch, commit and worktree snapshot. It returns readonly { oid, ref } candidates; full local commit IDs are checked for ancestry, and only a selected candidate adds the opaque backingRef to the origin-head result. Provider interpretation and metadata stay with the caller; this is not remote authentication.
+
+Malformed lists, unavailable or noncommit objects and callback failures supply no proof. Fresh file, HEAD and branch guards run after asynchronous work and around the lifecycle recheck; removal stays nonforced with the branch retained. Existing options without a reader keep their result shapes and behavior.

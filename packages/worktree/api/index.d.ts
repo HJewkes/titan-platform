@@ -285,8 +285,24 @@ interface ParkIgnoredFilesPolicy {
     readonly formatRefusal?: (observation: ParkIgnoredFilesObservation) => string;
 }
 
+/** A copied snapshot of the actual local branch and commit being parked. */
+interface ParkLocalBackingObservation {
+    readonly branch: string;
+    readonly head: string;
+    readonly worktree: string;
+}
+/** Caller-supplied local commit and opaque correlation; not authenticated provider evidence. */
+interface ParkLocalBackingCandidate {
+    readonly oid: string;
+    readonly ref: string;
+}
+/** Called lazily only when ordinary origin backing did not prove the captured HEAD. */
+type ParkLocalBackingReader = (observation: Readonly<ParkLocalBackingObservation>) => Promise<readonly ParkLocalBackingCandidate[]>;
+
 /** Parking keeps the local branch; an opt-in fresh default proof can establish its commits are already backed. */
 interface ParkOptions {
+    /** Lazy caller-supplied local commit backing; requires allowOriginHeadAncestor strictly true. */
+    localBackingCandidates?: ParkLocalBackingReader;
     /** Explicit policy over fresh ignored files only; dirty status and failed observations always refuse. */
     ignoredFiles?: ParkIgnoredFilesPolicy;
     /** Retain the actual branch when tracking or a fresh origin-head ancestry proof backs its HEAD. */
@@ -296,6 +312,20 @@ interface ParkOptions {
     /** Positive finite fetch budget; invalid values refuse without fetching. Defaults to 15 seconds. */
     fetchTimeoutMs?: WorktreeOptions["fetchTimeoutMs"];
 }
+/** A selected local candidate adds only its opaque correlation; ordinary origin success has no backingRef. */
+declare function parkWorktree(target: WorktreeRecord, recheck: (() => string | undefined) | undefined, options: ParkOptions & {
+    allowOriginHeadAncestor: true;
+    localBackingCandidates: ParkLocalBackingReader;
+}): Promise<{
+    ok: true;
+    head: string;
+    branch: string;
+    containedIn?: string;
+    backingRef?: string;
+} | {
+    ok: false;
+    reason: string;
+}>;
 /** Explicit origin-head proof reports the actual retained branch and any differently named backing head. */
 declare function parkWorktree(target: WorktreeRecord, recheck: (() => string | undefined) | undefined, options: ParkOptions & {
     allowOriginHeadAncestor: true;
@@ -443,4 +473,4 @@ declare function reclaimWorktree(entry: SweptWorktree, options?: {
     reason?: string;
 }>;
 
-export { BRANCH_PREFIX, type BranchBase, DEFAULT_BASE_PATH, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_SETUP_TIMEOUT_MS, DEFAULT_STRIPPED_ENV_PREFIXES, DEFAULT_WORKTREE_BUDGET, type FoundWorktree, type GitLister, type GitPresence, type GitRunner, type HeldWorktree, MissingAssignedWorktreeRecordError, NPMRC_FILE, OriginUnreachableError, PNPM_WORKSPACE_FILE, type ParkIgnoredFilesObservation, type ParkIgnoredFilesPolicy, type ParkOptions, RECLAIM_GRACE_MS, type ReleaseCheck, type ReleaseProof, SAFE_GIT_PROTOCOLS, SETUP_FILE, SETUP_LOG, type SetupOutcome, type SetupReport, type SetupResult, type SetupRunner, type SetupStep, type SetupTarget, type SweepOptions, type SweepOwner, type SweepStatus, type SweptWorktree, WORKTREE_ADD_TIMEOUT_MS, type WorktreeAddRunner, type WorktreeAllocation, type WorktreeAllocator, WorktreeBudgetExhaustedError, type WorktreeCheck, WorktreeInUseError, type WorktreeOptions, type WorktreeRecord, type WorktreeReleaseOutcome, type WorktreeReleaseSafety, type WorktreeRequest, agentWorktreesIn, createWorktreeAllocator, describeRefusal, fetchDefaultTip, findGitRoot, gitChildEnv, inspectForRelease, isLive, observedPresence, parkWorktree, parseSetupStep, pinGitProtocols, pruneStaleWorktrees, reattachWorktree, reclaimWorktree, recreateWorktree, resolveBranchBase, resolveRequestedBase, runGit, runSetupCommand, runWorktreeSetup, setupEnv, setupWorktree, sweepWorktrees, withPinnedGitProtocols };
+export { BRANCH_PREFIX, type BranchBase, DEFAULT_BASE_PATH, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_SETUP_TIMEOUT_MS, DEFAULT_STRIPPED_ENV_PREFIXES, DEFAULT_WORKTREE_BUDGET, type FoundWorktree, type GitLister, type GitPresence, type GitRunner, type HeldWorktree, MissingAssignedWorktreeRecordError, NPMRC_FILE, OriginUnreachableError, PNPM_WORKSPACE_FILE, type ParkIgnoredFilesObservation, type ParkIgnoredFilesPolicy, type ParkLocalBackingCandidate, type ParkLocalBackingObservation, type ParkLocalBackingReader, type ParkOptions, RECLAIM_GRACE_MS, type ReleaseCheck, type ReleaseProof, SAFE_GIT_PROTOCOLS, SETUP_FILE, SETUP_LOG, type SetupOutcome, type SetupReport, type SetupResult, type SetupRunner, type SetupStep, type SetupTarget, type SweepOptions, type SweepOwner, type SweepStatus, type SweptWorktree, WORKTREE_ADD_TIMEOUT_MS, type WorktreeAddRunner, type WorktreeAllocation, type WorktreeAllocator, WorktreeBudgetExhaustedError, type WorktreeCheck, WorktreeInUseError, type WorktreeOptions, type WorktreeRecord, type WorktreeReleaseOutcome, type WorktreeReleaseSafety, type WorktreeRequest, agentWorktreesIn, createWorktreeAllocator, describeRefusal, fetchDefaultTip, findGitRoot, gitChildEnv, inspectForRelease, isLive, observedPresence, parkWorktree, parseSetupStep, pinGitProtocols, pruneStaleWorktrees, reattachWorktree, reclaimWorktree, recreateWorktree, resolveBranchBase, resolveRequestedBase, runGit, runSetupCommand, runWorktreeSetup, setupEnv, setupWorktree, sweepWorktrees, withPinnedGitProtocols };

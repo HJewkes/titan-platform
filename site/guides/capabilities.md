@@ -746,7 +746,7 @@ Key exports:
 - `branch-base`: `fetchDefaultTip`, `resolveBranchBase`, `resolveRequestedBase`
 - `errors`: `MissingAssignedWorktreeRecordError`, `OriginUnreachableError`, `WorktreeBudgetExhaustedError`, `WorktreeInUseError`
 - `git`: `pinGitProtocols`, `withPinnedGitProtocols`, `findGitRoot`, `gitChildEnv`
-- +60 more in the [reference page](/reference/worktree)
+- +63 more in the [reference page](/reference/worktree)
 
 ## Tier 2 — domain
 
