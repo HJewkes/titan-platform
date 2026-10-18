@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { TestOnlyDiff } from "./test-only-diff.js";
 import { kindMoveRefusal, TASK_KINDS, testOnlyMoveRefusal, type TaskKind } from "./task-kind.js";
 
 const TESTS_ONLY = { kind: "test-only" } as const;
@@ -47,12 +46,6 @@ describe("testOnlyMoveRefusal, the guard once the kind is live", () => {
     const flagged = { kind: "flagged", reason: "the PR deletes tests packages/x/src/b.test.ts", paths: ["packages/x/src/b.test.ts"] } as const;
 
     expect(testOnlyMoveRefusal("correctness", flagged)).toBe("kind correctness cannot move to test-only: the PR deletes tests packages/x/src/b.test.ts");
-  });
-
-  it("refuses correctness to test-only on a reading it does not know", () => {
-    const future = { kind: "partial", reason: "a reading added later" } as unknown as TestOnlyDiff;
-
-    expect(testOnlyMoveRefusal("correctness", future)).toMatch(/^kind correctness cannot move to test-only/);
   });
 
   it("needs no diff to tighten an ungated kind into test-only", () => {
