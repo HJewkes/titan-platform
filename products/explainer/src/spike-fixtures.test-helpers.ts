@@ -7,6 +7,9 @@ const read = (name: string, script = "redesign-explainer-v4"): unknown => JSON.p
 /** The frozen v4 spike script subset; see the fixture folder's README for its source. */
 export const v4Script = (): unknown => read("script.json");
 
+/** The whole 75-beat v4 spike script, for checks that read later beats of a chapter; see the README. */
+export const v4FullScript = (): unknown => read("script-full.json");
+
 /** The durations-only extract of the v4 words.json, all 75 beats. */
 export const v4Durations = (): unknown => read("durations.json");
 

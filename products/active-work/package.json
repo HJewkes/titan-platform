@@ -1,0 +1,89 @@
+{
+  "name": "@titan-design/active-work",
+  "version": "0.23.0",
+  "type": "module",
+  "description": "Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions",
+  "license": "MIT",
+  "author": "Henry Jewkes",
+  "homepage": "https://github.com/HJewkes/titan-platform/tree/main/products/active-work#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HJewkes/titan-platform.git",
+    "directory": "products/active-work"
+  },
+  "bugs": {
+    "url": "https://github.com/HJewkes/titan-platform/issues"
+  },
+  "bin": {
+    "active-work": "dist/cli.js",
+    "aw": "dist/aw.js"
+  },
+  "files": [
+    "dist",
+    "skill",
+    "claude-commands",
+    "scripts",
+    "docs/cli-reference.md"
+  ],
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsup && pnpm build:dashboard",
+    "build:cli": "tsup",
+    "build:dashboard": "vite build --config src/dashboard/vite.config.ts",
+    "gen:cli-reference": "pnpm build:cli && node scripts/gen-cli-reference.mjs",
+    "postinstall": "node scripts/postinstall.js",
+    "preuninstall": "node scripts/preuninstall.js",
+    "typecheck": "tsc --noEmit",
+    "prepack": "node scripts/gen-cli-reference.mjs && test -s docs/cli-reference.md"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.10.5",
+    "@types/proper-lockfile": "^4.1.4",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-native-web": "^0.21.2",
+    "tsup": "^8.3.6",
+    "tsx": "^4.19.2",
+    "vite": "^8.0.12",
+    "vite-plugin-singlefile": "^2.3.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.4.0",
+    "@hono/node-server": "^2.0.2",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@titan-design/agent-protocol": "workspace:^",
+    "@titan-design/cluster": "workspace:^",
+    "@titan-design/daemon": "workspace:^",
+    "@titan-design/decider": "workspace:^",
+    "@titan-design/locator": "workspace:^",
+    "@titan-design/pm": "workspace:^",
+    "@titan-design/registry": "workspace:^",
+    "@titan-design/retrieval": "workspace:^",
+    "@titan-design/session-analytics": "workspace:^",
+    "@titan-design/session-graph": "workspace:^",
+    "@titan-design/session-read": "workspace:^",
+    "@titan-design/store-sqlite": "workspace:^",
+    "better-sqlite3": "^13.0.2",
+    "commander": "^14.0.3",
+    "env-paths": "^4.0.0",
+    "gray-matter": "^4.0.3",
+    "hono": "^4.12.18",
+    "picocolors": "^1.1.1",
+    "pino": "^10.3.1",
+    "pino-pretty": "^13.1.3",
+    "proper-lockfile": "^4.1.2",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  }
+}

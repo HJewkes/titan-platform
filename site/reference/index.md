@@ -2,8 +2,8 @@
 # Packages
 
 Every package below is published to npm under `@titan-design/` and versions independently.
-A package in this repo may import only its own tier or a lower one. Products are private
-compositions; the design system is published from a separate repository.
+A package in this repo may import only its own tier or a lower one. Products are compositions,
+private unless linked; the design system is published from a separate repository.
 
 ## Tier 0 — primitives
 
@@ -94,10 +94,11 @@ React bindings for the daemon wire. The design system, react-ui, is listed here 
 
 ## Products
 
-Thin compositions of the tiers. Private, not published.
+Thin compositions of the tiers. A linked product is published; the rest are private.
 
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
+| [`active-work`](/reference/active-work) | Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions | `agent-protocol`, `cluster`, `daemon`, `decider`, `locator`, `pm`, `registry`, `retrieval`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite` |
 | `evals` | Eval registry: spec schemas for units, variants, cases, suites, checks and scorecards, with canonical content hashing | `agent`, `authority`, `evidence`, `fix-proof`, `health`, `hitl`, `review-panel`, `session-analytics`, `session-read`, `store-sqlite`, `workflow` |
 | `explainer` | Explainer video pipeline: beats.json and digest.json schemas, packet builder, finding attribution | `agent`, `agent-protocol`, `evidence`, `graph-layout`, `speech-vet` |
 | `factory` | Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams | `agent`, `agent-dispatch`, `app-paths`, `authority`, `coordinator`, `daemon`, `fix-proof`, `github`, `health`, `hitl`, `owner-queue`, `registry`, `review-panel`, `review-schema`, `rpc-client`, `session-analytics`, `session-read`, `store-sqlite`, `workflow`, `worktree` |
