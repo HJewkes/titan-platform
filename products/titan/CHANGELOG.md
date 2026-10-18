@@ -1,5 +1,12 @@
 # @titan-design/titan
 
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [9b5d49f]
+  - @titan-design/daemon@0.8.0
+
 ## 0.3.1
 
 ### Patch Changes

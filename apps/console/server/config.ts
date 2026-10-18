@@ -67,6 +67,11 @@ export interface ConsoleConfig {
    * Optional so a test config need not build one; absent, `config.compareTree` is `not-configured`.
    */
   configStore?: ConfigStorePaths;
+  /**
+   * `TITAN_CONSOLE_INBOX_ACTIONS=1` lets `inbox.act` write an action record and post it to the factory's console-action route.
+   * Optional so a config built by hand reads as off; `resolveConfig` always sets it.
+   */
+  inboxActions?: boolean;
   /** Where `config.surfaces` reads this host's agent-chat, factory, console and Claude Code config. */
   hostSurfaces?: HostSurfaceRoots;
 }
@@ -139,11 +144,12 @@ function lanOptionsFrom(
 }
 
 /** The settings only the owner turns on or points; none is ever read from a request. */
-function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "ownerWrites" | "decisionsFile" | "gateAnswers"> {
+function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "ownerWrites" | "decisionsFile" | "gateAnswers" | "inboxActions"> {
   return {
     ownerWrites: flagFrom("TITAN_CONSOLE_OWNER_WRITES", env.TITAN_CONSOLE_OWNER_WRITES),
     decisionsFile: decisionsFileFrom(env.TITAN_CONSOLE_DECISIONS_FILE, home),
     gateAnswers: flagFrom("TITAN_CONSOLE_GATE_ANSWERS", env.TITAN_CONSOLE_GATE_ANSWERS),
+    inboxActions: flagFrom("TITAN_CONSOLE_INBOX_ACTIONS", env.TITAN_CONSOLE_INBOX_ACTIONS),
   };
 }
 

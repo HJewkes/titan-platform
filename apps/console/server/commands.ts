@@ -6,9 +6,11 @@ import type { ActiveWork } from "./active-work.js";
 import { configStoreCommands, type ConfigStoreSource } from "./config-store/compare.js";
 import { configSurfacesCommands, unconfigured } from "./config-surfaces/catalog.js";
 import { hostSurfaces as hostSurfaceReaders, type HostSurfaceRoots } from "./config-surfaces/host.js";
+import { hostReportsCommands, type HostReportsSource } from "./config-surfaces/host-reports.js";
 import type { DecisionLog } from "./decision-log.js";
 import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
+import { inboxActionCommands, type InboxActionOptions } from "./inbox-actions.js";
 import { inboxViewCommands, type InboxSources } from "./inbox-view.js";
 import { readCommand } from "./owner-guard.js";
 import { roundFramesCommands } from "./round-frames.js";
@@ -46,10 +48,16 @@ export interface ConsoleSources {
   listeners?: RoundListeners;
   /** Optional so test sources need not build one; absent, `config.surfaces` answers one gap for this host's files. */
   hostSurfaces?: HostSurfaceRoots;
+  /** Optional so test sources need not build one; absent, `inbox.prepare` and `inbox.act` answer that inbox actions are off. */
+  inboxActions?: Omit<InboxActionOptions, "decisionLog">;
+  /** Optional so test sources need not build one; absent, `config.report` and `config.hosts` are not served. */
+  hostReports?: HostReportsSource;
   work?: WorkOptions;
   /** Optional so test sources need not build one; absent, `config.compareTree` is `not-configured`. */
   configStore?: ConfigStoreSource;
 }
+
+const ACTIONS_UNWIRED: InboxActionOptions = { enabled: false, actionsDir: "", client: { post: async () => ({ status: "off" }) } };
 
 function upstreamsCommands(upstreams: readonly Upstream[]) {
   return {
@@ -63,9 +71,9 @@ function upstreamsCommands(upstreams: readonly Upstream[]) {
   };
 }
 
-/** The owner's merged queue, as the raw Flow and as the inbox with its actions. */
-function ownerQueueCommands(sources: InboxSources) {
-  return { ...approvalsCommands(sources), ...inboxViewCommands(sources) };
+/** The owner's merged queue, as the raw Flow, as the inbox with its actions, and the taps that take them. */
+function ownerQueueCommands(sources: InboxSources, actions: InboxActionOptions) {
+  return { ...approvalsCommands(sources), ...inboxViewCommands(sources), ...inboxActionCommands(sources, actions) };
 }
 
 function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
@@ -88,7 +96,7 @@ function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, factory, decisionLog, listeners, hostSurfaces, work, configStore }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, factory, decisionLog, listeners, hostSurfaces, hostReports, inboxActions, work, configStore }: ConsoleSources) {
   return {
     ...upstreamsCommands(upstreams),
     ...configStoreCommands(configStore),
@@ -101,9 +109,10 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...roundsCommands(rounds),
     ...roundFramesCommands(rounds),
     ...roundsSubmitCommands(rounds, decisionLog, listeners),
-    ...ownerQueueCommands({ factory, rounds, inbox, shepherd }),
+    ...ownerQueueCommands({ factory, rounds, inbox, shepherd }, { ...(inboxActions ?? ACTIONS_UNWIRED), ...(decisionLog && { decisionLog }) }),
     ...shepherdCommands(shepherd),
     ...configSurfacesCommands(hostSurfaces === undefined ? [unconfigured("host config surfaces")] : hostSurfaceReaders(hostSurfaces)),
+    ...(hostReports === undefined ? {} : hostReportsCommands(hostReports)),
     ...workCommands(activeWork, work),
   };
 }

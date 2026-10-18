@@ -207,6 +207,12 @@ describe("console LAN config", () => {
     expect(() => lan({ TITAN_CONSOLE_GATE_ANSWERS: "yes" })).toThrow(/TITAN_CONSOLE_GATE_ANSWERS must be 1 or 0/);
   });
 
+  it("keeps inbox actions off unless TITAN_CONSOLE_INBOX_ACTIONS is 1, and refuses a typo", () => {
+    expect([lan({}), lan({ TITAN_CONSOLE_INBOX_ACTIONS: "" }), lan({ TITAN_CONSOLE_INBOX_ACTIONS: "0" })].map((c) => c.inboxActions)).toEqual([false, false, false]);
+    expect(lan({ TITAN_CONSOLE_INBOX_ACTIONS: "1" }).inboxActions).toBe(true);
+    expect(() => lan({ TITAN_CONSOLE_INBOX_ACTIONS: "on" })).toThrow(/TITAN_CONSOLE_INBOX_ACTIONS must be 1 or 0/);
+  });
+
   it.each(["true", "yes", "on", " 1"])("refuses TITAN_CONSOLE_OWNER_WRITES=%j rather than guess", (value) => {
     expect(() => lan({ TITAN_CONSOLE_OWNER_WRITES: value })).toThrow(/TITAN_CONSOLE_OWNER_WRITES/);
   });

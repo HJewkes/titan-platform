@@ -1,15 +1,21 @@
 import { stat } from "node:fs/promises";
 import os from "node:os";
+import path from "node:path";
 import { consoleLogger, probeHealth, type Logger } from "@titan-design/daemon";
 import { activeWorkClient, type ActiveWork } from "./active-work.js";
 import { brokerReader } from "./broker.js";
+import { brokerAnswerer } from "./broker-answer.js";
 import type { ConsoleSources } from "./commands.js";
 import type { ConsoleConfig } from "./config.js";
 import { createDecisionLog, type HumanOnly } from "./decision-log.js";
 import { factoryNeeds } from "./factory.js";
 import { factoryGateAnswer } from "./gate-answer.js";
 import { createRoundListeners } from "./listeners.js";
+import { factoryOwnerAction } from "./owner-action.js";
 import { shepherdReader } from "./shepherd.js";
+
+/** Under the state dir; the factory's `consoleAnswers.actionsDir` must name the same directory. */
+const OWNER_ACTIONS_DIR = "owner-actions";
 
 export const UPSTREAM_IDS = ["work", "agents", "sessions"] as const;
 export type UpstreamId = (typeof UPSTREAM_IDS)[number];
@@ -107,6 +113,15 @@ export function humanOnlyFrom(activeWork: ActiveWork): () => Promise<HumanOnly> 
   };
 }
 
+function inboxActionsOf(config: ConsoleConfig): NonNullable<ConsoleSources["inboxActions"]> {
+  return {
+    enabled: config.inboxActions ?? false,
+    actionsDir: path.join(config.stateDir, OWNER_ACTIONS_DIR),
+    client: factoryOwnerAction(config.factoryPort),
+    answerer: brokerAnswerer({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
+  };
+}
+
 export function createSources(config: ConsoleConfig, logger: Logger = consoleLogger): ConsoleSources {
   const activeWork = activeWorkClient(config.activeWorkPort);
   const shepherd = shepherdReader(config.factoryPort);
@@ -124,6 +139,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     shepherd,
     factory: factoryNeeds(config.factoryPort),
     hostSurfaces: config.hostSurfaces,
+    hostReports: { dir: path.join(config.stateDir, "config", "host-reports") },
     decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger }),
     listeners: createRoundListeners({
       enabled: config.gateAnswers,
@@ -133,5 +149,6 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
       logger,
     }),
     ...(config.configStore ? { configStore: { stateDir: config.stateDir, ...config.configStore } } : {}),
+    inboxActions: inboxActionsOf(config),
   };
 }
