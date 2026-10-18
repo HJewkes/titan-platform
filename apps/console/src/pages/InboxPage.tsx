@@ -2,8 +2,10 @@ import { useState, type ReactNode } from "react";
 import { Alert, Badge, BadgeText, Button, ButtonText, Card, CardContent, EmptyState, HStack, Link, Pill, Section, SectionContent, SectionHeader, Spinner, Typography, VStack } from "@titan-design/react-ui";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
+import { useAnswerSource } from "../data/submit.js";
 import { open, parseRoute } from "../router.js";
 import { openExternal } from "./homeLinks.js";
+import { InboxConfirm } from "./InboxConfirm.js";
 
 export type InboxItem = ConsoleCommands["inbox.list"]["result"]["items"][number];
 type InboxAction = InboxItem["action"];
@@ -62,15 +64,18 @@ const VERB: Record<InboxAction["kind"], string> = {
   terminal: "Run on terminal",
 };
 
-/** Navigation stays a link; a write is shown as its terminal command until the console takes it itself (S6). */
+/** Navigation stays a link; a write the console does not take yet is shown as its terminal command. */
 const isNavigation = (action: InboxAction): boolean => action.kind === "open" || action.kind === "open-round";
+
+/** The writes `inbox.act` takes today; it mirrors the server's `isConsoleAction` in inbox-actions.ts. */
+const CONSOLE_TAPS: ReadonlySet<InboxAction["kind"]> = new Set(["resolve-gate", "owner-release"]);
 
 function followEvidence(evidence: string): void {
   if (evidence.startsWith("#")) open(parseRoute(evidence));
   else openExternal(evidence);
 }
 
-/** Every pending owner decision in one list: blocking first, then planning collapsed, then a count of FYIs. Read-only. */
+/** Every pending owner decision in one list: blocking first, then planning collapsed, then a count of FYIs. */
 export function InboxPage(): ReactNode {
   const inbox = useQuery("inbox.list");
   if (inbox.status === "loading") return <Spinner size="sm" label="Loading the inbox" />;
@@ -148,10 +153,35 @@ function InboxRow({ item }: { item: InboxItem }): ReactNode {
             {item.hold !== undefined ? <Typography variant="caption" color="secondary">{item.hold.reason}</Typography> : null}
           </HStack>
           {item.evidence !== undefined ? <EvidenceLink evidence={item.evidence} /> : null}
-          {isNavigation(item.action) ? null : <TerminalAction item={item} />}
+          <RowAction item={item} />
         </VStack>
       </CardContent>
     </Card>
+  );
+}
+
+function RowAction({ item }: { item: InboxItem }): ReactNode {
+  const live = useAnswerSource() !== null;
+  if (isNavigation(item.action)) return null;
+  if (!CONSOLE_TAPS.has(item.action.kind)) return <TerminalAction item={item} reason={laterReason(item.action)} />;
+  return live ? <ConsoleAction item={item} /> : <TerminalAction item={item} reason="This page is a snapshot: act from the live console, or run it on the terminal." />;
+}
+
+const laterReason = (action: InboxAction): string => (action.kind === "terminal" ? action.reason : `${VERB[action.kind]} from the console comes later; run it on the terminal for now.`);
+
+/** One primary button labelled with the verb; the sheet it opens holds the second tap. */
+function ConsoleAction({ item }: { item: InboxItem }): ReactNode {
+  const [confirming, setConfirming] = useState(false);
+  const command = terminalCommandOf(item);
+  const verb = VERB[item.action.kind];
+  return (
+    <HStack gap={2} align="center" wrap>
+      <Button size="sm" onPress={() => setConfirming(true)} testID={`inbox-act-${item.id}`}>
+        <ButtonText>{verb}</ButtonText>
+      </Button>
+      {command !== undefined && canCopy() ? <CopyButton command={command} /> : null}
+      {confirming ? <InboxConfirm itemId={item.id} verb={verb} command={command} onClose={() => setConfirming(false)} /> : null}
+    </HStack>
   );
 }
 
@@ -165,10 +195,9 @@ function EvidenceLink({ evidence }: { evidence: string }): ReactNode {
   );
 }
 
-function TerminalAction({ item }: { item: InboxItem }): ReactNode {
+function TerminalAction({ item, reason }: { item: InboxItem; reason: string }): ReactNode {
   const [shown, setShown] = useState(false);
   const command = terminalCommandOf(item);
-  const reason = item.action.kind === "terminal" ? item.action.reason : `${VERB[item.action.kind]} from the console comes later; run it on the terminal for now.`;
   return (
     <VStack gap={2}>
       <HStack gap={2} align="center" wrap>

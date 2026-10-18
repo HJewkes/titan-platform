@@ -5,6 +5,7 @@ import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-
 import { errorEnvelope, successEnvelope, type JsonEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { App } from "./App.js";
+import { AnswerSourceProvider } from "./data/submit.js";
 
 const NOW = Date.parse("2031-03-05T12:00:00.000Z");
 const HOUR = 60 * 60 * 1000;
@@ -78,20 +79,65 @@ interface Inbox {
 
 const inboxAnswer = ({ items = [GATE, HELD, ASK, ROUND, DEPOSIT, ...PLANNING], gaps = [], fyiCount = 42 }: Inbox = {}): JsonEnvelope<unknown> => successEnvelope({ items, gaps, fyiCount, readAt: new Date(NOW).toISOString() });
 
-function renderInbox(answer: JsonEnvelope<unknown> = inboxAnswer(), hash = "#/inbox"): string[] {
+type Tap = (args: unknown) => Promise<JsonEnvelope<unknown>>;
+
+interface Call {
+  name: string;
+  args: unknown;
+}
+
+/** Renders the inbox over a recorded snapshot; with `taps` the page is live and those commands answer as given. */
+function renderInbox(answer: JsonEnvelope<unknown> = inboxAnswer(), taps?: Record<string, Tap>): Call[] {
   const snapshot: Snapshot = { format: SNAPSHOT_FORMAT, createdAt: new Date(NOW).toISOString(), calls: { [snapshotKey("inbox.list", {})]: answer } };
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html");
   const inner = pageDataSource({ doc: page });
-  const called: string[] = [];
-  const source: DataSource = { subscribe: inner.subscribe.bind(inner), call: (name, args, options) => (called.push(name), inner.call(name, args, options)) };
-  window.location.hash = hash;
+  const calls: Call[] = [];
+  const source: DataSource = {
+    subscribe: inner.subscribe.bind(inner),
+    call: (name, args, options) => (calls.push({ name, args }), taps?.[name] ? taps[name](args) : inner.call(name, args, options)),
+  };
+  window.location.hash = "#/inbox";
   render(
     <RpcProvider source={source}>
-      <App />
+      <AnswerSourceProvider value={taps ? source : null}>
+        <App />
+      </AnswerSourceProvider>
     </RpcProvider>,
   );
-  return called;
+  return calls;
 }
+
+const CONFIRM = "c".repeat(64);
+const READ_AT = new Date(NOW - 12_000).toISOString();
+
+const ready = (overrides: Record<string, unknown> = {}): JsonEnvelope<unknown> =>
+  successEnvelope({
+    status: "ready",
+    itemId: "gate-1",
+    action: GATE.action,
+    readBack: { repo: "example/repo", pr: 12, title: "Merge example/repo#12", headSha: HEAD, gateId: "run-gate-1/approve-merge", effect: "Approve the merge of example/repo#12 at 0b7e2c1" },
+    readAt: READ_AT,
+    confirm: CONFIRM,
+    expiresAt: new Date(NOW + 5 * 60_000).toISOString(),
+    ...overrides,
+  });
+
+const resolved = (): Promise<JsonEnvelope<unknown>> => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "resolved" }, message: "Merge approved" }));
+
+function deferred(): { promise: Promise<JsonEnvelope<unknown>>; resolve: (value: JsonEnvelope<unknown>) => void } {
+  let resolve!: (value: JsonEnvelope<unknown>) => void;
+  const promise = new Promise<JsonEnvelope<unknown>>((done) => (resolve = done));
+  return { promise, resolve };
+}
+
+const named = (calls: readonly Call[], name: string): Call[] => calls.filter((call) => call.name === name);
+
+async function tapGate(): Promise<HTMLElement> {
+  fireEvent.click(within(await screen.findByTestId("inbox-row-gate-1")).getByText("Approve merge"));
+  return screen.findByTestId("inbox-confirm");
+}
+
+const confirmButton = (): HTMLElement => screen.getByTestId("inbox-confirm-ok");
 
 const rowIds = (section: string): (string | null)[] => within(screen.getByTestId(section)).queryAllByTestId(/^inbox-row-/).map((row) => row.getAttribute("data-testid"));
 
@@ -137,13 +183,13 @@ describe("the inbox page", () => {
     await waitFor(() => expect(window.location.hash).toBe("#/shepherd/example%2Frepo%2314"));
   });
 
-  it("offers every write as Run on terminal, revealing the command and the reason", async () => {
+  it("offers every write as Run on terminal on a snapshot page, revealing the command and the reason", async () => {
     renderInbox();
     const held = await screen.findByTestId("inbox-row-held-1");
     expect(within(held).queryByText("Release hold")).toBeNull();
     fireEvent.click(within(held).getByText("Run on terminal"));
     expect(within(held).getByText(`titan-factory shepherd owner-release example/repo#14 --head ${HEAD}`)).toBeTruthy();
-    expect(within(held).getByText("Release hold from the console comes later; run it on the terminal for now.")).toBeTruthy();
+    expect(within(held).getByText("This page is a snapshot: act from the live console, or run it on the terminal.")).toBeTruthy();
     const deposit = screen.getByTestId("inbox-row-dep-1");
     fireEvent.click(within(deposit).getByText("Run on terminal"));
     expect(within(deposit).getByText("pnpm publish --access public")).toBeTruthy();
@@ -187,10 +233,93 @@ describe("the inbox page", () => {
     expect((await screen.findByTestId("inbox-fyi")).textContent).toBe("FYI: 42");
   });
 
-  it("issues only inbox.list", async () => {
-    const called = renderInbox();
+  it("issues only inbox.list until a row is tapped", async () => {
+    const calls = renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved });
     await screen.findByTestId("inbox-row-gate-1");
-    expect(new Set(called)).toEqual(new Set(["inbox.list"]));
+    expect(new Set(calls.map((call) => call.name))).toEqual(new Set(["inbox.list"]));
+  });
+});
+
+describe("the inbox page, acting from the console", () => {
+  it("labels each console tap with its verb and leaves the rest on the terminal", async () => {
+    renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved });
+    expect(within(await screen.findByTestId("inbox-row-gate-1")).getByText("Approve merge")).toBeTruthy();
+    expect(within(screen.getByTestId("inbox-row-held-1")).getByText("Release hold")).toBeTruthy();
+    const ask = screen.getByTestId("inbox-row-ask-1");
+    expect(within(ask).queryByText("Answer")).toBeNull();
+    fireEvent.click(within(ask).getByText("Run on terminal"));
+    expect(within(ask).getByText("Answer from the console comes later; run it on the terminal for now.")).toBeTruthy();
+  });
+
+  it("keeps Confirm disabled until the read-back loads, and Cancel sends nothing", async () => {
+    const prepared = deferred();
+    const calls = renderInbox(inboxAnswer(), { "inbox.prepare": () => prepared.promise, "inbox.act": resolved });
+    await tapGate();
+    expect(confirmButton().getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(confirmButton());
+    prepared.resolve(ready());
+    expect(await screen.findByText("Approve the merge of example/repo#12 at 0b7e2c1")).toBeTruthy();
+    expect(screen.getByText("head 0b7e2c1, matches the live head, read 12 s ago")).toBeTruthy();
+    expect(confirmButton().getAttribute("aria-disabled")).not.toBe("true");
+    fireEvent.click(screen.getByTestId("inbox-confirm-cancel"));
+    await waitFor(() => expect(screen.queryByTestId("inbox-confirm")).toBeNull());
+    expect(named(calls, "inbox.prepare").map((call) => call.args)).toEqual([{ itemId: "gate-1" }]);
+    expect(named(calls, "inbox.act")).toEqual([]);
+  });
+
+  it("sends the prepared confirm on the second tap, shows the outcome inline and reads the inbox again", async () => {
+    const calls = renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved });
+    await tapGate();
+    await screen.findByTestId("inbox-readback");
+    fireEvent.click(confirmButton());
+    expect((await screen.findByTestId("inbox-confirm-outcome")).textContent).toContain("Merge approved");
+    expect(named(calls, "inbox.act").map((call) => call.args)).toEqual([{ itemId: "gate-1", confirm: CONFIRM }]);
+    await waitFor(() => expect(named(calls, "inbox.list").length).toBeGreaterThan(1));
+    expect(screen.queryByTestId("inbox-confirm-ok")).toBeNull();
+  });
+
+  it("shows a moved head as a warning naming the new head", async () => {
+    const moved = () => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "moved", currentHead: "9".repeat(40) }, message: "PR moved to 9999999, read again" }));
+    renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": moved });
+    await tapGate();
+    await screen.findByTestId("inbox-readback");
+    fireEvent.click(confirmButton());
+    expect((await screen.findByTestId("inbox-confirm-outcome")).textContent).toContain("PR moved to 9999999, read again");
+  });
+
+  it("falls back to the terminal command when inbox actions are off", async () => {
+    renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(errorEnvelope("inbox actions are off", 69)), "inbox.act": resolved });
+    const sheet = await tapGate();
+    expect((await within(sheet).findByTestId("inbox-confirm-error")).textContent).toContain("Not done: inbox actions are off");
+    expect(within(sheet).getByText("titan-factory gate resolve run-gate-1/approve-merge --decision merge")).toBeTruthy();
+    expect(confirmButton().getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("keeps the read-back and offers the terminal when the owner write is refused", async () => {
+    const refused = () => Promise.resolve(errorEnvelope("owner writes are off on this console", 77));
+    renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": refused });
+    const sheet = await tapGate();
+    await within(sheet).findByTestId("inbox-readback");
+    fireEvent.click(confirmButton());
+    expect((await within(sheet).findByTestId("inbox-confirm-error")).textContent).toContain("Not done: owner writes are off on this console");
+    expect(within(sheet).getByTestId("inbox-readback")).toBeTruthy();
+    expect(within(sheet).getByText("titan-factory gate resolve run-gate-1/approve-merge --decision merge")).toBeTruthy();
+  });
+
+  it("names why the console cannot take a tap the server answers with no action", async () => {
+    const none = () => Promise.resolve(successEnvelope({ status: "no-action", itemId: "gate-1", action: { kind: "terminal", reason: "fixture" }, reason: "the gate is a device gate" }));
+    renderInbox(inboxAnswer(), { "inbox.prepare": none, "inbox.act": resolved });
+    const sheet = await tapGate();
+    expect((await within(sheet).findByTestId("inbox-confirm-error")).textContent).toContain("The console cannot take this tap: the gate is a device gate");
+  });
+
+  it("reads back the hold a Release hold tap lifts", async () => {
+    const held = ready({ itemId: "held-1", action: HELD.action, readBack: { repo: "example/repo", pr: 14, title: "Merge example/repo#14", headSha: HEAD, hold: HELD.hold, effect: "Release the owner-asked hold on example/repo#14 at 0b7e2c1" } });
+    const calls = renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(held), "inbox.act": resolved });
+    fireEvent.click(within(await screen.findByTestId("inbox-row-held-1")).getByText("Release hold"));
+    expect(await screen.findByText("Release the owner-asked hold on example/repo#14 at 0b7e2c1")).toBeTruthy();
+    expect(screen.getByText("Hold: owner-asked: wait for the demo")).toBeTruthy();
+    expect(named(calls, "inbox.prepare").map((call) => call.args)).toEqual([{ itemId: "held-1" }]);
   });
 });
 
