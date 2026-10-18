@@ -177,7 +177,16 @@ declare const PEER_NAME_PATTERN: RegExp;
  * profiles `installedProfilesDir()` just checked, not the default one.
  */
 declare function agentChatEnv(): Record<string, string>;
-interface DispatchRequest {
+/**
+ * Who started the agent, recorded on its roster row (CC-1466). A record only: agent-chat's gates read `--spawned-as`,
+ * never this, so it widens nothing. Omitted means the argv is exactly what it was before the option existed.
+ */
+interface LaunchedBy {
+    launchedBy?: "shepherd";
+    /** Sent only alongside `launchedBy`. */
+    launchReason?: string;
+}
+interface DispatchRequest extends LaunchedBy {
     agentChatBinPath: string;
     /** Derived by the caller, never taken from item content; unique per item, so a re-dispatch collides on purpose. */
     peerName: string;
@@ -212,7 +221,7 @@ interface DispatchResult {
  * caller quotes — which is the whole difference between a structural guarantee
  * and a practice.
  */
-declare function buildSpawnArgs(req: {
+declare function buildSpawnArgs(req: LaunchedBy & {
     peerName: string;
     profile: string;
     briefing?: string;
@@ -291,6 +300,7 @@ declare function assertInstalledHeadless(profile: string, dir?: string): void;
  * agent by name, so the roster sees the resumed session. Its message is in argv
  * too, until agent-chat takes it on stdin.
  */
+
 declare class ResumeError extends Error {
 }
 interface ResumeAgentResult {
@@ -306,9 +316,9 @@ interface ResumeAgentResult {
  * positional prompt, and the `--` guards a message that begins with a dash.
  */
 declare function resumeArgs(sessionId: string, message: string): string[];
-declare function buildResumeAgentArgs(name: string, message: string): string[];
+declare function buildResumeAgentArgs(name: string, message: string, launch?: LaunchedBy): string[];
 /** Resume an ended agent on its own conversation, with `message` as its next turn; rejects with `DispatchError` on a refusal. */
-declare function resumeAgent(agentChatBinPath: string, name: string, message: string, timeoutMs: number): Promise<ResumeAgentResult>;
+declare function resumeAgent(agentChatBinPath: string, name: string, message: string, timeoutMs: number, launch?: LaunchedBy): Promise<ResumeAgentResult>;
 
 /**
  * Park an exited agent's worktree through `agent-chat agent park` (CC-282): the
@@ -445,4 +455,4 @@ declare function readAnswers(agentChatBinPath: string, label: string, since: str
 /** Withdraws an ask nobody needs answered any more. A refusal means it is already closed. */
 declare function dismissAsk(agentChatBinPath: string, msgId: string, timeoutMs: number, signal?: AbortSignal): Promise<void>;
 
-export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, PEER_NAME_PATTERN, type ParkResult, type ResumeAgentResult, ResumeError, type RetireResult, type SafeExecResult, type ServiceAnswer, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgents, messageAgent, minimalEnv, observeAgentChatCalls, parkAgent, parseAgentRows, readAnswers, resolveBinaryPath, resumeAgent, resumeArgs, retire };
+export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type LaunchedBy, PEER_NAME_PATTERN, type ParkResult, type ResumeAgentResult, ResumeError, type RetireResult, type SafeExecResult, type ServiceAnswer, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgents, messageAgent, minimalEnv, observeAgentChatCalls, parkAgent, parseAgentRows, readAnswers, resolveBinaryPath, resumeAgent, resumeArgs, retire };

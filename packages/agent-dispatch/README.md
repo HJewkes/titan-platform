@@ -42,7 +42,11 @@ await dispatchToAgentChat(
   `AGENT_CHAT_HOME`, so the CLI reaches the broker whose profiles the guard read.
 - `dispatchToAgentChat` also takes `configDir`, passed as `--config-dir <path>` to run the
   agent on another Claude account.
-- `resumeAgent(bin, name, message, timeoutMs)` runs `agent-chat agent resume <name>
+- `dispatchToAgentChat` and `resumeAgent` take an opt-in `launchedBy: "shepherd"` (and an
+  optional `launchReason`), sent as `--launched-by shepherd [--launch-reason <text>]` so the
+  agent's roster row records who started it. It is a record, not the `--spawned-as` gate
+  input. A caller that leaves it out sends the same argv as before.
+- `resumeAgent(bin, name, message, timeoutMs, launch?)` runs `agent-chat agent resume <name>
   --message <message>`, so the broker tracks the resumed session. It refuses a name outside
   agent-chat's name shape before running anything, and rejects with `DispatchError` on the
   broker's refusal. The message is in argv.

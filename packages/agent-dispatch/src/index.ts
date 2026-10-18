@@ -8,6 +8,7 @@ export {
   dispatchToAgentChat,
   type DispatchRequest,
   type DispatchResult,
+  type LaunchedBy,
 } from "./dispatch.js";
 export { observeAgentChatCalls, type AgentChatCall } from "./call-timing.js";
 export { assertInstalledHeadless, installedProfilesDir } from "./profile-guard.js";
