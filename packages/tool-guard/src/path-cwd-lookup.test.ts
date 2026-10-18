@@ -35,13 +35,25 @@ async function decision(command: string, dir = cwd): Promise<string | null> {
   return stdout === "" ? null : /"permissionDecision":"(\w+)"/.exec(stdout)?.[1] ?? "unknown";
 }
 
+// The shape of the sh wrapper pnpm writes into node_modules/.bin, which the guard cannot follow.
 const SHIM = [
   "#!/bin/sh",
   `basedir=$(dirname "$(echo "$0" | sed -e 's,\\\\,/,g')")`,
+  "",
+  "case `uname` in",
+  '    *CYGWIN*) basedir=`cygpath -w "$basedir"`;;',
+  "esac",
+  "",
   'if [ -z "$NODE_PATH" ]; then',
   '  export NODE_PATH="/repo/node_modules/.pnpm/node_modules"',
+  "else",
+  '  export NODE_PATH="/repo/node_modules/.pnpm/node_modules:$NODE_PATH"',
   "fi",
-  'exec node "$basedir/../eslint/bin/eslint.js" "$@"',
+  'if [ -x "$basedir/node" ]; then',
+  '  exec "$basedir/node"  "$basedir/../eslint/bin/eslint.js" "$@"',
+  "else",
+  '  exec node  "$basedir/../eslint/bin/eslint.js" "$@"',
+  "fi",
   "",
 ].join("\n");
 mkdirSync(cwd, { recursive: true });
@@ -167,6 +179,12 @@ describe("a ./name the lookup cannot run or follow is skipped, never refused", (
       expect(await decision(command)).toBeNull();
     },
   );
+
+  it.each(["PATH=./bin:$PATH s", "PATH=bin s", 'export PATH="$PWD/bin:$PATH"; s'])("does not follow a relative subdirectory: %s", async (command) => {
+    rmSync(here("s"), { recursive: true, force: true });
+    file(here("bin/s"), `#!/bin/bash\n${PUSH}\n`);
+    expect(await decision(command)).toBeNull();
+  });
 
   it("passes a non-pushing ./s", async () => {
     file(here("s"), "#!/bin/bash\necho ok\n");
