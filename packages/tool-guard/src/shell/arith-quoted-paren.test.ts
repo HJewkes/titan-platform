@@ -16,10 +16,18 @@ const port: HookPort = {
   loadDecide: async () => decide,
 };
 
-async function handled(command: string): Promise<"deny" | "pass"> {
+const REBIND_REASON = /does not follow a command name the line rebinds/;
+
+/** `rebind` is the refusal of a run-time word or an oversize text in math, which may store into `commands[y]`. */
+async function handled(command: string): Promise<"deny" | "pass" | "rebind"> {
   const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: home, tool_input: { command } });
   const { stdout } = await handle(input, {}, port);
-  return stdout === "" ? "pass" : "deny";
+  if (stdout === "") return "pass";
+  return REBIND_REASON.test(stdout) ? "rebind" : "deny";
+}
+
+async function denied(command: string): Promise<boolean> {
+  return (await handled(command)) !== "pass";
 }
 
 // zsh reads `$(( … ))` as `$( ( … ) )` when a quote in the body holds a paren, so it runs the body as a command.
@@ -40,29 +48,41 @@ describe("a quoted paren in $(( ))", () => {
     ["a comment holding a paren", "echo $(( git push origin HEAD:main #)\n ))"],
     ["a lone close paren across a newline", "echo $(( git push origin HEAD:main )\n( ))"],
   ])("denies %s", async (_name, command) => {
-    expect(await handled(command.replaceAll("\\n", "\n"))).toBe("deny");
+    expect(await denied(command.replaceAll("\\n", "\n"))).toBe(true);
   });
 
-  it.each([["plain arithmetic", "echo $(( 1 + 2 ))"], ["a subscript", "echo $(( a[1] ))"], ["double-quoted arithmetic", `echo "$(( x ))"`], ["arithmetic across a newline", "echo $(( 1 +\\n 2 ))"], ["a variable", "echo $(( $a + 1 ))"], ["a braced name", "echo $(( ${a} + 1 ))"], ["a braced length", "echo $(( ${#a} + 1 ))"], ["a braced length in an assignment", "x=$(( ${#s} * 2 ))"]])(
+  it.each([["plain arithmetic", "echo $(( 1 + 2 ))"], ["a subscript", "echo $(( a[1] ))"], ["double-quoted arithmetic", `echo "$(( x ))"`], ["arithmetic across a newline", "echo $(( 1 +\\n 2 ))"], ["a braced length", "echo $(( ${#a} + 1 ))"], ["a braced length in an assignment", "x=$(( ${#s} * 2 ))"]])(
     "passes %s",
     async (_name, command) => {
       expect(await handled(command.replaceAll("\\n", "\n"))).toBe("pass");
     },
   );
 
+  // `a='commands[y]=0'` makes `$a` a store, so math over a run-time word is refused as a possible rebinding.
+  it.each([["a variable", "echo $(( $a + 1 ))"], ["a braced name", "echo $(( ${a} + 1 ))"]])("refuses %s as a possible rebinding", async (_name, command) => {
+    expect(await handled(command)).toBe("rebind");
+  });
+
   // The unbounded readings this guards against take ten seconds or run out of memory; slow CI runners need the slack.
   const BOUNDED_MS = 2000;
 
+  // At the limit the reading reaches the math, whose text is too long to read for a store, so it is refused as one.
   it.each([
-    ["at the limit", 4, "pass"],
+    ["at the limit", 4, "rebind"],
     ["past the limit", 5, "deny"],
     ["far past the limit", 24, "deny"],
-  ] as const)("reads quoted-paren arithmetic nested %s (%i deep) in bounded time and %ss it", async (_name, depth, verdict) => {
+  ] as const)("reads quoted-paren arithmetic nested %s (%i deep) in bounded time and gives %s", async (_name, depth, verdict) => {
     let body = `x${" + 1".repeat(1000)}`;
     for (let i = 0; i < depth; i++) body = `$(( '(' ${body} ))`;
     const started = Date.now();
     expect(await handled(`echo ${body}`)).toBe(verdict);
     expect(Date.now() - started).toBeLessThan(BOUNDED_MS);
+  });
+
+  it("passes quoted-paren arithmetic nested at the limit when its math is short", async () => {
+    let body = "x + 1";
+    for (let i = 0; i < 4; i++) body = `$(( '(' ${body} ))`;
+    expect(await handled(`echo ${body}`)).toBe("pass");
   });
 
   // A heredoc body, a backquote or a quoted span is lexed with trials of its own, which must not restart the count.
@@ -80,18 +100,19 @@ describe("a quoted paren in $(( ))", () => {
     let body = "true";
     for (let i = 0; i < depth; i++) body = wrap(body, i);
     const started = Date.now();
-    expect(await handled(`echo ${body}`)).toBe("deny");
+    expect(await denied(`echo ${body}`)).toBe(true);
     expect(Date.now() - started).toBeLessThan(BOUNDED_MS);
   });
 
+  // A command substitution in math may print a store, so a reading that reaches it refuses it as a possible rebinding.
   it.each([
-    ["a heredoc", throughHeredoc],
-    ["a backquote", throughBackquote],
-    ["double quotes", throughQuotes],
-  ] as const)("reads quoted-paren arithmetic nested through %s at the limit", async (_name, wrap) => {
+    ["a heredoc", throughHeredoc, "rebind"],
+    ["a backquote", throughBackquote, "rebind"],
+    ["double quotes", throughQuotes, "pass"],
+  ] as const)("reads quoted-paren arithmetic nested through %s at the limit and gives %s", async (_name, wrap, verdict) => {
     let body = "true";
     for (let i = 0; i < 4; i++) body = wrap(body, i);
-    expect(await handled(`echo ${body}`)).toBe("pass");
+    expect(await handled(`echo ${body}`)).toBe(verdict);
   });
 });
 
@@ -99,10 +120,12 @@ describe("a quoted paren in $(( ))", () => {
 // bash) read `$(( … ))` as `$( ( … ) )`, so the command in the body must be walked.
 const SAFE = new Set("_+-*/%<>=!&|^~?:,.$");
 const PUNCTUATION = [...Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i))].filter((c) => /[^\w\s()[\]]/.test(c));
+/** A `$` keeps the math reading but makes its text run-time, which may expand to a store. */
+const verdictFor = (c: string) => (c === "$" ? "rebind" : SAFE.has(c) ? "pass" : "deny");
 
 describe("a punctuation character in a $(( )) body", () => {
   it.each(PUNCTUATION.map((c) => [c]))("%s decides the reading as the safe set says", async (c) => {
-    const verdict = SAFE.has(c) ? "pass" : "deny";
+    const verdict = verdictFor(c);
     expect(await handled(`echo $(( git push origin HEAD:main ${c} ))`)).toBe(verdict);
     expect(await handled(`echo $(( ( git push origin HEAD:main ${c} ) ))`)).toBe(verdict);
   });
@@ -122,7 +145,7 @@ describe("brackets in a $(( )) body", () => {
     ["a ${ } default", "echo ${x:-$(( git push origin HEAD:main; [ ))}"],
     ["a heredoc body", "cat <<EOF\n$(( git push origin HEAD:main; [ ))\nEOF"],
   ])("denies %s", async (_name, command) => {
-    expect(await handled(command.replaceAll("\\n", "\n"))).toBe("deny");
+    expect(await denied(command.replaceAll("\\n", "\n"))).toBe(true);
   });
 
   it.each([["balanced brackets", "echo $(( a[1] + b[2] ))"], ["a double bracket", "echo $(( [[ 1 ]] ))"]])("passes %s", async (_name, command) => {
