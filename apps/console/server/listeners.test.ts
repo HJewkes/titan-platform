@@ -147,7 +147,57 @@ describe("the gate-answer listener after rounds.submit", () => {
     await submit(createRoundListeners(deps()));
 
     expect(posts).toEqual([]);
-    expect(JSON.parse(await readFile(answerFile(), "utf8")).outcome).toEqual({ status: "gone", reason: "no pending approve-merge gate" });
+    expect(JSON.parse(await readFile(answerFile(), "utf8")).outcome).toEqual({ status: "gone", reason: "no pending approve-merge or visual accept gate" });
+  });
+
+  describe("on the visual accept gate", () => {
+    const ACCEPT_GATE = { gateId: "run-1/sh-visual-accept", stepId: "sh-visual-accept", since: "2026-10-01T00:00:00.000Z" };
+
+    it("posts accept-set for Ship and records the choice actually posted", async () => {
+      rows = [row({ pendingGate: ACCEPT_GATE })];
+      reply = () => ({ status: "resolved", gateId: ACCEPT_GATE.gateId, choice: "accept-set" });
+
+      await submit(createRoundListeners(deps()));
+
+      expect(posts.map((post) => [post.gateId, post.choice])).toEqual([[ACCEPT_GATE.gateId, "accept-set"]]);
+      const record = JSON.parse(await readFile(answerFile(), "utf8"));
+      expect(record.request.choice).toBe("accept-set");
+      expect(record.outcome).toEqual({ status: "resolved", gateId: ACCEPT_GATE.gateId, choice: "accept-set" });
+    });
+
+    it("sends back for the option that is not Ship", async () => {
+      rows = [row({ pendingGate: ACCEPT_GATE })];
+
+      await submit(createRoundListeners(deps()), "Don't ship");
+
+      expect(posts.map((post) => post.choice)).toEqual(["send-back"]);
+    });
+
+    it("records a refused off from the factory once, without retrying", async () => {
+      rows = [row({ pendingGate: ACCEPT_GATE })];
+      reply = () => ({ status: "refused", reason: "off" });
+      const listeners = createRoundListeners(deps());
+
+      await submit(listeners);
+      await listeners.sweep();
+
+      expect(posts).toHaveLength(1);
+      expect(JSON.parse(await readFile(answerFile(), "utf8")).outcome).toEqual({ status: "refused", reason: "off" });
+    });
+  });
+
+  it("keeps posting merge for Ship on approve-merge", async () => {
+    await submit(createRoundListeners(deps()));
+
+    expect(posts.map((post) => post.choice)).toEqual(["merge"]);
+  });
+
+  it("pins the Ship round the console relays: the question id, the Ship option and the one other pick", async () => {
+    const round = JSON.parse(await readFile(path.join(dir, ROUND, "round.json"), "utf8"));
+    const ship = round.questions.find((question: { id: string }) => question.id === "ship-backoff");
+
+    expect(ship.options).toEqual(["Ship", "Don't ship"]);
+    expect(ship.merge.ship).toEqual(["Ship"]);
   });
 
   it("reads no status and posts nothing while the flag is off", async () => {

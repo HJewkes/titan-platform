@@ -299,3 +299,33 @@ describe("a #!/usr/bin/env shell script on a line that changes PATH", () => {
     expect(await decision("PATH=.:$PATH ./absp")).toBeNull();
   });
 });
+
+describe("PATH writes in a script the line runs, which follow bash's shells", () => {
+  const ENV_BASH = "#!/usr/bin/env bash\necho ok\n";
+  const WRITES = "#!/bin/bash\nPATH=.:$PATH\n";
+
+  it.each([
+    ["a script that sources a writer and then runs the env script", "./outer", `#!/bin/bash\n. ./writer\n./envp\n`],
+    ["a sourced script that sources a writer, before the env script", ". ./outer; ./envp", `#!/bin/bash\n. ./writer\n`],
+    ["a script that writes PATH and then runs the env script", "./outer", `#!/bin/bash\nPATH=.:$PATH\n./envp\n`],
+    ["a script run with a PATH= prefix that runs the env script", "PATH=.:$PATH ./outer", "#!/bin/bash\n./envp\n"],
+    ["a script run plain, then again with a PATH= prefix", "./outer; PATH=.:$PATH ./outer", "#!/bin/bash\n./envp\n"],
+    ["a sourced writer after a script that runs the env script", "./outer; . ./writer", "#!/bin/bash\n./envp\n"],
+  ])("denies %s", async (_, line, outer) => {
+    file("envp", ENV_BASH);
+    file("writer", WRITES);
+    file("outer", outer);
+    expect(await decision(line)).toBe("deny");
+  });
+
+  it.each([
+    ["a script run by path that writes PATH", "./writer; ./envp"],
+    ["a script run by bash that writes PATH", "bash ./writer; ./envp"],
+    ["a script that runs a writer before the env script", "./outer"],
+  ])("keeps the writes of %s in its own shell", async (_, line) => {
+    file("envp", ENV_BASH);
+    file("writer", WRITES);
+    file("outer", "#!/bin/bash\n./writer\n./envp\n");
+    expect(await decision(line)).toBeNull();
+  });
+});

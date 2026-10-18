@@ -8,7 +8,8 @@
  * question carried. The round id resolves only to a real directory in the rounds dir, as
  * `rounds.get` does. The file is created with `wx` (O_CREAT|O_EXCL, which also refuses a symlink
  * planted at the name) and mode 0600, so a second submit finds it and is told so; nothing is
- * ever overwritten. A withdrawn round is refused before anything is written, so neither the decision
+ * ever overwritten. A design round is answered here only when it has a valid `frames/frames.json`, as the page then
+ * shows its frames; without one the review harness answers it. A withdrawn round is refused before anything is written, so neither the decision
  * log nor a listener hears of it. A same-user process could still swap the round directory between the check
  * and the write; the OS account is the trust boundary, as in `owner-guard.ts`.
  */
@@ -22,6 +23,7 @@ import { decisionLogResult, type DecisionLog } from "./decision-log.js";
 import type { RoundListeners } from "./listeners.js";
 import { ownerWriteCommand } from "./owner-guard.js";
 import { roundDecisions, type SubmittedRound } from "./round-decisions.js";
+import { hasFramesIndex } from "./round-frames.js";
 import type { Manifest, Question } from "./round-schema.js";
 import { FEEDBACK_SCHEMA_ID, FeedbackDocument, SubmittedAnswer } from "./round2-adapter.js";
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, parseManifest, readCapped, roundDirExists, statusOf, type RoundsSource } from "./rounds.js";
@@ -185,8 +187,9 @@ async function submitRound({ dir }: RoundsSource, args: SubmitArgs, now = new Da
   const { bytes: manifestBytes, modifiedAt } = await readManifest(roundDir);
   if (sha256(manifestBytes) !== args.manifestSha256) refuse(`${ROUND_FILE} has changed since it was shown; reload the round`);
   const manifest = validManifest(manifestBytes);
-  // A Ship round's variants are the PR's changed images, which the console's Ship view shows.
-  if (manifest.variants.length > 0 && !manifest.questions.some((question) => question.kind === "pick-one" && question.merge)) refuse("a design round is answered in the review harness");
+  // A Ship round's variants are the PR's changed images; a design round's frames show only through a valid frames.json.
+  const design = manifest.variants.length > 0 && !manifest.questions.some((question) => question.kind === "pick-one" && question.merge);
+  if (design && !(await hasFramesIndex(roundDir))) refuse("a design round without frames/frames.json is answered in the review harness");
   checkAnswers(manifest, args.answers);
   const headSha = shippedHead(manifest, args);
   const bytes = feedbackBytes(manifest, args, now);

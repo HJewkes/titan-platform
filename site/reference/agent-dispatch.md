@@ -53,7 +53,7 @@ assertInstalledHeadless("headless-reviewer"); // throws DispatchError unless <ag
 
 const ended = (await listAgents("/opt/homebrew/bin/agent-chat", 15_000)).filter((a) => a.presence === "exited");
 await retire("/opt/homebrew/bin/agent-chat", "item-42", 15_000); // { name: "item-42", caveats: [] }
-await parkAgent("/opt/homebrew/bin/agent-chat", "item-7"); // { name: "item-7", lines: ["Parked item-7.", ...] }
+await parkAgent("/opt/homebrew/bin/agent-chat", "item-7", 60_000); // { name: "item-7", lines: ["Parked item-7.", ...] }
 await messageAgent("/opt/homebrew/bin/agent-chat", "item-9", "CI is red; the log tail follows", 15_000); // a live agent's next turn
 
 try {
@@ -142,6 +142,8 @@ decide whether an agent is live before a resume, or talk to the broker's socket 
   field with the wrong type is dropped from its row.
 - `retire` throws `DispatchTimeoutError` (a `DispatchError`) when the CLI hangs: the broker
   may already have retired the agent, so read the roster before retrying.
+- `parkAgent` requires a timeout (`DEFAULT_PARK_TIMEOUT_MS` is 60 s). Only Shepherd passes
+  `{ noFixRoundCheck: true }`, which needs an agent-chat that knows `--no-fix-round-check`.
 - `parkAgent` throws `DispatchError` when the broker refuses a live, dirty, unpushed or
   shared tree. A broker that predates the verb (CC-282) times out on the CLI side and comes
   back as a refusal naming a broker restart.

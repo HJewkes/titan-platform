@@ -28,6 +28,15 @@ describe("the built tool-guard", () => {
     expect(run.stdout).toContain('"permissionDecision":"deny"');
   });
 
+  it("refuses a bash alias defined after expand_aliases, which runs a push on the third line", () => {
+    const command = "shopt -s expand_aliases\nalias q='git push origin HEAD:main'\nq";
+    const run = spawnSync(process.execPath, [join(dist, "bin.js"), "hook"], { input: event(command), env: { ...process.env, HOME: home }, encoding: "utf-8" });
+
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain('"permissionDecision":"deny"');
+    expect(run.stdout).toContain("does not follow shell aliases");
+  });
+
   it("answers an ordinary line silently through its worker", () => {
     const run = spawnSync(process.execPath, [join(dist, "bin.js"), "hook"], { input: event("ls -la"), env: { ...process.env, HOME: home }, encoding: "utf-8" });
 

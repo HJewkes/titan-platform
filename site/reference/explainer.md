@@ -186,3 +186,25 @@ check that names no Q-rule or whose `live` disagrees with the Q-rule's L0 status
 all live. Such a rule must not list `planner`, `packet` or `base`, because what code enforces
 never goes into a prompt. A rule whose check is not live yet keeps its prompt enforcement as the
 fallback. Tracked by TP-2745.
+
+**Stage slices.** `sliceForStage(registry, loadRuleRegistry(), { stage, type?, audience?, beats? })`
+returns the rules one pipeline stage loads, each list sorted by id. A `T` rule matches when its
+`types` include `type` or its `audiences` include `audience`; a `B` rule matches the requested
+`beats`.
+
+| Stage | What it returns |
+| --- | --- |
+| `gather`, `select` | Nothing: these stages load no prose |
+| `plan` | `prompt`: `U`, `U*` and matching `T` rules with `planner` enforcement |
+| `script` | `prompt`: `U`, `U*`, matching `T` and requested-beat `B` rules |
+| `build` | `base`: `U` and `U*` rules with `base`; `packet`: requested-beat `B` rules with `packet`; `tokens` |
+| `render` | `tokens` only |
+| `qa` | `checks`: every rule with a check, live or not |
+| `publish` | `prompt`: matching rules with `human` or `planner` enforcement |
+
+Every slice also lists the `params` its `U*` rules need from the type profile. Only rules that
+list the stage in `stages` are considered. No code-enforced rule lands in `prompt`, `base` or
+`packet`, and a `qrule` check whose Q-rule's L0 is implemented counts as code-enforced even when
+its `live` flag lags. `findPromptLeaks(text, registry, qRules)` checks finished prompt text: it
+returns each code-enforced doctrine rule, and each Q-rule whose L0 is implemented, that the text
+names by id, alias or exact rule text. Token names are not leaks.

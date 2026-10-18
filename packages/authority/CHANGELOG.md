@@ -1,5 +1,17 @@
 # @titan-design/authority
 
+## 0.5.0
+
+### Minor Changes
+
+- dfffc6c: Add the MRG-AU-RS allow row and its `verdict-merge-carried-merge-up-disjoint` condition: an automation merge may carry the dispatched reviewer's MERGE, for any kind including security, to a clean merge-up whose base side shares no case-folded path with the PR's changed files. `CarryFact` gains the optional `merge-up-disjoint` rule, `basePaths` and `firstParent`. Factory's mechanical MRG-AU gate reason reader accepts the new row's unmet clause.
+- d754d5b: MRG-AU-RS no longer carries a MERGE across a merge-up whose base side touches `packages/authority/`, `packages/tool-guard/` or `.github/workflows/` (TP-2440); export `isCarryFencedPath`.
+
+### Patch Changes
+
+- d79a135: MRG-AU-RS's carry fence now covers all of `.github/`, `.codewatch/` and the file `.egress-allow` (TP-2951).
+- 1b2c974: `isCarryFencedPath` also fences a path that is exactly a fenced directory's name (`.github`, `.codewatch`, `packages/authority`, `packages/tool-guard`), so a carried symlink or submodule at that name no longer slips past the MRG-AU-RS carry fence.
+
 ## 0.4.0
 
 ### Minor Changes

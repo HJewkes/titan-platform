@@ -1,0 +1,4 @@
+{
+  "$comment": "Trees adopted verbatim, whose dead exports dead:check may add to the shrink-only baseline once: only in the PR that adds the path here, never after it merges. Owner decision 443 (2026-10-18): products/active-work, adopted verbatim from HJewkes/active-work eead047; TP-3541 fixes the exports and removes this entry.",
+  "adoptedPaths": ["products/active-work"]
+}

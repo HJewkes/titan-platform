@@ -28,12 +28,17 @@ const Mode = z.enum(["off", "shadow", "on"]);
 const OfferInput = z.looseObject({ repo: z.string(), failing: z.array(z.string()), mode: Mode.optional() });
 const OfferResult = z.looseObject({ offered: z.boolean(), mode: Mode, check: z.string().nullable() });
 
-/** The set the owner accepted at a red head, as the gate answer carries it; a later head of the run is checked against it. */
-type AcceptedSet = { fromHead: string } & Record<string, unknown>;
+/**
+ * The set the owner accepted at a red head, as the gate answer carries it, and the base that head's recorded CI read judged it
+ * on; a later head of the run is checked against both.
+ */
+type AcceptedSet = { set: { fromHead: string } & Record<string, unknown>; base: string | undefined };
 
 export interface VisualAcceptRun extends GateRun {
   visualAcceptOffers: number;
   acceptedSet?: AcceptedSet;
+  /** The run's last recorded CI read, which at a red head is the read that made it red. */
+  lastCi?: { headSha: string; baseRef?: string };
 }
 
 type RedHead = Extract<LandOutcome, { kind: "ci-failed" }>;
@@ -56,19 +61,23 @@ export function configuredVisualSetCarry(env: NodeJS.ProcessEnv = process.env): 
 /**
  * The flag is read only where the run is live and recorded with the seat's check, so a replay rebuilds the gate it
  * opened whatever the config reads now. With the flag off nothing is recorded, and a record that goes on to any other
- * step, a run resumed on a gate, or a step the old host left in flight, predates the offer and replays as it ran: an
- * offer there would end the replay short of that step.
+ * step, a run resumed on a gate, or a step other than the offer the old host left in flight, predates the offer and
+ * replays as it ran: an offer there would end the replay short of that step. An offer left in flight is this call's
+ * own step, so the offer goes ahead and claims it.
  */
 async function offer(run: VisualAcceptRun, red: RedHead, liveMode: () => VisualSetCarry): Promise<z.infer<typeof OfferResult> | undefined> {
   const { ctx } = run;
   const next = ctx.historyNext();
   if (next !== undefined && !stepIdMatches(OFFER_STEP, next)) return undefined;
-  if (next === undefined && ctx.recoveredInFlight().length > 0) return undefined;
+  if (next === undefined && ctx.recoveredInFlight().some((id) => !stepIdMatches(OFFER_STEP, id))) return undefined;
   const mode = next === undefined ? liveMode() : undefined;
   if (mode === "off" || (next === undefined && ctx.resumedGate() !== undefined)) return undefined;
   const input = { ...run.target, headSha: red.headSha, failing: red.failing.map((check) => check.name), ...(mode && { mode }) };
   return step(ctx, `${OFFER_STEP}:${run.visualAcceptOffers++}`, input, OfferResult);
 }
+
+/** The base from the recorded CI read at `headSha` (land-ci records `baseRef` with it), so a replay rebuilds the same one; none otherwise. */
+const judgedBase = (run: VisualAcceptRun, headSha: string): string | undefined => (run.lastCi?.headSha === headSha ? run.lastCi.baseRef : undefined);
 
 /** Asks the owner at a head red only on the seat's baseline check whether CI's regenerated set is the one to commit. */
 export async function askVisualAccept(run: VisualAcceptRun, red: RedHead, liveMode: () => VisualSetCarry = () => "off", beforeAsk?: BeforeAsk): Promise<VisualAccept> {
@@ -81,8 +90,10 @@ export async function askVisualAccept(run: VisualAcceptRun, red: RedHead, liveMo
   const answered = await askAtHead(run.ctx, VISUAL_ACCEPT_GATE, prompt, { schema, brief });
   if (!answered) return { kind: "left", outcome: undefined };
   const answer = schema.parse(answered.data);
+  // Any answer at a newer red head replaces an older set, so only the latest accept can carry.
+  const accepted = answer.decision === "accept-set" ? answer.approvedSet : undefined;
+  run.acceptedSet = accepted && { set: accepted, base: judgedBase(run, red.headSha) };
   if (answer.decision === "abandon") return { kind: "left", outcome: { kind: "stopped", reason: "abandoned", headSha: red.headSha, detail: "a human abandoned the PR at its regenerated baselines" } };
-  if (answer.decision === "accept-set") run.acceptedSet = answer.approvedSet;
   return { kind: "wake", payload: ownerSendBackOf(answer.note ?? "", answer.decision === "accept-set" ? "accepted" : "sent-back") };
 }
 

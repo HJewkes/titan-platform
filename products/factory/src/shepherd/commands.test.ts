@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
 import { openDatabase } from "@titan-design/store-sqlite";
-import type { StepResult } from "@titan-design/workflow";
+import { WorkflowRunStore, type StepResult } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
@@ -46,6 +46,43 @@ async function failedRegistration(w: World, slice?: string, kind?: "correctness"
   expect(w.host.runtime.status(runId)?.status).toBe("failed");
   return runId;
 }
+
+describe("shepherd.status", () => {
+  /** A failed run on PR 1 beside a live one on PR 2, and a spy on the stored-run read that parses step results. */
+  async function finishedAndLive(): Promise<{ w: World; failed: string; live: string; loaded: () => string[] }> {
+    const w = world({ frozen: true });
+    const failed = await failedRegistration(w);
+    w.fake.addPr({ number: 2, headSha: H2, headRef: "agent-chat/live" });
+    const { runId: live } = await registered(w, { ...pr1, pr: 2 });
+    const get = vi.spyOn(WorkflowRunStore.prototype, "get");
+    return { w, failed, live, loaded: () => get.mock.calls.map(([runId]) => runId) };
+  }
+  afterEach(() => vi.restoreAllMocks());
+
+  it("a bare call lists only the live run and never loads the finished one", async () => {
+    const { w, failed, live, loaded } = await finishedAndLive();
+
+    const envelope = await w.call<WatchRow[]>("shepherd.status", {});
+
+    expect(loaded()).not.toContain(failed);
+    expect(envelope).toMatchObject({ ok: true, data: [{ runId: live }] });
+    expect(envelope.ok && envelope.data).toHaveLength(1);
+  });
+
+  it("all lists the finished run beside the live one", async () => {
+    const { w, failed, live } = await finishedAndLive();
+
+    const envelope = await w.call<WatchRow[]>("shepherd.status", { all: true });
+
+    expect(envelope.ok && envelope.data.map((row) => row.runId).sort()).toEqual([failed, live].sort());
+  });
+
+  it("naming the PR lists its finished run without all, so shepherd wait still sees the run end", async () => {
+    const { w, failed } = await finishedAndLive();
+
+    expect(await w.call("shepherd.status", { repo: REPO, pr: 1 })).toMatchObject({ ok: true, data: [{ runId: failed, phase: "failed" }] });
+  });
+});
 
 describe("shepherd.waiting", () => {
   it("lists nothing when no run waits", async () => {

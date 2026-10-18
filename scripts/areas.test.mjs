@@ -35,13 +35,12 @@ describe("area derivation", () => {
     ]);
   });
 
-  it("covers every $tiers entry in this repo plus the five external products", () => {
+  it("covers every $tiers entry in this repo plus the four external products", () => {
     const check = JSON.parse(readFileSync(join(REPO, ".codewatch", "check.json"), "utf8"));
     const paths = Object.values(check.rules[0].$tiers).flat();
     const areas = loadAreas(REPO);
     expect(areas.filter((area) => area.path).map((area) => area.path).sort()).toEqual([...paths].sort());
     expect(areas.filter((area) => !area.path).map((area) => area.id)).toEqual([
-      "active-work",
       "agent-chat",
       "relay",
       "shepherd",

@@ -6,13 +6,17 @@ const Id = z.string().min(1);
 const Reveal = z.object({ id: Id, atCue: z.string() });
 const Pin = z.object({ anchor: Id, text: z.string().min(1), atCue: z.string() });
 const MapSide = z.object({ reveal: z.array(Reveal).default([]), pins: z.array(Pin).default([]) });
+const MapNodes = z.object({ nodes: z.array(z.object({ id: Id, label: z.string().min(1) })) });
 
 // Only the fields the pace layer reads, and none of them `.strict()`: a Python-emitted spike script carries keys
 // `ScriptSchema` rejects (beat `band`, visual `render`, top-level `maps`, map_state `old`/`new`, more than two
 // invariants), and widening `ScriptSchema` to admit them would loosen every script/v1 check.
 const SpikeScriptSchema = z.object({
   id: Id,
-  maps: z.record(z.string(), z.object({ nodes: z.array(z.object({ id: Id, label: z.string().min(1) })) })).default({}),
+  video: z.object({ invariants: z.array(z.string().min(1)).default([]) }).optional(),
+  maps: z.record(z.string(), MapNodes).default({}),
+  // A single-map script names no map in its map_states; their reveals label from this one.
+  map: MapNodes.optional(),
   beats: z.array(
     z.object({
       id: Id,
@@ -25,7 +29,7 @@ const SpikeScriptSchema = z.object({
         render: z.string().optional(),
         titles: z.array(z.string().min(1)).default([]),
         cues: z.array(z.object({ target: Id, atCue: z.string().optional() })).default([]),
-        map_state: MapSide.extend({ map: Id, old: MapSide.optional(), new: MapSide.optional() }).optional(),
+        map_state: MapSide.extend({ map: Id.optional(), old: MapSide.optional(), new: MapSide.optional() }).optional(),
       }),
     }),
   ),
@@ -66,9 +70,9 @@ export function readSpikeScript(json: unknown): SpikeRead {
   return { script, ignored: [...ignored].sort() };
 }
 
-type Labeller = (map: string, id: string) => string;
+type Labeller = (map: string | undefined, id: string) => string;
 
-function sideItems(side: z.infer<typeof MapSide>, map: string, label: Labeller) {
+function sideItems(side: z.infer<typeof MapSide>, map: string | undefined, label: Labeller) {
   return {
     reveals: side.reveal.map((r) => ({ id: r.id, label: label(map, r.id), atCue: r.atCue })),
     pins: side.pins.map((p) => ({ anchor: p.anchor, label: p.text, atCue: p.atCue })),
@@ -101,13 +105,21 @@ function spikeSourceBeat(beat: SpikeBeat, label: Labeller): PaceSourceBeat {
 /** A spike script's item track, plus the key paths its reader skipped so a caller can report them. */
 export interface SpikePace {
   beats: PaceBeat[];
+  /** The script's `video.invariants` phrases, for the seated-invariant lint. */
+  invariants: string[];
   ignored: string[];
 }
 
-/** The item track of a spike script.json; map reveals are labelled from its `maps` node labels. */
+function labeller(script: SpikeScript): Labeller {
+  const labels = new Map(Object.entries(script.maps).flatMap(([map, { nodes }]) => nodes.map((n) => [`${map}:${n.id}`, n.label])));
+  const single = new Map((script.map?.nodes ?? []).map((n) => [n.id, n.label]));
+  return (map, id) => (map === undefined ? single.get(id) : labels.get(`${map}:${id}`)) ?? id;
+}
+
+/** The item track of a spike script.json; map reveals are labelled from its `maps` (or single `map`) node labels. */
 export function fromSpikeScript(json: unknown, timing?: ScriptTiming): SpikePace {
   const { script, ignored } = readSpikeScript(json);
-  const labels = new Map(Object.entries(script.maps).flatMap(([map, { nodes }]) => nodes.map((n) => [`${map}:${n.id}`, n.label])));
-  const label: Labeller = (map, id) => labels.get(`${map}:${id}`) ?? id;
-  return { beats: buildPaceBeats(script.beats.map((b) => spikeSourceBeat(b, label)), timing), ignored };
+  const label = labeller(script);
+  const beats = buildPaceBeats(script.beats.map((b) => spikeSourceBeat(b, label)), timing);
+  return { beats, invariants: script.video?.invariants ?? [], ignored };
 }
