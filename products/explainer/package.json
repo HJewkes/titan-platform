@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/explainer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Explainer video pipeline: beats.json and digest.json schemas, packet builder, finding attribution",
   "type": "module",
   "main": "./dist/index.js",
