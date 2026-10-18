@@ -22,8 +22,8 @@ import { locateVideo, verdict, videoCatalog, type NoteSummarizer, type VideoCata
 
 export const VIDEO_NOTE_SCHEMA = "titan-console/video-note@1";
 export const MAX_NOTE_TEXT = 2000;
-export const MAX_NOTE_LINE_BYTES = 4096;
-export const MAX_NOTES_BYTES = 1024 * 1024;
+const MAX_NOTE_LINE_BYTES = 4096;
+const MAX_NOTES_BYTES = 1024 * 1024;
 const MAX_CACHED_SHAS = 4096;
 const APPEND_FLAGS = constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 /** Fixed so a refusal never tells the client whether, or where, a file exists. */
@@ -43,7 +43,7 @@ const noteHead = {
 const commentNote = z.strictObject({ ...noteHead, kind: z.literal("comment"), text: z.string().min(1).max(MAX_NOTE_TEXT) });
 const verdictNote = z.strictObject({ ...noteHead, kind: z.literal("verdict"), verdict });
 
-export const videoNote = z.discriminatedUnion("kind", [commentNote, verdictNote]);
+const videoNote = z.discriminatedUnion("kind", [commentNote, verdictNote]);
 
 export type VideoNote = z.infer<typeof videoNote>;
 type Verdict = z.infer<typeof verdict>;
@@ -61,9 +61,9 @@ const noteArgs = z.strictObject({
   verdict: verdict.optional(),
 });
 
-export type NoteInput = Omit<z.infer<typeof noteArgs>, "videoId">;
+type NoteInput = Omit<z.infer<typeof noteArgs>, "videoId">;
 
-export interface NotesRead {
+interface NotesRead {
   notes: ReadNote[];
   verdict: Verdict | null;
   /** Unparsable lines, skipped so one bad line never hides the rest. */
@@ -92,7 +92,8 @@ export async function renderSha256(videoFile: string): Promise<string> {
     const cached = shaCache.get(key);
     if (cached !== undefined) return cached;
     const hash = createHash("sha256");
-    for await (const chunk of handle.createReadStream({ autoClose: false })) hash.update(chunk as Buffer);
+    const chunks: AsyncIterable<Buffer> = handle.createReadStream({ autoClose: false });
+    for await (const chunk of chunks) hash.update(chunk);
     return remember(key, hash.digest("hex"));
   } finally {
     await handle.close();
@@ -165,7 +166,7 @@ async function readSidecar(file: string): Promise<{ bytes: Buffer | null; gap: s
 }
 
 /** Keeps only notes on this file name: `cut.mp4` and `cut.webm` share one sidecar. */
-export function parseNotes(bytes: Buffer, video: string): { notes: VideoNote[]; skipped: number } {
+function parseNotes(bytes: Buffer, video: string): { notes: VideoNote[]; skipped: number } {
   const notes: VideoNote[] = [];
   let skipped = 0;
   for (const line of bytes.toString("utf8").split("\n")) {

@@ -6,7 +6,7 @@ import { silentLogger, type DaemonHandle, type RequestAuth } from "@titan-design
 import { EXIT, invokeCommand } from "@titan-design/registry";
 import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
-import { REFUSALS, type ClassedCommand, type ConsoleContext } from "./owner-guard.js";
+import { REFUSALS, type ConsoleContext } from "./owner-guard.js";
 import { closedPort } from "./test-support.js";
 import { MAX_NOTE_TEXT, VIDEO_NOTE_SCHEMA, appendNote, currentVerdict, notesFileOf, openNotes, readNotes, renderSha256, summarizeNotes, videoNotesCommands, type VideoNote } from "./video-notes.js";
 import { videoCatalog, videoId, videosCommands } from "./videos.js";
@@ -43,8 +43,8 @@ const comment = (text: string, atS = 1) => ({ kind: "comment" as const, atS, tex
 let sequence = 0;
 function note(renderSha256: string, body: { kind: "comment"; text: string } | { kind: "verdict"; verdict: "ship" | "needs-changes" }): VideoNote {
   sequence += 1;
-  const head = { schema: VIDEO_NOTE_SCHEMA, id: sequence.toString(16).padStart(16, "0"), videoId: "v_0", video: "cut.mp4", renderSha256, atS: sequence, createdAt: new Date(sequence * 1000).toISOString() };
-  return { ...head, ...body } as VideoNote;
+  const head = { schema: VIDEO_NOTE_SCHEMA, id: sequence.toString(16).padStart(16, "0"), videoId: "v_0", video: "cut.mp4", renderSha256, atS: sequence, createdAt: new Date(sequence * 1000).toISOString() } as const;
+  return { ...head, ...body };
 }
 
 describe("the notes sidecar", () => {
@@ -53,10 +53,12 @@ describe("the notes sidecar", () => {
     await appendNote(video, "v_0", comment("hold the title card longer", 3));
 
     const lines = (await readFile(notesFileOf(video), "utf8")).trimEnd().split("\n");
+    const { notes, skipped } = await readNotes(video);
 
     expect(notesFileOf(video)).toBe(path.join(root, "orbit", "cut.notes.jsonl"));
-    expect(lines.map((line) => (JSON.parse(line) as VideoNote).kind === "comment" && (JSON.parse(line) as { text: string }).text)).toEqual(["tighten the outro", "hold the title card longer"]);
-    expect((JSON.parse(lines[0]!) as VideoNote).atS).toBe(12.346);
+    expect({ lines: lines.length, skipped }).toEqual({ lines: 2, skipped: 0 });
+    expect(notes.map((each) => each.kind === "comment" && each.text)).toEqual(["tighten the outro", "hold the title card longer"]);
+    expect(notes[0]!.atS).toBe(12.346);
     expect((await stat(notesFileOf(video))).mode & 0o777).toBe(0o600);
   });
 
@@ -179,9 +181,11 @@ describe("videos.note and videos.notes", () => {
       body: JSON.stringify({ videoId: cutId(), ...comment("tighten the outro") }),
     });
 
+    const body: unknown = await res.json();
+
     expect(res.status).toBe(403);
-    expect(((await res.json()) as { error: string }).error).toBe(`owner-write command refused: ${REFUSALS.noCredential}`);
-    expect((commandsFor()["videos.note"] as ClassedCommand).commandClass).toBe("owner-write");
+    expect(body).toMatchObject({ ok: false, error: `owner-write command refused: ${REFUSALS.noCredential}` });
+    expect(commandsFor()["videos.note"].commandClass).toBe("owner-write");
     await expect(stat(notesFileOf(video))).rejects.toThrow();
   });
 });
