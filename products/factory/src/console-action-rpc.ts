@@ -13,6 +13,8 @@ import { batchRefusal } from "./gate-batch-plan.js";
 import { pendingGateId } from "./gate-resolve.js";
 import type { FactoryHost } from "./host.js";
 import { readCapped, TOO_LARGE } from "./resolve-proof.js";
+import { ownerRelease } from "./shepherd/owner-release.js";
+import type { ShepherdStore, ShepherdStoreRef } from "./shepherd/store.js";
 
 export const CONSOLE_ACTION_PATH = "/owner/console-action";
 export const MAX_ACTION_BODY_BYTES = 4 * 1024;
@@ -33,25 +35,35 @@ type Answer = { body: object; status: Status };
 
 const hex = (length: number) => z.string().regex(new RegExp(`^[0-9a-f]{${length}}$`));
 const ActionBody = z.strictObject({ actionId: z.string().regex(ACTION_ID) });
-/** The console writes the rest of the record (read-back, digest, session, peer class); the factory reads only the action. */
-const ActionRecord = z.looseObject({
-  action: z.strictObject({
-    kind: z.literal("resolve-gate"),
-    gateId: z.string().min(1).max(512),
-    runId: z.string().min(1).max(256),
-    stepId: z.string().min(1).max(256),
-    repo: z.string().min(1).max(256),
-    pr: z.number().int().positive(),
-    headSha: hex(40),
-    decision: z.literal("merge"),
-  }),
+const GateActionSchema = z.strictObject({
+  kind: z.literal("resolve-gate"),
+  gateId: z.string().min(1).max(512),
+  runId: z.string().min(1).max(256),
+  stepId: z.string().min(1).max(256),
+  repo: z.string().min(1).max(256),
+  pr: z.number().int().positive(),
+  headSha: hex(40),
+  decision: z.literal("merge"),
 });
-type GateAction = z.infer<typeof ActionRecord>["action"];
+/** No resolver field: the release is always the console's owner-remote, whatever else the record says. */
+const ReleaseActionSchema = z.strictObject({
+  kind: z.literal("owner-release"),
+  repo: z.string().min(1).max(256),
+  pr: z.number().int().positive(),
+  headSha: hex(40),
+});
+/** The console writes the rest of the record (read-back, digest, session, peer class); the factory reads only the action. */
+const ActionRecord = z.looseObject({ action: z.discriminatedUnion("kind", [GateActionSchema, ReleaseActionSchema]) });
+type GateAction = z.infer<typeof GateActionSchema>;
+type ReleaseAction = z.infer<typeof ReleaseActionSchema>;
+type PrAt = Pick<GateAction, "repo" | "pr" | "headSha">;
 
 type RefusalCode = "record" | "record-unreadable" | "class" | "mismatch" | "resolver" | "payload" | "github-unreadable";
 type Outcome =
   | { outcome: "resolved"; gateId: string }
   | { outcome: "already"; gateId: string }
+  | { outcome: "released"; runId: string; stillHeld: string | null }
+  | { outcome: "already"; runId: string }
   | { outcome: "moved"; currentHead: string | undefined }
   | { outcome: "gone"; reason: string }
   | { outcome: "refused"; reason: RefusalCode; detail: string };
@@ -59,20 +71,26 @@ type Outcome =
 interface ConsoleActionDeps {
   host: FactoryHost;
   /** Fresh PR reads; absent without the shepherd routes, and then the route answers 503. */
-  port: Pick<GitHubPort, "getPr"> | undefined;
+  port: GitHubPort | undefined;
+  /** Shepherd's registrations, for an owner-release; absent without the shepherd routes, as `port` is. */
+  store: ShepherdStoreRef | undefined;
   /** The console's owner-written action records; each request reads its own record from here and nowhere else. */
   actionsDir: string;
   log: Logger;
 }
 
 /** One record as read: its exact bytes and the action they name. */
-interface Read {
-  action: GateAction;
+interface Read<A = GateAction | ReleaseAction> {
+  action: A;
   confirmEvent: string;
 }
 
+/** The console's one identity in every resolve and release it asks for; the record never chooses it. */
+const consoleResolver = (confirmEvent: string): GateResolver => ({ class: "owner-remote", id: "titan-console", channel: "console:inbox", confirmEvent });
+
 /**
- * A console inbox tap as an owner-remote resolve of the approve-merge gate the owner confirmed. Mounted on serve through the
+ * A console inbox tap as an owner-remote resolve of the approve-merge gate the owner confirmed, or as an owner-remote release
+ * of the owner-asked hold on the PR the owner confirmed. Mounted on serve through the
  * daemon's `mountRoutes`, behind its Host, Origin, client-header and JSON guards, and kept out of the registry so it is never an
  * MCP tool or RPC command. No token: the trust boundary is the OS account, as for answer-ship. The body names only the action id;
  * what to do comes from the console's record file, and the gate, the allowlist and GitHub's live head must all agree with it.
@@ -90,9 +108,9 @@ async function consoleAction(raw: Request, deps: ConsoleActionDeps): Promise<Ans
   if (text === TOO_LARGE) return failure(413, `action body over ${MAX_ACTION_BODY_BYTES} bytes`);
   const actionId = parseBody(text);
   if (actionId === undefined) return failure(400, "body must be {actionId}");
-  if (deps.port === undefined) return failure(503, "shepherd routes not mounted");
+  if (deps.port === undefined || deps.store === undefined) return failure(503, "shepherd routes not mounted");
   try {
-    const outcome = await acted(actionId, deps.port, deps);
+    const outcome = await acted(actionId, deps.port, deps.store.get(), deps);
     deps.log.info({ actionId, ...outcome }, "answered a console action");
     return { body: outcome, status: statusOf(outcome) };
   } catch (error) {
@@ -101,17 +119,22 @@ async function consoleAction(raw: Request, deps: ConsoleActionDeps): Promise<Ans
   }
 }
 
-async function acted(actionId: string, port: NonNullable<ConsoleActionDeps["port"]>, deps: ConsoleActionDeps): Promise<Outcome> {
+async function acted(actionId: string, port: GitHubPort, store: ShepherdStore, deps: ConsoleActionDeps): Promise<Outcome> {
   const read = await readRecord(deps.actionsDir, actionId);
   if ("outcome" in read) return read;
+  const { action, confirmEvent } = read;
+  return action.kind === "owner-release" ? releaseHold({ action, confirmEvent }, port, store) : resolveGate({ action, confirmEvent }, port, deps.host);
+}
+
+async function resolveGate(read: Read<GateAction>, port: GitHubPort, host: FactoryHost): Promise<Outcome> {
   const { action } = read;
-  const gate = deps.host.gates.get(action.gateId);
+  const gate = host.gates.get(action.gateId);
   if (gate === undefined) return { outcome: "gone", reason: `no gate ${action.gateId}` };
   const land = gateRefusal(gate, action);
   if ("outcome" in land) return land;
   if (gate.status !== "pending") return settled(gate, read.confirmEvent, `the gate is ${gate.status}`);
-  const stale = storeMoved(deps.host, gate, land, action) ?? (await githubOutcome(port, action));
-  return stale ?? resolveOnce(read, deps.host);
+  const stale = storeMoved(host, gate, land, action) ?? (await githubOutcome(port, action));
+  return stale ?? resolveOnce(read, host);
 }
 
 /** The record's gate must be one the console may answer, and ask about the record's PR. */
@@ -136,7 +159,7 @@ function headOf(host: FactoryHost, gateId: string): string | undefined {
 }
 
 /** GitHub's own head, read fresh: the gate prompt is Shepherd's earlier read and may be behind the PR. */
-async function githubOutcome(port: NonNullable<ConsoleActionDeps["port"]>, { repo, pr, headSha }: GateAction): Promise<Outcome | undefined> {
+async function githubOutcome(port: GitHubPort, { repo, pr, headSha }: PrAt): Promise<Outcome | undefined> {
   try {
     const pull = await port.getPr(repo, pr);
     if (pull.state !== "open") return { outcome: "gone", reason: `${repo}#${pr} is ${pull.merged ? "merged" : "closed"} on GitHub` };
@@ -147,10 +170,9 @@ async function githubOutcome(port: NonNullable<ConsoleActionDeps["port"]>, { rep
 }
 
 /** The store settles a gate once, so of two concurrent posts of one record only one resolves; the other reads back `already`. */
-function resolveOnce({ action, confirmEvent }: Read, host: FactoryHost): Outcome {
-  const resolver: GateResolver = { class: "owner-remote", id: "titan-console", channel: "console:inbox", confirmEvent };
+function resolveOnce({ action, confirmEvent }: Read<GateAction>, host: FactoryHost): Outcome {
   try {
-    host.gates.resolve(action.gateId, { decision: action.decision, headSha: action.headSha }, resolver);
+    host.gates.resolve(action.gateId, { decision: action.decision, headSha: action.headSha }, consoleResolver(confirmEvent));
   } catch (error) {
     if (error instanceof GateResolverRefused) return refused("resolver", error.message);
     if (error instanceof GatePayloadInvalid) return refused("payload", error.message);
@@ -169,6 +191,40 @@ function settledNow(host: FactoryHost, gateId: string, confirmEvent: string, rea
 function settled(gate: GateRecord, confirmEvent: string, reason: string): Outcome {
   const mine = gate.status === "resolved" && gate.resolvedBy?.confirmEvent === confirmEvent;
   return mine ? { outcome: "already", gateId: gate.id } : { outcome: "gone", reason };
+}
+
+/**
+ * Lifts the owner-asked hold on the record's PR, and only that hold, at the head the owner confirmed. Shepherd's own
+ * checks run again inside `ownerRelease`; reading them first here is what lets the console tell moved from gone.
+ */
+async function releaseHold({ action, confirmEvent }: Read<ReleaseAction>, port: GitHubPort, store: ShepherdStore): Promise<Outcome> {
+  const registration = store.byPr(action.repo, action.pr);
+  if (registration === undefined) return { outcome: "gone", reason: `${action.repo}#${action.pr} is not registered with shepherd` };
+  const { runId } = registration;
+  if (registration.ownerHold === null) return releasedBefore(store, runId, confirmEvent) ?? { outcome: "gone", reason: `${action.repo}#${action.pr} holds no owner-asked hold` };
+  const stale = await githubOutcome(port, action);
+  return stale ?? releaseOnce(store, port, { ...action, runId }, confirmEvent);
+}
+
+/** `already` only when this very record lifted the hold: `ownerRelease` writes the resolver's proof into the event's actor. */
+function releasedBefore(store: ShepherdStore, runId: string, confirmEvent: string): Outcome | undefined {
+  const actor = `owner-remote:titan-console proof ${confirmEvent}`;
+  return store.eventsOf(runId).some((event) => event.kind === "release" && event.actor === actor) ? { outcome: "already", runId } : undefined;
+}
+
+/** Of two concurrent posts of one record only one lifts the hold; the other loses inside `ownerRelease` and reads back `already`. */
+async function releaseOnce(store: ShepherdStore, port: GitHubPort, { repo, pr, headSha, runId }: ReleaseAction & { runId: string }, confirmEvent: string): Promise<Outcome> {
+  try {
+    const after = await ownerRelease(store, port, { repo, pr, head: headSha }, consoleResolver(confirmEvent));
+    return { outcome: "released", runId, stillHeld: after.held ? after.holdReason : null };
+  } catch (error) {
+    const code = error instanceof Error && "code" in error ? error.code : undefined;
+    const message = error instanceof Error ? error.message : String(error);
+    if (code === EXIT.NOPERM) return refused("resolver", message);
+    if (code === EXIT.UNAVAILABLE) return refused("github-unreadable", message);
+    if (code === EXIT.DATAERR || code === EXIT.NOINPUT) return releasedBefore(store, runId, confirmEvent) ?? { outcome: "gone", reason: message };
+    throw error;
+  }
 }
 
 /** A missing record is `gone`: the console never wrote it, or it was cleaned up. Anything else unreadable is refused. */
@@ -194,7 +250,7 @@ function parseRecord(bytes: Uint8Array, name: string): Read | Outcome {
   } catch {
     // An unparseable record is refused below, the same as a misshapen one.
   }
-  return refused("record", `${name} does not read as a resolve-gate action record`);
+  return refused("record", `${name} does not read as a resolve-gate or owner-release action record`);
 }
 
 const refused = (reason: RefusalCode, detail: string): Outcome => ({ outcome: "refused", reason, detail });
@@ -204,6 +260,7 @@ const codeOf = (error: unknown): string => (error instanceof Error && "code" in 
 function statusOf(outcome: Outcome): Status {
   switch (outcome.outcome) {
     case "resolved":
+    case "released":
     case "already":
       return 200;
     case "moved":
