@@ -29,6 +29,7 @@ import type { ValueMarks } from "./value-marks.js";
 import { ReadingLimitError, unsureReadings } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
 import { arithmeticSpanEnd, splitsClose } from "./arith-span.js";
+import { ENVIRONMENT_UNKNOWN, noteLineWrites, POSITIONALS_SET } from "./math-trust.js";
 
 const MAX_DEPTH = 8;
 
@@ -95,6 +96,8 @@ export interface ExtractOptions {
   onScript?: (text: string) => void;
   /** The text is the Bash tool's own line, run by bash or zsh, where `((x))` may be arithmetic; off, it reads as nested subshells that run `x`. */
   arithmetic?: boolean;
+  /** The text is a script the line runs, whose environment and positional parameters the line may have set. */
+  scriptText?: boolean;
 }
 
 interface Scope {
@@ -140,7 +143,8 @@ interface Walk {
  */
 export function extractCommands(src: string, options: ExtractOptions = {}): SimpleCommand[] {
   const out: SimpleCommand[] = [];
-  const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
+  const vars: Vars = new Map(options.scriptText === true ? [[ENVIRONMENT_UNKNOWN, null], [POSITIONALS_SET, null]] : []);
+  const scope = { dir: options.cwd ?? null, vars, wrapping: [] };
   const foldCase = options.foldCase === true;
   const unsure = lineBudget(src, options);
   const w: Walk = {
@@ -164,7 +168,9 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
 
 function walk(tokens: Token[], w: Walk): void {
   if (w.depth > MAX_DEPTH) throw new ParseError("nesting too deep");
-  walkFrom(noteSureCommands(normalizeDeclarations(tokens)), 0, w);
+  const list = noteSureCommands(normalizeDeclarations(tokens));
+  noteLineWrites(list, w.scope.vars);
+  walkFrom(list, 0, w);
 }
 
 /** A command whose `{name}` readings leave different scopes has the rest of its list walked again in each, after this walk. */
@@ -370,6 +376,9 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descrip
     // A shell's arguments and input become its positional parameters and what its `read` stores.
     if (script.wrap !== "eval") w.marks.opaque = true;
     // A nested shell's text keeps the nested-subshell reading and never joins a `[[`: which shell reads it is not known (it may be dash, or the runner's name may be rebound).
-    walk(tokenizeLine(text, false), { ...child(w, [...wrapping, script.wrap], descriptors), arithmetic: false });
+    const nested = { ...child(w, [...wrapping, script.wrap], descriptors), arithmetic: false };
+    // A shell's arguments are its positional parameters; what sets its environment (`env e=…`, a prefix) is a write of the line.
+    if (script.wrap !== "eval") nested.scope.vars.set(POSITIONALS_SET, null);
+    walk(tokenizeLine(text, false), nested);
   }
 }

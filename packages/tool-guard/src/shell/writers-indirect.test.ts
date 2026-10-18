@@ -18,12 +18,18 @@ const pushSubjects = (command: string) =>
     .map((a) => a.subject);
 
 describe("arithmetic writes made through a value or $(( )) (TP-1538)", () => {
+  // `$Z` splices `Y=1` into the text around it, where a value other than digits may complete a store.
+  it.each([
+    ["an expansion that names a value by $", "Y=status; Z=Y=1; : $(( $Z )); git $Y origin HEAD:main"],
+    ["an expansion with a $ reference inside a longer word", "Y=status; Z=Y=1; echo a$(( $Z ))b; git $Y origin HEAD:main"],
+  ])("refuses %s, since a spliced value that is not digits may complete a store", (_, command) => {
+    expect(() => pushSubjects(command)).toThrow(CommandRebindingError);
+  });
+
   it.each([
     ["a (( )) that reads an unknown value", "Y=status; read X; (( X )); git $Y origin HEAD:main"],
     ["a let that reads an unknown value", "Y=status; read X; let X; git $Y origin HEAD:main"],
-    ["an expansion that names a value by $", "Y=status; Z=Y=1; : $(( $Z )); git $Y origin HEAD:main"],
-    ["an expansion with a $ reference inside a longer word", "Y=status; Z=Y=1; echo a$(( $Z ))b; git $Y origin HEAD:main"],
-  ])("refuses %s, since a run-time word in $(( )) may store into a rebinding parameter", (_, command) => {
+  ])("refuses %s, since math over a value read from input may store into a rebinding parameter", (_, command) => {
     expect(() => pushSubjects(command)).toThrow(CommandRebindingError);
   });
 

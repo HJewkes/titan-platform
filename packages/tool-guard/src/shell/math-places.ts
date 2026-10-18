@@ -3,13 +3,12 @@ import { NAMED_FD_RE } from "./lexer.js";
 import type { RedirectToken, WordToken } from "./lexer.js";
 import { DECLARERS } from "./name-slots.js";
 
-/** A text the shell evaluates as math, and whether it holds a run-time expansion. */
+/** A text the shell evaluates as math. */
 export interface MathPlace {
   text: string;
-  dynamic: boolean;
 }
 
-export const ARITHMETIC_OPENER_RE = /\$\(\(|\$\[/g;
+const ARITHMETIC_OPENER_RE = /\$\(\(|\$\[/g;
 /** Where a subscript opens in an expansion: after `${name` or `$name`. */
 const EXPANSION_SUBSCRIPT_RE = /\$\{[^}\s]*?[A-Za-z0-9_@*]\[|\$[A-Za-z_]\w*\[/g;
 /** A word that begins as a name with a subscript, which the shell takes as an element assignment: `a[$i]=1`. */
@@ -38,7 +37,7 @@ export function mathPlaces(words: WordToken[], redirects: RedirectToken[]): Math
     ...redirects.flatMap((r) => (r.body && r.target?.quoted !== true ? [spansOf(r.body, 0, false)] : [])),
   ];
   const subscripts = redirects.flatMap((r) => NAMED_FD_RE.exec(r.named ?? r.fd ?? "")?.[2]?.slice(1, -1) ?? []);
-  return [...sources.flat().map((text) => ({ text, dynamic: true })), ...subscripts.map((text) => ({ text, dynamic: /[$`]/.test(text) }))];
+  return [...sources.flat(), ...subscripts].map((text) => ({ text }));
 }
 
 /** Where quoting begins in a word; one another builder made quoted is taken as quoted from its start. */

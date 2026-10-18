@@ -225,7 +225,7 @@ function mayBeOptionWord(w: WordToken): boolean {
  * The name part ends at a literal `NAME[` or `NAME=`; an expansion, a cut command substitution, a backquote or a
  * glob inside it lets bash build any name, IFS included. A literal name that spells IFS is matched elsewhere.
  */
-function nameMayBeRunTime(w: WordToken): boolean {
+export function nameMayBeRunTime(w: WordToken): boolean {
   const literal = /^[A-Za-z_][A-Za-z0-9_]*/.exec(w.value)?.[0] ?? "";
   const eq = w.value.indexOf("=");
   const end = ASSIGNMENT_RE.test(w.value) ? literal.length : eq < 0 ? w.value.length : eq;

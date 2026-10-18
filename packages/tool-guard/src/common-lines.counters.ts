@@ -1,4 +1,4 @@
-import type { CommonLine } from "./common-lines.js";
+import type { CommonLine, RefusedLine } from "./common-lines.js";
 
 /** Lines main allows in the "counters" family. */
 export const countersLines: readonly CommonLine[] = [
@@ -46,7 +46,6 @@ export const countersLines: readonly CommonLine[] = [
   },
   { id: "F04", family: "counters", line: "echo $(( ${TIMEOUT:-30} * 1000 ))" },
   { id: "F07", family: "counters", line: "echo $(( 16#ff ))" },
-  { id: "F09", family: "counters", line: "echo $(( $(cat count) + 1 ))" },
   { id: "F10", family: "counters", line: "echo $(( 2**10 ))" },
   { id: "F11", family: "counters", line: "echo $(( x > 0 ? x : -x ))" },
   { id: "F14", family: "counters", line: "echo $(( $(ls | wc -l) - 1 ))" },
@@ -97,11 +96,6 @@ export const countersLines: readonly CommonLine[] = [
     line: "lines=$(cat f | wc -l); echo $(( lines / 2 ))",
   },
   { id: "B17", family: "counters", line: "n=$(nproc); make -j$((n+1))" },
-  {
-    id: "B18",
-    family: "counters",
-    line: "read -r n < count.txt; echo $((n+1))",
-  },
   { id: "B21", family: "counters", line: "shift $((OPTIND-1))" },
   {
     id: "B23",
@@ -128,4 +122,13 @@ export const countersLines: readonly CommonLine[] = [
   { id: "G14", family: "counters", line: "echo ${FUNCNAME[0]}" },
   { id: "G15", family: "counters", line: "echo $(( UID == 0 ))" },
   { id: "G16", family: "counters", line: "x=abcdef; echo ${x:$((1+1)):2}" },
+];
+
+/**
+ * "counters" lines main allowed that tool-guard now refuses: math over a file's contents. Call 1 can write
+ * `commands[ls]=0` into the file and call 2 read it into math, and the guard cannot see across calls.
+ */
+export const countersRefused: readonly RefusedLine[] = [
+  { id: "F09", family: "counters", line: "echo $(( $(cat count) + 1 ))", why: "file contents in math" },
+  { id: "B18", family: "counters", line: "read -r n < count.txt; echo $((n+1))", why: "file contents in math" },
 ];

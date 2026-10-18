@@ -68,7 +68,7 @@ describe("a compound array assignment's elements", () => {
     ["a later element's $(( ))", "a=(x $(( commands[y]=0 ))); git push"],
     ["a later element's subscript read", "a=(x ${b[commands[y]=0]}); git push"],
     ["a later element's substring offset", "a=(x ${b:commands[y]=0}); git push"],
-    ["a key that expands at run time", "a=([$i]=x); git push"],
+    ["a key set from a command", "i=$(cat f); a=([$i]=x); git push"],
     ["a key after a process substitution, which the walk does not fold", "a=(x <(true) [BASH_CMDS[y]=0]=1); git push"],
   ])("refuses %s", (_, line) => {
     expect(() => extractCommands(line)).toThrow(CommandRebindingError);
@@ -77,6 +77,7 @@ describe("a compound array assignment's elements", () => {
   it.each([
     ["literal keys", "a=([0]=x [1]=y); git push"],
     ["a key that reads a name", "a=([i+1]=x); git push"],
+    ["a key from a name the line never sets, which holds the environment", "a=([$i]=x); git push"],
     ["plain elements", "a=(x y $z); git push"],
     ["a single-quoted element, which is no key", "a=(x '[commands[y]=0]=1'); git push"],
     ["literal keys after a process substitution", "a=(x <(true) [0]=y [i+1]=z); git push"],

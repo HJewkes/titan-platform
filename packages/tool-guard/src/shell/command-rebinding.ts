@@ -1,5 +1,5 @@
 import { evaluatesArgsAsMath } from "./arith-hooked.js";
-import { fdVariableStores, operandsStore, placesStore, scopeNames, storeReader } from "./arith-stores.js";
+import { fdVariableStores, operandsStore, placesStore, scopeNames, storeReader, textStores } from "./arith-stores.js";
 import { mathPlaces } from "./math-places.js";
 import { splitCluster } from "./cluster.js";
 import { HOOKED_WRITERS, writesProtectedParam } from "./hooked-params.js";
@@ -60,24 +60,26 @@ export function rebindsCommand(cmd: Unwrapped, vars: Vars = new Map()): boolean 
 /**
  * Whether a command's words store into a rebinding parameter through math, which the shell evaluates apart from any
  * builtin that names the parameter: the places `mathPlaces` lists, and a descriptor variable (`{BASH_CMDS[y]}>f`).
- * A run-time word in those places may expand to `commands[y]=0`. A bare name math reads (`(( X ))`) is followed to
- * the text the line stored in it; one the line never set and the shell sets on its own (`REPLY`, `_`) may hold
- * anything; any other name the line never set reads as no store.
+ * A run-time piece in those places may expand to `commands[y]=0` unless it can only yield a number or trusted text
+ * (`math-pieces.ts`), and a name, bare or `$name`, is followed to every text the line writes there (`math-trust.ts`).
  */
 export function storesRebindingByMath(words: WordToken[], redirects: RedirectToken[], vars: Vars): boolean {
-  const resolve = scopeNames(vars);
-  return placesStore(mathPlaces(words, redirects), REBINDING_STORE, resolve) || fdVariableStores(redirects, REBINDING_SET);
+  return placesStore(mathPlaces(words, redirects), REBINDING_STORE, scopeNames(vars)) || fdVariableStores(redirects, REBINDING_SET);
 }
 
 /**
- * Whether the `(( ))` an operator opens stores into a rebinding parameter. It reads the body's tokens whole, since a
- * `<` or `>` in it is lexed as a redirect (`(( i < $e ))` keeps `$e` as a redirect target), and runs before the
- * `(( ))`'s own writes land, which would hide a store a name held (`X='commands[y]=0'; (( X++ ))`).
+ * Whether the `(( ))` an operator opens stores into a rebinding parameter. It reads the body as one text, since the
+ * lexer splits it into words (`(( commands[y] = 0 ))`) and reads a `<` or `>` as a redirect (`(( i < $e ))`).
  */
 export function compoundStoresRebinding(op: Token, vars: Vars): boolean {
-  const expand = (w: WordToken) => expandWord(w, (name) => lookup(vars, null, name));
-  const words = (compoundBody(op) ?? []).flatMap((t) => (t.type === "word" ? [expand(t)] : t.type === "redirect" && t.target ? [expand(t.target)] : []));
-  return operandsStore(words, REBINDING_STORE, scopeNames(vars));
+  const expand = (w: WordToken) => expandWord(w, (name) => lookup(vars, null, name)).value;
+  const body = compoundBody(op) ?? [];
+  if (body.some((t) => t.type === "subs")) return true;
+  const text = body.map((t) => {
+    if (t.type === "redirect") return `${t.fd ?? ""}${t.op}${t.target ? expand(t.target) : ""}`;
+    return t.type === "word" ? expand(t) : t.type === "op" ? t.value : "";
+  });
+  return textStores(text.join(" "), REBINDING_STORE, scopeNames(vars));
 }
 
 /** An operand holding `=`, an option cluster holding bash's `p`, or a word that may expand to either. */

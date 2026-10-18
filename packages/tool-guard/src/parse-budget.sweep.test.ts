@@ -60,7 +60,8 @@ const SHAPES: Record<string, Shape> = {
   "heredoc-shell": (inner, depth) => `bash <<'E'\n${cmdSubst(inner, depth)}\nE\n`,
   "xargs-sh-c": nestWith((body) => `echo x | xargs sh -c "${quoted(body)}"`),
   procsub: nestWith((body) => `cat <(${body})`),
-  "arith-subscript": (inner, depth) => `a='x[${substValue(inner, depth)}]'; let a`,
+  // `let a` would be refused as a possible rebinding before the value is walked; a numeric `[[` still walks it.
+  "arith-subscript": (inner, depth) => `a='x[${substValue(inner, depth)}]'; [[ a -eq 0 ]]`,
 };
 
 /** The shape at `DEPTH` around `inner`, padded with benign commands to as close under the size cap as it gets. */

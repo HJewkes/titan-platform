@@ -33,7 +33,7 @@ function runTimeExpression(w: WordToken): boolean {
   return w.dynamic || /[$`]/.test(w.value);
 }
 
-function writtenNames(expression: string): string[] {
+export function writtenNames(expression: string): string[] {
   return [...expression.matchAll(NAME_RE)]
     .filter((m) => WRITTEN_AFTER_RE.test(expression.slice(m.index + m[0].length)) || WRITTEN_BEFORE_RE.test(expression.slice(0, m.index)))
     .map((m) => m[0]);
@@ -148,7 +148,7 @@ function compoundText(t: Token, expand: (w: WordToken) => WordToken): string {
 }
 
 /** The text inside each `$(( ))` and `$[ ]` of a word, which write in the current shell wherever the word sits. */
-function expansionBodies(value: string): string[] {
+export function expansionBodies(value: string): string[] {
   const bodies: string[] = [];
   for (const [open, close] of [["$((", "("], ["$[", "["]] as const) {
     for (let at = value.indexOf(open); at >= 0; at = value.indexOf(open, at + open.length)) {
