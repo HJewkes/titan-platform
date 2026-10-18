@@ -12,7 +12,7 @@ import type { ShepherdSource } from "./shepherd.js";
 
 export type WatchRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
 
-export type InboxAction =
+type InboxAction =
   | { kind: "resolve-gate"; gateId: string; runId: string; stepId: string; repo: string; pr: number; headSha: string; decision: "merge" }
   | { kind: "owner-release"; repo: string; pr: number; headSha: string }
   | { kind: "hold-release"; repo: string; pr: number; headSha: string; holdClass: string }
@@ -21,7 +21,7 @@ export type InboxAction =
   | { kind: "open"; route: string }
   | { kind: "terminal"; command?: string; reason: string };
 
-export type InboxSection = "blocking" | "planning";
+type InboxSection = "blocking" | "planning";
 
 export interface InboxItem extends OwnerItem {
   section: InboxSection;
@@ -173,7 +173,7 @@ async function shepherdRows(shepherd: ShepherdSource): Promise<{ rows: WatchRow[
   }
 }
 
-export async function readInbox({ shepherd, ...sources }: InboxSources): Promise<InboxList> {
+async function readInbox({ shepherd, ...sources }: InboxSources): Promise<InboxList> {
   const [approvals, live] = await Promise.all([readFlow(sources), shepherdRows(shepherd)]);
   return { items: inboxItems(approvals.flow.order, live.rows), gaps: [...approvals.gaps, ...live.gaps], fyiCount: approvals.fyiCount, readAt: approvals.readAt };
 }
