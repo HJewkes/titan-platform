@@ -518,7 +518,7 @@ Key exports:
 
 ### [`daemon`](/reference/daemon)
 
-Tier 1, `@titan-design/daemon@0.7.0`. hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle
+Tier 1, `@titan-design/daemon@0.8.0`. hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle
 
 **Use this when:** You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. It also carries a token-file, login-link and session-cookie auth gate for a listener beyond loopback.
 
@@ -795,7 +795,7 @@ Key exports:
 
 ### [`coordinator`](/reference/coordinator)
 
-Tier 2, `@titan-design/coordinator@0.5.1`. Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).
+Tier 2, `@titan-design/coordinator@0.5.2`. Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).
 
 **Use this when:** You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package. Fold a seat's event log (spawn, retire, teleport, claim, release, hold, unhold, background, authored) into `SeatState` with `foldSeatEvents`: it never throws, counts unknown kinds and refuses background commands in temp or scratchpad space. Validate the charter front matter (`autonomy-charter/v1`: seats, hub, hard stops, scorer defaults; pools and funds pass through untyped) with `parseCharterPolicy`: it never throws and returns the typed policy or errors that name the missing or invalid key path. Validate a whole `titan-coordinator/v1` document (owner, repos, seats, limits, policy) with `checkCoordinatorConfig`: it reuses the seat, charter and agent-dispatch limits schemas, never throws, and names the key path of each cross-reference error (unknown pool, repo or hard stop, duplicate prefix, seat `config_dir`, not exactly one attended seat). Project one seat generation to a `SessionFacts` record per initiative with `projectSeatGeneration`: merged PRs, closed tasks and filed tasks, mapped by task-id prefix; it is given the activity and drops work no scope claims. Validate and render the seat's authored handoff block (continuations, standing rules with expiry, open questions, next/why; at most 1,500 characters) with `parseAuthored` and `renderAuthored`. Edit a `titan-coordinator/v1` document through a revision log: `applyEdit` sets one schema-declared field on a copy and refuses an undeclared path or a result that fails `checkCoordinatorConfig`, `diffDocuments` lists changed leaves, and `verifyChain` refuses a log whose revision does not name the previous revision's `revisionSha` as its parent. Check a proposed config edit against the allowlist `EDITABLE_FIELDS` (path pattern, bounds, reload class) with `checkEditableValue`; a path no row matches is not editable.
 
@@ -1153,7 +1153,7 @@ Thin compositions of the tiers. A linked product is published; the rest are priv
 
 ### [`active-work`](/reference/active-work)
 
-Tier product, `@titan-design/active-work@0.24.0`. Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions
+Tier product, `@titan-design/active-work@0.24.1`. Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions
 
 **Use this when:** You want durable per-initiative state (brief, tasks, sessions, artifacts, notes) that Claude Code sessions read and write through the `active-work` CLI, its MCP server or its loopback daemon, or `aw <slug>` to launch a session with the initiative's bootstrap prompt. Other products reach it over that process boundary. To validate a task record without the product, use `pm`; to resolve its data root, use `app-paths`.
 
