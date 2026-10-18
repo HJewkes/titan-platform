@@ -113,6 +113,15 @@ export function humanOnlyFrom(activeWork: ActiveWork): () => Promise<HumanOnly> 
   };
 }
 
+function inboxActionsOf(config: ConsoleConfig): NonNullable<ConsoleSources["inboxActions"]> {
+  return {
+    enabled: config.inboxActions ?? false,
+    actionsDir: path.join(config.stateDir, OWNER_ACTIONS_DIR),
+    client: factoryOwnerAction(config.factoryPort),
+    answerer: brokerAnswerer({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
+  };
+}
+
 export function createSources(config: ConsoleConfig, logger: Logger = consoleLogger): ConsoleSources {
   const activeWork = activeWorkClient(config.activeWorkPort);
   const shepherd = shepherdReader(config.factoryPort);
@@ -138,11 +147,6 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
       answer: factoryGateAnswer(config.factoryPort),
       logger,
     }),
-    inboxActions: {
-      enabled: config.inboxActions ?? false,
-      actionsDir: path.join(config.stateDir, OWNER_ACTIONS_DIR),
-      client: factoryOwnerAction(config.factoryPort),
-      answerer: brokerAnswerer({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
-    },
+    inboxActions: inboxActionsOf(config),
   };
 }

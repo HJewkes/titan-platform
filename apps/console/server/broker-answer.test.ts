@@ -1,6 +1,5 @@
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -35,16 +34,22 @@ afterEach(async () => {
 
 async function readBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
-  return JSON.parse(Buffer.concat(chunks).toString() || "null");
+  for await (const chunk of req) chunks.push(Buffer.from(String(chunk)));
+  const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString() || "null");
+  return parsed;
 }
+
+const header = (req: IncomingMessage, name: string): string | undefined => {
+  const value = req.headers[name];
+  return typeof value === "string" ? value : undefined;
+};
 
 /** A loopback broker that records each request and answers it with `reply`. */
 async function startBroker(reply: (res: ServerResponse, url: string) => void): Promise<{ port: number; seen: Seen[] }> {
   const seen: Seen[] = [];
   const server = createServer((req, res) => {
     void readBody(req).then((body) => {
-      seen.push({ url: req.url ?? "", token: req.headers["x-agent-chat-token"] as string | undefined, client: req.headers["x-titan-client"] as string | undefined, body });
+      seen.push({ url: req.url ?? "", token: header(req, "x-agent-chat-token"), client: header(req, "x-titan-client"), body });
       reply(res, req.url ?? "");
     });
   });
@@ -53,7 +58,8 @@ async function startBroker(reply: (res: ServerResponse, url: string) => void): P
     server.closeAllConnections();
     return new Promise((resolve) => server.close(() => resolve()));
   };
-  return { port: (server.address() as AddressInfo).port, seen };
+  const address = server.address();
+  return { port: typeof address === "object" && address !== null ? address.port : 0, seen };
 }
 
 const json = (status: number, body: unknown) => (res: ServerResponse) => {
