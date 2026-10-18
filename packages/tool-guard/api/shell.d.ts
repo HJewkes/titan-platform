@@ -23,6 +23,8 @@ interface WordToken {
     computed: boolean;
     /** A `$` or backtick expansion sits outside double quotes, so it word-splits even when other parts are quoted. */
     unquotedExpansion?: true;
+    /** The word is a `case` pattern, matched against the subject and never run. */
+    casePattern?: true;
     refs: VarRef[];
     /** Token lists of command substitutions, which run even when quoted. */
     subs: Token[][];
@@ -175,6 +177,8 @@ interface ExtractOptions {
     joinsConditional?: boolean;
     /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
     onScript?: (text: string) => void;
+    /** The text is the Bash tool's own line, run by bash or zsh, where `((x))` may be arithmetic; off, it reads as nested subshells that run `x`. */
+    arithmetic?: boolean;
 }
 /**
  * Every simple command the shell would run, including ones nested in substitutions, `bash -c`
@@ -185,6 +189,14 @@ declare function extractCommands(src: string, options?: ExtractOptions): SimpleC
 
 /** A line whose dynamic wrapper words leave more readings that may decide than the budget walks; the hook denies it unchecked. */
 declare class ReadingLimitError extends Error {
+    constructor();
+}
+
+/**
+ * A line that defines a shell alias; the hook denies it unchecked. Eval text, `$( )` and sourced files that zsh parses
+ * later in the same process expand the alias, and the guard does not model the alias table.
+ */
+declare class AliasDefinitionError extends ReadingLimitError {
     constructor();
 }
 
@@ -218,4 +230,4 @@ declare function splitArgs(args: WordToken[], valueOpts?: Set<string>): SplitArg
 /** Absolute path a word names from `dir`, or null when the word is dynamic or the base is unknown. */
 declare function resolvePath(dir: string | null, word: WordToken | null | undefined, home: string | null): string | null;
 
-export { type AliasTable, type Chain, CommandRebindingError, type ExtractOptions, type GitInvocation, type OpToken, ParseError, ReadingLimitError, type RedirectToken, type SimpleCommand, type SplitArgs, type SubsToken, type Token, type VarRef, type WordToken, type Wrapping, extractCommands, parseGit, resolvePath, splitArgs, tokenize };
+export { AliasDefinitionError, type AliasTable, type Chain, CommandRebindingError, type ExtractOptions, type GitInvocation, type OpToken, ParseError, ReadingLimitError, type RedirectToken, type SimpleCommand, type SplitArgs, type SubsToken, type Token, type VarRef, type WordToken, type Wrapping, extractCommands, parseGit, resolvePath, splitArgs, tokenize };

@@ -169,6 +169,20 @@ function isRemoteFactoryUrl(value: string): boolean {
   return (url.protocol === "http:" || url.protocol === "https:") && !url.username && !url.password;
 }
 
+/**
+ * Where GitHub events come from (TP-3099). `ingress` is the kill switch: off, a webhook deployment runs as polling without
+ * `sources` changing. Top-level rather than under `shepherd`, because the reconciler outlives Shepherd.
+ */
+export const GithubConfigSchema = z
+  .strictObject({
+    sources: z.enum(["webhook", "polling"]).default("polling"),
+    ingress: z.enum(["on", "off"]).default("off"),
+    pollingIntervalMs: z.number().int().min(30_000).max(600_000).default(60_000),
+    backstopIntervalMs: z.number().int().min(300_000).max(600_000).default(300_000),
+  })
+  .refine((g) => g.pollingIntervalMs <= g.backstopIntervalMs, { message: "pollingIntervalMs must not exceed backstopIntervalMs", path: ["pollingIntervalMs"] })
+  .refine((g) => !(g.ingress === "on" && g.sources === "polling"), { message: "ingress on needs sources webhook: under polling the route answers 404", path: ["ingress"] });
+
 /** The factory that owns the live database; with it set, this host's database is frozen and no verb writes a gate here. */
 const remoteFactoryUrl = z.string().refine(isRemoteFactoryUrl, "must be an http or https URL with no credentials");
 
@@ -182,6 +196,7 @@ export const FactoryConfigSchema = z.object({
   postMerge: PostMergeConfigSchema.optional(),
   digest: DigestConfigSchema.optional(),
   service: ServiceConfigSchema.optional(),
+  github: GithubConfigSchema.optional(),
   shepherd: z
     .object({
       seatsDir: z.string().min(1).optional(),

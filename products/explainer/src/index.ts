@@ -252,6 +252,7 @@ export {
 } from "./doctrine-schema.js";
 export { DEFAULT_DOCTRINE_DIR, loadDoctrine, parseEvidenceTsv } from "./doctrine-load.js";
 export { DOCTRINE_ISSUE_CODES, checkDoctrine, isCodeEnforced, type DoctrineIssue, type DoctrineIssueCode } from "./doctrine-checks.js";
+export { findPromptLeaks, sliceForStage, type PromptLeak, type StageRequest, type StageSlice } from "./doctrine-slice.js";
 export {
   EvidenceSpanSchema,
   ExplainerFactSchema,

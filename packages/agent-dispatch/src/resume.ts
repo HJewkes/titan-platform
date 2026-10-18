@@ -17,7 +17,7 @@
  */
 
 import { refusal, runAgentChatAsync } from "./agents.js";
-import { DispatchError, PEER_NAME_PATTERN } from "./dispatch.js";
+import { DispatchError, PEER_NAME_PATTERN, launchedByArgs, type LaunchedBy } from "./dispatch.js";
 
 export class ResumeError extends Error {}
 
@@ -44,8 +44,8 @@ export function resumeArgs(sessionId: string, message: string): string[] {
   return ["-p", "--", message, "--resume", sessionId];
 }
 
-export function buildResumeAgentArgs(name: string, message: string): string[] {
-  return ["agent", "resume", name, "--message", message];
+export function buildResumeAgentArgs(name: string, message: string, launch: LaunchedBy = {}): string[] {
+  return ["agent", "resume", name, "--message", message, ...launchedByArgs(launch)];
 }
 
 /** Resume an ended agent on its own conversation, with `message` as its next turn; rejects with `DispatchError` on a refusal. */
@@ -54,6 +54,7 @@ export async function resumeAgent(
   name: string,
   message: string,
   timeoutMs: number,
+  launch: LaunchedBy = {},
 ): Promise<ResumeAgentResult> {
   if (!PEER_NAME_PATTERN.test(name)) {
     throw new DispatchError(`invalid peer name: '${name}'`);
@@ -61,7 +62,7 @@ export async function resumeAgent(
   if (message.trim() === "") {
     throw new DispatchError("resuming needs a non-empty message");
   }
-  const args = buildResumeAgentArgs(name, message);
+  const args = buildResumeAgentArgs(name, message, launch);
   const result = await runAgentChatAsync(agentChatBinPath, args, timeoutMs);
   if (result.status !== 0) throw refusal("agent resume", result);
   const lines = result.stdout.split("\n").map((line) => line.trim());

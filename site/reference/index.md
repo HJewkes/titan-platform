@@ -24,6 +24,7 @@ Domain-free building blocks. No titan dependencies.
 | [`evidence`](/reference/evidence) | Citation verification, overlap grouping, planted-control scoring and small-sample statistics for model-judged evidence | none |
 | [`fix-proof`](/reference/fix-proof) | Proves a fix PR's new tests fail on the merge base and pass at head: diff plan, vitest report classification, fix-proof/v1 result line | none |
 | [`locator`](/reference/locator) | Byte-offset provenance locators and raw-mirror durability helpers | none |
+| [`openai-account`](/reference/openai-account) | Read-only Codex account state: login status, rollout quota readings, freshness and admission | `anthropic-account` |
 | [`owner-proof`](/reference/owner-proof) | Owner-signed statements: canonical JSON, P-256 key ring and an exact-bytes ECDSA verify core generic over a zod schema | none |
 | [`rpc-protocol`](/reference/rpc-protocol) | Dependency-free wire contract between a titan daemon and its clients: envelope, exit codes, routes, SSE vocabulary, CommandMap | none |
 | [`store-sqlite`](/reference/store-sqlite) | SQLite table-factory kit: bi-temporal edges, current-state entities with soft expiry, content-addressed cache, contentless FTS5, watermark, migrations | none |
