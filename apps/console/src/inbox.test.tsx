@@ -159,6 +159,15 @@ describe("the inbox page", () => {
     expect(await within(screen.getByTestId("inbox-row-gate-1")).findByText("Copied")).toBeTruthy();
   });
 
+  it("offers no copy without a clipboard, as on a plain-http page, and still shows the command", async () => {
+    Reflect.deleteProperty(navigator, "clipboard");
+    renderInbox();
+    const gate = await screen.findByTestId("inbox-row-gate-1");
+    expect(within(gate).queryByText("Copy command")).toBeNull();
+    fireEvent.click(within(gate).getByText("Run on terminal"));
+    expect(within(gate).getByText("titan-factory gate resolve run-gate-1/approve-merge --decision merge")).toBeTruthy();
+  });
+
   it("gives a round no terminal button, since opening it is navigation", async () => {
     renderInbox();
     expect(within(await screen.findByTestId("inbox-row-round-1")).queryByText("Run on terminal")).toBeNull();

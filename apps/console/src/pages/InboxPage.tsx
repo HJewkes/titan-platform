@@ -45,7 +45,7 @@ function recommendationOf(item: InboxItem): string | undefined {
  * The command a terminal runs for a tap the console does not take yet. A held gate's release mirrors the server's
  * `releaseCommand` in inbox-view.ts; every other write runs the item's own command.
  */
-export function terminalCommandOf(item: InboxItem, action: InboxAction = item.action): string | undefined {
+function terminalCommandOf(item: InboxItem, action: InboxAction = item.action): string | undefined {
   if (action.kind === "terminal") return action.command;
   if (action.kind === "owner-release") return `titan-factory shepherd owner-release ${action.repo}#${action.pr} --head ${action.headSha}`;
   if (action.kind === "hold-release") return `titan-factory shepherd release ${action.repo}#${action.pr} --head ${action.headSha} --class ${action.holdClass}`;
@@ -175,7 +175,7 @@ function TerminalAction({ item }: { item: InboxItem }): ReactNode {
         <Button variant="outline" size="sm" onPress={() => setShown(!shown)} testID={`inbox-terminal-${item.id}`}>
           <ButtonText>Run on terminal</ButtonText>
         </Button>
-        {command !== undefined ? <CopyButton command={command} /> : null}
+        {command !== undefined && canCopy() ? <CopyButton command={command} /> : null}
       </HStack>
       {shown ? <TerminalDetail command={command} reason={reason} /> : null}
     </VStack>
@@ -191,10 +191,13 @@ function TerminalDetail({ command, reason }: { command: string | undefined; reas
   );
 }
 
+/** A page served over plain http on the LAN is not a secure context, so it has no clipboard; the command still shows. */
+const canCopy = (): boolean => "clipboard" in navigator;
+
 function CopyButton({ command }: { command: string }): ReactNode {
   const [copied, setCopied] = useState(false);
   const copy = async (): Promise<void> => {
-    await navigator.clipboard?.writeText(command);
+    await navigator.clipboard.writeText(command);
     setCopied(true);
   };
   return (
