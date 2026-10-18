@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { classify } from "../classify.js";
 import type { ClassifyContext } from "../types.js";
+import { CommandRebindingError } from "./command-rebinding.js";
 import { extractCommands } from "./commands.js";
 
 // The Bash tool's own line runs in bash or zsh; a caller that does not say so gets the nested-subshell reading.
@@ -57,8 +58,6 @@ describe("a span that reads as a command stays a nested subshell", () => {
     ["((a=1;git push))", ["git push"]],
     ["((git;push))", ["git", "push"]],
     ["((git=1 push))", ["push"]],
-    ["((${x} push))", [" ${x} push", "push"]],
-    ["(($x push))", [" $x push", "push"]],
     ["((x && git push))", ["x", "git push"]],
     ["((x\ngit push))", ["x", "git push"]],
     ["((git -- push))", ["git -- push"]],
@@ -70,6 +69,10 @@ describe("a span that reads as a command stays a nested subshell", () => {
     ["((curl >f https://x))", ["curl https://x"]],
   ])("%j still reports the commands main reports", (src, expected) => {
     expect(reported(src)).toEqual(expected);
+  });
+
+  it.each(["((${x} push))", "(($x push))"])("%j refuses, since the run-time word may hold a store the math reads", (src) => {
+    expect(() => bash(src)).toThrow(CommandRebindingError);
   });
 
   it("keeps for ((;;)) as it was", () => {

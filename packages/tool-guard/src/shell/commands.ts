@@ -13,7 +13,7 @@ import { aliasCommands, type AliasTable } from "./alias-words.js";
 import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { AliasDefinitionError, definesAlias } from "./alias-definitions.js";
-import { CommandRebindingError, rebindsCommand, storesRebindingByMath } from "./command-rebinding.js";
+import { CommandRebindingError, compoundStoresRebinding, rebindsCommand, storesRebindingByMath } from "./command-rebinding.js";
 import { cutReading } from "./piped-nul.js";
 import { inlineScript, SHELLS } from "./inline-script.js";
 import type { Inline } from "./inline-script.js";
@@ -224,6 +224,7 @@ function arithmeticEnd(list: Token[], at: number, words: WordToken[], w: Walk): 
   if (end < 0 || token?.type !== "op") return -1;
   noteValues(token, words, w);
   noteValues(null, list.slice(at + 2, end - 1).filter((t) => t.type === "word"), w);
+  if (compoundStoresRebinding(token, w.scope.vars)) throw new CommandRebindingError();
   trackCompound(token, w.scope.vars);
   return end;
 }
