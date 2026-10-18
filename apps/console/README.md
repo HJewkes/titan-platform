@@ -59,6 +59,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_OWNER_WRITES` | `0` | `1` lets owner-write commands run on the LAN (see "Who may run a command"). Turning it on is an owner step. Any value but `0` or `1` is refused |
 | `TITAN_CONSOLE_INBOX_DIR` | `$TITAN_CONSOLE_STATE/inbox/deposits` | The owner-inbox spool `inbox.deposit` files into, created 0700 on the first deposit |
 | `TITAN_CONSOLE_ROUNDS_DIR` | `$TITAN_CONSOLE_STATE/rounds` | Review rounds, one `<round-id>/round.json` each, read by `rounds.list`, `rounds.get` and `approvals.flow`. `fixtures/rounds` holds synthetic ones for a browser check |
+| `TITAN_CONSOLE_INBOX_ACTIONS` | `0` | `1` lets `inbox.act` write an action record and post it to the factory (see "The inbox and its actions"). Turning it on is an owner step. Any value but `0` or `1` is refused |
 | `TITAN_CONSOLE_DECISIONS_FILE` | none | The owner's decisions file the decision log appends one-way, A/B and policy answers to (see "The decision log"). Owner config only, never taken from a request; a relative path is refused. Unset, only `answers.jsonl` is written |
 
 The active-work root is `ACTIVE_ROOT` when set. Otherwise it is the data directory
@@ -310,6 +311,44 @@ ordered. An unanswered after-answer question's recommendation is removed from `o
 `withdrawn` and `dropped`, as `rounds.get` does. A PR group's `shipBlockedBy` lists open change
 requests (free text, or a pick other than the implemented one); an unanswered question never
 blocks. hitl gates carry no `pr:` key yet (TP-2053), so a gate sits in a topic group.
+
+## The inbox and its actions
+
+`inbox.list` (`server/inbox-view.ts`) is a read: `approvals.flow`'s order joined to Shepherd's live rows, each item
+with the one action a tap takes, or the terminal command and why the console offers none. A write action comes only
+from a hitl gate joined to a live Shepherd row; a deposit never gets one.
+
+A tap is two calls (`server/inbox-actions.ts`). Both answer "inbox actions are off" until
+`TITAN_CONSOLE_INBOX_ACTIONS=1`. They act on `resolve-gate` (an approve-merge gate) and `owner-release` (an
+owner-asked hold); any other item answers `no-action` with its reason.
+
+1. `inbox.prepare({ itemId })` is a read. It re-reads the inbox and returns the read-back (repo, PR, title, head,
+   gate id or hold, and the effect in one sentence) with a `confirm` digest. The digest is the sha256 of the item
+   id, its action, its hold and the read time. The console keeps it for five minutes and accepts no confirm it did
+   not issue.
+2. `inbox.act({ itemId, confirm })` is an owner-write, so the owner admission in "Who may run a command" runs first.
+   It reads the inbox again and refuses, before anything is written or posted, when the digest no longer matches.
+   It then writes `$TITAN_CONSOLE_STATE/owner-actions/<confirm>.json` once (O_EXCL, 0600, in a 0700 dir). The
+   record holds the item, its action and read-back, the confirm, the session's `issuedAt` and the peer class,
+   never the cookie. The console posts `{ actionId }` to the factory's `POST /owner/console-action`.
+
+The factory reads the record and decides; its resolver is `owner-remote` `titan-console` on `console:inbox`, with
+the record's sha256 as the confirm event. The console pins the route's answers in `server/owner-action.ts`:
+
+| Factory answer | Owner sees |
+| --- | --- |
+| 200 `resolved` / `released` (with `stillHeld`) | "Merge approved" / "Hold released", plus any hold left |
+| 200 `already` | "Already done by this confirmation": a replay reposts the same record bytes |
+| 409 `moved` | "PR moved to `abc1234`, read again" |
+| 410 `gone`, 403 or 422 `refused` | the reason |
+| 404 | the route is not mounted: the factory has no `consoleAnswers.actionsDir` |
+| 5xx, a redirect, no answer | unreachable; the tap may be retried with the same confirm |
+
+A settled outcome is written once as `<confirm>.outcome.json`. A landed resolve or release also writes one
+decision-log row (see "The decision log"), and a replay does not write it again. The factory's
+`consoleAnswers.actionsDir` must name the same `owner-actions` dir. The factory trusts the OS account, as for
+answer-ship: a same-user process could write a record and post its id. That is no stronger than running
+`titan-factory gate resolve` from the same account, and it is not claimed to be.
 
 ## active-work reads
 

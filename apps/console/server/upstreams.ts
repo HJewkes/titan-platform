@@ -1,5 +1,6 @@
 import { stat } from "node:fs/promises";
 import os from "node:os";
+import path from "node:path";
 import { consoleLogger, probeHealth, type Logger } from "@titan-design/daemon";
 import { activeWorkClient, type ActiveWork } from "./active-work.js";
 import { brokerReader } from "./broker.js";
@@ -9,7 +10,11 @@ import { createDecisionLog, type HumanOnly } from "./decision-log.js";
 import { factoryNeeds } from "./factory.js";
 import { factoryGateAnswer } from "./gate-answer.js";
 import { createRoundListeners } from "./listeners.js";
+import { factoryOwnerAction } from "./owner-action.js";
 import { shepherdReader } from "./shepherd.js";
+
+/** Under the state dir; the factory's `consoleAnswers.actionsDir` must name the same directory. */
+export const OWNER_ACTIONS_DIR = "owner-actions";
 
 export const UPSTREAM_IDS = ["work", "agents", "sessions"] as const;
 export type UpstreamId = (typeof UPSTREAM_IDS)[number];
@@ -131,5 +136,6 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
       answer: factoryGateAnswer(config.factoryPort),
       logger,
     }),
+    inboxActions: { enabled: config.inboxActions ?? false, actionsDir: path.join(config.stateDir, OWNER_ACTIONS_DIR), client: factoryOwnerAction(config.factoryPort) },
   };
 }
