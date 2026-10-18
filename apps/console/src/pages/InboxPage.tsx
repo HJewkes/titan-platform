@@ -67,7 +67,7 @@ const VERB: Record<InboxAction["kind"], string> = {
 /** Navigation stays a link; a write the console does not take yet is shown as its terminal command. */
 const isNavigation = (action: InboxAction): boolean => action.kind === "open" || action.kind === "open-round";
 
-/** The writes `inbox.act` takes today; it mirrors the server's `isConsoleAction` in inbox-actions.ts. */
+/** The writes the page taps through `inbox.act`; `answer-chat` waits on a sheet that takes the answer's text. */
 const CONSOLE_TAPS: ReadonlySet<InboxAction["kind"]> = new Set(["resolve-gate", "owner-release"]);
 
 function followEvidence(evidence: string): void {
