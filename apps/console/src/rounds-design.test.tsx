@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
@@ -7,7 +6,7 @@ import { errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { FIXTURE_ROUNDS as source } from "../server/round-fixtures.js";
 import { getFrame, listFrames } from "../server/round-frames.js";
-import { getRound, readManifest, type RoundDetail } from "../server/rounds.js";
+import { getRound, type RoundDetail } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
 
@@ -91,7 +90,14 @@ async function renderDesign(options: { detail?: Partial<RoundDetail>; listing?: 
   return { calls };
 }
 
-const frameKeys = ({ calls }: Rendered): unknown[] => calls.filter((call) => call.name === "rounds.frame").map((call) => (call.args as { key: string }).key);
+const keyOf = (args: unknown): unknown => (typeof args === "object" && args !== null && "key" in args ? args.key : undefined);
+const frameKeys = ({ calls }: Rendered): unknown[] => calls.filter((call) => call.name === "rounds.frame").map((call) => keyOf(call.args));
+
+async function designRound(): Promise<Extract<RoundDetail, { valid: true }>> {
+  const round = await getRound(source, DESIGN);
+  if (!round.valid) throw new Error(round.reason);
+  return round;
+}
 const sendButton = (): HTMLElement => screen.getByRole("button", { name: "Send answers" });
 
 describe("a design round", () => {
@@ -137,7 +143,7 @@ describe("a design round", () => {
     fireEvent.click(sendButton());
 
     await screen.findByText("Answers sent");
-    const manifestSha256 = ((await getRound(source, DESIGN)) as Extract<RoundDetail, { valid: true }>).manifestSha256;
+    const { manifestSha256 } = await designRound();
     expect(calls.find((call) => call.name === "rounds.submit")?.args).toEqual({
       id: DESIGN,
       manifestSha256,
@@ -152,9 +158,10 @@ describe("a design round", () => {
     expect(screen.getByText("Recommendations show once the round is answered.")).toBeTruthy();
     cleanup();
 
-    const read = await readManifest(path.join(source.dir, DESIGN));
-    if (!read.parsed.ok) throw new Error(read.parsed.reason);
-    await renderDesign({ detail: { status: "sent", recommendationsWithheld: false, manifest: read.parsed.manifest } });
+    const { manifest } = await designRound();
+    const recommendation = { answer: "Filled", rationale: "A filled dot reads at a glance on a phone.", confidence: 0.8, by: "fixture-agent" };
+    const questions = manifest.questions.map((each) => (each.id === "beacon-fill-pick" ? { ...each, recommendation } : each));
+    await renderDesign({ detail: { status: "sent", recommendationsWithheld: false, manifest: { ...manifest, questions } } });
 
     expect(screen.getByText("Recommended: Filled (80%, fixture-agent)")).toBeTruthy();
     expect(screen.getByText("Answers sent")).toBeTruthy();

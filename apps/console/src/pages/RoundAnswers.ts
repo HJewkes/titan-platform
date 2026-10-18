@@ -2,7 +2,7 @@ import type { ConsoleCommands } from "../../server/commands.js";
 import type { Manifest, Question } from "../../server/round-schema.js";
 import type { QuestionAnswer } from "./RoundQuestion.js";
 
-export type SubmittedAnswer = ConsoleCommands["rounds.submit"]["args"]["answers"][number];
+type SubmittedAnswer = ConsoleCommands["rounds.submit"]["args"]["answers"][number];
 
 /** The page's answers as `rounds.submit` takes them; an empty pick-many or blank text is no answer. */
 export function submittedAnswers(questions: readonly Question[], answers: Record<string, QuestionAnswer>): SubmittedAnswer[] {
