@@ -1,3 +1,4 @@
+import { arrayElements } from "./declarations.js";
 import { NAMED_FD_RE } from "./lexer.js";
 import type { RedirectToken, WordToken } from "./lexer.js";
 import { DECLARERS } from "./name-slots.js";
@@ -22,7 +23,7 @@ const SUBSTRING_OPENER_RE = /\$\{[!#]?(?:[A-Za-z_]\w*(?:\[[^\]]*\])?|[@*]|\d+):(
  * Every place a shell evaluates math inside words and redirects, apart from a command whose operands are wholly math.
  * One list serves `storesRebindingByMath` and `arithmeticHookedIn`, so a new place is added once: the body of a `$(( ))`
  * or `$[ ]`, a subscript of an element read or named, a substring offset or length, and a descriptor variable's
- * subscript, in a run-time word, a redirect target, or an unquoted heredoc body.
+ * subscript, in a run-time word, a compound array's element, a redirect target, or an unquoted heredoc body.
  */
 export function mathPlaces(words: WordToken[], redirects: RedirectToken[]): MathPlace[] {
   const declarer = words.findIndex((w) => !w.dynamic && !w.quoted && DECLARERS.has(w.value));
@@ -30,6 +31,9 @@ export function mathPlaces(words: WordToken[], redirects: RedirectToken[]): Math
   const from = (w: WordToken, i: number) => (declarer >= 0 && i > declarer ? Infinity : quotedAt(w));
   const sources = [
     ...words.map((w, i) => (w.dynamic ? spansOf(w.value, from(w, i), false) : literalElementWrite(w, from(w, i)))),
+    ...words.map(compoundElements),
+    // An array assignment the walk cannot fold leaves its elements as words of their own: `a=(x <(f) [S]=1)`.
+    ...words.map(elementKey),
     ...redirects.flatMap((r) => (r.target?.dynamic ? [spansOf(r.target.value, quotedAt(r.target), false)] : [])),
     ...redirects.flatMap((r) => (r.body && r.target?.quoted !== true ? [spansOf(r.body, 0, false)] : [])),
   ];
@@ -43,6 +47,17 @@ const quotedAt = (w: WordToken): number => w.quotedAt ?? (w.quoted ? 0 : Infinit
 /** The subscript of a word with no expansion in it that writes an element, which is math all the same. */
 const literalElementWrite = (w: WordToken, quotedFrom: number): string[] => (ELEMENT_WRITE_RE.test(w.value) ? spansOf(w.value, quotedFrom, true) : []);
 
+/** A compound array's elements, which the one word standing for it keeps out of its value: `a=(x [S]=1 $(( S )))`. */
+const compoundElements = (w: WordToken): string[] =>
+  (arrayElements.get(w) ?? []).flatMap((e) => [...elementKey(e), ...(e.dynamic ? spansOf(e.value, quotedAt(e), false) : [])]);
+
+/** The key of a `[KEY]=value` element, math in an indexed array, while its `[` is unquoted: `a=([i+1]=x)`. */
+function elementKey(e: WordToken): string[] {
+  if (!e.value.startsWith("[") || quotedAt(e) === 0) return [];
+  const end = closeAt(e.value, 1, "[", "]", 1);
+  return /^\+?=/.test(e.value.slice(end + 1)) ? [e.value.slice(1, end)] : [];
+}
+
 /**
  * The outermost spans: an opener inside an earlier span is read with it, which keeps the scan linear. The shell takes a
  * word as an element assignment while its name and `[` are unquoted, so quoting from `quotedFrom` on keeps the subscript.
@@ -54,8 +69,10 @@ function spansOf(text: string, quotedFrom: number, elementOnly: boolean): string
   const openers = [...expansions, ...(assigned ? [assigned] : [])];
   const spans: string[] = [];
   let past = 0;
-  for (const opener of openers.sort((x, y) => x.index - y.index)) {
-    const from = opener.index + opener[0].length;
+  // By where each span starts: `${b:commands[y]+=0}` opens a substring at `:` before the subscript at `[`.
+  const start = (opener: RegExpExecArray) => opener.index + opener[0].length;
+  for (const opener of openers.sort((x, y) => start(x) - start(y))) {
+    const from = start(opener);
     if (from <= past) continue;
     const [open, close, depth] = closers(opener[0]);
     past = closeAt(text, from, open, close, depth);
