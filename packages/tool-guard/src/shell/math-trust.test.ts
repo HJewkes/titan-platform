@@ -35,6 +35,7 @@ describe("math over a name the line never writes", () => {
     ["a word set after a function that reads it is defined", "f() { echo $(( $e )); }; e='commands[y]=0'; f"],
     ["a word eval sets", "eval 'e=$(cat f)'; echo $(( $e ))"],
     ["a word a trap sets", "trap 'e=$(cat f)' DEBUG; echo $(( $e ))"],
+    ["a word the line sets, read in eval text that writes a name of its own", "e='commands[y]=0'; eval 'z=1; echo $(( $e ))'"],
     ["any word after run-time eval text", 'eval "$x"; echo $(( $e ))'],
     ["any word after a sourced file", "source ./env.sh; echo $(( $e ))"],
     ["any word after a run-time command word", "$c e; echo $(( $e ))"],
@@ -141,6 +142,7 @@ describe("the line's writes", () => {
     ["many writes to one name", (n: number) => "e=1; ".repeat(n)],
     ["a call of a defined function with many words", (n: number) => `f() { :; }; f ${"x ".repeat(n)}`],
     ["many words that name a defined function", (n: number) => `f() { :; }; echo ${"f ".repeat(n)}`],
+    ["a run of subscript openers that one far ] closes", (n: number) => `echo "${"$${x[".repeat(n)}]"`],
   ])("are read in linear time: %s", (_name, build) => {
     expectLinearTime((n) => noteWrites(build(n)), 8_000);
   }, LINEARITY_TIMEOUT_MS);

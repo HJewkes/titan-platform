@@ -4,6 +4,8 @@ import { extractCommands } from "./commands.js";
 import { writesHookedParam } from "./hooked-params.js";
 import { tokenize } from "./lexer.js";
 import type { RedirectToken, WordToken } from "./lexer.js";
+import { mathPlaces } from "./math-places.js";
+import { expectLinearTime, LINEARITY_TIMEOUT_MS } from "./test-linearity.js";
 import { unwrap } from "./unwrap.js";
 
 const hooked = (line: string) => {
@@ -105,4 +107,14 @@ describe("a substring offset holding a subscript", () => {
   it("passes zsh's alternate value, which is no offset", () => {
     expect(() => extractCommands("echo ${b:++commands[y]}; git push")).not.toThrow();
   });
+});
+
+describe("finding math places", () => {
+  it("reads a run of substring openers that one far ] closes in linear time", () => {
+    const words = (n: number) => tokenize(`echo "${"$${x[".repeat(n)}]"`).filter((t): t is WordToken => t.type === "word");
+    expectLinearTime((n) => {
+      const line = words(n);
+      return () => mathPlaces(line, []);
+    }, 16_000);
+  }, LINEARITY_TIMEOUT_MS);
 });
