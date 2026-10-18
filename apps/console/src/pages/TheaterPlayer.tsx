@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Alert, BreadcrumbItem, Breadcrumbs, EmptyState, HStack, Heading, Link, Pill, Spinner, Typography, VStack } from "@titan-design/react-ui";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
+import { ScrubMarkers } from "./ScrubMarkers.js";
+import { TheaterComment, formatAt } from "./TheaterComment.js";
 import { VERDICT_LABELS, VideoBadges, type VideoRow } from "./TheaterPage.js";
 
 type Note = ConsoleCommands["videos.notes"]["result"]["notes"][number];
@@ -19,12 +21,6 @@ export function startTimeOf(query: string | undefined): number | null {
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
 }
 
-function formatAt(seconds: number): string {
-  const whole = Math.floor(seconds);
-  const minutes = Math.floor(whole / 60);
-  return `${minutes}:${String(whole % 60).padStart(2, "0")}`;
-}
-
 /** One video with its captions and the owner's notes; `?t=` opens it paused at that time. */
 export function TheaterPlayer({ id, query }: { id: string; query?: string | undefined }): ReactNode {
   const list = useQuery("videos.list");
@@ -38,6 +34,7 @@ export function TheaterPlayer({ id, query }: { id: string; query?: string | unde
 function Player({ video, start }: { video: VideoRow; start: number | null }): ReactNode {
   const ref = useRef<HTMLVideoElement>(null);
   const seek = usePendingSeek(ref, start);
+  const duration = useDuration(ref);
   const media = `/media/videos/${encodeURIComponent(video.id)}`;
   return (
     <Framed title={video.title}>
@@ -48,6 +45,8 @@ function Player({ video, start }: { video: VideoRow; start: number | null }): Re
       <video ref={ref} src={media} controls playsInline preload="metadata" className="block h-auto w-full max-w-3xl rounded bg-black" data-testid="theater-video">
         {video.captions ? <track kind="captions" src={`${media}/captions`} srcLang="en" label="Captions" default /> : null}
       </video>
+      <NoteMarkers videoId={video.id} duration={duration} seek={seek} />
+      <TheaterComment videoId={video.id} videoRef={ref} />
       <NotesList videoId={video.id} seek={seek} />
     </Framed>
   );
@@ -80,6 +79,24 @@ function usePendingSeek(ref: RefObject<HTMLVideoElement | null>, start: number |
     },
     [ref],
   );
+}
+
+function useDuration(ref: RefObject<HTMLVideoElement | null>): number {
+  const [duration, setDuration] = useState(Number.NaN);
+  useEffect(() => {
+    const element = ref.current;
+    if (element === null) return undefined;
+    const read = (): void => setDuration(element.duration);
+    read();
+    element.addEventListener("durationchange", read);
+    return () => element.removeEventListener("durationchange", read);
+  }, [ref]);
+  return duration;
+}
+
+function NoteMarkers({ videoId, duration, seek }: { videoId: string; duration: number; seek: Seek }): ReactNode {
+  const notes = useQuery("videos.notes", { videoId });
+  return notes.data === undefined ? null : <ScrubMarkers notes={notes.data.notes} duration={duration} seek={seek} />;
 }
 
 function Framed({ title, children }: { title: string; children: ReactNode }): ReactNode {

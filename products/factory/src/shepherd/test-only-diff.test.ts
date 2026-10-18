@@ -1,7 +1,7 @@
 import { CONFIG_PATH } from "@titan-design/fix-proof";
 import { fakeGitHub, fakeSha, githubPort, PR_FILES_CAP, type GitHubPort, type PrFile } from "@titan-design/github";
 import { describe, expect, it } from "vitest";
-import { testOnlyDiff } from "./test-only-diff.js";
+import { MAX_PROBED_PATHS, testOnlyDiff } from "./test-only-diff.js";
 
 const REPO = "o/r";
 const REPO_CONFIG = JSON.stringify({
@@ -10,6 +10,7 @@ const REPO_CONFIG = JSON.stringify({
 });
 
 const modified = (path: string): PrFile => ({ path, status: "modified" });
+const removed = (path: string): PrFile => ({ path, status: "removed" });
 
 const HEAD = fakeSha("head");
 const MERGE_BASE = fakeSha("merge-base");
@@ -25,6 +26,19 @@ function seedConfig(fake: ReturnType<typeof fakeGitHub>, ref: string, content: s
   if (content !== null) fake.files.set(`${ref}:${CONFIG_PATH}`, { content, blobSha: fakeSha(content) });
 }
 
+function seedBlob(fake: ReturnType<typeof fakeGitHub>, ref: string, path: string): void {
+  fake.files.set(`${ref}:${path}`, { content: "blob", blobSha: fakeSha(`${ref}:${path}`) });
+}
+
+/** Each listed path's blob where GitHub would hold it: a modified file at both ends, an added one at the head, a removed one at the merge base. */
+function seedBlobs(fake: ReturnType<typeof fakeGitHub>, files: readonly PrFile[]): void {
+  for (const file of files) {
+    if (file.status !== "removed") seedBlob(fake, HEAD, file.path);
+    if (file.status !== "added" && file.status !== "renamed" && file.status !== "copied") seedBlob(fake, MERGE_BASE, file.path);
+    if (file.status === "renamed" && file.previousPath !== undefined) seedBlob(fake, MERGE_BASE, file.previousPath);
+  }
+}
+
 function sceneFake(files: PrFile[], options: SceneOptions = {}) {
   const fake = fakeGitHub();
   const baseRef = options.baseRef ?? "main";
@@ -36,11 +50,21 @@ function sceneFake(files: PrFile[], options: SceneOptions = {}) {
   seedConfig(fake, MERGE_BASE, baseConfig);
   seedConfig(fake, "main", options.tipConfig === undefined ? baseConfig : options.tipConfig);
   if (options.parentConfig !== undefined) seedConfig(fake, baseRef, options.parentConfig);
+  seedBlobs(fake, files);
   return fake;
 }
 
 const scene = (files: PrFile[], options: SceneOptions = {}) => githubPort(sceneFake(files, options).wire);
 const testAndSource = [modified("packages/x/src/a.test.ts"), modified("packages/x/src/x.ts")];
+const RUNTIME_CONFIG = JSON.stringify({ ...JSON.parse(REPO_CONFIG), runtime: ["packages/agent-protocol/fixtures/**", "apps/console/fixtures/**"] });
+
+/** A port whose contents read of `path` at `ref` fails the way gh-cli does on an entry GitHub returns without inline base64. */
+function gitlinkAt(port: GitHubPort, path: string, ref: string): GitHubPort {
+  return {
+    ...port,
+    getFile: (repo, read, at) => (read === path && at === ref ? Promise.reject(new Error(`${path} is undefined-encoded; only files GitHub returns inline are supported`)) : port.getFile(repo, read, at)),
+  };
+}
 
 describe("testOnlyDiff", () => {
   it("reads Z7's tests-and-changeset diff as test-only", async () => {
@@ -147,6 +171,95 @@ describe("testOnlyDiff", () => {
     fake.compares.set(`main...${HEAD}`, { mergeBaseSha: "main", files: [] });
 
     expect(await testOnlyDiff(githubPort(fake.wire), REPO, 1)).toMatchObject({ kind: "unread", reason: expect.stringContaining("not a commit sha") });
+  });
+
+  it("flags a changeset-only PR", async () => {
+    const port = scene([{ path: ".changeset/x.md", status: "added" }]);
+
+    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "flagged", reason: "the PR adds or changes no test", paths: [] });
+  });
+
+  it("flags a PR that deletes a test and names it", async () => {
+    const port = scene([{ path: "products/factory/src/a.test.ts", status: "added" }, removed("products/factory/src/b.test.ts")]);
+
+    expect(await testOnlyDiff(port, REPO, 1)).toEqual({
+      kind: "flagged",
+      reason: "the PR deletes tests products/factory/src/b.test.ts",
+      paths: ["products/factory/src/b.test.ts"],
+    });
+  });
+
+  it("flags a diff that has no test under one of the two configs", async () => {
+    const port = scene([modified("packages/x/src/a.test.ts")], { tipConfig: JSON.stringify({ ...JSON.parse(REPO_CONFIG), tests: ["apps/**/*.test.ts"], carry: ["**/*.test.ts"] }) });
+
+    expect(await testOnlyDiff(port, REPO, 1)).toMatchObject({ kind: "flagged", reason: "the PR adds or changes no test" });
+  });
+
+  it("reads a published fixture as source under a runtime glob", async () => {
+    const port = scene([modified("packages/x/src/a.test.ts"), modified("packages/agent-protocol/fixtures/round.json")], { baseConfig: RUNTIME_CONFIG });
+
+    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "source", paths: ["packages/agent-protocol/fixtures/round.json"] });
+  });
+
+  it("reads a gitlink under a carry path as unread", async () => {
+    const files = [modified("packages/x/src/a.test.ts"), modified("packages/x/src/fixtures/vendor")];
+
+    const diff = await testOnlyDiff(gitlinkAt(scene(files), "packages/x/src/fixtures/vendor", HEAD), REPO, 1);
+
+    expect(diff).toEqual({ kind: "unread", reason: `"packages/x/src/fixtures/vendor" at ${HEAD} is not a regular file GitHub returns inline: a gitlink, a large file or a read error` });
+  });
+
+  it("reads a removed gitlink as unread", async () => {
+    const files = [modified("packages/x/src/a.test.ts"), removed("packages/x/src/fixtures/vendor")];
+
+    const diff = await testOnlyDiff(gitlinkAt(scene(files), "packages/x/src/fixtures/vendor", MERGE_BASE), REPO, 1);
+
+    expect(diff).toMatchObject({ kind: "unread", reason: expect.stringContaining(`"packages/x/src/fixtures/vendor" at ${MERGE_BASE}`) });
+  });
+
+  it("reads a rename's old gitlink as unread", async () => {
+    const files: PrFile[] = [modified("packages/x/src/a.test.ts"), { path: "packages/x/src/fixtures/new", previousPath: "packages/x/src/fixtures/old", status: "renamed" }];
+
+    const diff = await testOnlyDiff(gitlinkAt(scene(files), "packages/x/src/fixtures/old", MERGE_BASE), REPO, 1);
+
+    expect(diff).toMatchObject({ kind: "unread", reason: expect.stringContaining(`"packages/x/src/fixtures/old" at ${MERGE_BASE}`) });
+  });
+
+  it("reads a removed carry file from the merge base, where it still exists", async () => {
+    const port = scene([modified("packages/x/src/a.test.ts"), removed("packages/x/src/fixtures/old.json")]);
+
+    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "test-only" });
+  });
+
+  it("reads a listed path with no blob at the head as unread", async () => {
+    const fake = sceneFake([modified("packages/x/src/a.test.ts"), modified("packages/x/src/fixtures/a.json")]);
+    fake.files.delete(`${HEAD}:packages/x/src/fixtures/a.json`);
+
+    expect(await testOnlyDiff(githubPort(fake.wire), REPO, 1)).toMatchObject({ kind: "unread", reason: expect.stringContaining('"packages/x/src/fixtures/a.json"') });
+  });
+
+  it("refuses to probe past the path cap and makes no contents call for it", async () => {
+    const fake = sceneFake(Array.from({ length: MAX_PROBED_PATHS + 1 }, (_, n) => modified(`packages/x/src/t${n}.test.ts`)));
+
+    const diff = await testOnlyDiff(githubPort(fake.wire), REPO, 1);
+
+    expect(diff).toMatchObject({ kind: "unread", reason: expect.stringContaining(`over the ${MAX_PROBED_PATHS}`) });
+    expect(fake.calls.filter((call) => call === "getContent")).toHaveLength(2);
+  });
+
+  it("probes a diff at the path cap", async () => {
+    const files = Array.from({ length: MAX_PROBED_PATHS }, (_, n) => modified(`packages/x/src/t${n}.test.ts`));
+
+    expect(await testOnlyDiff(scene(files), REPO, 1)).toEqual({ kind: "test-only" });
+  });
+
+  it("fails closed when the PR's head is not a commit sha", async () => {
+    const fake = sceneFake([modified("packages/x/src/a.test.ts")]);
+    fake.pushHead(1, "feature");
+    fake.compares.set("main...feature", { mergeBaseSha: MERGE_BASE, files: [] });
+    seedBlob(fake, "feature", "packages/x/src/a.test.ts");
+
+    expect(await testOnlyDiff(githubPort(fake.wire), REPO, 1)).toMatchObject({ kind: "unread", reason: "the PR's head is not a commit sha" });
   });
 
   it("fails closed on a list at GitHub's file cap", async () => {

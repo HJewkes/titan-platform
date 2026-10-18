@@ -12,5 +12,11 @@
     "**/*.test-helpers.ts",
     "**/*.fixture.ts"
   ],
+  "runtime": [
+    "packages/agent-protocol/fixtures/**",
+    "apps/console/fixtures/**",
+    ".codewatch/**",
+    ".github/**"
+  ],
   "build": "pnpm build"
 }

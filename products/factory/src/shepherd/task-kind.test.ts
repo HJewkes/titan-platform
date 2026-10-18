@@ -42,6 +42,12 @@ describe("testOnlyMoveRefusal, the guard once the kind is live", () => {
     expect(testOnlyMoveRefusal("correctness", undefined)).toMatch(/without reading the PR's diff/);
   });
 
+  it("refuses correctness to test-only on a flagged diff and gives its reason", () => {
+    const flagged = { kind: "flagged", reason: "the PR deletes tests packages/x/src/b.test.ts", paths: ["packages/x/src/b.test.ts"] } as const;
+
+    expect(testOnlyMoveRefusal("correctness", flagged)).toBe("kind correctness cannot move to test-only: the PR deletes tests packages/x/src/b.test.ts");
+  });
+
   it("needs no diff to tighten an ungated kind into test-only", () => {
     expect(testOnlyMoveRefusal("feature", undefined)).toBeUndefined();
   });
