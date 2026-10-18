@@ -1,15 +1,16 @@
 import { ParseError } from "./lexer.js";
 import { mentionsAlias } from "./alias-mention.js";
 import { tokenizeLine } from "./line-tokens.js";
-import type { RedirectToken, Token, WordToken } from "./lexer.js";
+import { changeDir, folded, freshWalk, literalEnv, nestedLists, walkSure } from "./command-env.js";
+import { lineBudget } from "./line-budget.js";
+import type { OpToken, RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { xargsStdins } from "./piped-stdin.js";
 import { emitReadings, endCommand, forkWalk, type Emission } from "./reading-hand-on.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed } from "./case-script.js";
-import { foldCommandWords } from "./case-literal.js";
 import { aliasCommands, type AliasTable } from "./alias-words.js";
-import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackVars } from "./vars.js";
+import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { AliasDefinitionError, definesAlias } from "./alias-definitions.js";
 import { CommandRebindingError, rebindsCommand } from "./command-rebinding.js";
@@ -25,11 +26,11 @@ import type { Vars } from "./vars.js";
 import { newMarks, noteRedirect, recordValue, settle } from "./value-marks.js";
 import { noteCommand, noteWord } from "./stored-words.js";
 import type { ValueMarks } from "./value-marks.js";
-import { MAX_UNSURE_WORDS, ReadingLimitError, SPLICED_WEIGHT, unsureReadings, ValueWalkError } from "./unsure-readings.js";
+import { ReadingLimitError, unsureReadings } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
+import { arithmeticSpanEnd, splitsClose } from "./arith-span.js";
 
 const MAX_DEPTH = 8;
-const RUNNERS = new Set([...SHELLS, "eval", "emulate", "find"]);
 
 /**
  * How a command was reached: a `( )` subshell or a substitution, a shell's `-c` string or a wrapper's
@@ -92,6 +93,8 @@ export interface ExtractOptions {
   joinsConditional?: boolean;
   /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
   onScript?: (text: string) => void;
+  /** The text is the Bash tool's own line, run by bash or zsh, where `((x))` may be arithmetic; off, it reads as nested subshells that run `x`. */
+  arithmetic?: boolean;
 }
 
 interface Scope {
@@ -126,6 +129,8 @@ interface Walk {
   /** What the line stores and whether it evaluates arithmetic, shared by every walk of it. */
   marks: ValueMarks;
   onScript: ((text: string) => void) | null;
+  /** Whether this walk's `((` may read as arithmetic: only the line itself and its substitutions, never a nested shell's text. */
+  arithmetic: boolean;
 }
 
 /**
@@ -140,37 +145,21 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   const unsure = lineBudget(src, options);
   const w: Walk = {
     scope,
-    stack: [],
+    ...freshWalk(null, TOP_DESCRIPTORS),
     out,
     home: options.home ?? null,
     depth: 0,
-    stdin: null,
-    shellStdin: [],
-    descriptors: TOP_DESCRIPTORS,
-    prev: null,
-    chain: { start: null },
-    negated: false,
     foldCase,
-    walked: null,
     aliases: options.aliases ?? null,
     unsure,
     marks: newMarks(),
     onScript: options.onScript ?? null,
+    arithmetic: options.arithmetic === true && !splitsClose(src),
   };
   // Only the Bash tool's own line has a known reader, so only it may join a `[[`'s operators.
   walk(tokenizeLine(src, options.joinsConditional === true && !mentionsAlias(src)), observed(w));
   settle(w.marks);
   return out;
-}
-
-/** The line's budget of `unsure` reading words and spliced text, shared by every walk of it. */
-function lineBudget(src: string, options: ExtractOptions): UnsureBudget {
-  return {
-    left: MAX_UNSURE_WORDS,
-    splicedLeft: SPLICED_WEIGHT * src.length,
-    decides: decider(options.guarded),
-    stopPastCap: options.stopPastCap === true,
-  };
 }
 
 function walk(tokens: Token[], w: Walk): void {
@@ -183,25 +172,69 @@ function walkFrom(list: Token[], start: number, w: Walk): void {
   const forks: Array<() => void> = [];
   let words: WordToken[] = [];
   let redirects: RedirectToken[] = [];
-  for (const [at, token] of list.slice(start).entries()) {
+  let arithEnd = -1;
+  for (const [offset, token] of list.slice(start).entries()) {
+    const at = start + offset;
+    if (at <= arithEnd) {
+      inArithmetic(token, at === arithEnd, w);
+      continue;
+    }
+    const end = arithmeticEnd(list, at, words, w);
+    if (end > 0) {
+      arithEnd = end;
+      continue;
+    }
     if (token.type === "op") {
-      noteValues(token, words, w);
-      const { readings, disputed } = emit(words, redirects, w, token.value);
-      const walks = [w, ...disputed.map((scope) => forkWalk(w, scope, (fork, vars) => observeStores(vars, (value) => hear(fork, value))))];
-      for (const each of walks) endCommand(each, token, words, redirects, readings, (op) => scope(op, each));
-      forks.push(...walks.slice(1).map((fork) => () => walkFrom(list, start + at + 1, fork)));
+      forks.push(...endAt(list, at, token, { words, redirects }, w));
       words = [];
       redirects = [];
       continue;
     }
     if (token.type === "word") words.push(noteWord(token, w.marks));
-    if (token.type === "redirect") noteRedirect(w.marks, token);
-    redirects = addRedirect(redirects, token);
+    redirects = gather(redirects, token, w);
     for (const sub of nestedLists(token)) walk(sub, child(w, [...w.scope.wrapping, "subshell"]));
   }
   noteValues(null, words, w);
   emit(words, redirects, w, null);
   for (const fork of forks) fork();
+}
+
+function gather(redirects: RedirectToken[], token: Token, w: Walk): RedirectToken[] {
+  if (token.type === "redirect") noteRedirect(w.marks, token);
+  return addRedirect(redirects, token);
+}
+
+/** An operator ends the command gathered before it in each walk its readings leave; returns the walks of the rest of the list. */
+function endAt(list: Token[], at: number, token: OpToken, gathered: { words: WordToken[]; redirects: RedirectToken[] }, w: Walk): Array<() => void> {
+  const { words, redirects } = gathered;
+  noteValues(token, words, w);
+  const { readings, disputed } = emit(words, redirects, w, token.value);
+  const walks = [w, ...disputed.map((scope) => forkWalk(w, scope, (fork, vars) => observeStores(vars, (value) => hear(fork, value))))];
+  for (const each of walks) endCommand(each, token, words, redirects, readings, (op) => scope(op, each));
+  return walks.slice(1).map((fork) => () => walkFrom(list, at + 1, fork));
+}
+
+/**
+ * The index of the `)` that ends the arithmetic command a marked `(` opens, or -1 when the token opens none. It
+ * still notes what the command evaluates and writes, in the current shell.
+ */
+function arithmeticEnd(list: Token[], at: number, words: WordToken[], w: Walk): number {
+  const token = list[at];
+  const end = arithmeticSpanEnd(list, at, words, w.arithmetic);
+  if (end < 0 || token?.type !== "op") return -1;
+  noteValues(token, words, w);
+  noteValues(null, list.slice(at + 2, end - 1).filter((t) => t.type === "word"), w);
+  trackCompound(token, w.scope.vars);
+  return end;
+}
+
+/** A token of an arithmetic command runs nothing, but a substitution in it does; its `)` leaves the shell as it was. */
+function inArithmetic(token: Token, last: boolean, w: Walk): void {
+  if (token.type === "word") noteWord(token, w.marks);
+  for (const sub of nestedLists(token)) walk(sub, child(w, [...w.scope.wrapping, "subshell"]));
+  if (!last) return;
+  Object.assign(w, { prev: ")", negated: false, chain: { start: ")" }, stdin: null, shellStdin: [] });
+  trackCompound(token, w.scope.vars);
 }
 
 /** Notes what a command evaluates and stores, before it runs. */
@@ -223,24 +256,9 @@ function observed(w: Walk): Walk {
   return w;
 }
 
-/** A substitution the lexer rejects while it is walked leaves the line unchecked, which the hook refuses. */
-function walkSure(walkText: () => void): void {
-  try {
-    walkText();
-  } catch (error) {
-    throw error instanceof ParseError ? new ValueWalkError() : error;
-  }
-}
-
-function nestedLists(token: Token): Token[][] {
-  if (token.type === "redirect") return [...(token.target?.subs ?? []), ...token.subs];
-  return token.type === "op" ? [] : token.subs;
-}
-
 function child(w: Walk, wrapping: Wrapping[], descriptors = w.descriptors): Walk {
   const scope = { dir: w.scope.dir, vars: childVars(w.scope.vars), wrapping };
-  const fresh = { stack: [], depth: w.depth + 1, stdin: stdinText(descriptors), shellStdin: [], descriptors, prev: null, chain: { start: null }, negated: false, walked: null };
-  return observed({ ...w, scope, ...fresh });
+  return observed({ ...w, scope, ...freshWalk(stdinText(descriptors), descriptors), depth: w.depth + 1 });
 }
 
 function scope(op: string, w: Walk): void {
@@ -274,11 +292,6 @@ function emitReading(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Wa
 
 function walkAdded(runs: Unwrapped[], redirects: RedirectToken[], w: Walk, next: string | null): void {
   addedReading(w, (copy) => runs.forEach((reading) => run(reading, redirects, copy, next)));
-}
-
-/** A dynamic or guarded command word, or one that runs more commands: shell text, a `.sh` script, `xargs` or `find -exec`. */
-function decider(guarded: ReadonlySet<string> | undefined): (cmd: Unwrapped) => boolean {
-  return (cmd) => cmd.name === null || cmd.xargs !== undefined || cmd.script !== undefined || RUNNERS.has(cmd.name) || cmd.name.endsWith(".sh") || (guarded?.has(cmd.name) ?? true);
 }
 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, pattern = false): void {
@@ -354,22 +367,7 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descrip
     w.onScript?.(text);
     // A shell's arguments and input become its positional parameters and what its `read` stores.
     if (script.wrap !== "eval") w.marks.opaque = true;
-    // Which shell reads nested text is not known (a function, a PATH entry or a hash can rebind the runner's name), so it never joins.
-    walk(tokenizeLine(text, false), child(w, [...wrapping, script.wrap], descriptors));
+    // A nested shell's text keeps the nested-subshell reading and never joins a `[[`: which shell reads it is not known (it may be dash, or the runner's name may be rebound).
+    walk(tokenizeLine(text, false), { ...child(w, [...wrapping, script.wrap], descriptors), arithmetic: false });
   }
-}
-
-function folded(words: WordToken[], w: Walk): WordToken[] {
-  return w.foldCase ? foldCommandWords(words) : words;
-}
-
-function literalEnv(cmd: Unwrapped): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const [name, value, kind] of cmd.assigned) if (value !== null && !kind) env[name] = value;
-  return env;
-}
-
-function changeDir(dir: string | null, word: WordToken | undefined, home: string | null): string | null {
-  if (!word) return home;
-  return word.value === "-" ? null : resolvePath(dir, word, home);
 }
