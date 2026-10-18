@@ -48,8 +48,7 @@ interface ExplainRoute {
   items: string[];
 }
 
-const spokenLater = (beats: readonly PaceBeat[], index: number): Set<string> => {
-  const { chapter } = beats[index];
+const spokenLater = (beats: readonly PaceBeat[], index: number, chapter: string): Set<string> => {
   const later = beats.slice(index + 1).filter((b) => b.chapter === chapter);
   return new Set(later.flatMap((b) => [...contentTerms(b.spoken)]));
 };
@@ -58,17 +57,17 @@ const spokenLater = (beats: readonly PaceBeat[], index: number): Set<string> => 
 // of the count rather than scored as named only or as explained.
 const measurable = (beat: PaceBeat): string[] => beat.newItems.map((i) => i.label).filter((l) => contentTerms(l).size > 0);
 
-function beatRoute(beats: readonly PaceBeat[], index: number): ExplainRoute | undefined {
-  const labels = measurable(beats[index]);
+function beatRoute(beats: readonly PaceBeat[], beat: PaceBeat, index: number): ExplainRoute | undefined {
+  const labels = measurable(beat);
   if (labels.length < MIN_NEW_ITEMS) return undefined;
-  const clauses = clausesOf(beats[index].spoken);
+  const clauses = clausesOf(beat.spoken);
   const labelTerms = new Set(labels.flatMap((l) => [...contentTerms(l)]));
-  const later = spokenLater(beats, index);
+  const later = spokenLater(beats, index, beat.chapter);
   const glossed = labels.map((label) => ({ label, gloss: itemGloss(label, clauses, labelTerms) }));
   const namedOnly = glossed.filter(({ label, gloss }) => gloss < MIN_GLOSS_TERMS && ![...contentTerms(label)].every((t) => later.has(t)));
   const meanGloss = glossed.reduce((sum, g) => sum + g.gloss, 0) / glossed.length;
   const routed = namedOnly.length * 2 >= glossed.length && meanGloss < MAX_MEAN_GLOSS;
-  return routed ? { beat: beats[index].id, items: namedOnly.map((g) => g.label) } : undefined;
+  return routed ? { beat: beat.id, items: namedOnly.map((g) => g.label) } : undefined;
 }
 
 /**
@@ -77,5 +76,5 @@ function beatRoute(beats: readonly PaceBeat[], index: number): ExplainRoute | un
  * A heuristic prefilter for the L1 item judge, about half false positives; it never gates.
  */
 export function explainRoutes(beats: readonly PaceBeat[]): ExplainRoute[] {
-  return beats.flatMap((_, i) => beatRoute(beats, i) ?? []);
+  return beats.flatMap((beat, i) => beatRoute(beats, beat, i) ?? []);
 }
