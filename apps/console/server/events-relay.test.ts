@@ -207,14 +207,26 @@ describe("the events relay", () => {
 
   it("resets the backoff only after a stream has stayed up for stableMs", async () => {
     const broker = await fake(TOKEN);
+    // Load stretches every wall-clock gap, so uptime is read from a clock only the test moves.
+    let clock = 0;
+    const relayed: SseMessage[] = [];
     // Asserts the delay the relay asked for, not the wall-clock gap, which load stretches without bound.
     const spy = vi.spyOn(globalThis, "setTimeout");
     try {
-      startRelay(brokerAt(broker.port), { baseDelayMs: 20, maxDelayMs: 320, stableMs: 30 });
+      relays.push(
+        startEventsRelay({
+          hub: { broadcast: (message) => relayed.push(message) },
+          upstreams: [brokerAt(broker.port)],
+          logger: silentLogger,
+          timing: { baseDelayMs: 20, maxDelayMs: 320, stableMs: 30 },
+          now: () => clock,
+        }),
+      );
       await flap(broker, 2);
 
-      await until(() => broker.dials.length === 3 && broker.openCount() === 1);
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      // The relay announces each reopen once it has stamped the stream as open.
+      await until(() => broker.dials.length === 3 && broker.openCount() === 1 && relayed.length === 2);
+      clock += 30;
       broker.drop();
       await until(() => broker.dials.length === 4);
 
