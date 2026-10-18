@@ -257,7 +257,7 @@ describe("configSurfacesCommands", () => {
     const extra = async (): Promise<ConfigSurfaces> => ({ files: [], rows: [], gaps: ["other host: not reported"] });
     const command = configSurfacesCommands([coordinatorSurfaces({ ...roots, autonomyDir: null }), extra])["config.surfaces"];
 
-    const result = await command.run({}, { warnings: [], format: "json", surface: "in-process", auth: null, ownerWrites: false });
+    const result = await command.run({}, { warnings: [], format: "json" });
 
     expect(result.gaps).toEqual([AUTONOMY_DIR_UNSET, "other host: not reported"]);
     expect(result.files).toHaveLength(2);

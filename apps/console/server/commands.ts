@@ -59,6 +59,25 @@ function upstreamsCommands(upstreams: readonly Upstream[]) {
   };
 }
 
+function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
+  return {
+    "work.portfolio": readCommand({
+      name: "work.portfolio",
+      description: "Every active-work initiative with its open-task rollup, note, source and session counts, newest activity and personal flag",
+      args: z.object({}),
+      result: portfolioResult,
+      run: () => readPortfolio(activeWork, work),
+    }),
+    "work.initiative": readCommand({
+      name: "work.initiative",
+      description: "One active-work initiative: its brief, open tasks, recent sessions, open loops, notes and sources",
+      args: z.object({ slug: z.string().min(1) }),
+      result: initiativeResult,
+      run: ({ slug }) => readInitiative(activeWork, slug, work),
+    }),
+  };
+}
+
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
 export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, coordinatorRoots, factory, decisionLog, listeners, work }: ConsoleSources) {
   return {
@@ -75,20 +94,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...approvalsCommands({ factory, rounds, inbox }),
     ...shepherdCommands(shepherd),
     ...configSurfacesCommands([coordinatorRoots === undefined ? unconfigured("coordinator surfaces") : coordinatorSurfaces(coordinatorRoots)]),
-    "work.portfolio": readCommand({
-      name: "work.portfolio",
-      description: "Every active-work initiative with its open-task rollup, note, source and session counts, newest activity and personal flag",
-      args: z.object({}),
-      result: portfolioResult,
-      run: () => readPortfolio(activeWork, work),
-    }),
-    "work.initiative": readCommand({
-      name: "work.initiative",
-      description: "One active-work initiative: its brief, open tasks, recent sessions, open loops, notes and sources",
-      args: z.object({ slug: z.string().min(1) }),
-      result: initiativeResult,
-      run: ({ slug }) => readInitiative(activeWork, slug, work),
-    }),
+    ...workCommands(activeWork, work),
   };
 }
 

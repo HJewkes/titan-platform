@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LineCounter, isMap, isScalar, isSeq, parseDocument, type Node, type Pair } from "yaml";
+import { LineCounter, isMap, isScalar, parseDocument, type Node, type Pair } from "yaml";
 import { readCommand } from "../owner-guard.js";
 
 export const SURFACE_GROUPS = ["coordinator"] as const;
