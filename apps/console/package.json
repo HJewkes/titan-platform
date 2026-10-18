@@ -37,9 +37,11 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-native-web": "^0.21.0",
+    "yaml": "^2.9.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@titan-design/egress-scan": "workspace:^",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
     "@types/react": "^19.3.0",
