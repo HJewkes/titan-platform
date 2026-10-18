@@ -9,7 +9,7 @@ import { readCommand } from "./owner-guard.js";
 type DaemonApp = Parameters<typeof mountStaticApp>[0];
 
 const MAX_DEPTH = 8;
-export const MAX_VIDEOS = 2000;
+const MAX_VIDEOS = 2000;
 const CATALOG_TTL_MS = 30_000;
 const SKIPPED_DIRS = new Set(["node_modules", "archive"]);
 const VIDEO_TYPES: Record<string, string> = { ".mp4": "video/mp4", ".webm": "video/webm" };
@@ -29,7 +29,7 @@ const videoEntry = z.object({
   renderNotes: z.boolean(),
 });
 
-export type VideoEntry = z.infer<typeof videoEntry>;
+type VideoEntry =z.infer<typeof videoEntry>;
 
 /** Where one listed video sits; server-side only, so the client names a video by id and never by path. */
 interface Located {
@@ -51,7 +51,7 @@ export interface VideoCatalog {
   current(): Promise<Catalog>;
 }
 
-export interface VideoCatalogOptions {
+interface VideoCatalogOptions {
   roots: readonly string[];
   now?: () => number;
 }
