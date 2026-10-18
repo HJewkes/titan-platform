@@ -5,6 +5,7 @@ import { activeWorkGraphPath, activeWorkRoot } from "@titan-design/app-paths";
 import { isLoopbackHost } from "@titan-design/daemon";
 import { expandHome } from "@titan-design/session-read";
 import type { SeatPrefix } from "@titan-design/chat-protocol/agents";
+import { coordinatorRootsFrom, type CoordinatorRoots } from "./config-surfaces/coordinator.js";
 import { hostSurfaceRootsFrom, type HostSurfaceRoots } from "./config-surfaces/host.js";
 
 /** Off 7400, which the active-work daemon and `titan-miner serve` both default to. */
@@ -66,6 +67,8 @@ export interface ConsoleConfig {
   decisionsFile: string | null;
   /** `TITAN_CONSOLE_GATE_ANSWERS=1` relays a submitted Ship or Send back to the factory's gate; off, the console only writes feedback.json. */
   gateAnswers: boolean;
+  /** Where `config.surfaces` reads the coordinator files; `TITAN_CONSOLE_AUTONOMY_DIR` and `AGENT_CHAT_HOME` point it. */
+  coordinatorRoots?: CoordinatorRoots;
   /**
    * `TITAN_CONSOLE_INBOX_ACTIONS=1` lets `inbox.act` write an action record and post it to the factory's console-action route.
    * Optional so a config built by hand reads as off; `resolveConfig` always sets it.
@@ -125,7 +128,7 @@ export function resolveConfig(
     lanTokenPath: expandHome(env.TITAN_CONSOLE_TOKEN || path.join(stateDir, "lan.token"), home),
     ...dataDirsFrom(env, home, platform, stateDir),
     ...ownerOptionsFrom(env, home),
-    hostSurfaces: hostSurfaceRootsFrom(env, home),
+    ...surfaceRootsFrom(env, home),
   };
   assertCoherent(config);
   return config;
@@ -149,6 +152,11 @@ function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleCon
     gateAnswers: flagFrom("TITAN_CONSOLE_GATE_ANSWERS", env.TITAN_CONSOLE_GATE_ANSWERS),
     inboxActions: flagFrom("TITAN_CONSOLE_INBOX_ACTIONS", env.TITAN_CONSOLE_INBOX_ACTIONS),
   };
+}
+
+/** Where `config.surfaces` reads the coordinator files and this host's own config. */
+function surfaceRootsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "coordinatorRoots" | "hostSurfaces"> {
+  return { coordinatorRoots: coordinatorRootsFrom(env, home), hostSurfaces: hostSurfaceRootsFrom(env, home) };
 }
 
 /** Settings that are each valid but unsafe or ambiguous together. */
