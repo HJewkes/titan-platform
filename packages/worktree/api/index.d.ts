@@ -275,11 +275,25 @@ declare function pruneStaleWorktrees(gitRoot: string): Promise<void>;
 
 /** Parking keeps the local branch; an opt-in fresh default proof can establish its commits are already backed. */
 interface ParkOptions {
+    /** Retain the actual branch when tracking or a fresh origin-head ancestry proof backs its HEAD. */
+    allowOriginHeadAncestor?: boolean;
     /** Permit a missing origin/branch only when a fresh DEFAULT fetch contains the actual HEAD. */
     allowDefaultBranchAncestor?: boolean;
     /** Positive finite fetch budget; invalid values refuse without fetching. Defaults to 15 seconds. */
     fetchTimeoutMs?: WorktreeOptions["fetchTimeoutMs"];
 }
+/** Explicit origin-head proof reports the actual retained branch and any differently named backing head. */
+declare function parkWorktree(target: WorktreeRecord, recheck: (() => string | undefined) | undefined, options: ParkOptions & {
+    allowOriginHeadAncestor: true;
+}): Promise<{
+    ok: true;
+    head: string;
+    branch: string;
+    containedIn?: string;
+} | {
+    ok: false;
+    reason: string;
+}>;
 /** Refuse file loss, recheck lifecycle immediately before nonforced removal, and always keep the local branch. */
 declare function parkWorktree(target: WorktreeRecord, recheck?: () => string | undefined, options?: ParkOptions): Promise<{
     ok: true;

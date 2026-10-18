@@ -180,3 +180,18 @@ A throwing presenter rejects the report; a nonstring return throws `TypeError`.
 The sweep does not reclaim trees. Caller presentation is not release authority.
 
 Worktree adds disable checkout hooks for that invocation only (`-c core.hooksPath=/dev/null`), preserving dispatcher CC410. Later git commands retain repository hooks. Timeout/late cleanup uses the original add target despite that prefix. Fetch/reference-transaction hooks are outside this unchanged preservation slice.
+
+## Actual branch parking
+
+`parkWorktree(record, recheck, { allowOriginHeadAncestor: true })` returns the
+actual retained `branch` and optional `containedIn` origin head after backing
+proof. It never rewrites the allocation record. Add the separate
+`allowDefaultBranchAncestor` option to retain the DEFAULT ancestry path too.
+Existing calls and false options retain their original result keys and types.
+Use a literal-true option to select the metadata overload.
+
+Remote alternative tips must be currently listed, complete object IDs with
+locally usable ancestry. Files, branch and HEAD are checked again around
+asynchronous proof and the caller's lifecycle recheck, then removal is nonforced
+and all branches remain. This is not an atomic lock or provider/lifecycle policy.
+See the package README for budget behavior and the tracking-evidence boundary.

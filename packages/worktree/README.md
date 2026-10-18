@@ -103,3 +103,37 @@ refuse removal. Only a literal caller `force: true` bypasses these checks.
 
 These observations do not make removal atomic against concurrent writers. The
 caller still owns assignment records, lifecycle decisions and runtime cleanup.
+
+## Optional actual-branch origin proof
+
+A literal `allowOriginHeadAncestor: true` opts into parking the actual current
+symbolic branch when its HEAD is backed by the existing tracking comparison or
+a currently listed origin head. The success result includes `branch`; a
+differently named proving origin head is returned as `containedIn`. The allocated
+record is not rewritten, and every local branch is retained.
+
+```ts
+const result = await parkWorktree(record, recheck, {
+  allowOriginHeadAncestor: true,
+  allowDefaultBranchAncestor: true,
+  fetchTimeoutMs: 30_000,
+});
+if (result.ok) console.log(result.branch, result.containedIn);
+```
+
+Default/no-option/false and DEFAULT-only calls keep their original result shape
+and static return type. Use a literal-true option when typed branch metadata is
+needed; a general boolean option retains the original structural return view.
+The existing DEFAULT opt-in remains separate. Omitted budgets use the existing
+15-second default; explicit invalid budgets refuse required fresh operations,
+while an unused fresh budget does not reject a tracking or local-copy fast path.
+
+Fresh alternatives are read from origin's current heads, with complete SHA1 or
+SHA256 IDs and locally usable ancestry. Missing objects, deleted heads and
+replaced heads do not authorize removal. Tracking evidence retains its existing
+semantics and is not a claim of fresh server state. Files, actual branch and HEAD
+are rechecked around asynchronous proof and before and after the lifecycle
+callback; removal is nonforced. These checks do not make external writes atomic.
+
+The caller keeps roster, process, tenancy, assignment and provider policy. This
+option adds no merged-PR reader, SQLite/cache exception or lifecycle authority.
