@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LineCounter, isMap, isScalar, parseDocument, type Node, type Pair } from "yaml";
+import { LineCounter, isMap, isNode, isScalar, parseDocument, type Node, type Pair } from "yaml";
 import { readCommand } from "../owner-guard.js";
 
 const SURFACE_GROUPS = ["coordinator"] as const;
@@ -129,7 +129,7 @@ function placement(patterns: readonly FieldPath[], path: FieldPath, value: unkno
 }
 
 function decisionsIn(comment: string | undefined): string[] {
-  return comment === undefined ? [] : [...comment.matchAll(/\bdecisions?\s+#?(\d+)/gi)].map((match) => match[1] as string);
+  return comment === undefined ? [] : [...comment.matchAll(/\bdecisions?\s+#?(\d+)/gi)].flatMap((match) => match[1] ?? []);
 }
 
 function shown(value: Node | null): Pick<ConfigRow, "value" | "comment" | "decisions"> {
@@ -140,7 +140,7 @@ function shown(value: Node | null): Pick<ConfigRow, "value" | "comment" | "decis
 function visitPair(pair: Pair<unknown, unknown>, path: FieldPath, walk: Walk): void {
   const key = isScalar(pair.key) ? String(pair.key.value) : String(pair.key);
   const field = [...path, key];
-  const value = (pair.value ?? null) as Node | null;
+  const value = isNode(pair.value) ? pair.value : null;
   const where = placement(walk.patterns, field, value);
   if (where === "descend" && isMap(value) && value.items.length > 0) {
     for (const child of value.items) visitPair(child, field, walk);

@@ -160,8 +160,8 @@ describe("config.surfaces over the daemon's RPC", () => {
     const reply = await send("127.0.0.1", handle.port, "POST", "/rpc/config.surfaces", { host, "content-type": "application/json", "x-titan-client": "test" }, "{}");
 
     expect(reply.status).toBe(200);
-    const { data } = JSON.parse(reply.body) as { data: ConfigSurfaces };
-    expect(row(data, "seat:seat-k", "concurrency.implementers")).toEqual({
+    const body: unknown = JSON.parse(reply.body);
+    const implementers: ConfigRow = {
       surface: "seat:seat-k",
       file: path.join(root, "autonomy", "seats", "seat-k.md"),
       field: "concurrency.implementers",
@@ -170,8 +170,8 @@ describe("config.surfaces over the daemon's RPC", () => {
       value: 20,
       comment: "owner decision 446 (2026-10-18), was 12",
       decisions: ["446"],
-    });
-    expect(data.gaps).toEqual([]);
+    };
+    expect(body).toMatchObject({ ok: true, data: { gaps: [], rows: expect.arrayContaining([implementers]) } });
   });
 });
 
