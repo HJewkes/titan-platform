@@ -3,9 +3,9 @@ import path from "node:path";
 import { EMPTY_SURFACES, surfaceRows, type ConfigFile, type ConfigRow, type ConfigSurfaces, type SurfaceSpec } from "./catalog.js";
 
 /** A config file is small; one past this is listed as a gap rather than parsed. */
-export const MAX_CONFIG_BYTES = 1024 * 1024;
+const MAX_CONFIG_BYTES = 1024 * 1024;
 
-export interface Target {
+interface Target {
   spec: SurfaceSpec;
   surface: string;
   file: string;

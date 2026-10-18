@@ -27,45 +27,6 @@ export interface SurfaceSpec {
   projections?: Readonly<Record<string, (value: unknown) => unknown>>;
 }
 
-export const CHARTER_SURFACE: SurfaceSpec = {
-  kind: "charter",
-  group: "coordinator",
-  inventory: 1,
-  format: "frontmatter",
-  safeFields: [
-    "schema", "owner_seat", "hub", "charter_owner", "seats", "human_only_initiatives", "hard_stops", "defaults.**", "funds.**",
-    ...["config_dir", "reserve_seven_day", "ceiling_five_hour", "per_day_points", "sonnet_band_points", "dispatch_five_hour_points"].map((key) => `pools.*.${key}`),
-  ],
-};
-
-export const SEAT_SURFACE: SurfaceSpec = {
-  kind: "seat",
-  group: "coordinator",
-  inventory: 3,
-  format: "frontmatter",
-  safeFields: [
-    "schema", "name", "prefix", "role", "attended", "pool", "overflow_pool", "config_dir", "concurrency.*", "spend.*", "share_caps.*", "kind_weights.*",
-    "initiatives.*", "scope_tags", "excluded_tags", "grants_extra", "repos", "heartbeat_cron", "surface", "model", "effort", "profile",
-  ],
-};
-
-export const BURNDOWN_SURFACE: SurfaceSpec = {
-  kind: "burndown",
-  group: "coordinator",
-  inventory: 9,
-  format: "json",
-  safeFields: ["enabled", "reportTo", "seats", "maxAgents", "maxWorktreesPerRepo", "briefGate.**", "handReserve.**"],
-};
-
-/** Only the owner switches; the runtime readings beside them are listed hidden. */
-export const SEAT_WATCHDOG_SURFACE: SurfaceSpec = {
-  kind: "seat-watchdog",
-  group: "coordinator",
-  inventory: 10,
-  format: "json",
-  safeFields: ["stopped.**", "held.**", "attended.**"],
-};
-
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const stringsIn = (value: unknown): string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
 
@@ -73,7 +34,7 @@ const stringsIn = (value: unknown): string[] => (Array.isArray(value) ? value.fi
 export const namesOnly = (value: unknown): string[] => (isRecord(value) ? Object.keys(value).sort() : []);
 
 /** A Claude Code hook event shown as its matchers and the commands they run; every other key of an entry is dropped. */
-export function hookCommands(value: unknown): { matcher: string | null; commands: string[] }[] {
+function hookCommands(value: unknown): { matcher: string | null; commands: string[] }[] {
   return (Array.isArray(value) ? value : []).filter(isRecord).map((entry) => ({
     matcher: typeof entry.matcher === "string" ? entry.matcher : null,
     commands: (Array.isArray(entry.hooks) ? entry.hooks : []).filter(isRecord).flatMap((hook) => stringsIn([hook.command])),
