@@ -1,5 +1,15 @@
 # @titan-design/factory
 
+## 0.23.1
+
+### Patch Changes
+
+- c60f812: Add `POST /owner/console-action`, mounted when `shepherd.consoleAnswers.actionsDir` is set. It resolves an approve-merge gate (the `shepherd-release` Version Packages gate included) as owner-remote from the console inbox's action record, read O_NOFOLLOW and size-capped from that dir; the body names only `{ actionId }`. Hardware, after-stages and other gates are refused, as is a record whose head GitHub has moved past.
+- 3592aa2: `POST /owner/console-action` also takes an `owner-release` action record: it lifts the owner-asked hold on the record's PR, and only that hold, as owner-remote from the console inbox at the head the owner confirmed. The answer is `released` (with any hold still in force as `stillHeld`), `already` for a replay of the same record, `moved` when GitHub's head differs, `gone` for a PR with no owner-asked hold, and `refused` for a record that names its own resolver.
+- 17a0fe6: Shepherd: when the owner accepted a red head's regenerated baselines, a later head that commits exactly that set (every changed path in the set, each file at its accepted blob, each removed file gone, nothing else) has its visual approve-merge gate answered `merge` by code and logged as step `sh-approval-carry:set:<head>`. Under `shepherd.visualSetCarry: shadow` the step records whether the set would carry and the owner is still asked. With the flag `off`, the default, nothing changes. The set carries only onto a gate into the base its red head's CI read was judged on. It is used up once it is checked, or once the owner answers a visual gate themselves, and a later answer at the accept gate replaces it. An approval that came from a set does not yet follow a later merge-up.
+- Updated dependencies [7a4d313]
+  - @titan-design/coordinator@0.5.1
+
 ## 0.23.0
 
 ### Minor Changes

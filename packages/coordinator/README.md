@@ -10,6 +10,7 @@ front matter, and `foldSeatEvents`, a pure fold from a seat's event log (`seatEv
 `SeatState`. `coordinatorConfigSchema` and `checkCoordinatorConfig` validate a whole
 `titan-coordinator/v1` document and its cross-references. `authoredBlockSchema`, `parseAuthored` and
 `renderAuthored` validate and render the seat's authored handoff block. `applyEdit`, `diffDocuments` and
-`verifyChain` edit, diff and check a revision log of that document (`configRevisionSchema`). Pure code: no fs, process, network or broker. See `site/reference/coordinator.md`.
+`verifyChain` edit, diff and check a revision log of that document (`configRevisionSchema`). `EDITABLE_FIELDS` with
+`checkEditableValue` is the allowlist of config fields an editor may change. Pure code: no fs, process, network or broker. See `site/reference/coordinator.md`.
 
 The first npm publish is pending and owner-only; trusted publishing is set up after it.

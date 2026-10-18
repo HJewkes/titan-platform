@@ -173,7 +173,7 @@ async function shepherdRows(shepherd: ShepherdSource): Promise<{ rows: WatchRow[
   }
 }
 
-async function readInbox({ shepherd, ...sources }: InboxSources): Promise<InboxList> {
+export async function readInbox({ shepherd, ...sources }: InboxSources): Promise<InboxList> {
   const [approvals, live] = await Promise.all([readFlow(sources), shepherdRows(shepherd)]);
   return { items: inboxItems(approvals.flow.order, live.rows), gaps: [...approvals.gaps, ...live.gaps], fyiCount: approvals.fyiCount, readAt: approvals.readAt };
 }
