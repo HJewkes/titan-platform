@@ -5,6 +5,7 @@ import { approvalsCommands, type FactoryNeeds } from "./approvals.js";
 import type { ActiveWork } from "./active-work.js";
 import { configSurfacesCommands, unconfigured, type SurfaceReader } from "./config-surfaces/catalog.js";
 import { coordinatorSurfaces, type CoordinatorRoots } from "./config-surfaces/coordinator.js";
+import { configDriftCommands } from "./config-surfaces/drift.js";
 import { hostSurfaces as hostSurfaceReaders, type HostSurfaceRoots } from "./config-surfaces/host.js";
 import { hostReportsCommands, type HostReportsSource } from "./config-surfaces/host-reports.js";
 import type { DecisionLog } from "./decision-log.js";
@@ -111,6 +112,7 @@ function surfaceReaders(coordinatorRoots: CoordinatorRoots | undefined, hostSurf
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
 export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, work }: ConsoleSources) {
+  const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
   return {
     ...upstreamsCommands(upstreams),
     ...agentsCommands(agents),
@@ -124,7 +126,8 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...roundsSubmitCommands(rounds, decisionLog, listeners),
     ...ownerQueueCommands({ factory, rounds, inbox, shepherd }, { ...(inboxActions ?? ACTIONS_UNWIRED), ...(decisionLog && { decisionLog }) }),
     ...shepherdCommands(shepherd),
-    ...configSurfacesCommands(surfaceReaders(coordinatorRoots, hostSurfaces)),
+    ...configSurfacesCommands(configReaders),
+    ...configDriftCommands(configReaders),
     ...(hostReports === undefined ? {} : hostReportsCommands(hostReports)),
     ...videosCommands(videos, summarizeNotes),
     ...videoNotesCommands(videos),
