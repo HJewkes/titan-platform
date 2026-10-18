@@ -99,6 +99,7 @@ describe("one fixture per bash.config spelling", () => {
     ["bash.config.claude-cli", "claude config set -g autoUpdates false"],
     ["bash.config.claude-cli", "claude mcp add server npx server"],
     ["bash.config.claude-cli", "claude plugin uninstall guard"],
+    ["bash.config.console-owner-auth", "titan-console login-link"],
     ["bash.config.mention", "vim ~/.claude/settings.json"],
   ])("%s: %s", (spelling, command) => {
     expect(bash(command)).toContainEqual(expect.objectContaining({ action: "authority-config", spelling }));

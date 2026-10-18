@@ -8,6 +8,7 @@ import { basename } from "../shell/path.js";
 import { classified } from "../spellings.js";
 import type { SpellingId } from "../spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
+import { consoleOwnerVerb } from "./config-store.js";
 import { copyDestination } from "./copy-destination.js";
 
 /** Config reads are allowed by the table; only edits are CFG. */
@@ -76,6 +77,8 @@ function namedWrite(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction 
   if (cmd.name === "git" && setsHooksPath(cmd, ctx)) {
     return classified("bash.config.git-config-hookspath", { pattern: "git:core.hooksPath" });
   }
+  const consoleVerb = consoleOwnerVerb(cmd);
+  if (consoleVerb) return classified("bash.config.console-owner-auth", { pattern: consoleVerb });
   if (cmd.name !== "claude") return null;
   const [group, verb] = cmd.args.map((a) => a.value);
   const verbs = group !== undefined && Object.hasOwn(CLAUDE_CLI, group) ? CLAUDE_CLI[group] : undefined;
@@ -96,4 +99,4 @@ function write(event: WriteEvent, ctx: ClassifyContext): ClassifiedAction[] {
 }
 
 /** Editing permission config, hooks or home instructions: CFG rows of the authority table. */
-export const config: Family = { verbs: new Set([...READ_ONLY, ...REMOVERS, ...IN_PLACE, ...COPIERS, "tee", "git", "claude"]), bash, write };
+export const config: Family = { verbs: new Set([...READ_ONLY, ...REMOVERS, ...IN_PLACE, ...COPIERS, "tee", "git", "claude", "titan-console"]), bash, write };
