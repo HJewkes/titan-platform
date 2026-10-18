@@ -111,24 +111,33 @@ describe("env's leading words are read in one pass", () => {
   // Linear growth costs SCALE x the small case, quadratic SCALE^2 x; the bound sits between with headroom for load.
   const SCALE = 8;
   const MAX_RATIO = 24;
+  const ROUNDS = 5;
   const largeBytes = 64 * 1024 - 32;
 
-  async function bestMs(script: string): Promise<number> {
+  // This thread's CPU time, not wall time: under a parallel run the scheduler preempts the long case more often than
+  // the short one, which inflated a wall-clock ratio past the bound (TP-3612).
+  async function cpuMs(script: string): Promise<number> {
     const readScript = (p: string) => (p === `${REPO}/p.sh` ? script : null);
-    const times: number[] = [];
-    for (let run = 0; run < 3; run++) {
-      const started = performance.now();
-      await verdict("bash ./p.sh", { ...context, readScript });
-      times.push(performance.now() - started);
+    const started = process.threadCpuUsage();
+    await verdict("bash ./p.sh", { ...context, readScript });
+    const used = process.threadCpuUsage(started);
+    return (used.user + used.system) / 1000;
+  }
+
+  // Interleaved so a burst of load lands on both sizes rather than only the one measured during it.
+  async function growth(small: string, large: string): Promise<{ small: number; large: number }> {
+    const best = { small: Infinity, large: Infinity };
+    for (let round = 0; round < ROUNDS; round++) {
+      best.small = Math.min(best.small, await cpuMs(small));
+      best.large = Math.min(best.large, await cpuMs(large));
     }
-    return Math.min(...times);
+    return best;
   }
 
   const envLine = (unit: string, bytes: number) => `env ${unit.repeat(Math.floor(bytes / unit.length))}true\n`;
 
   it.each([["A=1 - "], ["-- "], ["-S "], ["A=1 -i "], ["A=1 -S '' "]])("reads a script of env %j words in linear time", async (unit) => {
-    const small = await bestMs(envLine(unit, largeBytes / SCALE));
-    const large = await bestMs(envLine(unit, largeBytes));
+    const { small, large } = await growth(envLine(unit, largeBytes / SCALE), envLine(unit, largeBytes));
 
     expect(large).toBeLessThan(Math.max(small, 5) * MAX_RATIO);
   }, 60_000);
@@ -139,8 +148,7 @@ describe("env's leading words are read in one pass", () => {
     ["env -S 'env env …'", splitLine, "env "],
     ["env -S env -S env -S …", envLine, "-S env "],
   ] as const)("reads a chain of envs a -S string supplies, %s, in linear time (TP-3291)", async (_form, line, unit) => {
-    const small = await bestMs(line(unit, largeBytes / SCALE));
-    const large = await bestMs(line(unit, largeBytes));
+    const { small, large } = await growth(line(unit, largeBytes / SCALE), line(unit, largeBytes));
 
     expect(large).toBeLessThan(Math.max(small, 5) * MAX_RATIO);
   }, 60_000);
