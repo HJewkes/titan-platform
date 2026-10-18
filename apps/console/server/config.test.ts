@@ -82,6 +82,12 @@ describe("console config", () => {
     expect(() => resolveConfig({ TITAN_CONSOLE_DECISIONS_FILE: "d.md" }, HOME)).toThrow(/TITAN_CONSOLE_DECISIONS_FILE must be an absolute/);
   });
 
+  it("reads no autonomy tree unless one is named, and materializes into titan-coordinator's config dir", () => {
+    expect(resolveConfig({}, HOME, "linux").configStore).toEqual({ autonomyTree: null, coordinatorFile: path.join(HOME, ".config", "titan-coordinator", "coordinator.json") });
+    expect(resolveConfig({ TITAN_CONSOLE_AUTONOMY_TREE: "~/tree", TITAN_CONSOLE_COORDINATOR_FILE: "/cfg/c.json" }, HOME).configStore).toEqual({ autonomyTree: path.join(HOME, "tree"), coordinatorFile: "/cfg/c.json" });
+    expect(() => resolveConfig({ TITAN_CONSOLE_AUTONOMY_TREE: "tree" }, HOME)).toThrow(/TITAN_CONSOLE_AUTONOMY_TREE must be an absolute/);
+  });
+
   it("parses seat prefixes and refuses a malformed pair", () => {
     expect(resolveConfig({}, HOME).seatPrefixes).toEqual([]);
     expect(resolveConfig({ TITAN_CONSOLE_SEATS: "alpha=al, beta=be" }, HOME).seatPrefixes).toEqual([

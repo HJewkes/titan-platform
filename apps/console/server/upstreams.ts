@@ -131,5 +131,6 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
       answer: factoryGateAnswer(config.factoryPort),
       logger,
     }),
+    ...(config.configStore ? { configStore: { stateDir: config.stateDir, ...config.configStore } } : {}),
   };
 }

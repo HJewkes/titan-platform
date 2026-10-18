@@ -19,6 +19,7 @@
   "dependencies": {
     "@titan-design/app-paths": "workspace:*",
     "@titan-design/chat-protocol": "workspace:^",
+    "@titan-design/coordinator": "workspace:^",
     "@titan-design/daemon": "workspace:^",
     "@titan-design/decider": "workspace:^",
     "@titan-design/github": "workspace:^",
@@ -37,6 +38,7 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-native-web": "^0.21.0",
+    "yaml": "^2.9.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

@@ -5,6 +5,8 @@ import { activeWorkGraphPath } from "@titan-design/app-paths";
 import { isLoopbackHost } from "@titan-design/daemon";
 import { expandHome } from "@titan-design/session-read";
 import type { SeatPrefix } from "@titan-design/chat-protocol/agents";
+import type { ConfigStorePaths } from "./config-store/compare.js";
+import { coordinatorFilePath } from "./config-store/materialize.js";
 
 /** Off 7400, which the active-work daemon and `titan-miner serve` both default to. */
 export const DEFAULT_CONSOLE_PORT = 7500;
@@ -57,6 +59,13 @@ export interface ConsoleConfig {
   decisionsFile: string | null;
   /** `TITAN_CONSOLE_GATE_ANSWERS=1` relays a submitted Ship or Send back to the factory's gate; off, the console only writes feedback.json. */
   gateAnswers: boolean;
+  /**
+   * The coordinator config store: the autonomy tree from `TITAN_CONSOLE_AUTONOMY_TREE` (no default, so
+   * nothing reads a tree the owner did not name) and the materialized document, by default in
+   * titan-coordinator's app-paths config dir, `TITAN_CONSOLE_COORDINATOR_FILE` overriding.
+   * Optional so a test config need not build one; absent, `config.compareTree` is `not-configured`.
+   */
+  configStore?: ConfigStorePaths;
 }
 
 export const LAN_NEEDS_TLS = "TITAN_CONSOLE_HOST needs TITAN_CONSOLE_TLS_CERT and TITAN_CONSOLE_TLS_KEY: the LAN listener serves HTTPS only";
@@ -108,6 +117,7 @@ export function resolveConfig(
     inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
     roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
     ...ownerOptionsFrom(env, home),
+    configStore: configStoreFrom(env, home, platform),
   };
   assertCoherent(config);
   return config;
@@ -119,6 +129,20 @@ function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleCon
     ownerWrites: flagFrom("TITAN_CONSOLE_OWNER_WRITES", env.TITAN_CONSOLE_OWNER_WRITES),
     decisionsFile: decisionsFileFrom(env.TITAN_CONSOLE_DECISIONS_FILE, home),
     gateAnswers: flagFrom("TITAN_CONSOLE_GATE_ANSWERS", env.TITAN_CONSOLE_GATE_ANSWERS),
+  };
+}
+
+function absolutePathFrom(name: string, raw: string | undefined, home: string): string | null {
+  if (raw === undefined || raw === "") return null;
+  const file = expandHome(raw, home);
+  if (!path.isAbsolute(file)) throw new Error(`${name} must be an absolute or ~/ path, got "${raw}"`);
+  return file;
+}
+
+function configStoreFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.Platform): ConfigStorePaths {
+  return {
+    autonomyTree: absolutePathFrom("TITAN_CONSOLE_AUTONOMY_TREE", env.TITAN_CONSOLE_AUTONOMY_TREE, home),
+    coordinatorFile: absolutePathFrom("TITAN_CONSOLE_COORDINATOR_FILE", env.TITAN_CONSOLE_COORDINATOR_FILE, home) ?? coordinatorFilePath({ env, home, platform }),
   };
 }
 
@@ -150,10 +174,7 @@ function urlFrom(env: NodeJS.ProcessEnv, name: string, fallback: string): string
 
 /** No default: a guessed path would append the owner's answers to a file nobody chose. */
 function decisionsFileFrom(raw: string | undefined, home: string): string | null {
-  if (raw === undefined || raw === "") return null;
-  const file = expandHome(raw, home);
-  if (!path.isAbsolute(file)) throw new Error(`TITAN_CONSOLE_DECISIONS_FILE must be an absolute or ~/ path, got "${raw}"`);
-  return file;
+  return absolutePathFrom("TITAN_CONSOLE_DECISIONS_FILE", raw, home);
 }
 
 /** Only `1` turns a flag on; any other value is refused rather than read as off, so a typo is never silent. */

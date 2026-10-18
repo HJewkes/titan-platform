@@ -147,6 +147,9 @@ importers:
       '@titan-design/chat-protocol':
         specifier: workspace:^
         version: link:../../packages/chat-protocol
+      '@titan-design/coordinator':
+        specifier: workspace:^
+        version: link:../../packages/coordinator
       '@titan-design/daemon':
         specifier: workspace:^
         version: link:../../packages/daemon
@@ -201,6 +204,9 @@ importers:
       react-native-web:
         specifier: ^0.21.0
         version: 0.21.2(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
       zod:
         specifier: ^4.4.3
         version: 4.5.4
