@@ -125,3 +125,10 @@ survive redaction and their values do not.
 Fixtures for a synthetic documentation run ship in the package under
 `fixtures/trace/v1/`: `doc-run.jsonl` holds all 17 records in order, and one JSON file per
 kind holds the same records split by kind.
+
+## Account diagnostic redaction
+
+Import `redactSecrets` and `REDACTED` from
+`@titan-design/agent-protocol/redaction`. This pure subpath needs no zod and owns
+the one account diagnostic redactor used by both account packages. See the package
+README for string/Error behavior, hostile getter handling and limitations.

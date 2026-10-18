@@ -1,5 +1,6 @@
-import { A as AccountProfile, L as LoginState, U as UsageReading, R as RefusedReason } from './profile.js';
+import { AccountProfile, LoginState, UsageReading, RefusedReason } from './index.js';
 import 'zod';
+import '@titan-design/agent-protocol/redaction';
 
 declare const CONFIG_DIRS_ENV = "CLAUDE_CONFIG_DIRS";
 declare const PROFILE_ROOT_ENV = "CLAUDE_PROFILE_ROOT";
@@ -120,60 +121,3 @@ declare function readUsage(configDir: string, options?: ReadUsageOptions): Usage
 declare function writeReading(configDir: string, reading: UsageReading): string;
 
 export { CONFIG_DIRS_ENV, CREDENTIALS_FILE, DEFAULT_REFRESH_SCOPES, DEFAULT_REFRESH_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, DEPOSIT_ASKER, type DiscoverOptions, EXPIRY_MARGIN_MS, type FetchLike, MAX_CREDENTIALS_BYTES, MAX_READING_BYTES, MAX_REFRESH_TIMEOUT_MS, MAX_RESPONSE_BYTES, MAX_TOKEN_RESPONSE_BYTES, OAUTH_BETA, OAUTH_CLIENT_ID, PROFILE_ROOT_ENV, type PollAllEntry, type PollAllOptions, type PollFailure, type PollFailureKind, type PollOptions, type PollResult, REFRESH_LOCK, type ReadLoginOptions, type ReadUsageOptions, type RefreshFailureDeposit, type RefreshFailureKind, type RefreshOptions, type RefreshResult, TOKEN_URL, USAGE_FILE, USAGE_URL, type UsageFileRead, discoverProfiles, pollAll, pollUsage, readLoginState, readUsage, refreshFailureDeposit, refreshIfNeeded, sessionsDir, usageFilePath, writeReading };
-
-// ./dist/profile.d.ts
-import { z } from 'zod';
-
-declare const windowSchema: z.ZodObject<{
-    used_percentage: z.ZodNumber;
-    resets_at: z.ZodOptional<z.ZodNumber>;
-}, z.core.$strip>;
-declare const usageReadingSchema: z.ZodObject<{
-    session_id: z.ZodString;
-    written_at: z.ZodNumber;
-    rate_limits: z.ZodRecord<z.ZodString, z.ZodObject<{
-        used_percentage: z.ZodNumber;
-        resets_at: z.ZodOptional<z.ZodNumber>;
-    }, z.core.$strip>>;
-    source: z.ZodOptional<z.ZodString>;
-    account: z.ZodOptional<z.ZodString>;
-}, z.core.$strip>;
-type UsageWindow = z.infer<typeof windowSchema>;
-type UsageReading = z.infer<typeof usageReadingSchema>;
-declare const POLL_SESSION_ID = "usage-poll";
-declare const POLL_SOURCE = "oauth-usage";
-declare function parseUsageReading(input: unknown): UsageReading | null;
-interface OAuthUsageOptions {
-    writtenAt: number;
-    account?: string;
-}
-declare function usageFromOAuthResponse(body: unknown, options: OAuthUsageOptions): UsageReading | null;
-
-type RefusedReason = "malformed" | "mode-too-wide" | "foreign-owner" | "not-a-regular-file" | "hard-linked";
-type LoginState = {
-    status: "present";
-    expiresAt: number;
-    canRefresh: boolean;
-    subscriptionType?: string;
-    rateLimitTier?: string;
-} | {
-    status: "expired";
-    expiresAt: number;
-    canRefresh: boolean;
-} | {
-    status: "missing";
-} | {
-    status: "refused";
-    reason: RefusedReason;
-};
-declare function loginStateFromCredentials(credentials: unknown, now: number): LoginState;
-declare function needsRefresh(state: LoginState, now: number, marginMs: number): boolean;
-
-interface AccountProfile {
-    label: string;
-    configDir: string;
-}
-declare const DEFAULT_LABEL = "default";
-declare function accountLabel(configDir: string): string;
-
-export { type AccountProfile as A, DEFAULT_LABEL as D, type LoginState as L, type OAuthUsageOptions as O, POLL_SESSION_ID as P, type RefusedReason as R, type UsageReading as U, POLL_SOURCE as a, type UsageWindow as b, accountLabel as c, loginStateFromCredentials as l, needsRefresh as n, parseUsageReading as p, usageFromOAuthResponse as u };

@@ -39,6 +39,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@titan-design/anthropic-account": "workspace:^"
+    "@titan-design/agent-protocol": "workspace:^"
   }
 }
