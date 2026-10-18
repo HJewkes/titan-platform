@@ -59,12 +59,9 @@ export interface RunCost {
 export function parseTopicsJudged(tsv: string, file = "topics-judged.tsv"): TopicRow[] {
   const common: ReadonlySet<string> = new Set(TOPIC_COLUMNS);
   return readTsv(tsv, TOPIC_COLUMNS, file).map(({ line, fields }) => {
-    const row = { line, extra: {} } as TopicRow;
-    for (const [column, value] of Object.entries(fields)) {
-      if (common.has(column)) row[column as TopicColumn] = value;
-      else row.extra[column] = value;
-    }
-    return row;
+    const { topic_id = "", tier = "", title = "", verdict = "", priority = "", titan_evidence = "", reason = "" } = fields;
+    const extra = Object.fromEntries(Object.entries(fields).filter(([column]) => !common.has(column)));
+    return { line, topic_id, tier, title, verdict, priority, titan_evidence, reason, extra };
   });
 }
 
