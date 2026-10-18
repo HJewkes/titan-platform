@@ -68,7 +68,8 @@ export function expandWord(w: WordToken, resolve: (name: string) => string | nul
     value += w.value.slice(last, ref.start) + literals[i];
     last = ref.end;
   }
-  const expanded = literals.includes(null) ? w : { ...w, value: value + w.value.slice(last), dynamic: false, refs: [], typed: w.typed ?? w.value, tildes: shiftedTildes(w, literals as string[], value + w.value.slice(last)) };
+  value += w.value.slice(last);
+  const expanded = literals.includes(null) ? w : { ...w, value, dynamic: false, refs: [], typed: w.typed ?? w.value, tildes: shiftedTildes(w, literals, value) };
   const result = unsure ? markWord(expanded) : expanded;
   if (sureWords.has(w)) sureWords.add(result);
   return result;

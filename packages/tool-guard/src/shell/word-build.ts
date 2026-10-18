@@ -37,7 +37,7 @@ export function tildeStarts(w: WordToken): number[] {
 }
 
 /** The noted tildes of `w` in `value`, which replaced each of its `refs` by its literal and so moved every tilde after it. */
-export function shiftedTildes(w: WordToken, literals: string[], value: string): WordToken["tildes"] {
+export function shiftedTildes(w: WordToken, literals: Array<string | null>, value: string): WordToken["tildes"] {
   if (tildeStarts(w).length === 0) return undefined;
   const shift = (tilde: number) => w.refs.reduce((sum, ref, i) => (ref.end <= tilde ? sum + (literals[i] ?? "").length - (ref.end - ref.start) : sum), 0);
   return { text: value, at: tildeStarts(w).map((tilde) => tilde + shift(tilde)) };
