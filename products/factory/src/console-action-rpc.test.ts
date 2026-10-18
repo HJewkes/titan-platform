@@ -402,6 +402,20 @@ describe("POST /owner/console-action", () => {
       expect(releases(w)).toHaveLength(1);
     });
 
+    it("reads a replay after the owner held the PR again as already, and keeps the newer hold", async () => {
+      const w = await world();
+      holdPr(w, OWNER);
+      writeRelease(w);
+      await post(w.server, { actionId: ACTION_ID });
+      w.store().hold(HELD_RUN, OWNER);
+
+      const replay = await post(w.server, { actionId: ACTION_ID });
+
+      expect(await reply(replay)).toEqual([200, { outcome: "already", runId: HELD_RUN }]);
+      expect(w.store().byRun(HELD_RUN)?.ownerHold).toMatchObject({ reason: OWNER });
+      expect(releases(w)).toHaveLength(1);
+    });
+
     it("releases once under a concurrent double post of one record: the other reads already", async () => {
       const w = await world();
       holdPr(w, OWNER);

@@ -201,12 +201,17 @@ async function releaseHold({ action, confirmEvent }: Read<ReleaseAction>, port: 
   const registration = store.byPr(action.repo, action.pr);
   if (registration === undefined) return { outcome: "gone", reason: `${action.repo}#${action.pr} is not registered with shepherd` };
   const { runId } = registration;
-  if (registration.ownerHold === null) return releasedBefore(store, runId, confirmEvent) ?? { outcome: "gone", reason: `${action.repo}#${action.pr} holds no owner-asked hold` };
+  const before = releasedBefore(store, runId, confirmEvent);
+  if (before !== undefined) return before;
+  if (registration.ownerHold === null) return { outcome: "gone", reason: `${action.repo}#${action.pr} holds no owner-asked hold` };
   const stale = await githubOutcome(port, action);
   return stale ?? releaseOnce(store, port, { ...action, runId }, confirmEvent);
 }
 
-/** `already` only when this very record lifted the hold: `ownerRelease` writes the resolver's proof into the event's actor. */
+/**
+ * `already` only when this very record lifted a hold: `ownerRelease` writes the resolver's proof into the event's actor. Read
+ * before the hold state, so one confirmation never lifts a newer owner-asked hold placed after it.
+ */
 function releasedBefore(store: ShepherdStore, runId: string, confirmEvent: string): Outcome | undefined {
   const actor = `owner-remote:titan-console proof ${confirmEvent}`;
   return store.eventsOf(runId).some((event) => event.kind === "release" && event.actor === actor) ? { outcome: "already", runId } : undefined;
