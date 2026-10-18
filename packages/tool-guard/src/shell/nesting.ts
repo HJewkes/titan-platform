@@ -10,8 +10,8 @@ export interface Nesting {
 export class NestingLimitError extends Error {
   override name = "NestingLimitError";
 
-  constructor() {
-    super(`expansions nested more than ${MAX_NESTING} deep`);
+  constructor(message = `expansions nested more than ${MAX_NESTING} deep`) {
+    super(message);
   }
 }
 
