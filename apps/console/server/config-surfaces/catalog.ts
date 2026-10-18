@@ -41,11 +41,18 @@ function hookCommands(value: unknown): { matcher: string | null; commands: strin
   }));
 }
 
+/** A seat's repo entries as their path and remote; any other key an entry gains is dropped. */
+function repoPaths(value: unknown): { path: string | null; remote: string | null }[] {
+  const text = (item: unknown): string | null => (typeof item === "string" ? item : null);
+  return (Array.isArray(value) ? value : []).filter(isRecord).map((entry) => ({ path: text(entry.path), remote: text(entry.remote) }));
+}
+
 export const CHARTER_SURFACE: SurfaceSpec = {
   kind: "charter",
   group: "coordinator",
   inventory: 1,
   format: "frontmatter",
+  strictValues: true,
   safeFields: [
     "schema", "owner_seat", "hub", "charter_owner", "seats", "human_only_initiatives", "hard_stops", "defaults.**", "funds.**",
     ...["config_dir", "reserve_seven_day", "ceiling_five_hour", "per_day_points", "sonnet_band_points", "dispatch_five_hour_points"].map((key) => `pools.*.${key}`),
@@ -57,10 +64,12 @@ export const SEAT_SURFACE: SurfaceSpec = {
   group: "coordinator",
   inventory: 3,
   format: "frontmatter",
+  strictValues: true,
   safeFields: [
     "schema", "name", "prefix", "role", "attended", "pool", "overflow_pool", "config_dir", "concurrency.*", "spend.*", "share_caps.*", "kind_weights.*",
     "initiatives.*", "scope_tags", "excluded_tags", "grants_extra", "repos", "heartbeat_cron", "surface", "model", "effort", "profile",
   ],
+  projections: { repos: repoPaths },
 };
 
 export const BURNDOWN_SURFACE: SurfaceSpec = {
@@ -68,6 +77,7 @@ export const BURNDOWN_SURFACE: SurfaceSpec = {
   group: "coordinator",
   inventory: 9,
   format: "json",
+  strictValues: true,
   safeFields: ["enabled", "reportTo", "seats", "maxAgents", "maxWorktreesPerRepo", "briefGate.**", "handReserve.**"],
 };
 
@@ -77,10 +87,11 @@ export const SEAT_WATCHDOG_SURFACE: SurfaceSpec = {
   group: "coordinator",
   inventory: 10,
   format: "json",
+  strictValues: true,
   safeFields: ["stopped.**", "held.**", "attended.**"],
 };
 
-/** Machine limits and switches;`machines`, `hostProof` and anything new stay hidden until named here. */
+/** Machine limits and switches; `machines`, `hostProof` and anything new stay hidden until named here. */
 export const AGENT_CHAT_CONFIG_SURFACE: SurfaceSpec = {
   kind: "agent-chat-config",
   group: "agent-chat",

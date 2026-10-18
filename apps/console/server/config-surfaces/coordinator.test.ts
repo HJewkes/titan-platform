@@ -13,6 +13,7 @@ import { AUTONOMY_DIR_UNSET, coordinatorSurfaces, type CoordinatorRoots } from "
 const SEAT_SECRET = "hidden-seat-value-7f3a";
 const POOL_SECRET = "hidden-pool-note-91c2";
 const BURNDOWN_SECRET = "hidden-burndown-value-e04b";
+const REPO_SECRET = "hidden-repo-token-5d81";
 
 const SEAT = `---
 schema: autonomy-seat/v1
@@ -202,9 +203,10 @@ describe("coordinatorSurfaces", () => {
       "share_caps.nit", "kind_weights.security", "initiatives.init-a", "scope_tags", "excluded_tags", "grants_extra", "repos", "surface", "model", "effort", "profile",
     ]);
     expect(shownFields(surfaces, "burndown")).toEqual(["enabled", "reportTo", "seats", "maxAgents", "maxWorktreesPerRepo", "briefGate.mode", "handReserve.points"]);
-    expect(shownFields(surfaces, "seat-watchdog")).toEqual(["stopped", "held", "attended"]);
+    expect(shownFields(surfaces, "seat-watchdog")).toEqual(["stopped", "attended"]);
     expect(row(surfaces, "charter", "pools.pool-a.ceiling_five_hour")).toMatchObject({ value: 90, decisions: ["401"] });
-    expect(row(surfaces, "seat-watchdog", "held")?.value).toEqual({});
+    expect(row(surfaces, "seat-watchdog", "held")).toMatchObject({ hidden: true });
+    expect(row(surfaces, "seat:seat-k", "repos")?.value).toEqual([{ path: "~/work/repo-1", remote: "org-a/repo-1" }]);
     expect(row(surfaces, "burndown", "maxAgents")).toMatchObject({ value: 28, line: 7 });
   });
 
@@ -216,6 +218,29 @@ describe("coordinatorSurfaces", () => {
     expect(row(surfaces, "charter", "pools.pool-a.note")).toMatchObject({ hidden: true });
     expect(row(surfaces, "seat-watchdog", "lastReadings")).toMatchObject({ hidden: true });
     for (const secret of [SEAT_SECRET, POOL_SECRET, BURNDOWN_SECRET, "/home/user/work/seat-k", "reading_marker"]) expect(body).not.toContain(secret);
+  });
+
+  it("shows a repos entry as its path and remote only, dropping a key no one declared", async () => {
+    const seat = SEAT.replace("  - {path: ~/work/repo-1, remote: org-a/repo-1}", `  - {path: ~/work/repo-1, remote: org-a/repo-1, token: ${REPO_SECRET}}`);
+    await writeFile(path.join(root, "autonomy", "seats", "seat-k.md"), seat);
+
+    const surfaces = await coordinatorSurfaces(roots)();
+
+    expect(row(surfaces, "seat:seat-k", "repos")?.value).toEqual([{ path: "~/work/repo-1", remote: "org-a/repo-1" }]);
+    expect(JSON.stringify(surfaces)).not.toContain(REPO_SECRET);
+  });
+
+  it("hides a map or list of maps under a named key rather than showing its undeclared keys", async () => {
+    const seat = SEAT.replace("  planners: 7", `  planners: {limit: 7, token: ${REPO_SECRET}}`);
+    const charter = CHARTER.replace("hard_stops: [npm-publish, deploy]", `hard_stops: [{name: deploy, token: ${REPO_SECRET}}]`);
+    await writeFile(path.join(root, "autonomy", "seats", "seat-k.md"), seat);
+    await writeFile(path.join(root, "autonomy", "charter.md"), charter);
+
+    const surfaces = await coordinatorSurfaces(roots)();
+
+    expect(row(surfaces, "seat:seat-k", "concurrency.planners")).toMatchObject({ hidden: true });
+    expect(row(surfaces, "charter", "hard_stops")).toMatchObject({ hidden: true });
+    expect(JSON.stringify(surfaces)).not.toContain(REPO_SECRET);
   });
 
   it("names each file with its newest hand backup and skips backups as seats", async () => {
