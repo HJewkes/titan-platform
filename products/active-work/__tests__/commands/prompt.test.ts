@@ -1,0 +1,182 @@
+import os from 'node:os';
+import path from 'node:path';
+import { promises as fs } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+import promptCommand from '../../src/commands/prompt.js';
+import { NotFoundError } from '../../src/errors.js';
+import type { CommandContext } from '../../src/registry/index.js';
+import { withTempActiveRoot } from '../setup/test-helpers.js';
+
+function makeCtx(activeRoot: string, cwd?: string): CommandContext {
+  return { activeRoot, warnings: [], format: 'json', cwd };
+}
+
+describe('prompt command', () => {
+  it('resolves by slug and returns the raw bootstrap prompt text', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      const out = await promptCommand.run(
+        { slug: 'sample-initiative', offline: true },
+        makeCtx(activeRoot),
+      );
+      expect(typeof out).toBe('string');
+      expect(out).toContain('Sample Initiative');
+    });
+  });
+
+  it('resolves a unique prefix', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      const out = await promptCommand.run({ slug: 'sample', offline: true }, makeCtx(activeRoot));
+      expect(out).toContain('Sample Initiative');
+    });
+  });
+
+  it('--adhoc reframes the printed prompt', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      const out = await promptCommand.run(
+        { slug: 'sample-initiative', adhoc: true, offline: true },
+        makeCtx(activeRoot),
+      );
+      expect(out).toContain('ad-hoc session');
+      expect(out).not.toContain('Work the top task unless redirected.');
+    });
+  });
+
+  it('resolves from the cwd arg when no slug is given', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      const out = await promptCommand.run(
+        { cwd: path.join(os.homedir(), 'code/sample/src'), offline: true },
+        makeCtx(activeRoot),
+      );
+      expect(out).toContain('Sample Initiative');
+    });
+  });
+
+  it('resolves from the context cwd when no cwd arg is given', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      const out = await promptCommand.run(
+        { offline: true },
+        makeCtx(activeRoot, path.join(os.homedir(), 'code/sample')),
+      );
+      expect(out).toContain('Sample Initiative');
+    });
+  });
+
+  it('throws NotFoundError when no slug and the cwd matches nothing', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      await expect(
+        promptCommand.run(
+          { cwd: path.join(os.homedir(), 'code/unrelated'), offline: true },
+          makeCtx(activeRoot),
+        ),
+      ).rejects.toThrow(NotFoundError);
+    });
+  });
+
+  it('does not archive stale done tasks (side-effect-free)', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      // Seed a done task old enough that `open` would archive it.
+      const taskPath = path.join(activeRoot, 'sample-initiative', 'tasks', 'SI-9.yml');
+      await fs.writeFile(
+        taskPath,
+        [
+          'id: SI-9',
+          'title: Ancient done task',
+          'priority: 9',
+          'status: done',
+          'created: 2020-01-01',
+          'updated: 2020-01-02',
+          'done_at: 2020-01-02',
+          '',
+        ].join('\n'),
+      );
+
+      await promptCommand.run({ slug: 'sample-initiative', offline: true }, makeCtx(activeRoot));
+
+      // The task file stays put — `prompt` never archives.
+      await expect(fs.stat(taskPath)).resolves.toBeDefined();
+      const archiveDir = path.join(activeRoot, 'sample-initiative', 'tasks', 'archive');
+      await expect(fs.stat(archiveDir)).rejects.toThrow();
+    });
+  });
+});
+
+describe('prompt command — sibling session leases (CC-9)', () => {
+  const SLUG = 'sample-initiative';
+
+  async function withoutBranches(activeRoot: string): Promise<void> {
+    await fs.writeFile(
+      path.join(activeRoot, SLUG, 'artifacts.yml'),
+      'branches: []\nstashes: []\nworktrees: []\n',
+    );
+  }
+
+  async function leaseFiles(activeRoot: string): Promise<string[]> {
+    try {
+      return await fs.readdir(path.join(activeRoot, '.sessions', SLUG));
+    } catch {
+      return [];
+    }
+  }
+
+  async function writeOneshotLease(activeRoot: string, leaseId: string): Promise<void> {
+    const dir = path.join(activeRoot, '.sessions', SLUG);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, `${leaseId}.json`),
+      JSON.stringify({
+        lease_id: leaseId,
+        slug: SLUG,
+        cwd: '/tmp/other-checkout',
+        mode: 'oneshot',
+        started: new Date().toISOString(),
+      }),
+    );
+  }
+
+  // `prompt` is a read-only view: re-seeding context mid-session must not look
+  // like a new session to the next bootstrap.
+  it('records no lease of its own', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      await withoutBranches(activeRoot);
+      await promptCommand.run({ slug: SLUG }, makeCtx(activeRoot));
+      expect(await leaseFiles(activeRoot)).toEqual([]);
+      await expect(fs.stat(path.join(activeRoot, '.sessions'))).rejects.toThrow();
+    });
+  });
+
+  it('still warns about a live sibling', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      await withoutBranches(activeRoot);
+      await writeOneshotLease(activeRoot, 'abc123');
+      const out = (await promptCommand.run({ slug: SLUG }, makeCtx(activeRoot))) as string;
+      expect(out).toContain('# Another session may already be live');
+      expect(out).toContain('/tmp/other-checkout');
+    });
+  });
+
+  it('honors AW_LEASE_ID so a session never warns about itself', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      await withoutBranches(activeRoot);
+      await writeOneshotLease(activeRoot, 'abc123');
+      process.env.AW_LEASE_ID = 'abc123';
+      try {
+        const out = (await promptCommand.run({ slug: SLUG }, makeCtx(activeRoot))) as string;
+        expect(out).not.toContain('# Another session may already be live');
+      } finally {
+        delete process.env.AW_LEASE_ID;
+      }
+    });
+  });
+
+  it('--no-sibling-check suppresses the warning', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      await withoutBranches(activeRoot);
+      await writeOneshotLease(activeRoot, 'abc123');
+      const out = (await promptCommand.run(
+        { slug: SLUG, no_sibling_check: true },
+        makeCtx(activeRoot),
+      )) as string;
+      expect(out).not.toContain('# Another session may already be live');
+    });
+  });
+});

@@ -6,6 +6,7 @@ import type { ActiveWork } from "./active-work.js";
 import type { DecisionLog } from "./decision-log.js";
 import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
+import { inboxViewCommands, type InboxSources } from "./inbox-view.js";
 import { readCommand } from "./owner-guard.js";
 import { roundFramesCommands } from "./round-frames.js";
 import type { RoundListeners } from "./listeners.js";
@@ -55,6 +56,11 @@ function upstreamsCommands(upstreams: readonly Upstream[]) {
   };
 }
 
+/** The owner's merged queue, as the raw Flow and as the inbox with its actions. */
+function ownerQueueCommands(sources: InboxSources) {
+  return { ...approvalsCommands(sources), ...inboxViewCommands(sources) };
+}
+
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
 export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, factory, decisionLog, listeners, work }: ConsoleSources) {
   return {
@@ -68,7 +74,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...roundsCommands(rounds),
     ...roundFramesCommands(rounds),
     ...roundsSubmitCommands(rounds, decisionLog, listeners),
-    ...approvalsCommands({ factory, rounds, inbox }),
+    ...ownerQueueCommands({ factory, rounds, inbox, shepherd }),
     ...shepherdCommands(shepherd),
     "work.portfolio": readCommand({
       name: "work.portfolio",

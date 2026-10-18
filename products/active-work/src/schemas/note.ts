@@ -1,0 +1,65 @@
+import { z } from 'zod';
+
+const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+const isValidIsoDate = (value: string): boolean => {
+  if (!ISO_DATE_REGEX.test(value)) return false;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return false;
+  // Reject dates like 2026-02-30 that JS happily rolls forward.
+  return parsed.toISOString().slice(0, 10) === value;
+};
+
+const isoDate = z
+  .string()
+  .refine(isValidIsoDate, { message: 'Must be a valid zero-padded YYYY-MM-DD date' });
+
+/**
+ * What a note is for. Actionable work becomes a task; these cover the durable
+ * knowledge a session leaves behind that no task would carry: `process` (how to
+ * work), `gotcha` (what bit us), `fyi` (context worth keeping), `decision`
+ * (what we settled and why), `plan` (intended shape of work not yet broken into
+ * tasks).
+ *
+ * `plan` was added after the fact, because eleven notes across three
+ * initiatives had been written with it and the loader silently dropped every
+ * one. A kind the corpus already uses is a kind, whatever the enum said.
+ */
+export const NoteKindSchema = z.enum(['process', 'gotcha', 'fyi', 'decision', 'plan']);
+
+/**
+ * Titles are slugified into filenames, so an unbounded one yields a path no
+ * one can read, type, or safely check out on every filesystem.
+ *
+ * Enforced at write time only. The read path stays permissive so notes filed
+ * before the bound existed still load — `doctor` surfaces those instead of the
+ * loader dropping captured knowledge on the floor.
+ */
+export const NOTE_TITLE_MAX_LENGTH = 120;
+
+/**
+ * `read_if` is rendered beside the note's line in every bootstrap, so it has
+ * to stay one short line. A longer or multi-line value is refused rather than
+ * cut, because a truncated condition can say the opposite of the whole one.
+ */
+export const NOTE_READ_IF_MAX_LENGTH = 160;
+
+export const NoteReadIfSchema = z
+  .string()
+  .trim()
+  .min(1, { message: 'read_if must not be empty' })
+  .max(NOTE_READ_IF_MAX_LENGTH, {
+    message: `read_if must be at most ${NOTE_READ_IF_MAX_LENGTH} characters`,
+  })
+  .refine((value) => !/[\r\n]/.test(value), { message: 'read_if must be a single line' });
+
+export const NoteFrontmatterSchema = z.object({
+  kind: NoteKindSchema,
+  title: z.string().min(1),
+  created: isoDate,
+  tags: z.array(z.string().min(1)).optional(),
+  read_if: NoteReadIfSchema.optional(),
+});
+
+export type NoteKind = z.infer<typeof NoteKindSchema>;
+export type NoteFrontmatter = z.infer<typeof NoteFrontmatterSchema>;
