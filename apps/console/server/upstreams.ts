@@ -124,6 +124,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     shepherd,
     coordinatorRoots: config.coordinatorRoots,
     factory: factoryNeeds(config.factoryPort),
+    hostSurfaces: config.hostSurfaces,
     decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger }),
     listeners: createRoundListeners({
       enabled: config.gateAnswers,

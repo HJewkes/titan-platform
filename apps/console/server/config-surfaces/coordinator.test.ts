@@ -171,7 +171,10 @@ describe("config.surfaces over the daemon's RPC", () => {
       comment: "owner decision 446 (2026-10-18), was 12",
       decisions: ["446"],
     };
-    expect(body).toMatchObject({ ok: true, data: { gaps: [], rows: expect.arrayContaining([implementers]) } });
+    expect(body).toMatchObject({ ok: true, data: { rows: expect.arrayContaining([implementers]) } });
+    const coordinatorFiles = [roots.autonomyDir ?? "", path.join(root, "agent-chat", "burndown.config.json"), path.join(root, "agent-chat", "seat-watchdog.json")];
+    const { gaps } = (body as { data: ConfigSurfaces }).data;
+    expect(gaps.filter((gap) => coordinatorFiles.some((file) => gap.startsWith(file)))).toEqual([]);
   });
 });
 

@@ -3,8 +3,9 @@ import type { CommandMapOf } from "@titan-design/registry";
 import { agentsCommands, type AgentsSource } from "./agents.js";
 import { approvalsCommands, type FactoryNeeds } from "./approvals.js";
 import type { ActiveWork } from "./active-work.js";
-import { configSurfacesCommands, unconfigured } from "./config-surfaces/catalog.js";
+import { configSurfacesCommands, unconfigured, type SurfaceReader } from "./config-surfaces/catalog.js";
 import { coordinatorSurfaces, type CoordinatorRoots } from "./config-surfaces/coordinator.js";
+import { hostSurfaces as hostSurfaceReaders, type HostSurfaceRoots } from "./config-surfaces/host.js";
 import type { DecisionLog } from "./decision-log.js";
 import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
@@ -37,7 +38,7 @@ export interface ConsoleSources {
   inbox: InboxSource;
   rounds: RoundsSource;
   shepherd: ShepherdSource;
-  /** Optional so test sources need not build one; absent, `config.surfaces` answers one gap. */
+  /** Optional so test sources need not build one; absent, `config.surfaces` answers one gap for the coordinator files. */
   coordinatorRoots?: CoordinatorRoots;
   /** Optional so test sources need not build one; absent reads as a `factory:` gap in `approvals.flow`. */
   factory?: FactoryNeeds;
@@ -45,6 +46,8 @@ export interface ConsoleSources {
   decisionLog?: DecisionLog;
   /** Optional so test sources need not build one; absent, a submitted round triggers nothing. */
   listeners?: RoundListeners;
+  /** Optional so test sources need not build one; absent, `config.surfaces` answers one gap for this host's files. */
+  hostSurfaces?: HostSurfaceRoots;
   work?: WorkOptions;
 }
 
@@ -84,8 +87,15 @@ function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
   };
 }
 
+function surfaceReaders(coordinatorRoots: CoordinatorRoots | undefined, hostSurfaces: HostSurfaceRoots | undefined): SurfaceReader[] {
+  return [
+    coordinatorRoots === undefined ? unconfigured("coordinator surfaces") : coordinatorSurfaces(coordinatorRoots),
+    ...(hostSurfaces === undefined ? [unconfigured("host config surfaces")] : hostSurfaceReaders(hostSurfaces)),
+  ];
+}
+
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, coordinatorRoots, factory, decisionLog, listeners, work }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, work }: ConsoleSources) {
   return {
     ...upstreamsCommands(upstreams),
     ...agentsCommands(agents),
@@ -99,7 +109,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...roundsSubmitCommands(rounds, decisionLog, listeners),
     ...ownerQueueCommands({ factory, rounds, inbox, shepherd }),
     ...shepherdCommands(shepherd),
-    ...configSurfacesCommands([coordinatorRoots === undefined ? unconfigured("coordinator surfaces") : coordinatorSurfaces(coordinatorRoots)]),
+    ...configSurfacesCommands(surfaceReaders(coordinatorRoots, hostSurfaces)),
     ...workCommands(activeWork, work),
   };
 }
