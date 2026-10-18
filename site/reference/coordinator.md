@@ -30,7 +30,9 @@ a global hard stop.
 A coordinator for another user needs one document instead of a tree of seat files:
 `titan-coordinator/v1`. `coordinatorConfigSchema` composes it from the schemas above and
 agent-dispatch's `limitsSchema`, and `checkCoordinatorConfig` checks the references between
-its sections.
+its sections. `EDITABLE_FIELDS` is the allowlist of fields an editor may change, each with
+its bounds and when its readers pick the change up; `checkEditableValue` refuses any path no
+row matches.
 
 ## When to reach for it
 
@@ -107,6 +109,15 @@ const result = checkCoordinatorConfig({
 });
 // a seat with pool "spare" would give
 // { ok: false, errors: [{ code: "reference", path: "seats.web-coord.pool", ... }] }
+```
+
+```ts
+import { checkEditableValue } from "@titan-design/coordinator";
+
+checkEditableValue("coordinator", "seats.web-coord.concurrency.implementers", 65);
+// { ok: false, reason: "invalid", ... }: the cap is 0..64
+checkEditableValue("coordinator", "seats.web-coord.grants_extra", []);
+// { ok: false, reason: "not-editable", ... }
 ```
 
 ```ts

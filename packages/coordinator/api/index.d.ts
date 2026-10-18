@@ -939,4 +939,35 @@ type PrefixScopes = Readonly<Record<string, string>>;
  */
 declare function projectSeatGeneration(state: SeatState, activity: SeatGenerationActivity, scopes: PrefixScopes): SessionFacts[];
 
-export { AUTHORED_MAX_CHARS, type AuthoredBlock, type AuthoredContinuation, type AuthoredError, type AuthoredResult, type CharterDefaults, type CharterPolicy, type CharterPolicyError, type CharterPolicyResult, type CoordinatorConfig, type CoordinatorConfigError, type CoordinatorConfigResult, type CoordinatorOwner, type CoordinatorPolicy, type CoordinatorSeat, HARD_STOPS, HARD_STOP_CLASSES, type HardStop, type HardStopClass, type OpenQuestion, type PrefixScopes, type ResolvedSeatPolicy, SEAT_EVENT_KINDS, type SeatConcurrency, type SeatConfig, type SeatEvent, type SeatFoldError, type SeatFoldOptions, type SeatGenerationActivity, type SeatRepo, type SeatSpend, type SeatState, type SessionFacts, type StandingRule, authoredBlockSchema, authoredContinuationSchema, charterDefaultsSchema, charterPolicyErrorSchema, charterPolicySchema, checkCoordinatorConfig, coordinatorConfigErrorSchema, coordinatorConfigSchema, coordinatorOwnerSchema, coordinatorPolicySchema, coordinatorSeatSchema, emptySeatState, foldSeatEvents, hardStopClassSchema, hardStopsIn, importAutonomyTree, openQuestionSchema, parseAuthored, parseCharterPolicy, projectSeatGeneration, renderAuthored, renderSeatBook, resolveSeatPolicy, scratchPathOf, seatBackgroundSchema, seatClaimSchema, seatConcurrencySchema, seatConfigSchema, seatEventSchema, seatFoldErrorSchema, seatHoldSchema, seatRepoSchema, seatSpendSchema, seatStateSchema, sessionFactsPrSchema, sessionFactsSchema, standingRuleSchema };
+/** When a reader of the surface sees a new value. */
+type ReloadClass = "live" | "per-spawn" | "restart";
+type ConfigSurface = "coordinator" | "agent-chat" | "factory";
+type EditableField = {
+    surface: ConfigSurface;
+    /** Dotted path within the surface; `*` matches exactly one segment. */
+    pattern: string;
+    bounds: {
+        min: number;
+        max: number;
+        integer: boolean;
+    };
+    schema: z.ZodNumber;
+    reload: ReloadClass;
+};
+type EditableValueResult = {
+    ok: true;
+    field: EditableField;
+    value: number;
+} | {
+    ok: false;
+    reason: "not-editable" | "invalid";
+    message: string;
+};
+/** The only config fields the console may edit; a path no row matches is refused. */
+declare const EDITABLE_FIELDS: readonly EditableField[];
+/** The row that makes `path` on `surface` editable, or undefined when none does. */
+declare function editableField(surface: string, path: string): EditableField | undefined;
+/** Checks one proposed value against its row's bounds; never throws. */
+declare function checkEditableValue(surface: string, path: string, value: unknown): EditableValueResult;
+
+export { AUTHORED_MAX_CHARS, type AuthoredBlock, type AuthoredContinuation, type AuthoredError, type AuthoredResult, type CharterDefaults, type CharterPolicy, type CharterPolicyError, type CharterPolicyResult, type ConfigSurface, type CoordinatorConfig, type CoordinatorConfigError, type CoordinatorConfigResult, type CoordinatorOwner, type CoordinatorPolicy, type CoordinatorSeat, EDITABLE_FIELDS, type EditableField, type EditableValueResult, HARD_STOPS, HARD_STOP_CLASSES, type HardStop, type HardStopClass, type OpenQuestion, type PrefixScopes, type ReloadClass, type ResolvedSeatPolicy, SEAT_EVENT_KINDS, type SeatConcurrency, type SeatConfig, type SeatEvent, type SeatFoldError, type SeatFoldOptions, type SeatGenerationActivity, type SeatRepo, type SeatSpend, type SeatState, type SessionFacts, type StandingRule, authoredBlockSchema, authoredContinuationSchema, charterDefaultsSchema, charterPolicyErrorSchema, charterPolicySchema, checkCoordinatorConfig, checkEditableValue, coordinatorConfigErrorSchema, coordinatorConfigSchema, coordinatorOwnerSchema, coordinatorPolicySchema, coordinatorSeatSchema, editableField, emptySeatState, foldSeatEvents, hardStopClassSchema, hardStopsIn, importAutonomyTree, openQuestionSchema, parseAuthored, parseCharterPolicy, projectSeatGeneration, renderAuthored, renderSeatBook, resolveSeatPolicy, scratchPathOf, seatBackgroundSchema, seatClaimSchema, seatConcurrencySchema, seatConfigSchema, seatEventSchema, seatFoldErrorSchema, seatHoldSchema, seatRepoSchema, seatSpendSchema, seatStateSchema, sessionFactsPrSchema, sessionFactsSchema, standingRuleSchema };
