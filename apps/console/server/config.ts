@@ -113,10 +113,7 @@ export function resolveConfig(
     seatPrefixes: seatPrefixesFrom(env.TITAN_CONSOLE_SEATS),
     sessionGraphPath: expandHome(env.TITAN_CONSOLE_SESSION_GRAPH ?? activeWorkGraphPath({ env, home, platform }), home),
     codewatchUrl: urlFrom(env, "TITAN_CONSOLE_CODEWATCH_URL", DEFAULT_CODEWATCH_URL),
-    lanHost: lanHostFrom(env.TITAN_CONSOLE_HOST, machine),
-    lanNames: lanNamesFrom(env.TITAN_CONSOLE_LAN_NAMES, machine),
-    lanTls: lanTlsFrom(env, home),
-    lanTokenPath: expandHome(env.TITAN_CONSOLE_TOKEN || path.join(stateDir, "lan.token"), home),
+    ...lanOptionsFrom(env, home, stateDir, machine),
     inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
     roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
     ...ownerOptionsFrom(env, home),
@@ -125,6 +122,20 @@ export function resolveConfig(
   };
   assertCoherent(config);
   return config;
+}
+
+function lanOptionsFrom(
+  env: NodeJS.ProcessEnv,
+  home: string,
+  stateDir: string,
+  machine: Machine,
+): Pick<ConsoleConfig, "lanHost" | "lanNames" | "lanTls" | "lanTokenPath"> {
+  return {
+    lanHost: lanHostFrom(env.TITAN_CONSOLE_HOST, machine),
+    lanNames: lanNamesFrom(env.TITAN_CONSOLE_LAN_NAMES, machine),
+    lanTls: lanTlsFrom(env, home),
+    lanTokenPath: expandHome(env.TITAN_CONSOLE_TOKEN || path.join(stateDir, "lan.token"), home),
+  };
 }
 
 /** The settings only the owner turns on or points; none is ever read from a request. */
