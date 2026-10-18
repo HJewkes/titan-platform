@@ -31,15 +31,22 @@ const CONSOLE_BIN = "titan-console";
 const CONSOLE_SCRIPT_RE = /(?:^|\/)(?:titan-)?console\/(?:server\/cli\.[cm]?[jt]s|dist\/cli\.[cm]?js)$/;
 const SCRIPT_RUNNERS = new Set(["node", "tsx", "bun", "deno", "ts-node"]);
 
-/** `titan-console login-link` or `token rotate`: each mints or resets the owner's LAN session (TP-3579 K2). */
+/**
+ * Two-word owner verbs by group: `token rotate` resets the owner's LAN session (TP-3579 K2), and `config import`
+ * seeds revision 0 of the config store, which an agent running first would fill with caps of its own choosing.
+ */
+const GROUPED_OWNER_VERBS: Readonly<Record<string, string>> = { token: "rotate", config: "import" };
+
+/** `titan-console login-link`, `token rotate` or `config import`, as the subject pattern; null for any other verb. */
 export function consoleOwnerVerb(cmd: SimpleCommand): string | null {
   const words = consoleArgs(cmd);
   if (words === null) return null;
   const [first, second] = words;
   if (first === undefined) return null;
   if (first.dynamic || first.value === "login-link") return "titan-console:login-link";
-  if (first.value !== "token" || second === undefined) return null;
-  return second.dynamic || second.value === "rotate" ? "titan-console:token-rotate" : null;
+  const verb = Object.hasOwn(GROUPED_OWNER_VERBS, first.value) ? GROUPED_OWNER_VERBS[first.value] : undefined;
+  if (verb === undefined || second === undefined) return null;
+  return second.dynamic || second.value === verb ? `titan-console:${first.value}-${verb}` : null;
 }
 
 /** The words after the console's command word or script path, or null when the command does not run the console. */
