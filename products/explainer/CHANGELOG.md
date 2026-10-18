@@ -1,5 +1,11 @@
 # @titan-design/explainer
 
+## 0.1.1
+
+### Patch Changes
+
+- 0f15195: Add the M3 prefilter route list (`explainRoutes`): beats that name three or more new items without explaining them, for the L1 item judge. Freeze the whole 75-beat v4 spike script as a fixture.
+
 ## 0.1.0
 
 ### Minor Changes
