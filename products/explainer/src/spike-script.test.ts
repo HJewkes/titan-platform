@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { ScriptSchema } from "./script-schema.js";
 import { fromSpikeScript, readSpikeScript } from "./spike-script.js";
 import { v4Script } from "./spike-fixtures.test-helpers.js";
@@ -61,8 +62,9 @@ describe("reading a spike script.json", () => {
 
   // Mutation: dropping the default makes a script with no `video` block hand back undefined.
   it("hands back no invariants when the script has no video block", () => {
-    const noVideo = Object.fromEntries(Object.entries(v4Script() as object).filter(([key]) => key !== "video"));
+    const { video, ...noVideo } = z.looseObject({ video: z.unknown() }).parse(v4Script());
 
+    expect(video).toBeDefined();
     expect(fromSpikeScript(noVideo).invariants).toEqual([]);
   });
 

@@ -1,7 +1,7 @@
 import type { PaceBeat } from "./pace-items.js";
 
 /** M5a: the most invariants one beat may state, and only with a map on screen. */
-export const MAX_INVARIANTS_PER_BEAT = 1;
+const MAX_INVARIANTS_PER_BEAT = 1;
 
 const normalize = (text: string): string =>
   text
@@ -49,10 +49,10 @@ export function findingRoutes(beats: readonly PaceBeat[]): string[] {
 }
 
 /** Why a beat goes to the L1 seat judge. */
-export type SeatReason = "invariant" | "finding";
+type SeatReason = "invariant" | "finding";
 
 /** One beat the L1 seat judge (TP-2982) asks "is this seated in the architecture?" about. */
-export interface SeatRoute {
+interface SeatRoute {
   beat: string;
   reason: SeatReason;
 }
