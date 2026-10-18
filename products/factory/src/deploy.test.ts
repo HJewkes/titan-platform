@@ -1124,6 +1124,18 @@ describe("titan-factory service deploy verb", () => {
     expect(machine.calls[0]).toBe("git clone https://example.test/org/titan-platform.git /srv/tester/Library/Application Support/titan-factory/deploy/titan-platform");
   });
 
+  it("refuses while a Morning DEPLOY HOLD item stands in the configured digest.queuesDir (TP-3519)", async () => {
+    const machine = fakeMachine({ files: { "/srv/queues/seat-a.md": "## Morning queue (owner only)\n7. DEPLOY HOLD: copy the widget db first. One-way.\n" } });
+    const env = configured({});
+    writeFileSync(join(env.XDG_CONFIG_HOME!, "titan-factory", "config.json"), JSON.stringify({ digest: { queuesDir: "/srv/queues" } }));
+
+    const code = await cliIn(env, machine);
+
+    expect(code).toBe(1);
+    expect(machine.holds().manual).toMatchObject({ set: true, hold: { source: "morning:seat-a:7" } });
+    expect(machine.mutations()).toEqual([]);
+  });
+
   it("deploys from service.deployCheckout when it is configured", async () => {
     const machine = fakeMachine();
     const env = configured({ deployCheckout: "/srv/elsewhere/tree", deployRemote: "https://example.test/org/titan-platform.git" });
