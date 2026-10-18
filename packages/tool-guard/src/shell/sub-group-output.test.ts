@@ -270,3 +270,40 @@ describe("a substitution that prints a NUL is not read as the text with it kept 
     expect(await verdict(line)).toBe("deny");
   });
 });
+
+/** A body may skip, repeat or stop its commands, so only `;`, newline and `|` between printers read as all it prints (TP-3333). */
+const NOT_RUN_ONCE_IN_ORDER = [
+  `echo "$(printf '' || printf 'status '; echo push origin HEAD:main)" | xargs git`,
+  `echo "$(printf 'status ' && false; echo push origin HEAD:main)" | xargs git`,
+  `echo "$(echo() { printf 'status '; }; printf 'push origin HEAD:main')" | xargs git`,
+  `echo "$(f() { echo status; }; echo push origin HEAD:main)" | xargs git`,
+  'echo "$({ echo push origin HEAD:main })" | xargs git',
+  'echo "$({ echo status; echo push origin HEAD:main )" | xargs git',
+  'echo "$(if false; then echo status; fi; echo push origin HEAD:main)" | xargs git',
+  'echo "$(if true; then echo push origin HEAD:main; else echo status; fi)" | xargs git',
+  'echo "$(while false; do echo status; done; echo push origin HEAD:main)" | xargs git',
+  'echo "$(case x in y) echo status;; esac; echo push origin HEAD:main)" | xargs git',
+  'echo "$(for x in; do echo status; done; echo push origin HEAD:main)" | xargs git',
+  'echo "$(! echo status; echo push origin HEAD:main)" | xargs git',
+  'echo "$(echo push origin HEAD:main; exit; echo status)" | xargs git',
+  'echo "$(echo push origin HEAD:main; return 2>/dev/null; echo status)" | xargs git',
+  'echo "$(exec echo push origin HEAD:main; echo status)" | xargs git',
+  'echo "$(echo status & echo push origin HEAD:main)" | xargs git',
+  'echo "$(echo status |& cat; echo push origin HEAD:main)" | xargs git',
+  'echo "$( ( echo status ) echo push origin HEAD:main)" | xargs git',
+];
+
+describe("a body that may not run each command once, in order, is not read as all it prints (TP-3333)", () => {
+  it.each(NOT_RUN_ONCE_IN_ORDER)("denies %s", async (line) => {
+    expect(await verdict(line)).toBe("deny");
+  });
+
+  it.each([
+    'echo "$( { echo status; } )" | xargs git',
+    'echo "$( ( echo status ) )" | xargs git',
+    'echo "$(echo status\n)" | xargs git',
+    'echo "$(echo stat | cat; echo us)" | xargs git',
+  ])("allows %s", async (line) => {
+    expect(await verdict(line)).toBe("pass");
+  });
+});
