@@ -253,7 +253,17 @@ describe("a #!/usr/bin/env shell script on a line that changes PATH", () => {
     ["a PATH= prefix on shift in sh -c", "sh -c 'PATH=. shift 0; ./envp'"],
     ["a PATH= prefix on break in a loop in sh -c", "sh -c 'for i in 1; do PATH=. break; done; ./envp'"],
     ["a PATH= prefix on continue in a loop in sh -c", "sh -c 'for i in 1; do PATH=. continue; done; ./envp'"],
-    ["a PATH= prefix on return in a function in sh -c", "sh -c 'f(){ PATH=. return; }; f; ./envp'"],  ])("denies the script after %s", async (_, line) => {
+    ["a PATH= prefix on return in a function in sh -c", "sh -c 'f(){ PATH=. return; }; f; ./envp'"],
+    ["a HOME= prefix naming the working directory through /proc on a function", "f(){ PATH=~/b:$PATH; ./envp; }; HOME=/proc/self/cwd f"],
+    ["a HOME= prefix climbing into /proc on a function", "f(){ PATH=~/b:$PATH; ./envp; }; HOME=/tmp/../proc/self/cwd f"],
+    ["a tilde under a HOME naming the working directory through /proc", "HOME=/proc/self/cwd; PATH=~/b:$PATH; ./envp"],
+    ["a tilde under a /proc HOME with a trailing slash", "HOME=/proc/self/cwd/; PATH=~/b:$PATH; ./envp"],
+    ["a tilde under a /proc HOME behind a . segment", "HOME=/./proc/self/cwd; PATH=~/b:$PATH; ./envp"],
+    ["a tilde under a numbered process's working directory", "HOME=/proc/1234/cwd; PATH=~/b:$PATH; ./envp"],
+    ["a tilde under a descriptor directory", "exec 3<.; HOME=/dev/fd/3; PATH=~/b:$PATH; ./envp"],
+    ["a .. segment climbing into /proc", "PATH=/tmp/../proc/self/cwd:$PATH; ./envp"],
+    ["a .. segment climbing into /dev", "exec 3<.; PATH=/tmp/../dev/fd/3/b:$PATH; ./envp"],
+    ["a . and a .. segment before /proc with a trailing slash", "PATH=/tmp/./../proc/self/cwd/:$PATH; ./envp"],  ])("denies the script after %s", async (_, line) => {
     file("envp", ENV_BASH);
     file("src.sh", "PATH=.:$PATH\n");
     expect(await decision(line)).toBe("deny");

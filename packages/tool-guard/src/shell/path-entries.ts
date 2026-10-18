@@ -8,8 +8,20 @@ const SELF_RE = /^\$(?:PATH|\{PATH\})$/;
 /** A literal absolute directory, or one under `~` or `$HOME`, which the walk keeps as `~`. */
 const LITERAL_DIR_RE = /^(?:\/|~(?:\/|$)|\$(?:HOME|\{HOME\})(?:\/|$))[^$`\\*?[(){}]*$/;
 const HOME_RE = /^(?:\$(?:HOME|\{HOME\})|~)/;
-/** Names that reach the working directory through the kernel, so a spelling that starts absolute still searches it. */
-const CWD_ALIAS_RE = /^\/(?:proc|dev)(?:\/|$)/;
+
+/**
+ * Whether a literal path stays off the working directory: a `..` may climb out of a symlink to anywhere, and /proc
+ * and /dev reach the working directory through the kernel, however many `/` and `.` segments spell the way there.
+ */
+function staysOffCwd(path: string): boolean {
+  const segments = path.split("/").filter((segment) => segment !== "" && segment !== ".");
+  return !segments.includes("..") && !(path.startsWith("/") && (segments[0] === "proc" || segments[0] === "dev"));
+}
+
+/** A `HOME` a `~` on PATH may stand for: a literal absolute directory other than the working directory. */
+function fixedHome(value: string | null | undefined): boolean {
+  return value?.startsWith("/") === true && staysOffCwd(value);
+}
 
 /**
  * The absolute directories an assignment puts on `PATH`, or null when it puts anything else there: an empty entry
@@ -18,11 +30,11 @@ const CWD_ALIAS_RE = /^\/(?:proc|dev)(?:\/|$)/;
  * its separator, not an empty entry.
  */
 export function safePathDirs(raw: string, append: boolean, vars: Vars, homeSet = false): string[] | null {
-  const homeSafe = !homeSet && (!vars.has("HOME") || (vars.get("HOME") ?? "").startsWith("/"));
+  const homeSafe = !homeSet && (!vars.has("HOME") || fixedHome(vars.get("HOME")));
   const dirs: string[] = [];
   for (const entry of (append && raw.startsWith(":") ? raw.slice(1) : raw).split(":")) {
     if (SELF_RE.test(entry)) continue;
-    if (!LITERAL_DIR_RE.test(entry) || CWD_ALIAS_RE.test(entry.replace(/\/(?:\.?\/)+/g, "/")) || (HOME_RE.test(entry) && !homeSafe)) return null;
+    if (!LITERAL_DIR_RE.test(entry) || !staysOffCwd(entry) || (HOME_RE.test(entry) && !homeSafe)) return null;
     dirs.push(entry.replace(HOME_RE, "~").replace(/(?<=.)\/$/, ""));
   }
   return dirs;
@@ -39,7 +51,7 @@ export function prefixOutlives(name: string | null): boolean {
 
 /** Whether a prefix sets `HOME` to anything but a literal absolute directory, so a `~` on PATH may name the working directory. */
 export function prefixHomeUnsafe(assigned: Assignment[]): boolean {
-  return assigned.some(([name, value, kind]) => name === "HOME" && kind !== "hidden" && value?.startsWith("/") !== true);
+  return assigned.some(([name, value, kind]) => name === "HOME" && kind !== "hidden" && !fixedHome(value));
 }
 
 /** What a command's own `NAME=value` prefix does to the `PATH` it runs under. */
