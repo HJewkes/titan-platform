@@ -71,7 +71,7 @@ const OPERAND_LINES = [
   `bash <(echo '"$@"') ${PUSH}`,
   `bash <(echo ${PUSH}) arg`,
 ];
-/** A completed redirect before the substitution leaves it the shell's script; only a redirect awaiting its target takes it. */
+/** A redirect a substitution completes takes nothing more, so the substitution or file after it stays the shell's script. */
 const REDIRECTED_LINES = [
   `bash 2>/dev/null <(echo '${PUSH}')`,
   `bash 2>&1 <(echo '${PUSH}')`,
@@ -83,6 +83,11 @@ const REDIRECTED_LINES = [
   "bash >out <(cat ./x.sh)",
   `source 2>/dev/null <(echo '${PUSH}')`,
   `bash < <(echo 'echo hi') <(echo '${PUSH}')`,
+  "bash > >(cat) ./evil.sh",
+  "bash 2> >(cat) ./evil.sh",
+  "sh 2> >(cat) ./evil.sh",
+  "source 2> >(cat) ./evil.sh",
+  "bash < <(echo 'echo hi') ./evil.sh",
 ];
 
 describe("a shell or source running a process substitution as its script", () => {
@@ -213,6 +218,7 @@ describe("the arguments a process substitution leaves on a command", () => {
   it("leaves a substitution a redirect awaits with that redirect", () => {
     expect(args("bash < <(echo hi)", "bash")).toEqual([]);
     expect(args("tee > >(cat)", "tee")).toEqual([]);
+    expect(args("bash 2> >(cat) ./x.sh", "bash")).toEqual(["./x.sh"]);
   });
 
   it("keeps the operand on a shell", () => {

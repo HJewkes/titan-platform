@@ -316,7 +316,9 @@ function readRedirect(s: LexState): void {
   s.i = ahead.ends[op.length - 1] ?? s.src.length;
   const paren = pastJoins(s.src, s.i);
   if ((op === "<" || op === ">") && s.src[paren] === "(") {
-    const awaited = s.redirect !== null && s.tokens.at(-1) === s.redirect.token;
+    // A pending `<` or `>` takes the substitution as its file, so the next word is the command's again (`bash 2> >(cat) ./x.sh`).
+    const awaited = s.redirect !== null;
+    s.redirect = null;
     s.tokens.push({ type: "subs", subs: [readSubstitution(s, paren + 1)], ...(awaited ? { awaited: true as const } : {}) });
     return;
   }
