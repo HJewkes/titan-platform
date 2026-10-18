@@ -71,9 +71,22 @@ const OPERAND_LINES = [
   `bash <(echo '"$@"') ${PUSH}`,
   `bash <(echo ${PUSH}) arg`,
 ];
+/** A completed redirect before the substitution leaves it the shell's script; only a redirect awaiting its target takes it. */
+const REDIRECTED_LINES = [
+  `bash 2>/dev/null <(echo '${PUSH}')`,
+  `bash 2>&1 <(echo '${PUSH}')`,
+  `bash </dev/null <(echo '${PUSH}')`,
+  `bash >/dev/null <(echo '${PUSH}')`,
+  `bash -x 2>/dev/null <(echo '${PUSH}')`,
+  `bash 3<./ok.sh <(echo '${PUSH}')`,
+  `bash < ./ok.sh <(echo '${PUSH}')`,
+  "bash >out <(cat ./x.sh)",
+  `source 2>/dev/null <(echo '${PUSH}')`,
+  `bash < <(echo 'echo hi') <(echo '${PUSH}')`,
+];
 
 describe("a shell or source running a process substitution as its script", () => {
-  it.each([...STDIN_LINES, "bash <(echo 'cat | sh') < \"$F\"", ...OPERAND_LINES, ...RELAY_LINES, ...NULLCMD_LINES])("denies a shell's own stdin or operands: %s", async (command) => {
+  it.each([...STDIN_LINES, "bash <(echo 'cat | sh') < \"$F\"", ...OPERAND_LINES, ...RELAY_LINES, ...NULLCMD_LINES, ...REDIRECTED_LINES])("denies a shell's own stdin or operands: %s", async (command) => {
     const { decision } = await verdict(command);
 
     expect(decision).toBe("deny");
@@ -204,6 +217,8 @@ describe("the arguments a process substitution leaves on a command", () => {
 
   it("keeps the operand on a shell", () => {
     expect(args("bash <(echo hi)", "bash")).toEqual(["/dev/fd/63"]);
+    expect(args("bash 2>/dev/null <(echo hi)", "bash")).toEqual(["/dev/fd/63"]);
+    expect(args("bash < <(echo a) <(echo hi)", "bash")).toEqual(["/dev/fd/63"]);
   });
 });
 
@@ -214,6 +229,7 @@ writeFileSync(join(bin, "git"), '#!/bin/sh\necho "$@" >> "$FAKE_GIT_LOG"\n');
 chmodSync(join(bin, "git"), 0o755);
 writeFileSync(join(scratch, "x.sh"), `${PUSH}\n`);
 writeFileSync(join(scratch, "evil.sh"), `${PUSH}\n`);
+writeFileSync(join(scratch, "ok.sh"), "echo ok\n");
 afterAll(() => {
   rmSync(bin, { recursive: true, force: true });
   rmSync(scratch, { recursive: true, force: true });
@@ -259,7 +275,7 @@ describe.each(["bash", "zsh"])("under real %s", (shell) => {
 });
 
 describe("the shell's own stdin and operands under a real shell", () => {
-  it.each([...STDIN_LINES, ...OPERAND_LINES, ...RELAY_LINES, ...NULLCMD_LINES])("%s pushes", (line) => {
+  it.each([...STDIN_LINES, ...OPERAND_LINES, ...RELAY_LINES, ...NULLCMD_LINES, ...REDIRECTED_LINES])("%s pushes", (line) => {
     const pushing = ["bash", "zsh"].filter((shell) => haveShell(shell) && pushes(shell, line));
 
     expect(pushing.length).toBeGreaterThan(0);

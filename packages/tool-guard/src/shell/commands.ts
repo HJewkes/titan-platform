@@ -192,7 +192,7 @@ function walkFrom(list: Token[], start: number, w: Walk): void {
       continue;
     }
     if (token.type === "word") words.push(noteWord(token, w.marks));
-    words = withProcsub(words, list[at - 1], token);
+    words = withProcsub(words, token);
     redirects = gather(redirects, token, w);
     for (const sub of nestedLists(token)) walk(sub, child(w, [...w.scope.wrapping, "subshell"]));
   }

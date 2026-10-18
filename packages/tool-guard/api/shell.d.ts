@@ -52,6 +52,8 @@ interface OpToken {
 interface SubsToken {
     type: "subs";
     subs: Token[][];
+    /** Set when a `<` or `>` just before it awaits its target (`bash < <(...)`): the substitution is that redirect's file, not an operand. */
+    awaited?: true;
 }
 /** `target` is the word after the operator; for a heredoc it is the delimiter and `body` is the text. */
 interface RedirectToken {
