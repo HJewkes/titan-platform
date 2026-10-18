@@ -65,6 +65,8 @@ export interface ConsoleConfig {
   inboxActions?: boolean;
   /** Where `config.surfaces` reads this host's agent-chat, factory, console and Claude Code config. */
   hostSurfaces?: HostSurfaceRoots;
+  /** Directories the theater lists videos from, from `TITAN_CONSOLE_VIDEO_ROOTS`; empty lists none. */
+  videoRoots?: string[];
 }
 
 export const LAN_NEEDS_TLS = "TITAN_CONSOLE_HOST needs TITAN_CONSOLE_TLS_CERT and TITAN_CONSOLE_TLS_KEY: the LAN listener serves HTTPS only";
@@ -117,6 +119,7 @@ export function resolveConfig(
     roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
     ...ownerOptionsFrom(env, home),
     hostSurfaces: hostSurfaceRootsFrom(env, home),
+    videoRoots: videoRootsFrom(env.TITAN_CONSOLE_VIDEO_ROOTS, home),
   };
   assertCoherent(config);
   return config;
@@ -164,6 +167,17 @@ function decisionsFileFrom(raw: string | undefined, home: string): string | null
   const file = expandHome(raw, home);
   if (!path.isAbsolute(file)) throw new Error(`TITAN_CONSOLE_DECISIONS_FILE must be an absolute or ~/ path, got "${raw}"`);
   return file;
+}
+
+/** A `path.delimiter` list; a relative entry would resolve against whatever directory the service started in. */
+function videoRootsFrom(raw: string | undefined, home: string): string[] {
+  if (raw === undefined || raw.trim() === "") return [];
+  const roots = raw.split(path.delimiter).map((entry) => entry.trim()).filter((entry) => entry !== "");
+  return roots.map((entry) => {
+    const root = expandHome(entry, home);
+    if (!path.isAbsolute(root)) throw new Error(`TITAN_CONSOLE_VIDEO_ROOTS entries must be absolute or ~/ paths, got "${entry}"`);
+    return root;
+  });
 }
 
 /** Only `1` turns a flag on; any other value is refused rather than read as off, so a typo is never silent. */
