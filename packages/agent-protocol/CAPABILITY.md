@@ -2,4 +2,4 @@
 
 <!-- One to three sentences for a reader deciding whether to reuse this or build something new. Feeds CAPABILITIES.md. -->
 
-You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`. To count usage without double-counting deltas and snapshots, call `foldUsage`.
+You need harness-neutral identity, execution-phase or usage types, or `foldUsage` to deduplicate deltas and snapshots. For canonical zod-validated execution trace records with a privacy redactor, import `./trace`. For existing dated catalog matching and cost arithmetic, import `./pricing`: `findPrice`/`priceRequest` preserve Claude cache TTL and long-prompt policy, while `priceCodexUsage`/`validateCodexPrices` preserve supplied-row inclusive-token accounting without native accounts, runtime price fetches or stored-cost rewrites.

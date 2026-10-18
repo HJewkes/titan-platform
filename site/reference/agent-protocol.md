@@ -125,3 +125,10 @@ survive redaction and their values do not.
 Fixtures for a synthetic documentation run ship in the package under
 `fixtures/trace/v1/`: `doc-run.jsonl` holds all 17 records in order, and one JSON file per
 kind holds the same records split by kind.
+
+
+## Shared pricing
+
+Import `@titan-design/agent-protocol/pricing` for the existing `PRICE_TABLE`, `PRICE_TABLE_VERSION`, `findPrice`, `priceRequest`, `priceCodexUsage` and `validateCodexPrices` exports and their input/result types. Session-analytics and agent preserve their existing entrypoints as compatibility exports.
+
+The extraction preserves dated model matching, explicit cache-write TTL accounting, long-prompt boundaries, inclusive cached/reasoning token semantics, reported costs and explicit unavailable results. It updates no prices or stored data. A neutral quote must carry any known TTL evidence; a total alone is insufficient. No native runtime or account capability is implied.

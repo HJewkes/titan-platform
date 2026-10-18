@@ -17,6 +17,10 @@
     "./worker-facts": {
       "types": "./dist/worker-facts.d.ts",
       "import": "./dist/worker-facts.js"
+    },
+    "./pricing": {
+      "types": "./dist/pricing/index.d.ts",
+      "import": "./dist/pricing/index.js"
     }
   },
   "files": [
