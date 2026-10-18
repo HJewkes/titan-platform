@@ -9,7 +9,7 @@ import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
 import { aliasCommands, type AliasTable } from "./alias-words.js";
-import { childVars, expandWord, lookup, noteSureCommands, observeStores } from "./vars.js";
+import { childVars, expandWord, lookup, noteSureCommands, observeStores, type Vars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { AliasDefinitionError, definesAlias } from "./alias-definitions.js";
 import { CommandRebindingError, rebindsCommand } from "./command-rebinding.js";
@@ -21,11 +21,9 @@ import { descriptorsAfter, emptied, stdinText, TOP_DESCRIPTORS } from "./shell-o
 import type { Descriptors } from "./shell-options.js";
 import { xargsCommands } from "./xargs-runs.js";
 import { runReadings } from "./xargs-readings.js";
-import type { Vars } from "./vars.js";
-import { newMarks, noteRedirect, recordValue, settle } from "./value-marks.js";
+import { newMarks, noteRedirect, recordValue, settle, type ValueMarks } from "./value-marks.js";
 import { noteCommand, noteWord } from "./stored-words.js";
 import { adoptPath, assignStandalone, markPathSoft, namesScript, searchPathOf, trackCommand, withPrefixPath, type SearchPath } from "./search-path.js";
-import type { ValueMarks } from "./value-marks.js";
 import { MAX_UNSURE_WORDS, ReadingLimitError, SPLICED_WEIGHT, unsureReadings, ValueWalkError } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
 
