@@ -913,7 +913,7 @@ Key exports:
 - `edges`: `checkEdges`, `readEdges`
 - `dispositions`: `DispositionRowSchema`, `checkDispositions`, `parseDispositions`
 - `review-summary`: `prioritizedTopics`, `summaryRecommendations`
-- +35 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/pm)
+- +48 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/pm)
 
 <a id="cap-queue-mirror"></a>
 
