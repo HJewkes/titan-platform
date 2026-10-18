@@ -128,7 +128,7 @@ function captionsName(videoName: string): string {
   return `${path.parse(videoName).name}.vtt`;
 }
 
-export function videosCommands(catalog: VideoCatalog | undefined) {
+export function videosCommands(catalog: VideoCatalog = videoCatalog({ roots: [] })) {
   return {
     "videos.list": readCommand({
       name: "videos.list",
@@ -136,7 +136,6 @@ export function videosCommands(catalog: VideoCatalog | undefined) {
       args: z.object({}),
       result: z.object({ videos: z.array(videoEntry), truncated: z.boolean(), gaps: z.array(z.string()) }),
       run: async () => {
-        if (catalog === undefined) return { videos: [], truncated: false, gaps: [ROOTS_UNSET] };
         const { videos, truncated, gaps } = await catalog.refresh();
         return { videos, truncated, gaps };
       },

@@ -119,16 +119,16 @@ export function resolveConfig(
     roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
     ...ownerOptionsFrom(env, home),
     hostSurfaces: hostSurfaceRootsFrom(env, home),
-    videoRoots: videoRootsFrom(env.TITAN_CONSOLE_VIDEO_ROOTS, home),
   };
   assertCoherent(config);
   return config;
 }
 
 /** The settings only the owner turns on or points; none is ever read from a request. */
-function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "ownerWrites" | "decisionsFile" | "gateAnswers" | "inboxActions"> {
+function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "ownerWrites" | "decisionsFile" | "gateAnswers" | "inboxActions" | "videoRoots"> {
   return {
     ownerWrites: flagFrom("TITAN_CONSOLE_OWNER_WRITES", env.TITAN_CONSOLE_OWNER_WRITES),
+    videoRoots: videoRootsFrom(env.TITAN_CONSOLE_VIDEO_ROOTS, home),
     decisionsFile: decisionsFileFrom(env.TITAN_CONSOLE_DECISIONS_FILE, home),
     gateAnswers: flagFrom("TITAN_CONSOLE_GATE_ANSWERS", env.TITAN_CONSOLE_GATE_ANSWERS),
     inboxActions: flagFrom("TITAN_CONSOLE_INBOX_ACTIONS", env.TITAN_CONSOLE_INBOX_ACTIONS),

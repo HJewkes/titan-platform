@@ -8,7 +8,7 @@ import type { ConsoleCommands } from "./commands.js";
 import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
 import { closedPort } from "./test-support.js";
-import { ROOTS_UNSET, scanVideos, videoCatalog, videoId, videosCommands } from "./videos.js";
+import { ROOTS_UNSET, scanVideos, videoCatalog, videoId } from "./videos.js";
 
 /** An `ftyp` box and padding: enough to look like an mp4, never a real render. */
 const SYNTHETIC_MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypisom"), Buffer.alloc(52, 0x2e)]);
@@ -93,10 +93,6 @@ describe("the video catalog", () => {
     expect(videos).toEqual([]);
   });
 
-  it("answers an empty list and one gap line when no roots are set", async () => {
-    expect(await scanVideos([])).toMatchObject({ videos: [], truncated: false, gaps: [ROOTS_UNSET] });
-    expect(await videosCommands(undefined)["videos.list"].run({}, {} as never)).toEqual({ videos: [], truncated: false, gaps: [ROOTS_UNSET] });
-  });
 
   it("reports an unreadable root as a gap that names no path", async () => {
     const { gaps } = await scanVideos([path.join(dir, "missing")]);
@@ -118,6 +114,11 @@ describe("the video catalog", () => {
 });
 
 describe("the media routes", () => {
+  it("answers videos.list with an empty list and one gap line when no roots are set", async () => {
+    const origin = await startWithRoots([]);
+    expect(await createRpcClient<ConsoleCommands>(liveSource({ origin })).call("videos.list")).toEqual({ videos: [], truncated: false, gaps: [ROOTS_UNSET] });
+  });
+
   it("lists videos over /rpc and answers a byte range on /media/videos/:id with 206", async () => {
     const root = path.join(dir, "root");
     await put(path.join(root, "orbit", "cut.mp4"));
