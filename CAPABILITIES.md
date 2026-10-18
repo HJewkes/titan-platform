@@ -312,11 +312,11 @@ Tier 0, `@titan-design/evidence@0.3.0`. Citation verification, overlap grouping,
 Key exports:
 
 - `line-source`: `lineSourceFromTexts`, `splitLines`
-- `citation`: `quoteFragments`, `quoteInRange`, `verifyCitation`, `verifyRange`
+- `citation`: `quoteFragments`, `quoteInRange`, `quoteInText`, `verifyCitation`, `verifyRange`
 - `anchor`: `isAnchorForm`, `isFullSha`, `parseAnchor`
 - `anchor-check`: `verifyAnchorText`
-- `overlap`: `groupByOverlap`, `rangesOverlap`
-- +27 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/evidence)
+- `overlap`: `groupByOverlap`
+- +28 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/evidence)
 
 <a id="cap-fix-proof"></a>
 
@@ -889,14 +889,13 @@ Tier 2, `@titan-design/owner-queue@0.4.0`. The owner queue core: one OwnerItem s
 
 Key exports:
 
-- `schema`: `ownerItemSchema`, `sourceRefSchema`
+- `schema`: `locatorCiteSchema`, `ownerItemSchema`, `sourceRefSchema`
 - `card`: `cardLint`, `ownerCardSchema`
 - `audience`: `audienceOf`, `forAudience`
 - `deposit`: `depositItemId`, `fromDeposit`, `ownerItemDepositSchema`
 - `consolidate`: `consolidate`
 - `influence`: `influenceEdges`
-- `keys`: `askKey`
-- +74 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/owner-queue)
+- +76 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/owner-queue)
 
 <a id="cap-pm"></a>
 
@@ -1005,7 +1004,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `parseFileRef`, `prRef`
-- +211 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
+- +214 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
 
 <a id="cap-speech-vet"></a>
 

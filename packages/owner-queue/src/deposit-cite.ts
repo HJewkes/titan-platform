@@ -20,8 +20,8 @@ export class DepositCiteError extends Error {
 }
 
 function eventRef({ session, event }: LocatorCite): SessionEventRef {
-  const [byteOffset, byteLength] = event.split(":").map(Number) as [number, number];
-  return { session, byteOffset, byteLength };
+  const separator = event.indexOf(":");
+  return { session, byteOffset: Number(event.slice(0, separator)), byteLength: Number(event.slice(separator + 1)) };
 }
 
 /**
