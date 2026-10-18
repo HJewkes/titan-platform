@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { ScriptSchema } from "./script-schema.js";
 import { fromSpikeScript, readSpikeScript } from "./spike-script.js";
-import { v4Script } from "./spike-fixtures.test-helpers.js";
+import { pipelineScript, v4Script } from "./spike-fixtures.test-helpers.js";
 
 describe("reading a spike script.json", () => {
   // Mutation: reading the spike through ScriptSchema instead of the loose schema throws on the v4 fixture.
@@ -50,6 +50,15 @@ describe("reading a spike script.json", () => {
     expect(items("r1-3-stores")?.slice(0, 3)).toEqual(["Backlog", "Tick", "Broker"]);
     expect(items("r5-1-holds")).toEqual(["two hold slots", "set per head"]);
     expect(beats.find((b) => b.id === "r5-1-holds")).toMatchObject({ mapBeside: true, render: "SplitMapBeat" });
+  });
+
+  // Mutation: requiring map_state.map again makes the pilot unreadable.
+  it("labels a single-map script's reveals from its top-level map when map_state names no map", () => {
+    const { beats, ignored } = fromSpikeScript(pipelineScript());
+
+    expect(beats.find((b) => b.id === "c2-1-model")?.items.map((i) => i.label)).toEqual(["Backlog", "Burndown tick", "Broker"]);
+    expect(ignored).toContain("map.edges");
+    expect(ignored).not.toContain("map.nodes");
   });
 
   // Mutation: not reading `video` leaves the seated-invariant lint no phrases to match.
