@@ -4,6 +4,8 @@ import { agentsCommands, type AgentsSource } from "./agents.js";
 import { approvalsCommands, type FactoryNeeds } from "./approvals.js";
 import type { ActiveWork } from "./active-work.js";
 import { configStoreCommands, type ConfigStoreSource } from "./config-store/compare.js";
+import { configSurfacesCommands, unconfigured } from "./config-surfaces/catalog.js";
+import { hostSurfaces as hostSurfaceReaders, type HostSurfaceRoots } from "./config-surfaces/host.js";
 import type { DecisionLog } from "./decision-log.js";
 import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
@@ -42,6 +44,8 @@ export interface ConsoleSources {
   decisionLog?: DecisionLog;
   /** Optional so test sources need not build one; absent, a submitted round triggers nothing. */
   listeners?: RoundListeners;
+  /** Optional so test sources need not build one; absent, `config.surfaces` answers one gap for this host's files. */
+  hostSurfaces?: HostSurfaceRoots;
   work?: WorkOptions;
   /** Optional so test sources need not build one; absent, `config.compareTree` is `not-configured`. */
   configStore?: ConfigStoreSource;
@@ -84,7 +88,7 @@ function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, factory, decisionLog, listeners, work, configStore }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, factory, decisionLog, listeners, hostSurfaces, work, configStore }: ConsoleSources) {
   return {
     ...upstreamsCommands(upstreams),
     ...configStoreCommands(configStore),
@@ -99,6 +103,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...roundsSubmitCommands(rounds, decisionLog, listeners),
     ...ownerQueueCommands({ factory, rounds, inbox, shepherd }),
     ...shepherdCommands(shepherd),
+    ...configSurfacesCommands(hostSurfaces === undefined ? [unconfigured("host config surfaces")] : hostSurfaceReaders(hostSurfaces)),
     ...workCommands(activeWork, work),
   };
 }

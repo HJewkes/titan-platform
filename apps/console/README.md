@@ -60,6 +60,8 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_INBOX_DIR` | `$TITAN_CONSOLE_STATE/inbox/deposits` | The owner-inbox spool `inbox.deposit` files into, created 0700 on the first deposit |
 | `TITAN_CONSOLE_ROUNDS_DIR` | `$TITAN_CONSOLE_STATE/rounds` | Review rounds, one `<round-id>/round.json` each, read by `rounds.list`, `rounds.get` and `approvals.flow`. `fixtures/rounds` holds synthetic ones for a browser check |
 | `TITAN_CONSOLE_DECISIONS_FILE` | none | The owner's decisions file the decision log appends one-way, A/B and policy answers to (see "The decision log"). Owner config only, never taken from a request; a relative path is refused. Unset, only `answers.jsonl` is written |
+| `TITAN_CONSOLE_FACTORY_CONFIG` | `$XDG_CONFIG_HOME/titan-factory/config.json`, else `~/.config/titan-factory/config.json` | The factory config `config.surfaces` reads. Like every file that command reads (agent-chat's `config.json` and `profiles/*.json` under `$AGENT_CHAT_HOME`, each Claude account's `settings.json` and `.claude.json`), only fields its allowlist in `server/config-surfaces/catalog.ts` names carry a value. `digest.push` is never named |
+| `TITAN_CONSOLE_CLAUDE_DIRS` | `~/.claude` and every `~/.claude-profiles/*` | Comma list of Claude Code config dirs `config.surfaces` reads. From `.claude.json` it reports only the trusted-folder count and the MCP server names |
 
 The active-work root is `ACTIVE_ROOT` when set. Otherwise it is the data directory
 active-work's own CLI resolves through `env-paths`: the platform's application data
