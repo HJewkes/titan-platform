@@ -4,9 +4,11 @@
 // an entry over BASE_REF's copy, report-only or not. Exits 75 when the dag-check lock stays busy past the wait bound (DAG_CHECK_LOCK_WAIT_MS, 8 minutes), and 2 on an index failure, a BASE_REF that
 // names no commit, an unknown flag, a --db path that does not exist or holds no "head" snapshot, or an
 // out-of-memory abort at the 1 GB heap cap, which the check runs under in a child process.
-// --update drops fixed entries from the baseline and never adds one. --db <path> reads the latest "head"
-// snapshot of an existing code-graph database instead of indexing; dag:check writes that database by rename,
-// so it never reads a snapshot still being written.
+// Growth is forgiven only under a path that .codewatch/dead-exports-adopted.json lists and BASE_REF's copy does not,
+// so an adopted tree is seeded once and grows like any other path after it merges.
+// --update drops fixed entries from the baseline and adds only findings under an adopted path. --db <path> reads
+// the latest "head" snapshot of an existing code-graph database instead of indexing; dag:check writes that
+// database by rename, so it never reads a snapshot still being written.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,6 +23,7 @@ const ROOT = path.resolve(path.dirname(SCRIPT), "..");
 const ENTRY = path.join(ROOT, "packages/code-graph/dist/index.js");
 const BASELINE_PATH = ".codewatch/dead-exports.json";
 const BASELINE = path.join(ROOT, BASELINE_PATH);
+const ADOPTED_PATH = ".codewatch/dead-exports-adopted.json";
 const TIERS = ["packages", "products", "apps"];
 const HEAP_CAP_MB = 1024;
 const WORKER_FLAG = "--locked-worker";
@@ -161,19 +164,30 @@ export function compareBaseline(findings, baseline) {
   };
 }
 
-/** The baseline after --update: a missing baseline is seeded with every finding; an existing one only loses entries. */
-export function updatedBaseline(findings, baseline) {
+/** True when the finding's file sits inside one of `paths`, each a directory relative to the repo root. */
+export const underPath = (id, paths) => paths.some((dir) => fileOf(id).startsWith(`${dir}/`));
+
+/**
+ * The baseline after --update: a missing baseline is seeded with every finding; an existing one loses fixed
+ * entries and gains only findings under an adopted path.
+ */
+export function updatedBaseline(findings, baseline, adoptedPaths = []) {
   const ids = findings.map((f) => f.id);
   if (baseline === null) return ids;
   const found = new Set(ids);
-  return baseline.filter((id) => found.has(id));
+  const known = new Set(baseline);
+  const adopted = ids.filter((id) => !known.has(id) && underPath(id, adoptedPaths));
+  return [...baseline.filter((id) => found.has(id)), ...adopted].sort((a, b) => a.localeCompare(b));
 }
 
-/** Entries the baseline holds that the base branch's copy does not: a grandfathered finding, never a fix. */
-export function baselineGrowth(baseline, baseBaseline) {
+/** Entries the baseline holds that the base branch's copy does not, outside `allowedPaths`: never a fix. */
+export function baselineGrowth(baseline, baseBaseline, allowedPaths = []) {
   const known = new Set(baseBaseline);
-  return baseline.filter((id) => !known.has(id));
+  return baseline.filter((id) => !known.has(id) && !underPath(id, allowedPaths));
 }
+
+/** Adopted paths in head that the base does not list: the only paths whose growth this run forgives. */
+export const newlyAdopted = (headPaths, basePaths) => headPaths.filter((dir) => !basePaths.includes(dir));
 
 export function formatGrowth(growth, baseRef) {
   const lines = growth.map((id) => `  GROWN  ${id}`);
@@ -205,17 +219,33 @@ function readBaseline() {
   return existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, "utf8")) : null;
 }
 
+const parseAdopted = (text) => JSON.parse(text).adoptedPaths ?? [];
+
+export function readAdoptedPaths(cwd = ROOT) {
+  const file = path.join(cwd, ADOPTED_PATH);
+  return existsSync(file) ? parseAdopted(readFileSync(file, "utf8")) : [];
+}
+
 /** The baseline as committed at baseRef; a ref without the file has an empty baseline, and a bad ref throws. */
 export function readBaseBaseline(baseRef, cwd = ROOT) {
+  return readAtRef(baseRef, BASELINE_PATH, cwd, JSON.parse);
+}
+
+/** The adopted paths as committed at baseRef; a ref without the file lists none. */
+export function readBaseAdoptedPaths(baseRef, cwd = ROOT) {
+  return readAtRef(baseRef, ADOPTED_PATH, cwd, parseAdopted);
+}
+
+function readAtRef(baseRef, file, cwd, parse) {
   const git = (...args) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   git("rev-parse", "--verify", "--quiet", `${baseRef}^{commit}`);
-  const spec = `${baseRef}:${BASELINE_PATH}`;
+  const spec = `${baseRef}:${file}`;
   try {
     git("cat-file", "-e", spec);
   } catch {
     return [];
   }
-  return JSON.parse(git("show", spec));
+  return parse(git("show", spec));
 }
 
 export function parseCliArgs(args) {
@@ -267,7 +297,8 @@ function currentFindings({ nodes, edges }) {
 
 function checkGrowth(baseline, baseRef) {
   if (!baseRef) return [];
-  const growth = baselineGrowth(baseline, readBaseBaseline(baseRef));
+  const allowed = newlyAdopted(readAdoptedPaths(), readBaseAdoptedPaths(baseRef));
+  const growth = baselineGrowth(baseline, readBaseBaseline(baseRef), allowed);
   if (growth.length > 0) console.log(formatGrowth(growth, baseRef));
   return growth;
 }
@@ -279,7 +310,7 @@ async function check(workDir, args) {
   const growth = update ? [] : checkGrowth(baseline ?? [], process.env.BASE_REF);
   const findings = currentFindings(db ? await graphFromDb(db) : await indexGraph(workDir));
   if (update) {
-    writeFileSync(BASELINE, `${JSON.stringify(updatedBaseline(findings, baseline), null, 2)}\n`);
+    writeFileSync(BASELINE, `${JSON.stringify(updatedBaseline(findings, baseline, readAdoptedPaths()), null, 2)}\n`);
     return 0;
   }
   const result = compareBaseline(findings, baseline ?? []);
