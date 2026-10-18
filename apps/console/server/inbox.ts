@@ -13,14 +13,17 @@ import { z } from "zod";
 import { CLIENT_HEADER } from "@titan-design/daemon";
 import { depositItemId, ownerItemDepositSchema, type OwnerItemDeposit } from "@titan-design/owner-queue";
 import {
+  DepositCiteError,
   MAX_DEPOSIT_BYTES,
   SpoolNameCollisionError,
+  type SessionEventTextSource,
   answerFileNames,
   depositFileName,
   depositFileNames,
   writeDeposit,
 } from "@titan-design/owner-queue/spool";
 import { EXIT } from "@titan-design/registry";
+import { readSessionEventText } from "@titan-design/session-read";
 import { depositCommand } from "./owner-guard.js";
 
 export const MAX_OPEN_DEPOSITS_PER_ASKER = 200;
@@ -43,6 +46,8 @@ export interface InboxSource {
   dir: string;
   /** Open deposits across every asker before a new one gets 429; defaults to {@link MAX_OPEN_DEPOSITS}. */
   maxOpenDeposits?: number;
+  /** Checks a recommendation's locator cite against its transcript line; defaults to session-read's Claude transcripts. */
+  events?: SessionEventTextSource;
 }
 
 class DepositRefusedError extends Error {
@@ -59,6 +64,7 @@ class DepositRefusedError extends Error {
 /** A filesystem error names the spool's path, which a LAN caller has no business learning. */
 function withoutSpoolPath(error: unknown): never {
   if (error instanceof DepositRefusedError) throw error;
+  if (error instanceof DepositCiteError) throw new DepositRefusedError(error.message, EXIT.DATAERR);
   if (error instanceof SpoolNameCollisionError) {
     throw new DepositRefusedError("this depositId's spool file is held by a different deposit; file under another depositId", EXIT.DATAERR);
   }
@@ -145,13 +151,13 @@ function assertUnderCaps(names: readonly string[], asker: string, maxOpenDeposit
  * A repeat of a filed depositId returns its id even at a cap, since it adds nothing to the spool.
  * The repeat still goes through writeDeposit, which proves the file under that name is this deposit.
  */
-async function fileOnce(dir: string, deposit: OwnerItemDeposit, maxOpenDeposits: number): Promise<DepositResult> {
+async function fileOnce({ dir, maxOpenDeposits, events }: Required<InboxSource>, deposit: OwnerItemDeposit): Promise<DepositResult> {
   assertNameable(deposit);
   const id = depositItemId(deposit.asker, deposit.depositId);
   const names = await spoolNames(dir);
   const isRepeat = depositFileNames(deposit.asker, deposit.depositId).some((name) => names.includes(name));
   if (!isRepeat) assertUnderCaps(names, deposit.asker, maxOpenDeposits);
-  const { created } = await writeDeposit(dir, deposit);
+  const { created } = await writeDeposit(dir, deposit, { events });
   return { id, created };
 }
 
@@ -165,7 +171,7 @@ function serializer(): <T>(task: () => Promise<T>) => Promise<T> {
   };
 }
 
-export function inboxCommands({ dir, maxOpenDeposits = MAX_OPEN_DEPOSITS }: InboxSource) {
+export function inboxCommands({ dir, maxOpenDeposits = MAX_OPEN_DEPOSITS, events = readSessionEventText }: InboxSource) {
   const serialize = serializer();
   return {
     [INBOX_DEPOSIT]: depositCommand({
@@ -173,7 +179,7 @@ export function inboxCommands({ dir, maxOpenDeposits = MAX_OPEN_DEPOSITS }: Inbo
       description: "File one owner item into the owner inbox; a repeat depositId returns the item id it already has",
       args: ownerItemDepositSchema,
       result: depositResult,
-      run: (deposit: OwnerItemDeposit) => serialize(() => fileOnce(dir, deposit, maxOpenDeposits).catch(withoutSpoolPath)),
+      run: (deposit: OwnerItemDeposit) => serialize(() => fileOnce({ dir, maxOpenDeposits, events }, deposit).catch(withoutSpoolPath)),
     }),
   };
 }

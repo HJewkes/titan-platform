@@ -1,7 +1,7 @@
 import { BlockList, isIP } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { activeWorkGraphPath } from "@titan-design/app-paths";
+import { activeWorkGraphPath, activeWorkRoot } from "@titan-design/app-paths";
 import { isLoopbackHost } from "@titan-design/daemon";
 import { expandHome } from "@titan-design/session-read";
 import type { SeatPrefix } from "@titan-design/chat-protocol/agents";
@@ -16,6 +16,9 @@ const AGENT_CHAT_PORT = 7600;
 const FACTORY_PORT = 7410;
 /** Codewatch's `CODE_REPORT_PORT`. */
 export const DEFAULT_CODEWATCH_URL = "http://127.0.0.1:7433";
+
+/** Where the repo-review skill writes its folders, under the active-work root. */
+const REVIEWS_UNDER_ROOT = ["titan-platform", "sources", "research", "repo-review"];
 
 export interface ConsoleConfig {
   /** 0 binds an ephemeral port. */
@@ -52,6 +55,11 @@ export interface ConsoleConfig {
   inboxDir: string;
   /** Review rounds, one `<round-id>/round.json` each; `TITAN_CONSOLE_ROUNDS_DIR` overrides. */
   roundsDir: string;
+  /**
+   * Repo reviews, one folder with a README.md each; `TITAN_CONSOLE_REVIEWS_DIR` overrides.
+   * Optional so a config built by hand serves no `reviews.list`; `resolveConfig` always sets it.
+   */
+  reviewsDir?: string;
   /**
    * The owner's decisions file the decision log appends one-way, A/B and policy answers to, from
    * `TITAN_CONSOLE_DECISIONS_FILE`. Owner-configured; never from a request. Null writes the ledger only.
@@ -118,13 +126,21 @@ export function resolveConfig(
     lanNames: lanNamesFrom(env.TITAN_CONSOLE_LAN_NAMES, machine),
     lanTls: lanTlsFrom(env, home),
     lanTokenPath: expandHome(env.TITAN_CONSOLE_TOKEN || path.join(stateDir, "lan.token"), home),
-    inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
-    roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
+    ...dataDirsFrom(env, home, platform, stateDir),
     ...ownerOptionsFrom(env, home),
     ...surfaceRootsFrom(env, home),
   };
   assertCoherent(config);
   return config;
+}
+
+/** The dirs other processes write and the console reads from or files into. */
+function dataDirsFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.Platform, stateDir: string): Pick<ConsoleConfig, "inboxDir" | "roundsDir" | "reviewsDir"> {
+  return {
+    inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
+    roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
+    reviewsDir: expandHome(env.TITAN_CONSOLE_REVIEWS_DIR || path.join(activeWorkRoot({ env, home, platform }), ...REVIEWS_UNDER_ROOT), home),
+  };
 }
 
 /** The settings only the owner turns on or points; none is ever read from a request. */

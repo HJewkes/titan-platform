@@ -9,7 +9,7 @@ import { caseHash } from "../hash.js";
 import { defaultPolicy } from "../private/exclusion.js";
 import { EvalCaseSchema, SuiteSpecSchema, type EvalCase } from "../spec/index.js";
 import { buildReviewPrCases, treeDigest, type BuildManifest } from "./build-cases.js";
-import { localCloneGit } from "./bundle.js";
+import { localCloneGit, type BundleGit } from "./bundle.js";
 
 const PRIVATE_SLUG = "household-ledger";
 
@@ -23,7 +23,7 @@ function commit(dir: string, files: Record<string, string>, message: string): st
     writeFileSync(join(dir, path), text);
   }
   git(dir, "add", "-A");
-  git(dir, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", message);
+  git(dir, "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", message);
   return git(dir, "rev-parse", "HEAD");
 }
 
@@ -52,6 +52,22 @@ function buildClone(clone: string): Fixture {
   branch("pr3");
   const cleanC = commit(clone, { "src/c.ts": source("capC", ">"), "src/c.test.ts": test("capC") }, "pr3 head");
   return { base, caught, fix, cleanEarly, cleanB, cleanC };
+}
+
+/**
+ * The clone is frozen once built and the builder asks only about full shas, so each answer is fixed; caching it
+ * keeps a build from spawning the same git process once per control and once per test, which timed out under load.
+ */
+function memoGit(port: BundleGit): BundleGit {
+  const answers = new Map<string, Promise<Buffer>>();
+  return {
+    git: (args) => {
+      const key = args.join("\0");
+      const answer = answers.get(key) ?? port.git(args);
+      answers.set(key, answer);
+      return answer;
+    },
+  };
 }
 
 function row(overrides: Partial<CorpusRow> & Pick<CorpusRow, "pr" | "head" | "label" | "verdict">): CorpusRow {
@@ -99,6 +115,7 @@ describe("buildReviewPrCases", () => {
   let clone: string;
   let activeWorkRoot: string;
   let fixture: Fixture;
+  let cloneGit: BundleGit;
   let outs = 0;
 
   beforeAll(() => {
@@ -106,6 +123,7 @@ describe("buildReviewPrCases", () => {
     clone = join(scratch, "clone");
     mkdirSync(clone);
     fixture = buildClone(clone);
+    cloneGit = memoGit(localCloneGit(clone));
     activeWorkRoot = join(scratch, "active-work");
     mkdirSync(join(activeWorkRoot, PRIVATE_SLUG), { recursive: true });
     writeFileSync(join(activeWorkRoot, PRIVATE_SLUG, "brief.md"), "# private\n");
@@ -115,7 +133,7 @@ describe("buildReviewPrCases", () => {
 
   async function build(rows: CorpusRow[]): Promise<{ out: string; manifest: BuildManifest }> {
     const out = join(scratch, `out-${outs++}`);
-    const manifest = await buildReviewPrCases(rows, { outDir: out, policy: defaultPolicy(activeWorkRoot), gitFor: () => localCloneGit(clone), mainRef: fixture.base, seed: "test" });
+    const manifest = await buildReviewPrCases(rows, { outDir: out, policy: defaultPolicy(activeWorkRoot), gitFor: () => cloneGit, mainRef: fixture.base, seed: "test" });
     return { out, manifest };
   }
 
@@ -147,7 +165,7 @@ describe("buildReviewPrCases", () => {
       const control = ControlShape.parse(evalCase);
       const tree = join(out, control.fixture.path);
       const [gold] = control.expected.defects;
-      const original = git(clone, "show", `${control.input.head}:${gold.path}`).split("\n");
+      const original = (await cloneGit.git(["show", `${control.input.head}:${gold.path}`])).toString("utf8").split("\n");
       expect(treeDigest(tree)).toBe(control.fixture.treeSha256);
       expect(existsSync(join(tree, "head", ".git"))).toBe(false);
       expect(readFileSync(join(tree, "head", gold.path), "utf8").split("\n")).not.toContain(original[gold.line - 1]);

@@ -4,7 +4,9 @@ declare const DEFAULT_TEST_GLOBS: readonly string[];
 declare const DEFAULT_CARRY_GLOBS: readonly string[];
 /**
  * Mutation specs sit next to their test as `<test file minus extension>.mutations.json`. A fixed glob, not a config key:
- * the config parser refuses unknown keys, so a key would fail every run whose merge base predates it.
+ * the config parser refuses unknown keys, so a key would fail every run whose merge base predates it. A new key needs
+ * this parser on main before any config uses it; CI builds the parser from the merge-base tree, so ordering on main is
+ * enough.
  */
 declare const MUTATION_SPEC_GLOB = "**/*.mutations.json";
 declare const CHANGESET_GLOB = ".changeset/*.md";
@@ -17,6 +19,11 @@ declare function isHarnessPath(path: string): boolean;
 interface FixProofConfig {
     tests: string[];
     carry: string[];
+    /**
+     * Carry or test paths that ship or run in production, such as published fixtures. Never test-only: they read as
+     * source, yet stay carried so the fix-proof overlay is unchanged.
+     */
+    runtime: string[];
     command?: string;
     build?: string;
 }
@@ -69,8 +76,30 @@ type PlanResult = {
     ok: false;
     error: string;
 };
-/** True when the diff touches only tests, carried files, mutation specs and changesets, none of them harness paths. */
+/**
+ * True when the diff touches only tests, carried files, mutation specs and changesets, none of them harness or runtime
+ * paths. It ignores deleted tests and an empty `tests`; `testOnlyReading` refuses those too.
+ */
 declare function testOnlyOf(plan: Pick<FixProofPlan, "source">): boolean;
+type TestOnlyReading = {
+    testOnly: true;
+} | {
+    testOnly: false;
+    reason: "source";
+    paths: string[];
+} | {
+    testOnly: false;
+    reason: "deletes-tests";
+    paths: string[];
+} | {
+    testOnly: false;
+    reason: "no-tests";
+};
+/**
+ * Whether a diff is test-only, and if not why: it changes source (runtime paths included), it deletes a test (a rename
+ * out of the tests counts), or it adds or changes no test at all (a changeset- or fixture-only diff).
+ */
+declare function testOnlyReading(plan: Pick<FixProofPlan, "source" | "tests" | "deletedTests">): TestOnlyReading;
 /** Splits a merge-base-to-head diff into tests to run, carried support files, deleted tests, mutation specs and source, using globs from the base config only. */
 declare function planFixProof(input: PlanInput): PlanResult;
 
@@ -405,4 +434,4 @@ interface JudgeOptions {
  */
 declare function judge(options: JudgeOptions): Promise<string>;
 
-export { CHANGESET_GLOB, CONFIG_PATH, type Classification, type ClassifyInput, type ConfigResult, DEFAULT_BUDGET_MS, DEFAULT_BUILD, DEFAULT_CARRY_GLOBS, DEFAULT_COMMAND, DEFAULT_JUDGE_BUDGET_MS, DEFAULT_MUTANTS_BUDGET_MS, DEFAULT_TEST_GLOBS, type DecodeOptions, type DecodedMutants, type DecodedReport, type Exec, type ExecMutantsOptions, type ExecOptions, type ExecResult, type ExecSideOptions, FIX_PROOF_HARNESS, type FileOutcome, type FileState, type FixProofConfig, type FixProofPlan, type FixProofResult, type JudgeOptions, type JudgeReports, MAX_ENCODED_BYTES, MAX_INFLATED_BYTES, MAX_KILLS, MAX_MUTATIONS, MAX_MUTATION_EDIT, MAX_MUTATION_NAME, MAX_SPEC_BYTES, MUTANTS_REPORT, MUTANT_OUTCOMES, MUTANT_VERDICTS, MUTATION_SPEC_GLOB, type MutantOutcome, type MutantResult, type MutantRun, type MutantVerdict, type MutantsReport, type MutantsResult, type Mutation, type MutationCheck, type MutationSpec, type MutationSpecResult, type ParsedResultLine, type PlanInput, type PlanResult, RESULT_LINE_MAX_BYTES, RESULT_PREFIX, type ReportRun, type RunOptions, SIDE_REPORTS, SPEC_SUFFIX, type Side, type SpecUnderTest, TEST_CLASSES, type TestClass, type TestOutcome, USAGE, VERDICTS, type Verdict, checkMutation, classifyMutants, classifyReports, compileGlobs, decodeMutantsReport, decodeReport, encodeError, encodeMutantsReport, encodeMutantsSkipped, encodeReport, errorLine, execMutants, execSide, expandBraces, formatResultLine, isHarnessPath, isNewApiFailure, judge, parseFixProofConfig, parseMutationSpec, parseResultLine, planFixProof, run, runCli, spawnExec, testFileOfSpec, testOnlyOf, toResult };
+export { CHANGESET_GLOB, CONFIG_PATH, type Classification, type ClassifyInput, type ConfigResult, DEFAULT_BUDGET_MS, DEFAULT_BUILD, DEFAULT_CARRY_GLOBS, DEFAULT_COMMAND, DEFAULT_JUDGE_BUDGET_MS, DEFAULT_MUTANTS_BUDGET_MS, DEFAULT_TEST_GLOBS, type DecodeOptions, type DecodedMutants, type DecodedReport, type Exec, type ExecMutantsOptions, type ExecOptions, type ExecResult, type ExecSideOptions, FIX_PROOF_HARNESS, type FileOutcome, type FileState, type FixProofConfig, type FixProofPlan, type FixProofResult, type JudgeOptions, type JudgeReports, MAX_ENCODED_BYTES, MAX_INFLATED_BYTES, MAX_KILLS, MAX_MUTATIONS, MAX_MUTATION_EDIT, MAX_MUTATION_NAME, MAX_SPEC_BYTES, MUTANTS_REPORT, MUTANT_OUTCOMES, MUTANT_VERDICTS, MUTATION_SPEC_GLOB, type MutantOutcome, type MutantResult, type MutantRun, type MutantVerdict, type MutantsReport, type MutantsResult, type Mutation, type MutationCheck, type MutationSpec, type MutationSpecResult, type ParsedResultLine, type PlanInput, type PlanResult, RESULT_LINE_MAX_BYTES, RESULT_PREFIX, type ReportRun, type RunOptions, SIDE_REPORTS, SPEC_SUFFIX, type Side, type SpecUnderTest, TEST_CLASSES, type TestClass, type TestOnlyReading, type TestOutcome, USAGE, VERDICTS, type Verdict, checkMutation, classifyMutants, classifyReports, compileGlobs, decodeMutantsReport, decodeReport, encodeError, encodeMutantsReport, encodeMutantsSkipped, encodeReport, errorLine, execMutants, execSide, expandBraces, formatResultLine, isHarnessPath, isNewApiFailure, judge, parseFixProofConfig, parseMutationSpec, parseResultLine, planFixProof, run, runCli, spawnExec, testFileOfSpec, testOnlyOf, testOnlyReading, toResult };

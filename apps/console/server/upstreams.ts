@@ -131,6 +131,17 @@ function agentsOf(config: ConsoleConfig): ConsoleSources["agents"] {
   };
 }
 
+/** The sources that read dirs on this machine, which other processes write. */
+function localDirSourcesOf(config: ConsoleConfig): Pick<ConsoleSources, "inbox" | "rounds" | "hostReports" | "videos" | "reviews"> {
+  return {
+    inbox: { dir: config.inboxDir },
+    rounds: { dir: config.roundsDir },
+    hostReports: { dir: path.join(config.stateDir, "config", "host-reports") },
+    videos: videoCatalog({ roots: config.videoRoots ?? [] }),
+    ...(config.reviewsDir !== undefined && { reviews: { dir: config.reviewsDir } }),
+  };
+}
+
 export function createSources(config: ConsoleConfig, logger: Logger = consoleLogger): ConsoleSources {
   const activeWork = activeWorkClient(config.activeWorkPort);
   const shepherd = shepherdReader(config.factoryPort);
@@ -139,14 +150,11 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     activeWork,
     agents: agentsOf(config),
     sessions: { graphPath: config.sessionGraphPath, codewatchUrl: config.codewatchUrl },
-    inbox: { dir: config.inboxDir },
-    rounds: { dir: config.roundsDir },
+    ...localDirSourcesOf(config),
     shepherd,
     coordinatorRoots: config.coordinatorRoots,
     factory: factoryNeeds(config.factoryPort),
     hostSurfaces: config.hostSurfaces,
-    hostReports: { dir: path.join(config.stateDir, "config", "host-reports") },
-    videos: videoCatalog({ roots: config.videoRoots ?? [] }),
     decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger }),
     listeners: createRoundListeners({
       enabled: config.gateAnswers,

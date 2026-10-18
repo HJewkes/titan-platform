@@ -29,7 +29,17 @@ const videoEntry = z.object({
   renderNotes: z.boolean(),
 });
 
-type VideoEntry =z.infer<typeof videoEntry>;
+type VideoEntry = z.infer<typeof videoEntry>;
+
+/** The owner's call on one render, from the theater's Ship and Needs changes buttons. */
+export const verdict = z.enum(["ship", "needs-changes"]);
+
+const noteSummary = z.object({ noteCount: z.number().int(), verdict: verdict.nullable() });
+
+/** What the notes beside one video say about its current render; the file is the video's real path. */
+export type NoteSummarizer = (file: string) => Promise<z.infer<typeof noteSummary>>;
+
+const NO_NOTES = { noteCount: 0, verdict: null } as const;
 
 /** Where one listed video sits; server-side only, so the client names a video by id and never by path. */
 interface Located {
@@ -128,19 +138,40 @@ function captionsName(videoName: string): string {
   return `${path.parse(videoName).name}.vtt`;
 }
 
-export function videosCommands(catalog: VideoCatalog = videoCatalog({ roots: [] })) {
+/** One at a time, so a catalog of 2000 videos never holds 2000 file handles open at once. */
+async function withNotes({ videos, located }: Catalog, summarize: NoteSummarizer) {
+  const listed = [];
+  for (const video of videos) {
+    const file = await containedFile(located.get(video.id)!);
+    listed.push({ ...video, ...(file === null ? NO_NOTES : await summarize(file)) });
+  }
+  return listed;
+}
+
+export function videosCommands(catalog: VideoCatalog = videoCatalog({ roots: [] }), summarize: NoteSummarizer = async () => NO_NOTES) {
   return {
     "videos.list": readCommand({
       name: "videos.list",
-      description: "Every mp4 and webm under TITAN_CONSOLE_VIDEO_ROOTS, newest first, with whether captions and render notes sit beside it",
+      description: "Every mp4 and webm under TITAN_CONSOLE_VIDEO_ROOTS, newest first, with whether captions and render notes sit beside it, and the current render's note count and verdict",
       args: z.object({}),
-      result: z.object({ videos: z.array(videoEntry), truncated: z.boolean(), gaps: z.array(z.string()) }),
+      result: z.object({ videos: z.array(videoEntry.extend(noteSummary.shape)), truncated: z.boolean(), gaps: z.array(z.string()) }),
       run: async () => {
-        const { videos, truncated, gaps } = await catalog.refresh();
-        return { videos, truncated, gaps };
+        const scan = await catalog.refresh();
+        return { videos: await withNotes(scan, summarize), truncated: scan.truncated, gaps: scan.gaps };
       },
     }),
   };
+}
+
+/** The real path of a listed video, re-checked inside its root; null for an unknown id or one that now leads out. */
+export async function locateVideo(catalog: VideoCatalog, id: string): Promise<string | null> {
+  if (!VIDEO_ID.test(id)) return null;
+  const located = (await catalog.current()).located.get(id);
+  return located === undefined ? null : containedFile(located);
+}
+
+function containedFile({ realRoot, relative }: Located): Promise<string | null> {
+  return containedRealPath(realRoot, relative);
 }
 
 /**
