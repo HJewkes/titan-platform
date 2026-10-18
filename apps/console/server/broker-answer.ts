@@ -23,7 +23,7 @@ export interface BrokerAnswerer {
   answer(msgId: string, text: string): Promise<AnswerOutcome>;
 }
 
-export interface BrokerAnswererOptions {
+interface BrokerAnswererOptions {
   port: number;
   /** agent-chat's 0600 `ui.token`, re-read on every answer, as `BrokerReader` reads it. */
   tokenPath: string;
