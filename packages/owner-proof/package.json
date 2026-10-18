@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/owner-proof",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Owner-signed statements: canonical JSON, P-256 key ring and an exact-bytes ECDSA verify core generic over a zod schema",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,5 +1,19 @@
 # @titan-design/owner-queue
 
+## 0.4.0
+
+### Minor Changes
+
+- cfc6614: Add an optional `audience` (`owner` | `operator`, absent means owner) to `OwnerItem` and `OwnerItemDeposit`, with `forAudience`/`audienceOf` and a `readSpool(dir, { audience })` filter, so a burndown can file operator steps without an `[operator]` summary prefix.
+- 3e94b0b: Add optional owner card fields to `OwnerItem` and `OwnerItemDeposit` (`class`, `irreversible`, `shown`, `default`, `onSilence`, option `consequence`), plus `cardLint`, `ownerCardSchema`, `CARD_RULES` and `ON_SILENCE_ACTIONS`, so a card says what each answer costs and what happens on silence.
+- abadd64: Items and options gain optional `anchors` and item `pins`; `writeDeposit(dir, deposit, { source })` refuses, unwritten, a deposit whose anchor is past EOF at its pinned commit (TP-2767).
+
+### Patch Changes
+
+- Updated dependencies [5cd4f1b]
+- Updated dependencies [abadd64]
+  - @titan-design/evidence@0.3.0
+
 ## 0.3.0
 
 ### Minor Changes
