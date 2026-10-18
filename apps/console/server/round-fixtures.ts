@@ -1,5 +1,5 @@
 // The synthetic review rounds in `fixtures/rounds`, for tests and the owner's browser check. Nothing there is copied from a real round;
-// the PNGs under `ship-tile-r1` are solid blocks with a stripe, generated once by a throwaway script.
+// the PNGs under `ship-tile-r1` and `beacon-states-r1` are solid blocks with a stripe (and a dot), generated once by a throwaway script.
 import path from "node:path";
 import type { RoundsSource } from "./rounds.js";
 

@@ -5,6 +5,7 @@ import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-
 import { errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import { FIXTURE_ROUNDS as source } from "../server/round-fixtures.js";
+import { listFrames } from "../server/round-frames.js";
 import { getRound, listRounds } from "../server/rounds.js";
 import { App } from "./App.js";
 
@@ -21,7 +22,8 @@ async function recorded(): Promise<Snapshot> {
     calls: {
       [snapshotKey("rounds.list", {})]: successEnvelope(await listRounds(source)),
       ...Object.fromEntries(rounds),
-      [snapshotKey("rounds.frames", { id: "orbit-retry-r1" })]: successEnvelope({ frames: [] }),
+      [snapshotKey("rounds.frames", { id: "orbit-retry-r1" })]: successEnvelope({ indexed: false, frames: [] }),
+      [snapshotKey("rounds.frames", { id: "lantern-cards-r1" })]: successEnvelope(await listFrames(source, "lantern-cards-r1")),
       [snapshotKey("rounds.get", { id: "nowhere" })]: errorEnvelope('No round named "nowhere"', 66),
     },
   };
@@ -53,7 +55,7 @@ describe("the rounds list", () => {
     await renderConsole("#/rounds");
     await screen.findByText("Open rounds");
     const rows = screen.getAllByTestId(/^round-row-/).map((row) => row.getAttribute("data-testid"));
-    expect(rows).toHaveLength(8);
+    expect(rows).toHaveLength(9);
     expect(rows.at(-1)).toBe("round-row-kiln-schedule-r1");
     expect(screen.getByText("Sent rounds")).toBeTruthy();
   });
@@ -162,7 +164,7 @@ describe("a question round", () => {
 });
 
 describe("other rounds", () => {
-  it("sends a design round to the harness instead of rendering its questions", async () => {
+  it("sends a design round without frames.json to the harness instead of rendering its questions", async () => {
     await renderConsole("#/rounds/lantern-cards-r1");
     expect(await screen.findByText("design round: open in the harness")).toBeTruthy();
     expect(screen.queryByTestId("round-question-density-pick")).toBeNull();

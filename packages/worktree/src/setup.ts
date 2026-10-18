@@ -2,7 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { lstatSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { gitChildEnv } from "./git.js";
+import { gitChildEnv, pinGitProtocols } from "./git.js";
 import { signalGroup } from "./process-group.js";
 
 const execFileAsync = promisify(execFile);
@@ -109,7 +109,7 @@ export function setupEnv(
     out[`npm_config_${key}`] = value;
     out[`NPM_CONFIG_${key.toUpperCase()}`] = value;
   }
-  return { ...out, ...PINNED_COREPACK };
+  return { ...out, ...PINNED_COREPACK, GIT_ALLOW_PROTOCOL: pinGitProtocols(env.GIT_ALLOW_PROTOCOL) };
 }
 
 const isCommand = (value: unknown): value is string[] =>
