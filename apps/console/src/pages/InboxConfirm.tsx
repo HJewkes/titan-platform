@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Alert, Button, ButtonText, Drawer, DrawerBody, DrawerFooter, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import type { JsonEnvelope } from "@titan-design/registry";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useInvalidate } from "../data/rpc.js";
 import { useAnswerSource } from "../data/submit.js";
@@ -23,6 +24,13 @@ const UNEXPECTED = "the console sent an answer this page does not read";
 
 const secondsSince = (at: string, now: number = Date.now()): number => Math.max(0, Math.round((now - Date.parse(at)) / 1000));
 
+function sheetOfPrepare(envelope: JsonEnvelope<unknown>): Sheet {
+  if (!envelope.ok) return { status: "failed", error: envelope.error };
+  const prepared = envelope.data;
+  if (!isPrepared(prepared)) return { status: "failed", error: UNEXPECTED };
+  return prepared.status === "ready" ? { status: "ready", prepared } : { status: "refused", reason: prepared.reason };
+}
+
 /** The two calls a tap makes: `inbox.prepare` as the sheet opens, `inbox.act` only on Confirm. */
 function useTap(itemId: string): { sheet: Sheet; confirm: () => Promise<void> } {
   const source = useAnswerSource();
@@ -31,13 +39,7 @@ function useTap(itemId: string): { sheet: Sheet; confirm: () => Promise<void> } 
   useEffect(() => {
     if (source === null) return;
     let live = true;
-    void source.call("inbox.prepare", { itemId }).then((envelope) => {
-      if (!live) return;
-      if (!envelope.ok) return setSheet({ status: "failed", error: envelope.error });
-      const prepared = envelope.data;
-      if (!isPrepared(prepared)) return setSheet({ status: "failed", error: UNEXPECTED });
-      setSheet(prepared.status === "ready" ? { status: "ready", prepared } : { status: "refused", reason: prepared.reason });
-    });
+    void source.call("inbox.prepare", { itemId }).then((envelope) => live && setSheet(sheetOfPrepare(envelope)));
     return () => {
       live = false;
     };
