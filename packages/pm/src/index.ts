@@ -21,6 +21,16 @@ export { DISPOSITION_KINDS, DispositionRowSchema, checkDispositions, parseDispos
 export type { DispositionCheck, DispositionKind, DispositionRow } from "./dispositions.js";
 export { prioritizedTopics, summaryRecommendations } from "./review-summary.js";
 export type { ReviewItem } from "./review-summary.js";
+export {
+  TOPIC_PRIORITIES,
+  TOPIC_VERDICTS,
+  parseClaimsAudit,
+  parseTopicsJudged,
+  readReviewPin,
+  sumRunCost,
+} from "./review-folder.js";
+export type { ClaimRow, ReviewPin, RunCost, TopicPriority, TopicRow, TopicVerdict } from "./review-folder.js";
+export { readTsv } from "./tsv.js";
 export { criticalPath, taskTree } from "./graph.js";
 export type {
   CriticalPathOptions,
