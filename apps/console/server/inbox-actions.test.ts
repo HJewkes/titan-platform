@@ -31,11 +31,13 @@ const BEARER: RequestAuth = { credential: "bearer", issuedAt: null, peerLocal: f
 
 let dir: string;
 let factory: FakeDaemon | undefined;
+let items: OwnerItem[];
 let rows: WatchRow[];
 let clock: number;
 
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "console-inbox-actions-"));
+  items = [gate(RUN_PLAIN, "2026-10-10T03:00:00.000Z"), gate(RUN_OWNER, "2026-10-10T05:00:00.000Z")];
   rows = [row(RUN_PLAIN, 1), row(RUN_OWNER, 2, "owner-asked: wait for me")];
   clock = Date.parse("2026-10-10T06:00:00.000Z");
 });
@@ -118,7 +120,6 @@ function spyLog() {
 }
 
 async function sources(): Promise<InboxSources> {
-  const items = [gate(RUN_PLAIN, "2026-10-10T03:00:00.000Z"), gate(RUN_OWNER, "2026-10-10T05:00:00.000Z")];
   factory = await startFakeDaemon({ ok: true }, (command) => {
     if (command === "needs.list") return { items, gaps: [] };
     if (command === "shepherd.list") return rows;
@@ -253,6 +254,7 @@ describe("inbox.act", () => {
     const { confirm } = ready(await prepare(PLAIN_ID));
     await act(PLAIN_ID, confirm);
     const first = await readFile(path.join(actionsDir(), `${confirm}.json`));
+    items = items.filter((each) => each.id !== PLAIN_ID);
     clock += 1_000;
 
     const { envelope } = await act(PLAIN_ID, confirm);
