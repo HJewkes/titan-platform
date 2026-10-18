@@ -159,6 +159,7 @@ describe("a ./name the lookup cannot run or follow is skipped, never refused", (
     rmSync(here("s"), { recursive: true, force: true });
     file(here("bin/s"), `#!/bin/bash\n${PUSH}\n`);
     expect(await decision(command)).toBeNull();
+    rmSync(here("bin"), { recursive: true, force: true });
   });
 
   it("passes a non-pushing ./s", async () => {
