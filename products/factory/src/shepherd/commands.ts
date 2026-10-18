@@ -15,8 +15,7 @@ import { ReleaseHeadArg, releaseAtHead, updateBranchRunning } from "./release-he
 import { cachedByHead, localPrFiles } from "./git-pr-files.js";
 import { applyRegistrationHold } from "./registration-hold.js";
 import { hostPrsSources, shepherdPrs, type PrRow } from "./prs.js";
-import { moveDiff, testOnlyHint } from "./register-kind.js";
-import type { TestOnlyDiff } from "./test-only-diff.js";
+import { kindMove, testOnlyHint, type KindMove } from "./register-kind.js";
 import { PrArg, RegisterArgs, RepoArg, coded, headBranch, policyFor, refuseKindMove, sliceAfter } from "./register-args.js";
 import { endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./restart.js";
 import { lastReadHead } from "./last-read-head.js";
@@ -71,10 +70,11 @@ function servicesOf(ctx: FactoryContext): ShepherdServices {
   return ctx.shepherd;
 }
 
-function refresh(store: ShepherdStore, existing: Registration, args: RegisterArgs, policy: EffectivePolicy, diff: TestOnlyDiff | undefined): Registered {
+function refresh(store: ShepherdStore, existing: Registration, args: RegisterArgs, policy: EffectivePolicy, move: KindMove): Registered {
   const { runId } = existing;
+  const meta = { task: args.task, implementer: args.implementer, reviewer: args.reviewer, policy, kind: args.kind, slice: sliceAfter(existing, args), headSha: args.head, base: args.base };
   try {
-    store.update(runId, { task: args.task, implementer: args.implementer, reviewer: args.reviewer, policy, kind: args.kind, slice: sliceAfter(existing, args), headSha: args.head, base: args.base, diff });
+    store.update(runId, { ...meta, ...move });
   } catch (error) {
     if (error instanceof RegistrationRefused) throw coded(`registration refused: ${error.message}`, EXIT.DATAERR);
     throw error;
@@ -91,10 +91,10 @@ function startRun(ctx: FactoryContext, args: RegisterArgs, branch: string | unde
 
 /** A dead run's registration moves to a new run, which starts at the pull request's current head; any other run comes back unchanged. */
 export async function restartRegistered(ctx: FactoryContext, store: ShepherdStore, known: Registration, args: RegisterArgs, policy: EffectivePolicy): Promise<Registered> {
-  const diff = await moveDiff(servicesOf(ctx).port, known, args);
+  const move = await kindMove(servicesOf(ctx), known, args);
   const restart = await restartFor(ctx.host, servicesOf(ctx), known);
-  if (!restart) return refresh(store, known, args, policy, diff);
-  refuseKindMove(known, args, diff);
+  if (!restart) return refresh(store, known, args, policy, move);
+  refuseKindMove(known, args, move);
   const previousRunId = known.runId;
   const previousRun = ctx.host.runtime.status(previousRunId)!;
   const seeded = isDivergedEnd(previousRun) ? { ...args, head: args.head ?? lastReadHead(previousRun) } : args;
@@ -107,10 +107,10 @@ export async function restartRegistered(ctx: FactoryContext, store: ShepherdStor
       if (!store.byRun(previousRunId)) releaseFinishedBranch(ctx, store, args.repo, args.pr, known.branch ?? undefined);
       throw error;
     }
-    return refresh(store, winner, args, policy, diff);
+    return refresh(store, winner, args, policy, move);
   }
   if (isReplayDiverged(previousRun)) endSuperseded(ctx.host, previousRunId, runId);
-  return { ...refresh(store, store.byRun(runId)!, seeded, policy, diff), created: true, previousRunId, ...restart };
+  return { ...refresh(store, store.byRun(runId)!, seeded, policy, move), created: true, previousRunId, ...restart };
 }
 
 /**
@@ -155,7 +155,7 @@ async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Regist
  */
 async function registerWithHold(args: RegisterArgs, ctx: FactoryContext): Promise<Registered> {
   const registered = await classifyRegistered(ctx, await register(args, ctx));
-  const kindHint = await testOnlyHint(servicesOf(ctx).port, registered.registration);
+  const kindHint = await testOnlyHint(servicesOf(ctx), registered.registration);
   return kindHint === undefined ? registered : { ...registered, kindHint };
 }
 

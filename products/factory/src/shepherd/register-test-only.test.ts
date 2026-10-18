@@ -1,32 +1,23 @@
 import { CONFIG_PATH } from "@titan-design/fix-proof";
 import { fakeSha, type PrFile } from "@titan-design/github";
 import { EXIT } from "@titan-design/registry";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO } from "../test-support/land.js";
 import { BRANCH, callCommand, shepherdFixture, shepherdRuns, type ShepherdFixture } from "../test-support/shepherd.js";
 import type { Registered } from "./commands.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import { TEST_ONLY_HINT } from "./register-kind.js";
+import { TEST_ONLY_HINT, type KindGuard } from "./register-kind.js";
+import { kindMoveRefusal, testOnlyMoveRefusal } from "./task-kind.js";
 
-// Stands in for slice f deleting TEST_ONLY_GATED: with `live` set, a move into test-only meets the guard the flag holds back.
-const gate = vi.hoisted(() => ({ live: true }));
-vi.mock("./task-kind.js", async (importOriginal) => {
-  const real = await importOriginal<typeof import("./task-kind.js")>();
-  return {
-    ...real,
-    kindMoveRefusal: (...args: Parameters<typeof real.kindMoveRefusal>) => {
-      const refusal = real.kindMoveRefusal(...args);
-      return gate.live && refusal?.includes("cannot move to test-only yet") ? real.testOnlyMoveRefusal(args[0], args[2]) : refusal;
-    },
-  };
-});
+/** The guard as it reads once TEST_ONLY_GATED is gone: a move into test-only meets the diff check the flag holds back. */
+const liveGuard: KindGuard = (from, to, diff) => {
+  const refusal = kindMoveRefusal(from, to, diff);
+  return refusal?.includes("cannot move to test-only yet") ? testOnlyMoveRefusal(from, diff) : refusal;
+};
 
 const hosts: FactoryHost[] = [];
-afterEach(() => {
-  hosts.splice(0).forEach((host) => host.close());
-  gate.live = true;
-});
+afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 const MERGE_BASE = fakeSha("merge-base");
 const CONFIG = JSON.stringify({ tests: ["{packages,products,apps}/*/src/**/*.test.{ts,tsx}"], carry: ["**/test-support/**"] });
@@ -41,11 +32,12 @@ interface World extends ShepherdFixture {
   storedKind: () => string | undefined;
 }
 
-function world(files: PrFile[]): World {
+function world(files: PrFile[], guard: KindGuard | null = liveGuard): World {
   const fixture = shepherdFixture({ frozen: true });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: fixture.workflows, routes: fixture.routes, gatePollMs: 5 });
   hosts.push(host);
   fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
+  if (guard) fixture.routes.shepherd!.kindGuard = guard;
   fixture.fake.prFiles.set(1, files);
   fixture.fake.compares.set(`main...${H1}`, { mergeBaseSha: MERGE_BASE, files: [] });
   for (const ref of [MERGE_BASE, "main"]) fixture.fake.files.set(`${ref}:${CONFIG_PATH}`, { content: CONFIG, blobSha: fakeSha(ref) });
@@ -124,8 +116,7 @@ describe("shepherd register hints at test-only", () => {
   });
 
   it("gives no hint while the guard still refuses every move into test-only", async () => {
-    gate.live = false;
-    const w = world(TESTS_ONLY);
+    const w = world(TESTS_ONLY, null);
 
     expect(await registered(w, pr1)).not.toHaveProperty("kindHint");
   });
