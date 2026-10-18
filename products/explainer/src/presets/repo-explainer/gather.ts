@@ -4,6 +4,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { isFullSha } from "@titan-design/evidence";
+import { readReviewPin } from "@titan-design/pm";
 import { diag, type GatherDiagnostic } from "./diagnostics.js";
 import { digestFacts } from "./digest-facts.js";
 import { ExplainerFactSchema, ReviewBundleSchema, type ExplainerFact, type FactSource, type ReviewBundle } from "./schemas.js";
@@ -142,7 +143,7 @@ interface PinCheck {
 
 async function checkPin({ readme, clonePath, readHead }: PinCheck, out: GatherDiagnostic[]) {
   const pin = readme === undefined ? undefined : readPin(readme);
-  const url = readme === undefined ? undefined : /^[-*\s]*Remote:\s*(\S+)/m.exec(readme)?.[1];
+  const url = readme === undefined ? undefined : readReviewPin(readme).remote || undefined;
   if (pin === undefined || !isFullSha(pin)) out.push(diag("E-PIN-UNKNOWN", `${FILES.readme} has no "HEAD: <40-hex>" pin`, FILES.readme));
   if (url === undefined) out.push(diag("E-PIN-UNKNOWN", `${FILES.readme} has no "Remote: <url>" line`, FILES.readme));
   let head: string | undefined;
