@@ -1,5 +1,12 @@
 # @titan-design/active-work
 
+## 0.24.2
+
+### Patch Changes
+
+- Updated dependencies [a67d654]
+  - @titan-design/pm@0.4.0
+
 ## 0.24.1
 
 ### Patch Changes
