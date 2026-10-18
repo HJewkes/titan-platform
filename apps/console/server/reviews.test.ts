@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveConfig } from "./config.js";
 import { createConsoleRegistry } from "./registry.js";
 import type { ConsoleContext } from "./owner-guard.js";
-import { listReviews, newReviewFileCache, reviewsCommands, type ReviewSummary, type ReviewsList } from "./reviews.js";
+import { getReview, listReviews, newReviewFileCache, reviewsCommands, type ReviewSummary, type ReviewsList } from "./reviews.js";
 import { createSources } from "./upstreams.js";
 
 const TOPICS_HEADER = "topic_id\ttier\ttitle\tverdict\tpriority\ttitan_evidence\treason\trepo_evidence";
@@ -186,5 +186,82 @@ describe("reviews.list over a review folder tree", () => {
 
     expect(createConsoleRegistry(sources).get("reviews.list")).toBeDefined();
     expect(list.reviews.map((review) => review.name)).toEqual(["gadget", "widget", "gizmo-design", "sprocket"]);
+  });
+});
+
+const RECOMMENDED = "# Summary\n\n- coverage: `repo=x tracked=10 unread=0`\n\n## Integration recommendations\n\n- **A1.** Adopt the invented cache.\n- Port the invented parser.\n\n## Appendix\n";
+
+describe("reviews.get for one review", () => {
+  it("returns the summary, coverage line, recommendations, every topic row and the claims rows", async () => {
+    await plantReviews();
+    await put("widget/SUMMARY.md", RECOMMENDED);
+
+    const detail = await getReview({ dir: root }, "widget");
+
+    expect(detail.summary).toEqual({ markdown: RECOMMENDED, truncated: false, bytes: RECOMMENDED.length });
+    expect(detail.coverage).toBe("- coverage: `repo=x tracked=10 unread=0`");
+    expect(detail.recommendations?.map((item) => item.id)).toEqual(["A1", "R2"]);
+    expect(detail.topics.map((row) => row.priority)).toEqual(["P1", "P1", "P2", "P3"]);
+    expect(detail.topics[0]).toMatchObject({ topic_id: "WID-CORE-1", extra: { repo_evidence: "src/a.ts" } });
+    expect(detail.claims.map((row) => row.id)).toEqual(["C1", "C2"]);
+    expect(detail.review).toMatchObject({ name: "widget", state: "final", p1: 2 });
+    expect(detail.gaps).toEqual([]);
+  });
+
+  it("returns the rows and one gap line for a SUMMARY with no recommendations heading", async () => {
+    await plantReviews();
+
+    const detail = await getReview({ dir: root }, "widget");
+
+    expect(detail.recommendations).toBeNull();
+    expect(detail.topics).toHaveLength(4);
+    expect(detail.claims).toHaveLength(2);
+    expect(detail.gaps).toEqual(["SUMMARY.md has no Integration recommendations heading"]);
+  });
+
+  it("truncates a 300 KB SUMMARY at 256 KB and still reads its coverage line", async () => {
+    await plantReviews();
+    const big = `${RECOMMENDED}${"Invented prose line.\n".repeat(15_000)}`;
+    await put("widget/SUMMARY.md", big);
+
+    const detail = await getReview({ dir: root }, "widget");
+
+    expect(detail.summary).toMatchObject({ truncated: true, bytes: big.length });
+    expect(detail.summary?.markdown).toHaveLength(256 * 1024);
+    expect(detail.coverage).toContain("unread=0");
+  });
+
+  it("refuses an unknown name with NOT FOUND and echoes no path", async () => {
+    await plantReviews();
+
+    const refusal = getReview({ dir: root }, "nonesuch");
+
+    await expect(refusal).rejects.toThrow(/^NOT FOUND: no review by that name$/);
+  });
+
+  it("refuses a ../ name even when a review folder sits there", async () => {
+    await put("outside/README.md", readme("https://github.com/acme/outside", "pinned"));
+    await put("outside/SUMMARY.md", summary(0));
+    await put("reviews/widget/README.md", readme("https://github.com/acme/widget", "pinned"));
+
+    const refusal = getReview({ dir: path.join(root, "reviews") }, "../outside");
+
+    await expect(refusal).rejects.toThrow(/^NOT FOUND: no review by that name$/);
+  });
+
+  it("refuses a dir with no README.md as not a review", async () => {
+    await plantReviews();
+
+    await expect(getReview({ dir: root }, "tools")).rejects.toThrow("NOT FOUND");
+  });
+
+  it("serves reviews.get as a read command", async () => {
+    await plantReviews();
+    const commands = reviewsCommands({ dir: root });
+
+    const detail = await commands["reviews.get"].run({ name: "gadget" }, IN_PROCESS);
+
+    expect(commands["reviews.get"].commandClass).toBe("read");
+    expect(detail.review).toMatchObject({ name: "gadget", label: "wave1", p2: 2 });
   });
 });

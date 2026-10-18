@@ -9,12 +9,18 @@
  */
 import { lstat, open, readdir, type FileHandle } from "node:fs/promises";
 import path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { z } from "zod";
-import { parseClaimsAudit, parseTopicsJudged, readReviewPin, sumRunCost, type ReviewPin, type RunCost, type TopicRow } from "@titan-design/pm";
+import { EXIT } from "@titan-design/registry";
+import {
+  parseClaimsAudit, parseTopicsJudged, readReviewPin, sumRunCost, summaryRecommendations,
+  type ClaimRow, type ReviewItem, type ReviewPin, type RunCost, type TopicRow,
+} from "@titan-design/pm";
+import { failure } from "./active-work.js";
 import { readCommand } from "./owner-guard.js";
 import {
   CLAIMS_FILE, COUNTED_PRIORITIES, FLAT_LABEL, REVIEW_FILES, REVIEW_LABEL, REVIEW_NAME, REVIEW_STATES, SYNTHESIS_DIR, TOPICS_FILE, WAVE_STATE,
-  coverageUnread, reviewState,
+  coverageOf, reviewState,
 } from "./review-rules.js";
 import { OPEN_FLAGS, readCapped } from "./rounds.js";
 
@@ -24,6 +30,8 @@ export interface ReviewsSource {
 
 const MAX_REVIEW_FILE_BYTES = 1024 * 1024;
 const MAX_LABEL_BYTES = 256;
+/** The markdown `reviews.get` returns stops here; coverage and recommendations still read the whole file. */
+const MAX_SUMMARY_MARKDOWN_BYTES = 256 * 1024;
 /** The list stops here, so a dir full of junk cannot make one read unbounded. */
 const MAX_REVIEWS = 500;
 
@@ -50,6 +58,57 @@ const reviewsListResult = z.object({ reviews: z.array(reviewSummary), gaps: z.ar
 export type ReviewSummary = z.infer<typeof reviewSummary>;
 export type ReviewsList = z.infer<typeof reviewsListResult>;
 
+const topicRow = z.object({
+  topic_id: z.string(), tier: z.string(), title: z.string(), verdict: z.string(), priority: z.string(), titan_evidence: z.string(), reason: z.string(),
+  line: z.number(), extra: z.record(z.string(), z.string()),
+});
+
+const claimRow = z.object({
+  id: z.string(), source: z.string(), status: z.string(), evidence: z.string(), claim: z.string(), line: z.number(),
+  basis: z.string().optional(), note: z.string().optional(), wave: z.string().optional(),
+});
+
+const recommendation = z.object({ id: z.string(), source: z.enum(["recommendation", "topic"]), line: z.number() });
+
+const reviewDetailResult = z.object({
+  review: reviewSummary,
+  summary: z.object({ markdown: z.string(), truncated: z.boolean(), bytes: z.number() }).nullable(),
+  coverage: z.string().nullable(),
+  /** Null when the SUMMARY has no recommendations heading or there is no SUMMARY; a gap line says which. */
+  recommendations: z.array(recommendation).nullable(),
+  topics: z.array(topicRow),
+  claims: z.array(claimRow),
+  gaps: z.array(z.string()),
+  readAt: z.string(),
+});
+type ReviewDetail = z.infer<typeof reviewDetailResult>;
+
+/** What one read of SUMMARY.md yields; the list uses only the unread count. */
+interface SummaryRead {
+  markdown: string;
+  truncated: boolean;
+  bytes: number;
+  coverage: { line: string; unread: number } | null;
+  recommendations: ReviewItem[] | { gap: string };
+}
+
+/** Cuts at a byte cap without splitting a UTF-8 sequence: the decoder holds back a partial one. */
+function capMarkdown(text: string): Pick<SummaryRead, "markdown" | "truncated" | "bytes"> {
+  const bytes = Buffer.from(text, "utf8");
+  if (bytes.length <= MAX_SUMMARY_MARKDOWN_BYTES) return { markdown: text, truncated: false, bytes: bytes.length };
+  return { markdown: new StringDecoder("utf8").write(bytes.subarray(0, MAX_SUMMARY_MARKDOWN_BYTES)), truncated: true, bytes: bytes.length };
+}
+
+function recommendationsOf(text: string): SummaryRead["recommendations"] {
+  try {
+    return summaryRecommendations(text);
+  } catch (error) {
+    return { gap: error instanceof Error ? error.message : `${REVIEW_FILES.summary} recommendations could not be read` };
+  }
+}
+
+const parseSummary = (text: string): SummaryRead => ({ ...capMarkdown(text), coverage: coverageOf(text), recommendations: recommendationsOf(text) });
+
 interface CacheEntry<T> {
   mtimeMs: number;
   size: number;
@@ -62,13 +121,13 @@ interface ReviewFileCache {
   pin: CacheSlot<ReviewPin>;
   label: CacheSlot<string>;
   topics: CacheSlot<TopicRow[]>;
-  claims: CacheSlot<number>;
-  unread: CacheSlot<number | null>;
+  claims: CacheSlot<ClaimRow[]>;
+  summary: CacheSlot<SummaryRead>;
   cost: CacheSlot<RunCost>;
 }
 
 export const newReviewFileCache = (): ReviewFileCache => ({
-  pin: new Map(), label: new Map(), topics: new Map(), claims: new Map(), unread: new Map(), cost: new Map(),
+  pin: new Map(), label: new Map(), topics: new Map(), claims: new Map(), summary: new Map(), cost: new Map(),
 });
 
 type FileRead<T> = { state: "absent" } | { state: "refused"; gap: string } | { state: "read"; value: T };
@@ -140,8 +199,8 @@ interface ReviewArtifacts {
   pin: ReviewPin;
   label: string | null;
   topics: TopicRow[] | undefined;
-  claims: number | undefined;
-  unread: number | null | undefined;
+  claims: ClaimRow[] | undefined;
+  summary: SummaryRead | undefined;
   cost: RunCost | undefined;
   waveState: boolean;
 }
@@ -153,53 +212,95 @@ async function readArtifacts(cache: ReviewFileCache, root: string, pin: ReviewPi
   const claimsRel = synthesis && path.posix.join(synthesis.dir, CLAIMS_FILE);
   const [topics, claims, summary, runs, waveState] = await Promise.all([
     topicsRel ? read(cache.topics, topicsRel, (text) => parseTopicsJudged(text, topicsRel)) : ({ state: "absent" } as const),
-    claimsRel ? read(cache.claims, claimsRel, (text) => parseClaimsAudit(text, claimsRel).length) : ({ state: "absent" } as const),
-    read(cache.unread, REVIEW_FILES.summary, coverageUnread),
+    claimsRel ? read(cache.claims, claimsRel, (text) => parseClaimsAudit(text, claimsRel)) : ({ state: "absent" } as const),
+    read(cache.summary, REVIEW_FILES.summary, parseSummary),
     read(cache.cost, REVIEW_FILES.runs, (text) => sumRunCost(text, REVIEW_FILES.runs)),
     hasWaveState(root),
   ]);
-  const values = { topics: valueOf(topics, gaps), claims: valueOf(claims, gaps), unread: valueOf(summary, gaps), cost: valueOf(runs, gaps) };
+  const values = { topics: valueOf(topics, gaps), claims: valueOf(claims, gaps), summary: valueOf(summary, gaps), cost: valueOf(runs, gaps) };
   return { pin, label: synthesis?.label ?? null, ...values, waveState };
 }
 
 function summaryOf(name: string, artifacts: ReviewArtifacts): ReviewSummary {
-  const { pin, label, topics = [], claims, unread, cost, waveState } = artifacts;
-  const facts = { label, hasClaims: claims !== undefined, hasWaveState: waveState, hasSummary: unread !== undefined, unread: unread ?? null };
+  const { pin, label, topics = [], claims, summary, cost, waveState } = artifacts;
+  const unread = summary?.coverage?.unread ?? null;
+  const facts = { label, hasClaims: claims !== undefined, hasWaveState: waveState, hasSummary: summary !== undefined, unread };
   const [p1, p2] = COUNTED_PRIORITIES.map((priority) => topics.filter((topic) => topic.priority === priority).length);
   return {
     name, remote: pin.remote ?? null, head: pin.head ?? null, readmeStatus: pin.status ?? null, label, state: reviewState(facts),
-    p1: p1 ?? 0, p2: p2 ?? 0, topics: topics.length, claims: claims ?? 0, unread: unread ?? null, cost: cost ?? null,
+    p1: p1 ?? 0, p2: p2 ?? 0, topics: topics.length, claims: claims?.length ?? 0, unread, cost: cost ?? null,
   };
 }
 
-/** A dir with no README is not a review, so it yields nothing; one whose README is refused yields only its gap. */
-async function loadReview(cache: ReviewFileCache, dir: string, name: string): Promise<{ review?: ReviewSummary; gaps: string[] }> {
+/** A dir with no README is not a review, so it yields no artifacts; one whose README is refused yields only its gap. */
+async function loadArtifacts(cache: ReviewFileCache, dir: string, name: string): Promise<{ artifacts?: ReviewArtifacts; gaps: string[] }> {
   const root = path.join(dir, name);
   const gaps: string[] = [];
   const pin = valueOf(await readReviewFile(cache.pin, root, REVIEW_FILES.readme, MAX_REVIEW_FILE_BYTES, readReviewPin), gaps);
-  if (pin === undefined) return { gaps: gaps.map((gap) => `${name}: ${gap}`) };
-  const review = summaryOf(name, await readArtifacts(cache, root, pin, gaps));
-  return { review, gaps: gaps.map((gap) => `${name}: ${gap}`) };
+  if (pin === undefined) return { gaps };
+  return { artifacts: await readArtifacts(cache, root, pin, gaps), gaps };
+}
+
+async function loadReview(cache: ReviewFileCache, dir: string, name: string): Promise<{ review?: ReviewSummary; gaps: string[] }> {
+  const { artifacts, gaps } = await loadArtifacts(cache, dir, name);
+  const named = gaps.map((gap) => `${name}: ${gap}`);
+  return artifacts === undefined ? { gaps: named } : { review: summaryOf(name, artifacts), gaps: named };
+}
+
+/** The review folder names one level under the dir; `reviews.get` answers only a name from this set. */
+async function scanNames(dir: string): Promise<string[]> {
+  const entries = await readdir(dir, { withFileTypes: true });
+  return entries.filter((entry) => entry.isDirectory() && REVIEW_NAME.test(entry.name)).map((entry) => entry.name).sort();
 }
 
 const newestFirst = (a: ReviewSummary, b: ReviewSummary): number =>
   (b.cost?.lastTs ?? "").localeCompare(a.cost?.lastTs ?? "") || a.name.localeCompare(b.name);
 
+const dirGap = (error: unknown): string => (errnoOf(error) === "ENOENT" ? "the reviews dir does not exist" : "the reviews dir could not be read");
+
 /** Nothing here throws: the dir itself, a review or a file that cannot be read is a gap line. */
 export async function listReviews({ dir }: ReviewsSource, cache: ReviewFileCache = newReviewFileCache()): Promise<ReviewsList> {
   const readAt = new Date().toISOString();
-  let entries;
+  let names;
   try {
-    entries = await readdir(dir, { withFileTypes: true });
+    names = await scanNames(dir);
   } catch (error) {
-    return { reviews: [], gaps: [errnoOf(error) === "ENOENT" ? "the reviews dir does not exist" : "the reviews dir could not be read"], readAt };
+    return { reviews: [], gaps: [dirGap(error)], readAt };
   }
-  const names = entries.filter((entry) => entry.isDirectory() && REVIEW_NAME.test(entry.name)).map((entry) => entry.name).sort();
   const loaded = await Promise.all(names.slice(0, MAX_REVIEWS).map((name) => loadReview(cache, dir, name)));
   const gaps = loaded.flatMap((entry) => entry.gaps);
   if (names.length > MAX_REVIEWS) gaps.push(`only the first ${MAX_REVIEWS} of ${names.length} folders were read`);
   const reviews = loaded.flatMap(({ review }) => (review === undefined ? [] : [review])).sort(newestFirst);
   return { reviews, gaps, readAt };
+}
+
+/** The refusal never echoes the name it was given, which may be a path. */
+const notFound = (): Error => failure("NOT FOUND: no review by that name", EXIT.NOINPUT);
+
+function detailOf(name: string, artifacts: ReviewArtifacts, gaps: string[]): Omit<ReviewDetail, "readAt"> {
+  const { summary } = artifacts;
+  let recommendations: ReviewItem[] | null = null;
+  if (summary === undefined) gaps.push(`${REVIEW_FILES.summary} is absent; no recommendations`);
+  else if (Array.isArray(summary.recommendations)) recommendations = summary.recommendations;
+  else gaps.push(summary.recommendations.gap);
+  return {
+    review: summaryOf(name, artifacts),
+    summary: summary === undefined ? null : { markdown: summary.markdown, truncated: summary.truncated, bytes: summary.bytes },
+    coverage: summary?.coverage?.line ?? null, recommendations, topics: artifacts.topics ?? [], claims: artifacts.claims ?? [], gaps,
+  };
+}
+
+/** One review in full. The name is looked up in the scanned set and never joined as given, so `../x` is NOT FOUND. */
+export async function getReview({ dir }: ReviewsSource, name: string, cache: ReviewFileCache = newReviewFileCache()): Promise<ReviewDetail> {
+  const readAt = new Date().toISOString();
+  const names = await scanNames(dir).catch((error: unknown) => {
+    throw failure(dirGap(error), EXIT.UNAVAILABLE);
+  });
+  const known = names.slice(0, MAX_REVIEWS).find((candidate) => candidate === name);
+  if (known === undefined) throw notFound();
+  const { artifacts, gaps } = await loadArtifacts(cache, dir, known);
+  if (artifacts === undefined) throw notFound();
+  return { ...detailOf(known, artifacts, gaps), readAt };
 }
 
 export function reviewsCommands(source: ReviewsSource) {
@@ -211,6 +312,13 @@ export function reviewsCommands(source: ReviewsSource) {
       args: z.object({}),
       result: reviewsListResult,
       run: () => listReviews(source, cache),
+    }),
+    "reviews.get": readCommand({
+      name: "reviews.get",
+      description: "One repo review: its summary markdown (capped), coverage line, recommendations or a gap line, every topic row and the claims rows",
+      args: z.object({ name: z.string().min(1).max(100) }),
+      result: reviewDetailResult,
+      run: ({ name }) => getReview(source, name, cache),
     }),
   };
 }
