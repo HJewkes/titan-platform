@@ -208,7 +208,7 @@ describe("listRecoverable query", () => {
         const expected = (db.prepare(notInSql("agent_execution")).all(limit ?? 100) as { record: string }[]).map(row => JSON.parse(row.record));
         expect(ledger.listRecoverable(limit)).toEqual(expected);
       }
-      expect(ledger.listRecoverable(1000).map(r => (r as unknown as { phase: string }).phase).every(p => !isTerminalExecutionPhase(p as never))).toBe(true);
+      expect(ledger.listRecoverable(1000)).toHaveLength(3 * phases.filter(phase => !isTerminalExecutionPhase(phase)).length);
     } finally { db.close(); }
   });
 
